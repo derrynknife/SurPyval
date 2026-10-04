@@ -461,6 +461,35 @@ def test_hf_is_df_over_sf():
     assert np.isfinite(mm.hf(1e4)) and mm.hf(1e4) > 0
 
 
+def test_sf_hf_and_cs_keep_their_precision_in_the_upper_tail():
+    # #671: sf was 1 - ff, 0 (and Hf inf) once the survival fell below
+    # about 1e-16; the components' summed survival keeps it.
+    g = np.random.default_rng(7)
+    mm = sp.MixtureModel(sp.Weibull, 2)
+    mm.fit(np.r_[20 * g.weibull(1, 15), 150 * g.weibull(3, 45)])
+    x = np.array([1e-6, 600.0, 1000.0, 1e4])
+    exact = sum(w * sp.Weibull.sf(x, *p) for w, p in zip(mm.w, mm.params))
+    assert np.allclose(mm.sf(x), exact, rtol=1e-12, atol=0)
+    # (near 0, -log1p(-ff) is the exact reference: log(sf) cancels there)
+    F = sum(w * sp.Weibull.ff(x, *p) for w, p in zip(mm.w, mm.params))
+    with np.errstate(divide="ignore"):
+        H = np.where(F < 0.5, -np.log1p(-F), -np.log(exact))
+    assert np.allclose(mm.Hf(x), H, rtol=1e-12, atol=0)
+    assert np.allclose(mm.sf(x) + mm.ff(x), 1.0)
+    # Past the survival's underflow, Hf is the components' log-sum-exp
+    log_s = [
+        np.log(w) + sp.Weibull.log_sf(1e5, *p) for w, p in zip(mm.w, mm.params)
+    ]
+    assert mm.sf(1e5) == 0
+    assert np.isclose(mm.Hf(1e5), -np.logaddexp(*log_s), rtol=1e-12)
+    assert mm.Hf(0.0) == 0 and mm.Hf(np.inf) == np.inf
+    # cs from the cumulative hazard: finite where sf(given) is 0
+    assert np.isclose(mm.cs(10.0, 1000.0), mm.sf(1010.0) / exact[2])
+    assert 0 < mm.cs(1.0, 1e5) < 1
+    assert np.isclose(mm.cs(3.0, 5.0), mm.sf(8.0) / mm.sf(5.0))
+    assert np.isnan(mm.cs(1.0, np.inf))
+
+
 def test_qf_inverts_ff():
     mm = _two_weibulls()
     p = np.array([0.01, 0.1, 0.5, 0.9, 0.99])

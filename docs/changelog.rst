@@ -118,6 +118,12 @@ Unreleased
   and an example; the Binomial / Bernoulli convention, the forest's
   ``feature_importances()`` and the recurrent ``n`` (1 on exact events)
   read as the code does; float-sensitive examples are rounded.
+- ``MixtureModel.sf`` sums the components' weighted survival, as ``ff``
+  and ``df`` are summed, rather than taking ``1 - ff``, which was 0 (and
+  ``Hf`` inf) once the survival fell below about 1e-16 (#671). ``Hf`` is
+  ``-log1p(-ff)`` near 0 and the components' log-sum-exp where the
+  survival underflows; ``cs`` is ``exp(-(Hf(x + given) - Hf(given)))``,
+  finite where ``sf(given)`` is 0.
 - Removed names say what replaced them, and when they went (#653):
   ``from surpyval import Power`` raised a bare "cannot import name"; old
   attributes (``param_names``, ``se``, ``cov_matrix``, ``loglike``, ...),

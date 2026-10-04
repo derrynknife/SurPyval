@@ -1449,8 +1449,75 @@ class MixtureModel(
 
         array like
             The survival function evaluated at x.
+
+        Notes
+        -----
+        The components' survival functions are summed, weighted, as
+        ``ff`` and ``df`` sum theirs, rather than taken as ``1 - ff``:
+        each keeps its precision far in the upper tail, so their sum does
+        too, where ``1 - ff`` would round to 0 once the survival is below
+        about 1e-16.
+
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+        >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
+        >>> wmm.sf([5, 15]).round(4)
+        array([0.7043, 0.3264])
         """
-        return 1 - self.ff(x)
+        x = np.asarray(x, dtype=float)
+        S = np.zeros_like(x)
+        for i in range(self.m):
+            S = S + self.w[i] * self.dist.sf(x, *self.params[i])
+        return S
+
+    @keeps_query_shape
+    def Hf(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """
+        The cumulative hazard function of the fitted mixture, ``-log
+        sf(x)``.
+
+        It keeps its precision at both ends: where the mixture has failed
+        less than half it is ``-log1p(-ff(x))`` (``ff`` is accurate where
+        it is small), elsewhere ``-log sf(x)`` from the summed survival,
+        and where that survival underflows to 0 it is the log-sum-exp of
+        the components' log survivals, so it stays finite far in the tail.
+
+        Parameters
+        ----------
+
+        x : array like
+            The values at which the cumulative hazard will be evaluated.
+
+        Returns
+        -------
+
+        array like
+            The cumulative hazard evaluated at x.
+
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+        >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
+        >>> wmm.Hf([5, 15]).round(4)
+        array([0.3505, 1.1196])
+        """
+        x = np.asarray(x, dtype=float)
+        F = np.asarray(self.ff(x), dtype=float)
+        S = np.asarray(self.sf(x), dtype=float)
+        with np.errstate(all="ignore"):
+            H = np.where(F < 0.5, -np.log1p(-F), -np.log(S))
+            gone = (S == 0) & np.isfinite(x)
+            if np.any(gone):
+                xs = x[gone]
+                log_w = np.log(self.w)[:, None]
+                log_s = np.array(
+                    [self.dist.log_sf(xs, *row) for row in self.params]
+                )
+                H[gone] = -logsumexp(log_w + log_s, axis=0)
+        return H
 
     @removed_arguments("0.23", X="'given'")
     def cs(self, x: Any, given: Any, *args: Any, **kwargs: Any) -> Any:
@@ -1478,13 +1545,20 @@ class MixtureModel(
         -------
 
         array like
-            The conditional survival function evaluated at x given given.
+            The conditional survival function evaluated at x given given:
+            ``exp(-(Hf(x + given) - Hf(given)))``, from the cumulative
+            hazard, so it stays exact where ``sf(given)`` underflows;
+            ``nan`` only where ``Hf(given)`` is itself infinite.
         """
         # As arrays: ``x + given`` on a list concatenated (or raised) rather
         # than adding.
         x = np.asarray(x, dtype=float)
         given = np.asarray(given, dtype=float)
-        return self.sf(x + given) / self.sf(given)
+        H_given = np.asarray(self.Hf(given), dtype=float)
+        H_end = np.asarray(self.Hf(x + given), dtype=float)
+        with np.errstate(invalid="ignore"):
+            out = np.exp(H_given - H_end)
+        return np.where(np.isinf(H_given), np.nan, out)[()]
 
     @keeps_query_shape
     def hf(self, x: Any, *args: Any, **kwargs: Any) -> Any:
