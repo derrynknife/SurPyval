@@ -99,6 +99,14 @@ Unreleased
   ``RoystonParmar`` (whose text is now its ``repr`` only); ``tl`` / ``tr``
   on the parametric fits; ``CoxFrailty.param_cb(method=)``. A model with
   no likelihood says why on ``neg_ll`` / ``aic``.
+- **Ergonomics (#666).** ``fit_best(return_table=True)`` ranks every
+  candidate; ``DestructiveDegradationModel`` has ``qf``, ``hf``, ``mean``,
+  ``random``; Wiener / gamma process models ``covariance()``,
+  ``standard_errors()``, ``param_cb``, ``cb``; trees and forests
+  ``sf(x, Z, grid=)`` (a ``FutureWarning`` where pairing would apply);
+  recurrent ``summary()`` and an MCF repr; ``forecast`` ignores
+  ``random_state`` where exact; ``NonParametric.cb(x, on, alpha_ci, bound)``
+  (old order warns); ``to_dict`` / ``to_frame`` on ``Forecast`` and RULs.
 
 **Fixed**
 

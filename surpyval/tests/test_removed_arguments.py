@@ -427,6 +427,7 @@ _SHIM_NAMES = frozenset(
         "REMOVED_IN",
         "REMOVED_IN_NEXT",
         "renamed_arguments",
+        "reordered_arguments",
         "RenamedAttribute",
         "CallableFloat",
         "MethodFloat",

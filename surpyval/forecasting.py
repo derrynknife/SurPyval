@@ -112,6 +112,75 @@ class Forecast:
         each = self.probability if self.per_unit is None else self.per_unit
         return self.n[:, None] * each
 
+    def to_dict(self) -> dict[str, Any]:
+        """
+        The forecast as a plain dict of native Python numbers and lists,
+        ready for ``json.dumps`` (#666): each field by its name
+        (``per_unit``, ``units`` and ``simulations`` are ``None`` where the
+        forecast has none).
+
+        Examples
+        --------
+        >>> import json
+        >>> import surpyval as surv
+        >>> model = surv.Weibull.from_params([60.0, 1.5])
+        >>> result = surv.forecast(model, age=[3, 2], n=[950, 1000], horizon=1)
+        >>> d = result.to_dict()
+        >>> d["lower"], d["upper"]
+        ([5.0], [18.0])
+        >>> isinstance(json.dumps(d), str)
+        True
+        """
+        from dataclasses import fields
+
+        from surpyval.serialisation import to_native
+
+        out: dict[str, Any] = {}
+        for f in fields(self):
+            value = getattr(self, f.name)
+            if isinstance(value, np.ndarray):
+                value = to_native(value)
+            elif isinstance(value, (np.generic, float)):
+                value = to_native(value)
+            out[f.name] = value
+        return out
+
+    def to_frame(self) -> Any:
+        """
+        The totals over the horizons as a :class:`pandas.DataFrame`, one
+        row per horizon (the index, ``horizon``), with the columns
+        ``expected``, ``variance``, ``lower``, ``upper``,
+        ``period_expected``, ``period_lower`` and ``period_upper`` (#666).
+        Each unit's ``probability`` (or ``per_unit``) is
+        :meth:`to_dict`'s.
+
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> model = surv.Weibull.from_params([60.0, 1.5])
+        >>> result = surv.forecast(
+        ...     model, age=[3, 2], n=[950, 1000], horizon=[1, 2]
+        ... )
+        >>> list(result.to_frame().columns)  # doctest: +NORMALIZE_WHITESPACE
+        ['expected', 'variance', 'lower', 'upper', 'period_expected',
+         'period_lower', 'period_upper']
+        """
+        import pandas as pd
+
+        columns = [
+            "expected",
+            "variance",
+            "lower",
+            "upper",
+            "period_expected",
+            "period_lower",
+            "period_upper",
+        ]
+        return pd.DataFrame(
+            {name: np.asarray(getattr(self, name), float) for name in columns},
+            index=pd.Index(np.asarray(self.horizon, float), name="horizon"),
+        )
+
     def __repr__(self) -> str:
         level = 100 * (1 - self.alpha_ci)
         head = (
@@ -229,8 +298,10 @@ def forecast(
         For a renewal model only: the number of simulated futures of
         each unit (default 1000). Keyword only.
     random_state : int or numpy.random.Generator, optional
-        For a renewal model only: the seed of the simulation. Keyword
-        only.
+        The seed of a renewal model's simulation. Keyword only. Every
+        other model's forecast is exact, with nothing to simulate, so it
+        ignores ``random_state`` (it is accepted so that one call serves a
+        loop over model types; #666).
 
     Returns
     -------
@@ -252,7 +323,7 @@ def forecast(
         is left out for a model that is not a recurrent-event model fitted
         to data; if ``n`` is given to a renewal model (each unit is
         simulated from its own state: give one age per unit), or ``items``
-        or ``random_state`` to a model that is not one.
+        to a model that is not one.
 
     Warns
     -----
@@ -340,10 +411,13 @@ def forecast(
             "{}".format(h.tolist())
         )
     kind = _recurrent_kind(model)
-    if kind != "renewal" and (items is not None or random_state is not None):
+    # random_state is ignored where the forecast is exact (#666): a loop
+    # over model types passes it to every one.
+    if kind != "renewal" and items is not None:
         raise ValueError(
-            "items and random_state set the simulation of a renewal "
-            "model's forecast; this model's forecast is exact"
+            "items sets the number of simulated futures of a renewal "
+            "model's forecast; this model's forecast is exact, so there is "
+            "nothing to simulate"
         )
     if kind == "renewal":
         return _renewal_forecast(

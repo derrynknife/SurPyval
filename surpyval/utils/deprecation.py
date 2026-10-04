@@ -9,6 +9,7 @@ v0.25. This module holds the shapes such a rename takes (each with the
 v0.23 rename it was written for, removed in v0.24):
 
 - :func:`renamed_arguments`, an argument of a function or method;
+- :func:`reordered_arguments`, the order of a method's arguments;
 - :class:`RenamedAttribute`, an attribute or property of a class;
 - :class:`CallableFloat`, a method that became a property returning a
   number (``MixtureModel.log_likelihood``);
@@ -41,6 +42,7 @@ __all__ = [
     "RenamedAttribute",
     "RenamedToMethod",
     "renamed_arguments",
+    "reordered_arguments",
 ]
 
 #: The release in which the names deprecated in v0.24 stop being
@@ -126,6 +128,87 @@ def renamed_arguments(
                 )
                 kwargs[new] = kwargs.pop(old)
             return func(*args, **kwargs)
+
+        return wrapper  # type: ignore[return-value]
+
+    return decorate
+
+
+def reordered_arguments(
+    old: tuple[str, ...],
+    is_old: Callable[[tuple], bool],
+    advice: str,
+    removed_in: str = REMOVED_IN,
+) -> Callable[[F], F]:
+    """
+    Decorate a method whose positional arguments changed order, so that a
+    call in the old order still works, with a warning.
+
+    Parameters
+    ----------
+    old : tuple of str
+        The method's arguments after ``self``, in their old order.
+    is_old : callable
+        Given the positional arguments after ``self``, whether they are in
+        the old order (e.g. a string where the new order has a number).
+    advice : str
+        What to do instead, appended to the warning.
+    removed_in : str, optional
+        The release in which the old order stops being accepted.
+
+    Returns
+    -------
+    callable
+        A decorator. A call in the old order warns with a
+        ``DeprecationWarning`` pointing at the caller's line and is passed
+        on by keyword; passing an argument both ways raises a
+        ``TypeError``, as Python does.
+
+    Examples
+    --------
+    >>> import warnings
+    >>> from surpyval.utils.deprecation import reordered_arguments
+    >>> class Model:
+    ...     @reordered_arguments(
+    ...         ("x", "bound", "alpha_ci"),
+    ...         lambda args: len(args) >= 2 and isinstance(args[1], str),
+    ...         "pass bound by name.",
+    ...     )
+    ...     def cb(self, x, alpha_ci=0.05, bound="two-sided"):
+    ...         return x, alpha_ci, bound
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     Model().cb(1.0, "lower", 0.1)
+    (1.0, 0.1, 'lower')
+    >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
+    Model.cb: the old order of its arguments, cb(x, bound, alpha_ci), is
+    deprecated and will be removed in v0.25; pass bound by name.
+    """
+
+    def decorate(func: F) -> F:
+        where = func.__qualname__
+        call = "{}({})".format(func.__name__, ", ".join(old))
+
+        @functools.wraps(func)
+        def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+            if is_old(args):
+                warnings.warn(
+                    f"{where}: the old order of its arguments, {call}, is "
+                    f"deprecated and will be removed in v{removed_in}; "
+                    f"{advice}",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                named = dict(zip(old, args))
+                for name in named:
+                    if name in kwargs:
+                        raise TypeError(
+                            f"{func.__name__}() got multiple values for "
+                            f"argument {name!r}"
+                        )
+                kwargs.update(named)
+                args = ()
+            return func(self, *args, **kwargs)
 
         return wrapper  # type: ignore[return-value]
 

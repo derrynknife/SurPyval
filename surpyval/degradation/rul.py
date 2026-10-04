@@ -111,6 +111,35 @@ class RULPrediction:
     alpha_ci: float
     samples: npt.NDArray = field(repr=False)
 
+    def to_dict(self, samples: bool = False) -> dict:
+        """
+        The prediction as a plain dict of native floats and lists, ready
+        for ``json.dumps`` (#666): every field by its name, the intervals
+        as lists of two and the posterior as nested lists. The Monte Carlo
+        ``samples`` are left out unless ``samples=True``. A failure time
+        that is never reached is ``inf`` (``Infinity`` in ``json.dumps``).
+        """
+        out = {
+            "failure_time": float(self.failure_time),
+            "failure_time_interval": [
+                float(v) for v in self.failure_time_interval
+            ],
+            "rul": float(self.rul),
+            "rul_interval": [float(v) for v in self.rul_interval],
+            "prob_failed": float(self.prob_failed),
+            "prob_never_fails": float(self.prob_never_fails),
+            "posterior_mean": np.asarray(
+                self.posterior_mean, dtype=float
+            ).tolist(),
+            "posterior_cov": np.asarray(
+                self.posterior_cov, dtype=float
+            ).tolist(),
+            "alpha_ci": float(self.alpha_ci),
+        }
+        if samples:
+            out["samples"] = np.asarray(self.samples, dtype=float).tolist()
+        return out
+
 
 class InducedFailureDistribution(SerialisableMixin):
     """

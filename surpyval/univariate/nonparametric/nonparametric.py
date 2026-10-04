@@ -9,6 +9,7 @@ import numpy.typing as npt
 from surpyval.distribution import NonParametricDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.utils.data_summary import data_summary
+from surpyval.utils.deprecation import reordered_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import (
@@ -36,6 +37,20 @@ _QF_TOL = 1e-9
 
 # The functions ``cb`` can bound ('R' and 'F' are aliases of 'sf' and 'ff').
 _CB_ON = ("sf", "ff", "Hf", "R", "F")
+
+# ``cb`` took ``(x, on, bound, interp, alpha_ci, ...)`` where every other
+# model's takes ``(x, on, alpha_ci, bound, ...)``, so ``km.cb(x, "sf", 0.1)``
+# raised "bound must be ..." where ``model.cb(x, "sf", 0.1)`` meant
+# ``alpha_ci=0.1`` (#666). It takes the common order now; a string third
+# positional argument (a ``bound``) is the old order, read as before with a
+# warning until v0.25.
+_OLD_CB_ORDER = reordered_arguments(
+    ("x", "on", "bound", "interp", "alpha_ci", "bound_type", "dist"),
+    lambda args: len(args) >= 3 and isinstance(args[2], str),
+    "the third positional argument is now alpha_ci, as in every model's "
+    "cb(x, on, alpha_ci, bound, ...). Pass bound by name, e.g. "
+    "cb(x, 'sf', bound='lower').",
+)
 
 
 # The ``interp`` values: the step estimate, and the interpolation kinds
@@ -616,14 +631,15 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         with np.errstate(divide="ignore"):
             return -np.log(sf)
 
+    @_OLD_CB_ORDER
     @keeps_query_shape
     def cb(
         self,
         x: npt.ArrayLike,
         on: str = "sf",
+        alpha_ci: float = 0.05,
         bound: str = "two-sided",
         interp: str = "step",
-        alpha_ci: float = 0.05,
         bound_type: str = "exp",
         dist: str = "z",
     ) -> npt.NDArray:
@@ -662,6 +678,9 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
             'sf', and those on 'Hf' are minus their logarithm; a two-sided
             result is always ``[lower, upper]`` for the function asked
             about.
+        alpha_ci : scalar, optional
+            The level of significance at which the bound will be computed.
+            Defaults to 0.05.
         bound : ('two-sided', 'upper', 'lower'), str, optional
             Compute either the two-sided, upper or lower confidence bound(s).
             Defaults to two-sided. A one-sided bound puts all of
@@ -672,9 +691,6 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
             statistics traditionally uses step functions, but can use
             interpolated values if desired. Defaults to step. Takes the
             values of ``sf``'s ``interp``.
-        alpha_ci : scalar, optional
-            The level of significance at which the bound will be computed.
-            Defaults to 0.05.
         bound_type : ('exp', 'normal'), str, optional
             The method with which the bounds will be calculated. Using
             'normal' (i.e. the plain Greenwood-style interval,

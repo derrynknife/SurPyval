@@ -3,7 +3,7 @@ from __future__ import annotations
 import warnings
 from collections.abc import Iterable
 from functools import partial
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Literal, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -32,6 +32,10 @@ from surpyval.univariate.parametric.parametric_fitter import (
 from surpyval.utils.no_maximum import quiet_maximum_warnings
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import check_option
+
+if TYPE_CHECKING:
+    # Imported where it is used: ``import surpyval`` does not load pandas
+    import pandas as pd
 
 # Typed as OptimisedFitMixin, not ParametricFitter: every entry has
 # `.fit(x, c, n, t)` called on it below, and Bernoulli, Binomial and
@@ -158,6 +162,7 @@ def _reason(error: Exception) -> str:
     )
 
 
+@overload
 def fit_best(
     x: npt.ArrayLike | None = None,
     c: npt.ArrayLike | None = None,
@@ -170,7 +175,47 @@ def fit_best(
     tr: npt.ArrayLike | float | None = None,
     xl: npt.ArrayLike | None = None,
     xr: npt.ArrayLike | None = None,
-) -> Parametric | MixtureModel | None:
+    return_table: Literal[False] = ...,
+) -> Parametric | MixtureModel | None: ...
+
+
+@overload
+def fit_best(
+    x: npt.ArrayLike | None = None,
+    c: npt.ArrayLike | None = None,
+    n: npt.ArrayLike | None = None,
+    t: npt.ArrayLike | None = None,
+    metric: str = "aic",
+    include: Iterable[str | MixtureModel] | None = None,
+    exclude: Iterable[str] | None = None,
+    tl: npt.ArrayLike | float | None = None,
+    tr: npt.ArrayLike | float | None = None,
+    xl: npt.ArrayLike | None = None,
+    xr: npt.ArrayLike | None = None,
+    *,
+    return_table: Literal[True],
+) -> tuple[Parametric | MixtureModel | None, pd.DataFrame]: ...
+
+
+def fit_best(
+    x: npt.ArrayLike | None = None,
+    c: npt.ArrayLike | None = None,
+    n: npt.ArrayLike | None = None,
+    t: npt.ArrayLike | None = None,
+    metric: str = "aic",
+    include: Iterable[str | MixtureModel] | None = None,
+    exclude: Iterable[str] | None = None,
+    tl: npt.ArrayLike | float | None = None,
+    tr: npt.ArrayLike | float | None = None,
+    xl: npt.ArrayLike | None = None,
+    xr: npt.ArrayLike | None = None,
+    return_table: bool = False,
+) -> (
+    Parametric
+    | MixtureModel
+    | None
+    | tuple[Parametric | MixtureModel | None, pd.DataFrame]
+):
     """
     Fit every candidate continuous distribution to the data and return
     the fitted model with the best value of ``metric``.
@@ -260,6 +305,10 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
     xl, xr : array_like, optional
         The left and right ends of each observation, in place of ``x``,
         as for ``fit``.
+    return_table : bool, optional
+        If True, return ``(model, table)``: the model as below and a
+        :class:`pandas.DataFrame` ranking every candidate tried (#666).
+        Default False, which returns the model alone.
 
     Returns
     -------
@@ -267,6 +316,19 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
         The fitted model that minimises ``metric`` (a ``MixtureModel``
         only when one was named in ``include``), or ``None`` when no
         candidate converged.
+    pandas.DataFrame
+        Only with ``return_table=True``: one row per candidate, best
+        first, with columns ``model`` (the candidate's name), the
+        criterion (named by ``metric``), ``delta`` (its value less the
+        chosen model's), ``weight`` (for ``"aic"``, ``"aic_c"`` and
+        ``"bic"``, the Akaike / Schwarz weight
+        ``exp(-delta / 2)``, normalised over the ranked candidates; nan for
+        ``"neg_ll"`` and for a candidate not ranked), ``status``
+        (``"chosen"``, ``"ranked"``, ``"set aside"``, ``"failed"`` or
+        ``"outside support"``) and ``reason`` (why a candidate was set
+        aside, failed or passed over; empty otherwise). The fitted
+        candidates come first, in order of the criterion, the ranked
+        before the set aside; then the failed and those passed over.
 
     Raises
     ------
@@ -303,6 +365,18 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
     >>> best = fit_best(x, include=["Weibull", MixtureModel(Weibull, 2)])
     >>> type(best).__name__, best.m
     ('MixtureModel', 2)
+
+    The ranking of every candidate, with the criterion's gaps and weights:
+
+    >>> best, table = fit_best(
+    ...     x, include=["Weibull", "Exponential", "Gamma"], return_table=True
+    ... )
+    >>> list(table.columns)
+    ['model', 'aic', 'delta', 'weight', 'status', 'reason']
+    >>> table["model"].iloc[0] == best.dist.name
+    True
+    >>> table.loc[0, "status"], float(table.loc[0, "delta"])
+    ('chosen', 0.0)
     """
     names, mixtures = _split_include(include)
     include_set = _candidate_names(names, "include")
@@ -365,6 +439,10 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
         for mix in mixtures
     ]
     labels: dict[int, str] = {}
+    # One row per candidate for ``return_table``: (name, measure, model,
+    # status, reason); a fitted row's status is settled once the chosen
+    # model is known.
+    rows: list[tuple[str, float, Any, str, str]] = []
     for name, fit, regular_family in fits:
         failure: Exception | None = None
         # A candidate's own warning that its fit is not a verified maximum
@@ -382,6 +460,15 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
                 # A candidate that cannot describe the data (a Beta for
                 # data outside (0, 1)) is not a failure to report (#485).
                 outside.append(name)
+                rows.append(
+                    (
+                        name,
+                        np.nan,
+                        None,
+                        "outside support",
+                        "the data lie outside its support",
+                    )
+                )
                 continue
             except Exception as e:
                 failure = e
@@ -389,21 +476,26 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
             # A failed candidate's other warnings go with it
             failed.append(f"{name} ({_reason(failure)})")
             errors.append(failure)
+            rows.append((name, np.nan, None, "failed", _reason(failure)))
             continue
         for w in caught:
             warnings.warn_explicit(w.message, w.category, w.filename, w.lineno)
         n_fitted += 1
         labels[id(temp_model)] = name
         maximum = temp_model.maximum
+        why = ""
         if maximum == "no finite maximum":
-            set_aside.append(f"{name} (its likelihood has no finite maximum)")
+            why = "its likelihood has no finite maximum"
         elif maximum != "verified":
-            set_aside.append(f"{name} (its fit is not a verified maximum)")
+            why = "its fit is not a verified maximum"
         elif not regular_family:
-            set_aside.append(
-                f"{name} (its support ends are parameters, fitted "
-                "on the extreme observations)"
+            why = (
+                "its support ends are parameters, fitted on the extreme "
+                "observations"
             )
+        if why:
+            set_aside.append(f"{name} ({why})")
+        rows.append((name, float(tmp_measure), temp_model, "", why))
         regular = maximum == "verified" and regular_family
         if tmp_measure < best[regular][0]:
             best[regular] = (tmp_measure, temp_model)
@@ -445,7 +537,73 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
             else f"{n_fitted} candidate(s) fitted, but none has a finite "
             f"{metric!r}."
         )
+    if return_table:
+        return model, _ranking(rows, model, metric)
     return model
+
+
+def _ranking(
+    rows: list[tuple[str, float, Any, str, str]], model: Any, metric: str
+) -> pd.DataFrame:
+    """``fit_best``'s table of every candidate, best first (#666).
+
+    The ranked candidates are those the chosen model was picked from: the
+    regular fits, or the set-aside ones when no regular candidate fitted.
+    """
+    import pandas as pd
+
+    chosen_measure = np.inf
+    ranked_set_aside = False
+    for _, measure, fitted, _, why in rows:
+        if fitted is model and model is not None:
+            chosen_measure = measure
+            ranked_set_aside = bool(why)
+    records: list[dict[str, Any]] = []
+    for name, measure, fitted, status, why in rows:
+        if not status:
+            if fitted is model:
+                status = "chosen"
+            elif bool(why) == ranked_set_aside:
+                status = "ranked"
+            else:
+                status = "set aside"
+        records.append(
+            {
+                "model": name,
+                metric: measure,
+                "delta": measure - chosen_measure,
+                "status": status,
+                "reason": why,
+            }
+        )
+    order = {
+        "chosen": 0,
+        "ranked": 0,
+        "set aside": 1,
+        "failed": 2,
+        "outside support": 3,
+    }
+    records.sort(
+        key=lambda r: (
+            order[r["status"]],
+            np.inf if np.isnan(r[metric]) else r[metric],
+        )
+    )
+    table = pd.DataFrame(
+        records, columns=["model", metric, "delta", "status", "reason"]
+    )
+    table[metric] = table[metric].astype(float)
+    table["delta"] = table["delta"].astype(float)
+    weight = np.full(len(table), np.nan)
+    if metric != "neg_ll":
+        ranked = table["status"].isin(["chosen", "ranked"]).to_numpy()
+        delta = table["delta"].to_numpy()
+        ok = ranked & np.isfinite(delta)
+        if ok.any():
+            relative = np.exp(-0.5 * delta[ok])
+            weight[ok] = relative / relative.sum()
+    table.insert(3, "weight", weight)
+    return table
 
 
 def _warn_if_lifetimes_passed_over(

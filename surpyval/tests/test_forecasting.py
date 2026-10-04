@@ -271,3 +271,29 @@ def test_659_negative_age_and_wrong_length_n_are_refused():
     one = sp.forecast(nhpp, age=[0.0, 40.0], n=2, horizon=10.0)
     each = sp.forecast(nhpp, age=[0.0, 40.0], n=[2, 2], horizon=10.0)
     assert np.allclose(one.expected, each.expected)
+
+
+def test_666_random_state_is_ignored_where_the_forecast_is_exact():
+    from surpyval.recurrent import CrowAMSAA
+
+    nhpp = CrowAMSAA.from_params([50.0, 1.3])
+    exact = sp.forecast(nhpp, [200.0], horizon=100.0)
+    seeded = sp.forecast(nhpp, [200.0], horizon=100.0, random_state=1)
+    np.testing.assert_array_equal(exact.expected, seeded.expected)
+    weibull = sp.Weibull.from_params([10.0, 2.0])
+    sp.forecast(weibull, [1.0], horizon=1.0, random_state=1)
+
+
+def test_666_forecast_to_dict_and_to_frame():
+    import json
+
+    model = sp.Weibull.from_params([60.0, 1.5])
+    result = sp.forecast(model, age=[3, 2], n=[950, 1000], horizon=[1, 2])
+    d = result.to_dict()
+    back = json.loads(json.dumps(d))
+    assert back["expected"] == pytest.approx(list(result.expected))
+    assert back["probability"][1][0] == pytest.approx(result.probability[1, 0])
+    assert back["per_unit"] is None
+    frame = result.to_frame()
+    assert list(frame.index) == [1.0, 2.0]
+    np.testing.assert_array_equal(frame["upper"], result.upper)
