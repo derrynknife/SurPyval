@@ -130,3 +130,23 @@ def test_the_complement_is_computed_where_it_is_used(monkeypatch):
     x = np.linspace(0.5, 20.0, 1000)
     agc._gammainccln_raw(2.5, x)
     assert sum(sizes) < 10
+
+
+@pytest.mark.parametrize("func", [gammainc, gammaincln, gammainccln])
+@pytest.mark.parametrize("x", [1e-8, 1e-40, 1e-3, 50.0])
+def test_634_the_hessian_is_finite_and_symmetric_at_a_small_x(func, x):
+    # The mixed derivative in a and x was a difference in x of a
+    # difference in a, whose step in x (at least 1e-7) reached a negative
+    # x below 2e-7: nan, in every entry of a Hessian through x (a GammaAFT
+    # whose coefficients ran off, its censored rows at x ~ 1e-10). It is
+    # now the difference in a of the analytic x-derivative.
+    H = hessian(lambda v: func(v[0], v[1]))(np.array([3.04, x]))
+    assert np.all(np.isfinite(H))
+    assert H[0, 1] == pytest.approx(H[1, 0], rel=1e-5)
+    # against central differences of the analytic x-derivative's a-step
+    g = grad(lambda v: func(v[0], v[1]))
+    h = 1e-5
+    mixed = (g(np.array([3.04 + h, x]))[1] - g(np.array([3.04 - h, x]))[1]) / (
+        2 * h
+    )
+    assert H[0, 1] == pytest.approx(mixed, rel=1e-4)

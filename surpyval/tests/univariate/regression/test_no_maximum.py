@@ -348,12 +348,15 @@ def test_a_runaway_has_its_profile_read(monkeypatch, name):
     # depends on the last bits of the search (it is not on some CPUs);
     # either way only coefficient 0 runs away. LogNormalAFT and the PO fits
     # run furthest onto the plateau (profile information 1e-13 to 1e-15 of
-    # the start's).
+    # the start's). The baseline's parameters are checked after the
+    # coefficients, and one the gate does not clear on the plateau has its
+    # profile read too (#634).
     calls = _count_profiles(monkeypatch)
     _, w = _fit(lambda: getattr(sp, name).fit(**_no_events(reg_data())))
     assert len(w) == 1 and "coefficient(s) [0]" in str(w[0].message)
     k_dist = len(getattr(sp, name).parameter_names)
-    assert calls[0] == k_dist and set(calls) <= {k_dist, k_dist + 1}
+    assert calls[0] == k_dist
+    assert set(calls) <= {k_dist, k_dist + 1, *range(k_dist)}
 
 
 def test_the_gate_clears_a_maximum_and_nothing_else():
@@ -532,6 +535,155 @@ def test_628_a_profile_flat_to_rounding_has_no_maximum():
 
     derivatives = runaway.search_derivatives(ignores, x)
     assert runaway.flat_profiles(ignores, x, [0], start, derivatives) == []
+
+
+# -- no-maximum follow-ups (#634) ---------------------------------------------
+
+
+def _po(x, c, Z):
+    return x, _alt_terms(Z), c
+
+
+def test_634_a_baseline_parameter_running_off_is_named():
+    # All six failures in one cell of #583's test: the WeibullPO's alpha
+    # runs off with the coefficients. The check looked at the coefficients
+    # only; the baseline's parameters are checked too, and named with
+    # their values.
+    model, w = _fit(lambda: sp.WeibullPO.fit(*_po(*_one_cell_alt())))
+    assert model.maximum == "no finite maximum"
+    assert len(w) == 1, [str(x.message) for x in w]
+    message = str(w[0].message)
+    assert message.startswith(NO_MAXIMUM)
+    assert "the Weibull baseline's alpha (" in message
+    assert "compare the fits with other baselines" in message
+
+
+def test_634_the_message_names_coefficients_and_baseline_together():
+    verdict = skeleton.SearchVerdict(None, "no finite maximum", None, [1])
+    what, advice = skeleton._no_maximum_message(verdict)
+    assert what == skeleton.NO_MAXIMUM_WHAT.format([1])
+    both = verdict._replace(baseline=("alpha",))
+    what, advice = skeleton._no_maximum_message(
+        both, "Weibull", {"alpha": 2.5e9}
+    )
+    assert "coefficient(s) [1]" in what
+    assert "and as the Weibull baseline's alpha (2.5e+09) runs on" in what
+    assert "other baselines" in advice
+
+
+def test_634_a_flat_fit_short_of_its_maximum_is_not_verified():
+    # A likelihood so flat in one parameter that the gradient test passes
+    # 4e-3 nats below the maximum (a WeibullPO was "verified" 0.006 below
+    # its maximum, alpha 14 times short of it): the Newton decrement
+    # g' H^-1 g / 2 says how far, in nats.
+    def f(p):
+        return 4e-7 * (p[0] - 100.0) ** 2 + (p[1] - 1.0) ** 2
+
+    x = np.array([0.0, 1.0])
+    derivatives = runaway.search_derivatives(f, x)
+    gain = skeleton.newton_gain(x, derivatives, [0, 1])
+    assert gain == pytest.approx(4e-3)
+    assert not skeleton.is_verified(x, derivatives, 1.0)
+    # A point a hair short of the maximum is verified
+    at = np.array([100.0 - 1e-3, 1.0])
+    assert skeleton.is_verified(at, runaway.search_derivatives(f, at), 1.0)
+
+
+def test_634_weibull_po_reaches_its_flat_maximum():
+    # Draw 167: the gradient of the PO survival was nan at the censored
+    # rows once alpha passed 1e9 (log1p(-1) in the branch np.where did not
+    # take), and the fit was "verified" 0.006 below its maximum, alpha
+    # 7.3e11 rather than 1.2e13.
+    x, c, Z = _alt(167)
+    model, w = _fit(lambda: sp.WeibullPO.fit(x, _alt_terms(Z), c=c))
+    assert not w, [str(m.message) for m in w]
+    assert model.maximum == "verified"
+    assert model.neg_ll() == pytest.approx(105.02012, abs=1e-4)
+    assert model.params[0] > 5e12
+
+
+def test_634_weibull_po_derivatives_are_finite_far_out():
+    # The survival as 1 / (1 + F0 / (phi S0)) had a second derivative of
+    # 1 / (phi S0)^3, inf at phi S0 = 1e-115 (alpha at 6e43).
+    x, c, Z = _alt(9)
+    T = _alt_terms(Z)
+    censored = c == 1
+
+    def log_sf(q):
+        return sp.WeibullPO.log_sf(x[censored], T[censored], *q).sum()
+
+    far = np.array([6.39e43, 2.877, 1.0311e4, -47.06])
+    assert np.all(np.isfinite(hessian(log_sf)(far)))
+    nearer = np.array([2.4e9, 3.1, 1.2e4, -11.7])
+    assert np.all(np.isfinite(grad(log_sf)(nearer)))
+
+
+def test_634_the_refusal_at_z_0_says_there_may_be_no_maximum():
+    # Draw 9: the coefficient of log V runs off, and moving the baseline
+    # to Z = 0 overflows. The refusal stays, and says why it happened and
+    # that center=True fits, with the "No finite maximum" warning.
+    x, c, Z = _alt(9)
+    with pytest.raises(ValueError) as info:
+        sp.WeibullPH.fit(x, _alt_terms(Z), c=c)
+    message = str(info.value)
+    assert "cannot be represented" in message
+    assert "may have no finite maximum" in message
+    assert "coefficient(s) [1]" in message
+    assert "center=True" in message
+    model, w = _fit(
+        lambda: sp.WeibullPH.fit(x, _alt_terms(Z), c=c, center=True)
+    )
+    assert model.maximum == "no finite maximum"
+    assert [str(m.message)[:22] for m in w] == ["No finite maximum: the"]
+
+
+def _power_exponential(draw):
+    x, c, Z = _alt(draw)
+    fitter = sp.AcceleratedLife(sp.Weibull, sp.life_models.PowerExponential)
+    return _fit(lambda: fitter.fit(x, Z, c=c))
+
+
+def test_634_an_accelerated_life_c_far_above_1_is_found():
+    # Draw 0: c was searched linearly beyond 1 and stopped short at 1.3e22,
+    # "unverified". On its log scale the fit reaches the maximum, as the
+    # WeibullAFT of the same model does.
+    model, w = _power_exponential(0)
+    assert not w, [str(m.message) for m in w]
+    assert model.maximum == "verified"
+    x, c, Z = _alt(0)
+    aft = sp.WeibullAFT.fit(x, _alt_terms(Z), c=c)
+    assert model.neg_ll() == pytest.approx(aft.neg_ll(), abs=1e-4)
+
+
+def test_634_an_accelerated_life_run_off_with_c_to_0_is_found():
+    # Draw 288: c ran down to 1e-294 (a log below 1, but its life computed
+    # from c itself, which underflows), and the fit could only say
+    # "unverified", 1.2 below the WeibullAFT's run-off. With the life one
+    # exponent of log c, the run-off is seen.
+    model, w = _power_exponential(288)
+    assert model.maximum == "no finite maximum"
+    assert len(w) == 1 and str(w[0].message).startswith(NO_MAXIMUM)
+    x, c, Z = _alt(288)
+    aft, _ = _fit(lambda: sp.WeibullAFT.fit(x, _alt_terms(Z), c=c))
+    assert model.neg_ll() == pytest.approx(aft.neg_ll(), abs=1e-3)
+
+
+def test_634_an_accelerated_life_whose_arrhenius_factor_overflows():
+    # Draw 54 (all failures in one cell): e^(a / U) overflowed though the
+    # life was finite, and the fit said "unverified"; no raw numpy warning
+    # escapes either.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        model, w = _power_exponential(54)
+    assert model.maximum == "no finite maximum"
+    assert len(w) == 1 and str(w[0].message).startswith(NO_MAXIMUM)
+
+
+def test_634_the_life_is_one_exponent():
+    # e^(a / U) = e^800 overflows; c e^(a / U) is e^109
+    Z = np.array([[1.0, 2.0]])
+    life = sp.life_models.PowerExponential.phi(Z, 1e-300, 800.0, 0.0)
+    assert life[0] == pytest.approx(np.exp(800.0 + np.log(1e-300)))
 
 
 # ---------------------------------------------------------------------------

@@ -55,15 +55,9 @@ for _name, _failures in _OPTION_FAILURES.items():
     }
     KNOWN_FAILURES[_name] = {**KNOWN_FAILURES.get(_name, {}), **_failures}
 
-# -- every event in one corner cell (test_maximum.py, #628) ------------------
-KNOWN_FAILURES["GammaAFT"] = {
-    **KNOWN_FAILURES.get("GammaAFT", {}),
-    "maximum[corner]": (
-        "#628: the Hessian at the point the search stops is not finite "
-        "(the incomplete gamma's central differences), so the no-maximum "
-        "check has nothing to read and the fit says 'unverified'"
-    ),
-}
+# (Every event in one corner cell, test_maximum.py: GammaAFT's Hessian
+# there is finite since its mixed derivatives in the shape and x are taken
+# from the analytic x-derivative, #634.)
 
 # -- convergence (test_convergence.py) --------------------------------------
 # Each starved fit returns silently -- no warning, no error -- a model that
