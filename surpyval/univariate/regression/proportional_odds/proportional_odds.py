@@ -89,6 +89,7 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils.data_summary import data_summary
+from surpyval.utils.dataframe import check_columns
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import wald_bound_on_support
 from surpyval.utils.no_maximum import (
@@ -1310,6 +1311,7 @@ class ProportionalOdds_(FitterRepr):
         >>> model.beta.round(4)
         array([ 0.4275, -0.1206])
         """
+        check_columns(df, x_col=x_col, c_col=c_col, n_col=n_col, tl_col=tl_col)
         Z, feature_names, model_spec = design_matrix_from_df(
             df, Z_cols, formula
         )
