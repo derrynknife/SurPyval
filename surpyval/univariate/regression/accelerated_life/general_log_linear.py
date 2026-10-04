@@ -45,6 +45,7 @@ class GeneralLogLinear_(LifeModel):
     """
 
     phi_takes_rows = True
+    log_scale_parameters = ("c",)
 
     def __init__(
         self,
@@ -89,10 +90,12 @@ class GeneralLogLinear_(LifeModel):
         # one life of shape (1,), as the other multi-stress models do. (A
         # 0-d life, from ``dot`` of two 1-D arrays, broke autograd's
         # gradient of the fit's ``where``: #530.)
+        # One exponent, which a factor alone can overflow (#634)
+        return self._phi_from_log_life(Z, params)
+
+    def log_life(self, Z: ndarray, *params: float) -> ndarray:
         Z = np.atleast_2d(Z)
-        c = params[0]
-        beta = np.array(params[1:])
-        return c * np.exp(np.dot(Z, beta))
+        return params[0] + np.dot(Z, np.array(params[1:]))
 
     def phi_init(self, life: float, Z: ndarray) -> list[float]:
         # Least squares of log L = log c + beta'Z through the lives at

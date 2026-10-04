@@ -378,6 +378,16 @@ _CENTER_HINT = (
     "Fit with center=True to report the baseline at the covariate means "
     "(model.center) instead, or move the covariates nearer 0."
 )
+#: The parametric refusal's hint where the search found no finite maximum
+#: (#634), with the coefficients' numbers.
+_NO_MAXIMUM_CENTER_HINT = (
+    "The data may have no finite maximum: the search found the likelihood "
+    "increasing as coefficient(s) {} grow without bound (a covariate that "
+    "separates the events from the survivors), which takes the baseline at "
+    "Z = 0 out of range. Fit with center=True to have the model at the "
+    "covariate means, with a warning saying so ('No finite maximum'), or "
+    "remove or coarsen the covariate."
+)
 
 
 def baseline_at_origin_error(
@@ -513,6 +523,7 @@ class Centring:
         raw_neg_ll: Callable,
         bounds: tuple,
         dist_name: str = "",
+        runaway: "list[int] | None" = None,
     ) -> "tuple[npt.NDArray, npt.NDArray, npt.NDArray | None]":
         """``(params, center, jacobian)`` of the fitted model.
 
@@ -525,7 +536,9 @@ class Centring:
         ``exp(beta'Z)`` on the raw covariates -- or loses the precision the
         fit had); a ``ValueError`` says so if not. The model then has a
         zero centre, and ``jacobian``, the derivative of the move, carries
-        the covariance over.
+        the covariance over. ``runaway`` names the coefficients the search
+        found running off, where it found any: the refusal then says the
+        data may have no finite maximum (#634).
         """
         params_c = np.asarray(params_c, dtype=float)
         if not self.maps_back:
@@ -564,7 +577,11 @@ class Centring:
                     np.array2string(
                         params_c[: self.k_dist], precision=4, separator=", "
                     ),
-                    _CENTER_HINT,
+                    (
+                        _NO_MAXIMUM_CENTER_HINT.format(runaway)
+                        if runaway
+                        else _CENTER_HINT
+                    ),
                 )
             )
         return params_0, np.zeros_like(self.center), J
@@ -923,6 +940,7 @@ def assemble_regression_model(
     neg_ll: "float | None" = None,
     centring: "Centring | None" = None,
     raw_neg_ll: "Callable | None" = None,
+    runaway: "list[int] | None" = None,
 ) -> ParametricRegressionModel:
     """Common tail of every parametric-regression ``fit``.
 
@@ -930,7 +948,8 @@ def assemble_regression_model(
     fit: the model keeps the data as given, and its parameters and
     ``center`` are placed by :meth:`Centring.finish`, which checks them
     against the likelihood of the data as given, ``raw_neg_ll(*params)``
-    (by default ``fitter.neg_ll`` of ``centring.raw``).
+    (by default ``fitter.neg_ll`` of ``centring.raw``); ``runaway``, the
+    coefficients the search found running off, for its refusal.
     """
     require_finite_fit(float(res.fun) if neg_ll is None else neg_ll)
     fit_centring = None
@@ -948,6 +967,7 @@ def assemble_regression_model(
             ),
             bounds,
             fitter.dist.name,
+            runaway,
         )
         if J is not None:
             fit_centring = (params_c, centring.center, J)
@@ -1097,6 +1117,46 @@ NO_MAXIMUM_CONSEQUENCE = (
 NO_MAXIMUM_ADVICE = (
     "consider removing or coarsening the covariate, or a penalised fit"
 )
+#: What the warning says where the baseline distribution's own parameters
+#: run off (#634), with the family and the parameters (and their values).
+NO_MAXIMUM_BASELINE_WHAT = (
+    "the {} baseline's {} run{} on, towards a limit of the family that "
+    "none of its members reaches"
+)
+NO_MAXIMUM_BASELINE_ADVICE = (
+    "a baseline distribution that contains the limit may describe the "
+    "data: compare the fits with other baselines (a WeibullPO whose alpha "
+    "runs off tends to LogLogisticPO, say)"
+)
+
+
+def _no_maximum_message(
+    verdict: "SearchVerdict", dist: str = "", values: "dict | None" = None
+) -> "tuple[str, str]":
+    """``(what, advice)`` of the "No finite maximum" warning for
+    ``verdict``: its coefficients, its baseline's parameters (with their
+    ``values`` by name, where given), or both."""
+    what = NO_MAXIMUM_WHAT.format(verdict.runaway)
+    if not verdict.baseline:
+        return what, NO_MAXIMUM_ADVICE
+    values = values or {}
+    named = ", ".join(
+        f"{name} ({float(values[name]):.4g})" if name in values else name
+        for name in verdict.baseline
+    )
+    one = len(verdict.baseline) == 1
+    clause = NO_MAXIMUM_BASELINE_WHAT.format(
+        dist or "distribution", named, "s" if one else ""
+    )
+    if not verdict.runaway:
+        return (
+            "the likelihood keeps increasing as " + clause,
+            NO_MAXIMUM_BASELINE_ADVICE,
+        )
+    return (
+        f"{what}, and as {clause}",
+        f"{NO_MAXIMUM_ADVICE}; {NO_MAXIMUM_BASELINE_ADVICE}",
+    )
 
 
 def free_coefficients(
@@ -1110,6 +1170,15 @@ def free_coefficients(
     k_dist = len(fitter.param_map)
     free = free_parameters(fitter, fixed, pmap)
     return [(pos, i - k_dist) for pos, i in enumerate(free) if i >= k_dist]
+
+
+def free_baseline(fitter: Any, fixed: dict) -> "list[tuple[int, str]]":
+    """``(position, name)`` of each of the baseline distribution's
+    parameters that is not ``fixed``, its position in the search vector
+    (they lead it), for the no-maximum check (:func:`judge_search`,
+    #634)."""
+    names = [name for name in fitter.param_map if name not in fixed]
+    return list(enumerate(names))
 
 
 def free_parameters(fitter: Any, fixed: dict, pmap: dict) -> "list[int]":
@@ -1150,10 +1219,60 @@ class SearchVerdict(NamedTuple):
     derivatives: "tuple[npt.NDArray, npt.NDArray] | None"
     #: The numbers of the coefficients with no finite maximum.
     runaway: "list[int]"
+    #: The names of the baseline distribution's parameters with no finite
+    #: maximum (#634).
+    baseline: "tuple[str, ...]" = ()
 
     @property
     def no_maximum(self) -> bool:
         return self.maximum == "no finite maximum"
+
+
+#: The most log-likelihood a verified maximum may be short of the maximum
+#: of its quadratic model (``newton_gain``): at least this many nats, and
+#: this much per observation (#634).
+GAIN_TOL = 1e-3
+GAIN_TOL_PER_OBS = 1e-7
+
+
+def newton_gain(
+    x: npt.ArrayLike,
+    derivatives: "tuple[npt.NDArray, npt.NDArray]",
+    keep: "list[int]",
+    one_sided: "tuple[int, ...]" = (),
+) -> float:
+    """How much the log-likelihood rises from ``x`` to the maximum of its
+    quadratic model, ``g' H^-1 g / 2`` (the Newton decrement), on the
+    components ``keep``, each parameter with one bound (``one_sided``) on
+    the log scale of its distance from it, where its run is a straight
+    line (as :func:`runaways_in_units` judges it); ``inf`` where the
+    Hessian is not positive definite.
+
+    A likelihood very flat in one direction passes the gradient test far
+    from its maximum: a WeibullPO was "verified" 0.006 below its maximum
+    with alpha 14 times short of it (#634). The gain is in nats whatever
+    the units of the parameters, and at an ordinary maximum it is below
+    1e-11."""
+    H, g = derivatives
+    at = np.asarray(x, dtype=float)
+    log = np.zeros(at.size, dtype=bool)
+    log[list(one_sided)] = True
+    linear = log & (at >= 0.0)
+    # The chain rule to u = log1p(x) where the map is linear (x >= 0)
+    d1 = np.where(linear, at + 1.0, 1.0)
+    d2 = np.where(linear, at + 1.0, 0.0)
+    with np.errstate(all="ignore"):
+        H_u = np.outer(d1, d1) * H + np.diag(g * d2)
+        g_u = d1 * g
+        H_u, g_u = H_u[np.ix_(keep, keep)], g_u[keep]
+        if not (np.all(np.isfinite(H_u)) and np.all(np.isfinite(g_u))):
+            return float("inf")
+        try:
+            L = np.linalg.cholesky(0.5 * (H_u + H_u.T))
+        except np.linalg.LinAlgError:
+            return float("inf")
+        w = np.linalg.solve(L, g_u)
+    return float(0.5 * np.dot(w, w))
 
 
 def is_verified(
@@ -1162,6 +1281,7 @@ def is_verified(
     n_obs: float,
     held: "tuple[int, ...]" = (),
     floor: "float | npt.ArrayLike" = 1.0,
+    one_sided: "tuple[int, ...]" = (),
 ) -> bool:
     """Whether ``x`` is a verified minimum of the objective whose Hessian
     and gradient there are ``derivatives`` (:func:`search_derivatives`):
@@ -1169,7 +1289,12 @@ def is_verified(
     units of ``max(|x|, floor)`` (:func:`coefficient_floor`), on the
     components of ``x`` other than ``held`` -- a parameter at a boundary of
     its space, whose own condition the caller has checked -- and not
-    differentiating again."""
+    differentiating again; and the log-likelihood within ``GAIN_TOL``
+    nats (or ``GAIN_TOL_PER_OBS`` per observation, if more) of the
+    maximum of its quadratic model (:func:`newton_gain`, with the
+    parameters with one bound, ``one_sided``, on their log scale), which
+    a likelihood very flat in one direction can be far from while its
+    gradient passes (#634)."""
     if derivatives is None:
         return False
     H, g = derivatives
@@ -1177,14 +1302,17 @@ def is_verified(
     keep = [i for i in range(at.size) if i not in held]
     sub = np.ix_(keep, keep)
     floors = np.broadcast_to(np.asarray(floor, dtype=float), at.shape)
-    return is_local_minimum(
+    if not is_local_minimum(
         lambda _: 0.0,  # (only the derivatives are read)
         lambda _: g[keep],
         lambda _: H[sub],
         at[keep],
         floor=floors[keep],
         obj_scale=n_obs,
-    )
+    ):
+        return False
+    tol = max(GAIN_TOL, GAIN_TOL_PER_OBS * n_obs)
+    return newton_gain(at, derivatives, keep, one_sided) <= tol
 
 
 def judge_search(
@@ -1197,12 +1325,16 @@ def judge_search(
     held: "tuple[int, ...]" = (),
     floor: "float | npt.ArrayLike" = 1.0,
     one_sided: "tuple[int, ...]" = (),
+    baseline: "list[tuple[int, str]] | tuple" = (),
 ) -> SearchVerdict:
     """What the optimiser's answer ``res`` for the objective ``fun``, from
     ``start``, is (principles 12 and 13), without a word: a likelihood with
     no finite maximum in a coefficient (``coefs`` as
-    :func:`free_coefficients` gives them; see :func:`runaway_coefficients`),
-    else a verified maximum or not.
+    :func:`free_coefficients` gives them; see :func:`runaway_coefficients`)
+    or in a parameter of the baseline distribution (``baseline``, their
+    ``(position, name)`` pairs, :func:`free_baseline`: a WeibullPO's alpha
+    running to infinity, towards the log-logistic proportional odds model,
+    #634), else a verified maximum or not.
 
     ``verified`` is the caller's own verdict, where it has checked the
     answer itself (``verify_or_polish``); otherwise the answer is checked
@@ -1223,24 +1355,45 @@ def judge_search(
     if not (np.isfinite(res.fun) and np.all(np.isfinite(res.x))):
         # No answer to judge (``require_finite_fit`` refuses it)
         return SearchVerdict(res, "unverified", None, [])
+    positions = [pos for pos, _ in coefs] + [pos for pos, _ in baseline]
+
+    def running_off(res: Any, derivatives: Any) -> "SearchVerdict | None":
+        runaway = runaways_in_units(
+            fun, res.x, positions, start, derivatives, floor, one_sided
+        )
+        if not runaway:
+            return None
+        numbers = [coefs[k][1] for k in runaway if k < len(coefs)]
+        names = tuple(
+            baseline[k - len(coefs)][1] for k in runaway if k >= len(coefs)
+        )
+        return SearchVerdict(
+            res, "no finite maximum", derivatives, numbers, names
+        )
+
     derivatives = search_derivatives(fun, res.x)
-    positions = [pos for pos, _ in coefs]
-    runaway = runaways_in_units(
-        fun, res.x, positions, start, derivatives, floor, one_sided
-    )
-    if runaway:
-        numbers = [coefs[k][1] for k in runaway]
-        return SearchVerdict(res, "no finite maximum", derivatives, numbers)
+    off = running_off(res, derivatives)
+    if off is not None:
+        return off
     if verified is None:
         if derivatives is None:
             stopped = getattr(res, "stopped_short", False)
             state = "unverified" if stopped else "unknown"
             return SearchVerdict(res, state, None, [])
-        verified = is_verified(res.x, derivatives, n_obs, held, floor)
+        verified = is_verified(
+            res.x, derivatives, n_obs, held, floor, one_sided
+        )
         if not verified:
             res, derivatives, verified = _polish(
-                fun, res, derivatives, n_obs, held, floor
+                fun, res, derivatives, n_obs, held, floor, one_sided
             )
+            if not verified and baseline:
+                # The polish follows a baseline parameter's run-off
+                # further than the search did (a WeibullPO's alpha from
+                # 2e9 on), where its profile shows it (#634)
+                off = running_off(res, derivatives)
+                if off is not None:
+                    return off
     state = "verified" if verified else "unverified"
     return SearchVerdict(res, state, derivatives, [])
 
@@ -1252,6 +1405,7 @@ def _polish(
     n_obs: float,
     held: "tuple[int, ...]",
     floor: "float | npt.ArrayLike" = 1.0,
+    one_sided: "tuple[int, ...]" = (),
 ) -> "tuple[Any, tuple[npt.NDArray, npt.NDArray] | None, bool]":
     """``(res, derivatives, verified)`` after a BFGS polish of ``res``,
     kept where it is no worse (see :func:`judge_search`)."""
@@ -1274,24 +1428,25 @@ def _polish(
     return (
         res,
         derivatives,
-        is_verified(res.x, derivatives, n_obs, held, floor),
+        is_verified(res.x, derivatives, n_obs, held, floor, one_sided),
     )
 
 
 def say_verdict(
-    verdict: SearchVerdict, what: str = "The maximum-likelihood search"
+    verdict: SearchVerdict,
+    what: str = "The maximum-likelihood search",
+    dist: str = "",
+    values: "dict | None" = None,
 ) -> None:
     """The one warning for a :class:`SearchVerdict` that is not a verified
-    maximum: "No finite maximum", naming the coefficients, or that
-    ``what`` (the search, as the subject of a sentence) did not reach a
-    verified maximum, with what the optimiser reported if it stopped short
-    of one (:func:`optimise_ph`)."""
+    maximum: "No finite maximum", naming the coefficients and the
+    parameters of the ``dist`` baseline (with their ``values``, by name,
+    where given), or that ``what`` (the search, as the subject of a
+    sentence) did not reach a verified maximum, with what the optimiser
+    reported if it stopped short of one (:func:`optimise_ph`)."""
     if verdict.no_maximum:
-        warn_no_maximum(
-            NO_MAXIMUM_WHAT.format(verdict.runaway),
-            NO_MAXIMUM_CONSEQUENCE,
-            NO_MAXIMUM_ADVICE,
-        )
+        message, advice = _no_maximum_message(verdict, dist, values)
+        warn_no_maximum(message, NO_MAXIMUM_CONSEQUENCE, advice)
     elif verdict.maximum == "unverified":
         res = verdict.res
         reason = None
@@ -1313,17 +1468,30 @@ def finish_search(
     held: "tuple[int, ...]" = (),
     floor: "float | npt.ArrayLike" = 1.0,
     one_sided: "tuple[int, ...]" = (),
+    baseline: "list[tuple[int, str]] | tuple" = (),
+    dist: str = "",
+    values: "dict | None" = None,
 ) -> SearchVerdict:
     """:func:`judge_search`, then its one warning (:func:`say_verdict`),
     for a fit whose model does not depend on the polish (or is built after
-    it), with ``floor`` and ``one_sided`` as there. Returns the verdict:
-    its ``res``, its ``maximum`` for the model, and the Hessian and
-    gradient of ``fun`` at ``res.x`` (``None`` where autograd cannot take
-    them), for :func:`keep_information`."""
+    it), with ``floor``, ``one_sided`` and ``baseline`` as there, and
+    ``dist`` and ``values`` as for :func:`say_verdict`. Returns the
+    verdict: its ``res``, its ``maximum`` for the model, and the Hessian
+    and gradient of ``fun`` at ``res.x`` (``None`` where autograd cannot
+    take them), for :func:`keep_information`."""
     verdict = judge_search(
-        fun, res, coefs, start, n_obs, verified, held, floor, one_sided
+        fun,
+        res,
+        coefs,
+        start,
+        n_obs,
+        verified,
+        held,
+        floor,
+        one_sided,
+        baseline,
     )
-    say_verdict(verdict, what)
+    say_verdict(verdict, what, dist, values)
     return verdict
 
 
@@ -1574,6 +1742,7 @@ def fit_log_linear(
             one_sided=one_sided_positions(
                 bounds, free_parameters(fitter, fixed, pmap)
             ),
+            baseline=free_baseline(fitter, fixed),
         )
         res = verdict.res
 
@@ -1590,10 +1759,15 @@ def fit_log_linear(
         pmap,
         fixed,
         centring=centring,
+        runaway=verdict.runaway,
     )
     # After the model is built (which may refuse the data), one
     # warning for what the search found (#392).
-    say_verdict(verdict)
+    say_verdict(
+        verdict,
+        dist=getattr(fitter.dist, "name", ""),
+        values=dict(zip(fitter.param_map, model.params)),
+    )
     model.maximum = verdict.maximum
     # The exact information for the model's covariance (#392).
     keep_information(

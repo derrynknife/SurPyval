@@ -9,9 +9,13 @@ import numpy.typing as npt
 from scipy.optimize import OptimizeResult, minimize
 
 from surpyval.univariate.parametric.fitters import (
+    EachParameter,
     bounds_convert,
     identity,
     verify_or_polish,
+)
+from surpyval.univariate.parametric.fitters.runaway import (
+    search_derivatives,
 )
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
@@ -44,6 +48,7 @@ from .._fit_skeleton import (
     drop_nonfinite_covariates,
     finish_search,
     finite_start,
+    free_baseline,
     free_coefficients,
     keep_information,
     make_objective,
@@ -70,9 +75,62 @@ def _search(
     in units of at least ``floor``)."""
     res1 = minimize(fun, x0, method="Nelder-Mead", options={"maxiter": 1000})
     res2 = minimize(fun, res1.x, method="TNC")
-    return verify_or_polish(
+    res, verified = verify_or_polish(
         fun, res2 if res2.success else res1, n_obs, floor=floor
     )
+    if verified:
+        res = _newton_finish(fun, res)
+    return res, verified
+
+
+def _newton_finish(fun: Callable[[npt.NDArray], Any], res: Any) -> Any:
+    """``res``, a verified minimum of ``fun``, taken the rest of the way
+    by Newton's method (up to three steps, each kept only where it does
+    not raise ``fun``). The searches' tolerances stop them anywhere in a
+    neighbourhood of the minimum that is wide along a flat direction (a
+    constant factor ``c`` against the coefficients of stresses far from
+    0), so the answer depended on the path: 1e-4 apart in the parameters
+    for one fit with and without an aliased column, once ``c`` was
+    searched on its log scale (#634). From inside the neighbourhood
+    Newton's method converges to the minimum itself."""
+    x = np.asarray(res.x, dtype=float)
+    f = float(res.fun)
+    for _ in range(3):
+        try:
+            with np.errstate(all="ignore"), warnings.catch_warnings():
+                warnings.filterwarnings("ignore", "Output seems independent")
+                H, g = search_derivatives(fun, x) or (None, None)
+                if H is None or not (
+                    np.all(np.isfinite(H)) and np.all(np.isfinite(g))
+                ):
+                    break
+                step = np.linalg.solve(H, g)
+                trial = x - step
+                f_trial = float(fun(trial))
+        except (np.linalg.LinAlgError, ValueError, ArithmeticError):
+            break
+        if not (np.all(np.isfinite(trial)) and f_trial <= f):
+            break
+        x, f = trial, f_trial
+    res.x, res.fun = x, f
+    return res
+
+
+class _LifeOfLogScale:
+    """A life model's ``phi`` for the fit's objective, taking the
+    parameters it searches on the log scale (``log_scale_parameters``) as
+    their logs, the search's own values: the life is then one exponent of
+    them (``LifeModel.log_life``), which neither underflows where ``c``
+    alone would (1e-322, where the search could go no further and the fit
+    could only say "unverified") nor overflows where ``e^(a / U)`` alone
+    would (#634). A class, not a closure, so the model that keeps the
+    objective pickles (#573)."""
+
+    def __init__(self, life_model: LifeModel) -> None:
+        self.life_model = life_model
+
+    def __call__(self, Z: Any, *params: Any) -> Any:
+        return np.exp(self.life_model.log_life(Z, *params))
 
 
 def _coefficient_units(
@@ -719,15 +777,38 @@ class ParameterSubstitutionFitter(
         else:
             bounds = (*self.bounds, *self.life_model.phi_bounds)
 
+        # A factor that multiplies the life (``c``) is searched on the log
+        # scale over its whole range: linearly beyond 1, a fit stopped short
+        # of its maximum at c = 1e22 (#634)
+        log_scale = [
+            len(self.param_map) + phi_param_map[name]
+            for name in getattr(self.life_model, "log_scale_parameters", ())
+            if name in phi_param_map
+        ]
+        units = [np.inf if i in log_scale else 1.0 for i in range(len(bounds))]
         transform, inv_trans, const, fixed_idx, not_fixed = bounds_convert(
-            data.x, bounds, fixed, param_map
+            data.x, bounds, fixed, param_map, units
         )
 
         init = transform(init)[not_fixed]
 
         with np.errstate(all="ignore"):
 
-            fun = make_objective(self, data, inv_trans, const)
+            if log_scale:
+                # The objective's life from the logs the search runs on
+                # (``_LifeOfLogScale``); the model is built with the life
+                # model's own ``phi`` and the natural parameters.
+                searcher = copy.copy(self)
+                searcher.phi = _LifeOfLogScale(self.life_model)
+                on_log_scale = EachParameter(
+                    [
+                        identity if i in log_scale else f
+                        for i, f in enumerate(inv_trans.funcs)
+                    ]
+                )
+                fun = make_objective(searcher, data, on_log_scale, const)
+            else:
+                fun = make_objective(self, data, inv_trans, const)
             init = finite_start(
                 fun,
                 init,
@@ -816,7 +897,17 @@ class ParameterSubstitutionFitter(
                 verified=verified,
                 what="The accelerated life fit",
                 floor=floor,
-                one_sided=one_sided_positions(bounds, not_fixed),
+                # (one searched on the log scale already is judged there)
+                one_sided=one_sided_positions(
+                    [
+                        (None, None) if i in log_scale else b
+                        for i, b in enumerate(bounds)
+                    ],
+                    not_fixed,
+                ),
+                baseline=free_baseline(self, fixed),
+                dist=self.dist.name,
+                values=dict(zip(self.param_map, model.params)),
             )
             model.maximum = verdict.maximum
             # The exact observed information for the covariance, which

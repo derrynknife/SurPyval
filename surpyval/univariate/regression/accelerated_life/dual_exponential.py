@@ -40,6 +40,7 @@ class DualExponential_(LifeModel):
     n_stresses = 2
     kelvin_stress_columns = (0,)
     phi_takes_rows = True
+    log_scale_parameters = ("c",)
 
     def __init__(self) -> None:
         """
@@ -70,13 +71,13 @@ class DualExponential_(LifeModel):
             ndarray: An array of shape (n_samples,) containing the PDF values.
 
         """
+        # One exponent, which a factor alone can overflow (#634)
+        return self._phi_from_log_life(Z, params)
+
+    def log_life(self, Z: ndarray, *params: float) -> ndarray:
         Z = np.atleast_2d(Z)
-        Z1 = Z[:, 0]
-        Z2 = Z[:, 1]
-        a = params[0]
-        b = params[1]
-        c = params[2]
-        return c * np.exp(a / Z1) * np.exp(b / Z2)
+        a, b, log_c = params[0], params[1], params[2]
+        return log_c + a / Z[:, 0] + b / Z[:, 1]
 
     def phi_init(self, life: float, Z: ndarray) -> list[float]:
         """

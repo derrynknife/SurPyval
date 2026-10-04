@@ -35,6 +35,7 @@ class InversePower_(LifeModel):
 
     positive_stress_columns = (0,)
     phi_takes_rows = True
+    log_scale_parameters = ("a",)
 
     def __init__(self) -> None:
         super().__init__(
@@ -44,7 +45,11 @@ class InversePower_(LifeModel):
         )
 
     def phi(self, Z: ndarray, *params: float) -> ndarray:
-        return 1.0 / (params[0] * Z ** params[1])
+        # One exponent, as the other log-linear life models (#634)
+        return self._phi_from_log_life(Z, params)
+
+    def log_life(self, Z: ndarray, *params: float) -> ndarray:
+        return -(params[0] + params[1] * np.log(Z))
 
     def phi_init(self, life: float, Z: ndarray) -> list[float]:
         Z = Z.flatten()
@@ -82,6 +87,7 @@ class Power_(LifeModel):
 
     positive_stress_columns = (0,)
     phi_takes_rows = True
+    log_scale_parameters = ("a",)
 
     def __init__(self) -> None:
         super().__init__(
@@ -91,7 +97,11 @@ class Power_(LifeModel):
         )
 
     def phi(self, Z: ndarray, *params: float) -> ndarray:
-        return params[0] * Z ** params[1]
+        # One exponent, as the other log-linear life models (#634)
+        return self._phi_from_log_life(Z, params)
+
+    def log_life(self, Z: ndarray, *params: float) -> ndarray:
+        return params[0] + params[1] * np.log(Z)
 
     def phi_init(self, life: float, Z: ndarray) -> list[float]:
         Z = Z.flatten()

@@ -332,6 +332,13 @@ Unreleased
   the offset), that fits better than the limit is no longer called a
   runaway: offset LogNormal and Gamma fits 0.01 above the Normal end at
   their maximum. The comparison with the limit has a relative tolerance.
+- Regression no-maximum follow-ups (#634): the check covers the baseline's
+  parameters, naming them; a verified fit is within 1e-3 nats of its
+  quadratic model's maximum; WeibullPO's survival keeps finite
+  derivatives far out (292 of 300 #583 fits verified, up from 257); an
+  accelerated life ``c`` (or ``a``, ``b``) is searched on its log scale
+  with the life one exponent; the WeibullPH refusal at ``Z = 0`` says the
+  data may have no maximum; GammaAFT's Hessian is finite at a small x.
 
 v0.23 (4 October 2026)
 ----------------------
