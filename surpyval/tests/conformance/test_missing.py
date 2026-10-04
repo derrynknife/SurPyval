@@ -70,7 +70,8 @@ def _quantile_functions(case, model):
     out = {}
     if case.interface in WITH_COVARIATES:
         row = np.asarray(case.Z, dtype=float)[0]
-        out["qf"] = lambda p: model.qf(p, row)
+        # With the case's own arguments (a stratified Cox model's stratum)
+        out["qf"] = lambda p: model.qf(p, row, **case.call_kwargs)
         return out
     if type(model).__name__ == "MixtureModel":
         # ``params`` has a row per component: the mixture's qf alone

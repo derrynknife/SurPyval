@@ -36,10 +36,13 @@ two-point cycle rather than a fixed point -- a known feature of the estimator
 from __future__ import annotations
 
 import warnings
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -54,7 +57,7 @@ from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import percentile_bounds
 from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.rng import as_generator
-from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.shapes import covariate_rows, keeps_query_shape
 from surpyval.utils.validation import check_alpha_ci
 
 from .._aliasing import (
@@ -65,10 +68,15 @@ from .._aliasing import (
     warn_aliased,
 )
 from .._concordance import ConcordanceMixin
-from .._prediction import ConditionalSurvivalMixin
-from .._summary import coefficient_names
+from .._prediction import (
+    ConditionalSurvivalMixin,
+    paired_probabilities,
+    step_quantiles,
+)
+from .._summary import coefficient_names, coefficient_table
 from ..regression_data import (
     LinearPredictorMixin,
+    NoLikelihoodMixin,
     design_matrix_from_df,
     restore_covariate_meta,
     semi_parametric_inputs,
@@ -206,6 +214,7 @@ def _fit_beta(
 
 class BuckleyJamesModel(
     ConditionalSurvivalMixin,
+    NoLikelihoodMixin,
     LinearPredictorMixin,
     ConcordanceMixin,
     SerialisableMixin,
@@ -292,6 +301,11 @@ class BuckleyJamesModel(
     _ALIASED_WHY = (
         "a constant column, which is the intercept the fit profiles out, "
         "or a linear combination of the others"
+    )
+    _NO_LIKELIHOOD_WHY = (
+        "the Buckley-James estimator iterates least squares on imputed "
+        "log times, with the residual distribution left unspecified; "
+        "there is no likelihood to maximise"
     )
 
     def _concordance_risk(self, x: npt.NDArray, Z: Any) -> npt.NDArray:
@@ -443,6 +457,106 @@ class BuckleyJamesModel(
         :meth:`sf`."""
         with np.errstate(divide="ignore"):
             return -np.log(self.sf(x, Z))
+
+    @keeps_query_shape
+    def qf(self, p: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
+        """
+        The quantile function: the first time at which the predicted
+        failure probability ``ff(x, Z)`` reaches ``p`` (#662), ``nan``
+        where it never does -- the residual Kaplan-Meier stops at the
+        last residual, above ``1 - p`` where the data end censored. It is
+        :math:`e^{q_\\epsilon(p) - \\beta' Z}`, :math:`q_\\epsilon` the
+        residual Kaplan-Meier's quantile, taken as the non-parametric
+        ``qf`` takes it (a curve within ``1e-9`` of ``p`` reaches it).
+        ``Z`` is paired with ``p`` as :meth:`sf` pairs it with ``x``. A
+        probability outside [0, 1] gives ``nan``, with a warning.
+
+        Examples
+        --------
+        >>> from surpyval import BuckleyJames
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = BuckleyJames.fit(x, df[["fin", "age", "prio"]].values, c=c)
+        >>> rows = [[0, 25, 3], [1, 25, 3], [0, 25, 10]]
+        >>> b10 = model.qf(0.1, rows)
+        >>> b10.round(2)
+        array([21.71, 28.33, 14.38])
+        >>> model.ff(b10, rows).round(3)
+        array([0.102, 0.102, 0.102])
+        """
+        rows = covariate_rows(
+            np.asarray(self._prepare_Z(Z), dtype=float), self.beta.size
+        )
+        u, rows, _ = paired_probabilities(p, rows)
+        lp = self._linear_predictor(np.empty(u.size), rows)
+        resid = step_quantiles(
+            (1.0 - np.asarray(self._resid_surv, dtype=float))[None, :],
+            self._resid,
+            u,
+        )
+        with np.errstate(over="ignore", invalid="ignore"):
+            return np.exp(resid - lp)
+
+    def summary(
+        self,
+        alpha_ci: float = 0.05,
+        n_boot: "int | None" = None,
+        random_state: Any = None,
+    ) -> "pd.DataFrame":
+        """
+        The coefficient table (#662), in the layout of ``CoxPH``'s
+        :meth:`summary`: each coefficient (in the accelerated-failure
+        convention, as ``WeibullAFT``'s) and ``exp(coef)``, the factor by
+        which a unit of the covariate shortens the life. Buckley-James has
+        no closed-form standard error, so ``se(coef)``, ``z`` and ``p``
+        are ``nan``; with ``n_boot`` the intervals are the percentile
+        bootstrap intervals of :meth:`bootstrap_ci` (``n_boot`` refits,
+        seeded by ``random_state``), else ``nan``.
+
+        Parameters
+        ----------
+        alpha_ci : float, optional
+            The intervals' total tail probability. Default 0.05.
+        n_boot : int, optional
+            The number of bootstrap refits for the intervals; ``None``
+            (the default) gives none.
+        random_state : None, int or numpy.random.Generator, optional
+            The seed of the bootstrap.
+
+        Returns
+        -------
+        pandas.DataFrame
+            One row per covariate, with the columns of ``CoxPH``'s
+            :meth:`summary`.
+
+        Examples
+        --------
+        >>> from surpyval import BuckleyJames
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = BuckleyJames.fit(x, df[["fin", "age", "prio"]].values, c=c)
+        >>> table = model.summary(n_boot=50, random_state=1)
+        >>> list(table.index)
+        ['coef_0', 'coef_1', 'coef_2']
+        >>> bool((table["coef lower 95%"] < table["coef"]).all())
+        True
+        """
+        beta = np.asarray(self.beta, dtype=float)
+        nan = np.full(beta.shape, np.nan)
+        table = coefficient_table(
+            self.parameter_names, beta, nan, alpha_ci, p=nan
+        )
+        if n_boot is not None:
+            bounds = self.bootstrap_ci(alpha_ci, n_boot, random_state)
+            level = "{:g}%".format(100 * (1 - alpha_ci))
+            lower, upper = bounds[:, 0], bounds[:, 1]
+            table["coef lower " + level] = lower
+            table["coef upper " + level] = upper
+            table["exp(coef) lower " + level] = np.exp(lower)
+            table["exp(coef) upper " + level] = np.exp(upper)
+        return table
 
     def bootstrap_ci(
         self,

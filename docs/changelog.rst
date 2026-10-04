@@ -91,6 +91,14 @@ Unreleased
   deprecated), and ``beta`` (the causes' sum) is deprecated. A Fine-Gray
   model's ``log_likelihood`` raises ``AttributeError``, so ``hasattr``
   works (#656).
+- **One API across the regression families (#662).** ``qf`` on ``CoxPH``,
+  ``ProportionalOdds``, ``AdditiveHazards``, ``BuckleyJames`` and the
+  frailty models (a step curve's: the first time it reaches ``p``, else
+  ``nan``); ``mean(Z)`` and ``p_values`` on the parametric regressions;
+  ``summary()`` tables on ``AdditiveHazards``, ``BuckleyJames`` and
+  ``RoystonParmar`` (whose text is now its ``repr`` only); ``tl`` / ``tr``
+  on the parametric fits; ``CoxFrailty.param_cb(method=)``. A model with
+  no likelihood says why on ``neg_ll`` / ``aic``.
 
 **Fixed**
 

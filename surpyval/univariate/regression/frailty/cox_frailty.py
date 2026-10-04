@@ -70,6 +70,7 @@ from surpyval.utils.validation import check_option
 
 from .._aliasing import covariate_columns, expand, fit_columns
 from .._fit_skeleton import covariate_center
+from .._prediction import step_quantiles, unique_rows
 from ..proportional_hazards.cox_likelihood import (
     CoxInformation,
     baseline_at_origin,
@@ -893,6 +894,18 @@ class CoxFrailtyModel(_SharedFrailty):
 
     def _baseline_names(self) -> "list[str]":
         return []
+
+    def _quantiles(
+        self, cumulative: Any, u: np.ndarray, rows: np.ndarray
+    ) -> np.ndarray:
+        # The step baseline: the first baseline time at which the failure
+        # probability reaches each p, as CoxPH.qf (#662).
+        times = np.asarray(self.x, dtype=float)
+        uniq, which = unique_rows(rows)
+        m, size = uniq.shape[0], times.size
+        H = cumulative(np.tile(times, m), np.repeat(uniq, size, axis=0))
+        F = -np.expm1(-np.asarray(H, dtype=float).reshape(m, size))
+        return step_quantiles(F[which], times, u)
 
     def hf(
         self, x: Any, Z: Any = None, group: Any = None, frailty: Any = None

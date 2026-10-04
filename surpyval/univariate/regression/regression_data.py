@@ -49,6 +49,105 @@ def _aliased_columns(model: Any) -> npt.NDArray:
     return np.flatnonzero(np.isnan(np.asarray(model.beta, dtype=float)))
 
 
+def truncation_window(x: Any, t: Any, tl: Any = None, tr: Any = None) -> Any:
+    """The ``t`` of a parametric regression fit, an ``(N, 2)`` array of
+    ``[tl, tr]`` rows, from its ``tl`` / ``tr`` (each a value per row of
+    ``x``, or one for every row; the side not given is untruncated), so
+    that every fitter takes ``t``, ``tl`` and ``tr`` (Design Principle 1,
+    #662). ``t`` itself is returned as it is; given with ``tl`` or
+    ``tr`` it is refused.
+
+    Examples
+    --------
+    >>> from surpyval.univariate.regression.regression_data import (
+    ...     truncation_window,
+    ... )
+    >>> truncation_window([5.0, 7.0], None, tl=[1.0, 2.0])
+    array([[ 1., inf],
+           [ 2., inf]])
+    """
+    if tl is None and tr is None:
+        return t
+    if t is not None:
+        raise ValueError(
+            "Give the truncation once: as t (an (N, 2) array of [tl, tr] "
+            "rows) or as tl / tr, not both."
+        )
+    rows = len(x) if hasattr(x, "__len__") else 1
+
+    def column(value: Any, fill: float, name: str) -> npt.NDArray:
+        if value is None:
+            return np.full(rows, fill)
+        arr = np.asarray(value, dtype=float)
+        if arr.ndim == 0:
+            return np.full(rows, float(arr))
+        if arr.ndim != 1 or arr.size != rows:
+            raise ValueError(
+                "{} has {} values for {} rows of x; give one per row, or "
+                "a single value for every row.".format(name, arr.size, rows)
+            )
+        return arr
+
+    return np.column_stack(
+        [column(tl, -np.inf, "tl"), column(tr, np.inf, "tr")]
+    )
+
+
+class NoLikelihoodError(ValueError, NotImplementedError, AttributeError):
+    """A model fitted by estimating equations, not by maximising a
+    likelihood, asked for one (#662). A ``ValueError``, as every model
+    says a comparison value is not available for its fit (Fine-Gray's
+    ``neg_ll``, a model built from parameters); a
+    ``NotImplementedError``, as the model has none to implement; and an
+    ``AttributeError``, so that ``hasattr(model, "log_likelihood")`` is
+    ``False``, as for a model without the attribute."""
+
+
+class NoLikelihoodMixin:
+    """``neg_ll``, ``log_likelihood``, ``aic``, ``bic`` and ``aic_c`` on a
+    model that has no likelihood to give them (Lin and Ying's additive
+    hazards, Buckley-James): each raises :class:`NoLikelihoodError`
+    saying why, rather than being absent (#662). The host gives the
+    reason, ``_NO_LIKELIHOOD_WHY``."""
+
+    _NO_LIKELIHOOD_WHY = "it is not fitted by maximum likelihood"
+
+    def _no_likelihood(self, what: str) -> NoLikelihoodError:
+        return NoLikelihoodError(
+            "{} has no {}: {}. Compare such models by their fit to the "
+            "data (concordance(), or the predictions), or fit a "
+            "likelihood-based model to compare by likelihood.".format(
+                type(self).__name__, what, self._NO_LIKELIHOOD_WHY
+            )
+        )
+
+    def neg_ll(self) -> float:
+        """Raises :class:`NoLikelihoodError`: the model has no
+        likelihood."""
+        raise self._no_likelihood("likelihood (neg_ll)")
+
+    @property
+    def log_likelihood(self) -> float:
+        """Raises :class:`NoLikelihoodError` (an ``AttributeError``, so
+        ``hasattr`` is ``False``): the model has no likelihood."""
+        raise self._no_likelihood("likelihood (log_likelihood)")
+
+    def aic(self) -> float:
+        """Raises :class:`NoLikelihoodError`: there is no likelihood to
+        penalise."""
+        raise self._no_likelihood("AIC")
+
+    def bic(self) -> float:
+        """Raises :class:`NoLikelihoodError`: there is no likelihood to
+        penalise."""
+        raise self._no_likelihood("BIC")
+
+    def aic_c(self) -> float:
+        """Raises :class:`NoLikelihoodError`: there is no likelihood to
+        penalise."""
+        raise self._no_likelihood("AIC_c")
+
+
 class LinearPredictorMixin:
     """The coefficient and linear-predictor accessors of the
     semi-parametric regression models (Cox, proportional odds, Lin-Ying

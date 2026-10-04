@@ -1,5 +1,4 @@
-"""
-The fitted shared-frailty model returned by :class:`FrailtyFitter`.
+"""The fitted shared-frailty model returned by :class:`FrailtyFitter`.
 
 A shared-frailty model is a proportional-hazards model with an extra random
 multiplier ``u`` on the hazard that is *shared* by every observation in a
@@ -31,6 +30,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from scipy.special import ndtri as _z
+from scipy.stats import norm
 
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -47,6 +47,7 @@ from surpyval.utils.covariates import loaded_coefficient_names
 from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.removed_names import removed_parameter_note
+from surpyval.utils.shapes import covariate_rows, keeps_query_shape
 from surpyval.utils.validation import (
     BOUNDS,
     check_alpha_ci,
@@ -55,7 +56,11 @@ from surpyval.utils.validation import (
 )
 
 from .._concordance import ConcordanceMixin
-from .._prediction import ConditionalSurvivalMixin
+from .._prediction import (
+    ConditionalSurvivalMixin,
+    paired_probabilities,
+    quantiles_by_inversion,
+)
 from ..regression_data import (
     prepare_Z,
     restore_covariate_meta,
@@ -256,6 +261,75 @@ class _SharedFrailty(
             x, Z, group=group, frailty=frailty
         )
 
+    @keeps_query_shape
+    def qf(
+        self,
+        p: Any,
+        Z: Any = None,
+        group: Any = None,
+        frailty: Any = None,
+    ) -> np.ndarray:
+        """
+        The quantile function: the time by which a proportion ``p`` of the
+        units with covariates ``Z`` have failed, ``ff(qf(p, Z), Z) = p``
+        (#662) -- marginal by default, or given ``group=`` (that group's
+        posterior frailty) or ``frailty=``, as for :meth:`sf`. The median
+        life of a unit is ``qf(0.5, Z)``.
+
+        ``Z`` is paired with ``p`` as :meth:`sf` pairs it with ``x``: one
+        row for every ``p``, or one ``p`` for every row. A parametric
+        baseline's curve is inverted from the cumulative hazard, to a
+        relative ``1e-12``; a Cox baseline's is a step function, whose
+        quantile is the first baseline time at which the failure
+        probability reaches ``p``, ``nan`` where it never does (the curve
+        stops at the last event time), as for ``CoxPH.qf``. A probability
+        outside [0, 1] gives ``nan``, with a warning.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import WeibullFrailty
+        >>> rng = np.random.default_rng(0)
+        >>> g = np.repeat(np.arange(30), 5)
+        >>> z = rng.normal(size=g.size)
+        >>> u = rng.gamma(2.0, 0.5, 30)[g]
+        >>> x = 10 * rng.exponential(size=g.size) / (u * np.exp(0.5 * z))
+        >>> model = WeibullFrailty.fit(x=x, Z=z[:, None], groups=g)
+        >>> median = model.qf(0.5, [[0.0], [1.0]])
+        >>> model.ff(median, [[0.0], [1.0]]).round(12)
+        array([0.5, 0.5])
+        """
+        # A group label is checked before anything else
+        self._resolve_frailty(group, frailty)
+        if self.beta.size == 0:
+            rows = np.zeros((1, 0))
+        elif Z is None:
+            raise ValueError(
+                "This model was fit with covariates; 'Z' is required."
+            )
+        else:
+            rows = covariate_rows(
+                prepare_Z(Z, self.feature_names, self._model_spec),
+                self.beta.size,
+            )
+        u, rows, _ = paired_probabilities(p, rows)
+
+        def cumulative(t: np.ndarray, R: np.ndarray) -> np.ndarray:
+            # Hf at the times t, paired with the rows R
+            H = self.Hf(
+                t, R if R.shape[1] else None, group=group, frailty=frailty
+            )
+            return np.asarray(H, dtype=float) * np.ones(np.shape(t))
+
+        return self._quantiles(cumulative, u, rows)
+
+    def _quantiles(
+        self, cumulative: Any, u: np.ndarray, rows: np.ndarray
+    ) -> np.ndarray:
+        """The quantiles ``u`` of the curves of ``rows``, from their
+        cumulative hazard ``cumulative(t, rows)``: by the baseline."""
+        raise NotImplementedError
+
     # -- inference ---------------------------------------------------------
 
     @property
@@ -337,14 +411,20 @@ class _SharedFrailty(
         name: str,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
+        method: "str | None" = None,
     ) -> np.ndarray:
         """Wald confidence bound on a named parameter.
 
         The bound is formed on a scale chosen from the parameter's support (log
         for the positive baseline parameters and ``theta``, natural for the
-        unbounded coefficients) so the interval stays valid.
+        unbounded coefficients) so the interval stays valid. ``method`` is
+        ``'wald'`` (or ``None``, the default), the only bounds this model
+        has; the likelihood-ratio and bootstrap bounds are refused by name
+        (#662). A parametric frailty model's own ``param_cb`` also takes
+        ``method='lr'``.
         """
         check_alpha_ci(alpha_ci)
+        self._check_wald_method(method)
         cov = self.covariance()
         if name not in self.parameter_names:
             raise ValueError(
@@ -384,6 +464,46 @@ class _SharedFrailty(
             with np.errstate(over="ignore"):
                 return est * np.exp(signs * q * se / est)
         return est + signs * q * se
+
+    def _check_wald_method(self, method: "str | None") -> None:
+        """Refuse a ``param_cb`` method other than Wald's, naming it."""
+        if method is None or str(method).lower() == "wald":
+            return
+        from .._likelihood_ratio import LR_NAMES
+
+        if str(method).lower() in (*LR_NAMES, "bootstrap"):
+            raise ValueError(
+                "The {} model's param_cb gives Wald bounds only "
+                "(method='wald', or None); method={!r} is not available "
+                "for it. The parametric frailty models (WeibullFrailty, "
+                "...) also give likelihood-ratio bounds.".format(
+                    self.kind, method
+                )
+            )
+        check_option("method", method, ("wald",))
+
+    @property
+    def p_values(self) -> np.ndarray:
+        """
+        The Wald p-values of the coefficients, as ``CoxPH``'s
+        ``p_values`` (#662): :math:`2 (1 - \\Phi(|\\beta /
+        se(\\beta)|))`, in the order of ``params`` and
+        ``parameter_names``. The baseline parameters and ``theta`` are not
+        tested against 0 (``nan``), nor is an aliased coefficient; without
+        a covariance every entry is ``nan``. The ``p`` column of
+        :meth:`summary`.
+        """
+        params = self._param_vector()
+        out = np.full(params.shape, np.nan)
+        if self._covariance is None or not self.beta.size:
+            return out
+        coef = slice(self.k_dist, self.k_dist + self.beta.size)
+        with np.errstate(all="ignore"):
+            se = np.asarray(
+                _standard_error(np.diag(self._covariance)), dtype=float
+            )
+            out[coef] = 2 * norm.sf(np.abs(params[coef] / se[coef]))
+        return out
 
     @property
     def params(self) -> np.ndarray:
@@ -607,7 +727,7 @@ class FrailtyModel(_SharedFrailty):
         name: str,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
-        method: str = "wald",
+        method: "str | None" = "wald",
     ) -> np.ndarray:
         """Confidence bound(s) on a named parameter.
 
@@ -643,8 +763,8 @@ class FrailtyModel(_SharedFrailty):
             Total tail probability of the bound(s). Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds are returned as ``[lower, upper]``.
-        method : {'wald', 'lr'}, optional
-            As above. Default ``'wald'``.
+        method : {'wald', 'lr'} or None, optional
+            As above. Default ``'wald'``, which ``None`` also means.
 
         Examples
         --------
@@ -678,6 +798,23 @@ class FrailtyModel(_SharedFrailty):
                 )
             )
         return profile_interval(self._lr_region(), name, alpha_ci, bound)
+
+    def _quantiles(
+        self, cumulative: Any, u: np.ndarray, rows: np.ndarray
+    ) -> np.ndarray:
+        # Inverted from the cumulative hazard, from the baseline's
+        # quantile, as the parametric regressions' qf is.
+        with np.errstate(all="ignore"):
+            start = np.asarray(
+                self.dist.qf(np.clip(u, 0.0, 1.0), *self.dist_params),
+                dtype=float,
+            ) * np.ones(u.shape)
+        return quantiles_by_inversion(
+            lambda t, k: cumulative(t, rows[k]),
+            u,
+            self.dist.support,
+            start,
+        )
 
     def _lr_region(self) -> Any:
         """The likelihood-ratio searches over the marginal likelihood of

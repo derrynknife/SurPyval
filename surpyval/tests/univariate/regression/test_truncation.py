@@ -303,3 +303,44 @@ def test_truncated_fit_inference_and_lognormal_path_are_quiet():
         model.cb([3.0], [0.0])
         model.param_cb("coef_0")
         lognormal.sf_tvc([1.0, 3.0], [[0.0], [1.0]], xl=[0.0, 2.0])
+
+
+# ---------------------------------------------------------------------------
+# #662: every fitter takes t, tl and tr (Design Principle 1)
+# ---------------------------------------------------------------------------
+
+
+def _stress_truncated():
+    rng = np.random.default_rng(2)
+    stress = np.repeat([1.0, 2.0, 4.0], 60)
+    x = 20.0 * stress**-1.0 * rng.weibull(2.0, stress.size)
+    keep = (x > 1.0) & (x < 30.0)
+    return x[keep], stress[keep]
+
+
+@pytest.mark.parametrize(
+    "make",
+    [
+        lambda: AcceleratedLife(Weibull, Power),
+        lambda: AFT(Weibull),
+        lambda: WeibullPH,
+        lambda: WeibullPO,
+    ],
+)
+def test_662_parametric_fits_take_tl_and_tr(make):
+    # AcceleratedLife and AFT refused tl / tr ("Did you mean 'x'?"); they
+    # are the columns of t.
+    x, stress = _stress_truncated()
+    t = np.column_stack([np.ones(x.size), np.full(x.size, 30.0)])
+    ref = make().fit(x, Z=stress, t=t)
+    model = make().fit(x, Z=stress, tl=1.0, tr=np.full(x.size, 30.0))
+    np.testing.assert_allclose(model.params, ref.params, rtol=1e-10)
+    left = make().fit(x, Z=stress, tl=np.ones(x.size))
+    t_left = np.column_stack([np.ones(x.size), np.full(x.size, np.inf)])
+    np.testing.assert_allclose(
+        left.params, make().fit(x, Z=stress, t=t_left).params, rtol=1e-10
+    )
+    with pytest.raises(ValueError, match="truncation once"):
+        make().fit(x, Z=stress, t=t, tl=1.0)
+    with pytest.raises(ValueError, match="tl has 2 values"):
+        make().fit(x, Z=stress, tl=[1.0, 2.0])

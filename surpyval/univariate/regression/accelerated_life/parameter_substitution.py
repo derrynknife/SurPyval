@@ -54,7 +54,7 @@ from .._fit_skeleton import (
 )
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
-from ..regression_data import DataFrameRegressionMixin
+from ..regression_data import DataFrameRegressionMixin, truncation_window
 from .lifemodel import LifeModel
 
 
@@ -503,6 +503,8 @@ class ParameterSubstitutionFitter(
         t: npt.ArrayLike | None = None,
         init: npt.ArrayLike | None = None,
         fixed: dict[str, float] | None = None,
+        tl: npt.ArrayLike | None = None,
+        tr: npt.ArrayLike | None = None,
     ) -> ParametricRegressionModel:
         """
         Fit the accelerated life model by maximum likelihood.
@@ -536,6 +538,10 @@ class ParameterSubstitutionFitter(
         t : array_like, optional
             Truncation bounds: an (N, 2) array of the left and right
             truncation times of each observation.
+        tl, tr : array_like or float, optional
+            The left / right truncation times of each observation (or one
+            for every observation), the columns of ``t``, which they
+            replace (#662).
         init : array_like, optional
             Initial parameter values: the distribution parameters (with any
             value in the life parameter's slot) followed by the life-model
@@ -567,6 +573,7 @@ class ParameterSubstitutionFitter(
         >>> model.params.round(3)
         array([  1.   ,   2.831, 558.686,  -0.828])
         """
+        t = truncation_window(x, t, tl, tr)
         # ``x`` goes through the data handler before anything reads it as
         # an array: the documented ragged form ``[10, [11, 13], ...]`` is
         # not a rectangular array, and ``np.asarray(x)`` on it raised a raw
