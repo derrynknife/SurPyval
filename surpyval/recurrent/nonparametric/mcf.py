@@ -6,6 +6,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import norm
 
+from surpyval.recurrent.inference import check_alpha_ci
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -362,6 +363,7 @@ class NonParametricCounting(
         # unselected bounds (#416).
         check_option("bound", bound, BOUNDS)
         check_option("interp", interp, _MCF_INTERP)
+        check_alpha_ci(alpha_ci)
         return self._within_support(
             x,
             lambda q: self._mcf_cb(
@@ -493,6 +495,7 @@ class NonParametricCounting(
         -------
         matplotlib Axes
         """
+        check_alpha_ci(alpha_ci)
         if ax is None:
             import matplotlib.pyplot as plt
 

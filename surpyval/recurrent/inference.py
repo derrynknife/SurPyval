@@ -12,7 +12,24 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.utils.linalg import numerical_hessian, wald_bound_on_support
+from surpyval.utils.validation import alpha_ci_error
 from surpyval.utils.warnings import warn_no_covariance
+
+
+def check_alpha_ci(alpha_ci: Any) -> None:
+    """
+    Refuse an ``alpha_ci`` outside (0, 1) in a recurrent bound method
+    (``cif_cb``, ``iif_cb``, ``mtbf_cb``, ``mcf_cb``, ``param_cb`` and the
+    plots that draw them), with the package's one message. Outside (0, 1)
+    the bounds came back reversed (``alpha_ci=1.5``), equal (1) or NaN
+    (below 0), silently (#647).
+    """
+    if not (
+        isinstance(alpha_ci, (int, float, np.integer, np.floating))
+        and not isinstance(alpha_ci, bool)
+        and 0 < alpha_ci < 1
+    ):
+        raise alpha_ci_error(alpha_ci)
 
 
 def bic_sample_size(data: Any) -> float:
@@ -296,6 +313,7 @@ class LikelihoodInferenceMixin:
         numpy array
             The confidence bound(s) on the parameter.
         """
+        check_alpha_ci(alpha_ci)
         self._check_fitted()
         names = self.parameter_names
         if name not in names:

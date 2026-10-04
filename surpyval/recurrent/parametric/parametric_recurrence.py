@@ -4,7 +4,10 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 from surpyval.recurrent import diagnostics
-from surpyval.recurrent.inference import LikelihoodInferenceMixin
+from surpyval.recurrent.inference import (
+    LikelihoodInferenceMixin,
+    check_alpha_ci,
+)
 from surpyval.recurrent.serialisation import intensity_dist_by_name
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
 from surpyval.serialisation import (
@@ -407,6 +410,7 @@ class ParametricRecurrenceModel(
         numpy array
             The confidence bounds on the CIF.
         """
+        check_alpha_ci(alpha_ci)
         self._check_fitted()
         x = np.atleast_1d(np.asarray(x, dtype=float))
         se = delta_method_se(
@@ -499,6 +503,7 @@ class ParametricRecurrenceModel(
         """
         check_option("method", method, ("wald", "crow"))
         check_option("bound", bound, BOUNDS)
+        check_alpha_ci(alpha_ci)
         if method == "crow":
             return self._reciprocal_cb(
                 self._crow_mtbf_cb(x, alpha_ci, _OPPOSITE[bound]), bound
@@ -607,6 +612,7 @@ class ParametricRecurrenceModel(
         """
         check_option("method", method, ("wald", "crow"))
         check_option("bound", bound, BOUNDS)
+        check_alpha_ci(alpha_ci)
         if method == "crow":
             return self._crow_mtbf_cb(x, alpha_ci, bound)
         return self._reciprocal_cb(
@@ -738,6 +744,7 @@ class ParametricRecurrenceModel(
         matplotlib axes
             An axes object with the plot.
         """
+        check_alpha_ci(alpha_ci)
         self._check_has_data("plot")
         x, r, d = self.data.to_xrd()
         if ax is None:

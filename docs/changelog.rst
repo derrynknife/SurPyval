@@ -165,6 +165,12 @@ Unreleased
   ``tl`` (#664): on an age scale a negative entry age is almost always a
   data error, and it moved q from 0.28 to 0.42 in silence. It is still
   accepted, each item as new at its entry.
+- The recurrent bounds refuse an ``alpha_ci`` outside (0, 1) with the
+  package's one message (#647): ``cif_cb``, ``iif_cb``, ``mtbf_cb`` and
+  ``param_cb`` of the intensity and proportional-intensity models,
+  ``NonParametricCounting.mcf_cb``, ``CauseSpecificMCF.mcf_cb`` and the
+  plots that draw them, and a renewal model's ``summary``. They returned
+  reversed (1.5), equal (1) or NaN (below 0) bounds in silence.
 
 v0.23 (4 October 2026)
 ----------------------

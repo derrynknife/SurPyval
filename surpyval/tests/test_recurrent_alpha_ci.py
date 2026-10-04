@@ -82,3 +82,37 @@ def test_alpha_ci_sets_the_level():
     _nhpp().plot(ax=ax, alpha_ci=0.1)
     assert ax.collections[0].get_label() == "90% Confidence Band"
     plt.close("all")
+
+
+@pytest.mark.parametrize("alpha_ci", [1.5, -0.1, 0.0, 1.0, np.nan, "0.05"])
+def test_647_every_recurrent_bound_refuses_alpha_ci_outside_0_1(alpha_ci):
+    from surpyval.recurrent import HPP, GeneralizedRenewal
+
+    nhpp, pi, mcf, cs = _nhpp(), _pi(), _mcf(), _cs_mcf()
+    hpp = HPP.fit(X, i=I, c=C)
+    grp = GeneralizedRenewal.fit(X, i=I, c=C)
+    calls = [
+        lambda: nhpp.cif_cb(GRID, alpha_ci=alpha_ci),
+        lambda: nhpp.iif_cb(GRID, alpha_ci=alpha_ci),
+        lambda: nhpp.mtbf_cb(GRID, alpha_ci=alpha_ci),
+        lambda: nhpp.mtbf_cb(60.0, alpha_ci=alpha_ci, method="crow"),
+        lambda: nhpp.param_cb("beta", alpha_ci=alpha_ci),
+        lambda: nhpp.plot(alpha_ci=alpha_ci, plot_bounds=False),
+        lambda: hpp.cif_cb(GRID, alpha_ci=alpha_ci),
+        lambda: hpp.param_cb(hpp.parameter_names[0], alpha_ci=alpha_ci),
+        lambda: pi.cif_cb(GRID, [0.5], alpha_ci=alpha_ci),
+        lambda: pi.iif_cb(GRID, [0.5], alpha_ci=alpha_ci),
+        lambda: pi.param_cb(pi.parameter_names[0], alpha_ci=alpha_ci),
+        lambda: pi.plot(alpha_ci=alpha_ci),
+        lambda: mcf.mcf_cb(GRID, alpha_ci=alpha_ci),
+        lambda: mcf.plot(alpha_ci=alpha_ci),
+        lambda: cs.mcf_cb(GRID, "a", alpha_ci=alpha_ci),
+        lambda: cs.plot(alpha_ci=alpha_ci),
+        lambda: grp.param_cb("q", alpha_ci=alpha_ci),
+        lambda: grp.param_cb("alpha", alpha_ci=alpha_ci),
+        lambda: grp.summary(alpha_ci=alpha_ci),
+    ]
+    for call in calls:
+        with pytest.raises(ValueError, match="strictly between 0 and 1"):
+            call()
+    plt.close("all")
