@@ -306,14 +306,14 @@ def old_coefficient_names(
 
 
 def _deprecated_names(renamed: "dict[str, str]", where: str) -> None:
-    from surpyval.utils.deprecation import REMOVED_IN_NEXT
+    from surpyval.utils.deprecation import REMOVED_IN
 
     pairs = ", ".join("'{}' for '{}'".format(n, o) for o, n in renamed.items())
     warnings.warn(
         "{}: the coefficient names beta_0, beta_1, ... are deprecated and "
         "will be removed in v{}: a coefficient is named by its covariate's "
         "column, else coef_0, coef_1, ... (#614). Use {}.".format(
-            where, REMOVED_IN_NEXT, pairs
+            where, REMOVED_IN, pairs
         ),
         DeprecationWarning,
         stacklevel=caller_stacklevel(),

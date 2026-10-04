@@ -2,7 +2,7 @@ import warnings
 
 import numpy as np
 
-from surpyval.utils.deprecation import REMOVED_IN_NEXT
+from surpyval.utils.deprecation import REMOVED_IN
 
 
 def success_run(
@@ -95,7 +95,7 @@ def success_run(
     if confidence is not None:
         warnings.warn(
             "success_run: 'confidence' is deprecated and will be removed in "
-            "v{}; use alpha_ci = 1 - confidence.".format(REMOVED_IN_NEXT),
+            "v{}; use alpha_ci = 1 - confidence.".format(REMOVED_IN),
             DeprecationWarning,
             stacklevel=2,
         )
@@ -103,7 +103,7 @@ def success_run(
     elif alpha is not None:
         warnings.warn(
             "success_run: 'alpha' is deprecated and will be removed in "
-            "v{}; use 'alpha_ci'.".format(REMOVED_IN_NEXT),
+            "v{}; use 'alpha_ci'.".format(REMOVED_IN),
             DeprecationWarning,
             stacklevel=2,
         )

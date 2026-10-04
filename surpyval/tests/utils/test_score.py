@@ -79,15 +79,11 @@ def test_tied_time_both_events():
     assert score(x + [6.0], c + [1], [1.0, 2.0, 0.0]) == 1.0
 
 
-def test_deprecated_score_keeps_harrell():
-    # surpyval.utils.score.score is deprecated and keeps the convention
-    # it always had (Harrell's), where concordance_index now defaults to
-    # Therneau's.
-    from surpyval.utils.score import score as old_score
-
+def test_harrell_convention_of_the_removed_score():
+    # surpyval.utils.score.score (removed in v0.23) counted tied events as
+    # a pair, Harrell's convention, which ties="harrell" gives.
     x, c, s = [1.0, 1, 2, 3], [0, 0, 0, 1], [0.9, 0.5, 0.7, 0.2]
-    with pytest.warns(DeprecationWarning):
-        assert old_score(x, c, s) == 0.75
+    assert score(x, c, s, ties="harrell") == 0.75
     assert score(x, c, s) == 0.8
 
 

@@ -36,7 +36,7 @@ from surpyval.univariate.regression._aliasing import covariate_columns
 from surpyval.univariate.regression.parametric_regression_model import (
     ParametricRegressionModel,
 )
-from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils.dataframe import refuse_column_names
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import psd_project, safe_inv
 from surpyval.utils.validation import check_option, option_error
@@ -1153,7 +1153,6 @@ class DegradationAnalysis_(FitterRepr):
         )
         return best_model, scores
 
-    @renamed_arguments(x="x_col", y="y_col", i="i_col")
     def fit_from_df(
         self,
         df: pd.DataFrame,
@@ -1167,9 +1166,7 @@ class DegradationAnalysis_(FitterRepr):
         Fit a degradation analysis model from a DataFrame.
 
         The column arguments end in ``_col`` (``_cols`` for a list), as in
-        every ``fit_from_df`` (principle 21); their v0.21 names ``x``,
-        ``y`` and ``i`` still work, with a ``DeprecationWarning``, until
-        v0.23.
+        every ``fit_from_df`` (principle 21).
 
         Parameters
         ----------
@@ -1200,6 +1197,7 @@ class DegradationAnalysis_(FitterRepr):
         DegradationModel
             The fitted degradation model.
         """
+        refuse_column_names(fit_kwargs, "x", "y", "i")
         cols = None
         if Z_cols is not None:
             cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
