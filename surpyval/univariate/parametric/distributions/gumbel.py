@@ -16,6 +16,29 @@ from ._stable import log1mexp
 
 
 class Gumbel_(OptimisedFitMixin, ParametricFitter):
+    r"""
+    The Gumbel distribution of the smallest extreme value: the limit of
+    the minimum of many values, such as the weakest link of a chain. Its
+    log-time version is the Weibull. Its support is the whole real line;
+    for the largest extreme value see :class:`GumbelLEV`.
+
+    The parameters are the location ``mu`` and the scale ``sigma``
+    (positive). On :math:`(-\infty, \infty)`,
+
+    .. math::
+        R(x) = e^{-e^{\left ( x - \mu \right ) / \sigma}}.
+
+    ``fit`` estimates the parameters from data (which may be censored
+    and truncated); ``from_params`` builds the model from known values.
+
+    Examples
+    --------
+    >>> from surpyval import Gumbel
+    >>> model = Gumbel.from_params([10, 2])
+    >>> model.sf([5, 10, 12]).round(4)
+    array([0.9212, 0.3679, 0.066 ])
+    """
+
     # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
     # log(-log sf), on which this family is a straight line in
     # time (#477).

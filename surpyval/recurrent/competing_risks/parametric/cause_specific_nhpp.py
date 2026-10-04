@@ -296,7 +296,10 @@ class CauseSpecificNHPP(SerialisableMixin):
         c : array like, optional
             Censoring flag for each row (0 observed, 1 right censored).
         n : array like, optional
-            Count of events at each row. Defaults to 1.
+            The number of events each row stands for. This model takes exact
+            events (``c=0``) and end-of-observation rows (``c=1``), each of
+            which stands for one, so every ``n`` is 1 (``n > 1`` is refused:
+            repeat the row for simultaneous events). Defaults to 1.
         e : array like
             Event type (mark) for each row. ``None``/``NaN`` for censored rows.
             A mark may be any hashable label: an integer, a string, a

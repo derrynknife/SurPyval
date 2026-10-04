@@ -136,7 +136,7 @@ class DegradationAnalysis_(FitterRepr):
     >>> i = np.repeat([1, 2, 3, 4], 10)
     >>> y = 10 + slopes * x
     >>> model = DegradationAnalysis.fit(x, y, i, threshold=150)
-    >>> print(model)
+    >>> print(model)  # doctest: +ELLIPSIS
     Degradation Analysis SurPyval Model
     ===================================
     Path Model          : Linear
@@ -145,10 +145,10 @@ class DegradationAnalysis_(FitterRepr):
     Censored Units      : 0
     Life Distribution   : Weibull
     Parameters          :
-         alpha: 441.47809611105606
-          beta: 6.987078889297555
-    >>> model.pseudo_failure_times
-    array([451.61290323, 500.        , 318.18181818, 378.37837838])
+         alpha: 441.47...
+          beta: 6.98...
+    >>> model.pseudo_failure_times.round(4)
+    array([451.6129, 500.    , 318.1818, 378.3784])
     """
 
     #: The ``repr`` (#614)

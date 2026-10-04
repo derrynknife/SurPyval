@@ -34,7 +34,10 @@ Every recurrent model in SurPyval takes the same ``xicn`` arrays (see
 - ``c`` — the censoring flag: ``0`` for an observed event, ``1`` for the
   end-of-observation row (the item is still running but we stopped watching);
   ``2`` and ``-1`` are used for counts of events, described below;
-- ``n`` — the number of events a row stands for (defaults to 1).
+- ``n`` — the number of events a row stands for (defaults to 1): a count
+  only on a row of ``c=2`` or ``c=-1``. An observed event (``c=0``) and
+  the end-of-observation row (``c=1``) stand for one, so ``n > 1`` there
+  is refused; repeat the row for simultaneous events.
 
 The rows of each item must describe a coherent timeline. An item can have at
 most one right-censored row and it must be its last row: it makes no sense to

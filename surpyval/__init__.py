@@ -1,3 +1,28 @@
+"""
+SurPyval: survival and reliability analysis in Python.
+
+Fit parametric distributions (``Weibull``, ``LogNormal``, ``Exponential``,
+...), non-parametric estimates (``KaplanMeier``, ``NelsonAalen``,
+``Turnbull``), regression models (``CoxPH``, ``WeibullPH``, the AFT, PO
+and AH families, ...), competing risks, recurrent-event, degradation and
+multivariate models to data that may be censored (left, right or
+interval) and truncated, in one data format: ``x`` the times, ``c`` the
+censoring flag, ``n`` the counts and ``t`` the truncation (``xcnt``).
+
+>>> import surpyval
+>>> x, c = [10.0, 12.0, 15.0, 21.0, 30.0], [0, 0, 1, 0, 1]
+>>> model = surpyval.Weibull.fit(x, c=c)
+>>> model.dist.name
+'Weibull'
+
+The regression, competing-risks, recurrent-event and degradation models
+and the metrics load on first use; ``surpyval.recurrent``,
+``surpyval.degradation``, ``surpyval.multivariate``,
+``surpyval.life_models``, ``surpyval.metrics`` and ``surpyval.datasets``
+hold the rest. ``help(surpyval.Weibull)`` and the other classes document
+each model, with examples.
+"""
+
 __version__ = "0.23"
 
 # First: autograd's special functions without scipy.stats (#470)
@@ -226,6 +251,85 @@ _LAZY = {
         "surpyval.metrics",
     ),
 }
+
+#: The public names: what ``from surpyval import *`` gives, the eager
+#: imports above and the lazily imported models (not ``np``, ``Any`` or
+#: ``TYPE_CHECKING``, #667). Every name the docs, tests and README import
+#: from ``surpyval`` is here.
+__all__ = [
+    # The base classes
+    "Distribution",
+    "MultivariateDistribution",
+    "NonParametricDistribution",
+    "ParametricDistribution",
+    # Non-parametric
+    "FlemingHarrington",
+    "KaplanMeier",
+    "LogRankResult",
+    "NelsonAalen",
+    "NonParametric",
+    "Turnbull",
+    "logrank",
+    "rmst_diff",
+    "success_run",
+    # Parametric
+    "Bernoulli",
+    "Beta",
+    "Beta4",
+    "BetaGeometric",
+    "Binomial",
+    "CustomDistribution",
+    "DiscreteWeibull",
+    "Discretize",
+    "DiscretizedFitter",
+    "ExactEventTime",
+    "Exponential",
+    "ExpoWeibull",
+    "FixedEventProbability",
+    "Galton",
+    "Gamma",
+    "Gauss",
+    "Geometric",
+    "Gumbel",
+    "GumbelLEV",
+    "Hypoexponential",
+    "InstantlyOccurs",
+    "Logistic",
+    "LogLogistic",
+    "LogNormal",
+    "MixtureModel",
+    "NegativeBinomial",
+    "NeverOccurs",
+    "Normal",
+    "Parametric",
+    "Poisson",
+    "Rayleigh",
+    "RoystonParmar",
+    "RoystonParmarModel",
+    "Uniform",
+    "Weibull",
+    "weibayes",
+    # Data formats
+    "fs_to_xcnt",
+    "fs_to_xrd",
+    "fsl_to_xcnt",
+    "fsli_handler",
+    "fsli_to_xcnt",
+    "round_sig",
+    "xcn_to_fs",
+    "xcnt_handler",
+    "xcnt_to_xrd",
+    "xrd_handler",
+    "xrd_to_xcnt",
+    "RecurrentEventData",
+    "SurpyvalData",
+    "handle_xicn",
+    # Model selection, forecasting and serialisation
+    "fit_best",
+    "forecast",
+    "from_dict",
+    "from_json",
+] + sorted(_LAZY)
 
 if TYPE_CHECKING:
     from surpyval import datasets, degradation, life_models, metrics, recurrent

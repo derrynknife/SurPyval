@@ -288,8 +288,11 @@ class NHPPFitter(IntensityModel):
             left-censored and 2 interval-censored counts (with ``n``).
             Defaults to all observed.
         n: array_like, optional
-            Number of events in each row (for left- and interval-censored
-            counts). Defaults to 1.
+            Number of events in each row: a count on a left- or
+            interval-censored row (``c=-1`` or ``c=2``). An exact event
+            (``c=0``) and an end-of-observation row (``c=1``) stand for one,
+            so ``n > 1`` there is refused: repeat the row for simultaneous
+            events. Defaults to 1.
         t: array_like, optional
             (N, 2) array of [left, right] truncation bounds per observation.
         tl: array_like or scalar, optional

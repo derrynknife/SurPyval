@@ -475,7 +475,10 @@ class GeneralizedRenewal(RenewalFitMixin):
             right-censored end of an item's observation. Other codes raise
             a ``ValueError``. Defaults to all observed.
         n : array_like, optional
-            Count of events at each row. Defaults to 1.
+            The number of events each row stands for. This model takes exact
+            events (``c=0``) and end-of-observation rows (``c=1``), each of
+            which stands for one, so every ``n`` is 1 (``n > 1`` is refused:
+            repeat the row for simultaneous events). Defaults to 1.
         dist : object, optional
             A surpyval distribution object. Default is Weibull.
         kijima : str, optional

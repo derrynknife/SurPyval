@@ -187,7 +187,7 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
         Examples
         --------
         >>> from surpyval import NegativeBinomial
-        >>> NegativeBinomial.moment(2, 3.0, 0.4)
+        >>> round(NegativeBinomial.moment(2, 3.0, 0.4), 9)
         41.5
         """
         if m == 0:

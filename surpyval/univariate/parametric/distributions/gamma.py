@@ -24,13 +24,28 @@ from ._stable import on_support, positive_or_one, power_at_zero
 
 class Gamma_(OptimisedFitMixin, ParametricFitter):
     r"""
+    The Gamma distribution: the time to the ``alpha``-th event of a
+    Poisson process of rate ``beta`` (for a whole ``alpha``), so a model
+    of failures that need several shocks; with ``alpha = 1`` it is the
+    Exponential.
 
-    Class used to generate the Gamma class.
+    The parameters are the shape ``alpha`` and the rate ``beta``, both
+    positive. On the support :math:`(0, \infty)`, with :math:`\gamma` the
+    lower incomplete gamma function,
 
-    .. code:: python
+    .. math::
+        R(x) = 1 - \frac{\gamma \left ( \alpha, \beta x \right )}
+        {\Gamma \left ( \alpha \right )}.
 
-        from surpyval import Gamma
+    ``fit`` estimates the parameters from data (which may be censored
+    and truncated); ``from_params`` builds the model from known values.
 
+    Examples
+    --------
+    >>> from surpyval import Gamma
+    >>> model = Gamma.from_params([2, 0.1])
+    >>> model.sf([10, 20, 40]).round(4)
+    array([0.7358, 0.406 , 0.0916])
     """
 
     def __init__(self, name: str) -> None:

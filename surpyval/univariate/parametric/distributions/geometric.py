@@ -129,7 +129,7 @@ class Geometric_(OptimisedFitMixin, DiscreteParametricFitter):
         Examples
         --------
         >>> from surpyval import Geometric
-        >>> Geometric.moment(2, 0.2)
+        >>> round(Geometric.moment(2, 0.2), 9)
         45.0
         """
         if m == 0:

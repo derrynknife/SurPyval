@@ -49,9 +49,10 @@ A few things worth knowing:
 - Fitted from a DataFrame (``fit_from_df`` with ``Z_cols`` or a
   ``formula``, or ``fit`` with a DataFrame ``Z``), a tree or forest keeps
   the covariate names as ``feature_names``; ``print(tree)`` shows its splits
-  by name (``temp <= 42``), ``feature_importances`` is a ``pandas.Series``
-  keyed by name, and predictions read a DataFrame by those names. Fitted
-  from arrays the covariates are shown as ``Z0``, ``Z1``, ...
+  by name (``temp <= 42``), a forest's ``feature_importances()`` method
+  returns a ``pandas.Series`` keyed by name, and predictions read a
+  DataFrame by those names. Fitted from arrays the covariates are shown as
+  ``Z0``, ``Z1``, ...
 - A ``"weibull"`` or ``"exponential"`` tree grows until ``min_leaf_samples``
   or ``min_leaf_failures`` stops it, which suits a forest. For a tree used on
   its own, set ``min_split_gain="aic"`` (or ``"bic"``, or a log-likelihood
