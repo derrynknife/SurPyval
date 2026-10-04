@@ -30,6 +30,30 @@ def _log_pos(x: Numeric) -> Boxable:
 
 
 class LogNormal_(OptimisedFitMixin, ParametricFitter):
+    r"""
+    The LogNormal distribution: the logarithm of the time to failure is
+    Normal. It suits failures from the product of many small effects
+    (fatigue, corrosion, repair times). ``Galton`` is the same
+    distribution under another name.
+
+    The parameters are ``mu`` and ``sigma`` (positive), the mean and the
+    standard deviation of the log of the time. On the support
+    :math:`(0, \infty)`, with :math:`\Phi` the standard normal CDF,
+
+    .. math::
+        R(x) = 1 - \Phi \left( \frac{\ln(x) - \mu}{\sigma} \right ).
+
+    ``fit`` estimates the parameters from data (which may be censored
+    and truncated); ``from_params`` builds the model from known values.
+
+    Examples
+    --------
+    >>> from surpyval import LogNormal
+    >>> model = LogNormal.from_params([4.0, 0.5])
+    >>> model.sf([30, 55, 100]).round(4)
+    array([0.8845, 0.4941, 0.1131])
+    """
+
     # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
     # the normal quantile of ff, on which this family is a straight line in
     # log time (#477).

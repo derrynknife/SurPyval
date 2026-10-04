@@ -15,6 +15,28 @@ from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class Uniform_(OptimisedFitMixin, ParametricFitter):
+    r"""
+    The Uniform distribution: every time in ``[a, b]`` equally likely.
+
+    The parameters are the ends of the support, ``a`` and ``b`` with
+    ``a < b``, which the fit estimates (so ``fit_best`` tries it only when
+    asked: its likelihood is highest with an end on an extreme
+    observation). On ``[a, b]``,
+
+    .. math::
+        R(x) = \frac{b - x}{b - a}.
+
+    ``fit`` estimates the parameters from data (which may be censored
+    and truncated); ``from_params`` builds the model from known values.
+
+    Examples
+    --------
+    >>> from surpyval import Uniform
+    >>> model = Uniform.from_params([0, 10])
+    >>> model.sf([2.5, 5, 7.5]).round(4)
+    array([0.75, 0.5 , 0.25])
+    """
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,

@@ -16,6 +16,29 @@ from ._stable import log1mexp
 
 
 class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
+    r"""
+    The Gumbel distribution of the largest extreme value: the limit of the
+    maximum of many values, such as the highest flood or load in a
+    period. Its support is the whole real line; for the smallest extreme
+    value see :class:`Gumbel`.
+
+    The parameters are the location ``mu`` and the scale ``sigma``
+    (positive). On :math:`(-\infty, \infty)`,
+
+    .. math::
+        R(x) = 1 - e^{-e^{-\left ( x - \mu \right ) / \sigma}}.
+
+    ``fit`` estimates the parameters from data (which may be censored
+    and truncated); ``from_params`` builds the model from known values.
+
+    Examples
+    --------
+    >>> from surpyval import GumbelLEV
+    >>> model = GumbelLEV.from_params([10, 2])
+    >>> model.sf([8, 10, 14]).round(4)
+    array([0.934 , 0.6321, 0.1266])
+    """
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,

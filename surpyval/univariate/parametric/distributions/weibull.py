@@ -25,6 +25,32 @@ from ._stable import (
 
 
 class Weibull_(OptimisedFitMixin, ParametricFitter):
+    r"""
+    The Weibull distribution, the most used model of time to failure: a
+    shape ``beta`` below 1 is a falling hazard (early failures), 1 a
+    constant one (the Exponential) and above 1 a rising one (wear-out).
+
+    The parameters are the scale ``alpha``, the time by which 63.2% of
+    units have failed, and the shape ``beta``, both positive. On the
+    support :math:`(0, \infty)`,
+
+    .. math::
+        R(x) = e^{-\left ( x / \alpha \right )^\beta}.
+
+    ``fit`` estimates the parameters from data (which may be censored
+    and truncated); ``from_params`` builds the model from known values.
+
+    Examples
+    --------
+    >>> from surpyval import Weibull
+    >>> model = Weibull.from_params([100, 2])
+    >>> model.sf([50, 100, 150]).round(4)
+    array([0.7788, 0.3679, 0.1054])
+    >>> x = [12.0, 25.0, 31.0, 40.0, 48.0, 55.0, 63.0, 71.0, 84.0, 102.0]
+    >>> Weibull.fit(x).params.round(2)
+    array([60.01,  2.14])
+    """
+
     # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
     # log(-log sf), on which this family is a straight line in
     # log time (#477).

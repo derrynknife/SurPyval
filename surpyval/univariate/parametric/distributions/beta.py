@@ -31,6 +31,28 @@ def _log_beta(alpha: Boxable, beta: Boxable) -> Boxable:
 
 
 class Beta_(OptimisedFitMixin, ParametricFitter):
+    r"""
+    The Beta distribution on ``(0, 1)``: a model of a proportion or a
+    probability (for an arbitrary interval see :class:`Beta4`).
+
+    The parameters are the shapes ``alpha`` and ``beta``, both positive.
+    On :math:`(0, 1)`, with :math:`B` the beta function,
+
+    .. math::
+        R(x) = 1 - \frac{1}{B \left ( \alpha, \beta \right )}
+        \int_{0}^{x}t^{\alpha-1}\left (1 - t \right )^{\beta - 1}dt.
+
+    ``fit`` estimates the parameters from data (which may be censored
+    and truncated); ``from_params`` builds the model from known values.
+
+    Examples
+    --------
+    >>> from surpyval import Beta
+    >>> model = Beta.from_params([2, 5])
+    >>> model.sf([0.1, 0.3, 0.5]).round(4)
+    array([0.8857, 0.4202, 0.1094])
+    """
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,

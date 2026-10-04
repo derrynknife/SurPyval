@@ -386,6 +386,29 @@ _log_df = _with_partials("log_df", _log_df_value)
 
 
 class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
+    r"""
+    The exponentiated Weibull distribution: a Weibull CDF raised to the
+    power ``mu``, which lets the hazard be monotone, bathtub shaped or
+    unimodal. With ``mu = 1`` it is the Weibull.
+
+    The parameters are the scale ``alpha`` and the shapes ``beta`` and
+    ``mu``, all positive. On the support :math:`(0, \infty)`,
+
+    .. math::
+        R(x) = 1 - \left [ 1 - e^{-\left ( x / \alpha \right )^\beta}
+        \right ]^{\mu}.
+
+    ``fit`` estimates the parameters from data (which may be censored
+    and truncated); ``from_params`` builds the model from known values.
+
+    Examples
+    --------
+    >>> from surpyval import ExpoWeibull
+    >>> model = ExpoWeibull.from_params([100, 2, 0.5])
+    >>> model.sf([50, 100, 150]).round(4)
+    array([0.5297, 0.2049, 0.0542])
+    """
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
@@ -980,8 +1003,8 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         Examples
         --------
         >>> from surpyval import ExpoWeibull
-        >>> ExpoWeibull.entropy(3, 1.5, 0.8)
-        1.8227536487527594
+        >>> round(ExpoWeibull.entropy(3, 1.5, 0.8), 6)
+        1.822754
         """
 
         b, m = float(beta), float(mu)

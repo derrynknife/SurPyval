@@ -440,3 +440,48 @@ def test_576_qf_warns_of_a_probability_outside_the_unit_interval():
     with pytest.warns(UserWarning, match=r"outside \[0, 1\]"):
         out = rp.qf(np.array([0.5, 1.5]))
     assert np.isfinite(out[0]) and np.isnan(out[1])
+
+
+# -- help(surpyval): a package docstring, __all__ and class docstrings (#667)
+
+
+def test_package_has_a_docstring_and_all():
+    assert surpyval.__doc__ and "survival" in surpyval.__doc__
+    names = set(surpyval.__all__)
+    assert set(surpyval._LAZY) <= names
+    assert not names & {"np", "Any", "TYPE_CHECKING"}
+    assert len(names) == len(surpyval.__all__)
+    namespace: dict = {}
+    exec("from surpyval import *", namespace)
+    for name in ("np", "Any", "TYPE_CHECKING"):
+        assert name not in namespace
+    for name in surpyval.__all__:
+        assert namespace[name] is getattr(surpyval, name)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Weibull",
+        "LogNormal",
+        "LogLogistic",
+        "ExpoWeibull",
+        "Gumbel",
+        "Logistic",
+        "Rayleigh",
+        "Uniform",
+        "Beta",
+        "Galton",
+        "GumbelLEV",
+        "Exponential",
+        "Gamma",
+    ],
+)
+def test_distribution_class_docstrings_have_formula_and_example(name):
+    fitter = getattr(sp, name)
+    doc = inspect.getdoc(type(fitter))
+    assert doc and "Class used to generate" not in doc
+    assert "R(x)" in doc
+    assert "Examples" in doc and ">>> " in doc
+    for parameter in fitter.parameter_names:
+        assert f"``{parameter}``" in doc

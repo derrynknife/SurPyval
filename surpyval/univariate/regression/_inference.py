@@ -375,10 +375,15 @@ class InferenceMixin:
           the critical value to the edge of the space, the bound is that
           edge, and a side that cannot be found is ``nan``, with a
           warning. It needs the data the model was fitted to.
-        - ``"bootstrap"`` -- the parametric bootstrap percentile interval:
-          the parameter's ``alpha_ci / 2`` and ``1 - alpha_ci / 2``
-          quantiles over ``n_boot`` refits of the model to data simulated
-          from it, as :meth:`cb` describes. It needs the data.
+        - ``"bootstrap"`` -- the parametric bootstrap BCa interval (Efron
+          1987) over ``n_boot`` refits of the model to data simulated from
+          it, as :meth:`cb` describes: the parameter's percentiles over the
+          refits, corrected for bias (the share of refits below the
+          estimate) and for skewness (the acceleration, from each
+          resample's score at the estimate; 0, which leaves the
+          bias-corrected percentile interval, where the covariance is not
+          finite). A parameter held at fit time has its value as its
+          interval. It needs the data.
 
         Parameters
         ----------
@@ -664,9 +669,10 @@ class InferenceMixin:
             extreme of ``qf(p, Z)`` over the parameters' likelihood region,
             as :meth:`cb` with ``method='lr'`` is for a function of time
             (aliases as there); it is slower, and needs the data.
-            ``'bootstrap'`` is the percentile interval of the quantile over
-            the parametric bootstrap refits of :meth:`cb`; it needs the
-            data.
+            ``'bootstrap'`` is the BCa interval of the quantile over the
+            parametric bootstrap refits of :meth:`cb` (the refits'
+            quantiles, corrected for bias and skewness as there); it needs
+            the data.
         n_boot : int, optional
             The number of bootstrap refits (``method='bootstrap'`` only).
             Default 200.

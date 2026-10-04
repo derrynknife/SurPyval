@@ -71,12 +71,12 @@ class Binomial_(DiscreteParametricFitter):
 
     It is the recurrent (repeated-trials) counterpart of the
     :class:`Bernoulli` distribution, which is the special case ``n = 1``.
-    The two agree exactly on the probability mass there. Their survival
-    functions are offset by one, which is a convention rather than a
-    disagreement: this class follows the package's discrete rule
-    :math:`R(k) = P(K > k)`, while Bernoulli uses :math:`P(X \geq x)` so
-    that ``R(0) = 1`` and ``R(1) = p``. Hence
-    ``Bernoulli.sf(x, p) == Binomial.sf(x - 1, 1, p)``.
+    The two agree exactly there, every function included: both follow
+    the package's discrete rule :math:`R(k) = P(K > k)`, so
+    ``Bernoulli.sf([0, 1], 0.3)`` and ``Binomial.sf([0, 1], 1, 0.3)`` are
+    both ``[0.3, 0]``, and ``Bernoulli.sf(x, p) == Binomial.sf(x, 1, p)``
+    with no offset (Bernoulli's survival function was :math:`P(X \geq x)`
+    before 0.22, #344).
 
     The distribution is parameterised by ``n`` (the number of trials, a
     positive integer) and ``p`` (the per-trial event probability). Because
@@ -84,6 +84,14 @@ class Binomial_(DiscreteParametricFitter):
     the gradient-based MLE machinery; instead ``fit`` uses the closed-form
     maximum likelihood estimate of ``p`` for a known number of trials, in the
     same spirit as :class:`Bernoulli`.
+
+    Examples
+    --------
+    >>> from surpyval import Bernoulli, Binomial
+    >>> Binomial.sf([0, 1], 1, 0.3)
+    array([0.3, 0. ])
+    >>> Bernoulli.sf([0, 1], 0.3)
+    array([0.3, 0. ])
     """
 
     def __init__(self, name: str) -> None:

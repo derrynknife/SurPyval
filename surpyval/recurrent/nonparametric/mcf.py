@@ -668,7 +668,10 @@ class NonParametricCounting(
             interval- (2) censored rows are not supported and raise a
             ``ValueError``.
         n : array like, optional
-            Count of events at each row. Defaults to 1.
+            The number of events each row stands for. This model takes exact
+            events (``c=0``) and end-of-observation rows (``c=1``), each of
+            which stands for one, so every ``n`` is 1 (``n > 1`` is refused:
+            repeat the row for simultaneous events). Defaults to 1.
         tl : array like or scalar, optional
             Left-truncation (delayed-entry) time of each item: a scalar for
             every item, or one value per row (the same on every row of an

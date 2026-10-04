@@ -1083,8 +1083,8 @@ class TVCEvaluationMixin:
         of the function along the path over the likelihood region of all
         the parameters (#617), about a second a time where the Wald bound
         takes milliseconds; it needs the data the model was fitted to.
-        With ``method="bootstrap"``, the percentile interval over the
-        parametric bootstrap refits of :meth:`cb` (with the same
+        With ``method="bootstrap"``, the BCa interval (as for :meth:`cb`)
+        over the parametric bootstrap refits of :meth:`cb` (with the same
         ``n_boot`` and integer ``random_state`` it reuses them); not for
         a model fitted to time-varying covariates, whose resamples would
         need each subject's covariate path.

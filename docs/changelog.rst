@@ -110,6 +110,14 @@ Unreleased
 
 **Fixed**
 
+- Docs (#667): the regressions' bootstrap ``param_cb`` / ``quantile_cb``
+  (and ``cb_tvc``) are described as the BCa interval they are; ``help``
+  on ``surpyval`` has a package docstring and ``__all__`` (``import *``
+  no longer exports ``np``, ``Any``, ``TYPE_CHECKING``); Weibull, LogNormal
+  and the other common families have class docstrings with their ``sf``
+  and an example; the Binomial / Bernoulli convention, the forest's
+  ``feature_importances()`` and the recurrent ``n`` (1 on exact events)
+  read as the code does; float-sensitive examples are rounded.
 - Removed names say what replaced them, and when they went (#653):
   ``from surpyval import Power`` raised a bare "cannot import name"; old
   attributes (``param_names``, ``se``, ``cov_matrix``, ``loglike``, ...),

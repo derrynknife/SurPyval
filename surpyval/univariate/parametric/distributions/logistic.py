@@ -18,6 +18,28 @@ from ._stable import softplus
 
 
 class Logistic_(OptimisedFitMixin, ParametricFitter):
+    r"""
+    The Logistic distribution: symmetric like the Normal, with heavier
+    tails and a closed-form survival function. Its support is the whole
+    real line; its log-time version is the LogLogistic.
+
+    The parameters are the location ``mu`` (the median) and the scale
+    ``sigma`` (positive). On :math:`(-\infty, \infty)`,
+
+    .. math::
+        R(x) = 1 - \frac{1}{1 + e^{- \left ( x - \mu \right ) / \sigma}}.
+
+    ``fit`` estimates the parameters from data (which may be censored
+    and truncated); ``from_params`` builds the model from known values.
+
+    Examples
+    --------
+    >>> from surpyval import Logistic
+    >>> model = Logistic.from_params([10, 2])
+    >>> model.sf([5, 10, 12]).round(4)
+    array([0.9241, 0.5   , 0.2689])
+    """
+
     # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
     # the logit of ff, on which this family is a straight line in
     # time (#477).
