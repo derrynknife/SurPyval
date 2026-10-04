@@ -81,6 +81,7 @@ class InferenceMixin:
         _information: "tuple | None"
         _covariance_cache: "tuple | None"
         _restored_covariance: "npt.NDArray | None"
+        _restored_inference: "tuple | None"
         _restored: bool
         _lr_searches: "list | None"
         _bootstrap_refits: "dict | None"
@@ -193,6 +194,11 @@ class InferenceMixin:
         model's own."""
         restored = self._restored_covariance
         if restored is not None:
+            state = self._restored_inference
+            if state is not None:
+                # The centred fit's, as the original model computes its
+                # bounds (#664).
+                return state[0], state[1], state[2].copy()
             return (
                 np.asarray(self._eval_params(), dtype=float),
                 self.center,
