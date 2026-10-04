@@ -154,6 +154,13 @@ Unreleased
   window from before new, an intensity model returned NaN or a count. An
   ``n`` or ``limit`` with neither one value nor one per age says so,
   rather than raising numpy's broadcast error.
+- Recurrent messages (#663): ``CrowAMSAA.projection`` on systems ending
+  at different times said "Use method='wald'", which it does not take; it
+  now says every system must run to the same end of test. Renewal fits
+  (GeneralizedRenewal, ARA, G1) with too few distinct times between
+  failures advised ``fixed=``, which they do not take; they now say so in
+  recurrent terms. A model restored with ``from_dict`` says so when asked
+  for bounds, rather than calling itself built from parameters.
 
 v0.23 (4 October 2026)
 ----------------------

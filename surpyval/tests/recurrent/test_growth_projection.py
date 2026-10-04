@@ -176,3 +176,14 @@ def test_607_projection_needs_labels_and_a_time_terminated_test():
         CrowAMSAA.projection(X, MODES[:-1], FEF, c=C)
     with pytest.raises(ValueError, match="time-terminated"):
         CrowAMSAA.projection(X[:-1], MODES[:-1], FEF)
+
+
+def test_663_projection_of_systems_ending_at_different_times():
+    # projection has no method=: the message says what the data needs
+    x = X + [20.0, 300.0, 380.0]
+    i = [1] * len(X) + [2] * 3
+    with pytest.raises(ValueError, match="same end of test") as info:
+        CrowAMSAA.projection(
+            x, MODES + ["b1", "a1", None], FEF, i=i, c=C + [0, 0, 1]
+        )
+    assert "method=" not in str(info.value)

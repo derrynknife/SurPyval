@@ -95,10 +95,19 @@ class LikelihoodInferenceMixin:
                     "a how='MSE' fit minimises squared error on the MCF "
                     "and has no likelihood; refit with how='MLE'."
                 )
+            elif getattr(self, "how", None) == "MLE":
+                # A fit restored with from_dict / from_json still says how
+                # it was fitted (#663).
+                reason = (
+                    "this model was restored with from_dict / from_json, "
+                    "and restored models carry no data, so no likelihood; "
+                    "refit it to the data for bounds and standard errors."
+                )
             else:
                 reason = (
-                    "a model built from parameters (from_params or "
-                    "fit_from_parameters) has no likelihood."
+                    "models built from parameters (from_params or "
+                    "fit_from_parameters) or restored with from_dict / "
+                    "from_json carry no data, so no likelihood."
                 )
             raise ValueError(
                 "Likelihood inference is only available for models fitted "

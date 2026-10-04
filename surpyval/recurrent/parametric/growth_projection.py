@@ -265,12 +265,12 @@ def growth_projection(
         factors[label] = d
 
     model = fitter.fit(x_arr, i=i_arr, c=c_arr)
-    T, n_events, terminated = model._crow_design()
+    T, n_events, terminated = model._crow_design(for_projection=True)
     if terminated != "time":
         raise ValueError(
-            "A growth projection needs a time-terminated test: each system "
-            "run from 0 to the end of the test, T, recorded as a c=1 row at "
-            "T. Add that row (the time the test stopped)."
+            "A growth projection needs a time-terminated test: every system "
+            "run from 0 to the same end of test, T, each recorded with a "
+            "c=1 row at T. Add that row (the time the test stopped)."
         )
     k = len(model.data.items)
     total_time = k * T
