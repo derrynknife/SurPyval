@@ -47,6 +47,7 @@ from surpyval.utils.validation import (
     option_error,
     warn_outside_unit_interval,
 )
+from surpyval.utils.warnings import caller_stacklevel
 
 from ._likelihood_ratio import (
     _LN_MAX,
@@ -201,6 +202,18 @@ def _offset_upper(data: dict, zi: bool) -> float:
         return float(np.min(upper[constrains]))
     everything = x[x != 0] if zi else x
     return float(np.min(everything))
+
+
+#: The start of the warning on an offset model's Wald bound (#645).
+_OFFSET_WALD_START = "The Wald bounds of an offset model hold the offset"
+_OFFSET_WALD_WARNING = (
+    _OFFSET_WALD_START + " gamma at its estimate: it is a threshold, "
+    "whose likelihood is not regular, so the fit estimates no standard "
+    "error for it, and these {what} bounds leave its uncertainty out. "
+    "They are too narrow near gamma (a 90% bound on a 3-parameter "
+    "Weibull's B1 life from 30 failures covered 40% of the time). "
+    "method='bootstrap' includes it."
+)
 
 
 def _query_array(x: Any) -> Any:
@@ -759,6 +772,16 @@ class Parametric(
             )
         raise _no_p_error(self.dist.name)
 
+    #: The bootstrap refits drawn for ``method="bootstrap"``
+    #: (``_bootstrap.refits``), by ``(n_boot, random_state)``; not pickled.
+    _bootstrap_refits: "dict | None" = None
+
+    def __getstate__(self) -> dict:
+        # The bootstrap refits are a cache, rebuilt on demand (#645)
+        state = self.__dict__.copy()
+        state.pop("_bootstrap_refits", None)
+        return state
+
     def __setstate__(self, state: dict) -> None:
         # A model pickled before v0.23 holds the proportion as "p" (#608).
         if "p" in state and "lfp_p" not in state:
@@ -903,6 +926,8 @@ class Parametric(
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         method: str | None = None,
+        n_boot: int = 200,
+        random_state: Any = None,
     ) -> npt.NDArray:
         """
         Method to calculate the confidence bound on a parameter.
@@ -929,6 +954,13 @@ class Parametric(
           ``r`` does as the model tends to a Poisson), the bound is that
           edge: 0, 1 or ``inf``. A side whose bound cannot be found is
           ``nan``, with a warning.
+        - ``"bootstrap"`` -- the parametric bootstrap, as for ``cb``: the
+          bias-corrected percentile interval of the parameter over
+          ``n_boot`` refits to data simulated from the model. It is the
+          one bound on an offset's ``gamma``, and the one on another
+          parameter of an offset model that includes the offset's
+          uncertainty (the Wald bound holds it at its estimate, with a
+          warning; #645).
 
         The probability ``p`` of a ``Bernoulli``,
         ``FixedEventProbability`` or ``Binomial`` fit is bounded from its
@@ -955,7 +987,7 @@ class Parametric(
             distribution parameter named ``p`` (``Geometric``,
             ``NegativeBinomial``) is that parameter; the proportion,
             ``"p"`` before v0.23, is ``"lfp_p"`` (#608). The offset
-            ``"gamma"`` has no confidence bound: it is a threshold
+            ``"gamma"`` has only the bootstrap bound: it is a threshold
             parameter, whose likelihood is not regular, so no standard
             error is estimated for it.
         alpha_ci : float, optional
@@ -963,9 +995,14 @@ class Parametric(
         bound : str, optional
             ``"two-sided"`` (the default), ``"upper"`` or ``"lower"``.
         method : str, optional
-            ``"wald"`` (the default) or ``"lr"``, as above; ``"exact"``
-            (the default), ``"wald"`` or ``"lr"`` for the probability
-            models.
+            ``"wald"`` (the default), ``"lr"`` or ``"bootstrap"``, as
+            above; ``"exact"`` (the default), ``"wald"`` or ``"lr"`` for
+            the probability models.
+        n_boot : int, optional
+            The number of bootstrap refits, with ``method="bootstrap"``.
+            Defaults to 200.
+        random_state : int or numpy Generator, optional
+            The seed of the bootstrap's simulations.
 
         Returns
         -------
@@ -988,10 +1025,21 @@ class Parametric(
             return probability_cb(self, name, alpha_ci, bound, method)
         if method is None:
             method = "wald"
-        if self._is_lr(method):
+        if self._is_lr(method, bootstrap=True):
             return self._param_cb_lr(name, alpha_ci, bound)
+        if method.lower() == "bootstrap":
+            check_option("bound", bound, BOUNDS)
+            if not 0 < alpha_ci < 1:
+                raise alpha_ci_error(alpha_ci)
+            from . import _bootstrap
+
+            return _bootstrap.param_cb_bootstrap(
+                self, name, alpha_ci, bound, n_boot, random_state
+            )
 
         is_core, idx = self._resolve_param_name(name)
+        if is_core:
+            self._warn_offset_wald("param_cb")
         if not is_core:
             cov = self.covariance()
             p_hat = self.f0 if name == "f0" else self.lfp_p
@@ -1068,9 +1116,11 @@ class Parametric(
             # offset model is non-regular (the likelihood's support moves
             # with it), so a Wald variance for it would be misleading.
             raise ValueError(
-                "No confidence bound is available for the offset 'gamma': "
-                "it is a threshold parameter whose likelihood is not "
-                "regular, so no standard error is estimated for it."
+                "No Wald or likelihood-ratio bound is available for the "
+                "offset 'gamma': it is a threshold parameter whose "
+                "likelihood is not regular, so no standard error is "
+                "estimated for it. param_cb('gamma', method='bootstrap') "
+                "bounds it by the parametric bootstrap."
             )
         valid = list(self.dist.parameter_names)
         if self.lfp:
@@ -1970,6 +2020,8 @@ class Parametric(
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
     ) -> npt.NDArray:
         r"""
         Confidence bounds of the ``on`` function at the ``alpha_ci`` level of
@@ -2002,9 +2054,13 @@ class Parametric(
             Defaults to two-sided.
         alpha_ci : scalar, optional
             The level of significance at which the bound will be computed.
-        method : ('wald', 'lr'), str, optional
+        method : ('wald', 'lr', 'bootstrap'), str, optional
             ``"wald"`` (default) propagates the parameter covariance through
-            the ``on`` function by the delta method. ``"lr"`` gives a
+            the ``on`` function by the delta method. For an offset model
+            the covariance leaves the offset out (it is a threshold, whose
+            likelihood is not regular), so the Wald bounds hold it at its
+            estimate and are too narrow near it, with a warning saying so;
+            ``"bootstrap"`` includes it (#645). ``"lr"`` gives a
             profile-likelihood (likelihood-ratio) band: at each ``x`` the bound
             is the extreme value of the ``on`` function over the parameter
             confidence region ``{theta : 2[nll(theta) - nll_hat] <= chi2}``
@@ -2021,6 +2077,22 @@ class Parametric(
             without it raises), and is not yet available for offset / LFP /
             ZI models. Where the constrained search cannot find a bound
             from any start, that bound is ``nan``, with a warning.
+            ``"bootstrap"`` is the parametric bootstrap: the model is
+            refitted to ``n_boot`` data sets simulated from it (each unit
+            censored as it was, within its truncation window), and the
+            bound is the bias-corrected percentile interval of the refits'
+            ``on`` function. It includes the uncertainty of every
+            estimated parameter, an offset's among them, and needs the
+            original data, exact or right censored (truncated or not); it
+            is not available for limited-failure or zero-inflated models.
+            The refits are kept on the model for each ``n_boot`` and integer
+            ``random_state``, so bounds at other ``x`` (and ``quantile_cb``
+            and ``param_cb``) reuse them.
+        n_boot : int, optional
+            The number of bootstrap refits, with ``method="bootstrap"``.
+            Defaults to 200.
+        random_state : int or numpy Generator, optional
+            The seed of the bootstrap's simulations.
 
         Returns
         -------
@@ -2055,8 +2127,17 @@ class Parametric(
             # Nothing to bound (the Jacobian of no values fails).
             return np.empty((0, 2) if bound == "two-sided" else (0,))
 
-        if self._is_lr(method):
+        if self._is_lr(method, bootstrap=True):
             return self._cb_lr(t, on, alpha_ci, bound)
+        if method.lower() == "bootstrap":
+            if not 0 < alpha_ci < 1:
+                raise alpha_ci_error(alpha_ci)
+            from . import _bootstrap
+
+            return _bootstrap.cb_bootstrap(
+                self, t, on, alpha_ci, bound, n_boot, random_state
+            )
+        self._warn_offset_wald("cb")
 
         ctx = self._cb_context()
 
@@ -2092,6 +2173,8 @@ class Parametric(
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
     ) -> npt.NDArray:
         r"""
         Confidence bounds on the quantile ``qf(p)``: the B-life at ``p``
@@ -2123,6 +2206,14 @@ class Parametric(
             a function of time. It is invariant to the parameterisation
             and better in small samples, slower, and, like ``cb``'s, not
             available for offset, limited-failure or zero-inflated models.
+            For an offset model the Wald bound holds the offset at its
+            estimate, with a warning; ``"bootstrap"`` (the parametric
+            bootstrap, as for ``cb``) includes its uncertainty (#645).
+        n_boot : int, optional
+            The number of bootstrap refits, with ``method="bootstrap"``.
+            Defaults to 200.
+        random_state : int or numpy Generator, optional
+            The seed of the bootstrap's simulations.
 
         Returns
         -------
@@ -2160,12 +2251,19 @@ class Parametric(
         if self.dist.discrete:
             self._is_lr(method)  # checks the name
             return self._quantile_cb_discrete(probs, alpha_ci, bound, method)
-        if self._is_lr(method):
+        if self._is_lr(method, bootstrap=True):
             fns = [
                 lambda theta, p_i=p_i: self.dist.qf(np.array([p_i]), *theta)[0]
                 for p_i in probs
             ]
             return self._summary_cb_lr(fns, alpha_ci, bound, "qf")
+        if method.lower() == "bootstrap":
+            from . import _bootstrap
+
+            return _bootstrap.quantile_cb_bootstrap(
+                self, probs, alpha_ci, bound, n_boot, random_state
+            )
+        self._warn_offset_wald("quantile_cb")
         return self._quantile_cb_wald(probs, alpha_ci, bound)
 
     def mean_cb(
@@ -2244,19 +2342,35 @@ class Parametric(
         return out[0]
 
     @staticmethod
-    def _is_lr(method: str) -> bool:
+    def _is_lr(method: str, bootstrap: bool = False) -> bool:
+        """Whether ``method`` asks for the likelihood-ratio bound;
+        ``"wald"`` (and, where the caller has it, ``"bootstrap"``) is not,
+        and anything else is refused."""
         m = method.lower()
         if m in ("lr", "likelihood", "likelihood-ratio", "profile"):
             return True
+        if m == "bootstrap" and bootstrap:
+            return False
         if m != "wald":
             check_option(
                 "method",
                 method,
-                ("wald", "lr"),
+                ("wald", "lr", "bootstrap") if bootstrap else ("wald", "lr"),
                 "Case does not matter, and 'likelihood', "
                 "'likelihood-ratio' and 'profile' also mean 'lr'.",
             )
         return False
+
+    def _warn_offset_wald(self, what: str) -> None:
+        """Warn that an offset model's Wald bound holds the offset at its
+        estimate (#645)."""
+        if not self.offset:
+            return
+        warnings.warn(
+            _OFFSET_WALD_WARNING.format(what=what),
+            UserWarning,
+            stacklevel=caller_stacklevel(),
+        )
 
     def _check_summary_cb(
         self, alpha_ci: float, bound: str, what: str = "this bound"
@@ -2850,9 +2964,15 @@ class Parametric(
         ):
 
             def _cb_func(x_model: npt.NDArray) -> Any:
-                return self.cb(
-                    x_model, on="ff", alpha_ci=alpha_ci, method=method
-                )
+                # (the plot's band is drawn as the bound is, and an offset
+                # model's caveat is the bound's to give, not the plot's)
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore", message=_OFFSET_WALD_START
+                    )
+                    return self.cb(
+                        x_model, on="ff", alpha_ci=alpha_ci, method=method
+                    )
 
             cb_func = _cb_func
         else:

@@ -674,7 +674,8 @@ def bca_bounds(
         v_lo, v_hi = ordered[lo, cols], ordered[hi, cols]
         with np.errstate(invalid="ignore", over="ignore"):
             v = np.where(frac > 0, v_lo + frac * (v_hi - v_lo), v_lo)
-        v = np.where(np.abs(v) >= big, np.sign(v) * np.inf, v)
+        with np.errstate(invalid="ignore"):
+            v = np.where(np.abs(v) >= big, np.sign(v) * np.inf, v)
         # A missing estimate (a nan time) gives nan.
         out.append(np.where(np.isnan(est), np.nan, v))
     return np.stack(out, axis=-1) if bound == "two-sided" else out[0]
