@@ -2242,6 +2242,9 @@ class Parametric(
 
         p : array like or scalar
             The probabilities, in (0, 1), whose quantiles are bounded.
+            Outside it the bound is ``nan``, with one warning, as ``qf``
+            gives outside [0, 1] (#626; it raised); a missing ``p`` gives
+            ``nan``.
         alpha_ci : scalar, optional
             The level of significance at which the bound will be computed.
             Defaults to 0.05.
@@ -2299,12 +2302,25 @@ class Parametric(
         mean.
         """
         check_alpha_ci(alpha_ci)
-        probs = np.asarray(p, dtype=float)
+        probs = np.atleast_1d(np.asarray(p, dtype=float))
         self._check_summary_cb(alpha_ci, bound, "quantile_cb")
         if probs.size == 0:
             return np.empty((0, 2) if bound == "two-sided" else (0,))
-        if not np.all((probs > 0) & (probs < 1)):
-            raise ValueError(f"'p' must be in (0, 1); got {probs.tolist()}")
+        # As qf (#611): NaN, with one warning, where p is outside (0, 1),
+        # and NaN for a missing p; the others are bounded (#626).
+        outside = warn_outside_unit_interval(
+            probs, "quantile_cb", closed=False
+        )
+        ok = ~outside & ~np.isnan(probs)
+        if not ok.all():
+            out = np.full(
+                probs.shape + ((2,) if bound == "two-sided" else ()), np.nan
+            )
+            if ok.any():
+                out[ok] = self.quantile_cb(
+                    probs[ok], alpha_ci, bound, method, n_boot, random_state
+                )
+            return out
         if self.dist.discrete:
             self._is_lr(method)  # checks the name
             return self._quantile_cb_discrete(probs, alpha_ci, bound, method)

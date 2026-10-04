@@ -58,6 +58,18 @@ def test_611_qf_outside_unit_interval_warns_nan():
     np.testing.assert_array_equal(q, [np.nan, 2.0, np.nan])
 
 
+def test_626_quantile_cb_outside_unit_interval_warns_nan():
+    # The same rule as qf (it raised): NaN with one warning outside
+    # [0, 1], the other probabilities bounded as before.
+    model = surpyval.KaplanMeier.fit(np.arange(1.0, 11.0))
+    with pytest.warns(UserWarning, match=r"quantile_cb: 2 of the 4") as rec:
+        got = model.quantile_cb([-0.5, 0.5, 1.0, 1.5])
+    assert len(rec) == 1 and rec[0].filename == __file__
+    np.testing.assert_array_equal(got[1], model.quantile_cb([0.5])[0])
+    assert got[2, 0] == 10.0
+    assert np.isnan(got[[0, 3]]).all()
+
+
 def test_quantile_cb_brookmeyer_crowley_inversion():
     # The quantile interval limits must be the first observed times at
     # which the survival bounds cross 1 - p.

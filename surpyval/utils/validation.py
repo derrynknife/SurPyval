@@ -252,7 +252,9 @@ def missing_cause_error(what: str) -> ValueError:
     )
 
 
-def warn_outside_unit_interval(p: npt.ArrayLike) -> npt.NDArray:
+def warn_outside_unit_interval(
+    p: npt.ArrayLike, what: str = "qf", closed: bool = True
+) -> npt.NDArray:
     """Where the probabilities ``p`` given to a quantile function are
     outside [0, 1], with one warning saying so if any are (#576).
 
@@ -261,6 +263,11 @@ def warn_outside_unit_interval(p: npt.ArrayLike) -> npt.NDArray:
     percentage given for a probability, ``qf(10)`` for the B10 life --
     and it used to give NaN in silence. NaN itself is a missing value
     (principle 3), and is not warned of.
+
+    ``what`` names the method in the message (``"quantile_cb"`` for the
+    bounds on the quantiles, #626); ``closed=False`` takes the open
+    interval (0, 1) instead, for a parametric ``quantile_cb``, which does
+    not bound ``qf(0)`` and ``qf(1)``, the ends of the support.
 
     Examples
     --------
@@ -275,21 +282,30 @@ def warn_outside_unit_interval(p: npt.ArrayLike) -> npt.NDArray:
     qf: 1 of the 3 probabilities given is outside [0, 1] (10.0), ...
     """
     u = np.asarray(p, dtype=float)
-    outside = (u < 0) | (u > 1)
+    if closed:
+        outside = (u < 0) | (u > 1)
+        interval = "[0, 1]"
+    else:
+        outside = (u <= 0) | (u >= 1)
+        interval = "(0, 1)"
+    noun = "quantile" if what == "qf" else "bound"
     if outside.any():
         from surpyval.utils.warnings import caller_stacklevel
 
         k = int(outside.sum())
         warnings.warn(
-            "qf: {} of the {} probabilities given {} outside [0, 1] ({}), "
-            "so {} quantile{} NaN. `p` is a probability: for the B10 life "
+            "{}: {} of the {} probabilities given {} outside {} ({}), "
+            "so {} {}{} NaN. `p` is a probability: for the B10 life "
             "pass 0.1, not 10.".format(
+                what,
                 k,
                 u.size,
                 "is" if k == 1 else "are",
+                interval,
                 ", ".join(str(float(v)) for v in u[outside][:3])
                 + (", ..." if k > 3 else ""),
                 "its" if k == 1 else "their",
+                noun,
                 " is" if k == 1 else "s are",
             ),
             stacklevel=caller_stacklevel(),

@@ -11,10 +11,11 @@ This was exported as ``Bernoulli`` as well until 0.20.0, when
 whose survival steps at the outcome. The two are different models and
 now different classes; this one is unchanged.
 
-``df``, ``hf`` and ``qf`` are absent by construction: ``F`` is constant,
-so there is no density and no invertible quantile. There is no failure
-*time* to average either, so ``moment`` and ``mean`` are those of the
-0/1 event indicator: ``p`` for every order.
+``df`` and ``hf`` are absent by construction: ``F`` is constant, so
+there is no density. ``qf`` is the two-point mixture's: the smallest time
+with ``F(x) >= u``, 0 for ``u <= p`` and infinite above it. There is no
+failure *time* to average either, so ``moment`` and ``mean`` are those of
+the 0/1 event indicator: ``p`` for every order.
 """
 
 import autograd.numpy as np
@@ -170,6 +171,49 @@ class FixedEventProbability_(  # type: ignore[misc]
         array([0.69314718, 0.69314718, 0.69314718])
         """
         return -np.log(self.sf(x, p))
+
+    def qf(self, u: Numeric, p: Boxable) -> Boxable:
+        r"""
+
+        Quantile function for the FixedEventProbability model:
+
+        .. math::
+            q(u) = \begin{cases}
+                0 & u \leq p \\
+                \infty & u > p
+            \end{cases}
+
+        The smallest ``x`` with :math:`F(x) \geq u`: the model is the
+        mixture of :class:`InstantlyOccurs` (weight ``p``, all its mass at
+        0) and :class:`NeverOccurs` (weight ``1 - p``, at infinity), so a
+        fraction up to ``p`` has failed from the start and no more ever
+        does. A probability outside [0, 1] gives NaN, with one warning, as
+        every model's ``qf`` (#611).
+
+        Parameters
+        ----------
+
+        u : numpy array or scalar
+            The probability or probabilities at which the quantile will
+            be calculated
+        p : float
+            The probability of failure of the thing
+
+        Returns
+        -------
+
+        qf : scalar or numpy array
+            The quantile(s) at the given probabilities: 0 or ``inf``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import FixedEventProbability
+        >>> FixedEventProbability.qf(np.array([0.0, 0.1, 0.2, 0.5]), 0.2)
+        array([ 0.,  0.,  0., inf])
+        """
+        u_arr = np.asarray(u, dtype=float)
+        return np.where(u_arr <= p, 0.0, np.inf)
 
     def moment(self, m: int, p: Boxable) -> Boxable:
         r"""

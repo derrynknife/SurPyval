@@ -583,6 +583,80 @@ class Binomial_(DiscreteParametricFitter):
         self._set_support(model, False)
         return model
 
+    def fit_from_df(
+        self,
+        df: Any,
+        x_col: str | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        n_trials_col: str | None = None,
+        **fit_options: Any,
+    ) -> Parametric:
+        """
+        Fit to the counts of events held in the columns of a
+        :class:`pandas.DataFrame`, as :meth:`fit` does to arrays.
+
+        Parameters
+        ----------
+        df : DataFrame
+            The data, one experiment (batch) per row.
+        x_col : str
+            The column of the number of events in each row.
+        c_col : str, optional
+            The column of censoring flags (every one must be 0).
+        n_col : str, optional
+            The column of the count (multiplicity) of each row.
+        n_trials_col : str, optional
+            The column of the number of trials in each row, for batches
+            of different sizes (#626); or pass one number for every row as
+            ``n_trials=``. One of the two is needed.
+        fit_options : dict, optional
+            Every other option of :meth:`fit`, passed to it unchanged.
+
+        Returns
+        -------
+        model : Parametric
+            The model :meth:`fit` returns.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> from surpyval import Binomial
+        >>> df = pd.DataFrame({"failed": [1, 0, 3], "tested": [20, 50, 80]})
+        >>> lots = Binomial.fit_from_df(
+        ...     df, x_col="failed", n_trials_col="tested"
+        ... )
+        >>> lots.params.round(4)
+        array([  nan, 0.0267])
+        """
+        from surpyval.utils.dataframe import frame_column, require_frame
+
+        df = require_frame(df)
+        if isinstance(fit_options.get("n_trials"), str):
+            raise ValueError(
+                f"n_trials={fit_options['n_trials']!r} is a column label: "
+                "name the column of trials with `n_trials_col`"
+            )
+        if n_trials_col is not None:
+            if "n_trials" in fit_options:
+                raise ValueError(
+                    "Pass the number of trials as `n_trials` (one number "
+                    "for every row) or as the column `n_trials_col`, not "
+                    "both"
+                )
+            fit_options["n_trials"] = frame_column(
+                df, n_trials_col, "n_trials_col"
+            )
+        elif "n_trials" not in fit_options:
+            raise ValueError(
+                "The Binomial needs the number of trials: name its column "
+                "with `n_trials_col`, or pass one number for every row as "
+                "`n_trials`"
+            )
+        return super().fit_from_df(
+            df, x_col=x_col, c_col=c_col, n_col=n_col, **fit_options
+        )
+
     def _probability_cb(
         self,
         model: Parametric,

@@ -415,6 +415,18 @@ def test_605_em_steps_are_internal(old):
     assert not hasattr(model, old)
 
 
+def test_626_responsibilities_are_internal():
+    # ``p`` held the EM responsibilities, a meaning ``p`` has nowhere
+    # else; its public name warns until v0.25 and the fit does not use it.
+    x = surv.Weibull.random(100, 10, 2, random_state=0)
+    model = no_warnings(sp.MixtureModel.fit, x, dist=surv.Weibull, m=2)
+    with pytest.warns(DeprecationWarning, match="internal to the fit") as rec:
+        resp = model.p
+    assert rec[0].filename == __file__
+    assert resp is model._resp and resp.shape == (2, len(model.data.x))
+    np.testing.assert_allclose(resp.sum(axis=0), 1.0)
+
+
 def test_650_a_component_past_the_data_is_no_finite_maximum():
     # A second Weibull component ran off past the data (scale 33,561, the
     # largest observation 1,150) and the fit called it verified; its limit
@@ -556,6 +568,15 @@ def test_cb_and_quantile_cb_bracket_the_estimate():
     lo, hi = mm.quantile_cb(0.1)
     assert lo < mm.qf(0.1) < hi
     assert mm.quantile_cb([0.1, 0.5]).shape == (2, 2)
+
+
+def test_626_quantile_cb_outside_0_1_is_nan_with_one_warning():
+    mm = _two_weibulls()
+    with pytest.warns(UserWarning, match=r"quantile_cb: 1 of the 2") as rec:
+        got = mm.quantile_cb([0.1, 1.5])
+    assert len(rec) == 1 and rec[0].filename == __file__
+    np.testing.assert_allclose(got[0], mm.quantile_cb(0.1))
+    assert np.isnan(got[1]).all()
 
 
 def test_covariance_survives_to_dict_and_refit():

@@ -1127,7 +1127,8 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
 
         p : array like or scalar
             The probabilities at which the quantile interval will be
-            computed. Values must be in (0, 1].
+            computed, in [0, 1]. Outside it the interval is ``[nan, nan]``,
+            with one warning, as ``qf`` gives (#626; it raised).
         alpha_ci : scalar, optional
             The level of significance at which the interval will be
             computed. Defaults to 0.05.
@@ -1163,8 +1164,7 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         """
         check_alpha_ci(alpha_ci)
         p = np.atleast_1d(p).astype(float)
-        if ((p <= 0) | (p > 1)).any():
-            raise ValueError("'p' must be in the range (0, 1]")
+        outside = warn_outside_unit_interval(p, "quantile_cb")
 
         bounds = self.cb(
             self.x,
@@ -1178,6 +1178,9 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
 
         out = np.empty((p.size, 2))
         for i, p_i in enumerate(p):
+            if outside[i] or np.isnan(p_i):
+                out[i] = np.nan
+                continue
             level = 1.0 - p_i
             # Times enter the interval when the lower survival bound
             # falls to the level, and leave it once the upper survival

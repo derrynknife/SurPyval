@@ -82,7 +82,7 @@ def _quantile_functions(case, model):
         out["dist.qf"] = lambda p: dist.qf(p, *model.params)
     elif dist is not None:
         # A parametric model of a distribution with no quantile function
-        # (FixedEventProbability) has none either.
+        # has none either (FixedEventProbability had none until #626).
         return out
     out["qf"] = model.qf
     return out
