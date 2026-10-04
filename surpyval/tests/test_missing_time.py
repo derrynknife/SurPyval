@@ -7,6 +7,8 @@ it returned the value at t = inf; parametric ``sf_tvc`` / ``Hf_tvc``
 raised an IndexError. Other times must be unaffected.
 """
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -50,8 +52,11 @@ def test_nonparametric_hf_at_a_single_missing_time():
 @pytest.mark.parametrize("bound", ["two-sided", "upper", "lower"])
 def test_nonparametric_bounds_at_a_missing_time(bound):
     model = surv.KaplanMeier.fit(X, C)
-    with_nan = np.atleast_2d(model.cb(T, bound=bound).T).T  # one row a time
-    without = np.atleast_2d(model.cb(T[1:], bound=bound).T).T
+    # (T goes past the last time, where the bounds warn, #665.)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with_nan = np.atleast_2d(model.cb(T, bound=bound).T).T  # a row a time
+        without = np.atleast_2d(model.cb(T[1:], bound=bound).T).T
     assert np.isnan(with_nan[0]).all()
     np.testing.assert_allclose(with_nan[1:], without)
 

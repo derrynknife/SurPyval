@@ -179,8 +179,17 @@ def test_cb_regions(model, on, bound, interp, bound_type):
     np.testing.assert_array_equal(
         bounded.cb(inside, **kw), model.cb(inside, **kw)
     )
-    # Without bounds, NaN outside the data; with them, only outside them.
-    assert np.isnan(model.cb([first - 1.0, last + 1.0], **kw)).all()
+    # Without bounds, NaN past the data (with a warning where the step sf
+    # has a value) and, before it, the step estimate's exact start value
+    # (#665); with them, NaN only outside them.
+    if interp == "step":
+        with pytest.warns(UserWarning, match="past the last observed"):
+            assert np.isnan(model.cb([last + 1.0], **kw)).all()
+        np.testing.assert_array_equal(
+            model.cb([first - 1.0], **kw), 1.0 if on == "sf" else 0.0
+        )
+    else:
+        assert np.isnan(model.cb([first - 1.0, last + 1.0], **kw)).all()
     assert np.isnan(bounded.cb([lower - 1.0, upper + 1.0, np.nan], **kw)).all()
     # The start value, with no width, before the first value.
     start = bounded.cb([lower, first - 1.0], **kw)

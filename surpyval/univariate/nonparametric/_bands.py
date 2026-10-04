@@ -217,6 +217,8 @@ class BandsMixin:
             x: npt.ArrayLike,
             f: Callable[[npt.ArrayLike], npt.ArrayLike],
             start: float,
+            interp: str = "step",
+            method: str = "cb",
         ) -> npt.NDArray: ...
 
     def _band_sample_size(self) -> float:
@@ -592,9 +594,10 @@ class BandsMixin:
         cb : numpy array
             For two-sided bounds an array of shape (len(x), 2) with
             ``[lower, upper]`` columns; otherwise an array of the
-            requested bound at each x. As for ``cb``, the bounds are NaN
-            below the first and above the last observed value, and at a
-            missing x; with a support set (see ``set_support``) they are 1
+            requested bound at each x. As for ``cb``, the bounds are 1
+            below the first observed value, NaN (with a warning) above the
+            last, and NaN at a missing x; with a support set (see
+            ``set_support``) they are 1
             from ``lower`` to the first value, the bounds at the last
             value from there to ``upper``, and NaN outside them.
 
@@ -697,4 +700,6 @@ class BandsMixin:
         # NaN outside the data or, with a support set, 1 before the first
         # value and the bounds at the last value carried to ``upper``, as
         # ``cb`` gives.
-        return self._bounds_within_support(x, resampled, 1.0)
+        return self._bounds_within_support(
+            x, resampled, 1.0, method="bootstrap_cb"
+        )

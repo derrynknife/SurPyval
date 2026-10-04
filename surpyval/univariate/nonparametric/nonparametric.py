@@ -71,6 +71,30 @@ def _check_interp(interp: str) -> None:
     check_option("interp", interp, _INTERP)
 
 
+def _warn_bounds_past_data(
+    method: str, last: float, past: npt.NDArray
+) -> None:
+    # The step ``sf`` holds its last value past the data, but the bounds
+    # say nothing there and are NaN: said once per call, naming the range
+    # (#665), rather than as a silent NaN.
+    import warnings
+
+    from surpyval.utils.warnings import caller_stacklevel
+
+    shown = ", ".join("{:g}".format(float(v)) for v in past[:5])
+    warnings.warn(
+        "{}: the confidence bounds are NaN at x = {}{}, past the last "
+        "observed value {:g}; the estimate says nothing about values "
+        "beyond its data (sf there only holds its last value). Use "
+        "set_support(lower, upper) to carry the bounds at the last "
+        "value out to upper.".format(
+            method, shown, ", ..." if past.size > 5 else "", last
+        ),
+        UserWarning,
+        stacklevel=caller_stacklevel(),
+    )
+
+
 class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
     """
     Result of ``.fit()`` method for every non-parametric
@@ -168,7 +192,9 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         values, and what its functions give there is a convention: the
         step functions start at their initial value and hold their last
         one, while the interpolated forms (``interp="linear"`` and so on)
-        and the confidence bounds are NaN. With a support set, every
+        are NaN; the confidence bounds are the initial value before the
+        first value (for the step estimate) and NaN, with a warning, after
+        the last. With a support set, every
         function and every ``interp`` gives
 
         - in ``[lower, x[0])``, the value before the first observed value:
@@ -251,15 +277,30 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         x: npt.ArrayLike,
         f: Callable[[npt.ArrayLike], npt.ArrayLike],
         start: float,
+        interp: str = "step",
+        method: str = "cb",
     ) -> npt.NDArray:
         """The confidence bounds ``f(x)``, as :meth:`_within_support`
-        gives them with a support set, and without one NaN outside the
-        observed values (and at a missing x). ``cb``, ``R_cb`` and
-        ``bootstrap_cb`` all go through here so that they agree outside
-        the data: ``bootstrap_cb`` used to carry its step convention there
-        (1 before the first value, the last bounds after it; #452)."""
+        gives them with a support set. Without one they are NaN above the
+        last observed value (and at a missing x), with a warning where
+        the step ``sf`` has a value there (#665); below the first value
+        the step estimate is exactly ``start`` (``sf`` 1), so its bounds
+        collapse onto it, as ``sf`` gives (the interpolated forms are NaN
+        there, as their ``sf`` is). ``cb``, ``R_cb`` and ``bootstrap_cb``
+        all go through here so that they agree outside the data:
+        ``bootstrap_cb`` used to carry its step convention past the last
+        value (#452)."""
         first, last = float(self.x[0]), float(self.x[-1])
-        support = (first, last) if self.support is None else self.support
+        if self.support is not None:
+            support = self.support
+        elif interp == "step":
+            support = (-np.inf, last)
+            xf = np.atleast_1d(np.asarray(x, dtype=float))
+            past = np.unique(xf[xf > last])
+            if past.size:
+                _warn_bounds_past_data(method, last, past)
+        else:
+            support = (first, last)
         return on_support(support, first, last, x, f, start)
 
     @keeps_query_shape
@@ -734,11 +775,16 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         estimate itself, 0.
 
         Where the variance is zero (before the first failure) the bounds
-        are the estimate, 1. Below the first and above the last observed
-        value the bounds are NaN, unless the model has bounds (see
-        ``set_support``): then they are the estimate's initial value from
-        ``lower`` to the first value, the bounds at the last value carried
-        from there to ``upper``, and NaN outside ``[lower, upper]``.
+        are the estimate, 1. Below the first observed value the step
+        estimate is exactly its initial value (``sf`` 1), and so are both
+        bounds (``[1, 1]`` on ``sf``, ``[0, 0]`` on ``ff`` and ``Hf``);
+        the interpolated forms are NaN there, as their ``sf`` is. Above
+        the last observed value the bounds are NaN, with a warning naming
+        the values (the step ``sf`` only holds its last value there),
+        unless the model has bounds (see ``set_support``): then they are
+        the estimate's initial value from ``lower`` to the first value,
+        the bounds at the last value carried from there to ``upper``, and
+        NaN outside ``[lower, upper]``.
 
         Examples
         --------
@@ -783,6 +829,8 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
                 q, on, bound, interp, alpha_ci, bound_type, dist
             ),
             1.0 if on in ("sf", "R") else 0.0,
+            interp,
+            "cb",
         )
 
     def _cb(
@@ -840,7 +888,9 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         ``plot``. Takes the same arguments as ``cb`` (without ``on``), but
         a two-sided result has the columns in ``[upper, lower]`` order;
         ``cb(x, on='sf')`` returns them as ``[lower, upper]`` and is the
-        method to call. With a support set (see ``set_support``) they are 1
+        method to call. Outside the data they are those of ``cb`` (1 below
+        the first value for the step estimate, NaN with a warning above
+        the last). With a support set (see ``set_support``) they are 1
         from ``lower`` to the first value, the bounds at the last value
         from there to ``upper``, and NaN outside.
         """
@@ -851,6 +901,8 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
             x,
             lambda q: self._R_cb(q, bound, interp, alpha_ci, bound_type, dist),
             1.0,
+            interp,
+            "R_cb",
         )
 
     def _R_cb(

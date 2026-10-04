@@ -10,6 +10,8 @@ from surpyval.utils.fitter import singleton_fitter
 from .nhpp_fitter import NHPPFitter
 
 if TYPE_CHECKING:
+    from surpyval.utils.recurrent_event_data import RecurrentEventData
+
     from .growth_projection import GrowthProjection
 
 
@@ -44,19 +46,19 @@ class CrowAMSAA(NHPPFitter):
     Process             : Crow-AMSAA
     Fitted by           : MLE
     Parameters          :
-         alpha: 913.8466210685444
-          beta: 1.4781707110680866
+         alpha: 913.8467364753063
+          beta: 1.4781708312933042
     >>> model.cif([1, 2, 3, 4, 5, 6])
-    array([4.20072057e-05, 1.17030084e-04, 2.13103439e-04, 3.26040266e-04,
-           4.53440995e-04, 5.93696079e-04])
+    array([4.20071634e-05, 1.17029976e-04, 2.13103252e-04, 3.26039992e-04,
+           4.53440627e-04, 5.93695609e-04])
     >>>
     >>> model.iif([1, 2, 3, 4, 5, 6])
-    array([6.20938211e-05, 8.64952211e-05, 1.05001087e-04, 1.20485793e-04,
-           1.34052640e-04, 1.46264026e-04])
+    array([6.20937637e-05, 8.64951483e-05, 1.05001004e-04, 1.20485702e-04,
+           1.34052542e-04, 1.46263922e-04])
     >>>
     >>> model.inv_cif([1, 2, 3, 4, 5, 6])
-    array([ 913.84662107, 1460.57434899, 1921.54912724, 2334.39329941,
-           2714.78099355, 3071.15581638])
+    array([ 913.84673648, 1460.57447773, 1921.54925376, 2334.39341615,
+           2714.78109598, 3071.15590144])
     """
 
     def __init__(self) -> None:
@@ -88,6 +90,53 @@ class CrowAMSAA(NHPPFitter):
         alpha = params[0]
         beta = params[1]
         return alpha * (N ** (1.0 / beta))
+
+    def _closed_form_mle(
+        self, data: "RecurrentEventData"
+    ) -> "np.ndarray | None":
+        """The closed-form MLE (MIL-HDBK-189C, Crow 1974) where every
+        item is observed from 0 to a common end ``T``, closed by a ``c=1``
+        row, by its ``tr`` or by its last failure (time- or
+        failure-terminated), with exact failures only:
+
+        .. math::
+            \\hat\\beta = \\frac{N}{\\sum_{q, i} \\ln(T / t_{qi})},
+            \\qquad
+            \\hat\\alpha = T \\left(\\frac{k}{N}\\right)^{1 /
+            \\hat\\beta}
+
+        for ``N`` failures over ``k`` items. The search agreed with it to
+        only about 1e-5 (#665), where a handbook check reads four or five
+        figures. ``None`` for any other data (delayed entry, censored
+        counts, unequal ends), which are searched."""
+        x = np.asarray(data.x, dtype=float)
+        c = np.asarray(data.c)
+        if not np.all((c == 0) | (c == 1)):
+            return None
+        if x.ndim == 2:
+            # Exact rows given as [t, t] pairs, the same data as 1-D
+            if not np.all(x[:, 0] == x[:, 1]):
+                return None
+            x = x[:, 1]
+        tl = np.asarray(data.tl, dtype=float)
+        if np.any(np.isfinite(tl) & (tl != 0)):
+            return None
+        _, ends = data.item_observation_windows()
+        T = float(ends[0])
+        if not (np.isfinite(T) and T > 0 and np.all(ends == T)):
+            return None
+        failures = c == 0
+        times = x[failures]
+        counts = np.asarray(data.n, dtype=float)[failures]
+        N = float(counts.sum())
+        if N < 1 or np.any(times <= 0):
+            return None
+        log_sum = float(np.sum(counts * np.log(T / times)))
+        if not log_sum > 0:
+            return None
+        beta = N / log_sum
+        alpha = T * (len(ends) / N) ** (1.0 / beta)
+        return np.array([alpha, beta])
 
     def projection(
         self,
