@@ -242,3 +242,32 @@ def test_615_forecast_option_errors():
         sp.forecast(weibull, horizon=1.0)
     with pytest.raises(ValueError, match="horizon is required"):
         sp.forecast(weibull, [1.0])
+
+
+def test_659_negative_age_and_wrong_length_n_are_refused():
+    from surpyval.recurrent import HPP, CoxLewis, CrowAMSAA, GeneralizedRenewal
+
+    x = [3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60]
+    i = [1] * 6 + [2] * 5
+    c = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+    models = [
+        sp.Weibull.from_params([1000.0, 2.0]),
+        CrowAMSAA.from_params([50.0, 1.3]),
+        HPP.from_params([0.1]),
+        CoxLewis.fit(x, i=i, c=c),
+        GeneralizedRenewal.fit(x, i=i, c=c),
+    ]
+    for model in models:
+        with pytest.raises(ValueError, match="age must be finite times of"):
+            sp.forecast(model, age=[5.0, -10.0], horizon=10.0)
+    nhpp = models[1]
+    with pytest.raises(ValueError, match=r"one per age \(2 ages\); got 3"):
+        sp.forecast(nhpp, age=[30.0, 40.0], n=[1, 2, 3], horizon=10.0)
+    with pytest.raises(ValueError, match=r"^n must be one value"):
+        sp.forecast(models[0], age=[30.0, 40.0], n=[1, 2, 3], horizon=10.0)
+    with pytest.raises(ValueError, match=r"^limit must be one value"):
+        sp.forecast(nhpp, age=[30.0, 40.0], limit=[50, 60, 70], horizon=10.0)
+    # an age of 0, and one n for every age, are fine
+    one = sp.forecast(nhpp, age=[0.0, 40.0], n=2, horizon=10.0)
+    each = sp.forecast(nhpp, age=[0.0, 40.0], n=[2, 2], horizon=10.0)
+    assert np.allclose(one.expected, each.expected)
