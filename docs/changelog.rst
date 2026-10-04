@@ -326,6 +326,12 @@ Unreleased
   ``NonParametricCounting.mcf_cb``, ``CauseSpecificMCF.mcf_cb`` and the
   plots that draw them, and a renewal model's ``summary``. They returned
   reversed (1.5), equal (1) or NaN (below 0) bounds in silence.
+- Offset fits running to the family's limit (#627): a left skewed
+  LogLogistic ends "No finite maximum" in 200-400 likelihood evaluations,
+  not 1,000-3,000. A point, or an offset on the way (a short profile over
+  the offset), that fits better than the limit is no longer called a
+  runaway: offset LogNormal and Gamma fits 0.01 above the Normal end at
+  their maximum. The comparison with the limit has a relative tolerance.
 
 v0.23 (4 October 2026)
 ----------------------
