@@ -119,7 +119,7 @@ def closed_form_results(
         "params": params,
         "gamma": 0.0,
         "f0": 0.0,
-        "p": 1.0,
+        "lfp_p": 1.0,
         "_neg_ll": neg_ll,
         "log_likelihood": -neg_ll,
         "_covariance": cov,

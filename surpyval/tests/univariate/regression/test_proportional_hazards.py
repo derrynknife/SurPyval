@@ -39,7 +39,7 @@ def test_cox_ph_hospital():
     # Fit model
     model = CoxPH.fit(x=T, Z=X, c=C)
 
-    # beta_0 should be 2.12
+    # coef_0 should be 2.12
     assert pytest.approx(2.12, abs=0.01) == model.params[0]
 
 
@@ -58,7 +58,7 @@ def test_cox_ph_company_death():
     # Fit model
     model = CoxPH.fit(x=T, Z=P_on_E, c=C)
 
-    # beta_0 should be -0.34
+    # coef_0 should be -0.34
     assert pytest.approx(-0.34, abs=0.01) == model.params[0]
 
 
@@ -546,15 +546,15 @@ def test_kp_handles_heavy_ties():
 
 
 def test_ph_fixed_covariate_coefficient_pins_correct_parameter():
-    # ``fixed={"beta_0": v}`` must pin the first covariate coefficient, not
+    # ``fixed={"coef_0": v}`` must pin the first covariate coefficient, not
     # the first distribution parameter (#251: the phi param map was merged
-    # without the k_dist offset, so beta_0 collided with alpha).
+    # without the k_dist offset, so coef_0 collided with alpha).
     np.random.seed(5)
     x = Weibull.random(200, 10, 3)
     Z = np.random.normal(size=(200, 2))
 
     free = WeibullPH.fit(x, Z=Z)
-    fixed_beta0 = WeibullPH.fit(x, Z=Z, fixed={"beta_0": 0.5})
+    fixed_beta0 = WeibullPH.fit(x, Z=Z, fixed={"coef_0": 0.5})
 
     assert fixed_beta0.params[2] == pytest.approx(0.5, abs=1e-12)
     # The distribution parameters must remain close to the free fit, not be
@@ -827,7 +827,7 @@ def test_efron_fit_unchanged_by_the_ragged_score(case):
     H = model.Hf([0.5, 1.0, 3.0], np.zeros((3, 2)), **stratum)
     beta, se, H0 = _EFRON_BEFORE_515[case]
     np.testing.assert_allclose(model.beta, beta, rtol=1e-12)
-    np.testing.assert_allclose(model.se, se, rtol=1e-12)
+    np.testing.assert_allclose(model.standard_errors(), se, rtol=1e-12)
     np.testing.assert_allclose(H, H0, rtol=1e-12)
 
 

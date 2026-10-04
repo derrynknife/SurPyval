@@ -57,6 +57,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
 )
+from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.rng import as_generator
@@ -128,6 +129,10 @@ class AdditiveHazardsFitter(
     distorted -- and warns. A proportional hazards model, which keeps the
     hazard positive by construction, is then the safer choice.
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "additive hazards fitter"
+    name_suffix = "AH"
 
     def __init__(self, name: str, dist: Any) -> None:
         self.name = name
@@ -454,6 +459,7 @@ class AdditiveHazardsFitter(
 
     # -- fitting ----------------------------------------------------------
 
+    @dataframe_covariates
     def fit(
         self,
         x: npt.ArrayLike,

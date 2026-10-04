@@ -141,7 +141,9 @@ def test_custom_distribution_may_name_a_parameter_p():
     model = C.fit(x, c, lfp=True)
     reference = W.fit(x, c, lfp=True)
     assert model.params == pytest.approx(reference.params, rel=1e-4)
-    assert model.p == pytest.approx(reference.p, rel=1e-4)
+    assert model.lfp_p == pytest.approx(reference.lfp_p, rel=1e-4)
+    # ``p`` is the distribution's own parameter (#608)
+    assert model.p == model.params[1]
 
 
 _SUPPORTS = {

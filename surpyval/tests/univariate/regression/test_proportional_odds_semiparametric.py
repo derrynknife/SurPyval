@@ -170,7 +170,7 @@ def test_sign_and_baseline_match_the_parametric_po():
     semi = sp.ProportionalOdds.fit(x, Z, c=c)
     par = sp.PO(sp.LogLogistic).fit(x, Z, c=c)
     np.testing.assert_allclose(semi.beta, par.params[2:], atol=0.05)
-    assert np.all(np.abs(semi.beta - [1.0, -0.5]) < 3 * semi.se)
+    assert np.all(np.abs(semi.beta - [1.0, -0.5]) < 3 * semi.standard_errors())
     t = np.array([5.0, 10.0, 20.0])
     np.testing.assert_allclose(
         semi.sf(t, [0.0, 0.0]), par.sf(t, [0.0, 0.0]), atol=0.02
@@ -195,7 +195,9 @@ def test_delayed_entry_splits_exactly():
     ]
     split = sp.ProportionalOdds.fit(xs, np.r_[Z, Z[:20]], c=cs, tl=tl)
     np.testing.assert_allclose(split.beta, whole.beta, rtol=1e-8)
-    np.testing.assert_allclose(split.se, whole.se, rtol=1e-6)
+    np.testing.assert_allclose(
+        split.standard_errors(), whole.standard_errors(), rtol=1e-6
+    )
     np.testing.assert_allclose(
         split.sf(x, Z), whole.sf(x, Z), rtol=1e-8, atol=1e-12
     )
@@ -393,7 +395,7 @@ def test_604_proportional_odds_model_comparison_values():
 
 # -- param_cb(method="lr") (#617) -------------------------------------------
 def test_617_param_cb_lr_is_where_the_profile_deviance_is_chi2():
-    # The profile likelihood of beta_0 found here by a general-purpose
+    # The profile likelihood of coef_0 found here by a general-purpose
     # optimiser over all the jumps and the other coefficient.
     from scipy.stats import chi2
 
@@ -403,7 +405,7 @@ def test_617_param_cb_lr_is_where_the_profile_deviance_is_chi2():
     m = lik.m
     ll_hat = model.log_likelihood
     crit = chi2.ppf(0.95, 1)
-    lo, hi = model.param_cb("beta_0", method="lr")
+    lo, hi = model.param_cb("coef_0", method="lr")
     assert lo < model.beta[0] < hi
     u0 = lik.start(x, w, tl)
     for b in (lo, hi):
@@ -427,27 +429,27 @@ def test_617_param_cb_lr_is_where_the_profile_deviance_is_chi2():
 def test_617_param_cb_lr_options_restored_and_aliased():
     x, c, w, tl, Z = _po_data(n=80, seed=8)
     model = sp.ProportionalOdds.fit(x, Z, c=c)
-    wald = model.param_cb("beta_1")
-    assert np.array_equal(wald, model.param_cb("beta_1", method="wald"))
-    lr = model.param_cb("beta_1", method="likelihood")
+    wald = model.param_cb("coef_1")
+    assert np.array_equal(wald, model.param_cb("coef_1", method="wald"))
+    lr = model.param_cb("coef_1", method="likelihood")
     # Close to Wald's on a regular fit, and not the same.
     np.testing.assert_allclose(lr, wald, atol=0.25 * np.diff(wald)[0])
     assert not np.allclose(lr, wald, rtol=1e-6)
-    two = model.param_cb("beta_1", alpha_ci=0.2, method="lr")
-    lower = model.param_cb("beta_1", alpha_ci=0.1, bound="lower", method="lr")
+    two = model.param_cb("coef_1", alpha_ci=0.2, method="lr")
+    lower = model.param_cb("coef_1", alpha_ci=0.1, bound="lower", method="lr")
     assert lower.shape == (1,) and lower[0] == two[0]
     with pytest.raises(ValueError, match="method"):
-        model.param_cb("beta_1", method="bootstrap")
+        model.param_cb("coef_1", method="bootstrap")
     restored = sp.ProportionalOddsModel.from_dict(model.to_dict())
     with pytest.raises(ValueError, match="data"):
-        restored.param_cb("beta_1", method="lr")
+        restored.param_cb("coef_1", method="lr")
     # A constant column is aliased: no interval, as Wald gives none.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         aliased = sp.ProportionalOdds.fit(
             x, np.column_stack([Z, np.ones(len(x))]), c=c
         )
-    assert np.all(np.isnan(aliased.param_cb("beta_2", method="lr")))
+    assert np.all(np.isnan(aliased.param_cb("coef_2", method="lr")))
     np.testing.assert_allclose(
-        aliased.param_cb("beta_1", method="lr"), lr, rtol=1e-6
+        aliased.param_cb("coef_1", method="lr"), lr, rtol=1e-6
     )

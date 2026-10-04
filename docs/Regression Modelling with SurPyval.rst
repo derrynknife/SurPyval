@@ -271,14 +271,17 @@ constant divides its coefficient by it and leaves the maximised likelihood
 where it was. The search, and the check that it reached a maximum, measure
 each coefficient in its covariate's units -- the change of
 :math:`1/\mathrm{range}(Z_j)` that moves the linear predictor by 1 across
-the data (at least 1, so nothing changes for a covariate whose range is 1 or
-more) -- so a covariate recorded in small units, such as the Arrhenius
-:math:`1/T` in kelvin (a range of about :math:`3 \times 10^{-4}` over a test's
-temperatures), is fitted as well as one in large units. Measured in units of
-1, a coefficient's gradient at its start of 0 is proportional to its
-covariate's spread: a ``WeibullPH`` time-varying fit to :math:`1/T` stopped
-there, after no iterations, and reported a verified maximum 0.41 below the
-one it reached with :math:`1000/T` (#577).
+the data where that range is below 1 or above 100 (and 1 in between, so
+nothing changes for a binary covariate or ordinary data) -- so a covariate
+recorded in small units, such as the Arrhenius :math:`1/T` in kelvin (a
+range of about :math:`3 \times 10^{-4}` over a test's temperatures), or in
+large ones, such as a date in days, is fitted as well as one of order 1.
+Measured in units of 1, a coefficient's gradient at its start of 0 is
+proportional to its covariate's spread: a ``WeibullPH`` time-varying fit to
+:math:`1/T` stopped there, after no iterations, and reported a verified
+maximum 0.41 below the one it reached with :math:`1000/T` (#577); and with
+every covariate in units of :math:`10^4`, 14 of the package's regression
+fits stopped up to 0.023 short of their maximum, saying so (#612).
 
 Each family also has a ``fit_from_df`` that names DataFrame columns instead
 (see `Fitting from a DataFrame: formulas and categorical covariates`_).
@@ -302,7 +305,7 @@ A small simulated data set shows the three forms:
     # Weibull(10, 2) baseline; exposure multiplies the hazard by e^0.7 ~ 2
     x_demo = 10 * rng.weibull(2.0, 300) * np.exp(-0.7 * Z_demo[:, 0] / 2.0)
     demo = WeibullPH.fit(x=x_demo, Z=Z_demo)
-    print('alpha, beta, beta_0 :', demo.params.round(3))
+    print('alpha, beta, coef_0 :', demo.params.round(3))
 
     print('one row, three times :', demo.sf([5.0, 10.0, 15.0], Z=[1.0]).round(3))
     print('two rows, paired     :', demo.sf([5.0, 5.0], Z=[[0.0], [1.0]]).round(3))
@@ -324,7 +327,7 @@ above):
 .. jupyter-execute::
 
     small = WeibullPH.fit(x=x_demo, Z=Z_demo * 1e-4)
-    print('alpha, beta, beta_0 :', small.params.round(3), small.maximum)
+    print('alpha, beta, coef_0 :', small.params.round(3), small.maximum)
     print('neg_ll              :', round(small.neg_ll(), 6), round(demo.neg_ll(), 6))
 
 .. jupyter-execute::
@@ -644,7 +647,7 @@ came before their entry age were never seen at all, as happens in practice:
 
     naive = WeibullPH.fit(x=x_le, Z=z_le)
     trunc = WeibullPH.fit(x=x_le, Z=z_le, t=t_le)
-    print('truth (alpha, beta, beta_0) : [10.    1.5   0.8]')
+    print('truth (alpha, beta, coef_0) : [10.    1.5   0.8]')
     print('WeibullPH ignoring entry    :', naive.params.round(3))
     print('WeibullPH with truncation   :', trunc.params.round(3))
     print('Cox ignoring / with tl      : %.3f / %.3f' % (
@@ -1109,7 +1112,9 @@ the partial likelihood — a useful sanity check that the fit has converged.
 Cluster-robust standard errors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The model-based standard errors assume every observation is independent. When
+The model-based standard errors -- ``standard_errors()``, the square roots of
+the diagonal of ``covariance()``, the inverse of the observed information, as
+on every model -- assume every observation is independent. When
 the data are *clustered* — several failures from the same machine, repeated
 events on the same subject, items drawn in grouped batches — that assumption is
 wrong and the naive errors are too small. The **Lin-Wei sandwich** (or
@@ -1389,10 +1394,10 @@ non-parametrically. Below, a Weibull wear-out hazard has an exposure that adds
     x_ah = np.minimum(x_ah, 25)
 
     wah = WeibullAH.fit(x=x_ah, Z=z_ah.reshape(-1, 1), c=c_ah)
-    print('WeibullAH (alpha, beta, beta_0):', wah.params.round(3))
+    print('WeibullAH (alpha, beta, coef_0):', wah.params.round(3))
     print('standard errors                :', wah.standard_errors().round(3))
     ly = AdditiveHazards.fit(x=x_ah, Z=z_ah.reshape(-1, 1), c=c_ah)
-    print('Lin-Ying beta_0 = %.3f (se %.3f)' % (ly.beta[0], ly.se[0]))
+    print('Lin-Ying coef_0 = %.3f (se %.3f)' % (ly.beta[0], ly.standard_errors()[0]))
 
 Both estimators recover the risk difference to within about two standard
 errors (0.035 and 0.046 against a true 0.05), and the Weibull baseline
@@ -1405,7 +1410,7 @@ when its baseline is right; Lin-Ying makes no assumption about the baseline.
 
     _b, _se = wah.params[2], wah.standard_errors()[2]
     assert round(_b, 3) == 0.035 and round(ly.beta[0], 3) == 0.046
-    assert abs(_b - 0.05) < 2 * _se and abs(ly.beta[0] - 0.05) < 2 * ly.se[0]
+    assert abs(_b - 0.05) < 2 * _se and abs(ly.beta[0] - 0.05) < 2 * ly.standard_errors()[0]
     assert np.all(np.abs(wah.params[:2] / [10, 2] - 1) < 0.05)
 
 The positivity caveat above bites differently here. The likelihood needs
@@ -1446,7 +1451,13 @@ increasing, constant, or decreasing hazard rates.
 Notice the coefficients are close to the Cox model's, each within 10% of it —
 this is expected when the Weibull is a reasonable fit to the baseline. The parameters are listed in
 the order ``model.parameter_names`` gives: the distribution's own parameters
-first, then one ``beta_j`` per covariate column.
+first, then one coefficient per covariate column, named by the column where
+the fit has its name (a formula, ``fit_from_df`` or a DataFrame ``Z``) and
+``coef_0``, ``coef_1``, ... otherwise. (A name that is already a
+parameter's, such as a column called ``alpha``, gets a suffix: ``alpha.1``.
+Before v0.23 the coefficients were ``beta_0``, ``beta_1``, ..., beside the
+Weibull's shape ``beta``; ``fixed=`` and ``param_cb`` take those names, with
+a ``DeprecationWarning``, until v0.24.)
 
 .. jupyter-execute::
     :hide-code:
@@ -1783,7 +1794,7 @@ exposed units. The hazard ratio of exposed to unexposed units starts near
     # invert F(x|z) = U for survival odds (x/10)^-3 * e^z
     x_po = 10 * (np.exp(z_po) * U / (1 - U)) ** (1 / 3)
     po = PO(LogLogistic).fit(x=x_po, Z=z_po.reshape(-1, 1))
-    print('alpha, beta, beta_0:', po.params.round(3))
+    print('alpha, beta, coef_0:', po.params.round(3))
 
     times = np.array([1.0, 5.0, 10.0, 20.0, 40.0])
     print('hazard ratio at', times, ':',
@@ -1872,8 +1883,8 @@ error, and a baseline that tracks the log-logistic one without assuming it:
 
 .. jupyter-execute::
 
-    print('semi-parametric beta_0: %.3f (se %.3f)' % (spo.beta[0], spo.se[0]))
-    print('PO(LogLogistic) beta_0: %.3f (se %.3f)'
+    print('semi-parametric coef_0: %.3f (se %.3f)' % (spo.beta[0], spo.standard_errors()[0]))
+    print('PO(LogLogistic) coef_0: %.3f (se %.3f)'
           % (po.params[2], po.standard_errors()[2]))
     t = np.array([5.0, 10.0, 20.0])
     print('baseline survival, semi-parametric:', spo.sf(t, [0.0]).round(3))
@@ -1890,7 +1901,7 @@ use when the shape of the baseline is what you cannot commit to.
     :hide-code:
     :hide-output:
 
-    assert round(spo.beta[0], 3) == 1.007 and round(spo.se[0], 3) == 0.179
+    assert round(spo.beta[0], 3) == 1.007 and round(spo.standard_errors()[0], 3) == 0.179
     assert round(po.params[2], 3) == 1.035
     assert round(po.standard_errors()[2], 3) == 0.180
     _truth = 1 / (1 + (t / 10) ** 3)
@@ -1942,7 +1953,7 @@ an unbounded coefficient) so the interval always stays valid:
 
 .. jupyter-execute::
 
-    m_cb.param_cb('beta_0')      # 95% CI for the covariate coefficient
+    m_cb.param_cb('coef_0')      # 95% CI for the covariate coefficient
 
 ``cb`` propagates the parameter covariance through a predicted function by the
 delta method, returning a confidence *band*. The band on ``sf``, ``ff`` and
@@ -1994,7 +2005,7 @@ data, as at an accelerated life test's use condition (`Accelerated Life
 
 .. jupyter-execute::
 
-    m_cb.param_cb('beta_0', method='lr')   # the profile-likelihood interval
+    m_cb.param_cb('coef_0', method='lr')   # the profile-likelihood interval
 
 The other families quantify uncertainty their own way: Cox through the
 information matrix (``p_values``, and ``jac`` as shown earlier) and the robust
@@ -2092,7 +2103,8 @@ letters in each formula are the parameter names the fitted model reports, and
      - Inverse Arrhenius relationship
    * - ``GeneralLogLinear``
      - :math:`c \cdot e^{\beta_0 Z_0 + \beta_1 Z_1 + \cdots}`, one
-       ``beta_j`` per column of ``Z``
+       coefficient per column of ``Z`` (named by the column, or
+       ``coef_j``)
      - Any number of stresses, each entering as given (pass ``1 / T`` or
        ``log V`` as the column for an Arrhenius or power term); with a
        Weibull or LogNormal it is that distribution's AFT model
@@ -2274,6 +2286,50 @@ below the coolest cell) the 90% bounds on the five-year reliability at use
 covered 0.897 (Wald) and 0.893 (likelihood ratio) of 1,000 repetitions with
 46 failures on average, and 0.877 and 0.866 of 900 with 11; Wald stays the
 default.
+
+``method="bootstrap"`` gives a third bound, a parametric bootstrap: the model
+is refitted to ``n_boot`` data sets simulated from it, each unit at its own
+stress and censored as it was (here, every unit still running at 6,000 hours
+is censored there), and the bound is the BCa interval of the refits' values
+(Efron's bias-corrected and accelerated percentiles). It assumes neither
+that the reliability is near linear in the parameters nor that the
+likelihood ratio is near its large-sample distribution, and costs ``n_boot``
+refits, so ask for every time you need at once; the calls with the same
+``n_boot`` and an integer ``random_state`` share one set of refits:
+
+.. jupyter-execute::
+
+    boot = model_arr.cb(x_use, Z=Z_use, method='bootstrap', n_boot=100,
+                        random_state=1)
+    print('bootstrap:\n', boot.round(3))
+    print('95% CI on a, in eV:',
+          (model_arr.param_cb('a', method='bootstrap', n_boot=100,
+                              random_state=1) * k).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all((boot[:, 0] <= _est) & (_est <= boot[:, 1]))
+    assert model_arr._bootstrap_refits[(100, 1)].params.shape[0] == 100
+
+A hundred refits keep the example short; use a thousand or more for a bound
+you will act on. On the two-stress test above with 46 failures on average,
+the 90% bootstrap bound on the five-year reliability at use covered 0.903
+of 1,000 repetitions (1,000 refits each), its misses even on both sides,
+against 0.880 (Wald), 0.875 (likelihood ratio) and 0.866 for the plain
+percentile interval of the same refits, whose misses fell mostly below.
+
+With 11 failures on average no bound holds. In 28% of the repetitions the
+failures all fell at stresses that leave the activation energy or the
+voltage exponent without a finite estimate; the fit warns that its
+likelihood has no finite maximum, and the bootstrap from it, whose
+resamples run off the same way, closes onto the meaningless estimate (and
+warns so). Over all the repetitions the bootstrap bound covered 0.71,
+against 0.87 (Wald, which is near [0, 1] or ``nan`` for those fits) and
+0.85 (likelihood ratio); where the estimate exists, they covered 0.917
+(Wald), 0.934 (likelihood ratio) and 0.979 (bootstrap). The remedy there is a design with more
+failures, not another bound.
 
 Two stresses at once
 ~~~~~~~~~~~~~~~~~~~~
@@ -3150,7 +3206,7 @@ label per observation (see :doc:`regression/frailty`):
     )
     print(model)
     print("theta 95% CI:", np.round(model.param_cb("theta"), 3))
-    print("theta standard error: %.3f" % model.standard_errors()["theta"])
+    print("theta standard error: %.3f" % model.standard_errors()[-1])
 
 The frailty variance ``theta`` (also ``model.frailty_variance``) quantifies
 the between-group spread. Its interval is built on the log scale, so it can
@@ -3164,15 +3220,17 @@ misses the truth — while the coefficient, true value 0.8, is recovered well.)
 The per-group posterior frailties — an empirical-Bayes estimate for each
 observed group, shrunk toward 1 — are on ``model.frailties``, keyed by group
 label (as a string), and ``model.standard_errors()`` gives the Wald standard
-errors of every parameter as a dictionary keyed by name. Every estimate is
+errors of every parameter, an array as on every model. Every estimate is
 also in one vector, ``model.params``, in the order of ``model.parameter_names``:
-the baseline's parameters, the coefficients, then ``theta``.
+the baseline's parameters, the coefficients, then ``theta`` -- the order of
+``standard_errors()`` and ``covariance()`` too, so ``theta``'s standard error
+is the last.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    _theta, _se = model.theta, model.standard_errors()["theta"]
+    _theta, _se = model.theta, model.standard_errors()[-1]
     assert round(_theta / _se) == 3, (_theta, _se)        # "about three"
     _lo, _hi = model.param_cb("theta")
     assert 0.55 < _hi < 0.6                     # only just misses 0.6

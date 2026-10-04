@@ -161,7 +161,7 @@ def neg_ll_at(model, theta):
     with np.errstate(all="ignore"):
         return float(
             model.dist._neg_ll_func(
-                model.surv_data, *theta, model.gamma, model.f0, model.p
+                model.surv_data, *theta, model.gamma, model.f0, model.lfp_p
             )
         )
 

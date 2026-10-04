@@ -125,3 +125,40 @@ def test_605_one_spelling_of_the_comparison_values(case):
         return  # not serialisable (the serialise property says which)
     old = sorted(set(stored) & set(OLD_DICT_KEYS))
     assert not old, f"to_dict stores {old}"
+
+
+@pytest.mark.parametrize("case", cases_for("comparison"))
+def test_613_standard_errors_are_the_covariance_diagonal(case):
+    """Where a model has ``covariance()`` it has ``standard_errors()``,
+    an array in the covariance's order whose entries are the square roots
+    of its diagonal (``nan`` where a variance is not positive); and
+    ``se``, the old spelling on some models, is gone or deprecated
+    (#613)."""
+    model = fitted(case)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        if _has(model, "covariance"):
+            try:
+                cov = np.asarray(model.covariance(), dtype=float)
+            except ValueError:
+                cov = None
+            assert callable(getattr(model, "standard_errors", None))
+            if cov is not None:
+                with warnings.catch_warnings():
+                    # (A non-positive variance is warned of by some.)
+                    warnings.simplefilter("ignore", UserWarning)
+                    se = model.standard_errors()
+                assert isinstance(se, np.ndarray), type(se)
+                assert se.shape == (cov.shape[0],), se.shape
+                var = np.diag(cov)
+                expected = np.sqrt(np.where(var >= 0, var, np.nan))
+                np.testing.assert_allclose(se, expected, rtol=1e-12)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        try:
+            model.se
+        except AttributeError:
+            return
+    assert any(
+        issubclass(w.category, DeprecationWarning) for w in caught
+    ), "model.se without a DeprecationWarning"

@@ -526,7 +526,7 @@ def test_617_frailty_param_cb_lr_is_where_the_profile_deviance_is_chi2():
     nll_hat = _gamma_frailty_nll(m.params, x, c, Z, groups)
     assert nll_hat == pytest.approx(m.neg_ll(), rel=1e-10)
     crit = chi2.ppf(0.95, 1)
-    for j, name in ((3, "theta"), (2, "beta_0")):
+    for j, name in ((3, "theta"), (2, "coef_0")):
         lo, hi = m.param_cb(name, method="lr")
         assert lo < m.params[j] < hi
         others = [i for i in range(4) if i != j]
@@ -555,9 +555,9 @@ def test_617_frailty_param_cb_lr_options_and_the_edge_of_theta():
     x, c, Z, groups = _sim(seed=12, G=30, per=5)
     m = WeibullFrailty.fit(x=x, Z=Z, c=c, groups=groups)
     # Wald stays the default.
-    assert np.array_equal(m.param_cb("beta_0"), m.param_cb("beta_0", 0.05))
+    assert np.array_equal(m.param_cb("coef_0"), m.param_cb("coef_0", 0.05))
     assert np.array_equal(
-        m.param_cb("beta_0"), m.param_cb("beta_0", method="wald")
+        m.param_cb("coef_0"), m.param_cb("coef_0", method="wald")
     )
     two = m.param_cb("theta", alpha_ci=0.2, method="profile")
     upper = m.param_cb("theta", alpha_ci=0.1, bound="upper", method="lr")
@@ -591,6 +591,6 @@ def test_617_frailty_param_cb_lr_lognormal_and_aliased():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         m2 = WeibullFrailty.fit(x=x, Z=Z2, c=c, groups=groups)
-    assert np.all(np.isnan(m2.param_cb("beta_1", method="lr")))
-    lo, hi = m2.param_cb("beta_0", method="lr")
+    assert np.all(np.isnan(m2.param_cb("coef_1", method="lr")))
+    lo, hi = m2.param_cb("coef_0", method="lr")
     assert lo < m2.beta[0] < hi

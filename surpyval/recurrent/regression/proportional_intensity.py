@@ -18,6 +18,7 @@ from surpyval.univariate.regression._aliasing import (
     constant_columns,
     warn_aliased,
 )
+from surpyval.utils.covariates import coefficient_names
 from surpyval.utils.deprecation import REMOVED_IN
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
@@ -124,6 +125,10 @@ class ProportionalIntensityModel(
     #: applicable"`` for a model built from its parameters, ``"unknown"``
     #: for one restored from a dict saved without it.
     maximum: str = "not applicable"
+    #: The covariates' column names (``fit_from_df`` or a DataFrame
+    #: ``Z``), which name the coefficients (#614); ``None`` for an array
+    #: ``Z``, whose coefficients are ``coef_0``, ``coef_1``, ...
+    feature_names: "list[str] | None" = None
 
     def __repr__(self) -> str:
         out = (
@@ -141,8 +146,8 @@ class ProportionalIntensityModel(
             out += "    {i}  :  {p}\n".format(i=i, p=p)
 
         out = out + "\nCovariate Coefficients:\n"
-        for i, p in enumerate(self.coeffs):
-            out += "   beta_{i}  :  {p}\n".format(i=i, p=p)
+        for name, p in zip(self._coefficient_names(), self.coeffs):
+            out += "   {}  :  {}\n".format(name, p)
         return out
 
     # -- serialisation -----------------------------------------------------
@@ -162,18 +167,20 @@ class ProportionalIntensityModel(
         --------
         from_dict, to_json, from_json
         """
-        return stamp_schema(
-            {
-                "model": "ProportionalIntensityModel",
-                "kind": self.kind,
-                "parameterization": self.parameterization,
-                "dist": self.dist.name,
-                "param_names": list(self._rate_names),
-                "params": np.asarray(self.params, dtype=float).tolist(),
-                "coeffs": np.asarray(self.coeffs, dtype=float).tolist(),
-                **maximum_entry(self.maximum),
-            }
-        )
+        out = {
+            "model": "ProportionalIntensityModel",
+            "kind": self.kind,
+            "parameterization": self.parameterization,
+            "dist": self.dist.name,
+            "param_names": list(self._rate_names),
+            "params": np.asarray(self.params, dtype=float).tolist(),
+            "coeffs": np.asarray(self.coeffs, dtype=float).tolist(),
+            **maximum_entry(self.maximum),
+        }
+        if self.feature_names is not None:
+            # The coefficients' names (#614)
+            out["feature_names"] = list(self.feature_names)
+        return stamp_schema(out)
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "ProportionalIntensityModel":
@@ -205,6 +212,8 @@ class ProportionalIntensityModel(
         out._rate_names = list(model_dict["param_names"])
         out.params = np.array(model_dict["params"], dtype=float)
         out.coeffs = np.array(model_dict["coeffs"], dtype=float)
+        names = model_dict.get("feature_names")
+        out.feature_names = None if names is None else list(names)
         out.maximum = restored_maximum(model_dict)
         return out
 
@@ -591,10 +600,14 @@ class ProportionalIntensityModel(
     def _parameter_names(self) -> list:
         # The base-rate (intensity) parameters lead ``_mle``, followed by the
         # covariate coefficients.
-        return [
-            *self._rate_names,
-            *["beta_{}".format(i) for i in range(len(self.coeffs))],
-        ]
+        return [*self._rate_names, *self._coefficient_names()]
+
+    def _coefficient_names(self) -> "list[str]":
+        """The coefficients' names (#614): their covariates' columns,
+        else ``coef_0``, ``coef_1``, ..."""
+        return coefficient_names(
+            len(self.coeffs), self.feature_names, self._rate_names
+        )
 
     @property
     def param_names(self) -> list:

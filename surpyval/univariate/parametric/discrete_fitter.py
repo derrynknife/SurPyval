@@ -92,6 +92,7 @@ class DiscreteParametricFitter(ParametricFitter):
     """
 
     discrete = True
+    fitter_kind = "discrete parametric fitter"
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)

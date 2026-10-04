@@ -998,7 +998,7 @@ def test_adt_repr():
     out = repr(model)
     assert "Degradation Analysis SurPyval Model" in out
     assert "covariates" in out
-    assert "beta_0" in out
+    assert "coef_0" in out
 
 
 def test_352_measurement_inputs_are_refused_with_one_wording():

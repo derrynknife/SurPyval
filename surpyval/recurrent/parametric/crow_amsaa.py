@@ -1,12 +1,16 @@
 import functools
-from typing import Callable
+from typing import TYPE_CHECKING, Callable, Iterable
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 from surpyval.recurrent.parametric.counting_process import Boxable
 from surpyval.utils.fitter import singleton_fitter
 
 from .nhpp_fitter import NHPPFitter
+
+if TYPE_CHECKING:
+    from .growth_projection import GrowthProjection
 
 
 @singleton_fitter
@@ -84,6 +88,136 @@ class CrowAMSAA(NHPPFitter):
         alpha = params[0]
         beta = params[1]
         return alpha * (N ** (1.0 / beta))
+
+    def projection(
+        self,
+        x: ArrayLike,
+        modes: ArrayLike,
+        fef: dict,
+        i: "ArrayLike | None" = None,
+        c: "ArrayLike | None" = None,
+        bc: "Iterable | None" = None,
+    ) -> "GrowthProjection":
+        """
+        Project the MTBF of a reliability growth test once the fixes
+        delayed to its end are in: the AMSAA-Crow projection model
+        (MIL-HDBK-189C, section 6.2; Crow 1983) and, with fixes made during
+        the test, Crow's (2004) extended model.
+
+        Each failure carries the label of its failure mode (``modes``),
+        and each mode is one of three kinds:
+
+        - a **BD mode**, whose fix is delayed to the end of the test: a key
+          of ``fef``, whose value is the mode's fix-effectiveness factor,
+          the fraction of its intensity the fix removes (in [0, 1]);
+        - a **BC mode**, fixed during the test: listed in ``bc``;
+        - an **A mode**, not to be fixed: every other mode.
+
+        The projected intensity of one system after the delayed fixes is
+
+        .. math::
+            r_P = \\lambda_{CA} - \\frac{N_{BD}}{kT}
+                  + \\sum_{i=1}^{K} (1 - d_i) \\frac{N_i}{kT}
+                  + \\bar d\\, h(T),
+
+        for ``k`` systems each tested to ``T``, with ``N_i`` failures of BD
+        mode ``i`` (``K`` BD modes seen, ``N_BD`` failures in all), FEFs
+        ``d_i`` with mean :math:`\\bar d`, and :math:`\\lambda_{CA}` the
+        intensity the test demonstrates: ``N / (kT)`` when there are no BC
+        modes (the system did not change during the test), the Crow-AMSAA
+        intensity at ``T`` fitted to every failure when there are.
+        :math:`h(T) = K \\bar\\beta / (kT)` is the rate at which new BD
+        modes were still being found, from the power-law fit to the BD
+        modes' first occurrences ``t_i`` with the unbiased shape
+        :math:`\\bar\\beta = (K - 1) / \\sum_i \\ln(T / t_i)`; it allows for
+        the modes not seen yet, which the fixes do not reach. The growth
+        potential is the same without that term: every BD mode found and
+        fixed with these factors.
+
+        Parameters
+        ----------
+        x : array_like
+            The failure times and the end of each system's test, as
+            :meth:`fit` takes them.
+        modes : array_like
+            The failure mode of each row of ``x``: any hashable label (a
+            string, a number). Every failure needs one; the end-of-test
+            (``c=1``) rows' labels are ignored (``None`` will do).
+        fef : dict
+            The BD modes, each mapped to its fix-effectiveness factor.
+        i : array_like, optional
+            The system each row belongs to; one system by default.
+        c : array_like, optional
+            0 a failure, 1 the end of a system's test. Every system must
+            be tested from 0 to the same time ``T``, given as its ``c=1``
+            row (a time-terminated test).
+        bc : iterable, optional
+            The BC modes, fixed during the test.
+
+        Returns
+        -------
+        GrowthProjection
+            The demonstrated, projected and growth-potential intensities
+            and MTBFs (of one system), the BD modes' table, and the
+            Crow-AMSAA fit (``model``).
+
+        Raises
+        ------
+        ValueError
+            If a failure has no mode label, a mode is in both ``fef`` and
+            ``bc``, a classified mode has no failures, a factor is outside
+            [0, 1], or the test is not time-terminated.
+
+        Notes
+        -----
+        Several systems are taken to be tested side by side, so system
+        time ``t`` is ``k t`` of total test time; a mode's first
+        occurrence is its earliest over the systems.
+
+        References
+        ----------
+        Crow, L. H. (1983), "Reliability growth projection from delayed
+        fixes", Proceedings of the Annual Reliability and Maintainability
+        Symposium, 84-89.
+
+        Crow, L. H. (2004), "An extended reliability growth model for
+        managing and assessing corrective actions", Proceedings of the
+        Annual Reliability and Maintainability Symposium, 73-80.
+
+        MIL-HDBK-189C (2011), "Reliability Growth Management", section 6.
+
+        Examples
+        --------
+        One prototype tested to 400 hours. Modes ``a1`` and ``a2`` will not
+        be fixed; ``b1`` to ``b4`` will be, after the test, with the
+        effectiveness factors given:
+
+        >>> from surpyval.recurrent import CrowAMSAA
+        >>> x = [15, 42, 60, 98, 130, 171, 205, 260, 310, 345, 390, 400]
+        >>> modes = ["b1", "a1", "b2", "b1", "b3", "a2", "b2", "b4", "b1",
+        ...          "a1", "b3", None]
+        >>> c = [0] * 11 + [1]
+        >>> fef = {"b1": 0.8, "b2": 0.7, "b3": 0.75, "b4": 0.6}
+        >>> result = CrowAMSAA.projection(x, modes, fef, c=c)
+        >>> result
+        Reliability growth projection (AMSAA-Crow)
+        ==========================================
+        Test                : 1 system to T = 400
+        Failures            : 3 A, 0 BC, 8 BD (4 BD modes)
+        Mean FEF            : 0.7125
+        New BD modes        : beta = 0.4454, h(T) = 0.004454
+                                 intensity         MTBF
+        Demonstrated        :       0.0275        36.36
+        Projected           :      0.01592         62.8
+        Growth potential    :      0.01275        78.43
+
+        The 11 failures in 400 hours demonstrate an MTBF of 36.4 hours;
+        the delayed fixes are projected to raise it to 62.8, short of the
+        78.4 they would reach if every BD mode had been found.
+        """
+        from .growth_projection import growth_projection
+
+        return growth_projection(self, x, modes, fef, i=i, c=c, bc=bc)
 
 
 # -- Crow's (1982) exact bounds on the demonstrated MTBF (#578) ------------

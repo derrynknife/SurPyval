@@ -56,7 +56,7 @@ def test_lfp():
             # All failures are observed before the censor time, so the
             # max proportion estimate must match the failing fraction
             p_true = 100 / (100 + censored)
-            assert abs(model.p - p_true) < 0.1
+            assert abs(model.lfp_p - p_true) < 0.1
 
 
 def test_lfp_zi():
@@ -86,7 +86,7 @@ def test_lfp_zi():
                 f0_true = zi_lfp_values / total
                 p_true = (num_samples + zi_lfp_values) / total
                 assert abs(model.f0 - f0_true) < 0.05
-                assert abs(model.p - p_true) < 0.1
+                assert abs(model.lfp_p - p_true) < 0.1
 
 
 def test_offset_lfp():
@@ -101,7 +101,7 @@ def test_offset_lfp():
     model = Weibull.fit(x, c=c, lfp=True, offset=True)
     assert model.res.success
     assert abs(model.gamma - 10) < 1
-    assert abs(model.p - 0.7) < 0.05
+    assert abs(model.lfp_p - 0.7) < 0.05
 
 
 def test_offset_zi():
@@ -121,7 +121,7 @@ def test_offset_zi():
 
 def test_qf_inverts_ff_for_lfp():
     # Below the cure ceiling p, the quantile inverts the failure function.
-    model = Weibull.from_params([10.0, 2.0], p=0.6)
+    model = Weibull.from_params([10.0, 2.0], lfp_p=0.6)
     u = np.array([0.05, 0.2, 0.4, 0.59])
     q = model.qf(u)
     assert np.all(np.isfinite(q))
@@ -131,10 +131,10 @@ def test_qf_inverts_ff_for_lfp():
 def test_qf_infinite_above_cure_fraction():
     # A cure fraction 1 - p never fails, so any quantile at or above p is
     # infinite -- and the median of a majority-cured population is infinite.
-    model = Weibull.from_params([10.0, 2.0], p=0.6)
+    model = Weibull.from_params([10.0, 2.0], lfp_p=0.6)
     assert np.isinf(model.qf(0.6))
     assert np.isinf(model.qf(0.85))
-    cured = Weibull.from_params([10.0, 2.0], p=0.4)
+    cured = Weibull.from_params([10.0, 2.0], lfp_p=0.4)
     assert np.isinf(cured.qf(0.5))
 
 
@@ -153,7 +153,7 @@ def test_qf_respects_offset_with_cure_and_inflation():
     # point mass at 0 (consistent with ff(0) == f0, df's mass at x == 0 and
     # the likelihood, #256), the interior inverts ff, and u >= p is
     # infinite.
-    model = Weibull.from_params([10.0, 2.0], gamma=5.0, p=0.7, f0=0.1)
+    model = Weibull.from_params([10.0, 2.0], gamma=5.0, lfp_p=0.7, f0=0.1)
     assert model.qf(0.05) == 0.0
     u = np.array([0.2, 0.4, 0.6])
     q = model.qf(u)
@@ -163,7 +163,7 @@ def test_qf_respects_offset_with_cure_and_inflation():
 
 
 def test_qf_scalar_and_array_shape():
-    model = Weibull.from_params([10.0, 2.0], p=0.8)
+    model = Weibull.from_params([10.0, 2.0], lfp_p=0.8)
     assert np.ndim(model.qf(0.3)) == 0
     out = model.qf([0.1, 0.3, 0.5])
     assert out.shape == (3,)
@@ -190,8 +190,8 @@ def test_moment_one_equals_mean_across_mixtures():
     for model in (
         Weibull.from_params([10.0, 2.0]),
         Weibull.from_params([10.0, 2.0], gamma=5.0),
-        Weibull.from_params([10.0, 2.0], p=0.6),
-        Weibull.from_params([10.0, 2.0], gamma=5.0, p=0.7),
+        Weibull.from_params([10.0, 2.0], lfp_p=0.6),
+        Weibull.from_params([10.0, 2.0], gamma=5.0, lfp_p=0.7),
     ):
         assert np.isclose(model.moment(1), model.mean())
         assert np.isclose(
@@ -216,7 +216,7 @@ def test_lfp_moment_is_finite_and_defective():
     # the defective moment is finite and equals the base moment scaled by
     # the failing proportion p (no offset).
     p = 0.6
-    model = Weibull.from_params([10.0, 2.0], p=p)
+    model = Weibull.from_params([10.0, 2.0], lfp_p=p)
     assert np.isinf(model.moment(2))
     assert np.isclose(
         model.moment(2, defective=True), p * Weibull.moment(2, 10.0, 2.0)
@@ -226,7 +226,7 @@ def test_lfp_moment_is_finite_and_defective():
 def test_defective_moment_matches_monte_carlo():
     # cured units contribute nothing; offset shifts the failures.
     g, p, params = 6.0, 0.7, (10.0, 2.0)
-    model = Weibull.from_params(list(params), gamma=g, p=p)
+    model = Weibull.from_params(list(params), gamma=g, lfp_p=p)
     rng = np.random.default_rng(0)
     n = 2_000_000
     fail = rng.uniform(size=n) < p
@@ -252,7 +252,7 @@ def test_entropy_raises_with_a_probability_atom():
     # A cure fraction (mass at infinity) or zero-inflation (mass at 0)
     # leaves no single differential entropy.
     with pytest.raises(ValueError, match="probability atom"):
-        Weibull.from_params([10.0, 2.0], p=0.6).entropy()
+        Weibull.from_params([10.0, 2.0], lfp_p=0.6).entropy()
     with pytest.raises(ValueError, match="probability atom"):
         LogNormal.from_params([2.0, 0.4], f0=0.2).entropy()
 
@@ -305,11 +305,11 @@ def test_lfp_fit_for_a_distribution_parameter_named_p(dist, x, c):
     model = dist.fit(x, c=c, lfp=True)
     assert model.lfp_name == "lfp_p"
     assert len(model.params) == dist.k
-    assert 0 < model.p < 1
+    assert 0 < model.lfp_p < 1
     # the two p's are distinct parameters with distinct bounds
     assert model.param_cb("p")[0] < model.params[dist.param_map["p"]]
     lfp_bound = model.param_cb("lfp_p")
-    assert lfp_bound[0] < model.p < lfp_bound[1]
+    assert lfp_bound[0] < model.lfp_p < lfp_bound[1]
     assert "Max Proportion (lfp_p)" in repr(model)
 
 
@@ -320,13 +320,16 @@ def test_lfp_proportion_can_be_fixed_by_its_own_name():
         lfp=True,
         fixed={"lfp_p": 0.8},
     )
-    assert model.p == pytest.approx(0.8)
-    # the Weibull's LFP proportion keeps its usual name
+    assert model.lfp_p == pytest.approx(0.8)
+    # every LFP proportion has the one name (#608)
     weibull = surv.Weibull.fit(
-        [1, 2, 3, 4, 5, 6], c=[0, 0, 0, 0, 1, 1], lfp=True, fixed={"p": 0.8}
+        [1, 2, 3, 4, 5, 6],
+        c=[0, 0, 0, 0, 1, 1],
+        lfp=True,
+        fixed={"lfp_p": 0.8},
     )
-    assert weibull.lfp_name == "p"
-    assert weibull.p == pytest.approx(0.8)
+    assert weibull.lfp_name == "lfp_p"
+    assert weibull.lfp_p == pytest.approx(0.8)
 
 
 # ---------------------------------------------------------------------------
@@ -371,7 +374,7 @@ class TestLFPTruncation:
         alpha, beta = model.params
         assert alpha == pytest.approx(10.0, rel=0.05)
         assert beta == pytest.approx(2.0, rel=0.05)
-        assert model.p == pytest.approx(0.6, abs=0.03)
+        assert model.lfp_p == pytest.approx(0.6, abs=0.03)
 
     def test_plain_interval_likelihood_unchanged(self):
         # The f0 terms cancel for finite bounds: a plain interval-censored
@@ -413,7 +416,7 @@ def test_548_truncation_below_zero_is_no_truncation(structural, tl):
     truncated = no_warnings(Weibull.fit, x, c=c, zi=True, tl=tl, **structural)
     assert truncated.f0 == plain.f0
     np.testing.assert_array_equal(truncated.params, plain.params)
-    assert truncated.gamma == plain.gamma and truncated.p == plain.p
+    assert truncated.gamma == plain.gamma and truncated.lfp_p == plain.lfp_p
     assert truncated._neg_ll == plain._neg_ll
 
 
@@ -468,7 +471,7 @@ def test_579_lfp_on_interval_counts_moves_p_off_its_bound():
     assert model.maximum == "verified"
     assert model.neg_ll() <= near.neg_ll() + 1e-6
     assert model.neg_ll() == pytest.approx(5002.2097, abs=1e-3)
-    assert model.p == pytest.approx(0.0592, abs=1e-3)
+    assert model.lfp_p == pytest.approx(0.0592, abs=1e-3)
 
 
 def test_579_p_on_its_bound_is_a_maximum_there():
@@ -479,10 +482,10 @@ def test_579_p_on_its_bound_is_a_maximum_there():
     # it was not a verified maximum. p is now judged on its bound.
     data = _monthly_counts([1, 3, 8, 16, 23, 24], [5, 2, 1, 1, 1, 1], 489)
     model = no_warnings(Weibull.fit, **data, lfp=True)
-    assert model.p == 1.0
+    assert model.lfp_p == 1.0
     assert model.maximum == "verified"
     for p in (0.999, 0.9, 0.5):
-        profile = Weibull.fit(**data, lfp=True, fixed={"p": p})
+        profile = Weibull.fit(**data, lfp=True, fixed={"lfp_p": p})
         assert profile.neg_ll() > model.neg_ll()
 
 
@@ -527,3 +530,98 @@ def test_610_zero_inflated_fit_takes_a_zero(dist):
         zi=True,
     )
     assert model.f0 == pytest.approx(0.25, rel=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# #608: the limited-failure proportion is ``lfp_p``; ``p`` is a
+# distribution's own parameter where it has one.
+# ---------------------------------------------------------------------------
+LFP_X = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+LFP_C = [0] * 5 + [1] * 5
+
+
+def _lfp_weibull(**kwargs):
+    return no_warnings(Weibull.fit, LFP_X, LFP_C, lfp=True, **kwargs)
+
+
+def test_608_the_proportion_is_lfp_p_and_p_is_its_deprecated_alias():
+    model = _lfp_weibull()
+    assert 0 < model.lfp_p < 1
+    assert model.extras == {"lfp_p": model.lfp_p}
+    with pytest.warns(DeprecationWarning, match="'Parametric.lfp_p'") as w:
+        old = model.p
+    assert old == model.lfp_p
+    assert w[0].filename == __file__
+    # Without lfp=True it is 1, as before
+    assert no_warnings(Weibull.fit, LFP_X).lfp_p == 1
+
+
+@pytest.mark.parametrize(
+    "fit, index",
+    [
+        (lambda: surv.Bernoulli.fit([0, 1, 1, 0, 1]), 0),
+        (lambda: surv.Binomial.fit([2, 3, 1, 4], n_trials=5), 1),
+        (lambda: surv.FixedEventProbability.fit([0, 1, 1, 0, 1]), 0),
+        (lambda: surv.Geometric.fit([1, 2, 3, 2, 1, 4]), 0),
+    ],
+)
+def test_608_p_is_the_fitted_probability_where_the_distribution_has_one(
+    fit, index
+):
+    # It read 1, the limited-failure proportion, on these models.
+    model = fit()
+    assert no_warnings(lambda: model.p) == model.params[index]
+    assert model.lfp_p == 1
+    with pytest.raises(AttributeError, match="params"):
+        model.p = 0.5
+
+
+def test_608_the_old_names_still_work_with_a_warning():
+    new = _lfp_weibull(fixed={"lfp_p": 0.8})
+    with pytest.warns(DeprecationWarning, match="fixed=\\{'lfp_p'"):
+        old = Weibull.fit(LFP_X, LFP_C, lfp=True, fixed={"p": 0.8})
+    np.testing.assert_array_equal(old.params, new.params)
+    assert old.lfp_p == new.lfp_p == 0.8
+
+    model = _lfp_weibull()
+    with pytest.warns(DeprecationWarning, match="param_cb\\('lfp_p'\\)"):
+        bound = model.param_cb("p")
+    np.testing.assert_array_equal(bound, model.param_cb("lfp_p"))
+
+    with pytest.warns(DeprecationWarning, match="use 'lfp_p'"):
+        built = Weibull.from_params([10, 2], p=0.7)
+    assert built.lfp_p == 0.7 and built.extras == {"lfp_p": 0.7}
+
+    with pytest.raises(ValueError, match="'lfp_p' only"):
+        Weibull.fit(LFP_X, LFP_C, lfp=True, fixed={"p": 0.8, "lfp_p": 0.8})
+
+
+def test_608_saved_models_keep_their_format_and_old_ones_load():
+    import pickle
+
+    from surpyval import Parametric
+
+    model = _lfp_weibull(fixed={"lfp_p": 0.8})
+    saved = model.to_dict()
+    # The dict's keys are as before v0.23, so every reader reads it.
+    assert saved["p"] == 0.8 and saved["fixed"] == ["p"]
+    restored = no_warnings(surv.from_dict, saved)
+    assert restored.lfp_p == 0.8 and restored.extras == model.extras
+    # A model pickled before v0.23 holds the proportion as ``p``.
+    state = pickle.loads(pickle.dumps(model)).__dict__.copy()
+    state["p"] = state.pop("lfp_p")
+    old = Parametric.__new__(Parametric)
+    old.__setstate__(state)
+    assert old.lfp_p == 0.8
+    np.testing.assert_array_equal(old.sf([5, 50]), model.sf([5, 50]))
+
+
+def test_608_regression_models_spell_it_alike():
+    rng = np.random.default_rng(1)
+    Z = rng.normal(size=(40, 1))
+    model = no_warnings(
+        surv.WeibullPH.fit, Weibull.random(40, 10, 2, random_state=1), Z
+    )
+    assert model.lfp_p == 1.0
+    with pytest.warns(DeprecationWarning, match="use 'lfp_p'"):
+        assert model.p == 1.0

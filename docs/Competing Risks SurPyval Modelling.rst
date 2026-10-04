@@ -786,12 +786,12 @@ of ``Z``; ``np.exp(model.beta)`` gives the sub-distribution hazard ratios:
     :hide-output:
 
     # "come back near their true values": within two standard errors
-    assert np.all(np.abs(model.beta - beta) < 2 * model.se), model.beta
+    assert np.all(np.abs(model.beta - beta) < 2 * model.standard_errors()), model.beta
 
 .. jupyter-execute::
 
     print("beta     :", np.round(model.beta, 3))     # also model.coefficients
-    print("se       :", np.round(model.se, 3))
+    print("se       :", np.round(model.standard_errors(), 3))
     print("p-values :", model.p_values)
     print("SHR      :", np.round(np.exp(model.beta), 3))
     print("cov      :\n", np.round(model.covariance(), 4))

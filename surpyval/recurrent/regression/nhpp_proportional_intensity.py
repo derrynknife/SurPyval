@@ -13,9 +13,14 @@ from surpyval.recurrent.parametric import Duane
 from surpyval.recurrent.parametric.counting_process import CountingProcess
 from surpyval.recurrent.parametric.nhpp_fitter import nhpp_log_likelihood
 from surpyval.univariate.parametric.fitters import verify_or_polish
+from surpyval.univariate.regression._aliasing import (
+    dataframe_covariates,
+    fit_columns,
+)
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
@@ -27,7 +32,7 @@ from .proportional_intensity import (
 
 
 @singleton_fitter
-class ProportionalIntensityNHPP(RecurrentRegressionDataFrameMixin):
+class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
     """
     Proportional-intensity regression on a non-homogeneous Poisson
     process: each item's intensity is a parametric baseline intensity
@@ -83,9 +88,15 @@ class ProportionalIntensityNHPP(RecurrentRegressionDataFrameMixin):
         b  :  0.008010947012813689
     <BLANKLINE>
     Covariate Coefficients:
-       beta_0  :  0.45194475814452534
+       coef_0  :  0.45194475814452534
     <BLANKLINE>
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "proportional intensity fitter"
+
+    def _repr_details(self) -> "list[str]":
+        return ["NHPP baseline"]
 
     def create_negll_func(self, data: Any, dist: Any) -> Callable:
         Z = data.Z
@@ -189,6 +200,8 @@ class ProportionalIntensityNHPP(RecurrentRegressionDataFrameMixin):
         out = ProportionalIntensityModel()
         out.dist = dist
         out.data = data
+        # The covariates' columns name the coefficients (#614)
+        out.feature_names = fit_columns()
 
         num_covariates = data.Z.shape[1]
         expected = len(dist.parameter_names) + num_covariates
@@ -314,6 +327,7 @@ class ProportionalIntensityNHPP(RecurrentRegressionDataFrameMixin):
 
         return out
 
+    @dataframe_covariates
     def fit(
         self,
         x: ArrayLike,

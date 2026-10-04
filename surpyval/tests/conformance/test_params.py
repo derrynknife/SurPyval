@@ -146,13 +146,13 @@ def test_regression_parameter_names_call_warns_and_is_a_list():
     ) as rec:
         called = model.parameter_names()
     assert rec[0].filename == __file__
-    assert called == names == ["alpha", "beta", "beta_0", "beta_1"]
+    assert called == names == ["alpha", "beta", "coef_0", "coef_1"]
     # A plain list in every other use.
     with warnings.catch_warnings():
         warnings.simplefilter("error", DeprecationWarning)
         assert names == list(names) and list(names) == names
-        assert len(names) == 4 and names[-1] == "beta_1"
-        assert [n for n in names] == ["alpha", "beta", "beta_0", "beta_1"]
+        assert len(names) == 4 and names[-1] == "coef_1"
+        assert [n for n in names] == ["alpha", "beta", "coef_0", "coef_1"]
         assert json.loads(json.dumps(names)) == list(names)
         assert np.asarray(names).tolist() == list(names)
         series = pd.Series(model.params, index=names)
@@ -160,8 +160,8 @@ def test_regression_parameter_names_call_warns_and_is_a_list():
         frame = pd.DataFrame([model.params], columns=names)
         assert frame[names].shape == (1, 4)
         assert frame.T.loc[names].shape == (4, 1)
-        assert names + ["x"] == ["alpha", "beta", "beta_0", "beta_1", "x"]
-        assert names.index("beta_0") == 2
+        assert names + ["x"] == ["alpha", "beta", "coef_0", "coef_1", "x"]
+        assert names.index("coef_0") == 2
 
 
 def test_documented_orders():
@@ -187,7 +187,7 @@ def test_documented_orders():
     assert al.life_parameter == "alpha"
     # proportional intensity: base rate, then the coefficients
     pi = fitted(CASE_BY_NAME["ProportionalIntensityNHPP"])
-    assert pi.parameter_names == ["alpha", "b", "beta_0"]
+    assert pi.parameter_names == ["alpha", "b", "coef_0"]
     assert pi.standard_errors().size == len(pi.parameter_names)
 
 

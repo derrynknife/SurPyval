@@ -11,8 +11,13 @@ from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
     ic_sample_size,
 )
+from surpyval.utils.covariates import loaded_coefficient_names
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.deprecation import CallableList, RenamedAttribute
+from surpyval.utils.deprecation import (
+    REMOVED_IN_NEXT,
+    CallableList,
+    RenamedAttribute,
+)
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import (
     check_paired_rows,
@@ -179,7 +184,9 @@ class ParametricRegressionModel(
     #: models' neutral values (no offset, no defective fraction, no zero
     #: inflation), which ``to_dict`` stores.
     gamma: float = 0.0
-    p: float = 1.0
+    lfp_p: float = 1.0
+    #: ``lfp_p``'s name before v0.23, as on the univariate models (#608).
+    p = RenamedAttribute("lfp_p", REMOVED_IN_NEXT)
     f0: float = 0.0
     #: The covariate point the baseline parameters are at: zeros (or
     #: ``None``, for an accelerated life model) when they are those of a
@@ -236,14 +243,21 @@ class ParametricRegressionModel(
     #: have found, kept while the parameters and data stay as they are;
     #: not pickled (``__getstate__``).
     _lr_searches: "list | None" = None
+    #: The parametric bootstrap refits of the bounds with
+    #: ``method="bootstrap"`` (``_bootstrap.refits``), by ``(n_boot,
+    #: random_state)`` for an integer seed, kept while the parameters and
+    #: data stay as they are; not pickled (``__getstate__``).
+    _bootstrap_refits: "dict | None" = None
     # The information criteria's sample size ``_ic_n`` and their caches
     # ``_aic``, ``_bic``, ``_aic_c`` are InformationCriteriaMixin's.
 
     def __getstate__(self) -> dict:
         # The likelihood-ratio searches, with the regions and bounds they
-        # have found, are rebuilt where a bound is asked for again (#617).
+        # have found, and the bootstrap refits are rebuilt where a bound
+        # is asked for again (#617).
         state = dict(self.__dict__)
         state.pop("_lr_searches", None)
+        state.pop("_bootstrap_refits", None)
         return state
 
     # -- serialisation -----------------------------------------------------
@@ -344,7 +358,8 @@ class ParametricRegressionModel(
         out["k_dist"] = int(self.k_dist)
         out["fixed"] = {str(k): float(v) for k, v in self.fixed.items()}
         out["gamma"] = float(self.gamma)
-        out["p"] = float(self.p)
+        # The proportion's key before v0.23, kept for every reader (#608).
+        out["p"] = float(self.lfp_p)
         out["f0"] = float(self.f0)
         if self._has_center():
             # Only a baseline at the covariate means (center=True, #463) is
@@ -416,6 +431,8 @@ class ParametricRegressionModel(
 
         params = np.array(model_dict["params"], dtype=float)
         k_dist = int(model_dict["k_dist"])
+        # Saved coefficient names -> their names now (#614)
+        renamed: dict[str, str] = {}
 
         reg_model: "CovariateLink | LifeModel"
         if kind == ACCELERATED_LIFE:
@@ -458,6 +475,25 @@ class ParametricRegressionModel(
                         "integer).".format(life_name)
                     )
                 reg_model = reg_model.resolve(n_stresses)
+            columns = list(reg_model.coefficient_columns())
+            if columns:
+                # Its column coefficients by the names saved, those of a
+                # dict saved before v0.23 (beta_j) as named now (#614)
+                saved = model_dict.get("phi_param_map", {})
+                saved_names = sorted(saved, key=saved.__getitem__)
+                others = [
+                    *dist.parameter_names,
+                    *(k for k in reg_model.phi_param_map if k not in columns),
+                ]
+                names = loaded_coefficient_names(
+                    [*others, *saved_names[-len(columns) :]],
+                    len(others),
+                    len(columns),
+                    model_dict.get("feature_names"),
+                )[len(others) :]
+                if len(saved_names) == len(reg_model.phi_param_map):
+                    renamed.update(zip(saved_names[-len(columns) :], names))
+                    reg_model = reg_model.named(names)
             fitter = AcceleratedLife(dist, reg_model)
             phi_param_map = dict(reg_model.phi_param_map)
         elif kind in _SERIALISABLE_KINDS:
@@ -466,6 +502,19 @@ class ParametricRegressionModel(
             fitter = factory(dist)
             phi_param_map = {
                 k: int(v) for k, v in model_dict["phi_param_map"].items()
+            }
+            # A dict saved before v0.23 named the coefficients beta_j: they
+            # load with the names the model has now (#614).
+            saved_names = sorted(phi_param_map, key=phi_param_map.__getitem__)
+            names = loaded_coefficient_names(
+                [*dist.parameter_names, *saved_names],
+                len(dist.parameter_names),
+                len(saved_names),
+                model_dict.get("feature_names"),
+            )[len(dist.parameter_names) :]
+            renamed.update(zip(saved_names, names))
+            phi_param_map = {
+                renamed.get(k, k): v for k, v in phi_param_map.items()
             }
             if phi_kind == "exp":
                 # The log-linear multiplier exp(beta'Z), matching the
@@ -499,7 +548,8 @@ class ParametricRegressionModel(
         out.phi_params = params[k_dist:]
         out.k_dist = k_dist
         out.fixed = {
-            k: float(v) for k, v in model_dict.get("fixed", {}).items()
+            renamed.get(k, k): float(v)
+            for k, v in model_dict.get("fixed", {}).items()
         }
         # The number of estimated parameters, recomputed rather than read
         # from the stored ``k``: dicts written before ``k`` excluded the
@@ -509,7 +559,7 @@ class ParametricRegressionModel(
         out._restored = True
         out._data_summary = model_dict.get("data_summary")
         out.gamma = float(model_dict.get("gamma", 0.0))
-        out.p = float(model_dict.get("p", 1.0))
+        out.lfp_p = float(model_dict.get("p", 1.0))
         out.f0 = float(model_dict.get("f0", 0.0))
         if kind != ACCELERATED_LIFE:
             # A dict without one has its baseline at Z = 0 (#463).
@@ -640,13 +690,27 @@ class ParametricRegressionModel(
     def _is_linear_predictor(self) -> bool:
         """Whether the covariate parameters are coefficients of a linear
         predictor ``beta'Z`` (one per column of ``Z``), which the
-        coefficient table is for; an accelerated-life model's are the
-        parameters of its life model."""
+        coefficient table is for: a built-in link's, or a custom link's
+        that names them as coefficients were named before v0.23
+        (``beta_j``); an accelerated-life model's are the parameters of
+        its life model."""
+        if self._is_accelerated_life():
+            return False
+        if self.reg_model.name in _SERIALISABLE_REG_NAMES:
+            return True
         n_phi = len(self.params) - self.k_dist
         pmap = dict(self.reg_model.phi_param_map or {})
-        return not self._is_accelerated_life() and pmap == {
-            "beta_{}".format(i): i for i in range(n_phi)
-        }
+        return pmap == {"beta_{}".format(i): i for i in range(n_phi)}
+
+    def _coefficient_names(self) -> "list[str]":
+        """The names of the coefficients of the columns of ``Z``, in
+        column order (#614): the linear predictor's, or an accelerated
+        life model's (``GeneralLogLinear``'s); none for another life
+        model."""
+        if self._is_linear_predictor():
+            return list(self.parameter_names[self.k_dist :])
+        columns = getattr(self.reg_model, "coefficient_columns", None)
+        return [] if columns is None else list(columns())
 
     def _exp_meaning(self) -> "str | None":
         """What ``exp(coef)`` means, or ``None`` where the link is not
@@ -685,8 +749,9 @@ class ParametricRegressionModel(
         is log-linear: the hazard ratio for proportional hazards, the
         acceleration factor for AFT, the survival odds ratio for
         proportional odds), the Wald statistic ``z`` and its two-sided
-        p-value. The coefficients are named by ``feature_names`` for a
-        model fitted with ``fit_from_df``.
+        p-value. A coefficient is named by its covariate's column (a
+        formula, ``fit_from_df`` or a DataFrame ``Z``), else ``coef_j``
+        (:attr:`parameter_names`).
 
         The baseline parameters' intervals are those of :meth:`param_cb`,
         which stay in the parameter's support (a positive scale's is
@@ -728,7 +793,7 @@ class ParametricRegressionModel(
         """
         import pandas as pd
 
-        from ._summary import coefficient_names, coefficient_table
+        from ._summary import coefficient_table
 
         params = np.asarray(self.params, dtype=float)
         se = self._summary_se()
@@ -738,7 +803,7 @@ class ParametricRegressionModel(
         if self._is_linear_predictor():
             part = "coefficients"
             rows = coefficient_table(
-                coefficient_names(self, len(params) - k),
+                names[k:],
                 params[k:],
                 se[k:],
                 alpha_ci,
@@ -1535,7 +1600,7 @@ class ParametricRegressionModel(
         >>> Z = np.array([0.0, 1, 0, 1, 0, 1, 1, 0])
         >>> model = WeibullPH.fit(x=x, Z=Z)
         >>> model.parameter_names
-        ['alpha', 'beta', 'beta_0']
+        ['alpha', 'beta', 'coef_0']
         """
         dist_names = list(self.distribution.parameter_names)
         phi_map = self.reg_model.phi_param_map

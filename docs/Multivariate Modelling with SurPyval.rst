@@ -840,6 +840,69 @@ failure than the margins alone would imply.
     _ratio = model.cdf(t_grid) / indep.cdf(t_grid)
     assert _ratio[0] > 5 and np.all(np.diff(_ratio) < 0), _ratio
 
+Standard errors and confidence bounds
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A fitted model gives the uncertainty of its estimates as the other models
+do: ``standard_errors()`` and ``covariance()`` for the copula's parameters
+(``margins=True`` adds every margin's parameters, after the copula's, each
+margin's in the order of its own ``covariance()``), ``param_cb(name)`` for
+a Wald interval on one of them, and ``cb(x, on="sf")`` (or ``on="ff"``) for
+one on the joint survival or joint CDF at the points ``x``:
+
+.. jupyter-execute::
+
+    print("theta      : %.3f, standard error %.3f" % (
+        model.params[0], model.standard_errors()[0]))
+    print("95%% bounds : %s" % model.param_cb("theta").round(3))
+    print("series pair survives to t:")
+    for row, s, (lo, hi) in zip(t_grid, model.sf(t_grid), model.cb(t_grid)):
+        print("  t = %.0f: %.4f  [%.4f, %.4f]" % (row[0], s, lo, hi))
+
+How the covariance is found depends on how the model was fitted. Under
+``how="MLE"`` it is the inverse of the Hessian of the joint likelihood in
+every parameter at once. Under ``how="IFM"`` the copula parameter was
+estimated with the margins held at their own estimates, and treating those
+as known would understate its uncertainty; the covariance is the Godambe
+(sandwich) information of the two stages, which carries the margins'
+uncertainty into the copula's (see :doc:`Multivariate Analysis`). Passing
+the same margins already fitted shows what ignoring it would give: those
+margins are then known, and only the copula's own curvature is left:
+
+.. jupyter-execute::
+
+    held = Clayton.fit([x1, x2], margins=model.margins)
+    print("IFM (Godambe)         : %.4f" % model.standard_errors()[0])
+    print("margins taken as known: %.4f" % held.standard_errors()[0])
+    print("joint MLE (800 rows)  : %.4f" % fit.standard_errors()[0])
+
+The bound on ``theta`` is formed on the log scale, which keeps it positive,
+as the univariate models' bounds on a positive parameter are; a correlation
+``rho`` (Gaussian, Student-t) is bounded on Fisher's :math:`z`,
+:math:`\operatorname{artanh}\rho`, which keeps it inside :math:`(-1, 1)`.
+The bounds on ``sf`` and ``ff`` are delta-method bounds on the logit of the
+probability with the covariance of every parameter, the margins' included.
+Over 200 simulated samples of 200 rows from each family, with either fit,
+these 95% intervals covered the true parameter and the true joint survival
+between 91.5% and 99% of the time, each within the Monte Carlo error of
+95% (``calibration/test_coverage_copula.py``).
+A model built with ``from_params`` has no covariance (its methods raise a
+``ValueError``), and neither has a fit with a non-parametric margin, whose
+semi-parametric estimate needs a rank-based variance SurPyval does not
+compute. A parameter on a bound of its space (an AMH ``theta`` of 1) has
+no Wald interval: ``nan``, with a warning.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _lo, _hi = model.param_cb("theta")
+    assert _lo < model.params[0] < _hi
+    _b = model.cb(t_grid)
+    assert np.all((_b[:, 0] < model.sf(t_grid)) & (model.sf(t_grid) < _b[:, 1]))
+    assert held.standard_errors()[0] < model.standard_errors()[0]
+    assert held.covariance(margins=True)[1:, 1:].sum() == 0
+
 Plotting and simulation
 ~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -868,7 +931,9 @@ Saving and loading a copula model
 
 A ``CopulaModel`` serialises to a plain dictionary (``to_dict``) or JSON file
 (``to_json``) holding the family, its parameter, how it was fitted and each
-margin's own serialisation. Restore it with ``CopulaModel.from_dict`` /
+margin's own serialisation, with, for a fitted model, its likelihood and
+its parameter covariance (so the restored model keeps its standard errors
+and bounds). Restore it with ``CopulaModel.from_dict`` /
 ``CopulaModel.from_json`` or with the package-level ``surpyval.from_dict`` /
 ``surpyval.from_json``. The fitting data are not stored, and every margin must
 itself be serialisable (the built-in distributions are):

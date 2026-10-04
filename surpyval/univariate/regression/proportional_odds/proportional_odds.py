@@ -87,8 +87,11 @@ from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
     ic_sample_size,
 )
+from surpyval.univariate.regression._aliasing import dataframe_covariates
+from surpyval.utils.covariates import renamed_coefficient
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.deprecation import RenamedToMethod
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import wald_bound_on_support
 from surpyval.utils.no_maximum import (
     maximum_entry,
@@ -540,7 +543,10 @@ class ProportionalOddsModel(
     # Fitted quantities set by ``ProportionalOdds.fit``.
     beta: npt.NDArray
     params: npt.NDArray
-    se: npt.NDArray
+    #: The coefficients' standard errors, ``standard_errors()``.
+    _se: npt.NDArray
+    #: ``standard_errors()``'s name before v0.23, for one release (#613).
+    se = RenamedToMethod("standard_errors", "_se")
     #: The coefficients' covariance, ``covariance()`` (#605).
     _covariance: npt.NDArray
     #: ``covariance()``'s name before v0.23, for one release.
@@ -579,9 +585,11 @@ class ProportionalOddsModel(
 
     @property
     def parameter_names(self) -> list[str]:
-        """The names of ``params``, entry by entry: ``beta_0``,
-        ``beta_1``, ... for the covariate coefficients."""
-        return ["beta_{}".format(i) for i in range(len(self.params))]
+        """The names of ``params``, entry by entry: each covariate's
+        column (a formula, ``fit_from_df`` or a DataFrame ``Z``), else
+        ``coef_0``, ``coef_1``, ... (#614), as in the parametric
+        regression models."""
+        return coefficient_names(self, len(self.params))
 
     _ALIASED_WHY = (
         "a constant column, which the baseline odds absorb, or a linear "
@@ -782,8 +790,10 @@ class ProportionalOddsModel(
         return self._covariance
 
     def standard_errors(self) -> npt.NDArray:
-        """The coefficients' standard errors, from :meth:`covariance`."""
-        return self.se
+        """The coefficients' standard errors, from :meth:`covariance`.
+        ``se``, the attribute before v0.23, still gives them, with a
+        ``DeprecationWarning``, until v0.24."""
+        return self._se
 
     def param_cb(
         self,
@@ -830,17 +840,19 @@ class ProportionalOddsModel(
         >>> df = load_rossi_static()
         >>> x, c = df["week"].values, 1 - df["arrest"].values
         >>> model = ProportionalOdds.fit(x, df[["fin", "prio"]].values, c=c)
-        >>> model.param_cb("beta_0").round(4)
+        >>> model.param_cb("coef_0").round(4)
         array([-0.0017,  0.8567])
-        >>> model.param_cb("beta_1").round(4)
+        >>> model.param_cb("coef_1").round(4)
         array([-0.1853, -0.0559])
-        >>> model.param_cb("beta_1", method="lr").round(4)
+        >>> model.param_cb("coef_1", method="lr").round(4)
         array([-0.1849, -0.0548])
         """
         from .._likelihood_ratio import is_lr, profile_interval
 
         lr = is_lr(method)
         names = self.parameter_names
+        # A coefficient's name before v0.23, ``beta_j``, until v0.24 (#614)
+        name = renamed_coefficient(name, names, "param_cb")
         if name not in names:
             raise ValueError(
                 "Unknown parameter {!r}; expected one of {}".format(
@@ -948,7 +960,7 @@ class ProportionalOddsModel(
         """
         beta = np.asarray(self.beta, dtype=float)
         names = coefficient_names(self, beta.size)
-        se = np.asarray(self.se, dtype=float)
+        se = np.asarray(self._se, dtype=float)
         return coefficient_table(names, beta, se, alpha_ci, p=self.p_values)
 
     def _data_repr(self) -> str:
@@ -1011,7 +1023,7 @@ class ProportionalOddsModel(
             "model": "ProportionalOddsModel",
             "beta": np.asarray(self.beta, dtype=float).tolist(),
             "params": np.asarray(self.params, dtype=float).tolist(),
-            "se": np.asarray(self.se, dtype=float).tolist(),
+            "se": np.asarray(self._se, dtype=float).tolist(),
             # The key every model's dict stores it under (#605).
             "covariance": np.asarray(self._covariance, dtype=float).tolist(),
             "p_values": np.asarray(self.p_values, dtype=float).tolist(),
@@ -1050,8 +1062,9 @@ class ProportionalOddsModel(
             "a semi-parametric proportional odds model",
         )
         out = cls()
-        for key in ("beta", "params", "se", "p_values", "x", "d", "g0"):
+        for key in ("beta", "params", "p_values", "x", "d", "g0"):
             setattr(out, key, np.array(model_dict[key], dtype=float))
+        out._se = np.array(model_dict["se"], dtype=float)
         out.G0 = np.array(model_dict["G0"], dtype=float)
         # "cov" is the key of a dict written before v0.23.
         cov = model_dict.get("covariance", model_dict.get("cov"))
@@ -1074,7 +1087,7 @@ class ProportionalOddsModel(
         return out
 
 
-class ProportionalOdds_:
+class ProportionalOdds_(FitterRepr):
     """
     The semi-parametric proportional odds model: the covariates multiply
     the survival odds of a baseline left to the data,
@@ -1093,6 +1106,10 @@ class ProportionalOdds_:
     returns a :class:`ProportionalOddsModel`.
     """
 
+    #: The ``repr`` (#614)
+    fitter_kind = "semi-parametric proportional odds fitter"
+
+    @dataframe_covariates
     def fit(
         self,
         x: npt.ArrayLike,
@@ -1170,7 +1187,7 @@ class ProportionalOdds_:
         >>> model = ProportionalOdds.fit(x, Z, c=c)
         >>> model.beta.round(4)
         array([ 0.391 ,  0.0701, -0.1116])
-        >>> model.se.round(4)
+        >>> model.standard_errors().round(4)
         array([0.2206, 0.0227, 0.0331])
         """
         x, c, n, tl, Z = _validate(x, Z, c, n, tl)
@@ -1236,7 +1253,7 @@ class ProportionalOdds_:
         model = ProportionalOddsModel()
         model.beta = beta
         model.params = copy(beta)
-        model.se = expand(se_k, kept, p)
+        model._se = expand(se_k, kept, p)
         model._covariance = cov
         model.p_values = expand(p_k, kept, p)
         model.x = times

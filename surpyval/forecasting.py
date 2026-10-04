@@ -17,6 +17,18 @@ whose exact distribution gives the prediction interval.
 :func:`forecast` is the one entry point, for the univariate models (a
 distribution, a non-parametric estimate) and the regression models (with
 a covariate row per unit) alike.
+
+A repairable unit is not lost at its failure, and the recurrent-event
+models count every failure (#615). For a Poisson process (``HPP``,
+``CrowAMSAA``, ``Duane``, ``CoxLewis`` and the proportional-intensity
+models) a unit at age :math:`a_i` has a Poisson number of failures over
+the next :math:`h`, with mean :math:`\\Lambda(a_i + h) - \\Lambda(a_i)`, and
+the fleet's count is Poisson with the sum of those means. For a renewal or
+imperfect-repair model (``GeneralizedRenewal``, ``GeneralizedOneRenewal``,
+``ARA``, ``ARI``) the future depends on each unit's own history: each unit
+is simulated forward from its current state (its virtual age now, or the
+intensity reduction in force), and the counts are read off the
+simulations.
 """
 
 from __future__ import annotations
@@ -79,13 +91,26 @@ class Forecast:
     period_upper: npt.NDArray
     #: The significance level of the intervals.
     alpha_ci: float
+    #: ``per_unit[i, k]``: the expected failures of one unit of row ``i``
+    #: within ``horizon[k]``, for a recurrent-event model (where a unit
+    #: can fail more than once); ``None`` where each unit fails at most
+    #: once, and it is ``probability``.
+    per_unit: npt.NDArray | None = None
+    #: The labels of the units (the fitted data's items), when they were
+    #: taken from the model's data; ``None`` otherwise.
+    units: npt.NDArray | None = None
+    #: The number of simulated futures per unit behind the counts (a
+    #: renewal model); ``None`` where they are exact.
+    simulations: int | None = None
 
     @property
     def unit_expected(self) -> npt.NDArray:
         """``unit_expected[i, k]``: the expected failures of row ``i``
-        within ``horizon[k]`` (``n[i] * probability[i, k]``); sort by the
-        last column for the units most at risk."""
-        return self.n[:, None] * self.probability
+        within ``horizon[k]`` (``n[i] * probability[i, k]``, or ``n[i] *
+        per_unit[i, k]`` for a recurrent-event model); sort by the last
+        column for the units most at risk."""
+        each = self.probability if self.per_unit is None else self.per_unit
+        return self.n[:, None] * each
 
     def __repr__(self) -> str:
         level = 100 * (1 - self.alpha_ci)
@@ -93,6 +118,10 @@ class Forecast:
             "Forecast of failures: {:g} units; {:g}% prediction "
             "intervals".format(float(np.sum(self.n)), level)
         )
+        if self.per_unit is not None:
+            head += "; every failure counted"
+        if self.simulations is not None:
+            head += " ({} simulated futures per unit)".format(self.simulations)
         columns = [
             ("horizon", self.horizon),
             ("expected", self.expected),
@@ -116,12 +145,15 @@ class Forecast:
 
 def forecast(
     model: Any,
-    age: npt.ArrayLike,
-    horizon: npt.ArrayLike,
+    age: npt.ArrayLike | None = None,
+    horizon: npt.ArrayLike | None = None,
     Z: Any = None,
     n: npt.ArrayLike | None = None,
     limit: npt.ArrayLike | None = None,
     alpha_ci: float = 0.05,
+    *,
+    items: int | None = None,
+    random_state: Any = None,
 ) -> Forecast:
     r"""
     Forecast the failures of units in service at their current ages.
@@ -133,22 +165,50 @@ def forecast(
     sum: expected :math:`\sum_i n_i p_i`, variance
     :math:`\sum_i n_i p_i (1 - p_i)`, and a prediction interval from
     their exact (Poisson-binomial) distribution. A unit that fails is
-    counted once (it is not replaced): for a repairable fleet whose units
-    are renewed on failure, the counts are those until each unit's first
-    failure.
+    counted once (it is not replaced).
+
+    A recurrent-event model counts every failure of a repairable unit
+    (#615):
+
+    - a Poisson process (``HPP``, ``CrowAMSAA``, ``Duane``,
+      ``CoxLewis``; with ``Z``, a proportional-intensity model): a unit at
+      age :math:`a_i` has a Poisson number of failures in the next
+      :math:`h`, with mean :math:`\mu_i = \Lambda(a_i + h) -
+      \Lambda(a_i)`; the fleet's count is Poisson with mean
+      :math:`\sum_i n_i \mu_i` (also its variance), and its interval is
+      the Poisson one.
+    - a renewal or imperfect-repair model (``GeneralizedRenewal``,
+      ``GeneralizedOneRenewal``, ``ARA``, ``ARI``): each unit's future
+      depends on its own history, so each is simulated ``items`` times
+      from its current state (see :meth:`RenewalModel.unit_states
+      <surpyval.recurrent.renewal.renewal_model.RenewalModel.unit_states>`)
+      and the expected counts, their variance and the interval are those
+      of the simulated counts.
+
+    ``probability`` is then the chance of at least one failure, and
+    ``per_unit`` and ``unit_expected`` the expected number.
 
     Parameters
     ----------
     model : fitted model
         A univariate model (a distribution, a mixture, a non-parametric
-        estimate; anything with ``sf(x)``) or a regression model (with
-        ``sf(x, Z)``).
-    age : array_like
+        estimate; anything with ``sf(x)``), a regression model (with
+        ``sf(x, Z)``), or a recurrent-event model: a Poisson process
+        (``ParametricRecurrenceModel``, ``ProportionalIntensityModel``) or
+        a renewal model (``RenewalModel``).
+    age : array_like, optional
         The current age of each unit or cohort: the time it has survived
-        so far, on the model's time scale.
+        so far, on the model's time scale (for a recurrent-event model,
+        its time since new, or since entry). Required for a univariate or
+        regression model. For a recurrent-event model fitted to data it
+        may be left out: the units are then the fitted data's items, each
+        at the end of its observation (with its own covariates, and for a
+        renewal model its own failure history). Ages given to a renewal
+        model are those of units with no failure yet.
     horizon : scalar or array_like
         The time ahead to forecast over, or several increasing times
         ahead (the end of each period: ``[1, 2, ..., 12]`` months).
+        Required.
     Z : array_like or DataFrame, optional
         The covariates of each unit, for a regression model: one row per
         unit (or a single row for every unit), as its ``sf`` takes them.
@@ -163,6 +223,12 @@ def forecast(
     alpha_ci : float, optional
         The significance level of the prediction intervals (default 0.05,
         a 95% interval).
+    items : int, optional
+        For a renewal model only: the number of simulated futures of
+        each unit (default 1000). Keyword only.
+    random_state : int or numpy.random.Generator, optional
+        For a renewal model only: the seed of the simulation. Keyword
+        only.
 
     Returns
     -------
@@ -178,7 +244,11 @@ def forecast(
         If an age, horizon or limit is missing or infinite, the horizons
         are not positive and increasing, a count is not a whole number,
         ``Z`` is given to a univariate model or not given to a regression
-        model, or ``alpha_ci`` is not strictly between 0 and 1.
+        model, or ``alpha_ci`` is not strictly between 0 and 1; if ``age``
+        is left out for a model that is not a recurrent-event model fitted
+        to data; if ``n`` is given to a renewal model (each unit is
+        simulated from its own state: give one age per unit), or ``items``
+        or ``random_state`` to a model that is not one.
 
     Warns
     -----
@@ -238,23 +308,56 @@ def forecast(
            [0.3157]])
     >>> fleet.expected.round(4)
     array([0.6187])
+
+    A repairable fleet under a Crow-AMSAA process: every failure in the
+    next 100 hours of three systems at 200, 500 and 900 hours.
+
+    >>> from surpyval.recurrent import CrowAMSAA
+    >>> nhpp = CrowAMSAA.from_params([50.0, 1.3])
+    >>> repairs = surv.forecast(nhpp, age=[200.0, 500.0, 900.0],
+    ...                         horizon=100.0)
+    >>> repairs.per_unit.round(3)
+    array([[4.208],
+           [5.337],
+           [6.289]])
+    >>> repairs.expected.round(3), repairs.lower, repairs.upper
+    (array([15.833]), array([9.]), array([24.]))
     """
     if not 0 < alpha_ci < 1:
         raise alpha_ci_error(alpha_ci)
-    age_arr = _finite(age, "age").reshape(-1)
+    if horizon is None:
+        raise ValueError(
+            "horizon is required: the time ahead to forecast over, or "
+            "several increasing times ahead"
+        )
     h = _finite(horizon, "horizon").reshape(-1)
     if h.size == 0 or np.any(h <= 0) or np.any(np.diff(h) <= 0):
         raise ValueError(
             "horizon must be positive times ahead, increasing; got "
             "{}".format(h.tolist())
         )
+    kind = _recurrent_kind(model)
+    if kind != "renewal" and (items is not None or random_state is not None):
+        raise ValueError(
+            "items and random_state set the simulation of a renewal "
+            "model's forecast; this model's forecast is exact"
+        )
+    if kind == "renewal":
+        return _renewal_forecast(
+            model, age, h, Z, n, limit, alpha_ci, items, random_state
+        )
+    if kind == "intensity":
+        return _intensity_forecast(model, age, h, Z, n, limit, alpha_ci)
+    if age is None:
+        raise ValueError(
+            "age is required: the current age of each unit or cohort (only "
+            "a recurrent-event model fitted to data takes its units from "
+            "the data)"
+        )
+    age_arr = _finite(age, "age").reshape(-1)
     k = age_arr.size
     counts = _counts(n, k)
-    end_limit = (
-        np.full(k, np.inf)
-        if limit is None
-        else np.broadcast_to(_finite(limit, "limit"), (k,)).astype(float)
-    )
+    end_limit = _limits(limit, k)
     regression = _takes_covariates(model)
     if regression and Z is None:
         raise ValueError(
@@ -322,6 +425,200 @@ def _counts(n: Any, k: int) -> npt.NDArray:
             "{}".format(counts[(counts < 0) | (counts != np.round(counts))])
         )
     return counts
+
+
+def _recurrent_kind(model: Any) -> str | None:
+    """``"renewal"`` for a renewal model, ``"intensity"`` for a Poisson
+    process (plain or proportional intensity), else ``None``."""
+    from surpyval.recurrent.parametric.parametric_recurrence import (
+        ParametricRecurrenceModel,
+    )
+    from surpyval.recurrent.regression.proportional_intensity import (
+        ProportionalIntensityModel,
+    )
+    from surpyval.recurrent.renewal.renewal_model import RenewalModel
+
+    if isinstance(model, RenewalModel):
+        return "renewal"
+    if isinstance(
+        model, (ParametricRecurrenceModel, ProportionalIntensityModel)
+    ):
+        return "intensity"
+    return None
+
+
+def _limits(limit: Any, k: int) -> npt.NDArray:
+    if limit is None:
+        return np.full(k, np.inf)
+    return np.broadcast_to(_finite(limit, "limit"), (k,)).astype(float)
+
+
+def _poisson_summary(
+    mean: npt.NDArray, level: tuple[float, float]
+) -> tuple[npt.NDArray, npt.NDArray]:
+    """The equal-tailed interval of Poisson counts with means ``mean``."""
+    from scipy.stats import poisson
+
+    ends = [np.asarray(poisson.ppf(q, mean), dtype=float) for q in level]
+    # A mean of 0 has no failures: ppf is nan at a zero mean in old scipy.
+    return tuple(np.where(mean > 0, e, 0.0) for e in ends)  # type: ignore
+
+
+def _intensity_forecast(
+    model: Any,
+    age: Any,
+    h: npt.NDArray,
+    Z: Any,
+    n: Any,
+    limit: Any,
+    alpha_ci: float,
+) -> Forecast:
+    """:func:`forecast` for a Poisson process: every failure counted."""
+    from surpyval.recurrent.regression.proportional_intensity import (
+        ProportionalIntensityModel,
+    )
+
+    regression = isinstance(model, ProportionalIntensityModel)
+    units = None
+    if age is None:
+        data = getattr(model, "data", None)
+        if data is None or getattr(data, "window_map", None) is not None:
+            raise ValueError(
+                "age is required: this model carries no data to take the "
+                "units from (built from parameters, restored, or fitted to "
+                "gapped observation)"
+            )
+        if Z is not None:
+            raise ValueError(
+                "With age left out the units are the fitted data's items, "
+                "with their own covariates; give Z only with age"
+            )
+        first, _ = data.item_rows()
+        _, age_arr = data.item_observation_windows()
+        age_arr = np.asarray(age_arr, dtype=float)
+        units = np.asarray(data.items)
+        if regression:
+            Z = np.asarray(data.Z, dtype=float)[first]
+    else:
+        age_arr = _finite(age, "age").reshape(-1)
+    k = age_arr.size
+    counts = _counts(n, k)
+    end_limit = _limits(limit, k)
+    if regression and Z is None:
+        raise ValueError(
+            "This is a regression model: give the covariates of each unit "
+            "as Z (one row per unit, or a single row for every unit)"
+        )
+    if not regression and Z is not None:
+        raise ValueError(
+            "This model takes no covariates, so Z cannot be used; it "
+            "forecasts every unit from its age alone"
+        )
+    args: tuple = ()
+    if regression:
+        Z_arr = np.asarray(Z, dtype=float)
+        Z_arr = Z_arr.reshape(1, -1) if Z_arr.ndim < 2 else Z_arr
+        args = (np.broadcast_to(Z_arr, (k, Z_arr.shape[1])),)
+    start = np.asarray(model.cif(age_arr, *args), dtype=float)
+    mean = np.empty((k, h.size))
+    for j, hj in enumerate(h):
+        span = np.clip(np.minimum(age_arr + hj, end_limit) - age_arr, 0, None)
+        end = np.asarray(model.cif(age_arr + span, *args), dtype=float)
+        mean[:, j] = np.where(span > 0, end - start, 0.0)
+    period = np.diff(np.column_stack([np.zeros(k), mean]), axis=1)
+    level = (alpha_ci / 2, 1 - alpha_ci / 2)
+    total = counts @ mean
+    period_total = counts @ period
+    lower, upper = _poisson_summary(total, level)
+    period_lower, period_upper = _poisson_summary(period_total, level)
+    return Forecast(
+        horizon=h,
+        probability=-np.expm1(-mean),
+        n=counts,
+        expected=total,
+        variance=total.copy(),
+        lower=lower,
+        upper=upper,
+        period_expected=period_total,
+        period_lower=period_lower,
+        period_upper=period_upper,
+        alpha_ci=float(alpha_ci),
+        per_unit=mean,
+        units=units,
+    )
+
+
+def _renewal_forecast(
+    model: Any,
+    age: Any,
+    h: npt.NDArray,
+    Z: Any,
+    n: Any,
+    limit: Any,
+    alpha_ci: float,
+    items: int | None,
+    random_state: Any,
+) -> Forecast:
+    """:func:`forecast` for a renewal model: each unit simulated forward
+    from its current state."""
+    if Z is not None:
+        raise ValueError(
+            "A renewal model takes no covariates, so Z cannot be used"
+        )
+    if n is not None:
+        raise ValueError(
+            "n is not taken for a renewal model: each unit is simulated "
+            "from its own state, so give one age per unit"
+        )
+    items = 1000 if items is None else int(items)
+    if items < 2:
+        raise ValueError("items must be at least 2; got {}".format(items))
+    states = model._states(None if age is None else _finite(age, "age"))
+    k = states.now.size
+    end_limit = _limits(limit, k)
+    span = np.clip(
+        np.minimum(h[None, :], (end_limit - states.now)[:, None]), 0, None
+    )
+    with np.errstate(all="ignore"):
+        prob = -np.expm1(-model._next_failure_hazard(states, span))
+    prob = np.where(span > 0, prob, 0.0)
+    counts = np.zeros((k, items, h.size))
+    if np.any(span > 0):
+        unit, replicate, ahead = model._simulate_from_states(
+            states, float(span.max()), items, random_state
+        )
+        cell = unit * items + replicate
+        for j in range(h.size):
+            keep = ahead <= span[unit, j]
+            counts[:, :, j] = np.bincount(
+                cell[keep], minlength=k * items
+            ).reshape(k, items)
+    totals = counts.sum(axis=0)
+    period = np.diff(
+        np.concatenate([np.zeros((items, 1)), totals], axis=1), axis=1
+    )
+    level = [alpha_ci / 2, 1 - alpha_ci / 2]
+    lower, upper = np.quantile(totals, level, axis=0, method="inverted_cdf")
+    p_lower, p_upper = np.quantile(
+        period, level, axis=0, method="inverted_cdf"
+    )
+    units = None if states.units is None else np.asarray(states.units)
+    return Forecast(
+        horizon=h,
+        probability=prob,
+        n=np.ones(k),
+        expected=totals.mean(axis=0),
+        variance=totals.var(axis=0, ddof=1),
+        lower=lower.astype(float),
+        upper=upper.astype(float),
+        period_expected=period.mean(axis=0),
+        period_lower=p_lower.astype(float),
+        period_upper=p_upper.astype(float),
+        alpha_ci=float(alpha_ci),
+        per_unit=counts.mean(axis=1),
+        units=units,
+        simulations=items,
+    )
 
 
 def _takes_covariates(model: Any) -> bool:

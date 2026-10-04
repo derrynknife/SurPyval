@@ -352,7 +352,7 @@ def test_crph_fine_gray_matches_the_dense_weight_matrix():
     for cause in (1, 2, 3):
         old = _old_fit_cause(*args, cause)
         _assert_close(model.betas[model.event_idx_map[cause]], old["beta"])
-        _assert_close(model._fg_models[cause].se, old["se"])
+        _assert_close(model._fg_models[cause].standard_errors(), old["se"])
 
 
 @pytest.mark.parametrize("ties", ["censoring_first", "events_first"])

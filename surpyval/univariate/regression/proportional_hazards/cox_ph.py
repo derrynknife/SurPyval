@@ -28,6 +28,7 @@ from surpyval.univariate.nonparametric import (
     Turnbull,
 )
 from surpyval.univariate.parametric.fitters import is_local_minimum
+from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils import (
     _caller_stacklevel,
     check_covariate_rows,
@@ -35,6 +36,7 @@ from surpyval.utils import (
     validate_coxph,
     validate_coxph_df_inputs,
 )
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
 from surpyval.utils.pickling import Rebuilt
 
@@ -133,7 +135,7 @@ def _solve_beta_and_p_values(
     n: npt.NDArray,
     n_events: float,
     strata: "npt.NDArray | None" = None,
-) -> tuple[Any, npt.NDArray, npt.NDArray, npt.NDArray]:
+) -> tuple[Any, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """Maximise the partial likelihood by Newton-Raphson
     (:func:`newton_raphson`; the score's root-finder, then BFGS, if that
     fails) and compute Wald p-values from the observed information;
@@ -142,9 +144,11 @@ def _solve_beta_and_p_values(
     weighted number of events and stratum labels are for the aliasing
     check (:func:`_cox_aliased`).
 
-    Returns ``(res, p_values, se, aliased)``: ``res.x`` has 0 at the
-    aliased columns (the coefficients the predictions use), and their
-    p-values and standard errors ``se`` are nan. ``res.maximum`` is what
+    Returns ``(res, p_values, se, aliased, covariance)``: ``res.x`` has 0
+    at the aliased columns (the coefficients the predictions use), and
+    their p-values, standard errors ``se`` and rows and columns of the
+    ``covariance`` (the inverse of the observed information, #613) are
+    nan. ``res.maximum`` is what
     the search reached, for the model's ``maximum``: ``"no finite
     maximum"`` where the partial likelihood is monotone, else
     ``"verified"`` where the score is zero and the information positive
@@ -188,7 +192,8 @@ def _solve_beta_and_p_values(
             res = OptimizeResult(x=np.zeros(p), success=True, fun=0.0)
             # Nothing estimated: the answer is exact
             res.maximum = "verified"
-            return res, np.full(p, np.nan), np.full(p, np.nan), aliased
+            nan = np.full(p, np.nan)
+            return res, nan, nan.copy(), aliased, np.full((p, p), np.nan)
     # Where the likelihood is monotone (below) the coefficients run off
     # towards infinity and the risk-set sums underflow to 0 on the way;
     # the resulting log(0) and 0/0 are that divergence, which is reported
@@ -228,13 +233,15 @@ def _solve_beta_and_p_values(
     # An exactly singular information matrix raises before the
     # pseudo-inverse fallback can run (#259); route it there.
     try:
-        var = np.diag(inv(hessian_matrix))
+        covariance = np.atleast_2d(inv(hessian_matrix))
+        var = np.diag(covariance)
     except np.linalg.LinAlgError:
         var = np.full(len(np.atleast_1d(res.x)), -1.0)
     # Use the pseudo-inverse if the hessian does not have a diagonal that
     # is all positive.
     if np.any(var <= 0):
-        var = np.diag(pinv(hessian_matrix))
+        covariance = np.atleast_2d(pinv(hessian_matrix))
+        var = np.diag(covariance)
     # A near-singular information matrix (e.g. a degenerate start-stop
     # design with duplicated rows) can still leave a non-positive
     # variance; the resulting standard error is simply unavailable (nan),
@@ -251,7 +258,10 @@ def _solve_beta_and_p_values(
         res.x = embed(res.x)
         p_values = expand(p_values, kept, p)
         se = expand(se, kept, p)
-    return res, p_values, se, aliased
+        full = np.full((p, p), np.nan)
+        full[np.ix_(kept, kept)] = covariance
+        covariance = full
+    return res, p_values, se, aliased, covariance
 
 
 def _maximum_reached(
@@ -334,7 +344,7 @@ def warn_monotone(which: str) -> None:
     )
 
 
-class CoxPH_(CoxLikelihoodMixin):
+class CoxPH_(FitterRepr, CoxLikelihoodMixin):
     """
     The Cox proportional hazards model: a baseline hazard left entirely
     to the data, multiplied by :math:`e^{\\beta' Z}`,
@@ -358,6 +368,9 @@ class CoxPH_(CoxLikelihoodMixin):
     ``CoxPH`` is an instance of this class; its fit methods return a
     :class:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel`.
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "semi-parametric proportional hazards fitter"
 
     # Best reference I can find that covers all the
     # possibilities for estimating betas
@@ -431,6 +444,7 @@ class CoxPH_(CoxLikelihoodMixin):
                 h0[t] = np.sum(1.0 / steps)
         return unique_x, r, d, h0
 
+    @dataframe_covariates
     def fit(
         self,
         x: npt.ArrayLike,
@@ -566,14 +580,15 @@ class CoxPH_(CoxLikelihoodMixin):
         likelihood_args = (x, Zc, c, n, tl)
         neg_ll, jac = func_generator(*likelihood_args)
 
-        res, p_values, se, aliased = _solve_beta_and_p_values(
+        res, p_values, se, aliased, covariance = _solve_beta_and_p_values(
             neg_ll, jac, beta_init, tol, Z, n, float(n[c == 0].sum())
         )
 
         model = SemiParametricRegressionModel("Cox", "Semi-Parametric")
         model._neg_ll = float(neg_ll(res.x))
         model.p_values = p_values
-        model.se = se
+        model._se = se
+        model._covariance = covariance
         # Kept as what they are built from, so the model pickles (#573)
         model.neg_ll_of = Rebuilt(
             func_generator, likelihood_args, item=0, built=neg_ll
@@ -719,7 +734,7 @@ class CoxPH_(CoxLikelihoodMixin):
         )
 
         beta_init = np.zeros(n_params)
-        res, p_values, se, aliased = _solve_beta_and_p_values(
+        res, p_values, se, aliased, covariance = _solve_beta_and_p_values(
             neg_ll,
             jac,
             beta_init,
@@ -739,7 +754,8 @@ class CoxPH_(CoxLikelihoodMixin):
         model = SemiParametricRegressionModel("Cox", "Semi-Parametric")
         model._neg_ll = float(neg_ll(res.x))
         model.p_values = p_values
-        model.se = se
+        model._se = se
+        model._covariance = covariance
         # Kept as what they are built from, so the model pickles (#573)
         model.neg_ll_of = Rebuilt(
             combined_generators, strata_args, item=0, built=neg_ll

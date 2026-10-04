@@ -10,29 +10,50 @@ from surpyval.utils import coerce_xcnt_x, format_truncation
 from .recurrent_event_data import RecurrentEventData
 
 
-def reject_left_truncation(data: RecurrentEventData, model_name: str) -> None:
+def measure_from_entry(
+    data: RecurrentEventData, model_name: str
+) -> RecurrentEventData:
     """
-    Virtual-age and history-dependent models (Kijima/G1/ARA/ARI) cannot be
-    fitted to left-truncated (delayed-entry) data: the virtual age or
-    intensity reduction at entry depends on the unobserved pre-entry failure
-    history. Only the calendar-time NHPP models support delayed entry.
+    The data on the clock of a virtual-age / imperfect-repair model
+    (Kijima, G1, ARA, ARI): each item's times measured from its entry.
+
+    These models need an item's state when its observation begins: its
+    virtual age, or the intensity reductions of its earlier repairs. With
+    delayed entry (a left-truncation time ``tl``) that history is unknown,
+    and the models take the item to be **as new at entry**: virtual age 0
+    at ``tl``, as after an overhaul, with its clock restarting there. So an
+    item's times (and its right-truncation time) are moved back by its
+    ``tl``; an item with no ``tl`` is measured from 0, as before. Under
+    this assumption the fit is the one of the items' histories since entry
+    as if each had started new then (#615).
+
+    Raises ``ValueError`` for a negative time without a ``tl`` (these
+    models measure time from the start of the item's life).
     """
-    if np.any(np.asarray(data.tl) > 0):
-        raise ValueError(
-            "{} does not support left truncation (tl > 0): the state at entry "
-            "depends on the unobserved pre-entry history. Use an NHPP "
-            "intensity model (HPP, CrowAMSAA, Duane, CoxLewis) for delayed "
-            "entry.".format(model_name)
+    tl = np.asarray(data.tl, dtype=float)
+    entry = np.where(np.isfinite(tl), tl, 0.0)
+    x = np.asarray(data.x, dtype=float)
+    if np.any(entry != 0):
+        tr = np.asarray(data.tr, dtype=float)
+        shifted = RecurrentEventData(
+            x - entry,
+            data.i,
+            data.c,
+            data.n,
+            e=data.e,
+            tl=np.where(np.isfinite(tl), 0.0, tl),
+            tr=tr - entry,
         )
+        shifted.Z = data.Z
+        return shifted
     # These models measure time from the start of each item's life (the
-    # first gap starts at 0 whatever ``tl`` says), so a negative time --
-    # admitted by ``handle_xicn`` under a negative ``tl`` -- would give a
-    # negative gap.
-    if np.any(np.asarray(data.x, dtype=float) < 0):
+    # first gap starts at 0), so a negative time would give a negative gap.
+    if np.any(x < 0):
         raise ValueError(
             "{} measures times from the start of each item's life, so they "
             "cannot be negative.".format(model_name)
         )
+    return data
 
 
 def reject_unsupported_nonparametric(
@@ -270,7 +291,7 @@ def validate_renewal_times(
     """
     Check the event times a lifetime-distribution renewal model can use.
 
-    (Negative times are rejected by ``reject_left_truncation``.) For a
+    (Negative times are rejected by ``measure_from_entry``.) For a
     lifetime distribution on ``[0, inf)`` a gap measured from virtual age
     0 must be positive: its density at 0 is 0 or
     infinite for most shapes (a Weibull's, for one), so the likelihood has

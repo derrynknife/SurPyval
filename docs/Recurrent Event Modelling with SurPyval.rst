@@ -95,7 +95,8 @@ them together as an ``(N, 2)`` array ``t``). Items observed over several
 disjoint periods use ``windows`` (see `Gapped (multi-window) observation`_).
 The intensity models accept all of these (see `Delayed entry and right
 truncation`_ for a worked example); the non-parametric MCF accepts ``tl``,
-``tr`` and ``windows``; the renewal models need each item watched from new.
+``tr`` and ``windows``; the renewal models accept ``tl``, taking each item
+to be as new at its entry (see `Renewal Modelling in SurPyval`_).
 
 Event logs usually arrive as a table, one row per event with a column naming
 the unit. Every recurrent fitter's ``fit_from_df`` reads one, given the names
@@ -810,30 +811,41 @@ from the uncertainty in the parameters, is given by ``cif_cb`` (see the next
 section). But the *actual* number of events in a future period is random even
 if the model is exactly right: for a Poisson process the count in
 :math:`(t_1, t_2]` is Poisson distributed with mean
-:math:`\Lambda(t_2) - \Lambda(t_1)`. SurPyval has no prediction-interval
-method, but a plug-in interval takes two lines with ``scipy``. How many
-failures should one system in our fleet expect in its next 10 hours, from 50 to
-60?
+:math:`\Lambda(t_2) - \Lambda(t_1)`. :func:`surpyval.forecast` gives the
+expected count from each unit's current age and the prediction interval of the
+fleet's count, for one horizon or the end of each period. How many failures
+should the systems in our fleet expect in their next 10 hours, each from 50 to
+60, and in each 5-hour half?
 
 .. jupyter-execute::
 
-    from scipy.stats import poisson
+    import surpyval as surv
 
-    expected = float(ca.cif(60) - ca.cif(50))
-    lower, upper = poisson.ppf([0.05, 0.95], expected)
-    print(f"expected events in (50, 60]  : {expected:.2f}")
-    print(f"90% prediction interval      : {lower:.0f} to {upper:.0f}")
-    print(f"for the fleet of four systems: {poisson.ppf([0.05, 0.95], 4 * expected)}")
+    fleet = surv.forecast(ca, age=[50, 50, 50, 50], horizon=[5, 10],
+                          alpha_ci=0.1)
+    print(fleet)
+    print("each system, by 60 hours:", fleet.per_unit[:, -1].round(2))
 
-Because counts are whole numbers the interval covers *at least* 90%. This
-plug-in interval treats the fitted parameters as exact, so with little data
-it is somewhat too narrow.
+For a fitted model ``age`` can be left out: the units are then the fitted
+items, each from the end of its own observation (and, for a
+proportional-intensity model, with its own covariates). ``per_unit`` holds
+each unit's expected count (``unit_expected`` times ``n``, the units at each
+age), and ``probability`` its chance of at least one failure. Because counts
+are whole numbers the interval covers *at least* 90%. It treats the fitted
+parameters as exact, so with little data it is somewhat too narrow.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    _cover = poisson.cdf(upper, expected) - poisson.cdf(lower - 1, expected)
+    from scipy.stats import poisson
+
+    expected = float(ca.cif(60) - ca.cif(50))
+    assert np.isclose(fleet.per_unit[0, -1], expected)
+    assert fleet.upper[-1] == poisson.ppf(0.95, 4 * expected)
+    _cover = poisson.cdf(fleet.upper[-1], 4 * expected) - poisson.cdf(
+        fleet.lower[-1] - 1, 4 * expected
+    )
     assert _cover >= 0.9, _cover
 
 Inference and model checking
@@ -1006,8 +1018,12 @@ All four renewal models — ``GeneralizedRenewal``, ``GeneralizedOneRenewal``,
 ``ARA`` and ``ARI`` — take the same ``x``, ``i``, ``c`` and ``n`` arrays as the
 intensity models, plus a ``dist`` (the lifetime distribution, Weibull by
 default) and the model's own options; ``ARI`` takes a ``baseline`` intensity
-model in place of the ``dist``. Each item must be observed from new, with exact event times and at
-most a final right-censored row. They all return a
+model in place of the ``dist``. Each item has exact event times and at
+most a final right-censored row. An item is observed from new, or from an
+entry time given in ``tl`` (delayed entry), where it is taken to be **as new**
+-- virtual age 0, as after an overhaul -- since its state then is unknown:
+its times count from its entry, and the fitted model's ``data`` hold them so.
+They all return a
 :doc:`RenewalModel <counting/renewal_model>`, which has no closed-form
 cumulative intensity: its ``mcf`` and ``plot`` work by simulating many items
 from the fitted model.
@@ -1061,6 +1077,59 @@ approximate. The MTBF is that of one prototype.
     _crow = growth.mtbf_cb(T, alpha_ci=0.2, bound="lower", method="crow")
     _wald = growth.mtbf_cb(T, alpha_ci=0.2, bound="lower")
     assert round(float(_crow)) == 257 and round(float(_wald)) == 260
+
+Reliability growth: projecting delayed fixes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The other half of a growth programme is the *projection*: the MTBF expected
+once the fixes delayed to the end of the test are in. It needs each failure's
+**failure mode** and a classification of the modes (MIL-HDBK-189C, section
+6):
+
+- **A modes** will not be fixed;
+- **BC modes** were fixed during the test;
+- **BD modes** will be fixed after it, each fix removing a fraction ``d`` of
+  its mode's intensity, its *fix-effectiveness factor* (FEF).
+
+``CrowAMSAA.projection`` takes the data as ``fit`` does, plus a ``modes``
+array (one label per row; the ``c=1`` rows' labels are ignored), a ``fef``
+dict of the BD modes and their factors, and optionally ``bc``, the BD modes
+fixed during the test; every other mode is an A mode. Here a prototype is
+tested to 400 hours:
+
+.. jupyter-execute::
+
+    x = [15, 42, 60, 98, 130, 171, 205, 260, 310, 345, 390, 400]
+    modes = ["b1", "a1", "b2", "b1", "b3", "a2", "b2", "b4", "b1", "a1",
+             "b3", None]
+    c = [0] * 11 + [1]
+    fef = {"b1": 0.8, "b2": 0.7, "b3": 0.75, "b4": 0.6}
+
+    projection = CrowAMSAA.projection(x, modes, fef, c=c)
+    print(projection)
+    print(projection.modes)
+
+The test demonstrates 36.4 hours; the delayed fixes take each BD mode's
+intensity (``N_i / T``) down to ``(1 - d_i) N_i / T``, and the projection
+adds back :math:`\bar d\, h(T)`: the fixes are judged on the modes seen, but
+new BD modes were still turning up at the end of the test (:math:`h(T)`, the
+rate of the power law fitted to the modes' first occurrences), and those
+are not fixed yet. The projected MTBF, 62.8 hours, is the AMSAA-Crow
+projection; the growth potential, 78.4 hours, is what the same factors
+would reach if every BD mode were found and fixed. With modes fixed during
+the test (``bc=``) the system grew while it was tested, and the
+demonstrated intensity is the Crow-AMSAA one at the end of the test (Crow's
+extended model). The test must be time-terminated (every system run to the
+same ``T``, given as its ``c=1`` row); several systems are taken to have run
+side by side, and the intensities and MTBFs are those of one system.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(projection.demonstrated_mtbf, 1) == 36.4
+    assert round(projection.projected_mtbf, 1) == 62.8
+    assert round(projection.growth_potential_mtbf, 1) == 78.4
 
 Generalised Renewal Process with SurPyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1532,9 +1601,50 @@ Using the ARA model fitted above:
     print("90% of new systems have between", np.percentile(counts, 5),
           "and", np.percentile(counts, 95), "failures by t=40")
 
-The simulations always start from a new item (virtual age zero), so they
-answer questions about new units rather than forecasting a specific item's
-next failures from its current state.
+The maintenance questions are about the items in service, though, each with
+its own history. ``unit_states`` gives each fitted item's state at the end of
+its history: the time now, its failures so far, the time since the last, and
+what its repairs have left it with -- its virtual age now (for ``ARI``, the
+intensity reduction in force; for the G1 process, the time since the last
+failure on the lifetime's axis and the factor its next gap is scaled by):
+
+.. jupyter-execute::
+
+    print(ara.unit_states().round(2))
+
+From there, ``next_failure_sf(x)`` is each item's chance of running a further
+``x`` without a failure (for the virtual-age models, the lifetime's
+conditional survival from its virtual age) and ``next_failure_hf(x)`` its
+intensity then. :func:`surpyval.forecast` simulates each item's future from
+its own state, so ``per_unit`` is each item's expected number of failures and
+the interval is that of the fleet's count:
+
+.. jupyter-execute::
+
+    print("P(no failure in the next 5):", ara.next_failure_sf(5.0).round(3))
+
+    ahead = surv.forecast(ara, horizon=[5, 10], random_state=3)
+    print(ahead)
+    print("expected failures in the next 10, each item:",
+          ahead.per_unit[:, -1].round(2))
+
+Give ``age`` instead for units that have run that long with no failure yet
+(new units, or units overhauled to as good as new), and ``limit`` for a time
+past which failures are not counted. ``items`` sets the number of simulated
+futures per unit (1000 by default). An item that entered observation late
+(``tl``) is as new at its entry (see above), and its times, and so its state,
+count from there.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _states = ara.unit_states()
+    assert list(_states.index) == list(ara.data.items)
+    assert np.allclose(ahead.probability[:, 0], 1 - ara.next_failure_sf(5.0))
+    assert np.allclose(ahead.expected, ahead.per_unit.sum(axis=0))
+    assert np.all(ahead.lower <= ahead.expected)
+    assert np.all(ahead.expected <= ahead.upper)
 
 Gapped (multi-window) observation
 ---------------------------------

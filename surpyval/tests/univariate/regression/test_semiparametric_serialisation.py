@@ -137,7 +137,7 @@ def test_additive_hazards_round_trip():
     assert np.allclose(model.beta, restored.beta)
     # covariance / standard errors survive
     assert np.allclose(model.covariance(), restored.covariance())
-    assert np.allclose(model.se, restored.se)
+    assert np.allclose(model.standard_errors(), restored.standard_errors())
 
 
 def test_additive_hazards_json_file_round_trip(tmp_path):
@@ -276,3 +276,34 @@ def test_cox_to_dict_is_strict_json_and_reads_old_dicts():
     np.testing.assert_array_equal(
         SemiParametricRegressionModel.from_dict(json.loads(text)).tl, tl
     )
+
+
+def test_613_cox_covariance_round_trips_and_old_dicts_keep_their_se():
+    # Cox has covariance() (#613), the inverse observed information, and
+    # its standard errors are its diagonal's square roots; both are saved.
+    x, Z, c = _semipar_data(seed=3)
+    model = CoxPH.fit(x, Z, c=c)
+    info = model.jac(model.params)[1]
+    np.testing.assert_allclose(
+        model.covariance(), np.linalg.inv(info), rtol=1e-12
+    )
+    restored = SemiParametricRegressionModel.from_dict(
+        json.loads(json.dumps(model.to_dict()))
+    )
+    np.testing.assert_array_equal(restored.covariance(), model.covariance())
+    np.testing.assert_array_equal(
+        restored.standard_errors(), model.standard_errors()
+    )
+    # A dict written before v0.23 has the standard errors only.
+    old = model.to_dict()
+    del old["covariance"]
+    old_model = SemiParametricRegressionModel.from_dict(old)
+    np.testing.assert_allclose(
+        old_model.standard_errors(), model.standard_errors(), rtol=1e-15
+    )
+    with pytest.raises(ValueError, match="no parameter covariance"):
+        old_model.covariance()
+    # ``se``, the old attribute, still gives them, with a warning.
+    with pytest.warns(DeprecationWarning, match="standard_errors"):
+        se = model.se
+    np.testing.assert_array_equal(se, model.standard_errors())

@@ -775,6 +775,11 @@ class Copula:
             self, theta, margin_models, data=data, how=how, k=k
         )
         model.maximum = maximum
+        # The margins this fit estimated (#540): under IFM a margin passed
+        # already fitted is known, with no variance.
+        model._margins_estimated = tuple(
+            how == "MLE" or hasattr(given, "fit") for given in margins
+        )
         return model
 
     def _warn_if_no_maximum(
@@ -1259,7 +1264,7 @@ class _JointMargin:
         full.extend(onp.asarray(model.params, dtype=float).tolist())
         bounds.extend([(None, None)] * self.k)
         if self.lfp:
-            full.append(float(model.p))
+            full.append(float(model.lfp_p))
             bounds.append((0, 1))
         if self.zi:
             full.append(float(model.f0))
@@ -1311,7 +1316,7 @@ class _JointMargin:
         if self.zi:
             f0 = full[i]
         try:
-            model = self.dist.from_params(params, gamma=gamma, p=p, f0=f0)
+            model = self.dist.from_params(params, gamma=gamma, lfp_p=p, f0=f0)
         except ValueError:
             return None
         if self.fixed:

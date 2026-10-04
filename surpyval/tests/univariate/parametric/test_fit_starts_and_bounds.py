@@ -9,6 +9,9 @@ from autograd import numpy as anp
 
 import surpyval as surv
 from surpyval.univariate.parametric.fitters import bounds_convert
+from surpyval.univariate.parametric.parametric_fitter import (
+    OutsideSupportError,
+)
 
 
 def test_a_finite_two_sided_bound_is_enforced():
@@ -87,7 +90,7 @@ def test_lfp_default_start_reaches_the_better_optimum():
     f += [74.0, 84.0, 94.0, 168.0, 263.0, 593.0]
     x, c, n, _ = surv.fs_to_xcnt(f, [1370.0] * 4128)
     model = surv.Weibull.fit(x, c, n, lfp=True)
-    assert model.p == pytest.approx(0.0067, abs=0.0005)
+    assert model.lfp_p == pytest.approx(0.0067, abs=0.0005)
     assert model.neg_ll() == pytest.approx(293.03, abs=0.01)
 
 
@@ -131,24 +134,72 @@ def test_fit_best_says_why_when_no_candidate_has_a_finite_aic_c():
 W, E, G = surv.Weibull, surv.Exponential, surv.Geometric
 
 
-def test_right_censoring_below_the_support_does_not_break_the_fit():
-    # A unit censored before the support starts carries no information,
-    # R = 1; its log-survival was nan and the fit fell back to its start
-    # with an "MLE Failed" warning.
+@pytest.mark.parametrize(
+    "kwargs",
+    [{}, {"zi": True}, {"lfp": True}, {"how": "MPS"}, {"how": "MSE"}],
+)
+@pytest.mark.parametrize("dist", [W, surv.Exponential, surv.Gamma])
+def test_611_right_censoring_below_the_support_is_refused(dist, kwargs):
+    # As the regressions on the distribution refuse it (#565), with the
+    # same error: no unit can be censored before the support starts. The
+    # univariate fit took it as a suspension carrying no information.
+    np.random.seed(2)
+    x = np.append(W.random(100, 10, 2), -1.0)
+    c = np.append(np.zeros(100), 1)
+    with pytest.raises(OutsideSupportError) as err:
+        dist.fit(x, c, **kwargs)
+    assert "a unit cannot be censored before 0" in str(err.value)
+
+
+def test_611_univariate_and_regression_refuse_alike():
+    # One wording for both (principle 21).
+    x, c = [-1.0, 2, 3, 4, 5, 6], [1, 0, 0, 0, 0, 0]
+    with pytest.raises(OutsideSupportError) as uni:
+        W.fit(x, c)
+    with pytest.raises(OutsideSupportError) as reg:
+        surv.WeibullPH.fit(x, [[0], [1], [0], [1], [0], [1]], c=c)
+    assert str(uni.value) == str(reg.value)
+
+
+def test_611_right_censoring_at_the_support_start_is_kept():
+    # A suspension at 0 carries no information (R = 1) and is accepted
+    # as before, with the fit of the data without it.
     np.random.seed(2)
     x = W.random(100, 10, 2)
     with warnings.catch_warnings():
         warnings.simplefilter("error", UserWarning)
-        model = W.fit(np.append(x, -1.0), np.append(np.zeros(100), 1))
+        model = W.fit(np.append(x, 0.0), np.append(np.zeros(100), 1))
     assert model.params == pytest.approx(W.fit(x).params, rel=1e-6)
+
+
+def test_611_offset_fit_takes_a_negative_censored_time():
+    # The offset moves the support to (gamma, inf), and gamma lies below
+    # every time, so a negative time is inside it.
+    np.random.seed(2)
+    x = np.append(W.random(100, 10, 2), -1.0)
+    c = np.append(np.zeros(100), 1)
+    model = W.fit(x, c, offset=True)
+    assert model.gamma <= -1.0
+
+
+def test_611_mixture_and_dataframe_fits_refuse_it_too():
+    import pandas as pd
+
+    x = np.append(W.random(60, 10, 2, random_state=1), -1.0)
+    c = np.append(np.zeros(60), 1)
+    with pytest.raises(OutsideSupportError):
+        surv.MixtureModel.fit(x, c, dist=W, m=2)
+    df = pd.DataFrame({"x": x, "c": c})
+    with pytest.raises(OutsideSupportError):
+        W.fit_from_df(df, x_col="x", c_col="c")
 
 
 @pytest.mark.parametrize(
     "call, match",
     [
-        (lambda: W.from_params([10, 2], p=1.5), "must be in"),
+        (lambda: W.from_params([10, 2], lfp_p=1.5), "must be in"),
         (lambda: W.from_params([10, 2], f0=-0.1), "must be in"),
-        (lambda: W.from_params([10, 2], p=0.3, f0=0.4), "less than p"),
+        (lambda: W.from_params([10, 2], lfp_p=0.3, f0=0.4), "less than lfp_p"),
         (lambda: surv.Normal.from_params([1, 2], f0=0.1), "starting at 0"),
         (lambda: surv.Beta4.from_params([2, 3, 5, 1]), "a < b"),
         (lambda: surv.Uniform.from_params([4, 1]), "a < b"),

@@ -44,6 +44,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
     ParametricFitter,
+    lfp_p_renamed,
 )
 
 from ..parametric import Parametric
@@ -191,11 +192,12 @@ class Hypoexponential_(ParametricFitter):
             return self
         return Hypoexponential_(self.name, m=m)
 
+    @lfp_p_renamed
     def from_params(
         self,
         params: npt.ArrayLike,
         gamma: Boxable | None = None,
-        p: Boxable | None = None,
+        lfp_p: Boxable | None = None,
         f0: Boxable | None = None,
     ) -> Parametric:
         r"""
@@ -210,9 +212,9 @@ class Hypoexponential_(ParametricFitter):
             positive and distinct. Any number of them.
         gamma : scalar, optional
             An offset (shift) of the distribution.
-        p : scalar, optional
+        lfp_p : scalar, optional
             The proportion of the population that ever fails
-            (limited-failure population).
+            (limited-failure population); ``p`` before v0.23.
         f0 : scalar, optional
             The proportion of the population that fails at time zero
             (zero inflation).
@@ -241,7 +243,7 @@ class Hypoexponential_(ParametricFitter):
         """
         rates = _validate_rates(params)
         return ParametricFitter.from_params(
-            self._for_params(rates), rates, gamma, p, f0
+            self._for_params(rates), rates, gamma, lfp_p, f0
         )
 
     def fit(

@@ -33,6 +33,7 @@ from surpyval.univariate.regression import CoxPH
 from surpyval.univariate.regression._aliasing import (
     collect_aliased,
     covariate_columns,
+    dataframe_covariates,
     warn_collected,
 )
 from surpyval.univariate.regression.regression_data import (
@@ -693,6 +694,7 @@ class CompetingRisksProportionalHazards(
         return fitted
 
     @classmethod
+    @dataframe_covariates
     def fit(
         cls,
         x: npt.ArrayLike,

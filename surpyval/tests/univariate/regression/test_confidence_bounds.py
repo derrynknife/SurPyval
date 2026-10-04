@@ -43,7 +43,7 @@ def test_parameter_names_and_covariance_shape(F):
     m = F.fit(x=x, Z=Z, c=c)
     names = m.parameter_names
     # distribution params first, then one coefficient per covariate.
-    assert names[-2:] == ["beta_0", "beta_1"]
+    assert names[-2:] == ["coef_0", "coef_1"]
     k = len(names)
     assert m.covariance().shape == (k, k)
     se = m.standard_errors()
@@ -126,21 +126,21 @@ def test_param_cb_one_sided():
     m = WeibullAFT.fit(x=x, Z=Z, c=c)
     # One-sided bounds return a single value (as a length-1 array, matching
     # the two-sided [lower, upper] convention).
-    lower = np.ravel(m.param_cb("beta_0", bound="lower"))[0]
-    upper = np.ravel(m.param_cb("beta_0", bound="upper"))[0]
-    beta0 = m.params[m.parameter_names.index("beta_0")]
+    lower = np.ravel(m.param_cb("coef_0", bound="lower"))[0]
+    upper = np.ravel(m.param_cb("coef_0", bound="upper"))[0]
+    beta0 = m.params[m.parameter_names.index("coef_0")]
     assert lower <= beta0 <= upper
 
 
 def test_fixed_parameter_has_zero_variance():
     x, Z, c = _data(7)
-    m = WeibullAFT.fit(x=x, Z=Z, c=c, fixed={"beta_1": 0.0})
+    m = WeibullAFT.fit(x=x, Z=Z, c=c, fixed={"coef_1": 0.0})
     names = m.parameter_names
-    j = names.index("beta_1")
+    j = names.index("coef_1")
     cov = m.covariance()
     assert np.allclose(cov[j, :], 0.0) and np.allclose(cov[:, j], 0.0)
     # The free parameters still have positive variance.
-    assert m.standard_errors()[names.index("beta_0")] > 0
+    assert m.standard_errors()[names.index("coef_0")] > 0
 
 
 def test_coverage_of_coefficient_interval():
@@ -158,7 +158,7 @@ def test_coverage_of_coefficient_interval():
         x = 10.0 * rng.weibull(2.0, size=N) / phi
         c = (rng.uniform(size=N) < 0.15).astype(int)
         m = WeibullAFT.fit(x=x, Z=Z, c=c)
-        lo, hi = m.param_cb("beta_0")
+        lo, hi = m.param_cb("coef_0")
         covered += lo <= true_beta0 <= hi
     # Allow Monte-Carlo slack (finite-sample Wald slightly under-covers).
     assert 0.88 <= covered / reps <= 1.0
@@ -184,7 +184,7 @@ def test_cb_rejects_bad_arguments():
     with pytest.raises(ValueError, match="'bound' must be one of"):
         m.cb([1.0], [0.0, 0.0], bound="sideways")
     with pytest.raises(ValueError, match="Unknown parameter"):
-        m.param_cb("beta_99")
+        m.param_cb("coef_99")
 
 
 def test_plot_with_bounds_returns_axes():

@@ -50,9 +50,15 @@ from surpyval.serialisation import (
     stamp_schema,
     to_native,
 )
+from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils import _caller_stacklevel
+from surpyval.utils.covariates import (
+    coefficient_names,
+    loaded_coefficient_names,
+)
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.deprecation import REMOVED_IN_NEXT, RenamedAttribute
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import (
     maximum_entry,
     restored_maximum,
@@ -61,7 +67,7 @@ from surpyval.utils.no_maximum import (
 )
 from surpyval.utils.validation import check_option
 
-from .._aliasing import covariate_columns, expand
+from .._aliasing import covariate_columns, expand, fit_columns
 from .._fit_skeleton import covariate_center
 from ..proportional_hazards.cox_likelihood import (
     CoxInformation,
@@ -453,7 +459,7 @@ class _CoxFrailtyEM:
         return float(theta**2 / curvature)
 
 
-class CoxFrailtyFitter:
+class CoxFrailtyFitter(FitterRepr):
     """
     The shared gamma frailty model with a Cox (unspecified) baseline: the
     semi-parametric counterpart of :func:`~surpyval.Frailty`, as ``CoxPH``
@@ -469,6 +475,13 @@ class CoxFrailtyFitter:
     "gamma"))`` (see :meth:`fit`). ``CoxFrailty`` is an instance.
     """
 
+    #: The ``repr`` (#614)
+    fitter_kind = "semi-parametric shared frailty fitter"
+
+    def _repr_name(self) -> str:
+        return "CoxFrailty"
+
+    @dataframe_covariates
     def fit(
         self,
         x: Any,
@@ -669,7 +682,9 @@ class CoxFrailtyFitter:
         model.frailties = {
             str(lab): float(u) for lab, u in zip(labels, np.exp(log_u))
         }
-        names = ["beta_{}".format(i) for i in range(p_all)] + ["theta"]
+        # Each coefficient named by its column, or coef_j (#614)
+        names = coefficient_names(p_all, fit_columns(), ["theta"])
+        names += ["theta"]
         covariance = np.full((p_all + 1, p_all + 1), np.nan)
         if cov_beta is not None and kept.size:
             covariance[np.ix_(kept, kept)] = cov_beta
@@ -996,7 +1011,14 @@ class CoxFrailtyModel(_SharedFrailty):
         out.x = np.array(model_dict["x"], dtype=float)
         out.h0 = np.array(model_dict["h0"], dtype=float)
         out.H0 = np.array(model_dict["H0"], dtype=float)
-        out.parameter_names = list(model_dict["parameter_names"])
+        # A dict saved before v0.23 named the coefficients beta_j: they
+        # load with the names the model has now (#614).
+        out.parameter_names = loaded_coefficient_names(
+            model_dict["parameter_names"],
+            0,
+            out.beta.size,
+            model_dict.get("feature_names"),
+        )
         out.group_labels = list(model_dict.get("group_labels", []))
         out.frailties = {
             k: float(v) for k, v in model_dict.get("frailties", {}).items()

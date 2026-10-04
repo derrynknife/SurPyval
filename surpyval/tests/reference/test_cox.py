@@ -29,9 +29,15 @@ DERIVED = dict(rtol=1e-6, atol=1e-10)
 
 
 def _se(model):
-    """Model-based standard errors, the inverse observed information."""
+    """Model-based standard errors, the inverse observed information,
+    which is ``covariance()`` (#613)."""
     info = model.jac(model.params)[1]
-    return np.sqrt(np.diag(np.linalg.inv(info)))
+    cov = np.linalg.inv(info)
+    assert_allclose(model.covariance(), cov, rtol=1e-12, atol=0)
+    assert_allclose(
+        model.standard_errors(), np.sqrt(np.diag(cov)), rtol=1e-12, atol=0
+    )
+    return model.standard_errors()
 
 
 def _check(model, ref, p):

@@ -10,6 +10,7 @@ from surpyval.utils.deprecation import (
     RenamedAttribute,
     renamed_class_attribute,
 )
+from surpyval.utils.fitter_repr import FitterRepr
 
 # The NHPP likelihoods differentiate these functions with autograd, so a
 # parameter (and hence any value computed from one) may be a plain array,
@@ -19,7 +20,7 @@ from surpyval.utils.deprecation import (
 Boxable = npt.NDArray | float | ArrayBox
 
 
-class CountingProcess(RecurrentDataFrameMixin, ABC):
+class CountingProcess(FitterRepr, RecurrentDataFrameMixin, ABC):
     """
     Abstract base class for parametric counting-process intensity models.
 
@@ -55,6 +56,9 @@ class CountingProcess(RecurrentDataFrameMixin, ABC):
     >>> CrowAMSAA.cif(np.array([30.0, 60.0]), *model.params).round(4)
     array([ 2.7808, 11.1094])
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "counting process fitter"
 
     #: Names of the model's parameters (see the class docstring).
     parameter_names: list

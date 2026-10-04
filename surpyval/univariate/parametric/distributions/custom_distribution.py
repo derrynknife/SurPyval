@@ -56,9 +56,9 @@ def _model_attribute_names() -> frozenset[str]:
     without a list to keep in step. ``res`` and ``log_likelihood`` are the
     two a fitter sets that the class does not declare.
 
-    ``p`` is not among them: a distribution may have its own ``p`` (the
-    limited-failure proportion is then named ``lfp_p``, see
-    ``Parametric.__init__``), and the fit leaves the attribute alone.
+    ``p`` is not among them: a distribution may have its own ``p``, which
+    the model's ``p`` then gives (the limited-failure proportion is
+    ``lfp_p``, #608).
     """
     from surpyval.univariate.parametric.parametric import Parametric
 
@@ -635,6 +635,10 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
         :meth:`_alternative_base_starts`). With an offset the returned
         vector leads with the offset.
         """
+        if offset:
+            # The grid's best for the data shifted by the starting offset
+            # (``_offset_seed``); it was the unshifted data's (#622)
+            return self._offset_seed(data)
         x = np.asarray(data.x, dtype=float)
         finite = np.abs(x[np.isfinite(x)])
         positive = finite[finite > 0]
@@ -675,12 +679,7 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
                         if value < best_value:
                             best, best_value = trial, value
 
-        out = np.array(best, dtype=float)
-        if offset:
-            # The fitter's own starting offset, a step on the data's
-            # scale below the smallest value (see ``_offset_start``)
-            out = np.concatenate([[_offset_start(x)], out])
-        return out
+        return np.array(best, dtype=float)
 
     def _alternative_base_starts(
         self, data: SurpyvalData, offset: bool = False

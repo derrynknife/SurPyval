@@ -26,6 +26,7 @@ from surpyval.utils.linalg import (
     cb_link,
     param_name,
     sf_link_bound,
+    standard_errors_of,
     wald_undefined,
     warn_wald_undefined,
 )
@@ -73,6 +74,49 @@ _NO_COVARIANCE_WHY = (
 )
 
 _CBContext = namedtuple("_CBContext", ["phi_hat", "cov", "n_core"])
+
+
+def _warn_lfp_p(old: str, new: str) -> None:
+    """The one warning for the limited-failure proportion's old name,
+    ``p`` (#608), pointing at the caller."""
+    from surpyval.utils.deprecation import REMOVED_IN_NEXT
+    from surpyval.utils.warnings import caller_stacklevel
+
+    warnings.warn(
+        f"{old}, the limited-failure proportion, is deprecated and will "
+        f"be removed in v{REMOVED_IN_NEXT}; use '{new}'. ('p' names the "
+        "parameter of a distribution that has one: Bernoulli, Binomial, "
+        "Geometric, ...)",
+        DeprecationWarning,
+        stacklevel=caller_stacklevel(),
+    )
+
+
+def renamed_lfp_fixed(
+    dist: Any, fixed: "dict[str, float] | None"
+) -> "dict[str, float] | None":
+    """``fixed`` with ``p``, the limited-failure proportion's name before
+    v0.23, renamed ``lfp_p`` (with a ``DeprecationWarning``) where the
+    distribution has no ``p`` of its own (#608)."""
+    if not fixed or "p" not in fixed or "p" in dist.param_map:
+        return fixed
+    if "lfp_p" in fixed:
+        raise ValueError(
+            "fixed: pass 'lfp_p' only; 'p' is its deprecated old name."
+        )
+    _warn_lfp_p("fixed={'p': ...}", "fixed={'lfp_p': ...}")
+    out = dict(fixed)
+    out["lfp_p"] = out.pop("p")
+    return out
+
+
+def _lfp_key(dist: Any, name: str) -> str:
+    """``name`` as a key of a model's ``param_map``: ``p``, the
+    limited-failure proportion's name before v0.23 (#608), is ``lfp_p``
+    where the distribution has no ``p`` of its own."""
+    if name == "p" and "p" not in dist.param_map:
+        return "lfp_p"
+    return name
 
 
 def draw_state(random_state: Any = None) -> Any:
@@ -267,9 +311,9 @@ class Parametric(
     failure population, one unit in ten never fails, so the mean life is
     infinite:
 
-    >>> lfp = surv.Weibull.from_params([20, 3], p=0.9)
+    >>> lfp = surv.Weibull.from_params([20, 3], lfp_p=0.9)
     >>> float(lfp.sf(1000.0).round(4)), lfp.mean(), lfp.extras
-    (0.1, inf, {'p': 0.9})
+    (0.1, inf, {'lfp_p': 0.9})
     >>> lfp.maximum
     'not applicable'
     """
@@ -280,7 +324,9 @@ class Parametric(
     # the ``hasattr``/``getattr`` guards throughout still behave.
     params: npt.NDArray
     gamma: float
-    p: float
+    #: The limited-failure proportion, the proportion that ever fails
+    #: (1 without ``lfp=True``). It was ``p`` before v0.23 (#608).
+    lfp_p: float
     f0: float
     support: tuple[float, float]
     hess_inv: npt.NDArray
@@ -297,6 +343,9 @@ class Parametric(
     # ``(events, trials)`` of a Bernoulli, FixedEventProbability or
     # Binomial fit: what its bounds on ``p`` are computed from (#580).
     _event_counts: "tuple[float, float] | None" = None
+    # The trials of each row of a Binomial fitted to rows of different
+    # sizes (#608), which leave it no single ``n``.
+    _n_trials: "npt.NDArray | None" = None
     tr: Any
     lfp_name: str
     _neg_ll: float
@@ -348,23 +397,20 @@ class Parametric(
         else:
             self.gamma = 0
 
-        # The limited-failure proportion is addressed as ``p`` (in
-        # ``fixed``, ``param_cb`` and the repr) -- unless the distribution
-        # has a parameter of its own called ``p`` (Geometric,
-        # NegativeBinomial). Both keys then landed on the same
-        # ``param_map`` entry, the proportion overwrote the distribution's
-        # parameter, and the map came out one entry short of the bounds:
-        # every such LFP fit died in a zip() length check, and
-        # ``param_cb('p')`` read the distribution's ``p`` as the
-        # proportion. The distribution keeps ``p`` and the proportion
-        # becomes ``lfp_p``.
-        self.lfp_name = "lfp_p" if "p" in dist.param_map else "p"
+        # The limited-failure proportion is ``lfp_p`` (the attribute,
+        # ``fixed``, ``param_cb``, ``from_params`` and the repr; #608). It
+        # was ``p`` -- which is also the parameter of several
+        # distributions (Bernoulli, Binomial, Geometric, ...), whose
+        # ``model.p`` read 1, the proportion, not their fitted ``p``.
+        # ``p`` still names the proportion, with a DeprecationWarning,
+        # where the distribution has no ``p`` of its own.
+        self.lfp_name = "lfp_p"
         if lfp:
             bounds = (*bounds, (0, 1))
             param_map.update({self.lfp_name: len(param_map)})
             self.k += 1
         else:
-            self.p = 1
+            self.lfp_p = 1
 
         if zi:
             bounds = (*bounds, (0, 1))
@@ -438,7 +484,8 @@ class Parametric(
             out.gamma = model_dict["gamma"]
 
         if lfp:
-            out.p = model_dict["p"]
+            # Saved as "p", the proportion's name before v0.23.
+            out.lfp_p = model_dict["p"]
 
         if zi:
             out.f0 = model_dict["f0"]
@@ -467,7 +514,9 @@ class Parametric(
         fixed_names = model_dict.get("fixed") or []
         if fixed_names:
             out.fitting_info = {
-                "fixed_idx": [out.param_map[name] for name in fixed_names]
+                "fixed_idx": [
+                    out.param_map[_lfp_key(dist, name)] for name in fixed_names
+                ]
             }
 
         out.params = np.array(model_dict["params"])
@@ -480,6 +529,8 @@ class Parametric(
         if model_dict.get("event_counts") is not None:
             events, trials = model_dict["event_counts"]
             out._event_counts = (float(events), float(trials))
+        if model_dict.get("n_trials") is not None:
+            out._n_trials = np.asarray(model_dict["n_trials"], dtype=int)
 
         # Restore the support interval, which fit-time construction sets via
         # the fitter (#261).
@@ -548,8 +599,10 @@ class Parametric(
         out["params"] = np.array(self.params).tolist()
         out["lfp"] = bool(self.lfp)
 
+        # The proportion is stored as "p", its name before v0.23 (#608),
+        # so that every reader of the format reads it.
         if self.lfp:
-            out["p"] = to_native(self.p)
+            out["p"] = to_native(self.lfp_p)
         else:
             out["p"] = 1.0
 
@@ -586,13 +639,24 @@ class Parametric(
         # FixedEventProbability or Binomial p come from (#580).
         if self._event_counts is not None:
             out["event_counts"] = [float(v) for v in self._event_counts]
+        # A Binomial's trials per row, where they differ (#608).
+        if self._n_trials is not None:
+            out["n_trials"] = [int(v) for v in self._n_trials]
 
         fixed_idx = sorted(self._user_fixed_idx())
         if fixed_idx:
             # Named, not indexed, so the entry reads on its own; from_dict
             # maps the names back through the rebuilt param_map.
             names = {i: name for name, i in self.param_map.items()}
-            out["fixed"] = [names[i] for i in fixed_idx]
+            # The proportion as "p" where that is unambiguous, as before.
+            out["fixed"] = [
+                (
+                    "p"
+                    if names[i] == "lfp_p" and "p" not in self.dist.param_map
+                    else names[i]
+                )
+                for i in fixed_idx
+            ]
 
         return stamp_schema(out)
 
@@ -601,7 +665,7 @@ class Parametric(
         """
         The names of ``params``, entry by entry: the distribution's
         ``parameter_names``. An offset ``gamma``, limited-failure
-        proportion ``p`` and zero-inflation fraction ``f0`` are not in
+        proportion ``lfp_p`` and zero-inflation fraction ``f0`` are not in
         ``params`` and not named here (see :attr:`extras`).
 
         Examples
@@ -619,10 +683,9 @@ class Parametric(
         the model carries, as the keywords of ``from_params``.
 
         Only the ones the model has are included: ``"gamma"`` for an offset
-        model, ``"p"`` for a limited-failure-population model (also for a
-        ``Geometric`` or ``NegativeBinomial``, whose proportion is printed
-        as ``lfp_p``: ``from_params`` takes it as ``p``) and ``"f0"`` for a
-        zero-inflated one; a plain model gives an empty dict. So
+        model, ``"lfp_p"`` for a limited-failure-population model (it was
+        ``"p"`` before v0.23, #608) and ``"f0"`` for a zero-inflated one; a
+        plain model gives an empty dict. So
         ``dist.from_params(params, **model.extras)`` rebuilds the model with
         other parameters, which :meth:`with_params` does. The dict is a
         copy; changing it does not change the model.
@@ -630,14 +693,14 @@ class Parametric(
         Returns
         -------
         dict
-            ``{name: value}`` for each of ``gamma``, ``p`` and ``f0`` the
-            model has.
+            ``{name: value}`` for each of ``gamma``, ``lfp_p`` and ``f0``
+            the model has.
 
         Examples
         --------
         >>> from surpyval import Weibull
-        >>> Weibull.from_params([100, 2], gamma=5.0, p=0.9, f0=0.1).extras
-        {'gamma': 5.0, 'p': 0.9, 'f0': 0.1}
+        >>> Weibull.from_params([100, 2], gamma=5.0, lfp_p=0.9, f0=0.1).extras
+        {'gamma': 5.0, 'lfp_p': 0.9, 'f0': 0.1}
         >>> Weibull.from_params([100, 2]).extras
         {}
         """
@@ -648,21 +711,59 @@ class Parametric(
         if self.offset:
             out["gamma"] = float(self.gamma)
         if self.lfp:
-            out["p"] = float(self.p)
+            out["lfp_p"] = float(self.lfp_p)
         if self.zi:
             out["f0"] = float(self.f0)
         return out
+
+    @property
+    def p(self) -> Any:
+        """
+        The distribution's parameter ``p`` where it has one (``Bernoulli``,
+        ``Binomial``, ``FixedEventProbability``, ``Geometric``,
+        ``NegativeBinomial``): the fitted probability, as ``model.alpha``
+        is a Weibull's scale. Elsewhere the limited-failure proportion,
+        ``lfp_p``, its name before v0.23 (#608), which still works until
+        v0.24 with a ``DeprecationWarning``.
+
+        Examples
+        --------
+        >>> from surpyval import Bernoulli
+        >>> Bernoulli.fit([0, 1, 1, 0, 1]).p
+        np.float64(0.6)
+        """
+        index = self.dist.param_map.get("p")
+        if index is not None:
+            return self.params[index]
+        _warn_lfp_p("Parametric.p", "Parametric.lfp_p")
+        return self.lfp_p
+
+    @p.setter
+    def p(self, value: Any) -> None:
+        if "p" in self.dist.param_map:
+            raise AttributeError(
+                f"'p' is a parameter of the {self.dist.name} distribution; "
+                "its value is in 'params'."
+            )
+        _warn_lfp_p("Parametric.p", "Parametric.lfp_p")
+        self.lfp_p = value
+
+    def __setstate__(self, state: dict) -> None:
+        # A model pickled before v0.23 holds the proportion as "p" (#608).
+        if "p" in state and "lfp_p" not in state:
+            state["lfp_p"] = state.pop("p")
+        self.__dict__.update(state)
 
     def with_params(self, params: npt.ArrayLike) -> "Parametric":
         """
         The same model with other distribution parameters.
 
         The distribution, offset ``gamma``, limited-failure proportion
-        ``p`` and zero-inflation fraction ``f0`` are kept (see
+        ``lfp_p`` and zero-inflation fraction ``f0`` are kept (see
         :attr:`extras`); only the distribution's own parameters change. Use
         it to perturb or redraw a fitted model's parameters (sensitivity
         or uncertainty analyses): ``from_params(model.params)`` alone
-        silently drops the offset, ``p`` and ``f0``.
+        silently drops the offset, ``lfp_p`` and ``f0``.
 
         Parameters
         ----------
@@ -683,9 +784,9 @@ class Parametric(
         Examples
         --------
         >>> from surpyval import Weibull
-        >>> model = Weibull.from_params([100, 2], gamma=5.0, p=0.9, f0=0.1)
+        >>> model = Weibull.from_params([100, 2], gamma=5.0, lfp_p=0.9, f0=0.1)
         >>> other = model.with_params([120, 2])
-        >>> other.params, other.gamma, other.p, other.f0
+        >>> other.params, other.gamma, other.lfp_p, other.f0
         (array([120,   2]), 5.0, 0.9, 0.1)
         """
         return self.dist.from_params(params, **self.extras)
@@ -711,8 +812,8 @@ class Parametric(
                 out += f"\nOffset (gamma)      : {self.gamma}"
 
             if self.lfp:
-                label = f"Max Proportion ({self.lfp_name})"
-                out += f"\n{label:<20}: {self.p}"
+                label = "Max Proportion (lfp_p)"
+                out += f"\n{label:<20}: {self.lfp_p}"
 
             if self.zi:
                 out += f"\nZero-Inflation (f0) : {self.f0}"
@@ -744,8 +845,8 @@ class Parametric(
         """
         The covariance of the fitted parameters: the distribution's, in
         the order of ``parameter_names``, then the limited-failure
-        proportion ``p`` and the zero-inflation fraction ``f0`` where the
-        model has them (a held parameter has a zero row and column). The
+        proportion ``lfp_p`` and the zero-inflation fraction ``f0`` where
+        the model has them (a held parameter has a zero row and column). The
         inverse of the observed information at the maximum, carried to
         the parameters through their transforms; what Wald bounds use.
         ``cov_matrix``, its name before v0.23, still gives it, with a
@@ -767,6 +868,25 @@ class Parametric(
         if self._covariance is None:
             raise no_covariance_error(_NO_COVARIANCE_WHY)
         return self._covariance
+
+    def standard_errors(self) -> npt.NDArray:
+        """
+        The standard errors of the fitted parameters, the square roots of
+        the diagonal of :meth:`covariance`, in its order (the
+        distribution's parameters, then ``lfp_p`` and ``f0`` where the
+        model has them); ``nan`` where a variance is not positive. Raises the
+        ``ValueError`` of :meth:`covariance` where the model has none.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> np.random.seed(1)
+        >>> model = Weibull.fit(Weibull.random(100, 10, 3))
+        >>> model.standard_errors().round(4)
+        array([0.3589, 0.2286])
+        """
+        return standard_errors_of(self.covariance())
 
     def param_cb(
         self,
@@ -821,11 +941,12 @@ class Parametric(
         Parameters
         ----------
         name : str
-            The parameter, by name (e.g. ``"alpha"``; ``"p"`` for a
+            The parameter, by name (e.g. ``"alpha"``; ``"lfp_p"`` for a
             limited-failure model, ``"f0"`` for a zero-inflated one). A
             distribution parameter named ``p`` (``Geometric``,
-            ``NegativeBinomial``) keeps its name, and the limited-failure
-            proportion of such a model is ``"lfp_p"``. The offset
+            ``NegativeBinomial``) is that parameter; elsewhere ``"p"``, the
+            proportion's name before v0.23, still gives it with a
+            ``DeprecationWarning`` until v0.24 (#608). The offset
             ``"gamma"`` has no confidence bound: it is a threshold
             parameter, whose likelihood is not regular, so no standard
             error is estimated for it.
@@ -865,7 +986,7 @@ class Parametric(
         is_core, idx = self._resolve_param_name(name)
         if not is_core:
             cov = self.covariance()
-            p_hat = self.f0 if name == "f0" else self.p
+            p_hat = self.f0 if name == "f0" else self.lfp_p
             var = cov[idx, idx]
             param_bounds: tuple[float | None, float | None] = (0, 1)
         else:
@@ -924,6 +1045,9 @@ class Parametric(
         """
         if name in self.dist.param_map:
             return True, self.dist.param_map[name]
+        if name == "p":
+            _warn_lfp_p("param_cb('p')", "param_cb('lfp_p')")
+            name = self.lfp_name
         if name == self.lfp_name:
             if not self.lfp:
                 raise ValueError(f"'{name}' is only estimated for lfp models")
@@ -1033,7 +1157,7 @@ class Parametric(
         # at a negative argument (#256).
         s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
         base_sf = np.where(xg < s0, 1.0, base_sf)
-        out = 1 - self.p + (self.p - self.f0) * base_sf
+        out = 1 - self.lfp_p + (self.lfp_p - self.f0) * base_sf
         if self.f0 != 0:
             # The zero-inflation mass sits at 0, so before 0 nothing has
             # failed yet: R = 1 there, not 1 - f0.
@@ -1080,7 +1204,7 @@ class Parametric(
         # the base function at a negative argument gave F < 0 (#256).
         s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
         base_ff = np.where(xg < s0, 0.0, base_ff)
-        out = self.f0 + (self.p - self.f0) * base_ff
+        out = self.f0 + (self.lfp_p - self.f0) * base_ff
         if self.f0 != 0:
             # The zero-inflation mass f0 arrives at 0, not before it.
             out = np.where(np.asarray(x) < 0, 0.0, out)[()]
@@ -1153,13 +1277,15 @@ class Parametric(
         base_df = np.where(xg < s0, 0.0, base_df)
         if self.f0 == 0 or continuous:
             # (p - f0) is p itself without zero inflation
-            df = (self.p - self.f0) * base_df
+            df = (self.lfp_p - self.f0) * base_df
         else:
             # The continuous part carries mass (p - f0) — the same constant
             # as sf/ff and the likelihood; (1 - f0) * p was inconsistent
             # with them for combined LFP + ZI models (#256). [()] makes a
             # scalar argument give a scalar, not a 0-d array.
-            df = np.where(x == 0, self.f0, (self.p - self.f0) * base_df)[()]
+            df = np.where(x == 0, self.f0, (self.lfp_p - self.f0) * base_df)[
+                ()
+            ]
         return df
 
     def hf(self, x: npt.ArrayLike) -> npt.NDArray:
@@ -1196,7 +1322,7 @@ class Parametric(
         """
         refuse_time_values(x, "x")
         x = np.asarray(x)
-        if (self.p == 1) and (self.f0 == 0):
+        if (self.lfp_p == 1) and (self.f0 == 0):
             xg = x - self.gamma  # type: ignore[operator]
             s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
             out = np.where(xg < s0, 0.0, self.dist.hf(xg, *self.params))
@@ -1258,7 +1384,7 @@ class Parametric(
         refuse_time_values(x, "x")
         x = np.asarray(x)
 
-        if (self.p == 1) and (self.f0 == 0):
+        if (self.lfp_p == 1) and (self.f0 == 0):
             xg = x - self.gamma  # type: ignore[operator]
             s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
             out = np.where(xg < s0, 0.0, self.dist.Hf(xg, *self.params))
@@ -1302,9 +1428,10 @@ class Parametric(
         Notes
         -----
         For a model with a limited-failure (cure) fraction the failure
-        function only reaches ``p`` in the limit, so any quantile at or above
-        ``p`` is infinite (that proportion of the population never fails). For
-        a zero-inflated model the mass ``f0`` sits at 0 (not at the offset),
+        function only reaches ``lfp_p`` in the limit, so any quantile at or
+        above ``lfp_p`` is infinite (that proportion of the population never
+        fails). For a zero-inflated model the mass ``f0`` sits at 0 (not at
+        the offset),
         so quantiles at or below ``f0`` return 0. A probability outside
         [0, 1] gives NaN, as scipy's ``ppf`` does, with a warning (it is
         most often a percentage given for a probability: ``qf(10)`` for
@@ -1322,7 +1449,7 @@ class Parametric(
         #   f0 < u < p -> gamma + F0^{-1}((u - f0) / (p - f0))
         #   u >= p     -> beyond the attainable proportion (cure), so infinite
         with np.errstate(divide="ignore", invalid="ignore"):
-            base = (u - self.f0) / (self.p - self.f0)
+            base = (u - self.f0) / (self.lfp_p - self.f0)
             base = np.clip(base, 0.0, 1.0)
             # base == 1 (the u >= p region) makes the base quantile diverge;
             # it is overwritten with inf just below, so silence it here.
@@ -1337,7 +1464,7 @@ class Parametric(
         q = np.where(at_zero & (u <= self.f0), 0.0, q)
         # Only with a cure fraction: otherwise qf(1) is the end of the
         # support (a Uniform's upper bound; it was inf).
-        q = np.where((self.p < 1) & (u >= self.p), np.inf, q)
+        q = np.where((self.lfp_p < 1) & (u >= self.lfp_p), np.inf, q)
         # A probability outside [0, 1] has no quantile: NaN, as scipy's
         # ``ppf`` and ``CustomDistribution.qf`` (#437) give. It was inf
         # above 1 and 0 below 0, even for a Normal (#485). It is a
@@ -1387,8 +1514,8 @@ class Parametric(
         Notes
         -----
         The ratio is taken of the model's own :meth:`sf`, so a
-        limited-failure proportion ``p``, a zero-inflation fraction ``f0``
-        and an offset ``gamma`` all enter it: the never-failing units
+        limited-failure proportion ``lfp_p``, a zero-inflation fraction
+        ``f0`` and an offset ``gamma`` all enter it: the never-failing units
         still count among the survivors at ``given``, and survival to an
         ``given`` before the offset is certain. Where :math:`R(given) = 0` the
         conditional survival is undefined and ``nan`` is returned.
@@ -1405,7 +1532,7 @@ class Parametric(
             cs = np.asarray(
                 self.sf(x_arr + given_arr) / self.sf(given_arr), dtype=float
             )
-            if (self.p == 1) and (self.f0 == 0):
+            if (self.lfp_p == 1) and (self.f0 == 0):
                 # A plain model inside its support keeps the
                 # distribution's own form, which is exact where the ratio
                 # cancels in the far tail (the memoryless Exponential).
@@ -1476,7 +1603,7 @@ class Parametric(
         >>> model.random(10)
         array([10.84103403,  0.48542084,  7.11387062,  5.41420125, 4.59286657,
                 5.90703589,  7.5124326 ,  7.96575225,  9.18134126, 8.16000438])
-        >>> lfp = Weibull.from_params([10, 3], p=0.8, f0=0.1)
+        >>> lfp = Weibull.from_params([10, 3], lfp_p=0.8, f0=0.1)
         >>> np.random.seed(6)
         >>> lfp.random(5)
         array([       inf, 7.38380246,        inf, 0.        , 2.22387058])
@@ -1485,7 +1612,7 @@ class Parametric(
         True
         """
         if ((a is not None) or (b is not None)) and (
-            (self.p != 1) or (self.f0 != 0)
+            (self.lfp_p != 1) or (self.f0 != 0)
         ):
             raise NotImplementedError(
                 "Truncated sampling not supported with LFP or ZI models"
@@ -1495,7 +1622,7 @@ class Parametric(
                 "Truncated sampling not supported with offset distributions"
             )
 
-        if (self.p == 1) and (self.f0 == 0):
+        if (self.lfp_p == 1) and (self.f0 == 0):
             if (a is None) and (b is None):
                 if hasattr(self.dist, "qf"):
                     return (
@@ -1573,7 +1700,7 @@ class Parametric(
         Examples
         --------
         >>> from surpyval import Weibull
-        >>> model = Weibull.from_params([10, 3], p=0.5)
+        >>> model = Weibull.from_params([10, 3], lfp_p=0.5)
         >>> np.random.seed(3)
         >>> x, c, n, t = model.random_data(8)
         >>> x
@@ -1630,7 +1757,7 @@ class Parametric(
         >>> model = Weibull.from_params([10, 3])
         >>> model.mean()
         np.float64(8.929795115692489)
-        >>> lfp = Weibull.from_params([100, 2], p=0.9)
+        >>> lfp = Weibull.from_params([100, 2], lfp_p=0.9)
         >>> lfp.mean(), lfp.mean(defective=True)
         (inf, np.float64(79.76042329074821))
 
@@ -1640,14 +1767,14 @@ class Parametric(
         model: for a zero-inflated model the mass ``f0`` at 0 contributes
         nothing, so it is :math:`(1 - f_0)\,\mathbb{E}[\gamma + X]`.
         """
-        if self.p < 1 and not defective:
+        if self.lfp_p < 1 and not defective:
             # A fraction 1 - p never fails, so E[T] is infinite (#404).
             return np.inf
         if not hasattr(self, "_mean"):
             # Defective mean: the zero-inflated mass f0 sits at 0 and
             # contributes nothing, so the continuous part carries (p - f0)
             # — ``p`` alone ignored f0 (#256).
-            self._mean = (self.p - self.f0) * (
+            self._mean = (self.lfp_p - self.f0) * (
                 self.dist.mean(*self.params) + self.gamma
             )
         return self._mean
@@ -1697,13 +1824,13 @@ class Parametric(
         limited-failure model is not a variance conditional on failure
         (fit without ``lfp`` for that).
         """
-        if self.p < 1 and not defective:
+        if self.lfp_p < 1 and not defective:
             # A fraction 1 - p never fails: Var(T) is infinite (#404).
             return np.inf
         m1 = self.dist._moment(1, *self.params)
         m2 = self.dist._moment(2, *self.params)
         base_var = m2 - m1**2
-        q = self.p - self.f0
+        q = self.lfp_p - self.f0
         if q == 1:
             return base_var
         # Written as q Var(X) + q (1 - q) mu^2 rather than as
@@ -1755,7 +1882,7 @@ class Parametric(
         ``defective=True`` gives the same expression, in which the cured
         fraction ``1 - p`` contributes nothing.
         """
-        if self.p < 1 and n >= 1 and not defective:
+        if self.lfp_p < 1 and n >= 1 and not defective:
             # A fraction 1 - p never fails: E[T^n] is infinite (#404).
             return np.inf
         # Defective n-th moment E[(gamma + X)^n] weighted by the failing
@@ -1770,7 +1897,7 @@ class Parametric(
         )
         # The zero-inflated mass f0 sits at 0 and contributes nothing to a
         # moment about zero, so the continuous part carries (p - f0) (#256).
-        return float((self.p - self.f0) * shifted)
+        return float((self.lfp_p - self.f0) * shifted)
 
     def entropy(self) -> float:
         r"""
@@ -1801,7 +1928,7 @@ class Parametric(
         failure* of a limited-failure model equals the entropy of the same
         model fitted without ``lfp``.
         """
-        if self.p == 1 and self.f0 == 0:
+        if self.lfp_p == 1 and self.f0 == 0:
             return self.dist.entropy(*self.params)
         raise ValueError(
             "Differential entropy is undefined for a distribution with a "
@@ -2070,7 +2197,7 @@ class Parametric(
         mean; :meth:`quantile_cb` bounds a quantile.
         """
         self._check_summary_cb(alpha_ci, bound, "mean_cb")
-        if self.p < 1:
+        if self.lfp_p < 1:
             # A fraction 1 - p never fails: E[T] is infinite (#404).
             inf = np.inf
             return np.array([inf, inf]) if bound == "two-sided" else inf
@@ -2361,7 +2488,7 @@ class Parametric(
         n_core = len(self.params)
         phi_hat = list(self.params)
         if self.lfp:
-            phi_hat.append(self.p)
+            phi_hat.append(self.lfp_p)
         if self.zi:
             phi_hat.append(self.f0)
         phi_hat = np.array(phi_hat)

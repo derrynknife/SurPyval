@@ -14,8 +14,8 @@ model. The names ``gamma`` and ``f0`` are reserved (for the offset and
 zero-inflated parameters) and cannot be used as parameter names, nor
 can the names of a fitted model's own attributes (``k``, ``dist``,
 ``data``, ``method``, ``sf``, ...), since the model exposes each
-parameter as an attribute; a parameter named ``p`` is allowed, and the limited-failure proportion of
-such a model is then called ``lfp_p``. The distribution also has a
+parameter as an attribute; a parameter named ``p`` is allowed, and is the model's ``p``
+(the limited-failure proportion is ``lfp_p``, a reserved name). The distribution also has a
 numerical ``qf`` (so ``random`` works) and moments computed on its own
 scale. ``qf`` inverts every probability at once when ``fun`` broadcasts
 (elementwise ``autograd.numpy`` arithmetic does); a ``fun`` that indexes

@@ -125,7 +125,7 @@ def _fitted_vector(model):
     """The fitted parameters in ``init``'s order (see
     ``registry._parametric_start``)."""
     out = ([model.gamma] if model.offset else []) + list(model.params)
-    out += [model.p] if model.lfp else []
+    out += [model.lfp_p] if model.lfp else []
     return np.array(out + ([model.f0] if model.zi else []), dtype=float)
 
 

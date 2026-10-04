@@ -30,7 +30,7 @@ from .fitters.mpp import mpp, mpp_from_ecfd
 from .fitters.mps import mps
 from .fitters.mps import offset_start as mps_offset_start
 from .fitters.mse import mse
-from .parametric import Parametric
+from .parametric import Parametric, renamed_lfp_fixed
 
 
 def _search_units(
@@ -317,8 +317,8 @@ class OptimisedFitMixin(FitInputsMixin):
 
         lfp : boolean, optional
             If :code:`True` fits a limited-failure-population model: an
-            extra parameter ``p``, the proportion of the population that
-            will ever fail (``1 - p`` never fails). MLE only. Defaults to
+            extra parameter ``lfp_p``, the proportion of the population that
+            will ever fail (``1 - lfp_p`` never fails). MLE only. Defaults to
             :code:`False`.
 
         tl : array like or scalar, optional
@@ -617,6 +617,7 @@ turnbull_estimator
         array([6.022, 1.351])
         """
         how = normalise_how(how)
+        fixed = renamed_lfp_fixed(self, fixed)
         x, c, n, t = surv_data.x, surv_data.c, surv_data.n, surv_data.t
         # Clamp the truncation values to the (possibly finite) support edges
         tl, tr = self._clamp_truncation_to_support(t, offset)
@@ -824,7 +825,9 @@ turnbull_estimator
         # backstop, since a non-finite parameter is never a valid answer
         # whatever produced it.
         _params = np.atleast_1d(np.asarray(model.params, dtype=float))
-        _extra = [getattr(model, name, None) for name in ("gamma", "p", "f0")]
+        _extra = [
+            getattr(model, name, None) for name in ("gamma", "lfp_p", "f0")
+        ]
         _extra = [float(v) for v in _extra if v is not None]
         if not (np.isfinite(_params).all() and np.isfinite(_extra).all()):
             raise ValueError(
@@ -856,7 +859,7 @@ turnbull_estimator
                         *model.params,
                         model.gamma,
                         model.f0,
-                        model.p,
+                        model.lfp_p,
                     )
                 )
 
@@ -864,9 +867,9 @@ turnbull_estimator
         # never overwrite the reserved offset / limited-failure /
         # zero-inflation attributes, which the survival functions rely on.
         # A distribution may legitimately name a parameter ``p`` (e.g.
-        # ``Geometric``, ``NegativeBinomial``); those remain available via
-        # ``model.params``.
-        reserved = {"gamma", "p", "f0"}
+        # ``Geometric``, ``NegativeBinomial``), which the model's ``p``
+        # property gives (#608).
+        reserved = {"gamma", "p", "lfp_p", "f0"}
         for k, v in zip(self.parameter_names, model.params):
             if k not in reserved:
                 setattr(model, k, v)
@@ -882,7 +885,19 @@ turnbull_estimator
         """``alt``, the results of a fit from another start (with its
         ``fitting_info``, ``alt_info``), where its likelihood is higher
         than that of ``results`` beyond rounding; else ``results``. The
-        model takes the ``fitting_info`` of the results kept."""
+        model takes the ``fitting_info`` of the results kept.
+
+        A verified maximum is kept over a search that found a parameter
+        running off (``_runaway``), whatever their likelihoods: a runaway's
+        likelihood is a value on the way to a supremum, which can be
+        infinite (an offset run onto the first failure, #622), and the
+        maximum-likelihood estimate is the maximum where there is one."""
+        if bool(results.get("_runaway")) != bool(alt.get("_runaway")):
+            verified = results if not results.get("_runaway") else alt
+            if verified.get("_verified", False):
+                if verified is alt:
+                    model.fitting_info = alt_info
+                return verified
         best = results.get("_neg_ll", np.inf)
         value = alt.get("_neg_ll", np.inf)
         if np.isfinite(value) and value < best - 1e-9 * max(1.0, abs(value)):
@@ -911,8 +926,57 @@ turnbull_estimator
         parameter's value, by name), sit on an edge where the likelihood
         is unbounded nearby, for a maximum-likelihood search to stop at
         (``fitters.mle``, #584); none by default. A family that has such
-        edges (``Beta4``) says where."""
+        edges (``Beta4``) says where. (An offset run onto the first
+        failure is such an edge for every family; the search checks it
+        itself, with ``_offset_corner``.)"""
         return []
+
+    @staticmethod
+    def _first_failure_gap(
+        surv_data: SurpyvalData,
+    ) -> "tuple[float, float] | None":
+        """``(x1, close)``: the smallest exact observation, and how close
+        to it an offset is on it (``sqrt(eps)`` of the data's spread, half
+        the digits; see ``_warn_if_offset_at_limit``); ``None`` for data
+        with no exact observation, or with intervals."""
+        x = np.asarray(surv_data.x, dtype=float)
+        c = np.asarray(surv_data.c)
+        if x.ndim != 1 or not np.any(c == 0):
+            return None
+        x1 = float(x[c == 0].min())
+        finite = x[np.isfinite(x)]
+        spread = float(np.ptp(finite)) if finite.size else 0.0
+        if spread <= 0:
+            spread = max(abs(x1), 1.0)
+        return x1, float(np.sqrt(np.finfo(float).eps) * spread)
+
+    def _offset_corner(
+        self, surv_data: SurpyvalData, gamma: float, core: npt.NDArray
+    ) -> "str | None":
+        """Whether an offset ``gamma`` (with the distribution's parameters
+        ``core``) has run onto the smallest exact observation, where the
+        density at its origin is not finite and positive: ``"infinite"``
+        or ``"zero"``, as that density is, else ``None`` (see
+        ``_warn_if_offset_at_limit``).
+
+        The likelihood is unbounded there, and a maximum-likelihood search
+        that reaches it stops (``fitters.mle``, #622), as the end of the
+        fit then says (``_warn_if_offset_at_limit``), rather than run the
+        rest of its ladder into the corner: 15,000 likelihood evaluations
+        and 7 s for a Weibull of shape 0.8 on ten points."""
+        gap = self._first_failure_gap(surv_data)
+        if gap is None:
+            return None
+        if not (np.isfinite(gamma) and np.all(np.isfinite(core))):
+            return None
+        x1, close = gap
+        if not 0 <= x1 - gamma <= close:
+            return None
+        with np.errstate(all="ignore"):
+            f0 = float(np.asarray(self.df(np.array([0.0]), *core))[0])
+        if np.isfinite(f0) and f0 > 0:
+            return None
+        return "infinite" if f0 > 0 else "zero"
 
     def _warn_runaway(
         self,
@@ -933,7 +997,9 @@ turnbull_estimator
         values = dict(
             zip(self.parameter_names, np.atleast_1d(results["params"]))
         )
-        values.update(gamma=results["gamma"], p=results["p"], f0=results["f0"])
+        values.update(
+            gamma=results["gamma"], lfp_p=results["lfp_p"], f0=results["f0"]
+        )
         named = ", ".join(f"{name} ({values[name]:.4g})" for name in runaway)
         one = len(runaway) == 1
         how_found = (
@@ -1030,22 +1096,9 @@ turnbull_estimator
         if x.ndim != 1 or not np.any(c == 0):
             return False
         x1 = float(x[c == 0].min())
-        finite = x[np.isfinite(x)]
-        spread = float(np.ptp(finite)) if finite.size else 0.0
-        if spread <= 0:
-            spread = max(abs(x1), 1.0)
-        close = np.sqrt(np.finfo(float).eps) * spread
 
         def at_corner(gamma: float, core: npt.NDArray) -> str | None:
-            if not (np.isfinite(gamma) and np.all(np.isfinite(core))):
-                return None
-            if not 0 <= x1 - gamma <= close:
-                return None
-            with np.errstate(all="ignore"):
-                f0 = float(np.asarray(self.df(np.array([0.0]), *core))[0])
-            if np.isfinite(f0) and f0 > 0:
-                return None
-            return "infinite" if f0 > 0 else "zero"
+            return self._offset_corner(surv_data, gamma, core)
 
         k = len(np.atleast_1d(results.get("params", [])))
         core = np.asarray(results.get("params", []), dtype=float)
@@ -1076,7 +1129,7 @@ turnbull_estimator
             if zi:
                 results["f0"] = rest.pop()
             if lfp:
-                results["p"] = rest.pop()
+                results["lfp_p"] = rest.pop()
             results["_neg_ll"] = neg_ll
             results["log_likelihood"] = -neg_ll
             results["_covariance"] = None
@@ -1209,6 +1262,7 @@ turnbull_estimator
             transform, inv_trans, const, fixed_idx, not_fixed = bounds_convert(
                 surv_data.x, model.bounds, fixed, model.param_map, units
             )
+            fitting_info["transform"] = transform
             fitting_info["inv_trans"] = inv_trans
             fitting_info["const"] = const
             fitting_info["fixed_idx"] = fixed_idx

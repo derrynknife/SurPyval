@@ -1379,6 +1379,11 @@ def _bounds(case):
             rtol=1e-3,
             slow=True,
         )
+        boot = dict(
+            kwargs={"method": "bootstrap", **_BOOT},
+            wald=False,
+            slow=True,
+        )
         return (
             *wald,
             Bound(
@@ -1390,6 +1395,24 @@ def _bounds(case):
             ),
             Bound("param_cb", kind="param", label="param_cb[lr]", **lr),
             Bound("quantile_cb", point="qf", label="quantile_cb[lr]", **lr),
+            # The parametric bootstrap (#617): the calls with the same
+            # n_boot and seed share one set of refits.
+            Bound(
+                "cb",
+                on=_ON_ALL,
+                query=_REGRESSION_LR_X[case.name],
+                label="cb[bootstrap]",
+                **boot,
+            ),
+            Bound(
+                "param_cb", kind="param", label="param_cb[bootstrap]", **boot
+            ),
+            Bound(
+                "quantile_cb",
+                point="qf",
+                label="quantile_cb[bootstrap]",
+                **boot,
+            ),
         )
     if cls in ("FrailtyModel", "ProportionalOddsModel"):
         # The profile-likelihood interval (#617), slow as the regression
@@ -1491,6 +1514,18 @@ def _bounds(case):
                 query=((0.0,), (40.0,), (80.0,)),
                 rtol=1e-6,
             ),
+        )
+    if cls == "CopulaModel":
+        # The joint sf and the joint CDF are not complements: one sweep
+        # each, so that cb_transform does not read one as 1 - the other
+        # (#540). The fixture's AMH estimate is on its bound, theta = 1
+        # (the data's Kendall's tau is past the family's 1/3), where no
+        # Wald bound exists: NaN, with a warning, as documented.
+        nan_ok = case.name == "AMHCopula"
+        return (
+            Bound("cb", on=("sf",), nan_ok=nan_ok),
+            Bound("cb", on=("ff",), nan_ok=nan_ok, label="cb[ff]"),
+            replace(_PARAM_CB, nan_ok=nan_ok),
         )
     return ()
 
@@ -1647,7 +1682,7 @@ _FAST_BOUNDS += ("Turnbull", "RoystonParmar", "WeibullPH", "WeibullFrailty")
 _FAST_BOUNDS += ("HPP", "CrowAMSAA", "ProportionalIntensityHPP")
 _FAST_BOUNDS += ("GeneralizedRenewal", "NonParametricCounting")
 _FAST_BOUNDS += ("CauseSpecificMCF", "DegradationAnalysis[linear]")
-_FAST_BOUNDS += ("WienerProcess",)
+_FAST_BOUNDS += ("WienerProcess", "ClaytonCopula")
 
 
 def _with_options(case):
@@ -1710,7 +1745,7 @@ def _parametric_start(model):
     params = np.array(model.params, dtype=float)
     params[k] = _far(params[k], bounds[k])
     start = ([model.gamma] if model.offset else []) + list(params)
-    start += [model.p] if model.lfp else []
+    start += [model.lfp_p] if model.lfp else []
     return start + ([model.f0] if model.zi else [])
 
 

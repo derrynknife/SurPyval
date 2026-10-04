@@ -45,7 +45,10 @@ always `random_state`, bootstrap sizes `n_boot`, times `x` and probabilities
 `TypeError`.
 
 `sp.fit_best(x, ...)` fits the continuous candidates and returns the best by
-AIC (or `metric="bic"`, `"aic_c"`, `"neg_ll"`).
+AIC (or `metric="bic"`, `"aic_c"`, `"neg_ll"`). **0.23:** a mixture is a
+candidate when named, `include=["Weibull", sp.MixtureModel(sp.Weibull, 2)]`.
+Every model with `covariance()` has `standard_errors()`, an array (`se` is
+deprecated; the frailty models' dict became an array).
 
 A model built from parameters needs no data: `sp.Weibull.from_params([10, 3])`.
 Its `plot()` draws the CDF alone, handy for comparing a spec with a fit.
@@ -223,14 +226,18 @@ silently wrong numbers, not errors.
   line (often after a log transform).
 - **Bernoulli / Binomial** — pass/fail and success-count data. **0.22:** every
   discrete `sf(x)` is `P(X > x)`, Bernoulli's included, so the probability of the
-  `1` outcome is `sf(0)` (or `params[0]`), not `sf(1)`. Do not read `model.p`
-  there: it is the limited-failure fraction (1). Bound the probability with
-  `model.param_cb("p")`: exact Clopper-Pearson by default (`method="wald"` or
-  `"lr"` as options), and it works with zero failures (the success-run bound).
+  `1` outcome is `sf(0)` (or `params[0]`, or **0.23:** `model.p`), not `sf(1)`.
+  Bound the probability with `model.param_cb("p")`: exact Clopper-Pearson by
+  default (`method="wald"` or `"lr"` as options), and it works with zero
+  failures (the success-run bound). **0.23:** `Binomial.fit(x, n_trials=[...])`
+  takes one number of trials per row (batches of different sizes).
 - Unsure → `fit_best(...)` picks by AIC, then confirm with the probability plot.
 - Add `offset=True` for a failure-free threshold (3-parameter / minimum-life),
   `lfp=True` for a cure fraction (a subpopulation that never fails), `zi=True` for
-  dead-on-arrival mass at zero.
+  dead-on-arrival mass at zero. **0.23:** the fitted cure-model proportion that
+  ever fails is `model.lfp_p` (also `fixed={"lfp_p": ...}`,
+  `from_params(..., lfp_p=...)`, `param_cb("lfp_p")`); the old `p` spellings
+  warn.
 
 **Which regression form:**
 

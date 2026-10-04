@@ -48,7 +48,7 @@ def test_categorical_coefficient_is_identified():
     m = WeibullPH.fit_from_df(
         df, x_col="time", formula="age + sex", c_col="cens"
     )
-    cb = m.param_cb("beta_1")
+    cb = m.param_cb("sex[T.M]")
     # Identifiability is the point: a finite, *narrow* interval (the
     # one-hot ridge produced huge or NaN intervals) around a positive
     # log-hazard-ratio for males.

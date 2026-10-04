@@ -1066,6 +1066,8 @@ class TVCEvaluationMixin:
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
     ) -> npt.NDArray:
         r"""
         Confidence bounds on the survival, failure probability or
@@ -1081,6 +1083,11 @@ class TVCEvaluationMixin:
         of the function along the path over the likelihood region of all
         the parameters (#617), about a second a time where the Wald bound
         takes milliseconds; it needs the data the model was fitted to.
+        With ``method="bootstrap"``, the percentile interval over the
+        parametric bootstrap refits of :meth:`cb` (with the same
+        ``n_boot`` and integer ``random_state`` it reuses them); not for
+        a model fitted to time-varying covariates, whose resamples would
+        need each subject's covariate path.
         Either way ``ff`` and ``Hf`` follow from the same bound, so the
         three agree with each other, and a constant path gives :meth:`cb`
         with the same ``method``.
@@ -1115,10 +1122,16 @@ class TVCEvaluationMixin:
             Total tail probability of the bound(s). Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds put ``[lower, upper]`` on the last axis.
-        method : {'wald', 'lr'}, optional
-            ``'wald'`` (the default) or ``'lr'``, as above and as for
-            :meth:`cb` (``'lr'`` also as ``'likelihood'``,
-            ``'likelihood-ratio'`` or ``'profile'``).
+        method : {'wald', 'lr', 'bootstrap'}, optional
+            ``'wald'`` (the default), ``'lr'`` or ``'bootstrap'``, as
+            above and as for :meth:`cb` (``'lr'`` also as
+            ``'likelihood'``, ``'likelihood-ratio'`` or ``'profile'``).
+        n_boot : int, optional
+            The number of bootstrap refits (``method='bootstrap'`` only).
+            Default 200.
+        random_state : None, int or numpy.random.Generator, optional
+            The seed of the bootstrap (``method='bootstrap'`` only), as for
+            :meth:`cb`.
 
         Returns
         -------
@@ -1152,10 +1165,12 @@ class TVCEvaluationMixin:
         ...                  model.cb(np.array([40, 80]), [0.5])))
         True
         """
-        from ._likelihood_ratio import cb_tvc_lr, is_lr, lr_search
+        from ._bootstrap import bound_method, function_bounds, tvc_refits
+        from ._likelihood_ratio import cb_tvc_lr, lr_search
         from .tvc_path import CovariatePath
 
-        lr = is_lr(method)
+        method = bound_method(method)
+        lr = method == "lr"
         self._check_inference()
         check_option(
             "on",
@@ -1179,13 +1194,18 @@ class TVCEvaluationMixin:
         if lr:
             search = lr_search(self, reported=False)
             params, center = search.params, search.center
+        elif method == "bootstrap":
+            # The refits are of the model's own parameters, each with the
+            # covariate point of its baseline.
+            fits = tvc_refits(self, n_boot, random_state)
+            params, center = self._eval_params(), self.center
         else:
             params, center, cov = self._inference_state()
         # The path's mesh, adapted at the fitted parameters and then held.
         frozen: dict = {}
 
-        def H_of(p: npt.NDArray) -> npt.NDArray:
-            theta = (p, center)
+        def H_of(p: npt.NDArray, at: Any = None) -> npt.NDArray:
+            theta = (p, center if at is None else at)
             if on_path or g is None:
                 H = self._hf_tvc(xq, Z, xl, g, theta, frozen)[0]
             else:
@@ -1208,6 +1228,9 @@ class TVCEvaluationMixin:
             return cb_tvc_lr(
                 search, xq, H_of, H_of(params), on, alpha_ci, bound
             )
+        if method == "bootstrap":
+            on = {"R": "sf", "F": "ff"}.get(on, on)
+            return function_bounds(self, fits, H_of, on, alpha_ci, bound)
         return self._sf_bounds(
             H_of,
             lambda p: np.exp(-H_of(p)),

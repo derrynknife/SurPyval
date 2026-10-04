@@ -14,12 +14,14 @@ one (a recurrent-event row).
 """
 
 import warnings
+from importlib import import_module
 
 import numpy as np
 import pytest
 
 from surpyval.tests.conformance.registry import (
     BIVARIATE,
+    WITH_COVARIATES,
     call,
     calls,
     cases_for,
@@ -58,6 +60,55 @@ def test_missing_query_value(case):
         ref = call(case, model, fname, query(case, fname), Z, event)
         got = call(case, model, fname, x, Z, event)
         _check_nan_where(got, ref, [k], fname)
+
+
+def _quantile_functions(case, model):
+    """Every ``qf`` of a fitted model, each as a function of ``p`` alone:
+    the model's own (with one covariate row for every probability where
+    it takes covariates) and, for a parametric model, its distribution's
+    at the fitted parameters."""
+    out = {}
+    if case.interface in WITH_COVARIATES:
+        row = np.asarray(case.Z, dtype=float)[0]
+        out["qf"] = lambda p: model.qf(p, row)
+        return out
+    dist = getattr(model, "dist", None)
+    if callable(getattr(dist, "qf", None)) and hasattr(model, "params"):
+        out["dist.qf"] = lambda p: dist.qf(p, *model.params)
+    elif dist is not None:
+        # A parametric model of a distribution with no quantile function
+        # (FixedEventProbability) has none either.
+        return out
+    out["qf"] = model.qf
+    return out
+
+
+def _has_qf(case):
+    module, _, name = case.model_class.rpartition(".")
+    return callable(getattr(getattr(import_module(module), name), "qf", None))
+
+
+@pytest.mark.parametrize("case", cases_for("qf_outside", where=_has_qf))
+def test_611_qf_outside_unit_interval(case):
+    # One rule for every qf (#576, #611), as scipy's ppf gives: NaN where
+    # p is outside [0, 1], the other quantiles unchanged, and one warning
+    # pointing at the caller. The non-parametric qf raised, a process
+    # model's returned 0 and inf, and the distributions' gave whatever
+    # their formula did (a negative Exponential time, a Uniform point past
+    # its end).
+    model = fitted(case)
+    p = np.array([-0.5, 0.5, 1.5])
+    functions = _quantile_functions(case, model)
+    for name, qf in functions.items():
+        ref = np.asarray(qf(p[1:2]), dtype=float)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            got = np.asarray(qf(p), dtype=float)
+        mine = [w for w in caught if "outside [0, 1]" in str(w.message)]
+        assert len(mine) == 1, (name, [str(w.message) for w in caught])
+        assert mine[0].filename == __file__, (name, mine[0].filename)
+        assert np.isnan(got[[0, 2]]).all(), (name, got)
+        np.testing.assert_array_equal(got[1:2], ref, err_msg=name)
 
 
 @pytest.mark.parametrize("case", cases_for("missing_covariate"))

@@ -158,10 +158,19 @@ def test_renewal_event_at_time_zero_is_a_clear_error():
 
 
 def test_renewal_rejects_negative_times():
+    # Without a tl, times count from the start of the item's life.
+    from surpyval import RecurrentEventData
+
     with pytest.raises(ValueError, match="cannot be negative"):
         GeneralizedRenewal.fit_from_recurrent_data(
-            handle_xicn([-1.0, 2.0, 3.0], [1, 1, 1], [0, 0, 1], tl=-2.0)
+            RecurrentEventData([-1.0, 2.0, 3.0], [1, 1, 1], [0, 0, 1], 1)
         )
+    # With one they count from the entry, as new there (#615): a negative
+    # time after a negative entry is a positive age.
+    entered = GeneralizedRenewal.fit_from_recurrent_data(
+        handle_xicn([-1.0, 2.0, 3.0, 5.0], [1] * 4, [0, 0, 0, 1], tl=-2.0)
+    )
+    assert np.allclose(entered.data.x, [1.0, 4.0, 5.0, 7.0])
 
 
 _REPAIR_CASES = {

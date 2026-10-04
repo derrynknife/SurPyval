@@ -9,9 +9,17 @@ import numpy.typing as npt
 from autograd.numpy.numpy_boxes import ArrayBox
 
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
-from surpyval.utils.deprecation import RenamedAttribute, renamed_arguments
+from surpyval.utils.deprecation import (
+    REMOVED_IN_NEXT,
+    RenamedAttribute,
+    renamed_arguments,
+)
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.surpyval_data import SurpyvalData
-from surpyval.utils.validation import _check_x_not_empty
+from surpyval.utils.validation import (
+    _check_x_not_empty,
+    warn_outside_unit_interval,
+)
 
 # The estimation machinery lives in ``optimised_fit`` and ``_fit_inputs``;
 # its public names are importable from here as they always were.
@@ -67,24 +75,30 @@ Numeric = npt.NDArray | float
 Boxable = npt.NDArray | float | ArrayBox
 
 
+#: ``from_params``'s ``p``, the limited-failure proportion, is
+#: ``lfp_p`` since v0.23 (#608); ``p`` still works, with a
+#: ``DeprecationWarning``, until v0.24.
+lfp_p_renamed = renamed_arguments(removed_in=REMOVED_IN_NEXT, p="lfp_p")
+
+
 def reject_structural_params(
     dist_name: str,
     gamma: Any = None,
-    p: Any = None,
+    lfp_p: Any = None,
     f0: Any = None,
 ) -> None:
     """Raise for structural arguments a closed-form distribution has no
     meaning for.
 
-    ``ParametricFitter.from_params`` takes ``gamma`` (an offset), ``p``
-    (the proportion that never fails) and ``f0`` (the proportion failing
-    at time zero). ``Bernoulli``, ``Binomial`` and ``ExactEventTime``
+    ``ParametricFitter.from_params`` takes ``gamma`` (an offset),
+    ``lfp_p`` (the proportion that ever fails) and ``f0`` (the proportion
+    failing at time zero). ``Bernoulli``, ``Binomial`` and ``ExactEventTime``
     support none of them, but they accept the arguments anyway so their
     signatures match the base -- a subclass that silently dropped them
     could not be called through a ``ParametricFitter`` reference, which
     is what the earlier narrower signatures got wrong.
     """
-    for name, value in (("gamma", gamma), ("p", p), ("f0", f0)):
+    for name, value in (("gamma", gamma), ("lfp_p", lfp_p), ("f0", f0)):
         if value is not None:
             raise ValueError(
                 f"{dist_name} does not support '{name}'; it has a "
@@ -212,8 +226,15 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
     formulas there, where the incomplete gamma and beta functions and
     ``q ** inf`` gave NaN: a Poisson's ``sf(inf)`` was NaN, not 0 (#561).
     The hazard's limit there is the family's own, and is computed.
+
+    A probability outside [0, 1] given to ``qf`` gives NaN there with one
+    warning, as the fitted models' ``qf`` do (#611): the formulas gave
+    whatever they gave -- an Exponential's ``qf(-0.5)`` a negative time,
+    a Uniform's ``qf(1.5)`` a point past its end, a Weibull's NaN with a
+    raw numpy warning.
     """
     at_infinity = _AT_INFINITY.get(fn.__name__)
+    is_qf = fn.__name__ == "qf"
 
     @functools.wraps(fn)
     def wrapped(self: "ParametricFitter", x: Any, *params: Any) -> Any:
@@ -227,6 +248,8 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
             return fn(self, x, *params)
         x_arr = np.asarray(x, dtype=float)
         missing = np.isnan(x_arr)
+        if is_qf:
+            missing = missing | warn_outside_unit_interval(x_arr)
         top = None
         replaced = missing
         if (
@@ -243,7 +266,7 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
         known = x_arr[~replaced]
         if known.size:
             fill = float(known[0])
-        elif fn.__name__ == "qf":
+        elif is_qf:
             fill = 0.5
         else:
             lo, hi = self._support_edges(*params)
@@ -299,7 +322,7 @@ DEFAULT_Y_TICKS = [
 ]
 
 
-class ParametricFitter(UnivariateDataFrameMixin):
+class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
     """
     Base class for all parametric distributions.
 
@@ -353,6 +376,9 @@ class ParametricFitter(UnivariateDataFrameMixin):
     # continuum. ``DiscreteParametricFitter`` overrides this; fit-method
     # validation and callers branch on the trait.
     discrete = False
+
+    #: The ``repr``: ``Weibull: parametric fitter`` (#614).
+    fitter_kind = "parametric fitter"
 
     # ``param_names``, the pre-0.22 name of ``parameter_names``, still
     # reads (and sets) it for one release, with a DeprecationWarning.
@@ -839,7 +865,10 @@ class ParametricFitter(UnivariateDataFrameMixin):
         window with no mass at all (``F(r) = 0``) stays ``log 0``."""
         lo_evaluated, hi_finite, upper_tail, lower_tail = masks
         log_sf, log_ff = fns
-        in_low = float(xr[lower_tail][0])
+        # A stand-in for the rows outside the tail, taken off the traced
+        # bounds: with an offset they carry ``gamma``, and ``float`` of
+        # a traced value raised a TypeError mid-search (#622)
+        in_low = float(_raw(xr)[lower_tail][0])
         log_fr = log_ff(np.where(lower_tail, xr, in_low), *dist_params)
         with_l = lower_tail & lo_evaluated
         log_fl = np.where(
@@ -856,7 +885,7 @@ class ParametricFitter(UnivariateDataFrameMixin):
         )
         if not np.any(upper_tail):
             return out
-        in_tail = float(xl[upper_tail][0])
+        in_tail = float(_raw(xl)[upper_tail][0])
         log_sl = log_sf(np.where(upper_tail, xl, in_tail), *dist_params)
         log_sr = np.where(
             upper_tail & hi_finite,
@@ -956,8 +985,13 @@ class ParametricFitter(UnivariateDataFrameMixin):
         """
         return self
 
+    @lfp_p_renamed
     def from_params(
-        self, params: Any, gamma: Any = None, p: Any = None, f0: Any = None
+        self,
+        params: Any,
+        gamma: Any = None,
+        lfp_p: Any = None,
+        f0: Any = None,
     ) -> Any:
         r"""
 
@@ -973,12 +1007,13 @@ class ParametricFitter(UnivariateDataFrameMixin):
             offset value for the distribution. If not provided will fit a
             regular, unshifted/not offset, distribution.
 
-        p : scalar, optional
+        lfp_p : scalar, optional
             The proportion of the population that is susceptible -- the
             proportion that will *ever* die or fail (a limited failure
-            population); ``1 - p`` never fails. If used it must be a value
-            between 0 and 1. If None will assume 1, i.e. every unit
-            eventually fails.
+            population); ``1 - lfp_p`` never fails. If used it must be a
+            value between 0 and 1. If None will assume 1, i.e. every unit
+            eventually fails. It was ``p`` before v0.23 (#608), which
+            still works until v0.24 with a ``DeprecationWarning``.
 
         f0 : scalar, optional
             The proportion of the population that will die or fail at time 0.
@@ -1022,9 +1057,10 @@ class ParametricFitter(UnivariateDataFrameMixin):
         # A proportion outside [0, 1], or a zero-inflation fraction at or
         # above the proportion that ever fails, is not a distribution:
         # p = 1.5 gave sf(100) = -0.5 and f0 = -0.1 gave ff(0) = -0.1.
+        p = lfp_p
         if p is not None and not (0 < p <= 1):
             raise ValueError(
-                f"p, the proportion that ever fails, must be in (0, 1]; "
+                f"lfp_p, the proportion that ever fails, must be in (0, 1]; "
                 f"got {p}"
             )
         if f0 is not None:
@@ -1035,9 +1071,9 @@ class ParametricFitter(UnivariateDataFrameMixin):
                 )
             if f0 >= (1 if p is None else p):
                 raise ValueError(
-                    f"f0 ({f0}) must be less than p ({p}): the proportion "
-                    "failing at time 0 is part of the proportion that ever "
-                    "fails"
+                    f"f0 ({f0}) must be less than lfp_p ({p}): the "
+                    "proportion failing at time 0 is part of the proportion "
+                    "that ever fails"
                 )
             # The same condition fit(zi=True) applies: the mass f0 sits at
             # 0, which must be where the support starts.
@@ -1077,7 +1113,7 @@ class ParametricFitter(UnivariateDataFrameMixin):
 
         model = Parametric(self, "given parameters", None, offset, lfp, zi)
         model.gamma = gamma
-        model.p = p
+        model.lfp_p = p
         model.f0 = f0
         model.params = np.array(params)
         self._set_support(model, offset)

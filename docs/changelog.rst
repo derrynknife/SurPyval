@@ -4,6 +4,171 @@ Changelog
 v0.23 (unreleased)
 ------------------
 
+- **Parametric bootstrap bounds for the parametric regression models
+  (#617).** ``cb``, ``param_cb``, ``quantile_cb`` and ``cb_tvc`` take
+  ``method="bootstrap"`` with ``n_boot=`` (default 200) and
+  ``random_state=``; Wald stays the default. Each resample simulates every
+  unit from the fitted model at its covariates and truncation window,
+  censored as it was (the conditional bootstrap), and refits; the bound is
+  the BCa interval, its acceleration from the resamples' scores. On #583's
+  test with 46 failures the 90% bound on R(5 y) at use covered 0.903,
+  against 0.880 (Wald), 0.875 (likelihood ratio) and 0.866 (percentile),
+  over 1000 repetitions of 1000 refits. With 11 failures no method holds
+  (bootstrap 0.71, Wald 0.87, likelihood ratio 0.85): 28% of those data
+  sets have no finite estimate, and the bootstrap warns when the model has
+  none. Refits that reach no verified maximum are kept and counted (a
+  warning above 2%); refits are shared per ``n_boot`` and integer seed and
+  are not pickled. Refused for left- or interval-censored data and
+  time-varying-covariate fits.
+- **Copula standard errors and confidence bounds (#540).** A fitted
+  ``CopulaModel`` reported point estimates only. It has
+  ``covariance()``, ``standard_errors()`` and ``param_cb(name)`` for the
+  copula parameters (``margins=True`` adds the margins'), and ``cb(x,
+  on="sf"/"ff")`` on the joint survival and joint CDF. ``how="MLE"``
+  uses the inverse Hessian of the joint likelihood; ``how="IFM"`` the
+  Godambe sandwich of the two stages (Joe 2005) -- treating the margins
+  as known understates the copula's standard error by about a fifth
+  (Clayton tau = 0.5, 300 rows: 0.173 against 0.223; the bootstrap gives
+  0.231 at 200 rows). ``param_cb`` works on the log or Fisher-z scale of
+  the parameter's space; ``cb`` is the delta method on the logit with
+  every parameter, the margins' included. Coverage of 95% intervals over
+  200 samples of every family under either fit: 91.5-99%. ``to_dict``
+  stores the covariance, so a restored model keeps its bounds; a dict
+  saved before v0.23 raises "refit". A non-parametric margin raises
+  (#623).
+- **Reliability growth projection (#607).** ``CrowAMSAA.projection(x,
+  modes, fef, i=, c=, bc=)`` projects the MTBF after delayed fixes: the
+  AMSAA-Crow projection model (MIL-HDBK-189C 6.2) and, with modes fixed
+  during the test (``bc=``), Crow's extended model. Each failure carries
+  a mode label; the BD modes and their fix-effectiveness factors are a
+  dict, the rest A modes. It returns the demonstrated, projected and
+  growth-potential intensities and MTBFs, a per-mode table and h(T), the
+  rate of new BD modes at the end of the test (unbiased beta-bar). In a
+  simulation of its definition the projection is within 3% of the true
+  post-fix intensity (without the unseen modes' term, 58% low).
+  Time-terminated tests only.
+- **Renewal fits take delayed entry (#615).** Breaking:
+  ``GeneralizedRenewal``, ``GeneralizedOneRenewal``, ``ARA`` and ``ARI``
+  take ``tl`` (and ``fit_from_df``'s ``tl_col``), each item as new at
+  its entry (virtual age 0, as after an overhaul; for ARI no intensity
+  reduction, the baseline's clock restarting), its times counted from
+  there. They refused ``tl > 0`` and silently ignored a negative ``tl``,
+  which now changes the fit. The fitted model's ``data`` hold the times
+  since entry.
+- **Per-unit prediction for renewal models (#615).**
+  ``RenewalModel.unit_states()`` gives each fitted unit's state at the
+  end of its history (virtual age now, G1 gap scale, or ARI intensity
+  reduction), and ``next_failure_sf(x)`` / ``next_failure_hf(x)`` its
+  next failure from there in closed form, for all four families;
+  ``age=`` gives units with no failure yet. Fixed on the way: ARA/ARI
+  memory for units with fewer failures than ``m``.
+- **``surpyval.forecast`` for repairable systems (#615).** It takes the
+  Poisson-process models (HPP, CrowAMSAA, Duane, CoxLewis, proportional
+  intensity), counting every failure: each unit's expected count is
+  Lambda(a+h) - Lambda(a), with Poisson prediction intervals; and the
+  renewal models, simulating each unit's future from its own state
+  (``items=``, ``random_state=``). ``age`` may be left out for a model
+  fitted to data (its items are the units). ``Forecast`` gains
+  ``per_unit``, ``units`` and ``simulations``.
+- **Every ``qf`` follows one rule (#611).** A probability outside [0, 1]
+  gives NaN with one warning. This now applies to the non-parametric
+  ``qf`` (it raised a ``ValueError``; ``qf(0)`` is now accepted), the
+  distributions' own ``qf`` (``Exponential.qf(-0.5, 0.2)`` was -2.36,
+  ``Uniform.qf(1.5, 1, 4)`` was 14.45), the point masses
+  (``NeverOccurs.qf(2)`` was inf), the process models (0 and inf in
+  silence) and the accelerated degradation and RUL models (which
+  raised). A new conformance property checks every model.
+- **Breaking: univariate fits refuse a censored time below the support
+  (#611),** as the regressions do since #565, with the same error.
+  ``Weibull.fit([-1, 2, ...], c=[1, 0, ...])`` used to fit and ignore
+  the row. A right-censored 0 and offset fits are unaffected.
+- **``fit_best`` takes mixtures as opt-in candidates (#613):**
+  ``include=["Weibull", MixtureModel(Weibull, 2)]``, ranked on the same
+  criterion. Default candidates are unchanged.
+- **Deprecated (#613):** ``surpyval.NUM``, ``TINIEST`` and ``EPS`` warn
+  until v0.24. Use the numpy equivalents. ``surpyval.np`` stays.
+- **Cox has ``covariance()`` (#613):** the inverse observed information,
+  R's ``vcov(coxph)``. It is saved in ``to_dict``.
+- **``standard_errors()`` is an array on every model with
+  ``covariance()`` (#613).** It is new on ``Parametric`` and
+  ``RoystonParmarModel``.
+  - **Breaking:** the frailty models' ``standard_errors()`` returns an
+    array, not a dict; theta's is ``[-1]``.
+  - ``se`` on the Cox, Lin-Ying, proportional-odds and Fine-Gray models
+    is deprecated until v0.24.
+- **Binomial takes a number of trials per row (#608):** ``n_trials=[20,
+  50, 80]``. ``p`` comes from all the trials, and the exact bounds hold
+  for unequal batch sizes. With unequal trials there is no single ``n``
+  (NaN); the functions of the event count say so and point to
+  ``with_params``. Empty data is refused.
+- **Breaking: the limited-failure proportion is ``lfp_p`` (#608)** in
+  the attribute, ``fixed``, ``param_cb``, ``from_params``, ``extras``
+  and the repr. ``p`` still works with a ``DeprecationWarning`` until
+  v0.24, except on distributions that have a parameter called ``p``
+  (Bernoulli, Binomial, FixedEventProbability, Geometric,
+  NegativeBinomial). There ``model.p`` is now the fitted parameter; it
+  used to read 1. ``extras`` uses the key ``"lfp_p"``. Saved dicts keep
+  the key ``"p"``, and old dicts and pickles load.
+- **Regression coefficients are named by their covariate (#614).
+  Breaking.** Coefficients were ``beta_0``, ``beta_1``, ..., beside the
+  Weibull shape ``beta``. They are now named by the covariate's column
+  (a formula, ``fit_from_df``, or a DataFrame ``Z``, which every
+  regression ``fit`` now accepts as ``fit_from_df`` does), otherwise
+  ``coef_0``, ``coef_1``, ..., in every regression family. A clashing
+  name gets ``.1``, ``.2`` (R's ``make.unique``). ``parameter_names``,
+  ``summary()``, reprs and ``to_dict()`` change. ``beta_j`` in
+  ``fixed=`` and ``param_cb`` still works with a ``DeprecationWarning``
+  until v0.24, and dictionaries saved with ``beta_j`` load with the new
+  names.
+- **Fitters print what they are (#614).** ``Weibull`` printed as
+  ``<...Weibull_ object at 0x...>``; it now prints ``Weibull: parametric
+  fitter``, and ``WeibullAFT`` prints ``WeibullAFT: accelerated failure
+  time fitter (Weibull baseline)``. Every registered fitter is checked
+  by the conformance suite.
+- **Large-scale covariates reach the maximum (#612).** A coefficient was
+  searched in units of 1 whatever its covariate's range, so with
+  covariates in units of 1e4, 14 regression fits stopped up to 0.023
+  short in log-likelihood and warned "unverified". A covariate whose
+  range exceeds 100 is now searched and judged in units of 1/range (as
+  below 1 since #577), including ``GeneralLogLinear`` accelerated life
+  fits. All 14 now verify, within 1e-8 of the unscaled maximum. Fits on
+  covariates with ranges between 1 and 100 are unchanged to the last
+  digit.
+- **Offset fits start from one distribution at its own offset (#622).**
+  An offset maximum-likelihood start is now the starting offset with the
+  family's own seeds for the data shifted by it. The Weibull kept its
+  probability plot's shape and scale, fitted with the plot's own offset,
+  after replacing that offset. On a left-skewed sample the start's
+  negative log-likelihood was 1.3e7, and the fit returned a point at
+  4.8e6 labelled "No finite maximum"; it now ends at the Gumbel limit
+  (30.17). The Exponential seeded its rate from the unshifted data, and
+  interval data seeded every family against the wrong offset. Ordinary
+  fits reach the same maximum (log-likelihood within 1e-10 to 2e-7
+  relative, from a different search path).
+- **An offset run onto the first failure ends quickly (#622).** With a
+  shape below 1 the likelihood is unbounded as gamma approaches the
+  first failure. The ladder used to follow it there in 5,000-15,000
+  likelihood evaluations (2-8 s) and end "unverified", "MLE Failed" or
+  "No finite maximum" depending on where the last rung stopped. The
+  search now ends at the first rung that reaches it, or that stops on
+  its way there, with one "No finite maximum ... how='MPS'" warning, in
+  13-750 evaluations. Over 276 simulated offset fits the right status
+  rose from 262 to 272, and total evaluations fell from 493,516 to
+  33,698. Results now agree between CPU paths: the #584 offset Weibull
+  was "no finite maximum" with AVX-512 disabled.
+- **Breaking: offset fits refuse an observed value at ±inf** with
+  ``OutsideSupportError``, as fits without an offset do. Previously the
+  Exponential returned a rate, the Weibull warned "MLE Failed" and the
+  Gamma leaked RuntimeWarnings.
+- **Fixed:** an offset interval-censored fit with windows in a
+  distribution's lower tail raised ``TypeError`` (#622).
+- harness.py
+- analyse.py
+- compare_runs.py
+- totals.py
+- before_*.jsonl / after_*.jsonl / any_*.jsonl
+- per-family strategy results ({family}.jsonl)
+- compare2.txt (snapshot diff)
 - **Zero-inflated fits check the support (#610).** A ``zi=True`` fit
   skipped the support check, so a negative (or infinite) time returned the
   optimiser's start with "MLE Failed"; it raises ``OutsideSupportError``. A

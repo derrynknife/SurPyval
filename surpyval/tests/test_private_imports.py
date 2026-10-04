@@ -61,31 +61,6 @@ ALLOWED: frozenset[tuple[str, str, str]] = frozenset(
             "_offset_start",
         ),
         (
-            "surpyval.univariate.parametric.distributions.expo_weibull",
-            "surpyval.univariate.parametric._fit_inputs",
-            "_offset_start",
-        ),
-        (
-            "surpyval.univariate.parametric.distributions.gamma",
-            "surpyval.univariate.parametric._fit_inputs",
-            "_offset_start",
-        ),
-        (
-            "surpyval.univariate.parametric.distributions.loglogistic",
-            "surpyval.univariate.parametric._fit_inputs",
-            "_offset_start",
-        ),
-        (
-            "surpyval.univariate.parametric.distributions.lognormal",
-            "surpyval.univariate.parametric._fit_inputs",
-            "_offset_start",
-        ),
-        (
-            "surpyval.univariate.parametric.distributions.rayleigh",
-            "surpyval.univariate.parametric._fit_inputs",
-            "_offset_start",
-        ),
-        (
             "surpyval.univariate.parametric.parametric_fitter",
             "surpyval.utils.validation",
             "_check_x_not_empty",

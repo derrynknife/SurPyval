@@ -50,7 +50,7 @@ def test_no_effect_gives_the_univariate_band(fitter, dist, link, on):
     x, Z = _data()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        reg = getattr(sp, fitter).fit(x, Z, fixed={"beta_0": 0.0})
+        reg = getattr(sp, fitter).fit(x, Z, fixed={"coef_0": 0.0})
     uni = getattr(sp, dist).fit(x)
     assert reg._cb_link == link
     np.testing.assert_allclose(reg.params[:-1], uni.params, rtol=1e-6)

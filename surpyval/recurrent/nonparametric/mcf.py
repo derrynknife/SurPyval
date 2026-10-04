@@ -18,6 +18,7 @@ from surpyval.univariate.nonparametric._support import (
 )
 from surpyval.utils.dataframe import RecurrentDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.recurrent_event_data import RecurrentEventData
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
@@ -41,7 +42,9 @@ _MCF_RANGE = (
 
 
 @singleton_fitter
-class NonParametricCounting(RecurrentDataFrameMixin, SerialisableMixin):
+class NonParametricCounting(
+    FitterRepr, RecurrentDataFrameMixin, SerialisableMixin
+):
     """
     The non-parametric (Nelson-Aalen) estimate of the mean cumulative
     function (MCF), the expected number of events per item by time
@@ -58,6 +61,16 @@ class NonParametricCounting(RecurrentDataFrameMixin, SerialisableMixin):
     returns a new, fitted instance, which carries ``mcf``, ``mcf_cb`` and
     ``plot``.
     """
+
+    #: The ``repr`` of the fitter (#614)
+    fitter_kind = "non-parametric recurrence fitter"
+
+    def __repr__(self) -> str:
+        # A fitted estimate is an instance of this class too: it is not
+        # the fitter.
+        if hasattr(self, "mcf_hat"):
+            return object.__repr__(self)
+        return super().__repr__()
 
     # Set on the instance the fit returns, not in __init__ -- the
     # singleton fitter is called on a bare class and hands back a

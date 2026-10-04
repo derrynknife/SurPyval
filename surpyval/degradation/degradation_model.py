@@ -36,6 +36,7 @@ from surpyval.utils.validation import (
     alpha_ci_error,
     check_option,
     option_error,
+    warn_outside_unit_interval,
 )
 
 from ._bounds import (
@@ -1333,7 +1334,8 @@ class DegradationModel(SerialisableMixin):
         or a single ``p``, is broadcast). For a step-stress model it is the
         calendar time at which the clock of ``Z`` reaches the
         reference-stress quantile, :math:`\\tau^{-1}(F_0^{-1}(p))`. A
-        missing (``nan``) probability or covariate gives ``nan``.
+        missing (``nan``) probability or covariate gives ``nan``, and a
+        probability outside [0, 1] ``nan`` with a warning (#611).
         """
         if self._is_clock:
             clock = self._clock(Z)
@@ -1590,8 +1592,9 @@ class DegradationModel(SerialisableMixin):
         draw, and ``random(5000)`` took half a minute).
         """
         p_arr = np.atleast_1d(np.asarray(p, dtype=float))
-        if np.any((p_arr < 0) | (p_arr > 1)):
-            raise ValueError("qf probabilities must lie in [0, 1]")
+        # NaN, with a warning, outside [0, 1], as every model's qf (#611;
+        # it raised).
+        p_arr = np.where(warn_outside_unit_interval(p_arr), np.nan, p_arr)
         # one covariate row per probability, as ``sf`` pairs them with
         # ``x``; only the first row was used, whatever the others held
         Z_rows = np.asarray(Z, dtype=float)

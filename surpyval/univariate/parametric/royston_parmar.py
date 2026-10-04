@@ -56,7 +56,12 @@ from surpyval.univariate.information_criteria import (
 from surpyval.univariate.parametric.fitters import is_local_minimum
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.deprecation import ArrayMethod
-from surpyval.utils.linalg import numerical_gradient, numerical_hessian
+from surpyval.utils.fitter_repr import FitterRepr
+from surpyval.utils.linalg import (
+    numerical_gradient,
+    numerical_hessian,
+    standard_errors_of,
+)
 from surpyval.utils.no_maximum import (
     maximum_entry,
     restored_maximum,
@@ -444,6 +449,22 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
     #: before v0.23, which still reads it, with a DeprecationWarning.
     covariance = ArrayMethod("_covariance", no_covariance_error)
 
+    def standard_errors(self) -> np.ndarray:
+        """The spline coefficients' standard errors, the square roots of
+        the diagonal of ``covariance()`` in the order of ``params``
+        (``nan`` where a variance is not positive; #613).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import RoystonParmar, Weibull
+        >>> x = Weibull.random(200, 10, 2, random_state=1)
+        >>> model = RoystonParmar.fit(x, df=2)
+        >>> model.standard_errors().shape
+        (3,)
+        """
+        return standard_errors_of(self.covariance())
+
     def summary(self) -> str:
         """A text summary of the fit: link scale, knots, likelihood and
         coefficients."""
@@ -566,7 +587,7 @@ class _SplineNegLL:
         return -ll
 
 
-class RoystonParmar_(UnivariateDataFrameMixin):
+class RoystonParmar_(FitterRepr, UnivariateDataFrameMixin):
     """Fitter for :class:`RoystonParmarModel`. Use the singleton
     :data:`RoystonParmar`.
 
@@ -585,6 +606,9 @@ class RoystonParmar_(UnivariateDataFrameMixin):
     >>> model.sf([5, 10]).round(4)
     array([0.8029, 0.4131])
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "flexible parametric (spline) fitter"
 
     def fit(
         self,
