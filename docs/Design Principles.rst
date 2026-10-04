@@ -68,11 +68,14 @@ Inputs
    covariate, and so do the defaults of Cox, Fine-Gray and the families
    whose baseline maps exactly between origins. Nor does a covariate's
    scale: multiplying a column by a constant divides its coefficient by it
-   and leaves the maximised likelihood unchanged.
+   and leaves the maximised likelihood and every prediction as they were,
+   whatever the covariate's scale (``1/T`` in kelvin is about 0.003).
 
    *Checked* by ``conformance/test_metamorphic.py``
-   (``test_covariate_origin*`` for covariates) and ``test_maximum.py``'s
-   small- and large-scale (x1e4) fits (#577, #612). One family is excepted:
+   (``test_covariate_origin*``, and ``test_covariate_scale*`` with a
+   column multiplied by 1/731, 731 and 1e-6, by ``fit`` and by
+   ``fit_tvc``) and ``test_maximum.py``'s small- and large-scale (x1e4)
+   fits (#577, #612). One family is excepted:
    the Beta4's likelihood is unbounded, so its maximum-likelihood fit can
    depend on the units, and warns when it does; its MPS fit does not
    (#385).
@@ -252,9 +255,11 @@ Behaviour and API
 
 20. **Saving and loading.** Every model round-trips through strict JSON with
     identical predictions, stamped with the oldest schema version that can
-    read it.
+    read it, and through ``pickle``, which process pools and the packages
+    built on SurPyval use to move a fitted model between processes.
 
-    *Checked* by ``conformance/test_serialisation.py`` and
+    *Checked* by ``conformance/test_serialisation.py``,
+    ``conformance/test_pickle.py`` (#573) and
     ``properties/test_serialisation.py``, and for tuple and mixed
     ``str`` / ``int`` cause labels by ``conformance/test_labels.py``.
 
@@ -276,11 +281,21 @@ Behaviour and API
     When a name changes, the old one keeps working for one release with a
     ``DeprecationWarning`` naming the new one.
 
+    The quantities a model comparison reads -- ``aic``, ``bic``,
+    ``neg_ll``, ``log_likelihood``, ``covariance`` -- are the same kind
+    (a method or a value) on every model, and every full-likelihood fit
+    offers ``aic`` and ``bic``.
+
     *Checked* by ``conformance/test_options.py``,
     ``conformance/test_params.py``, ``conformance/test_comparison.py``
     (standard errors, #613), ``conformance/test_repr.py`` (every fitter
-    prints what it is, #614) and, for the column names,
-    ``conformance/test_fit_paths.py``.
+    prints what it is, #614), for the column names,
+    ``conformance/test_fit_paths.py``, and for the comparison quantities
+    ``conformance/test_comparison.py`` and ``conformance/test_surface.py``
+    (#572). Known to break it, as strict expected failures there: the
+    degradation process models (``WienerProcess``, ``GammaProcess``,
+    ``DestructiveDegradation``) and ``CauseSpecificNHPP`` are
+    maximum-likelihood fits with no ``aic`` or ``bic``.
 
 22. **Warnings and errors.** One warning per problem, with counts, saying
     what happened and what to do about it. No raw numpy warning escapes

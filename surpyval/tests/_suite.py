@@ -108,4 +108,9 @@ OPT_IN = {
         "statistical calibration studies (coverage, size, bias)",
         "surpyval/tests/calibration",
     ),
+    "scenarios": (
+        "--run-scenarios",
+        "practitioner scenario cards",
+        "surpyval/tests/scenarios",
+    ),
 }

@@ -90,6 +90,18 @@ for _name, _reason in _COMPARISON_FAILURES.items():
     }
 
 
+# -- covariate scale (test_metamorphic.py) ----------------------------------
+# A covariate multiplied by 1/731, 731 or 1e-6 must reach the maximised
+# likelihood of the fit in its own units. Keyed "covariate_scale[<label>]",
+# and "covariate_scale[tvc <label>]" for fit_tvc; case -> key -> reason.
+# (None since #577 and #612: at 1e-6 the regression, frailty, Fine-Gray
+# and proportional-intensity fits stopped 0.6 to 10 log-likelihood units
+# short and reported a verified maximum.)
+_SCALE_FAILURES: dict[str, dict[str, str]] = {}
+for _name, _failures in _SCALE_FAILURES.items():
+    KNOWN_FAILURES[_name] = {**KNOWN_FAILURES.get(_name, {}), **_failures}
+
+
 # Known failures whose outcome depends on the numpy / scipy / BLAS build,
 # so they are non-strict xfails: case name -> properties. The fits started
 # far from the maximum were (#427, #428, #429); they now reach it, or say
