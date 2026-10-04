@@ -62,6 +62,79 @@ _U_CLIP = 1e-10
 _LOG_FLOOR = 1e-300
 
 
+def _describe(margin: Any) -> str:
+    """A margin as the user wrote it: ``the string 'Weibull'``, ``the
+    Weibull fitter``, ``a Parametric model``, ..."""
+    if isinstance(margin, str):
+        return f"the string {margin!r}"
+    if hasattr(margin, "fit"):
+        name = getattr(margin, "name", None)
+        if not isinstance(name, str):
+            name = (
+                margin if isinstance(margin, type) else type(margin)
+            ).__name__.rstrip("_")
+        return f"the {name} fitter"
+    return f"a {type(margin).__name__}"
+
+
+def _check_margins(margins: Any, D: int, fitted_only: bool) -> list:
+    """The ``margins`` of a copula fit (``fitted_only=False``: fitters or
+    fitted models) or of ``from_params`` (fitted models), as a list of
+    ``D``; anything else raises a ``ValueError`` saying what is expected
+    (#663): a fitter's name as a string, a single fitter for both
+    dimensions, or the wrong number used to fail inside numpy or with an
+    ``AttributeError``."""
+    example = (
+        "[Weibull.from_params([10, 2]), LogNormal.from_params([2, 0.5])]"
+        if fitted_only
+        else "[Weibull, Weibull]"
+    )
+    if margins is None:
+        raise ValueError(
+            f"margins must be provided, one per dimension: e.g. {example}."
+        )
+    if isinstance(margins, str) or not isinstance(
+        margins, (list, tuple, onp.ndarray)
+    ):
+        raise ValueError(
+            f"margins must be a list of {D} margins, one per dimension (e.g. "
+            f"{example}); got {_describe(margins)}."
+        )
+    margins = list(margins)
+    if len(margins) != D:
+        raise ValueError(
+            f"A copula of {D} series needs {D} margins, one per dimension; "
+            f"got {len(margins)}."
+        )
+    for d, margin in enumerate(margins):
+        if isinstance(margin, str):
+            instead = (
+                f"a fitted model, e.g. surpyval.{margin}.from_params(...)"
+                if fitted_only
+                else f"the fitter itself (surpyval.{margin})"
+            )
+            raise ValueError(
+                f"Margin {d} is {_describe(margin)}: pass {instead}, not "
+                "its name."
+            )
+        is_model = all(
+            callable(getattr(margin, a, None)) for a in ("ff", "df")
+        )
+        if fitted_only and not is_model:
+            raise ValueError(
+                f"Margin {d} is not a fitted univariate model (it needs `ff` "
+                f"and `df`), but {_describe(margin)}; build one with e.g. "
+                "`Weibull.from_params`."
+            )
+        if not fitted_only and not (is_model or hasattr(margin, "fit")):
+            raise ValueError(
+                f"Margin {d} is {_describe(margin)}: each margin is a "
+                "univariate fitter (e.g. surpyval.Weibull) or a fitted "
+                "univariate model (with `ff` and `df`)."
+            )
+    return margins
+
+
 class Copula(RemovedNames):
     """Bivariate copula family.
 
@@ -703,10 +776,7 @@ class Copula(RemovedNames):
         data = MultivariateSurpyvalData(x, c=c, n=n, t=t, xl=xl, xr=xr)
         if data.D != 2:
             raise NotImplementedError("only bivariate copulas are supported")
-        if margins is None:
-            raise ValueError("margins must be provided (one per dimension)")
-        if len(margins) != data.D:
-            raise ValueError("need one margin per dimension")
+        margins = _check_margins(margins, data.D, fitted_only=False)
 
         check_option("how", how, ("IFM", "MLE"))
         if init is not None:
@@ -875,19 +945,7 @@ class Copula(RemovedNames):
         if rotation:
             return self.rotated(rotation).from_params(params, margins)
         params = self._check_params(params)
-        margins = list(margins)
-        if len(margins) != 2:
-            raise ValueError(
-                f"A bivariate copula needs 2 margins, one per dimension; "
-                f"got {len(margins)}."
-            )
-        for d, m in enumerate(margins):
-            if not all(callable(getattr(m, a, None)) for a in ("ff", "df")):
-                raise ValueError(
-                    f"Margin {d} is not a fitted univariate model (it needs "
-                    "`ff` and `df`); build one with e.g. "
-                    "`Weibull.from_params`."
-                )
+        margins = _check_margins(margins, 2, fitted_only=True)
         return CopulaModel(self, params, margins, data=None, how="given")
 
     #: Names of parameters whose finite bounds are themselves valid values

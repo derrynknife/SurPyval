@@ -557,3 +557,19 @@ def test_564_an_unverified_process_fit_says_so(fitter, monkeypatch):
         model = fitter.fit(x, y, i, 10.0, Z=Z)
     assert model.maximum == "unverified" and len(w) == 1
     assert w[0].filename == __file__
+
+
+def test_a_falling_signal_says_to_negate_y_and_the_threshold():
+    # #663: a battery capacity falling from 100 to a threshold of 80 does
+    # reach it; the drift message said it did not.
+    rng = np.random.default_rng(0)
+    t = np.tile(np.arange(0.0, 11.0), 4)
+    i = np.repeat(np.arange(4), 11)
+    y = 100.0 - 2.0 * t + rng.normal(0.0, 0.5, t.size)
+    with pytest.raises(ValueError, match="negate y and the threshold"):
+        WienerProcess.fit(t, y, i, threshold=80.0)
+    with pytest.raises(ValueError, match="negate y and the threshold"):
+        GammaProcess.fit(t, y, i, threshold=80.0)
+    # ... and doing so fits: the life to fall 20 below the start
+    model = WienerProcess.fit(t, -y, i, threshold=-80.0)
+    assert model.mu > 0 and 9.0 < model.mean() < 11.0

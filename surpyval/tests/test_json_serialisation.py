@@ -897,3 +897,30 @@ def test_surpyval_data_to_json_is_strict_and_round_trips(tmp_path):
     data.to_json(fp)
     _strict_loads(fp.read_text())
     np.testing.assert_array_equal(SurpyvalData.from_json(fp).t, data.t)
+
+
+def test_hand_edited_dicts_name_the_bad_entry():
+    # #663: strings of numbers are read as numbers; a word or a ragged
+    # covariance is named, not a numpy error later.
+    model = Weibull.fit([1.0, 2.0, 3.0, 5.0, 8.0, 13.0])
+    d = model.to_dict()
+    d["params"] = [str(v) for v in d["params"]]
+    restored = surpyval.from_dict(d)
+    np.testing.assert_allclose(restored.params, model.params)
+    assert restored.sf(4.0) == pytest.approx(model.sf(4.0))
+    d = model.to_dict()
+    d["params"] = ["ten", 2.0]
+    with pytest.raises(ValueError, match="'params' must be numbers"):
+        surpyval.from_dict(d)
+    d = model.to_dict()
+    d["covariance"] = [[1.0, 0.1], [0.1]]
+    with pytest.raises(ValueError, match="'covariance' must be a square"):
+        surpyval.from_dict(d)
+
+
+def test_model_functions_read_strings_of_numbers():
+    model = Weibull.from_params([10.0, 2.0])
+    assert model.sf("10") == model.sf(10.0)
+    np.testing.assert_array_equal(model.ff(["5", "10"]), model.ff([5.0, 10.0]))
+    with pytest.raises(ValueError, match="x must be numbers"):
+        model.sf("ten")

@@ -213,3 +213,14 @@ def test_621_offset_exponential_stops_the_search_running_to_the_line(
     # 2,500 evaluations a unit for the start running to the line, and
     # 200 to 700 for the other, were 64,000 for these 20 units (now 26,000)
     assert calls[0] < 30_000
+
+
+@pytest.mark.parametrize(
+    "model", [PowerPath, LogarithmicPath, LloydLipowPath, MichaelisMentenPath]
+)
+def test_a_reading_at_t_0_is_refused_with_advice(model):
+    # #663: the baseline reading at t = 0 is the usual case; the message
+    # says why the path cannot use it and to drop it.
+    with pytest.raises(ValueError, match="Drop the t = 0 rows") as caught:
+        model.fit([0.0, 1, 2, 3], [0.1, 1.0, 2.0, 3.0])
+    assert "requires strictly positive times" in str(caught.value)

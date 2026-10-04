@@ -230,6 +230,34 @@ def test_from_params_validates_margins():
         Clayton.from_params([2.0], [WEIBULL_MARGINS[0], 3.0])
 
 
+def test_margins_given_wrongly_say_what_is_expected():
+    # #663: a fitter's name, a single fitter for both dimensions, or series
+    # of different lengths failed inside numpy or with an AttributeError.
+    X = Clayton.from_params([2.0], WEIBULL_MARGINS).random(50, random_state=0)
+    with pytest.raises(ValueError, match="string 'Weibull': pass the fitter"):
+        Clayton.fit(X, margins=["Weibull", "Weibull"])
+    with pytest.raises(
+        ValueError, match="a list of 2 margins.*Weibull fitter"
+    ):
+        Clayton.fit(X, margins=Weibull)
+    with pytest.raises(ValueError, match="a list of 2 margins"):
+        Clayton.from_params([2.0], Weibull)
+    with pytest.raises(ValueError, match=r"Weibull.from_params\(...\)"):
+        Clayton.from_params([2.0], ["Weibull", "Weibull"])
+    with pytest.raises(ValueError, match=r"different lengths \[50, 40\]"):
+        Clayton.fit([X[:, 0], X[:40, 1]], margins=[Weibull, Weibull])
+
+
+def test_a_point_given_as_separate_arguments_says_how_to_pass_it():
+    model = Clayton.from_params([2.0], WEIBULL_MARGINS)
+    for name in ("sf", "cdf", "pdf"):
+        with pytest.raises(
+            TypeError, match=rf"{name}\(\[\[50, 20\]\]\), not {name}\(50, 20\)"
+        ):
+            getattr(model, name)(50, 20)
+    assert model.sf([[50, 20]]).shape == (1,)
+
+
 def test_from_params_accepts_gumbel_independence():
     model = Gumbel.from_params([1.0], WEIBULL_MARGINS)
     assert model.kendall_tau() == 0.0

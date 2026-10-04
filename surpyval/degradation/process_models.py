@@ -1310,7 +1310,9 @@ class WienerProcess(RemovedNames):
             Unit identifier for each measurement.
         threshold : float
             The degradation level defining failure (a level, not a
-            distance from the start).
+            distance from the start), reached from below: for a signal
+            that falls to a lower threshold (a capacity, a thickness), fit
+            ``-y`` with ``threshold=-threshold``.
         Z : array_like, optional
             Stress covariates, one row per measurement, for an accelerated
             or step-stress test. The stress may differ between units and
@@ -1497,11 +1499,16 @@ class WienerProcess(RemovedNames):
     @staticmethod
     def _check_drift(mu: float) -> None:
         if mu <= 0:
+            # A signal that falls to a lower threshold (a capacity, a
+            # thickness) does reach it: say how to fit it (#663).
             raise ValueError(
-                "fitted drift mu = {:.4g} is not positive, so the process "
-                "does not reliably reach the threshold and the first-passage "
-                "life distribution is defective. Check the sign of the "
-                "degradation / threshold, or use a monotone model.".format(mu)
+                "fitted drift mu = {:.4g} is not positive: the process "
+                "models degradation that rises to the threshold, and does "
+                "not reliably reach it, so the first-passage life "
+                "distribution is defective. For a signal that falls to a "
+                "lower threshold, negate y and the threshold (fit -y with "
+                "threshold=-threshold; the life distribution is the same); "
+                "otherwise check the threshold.".format(mu)
             )
 
 
@@ -1739,7 +1746,9 @@ class GammaProcess(RemovedNames):
         i : array_like
             Unit identifier for each measurement.
         threshold : float
-            The degradation level defining failure.
+            The degradation level defining failure, reached from below:
+            for a signal that falls to a lower threshold, fit ``-y`` with
+            ``threshold=-threshold``.
         Z : array_like, optional
             Stress covariates, one row per measurement, for an accelerated
             or step-stress test. The stress may differ between units and
@@ -2239,10 +2248,18 @@ class GammaProcess(RemovedNames):
     @staticmethod
     def _check_monotone(dy: npt.NDArray) -> None:
         if np.any(dy < 0):
+            # A falling signal is the common case: say how to fit it (#663).
+            falling = (
+                "For a signal that falls to a lower threshold, negate y and "
+                "the threshold (fit -y with threshold=-threshold; the life "
+                "distribution is the same). "
+                if np.sum(dy) < 0
+                else ""
+            )
             raise ValueError(
                 "the degradation decreases over at least one interval, but a "
-                "Gamma process is monotone increasing. Use WienerProcess for "
-                "non-monotone / noisy signals."
+                f"Gamma process is monotone increasing. {falling}Use "
+                "WienerProcess for non-monotone / noisy signals."
             )
 
     #: The range the stationary fit searches for the shape rate ``alpha``.
