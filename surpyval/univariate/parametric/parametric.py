@@ -777,8 +777,9 @@ class Parametric(
     _bootstrap_refits: "dict | None" = None
 
     def __getstate__(self) -> dict:
-        # The bootstrap refits are a cache, rebuilt on demand (#645)
-        state = self.__dict__.copy()
+        # The bootstrap refits are a cache, rebuilt on demand (#645), as
+        # are the likelihood-ratio bounds' (the mixin's own)
+        state = super().__getstate__()
         state.pop("_bootstrap_refits", None)
         return state
 
