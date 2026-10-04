@@ -410,14 +410,10 @@ def _univariate():
             interface=UNIVARIATE,
             data=mixture_data,
             fit=lambda d: _fit_mixture(d),
-            functions=("sf", "ff", "df", "Hf"),
+            functions=("sf", "ff", "df", "hf", "Hf", "qf"),
             x=np.array([1.0, 3.0, 5.0, 10.0, 22.0, 30.0, 45.0]),
             draw=lambda m, s: m.random(15, random_state=s),
             explicit_seed=True,
-            exclude={
-                "df_hf_sf": "MixtureModel has no hf (Conventions)",
-                "qf_ff": "MixtureModel has no qf (Conventions)",
-            },
         )
     )
     out.append(
@@ -1354,6 +1350,17 @@ def _bounds(case):
         return _nonparametric_bounds(case)
     if cls == "RoystonParmarModel":
         return (Bound("cb", on=_ON_SURVIVAL),)
+    if cls == "MixtureModel":
+        # Wald bounds only (#651)
+        return (
+            Bound("cb", on=_ON_ALL),
+            _PARAM_CB,
+            # The median falls in the gap between the components, where
+            # the density is small and the quantile's standard error 24
+            # times the quantile: at alpha_ci -> 1 the interval is the
+            # estimate +- 3e-5 of it.
+            Bound("quantile_cb", point="qf", rtol=1e-3),
+        )
     if cls == "ParametricRegressionModel":
         wald = (
             Bound("cb", on=_ON_ALL),

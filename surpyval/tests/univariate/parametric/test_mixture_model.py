@@ -442,3 +442,98 @@ def test_650_an_ordinary_mixture_is_still_verified():
         warnings.simplefilter("error")
         mm = surv.MixtureModel(surv.Weibull, 2).fit(x)
     assert mm.maximum == "verified"
+
+
+# -- hf, qf and the Wald inference (#651) ----------------------------------
+
+
+def _two_weibulls():
+    x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+    return sp.MixtureModel.fit(x, dist=sp.Weibull, m=2)
+
+
+def test_hf_is_df_over_sf():
+    mm = _two_weibulls()
+    grid = np.array([0.5, 5.0, 15.0, 30.0])
+    assert np.allclose(mm.hf(grid), mm.df(grid) / mm.sf(grid))
+    assert np.ndim(mm.hf(5.0)) == 0
+    # Finite where the survival has underflowed to 0
+    assert np.isfinite(mm.hf(1e4)) and mm.hf(1e4) > 0
+
+
+def test_qf_inverts_ff():
+    mm = _two_weibulls()
+    p = np.array([0.01, 0.1, 0.5, 0.9, 0.99])
+    assert np.allclose(mm.ff(mm.qf(p)), p, atol=1e-10)
+    assert mm.qf([[0.1], [0.5]]).shape == (2, 1)
+    assert mm.qf(0.0) == 0.0 and mm.qf(1.0) == np.inf
+
+
+def test_qf_outside_unit_interval_is_nan_with_one_warning():
+    mm = _two_weibulls()
+    with pytest.warns(UserWarning, match="outside") as caught:
+        q = mm.qf([10.0, -0.1, np.nan, 0.5])
+    assert len(caught) == 1
+    assert np.isnan(q[:3]).all() and np.isfinite(q[3])
+
+
+def test_covariance_matches_direct_hessian():
+    from surpyval.utils.linalg import numerical_hessian
+
+    mm = _two_weibulls()
+    assert mm.covariance_names == [
+        "alpha_0",
+        "beta_0",
+        "alpha_1",
+        "beta_1",
+        "w_0",
+        "w_1",
+    ]
+
+    def nll(v):
+        w = np.array([v[4], 1 - v[4]])
+        return float(mm.neg_ll_of(w, v[:4].reshape(2, 2)))
+
+    v = np.r_[mm.params.ravel(), mm.w[0]]
+    se = np.sqrt(np.diag(np.linalg.inv(numerical_hessian(nll, v))))
+    assert np.allclose(mm.standard_errors()[:5], se, rtol=1e-3)
+    assert np.isclose(mm.standard_errors()[4], mm.standard_errors()[5])
+    assert mm.covariance().shape == (6, 6)
+
+
+def test_param_cb_names_and_scales():
+    mm = _two_weibulls()
+    lo, hi = mm.param_cb("alpha_1")
+    assert 0 < lo < mm.params[1, 0] < hi
+    lo, hi = mm.param_cb("w_0")
+    assert 0 < lo < mm.w[0] < hi < 1
+    with pytest.raises(ValueError, match="'alpha_0'"):
+        mm.param_cb("alpha")
+    with pytest.raises(ValueError, match="Wald"):
+        mm.param_cb("alpha_0", method="lr")
+
+
+def test_cb_and_quantile_cb_bracket_the_estimate():
+    mm = _two_weibulls()
+    grid = np.array([2.0, 8.0, 16.0])
+    for on in ("sf", "ff", "Hf", "hf", "df"):
+        band = mm.cb(grid, on=on)
+        value = getattr(mm, on)(grid)
+        assert band.shape == (3, 2)
+        assert np.all(band[:, 0] <= value) and np.all(value <= band[:, 1])
+    assert np.allclose(mm.cb(grid, on="ff"), 1 - mm.cb(grid)[:, ::-1])
+    lower = mm.cb(grid, bound="lower")
+    assert np.allclose(lower, mm.cb(grid, alpha_ci=0.1)[:, 0])
+    lo, hi = mm.quantile_cb(0.1)
+    assert lo < mm.qf(0.1) < hi
+    assert mm.quantile_cb([0.1, 0.5]).shape == (2, 2)
+
+
+def test_covariance_survives_to_dict_and_refit():
+    mm = _two_weibulls()
+    restored = sp.MixtureModel.from_dict(mm.to_dict())
+    assert np.allclose(restored.standard_errors(), mm.standard_errors())
+    assert np.allclose(restored.cb([5.0]), mm.cb([5.0]))
+    before = mm.standard_errors()
+    mm.fit(np.arange(1.0, 30.0))
+    assert not np.allclose(mm.standard_errors(), before)

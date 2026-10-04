@@ -168,6 +168,11 @@ def _parameters(model):
             for k, n in enumerate(names)
         ]
         return names, np.asarray(model._param_vector(), float), supports
+    if hasattr(model, "covariance_names"):  # a mixture (#651)
+        names = list(model.covariance_names)
+        values = np.r_[np.ravel(model.params), model.w]
+        supports = list(model.dist.bounds) * model.m + [(0, 1)] * model.m
+        return names, np.asarray(values, float), supports
     names = list(model.dist.parameter_names)
     values = list(model.params)
     supports = list(model.dist.bounds)
