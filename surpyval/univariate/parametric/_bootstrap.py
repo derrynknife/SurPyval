@@ -22,6 +22,15 @@ intervals of the refits (Efron 1987): the percentiles of the refits
 moved by the share of them below the estimate. The BCa acceleration the
 regressions add needs the covariance of every parameter, and an offset
 fit's leaves the offset out.
+
+On #645's design (a 3-parameter Weibull of shape 1.5, 30 failures) the
+90% bound on the B1 life covered 63-64% over two runs of 100 samples,
+where the Wald bound covered 35%; on B10 82-89% (Wald 69%), on ``sf``
+just above the offset 66-68% (Wald 53%). It is still short at the offset
+itself when the shape is below 2: the offset's estimate is biased up
+(it is at most the first failure), and no interval of the refits makes
+up for that -- the percentile interval covered B1 45% and the basic
+(reflected) interval 75% but ``sf`` above the offset 56%.
 """
 
 from __future__ import annotations
