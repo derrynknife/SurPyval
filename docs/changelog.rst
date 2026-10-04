@@ -14,7 +14,10 @@ Unreleased
   log-likelihood units short on 500 Weibull units inspected every 3. A
   right-censored time or an interval start below the offset meets the
   survival function at 1, which the likelihood now holds there for a
-  custom cumulative hazard too.
+  custom cumulative hazard too. A fit the cap stopped short of the first
+  failure now reaches it: where the likelihood is unbounded there (a shape
+  below 1) it warns "No finite maximum" instead of reporting the cap as a
+  verified maximum.
 - The same bound made a Rayleigh offset fit on interval data run onto the
   first interval start and warn "No finite maximum", where 0.22 found the
   interior maximum (#632, since 0.23).
