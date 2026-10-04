@@ -41,6 +41,9 @@ def _rossi():
 def _fit(fit):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
+        # The unitless stresses of the Arrhenius life models here are
+        # below 200 K, which warns of degrees Celsius (#654).
+        warnings.filterwarnings("ignore", message="Every stress in column")
         model = fit()
     return model, [str(w.message) for w in caught], caught
 

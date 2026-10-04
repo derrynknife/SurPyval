@@ -5,6 +5,11 @@ from numpy import ndarray
 
 from surpyval.utils.fitter_repr import FitterRepr
 
+#: An absolute temperature below this, in kelvin (-73 degrees Celsius), is
+#: far colder than any life test: every stress of a kelvin column below it
+#: is most likely a temperature typed in degrees Celsius (#654).
+KELVIN_WARNING_BELOW = 200.0
+
 
 class LifeModel(FitterRepr, ABC):
     """
@@ -52,6 +57,16 @@ class LifeModel(FitterRepr, ABC):
     #: a power or logarithm of them (``Z**n``, ``log Z``), or reads them as
     #: an absolute temperature.
     positive_stress_columns: "tuple[int, ...]" = ()
+    #: Stress columns read as an absolute temperature, in kelvin (the
+    #: Arrhenius-type models): the fit refuses a value <= 0 there, naming
+    #: kelvin, and warns when every value is below
+    #: ``KELVIN_WARNING_BELOW`` (a temperature typed in degrees Celsius,
+    #: #654).
+    kelvin_stress_columns: "tuple[int, ...]" = ()
+    #: Whether the fit warns when every value of a kelvin column is below
+    #: ``KELVIN_WARNING_BELOW``; ``Eyring``, also used for a non-thermal
+    #: stress, does not.
+    warns_below_kelvin: bool = True
     #: Whether :meth:`phi` takes a 2-D array of stress rows and gives one
     #: life per row, as the built-in models do; the fit then finds every
     #: row's life in one call. ``False`` (the default, for a custom model

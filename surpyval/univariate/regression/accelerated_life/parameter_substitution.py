@@ -353,28 +353,69 @@ class ParameterSubstitutionFitter(
     def _check_stresses(self, Z_arr: npt.NDArray) -> None:
         """Refuse stresses the life model is not defined at.
 
-        ``Power`` (``a Z**n``), ``InversePower``, ``DualPower``, the power
-        column of ``PowerExponential`` and the Eyring models (an absolute
-        temperature) need strictly positive stresses. A non-positive one
-        used to reach the log-linear starting fit and fail there with an
-        SVD ``LinAlgError`` and LAPACK messages on stderr.
+        ``Power`` (``a Z**n``), ``InversePower``, ``DualPower`` and the
+        power column of ``PowerExponential`` need strictly positive
+        stresses. A non-positive one used to reach the log-linear starting
+        fit and fail there with an SVD ``LinAlgError`` and LAPACK messages
+        on stderr. The Arrhenius-type models (``Exponential``,
+        ``InverseExponential``, the Eyring models, the temperature column
+        of ``DualExponential`` and ``PowerExponential``) read a column as
+        an absolute temperature: a value <= 0 there is refused naming
+        kelvin, and a column below 200 K throughout warns, as a
+        temperature typed in degrees Celsius (#654).
         """
-        cols = getattr(self.life_model, "positive_stress_columns", ())
-        n_stresses = getattr(self.life_model, "n_stresses", None)
+        from .lifemodel import KELVIN_WARNING_BELOW
+
+        life_model = self.life_model
+        cols = getattr(life_model, "positive_stress_columns", ())
+        kelvin = getattr(life_model, "kelvin_stress_columns", ())
+        n_stresses = getattr(life_model, "n_stresses", None)
         if n_stresses is not None and Z_arr.shape[1] != n_stresses:
             raise ValueError(
                 "The {} life model takes {} stress column(s); Z has "
-                "{}.".format(self.life_model.name, n_stresses, Z_arr.shape[1])
+                "{}.".format(life_model.name, n_stresses, Z_arr.shape[1])
             )
-        for col in cols:
-            if np.any(np.asarray(Z_arr[:, col], dtype=float) <= 0):
+        for col in sorted({*cols, *kelvin}):
+            values = np.asarray(Z_arr[:, col], dtype=float)
+            if not values.size:
+                continue
+            lowest = float(np.min(values))
+            if col in kelvin and lowest <= 0:
                 raise ValueError(
-                    f"The {self.life_model.name} life model needs strictly "
-                    f"positive stresses (column {col} of Z has a value <= "
-                    "0): it raises the stress to a power or takes its "
-                    "logarithm. Shift or rescale the stress, or use a life "
-                    "model defined there (e.g. life_models.Linear or "
-                    "life_models.Exponential)."
+                    "The {} life model reads column {} of Z as an absolute "
+                    "temperature, in kelvin, which must be positive; its "
+                    "lowest value is {:g}. Kelvin is degrees Celsius plus "
+                    "273.15: for a Z in degrees Celsius pass Z + "
+                    "273.15.".format(life_model.name, col, lowest)
+                )
+            if lowest <= 0:
+                raise ValueError(
+                    "The {} life model needs strictly positive stresses "
+                    "(the lowest in column {} of Z is {:g}): it raises the "
+                    "stress to a "
+                    "power or takes its logarithm. Shift or rescale the "
+                    "stress, or use a life model defined there (e.g. "
+                    "life_models.Linear or life_models.GeneralLogLinear)."
+                    "".format(life_model.name, col, lowest)
+                )
+            highest = float(np.max(values))
+            if (
+                col in kelvin
+                and getattr(life_model, "warns_below_kelvin", True)
+                and highest < KELVIN_WARNING_BELOW
+            ):
+                warnings.warn(
+                    "Every stress in column {} of Z is below {:g} K (the "
+                    "highest is {:g}): the {} life model reads it as an "
+                    "absolute temperature, in kelvin. Did you pass degrees "
+                    "Celsius? Add 273.15.".format(
+                        col,
+                        KELVIN_WARNING_BELOW,
+                        highest,
+                        life_model.name,
+                    ),
+                    UserWarning,
+                    stacklevel=_caller_stacklevel(),
                 )
 
     def _aliased_stresses(
@@ -479,10 +520,14 @@ class ParameterSubstitutionFitter(
             controlled stress levels: without ``init`` the starting point
             comes from fitting the distribution at each distinct stress
             level, so at least two levels are needed. ``Power``,
-            ``InversePower``, ``DualPower``, the Eyring models and the
-            second (power) stress of ``PowerExponential`` need strictly
-            positive stresses. Rows with a missing or infinite stress are
-            dropped, with a warning.
+            ``InversePower``, ``DualPower`` and the second (power) stress
+            of ``PowerExponential`` need strictly positive stresses; the
+            Arrhenius-type models (``Exponential``, ``InverseExponential``,
+            the Eyring models, the first stress of ``DualExponential`` and
+            ``PowerExponential``) an absolute temperature, in kelvin (a
+            value <= 0 is refused, and a stress below 200 K throughout
+            warns, as degrees Celsius would be). Rows with a missing or
+            infinite stress are dropped, with a warning.
         c : array_like, optional
             The censoring indicators (0 observed, 1 right, -1 left, 2
             interval). Defaults to all observed.
