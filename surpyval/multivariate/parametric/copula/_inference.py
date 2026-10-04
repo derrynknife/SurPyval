@@ -181,14 +181,14 @@ def _rebuild_margin(margin: Any, entries: npt.NDArray) -> Any:
     k = len(margin.params)
     params = entries[:k]
     i = k
-    p = f0 = None
+    lfp_p = f0 = None
     if margin.lfp:
-        p, i = float(entries[i]), i + 1
+        lfp_p, i = float(entries[i]), i + 1
     if margin.zi:
         f0 = float(entries[i])
     gamma = float(margin.gamma) if margin.offset else None
     try:
-        return margin.dist.from_params(params, gamma=gamma, p=p, f0=f0)
+        return margin.dist.from_params(params, gamma=gamma, lfp_p=lfp_p, f0=f0)
     except ValueError:
         return None
 

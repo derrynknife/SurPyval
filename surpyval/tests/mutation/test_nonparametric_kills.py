@@ -577,9 +577,14 @@ def test_band_n_is_stored_only_where_the_risk_set_differs():
     # stays schema 1, readable by v0.20; a dictionary written before
     # "band_n" was stored keeps the fallback.
     x, c, tl = _truncated_sample()
-    for model in (sp.KaplanMeier.fit(x, c=c), sp.Turnbull.fit(x, c=c)):
+    em = sp.Turnbull.fit(x, c=c, turnbull_algorithm="EM")
+    for model in (sp.KaplanMeier.fit(x, c=c), em):
         d = model.to_dict()
         assert "band_n" not in d and d["schema"] == 1
+    # (the default Turnbull fit of untruncated data is the EM-ICM, #620,
+    # whose dictionary names it and so is schema 2; still no band_n)
+    d = sp.Turnbull.fit(x, c=c).to_dict()
+    assert "band_n" not in d and d["algorithm"] == "EMICM"
     model = sp.KaplanMeier.fit(x, c=c, tl=tl)
     old = model.to_dict()
     del old["band_n"]

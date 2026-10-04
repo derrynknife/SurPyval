@@ -81,9 +81,10 @@ def test_options_pass_through_to_fit():
 
 
 def test_a_column_the_fit_cannot_take_is_refused():
-    with pytest.raises(ValueError, match="ARA.fit takes no `tl`"):
-        rc.ARA.fit_from_df(LOG, x_col="hours", i_col="truck", tl_col="c")
     df = pd.DataFrame({"x": [0, 1, 1, 0], "c": 0})
+    # (ARA, the example here before, takes `tl` since #615)
+    with pytest.raises(ValueError, match="Bernoulli.fit takes no `t`"):
+        sp.Bernoulli.fit_from_df(df, x_col="x", tl_col="c")
     with pytest.raises(ValueError, match="Bernoulli.fit takes no `c`"):
         sp.Bernoulli.fit_from_df(df, x_col="x", c_col="c")
 
