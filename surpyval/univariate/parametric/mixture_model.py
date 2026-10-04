@@ -21,6 +21,7 @@ from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
     ic_sample_size,
 )
+from surpyval.univariate.parametric.fitters import OPTIMUM_GTOL
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.no_maximum import (
@@ -1124,7 +1125,7 @@ class MixtureModel(
                     self.__dict__.pop(name, None)
         # One warning: a component collapsed onto a point mass has no
         # finite maximum, which is also why its search was not verified.
-        if self._warn_if_point_mass():
+        if self._warn_if_point_mass() or self._warn_if_lfp_limit():
             self.maximum = "no finite maximum"
         elif unverified is not None:
             self.maximum = "unverified"
@@ -1132,6 +1133,64 @@ class MixtureModel(
         else:
             self.maximum = "verified"
         return self
+
+    def _warn_if_lfp_limit(self) -> bool:
+        """Warn when a component has run off past the data (#650), and
+        say whether one did.
+
+        A component whose failures all lie beyond the last observation
+        explains no failure: it only holds back a share of the units that
+        never fail within the data, as a limited-failure proportion does.
+        The likelihood then keeps rising as it moves further out, towards
+        the limit where it never fails -- the other components with a
+        limited-failure proportion -- which no member of the mixture
+        reaches: a two-Weibull fit came back with a second component of
+        scale 33,561 (the largest observation 1,150), shape 5.2 and weight
+        0.09, as a verified maximum, 2e-8 below that limit.
+
+        A component is that, here, when the likelihood with it replaced
+        by one that never fails (survival 1 at every time) is at least as
+        high as the fit's, to the verification's tolerance. One that
+        explains a single failure loses its density there, which is
+        never within that. Truncated data are not checked: a component
+        that never fails has no probability in a window.
+        """
+        if self._truncated or self.m < 2:
+            return False
+        data = self.data
+        never = np.where(data.mask_r, 0.0, LOG_FLOOR)
+        with np.errstate(all="ignore"):
+            log_r = self._log_resp(self.w, self.params)
+            nll = float(self._neg_ll_from(log_r, self.w, self.params))
+            for i in range(self.m):
+                limit = np.array(log_r)
+                limit[i] = np.log(self.w[i]) + never
+                nll_limit = float(
+                    self._neg_ll_from(limit, self.w, self.params)
+                )
+                if not nll_limit <= nll + OPTIMUM_GTOL * max(1.0, abs(nll)):
+                    continue
+                params = ", ".join(
+                    f"{name} = {value:.4g}"
+                    for name, value in zip(
+                        self.dist.parameter_names, self.params[i]
+                    )
+                )
+                warn_no_maximum(
+                    f"mixture component {i} ({params}, weight "
+                    f"{self.w[i]:.3g}) explains no failure: its failures "
+                    "all lie beyond the data, and the likelihood keeps "
+                    "increasing as it moves further out, towards the other "
+                    "components with a limited-failure proportion of "
+                    f"{1 - self.w[i]:.3g}, which no mixture reaches",
+                    "Its parameters are where the search stopped and "
+                    "describe nothing in the data",
+                    "the data hold units that do not fail within them: fit "
+                    "one component fewer with lfp=True (for two components, "
+                    "dist.fit(x, c, lfp=True))",
+                )
+                return True
+        return False
 
     def _warn_if_point_mass(self) -> bool:
         """Warn when a component has collapsed onto a point mass (#392),
