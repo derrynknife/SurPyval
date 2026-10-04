@@ -135,6 +135,7 @@ class ClaytonCopula(Copula):
     name = "Clayton"
     bounds = ((0, None),)
     parameter_names = ["theta"]
+    independence_at = {"theta": 0.0}
     rotatable = True
     dependence_limits = {1: "theta grows without bound"}
 
@@ -248,6 +249,7 @@ class GumbelCopula(Copula):
     name = "Gumbel"
     bounds = ((1, None),)
     parameter_names = ["theta"]
+    independence_at = {"theta": 1.0}
     rotatable = True
     closed_bounds = ("theta",)
     dependence_limits = {1: "theta grows without bound"}
@@ -545,6 +547,7 @@ class JoeCopula(Copula):
     name = "Joe"
     bounds = ((1, None),)
     parameter_names = ["theta"]
+    independence_at = {"theta": 1.0}
     rotatable = True
     closed_bounds = ("theta",)
     dependence_limits = {1: "theta grows without bound"}

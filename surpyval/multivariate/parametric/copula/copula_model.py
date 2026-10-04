@@ -30,6 +30,12 @@ from surpyval.utils.warnings import warn_no_covariance
 
 from ._inference import ParameterLayout, jacobian, joint_covariance
 
+#: The advice of a copula model's undefined Wald bound: it has no other.
+_NO_OTHER_BOUND = (
+    "the copula models have no profile-likelihood or bootstrap bound to "
+    "fall back on"
+)
+
 # Margin probabilities are kept strictly inside (0, 1), as in copula.py.
 _U_CLIP = 1e-10
 # The joint functions ``cb`` bounds ('R' and 'F' are the aliases of 'sf'
@@ -524,8 +530,25 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
             # bound: the warning says so.
             var = 0.0
         lower, upper = self.copula.bounds[i]
+        # The copula models have the Wald bound only (#664): the default
+        # advice, a profile-likelihood or bootstrap interval, is not here.
+        advice = _NO_OTHER_BOUND
+        if self.copula._at_independence(self.params)[i]:
+            advice += (
+                f"; {name} = {float(self.params[i]):.6g} is the independence "
+                f"end of the {self.copula.name} family's range, so the "
+                "data's dependence is outside it: compare a family that "
+                "covers it (Frank or Gaussian take either sign)"
+            )
         return wald_bound_on_support(
-            float(self.params[i]), var, lower, upper, alpha_ci, bound, name
+            float(self.params[i]),
+            var,
+            lower,
+            upper,
+            alpha_ci,
+            bound,
+            name,
+            advice=advice,
         )
 
     @keeps_query_shape(point_ndim=1)
@@ -633,6 +656,7 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
                 "likelihood is not regular there)",
                 # cb -> the query-shape wrapper -> the caller
                 stacklevel=3,
+                advice=_NO_OTHER_BOUND,
             )
         with onp.errstate(invalid="ignore"):
             se = onp.sqrt(onp.where(var >= 0, var, onp.nan))
