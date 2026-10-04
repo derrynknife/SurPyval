@@ -50,7 +50,7 @@ from ._prediction import quantiles_by_inversion
 FAILED_SHARE = 0.02
 
 #: What a refit that raises is counted as failing with.
-_REFIT_ERRORS = (
+REFIT_ERRORS = (
     ValueError,
     RuntimeError,
     ArithmeticError,
@@ -168,7 +168,7 @@ def refits(model: Any, n_boot: Any, random_state: Any) -> Refits:
     from ._inference import _same_point
 
     n_boot = check_n_boot(n_boot)
-    design = _Design(model)
+    design = ResampleDesign(model)
     point = model._covariance_point(model._eval_params(), model.center)
     key = None
     if isinstance(random_state, (int, np.integer)) and not isinstance(
@@ -187,7 +187,7 @@ def refits(model: Any, n_boot: Any, random_state: Any) -> Refits:
     return out
 
 
-class _Design:
+class ResampleDesign:
     """What a resample of ``model``'s data keeps: each unit's covariates,
     truncation window and censoring (a row with ``n = k`` is ``k``
     units)."""
@@ -270,7 +270,7 @@ class _Design:
 
 def _draw(
     model: Any,
-    design: _Design,
+    design: ResampleDesign,
     point: tuple,
     n_boot: int,
     rng: np.random.Generator,
@@ -308,7 +308,7 @@ def _draw(
                     t=t if design.truncated else None,
                     **kwargs,
                 )
-        except _REFIT_ERRORS:
+        except REFIT_ERRORS:
             counts["failed"] += 1
             continue
         if refit.maximum in counts:
@@ -351,7 +351,7 @@ def _cumulative_hazard(
 
 def _simulate(
     model: Any,
-    design: _Design,
+    design: ResampleDesign,
     p_hat: npt.NDArray,
     H_lo: npt.NDArray,
     H_hi: npt.NDArray,
