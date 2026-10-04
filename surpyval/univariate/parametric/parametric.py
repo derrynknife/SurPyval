@@ -7,8 +7,10 @@ from math import comb
 from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
+import numpy as onp
 import numpy.typing as npt
 from autograd import grad, jacobian
+from autograd.numpy.numpy_boxes import ArrayBox
 from scipy.special import expit
 from scipy.special import ndtri as z
 
@@ -223,6 +225,24 @@ def _offset_upper(data: dict, zi: bool) -> float:
         return float(np.min(upper[constrains]))
     everything = x[x != 0] if zi else x
     return float(np.min(everything))
+
+
+def _query_array(x: Any) -> Any:
+    """A model function's query ``x`` as an array (a plain numpy one: the
+    query is not traced, and autograd's wrapper was a fixed cost on every
+    call, #642); an autograd box differentiating with respect to it as it
+    is."""
+    if isinstance(x, ArrayBox):
+        return x
+    return onp.asarray(x)
+
+
+def _scalar(out: Any) -> Any:
+    """A 0-d array as its scalar, as the models' functions give for a
+    scalar query; anything else as it is."""
+    if isinstance(out, onp.ndarray) and out.ndim == 0:
+        return out[()]
+    return out
 
 
 def _first_reaching(
@@ -1139,6 +1159,16 @@ class Parametric(
         info = getattr(self, "fitting_info", None) or {}
         return set(info.get("fixed_idx", []) or [])
 
+    def _plain(self) -> bool:
+        """Whether the model has no offset, limited-failure or
+        zero-inflation part (``gamma = 0``, ``lfp_p = 1``, ``f0 = 0``):
+        then ``sf``, ``ff`` and ``df`` are the distribution's own, whose
+        support guard holds them at their edge values below 0 as the
+        model's transforms do, and the transforms -- identities here, but
+        five passes over the query on a large array -- are skipped
+        (#642)."""
+        return bool(self.gamma == 0 and self.lfp_p == 1 and self.f0 == 0)
+
     def sf(self, x: npt.ArrayLike) -> npt.NDArray:
         r"""
 
@@ -1171,7 +1201,10 @@ class Parametric(
         array([0.9990005 , 0.99203191, 0.97336124, 0.938005  , 0.8824969 ])
         """
         refuse_time_values(x, "x")
-        x = np.asarray(x)
+        x = _query_array(x)
+        if self._plain():
+            # (+ 0.0: a -0.0 is 0.0, as the transforms made it)
+            return _scalar(self.dist.sf(x, *self.params) + 0.0)
         xg = x - self.gamma  # type: ignore[operator]
         base_sf = self.dist.sf(xg, *self.params)
         # Below the (possibly offset) support the base distribution has not
@@ -1219,7 +1252,9 @@ class Parametric(
         array([0.0009995 , 0.00796809, 0.02663876, 0.061995  , 0.1175031 ])
         """
         refuse_time_values(x, "x")
-        x = np.asarray(x)
+        x = _query_array(x)
+        if self._plain():
+            return _scalar(self.dist.ff(x, *self.params) + 0.0)
         xg = x - self.gamma  # type: ignore[operator]
         base_ff = self.dist.ff(xg, *self.params)
         # Below the (possibly offset) support the base CDF is 0; evaluating
@@ -1291,7 +1326,9 @@ class Parametric(
         that, and add the mass ``f0`` at 0 separately if it is wanted.
         """
         refuse_time_values(x, "x")
-        x = np.asarray(x)
+        x = _query_array(x)
+        if self._plain():
+            return _scalar(self.dist.df(x, *self.params))
         xg = x - self.gamma  # type: ignore[operator]
         base_df = self.dist.df(xg, *self.params)
         # Below the (possibly offset) support the density is 0 (#256).

@@ -5,6 +5,7 @@ from math import comb
 from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
+import numpy as onp
 import numpy.typing as npt
 from autograd.numpy.numpy_boxes import ArrayBox
 
@@ -154,10 +155,13 @@ def _support_guarded(
         if self.discrete or isinstance(x, ArrayBox):
             return fn(self, x, *params)
         lo, hi = self._support_edges(*params)
-        x_arr = np.asarray(x, dtype=float)
+        # (plain numpy for the checks: x is not traced here, and autograd's
+        # wrappers were half the cost of a model's sf on a small array,
+        # #642)
+        x_arr = onp.asarray(x, dtype=float)
         is_below = x_arr < lo
         is_above = x_arr > hi
-        if not (np.any(is_below) or np.any(is_above)):
+        if not (is_below.any() or is_above.any()):
             return fn(self, x, *params)
         if np.isfinite(lo) and np.isfinite(hi):
             inside = 0.5 * (lo + hi)
@@ -242,8 +246,8 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
         params = tuple(_as_array(p) for p in params)
         if isinstance(x, ArrayBox):
             return fn(self, x, *params)
-        x_arr = np.asarray(x, dtype=float)
-        missing = np.isnan(x_arr)
+        x_arr = onp.asarray(x, dtype=float)
+        missing = onp.isnan(x_arr)
         if is_qf:
             missing = missing | warn_outside_unit_interval(x_arr)
         top = None
@@ -253,9 +257,9 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
             and self.discrete
             and self.support[1] == np.inf
         ):
-            top = np.isposinf(x_arr)
+            top = onp.isposinf(x_arr)
             replaced = missing | top
-        if not np.any(replaced):
+        if not replaced.any():
             return fn(self, x, *params)
         # A point asked for alongside is one the function accepts; failing
         # that, the middle probability or the support's finite edge.
@@ -429,9 +433,9 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         ``support_param_index`` nominates (``a``/``b`` of the Uniform and
         the 4-parameter Beta)."""
         lo, hi = (float(v) for v in self.support)
-        if np.isnan(lo):
+        if lo != lo:  # NaN
             lo = float(_raw(params[self.support_param_index[0]]))
-        if np.isnan(hi):
+        if hi != hi:
             hi = float(_raw(params[self.support_param_index[1]]))
         return lo, hi
 
