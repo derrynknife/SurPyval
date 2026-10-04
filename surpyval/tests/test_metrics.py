@@ -147,9 +147,7 @@ def test_survival_probability_shape_and_values():
 
 def test_metrics_work_with_beta_ml_forest():
     # The metrics are model-agnostic: they must also accept the beta.ml forest,
-    # whose sf returns a grid rather than a paired vector.
-    import warnings
-
+    # whose sf pairs rows with times as the regression models' does.
     from surpyval.beta.ml import RandomSurvivalForest
 
     rng = np.random.default_rng(11)
@@ -171,6 +169,26 @@ def test_metrics_work_with_beta_ml_forest():
     assert 0.0 <= ibs <= 0.25
     _, auc = auc_td(x, c, 1.0 - s, times)
     assert np.nanmean(auc) > 0.6  # informative covariates
+
+
+def test_survival_probability_reads_paired_and_grid_models():
+    # A model's sf is called as sf(x, Z), with no grid keyword, whether it
+    # pairs rows with times or returns a (n_samples, n_times) grid.
+    Z = np.array([[0.5], [1.0], [2.0]])
+
+    class Paired:
+        def sf(self, x, Z):
+            return np.exp(-np.asarray(x) * np.asarray(Z)[:, 0])
+
+    class Grid:
+        def sf(self, x, Z):
+            return np.exp(-np.outer(np.asarray(Z)[:, 0], np.asarray(x)))
+
+    expected = np.exp(-np.outer(Z[:, 0], [1.0, 2.0]))
+    for model in (Paired(), Grid()):
+        np.testing.assert_allclose(
+            survival_probability(model, Z, [1.0, 2.0]), expected
+        )
 
 
 def test_brier_shape_validation():

@@ -90,8 +90,13 @@ def test_dataframe_prediction_reads_columns_by_name():
     df = _frame()
     tree = _tree(df, kind="exponential")
     query = pd.DataFrame({"load": [0.5, 0.5], "temp": [10.0, 90.0]})
-    expected = tree.sf([2.0, 5.0], [[10.0, 0.5], [90.0, 0.5]])
-    np.testing.assert_array_equal(tree.sf([2.0, 5.0], query), expected)
+    expected = tree.sf([2.0, 5.0], [[10.0, 0.5], [90.0, 0.5]], grid=True)
+    np.testing.assert_array_equal(
+        tree.sf([2.0, 5.0], query, grid=True), expected
+    )
+    np.testing.assert_array_equal(
+        tree.sf([2.0, 5.0], query), np.diag(expected)
+    )
 
 
 def test_formula_features():

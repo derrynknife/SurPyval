@@ -62,13 +62,13 @@ def fitted(request):
 def test_missing_covariate_row_predicts_nan(fitted, fn):
     _, model = fitted
     Zq = np.array([[0.2, 0.5], [np.nan, 0.5], [0.8, np.nan], [0.8, 0.5]])
-    out = getattr(model, fn)(XS, Zq)
+    out = getattr(model, fn)(XS, Zq, grid=True)
     # Old code: rows 1 and 2 were routed right and got numbers
     assert out.shape == (4, XS.size)
     assert np.isnan(out[1:3]).all()
     # The other rows are exactly what they are without the missing rows
     np.testing.assert_array_equal(
-        out[[0, 3]], getattr(model, fn)(XS, Zq[[0, 3]])
+        out[[0, 3]], getattr(model, fn)(XS, Zq[[0, 3]], grid=True)
     )
     assert np.isfinite(out[[0, 3]]).all()
 
@@ -85,7 +85,7 @@ def test_missing_covariate_vector_predicts_nan(fitted):
 
 def test_all_rows_missing_predicts_all_nan(fitted):
     _, model = fitted
-    out = model.sf(XS, np.full((3, 2), np.nan))
+    out = model.sf(XS, np.full((3, 2), np.nan), grid=True)
     assert out.shape == (3, XS.size)
     assert np.isnan(out).all()
 
@@ -94,7 +94,7 @@ def test_restored_model_predicts_nan(fitted):
     kind, model = fitted
     cls = SurvivalTree if kind == "tree" else RandomSurvivalForest
     restored = cls.from_dict(model.to_dict())
-    out = restored.sf(XS, [[np.nan, 0.5], [0.2, 0.5]])
+    out = restored.sf(XS, [[np.nan, 0.5], [0.2, 0.5]], grid=True)
     assert np.isnan(out[0]).all()
     np.testing.assert_array_equal(out[1], model.sf(XS, [0.2, 0.5]))
 
@@ -121,7 +121,9 @@ def test_fit_drops_missing_rows_with_one_warning(kind):
     keep[[3, 10]] = False
     clean = FITTERS[kind](x[keep], Z[keep], c[keep])
     Zq = np.array([[0.2, 0.5], [0.8, 0.5], [0.6, 0.1]])
-    np.testing.assert_allclose(model.sf(XS, Zq), clean.sf(XS, Zq))
+    np.testing.assert_allclose(
+        model.sf(XS, Zq, grid=True), clean.sf(XS, Zq, grid=True)
+    )
 
 
 def test_fit_with_every_row_missing_raises():

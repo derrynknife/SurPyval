@@ -374,8 +374,8 @@ class Case:
     # its neighbours in the query and not only on its own time.
     jump_functions: tuple[str, ...] = ()
     # How a covariate matrix is read: one row per time ("paired", the
-    # regression convention), every row at every time ("grid", the trees),
-    # or one vector per call ("single"); see :func:`call`.
+    # regression convention, which the trees and forest follow too), or
+    # one vector per call ("single"); see :func:`call`.
     z_style: str = "paired"
     continuous: bool = True
     # draw(model, seed) -> numbers; ``explicit_seed`` when it takes a seed.
@@ -491,10 +491,9 @@ def call(case, model, fname, x, Z=None, event=None):
     """``model.<fname>`` at ``x``, one value per time.
 
     For a model with covariates, ``Z`` (default: the case's query rows)
-    holds one row per time, or is one vector for every time. Models whose
-    documented call differs are adapted: a tree or forest evaluates every
-    row at every time (``z_style="grid"``, the diagonal is taken), and a
-    Buckley-James model takes one vector per call (``z_style="single"``).
+    holds one row per time, or is one vector for every time. A model
+    whose documented call differs is adapted: a Buckley-James model takes
+    one vector per call (``z_style="single"``).
     """
     if case.interface not in WITH_COVARIATES or case.z_style == "paired":
         return call_native(case, model, fname, x, Z, event)
@@ -502,9 +501,6 @@ def call(case, model, fname, x, Z=None, event=None):
     x = np.asarray(x, dtype=float)
     if Z.ndim == 1:
         return call_native(case, model, fname, x, Z, event)
-    if case.z_style == "grid":
-        grid = np.asarray(call_native(case, model, fname, x, Z, event))
-        return np.diagonal(grid.reshape(Z.shape[0], x.size)).copy()
     return np.array(
         [
             np.asarray(
@@ -1099,7 +1095,6 @@ def _trees():
             Z=Z_REG,
             rows=("x", "Z", "c", "n"),
             covariates="Z",
-            z_style="grid",
             jump_functions=("hf", "df") if kind == "non-parametric" else (),
             # The draw is the fit itself: two fits under one seed agree.
             draw=lambda m, s: ml.SurvivalTree.fit(
@@ -1130,7 +1125,6 @@ def _trees():
         Z=Z_REG,
         rows=("x", "Z", "c", "n"),
         covariates="Z",
-        z_style="grid",
         # Each refit grows every tree again: left to the full suite.
         slow=REFIT_PROPERTIES,
         # The draw is the fit itself: two seeded fits must agree.

@@ -218,14 +218,21 @@ def test_additive_hazards_rate_of_a_2d_query():
 
 def test_trees_keep_the_shape_of_x_and_add_the_rows_axis():
     # With one covariate vector the result is shaped like x (a scalar gave
-    # (1,)); with a matrix it is the documented grid, (n_rows,) + x.shape.
+    # (1,)); with a matrix and grid=True it is the documented grid,
+    # (n_rows,) + x.shape, and without it rows pair with the times.
     for name in ("SurvivalTree[weibull]", "RandomSurvivalForest"):
         case = CASE_BY_NAME[name]
         model = fitted(case)
         z = case.Z[1]
         _assert_shape_in_shape_out(lambda q: model.sf(q, z), GRID)
-        grid = model.sf(GRID, case.Z[:3])
+        grid = model.sf(GRID, case.Z[:3], grid=True)
         assert grid.shape == (3, 2, 2)
+        paired = model.sf(GRID, case.Z[:4])
+        assert paired.shape == GRID.shape
+        np.testing.assert_allclose(
+            paired.ravel(),
+            np.diag(model.sf(GRID, case.Z[:4], grid=True).reshape(4, 4)),
+        )
         np.testing.assert_array_equal(grid[1], model.sf(GRID, case.Z[1]))
 
 
