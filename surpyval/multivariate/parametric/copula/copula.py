@@ -49,6 +49,7 @@ from surpyval.utils.no_maximum import (
     warn_no_maximum,
     warn_unverified,
 )
+from surpyval.utils.removed_names import RemovedNames
 from surpyval.utils.rng import as_generator
 from surpyval.utils.validation import check_option
 
@@ -61,7 +62,7 @@ _U_CLIP = 1e-10
 _LOG_FLOOR = 1e-300
 
 
-class Copula:
+class Copula(RemovedNames):
     """Bivariate copula family.
 
     Subclasses define :meth:`cdf` (and, for speed/stability, may override the

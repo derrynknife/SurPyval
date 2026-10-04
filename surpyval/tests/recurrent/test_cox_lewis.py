@@ -138,7 +138,7 @@ def test_count_termination_of_a_bounded_count_is_refused(seed):
 
 def test_count_termination_of_a_bounded_count_with_covariates():
     d = recurrent_data(with_Z=True)
-    model = no_warnings(ProportionalIntensityNHPP.fit, **d, dist=CoxLewis)
+    model = no_warnings(ProportionalIntensityNHPP.fit, **d, baseline=CoxLewis)
     with pytest.raises(ValueError, match=r"cif\(inf\)"):
         model.count_terminated_simulation(3, Z=[0.5], random_state=1)
 

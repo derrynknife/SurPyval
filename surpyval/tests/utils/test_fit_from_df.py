@@ -174,7 +174,8 @@ def test_univariate_v021_names_are_gone(old):
     df = pd.DataFrame({"t": [3.0, 5, 7, 9], "cens": [0, 1, 0, 0]})
     with pytest.raises(
         TypeError,
-        match=f"unexpected keyword argument '{old}'; name the column "
+        match=f"unexpected keyword argument '{old}': it was removed in "
+        f"v0.23; name the column "
         f"with '{old}_col'",
     ):
         sp.Weibull.fit_from_df(df, x_col="t", **{old: "cens"})

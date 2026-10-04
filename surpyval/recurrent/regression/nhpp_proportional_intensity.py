@@ -19,6 +19,7 @@ from surpyval.univariate.regression._aliasing import (
 )
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_unverified
@@ -42,7 +43,8 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
         \\lambda(t \\mid Z) = \\lambda_0(t)\\, e^{\\beta' Z},
 
     with the baseline any NHPP model -- ``Duane`` (the default),
-    ``CrowAMSAA`` or ``CoxLewis`` -- chosen with ``dist``.
+    ``CrowAMSAA`` or ``CoxLewis`` -- chosen with ``baseline``, as for
+    ``ARI`` (``dist``, its name before v0.24, warns until v0.25).
 
     ``ProportionalIntensityNHPP`` is an instance of this class. Its
     ``fit`` returns a
@@ -162,10 +164,11 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
                 return fallback
         return start
 
+    @renamed_arguments(dist="baseline")
     def fit_from_recurrent_data(
         self,
         data: Any,
-        dist: Any,
+        baseline: Any = Duane,
         init: "ArrayLike | None" = None,
     ) -> Any:
         """
@@ -180,7 +183,7 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
 
         data : RecurrentEventData
             The recurrent event data, including ``Z``.
-        dist : CountingProcess
+        baseline : CountingProcess, optional
             The baseline intensity model, as for :meth:`fit`.
         init : array_like, optional
             Initial parameter estimates, as for :meth:`fit`.
@@ -191,9 +194,10 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
         ProportionalIntensityModel
             The fitted model.
         """
+        dist = baseline
         if not isinstance(dist, CountingProcess):
             raise TypeError(
-                "`dist` must be a CountingProcess instance "
+                "`baseline` must be a CountingProcess instance "
                 "(e.g. Duane, CrowAMSAA, CoxLewis); got {!r}".format(dist)
             )
         validate_nhpp_data(data, dist)
@@ -327,6 +331,7 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
 
         return out
 
+    @renamed_arguments(dist="baseline")
     @dataframe_covariates
     def fit(
         self,
@@ -338,7 +343,7 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
         t: "ArrayLike | None" = None,
         tl: "ArrayLike | None" = None,
         tr: "ArrayLike | None" = None,
-        dist: Any = Duane,
+        baseline: Any = Duane,
         init: "ArrayLike | None" = None,
     ) -> Any:
         """
@@ -378,10 +383,12 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
             observation window closes here,
             so the baseline intensity is integrated out to ``tr`` even without
             an explicit right-censoring (``c=1``) row.
-        dist : CountingProcess, optional
+        baseline : CountingProcess, optional
             The baseline intensity model: ``Duane`` (the default),
             ``CrowAMSAA`` or ``CoxLewis`` from ``surpyval.recurrent``. With
             ``HPP`` the model is the same as ``ProportionalIntensityHPP``.
+            Named as ``ARI``'s baseline is (#653); its name before v0.24,
+            ``dist``, warns until v0.25.
         init : array_like, optional
             Initial parameter estimates: the baseline parameters followed by
             the covariate coefficients.
@@ -394,4 +401,4 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
             parameter estimates.
         """
         data = handle_xicn(x, i, c, n, t=t, tl=tl, tr=tr, Z=Z)
-        return self.fit_from_recurrent_data(data, dist, init)
+        return self.fit_from_recurrent_data(data, baseline, init)

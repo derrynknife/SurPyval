@@ -18,6 +18,7 @@ import numpy.typing as npt
 import surpyval
 from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.numeric import unique_pairs
+from surpyval.utils.removed_names import removed_parameter_note
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import check_option
 
@@ -1063,8 +1064,15 @@ class FitInputsMixin:
             hint = "; ".join(hints[k] for k in unknown if k in hints)
             raise ValueError(
                 "Unknown parameter(s) {} in `fixed`{}; this model's "
-                "parameters are {}.".format(
-                    unknown, " ({})".format(hint) if hint else "", names
+                "parameters are {}{}.".format(
+                    unknown,
+                    " ({})".format(hint) if hint else "",
+                    names,
+                    "".join(
+                        removed_parameter_note(k, [*names, model.lfp_name])
+                        for k in unknown
+                        if k not in hints
+                    ),
                 )
             )
         for name, value in (fixed or {}).items():

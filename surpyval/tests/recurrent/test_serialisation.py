@@ -122,7 +122,7 @@ def test_mcf_json_file(tmp_path):
 
 def test_proportional_intensity_nhpp_round_trip():
     x, i, c, Z = _pi_data(seed=3)
-    model = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=Duane)
+    model = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, baseline=Duane)
     restored = type(model).from_dict(json_round_trip(model.to_dict()))
     xt = np.array([100.0, 300.0, 450.0])
     Zq = np.array([0.5])

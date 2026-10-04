@@ -47,6 +47,7 @@ from surpyval.utils.covariates import (
 )
 from surpyval.utils.fitter_repr import FitterRepr, baseline_name
 from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
+from surpyval.utils.removed_names import removed_parameter_note
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -835,7 +836,11 @@ def check_fixed_and_init(
     if unknown:
         raise ValueError(
             "Unknown parameter(s) {} in `fixed`; this model's parameters "
-            "are {}.".format(unknown, names)
+            "are {}{}.".format(
+                unknown,
+                names,
+                "".join(removed_parameter_note(k, names) for k in unknown),
+            )
         )
     if len({**(always_fixed or {}), **fixed}) >= len(param_map):
         raise ValueError(

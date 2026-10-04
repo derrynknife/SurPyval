@@ -39,7 +39,7 @@ def test_all_censored_data_is_a_clear_error(model):
         elif model == "PI-HPP":
             ProportionalIntensityHPP.fit(x, Z, i, c)
         else:
-            ProportionalIntensityNHPP.fit(x, Z, i, c, dist=CrowAMSAA)
+            ProportionalIntensityNHPP.fit(x, Z, i, c, baseline=CrowAMSAA)
 
 
 def test_power_law_event_at_time_zero_is_a_clear_error():

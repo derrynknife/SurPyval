@@ -26,6 +26,7 @@ from surpyval.utils.linalg import (
     sf_link_from_H,
     wald_bound_on_support,
 )
+from surpyval.utils.removed_names import removed_parameter_note
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
@@ -386,8 +387,8 @@ class InferenceMixin:
         names = self.parameter_names
         if name not in names:
             raise ValueError(
-                "Unknown parameter {!r}; expected one of {}".format(
-                    name, names
+                "Unknown parameter {!r}; expected one of {}{}".format(
+                    name, names, removed_parameter_note(name, names)
                 )
             )
         if name == self.life_parameter:

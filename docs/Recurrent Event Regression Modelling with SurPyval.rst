@@ -189,7 +189,7 @@ Proportional-Intensity NHPP
 When the baseline rate itself varies with time — reliability growth, wear-out —
 use ``ProportionalIntensityNHPP`` with a counting-process baseline. The default
 baseline is the Duane model; any NHPP baseline (``CrowAMSAA``, ``CoxLewis``)
-can be supplied via ``dist``.
+can be supplied via ``baseline``.
 
 .. jupyter-execute::
 
@@ -201,7 +201,7 @@ can be supplied via ``dist``.
     c_toy = np.array([0, 1, 0, 1, 0, 1, 0, 1])
     Z_toy = np.array([[0.2], [0.2], [0.5], [0.5], [0.8], [0.8], [0.3], [0.3]])
 
-    toy = ProportionalIntensityNHPP.fit(x_toy, Z_toy, i=i_toy, c=c_toy, dist=Duane)
+    toy = ProportionalIntensityNHPP.fit(x_toy, Z_toy, i=i_toy, c=c_toy, baseline=Duane)
     toy
 
 Confidence bounds on the fitted cumulative intensity at a covariate setting are
@@ -226,7 +226,7 @@ constant rate:
 
     from surpyval.recurrent import CrowAMSAA
 
-    fleet = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=CrowAMSAA)
+    fleet = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, baseline=CrowAMSAA)
     fleet
 
 .. jupyter-execute::

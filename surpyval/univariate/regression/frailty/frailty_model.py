@@ -46,6 +46,7 @@ from surpyval.utils import is_missing_event
 from surpyval.utils.covariates import loaded_coefficient_names
 from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
+from surpyval.utils.removed_names import removed_parameter_note
 from surpyval.utils.validation import (
     BOUNDS,
     check_option,
@@ -345,8 +346,10 @@ class _SharedFrailty(
         cov = self.covariance()
         if name not in self.parameter_names:
             raise ValueError(
-                "Unknown parameter {!r}; expected one of {}".format(
-                    name, self.parameter_names
+                "Unknown parameter {!r}; expected one of {}{}".format(
+                    name,
+                    self.parameter_names,
+                    removed_parameter_note(name, self.parameter_names),
                 )
             )
         idx = self.parameter_names.index(name)
@@ -664,8 +667,10 @@ class FrailtyModel(_SharedFrailty):
         check_option("bound", bound, BOUNDS)
         if name not in self.parameter_names:
             raise ValueError(
-                "Unknown parameter {!r}; expected one of {}".format(
-                    name, self.parameter_names
+                "Unknown parameter {!r}; expected one of {}{}".format(
+                    name,
+                    self.parameter_names,
+                    removed_parameter_note(name, self.parameter_names),
                 )
             )
         return profile_interval(self._lr_region(), name, alpha_ci, bound)

@@ -20,6 +20,7 @@ removal is not forgotten.
 import ast
 import importlib
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -205,6 +206,201 @@ def test_v023_spellings_are_gone():
     # The top-level numeric constants
     for name in ("NUM", "TINIEST", "EPS"):
         assert not hasattr(sp, name)
+
+
+# ---------------------------------------------------------------------------
+# Each removed name says what replaced it (#653)
+# ---------------------------------------------------------------------------
+# (call, the replacement the message names, the release it was removed in)
+REPLACEMENTS = {
+    "Parametric.cs(X=)": (_cs_given, "'given'", "v0.23"),
+    "Weibull.fit_from_df(x=)": (_fit_from_df_x, "'x_col'", "v0.23"),
+    "ARI.fit(dist=)": (_ari_dist, "'baseline'", "v0.23"),
+    "CustomDistribution(param_names=)": (
+        _custom_param_names,
+        "'parameter_names'",
+        "v0.23",
+    ),
+    "Weibull.from_params(p=)": (_from_params_p, "'lfp_p'", "v0.24"),
+    "success_run(confidence=)": (
+        _success_run_confidence,
+        "'alpha_ci' (= 1 - confidence)",
+        "v0.24",
+    ),
+    "success_run(alpha=)": (_success_run_alpha, "'alpha_ci'", "v0.24"),
+}
+
+
+@pytest.mark.parametrize(
+    "call, new, release", REPLACEMENTS.values(), ids=list(REPLACEMENTS)
+)
+def test_old_argument_names_its_replacement(call, new, release):
+    with pytest.raises(TypeError) as caught:
+        call()
+    message = str(caught.value)
+    assert f"removed in {release}" in message
+    assert new in message
+
+
+def test_regression_cs_old_name_and_typos_are_reported_as_cs():
+    model = fitted(CASE_BY_NAME["WeibullPH"])
+    with pytest.raises(
+        TypeError,
+        match="cs.. got an unexpected keyword "
+        "argument 'X': it was removed in v0.23; use 'given'",
+    ):
+        model.cs(10.0, X=5.0, Z=[0.0])
+    # Another wrong keyword is cs's, not the Hf it is passed on to
+    with pytest.raises(TypeError, match=r"\.cs\(\) got an unexpected"):
+        model.cs(10.0, 5.0, [0.0], zz=1)
+
+
+def test_ari_fit_from_parameters_names_baseline_params():
+    from surpyval.recurrent import ARI, Duane
+
+    with pytest.raises(TypeError, match="use 'baseline_params'"):
+        ARI.fit_from_parameters(
+            dist_params=[20.0, 1.5], rho=0.5, baseline=Duane
+        )
+
+
+@pytest.mark.parametrize(
+    "fitter, extra",
+    [
+        ("WeibullPH", {}),
+        ("CoxPH", {}),
+        ("ProportionalOdds", {}),
+        ("CoxFrailty", {"group_col": "g"}),
+    ],
+)
+def test_regression_fit_from_df_names_the_col_argument(fitter, extra):
+    # Every fit_from_df names a column ``<fit argument>_col``: ``x=``
+    # says so, as on the univariate fitters.
+    df = pd.DataFrame(
+        {"t": [3.0, 5, 7, 9, 11, 13], "z": [0, 1] * 3, "g": [1, 1, 2] * 2}
+    )
+    with pytest.raises(
+        TypeError,
+        match="unexpected keyword argument 'x'; name the column with 'x_col'",
+    ):
+        getattr(sp, fitter).fit_from_df(df, x="t", Z_cols=["z"], **extra)
+
+
+@pytest.mark.parametrize(
+    "case, old, new, release",
+    [
+        ("Weibull", "param_names", "'parameter_names'", "v0.23"),
+        ("WeibullPH", "param_names", "'parameter_names'", "v0.23"),
+        ("CrowAMSAA", "param_names", "'parameter_names'", "v0.23"),
+        ("Weibull", "cov_matrix", "'covariance()'", "v0.24"),
+        ("CoxPH", "se", "'standard_errors()'", "v0.24"),
+        ("FineGray", "cov", "'covariance()'", "v0.24"),
+        ("MixtureModel", "loglike", "'neg_ll()'", "v0.24"),
+        ("MixtureModel", "EM", "internal to fit()", "v0.24"),
+        ("CoxFrailty", "loglik", "'log_likelihood'", "v0.24"),
+    ],
+)
+def test_old_attribute_names_its_replacement(case, old, new, release):
+    model = fitted(CASE_BY_NAME[case])
+    with pytest.raises(AttributeError) as caught:
+        getattr(model, old)
+    message = str(caught.value)
+    assert f"has no attribute '{old}'" in message
+    assert f"removed in {release}" in message and new in message
+    assert old not in dir(model)
+
+
+def test_fitter_old_attribute_names_its_replacement():
+    with pytest.raises(AttributeError, match="use 'parameter_names'"):
+        sp.Weibull.param_names
+    assert "param_names" not in dir(sp.Weibull)
+
+
+def test_removed_attribute_yields_to_an_instance_attribute():
+    # A non-data descriptor: an object that sets the name keeps it.
+    model = sp.Weibull.from_params([10.0, 2.0])
+    model.se = "kept"
+    assert model.se == "kept"
+    assert "se" in dir(model)
+
+
+def test_from_surpyval_import_a_removed_name_keeps_the_message():
+    with pytest.raises(
+        ImportError,
+        match="cannot import name 'Power': it was removed in "
+        r"v0.23; it is surpyval.life_models.Power",
+    ):
+        from surpyval import Power  # noqa: F401
+    with pytest.raises(ImportError, match="life_models.Exponential"):
+        from surpyval import ExponentialLifeModel  # noqa: F401
+    with pytest.raises(ImportError, match="use numpy.float64"):
+        from surpyval import NUM  # noqa: F401
+    with pytest.raises(ImportError, match="in surpyval.recurrent"):
+        from surpyval import laplace  # noqa: F401
+    # An attribute access is still an AttributeError, so hasattr works
+    with pytest.raises(AttributeError, match="use numpy.finfo"):
+        sp.TINIEST
+    assert not hasattr(sp, "Power") and not hasattr(sp, "EPS")
+
+
+def test_utils_score_names_concordance_index():
+    sys.modules.pop("surpyval.utils.score", None)
+    with pytest.raises(
+        ImportError, match="surpyval.metrics.concordance_index"
+    ):
+        from surpyval.utils.score import score  # noqa: F401
+
+
+def test_removed_parameter_names_in_param_cb_and_fixed():
+    model = fitted(CASE_BY_NAME["WeibullPH"])
+    with pytest.raises(ValueError, match="else coef_0"):
+        model.param_cb("beta_0")
+    with pytest.raises(ValueError, match="limited-failure proportion is"):
+        sp.Weibull.fit([1.0, 2, 3, 4, 5], lfp=True, fixed={"p": 0.9})
+    with pytest.raises(ValueError, match="limited-failure proportion is"):
+        sp.Weibull.fit(
+            [1.0, 2, 3, 4, 5, 6, 7], c=[0, 0, 0, 0, 1, 1, 1], lfp=True
+        ).param_cb("p")
+
+
+def test_cox_neg_ll_of_beta_is_named():
+    with pytest.raises(TypeError, match=r"use neg_ll_of\(beta\)"):
+        fitted(CASE_BY_NAME["CoxPH"]).neg_ll(np.zeros(1))
+
+
+def test_life_model_hint_names_the_current_life_models():
+    from surpyval import life_models
+
+    with pytest.raises(ValueError, match="life_models.Exponential"):
+        sp.AcceleratedLife(sp.Weibull, life_models.Power).fit(
+            np.array([100.0, 120, 80, 90]), Z=-np.array([300.0, 300, 350, 350])
+        )
+
+
+def test_datasets_needs_no_import_of_its_own():
+    code = (
+        "import surpyval; "
+        "print(len(surpyval.datasets.load_g1_kaminskiy_krivtsov()) > 0)"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True
+    )
+    assert out.stdout.strip() == "True", out.stderr
+
+
+def test_proportional_intensity_nhpp_takes_baseline():
+    from surpyval.recurrent import CrowAMSAA, ProportionalIntensityNHPP
+
+    Z = np.array(IR, float)[:, None]
+    new = ProportionalIntensityNHPP.fit(XR, Z, i=IR, c=CR, baseline=CrowAMSAA)
+    assert new.dist is CrowAMSAA
+    with pytest.warns(DeprecationWarning, match="use 'baseline'"):
+        old = ProportionalIntensityNHPP.fit(XR, Z, i=IR, c=CR, dist=CrowAMSAA)
+    np.testing.assert_array_equal(old.params, new.params)
+    with pytest.raises(ValueError, match="pass 'baseline' only"):
+        ProportionalIntensityNHPP.fit(
+            XR, Z, i=IR, c=CR, baseline=CrowAMSAA, dist=CrowAMSAA
+        )
 
 
 def test_experimental_alias_is_gone():

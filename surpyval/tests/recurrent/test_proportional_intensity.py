@@ -70,8 +70,10 @@ def test_duane_proportional_intensity_reaches_the_crow_amsaa_optimum(
     x, i, c, Z = _power_law_fleet(lam, beta, T)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
-        duane = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=Duane)
-        crow = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=CrowAMSAA)
+        duane = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, baseline=Duane)
+        crow = ProportionalIntensityNHPP.fit(
+            x, Z, i=i, c=c, baseline=CrowAMSAA
+        )
     assert duane.aic() == pytest.approx(crow.aic(), abs=0.01)
     assert duane.coeffs == pytest.approx(crow.coeffs, abs=1e-3)
 
@@ -140,10 +142,10 @@ class TestPIFittersHonourInit:
     def test_nhpp_accepts_and_validates_init(self):
         xs, iis, cs, Zs = self._data()
         m = ProportionalIntensityNHPP.fit(
-            x=xs, Z=Zs, i=iis, c=cs, dist=CrowAMSAA, init=[10.0, 1.0, 0.5]
+            x=xs, Z=Zs, i=iis, c=cs, baseline=CrowAMSAA, init=[10.0, 1.0, 0.5]
         )
         assert np.all(np.isfinite(np.atleast_1d(m.params)))
         with pytest.raises(ValueError, match="init must have"):
             ProportionalIntensityNHPP.fit(
-                x=xs, Z=Zs, i=iis, c=cs, dist=CrowAMSAA, init=[1.0]
+                x=xs, Z=Zs, i=iis, c=cs, baseline=CrowAMSAA, init=[1.0]
             )

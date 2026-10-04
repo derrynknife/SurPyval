@@ -27,7 +27,7 @@ def _fit():
     i = [1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3]
     c = [0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1]
     Z = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1]).reshape(-1, 1)
-    return ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=CrowAMSAA)
+    return ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, baseline=CrowAMSAA)
 
 
 def test_regression_simulation_seed_is_reproducible():
@@ -102,7 +102,7 @@ def _data():
 def model(request):
     x, Z, i = _data()
     if request.param == "NHPP":
-        return ProportionalIntensityNHPP.fit(x, Z, i, dist=CrowAMSAA)
+        return ProportionalIntensityNHPP.fit(x, Z, i, baseline=CrowAMSAA)
     return ProportionalIntensityHPP.fit(x, Z, i)
 
 

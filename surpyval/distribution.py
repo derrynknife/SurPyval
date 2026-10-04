@@ -6,8 +6,10 @@ from typing import Any
 import numpy as np
 from numpy.typing import ArrayLike
 
+from surpyval.utils.removed_names import RemovedNames
 
-class Distribution(ABC):
+
+class Distribution(ABC, RemovedNames):
     """
     Root abstract base class that every surpyval model inherits from.
 
@@ -124,7 +126,7 @@ class NonParametricDistribution(Distribution):
         ``random_state`` as for :meth:`ParametricDistribution.random`."""
 
 
-class MultivariateDistribution(ABC):
+class MultivariateDistribution(ABC, RemovedNames):
     """
     A jointly-specified model of several correlated event-time series.
 

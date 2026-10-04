@@ -32,6 +32,7 @@ from surpyval.utils import (
     xcnt_handler,
 )
 from surpyval.utils.dataframe import frame_column
+from surpyval.utils.removed_names import column_arguments
 
 from ._aliasing import covariate_columns
 
@@ -906,6 +907,7 @@ class DataFrameRegressionMixin:
     # Provided by the host fitter class this mixin is combined with.
     fit: Callable[..., "ParametricRegressionModel"]
 
+    @column_arguments("x", "c", "n", "xl", "xr", "tl", "tr")
     def fit_from_df(
         self,
         df: pd.DataFrame,

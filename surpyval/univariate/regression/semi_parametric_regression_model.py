@@ -185,7 +185,7 @@ class SemiParametricRegressionModel(
 
     # -- model comparison (#604) -------------------------------------------
 
-    def neg_ll(self) -> float:
+    def neg_ll(self, *beta: Any) -> float:
         """The negative partial log-likelihood at the fitted coefficients:
         a number, as every model's ``neg_ll()`` is (#604), so that
         :meth:`aic`, :meth:`bic` and :meth:`aic_c`, and ``log_likelihood``
@@ -206,6 +206,13 @@ class SemiParametricRegressionModel(
         >>> round(model.log_likelihood, 3), round(model.aic(), 3)
         (-660.857, 1327.714)
         """
+        if beta:
+            # The function of the coefficients' old name says where it went
+            # (#653), rather than "takes 1 positional argument".
+            raise TypeError(
+                "neg_ll() takes no arguments: it is the fitted value; "
+                "neg_ll(beta) was removed in v0.24: use neg_ll_of(beta)."
+            )
         if getattr(self, "_neg_ll", None) is None:
             raise ValueError("Must have been fit with data")
         return float(self._neg_ll)

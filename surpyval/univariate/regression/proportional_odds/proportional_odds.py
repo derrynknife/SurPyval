@@ -97,6 +97,10 @@ from surpyval.utils.no_maximum import (
     warn_no_maximum,
     warn_unverified,
 )
+from surpyval.utils.removed_names import (
+    column_arguments,
+    removed_parameter_note,
+)
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
@@ -846,8 +850,8 @@ class ProportionalOddsModel(
         names = self.parameter_names
         if name not in names:
             raise ValueError(
-                "Unknown parameter {!r}; expected one of {}".format(
-                    name, names
+                "Unknown parameter {!r}; expected one of {}{}".format(
+                    name, names, removed_parameter_note(name, names)
                 )
             )
         if lr:
@@ -1258,6 +1262,7 @@ class ProportionalOdds_(FitterRepr):
         model._fit_data = {"x": x, "c": c, "n": n, "Z": Z, "tl": tl}
         return model
 
+    @column_arguments("x", "c", "n", "tl")
     def fit_from_df(
         self,
         df: "pd.DataFrame",

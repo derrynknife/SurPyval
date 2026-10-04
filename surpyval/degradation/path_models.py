@@ -34,6 +34,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.optimize import curve_fit
 
+from surpyval.utils.removed_names import RemovedNames
 from surpyval.utils.validation import option_error
 
 
@@ -49,7 +50,7 @@ def _ols(z: npt.NDArray, y: npt.NDArray) -> tuple[float, float]:
     return intercept, slope
 
 
-class PathModel(ABC):
+class PathModel(ABC, RemovedNames):
     """
     Base class for degradation path models.
 

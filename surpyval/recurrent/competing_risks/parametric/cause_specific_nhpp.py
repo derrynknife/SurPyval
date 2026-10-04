@@ -45,6 +45,7 @@ from surpyval.univariate.competing_risks.labels import (
 from surpyval.utils import optional_column
 from surpyval.utils.no_maximum import combined_maximum
 from surpyval.utils.recurrent_utils import handle_xicn
+from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.validation import unknown_cause_error
 
 
@@ -329,6 +330,7 @@ class CauseSpecificNHPP(SerialisableMixin):
         return cls.fit_from_recurrent_data(data, dist=dist, how=how, init=init)
 
     @classmethod
+    @column_arguments("x", "i", "c", "n", "tl", "tr")
     def fit_from_df(
         cls,
         df: Any,

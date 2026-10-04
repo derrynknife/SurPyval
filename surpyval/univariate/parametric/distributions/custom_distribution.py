@@ -18,6 +18,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     ParametricFitter,
 )
 from surpyval.utils.numeric import solve_bracketed
+from surpyval.utils.removed_names import removed_arguments
 from surpyval.utils.surpyval_data import SurpyvalData
 
 # The quantiles at which CustomDistribution.moment splits its integrals,
@@ -185,6 +186,7 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
     True
     """
 
+    @removed_arguments("0.23", param_names="'parameter_names'")
     def __init__(
         self,
         name: str,

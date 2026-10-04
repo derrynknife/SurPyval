@@ -9,6 +9,7 @@ from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
 
 if TYPE_CHECKING:
     from surpyval.recurrent.renewal.renewal_model import RenewalModel
+
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.pickling import Rebuilt
@@ -22,6 +23,7 @@ from surpyval.utils.recurrent_utils import (
     validate_renewal_censoring,
     validate_restoration,
 )
+from surpyval.utils.removed_names import column_arguments, removed_arguments
 
 
 def ari_reduction(
@@ -322,6 +324,7 @@ class ARI(RenewalFitMixin):
 
         return negll_func
 
+    @removed_arguments("0.23", dist="'baseline'")
     def fit_from_recurrent_data(
         self,
         data: Any,
@@ -409,6 +412,7 @@ class ARI(RenewalFitMixin):
             base_params = np.asarray(baseline.parameter_initialiser(data.x))
         return base_params
 
+    @removed_arguments("0.23", dist="'baseline'")
     def fit(
         self,
         x: ArrayLike,
@@ -490,6 +494,7 @@ class ARI(RenewalFitMixin):
         data = handle_xicn(x, i, c, n, tl=tl)
         return self.fit_from_recurrent_data(data, baseline, m, init=init)
 
+    @column_arguments("x", "i", "c", "n", "tl", "tr")
     def fit_from_df(
         self,
         df: Any,
@@ -562,6 +567,9 @@ class ARI(RenewalFitMixin):
             **fit_options,
         )
 
+    @removed_arguments(
+        "0.23", dist="'baseline'", dist_params="'baseline_params'"
+    )
     def fit_from_parameters(
         self,
         baseline_params: ArrayLike,
