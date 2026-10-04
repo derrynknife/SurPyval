@@ -133,6 +133,12 @@ Unreleased
   call, of a level above 0.5: ``alpha_ci=0.95`` is a 5% interval.
   ``success_run`` refuses 0 and 1 too.
 
+- ``CoxPH`` and ``BuckleyJames`` refuse data with no event, with the
+  message of ``ProportionalOdds`` and ``AdditiveHazards`` (#648): Cox
+  returned coefficients 0 with standard errors 0 (a hazard ratio of exactly
+  1, CI [1, 1]), and Buckley-James reported ``converged=True``. A Cox
+  coefficient running off to infinity (separation) has a ``nan`` standard
+  error, p-value and covariance row and column, not 0.
 - An accelerated life model's Wald ``param_cb`` on a positive life-model
   parameter (Arrhenius's ``b``, Power's ``a``: any bounded (0, None)) is
   computed on the log scale, as a distribution's positive parameters are

@@ -551,3 +551,19 @@ def test_cox_warns_on_monotone_likelihood():
         CoxPH.fit(x=x, Z=Z, c=c, tl=np.r_[np.full(10, 0.5), np.zeros(10)])
     kinds = {type(w.message) for w in caught}
     assert kinds == {UserWarning}  # no RuntimeWarnings alongside it
+
+
+def test_648_cox_runaway_coefficient_has_nan_standard_error():
+    # The pseudo-inverse of the collapsed information gave the runaway
+    # coefficient a standard error of 0; it is nan, as is its p-value,
+    # and the other coefficient keeps its own (#648).
+    rng = np.random.default_rng(0)
+    x = np.r_[np.arange(1.0, 16.0), np.arange(20.0, 35.0)]
+    Z = np.c_[np.r_[np.ones(15), np.zeros(15)], rng.normal(size=30)]
+    c = np.r_[np.zeros(15), np.ones(15)]
+    with pytest.warns(UserWarning, match=MONOTONE):
+        model = CoxPH.fit(x=x, Z=Z, c=c)
+    se = model.standard_errors()
+    assert np.isnan(se[0]) and np.isnan(model.p_values[0])
+    assert np.isfinite(se[1]) and se[1] > 0
+    assert np.isnan(model.summary()["se(coef)"].iloc[0])

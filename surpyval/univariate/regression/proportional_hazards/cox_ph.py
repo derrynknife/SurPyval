@@ -255,6 +255,20 @@ def _solve_beta_and_p_values(
         se = np.sqrt(var)
         z_score = res.x / se
     p_values = 2 * (1 - norm.cdf(np.abs(z_score)))
+    if res.maximum == "no finite maximum":
+        # A coefficient running off to infinity has no standard error: the
+        # pseudo-inverse of its collapsed information gave 0, a confident
+        # "exact" estimate. It is nan, as for the parametric families'
+        # runaway coefficients (#648), and so are its p-value and its row
+        # and column of the covariance.
+        off = _diverged_columns(hessian_matrix, info_at_start)
+        se = np.array(se, dtype=float)
+        p_values = np.array(p_values, dtype=float)
+        covariance = np.array(covariance, dtype=float)
+        se[off] = np.nan
+        p_values[off] = np.nan
+        covariance[off, :] = np.nan
+        covariance[:, off] = np.nan
     if aliased.size:
         res.x = embed(res.x)
         p_values = expand(p_values, kept, p)
@@ -318,17 +332,24 @@ def _warn_if_monotone(
     them by default; the identified ones after aliasing). Returns whether
     it warned.
     """
-    d = np.diag(np.atleast_2d(info))
-    d0 = np.diag(np.atleast_2d(info_at_start))
-    diverged = np.flatnonzero(
-        (d0 > 0) & ~(np.nan_to_num(d, nan=0.0) > 1e-8 * d0)
-    )
+    diverged = _diverged_columns(info, info_at_start)
     if diverged.size:
         if columns is not None:
             diverged = np.asarray(columns)[diverged]
         warn_monotone(str(diverged.tolist()))
         return True
     return False
+
+
+def _diverged_columns(
+    info: npt.NDArray, info_at_start: npt.NDArray
+) -> npt.NDArray:
+    """The positions whose information has collapsed from the start (to
+    below 1e-8 of it): the coefficients running off to infinity on a
+    monotone partial likelihood (see :func:`_warn_if_monotone`)."""
+    d = np.diag(np.atleast_2d(info))
+    d0 = np.diag(np.atleast_2d(info_at_start))
+    return np.flatnonzero((d0 > 0) & ~(np.nan_to_num(d, nan=0.0) > 1e-8 * d0))
 
 
 def warn_monotone(which: str) -> None:
@@ -343,6 +364,19 @@ def warn_monotone(which: str) -> None:
         "meaningless",
         "consider removing or coarsening the covariate, or a penalised fit",
     )
+
+
+def _require_an_event(c: npt.NDArray, n: npt.NDArray) -> None:
+    """Refuse data with no event, as ProportionalOdds and AdditiveHazards
+    do (#648): with every row censored the partial likelihood is flat, its
+    information 0, and the fit returned coefficients 0 with standard
+    errors 0 -- a confident hazard ratio of exactly 1."""
+    if not np.any((np.asarray(c) == 0) & (np.asarray(n) > 0)):
+        raise ValueError(
+            "CoxPH needs at least one event (c=0); with every observation "
+            "censored the partial likelihood carries no information about "
+            "the coefficients."
+        )
 
 
 class CoxPH_(FitterRepr, CoxLikelihoodMixin):
@@ -570,6 +604,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             )
 
         x, c, n, tl, Z = validate_coxph(x, c, n, Z, tl, tie_method)
+        _require_an_event(c, n)
 
         # Good initial guess assumes no impact
         beta_init = np.zeros(Z.shape[1])
@@ -711,6 +746,10 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
 
         if not validated:
             raise ValueError("no observations to fit")
+        _require_an_event(
+            np.concatenate([v[2] for v in validated]),
+            np.concatenate([v[3] for v in validated]),
+        )
         n_params = validated[0][5].shape[1]
         # One centre for every stratum, the mean over all the rows (as R's
         # coxph), so the strata's baselines stay comparable (#459).

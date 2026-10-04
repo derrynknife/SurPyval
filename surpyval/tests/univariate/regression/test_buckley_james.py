@@ -131,6 +131,13 @@ def test_rejects_non_positive_times():
         BuckleyJames.fit(x, Z)
 
 
+def test_648_refuses_data_with_no_event():
+    # It reported converged=True with the slope of the censoring times.
+    x, Z, c, beta = _aft_data(50, 8)
+    with pytest.raises(ValueError, match=r"needs at least one event \(c=0\)"):
+        BuckleyJames.fit(x, Z, c=np.ones(50))
+
+
 # --- fit_from_df ----------------------------------------------------------
 
 
