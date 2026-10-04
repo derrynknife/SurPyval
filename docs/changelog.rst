@@ -74,6 +74,15 @@ Unreleased
   logits, carried to the parameters and weights; named by
   ``covariance_names``: ``alpha_0``, ..., ``w_0``, ...), and Wald
   ``param_cb``, ``cb`` and ``quantile_cb`` as ``Parametric``'s (#651).
+- ``CompetingRisksProportionalHazards`` has the per-cause coefficients'
+  inference: ``params``, ``parameter_names`` (``"a: grp"``),
+  ``covariance()`` (block-diagonal, each cause's fit's),
+  ``standard_errors()``, ``p_values``, ``summary()`` and a readable repr;
+  ``FineGray`` has ``params``, ``parameter_names`` and ``summary()``.
+  ``phi_e`` takes the cause label, as ``cif`` (the row index is
+  deprecated), and ``beta`` (the causes' sum) is deprecated. A Fine-Gray
+  model's ``log_likelihood`` raises ``AttributeError``, so ``hasattr``
+  works (#656).
 
 **Fixed**
 
