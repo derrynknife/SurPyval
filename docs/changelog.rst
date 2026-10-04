@@ -4,6 +4,16 @@ Changelog
 v0.23 (unreleased)
 ------------------
 
+- **Building a SurpyvalData is about a third faster.** Every fit builds
+  one from its inputs first. The distinct truncation windows, and the
+  distinct values the identifiability check counts, came from
+  ``np.unique(..., axis=0)``, which sorts rows as structured records;
+  each column is now ranked on its own and the pairs of ranks sorted as
+  integers. A flat list of numbers is converted to an array once rather
+  than once per check. The data are identical, dtypes included, and so
+  are the errors: on 100,000 units with mixed censoring and truncation,
+  from arrays 58 → 41 ms, from lists 89 → 62 ms, and the identifiability
+  check 12 → 2.5 ms.
 - **Parametric bootstrap bounds for the parametric regression models
   (#617).** ``cb``, ``param_cb``, ``quantile_cb`` and ``cb_tvc`` take
   ``method="bootstrap"`` with ``n_boot=`` (default 200) and
