@@ -232,7 +232,11 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
         def feasible(x0: Any) -> bool:
             if neg_ll is None:
                 return True
-            return bool(np.isfinite(neg_ll(np.asarray(x0, dtype=float))))
+            # (A start can overflow: a Kijima-II q of 2 doubles the ages
+            # at every failure, and inf - inf warned from here, #630.)
+            with np.errstate(all="ignore"):
+                value = neg_ll(np.asarray(x0, dtype=float))
+            return bool(np.isfinite(value))
 
         def usable(res: Any) -> bool:
             return bool(np.isfinite(res.fun))

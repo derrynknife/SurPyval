@@ -10,7 +10,13 @@ from autograd import hessian
 
 from surpyval.utils.no_maximum import warn_no_maximum
 
-from . import Gradient, fallback_minimize, search_floor
+from . import (
+    OPTIMUM_GTOL,
+    Gradient,
+    fallback_minimize,
+    is_local_minimum,
+    search_floor,
+)
 
 
 def _shifted_window(dist: Any, tl: Any, tr: Any, gamma: Any) -> tuple:
@@ -157,7 +163,12 @@ class _TowardLimit:
         return self._limit[0]
 
     def __call__(self, res: Any) -> bool:
-        if self.family is None or res.success:
+        return not res.success and self.reached(res)
+
+    def reached(self, res: Any) -> bool:
+        """The check, whatever the search reported: BFGS can report
+        success on the flat objective along the way (#630)."""
+        if self.family is None:
             return False
         if not (np.all(np.isfinite(res.x)) and np.isfinite(res.fun)):
             return False
@@ -180,6 +191,151 @@ class _TowardLimit:
         )
 
 
+def _hessian_or_nan(hess: Callable[..., Any]) -> Callable[..., Any]:
+    """``hess``, NaN where autograd cannot take it: on a truncated
+    LogLogistic's objective it raises ``TypeError('first operand must be
+    array')`` from inside its backward pass. ``is_local_minimum`` then
+    takes the Hessian from central differences of the gradient."""
+
+    def safe(u: npt.NDArray, *args: Any) -> Any:
+        try:
+            return hess(u, *args)
+        except TypeError:
+            size = np.size(u)
+            return np.full((size, size), np.nan)
+
+    return safe
+
+
+def _usable(res: Any) -> bool:
+    """A result with finite parameters and a finite objective."""
+    return bool(np.all(np.isfinite(res.x)) and np.isfinite(res.fun))
+
+
+class _RunsOff:
+    """Whether an MPS search that stopped short of a verified optimum has
+    parameters running off, along which the product of spacings has no
+    finite maximum (#630): Newton's method cannot converge along their
+    profiles, the profile is flat to the verification's tolerance, and it
+    rises towards an infinite end of the parameter's range. The check
+    maximum likelihood makes of its own searches (``mle._runaway``).
+
+    Asked of a BFGS result that failed (``fallback_minimize``'s
+    ``give_up``), it ends the search there rather than escalate. A BFGS
+    search that diverged (a non-finite objective where it stopped) goes
+    straight to the derivative-free rung from the start, whose result is
+    then :attr:`result`: Newton-CG from the same cold start follows the
+    same derivatives at the price of the Hessian, and on an offset
+    ExpoWeibull on the #599 data, whose spacings run off with no limit
+    family to compare with, it spent 32 s of a 34 s fit before ending
+    "MPS FAILED" anyway.
+    """
+
+    def __init__(
+        self,
+        model: "Parametric",
+        args: tuple,
+        init: npt.NDArray,
+        floor: Any,
+    ) -> None:
+        self.model = model
+        self.args = args
+        self.init = np.asarray(init, dtype=float)
+        self.floor = floor
+        self.found: tuple = ()
+        self.result: Any = None
+
+    def check(self, x: npt.NDArray) -> tuple:
+        """The positions in the search vector of the parameters running
+        off at ``x`` (empty for none)."""
+        from .mle import _runaway, _space
+
+        x = np.asarray(x, dtype=float)
+        if not np.all(np.isfinite(x)):
+            return ()
+        natural, bounds, free = _space(self.model)[:3]
+        size = np.maximum(np.abs(x), np.asarray(self.floor, dtype=float))
+
+        def keep(j: int, slope: float) -> bool:
+            if not abs(slope) * size[j] < OPTIMUM_GTOL:
+                return False
+            ahead = np.array(x, dtype=float)
+            ahead[j] -= np.sign(slope) * size[j]
+            with np.errstate(all="ignore"):
+                now = float(natural(x)[free[j]])
+                then = float(natural(ahead)[free[j]])
+            low, high = bounds[free[j]]
+            if then > now:
+                return high is None or not np.isfinite(high)
+            if then < now:
+                return low is None or not np.isfinite(low)
+            return False
+
+        with np.errstate(all="ignore"), warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            try:
+                found = _runaway(
+                    mps_fun,
+                    self.args,
+                    x,
+                    self.init,
+                    floor=self.floor,
+                    keep=keep,
+                )
+            except (ValueError, ArithmeticError, TypeError):
+                # (TypeError: autograd's second derivative of some
+                # truncated objectives, see ``_hessian_or_nan``)
+                found = ()
+        return tuple(found)
+
+    def __call__(self, res: Any) -> bool:
+        from scipy.optimize import minimize
+
+        if _usable(res):
+            self.found = self.check(res.x)
+            return bool(self.found)
+        with np.errstate(all="ignore"), warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            nm = minimize(
+                mps_fun, self.init, method="Nelder-Mead", args=self.args
+            )
+        nm.optimizer = "Nelder-Mead"
+        self.result = nm
+        self.found = self.check(nm.x) if _usable(nm) else ()
+        return True
+
+    def warn(self, params: npt.NDArray) -> None:
+        from .mle import _runaway_names
+
+        names = _runaway_names(self.model, self.found)
+        values = dict(
+            zip(
+                sorted(
+                    self.model.param_map, key=self.model.param_map.__getitem__
+                ),
+                params,
+            )
+        )
+        running = " and ".join(
+            (
+                "{} ({:.4g})".format(name, float(values[name]))
+                if name in values
+                else name
+            )
+            for name in names
+        )
+        what = "runs" if len(names) == 1 else "run"
+        warn_no_maximum(
+            f"the {self.model.dist.name}'s product of spacings keeps "
+            f"increasing as {running} {what} on, towards a limit of the "
+            "family that none of its members reaches",
+            "The reported parameters are where the search stopped and are "
+            "meaningless",
+            "fit by maximum likelihood (how='MLE'), or with a family that "
+            "contains the limit",
+        )
+
+
 def mps(model: "Parametric") -> Any:
     """
     MPS: Maximum Product Spacing
@@ -188,6 +344,10 @@ def mps(model: "Parametric") -> Any:
     between all points. This method works really well when all points are
     unique. Some complication comes in when using repeated data. This method
     is quite good for offset distributions.
+
+    The answer is checked as maximum likelihood checks its own: a point
+    that is not verifiably an optimum warns, as "No finite maximum" where
+    a parameter runs off (#630).
     """
 
     dist = model.dist
@@ -203,7 +363,15 @@ def mps(model: "Parametric") -> Any:
     hess = hessian(mps_fun)
 
     args = (dist, x, inv_trans, const, c, n, tl, tr, offset)
+    floor = search_floor(model)
     toward_limit = _TowardLimit(model, init) if offset else None
+    runs_off = _RunsOff(model, args, init, floor)
+
+    def give_up(res: Any) -> bool:
+        if toward_limit is not None and toward_limit(res):
+            return True
+        return runs_off(res)
+
     res = fallback_minimize(
         mps_fun,
         init,
@@ -211,15 +379,50 @@ def mps(model: "Parametric") -> Any:
         jac,
         hess,
         newton_tol=1e-15,
-        floor=search_floor(model),
-        give_up=toward_limit,
+        floor=floor,
+        give_up=give_up,
     )
+    if runs_off.result is not None:
+        res = runs_off.result
 
     params = inv_trans(const(res.x))
-    if toward_limit is not None and toward_limit(res):
+    # An optimiser's success is not an optimum: BFGS reports success on a
+    # flat objective, and an offset run far down ended there in silence
+    # (#630). The answer is checked as maximum likelihood checks its own.
+    verified = _usable(res) and is_local_minimum(
+        mps_fun, jac, _hessian_or_nan(hess), res.x, args, floor=floor
+    )
+    if not (verified or runs_off.found) and _usable(res):
+        runs_off.found = runs_off.check(res.x)
+    if not verified and toward_limit is not None and toward_limit.reached(res):
         toward_limit.warn(params)
+    elif not verified and runs_off.found:
+        runs_off.warn(params)
     elif (res.success is False) or (np.isnan(res.x).any()):
-        warnings.warn("MPS FAILED: Try alternate estimation method")
+        from surpyval.utils.warnings import caller_stacklevel
+
+        reason = str(res.get("message", "")).rstrip(".")
+        warnings.warn(
+            "MPS FAILED: the maximum product of spacings search found no "
+            "optimum{}; the parameters returned are where it stopped. Try "
+            "alternate estimation method (how='MLE').".format(
+                f" ({reason})" if reason else ""
+            ),
+            UserWarning,
+            stacklevel=caller_stacklevel(),
+        )
+    elif not verified:
+        from surpyval.utils.warnings import caller_stacklevel
+
+        warnings.warn(
+            "The maximum product of spacings search did not reach a "
+            "verified optimum of its objective (a point where the "
+            "gradient is zero and the product of spacings curves down in "
+            "every direction); the parameters returned are the best point "
+            "it found: check the fit, or use another method (how='MLE').",
+            UserWarning,
+            stacklevel=caller_stacklevel(),
+        )
 
     results = {}
     results["res"] = res

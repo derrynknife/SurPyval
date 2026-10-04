@@ -122,16 +122,26 @@ def fallback_minimize(
         )
         if failed and give_up is not None and give_up(res):
             return res
-        if failed and np.any(hess(np.array(init, dtype=float), *args)):
-            newton = minimize_with_gradient(
-                fun,
-                init,
-                args,
-                jac,
-                method="Newton-CG",
-                hess=hess,
-                tol=newton_tol,
-            )
+        newton = None
+        try:
+            # autograd cannot take every second derivative: on a truncated
+            # LogLogistic's MPS objective it raises TypeError('first
+            # operand must be array') from its backward pass, which ended
+            # the fit (#630). Without a Hessian the derivative-free rung
+            # below takes over.
+            if failed and np.any(hess(np.array(init, dtype=float), *args)):
+                newton = minimize_with_gradient(
+                    fun,
+                    init,
+                    args,
+                    jac,
+                    method="Newton-CG",
+                    hess=hess,
+                    tol=newton_tol,
+                )
+        except TypeError:
+            newton = None
+        if newton is not None:
             # Only an improvement replaces what BFGS found. BFGS often
             # reports "precision loss" *at* the optimum, and a Newton-CG
             # run from the cold start can then "succeed" at a worse point,

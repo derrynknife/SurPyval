@@ -422,3 +422,51 @@ def test_627_the_comparison_with_the_limit_has_a_tolerance():
     assert not judge(100.0, 100.01).toward_limit(below)
     # not moved down from the start: neither
     assert not judge(100.0, 100.0).toward_limit(np.array([1.0]))
+
+
+def test_630_offset_mps_without_a_limit_family_fails_fast(monkeypatch):
+    # An offset ExpoWeibull on the #599 data: its spacings run off with no
+    # limit family to compare with. BFGS diverged and Newton-CG took 32 s
+    # of a 34 s fit before "MPS FAILED"; a diverged BFGS goes to the
+    # derivative-free rung now, and the same answer comes back.
+    from surpyval.univariate.parametric import fitters
+
+    methods = []
+    newton = fitters.minimize_with_gradient
+
+    def counted(*args, **kwargs):
+        methods.append(kwargs.get("method"))
+        return newton(*args, **kwargs)
+
+    monkeypatch.setattr(fitters, "minimize_with_gradient", counted)
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        model = sp.ExpoWeibull.fit(X_599, C_599, N_599, offset=True, how="MPS")
+    assert "Newton-CG" not in methods
+    assert len(rec) == 1, [str(w.message)[:60] for w in rec]
+    assert str(rec[0].message).startswith("MPS FAILED: the maximum product")
+    assert "how='MLE'" in str(rec[0].message)
+    assert rec[0].filename == __file__
+    assert model.res.fun == pytest.approx(2.5543566, abs=1e-6)
+
+
+def test_630_an_mps_success_on_a_flat_objective_is_checked():
+    # The offset LogLogistic on the #599 rows (no counts): BFGS reported
+    # success with the offset run down to -1.5e5, on the flat objective on
+    # the way to the Logistic, and the fit ended there in silence.
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        model = sp.LogLogistic.fit(X_599, offset=True, how="MPS")
+    assert model.res.success
+    assert len(rec) == 1, [str(w.message)[:60] for w in rec]
+    message = str(rec[0].message)
+    assert message.startswith("No finite maximum: the LogLogistic's")
+    assert "surpyval.Logistic" in message
+
+
+def test_630_ordinary_mps_fits_are_verified_and_silent():
+    x = 40.0 + sp.Weibull.random(30, 60.0, 4.0, random_state=3)
+    for kwargs in ({}, {"offset": True}):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            sp.Weibull.fit(x, how="MPS", **kwargs)
