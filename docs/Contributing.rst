@@ -47,15 +47,15 @@ combinatorial sweep of the parametric fitting paths, worth running after
 changing a likelihood, an initial guess or an optimiser.
 ``--run-calibration`` runs the statistical calibration studies (confidence
 interval coverage, test size and power, estimator bias; about 20 minutes on
-four cores), which also run nightly against ``develop`` from
-``.github/workflows/nightly.yml``. They include ``test_refit_registry.py``,
+four cores), which can also be run against ``develop`` by hand from
+``.github/workflows/nightly.yml`` (Actions tab). They include ``test_refit_registry.py``,
 which draws data from every model in the conformance registry that can
 simulate from itself and checks that the refits recover it (#397); a newly
 registered model must be added to its ``PLANS`` or ``EXCLUDED``.
 The property-based tests in ``surpyval/tests/properties`` run a short
 derandomized search by default (under a minute);
-``SURPYVAL_HYPOTHESIS_PROFILE=nightly`` makes it thorough, as the nightly
-run does. When one finds a failure, it prints a minimal example: pin it in
+``SURPYVAL_HYPOTHESIS_PROFILE=nightly`` makes it thorough, as the
+by-hand ``nightly`` run does. When one finds a failure, it prints a minimal example: pin it in
 ``surpyval/tests/properties/test_known_failures.py`` with the issue number.
 
 Describe any change a user would notice in ``docs/changelog.rst``, under the
@@ -151,9 +151,8 @@ Only a failure whose outcome depends on the numpy / scipy build (an
 optimiser started far from the maximum) is listed in ``NON_STRICT`` as
 well, so that either outcome passes.
 
-Continuous integration runs the suite on every pull request, without the
-refits marked ``slow`` (the less common variants of families whose main
-member runs); the full suite includes those:
+The fast form leaves out the refits marked ``slow`` (the less common
+variants of families whose main member runs); the full suite includes those:
 
 .. code-block:: bash
 
@@ -195,7 +194,7 @@ censoring), the public API (names, signatures and defaults), the modules
 ``import surpyval`` loads, and the IDs of the collected tests and
 doctests. It takes two to three minutes on two cores (``-j`` sets the
 workers; ``--full`` adds the likelihood-ratio bounds the conformance suite
-runs only nightly, about two minutes more).
+runs only in the full suite, about two minutes more).
 
 Floats are stored exactly, so ``compare`` is bit-exact unless given
 ``--rtol``. A pure move or merge must compare clean. Splitting a function
@@ -307,54 +306,44 @@ than on every push to every branch. Not every job runs on every event:
    * - Event
      - Jobs
    * - Pull request into ``develop``
-     - lint and the conformance suite (about a minute each)
+     - lint (about a minute)
    * - Pull request into ``master`` (the release)
+     - lint
+   * - Push to ``master`` (the release merge)
      - lint, the conformance suite, the test suite across three
-       interpreters, and the documentation build (about ten minutes)
-   * - Push to ``master``
-     - lint, the conformance suite and the test suite; Read the Docs
-       rebuilds the hosted documentation
+       interpreters (with the docstring examples and coverage), and the
+       documentation build; Read the Docs rebuilds the hosted documentation
    * - Push of a ``v*`` tag
      - ``.github/workflows/publish.yml`` checks that the tag matches the
        version in ``pyproject.toml``, builds the package and publishes it
        to PyPI; Read the Docs builds the tagged documentation
 
-The test job also runs the docstring examples (twice: once as text, once
-forcing a numerical comparison of every number) and reports coverage.
+The full test suite and the documentation build run once, when a release is
+merged into ``master``, and nowhere else. Waiting on them at every step made a
+release take hours, and nearly every run confirmed what the tests for the
+change had already shown. A failure the merge run finds is fixed in a point
+release.
 
-The test suite and the documentation build are both gated at the release
-rather than on every pull request because of what they cost: the suite is
-roughly nine minutes across the three interpreters and the documentation build
-around three from cold, against about one for lint. Paying that on every
-feature pull request made the edit-review loop the slowest part of working on
-the package, and with a single maintainer running the suite locally before
-pushing, the pull-request run was mostly confirming what was already known.
+Every change is tested locally by the tests for what it changed, before it is
+pushed:
 
-The trade-off is real and worth understanding before you rely on it. A failure
-that appears on only one interpreter, or a change that breaks a documentation
-example, is now found when the release pull request is opened -- with a
-release's worth of commits to search through rather than one. So:
-
-* Run the suite locally before pushing, and across more than one interpreter
-  when you have touched anything numerical. ``scripts/check_all_pythons.py``
-  does exactly that -- it runs the test suite and the doctests as continuous
-  integration would (not lint, which runs on every pull request anyway, and
-  not the documentation build), on 3.11, 3.12 and 3.13:
+* the test modules covering the code touched, and the conformance tests for
+  the models it touches (``surpyval/tests/conformance``, filtered with
+  ``-k``);
+* the doctests of the modules touched
+  (``python -m pytest --doctest-modules <module>``);
+* lint, formatting and ``mypy``, as the lint job runs them;
+* the documentation pages that call what changed, when a public function's
+  behaviour changes (documentation cells call the real API);
+* for a numerical change, its tests on more than one interpreter.
+  ``scripts/check_all_pythons.py`` runs the whole suite on 3.11, 3.12 and
+  3.13; the environments it keeps in ``.venvs/`` (git-ignored) run any
+  selection:
 
   .. code-block:: bash
 
-      python scripts/check_all_pythons.py                 # all three
-      python scripts/check_all_pythons.py 3.12            # just one
-      python scripts/check_all_pythons.py --skip-install  # reuse as-is
-
-  It keeps its environments in ``.venvs/`` (git-ignored) and reuses them, so
-  only the first run pays for the installs. It uses ``uv`` when that is
-  available and falls back to ``venv`` and ``pip`` when it is not.
-
-* Build the documentation locally when you change the behaviour of a public
-  function, since documentation cells call the real API.
-* On a long-running branch, open the release pull request early and let it sit,
-  so the full run has somewhere to fail before the release itself.
+      python scripts/check_all_pythons.py 3.11   # create .venvs/py3.11 once
+      .venvs/py3.11/bin/python -m pytest surpyval/tests/univariate/parametric
 
 Documentation
 -------------

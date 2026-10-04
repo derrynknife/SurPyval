@@ -2,28 +2,17 @@ name: nightly
 
 run-name: SurPyval nightly (develop)
 
-# A scheduled run against `develop` of everything the pull requests into it
-# skip: the full test suite, the documentation build and the statistical
-# calibration suite (#379).
+# A run against `develop` of everything the pull requests into it skip:
+# the full test suite, the documentation build and the statistical
+# calibration suite (#379), started by hand from the Actions tab.
 #
-# Pull requests into `develop` run lint only, by a documented decision (see
-# actions.yml): the suite and the docs build wait for the release pull
-# request into `master`. That leaves a release's worth of commits between
-# a break and its discovery. This workflow closes most of that gap without
-# slowing the pull requests: a break on `develop` shows up the next
-# morning, with a day's commits to search.
-#
-# GitHub runs scheduled workflows only from the workflow file on the
-# repository's *default* branch (`master`). This file therefore takes
-# effect once it reaches `master`, with the next release; until then it
-# can be run by hand from the Actions tab (workflow_dispatch) on any
-# branch that has it. Every job checks out `develop` explicitly, because a
-# scheduled run's default checkout is the default branch, which would
-# test the last release rather than the work in progress.
+# It no longer runs on a schedule. The full suite runs once, on the merge
+# of a release into `master` (see actions.yml); this is for checking
+# `develop` on demand before a release, when that is worth the time.
+# Every job checks out `develop` explicitly, because a run's default
+# checkout is the default branch (`master`), which would test the last
+# release rather than the work in progress.
 on:
-  schedule:
-    # 03:17 UTC daily; off the hour, when scheduled runs queue longest.
-    - cron: '17 3 * * *'
   workflow_dispatch:
 
 permissions:
