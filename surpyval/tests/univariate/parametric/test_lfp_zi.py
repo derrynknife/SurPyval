@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pytest
 
@@ -623,3 +625,26 @@ def test_608_regression_models_spell_it_alike():
     )
     assert model.lfp_p == 1.0
     assert not hasattr(model, "p")
+
+
+def test_649_a_fixed_lfp_p_finds_the_better_mode():
+    # 30% susceptible, wear-out Weibull(100, 2), withdrawn at 300. With
+    # lfp_p fixed at 0.5 the fit stopped on the infant-mortality mode
+    # (alpha 262.7, beta 0.96, -440.38) and called it verified; the
+    # wear-out mode is 11.3 log-likelihood units higher. The alternative
+    # starts (the failures alone among them) were skipped for any fit
+    # with a fixed parameter.
+    import scipy.stats as ss
+
+    rng = np.random.default_rng(6)
+    s = rng.random(200) < 0.3
+    t = np.where(
+        s, ss.weibull_min(2, scale=100).rvs(200, random_state=rng), np.inf
+    )
+    x, c = np.minimum(t, 300.0), (t > 300).astype(int)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = Weibull.fit(x, c, lfp=True, fixed={"lfp_p": 0.5})
+    np.testing.assert_allclose(model.params, [92.2466, 2.34462], rtol=1e-4)
+    assert model.neg_ll() < 429.07
+    assert model.lfp_p == 0.5

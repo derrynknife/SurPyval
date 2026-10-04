@@ -693,10 +693,14 @@ turnbull_estimator
             warm = warm_starts_on() and results.get("_verified", False)
             if how == "MLE" and user_init and not warm:
                 starts = [[]]
-            if how == "MLE" and not fixed:
+            if how == "MLE":
                 if not user_init or not results["_verified"]:
-                    starts += self._alternative_starts(
-                        surv_data, offset, zi, lfp, heuristic
+                    starts += self._with_fixed(
+                        self._alternative_starts(
+                            surv_data, offset, zi, lfp, heuristic
+                        ),
+                        model,
+                        fixed,
                     )
 
             def from_start(start: Any) -> tuple[dict, dict]:
@@ -876,6 +880,28 @@ turnbull_estimator
         self._set_support(model, offset)
 
         return model
+
+    @staticmethod
+    def _with_fixed(
+        starts: list, model: Parametric, fixed: "dict | None"
+    ) -> list:
+        """The alternative ``starts`` (full vectors) with each fixed
+        parameter at its fixed value, for a fit with ``fixed``
+        parameters. They were skipped for such fits, and a limited-failure
+        fit with ``lfp_p`` fixed at 0.5 stopped on the infant-mortality
+        mode (shape 0.96) 11.3 log-likelihood units below the wear-out one
+        the start from the failures alone reaches (#649)."""
+        if not fixed:
+            return starts
+        out = []
+        for start in starts:
+            vector = np.array(start, dtype=float)
+            if vector.size != len(model.param_map):
+                continue
+            for name, value in fixed.items():
+                vector[model.param_map[name]] = value
+            out.append(vector)
+        return out
 
     @staticmethod
     def _better_fit(
