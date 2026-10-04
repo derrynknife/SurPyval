@@ -187,6 +187,195 @@ def runaway_coefficients(
     return out
 
 
+# -- the units the check is made in (#628) -------------------------------------
+#
+# Newton's test is unchanged by a linear change of units in exact arithmetic,
+# but its parts are not in floating point: the pseudo-inverse of the other
+# parameters' Hessian that forms a profile drops any parameter whose curvature
+# is below 1e-15 of the largest, and a regression's centred scale searched
+# linearly at 3.6e6 (curvature 1e-17, against 5e2 for the shape) was dropped
+# that way, so that a WeibullPH coefficient running off had its profile
+# formed without it and the test said nothing. Nor is it unchanged by a
+# nonlinear one: a scale searched linearly runs off exponentially along a
+# separating direction (the log of the scale moves with the coefficients'
+# linear predictor), so the run-off is a curve in the search space, and an
+# accelerated life ``c`` searched linearly at 1e22, a fit merely stopped
+# short of a finite maximum, read as running off (Newton's step along a line
+# in ``c`` is not Newton's step along ``log c``). So the regressions make
+# the test with each parameter that has one bound (searched linearly beyond
+# a unit from it, see ``bounds_convert``) as the log of its distance from the
+# bound, where a run-off is a straight line, and every parameter in units of
+# its size there (at least its unit, ``floor``: a covariate coefficient's is
+# its covariate's, ``coefficient_floor``), where the Hessian is conditioned.
+
+
+def runaways_in_units(
+    neg_ll: Callable,
+    x: npt.ArrayLike,
+    coefs: "list[int]",
+    start: "npt.ArrayLike | None" = None,
+    derivatives: "tuple[npt.NDArray, npt.NDArray] | None" = None,
+    floor: "float | npt.ArrayLike" = 1.0,
+    one_sided: "tuple[int, ...]" = (),
+) -> "list[int]":
+    """The positions in ``coefs`` of the parameters along which the
+    likelihood has no finite maximum near ``x``, each running off alone
+    (:func:`runaway_coefficients`) or with others (:func:`joint_runaway`),
+    judged in the units described above.
+
+    ``neg_ll``, ``x``, ``coefs`` and ``start`` are as for
+    :func:`runaway_coefficients`, in the search space; ``one_sided`` are the
+    positions in ``x`` of the parameters searched as ``bounds_convert`` maps
+    one with a single bound (``log`` within a unit of it, linear beyond),
+    which are judged as the log of that distance; ``floor`` is each
+    parameter's least unit (one for those); ``derivatives`` are those of
+    :func:`search_derivatives` at ``x``, if the caller has them, which are
+    carried to the new units by the chain rule rather than taken again."""
+    at = np.asarray(x, dtype=float)
+    log = np.zeros(at.size, dtype=bool)
+    log[list(one_sided)] = True
+    with np.errstate(all="ignore"):
+        u = np.where(log & (at >= 0.0), np.log1p(np.abs(at)), at)
+        unit = np.where(
+            log, 1.0, np.broadcast_to(np.asarray(floor, dtype=float), at.shape)
+        )
+        size = np.maximum(np.abs(u), unit)
+    if not np.all(np.isfinite(size) & (size > 0.0)):
+        return []
+
+    def from_units(v: Any) -> Any:
+        w = size * v
+        return np.where(log & (w >= 0.0), np.expm1(np.minimum(w, LOG_MAX)), w)
+
+    def in_units(v: Any) -> Any:
+        return neg_ll(from_units(v))
+
+    v0 = u / size
+    if derivatives is None:
+        derivatives = search_derivatives(neg_ll, at)
+    if derivatives is None:
+        return []
+    H, g = derivatives
+    # The chain rule for x = from_units(v): dx/dv and d2x/dv2, one
+    # coordinate at a time.
+    linear = log & (at >= 0.0)
+    d1 = size * np.where(linear, at + 1.0, 1.0)
+    d2 = size**2 * np.where(linear, at + 1.0, 0.0)
+    with np.errstate(all="ignore"):
+        units_derivatives = (
+            np.outer(d1, d1) * H + np.diag(g * d2),
+            d1 * g,
+        )
+    v_start = None
+    if start is not None:
+        s = np.asarray(start, dtype=float)
+        with np.errstate(all="ignore"):
+            s = np.where(log & (s >= 0.0), np.log1p(np.abs(s)), s)
+        v_start = s / size
+    out = runaway_coefficients(
+        in_units, v0, coefs, v_start, units_derivatives
+    )
+    if out:
+        return out
+    return joint_runaway(
+        in_units, v0, coefs, v_start, units_derivatives, unit / size
+    )
+
+
+# -- several coefficients running off together (#628) --------------------------
+#
+# A coefficient's profile is the likelihood with every other parameter at its
+# best value for it, and the test above assumes the others have one. Where
+# two or more coefficients run off together -- all the failures in one corner
+# cell of a two-stress design, so that any direction in a cone of the two
+# coefficients raises the likelihood -- the other's best value is at infinity
+# too, its "profile" is not a curve, and Newton's test along it said nothing
+# (a WeibullAFT with both coefficients at -52674 and 70, the scale at 1e134,
+# was returned as a verified maximum). The test is then made along the line
+# Newton's method itself would move those coefficients on: the joint profile
+# of the direction ``w`` of their part of the Newton step ``-H^{-1} g``,
+# every other parameter (the distribution's, and the coefficients that have
+# converged) at its best value for each point on it. On the way to a
+# supremum each coefficient's part of the step is ``1/s_j`` for its own
+# tail, the step's tails all fall together along ``w``, and the joint profile
+# is ``C - A exp(-t)``: Kantorovich's ``h`` is 1, as for one coefficient (for
+# a sum of exponential tails all falling along ``w``, ``h >= 1`` by the
+# Cauchy-Schwarz inequality). At a maximum the step is at the level of the
+# optimiser's tolerance and the test cannot fire.
+
+
+def joint_runaway(
+    neg_ll: Callable,
+    x: npt.ArrayLike,
+    coefs: "list[int]",
+    start: "npt.ArrayLike | None" = None,
+    derivatives: "tuple[npt.NDArray, npt.NDArray] | None" = None,
+    floor: "float | npt.ArrayLike" = 0.0,
+) -> "list[int]":
+    """The positions in ``coefs`` of the parameters that run off together
+    from ``x``: Newton's method cannot converge along their joint profile
+    in the direction of their part of the Newton step (see above), and
+    the likelihood is not flat along it at ``start`` (as
+    :func:`runaway_coefficients`); an empty list otherwise.
+
+    The parameters tested are those ``_cleared`` (with each one's size at
+    least ``floor``) does not show to be at a maximum, and only where there
+    are two or more of them: one alone is
+    :func:`runaway_coefficients`'s. There is no verdict where the Hessian
+    is not finite and positive definite (a fit run into the limits of
+    floating point), as there is no Newton step. ``derivatives`` are those
+    of :func:`search_derivatives` at ``x``, if the caller has them."""
+    at = np.asarray(x, dtype=float)
+    if derivatives is None:
+        derivatives = search_derivatives(neg_ll, at)
+    if derivatives is None:
+        return []
+    H, g = derivatives
+    cleared = _cleared(at, H, g, floor)
+    loose = [k for k, j in enumerate(coefs) if not cleared[j]]
+    if len(loose) < 2:
+        return []
+    try:
+        np.linalg.cholesky(H)
+        step = -np.linalg.solve(H, g)
+    except np.linalg.LinAlgError:
+        return []
+    moving = np.array([coefs[k] for k in loose])
+    rest = np.array([i for i in range(at.size) if i not in moving], dtype=int)
+    w = np.zeros(at.size)
+    w[moving] = step[moving] / np.max(np.abs(step[moving]))
+    if not np.all(np.isfinite(w)):
+        return []
+
+    def along(y: Any) -> Any:
+        # The likelihood with the moving coefficients on the line through
+        # ``at`` along ``w`` (the last coordinate of ``y`` the distance
+        # along it) and the other parameters free.
+        tau = y[rest.size]
+        full = [None] * at.size
+        for r, i in enumerate(rest):
+            full[i] = y[r]
+        for i in moving:
+            full[i] = at[i] + tau * w[i]
+        return neg_ll(np.array(full))
+
+    y0 = np.append(at[rest], 0.0)
+    with np.errstate(all="ignore"):
+        if not runaway_coefficients(along, y0, [rest.size]):
+            return []
+        if start is not None:
+            # The joint profile's direction, to first order, for the check
+            # that the likelihood depends on it at the start (collinear
+            # covariates do not run off; they are not identified).
+            v = w.copy()
+            if rest.size:
+                H_rr = H[np.ix_(rest, rest)]
+                v[rest] = -np.linalg.pinv(H_rr) @ (H[np.ix_(rest, moving)] @ w[moving])
+            if _flat_at_start(neg_ll, start, v):
+                return []
+    return loose
+
+
 def _cleared(
     x: npt.NDArray,
     H: npt.NDArray,

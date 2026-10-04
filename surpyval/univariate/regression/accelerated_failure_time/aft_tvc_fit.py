@@ -208,6 +208,7 @@ from .._fit_skeleton import (  # noqa: E402
     free_coefficients,
     judge_search,
     keep_information,
+    one_sided_positions,
     optimise_nm_tnc,
     say_verdict,
 )
@@ -479,6 +480,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
                 init,
                 float(np.sum(grp["weight"])),
                 floor=floor,
+                one_sided=one_sided_positions(bounds, not_fixed),
             )
             res = verdict.res
 
