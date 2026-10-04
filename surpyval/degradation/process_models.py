@@ -55,6 +55,13 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils.dataframe import refuse_column_names
+from surpyval.utils.linalg import (
+    delta_method_se,
+    numerical_hessian,
+    sf_link_bound,
+    standard_errors_of,
+    wald_bound_on_support,
+)
 from surpyval.utils.no_maximum import (
     maximum_entry,
     restored_maximum,
@@ -65,6 +72,7 @@ from surpyval.utils.removed_names import RemovedNames
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import (
+    BOUNDS,
     check_alpha_ci,
     check_option,
     warn_outside_unit_interval,
@@ -293,6 +301,112 @@ def _minimise(
     return best
 
 
+def _covariance_of(
+    neg_ll: Callable[[npt.NDArray], float],
+    v_hat: npt.ArrayLike,
+    jac: npt.ArrayLike,
+    step: "npt.NDArray | None" = None,
+) -> "npt.NDArray | None":
+    """
+    The covariance of a process model's parameters (#666): the inverse of
+    the observed information, the numerical Hessian of ``neg_ll`` in the
+    coordinates ``v`` the fit searched, at the fitted ``v_hat``, carried
+    to the model's parameters by the delta method, with ``jac`` the
+    diagonal of ``d parameter / d v``. ``None`` where the Hessian is not
+    finite or not invertible.
+    """
+    v_hat = np.asarray(v_hat, dtype=float)
+    with np.errstate(all="ignore"):
+        H = numerical_hessian(neg_ll, v_hat, step)
+    if not np.all(np.isfinite(H)):
+        return None
+    try:
+        cov_v = np.linalg.inv(H)
+    except np.linalg.LinAlgError:
+        return None
+    if not np.all(np.isfinite(cov_v)):
+        return None
+    J = np.diag(np.asarray(jac, dtype=float))
+    return J @ cov_v @ J
+
+
+def _wiener_neg_ll(
+    dt: npt.NDArray, dy: npt.NDArray, s: "npt.NDArray | None"
+) -> Callable[[npt.NDArray], float]:
+    """The Wiener process's negative log-likelihood of ``v = [mu, log
+    sigma, g]`` (``g`` the scaled stress coefficients, none without
+    stress): independent increments ``dy ~ Normal(mu dtau, sigma**2
+    dtau)`` over clock steps ``dtau = dt exp(s g)``."""
+
+    def neg_ll(v: npt.NDArray) -> float:
+        mu, sigma2 = v[0], np.exp(2.0 * v[1])
+        dtau = dt if s is None else dt * np.exp(s @ v[2:])
+        return float(
+            0.5
+            * np.sum(
+                np.log(2.0 * np.pi * sigma2 * dtau)
+                + (dy - mu * dtau) ** 2 / (sigma2 * dtau)
+            )
+        )
+
+    return neg_ll
+
+
+def _gamma_neg_ll(
+    dt: npt.NDArray,
+    dy: npt.NDArray,
+    zero: npt.NDArray,
+    resolution: float,
+    s: "npt.NDArray | None",
+) -> Callable[[npt.NDArray], float]:
+    """The gamma process's negative log-likelihood of ``v = [log alpha,
+    log beta, g]`` (``g`` the scaled stress coefficients, none without
+    stress): each increment ``dy ~ Gamma(alpha dtau, beta)`` over its
+    clock step ``dtau = dt exp(s g)``, a ``zero`` one censored at the
+    ``resolution`` (``P(increment <= resolution)``)."""
+    pos = ~zero
+    dy_pos = dy[pos]
+    log_dy = np.log(dy_pos)
+    tiny = np.finfo(float).tiny
+
+    def neg_ll(v: npt.NDArray) -> float:
+        alpha, beta = np.exp(v[0]), np.exp(v[1])
+        dtau = dt if s is None else dt * np.exp(s @ v[2:])
+        k = alpha * dtau
+        kp = k[pos]
+        ll = np.sum(
+            kp * np.log(beta)
+            + (kp - 1.0) * log_dy
+            - beta * dy_pos
+            - gammaln(kp)
+        )
+        if zero.any():
+            below = gammainc(k[zero], beta * resolution)
+            ll += np.sum(np.log(np.maximum(below, tiny)))
+        return float(-ll)
+
+    return neg_ll
+
+
+def _gamma_covariance(
+    neg_ll: Callable[[npt.NDArray], float],
+    alpha: float,
+    beta: float,
+    g: "npt.NDArray | None" = None,
+    scale: "npt.NDArray | None" = None,
+    step: "npt.NDArray | None" = None,
+) -> "npt.NDArray | None":
+    """The covariance of a fitted gamma process's ``(alpha, beta,
+    gamma)`` from ``neg_ll`` of ``v = [log alpha, log beta, g]``
+    (:func:`_covariance_of`); ``gamma = g / scale``."""
+    g = np.zeros(0) if g is None else np.asarray(g, dtype=float)
+    jac = np.array([alpha, beta])
+    if scale is not None:
+        jac = np.concatenate([jac, 1.0 / np.asarray(scale, dtype=float)])
+    v_hat = np.concatenate([[np.log(alpha), np.log(beta)], g])
+    return _covariance_of(neg_ll, v_hat, jac, step)
+
+
 def _unit_steps(i: npt.ArrayLike) -> tuple[npt.NDArray, npt.NDArray]:
     """
     For each pooled increment of :func:`_increments`, its unit (numbered
@@ -483,6 +597,25 @@ class ProcessRUL:
             )
         )
 
+    def to_dict(self) -> dict:
+        """The summary as a plain dict of native floats, ready for
+        ``json.dumps`` (#666): ``rul``, ``rul_interval`` (a list of two),
+        ``prob_already_failed`` and ``alpha_ci``.
+
+        Examples
+        --------
+        >>> from surpyval.degradation import WienerProcessModel
+        >>> model = WienerProcessModel(mu=0.5, sigma=1.0, threshold=100)
+        >>> sorted(model.predict_rul(60.0).to_dict())
+        ['alpha_ci', 'prob_already_failed', 'rul', 'rul_interval']
+        """
+        return {
+            "rul": float(self.rul),
+            "rul_interval": [float(v) for v in self.rul_interval],
+            "prob_already_failed": float(self.prob_already_failed),
+            "alpha_ci": float(self.alpha_ci),
+        }
+
 
 # --------------------------------------------------------------------------
 # Shared first-passage machinery
@@ -516,6 +649,8 @@ class FirstPassageProcessModel(SerialisableMixin):
     _human_name: str
 
     parameter_names: list
+    #: The model's parameters, in the order of ``parameter_names``.
+    params: npt.NDArray
     threshold: float
     #: The degradation level a new unit starts at, at time zero: its life
     #: is the first passage over ``threshold - y0`` (#574).
@@ -733,10 +868,226 @@ class FirstPassageProcessModel(SerialisableMixin):
             return "Mean life (ref.)    : {:.6g}".format(mean)
         return "Mean time to failure: {:.6g}".format(mean)
 
+    # -- inference (#666) ---------------------------------------------------
+
+    #: The covariance of the fitted parameters (see :meth:`covariance`),
+    #: set by the fit; ``None`` for a model built from its parameters.
+    _covariance: "npt.NDArray | None" = None
+
+    @property
+    def covariance_names(self) -> list[str]:
+        """The names of the rows (and columns) of :meth:`covariance`, in
+        its order, which :meth:`param_cb` takes: the model's parameters
+        (``parameter_names``), then, for a model fitted with stress, the
+        stress coefficients ``gamma`` -- by the covariate column names of
+        a model fitted with ``fit_from_df``, else ``gamma_0``,
+        ``gamma_1``, ...
+
+        Examples
+        --------
+        >>> from surpyval.degradation import WienerProcessModel
+        >>> WienerProcessModel(0.5, 1.0, threshold=100).covariance_names
+        ['mu', 'sigma']
+        """
+        names = list(self.parameter_names)
+        if self.gamma is not None:
+            cols = self.Z_cols
+            if cols is not None and len(cols) == self.gamma.size:
+                names += [str(c) for c in cols]
+            else:
+                names += [f"gamma_{j}" for j in range(self.gamma.size)]
+        return names
+
+    def _estimates(self) -> npt.NDArray:
+        """The fitted parameters in the order of :attr:`covariance_names`."""
+        values = [float(getattr(self, n)) for n in self.parameter_names]
+        if self.gamma is not None:
+            values += list(self.gamma)
+        return np.asarray(values, dtype=float)
+
+    def _with_estimates(
+        self, values: npt.NDArray
+    ) -> "FirstPassageProcessModel":
+        """A copy of this model with the parameters ``values`` (in the
+        order of :attr:`covariance_names`), for the delta method."""
+        k = len(self.parameter_names)
+        model = type(self).__new__(type(self))
+        model.__dict__.update(self.__dict__)
+        for name, value in zip(self.parameter_names, values[:k]):
+            setattr(model, name, float(value))
+        model.params = np.asarray(values[:k], dtype=float)
+        if self.gamma is not None:
+            model.gamma = np.asarray(values[k:], dtype=float)
+        return model
+
+    def covariance(self) -> npt.NDArray:
+        """
+        The covariance of the fitted parameters, in the order of
+        :attr:`covariance_names`: the inverse of the observed information
+        (the numerical Hessian of the log-likelihood of the increments at
+        the fitted maximum, taken in the coordinates the fit searched and
+        carried to the parameters by the delta method). The starting level
+        ``y0`` is not a parameter of the likelihood and is held fixed.
+
+        Raises a ``ValueError`` where there is none: a model built from its
+        parameters, restored from a dict saved without it, or fitted where
+        the likelihood has no finite maximum or its information could not
+        be inverted.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.degradation import WienerProcess
+        >>> rng = np.random.default_rng(1)
+        >>> t = np.tile(np.arange(0, 110, 10.0), 5)
+        >>> i = np.repeat(np.arange(5), 11)
+        >>> steps = rng.normal(0.5 * 10, 1.0 * np.sqrt(10), size=(5, 10))
+        >>> y = np.hstack([np.r_[0.0, np.cumsum(s)] for s in steps])
+        >>> model = WienerProcess.fit(t, y, i, threshold=100)
+        >>> model.covariance().shape
+        (2, 2)
+        """
+        if self._covariance is None:
+            if self.maximum == "no finite maximum":
+                why = "its likelihood has no finite maximum"
+            elif self.maximum in ("verified", "unverified"):
+                why = (
+                    "the observed information at the fit could not be "
+                    "evaluated or inverted"
+                )
+            else:
+                why = (
+                    "it was built from its parameters, or restored from a "
+                    "dict saved without its covariance; refit it to the data"
+                )
+            raise ValueError(
+                f"This {self._human_name} model has no parameter "
+                f"covariance: {why}."
+            )
+        return np.array(self._covariance, dtype=float)
+
+    def standard_errors(self) -> npt.NDArray:
+        """
+        The standard errors of the fitted parameters, the square roots of
+        the diagonal of :meth:`covariance`, in the order of
+        :attr:`covariance_names`; ``nan`` where a variance is not
+        positive. Raises the ``ValueError`` of :meth:`covariance` where
+        the model has none.
+        """
+        return standard_errors_of(self.covariance())
+
+    def param_cb(
+        self,
+        name: str,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+    ) -> npt.NDArray:
+        """
+        The Wald confidence bound on one fitted parameter, from
+        :meth:`standard_errors`, on a scale that keeps it in the
+        parameter's support: the log of a positive parameter (the drift
+        ``mu`` and diffusion ``sigma``, or ``alpha`` and ``beta``) and the
+        natural scale of a stress coefficient. Where the variance is not
+        positive the bound is ``nan``, with a warning saying why.
+
+        Parameters
+        ----------
+        name : str
+            The parameter, one of :attr:`covariance_names`.
+        alpha_ci : float, optional
+            The total tail probability: 0.05 (the default) gives a 95%
+            bound.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds are returned as ``[lower, upper]``.
+
+        Returns
+        -------
+        numpy.ndarray
+            The bound(s) on the parameter.
+        """
+        check_alpha_ci(alpha_ci)
+        check_option("bound", bound, BOUNDS)
+        names = self.covariance_names
+        check_option("name", name, names)
+        idx = names.index(name)
+        var = float(self.covariance()[idx, idx])
+        positive = idx < len(self.parameter_names)
+        return wald_bound_on_support(
+            float(self._estimates()[idx]),
+            var,
+            0.0 if positive else None,
+            None,
+            alpha_ci,
+            bound,
+            name=name,
+        )
+
+    def cb(
+        self,
+        x: npt.ArrayLike,
+        on: str = "sf",
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        Z: Any = None,
+        *,
+        y0: "float | None" = None,
+    ) -> npt.NDArray:
+        """
+        Wald confidence bounds on the first-passage ``sf``, ``ff`` or
+        ``Hf`` at times ``x``, by the delta method from
+        :meth:`covariance`, formed on the logit of ``ff`` so they stay in
+        [0, 1] (as the univariate models' Wald bands). The starting level
+        ``y0`` is held fixed.
+
+        Parameters
+        ----------
+        x : array_like
+            The times.
+        on : {'sf', 'ff', 'Hf'}, optional
+            The function to bound (``'R'`` and ``'F'`` are accepted for
+            ``'sf'`` and ``'ff'``). Default ``'sf'``.
+        alpha_ci : float, optional
+            The total tail probability. Default 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds put ``[lower, upper]`` on the last axis, with
+            ``alpha_ci / 2`` in each tail. Default ``'two-sided'``.
+        Z, y0 : optional
+            The stress and the starting level, as for :meth:`ff`.
+
+        Returns
+        -------
+        numpy.ndarray
+            The bound(s), the shape of ``x`` (with a last axis of 2 for
+            two-sided bounds).
+        """
+        check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
+        on = {"R": "sf", "F": "ff"}.get(on, on)
+        check_alpha_ci(alpha_ci)
+        check_option("bound", bound, BOUNDS)
+        cov = self.covariance()
+        x_arr = np.asarray(x, dtype=float)
+        flat = np.atleast_1d(x_arr).ravel()
+        sf_hat = np.atleast_1d(self.sf(flat, Z, y0=y0))
+        ff_hat = np.atleast_1d(self.ff(flat, Z, y0=y0))
+
+        def sf_of(values: npt.NDArray) -> npt.NDArray:
+            model = self._with_estimates(values)
+            return np.atleast_1d(model.sf(flat, Z, y0=y0))
+
+        with np.errstate(all="ignore"):
+            se = delta_method_se(sf_of, self._estimates(), cov)
+        out = sf_link_bound(
+            sf_hat, se, alpha_ci, bound, "logit", ff_hat=ff_hat, on=on
+        )
+        shape = x_arr.shape + ((2,) if bound == "two-sided" else ())
+        return out.reshape(shape)
+
     # -- serialisation ------------------------------------------------------
 
     def to_dict(self) -> dict:
-        """Serialise this fitted process model to a plain dict."""
+        """Serialise this fitted process model to a plain dict (with the
+        parameter covariance of a fitted model, so a restored one keeps
+        :meth:`covariance`, :meth:`param_cb` and :meth:`cb`)."""
         out: dict = {"model": self._model_tag}
         for name in self.parameter_names:
             out[name] = getattr(self, name)
@@ -747,6 +1098,10 @@ class FirstPassageProcessModel(SerialisableMixin):
             out["stress_ref"] = self.stress_ref.tolist()
         if self.Z_cols is not None:
             out["Z_cols"] = list(self.Z_cols)
+        if self._covariance is not None:
+            out["covariance"] = np.asarray(
+                self._covariance, dtype=float
+            ).tolist()
         out.update(maximum_entry(self.maximum))
         return stamp_schema(out)
 
@@ -768,6 +1123,10 @@ class FirstPassageProcessModel(SerialisableMixin):
         )
         model.Z_cols = model_dict.get("Z_cols")
         model.maximum = restored_maximum(model_dict)
+        if model_dict.get("covariance") is not None:
+            model._covariance = np.asarray(
+                model_dict["covariance"], dtype=float
+            )
         return model
 
     # -- the failure-time distribution --------------------------------------
@@ -1409,6 +1768,11 @@ class WienerProcess(RemovedNames):
             )
             # the closed form is the maximum
             model.maximum = "verified"
+            model._covariance = _covariance_of(
+                _wiener_neg_ll(dt, dy, None),
+                [mu, np.log(sigma)],
+                [1.0, sigma],
+            )
             return model
 
         dt, dy, z_int = _increments_and_stress(x, y, i, Z)
@@ -1446,6 +1810,11 @@ class WienerProcess(RemovedNames):
             y0=_fitted_y0(y0, x, y, i, mu, g / scale, z_ref, Z),
         )
         model.maximum = maximum
+        model._covariance = _covariance_of(
+            _wiener_neg_ll(dt, dy, s),
+            np.concatenate([[mu, 0.5 * np.log(sigma2)], g]),
+            np.concatenate([[1.0, np.sqrt(sigma2)], 1.0 / scale]),
+        )
         return model
 
     @classmethod
@@ -1913,7 +2282,14 @@ class GammaProcess(RemovedNames):
                     maximum = "no finite maximum"
                 else:
                     alpha, beta, maximum = cls._verified_profile(dt, dy, alpha)
-            return cls._model(alpha, beta, threshold, y0, data, maximum)
+            cov = None
+            if maximum != "no finite maximum":
+                cov = _gamma_covariance(
+                    _gamma_neg_ll(dt, dy, zero, delta, None), alpha, beta
+                )
+            return cls._model(
+                alpha, beta, threshold, y0, data, maximum, covariance=cov
+            )
         return cls._stress_fit(data, threshold, stress_ref, resolution, y0)
 
     @classmethod
@@ -1936,8 +2312,19 @@ class GammaProcess(RemovedNames):
         s, z_ref, scale = _stress_design(z_int, stress_ref)
         if zero.any():
             alpha, beta, g, maximum = cls._censored_fit(dt, dy, zero, delta, s)
+            cov = _gamma_covariance(
+                _gamma_neg_ll(dt, dy, zero, delta, s), alpha, beta, g, scale
+            )
             return cls._model(
-                alpha, beta, threshold, y0, data, maximum, g / scale, z_ref
+                alpha,
+                beta,
+                threshold,
+                y0,
+                data,
+                maximum,
+                g / scale,
+                z_ref,
+                covariance=cov,
             )
         sum_dy = dy.sum()
         log_dy = np.log(dy)
@@ -1961,14 +2348,30 @@ class GammaProcess(RemovedNames):
         dtau = dt * np.exp(s @ v[1:])
         alpha = float(np.exp(v[0]))
         beta = alpha * float(dtau.sum()) / sum_dy
+        cov = None
         if cls._warn_if_noise_free(dtau, dy, alpha, beta, True):
             maximum = "no finite maximum"
         else:
             v, maximum = verified_search(neg_ll, res, len(dt), cls._WHAT)
             alpha = float(np.exp(v[0]))
             beta = alpha * float((dt * np.exp(s @ v[1:])).sum()) / sum_dy
+            cov = _gamma_covariance(
+                _gamma_neg_ll(dt, dy, zero, delta, s),
+                alpha,
+                beta,
+                v[1:],
+                scale,
+            )
         return cls._model(
-            alpha, beta, threshold, y0, data, maximum, v[1:] / scale, z_ref
+            alpha,
+            beta,
+            threshold,
+            y0,
+            data,
+            maximum,
+            v[1:] / scale,
+            z_ref,
+            covariance=cov,
         )
 
     #: The subject of the warning that a fit did not reach a verified
@@ -1985,16 +2388,20 @@ class GammaProcess(RemovedNames):
         maximum: str,
         gamma: "npt.NDArray | None" = None,
         z_ref: "npt.NDArray | None" = None,
+        covariance: "npt.NDArray | None" = None,
     ) -> "GammaProcessModel":
         """The fitted model, its ``y0`` as given or estimated from the
-        ``data`` ``(x, y, i, Z)`` at the mean rate ``alpha / beta``, and
-        the ``maximum`` the fit reached."""
+        ``data`` ``(x, y, i, Z)`` at the mean rate ``alpha / beta``, the
+        ``maximum`` the fit reached and the parameter ``covariance``."""
         x, y, i, Z = data
         start = _fitted_y0(y0, x, y, i, alpha / beta, gamma, z_ref, Z)
         model = GammaProcessModel(
             alpha, beta, threshold, gamma=gamma, stress_ref=z_ref, y0=start
         )
         model.maximum = maximum
+        # a fit with no finite maximum has no information to invert
+        if maximum != "no finite maximum":
+            model._covariance = covariance
         return model
 
     @classmethod
@@ -2083,24 +2490,8 @@ class GammaProcess(RemovedNames):
         """
         pos = ~zero
         dy_pos = dy[pos]
-        log_dy = np.log(dy_pos)
         q = 0 if s is None else s.shape[1]
-        tiny = np.finfo(float).tiny
-
-        def neg_ll(v: npt.NDArray) -> float:
-            alpha, beta = np.exp(v[0]), np.exp(v[1])
-            dtau = dt if s is None else dt * np.exp(s @ v[2:])
-            k = alpha * dtau
-            kp = k[pos]
-            ll = np.sum(
-                kp * np.log(beta)
-                + (kp - 1.0) * log_dy
-                - beta * dy_pos
-                - gammaln(kp)
-            )
-            below = gammainc(k[zero], beta * resolution)
-            ll += np.sum(np.log(np.maximum(below, tiny)))
-            return float(-ll)
+        neg_ll = _gamma_neg_ll(dt, dy, zero, resolution, s)
 
         # start from the fit to the positive increments alone
         alpha0, beta0 = cls._profile_fit(dt[pos], dy_pos)
@@ -2246,10 +2637,30 @@ class GammaProcess(RemovedNames):
         v, maximum = verified_search(neg_ll, res, 1.0, cls._WHAT)
         alpha, beta = float(np.exp(v[0])), float(np.exp(v[1]))
         data = (x, y, i, Z)
+        # The quantised likelihood carries round-off noise (see above), so
+        # its Hessian is taken with a step well above it.
+        cov = _gamma_covariance(
+            lambda u: len(dt) * neg_ll(u),
+            alpha,
+            beta,
+            v[2:] if s is not None else None,
+            scale if s is not None else None,
+            step=1e-4 * np.maximum(np.abs(v), 1.0),
+        )
         if s is None:
-            return cls._model(alpha, beta, threshold, y0, data, maximum)
+            return cls._model(
+                alpha, beta, threshold, y0, data, maximum, covariance=cov
+            )
         return cls._model(
-            alpha, beta, threshold, y0, data, maximum, v[2:] / scale, z_ref
+            alpha,
+            beta,
+            threshold,
+            y0,
+            data,
+            maximum,
+            v[2:] / scale,
+            z_ref,
+            covariance=cov,
         )
 
     @staticmethod

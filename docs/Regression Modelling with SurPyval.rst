@@ -3737,7 +3737,10 @@ A forest averages many such trees, each grown on a bootstrap sample and
 considering a random subset of ``n_features_split`` covariates at each split.
 Its ``sf(x, Z)``, like a tree's, returns a grid for a covariate matrix — one
 row per covariate row, one column per time — unlike the element-wise
-regression models, and its ``score(x, Z, c)``
+regression models; ``grid=False`` pairs row ``i`` with ``x[i]`` as they do,
+and ``grid=True`` asks for the grid. Without ``grid``, as many times as rows
+warns (``FutureWarning``) that a future release will pair them. Its
+``score(x, Z, c)``
 is the concordance of its mortality score (with the same ``ties`` option and
 default as ``concordance_index``). Trees and forests follow the
 package's :ref:`missing-value rule <missing-values>`: a row with a missing covariate is

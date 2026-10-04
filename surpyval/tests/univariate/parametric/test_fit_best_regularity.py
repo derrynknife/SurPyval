@@ -321,3 +321,58 @@ def test_every_candidate_is_its_own_fit():
             getattr(data, attr), getattr(fresh, attr)
         )
     np.testing.assert_array_equal(best.params, seen[best.dist.name].params)
+
+
+def test_666_return_table_ranks_every_candidate():
+    from surpyval import LogNormal, fit_best
+
+    np.random.seed(0)
+    x = LogNormal.random(60, 3, 0.5)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        alone = fit_best(x, include=["Weibull", "LogNormal", "Beta"])
+        model, table = fit_best(
+            x, include=["Weibull", "LogNormal", "Beta"], return_table=True
+        )
+    # the default is unchanged, and the table's first row is the model
+    assert type(alone) is type(model)
+    assert alone.params == pytest.approx(model.params)
+    assert list(table.columns) == [
+        "model",
+        "aic",
+        "delta",
+        "weight",
+        "status",
+        "reason",
+    ]
+    assert table.loc[0, "model"] == model.dist.name
+    assert table.loc[0, "status"] == "chosen"
+    assert table.loc[0, "delta"] == 0.0
+    assert table.loc[0, "aic"] == pytest.approx(model.aic())
+    ranked = table[table["status"].isin(["chosen", "ranked"])]
+    assert ranked["weight"].sum() == pytest.approx(1.0)
+    assert (np.diff(ranked["aic"]) >= 0).all()
+    # the Beta cannot hold the data, and says so
+    beta = table[table["model"] == "Beta"].iloc[0]
+    assert beta["status"] == "outside support"
+    assert np.isnan(beta["aic"]) and np.isnan(beta["weight"])
+    assert "support" in beta["reason"]
+
+
+def test_666_return_table_neg_ll_has_no_weights_and_shows_set_aside():
+    from surpyval import Weibull, fit_best
+
+    np.random.seed(1)
+    x = Weibull.random(40, 10, 2)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        _, table = fit_best(
+            x,
+            include=["Weibull", "Uniform"],
+            metric="neg_ll",
+            return_table=True,
+        )
+    assert table["weight"].isna().all()
+    uniform = table[table["model"] == "Uniform"].iloc[0]
+    assert uniform["status"] == "set aside"
+    assert "support ends" in uniform["reason"]

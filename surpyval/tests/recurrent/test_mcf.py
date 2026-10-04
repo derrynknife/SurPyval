@@ -175,3 +175,13 @@ class TestMCFConfidenceBounds:
         m = self._model()
         out = np.asarray(m.mcf_cb(np.array([8.5])))
         assert out[0, 0] < out[0, 1]
+
+
+def test_666_fitted_mcf_repr_says_what_it_is():
+    model = NonParametricCounting.fit(
+        [2, 4, 6, 3, 5], [1, 1, 1, 2, 2], [0, 0, 1, 0, 1]
+    )
+    text = repr(model)
+    assert "object at" not in text
+    assert "Mean cumulative function" in text
+    assert "2 items: 3 events at 3 unique times" in text

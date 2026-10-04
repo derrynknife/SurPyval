@@ -22,6 +22,7 @@ from surpyval.beta.ml.forest.tree import (
     drop_missing_covariate_rows,
     feature_labels,
     parse_kind,
+    query_layout,
     resolve_random_state,
 )
 from surpyval.metrics.concordance import concordance_index
@@ -391,6 +392,8 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         x: int | float | ArrayLike,
         Z: ArrayLike | NDArray,
         ensemble_method: str = "sf",
+        *,
+        grid: "bool | None" = None,
     ) -> NDArray:
         """Returns the ensemble survival function
 
@@ -408,48 +411,91 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             node survival functions or cumulative hazard functions.
             For these respectively, ensemble_method must be "sf" or
             "Hf". Defaults to "sf".
+        grid : bool, optional
+            ``True`` evaluates every time for every row of ``Z`` (a 1-D
+            ``Z`` is one row); ``False`` pairs row ``i`` of ``Z`` with
+            ``x[i]`` (a single row is used at every time, a single time
+            for every row), as every regression model does (#666). Not
+            given, a 2-D ``Z`` gives the grid, as it always has; with as
+            many times as rows, where pairing would apply, it warns
+            (``FutureWarning``) that a future release will pair them, so
+            pass ``grid=True`` to keep the grid.
 
         Returns
         -------
         NDArray
-            For a 1-D ``Z``, the survival function at ``x``, shaped like
-            ``x`` (a scalar for a scalar ``x``). For a 2-D ``Z``, a grid of
-            shape ``(n_rows,) + x.shape`` whose row ``i`` is the survival
-            function for ``Z[i]`` (every row at every time). A covariate
-            vector with a missing (NaN) value gives NaN, and leaves the
-            other rows unaffected.
+            For a 1-D ``Z`` (and no ``grid``), the survival function at
+            ``x``, shaped like ``x`` (a scalar for a scalar ``x``). On the
+            grid, shape ``(n_rows,) + x.shape``, row ``i`` the survival
+            function for ``Z[i]``. Paired, the shape of ``x`` (or
+            ``(n_rows,)`` for a single time). A covariate vector with a
+            missing (NaN) value gives NaN, and leaves the other rows
+            unaffected.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.beta.ml import RandomSurvivalForest
+        >>> rng = np.random.default_rng(0)
+        >>> Z = rng.uniform(0, 1, (200, 2))
+        >>> x = rng.weibull(2.0, 200) * np.where(Z[:, 0] > 0.5, 5.0, 10.0)
+        >>> forest = RandomSurvivalForest.fit(
+        ...     x, Z, n_trees=5, max_depth=1, kind="exponential",
+        ...     random_state=0,
+        ... )
+        >>> rows = [[0.2, 0.5], [0.8, 0.5]]
+        >>> forest.sf([2.0, 5.0], rows, grid=True).shape
+        (2, 2)
+        >>> forest.sf([2.0, 5.0], rows, grid=False).shape
+        (2,)
         """
         # Anything but 'Hf' used to be taken silently as 'sf'.
         check_option("ensemble_method", ensemble_method, ("sf", "Hf"))
         if ensemble_method == "Hf":
-            Hf = self._apply_model_function_to_trees("Hf", x, Z)
+            Hf = self._apply_model_function_to_trees("Hf", x, Z, grid)
             return np.exp(-Hf)
-        return self._apply_model_function_to_trees("sf", x, Z)
+        return self._apply_model_function_to_trees("sf", x, Z, grid)
 
     def ff(
-        self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
+        self,
+        x: int | float | ArrayLike,
+        Z: ArrayLike | NDArray,
+        *,
+        grid: "bool | None" = None,
     ) -> NDArray:
         """Failure (CDF) function averaged over the trees, as for
         :meth:`sf`."""
-        return self._apply_model_function_to_trees("ff", x, Z)
+        return self._apply_model_function_to_trees("ff", x, Z, grid)
 
     def df(
-        self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
+        self,
+        x: int | float | ArrayLike,
+        Z: ArrayLike | NDArray,
+        *,
+        grid: "bool | None" = None,
     ) -> NDArray:
         """Density averaged over the trees, as for :meth:`sf`."""
-        return self._apply_model_function_to_trees("df", x, Z)
+        return self._apply_model_function_to_trees("df", x, Z, grid)
 
     def hf(
-        self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
+        self,
+        x: int | float | ArrayLike,
+        Z: ArrayLike | NDArray,
+        *,
+        grid: "bool | None" = None,
     ) -> NDArray:
         """Hazard rate averaged over the trees, as for :meth:`sf`."""
-        return self._apply_model_function_to_trees("hf", x, Z)
+        return self._apply_model_function_to_trees("hf", x, Z, grid)
 
     def Hf(
-        self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
+        self,
+        x: int | float | ArrayLike,
+        Z: ArrayLike | NDArray,
+        *,
+        grid: "bool | None" = None,
     ) -> NDArray:
         """Cumulative hazard averaged over the trees, as for :meth:`sf`."""
-        return self._apply_model_function_to_trees("Hf", x, Z)
+        return self._apply_model_function_to_trees("Hf", x, Z, grid)
 
     def mortality(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
@@ -459,7 +505,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         hazard summed over the times ``x`` (the risk score used by
         :meth:`score`).
         """
-        mortality = np.atleast_2d(self.Hf(x, Z)).sum(1)
+        mortality = np.atleast_2d(self.Hf(x, Z, grid=True)).sum(1)
         return np.clip(mortality, 0, np.finfo(np.float64).max)
 
     def _apply_model_function_to_trees(
@@ -467,9 +513,11 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         function_name: str,
         x: int | float | ArrayLike,
         Z: ArrayLike | NDArray,
+        grid: "bool | None" = None,
     ) -> NDArray:
         # The times flat; the result gets their shape back (on its last
         # axis for a grid), so a scalar time gives a scalar.
+        x_scalar = np.ndim(x) == 0
         x, restore = flatten_query(x)
         if isinstance(Z, pd.DataFrame):
             # Read by the fitted names (or expanded by the formula)
@@ -492,14 +540,34 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
                     "forest",
                 )
 
+        layout = query_layout(
+            function_name,
+            "RandomSurvivalForest",
+            x_scalar,
+            x.size,
+            1 if single_covariant_vector else 2,
+            Z.shape[0],
+            grid,
+        )
+        if layout == "paired":
+            # Each tree evaluates row i at time x[i] (#666)
+            paired = np.zeros(x.size, dtype=np.float64)
+            for tree in self.trees:
+                paired += tree.apply_model_function(
+                    function_name, x, Z, grid=False
+                )
+            return restore(paired / self.n_trees)
+
         # Each tree routes every row to its own leaf and returns an
         # (n_rows, x.size) grid
         res = np.zeros((Z.shape[0], x.size), dtype=np.float64)
         for tree in self.trees:
-            res += tree.apply_model_function(function_name, x, Z)
+            res += tree.apply_model_function(function_name, x, Z, grid=True)
         res = res / self.n_trees
-        if single_covariant_vector:
+        if layout == "single" or layout == "row":
             return restore(res[0])
+        if layout == "time":
+            return res[:, 0]
         return restore(res, axis=-1)
 
     def score(

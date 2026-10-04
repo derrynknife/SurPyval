@@ -587,3 +587,88 @@ def test_a_wiener_model_pickled_before_y0_existed_loads():
     assert old.y0 == 0.0
     assert old.sf(15.0) == pytest.approx(model.sf(15.0))
     assert pickle.loads(pickle.dumps(model)).y0 == model.y0
+
+
+def _wiener_data(seed: int = 1, n_units: int = 5) -> tuple:
+    rng = np.random.default_rng(seed)
+    t = np.tile(np.arange(0, 110, 10.0), n_units)
+    i = np.repeat(np.arange(n_units), 11)
+    steps = rng.normal(0.5 * 10, 1.0 * np.sqrt(10), size=(n_units, 10))
+    y = np.hstack([np.r_[0.0, np.cumsum(s)] for s in steps])
+    return t, y, i
+
+
+def test_666_wiener_standard_errors_match_the_closed_form():
+    from surpyval.degradation import WienerProcess
+
+    t, y, i = _wiener_data()
+    model = WienerProcess.fit(t, y, i, threshold=100)
+    assert model.covariance_names == ["mu", "sigma"]
+    # dy ~ N(mu dt, sigma^2 dt): var(mu) = sigma^2 / sum(dt), var(sigma) =
+    # sigma^2 / (2 n) for n increments
+    se = model.standard_errors()
+    np.testing.assert_allclose(
+        se,
+        [model.sigma / np.sqrt(500.0), model.sigma / np.sqrt(100.0)],
+        rtol=1e-4,
+    )
+    lo, hi = model.param_cb("mu")
+    assert 0 < lo < model.mu < hi
+    assert model.param_cb("sigma", bound="lower").shape == (1,)
+    with pytest.raises(ValueError, match="name"):
+        model.param_cb("drift")
+
+
+def test_666_process_cb_brackets_sf_and_survives_a_round_trip():
+    from surpyval.degradation import WienerProcess, WienerProcessModel
+
+    t, y, i = _wiener_data()
+    model = WienerProcess.fit(t, y, i, threshold=100)
+    x = np.array([150.0, 200.0, 250.0])
+    cb = model.cb(x)
+    sf = model.sf(x)
+    assert cb.shape == (3, 2)
+    assert np.all((cb[:, 0] < sf) & (sf < cb[:, 1]))
+    ff = model.cb(x, on="ff")
+    np.testing.assert_allclose(ff, 1 - cb[:, ::-1], atol=1e-12)
+    assert model.cb(200.0, bound="lower").shape == ()
+    restored = WienerProcessModel.from_dict(model.to_dict())
+    np.testing.assert_allclose(restored.covariance(), model.covariance())
+    with pytest.raises(ValueError, match="built from its parameters"):
+        WienerProcessModel(0.5, 1.0, threshold=100).standard_errors()
+
+
+def test_666_gamma_and_stress_models_have_standard_errors():
+    from surpyval.degradation import GammaProcess, WienerProcess
+
+    rng = np.random.default_rng(1)
+    t = np.tile(np.arange(0, 110, 10.0), 6)
+    i = np.repeat(np.arange(6), 11)
+    Z = np.where(i < 3, 1.0, 2.0)
+    steps = rng.gamma(shape=2.0 * 10, scale=0.25, size=(6, 10))
+    steps[3:] *= 2.0
+    y = np.hstack([np.r_[0.0, np.cumsum(s)] for s in steps])
+    plain = GammaProcess.fit(t[i < 3], y[i < 3], i[i < 3], threshold=100)
+    assert plain.covariance_names == ["alpha", "beta"]
+    assert np.all(np.isfinite(plain.standard_errors()))
+    lo, hi = plain.param_cb("alpha")
+    assert 0 < lo < plain.alpha < hi
+    stressed = GammaProcess.fit(t, y, i, threshold=100, Z=Z)
+    assert stressed.covariance_names == ["alpha", "beta", "gamma_0"]
+    assert np.all(np.isfinite(stressed.standard_errors()))
+    gauged = GammaProcess.fit(t, np.round(y / 2) * 2, i, 100, gauge=2.0)
+    assert np.all(np.isfinite(gauged.standard_errors()))
+    wiener = WienerProcess.fit(t, y, i, threshold=100, Z=Z)
+    assert wiener.covariance_names == ["mu", "sigma", "gamma_0"]
+    assert wiener.cb([150.0], Z=[1.0]).shape == (1, 2)
+
+
+def test_666_process_rul_to_dict_is_json_ready():
+    import json
+
+    from surpyval.degradation import WienerProcessModel
+
+    model = WienerProcessModel(mu=0.5, sigma=1.0, threshold=100)
+    d = model.predict_rul(60.0).to_dict()
+    assert json.loads(json.dumps(d))["rul"] == pytest.approx(d["rul"])
+    assert isinstance(d["rul_interval"], list)

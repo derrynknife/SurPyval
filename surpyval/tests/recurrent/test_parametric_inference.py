@@ -539,3 +539,22 @@ def test_578_regression_iif_cb_brackets_iif():
     hpp = ProportionalIntensityHPP.fit(x, Z, i, c)
     ratio = hpp.iif_cb(t, [0.0]) / hpp.iif(t, [0.0])[:, None]
     np.testing.assert_allclose(ratio, ratio[0] * np.ones((3, 1)))
+
+
+def test_666_intensity_and_proportional_intensity_models_have_summary():
+    from surpyval.recurrent import ProportionalIntensityHPP
+
+    x = [3, 8, 12, 15, 20, 4, 6, 9, 11, 13, 20]
+    i = [1] * 5 + [2] * 6
+    c = [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1]
+    model = CrowAMSAA.fit(x, i, c)
+    table = model.summary(alpha_ci=0.1)
+    assert list(table.index) == model.parameter_names
+    assert list(table.columns) == ["estimate", "se", "lower 90%", "upper 90%"]
+    np.testing.assert_allclose(table["se"], model.standard_errors())
+    np.testing.assert_allclose(
+        table.loc["beta", ["lower 90%", "upper 90%"]],
+        model.param_cb("beta", alpha_ci=0.1),
+    )
+    pi = ProportionalIntensityHPP.fit(x, [[0.0]] * 5 + [[1.0]] * 6, i, c)
+    assert list(pi.summary().index) == pi.parameter_names

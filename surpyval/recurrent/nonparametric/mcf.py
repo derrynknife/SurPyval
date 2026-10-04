@@ -70,8 +70,44 @@ class NonParametricCounting(
         # A fitted estimate is an instance of this class too: it is not
         # the fitter.
         if hasattr(self, "mcf_hat"):
-            return object.__repr__(self)
+            return self._fitted_repr()
         return super().__repr__()
+
+    def _fitted_repr(self) -> str:
+        """The printout of a fitted estimate, as its siblings' (#666): what
+        it is, the data it was fitted to, and the MCF at the last event
+        time. It was the default ``<... object at 0x...>``."""
+        title = "Non-Parametric Recurrence SurPyval Model"
+        lines = [
+            title,
+            "=" * len(title),
+            "Model            : Mean cumulative function (Nelson-Aalen)",
+        ]
+        data = getattr(self, "data", None)
+        if data is not None:
+            c = np.asarray(data.c)
+            n = np.asarray(data.n)
+            events = int(np.sum(n[c == 0]))
+            times = int(np.unique(np.asarray(data.x)[c == 0]).size)
+            items = len(data.items)
+            lines.append(
+                "Data             : {} item{}: {} event{} at {} unique "
+                "time{}".format(
+                    items,
+                    "" if items == 1 else "s",
+                    events,
+                    "" if events == 1 else "s",
+                    times,
+                    "" if times == 1 else "s",
+                )
+            )
+        if np.size(self.mcf_hat):
+            lines.append(
+                "MCF at last time : {:.6g} at t = {:.6g}".format(
+                    float(self.mcf_hat[-1]), float(self.x[-1])
+                )
+            )
+        return "\n".join(lines)
 
     # Set on the instance the fit returns, not in __init__ -- the
     # singleton fitter is called on a bare class and hands back a

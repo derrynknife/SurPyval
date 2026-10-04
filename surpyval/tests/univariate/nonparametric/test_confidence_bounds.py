@@ -329,3 +329,25 @@ def test_cb_and_friends_reject_unknown_bound():
         model.plot(bound="both")
     with pytest.raises(ValueError, match="'bound'"):
         model.bootstrap_cb(2, bound="both", n_boot=5)
+
+
+def test_666_cb_takes_alpha_ci_third_as_every_model_does():
+    model = surpyval.KaplanMeier.fit(
+        [5, 8, 12, 15, 20, 22, 30], [1, 0, 0, 1, 0, 0, 1]
+    )
+    np.testing.assert_array_equal(
+        model.cb([10.0], "sf", 0.1), model.cb([10.0], alpha_ci=0.1)
+    )
+    np.testing.assert_array_equal(
+        model.cb([10.0], "sf", 0.1, "lower"),
+        model.cb([10.0], alpha_ci=0.1, bound="lower"),
+    )
+    # the old order still reads as before, with a warning
+    with pytest.warns(DeprecationWarning, match="old order"):
+        old = model.cb([10.0], "sf", "lower", "step", 0.1)
+    np.testing.assert_array_equal(
+        old, model.cb([10.0], alpha_ci=0.1, bound="lower")
+    )
+    with pytest.warns(DeprecationWarning):
+        with pytest.raises(TypeError, match="multiple values"):
+            model.cb([10.0], "sf", "lower", bound="upper")

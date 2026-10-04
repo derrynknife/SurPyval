@@ -329,3 +329,69 @@ class LikelihoodInferenceMixin:
         return wald_bound_on_support(
             p_hat, var, lower, upper, alpha_ci, bound, name=name
         )
+
+    def summary(self, alpha_ci: float = 0.05) -> Any:
+        """
+        The fitted parameters with their standard errors and Wald
+        intervals, one row per entry of :attr:`parameter_names`, as the
+        renewal models' ``summary`` (#666).
+
+        The intervals are those of :meth:`param_cb`: on the log scale for
+        a positive parameter, on its own scale for an unbounded one (a
+        regression coefficient). A parameter whose variance is not
+        positive (an estimate on a boundary), or that was not estimated
+        (an aliased coefficient), has ``nan`` for its standard error and
+        interval.
+
+        Parameters
+        ----------
+        alpha_ci : float, optional
+            The intervals' total tail probability. Default 0.05.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Columns ``estimate``, ``se``, ``lower <level>`` and
+            ``upper <level>``.
+
+        Examples
+        --------
+        >>> from surpyval.recurrent import CrowAMSAA
+        >>> x = [1, 3, 5, 7, 2, 4, 9, 10, 1.5, 6]
+        >>> i = [1, 1, 1, 1, 2, 2, 2, 2, 3, 3]
+        >>> c = [0, 0, 0, 1, 0, 0, 0, 1, 0, 1]
+        >>> model = CrowAMSAA.fit(x, i, c)
+        >>> model.summary().round(3)  # doctest: +NORMALIZE_WHITESPACE
+               estimate     se  lower 95%  upper 95%
+        alpha     3.272  1.632      1.231      8.695
+        beta      0.995  0.367      0.483      2.052
+        """
+        import pandas as pd
+
+        check_alpha_ci(alpha_ci)
+        self._check_fitted()
+        with warnings.catch_warnings():
+            # A boundary is reported in the table (nan), not warned.
+            warnings.simplefilter("ignore")
+            cov = self.covariance()
+        level = "{:g}%".format(100 * (1 - alpha_ci))
+        rows = []
+        for k, (value, (lo, hi)) in enumerate(
+            zip(np.asarray(self._mle, dtype=float), self._parameter_bounds())
+        ):
+            var = float(cov[k, k])
+            if not (np.isfinite(value) and var > 0):
+                rows.append([value, np.nan, np.nan, np.nan])
+                continue
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                cb = wald_bound_on_support(
+                    float(value), var, lo, hi, alpha_ci, "two-sided"
+                )
+            rows.append([value, np.sqrt(var), cb[0], cb[1]])
+        return pd.DataFrame(
+            rows,
+            index=self.parameter_names,
+            columns=["estimate", "se", f"lower {level}", f"upper {level}"],
+            dtype=float,
+        )
