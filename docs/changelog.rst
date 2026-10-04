@@ -1,6 +1,31 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+**Fixed**
+
+- An offset fit's ``gamma`` is capped by the smallest value that constrains
+  it -- an exact failure, a left-censoring time (without zero inflation) or
+  an interval's upper end -- rather than by the smallest value of any row
+  (#633). On interval inspection data the offset was pinned at the first
+  interval start and the bound reported as a verified maximum: 7.8
+  log-likelihood units short on 500 Weibull units inspected every 3. A
+  right-censored time or an interval start below the offset meets the
+  survival function at 1, which the likelihood now holds there for a
+  custom cumulative hazard too. A fit the cap stopped short of the first
+  failure now reaches it: where the likelihood is unbounded there (a shape
+  below 1) it warns "No finite maximum" instead of reporting the cap as a
+  verified maximum.
+- The same bound made a Rayleigh offset fit on interval data run onto the
+  first interval start and warn "No finite maximum", where 0.22 found the
+  interior maximum (#632, since 0.23).
+- An offset fit with zero inflation and left-censored rows raised
+  (``OutsideSupportError`` for a Weibull, "x cannot contain NaN" for a
+  LogNormal) before the search started: the starting offset was taken
+  above a left-censored row's imputed point (#631, since 0.23).
+
 v0.23 (4 October 2026)
 ----------------------
 

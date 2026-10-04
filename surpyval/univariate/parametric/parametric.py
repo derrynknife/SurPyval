@@ -198,6 +198,33 @@ def resolve_distribution(name: str, custom: bool = False) -> Any:
 _QUANTILE_BLOCK = 2**10 - 1
 
 
+def _offset_upper(data: dict, zi: bool) -> float:
+    """The upper bound of an offset fit's ``gamma``: the smallest value
+    that constrains it, where the likelihood needs the distribution's
+    support to have started -- an exact failure, a left-censoring time or
+    an interval's upper end. A right-censored time, an interval's lower
+    end and a truncation time below ``gamma`` only meet the survival
+    function at 1 (the CDF at 0), as the likelihood already computes
+    them; capping the offset there pinned it below its maximum on
+    interval inspection data and reported the bound as a verified
+    maximum (#633). With ``zi`` exact zeros belong to the zero-inflation
+    mass, and a left-censoring time is met by it, so neither caps the
+    continuous part's offset. Data with no
+    such value (all right censored) keep the smallest value of all."""
+    x = np.asarray(data["x"], dtype=float)
+    c = np.asarray(data["c"])
+    upper = x[:, -1] if x.ndim == 2 else x
+    constrains = c != 1
+    if zi:
+        # (with zero inflation a left-censoring time is met by the mass at
+        # 0 whatever the offset)
+        constrains &= ~((c == 0) & (upper == 0)) & (c != -1)
+    if np.any(constrains):
+        return float(np.min(upper[constrains]))
+    everything = x[x != 0] if zi else x
+    return float(np.min(everything))
+
+
 def _first_reaching(
     values: Callable[[npt.NDArray], npt.NDArray],
     start: float,
@@ -382,12 +409,7 @@ class Parametric(
 
         if offset:
             if data is not None:
-                x_min = np.asarray(data["x"])
-                if zi:
-                    # Exact zeros belong to the zero-inflation mass, so
-                    # they must not cap the offset of the continuous part
-                    x_min = x_min[x_min != 0]
-                bounds = ((None, np.min(x_min)), *bounds)
+                bounds = ((None, _offset_upper(data, zi)), *bounds)
             else:
                 bounds = ((None, None), *bounds)
 

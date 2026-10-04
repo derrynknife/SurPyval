@@ -614,12 +614,26 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
             + N * np.log(p - f0)
         )
 
+    def _shifted_censored(self, x: npt.NDArray, gamma: Any) -> Any:
+        """A censored time ``x`` less the offset ``gamma``, held at the
+        support's lower edge: a right-censored time (or, with zero
+        inflation, a left-censoring time) below the offset does not cap it
+        (``parametric._offset_upper``, #633), and there the survival
+        function is 1 and the CDF 0 -- the edge's values, which a family's
+        own functions give below it but a custom cumulative hazard need
+        not (``(x / alpha) ** beta`` is NaN for a negative ``x``)."""
+        x = x - gamma
+        lo = float(self.support[0])
+        if np.isfinite(lo):
+            x = np.maximum(x, lo)
+        return x
+
     @_check_x_not_empty
     def ll_right_censored(
         self, x: npt.NDArray, n: npt.NDArray, *params: Any
     ) -> Any:
         *dist_params, gamma, f0, p = params
-        x = x - gamma
+        x = self._shifted_censored(x, gamma)
         if p == 1:
             return np.sum(n * (np.log1p(-f0) + self.log_sf(x, *dist_params)))
         else:
@@ -631,7 +645,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         self, x: npt.NDArray, n: npt.NDArray, *params: Any
     ) -> Any:
         *dist_params, gamma, f0, p = params
-        x = x - gamma
+        x = self._shifted_censored(x, gamma)
         if f0 == 0:
             # No zero-inflation: F_mix = p * F, so the numerically stable
             # log_ff path applies (the branch was inverted as ``f0 == 1``,

@@ -868,8 +868,18 @@ class FitInputsMixin:
                 # points shifted by it
                 imputed = _imputed_data(x_init, c_init, n_init)
                 if offset:
+                    # Below the imputed points too: a left-censored row is
+                    # imputed half way down to the smallest value, which
+                    # with ``zi`` is an exact zero, below the nonzero data
+                    # the start was taken from; shifted by it, the seed's
+                    # data went negative and the initialiser refused them
+                    # (#631)
                     x_nonzero = x[x != 0] if zi else x
-                    init = self._offset_seed(imputed, _offset_start(x_nonzero))
+                    start = _offset_start(x_nonzero)
+                    lowest = float(np.min(x_init)) if x_init.size else start
+                    if lowest <= start:
+                        start = lowest - offset_step(x_nonzero)
+                    init = self._offset_seed(imputed, start)
                 else:
                     init = np.array(self._parameter_initialiser(imputed))
 
