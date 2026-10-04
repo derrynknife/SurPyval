@@ -304,18 +304,19 @@ def flat_profiles(
     on a WeibullPO run along a separating direction to coefficients of
     1.6e6 and -668 (a profile curvature of 1e-13 beside a largest of 1e8).
     A parameter that does not enter the likelihood at all is flat at the
-    start too, and is left out (:func:`_flat_at_start`); so is one that
-    ``_cleared`` shows to be at a maximum."""
+    start too, and is left out (:func:`_flat_at_start`).
+
+    ``_cleared`` is no guide here: a Newton step computed from a Hessian
+    singular to rounding is rounding itself, and it cleared an accelerated
+    life ``a`` of 1.2e5 running off with ``log c`` at -266 (a profile
+    curvature of 2e-9 beside a largest of 6e6)."""
     H, g = derivatives
     at = np.asarray(x, dtype=float)
     if start is None or not (np.all(np.isfinite(H)) and np.all(np.isfinite(g))):
         return []
-    cleared = _cleared(at, H, g)
     tol = at.size * float(np.finfo(float).eps) * np.linalg.norm(H, 2)
     out = []
     for k, j in enumerate(coefs):
-        if cleared[j]:
-            continue
         others = [i for i in range(at.size) if i != j]
         v = np.zeros(at.size)
         v[j] = 1.0
