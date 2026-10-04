@@ -351,6 +351,12 @@ Unreleased
   ``r`` stalled it); Crow-AMSAA uses its closed-form MLE on a common
   window; renewal ``param_cb(method="lr")``; an Exponential life warns
   that ``q``/``rho`` cannot be estimated, and an ``init`` on a bound fits.
+- Kijima-II likelihood keeps the gaps of items aged far beyond them
+  (#630): the survival's drop was lost to rounding, and on Kijima-I data
+  the likelihood seemed to rise without bound in ``q``. MPS checks its
+  answer is an optimum: a parameter running off says "No finite
+  maximum" (it ended in silence where BFGS reported success), and an
+  offset ExpoWeibull MPS fit that cannot converge fails in 2 s, not 34 s.
 
 v0.23 (4 October 2026)
 ----------------------

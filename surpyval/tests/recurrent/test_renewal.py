@@ -274,3 +274,55 @@ def test_665_a_memoryless_life_warns_that_restoration_is_unestimable(
             model = fitter.fit(x, i, c, dist=Exponential, **kwargs)
         # The HPP's rate: failures over the total time observed
         assert model.model.params[0] == pytest.approx(10 / 23, rel=1e-6)
+
+
+def _kijima_i_sample(seed, q=0.4, alpha=100.0, beta=2.5, units=6, T=400.0):
+    """Kijima-I failures of a Weibull life, ``units`` items to ``T``."""
+    rng = np.random.default_rng(seed)
+    x, i, c = [], [], []
+    for unit in range(units):
+        t = v = 0.0
+        while True:
+            # The gap from virtual age v: H(v + y) - H(v) = -log(u)
+            h = (v / alpha) ** beta - np.log(rng.uniform())
+            y = alpha * h ** (1 / beta) - v
+            t += y
+            if t > T:
+                break
+            x.append(t)
+            i.append(unit)
+            c.append(0)
+            v += q * y
+        x.append(T)
+        i.append(unit)
+        c.append(1)
+    return np.array(x), np.array(i), np.array(c)
+
+
+def test_630_kijima_ii_likelihood_keeps_the_gaps_of_aged_items():
+    # Kijima-II on Kijima-I data: at q = 611 the virtual ages reach 1e30
+    # within a dozen failures, v + x rounded to v, every survival drop
+    # read 0 and the likelihood appeared to rise without bound (-172
+    # there against -284 at the maximum, q = 0.95); larger samples ended
+    # "unverified" at q = 4. The drops are integrated from the hazard
+    # there now, and the likelihood falls away from its maximum.
+    x, i, c = _kijima_i_sample(0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = GeneralizedRenewal.fit(x, i, c, kijima="ii")
+    assert model.maximum == "verified"
+    assert model.q == pytest.approx(0.954, abs=1e-3)
+    far = -model._neg_ll(np.array([611.0, 88.5, 1.04]))
+    assert far < model.log_likelihood - 5
+    # One aged gap against its exact drop, -(H(v + x) - H(v))
+    from surpyval import Weibull
+    from surpyval.recurrent.renewal.generalized_renewal import (
+        _accurate_where_aged,
+    )
+
+    v, gap = np.array([1e18]), np.array([11.0])
+    ll_o, ll_right = _accurate_where_aged(
+        Weibull, (88.0, 1.5), v, gap, np.zeros(1), np.zeros(1)
+    )
+    exact = -1.5 * gap * (v / 88.0) ** 0.5 / 88.0
+    assert ll_right[0] == pytest.approx(exact[0], rel=1e-12)

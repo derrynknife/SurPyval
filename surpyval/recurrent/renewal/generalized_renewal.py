@@ -58,6 +58,52 @@ def kijima_ii_from_prev_interarrival(
     )
 
 
+#: Below this ratio of a gap to the virtual age it starts from, the
+#: survival's drop over the gap is integrated from the hazard
+#: (``_accurate_where_aged``).
+_AGED = 1e-3
+
+
+def _accurate_where_aged(
+    dist: Any,
+    params: Any,
+    age: np.ndarray,
+    gap: np.ndarray,
+    ll_o: np.ndarray,
+    ll_right: np.ndarray,
+) -> "tuple[np.ndarray, np.ndarray]":
+    """The log-likelihood terms ``(ll_o, ll_right)`` of the gaps far
+    shorter than the virtual age they start from, recomputed (#630).
+
+    The survival's drop over a gap, ``log S(v + x) - log S(v)``, is the
+    difference of two logs of size ``H(v)``. Once ``v`` dwarfs ``x`` it is
+    lost to rounding, and ``v + x`` itself rounds to ``v`` from ``v / x``
+    of 1e16: a Kijima-II ``q`` of 611 ages an item to 1e30 within a dozen
+    failures, every drop read 0 or a rounding step, and the likelihood
+    appeared to rise without bound (-172 at q = 611 against -284 at the
+    maximum, q = 0.95). The drop is minus the hazard's integral over the
+    gap, taken by Simpson's rule there (to a relative ``(x / v)**4``),
+    and the density term is the hazard at ``v + x`` times that survival.
+    Computed as before elsewhere, bit for bit.
+    """
+    with np.errstate(all="ignore"):
+        aged = gap < _AGED * age
+    if not np.any(aged):
+        return ll_o, ll_right
+    v, x = age[aged], gap[aged]
+    with np.errstate(all="ignore"):
+        h0 = dist.hf(v, *params)
+        h_mid = dist.hf(v + 0.5 * x, *params)
+        h1 = dist.hf(v + x, *params)
+        drop = -x / 6.0 * (h0 + 4.0 * h_mid + h1)
+        density = np.log(h1) + drop
+    ll_o = np.array(ll_o, dtype=float)
+    ll_right = np.array(ll_right, dtype=float)
+    ll_o[aged] = density
+    ll_right[aged] = drop
+    return ll_o, ll_right
+
+
 class KijimaIIVirtualAges:
     """
     The Kijima-II virtual ages ``V_k = q * (V_{k-1} + X_k)`` for many items
@@ -331,6 +377,9 @@ class GeneralizedRenewal(RenewalFitMixin):
                 log_sf_v = dist.log_sf(virtual_ages, *params)
                 ll_o = dist.log_df(x_new, *params) - log_sf_v
                 ll_right = dist.log_sf(x_new, *params) - log_sf_v
+            ll_o, ll_right = _accurate_where_aged(
+                dist, params, virtual_ages, x_interarrival, ll_o, ll_right
+            )
             ll = np.where(c == 0, ll_o, 0)
             ll = np.where(c == 1, ll_right, ll)
 
