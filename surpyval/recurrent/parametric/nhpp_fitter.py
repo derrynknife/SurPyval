@@ -119,6 +119,14 @@ class NHPPFitter(IntensityModel):
         from the non-parametric MCF (``mcf_hat`` at ``x_unique``)."""
         return self.parameter_initialiser(data.x)
 
+    def _closed_form_mle(
+        self, data: RecurrentEventData
+    ) -> "np.ndarray | None":
+        """The exact maximum-likelihood parameters where the model has a
+        closed form for ``data``, else ``None`` (the default): the search
+        is then run."""
+        return None
+
     def fit_from_recurrent_data(
         self,
         data: RecurrentEventData,
@@ -182,6 +190,10 @@ class NHPPFitter(IntensityModel):
             return float(value) if np.isfinite(value) else 1e300
 
         ll_func = self.create_negll_func(data) if how == "MLE" else None
+        exact = self._closed_form_mle(data) if how == "MLE" else None
+        if exact is not None:
+            assert ll_func is not None
+            return self._closed_form_model(data, exact, ll_func, mcf_hat)
 
         def search_ll(u: np.ndarray) -> float:
             assert ll_func is not None
@@ -249,6 +261,35 @@ class NHPPFitter(IntensityModel):
             )
             model._mle = np.asarray(params, dtype=float)
             model._n_obs = bic_sample_size(data)
+        return model
+
+    def _closed_form_model(
+        self,
+        data: RecurrentEventData,
+        params: np.ndarray,
+        ll_func: Callable,
+        mcf_hat: np.ndarray,
+    ) -> ParametricRecurrenceModel:
+        """The fitted model at the closed-form MLE ``params``: exact,
+        so a verified maximum, with no search (``res`` records the
+        likelihood there)."""
+        params = np.asarray(params, dtype=float)
+        model = ParametricRecurrenceModel()
+        model.mcf_hat = mcf_hat
+        model.res = OptimizeResult(
+            x=params,
+            fun=float(ll_func(params)),
+            success=True,
+            message="closed-form maximum-likelihood estimate",
+        )
+        model.params = params
+        model.data = data
+        model.dist = self
+        model.how = "MLE"
+        model.maximum = "verified"
+        model._neg_ll = Rebuilt(self.create_negll_func, (data,), built=ll_func)
+        model._mle = params
+        model._n_obs = bic_sample_size(data)
         return model
 
     def fit(
@@ -339,9 +380,9 @@ class NHPPFitter(IntensityModel):
         >>> c = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
         >>> model = CrowAMSAA.fit(x, i=i, c=c)
         >>> model.params
-        array([7.82428586, 0.73833691])
+        array([7.82423499, 0.73833571])
         >>> model.cif(60)
-        np.float64(4.49998940938965)
+        np.float64(4.5)
         """
         data = handle_xicn(
             x,

@@ -439,6 +439,7 @@ class GeneralizedRenewal(RenewalFitMixin):
             renewal_restoration=0.0001,
         )
         q, *dist_params = params
+        self._warn_if_memoryless(dist, "q")
         model = dist.from_params(list(dist_params))
         out = self._make_model(model, q, kijima)
         # The likelihood kept as what it is built from, so the model

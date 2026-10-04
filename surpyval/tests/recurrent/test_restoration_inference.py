@@ -355,3 +355,28 @@ def test_663_restored_models_say_they_carry_no_data():
         ValueError, match="restored with from_dict / from_json"
     ):
         restored.cif_cb(10.0)
+
+
+def test_665_profile_interval_for_an_interior_restoration_parameter():
+    # method="lr": the values the likelihood-ratio test does not reject,
+    # from the estimate out on each side; the Wald interval on a Kijima q
+    # under-covered (83% for a nominal 90%).
+    x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2])
+    c = np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1])
+    i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3])
+    model = rc.GeneralizedOneRenewal.fit(x, i, c)
+    q = float(model._mle[0])
+    lower, upper = model.param_cb("q", alpha_ci=0.1, method="lr")
+    assert lower < q < upper
+    crit = chi2.ppf(0.9, 1)
+    for end in (lower, upper):
+        drop = 2 * (model.log_likelihood - model._profile_ll(end))
+        assert drop == pytest.approx(crit, abs=1e-5)
+    # A one-sided bound is the two-sided one's end at twice alpha.
+    assert model.param_cb("q", 0.05, "upper", method="lr")[0] == (
+        pytest.approx(upper, rel=1e-6)
+    )
+    with pytest.raises(ValueError, match="restoration parameter 'q' only"):
+        model.param_cb("alpha", method="lr")
+    with pytest.raises(ValueError, match="'method' must be one of"):
+        model.param_cb("q", method="profile")

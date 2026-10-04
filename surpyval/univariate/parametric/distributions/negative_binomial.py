@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from math import comb
 from typing import Any
 
@@ -24,6 +25,7 @@ from surpyval.utils.autograd_gamma_compat import (
     betaincln,
     betaln_accurate,
 )
+from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ._discrete_tails import refine_quantile
@@ -46,6 +48,13 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
     It generalises the Geometric (``r = 1``) and, being overdispersed
     relative to the Poisson, is the natural discrete model for
     shock-accumulation lifetimes and heterogeneous count data.
+
+    As ``r`` grows with the mean fixed it tends to a (shifted) Poisson,
+    ``T = 1 + Y`` with ``Y`` Poisson. On data no more dispersed than a
+    Poisson the maximum likelihood fit runs towards that limit, which it
+    never reaches, and warns ("No finite maximum", suggesting ``Poisson``
+    on ``x - 1``); its ``r`` and ``p`` and their bounds are then
+    meaningless.
 
     .. code:: python
 
@@ -71,8 +80,10 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
     ) -> npt.NDArray:
         # Method-of-moments seed from the shifted counts Y = T - 1: for the
         # negative binomial mean_Y = r(1-p)/p and var_Y = mean_Y / p, so
-        # p = mean_Y / var_Y and r = mean_Y p / (1 - p). Falls back to a
-        # neutral guess when the data are not overdispersed.
+        # p = mean_Y / var_Y and r = mean_Y p / (1 - p). Data that are not
+        # overdispersed start out towards the Poisson limit, where their
+        # likelihood rises (``_warn_if_at_limit``): from r = 4, p = 1/2 the
+        # search took twice as long to get there (#665).
         x = data.x
         finite = x[np.isfinite(x)]
         y = finite - 1.0 if finite.size else np.array([1.0])
@@ -82,8 +93,72 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
             p = mean_y / var_y
             r = mean_y * p / (1.0 - p)
         else:
-            p, r = 0.5, max(mean_y, 1.0)
+            r = 1e3
+            p = r / (r + mean_y)
         return np.array([min(max(r, 1e-2), 1e3), min(max(p, 1e-3), 1 - 1e-3)])
+
+    def _warn_if_at_limit(
+        self,
+        surv_data: SurpyvalData,
+        results: dict,
+        zi: bool,
+        lfp: bool,
+    ) -> bool:
+        """Warn when the likelihood is highest in the Poisson limit
+        (#665), as ``BetaGeometric`` does for its Geometric limit.
+
+        As ``r`` grows with the mean ``r (1 - p) / p`` fixed, ``T - 1``
+        tends to a Poisson. On data no more dispersed than that (seven
+        counts from 4 to 6) the likelihood keeps rising towards the limit,
+        which it never reaches: the fit ended at r = 299 "unverified",
+        with the generic message, below the shifted Poisson's
+        log-likelihood (-11.917 against -11.876).
+
+        The criterion compares the fit with its limit, the Poisson fitted
+        to ``x - 1`` (with the same limited failure population): it is at
+        least as likely, allowing the margin within which the fitter
+        treats two starts' answers as equal. An interior maximum is
+        strictly more likely than the limit it contains, so an ordinary
+        fit is never flagged. Zero inflation is left to the generic
+        checks: the NegativeBinomial's structural zeros are at 0, the
+        shifted Poisson's would be at 1.
+        """
+        from .poisson import Poisson
+
+        neg_ll = results.get("_neg_ll")
+        params = np.asarray(results.get("params", []), dtype=float)
+        if (
+            zi
+            or neg_ll is None
+            or results.get("gamma", 0)
+            or not np.all(np.isfinite(params))
+        ):
+            return super()._warn_if_at_limit(surv_data, results, zi, lfp)
+        try:
+            shifted = SurpyvalData(
+                surv_data.x - 1.0, surv_data.c, surv_data.n, surv_data.t - 1.0
+            )
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                limit = Poisson.fit_from_surpyval_data(shifted, lfp=lfp)
+        except ValueError:
+            return super()._warn_if_at_limit(surv_data, results, zi, lfp)
+        margin = 1e-9 * max(1.0, abs(limit._neg_ll))
+        if neg_ll < limit._neg_ll - margin:
+            return super()._warn_if_at_limit(surv_data, results, zi, lfp)
+        r, p = params
+        warn_no_maximum(
+            "the NegativeBinomial likelihood keeps increasing towards its "
+            "Poisson limit (r growing without bound, the mean r (1 - p) / p "
+            "fixed), which the Poisson fit to x - 1 reaches "
+            f"(mu = {limit.params[0]:.4g}, log-likelihood "
+            f"{-limit._neg_ll:.6g} against {-neg_ll:.6g}): the data are "
+            "no more dispersed than a Poisson",
+            f"The reported r = {r:.4g} and p = {p:.4g}, their standard "
+            "errors and their bounds are meaningless",
+            "use Poisson on x - 1",
+        )
+        return True
 
     def sf(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:
         r"""Survival function :math:`R(k) = I_{1-p}(k, r)`."""

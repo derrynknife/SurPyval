@@ -343,6 +343,14 @@ Unreleased
   from ``fit_from_recurrent_data`` as each item's end of observation, as
   a ``c=1`` row at ``tr`` and the NHPP fitters do (#624); it was ignored,
   giving the fit without the item's last event-free stretch.
+- Numerical and inference edges (#665): non-parametric ``cb`` before the
+  first value is the estimate, ``[1, 1]`` on ``sf`` (it was NaN), and
+  past the last it warns; Wiener-process ``sf``/``ff``/``Hf`` at inf are
+  0, 1, inf; NegativeBinomial says "No finite maximum" towards its
+  Poisson limit, in a third of the time (a halved gradient at whole
+  ``r`` stalled it); Crow-AMSAA uses its closed-form MLE on a common
+  window; renewal ``param_cb(method="lr")``; an Exponential life warns
+  that ``q``/``rho`` cannot be estimated, and an ``init`` on a bound fits.
 
 v0.23 (4 October 2026)
 ----------------------

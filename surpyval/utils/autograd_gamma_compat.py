@@ -457,8 +457,11 @@ def log_gamma_ratio(y: Boxable, a: Boxable) -> Boxable:
         z_safe = anp.where(below, z, 1.0)
         shifted = shifted + anp.where(below, anp.log1p(a / z_safe), 0.0)
         z = anp.where(below, z + 1.0, z)
-    # z >= 10 here for every y > 0.
-    z = anp.maximum(z, _ASYMPTOTIC_FROM)
+    # z >= 10 here for every y > 0. (A ``where``, not ``maximum``: at a
+    # tie, z = 10 exactly from y = 1, 2, ..., 10, autograd's ``maximum``
+    # gives each side half the gradient, and d/dy came out halved. A
+    # NegativeBinomial fit from r = 4 could not move, #665.)
+    z = anp.where(z < _ASYMPTOTIC_FROM, _ASYMPTOTIC_FROM, z)
     return (
         (z - 0.5) * anp.log1p(a / z)
         + a * anp.log(z + a)

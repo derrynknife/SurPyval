@@ -1571,10 +1571,20 @@ class WienerProcessModel(FirstPassageProcessModel):
         # Inverse-Gaussian first-passage CDF over ``distance``.
         t = np.asarray(t, dtype=float)
         out = np.zeros_like(t, dtype=float)
-        pos = t > 0
+        pos = (t > 0) & np.isfinite(t)
         a, log_second = self._ig_terms(t[pos], distance)
         out[pos] = np.minimum(norm.cdf(a) + np.exp(log_second), 1.0)
+        out[np.isposinf(t)] = self._ff_at_infinity(distance)
         return out
+
+    def _ff_at_infinity(self, distance: float) -> float:
+        # The probability of ever crossing ``distance``: 1 with a positive
+        # drift, and exp(2 mu D / sigma**2) below 1 otherwise. Set at
+        # t = inf directly, where the Inverse-Gaussian terms are inf * 0
+        # (#665: sf, ff and Hf at inf were nan with a RuntimeWarning).
+        if self.mu > 0:
+            return 1.0
+        return float(np.exp(2.0 * self.mu * distance / self.sigma**2))
 
     def _log_sf_distance(
         self, t: npt.ArrayLike, distance: float
@@ -1585,12 +1595,13 @@ class WienerProcessModel(FirstPassageProcessModel):
         # ``1 - F`` is lost to rounding.
         t = np.asarray(t, dtype=float)
         out = np.zeros_like(t, dtype=float)
-        pos = t > 0
+        pos = (t > 0) & np.isfinite(t)
         a, log_second = self._ig_terms(t[pos], distance)
         log_upper = log_ndtr(-a)
         ratio = np.minimum(log_second - log_upper, 0.0)
         with np.errstate(divide="ignore"):
             out[pos] = log_upper + np.log(-np.expm1(ratio))
+            out[np.isposinf(t)] = np.log1p(-self._ff_at_infinity(distance))
         return out
 
     def _sf_distance(self, t: npt.ArrayLike, distance: float) -> npt.NDArray:
@@ -1600,7 +1611,7 @@ class WienerProcessModel(FirstPassageProcessModel):
         # Log density of the first-passage (Inverse-Gaussian) time.
         nu, lam = self._ig(distance)
         out = np.full_like(t, -np.inf, dtype=float)
-        pos = t > 0
+        pos = (t > 0) & np.isfinite(t)
         tp = t[pos]
         out[pos] = 0.5 * np.log(lam / (2.0 * np.pi * tp**3)) - lam * (
             tp - nu

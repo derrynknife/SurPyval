@@ -38,6 +38,51 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
     fitter_kind = "imperfect repair fitter"
 
     @staticmethod
+    def _warn_if_memoryless(dist: Any, restoration_name: str) -> None:
+        """Warn that the restoration parameter cannot be estimated with a
+        memoryless (Exponential) life (#665). A virtual-age model's repair
+        acts through the age it leaves, and an Exponential's hazard does
+        not depend on age, so the likelihood is the same for every value:
+        that of a homogeneous Poisson process. The fit reported q = 17
+        with an interval from 6e-86 to 5e87, in silence."""
+        if getattr(dist, "name", None) != "Exponential":
+            return
+        import warnings
+
+        from surpyval.utils.warnings import caller_stacklevel
+
+        warnings.warn(
+            "{name} cannot be estimated with an Exponential life: its "
+            "hazard does not depend on age, so the age a repair leaves "
+            "makes no difference, and the likelihood is the same for "
+            "every {name} (that of a homogeneous Poisson process). The "
+            "reported {name}, its standard error and its bounds are "
+            "meaningless; fit the HPP (surpyval.recurrent.HPP) instead, or "
+            "use a life whose hazard changes with age (such as "
+            "Weibull).".format(name=restoration_name),
+            UserWarning,
+            stacklevel=caller_stacklevel(),
+        )
+
+    @staticmethod
+    def _inside_bounds(init: np.ndarray, bounds: list) -> np.ndarray:
+        """A user ``init`` with any value on a finite bound of its range
+        moved just inside it: the searches run in a space where the bound
+        is at infinity, so a start on it (a Kijima ``q`` of 0, which
+        perfect repair suggests) failed as "did not converge" (#665)."""
+        out = np.array(init, dtype=float)
+        for k, (lo, hi) in enumerate(bounds):
+            if lo is not None and hi is not None:
+                margin = 1e-4 * (hi - lo)
+            else:
+                margin = 1e-4 * max(1.0, abs(out[k]))
+            if lo is not None and out[k] <= lo:
+                out[k] = lo + margin
+            elif hi is not None and out[k] >= hi:
+                out[k] = hi - margin
+        return out
+
+    @staticmethod
     def _polish_unverified(
         neg_ll: Callable, params: np.ndarray, bounds: list, n_obs: float
     ) -> np.ndarray:
@@ -314,6 +359,9 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
                         init.size,
                     )
                 )
+            init = self._inside_bounds(
+                init, [restoration_bounds, *dist.bounds]
+            )
         res = self._multistart(fit_once, inits, init, neg_ll, polish)
         params = self._polish_unverified(
             neg_ll,

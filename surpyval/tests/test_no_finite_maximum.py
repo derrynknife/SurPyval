@@ -284,6 +284,29 @@ def test_an_ordinary_beta_geometric_fit_is_silent():
 
 
 # ---------------------------------------------------------------------------
+# NegativeBinomial: the Poisson limit (#665)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("c", [None, [0, 0, 0, 0, 0, 0, 1]])
+def test_a_negative_binomial_fit_in_its_poisson_limit_warns(c):
+    # Under-dispersed counts: it ended at r = 299 "unverified", with the
+    # generic message, after 2.9 s.
+    model, caught = _caught(sp.NegativeBinomial.fit, [4, 5, 5, 6, 5, 4, 6], c)
+    _one_no_maximum(caught, "Poisson limit", "use Poisson on x - 1")
+    assert model.maximum == "no finite maximum"
+    shifted = sp.Poisson.fit(np.array([4, 5, 5, 6, 5, 4, 6]) - 1.0, c)
+    assert model.log_likelihood <= shifted.log_likelihood + 1e-8
+
+
+def test_an_ordinary_negative_binomial_fit_is_silent():
+    x = sp.NegativeBinomial.random(200, 3.0, 0.4, random_state=0)
+    model, caught = _caught(sp.NegativeBinomial.fit, x)
+    _silent(caught)
+    assert model.maximum == "verified"
+
+
+# ---------------------------------------------------------------------------
 # Univariate: a point mass at the edge of a truncation window is refused,
 # as one inside every row's set already was (#462)
 # ---------------------------------------------------------------------------

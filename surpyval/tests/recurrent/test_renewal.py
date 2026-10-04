@@ -252,3 +252,25 @@ def test_g1_weibull_fit_emits_no_warnings():
             REPAIR_FLEET_X, REPAIR_FLEET_I, REPAIR_FLEET_C
         )
     assert model.q == pytest.approx(0.2163, abs=1e-3)
+
+
+@pytest.mark.parametrize(
+    "fitter, name, init",
+    [(GeneralizedRenewal, "q", [0.0, 0.2]), (ARA, "rho", [1.0, 0.2])],
+)
+def test_665_a_memoryless_life_warns_that_restoration_is_unestimable(
+    fitter, name, init
+):
+    # With an Exponential life every value of the restoration parameter
+    # has the HPP's likelihood: q = 17 was reported, in silence, and a
+    # start on the edge of its range (q = 0) failed to converge.
+    from surpyval import Exponential
+
+    x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2])
+    c = np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1])
+    i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3])
+    for kwargs in ({}, {"init": init}):
+        with pytest.warns(UserWarning, match=name + " cannot be estimated"):
+            model = fitter.fit(x, i, c, dist=Exponential, **kwargs)
+        # The HPP's rate: failures over the total time observed
+        assert model.model.params[0] == pytest.approx(10 / 23, rel=1e-6)

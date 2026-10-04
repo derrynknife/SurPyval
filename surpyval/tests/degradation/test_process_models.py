@@ -672,3 +672,18 @@ def test_666_process_rul_to_dict_is_json_ready():
     d = model.predict_rul(60.0).to_dict()
     assert json.loads(json.dumps(d))["rul"] == pytest.approx(d["rul"])
     assert isinstance(d["rul_interval"], list)
+
+
+def test_665_wiener_functions_at_infinity():
+    # 0, 1 and inf without a warning, as every univariate distribution
+    # gives; they were NaN with "invalid value encountered in multiply".
+    model = WienerProcessModel(0.5, 1.0, 10.0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert model.sf(np.inf) == 0.0
+        assert model.ff(np.inf) == 1.0
+        assert model.Hf(np.inf) == np.inf
+        assert model.df(np.inf) == 0.0
+        np.testing.assert_allclose(
+            model.sf([5.0, np.inf]), [model.sf(5.0), 0.0], rtol=1e-15
+        )

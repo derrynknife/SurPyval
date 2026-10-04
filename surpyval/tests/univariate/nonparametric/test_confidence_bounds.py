@@ -351,3 +351,26 @@ def test_666_cb_takes_alpha_ci_third_as_every_model_does():
     with pytest.warns(DeprecationWarning):
         with pytest.raises(TypeError, match="multiple values"):
             model.cb([10.0], "sf", "lower", bound="upper")
+
+
+@pytest.mark.parametrize(
+    "fitter",
+    [
+        surpyval.KaplanMeier,
+        surpyval.NelsonAalen,
+        surpyval.FlemingHarrington,
+    ],
+)
+def test_665_bounds_before_the_first_and_past_the_last_value(fitter):
+    # Before the first value the estimate is exactly 1, and so are its
+    # bounds, as lifelines gives; they were NaN. Past the last they stay
+    # NaN, with a warning naming the values (sf there holds its last
+    # value).
+    model = fitter.fit([5, 8, 12, 15, 20, 22, 30], [1, 0, 0, 1, 0, 0, 1])
+    np.testing.assert_array_equal(model.cb([1, 4.9]), [[1, 1], [1, 1]])
+    np.testing.assert_array_equal(model.cb(1, on="ff"), [0, 0])
+    np.testing.assert_array_equal(model.cb(1, on="Hf"), [0, 0])
+    np.testing.assert_array_equal(model.cb(1, bound="lower"), 1)
+    with pytest.warns(UserWarning, match=r"x = 100, past the last .* 30"):
+        past = model.cb([1, 100])
+    assert np.isnan(past[1]).all() and np.all(past[0] == 1)
