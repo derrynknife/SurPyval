@@ -37,11 +37,13 @@ Z = np.array([0.0] * 6 + [1.0] * 5 + [0.5] * 5)[:, None]
 
 FITS = [
     pytest.param(ProportionalIntensityHPP, {}, id="HPP"),
-    pytest.param(ProportionalIntensityNHPP, {"dist": Duane}, id="Duane"),
+    pytest.param(ProportionalIntensityNHPP, {"baseline": Duane}, id="Duane"),
     pytest.param(
-        ProportionalIntensityNHPP, {"dist": CrowAMSAA}, id="CrowAMSAA"
+        ProportionalIntensityNHPP, {"baseline": CrowAMSAA}, id="CrowAMSAA"
     ),
-    pytest.param(ProportionalIntensityNHPP, {"dist": CoxLewis}, id="CoxLewis"),
+    pytest.param(
+        ProportionalIntensityNHPP, {"baseline": CoxLewis}, id="CoxLewis"
+    ),
 ]
 
 
@@ -114,12 +116,12 @@ def test_constant_column_is_kept_without_a_baseline_scale():
     dist = Unscaled()
     dist.has_scale = False
     model, caught = _fit(
-        ProportionalIntensityNHPP, np.c_[Z, np.ones(16)], dist=dist
+        ProportionalIntensityNHPP, np.c_[Z, np.ones(16)], baseline=dist
     )
     assert not [w for w in caught if "cannot be estimated" in str(w.message)]
     assert model.aliased.size == 0
     model, caught = _fit(
-        ProportionalIntensityNHPP, np.c_[Z, np.zeros(16)], dist=dist
+        ProportionalIntensityNHPP, np.c_[Z, np.zeros(16)], baseline=dist
     )
     assert len(caught) == 1 and "all zero" in str(caught[0].message)
     np.testing.assert_array_equal(model.aliased, [1])

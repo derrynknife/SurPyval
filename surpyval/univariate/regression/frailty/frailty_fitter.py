@@ -52,6 +52,7 @@ from surpyval.utils import (
 from surpyval.utils.covariates import coefficient_floor, coefficient_names
 from surpyval.utils.fitter_repr import FitterRepr, baseline_name
 from surpyval.utils.linalg import numerical_hessian
+from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .._aliasing import covariate_columns, expand, fit_columns
@@ -731,6 +732,7 @@ class FrailtyFitter(FitterRepr):
         model._fit_data = {"x": x, "c": c, "w": w, "Z": Zc, "inv": inv}
         return model
 
+    @column_arguments("x", "c", "n")
     def fit_from_df(
         self,
         df: pd.DataFrame,

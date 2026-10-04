@@ -21,6 +21,7 @@ import numpy as np
 import numpy.typing as npt
 
 from surpyval.utils.numeric import solve_bracketed
+from surpyval.utils.removed_names import removed_arguments
 
 # Expanding a bracket doubles its step: 2000 doublings pass the largest
 # float from any start, so a search that has not reached its target by
@@ -38,6 +39,7 @@ class ConditionalSurvivalMixin:
 
     Hf: Callable[..., Any]
 
+    @removed_arguments("0.23", X="'given'")
     def cs(
         self,
         x: npt.ArrayLike,
@@ -107,7 +109,14 @@ class ConditionalSurvivalMixin:
         xs, gs = np.broadcast_arrays(
             np.asarray(x, dtype=float), np.asarray(given, dtype=float)
         )
-        end = self.Hf(xs + gs, Z, *args, **kwargs)
+        try:
+            end = self.Hf(xs + gs, Z, *args, **kwargs)
+        except TypeError as error:
+            # An argument cs passed on that Hf does not take is cs's
+            # mistake to report (#653), not Hf's.
+            if "Hf()" not in str(error) or "argument" not in str(error):
+                raise
+            raise TypeError(str(error).replace("Hf()", "cs()")) from None
         start = self.Hf(gs, Z, *args, **kwargs)
         with np.errstate(invalid="ignore"):
             out = np.exp(np.asarray(start, dtype=float) - end)

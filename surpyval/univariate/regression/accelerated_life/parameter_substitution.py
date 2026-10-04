@@ -369,13 +369,12 @@ class ParameterSubstitutionFitter(
         for col in cols:
             if np.any(np.asarray(Z_arr[:, col], dtype=float) <= 0):
                 raise ValueError(
-                    "The {} life model needs strictly positive stresses "
-                    "(column {} of Z has a value <= 0): it raises the stress "
-                    "to a power or takes its logarithm. Shift or rescale the "
-                    "stress, or use a life model defined there (e.g. "
-                    "Linear or ExponentialLifeModel).".format(
-                        self.life_model.name, col
-                    )
+                    f"The {self.life_model.name} life model needs strictly "
+                    f"positive stresses (column {col} of Z has a value <= "
+                    "0): it raises the stress to a power or takes its "
+                    "logarithm. Shift or rescale the stress, or use a life "
+                    "model defined there (e.g. life_models.Linear or "
+                    "life_models.Exponential)."
                 )
 
     def _aliased_stresses(

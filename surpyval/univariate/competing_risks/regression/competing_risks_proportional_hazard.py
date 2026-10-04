@@ -53,6 +53,7 @@ from surpyval.utils.no_maximum import (
     maximum_entry,
     restored_maximum,
 )
+from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import (
     check_option,
@@ -577,6 +578,7 @@ class CompetingRisksProportionalHazards(
         return before * -np.expm1(-total) * share
 
     @classmethod
+    @column_arguments("x", "c", "n")
     def fit_from_df(
         cls,
         df: Any,

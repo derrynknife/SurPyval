@@ -31,6 +31,10 @@ if TYPE_CHECKING:
     import pandas as pd
 
 from surpyval.utils import is_missing_event, refuse_time_values
+from surpyval.utils.removed_names import (
+    column_arguments,
+    removed_message,
+)
 
 
 class fitter_method:
@@ -96,8 +100,11 @@ def refuse_column_names(options: Mapping[str, Any], *names: str) -> None:
     for name in names:
         if name in options:
             raise TypeError(
-                f"fit_from_df() got an unexpected keyword argument "
-                f"'{name}'; name the column with '{name}_col'"
+                removed_message(
+                    "fit_from_df() got an unexpected keyword argument "
+                    f"'{name}'",
+                    (f"name the column with '{name}_col'", "0.23"),
+                )
             )
 
 
@@ -342,6 +349,7 @@ class RecurrentDataFrameMixin:
     row per event (or end of observation) and a column of unit ids."""
 
     @fitter_method
+    @column_arguments("x", "i", "c", "n")
     def fit_from_df(
         self,
         df: pd.DataFrame,
@@ -470,6 +478,7 @@ class RecurrentRegressionDataFrameMixin:
     a column of unit ids and covariate columns."""
 
     @fitter_method
+    @column_arguments("x", "i", "c", "n")
     def fit_from_df(
         self,
         df: pd.DataFrame,
@@ -562,6 +571,7 @@ class RegressionDataFrameMixin:
     columns or a formula, and the univariate time columns."""
 
     @fitter_method
+    @column_arguments("x", "c", "n", "xl", "xr", "tl", "tr")
     def fit_from_df(
         self,
         df: pd.DataFrame,

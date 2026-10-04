@@ -100,7 +100,9 @@ class ProportionalIntensityModel(
     >>> c = 1 - data['arrest'].values
     >>> i = np.arange(len(x))  # one item per subject
     >>> Z = data[["fin", "age", "race", "wexp", "mar", "paro", "prio"]].values
-    >>> model = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=CrowAMSAA)
+    >>> model = ProportionalIntensityNHPP.fit(
+    ...     x, Z, i=i, c=c, baseline=CrowAMSAA
+    ... )
     >>> type(model).__name__
     'ProportionalIntensityModel'
     >>> model.cif([1, 2, 3], Z.mean(axis=0))

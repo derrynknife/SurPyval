@@ -125,3 +125,8 @@ def pytest_addoption(parser):
 def pytest_configure(config):
     if config.getoption("--doctest-force-numeric"):
         doctest.OutputChecker.check_output = _forced_check_output
+
+
+# ``surpyval/utils/score.py`` raises on import, to say where its function
+# went (#653): the ``--doctest-modules`` run must not import it.
+collect_ignore = ["surpyval/utils/score.py"]

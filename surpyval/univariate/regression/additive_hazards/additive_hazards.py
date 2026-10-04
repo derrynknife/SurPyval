@@ -57,6 +57,7 @@ from surpyval.serialisation import (
 from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import safe_inv
+from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.shapes import keeps_query_shape
 
 from .._aliasing import (
@@ -673,6 +674,7 @@ class AdditiveHazards_(FitterRepr):
         model._fit_data = (x, c, n, Z)
         return model
 
+    @column_arguments("x", "c", "n")
     def fit_from_df(
         self,
         df: "pd.DataFrame",

@@ -45,6 +45,7 @@ from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
 )
+from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.validation import unknown_cause_error
 
 
@@ -349,6 +350,7 @@ class CauseSpecificMCF(SerialisableMixin):
         return cls.fit_from_recurrent_data(data)
 
     @classmethod
+    @column_arguments("x", "i", "c", "n", "tl", "tr")
     def fit_from_df(
         cls,
         df: Any,

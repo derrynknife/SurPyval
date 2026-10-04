@@ -64,6 +64,7 @@ from surpyval.utils.no_maximum import (
     warn_no_maximum,
     warn_unverified,
 )
+from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.validation import check_option
 
 from .._aliasing import covariate_columns, expand, fit_columns
@@ -707,6 +708,7 @@ class CoxFrailtyFitter(FitterRepr):
         model.maximum = maximum
         return model
 
+    @column_arguments("x", "c", "n")
     def fit_from_df(
         self,
         df: pd.DataFrame,

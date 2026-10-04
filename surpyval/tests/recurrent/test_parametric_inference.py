@@ -102,7 +102,7 @@ def _regression_data():
 
 def test_nhpp_regression_information_criteria():
     x, i, c, Z = _regression_data()
-    model = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=CrowAMSAA)
+    model = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, baseline=CrowAMSAA)
     k = model._mle.size
     n = model._n_obs
     ll = model.log_likelihood
@@ -228,7 +228,7 @@ def test_plot_confidence_band():
 
 def test_regression_param_cb():
     x, i, c, Z = _regression_data()
-    model = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=CrowAMSAA)
+    model = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, baseline=CrowAMSAA)
     # Positive base-rate parameter: log-Wald bounds stay positive.
     lower, upper = model.param_cb("alpha")
     assert 0 < lower < model.params[0] < upper
@@ -244,7 +244,7 @@ def test_regression_cif_cb_brackets_cif():
     t = np.array([5.0, 10.0, 20.0])
     for model in (
         ProportionalIntensityHPP.fit(x, Z, i=i, c=c),
-        ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=CrowAMSAA),
+        ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, baseline=CrowAMSAA),
     ):
         cb = model.cif_cb(t, Z_0)
         cif = model.cif(t, Z_0)

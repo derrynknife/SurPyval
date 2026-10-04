@@ -11,6 +11,7 @@ from autograd.numpy.numpy_boxes import ArrayBox
 
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.fitter_repr import FitterRepr
+from surpyval.utils.removed_names import removed_arguments
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import (
     _check_x_not_empty,
@@ -531,6 +532,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         small."""
         return np.log(-np.expm1(-self.Hf(x, *params)))
 
+    @removed_arguments("0.23", X="'given'")
     def cs(self, x: Numeric, given: Numeric, *params: Any) -> Any:
         r"""
 
@@ -988,6 +990,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         """
         return self
 
+    @removed_arguments("0.24", p="'lfp_p'")
     def from_params(
         self,
         params: Any,

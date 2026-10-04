@@ -1,6 +1,11 @@
 import numpy as np
 
+from surpyval.utils.removed_names import removed_arguments
 
+
+@removed_arguments(
+    "0.24", confidence="'alpha_ci' (= 1 - confidence)", alpha="'alpha_ci'"
+)
 def success_run(n: int, *, alpha_ci: float = 0.05) -> float:
     r"""
     Calculate the minimum success probability of a run of 'n' independent

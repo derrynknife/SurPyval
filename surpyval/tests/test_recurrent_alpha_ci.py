@@ -35,7 +35,7 @@ def _nhpp():
 
 
 def _pi():
-    return ProportionalIntensityNHPP.fit(X, Z, i=I, c=C, dist=CrowAMSAA)
+    return ProportionalIntensityNHPP.fit(X, Z, i=I, c=C, baseline=CrowAMSAA)
 
 
 def _mcf():

@@ -17,10 +17,12 @@ has one that reads as a name (``WeibullPH``, ``Galton``), else its class's.
 
 from typing import Any
 
+from surpyval.utils.removed_names import RemovedNames
+
 __all__ = ["FitterRepr", "baseline_name"]
 
 
-class FitterRepr:
+class FitterRepr(RemovedNames):
     """
     A fitter's ``repr``: ``"<name>: <kind>"`` and, where the fitter has a
     baseline distribution (or other parts), ``" (<details>)"``.

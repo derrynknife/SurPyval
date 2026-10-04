@@ -42,6 +42,8 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import numpy as np
 
+from surpyval.utils.removed_names import RemovedNames
+
 # ``"model"`` tag -> defining module. The tag every class writes into
 # its dict is its own class name, so the registry only needs to find
 # the defining module, lazily (importing everything eagerly here would
@@ -955,7 +957,7 @@ def to_native(value: Any) -> Any:
     return value
 
 
-class SerialisableMixin:
+class SerialisableMixin(RemovedNames):
     """Shared ``to_json`` / ``from_json`` plumbing for serialisable
     models: every class keeps only its ``to_dict`` / ``from_dict``
     pair (this used to be copy-pasted into ~20 classes).

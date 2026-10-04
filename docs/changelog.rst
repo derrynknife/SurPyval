@@ -68,6 +68,15 @@ Unreleased
 
 **Fixed**
 
+- Removed names say what replaced them, and when they went (#653):
+  ``from surpyval import Power`` raised a bare "cannot import name"; old
+  attributes (``param_names``, ``se``, ``cov_matrix``, ``loglike``, ...),
+  arguments (``cs(X=)``, ``ARI.fit(dist=)``, ``from_params(p=)``, ...),
+  ``p`` and ``beta_j`` in ``fixed`` and ``param_cb``, and
+  ``surpyval.utils.score`` now name the replacement, and a regression's
+  ``fit_from_df(x=)`` names ``x_col``. ``surpyval.datasets`` works after
+  ``import surpyval``; ``ProportionalIntensityNHPP`` takes ``baseline=``,
+  as ``ARI`` does (``dist=`` warns until v0.25).
 - ``fit_best`` passed over every lifetime family (support from 0) in
   silence when some times were at or below 0, and returned the best of the
   rest: with three zero ages in 50, a Normal that put 3% of the units

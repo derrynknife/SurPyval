@@ -53,6 +53,7 @@ from surpyval.utils import (
 )
 from surpyval.utils.dataframe import frame_column
 from surpyval.utils.no_maximum import combined_maximum
+from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.validation import unknown_cause_error
 
@@ -611,6 +612,7 @@ class ParametricCompetingRisks(SerialisableMixin):
         return model
 
     @classmethod
+    @column_arguments("x", "c", "n", "tl")
     def fit_from_df(
         cls,
         df: Any,

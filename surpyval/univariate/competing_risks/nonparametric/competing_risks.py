@@ -46,6 +46,7 @@ from surpyval.utils import (
     validate_event,
 )
 from surpyval.utils.data_formats import _get_idx
+from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.shapes import keeps_query_shape
 
 
@@ -422,6 +423,7 @@ class CompetingRisks(SerialisableMixin):
         return ax
 
     @classmethod
+    @column_arguments("x", "c", "n")
     def fit_from_df(
         cls,
         df: Any,

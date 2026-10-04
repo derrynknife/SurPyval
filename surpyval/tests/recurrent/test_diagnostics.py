@@ -233,7 +233,7 @@ def _rossi():
 
 def _data_less_models():
     x, Z, i, c = _rossi()
-    pi_nhpp = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=CrowAMSAA)
+    pi_nhpp = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, baseline=CrowAMSAA)
     pi_hpp = ProportionalIntensityHPP.fit(x, Z, i=i, c=c)
     ca = CrowAMSAA.fit(REPAIR_FLEET_X, REPAIR_FLEET_I, REPAIR_FLEET_C)
     g1 = GeneralizedOneRenewal.fit(
