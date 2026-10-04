@@ -545,6 +545,14 @@ class FirstPassageProcessModel(SerialisableMixin):
         # signature exists so ``from_dict`` type-checks against the base.
         raise NotImplementedError
 
+    def __setstate__(self, state: dict) -> None:
+        # A model pickled before ``y0`` existed (0.22) starts at 0, as its
+        # model did and as ``from_dict`` reads a dict saved without it;
+        # every method used to fail on the missing attribute (#664).
+        state = dict(state)
+        state.setdefault("y0", 0.0)
+        self.__dict__.update(state)
+
     def _init_y0(self, y0: float) -> None:
         self.y0 = self._checked_y0(y0)
 

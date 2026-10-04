@@ -573,3 +573,17 @@ def test_a_falling_signal_says_to_negate_y_and_the_threshold():
     # ... and doing so fits: the life to fall 20 below the start
     model = WienerProcess.fit(t, -y, i, threshold=-80.0)
     assert model.mu > 0 and 9.0 < model.mean() < 11.0
+
+
+def test_a_wiener_model_pickled_before_y0_existed_loads():
+    # #664: a 0.22 pickle has no y0, and every method failed on it; it
+    # starts at 0, as its model did and as from_dict reads an old dict.
+    import pickle
+
+    x, y, i = _simulate_wiener(0.5, 0.3, 30, 20, 0.5, seed=4)
+    model = WienerProcess.fit(x, y, i, threshold=10.0, y0=0.0)
+    old = type(model).__new__(type(model))
+    old.__setstate__({k: v for k, v in model.__dict__.items() if k != "y0"})
+    assert old.y0 == 0.0
+    assert old.sf(15.0) == pytest.approx(model.sf(15.0))
+    assert pickle.loads(pickle.dumps(model)).y0 == model.y0
