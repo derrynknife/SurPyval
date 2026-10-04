@@ -461,6 +461,9 @@ class ARI(RenewalFitMixin):
             is exact for an item renewed at entry and an assumption
             otherwise; the fitted model's ``data`` hold the times from
             entry.
+            A negative ``tl`` (an entry age below 0, almost always a
+            data error on an age scale) is used as given, with a
+            ``UserWarning``.
 
         Returns
         -------

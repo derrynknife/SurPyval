@@ -161,6 +161,10 @@ Unreleased
   failures advised ``fixed=``, which they do not take; they now say so in
   recurrent terms. A model restored with ``from_dict`` says so when asked
   for bounds, rather than calling itself built from parameters.
+- Renewal fits (GeneralizedRenewal, G1, ARA, ARI) warn of a negative
+  ``tl`` (#664): on an age scale a negative entry age is almost always a
+  data error, and it moved q from 0.28 to 0.42 in silence. It is still
+  accepted, each item as new at its entry.
 
 v0.23 (4 October 2026)
 ----------------------

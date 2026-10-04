@@ -172,7 +172,9 @@ def test_615_renewal_fits_take_delayed_entry_as_new(model, kwargs):
     c = np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1])
     i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3])
     tl = np.where(i == 3, 0.5, np.where(i == 2, -1.0, 0.0))
-    entered = model.fit(x, i, c, tl=tl, **kwargs)
+    # (A negative entry age warns as a likely data error, #664.)
+    with pytest.warns(UserWarning, match="negative age"):
+        entered = model.fit(x, i, c, tl=tl, **kwargs)
     shifted = model.fit(x - tl, i, c, **kwargs)
     assert np.allclose(entered.params, shifted.params, rtol=1e-8)
     assert entered.log_likelihood == pytest.approx(
@@ -184,7 +186,8 @@ def test_615_renewal_fits_take_delayed_entry_as_new(model, kwargs):
     import pandas as pd
 
     log = pd.DataFrame({"t": x, "unit": i, "c": c, "entry": tl})
-    via_df = model.fit_from_df(
-        log, x_col="t", i_col="unit", c_col="c", tl_col="entry", **kwargs
-    )
+    with pytest.warns(UserWarning, match="negative age"):
+        via_df = model.fit_from_df(
+            log, x_col="t", i_col="unit", c_col="c", tl_col="entry", **kwargs
+        )
     assert np.allclose(via_df.params, entered.params, rtol=1e-8)
