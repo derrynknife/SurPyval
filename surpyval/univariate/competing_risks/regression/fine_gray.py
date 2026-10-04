@@ -41,7 +41,7 @@ the left limits equal :math:`G(t)` and :math:`G(x_i)`.
 from __future__ import annotations
 
 import functools
-from typing import Any, Callable, NamedTuple
+from typing import TYPE_CHECKING, Any, Callable, NamedTuple
 
 import numpy as np
 import numpy.typing as npt
@@ -76,7 +76,10 @@ from surpyval.univariate.regression._fit_skeleton import (
     baseline_at_origin_error,
     judge_search,
 )
-from surpyval.univariate.regression._summary import coefficient_names
+from surpyval.univariate.regression._summary import (
+    coefficient_names,
+    coefficient_table,
+)
 from surpyval.univariate.regression.proportional_hazards.cox_likelihood import (  # noqa: E501
     newton_raphson,
 )
@@ -110,6 +113,9 @@ from surpyval.utils.validation import (
     missing_cause_error,
     unknown_cause_error,
 )
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 #: Newton-Raphson's convergence tolerance, in standard errors of the step
 #: (``newton_raphson``), CoxPH's default.
@@ -687,6 +693,53 @@ class FineGrayModel(
         """The coefficients' standard errors, from :meth:`covariance`.
         They were the attribute ``se`` before v0.23."""
         return self._se
+
+    @property
+    def params(self) -> npt.NDArray:
+        """The coefficients (``beta``), named by ``parameter_names``, as
+        on the other regression models."""
+        return np.asarray(self.beta, dtype=float)
+
+    @property
+    def parameter_names(self) -> list[str]:
+        """The names of ``params``, entry by entry: each covariate's
+        column (a DataFrame ``Z`` or ``fit_from_df``), else ``coef_0``,
+        ``coef_1``, ... for an array ``Z`` (#614), as for ``CoxPH``."""
+        return coefficient_names(self, np.size(self.beta))
+
+    def summary(self, alpha_ci: float = 0.05) -> "pd.DataFrame":
+        """
+        The coefficient table, as ``CoxPH.summary``: one row per covariate
+        (named by ``parameter_names``), with the coefficient, the
+        subdistribution hazard ratio ``exp(coef)``, the standard error, a
+        two-sided ``1 - alpha_ci`` Wald interval for both, the Wald
+        statistic ``z`` and its two-sided p-value. An aliased coefficient
+        is ``nan`` throughout.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from surpyval import FineGray
+        >>> rng = np.random.default_rng(0)
+        >>> Z = pd.DataFrame({"grp": rng.binomial(1, 0.5, 200)})
+        >>> t_a = rng.exponential(1 / (0.1 * np.exp(0.7 * Z["grp"])))
+        >>> t_b = rng.exponential(1 / 0.05, 200)
+        >>> x = np.minimum(t_a, t_b).round(3)
+        >>> e = np.where(t_a < t_b, "a", "b")
+        >>> model = FineGray.fit(x, Z, e, event="a")
+        >>> model.summary()[["coef", "exp(coef)", "se(coef)"]].round(4)
+                     coef  exp(coef)  se(coef)
+        covariate
+        grp        0.6626     1.9398    0.1741
+        """
+        return coefficient_table(
+            self.parameter_names,
+            self.params,
+            self._se,
+            alpha_ci,
+            p=self.p_values,
+        )
 
     def _ic_k(self) -> int:
         # The estimated coefficients (an aliased one, nan, is not).

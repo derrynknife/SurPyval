@@ -9,10 +9,13 @@ Copyright 2022 Cartiga LLC
 
 from __future__ import annotations
 
-from typing import Any
+import warnings
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
+from scipy.linalg import block_diag
+from scipy.stats import norm
 
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -36,6 +39,11 @@ from surpyval.univariate.regression._aliasing import (
     dataframe_covariates,
     warn_collected,
 )
+from surpyval.univariate.regression._summary import (
+    coefficient_names,
+    coefficient_repr,
+    coefficient_table,
+)
 from surpyval.univariate.regression.regression_data import (
     LinearPredictorMixin,
     design_matrix_from_df,
@@ -47,7 +55,9 @@ from surpyval.utils import (
     is_missing_event,
     validate_fine_gray_inputs,
 )
+from surpyval.utils.deprecation import REMOVED_IN
 from surpyval.utils.ipcw import step_at as _step
+from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import (
     combined_maximum,
     maximum_entry,
@@ -58,6 +68,7 @@ from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import (
     check_option,
     missing_cause_error,
+    no_covariance_error,
     unknown_cause_error,
 )
 
@@ -67,6 +78,9 @@ from .fine_gray import (
     _warn_if_monotone,
     paired_covariate_rows,
 )
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 def _check_interp(interp: str) -> None:
@@ -107,7 +121,16 @@ class CompetingRisksProportionalHazards(
     being the events of every cause (#604). The Fine-Gray causes' weighted
     partial likelihoods are separate estimating functions, not the parts
     of one likelihood, so for ``model="Fine-Gray"`` these raise a
-    ``ValueError``; each cause's ``FineGray`` model has its own.
+    ``ValueError`` (``log_likelihood``, a property, an
+    ``AttributeError``, so ``getattr(model, "log_likelihood", None)``
+    works); each cause's ``FineGray`` model has its own.
+
+    The coefficients are per cause: ``betas`` has one row per cause, in
+    the order of ``event_idx_map``, and ``params`` is them flattened, cause
+    by cause, named by ``parameter_names`` (``"a: grp"``, the cause and the
+    covariate). :meth:`covariance` (block-diagonal across the causes,
+    each block that cause's fit's), :meth:`standard_errors`, ``p_values``
+    and :meth:`summary` describe them, as ``CoxPH``'s do.
     """
 
     # Populated by ``fit``; declared for the type checker. ``model`` is
@@ -119,7 +142,6 @@ class CompetingRisksProportionalHazards(
     #: serialised).
     results: "list | None"
     betas: "npt.NDArray"
-    beta: "npt.NDArray"
     event_idx_map: dict
     n_event_types: int
     h0_e: "npt.NDArray"
@@ -130,6 +152,10 @@ class CompetingRisksProportionalHazards(
     #: the means either way.
     center: "npt.NDArray"
     _fg_models: dict
+    #: Each cause's coefficients' covariance, in ``event_idx_map`` order
+    #: (``None`` for a Cox model restored from a dict saved before they
+    #: were stored).
+    _covariances: "list | None" = None
     #: What the fit reached, one of ``MAXIMUM_STATES``
     #: (``surpyval.utils.no_maximum``): the worst of the causes' fits, as
     #: their warnings say; ``"unknown"`` for a model restored from a dict
@@ -194,6 +220,11 @@ class CompetingRisksProportionalHazards(
             # which makes the dict schema 2 (#459): a schema-1 reader would
             # read the baselines as at Z = 0.
             out["center"] = np.asarray(self.center, dtype=float).tolist()
+        if self.model == "Cox" and self._covariances is not None:
+            out["covariances"] = [
+                np.asarray(cov, dtype=float).tolist()
+                for cov in self._covariances
+            ]
         if self.model == "Fine-Gray":
             # The Fine-Gray predictions come from the per-cause models (the
             # shared grid only mirrors their baselines), so store them whole,
@@ -232,6 +263,14 @@ class CompetingRisksProportionalHazards(
                 )
             }
         model.results = None
+        if model.model == "Fine-Gray":
+            model._covariances = [
+                fg.covariance() for fg in model._fg_models.values()
+            ]
+        elif "covariances" in model_dict:
+            model._covariances = [
+                np.array(cov, dtype=float) for cov in model_dict["covariances"]
+            ]
         betas = np.array(model_dict["betas"], dtype=float)
         model._finish(
             betas,
@@ -270,6 +309,151 @@ class CompetingRisksProportionalHazards(
             )
         return float(self._neg_ll)
 
+    @property
+    def log_likelihood(self) -> float:
+        """The maximised partial log-likelihood, ``-neg_ll()``
+        (``model="Cox"``). Where there is none (``model="Fine-Gray"``, or
+        a model saved before v0.23 without it) it raises an
+        ``AttributeError`` saying why, so ``hasattr`` and ``getattr(model,
+        "log_likelihood", None)`` work; it was a ``ValueError``."""
+        try:
+            return -self.neg_ll()
+        except ValueError as error:
+            raise AttributeError(str(error)) from None
+
+    @log_likelihood.setter
+    def log_likelihood(self, value: float) -> None:
+        mixin: Any = InformationCriteriaMixin
+        mixin.log_likelihood.fset(self, value)
+
+    # -- inference (#656) ---------------------------------------------------
+
+    @property
+    def params(self) -> npt.NDArray:
+        """The coefficients, ``betas`` flattened cause by cause (in the
+        order of ``event_idx_map``), named by ``parameter_names``."""
+        return np.asarray(self.betas, dtype=float).ravel()
+
+    @property
+    def parameter_names(self) -> list[str]:
+        """The names of ``params``: each cause's label and covariate,
+        ``"<cause>: <covariate>"``, the covariate named by its column (a
+        formula, ``fit_from_df`` or a DataFrame ``Z``), else ``coef_0``,
+        ``coef_1``, ... (#614).
+
+        Examples
+        --------
+        >>> from surpyval.univariate.competing_risks import (
+        ...     CompetingRisksProportionalHazards,
+        ... )
+        >>> x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        >>> Z = [[0], [1], [0], [1], [0], [1], [0], [1], [0], [1]]
+        >>> e = ["a", "b", "a", None, "b", "a", "a", None, "b", "a"]
+        >>> CompetingRisksProportionalHazards.fit(x, Z, e).parameter_names
+        ['a: coef_0', 'b: coef_0']
+        """
+        names = coefficient_names(self, np.shape(self.betas)[1])
+        return [
+            f"{cause}: {name}"
+            for cause in self.event_idx_map
+            for name in names
+        ]
+
+    def covariance(self) -> npt.NDArray:
+        """
+        The covariance of ``params``: block-diagonal across the causes,
+        each block the inverse information of that cause's fit (its Cox
+        partial likelihood, or its Fine-Gray weighted partial likelihood),
+        as the causes' fits are separate. An aliased coefficient's row and
+        column are ``nan``.
+
+        Raises a ``ValueError`` for a ``model="Cox"`` model restored from a
+        dict saved before the covariances were stored.
+        """
+        if self._covariances is None:
+            raise no_covariance_error(
+                "it was saved before the causes' covariances were stored; "
+                "refit it"
+            )
+        return block_diag(*[np.atleast_2d(c) for c in self._covariances])
+
+    def standard_errors(self) -> npt.NDArray:
+        """The standard errors of ``params``, the square roots of the
+        diagonal of :meth:`covariance` (``nan`` for an aliased
+        coefficient)."""
+        return standard_errors_of(self.covariance())
+
+    @property
+    def p_values(self) -> npt.NDArray:
+        """The two-sided Wald p-values of ``params``."""
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return 2 * norm.sf(np.abs(self.params / self.standard_errors()))
+
+    def summary(self, alpha_ci: float = 0.05) -> "pd.DataFrame":
+        """
+        The coefficient table, as ``CoxPH.summary``: one row per cause and
+        covariate (named by ``parameter_names``), with the coefficient,
+        ``exp(coef)`` (the cause-specific hazard ratio for ``model="Cox"``,
+        the subdistribution hazard ratio for ``model="Fine-Gray"``), the
+        standard error, a two-sided ``1 - alpha_ci`` Wald interval for both,
+        the Wald statistic ``z`` and its two-sided p-value.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.univariate.competing_risks import (
+        ...     CompetingRisksProportionalHazards,
+        ... )
+        >>> rng = np.random.default_rng(0)
+        >>> Z = rng.binomial(1, 0.5, (200, 1)).astype(float)
+        >>> t_a = rng.exponential(1 / (0.1 * np.exp(0.7 * Z[:, 0])))
+        >>> t_b = rng.exponential(1 / 0.05, 200)
+        >>> x = np.minimum(t_a, t_b).round(3)
+        >>> e = np.where(t_a < t_b, "a", "b")
+        >>> model = CompetingRisksProportionalHazards.fit(x, Z, e)
+        >>> model.summary()[["coef", "se(coef)", "p"]].round(4)
+                     coef  se(coef)       p
+        covariate
+        a: coef_0  0.8460    0.1783  0.0000
+        b: coef_0  0.1377    0.2811  0.6242
+        """
+        return coefficient_table(
+            self.parameter_names,
+            self.params,
+            self.standard_errors(),
+            alpha_ci,
+        )
+
+    def __repr__(self) -> str:
+        kind = (
+            "Cause-specific proportional hazards (one Cox model per cause)"
+            if self.model == "Cox"
+            else "Fine-Gray subdistribution hazards (one model per cause)"
+        )
+        out = (
+            "Competing Risks Proportional Hazards SurPyval Model"
+            "\n==================================================="
+            f"\nModel               : {kind}"
+            "\nCauses              : "
+            + ", ".join(str(cause) for cause in self.event_idx_map)
+        )
+        if np.any(self.center):
+            out += (
+                "\nBaseline at         : the covariate means, Z = {}".format(
+                    np.array2string(np.asarray(self.center), separator=", ")
+                )
+            )
+        try:
+            table = self.summary()
+        except ValueError:
+            return out
+        ratio = "hazard" if self.model == "Cox" else "subdistribution hazard"
+        out += (
+            f"\nCoefficients        : exp(coef) is the {ratio} ratio; Wald "
+            "95% intervals\n"
+        )
+        return out + coefficient_repr(table) + "\n"
+
     def _ic_k(self) -> int:
         # Every cause's estimated coefficients (an aliased one, nan, is
         # not).
@@ -303,23 +487,74 @@ class CompetingRisksProportionalHazards(
         # increments, shared by ``fit`` and ``from_dict`` so a reloaded model
         # is rebuilt exactly as the fitted one was.
         self.betas = betas
-        self.beta = betas.sum(axis=0)
         self.center = center
         self.h0_e = baselines
         self.H0_e = baselines.cumsum(axis=1)
 
+    @property
+    def beta(self) -> npt.NDArray:
+        """The sum of the causes' coefficients, ``betas.sum(axis=0)``.
+
+        .. deprecated:: 0.24
+           It is not a quantity of the model (no prediction uses it) and
+           reads like a coefficient; it is removed in v0.25. The
+           coefficients are ``betas`` (one row per cause) or ``params``
+           (flattened, named by ``parameter_names``).
+        """
+        warnings.warn(
+            "CompetingRisksProportionalHazards.beta is deprecated and will "
+            f"be removed in v{REMOVED_IN}: it is the sum of the causes' "
+            "coefficients, not a quantity of the model. Use 'betas' (one "
+            "row per cause) or 'params' (named by 'parameter_names').",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._beta_sum()
+
+    def _beta_sum(self) -> npt.NDArray:
+        return np.asarray(self.betas, dtype=float).sum(axis=0)
+
+    def _cause_index(self, event: Any) -> int:
+        """The row of ``betas`` of the cause labelled ``event``."""
+        if event in self.event_idx_map:
+            return self.event_idx_map[event]
+        if (
+            isinstance(event, (int, np.integer))
+            and not isinstance(event, bool)
+            and 0 <= event < self.n_event_types
+        ):
+            # The row index ``phi_e`` took before v0.24
+            cause = list(self.event_idx_map)[int(event)]
+            warnings.warn(
+                "phi_e: passing the row index {} of betas is deprecated "
+                "and will be removed in v{}; pass the cause's label, {!r}, "
+                "as for cif.".format(int(event), REMOVED_IN, cause),
+                DeprecationWarning,
+                stacklevel=3,
+            )
+            return int(event)
+        raise unknown_cause_error(event, self.event_idx_map)
+
     # ``phi_e`` and ``phi`` are methods, not lambdas set by ``_finish``,
     # so the model pickles (#573).
-    def phi_e(self, Z: Any, e_i: int) -> npt.NDArray:
-        """Cause ``e_i``'s hazard multiplier at ``Z``, relative to a unit
-        at ``center`` (where the baselines are, #459)."""
-        return np.exp(self._log_phi_e(Z, e_i))
+    def phi_e(self, Z: Any, event: Any) -> npt.NDArray:
+        """Cause ``event``'s hazard multiplier at ``Z``, relative to a
+        unit at ``center`` (where the baselines are, #459). ``event`` is the
+        cause's label, as for :meth:`cif`.
+
+        .. versionchanged:: 0.24
+           It takes the cause's label; the row index of ``betas`` it took
+           before is deprecated (where it is not also a label).
+        """
+        return np.exp(self._log_phi_e(Z, self._cause_index(event)))
 
     def phi(self, Z: Any) -> npt.NDArray:
-        """The multiplier of the summed coefficients ``beta`` at ``Z``
-        (kept for backward compatibility; no prediction uses it)."""
+        """The multiplier of the summed coefficients (the deprecated
+        ``beta``) at ``Z`` (kept for backward compatibility; no prediction
+        uses it)."""
         # An aliased coefficient (nan, #476) is predicted with as 0.
-        coef = np.where(np.isnan(self.beta), 0.0, self.beta)
+        beta = self._beta_sum()
+        coef = np.where(np.isnan(beta), 0.0, beta)
         return np.exp(self._prepare_Z(Z) @ coef)
 
     def _log_phi_e(self, Z: Any, e_i: int) -> npt.NDArray:
@@ -758,13 +993,15 @@ class CompetingRisksProportionalHazards(
         model : CompetingRisksProportionalHazards
             A competing-risks proportional-hazards model. ``betas`` holds one
             row of coefficients per cause, in the order of ``event_idx_map``
-            (causes sorted); ``phi_e(Z, i)`` is cause ``i``'s hazard
+            (causes sorted); ``phi_e(Z, event)`` is cause ``event``'s hazard
             multiplier, relative to a unit at ``center`` (where its
             baseline is: ``Z = 0`` unless ``center=True``).
-            ``beta`` and ``phi`` (the sum of the per-cause
-            coefficients and its multiplier) are kept for backward
-            compatibility but are not a model quantity: every prediction
-            uses the per-cause coefficients.
+            ``params``, ``parameter_names``, :meth:`covariance`,
+            :meth:`standard_errors`, ``p_values`` and :meth:`summary`
+            give the per-cause coefficients' inference. ``phi`` (the
+            multiplier of the sum of the per-cause coefficients) is kept
+            for backward compatibility, and ``beta`` (that sum) is
+            deprecated: neither is a model quantity.
 
         Examples
         --------
@@ -826,6 +1063,7 @@ class CompetingRisksProportionalHazards(
             # treating every other cause (and censoring) as right-censored.
             results = []
             states = []
+            covariances: list = []
             for i, event in enumerate(causes):
                 c_e = np.where(label_mask(e, event), 0, 1)
                 with collect_aliased() as aliased:
@@ -835,6 +1073,7 @@ class CompetingRisksProportionalHazards(
                 found += aliased
 
                 results.append(cox_model.res)
+                covariances.append(cox_model.covariance())
                 states.append(cox_model.maximum)
                 neg_ll += cox_model.neg_ll()
                 # nan where aliased, as the Cox model reports it.
@@ -858,6 +1097,7 @@ class CompetingRisksProportionalHazards(
             fg_models = {}
             results = []
             fits = []
+            covariances = []
             for i, event in enumerate(causes):
                 with collect_aliased() as aliased:
                     fits.append(_fit_cause(x, Z, e, c, n, event, center))
@@ -865,6 +1105,7 @@ class CompetingRisksProportionalHazards(
                 fg = FineGrayModel(fits[-1])
                 fg_models[event] = fg
                 results.append(fg.res)
+                covariances.append(fg.covariance())
                 betas[i, :] = fg.beta
                 at = np.asarray(fg.center, dtype=float)
                 # Store increments so the shared ``H0_e = baselines.cumsum``
@@ -884,6 +1125,7 @@ class CompetingRisksProportionalHazards(
         out.maximum = combined_maximum(states)
 
         out.results = results
+        out._covariances = covariances
         out._finish(betas, baselines, at)
         out.x = unique_x
         return out

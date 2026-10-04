@@ -917,19 +917,28 @@ together produce the incidence effect.
     assert _b[1][0] > 0 and _b[2][0] < 0, _b
 
 The causes are sorted, so the row order of ``betas`` is reproducible.
-``phi_e(Z, row)`` is a cause's hazard multiplier :math:`e^{Z\hat\beta_k}`
+``phi_e(Z, event)`` is a cause's hazard multiplier :math:`e^{Z\hat\beta_k}`
 (relative to a unit at the covariate means, ``center``, for a fit with
-``center=True``, which keeps the baselines there), and
-``results`` holds each cause's optimiser result. The model also has ``beta``
-and ``phi``. These are kept for backward compatibility: ``beta`` is the *sum*
-of the rows of ``betas``, which is not a quantity of the model, and no
-prediction uses it. Read the coefficients from ``betas``.
+``center=True``, which keeps the baselines there), the cause given by its
+label as for ``cif``; and ``results`` holds each cause's optimiser result.
+The model also has ``phi``, kept for backward compatibility, and ``beta``,
+deprecated: ``beta`` is the *sum* of the rows of ``betas``, which is not a
+quantity of the model, and no prediction uses it. Read the coefficients from
+``betas``, or from ``params`` (flattened cause by cause).
 
 .. jupyter-execute::
 
-    row = csph.event_idx_map[1]
     print("cause-1 hazard multiplier at z = [0.5, -0.5]:",
-          np.round(csph.phi_e(np.array([0.5, -0.5]), row), 3))
+          np.round(csph.phi_e(np.array([0.5, -0.5]), 1), 3))
+
+``summary()`` is the coefficient table, one row per cause and covariate,
+named ``"<cause>: <covariate>"`` (``parameter_names``), with the standard
+errors, Wald intervals and p-values of each cause's fit; ``covariance()`` is
+block-diagonal across the causes, as their fits are separate:
+
+.. jupyter-execute::
+
+    csph.summary()[["coef", "exp(coef)", "se(coef)", "p"]].round(4)
 
 ``tie_method`` chooses how the Cox fits handle tied failure times (see
 :doc:`regression/cox_ph`): ``"efron"`` (the default, as for ``CoxPH``), ``"breslow"``, ``"exact"`` or

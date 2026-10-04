@@ -211,7 +211,7 @@ def _assert_same_predictions(model, restored):
                     getattr(model, f)(T, z), getattr(restored, f)(T, z)
                 )
     np.testing.assert_array_equal(model.betas, restored.betas)
-    np.testing.assert_array_equal(model.beta, restored.beta)
+    np.testing.assert_array_equal(model.params, restored.params)
     assert restored.event_idx_map == model.event_idx_map
 
 

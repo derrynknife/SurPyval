@@ -305,7 +305,7 @@ def test_competing_risks_formula_predicts_from_dataframe(
         )
     np.testing.assert_allclose(model.phi(NEW), model.phi(Z), rtol=1e-12)
     np.testing.assert_allclose(
-        model.phi_e(NEW, 1), model.phi_e(Z, 1), rtol=1e-12
+        model.phi_e(NEW, "v"), model.phi_e(Z, "v"), rtol=1e-12
     )
 
 

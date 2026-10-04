@@ -8,6 +8,7 @@ naive (unweighted) subdistribution risk set would be biased.
 """
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from surpyval.tests._helpers import competing_risks_regression_data
@@ -284,3 +285,26 @@ def test_605_fine_gray_covariance_is_a_method_and_cov_gone():
     restored = sp.from_dict(d)
     np.testing.assert_array_equal(restored.covariance(), cov)
     assert restored.neg_ll() == model.neg_ll()
+
+
+def test_656_fine_gray_names_params_and_summary():
+    rng = np.random.default_rng(0)
+    N = 200
+    Z = np.c_[rng.binomial(1, 0.5, N), rng.normal(size=N)]
+    ta = rng.exponential(1 / (0.1 * np.exp(0.7 * Z[:, 0])))
+    tb = rng.exponential(1 / 0.05, N)
+    x = np.minimum(ta, tb).round(2)
+    e = np.where(ta < tb, "a", "b")
+    frame = FineGray.fit(
+        x, pd.DataFrame(Z, columns=["grp", "age"]), e, event="a"
+    )
+    assert frame.parameter_names == ["grp", "age"]
+    np.testing.assert_array_equal(frame.params, frame.beta)
+    table = frame.summary(alpha_ci=0.1)
+    assert table.index.tolist() == ["grp", "age"]
+    np.testing.assert_allclose(table["se(coef)"], frame.standard_errors())
+    np.testing.assert_allclose(table["p"], frame.p_values)
+    assert "coef lower 90%" in table.columns
+    # An array Z names them coef_j, as the other regression models (#614)
+    array = FineGray.fit(x, Z, e, event="a")
+    assert array.parameter_names == ["coef_0", "coef_1"]
