@@ -93,7 +93,7 @@ def _offset_start(x: npt.ArrayLike) -> float:
     return float(np.min(finite[np.isfinite(finite)])) - offset_step(x)
 
 
-def _imputed_data(
+def imputed_data(
     x: npt.NDArray, c: npt.NDArray, n: npt.NDArray
 ) -> SurpyvalData:
     """Wrap ``_initial_guess``'s working copy as a ``SurpyvalData``.
@@ -837,7 +837,7 @@ class FitInputsMixin:
             with np.errstate(all="ignore"):
                 init = np.array(
                     self._parameter_initialiser(
-                        _imputed_data(x_init, c_init, n_init)
+                        imputed_data(x_init, c_init, n_init)
                     )
                 )
         else:
@@ -867,7 +867,7 @@ class FitInputsMixin:
                 # offset, at the starting offset (below every value of the
                 # data, the imputed ones' own bounds included) and from the
                 # points shifted by it
-                imputed = _imputed_data(x_init, c_init, n_init)
+                imputed = imputed_data(x_init, c_init, n_init)
                 if offset:
                     # Below the imputed points too: a left-censored row is
                     # imputed half way down to the smallest value, which
@@ -931,7 +931,7 @@ class FitInputsMixin:
         x = np.asarray(data.x, dtype=float)
         if gamma is None:
             gamma = _offset_start(x)
-        shifted = _imputed_data(x - gamma, data.c, data.n)
+        shifted = imputed_data(x - gamma, data.c, data.n)
         with np.errstate(all="ignore"):
             base = np.atleast_1d(
                 np.asarray(self._shifted_initialiser(shifted), dtype=float)
@@ -1008,7 +1008,7 @@ class FitInputsMixin:
         observed = c == 0
         if n[observed].sum() < 2 or np.unique(x[observed]).size < 2:
             return None
-        failures = _imputed_data(
+        failures = imputed_data(
             x[observed],
             np.zeros(int(observed.sum()), dtype=int),
             n[observed],

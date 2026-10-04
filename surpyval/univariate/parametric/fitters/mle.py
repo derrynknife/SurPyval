@@ -220,7 +220,7 @@ def _seed_data(surv_data: Any) -> Any:
     ``_initial_guess`` imputes them): an interval at its midpoint, a
     left-censored value as observed, the truncation dropped; ``None``
     where no value is finite."""
-    from surpyval.univariate.parametric._fit_inputs import _imputed_data
+    from surpyval.univariate.parametric._fit_inputs import imputed_data
 
     x = np.asarray(surv_data.x, dtype=float)
     c = np.asarray(surv_data.c)
@@ -232,7 +232,7 @@ def _seed_data(surv_data: Any) -> Any:
     finite = np.isfinite(x)
     if not np.any(finite & (c == 0)):
         return None
-    return _imputed_data(x[finite], c[finite], n[finite])
+    return imputed_data(x[finite], c[finite], n[finite])
 
 
 def _runaway(

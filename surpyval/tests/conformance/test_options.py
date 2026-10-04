@@ -168,6 +168,11 @@ def _parameters(model):
             for k, n in enumerate(names)
         ]
         return names, np.asarray(model._param_vector(), float), supports
+    if hasattr(model, "_with_estimates"):  # a process model (#666)
+        names = list(model.covariance_names)
+        k = len(model.parameter_names)
+        supports = [(0, None)] * k + [(None, None)] * (len(names) - k)
+        return names, model._estimates(), supports
     if hasattr(model, "covariance_names"):  # a mixture (#651)
         names = list(model.covariance_names)
         values = np.r_[np.ravel(model.params), model.w]
