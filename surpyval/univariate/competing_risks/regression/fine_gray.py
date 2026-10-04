@@ -110,6 +110,7 @@ from surpyval.utils.no_maximum import (
 from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import (
+    check_alpha_ci,
     missing_cause_error,
     unknown_cause_error,
 )
@@ -733,6 +734,7 @@ class FineGrayModel(
         covariate
         grp        0.6626     1.9398    0.1741
         """
+        check_alpha_ci(alpha_ci)
         return coefficient_table(
             self.parameter_names,
             self.params,

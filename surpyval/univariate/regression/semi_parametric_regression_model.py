@@ -22,7 +22,7 @@ from surpyval.utils.shapes import (
     covariate_rows,
     keeps_query_shape,
 )
-from surpyval.utils.validation import no_covariance_error
+from surpyval.utils.validation import check_alpha_ci, no_covariance_error
 
 from ._concordance import ConcordanceMixin
 from ._prediction import ConditionalSurvivalMixin
@@ -365,6 +365,7 @@ class SemiParametricRegressionModel(
         fin       -0.3279     0.7204    0.1899  0.0841
         age       -0.0715     0.9310    0.0209  0.0006
         """
+        check_alpha_ci(alpha_ci)
         beta = np.asarray(self.beta, dtype=float)
         names = coefficient_names(self, beta.size)
         if robust:

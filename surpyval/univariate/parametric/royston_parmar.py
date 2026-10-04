@@ -71,6 +71,7 @@ from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import (
     BOUNDS,
+    check_alpha_ci,
     check_option,
     no_covariance_error,
     option_error,
@@ -402,6 +403,7 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
             one-sided bound at ``alpha_ci`` is the matching end of the
             two-sided bound at ``2 * alpha_ci``.
         """
+        check_alpha_ci(alpha_ci)
         cov = self.covariance()
         check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
         # An unknown bound (say 'both') used to be taken as 'upper' (#415).

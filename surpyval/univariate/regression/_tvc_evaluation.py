@@ -17,7 +17,7 @@ import autograd.numpy as np
 import numpy.typing as npt
 
 from surpyval.utils.shapes import keeps_query_shape
-from surpyval.utils.validation import BOUNDS, check_option
+from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
 
 from ._kinds import (
     ACCELERATED_FAILURE_TIME,
@@ -1165,6 +1165,7 @@ class TVCEvaluationMixin:
         ...                  model.cb(np.array([40, 80]), [0.5])))
         True
         """
+        check_alpha_ci(alpha_ci)
         from ._bootstrap import bound_method, function_bounds, tvc_refits
         from ._likelihood_ratio import cb_tvc_lr, lr_search
         from .tvc_path import CovariatePath

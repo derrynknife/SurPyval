@@ -106,7 +106,7 @@ from surpyval.utils.shapes import (
     covariate_rows,
     keeps_query_shape,
 )
-from surpyval.utils.validation import BOUNDS, check_option
+from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
 
 from .._aliasing import (
     aliased_columns,
@@ -844,6 +844,7 @@ class ProportionalOddsModel(
         >>> model.param_cb("coef_1", method="lr").round(4)
         array([-0.1849, -0.0548])
         """
+        check_alpha_ci(alpha_ci)
         from .._likelihood_ratio import is_lr, profile_interval
 
         lr = is_lr(method)
@@ -953,6 +954,7 @@ class ProportionalOddsModel(
         fin        0.3896     1.4764    0.2191  0.0754
         age        0.0751     1.0780    0.0227  0.0009
         """
+        check_alpha_ci(alpha_ci)
         beta = np.asarray(self.beta, dtype=float)
         names = coefficient_names(self, beta.size)
         se = np.asarray(self._se, dtype=float)

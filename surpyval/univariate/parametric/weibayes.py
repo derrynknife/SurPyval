@@ -6,7 +6,7 @@ import numpy as np
 import numpy.typing as npt
 
 from surpyval.utils import xcnt_handler
-from surpyval.utils.validation import alpha_ci_error
+from surpyval.utils.validation import alpha_ci_error, check_alpha_ci
 
 from .distributions import Weibull
 from .parametric import Parametric
@@ -115,6 +115,7 @@ def weibayes(
     Abernethy, R. B. (2006). *The New Weibull Handbook*, 5th ed.,
     chapter 6 (Weibayes and Weibest).
     """
+    check_alpha_ci(alpha_ci)
     from scipy.stats import chi2
 
     x_arr, c_arr, n_arr, t_arr = xcnt_handler(x, c, n)

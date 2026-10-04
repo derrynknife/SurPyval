@@ -66,7 +66,7 @@ from surpyval.utils.no_maximum import (
 )
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
-from surpyval.utils.validation import BOUNDS, check_option
+from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
 
 from ._maximum import verified_search
 from ._measurements import validate_xy
@@ -340,6 +340,7 @@ class DestructiveDegradationModel(SerialisableMixin):
         check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
         on = {"R": "sf", "F": "ff"}.get(on, on)
         check_option("bound", bound, BOUNDS)
+        check_alpha_ci(alpha_ci)
         x = np.atleast_1d(np.asarray(x, dtype=float))
         rng = as_generator(random_state)
         if self.data is None:

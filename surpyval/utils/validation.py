@@ -103,12 +103,106 @@ def alpha_ci_error(alpha_ci: Any, note: str | None = None) -> ValueError:
     >>> alpha_ci_error(1.5)
     ValueError("'alpha_ci' must be strictly between 0 and 1; got 1.5")
     """
-    message = "'alpha_ci' must be strictly between 0 and 1; got {!r}".format(
-        alpha_ci
+    message = "'alpha_ci' must be strictly between 0 and 1; got {}".format(
+        _plain_value(alpha_ci)
     )
     if note:
         message += ". " + note
     return ValueError(message)
+
+
+def _plain_value(value: Any) -> str:
+    """A number as the user wrote it (``1.5``, not ``np.float64(1.5)``);
+    anything else as its repr."""
+    if isinstance(value, (bool, np.bool_)):
+        return repr(bool(value))
+    if isinstance(value, (int, np.integer)):
+        return repr(int(value))
+    if isinstance(value, (float, np.floating)):
+        return repr(float(value))
+    return repr(value)
+
+
+# The modules of the wrappers between a caller and a method that checks
+# its ``alpha_ci`` (``keeps_query_shape``, the renamed-argument shims):
+# not callers in their own right.
+_WRAPPER_MODULES = ("shapes.py", "deprecation.py")
+
+
+def _called_by_user(depth: int) -> bool:
+    """Whether the function ``depth`` frames above the caller of this one
+    was called from outside surpyval (or from its tests), looking past
+    the wrappers of :data:`_WRAPPER_MODULES`."""
+    import os
+    import sys
+
+    utils_dir = os.path.dirname(os.path.abspath(__file__))
+    package_dir = os.path.dirname(utils_dir) + os.sep
+    tests_dir = os.path.join(package_dir, "tests") + os.sep
+    wrappers = tuple(os.path.join(utils_dir, m) for m in _WRAPPER_MODULES)
+    frame = sys._getframe(depth + 2).f_back
+    while frame is not None:
+        name = os.path.abspath(frame.f_code.co_filename)
+        if name not in wrappers:
+            break
+        frame = frame.f_back
+    if frame is None:
+        return True
+    name = os.path.abspath(frame.f_code.co_filename)
+    return not name.startswith(package_dir) or name.startswith(tests_dir)
+
+
+def check_alpha_ci(alpha_ci: Any, note: str | None = None) -> None:
+    """Refuse an ``alpha_ci`` that is not strictly between 0 and 1 (with
+    :func:`alpha_ci_error`), and warn of one above 0.5 (#647). Every
+    method that takes ``alpha_ci`` calls it first.
+
+    ``alpha_ci`` is the significance level, the bound's total tail
+    probability: 0.05 gives a 95% interval. A level above 0.5 is almost
+    always the confidence given for it (``alpha_ci=0.95``, as
+    ``reliability``'s ``CI=0.95``), which gives a 5% interval, so it is
+    warned of, once per call: only where the method checking it was
+    called by the user, not where one of surpyval's methods called it in
+    turn (``plot`` calls ``cb``, which checks it again).
+
+    Examples
+    --------
+    >>> import warnings
+    >>> from surpyval.utils.validation import check_alpha_ci
+    >>> check_alpha_ci(0.05)
+    >>> check_alpha_ci(1.5)
+    Traceback (most recent call last):
+    ...
+    ValueError: 'alpha_ci' must be strictly between 0 and 1; got 1.5
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     check_alpha_ci(0.95)
+    >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
+    alpha_ci is the significance level: alpha_ci=0.95 gives a 5%
+    interval; for a 95% interval pass alpha_ci=0.05.
+    """
+    try:
+        inside = bool(0 < alpha_ci < 1)
+    except (TypeError, ValueError):
+        # Not a number, or an array (whose comparison has no truth value)
+        inside = False
+    if not inside:
+        raise alpha_ci_error(alpha_ci, note)
+    if alpha_ci > 0.5 and _called_by_user(0):
+        from surpyval.utils.warnings import caller_stacklevel
+
+        level = float(alpha_ci)
+        warnings.warn(
+            "alpha_ci is the significance level: alpha_ci={:g} gives a {:g}% "
+            "interval; for a {:g}% interval pass alpha_ci={:g}.".format(
+                level,
+                round(100 * (1 - level), 10),
+                round(100 * level, 10),
+                round(1 - level, 12),
+            ),
+            UserWarning,
+            stacklevel=caller_stacklevel(),
+        )
 
 
 def unknown_cause_error(cause: Any, causes: Any) -> ValueError:

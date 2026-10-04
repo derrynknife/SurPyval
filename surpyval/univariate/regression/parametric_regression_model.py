@@ -19,7 +19,10 @@ from surpyval.utils.shapes import (
     covariate_rows,
     keeps_query_shape,
 )
-from surpyval.utils.validation import warn_outside_unit_interval
+from surpyval.utils.validation import (
+    check_alpha_ci,
+    warn_outside_unit_interval,
+)
 
 from ._concordance import ConcordanceMixin
 from ._covariate_link import CovariateLink
@@ -784,6 +787,7 @@ class ParametricRegressionModel(
         coefficients fin    -0.3296    0.1898  0.0826
                      age    -0.0713    0.0209  0.0006
         """
+        check_alpha_ci(alpha_ci)
         import pandas as pd
 
         from ._summary import coefficient_table
@@ -1622,6 +1626,7 @@ class ParametricRegressionModel(
         alpha_ci : float, optional
             Total tail probability of the band. Default 0.05.
         """
+        check_alpha_ci(alpha_ci)
 
         self._require_data("plot()")
         if ax is None:

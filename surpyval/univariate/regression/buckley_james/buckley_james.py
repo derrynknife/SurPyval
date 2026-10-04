@@ -54,6 +54,7 @@ from surpyval.utils.linalg import percentile_bounds
 from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.validation import check_alpha_ci
 
 from .._aliasing import (
     aliased_columns,
@@ -473,6 +474,7 @@ class BuckleyJamesModel(
         numpy.ndarray
             An ``(n_coef, 2)`` array of ``[lower, upper]`` bounds.
         """
+        check_alpha_ci(alpha_ci)
         if self._data is None:
             raise ValueError(
                 "bootstrap_ci needs the fit data, which this model does not "

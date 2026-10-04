@@ -66,6 +66,7 @@ from surpyval.utils.no_maximum import (
 from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import (
+    check_alpha_ci,
     check_option,
     missing_cause_error,
     no_covariance_error,
@@ -417,6 +418,7 @@ class CompetingRisksProportionalHazards(
         a: coef_0  0.8460    0.1783  0.0000
         b: coef_0  0.1377    0.2811  0.6242
         """
+        check_alpha_ci(alpha_ci)
         return coefficient_table(
             self.parameter_names,
             self.params,
