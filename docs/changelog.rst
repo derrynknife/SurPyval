@@ -94,6 +94,11 @@ Unreleased
   ``param_cb`` no longer suggests profile or bootstrap bounds the copula
   models do not have. A ``WienerProcessModel`` or ``GammaProcessModel``
   pickled by 0.22 loads with ``y0 = 0``.
+- ``SurvivalTree`` and ``RandomSurvivalForest`` predictions check the
+  covariate count against the fitted model (#657): an extra column was
+  ignored, giving plausible wrong predictions, and a missing one raised
+  numpy's ``IndexError``; both now raise "The forest has 2 covariates
+  (Z0, Z1); got 3 values". The count is saved in ``to_dict``.
 - ``fit_best`` passed over every lifetime family (support from 0) in
   silence when some times were at or below 0, and returned the best of the
   rest: with three zero ages in 50, a Normal that put 3% of the units

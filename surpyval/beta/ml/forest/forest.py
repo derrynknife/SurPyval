@@ -17,6 +17,7 @@ from surpyval.beta.ml.forest.oob import (
 )
 from surpyval.beta.ml.forest.tree import (
     SurvivalTree,
+    check_covariate_count,
     covariate_matrix,
     drop_missing_covariate_rows,
     feature_labels,
@@ -399,7 +400,9 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             Times, the same for every covariate vector.
         Z : ArrayLike | NDArray
             One covariate vector (1-D), or a matrix with one covariate
-            vector per row (2-D).
+            vector per row (2-D), with one value per covariate the forest
+            was grown on, in its column order: another number raises a
+            ``ValueError`` (#657). A DataFrame is read by column name.
         ensemble_method : str, optional
             Determines whether to average across terminal nodes the terminal
             node survival functions or cumulative hazard functions.
@@ -473,6 +476,21 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             Z = prepare_Z(Z, self.feature_names, self._model_spec)
         single_covariant_vector = np.ndim(Z) < 2
         Z = np.array(Z, ndmin=2)
+        # One value per covariate the forest was grown on (#657); each tree
+        # would say so in its own terms.
+        if self.trees:
+            n_fitted = (
+                self.Z.shape[1]
+                if self.Z is not None
+                else self.trees[0]._n_covariates()
+            )
+            if n_fitted is not None:
+                check_covariate_count(
+                    Z[0] if single_covariant_vector else Z,
+                    n_fitted,
+                    self.feature_labels,
+                    "forest",
+                )
 
         # Each tree routes every row to its own leaf and returns an
         # (n_rows, x.size) grid

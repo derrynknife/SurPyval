@@ -159,3 +159,56 @@ def test_survival_probability_forest(forest, n_features):
     Zq = _query(n_features)
     S = survival_probability(forest, Zq, XS)
     np.testing.assert_allclose(S, _stack(forest, "sf", XS, Zq), rtol=1e-14)
+
+
+# ---------------------------------------------------------------------------
+# The covariate count is checked against the fitted model (#657)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def two_feature_models():
+    x, c, Z = _data(2)
+    tree = SurvivalTree.fit(x, Z, c=c, kind="exponential", random_state=0)
+    forest = RandomSurvivalForest.fit(
+        x, Z, c=c, n_trees=3, kind="exponential", random_state=0
+    )
+    return tree, forest
+
+
+@pytest.mark.parametrize("which", [0, 1], ids=["tree", "forest"])
+def test_a_wrong_covariate_count_is_refused(two_feature_models, which):
+    # An extra column was ignored (a plausible, wrong prediction), and a
+    # missing one raised numpy's IndexError.
+    model = two_feature_models[which]
+    what = ["tree", "forest"][which]
+    model.sf(5.0, [0.5, 0.2])
+    expected = f"The {what} has 2 covariates \\(Z0, Z1\\); got 3 values"
+    with pytest.raises(ValueError, match=expected):
+        model.sf(5.0, [0.5, 0.2, 99.0])
+    with pytest.raises(ValueError, match="has 2 covariates.*got 1 value"):
+        model.sf(5.0, [0.5])
+    with pytest.raises(ValueError, match="got 3 columns"):
+        model.ff(XS, np.zeros((2, 3)))
+    # Restored from a dict, it still knows how many
+    restored = type(model).from_dict(model.to_dict())
+    with pytest.raises(ValueError, match="has 2 covariates"):
+        restored.sf(5.0, [0.5, 0.2, 99.0])
+
+
+def test_a_tree_restored_from_an_old_dict_checks_what_its_splits_read(
+    two_feature_models,
+):
+    # A dict saved before the count was stored, without feature names:
+    # only too few columns for its splits can be refused.
+    tree = two_feature_models[0]
+    d = tree.to_dict()
+    d.pop("n_covariates")
+    restored = SurvivalTree.from_dict(d)
+    assert restored._n_covariates() is None
+    needed = max(
+        1, len(restored.feature_labels)
+    )  # the features its splits use or drew
+    restored.sf(5.0, np.zeros(needed))
+    with pytest.raises(ValueError, match="at least"):
+        restored.sf(5.0, np.zeros(needed - 1))

@@ -90,6 +90,40 @@ def feature_labels(
     return [f"Z{j}" for j in range(n_features)]
 
 
+def check_covariate_count(
+    Z: NDArray,
+    n_fitted: "int | None",
+    labels: "list[str]",
+    what: str,
+    at_least: int = 0,
+) -> None:
+    """Refuse covariate vectors whose length is not the number the model
+    was fitted with (#657): an extra column was ignored, and a missing one
+    raised numpy's IndexError, so a column-order or width mistake gave
+    plausible, wrong predictions. ``Z`` is one vector (1-D) or one per row
+    (2-D); ``n_fitted`` is the fitted count (``None`` for a model restored
+    from a dict saved without it, which is then checked only to have the
+    ``at_least`` columns its splits read)."""
+    if Z.ndim not in (1, 2):
+        return
+    got = Z.shape[-1]
+    if n_fitted is None:
+        if got >= at_least:
+            return
+        expected = f"at least {at_least} covariates"
+    elif got == n_fitted:
+        return
+    else:
+        names = f" ({', '.join(labels)})" if labels else ""
+        expected = f"{n_fitted} covariate{'s' * (n_fitted != 1)}{names}"
+    unit = "value" if Z.ndim == 1 else "column"
+    raise ValueError(
+        f"The {what} has {expected}; got {got} {unit}{'s' * (got != 1)} "
+        "in Z. Pass one value per covariate, in the order the model was "
+        "fitted with (or a DataFrame with those columns)."
+    )
+
+
 def drop_missing_covariate_rows(
     data: SurpyvalData, Z: ArrayLike | NDArray
 ) -> tuple[SurpyvalData, NDArray]:
@@ -158,7 +192,14 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
       the kind's criterion. This removes the preference for features with
       many values and stops the tree where the data show no effect. See
       :mod:`~surpyval.beta.ml.forest.conditional_inference`.
+
+    Predictions take one value per covariate the tree was grown on, in
+    its column order (or a DataFrame with its columns); another number
+    raises a ``ValueError`` (#657).
     """
+
+    #: The covariate count a restored tree's :meth:`to_dict` saved.
+    _saved_n_covariates: "int | None" = None
 
     def __init__(
         self,
@@ -440,6 +481,19 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             return prepare_Z(Z, self.feature_names, self._model_spec)
         return np.array(Z, ndmin=1, dtype=float)
 
+    def _n_covariates(self) -> "int | None":
+        """The number of covariates the tree was grown on: the columns of
+        its ``Z``, or as saved by :meth:`to_dict`; ``None`` for a tree
+        restored from a dict saved without it and without names."""
+        if getattr(self, "Z", None) is not None:
+            return int(np.shape(self.Z)[1])
+        saved = getattr(self, "_saved_n_covariates", None)
+        if saved is not None:
+            return int(saved)
+        if self.feature_names is not None:
+            return len(self.feature_names)
+        return None
+
     def _apply_flat(
         self, function_name: str, x: NDArray, Z: ArrayLike | NDArray
     ) -> NDArray:
@@ -450,6 +504,14 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
                 f"Z must be one covariate vector (1-D) or one per row "
                 f"(2-D), got {Z.ndim} dimensions"
             )
+        n_fitted = self._n_covariates()
+        check_covariate_count(
+            Z,
+            n_fitted,
+            self.feature_labels if n_fitted is not None else [],
+            "tree",
+            at_least=_n_features(self._root, None),
+        )
 
         # A NaN compares false with every split value, so it used to be
         # routed right at every split on its feature and given a number.
@@ -535,6 +597,9 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             "min_split_gain": self.min_split_gain,
             "root": self._root.to_dict(),
         }
+        n_covariates = self._n_covariates()
+        if n_covariates is not None:
+            out["n_covariates"] = n_covariates
         serialise_covariate_meta(self, out)
         # The leaves are finished model dictionaries already (#549)
         return stamp_schema(out, stamped=True)
@@ -554,6 +619,9 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         tree.data = None  # type: ignore[assignment]
         tree.Z = None  # type: ignore[assignment]
         tree._model_spec = None
+        # The covariate count predictions are checked against (#657);
+        # trees saved before it was stored have none.
+        tree._saved_n_covariates = model_dict.get("n_covariates")
         # Trees saved before feature names existed have none.
         restore_covariate_meta(tree, model_dict)
         tree._root = node_from_dict(model_dict["root"])
