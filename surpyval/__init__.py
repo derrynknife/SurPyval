@@ -1,4 +1,4 @@
-__version__ = "0.22"
+__version__ = "0.23"
 
 # First: autograd's special functions without scipy.stats (#470)
 from surpyval import _autograd_special  # noqa: F401  # isort: skip
