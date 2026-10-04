@@ -37,6 +37,40 @@ def number_text(value: object) -> str:
     return str(value)
 
 
+def _warn_negative_entry(
+    data: RecurrentEventData, entry: npt.NDArray, model_name: str
+) -> None:
+    """
+    Warn of a negative entry age ``tl`` on a renewal fit (#664). These
+    models count each item's age from new, so a negative entry is almost
+    always a data error (a calendar time, or an offset scale); it is
+    still accepted (and taken as given, the item as new at entry), as the
+    changelog for #615 says.
+    """
+    import warnings
+
+    from surpyval.utils.warnings import caller_stacklevel
+
+    first, _ = data.item_rows()
+    negative = [
+        "{} (tl={})".format(item_label(data.i[k]), number_text(entry[k]))
+        for k in first
+        if entry[k] < 0
+    ]
+    warnings.warn(
+        "{} takes tl as each item's age at entry, but {} item(s) enter at "
+        "a negative age: {}. On an age scale a negative entry is almost "
+        "always a data error (calendar times, or another origin); the fit "
+        "uses it as given, each item as new at its entry.".format(
+            model_name,
+            len(negative),
+            ", ".join(negative[:5]) + (", ..." if len(negative) > 5 else ""),
+        ),
+        UserWarning,
+        stacklevel=caller_stacklevel(),
+    )
+
+
 def measure_from_entry(
     data: RecurrentEventData, model_name: str
 ) -> RecurrentEventData:
@@ -60,6 +94,8 @@ def measure_from_entry(
     tl = np.asarray(data.tl, dtype=float)
     entry = np.where(np.isfinite(tl), tl, 0.0)
     x = np.asarray(data.x, dtype=float)
+    if np.any(entry < 0):
+        _warn_negative_entry(data, entry, model_name)
     if np.any(entry != 0):
         tr = np.asarray(data.tr, dtype=float)
         shifted = RecurrentEventData(

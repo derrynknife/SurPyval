@@ -166,11 +166,31 @@ def test_renewal_rejects_negative_times():
             RecurrentEventData([-1.0, 2.0, 3.0], [1, 1, 1], [0, 0, 1], 1)
         )
     # With one they count from the entry, as new there (#615): a negative
-    # time after a negative entry is a positive age.
-    entered = GeneralizedRenewal.fit_from_recurrent_data(
-        handle_xicn([-1.0, 2.0, 3.0, 5.0], [1] * 4, [0, 0, 0, 1], tl=-2.0)
-    )
+    # time after a negative entry is a positive age (with a warning that a
+    # negative entry age is probably a data error, #664).
+    with pytest.warns(UserWarning, match="negative age"):
+        entered = GeneralizedRenewal.fit_from_recurrent_data(
+            handle_xicn([-1.0, 2.0, 3.0, 5.0], [1] * 4, [0, 0, 0, 1], tl=-2.0)
+        )
     assert np.allclose(entered.data.x, [1.0, 4.0, 5.0, 7.0])
+
+
+@pytest.mark.parametrize(
+    "fitter", [GeneralizedRenewal, GeneralizedOneRenewal, ARA, ARI]
+)
+def test_664_a_negative_entry_age_warns_and_is_kept(fitter):
+    x = [3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60.0]
+    i = ["a"] * 6 + ["b"] * 5
+    c = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+    tl = [-50.0] * 6 + [0.0] * 5
+    kw = {"baseline": CrowAMSAA, "m": 1} if fitter is ARI else {}
+    with pytest.warns(UserWarning, match=r"1 item\(s\).*a \(tl=-50.0\)"):
+        model = fitter.fit(x, i, c, tl=tl, **kw)
+    # still fitted, item a as new at -50 (its times moved on by 50)
+    assert np.allclose(model.data.x[:6], np.array(x[:6]) + 50.0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        fitter.fit(x, i, c, tl=[0.0] * 11, **kw)
 
 
 _REPAIR_CASES = {
