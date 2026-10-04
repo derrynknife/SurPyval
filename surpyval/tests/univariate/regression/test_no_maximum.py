@@ -432,6 +432,104 @@ def test_the_profile_curvature_from_products_is_exact():
         assert S == pytest.approx(np.exp(t), rel=1e-14, abs=0)
 
 
+# -- all the failures in one cell of a two-stress test (#628) -----------------
+
+
+def _one_cell_alt():
+    """#583's accelerated life test (Arrhenius in temperature, inverse power
+    in voltage, Weibull shape 2.2, 12 units a cell, ended at 3000 h) at
+    c = 600, draw 54 of #617's study: all six failures are in the 125 C /
+    500 V cell, so both coefficients run off together (any direction that
+    lengthens every other cell's life raises the likelihood)."""
+    T, V = np.meshgrid(
+        np.array([85.0, 105.0, 125.0]) + 273.15, [450.0, 500.0], indexing="ij"
+    )
+    Z = np.repeat(np.column_stack([T.ravel(), V.ravel()]), 12, axis=0)
+    rng = np.random.default_rng([617, 600, 54])
+    life = 600.0 * np.exp(0.7 / 8.617e-5 / Z[:, 0]) * Z[:, 1] ** -3.0
+    t = life * rng.weibull(2.2, len(Z))
+    x, c = np.minimum(t, 3000.0), (t > 3000.0).astype(int)
+    assert np.all(Z[c == 0] == [398.15, 500.0]) and np.sum(c == 0) == 6
+    return x, c, Z
+
+
+@pytest.mark.parametrize(
+    "fit",
+    [
+        lambda x, c, Z: sp.WeibullAFT.fit(x, _alt_terms(Z), c=c),
+        lambda x, c, Z: sp.WeibullPH.fit(x, _alt_terms(Z), c=c),
+        lambda x, c, Z: sp.LogNormalAFT.fit(x, _alt_terms(Z), c=c),
+        lambda x, c, Z: sp.WeibullPO.fit(x, _alt_terms(Z), c=c),
+    ],
+    ids=["WeibullAFT", "WeibullPH", "LogNormalAFT", "WeibullPO"],
+)
+def test_628_all_failures_in_one_cell_have_no_finite_maximum(fit):
+    # WeibullAFT reached a scale of 9.1e134 and coefficients -52674 and 70
+    # and called it a verified maximum, without a word: the likelihood is
+    # within 1e-5 of its supremum there, so the gradient test passes, and
+    # the no-maximum check, made in the search's own units, could not see
+    # the run-off (WeibullPH and WeibullPO likewise).
+    model, w = _fit(lambda: fit(*_one_cell_alt()))
+    assert model.maximum == "no finite maximum"
+    assert len(w) == 1, [str(x.message) for x in w]
+    assert str(w[0].message).startswith(NO_MAXIMUM)
+    assert w[0].filename == __file__
+
+
+def _alt_terms(Z):
+    return np.column_stack([1.0 / Z[:, 0], np.log(Z[:, 1])])
+
+
+def test_628_a_one_bounded_parameter_is_judged_on_its_log_scale():
+    # A likelihood quadratic in log(a), with ``a`` searched linearly beyond
+    # 1 (as ``bounds_convert`` searches a scale): a point short of its
+    # maximum at a = e^5 - 1 looks like a run-off along ``a`` read linearly
+    # (an accelerated life ``c`` at 1e22 warned "No finite maximum"), not
+    # on the log scale.
+    def f(p):
+        return (anp.log1p(p[0]) - 3.0) ** 2
+
+    for u in (5.0, 20.0):
+        x = np.array([np.expm1(u)])
+        assert runaway_coefficients(f, x, [0], [0.0]) == [0]
+        assert runaway.runaways_in_units(f, x, [0], [0.0], one_sided=(0,)) == []
+
+
+def test_628_coefficients_running_off_together_are_found_jointly():
+    # exp(t) + exp(u) falls to its infimum along any direction of the
+    # negative quadrant; the joint profile along the Newton step finds it.
+    def f(p):
+        return anp.exp(p[0]) + anp.exp(p[1])
+
+    assert runaway.joint_runaway(f, [-15.0, -15.0], [0, 1], [0.0, 0.0]) == [
+        0,
+        1,
+    ]
+
+    def quadratic(p):
+        return (p[0] - 1) ** 2 + (p[1] + 2) ** 2 + 0.5 * p[0] * p[1]
+
+    assert runaway.joint_runaway(quadratic, [1.0, -2.0], [0, 1]) == []
+
+
+def test_628_a_profile_flat_to_rounding_has_no_maximum():
+    # exp(t) at t = -800 has underflowed: no curvature at all where the
+    # likelihood depended on t at the start. A parameter that never enters
+    # it is flat at the start too, and is not called a run-off.
+    def f(p):
+        return anp.exp(p[0]) + (p[1] - 1.0) ** 2
+
+    x, start = np.array([-800.0, 1.0]), np.zeros(2)
+    derivatives = runaway.search_derivatives(f, x)
+    assert runaway.flat_profiles(f, x, [0], start, derivatives) == [0]
+
+    def ignores(p):
+        return (p[1] - 1.0) ** 2 + 0.0 * p[0]
+
+    derivatives = runaway.search_derivatives(ignores, x)
+    assert runaway.flat_profiles(ignores, x, [0], start, derivatives) == []
+
+
 # ---------------------------------------------------------------------------
 # Cox warns on a monotone likelihood.
 # ---------------------------------------------------------------------------

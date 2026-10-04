@@ -275,11 +275,57 @@ def runaways_in_units(
     out = runaway_coefficients(
         in_units, v0, coefs, v_start, units_derivatives
     )
-    if out:
-        return out
-    return joint_runaway(
-        in_units, v0, coefs, v_start, units_derivatives, unit / size
-    )
+    if not out:
+        out = joint_runaway(
+            in_units, v0, coefs, v_start, units_derivatives, unit / size
+        )
+    if not out:
+        out = flat_profiles(in_units, v0, coefs, v_start, units_derivatives)
+    return out
+
+
+def flat_profiles(
+    neg_ll: Callable,
+    x: npt.ArrayLike,
+    coefs: "list[int]",
+    start: "npt.ArrayLike | None",
+    derivatives: "tuple[npt.NDArray, npt.NDArray]",
+) -> "list[int]":
+    """The positions in ``coefs`` of the parameters whose profile has no
+    curvature at ``x`` to rounding, though the likelihood depends on them at
+    ``start``: they have run so far that the rows they move no longer count
+    (see above), where neither Newton's test nor any other made with
+    derivatives can say more.
+
+    A maximum's profile curves down: its curvature is the estimate's
+    precision. Here the curvature, the Schur complement of the Hessian
+    ``H`` in the parameter, is within the rounding of ``H`` itself (the
+    tolerance of ``numpy.linalg.matrix_rank``, ``size * eps * ||H||``), as
+    on a WeibullPO run along a separating direction to coefficients of
+    1.6e6 and -668 (a profile curvature of 1e-13 beside a largest of 1e8).
+    A parameter that does not enter the likelihood at all is flat at the
+    start too, and is left out (:func:`_flat_at_start`); so is one that
+    ``_cleared`` shows to be at a maximum."""
+    H, g = derivatives
+    at = np.asarray(x, dtype=float)
+    if start is None or not (np.all(np.isfinite(H)) and np.all(np.isfinite(g))):
+        return []
+    cleared = _cleared(at, H, g)
+    tol = at.size * float(np.finfo(float).eps) * np.linalg.norm(H, 2)
+    out = []
+    for k, j in enumerate(coefs):
+        if cleared[j]:
+            continue
+        others = [i for i in range(at.size) if i != j]
+        v = np.zeros(at.size)
+        v[j] = 1.0
+        if others:
+            pinv = np.linalg.pinv(H[np.ix_(others, others)])
+            v[others] = -pinv @ H[others, j]
+        curvature = float(v @ H @ v)
+        if abs(curvature) <= tol and not _flat_at_start(neg_ll, start, v):
+            out.append(k)
+    return out
 
 
 # -- several coefficients running off together (#628) --------------------------
@@ -331,6 +377,8 @@ def joint_runaway(
     if derivatives is None:
         return []
     H, g = derivatives
+    if not (np.all(np.isfinite(H)) and np.all(np.isfinite(g))):
+        return []
     cleared = _cleared(at, H, g, floor)
     loose = [k for k, j in enumerate(coefs) if not cleared[j]]
     if len(loose) < 2:
