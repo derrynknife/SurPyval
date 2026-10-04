@@ -693,12 +693,16 @@ class ParametricRegressionModel(
 
     def _n_covariates(self) -> int:
         """The number of columns of ``Z``: that of the fitted data where
-        the model has it, else one per coefficient (an accelerated-life
-        model's life-model parameters are not one per column)."""
+        the model has it, else one per coefficient, or, for an
+        accelerated-life model (whose life-model parameters are not one
+        per column), its life model's number of stresses."""
         data = getattr(self, "data", None)
         Z = getattr(data, "Z", None)
         if Z is not None and np.ndim(Z) == 2:
             return int(np.shape(Z)[1])
+        n_stresses = getattr(self.reg_model, "n_stresses", None)
+        if self._is_accelerated_life() and isinstance(n_stresses, int):
+            return n_stresses
         return len(self.params) - self.k_dist
 
     def _is_accelerated_life(self) -> bool:
@@ -820,6 +824,16 @@ class ParametricRegressionModel(
         error or interval (``nan``), nor does an aliased coefficient
         (#476), whose value is ``nan`` too.
 
+        An accelerated life model's life-model parameters are not
+        log-linear coefficients: their intervals are :meth:`param_cb`'s
+        too (a positive constant's on the log scale, #655), and their
+        ``exp(coef)`` columns are ``nan``, as for an additive link. An
+        unbounded one (a power, an activation energy, a column
+        coefficient) has its Wald ``z`` and ``p`` against 0, no stress
+        effect (:attr:`p_values`, #662). The life parameter the life
+        model replaces has no row; its slot in ``params`` holds the
+        placeholder 1 (with standard error 0), which is not a parameter.
+
         Parameters
         ----------
         alpha_ci : float, optional
@@ -879,6 +893,10 @@ class ParametricRegressionModel(
         # The life parameter an accelerated-life model replaces by its life
         # model is a placeholder, not a parameter (#489): no row.
         kept = [i for i in range(first) if names[i] != self.life_parameter]
+        # An accelerated life model's unbounded life-model parameters (a
+        # power, an activation energy, a coefficient) have a Wald test of
+        # 0, no stress effect (#662).
+        p_values = self.p_values
         others = []
         for i in kept:
             bounds = np.full(2, np.nan)
@@ -891,14 +909,16 @@ class ParametricRegressionModel(
                         ).ravel()
                 except (ValueError, ArithmeticError):
                     pass
-            others.append(
-                {
-                    "coef": params[i],
-                    "se(coef)": se[i],
-                    "coef lower " + level: bounds[0],
-                    "coef upper " + level: bounds[-1],
-                }
-            )
+            row = {
+                "coef": params[i],
+                "se(coef)": se[i],
+                "coef lower " + level: bounds[0],
+                "coef upper " + level: bounds[-1],
+            }
+            if np.isfinite(p_values[i]):
+                row["z"] = params[i] / se[i]
+                row["p"] = p_values[i]
+            others.append(row)
         table = pd.DataFrame(
             others,
             columns=list(coefficient_table([], [], [], alpha_ci).columns),
@@ -1523,6 +1543,120 @@ class ParametricRegressionModel(
             )
         if shape is not None:
             out = out.reshape(shape)
+        return out
+
+    def mean(self, Z: "npt.ArrayLike | pd.DataFrame") -> Any:
+        r"""
+        The mean life of a unit with covariates ``Z``,
+        :math:`\int_0^\infty S(t \mid Z)\, dt` (#662): an accelerated
+        life model's MTTF at use conditions.
+
+        An accelerated life model's distribution at a stress is the
+        baseline's with its life parameter given by the life model, whose
+        mean is the distribution's closed form. Every other family's is
+        :meth:`mean_tvc` at the constant covariates
+        (``mean_tvc(StepSchedule.constant(row))``), an adaptive integral
+        of :meth:`sf`, which agrees with a closed form to about ``1e-9``.
+        A survival that levels off above 0 (a hazard that dies away) has
+        an infinite mean, returned with a warning, as :meth:`mean_tvc`
+        does; a missing covariate gives ``nan``.
+
+        Parameters
+        ----------
+        Z : array like or DataFrame
+            One covariate row (a scalar for a one-covariate model), or one
+            row per unit; a model fitted with ``fit_from_df`` also takes a
+            DataFrame.
+
+        Returns
+        -------
+        mean : float or numpy array
+            The mean life of each row: a number for one row.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from scipy.special import gamma
+        >>> from surpyval import AcceleratedLife, Weibull
+        >>> from surpyval.life_models import Power
+        >>> np.random.seed(1)
+        >>> stress = np.repeat([20.0, 30.0, 40.0], 40)
+        >>> x = Weibull.random(120, 10, 3) * (100.0 / stress)
+        >>> model = AcceleratedLife(Weibull, Power).fit(x, Z=stress)
+        >>> _, shape, a, n = model.params
+        >>> mttf = model.mean(10.0)
+        >>> bool(np.isclose(mttf, a * 10.0**n * gamma(1 + 1 / shape)))
+        True
+        >>> model.mean([10.0, 20.0]).round(2)
+        array([73.93, 41.64])
+        """
+        rows = covariate_rows(self._prepare_Z(Z), self._n_covariates())
+        out = np.full(rows.shape[0], np.nan)
+        known = np.all(np.isfinite(rows), axis=1)
+        if self._is_accelerated_life():
+            params = self._eval_params()
+            # Every fittable distribution has its mean in closed form.
+            dist = cast(Any, self.distribution)
+            for j in np.flatnonzero(known):
+                dist_params = self.model._dist_params_at(rows[j], params)
+                out[j] = float(dist.mean(*(float(v) for v in dist_params)))
+        else:
+            from .tvc_schedule import StepSchedule
+
+            for j in np.flatnonzero(known):
+                out[j] = self.mean_tvc(StepSchedule.constant(rows[j]))
+        return out[0] if out.size == 1 else out
+
+    def _wald_tested(self) -> "list[int]":
+        """The positions in ``params`` that :attr:`p_values` tests against
+        0: the coefficients of a linear predictor, or an accelerated life
+        model's unbounded life-model parameters."""
+        n = len(self.params)
+        if self._is_linear_predictor():
+            return list(range(self.k_dist, n))
+        if self._is_accelerated_life():
+            bounds = self._parameter_bounds()
+            return [
+                i
+                for i in range(self.k_dist, n)
+                if tuple(bounds[i]) == (None, None)
+            ]
+        return []
+
+    @property
+    def p_values(self) -> npt.NDArray:
+        r"""
+        Wald p-values, as ``CoxPH``'s ``p_values`` (#662):
+        :math:`2 (1 - \Phi(|\theta / se(\theta)|))` for each covariate
+        coefficient, in the order of ``params`` and :attr:`parameter_names`
+        (the ``p`` column of :meth:`summary`). The baseline distribution's
+        parameters are not tested against 0, and are ``nan``; so are a
+        fixed or aliased coefficient, and every entry of a model without
+        standard errors. An accelerated life model has its unbounded
+        life-model parameters tested (a power, an activation energy: 0 is
+        no stress effect), not its positive constants.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> model.p_values.round(4)
+        array([   nan,    nan, 0.0001])
+        """
+        params = np.asarray(self.params, dtype=float)
+        out = np.full(params.shape, np.nan)
+        tested = self._wald_tested()
+        if tested:
+            from scipy.stats import norm
+
+            se = self._summary_se()
+            with np.errstate(all="ignore"):
+                z = params[tested] / se[tested]
+                out[tested] = 2 * norm.sf(np.abs(z))
         return out
 
     def random(

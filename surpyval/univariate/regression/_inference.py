@@ -336,6 +336,11 @@ class InferenceMixin:
         """
         Standard errors of the fitted parameters (square roots of the diagonal
         of :meth:`covariance`), ordered to match :attr:`parameter_names`.
+        A fixed parameter's is 0, as is that of an accelerated life model's
+        life parameter, whose slot in ``params`` holds a placeholder 1
+        (the life model gives the life at each stress): index the
+        life-model parameters by name, or use :meth:`summary`, which
+        leaves the placeholder out.
         """
         with np.errstate(invalid="ignore"):
             return np.sqrt(np.diag(self.covariance()))

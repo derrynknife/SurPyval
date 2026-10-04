@@ -123,7 +123,12 @@ from .._fit_skeleton import (
     covariate_center,
 )
 from .._kinds import PROPORTIONAL_ODDS
-from .._prediction import ConditionalSurvivalMixin
+from .._prediction import (
+    ConditionalSurvivalMixin,
+    paired_probabilities,
+    step_quantiles,
+    unique_rows,
+)
 from .._summary import coefficient_names, coefficient_repr, coefficient_table
 from ..regression_data import (
     LinearPredictorMixin,
@@ -765,6 +770,52 @@ class ProportionalOddsModel(
                 - np.logaddexp(0.0, lG + eta)
                 - np.logaddexp(0.0, lGp + eta)
             )
+
+    @keeps_query_shape
+    def qf(
+        self,
+        p: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
+    ) -> npt.NDArray:
+        """
+        The quantile function: the first baseline time at which the
+        predicted failure probability ``ff(x, Z)`` reaches ``p`` (#662),
+        ``nan`` where it never does -- the curve stops at the last
+        observed time, above ``1 - p`` where the data end censored -- as
+        the non-parametric estimates' ``qf`` gives it. The median life of
+        a unit with covariates ``Z`` is ``qf(0.5, Z)`` (R's
+        ``quantile(survfit(fit, newdata))``, lifelines'
+        ``predict_median``), its B10 life ``qf(0.1, Z)``.
+
+        ``Z`` is paired with ``p`` as :meth:`sf` pairs it with ``x``: one
+        row for every ``p``, or one ``p`` for every row; ``grid=True``
+        gives every ``p`` for every row, with shape ``(len(Z),) +
+        p.shape``. A predicted curve within ``1e-9`` of ``p``
+        counts as reaching it (round-off would otherwise put the quantile
+        a step late), and ``qf(0, Z)`` is the first time the curve rises
+        above 0. A probability outside [0, 1] gives ``nan``, with a
+        warning, as every model's ``qf``.
+
+        Examples
+        --------
+        >>> from surpyval import ProportionalOdds
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = ProportionalOdds.fit(x, df[["fin", "prio"]].values, c=c)
+        >>> model.qf(0.1, [[0, 0], [1, 0], [0, 10]])
+        array([26., 37., 12.])
+        """
+        rows = covariate_rows(
+            self._prepare_Z(Z), np.asarray(self.beta).shape[0]
+        )
+        u, rows, shape = paired_probabilities(p, rows, grid)
+        uniq, which = unique_rows(rows)
+        F = np.atleast_2d(self.ff(self.x, uniq, grid=True))
+        out = step_quantiles(F[which], self.x, u)
+        return out if shape is None else out.reshape(shape)
 
     # -- model comparison (#604) -------------------------------------------
 

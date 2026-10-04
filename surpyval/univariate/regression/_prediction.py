@@ -11,6 +11,10 @@ exact in the far tail where the ratio of survival functions underflows to
 ``quantiles_by_inversion`` is the parametric regression models'
 ``qf(p, Z)`` (#571): the time at which the model's cumulative hazard
 reaches :math:`-\\log(1 - p)`, solved for every probability at once.
+``step_quantiles`` is that of the semi-parametric models, whose
+predicted curve is a step function (#662): the first step time at which
+the predicted failure probability reaches ``p``, ``nan`` where it never
+does, as the non-parametric estimates' ``qf``.
 """
 
 from __future__ import annotations
@@ -22,11 +26,18 @@ import numpy.typing as npt
 
 from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.removed_names import removed_arguments
+from surpyval.utils.shapes import check_paired_rows
+from surpyval.utils.validation import warn_outside_unit_interval
 
 # Expanding a bracket doubles its step: 2000 doublings pass the largest
 # float from any start, so a search that has not reached its target by
 # then never will (a cure fraction, or a hazard that stops growing).
 _MAX_DOUBLINGS = 2000
+
+#: A predicted failure probability within this of ``p`` counts as reaching
+#: it in a step curve's quantile, the non-parametric ``qf``'s tolerance:
+#: round-off in the curve would otherwise put the quantile a step late.
+STEP_QF_TOL = 1e-9
 
 
 class ConditionalSurvivalMixin:
@@ -121,6 +132,76 @@ class ConditionalSurvivalMixin:
         with np.errstate(invalid="ignore"):
             out = np.exp(np.asarray(start, dtype=float) - end)
         return out[()] if np.ndim(out) == 0 else out
+
+
+def paired_probabilities(
+    p: npt.ArrayLike, rows: npt.NDArray, grid: bool = False
+) -> "tuple[npt.NDArray, npt.NDArray, tuple[int, int] | None]":
+    """The probabilities ``p`` (flat) and covariate ``rows`` of a
+    regression model's ``qf(p, Z)``, one problem each: paired as ``sf``
+    pairs times with rows (one row for every ``p``, or one ``p`` for
+    every row), or, with ``grid``, every ``p`` for every row, with the
+    ``(len(rows), len(p))`` shape to give the result. A probability
+    outside [0, 1] is ``nan``, with one warning (#611)."""
+    u = np.asarray(p, dtype=float).reshape(-1)
+    rows = np.asarray(rows, dtype=float)
+    shape = None
+    if grid:
+        shape = (rows.shape[0], u.size)
+        u = np.tile(u, shape[0])
+        rows = np.repeat(rows, shape[1], axis=0)
+    else:
+        check_paired_rows(u.size, rows.shape[0])
+        size = u.size if rows.shape[0] == 1 else max(u.size, rows.shape[0])
+        u = np.broadcast_to(u, (size,))
+        rows = np.broadcast_to(rows, (size, rows.shape[1]))
+    u = np.where(warn_outside_unit_interval(u), np.nan, u)
+    return u, rows, shape
+
+
+def unique_rows(rows: npt.NDArray) -> "tuple[npt.NDArray, npt.NDArray]":
+    """The distinct covariate rows and, for each row, which it is: the
+    curves of a step model are evaluated once per distinct row."""
+    rows = np.asarray(rows, dtype=float)
+    if rows.shape[0] == 0 or rows.shape[1] == 0:
+        return rows[:1], np.zeros(rows.shape[0], dtype=int)
+    uniq, inverse = np.unique(rows, axis=0, return_inverse=True)
+    return uniq, np.ravel(inverse)
+
+
+def step_quantiles(
+    F: npt.NDArray, times: npt.NDArray, p: npt.NDArray
+) -> npt.NDArray:
+    """The first of ``times`` at which the failure probability ``F[k]``
+    of problem ``k`` (the predicted curve at the step times, a row each,
+    or one row for all) reaches ``p[k]``: ``nan`` where it never does (a
+    curve that ends above ``1 - p``, as right censoring leaves it), and
+    for a ``nan`` ``p``. A curve within ``STEP_QF_TOL`` of ``p`` counts
+    as reaching it, and ``p = 0`` is the first time the curve rises above
+    0, as for the non-parametric ``qf``.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.univariate.regression._prediction import (
+    ...     step_quantiles,
+    ... )
+    >>> F = np.array([[0.1, 0.5, 0.7], [0.2, 0.3, 0.4]])
+    >>> step_quantiles(F, np.array([1.0, 2.0, 3.0]), np.array([0.5, 0.5]))
+    array([ 2., nan])
+    """
+    p = np.asarray(p, dtype=float)
+    times = np.asarray(times, dtype=float)
+    out = np.full(p.shape, np.nan)
+    if not times.size or not p.size:
+        return out
+    target = np.maximum(p - STEP_QF_TOL, np.finfo(float).tiny)
+    with np.errstate(invalid="ignore"):
+        hit = np.asarray(F, dtype=float) >= target[:, None]
+    found = hit.any(axis=1)
+    first = np.argmax(hit, axis=1)
+    out = np.where(found, times[first], np.nan)
+    return np.where(np.isnan(p), np.nan, out)
 
 
 def quantiles_by_inversion(

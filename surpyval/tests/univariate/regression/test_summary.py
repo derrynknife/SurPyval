@@ -238,3 +238,103 @@ def test_frailty_summary_without_covariance():
     assert table["se(coef)"].isna().all()
     assert np.isfinite(table["coef"]).all()
     repr(model)
+
+
+# ---------------------------------------------------------------------------
+# #662: p_values, summary() and the information criteria on every family
+# ---------------------------------------------------------------------------
+
+
+def test_662_parametric_and_frailty_p_values_match_the_summary():
+    df = rossi_with_censoring()
+    x, c = df.week.to_numpy(), df.censored.to_numpy()
+    model = sp.WeibullPH.fit(x, df[["fin", "age"]].to_numpy(), c)
+    p = model.p_values
+    assert np.isnan(p[:2]).all()
+    np.testing.assert_allclose(p[2:], model.summary()["p"].iloc[2:])
+    se = model.standard_errors()[2:]
+    np.testing.assert_allclose(
+        p[2:], 2 * norm.sf(np.abs(model.params[2:] / se)), rtol=1e-12
+    )
+    frailty = _frailty()
+    np.testing.assert_allclose(
+        frailty.p_values, frailty.summary()["p"].to_numpy(), equal_nan=True
+    )
+    assert np.isfinite(frailty.p_values[2:4]).all()
+    assert np.isnan(frailty.p_values[[0, 1, 4]]).all()
+
+
+def test_662_accelerated_life_summary_tests_the_unbounded_parameters():
+    # The exp(coef), bounds, z and p columns were all nan; a power (or an
+    # activation energy) is tested against 0, no stress effect, and a
+    # positive constant is not.
+    rng = np.random.default_rng(0)
+    V = rng.choice([1.0, 2.0, 4.0], 100)
+    life = AcceleratedLife(Weibull, Power).fit(
+        10 * V**-1.5 * rng.weibull(2, 100), Z=V
+    )
+    table = life.summary()
+    assert list(table.columns) == COLUMNS
+    n_row = table.loc[("life model", "n")]
+    assert n_row["z"] == pytest.approx(n_row["coef"] / n_row["se(coef)"])
+    assert n_row["p"] == pytest.approx(life.p_values[3])
+    assert np.isnan(table.loc[("life model", "a"), ["z", "p"]]).all()
+    assert np.isnan(table.loc[("baseline", "beta"), ["z", "p"]]).all()
+    assert np.isnan(life.p_values[[0, 1, 2]]).all()
+
+
+def test_662_semi_parametric_summaries_are_tables():
+    df = rossi_with_censoring()
+    x, c = df.week.to_numpy(), df.censored.to_numpy()
+    Z = df[["fin", "age"]].to_numpy()
+    ah = sp.AdditiveHazards.fit(x, Z, c=c)
+    table = ah.summary()
+    assert list(table.columns) == COLUMNS
+    np.testing.assert_allclose(table["p"], ah.p_values)
+    np.testing.assert_allclose(table["se(coef)"], ah.standard_errors())
+    assert table["exp(coef)"].isna().all()  # an excess hazard, not a ratio
+    bj = sp.BuckleyJames.fit(x, Z, c=c)
+    table = bj.summary()
+    assert list(table.columns) == COLUMNS
+    np.testing.assert_allclose(table["exp(coef)"], np.exp(bj.beta))
+    assert table[["se(coef)", "z", "p", "coef lower 95%"]].isna().all().all()
+    boot = bj.summary(n_boot=20, random_state=0)
+    np.testing.assert_allclose(
+        boot[["coef lower 95%", "coef upper 95%"]],
+        bj.bootstrap_ci(n_boot=20, random_state=0),
+    )
+    rp = sp.RoystonParmar.fit(x, c=c, df=2)
+    table = rp.summary()
+    assert list(table.columns) == COLUMNS
+    np.testing.assert_allclose(table["se(coef)"], rp.standard_errors())
+    assert repr(rp).startswith("Royston-Parmar Flexible Parametric Model")
+
+
+@pytest.mark.parametrize("fitter", [sp.AdditiveHazards, sp.BuckleyJames])
+def test_662_no_likelihood_says_why(fitter):
+    df = rossi_with_censoring()
+    x, c = df.week.to_numpy(), df.censored.to_numpy()
+    model = fitter.fit(x, df[["fin"]].to_numpy(), c=c)
+    for name in ("neg_ll", "aic", "bic", "aic_c"):
+        with pytest.raises(NotImplementedError, match="no likelihood"):
+            getattr(model, name)()
+    with pytest.raises(NotImplementedError, match="no likelihood"):
+        model.log_likelihood
+    assert not hasattr(model, "log_likelihood")
+
+
+def test_662_cox_frailty_param_cb_takes_method():
+    df = rossi_with_censoring()
+    df["grp"] = np.arange(len(df)) % 40
+    model = sp.CoxFrailty.fit(
+        df.week, Z=df[["fin"]].to_numpy(), c=df.censored, groups=df.grp
+    )
+    wald = model.param_cb("coef_0")
+    np.testing.assert_array_equal(model.param_cb("coef_0", method=None), wald)
+    np.testing.assert_array_equal(
+        model.param_cb("coef_0", method="wald"), wald
+    )
+    with pytest.raises(ValueError, match="Wald bounds only"):
+        model.param_cb("coef_0", method="lr")
+    with pytest.raises(ValueError, match="method"):
+        model.param_cb("coef_0", method="wold")

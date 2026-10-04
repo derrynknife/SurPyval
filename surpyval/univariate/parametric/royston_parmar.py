@@ -37,7 +37,7 @@ right-truncation. Right-censored contribute ``log S``, left-censored
 each observation's contribution by ``S(t_l) - S(t_r)``.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from scipy.optimize import minimize
@@ -77,6 +77,9 @@ from surpyval.utils.validation import (
     option_error,
     warn_outside_unit_interval,
 )
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 _SCALES = ("hazard", "odds", "normal")
 
@@ -472,9 +475,52 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
         """
         return standard_errors_of(self.covariance())
 
-    def summary(self) -> str:
-        """A text summary of the fit: link scale, knots, likelihood and
-        coefficients."""
+    def summary(self, alpha_ci: float = 0.05) -> "pd.DataFrame":
+        """
+        The coefficient table, in the layout of the regression models'
+        :meth:`summary` (#662): each spline coefficient ``gamma_j`` with
+        its standard error, a two-sided ``1 - alpha_ci`` Wald interval and
+        the Wald ``z`` and p-value; ``exp(coef)`` and its bounds are
+        ``nan`` (a spline coefficient is not a log ratio). Without a
+        covariance the standard errors, intervals and tests are ``nan``.
+        The text summary (scale, knots, likelihood) is the model's
+        ``repr``.
+
+        .. versionchanged:: 0.24
+           Returns a ``DataFrame``; it returned the text ``repr`` prints.
+
+        Parameters
+        ----------
+        alpha_ci : float, optional
+            The intervals' total tail probability. Default 0.05.
+
+        Returns
+        -------
+        pandas.DataFrame
+            One row per coefficient, indexed by name.
+
+        Examples
+        --------
+        >>> from surpyval import RoystonParmar, Weibull
+        >>> x = Weibull.random(200, 10, 2, random_state=1)
+        >>> model = RoystonParmar.fit(x, df=2)
+        >>> list(model.summary().index)
+        ['gamma_0', 'gamma_1', 'gamma_2']
+        """
+        from surpyval.univariate.regression._summary import (
+            coefficient_table,
+        )
+
+        params = np.asarray(self.params, dtype=float)
+        se = np.full(params.shape, np.nan)
+        if self._covariance is not None:
+            se = self.standard_errors()
+        names = ["gamma_{}".format(i) for i in range(params.size)]
+        table = coefficient_table(names, params, se, alpha_ci, exp=False)
+        table.index.name = "name"
+        return table
+
+    def __repr__(self) -> str:
         lines = [
             "Royston-Parmar Flexible Parametric Model",
             "========================================",
@@ -489,9 +535,6 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
         for i, g in enumerate(self.params):
             lines.append(f"    gamma_{i:<3}: {g:.6g}")
         return "\n".join(lines)
-
-    def __repr__(self) -> str:
-        return self.summary()
 
     # -- serialisation -----------------------------------------------------
 

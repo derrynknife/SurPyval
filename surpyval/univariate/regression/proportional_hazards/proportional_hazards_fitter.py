@@ -29,7 +29,7 @@ from .._fit_skeleton import (
 from .._kinds import PROPORTIONAL_HAZARD
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
-from ..regression_data import DataFrameRegressionMixin
+from ..regression_data import DataFrameRegressionMixin, truncation_window
 from ..tvc_fit import TVCFitMixin
 
 # The name the PH covariate link had before it became the shared
@@ -342,6 +342,8 @@ class ProportionalHazardsFitter(
         init: npt.ArrayLike | None = None,
         fixed: dict[str, float] | None = None,
         center: bool = False,
+        tl: npt.ArrayLike | None = None,
+        tr: npt.ArrayLike | None = None,
     ) -> ParametricRegressionModel:
         """
         Fit the proportional hazards model to the data.
@@ -362,6 +364,10 @@ class ProportionalHazardsFitter(
         t : array_like, optional
             Truncation bounds: an (N, 2) array of the left and right
             truncation times of each observation.
+        tl, tr : array_like or float, optional
+            The left / right truncation times of each observation (or one
+            for every observation), the columns of ``t``, which they
+            replace (#662).
         init : array_like, optional
             The initial values for the parameters: the distribution
             parameters followed by the covariate coefficients.
@@ -411,6 +417,7 @@ class ProportionalHazardsFitter(
         >>> model.params.round(4)
         array([  0.2377,  15.    ,  -8.6283,  -7.6175, -25.9524,  17.2701])
         """
+        t = truncation_window(x, t, tl, tr)
         return fit_log_linear(
             self,
             x,

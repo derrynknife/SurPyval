@@ -25,7 +25,12 @@ from surpyval.utils.shapes import (
 from surpyval.utils.validation import check_alpha_ci, no_covariance_error
 
 from ._concordance import ConcordanceMixin
-from ._prediction import ConditionalSurvivalMixin
+from ._prediction import (
+    ConditionalSurvivalMixin,
+    paired_probabilities,
+    step_quantiles,
+    unique_rows,
+)
 from ._summary import (
     coefficient_names,
     coefficient_repr,
@@ -722,6 +727,63 @@ class SemiParametricRegressionModel(
         return self.hf(x, Z, stratum, grid=grid) * self.sf(
             x, Z, stratum, grid=grid
         )
+
+    @keeps_query_shape
+    def qf(
+        self,
+        p: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        stratum: Any = None,
+        *,
+        grid: bool = False,
+    ) -> npt.NDArray:
+        """
+        The quantile function: the first baseline time at which the
+        predicted failure probability ``ff(x, Z)`` reaches ``p`` (#662),
+        ``nan`` where it never does -- the curve stops at the last
+        observed time, above ``1 - p`` where the data end censored -- as
+        the non-parametric estimates' ``qf`` gives it. The median life of
+        a unit with covariates ``Z`` is ``qf(0.5, Z)`` (R's
+        ``quantile(survfit(fit, newdata))``, lifelines'
+        ``predict_median``), its B10 life ``qf(0.1, Z)``.
+
+        ``Z`` is paired with ``p`` as :meth:`sf` pairs it with ``x``: one
+        row for every ``p``, or one ``p`` for every row; ``grid=True``
+        gives every ``p`` for every row, with shape ``(len(Z),) +
+        p.shape``. ``stratum`` selects the baseline of a stratified fit.
+        A predicted curve within ``1e-9`` of ``p`` counts as reaching it
+        (round-off would otherwise put the quantile a step late), and
+        ``qf(0, Z)`` is the first time the curve rises above 0. A
+        probability outside [0, 1] gives ``nan``, with a warning, as every
+        model's ``qf``.
+
+        Examples
+        --------
+        >>> from surpyval import CoxPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = CoxPH.fit(x, df[["fin", "prio"]].values, c=c)
+        >>> model.qf(0.1, [[0, 0], [1, 0], [0, 10]])
+        array([25., 36., 12.])
+        >>> model.ff([24.0, 25.0], [0, 0]).round(4)
+        array([0.0942, 0.1003])
+
+        Fewer than half are arrested within the year, so the median is
+        not reached:
+
+        >>> model.qf(0.5, [0, 0])
+        np.float64(nan)
+        """
+        bx, _, _ = self._baseline_arrays(stratum)
+        rows = covariate_rows(
+            self._prepare_Z(Z), np.asarray(self.beta).shape[0]
+        )
+        u, rows, shape = paired_probabilities(p, rows, grid)
+        uniq, which = unique_rows(rows)
+        F = np.atleast_2d(self.ff(bx, uniq, stratum, grid=True))
+        out = step_quantiles(F[which], bx, u)
+        return out if shape is None else out.reshape(shape)
 
     def compute_residuals(self, kind: str = "martingale") -> npt.NDArray:
         """
