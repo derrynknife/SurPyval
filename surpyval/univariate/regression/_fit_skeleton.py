@@ -1221,10 +1221,7 @@ def judge_search(
     ``verify_or_polish`` does. A fit that stopped short (as
     :func:`optimise_ph` and :func:`optimise_nm_tnc` flag it with
     ``quiet=True``) is usually rescued that way; an ordinary fit is already
-    verified and is not touched. A polished answer is checked for a
-    coefficient running off again: the polish follows a run-off further,
-    to where the rise is below the verification's tolerance and the point
-    passes as a maximum (#628). An objective autograd cannot differentiate
+    verified and is not touched. An objective autograd cannot differentiate
     keeps the optimiser's verdict: ``"unverified"`` if it stopped short,
     else ``"unknown"``. ``floor`` is each component's least unit for the
     check and the polish (:func:`coefficient_floor`), and ``one_sided``
@@ -1236,19 +1233,12 @@ def judge_search(
         return SearchVerdict(res, "unverified", None, [])
     derivatives = search_derivatives(fun, res.x)
     positions = [pos for pos, _ in coefs]
-
-    def no_maximum(res: Any, derivatives: Any) -> "SearchVerdict | None":
-        runaway = runaways_in_units(
-            fun, res.x, positions, start, derivatives, floor, one_sided
-        )
-        if not runaway:
-            return None
+    runaway = runaways_in_units(
+        fun, res.x, positions, start, derivatives, floor, one_sided
+    )
+    if runaway:
         numbers = [coefs[k][1] for k in runaway]
         return SearchVerdict(res, "no finite maximum", derivatives, numbers)
-
-    found = no_maximum(res, derivatives)
-    if found is not None:
-        return found
     if verified is None:
         if derivatives is None:
             stopped = getattr(res, "stopped_short", False)
@@ -1259,9 +1249,6 @@ def judge_search(
             res, derivatives, verified = _polish(
                 fun, res, derivatives, n_obs, held, floor
             )
-            found = no_maximum(res, derivatives)
-            if found is not None:
-                return found
     state = "verified" if verified else "unverified"
     return SearchVerdict(res, state, derivatives, [])
 

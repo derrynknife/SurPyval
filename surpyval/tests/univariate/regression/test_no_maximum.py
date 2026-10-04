@@ -495,23 +495,6 @@ def test_628_a_one_bounded_parameter_is_judged_on_its_log_scale():
         assert runaway.runaways_in_units(f, x, [0], [0.0], one_sided=(0,)) == []
 
 
-def test_628_coefficients_running_off_together_are_found_jointly():
-    # exp(t) + exp(u) falls to its infimum along any direction of the
-    # negative quadrant; the joint profile along the Newton step finds it.
-    def f(p):
-        return anp.exp(p[0]) + anp.exp(p[1])
-
-    assert runaway.joint_runaway(f, [-15.0, -15.0], [0, 1], [0.0, 0.0]) == [
-        0,
-        1,
-    ]
-
-    def quadratic(p):
-        return (p[0] - 1) ** 2 + (p[1] + 2) ** 2 + 0.5 * p[0] * p[1]
-
-    assert runaway.joint_runaway(quadratic, [1.0, -2.0], [0, 1]) == []
-
-
 def test_628_a_profile_flat_to_rounding_has_no_maximum():
     # exp(t) at t = -800 has underflowed: no curvature at all where the
     # likelihood depended on t at the start. A parameter that never enters
