@@ -481,7 +481,11 @@ class InferenceMixin:
         ``sf``, ``ff`` and ``Hf`` are one interval. On the test above with
         46 failures it covered 0.903, against 0.880 (Wald), 0.875
         (likelihood ratio) and 0.866 for the plain percentile interval
-        (1000 repetitions of 1000 refits, #617). A refit that reaches no
+        (1000 repetitions of 1000 refits, #617). With 11 failures it
+        covered 0.71 (Wald 0.87, likelihood ratio 0.85): in 28% of those
+        data sets the likelihood has no finite maximum, and a bootstrap
+        from such a fit closes onto its estimate (it warns so); where the
+        estimate exists it covered 0.979. A refit that reaches no
         verified maximum (a resample with no failures at some stresses can
         leave an effect without one) is kept at the estimate it reached,
         and one that raises is left out; both are counted, with one

@@ -2303,16 +2303,21 @@ refits, so ask for every time you need at once; the calls with the same
 
 A hundred refits keep the example short; use a thousand or more for a bound
 you will act on. On the two-stress test above with 46 failures on average,
-the 90% bootstrap bound on the five-year reliability at use covered
-COVER_BCA_118 of 1,000 repetitions (1,000 refits each), against COVER_WALD_118
-(Wald), COVER_LR_118 (likelihood ratio) and COVER_PCT_118 for the plain
-percentile interval of the same refits, whose misses fell mostly on one
-side. With 11 failures on average no bound can be trusted: in
-SHARE_NOMLE_600 of the repetitions all the failures fell at stresses that
-leave the activation energy or the voltage exponent running off without
-limit, the fit warns that its likelihood has no finite maximum, and the
-bootstrap from such a fit is no better than the fit (see
-:doc:`the coverage study <changelog>` in the changelog for the numbers).
+the 90% bootstrap bound on the five-year reliability at use covered 0.903
+of 1,000 repetitions (1,000 refits each), its misses even on both sides,
+against 0.880 (Wald), 0.875 (likelihood ratio) and 0.866 for the plain
+percentile interval of the same refits, whose misses fell mostly below.
+
+With 11 failures on average no bound holds. In 28% of the repetitions the
+failures all fell at stresses that leave the activation energy or the
+voltage exponent without a finite estimate; the fit warns that its
+likelihood has no finite maximum, and the bootstrap from it, whose
+resamples run off the same way, closes onto the meaningless estimate (and
+warns so). Over all the repetitions the bootstrap bound covered 0.71,
+against 0.87 (Wald, which is near [0, 1] or ``nan`` for those fits) and
+0.85 (likelihood ratio); where the estimate exists, they covered 0.917
+(Wald), 0.934 (likelihood ratio) and 0.979 (bootstrap). The remedy there is a design with more
+failures, not another bound.
 
 Two stresses at once
 ~~~~~~~~~~~~~~~~~~~~

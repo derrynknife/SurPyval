@@ -384,3 +384,19 @@ def test_617_an_accelerated_life_model():
             model.param_cb(name, method="bootstrap", n_boot=20, random_state=0)
         )
     )
+
+
+def test_617_a_model_with_no_finite_maximum_says_its_bounds_mean_nothing():
+    # No failures in the Z = 1 group: the coefficient runs off, and data
+    # simulated from the fit run off the same way.
+    rng = np.random.default_rng(3)
+    Z = np.repeat([0.0, 1.0], 15)
+    x = 10 * rng.weibull(1.5, 30)
+    c = (Z == 1).astype(int)
+    model = quietly(WeibullPH.fit, x, Z, c=c)
+    assert model.maximum == "no finite maximum"
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model.cb(5.0, [1.0], method="bootstrap", n_boot=10, random_state=0)
+    msgs = [str(w.message) for w in caught]
+    assert len(msgs) == 1 and "not a confidence bound" in msgs[0], msgs

@@ -114,11 +114,29 @@ class Refits:
     unverified: int
     #: Refits that raised (left out).
     failed: int
+    #: What the model's own fit reached (its ``maximum``).
+    model_maximum: str = "verified"
 
     def warn(self) -> None:
-        """One warning if more than ``FAILED_SHARE`` of the refits did
-        not reach a verified maximum or failed."""
+        """One warning: that the model itself has no finite maximum, or
+        that more than ``FAILED_SHARE`` of the refits did not reach a
+        verified maximum or failed."""
         bad = self.no_maximum + self.unverified + self.failed
+        if self.model_maximum == "no finite maximum":
+            # On #583's test with 11 failures, the bootstrap bound from
+            # such a fit covered 0.004 (the Wald bound, [0, 1] or nan
+            # there, 1.0 of those that were not nan; #617).
+            warnings.warn(
+                "This model's likelihood has no finite maximum (as its fit "
+                "warned), so the data simulated from it run off the same "
+                "way and the bootstrap bounds close onto its meaningless "
+                "estimate. They are not a confidence bound; the data do "
+                "not determine the model (too few failures at some "
+                "covariate values).",
+                UserWarning,
+                stacklevel=caller_stacklevel(),
+            )
+            return
         if bad <= FAILED_SHARE * self.n_boot:
             return
         parts = []
@@ -307,6 +325,7 @@ def _draw(
         no_maximum=counts["no finite maximum"],
         unverified=counts["unverified"],
         failed=counts["failed"],
+        model_maximum=model.maximum,
     )
 
 
