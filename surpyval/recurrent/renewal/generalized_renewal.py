@@ -355,7 +355,9 @@ class GeneralizedRenewal(RenewalFitMixin):
             Data containing the recurrence details.
             An item with delayed entry (a ``tl``) is taken to be as
             new at entry, with its times counted from there (see
-            :meth:`fit`).
+            :meth:`fit`). A finite right truncation ``tr`` ends an
+            item's observation there, as a ``c=1`` row at ``tr``
+            would (#624).
         dist : Distribution, optional
             A surpyval distribution object. Default is Weibull.
         kijima : str, optional

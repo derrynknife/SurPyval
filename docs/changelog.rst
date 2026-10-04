@@ -339,6 +339,10 @@ Unreleased
   accelerated life ``c`` (or ``a``, ``b``) is searched on its log scale
   with the life one exponent; the WeibullPH refusal at ``Z = 0`` says the
   data may have no maximum; GammaAFT's Hessian is finite at a small x.
+- Renewal fits (GeneralizedRenewal, G1, ARA, ARI) take a finite ``tr``
+  from ``fit_from_recurrent_data`` as each item's end of observation, as
+  a ``c=1`` row at ``tr`` and the NHPP fitters do (#624); it was ignored,
+  giving the fit without the item's last event-free stretch.
 
 v0.23 (4 October 2026)
 ----------------------

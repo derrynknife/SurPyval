@@ -191,3 +191,52 @@ def test_615_renewal_fits_take_delayed_entry_as_new(model, kwargs):
             log, x_col="t", i_col="unit", c_col="c", tl_col="entry", **kwargs
         )
     assert np.allclose(via_df.params, entered.params, rtol=1e-8)
+
+
+@pytest.mark.parametrize(
+    "model, kwargs",
+    [
+        (GeneralizedRenewal, {}),
+        (GeneralizedOneRenewal, {}),
+        (ARA, {"m": 1}),
+        (ARI, {"m": 1}),
+    ],
+)
+def test_624_renewal_fits_close_the_window_at_tr(model, kwargs):
+    # A finite tr is each item's end of observation, as the NHPP fitters
+    # take it: the same fit as a c=1 row at tr. It used to be ignored.
+    x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2])
+    i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3])
+    via_tr = model.fit_from_recurrent_data(
+        handle_xicn(x, i, tl=np.where(i == 3, 0.5, 0.0), tr=20.0), **kwargs
+    )
+    rows = np.r_[x, 20, 20, 20]
+    items = np.r_[i, 1, 2, 3]
+    ends = np.r_[np.zeros_like(x), 1, 1, 1]
+    via_row = model.fit_from_recurrent_data(
+        handle_xicn(rows, items, ends, tl=np.where(items == 3, 0.5, 0.0)),
+        **kwargs,
+    )
+    assert np.allclose(via_tr.params, via_row.params, rtol=1e-8)
+    assert via_tr.log_likelihood == pytest.approx(via_row.log_likelihood)
+    # A c=1 row already at tr is not doubled.
+    closed = model.fit_from_recurrent_data(
+        handle_xicn(rows, items, ends, tr=20.0), **kwargs
+    )
+    assert len(closed.data.x) == len(rows)
+
+
+def test_624_renewal_refuses_rows_past_tr():
+    # Hand-built data (handle_xicn refuses it too): rows after the end of
+    # observation.
+    from surpyval.utils.recurrent_event_data import RecurrentEventData
+
+    data = RecurrentEventData(
+        np.array([1.0, 3.0, 6.0, 2.0, 4.0]),
+        np.array([1, 1, 1, 2, 2]),
+        np.zeros(5),
+        np.ones(5),
+        tr=np.array([5.0, 5.0, 5.0, 9.0, 9.0]),
+    )
+    with pytest.raises(ValueError, match=r"Item 1 has a row at 6\.0 after"):
+        GeneralizedRenewal.fit_from_recurrent_data(data)
