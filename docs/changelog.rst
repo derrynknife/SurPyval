@@ -118,6 +118,12 @@ Unreleased
   and an example; the Binomial / Bernoulli convention, the forest's
   ``feature_importances()`` and the recurrent ``n`` (1 on exact events)
   read as the code does; float-sensitive examples are rounded.
+- Wald ``cb`` computes each ``x``'s bound on its own (#652): one ``x``
+  far in the tail made every ``hf`` bound ``nan``, with a warning blaming
+  the covariance. A continuous hazard is the family's own ``hf``; an
+  ``x`` whose derivatives overflow alone is ``nan``, and the warning says
+  so. ``Hf`` bounds far in the tail (Wald and ``method="lr"``) are on
+  ``log Hf`` and contain the estimate; they were ``[inf, inf]``.
 - A univariate model's ``cs(x, given)`` was ``nan``, silently, where
   ``sf(given)`` underflows (``Weibull(100, 3).cs(1, given=1000)``), and
   ``forecast`` gave ``nan`` totals for such units (#660). It is now

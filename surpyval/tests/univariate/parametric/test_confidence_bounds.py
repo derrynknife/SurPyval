@@ -730,6 +730,50 @@ def test_function_cb_with_a_negative_variance_warns():
     assert np.all(np.isnan(cb))
 
 
+def _far_tail_weibull():
+    rng = np.random.default_rng(9)
+    t = 500 * rng.weibull(1.8, 25)
+    cen = rng.uniform(200, 900, 25)
+    return surv.Weibull.fit(np.minimum(t, cen), (t > cen).astype(int))
+
+
+def test_652_each_x_has_its_own_wald_bound_far_in_the_tail():
+    # One x far in the tail made every x's hf bound nan, with a warning
+    # blaming the covariance; each x's bound is now its own, and the hazard
+    # is taken from the log density and log survival, finite there.
+    model = _far_tail_weibull()
+    alone = no_warnings(model.cb, [300.0], on="hf")
+    both = no_warnings(model.cb, [300.0, 1e6], on="hf")
+    np.testing.assert_allclose(both[0], alone[0], rtol=1e-12)
+    hf = model.hf(1e6)
+    assert both[1, 0] < hf < both[1, 1]
+    for on in ("sf", "ff", "df"):
+        band = no_warnings(model.cb, [300.0, 1e6], on=on)
+        np.testing.assert_allclose(band[0], model.cb([300.0], on=on)[0])
+    # Hf on the log scale: it contains the estimate (it was [inf, inf]),
+    # and agrees with -log of the sf band where that is finite.
+    H = no_warnings(model.cb, [300.0, 1e6], on="Hf")
+    assert H[1, 0] < model.Hf(1e6) < H[1, 1] < np.inf
+    sf = model.cb([300.0], on="sf")
+    np.testing.assert_allclose(H[0], -np.log(sf[0, ::-1]), rtol=1e-12)
+    upper = model.cb([300.0, 1e6], on="Hf", bound="upper")
+    assert model.Hf(1e6) < upper[1] < H[1, 1]
+
+
+def test_652_an_overflowing_gradient_is_named_not_the_covariance():
+    # Where a gradient overflows at one x (a Gumbel's hazard, e^(x/sigma),
+    # far in its tail), that x alone is nan, and the warning says so (the
+    # covariance is fine).
+    np.random.seed(1)
+    model = surv.Gumbel.fit(surv.Gumbel.random(50, 10, 2))
+    with pytest.warns(RuntimeWarning, match=r"hf at x = \[10000.0\]") as rec:
+        band = model.cb([8.0, 1e4], on="hf")
+    assert len(rec) == 1 and rec[0].filename == __file__
+    assert "overflow" in str(rec[0].message)
+    assert "positive definite" not in str(rec[0].message)
+    assert np.all(np.isfinite(band[0])) and np.all(np.isnan(band[1]))
+
+
 # ---------------------------------------------------------------------------
 # ``param_cb`` on the offset.
 # ---------------------------------------------------------------------------
