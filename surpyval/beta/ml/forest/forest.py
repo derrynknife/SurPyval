@@ -393,7 +393,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         Z: ArrayLike | NDArray,
         ensemble_method: str = "sf",
         *,
-        grid: "bool | None" = None,
+        grid: bool = False,
     ) -> NDArray:
         """Returns the ensemble survival function
 
@@ -412,23 +412,21 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             For these respectively, ensemble_method must be "sf" or
             "Hf". Defaults to "sf".
         grid : bool, optional
-            ``True`` evaluates every time for every row of ``Z`` (a 1-D
-            ``Z`` is one row); ``False`` pairs row ``i`` of ``Z`` with
-            ``x[i]`` (a single row is used at every time, a single time
-            for every row), as every regression model does (#666). Not
-            given, a 2-D ``Z`` gives the grid, as it always has; with as
-            many times as rows, where pairing would apply, it warns
-            (``FutureWarning``) that a future release will pair them, so
-            pass ``grid=True`` to keep the grid.
+            ``False`` (the default) pairs row ``i`` of ``Z`` with ``x[i]``
+            (a single row is used at every time, a single time for every
+            row), as every regression model does (#666); other counts of
+            rows and times are refused with a ``ValueError``. ``True``
+            evaluates every time for every row of ``Z`` (a 1-D ``Z`` is
+            one row), a survival curve per covariate vector.
 
         Returns
         -------
         NDArray
             For a 1-D ``Z`` (and no ``grid``), the survival function at
-            ``x``, shaped like ``x`` (a scalar for a scalar ``x``). On the
-            grid, shape ``(n_rows,) + x.shape``, row ``i`` the survival
-            function for ``Z[i]``. Paired, the shape of ``x`` (or
-            ``(n_rows,)`` for a single time). A covariate vector with a
+            ``x``, shaped like ``x`` (a scalar for a scalar ``x``).
+            Paired, the shape of ``x`` (or ``(n_rows,)`` for a single
+            time). On the grid, shape ``(n_rows,) + x.shape``, row ``i``
+            the survival function for ``Z[i]``. A covariate vector with a
             missing (NaN) value gives NaN, and leaves the other rows
             unaffected.
 
@@ -444,10 +442,18 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         ...     random_state=0,
         ... )
         >>> rows = [[0.2, 0.5], [0.8, 0.5]]
-        >>> forest.sf([2.0, 5.0], rows, grid=True).shape
-        (2, 2)
-        >>> forest.sf([2.0, 5.0], rows, grid=False).shape
+        >>> forest.sf([2.0, 5.0], rows).shape  # row i at time i
         (2,)
+        >>> forest.sf(5.0, rows).shape  # one time for every row
+        (2,)
+        >>> forest.sf([2.0, 5.0, 8.0], rows[:1]).shape  # one row, every time
+        (3,)
+        >>> forest.sf([2.0, 5.0, 8.0], rows, grid=True).shape
+        (2, 3)
+        >>> forest.sf([2.0, 5.0, 8.0], rows)  # doctest: +ELLIPSIS
+        Traceback (most recent call last):
+        ...
+        ValueError: Z has 2 covariate rows for 3 times: ... pass grid=True.
         """
         # Anything but 'Hf' used to be taken silently as 'sf'.
         check_option("ensemble_method", ensemble_method, ("sf", "Hf"))
@@ -461,7 +467,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         x: int | float | ArrayLike,
         Z: ArrayLike | NDArray,
         *,
-        grid: "bool | None" = None,
+        grid: bool = False,
     ) -> NDArray:
         """Failure (CDF) function averaged over the trees, as for
         :meth:`sf`."""
@@ -472,7 +478,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         x: int | float | ArrayLike,
         Z: ArrayLike | NDArray,
         *,
-        grid: "bool | None" = None,
+        grid: bool = False,
     ) -> NDArray:
         """Density averaged over the trees, as for :meth:`sf`."""
         return self._apply_model_function_to_trees("df", x, Z, grid)
@@ -482,7 +488,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         x: int | float | ArrayLike,
         Z: ArrayLike | NDArray,
         *,
-        grid: "bool | None" = None,
+        grid: bool = False,
     ) -> NDArray:
         """Hazard rate averaged over the trees, as for :meth:`sf`."""
         return self._apply_model_function_to_trees("hf", x, Z, grid)
@@ -492,7 +498,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         x: int | float | ArrayLike,
         Z: ArrayLike | NDArray,
         *,
-        grid: "bool | None" = None,
+        grid: bool = False,
     ) -> NDArray:
         """Cumulative hazard averaged over the trees, as for :meth:`sf`."""
         return self._apply_model_function_to_trees("Hf", x, Z, grid)
@@ -513,11 +519,10 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         function_name: str,
         x: int | float | ArrayLike,
         Z: ArrayLike | NDArray,
-        grid: "bool | None" = None,
+        grid: bool = False,
     ) -> NDArray:
         # The times flat; the result gets their shape back (on its last
         # axis for a grid), so a scalar time gives a scalar.
-        x_scalar = np.ndim(x) == 0
         x, restore = flatten_query(x)
         if isinstance(Z, pd.DataFrame):
             # Read by the fitted names (or expanded by the formula)
@@ -541,13 +546,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
                 )
 
         layout = query_layout(
-            function_name,
-            "RandomSurvivalForest",
-            x_scalar,
-            x.size,
-            1 if single_covariant_vector else 2,
-            Z.shape[0],
-            grid,
+            x.size, 1 if single_covariant_vector else 2, Z.shape[0], grid
         )
         if layout == "paired":
             # Each tree evaluates row i at time x[i] (#666)

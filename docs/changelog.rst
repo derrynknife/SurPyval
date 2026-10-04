@@ -45,6 +45,23 @@ Unreleased
   counted nothing since those became aliases; they now patch the
   internal methods.
 
+**Changes.**
+
+- **Breaking, in** ``surpyval.beta``: **the survival tree and forest pair
+  rows with times (#666).** ``SurvivalTree`` and ``RandomSurvivalForest``
+  ``sf(x, Z)`` (and ``ff``, ``df``, ``hf``, ``Hf``) with a covariate
+  matrix gave every time for every row, a ``(len(Z),) + x.shape`` grid,
+  where every regression model pairs row ``i`` of ``Z`` with ``x[i]``.
+  They now pair them as the regression models do: one row is used at
+  every time, one time for every row, and any other count is refused with
+  the regression models' ``ValueError``. To keep the old result pass
+  ``grid=True``; ``grid`` is now a plain ``bool`` defaulting to
+  ``False``. The ``FutureWarning`` that announced the change is gone, and
+  there is no deprecation period: ``surpyval.beta`` carries no stability
+  promise. A 1-D ``Z`` (one covariate vector), and a scalar time with
+  several rows, give the same result as before. ``survival_probability``
+  no longer passes ``grid=False`` to a model whose ``sf`` takes it.
+
 **Performance**
 
 - **Building a SurpyvalData is about a third faster.** Every fit builds
@@ -106,7 +123,7 @@ Unreleased
   candidate; ``DestructiveDegradationModel`` has ``qf``, ``hf``, ``mean``,
   ``random``; Wiener / gamma process models ``covariance()``,
   ``standard_errors()``, ``param_cb``, ``cb``; trees and forests
-  ``sf(x, Z, grid=)`` (a ``FutureWarning`` where pairing would apply);
+  ``sf(x, Z, grid=)`` (see *Changes*);
   recurrent ``summary()`` and an MCF repr; ``forecast`` ignores
   ``random_state`` where exact; ``NonParametric.cb(x, on, alpha_ci, bound)``
   (old order warns); ``to_dict`` / ``to_frame`` on ``Forecast`` and RULs.

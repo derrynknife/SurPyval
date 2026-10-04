@@ -293,7 +293,7 @@ time per row, which is what you want for scoring a data set; any other number
 of rows is refused with a ``ValueError``. For a curve per covariate row --
 every time for every row, lifelines' ``predict_survival_function`` -- pass
 ``grid=True``: the result has shape ``(len(Z),) + x.shape``, row ``i`` for
-row ``i`` of ``Z``, as the survival tree and forest return it.
+row ``i`` of ``Z``. The survival tree and forest follow the same convention.
 A small simulated data set shows the three forms:
 
 .. jupyter-execute::
@@ -3735,11 +3735,12 @@ arrays, the covariates are named by their column of ``Z`` (``Z0``, ``Z1``,
 
 A forest averages many such trees, each grown on a bootstrap sample and
 considering a random subset of ``n_features_split`` covariates at each split.
-Its ``sf(x, Z)``, like a tree's, returns a grid for a covariate matrix — one
-row per covariate row, one column per time — unlike the element-wise
-regression models; ``grid=False`` pairs row ``i`` with ``x[i]`` as they do,
-and ``grid=True`` asks for the grid. Without ``grid``, as many times as rows
-warns (``FutureWarning``) that a future release will pair them. Its
+Its ``sf(x, Z)``, like a tree's, pairs row ``i`` of a covariate matrix with
+the time ``x[i]``, exactly as the regression models do (one row is used at
+every time, one time for every row, and any other count is refused);
+``grid=True`` gives every time for every row instead — one row per covariate
+row, one column per time, a survival curve per subject. (Before 0.24 the grid
+was the default for a matrix; pass ``grid=True`` for that result.) Its
 ``score(x, Z, c)``
 is the concordance of its mortality score (with the same ``ties`` option and
 default as ``concordance_index``). Trees and forests follow the
@@ -3756,7 +3757,9 @@ Cox model on the same metrics:
     rsf = RandomSurvivalForest.fit(x=xt_tr, Z=Zt_tr, c=ct_tr, n_trees=10,
                                    max_depth=3, n_features_split=2,
                                    kind='non-parametric')
-    print('forest sf grid shape:', rsf.sf([3.0, 6.0], Zt_te[:4]).shape)
+    print('forest sf paired    :', rsf.sf(xt_te[:4], Zt_te[:4]).shape)
+    print('forest sf grid shape:',
+          rsf.sf([3.0, 6.0], Zt_te[:4], grid=True).shape)
 
     cox_t = CoxPH.fit(x=xt_tr, Z=Zt_tr, c=ct_tr)
     grid = np.array([3.0, 6.0, 9.0])

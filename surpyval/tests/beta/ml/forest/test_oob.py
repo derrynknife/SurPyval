@@ -306,7 +306,8 @@ def test_restored_forest_predicts_but_cannot_score_out_of_bag():
     forest = _fit(x=x, Z=Z, c=c, n_trees=4, max_depth=2, kind="non-parametric")
     restored = surpyval.from_dict(forest.to_dict())
     np.testing.assert_array_equal(
-        restored.sf([2.0, 5.0], Z[:5]), forest.sf([2.0, 5.0], Z[:5])
+        restored.sf([2.0, 5.0], Z[:5], grid=True),
+        forest.sf([2.0, 5.0], Z[:5], grid=True),
     )
     # the bootstrap samples are not serialised: they are no use without
     # the training data, which is not either

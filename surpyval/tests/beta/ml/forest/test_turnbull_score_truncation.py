@@ -341,10 +341,10 @@ def test_tree_finds_a_planted_effect_with_turnbull_leaves(maker):
             for leaf in leaves
         )
     rows = np.array([[0.2, 0.5, 0.5], [0.8, 0.5, 0.5]])
-    s = tree.sf([4.0, 8.0], rows)
+    s = tree.sf([4.0, 8.0], rows, grid=True)
     assert np.all(s[1] < s[0])
     restored = SurvivalTree.from_dict(json.loads(json.dumps(tree.to_dict())))
-    np.testing.assert_allclose(restored.sf([4.0, 8.0], rows), s)
+    np.testing.assert_allclose(restored.sf([4.0, 8.0], rows, grid=True), s)
 
 
 @pytest.mark.parametrize(
@@ -408,7 +408,7 @@ def test_every_data_case_builds_a_non_parametric_tree():
                 random_state=0,
                 **kw,
             )
-            s = tree.sf([2.0, 6.0], Z[:5])
+            s = tree.sf([2.0, 6.0], Z[:5], grid=True)
         assert np.isfinite(s).all() and (np.diff(s, axis=1) <= 0).all(), name
 
 

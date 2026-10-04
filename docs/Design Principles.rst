@@ -89,8 +89,8 @@ Outputs
    axis. With covariates the shape is that of the times, rows and times
    paired: one row for every time, or one time for every row; other
    counts raise. ``grid=True`` on the Cox and parametric regression
-   functions gives the row-by-time grid, ``(n_rows,) + x.shape``, which
-   the survival tree and forest return by default.
+   functions, and on the survival tree and forest, gives the row-by-time
+   grid, ``(n_rows,) + x.shape``.
    ``surpyval.utils.shapes`` applies the rule at every model's public
    methods.
 

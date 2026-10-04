@@ -286,7 +286,7 @@ def test_forest_prediction_shapes(signal_forest):
     single = forest.sf(X_GRID, Z_FAST)
     assert single.shape == (X_GRID.size,)
 
-    stacked = forest.sf(X_GRID, np.array([Z_FAST, Z_SLOW]))
+    stacked = forest.sf(X_GRID, np.array([Z_FAST, Z_SLOW]), grid=True)
     assert stacked.shape == (2, X_GRID.size)
     np.testing.assert_allclose(stacked[0], single)
     np.testing.assert_allclose(stacked[1], forest.sf(X_GRID, Z_SLOW))
@@ -406,33 +406,90 @@ def _grid_forest():
     return forest, x, Z
 
 
-def test_666_forest_sf_grid_keyword_pairs_or_grids():
+@pytest.fixture(scope="module")
+def grid_models():
+    forest, x, Z = _grid_forest()
+    return {"forest": forest, "tree": forest.trees[0]}, x[:30], Z[:30]
+
+
+MODELS = ["forest", "tree"]
+
+
+@pytest.mark.parametrize("which", MODELS)
+@pytest.mark.parametrize("fn", ["sf", "ff", "df", "hf", "Hf"])
+def test_666_default_pairs_rows_with_times(grid_models, which, fn):
+    # Row i of Z with the time x[i], as every regression model pairs
+    # them: the diagonal of the grid (it was the grid, then a
+    # FutureWarning, before 0.24).
+    models, xs, Zs = grid_models
+    f = getattr(models[which], fn)
+    grid = f(xs, Zs, grid=True)
+    assert grid.shape == (30, 30)
+    paired = f(xs, Zs)
+    assert paired.shape == (30,)
+    np.testing.assert_allclose(paired, np.diag(grid), rtol=1e-14)
+    np.testing.assert_array_equal(f(xs, Zs, grid=False), paired)
+    # The times keep their shape, paired element by element.
+    np.testing.assert_array_equal(
+        f(xs.reshape(5, 6), Zs), paired.reshape(5, 6)
+    )
+
+
+@pytest.mark.parametrize("which", MODELS)
+def test_666_scalar_time_for_every_row(grid_models, which):
+    models, xs, Zs = grid_models
+    model = models[which]
+    got = model.sf(3.0, Zs)
+    assert got.shape == (30,)
+    np.testing.assert_allclose(got, model.sf([3.0], Zs, grid=True)[:, 0])
+    np.testing.assert_allclose(got, model.sf(np.full(30, 3.0), Zs))
+    np.testing.assert_allclose(model.sf([3.0], Zs), got)
+
+
+@pytest.mark.parametrize("which", MODELS)
+def test_666_one_row_at_every_time(grid_models, which):
+    models, xs, Zs = grid_models
+    model = models[which]
+    got = model.Hf(xs, Zs[:1])
+    assert got.shape == xs.shape
+    np.testing.assert_allclose(got, model.Hf(xs, Zs[0]))
+    np.testing.assert_allclose(got, model.Hf(xs, Zs[:1], grid=True)[0])
+
+
+@pytest.mark.parametrize("which", MODELS)
+def test_666_counts_that_cannot_pair_are_refused_as_regression(
+    grid_models, which
+):
+    # The same refusal, word for word, as a regression model's.
+    import surpyval as surv
+
+    models, xs, Zs = grid_models
+    regression = surv.WeibullPH.fit(xs, Zs)
+    with pytest.raises(ValueError) as expected:
+        regression.sf(xs[:3], Zs[:2])
+    with pytest.raises(ValueError) as got:
+        models[which].sf(xs[:3], Zs[:2])
+    assert str(got.value) == str(expected.value)
+    assert "pass grid=True" in str(got.value)
+    with pytest.raises(ValueError, match="grid=True"):
+        models[which].Hf(xs[:5], Zs)
+    # On the grid any counts go.
+    assert models[which].sf(xs[:3], Zs[:2], grid=True).shape == (2, 3)
+
+
+@pytest.mark.parametrize("which", MODELS)
+def test_666_no_future_warning(grid_models, which):
     import warnings
 
-    forest, x, Z = _grid_forest()
-    xs, Zs = x[:30], Z[:30]
-    with pytest.warns(FutureWarning, match="grid=True"):
-        legacy = forest.sf(xs, Zs)
-    grid = forest.sf(xs, Zs, grid=True)
-    np.testing.assert_array_equal(legacy, grid)
-    assert grid.shape == (30, 30)
-    paired = forest.sf(xs, Zs, grid=False)
-    assert paired.shape == (30,)
-    np.testing.assert_allclose(paired, np.diag(grid))
-    # a single time for every row, a single row at every time
-    np.testing.assert_allclose(
-        forest.sf([3.0], Zs, grid=False), forest.sf(3.0, Zs)
-    )
-    np.testing.assert_allclose(
-        forest.Hf(xs, Zs[:1], grid=False), forest.Hf(xs, Zs[0])
-    )
-    with pytest.raises(ValueError, match="grid=True"):
-        forest.sf(xs[:3], Zs[:2], grid=False)
-    # no warning where pairing would not apply
+    models, xs, Zs = grid_models
+    model = models[which]
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        forest.sf(xs[:5], Zs)
-        forest.sf(3.0, Zs)
+        model.sf(xs, Zs)
+        model.sf(xs, Zs, grid=True)
+        model.sf(xs[:5], Zs, grid=True)
+        model.sf(3.0, Zs)
+        model.Hf(xs, Zs[0])
 
 
 def test_666_tree_sf_grid_keyword_and_missing_rows():

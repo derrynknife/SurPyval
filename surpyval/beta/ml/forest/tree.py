@@ -1,4 +1,3 @@
-import warnings
 from copy import deepcopy
 from math import log2, sqrt
 from typing import Any
@@ -36,50 +35,26 @@ from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import check_paired_rows, flatten_query
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import option_error
-from surpyval.utils.warnings import caller_stacklevel
 
 Random = np.random.Generator | np.random.RandomState
 
 
-def query_layout(
-    function_name: str,
-    owner: str,
-    x_scalar: bool,
-    n_x: int,
-    Z_ndim: int,
-    n_rows: int,
-    grid: "bool | None",
-) -> str:
+def query_layout(n_x: int, Z_ndim: int, n_rows: int, grid: bool) -> str:
     """How a tree's or forest's ``sf(x, Z)`` (and ``ff``, ``df``, ``hf``,
     ``Hf``) lays out its result (#666): ``"grid"``, every time for every
     row; ``"single"``, one covariate vector (a 1-D ``Z``) at every time;
     ``"paired"``, row ``i`` of ``Z`` with ``x[i]``; ``"row"``, a single
     row at every time; ``"time"``, a single time for every row.
 
-    ``grid=True`` is the grid (a 1-D ``Z`` its one row) and
-    ``grid=False`` pairs rows with times as every regression model does,
-    refusing counts that cannot be paired. Without ``grid`` a 2-D ``Z``
-    gives the grid, as it always has; where pairing would apply (as many
-    times as rows) a ``FutureWarning`` says that a future release will
-    pair them.
+    By default rows are paired with times as every regression model
+    pairs them, and counts that cannot be paired are refused with the
+    regression models' message; ``grid=True`` is the grid (a 1-D ``Z``
+    its one row).
     """
     if grid:
         return "grid"
     if Z_ndim < 2:
         return "single"
-    if grid is None:
-        if not x_scalar and n_x == n_rows:
-            warnings.warn(
-                f"{owner}.{function_name}(x, Z) was given as many times as "
-                f"rows of Z ({n_rows}): it returns every time for every "
-                "row, a grid of shape (len(Z),) + x.shape, but a future "
-                "release will pair row i of Z with the time x[i], as "
-                "every regression model does. Pass grid=True to keep the "
-                "grid, or grid=False to pair them now.",
-                FutureWarning,
-                stacklevel=caller_stacklevel(),
-            )
-        return "grid"
     if n_rows == n_x:
         return "paired"
     if n_rows == 1:
@@ -418,9 +393,10 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         SurvivalTree
             The fitted tree. Its ``sf(x, Z)`` (and ``ff``, ``df``, ``hf``,
             ``Hf``) evaluate the model of the leaf that a covariate vector
-            ``Z`` falls in; a matrix ``Z`` gives one row per covariate
-            vector and one column per time. A covariate vector with a
-            missing (NaN) value gives NaN.
+            ``Z`` falls in; a matrix ``Z`` pairs row ``i`` with time
+            ``x[i]``, as every regression model does, and ``grid=True``
+            gives one row per covariate vector and one column per time.
+            A covariate vector with a missing (NaN) value gives NaN.
 
         Examples
         --------
@@ -438,16 +414,26 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         >>> tree.sf(5, [0.2, 0.5]).round(4), tree.sf(5, [0.8, 0.5]).round(4)
         (np.float64(0.8831), np.float64(0.3168))
 
-        A matrix routes each row to its own leaf:
+        A matrix routes each row to its own leaf and pairs row ``i`` with
+        time ``i``, as a regression model does:
+
+        >>> tree.sf([2, 5], [[0.2, 0.5], [0.8, 0.5]]).round(4)
+        array([0.9897, 0.3168])
+
+        A single time is used for every row, and a single row at every
+        time:
+
+        >>> tree.sf(5, [[0.2, 0.5], [0.8, 0.5]]).round(4)
+        array([0.8831, 0.3168])
+        >>> tree.sf([2, 5], [[0.8, 0.5]]).round(4)
+        array([0.8062, 0.3168])
+
+        ``grid=True`` gives every time for every row, a survival curve per
+        covariate vector:
 
         >>> tree.sf([2, 5], [[0.2, 0.5], [0.8, 0.5]], grid=True).round(4)
         array([[0.9897, 0.8831],
                [0.8062, 0.3168]])
-
-        or pairs row ``i`` with time ``i``, as a regression model does:
-
-        >>> tree.sf([2, 5], [[0.2, 0.5], [0.8, 0.5]], grid=False).round(4)
-        array([0.9897, 0.3168])
 
         With conditional-inference selection, a tree grown on the same
         data without the effect does not split at all, where greedy
@@ -499,7 +485,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         x: int | float | ArrayLike,
         Z: ArrayLike | NDArray,
         *,
-        grid: "bool | None" = None,
+        grid: bool = False,
     ) -> NDArray:
         """
         Evaluate ``function_name`` (``"sf"``, ``"ff"``, ``"df"``, ``"hf"``
@@ -515,38 +501,30 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             One covariate vector (1-D), or a matrix with one covariate
             vector per row (2-D).
         grid : bool, optional
-            ``True`` evaluates every time for every row of ``Z`` (a 1-D
-            ``Z`` is one row), ``False`` pairs row ``i`` of ``Z`` with
-            ``x[i]`` (a single row is used at every time, a single time
-            for every row), as every regression model does (#666). Not
-            given, a 2-D ``Z`` gives the grid, as it always has; with as
-            many times as rows, where pairing would apply, it warns
-            (``FutureWarning``) that a future release will pair them.
+            ``False`` (the default) pairs row ``i`` of ``Z`` with ``x[i]``
+            (a single row is used at every time, a single time for every
+            row), as every regression model does (#666); other counts of
+            rows and times are refused with a ``ValueError``. ``True``
+            evaluates every time for every row of ``Z`` (a 1-D ``Z`` is
+            one row).
 
         Returns
         -------
         ndarray
             For a 1-D ``Z`` (and no ``grid``), the values at ``x``, shaped
-            like ``x`` (a scalar for a scalar ``x``). On the grid, shape
+            like ``x`` (a scalar for a scalar ``x``). Paired, the shape of
+            ``x`` (or ``(n_rows,)`` for a single time). On the grid, shape
             ``(n_rows,) + x.shape``, row ``i`` the values for ``Z[i]``, as
             for :class:`~surpyval.beta.ml.forest.forest.RandomSurvivalForest`.
-            Paired, the shape of ``x`` (or ``(n_rows,)`` for a single
-            time). A covariate vector with a missing (NaN) value gives
-            NaN, and leaves the other rows unaffected.
+            A covariate vector with a missing (NaN) value gives NaN, and
+            leaves the other rows unaffected.
         """
         # The times flat; the result gets their shape back (on its last
         # axis for a grid), so a scalar time gives a scalar.
-        x_scalar = np.ndim(x) == 0
         x, restore = flatten_query(x)
         Z = self._covariates(Z)
         layout = query_layout(
-            function_name,
-            "SurvivalTree",
-            x_scalar,
-            x.size,
-            Z.ndim,
-            Z.shape[0] if Z.ndim == 2 else 1,
-            grid,
+            x.size, Z.ndim, Z.shape[0] if Z.ndim == 2 else 1, grid
         )
         if layout == "paired":
             return restore(self._apply_flat(function_name, x, Z, True))
@@ -637,13 +615,13 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         x: int | float | ArrayLike,
         Z: ArrayLike | NDArray,
         *,
-        grid: "bool | None" = None,
+        grid: bool = False,
     ) -> NDArray:
         """
         Survival function at ``x`` of the leaf model each covariate vector
         falls in; ``Z``, ``grid`` and the result are as for
-        :meth:`apply_model_function` (a 2-D ``Z`` gives one row per
-        covariate vector; ``grid=False`` pairs rows with times).
+        :meth:`apply_model_function` (a 2-D ``Z`` pairs rows with times;
+        ``grid=True`` gives one row per covariate vector).
         """
         return self.apply_model_function("sf", x, Z, grid=grid)
 
@@ -652,7 +630,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         x: int | float | ArrayLike,
         Z: ArrayLike | NDArray,
         *,
-        grid: "bool | None" = None,
+        grid: bool = False,
     ) -> NDArray:
         """
         Failure (CDF) function at ``x`` of the leaf model each covariate
@@ -665,7 +643,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         x: int | float | ArrayLike,
         Z: ArrayLike | NDArray,
         *,
-        grid: "bool | None" = None,
+        grid: bool = False,
     ) -> NDArray:
         """
         Density at ``x`` of the leaf model each covariate vector falls in,
@@ -678,7 +656,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         x: int | float | ArrayLike,
         Z: ArrayLike | NDArray,
         *,
-        grid: "bool | None" = None,
+        grid: bool = False,
     ) -> NDArray:
         """
         Hazard rate at ``x`` of the leaf model each covariate vector falls
@@ -691,7 +669,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         x: int | float | ArrayLike,
         Z: ArrayLike | NDArray,
         *,
-        grid: "bool | None" = None,
+        grid: bool = False,
     ) -> NDArray:
         """
         Cumulative hazard at ``x`` of the leaf model each covariate vector

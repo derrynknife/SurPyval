@@ -53,7 +53,7 @@ def _forest_fingerprint(forest):
     return (
         [idx.tolist() for idx in forest.bootstrap_indices],
         [_splits(tree._root) for tree in forest.trees],
-        forest.sf(X_QUERY, _data()["Z"][:5]),
+        forest.sf(X_QUERY, _data()["Z"][:5], grid=True),
     )
 
 
