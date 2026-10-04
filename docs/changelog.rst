@@ -4,6 +4,22 @@ Changelog
 v0.23 (unreleased)
 ------------------
 
+- **Parametric bootstrap bounds for the parametric regression models
+  (#617).** ``cb``, ``param_cb``, ``quantile_cb`` and ``cb_tvc`` take
+  ``method="bootstrap"`` with ``n_boot=`` (default 200) and
+  ``random_state=``; Wald stays the default. Each resample simulates every
+  unit from the fitted model at its covariates and truncation window,
+  censored as it was (the conditional bootstrap), and refits; the bound is
+  the BCa interval, its acceleration from the resamples' scores. On #583's
+  test with 46 failures the 90% bound on R(5 y) at use covered 0.903,
+  against 0.880 (Wald), 0.875 (likelihood ratio) and 0.866 (percentile),
+  over 1000 repetitions of 1000 refits. With 11 failures no method holds
+  (bootstrap 0.71, Wald 0.87, likelihood ratio 0.85): 28% of those data
+  sets have no finite estimate, and the bootstrap warns when the model has
+  none. Refits that reach no verified maximum are kept and counted (a
+  warning above 2%); refits are shared per ``n_boot`` and integer seed and
+  are not pickled. Refused for left- or interval-censored data and
+  time-varying-covariate fits.
 - **Copula standard errors and confidence bounds (#540).** A fitted
   ``CopulaModel`` reported point estimates only. It has
   ``covariance()``, ``standard_errors()`` and ``param_cb(name)`` for the

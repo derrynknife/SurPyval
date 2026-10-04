@@ -127,7 +127,7 @@ def test_617_param_cb_and_quantile_cb_bootstrap(ph):
             _bca(fits.params[:, i], ph.params[i], a),
             rtol=1e-9,
         )
-    upper = ph.param_cb("beta_0", bound="upper", **BOOT)
+    upper = ph.param_cb("coef_0", bound="upper", **BOOT)
     assert upper.shape == (1,)
     q = ph.quantile_cb([0.1, 0.5], [1, 0.0], **BOOT)
     # about the refits' own quantiles
@@ -307,7 +307,7 @@ def test_617_refits_without_a_maximum_are_kept_counted_and_warned():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         lo, hi = model.param_cb(
-            "beta_0", method="bootstrap", n_boot=40, random_state=0
+            "coef_0", method="bootstrap", n_boot=40, random_state=0
         )
     fits = model._bootstrap_refits[(40, 0)]
     assert fits.no_maximum > 0.02 * 40 and fits.params.shape[0] == 40
@@ -361,7 +361,7 @@ def test_617_bootstrap_of_held_and_centred_parameters():
     x, c, Z = _ph_data()
     held = quietly(WeibullPH.fit, x, Z, c=c, fixed={"beta": 1.8})
     np.testing.assert_array_equal(held.param_cb("beta", **BOOT), [1.8, 1.8])
-    assert np.all(np.isfinite(held.param_cb("beta_1", **BOOT)))
+    assert np.all(np.isfinite(held.param_cb("coef_1", **BOOT)))
     centred = quietly(WeibullAFT.fit, x, Z, c=c, center=True)
     plain = quietly(WeibullAFT.fit, x, Z, c=c)
     # the same predictions, whatever point the baseline is at
