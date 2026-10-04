@@ -250,6 +250,8 @@ class BuckleyJamesModel(
     feature_names: "list[str] | None" = None
     formula: "str | None" = None
     _model_spec: Any = None
+    #: Covariates of the wrong width are refused by name (#657).
+    _CHECKS_WIDTH = True
 
     #: The covariate coefficients (``params`` and ``coef`` are the same
     #: array), in the accelerated-failure convention.

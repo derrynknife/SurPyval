@@ -564,11 +564,9 @@ class InferenceMixin:
         # In the parameterisation of the centred fit when there is one
         # (#463): the bounds are the same function of the data, and there
         # the coefficients are not nearly collinear with the baseline.
-        if np.ndim(self._prepare_Z(Z)) == 2:
-            # Rows and times paired, as for sf (#488).
-            check_paired_rows(
-                np.size(x), np.shape(self._prepare_Z(Z))[0], grid=False
-            )
+        # Rows and times paired, as for sf (#488, #657).
+        rows = covariate_rows(self._prepare_Z(Z), self._n_covariates())
+        check_paired_rows(np.size(x), rows.shape[0], grid=False)
         if method != "wald":
             if self._is_additive():
                 self._warn_if_hazard_negative(

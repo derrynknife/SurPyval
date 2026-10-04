@@ -916,6 +916,7 @@ class CoxFrailtyModel(_SharedFrailty):
         no hazard rate; as ``CoxPH``'s ``hf``, this is a step size."""
         x = np.asarray(x, dtype=float)
         eta = self._eta(Z)
+        self._paired(x, eta)
         u = self._resolve_frailty(group, frailty)
         H0 = self._H0(x)
         before = H0 - self._h0(x)

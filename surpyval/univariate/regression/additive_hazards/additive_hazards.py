@@ -59,7 +59,11 @@ from surpyval.utils.dataframe import check_columns
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import safe_inv
 from surpyval.utils.removed_names import column_arguments
-from surpyval.utils.shapes import covariate_rows, keeps_query_shape
+from surpyval.utils.shapes import (
+    check_paired_rows,
+    covariate_rows,
+    keeps_query_shape,
+)
 
 from .._aliasing import (
     aliased_columns,
@@ -183,6 +187,8 @@ class AdditiveHazardsModel(
 
     # Populated by ``fit`` / ``fit_from_df``.
     feature_names: list[str] | None = None
+    #: Covariates of the wrong width are refused by name (#657).
+    _CHECKS_WIDTH = True
     formula: str | None = None
     _model_spec: object = None
 
@@ -244,8 +250,12 @@ class AdditiveHazardsModel(
     )
 
     def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
-        # One row per prediction, as the model's functions index it.
-        return np.atleast_2d(super()._prepare_Z(Z))
+        # One row per prediction, as the model's functions index it: a
+        # 1-D Z of a one-covariate model is one value per row (#657), as
+        # for the other models (it was read as one row of that width).
+        return covariate_rows(
+            super()._prepare_Z(Z), np.asarray(self.beta).shape[0]
+        )
 
     def __repr__(self) -> str:
         out = (
@@ -382,8 +392,11 @@ class AdditiveHazardsModel(
         ``H(x | Z) = H0(x) + x beta'Z`` and its running maximum from time
         0, ``H*(x) = max(0, max_{0 <= s <= x} H(s | Z))``, the cumulative
         hazard the model predicts with (#376)."""
+        rows = self._prepare_Z(Z)
+        # Rows and times paired, as for the other models (#488, #657)
+        check_paired_rows(x.size, rows.shape[0], grid=False)
         bz = np.broadcast_to(
-            np.asarray(self._prepare_Z(Z) @ self._coef(), dtype=float), x.shape
+            np.asarray(rows @ self._coef(), dtype=float), x.shape
         )
         # Past the last observed time there is no risk set: hold (#400).
         x_held = np.where(x > self.x[-1], self.x[-1], x)

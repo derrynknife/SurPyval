@@ -37,6 +37,7 @@ from ._kinds import (
 from ._prediction import ConditionalSurvivalMixin, quantiles_by_inversion
 from ._tvc_evaluation import TVCEvaluationMixin
 from .regression_data import (
+    check_covariate_width,
     prepare_Z,
     restore_covariate_meta,
     serialise_covariate_meta,
@@ -656,9 +657,33 @@ class ParametricRegressionModel(
         If a pandas DataFrame is passed and the model was fit from a DataFrame,
         the covariate columns (or formula) recorded at fit time are used to
         select and encode the correct columns. Otherwise ``Z`` is returned
-        unchanged.
+        as floats. Either way a ``Z`` of the wrong width is refused, naming
+        the model's covariates (#657).
         """
-        return prepare_Z(Z, self.feature_names, self._model_spec)
+        Zp = prepare_Z(Z, self.feature_names, self._model_spec)
+        self._check_covariate_width(Zp)
+        return Zp
+
+    def _check_covariate_width(self, Z: Any) -> None:
+        """Refuse covariates ``Z`` (prepared) of the wrong width (#657):
+        one column per coefficient of a linear predictor, per stress
+        column of an accelerated life model's life model, or per column
+        of the data a custom link was fitted to."""
+        what = "covariate"
+        if self._is_accelerated_life():
+            what = "stress column"
+            names = list(getattr(self.reg_model, "coefficient_columns")())
+        elif self._is_linear_predictor():
+            names = self._coefficient_names()
+        elif getattr(self, "data", None) is not None:
+            names = []
+        else:
+            # A custom link without its data: its width is unknown
+            return
+        n = self._n_covariates()
+        if len(names) != n:
+            names = ["Z[:, {}]".format(j) for j in range(n)]
+        check_covariate_width(Z, names, what)
 
     @property
     def aliased(self) -> npt.NDArray:
@@ -1087,8 +1112,12 @@ class ParametricRegressionModel(
             shape = (rows.shape[0], np.size(x))
             x = np.tile(np.asarray(x, dtype=float).reshape(-1), shape[0])
             Z = np.repeat(rows, shape[1], axis=0)
-        elif np.ndim(Z) == 2:
-            check_paired_rows(np.size(x), np.shape(Z)[0])
+        else:
+            # Rows and times paired (#488); a 1-D Z of an accelerated life
+            # model's single stress is one per row (#657), and was a raw
+            # broadcast error against the times.
+            n_rows = covariate_rows(Z, self._n_covariates()).shape[0]
+            check_paired_rows(np.size(x), n_rows)
         Z = self._centred(Z)
         # Below the support (a negative time for a positive distribution)
         # nothing has happened yet: survival 1, and 0 for the others. The

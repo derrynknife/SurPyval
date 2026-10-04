@@ -276,3 +276,73 @@ def test_662_mean_at_constant_covariates():
     assert al.mean(10.0) == pytest.approx(tvc, rel=1e-8)
     restored = sp.from_dict(al.to_dict())
     assert restored.mean(10.0) == al.mean(10.0)
+
+
+# ---------------------------------------------------------------------------
+# #657: a Z of the wrong width is refused, naming the covariates
+# ---------------------------------------------------------------------------
+
+WIDTH = r"The model has 2 covariates \(coef_0, coef_1\); Z gives 3 per row"
+
+
+def _width_models():
+    x, Z, c, g = _grouped(n=90)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return {
+            "WeibullPH": sp.WeibullPH.fit(x, Z, c=c),
+            "LogNormalAFT": sp.LogNormalAFT.fit(x, Z, c=c),
+            "WeibullAH": sp.WeibullAH.fit(x, Z, c=c),
+            "CoxPH": sp.CoxPH.fit(x, Z, c=c),
+            "ProportionalOdds": sp.ProportionalOdds.fit(x, Z, c=c),
+            "AdditiveHazards": sp.AdditiveHazards.fit(x, Z, c=c),
+            "BuckleyJames": sp.BuckleyJames.fit(x, Z, c=c),
+            "CoxFrailty": sp.CoxFrailty.fit(x, Z, c=c, groups=g),
+            "WeibullFrailty": sp.WeibullFrailty.fit(x, Z, c=c, groups=g),
+        }
+
+
+@pytest.mark.parametrize("name", list(_width_models()))
+def test_657_wrong_covariate_width_is_named(name):
+    # numpy's "operands could not be broadcast together with shapes (3,)
+    # (2,)" (Cox) or "shapes (3,) and (2,) not aligned" (WeibullPH).
+    model = _width_models()[name]
+    for fn in ("sf", "ff", "Hf", "hf", "df", "qf"):
+        method = getattr(model, fn, None)
+        if method is None:
+            continue
+        query = [0.5] if fn == "qf" else [5.0]
+        with pytest.raises(ValueError, match=WIDTH):
+            method(query, [1.0, 2.0, 3.0])
+        with pytest.raises(ValueError, match=WIDTH):
+            method(query, [[1.0, 2.0, 3.0], [0.0, 0.0, 0.0]])
+    with pytest.raises(ValueError, match=WIDTH):
+        model.cs(1.0, 2.0, [1.0, 2.0, 3.0])
+    if hasattr(model, "cb"):
+        with pytest.raises(ValueError, match=WIDTH):
+            model.cb([5.0], [1.0, 2.0, 3.0])
+        with pytest.raises(ValueError, match=WIDTH):
+            model.quantile_cb([0.5], [1.0, 2.0, 3.0])
+        with pytest.raises(ValueError, match=WIDTH):
+            model.mean([1.0, 2.0, 3.0])
+    # The right width still predicts, a row per time.
+    assert np.shape(model.sf([5.0, 6.0], ZQ[:2])) == (2,)
+
+
+def test_657_accelerated_life_stresses_and_times():
+    # A 1-D stress per time, against more times, was a raw broadcast
+    # error; it is the row-count message every regression gives.
+    stress = np.repeat([1.0, 2.0, 4.0], 30)
+    t = 1000 * stress**-1.2 * np.random.default_rng(1).weibull(2, 90)
+    al = sp.AcceleratedLife(sp.Weibull, Power).fit(t, Z=stress)
+    with pytest.raises(ValueError, match="Z has 2 covariate rows for 3"):
+        al.sf(np.array([1e2, 2e2, 3e2]), np.array([1.0, 2.0]))
+    with pytest.raises(ValueError, match="1 stress column"):
+        al.sf([1e2], [[1.0, 2.0]])
+    np.testing.assert_allclose(
+        al.sf([1e2, 2e2], [1.0, 2.0]),
+        [al.sf(1e2, 1.0), al.sf(2e2, 2.0)],
+    )
+    restored = sp.from_dict(al.to_dict())
+    with pytest.raises(ValueError, match="Z has 2 covariate rows for 3"):
+        restored.sf(np.array([1e2, 2e2, 3e2]), np.array([1.0, 2.0]))
