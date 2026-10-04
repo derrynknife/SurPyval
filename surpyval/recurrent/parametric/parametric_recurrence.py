@@ -661,9 +661,15 @@ class ParametricRecurrenceModel(
         cb = self.mtbf(x)[..., None] * coefficients
         return cb if bound == "two-sided" else cb[..., 0]
 
-    def _crow_design(self) -> tuple:
+    def _crow_design(self, for_projection: bool = False) -> tuple:
         """``(T, N, "time" | "failure")`` for data with an exact Crow
-        bound, else a ValueError saying why there is none."""
+        bound, else a ValueError saying why there is none.
+
+        ``for_projection``: the design for :meth:`CrowAMSAA.projection`,
+        which has no ``method=`` and takes a time-terminated test only,
+        so its message says that rather than offer ``method='wald'``
+        (#663).
+        """
         windows = diagnostics.item_windows(self.data)
         entries = {entry for _, _, entry, _, _ in windows}
         closes = {close for _, _, _, close, _ in windows}
@@ -684,6 +690,12 @@ class ParametricRecurrenceModel(
             reason = "several items are failure terminated"
         else:
             reason = "the items' observation does not end at one time"
+        if for_projection:
+            raise ValueError(
+                "A growth projection needs a time-terminated test: every "
+                "system run from 0 to the same end of test, T, each "
+                "recorded with a c=1 row at T; here {}.".format(reason)
+            )
         raise ValueError(
             "Crow's exact bounds (method='crow') need a time-terminated test "
             "(every item observed from 0 to the same time) or a failure-"

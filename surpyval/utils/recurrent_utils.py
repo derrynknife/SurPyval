@@ -309,6 +309,32 @@ def validate_lifetime_dist(dist: object, fitter: str) -> None:
     )
 
 
+def _check_renewal_identifiable(
+    gaps: npt.NDArray, c: npt.NDArray, dist: object, model_name: str
+) -> None:
+    """
+    Refuse data with fewer distinct times between failures than the
+    lifetime distribution has parameters: its likelihood is flat there.
+    The fit used to fail inside the distribution's own fit, with advice
+    in single-sample terms to "fix a parameter with `fixed=`", which the
+    renewal fits do not take (#663).
+    """
+    k = getattr(dist, "k", None)
+    if not isinstance(k, (int, np.integer)):
+        return
+    distinct = np.unique(gaps[c == 0]).size
+    if distinct < k:
+        name = getattr(dist, "name", "lifetime")
+        raise ValueError(
+            "{m} fits the {k} parameters of the {d} times between "
+            "failures, with its repair parameter, but the data has only {n} "
+            "distinct time(s) between failures, so no unique fit exists. "
+            "Give more failures (more items, or a longer observation of "
+            "each), or a lifetime distribution with fewer parameters "
+            "(dist=Exponential).".format(m=model_name, k=k, d=name, n=distinct)
+        )
+
+
 def validate_renewal_times(
     data: RecurrentEventData,
     dist: object,
@@ -329,11 +355,12 @@ def validate_renewal_times(
     models allow tied events later on, where the virtual age is positive.
     """
     x = np.asarray(data.x, dtype=float)
+    c = np.asarray(data.c)
+    gaps = data.get_interarrival_times()
+    _check_renewal_identifiable(gaps, c, dist, model_name)
     support = getattr(dist, "support", (0.0, np.inf))
     if support[0] < 0:
         return
-    c = np.asarray(data.c)
-    gaps = data.get_interarrival_times()
     _, first = np.unique(data.i, return_index=True)
     is_first = np.zeros(len(x), dtype=bool)
     is_first[first] = True

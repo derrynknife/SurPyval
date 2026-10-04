@@ -325,3 +325,33 @@ def test_q_at_its_edge_says_so():
     model = rc.GeneralizedRenewal.fit(x, i, c)
     assert "at the edge of its range" in _text(model)
     assert np.isnan(model.summary().loc["q", "se"])
+
+
+@pytest.mark.parametrize(
+    "fitter", [rc.GeneralizedRenewal, rc.ARA, rc.GeneralizedOneRenewal]
+)
+def test_663_too_few_failures_is_said_in_recurrent_terms(fitter):
+    with pytest.raises(ValueError, match="1 distinct time.s. between") as info:
+        fitter.fit([50.0, 100.0], c=[0, 1])
+    assert "fixed=" not in str(info.value)
+
+
+def test_663_restored_models_say_they_carry_no_data():
+    x = [3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60]
+    i = [1] * 6 + [2] * 5
+    c = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+    for model in (
+        rc.CrowAMSAA.fit(x, i, c),
+        rc.GeneralizedRenewal.fit(x, i, c),
+    ):
+        restored = type(model).from_dict(model.to_dict())
+        with pytest.raises(
+            ValueError, match="restored with from_dict / from_json"
+        ):
+            restored.param_cb(restored._parameter_names()[0])
+    restored = rc.CrowAMSAA.fit(x, i, c)
+    restored = type(restored).from_dict(restored.to_dict())
+    with pytest.raises(
+        ValueError, match="restored with from_dict / from_json"
+    ):
+        restored.cif_cb(10.0)
