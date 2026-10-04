@@ -19,6 +19,7 @@ from typing import Any
 import numpy as np
 from numpy.typing import ArrayLike
 
+from surpyval.recurrent.inference import check_alpha_ci
 from surpyval.recurrent.nonparametric.mcf import (
     _MCF_RANGE,
     NonParametricCounting,
@@ -253,6 +254,7 @@ class CauseSpecificMCF(SerialisableMixin):
         ``1 - alpha_ci`` bounds are drawn as dashed steps in the colour of
         its MCF. The arguments are keyword only.
         """
+        check_alpha_ci(alpha_ci)
         if ax is None:
             import matplotlib.pyplot as plt
 

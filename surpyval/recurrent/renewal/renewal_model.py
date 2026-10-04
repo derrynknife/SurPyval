@@ -9,7 +9,10 @@ from numpy.typing import ArrayLike
 from scipy.optimize import brentq, minimize
 from scipy.stats import chi2
 
-from surpyval.recurrent.inference import LikelihoodInferenceMixin
+from surpyval.recurrent.inference import (
+    LikelihoodInferenceMixin,
+    check_alpha_ci,
+)
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -24,7 +27,7 @@ from surpyval.utils.linalg import (
 )
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.numeric import solve_bracketed
-from surpyval.utils.validation import alpha_ci_error, option_error
+from surpyval.utils.validation import option_error
 from surpyval.utils.warnings import warn_no_covariance
 
 #: The values of the restoration parameter at which each family is a
@@ -1362,6 +1365,7 @@ class RenewalModel(
         alpha     2.399  0.287      1.898      3.033
         beta      2.754  0.652      1.732      4.379
         """
+        check_alpha_ci(alpha_ci)
         self._check_fitted()
         with warnings.catch_warnings():
             # The boundary is reported in the table (nan), not warned.
@@ -1505,8 +1509,7 @@ class RenewalModel(
         if name != self._restoration_param_name or edge is None:
             return super().param_cb(name, alpha_ci, bound)
         self._check_fitted()
-        if not 0 < alpha_ci < 1:
-            raise alpha_ci_error(alpha_ci)
+        check_alpha_ci(alpha_ci)
         alpha, signs = bound_signs(alpha_ci, bound)
         crit = float(chi2.ppf(1.0 - 2.0 * alpha, 1)) if alpha < 0.5 else 0.0
         lower, upper = self._restoration_bounds
