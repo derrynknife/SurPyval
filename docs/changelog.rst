@@ -4,6 +4,21 @@ Changelog
 v0.23 (unreleased)
 ------------------
 
+- **Regression fits with no finite maximum are recognised however far
+  the search runs (#628).** With all the failures in one cell of a
+  two-stress test there is no finite maximum, yet a ``WeibullAFT`` reached
+  a scale of 9.1e134 and coefficients -52674 and 70 and reported
+  ``maximum='verified'`` without a warning: the point is within 1e-5 of
+  the supremum, so the gradient test passes, and the no-maximum check,
+  made in the search's own units, could not see the run-off. The check now
+  takes each positive parameter on the log scale and every parameter in
+  units of its size, tests coefficients that run off together one at a
+  time with the others held, and calls a profile flat to rounding a
+  run-off. On 300 data sets of #583's design (27% without a finite
+  maximum) ``WeibullAFT`` flags all of them (90% before), ``WeibullPH``
+  all (22%), and ``AcceleratedLife(Weibull, PowerExponential)`` 79 of 81,
+  whose 10 false "No finite maximum" warnings on fits that had stopped
+  short are gone. Fits with a finite maximum are unchanged to the bit.
 - **Parametric bootstrap bounds for the parametric regression models
   (#617).** ``cb``, ``param_cb``, ``quantile_cb`` and ``cb_tvc`` take
   ``method="bootstrap"`` with ``n_boot=`` (default 200) and

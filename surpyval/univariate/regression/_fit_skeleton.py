@@ -32,6 +32,7 @@ from surpyval.univariate.parametric.fitters import (
 from surpyval.univariate.parametric.fitters.runaway import (  # noqa: F401
     LOG_MAX,
     runaway_coefficients,
+    runaways_in_units,
     search_derivatives,
 )
 from surpyval.univariate.parametric.parametric_fitter import Boxable, Numeric
@@ -1115,9 +1116,32 @@ def free_coefficients(
     parameters first, in ``bounds_convert``'s order) and its number in the
     model's ``phi_params``."""
     k_dist = len(fitter.param_map)
-    names = [*fitter.param_map, *sorted(pmap, key=pmap.__getitem__)]
-    free = [i for i, name in enumerate(names) if name not in fixed]
+    free = free_parameters(fitter, fixed, pmap)
     return [(pos, i - k_dist) for pos, i in enumerate(free) if i >= k_dist]
+
+
+def free_parameters(fitter: Any, fixed: dict, pmap: dict) -> "list[int]":
+    """The index, among all the model's parameters (distribution parameters
+    first, then the coefficients in ``pmap``'s order), of each that is not
+    ``fixed``, in the order of the search vector."""
+    names = [*fitter.param_map, *sorted(pmap, key=pmap.__getitem__)]
+    return [i for i, name in enumerate(names) if name not in fixed]
+
+
+def one_sided_positions(
+    bounds: "tuple | list", free: "Iterable[int]"
+) -> "tuple[int, ...]":
+    """The positions in the search vector of the free parameters (``free``,
+    their indices into ``bounds``, as ``bounds_convert``'s ``not_fixed``)
+    that have exactly one bound, which ``bounds_convert`` searches as the
+    log of their distance from it within a unit and linearly beyond: the
+    no-maximum check judges them on the log scale throughout
+    (``runaways_in_units``, #628)."""
+    return tuple(
+        pos
+        for pos, i in enumerate(free)
+        if (bounds[i][0] is None) != (bounds[i][1] is None)
+    )
 
 
 class SearchVerdict(NamedTuple):
@@ -1180,6 +1204,7 @@ def judge_search(
     verified: "bool | None" = None,
     held: "tuple[int, ...]" = (),
     floor: "float | npt.ArrayLike" = 1.0,
+    one_sided: "tuple[int, ...]" = (),
 ) -> SearchVerdict:
     """What the optimiser's answer ``res`` for the objective ``fun``, from
     ``start``, is (principles 12 and 13), without a word: a likelihood with
@@ -1199,13 +1224,18 @@ def judge_search(
     verified and is not touched. An objective autograd cannot differentiate
     keeps the optimiser's verdict: ``"unverified"`` if it stopped short,
     else ``"unknown"``. ``floor`` is each component's least unit for the
-    check and the polish (:func:`coefficient_floor`)."""
+    check and the polish (:func:`coefficient_floor`), and ``one_sided``
+    the positions of the parameters with one bound
+    (:func:`one_sided_positions`), which the no-maximum check judges on the
+    log scale (:func:`runaways_in_units`)."""
     if not (np.isfinite(res.fun) and np.all(np.isfinite(res.x))):
         # No answer to judge (``require_finite_fit`` refuses it)
         return SearchVerdict(res, "unverified", None, [])
     derivatives = search_derivatives(fun, res.x)
     positions = [pos for pos, _ in coefs]
-    runaway = runaway_coefficients(fun, res.x, positions, start, derivatives)
+    runaway = runaways_in_units(
+        fun, res.x, positions, start, derivatives, floor, one_sided
+    )
     if runaway:
         numbers = [coefs[k][1] for k in runaway]
         return SearchVerdict(res, "no finite maximum", derivatives, numbers)
@@ -1290,15 +1320,16 @@ def finish_search(
     what: str = "The maximum-likelihood search",
     held: "tuple[int, ...]" = (),
     floor: "float | npt.ArrayLike" = 1.0,
+    one_sided: "tuple[int, ...]" = (),
 ) -> SearchVerdict:
     """:func:`judge_search`, then its one warning (:func:`say_verdict`),
     for a fit whose model does not depend on the polish (or is built after
-    it), with ``floor`` as there. Returns the verdict: its ``res``, its
-    ``maximum`` for the model, and the Hessian and gradient of ``fun`` at
-    ``res.x`` (``None`` where autograd cannot take them), for
-    :func:`keep_information`."""
+    it), with ``floor`` and ``one_sided`` as there. Returns the verdict:
+    its ``res``, its ``maximum`` for the model, and the Hessian and
+    gradient of ``fun`` at ``res.x`` (``None`` where autograd cannot take
+    them), for :func:`keep_information`."""
     verdict = judge_search(
-        fun, res, coefs, start, n_obs, verified, held, floor
+        fun, res, coefs, start, n_obs, verified, held, floor, one_sided
     )
     say_verdict(verdict, what)
     return verdict
@@ -1548,6 +1579,9 @@ def fit_log_linear(
             init_t,
             float(np.sum(data.n)),
             floor=floor,
+            one_sided=one_sided_positions(
+                bounds, free_parameters(fitter, fixed, pmap)
+            ),
         )
         res = verdict.res
 
