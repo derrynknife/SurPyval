@@ -57,7 +57,7 @@ from surpyval.utils.covariates import (
     loaded_coefficient_names,
 )
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.deprecation import REMOVED_IN_NEXT, RenamedAttribute
+from surpyval.utils.deprecation import RenamedAttribute
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import (
     maximum_entry,
@@ -863,10 +863,8 @@ class CoxFrailtyModel(_SharedFrailty):
 
     # The pre-0.23 names of ``log_likelihood`` and
     # ``log_likelihood_no_frailty`` (#605), for one release.
-    loglik = RenamedAttribute("log_likelihood", REMOVED_IN_NEXT)
-    loglik_no_frailty = RenamedAttribute(
-        "log_likelihood_no_frailty", REMOVED_IN_NEXT
-    )
+    loglik = RenamedAttribute("log_likelihood")
+    loglik_no_frailty = RenamedAttribute("log_likelihood_no_frailty")
 
     def __init__(self) -> None:
         super().__init__()

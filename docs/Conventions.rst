@@ -155,8 +155,8 @@ one). The univariate ``tl_col`` / ``tr_col`` also take one number, a
 truncation shared by every row; a copula takes a column per dimension
 (``x_cols=['pump', 'motor']``). The names of v0.21 without the suffix
 (``Weibull.fit_from_df(df, x='hours', c=...)``, and ``x=``, ``y=``,
-``i=`` of the degradation fitters) still work, with a
-``DeprecationWarning``, until v0.23.
+``i=`` of the degradation fitters) were removed in v0.23 and raise
+``TypeError``.
 
 .. jupyter-execute::
 

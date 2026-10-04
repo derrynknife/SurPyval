@@ -967,17 +967,17 @@ def _column_names(df, key):
 
 
 def _uni_df(fitter, **fixed):
-    """``x``, ``c``, ``n``, ``tl`` (and ``xl`` / ``xr`` for interval
-    rows), named as the univariate fit_from_df names them."""
+    """``x_col``, ``c_col``, ``n_col``, ``tl_col`` (and ``xl_col`` /
+    ``xr_col`` for interval rows), the univariate fit_from_df's names."""
 
     def run(d):
         df, rest = _frame(d, ("x", "c", "n", "tl", "tr"))
         if "x" in df:
-            names = {"x": "x"}
+            names = {"x_col": "x"}
         else:
             df = df.rename(columns={"x0": "xl", "x1": "xr"})
-            names = {"xl": "xl", "xr": "xr"}
-        names |= {k: k for k in ("c", "n", "tl", "tr") if k in df}
+            names = {"xl_col": "xl", "xr_col": "xr"}
+        names |= {f"{k}_col": k for k in ("c", "n", "tl", "tr") if k in df}
         return fitter.fit_from_df(df, **names, **fixed, **rest)
 
     return run

@@ -59,7 +59,12 @@ from autograd import hessian, jacobian
 
 import surpyval as sp
 from surpyval.tests.conformance import leaks
-from surpyval.tests.conformance.registry import CASES, tvc_path
+from surpyval.tests.conformance.registry import (
+    CASES,
+    REGRESSION,
+    reg_data,
+    tvc_path,
+)
 from surpyval.univariate.parametric.fitters import (
     OPTIMUM_GTOL,
     bounds_convert,
@@ -278,6 +283,44 @@ def test_612_a_large_scale_covariate_fit_reaches_the_maximum(case):
     assert model.maximum == "verified", said
     if _neg_ll(model) is not None:
         assert _neg_ll(model) == pytest.approx(_neg_ll(reference), rel=1e-8)
+
+
+def _corner(data):
+    """The regression fixture with every event at ``Z = (0, 0)`` and the
+    censored rows spread over the other three corners of the unit square:
+    any direction of the quadrant that lowers those rows' hazard (or
+    lengthens their lives) raises the likelihood, so both coefficients
+    run off together, whatever the family's baseline (the events' cell is
+    at the origin, so no intercept is needed to hold it)."""
+    c = np.asarray(data["c"])
+    Z = np.zeros((c.size, 2))
+    cells = np.array([[0.0, 1.0], [1.0, 0.0], [1.0, 1.0]])
+    Z[c == 1] = cells[np.arange(np.sum(c == 1)) % 3]
+    return {**data, "Z": Z}
+
+
+def _log_linear(case):
+    # The parametric PH, AFT and PO fits and the log-linear accelerated
+    # life model on the regression fixture. (The additive hazards
+    # likelihood rises without bound in its own ways, through a hazard
+    # that goes negative at censored rows, #376.)
+    return (
+        case.interface == REGRESSION
+        and case.data is reg_data
+        and case.model_class == "surpyval.ParametricRegressionModel"
+        and not case.name.endswith("AH")
+    )
+
+
+# All the failures in one cell of a two-stress test: a WeibullAFT reached
+# coefficients of -52674 and 70 with its scale at 9.1e134, within 1e-5 of
+# the supremum, and reported a verified maximum without a word (#628).
+@pytest.mark.parametrize("case", _params("maximum[corner]", _log_linear))
+def test_628_events_in_one_corner_have_no_finite_maximum(case):
+    data = _corner(case.data())
+    model, said = _said(lambda: case.fit(data))
+    _check(case, model, said, data)
+    assert model.maximum == "no finite maximum", said
 
 
 # ---------------------------------------------------------------------------

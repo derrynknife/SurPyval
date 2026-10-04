@@ -21,7 +21,7 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.utils import fsli_to_xcnt, refuse_time_values
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.deprecation import RenamedToMethod, renamed_arguments
+from surpyval.utils.deprecation import RenamedToMethod
 from surpyval.utils.linalg import (
     cb_link,
     param_name,
@@ -79,12 +79,12 @@ _CBContext = namedtuple("_CBContext", ["phi_hat", "cov", "n_core"])
 def _warn_lfp_p(old: str, new: str) -> None:
     """The one warning for the limited-failure proportion's old name,
     ``p`` (#608), pointing at the caller."""
-    from surpyval.utils.deprecation import REMOVED_IN_NEXT
+    from surpyval.utils.deprecation import REMOVED_IN
     from surpyval.utils.warnings import caller_stacklevel
 
     warnings.warn(
         f"{old}, the limited-failure proportion, is deprecated and will "
-        f"be removed in v{REMOVED_IN_NEXT}; use '{new}'. ('p' names the "
+        f"be removed in v{REMOVED_IN}; use '{new}'. ('p' names the "
         "parameter of a distribution that has one: Bernoulli, Binomial, "
         "Geometric, ...)",
         DeprecationWarning,
@@ -196,6 +196,33 @@ def resolve_distribution(name: str, custom: bool = False) -> Any:
 # The most counts the discrete ``quantile_cb`` asks of a vectorised band at
 # once: the bisection's next 10 levels (see ``_first_reaching``).
 _QUANTILE_BLOCK = 2**10 - 1
+
+
+def _offset_upper(data: dict, zi: bool) -> float:
+    """The upper bound of an offset fit's ``gamma``: the smallest value
+    that constrains it, where the likelihood needs the distribution's
+    support to have started -- an exact failure, a left-censoring time or
+    an interval's upper end. A right-censored time, an interval's lower
+    end and a truncation time below ``gamma`` only meet the survival
+    function at 1 (the CDF at 0), as the likelihood already computes
+    them; capping the offset there pinned it below its maximum on
+    interval inspection data and reported the bound as a verified
+    maximum (#633). With ``zi`` exact zeros belong to the zero-inflation
+    mass, and a left-censoring time is met by it, so neither caps the
+    continuous part's offset. Data with no
+    such value (all right censored) keep the smallest value of all."""
+    x = np.asarray(data["x"], dtype=float)
+    c = np.asarray(data["c"])
+    upper = x[:, -1] if x.ndim == 2 else x
+    constrains = c != 1
+    if zi:
+        # (with zero inflation a left-censoring time is met by the mass at
+        # 0 whatever the offset)
+        constrains &= ~((c == 0) & (upper == 0)) & (c != -1)
+    if np.any(constrains):
+        return float(np.min(upper[constrains]))
+    everything = x[x != 0] if zi else x
+    return float(np.min(everything))
 
 
 def _first_reaching(
@@ -382,12 +409,7 @@ class Parametric(
 
         if offset:
             if data is not None:
-                x_min = np.asarray(data["x"])
-                if zi:
-                    # Exact zeros belong to the zero-inflation mass, so
-                    # they must not cap the offset of the continuous part
-                    x_min = x_min[x_min != 0]
-                bounds = ((None, np.min(x_min)), *bounds)
+                bounds = ((None, _offset_upper(data, zi)), *bounds)
             else:
                 bounds = ((None, None), *bounds)
 
@@ -1473,7 +1495,6 @@ class Parametric(
         q = np.asarray(q, dtype=float)
         return q[0] if scalar else q
 
-    @renamed_arguments(X="given")
     def cs(self, x: npt.ArrayLike, given: npt.ArrayLike) -> npt.NDArray:
         r"""
 
@@ -1484,9 +1505,11 @@ class Parametric(
             R(x, given) = \frac{R(x + given)}{R(given)}
 
         .. versionchanged:: 0.22
-           The time already survived is ``given`` (it was ``X``, which
-           still works until v0.23 with a ``DeprecationWarning``), the
+           The time already survived is ``given`` (it was ``X``), the
            name the regression models' ``sf_tvc(..., given=)`` uses.
+
+        .. versionchanged:: 0.23
+           ``X`` is removed.
 
         Parameters
         ----------

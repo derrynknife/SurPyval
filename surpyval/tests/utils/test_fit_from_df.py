@@ -164,53 +164,20 @@ def test_copula_reads_a_column_per_dimension():
     np.testing.assert_allclose(got.params, ref.params)
 
 
-def _deprecations(call):
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        model = call()
-    caught = [w for w in caught if w.category is DeprecationWarning]
-    return model, caught
-
-
-def test_univariate_v021_names_still_work_with_a_warning():
+@pytest.mark.parametrize("old", ["x", "c", "n", "xl", "xr", "tl", "tr"])
+def test_univariate_v021_names_are_gone(old):
     # Principle 21: every DataFrame entry point names its columns with a
-    # ``_col`` suffix; the v0.21 names of Weibull.fit_from_df (x, c, n,
-    # xl, xr, tl, tr) keep working until v0.23, warning at the caller.
-    df = pd.DataFrame(
-        {
-            "t": [3.0, 5, 7, 9, 12, 15],
-            "cens": [0, 1, 0, 0, 1, 0],
-            "k": [1, 2, 1, 1, 3, 1],
-            "entry": [1.0, 0, 0, 2, 0, 0],
-        }
-    )
-    new = sp.Weibull.fit_from_df(
-        df, x_col="t", c_col="cens", n_col="k", tl_col="entry", tr_col=40
-    )
-    old, caught = _deprecations(
-        lambda: sp.Weibull.fit_from_df(
-            df, x="t", c="cens", n="k", tl="entry", tr=40
-        )
-    )
-    np.testing.assert_allclose(old.params, new.params)
-    assert [str(w.message).split(":")[1] for w in caught] == [
-        f" '{k}' is deprecated and will be removed in v0.23; use "
-        f"'{k}_col'."
-        for k in ("x", "c", "n", "tl", "tr")
-    ]
-    assert {w.filename for w in caught} == {__file__}
-    with pytest.raises(ValueError, match="pass 'x_col' only"):
-        sp.Weibull.fit_from_df(df, x="t", x_col="t")
-
-
-def test_interval_v021_names_still_work_with_a_warning():
-    df = pd.DataFrame({"lo": [1.0, 2, 4, 5], "hi": [2.0, 3.5, 7, 9]})
-    new = sp.Weibull.fit_from_df(df, xl_col="lo", xr_col="hi")
-    old, caught = _deprecations(
-        lambda: sp.Weibull.fit_from_df(df, xl="lo", xr="hi")
-    )
-    np.testing.assert_allclose(old.params, new.params)
-    assert len(caught) == 2
+    # ``_col`` suffix. The v0.21 names of Weibull.fit_from_df (x, c, n,
+    # xl, xr, tl, tr), deprecated in v0.22, are removed in v0.23: each
+    # is refused as an unknown argument, naming the new one, rather than
+    # reaching ``fit`` (where ``x``, ``c``, ``n`` and ``tl`` are options).
+    df = pd.DataFrame({"t": [3.0, 5, 7, 9], "cens": [0, 1, 0, 0]})
+    with pytest.raises(
+        TypeError,
+        match=f"unexpected keyword argument '{old}'; name the column "
+        f"with '{old}_col'",
+    ):
+        sp.Weibull.fit_from_df(df, x_col="t", **{old: "cens"})
 
 
 def test_a_constant_truncation_is_a_number():
@@ -239,7 +206,8 @@ def _degradation_frame():
         ("GammaProcess", dict(threshold=8.0)),
     ],
 )
-def test_degradation_v021_names_still_work_with_a_warning(name, options):
+def test_degradation_v021_names_are_gone(name, options):
+    # x=, y=, i=, deprecated in v0.22, are removed in v0.23.
     from surpyval import degradation as dg
 
     fitter = getattr(dg, name)
@@ -247,16 +215,12 @@ def test_degradation_v021_names_still_work_with_a_warning(name, options):
     new = fitter.fit_from_df(
         df, x_col="hours", y_col="wear", i_col="unit", **options
     )
-    old, caught = _deprecations(
-        lambda: fitter.fit_from_df(
-            df, x="hours", y="wear", i="unit", **options
-        )
-    )
-    np.testing.assert_allclose(old.sf(4.0), new.sf(4.0))
-    assert len(caught) == 3
-    assert {w.filename for w in caught} == {__file__}
-    assert "'x' is deprecated" in str(caught[0].message)
-    assert "use 'x_col'" in str(caught[0].message)
+    assert np.isfinite(new.sf(4.0))
+    for old in ("x", "y", "i"):
+        with pytest.raises(
+            TypeError, match=f"unexpected keyword argument '{old}'"
+        ):
+            fitter.fit_from_df(df, **{old: "hours"}, **options)
 
 
 def test_destructive_degradation_and_copula_use_col_names():

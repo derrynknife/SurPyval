@@ -172,14 +172,13 @@ def test_parameter_names_and_life_parameter():
     assert ph.life_parameter is None
 
 
-def test_fitter_param_names_is_the_deprecated_alias():
-    # The accelerated-life fitter lost its ``param_names`` when the other
-    # fitters got the deprecated alias (an AttributeError); it now mirrors
-    # its distribution like them (consolidation sweep).
+def test_fitter_parameter_names_mirror_the_distribution():
+    # The accelerated-life fitter names its distribution's parameters like
+    # the other fitters (consolidation sweep); ``param_names``, deprecated
+    # in v0.22, is removed in v0.23.
     fitter = AcceleratedLife(Weibull, Power)
-    with pytest.warns(DeprecationWarning, match="param_names is deprecated"):
-        names = fitter.param_names
-    assert names == fitter.parameter_names == ["alpha", "beta"]
+    assert fitter.parameter_names == ["alpha", "beta"]
+    assert not hasattr(fitter, "param_names")
 
 
 def test_param_cb_refuses_the_life_parameter():

@@ -157,7 +157,7 @@ Estimation
     model's functions (``properties/test_parametric.py``), and the
     reference tests compare fits with R, lifelines and scikit-survival;
     ``calibration/test_refit_registry.py`` refits every registered model
-    to data drawn from itself (nightly). Where the likelihood has no
+    to data drawn from itself (on demand, ``--run-calibration``). Where the likelihood has no
     finite maximum, univariate MLE refuses and the regression, frailty,
     Fine-Gray, copula, mixture and degradation fits warn "No finite
     maximum" (#392); known gap: abutting intervals such as (1, 3] and (3, 5], whose likelihood has a flat
@@ -228,7 +228,7 @@ Uncertainty
     size.**
 
     *Partly checked* by the calibration studies
-    (``surpyval/tests/calibration``, run nightly), which cover the main
+    (``surpyval/tests/calibration``, run on demand), which cover the main
     parametric, non-parametric, Cox, regression, degradation and recurrent
     bounds and the hypothesis tests, not every model.
 

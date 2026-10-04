@@ -187,6 +187,250 @@ def runaway_coefficients(
     return out
 
 
+# -- the units the check is made in (#628) ------------------------------------
+#
+# Newton's test is unchanged by a linear change of units in exact arithmetic,
+# but its parts are not in floating point: the pseudo-inverse of the other
+# parameters' Hessian that forms a profile drops any parameter whose curvature
+# is below 1e-15 of the largest. A regression's centred scale searched
+# linearly far from 1 has a tiny curvature in those units, and #628's
+# WeibullAFT (all six failures in one cell of a two-stress test) had its
+# scale at 2.0e8 dropped that way (a curvature of 6e-16 beside 2.4 for the
+# shape): the coefficients' profiles were formed without it, the test said
+# nothing, and the fit, within 1e-5 of its supremum and so passing the
+# gradient test, was returned as a verified maximum. Nor is the test
+# unchanged by a nonlinear change of units: a scale searched linearly runs
+# off exponentially along a separating direction (the log of the scale moves
+# with the coefficients' linear predictor), a curve in the search space,
+# which three WeibullPH run-offs in 300 of these tests escaped; and an
+# accelerated life ``c`` searched linearly at 1e22, a fit merely stopped
+# short of a finite maximum, read as running off (Newton's step along a line
+# in ``c`` is not Newton's step along ``log c``). So the regressions make the
+# test with each parameter that has one bound (searched linearly beyond a
+# unit from it, see ``bounds_convert``) as the log of its distance from the
+# bound, where a run-off is a straight line, and every parameter in units of
+# its size there (at least its unit, ``floor``: a covariate coefficient's is
+# its covariate's, ``coefficient_floor``), where the Hessian is conditioned.
+#
+# A fit can also run so far that the likelihood is flat to rounding along a
+# coefficient's profile (the rows it moves no longer count, see above):
+# Newton's test then reads rounding, and says nothing or clears it. A
+# maximum's profile has the curvature of the estimate's precision; one with
+# none to rounding where the likelihood depended on the coefficient at the
+# start has run off (:func:`flat_profiles`).
+
+
+def runaways_in_units(
+    neg_ll: Callable,
+    x: npt.ArrayLike,
+    coefs: "list[int]",
+    start: "npt.ArrayLike | None" = None,
+    derivatives: "tuple[npt.NDArray, npt.NDArray] | None" = None,
+    floor: "float | npt.ArrayLike" = 1.0,
+    one_sided: "tuple[int, ...]" = (),
+) -> "list[int]":
+    """The positions in ``coefs`` of the parameters along which the
+    likelihood has no finite maximum near ``x``: Newton's method cannot
+    converge along their profiles (:func:`runaway_coefficients`), or else
+    their profiles are flat to rounding (:func:`flat_profiles`), judged in
+    the units described above.
+
+    ``neg_ll``, ``x``, ``coefs`` and ``start`` are as for
+    :func:`runaway_coefficients`, in the search space; ``one_sided`` are the
+    positions in ``x`` of the parameters searched as ``bounds_convert`` maps
+    one with a single bound (``log`` within a unit of it, linear beyond),
+    which are judged as the log of that distance; ``floor`` is each
+    parameter's least unit (one for those); ``derivatives`` are those of
+    :func:`search_derivatives` at ``x``, if the caller has them, which are
+    carried to the new units by the chain rule rather than taken again."""
+    at = np.asarray(x, dtype=float)
+    log = np.zeros(at.size, dtype=bool)
+    log[list(one_sided)] = True
+    with np.errstate(all="ignore"):
+        u = np.where(log & (at >= 0.0), np.log1p(np.abs(at)), at)
+        unit = np.where(
+            log, 1.0, np.broadcast_to(np.asarray(floor, dtype=float), at.shape)
+        )
+        size = np.maximum(np.abs(u), unit)
+    if not np.all(np.isfinite(size) & (size > 0.0)):
+        return []
+
+    def from_units(v: Any) -> Any:
+        w = size * v
+        return np.where(log & (w >= 0.0), np.expm1(np.minimum(w, LOG_MAX)), w)
+
+    def in_units(v: Any) -> Any:
+        return neg_ll(from_units(v))
+
+    v0 = u / size
+    if derivatives is None:
+        derivatives = search_derivatives(neg_ll, at)
+    if derivatives is None:
+        return []
+    H, g = derivatives
+    # The chain rule for x = from_units(v): dx/dv and d2x/dv2, one
+    # coordinate at a time.
+    linear = log & (at >= 0.0)
+    d1 = size * np.where(linear, at + 1.0, 1.0)
+    d2 = size**2 * np.where(linear, at + 1.0, 0.0)
+    with np.errstate(all="ignore"):
+        units_derivatives = (
+            np.outer(d1, d1) * H + np.diag(g * d2),
+            d1 * g,
+        )
+    v_start = None
+    if start is not None:
+        s = np.asarray(start, dtype=float)
+        with np.errstate(all="ignore"):
+            s = np.where(log & (s >= 0.0), np.log1p(np.abs(s)), s)
+        v_start = s / size
+    out = runaway_coefficients(in_units, v0, coefs, v_start, units_derivatives)
+    if not out:
+        out = partial_profiles(in_units, v0, coefs, v_start, units_derivatives)
+    if not out:
+        out = flat_profiles(in_units, v0, coefs, v_start, units_derivatives)
+    return out
+
+
+def partial_profiles(
+    neg_ll: Callable,
+    x: npt.ArrayLike,
+    coefs: "list[int]",
+    start: "npt.ArrayLike | None",
+    derivatives: "tuple[npt.NDArray, npt.NDArray]",
+) -> "list[int]":
+    """The positions in ``coefs`` of the parameters that run off with
+    others: Newton's test (:func:`runaway_coefficients`) along each one's
+    profile with the other parameters that have not converged held where
+    they are, rather than at their best values for it.
+
+    Where two or more coefficients run off together (all the events in
+    one corner cell of two covariates: any direction of the quadrant
+    raises the likelihood), each one's best value for the other is at
+    infinity too, so its profile is not a curve, and the Hessian is
+    singular to rounding there, so the profile formed from it is whatever
+    the rounding makes it: the test along it fired or not with the units
+    the check was made in. Holding the others, the likelihood along each
+    one is its own tail, ``C - A exp(-s t)``, and the test reads it, there
+    and again a Newton step on. The
+    parameters held are those ``_cleared`` does not show to be at a
+    maximum, and only where there are two or more of them (one alone is
+    :func:`runaway_coefficients`'s)."""
+    H, g = derivatives
+    at = np.asarray(x, dtype=float)
+    if not (np.all(np.isfinite(H)) and np.all(np.isfinite(g))):
+        return []
+    cleared = _cleared(at, H, g)
+    loose = [k for k, j in enumerate(coefs) if not cleared[j]]
+    if len(loose) < 2:
+        return []
+    out = []
+    for k in loose:
+        held = {coefs[m] for m in loose if m != k}
+        keep = np.array([i for i in range(at.size) if i not in held])
+        # Where each parameter comes from: its place in ``y``, or held
+        slot = {int(i): r for r, i in enumerate(keep)}
+
+        def holding(y: Any, slot: dict = slot) -> Any:
+            full = [y[slot[i]] if i in slot else at[i] for i in range(at.size)]
+            return neg_ll(np.array(full))
+
+        sub = np.ix_(keep, keep)
+        j = int(np.flatnonzero(keep == coefs[k])[0])
+        with np.errstate(all="ignore"):
+            if not runaway_coefficients(
+                holding,
+                at[keep],
+                [j],
+                None if start is None else np.asarray(start)[keep],
+                (H[sub], g[keep]),
+            ):
+                continue
+            # And again one Newton step on along that line: a fit stopped
+            # short of a finite maximum a Newton step away can fail
+            # Kantorovich's test where it is (a WeibullPO whose scale was
+            # 14 times short of its maximum, 0.006 below it in
+            # log-likelihood), but not from the next point, where Newton's
+            # method has all but converged; a run-off fails it at every
+            # point of its tail. (A rise with no curvature, the additive
+            # hazards', has no Newton step, and needs none.)
+            ahead = _newton_point(holding, at[keep], j)
+            if ahead is True or (
+                ahead is not None and runaway_coefficients(holding, ahead, [j])
+            ):
+                out.append(k)
+    return out
+
+
+def _newton_point(
+    neg_ll: Callable, x: npt.NDArray, j: int
+) -> "npt.NDArray | bool | None":
+    """The point one Newton step along parameter ``j``'s profile from
+    ``x`` (:func:`_profile`); ``True`` where the profile has no curvature
+    there (no step: a rise without bound), and ``None`` where the step
+    cannot be taken or does not lower ``neg_ll``."""
+    derivatives = search_derivatives(neg_ll, x)
+    if derivatives is None or not np.all(np.isfinite(derivatives[0])):
+        return None
+    point, v = _profile(neg_ll, x, derivatives[0], j)
+    d = _line_derivatives(neg_ll, point, v)
+    if d is None:
+        return None
+    if not d[1] > 0.0:
+        return True
+    ahead = point - (d[0] / d[1]) * v
+    if not float(neg_ll(ahead)) < float(neg_ll(point)):
+        return None
+    return ahead
+
+
+def flat_profiles(
+    neg_ll: Callable,
+    x: npt.ArrayLike,
+    coefs: "list[int]",
+    start: "npt.ArrayLike | None",
+    derivatives: "tuple[npt.NDArray, npt.NDArray]",
+) -> "list[int]":
+    """The positions in ``coefs`` of the parameters whose profile has no
+    curvature at ``x`` to rounding, though the likelihood depends on them at
+    ``start``: they have run so far that the rows they move no longer count
+    (see above), where neither Newton's test nor any other made with
+    derivatives can say more.
+
+    A maximum's profile curves down: its curvature is the estimate's
+    precision. Here the curvature, the Schur complement of the Hessian
+    ``H`` in the parameter, is within the rounding of ``H`` itself (the
+    tolerance of ``numpy.linalg.matrix_rank``, ``size * eps * ||H||``), as
+    on a WeibullPO run along a separating direction to coefficients of
+    1.6e6 and -668 (a profile curvature of 1e-13 beside a largest of 1e8).
+    A parameter that does not enter the likelihood at all is flat at the
+    start too, and is left out (:func:`_flat_at_start`).
+
+    ``_cleared`` is no guide here: a Newton step computed from a Hessian
+    singular to rounding is rounding itself, and it cleared an accelerated
+    life ``a`` of 1.2e5 running off with ``log c`` at -266 (a profile
+    curvature of 2e-9 beside a largest of 6e6)."""
+    H, g = derivatives
+    at = np.asarray(x, dtype=float)
+    if start is None or not (
+        np.all(np.isfinite(H)) and np.all(np.isfinite(g))
+    ):
+        return []
+    tol = at.size * float(np.finfo(float).eps) * np.linalg.norm(H, 2)
+    out = []
+    for k, j in enumerate(coefs):
+        others = [i for i in range(at.size) if i != j]
+        v = np.zeros(at.size)
+        v[j] = 1.0
+        if others:
+            pinv = np.linalg.pinv(H[np.ix_(others, others)])
+            v[others] = -pinv @ H[others, j]
+        curvature = float(v @ H @ v)
+        if abs(curvature) <= tol and not _flat_at_start(neg_ll, start, v):
+            out.append(k)
+    return out
+
+
 def _cleared(
     x: npt.NDArray,
     H: npt.NDArray,

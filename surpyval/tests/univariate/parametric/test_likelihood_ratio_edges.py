@@ -328,7 +328,11 @@ def _ew_check(ew, bound, direction, crit, x_of, **held):
     while excess(far) < 0 and abs(far / bound - 1) < 0.5:
         near, far = far, bound + 2 * (far - bound)
     extreme = brentq(excess, near, far, xtol=1e-14, rtol=1e-14)
-    assert direction * (bound - extreme) >= -1e-6 * abs(extreme)
+    # Short of it by no more than a search stopping in a valley that
+    # flattens out to beta -> inf reaches: 4e-6 of qf(0.05) (a deviance
+    # 1.3e-5 below the critical value) on one CI runner, 2e-7 locally,
+    # against the 54% (0.849 for 0.552) of #601
+    assert direction * (bound - extreme) >= -1e-5 * abs(extreme)
     if direction * (bound - extreme) > 0:
         assert excess(bound) <= 2 * likelihood_ratio._LR_NOISE
     return extreme

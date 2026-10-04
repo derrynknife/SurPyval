@@ -21,6 +21,7 @@ from surpyval.univariate.parametric.fitters import (
 )
 from surpyval.univariate.parametric.fitters.runaway import (
     runaway_coefficients,
+    search_derivatives,
 )
 
 # The optimiser ladder: gradient methods first, then the derivative-free
@@ -205,7 +206,7 @@ def _runaway(
     parameters' least sizes for its gate (see ``_cleared``)."""
     with np.errstate(all="ignore"), warnings.catch_warnings():
         warnings.filterwarnings("ignore", "Output seems independent")
-        return tuple(
+        runaway = tuple(
             runaway_coefficients(
                 lambda u: fun(u, *args),
                 x,
@@ -216,6 +217,60 @@ def _runaway(
                 keep,
             )
         )
+    if runaway and not _on_the_floor(
+        fun, args, x, runaway, derivatives, floor
+    ):
+        return ()
+    return runaway
+
+
+def _on_the_floor(
+    fun: Callable[..., Any],
+    args: tuple,
+    x: npt.NDArray,
+    runaway: tuple[int, ...],
+    derivatives: "tuple[npt.NDArray, npt.NDArray] | None",
+    floor: "float | npt.ArrayLike",
+) -> bool:
+    """Whether the parameters other than ``runaway`` are at their best
+    values at ``x``, as they are on a search following the likelihood's
+    rise along the parameters running off: the likelihood curves down in
+    each of their directions (to rounding), and Newton's step to their
+    best values moves none by as much as its own size.
+
+    A search stopped against a kink or a jump in the likelihood is not
+    following a rise, whatever Newton's test says along a profile there:
+    a custom spline whose cumulative hazard jumps at its knot stopped
+    BFGS after eight iterations with the other parameters' Hessian
+    indefinite and their Newton step 12 times their sizes, read as a
+    runaway, and the search ended there, 9 below the maximum the ladder's
+    later rungs reached. At each runaway in the tests the step was at most
+    a tenth of the sizes. Where the derivatives cannot be taken, the
+    runaway stands."""
+    others = [i for i in range(len(x)) if i not in runaway]
+    if not others:
+        return True
+    if derivatives is None:
+        derivatives = search_derivatives(
+            lambda u: fun(u, *args), np.asarray(x, dtype=float)
+        )
+    if derivatives is None:
+        return True
+    H, g = (np.asarray(d, dtype=float) for d in derivatives)
+    H_o, g_o = H[np.ix_(others, others)], g[others]
+    if not (np.all(np.isfinite(H_o)) and np.all(np.isfinite(g_o))):
+        return True
+    size = np.maximum(np.abs(np.asarray(x, dtype=float)), floor)[others]
+    # (a parameter at 0 with no floor given is measured in its unit)
+    size = np.where(size > 0, size, 1.0)
+    # In units of the parameters' sizes, where the Hessian is conditioned
+    H_o = H_o * np.outer(size, size)
+    g_o = g_o * size
+    eig = np.linalg.eigvalsh(H_o)
+    if eig[0] < -1e-8 * max(np.max(np.abs(eig)), 1.0):
+        return False
+    step = np.linalg.lstsq(H_o, g_o, rcond=None)[0]
+    return bool(np.max(np.abs(step)) < 1.0)
 
 
 class _OnBounds(NamedTuple):

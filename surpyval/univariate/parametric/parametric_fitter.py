@@ -9,11 +9,7 @@ import numpy.typing as npt
 from autograd.numpy.numpy_boxes import ArrayBox
 
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
-from surpyval.utils.deprecation import (
-    REMOVED_IN_NEXT,
-    RenamedAttribute,
-    renamed_arguments,
-)
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import (
@@ -78,7 +74,7 @@ Boxable = npt.NDArray | float | ArrayBox
 #: ``from_params``'s ``p``, the limited-failure proportion, is
 #: ``lfp_p`` since v0.23 (#608); ``p`` still works, with a
 #: ``DeprecationWarning``, until v0.24.
-lfp_p_renamed = renamed_arguments(removed_in=REMOVED_IN_NEXT, p="lfp_p")
+lfp_p_renamed = renamed_arguments(p="lfp_p")
 
 
 def reject_structural_params(
@@ -380,10 +376,6 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
     #: The ``repr``: ``Weibull: parametric fitter`` (#614).
     fitter_kind = "parametric fitter"
 
-    # ``param_names``, the pre-0.22 name of ``parameter_names``, still
-    # reads (and sets) it for one release, with a DeprecationWarning.
-    param_names = RenamedAttribute("parameter_names")
-
     if TYPE_CHECKING:
         # The distribution functions every subclass supplies and this
         # base calls -- ``cs`` divides two ``sf``s, ``log_sf`` negates
@@ -443,7 +435,6 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
             hi = float(_raw(params[self.support_param_index[1]]))
         return lo, hi
 
-    @renamed_arguments(param_names="parameter_names")
     def __init__(
         self,
         name: str,
@@ -543,7 +534,6 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         small."""
         return np.log(-np.expm1(-self.Hf(x, *params)))
 
-    @renamed_arguments(X="given")
     def cs(self, x: Numeric, given: Numeric, *params: Any) -> Any:
         r"""
 
@@ -560,9 +550,11 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         cancellation the ratio suffers in the far tail.
 
         .. versionchanged:: 0.22
-           The time already survived is ``given`` (it was ``X``, which
-           still works until v0.23 with a ``DeprecationWarning``), the
+           The time already survived is ``given`` (it was ``X``), the
            name the regression models' ``sf_tvc(..., given=)`` uses.
+
+        .. versionchanged:: 0.23
+           ``X`` is removed.
 
         Parameters
         ----------
@@ -622,12 +614,26 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
             + N * np.log(p - f0)
         )
 
+    def _shifted_censored(self, x: npt.NDArray, gamma: Any) -> Any:
+        """A censored time ``x`` less the offset ``gamma``, held at the
+        support's lower edge: a right-censored time (or, with zero
+        inflation, a left-censoring time) below the offset does not cap it
+        (``parametric._offset_upper``, #633), and there the survival
+        function is 1 and the CDF 0 -- the edge's values, which a family's
+        own functions give below it but a custom cumulative hazard need
+        not (``(x / alpha) ** beta`` is NaN for a negative ``x``)."""
+        x = x - gamma
+        lo = float(self.support[0])
+        if np.isfinite(lo):
+            x = np.maximum(x, lo)
+        return x
+
     @_check_x_not_empty
     def ll_right_censored(
         self, x: npt.NDArray, n: npt.NDArray, *params: Any
     ) -> Any:
         *dist_params, gamma, f0, p = params
-        x = x - gamma
+        x = self._shifted_censored(x, gamma)
         if p == 1:
             return np.sum(n * (np.log1p(-f0) + self.log_sf(x, *dist_params)))
         else:
@@ -639,7 +645,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         self, x: npt.NDArray, n: npt.NDArray, *params: Any
     ) -> Any:
         *dist_params, gamma, f0, p = params
-        x = x - gamma
+        x = self._shifted_censored(x, gamma)
         if f0 == 0:
             # No zero-inflation: F_mix = p * F, so the numerically stable
             # log_ff path applies (the branch was inverted as ``f0 == 1``,

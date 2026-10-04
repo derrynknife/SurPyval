@@ -34,10 +34,6 @@ import numpy as np
 import numpy.typing as npt
 from scipy.optimize import curve_fit
 
-from surpyval.utils.deprecation import (
-    RenamedAttribute,
-    renamed_class_attribute,
-)
 from surpyval.utils.validation import option_error
 
 
@@ -63,25 +59,16 @@ class PathModel(ABC):
     ``inv_path`` and the ``name``/``parameter_names`` attributes, and
     either a ``_initial_guess(x, y)`` starting point for the default
     least-squares ``fit`` or ``fit`` itself) to use a custom degradation
-    path with ``DegradationAnalysis``. A subclass that still names its
-    parameters ``param_names`` (before v0.22) works until v0.23, with a
-    ``DeprecationWarning``.
+    path with ``DegradationAnalysis``.
     """
 
     name: str
     parameter_names: list[str]
-    # ``param_names``, the pre-0.22 name of ``parameter_names``, reads (and
-    # sets) it for one release, with a DeprecationWarning.
-    param_names = RenamedAttribute("parameter_names")
     #: True when ``path`` is linear in its parameters, i.e.
     #: ``path(x, *theta) == jacobian(x) @ theta`` with a Jacobian that
     #: does not depend on ``theta``. Enables exact conjugate posterior
     #: updates and REML population estimation.
     linear_in_parameters: bool = False
-
-    def __init_subclass__(cls, **kwargs: Any) -> None:
-        super().__init_subclass__(**kwargs)
-        renamed_class_attribute(cls, "param_names", "parameter_names")
 
     @abstractmethod
     def path(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:

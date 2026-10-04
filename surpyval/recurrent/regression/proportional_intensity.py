@@ -1,4 +1,3 @@
-import warnings
 from typing import Any
 
 import numpy as np
@@ -19,7 +18,6 @@ from surpyval.univariate.regression._aliasing import (
     warn_aliased,
 )
 from surpyval.utils.covariates import coefficient_names
-from surpyval.utils.deprecation import REMOVED_IN
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import keeps_query_shape
@@ -608,21 +606,6 @@ class ProportionalIntensityModel(
         return coefficient_names(
             len(self.coeffs), self.feature_names, self._rate_names
         )
-
-    @property
-    def param_names(self) -> list:
-        """The base-rate parameters' names: deprecated, and removed in
-        v0.23. Use ``parameter_names[:len(params)]`` (``parameter_names``
-        also names the coefficients)."""
-        warnings.warn(
-            "ProportionalIntensityModel.param_names is deprecated and will "
-            "be removed in v{}; use 'parameter_names', which names the "
-            "base-rate parameters and then the coefficients "
-            "(parameter_names[:len(params)] names params).".format(REMOVED_IN),
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return list(self._rate_names)
 
     def _parameter_bounds(self) -> list:
         # The base-rate bounds come from the intensity model (PI-HPP stores

@@ -149,6 +149,50 @@ form only, not coverage. Done would mean the two `NotImplementedError`
 branches removed, with a test that the analytic bounds agree with the
 bootstrap on a fixed seed.
 
+## Copula uncertainty with non-parametric margins
+
+*Status: idea (research). Size: medium. Was #623.*
+
+Copula fits have standard errors and bounds since 0.23 (#540): the joint
+Hessian for a full MLE fit, the Godambe sandwich for a two-stage (IFM) fit.
+A fit with a non-parametric margin is a pseudo-likelihood fit (Genest,
+Ghoudi and Rivest 1995), and the copula parameter's variance has to carry
+the rank-based margins' uncertainty; the naive copula-only variance is too
+narrow, so ``covariance()``, ``param_cb`` and ``cb`` refuse such fits.
+
+Two ways forward: the rank-based asymptotic variance of Genest, Ghoudi and
+Rivest (1995), or a bootstrap option for these fits. Either needs a
+coverage study like ``calibration/test_coverage_copula.py`` for the
+parametric margins.
+
+## Faster and more precise likelihood-ratio bounds on edge valleys
+
+*Status: idea (research). Size: medium. Was #609.*
+
+Since #601, likelihood-ratio bounds reach the region's extreme even where
+it lies along a long flat valley (an ExpoWeibull's beta -> inf with alpha
+pinned at the largest observation, or alpha -> 0; a NegativeBinomial's
+r -> inf). Following the valleys costs time: all the registry
+likelihood-ratio bounds take about 92 s for ExpoWeibull and 80 s for
+NegativeBinomial (one thread), against about 1 s for Weibull, after the
+0.23 savings (#602, #609: skipping re-checks, probing a levelled-off valley
+once). Precision is about 1e-6 relative in the beta -> inf valley.
+
+What is left needs a different handling of the valley rather than more
+tuning:
+
+- **Reach the valley's limit directly.** ExpoWeibull's extreme is only
+  approached, never reached, which is why cheaper probing (only the deepest
+  point, or skipping candidates a checked answer already beats) cost up to
+  6e-6 in its quantile bounds. Extrapolating to the limiting model, or
+  parameterising the valley, would allow the cheaper probing
+  (NegativeBinomial would go from about 80 s to 46 s).
+- **Precision.** The 1e-6 limit comes from the extremality check's step and
+  from the limit being approached; exact gradients of the bounded function
+  alone do not remove it.
+- **Brute-force checks** not yet done: the Uniform and NegativeBinomial
+  bands, and ExpoWeibull's 99% ``hf`` and mean bounds.
+
 ## Competing-risks survival trees and forests
 
 *Status: idea. Size: large (research). Was #194.*
