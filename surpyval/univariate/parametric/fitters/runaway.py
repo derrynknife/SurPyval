@@ -286,7 +286,65 @@ def runaways_in_units(
         v_start = s / size
     out = runaway_coefficients(in_units, v0, coefs, v_start, units_derivatives)
     if not out:
+        out = partial_profiles(in_units, v0, coefs, v_start, units_derivatives)
+    if not out:
         out = flat_profiles(in_units, v0, coefs, v_start, units_derivatives)
+    return out
+
+
+def partial_profiles(
+    neg_ll: Callable,
+    x: npt.ArrayLike,
+    coefs: "list[int]",
+    start: "npt.ArrayLike | None",
+    derivatives: "tuple[npt.NDArray, npt.NDArray]",
+) -> "list[int]":
+    """The positions in ``coefs`` of the parameters that run off with
+    others: Newton's test (:func:`runaway_coefficients`) along each one's
+    profile with the other parameters that have not converged held where
+    they are, rather than at their best values for it.
+
+    Where two or more coefficients run off together (all the events in
+    one corner cell of two covariates: any direction of the quadrant
+    raises the likelihood), each one's best value for the other is at
+    infinity too, so its profile is not a curve, and the Hessian is
+    singular to rounding there, so the profile formed from it is whatever
+    the rounding makes it: the test along it fired or not with the units
+    the check was made in. Holding the others, the likelihood along each
+    one is its own tail, ``C - A exp(-s t)``, and the test reads it. The
+    parameters held are those ``_cleared`` does not show to be at a
+    maximum, and only where there are two or more of them (one alone is
+    :func:`runaway_coefficients`'s)."""
+    H, g = derivatives
+    at = np.asarray(x, dtype=float)
+    if not (np.all(np.isfinite(H)) and np.all(np.isfinite(g))):
+        return []
+    cleared = _cleared(at, H, g)
+    loose = [k for k, j in enumerate(coefs) if not cleared[j]]
+    if len(loose) < 2:
+        return []
+    out = []
+    for k in loose:
+        held = {coefs[m] for m in loose if m != k}
+        keep = np.array([i for i in range(at.size) if i not in held])
+        # Where each parameter comes from: its place in ``y``, or held
+        slot = {int(i): r for r, i in enumerate(keep)}
+
+        def holding(y: Any, slot: dict = slot) -> Any:
+            full = [y[slot[i]] if i in slot else at[i] for i in range(at.size)]
+            return neg_ll(np.array(full))
+
+        sub = np.ix_(keep, keep)
+        j = int(np.flatnonzero(keep == coefs[k])[0])
+        with np.errstate(all="ignore"):
+            if runaway_coefficients(
+                holding,
+                at[keep],
+                [j],
+                None if start is None else np.asarray(start)[keep],
+                (H[sub], g[keep]),
+            ):
+                out.append(k)
     return out
 
 
