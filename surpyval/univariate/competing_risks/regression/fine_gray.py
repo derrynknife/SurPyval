@@ -95,7 +95,6 @@ from surpyval.utils.dataframe import (
     frame_columns,
     require_frame,
 )
-from surpyval.utils.deprecation import RenamedToMethod
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.ipcw import censoring_survival, step_at, step_left_limit
 from surpyval.utils.linalg import safe_inv
@@ -626,13 +625,9 @@ class FineGrayModel(
     coefficients: npt.NDArray
     #: The coefficients' standard errors, ``standard_errors()``.
     _se: npt.NDArray
-    #: ``standard_errors()``'s name before v0.23, for one release (#613).
-    se = RenamedToMethod("standard_errors", "_se")
     p_values: npt.NDArray
     #: The coefficients' covariance, ``covariance()`` (#605).
     _covariance: npt.NDArray
-    #: ``covariance()``'s name before v0.23, for one release.
-    cov = RenamedToMethod("covariance", "_covariance")
     #: The baseline subdistribution cumulative hazard: its step times and
     #: values.
     _times: npt.NDArray
@@ -683,15 +678,13 @@ class FineGrayModel(
     def covariance(self) -> npt.NDArray:
         """The coefficients' covariance: the inverse of the weighted
         partial likelihood's information at the fit (a ``nan`` row and
-        column for an aliased coefficient). ``cov``, its name before
-        v0.23, still gives it, with a ``DeprecationWarning``, until
-        v0.24."""
+        column for an aliased coefficient). It was ``cov`` before
+        v0.23."""
         return self._covariance
 
     def standard_errors(self) -> npt.NDArray:
         """The coefficients' standard errors, from :meth:`covariance`.
-        ``se``, the attribute before v0.23, still gives them, with a
-        ``DeprecationWarning``, until v0.24."""
+        They were the attribute ``se`` before v0.23."""
         return self._se
 
     def _ic_k(self) -> int:

@@ -16,7 +16,6 @@ import autograd.numpy as np
 import numpy.typing as npt
 from scipy.special import ndtri
 
-from surpyval.utils.covariates import renamed_coefficient
 from surpyval.utils.linalg import (
     bound_signs,
     cb_link,
@@ -83,8 +82,6 @@ class InferenceMixin:
 
         @property
         def parameter_names(self) -> list: ...
-
-        def _coefficient_names(self) -> "list[str]": ...
 
         @property
         def aliased(self) -> npt.NDArray: ...
@@ -387,10 +384,6 @@ class InferenceMixin:
         lr = method == "lr"
         self._check_inference()
         names = self.parameter_names
-        # A coefficient's name before v0.23, ``beta_j``, until v0.24 (#614)
-        name = renamed_coefficient(
-            name, self._coefficient_names(), "param_cb", names
-        )
         if name not in names:
             raise ValueError(
                 "Unknown parameter {!r}; expected one of {}".format(

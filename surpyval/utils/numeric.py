@@ -10,15 +10,6 @@ import numpy.typing as npt
 
 _MACHINE_EPS = float(np.finfo(float).eps)
 
-# Constants once at the top level of ``surpyval`` (``surpyval.NUM`` ...),
-# deprecated there in v0.23 (#613) and kept here, their home, until then.
-#: The float type, numpy's float64.
-NUM = np.float64
-#: The smallest positive normal float, ``numpy.finfo(float).tiny``.
-TINIEST = np.finfo(np.float64).tiny
-#: The square root of the machine epsilon, a usual finite-difference step.
-EPS = np.sqrt(np.finfo(NUM).eps)
-
 
 def ffill_or_zero(values: npt.ArrayLike) -> npt.NDArray:
     """Each ``nan`` replaced by the last value before it that is not, and

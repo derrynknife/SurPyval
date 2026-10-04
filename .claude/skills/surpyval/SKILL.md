@@ -290,8 +290,8 @@ Z = rng.normal(0, 1, (1000, 1))
 x = 10 * rng.weibull(2, 1000) * np.exp(-0.6 * Z[:, 0] / 2)
 
 model = sp.WeibullPH.fit(x=x, Z=Z)    # proportional hazards
-model.params                          # alpha, beta, then beta_0 (about 0.6)
-model.parameter_names                 # ['alpha', 'beta', 'beta_0']
+model.params                          # alpha, beta, then coef_0 (about 0.6)
+model.parameter_names                 # ['alpha', 'beta', 'coef_0']
 model.sf(5.0, np.array([0.5]))        # survival at t=5 for covariate vector Z=[0.5]
 # Cox when you don't want to assume a baseline shape:
 cox = sp.CoxPH.fit(x=x, Z=Z)

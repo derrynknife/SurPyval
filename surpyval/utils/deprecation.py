@@ -4,8 +4,9 @@ Renamed names: accept the old name for one release, with a warning.
 When a public name changes so that the same thing has the same name
 everywhere (Design Principles, principle 21), the old one keeps working
 until :data:`REMOVED_IN`, with a ``DeprecationWarning`` that names the new
-one and points at the caller's line: a name renamed in v0.23 is removed in
-v0.24. This module holds the shapes such a rename takes:
+one and points at the caller's line: a name renamed in v0.24 is removed in
+v0.25. This module holds the shapes such a rename takes (each with the
+v0.23 rename it was written for, removed in v0.24):
 
 - :func:`renamed_arguments`, an argument of a function or method;
 - :class:`RenamedAttribute`, an attribute or property of a class;
@@ -20,7 +21,7 @@ v0.24. This module holds the shapes such a rename takes:
 - :class:`MadePrivate`, the public name of an internal method or attribute
   (``MixtureModel.EM`` -> ``MixtureModel._em_iteration``).
 
-A name deprecated in v0.24 is accepted until :data:`REMOVED_IN_NEXT`.
+A name deprecated in v0.25 is accepted until :data:`REMOVED_IN_NEXT`.
 """
 
 import functools
@@ -42,12 +43,12 @@ __all__ = [
     "renamed_arguments",
 ]
 
-#: The release in which the names deprecated in v0.23 stop being
+#: The release in which the names deprecated in v0.24 stop being
 #: accepted.
-REMOVED_IN = "0.24"
+REMOVED_IN = "0.25"
 
-#: The release in which the names deprecated in v0.24 stop being accepted.
-REMOVED_IN_NEXT = "0.25"
+#: The release in which the names deprecated in v0.25 stop being accepted.
+REMOVED_IN_NEXT = "0.26"
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -71,8 +72,8 @@ def renamed_arguments(
     ----------
     removed_in : str, optional
         The release in which the old names stop being accepted:
-        :data:`REMOVED_IN` (the default) for the names renamed in v0.23,
-        :data:`REMOVED_IN_NEXT` for those renamed in v0.24.
+        :data:`REMOVED_IN` (the default) for the names renamed in v0.24,
+        :data:`REMOVED_IN_NEXT` for those renamed in v0.25.
     **renames : str
         ``old="new"``, one per renamed argument.
 
@@ -101,7 +102,7 @@ def renamed_arguments(
     ...     describe(names=["a"])
     ['a']
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    describe: 'names' is deprecated and will be removed in v0.24;
+    describe: 'names' is deprecated and will be removed in v0.25;
     use 'labels'.
     """
 
@@ -139,7 +140,7 @@ class RenamedAttribute:
     Declare it on the class under the old name,
     ``loglik = RenamedAttribute("log_likelihood")``. It works on
     instances and on the class itself (for a singleton fitter, or a class
-    attribute). A name deprecated in v0.24 passes
+    attribute). A name deprecated in v0.25 passes
     ``removed_in=REMOVED_IN_NEXT``.
 
     Examples
@@ -154,7 +155,7 @@ class RenamedAttribute:
     ...     Model().loglik
     -12.5
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    Model.loglik is deprecated and will be removed in v0.24;
+    Model.loglik is deprecated and will be removed in v0.25;
     use 'log_likelihood'.
     """
 
@@ -197,11 +198,11 @@ class CallableFloat(float):
     property.
 
     ``MixtureModel.log_likelihood(params)`` was one component's
-    log-likelihood at ``params``, and ``log_likelihood`` is now the fitted
-    log-likelihood, a property as on every other model. It returns one of
-    these, which is a plain ``float`` in every other respect, and whose
-    call, the old spelling, warns and calls ``old`` (or, with no ``old``
-    or no arguments, returns the number).
+    log-likelihood at ``params``, and ``log_likelihood`` became the fitted
+    log-likelihood in v0.23, a property as on every other model. For one
+    release it returned one of these, which is a plain ``float`` in every
+    other respect, and whose call, the old spelling, warns and calls
+    ``old`` (or, with no ``old`` or no arguments, returns the number).
 
     Examples
     --------
@@ -216,7 +217,7 @@ class CallableFloat(float):
     -12.5
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
     Model.log_likelihood is now a property: 'log_likelihood()' is
-    deprecated and will be removed in v0.24; use 'log_likelihood'.
+    deprecated and will be removed in v0.25; use 'log_likelihood'.
     """
 
     _where: str
@@ -258,14 +259,14 @@ class MethodFloat(float):
     The number of a property that became a method, for the property's
     spelling.
 
-    ``CrowAMSAA.aic`` was a property, and ``aic()`` is now a method, as on
-    every other model. The property returns one of these: calling it, the
-    new spelling, returns the plain ``float``; using it as a number
-    without the call -- arithmetic, comparison, ``round``, ``float``,
-    formatting or printing -- gives that number with a
-    ``DeprecationWarning`` pointing at the caller's line. (What numpy
-    reads directly, without calling any of these, is the number as it
-    is, with no warning.)
+    ``CrowAMSAA.aic`` was a property, and ``aic()`` became a method in
+    v0.23, as on every other model. For one release the property returned
+    one of these: calling it, the new spelling, returns the plain
+    ``float``; using it as a number without the call -- arithmetic,
+    comparison, ``round``, ``float``, formatting or printing -- gives that
+    number with a ``DeprecationWarning`` pointing at the caller's line.
+    (What numpy reads directly, without calling any of these, is the
+    number as it is, with no warning.)
 
     Examples
     --------
@@ -280,7 +281,7 @@ class MethodFloat(float):
     11.25
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
     Model.aic is now a method: 'aic' without the call is deprecated and
-    will be removed in v0.24; use 'aic()'.
+    will be removed in v0.25; use 'aic()'.
     """
 
     _where: str
@@ -387,14 +388,14 @@ class MethodArray(np.ndarray):
     """
     The array of an attribute that became a method of the same name.
 
-    ``FrailtyModel.covariance`` was an array, and ``covariance()`` is now
-    a method, as on every other model (#605). The attribute's name gives
-    one of these (see :class:`ArrayMethod`): calling it, the new spelling,
-    returns the plain array; using it as an array without the call --
-    indexing, arithmetic, a numpy function or printing -- gives the same
-    result with a ``DeprecationWarning`` pointing at the caller's line.
-    (What numpy reads directly, such as ``shape``, gives it with no
-    warning.)
+    ``FrailtyModel.covariance`` was an array, and ``covariance()`` became
+    a method in v0.23, as on every other model (#605). For one release the
+    attribute's name gave one of these (see :class:`ArrayMethod`): calling
+    it, the new spelling, returns the plain array; using it as an array
+    without the call -- indexing, arithmetic, a numpy function or printing
+    -- gives the same result with a ``DeprecationWarning`` pointing at the
+    caller's line. (What numpy reads directly, such as ``shape``, gives it
+    with no warning.)
 
     Examples
     --------
@@ -411,7 +412,7 @@ class MethodArray(np.ndarray):
     array([1., 1.])
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
     Model.covariance is now a method: 'covariance' without the call is
-    deprecated and will be removed in v0.24; use 'covariance()'.
+    deprecated and will be removed in v0.25; use 'covariance()'.
     """
 
     _where: str
@@ -520,7 +521,8 @@ class RenamedToMethod:
     An attribute whose value a method of another name now gives.
 
     ``Parametric.cov_matrix`` and ``FineGrayModel.cov`` were the
-    covariance, which ``covariance()`` now gives on every model (#605).
+    covariance, which ``covariance()`` gives on every model since v0.23
+    (#605).
     Declare the old name on the class, ``cov_matrix =
     RenamedToMethod("covariance", "_covariance")``: reading it warns and
     returns ``covariance()`` (``None`` where that raises a ``ValueError``,
@@ -541,7 +543,7 @@ class RenamedToMethod:
     ...     Model().cov
     [[1.0]]
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    Model.cov is deprecated and will be removed in v0.24; use
+    Model.cov is deprecated and will be removed in v0.25; use
     'covariance()'.
     """
 
@@ -598,7 +600,7 @@ class MadePrivate(RenamedAttribute):
     1
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
     Model.step is internal to the fit; its public name is deprecated and
-    will be removed in v0.24.
+    will be removed in v0.25.
     """
 
     def __init__(self, private: str) -> None:

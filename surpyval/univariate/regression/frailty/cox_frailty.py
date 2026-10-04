@@ -57,7 +57,6 @@ from surpyval.utils.covariates import (
     loaded_coefficient_names,
 )
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.deprecation import RenamedAttribute
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import (
     maximum_entry,
@@ -824,8 +823,7 @@ class CoxFrailtyModel(_SharedFrailty):
     is the likelihood-ratio statistic for a frailty, whose null
     distribution is the 50:50 mixture of 0 and a chi-square on one degree
     of freedom (``theta`` is on its boundary under the null). (Before
-    v0.23 they were ``loglik`` and ``loglik_no_frailty``, which still work
-    until v0.24, with a ``DeprecationWarning``.)
+    v0.23 they were ``loglik`` and ``loglik_no_frailty``.)
 
     ``neg_ll()`` is the negative integrated log-likelihood, and
     :meth:`aic`, :meth:`aic_c` and :meth:`bic` penalise it by the
@@ -860,11 +858,6 @@ class CoxFrailtyModel(_SharedFrailty):
     >>> model.sf([30, 100], [45, 1], group=21).round(3)
     array([0.968, 0.936])
     """
-
-    # The pre-0.23 names of ``log_likelihood`` and
-    # ``log_likelihood_no_frailty`` (#605), for one release.
-    loglik = RenamedAttribute("log_likelihood")
-    loglik_no_frailty = RenamedAttribute("log_likelihood_no_frailty")
 
     def __init__(self) -> None:
         super().__init__()

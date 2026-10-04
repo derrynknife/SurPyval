@@ -49,7 +49,6 @@ from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.covariates import (
     coefficient_floor,
-    renamed_coefficient_keys,
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -412,14 +411,8 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         )
         grp = _grouped_episodes(x, c, n, tl, ident)
         # One coefficient per column, named by its column or ``coef_j``
-        # (#614); the names before v0.23, ``beta_j``, until v0.24.
+        # (#614).
         phi_param_map = LogLinearPhi.make_param_map(Z, self.param_map)
-        fixed = renamed_coefficient_keys(
-            fixed,
-            list(phi_param_map),
-            "{}.fit_tvc(fixed=...)".format(self._repr_name()),
-            self.param_map,
-        )
         # A column the data cannot determine is held at 0 and reported as
         # nan, with one warning, as by the ordinary fit (#476).
         fixed = alias_coefficients(

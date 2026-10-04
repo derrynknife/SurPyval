@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import warnings
 from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
@@ -16,7 +15,6 @@ from surpyval.serialisation import (
 from surpyval.univariate.information_criteria import InformationCriteriaMixin
 from surpyval.utils import is_missing_event
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.deprecation import REMOVED_IN, RenamedToMethod
 from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import (
@@ -149,8 +147,6 @@ class SemiParametricRegressionModel(
     #: The coefficients' standard errors, ``standard_errors()`` (``None``
     #: for a model saved before they were stored).
     _se: "npt.NDArray | None" = None
-    #: ``standard_errors()``'s name before v0.23, for one release.
-    se = RenamedToMethod("standard_errors", "_se")
     #: The fit's score/Hessian closure, ``jac(beta) -> (score,
     #: information)``, and the negative partial log-likelihood as a
     #: function of the coefficients, ``neg_ll_of(beta)`` (``None`` for a
@@ -189,7 +185,7 @@ class SemiParametricRegressionModel(
 
     # -- model comparison (#604) -------------------------------------------
 
-    def neg_ll(self, beta: Any = None) -> float:
+    def neg_ll(self) -> float:
         """The negative partial log-likelihood at the fitted coefficients:
         a number, as every model's ``neg_ll()`` is (#604), so that
         :meth:`aic`, :meth:`bic` and :meth:`aic_c`, and ``log_likelihood``
@@ -197,9 +193,8 @@ class SemiParametricRegressionModel(
         other. The partial likelihood is not the likelihood of the data,
         so these do not compare a Cox model with a parametric one.
 
-        As a function of the coefficients it is ``neg_ll_of(beta)``;
-        ``neg_ll(beta)``, its old spelling, still gives it with a
-        ``DeprecationWarning`` until v0.24.
+        As a function of the coefficients it is ``neg_ll_of(beta)``
+        (``neg_ll(beta)`` before v0.23).
 
         Examples
         --------
@@ -211,22 +206,6 @@ class SemiParametricRegressionModel(
         >>> round(model.log_likelihood, 3), round(model.aic(), 3)
         (-660.857, 1327.714)
         """
-        if beta is not None:
-            warnings.warn(
-                "SemiParametricRegressionModel.neg_ll(beta) is deprecated "
-                "and will be removed in v{}: neg_ll() is now the fitted "
-                "value; use neg_ll_of(beta) for the negative partial "
-                "log-likelihood at beta.".format(REMOVED_IN),
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if self.neg_ll_of is None:
-                raise ValueError(
-                    "The partial likelihood is not stored with a model "
-                    "restored from a dict; refit it to evaluate it at "
-                    "other coefficients."
-                )
-            return float(self.neg_ll_of(beta))
         if getattr(self, "_neg_ll", None) is None:
             raise ValueError("Must have been fit with data")
         return float(self._neg_ll)
@@ -842,9 +821,8 @@ class SemiParametricRegressionModel(
         """
         The coefficients' standard errors, the square roots of the diagonal
         of :meth:`covariance` in the order of ``params`` (``nan`` for an
-        aliased coefficient), R's ``se(coef)``. ``se``, the attribute
-        before v0.23, still gives them, with a ``DeprecationWarning``,
-        until v0.24.
+        aliased coefficient), R's ``se(coef)``. They were the attribute
+        ``se`` before v0.23.
 
         Examples
         --------

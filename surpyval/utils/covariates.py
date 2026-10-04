@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import re
 import warnings
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -231,11 +230,6 @@ def coefficient_floor(
     return floor
 
 
-#: The name a regression coefficient had before v0.23: ``beta_<column>``,
-#: next to the Weibull's shape ``beta`` (#614).
-_OLD_NAME = re.compile(r"beta_(\d+)")
-
-
 def coefficient_names(
     n: int,
     columns: "Sequence[Any] | None" = None,
@@ -253,9 +247,8 @@ def coefficient_names(
     columns: a column ``alpha`` of a Weibull model is ``alpha.1``.
 
     Until v0.23 the coefficients were ``beta_0``, ``beta_1``, ..., which
-    sat next to the Weibull's shape ``beta``; an option that names a
-    coefficient still takes the old name until v0.24, with a
-    ``DeprecationWarning`` (:func:`renamed_coefficient_keys`).
+    sat next to the Weibull's shape ``beta``; a dictionary saved with
+    those names loads with these (:func:`loaded_coefficient_names`).
 
     Examples
     --------
@@ -279,106 +272,6 @@ def coefficient_names(
         used.add(unique)
         out.append(unique)
     return out
-
-
-def old_coefficient_names(
-    coefficients: "Sequence[str]", current: "Iterable[str]" = ()
-) -> "dict[str, str]":
-    """``{old: new}``: each coefficient's name before v0.23, ``beta_j``,
-    and its name now, ``coefficients[j]`` (:func:`coefficient_names`).
-    An old name that is a name in use now (in ``coefficients`` or
-    ``current``: a column called ``beta_0``) is left out: it means what
-    it names now.
-
-    Examples
-    --------
-    >>> from surpyval.utils.covariates import old_coefficient_names
-    >>> old_coefficient_names(["age", "fin"])
-    {'beta_0': 'age', 'beta_1': 'fin'}
-    """
-    names = set(coefficients) | set(current)
-    out = {}
-    for j, new in enumerate(coefficients):
-        old = "beta_{}".format(j)
-        if old not in names:
-            out[old] = new
-    return out
-
-
-def _deprecated_names(renamed: "dict[str, str]", where: str) -> None:
-    from surpyval.utils.deprecation import REMOVED_IN
-
-    pairs = ", ".join("'{}' for '{}'".format(n, o) for o, n in renamed.items())
-    warnings.warn(
-        "{}: the coefficient names beta_0, beta_1, ... are deprecated and "
-        "will be removed in v{}: a coefficient is named by its covariate's "
-        "column, else coef_0, coef_1, ... (#614). Use {}.".format(
-            where, REMOVED_IN, pairs
-        ),
-        DeprecationWarning,
-        stacklevel=caller_stacklevel(),
-    )
-
-
-def renamed_coefficient_keys(
-    mapping: "Mapping[str, Any] | None",
-    coefficients: "Sequence[str]",
-    where: str,
-    current: "Iterable[str]" = (),
-) -> "Any":
-    """``mapping`` (a ``fixed`` dict) with each key that is a coefficient's
-    name before v0.23 (``beta_j``; :func:`old_coefficient_names`) renamed
-    to the coefficient's name now, with one ``DeprecationWarning`` saying
-    ``where`` and naming them all; ``mapping`` itself where it has none.
-
-    Examples
-    --------
-    >>> import warnings
-    >>> from surpyval.utils.covariates import renamed_coefficient_keys
-    >>> with warnings.catch_warnings(record=True) as caught:
-    ...     warnings.simplefilter("always")
-    ...     renamed_coefficient_keys({"beta_0": 0.5}, ["age"], "fit")
-    {'age': 0.5}
-    >>> caught[0].category.__name__
-    'DeprecationWarning'
-    """
-    if not mapping:
-        return mapping
-    old = old_coefficient_names(coefficients, current)
-    renamed = {k: old[k] for k in mapping if k in old}
-    if not renamed:
-        return mapping
-    _deprecated_names(renamed, where)
-    return {renamed.get(k, k): v for k, v in mapping.items()}
-
-
-def renamed_coefficient(
-    name: Any,
-    coefficients: "Sequence[str]",
-    where: str,
-    current: "Iterable[str]" = (),
-) -> Any:
-    """``name``, or, where it is a coefficient's name before v0.23
-    (``beta_j``), the coefficient's name now, with a
-    ``DeprecationWarning`` (as :func:`renamed_coefficient_keys`), for an
-    option that names one parameter (``param_cb``).
-
-    Examples
-    --------
-    >>> import warnings
-    >>> from surpyval.utils.covariates import renamed_coefficient
-    >>> with warnings.catch_warnings():
-    ...     warnings.simplefilter("ignore")
-    ...     renamed_coefficient("beta_1", ["age", "fin"], "param_cb")
-    'fin'
-    """
-    if not isinstance(name, str):
-        return name
-    old = old_coefficient_names(coefficients, current)
-    if name not in old:
-        return name
-    _deprecated_names({name: old[name]}, where)
-    return old[name]
 
 
 def loaded_coefficient_names(

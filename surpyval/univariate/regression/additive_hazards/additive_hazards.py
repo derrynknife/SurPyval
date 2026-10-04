@@ -55,7 +55,6 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
-from surpyval.utils.deprecation import RenamedToMethod
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import safe_inv
 from surpyval.utils.shapes import keeps_query_shape
@@ -190,12 +189,8 @@ class AdditiveHazardsModel(
     params: npt.NDArray
     #: The coefficients' covariance, ``covariance()`` (#605).
     _covariance: npt.NDArray
-    #: ``covariance()``'s name before v0.23, for one release.
-    cov = RenamedToMethod("covariance", "_covariance")
     #: The coefficients' standard errors, ``standard_errors()``.
     _se: npt.NDArray
-    #: ``standard_errors()``'s name before v0.23, for one release (#613).
-    se = RenamedToMethod("standard_errors", "_se")
     p_values: npt.NDArray
     x: npt.NDArray
     h0: npt.NDArray
@@ -493,9 +488,8 @@ class AdditiveHazardsModel(
 
     def standard_errors(self) -> npt.NDArray:
         """Standard errors of the coefficients (Lin-Ying sandwich), the
-        square roots of the diagonal of :meth:`covariance`. ``se``, the
-        attribute before v0.23, still gives them, with a
-        ``DeprecationWarning``, until v0.24."""
+        square roots of the diagonal of :meth:`covariance`. They were the
+        attribute ``se`` before v0.23."""
         return self._se
 
     def covariance(self) -> npt.NDArray:

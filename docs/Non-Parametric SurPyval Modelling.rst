@@ -658,8 +658,8 @@ reliability can we claim with a given confidence?
 
 So 59 consecutive successes demonstrate at least 95% reliability with 95% confidence. The level
 is ``alpha_ci``, the total tail probability, as for every bound in SurPyval (default 0.05, 95%
-confidence; the older ``confidence`` and ``alpha`` arguments still work in v0.23, with a
-deprecation warning). The same bound, as an upper bound on the failure probability, is the
+confidence; the older ``confidence`` and ``alpha`` arguments were removed in v0.24). The same
+bound, as an upper bound on the failure probability, is the
 exact (Clopper-Pearson) bound of a ``Bernoulli`` fit with no failures, which also covers the
 case of a few failures:
 

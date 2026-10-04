@@ -23,11 +23,6 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
-from surpyval.utils.deprecation import (
-    REMOVED_IN,
-    CallableFloat,
-    MadePrivate,
-)
 from surpyval.utils.no_maximum import (
     maximum_entry,
     restored_maximum,
@@ -182,15 +177,6 @@ class MixtureModel(
     _em_method = "plain"
     _exact_m_step = False
 
-    # The EM iteration's steps, public before v0.23 (#605): internal to
-    # the fit, they still work with a DeprecationWarning until v0.24.
-    likelihood = MadePrivate("_likelihood")
-    Q = MadePrivate("_Q")
-    expectation = MadePrivate("_expectation")
-    maximisation = MadePrivate("_maximisation")
-    EM = MadePrivate("_em_iteration")
-    initialise_params = MadePrivate("_initialise_params")
-
     @property
     def parameter_names(self) -> list[str]:
         """The names of the columns of ``params``: the component
@@ -243,8 +229,7 @@ class MixtureModel(
 
         .. versionchanged:: 0.23
            It was a method, ``log_likelihood(params)``, giving one
-           component's log-likelihood of each observation; that call
-           still works until v0.24, with a ``DeprecationWarning``.
+           component's log-likelihood of each observation.
 
         Examples
         --------
@@ -256,34 +241,13 @@ class MixtureModel(
         >>> round(wmm.aic(), 4), wmm.aic() == 2 * 5 - 2 * wmm.log_likelihood
         (107.4211, True)
         """
-        return CallableFloat(
-            -self.neg_ll(),
-            "MixtureModel.log_likelihood",
-            old=self._component_log_likelihood,
-            note=" (the fitted log-likelihood; 'log_likelihood(params)' was "
-            "one component's log-likelihood of each observation)",
-        )
+        return float(-self.neg_ll())
 
     @log_likelihood.setter
     def log_likelihood(self, value: float) -> None:
         # As every model's: it records the negative log-likelihood.
         mixin: Any = InformationCriteriaMixin
         mixin.log_likelihood.fset(self, value)
-
-    @property
-    def loglike(self) -> float:
-        """Deprecated: the fitted *negative* log-likelihood, despite its
-        name. Use :meth:`neg_ll` for it, or ``log_likelihood`` for the
-        log-likelihood; it will be removed in v0.24."""
-        warnings.warn(
-            "MixtureModel.loglike is the negative log-likelihood, despite "
-            "its name, and is deprecated; it will be removed in "
-            f"v{REMOVED_IN}. Use 'neg_ll()' for it, or "
-            "'log_likelihood' for the log-likelihood.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._neg_ll
 
     # -- serialisation -----------------------------------------------------
 

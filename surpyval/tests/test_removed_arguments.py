@@ -1,6 +1,7 @@
 """
-The names v0.21 deprecated are gone in v0.22 (#422), and those v0.22
-deprecated are gone in v0.23 (principle 21).
+The names v0.21 deprecated are gone in v0.22 (#422), those v0.22
+deprecated are gone in v0.23, and those v0.23 deprecated are gone in v0.24
+(principle 21).
 
 An old argument name is now an unknown argument, so the call raises
 Python's own ``TypeError``; an old attribute is gone (``AttributeError``);
@@ -31,6 +32,7 @@ import surpyval as sp
 from surpyval.recurrent import CrowAMSAA, NonParametricCounting
 from surpyval.tests.conformance.registry import CASE_BY_NAME, fitted
 from surpyval.univariate.competing_risks import CompetingRisks, FineGray
+from surpyval.utils import deprecation
 from surpyval.utils.deprecation import REMOVED_IN
 
 X = np.array([5.0, 10.0, 20.0])
@@ -100,6 +102,18 @@ def _custom_param_names():
     )
 
 
+def _from_params_p():
+    sp.Weibull.from_params([10, 2], p=0.9)
+
+
+def _success_run_confidence():
+    sp.success_run(59, confidence=0.95)
+
+
+def _success_run_alpha():
+    sp.success_run(59, alpha=0.05)
+
+
 OLD_NAMES = {
     "Parametric.cb(t=)": (_parametric_cb, "t"),
     "CoxPH.fit(method=)": (_cox_method, "method"),
@@ -116,6 +130,10 @@ OLD_NAMES = {
     "Weibull.fit_from_df(x=)": (_fit_from_df_x, "x"),
     "ARI.fit(dist=)": (_ari_dist, "dist"),
     "CustomDistribution(param_names=)": (_custom_param_names, "param_names"),
+    # Deprecated in v0.23, removed in v0.24
+    "Weibull.from_params(p=)": (_from_params_p, "p"),
+    "success_run(confidence=)": (_success_run_confidence, "confidence"),
+    "success_run(alpha=)": (_success_run_alpha, "alpha"),
 }
 
 
@@ -142,6 +160,51 @@ def test_v022_modules_and_top_level_names_are_gone():
         importlib.import_module("surpyval.utils.score")
     with pytest.raises(AttributeError, match="surpyval.life_models.Power"):
         sp.Power
+
+
+# Attributes deprecated in v0.23, removed in v0.24: (case, old name).
+V023_ATTRIBUTES = [
+    ("Weibull", "cov_matrix"),  # covariance()
+    ("CoxPH", "se"),  # standard_errors()
+    ("FineGray", "se"),
+    ("FineGray", "cov"),  # covariance()
+    ("ProportionalOdds", "cov"),
+    ("AdditiveHazards", "se"),
+    ("MixtureModel", "loglike"),  # neg_ll()
+    ("MixtureModel", "EM"),  # internal
+    ("MixtureModel", "Q"),
+    ("CoxFrailty", "loglik"),  # log_likelihood
+    ("CoxFrailty", "loglik_no_frailty"),
+    ("WeibullPH", "p"),  # lfp_p
+]
+
+
+@pytest.mark.parametrize(
+    "case, old", V023_ATTRIBUTES, ids=[f"{c}.{o}" for c, o in V023_ATTRIBUTES]
+)
+def test_v023_attributes_are_gone(case, old):
+    assert not hasattr(fitted(CASE_BY_NAME[case]), old)
+
+
+def test_v023_spellings_are_gone():
+    # The limited-failure proportion's old name, where the distribution
+    # has no p of its own
+    model = fitted(CASE_BY_NAME["Weibull"])
+    with pytest.raises(AttributeError, match="'lfp_p'"):
+        model.p
+    # Methods, no longer numbers or arrays without the call
+    assert callable(fitted(CASE_BY_NAME["CrowAMSAA"]).aic)
+    assert callable(fitted(CASE_BY_NAME["RoystonParmar"]).covariance)
+    assert callable(fitted(CASE_BY_NAME["WeibullFrailty"]).covariance)
+    assert type(fitted(CASE_BY_NAME["MixtureModel"]).log_likelihood) is float
+    with pytest.raises(TypeError):
+        fitted(CASE_BY_NAME["CoxPH"]).neg_ll(np.zeros(1))
+    # beta_j for a regression coefficient
+    with pytest.raises(ValueError, match="Unknown parameter 'beta_0'"):
+        fitted(CASE_BY_NAME["WeibullPH"]).param_cb("beta_0")
+    # The top-level numeric constants
+    for name in ("NUM", "TINIEST", "EPS"):
+        assert not hasattr(sp, name)
 
 
 def test_experimental_alias_is_gone():
@@ -236,18 +299,16 @@ def g():
 
 
 def test_the_scan_sees_every_kind_of_shim():
-    # The v0.23 deprecations (removed in v0.24) use every helper: the scan
-    # must see each, or the test below would pass with one left behind.
-    files = {shim.rsplit(":", 1)[0] for shim in _package_shims()}
-    assert {
-        "surpyval/__init__.py",  # NUM, TINIEST, EPS (REMOVED_IN)
-        "surpyval/recurrent/inference.py",  # aic, bic (MethodFloat)
-        "surpyval/univariate/parametric/royston_parmar.py",  # ArrayMethod
-        "surpyval/univariate/parametric/parametric.py",  # RenamedToMethod
-        "surpyval/univariate/parametric/mixture_model.py",  # MadePrivate
-        "surpyval/univariate/parametric/parametric_fitter.py",  # lfp_p
-        "surpyval/univariate/regression/frailty/cox_frailty.py",  # loglik
-    } <= files
+    # Every helper of surpyval.utils.deprecation is a shim the scan sees,
+    # however it is used, or the test below would pass with one left
+    # behind.
+    assert set(deprecation.__all__) <= _SHIM_NAMES
+    for name in sorted(_SHIM_NAMES):
+        assert _deprecation_shims(f"x = {name}\n") == [1], name
+        assert _deprecation_shims(f"x = deprecation.{name}\n") == [1], name
+        assert _deprecation_shims(
+            f"from surpyval.utils.deprecation import (\n    {name},\n)\n"
+        ) == [2], name
 
 
 def test_deprecated_names_are_removed_by_removed_in():

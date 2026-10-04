@@ -1479,7 +1479,7 @@ The weights recover the 40/60/80 split of the simulated data (2/9, 3/9 and 4/9),
 
 Mixture models take counts, censoring flags and truncation as input (``x``, ``c``, ``n``, ``t``, ``tl``, ``tr``, ``xl``, ``xr``, as for any ``fit``). Truncation needs care: the truncation window is a property of the whole mixture, not of any one component, so a truncated mixture cannot be split up the way EM needs. For truncated data SurPyval instead maximises the truncation-corrected likelihood directly, starting from the same initial fit, and polishes and checks the answer as it does EM's.
 
-A fitted mixture is a smaller object than a fitted distribution. It has ``sf``, ``ff``, ``df``, ``Hf``, ``cs``, ``mean``, ``random`` and ``plot``, the weights ``w`` and component parameters ``params`` (one row per component), and, for comparing fits, the same ``log_likelihood``, ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` as a fitted distribution. A mixture of :math:`m` components with :math:`k` parameters each has :math:`mk + m - 1` free parameters (the weights sum to one), which is the :math:`k` of its criteria. (Before v0.23 a mixture had none of these, and its ``loglike`` was, despite its name, the *negative* log-likelihood; it still works until v0.24, with a ``DeprecationWarning``.) It has no ``hf``, ``qf`` or confidence bounds. Here a two-Weibull mixture is compared with a single Weibull on right-censored data, and then saved and restored with ``to_dict`` / ``surpyval.from_dict`` like any other model:
+A fitted mixture is a smaller object than a fitted distribution. It has ``sf``, ``ff``, ``df``, ``Hf``, ``cs``, ``mean``, ``random`` and ``plot``, the weights ``w`` and component parameters ``params`` (one row per component), and, for comparing fits, the same ``log_likelihood``, ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` as a fitted distribution. A mixture of :math:`m` components with :math:`k` parameters each has :math:`mk + m - 1` free parameters (the weights sum to one), which is the :math:`k` of its criteria. (Before v0.23 a mixture had none of these, and its ``loglike`` was, despite its name, the *negative* log-likelihood; it was removed in v0.24.) It has no ``hf``, ``qf`` or confidence bounds. Here a two-Weibull mixture is compared with a single Weibull on right-censored data, and then saved and restored with ``to_dict`` / ``surpyval.from_dict`` like any other model:
 
 .. jupyter-execute::
 
@@ -1682,11 +1682,11 @@ above are the same model.
 
 The proportion is ``lfp_p`` everywhere: the attribute, ``fixed``,
 ``param_cb``, ``from_params``, ``extras`` and the printed model. It was ``p``
-before v0.23 (#608), which still works until v0.24 with a
-``DeprecationWarning`` -- except on the distributions that call one of their
-own parameters ``p`` (``Bernoulli``, ``Binomial``, ``FixedEventProbability``,
-``Geometric``, ``NegativeBinomial``), where ``model.p`` is that parameter, as
-``model.alpha`` is a Weibull's scale; see the section on discrete
+before v0.23 (#608), a name removed in v0.24 except on the distributions that
+call one of their own parameters ``p`` (``Bernoulli``, ``Binomial``,
+``FixedEventProbability``, ``Geometric``, ``NegativeBinomial``), where
+``model.p`` is that parameter, as ``model.alpha`` is a Weibull's scale; see
+the section on discrete
 distributions below. (A saved model's dictionary keeps the key ``"p"``, so
 that every version reads it.)
 

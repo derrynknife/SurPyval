@@ -352,8 +352,10 @@ def test_inference_requires_fit_from_data():
     model = GeneralizedOneRenewal.fit_from_parameters(
         [5.0, 1.5], 0.2, dist=Weibull
     )
-    for attr in ("log_likelihood", "aic", "bic"):
+    with pytest.raises(ValueError, match="fitted from data"):
+        model.log_likelihood
+    for name in ("aic", "bic"):
         with pytest.raises(ValueError, match="fitted from data"):
-            getattr(model, attr)
+            getattr(model, name)()
     with pytest.raises(ValueError, match="fitted from data"):
         model.standard_errors()

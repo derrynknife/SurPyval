@@ -13,7 +13,6 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.utils.covariates import loaded_coefficient_names
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.deprecation import RenamedAttribute
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import (
     check_paired_rows,
@@ -181,8 +180,6 @@ class ParametricRegressionModel(
     #: inflation), which ``to_dict`` stores.
     gamma: float = 0.0
     lfp_p: float = 1.0
-    #: ``lfp_p``'s name before v0.23, as on the univariate models (#608).
-    p = RenamedAttribute("lfp_p")
     f0: float = 0.0
     #: The covariate point the baseline parameters are at: zeros (or
     #: ``None``, for an accelerated life model) when they are those of a

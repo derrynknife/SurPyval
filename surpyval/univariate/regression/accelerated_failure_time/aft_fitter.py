@@ -120,9 +120,7 @@ class AFTFitter(
         fixed : dict, optional
             Parameters to hold fixed, by name (a distribution parameter
             such as ``"beta"``, or a coefficient: its covariate's column
-            name, else ``"coef_0"``, ...; the names before v0.23,
-            ``"beta_0"``, ..., are taken until v0.24, with a
-            ``DeprecationWarning``).
+            name, else ``"coef_0"``, ...).
         center : bool, optional
             ``False`` (the default) reports the baseline at ``Z = 0``.
             ``True`` reports the baseline at the covariate means (stored as

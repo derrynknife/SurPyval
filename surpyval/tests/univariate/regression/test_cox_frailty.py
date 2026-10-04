@@ -298,12 +298,11 @@ def test_604_cox_frailty_model_comparison_values(kidney_fits):
     assert fixed.aic() == pytest.approx(2 * 2 + 2 * fixed.neg_ll())
 
 
-def test_604_cox_frailty_old_likelihood_names_are_deprecated(kidney_fits):
+def test_604_cox_frailty_old_likelihood_names_are_gone(kidney_fits):
+    # Deprecated in v0.23, removed in v0.24
     m = kidney_fits["efron"]
-    with pytest.warns(DeprecationWarning, match="'log_likelihood'"):
-        assert m.loglik == m.log_likelihood
-    with pytest.warns(DeprecationWarning, match="log_likelihood_no_frailty"):
-        assert m.loglik_no_frailty == m.log_likelihood_no_frailty
+    assert not hasattr(m, "loglik")
+    assert not hasattr(m, "loglik_no_frailty")
     # A dict written before v0.23
     old = m.to_dict()
     old["loglik"] = -old.pop("_neg_ll")

@@ -13,7 +13,6 @@ from surpyval.univariate.parametric.parametric import draw_state
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
-    lfp_p_renamed,
     reject_structural_params,
 )
 from surpyval.utils.autograd_gamma_compat import betainccln, betaincln
@@ -614,14 +613,6 @@ class Binomial_(DiscreteParametricFitter):
             n = float(np.max(np.asarray(model._n_trials, dtype=float)))
         model.support = np.array([-1, n + 1])
 
-    # Narrower than ParametricFitter.from_params, which takes
-    # (params, gamma, p, f0). Unlike `fit`, this one is not resolved
-    # by the OptimisedFitMixin split: every distribution has a
-    # from_params. It is a parameter *rename* -- the base's `params`
-    # became `params` -- so positional calls work and keyword calls
-    # raise. Fixing it means renaming
-    # back, with a deprecation alias, and is tracked separately.
-    @lfp_p_renamed
     def from_params(
         self,
         params: npt.ArrayLike,

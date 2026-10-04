@@ -10,7 +10,6 @@ import numpy.typing as npt
 from autograd.numpy.numpy_boxes import ArrayBox
 
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import (
@@ -70,12 +69,6 @@ from .parametric import Parametric, uniform_draws
 # data; in this one it destroys the thing being computed.
 Numeric = npt.NDArray | float
 Boxable = npt.NDArray | float | ArrayBox
-
-
-#: ``from_params``'s ``p``, the limited-failure proportion, is
-#: ``lfp_p`` since v0.23 (#608); ``p`` still works, with a
-#: ``DeprecationWarning``, until v0.24.
-lfp_p_renamed = renamed_arguments(p="lfp_p")
 
 
 def reject_structural_params(
@@ -995,7 +988,6 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         """
         return self
 
-    @lfp_p_renamed
     def from_params(
         self,
         params: Any,
@@ -1022,8 +1014,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
             proportion that will *ever* die or fail (a limited failure
             population); ``1 - lfp_p`` never fails. If used it must be a
             value between 0 and 1. If None will assume 1, i.e. every unit
-            eventually fails. It was ``p`` before v0.23 (#608), which
-            still works until v0.24 with a ``DeprecationWarning``.
+            eventually fails. It was ``p`` before v0.23 (#608).
 
         f0 : scalar, optional
             The proportion of the population that will die or fail at time 0.

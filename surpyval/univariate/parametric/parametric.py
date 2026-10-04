@@ -23,7 +23,6 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.utils import fsli_to_xcnt, refuse_time_values
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.deprecation import RenamedToMethod
 from surpyval.utils.linalg import (
     cb_link,
     param_name,
@@ -78,47 +77,24 @@ _NO_COVARIANCE_WHY = (
 _CBContext = namedtuple("_CBContext", ["phi_hat", "cov", "n_core"])
 
 
-def _warn_lfp_p(old: str, new: str) -> None:
-    """The one warning for the limited-failure proportion's old name,
-    ``p`` (#608), pointing at the caller."""
-    from surpyval.utils.deprecation import REMOVED_IN
-    from surpyval.utils.warnings import caller_stacklevel
-
-    warnings.warn(
-        f"{old}, the limited-failure proportion, is deprecated and will "
-        f"be removed in v{REMOVED_IN}; use '{new}'. ('p' names the "
-        "parameter of a distribution that has one: Bernoulli, Binomial, "
-        "Geometric, ...)",
-        DeprecationWarning,
-        stacklevel=caller_stacklevel(),
-    )
-
-
-def renamed_lfp_fixed(
-    dist: Any, fixed: "dict[str, float] | None"
-) -> "dict[str, float] | None":
-    """``fixed`` with ``p``, the limited-failure proportion's name before
-    v0.23, renamed ``lfp_p`` (with a ``DeprecationWarning``) where the
-    distribution has no ``p`` of its own (#608)."""
-    if not fixed or "p" not in fixed or "p" in dist.param_map:
-        return fixed
-    if "lfp_p" in fixed:
-        raise ValueError(
-            "fixed: pass 'lfp_p' only; 'p' is its deprecated old name."
-        )
-    _warn_lfp_p("fixed={'p': ...}", "fixed={'lfp_p': ...}")
-    out = dict(fixed)
-    out["lfp_p"] = out.pop("p")
-    return out
-
-
 def _lfp_key(dist: Any, name: str) -> str:
-    """``name`` as a key of a model's ``param_map``: ``p``, the
-    limited-failure proportion's name before v0.23 (#608), is ``lfp_p``
-    where the distribution has no ``p`` of its own."""
+    """``name``, a fixed parameter's name in a saved dict, as a key of a
+    model's ``param_map``: ``p``, the limited-failure proportion's key in
+    a dict (#608), is ``lfp_p`` where the distribution has no ``p`` of its
+    own."""
     if name == "p" and "p" not in dist.param_map:
         return "lfp_p"
     return name
+
+
+def _no_p_error(dist_name: str) -> AttributeError:
+    """``model.p`` on a distribution without a parameter ``p``: the
+    limited-failure proportion's name before v0.23 is ``lfp_p`` (#608)."""
+    return AttributeError(
+        f"'Parametric' object has no attribute 'p': the {dist_name} "
+        "distribution has no parameter 'p', and the limited-failure "
+        "proportion is 'lfp_p'."
+    )
 
 
 def draw_state(random_state: Any = None) -> Any:
@@ -401,9 +377,6 @@ class Parametric(
     _aic: float
     _aic_c: float
 
-    #: ``covariance()``'s name before v0.23 (#605), for one release.
-    cov_matrix = RenamedToMethod("covariance", "_covariance")
-
     def __init__(
         self,
         dist: Any,
@@ -444,8 +417,6 @@ class Parametric(
         # was ``p`` -- which is also the parameter of several
         # distributions (Bernoulli, Binomial, Geometric, ...), whose
         # ``model.p`` read 1, the proportion, not their fitted ``p``.
-        # ``p`` still names the proportion, with a DeprecationWarning,
-        # where the distribution has no ``p`` of its own.
         self.lfp_name = "lfp_p"
         if lfp:
             bounds = (*bounds, (0, 1))
@@ -764,9 +735,9 @@ class Parametric(
         The distribution's parameter ``p`` where it has one (``Bernoulli``,
         ``Binomial``, ``FixedEventProbability``, ``Geometric``,
         ``NegativeBinomial``): the fitted probability, as ``model.alpha``
-        is a Weibull's scale. Elsewhere the limited-failure proportion,
-        ``lfp_p``, its name before v0.23 (#608), which still works until
-        v0.24 with a ``DeprecationWarning``.
+        is a Weibull's scale. A distribution without one has no ``p``: the
+        limited-failure proportion, ``p`` before v0.23, is ``lfp_p``
+        (#608).
 
         Examples
         --------
@@ -777,8 +748,7 @@ class Parametric(
         index = self.dist.param_map.get("p")
         if index is not None:
             return self.params[index]
-        _warn_lfp_p("Parametric.p", "Parametric.lfp_p")
-        return self.lfp_p
+        raise _no_p_error(self.dist.name)
 
     @p.setter
     def p(self, value: Any) -> None:
@@ -787,8 +757,7 @@ class Parametric(
                 f"'p' is a parameter of the {self.dist.name} distribution; "
                 "its value is in 'params'."
             )
-        _warn_lfp_p("Parametric.p", "Parametric.lfp_p")
-        self.lfp_p = value
+        raise _no_p_error(self.dist.name)
 
     def __setstate__(self, state: dict) -> None:
         # A model pickled before v0.23 holds the proportion as "p" (#608).
@@ -891,8 +860,6 @@ class Parametric(
         the model has them (a held parameter has a zero row and column). The
         inverse of the observed information at the maximum, carried to
         the parameters through their transforms; what Wald bounds use.
-        ``cov_matrix``, its name before v0.23, still gives it, with a
-        ``DeprecationWarning``, until v0.24.
 
         Raises a ``ValueError`` where the model has none: one built with
         ``from_params``, one whose information was singular, or a
@@ -986,9 +953,8 @@ class Parametric(
             The parameter, by name (e.g. ``"alpha"``; ``"lfp_p"`` for a
             limited-failure model, ``"f0"`` for a zero-inflated one). A
             distribution parameter named ``p`` (``Geometric``,
-            ``NegativeBinomial``) is that parameter; elsewhere ``"p"``, the
-            proportion's name before v0.23, still gives it with a
-            ``DeprecationWarning`` until v0.24 (#608). The offset
+            ``NegativeBinomial``) is that parameter; the proportion,
+            ``"p"`` before v0.23, is ``"lfp_p"`` (#608). The offset
             ``"gamma"`` has no confidence bound: it is a threshold
             parameter, whose likelihood is not regular, so no standard
             error is estimated for it.
@@ -1087,9 +1053,6 @@ class Parametric(
         """
         if name in self.dist.param_map:
             return True, self.dist.param_map[name]
-        if name == "p":
-            _warn_lfp_p("param_cb('p')", "param_cb('lfp_p')")
-            name = self.lfp_name
         if name == self.lfp_name:
             if not self.lfp:
                 raise ValueError(f"'{name}' is only estimated for lfp models")

@@ -289,16 +289,6 @@ _MOVED_TO_LIFE_MODELS = {
     "ExponentialLifeModel": "Exponential",
 }
 
-# Numeric constants once at the top level, deprecated there in v0.23
-# (#613): each with what to use instead. They are kept, until v0.24, in
-# ``surpyval.utils.numeric``. ``surpyval.np``, the numpy to write custom
-# distributions with, stays.
-_DEPRECATED_CONSTANTS = {
-    "NUM": "numpy.float64",
-    "TINIEST": "numpy.finfo(float).tiny",
-    "EPS": "numpy.sqrt(numpy.finfo(float).eps)",
-}
-
 # Names that live only in a subpackage: asking for one here
 # (``surpyval.laplace``) says where it is, rather than only that
 # it is missing (#485). The subpackages are not imported to find out.
@@ -339,18 +329,6 @@ if not TYPE_CHECKING:  # keep the type checker's view of the module exact
                 "surpyval.life_models.{} (from surpyval import "
                 "life_models)".format(name, new)
             )
-        if name in _DEPRECATED_CONSTANTS:
-            import warnings
-
-            from surpyval.utils.deprecation import REMOVED_IN
-
-            warnings.warn(
-                "surpyval.{} is deprecated and will be removed in v{}; use "
-                "'{}'.".format(name, REMOVED_IN, _DEPRECATED_CONSTANTS[name]),
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            return getattr(import_module("surpyval.utils.numeric"), name)
         if name in _ELSEWHERE:
             raise AttributeError(
                 "module 'surpyval' has no attribute {n!r}: it is in "

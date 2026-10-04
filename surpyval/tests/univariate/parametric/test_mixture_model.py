@@ -370,16 +370,13 @@ def test_572_log_likelihood_is_the_fitted_value_with_the_criteria():
     assert mm.aic() > weibull.aic()
 
 
-def test_572_old_spellings_warn_and_keep_their_meaning():
+def test_572_old_spellings_are_gone():
+    # Deprecated in v0.23, removed in v0.24
     mm = _fitted_model()
-    with pytest.warns(DeprecationWarning, match="negative log-likelihood"):
-        old = mm.loglike
-    assert old == mm.neg_ll()
-    with pytest.warns(DeprecationWarning, match="log_likelihood"):
-        per_row = mm.log_likelihood(mm.params[0])
-    np.testing.assert_array_equal(
-        per_row, mm._component_log_likelihood(mm.params[0])
-    )
+    assert not hasattr(mm, "loglike")
+    assert type(mm.log_likelihood) is float
+    with pytest.raises(TypeError):
+        mm.log_likelihood(mm.params[0])
 
 
 def test_572_criteria_survive_a_round_trip_and_a_refit():
@@ -401,11 +398,18 @@ def test_572_criteria_survive_a_round_trip_and_a_refit():
 
 
 @pytest.mark.parametrize(
-    "old", ["likelihood", "Q", "expectation", "maximisation", "EM"]
+    "old",
+    [
+        "likelihood",
+        "Q",
+        "expectation",
+        "maximisation",
+        "EM",
+        "initialise_params",
+    ],
 )
 def test_605_em_steps_are_internal(old):
+    # Their public names, deprecated in v0.23, are gone in v0.24
     x = surv.Weibull.random(100, 10, 2, random_state=0)
     model = sp.MixtureModel.fit(x, dist=surv.Weibull, m=2)
-    with pytest.warns(DeprecationWarning, match="internal to the fit"):
-        step = getattr(model, old)
-    assert callable(step)
+    assert not hasattr(model, old)
