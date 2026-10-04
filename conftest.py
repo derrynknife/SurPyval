@@ -35,7 +35,10 @@ three Python versions buys little when its assertions hold. Run it
 locally after touching a likelihood, an initialiser or an optimiser.
 
 Marks are applied by path so the test modules themselves stay free of
-suite-management boilerplate.
+suite-management boilerplate. The flags are registered here; the marks
+and the skipping are in ``surpyval/tests/conftest.py``, which ships with
+the package, so that the suite installed from a wheel (where this file is
+not) skips the same groups by default (#661).
 
 This lives at the repository root rather than beside the tests because
 ``pytest_addoption`` is only honoured in *initial* conftest files -- the
@@ -46,88 +49,17 @@ the run dies on "unrecognized arguments".
 """
 
 import doctest
-import math
-import re
-
-import pytest
 
 # ---------------------------------------------------------------------------
 # Numeric comparison for the ``--doctest-modules`` run
 # ---------------------------------------------------------------------------
-# doctest compares printed output as text. That is the wrong test for a
-# library whose examples end in an optimiser: the same fit lands on
-# ``b = 4.1995e-05`` under one Python and ``4.2032e-05`` under the next,
-# and numpy prints eight significant digits either way, so a byte-exact
-# comparison fails on a difference no reader would call a difference.
-#
-# The alternative -- trimming every documented number to the digits that
-# happen to agree everywhere -- makes the docstring show something the
-# user's own session will not produce, which is the thing these examples
-# exist to avoid. So the examples record the real output, in full, and
-# the numbers in it are compared as numbers.
-#
-# The fallback only runs after the ordinary text comparison has failed,
-# and only fires when the two outputs are identical apart from their
-# numeric literals -- same words, same brackets, same integer-vs-float
-# shape ("1" never matches "1.", which is a dtype change worth
-# failing on). What it forgives is the value drifting inside a
-# tolerance. What it still catches is everything that actually went
-# wrong when this was first switched on: a stale value from another
-# parameterisation, a different function being called, the wrong array
-# shape, an exception, a missing import.
-#
-# RTOL is set by the loosest genuine disagreement between supported
-# Pythons -- the Duane example above, at 9e-4 -- with no margin beyond
-# that. ATOL exists for the one other case, a restoration factor whose
-# true value is zero and which surfaces as 1e-16 with whatever sign and
-# mantissa the optimiser stopped on; relative tolerance is meaningless
-# there.
-RTOL = 1e-3
-ATOL = 1e-12
-
-_NUMBER = re.compile(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?")
-_BLANKLINE = re.compile(r"(?m)^%s\s*?$" % re.escape(doctest.BLANKLINE_MARKER))
-
-
-def _skeleton(text: str) -> str:
-    """The text with each number replaced by its *kind*.
-
-    Integers and floats get different placeholders so that a change in
-    dtype -- ``array([1, 2])`` becoming ``array([1., 2.])`` -- is still
-    a failure rather than two numbers that happen to be equal.
-
-    Whitespace is dropped entirely. numpy pads an array's columns to its
-    widest element, so shortening one number moves the spaces around
-    every other: ``[ 6.32508961 17.37701969]`` against
-    ``[ 6.3250866 17.377018 ]``. Those spaces carry no meaning the
-    numeric comparison below has not already made.
-    """
-
-    def mark(match: re.Match) -> str:
-        token = match.group(0)
-        return "~f" if ("." in token or "e" in token or "E" in token) else "~i"
-
-    return "".join(_NUMBER.sub(mark, text).split())
-
-
-def _numerically_equal(want: str, got: str) -> bool:
-    # ``<BLANKLINE>`` stands for an empty line in the expected output.
-    # The text comparison substitutes it before matching, so this one has
-    # to as well, or a model repr with a blank line in it can never reach
-    # the numeric comparison at all.
-    want = _BLANKLINE.sub("", want)
-
-    if _skeleton(want) != _skeleton(got):
-        return False
-    wants = _NUMBER.findall(want)
-    gots = _NUMBER.findall(got)
-    if not wants or len(wants) != len(gots):
-        return False
-    return all(
-        math.isclose(float(w), float(g), rel_tol=RTOL, abs_tol=ATOL)
-        for w, g in zip(wants, gots)
-    )
-
+# The comparison itself, and why, is in ``surpyval/tests/_suite.py``,
+# which ships with the package; it is installed on doctest here.
+from surpyval.tests._suite import (  # noqa: E402
+    _NUMBER,
+    OPT_IN,
+    _numerically_equal,
+)
 
 _text_check_output = doctest.OutputChecker.check_output
 
@@ -170,25 +102,6 @@ def _forced_check_output(self, want, got, optionflags):
     return _numerically_equal(want, got)
 
 
-OPT_IN = {
-    "ml": (
-        "--run-ml",
-        "beta ML tree/forest tests",
-        "surpyval/tests/beta/ml",
-    ),
-    "invariants": (
-        "--run-invariants",
-        "combinatorial fit-invariant sweep",
-        "surpyval/tests/univariate/parametric/test_fit_invariants.py",
-    ),
-    "calibration": (
-        "--run-calibration",
-        "statistical calibration studies (coverage, size, bias)",
-        "surpyval/tests/calibration",
-    ),
-}
-
-
 def pytest_addoption(parser):
     for _, (flag, description, _path) in OPT_IN.items():
         parser.addoption(
@@ -210,25 +123,5 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
-    for mark, (flag, description, _path) in OPT_IN.items():
-        config.addinivalue_line(
-            "markers", f"{mark}: {description}; opt in with {flag}"
-        )
     if config.getoption("--doctest-force-numeric"):
         doctest.OutputChecker.check_output = _forced_check_output
-
-
-def pytest_collection_modifyitems(config, items):
-    for mark, (flag, description, path) in OPT_IN.items():
-        wanted = config.getoption(flag)
-        for item in items:
-            location = str(item.fspath).replace("\\", "/")
-            # A test outside the path opts in by carrying the mark (the
-            # conformance sweeps that run nightly).
-            if path not in location and item.get_closest_marker(mark) is None:
-                continue
-            item.add_marker(getattr(pytest.mark, mark))
-            if not wanted:
-                item.add_marker(
-                    pytest.mark.skip(reason=f"needs {flag} ({description})")
-                )

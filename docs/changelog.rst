@@ -68,6 +68,16 @@ Unreleased
 
 **Fixed**
 
+- The test suite installed with the package can be collected (#661): the
+  reference results it reads (``tests/reference/data/*.json``) ship in the
+  wheel; the doctest comparison's helpers and the opt-in gating live in
+  the package (``surpyval/tests/_suite.py`` and ``conftest.py``), so the
+  installed suite imports them and skips the ``--run-ml``,
+  ``--run-invariants`` and ``--run-calibration`` groups as the repository
+  does; and the modules that need an optional test dependency
+  (hypothesis, scikit-survival, bson) are left out when it is not
+  installed. The merge into ``master`` now collects the suite from the
+  built wheel in a clean environment.
 - An offset fit's ``gamma`` is capped by the smallest value that constrains
   it -- an exact failure, a left-censoring time (without zero inflation) or
   an interval's upper end -- rather than by the smallest value of any row

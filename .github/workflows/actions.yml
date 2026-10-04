@@ -191,6 +191,40 @@ jobs:
           name: coverage-html-report
           path: htmlcov/
 
+  # The suite as installed from the built wheel, collected (not run) in a
+  # clean environment with only pytest beside the package's own
+  # dependencies, on the merge into `master`. The repository run above
+  # sees files the wheel does not carry: 0.23 shipped tests that read
+  # reference data and a root-conftest helper left out of it, and the
+  # installed suite could not be collected (#661). Collection is what
+  # breaks that way, and takes about a minute.
+  wheel:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set-up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build the wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel --outdir dist
+
+      - name: Install it in a clean environment
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install dist/*.whl pytest
+
+      - name: Collect the installed suite
+        # Outside the checkout, so the package imported is the installed
+        # one and the repository's conftest is not seen
+        working-directory: /tmp
+        run: /tmp/clean/bin/python -m pytest --pyargs surpyval --collect-only -q
+
   # Build the documentation on the merge into `master`, with the test
   # suite.
   #

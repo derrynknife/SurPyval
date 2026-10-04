@@ -1,7 +1,8 @@
 """The numeric fallback used by the ``--doctest-modules`` run.
 
-``conftest._numerically_equal`` decides whether two blocks of doctest
-output that differ as text are the same as numbers. It is the mechanism
+``_numerically_equal`` (``surpyval/tests/_suite.py``) decides whether
+two blocks of doctest output that differ as text are the same as
+numbers. It is the mechanism
 that lets the docstring examples record real, untrimmed output while
 still passing on every supported Python, so it needs its own tests: too
 strict and the doctest step fails on a toolchain difference, too loose
@@ -15,7 +16,16 @@ import doctest
 
 import pytest
 
-from conftest import _numerically_equal
+from surpyval.tests._suite import _numerically_equal
+
+# The repository-root conftest installs the comparison on doctest; it is
+# not installed with the package, so a copy of the suite run from a wheel
+# has no doctest comparison to check (#661).
+needs_root_conftest = pytest.mark.skipif(
+    getattr(doctest.OutputChecker.check_output, "__module__", "")
+    != "conftest",
+    reason="the root conftest, which installs the comparison, is absent",
+)
 
 # The ``ProportionalIntensityHPP`` example, verbatim: the documented
 # block on the left, the block CI produced on the right. Kept whole
@@ -141,6 +151,7 @@ def test_output_with_no_numbers_is_not_silently_accepted():
     assert not _numerically_equal("Fitted by : MLE\n", "Fitted by : MLE\n")
 
 
+@needs_root_conftest
 def test_the_checker_is_installed_on_the_doctest_base_class():
     # The examples' precision depends on this patch being live for the
     # whole doctest run, including under pytest's own subclass.
@@ -149,6 +160,7 @@ def test_the_checker_is_installed_on_the_doctest_base_class():
     assert not checker.check_output("1.0\n", "2.0\n", 0)
 
 
+@needs_root_conftest
 def test_the_whole_comparison_path_handles_blank_lines():
     # Not the fallback in isolation but the method doctest actually
     # calls, with the flags the doctest step actually runs under. The
