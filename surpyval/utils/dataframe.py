@@ -7,7 +7,8 @@ same model for the same data (principle 14). Every DataFrame entry point
 names a column argument after the ``fit`` argument it fills, with a
 ``_col`` suffix (``_cols`` for a list of columns; principle 21):
 ``x_col``, ``c_col``, ``n_col``, ``xl_col``, ``xr_col``, ``tl_col``,
-``tr_col``, ``i_col``, ``e_col`` and ``Z_cols``.
+``tr_col``, ``i_col``, ``e_col`` and ``Z_cols`` (and the Binomial's
+``n_trials_col``, its trials per row).
 
 The columns are read as they are and handed to ``fit``, which does all
 the checking: a missing value is treated exactly as the same value in an

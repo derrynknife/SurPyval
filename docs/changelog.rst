@@ -76,6 +76,9 @@ Unreleased
 
 **Added**
 
+- ``FixedEventProbability.qf`` (0 up to ``p``, ``inf`` above it; NaN
+  with one warning outside [0, 1]) and ``Binomial.fit_from_df(...,
+  n_trials_col=)`` for per-row trials (#626).
 - ``MixtureModel`` has ``hf`` (``df / sf``), ``qf`` (``ff`` inverted
   numerically; NaN with a warning outside [0, 1]), ``covariance()`` and
   ``standard_errors()`` (the observed information, weights as softmax
@@ -118,6 +121,10 @@ Unreleased
   and an example; the Binomial / Bernoulli convention, the forest's
   ``feature_importances()`` and the recurrent ``n`` (1 on exact events)
   read as the code does; float-sensitive examples are rounded.
+- ``quantile_cb`` gives NaN with one warning for ``p`` outside (0, 1)
+  (outside [0, 1] for the non-parametric models, as ``qf``) rather than
+  raising (#626). ``MixtureModel.p``, the EM responsibilities, is
+  internal: the name warns until v0.25.
 - Wald ``cb`` computes each ``x``'s bound on its own (#652): one ``x``
   far in the tail made every ``hf`` bound ``nan``, with a warning blaming
   the covariance. A continuous hazard is the family's own ``hf``; an

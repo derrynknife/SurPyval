@@ -121,7 +121,7 @@ def test_warns_only_when_neither_em_nor_the_polish_reaches_a_maximum(
         warnings.simplefilter("always")
         model.data = sp.utils.surpyval_data.SurpyvalData(x=x, c=c)
         model._truncated = False
-        model.p = np.ones((2, len(x))) / 2
+        model._resp = np.ones((2, len(x))) / 2
         model._initialise_params()
         reason = model._em(max_iter=4, budget=2)
     # ``_em`` says why; the fit gives the one warning (unless the

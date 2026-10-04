@@ -448,3 +448,39 @@ def test_608_empty_data_is_refused_as_every_fit_refuses_it():
 def test_608_a_row_with_more_events_than_trials_is_refused():
     with pytest.raises(ValueError, match="between 0 and 'n_trials'"):
         Binomial.fit([1, 0, 30], n_trials=[20, 50, 20])
+
+
+def test_626_fit_from_df_reads_per_row_trials_from_a_column():
+    pd = pytest.importorskip("pandas")
+    df = pd.DataFrame({"failed": [1, 0, 3], "tested": [20, 50, 80]})
+    model = Binomial.fit_from_df(df, x_col="failed", n_trials_col="tested")
+    expected = Binomial.fit([1, 0, 3], n_trials=[20, 50, 80])
+    np.testing.assert_array_equal(model.params, expected.params)
+    # One number for every row is still n_trials
+    same = Binomial.fit_from_df(df, x_col="failed", n_trials=80)
+    assert same.params[0] == 80
+    with pytest.raises(ValueError, match="`n_trials_col`"):
+        Binomial.fit_from_df(df, x_col="failed", n_trials="tested")
+    with pytest.raises(ValueError, match="not both"):
+        Binomial.fit_from_df(
+            df, x_col="failed", n_trials_col="tested", n_trials=80
+        )
+    with pytest.raises(ValueError, match="needs the number of trials"):
+        Binomial.fit_from_df(df, x_col="failed")
+    with pytest.raises(ValueError, match="n_trials_col='zz' is not a col"):
+        Binomial.fit_from_df(df, x_col="failed", n_trials_col="zz")
+
+
+def test_626_fixed_event_probability_has_a_quantile():
+    # qf raised AttributeError; it is the two-point mixture's, 0 up to p
+    # and infinite above it, NaN with one warning outside [0, 1].
+    model = FixedEventProbability.fit([1, 0, 0, 0, 1, 0, 0, 0, 0, 0])
+    np.testing.assert_array_equal(
+        no_warnings(model.qf, [0.0, 0.1, 0.2, 0.5, 1.0]),
+        [0.0, 0.0, 0.0, np.inf, np.inf],
+    )
+    assert model.ff(model.qf(0.15)) >= 0.15
+    with pytest.warns(UserWarning, match="outside") as rec:
+        q = model.qf([-0.5, 0.5, 1.5])
+    assert len(rec) == 1 and rec[0].filename == __file__
+    assert np.isnan(q[[0, 2]]).all() and q[1] == np.inf

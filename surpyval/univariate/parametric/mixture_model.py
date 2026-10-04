@@ -25,6 +25,7 @@ from surpyval.univariate.information_criteria import (
 from surpyval.univariate.parametric.fitters import OPTIMUM_GTOL
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
+from surpyval.utils.deprecation import MadePrivate
 from surpyval.utils.linalg import (
     bound_signs,
     safe_inv,
@@ -200,6 +201,12 @@ class MixtureModel(
     _em_method = "plain"
     _exact_m_step = False
 
+    # The EM responsibilities (one row per component, one column per
+    # observation) are internal to the fit, as the EM steps are (#605); the
+    # public name ``p`` means a distribution's own parameter elsewhere, and
+    # ``lfp_p`` the limited-failure proportion (#626).
+    p = MadePrivate("_resp")
+
     @property
     def parameter_names(self) -> list[str]:
         """The names of the columns of ``params``: the component
@@ -220,7 +227,7 @@ class MixtureModel(
         self.data: Any = None
         self.params: Any = None
         self.w: Any = None
-        self.p: Any = None
+        self._resp: Any = None
         # The observed-data negative log-likelihood at the current
         # parameters, which the EM iteration tracks: the fitted one after
         # a fit (``neg_ll()``, ``log_likelihood``).
@@ -560,11 +567,11 @@ class MixtureModel(
             # Finite by construction (see _component_log_likelihood), so a
             # zero responsibility contributes exactly 0 and none inf.
             loglike = self._component_log_likelihood(params[i])
-            total -= np.sum(self.data.n * self.p[i] * loglike)
+            total -= np.sum(self.data.n * self._resp[i] * loglike)
         return total
 
     def _expectation(self) -> Any:
-        """EM E-step: set each observation's responsibilities ``p`` (the
+        """EM E-step: set each observation's responsibilities ``_resp`` (the
         probability it belongs to each component, given the current fit)
         and the count-weighted mixing weights ``w``."""
         # Normalised in the log domain: dividing likelihoods that had all
@@ -582,9 +589,9 @@ class MixtureModel(
         else:
             log_r = self._log_resp(self.w, self.params)
         with np.errstate(all="ignore"):
-            self.p = np.exp(log_r - logsumexp(log_r, axis=0))
+            self._resp = np.exp(log_r - logsumexp(log_r, axis=0))
         # Mixing weights are count-weighted responsibility totals.
-        self.w = (self.p * self.data.n).sum(axis=1) / self.data.n.sum()
+        self.w = (self._resp * self.data.n).sum(axis=1) / self.data.n.sum()
 
     def _maximisation(self) -> Any:
         """EM M-step: refit every component's parameters by minimising
@@ -746,9 +753,9 @@ class MixtureModel(
             verified = self._polish()
             end = (verified, float(self._neg_ll), converged)
             if best is None or self._better_start(end, best[0]):
-                best = (end, self.w, self.params, self.p)
+                best = (end, self.w, self.params, self._resp)
         assert best is not None
-        (verified, loglike, converged), self.w, self.params, self.p = best
+        (verified, loglike, converged), self.w, self.params, self._resp = best
         self._neg_ll = loglike
         return verified, converged
 
@@ -1138,7 +1145,7 @@ class MixtureModel(
         for name in ("_aic", "_aic_c", "_bic", "_theta_cov"):
             self.__dict__.pop(name, None)
         self._truncated = bool(np.isfinite(data.t).any())
-        self.p = np.ones(shape=(self.m, len(self.data.x))) / self.m
+        self._resp = np.ones(shape=(self.m, len(self.data.x))) / self.m
 
         self._initialise_params()
 
@@ -2053,7 +2060,8 @@ class MixtureModel(
         Parameters
         ----------
         p : array like or scalar
-            The probabilities, in (0, 1), whose quantiles are bounded.
+            The probabilities, in (0, 1), whose quantiles are bounded;
+            outside it the bound is ``nan``, with one warning (#626).
         alpha_ci : float, optional
             The significance level: 0.05 (the default) gives a 95% bound.
         bound : ('two-sided', 'upper', 'lower'), optional
@@ -2077,11 +2085,21 @@ class MixtureModel(
         """
         check_alpha_ci(alpha_ci)
         self._check_wald(method, bound)
-        probs = np.asarray(p, dtype=float)
+        probs = np.atleast_1d(np.asarray(p, dtype=float))
         if probs.size == 0:
             return np.empty((0, 2) if bound == "two-sided" else (0,))
-        if not np.all((probs > 0) & (probs < 1)):
-            raise ValueError(f"'p' must be in (0, 1); got {probs.tolist()}")
+        # As qf: NaN, with one warning, outside (0, 1) (#626).
+        outside = warn_outside_unit_interval(
+            probs, "quantile_cb", closed=False
+        )
+        ok = ~outside & ~np.isnan(probs)
+        if not ok.all():
+            out = np.full(
+                probs.shape + ((2,) if bound == "two-sided" else ()), np.nan
+            )
+            if ok.any():
+                out[ok] = self.quantile_cb(probs[ok], alpha_ci, bound, method)
+            return out
         t = np.asarray(self.qf(probs), dtype=float)
         dens = np.asarray(self.df(t), dtype=float)
         # The variance of F(t) at the fixed t, over f(t)^2: that of t.

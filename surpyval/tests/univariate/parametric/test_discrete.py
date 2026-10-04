@@ -557,12 +557,16 @@ def test_fixed_event_probability_is_unchanged_and_separate():
         np.testing.assert_allclose(
             FixedEventProbability.sf(x, P_BERN), 1 - P_BERN
         )
-    # Its F is constant, so it still has no density, hazard rate or
-    # quantile: the mass is an atom rather than a density, and there is no
-    # time axis to invert. Its moments are those of the 0/1 event
+    # Its F is constant, so it still has no density or hazard rate: the
+    # mass is an atom rather than a density. Its quantile is the two-point
+    # mixture's, 0 up to p and infinite above (#626: every model has a
+    # qf, principle 2). Its moments are those of the 0/1 event
     # indicator, and ``mean`` (once missing while ``moment`` existed) is
     # the first of them.
-    for absent in ("df", "hf", "qf"):
+    np.testing.assert_array_equal(
+        FixedEventProbability.qf([P_BERN, 0.99], P_BERN), [0.0, np.inf]
+    )
+    for absent in ("df", "hf"):
         assert not any(
             absent in k.__dict__ for k in type(FixedEventProbability).__mro__
         ), absent

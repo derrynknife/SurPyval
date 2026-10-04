@@ -265,12 +265,12 @@ def test_qf_accepts_p_of_one():
     assert _flat(model.qf(1.0))[0] == 10.0
 
 
-@pytest.mark.parametrize("p", [0.0, -0.1, 1.5, 2.5])
-def test_quantile_cb_refuses_p_outside_0_1(p):
-    # Kills nonparametric.py:1101 ('|' -> '&', 'p <= 0' -> 'p < 0',
-    # 'p > 1' -> 'p > 2').
-    with pytest.raises(ValueError, match="'p' must be in the range"):
-        _fit().quantile_cb(p)
+@pytest.mark.parametrize("p", [-0.1, 1.5, 2.5])
+def test_quantile_cb_is_nan_for_p_outside_0_1(p):
+    # As qf (#626; it raised): NaN with one warning, the other p bounded.
+    with pytest.warns(UserWarning, match=r"quantile_cb: .* outside \[0, 1\]"):
+        got = _fit().quantile_cb([0.5, p])
+    assert np.isnan(got[1]).all() and not np.isnan(got[0, 0])
 
 
 @pytest.mark.parametrize("alpha_ci", [0.05, 0.3])
