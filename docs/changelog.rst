@@ -57,6 +57,14 @@ Unreleased
   are the errors: on 100,000 units with mixed censoring and truncation,
   from arrays 58 → 41 ms, from lists 89 → 62 ms, and the identifiability
   check 12 → 2.5 ms.
+- **``fit_best`` builds its data once.** It checked the data as a
+  ``SurpyvalData`` and then gave each candidate the raw inputs, so every
+  family built and checked them again, and estimated the non-parametric
+  start again. Every candidate is now fitted to that one ``SurpyvalData``
+  (``fit_from_surpyval_data``). Results, warnings and errors are
+  identical; on right-censored data 10,000 units 381 -> 346 ms and 100,000
+  units 2.51 -> 2.08 s, a larger share wherever the fits themselves are
+  quick.
 - A fitted model's ``sf``, ``ff`` and ``df`` are about twice as fast on
   small arrays, and up to 2.4x on large ones for a model with no offset,
   limited-failure or zero-inflation part, with identical results (#642).

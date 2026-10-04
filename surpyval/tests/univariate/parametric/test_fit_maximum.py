@@ -389,9 +389,10 @@ def test_every_state_is_documented():
 # fit_best reads the flag, not the warnings
 # ---------------------------------------------------------------------------
 def _with_flag(monkeypatch, dist, maximum, message=None):
-    """``dist.fit`` returning its model with ``maximum`` set, and giving
-    ``message`` as a warning if one is given."""
-    fit = dist.fit
+    """``dist``'s fits returning their model with ``maximum`` set, and
+    giving ``message`` as a warning if one is given (``fit_best`` fits each
+    candidate with ``fit_from_surpyval_data``, to its one SurpyvalData)."""
+    fit = dist.fit_from_surpyval_data
 
     def patched(*args, **kwargs):
         model = fit(*args, **kwargs)
@@ -400,7 +401,7 @@ def _with_flag(monkeypatch, dist, maximum, message=None):
             warnings.warn(message)
         return model
 
-    monkeypatch.setattr(dist, "fit", patched)
+    monkeypatch.setattr(dist, "fit_from_surpyval_data", patched)
 
 
 def test_fit_best_sets_aside_a_candidate_by_its_flag(monkeypatch):
