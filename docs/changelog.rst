@@ -133,6 +133,12 @@ Unreleased
   call, of a level above 0.5: ``alpha_ci=0.95`` is a 5% interval.
   ``success_run`` refuses 0 and 1 too.
 
+- ``fit_from_df`` of ``CoxPH``, ``ProportionalOdds``, ``AdditiveHazards``,
+  ``BuckleyJames``, ``CoxFrailty`` and the parametric frailty models names
+  a missing column as the parametric families do (#663): "x_col='time' is
+  not a column of the DataFrame; its columns are [...]", not a bare
+  ``KeyError``. A missing ``Z_cols`` entry lists the columns too, for every
+  regression ("Z_cols entry 'zz' is not a column ...").
 - ``CoxPH`` and ``BuckleyJames`` refuse data with no event, with the
   message of ``ProportionalOdds`` and ``AdditiveHazards`` (#648): Cox
   returned coefficients 0 with standard errors 0 (a hazard ratio of exactly

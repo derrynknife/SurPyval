@@ -85,6 +85,36 @@ def frame_column(
     return column.to_numpy()
 
 
+def check_columns(df: pd.DataFrame, **named: Any) -> None:
+    """Refuse a column argument naming no column of ``df``, with the
+    message of :func:`frame_column` (#571, #663): ``check_columns(df,
+    x_col="time", c_col=None, Z_cols=["age", "zz"])``. An argument left
+    at ``None`` is skipped; a list (``Z_cols``) is checked entry by
+    entry."""
+    columns = list(df.columns)
+    for arg, name in named.items():
+        if name is None:
+            continue
+        if isinstance(name, (list, tuple)):
+            unknown = [k for k in name if k not in df.columns]
+            if len(unknown) == 1:
+                raise ValueError(
+                    f"{arg} entry {unknown[0]!r} is not a column of the "
+                    f"DataFrame; its columns are {columns}"
+                )
+            if unknown:
+                listed = ", ".join(repr(k) for k in unknown)
+                raise ValueError(
+                    f"{arg} entries {listed} are not columns of the "
+                    f"DataFrame; its columns are {columns}"
+                )
+        elif name not in df.columns:
+            raise ValueError(
+                f"{arg}={name!r} is not a column of the DataFrame; its "
+                f"columns are {columns}"
+            )
+
+
 def frame_columns(
     df: pd.DataFrame, names: Any, arg: str, time: bool = False
 ) -> npt.NDArray:

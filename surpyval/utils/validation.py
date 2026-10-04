@@ -442,7 +442,19 @@ def validate_coxph_df_inputs(
     from surpyval.univariate.regression.regression_data import (
         design_matrix_from_df,
     )
+    from surpyval.utils.dataframe import check_columns
 
+    # A missing column is named, with the columns there are, as the
+    # parametric families' fit_from_df names it (#571, #663); it was a
+    # bare KeyError.
+    check_columns(
+        df,
+        x_col=x_col,
+        c_col=c_col,
+        n_col=n_col,
+        tl_col=tl_col,
+        strata_col=strata_col,
+    )
     # Rows with a missing covariate drop (with one warning), and the times,
     # flags, counts, entry times and strata with them.
     Z, feature_names, model_spec = design_matrix_from_df(df, Z_cols, formula)

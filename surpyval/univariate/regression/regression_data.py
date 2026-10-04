@@ -31,7 +31,7 @@ from surpyval.utils import (
     refuse_time_values,
     xcnt_handler,
 )
-from surpyval.utils.dataframe import frame_column
+from surpyval.utils.dataframe import check_columns, frame_column
 from surpyval.utils.removed_names import column_arguments
 
 from ._aliasing import covariate_columns
@@ -291,9 +291,8 @@ def design_matrix_from_df(
     else:
         Z_cols = list(Z_cols)
 
-    unknown = [c for c in Z_cols if c not in df.columns]
-    if len(unknown) > 0:
-        raise ValueError("{} not in dataframe columns".format(unknown))
+    # Named, with the columns there are, as a missing x_col is (#663).
+    check_columns(df, Z_cols=Z_cols)
 
     Z = numeric_columns(df, Z_cols)
     return Z, Z_cols, None
@@ -997,6 +996,8 @@ class DataFrameRegressionMixin:
         array([0.4757, 0.0024])
         """
         x = _regression_times(df, x_col, xl_col, xr_col)
+        check_columns(df, c_col=c_col, n_col=n_col, tl_col=tl_col)
+        check_columns(df, tr_col=tr_col)
         Z, feature_names, model_spec = design_matrix_from_df(
             df, Z_cols, formula
         )

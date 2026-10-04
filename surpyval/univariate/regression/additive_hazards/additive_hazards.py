@@ -55,6 +55,7 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
+from surpyval.utils.dataframe import check_columns
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import safe_inv
 from surpyval.utils.removed_names import column_arguments
@@ -688,6 +689,7 @@ class AdditiveHazards_(FitterRepr):
         Fit the additive hazards model from a pandas DataFrame, retaining the
         covariate names for prediction (see :meth:`fit` for the model).
         """
+        check_columns(df, x_col=x_col, c_col=c_col, n_col=n_col)
         Z, feature_names, model_spec = design_matrix_from_df(
             df, Z_cols, formula
         )

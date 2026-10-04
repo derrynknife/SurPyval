@@ -57,6 +57,7 @@ from surpyval.utils.covariates import (
     loaded_coefficient_names,
 )
 from surpyval.utils.data_summary import data_summary
+from surpyval.utils.dataframe import check_columns
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import (
     maximum_entry,
@@ -764,6 +765,9 @@ class CoxFrailtyFitter(FitterRepr):
         >>> model.feature_names
         ['age', 'C(sex)[T.2]']
         """
+        check_columns(
+            df, x_col=x_col, c_col=c_col, n_col=n_col, group_col=group_col
+        )
         x = df[x_col].values
         c = None if c_col is None else df[c_col].values
         n = None if n_col is None else df[n_col].values
