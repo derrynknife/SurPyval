@@ -635,6 +635,14 @@ class BuckleyJames_(FitterRepr):
             raise ValueError(
                 "Buckley-James models log(time); all times must be positive."
             )
+        if not np.any((c_a == 0) & (n_a > 0)):
+            # It reported converged=True with the least-squares slope of
+            # the censoring times (#648).
+            raise ValueError(
+                "BuckleyJames needs at least one event (c=0); with every "
+                "observation censored there is no residual distribution to "
+                "estimate."
+            )
         p = Z_a.shape[1]
         aliased = _aliased(Z_a, n_a)
         kept = np.setdiff1d(np.arange(p), aliased)

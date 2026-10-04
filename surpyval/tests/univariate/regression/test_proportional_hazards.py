@@ -1339,3 +1339,15 @@ def test_593_parametric_ph_fit_evaluates_each_point_once(monkeypatch):
     in_pass = {point for boxed, point in calls if boxed}
     assert len(plain & in_pass) <= 1
     assert model.maximum == "verified"
+
+
+@pytest.mark.parametrize("strata", [None, np.arange(30) % 2])
+def test_648_cox_refuses_data_with_no_event(strata):
+    # It returned coefficients 0 with standard errors 0: a confident hazard
+    # ratio of exactly 1, CI [1, 1]. The siblings' message (ProportionalOdds,
+    # AdditiveHazards).
+    rng = np.random.default_rng(0)
+    x = 10 * rng.weibull(1.5, 30)
+    z = rng.normal(size=30)
+    with pytest.raises(ValueError, match=r"needs at least one event \(c=0\)"):
+        CoxPH.fit(x, z, c=np.ones(30), strata=strata)
