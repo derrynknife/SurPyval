@@ -371,7 +371,9 @@ def test_cox_neg_ll_of_beta_is_named():
 def test_life_model_hint_names_the_current_life_models():
     from surpyval import life_models
 
-    with pytest.raises(ValueError, match="life_models.Exponential"):
+    # (not life_models.Exponential, which reads kelvin and refuses a
+    # stress <= 0 too, #654)
+    with pytest.raises(ValueError, match="life_models.GeneralLogLinear"):
         sp.AcceleratedLife(sp.Weibull, life_models.Power).fit(
             np.array([100.0, 120, 80, 90]), Z=-np.array([300.0, 300, 350, 350])
         )

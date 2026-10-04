@@ -30,6 +30,7 @@ class InverseExponential_(LifeModel):
     array([22026.46579481])
     """
 
+    kelvin_stress_columns = (0,)
     phi_takes_rows = True
 
     def __init__(self) -> None:
@@ -84,6 +85,7 @@ class ExponentialLifeModel_(LifeModel):
     array([50687.9,  5364.6])
     """
 
+    kelvin_stress_columns = (0,)
     phi_takes_rows = True
 
     def __init__(self) -> None:

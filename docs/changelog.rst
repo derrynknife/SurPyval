@@ -133,6 +133,13 @@ Unreleased
   call, of a level above 0.5: ``alpha_ci=0.95`` is a 5% interval.
   ``success_run`` refuses 0 and 1 too.
 
+- The Arrhenius-type life models (``Exponential``, ``InverseExponential``,
+  the Eyring models, the temperature column of ``DualExponential`` and
+  ``PowerExponential``) took a temperature in degrees Celsius in silence
+  (#654): a 0 °C level crashed inside LAPACK, a negative one fitted a
+  nonsense activation energy. A stress <= 0 there is now refused naming
+  kelvin, and stresses all below 200 K warn "Did you pass degrees Celsius?
+  Add 273.15" (not for ``Eyring``, also used for a non-thermal stress).
 - ``fit_best`` passed over every lifetime family (support from 0) in
   silence when some times were at or below 0, and returned the best of the
   rest: with three zero ages in 50, a Normal that put 3% of the units
