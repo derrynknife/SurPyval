@@ -21,6 +21,7 @@ from surpyval.serialisation import (
 )
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.validation import warn_outside_unit_interval
 
 
 @dataclass
@@ -244,11 +245,10 @@ class InducedFailureDistribution(SerialisableMixin):
     @keeps_query_shape
     def qf(self, p: npt.ArrayLike) -> npt.NDArray:
         """Quantile of the induced distribution (``inf`` in the never-fails
-        mass, ``nan`` for a missing probability)."""
+        mass, ``nan`` for a missing probability, and ``nan`` with a warning
+        for one outside [0, 1], as every model's ``qf`` gives; #611)."""
         p = np.asarray(p, dtype=float)
-        if np.any((p < 0) | (p > 1)):
-            raise ValueError("qf probabilities must lie in [0, 1]")
-        missing = np.isnan(p)
+        missing = np.isnan(p) | warn_outside_unit_interval(p)
         out = np.full(p.shape, np.nan)
         out[~missing] = np.quantile(self.samples, p[~missing], method="lower")
         return out

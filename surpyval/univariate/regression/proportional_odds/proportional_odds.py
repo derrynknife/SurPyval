@@ -83,7 +83,15 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.univariate.information_criteria import (
+    InformationCriteriaMixin,
+    ic_sample_size,
+)
+from surpyval.univariate.regression._aliasing import dataframe_covariates
+from surpyval.utils.covariates import renamed_coefficient
 from surpyval.utils.data_summary import data_summary
+from surpyval.utils.deprecation import RenamedToMethod
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import wald_bound_on_support
 from surpyval.utils.no_maximum import (
     maximum_entry,
@@ -96,6 +104,7 @@ from surpyval.utils.shapes import (
     covariate_rows,
     keeps_query_shape,
 )
+from surpyval.utils.validation import BOUNDS, check_option
 
 from .._aliasing import (
     aliased_columns,
@@ -111,6 +120,7 @@ from .._fit_skeleton import (
     covariate_center,
 )
 from .._kinds import PROPORTIONAL_ODDS
+from .._prediction import ConditionalSurvivalMixin
 from .._summary import coefficient_names, coefficient_repr, coefficient_table
 from ..regression_data import (
     LinearPredictorMixin,
@@ -480,7 +490,11 @@ def _baseline_at_origin(
 
 
 class ProportionalOddsModel(
-    LinearPredictorMixin, ConcordanceMixin, SerialisableMixin
+    ConditionalSurvivalMixin,
+    InformationCriteriaMixin,
+    LinearPredictorMixin,
+    ConcordanceMixin,
+    SerialisableMixin,
 ):
     """
     A fitted semi-parametric proportional odds model, returned by
@@ -529,8 +543,14 @@ class ProportionalOddsModel(
     # Fitted quantities set by ``ProportionalOdds.fit``.
     beta: npt.NDArray
     params: npt.NDArray
-    se: npt.NDArray
-    cov: npt.NDArray
+    #: The coefficients' standard errors, ``standard_errors()``.
+    _se: npt.NDArray
+    #: ``standard_errors()``'s name before v0.23, for one release (#613).
+    se = RenamedToMethod("standard_errors", "_se")
+    #: The coefficients' covariance, ``covariance()`` (#605).
+    _covariance: npt.NDArray
+    #: ``covariance()``'s name before v0.23, for one release.
+    cov = RenamedToMethod("covariance", "_covariance")
     p_values: npt.NDArray
     x: npt.NDArray
     d: npt.NDArray
@@ -539,9 +559,6 @@ class ProportionalOddsModel(
     #: The covariate values the baseline is at: zeros by default, the
     #: ``n``-weighted covariate means for a fit with ``center=True``.
     center: "npt.NDArray | None" = None
-    #: The log-likelihood at the maximum (Murphy et al.'s, with the jumps
-    #: of the baseline odds in place of its density).
-    log_likelihood: float = np.nan
     #: Newton iterations of the profile likelihood.
     n_iter: int = 0
     #: What the fit reached, one of ``MAXIMUM_STATES``
@@ -553,6 +570,10 @@ class ProportionalOddsModel(
     _fit_data: "dict | None" = None
     #: The printout's data line of a restored model.
     _data_summary: "str | None" = None
+    #: The likelihood-ratio searches of ``param_cb(method="lr")`` over the
+    #: profile likelihood, with what they have found, while the
+    #: coefficients stay as they are; not pickled (``__getstate__``).
+    _lr_search: Any = None
     #: The family (``"Proportional Odds"``) and ``"Semi-Parametric"``,
     #: which the printout shows and ``to_dict`` stores.
     kind: str
@@ -564,9 +585,11 @@ class ProportionalOddsModel(
 
     @property
     def parameter_names(self) -> list[str]:
-        """The names of ``params``, entry by entry: ``beta_0``,
-        ``beta_1``, ... for the covariate coefficients."""
-        return ["beta_{}".format(i) for i in range(len(self.params))]
+        """The names of ``params``, entry by entry: each covariate's
+        column (a formula, ``fit_from_df`` or a DataFrame ``Z``), else
+        ``coef_0``, ``coef_1``, ... (#614), as in the parametric
+        regression models."""
+        return coefficient_names(self, len(self.params))
 
     _ALIASED_WHY = (
         "a constant column, which the baseline odds absorb, or a linear "
@@ -744,27 +767,60 @@ class ProportionalOddsModel(
                 - np.logaddexp(0.0, lGp + eta)
             )
 
+    # -- model comparison (#604) -------------------------------------------
+
+    def _ic_k(self) -> int:
+        # The estimated coefficients; the baseline is profiled out, as a
+        # Cox model's is (an aliased coefficient, nan, is not counted).
+        return int(np.isfinite(np.asarray(self.params, dtype=float)).sum())
+
+    def _ic_sample_size_from_data(self) -> float:
+        if self._fit_data is not None:
+            return ic_sample_size(self._fit_data["c"], self._fit_data["n"])
+        # A model restored from a dict saved without "ic_n": the events,
+        # which the baseline counts at each time.
+        return float(np.sum(self.d))
+
     # -- inference -------------------------------------------------------
 
     def covariance(self) -> npt.NDArray:
         """The covariance of the coefficients: the inverse of the
         negative Hessian of the profile log-likelihood at the maximum
         (``nan`` rows and columns for an aliased coefficient)."""
-        return self.cov
+        return self._covariance
 
     def standard_errors(self) -> npt.NDArray:
-        """The coefficients' standard errors, from :meth:`covariance`."""
-        return self.se
+        """The coefficients' standard errors, from :meth:`covariance`.
+        ``se``, the attribute before v0.23, still gives them, with a
+        ``DeprecationWarning``, until v0.24."""
+        return self._se
 
     def param_cb(
         self,
         name: str,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
+        method: str = "wald",
     ) -> npt.NDArray:
         """
-        Wald confidence bound(s) on a coefficient, from the profile
-        likelihood's information (see :meth:`covariance`).
+        Confidence bound(s) on a coefficient.
+
+        Two methods, as for the parametric regression models; ``"wald"``
+        is the default:
+
+        - ``"wald"`` -- from the profile likelihood's information (see
+          :meth:`covariance`).
+        - ``"lr"`` -- the profile-likelihood interval (#617): the values
+          of the coefficient whose deviance of the profile likelihood
+          :math:`p\\ell(\\beta) = \\max_g \\ell(\\beta, g)`, the other
+          coefficients re-fitted, stays below the :math:`\\chi^2_1`
+          critical value (aliases ``"likelihood"``,
+          ``"likelihood-ratio"``, ``"profile"``). The profile likelihood
+          ratio is asymptotically :math:`\\chi^2` in this model, the
+          baseline being profiled out (Murphy and van der Vaart 2000). A
+          side that cannot be found is ``nan``, with a warning. It needs
+          the data the model was fitted to, which a model restored from a
+          dict does not keep.
 
         Parameters
         ----------
@@ -774,6 +830,8 @@ class ProportionalOddsModel(
             Total tail probability of the bound(s). Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds are returned as ``[lower, upper]``.
+        method : {'wald', 'lr'}, optional
+            As above. Default ``'wald'``.
 
         Examples
         --------
@@ -782,27 +840,94 @@ class ProportionalOddsModel(
         >>> df = load_rossi_static()
         >>> x, c = df["week"].values, 1 - df["arrest"].values
         >>> model = ProportionalOdds.fit(x, df[["fin", "prio"]].values, c=c)
-        >>> model.param_cb("beta_0").round(4)
+        >>> model.param_cb("coef_0").round(4)
         array([-0.0017,  0.8567])
+        >>> model.param_cb("coef_1").round(4)
+        array([-0.1853, -0.0559])
+        >>> model.param_cb("coef_1", method="lr").round(4)
+        array([-0.1849, -0.0548])
         """
+        from .._likelihood_ratio import is_lr, profile_interval
+
+        lr = is_lr(method)
         names = self.parameter_names
+        # A coefficient's name before v0.23, ``beta_j``, until v0.24 (#614)
+        name = renamed_coefficient(name, names, "param_cb")
         if name not in names:
             raise ValueError(
                 "Unknown parameter {!r}; expected one of {}".format(
                     name, names
                 )
             )
+        if lr:
+            check_option("bound", bound, BOUNDS)
+            return profile_interval(self._lr_region(), name, alpha_ci, bound)
         idx = names.index(name)
         lower, upper = self._parameter_bounds()[idx]
         return wald_bound_on_support(
             float(self.params[idx]),
-            float(self.cov[idx, idx]),
+            float(self._covariance[idx, idx]),
             lower,
             upper,
             alpha_ci,
             bound,
             name=name,
         )
+
+    def _lr_region(self) -> Any:
+        """The likelihood-ratio searches over the profile likelihood of
+        the coefficients (``LikelihoodRegion``), kept while they are as
+        they are: each value is the likelihood maximised over the
+        baseline (:func:`_inner`, from the baseline at the estimate). An
+        aliased coefficient is held (its bound is ``nan``)."""
+        from .._likelihood_ratio import LikelihoodRegion
+
+        data = self._fit_data
+        if data is None:
+            raise ValueError(
+                "Likelihood-ratio bounds need the data the model was fitted "
+                "to, which a model restored from a dict does not keep; use "
+                "method='wald'."
+            )
+        # (an aliased coefficient, nan, is held at 0)
+        params = np.nan_to_num(np.asarray(self.params, dtype=float), nan=0.0)
+        point = params.tobytes()
+        search = self._lr_search
+        if search is not None and search.point == point:
+            return search
+        x, c, n, tl, Z = (data[k] for k in ("x", "c", "n", "tl", "Z"))
+        aliased = np.flatnonzero(np.isnan(np.asarray(self.beta, dtype=float)))
+        kept = np.setdiff1d(np.arange(params.size), aliased)
+        # As the fit: on the covariates centred at their means, which the
+        # baseline absorbs (the profile likelihood is the same).
+        Zc = (Z - covariate_center(Z, n))[:, kept]
+        lik = _POLikelihood(x, c, n, tl, Zc)
+        tol = 1e-12
+        with np.errstate(all="ignore"):
+            u_hat, _ = _inner(lik, -params[kept], lik.start(x, n, tl), tol)
+
+        def neg_ll(beta: npt.NDArray) -> float:
+            with np.errstate(all="ignore"):
+                _, der = _inner(lik, -beta[kept], u_hat, tol)
+            return -float(der["value"])
+
+        search = LikelihoodRegion(
+            neg_ll,
+            params,
+            self.parameter_names,
+            self._parameter_bounds(),
+            set(aliased.tolist()),
+            self._covariance,
+            point,
+        )
+        self._lr_search = search
+        return search
+
+    def __getstate__(self) -> dict:
+        # The searches' caches are rebuilt where they are needed (#617).
+        state = dict(self.__dict__)
+        state.pop("_lr_search", None)
+        return state
 
     def _parameter_bounds(self) -> "list[tuple[None, None]]":
         """The support of each parameter: the coefficients are
@@ -835,7 +960,7 @@ class ProportionalOddsModel(
         """
         beta = np.asarray(self.beta, dtype=float)
         names = coefficient_names(self, beta.size)
-        se = np.asarray(self.se, dtype=float)
+        se = np.asarray(self._se, dtype=float)
         return coefficient_table(names, beta, se, alpha_ci, p=self.p_values)
 
     def _data_repr(self) -> str:
@@ -898,14 +1023,17 @@ class ProportionalOddsModel(
             "model": "ProportionalOddsModel",
             "beta": np.asarray(self.beta, dtype=float).tolist(),
             "params": np.asarray(self.params, dtype=float).tolist(),
-            "se": np.asarray(self.se, dtype=float).tolist(),
-            "cov": np.asarray(self.cov, dtype=float).tolist(),
+            "se": np.asarray(self._se, dtype=float).tolist(),
+            # The key every model's dict stores it under (#605).
+            "covariance": np.asarray(self._covariance, dtype=float).tolist(),
             "p_values": np.asarray(self.p_values, dtype=float).tolist(),
             "x": np.asarray(self.x, dtype=float).tolist(),
             "d": np.asarray(self.d, dtype=float).tolist(),
             "g0": np.asarray(self.g0, dtype=float).tolist(),
             "G0": np.asarray(self.G0, dtype=float).tolist(),
-            "log_likelihood": float(self.log_likelihood),
+            # The key every model's dict stores it under (#605).
+            "_neg_ll": float(self._neg_ll),
+            "ic_n": float(self._ic_sample_size()),
             "n_iter": int(self.n_iter),
             **maximum_entry(self.maximum),
         }
@@ -934,16 +1062,24 @@ class ProportionalOddsModel(
             "a semi-parametric proportional odds model",
         )
         out = cls()
-        for key in ("beta", "params", "se", "p_values", "x", "d", "g0"):
+        for key in ("beta", "params", "p_values", "x", "d", "g0"):
             setattr(out, key, np.array(model_dict[key], dtype=float))
+        out._se = np.array(model_dict["se"], dtype=float)
         out.G0 = np.array(model_dict["G0"], dtype=float)
-        out.cov = np.array(model_dict["cov"], dtype=float).reshape(
+        # "cov" is the key of a dict written before v0.23.
+        cov = model_dict.get("covariance", model_dict.get("cov"))
+        out._covariance = np.array(cov, dtype=float).reshape(
             out.beta.size, out.beta.size
         )
         out.center = np.array(
             model_dict.get("center", np.zeros(out.beta.size)), dtype=float
         )
-        out.log_likelihood = float(model_dict.get("log_likelihood", np.nan))
+        if "_neg_ll" in model_dict:
+            out._neg_ll = float(model_dict["_neg_ll"])
+        else:
+            # A dict written before v0.23 stored the log-likelihood.
+            out.log_likelihood = model_dict.get("log_likelihood", np.nan)
+        out._ic_n = cls._restored_ic_n(model_dict)
         out.n_iter = int(model_dict.get("n_iter", 0))
         out.maximum = restored_maximum(model_dict)
         out._data_summary = model_dict.get("data_summary")
@@ -951,7 +1087,7 @@ class ProportionalOddsModel(
         return out
 
 
-class ProportionalOdds_:
+class ProportionalOdds_(FitterRepr):
     """
     The semi-parametric proportional odds model: the covariates multiply
     the survival odds of a baseline left to the data,
@@ -970,6 +1106,10 @@ class ProportionalOdds_:
     returns a :class:`ProportionalOddsModel`.
     """
 
+    #: The ``repr`` (#614)
+    fitter_kind = "semi-parametric proportional odds fitter"
+
+    @dataframe_covariates
     def fit(
         self,
         x: npt.ArrayLike,
@@ -1047,7 +1187,7 @@ class ProportionalOdds_:
         >>> model = ProportionalOdds.fit(x, Z, c=c)
         >>> model.beta.round(4)
         array([ 0.391 ,  0.0701, -0.1116])
-        >>> model.se.round(4)
+        >>> model.standard_errors().round(4)
         array([0.2206, 0.0227, 0.0331])
         """
         x, c, n, tl, Z = _validate(x, Z, c, n, tl)
@@ -1113,8 +1253,8 @@ class ProportionalOdds_:
         model = ProportionalOddsModel()
         model.beta = beta
         model.params = copy(beta)
-        model.se = expand(se_k, kept, p)
-        model.cov = cov
+        model._se = expand(se_k, kept, p)
+        model._covariance = cov
         model.p_values = expand(p_k, kept, p)
         model.x = times
         model.d = d

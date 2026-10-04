@@ -153,7 +153,7 @@ class TVCFitMixin:
         >>> c = np.r_[np.where(one, 0, 1), np.zeros((~one).sum(), dtype=int)]
         >>> Z = np.r_[np.zeros(n), np.ones((~one).sum())]
         >>> model = WeibullPH.fit_tvc(i, xl, xr, c, Z)
-        >>> model.params.round(3)  # alpha, beta (shape), beta_0
+        >>> model.params.round(3)  # alpha, beta (shape), coef_0
         array([2.059, 0.992, 0.995])
 
         The survival of a unit whose stress switches on at time 1:

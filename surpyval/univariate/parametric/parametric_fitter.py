@@ -7,12 +7,15 @@ from typing import TYPE_CHECKING, Any, Callable
 import autograd.numpy as np
 import numpy.typing as npt
 from autograd.numpy.numpy_boxes import ArrayBox
-from scipy.integrate import quad
 
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
-from surpyval.utils.deprecation import RenamedAttribute, renamed_arguments
+from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.surpyval_data import SurpyvalData
-from surpyval.utils.validation import _check_x_not_empty
+from surpyval.utils.validation import (
+    _check_x_not_empty,
+    warn_outside_unit_interval,
+)
 
 # The estimation machinery lives in ``optimised_fit`` and ``_fit_inputs``;
 # its public names are importable from here as they always were.
@@ -68,24 +71,30 @@ Numeric = npt.NDArray | float
 Boxable = npt.NDArray | float | ArrayBox
 
 
+#: ``from_params``'s ``p``, the limited-failure proportion, is
+#: ``lfp_p`` since v0.23 (#608); ``p`` still works, with a
+#: ``DeprecationWarning``, until v0.24.
+lfp_p_renamed = renamed_arguments(p="lfp_p")
+
+
 def reject_structural_params(
     dist_name: str,
     gamma: Any = None,
-    p: Any = None,
+    lfp_p: Any = None,
     f0: Any = None,
 ) -> None:
     """Raise for structural arguments a closed-form distribution has no
     meaning for.
 
-    ``ParametricFitter.from_params`` takes ``gamma`` (an offset), ``p``
-    (the proportion that never fails) and ``f0`` (the proportion failing
-    at time zero). ``Bernoulli``, ``Binomial`` and ``ExactEventTime``
+    ``ParametricFitter.from_params`` takes ``gamma`` (an offset),
+    ``lfp_p`` (the proportion that ever fails) and ``f0`` (the proportion
+    failing at time zero). ``Bernoulli``, ``Binomial`` and ``ExactEventTime``
     support none of them, but they accept the arguments anyway so their
     signatures match the base -- a subclass that silently dropped them
     could not be called through a ``ParametricFitter`` reference, which
     is what the earlier narrower signatures got wrong.
     """
-    for name, value in (("gamma", gamma), ("p", p), ("f0", f0)):
+    for name, value in (("gamma", gamma), ("lfp_p", lfp_p), ("f0", f0)):
         if value is not None:
             raise ValueError(
                 f"{dist_name} does not support '{name}'; it has a "
@@ -109,6 +118,11 @@ _OUTSIDE_SUPPORT: dict[str, tuple[float, float]] = {
     "log_sf": (0.0, -np.inf),
     "log_ff": (-np.inf, 0.0),
 }
+
+
+#: The smallest normal float: a window probability below it has lost its
+#: digits to underflow (see ``ll_interval_or_truncated``).
+_TINY = float(np.finfo(float).tiny)
 
 
 def _raw(value: Any) -> Any:
@@ -208,8 +222,15 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
     formulas there, where the incomplete gamma and beta functions and
     ``q ** inf`` gave NaN: a Poisson's ``sf(inf)`` was NaN, not 0 (#561).
     The hazard's limit there is the family's own, and is computed.
+
+    A probability outside [0, 1] given to ``qf`` gives NaN there with one
+    warning, as the fitted models' ``qf`` do (#611): the formulas gave
+    whatever they gave -- an Exponential's ``qf(-0.5)`` a negative time,
+    a Uniform's ``qf(1.5)`` a point past its end, a Weibull's NaN with a
+    raw numpy warning.
     """
     at_infinity = _AT_INFINITY.get(fn.__name__)
+    is_qf = fn.__name__ == "qf"
 
     @functools.wraps(fn)
     def wrapped(self: "ParametricFitter", x: Any, *params: Any) -> Any:
@@ -223,6 +244,8 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
             return fn(self, x, *params)
         x_arr = np.asarray(x, dtype=float)
         missing = np.isnan(x_arr)
+        if is_qf:
+            missing = missing | warn_outside_unit_interval(x_arr)
         top = None
         replaced = missing
         if (
@@ -239,7 +262,7 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
         known = x_arr[~replaced]
         if known.size:
             fill = float(known[0])
-        elif fn.__name__ == "qf":
+        elif is_qf:
             fill = 0.5
         else:
             lo, hi = self._support_edges(*params)
@@ -295,7 +318,7 @@ DEFAULT_Y_TICKS = [
 ]
 
 
-class ParametricFitter(UnivariateDataFrameMixin):
+class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
     """
     Base class for all parametric distributions.
 
@@ -350,9 +373,8 @@ class ParametricFitter(UnivariateDataFrameMixin):
     # validation and callers branch on the trait.
     discrete = False
 
-    # ``param_names``, the pre-0.22 name of ``parameter_names``, still
-    # reads (and sets) it for one release, with a DeprecationWarning.
-    param_names = RenamedAttribute("parameter_names")
+    #: The ``repr``: ``Weibull: parametric fitter`` (#614).
+    fitter_kind = "parametric fitter"
 
     if TYPE_CHECKING:
         # The distribution functions every subclass supplies and this
@@ -413,7 +435,6 @@ class ParametricFitter(UnivariateDataFrameMixin):
             hi = float(_raw(params[self.support_param_index[1]]))
         return lo, hi
 
-    @renamed_arguments(param_names="parameter_names")
     def __init__(
         self,
         name: str,
@@ -513,7 +534,6 @@ class ParametricFitter(UnivariateDataFrameMixin):
         small."""
         return np.log(-np.expm1(-self.Hf(x, *params)))
 
-    @renamed_arguments(X="given")
     def cs(self, x: Numeric, given: Numeric, *params: Any) -> Any:
         r"""
 
@@ -530,9 +550,11 @@ class ParametricFitter(UnivariateDataFrameMixin):
         cancellation the ratio suffers in the far tail.
 
         .. versionchanged:: 0.22
-           The time already survived is ``given`` (it was ``X``, which
-           still works until v0.23 with a ``DeprecationWarning``), the
+           The time already survived is ``given`` (it was ``X``), the
            name the regression models' ``sf_tvc(..., given=)`` uses.
+
+        .. versionchanged:: 0.23
+           ``X`` is removed.
 
         Parameters
         ----------
@@ -668,11 +690,34 @@ class ParametricFitter(UnivariateDataFrameMixin):
         ``(p - f0) * (1 - F0(tl))`` form made the LFP plus
         left-truncation likelihood unbounded (#269). For finite-bound
         intervals the ``f0`` terms cancel, so plain fits are unchanged.
+
+        The work is split in two: ``_window_inputs``, which depends on
+        the data alone (and on the support), and
+        ``_window_log_likelihood``, which evaluates the functions. The
+        likelihood-ratio searches keep the first and call the second with
+        the functions unwrapped (#602).
         """
         *dist_params, gamma, f0, p = params
         if len(n) == 0:
             return 0.0
+        windows = self._window_inputs(xl, xr, gamma, dist_params)
+        return self._window_log_likelihood(
+            windows,
+            n,
+            dist_params,
+            (gamma, f0, p),
+            (self.ff, self.log_sf, self.log_ff),
+        )
 
+    def _window_inputs(
+        self, xl: npt.NDArray, xr: npt.NDArray, gamma: Any, dist_params: Any
+    ) -> tuple:
+        """The data's part of :meth:`ll_interval_or_truncated` for the
+        windows ``(xl, xr]``: ``(xl, xr, lo_finite, hi_finite,
+        lo_evaluated, xl_safe, xr_safe)``, which bounds are finite, which
+        lower bounds are evaluated (above the support's lower edge), and
+        the bounds with a stand-in where they are not. They depend on the
+        parameters only through the support's edges (the Uniform's)."""
         lo_finite = np.isfinite(xl)
         hi_finite = np.isfinite(xr)
         # A lower bound at or below the support's lower edge (a ``tl`` of
@@ -700,7 +745,24 @@ class ParametricFitter(UnivariateDataFrameMixin):
             stand_in = float(present[0])
         xl_safe = np.where(lo_evaluated, xl, stand_in)
         xr_safe = np.where(hi_finite, xr, stand_in)
+        return xl, xr, lo_finite, hi_finite, lo_evaluated, xl_safe, xr_safe
 
+    def _window_log_likelihood(
+        self,
+        windows: tuple,
+        n: npt.NDArray,
+        dist_params: Any,
+        extra: tuple,
+        fns: tuple[Callable[..., Any], ...],
+    ) -> Any:
+        """The log-likelihood of :meth:`ll_interval_or_truncated`, from
+        its windows' inputs (``_window_inputs``), the counts ``n``, the
+        distribution's parameters, its ``(gamma, f0, p)`` and the
+        functions ``(ff, log_sf, log_ff)`` it evaluates, each called as
+        ``f(x, *dist_params)``."""
+        xl, xr, lo_finite, hi_finite, lo_evaluated, xl_safe, xr_safe = windows
+        gamma, f0, p = extra
+        ff, log_sf, log_ff = fns
         # The zero-inflation mass ``f0`` sits at 0 in observed time (see
         # ``ll_observed``), so ``F_mix`` includes it only from 0 on: below
         # 0 nothing has failed, and a window opening below 0 contains the
@@ -709,16 +771,14 @@ class ParametricFitter(UnivariateDataFrameMixin):
         # this is the same arithmetic as before.)
         upper = np.where(
             hi_finite,
-            f0 * (xr >= 0) + (p - f0) * self.ff(xr_safe - gamma, *dist_params),
+            f0 * (xr >= 0) + (p - f0) * ff(xr_safe - gamma, *dist_params),
             1.0,
         )
         lower = np.where(
             lo_finite,
             f0 * (xl >= 0)
             + (p - f0)
-            * np.where(
-                lo_evaluated, self.ff(xl_safe - gamma, *dist_params), 0.0
-            ),
+            * np.where(lo_evaluated, ff(xl_safe - gamma, *dist_params), 0.0),
             0.0,
         )
         window = np.maximum(upper - lower, 0.0)
@@ -731,20 +791,44 @@ class ParametricFitter(UnivariateDataFrameMixin):
         # ``log S(l) + log(1 - S(r) / S(l))``, exact however small S is.
         # Each form is evaluated only where it is used (a stand-in
         # elsewhere), so the other cannot put a NaN into the gradient.
+        plain = self.discrete or _raw(f0) != 0 or _raw(p) != 1
         upper_tail = (
-            lo_finite & (_raw(lower) > 0.5)
-            if not self.discrete and _raw(f0) == 0 and _raw(p) == 1
-            else np.zeros(len(n), dtype=bool)
+            np.zeros(len(n), dtype=bool)
+            if plain
+            else lo_finite & (_raw(lower) > 0.5)
         )
+        # In the lower tail the difference keeps its digits, but the CDFs
+        # themselves underflow: a window below the smallest normal float
+        # has lost them, and at 0 its log is -inf (a truncation window
+        # whose log is then -inf - -inf, NaN). There it is taken in log
+        # space from ``log_ff``, ``log F(r) + log(1 - F(l) / F(r))``
+        # (#594). Only such windows: elsewhere nothing changes.
+        lower_tail = (
+            np.zeros(len(n), dtype=bool)
+            if plain
+            else hi_finite & ~upper_tail & (_raw(window) < _TINY)
+        )
+        if np.any(lower_tail):
+            return np.sum(
+                n
+                * self._log_windows(
+                    xl_safe - gamma,
+                    xr_safe - gamma,
+                    (lo_evaluated, hi_finite, upper_tail, lower_tail),
+                    window,
+                    dist_params,
+                    (log_sf, log_ff),
+                )
+            )
         if not np.any(upper_tail):
             return np.sum(n * np.log(window))
         in_tail = float(xl[upper_tail][0])
-        log_sl = self.log_sf(
+        log_sl = log_sf(
             np.where(upper_tail, xl_safe, in_tail) - gamma, *dist_params
         )
         log_sr = np.where(
             upper_tail & hi_finite,
-            self.log_sf(
+            log_sf(
                 np.where(upper_tail & hi_finite, xr_safe, in_tail) - gamma,
                 *dist_params,
             ),
@@ -753,6 +837,57 @@ class ParametricFitter(UnivariateDataFrameMixin):
         tail = log_sl + _log1mexp(np.maximum(log_sl - log_sr, 0.0))
         body = np.log(np.where(upper_tail, 1.0, window))
         return np.sum(n * np.where(upper_tail, tail, body))
+
+    def _log_windows(
+        self,
+        xl: npt.NDArray,
+        xr: npt.NDArray,
+        masks: tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray],
+        window: Any,
+        dist_params: Any,
+        fns: tuple[Callable[..., Any], Callable[..., Any]],
+    ) -> Any:
+        """The log of each window's probability for
+        :meth:`ll_interval_or_truncated` where some are in the lower tail:
+        ``xl`` and ``xr`` its bounds (stand-ins where absent, the offset
+        taken off), ``masks`` its ``(lo_evaluated, hi_finite, upper_tail,
+        lower_tail)``, ``window`` the plain differences and ``fns`` the
+        ``(log_sf, log_ff)`` to evaluate. The upper tail is taken from
+        ``log_sf`` as there, the lower from ``log_ff``, and a lower-tail
+        window with no mass at all (``F(r) = 0``) stays ``log 0``."""
+        lo_evaluated, hi_finite, upper_tail, lower_tail = masks
+        log_sf, log_ff = fns
+        # A stand-in for the rows outside the tail, taken off the traced
+        # bounds: with an offset they carry ``gamma``, and ``float`` of
+        # a traced value raised a TypeError mid-search (#622)
+        in_low = float(_raw(xr)[lower_tail][0])
+        log_fr = log_ff(np.where(lower_tail, xr, in_low), *dist_params)
+        with_l = lower_tail & lo_evaluated
+        log_fl = np.where(
+            with_l,
+            log_ff(np.where(with_l, xl, in_low), *dist_params),
+            -np.inf,
+        )
+        low = lower_tail & np.isfinite(_raw(log_fr))
+        d = np.where(low, log_fr - log_fl, 1.0)
+        out = np.where(
+            low,
+            np.where(low, log_fr, 0.0) + _log1mexp(np.maximum(d, 0.0)),
+            np.log(np.where(upper_tail | low, 1.0, window)),
+        )
+        if not np.any(upper_tail):
+            return out
+        in_tail = float(_raw(xl)[upper_tail][0])
+        log_sl = log_sf(np.where(upper_tail, xl, in_tail), *dist_params)
+        log_sr = np.where(
+            upper_tail & hi_finite,
+            log_sf(
+                np.where(upper_tail & hi_finite, xr, in_tail), *dist_params
+            ),
+            -np.inf,
+        )
+        tail = log_sl + _log1mexp(np.maximum(log_sl - log_sr, 0.0))
+        return np.where(upper_tail, tail, out)
 
     def _log_likelihood(self, data: SurpyvalData, *params: Any) -> Any:
         return (
@@ -783,6 +918,8 @@ class ParametricFitter(UnivariateDataFrameMixin):
         slower and, on some machines, tripped ``quad``'s roundoff warning
         (and with it the warnings-as-errors documentation build).
         """
+        from scipy.integrate import quad
+
         if offset:
             gamma = params[0]
             params = params[1::]
@@ -840,8 +977,13 @@ class ParametricFitter(UnivariateDataFrameMixin):
         """
         return self
 
+    @lfp_p_renamed
     def from_params(
-        self, params: Any, gamma: Any = None, p: Any = None, f0: Any = None
+        self,
+        params: Any,
+        gamma: Any = None,
+        lfp_p: Any = None,
+        f0: Any = None,
     ) -> Any:
         r"""
 
@@ -857,12 +999,13 @@ class ParametricFitter(UnivariateDataFrameMixin):
             offset value for the distribution. If not provided will fit a
             regular, unshifted/not offset, distribution.
 
-        p : scalar, optional
+        lfp_p : scalar, optional
             The proportion of the population that is susceptible -- the
             proportion that will *ever* die or fail (a limited failure
-            population); ``1 - p`` never fails. If used it must be a value
-            between 0 and 1. If None will assume 1, i.e. every unit
-            eventually fails.
+            population); ``1 - lfp_p`` never fails. If used it must be a
+            value between 0 and 1. If None will assume 1, i.e. every unit
+            eventually fails. It was ``p`` before v0.23 (#608), which
+            still works until v0.24 with a ``DeprecationWarning``.
 
         f0 : scalar, optional
             The proportion of the population that will die or fail at time 0.
@@ -906,9 +1049,10 @@ class ParametricFitter(UnivariateDataFrameMixin):
         # A proportion outside [0, 1], or a zero-inflation fraction at or
         # above the proportion that ever fails, is not a distribution:
         # p = 1.5 gave sf(100) = -0.5 and f0 = -0.1 gave ff(0) = -0.1.
+        p = lfp_p
         if p is not None and not (0 < p <= 1):
             raise ValueError(
-                f"p, the proportion that ever fails, must be in (0, 1]; "
+                f"lfp_p, the proportion that ever fails, must be in (0, 1]; "
                 f"got {p}"
             )
         if f0 is not None:
@@ -919,9 +1063,9 @@ class ParametricFitter(UnivariateDataFrameMixin):
                 )
             if f0 >= (1 if p is None else p):
                 raise ValueError(
-                    f"f0 ({f0}) must be less than p ({p}): the proportion "
-                    "failing at time 0 is part of the proportion that ever "
-                    "fails"
+                    f"f0 ({f0}) must be less than lfp_p ({p}): the "
+                    "proportion failing at time 0 is part of the proportion "
+                    "that ever fails"
                 )
             # The same condition fit(zi=True) applies: the mass f0 sits at
             # 0, which must be where the support starts.
@@ -961,7 +1105,7 @@ class ParametricFitter(UnivariateDataFrameMixin):
 
         model = Parametric(self, "given parameters", None, offset, lfp, zi)
         model.gamma = gamma
-        model.p = p
+        model.lfp_p = p
         model.f0 = f0
         model.params = np.array(params)
         self._set_support(model, offset)

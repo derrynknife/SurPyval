@@ -79,3 +79,43 @@ def test_steep_leaf_keeps_its_shape():
     full = Weibull.fit_from_surpyval_data(data)
     assert full.params[1] > 100
     np.testing.assert_allclose(leaf.model.params, full.params, rtol=1e-4)
+
+
+@pytest.mark.parametrize("kind", ["weibull", "exponential"])
+def test_549_leaves_fitted_together(kind):
+    # A tree's parametric leaves are fitted when it is grown, in one pass
+    # for the whole tree: each the maximum leaf_mle finds for it alone,
+    # to the last digits. They used to be fitted one by one on first
+    # use, 85% of a forest's first prediction.
+    from surpyval.beta.ml.forest import deviance_split
+    from surpyval.beta.ml.forest.node import IntermediateNode
+    from surpyval.beta.ml.forest.tree import SurvivalTree
+
+    rng = np.random.default_rng(2)
+    Z = rng.normal(size=(400, 3))
+    x = rng.weibull(1.5, 400) * np.exp(0.5 * Z[:, 0])
+    c = (rng.uniform(size=400) < 0.3).astype(int)
+    calls = []
+    profile = deviance_split._weibull_profile
+
+    def spy(*args, **kwargs):
+        calls.append(args[3].size)
+        return profile(*args, **kwargs)
+
+    with mock.patch.object(deviance_split, "_weibull_profile", spy):
+        tree = SurvivalTree.fit(x, Z, c=c, kind=kind, random_state=0)
+    leaves, stack = [], [tree._root]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, IntermediateNode):
+            stack += [node.left_child, node.right_child]
+        else:
+            leaves.append(node)
+    assert len(leaves) > 10
+    for leaf in leaves:
+        assert "model" in leaf.__dict__
+        alone = deviance_split.leaf_mle(leaf.data, kind)
+        np.testing.assert_allclose(leaf.model.params, alone, rtol=1e-12)
+    if kind == "weibull":
+        # One pass over every leaf, after one per node of the search
+        assert calls[-1] == len(leaves)

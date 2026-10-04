@@ -30,6 +30,17 @@ def _power_log(k: Boxable, z: Boxable) -> Boxable:
     return np.where(positive, k * np.log(np.where(positive, z, 1.0)), at_zero)
 
 
+_CONSEQUENCE = (
+    "The reported parameters are where the search stopped (they change with "
+    "the data's units), and their standard errors and bounds are "
+    "meaningless"
+)
+_ADVICE = (
+    "fit with how='MPS' (maximum product of spacings), which is finite here "
+    "and the same in any units"
+)
+
+
 class Beta4_(OptimisedFitMixin, ParametricFitter):
     r"""
     The four-parameter (generalised) Beta distribution.
@@ -110,41 +121,94 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         Maximum product of spacings has no such limit: an end gap of zero
         scores minus infinity, and its fit is the same in any units.
         """
-        params = np.asarray(results.get("params", []), dtype=float)
-        if params.size != 4 or not np.all(np.isfinite(params)):
-            return False
-        alpha, beta, a, b = params
-        x = np.asarray(surv_data.x, dtype=float)
-        if x.ndim != 1:
-            return False
-        exact = x[np.asarray(surv_data.c) == 0]
-        if exact.size == 0 or not b > a:
-            return False
-        close = np.sqrt(np.finfo(float).eps) * (b - a)
-        ends = []
-        if alpha < 1 and exact.min() - a <= close:
-            ends.append(
-                f"a = {a:.6g} on the smallest observation "
-                f"{exact.min():.6g} with alpha = {alpha:.4g}"
-            )
-        if beta < 1 and b - exact.max() <= close:
-            ends.append(
-                f"b = {b:.6g} on the largest observation "
-                f"{exact.max():.6g} with beta = {beta:.4g}"
-            )
+        ends = self._ends_on_extremes(
+            surv_data, results.get("params", []), shape_below_1=True
+        )
         if not ends:
             return False
         warn_no_maximum(
             "the Beta4 likelihood is unbounded: a shape below 1 makes the "
             "density infinite at a support end, and the fit ran "
-            + " and ".join(ends),
-            "The reported parameters are where the search stopped (they "
-            "change with the data's units), and their standard errors and "
-            "bounds are meaningless",
-            "fit with how='MPS' (maximum product of spacings), which is "
-            "finite here and the same in any units",
+            + " and ".join(ends.values()),
+            _CONSEQUENCE,
+            _ADVICE,
         )
         return True
+
+    def _ends_on_extremes(
+        self,
+        surv_data: SurpyvalData,
+        params: Any,
+        shape_below_1: bool,
+    ) -> dict[str, str]:
+        """``{"a": ..., "b": ...}``, a description of each support end that
+        rests on its extreme exact observation (to ``sqrt(eps)`` of the
+        width, see ``_warn_if_at_limit``), with its shape below 1 if
+        ``shape_below_1``."""
+        params = np.asarray(params, dtype=float)
+        if params.size != 4 or not np.all(np.isfinite(params)):
+            return {}
+        alpha, beta, a, b = params
+        x = np.asarray(surv_data.x, dtype=float)
+        if x.ndim != 1:
+            return {}
+        exact = x[np.asarray(surv_data.c) == 0]
+        if exact.size == 0 or not b > a:
+            return {}
+        close = np.sqrt(np.finfo(float).eps) * (b - a)
+        ends = {}
+        if (alpha < 1 or not shape_below_1) and exact.min() - a <= close:
+            ends["a"] = (
+                f"a = {a:.6g} on the smallest observation "
+                f"{exact.min():.6g} with alpha = {alpha:.4g}"
+            )
+        if (beta < 1 or not shape_below_1) and b - exact.max() <= close:
+            ends["b"] = (
+                f"b = {b:.6g} on the largest observation "
+                f"{exact.max():.6g} with beta = {beta:.4g}"
+            )
+        return ends
+
+    def _at_unbounded_edge(
+        self, surv_data: SurpyvalData, values: dict
+    ) -> list[str]:
+        """The support ends a search has run onto their extreme
+        observations, whatever the shapes there (#584).
+
+        A search that reaches that edge has found where the likelihood is
+        unbounded: with the end there, a shape below 1 makes it infinite,
+        and with a shape above 1 the search is held at the edge only by
+        the data (beyond it the likelihood is not defined). It stops
+        there, and no rung after it could verify a maximum: on the
+        registry's fixture BFGS ran ``a`` onto the smallest observation
+        (alpha = 1.0014) and the other four rungs took 4 s to end
+        "unverified" at a worse point (log-likelihood 4.00 against
+        4.18)."""
+        params = [values.get(name) for name in self.parameter_names]
+        return list(self._ends_on_extremes(surv_data, params, False))
+
+    def _warn_runaway(
+        self,
+        surv_data: SurpyvalData,
+        runaway: list[str],
+        results: dict,
+        offset: bool = False,
+        by_limit: bool = False,
+    ) -> None:
+        """The Beta4's own words for a search stopped at an edge
+        (:meth:`_at_unbounded_edge`)."""
+        ends = self._ends_on_extremes(surv_data, results["params"], False)
+        if not set(runaway) <= set(ends):
+            return super()._warn_runaway(
+                surv_data, runaway, results, offset, by_limit
+            )
+        warn_no_maximum(
+            "the Beta4 likelihood is unbounded: a shape below 1 makes the "
+            "density infinite at a support end, and the search ran "
+            + " and ".join(ends[name] for name in runaway),
+            _CONSEQUENCE,
+            _ADVICE,
+        )
 
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False

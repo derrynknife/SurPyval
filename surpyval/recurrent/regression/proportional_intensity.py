@@ -1,4 +1,3 @@
-import warnings
 from typing import Any
 
 import numpy as np
@@ -18,7 +17,7 @@ from surpyval.univariate.regression._aliasing import (
     constant_columns,
     warn_aliased,
 )
-from surpyval.utils.deprecation import REMOVED_IN
+from surpyval.utils.covariates import coefficient_names
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import keeps_query_shape
@@ -124,6 +123,10 @@ class ProportionalIntensityModel(
     #: applicable"`` for a model built from its parameters, ``"unknown"``
     #: for one restored from a dict saved without it.
     maximum: str = "not applicable"
+    #: The covariates' column names (``fit_from_df`` or a DataFrame
+    #: ``Z``), which name the coefficients (#614); ``None`` for an array
+    #: ``Z``, whose coefficients are ``coef_0``, ``coef_1``, ...
+    feature_names: "list[str] | None" = None
 
     def __repr__(self) -> str:
         out = (
@@ -141,8 +144,8 @@ class ProportionalIntensityModel(
             out += "    {i}  :  {p}\n".format(i=i, p=p)
 
         out = out + "\nCovariate Coefficients:\n"
-        for i, p in enumerate(self.coeffs):
-            out += "   beta_{i}  :  {p}\n".format(i=i, p=p)
+        for name, p in zip(self._coefficient_names(), self.coeffs):
+            out += "   {}  :  {}\n".format(name, p)
         return out
 
     # -- serialisation -----------------------------------------------------
@@ -162,18 +165,20 @@ class ProportionalIntensityModel(
         --------
         from_dict, to_json, from_json
         """
-        return stamp_schema(
-            {
-                "model": "ProportionalIntensityModel",
-                "kind": self.kind,
-                "parameterization": self.parameterization,
-                "dist": self.dist.name,
-                "param_names": list(self._rate_names),
-                "params": np.asarray(self.params, dtype=float).tolist(),
-                "coeffs": np.asarray(self.coeffs, dtype=float).tolist(),
-                **maximum_entry(self.maximum),
-            }
-        )
+        out = {
+            "model": "ProportionalIntensityModel",
+            "kind": self.kind,
+            "parameterization": self.parameterization,
+            "dist": self.dist.name,
+            "param_names": list(self._rate_names),
+            "params": np.asarray(self.params, dtype=float).tolist(),
+            "coeffs": np.asarray(self.coeffs, dtype=float).tolist(),
+            **maximum_entry(self.maximum),
+        }
+        if self.feature_names is not None:
+            # The coefficients' names (#614)
+            out["feature_names"] = list(self.feature_names)
+        return stamp_schema(out)
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "ProportionalIntensityModel":
@@ -205,6 +210,8 @@ class ProportionalIntensityModel(
         out._rate_names = list(model_dict["param_names"])
         out.params = np.array(model_dict["params"], dtype=float)
         out.coeffs = np.array(model_dict["coeffs"], dtype=float)
+        names = model_dict.get("feature_names")
+        out.feature_names = None if names is None else list(names)
         out.maximum = restored_maximum(model_dict)
         return out
 
@@ -344,6 +351,9 @@ class ProportionalIntensityModel(
         hypothesis is a *homogeneous* Poisson process (no trend); the
         statistic uses only the event times and windows, not the covariates,
         so it checks whether a time-varying intensity was warranted at all.
+        Each item is tested on its own observation window, from its entry
+        (``tl``; 0 without one) to its close, so data with delayed entry is
+        tested as it was fitted.
 
         Parameters
         ----------
@@ -443,13 +453,75 @@ class ProportionalIntensityModel(
         numpy array
             The confidence bounds on the CIF.
         """
+        return self._delta_cb("cif", x, Z, alpha_ci, bound)
+
+    @keeps_query_shape
+    def iif_cb(
+        self,
+        x: ArrayLike,
+        Z: ArrayLike,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+    ) -> np.ndarray:
+        """
+        Confidence bounds on the fitted intensity (``iif``) at ``x`` for
+        covariates ``Z``, from the delta method on the log scale, as
+        :meth:`cif_cb` (#578).
+
+        Parameters
+        ----------
+
+        x : array_like
+            Values at which to compute the confidence bounds.
+        Z : array_like
+            The covariates for the item.
+        alpha_ci : float, optional
+            The total tail probability of the bound(s). Default is 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds are returned as an ``(len(x), 2)`` array with
+            columns ``[lower, upper]``; one-sided bounds have the shape of
+            ``x``.
+
+        Returns
+        -------
+
+        numpy array
+            The confidence bounds on the intensity.
+
+        Examples
+        --------
+
+        >>> import numpy as np
+        >>> from surpyval.recurrent import ProportionalIntensityNHPP
+        >>> x = [3, 8, 12, 15, 20, 4, 6, 9, 11, 13, 20]
+        >>> i = [1] * 5 + [2] * 6
+        >>> c = [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1]
+        >>> Z = [[0.0]] * 5 + [[1.0]] * 6
+        >>> model = ProportionalIntensityNHPP.fit(x, Z, i, c)
+        >>> cb = model.iif_cb(10.0, [1.0])
+        >>> bool(cb[0] < model.iif(10.0, [1.0]) < cb[1])
+        True
+        """
+        return self._delta_cb("iif", x, Z, alpha_ci, bound)
+
+    def _delta_cb(
+        self,
+        function: str,
+        x: ArrayLike,
+        Z: ArrayLike,
+        alpha_ci: float,
+        bound: str,
+    ) -> np.ndarray:
+        """Delta-method bounds, on the log scale, on the ``cif`` or the
+        ``iif`` (``function``) at ``x`` for covariates ``Z``."""
         self._check_fitted()
         x = np.atleast_1d(np.asarray(x, dtype=float))
         Z = np.asarray(Z, dtype=float)
         n_dist_params = len(self.params)
+        baseline = getattr(self.dist, function)
 
-        def cif_at(theta: np.ndarray) -> np.ndarray:
-            return self.dist.cif(x, *theta[:n_dist_params]) * np.exp(
+        def function_at(theta: np.ndarray) -> np.ndarray:
+            return baseline(x, *theta[:n_dist_params]) * np.exp(
                 Z @ theta[n_dist_params:]
             )
 
@@ -458,8 +530,9 @@ class ProportionalIntensityModel(
         cov = self.covariance()
         cov[held, :] = 0.0
         cov[:, held] = 0.0
-        se = delta_method_se(cif_at, self._mle_values(), cov)
-        return log_transformed_cb(self.cif(x, Z), se, alpha_ci, bound)
+        se = delta_method_se(function_at, self._mle_values(), cov)
+        estimate = getattr(self, function)(x, Z)
+        return log_transformed_cb(estimate, se, alpha_ci, bound)
 
     # Extends the mixin plot with covariates -- same known divergence.
     def plot(  # type: ignore[override]
@@ -525,25 +598,14 @@ class ProportionalIntensityModel(
     def _parameter_names(self) -> list:
         # The base-rate (intensity) parameters lead ``_mle``, followed by the
         # covariate coefficients.
-        return [
-            *self._rate_names,
-            *["beta_{}".format(i) for i in range(len(self.coeffs))],
-        ]
+        return [*self._rate_names, *self._coefficient_names()]
 
-    @property
-    def param_names(self) -> list:
-        """The base-rate parameters' names: deprecated, and removed in
-        v0.23. Use ``parameter_names[:len(params)]`` (``parameter_names``
-        also names the coefficients)."""
-        warnings.warn(
-            "ProportionalIntensityModel.param_names is deprecated and will "
-            "be removed in v{}; use 'parameter_names', which names the "
-            "base-rate parameters and then the coefficients "
-            "(parameter_names[:len(params)] names params).".format(REMOVED_IN),
-            DeprecationWarning,
-            stacklevel=2,
+    def _coefficient_names(self) -> "list[str]":
+        """The coefficients' names (#614): their covariates' columns,
+        else ``coef_0``, ``coef_1``, ..."""
+        return coefficient_names(
+            len(self.coeffs), self.feature_names, self._rate_names
         )
-        return list(self._rate_names)
 
     def _parameter_bounds(self) -> list:
         # The base-rate bounds come from the intensity model (PI-HPP stores

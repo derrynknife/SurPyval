@@ -77,11 +77,15 @@ def _offset_start(x: npt.ArrayLike) -> float:
     the data, where the likelihood is flat in the offset and the search
     never moves it, and at 1e5 a hair below the smallest value.
 
-    Every offset initialiser seeds its other parameters from the data
-    shifted by this same value, since the fitter installs it as the
-    starting offset: shape and scale seeds taken against a different
-    shift describe a different distribution from the one the search
-    starts at.
+    The other parameters are seeded from the data shifted by this same
+    value (``FitInputsMixin._offset_seed``): shape and scale seeds taken
+    against a different shift describe a different distribution from the
+    one the search starts at. The Weibull's were its probability plot's,
+    fitted with the plot's own offset, and kept when the offset was
+    replaced by this one: a start with a scale of 1.7e5 and a shape of
+    8.5e4 for data between 22 and 31, a negative log-likelihood of 1.3e7,
+    from which the search stopped at once on a point it then reported as
+    "no finite maximum" (4.8e6, #622).
     """
     finite = np.asarray(x, dtype=float).ravel()
     return float(np.min(finite[np.isfinite(finite)])) - offset_step(x)
@@ -449,8 +453,22 @@ class FitInputsMixin:
             # then this is equivalent.
             heuristic = turnbull_estimator
 
-        if (not offset) and (not zi):
-            self._check_inside_support(surv_data)
+        if not offset:
+            # A zero-inflated fit is checked too (#610): its point mass
+            # makes 0 a possible failure time, but nothing lies below 0.
+            # Every row, as the regressions on the distribution check it
+            # (#565): a censored time below the support was accepted
+            # (#611). An offset fit's support starts at ``gamma``, which
+            # is bounded by the smallest value, so nothing lies below it.
+            self._check_inside_support(
+                surv_data, every_row=True, zero_inflated=zi
+            )
+        else:
+            # With an offset only an infinite value is outside the support
+            # (#622): a failure at inf was fitted (an Exponential) or ended
+            # "MLE Failed" with an infinite likelihood (a Weibull), as the
+            # fit without an offset refuses it
+            self._check_inside_support(surv_data, offset=True)
 
         if how == "MPS":
             _check_mps_data(surv_data)
@@ -624,25 +642,66 @@ class FitInputsMixin:
             )
             raise ValueError(detail)
 
-    def _check_inside_support(self, surv_data: SurpyvalData) -> None:
-        """Every observation leaves the event some probability."""
+    def _check_inside_support(
+        self,
+        surv_data: SurpyvalData,
+        every_row: bool = False,
+        zero_inflated: bool = False,
+        offset: bool = False,
+    ) -> None:
+        """Every observation leaves the event some probability.
+
+        With ``every_row`` -- the univariate fits (#611) and the
+        regression fits on this distribution (#565) -- a time below the
+        support's lower end is refused whatever its censoring: a unit
+        cannot be censored before the support begins (a negative time for
+        a positive distribution is a mistake in the data, which R's
+        ``survreg`` and lifelines refuse too), and the regression
+        likelihoods are not defined there. A censored time at the lower
+        end itself (a suspension at 0) is accepted.
+
+        With ``zero_inflated`` (a ``zi=True`` fit, #610) the point mass at
+        the support's lower end, 0, makes a failure at 0 (or before a left
+        censoring time of 0) possible, so those rows pass; a value below
+        0 is refused as in the plain fit.
+
+        With ``offset`` the support starts at the fitted offset, which can
+        lie below any finite value: only an infinite value is outside it.
+        """
         lower, upper = self.support
-        # One line that names the bounds as the check applies them: an
-        # observation must lie strictly inside, so the bounds are written
-        # open ("[0, inf]" would read as though 0 were allowed while 0 is
-        # what it rejects).
-        detail = (
-            f"Some of your data is outside the support of the "
-            f"{self.name} distribution: observed values must lie "
-            f"strictly between {lower} and {upper}, i.e. in "
-            f"({lower}, {upper}), and a censored value must leave the "
-            f"event some probability. Are some of your observed values "
-            f"{lower}, -inf or inf?"
-        )
+        if offset:
+            lower = -np.inf
+        if zero_inflated:
+            detail = (
+                f"Some of your data is outside the support of the "
+                f"zero-inflated {self.name} distribution: observed values "
+                f"must lie in [{lower}, {upper}) (the point mass makes "
+                f"{lower} a possible failure time, but nothing lies below "
+                f"it), and a censored value must leave the event some "
+                f"probability. Are some of your values negative, -inf or "
+                f"inf?"
+            )
+        else:
+            # One line that names the bounds as the check applies them:
+            # an observation must lie strictly inside, so the bounds are
+            # written open ("[0, inf]" would read as though 0 were
+            # allowed while 0 is what it rejects).
+            detail = (
+                f"Some of your data is outside the support of the "
+                f"{'offset ' if offset else ''}{self.name} distribution: "
+                f"observed values must lie "
+                f"strictly between {lower} and {upper}, i.e. in "
+                f"({lower}, {upper}), and a censored value must leave the "
+                f"event some probability. Are some of your observed values "
+                f"{'' if offset else f'{lower}, '}-inf or inf?"
+            )
+        # The zero-inflated model's mass sits at ``lower``: a failure
+        # there, or a left censoring time there, has probability f0.
+        below = np.less if zero_inflated else np.less_equal
         x_sd, c_sd = surv_data.x, surv_data.c
         if x_sd.ndim == 2:
             bad = (
-                ((x_sd[:, 0] <= lower) & (c_sd == 0))
+                (below(x_sd[:, 0], lower) & (c_sd == 0))
                 | ((x_sd[:, 1] >= upper) & (c_sd == 0))
                 # An interval endpoint strictly below the support makes
                 # the CDF evaluate outside its domain: NaN likelihood
@@ -654,18 +713,27 @@ class FitInputsMixin:
             )
         else:
             bad = (
-                ((x_sd <= lower) & (c_sd == 0))
+                (below(x_sd, lower) & (c_sd == 0))
                 | ((x_sd >= upper) & (c_sd == 0))
                 # A left-censored point at or below the support start
                 # is a zero-probability observation: the likelihood is
                 # -inf/NaN everywhere and the optimiser silently
                 # returns the initial guess (#261).
-                | ((x_sd <= lower) & (c_sd == -1))
+                | (below(x_sd, lower) & (c_sd == -1))
                 # Likewise a right-censored point at or beyond the
                 # support's end (a Beta censored at 1.5 would return its
                 # start with an infinite likelihood).
                 | ((x_sd >= upper) & (c_sd == 1))
             )
+        if every_row and np.isfinite(lower):
+            below = (x_sd if x_sd.ndim == 1 else x_sd[:, 0]) < lower
+            if (below & ~bad).any():
+                detail += (
+                    f" A time below {lower} is outside the support "
+                    "whatever its censoring: a unit cannot be censored "
+                    f"before {lower}."
+                )
+            bad = bad | below
         if bad.any():
             # A failure at exactly 0 is a unit dead on arrival, which
             # the zero-inflated model is for; a new user will not know
@@ -678,17 +746,27 @@ class FitInputsMixin:
                 )
             raise OutsideSupportError(detail)
 
-    def _clamp_truncation_to_support(self, t: Any) -> Any:
+    def _clamp_truncation_to_support(
+        self, t: Any, offset: bool = False
+    ) -> Any:
         """Clamp the truncation bounds to the distribution's support.
 
         Returns the left and right truncation arrays with any value that
         falls outside a *finite* support edge moved onto that edge. An
         infinite support edge leaves the corresponding bound untouched.
+
+        With ``offset`` the support is that of ``x - gamma``, not of the
+        data, so the left bound is left as it is: an untruncated offset
+        fit's ``-inf`` was clamped to 0, a left truncation at time 0 that
+        the maximum product of spacings applied as soon as ``gamma`` went
+        below 0, and a fit to data with a value below 0 had a NaN
+        objective at every point (#616). The objective moves a bound with
+        the offset and drops it below the support itself.
         """
         tl = t[:, 0]
         tr = t[:, 1]
 
-        if np.isfinite(self.support[0]):
+        if np.isfinite(self.support[0]) and not offset:
             tl = np.where(tl < self.support[0], self.support[0], tl)
 
         if np.isfinite(self.support[1]):
@@ -784,15 +862,16 @@ class FitInputsMixin:
                     c_init = c_init[nonzero_mask]
                     n_init = n_init[nonzero_mask]
 
-                # Create an initial estimate with the new points
-                init = self._parameter_initialiser(
-                    _imputed_data(x_init, c_init, n_init), offset=offset
-                )
-                init = np.array(init)
-
+                # Create an initial estimate with the new points: with an
+                # offset, at the starting offset (below every value of the
+                # data, the imputed ones' own bounds included) and from the
+                # points shifted by it
+                imputed = _imputed_data(x_init, c_init, n_init)
                 if offset:
                     x_nonzero = x[x != 0] if zi else x
-                    init[0] = _offset_start(x_nonzero)
+                    init = self._offset_seed(imputed, _offset_start(x_nonzero))
+                else:
+                    init = np.array(self._parameter_initialiser(imputed))
 
         if lfp:
             _, _, _, F = pp(x_init, c_init, n_init, heuristic="Nelson-Aalen")
@@ -821,6 +900,38 @@ class FitInputsMixin:
             init = np.concatenate([init, [np.clip(f_0_init, 1e-3, 0.999)]])
 
         return init
+
+    def _offset_seed(
+        self, data: SurpyvalData, gamma: "float | None" = None
+    ) -> npt.NDArray:
+        """A start for an offset fit: the offset ``gamma`` (by default the
+        fitter's starting offset, ``_offset_start``), then the
+        distribution's own initial values for the data shifted by it
+        (``_shifted_initialiser``).
+
+        Every offset start is built this way, so that it is one member of
+        the family, fitted to the data at its own offset: the search then
+        starts from a distribution that describes the data. Where the
+        other parameters were seeded against another shift (the Weibull
+        from its probability plot's own offset, the Exponential from the
+        unshifted data) the start could be far from anything useful
+        (#622; see ``_offset_start``).
+        """
+        x = np.asarray(data.x, dtype=float)
+        if gamma is None:
+            gamma = _offset_start(x)
+        shifted = _imputed_data(x - gamma, data.c, data.n)
+        with np.errstate(all="ignore"):
+            base = np.atleast_1d(
+                np.asarray(self._shifted_initialiser(shifted), dtype=float)
+            )
+        return np.concatenate([[float(gamma)], base])
+
+    def _shifted_initialiser(self, data: SurpyvalData) -> npt.NDArray:
+        """The initial values of the distribution's own parameters for
+        ``data`` already shifted by an offset (``_offset_seed``): its
+        ``_parameter_initialiser`` by default."""
+        return self._parameter_initialiser(data)
 
     def _alternative_base_starts(
         self, data: SurpyvalData, offset: bool
@@ -867,35 +978,40 @@ class FitInputsMixin:
         """
         A limited-failure-population starting point from the failures
         alone: the distribution's own initialiser on the observed failures
-        (treated as a complete sample of the susceptible units), and ``p``
-        at the observed failure fraction. ``None`` when there are too few
-        distinct failures to seed from.
+        (treated as a complete sample of the susceptible units; an
+        interval-censored one at its midpoint), and ``p`` at the observed
+        failure fraction. ``None`` when there are too few distinct failures
+        to seed from.
         """
         x = np.asarray(surv_data.x, dtype=float)
         c = np.asarray(surv_data.c)
         n = np.asarray(surv_data.n, dtype=float)
         if x.ndim != 1:
-            return None
+            # An interval-censored failure is a failure at its midpoint,
+            # as the default start reads it (``_initial_guess``). Interval
+            # data had no start of this kind: a Weibull with ``lfp=True``
+            # on monthly return counts had only the default, which ran
+            # ``p`` to 1 (#579).
+            x = x.mean(axis=1)
+            c = np.where(c == 2, 0, c)
         observed = c == 0
         if n[observed].sum() < 2 or np.unique(x[observed]).size < 2:
             return None
+        failures = _imputed_data(
+            x[observed],
+            np.zeros(int(observed.sum()), dtype=int),
+            n[observed],
+        )
         with np.errstate(all="ignore"):
             try:
-                base = np.array(
-                    self._parameter_initialiser(
-                        _imputed_data(
-                            x[observed],
-                            np.zeros(int(observed.sum()), dtype=int),
-                            n[observed],
-                        ),
-                        offset=offset,
-                    ),
-                    dtype=float,
-                )
+                if offset:
+                    base = self._offset_seed(failures, _offset_start(x))
+                else:
+                    base = np.array(
+                        self._parameter_initialiser(failures), dtype=float
+                    )
             except Exception:
                 return None
-        if offset:
-            base[0] = _offset_start(x)
         if not np.all(np.isfinite(base)):
             return None
         p0 = float(np.clip(n[observed].sum() / n.sum(), 1e-3, 0.999))

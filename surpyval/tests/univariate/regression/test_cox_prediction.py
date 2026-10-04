@@ -81,6 +81,37 @@ def test_ph_random_is_finite_for_a_tiny_hazard_multiplier():
         assert np.allclose(x, expected, rtol=1e-9)
 
 
+def test_585_ph_random_solves_tiny_multiplier_draws_together(monkeypatch):
+    # Draws whose quantile rounds to inf (a tiny hazard multiplier) were
+    # solved one brentq each: GammaPH.random(2000) at z = -60 took 20 s.
+    # They are now solved together, to the same tolerance.
+    import warnings
+
+    from surpyval import GammaPH, LogNormalPH
+
+    params = (2.0, 0.5, 1.0)
+    Hf = GammaPH.dist.Hf
+    calls = []
+
+    def counted(*args):
+        calls.append(1)
+        return Hf(*args)
+
+    monkeypatch.setattr(GammaPH.dist, "Hf", counted)
+    x, _ = GammaPH.random(500, [[-30.0]], *params, random_state=1)
+    assert len(calls) < 300
+    monkeypatch.undo()
+    u = np.random.default_rng(1).uniform(size=500)
+    h = -np.log(u) / np.exp(-30.0)
+    assert np.isfinite(x).all()
+    np.testing.assert_allclose(Hf(x, *params[:2]), h, rtol=1e-10)
+    # a time past the largest float is inf, as qf gives (the search raised)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        x, _ = LogNormalPH.random(5, [[-30.0]], 2.0, 1.0, 1.0, random_state=1)
+    assert np.isposinf(x).all()
+
+
 # ---------------------------------------------------------------------------
 # A scalar covariate.
 # ---------------------------------------------------------------------------

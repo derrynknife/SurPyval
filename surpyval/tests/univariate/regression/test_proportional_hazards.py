@@ -39,7 +39,7 @@ def test_cox_ph_hospital():
     # Fit model
     model = CoxPH.fit(x=T, Z=X, c=C)
 
-    # beta_0 should be 2.12
+    # coef_0 should be 2.12
     assert pytest.approx(2.12, abs=0.01) == model.params[0]
 
 
@@ -58,7 +58,7 @@ def test_cox_ph_company_death():
     # Fit model
     model = CoxPH.fit(x=T, Z=P_on_E, c=C)
 
-    # beta_0 should be -0.34
+    # coef_0 should be -0.34
     assert pytest.approx(-0.34, abs=0.01) == model.params[0]
 
 
@@ -546,15 +546,15 @@ def test_kp_handles_heavy_ties():
 
 
 def test_ph_fixed_covariate_coefficient_pins_correct_parameter():
-    # ``fixed={"beta_0": v}`` must pin the first covariate coefficient, not
+    # ``fixed={"coef_0": v}`` must pin the first covariate coefficient, not
     # the first distribution parameter (#251: the phi param map was merged
-    # without the k_dist offset, so beta_0 collided with alpha).
+    # without the k_dist offset, so coef_0 collided with alpha).
     np.random.seed(5)
     x = Weibull.random(200, 10, 3)
     Z = np.random.normal(size=(200, 2))
 
     free = WeibullPH.fit(x, Z=Z)
-    fixed_beta0 = WeibullPH.fit(x, Z=Z, fixed={"beta_0": 0.5})
+    fixed_beta0 = WeibullPH.fit(x, Z=Z, fixed={"coef_0": 0.5})
 
     assert fixed_beta0.params[2] == pytest.approx(0.5, abs=1e-12)
     # The distribution parameters must remain close to the free fit, not be
@@ -827,7 +827,7 @@ def test_efron_fit_unchanged_by_the_ragged_score(case):
     H = model.Hf([0.5, 1.0, 3.0], np.zeros((3, 2)), **stratum)
     beta, se, H0 = _EFRON_BEFORE_515[case]
     np.testing.assert_allclose(model.beta, beta, rtol=1e-12)
-    np.testing.assert_allclose(model.se, se, rtol=1e-12)
+    np.testing.assert_allclose(model.standard_errors(), se, rtol=1e-12)
     np.testing.assert_allclose(H, H0, rtol=1e-12)
 
 
@@ -1194,3 +1194,152 @@ def test_cox_accepts_an_infinite_censoring_time():
         [np.inf, 0.5, 1.0, 2.0], [[-1.0], [1.0], [0.0], [1.0]], c=[1, 0, 0, 0]
     )
     assert np.isfinite(model.beta).all()
+
+
+# R survival 3.x, on the Rossi data (``Surv(week, arrest) ~ fin + age +
+# prio``): logLik(fit), AIC(fit) and BIC(fit), which are on the partial
+# likelihood with k the coefficients and BIC's n the events, nevent = 114
+# (logLik.coxph, nobs.coxph); and the same with ``+ strata(wexp)``.
+R_COX_ROSSI = {
+    "efron": (-660.857025384416, 1327.714050768831, 1335.922646114015),
+    "breslow": (-661.2326104166907, 1328.4652208333814, 1336.673816178565),
+    "strata": (-582.473259917228, 1170.946519834455, 1179.155115179639),
+}
+
+
+def _rossi():
+    from surpyval.datasets import load_rossi_static
+
+    df = load_rossi_static()
+    return (
+        df["week"].values,
+        df[["fin", "age", "prio"]].values,
+        1 - df["arrest"].values,
+        df["wexp"].values,
+    )
+
+
+@pytest.mark.parametrize("fit", sorted(R_COX_ROSSI))
+def test_604_cox_model_comparison_values_are_r_survivals(fit):
+    x, Z, c, wexp = _rossi()
+    if fit == "strata":
+        model = CoxPH.fit(x, Z, c=c, strata=wexp)
+    else:
+        model = CoxPH.fit(x, Z, c=c, tie_method=fit)
+    ll, aic, bic = R_COX_ROSSI[fit]
+    # A number, and methods, as on every other model (#604)
+    assert isinstance(model.log_likelihood, float)
+    assert model.log_likelihood == pytest.approx(ll, rel=1e-10)
+    assert model.neg_ll() == pytest.approx(-ll, rel=1e-10)
+    assert model.aic() == pytest.approx(aic, rel=1e-10)
+    assert model.bic() == pytest.approx(bic, rel=1e-10)
+    # The small-sample correction with the same k = 3 and n = 114
+    assert model.aic_c() == pytest.approx(aic + 24 / 110, rel=1e-10)
+
+
+def test_604_cox_neg_ll_of_beta_is_the_partial_likelihood_function():
+    x, Z, c, _ = _rossi()
+    model = CoxPH.fit(x, Z, c=c)
+    assert model.neg_ll_of(model.params) == pytest.approx(model.neg_ll())
+    # The old spelling still gives the function, deprecated, at the caller
+    with pytest.warns(DeprecationWarning, match="neg_ll_of") as caught:
+        value = model.neg_ll(np.zeros(3))
+    assert caught[0].filename == __file__
+    assert value == pytest.approx(model.neg_ll_of(np.zeros(3)))
+    assert value > model.neg_ll()
+
+
+def test_604_cox_restored_model_keeps_its_comparison_values():
+    x, Z, c, _ = _rossi()
+    model = CoxPH.fit(x, Z, c=c)
+    restored = sp.from_dict(model.to_dict())
+    for name in ("neg_ll", "aic", "aic_c", "bic"):
+        assert getattr(restored, name)() == getattr(model, name)()
+    assert restored.log_likelihood == model.log_likelihood
+    # The function is not saved, and the old spelling says so
+    assert restored.neg_ll_of is None
+    with pytest.warns(DeprecationWarning), pytest.raises(ValueError):
+        restored.neg_ll(np.zeros(3))
+    # A dict written before v0.23 stored the value under another key and
+    # no sample size: the events, which the baseline counts, stand in.
+    old = model.to_dict()
+    old["_neg_log_like"] = old.pop("_neg_ll")
+    del old["ic_n"]
+    legacy = sp.from_dict(old)
+    assert legacy.neg_ll() == model.neg_ll()
+    assert legacy.bic() == pytest.approx(model.bic(), rel=1e-15)
+
+
+def test_604_cox_aliased_coefficient_is_not_counted():
+    x, Z, c, _ = _rossi()
+    model = CoxPH.fit(x, Z, c=c)
+    with pytest.warns(UserWarning, match="alias"):
+        doubled = CoxPH.fit(x, np.column_stack([Z, Z[:, 0]]), c=c)
+    # R's logLik.coxph counts sum(!is.na(coef))
+    assert doubled.aic() == pytest.approx(model.aic(), rel=1e-10)
+
+
+@pytest.mark.parametrize("ties", ["efron", "breslow"])
+@pytest.mark.parametrize("seed", range(6))
+def test_551_information_operator_is_the_generators(ties, seed):
+    # CoxInformation gives the information as Z' (M Z): the generators'
+    # matrix, with ties, counts and delayed entry.
+    from surpyval.univariate.regression.proportional_hazards import (
+        cox_likelihood as cl,
+    )
+
+    rng = np.random.default_rng(seed)
+    N, p = 150, 3
+    Z = rng.normal(size=(N, p))
+    beta = rng.normal(size=p) * 0.5
+    x = (
+        np.ceil(rng.exponential(1, N) * 4) / 4
+        if seed % 2
+        else rng.exponential(1, N)
+    )
+    c = (rng.uniform(size=N) < 0.3).astype(int)
+    n = rng.integers(1, 4, N).astype(float)
+    tl = np.full(N, -np.inf)
+    if seed >= 3:
+        tl = np.where(rng.uniform(size=N) < 0.5, -np.inf, 0.5 * x)
+    _, jac_hess = CoxPH._resolve_func_generator(ties)(x, Z, c, n, tl)
+    info = cl.CoxInformation(x, c, n, Z @ beta, ties, tl=tl)
+    np.testing.assert_allclose(
+        Z.T @ info.apply(Z), jac_hess(beta)[1], rtol=1e-12, atol=1e-12
+    )
+
+
+def test_593_parametric_ph_fit_evaluates_each_point_once(monkeypatch):
+    # The search used to evaluate the likelihood plainly at each point
+    # and again in the gradient's autograd pass (13 such points here);
+    # it now takes the value and the gradient from one pass.
+    from autograd.tracer import Box
+
+    from surpyval.univariate.regression.proportional_hazards import (
+        proportional_hazards_fitter as ph_module,
+    )
+
+    def unboxed(value):
+        while isinstance(value, Box):
+            value = value._value
+        return float(value)
+
+    calls = []
+    original = ph_module.regression_neg_ll
+
+    def counted(model, data, *params):
+        boxed = any(isinstance(p, Box) for p in params)
+        calls.append((boxed, tuple(unboxed(p) for p in params)))
+        return original(model, data, *params)
+
+    monkeypatch.setattr(ph_module, "regression_neg_ll", counted)
+    rng = np.random.default_rng(7)
+    Z = rng.normal(size=(300, 2))
+    x = Weibull.random(300, 10, 1.5, random_state=3) * np.exp(
+        Z @ np.array([0.3, -0.2])
+    )
+    model = WeibullPH.fit(x, Z)
+    plain = {point for boxed, point in calls if not boxed}
+    in_pass = {point for boxed, point in calls if boxed}
+    assert len(plain & in_pass) <= 1
+    assert model.maximum == "verified"

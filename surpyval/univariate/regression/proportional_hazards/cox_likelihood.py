@@ -27,10 +27,11 @@ import numpy.typing as npt
 from pandas import isna
 from scipy.optimize import OptimizeResult
 
+from surpyval.univariate.parametric.fitters.runaway import LOG_MAX
 from surpyval.utils import is_missing_event
 from surpyval.utils.validation import check_option
 
-from .._fit_skeleton import LOG_MAX, baseline_at_origin_error
+from .._fit_skeleton import baseline_at_origin_error
 
 
 class _GroupBy:
@@ -386,6 +387,123 @@ def _cox_information(
         info = info + cross + cross.T - (ZD_t.T * s_c2u2) @ ZD_t
     # The products above are symmetric only to rounding.
     return (info + info.T) / 2
+
+
+class CoxInformation:
+    """The observed information of a Breslow or Efron partial likelihood
+    at the linear predictor ``eta``, as an operator on row values (#551).
+
+    The information of :func:`_cox_information` is a quadratic form in the
+    covariates, ``Z' M Z``, with ``M`` the ``n x n`` matrix
+
+        M = diag(q) - R' diag(s_u2) R
+            + R_t' diag(s_cu2) D_t + D_t' diag(s_cu2) R_t
+            - D_t' diag(s_c2u2) D_t,
+
+    ``R`` the risk-set sums at the times with a death (``R v`` sums
+    ``n exp(eta) v`` over each risk set), and ``R_t`` and ``D_t`` the
+    risk-set and death sums at Efron's tied times. ``M`` depends on
+    ``eta`` alone, and each of its terms is a cumulative or grouped sum, so
+    :meth:`apply` gives ``M v`` in ``O(n k)`` for ``k`` columns of row
+    values, without ever forming a column per covariate: the information
+    of covariates with many columns (a group indicator per frailty, say)
+    is then ``Z' (M Z)`` at the cost of its products, and its products
+    with a vector at the cost of one :meth:`apply`.
+
+    Rows are taken in the order given; ``tl`` (default untruncated) are
+    the entry times, as in the generators.
+    """
+
+    def __init__(
+        self,
+        x: npt.NDArray,
+        c: npt.NDArray,
+        n: npt.NDArray,
+        eta: npt.NDArray,
+        tie_method: str,
+        tl: "npt.NDArray | None" = None,
+    ) -> None:
+        x = np.asarray(x, dtype=float)
+        if tl is None:
+            tl = np.full(x.shape, -np.inf)
+        self.order = np.argsort(x, kind="stable")
+        rs = _CoxRiskSets(x, np.zeros((x.size, 0)), c, n, tl)
+        self.rs = rs
+        e = np.exp(np.asarray(eta, dtype=float)[self.order])
+        self.e = e
+        self.r = rs.risk_n * e
+        self.death_w = rs.death_n * e
+        m = len(rs.gb_x.unique)
+        self.m = m
+        R = self._risk_set_sums(np.ones((x.size, 1)))[:, 0]
+        D = rs.gb_x.sum(self.death_w.reshape(-1, 1))[1][:, 0]
+        s_u = np.zeros(m)
+        self.tied = np.zeros(0, dtype=int)
+        if tie_method == "breslow":
+            self.active = np.flatnonzero(rs.n_d > 0)
+            n_d = rs.n_d[self.active]
+            s_u[self.active] = n_d / R[self.active]
+            self.s_u2 = n_d / R[self.active] ** 2
+        else:
+            ties = _EfronTies(rs.n_d)
+            self.active = ties.active
+            s_u2 = np.zeros(m)
+            s_u[ties.one] = 1.0 / R[ties.one]
+            s_u2[ties.one] = s_u[ties.one] ** 2
+            if ties.tied.size:
+                self.tied = ties.tied
+                sums = ties.sums(R, D)
+                s_u[ties.tied], s_cu_t, s_u2[ties.tied] = sums[:3]
+                self.s_cu2, self.s_c2u2 = sums[3], sums[4]
+                self.s_cu = np.zeros(m)
+                self.s_cu[ties.tied] = s_cu_t
+            self.s_u2 = s_u2[self.active]
+        self.q = self.r * rs.rows.over_risk_set(s_u)
+        if self.tied.size:
+            self.q = self.q - self.death_w * self.s_cu[rs.rows.exit]
+
+    def _risk_set_sums(self, v: npt.NDArray) -> npt.NDArray:
+        # Per event time, the sum of n exp(eta) v over its risk set
+        rs = self.rs
+        w = self.e.reshape(-1, 1) * v
+        return rs.entered(at_risk_beta_Z(w, rs.n, rs.gb_x), w)
+
+    def _over_risk_set(self, per_time: npt.NDArray) -> npt.NDArray:
+        # For each row, the sum of per_time over the times it is at risk
+        rows = self.rs.rows
+        total = np.cumsum(per_time, axis=0)
+        if rows.entered is None:
+            return total[rows.exit]
+        total = np.concatenate([np.zeros((1,) + per_time.shape[1:]), total])
+        return total[rows.exit + 1] - total[rows.entered]
+
+    def apply(self, v: npt.NDArray) -> npt.NDArray:
+        """``M v`` for row values ``v`` (``n`` or ``n x k``), in the rows'
+        given order."""
+        v = np.asarray(v, dtype=float)
+        flat = v.ndim == 1
+        v = v.reshape(v.shape[0], -1)[self.order]
+        ZR = self._risk_set_sums(v)
+        per_time = np.zeros_like(ZR)
+        per_time[self.active] = self.s_u2[:, None] * ZR[self.active]
+        out = self.q[:, None] * v
+        out -= self.r[:, None] * self._over_risk_set(per_time)
+        if self.tied.size:
+            death_sums = self.rs.gb_x.sum(self.death_w[:, None] * v)[1]
+            ZD_t, ZR_t = death_sums[self.tied], ZR[self.tied]
+            # R_t' diag(s_cu2) D_t v, then D_t' (diag(s_cu2) R_t v -
+            # diag(s_c2u2) D_t v)
+            per_time = np.zeros_like(ZR)
+            per_time[self.tied] = self.s_cu2[:, None] * ZD_t
+            out += self.r[:, None] * self._over_risk_set(per_time)
+            per_time = np.zeros_like(ZR)
+            per_time[self.tied] = (
+                self.s_cu2[:, None] * ZR_t - self.s_c2u2[:, None] * ZD_t
+            )
+            out += self.death_w[:, None] * per_time[self.rs.rows.exit]
+        result = np.empty_like(out)
+        result[self.order] = out
+        return result[:, 0] if flat else result
 
 
 def _sort_by_event_time(
@@ -759,6 +877,17 @@ def _combine_generators(gens: list) -> tuple[Callable, Callable]:
         return jac_total, hess_total
 
     return neg_ll, jac_hess
+
+
+def combined_generators(
+    func_generator: Callable, strata_args: list
+) -> tuple[Callable, Callable]:
+    """The stratified likelihood and its derivatives: ``func_generator``
+    (a tie method's generator) on each stratum's ``(x, Z, c, n, tl)``,
+    summed (``_combine_generators``). A stratified fit's model keeps its
+    likelihood as this function and its arguments, so it pickles
+    (#573)."""
+    return _combine_generators([func_generator(*a) for a in strata_args])
 
 
 _TINY = float(np.finfo(float).tiny)

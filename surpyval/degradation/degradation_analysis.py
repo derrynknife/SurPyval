@@ -32,10 +32,12 @@ import pandas as pd
 
 from surpyval.univariate.parametric import Weibull
 from surpyval.univariate.regression import AFT
+from surpyval.univariate.regression._aliasing import covariate_columns
 from surpyval.univariate.regression.parametric_regression_model import (
     ParametricRegressionModel,
 )
-from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils.dataframe import refuse_column_names
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import psd_project, safe_inv
 from surpyval.utils.validation import check_option, option_error
 from surpyval.utils.warnings import caller_stacklevel
@@ -107,7 +109,7 @@ class _Population(NamedTuple):
     was_clipped: bool
 
 
-class DegradationAnalysis_:
+class DegradationAnalysis_(FitterRepr):
     """
     Pseudo-failure-time degradation analysis.
 
@@ -148,6 +150,9 @@ class DegradationAnalysis_:
     >>> model.pseudo_failure_times
     array([451.61290323, 500.        , 318.18181818, 378.37837838])
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "degradation fitter"
 
     def fit(
         self,
@@ -1148,7 +1153,6 @@ class DegradationAnalysis_:
         )
         return best_model, scores
 
-    @renamed_arguments(x="x_col", y="y_col", i="i_col")
     def fit_from_df(
         self,
         df: pd.DataFrame,
@@ -1162,9 +1166,7 @@ class DegradationAnalysis_:
         Fit a degradation analysis model from a DataFrame.
 
         The column arguments end in ``_col`` (``_cols`` for a list), as in
-        every ``fit_from_df`` (principle 21); their v0.21 names ``x``,
-        ``y`` and ``i`` still work, with a ``DeprecationWarning``, until
-        v0.23.
+        every ``fit_from_df`` (principle 21).
 
         Parameters
         ----------
@@ -1195,16 +1197,19 @@ class DegradationAnalysis_:
         DegradationModel
             The fitted degradation model.
         """
+        refuse_column_names(fit_kwargs, "x", "y", "i")
         cols = None
         if Z_cols is not None:
             cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
             fit_kwargs["Z"] = df[cols].to_numpy()
-        model = self.fit(
-            df[x_col].to_numpy(),
-            df[y_col].to_numpy(),
-            df[i_col].to_numpy(),
-            **fit_kwargs,
-        )
+        # The columns name the life model's coefficients (#614)
+        with covariate_columns(cols):
+            model = self.fit(
+                df[x_col].to_numpy(),
+                df[y_col].to_numpy(),
+                df[i_col].to_numpy(),
+                **fit_kwargs,
+            )
         # The names are kept so the model reads a DataFrame Z by them;
         # without them it would refuse one and tell the user to fit with
         # fit_from_df -- which they had done.

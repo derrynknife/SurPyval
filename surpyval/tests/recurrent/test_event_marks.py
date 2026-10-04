@@ -174,7 +174,7 @@ def test_cause_specific_nhpp_per_cause_models_carry_inference():
     model = CauseSpecificNHPP.fit(x, i, c, e=e)
     # each per-cause model is a full ParametricRecurrenceModel
     a = model.models["A"]
-    assert np.isfinite(a.aic)
+    assert np.isfinite(a.aic())
     assert a.iif(10.0) > 0
     assert a.cif(25.0) > a.cif(5.0)
 

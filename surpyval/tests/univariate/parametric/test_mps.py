@@ -6,6 +6,8 @@ censored terms were not conditioned on the truncation window, and offset
 fits passed unshifted truncation bounds to the shifted distribution.
 """
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -110,3 +112,26 @@ def test_mps_truncation_messages_have_no_space_run():
     with pytest.raises(ValueError) as err:
         surv.Weibull.fit(x, how="MPS", tr=[10, 10, 10, 10, 9])
     assert "  " not in str(err.value)
+
+
+# ---------------------------------------------------------------------------
+# #616: an offset MPS fit is not truncated at time 0.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("dist", [surv.Weibull, surv.LogNormal, surv.Gamma])
+def test_616_offset_mps_moves_with_the_data(dist):
+    # An untruncated offset fit had its left bound of -inf clamped to the
+    # support's 0, a truncation at time 0 that applied as soon as gamma
+    # went below 0: the LogNormal on these data ran to gamma = -2317 and
+    # warned "MPS FAILED", while the same data shifted up by 10 gave
+    # gamma = 10 - 0.244. Shifting the data now shifts the offset.
+    rng = np.random.default_rng(1)
+    x = -5.0 + surv.Weibull.random(40, 10.0, 2.0, random_state=rng)
+    x = x[x > 0][:25]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = dist.fit(x, offset=True, how="MPS")
+        shifted = dist.fit(x + 10.0, offset=True, how="MPS")
+    assert model.gamma == pytest.approx(shifted.gamma - 10.0, abs=1e-5)
+    np.testing.assert_allclose(model.params, shifted.params, rtol=1e-5)

@@ -304,3 +304,58 @@ class TestRoystonParmarGuards:
     def test_tied_events_raise_instead_of_nan(self):
         with pytest.raises(ValueError, match="distinct event times|distinct"):
             RoystonParmar.fit(x=[1.0] * 10 + [2.0] * 10, df=3)
+
+
+def test_605_covariance_is_a_method_and_the_attribute_deprecated():
+    x = Weibull.random(80, 10, 2, random_state=0)
+    model = RoystonParmar.fit(x, df=2)
+    cov = model.covariance()
+    assert type(cov) is np.ndarray and cov.shape == (3, 3)
+    # The attribute's spelling still works as the array, with a warning
+    with pytest.warns(DeprecationWarning, match=r"use 'covariance\(\)'"):
+        se = np.sqrt(np.diag(model.covariance))
+    np.testing.assert_array_equal(se, np.sqrt(np.diag(cov)))
+    with pytest.warns(DeprecationWarning):
+        assert model.covariance[0, 0] == cov[0, 0]
+    restored = surv.from_dict(json.loads(json.dumps(model.to_dict())))
+    np.testing.assert_array_equal(restored.covariance(), cov)
+
+
+def test_595_qf_is_exact_at_the_edges_and_in_the_tails():
+    # df=1 on the hazard scale is a Weibull, whose quantile is closed
+    # form: log x = (log(-log(1 - p)) - gamma_0) / gamma_1. A brentq on
+    # sf per probability lost precision where sf rounds to 1 (3e-5
+    # relative at p = 1e-12), and gave 1.1e-9 at p = 0 and 1.7e10 at
+    # p = 1 (the ends of its bracket) for 0 and inf.
+    x = Weibull.random(200, 10, 1.7, random_state=1)
+    model = RoystonParmar.fit(x, df=1)
+    g0, g1 = model.params
+    p = np.array([1e-12, 1e-6, 0.003, 0.5, 0.999, 1 - 1e-9])
+    exact = np.exp((np.log(-np.log1p(-p)) - g0) / g1)
+    np.testing.assert_allclose(model.qf(p), exact, rtol=1e-13)
+    assert model.qf(0.0) == 0.0
+    assert model.qf(1.0) == np.inf
+    assert np.isnan(model.qf(np.nan))
+
+
+@pytest.mark.parametrize("scale", ["hazard", "odds", "normal"])
+def test_595_qf_solves_every_probability_at_once(scale, monkeypatch):
+    # Inside the knots the spline is solved for all probabilities
+    # together: a few dozen basis evaluations for 2000 draws, where a
+    # brentq per draw made ~30,000 (1-3 s); each quantile still inverts
+    # ff to the last digits.
+    from surpyval.univariate.parametric import royston_parmar as module
+
+    x = Weibull.random(200, 10, 1.7, random_state=1)
+    model = RoystonParmar.fit(x, df=3, scale=scale)
+    calls = []
+    basis = module._rcs_basis
+    monkeypatch.setattr(
+        module, "_rcs_basis", lambda *a: calls.append(1) or basis(*a)
+    )
+    draws = model.random(2000, random_state=3)
+    assert len(calls) < 100
+    monkeypatch.undo()
+    p = np.linspace(0.01, 0.99, 99)
+    np.testing.assert_allclose(model.ff(model.qf(p)), p, rtol=1e-12)
+    assert np.all(np.isfinite(draws)) and np.all(draws > 0)

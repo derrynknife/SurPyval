@@ -13,11 +13,12 @@ it is now a suffix sum.
 
 The old implementation is kept below (``_old_fit_cause``,
 ``_old_censoring_survival``) and the new one must match it to the last
-digits on tied and untied, censored, counted, multi-cause data. (BFGS
-can stop one iteration apart from the old code, where a step changes the
-likelihood by less than its rounding; then the coefficients differ by
-up to the optimiser's tolerance, 1e-8 to 1e-6 relatively. None of the
-cases below does.)
+digits on tied and untied, censored, counted, multi-cause data. Both are
+maximised by Newton-Raphson, as the fit is since #606, which reaches the
+maximum to rounding; with BFGS, as both were before, one could stop one
+iteration apart from the other, where a step changes the likelihood by
+less than its rounding, and the coefficients then differed by up to
+BFGS's tolerance, 1e-8 to 1e-6 relatively.
 """
 
 import time
@@ -51,6 +52,9 @@ from surpyval.univariate.regression._aliasing import (
 from surpyval.univariate.regression._fit_skeleton import (
     runaway_coefficients,
     search_derivatives,
+)
+from surpyval.univariate.regression.proportional_hazards.cox_likelihood import (  # noqa: E501
+    newton_raphson,
 )
 from surpyval.utils import validate_fine_gray_inputs
 from surpyval.utils.ipcw import censoring_survival, step_left_limit
@@ -138,7 +142,17 @@ def _old_fit_cause(x, Z, e, c, n, cause, center=False):
         neg_ll = partial_neg_ll(Z[:, kept])
     beta0 = np.zeros(kept.size)
     if kept.size:
-        res = minimize(neg_ll, beta0, jac=grad(neg_ll), method="BFGS")
+        # Searched as the new code searches (#606): Newton-Raphson, with
+        # BFGS where it gives up (no finite maximum)
+        def jac_hess(b):
+            return grad(neg_ll)(b), hessian(neg_ll)(b)
+
+        with np.errstate(all="ignore"):
+            res = newton_raphson(
+                neg_ll, jac_hess, beta0, 1e-10, *jac_hess(beta0)
+            )
+        if res is None:
+            res = minimize(neg_ll, beta0, jac=grad(neg_ll), method="BFGS")
     else:
         res = OptimizeResult(
             x=beta0, fun=float(neg_ll(beta0)), success=True, nit=0
@@ -338,7 +352,7 @@ def test_crph_fine_gray_matches_the_dense_weight_matrix():
     for cause in (1, 2, 3):
         old = _old_fit_cause(*args, cause)
         _assert_close(model.betas[model.event_idx_map[cause]], old["beta"])
-        _assert_close(model._fg_models[cause].se, old["se"])
+        _assert_close(model._fg_models[cause].standard_errors(), old["se"])
 
 
 @pytest.mark.parametrize("ties", ["censoring_first", "events_first"])

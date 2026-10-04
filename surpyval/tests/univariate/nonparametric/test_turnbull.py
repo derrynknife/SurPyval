@@ -205,9 +205,10 @@ def test_turnbull_estimator_options_on_fractional_ladder():
 
 
 def test_turnbull_docstring_example_unchanged():
-    # The rewrite must reproduce the long-standing example output.
+    # The rewrite must reproduce the long-standing example output (of
+    # the EM, the default until the EM-ICM became it for untruncated data)
     x = np.array([[1, 5], [2, 3], [3, 6], [1, 8], [9, 10]])
-    model = surpyval.Turnbull.fit(x)
+    model = surpyval.Turnbull.fit(x, turnbull_algorithm="EM")
     expected = [
         1.0,
         1.0,
@@ -305,9 +306,10 @@ def test_turnbull_left_truncation_recovers_survival():
 
 def test_turnbull_untruncated_default_is_unchanged():
     # The #203 fix is scoped to truncated fits; the documented untruncated
-    # Fleming-Harrington example must be byte-for-byte unchanged.
+    # Fleming-Harrington example must be byte-for-byte unchanged (by the
+    # EM; the EM-ICM, now the default here, is checked in the #620 tests).
     x = np.array([[1, 5], [2, 3], [3, 6], [1, 8], [9, 10]])
-    model = surpyval.Turnbull.fit(x)
+    model = surpyval.Turnbull.fit(x, turnbull_algorithm="EM")
     expected = [
         1.0,
         1.0,
@@ -830,3 +832,183 @@ class TestDegenerateIntervalReducibility:
         np.testing.assert_allclose(
             np.ravel(t2.sf(t_eval)), np.ravel(km.sf(t_eval)), atol=1e-8
         )
+
+
+# ---------------------------------------------------------------------------
+# #620: the EM-ICM option (Wellner and Zhan 1997), for untruncated data
+# ---------------------------------------------------------------------------
+
+
+def _random_intervals(size, seed=0):
+    # The issue's data: left ends U(0, 10), widths U(0.1, 3)
+    rng = np.random.default_rng(seed)
+    left = rng.uniform(0, 10, size)
+    return left, left + rng.uniform(0.1, 3, size)
+
+
+def _kkt_gap(model, left, right):
+    """max_k D_k / N - 1 of the fitted curve: the derivative of the
+    log-likelihood in each piece's mass over the number of units, whose
+    largest value is 1 exactly at the NPMLE (Gentleman and Geyer 1994)."""
+    F = np.concatenate([[0.0], 1.0 - np.asarray(model.R), [1.0]])
+    pieces = np.concatenate([model.x, [np.inf]])
+    # (l, r]: a row's probability is F(r) - F(l), at the ladder's points
+    lo = np.searchsorted(pieces, left, side="left")
+    hi = np.searchsorted(pieces, right, side="left") + 1
+    S = F[hi] - F[lo]
+    w = 1.0 / S
+    D = np.zeros(F.size)
+    np.add.at(D, lo, w)
+    np.add.at(D, hi, -w)
+    D = np.cumsum(D)[: F.size - 1]
+    return D.max() / left.size - 1.0, np.sum(np.log(S))
+
+
+def test_620_emicm_converges_where_the_em_stalls():
+    left, right = _random_intervals(1000)
+    with pytest.warns(UserWarning, match="did not converge"):
+        em = Turnbull.fit(
+            xl=left,
+            xr=right,
+            turnbull_estimator="Kaplan-Meier",
+            turnbull_algorithm="EM",
+        )
+    emicm = no_warnings(
+        Turnbull.fit,
+        xl=left,
+        xr=right,
+        turnbull_estimator="Kaplan-Meier",
+        turnbull_algorithm="EMICM",
+    )
+    assert emicm.converged and emicm.turnbull_algorithm == "EMICM"
+    # It stops at the maximum (the KKT conditions hold to its tolerance;
+    # the log-likelihood is within N * gap of the maximum), the EM short
+    # of it.
+    gap, ll = _kkt_gap(emicm, left, right)
+    em_gap, em_ll = _kkt_gap(em, left, right)
+    assert gap < 1e-9 and em_gap > 1e-4
+    assert ll > em_ll
+    np.testing.assert_allclose(emicm.sf(5.0), em.sf(5.0), atol=0.01)
+
+
+@pytest.mark.parametrize("seed", [1, 2])
+def test_620_emicm_is_the_converged_em(seed):
+    # Small enough for the EM to converge tightly: the same estimate
+    left, right = _random_intervals(60, seed)
+    em = no_warnings(
+        Turnbull.fit,
+        xl=left,
+        xr=right,
+        turnbull_estimator="Kaplan-Meier",
+        tol=1e-14,
+        max_iter=500_000,
+    )
+    emicm = no_warnings(
+        Turnbull.fit,
+        xl=left,
+        xr=right,
+        turnbull_estimator="Kaplan-Meier",
+        turnbull_algorithm="EMICM",
+    )
+    np.testing.assert_array_equal(emicm.x, em.x)
+    np.testing.assert_allclose(emicm.R, em.R, atol=1e-8)
+    assert emicm.iters < em.iters
+
+
+def test_620_emicm_against_icenreg():
+    # R's icenReg::ic_np (an EM-ICM), the values of test_np.py
+    left = np.array([1, 76, 288, 501, 579, 667, 829, 920, 1071])
+    right = np.array([71, 169, 344, 504, 579, 754, 829, 971, np.inf])
+    model = no_warnings(
+        Turnbull.fit,
+        xl=left,
+        xr=right,
+        turnbull_estimator="Kaplan-Meier",
+        turnbull_algorithm="EMICM",
+    )
+    x_test = [1, 71, 169, 344, 504, 579, 754, 829, 971]
+    np.testing.assert_allclose(
+        model.sf(x_test), 1.0 - np.arange(9) / 9.0, atol=1e-9
+    )
+
+
+def test_620_emicm_applies_the_estimator_to_the_mle_ladder():
+    # With the Nelson-Aalen or Fleming-Harrington option, the estimator
+    # is applied to the MLE's expected counts, as under truncation
+    left, right = _random_intervals(80, 3)
+    km = quietly(
+        Turnbull.fit,
+        xl=left,
+        xr=right,
+        turnbull_estimator="Kaplan-Meier",
+        turnbull_algorithm="EMICM",
+    )
+    fh = quietly(Turnbull.fit, xl=left, xr=right, turnbull_algorithm="EMICM")
+    np.testing.assert_array_equal(fh.r, km.r)
+    np.testing.assert_array_equal(fh.d, km.d)
+    from surpyval.univariate.nonparametric.turnbull import (
+        TURNBULL_ESTIMATORS,
+    )
+
+    with np.errstate(all="ignore"):
+        expected = TURNBULL_ESTIMATORS["Fleming-Harrington"](km.r, km.d)
+    np.testing.assert_array_equal(fh.R, expected)
+
+
+def test_620_emicm_refuses_truncation_and_unknown_names():
+    with pytest.raises(ValueError, match="turnbull_algorithm='EMICM'"):
+        Turnbull.fit(
+            [1.0, 2.0, 3.0], tl=[0.0, 0.5, 1.0], turnbull_algorithm="EMICM"
+        )
+    with pytest.raises(ValueError, match="'turnbull_algorithm' must be"):
+        Turnbull.fit([1.0, 2.0, 3.0], turnbull_algorithm="ICM")
+
+
+def test_620_emicm_is_kept_by_the_model():
+    left, right = _random_intervals(40, 4)
+    model = quietly(
+        Turnbull.fit, xl=left, xr=right, turnbull_algorithm="EMICM"
+    )
+    saved = model.to_dict(with_data=True)
+    assert saved["algorithm"] == "EMICM" and saved["schema"] == 2
+    restored = sp.from_dict(saved)
+    assert restored.data["algorithm"] == "EMICM"
+    # the EM's dictionary is unchanged
+    em = quietly(Turnbull.fit, xl=left, xr=right, turnbull_algorithm="EM")
+    assert "algorithm" not in em.to_dict()
+    # the default runs, and keeps, the EM-ICM on untruncated data
+    default = quietly(Turnbull.fit, xl=left, xr=right)
+    assert default.to_dict()["algorithm"] == "EMICM"
+    # bootstrap_cb refits each resample with the EM-ICM
+    calls = []
+    original = nonp.turnbull
+
+    def spy(*args, **kwargs):
+        calls.append(kwargs.get("algorithm"))
+        return original(*args, **kwargs)
+
+    import unittest.mock
+
+    with unittest.mock.patch.object(nonp, "turnbull", spy):
+        restored.bootstrap_cb([5.0], n_boot=3, random_state=0)
+    assert calls == ["EMICM"] * 3
+
+
+def test_620_the_default_is_the_emicm_without_truncation_and_the_em_with():
+    left, right = _random_intervals(60, 3)
+    default = quietly(Turnbull.fit, xl=left, xr=right)
+    emicm = quietly(
+        Turnbull.fit, xl=left, xr=right, turnbull_algorithm="EMICM"
+    )
+    assert default.turnbull_algorithm == "EMICM"
+    np.testing.assert_array_equal(default.R, emicm.R)
+    # with truncation the default is the EM (the EM-ICM does not fit it)
+    tl = np.minimum(left, 0.5)
+    truncated = quietly(Turnbull.fit, xl=left, xr=right, tl=tl)
+    em = quietly(
+        Turnbull.fit, xl=left, xr=right, tl=tl, turnbull_algorithm="EM"
+    )
+    assert truncated.turnbull_algorithm == "EM"
+    np.testing.assert_array_equal(truncated.R, em.R)
+    with pytest.raises(ValueError, match="untruncated data only"):
+        Turnbull.fit(xl=left, xr=right, tl=tl, turnbull_algorithm="EMICM")

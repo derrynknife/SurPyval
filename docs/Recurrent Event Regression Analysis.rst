@@ -63,9 +63,10 @@ a positive rate regardless of the sign of :math:`\beta`, mirrors the Cox model
 for single events, and gives regression coefficients a direct multiplicative
 interpretation on the rate. Here :math:`\beta` is the column vector of
 regression coefficients, one per covariate, so
-:math:`Z\beta = \beta_0 z_0 + \beta_1 z_1 + \dots`. (SurPyval labels the
-coefficients ``beta_0``, ``beta_1``, ... in the order of the columns of
-:math:`Z`.)
+:math:`Z\beta = \beta_0 z_0 + \beta_1 z_1 + \dots`. (SurPyval names each
+coefficient by its column of :math:`Z` where the fit has the columns'
+names -- ``fit_from_df`` or a DataFrame ``Z`` -- and ``coef_0``,
+``coef_1``, ... in the order of the columns otherwise.)
 
 .. rubric:: Time-varying baselines: the Duane example
 

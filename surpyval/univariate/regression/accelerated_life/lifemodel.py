@@ -1,9 +1,12 @@
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 
 from numpy import ndarray
 
+from surpyval.utils.fitter_repr import FitterRepr
 
-class LifeModel(ABC):
+
+class LifeModel(FitterRepr, ABC):
     """
     Base class for the stress-life relationships used by
     ``AcceleratedLife``: a function :math:`L(Z)` giving the life parameter
@@ -38,6 +41,9 @@ class LifeModel(ABC):
     array([1000.  ,  250.  ,   62.5])
     """
 
+    #: The ``repr``: ``Power: life model`` (#614)
+    fitter_kind = "life model"
+
     #: The number of stress columns ``Z`` has (``None`` when it depends on
     #: the data, as for ``GeneralLogLinear``). Lets a single 1-D row
     #: ``[T, V]`` be read as one two-stress row rather than two stresses.
@@ -46,6 +52,11 @@ class LifeModel(ABC):
     #: a power or logarithm of them (``Z**n``, ``log Z``), or reads them as
     #: an absolute temperature.
     positive_stress_columns: "tuple[int, ...]" = ()
+    #: Whether :meth:`phi` takes a 2-D array of stress rows and gives one
+    #: life per row, as the built-in models do; the fit then finds every
+    #: row's life in one call. ``False`` (the default, for a custom model
+    #: written for a single stress) calls it once per distinct stress.
+    phi_takes_rows: bool = False
 
     def __init__(
         self,
@@ -71,7 +82,7 @@ class LifeModel(ABC):
         >>> Power.resolve(1) is Power
         True
         >>> GeneralLogLinear.resolve(2).phi_param_map
-        {'c': 0, 'beta_0': 1, 'beta_1': 2}
+        {'c': 0, 'coef_0': 1, 'coef_1': 2}
         """
         return self
 
@@ -91,6 +102,42 @@ class LifeModel(ABC):
         value per row of ``Z``). Typically a least-squares fit of the
         linearised relationship.
         """
+
+    def named(self, names: "Sequence[str]") -> "LifeModel":
+        """
+        This life model with the coefficients of :meth:`coefficient_columns`
+        named ``names``, in column order (a fit's covariate columns,
+        #614): ``GeneralLogLinear``'s are ``coef_0``, ``coef_1``, ...
+        unless named. A model without such coefficients returns itself.
+
+        Examples
+        --------
+        >>> from surpyval.life_models import GeneralLogLinear, Power
+        >>> Power.named(["temp"]) is Power
+        True
+        >>> GeneralLogLinear.resolve(2).named(["temp", "volt"]).phi_param_map
+        {'c': 0, 'temp': 1, 'volt': 2}
+        """
+        return self
+
+    def coefficient_columns(self) -> "dict[str, int]":
+        """
+        The life-model parameters that are each the coefficient of one
+        column of ``Z`` as it is (the log-life linear in that column), by
+        name, with the column's number: the fit searches and judges each
+        in its covariate's units (``coefficient_floor``, #612). None for a
+        life model of a transformed stress (``log s``, ``1 / s``); one per
+        column for ``GeneralLogLinear``.
+
+        Examples
+        --------
+        >>> from surpyval.life_models import GeneralLogLinear, Power
+        >>> Power.coefficient_columns()
+        {}
+        >>> GeneralLogLinear.resolve(2).coefficient_columns()
+        {'coef_0': 0, 'coef_1': 1}
+        """
+        return {}
 
     def _stress_terms(
         self, Z: ndarray

@@ -8,7 +8,7 @@ WeibullPH coefficient of -14.7, a PO one of +33) and the fit returned
 silently. It now warns, once, pointing at the caller, and still
 returns what it reached; an ordinary fit does not warn.
 
-The check is Newton's (``_fit_skeleton.runaway_coefficients``): along the
+The check is Newton's (``fitters.runaway.runaway_coefficients``): along the
 coefficient's profile the Kantorovich quantity ``h = |f'''| |f'| / f''^2``
 is at the level of the optimiser's tolerance at a maximum and about 1 on
 the way to a supremum.
@@ -29,11 +29,12 @@ from surpyval.univariate.competing_risks import FineGray
 from surpyval.univariate.competing_risks.regression import (
     CompetingRisksProportionalHazards,
 )
-from surpyval.univariate.regression import _fit_skeleton as skeleton
-from surpyval.univariate.regression._fit_skeleton import (
+from surpyval.univariate.parametric.fitters import runaway
+from surpyval.univariate.parametric.fitters.runaway import (
     _flat_at_start,
     runaway_coefficients,
 )
+from surpyval.univariate.regression import _fit_skeleton as skeleton
 
 NO_MAXIMUM = "No finite maximum: the likelihood keeps increasing"
 MONOTONE = "No finite maximum: the partial likelihood"
@@ -118,10 +119,10 @@ def test_fit_from_df_points_at_the_caller():
 def test_a_fixed_coefficient_keeps_the_numbering():
     d = _no_events(reg_data())
     # The runaway coefficient is still called 0 with the other fixed ...
-    _, w = _fit(lambda: sp.WeibullAFT.fit(**d, fixed={"beta_1": -0.3}))
+    _, w = _fit(lambda: sp.WeibullAFT.fit(**d, fixed={"coef_1": -0.3}))
     assert len(w) == 1 and "coefficient(s) [0]" in str(w[0].message)
     # ... and with it fixed there is nothing to run away.
-    _, w = _fit(lambda: sp.WeibullAFT.fit(**d, fixed={"beta_0": -1.0}))
+    _, w = _fit(lambda: sp.WeibullAFT.fit(**d, fixed={"coef_0": -1.0}))
     assert not w, [str(x.message) for x in w]
 
 
@@ -299,13 +300,13 @@ def test_collinear_fine_gray_formula_does_not_warn():
 
 def _count_profiles(monkeypatch):
     calls = []
-    profile = skeleton._profile
+    profile = runaway._profile
 
     def counted(neg_ll, x, H, j):
         calls.append(j)
         return profile(neg_ll, x, H, j)
 
-    monkeypatch.setattr(skeleton, "_profile", counted)
+    monkeypatch.setattr(runaway, "_profile", counted)
     return calls
 
 
@@ -360,24 +361,24 @@ def test_the_gate_clears_a_maximum_and_nothing_else():
     quadratic = lambda p: (p[0] - 2.0) ** 2 + (p[1] + 3.0) ** 2  # noqa: E731
     x = np.array([2.0, -3.0])
     H, g = hessian(quadratic)(x), grad(quadratic)(x)
-    assert skeleton._cleared(x, H, g).tolist() == [True, True]
+    assert runaway._cleared(x, H, g).tolist() == [True, True]
     # A runaway along t = u (exp(t) + 50 (u - t)^2 at t = u = -15): the
     # step is (1, 1), 1/15 of the value, so neither is cleared.
-    runaway = lambda p: anp.exp(p[0]) + 50.0 * (p[1] - p[0]) ** 2  # noqa
+    running = lambda p: anp.exp(p[0]) + 50.0 * (p[1] - p[0]) ** 2  # noqa
     x = np.array([-15.0, -15.0])
-    H, g = hessian(runaway)(x), grad(runaway)(x)
-    assert skeleton._cleared(x, H, g).tolist() == [False, False]
+    H, g = hessian(running)(x), grad(running)(x)
+    assert runaway._cleared(x, H, g).tolist() == [False, False]
     # A linear rise has no curvature: no Hessian to trust, nothing cleared.
     linear = lambda p: -3.0 * p[0] + p[1] ** 2  # noqa: E731
     x = np.array([-50.0, 0.0])
     H, g = hessian(linear)(x), grad(linear)(x)
-    assert skeleton._cleared(x, H, g).tolist() == [False, False]
+    assert runaway._cleared(x, H, g).tolist() == [False, False]
     # A parameter the likelihood does not depend on is left out of the
     # step, and the others are still cleared.
     ignores = lambda p: (p[0] - 1.0) ** 2 + 0.0 * p[1]  # noqa: E731
     x = np.array([1.0, 7.0])
     H, g = hessian(ignores)(x), grad(ignores)(x)
-    assert skeleton._cleared(x, H, g).tolist() == [True, False]
+    assert runaway._cleared(x, H, g).tolist() == [True, False]
 
 
 # -- the cost of reading a profile (#501) -------------------------------------
@@ -405,6 +406,7 @@ def test_a_profile_is_read_without_more_hessians(monkeypatch, name):
         return full(*args)
 
     monkeypatch.setattr(skeleton, "search_derivatives", counted)
+    monkeypatch.setattr(runaway, "search_derivatives", counted)
     fitter = getattr(sp, name)
     model, w = _fit(lambda: fitter.fit(x=np.tile(x, 2), c=np.tile(c, 2), Z=Z))
     assert not w, [str(x.message) for x in w]
@@ -422,12 +424,114 @@ def test_the_profile_curvature_from_products_is_exact():
         return anp.exp(p[0]) + 50.0 * (p[1] - p[0]) ** 2
 
     at = np.array([-15.0, -15.0])
-    H, _ = skeleton.search_derivatives(f, at)
+    H, _ = runaway.search_derivatives(f, at)
     v = np.array([1.0, 1.0])
     for t in (-14.9, -15.0, -15.2):
         point = np.array([t, -15.0])
-        S = skeleton._profile_curvature(f, point, 0, H, v)
+        S = runaway._profile_curvature(f, point, 0, H, v)
         assert S == pytest.approx(np.exp(t), rel=1e-14, abs=0)
+
+
+# -- all the failures in one cell of a two-stress test (#628) -----------------
+
+
+def _alt(draw):
+    """#583's accelerated life test (Arrhenius in temperature, inverse power
+    in voltage, Weibull shape 2.2, 12 units a cell, ended at 3000 h) at
+    c = 600, draw ``draw`` of #617's study."""
+    T, V = np.meshgrid(
+        np.array([85.0, 105.0, 125.0]) + 273.15, [450.0, 500.0], indexing="ij"
+    )
+    Z = np.repeat(np.column_stack([T.ravel(), V.ravel()]), 12, axis=0)
+    rng = np.random.default_rng([617, 600, draw])
+    life = 600.0 * np.exp(0.7 / 8.617e-5 / Z[:, 0]) * Z[:, 1] ** -3.0
+    t = life * rng.weibull(2.2, len(Z))
+    return np.minimum(t, 3000.0), (t > 3000.0).astype(int), Z
+
+
+def _one_cell_alt():
+    """Draw 54: all six failures are in the 125 C / 500 V cell, so both
+    coefficients run off together (any direction that lengthens every
+    other cell's life raises the likelihood)."""
+    x, c, Z = _alt(54)
+    assert np.all(Z[c == 0] == [398.15, 500.0]) and np.sum(c == 0) == 6
+    return x, c, Z
+
+
+@pytest.mark.parametrize(
+    "fit",
+    [
+        lambda x, c, Z: sp.WeibullAFT.fit(x, _alt_terms(Z), c=c),
+        lambda x, c, Z: sp.WeibullPH.fit(x, _alt_terms(Z), c=c),
+        lambda x, c, Z: sp.LogNormalAFT.fit(x, _alt_terms(Z), c=c),
+        lambda x, c, Z: sp.WeibullPO.fit(x, _alt_terms(Z), c=c),
+    ],
+    ids=["WeibullAFT", "WeibullPH", "LogNormalAFT", "WeibullPO"],
+)
+def test_628_all_failures_in_one_cell_have_no_finite_maximum(fit):
+    # WeibullAFT reached a scale of 9.1e134 and coefficients -52674 and 70
+    # and called it a verified maximum, without a word: the likelihood is
+    # within 1e-5 of its supremum there, so the gradient test passes, and
+    # the no-maximum check, made in the search's own units, could not see
+    # the run-off (WeibullPH and WeibullPO likewise).
+    model, w = _fit(lambda: fit(*_one_cell_alt()))
+    assert model.maximum == "no finite maximum"
+    assert len(w) == 1, [str(x.message) for x in w]
+    assert str(w[0].message).startswith(NO_MAXIMUM)
+    assert w[0].filename == __file__
+
+
+def _alt_terms(Z):
+    return np.column_stack([1.0 / Z[:, 0], np.log(Z[:, 1])])
+
+
+def test_628_an_accelerated_life_fit_short_of_its_maximum_is_no_run_off():
+    # Draw 4 has failures at enough stresses for a finite maximum (WeibullAFT
+    # on the same model finds it at -log L = 100.28769). The accelerated
+    # life fit, whose ``c`` is searched linearly, stopped 4e-4 short of it
+    # and warned "No finite maximum" for ``c``: Newton's test made along
+    # ``c`` rather than ``log c``.
+    x, c, Z = _alt(4)
+    fitter = sp.AcceleratedLife(sp.Weibull, sp.life_models.PowerExponential)
+    model, w = _fit(lambda: fitter.fit(x, Z, c=c))
+    assert model.maximum != "no finite maximum"
+    assert not any(str(m.message).startswith(NO_MAXIMUM) for m in w)
+    assert model.neg_ll() == pytest.approx(100.28769, abs=1e-3)
+
+
+def test_628_a_one_bounded_parameter_is_judged_on_its_log_scale():
+    # A likelihood quadratic in log(a), with ``a`` searched linearly beyond
+    # 1 (as ``bounds_convert`` searches a scale): a point short of its
+    # maximum at a = e^5 - 1 looks like a run-off along ``a`` read linearly
+    # (an accelerated life ``c`` at 1e22 warned "No finite maximum"), not
+    # on the log scale.
+    def f(p):
+        return (anp.log1p(p[0]) - 3.0) ** 2
+
+    for u in (5.0, 20.0):
+        x = np.array([np.expm1(u)])
+        assert runaway_coefficients(f, x, [0], [0.0]) == [0]
+        assert (
+            runaway.runaways_in_units(f, x, [0], [0.0], one_sided=(0,)) == []
+        )
+
+
+def test_628_a_profile_flat_to_rounding_has_no_maximum():
+    # exp(t) at t = -800 has underflowed: no curvature at all where the
+    # likelihood depended on t at the start. A parameter that never enters
+    # it is flat at the start too, and is not called a run-off.
+    def f(p):
+        return anp.exp(p[0]) + (p[1] - 1.0) ** 2
+
+    x, start = np.array([-800.0, 1.0]), np.zeros(2)
+    derivatives = runaway.search_derivatives(f, x)
+    assert runaway.flat_profiles(f, x, [0], start, derivatives) == [0]
+
+    def ignores(p):
+        return (p[1] - 1.0) ** 2 + 0.0 * p[0]
+
+    derivatives = runaway.search_derivatives(ignores, x)
+    assert runaway.flat_profiles(ignores, x, [0], start, derivatives) == []
 
 
 # ---------------------------------------------------------------------------

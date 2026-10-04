@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
@@ -12,16 +13,21 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.univariate.information_criteria import InformationCriteriaMixin
 from surpyval.utils import is_missing_event
 from surpyval.utils.data_summary import data_summary
+from surpyval.utils.deprecation import REMOVED_IN, RenamedToMethod
+from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
     keeps_query_shape,
 )
+from surpyval.utils.validation import no_covariance_error
 
 from ._concordance import ConcordanceMixin
+from ._prediction import ConditionalSurvivalMixin
 from ._summary import (
     coefficient_names,
     coefficient_repr,
@@ -38,7 +44,11 @@ if TYPE_CHECKING:
 
 
 class SemiParametricRegressionModel(
-    LinearPredictorMixin, ConcordanceMixin, SerialisableMixin
+    ConditionalSurvivalMixin,
+    InformationCriteriaMixin,
+    LinearPredictorMixin,
+    ConcordanceMixin,
+    SerialisableMixin,
 ):
     """
     The fitted Cox proportional hazards model returned by ``CoxPH.fit``,
@@ -116,10 +126,11 @@ class SemiParametricRegressionModel(
 
     @property
     def parameter_names(self) -> list[str]:
-        """The names of ``params``, entry by entry: ``beta_0``,
-        ``beta_1``, ... for the covariate coefficients, as in the
-        parametric regression models."""
-        return ["beta_{}".format(i) for i in range(len(self.params))]
+        """The names of ``params``, entry by entry: each covariate's
+        column (a formula, ``fit_from_df`` or a DataFrame ``Z``), else
+        ``coef_0``, ``coef_1``, ... (#614), as in the parametric
+        regression models."""
+        return coefficient_names(self, len(self.params))
 
     # Attributes populated by the fitter (``CoxPH.fit`` / ``fit_from_df``).
     params: npt.NDArray
@@ -131,16 +142,23 @@ class SemiParametricRegressionModel(
     h0: npt.NDArray
     H0: npt.NDArray
     p_values: npt.NDArray
-    #: The coefficients' standard errors, from the observed information
-    #: (``None`` for a model saved before they were stored).
-    se: "npt.NDArray | None" = None
-    #: The fit's score/Hessian and negative-partial-log-likelihood
-    #: closures (the scalar value is ``_neg_log_like``).
+    #: The coefficients' covariance, ``covariance()``: the inverse of the
+    #: observed information (#613; ``None`` for a model saved before it
+    #: was stored).
+    _covariance: "npt.NDArray | None" = None
+    #: The coefficients' standard errors, ``standard_errors()`` (``None``
+    #: for a model saved before they were stored).
+    _se: "npt.NDArray | None" = None
+    #: ``standard_errors()``'s name before v0.23, for one release.
+    se = RenamedToMethod("standard_errors", "_se")
+    #: The fit's score/Hessian closure, ``jac(beta) -> (score,
+    #: information)``, and the negative partial log-likelihood as a
+    #: function of the coefficients, ``neg_ll_of(beta)`` (``None`` for a
+    #: model restored from a dict); its value at the fit is ``neg_ll()``.
     jac: Callable
     hess: Callable
     res: Any
-    neg_ll: Callable
-    _neg_log_like: float
+    neg_ll_of: "Callable | None" = None
     tie_method: str
     baseline_method: str
     #: Per-observation training data (``x``/``c``/``n``/``Z``/``tl``) retained
@@ -168,6 +186,60 @@ class SemiParametricRegressionModel(
     def __init__(self, kind: str, parameterization: str) -> None:
         self.kind = kind
         self.parameterization = parameterization
+
+    # -- model comparison (#604) -------------------------------------------
+
+    def neg_ll(self, beta: Any = None) -> float:
+        """The negative partial log-likelihood at the fitted coefficients:
+        a number, as every model's ``neg_ll()`` is (#604), so that
+        :meth:`aic`, :meth:`bic` and :meth:`aic_c`, and ``log_likelihood``
+        (its negative, R's ``logLik(fit)``), compare Cox models with each
+        other. The partial likelihood is not the likelihood of the data,
+        so these do not compare a Cox model with a parametric one.
+
+        As a function of the coefficients it is ``neg_ll_of(beta)``;
+        ``neg_ll(beta)``, its old spelling, still gives it with a
+        ``DeprecationWarning`` until v0.24.
+
+        Examples
+        --------
+        >>> from surpyval import CoxPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = CoxPH.fit(x, df[["fin", "age", "prio"]].values, c=c)
+        >>> round(model.log_likelihood, 3), round(model.aic(), 3)
+        (-660.857, 1327.714)
+        """
+        if beta is not None:
+            warnings.warn(
+                "SemiParametricRegressionModel.neg_ll(beta) is deprecated "
+                "and will be removed in v{}: neg_ll() is now the fitted "
+                "value; use neg_ll_of(beta) for the negative partial "
+                "log-likelihood at beta.".format(REMOVED_IN),
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if self.neg_ll_of is None:
+                raise ValueError(
+                    "The partial likelihood is not stored with a model "
+                    "restored from a dict; refit it to evaluate it at "
+                    "other coefficients."
+                )
+            return float(self.neg_ll_of(beta))
+        if getattr(self, "_neg_ll", None) is None:
+            raise ValueError("Must have been fit with data")
+        return float(self._neg_ll)
+
+    def _ic_k(self) -> int:
+        # The estimated coefficients: an aliased one (nan) is not, as R's
+        # logLik(coxph) counts sum(!is.na(coef)).
+        return int(onp.isfinite(onp.asarray(self.params, float)).sum())
+
+    def _ic_sample_size_from_data(self) -> float:
+        # A model restored from a dict saved without "ic_n": the events,
+        # which the baseline counts at each time (R's ``nevent``).
+        return float(onp.sum(self.d))
 
     def phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
         """
@@ -312,7 +384,7 @@ class SemiParametricRegressionModel(
         if robust:
             se = np.asarray(self.robust_summary(cluster)["se"], dtype=float)
             return coefficient_table(names, beta, se, alpha_ci)
-        se = getattr(self, "se", None)
+        se = self._se
         p_values = getattr(self, "p_values", None)
         if se is None and p_values is None:
             se = np.full(beta.shape, np.nan)
@@ -339,8 +411,9 @@ class SemiParametricRegressionModel(
         (stored only then, which makes the dict schema 2). Everything
         needed for ``hf``/``Hf``/``sf``/``ff``/``df`` (and, for a
         time-varying-covariate fit, ``predict_tvc``) round-trips exactly. The
-        optimiser objects (the ``neg_ll`` closure, ``jac``, ``hess``, ``res``)
-        are not stored.
+        optimiser objects (the ``neg_ll_of`` closure, ``jac``, ``hess``,
+        ``res``) are not stored; the fitted ``neg_ll()`` and the sample
+        size of ``bic()`` (``"ic_n"``) are.
 
         See Also
         --------
@@ -381,10 +454,19 @@ class SemiParametricRegressionModel(
                 out["tl"] = tl.tolist()
         if getattr(self, "p_values", None) is not None:
             out["p_values"] = np.asarray(self.p_values, dtype=float).tolist()
-        if getattr(self, "se", None) is not None:
-            out["se"] = np.asarray(self.se, dtype=float).tolist()
-        if getattr(self, "_neg_log_like", None) is not None:
-            out["_neg_log_like"] = float(self._neg_log_like)
+        if self._se is not None:
+            out["se"] = np.asarray(self._se, dtype=float).tolist()
+        if self._covariance is not None:
+            # The key every model's dict stores it under (#605).
+            out["covariance"] = np.asarray(
+                self._covariance, dtype=float
+            ).tolist()
+        if getattr(self, "_neg_ll", None) is not None:
+            # The key every model's dict stores it under (#605).
+            out["_neg_ll"] = float(self._neg_ll)
+        ic_n = self._ic_sample_size_or_none()
+        if ic_n is not None:
+            out["ic_n"] = ic_n
         out.update(maximum_entry(self.maximum))
         # The printout's "Data" line (#508), so the restored model prints
         # the same; the data themselves are not stored.
@@ -439,9 +521,16 @@ class SemiParametricRegressionModel(
         if "p_values" in model_dict:
             out.p_values = onp.array(model_dict["p_values"], dtype=float)
         if "se" in model_dict:
-            out.se = onp.array(model_dict["se"], dtype=float)
-        if "_neg_log_like" in model_dict:
-            out._neg_log_like = float(model_dict["_neg_log_like"])
+            out._se = onp.array(model_dict["se"], dtype=float)
+        # A dict written before v0.23 has the standard errors only.
+        if "covariance" in model_dict:
+            out._covariance = onp.array(model_dict["covariance"], dtype=float)
+        # "_neg_log_like" is the key of a dict written before v0.23.
+        for key in ("_neg_ll", "_neg_log_like"):
+            if key in model_dict:
+                out._neg_ll = float(model_dict[key])
+                break
+        out._ic_n = cls._restored_ic_n(model_dict)
         out.maximum = restored_maximum(model_dict)
         restore_covariate_meta(out, model_dict)
         return out
@@ -720,6 +809,59 @@ class SemiParametricRegressionModel(
         )
         table.attrs["transform"] = res["transform"]
         return table
+
+    def covariance(self) -> npt.NDArray:
+        """
+        The coefficients' covariance: the inverse of the observed
+        information of the partial likelihood at the fit, R's
+        ``vcov(coxph)`` (#613). An aliased coefficient's row and column
+        are ``nan``. :meth:`robust_covariance` gives the sandwich.
+
+        Raises a ``ValueError`` for a model saved before the covariance
+        was stored, whose :meth:`standard_errors` are still available.
+
+        Examples
+        --------
+        >>> from surpyval import CoxPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = CoxPH.fit(x, df[["fin", "age"]].values, c=c)
+        >>> model.covariance().round(6)
+        array([[ 0.036044, -0.000149],
+               [-0.000149,  0.000436]])
+        """
+        if self._covariance is None:
+            raise no_covariance_error(
+                "it was saved before the covariance was stored; "
+                "standard_errors() still gives the standard errors"
+            )
+        return self._covariance
+
+    def standard_errors(self) -> npt.NDArray:
+        """
+        The coefficients' standard errors, the square roots of the diagonal
+        of :meth:`covariance` in the order of ``params`` (``nan`` for an
+        aliased coefficient), R's ``se(coef)``. ``se``, the attribute
+        before v0.23, still gives them, with a ``DeprecationWarning``,
+        until v0.24.
+
+        Examples
+        --------
+        >>> from surpyval import CoxPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = CoxPH.fit(x, df[["fin", "age"]].values, c=c)
+        >>> model.standard_errors().round(4)
+        array([0.1899, 0.0209])
+        """
+        if self._covariance is not None:
+            return standard_errors_of(self._covariance)
+        if self._se is not None:
+            # A model saved before the covariance was stored
+            return onp.asarray(self._se, dtype=float)
+        return standard_errors_of(self.covariance())
 
     def robust_covariance(
         self, cluster: "npt.ArrayLike | None" = None

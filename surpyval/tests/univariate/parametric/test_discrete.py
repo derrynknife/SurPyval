@@ -207,7 +207,12 @@ def test_fitted_model_methods_use_uncorrupted_parameters(dist, params):
     # parameters directly.
     x = dist.random(3000, *params)
     model = dist.fit(x)
-    assert model.p == 1.0  # no limited-failure component was requested
+    # no limited-failure component was requested
+    assert model.lfp_p == 1.0
+    if "p" in dist.param_map:
+        # ``p`` is the distribution's fitted parameter (#608), not the
+        # proportion (it read 1)
+        assert model.p == model.params[dist.param_map["p"]]
     k = np.array([1.0, 2.0, 3.0, 5.0])
     assert np.allclose(model.sf(k), dist.sf(k, *model.params))
     assert np.isclose(model.mean(), dist.mean(*model.params))

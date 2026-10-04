@@ -22,11 +22,12 @@ accelerated age before evaluating the baseline.
 
 To keep the shared, well-tested machinery untouched this module does **not**
 modify ``AFTFitter.fit`` or the shared ``regression_neg_ll``. It builds a fresh
-``AFTFitter`` for the result (so every ordinary prediction function -- ``sf``,
-``Hf``, ``sf_tvc`` -- is inherited unchanged) and overrides only its ``neg_ll``
-with the accumulated-age likelihood on that single instance. The fitted
-``ParametricRegressionModel`` therefore carries the *correct* likelihood, so
-the generic confidence-bound path is right without any change to that code.
+``AFTTVCFitter``, a subclass of ``AFTFitter``, for the result (so every
+ordinary prediction function -- ``sf``, ``Hf``, ``sf_tvc`` -- is inherited
+unchanged) whose only override is ``neg_ll``, the accumulated-age
+likelihood. The fitted ``ParametricRegressionModel`` therefore carries the
+*correct* likelihood, so the generic confidence-bound path is right without
+any change to that code.
 The likelihood is differentiable by autograd, so the fit ends as the ordinary
 one does (``finish_search`` and ``keep_information``): a coefficient with no
 finite maximum is warned of, and the covariance is the exact observed
@@ -37,7 +38,6 @@ information (#555), not a finite-difference Hessian of
 from __future__ import annotations
 
 import functools
-import types
 from typing import Any, Callable
 
 import autograd.numpy as np
@@ -47,6 +47,10 @@ from autograd.extend import defvjp, primitive
 
 from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.univariate.parametric.fitters import bounds_convert
+from surpyval.utils.covariates import (
+    coefficient_floor,
+    renamed_coefficient_keys,
+)
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .._kinds import ACCELERATED_FAILURE_TIME
@@ -157,7 +161,7 @@ def _aft_tvc_neg_ll(self: Any, data: Any, *params: float) -> float:
     Negative log-likelihood of the accelerated-failure-time model along each
     subject's time-varying covariate path.
 
-    Bound (per instance) onto the result's ``AFTFitter`` so it replaces the
+    The ``neg_ll`` of the result's ``AFTTVCFitter``, in place of the
     ordinary independent-rows ``neg_ll`` for this fit only. ``data`` is ignored
     -- the grouped episode arrays captured at fit time live on ``self._tvc`` --
     so the generic confidence-bound path, which re-calls this with the model's
@@ -199,10 +203,12 @@ from .._fit_skeleton import (  # noqa: E402
     MirroredDistributionAttrs,
     alias_coefficients,
     assemble_regression_model,
+    check_baseline_support,
     check_fixed_and_init,
     free_coefficients,
     judge_search,
     keep_information,
+    one_sided_positions,
     optimise_nm_tnc,
     say_verdict,
 )
@@ -258,11 +264,11 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             confidence bounds are correct.
         """
         from ..proportional_hazards.tvc import handle_tvc
-        from .aft_fitter import AFTFitter
+        from .aft_fitter import AFTTVCFitter
 
         x, c_a, n_a, tl, Z_a, ident = handle_tvc(i, xl, xr, c, Z, n)
         return self._fit_tvc_arrays(
-            x, c_a, n_a, tl, Z_a, ident, AFTFitter, fixed, center
+            x, c_a, n_a, tl, Z_a, ident, AFTTVCFitter, fixed, center
         )
 
     def fit_tvc_timeline(
@@ -389,7 +395,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         tl: npt.NDArray,
         Z: npt.NDArray,
         ident: npt.NDArray,
-        AFTFitter: Any,
+        AFTTVCFitter: Any,
         fixed: "dict[str, float] | None",
         center: bool = False,
     ) -> ParametricRegressionModel:
@@ -400,8 +406,20 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             Z = Z.reshape(-1, 1)
         p = Z.shape[1]
         _validate_full_coverage(x, tl, ident)
+        # The exit times inside the baseline's support, as for fit (#565)
+        check_baseline_support(
+            self, SurpyvalData(x, c, n, None, group_and_sort=False)
+        )
         grp = _grouped_episodes(x, c, n, tl, ident)
-        phi_param_map = {"beta_" + str(j): j for j in range(p)}
+        # One coefficient per column, named by its column or ``coef_j``
+        # (#614); the names before v0.23, ``beta_j``, until v0.24.
+        phi_param_map = LogLinearPhi.make_param_map(Z, self.param_map)
+        fixed = renamed_coefficient_keys(
+            fixed,
+            list(phi_param_map),
+            "{}.fit_tvc(fixed=...)".format(self._repr_name()),
+            self.param_map,
+        )
         # A column the data cannot determine is held at 0 and reported as
         # nan, with one warning, as by the ordinary fit (#476).
         fixed = alias_coefficients(
@@ -415,12 +433,11 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         )
         mean = np.zeros(p) if centring is None else centring.center
 
-        # Result fitter: a fresh AFTFitter (so all ordinary prediction
-        # functions are inherited unchanged) with the accumulated-age
-        # likelihood bound onto this one instance only.
-        like = AFTFitter(self.dist)
+        # Result fitter: a fresh AFTTVCFitter, an AFTFitter (so all
+        # ordinary prediction functions are inherited unchanged) whose
+        # likelihood is the accumulated-age one of these episodes.
+        like = AFTTVCFitter(self.dist)
         like._tvc = {**grp, "Zep": Z - mean}
-        like.neg_ll = types.MethodType(_aft_tvc_neg_ll, like)
 
         # Initial values: a plain distribution fit to the subject exit times,
         # regression coefficients at zero.
@@ -441,6 +458,9 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             grp["exit"], bounds, fixed, param_map
         )
         init = transform(init)[not_fixed]
+        coefs = free_coefficients(like, fixed, phi_param_map)
+        # Each coefficient in its own covariate's units (#577)
+        floor = coefficient_floor(len(init), coefs, Z)
 
         with np.errstate(all="ignore"):
 
@@ -449,16 +469,18 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
 
             # The same search as the ordinary AFT fit (the gradient ladder,
             # then Nelder-Mead and TNC), which says what it found below.
-            res = optimise_nm_tnc(fun, init, quiet=True)
+            res = optimise_nm_tnc(fun, init, quiet=True, floor=floor)
             # What it reached, polished where it was not a verified
             # maximum; said once the model is built. The likelihood is one
             # term per subject.
             verdict = judge_search(
                 fun,
                 res,
-                free_coefficients(like, fixed, phi_param_map),
+                coefs,
                 init,
                 float(np.sum(grp["weight"])),
+                floor=floor,
+                one_sided=one_sided_positions(bounds, not_fixed),
             )
             res = verdict.res
 
@@ -478,7 +500,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             # for the ordinary fit; the likelihood of the data as given is
             # the check.
             centring.raw = edata
-            raw = AFTFitter(self.dist)
+            raw = AFTTVCFitter(self.dist)
             raw._tvc = {**grp, "Zep": Z}
             raw_neg_ll = functools.partial(_aft_tvc_neg_ll, raw, None)
 

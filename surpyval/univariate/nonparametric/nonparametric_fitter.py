@@ -11,10 +11,13 @@ from surpyval.univariate.nonparametric.nonparametric import NonParametric
 from surpyval.utils import xcnt_handler, xrd_handler
 from surpyval.utils.data_formats import _handled_xcnt_to_xrd
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
+from surpyval.utils.fitter_repr import FitterRepr
 
 
-class NonParametricFitter(UnivariateDataFrameMixin):
+class NonParametricFitter(FitterRepr, UnivariateDataFrameMixin):
     how: str
+    #: The ``repr``: ``KaplanMeier: non-parametric fitter`` (#614).
+    fitter_kind = "non-parametric fitter"
     # Provided by the Turnbull estimator subclass; only called on the
     # ``how == "Turnbull"`` path.
     _fit: Callable[..., dict[str, Any]]
@@ -66,6 +69,7 @@ class NonParametricFitter(UnivariateDataFrameMixin):
         set_lower_limit: float | None = None,
         tol: float = 1e-10,
         max_iter: int = 1000,
+        turnbull_algorithm: str = "auto",
     ) -> NonParametric:
         r"""
 
@@ -170,13 +174,46 @@ class NonParametricFitter(UnivariateDataFrameMixin):
 
         tol : float, optional
             Turnbull only. The EM stops once the largest change in any
-            interval's probability mass falls below this. Defaults to 1e-10.
+            interval's probability mass falls below this; the EM-ICM
+            (``turnbull_algorithm='EMICM'``) once the Karush-Kuhn-Tucker
+            conditions of the maximum hold to it (see
+            ``turnbull_algorithm``). Defaults to 1e-10.
 
         max_iter : int, optional
-            Turnbull only. Cap on EM iterations; a warning is raised if it
-            is reached before ``tol`` is. Defaults to 1000. Both ``tol`` and
-            ``max_iter`` are kept with the model, and ``bootstrap_cb``
-            refits every resample with them.
+            Turnbull only. Cap on iterations; a warning is raised if it
+            is reached before ``tol`` is. Defaults to 1000. ``tol``,
+            ``max_iter`` and ``turnbull_algorithm`` are kept with the model,
+            and ``bootstrap_cb`` refits every resample with them.
+
+        turnbull_algorithm : str, optional
+            Turnbull only: ``'auto'`` (the default), ``'EMICM'`` for data
+            without truncation and ``'EM'`` with it; ``'EM'``, the
+            self-consistency EM of Turnbull (1976); or ``'EMICM'``, the
+            hybrid EM and iterative convex minorant algorithm of Wellner
+            and Zhan (1997), as R's ``Icens::EMICM`` and
+            ``icenReg::ic_np``, for data without truncation (a
+            ``ValueError`` otherwise). Ignored by the other estimators.
+            The model keeps the algorithm the fit ran.
+
+            On interval-censored data the EM can need tens of thousands
+            of iterations, each moving the masses less than ``tol`` long
+            before they settle: on 1,000 random intervals it stops at the
+            default ``max_iter`` with a warning, 7e-3 from the maximum,
+            and needs 23,516 iterations (and 57,000 with the default
+            ``turnbull_estimator``) to reach ``tol``, still 3e-7 from it.
+            The EM-ICM reaches the maximum in tens of iterations, and stops
+            when it is there: when the Karush-Kuhn-Tucker conditions hold
+            to ``tol`` (the derivative of the log-likelihood in the mass
+            of each innermost interval is at most ``N (1 + tol)``, ``N``
+            the number of units), which puts the log-likelihood within
+            ``N tol`` of its maximum. It computes the non-parametric MLE,
+            the Kaplan-Meier (self-consistent) estimate: with
+            ``turnbull_estimator='Kaplan-Meier'`` it is the EM's answer,
+            converged; with the Nelson-Aalen or Fleming-Harrington option
+            that estimator is applied to the MLE's expected numbers at
+            risk and of failures, as it is under truncation (see
+            ``turnbull_estimator``), which differs slightly from iterating
+            the EM with it.
 
         Returns
         -------
@@ -233,10 +270,12 @@ class NonParametricFitter(UnivariateDataFrameMixin):
             # Imported here as this module is imported by the package
             # __init__ before ``turnbull`` is.
             from surpyval.univariate.nonparametric.turnbull import (
+                check_turnbull_algorithm,
                 check_turnbull_estimator,
             )
 
             check_turnbull_estimator(turnbull_estimator)
+            check_turnbull_algorithm(turnbull_algorithm)
 
         x, c, n, t = xcnt_handler(
             x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr
@@ -266,8 +305,27 @@ class NonParametricFitter(UnivariateDataFrameMixin):
             # resample with the settings this fit used, not the defaults.
             data["tol"] = tol
             data["max_iter"] = max_iter
+            # "auto" kept as the algorithm it chose, which a resample
+            # (with the same truncation) would choose too
+            from surpyval.univariate.nonparametric.turnbull import (
+                resolve_turnbull_algorithm,
+            )
+
+            turnbull_algorithm = resolve_turnbull_algorithm(
+                turnbull_algorithm, t
+            )
+            data["algorithm"] = turnbull_algorithm
             out = NonParametric()
-            t_obj = self._fit(x, c, n, t, turnbull_estimator, tol, max_iter)
+            t_obj = self._fit(
+                x,
+                c,
+                n,
+                t,
+                turnbull_estimator,
+                tol,
+                max_iter,
+                turnbull_algorithm,
+            )
 
             # Truncated fits supply a separate observed-information ladder
             # for the variance (the estimation ladder's ghost events would

@@ -242,9 +242,9 @@ def test_recovers_frailty_variance_for_each_family():
     for family in ("lognormal", "gamma"):
         x, c, Z, g = _simulate(11, family=family, G=150, per=5)
         m = Frailty(Weibull, family=family).fit(x, Z=Z, c=c, groups=g)
-        se = m.standard_errors()
+        se = dict(zip(m.parameter_names, m.standard_errors()))
         assert abs(m.theta - 0.5) < 2.5 * se["theta"], (family, m.theta)
-        assert abs(m.beta[0] - 0.7) < 2.5 * se["beta_0"], (family, m.beta)
+        assert abs(m.beta[0] - 0.7) < 2.5 * se["coef_0"], (family, m.beta)
 
 
 def test_aic_prefers_the_family_the_data_came_from():
@@ -344,3 +344,52 @@ def test_summary_serialisation_and_data_frame():
 def test_unknown_family_raises_a_value_error():
     with pytest.raises(ValueError, match="'family' must be one of"):
         Frailty(Weibull, family="weibull")
+
+
+def test_617_a_huge_cumulative_hazard_does_not_overflow():
+    # The likelihood-ratio searches evaluate the likelihood far out (a
+    # group's H of 1e200): the check for a negligible theta squared it,
+    # an OverflowError for a Python float.
+    D = np.array([0.0, 2.0])
+    with np.errstate(all="ignore"):
+        value = lognormal_log_integral(D, np.full(2, 1e200), 0.5)
+    assert np.all(np.isfinite(value)) and np.all(value < -1e5)
+    # Still the no-frailty limit -H for a negligible theta.
+    assert lognormal_log_integral(D, np.full(2, 3.0), 1e-20).tolist() == [
+        -3.0,
+        -3.0,
+    ]
+
+
+def test_a_huge_theta_keeps_the_mode():
+    # The mode theta D - omega cancelled where theta D is large: at
+    # theta = e^50 it was 0 for every group, the log-integral of a group
+    # with 10 events was 30 too low, and so the likelihood-ratio searches
+    # found a spurious maximum far out (below). For a large theta the
+    # integral tends to Gamma(D) H^-D / sqrt(2 pi theta).
+    from scipy.special import gammaln
+
+    D, H = np.array([1.0, 3.0, 10.0]), np.array([1.0, 2.0, 0.5])
+    mode, _ = lognormal_mode(D, H, np.exp(50.0))
+    np.testing.assert_allclose(mode, np.log(D / H), rtol=1e-12)
+    for theta in (np.exp(30.0), np.exp(50.0), np.exp(100.0)):
+        limit = gammaln(D) - D * np.log(H) - 0.5 * np.log(2 * np.pi * theta)
+        np.testing.assert_allclose(
+            lognormal_log_integral(D, H, theta), limit, atol=1e-4
+        )
+
+
+def test_lr_bound_on_theta_is_not_run_off_by_rounding():
+    # With no frailty in the data the profile deviance of theta crosses
+    # 3.84 near 0.375; the 95% and 99% upper bounds were 7e275 and
+    # 6.7e275 (the 99% inside the 95%), a region the cancelled mode made.
+    from surpyval.tests.conformance.registry import CASE_BY_NAME, fitted
+
+    model = fitted(CASE_BY_NAME["WeibullFrailty[lognormal]"])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        upper = [
+            model.param_cb("theta", alpha_ci=a, method="lr")[1]
+            for a in (0.1, 0.05, 0.01)
+        ]
+    assert 0.2 < upper[0] < upper[1] < upper[2] < 2.0, upper

@@ -7,8 +7,12 @@ import numpy as np
 # ``surpyval.utils.linalg`` -- shared with the parametric-regression
 # bounds machinery, which used to carry verbatim copies of them (the
 # drift-prone pattern that produced #288).
-from surpyval.univariate.information_criteria import ic_sample_size
-from surpyval.utils.deprecation import RenamedAttribute
+from surpyval.univariate.information_criteria import (
+    corrected_aic,
+    ic_sample_size,
+)
+from surpyval.utils.covariates import renamed_coefficient
+from surpyval.utils.deprecation import MethodFloat
 from surpyval.utils.linalg import numerical_hessian, wald_bound_on_support
 from surpyval.utils.warnings import warn_no_covariance
 
@@ -134,10 +138,6 @@ class LikelihoodInferenceMixin:
         """
         return list(self._parameter_names())
 
-    # ``param_names``, the pre-0.22 name of ``parameter_names``, reads it
-    # for one release, with a DeprecationWarning.
-    param_names = RenamedAttribute("parameter_names")
-
     @property
     def log_likelihood(self) -> float:
         """
@@ -147,18 +147,33 @@ class LikelihoodInferenceMixin:
         self._check_fitted()
         return -float(self._neg_ll(self._mle_values()))
 
+    def neg_ll(self) -> float:
+        """
+        The negative of the maximised log-likelihood, ``-log_likelihood``,
+        as on every other fitted model (#572).
+        """
+        return -self.log_likelihood
+
     @property
-    def aic(self) -> float:
+    def aic(self) -> MethodFloat:
         """
         Akaike's information criterion, :math:`2k - 2\\ln L`, with ``k`` the
-        number of fitted parameters. Lower is better.
+        number of fitted parameters. Lower is better. Call it,
+        ``model.aic()``, as on every other fitted model.
+
+        .. versionchanged:: 0.23
+           ``aic`` is a method, as on every other model (#572); the
+           property's spelling, ``model.aic`` without the call, still
+           gives the number until v0.24, with a ``DeprecationWarning``.
         """
         self._check_fitted()
         k = int(self._estimated().sum())
-        return 2.0 * k - 2.0 * self.log_likelihood
+        return MethodFloat(
+            2.0 * k - 2.0 * self.log_likelihood, type(self).__name__ + ".aic"
+        )
 
     @property
-    def bic(self) -> float:
+    def bic(self) -> MethodFloat:
         """
         The Bayesian information criterion, :math:`k \\ln n - 2\\ln L`,
         with ``n`` the number of observed events the model was fitted to:
@@ -166,11 +181,31 @@ class LikelihoodInferenceMixin:
         number of events they hold. End-of-observation rows do not add to
         it, and with no observed event it is the number of rows -- the
         rule of BIC everywhere in SurPyval (see :func:`bic_sample_size`).
-        Lower is better.
+        Lower is better. Call it, ``model.bic()``, as on every other
+        fitted model.
+
+        .. versionchanged:: 0.23
+           ``bic`` is a method, as on every other model (#572); the
+           property's spelling still gives the number until v0.24, with a
+           ``DeprecationWarning``.
         """
         self._check_fitted()
         k = int(self._estimated().sum())
-        return k * np.log(self._n_obs) - 2.0 * self.log_likelihood
+        return MethodFloat(
+            k * np.log(self._n_obs) - 2.0 * self.log_likelihood,
+            type(self).__name__ + ".bic",
+        )
+
+    def aic_c(self) -> float:
+        """
+        The small-sample corrected AIC, ``aic() + (2k^2 + 2k) / (n - k -
+        1)``, with the ``k`` of :meth:`aic` and the ``n`` of :meth:`bic`;
+        ``nan`` where ``n <= k + 1`` (``corrected_aic``), as on every
+        other model (#605).
+        """
+        self._check_fitted()
+        k = int(self._estimated().sum())
+        return corrected_aic(self.aic(), k, self._n_obs)
 
     def covariance(self) -> np.ndarray:
         """
@@ -265,6 +300,10 @@ class LikelihoodInferenceMixin:
         """
         self._check_fitted()
         names = self.parameter_names
+        coefficients = getattr(self, "_coefficient_names", None)
+        if coefficients is not None:
+            # A coefficient's name before v0.23, ``beta_j``, until v0.24
+            name = renamed_coefficient(name, coefficients(), "param_cb", names)
         if name not in names:
             raise ValueError(
                 "Unknown parameter {!r}; expected one of {}".format(

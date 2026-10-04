@@ -77,7 +77,7 @@ def _starve_ah(monkeypatch):
     monkeypatch.setattr(
         additive_hazards_fitter.AdditiveHazardsFitter,
         "_gradient_first",
-        lambda self, fun, true_neg_ll, init, n_obs: (None, False),
+        lambda self, fun, true_neg_ll, init, n_obs, **kw: (None, False),
     )
     monkeypatch.setattr(
         additive_hazards_fitter, "verify_or_polish", unverified
@@ -86,13 +86,14 @@ def _starve_ah(monkeypatch):
 
 def _starve_ladder(monkeypatch):
     # The regression optimiser ladder stops short, unconverged.
-    def stuck(fun, x0, **kwargs):
+    def stuck(fun, x0, *args, **kwargs):
         return OptimizeResult(
             x=np.asarray(x0), fun=fun(x0), success=False, message="forced"
         )
 
     monkeypatch.setattr(_fit_skeleton, "preconditioned_bfgs", stuck)
     monkeypatch.setattr(_fit_skeleton, "minimize", stuck)
+    monkeypatch.setattr(_fit_skeleton, "minimize_with_gradient", stuck)
 
 
 _CASES = {
@@ -142,7 +143,9 @@ def test_the_univariate_precision_loss_says_so_in_the_same_words(
 
         return search
 
-    monkeypatch.setattr(mle, "minimize", lost(mle.minimize))
+    monkeypatch.setattr(
+        mle, "minimize_with_gradient", lost(mle.minimize_with_gradient)
+    )
     monkeypatch.setattr(
         mle, "preconditioned_bfgs", lost(mle.preconditioned_bfgs)
     )

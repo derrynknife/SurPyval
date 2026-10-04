@@ -147,7 +147,7 @@ def test_covariance_reads_no_numerical_hessian_and_is_kept(monkeypatch):
     model = _registry("WeibullPH")
     model.standard_errors()
     model.cb([5.0, 10.0], Z=[1.0, 0.0])
-    model.param_cb("beta_0")
+    model.param_cb("coef_0")
     assert calls == []
     # Without the exact Hessian it is differenced, once, and then kept.
     model._information = None
@@ -223,8 +223,8 @@ def test_aft_time_varying_fit_keeps_the_exact_information(monkeypatch):
         # Z = 0 (the jacobian carries the covariance over)
         ("WeibullPH", {"fixed": {"beta": 1.8}}, True),
         # a coefficient fixed: a zero row and column (mapped, and not)
-        ("WeibullAFT", {"fixed": {"beta_0": -0.5}}, True),
-        ("LogNormalPH", {"fixed": {"beta_1": -0.7}}, False),
+        ("WeibullAFT", {"fixed": {"coef_0": -0.5}}, True),
+        ("LogNormalPH", {"fixed": {"coef_1": -0.7}}, False),
         # a baseline parameter the map moves, fixed: not centred
         ("WeibullPH", {"fixed": {"alpha": 9.0}}, False),
         # the baseline kept at the covariate means
@@ -365,7 +365,7 @@ def test_frailty_uses_the_exact_hessian(monkeypatch, name):
     monkeypatch.setattr(frailty, "natural_information", keeping)
     calls = _count_numerical(monkeypatch, frailty)
     model = _fit(lambda: fitter.fit(**_frailty_data()))
-    assert calls == [] and model.covariance is not None
+    assert calls == [] and model.covariance() is not None
     # (a Gamma baseline to the accuracy of its shape derivatives, as above)
     _assert_same_hessian(
         kept[-1],
@@ -376,8 +376,8 @@ def test_frailty_uses_the_exact_hessian(monkeypatch, name):
     numerical = _fit(lambda: fitter.fit(**_frailty_data()))
     assert len(calls) == 1
     np.testing.assert_allclose(
-        np.sqrt(np.diag(model.covariance)),
-        np.sqrt(np.diag(numerical.covariance)),
+        np.sqrt(np.diag(model.covariance())),
+        np.sqrt(np.diag(numerical.covariance())),
         rtol=1e-4,
     )
 
@@ -405,7 +405,7 @@ def test_frailty_variance_at_its_limit_falls_back(monkeypatch, name):
     # bits of theta (the Weibull's at 2.8e-17 here; the Gamma's and the
     # Exponential's on some CPUs), so either covariance is accepted.
     assert model.theta < 1e-15 and len(calls) in (0, 1)
-    assert np.all(np.isfinite(model.covariance))
+    assert np.all(np.isfinite(model.covariance()))
 
 
 def test_fine_gray_standard_errors_come_from_the_check(monkeypatch):
@@ -431,4 +431,4 @@ def test_fine_gray_standard_errors_come_from_the_check(monkeypatch):
     neg_ll, beta = seen[0]
     np.testing.assert_array_equal(beta, model.beta)
     direct = np.linalg.inv(original(neg_ll)(beta))
-    np.testing.assert_allclose(model.cov, direct, rtol=1e-10, atol=0)
+    np.testing.assert_allclose(model.covariance(), direct, rtol=1e-10, atol=0)

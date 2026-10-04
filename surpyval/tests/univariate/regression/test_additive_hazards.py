@@ -75,7 +75,9 @@ def test_recovers_known_beta():
     x, c, Z = _simulate(20000, 1)
     model = AdditiveHazards.fit(x, Z, c=c)
     assert np.allclose(model.beta, [0.30, -0.15], atol=0.02)
-    assert np.all(np.abs(model.beta - [0.30, -0.15]) < 3 * model.se)
+    assert np.all(
+        np.abs(model.beta - [0.30, -0.15]) < 3 * model.standard_errors()
+    )
 
 
 def test_sandwich_se_matches_empirical_spread():
@@ -86,7 +88,7 @@ def test_sandwich_se_matches_empirical_spread():
         x, c, Z = _simulate(1500, 100 + s)
         model = AdditiveHazards.fit(x, Z, c=c)
         ests.append(model.beta)
-        ses.append(model.se)
+        ses.append(model.standard_errors())
     empirical_sd = np.std(ests, axis=0)
     mean_se = np.mean(ses, axis=0)
     assert np.allclose(empirical_sd, mean_se, rtol=0.2)
@@ -99,7 +101,9 @@ def test_p_values_shape_and_significance():
     # Both effects are real and the sample is large, so both are significant.
     assert np.all(model.p_values < 0.05)
     assert model.covariance().shape == (2, 2)
-    assert np.allclose(model.standard_errors(), np.sqrt(np.diag(model.cov)))
+    assert np.allclose(
+        model.standard_errors(), np.sqrt(np.diag(model.covariance()))
+    )
 
 
 def test_counts_equivalent_to_repeated_rows():
@@ -306,4 +310,19 @@ def test_lin_ying_predictions_inside_the_data_are_the_estimate():
     )
     np.testing.assert_allclose(
         model.sf([20, 52], [1, 25, 3]), [0.9269, 0.7725], atol=5e-5
+    )
+
+
+def test_605_cov_is_deprecated_for_covariance():
+    df = load_rossi_static()
+    model = AdditiveHazards.fit(
+        df["week"].values, df[["fin", "age"]].values, c=1 - df["arrest"].values
+    )
+    with pytest.warns(DeprecationWarning, match=r"use 'covariance\(\)'"):
+        np.testing.assert_array_equal(model.cov, model.covariance())
+    d = model.to_dict()
+    assert "covariance" in d and "cov" not in d
+    d["cov"] = d.pop("covariance")
+    np.testing.assert_array_equal(
+        sp.from_dict(d).covariance(), model.covariance()
     )

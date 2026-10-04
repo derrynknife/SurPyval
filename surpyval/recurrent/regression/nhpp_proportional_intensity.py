@@ -13,9 +13,16 @@ from surpyval.recurrent.parametric import Duane
 from surpyval.recurrent.parametric.counting_process import CountingProcess
 from surpyval.recurrent.parametric.nhpp_fitter import nhpp_log_likelihood
 from surpyval.univariate.parametric.fitters import verify_or_polish
+from surpyval.univariate.regression._aliasing import (
+    dataframe_covariates,
+    fit_columns,
+)
+from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_unverified
+from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 
 from .proportional_intensity import (
@@ -25,7 +32,7 @@ from .proportional_intensity import (
 
 
 @singleton_fitter
-class ProportionalIntensityNHPP(RecurrentRegressionDataFrameMixin):
+class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
     """
     Proportional-intensity regression on a non-homogeneous Poisson
     process: each item's intensity is a parametric baseline intensity
@@ -81,9 +88,15 @@ class ProportionalIntensityNHPP(RecurrentRegressionDataFrameMixin):
         b  :  0.008010947012813689
     <BLANKLINE>
     Covariate Coefficients:
-       beta_0  :  0.45194475814452534
+       coef_0  :  0.45194475814452534
     <BLANKLINE>
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "proportional intensity fitter"
+
+    def _repr_details(self) -> "list[str]":
+        return ["NHPP baseline"]
 
     def create_negll_func(self, data: Any, dist: Any) -> Callable:
         Z = data.Z
@@ -187,6 +200,8 @@ class ProportionalIntensityNHPP(RecurrentRegressionDataFrameMixin):
         out = ProportionalIntensityModel()
         out.dist = dist
         out.data = data
+        # The covariates' columns name the coefficients (#614)
+        out.feature_names = fit_columns()
 
         num_covariates = data.Z.shape[1]
         expected = len(dist.parameter_names) + num_covariates
@@ -267,8 +282,22 @@ class ProportionalIntensityNHPP(RecurrentRegressionDataFrameMixin):
         # said otherwise (principle 13).
         verified = False
         if res.fun < 1e300:
+            # Each coefficient judged in its own covariate's units (#577)
+            floor = coefficient_floor(
+                int(free.sum()),
+                [
+                    (int(free[:j].sum()), j - n_dist)
+                    for j in range(n_dist, expected)
+                    if free[j]
+                ],
+                data.Z,
+            )
             res, verified = verify_or_polish(
-                objective, res, bic_sample_size(data), numerical=True
+                objective,
+                res,
+                bic_sample_size(data),
+                numerical=True,
+                floor=floor,
             )
         out.maximum = "verified" if verified else "unverified"
         if not verified:
@@ -289,12 +318,16 @@ class ProportionalIntensityNHPP(RecurrentRegressionDataFrameMixin):
         # The likelihood is in natural parameter space, so the full fitted
         # vector ``[*dist_params, *coeffs]`` is the MLE the shared inference
         # machinery needs for AIC/BIC/standard errors.
-        out._neg_ll = neg_ll
+        # Kept as what it is built from, so the model pickles (#573)
+        out._neg_ll = Rebuilt(
+            self.create_negll_func, (data, dist), built=neg_ll
+        )
         out._mle = fitted
         out._n_obs = bic_sample_size(data)
 
         return out
 
+    @dataframe_covariates
     def fit(
         self,
         x: ArrayLike,

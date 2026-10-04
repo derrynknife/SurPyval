@@ -40,12 +40,14 @@ the left limits equal :math:`G(t)` and :math:`G(x_i)`.
 
 from __future__ import annotations
 
+import functools
 from typing import Any, Callable, NamedTuple
 
 import numpy as np
 import numpy.typing as npt
 from autograd import hessian
 from autograd import numpy as anp
+from autograd.tracer import getval
 from scipy.optimize import OptimizeResult, minimize
 from scipy.stats import norm
 
@@ -60,9 +62,12 @@ from surpyval.univariate.competing_risks.labels import (
     label_mask,
     ordered_labels,
 )
+from surpyval.univariate.information_criteria import InformationCriteriaMixin
 from surpyval.univariate.regression._aliasing import (
     aliased_columns,
     constant_columns,
+    covariate_columns,
+    dataframe_covariates,
     expand,
     warn_aliased,
 )
@@ -71,6 +76,10 @@ from surpyval.univariate.regression._fit_skeleton import (
     baseline_at_origin_error,
     judge_search,
 )
+from surpyval.univariate.regression._summary import coefficient_names
+from surpyval.univariate.regression.proportional_hazards.cox_likelihood import (  # noqa: E501
+    newton_raphson,
+)
 from surpyval.univariate.regression.proportional_hazards.cox_ph import (
     warn_monotone,
 )
@@ -78,6 +87,7 @@ from surpyval.univariate.regression.regression_data import (
     LinearPredictorMixin,
 )
 from surpyval.utils import validate_fine_gray_inputs
+from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import (
     call_fit,
     cause_column,
@@ -85,6 +95,8 @@ from surpyval.utils.dataframe import (
     frame_columns,
     require_frame,
 )
+from surpyval.utils.deprecation import RenamedToMethod
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.ipcw import censoring_survival, step_at, step_left_limit
 from surpyval.utils.linalg import safe_inv
 from surpyval.utils.no_maximum import (
@@ -98,6 +110,33 @@ from surpyval.utils.validation import (
     missing_cause_error,
     unknown_cause_error,
 )
+
+#: Newton-Raphson's convergence tolerance, in standard errors of the step
+#: (``newton_raphson``), CoxPH's default.
+_NEWTON_TOL = 1e-10
+
+
+def _weighted_neg_ll(
+    n_sorted: npt.NDArray,
+    sets: Any,
+    denom0: npt.NDArray,
+    Zk: npt.NDArray,
+    nZk_event: npt.NDArray,
+    beta: Any,
+) -> Any:
+    """The weighted negative partial log-likelihood at ``beta``, less its
+    value at 0 (see ``_fit_cause``), differentiable by autograd. The linear
+    predictor is shifted by its largest value inside the risk-set sums and
+    the shift added back outside the logarithm, so ``exp(beta'Z)`` cannot
+    overflow (#606)."""
+    eta = anp.dot(Zk, beta)
+    shift = float(np.max(getval(eta))) if eta.size else 0.0
+    weighted_exp = n_sorted * anp.exp(eta - shift)
+    denom = _risk_set_sums(weighted_exp, sets)
+    ll = anp.dot(nZk_event, beta) - anp.sum(
+        sets.d * (anp.log(denom / denom0) + shift)
+    )
+    return -ll
 
 
 def _fit_cause(
@@ -164,37 +203,64 @@ def _fit_cause(
 
     def partial_neg_ll(Zk: npt.NDArray, nZk_event: npt.NDArray) -> tuple:
         """The objective, differentiable by autograd (the no-maximum check
-        and the information take its derivatives), and the objective with
+        and the information take its derivatives); the objective with
         its gradient for BFGS, ``-(nZ_event - sum_j d_j S1_j / S0_j)``
         (``S1`` the risk-set sums of ``w Z``), by hand: a fit of 1e5 rows
-        took 1.2 s with autograd's gradient, 0.7 s with this."""
+        took 1.2 s with autograd's gradient, 0.7 s with this; and the
+        gradient with the information, by hand, for Newton-Raphson.
 
-        def neg_ll(beta: Any) -> Any:
-            weighted_exp = n_sorted * anp.exp(anp.dot(Zk, beta))
-            denom = _risk_set_sums(weighted_exp, sets)
-            ll = anp.dot(nZk_event, beta) - anp.sum(
-                sets.d * anp.log(denom / denom0)
-            )
-            return -ll
+        Each shifts the linear predictor by its largest value inside the
+        risk-set sums and adds the shift back outside the logarithm, as
+        ``CoxPH`` does, so ``exp(beta'Z)`` cannot overflow at any
+        coefficients: on covariates of order 1e4 it did at the search's
+        first step, and the fit failed ("SVD did not converge", #606). The
+        objective is a ``functools.partial`` of a module-level function,
+        not a closure, so the model, which keeps it, pickles (#573)."""
+        neg_ll = functools.partial(
+            _weighted_neg_ll, n_sorted, sets, denom0, Zk, nZk_event
+        )
+
+        def shifted(beta: npt.NDArray) -> tuple:
+            # The weights e^(eta - shift), their risk-set sums and the shift
+            eta = Zk @ beta
+            shift = float(eta.max()) if eta.size else 0.0
+            weighted_exp = n_sorted * np.exp(eta - shift)
+            return weighted_exp, _risk_set_sums(weighted_exp, sets), shift
 
         def value_and_gradient(beta: npt.NDArray) -> tuple:
-            weighted_exp = n_sorted * np.exp(Zk @ beta)
-            denom = _risk_set_sums(weighted_exp, sets)
+            weighted_exp, denom, shift = shifted(beta)
             value = -(
-                nZk_event @ beta - np.sum(sets.d * np.log(denom / denom0))
+                nZk_event @ beta
+                - np.sum(sets.d * (np.log(denom / denom0) + shift))
             )
             # sum_j d_j S1_j / S0_j = sum_i w_i Z_i sum_j W_ji d_j / S0_j
             weights = _risk_set_weights(sets.d / denom, sets)
             gradient = -(nZk_event - Zk.T @ (weighted_exp * weights))
             return value, gradient
 
-        return neg_ll, value_and_gradient
+        def gradient_and_information(beta: npt.NDArray) -> tuple:
+            # The information sum_j d_j (S2_j / S0_j - M_j M_j'), M_j =
+            # S1_j / S0_j, in O(N p^2) as at beta = 0
+            # (_information_at_zero); the shift cancels in every ratio.
+            weighted_exp, denom, _ = shifted(beta)
+            a = weighted_exp * _risk_set_weights(sets.d / denom, sets)
+            M = _risk_set_sums((weighted_exp[:, None] * Zk).T, sets).T
+            M = M / denom[:, None]
+            gradient = -(nZk_event - Zk.T @ a)
+            information = Zk.T @ (a[:, None] * Zk) - M.T @ (
+                sets.d[:, None] * M
+            )
+            return gradient, information
+
+        return neg_ll, value_and_gradient, gradient_and_information
 
     # Coefficients the weighted partial likelihood does not depend on are
     # aliased, as CoxPH's are (#476): fitted on the other columns, and
     # reported as nan.
     p = Z.shape[1]
-    neg_ll, value_and_gradient = partial_neg_ll(Z_sorted, nZ_event)
+    neg_ll, value_and_gradient, newton_derivatives = partial_neg_ll(
+        Z_sorted, nZ_event
+    )
     aliased = aliased_columns(
         _information_at_zero(Z_sorted, n_sorted, sets),
         Z.shape[0],
@@ -209,26 +275,49 @@ def _fit_cause(
             "column, or a linear combination of the others within the "
             "risk sets, as the columns of every level of a factor are)",
         )
-        neg_ll, value_and_gradient = partial_neg_ll(
+        neg_ll, value_and_gradient, newton_derivatives = partial_neg_ll(
             Z_sorted[:, kept], nZ_event[kept]
         )
 
     beta0 = np.zeros(kept.size)
     if kept.size:
-        res = minimize(value_and_gradient, beta0, jac=True, method="BFGS")
+        # Newton-Raphson with step-halving, as cmprsk::crr and CoxPH: its
+        # steps are those of the covariates' own units, whatever they are,
+        # where BFGS's first step is 1 in each coefficient, which on a
+        # covariate of order 1e4 moved the linear predictor by 1e4 (#606).
+        # It gives up where the likelihood has no finite maximum, and BFGS
+        # takes over, as before.
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            score0, information0 = newton_derivatives(beta0)
+            res = newton_raphson(
+                lambda b: value_and_gradient(b)[0],
+                newton_derivatives,
+                beta0,
+                _NEWTON_TOL,
+                score0,
+                information0,
+            )
+        if res is None:
+            res = minimize(value_and_gradient, beta0, jac=True, method="BFGS")
         # A covariate that separates the events of interest from the rest
         # (a level with none of them) drives its coefficient to infinity;
         # BFGS stops where the rise is below its tolerance and reports
         # success (-12.9 on such data). Newton's method cannot converge
         # from there, which is what the check finds (#392). Otherwise the
         # answer must be a verified maximum, polished if it is not (BFGS's
-        # absolute tolerance on the gradient is not scale free).
+        # absolute tolerance on the gradient is not scale free), each
+        # coefficient in its own covariate's units (#577).
         verdict = judge_search(
             neg_ll,
             res,
             [(k, int(kept[k])) for k in range(kept.size)],
             beta0,
             float(n_event.sum()),
+            floor=coefficient_floor(
+                kept.size,
+                [(k, k) for k in range(kept.size)],
+                Z_sorted[:, kept],
+            ),
         )
         res, derivatives = verdict.res, verdict.derivatives
         runaway, maximum = verdict.runaway, verdict.maximum
@@ -283,6 +372,9 @@ def _fit_cause(
         "baseline_times": uniq_t,
         "baseline_cumhaz": baseline_cumhaz,
         "neg_ll": float(res.fun),
+        # BIC's sample size: the events of interest, the terms of the
+        # partial likelihood (#604; Kuk and Varadhan's BIC_cr).
+        "ic_n": float(n_event.sum()),
         "res": res,
         "runaway": runaway,
         "maximum": maximum,
@@ -507,13 +599,24 @@ def paired_covariate_rows(Z: npt.ArrayLike, n_x: int, p: int) -> npt.NDArray:
     return np.broadcast_to(Z_arr, (n_x, p))
 
 
-class FineGrayModel(LinearPredictorMixin, SerialisableMixin):
+class FineGrayModel(
+    InformationCriteriaMixin, LinearPredictorMixin, SerialisableMixin
+):
     """
     A fitted Fine-Gray subdistribution-hazard model for one cause of interest.
 
     The natural prediction is the cumulative incidence function :meth:`cif`;
     ``coefficients``/``se``/``p_values`` describe the (log) subdistribution
     hazard ratios.
+
+    ``log_likelihood`` is the maximised weighted partial log-likelihood
+    (``cmprsk::crr``'s ``loglik``), ``neg_ll()`` its negative, and
+    :meth:`aic`, :meth:`aic_c` and :meth:`bic` penalise it by the
+    estimated coefficients, BIC's sample size being the events of the
+    cause of interest (#604). They compare Fine-Gray models of the same
+    cause on the same data; the weighted partial likelihood is not the
+    likelihood of the data, so they do not compare it with another kind
+    of model.
     """
 
     #: The cause of interest the subdistribution hazard is of.
@@ -521,9 +624,15 @@ class FineGrayModel(LinearPredictorMixin, SerialisableMixin):
     #: The coefficients (``beta``, the log subdistribution hazard
     #: ratios), their standard errors, Wald p-values and covariance.
     coefficients: npt.NDArray
-    se: npt.NDArray
+    #: The coefficients' standard errors, ``standard_errors()``.
+    _se: npt.NDArray
+    #: ``standard_errors()``'s name before v0.23, for one release (#613).
+    se = RenamedToMethod("standard_errors", "_se")
     p_values: npt.NDArray
-    cov: npt.NDArray
+    #: The coefficients' covariance, ``covariance()`` (#605).
+    _covariance: npt.NDArray
+    #: ``covariance()``'s name before v0.23, for one release.
+    cov = RenamedToMethod("covariance", "_covariance")
     #: The baseline subdistribution cumulative hazard: its step times and
     #: values.
     _times: npt.NDArray
@@ -540,6 +649,10 @@ class FineGrayModel(LinearPredictorMixin, SerialisableMixin):
     #: the coefficients it did not alias, on the centred covariates (less
     #: its value at 0); ``None`` on a restored model (not saved).
     _objective: "Callable | None"
+    #: The covariates' column names (a DataFrame ``Z`` or
+    #: ``fit_from_df``), which name the coefficients (#614); ``None``
+    #: for an array ``Z``, whose coefficients are ``coef_0``, ...
+    feature_names: "list[str] | None" = None
 
     def __init__(self, fit: dict) -> None:
         self.cause = fit["cause"]
@@ -551,12 +664,13 @@ class FineGrayModel(LinearPredictorMixin, SerialisableMixin):
         self.center = np.asarray(
             fit.get("center", np.zeros(np.size(fit["beta"]))), dtype=float
         )
-        self.se = fit["se"]
+        self._se = fit["se"]
         self.p_values = fit["p_values"]
-        self.cov = fit["cov"]
+        self._covariance = fit["cov"]
         self._times = fit["baseline_times"]
         self._cumhaz = fit["baseline_cumhaz"]
         self._neg_ll = fit["neg_ll"]
+        self._ic_n = fit.get("ic_n")
         self.res = fit["res"]
         self.maximum = fit.get("maximum", "unknown")
         self._objective = fit.get("objective")
@@ -565,6 +679,30 @@ class FineGrayModel(LinearPredictorMixin, SerialisableMixin):
         "a constant column, which the baseline subdistribution hazard "
         "absorbs, or a linear combination of the others"
     )
+
+    def covariance(self) -> npt.NDArray:
+        """The coefficients' covariance: the inverse of the weighted
+        partial likelihood's information at the fit (a ``nan`` row and
+        column for an aliased coefficient). ``cov``, its name before
+        v0.23, still gives it, with a ``DeprecationWarning``, until
+        v0.24."""
+        return self._covariance
+
+    def standard_errors(self) -> npt.NDArray:
+        """The coefficients' standard errors, from :meth:`covariance`.
+        ``se``, the attribute before v0.23, still gives them, with a
+        ``DeprecationWarning``, until v0.24."""
+        return self._se
+
+    def _ic_k(self) -> int:
+        # The estimated coefficients (an aliased one, nan, is not).
+        return int(np.isfinite(np.asarray(self.beta, dtype=float)).sum())
+
+    def _ic_sample_size_from_data(self) -> float:
+        raise ValueError(
+            "A Fine-Gray model saved before v0.23 does not store its number "
+            "of events of interest, BIC's sample size; refit it."
+        )
 
     # -- serialisation -----------------------------------------------------
 
@@ -586,16 +724,22 @@ class FineGrayModel(LinearPredictorMixin, SerialisableMixin):
             # native type: a numpy scalar label breaks JSON/BSON
             "cause": to_native(self.cause),
             "beta": np.asarray(self.beta, dtype=float).tolist(),
-            "se": np.asarray(self.se, dtype=float).tolist(),
+            "se": np.asarray(self._se, dtype=float).tolist(),
             "p_values": np.asarray(self.p_values, dtype=float).tolist(),
-            "cov": np.asarray(self.cov, dtype=float).tolist(),
+            # The key every model's dict stores it under (#605).
+            "covariance": np.asarray(self._covariance, dtype=float).tolist(),
             "baseline_times": np.asarray(self._times, dtype=float).tolist(),
             "baseline_cumhaz": np.asarray(self._cumhaz, dtype=float).tolist(),
-            "neg_ll": float(self._neg_ll),
+            # The key every model's dict stores it under (#605).
+            "_neg_ll": float(self._neg_ll),
             **maximum_entry(self.maximum),
         }
+        if self._ic_n is not None:
+            out["ic_n"] = float(self._ic_n)
         if np.any(self.center):
             out["center"] = np.asarray(self.center, dtype=float).tolist()
+        if self.feature_names is not None:
+            out["feature_names"] = list(self.feature_names)
         return stamp_schema(out)
 
     @classmethod
@@ -613,25 +757,36 @@ class FineGrayModel(LinearPredictorMixin, SerialisableMixin):
                 "The model dict's 'center' has {} value(s) for {} "
                 "coefficient(s).".format(center.size, beta.size)
             )
-        return cls(
+        out = cls(
             {
                 "cause": label_from_native(model_dict["cause"]),
                 "beta": beta,
                 "center": center,
                 "se": np.array(model_dict["se"], dtype=float),
                 "p_values": np.array(model_dict["p_values"], dtype=float),
-                "cov": np.array(model_dict["cov"], dtype=float),
+                # "cov" is the key of a dict written before v0.23.
+                "cov": np.array(
+                    model_dict.get("covariance", model_dict.get("cov")),
+                    dtype=float,
+                ),
                 "baseline_times": np.array(
                     model_dict["baseline_times"], dtype=float
                 ),
                 "baseline_cumhaz": np.array(
                     model_dict["baseline_cumhaz"], dtype=float
                 ),
-                "neg_ll": model_dict["neg_ll"],
+                # "neg_ll" is the key of a dict written before v0.23.
+                "neg_ll": model_dict.get(
+                    "_neg_ll", model_dict.get("neg_ll", np.nan)
+                ),
+                "ic_n": cls._restored_ic_n(model_dict),
                 "res": None,
                 "maximum": restored_maximum(model_dict),
             }
         )
+        names = model_dict.get("feature_names")
+        out.feature_names = None if names is None else list(names)
+        return out
 
     def phi(self, Z: npt.ArrayLike) -> npt.NDArray:
         """The subdistribution hazard multiplier
@@ -682,12 +837,13 @@ class FineGrayModel(LinearPredictorMixin, SerialisableMixin):
             f"Cause of interest   : {self.cause}",
             "Coefficients (beta'Z acts on the subdistribution hazard):",
         ]
-        for i, (b, s, p) in enumerate(zip(self.beta, self.se, self.p_values)):
-            lines.append(f"   beta_{i}  :  {b: .6f}  (se {s:.6f}, p {p:.4f})")
+        names = coefficient_names(self, np.size(self.beta))
+        for nm, b, s, p in zip(names, self.beta, self._se, self.p_values):
+            lines.append(f"   {nm}  :  {b: .6f}  (se {s:.6f}, p {p:.4f})")
         return "\n".join(lines)
 
 
-class FineGray_:
+class FineGray_(FitterRepr):
     """
     The Fine-Gray subdistribution-hazards regression for one cause of a
     competing-risks problem: the covariates act proportionally on the
@@ -709,6 +865,9 @@ class FineGray_:
     class; its ``fit`` returns a
     :class:`~surpyval.univariate.competing_risks.regression.fine_gray.FineGrayModel`.
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "semi-parametric subdistribution hazards fitter"
 
     def fit_from_df(
         self,
@@ -785,8 +944,14 @@ class FineGray_:
             arrays["n"] = frame_column(df, n_col, "n_col")
         names = {"x": "x_col", "Z": "Z_cols", "e": "e_col"}
         names |= {"c": "c_col", "n": "n_col"}
-        return call_fit(self, arrays, names, fit_options)
+        # The columns name the coefficients (#614)
+        columns = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
+        with covariate_columns(columns):
+            model = call_fit(self, arrays, names, fit_options)
+        model.feature_names = [str(column) for column in columns]
+        return model
 
+    @dataframe_covariates
     def fit(
         self,
         x: npt.ArrayLike,

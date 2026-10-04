@@ -475,3 +475,122 @@ def test_frailty_predicts_nan_for_a_missing_group():
     model = sp.WeibullFrailty.fit(x, Z=Z, groups=groups, init=[8, 2, 0, 0.5])
     assert np.isnan(model.sf([5.0, 6.0], [1.0], group=np.nan)).all()
     assert np.isfinite(model.sf(5.0, [1.0], group=groups[0]))
+
+
+def test_605_covariance_is_a_method_and_the_attribute_deprecated():
+    x, c, Z, groups = _sim()
+    m = WeibullFrailty.fit(x=x, Z=Z, c=c, groups=groups)
+    cov = m.covariance()
+    assert type(cov) is np.ndarray and cov.shape == (4, 4)
+    with pytest.warns(DeprecationWarning, match=r"use 'covariance\(\)'"):
+        diag = np.diag(m.covariance)
+    np.testing.assert_array_equal(diag, np.diag(cov))
+    # Without one, the call says why (the attribute was None)
+    m._covariance = None
+    assert not m.covariance
+    with pytest.raises(ValueError, match="no parameter covariance"):
+        m.covariance()
+
+
+# -- param_cb(method="lr") (#617) -------------------------------------------
+def _gamma_frailty_nll(theta_vec, x, c, Z, groups):
+    """The marginal negative log-likelihood of a Weibull gamma-frailty
+    model, written out here from its closed form (see
+    ``test_marginal_likelihood_matches_numerical_integration``)."""
+    alpha, shape, beta, theta = theta_vec
+    eta = np.exp(beta * Z[:, 0])
+    H0 = (x / alpha) ** shape
+    h0 = shape / alpha * (x / alpha) ** (shape - 1.0)
+    event = c == 0
+    ll = np.sum(np.log(h0[event] * eta[event]))
+    it = 1.0 / theta
+    for g in np.unique(groups):
+        rows = groups == g
+        D = event[rows].sum()
+        H = np.sum(eta[rows] * H0[rows])
+        ll += (
+            -it * np.log(theta)
+            - gammaln(it)
+            + gammaln(D + it)
+            - (D + it) * np.log(H + it)
+        )
+    return -ll
+
+
+def test_617_frailty_param_cb_lr_is_where_the_profile_deviance_is_chi2():
+    from scipy.optimize import minimize
+    from scipy.stats import chi2
+
+    x, c, Z, groups = _sim(seed=11, G=30, per=5)
+    m = WeibullFrailty.fit(x=x, Z=Z, c=c, groups=groups)
+    nll_hat = _gamma_frailty_nll(m.params, x, c, Z, groups)
+    assert nll_hat == pytest.approx(m.neg_ll(), rel=1e-10)
+    crit = chi2.ppf(0.95, 1)
+    for j, name in ((3, "theta"), (2, "coef_0")):
+        lo, hi = m.param_cb(name, method="lr")
+        assert lo < m.params[j] < hi
+        others = [i for i in range(4) if i != j]
+        for b in (lo, hi):
+
+            def nll(v, b=b):
+                p = np.empty(4)
+                p[j] = b
+                p[others] = v
+                p[0], p[1] = np.exp(p[0]), np.exp(p[1])
+                return _gamma_frailty_nll(p, x, c, Z, groups)
+
+            v = m.params[others].copy()
+            v[0], v[1] = np.log(v[0]), np.log(v[1])
+            res = minimize(
+                nll,
+                v,
+                method="Nelder-Mead",
+                options={"xatol": 1e-9, "fatol": 1e-11, "maxiter": 20000},
+            )
+            dev = 2.0 * (res.fun - nll_hat)
+            assert dev == pytest.approx(crit, abs=1e-4)
+
+
+def test_617_frailty_param_cb_lr_options_and_the_edge_of_theta():
+    x, c, Z, groups = _sim(seed=12, G=30, per=5)
+    m = WeibullFrailty.fit(x=x, Z=Z, c=c, groups=groups)
+    # Wald stays the default.
+    assert np.array_equal(m.param_cb("coef_0"), m.param_cb("coef_0", 0.05))
+    assert np.array_equal(
+        m.param_cb("coef_0"), m.param_cb("coef_0", method="wald")
+    )
+    two = m.param_cb("theta", alpha_ci=0.2, method="profile")
+    upper = m.param_cb("theta", alpha_ci=0.1, bound="upper", method="lr")
+    assert upper.shape == (1,) and upper[0] == two[1]
+    with pytest.raises(ValueError, match="method"):
+        m.param_cb("theta", method="bootstrap")
+    with pytest.raises(ValueError, match="Unknown parameter"):
+        m.param_cb("gamma", method="lr")
+    # A model restored from a dict keeps no data.
+    restored = FrailtyModel.from_dict(m.to_dict())
+    with pytest.raises(ValueError, match="data"):
+        restored.param_cb("theta", method="lr")
+    # No frailty in the data: theta's interval reaches its edge, 0.
+    rng = np.random.default_rng(1)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        m0 = WeibullFrailty.fit(
+            rng.weibull(1.5, 200) * 10, groups=np.repeat(np.arange(40), 5)
+        )
+    lo, hi = m0.param_cb("theta", method="lr")
+    assert lo == 0.0 and 0.0 < hi < 1.0
+
+
+def test_617_frailty_param_cb_lr_lognormal_and_aliased():
+    x, c, Z, groups = _sim(seed=13, G=30, per=5)
+    m = Frailty(Weibull, family="lognormal").fit(x=x, Z=Z, c=c, groups=groups)
+    lo, hi = m.param_cb("theta", method="lr")
+    assert lo < m.theta < hi
+    # A constant column is aliased: no interval, as Wald gives none.
+    Z2 = np.column_stack([Z, np.ones(len(x))])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        m2 = WeibullFrailty.fit(x=x, Z=Z2, c=c, groups=groups)
+    assert np.all(np.isnan(m2.param_cb("coef_1", method="lr")))
+    lo, hi = m2.param_cb("coef_0", method="lr")
+    assert lo < m2.beta[0] < hi

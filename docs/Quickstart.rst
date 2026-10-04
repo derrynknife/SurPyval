@@ -178,7 +178,7 @@ lengthens life by a factor of :math:`e^{0.7} \approx 2`:
     print("R(40) for Z=0 and Z=1:", aft.sf(40, np.array([[0.0], [1.0]])))
 
 The accelerated failure time (AFT) model multiplies *time* by
-:math:`e^{\beta' Z}`, so the fitted ``beta_0`` of about :math:`-0.6` says that
+:math:`e^{\beta' Z}`, so the fitted coefficient ``coef_0`` of about :math:`-0.6` says that
 condition 1 runs the clock at about :math:`e^{-0.6} \approx 0.55` of the speed
 of condition 0. Other families act on the hazard (``WeibullPH``,
 ``CoxPH``), on the odds (``WeibullPO``) or add to the hazard

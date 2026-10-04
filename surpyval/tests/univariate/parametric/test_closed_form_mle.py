@@ -180,7 +180,7 @@ def test_limited_failure_population_is_actually_estimated():
     c = (cured | (fails > 12.0)).astype(int)
     model = Exponential.fit(x, c=c, lfp=True)
     assert not _is_closed_form(model)
-    assert 0.5 < model.p < 0.8
+    assert 0.5 < model.lfp_p < 0.8
 
 
 def test_fixed_parameter_is_honoured():
@@ -217,7 +217,7 @@ def test_closed_form_model_supports_the_usual_methods(dist, gen):
     grid = np.quantile(model.data["x"], [0.25, 0.5, 0.75])
     bounds = np.asarray(model.cb(grid, alpha_ci=0.05), dtype=float)
     assert np.isfinite(bounds).all()
-    assert model.cov_matrix is not None
+    assert model.covariance() is not None
 
 
 @pytest.mark.parametrize(
@@ -277,7 +277,8 @@ def test_uniform_offers_no_covariance():
     # variances and silent nan bounds.
     rng = np.random.default_rng(SEED)
     model = Uniform.fit(rng.uniform(2.0, 8.0, 300))
-    assert model.cov_matrix is None
+    with pytest.raises(ValueError, match="no parameter covariance"):
+        model.covariance()
     with pytest.raises(ValueError, match="covariance"):
         model.cb([3.0, 5.0])
 

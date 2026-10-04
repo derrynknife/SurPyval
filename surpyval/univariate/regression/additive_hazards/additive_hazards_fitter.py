@@ -48,6 +48,7 @@ from autograd import hessian, jacobian
 from scipy.optimize import minimize
 
 from surpyval.univariate.parametric.fitters import (
+    Gradient,
     is_local_minimum,
     preconditioned_bfgs,
     verify_or_polish,
@@ -56,6 +57,8 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
 )
+from surpyval.univariate.regression._aliasing import dataframe_covariates
+from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -87,6 +90,22 @@ class _OverBudget(Exception):
     """The search on the exact gradient ran out of its budget."""
 
 
+class _BudgetedGradient(Gradient):
+    """The :class:`Gradient` of ``fun``, raising ``_OverBudget`` when
+    asked at more than ``budget`` points."""
+
+    def __init__(self, fun: Any, budget: int) -> None:
+        super().__init__(fun)
+        self.budget = budget
+        self.spent = 0
+
+    def value_and_grad(self, x: npt.ArrayLike, *args: Any) -> tuple:
+        self.spent += 1
+        if self.spent > self.budget:
+            raise _OverBudget
+        return super().value_and_grad(x, *args)
+
+
 class AdditiveHazardsFitter(
     MirroredDistributionAttrs,
     HazardIdentitiesMixin,
@@ -110,6 +129,10 @@ class AdditiveHazardsFitter(
     distorted -- and warns. A proportional hazards model, which keeps the
     hazard positive by construction, is then the safer choice.
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "additive hazards fitter"
+    name_suffix = "AH"
 
     def __init__(self, name: str, dist: Any) -> None:
         self.name = name
@@ -340,7 +363,11 @@ class AdditiveHazardsFitter(
 
     @staticmethod
     def _gradient_first(
-        fun: Any, true_neg_ll: Any, init: npt.ArrayLike, n_obs: float
+        fun: Any,
+        true_neg_ll: Any,
+        init: npt.ArrayLike,
+        n_obs: float,
+        floor: "float | npt.ArrayLike" = 1.0,
     ) -> tuple[Any, bool]:
         """A search on the likelihood's exact gradient first, as the AFT
         and PO fits do (#499), and whether its answer is a verified
@@ -367,6 +394,9 @@ class AdditiveHazardsFitter(
         the line searches chase the runaway coefficient with thousands
         (3500 on 70 rows, ten times the whole old fit), and the answer
         could never be verified anyway.
+
+        ``floor`` is each component's least unit for the search and the
+        check (``coefficient_floor``, #577).
         """
         start: npt.NDArray = np.asarray(init, dtype=float)
         if (
@@ -374,14 +404,10 @@ class AdditiveHazardsFitter(
             or _gradient(fun, start) is None
         ):
             return None, False
-        grad = jacobian(fun)
-        spent = [0]
-
-        def budgeted(u: npt.NDArray) -> Any:
-            spent[0] += 1
-            if spent[0] > AdditiveHazardsFitter.GRADIENT_FIRST_BUDGET:
-                raise _OverBudget
-            return grad(u)
+        # The value and the gradient from one pass (#593)
+        budgeted = _BudgetedGradient(
+            fun, AdditiveHazardsFitter.GRADIENT_FIRST_BUDGET
+        )
 
         with warnings.catch_warnings():
             # The penalty is constant outside the valid region, and
@@ -393,6 +419,7 @@ class AdditiveHazardsFitter(
                     start,
                     jac=budgeted,
                     options={"maxiter": 1000},
+                    floor=floor,
                     obj_scale=n_obs,
                 )
             except _OverBudget:
@@ -404,6 +431,7 @@ class AdditiveHazardsFitter(
                 jacobian(true_neg_ll),
                 hessian(true_neg_ll),
                 res.x,
+                floor=floor,
                 obj_scale=n_obs,
             )
         return (res, True) if verified else (None, False)
@@ -431,6 +459,7 @@ class AdditiveHazardsFitter(
 
     # -- fitting ----------------------------------------------------------
 
+    @dataframe_covariates
     def fit(
         self,
         x: npt.ArrayLike,
@@ -531,8 +560,12 @@ class AdditiveHazardsFitter(
                 return val if np.isfinite(val) else 1e15
 
             n_obs = float(np.sum(data.n))
+            coefs = free_coefficients(self, fixed, pmap)
+            # Each coefficient searched and judged in its own covariate's
+            # units (#577)
+            floor = coefficient_floor(np.size(init), coefs, data.Z)
             res, converged = self._gradient_first(
-                fun, true_neg_ll, init, n_obs
+                fun, true_neg_ll, init, n_obs, floor=floor
             )
             if not converged:
                 res = minimize(fun, init, method="Nelder-Mead")
@@ -540,7 +573,9 @@ class AdditiveHazardsFitter(
                 # TNC's result was never checked: a Gamma baseline stopped
                 # at alpha ~ 1e-282 on a "linear search failed", silently
                 # (#427).
-                res, converged = verify_or_polish(fun, res, n_obs, true_neg_ll)
+                res, converged = verify_or_polish(
+                    fun, res, n_obs, true_neg_ll, floor=floor
+                )
 
             params = inv_trans(const(res.x))
 
@@ -563,7 +598,6 @@ class AdditiveHazardsFitter(
         # boundary or unverified. Otherwise a fit held at the positivity
         # boundary is no stationary point, and its warning says why; any
         # other that is not a maximum says so.
-        coefs = free_coefficients(self, fixed, pmap)
         verdict = judge_search(
             true_neg_ll, res, coefs, init, n_obs, verified=converged
         )

@@ -194,7 +194,7 @@ def test_newton_raphson_solves_the_score_to_rounding(kind, method):
     x, Z, c, n, tl, _ = _data(kind)
     model = CoxPH.fit(x, Z, c, n=n, tl=tl, tie_method=method)
     score = model.jac(model.beta)[0]
-    assert np.max(np.abs(score) * model.se) < 1e-13
+    assert np.max(np.abs(score) * model.standard_errors()) < 1e-13
 
 
 def test_the_root_finder_takes_over_when_newton_gives_up():
@@ -205,7 +205,9 @@ def test_the_root_finder_takes_over_when_newton_gives_up():
         fallback = CoxPH.fit(x, Z, c, n=n, tl=tl)
     assert "Newton" not in str(fallback.res.message)
     np.testing.assert_allclose(fallback.beta, newton.beta, rtol=1e-9)
-    np.testing.assert_allclose(fallback.se, newton.se, rtol=1e-9)
+    np.testing.assert_allclose(
+        fallback.standard_errors(), newton.standard_errors(), rtol=1e-9
+    )
 
 
 def test_a_monotone_likelihood_still_warns():
@@ -414,8 +416,8 @@ def test_fits_match_the_code_before_516(case):
     model, H, sf = _fit(case)
     old = OLD_FITS[case]
     np.testing.assert_allclose(model.beta, old["beta"], rtol=RTOL)
-    np.testing.assert_allclose(model.se, old["se"], rtol=RTOL)
-    np.testing.assert_allclose(model._neg_log_like, old["neg_ll"], rtol=1e-13)
+    np.testing.assert_allclose(model.standard_errors(), old["se"], rtol=RTOL)
+    np.testing.assert_allclose(model.neg_ll(), old["neg_ll"], rtol=1e-13)
     np.testing.assert_allclose(H, old["H"], rtol=RTOL)
     np.testing.assert_allclose(sf, old["sf"], rtol=RTOL)
 
@@ -426,7 +428,7 @@ def test_tvc_fits_match_the_code_before_516(method):
     model = CoxPH.fit_tvc(ids, xl, xr, cc, Z, tie_method=method)
     old = OLD_TVC[method]
     np.testing.assert_allclose(model.beta, old["beta"], rtol=RTOL)
-    np.testing.assert_allclose(model.se, old["se"], rtol=RTOL)
+    np.testing.assert_allclose(model.standard_errors(), old["se"], rtol=RTOL)
     np.testing.assert_allclose(model.H0[[20, 40, 80]], old["H0"], rtol=RTOL)
 
 

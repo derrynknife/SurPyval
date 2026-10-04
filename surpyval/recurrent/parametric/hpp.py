@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 from typing import Any, Callable
 
 import numpy as np
@@ -20,9 +21,15 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
 from surpyval.univariate.parametric.fitters import is_local_minimum
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.no_maximum import warn_unverified
+from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_event_data import RecurrentEventData
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 from surpyval.utils.validation import check_option
+
+
+def _in_rate_space(neg_ll: Callable, params: ArrayLike) -> Any:
+    """``neg_ll``, which takes ``log(rate)``, at the rate ``params``."""
+    return neg_ll(np.log(np.asarray(params)))
 
 
 @singleton_fitter
@@ -61,6 +68,9 @@ class HPP(CountingProcess):
     array([ 433.89551258,  867.79102516, 1301.68653774, 1735.58205032,
            2169.4775629 , 2603.37307548])
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "homogeneous Poisson process fitter"
 
     def __init__(self) -> None:
         self.parameter_names = ["lambda"]
@@ -299,7 +309,11 @@ class HPP(CountingProcess):
         # ``neg_ll`` is parameterised by ``log_rate`` for a stable optimiser;
         # expose it in natural (rate) space so the shared likelihood-inference
         # machinery sees ``_neg_ll(_mle)`` with ``_mle`` the fitted rate.
-        out._neg_ll = lambda params: neg_ll(np.log(np.asarray(params)))
+        # (Kept as what it is built from, so the model pickles, #573.)
+        out._neg_ll = functools.partial(
+            _in_rate_space,
+            Rebuilt(self.create_negll_func, (data,), built=neg_ll),
+        )
         out._mle = np.asarray(out.params, dtype=float)
         out._n_obs = n_obs
 

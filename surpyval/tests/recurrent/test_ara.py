@@ -50,7 +50,7 @@ def test_ara_general_memory_fits_and_simulates():
     model = ARA.fit(X, I, c=C, m=2)
     assert model.m == 2
     assert 0.0 <= model.rho <= 1.0
-    assert np.isfinite(model.aic) and np.isfinite(model.bic)
+    assert np.isfinite(model.aic()) and np.isfinite(model.bic())
     mcf = model.mcf(np.array([1.0, 2.0, 3.0, 4.0]), items=1000, random_state=0)
     assert np.all(np.diff(mcf) >= -1e-9)
     assert "ARA" in repr(model)
@@ -71,4 +71,4 @@ def test_ara_rejects_unsupported_censoring():
 def test_ara_inference_requires_fit_from_data():
     model = ARA.fit_from_parameters([10.0, 2.0], rho=0.4, m=2, dist=Weibull)
     with pytest.raises(ValueError, match="fitted from data"):
-        model.aic
+        model.aic()

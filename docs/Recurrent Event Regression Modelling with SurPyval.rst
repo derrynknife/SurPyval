@@ -167,7 +167,7 @@ ratio and its confidence interval:
     print("parameters :", fleet_hpp.parameter_names)
     print("std errors :", fleet_hpp.standard_errors().round(3))
     for k, name in enumerate(["humid", "duty"]):
-        lower, upper = np.exp(fleet_hpp.param_cb(f"beta_{k}"))
+        lower, upper = np.exp(fleet_hpp.param_cb(f"coef_{k}"))
         print(f"{name:6s} rate ratio {np.exp(fleet_hpp.coeffs[k]):.2f}"
               f"  (95% CI {lower:.2f} to {upper:.2f})")
 
@@ -180,7 +180,7 @@ but, as the next section shows, the HPP is the wrong model for these motors.
     :hide-output:
 
     for _k, _true in enumerate([np.exp(0.7), np.exp(1.0)]):
-        _lo, _hi = np.exp(fleet_hpp.param_cb(f"beta_{_k}"))
+        _lo, _hi = np.exp(fleet_hpp.param_cb(f"coef_{_k}"))
         assert _lo < _true < _hi, (_k, _lo, _hi)
 
 Proportional-Intensity NHPP
@@ -231,8 +231,8 @@ constant rate:
 
 .. jupyter-execute::
 
-    print("PI-HPP  AIC:", round(fleet_hpp.aic, 2))
-    print("PI-NHPP AIC:", round(fleet.aic, 2))
+    print("PI-HPP  AIC:", round(fleet_hpp.aic(), 2))
+    print("PI-NHPP AIC:", round(fleet.aic(), 2))
     print("rate ratios:", np.exp(fleet.coeffs).round(2))
 
 The Crow-AMSAA baseline recovers the wear-out shape (about 1.5) and scale
@@ -243,7 +243,7 @@ within the precision that thirty motors allow of the true 2.0 and 2.7.
     :hide-code:
     :hide-output:
 
-    assert fleet.aic < fleet_hpp.aic
+    assert fleet.aic() < fleet_hpp.aic()
     _alpha, _beta = fleet.params          # Crow-AMSAA scale and shape
     assert round(_beta, 1) == 1.5 and round(_alpha) == 23, fleet.params
     assert np.exp(fleet.coeffs).round(1).tolist() == [1.9, 2.3]
@@ -262,14 +262,14 @@ within the precision that thirty motors allow of the true 2.0 and 2.7.
 
     duane = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c)
 
-    print("Duane      AIC:", round(duane.aic, 2))
-    print("Crow-AMSAA AIC:", round(fleet.aic, 2))
+    print("Duane      AIC:", round(duane.aic(), 2))
+    print("Crow-AMSAA AIC:", round(fleet.aic(), 2))
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert np.isclose(duane.aic, fleet.aic, atol=0.01)
+    assert np.isclose(duane.aic(), fleet.aic(), atol=0.01)
 
 Prediction and simulation
 ~~~~~~~~~~~~~~~~~~~~~~~~~

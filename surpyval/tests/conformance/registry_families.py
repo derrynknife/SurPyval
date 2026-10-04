@@ -14,6 +14,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import pytest
 
 import surpyval as sp
 from surpyval.beta import ml
@@ -77,6 +78,10 @@ PROPERTIES: dict[str, str] = {
     "counts": "count weights n == the same rows repeated",
     "bounds": "probabilities in [0, 1] and monotone in time",
     "missing_query": "a NaN time or probability gives NaN there only (#375)",
+    "qf_outside": (
+        "a probability outside [0, 1] gives NaN there only, with one "
+        "warning, from every qf: the model's and its distribution's (#611)"
+    ),
     "missing_covariate": "a NaN covariate gives NaN for its row only",
     "missing_fit": "a missing time raises; a missing covariate is dropped",
     "seed_global": "np.random.seed reproduces a draw",
@@ -85,6 +90,14 @@ PROPERTIES: dict[str, str] = {
         "leaves the global stream alone"
     ),
     "serialise": "strict-JSON to_dict / from_dict keeps every prediction",
+    "pickle": (
+        "a fitted model pickles, and the unpickled model predicts, bounds "
+        "and saves (to_dict) exactly as the original (#573)"
+    ),
+    "pickle_paths": (
+        "the model of every alternate fit path (fit_from_df, a formula, "
+        "fit_tvc, ...) pickles and predicts exactly as before (#573)"
+    ),
     "fit_paths": "the alternate fit paths give the same model",
     "warn_once": (
         "a fit or a prediction gives each of its deliberate warnings at "
@@ -159,6 +172,12 @@ PROPERTIES: dict[str, str] = {
         "a likelihood fit's ``maximum`` says what it reached, it warns "
         "exactly when that is not a verified maximum, and a verified "
         "maximum has a zero gradient and a positive-definite Hessian"
+    ),
+    # test_comparison.py, for every case.
+    "comparison": (
+        "neg_ll(), aic(), aic_c() and bic() are methods and log_likelihood "
+        "a number, -neg_ll(), wherever a model has them; aic() is "
+        "2 k + 2 neg_ll() for a whole k (#572)"
     ),
     # test_attributes.py, for the model classes in DECLARED_ATTRIBUTES.
     "attributes": (
@@ -275,6 +294,7 @@ REFIT_PROPERTIES = frozenset(
         "aliasing_constant",
         "attributes",
         "maximum",
+        "pickle_paths",
     }
 )
 
@@ -553,6 +573,20 @@ def fitted(case):
     return _fitted(case.name)
 
 
+def skip_without_finite_maximum(case):
+    """Skip a check of a fit's inference where the fit has no finite
+    maximum (its ``maximum`` says so, and it has warned that its standard
+    errors and bounds are meaningless): a Beta4 whose end has reached its
+    extreme observation, where the likelihood is unbounded. Its derivatives
+    and Wald bounds there describe a point that is not an estimate."""
+    model = fitted(case)
+    if getattr(model, "maximum", None) == "no finite maximum":
+        pytest.skip(
+            f"{case.name}: the fit has no finite maximum, so its "
+            "derivatives and bounds are not those of an estimate"
+        )
+
+
 def refit(case, data):
     """Fit the case to ``data``, silencing the optimisers' warnings.
 
@@ -620,7 +654,7 @@ def _parametric_paths(fitter, **fixed):
         # a distribution that does not start at 0, and gamma=0 for one on
         # the whole real line).
         m = fitter.fit(**d, **fixed)
-        structure = {"gamma": m.offset, "p": m.lfp, "f0": m.zi}
+        structure = {"gamma": m.offset, "lfp_p": m.lfp, "f0": m.zi}
         kw = {k: getattr(m, k) for k, on in structure.items() if on}
         return fitter.from_params(m.params, **kw)
 

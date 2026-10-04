@@ -10,6 +10,7 @@ from scipy.optimize import OptimizeResult, minimize
 
 from surpyval.univariate.parametric.fitters import (
     bounds_convert,
+    identity,
     verify_or_polish,
 )
 from surpyval.univariate.parametric.parametric_fitter import (
@@ -17,16 +18,28 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
 )
+from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils import _caller_stacklevel
+from surpyval.utils.covariates import (
+    coefficient_floor,
+    coefficient_names,
+    renamed_coefficient_keys,
+)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
-from .._aliasing import aliased_columns, constant_columns, warn_aliased
+from .._aliasing import (
+    aliased_columns,
+    constant_columns,
+    fit_columns,
+    warn_aliased,
+)
 from .._fit_skeleton import (
     FixedWithAliased,
     HazardIdentitiesMixin,
     MirroredDistributionAttrs,
     assemble_regression_model,
+    check_baseline_support,
     check_fixed_and_init,
     covariate_center,
     drop_nonfinite_covariates,
@@ -36,6 +49,7 @@ from .._fit_skeleton import (
     keep_information,
     make_objective,
     mirror_distribution,
+    one_sided_positions,
     require_finite_fit,
     uniform_draws,
 )
@@ -46,14 +60,40 @@ from .lifemodel import LifeModel
 
 
 def _search(
-    fun: Callable[[npt.NDArray], Any], x0: npt.NDArray, n_obs: float
+    fun: Callable[[npt.NDArray], Any],
+    x0: npt.NDArray,
+    n_obs: float,
+    floor: "float | npt.ArrayLike" = 1.0,
 ) -> tuple[OptimizeResult, bool]:
     """Minimise ``fun`` from ``x0`` with Nelder-Mead then TNC, as the fit
     always searched, and whether the answer is verifiably a minimum (see
-    ``verify_or_polish``, which polishes one that is not)."""
+    ``verify_or_polish``, which polishes one that is not, each component
+    in units of at least ``floor``)."""
     res1 = minimize(fun, x0, method="Nelder-Mead", options={"maxiter": 1000})
     res2 = minimize(fun, res1.x, method="TNC")
-    return verify_or_polish(fun, res2 if res2.success else res1, n_obs)
+    return verify_or_polish(
+        fun, res2 if res2.success else res1, n_obs, floor=floor
+    )
+
+
+def _coefficient_units(
+    fitter: Any,
+    fixed: dict,
+    phi_param_map: dict,
+    Z: "npt.ArrayLike | None",
+) -> npt.NDArray:
+    """The search's ``floor``: each free life-model parameter that is a
+    column's coefficient (``LifeModel.coefficient_columns``) in its
+    covariate's units, as the other regressions search theirs (#577,
+    #612); 1 for every other component."""
+    columns = fitter.life_model.coefficient_columns()
+    names = [
+        *fitter.param_map,
+        *sorted(phi_param_map, key=phi_param_map.__getitem__),
+    ]
+    free = [name for name in names if name not in fixed]
+    coefs = [(k, columns[nm]) for k, nm in enumerate(free) if nm in columns]
+    return coefficient_floor(len(free), coefs, Z)
 
 
 class ParameterSubstitutionFitter(
@@ -72,6 +112,13 @@ class ParameterSubstitutionFitter(
     and Gamma (``beta``). Create one with
     ``AcceleratedLife(distribution, life_model)`` rather than directly.
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "accelerated life fitter"
+    name_suffix = "AL"
+
+    def _repr_details(self) -> "list[str]":
+        return [*super()._repr_details(), self.life_model.name + " life model"]
 
     def __init__(
         self,
@@ -107,9 +154,12 @@ class ParameterSubstitutionFitter(
         self.life_relation = life_relation
         self.fixed = {life_parameter: 1.0}
 
+        self.param_transform: Callable[..., Any]
+        self.inverse_param_transform: Callable[..., Any]
         if param_transform is None:
-            self.param_transform = lambda x: x
-            self.inverse_param_transform = lambda x: x
+            # (Module-level, not lambdas, so a fitted model pickles, #573)
+            self.param_transform = identity
+            self.inverse_param_transform = identity
         else:
             # Supplied as a pair -- accelerated_life.py passes both or
             # neither -- so the inverse is not None here.
@@ -153,17 +203,68 @@ class ParameterSubstitutionFitter(
         return Z_arr
 
     def Hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
+        return self._at_rows(self.Hf_dist, x, Z, params)
+
+    def _at_rows(
+        self, f: Callable[..., Boxable], x: Numeric, Z: Numeric, params: tuple
+    ) -> Boxable:
+        """The distribution's function ``f`` at ``x``, with the life
+        parameter of each row of ``Z`` (``_dist_params_by_row``).
+
+        Evaluated once over every row. It used to be evaluated over every
+        row once per distinct stress and the rows at that stress kept, so
+        a fit to a continuous stress cost the square of the rows: a
+        ``GeneralLogLinear`` fit to 120 rows of distinct stresses made 157
+        substitutions per likelihood evaluation and took 9 s (#592)."""
         x = np.array(x)
         Z_arr = self._stress_matrix(Z)
+        if Z_arr.shape[0] == 0:
+            return np.zeros_like(x)
+        values = f(x, *self._dist_params_by_row(Z_arr, params))
+        return self._nan_at_unknown_stress(values, Z_arr)
 
-        Hf = np.zeros_like(x)
-        stresses = np.unique(Z_arr, axis=0)
-        for stress in stresses:
-            dist_params_i = self._dist_params_at(stress, params)
-            mask = (Z_arr == stress).all(axis=1)
-            Hf = np.where(mask, self.Hf_dist(x, *dist_params_i), Hf)
+    def _dist_params_by_row(
+        self, Z_arr: npt.NDArray, params: tuple
+    ) -> list[Boxable]:
+        """The distribution's parameters at every row of ``Z_arr`` at
+        once: those in ``params``, with the life parameter's slot holding
+        the (transformed) life at each row, an array that broadcasts
+        against ``x`` row for row (a scalar for a single row, as
+        ``_dist_params_at`` gives it).
 
-        return self._nan_at_unknown_stress(Hf, Z_arr)
+        A life model whose ``phi`` takes the rows of a stress matrix
+        (``LifeModel.phi_takes_rows``, the built-in ones) gives every
+        row's life in one call. Another one -- a custom life model written
+        for a single stress row -- is called once per distinct row, as it
+        always was, and the lives taken to the rows. A row with a missing
+        stress is given another row's, and ``_nan_at_unknown_stress`` makes
+        its value nan: a nan life would poison the gradient of every
+        parameter through the sum over rows.
+
+        A list, not ``np.where`` over the slots (see ``_dist_params_at``,
+        #555)."""
+        known = np.isfinite(Z_arr).all(axis=1)
+        if not known.all():
+            stand_in = (
+                Z_arr[known][0] if known.any() else np.ones(Z_arr.shape[1])
+            )
+            Z_arr = np.where(known[:, None], Z_arr, stand_in)
+        phi_params = params[self.k_dist :]
+        if getattr(self.life_model, "phi_takes_rows", False):
+            life = np.reshape(self.phi(Z_arr, *phi_params), (-1,))
+        else:
+            stresses, inverse = np.unique(Z_arr, axis=0, return_inverse=True)
+            lives = np.array(
+                [np.reshape(self.phi(s, *phi_params), ()) for s in stresses]
+            )
+            life = lives[np.reshape(inverse, (-1,))]
+        life = self.param_transform(life)
+        if Z_arr.shape[0] == 1:
+            life = np.reshape(life, ())
+        life_idx = self.param_map[self.life_parameter]
+        return [
+            life if k == life_idx else params[k] for k in range(self.k_dist)
+        ]
 
     def _dist_params_at(
         self, stress: npt.NDArray, params: tuple
@@ -195,16 +296,7 @@ class ParameterSubstitutionFitter(
         return np.where(known, values, np.nan)
 
     def hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
-        x = np.array(x)
-        Z_arr = self._stress_matrix(Z)
-
-        hf = np.zeros_like(x)
-        for stress in np.unique(Z_arr, axis=0):
-            dist_params_i = self._dist_params_at(stress, params)
-            mask = (Z_arr == stress).all(axis=1)
-            hf = np.where(mask, self.hf_dist(x, *dist_params_i), hf)
-
-        return self._nan_at_unknown_stress(hf, Z_arr)
+        return self._at_rows(self.hf_dist, x, Z, params)
 
     # sf/ff/df and the log identities come from HazardIdentitiesMixin;
     # Hf and hf above already do the scalar/1-D stress coercion (#261),
@@ -362,6 +454,7 @@ class ParameterSubstitutionFitter(
             "`init` (the distribution's parameters, then the life model's)."
         )
 
+    @dataframe_covariates
     def fit(
         self,
         x: npt.ArrayLike,
@@ -447,6 +540,17 @@ class ParameterSubstitutionFitter(
             # (GeneralLogLinear) is fitted, and carried by the model, in
             # its form for Z's columns.
             life_model = self.life_model.resolve(Z_arr.shape[1])
+            # Its column coefficients named by the columns, or coef_j
+            # (#614), unique among the other parameters' names
+            columns = life_model.coefficient_columns()
+            if columns:
+                others = [
+                    *self.param_map,
+                    *(k for k in life_model.phi_param_map if k not in columns),
+                ]
+                life_model = life_model.named(
+                    coefficient_names(len(columns), fit_columns(), others)
+                )
             if life_model is not self.life_model:
                 return self._with_life_model(life_model).fit(
                     x, Z_arr, c=c, n=n, t=t, init=init, fixed=fixed
@@ -454,6 +558,7 @@ class ParameterSubstitutionFitter(
         data, Z_arr = drop_nonfinite_covariates(data, Z_arr)
         self._check_stresses(Z_arr)
         data.add_covariates(Z_arr)
+        check_baseline_support(self, data)
         # The per-stress fallback start uses each row's time (the midpoint
         # of an interval row).
         x_arr: npt.NDArray = (
@@ -462,6 +567,13 @@ class ParameterSubstitutionFitter(
         life_parameter_idx = self.param_map[self.life_parameter]
         if fixed is None:
             fixed = {}
+        # A column coefficient's name before v0.23, ``beta_j``, until v0.24
+        fixed = renamed_coefficient_keys(
+            fixed,
+            list(self.life_model.coefficient_columns()),
+            "{}.fit(fixed=...)".format(self._repr_name()),
+            [*self.param_map, *self.life_model.phi_param_map],
+        )
 
         def default_init() -> npt.NDArray:
             # The distribution fitted at each distinct stress, with the life
@@ -483,8 +595,17 @@ class ParameterSubstitutionFitter(
                         ).params
                         params_at_Z.append(params_at_s)
                     except Exception:
+                        # The mean time at the level is a life: its life
+                        # parameter is that life on the parameter's scale
+                        # (a LogNormal's mu its log, a Gamma's beta its
+                        # reciprocal). Taken as the parameter itself, a
+                        # LogNormal on a continuous stress, with one row a
+                        # level, had lives of exp(time) and a log-likelihood
+                        # not finite at the start (#621).
                         params_at_s = np.copy(base_line_dist_init)
-                        params_at_s[life_parameter_idx] = x_arr[mask].mean()
+                        params_at_s[life_parameter_idx] = self.param_transform(
+                            x_arr[mask].mean()
+                        )
                         params_at_Z.append(params_at_s)
                     finally:
                         stress_data.append(s)
@@ -575,7 +696,8 @@ class ParameterSubstitutionFitter(
             )
 
             n_obs = float(np.sum(data.n))
-            res, verified = _search(fun, init, n_obs)
+            floor = _coefficient_units(self, fixed, phi_param_map, data.Z)
+            res, verified = _search(fun, init, n_obs, floor)
             start = init
             # From a start far from the maximum the search can stop short
             # of it, silently: InversePower started with its first
@@ -590,7 +712,7 @@ class ParameterSubstitutionFitter(
                     # No default start (a single stress level, say)
                     default = None
                 if default is not None:
-                    alt, alt_verified = _search(fun, default, n_obs)
+                    alt, alt_verified = _search(fun, default, n_obs, floor)
                     if alt.fun < res.fun or not np.isfinite(res.fun):
                         res, verified = alt, alt_verified
                         start = default
@@ -650,6 +772,8 @@ class ParameterSubstitutionFitter(
                 n_obs,
                 verified=verified,
                 what="The accelerated life fit",
+                floor=floor,
+                one_sided=one_sided_positions(bounds, not_fixed),
             )
             model.maximum = verdict.maximum
             # The exact observed information for the covariance, which

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from typing import Callable
+from typing import Any, Callable
 
 import autograd.numpy as np
+import numpy as onp
 import numpy.typing as npt
-from scipy import integrate
+from autograd.extend import defvjp_argnums, primitive
+from autograd.numpy.numpy_vjps import unbroadcast_f
+from autograd.tracer import isbox
 
 from surpyval.univariate import parametric as para
-from surpyval.univariate.parametric._fit_inputs import _offset_start
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
@@ -28,40 +30,359 @@ _LOG_SMALL = -20.0
 _T_LARGE = 40.0
 
 
-def _log1mexp(r: Boxable, log_r: Boxable) -> tuple[Boxable, Boxable]:
+def _log1mexp(
+    r: Boxable, log_r: Boxable, xp: Any = np
+) -> tuple[Boxable, Boxable]:
     r"""
     :math:`\log(1 - e^{-r})` for :math:`r \geq 0`, and
     :math:`\log((1 - e^{-r}) / r)`, from :math:`r` and :math:`\log r`.
 
     Each ``np.where`` branch sees only arguments it is exact and finite
     on, so neither the values nor autograd's gradients of the branch not
-    taken can be NaN.
+    taken can be NaN. ``xp`` is the numpy that computes them: plain
+    ``numpy`` where nothing is traced (see ``_raw_or_traced``).
     """
     small = log_r < _LOG_SMALL
-    r_mid = np.where(small, 1.0, r)
-    mid = np.where(
+    r_mid = xp.where(small, 1.0, r)
+    mid = xp.where(
         r_mid > _LN2,
-        np.log1p(-np.exp(-r_mid)),
-        np.log(-np.expm1(-r_mid)),
+        xp.log1p(-xp.exp(-r_mid)),
+        xp.log(-xp.expm1(-r_mid)),
     )
-    log_r_mid = np.where(small, 0.0, log_r)
-    log_r_small = np.where(small, log_r, _LOG_SMALL)
-    half_r = np.exp(log_r_small) / 2.0
-    value = np.where(small, log_r_small - half_r, mid)
-    ratio = np.where(small, -half_r, mid - log_r_mid)
+    log_r_mid = xp.where(small, 0.0, log_r)
+    log_r_small = xp.where(small, log_r, _LOG_SMALL)
+    half_r = xp.exp(log_r_small) / 2.0
+    value = xp.where(small, log_r_small - half_r, mid)
+    ratio = xp.where(small, -half_r, mid - log_r_mid)
     return value, ratio
 
 
-def _log_neg_log1mexp(t: Boxable, log_g: Boxable) -> Boxable:
+def _log_neg_log1mexp(t: Boxable, log_g: Boxable, xp: Any = np) -> Boxable:
     r"""
     :math:`\log(-\log(1 - e^{-t}))` given :math:`\log(1 - e^{-t})`: the
     log of the right tail's :math:`-\log F^{1/\mu}`, which is
     :math:`-t` once :math:`e^{-t}` is below double precision.
     """
     large = t > _T_LARGE
-    neg_log_g = np.where(large, 1.0, -log_g)
-    t_large = np.where(large, t, _T_LARGE)
-    return np.where(large, -t_large, np.log(neg_log_g))
+    neg_log_g = xp.where(large, 1.0, -log_g)
+    t_large = xp.where(large, t, _T_LARGE)
+    return xp.where(large, -t_large, xp.log(neg_log_g))
+
+
+def _tanh_sinh_nodes(
+    h: float, z_max: float
+) -> tuple[npt.NDArray, npt.NDArray]:
+    r"""
+    The tanh-sinh rule for :math:`\int_0^1 f(p)\, dp`: with
+    :math:`y = \pi \sinh z` and :math:`p = 1 / (1 + e^{-y})`, the
+    trapezoidal rule of step ``h`` in ``z`` over :math:`[-z_{max},
+    z_{max}]`. Returns the log of each node's weight,
+    :math:`\ln(h\, dp/dz) = \ln(h \pi \cosh z\, p (1 - p))`, and
+    :math:`\ln(-\ln p)`, both from ``y`` so that neither rounds where
+    :math:`p` or :math:`1 - p` does: :math:`1 - p` is :math:`10^{-454}`
+    at the last node.
+    """
+    z = h * np.arange(-round(z_max / h), round(z_max / h) + 1)
+    y = np.pi * np.sinh(z)
+    # ln p = -ln(1 + e^-y) and ln(1 - p) = -ln(1 + e^y)
+    neg_log_p = np.logaddexp(0.0, -y)
+    log_weight = (
+        np.log(h * np.pi * np.cosh(z)) - neg_log_p - np.logaddexp(0.0, y)
+    )
+    # ln(-ln p) is -y to double precision once e^-y underflows
+    far = y > 700.0
+    log_neg_log_p = np.where(far, -y, np.log(np.where(far, 1.0, neg_log_p)))
+    return log_weight, log_neg_log_p
+
+
+# The tanh-sinh rule of ``_t_power_expectation``. Against 25-digit
+# references (mpmath) over beta from 0.05 to 1e8, mu from 1e-3 to 1e6 and
+# moments 1 to 4, a step of 1/16 is within 1.2e-11 and 1/24 within 2e-14
+# (rounding); 1/32 keeps that margin. 6.5 reaches 1 - p = 1e-454, past
+# where the rule's terms underflow for any moment that is finite.
+_TS_LOG_WEIGHT, _TS_LOG_NEG_LOG_P = _tanh_sinh_nodes(1.0 / 32.0, 6.5)
+
+
+def _t_power_expectation(s: npt.ArrayLike, mu: npt.ArrayLike) -> npt.NDArray:
+    r"""
+    :math:`E[T^{s}]` for :math:`T = (X/\alpha)^{\beta}`, whose density
+    :math:`\mu (1 - e^{-t})^{\mu - 1} e^{-t}` is free of :math:`\alpha`
+    and :math:`\beta`, elementwise over ``s`` and ``mu``.
+
+    It is :math:`\int_0^1 Q(p)^{s}\, dp` with
+    :math:`Q(p) = -\ln(1 - p^{1/\mu})` the quantile of :math:`T`: over
+    the probability the mass is spread evenly whatever :math:`\mu` and
+    :math:`s`, and what is left at the ends is a power of :math:`p` at 0
+    and of :math:`-\ln(1 - p)` at 1, which a tanh-sinh rule integrates to
+    double precision with a few hundred fixed nodes (``_TS_LOG_WEIGHT``),
+    for every parameter set at once. ``quad`` over ``t`` took 9 million
+    calls of a Python integrand in one method-of-moments fit (#586), was
+    off by up to 1.4e-9 at :math:`\mu = 0.01` and overflowed a Python
+    float for :math:`s` near 80 (:math:`\beta = 0.05`).
+
+    The terms are taken on the log scale, :math:`\ln Q` from
+    :math:`r = -\ln p / \mu` as ``_log_forms`` takes the survival
+    function's: :math:`p^{1/\mu}` underflows long before
+    :math:`Q(p)^{s}` does (:math:`\mu = 10^{-3}`), and in the right tail
+    :math:`Q` is carried by :math:`\ln(-\ln p)` after :math:`1 - p`
+    rounds to 0.
+    """
+    # the nodes along a last axis
+    s_n = np.asarray(s, dtype=float)[..., None]
+    mu_n = np.asarray(mu, dtype=float)[..., None]
+    with np.errstate(all="ignore"):
+        log_r = _TS_LOG_NEG_LOG_P - np.log(mu_n)
+        r = np.exp(log_r)
+        # ln(1 - p^(1/mu)) = ln(1 - e^-r), then ln Q = ln(-that)
+        log_q = _log_neg_log1mexp(r, _log1mexp(r, log_r)[0])
+        terms = s_n * log_q + _TS_LOG_WEIGHT
+        top = np.max(terms, axis=-1, keepdims=True)
+        top = np.where(np.isfinite(top), top, 0.0)
+        total = np.exp(top[..., 0]) * np.sum(np.exp(terms - top), axis=-1)
+    return total
+
+
+def _log_forms(
+    x: Numeric,
+    alpha: Boxable,
+    beta: Boxable,
+    mu: Boxable,
+    right: bool = True,
+    xp: Any = np,
+) -> dict[str, Boxable]:
+    r"""
+    The pieces every function is built from, each on the log scale so
+    that none of them rounds to 0, 1 or inf before it has to.
+
+    With :math:`t = (x/\alpha)^{\beta}` and
+    :math:`g = 1 - e^{-t}` (so :math:`F = g^{\mu}`):
+
+    - ``log_t`` is :math:`\beta(\ln x - \ln \alpha)`, which does not
+      overflow where :math:`x/\alpha` does;
+    - ``log_g`` is :math:`\ln g`, exact in the lower tail where
+      :math:`1 - e^{-t}` is exactly 0 once :math:`t < 10^{-16}`;
+    - ``ratio_g`` is :math:`\ln(g / t)`, so that the density's
+      :math:`\ln t + (\mu - 1) \ln g` is taken as
+      :math:`\mu \ln g - \ln(g / t)`: as written it is the
+      difference of two terms of the size of :math:`\beta \ln(x /
+      \alpha)`, which at :math:`\beta = 10^{20}` cancel to an error of
+      :math:`10^4` (#472);
+    - ``log_ff`` is :math:`\mu \ln g`;
+    - ``log_nl`` is :math:`\ln(-\ln g)`, which is :math:`-t` in the
+      right tail after :math:`e^{-t}` underflows, so that
+      ``log_r`` :math:`= \ln \mu + \ln(-\ln g) = \ln(-\ln F)`
+      stays finite there;
+    - ``log_sf`` is :math:`\ln(1 - F) = \ln(1 - e^{-r})` with
+      :math:`r = -\ln F`, and ``ratio_r`` is
+      :math:`\ln((1 - e^{-r}) / r)`, which ``hf`` needs to cancel the
+      :math:`e^{-t}` of the density against that of the survival
+      function exactly rather than as a difference of two large logs.
+
+    ``right=False`` stops at ``log_ff``, all that ``ff``, ``log_ff``
+    and the density need. Points at or below 0, and at infinity, are
+    evaluated at 1 (the caller replaces them), so that no branch of any
+    ``np.where`` sees a log of 0, or the ``inf - inf`` of the log forms
+    at ``x = inf`` (#561). ``xp`` as for ``_log1mexp``.
+    """
+    x_pos = xp.where((x > 0) & (x < xp.inf), x, 1.0)
+    log_x = xp.log(x_pos)
+    log_t = beta * (log_x - xp.log(alpha))
+    with xp.errstate(over="ignore"):
+        t = xp.exp(log_t)
+    log_g, ratio_g = _log1mexp(t, log_t, xp)
+    log_ff = mu * log_g
+    out = {
+        "log_x": log_x,
+        "t": t,
+        "log_g": log_g,
+        "ratio_g": ratio_g,
+        "log_ff": log_ff,
+    }
+    if not right:
+        return out
+    log_nl = _log_neg_log1mexp(t, log_g, xp)
+    log_sf, ratio_r = _log1mexp(-log_ff, xp.log(mu) + log_nl, xp)
+    out.update(log_nl=log_nl, log_sf=log_sf, ratio_r=ratio_r)
+    return out
+
+
+def _support(
+    x: Numeric,
+    inside: Boxable,
+    at_zero: Boxable,
+    at_inf: Boxable,
+    xp: Any = np,
+) -> Boxable:
+    """``inside`` for 0 < x < inf, ``at_zero`` at 0, ``at_inf`` at
+    inf and NaN below 0."""
+    # autograd's ``where`` does not unbroadcast its gradient, so a
+    # parameter-dependent ``at_zero`` must have the full shape.
+    at_zero = at_zero + xp.zeros_like(inside)
+    at_inf = at_inf + xp.zeros_like(inside)
+    inside = xp.where(x == xp.inf, at_inf, inside)
+    out = xp.where(x > 0, inside, xp.where(x == 0, at_zero, xp.nan))
+    # a scalar in, a scalar out (a 0-d where is an array)
+    return out[()]
+
+
+# The four functions the likelihood calls -- the density's log for an
+# observed failure, the CDF and its log and the survival function's log
+# for the censored, interval and truncated terms -- are autograd
+# primitives with their derivatives in closed form (``_partials``). Traced
+# through, each evaluation of the 60-row likelihood of #584 recorded
+# about 1,300 operations (every branch of every ``np.where`` of the log
+# forms), and autograd's bookkeeping was most of a 7-9 ms evaluation and
+# gradient (#598). The values are computed as before, by the same code,
+# in plain numpy: a primitive's value is never traced, and autograd's
+# wrappers of the numpy functions cost more than the arithmetic on
+# arrays of this size.
+
+
+def _raw_or_traced(*args: Boxable) -> Any:
+    """The numpy to compute with: ``autograd.numpy`` if any argument is
+    traced (an autograd box), plain ``numpy`` otherwise."""
+    return np if any(isbox(a) for a in args) else onp
+
+
+def _log_ff_value(
+    x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+) -> Boxable:
+    p = _log_forms(x, alpha, beta, mu, right=False, xp=onp)
+    return _support(x, p["log_ff"], -onp.inf, 0.0, onp)
+
+
+def _ff_value(
+    x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+) -> Boxable:
+    p = _log_forms(x, alpha, beta, mu, right=False, xp=onp)
+    return _support(x, onp.exp(p["log_ff"]), 0.0, 1.0, onp)
+
+
+def _log_sf_value(
+    x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+) -> Boxable:
+    # log(1 - e^-r) with r = -ln F carried as ln r, which in the right
+    # tail is ln(mu) - t: finite after e^-t underflows, where the log
+    # of the survival function itself is -inf (#257, #436).
+    p = _log_forms(x, alpha, beta, mu, xp=onp)
+    return _support(x, p["log_sf"], 0.0, -onp.inf, onp)
+
+
+def _log_df_value(
+    x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+) -> Boxable:
+    p = _log_forms(x, alpha, beta, mu, right=False, xp=onp)
+    # ln f = ln(beta mu / x) + ln t + (mu - 1) ln g - t, with
+    # ln t + (mu - 1) ln g taken as mu ln g - ln(g / t): as written,
+    # beta ln x - beta ln alpha + (mu - 1) ln g cancelled to an error of
+    # about 1e4 at beta = 1e20, and put the likelihood far above its
+    # maximum (#472).
+    inside = (
+        onp.log(beta)
+        + onp.log(mu)
+        - p["log_x"]
+        + mu * p["log_g"]
+        - p["ratio_g"]
+        - p["t"]
+    )
+    bm = beta * mu
+    at_zero = onp.where(
+        bm < 1, onp.inf, onp.where(bm == 1, -onp.log(alpha), -onp.inf)
+    )
+    return _support(x, inside, at_zero, -onp.inf, onp)
+
+
+def _partials(
+    kind: str, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+) -> tuple[Boxable, Boxable, Boxable, Boxable]:
+    r"""
+    The derivatives of the function ``kind`` (``"log_ff"``, ``"ff"``,
+    ``"log_sf"`` or ``"log_df"``) with respect to ``x``, ``alpha``,
+    ``beta`` and ``mu``, each of the value's shape. Written in
+    ``autograd.numpy`` from the log forms, so they are differentiable in
+    turn (Hessians), in plain ``numpy`` where nothing is traced.
+
+    Each is taken through :math:`\ell = \ln t`, whose own derivatives are
+    :math:`\beta / x`, :math:`-\beta / \alpha` and
+    :math:`\ln x - \ln \alpha`, with :math:`d \ln g / d\ell =
+    t / (e^t - 1) = e^{-\ln(g/t) - t}`, from ``ratio_g`` so that it
+    neither divides 0 by 0 in the lower tail nor inf by inf in the right.
+    For the survival function's log,
+    :math:`d \ln S / d\ell = -(F / S)\, \mu\, t / (e^t - 1)` and
+    :math:`d \ln S / d\mu = (F / S) (-\ln g)` are taken in logs from
+    :math:`\ln S = \ln((1 - e^{-r}) / r) + \ln \mu + \ln(-\ln g)`, which
+    stay finite where :math:`S` underflows (there
+    :math:`d \ln S / d\ell` is :math:`-t`). Outside the support the
+    value is a constant, so they are 0, except the density's log at 0
+    where :math:`\beta\mu = 1`, which is :math:`-\ln \alpha`.
+    """
+    xp = _raw_or_traced(x, alpha, beta, mu)
+    p = _log_forms(x, alpha, beta, mu, right=kind == "log_sf", xp=xp)
+    inside = (x > 0) & (x < xp.inf)
+    x_pos = xp.where(inside, x, 1.0)
+    log_x, t, log_g = p["log_x"], p["t"], p["log_g"]
+    # ln(t / (e^t - 1)), at most 0
+    log_w = -p["ratio_g"] - t
+    d_x: Boxable = 0.0
+    d_beta: Boxable = 0.0
+    with xp.errstate(over="ignore"):
+        if kind == "log_ff":
+            d_log_t = mu * xp.exp(log_w)
+            d_mu = log_g
+        elif kind == "ff":
+            ff = xp.exp(p["log_ff"])
+            d_log_t = ff * mu * xp.exp(log_w)
+            d_mu = ff * log_g
+        elif kind == "log_sf":
+            log_f_over_s = p["log_ff"] - p["ratio_r"]
+            # ln(-ln g) + t first: in the right tail ln(-ln g) is -t, and
+            # they cancel exactly, where added to the rest one at a time
+            # they lost every digit of it at t = 1e18.
+            log_nl_t = -p["log_nl"] - t
+            d_log_t = -xp.exp(log_f_over_s - p["ratio_g"] + log_nl_t)
+            d_mu = xp.exp(log_f_over_s) / mu
+        else:
+            d_log_t = (mu - 1.0) * xp.exp(log_w) + 1.0 - t
+            d_mu = 1.0 / mu + log_g
+            d_beta = 1.0 / beta
+            d_x = -1.0 / x_pos
+    full = xp.zeros(xp.shape(d_log_t))
+    partials = [
+        d_log_t * beta / x_pos + d_x,
+        d_log_t * (-beta / alpha) + full,
+        d_log_t * (log_x - xp.log(alpha)) + d_beta,
+        d_mu + full,
+    ]
+    out = [xp.where(inside, d, 0.0) for d in partials]
+    if kind == "log_df":
+        at_zero = (x == 0) & (beta * mu == 1)
+        out[1] = xp.where(at_zero, -1.0 / alpha + full, out[1])
+    return out[0][()], out[1][()], out[2][()], out[3][()]
+
+
+def _with_partials(kind: str, value: Callable) -> Callable:
+    """``value`` as an autograd primitive whose derivatives are
+    ``_partials(kind, ...)``, computed once for all the arguments that
+    need them."""
+    fn = primitive(value)
+
+    def vjp_argnums(
+        argnums: tuple[int, ...], ans: Boxable, args: tuple, kwargs: dict
+    ) -> Callable:
+        partials = _partials(kind, *args)
+        return lambda g: tuple(
+            unbroadcast_f(args[i], lambda g, d=partials[i]: g * d)(g)
+            for i in argnums
+        )
+
+    defvjp_argnums(fn, vjp_argnums)
+    return fn
+
+
+_log_ff = _with_partials("log_ff", _log_ff_value)
+_ff = _with_partials("ff", _ff_value)
+_log_sf = _with_partials("log_sf", _log_sf_value)
+_log_df = _with_partials("log_df", _log_df_value)
 
 
 class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
@@ -119,107 +440,61 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
             beta = 1.0
         return alpha, beta
 
+    def _runaway_advice(
+        self, runaway: list[str], values: dict, offset: bool = False
+    ) -> str:
+        """The ExpoWeibull's two limits (#584). As ``mu`` grows, ``F =
+        g**mu`` is the largest of ``mu`` Weibull lifetimes, which tends to
+        a largest-extreme-value law of ``x**beta``, and with ``beta``
+        falling too, of ``log(x)``: a Frechet distribution (60 interval
+        censored, truncated rows reached log-likelihood -73.45 at mu =
+        8e19 against the Frechet's -73.38). As ``beta`` grows with ``mu``
+        falling, ``F`` tends to the power law ``(x/alpha)**(beta mu)`` up
+        to ``alpha``, which ends at the largest observation (50 Weibull
+        draws: -248.4447 at beta = 4e5 against the power law's
+        -248.4433)."""
+        if "mu" in runaway and values["mu"] > 1:
+            return (
+                "as mu grows the ExpoWeibull approaches a largest extreme "
+                "value law of x**beta, and as beta falls too, of log(x) (a "
+                "Frechet distribution): compare surpyval.GumbelLEV fitted "
+                "to the logs of the times"
+            )
+        if "beta" in runaway and values["beta"] > 1 and values["mu"] < 1:
+            return (
+                "as beta grows and mu falls the ExpoWeibull approaches the "
+                "power law F(x) = (x/alpha)**(beta*mu) up to x = alpha, "
+                "which ends at the largest observation: the data look "
+                "bounded above, which no ExpoWeibull is; compare a family "
+                "with an upper limit"
+            )
+        return super()._runaway_advice(runaway, values, offset)
+
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
-        x, c, n = data.x, data.c, data.n
         if offset:
             # Estimate the offset first and seed alpha and beta from the
-            # shifted data. Taking logs before removing the shift reads
-            # log(x) instead of log(x - gamma), and a large shift
-            # compresses those logs into a narrow band: at gamma = 100
-            # with a true beta of 2 the seed came back at beta = 23 and
-            # the MLE then failed outright, falling back to MPP.
-            #
-            # ``_offset_start`` because the fitter overwrites the returned
-            # offset with exactly that (see ``_initial_guess``); seeding
-            # alpha and beta against a different shift than the one
-            # actually installed defeats the point of shifting at all.
-            gamma = _offset_start(x)
-            alpha, beta = self._gumbel_seed(x - gamma, c, n, refine=True)
-            return np.array([gamma, alpha, beta, 1.0], dtype=float)
+            # shifted data (``_offset_seed``). Taking logs before removing
+            # the shift reads log(x) instead of log(x - gamma), and a large
+            # shift compresses those logs into a narrow band: at
+            # gamma = 100 with a true beta of 2 the seed came back at
+            # beta = 23 and the MLE then failed outright.
+            return self._offset_seed(data)
+        x, c, n = data.x, data.c, data.n
         return np.array(
             [*self._gumbel_seed(x, c, n, refine=False), 1.0],
             dtype=float,
         )
 
-    @staticmethod
-    def _log_forms(
-        x: Numeric,
-        alpha: Boxable,
-        beta: Boxable,
-        mu: Boxable,
-        right: bool = True,
-    ) -> dict[str, Boxable]:
-        r"""
-        The pieces every function is built from, each on the log scale so
-        that none of them rounds to 0, 1 or inf before it has to.
+    def _shifted_initialiser(self, data: SurpyvalData) -> npt.NDArray:
+        """The seeds for data shifted by an offset, refined (see
+        ``_gumbel_seed``)."""
+        alpha, beta = self._gumbel_seed(data.x, data.c, data.n, refine=True)
+        return np.array([alpha, beta, 1.0], dtype=float)
 
-        With :math:`t = (x/\alpha)^{\beta}` and
-        :math:`g = 1 - e^{-t}` (so :math:`F = g^{\mu}`):
-
-        - ``log_t`` is :math:`\beta(\ln x - \ln \alpha)`, which does not
-          overflow where :math:`x/\alpha` does;
-        - ``log_g`` is :math:`\ln g`, exact in the lower tail where
-          :math:`1 - e^{-t}` is exactly 0 once :math:`t < 10^{-16}`;
-        - ``ratio_g`` is :math:`\ln(g / t)`, so that the density's
-          :math:`\ln t + (\mu - 1) \ln g` is taken as
-          :math:`\mu \ln g - \ln(g / t)`: as written it is the
-          difference of two terms of the size of :math:`\beta \ln(x /
-          \alpha)`, which at :math:`\beta = 10^{20}` cancel to an error of
-          :math:`10^4` (#472);
-        - ``log_ff`` is :math:`\mu \ln g`;
-        - ``log_nl`` is :math:`\ln(-\ln g)`, which is :math:`-t` in the
-          right tail after :math:`e^{-t}` underflows, so that
-          ``log_r`` :math:`= \ln \mu + \ln(-\ln g) = \ln(-\ln F)`
-          stays finite there;
-        - ``log_sf`` is :math:`\ln(1 - F) = \ln(1 - e^{-r})` with
-          :math:`r = -\ln F`, and ``ratio_r`` is
-          :math:`\ln((1 - e^{-r}) / r)`, which ``hf`` needs to cancel the
-          :math:`e^{-t}` of the density against that of the survival
-          function exactly rather than as a difference of two large logs.
-
-        ``right=False`` stops at ``log_ff``, all that ``ff``, ``log_ff``
-        and the density need. Points at or below 0, and at infinity, are
-        evaluated at 1 (the caller replaces them), so that no branch of any
-        ``np.where`` sees a log of 0, or the ``inf - inf`` of the log forms
-        at ``x = inf`` (#561).
-        """
-        x_pos = np.where((x > 0) & (x < np.inf), x, 1.0)
-        log_x = np.log(x_pos)
-        log_t = beta * (log_x - np.log(alpha))
-        with np.errstate(over="ignore"):
-            t = np.exp(log_t)
-        log_g, ratio_g = _log1mexp(t, log_t)
-        log_ff = mu * log_g
-        out = {
-            "log_x": log_x,
-            "t": t,
-            "log_g": log_g,
-            "ratio_g": ratio_g,
-            "log_ff": log_ff,
-        }
-        if not right:
-            return out
-        log_nl = _log_neg_log1mexp(t, log_g)
-        log_sf, ratio_r = _log1mexp(-log_ff, np.log(mu) + log_nl)
-        out.update(log_nl=log_nl, log_sf=log_sf, ratio_r=ratio_r)
-        return out
-
-    @staticmethod
-    def _support(
-        x: Numeric, inside: Boxable, at_zero: Boxable, at_inf: Boxable
-    ) -> Boxable:
-        """``inside`` for 0 < x < inf, ``at_zero`` at 0, ``at_inf`` at
-        inf and NaN below 0."""
-        # autograd's ``where`` does not unbroadcast its gradient, so a
-        # parameter-dependent ``at_zero`` must have the full shape.
-        at_zero = at_zero + np.zeros_like(inside)
-        at_inf = at_inf + np.zeros_like(inside)
-        inside = np.where(x == np.inf, at_inf, inside)
-        out = np.where(x > 0, inside, np.where(x == 0, at_zero, np.nan))
-        # a scalar in, a scalar out (a 0-d where is an array)
-        return out[()]
+    _log_forms = staticmethod(_log_forms)
+    _support = staticmethod(_support)
 
     def sf(
         self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
@@ -263,11 +538,12 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         # past t = 1 exp(log_sf), which keeps the survival function from
         # underflowing with e^-t when mu e^-t is still representable
         # (#436).
-        p = self._log_forms(x, alpha, beta, mu)
-        inside = np.where(
-            p["t"] > 1.0, np.exp(p["log_sf"]), -np.expm1(p["log_ff"])
+        xp = _raw_or_traced(x, alpha, beta, mu)
+        p = self._log_forms(x, alpha, beta, mu, xp=xp)
+        inside = xp.where(
+            p["t"] > 1.0, xp.exp(p["log_sf"]), -xp.expm1(p["log_ff"])
         )
-        return self._support(x, inside, 1.0, 0.0)
+        return self._support(x, inside, 1.0, 0.0, xp)
 
     def ff(
         self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
@@ -307,8 +583,7 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         >>> ExpoWeibull.ff(x, 3, 4, 1.2)
         array([0.00508867, 0.1270975 , 0.57671321, 0.94933251, 0.99946528])
         """
-        p = self._log_forms(x, alpha, beta, mu, right=False)
-        return self._support(x, np.exp(p["log_ff"]), 0.0, 1.0)
+        return _ff(x, alpha, beta, mu)
 
     def df(
         self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
@@ -392,29 +667,31 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         # h = (beta / x) t g^(mu - 1) / (q (1 - e^-r) / r). The quotient
         # of the two separately computed functions is 0 / 0 once both
         # underflow, and their log difference loses t * eps (#436).
-        p = self._log_forms(x, alpha, beta, mu)
+        xp = _raw_or_traced(x, alpha, beta, mu)
+        p = self._log_forms(x, alpha, beta, mu, xp=xp)
         large = p["t"] > _T_LARGE
         # ln q, e^-t / 2 to double precision (so 0) in the right tail
-        log_q = np.where(
-            large, 0.0, p["log_nl"] + np.where(large, 0.0, p["t"])
+        log_q = xp.where(
+            large, 0.0, p["log_nl"] + xp.where(large, 0.0, p["t"])
         )
         # ln t + (mu - 1) ln g as mu ln g - ln(g / t), whose terms do not
         # cancel (#472).
         log_hf = (
-            np.log(beta)
+            xp.log(beta)
             - p["log_x"]
             + mu * p["log_g"]
             - p["ratio_g"]
             - p["ratio_r"]
             - log_q
         )
-        with np.errstate(over="ignore"):
-            inside = np.exp(log_hf)
+        with xp.errstate(over="ignore"):
+            inside = xp.exp(log_hf)
         return self._support(
             x,
             inside,
             self._df_at_zero(alpha, beta, mu),
             self._hf_at_inf(alpha, beta),
+            xp,
         )
 
     def Hf(
@@ -513,31 +790,20 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
                 np.log(-np.log(-np.expm1(log_v_high))),
             )
             log_t = np.where(low & ~(v > 0), log_v, log_t)
-        with np.errstate(over="ignore", under="ignore"):
-            return alpha * np.exp(log_t / beta)
+        with np.errstate(
+            over="ignore", under="ignore", divide="ignore", invalid="ignore"
+        ):
+            q = alpha * np.exp(log_t / beta)
+            # exp(log t / beta) overflows (or underflows) where the
+            # quantile does not: at alpha = 2.2e-308, beta = 0.0076 and
+            # mu = 3e95, qf(0.95) is 19.4 (#601). There it is taken in logs.
+            far = ~np.isfinite(q) | (q == 0)
+            return np.where(far, np.exp(np.log(alpha) + log_t / beta), q)
 
     def log_df(
         self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
     ) -> Boxable:
-        p = self._log_forms(x, alpha, beta, mu, right=False)
-        # ln f = ln(beta mu / x) + ln t + (mu - 1) ln g - t, with
-        # ln t + (mu - 1) ln g taken as mu ln g - ln(g / t): as written,
-        # beta ln x - beta ln alpha + (mu - 1) ln g cancelled to an error of
-        # about 1e4 at beta = 1e20, and put the likelihood far above its
-        # maximum (#472).
-        inside = (
-            np.log(beta)
-            + np.log(mu)
-            - p["log_x"]
-            + mu * p["log_g"]
-            - p["ratio_g"]
-            - p["t"]
-        )
-        bm = beta * mu
-        at_zero = np.where(
-            bm < 1, np.inf, np.where(bm == 1, -np.log(alpha), -np.inf)
-        )
-        return self._support(x, inside, at_zero, -np.inf)
+        return _log_df(x, alpha, beta, mu)
 
     @staticmethod
     def _df_at_zero(alpha: Boxable, beta: Boxable, mu: Boxable) -> Boxable:
@@ -564,17 +830,12 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
     def log_ff(
         self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
     ) -> Boxable:
-        p = self._log_forms(x, alpha, beta, mu, right=False)
-        return self._support(x, p["log_ff"], -np.inf, 0.0)
+        return _log_ff(x, alpha, beta, mu)
 
     def log_sf(
         self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
     ) -> Boxable:
-        # log(1 - e^-r) with r = -ln F carried as ln r, which in the right
-        # tail is ln(mu) - t: finite after e^-t underflows, where the log
-        # of the survival function itself is -inf (#257, #436).
-        p = self._log_forms(x, alpha, beta, mu)
-        return self._support(x, p["log_sf"], 0.0, -np.inf)
+        return _log_sf(x, alpha, beta, mu)
 
     def moment(
         self, m: int, alpha: Boxable, beta: Boxable, mu: Boxable
@@ -591,16 +852,19 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         it only terminates when :math:`\mu` is a positive integer, and
         for other :math:`\mu` it is alternating and slow to converge,
         losing significance to cancellation as :math:`\mu` grows. So the
-        integral is taken by quadrature, as ``entropy`` does for the same
-        reason, on the distribution's own scale: with
-        :math:`t = (x/\alpha)^{\beta}`,
+        integral is taken by quadrature on the distribution's own scale:
+        with :math:`t = (x/\alpha)^{\beta}`,
 
         .. math::
             E[X^{m}] = \alpha^{m} \int_{0}^{\infty} t^{m/\beta}\,
-            \mu (1 - e^{-t})^{\mu - 1} e^{-t}\, dt ,
+            \mu (1 - e^{-t})^{\mu - 1} e^{-t}\, dt
+            = \alpha^{m} \int_{0}^{1} Q(p)^{m/\beta}\, dp ,
 
         whose integrand does not depend on :math:`\alpha`, so the result
-        is equally accurate at any scale.
+        is equally accurate at any scale. The second form, over the
+        probability :math:`p` with :math:`Q(p) = -\ln(1 - p^{1/\mu})` the
+        quantile of :math:`t`, is taken by a fixed tanh-sinh rule, all
+        parameter sets at once (see ``_t_power_expectation``).
 
         Parameters
         ----------
@@ -624,18 +888,13 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         --------
         >>> from surpyval import ExpoWeibull
         >>> ExpoWeibull.moment(2, 3, 4, 1.2)
-        8.598425613605164
+        8.59842561360511
         """
 
         a, b, u = np.broadcast_arrays(
             *(np.asarray(v, dtype=float) for v in (alpha, beta, mu))
         )
-        out = np.empty(a.shape)
-        for i in np.ndindex(*a.shape):
-            m_b = float(m) / b[i]
-            out[i] = a[i] ** m * self._t_expectation(
-                lambda t: t**m_b, b[i], u[i]
-            )
+        out = a**m * _t_power_expectation(float(m) / b, u)
         return float(out) if out.ndim == 0 else out
 
     @staticmethod
@@ -645,7 +904,9 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         r"""
         :math:`E[g(T)]` for :math:`T = (X/\alpha)^{\beta}`, whose density
         :math:`\mu (1 - e^{-t})^{\mu - 1} e^{-t}` is free of
-        :math:`\alpha` (and of :math:`\beta`).
+        :math:`\alpha` (and of :math:`\beta`), by ``quad``, for
+        ``entropy``; the moments, :math:`g(t) = t^{s}`, have the fixed
+        rule of ``_t_power_expectation`` (#586).
 
         Integrating over ``x`` directly, the old way, put the mass wherever
         :math:`\alpha` put it, and ``quad`` over :math:`[0, \infty)`
@@ -655,6 +916,8 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         mass is always near 1; the split there keeps the (integrable)
         singularity at 0 for :math:`\mu < 1` apart from the tail.
         """
+        from scipy import integrate
+
         mu_f = float(mu)
         log_mu = np.log(mu_f)
 
@@ -678,7 +941,7 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         --------
         >>> from surpyval import ExpoWeibull
         >>> ExpoWeibull.mean(3, 4, 1.2)
-        2.8422622081888997
+        2.8422622081888917
         """
         return self.moment(1, alpha, beta, mu)
 

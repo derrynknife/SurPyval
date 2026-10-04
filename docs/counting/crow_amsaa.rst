@@ -21,3 +21,9 @@ given parameters.
    .. automethod:: surpyval.recurrent.parametric.crow_amsaa.CrowAMSAA.iif
    .. automethod:: surpyval.recurrent.parametric.crow_amsaa.CrowAMSAA.log_iif
    .. automethod:: surpyval.recurrent.parametric.crow_amsaa.CrowAMSAA.inv_cif
+   .. automethod:: surpyval.recurrent.parametric.crow_amsaa.CrowAMSAA.projection
+
+``projection`` returns a ``GrowthProjection``:
+
+.. autoclass:: surpyval.recurrent.parametric.growth_projection.GrowthProjection
+   :members: demonstrated_mtbf, projected_mtbf, growth_potential_mtbf

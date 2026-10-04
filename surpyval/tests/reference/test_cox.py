@@ -29,17 +29,27 @@ DERIVED = dict(rtol=1e-6, atol=1e-10)
 
 
 def _se(model):
-    """Model-based standard errors, the inverse observed information."""
+    """Model-based standard errors, the inverse observed information,
+    which is ``covariance()`` (#613)."""
     info = model.jac(model.params)[1]
-    return np.sqrt(np.diag(np.linalg.inv(info)))
+    cov = np.linalg.inv(info)
+    assert_allclose(model.covariance(), cov, rtol=1e-12, atol=0)
+    assert_allclose(
+        model.standard_errors(), np.sqrt(np.diag(cov)), rtol=1e-12, atol=0
+    )
+    return model.standard_errors()
 
 
 def _check(model, ref, p):
     assert_allclose(model.params, np.atleast_1d(ref["coef"]), **COEF)
     assert_allclose(_se(model), np.atleast_1d(ref["se"]), **DERIVED)
     # coxph's loglik is (null, fitted); the null is the same function at 0.
-    assert_allclose(-model.neg_ll(model.params), ref["loglik"][1], **COEF)
-    assert_allclose(-model.neg_ll(np.zeros(p)), ref["loglik"][0], **COEF)
+    assert_allclose(-model.neg_ll_of(model.params), ref["loglik"][1], **COEF)
+    assert_allclose(-model.neg_ll_of(np.zeros(p)), ref["loglik"][0], **COEF)
+    # logLik(fit) and AIC(fit): the partial likelihood, k the coefficients
+    # (#604)
+    assert_allclose(model.log_likelihood, ref["loglik"][1], **COEF)
+    assert_allclose(model.aic(), 2 * p - 2 * ref["loglik"][1], **COEF)
     # The Breslow estimator of the uncentred baseline (survfit.coxph with
     # ctype = 1 at covariates 0), which is what SurPyval reports for every
     # tie method.

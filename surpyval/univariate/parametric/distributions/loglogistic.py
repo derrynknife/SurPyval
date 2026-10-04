@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+from typing import Any
+
 import autograd.numpy as np
 import numpy.typing as npt
 from autograd.scipy.special import expit
-from scipy.stats import fisk
 
-from surpyval.univariate.parametric._fit_inputs import _offset_start
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
@@ -40,37 +40,30 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
             plot_x_scale="log",
         )
 
+    def _offset_limit_family(self) -> Any:
+        """The ``Logistic``: as the offset runs to -inf with beta -> inf,
+        ``gamma + alpha e^(L / beta)`` tends to a Logistic distribution
+        (#599; see ``OptimisedFitMixin._offset_limit_family``)."""
+        from surpyval.univariate.parametric import Logistic
+
+        return Logistic
+
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
         if offset:
-            # The data arrives already validated in xcnt form, so the
-            # ``xcnt_handler`` round trip that used to open this branch
-            # is gone. It never had anything to re-derive: no caller has
-            # ever passed ``t`` down to an initialiser.
-            #
             # alpha and beta are seeded as for an unshifted fit, from the
-            # probability plot of the data shifted by the fitter's own
-            # starting offset (see ``_offset_start``). The seed was the
-            # sum of the unshifted values over the number of failures and
-            # a shape of 2: for data well clear of zero the scale came
-            # out several times too large, and the search's first step
-            # to correct it overshot so far below zero, where the scale
-            # is searched as a log, that it underflowed -- in data units
-            # of thousands the fit ended on Nelder-Mead at the starting
-            # offset.
-            x, c, n = data.x, data.c, data.n
-            gamma_init = _offset_start(x)
-            shifted = self.fit_from_surpyval_data(
-                SurpyvalData(x - gamma_init, c, n, group_and_sort=False),
-                how="MPP",
-            )
-            return np.array([gamma_init, *shifted.params], dtype=float)
-        else:
-            return np.asarray(
-                self.fit_from_surpyval_data(data, how="MPP").params,
-                dtype=float,
-            )
+            # probability plot of the data shifted by the starting offset
+            # (``_offset_seed``). The seed was the sum of the unshifted
+            # values over the number of failures and a shape of 2: for
+            # data well clear of zero the scale came out several times too
+            # large, and the search's first step overshot so far that it
+            # underflowed.
+            return self._offset_seed(data)
+        return np.asarray(
+            self.fit_from_surpyval_data(data, how="MPP").params,
+            dtype=float,
+        )
 
     def sf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -397,6 +390,8 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         >>> LogLogistic.moment(2, 10, 3)
         np.float64(241.83991523122904)
         """
+        from scipy.stats import fisk
+
         return fisk.moment(m, beta, scale=alpha)
 
     def entropy(self, alpha: Boxable, beta: Boxable) -> Boxable:

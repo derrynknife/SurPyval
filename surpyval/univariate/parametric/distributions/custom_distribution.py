@@ -8,7 +8,6 @@ import autograd.numpy as np
 import numpy as onp
 import numpy.typing as npt
 from autograd import elementwise_grad
-from scipy.integrate import quad
 from scipy.optimize import brentq
 
 from surpyval.univariate.parametric._fit_inputs import _offset_start
@@ -18,7 +17,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
     ParametricFitter,
 )
-from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.surpyval_data import SurpyvalData
 
 # The quantiles at which CustomDistribution.moment splits its integrals,
@@ -56,9 +55,9 @@ def _model_attribute_names() -> frozenset[str]:
     without a list to keep in step. ``res`` and ``log_likelihood`` are the
     two a fitter sets that the class does not declare.
 
-    ``p`` is not among them: a distribution may have its own ``p`` (the
-    limited-failure proportion is then named ``lfp_p``, see
-    ``Parametric.__init__``), and the fit leaves the attribute alone.
+    ``p`` is not among them: a distribution may have its own ``p``, which
+    the model's ``p`` then gives (the limited-failure proportion is
+    ``lfp_p``, #608).
     """
     from surpyval.univariate.parametric.parametric import Parametric
 
@@ -138,12 +137,10 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
         ``fun(x, nu, b)``; anything else raises a ``ValueError``.
 
     parameter_names: list
-        List of parameter names (``param_names``, its name before v0.22,
-        is accepted with a ``DeprecationWarning`` until v0.23). A fitted
-        model exposes each parameter as an attribute, so ``gamma``,
-        ``f0`` and the names of the model's own attributes (``k``,
-        ``dist``, ``data``, ``method``, ``sf``, ...) are refused with a
-        ``ValueError`` that lists them.
+        List of parameter names. A fitted model exposes each parameter as
+        an attribute, so ``gamma``, ``f0`` and the names of the model's
+        own attributes (``k``, ``dist``, ``data``, ``method``, ``sf``,
+        ...) are refused with a ``ValueError`` that lists them.
 
     bounds: list
         List of tuples containing the lower and upper bounds of the
@@ -188,7 +185,6 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
     True
     """
 
-    @renamed_arguments(param_names="parameter_names")
     def __init__(
         self,
         name: str,
@@ -341,21 +337,137 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
         It makes ``random`` available (inverse-transform sampling), and
         gives :meth:`moment` the distribution's own scale. Outside
         :math:`[0, 1]` it is NaN, as for the built-in distributions.
+
+        Every probability is solved at once when the cumulative hazard
+        broadcasts: a function that indexes or reduces its argument does
+        not, so ``Hf`` on an array must give the same values as on each
+        point alone, at a probe of spread points before the solve and at
+        the answers after it; otherwise, or if it raises on an array, each
+        probability is solved alone, as before (#596).
         """
         theta = [float(p) for p in params]
-        H = self._scalar_fn(self.Hf, theta)
         lo, hi = float(self.support[0]), float(self.support[1])
         u_arr = onp.asarray(u, dtype=float)
-        out = onp.empty(u_arr.shape)
+        out = onp.full(u_arr.shape, onp.nan)
+        # below 0 the target -log1p(-u) is negative, which the inversion
+        # read as the support's lower edge
+        valid = (u_arr >= 0.0) & (u_arr <= 1.0)
         with onp.errstate(all="ignore"):
-            for i, u_i in onp.ndenumerate(u_arr):
-                if not 0.0 <= u_i <= 1.0:
-                    # below 0 the target -log1p(-u) is negative, which the
-                    # inversion read as the support's lower edge
-                    out[i] = onp.nan
-                    continue
-                out[i] = self._invert_Hf(H, -onp.log1p(-u_i), lo, hi)
+            target = -onp.log1p(-u_arr[valid])
+            solved = self._invert_Hf_together(theta, target, lo, hi)
+            if solved is None:
+                H = self._scalar_fn(self.Hf, theta)
+                solved = onp.array(
+                    [self._invert_Hf(H, t, lo, hi) for t in target]
+                )
+        out[valid] = solved
         return out[()]
+
+    def _broadcast_Hf(
+        self, theta: "list[float]", x: npt.NDArray
+    ) -> "npt.NDArray | None":
+        """``Hf`` at the points ``x`` evaluated together, or ``None`` if
+        that is not ``Hf`` at each point alone: it raised, or gave an
+        array of another shape, or values that differ from the point's own
+        (beyond the rounding a vectorised loop may differ by)."""
+        H = self._scalar_fn(self.Hf, theta)
+        try:
+            together = onp.asarray(self.Hf(x, *theta), dtype=float)
+        except Exception:
+            return None
+        if together.shape != x.shape:
+            return None
+        # Points spread across the array (all of a short one), alone.
+        k = onp.unique(onp.linspace(0, x.size - 1, min(x.size, 9)).round())
+        k = k.astype(int)
+        alone = onp.array([H(t) for t in x[k]])
+        if not onp.allclose(
+            together[k], alone, rtol=1e-12, atol=0.0, equal_nan=True
+        ):
+            return None
+        return together
+
+    def _invert_Hf_together(
+        self, theta: "list[float]", target: npt.NDArray, lo: float, hi: float
+    ) -> "npt.NDArray | None":
+        """``_invert_Hf`` for every ``target`` at once: the same brackets
+        (doubled out from the support's finite edge, or from [-1, 1]),
+        then ``solve_bracketed``; ``None`` where ``Hf`` does not broadcast
+        (see ``_broadcast_Hf``)."""
+        # A probe of distinct points across scales in the support.
+        if onp.isfinite(lo) and onp.isfinite(hi):
+            probe = lo + (hi - lo) * onp.linspace(0.05, 0.95, 9)
+        else:
+            steps = 2.0 ** onp.arange(-12.0, 15.0, 3.0)
+            if onp.isfinite(lo):
+                probe = lo + steps
+            elif onp.isfinite(hi):
+                probe = hi - steps
+            else:
+                probe = onp.concatenate([-steps[::-2], steps[::2]])
+        if self._broadcast_Hf(theta, probe) is None:
+            return None
+
+        def excess(x: npt.NDArray, sel: npt.NDArray) -> npt.NDArray:
+            # As in _invert_Hf: a non-finite H keeps its sign as a large
+            # finite value.
+            value = onp.asarray(self.Hf(x, *theta), dtype=float)
+            return onp.nan_to_num(
+                value - target[sel], nan=1e300, posinf=1e300, neginf=-1e300
+            )
+
+        out = onp.full(target.shape, onp.nan)
+        out[target <= 0] = lo
+        out[onp.isposinf(target)] = hi
+        todo = onp.flatnonzero((target > 0) & onp.isfinite(target))
+        if not todo.size:
+            return out
+        a = onp.full(todo.size, lo)
+        b = onp.full(todo.size, hi)
+        if not onp.isfinite(lo) or not onp.isfinite(hi):
+            if onp.isfinite(lo):
+                b = lo + self._doubled(lambda w, s: excess(lo + w, s), todo)
+            elif onp.isfinite(hi):
+                a = hi - self._doubled(lambda w, s: -excess(hi - w, s), todo)
+            else:
+                a = -self._doubled(lambda w, s: -excess(-w, s), todo)
+                b = self._doubled(excess, todo)
+        e_a, e_b = excess(a, todo), excess(b, todo)
+        out[todo] = onp.where(e_a >= 0, a, b)
+        open_ = (e_a < 0) & (e_b > 0)
+        if open_.any():
+            sel = todo[open_]
+            out[sel] = solve_bracketed(
+                lambda x, s: excess(x, sel[s]),
+                a[open_],
+                b[open_],
+                e_a[open_],
+                e_b[open_],
+                xtol=1e-300,
+                rtol=4 * onp.finfo(float).eps,
+            )
+        # The answers, together and alone: a cumulative hazard that
+        # broadcast on the probe but not at this size is solved alone.
+        if self._broadcast_Hf(theta, out[todo]) is None:
+            return None
+        return out
+
+    @staticmethod
+    def _doubled(
+        below: Callable[[npt.NDArray, npt.NDArray], npt.NDArray],
+        todo: npt.NDArray,
+    ) -> npt.NDArray:
+        """For each problem in ``todo``, the width ``w``, doubled from 1,
+        at which ``below(w, problems)`` is no longer negative (or 1e300 is
+        passed), as ``_invert_Hf``'s bracket loops step."""
+        width = onp.ones(todo.size)
+        active = onp.arange(todo.size)
+        while active.size:
+            more = below(width[active], todo[active]) < 0
+            more &= width[active] < 1e300
+            active = active[more]
+            width[active] *= 2.0
+        return width
 
     @staticmethod
     def _invert_Hf(
@@ -433,6 +545,8 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
         of a distribution far from unit scale: a Weibull-like cumulative
         hazard with a scale of 1e5 gave a negative mean.
         """
+        from scipy.integrate import quad
+
         if m == 0:
             return 1.0
         theta = [float(p) for p in params]
@@ -517,6 +631,10 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
         :meth:`_alternative_base_starts`). With an offset the returned
         vector leads with the offset.
         """
+        if offset:
+            # The grid's best for the data shifted by the starting offset
+            # (``_offset_seed``); it was the unshifted data's (#622)
+            return self._offset_seed(data)
         x = np.asarray(data.x, dtype=float)
         finite = np.abs(x[np.isfinite(x)])
         positive = finite[finite > 0]
@@ -557,12 +675,7 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
                         if value < best_value:
                             best, best_value = trial, value
 
-        out = np.array(best, dtype=float)
-        if offset:
-            # The fitter's own starting offset, a step on the data's
-            # scale below the smallest value (see ``_offset_start``)
-            out = np.concatenate([[_offset_start(x)], out])
-        return out
+        return np.array(best, dtype=float)
 
     def _alternative_base_starts(
         self, data: SurpyvalData, offset: bool = False

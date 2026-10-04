@@ -24,7 +24,6 @@ from typing import Any, Callable
 import numpy as np
 import numpy.typing as npt
 from scipy.special import expit, log_ndtr, ndtr, ndtri, ndtri_exp
-from scipy.stats import norm
 
 from surpyval.utils.validation import BOUNDS, option_error
 
@@ -45,6 +44,25 @@ def safe_inv(m: npt.NDArray) -> npt.NDArray:
         return out
     except np.linalg.LinAlgError:
         return np.linalg.pinv(m)
+
+
+def standard_errors_of(covariance: npt.ArrayLike) -> npt.NDArray:
+    """
+    The standard errors of a covariance matrix, the square roots of its
+    diagonal in its order, and ``nan`` where a variance is negative or
+    ``nan`` (a parameter on a boundary, or not estimated), without the
+    invalid-value warning a bare ``sqrt`` gives. What every model's
+    ``standard_errors()`` returns (#613).
+
+    Examples
+    --------
+    >>> from surpyval.utils.linalg import standard_errors_of
+    >>> standard_errors_of([[4.0, 1.0], [1.0, -1e-9]])
+    array([ 2., nan])
+    """
+    var = np.diag(np.atleast_2d(np.asarray(covariance, dtype=float)))
+    with np.errstate(invalid="ignore"):
+        return np.sqrt(np.where(var >= 0, var, np.nan))
 
 
 def safe_quadform(V: npt.NDArray, u: npt.NDArray) -> float:
@@ -140,20 +158,35 @@ def delta_method_se(
     Standard errors of the (possibly vector-valued) function ``func`` of
     the parameters, evaluated at the MLE, via the delta method with a
     central-difference Jacobian: ``se_i = sqrt(J_i' cov J_i)``.
+
+    The step is ``eps**(1/3) * max(|p|, 1e-2)``. Where that step leaves
+    the function's domain (a positive parameter smaller than the step:
+    an accelerated life model's constant ``c`` of 6e-9 against a step of
+    6e-8 gave a ``nan`` bound, #617) the difference is taken again in a
+    step relative to the parameter alone.
     """
+    h = np.finfo(float).eps ** (1.0 / 3.0)
     mle = np.asarray(mle, dtype=float)
-    step = (np.finfo(float).eps ** (1.0 / 3.0)) * np.maximum(np.abs(mle), 1e-2)
+    step = h * np.maximum(np.abs(mle), 1e-2)
+    at = None
     cols = []
     for i in range(mle.size):
-        ei = np.zeros(mle.size)
-        ei[i] = step[i]
-        cols.append(
-            (
+
+        def column(size: float) -> npt.NDArray:
+            ei = np.zeros(mle.size)
+            ei[i] = size
+            return (
                 np.asarray(func(mle + ei), dtype=float)
                 - np.asarray(func(mle - ei), dtype=float)
-            )
-            / (2.0 * step[i])
-        )
+            ) / (2.0 * size)
+
+        col = column(step[i])
+        small = h * abs(mle[i])
+        if 0 < small < step[i] and not np.all(np.isfinite(col)):
+            if at is None:
+                at = np.asarray(func(mle), dtype=float)
+            col = np.where(np.isfinite(at), column(small), col)
+        cols.append(col)
     J = np.stack(cols, axis=-1)
     var = np.einsum("...i,ij,...j->...", J, cov, J)
     with np.errstate(invalid="ignore"):
@@ -190,6 +223,8 @@ def log_transformed_cb(
     Greenwood bounds on the nonparametric MCF). Where the estimate is zero
     (e.g. a CIF at ``x = 0``) both bounds are zero.
     """
+    from scipy.stats import norm
+
     estimate = np.asarray(estimate, dtype=float)
     se = np.asarray(se, dtype=float)
     alpha, signs = bound_signs(alpha_ci, bound)
@@ -313,6 +348,8 @@ def link_band(
     0, where a band on the logit of ``sf`` could turn back on small
     samples (#477).
     """
+    from scipy.stats import norm
+
     u_hat = np.asarray(u_hat, dtype=float)
     se_u = np.asarray(se_u, dtype=float)
     alpha, signs = bound_signs(alpha_ci, bound)
@@ -344,6 +381,8 @@ def sf_link_bound(
     range the bounds are the edge they are at: the transform degenerates
     to 0/0 there, and the variance is noise (#256).
     """
+    from scipy.stats import norm
+
     sf_hat = np.asarray(sf_hat, dtype=float)
     ff_hat = 1.0 - sf_hat if ff_hat is None else np.asarray(ff_hat, float)
     u_hat = sf_link_from_sf(sf_hat, ff_hat, link)
@@ -440,6 +479,8 @@ def wald_bound_on_support(
     in sqrt", or a ``ZeroDivisionError`` for an estimate on the edge of
     an interval support (#411).
     """
+    from scipy.stats import norm
+
     alpha, signs = bound_signs(alpha_ci, bound)
     reason = wald_undefined(p_hat, var, lower, upper)
     if reason is not None:

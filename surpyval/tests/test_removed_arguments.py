@@ -1,10 +1,14 @@
 """
-The names v0.21 deprecated are gone in v0.22 (#422, principle 21).
+The names v0.21 deprecated are gone in v0.22 (#422), and those v0.22
+deprecated are gone in v0.23 (principle 21).
 
 An old argument name is now an unknown argument, so the call raises
-Python's own ``TypeError``, and ``surpyval.experimental`` no longer
-exists (``surpyval.beta.ml`` holds the survival tree and forest). A few
-representative old names from each area are checked here.
+Python's own ``TypeError``; an old attribute is gone (``AttributeError``);
+``surpyval.experimental`` (use ``surpyval.beta.ml``) and
+``surpyval.utils.score`` (use ``surpyval.metrics.concordance_index``) no
+longer exist, and the life models' old top-level names say where they
+are. A few representative old names from each area are checked here; the
+feature tests check the rest.
 
 The names deprecated since are removed in
 ``surpyval.utils.deprecation.REMOVED_IN``: the last test fails once the
@@ -19,6 +23,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import surpyval
@@ -71,6 +76,30 @@ def _fine_gray_cause():
     FineGray.fit(XC, ZC, EC, cause="b")
 
 
+def _cs_given():
+    sp.Weibull.from_params([10, 3]).cs(11, X=10)
+
+
+def _fit_from_df_x():
+    sp.Weibull.fit_from_df(pd.DataFrame({"t": X}), x="t")
+
+
+def _ari_dist():
+    from surpyval.recurrent import ARI, Duane
+
+    ARI.fit(XR, IR, c=CR, dist=Duane)
+
+
+def _custom_param_names():
+    sp.CustomDistribution(
+        "OldKeyword",
+        lambda x, *p: p[0] * x,
+        param_names=["a"],
+        bounds=((0, None),),
+        support=(0, np.inf),
+    )
+
+
 OLD_NAMES = {
     "Parametric.cb(t=)": (_parametric_cb, "t"),
     "CoxPH.fit(method=)": (_cox_method, "method"),
@@ -82,6 +111,11 @@ OLD_NAMES = {
     "WienerProcessModel.sf(t=)": (_degradation_t, "t"),
     "CompetingRisks.fit(method=)": (_competing_risks_method, "method"),
     "FineGray.fit(cause=)": (_fine_gray_cause, "cause"),
+    # Deprecated in v0.22, removed in v0.23
+    "Parametric.cs(X=)": (_cs_given, "X"),
+    "Weibull.fit_from_df(x=)": (_fit_from_df_x, "x"),
+    "ARI.fit(dist=)": (_ari_dist, "dist"),
+    "CustomDistribution(param_names=)": (_custom_param_names, "param_names"),
 }
 
 
@@ -91,6 +125,23 @@ def test_old_name_is_an_unknown_argument(call, old):
         TypeError, match=f"unexpected keyword argument '{old}'"
     ):
         call()
+
+
+@pytest.mark.parametrize(
+    "case", ["Weibull", "WeibullPH", "CrowAMSAA", "ProportionalIntensityNHPP"]
+)
+def test_param_names_attribute_is_gone(case):
+    model = fitted(CASE_BY_NAME[case])
+    assert not hasattr(model, "param_names")
+    assert type(model.parameter_names) is list
+
+
+def test_v022_modules_and_top_level_names_are_gone():
+    sys.modules.pop("surpyval.utils.score", None)
+    with pytest.raises(ImportError):
+        importlib.import_module("surpyval.utils.score")
+    with pytest.raises(AttributeError, match="surpyval.life_models.Power"):
+        sp.Power
 
 
 def test_experimental_alias_is_gone():
@@ -108,15 +159,20 @@ def test_experimental_alias_is_gone():
 # The next removal: nothing deprecated outlives REMOVED_IN
 # ---------------------------------------------------------------------------
 # What keeps an old name alive: the renaming helpers of
-# surpyval.utils.deprecation, REMOVED_IN itself (every hand-written
-# deprecation message quotes it), and a DeprecationWarning.
+# surpyval.utils.deprecation, REMOVED_IN and REMOVED_IN_NEXT (every
+# hand-written deprecation message quotes one), and a DeprecationWarning.
 _SHIM_NAMES = frozenset(
     {
         "REMOVED_IN",
+        "REMOVED_IN_NEXT",
         "renamed_arguments",
         "RenamedAttribute",
-        "renamed_class_attribute",
-        "CallableList",
+        "CallableFloat",
+        "MethodFloat",
+        "ArrayMethod",
+        "MethodArray",
+        "RenamedToMethod",
+        "MadePrivate",
         "DeprecationWarning",
     }
 )
@@ -177,6 +233,21 @@ def g():
 """
     assert _deprecation_shims(source) == [2, 5, 10]
     assert _deprecation_shims("import warnings\nx = 1\n") == []
+
+
+def test_the_scan_sees_every_kind_of_shim():
+    # The v0.23 deprecations (removed in v0.24) use every helper: the scan
+    # must see each, or the test below would pass with one left behind.
+    files = {shim.rsplit(":", 1)[0] for shim in _package_shims()}
+    assert {
+        "surpyval/__init__.py",  # NUM, TINIEST, EPS (REMOVED_IN)
+        "surpyval/recurrent/inference.py",  # aic, bic (MethodFloat)
+        "surpyval/univariate/parametric/royston_parmar.py",  # ArrayMethod
+        "surpyval/univariate/parametric/parametric.py",  # RenamedToMethod
+        "surpyval/univariate/parametric/mixture_model.py",  # MadePrivate
+        "surpyval/univariate/parametric/parametric_fitter.py",  # lfp_p
+        "surpyval/univariate/regression/frailty/cox_frailty.py",  # loglik
+    } <= files
 
 
 def test_deprecated_names_are_removed_by_removed_in():

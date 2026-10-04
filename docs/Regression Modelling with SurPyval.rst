@@ -266,6 +266,23 @@ maximum") and returns the model where the search stopped, whose value for that
 coefficient, its standard error and its bounds mean nothing. Remove or coarsen
 the covariate (merge the level with another), or fit a penalised model.
 
+A covariate's units do not change the fit: multiplying a column by a
+constant divides its coefficient by it and leaves the maximised likelihood
+where it was. The search, and the check that it reached a maximum, measure
+each coefficient in its covariate's units -- the change of
+:math:`1/\mathrm{range}(Z_j)` that moves the linear predictor by 1 across
+the data where that range is below 1 or above 100 (and 1 in between, so
+nothing changes for a binary covariate or ordinary data) -- so a covariate
+recorded in small units, such as the Arrhenius :math:`1/T` in kelvin (a
+range of about :math:`3 \times 10^{-4}` over a test's temperatures), or in
+large ones, such as a date in days, is fitted as well as one of order 1.
+Measured in units of 1, a coefficient's gradient at its start of 0 is
+proportional to its covariate's spread: a ``WeibullPH`` time-varying fit to
+:math:`1/T` stopped there, after no iterations, and reported a verified
+maximum 0.41 below the one it reached with :math:`1000/T` (#577); and with
+every covariate in units of :math:`10^4`, 14 of the package's regression
+fits stopped up to 0.023 short of their maximum, saying so (#612).
+
 Each family also has a ``fit_from_df`` that names DataFrame columns instead
 (see `Fitting from a DataFrame: formulas and categorical covariates`_).
 
@@ -288,7 +305,7 @@ A small simulated data set shows the three forms:
     # Weibull(10, 2) baseline; exposure multiplies the hazard by e^0.7 ~ 2
     x_demo = 10 * rng.weibull(2.0, 300) * np.exp(-0.7 * Z_demo[:, 0] / 2.0)
     demo = WeibullPH.fit(x=x_demo, Z=Z_demo)
-    print('alpha, beta, beta_0 :', demo.params.round(3))
+    print('alpha, beta, coef_0 :', demo.params.round(3))
 
     print('one row, three times :', demo.sf([5.0, 10.0, 15.0], Z=[1.0]).round(3))
     print('two rows, paired     :', demo.sf([5.0, 5.0], Z=[[0.0], [1.0]]).round(3))
@@ -303,17 +320,35 @@ A small simulated data set shows the three forms:
     assert _g.shape == (2, 3)
     assert np.allclose(_g[1], demo.sf([5.0, 10.0, 15.0], Z=[1.0]))
 
-The regression models do not have a quantile function (``qf``). A quantile at a
-given covariate value is the root of :math:`S(x \mid Z) = 1 - p`, which a
-bracketing root-finder finds reliably because ``sf`` is monotone:
+The same covariate recorded in ten-thousandths gives the same model, its
+coefficient multiplied by :math:`10^{4}` (see the units of a covariate,
+above):
 
 .. jupyter-execute::
 
-    from scipy.optimize import brentq
+    small = WeibullPH.fit(x=x_demo, Z=Z_demo * 1e-4)
+    print('alpha, beta, coef_0 :', small.params.round(3), small.maximum)
+    print('neg_ll              :', round(small.neg_ll(), 6), round(demo.neg_ll(), 6))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert small.maximum == "verified"
+    assert abs(small.neg_ll() - demo.neg_ll()) < 1e-6
+    assert np.allclose(small.params * [1, 1, 1e-4], demo.params, rtol=1e-4)
+
+The parametric regression models have a quantile function, ``qf(p, Z)``,
+with the same pairing of probabilities and rows (and ``grid=True``): the time
+by which a proportion ``p`` of the units with covariates ``Z`` have failed,
+inverted from the model's own cumulative hazard for every family. The B10 life
+of a unit is ``qf(0.1, Z)``:
+
+.. jupyter-execute::
 
     for z in [0.0, 1.0]:
-        median = brentq(lambda t: demo.sf([t], Z=[z])[0] - 0.5, 1e-6, 100.0)
-        print(f'median life at Z = {z:g}: {median:.2f}')
+        b10, median = demo.qf([0.1, 0.5], Z=[z])
+        print(f'Z = {z:g}: B10 {b10:.2f}, median life {median:.2f}')
 
 With a hazard ratio of about 2 and a Weibull shape of 2, the exposed median is
 shorter by a factor of about :math:`2^{1/2}` — exactly what the PH/AFT
@@ -323,12 +358,61 @@ equivalence for the Weibull (see `Accelerated Failure Time (AFT)`_) predicts.
     :hide-code:
     :hide-output:
 
-    _med = [brentq(lambda t, z=z: demo.sf([t], Z=[z])[0] - 0.5, 1e-6, 100.0)
-            for z in (0.0, 1.0)]
+    _med = demo.qf(0.5, Z=[[0.0], [1.0]])
+    assert np.allclose(demo.sf(_med, Z=[[0.0], [1.0]]), 0.5, rtol=1e-10)
     _shape, _b0 = demo.params[1], demo.params[2]
     assert round(np.exp(_b0)) == 2 and round(_shape) == 2, demo.params
-    assert np.isclose(_med[0] / _med[1], np.exp(_b0 / _shape), rtol=1e-4)
+    assert np.isclose(_med[0] / _med[1], np.exp(_b0 / _shape), rtol=1e-9)
     assert abs(_med[0] / _med[1] - 2 ** 0.5) < 0.05, _med
+
+``quantile_cb(p, Z)`` bounds them, as the univariate models' does: by
+default the delta method on :math:`\log t_p`, and the likelihood-ratio bound
+with ``method='lr'`` (see `Confidence Bounds`_ below):
+
+.. jupyter-execute::
+
+    print('B10 at Z = 1, 95% Wald :', demo.quantile_cb(0.1, Z=[1.0]).round(2))
+    print('B10 at Z = 1, 95% LR   :',
+          demo.quantile_cb(0.1, Z=[1.0], method='lr').round(2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _b10 = demo.qf(0.1, Z=[1.0])
+    for _m in ('wald', 'lr'):
+        _lo, _hi = demo.quantile_cb(0.1, Z=[1.0], method=_m)
+        assert _lo < _b10 < _hi
+
+A unit already in service has survived to its age. Every regression model
+(the parametric families, Cox, the proportional odds, additive hazards,
+Buckley-James and frailty models) has the univariate models' conditional
+survival with covariates, ``cs(x, given, Z)``: the chance that a unit with
+covariates ``Z`` that has survived to ``given`` survives a further ``x``,
+:math:`S(given + x \mid Z) / S(given \mid Z)`. It is computed from the
+cumulative hazard, so it stays exact far in the tail, where the ratio of
+``sf`` values underflows to ``0 / 0``:
+
+.. jupyter-execute::
+
+    ages = np.array([2.0, 8.0, 250.0])
+    print('cs(1 | age, Z=1) :', demo.cs(1.0, ages, Z=[1.0]))
+    with np.errstate(invalid='ignore'):
+        print('sf ratio         :',
+              demo.sf(ages + 1, Z=[1.0]) / demo.sf(ages, Z=[1.0]))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    with np.errstate(invalid='ignore'):
+        _ratio = demo.sf(ages + 1, Z=[1.0]) / demo.sf(ages, Z=[1.0])
+    assert np.allclose(demo.cs(1.0, ages[:2], Z=[1.0]), _ratio[:2])
+    assert np.isnan(_ratio[2]) and 0 < demo.cs(1.0, 250.0, Z=[1.0]) < 1
+
+Summed over a fleet, this is the forecast of how many units will fail over the
+next period, which :func:`surpyval.forecast` gives with a prediction interval
+(see `Forecasting a fleet from its current ages`_).
 
 
 Semi-Parametric — Cox Proportional Hazards
@@ -563,7 +647,7 @@ came before their entry age were never seen at all, as happens in practice:
 
     naive = WeibullPH.fit(x=x_le, Z=z_le)
     trunc = WeibullPH.fit(x=x_le, Z=z_le, t=t_le)
-    print('truth (alpha, beta, beta_0) : [10.    1.5   0.8]')
+    print('truth (alpha, beta, coef_0) : [10.    1.5   0.8]')
     print('WeibullPH ignoring entry    :', naive.params.round(3))
     print('WeibullPH with truncation   :', trunc.params.round(3))
     print('Cox ignoring / with tl      : %.3f / %.3f' % (
@@ -613,11 +697,13 @@ covariates either as ``Z_cols`` (a list of numeric columns) or as a
 formula such as ``"age + site"`` or ``"age * site"``). The fitted model
 remembers its ``feature_names`` — and the formula's encoding — so it can
 predict directly from a DataFrame of raw covariates. Beyond those, the
-parametric families take ``tl_col`` / ``tr_col`` (truncation) and ``init`` /
-``fixed``; ``CoxPH.fit_from_df`` takes ``tl_col`` (delayed entry), ``tie_method``
-and ``strata_col``; and the
-frailty fitter requires a ``group_col``. There is a single time column, so
-interval-censored data (two time columns) go through ``fit``.
+parametric families take ``tl_col`` / ``tr_col`` (truncation), ``init`` /
+``fixed``, and interval-censored times as two columns, ``xl_col`` and
+``xr_col`` in place of ``x_col`` (the two columns of the ``x`` that ``fit``
+takes for them); ``CoxPH.fit_from_df`` takes ``tl_col`` (delayed entry),
+``tie_method`` and ``strata_col``; and the frailty fitter requires a
+``group_col``. A DataFrame entry point takes every kind of data its ``fit``
+does (the conformance suite checks it).
 
 A **categorical** covariate (a string or categorical column) is expanded with
 reference-level (treatment) coding: its first level is the baseline and each
@@ -1026,7 +1112,9 @@ the partial likelihood — a useful sanity check that the fit has converged.
 Cluster-robust standard errors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The model-based standard errors assume every observation is independent. When
+The model-based standard errors -- ``standard_errors()``, the square roots of
+the diagonal of ``covariance()``, the inverse of the observed information, as
+on every model -- assume every observation is independent. When
 the data are *clustered* — several failures from the same machine, repeated
 events on the same subject, items drawn in grouped batches — that assumption is
 wrong and the naive errors are too small. The **Lin-Wei sandwich** (or
@@ -1306,10 +1394,10 @@ non-parametrically. Below, a Weibull wear-out hazard has an exposure that adds
     x_ah = np.minimum(x_ah, 25)
 
     wah = WeibullAH.fit(x=x_ah, Z=z_ah.reshape(-1, 1), c=c_ah)
-    print('WeibullAH (alpha, beta, beta_0):', wah.params.round(3))
+    print('WeibullAH (alpha, beta, coef_0):', wah.params.round(3))
     print('standard errors                :', wah.standard_errors().round(3))
     ly = AdditiveHazards.fit(x=x_ah, Z=z_ah.reshape(-1, 1), c=c_ah)
-    print('Lin-Ying beta_0 = %.3f (se %.3f)' % (ly.beta[0], ly.se[0]))
+    print('Lin-Ying coef_0 = %.3f (se %.3f)' % (ly.beta[0], ly.standard_errors()[0]))
 
 Both estimators recover the risk difference to within about two standard
 errors (0.035 and 0.046 against a true 0.05), and the Weibull baseline
@@ -1322,7 +1410,7 @@ when its baseline is right; Lin-Ying makes no assumption about the baseline.
 
     _b, _se = wah.params[2], wah.standard_errors()[2]
     assert round(_b, 3) == 0.035 and round(ly.beta[0], 3) == 0.046
-    assert abs(_b - 0.05) < 2 * _se and abs(ly.beta[0] - 0.05) < 2 * ly.se[0]
+    assert abs(_b - 0.05) < 2 * _se and abs(ly.beta[0] - 0.05) < 2 * ly.standard_errors()[0]
     assert np.all(np.abs(wah.params[:2] / [10, 2] - 1) < 0.05)
 
 The positivity caveat above bites differently here. The likelihood needs
@@ -1363,7 +1451,13 @@ increasing, constant, or decreasing hazard rates.
 Notice the coefficients are close to the Cox model's, each within 10% of it —
 this is expected when the Weibull is a reasonable fit to the baseline. The parameters are listed in
 the order ``model.parameter_names`` gives: the distribution's own parameters
-first, then one ``beta_j`` per covariate column.
+first, then one coefficient per covariate column, named by the column where
+the fit has its name (a formula, ``fit_from_df`` or a DataFrame ``Z``) and
+``coef_0``, ``coef_1``, ... otherwise. (A name that is already a
+parameter's, such as a column called ``alpha``, gets a suffix: ``alpha.1``.
+Before v0.23 the coefficients were ``beta_0``, ``beta_1``, ..., beside the
+Weibull's shape ``beta``; ``fixed=`` and ``param_cb`` take those names, with
+a ``DeprecationWarning``, until v0.24.)
 
 .. jupyter-execute::
     :hide-code:
@@ -1700,7 +1794,7 @@ exposed units. The hazard ratio of exposed to unexposed units starts near
     # invert F(x|z) = U for survival odds (x/10)^-3 * e^z
     x_po = 10 * (np.exp(z_po) * U / (1 - U)) ** (1 / 3)
     po = PO(LogLogistic).fit(x=x_po, Z=z_po.reshape(-1, 1))
-    print('alpha, beta, beta_0:', po.params.round(3))
+    print('alpha, beta, coef_0:', po.params.round(3))
 
     times = np.array([1.0, 5.0, 10.0, 20.0, 40.0])
     print('hazard ratio at', times, ':',
@@ -1789,8 +1883,8 @@ error, and a baseline that tracks the log-logistic one without assuming it:
 
 .. jupyter-execute::
 
-    print('semi-parametric beta_0: %.3f (se %.3f)' % (spo.beta[0], spo.se[0]))
-    print('PO(LogLogistic) beta_0: %.3f (se %.3f)'
+    print('semi-parametric coef_0: %.3f (se %.3f)' % (spo.beta[0], spo.standard_errors()[0]))
+    print('PO(LogLogistic) coef_0: %.3f (se %.3f)'
           % (po.params[2], po.standard_errors()[2]))
     t = np.array([5.0, 10.0, 20.0])
     print('baseline survival, semi-parametric:', spo.sf(t, [0.0]).round(3))
@@ -1807,7 +1901,7 @@ use when the shape of the baseline is what you cannot commit to.
     :hide-code:
     :hide-output:
 
-    assert round(spo.beta[0], 3) == 1.007 and round(spo.se[0], 3) == 0.179
+    assert round(spo.beta[0], 3) == 1.007 and round(spo.standard_errors()[0], 3) == 0.179
     assert round(po.params[2], 3) == 1.035
     assert round(po.standard_errors()[2], 3) == 0.180
     _truth = 1 / (1 + (t / 10) ** 3)
@@ -1817,8 +1911,9 @@ use when the shape of the baseline is what you cannot commit to.
 
 The fitted model has the Cox model's interface: ``sf``, ``ff`` and ``Hf`` at
 covariate rows (``grid=True`` for a curve per row), ``hf`` and ``df`` as the
-jumps at the event times, ``summary()``, ``param_cb``, ``concordance`` and
-``to_dict`` / ``from_dict``; ``fit_from_df`` takes ``Z_cols`` or a
+jumps at the event times, ``summary()``, ``param_cb`` (Wald, or with
+``method='lr'`` the profile-likelihood interval of the coefficient, the
+baseline profiled out), ``concordance`` and ``to_dict`` / ``from_dict``; ``fit_from_df`` takes ``Z_cols`` or a
 ``formula``. Before the first event time the survival is 1, and after the
 last observed time it holds its last value. A covariate that separates the
 events from the survivors (a level with no events) leaves the likelihood
@@ -1858,7 +1953,7 @@ an unbounded coefficient) so the interval always stays valid:
 
 .. jupyter-execute::
 
-    m_cb.param_cb('beta_0')      # 95% CI for the covariate coefficient
+    m_cb.param_cb('coef_0')      # 95% CI for the covariate coefficient
 
 ``cb`` propagates the parameter covariance through a predicted function by the
 delta method, returning a confidence *band*. The band on ``sf``, ``ff`` and
@@ -1898,14 +1993,26 @@ The convenience method ``model.plot()`` draws the fitted survival at the mean
 covariate, with this band, against a non-parametric estimate of the pooled
 data (the exponentiated Nelson-Aalen estimate) — a quick visual check, though
 the pooled curve ignores the covariates. The bounds here are Wald /
-delta-method bounds; the likelihood-ratio bounds available for univariate
-parametric fits are not implemented for the regression models.
+delta-method bounds, the default. ``cb`` and ``param_cb`` also take
+``method="lr"``, the likelihood-ratio bounds of the univariate parametric
+fits: the extreme of the function (or the parameter) over the parameters'
+likelihood region, which is where its profile deviance reaches the
+:math:`\chi^2_1` critical value. They take a search of the likelihood
+(a second or so a bound, against milliseconds), and are the ones to use
+where the Wald bound is least reliable: far outside the covariates of the
+data, as at an accelerated life test's use condition (`Accelerated Life
+(AL)`_ below).
+
+.. jupyter-execute::
+
+    m_cb.param_cb('coef_0', method='lr')   # the profile-likelihood interval
 
 The other families quantify uncertainty their own way: Cox through the
 information matrix (``p_values``, and ``jac`` as shown earlier) and the robust
 sandwich; Lin-Ying through its sandwich ``standard_errors()``; Buckley-James by
 ``bootstrap_ci``; and the frailty model (below) through ``standard_errors()``
-and ``param_cb``.
+and ``param_cb`` (Wald, or the profile-likelihood interval with
+``method='lr'``).
 
 
 .. _accelerated-life:
@@ -1996,7 +2103,8 @@ letters in each formula are the parameter names the fitted model reports, and
      - Inverse Arrhenius relationship
    * - ``GeneralLogLinear``
      - :math:`c \cdot e^{\beta_0 Z_0 + \beta_1 Z_1 + \cdots}`, one
-       ``beta_j`` per column of ``Z``
+       coefficient per column of ``Z`` (named by the column, or
+       ``coef_j``)
      - Any number of stresses, each entering as given (pass ``1 / T`` or
        ``log V`` as the column for an Arrhenius or power term); with a
        Weibull or LogNormal it is that distribution's AFT model
@@ -2141,6 +2249,87 @@ decision.
     assert len(x_al) == 60 and x_al.max() <= 6000
     assert np.all((band[:, 0] <= _true_sf + 1e-9)
                   & (_true_sf <= band[:, 1] + 1e-9))
+
+The band is the Wald (delta-method) band, which assumes the reliability is
+near linear in the parameters over their uncertainty, an assumption that
+weakens as the use condition moves away from the test stresses. ``cb`` also
+gives the likelihood-ratio bounds, which Meeker and Escobar use for
+accelerated tests, with ``method="lr"``: the extreme of the reliability over
+the parameters' likelihood region. Each is a search of the likelihood, about
+a second a bound, so ask for the times you need:
+
+.. jupyter-execute::
+
+    x_use = np.array([20000., 50000., 100000.])
+    print('likelihood ratio:\n', model_arr.cb(x_use, Z=Z_use, method='lr').round(3))
+    print('Wald:\n', model_arr.cb(x_use, Z=Z_use).round(3))
+    print('true:', Weibull.sf(x_use, 1.4e-6 * np.exp(Ea / (k * use)), 2.5).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _lr = model_arr.cb(x_use, Z=Z_use, method='lr')
+    _wald = model_arr.cb(x_use, Z=Z_use)
+    _est = model_arr.sf(x_use, Z=Z_use)
+    assert np.all((_lr[:, 0] <= _est) & (_est <= _lr[:, 1]))
+    assert np.all(_lr[:, 1] >= _wald[:, 1])   # wider above, here
+
+Here the two differ by a few hundredths, the likelihood-ratio band reaching
+higher; ``param_cb(..., method='lr')`` gives the profile-likelihood
+intervals on the life model's parameters in the same way. Both are
+large-sample bounds, and the likelihood-ratio one is not more exact with few
+failures. In a simulation of a two-stress test (#583:
+``AcceleratedLife(Weibull, life_models.PowerExponential)``, three
+temperatures by two voltages, twelve units a cell, the use condition 40 °C
+below the coolest cell) the 90% bounds on the five-year reliability at use
+covered 0.897 (Wald) and 0.893 (likelihood ratio) of 1,000 repetitions with
+46 failures on average, and 0.877 and 0.866 of 900 with 11; Wald stays the
+default.
+
+``method="bootstrap"`` gives a third bound, a parametric bootstrap: the model
+is refitted to ``n_boot`` data sets simulated from it, each unit at its own
+stress and censored as it was (here, every unit still running at 6,000 hours
+is censored there), and the bound is the BCa interval of the refits' values
+(Efron's bias-corrected and accelerated percentiles). It assumes neither
+that the reliability is near linear in the parameters nor that the
+likelihood ratio is near its large-sample distribution, and costs ``n_boot``
+refits, so ask for every time you need at once; the calls with the same
+``n_boot`` and an integer ``random_state`` share one set of refits:
+
+.. jupyter-execute::
+
+    boot = model_arr.cb(x_use, Z=Z_use, method='bootstrap', n_boot=100,
+                        random_state=1)
+    print('bootstrap:\n', boot.round(3))
+    print('95% CI on a, in eV:',
+          (model_arr.param_cb('a', method='bootstrap', n_boot=100,
+                              random_state=1) * k).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all((boot[:, 0] <= _est) & (_est <= boot[:, 1]))
+    assert model_arr._bootstrap_refits[(100, 1)].params.shape[0] == 100
+
+A hundred refits keep the example short; use a thousand or more for a bound
+you will act on. On the two-stress test above with 46 failures on average,
+the 90% bootstrap bound on the five-year reliability at use covered 0.903
+of 1,000 repetitions (1,000 refits each), its misses even on both sides,
+against 0.880 (Wald), 0.875 (likelihood ratio) and 0.866 for the plain
+percentile interval of the same refits, whose misses fell mostly below.
+
+With 11 failures on average no bound holds. In 28% of the repetitions the
+failures all fell at stresses that leave the activation energy or the
+voltage exponent without a finite estimate; the fit warns that its
+likelihood has no finite maximum, and the bootstrap from it, whose
+resamples run off the same way, closes onto the meaningless estimate (and
+warns so). Over all the repetitions the bootstrap bound covered 0.71,
+against 0.87 (Wald, which is near [0, 1] or ``nan`` for those fits) and
+0.85 (likelihood ratio); where the estimate exists, they covered 0.917
+(Wald), 0.934 (likelihood ratio) and 0.979 (bootstrap). The remedy there is a design with more
+failures, not another bound.
 
 Two stresses at once
 ~~~~~~~~~~~~~~~~~~~~
@@ -2657,17 +2846,19 @@ Bounds, mean life and accelerated life along a path
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``cb_tvc(x, Z, xl=None, given=None, on='sf', alpha_ci=0.05,
-bound='two-sided')`` puts confidence bounds on ``sf``, ``ff`` or ``Hf``
-along a step schedule or a ``CovariatePath``. They are the bounds of ``cb``
-carried along the path: a Wald bound on the baseline family's
-probability-plot scale (as for ``cb``), with its standard error propagated
-from the fitted covariance by the delta method, so a constant path gives
-``cb``. Along a
+bound='two-sided', method='wald')`` puts confidence bounds on ``sf``,
+``ff`` or ``Hf`` along a step schedule or a ``CovariatePath``. They are the
+bounds of ``cb`` carried along the path: by default a Wald bound on the
+baseline family's probability-plot scale (as for ``cb``), with its standard
+error propagated from the fitted covariance by the delta method, so a
+constant path gives ``cb``. Along a
 ``CovariatePath`` the quadrature mesh is adapted once, at the fitted
 parameters, and then held fixed while the parameters are perturbed. The
 function the delta method differentiates is then smooth in the parameters,
 and the cost is :math:`2k + 1` passes along the path for :math:`k`
-parameters.
+parameters. ``method='lr'`` gives the likelihood-ratio bound of ``cb``
+instead (see `Confidence Bounds`_): the extreme of the function along the
+path over the likelihood region of the parameters, about a second a time.
 
 .. jupyter-execute::
 
@@ -2675,6 +2866,8 @@ parameters.
     print('S(t) along the ramp:', ph.sf_tvc(t2, ramp).round(4))
     print('95% bounds:')
     print(ph.cb_tvc(t2, ramp).round(4))
+    print('likelihood ratio:')
+    print(ph.cb_tvc(t2, ramp, method='lr').round(4))
     print('given the ramp survived:', ph.cb_tvc([2.0], ramp, given=1.0).round(4))
 
 .. jupyter-execute::
@@ -2685,6 +2878,8 @@ parameters.
     assert np.all((_b[:, 0] < _s) & (_s < _b[:, 1]))
     assert np.allclose(ph.cb_tvc(t2, CovariatePath.from_points([0], [0.5])),
                        ph.cb(t2, [0.5]), rtol=1e-8)
+    _lr = ph.cb_tvc(t2, ramp, method='lr')
+    assert np.all((_lr[:, 0] < _s) & (_s < _lr[:, 1]))
 
 In a simulation of 1,000 fits each of a ``WeibullPH`` and a ``WeibullAFT``
 model (100 units, censored at a fixed time), the 95% bounds covered the true
@@ -2913,6 +3108,70 @@ needs the parametric ``fit_tvc`` / ``sf_tvc`` pair.
     assert 2 <= _gain <= 5 and 2 <= _loss <= 6, _median
 
 
+Forecasting a fleet from its current ages
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The question after a fit is usually about the units still in service: how many
+will fail over the next year, and which? Each unit has survived to its current
+age :math:`a_i`, so it fails within the next :math:`h` with probability
+:math:`1 - S(a_i + h \mid Z_i) / S(a_i \mid Z_i)`, its ``1 - cs(h, a_i, Z_i)``.
+:func:`surpyval.forecast` sums these over the fleet and gives the prediction
+interval of the count, from the exact distribution of a sum of independent
+Bernoulli variables (the Poisson-binomial). The same function forecasts from a
+univariate model, without ``Z`` (see :doc:`Parametric SurPyval Modelling`).
+
+Here gearboxes at two sites and different loads have been fitted with a
+Weibull AFT model; 80 are in service, with ages up to four years:
+
+.. jupyter-execute::
+
+    import surpyval as surv
+    from surpyval import WeibullAFT
+
+    rng = np.random.default_rng(7)
+    n_fit = 300
+    Z_fit = np.column_stack([rng.binomial(1, 0.5, n_fit),
+                             rng.normal(0.0, 0.3, n_fit)])
+    life = 8 * rng.weibull(2.5, n_fit) * np.exp(-Z_fit @ [0.3, 1.5])
+    gearbox = WeibullAFT.fit(np.minimum(life, 10.0), Z_fit,
+                             c=(life > 10.0).astype(int))
+
+    ages = rng.uniform(0.0, 4.0, 80)
+    Z_now = np.column_stack([rng.binomial(1, 0.5, 80),
+                             rng.normal(0.0, 0.3, 80)])
+    removals = surv.forecast(gearbox, ages, horizon=[0.25, 0.5, 0.75, 1.0],
+                             Z=Z_now)
+    print(removals)
+
+Each row is a horizon (in years from now): the expected removals by then, a
+95% prediction interval, and the same for that quarter alone. The units most at
+risk are the rows of ``unit_expected`` (a unit's probability for a single
+unit, or ``n`` times it for a cohort) with the largest last column:
+
+.. jupyter-execute::
+
+    risk = removals.unit_expected[:, -1]
+    for i in np.argsort(risk)[::-1][:3]:
+        print(f'age {ages[i]:.1f} y, site {Z_now[i, 0]:.0f}, '
+              f'log-load {Z_now[i, 1]:+.2f}: P(removal within a year) '
+              f'{risk[i]:.2f}')
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _p = 1 - gearbox.sf(ages + 1.0, Z_now) / gearbox.sf(ages, Z_now)
+    assert np.isclose(removals.expected[-1], _p.sum(), rtol=1e-9)
+    assert removals.lower[-1] < removals.expected[-1] < removals.upper[-1]
+    assert np.all(np.diff(removals.expected) > 0)
+
+The interval is that of the count with the model taken as known: it does not
+carry the uncertainty of the fitted parameters. Forecasts from several
+plausible models (another distribution, a model without the covariates) show
+how much the answer depends on that choice, which in-service failure counts
+alone rarely settle.
+
+
 Shared-frailty models
 ---------------------
 
@@ -2947,7 +3206,7 @@ label per observation (see :doc:`regression/frailty`):
     )
     print(model)
     print("theta 95% CI:", np.round(model.param_cb("theta"), 3))
-    print("theta standard error: %.3f" % model.standard_errors()["theta"])
+    print("theta standard error: %.3f" % model.standard_errors()[-1])
 
 The frailty variance ``theta`` (also ``model.frailty_variance``) quantifies
 the between-group spread. Its interval is built on the log scale, so it can
@@ -2961,15 +3220,17 @@ misses the truth — while the coefficient, true value 0.8, is recovered well.)
 The per-group posterior frailties — an empirical-Bayes estimate for each
 observed group, shrunk toward 1 — are on ``model.frailties``, keyed by group
 label (as a string), and ``model.standard_errors()`` gives the Wald standard
-errors of every parameter as a dictionary keyed by name. Every estimate is
+errors of every parameter, an array as on every model. Every estimate is
 also in one vector, ``model.params``, in the order of ``model.parameter_names``:
-the baseline's parameters, the coefficients, then ``theta``.
+the baseline's parameters, the coefficients, then ``theta`` -- the order of
+``standard_errors()`` and ``covariance()`` too, so ``theta``'s standard error
+is the last.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    _theta, _se = model.theta, model.standard_errors()["theta"]
+    _theta, _se = model.theta, model.standard_errors()[-1]
     assert round(_theta / _se) == 3, (_theta, _se)        # "about three"
     _lo, _hi = model.param_cb("theta")
     assert 0.55 < _hi < 0.6                     # only just misses 0.6
@@ -3103,7 +3364,14 @@ here on grouped data with no frailty at all:
 The likelihoods agree and the frailty model pays 2 AIC units for its unused
 ``theta``: report the proportional-hazards model, since a variance on its
 boundary has no meaningful Wald interval (``param_cb('theta')`` is then
-``[0, inf]``).
+``[0, inf]``). The profile-likelihood interval, ``param_cb('theta',
+method='lr')``, does have a finite upper end: the largest frailty variance
+the data do not rule out.
+
+.. jupyter-execute::
+
+    print('theta, profile-likelihood 95% interval:',
+          no_frailty.param_cb('theta', method='lr').round(3))
 
 .. jupyter-execute::
     :hide-code:
@@ -3113,6 +3381,8 @@ boundary has no meaningful Wald interval (``param_cb('theta')`` is then
     assert np.isclose(no_frailty.neg_ll(), ph_ff.neg_ll())
     assert np.isclose(no_frailty.aic() - ph_ff.aic(), 2)
     assert np.array_equal(no_frailty.param_cb('theta'), [0, np.inf])
+    _lo, _hi = no_frailty.param_cb('theta', method='lr')
+    assert _lo == 0 and 0 < _hi < np.inf
 
 **A Cox baseline.** ``CoxFrailty`` is the same shared gamma frailty with the
 baseline hazard left unspecified, as in ``CoxPH`` -- the semi-parametric
@@ -3124,7 +3394,10 @@ profile of the integrated likelihood. This is the fit of R's
 ``coxph(Surv(time, status) ~ ... + frailty(id, dist = "gamma"))``, with
 Efron's ties by default (``tie_method="breslow"`` for Breslow's); on the
 kidney data it gives R's coefficients, standard errors, frailties and
-I-likelihood:
+I-likelihood. The standard errors are R's ``sparse = FALSE`` ones, from the
+full information in the coefficients and every group's frailty, found
+without forming it (a Schur complement, solved by conjugate gradients), so
+they cost little more than the fit even with many thousands of groups:
 
 .. jupyter-execute::
 
@@ -3139,7 +3412,7 @@ The model predicts as the parametric one does: the marginal curve by
 default, a patient's own with ``group=``. The baseline (``x``, ``h0``,
 ``H0``) is a step function, of a unit at ``Z = 0`` with frailty 1. Twice the
 gain of the I-likelihood over the Cox partial likelihood
-(``loglik_no_frailty``, its value at ``theta = 0``) tests for a frailty;
+(``log_likelihood_no_frailty``, its value at ``theta = 0``) tests for a frailty;
 ``theta`` is on its boundary under the null, so the p-value is half the
 chi-square one:
 
@@ -3147,7 +3420,7 @@ chi-square one:
 
     from scipy.stats import chi2
 
-    lr = 2 * (cox_frailty.loglik - cox_frailty.loglik_no_frailty)
+    lr = 2 * (cox_frailty.log_likelihood - cox_frailty.log_likelihood_no_frailty)
     print('LR statistic %.2f, p = %.3f' % (lr, chi2.sf(lr, 1) / 2))
     woman = pd.DataFrame({'age': [45.0], 'female': [1.0]})
     print(cox_frailty.sf([30, 100], woman).round(3),
@@ -3223,9 +3496,38 @@ assumption is violated (e.g. survival curves cross), a lower-AIC PH model can
 still give misleading predictions. Goodness-of-fit diagnostics like
 Schoenfeld residuals (for PH) or log-log survival plots should accompany any
 model comparison. Information criteria are also only comparable between models
-fitted to the same data by full likelihood: a Cox model's partial likelihood,
-the Lin-Ying estimator and Buckley-James have no comparable likelihood, so
-compare those on held-out predictions instead (next section).
+fitted to the same data by full likelihood. The semi-parametric models report
+theirs on the likelihood they maximise -- ``CoxPH`` (as R's ``AIC(coxph)``),
+``CoxFrailty``, ``ProportionalOdds`` and ``FineGray`` on their partial,
+integrated, profile and weighted partial likelihoods, with :math:`k` their
+coefficients and the BIC's sample size their events -- which compares models
+of the same kind on the same data, such as two sets of covariates in a Cox
+model, but not a Cox model with a parametric one. The Lin-Ying estimator and
+Buckley-James have no likelihood at all. Compare across kinds on held-out
+predictions instead (next section).
+
+.. jupyter-execute::
+
+    from surpyval import CoxPH
+    from surpyval.datasets import load_rossi_static
+
+    rossi = load_rossi_static()
+    rossi['censored'] = 1 - rossi['arrest']  # arrest is 1 for an arrest
+    cox_three = CoxPH.fit_from_df(rossi, x_col='week', c_col='censored',
+                                  Z_cols=['fin', 'age', 'prio'])
+    cox_two = CoxPH.fit_from_df(rossi, x_col='week', c_col='censored',
+                                Z_cols=['age', 'prio'])
+    for name, m in [('fin + age + prio', cox_three), ('age + prio', cox_two)]:
+        print(f'{name:17s} log-lik={m.log_likelihood:8.3f}  '
+              f'AIC={m.aic():8.3f}  BIC={m.bic():8.3f}')
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    # R: AIC(coxph(Surv(week, arrest) ~ fin + age + prio, rossi))
+    assert abs(cox_three.aic() - 1327.714050768831) < 1e-6
+    assert cox_three.aic() < cox_two.aic()
 
 Validating a survival predictor
 -------------------------------
@@ -3472,8 +3774,11 @@ parametric leaves and handles left and interval censoring and truncation. On
 observed and right-censored data like these its split search costs the same
 order as the log-rank's, because each candidate child's Weibull maximum
 likelihood is found directly (the scale in closed form, the shape from the
-one-dimensional profile likelihood); its leaves are Weibull fits, made when
-the forest first predicts. With left or interval censoring or truncation every
+one-dimensional profile likelihood, every child of a node in one pass); its
+leaves are Weibull fits, all of a tree's found together as the tree is grown.
+The log-rank split of a large node is scored from sorted counts, so a
+non-parametric forest's cost grows as :math:`n \log n`, not :math:`n^2`.
+With left or interval censoring or truncation every
 candidate needs an optimiser, and it is much slower. Fitted trees and forests
 serialise like every other model (next section).
 

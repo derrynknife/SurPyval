@@ -8,6 +8,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
 )
+from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .._fit_skeleton import (
@@ -22,7 +23,7 @@ from .._kinds import ACCELERATED_FAILURE_TIME
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
-from .aft_tvc_fit import AFTTVCFitMixin
+from .aft_tvc_fit import AFTTVCFitMixin, _aft_tvc_neg_ll
 
 
 class AFTFitter(
@@ -46,6 +47,10 @@ class AFTFitter(
     Use the pre-built instances (``WeibullAFT``, ``LogNormalAFT``, ...) or
     the ``AFT`` factory.
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "accelerated failure time fitter"
+    name_suffix = "AFT"
 
     def __init__(self, distribution: Any) -> None:
         mirror_distribution(self, distribution)
@@ -77,6 +82,7 @@ class AFTFitter(
     def neg_ll(self, data: SurpyvalData, *params: Boxable) -> Boxable:
         return regression_neg_ll(self, data, *params)
 
+    @dataframe_covariates
     def fit(
         self,
         x: npt.ArrayLike,
@@ -113,7 +119,10 @@ class AFTFitter(
             by the covariate coefficients.
         fixed : dict, optional
             Parameters to hold fixed, by name (a distribution parameter
-            such as ``"beta"``, or a coefficient ``"beta_0"``, ...).
+            such as ``"beta"``, or a coefficient: its covariate's column
+            name, else ``"coef_0"``, ...; the names before v0.23,
+            ``"beta_0"``, ..., are taken until v0.24, with a
+            ``DeprecationWarning``).
         center : bool, optional
             ``False`` (the default) reports the baseline at ``Z = 0``.
             ``True`` reports the baseline at the covariate means (stored as
@@ -155,6 +164,17 @@ class AFTFitter(
             optimiser=optimise_nm_tnc,
             reg_model=lambda pmap: LogLinearPhi(LogLinearPhi.NAME_EXP, pmap),
         )
+
+
+class AFTTVCFitter(AFTFitter):
+    """The fitter a ``fit_tvc`` model carries: an :class:`AFTFitter` whose
+    ``neg_ll`` is the accumulated-age likelihood of the episodes it holds
+    (``_tvc``), so the model's bounds use that likelihood. A class rather
+    than a method bound onto one instance, so the model pickles
+    (#573)."""
+
+    _tvc: dict
+    neg_ll = _aft_tvc_neg_ll  # type: ignore[assignment]
 
 
 def AFT(distribution: Any) -> "AFTFitter":

@@ -265,7 +265,7 @@ def test_recurrent_counts_interval_and_exact_events():
     x = [[0, 10], [10, 20], 25.0, 30.0, 40.0]
     model = HPP.fit(x, i=[1, 1, 1, 1, 1], c=[2, 2, 0, 0, 1], n=[2, 3, 1, 1, 1])
     assert model._n_obs == 7
-    assert model.bic == pytest.approx(np.log(7) - 2 * model.log_likelihood)
+    assert model.bic() == pytest.approx(np.log(7) - 2 * model.log_likelihood)
 
 
 def test_recurrent_hpp_matches_univariate_exponential():
@@ -430,3 +430,55 @@ def test_restored_model_k_counts_estimated_parameters():
     restored = ParametricRegressionModel.from_dict(d)
     assert restored.k == 3
     assert restored.aic() == pytest.approx(model.aic())
+
+
+# ---------------------------------------------------------------------------
+# AIC_c and the log-likelihood wherever there is an AIC (#605)
+# ---------------------------------------------------------------------------
+
+
+def _hpp():
+    rng = np.random.default_rng(0)
+    events = np.cumsum(rng.exponential(2, 30))
+    return HPP.fit(np.r_[events, events[-1] + 1.5], c=np.r_[np.zeros(30), 1])
+
+
+def _parametric_competing_risks():
+    from surpyval.univariate.competing_risks import ParametricCompetingRisks
+
+    x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    e = ["a", "b", "a", None, "a", "b", "a", None, "b", "a", "b", "a"]
+    return ParametricCompetingRisks.fit(x, e, dist=Exponential), 10
+
+
+@pytest.mark.parametrize(
+    "fit", ["royston-parmar", "hpp", "copula", "competing-risks"]
+)
+def test_605_aic_c_and_log_likelihood_wherever_aic(
+    fit, right_censored, clayton_sample
+):
+    if fit == "royston-parmar":
+        x, c = right_censored
+        model, d = RoystonParmar.fit(x, c=c, df=2), int((c == 0).sum())
+        k = 3
+    elif fit == "hpp":
+        model, d, k = _hpp(), 30, 1
+    elif fit == "copula":
+        X, _ = clayton_sample
+        model = Clayton.fit(X, margins=[Weibull, Weibull])
+        d, k = 200, model.k
+    else:
+        model, d = _parametric_competing_risks()
+        k = 2
+    assert model.aic_c() == pytest.approx(_aic_c(model, k, d), rel=1e-12)
+    assert isinstance(model.log_likelihood, float)
+    assert model.log_likelihood == -model.neg_ll()
+
+
+def test_605_restored_parametric_model_has_its_log_likelihood(
+    right_censored,
+):
+    x, c = right_censored
+    model = Weibull.fit(x, c)
+    restored = surv.from_dict(json.loads(json.dumps(model.to_dict())))
+    assert restored.log_likelihood == model.log_likelihood == -model.neg_ll()

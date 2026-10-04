@@ -9,6 +9,10 @@ import numpy.typing as npt
 import pandas as pd
 from scipy.stats import norm
 
+from surpyval.utils.covariates import (
+    coefficient_names as names_of_coefficients,
+)
+
 #: The columns of the coefficient table, and the ones ``repr`` prints
 #: (with shorter names for the interval).
 _REPR_COLUMNS = {
@@ -91,9 +95,8 @@ def coefficient_repr(table: pd.DataFrame, alpha_ci: float = 0.05) -> str:
 
 
 def coefficient_names(model: Any, n: int) -> "list[str]":
-    """The names of a model's ``n`` coefficients: its ``feature_names``
-    (from ``fit_from_df``) where it has them, else ``beta_0``, ..."""
-    names = getattr(model, "feature_names", None)
-    if names is not None and len(names) == n:
-        return [str(name) for name in names]
-    return ["beta_{}".format(i) for i in range(n)]
+    """The names of a model's ``n`` coefficients (#614): its covariates'
+    columns, ``feature_names`` (a formula, ``fit_from_df`` or a DataFrame
+    ``Z``), where it has them, else ``coef_0``, ``coef_1``, ... (see
+    :func:`surpyval.utils.covariates.coefficient_names`)."""
+    return names_of_coefficients(n, getattr(model, "feature_names", None))

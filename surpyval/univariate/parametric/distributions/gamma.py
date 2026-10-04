@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from typing import Any
+
 import autograd.numpy as np
 import numpy.typing as npt
 from autograd.scipy.special import gamma as agamma
 from autograd.scipy.special import gammaln as agammaln
 from scipy.special import digamma, gammaincinv
 
-from surpyval.univariate.parametric._fit_inputs import _offset_start
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
@@ -63,6 +64,15 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         # the axis is the right one by the time it is drawn.
         self.supports_mpp = False
 
+    def _offset_limit_family(self) -> Any:
+        """The ``Normal``: as the offset runs to -inf with the shape -> inf,
+        the shifted Gamma tends to a Normal distribution (the central
+        limit theorem) (#599; see
+        ``OptimisedFitMixin._offset_limit_family``)."""
+        from surpyval.univariate.parametric import Normal
+
+        return Normal
+
     @staticmethod
     def _moment_estimate(x: npt.NDArray) -> tuple[float, float]:
         """Closed-form approximation to the Gamma MLE.
@@ -89,29 +99,15 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
-        x = data.x
         if offset:
-            # ``gamma`` leads the vector, as it does for every other
-            # offset-capable distribution. Returning it last put the
-            # shape in slot 0, where ``_initial_guess`` overwrites that
-            # slot with the offset seed -- so the shape estimate was
-            # destroyed and the offset written into the scale as well.
-            #
-            # The moments must also be taken *after* the shift. On
-            # offset data ``s = log(mean x) - mean(log x)`` is squashed
-            # towards zero by the constant, and since alpha grows like
-            # ``1 / 12s`` the estimate explodes: 649 for a true shape of
-            # 3. Together these made MSE and MOM offset fits return
-            # silent nonsense.
-            #
-            # The shift is the fitter's starting offset (see
-            # ``_offset_start``). It was ``min(x) - 1``, a thousand
-            # spreads below data in thousandths, which seeded a shape in
-            # the tens of thousands that the search never came back from.
-            gamma_init = _offset_start(x)
-            alpha, beta = self._moment_estimate(x - gamma_init)
-            return np.array([gamma_init, alpha, beta], dtype=float)
-        return np.asarray(self._moment_estimate(x), dtype=float)
+            # The moments are taken *after* the shift by the starting
+            # offset (``_offset_seed``). On offset data
+            # ``s = log(mean x) - mean(log x)`` is squashed towards zero
+            # by the constant, and since alpha grows like ``1 / 12s`` the
+            # estimate explodes: 649 for a true shape of 3, which made
+            # MSE and MOM offset fits return silent nonsense.
+            return self._offset_seed(data)
+        return np.asarray(self._moment_estimate(data.x), dtype=float)
 
     def sf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""

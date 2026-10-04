@@ -30,6 +30,8 @@ class InverseExponential_(LifeModel):
     array([22026.46579481])
     """
 
+    phi_takes_rows = True
+
     def __init__(self) -> None:
         super().__init__(
             "InverseExponential",
@@ -81,6 +83,8 @@ class ExponentialLifeModel_(LifeModel):
     >>> life_models.Exponential.phi(T, 8000.0, 1e-5).round(1)
     array([50687.9,  5364.6])
     """
+
+    phi_takes_rows = True
 
     def __init__(self) -> None:
         super().__init__(

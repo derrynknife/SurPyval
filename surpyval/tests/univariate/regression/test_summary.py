@@ -80,7 +80,7 @@ def test_cox_repr_names_the_covariates():
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         text = repr(model)
-    assert "beta_0" not in text
+    assert "coef_0" not in text
     assert "exp(coef) is the hazard ratio" in text
     fin = next(
         line for line in text.splitlines() if line.split()[:1] == ["fin"]
@@ -98,7 +98,7 @@ def test_cox_repr_names_the_covariates():
     ]
     x = rossi_with_censoring()
     unnamed = sp.CoxPH.fit(x.week, x[COLS].to_numpy(), x.censored)
-    assert "beta_6" in repr(unnamed)
+    assert "coef_6" in repr(unnamed)
 
 
 def test_cox_standard_errors_are_saved():
@@ -188,7 +188,7 @@ def test_fixed_and_aliased_parameters():
         aliased = sp.WeibullPH.fit(
             x, np.c_[df[["fin"]].to_numpy(), np.ones(len(x))], c
         )
-    assert aliased.summary().loc[("coefficients", "beta_1")].isna().all()
+    assert aliased.summary().loc[("coefficients", "coef_1")].isna().all()
 
 
 def _frailty():
@@ -218,10 +218,7 @@ def test_frailty_summary_is_a_table():
         ("coefficients", "age"),
         ("frailty", "theta"),
     ]
-    se = model.standard_errors()
-    np.testing.assert_allclose(
-        table["se(coef)"], [se[n] for n in model.parameter_names]
-    )
+    np.testing.assert_allclose(table["se(coef)"], model.standard_errors())
     np.testing.assert_allclose(
         table["coef"],
         np.concatenate([model.dist_params, model.beta, [model.theta]]),
@@ -236,7 +233,7 @@ def test_frailty_summary_is_a_table():
 
 def test_frailty_summary_without_covariance():
     model = _frailty()
-    model.covariance = None
+    model._covariance = None
     table = model.summary()
     assert table["se(coef)"].isna().all()
     assert np.isfinite(table["coef"]).all()

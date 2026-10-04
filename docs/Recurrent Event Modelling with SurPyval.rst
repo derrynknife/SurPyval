@@ -95,7 +95,8 @@ them together as an ``(N, 2)`` array ``t``). Items observed over several
 disjoint periods use ``windows`` (see `Gapped (multi-window) observation`_).
 The intensity models accept all of these (see `Delayed entry and right
 truncation`_ for a worked example); the non-parametric MCF accepts ``tl``,
-``tr`` and ``windows``; the renewal models need each item watched from new.
+``tr`` and ``windows``; the renewal models accept ``tl``, taking each item
+to be as new at its entry (see `Renewal Modelling in SurPyval`_).
 
 Event logs usually arrive as a table, one row per event with a column naming
 the unit. Every recurrent fitter's ``fit_from_df`` reads one, given the names
@@ -368,6 +369,10 @@ event of each item is treated as the end of its window. Data in the fitters'
 form, ``x``, ``i`` and ``c``, can be passed as they are with ``c=`` by
 keyword: an item's ``c = 1`` row ends its window (the third positional
 argument is ``T``, so ``laplace(x, i, c)`` raises an error saying so).
+Items observed from a later start (delayed entry: records that begin when
+monitoring starts, or a unit commissioned during the study) take it as
+``tl``, in the same forms as ``T``; each item is then tested on its own
+window ``(tl, T]``.
 
 .. jupyter-execute::
 
@@ -412,6 +417,32 @@ trend, and ``trend`` is ``"none"``.
 
     assert result.direction == "decreasing" and result.trend == "none"
     assert result.p_value > 0.5
+
+With delayed entry each item's events are compared with the centre of its
+own window. Here the second item entered the study at 30 and was watched to
+80:
+
+.. jupyter-execute::
+
+    x1 = [10, 19, 27, 34, 40, 45, 49, 52, 54]
+    x2 = [35, 48, 60, 66, 71, 75, 78]
+    result = laplace(x1 + x2, i=[1] * 9 + [2] * 7,
+                     T={1: 60, 2: 80}, tl={1: 0, 2: 30})
+    print(round(result.statistic, 3), round(result.p_value, 3))
+
+The statistic is the sum of the event times less their null means, 9 x 30
+and 7 x 55, over the square root of the summed variances, 9 x 60² / 12 and
+7 x 50² / 12. A fitted model's ``trend_test()`` reads each item's entry from
+the ``tl`` it was fitted with.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    hand = (sum(x1) + sum(x2) - 9 * 30 - 7 * 55) / np.sqrt(
+        9 * 60**2 / 12 + 7 * 50**2 / 12
+    )
+    assert abs(result.statistic - hand) < 1e-12
 
 Parametric Recurrent Event Models with Surpyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -532,20 +563,20 @@ Here four systems follow a Crow-AMSAA process with :math:`\alpha = 8` and
     x, i, c = data.x, data.i, data.c
     print("events per system:", [int((c[i == k] == 0).sum()) for k in (1, 2, 3, 4)])
 
-Now fit each model and compare the information criteria (``aic`` and ``bic``
-are attributes; lower is better):
+Now fit each model and compare the information criteria (``aic()`` and
+``bic()``, methods as on every fitted model; lower is better):
 
 .. jupyter-execute::
 
     fits = {m.name: m.fit(x, i, c) for m in (HPP, CrowAMSAA, Duane, CoxLewis)}
     for name, fit in fits.items():
-        print(f"{name:28s} AIC {fit.aic:7.2f}   params {fit.params.round(3)}")
+        print(f"{name:28s} AIC {fit.aic():7.2f}   params {fit.params.round(3)}")
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    _aic = {k: f.aic for k, f in fits.items()}
+    _aic = {k: f.aic() for k, f in fits.items()}
     assert max(_aic, key=_aic.get) == "Homogeneous Poisson Process"
     assert np.isclose(_aic["Crow-AMSAA"], _aic["Duane"])
     assert _aic["Crow-AMSAA"] < _aic["Cox-Lewis"] < _aic["Crow-AMSAA"] + 2
@@ -709,7 +740,7 @@ available for such a fit (the ``HPP`` is fitted by maximum likelihood only):
     print("MSE params:", mse.params.round(3))
     print("MLE params:", ca.params.round(3))
     try:
-        mse.aic
+        mse.aic()
     except ValueError as err:
         print(err)
 
@@ -780,30 +811,41 @@ from the uncertainty in the parameters, is given by ``cif_cb`` (see the next
 section). But the *actual* number of events in a future period is random even
 if the model is exactly right: for a Poisson process the count in
 :math:`(t_1, t_2]` is Poisson distributed with mean
-:math:`\Lambda(t_2) - \Lambda(t_1)`. SurPyval has no prediction-interval
-method, but a plug-in interval takes two lines with ``scipy``. How many
-failures should one system in our fleet expect in its next 10 hours, from 50 to
-60?
+:math:`\Lambda(t_2) - \Lambda(t_1)`. :func:`surpyval.forecast` gives the
+expected count from each unit's current age and the prediction interval of the
+fleet's count, for one horizon or the end of each period. How many failures
+should the systems in our fleet expect in their next 10 hours, each from 50 to
+60, and in each 5-hour half?
 
 .. jupyter-execute::
 
-    from scipy.stats import poisson
+    import surpyval as surv
 
-    expected = float(ca.cif(60) - ca.cif(50))
-    lower, upper = poisson.ppf([0.05, 0.95], expected)
-    print(f"expected events in (50, 60]  : {expected:.2f}")
-    print(f"90% prediction interval      : {lower:.0f} to {upper:.0f}")
-    print(f"for the fleet of four systems: {poisson.ppf([0.05, 0.95], 4 * expected)}")
+    fleet = surv.forecast(ca, age=[50, 50, 50, 50], horizon=[5, 10],
+                          alpha_ci=0.1)
+    print(fleet)
+    print("each system, by 60 hours:", fleet.per_unit[:, -1].round(2))
 
-Because counts are whole numbers the interval covers *at least* 90%. This
-plug-in interval treats the fitted parameters as exact, so with little data
-it is somewhat too narrow.
+For a fitted model ``age`` can be left out: the units are then the fitted
+items, each from the end of its own observation (and, for a
+proportional-intensity model, with its own covariates). ``per_unit`` holds
+each unit's expected count (``unit_expected`` times ``n``, the units at each
+age), and ``probability`` its chance of at least one failure. Because counts
+are whole numbers the interval covers *at least* 90%. It treats the fitted
+parameters as exact, so with little data it is somewhat too narrow.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    _cover = poisson.cdf(upper, expected) - poisson.cdf(lower - 1, expected)
+    from scipy.stats import poisson
+
+    expected = float(ca.cif(60) - ca.cif(50))
+    assert np.isclose(fleet.per_unit[0, -1], expected)
+    assert fleet.upper[-1] == poisson.ppf(0.95, 4 * expected)
+    _cover = poisson.cdf(fleet.upper[-1], 4 * expected) - poisson.cdf(
+        fleet.lower[-1] - 1, 4 * expected
+    )
     assert _cover >= 0.9, _cover
 
 Inference and model checking
@@ -811,15 +853,17 @@ Inference and model checking
 
 A fitted parametric recurrence model is more than a point estimate. Every
 model fit by maximum likelihood exposes the usual likelihood quantities for
-comparing models — the log-likelihood and the ``aic`` / ``bic`` information
-criteria (these are attributes, not methods). Let's go back to the Duane model
-of the single system from earlier:
+comparing models — the ``log_likelihood`` (a number) and the ``neg_ll()``,
+``aic()`` and ``bic()`` methods, spelt as on every other fitted model (before
+v0.23 ``aic`` and ``bic`` were attributes, which still work until v0.24 with a
+``DeprecationWarning``). Let's go back to the Duane model of the single system
+from earlier:
 
 .. jupyter-execute::
 
     model = Duane.fit([1, 5, 8, 10, 12, 13, 13, 14])
     print("log-likelihood:", round(model.log_likelihood, 3))
-    print("AIC:", model.aic, " BIC:", model.bic)
+    print("AIC:", model.aic(), " BIC:", model.bic())
 
 It also carries the uncertainty of the fitted parameters. ``standard_errors()``
 returns the standard error of each parameter (from the observed information),
@@ -860,6 +904,11 @@ every interval in SurPyval, they take the total tail probability ``alpha_ci``
 .. jupyter-execute::
 
     model.cif_cb([5, 10, 14])
+
+``iif_cb`` bounds the intensity in the same way, and ``mtbf_cb`` the
+instantaneous mean time between failures, ``mtbf(x) = 1 / iif(x)``; a lower
+bound on the MTBF is the reciprocal of an upper bound on the intensity, and
+``mtbf_cb`` does that flip for you.
 
 Having a model is not the same as having a *good* model. SurPyval provides three
 complementary checks. First, a **trend test** on the fitted data — the same
@@ -969,11 +1018,118 @@ All four renewal models — ``GeneralizedRenewal``, ``GeneralizedOneRenewal``,
 ``ARA`` and ``ARI`` — take the same ``x``, ``i``, ``c`` and ``n`` arrays as the
 intensity models, plus a ``dist`` (the lifetime distribution, Weibull by
 default) and the model's own options; ``ARI`` takes a ``baseline`` intensity
-model in place of the ``dist``. Each item must be observed from new, with exact event times and at
-most a final right-censored row. They all return a
+model in place of the ``dist``. Each item has exact event times and at
+most a final right-censored row. An item is observed from new, or from an
+entry time given in ``tl`` (delayed entry), where it is taken to be **as new**
+-- virtual age 0, as after an overhaul -- since its state then is unknown:
+its times count from its entry, and the fitted model's ``data`` hold them so.
+They all return a
 :doc:`RenewalModel <counting/renewal_model>`, which has no closed-form
 cumulative intensity: its ``mcf`` and ``plot`` work by simulating many items
 from the fitted model.
+
+Reliability growth: the demonstrated MTBF
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In a test-fix-test growth programme the question at the end of the test is
+whether the *demonstrated* MTBF -- the instantaneous MTBF at the end of the
+test, :math:`T` -- has reached the requirement, at some confidence. For a
+Crow-AMSAA fit, ``mtbf_cb(T, method="crow")`` gives Crow's (1982) exact
+bounds, the ones MIL-HDBK-189C tabulates: the estimate times coefficients
+that depend only on the number of failures. They apply to a time-terminated
+test (every system observed from 0 to the same :math:`T`) or a
+failure-terminated test of one system, at the end of the test only; other
+data raise, and the default ``method="wald"`` (the delta method) applies at
+any time. Here three prototypes are each tested to 2000 hours:
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(578)
+    T = 2000.0
+    x, i, c = [], [], []
+    for unit in (1, 2, 3):
+        k = rng.poisson(17)
+        times = np.ceil(10 * T * rng.uniform(size=k) ** (1 / 0.55)) / 10
+        x += [*np.sort(times), T]
+        i += [unit] * (k + 1)
+        c += [0] * k + [1]
+
+    growth = CrowAMSAA.fit(x, i, c=c)
+    print("beta              :", growth.params[1].round(3))
+    print("demonstrated MTBF :", growth.mtbf(T).round(1))
+    print("80% lower (Crow)  :", growth.mtbf_cb(T, alpha_ci=0.2, bound="lower",
+                                              method="crow").round(1))
+    print("80% lower (Wald)  :", growth.mtbf_cb(T, alpha_ci=0.2,
+                                              bound="lower").round(1))
+
+With 46 failures the two lower bounds are close (about 257 and 260 hours
+against an estimate of 309). With few failures they part: Crow's bound is
+exact for a failure-terminated test and errs on the safe side (covers at least
+its level) for a time-terminated one, while the Wald bound is only
+approximate. The MTBF is that of one prototype.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert (np.asarray(c) == 0).sum() == 46
+    assert round(float(growth.mtbf(T))) == 309
+    _crow = growth.mtbf_cb(T, alpha_ci=0.2, bound="lower", method="crow")
+    _wald = growth.mtbf_cb(T, alpha_ci=0.2, bound="lower")
+    assert round(float(_crow)) == 257 and round(float(_wald)) == 260
+
+Reliability growth: projecting delayed fixes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The other half of a growth programme is the *projection*: the MTBF expected
+once the fixes delayed to the end of the test are in. It needs each failure's
+**failure mode** and a classification of the modes (MIL-HDBK-189C, section
+6):
+
+- **A modes** will not be fixed;
+- **BC modes** were fixed during the test;
+- **BD modes** will be fixed after it, each fix removing a fraction ``d`` of
+  its mode's intensity, its *fix-effectiveness factor* (FEF).
+
+``CrowAMSAA.projection`` takes the data as ``fit`` does, plus a ``modes``
+array (one label per row; the ``c=1`` rows' labels are ignored), a ``fef``
+dict of the BD modes and their factors, and optionally ``bc``, the BD modes
+fixed during the test; every other mode is an A mode. Here a prototype is
+tested to 400 hours:
+
+.. jupyter-execute::
+
+    x = [15, 42, 60, 98, 130, 171, 205, 260, 310, 345, 390, 400]
+    modes = ["b1", "a1", "b2", "b1", "b3", "a2", "b2", "b4", "b1", "a1",
+             "b3", None]
+    c = [0] * 11 + [1]
+    fef = {"b1": 0.8, "b2": 0.7, "b3": 0.75, "b4": 0.6}
+
+    projection = CrowAMSAA.projection(x, modes, fef, c=c)
+    print(projection)
+    print(projection.modes)
+
+The test demonstrates 36.4 hours; the delayed fixes take each BD mode's
+intensity (``N_i / T``) down to ``(1 - d_i) N_i / T``, and the projection
+adds back :math:`\bar d\, h(T)`: the fixes are judged on the modes seen, but
+new BD modes were still turning up at the end of the test (:math:`h(T)`, the
+rate of the power law fitted to the modes' first occurrences), and those
+are not fixed yet. The projected MTBF, 62.8 hours, is the AMSAA-Crow
+projection; the growth potential, 78.4 hours, is what the same factors
+would reach if every BD mode were found and fixed. With modes fixed during
+the test (``bc=``) the system grew while it was tested, and the
+demonstrated intensity is the Crow-AMSAA one at the end of the test (Crow's
+extended model). The test must be time-terminated (every system run to the
+same ``T``, given as its ``c=1`` row); several systems are taken to have run
+side by side, and the intensities and MTBFs are those of one system.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(projection.demonstrated_mtbf, 1) == 36.4
+    assert round(projection.projected_mtbf, 1) == 62.8
+    assert round(projection.growth_potential_mtbf, 1) == 78.4
 
 Generalised Renewal Process with SurPyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1063,8 +1219,8 @@ the information criteria agree:
 
 .. jupyter-execute::
 
-    print("Kijima i  AIC:", round(model.aic, 2), " q =", round(model.q, 3))
-    print("Kijima ii AIC:", round(model_ii.aic, 2), " q =", round(model_ii.q, 3))
+    print("Kijima i  AIC:", round(model.aic(), 2), " q =", round(model.q, 3))
+    print("Kijima ii AIC:", round(model_ii.aic(), 2), " q =", round(model_ii.q, 3))
 
 The Kijima-II fit has pushed ``q`` to (essentially) zero — perfect repair, an
 ordinary Weibull renewal process — because Kijima-II's virtual age, which
@@ -1078,7 +1234,7 @@ given time.
     :hide-code:
     :hide-output:
 
-    assert model_ii.aic > model.aic and model_ii.q < 1e-3
+    assert model_ii.aic() > model.aic() and model_ii.q < 1e-3
 
 How well do the data determine q?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1310,8 +1466,8 @@ compares the two Kijima types:
     ara_aic = {}
     for m in (1, 2, np.inf):
         fit = ARA.fit(x, i, c, m=m)
-        ara_aic[m] = fit.aic
-        print(f"m = {m}:  rho = {fit.rho:.3f}   AIC = {fit.aic:.2f}")
+        ara_aic[m] = fit.aic()
+        print(f"m = {m}:  rho = {fit.rho:.3f}   AIC = {fit.aic():.2f}")
 
 The true memory, ``m=2``, has the lowest AIC.
 
@@ -1323,9 +1479,8 @@ The true memory, ``m=2``, has the lowest AIC.
 
 ``ARI`` fits the same way but with an intensity (counting process) baseline —
 ``CrowAMSAA`` (the default), ``Duane`` or ``CoxLewis`` — in place of a lifetime
-distribution. It is passed as ``baseline=`` (``dist=``, its name before v0.22,
-still works with a ``DeprecationWarning`` until v0.23), and a lifetime
-distribution there, ``ARI.fit(x, i, baseline=Weibull)``, raises an error
+distribution. It is passed as ``baseline=`` (``dist=`` before v0.22), and a
+lifetime distribution there, ``ARI.fit(x, i, baseline=Weibull)``, raises an error
 saying so and naming ``ARA`` and ``GeneralizedRenewal`` (a Weibull hazard as
 the baseline intensity is the power law, ``baseline=CrowAMSAA``); the other
 fitters likewise refuse an intensity model as their lifetime distribution. Here we simulate from an ARI model with a deteriorating
@@ -1445,9 +1600,50 @@ Using the ARA model fitted above:
     print("90% of new systems have between", np.percentile(counts, 5),
           "and", np.percentile(counts, 95), "failures by t=40")
 
-The simulations always start from a new item (virtual age zero), so they
-answer questions about new units rather than forecasting a specific item's
-next failures from its current state.
+The maintenance questions are about the items in service, though, each with
+its own history. ``unit_states`` gives each fitted item's state at the end of
+its history: the time now, its failures so far, the time since the last, and
+what its repairs have left it with -- its virtual age now (for ``ARI``, the
+intensity reduction in force; for the G1 process, the time since the last
+failure on the lifetime's axis and the factor its next gap is scaled by):
+
+.. jupyter-execute::
+
+    print(ara.unit_states().round(2))
+
+From there, ``next_failure_sf(x)`` is each item's chance of running a further
+``x`` without a failure (for the virtual-age models, the lifetime's
+conditional survival from its virtual age) and ``next_failure_hf(x)`` its
+intensity then. :func:`surpyval.forecast` simulates each item's future from
+its own state, so ``per_unit`` is each item's expected number of failures and
+the interval is that of the fleet's count:
+
+.. jupyter-execute::
+
+    print("P(no failure in the next 5):", ara.next_failure_sf(5.0).round(3))
+
+    ahead = surv.forecast(ara, horizon=[5, 10], random_state=3)
+    print(ahead)
+    print("expected failures in the next 10, each item:",
+          ahead.per_unit[:, -1].round(2))
+
+Give ``age`` instead for units that have run that long with no failure yet
+(new units, or units overhauled to as good as new), and ``limit`` for a time
+past which failures are not counted. ``items`` sets the number of simulated
+futures per unit (1000 by default). An item that entered observation late
+(``tl``) is as new at its entry (see above), and its times, and so its state,
+count from there.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _states = ara.unit_states()
+    assert list(_states.index) == list(ara.data.items)
+    assert np.allclose(ahead.probability[:, 0], 1 - ara.next_failure_sf(5.0))
+    assert np.allclose(ahead.expected, ahead.per_unit.sum(axis=0))
+    assert np.all(ahead.lower <= ahead.expected)
+    assert np.all(ahead.expected <= ahead.upper)
 
 Gapped (multi-window) observation
 ---------------------------------
@@ -1497,8 +1693,8 @@ touch), and every event must fall inside one of its item's windows;
 ``windows`` cannot be combined with ``tl``/``tr`` (or ``t``), covariates or
 event marks. Because each window is handled as its own observation period,
 the diagnostics see windows rather than items: ``residuals(kind="martingale")``
-returns one value per window, and ``trend_test`` refuses gapped data, since
-the trend tests need every system watched from time zero:
+returns one value per window, and ``trend_test`` tests each window as its
+own observation period (each counts as a system in ``n_systems``):
 
 .. jupyter-execute::
     :hide-code:

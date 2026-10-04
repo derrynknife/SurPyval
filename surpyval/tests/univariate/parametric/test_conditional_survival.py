@@ -199,13 +199,13 @@ W, E, G = surv.Weibull, surv.Exponential, surv.Geometric
 
 
 def test_cs_counts_the_limited_failure_proportion():
-    model = W.from_params([10, 2], p=0.7)
+    model = W.from_params([10, 2], lfp_p=0.7)
     assert model.cs(5, 10) == pytest.approx(model.sf(15) / model.sf(10))
     assert model.cs(5, 10) == pytest.approx(0.670437654623545)
 
 
 def test_cs_counts_the_zero_inflation_fraction():
-    model = W.from_params([10, 2], p=0.8, f0=0.2)
+    model = W.from_params([10, 2], lfp_p=0.8, f0=0.2)
     assert model.cs(3, 1) == pytest.approx(model.sf(4) / model.sf(1))
 
 

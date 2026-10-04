@@ -1,20 +1,27 @@
 from __future__ import annotations
 
+import functools
 from typing import Any, Callable
 
 import autograd.numpy as np
 import numpy as onp
-from autograd import hessian, jacobian
 from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
 from surpyval.recurrent._convergence import better_result
 from surpyval.recurrent.inference import bic_sample_size
-from surpyval.univariate.parametric.fitters import is_local_minimum
+from surpyval.univariate.parametric.fitters import verify_or_polish
+from surpyval.univariate.regression._aliasing import (
+    dataframe_covariates,
+    fit_columns,
+)
+from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_unverified
+from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 
 from .proportional_intensity import (
@@ -23,8 +30,14 @@ from .proportional_intensity import (
 )
 
 
+def _in_rate_space(neg_ll: Callable, p: np.ndarray) -> Any:
+    """``neg_ll``, which takes ``[log(rate), *coefficients]``, at
+    ``p = [rate, *coefficients]``."""
+    return neg_ll(np.concatenate([[np.log(p[0])], p[1:]]))
+
+
 @singleton_fitter
-class ProportionalIntensityHPP(RecurrentRegressionDataFrameMixin):
+class ProportionalIntensityHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
     """
     Proportional-intensity regression on a homogeneous Poisson process:
     each item's events occur at the constant rate
@@ -67,17 +80,26 @@ class ProportionalIntensityHPP(RecurrentRegressionDataFrameMixin):
         lambda  :  0.017410386679243283
     <BLANKLINE>
     Covariate Coefficients:
-       beta_0  :  -0.36626406174463233
-       beta_1  :  -0.05559822615498945
-       beta_2  :  0.30493957739153305
-       beta_3  :  -0.14674549077957214
-       beta_4  :  -0.4269861228181052
-       beta_5  :  -0.08264790408652863
-       beta_6  :  0.08565920858626697
+       coef_0  :  -0.36626406174463233
+       coef_1  :  -0.05559822615498945
+       coef_2  :  0.30493957739153305
+       coef_3  :  -0.14674549077957214
+       coef_4  :  -0.4269861228181052
+       coef_5  :  -0.08264790408652863
+       coef_6  :  0.08565920858626697
     <BLANKLINE>
     >>> model.cif(52, Z[:1])
     np.float64(0.32584697690680187)
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "proportional intensity fitter"
+
+    def _repr_name(self) -> str:
+        return "ProportionalIntensityHPP"
+
+    def _repr_details(self) -> "list[str]":
+        return ["HPP baseline"]
 
     # Display name of the (constant) baseline hazard rate model, used by
     # ``ProportionalIntensityModel``'s repr via ``dist.name``.
@@ -204,6 +226,7 @@ class ProportionalIntensityHPP(RecurrentRegressionDataFrameMixin):
 
         return negll_func
 
+    @dataframe_covariates
     def fit(
         self,
         x: ArrayLike,
@@ -299,6 +322,8 @@ class ProportionalIntensityHPP(RecurrentRegressionDataFrameMixin):
         """
         out = ProportionalIntensityModel()
         out.data = data
+        # The covariates' columns name the coefficients (#614)
+        out.feature_names = fit_columns()
 
         out._rate_names = ["lambda"]
         out.bounds = ((0, None),)
@@ -366,17 +391,30 @@ class ProportionalIntensityHPP(RecurrentRegressionDataFrameMixin):
         if user_init:
             res = better_result(res, search(self._default_start(data)))
         # The answer is kept only as a verified maximum (zero gradient,
-        # negative-definite Hessian of the log-likelihood). BFGS's own
-        # verdict is no test: it reports a "precision loss" at the
-        # maximum of the Rossi fit, and success where it never moved.
+        # negative-definite Hessian of the log-likelihood), polished where
+        # it is not one, each coefficient in its own covariate's units
+        # (#577). BFGS's own verdict is no test: it reports a "precision
+        # loss" at the maximum of the Rossi fit, and success where it
+        # never moved; and its absolute tolerance stopped a covariate in
+        # millionths 0.06 short of the maximum.
         n_obs = bic_sample_size(data)
-        verified = res.fun < 1e300 and is_local_minimum(
-            neg_ll_free,
-            jacobian(neg_ll_free),
-            hessian(neg_ll_free),
-            res.x,
-            obj_scale=max(float(n_obs), 1.0),
+        floor = coefficient_floor(
+            int(free.sum()),
+            [
+                (int(free[:j].sum()), j - 1)
+                for j in range(1, 1 + num_covariates)
+                if free[j]
+            ],
+            data.Z,
         )
+        verified = False
+        if res.fun < 1e300:
+            res, verified = verify_or_polish(
+                neg_ll_free,
+                res,
+                max(float(n_obs), 1.0),
+                floor=floor,
+            )
         out.maximum = "verified" if verified else "unverified"
         if not verified:
             warn_unverified("The proportional intensity fit")
@@ -391,7 +429,11 @@ class ProportionalIntensityHPP(RecurrentRegressionDataFrameMixin):
         # ``neg_ll`` is parameterised by ``log_rate``; expose it in natural
         # (rate) space so ``_neg_ll(_mle)`` works with ``_mle`` the fitted rate
         # and covariate coefficients.
-        out._neg_ll = lambda p: neg_ll(np.concatenate([[np.log(p[0])], p[1:]]))
+        # (Kept as what it is built from, so the model pickles, #573.)
+        out._neg_ll = functools.partial(
+            _in_rate_space,
+            Rebuilt(self.create_negll_func, (data,), built=neg_ll),
+        )
         out._mle = np.concatenate([out.params, out.coeffs])
         out._n_obs = n_obs
         # The baseline hazard is this fitter's own constant-rate model, so the

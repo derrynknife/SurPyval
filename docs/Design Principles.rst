@@ -44,9 +44,11 @@ Inputs
 3. **Missing values.** ``nan`` in, ``nan`` out at prediction. At fit, a row
    with a missing value is dropped with one warning where rows are
    independent, and refused where a row is part of one unit (a recurrent
-   item, a degradation path).
+   item, a degradation path). A probability outside [0, 1] given to any
+   ``qf`` gives ``nan`` there, with one warning.
 
-   *Checked* by ``conformance/test_missing.py``.
+   *Checked* by ``conformance/test_missing.py`` (``qf_outside`` for
+   ``qf``, #611).
 
 4. **Order doesn't matter.** The order of the data rows never changes a fit,
    and permuting a query permutes the result.
@@ -64,10 +66,13 @@ Inputs
    else. Nor does a covariate's origin: with ``center=True`` every
    regression gives the same model when a constant is added to a
    covariate, and so do the defaults of Cox, Fine-Gray and the families
-   whose baseline maps exactly between origins.
+   whose baseline maps exactly between origins. Nor does a covariate's
+   scale: multiplying a column by a constant divides its coefficient by it
+   and leaves the maximised likelihood unchanged.
 
    *Checked* by ``conformance/test_metamorphic.py``
-   (``test_covariate_origin*`` for covariates). One family is excepted:
+   (``test_covariate_origin*`` for covariates) and ``test_maximum.py``'s
+   small- and large-scale (x1e4) fits (#577, #612). One family is excepted:
    the Beta4's likelihood is unbounded, so its maximum-likelihood fit can
    depend on the units, and warns when it does; its MPS fit does not
    (#385).
@@ -180,15 +185,16 @@ Estimation
     ``conformance/test_maximum.py``: every maximum-likelihood fit in the
     registry -- the univariate distributions, mixtures, the parametric and
     semi-parametric regressions, frailty, competing-risks, recurrence and
-    copula models -- records what it reached as its model's ``maximum``
+    copula models, and the degradation process and destructive models --
+    records what it reached as its model's ``maximum``
     (``"verified"``, ``"unverified"`` or ``"no finite maximum"``), warns
     exactly when that is not a verified maximum, its fixture's fit, its
     starved fit and its time-varying-covariate fit alike; and a verified
     maximum passes an independent check at the reported parameters (the
     gradient of the model's own likelihood ~0 and its Hessian positive
     definite, a parameter on a boundary of its space held out where the
-    likelihood does not rise off it). Known gap: the degradation process
-    and destructive fits (#564).
+    likelihood does not rise off it, and a refit from off it finding
+    nothing higher, #579).
 
 14. **Entry points agree.** ``fit``, ``fit_from_df``, a formula,
     ``from_params`` and ``fit_tvc`` give the same model for the same data.
@@ -257,7 +263,11 @@ Behaviour and API
     ``Z``, ``random_state``, ``n_boot``, ``tie_method``, ``event``, and
     ``x`` for the times and ``p`` for a quantile's probability), and so
     does the same attribute: every model's fitted values are ``params``,
-    named entry by entry by the attribute ``parameter_names``. Every
+    named entry by entry by the attribute ``parameter_names``, and every
+    model with ``covariance()`` has ``standard_errors()``, the square roots
+    of its diagonal; a regression coefficient is named by its covariate's
+    column, else ``coef_j``, and the limited-failure proportion is
+    ``lfp_p``. Every
     DataFrame entry point (``fit_from_df``, ``fit_tvc_from_df``,
     ``fit_tvc_timeline_from_df``) names a column argument after the ``fit``
     argument it fills with a ``_col`` suffix, ``_cols`` for a list of
@@ -267,7 +277,9 @@ Behaviour and API
     ``DeprecationWarning`` naming the new one.
 
     *Checked* by ``conformance/test_options.py``,
-    ``conformance/test_params.py`` and, for the column names,
+    ``conformance/test_params.py``, ``conformance/test_comparison.py``
+    (standard errors, #613), ``conformance/test_repr.py`` (every fitter
+    prints what it is, #614) and, for the column names,
     ``conformance/test_fit_paths.py``.
 
 22. **Warnings and errors.** One warning per problem, with counts, saying

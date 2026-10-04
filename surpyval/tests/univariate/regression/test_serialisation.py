@@ -256,7 +256,7 @@ def test_second_generation_serialisation_keeps_covariance():
     m = WeibullPH.fit(x, Z=Z)
     gen1 = surv.from_dict(json.loads(json.dumps(m.to_dict())))
     gen2 = surv.from_dict(json.loads(json.dumps(gen1.to_dict())))
-    cb = gen2.param_cb("beta_0")
+    cb = gen2.param_cb("coef_0")
     assert np.all(np.isfinite(cb))
 
 

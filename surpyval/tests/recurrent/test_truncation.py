@@ -6,6 +6,7 @@ from surpyval.recurrent import (
     ARI,
     HPP,
     CrowAMSAA,
+    GeneralizedOneRenewal,
     GeneralizedRenewal,
     ProportionalIntensityHPP,
     ProportionalIntensityNHPP,
@@ -156,15 +157,34 @@ def test_proportional_intensity_right_truncation(fitter):
     "model, kwargs",
     [
         (GeneralizedRenewal, {}),
-        (ARA, {"m": 1}),
+        (GeneralizedRenewal, {"kijima": "ii"}),
+        (GeneralizedOneRenewal, {}),
+        (ARA, {"m": 2}),
         (ARI, {"m": 1}),
     ],
 )
-def test_virtual_age_models_reject_left_truncation(model, kwargs):
-    data = handle_xicn(
-        np.array([1.0, 3.0, 6.0, 9.0]),
-        np.array([1, 1, 1, 1]),
-        tl=0.5,
+def test_615_renewal_fits_take_delayed_entry_as_new(model, kwargs):
+    # Delayed entry in the virtual-age models: each item as new at its
+    # entry, so the fit is that of the times since entry. They used to
+    # refuse tl > 0, and to ignore a negative tl (counting the first gap
+    # from 0).
+    x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2, 4.5, 5])
+    c = np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1])
+    i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3])
+    tl = np.where(i == 3, 0.5, np.where(i == 2, -1.0, 0.0))
+    entered = model.fit(x, i, c, tl=tl, **kwargs)
+    shifted = model.fit(x - tl, i, c, **kwargs)
+    assert np.allclose(entered.params, shifted.params, rtol=1e-8)
+    assert entered.log_likelihood == pytest.approx(
+        shifted.log_likelihood, rel=1e-10
     )
-    with pytest.raises(ValueError, match="does not support left truncation"):
-        model.fit_from_recurrent_data(data, **kwargs)
+    # The model's data are on its clock: the times since entry.
+    assert np.allclose(entered.data.x, x - tl)
+    # fit_from_df reads the entry column the same way.
+    import pandas as pd
+
+    log = pd.DataFrame({"t": x, "unit": i, "c": c, "entry": tl})
+    via_df = model.fit_from_df(
+        log, x_col="t", i_col="unit", c_col="c", tl_col="entry", **kwargs
+    )
+    assert np.allclose(via_df.params, entered.params, rtol=1e-8)

@@ -11,13 +11,15 @@ from surpyval.recurrent.inference import bic_sample_size
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
 from surpyval.recurrent.renewal.renewal_model import (
     RenewalModel,
+    conditional_gaps,
     event_positions,
 )
 from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
+    measure_from_entry,
     reject_gapped_observation,
-    reject_left_truncation,
     validate_lifetime_dist,
     validate_renewal_censoring,
     validate_renewal_times,
@@ -90,7 +92,9 @@ class GeneralizedOneRenewal(RenewalFitMixin):
     """
 
     @staticmethod
-    def _build_sampler(model: Any, n: int) -> Callable:
+    def _build_sampler(model: Any, n: int, state: Any = None) -> Callable:
+        if state is not None:
+            return GeneralizedOneRenewal._state_sampler(model, state)
         base_params = model.model.params
         q = model.q
         j = np.zeros(n)
@@ -103,6 +107,26 @@ class GeneralizedOneRenewal(RenewalFitMixin):
             j[idx] += 1
             base = model.model.dist.qf(u, *base_params)
             return scale * np.asarray(base, dtype=float)
+
+        return step
+
+    @staticmethod
+    def _state_sampler(model: Any, state: Any) -> Callable:
+        """The sampler of sequences that start from units' current states
+        (``UnitStates``): a unit with ``j`` failures that has run ``s``
+        since the last has a next gap of ``(1 + q) ** j`` times the base
+        lifetime's residual life from ``s / (1 + q) ** j``."""
+        q = model.q
+        j = np.array(state.failure_count, dtype=float)
+        since = np.array(state.since_failure, dtype=float)
+
+        def step(idx: np.ndarray, u: np.ndarray) -> np.ndarray:
+            scale = (1.0 + q) ** j[idx]
+            base_age = since[idx] / scale
+            gap = scale * conditional_gaps(model.model, base_age, u)
+            j[idx] += 1
+            since[idx] = 0.0
+            return gap
 
         return step
 
@@ -225,6 +249,9 @@ class GeneralizedOneRenewal(RenewalFitMixin):
 
         data : RecurrentEventData
             Data containing the recurrence details.
+            An item with delayed entry (a ``tl``) is taken to be as
+            new at entry, with its times counted from there (see
+            :meth:`fit`).
         dist : Distribution, optional
             A surpyval distribution object. Default is Weibull.
         init : list, optional
@@ -267,8 +294,9 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         """
         self._check_dist_eligible(dist)
         validate_renewal_censoring(data.c, type(self).__name__)
-        reject_left_truncation(data, type(self).__name__)
         reject_gapped_observation(data, type(self).__name__)
+        # Delayed entry: as new at entry (#615).
+        data = measure_from_entry(data, type(self).__name__)
         validate_renewal_times(
             data, dist, type(self).__name__, every_gap_from_new=True
         )
@@ -319,6 +347,13 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         underlying_model = dist.from_params(list(params[1:]))
         q = params[0]
         out = self._make_model(underlying_model, q)
+        # The likelihood kept as what it is built from, so the model
+        # pickles (#573).
+        neg_ll = Rebuilt(
+            self.create_negll_func,
+            (data.interarrival_times, data.i, data.c, data.n, dist),
+            built=neg_ll,
+        )
         self._attach_inference(out, neg_ll, params, res, data)
         return out
 
@@ -330,6 +365,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         n: "ArrayLike | None" = None,
         dist: Any = Weibull,
         init: "ArrayLike | None" = None,
+        tl: "ArrayLike | None" = None,
     ) -> "RenewalModel":
         """
         Fit the generalized renewal model.
@@ -353,6 +389,15 @@ class GeneralizedOneRenewal(RenewalFitMixin):
             A surpyval distribution object. Default is Weibull.
         init : list, optional
             Initial parameters for the optimization algorithm.
+        tl : array_like or scalar, optional
+            Delayed entry: the time each item's observation began, when
+            its failures before then were not recorded (a scalar for every
+            item, or one value per row, the same on every row of an item).
+            The item is taken to be **as new at entry** -- virtual age 0 at
+            ``tl``, as after an overhaul -- so its times count from there
+            and its history before entry plays no part. That is exact for
+            an item renewed at entry and an assumption otherwise; the
+            fitted model's ``data`` hold the times from entry.
 
         Returns
         -------
@@ -386,7 +431,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
               between failures is 1.34 times the one before (improvement) (LR
               tests, q = 0: p = 0.0148)
         """
-        data = handle_xicn(x, i, c, n)
+        data = handle_xicn(x, i, c, n, tl=tl)
         return self.fit_from_recurrent_data(data, dist=dist, init=init)
 
     def fit_from_parameters(

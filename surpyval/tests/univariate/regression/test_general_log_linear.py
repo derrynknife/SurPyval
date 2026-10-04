@@ -63,7 +63,7 @@ def test_resolved_for_the_columns():
     model = GLL.fit(x, Z, c=c)
     lm = model.reg_model
     assert lm.n_stresses == 2
-    assert lm.phi_param_map == {"c": 0, "beta_0": 1, "beta_1": 2}
+    assert lm.phi_param_map == {"c": 0, "coef_0": 1, "coef_1": 2}
     assert lm.phi_bounds == ((0, None), (None, None), (None, None))
     assert sp.life_models.GeneralLogLinear.n_stresses is None
     assert sp.life_models.GeneralLogLinear.resolve(3).n_stresses == 3
@@ -76,6 +76,47 @@ def test_resolved_for_the_columns():
     rng = np.random.default_rng(1)
     Z3 = np.column_stack([Z, rng.normal(size=len(x))])
     assert GLL.fit(x, Z3, c=c).reg_model.n_stresses == 3
+
+
+@pytest.mark.parametrize(
+    "dist",
+    [
+        sp.Weibull,
+        sp.LogNormal,
+        sp.Exponential,
+        sp.Gamma,
+        sp.Normal,
+        sp.Gumbel,
+        sp.Logistic,
+    ],
+)
+def test_621_a_continuous_stress_fits_every_baseline(dist):
+    # With a continuous third column every row is its own stress level,
+    # and a level's own fit fails on one row: its start took the mean time
+    # as the life parameter itself, so a LogNormal's mu was the time and
+    # its life exp(time), and the fit raised "The log-likelihood is not
+    # finite at the initial parameter values" (#621).
+    x, Z, c = _data()
+    rng = np.random.default_rng(1)
+    Z3 = np.column_stack([Z, rng.normal(size=len(x))])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = sp.AcceleratedLife(dist, sp.life_models.GeneralLogLinear).fit(
+            x, Z3, c=c
+        )
+    assert model.maximum == "verified"
+    assert model.reg_model.n_stresses == 3
+
+
+def test_621_the_lognormal_is_the_lognormal_aft():
+    x, Z, c = _data()
+    rng = np.random.default_rng(1)
+    Z3 = np.column_stack([Z, rng.normal(size=len(x))])
+    model = sp.AcceleratedLife(
+        sp.LogNormal, sp.life_models.GeneralLogLinear
+    ).fit(x, Z3, c=c)
+    aft = sp.LogNormalAFT.fit(x, Z3, c=c)
+    np.testing.assert_allclose(model._neg_ll, aft._neg_ll, rtol=1e-9)
 
 
 def test_scale_invariant():

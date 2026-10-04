@@ -42,6 +42,7 @@ from surpyval.tests.conformance.checks import (
 )
 from surpyval.tests.conformance.registry import (
     ALPHAS,
+    BIVARIATE,
     CASES,
     KNOWN_INCONSISTENCIES,
     NON_STRICT,
@@ -51,6 +52,7 @@ from surpyval.tests.conformance.registry import (
     cases_for,
     fitted,
     refit,
+    skip_without_finite_maximum,
 )
 
 SIDES = ("two-sided", "lower", "upper")
@@ -170,8 +172,8 @@ def _parameters(model):
     values = list(model.params)
     supports = list(model.dist.bounds)
     if model.lfp:
-        names.append("lfp_p" if "p" in names else "p")
-        values.append(model.p)
+        names.append("lfp_p")
+        values.append(model.lfp_p)
         supports.append((0, 1))
     if model.zi:
         names.append("f0")
@@ -216,6 +218,9 @@ def _call(case, spec, model, side, alpha, fname, event, k):
         return np.asarray(method(*args, **kw), float)
     if spec.kind == "param":
         names = _parameters(model)[0]
+        if not names:
+            # (the independence copula: nothing to bound)
+            return np.empty((0, 2) if side == "two-sided" else (0,))
         rows = [np.asarray(method(n, **kw), float) for n in names]
         return np.vstack(rows) if side == "two-sided" else np.hstack(rows)
     if spec.kind == "coef":
@@ -337,6 +342,7 @@ def _percentile(spec):
     _bound_params("cb_contains", where=lambda c, s: not _percentile(s)),
 )
 def test_bounds_contain_the_estimate(case, spec):
+    skip_without_finite_maximum(case)
     for label, fname, event in _sweep(case, spec):
         p = estimate(case, spec, fname, event)
         lo_ok, hi_ok = value_range(case, spec, fname)
@@ -539,15 +545,18 @@ def _function_bound(case, spec):
 def test_bound_shapes(case, spec):
     model = fitted(case)
     x = _query(case, spec)
+    # A copula's points are (x1, x2) rows
+    points = len(x) if case.interface == BIVARIATE else x.size
     for label, fname, event in _sweep(case, spec):
         sides = SIDES if spec.sides else ("two-sided",)
         for side in sides:
             b = bounds(case, spec, side, 0.05, fname, event)
-            want = (x.size, 2) if side == "two-sided" else (x.size,)
+            want = (points, 2) if side == "two-sided" else (points,)
             assert b.shape == want, (label, side, b.shape)
             # A scalar query keeps its shape (principle 7): the pair
-            # [lower, upper] two-sided, one number one-sided.
-            k = x.size // 2
+            # [lower, upper] two-sided, one number one-sided (one point,
+            # a pair (x1, x2), for a copula).
+            k = points // 2
             one = _raw(case, spec, model, side, 0.05, fname, event, k)
             assert one.shape == want[1:], (label, side, one.shape)
             # (A search warm-starts from the previous time, so it agrees
@@ -567,6 +576,8 @@ def test_bound_shapes(case, spec):
 )
 def test_bound_and_on_values(case, spec):
     model = fitted(case)
+    if spec.kind == "param" and not _parameters(model)[0]:
+        pytest.skip(f"{case.name} has no parameter to bound")
     fname, event = (
         _functions(case, spec)[0]
         if spec.kind == "function"
@@ -837,6 +848,7 @@ _TIME_FUNCTIONS: tuple[str, ...] = (
     "cb",
 )
 _TIME_FUNCTIONS += ("cif_cb", "mcf_cb", "bootstrap_cb", "band")
+_TIME_FUNCTIONS += ("iif_cb", "mtbf", "mtbf_cb")
 
 
 def _default_is(name, value):

@@ -20,10 +20,10 @@ with ``params``.
 
 ``parameter_names`` replaced three spellings: the ``param_names``
 attribute, the regression models' ``parameter_names()`` method and the
-recurrent models' ``parameter_names`` property. The old spellings keep
-working until v0.23 with a ``DeprecationWarning`` naming the new one
-(principle 21), and the package itself never uses them: a fit, its
-predictions, summary and serialisation raise no DeprecationWarning.
+recurrent models' ``parameter_names`` property. The old spellings,
+deprecated in v0.22, are removed in v0.23 (principle 21), and the package
+never uses a deprecated name: a fit, its predictions, summary and
+serialisation raise no DeprecationWarning.
 """
 
 import json
@@ -41,7 +41,6 @@ from surpyval.tests.conformance.registry import (
     predictions,
 )
 from surpyval.univariate.parametric import ParametricFitter
-from surpyval.utils.deprecation import REMOVED_IN
 
 _WITH_PARAMS = [
     pytest.param(case, id=case.name)
@@ -108,19 +107,9 @@ def test_every_model_with_params_is_checked():
 
 
 @pytest.mark.parametrize("case", _WITH_PARAMS)
-def test_param_names_is_a_deprecated_alias(case):
-    model = fitted(case)
-    if not any("param_names" in k.__dict__ for k in type(model).__mro__):
-        pytest.skip("never had param_names")
-    with pytest.warns(DeprecationWarning, match="parameter_names") as rec:
-        old = model.param_names
-    assert rec[0].filename == __file__
-    assert "v" + REMOVED_IN in str(rec[0].message)
-    if type(model).__name__ == "ProportionalIntensityModel":
-        # It named the base rate only, and still does.
-        assert old == model.parameter_names[: model.params.size]
-    else:
-        assert old == model.parameter_names
+def test_param_names_is_gone(case):
+    # The pre-0.22 spelling, deprecated in v0.22, is removed in v0.23.
+    assert not hasattr(fitted(case), "param_names")
 
 
 @pytest.mark.parametrize("name", _DISTRIBUTIONS)
@@ -131,28 +120,25 @@ def test_distribution_parameter_names(name):
         names = dist.parameter_names
     _check_names(names)
     assert len(names) == dist.k == len(dist.bounds)
-    with pytest.warns(DeprecationWarning, match="use 'parameter_names'"):
-        assert dist.param_names == names
+    assert not hasattr(dist, "param_names")
     # A fitted model names its params the same way.
     if names and name in CASE_BY_NAME:
         assert fitted(CASE_BY_NAME[name]).parameter_names == names
 
 
-def test_regression_parameter_names_call_warns_and_is_a_list():
+def test_regression_parameter_names_is_a_plain_list():
     model = fitted(CASE_BY_NAME["WeibullPH"])
     names = model.parameter_names
-    with pytest.warns(
-        DeprecationWarning, match=r"'parameter_names\(\)'"
-    ) as rec:
-        called = model.parameter_names()
-    assert rec[0].filename == __file__
-    assert called == names == ["alpha", "beta", "beta_0", "beta_1"]
-    # A plain list in every other use.
+    # The method spelling, deprecated in v0.22, is removed in v0.23.
+    assert type(names) is list
+    with pytest.raises(TypeError, match="not callable"):
+        model.parameter_names()
+    assert names == ["alpha", "beta", "coef_0", "coef_1"]
     with warnings.catch_warnings():
         warnings.simplefilter("error", DeprecationWarning)
         assert names == list(names) and list(names) == names
-        assert len(names) == 4 and names[-1] == "beta_1"
-        assert [n for n in names] == ["alpha", "beta", "beta_0", "beta_1"]
+        assert len(names) == 4 and names[-1] == "coef_1"
+        assert [n for n in names] == ["alpha", "beta", "coef_0", "coef_1"]
         assert json.loads(json.dumps(names)) == list(names)
         assert np.asarray(names).tolist() == list(names)
         series = pd.Series(model.params, index=names)
@@ -160,8 +146,8 @@ def test_regression_parameter_names_call_warns_and_is_a_list():
         frame = pd.DataFrame([model.params], columns=names)
         assert frame[names].shape == (1, 4)
         assert frame.T.loc[names].shape == (4, 1)
-        assert names + ["x"] == ["alpha", "beta", "beta_0", "beta_1", "x"]
-        assert names.index("beta_0") == 2
+        assert names + ["x"] == ["alpha", "beta", "coef_0", "coef_1", "x"]
+        assert names.index("coef_0") == 2
 
 
 def test_documented_orders():
@@ -187,7 +173,7 @@ def test_documented_orders():
     assert al.life_parameter == "alpha"
     # proportional intensity: base rate, then the coefficients
     pi = fitted(CASE_BY_NAME["ProportionalIntensityNHPP"])
-    assert pi.parameter_names == ["alpha", "b", "beta_0"]
+    assert pi.parameter_names == ["alpha", "b", "coef_0"]
     assert pi.standard_errors().size == len(pi.parameter_names)
 
 
@@ -212,34 +198,28 @@ def test_saved_key_is_still_param_names():
         assert restored.parameter_names == model.parameter_names
 
 
-def test_old_keyword_and_class_attribute_still_work():
+def test_old_keyword_and_class_attribute_are_gone():
+    # Deprecated in v0.22, removed in v0.23: the keyword is an unknown
+    # argument, and a ``param_names`` class attribute is not read.
     from surpyval.degradation import PathModel
     from surpyval.multivariate import Copula
 
     def Hf(x, *params):
         return params[0] * x ** params[1]
 
-    with pytest.warns(DeprecationWarning, match="'param_names'") as rec:
-        dist = surpyval.CustomDistribution(
+    with pytest.raises(
+        TypeError, match="unexpected keyword argument 'param_names'"
+    ):
+        surpyval.CustomDistribution(
             "ParamNamesKeyword",
             Hf,
             param_names=["a", "b"],
             bounds=((0, None), (0, None)),
             support=(0, np.inf),
         )
-    assert rec[0].filename == __file__
-    assert dist.parameter_names == ["a", "b"]
-    with pytest.raises(ValueError, match="pass 'parameter_names' only"):
-        surpyval.CustomDistribution(
-            "ParamNamesBoth",
-            Hf,
-            parameter_names=["a", "b"],
-            param_names=["a", "b"],
-            bounds=((0, None), (0, None)),
-            support=(0, np.inf),
-        )
 
-    with pytest.warns(DeprecationWarning, match="class attribute") as rec:
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
 
         class OldPath(PathModel):
             name = "old"
@@ -251,16 +231,10 @@ def test_old_keyword_and_class_attribute_still_work():
             def inv_path(self, y, a, b):
                 return (y - a) / b
 
-    assert rec[0].filename == __file__
-    assert OldPath.parameter_names == ["a", "b"]
-    with pytest.warns(DeprecationWarning):
-        assert OldPath().param_names == ["a", "b"]
-
-    with pytest.warns(DeprecationWarning, match="class attribute"):
-
         class OldCopula(Copula):
-            param_names = ["theta"]
+            param_names = ["a"]
 
+    assert not hasattr(OldPath, "parameter_names")
     assert OldCopula.parameter_names == ["theta"]
 
 

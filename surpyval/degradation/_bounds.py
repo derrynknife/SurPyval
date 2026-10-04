@@ -127,7 +127,7 @@ def life_parameter_covariance(
             "life_parameter_covariance supports method='analytic'"
         )
     lm = model.life_model
-    if getattr(lm, "p", 1.0) != 1.0 or getattr(lm, "f0", 0.0) != 0.0:
+    if getattr(lm, "lfp_p", 1.0) != 1.0 or getattr(lm, "f0", 0.0) != 0.0:
         raise ValueError(
             "The analytic correction is implemented for a plain life model "
             "(no limited-failure-population or zero-inflation component); use "

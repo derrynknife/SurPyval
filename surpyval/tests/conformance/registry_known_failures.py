@@ -55,6 +55,16 @@ for _name, _failures in _OPTION_FAILURES.items():
     }
     KNOWN_FAILURES[_name] = {**KNOWN_FAILURES.get(_name, {}), **_failures}
 
+# -- every event in one corner cell (test_maximum.py, #628) ------------------
+KNOWN_FAILURES["GammaAFT"] = {
+    **KNOWN_FAILURES.get("GammaAFT", {}),
+    "maximum[corner]": (
+        "#628: the Hessian at the point the search stops is not finite "
+        "(the incomplete gamma's central differences), so the no-maximum "
+        "check has nothing to read and the fit says 'unverified'"
+    ),
+}
+
 # -- convergence (test_convergence.py) --------------------------------------
 # Each starved fit returns silently -- no warning, no error -- a model that
 # is not the maximum (a lower log-likelihood, "ll", than the fixture's
@@ -75,27 +85,14 @@ for _name, (_group, _reason) in _CONVERGENCE_FAILURES.items():
     }
 
 
-# -- maximum (test_maximum.py) --------------------------------------------
-# Likelihood fits that do not say what they reached: no ``maximum``, and no
-# check that the answer is a verified maximum. Keyed "maximum" (the
-# fixture's fit) and "maximum[starved]" (the convergence property's starved
-# fit); the reason leads with the issue.
-_MAXIMUM_FAILURES: dict[str, str] = {
-    name: (
-        "#564: the {} fit sets no ``maximum`` and does "
-        "not check that its answer is a verified maximum".format(name)
-    )
-    for name in ("WienerProcess", "GammaProcess", "DestructiveDegradation")
-}
-# (The WienerProcess's starved fit, of noise-free data, is refused.)
-for _name, _reason in _MAXIMUM_FAILURES.items():
-    _starved = (
-        {} if _name == "WienerProcess" else {"maximum[starved]": _reason}
-    )
+# -- comparison (test_comparison.py) ----------------------------------------
+# Models whose model-comparison values are not spelt as everywhere else
+# (none since #604).
+_COMPARISON_FAILURES: dict[str, str] = {}
+for _name, _reason in _COMPARISON_FAILURES.items():
     KNOWN_FAILURES[_name] = {
         **KNOWN_FAILURES.get(_name, {}),
-        "maximum": _reason,
-        **_starved,
+        "comparison": _reason,
     }
 
 

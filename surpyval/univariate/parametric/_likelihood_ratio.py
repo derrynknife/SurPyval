@@ -7,16 +7,19 @@ inherits it: the profile likelihood and the parameters' intervals
 functions (``cb``, ``quantile_cb`` and ``mean_cb`` with ``method="lr"``).
 The searches move each parameter in an unbounded coordinate
 (``_LRCoord``), continue along the solved points (``_LRPath``) and walk
-out to the critical value (``_lr_walk``); see #421, #519 and #535.
+out to the critical value (``_lr_walk``); see #421, #519, #535 and #587.
 """
 
 from __future__ import annotations
 
+import functools
 import warnings
 from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
+import numpy as onp
 import numpy.typing as npt
+from autograd import grad
 from scipy.optimize import (
     brentq,
     minimize,
@@ -26,6 +29,7 @@ from scipy.special import expit
 from scipy.special import ndtri as z
 
 from surpyval.utils.validation import BOUNDS, CB_ON, check_option
+from surpyval.utils.warnings import caller_stacklevel
 
 if TYPE_CHECKING:
     from surpyval.utils.surpyval_data import SurpyvalData
@@ -40,6 +44,10 @@ _FLOAT_MAX = float(np.finfo(float).max)
 # The profile deviance is solved to about 1e-8 (the searches' tolerances);
 # this is the slack the likelihood-ratio walk allows it (``_lr_walk``).
 _LR_NOISE = 1e-6
+# The scale of the deviance constraint in the scaled search for a
+# function's extreme (``_PsiBoundSearch.extreme``): SLSQP holds it to its
+# ftol of 1e-10, which is 1e-8 of deviance.
+_LR_DEV_SCALE = 1e-2
 # A deviance that is not finite, or no search reaching the target at all,
 # is a failure; a target beyond a data-derived edge (the Uniform's) is not
 # reachable, and reads as this deviance, above any critical value.
@@ -47,6 +55,35 @@ _LR_UNREACHABLE = 1e6
 # The most likelihoods a model keeps for its likelihood-ratio searches
 # (``_lr_raw_neg_ll``; a 50-point Weibull band asks for 16,000).
 _LR_MEMO_SIZE = 100_000
+# How many times a search that stops short of converging is continued
+# (``_PsiBoundSearch.extreme_far``), and the relative steps of its
+# central differences: ``_LR_FD_FINE`` where a continued search stalls.
+_LR_CONTINUE = 10
+_LR_FD_STEP = 1e-6
+_LR_FD_FINE = 1e-8
+# A continued search that moves psi out by less than this (relative to
+# psi beyond 1) has stalled: a tenth of the hair ``checks_out`` tests.
+_LR_GAIN = 1e-7
+
+
+def _lr_hair(psi: float) -> float:
+    """How far beyond an answer ``psi`` the extremality check looks
+    (``_PsiBoundSearch.checks_out``): 1e-6 of it, beyond 1."""
+    return 1e-6 * max(1.0, abs(psi))
+
+
+def warn_unsettled(where: str) -> None:
+    """Warn, once at the caller, that a likelihood-ratio bound is the
+    most extreme point of the likelihood region its search found, but
+    the search did not converge there (#601)."""
+    warnings.warn(
+        f"The likelihood-ratio bound {where} is the most extreme point of "
+        "the likelihood region its search found, but the search did not "
+        "converge there (the region runs out along a long, flat valley), "
+        "so it may fall a little short of the region's extreme.",
+        RuntimeWarning,
+        stacklevel=caller_stacklevel(),
+    )
 
 
 class _LRCoord:
@@ -99,6 +136,13 @@ class _LRCoord:
         return float(theta)
 
     def from_u(self, u: float) -> float:
+        # Plain numpy where the exponential cannot overflow: the searches
+        # map every point they evaluate, and autograd's wrapper and the
+        # error state took longer than the exponential (#519).
+        if self.kind == "log" and u < _LN_MAX:
+            return float(self.lo + onp.exp(u))
+        if self.kind == "neglog" and -u < _LN_MAX:
+            return float(self.hi - onp.exp(-u))
         with np.errstate(all="ignore"):
             if self.kind == "log":
                 return float(self.lo + np.exp(u))
@@ -279,16 +323,60 @@ def _lr_walk(
     return "fail", np.nan
 
 
-def _central_gradient(f: Callable[..., Any], u: npt.NDArray) -> npt.NDArray:
-    """Central-difference gradient of ``f`` at ``u``."""
+def central_gradient(
+    f: Callable[..., Any], u: npt.NDArray, rel_step: float = 1e-6
+) -> npt.NDArray:
+    """Central-difference gradient of ``f`` at ``u``, in steps of
+    ``rel_step`` (relative to each coordinate beyond 1)."""
     grad = np.empty(len(u))
     for j in range(len(u)):
-        h = 1e-6 * max(1.0, abs(u[j]))
+        h = rel_step * max(1.0, abs(u[j]))
         up, down = np.array(u, dtype=float), np.array(u, dtype=float)
         up[j] += h
         down[j] -= h
         grad[j] = (f(up) - f(down)) / (2 * h)
     return grad
+
+
+def _wald_sd(model: Any, coords: list[_LRCoord], free: list[int]) -> Any:
+    """The Wald standard errors of the core parameters ``free`` in their
+    search coordinates, or ``None`` without a usable covariance.
+
+    The searches run in the coordinates divided by these: SLSQP and
+    L-BFGS-B start from the identity as the likelihood's curvature, which
+    is near its curvature there, where in the raw coordinates it can be
+    out by the sample size (a Weibull's ``log alpha`` on 1000 units: 4,000
+    against 1). A constrained search that took 40 to 90 evaluations from
+    a point beside its answer takes 5.
+    """
+    hess_inv = getattr(model, "hess_inv", None)
+    if hess_inv is None or np.ndim(hess_inv) != 2:
+        return None
+    theta = np.asarray(model.params, dtype=float)
+    slopes = np.array([coords[j].slope(theta[j]) for j in free], dtype=float)
+    with np.errstate(all="ignore"):
+        sd = np.sqrt(np.diag(np.asarray(hess_inv, dtype=float))[free])
+        sd = sd / np.abs(slopes)
+    if not (np.all(np.isfinite(sd)) and np.all(sd > 0)):
+        return None
+    return sd
+
+
+def _scaled_bounds(
+    bounds: list[tuple[Any, Any]] | None,
+    origin: npt.NDArray,
+    scale: npt.NDArray,
+) -> list[tuple[Any, Any]] | None:
+    """``bounds`` on ``u`` as bounds on ``z``, ``u = origin + scale z``."""
+    if bounds is None:
+        return None
+    return [
+        (
+            None if lo is None else (lo - origin[k]) / scale[k],
+            None if hi is None else (hi - origin[k]) / scale[k],
+        )
+        for k, (lo, hi) in enumerate(bounds)
+    ]
 
 
 def _unguarded(dist: Any, name: str) -> Callable[..., Any]:
@@ -308,6 +396,12 @@ def _lean_neg_ll(dist: Any, lean: tuple, theta: npt.NDArray) -> float:
     offset, zero inflation or a limited failure population, as they
     compute them (a term with no data is exactly 0 there and is left
     out), but without the guards, which these data pass."""
+    return float(-_lean_log_likelihood(dist, lean, theta))
+
+
+def _lean_log_likelihood(dist: Any, lean: tuple, theta: Any) -> Any:
+    """The log-likelihood of ``_lean_neg_ll``, in a form autograd can
+    follow (``_lean_ll_gradient``)."""
     observed, right, left, interval, truncated, extra = lean
     params = tuple(theta)
     ll: Any = 0
@@ -320,11 +414,22 @@ def _lean_neg_ll(dist: Any, lean: tuple, theta: npt.NDArray) -> float:
     if left is not None:
         x, n = left
         ll = ll + np.sum(n * _unguarded(dist, "log_ff")(dist, x, *params))
+    if interval is not None or truncated is not None:
+        fns = tuple(
+            functools.partial(_unguarded(dist, name), dist)
+            for name in ("ff", "log_sf", "log_ff")
+        )
     if interval is not None:
-        ll = ll + dist.ll_interval_or_truncated(*interval, *params, *extra)
+        windows, n = interval
+        ll = ll + dist._window_log_likelihood(windows, n, params, extra, fns)
     if truncated is not None:
-        ll = ll - dist.ll_interval_or_truncated(*truncated, *params, *extra)
-    return float(-ll)
+        windows, n = truncated
+        ll = ll - dist._window_log_likelihood(windows, n, params, extra, fns)
+    return ll
+
+
+#: The gradient of ``_lean_log_likelihood`` in ``theta`` (autograd's).
+_lean_ll_gradient = grad(_lean_log_likelihood, 2)
 
 
 class _PsiBoundSearch:
@@ -338,7 +443,8 @@ class _PsiBoundSearch:
     in turn, cheapest first, until an answer checks out:
 
     1. ``from_trace``: from the traced point of a two-parameter region
-       where psi is most extreme (``_lr_trace``);
+       where psi is most extreme (``_lr_trace``), or from where the
+       neighbouring time's bound was found (``hints``);
     2. ``ladder`` then ``direct`` from the estimate and the walks' tips:
        the extreme sought directly (SLSQP), checked against every point
        of the region known;
@@ -384,9 +490,32 @@ class _PsiBoundSearch:
         self.known: list[tuple[float, npt.NDArray]] = []
         self.reached: list[tuple[float, npt.NDArray]] = []
         self.walks: list[list[tuple[float, npt.NDArray]]] = []
+        # The parameters' walks' points, one list per parameter and side.
+        self.seeds: list[list[npt.NDArray]] = []
         self.traced: list[tuple[float, npt.NDArray]] | None = None
         # The points the level ladders found (``ladder``).
         self.ladder_ids: set[int] = set()
+        # psi at each point asked for (``psi_u``).
+        self.psi_kept: dict[bytes, float] = {}
+        # The searches' scale (``_wald_sd``): ``solve`` and the search
+        # from the trace run in z, u = u_hat + scale z.
+        self.scale = _wald_sd(model, self.coords, free)
+        # Where each side's bound was found at the neighbouring time of a
+        # band (``from_trace``), and where it is found here.
+        self.hints: dict[float, npt.NDArray] = {}
+        self.answers: dict[float, npt.NDArray] = {}
+        self.last_status = 0
+        # A point of the region beyond the answer ``checks_out`` found.
+        self.beyond: npt.NDArray | None = None
+        # Whether the last ``extreme_far`` converged; the answers whose
+        # search did not; and the sides whose bound is such an answer.
+        self.converged = True
+        self.fd_step = _LR_FD_STEP
+        self.unsettled: set[float] = set()
+        self.unsettled_sides: set[float] = set()
+        # The most extreme answer that has checked out on each side
+        # (``checks_out``)
+        self.checked: dict[float, float] = {}
 
     # -- the functions of the search coordinates --------------------------
     def theta_of(self, u: npt.NDArray) -> npt.NDArray:
@@ -399,15 +528,45 @@ class _PsiBoundSearch:
         return nll if np.isfinite(nll) else np.inf
 
     def psi_u(self, u: npt.NDArray) -> float:
-        if not np.all(np.isfinite(u)):
+        if not onp.isfinite(u).all():
             return np.nan
-        # Held to the ends of its scale where the function reaches the
-        # edge of its range (a density that underflows to 0), so that
-        # a search can still step there.
-        return float(np.clip(self.psi_of(self.theta_of(u)), *self.ends))
+        # Kept by the point's bytes, as the likelihood is: SLSQP asks
+        # for the constraint again where it has just evaluated it.
+        key = np.asarray(u, dtype=float).tobytes()
+        if key not in self.psi_kept:
+            # Held to the ends of its scale where the function reaches
+            # the edge of its range (a density that underflows to 0), so
+            # that a search can still step there.
+            # (``min`` and ``max``, as ``np.clip``, keep a nan)
+            low, high = self.ends
+            psi = float(self.psi_of(self.theta_of(u)))
+            self.psi_kept[key] = min(max(psi, low), high)
+        return self.psi_kept[key]
 
     def dev_u(self, u: npt.NDArray) -> float:
         return 2.0 * (self.nll_of(u) - self.nll_hat)
+
+    def dev_grad_u(self, u: npt.NDArray) -> npt.NDArray | None:
+        """The gradient of ``dev_u`` at ``u``, autograd's through the
+        lean likelihood (``_lean_ll_gradient``); ``None`` without one, or
+        where it is not finite."""
+        lean = self.model._lr_lean_data()
+        if lean is None:
+            return None
+        theta = self.theta_of(u)
+        try:
+            with np.errstate(all="ignore"):
+                g = np.asarray(
+                    _lean_ll_gradient(self.model.dist, lean, theta),
+                    dtype=float,
+                )
+        except (ValueError, TypeError, ArithmeticError):
+            return None
+        slopes = np.array(
+            [c.slope(theta[j]) for c, j in zip(self.free_coords, self.free)]
+        )
+        out = -2.0 * g[self.free] * slopes
+        return out if np.all(np.isfinite(out)) else None
 
     # -- the whole search ---------------------------------------------------
     def run(
@@ -434,6 +593,7 @@ class _PsiBoundSearch:
 
         self._wald_scale()
         self.known = [(psi_hat, u_start)]
+        self.seeds = seeds
         self._take_walks(seeds)
         if trace is not None:
             traced = [(self.psi_u(u), u) for u in trace]
@@ -458,7 +618,7 @@ class _PsiBoundSearch:
                 np.ix_(self.free, self.free)
             ]
             cov_u = cov_u / np.outer(slopes, slopes)
-            grad = _central_gradient(self.psi_u, self.u_hat)
+            grad = central_gradient(self.psi_u, self.u_hat)
             step = float(np.sqrt(grad @ cov_u @ grad))
             try:
                 chol = np.linalg.cholesky(cov_u)
@@ -488,32 +648,61 @@ class _PsiBoundSearch:
     def solve(
         self, target: float, starts: list[npt.NDArray]
     ) -> tuple[float, npt.NDArray | None]:
-        """The least negative log-likelihood with psi at ``target``."""
+        """The least negative log-likelihood with psi at ``target``.
+
+        Searched in the coordinates scaled by the Wald standard errors
+        (``_wald_sd``), where SLSQP's first guess at the curvature is
+        near right, and in the search coordinates without a covariance.
+        """
         best, best_u = np.inf, None
+        if self.scale is None:
+            origin, scale = np.zeros(len(self.u_hat)), np.ones(len(self.u_hat))
+        else:
+            origin, scale = self.u_hat, self.scale
+
+        def psi_z(z: npt.NDArray) -> float:
+            return self.psi_u(origin + scale * z)
+
+        def nll_z(z: npt.NDArray) -> float:
+            return self.nll_of(origin + scale * z)
+
         constraint = {
             "type": "eq",
-            "fun": lambda u: self.psi_u(u) - target,
-            "jac": lambda u: _central_gradient(self.psi_u, u),
+            "fun": lambda z: psi_z(z) - target,
+            "jac": lambda z: central_gradient(psi_z, z),
         }
+        tol = 1e-7 * max(1.0, abs(target))
         for x0 in starts:
-            try:
-                res = minimize(
-                    self.nll_of,
-                    self.model._lr_start(x0, self.box),
-                    method="SLSQP",
-                    jac=lambda u: _central_gradient(self.nll_of, u),
-                    bounds=self.bounds,
-                    constraints=[constraint],
-                    options={"ftol": 1e-10, "maxiter": 60},
-                )
-            except (ValueError, np.linalg.LinAlgError):
-                continue
-            if not np.all(np.isfinite(res.x)):
-                continue
-            gap = abs(self.psi_u(res.x) - target)
-            nll = self.nll_of(res.x)
-            if gap <= 1e-7 * max(1.0, abs(target)) and nll < best:
-                best, best_u = nll, np.asarray(res.x)
+            z0 = (self.model._lr_start(x0, self.box) - origin) / scale
+            # Continued from where SLSQP stops short of converging just
+            # outside the region (within 0.05 of deviance), for as long
+            # as the likelihood rises there: whether a point is in the
+            # region turns on it (#601).
+            for _ in range(_LR_CONTINUE):
+                try:
+                    res = minimize(
+                        nll_z,
+                        z0,
+                        method="SLSQP",
+                        jac=lambda z: central_gradient(nll_z, z),
+                        bounds=_scaled_bounds(self.bounds, origin, scale),
+                        constraints=[constraint],
+                        options={"ftol": 1e-10, "maxiter": 60},
+                    )
+                except (ValueError, np.linalg.LinAlgError):
+                    break
+                if not np.all(np.isfinite(res.x)):
+                    break
+                u = origin + scale * np.asarray(res.x)
+                gap = abs(self.psi_u(u) - target)
+                nll = self.nll_of(u)
+                if not (gap <= tol and nll < best):
+                    break
+                best, best_u = nll, u
+                excess = 2.0 * (nll - self.nll_hat) - self.crit
+                if res.status == 0 or not 0.0 <= excess < 0.05:
+                    break
+                z0 = np.asarray(res.x)
         return best, best_u
 
     def extreme(
@@ -522,15 +711,23 @@ class _PsiBoundSearch:
         start: npt.NDArray,
         level: float,
         whiten: bool = False,
+        scaled: bool = False,
+        face: tuple[int, float] | None = None,
     ) -> npt.NDArray | None:
         """Where SLSQP stops in its search for the extreme of psi over
-        the region {deviance <= level}; ``None`` where it fails.
+        the region {deviance <= level}; ``None`` where it fails. Its
+        status is kept in ``last_status``.
 
         ``whiten``: searched in z, u = u_hat + chol z (held in the box),
-        where the region is near a ball about the estimate.
+        where the region is near a ball about the estimate. ``scaled``:
+        searched in z, u = u_hat + scale z (``_wald_sd``), where the
+        box is a box. ``face``, ``(k, end)``: over the face of the box
+        ``u[k] = end`` only (``_face_coords``).
         """
         u_hat, box = self.u_hat, self.box
-        if whiten:
+        if face is not None:
+            to_u, z0, z_bounds = self._face_coords(face, start)
+        elif whiten:
             if self.chol is None:
                 return None
             L = self.chol
@@ -540,6 +737,14 @@ class _PsiBoundSearch:
 
             z0 = np.linalg.solve(L, np.asarray(start) - u_hat)
             z_bounds = None
+        elif scaled and self.scale is not None:
+            scale = self.scale
+
+            def to_u(z: npt.NDArray) -> npt.NDArray:
+                return u_hat + scale * z
+
+            z0 = (np.asarray(start) - u_hat) / scale
+            z_bounds = _scaled_bounds(self.bounds, u_hat, scale)
         else:
 
             def to_u(z: npt.NDArray) -> npt.NDArray:
@@ -553,18 +758,41 @@ class _PsiBoundSearch:
         def g(z: npt.NDArray) -> float:
             return self.dev_u(to_u(z))
 
+        # SLSQP holds a constraint to its ftol. Held so to the deviance's
+        # last digits, the scaled search cycled up to 90 times at a point
+        # outside the region by 5e-10, trading that against psi (a
+        # Weibull band on 1000 units); scaled, the deviance is held to
+        # 1e-8, as the walks solve it, and ``from_trace`` takes a point
+        # outside back onto the boundary.
+        c = _LR_DEV_SCALE if scaled or face is not None else 1.0
+        h = self.fd_step
+        # Where a continued search has stalled (``extreme_far``), the
+        # deviance's gradient is autograd's, where it can be had: the
+        # region narrows down its valleys faster than differences resolve
+        # (to_u is linear here: u = to_u(0) + J z)
+        exact = h == _LR_FD_FINE and not whiten
+        n_z = len(z0)
+        zero = to_u(np.zeros(n_z))
+        J = np.column_stack([to_u(e) - zero for e in np.eye(n_z)])
+
+        def g_jac(z: npt.NDArray) -> npt.NDArray:
+            grad_u = self.dev_grad_u(to_u(z)) if exact else None
+            if grad_u is None:
+                return central_gradient(g, z, h)
+            return J.T @ grad_u
+
         try:
             res = minimize(
                 lambda z: -direction * f(z),
                 z0,
                 method="SLSQP",
-                jac=lambda z: -direction * _central_gradient(f, z),
+                jac=lambda z: -direction * central_gradient(f, z, h),
                 bounds=z_bounds,
                 constraints=[
                     {
                         "type": "ineq",
-                        "fun": lambda z: level - g(z),
-                        "jac": lambda z: -_central_gradient(g, z),
+                        "fun": lambda z: c * (level - g(z)),
+                        "jac": lambda z: -c * g_jac(z),
                     }
                 ],
                 options={"ftol": 1e-10, "maxiter": 100},
@@ -573,21 +801,180 @@ class _PsiBoundSearch:
             return None
         if not np.all(np.isfinite(res.x)):
             return None
+        self.last_status = int(res.status)
         return to_u(np.asarray(res.x))
 
-    def direct(self, direction: float, start: npt.NDArray) -> float | None:
-        """The extreme of psi over the region, sought directly (SLSQP),
-        when it checks out; otherwise ``None``.
+    def _face_coords(
+        self, face: tuple[int, float], start: npt.NDArray
+    ) -> tuple[
+        Callable[[npt.NDArray], npt.NDArray],
+        npt.NDArray,
+        list[tuple[Any, Any]] | None,
+    ]:
+        """The coordinates of a search over the face ``u[k] = end`` of
+        the box, from ``start`` moved onto it: ``(to_u, z0, z_bounds)``,
+        the other coordinates scaled by the Wald standard errors
+        (``_wald_sd``) about ``start``."""
+        k, end = face
+        others = [j for j in range(len(self.u_hat)) if j != k]
+        scale = (
+            np.ones(len(others))
+            if self.scale is None
+            else np.asarray(self.scale)[others]
+        )
+        origin = self.model._lr_start(np.asarray(start, dtype=float), self.box)
+        origin[k] = end
+
+        def to_u(z: npt.NDArray) -> npt.NDArray:
+            u = origin.copy()
+            u[others] = origin[others] + scale * z
+            return u
+
+        z_bounds = _scaled_bounds(
+            [self.box[j] for j in others], origin[others], scale
+        )
+        return to_u, np.zeros(len(others)), z_bounds
+
+    def extreme_far(
+        self,
+        direction: float,
+        start: npt.NDArray,
+        level: float,
+        whiten: bool = False,
+        scaled: bool = False,
+        face: tuple[int, float] | None = None,
+    ) -> npt.NDArray | None:
+        """``extreme`` from ``start``, a point of the region, continued
+        where SLSQP stops short of converging (its iteration limit, a
+        failed line search): from where it stopped, or from where the
+        line to there from its start meets the boundary if that is
+        outside the region, for as long as psi moves out. ``None`` where
+        it fails.
+
+        On a long, flat valley of the region (an ExpoWeibull's as beta
+        -> inf, #601) SLSQP spent its 100 iterations creeping along it;
+        stopped there, outside the region by 7e-5 of deviance, its point
+        was dropped, and a bound 2.7% short of the extreme taken. Where
+        a continued search stalls, it goes on with gradients in steps of
+        ``_LR_FD_FINE``: the valley narrows as it goes (the ExpoWeibull's
+        ``alpha`` closes on the largest observation to within 1 /
+        ``beta``), and steps of 1e-6 stop resolving it at ``beta`` ~ 1e6,
+        where the deviance is still 1e-4 above its limit (a bound 1e-6
+        to 1e-5 short); steps of 1e-8 follow it to 1e-8.
+        """
+        self.converged = True
+        x = self.extreme(direction, start, level, whiten, scaled, face)
+        if x is None or self.last_status == 0:
+            return x
+        # The most extreme point of the region the search has reached
+        u_from = np.asarray(start, dtype=float)
+
+        def inside(x: npt.NDArray | None) -> npt.NDArray:
+            # x, or the nearest point to it on the boundary (or where the
+            # line to it from u_from meets the boundary), if that is
+            # further out than u_from; otherwise u_from.
+            if x is not None and not self.dev_u(x) <= level + _LR_NOISE:
+                back = self.back_onto_boundary(x, level)
+                if back is None:
+                    back = self.onto_boundary(u_from, x, level)
+                x = back
+            if (
+                x is None
+                or direction * (self.psi_u(x) - self.psi_u(u_from)) < 0
+            ):
+                return u_from
+            return x
+
+        try:
+            for _ in range(_LR_CONTINUE):
+                # (SLSQP failed, rather than ran out of iterations)
+                failed = self.last_status != 9
+                x = inside(x)
+                gain = direction * (self.psi_u(x) - self.psi_u(u_from))
+                stalled = not gain > _LR_GAIN * max(1.0, abs(self.psi_u(x)))
+                if (failed or stalled) and self.fd_step != _LR_FD_FINE:
+                    # At a vertex of the box (a Uniform's support edge),
+                    # or where the differences no longer resolve the
+                    # valley: on in the finer gradients.
+                    self.fd_step = _LR_FD_FINE
+                elif stalled:
+                    return self.out_to_boundary(direction, x, level)
+                u_from = x
+                x = self.extreme(direction, x, level, whiten, scaled, face)
+                if x is None or self.last_status == 0:
+                    return self.out_to_boundary(direction, inside(x), level)
+            # Still moving out after every continuation: not settled.
+            self.converged = False
+            return self.out_to_boundary(direction, inside(x), level)
+        finally:
+            self.fd_step = _LR_FD_STEP
+
+    def direct(
+        self,
+        direction: float,
+        start: npt.NDArray,
+        scaled: bool = False,
+        persist: bool = True,
+    ) -> float | None:
+        """The extreme of psi over the region, sought directly (SLSQP;
+        ``scaled`` as ``extreme``), when it checks out (``checks_out``);
+        otherwise ``None``.
+
+        ``persist``: continued where it stops short (``extreme_far``),
+        and from a point further out that the check finds. Otherwise one
+        search, whose end, if it stops outside the region, is kept
+        (taken onto the boundary) as a point the bound must reach
+        (``keep``)."""
+        if not persist:
+            x = self.extreme(direction, start, self.crit, scaled=scaled)
+            if x is None:
+                return None
+            if not self.dev_u(x) <= self.crit + _LR_NOISE:
+                self.keep(start, x)
+                return None
+            return self.checks_out(direction, x)
+        x = self.extreme_far(direction, start, self.crit, scaled=scaled)
+        for _ in range(3):
+            if x is None:
+                return None
+            quick = self.checks_out(direction, x)
+            if quick is not None or self.beyond is None:
+                return quick
+            # The check found a point of the region further out: the
+            # search stopped short of the extreme, and goes on from there.
+            u_from = self.beyond
+            x = self.extreme_far(direction, u_from, self.crit, scaled=scaled)
+            if (
+                x is None
+                or not direction * (self.psi_u(x) - self.psi_u(u_from)) >= 0
+            ):
+                x = u_from
+        return None
+
+    def checks_out(self, direction: float, x: npt.NDArray) -> float | None:
+        """psi at ``x``, where a search for its extreme ended, if that is
+        the extreme; otherwise ``None``.
 
         It checks out when its deviance is at crit or below, and none
         with psi a hair further out (1e-6 of it) is at crit or below.
         That is where the profile of psi crosses crit, which the walk
-        would find at many times the cost.
+        would find at many times the cost. The check searches from the
+        estimate, and from beside the answer: the answer moved along the
+        gradient of psi to the target, where the least likelihood with
+        psi there is a step away. (From the answer itself SLSQP spent 40
+        to 90 evaluations crawling to the target, its line search
+        trading the gap against the likelihood.)
+
+        An answer within that hair of one already checked out on the same
+        side (``checked``) is the same extreme, found again from another
+        start: it is taken without a check, as the more extreme of the
+        two. Each side's searches from the estimate, the walks' tips and
+        the edge valleys mostly end on one extreme, and the checks were
+        two thirds of a NegativeBinomial band's likelihood evaluations
+        (#609).
         """
         crit, psi_hat = self.crit, self.psi_hat
-        x = self.extreme(direction, start, crit)
-        if x is None:
-            return None
+        self.beyond = None
         psi_star = self.psi_u(x)
         if np.isfinite(psi_star):
             self.reached.append((psi_star, x))
@@ -598,21 +985,58 @@ class _PsiBoundSearch:
         ):
             return None
         self.known.append((psi_star, x))
-        beyond = psi_star + direction * 1e-6 * max(1.0, abs(psi_star))
-        nll, u = self.solve(beyond, [x, self.u_hat])
-        if u is not None and 2.0 * (nll - self.nll_hat) < crit:
-            return None
+        done = self.checked.get(direction)
+        if done is not None and abs(psi_star - done) <= _lr_hair(done):
+            if direction * (psi_star - done) <= 0:
+                return done
+        else:
+            beyond = psi_star + direction * _lr_hair(psi_star)
+            nll, u = self.solve(beyond, [self._towards(x, beyond), self.u_hat])
+            if u is not None and 2.0 * (nll - self.nll_hat) < crit:
+                # (kept, for the search to go on from: ``direct``)
+                self.beyond = u
+                self.known.append((self.psi_u(u), u))
+                return None
+        if not self.converged:
+            self.unsettled.add(psi_star)
+        if done is None or direction * (psi_star - done) > 0:
+            self.checked[direction] = psi_star
         return psi_star
+
+    def _towards(self, x: npt.NDArray, target: float) -> npt.NDArray:
+        """``x`` moved along the gradient of psi to where its linear
+        approximation is ``target``; ``x`` where that cannot be found."""
+        grad = central_gradient(self.psi_u, x)
+        size = float(grad @ grad)
+        if not (np.isfinite(size) and size > 0):
+            return x
+        moved = x + (target - self.psi_u(x)) * grad / size
+        return moved if np.all(np.isfinite(moved)) else x
 
     def from_trace(self, direction: float) -> float | None:
         """The search from the traced point of the region where psi is
         most extreme, taken when it is at least as far out as every
-        traced point and every point known (see ``_lr_trace``)."""
+        traced point and every point known (see ``_lr_trace``).
+
+        In a band, it starts instead from where the bound was found at
+        the neighbouring time (``hints``) when psi is at least as far out
+        there: the extreme moves little from one time to the next, and
+        the search from it takes fewer steps. The answer is the same
+        extreme, and is taken on the same terms.
+        """
         if self.traced is None:
             return None
         u_hat, crit = self.u_hat, self.crit
         top_psi, top_u = max(self.traced, key=lambda k: direction * k[0])
-        quick = self.direct(direction, self.model._lr_start(top_u, self.box))
+        start = top_u
+        hint = self.hints.get(direction)
+        if hint is not None:
+            psi_hint = self.psi_u(hint)
+            if np.isfinite(psi_hint) and direction * (psi_hint - top_psi) >= 0:
+                start = hint
+        quick = self.direct(
+            direction, self.model._lr_start(start, self.box), scaled=True
+        )
         if quick is None:
             return None
         # SLSQP may stop outside the region by its tolerance (a
@@ -636,6 +1060,7 @@ class _PsiBoundSearch:
         far = max(direction * k[0] for k in self.known)
         slack = 1e-9 * max(1.0, abs(top_psi))
         if direction * quick >= max(far, direction * top_psi - slack):
+            self.answers[direction] = self.known[-1][1]
             return quick
         return None
 
@@ -705,15 +1130,186 @@ class _PsiBoundSearch:
             r = brentq(excess, 0.0, 1.0, xtol=1e-14, rtol=1e-14)
         except ValueError:
             return None
-        return inside + r * ray
+        # On the boundary from inside: brentq's root can be either side
+        # of it by its tolerance, and a point outside cannot be started
+        # from (#601).
+        for _ in range(5):
+            if excess(r) <= 0.0:
+                return inside + r * ray
+            r *= 1.0 - 1e-12
+        return None
+
+    def keep(self, start: npt.NDArray, x: npt.NDArray) -> None:
+        """``x``, where a search from ``start`` (a point of the region)
+        ended, added to the points known, taken onto the boundary if it
+        is outside the region: the bound must reach at least as far,
+        and where that is further out than the answer the other
+        searches give, the search goes on from it (``_retry_beyond``)."""
+        if not self.dev_u(x) <= self.crit:
+            back = self.back_onto_boundary(x, self.crit)
+            if back is None:
+                back = self.onto_boundary(start, x, self.crit)
+            if back is None:
+                return
+            x = back
+        psi_x = self.psi_u(x)
+        if np.isfinite(psi_x):
+            self.known.append((psi_x, x))
+
+    def out_to_boundary(
+        self, direction: float, x: npt.NDArray, level: float
+    ) -> npt.NDArray:
+        """``x``, a point inside {deviance <= level}, moved along the
+        gradient of psi out to the boundary (or to the box): a ray
+        search, for a search that stopped short of the boundary (SLSQP
+        stops once psi changes by less than its tolerance, which far
+        down a flat valley it can do inside the region: an ExpoWeibull
+        sf(8) upper bound 1.5e-5 of deviance inside, #601). ``x`` where
+        that is no further out."""
+        if not self.dev_u(x) < level - _LR_NOISE:
+            return x
+        grad_psi = central_gradient(self.psi_u, x, _LR_FD_FINE)
+        grad_dev = self.dev_grad_u(x)
+        if grad_dev is None:
+            grad_dev = central_gradient(self.dev_u, x, _LR_FD_FINE)
+        d = direction * grad_psi
+        rise = float(grad_dev @ d)
+        if not (np.all(np.isfinite(d)) and np.isfinite(rise) and rise > 0):
+            return x
+        # Newton's step to the boundary on the deviance's tangent, doubled
+        # until it is outside
+        t = (level - self.dev_u(x)) / rise
+        y: npt.NDArray | None = x
+        for _ in range(40):
+            y = self.model._lr_start(x + t * d, self.box)
+            if not self.dev_u(y) <= level:
+                y = self.onto_boundary(x, y, level)
+                break
+            if np.array_equal(
+                y, self.model._lr_start(x + 2 * t * d, self.box)
+            ):
+                break  # held at the box
+            t *= 2.0
+        if y is None or not direction * (self.psi_u(y) - self.psi_u(x)) > 0:
+            return x
+        return y
+
+    def back_onto_boundary(
+        self, outside: npt.NDArray, level: float
+    ) -> npt.NDArray | None:
+        """The point of {deviance <= level} nearest ``outside``, a point
+        just outside it, by Newton's steps along the gradient of the
+        deviance (in steps of ``_LR_FD_FINE``); ``None`` where they do
+        not reach it in five.
+
+        Where a search ends just outside the region, far down a valley,
+        the line back to its start can cross the boundary far from it:
+        an ExpoWeibull's sf(8) upper bound lost 3e-6 that way (#601).
+        """
+        x = np.asarray(outside, dtype=float)
+        for _ in range(5):
+            excess = self.dev_u(x) - level
+            if excess <= 0.0:
+                return x
+            grad = central_gradient(self.dev_u, x, _LR_FD_FINE)
+            size = float(grad @ grad)
+            if not (np.isfinite(size) and size > 0):
+                return None
+            # (overshooting a hair, so as to land inside)
+            x = x - 1.000001 * excess * grad / size
+            if not np.all(np.isfinite(x)):
+                return None
+        return x if self.dev_u(x) <= level else None
+
+    def faces(self) -> list[tuple[int, float]]:
+        """The faces of the box at the end of a parameter's coordinate:
+        where the parameter's interval reaches the edge of its space."""
+        out = []
+        for k, (coord, (b_lo, b_hi)) in enumerate(
+            zip(self.free_coords, self.box)
+        ):
+            if coord.kind == "identity":
+                continue
+            if b_lo is not None and b_lo == coord.ends[0]:
+                out.append((k, float(b_lo)))
+            if b_hi is not None and b_hi == coord.ends[1]:
+                out.append((k, float(b_hi)))
+        return out
+
+    def probe_edges(self, direction: float) -> float | None:
+        """The extreme of psi down the valleys to the edges of the
+        parameters' spaces: the most extreme that checks out, or
+        ``None``; the points found on the way are added to the points
+        known, which the bound must reach.
+
+        Where a parameter's interval reaches the edge of its space, its
+        profile has been solved further out (``_lr_walk_on``), to where
+        it levels off or to the end of its coordinate. The extreme is
+        sought over the slice of the region through each of the two
+        deepest of those points (the deepest only where the profile has
+        levelled off between them), the parameter held there
+        (``extreme`` over a ``face``): a search over the whole region from
+        them runs out of the valley, where the function takes values far
+        outside the region (an ExpoWeibull quantile of 0 as ``mu -> 0``),
+        and back to a nearer extreme. From the slice's extreme the check
+        (``checks_out``) looks further out over the whole region, and the
+        search goes on from what it finds. The extremes so found lie far
+        down the valley, which the searches from the estimate and the
+        walks' tips missed: the ExpoWeibull's 95% ``qf(0.2)`` band was
+        [2.72, 7.63] for [2.22, 7.94], found as ``beta -> inf``, and
+        where the profile is still changing at the end of the coordinate,
+        on the face of the box there (its 99% ``qf(0.95)`` upper bound,
+        87.02 at ``alpha`` = 2.2e-308; #601).
+        """
+        best = None
+        for k, end in self.faces():
+            side = int(end == self.free_coords[k].ends[1])
+            walk = self.seeds[2 * k + side] if self.seeds else []
+            deepest = walk[-2:]
+            if (
+                len(deepest) == 2
+                and abs(self.dev_u(deepest[1]) - self.dev_u(deepest[0]))
+                < _LR_NOISE
+            ):
+                # The valley's profile has reached its limit (to the
+                # walk's noise) by the deepest point, a NegativeBinomial's
+                # Poisson as r -> inf: the slice through the point before
+                # it found the same extreme, to 1e-14, and was a fifth of
+                # the registry's bounds' time (#609). An ExpoWeibull's,
+                # still changing there, are both searched.
+                deepest = deepest[1:]
+            for point in deepest:
+                if not self.dev_u(point) <= self.crit:
+                    continue
+                face = (k, float(point[k]))
+                x = self.extreme_far(direction, point, self.crit, face=face)
+                if x is None:
+                    continue
+                quick = self.checks_out(direction, x)
+                if quick is None and self.beyond is not None:
+                    quick = self.direct(direction, self.beyond)
+                if quick is not None and (
+                    best is None or direction * quick > direction * best
+                ):
+                    best = quick
+        return best
 
     # -- one side -----------------------------------------------------------
     def solve_side(self, direction: float) -> float:
-        """The bound on one side: ``direction`` -1 lower, 1 upper."""
+        """The bound on one side: ``direction`` -1 lower, 1 upper. A side
+        whose answer's search did not converge is kept in
+        ``unsettled_sides``."""
+        answer = self._solve_side(direction)
+        if answer in self.unsettled:
+            self.unsettled_sides.add(direction)
+        return answer
+
+    def _solve_side(self, direction: float) -> float:
         quick = self.from_trace(direction)
         if quick is not None:
             return quick
         far_ladder = self.ladder(direction)
+        on_face = self.probe_edges(direction)
         # The search starts from the estimate and from the farthest
         # points of the two walks that reach farthest (the region can
         # have more than one local extreme), and the most extreme
@@ -723,6 +1319,10 @@ class _PsiBoundSearch:
             key=lambda k: -direction * k[0],
         )
         best = self._best_direct(direction, tips)
+        if on_face is not None and (
+            best is None or direction * on_face > direction * best
+        ):
+            best = on_face
         # As far out as every point known, and as the ladder's to
         # within its tolerance (a ladder that ends on the same extreme
         # by another path leaves the answer as it was).
@@ -744,11 +1344,13 @@ class _PsiBoundSearch:
 
     def _best_direct(self, direction: float, tips: list) -> float | None:
         """The most extreme direct search from the estimate and the two
-        farthest walks' tips that checks out, or ``None``."""
+        farthest walks' tips that checks out, or ``None``. (Each is one
+        search: one that stops short leaves its end among the points
+        known, and ``_retry_beyond`` goes on from there.)"""
         assert self.u_start is not None
         best = None
         for start in [self.u_start] + [k[1] for k in tips[:2]]:
-            quick = self.direct(direction, start)
+            quick = self.direct(direction, start, persist=False)
             if quick is not None and (
                 best is None or direction * quick > direction * best
             ):
@@ -820,6 +1422,11 @@ class _PsiBoundSearch:
             return w
         if status == "edge":
             return np.inf if direction > 0 else -np.inf
+        if direction * (far_psi - self.psi_hat) > 0:
+            # The walk failed: the most extreme point of the region found,
+            # flagged (principle: warn, don't refuse).
+            self.unsettled.add(far_psi)
+            return far_psi
         return np.nan
 
 
@@ -839,7 +1446,7 @@ class LikelihoodRatioMixin:
         method: str
         params: npt.NDArray
         gamma: float
-        p: float
+        lfp_p: float
         f0: float
         offset: bool
         lfp: bool
@@ -852,6 +1459,16 @@ class LikelihoodRatioMixin:
         def _is_fixed_param(self, name: str) -> bool: ...
         def _user_fixed_idx(self) -> set: ...
         def _summary_scale(self, zero_floor: bool = False) -> tuple: ...
+
+    def __getstate__(self) -> dict:
+        """What pickles: everything but the likelihood-ratio searches'
+        caches (the ``_lr_`` attributes: the likelihoods, walks, regions
+        and bounds they have found), which are rebuilt where a bound is
+        asked for again (#617). A Weibull's band at 50 times kept 16,000
+        likelihoods."""
+        return {
+            k: v for k, v in self.__dict__.items() if not k.startswith("_lr_")
+        }
 
     def _lr_neg_ll(self, theta: npt.NDArray) -> float:
         """The negative log-likelihood at core parameters ``theta``, as
@@ -870,7 +1487,7 @@ class LikelihoodRatioMixin:
         1e-14 gave an ExpoWeibull a deviance of -1e21 before #472 made it
         accurate.
         """
-        if not np.all(np.isfinite(theta)):
+        if not onp.isfinite(theta).all():
             return np.nan
         nll = self._lr_raw_neg_ll(theta)
         params = np.asarray(self.params, dtype=float)
@@ -901,15 +1518,26 @@ class LikelihoodRatioMixin:
             if lean is not None:
                 nll = _lean_neg_ll(self.dist, lean, theta)
             else:
-                nll = float(
-                    self.dist._neg_ll_func(
-                        self.surv_data, *theta, self.gamma, self.f0, self.p
-                    )
-                )
+                nll = self._lr_full_neg_ll(theta)
         if len(kept) >= _LR_MEMO_SIZE:
             kept.clear()
         kept[key] = nll
         return nll
+
+    def _lr_full_neg_ll(self, theta: npt.NDArray) -> float:
+        """The negative log-likelihood at ``theta`` where there is no lean
+        one (``_lr_lean_data``): the distribution's own. (A regression
+        model's searches supply theirs, ``RegressionLikelihoodRatio``.)"""
+        return float(
+            self.dist._neg_ll_func(
+                self.surv_data, *theta, self.gamma, self.f0, self.lfp_p
+            )
+        )
+
+    def _lr_declared_bounds(self) -> list[tuple[Any, Any]]:
+        """The declared ``(lower, upper)`` of each parameter the searches
+        move (``None`` for no bound): the distribution's."""
+        return list(self.dist.bounds)
 
     def _lr_plain(self) -> bool:
         """Whether the likelihood-ratio searches may evaluate the
@@ -929,7 +1557,7 @@ class LikelihoodRatioMixin:
             not (np.isnan(lo) or np.isnan(hi))
             and self.gamma == 0
             and self.f0 == 0
-            and self.p == 1
+            and self.lfp_p == 1
         )
 
     def _lr_function(self, name: str) -> Callable[..., Any]:
@@ -946,7 +1574,7 @@ class LikelihoodRatioMixin:
 
         def f(x: npt.NDArray, *theta: Any) -> Any:
             # (False for a missing x, which takes the full path.)
-            if np.all(x >= lo) and np.all(x <= hi):
+            if (x >= lo).all() and (x <= hi).all():
                 return raw(dist, x, *theta)
             return full(x, *theta)
 
@@ -965,10 +1593,14 @@ class LikelihoodRatioMixin:
         exactly 0). The lean likelihood calls the distribution's own
         formulas without them, on the same arrays, in the same order, so
         its value is the same to the last bit, about 2.5 times as fast
-        (#519). Interval-censored and truncated terms are the
-        distribution's own. A discrete distribution, a support that
-        depends on the parameters (the Uniform's), or data outside the
-        support or missing take the full path.
+        (#519). Interval-censored and truncated windows are evaluated as
+        ``ll_interval_or_truncated`` evaluates them, with its tail forms
+        (``_window_log_likelihood``), from the data's part of it kept once
+        (``_window_inputs``) and with the functions unwrapped: a Weibull's
+        likelihood on six interval-censored units took 243 us, against 43
+        us on 1000 exact ones (#602). A discrete distribution, a support
+        that depends on the parameters (the Uniform's), or data outside
+        the support or missing take the full path.
         """
         data = self.surv_data
         kept = self.__dict__.get("_lr_lean")
@@ -992,16 +1624,29 @@ class LikelihoodRatioMixin:
                 terms.append(
                     None if x.size == 0 else (x - self.gamma, np.asarray(n))
                 )
-            others = [
+            windows: list[tuple | None] = []
+            for xl, xr, n in (
                 (data.x_il, data.x_ir, data.n_i),
                 (data.tl_unique, data.tr_unique, data.n_t_unique),
-            ]
-            if plain:
-                lean = (
-                    *terms,
-                    *(None if np.size(t[0]) == 0 else t for t in others),
-                    (self.gamma, self.f0, self.p),
+            ):
+                if np.size(xl) == 0:
+                    windows.append(None)
+                    continue
+                # As ``ll_interval_or_truncated`` takes them (its
+                # ``_check_x_not_empty``), and its data part kept
+                xl = np.atleast_1d(np.array(xl))
+                inputs = self.dist._window_inputs(
+                    xl, xr, self.gamma, self.params
                 )
+                safe = np.concatenate(inputs[-2:])
+                plain = plain and not (
+                    np.any(np.isnan(safe))
+                    or np.any(safe < lo)
+                    or np.any(safe > hi)
+                )
+                windows.append((inputs, n))
+            if plain:
+                lean = (*terms, *windows, (self.gamma, self.f0, self.lfp_p))
         self.__dict__["_lr_lean"] = (data, lean)
         return lean
 
@@ -1012,7 +1657,7 @@ class LikelihoodRatioMixin:
         bound (which the coordinate maps to infinity)."""
         coords, boxes = [], []
         for (lo, hi), (l_lo, l_hi) in zip(
-            self.dist.bounds, self._lr_limits(), strict=True
+            self._lr_declared_bounds(), self._lr_limits(), strict=True
         ):
             coord = _LRCoord(lo, hi)
             coords.append(coord)
@@ -1102,19 +1747,29 @@ class LikelihoodRatioMixin:
         w = coords[idx].to_u(value)
         starts = [] if path is None else path.starts(w)
         best, best_u, zero = np.inf, None, False
+        # Searched in the coordinates divided by the Wald standard errors
+        # (``_wald_sd``), where L-BFGS-B's first steps are to scale.
+        scale = _wald_sd(self, coords, free)
+        if scale is None:
+            scale = np.ones(len(free))
+        z_bounds = _scaled_bounds(bounds, np.zeros(len(free)), scale)
+
+        def obj_z(z: npt.NDArray) -> float:
+            return obj(scale * z)
+
         with np.errstate(all="ignore"):
             for x0 in starts + [u_hat]:
                 res = minimize(
-                    obj,
-                    self._lr_start(x0, start_box),
+                    obj_z,
+                    self._lr_start(x0, start_box) / scale,
                     method="L-BFGS-B",
                     jac="3-point",
-                    bounds=bounds,
+                    bounds=z_bounds,
                     options={"ftol": 1e-13, "gtol": 1e-9, "maxiter": 1000},
                 )
                 zero = zero or res.fun == np.inf
                 if np.isfinite(res.fun) and res.fun < best:
-                    best, best_u = float(res.fun), np.asarray(res.x)
+                    best, best_u = float(res.fun), scale * res.x
             if best_u is None:
                 # Every gradient search failed: derivative free from the
                 # fit, as a last resort.
@@ -1142,7 +1797,7 @@ class LikelihoodRatioMixin:
         cliff: a Uniform band stalled at the estimate (#421)."""
         limits = [
             (-np.inf if lo is None else lo, np.inf if hi is None else hi)
-            for lo, hi in self.dist.bounds
+            for lo, hi in self._lr_declared_bounds()
         ]
         support = np.asarray(
             getattr(self.dist, "support", (0.0, 0.0)), dtype=float
@@ -1376,6 +2031,7 @@ class LikelihoodRatioMixin:
         lower = np.full(n, np.nan)
         upper = np.full(n, np.nan)
         failed = []
+        unsettled = 0
         with np.errstate(all="ignore"):
             region = self._lr_region(free, crit)
             for i, f in enumerate(fns):
@@ -1383,6 +2039,7 @@ class LikelihoodRatioMixin:
                 def psi(theta: npt.NDArray, f: Callable = f) -> float:
                     return to_psi(f(theta))
 
+                sides: set[float] = set()
                 lo, hi = self._cb_lr_psi_bounds(
                     psi,
                     free,
@@ -1391,12 +2048,16 @@ class LikelihoodRatioMixin:
                     want_upper,
                     ends,
                     *region,
+                    unsettled=sides,
                 )
                 if (want_lower and np.isnan(lo)) or (
                     want_upper and np.isnan(hi)
                 ):
                     failed.append(i)
+                unsettled += bool(sides)
                 lower[i], upper[i] = to_value(lo), to_value(hi)
+        if unsettled:
+            warn_unsettled(f"on {what} for {unsettled} of {n} value(s)")
         if failed:
             warnings.warn(
                 f"The likelihood-ratio bound on {what} could not be found "
@@ -1470,7 +2131,15 @@ class LikelihoodRatioMixin:
         extreme traced point alone, taken when the answer is at least as
         far out as every traced point (and moved onto the boundary where
         SLSQP stopped just outside it), which makes a Weibull band at 20
-        times on 1000 units 2.4 s rather than 9.4 s (#519).
+        times on 1000 units 2.4 s rather than 9.4 s (#519). The region is
+        found once per level, for every band and summary bound at that
+        level; a band's times are searched in order, each side's search
+        starting from where the neighbouring time's bound was found when
+        that is as far out as the trace; and the searches run in the
+        coordinates scaled by the Wald standard errors (``_wald_sd``),
+        the check beyond each answer starting beside it. That takes a
+        two-parameter band from about 250 likelihood evaluations a time
+        to about 100 (#587).
 
         A search for the extreme from a warm start alone would stop
         wherever it first meets the region's boundary: ExpoWeibull and
@@ -1556,49 +2225,26 @@ class LikelihoodRatioMixin:
                 ends = (_LN_TINY, _LN_MAX)
                 value = np.exp
 
-        # A bound is solved once per function, time, level and side, and
-        # kept: the sf, ff and Hf bands are one band, and a one-sided
-        # bound at alpha is an end of the two-sided one at 2 alpha.
-        kind = "survival" if survival else on
-        cache = self.__dict__.setdefault("_lr_bands", {})
-        region: list = []
-        lower = np.full(t.shape, np.nan)
-        upper = np.full(t.shape, np.nan)
-        failed: list[float] = []
-        with np.errstate(all="ignore"):
-            for i, time in enumerate(t):
-                key_lo = (kind, float(time), *self._lr_key(-1, crit, -1))
-                key_hi = (kind, float(time), *self._lr_key(-1, crit, 1))
-                need_lo = want_lower and key_lo not in cache
-                need_hi = want_upper and key_hi not in cache
-                if need_lo or need_hi:
-                    if not region:
-                        region.extend(self._lr_region(free, crit))
-                    lo, hi = self._cb_lr_psi_bounds(
-                        lambda theta: psi_of(time, theta),
-                        free,
-                        crit,
-                        need_lo,
-                        need_hi,
-                        ends,
-                        *region,
-                    )
-                    if need_lo:
-                        cache[key_lo] = lo
-                    if need_hi:
-                        cache[key_hi] = hi
-                lo = cache[key_lo] if want_lower else np.nan
-                hi = cache[key_hi] if want_upper else np.nan
-                if (want_lower and np.isnan(lo)) or (
-                    want_upper and np.isnan(hi)
-                ):
-                    failed.append(float(time))
-                lower[i], upper[i] = value(lo), value(hi)
-
+        lower, upper, failed, unsettled_at = self._lr_band(
+            t,
+            np.argsort(t, kind="stable"),
+            psi_of,
+            lambda time: (float(time),),
+            "survival" if survival else on,
+            free,
+            crit,
+            ends,
+            value,
+            (want_lower, want_upper),
+        )
+        if unsettled_at:
+            at = sorted({float(t[i]) for i in unsettled_at})
+            warn_unsettled(f"at t = {at}")
         if failed:
+            at = sorted({float(t[i]) for i in failed})
             warnings.warn(
                 "The likelihood-ratio bound could not be found at "
-                f"t = {sorted(set(failed))} (the constrained optimiser "
+                f"t = {at} (the constrained optimiser "
                 "failed from every start); nan is returned there. "
                 "method='wald' gives a bound in its place.",
                 RuntimeWarning,
@@ -1614,6 +2260,109 @@ class LikelihoodRatioMixin:
             return lower
         else:
             return upper
+
+    def _lr_band(
+        self,
+        queries: Any,
+        order: Any,
+        psi_of: Callable[[Any, npt.NDArray], float],
+        key_of: Callable[[Any], tuple],
+        kind: str,
+        free: list[int],
+        crit: float,
+        ends: tuple[float, float],
+        value: Callable[[Any], Any],
+        want: tuple[bool, bool],
+    ) -> tuple[npt.NDArray, npt.NDArray, list[int], list[int]]:
+        """The likelihood-ratio bounds on ``psi_of(query, theta)`` at
+        each of ``queries`` (a band's times; a regression model's pairs of
+        time and covariates), searched in ``order``: ``(lower, upper)``,
+        each carried from the psi scale by ``value``, and the positions
+        of the queries where a side asked for (``want``) was not found,
+        and where a side's search did not converge (for the caller's
+        warnings).
+
+        A bound is solved once per function (``kind``), query (by
+        ``key_of``), level and side, and kept: the sf, ff and Hf bands
+        are one band, and a one-sided bound at alpha is an end of the
+        two-sided one at 2 alpha. Each side's search starts from where
+        the query before it found its bound (``hints``; see
+        ``_cb_lr``)."""
+        want_lower, want_upper = want
+        cache = self.__dict__.setdefault("_lr_bands", {})
+        # The keys of the bounds whose search did not converge
+        unsure = self.__dict__.setdefault("_lr_unsettled", set())
+        n = len(queries)
+        lower = np.full(n, np.nan)
+        upper = np.full(n, np.nan)
+        failed: list[int] = []
+        unsettled_at: list[int] = []
+        hints: dict[float, npt.NDArray] = {}
+        with np.errstate(all="ignore"):
+            for i in order:
+                q = queries[i]
+                key_lo = (kind, *key_of(q), *self._lr_key(-1, crit, -1))
+                key_hi = (kind, *key_of(q), *self._lr_key(-1, crit, 1))
+                need_lo = want_lower and key_lo not in cache
+                need_hi = want_upper and key_hi not in cache
+                if need_lo or need_hi:
+                    self._cb_lr_time(
+                        lambda theta: psi_of(q, theta),
+                        free,
+                        crit,
+                        ends,
+                        (key_lo, key_hi),
+                        (need_lo, need_hi),
+                        hints,
+                    )
+                lo = cache[key_lo] if want_lower else np.nan
+                hi = cache[key_hi] if want_upper else np.nan
+                if (want_lower and np.isnan(lo)) or (
+                    want_upper and np.isnan(hi)
+                ):
+                    failed.append(int(i))
+                if (want_lower and key_lo in unsure) or (
+                    want_upper and key_hi in unsure
+                ):
+                    unsettled_at.append(int(i))
+                lower[i], upper[i] = value(lo), value(hi)
+        return lower, upper, failed, unsettled_at
+
+    def _cb_lr_time(
+        self,
+        psi: Callable[[npt.NDArray], float],
+        free: list[int],
+        crit: float,
+        ends: tuple[float, float],
+        keys: tuple[tuple, tuple],
+        needs: tuple[bool, bool],
+        hints: dict[float, npt.NDArray],
+    ) -> None:
+        """The sides ``needs`` (lower, upper) of one time of ``_cb_lr``'s
+        band, kept under ``keys`` in the model's band cache, and in
+        ``_lr_unsettled`` where the search did not converge."""
+        cache = self.__dict__.setdefault("_lr_bands", {})
+        unsure = self.__dict__.setdefault("_lr_unsettled", set())
+        box, seeds, trace = self._lr_region(free, crit)
+        sides: set[float] = set()
+        found = self._cb_lr_psi_bounds(
+            psi,
+            free,
+            crit,
+            needs[0],
+            needs[1],
+            ends,
+            box,
+            seeds,
+            trace,
+            hints=hints,
+            unsettled=sides,
+        )
+        for key, need, value, side in zip(keys, needs, found, (-1.0, 1.0)):
+            if need:
+                cache[key] = value
+                if side in sides:
+                    unsure.add(key)
 
     def _lr_region(self, free: list[int], crit: float) -> tuple[
         list[tuple[Any, Any]],
@@ -1636,7 +2385,22 @@ class LikelihoodRatioMixin:
         (an ExpoWeibull ``beta`` running off to infinity with ``alpha`` at
         the largest observation), which a search from the estimate does
         not find.
+
+        The region is found once per level and kept: every band, quantile
+        and mean bound at that level searches the same one.
         """
+        key = (tuple(free), *self._lr_key(-1, crit, 0))
+        cache = self.__dict__.setdefault("_lr_regions", {})
+        if key not in cache:
+            cache[key] = self._lr_find_region(free, crit)
+        return cache[key]
+
+    def _lr_find_region(self, free: list[int], crit: float) -> tuple[
+        list[tuple[Any, Any]],
+        list[list[npt.NDArray]],
+        list[npt.NDArray] | None,
+    ]:
+        """The region of ``_lr_region``, found."""
         coords, limits = self._lr_coords()
         free_coords = [coords[j] for j in free]
         box = self._lr_box(free_coords, [limits[j] for j in free])
@@ -1661,8 +2425,73 @@ class LikelihoodRatioMixin:
                 for j in free
                 for d in (-1.0, 1.0)
             ]
+            for k, j in enumerate(free):
+                for s, d in enumerate((-1.0, 1.0)):
+                    edge = coords[j].to_u(self._lr_param_side(j, crit, d))
+                    if not np.isfinite(edge):
+                        seeds[2 * k + s] += self._lr_walk_on(
+                            free, k, d, crit, seeds[2 * k + s]
+                        )
             trace = self._lr_trace(free, crit, seeds)
         return box, seeds, trace
+
+    def _lr_walk_on(
+        self,
+        free: list[int],
+        k: int,
+        direction: float,
+        crit: float,
+        walk: list[npt.NDArray],
+    ) -> list[npt.NDArray]:
+        """More points of the region along the valley the profile of the
+        free parameter ``free[k]`` follows to the edge of its space, where
+        its likelihood-ratio interval ends: the profile solved further
+        out than its walk went, in steps doubling to the end of the
+        coordinate (continued from the points before), for as long as it
+        is inside the region and still changing (by more than ``_LR_NOISE``).
+
+        The walk stops once the profile levels off below the critical
+        value (``_lr_walk``), and a band's extreme can lie far beyond
+        that, down the same valley: an ExpoWeibull's ``qf(0.05)`` lower
+        bound is 0.5517 there, as ``beta -> inf``, and 0.8487 on the
+        nearer side, which a search from the walk's points found (#601).
+        """
+        j = free[k]
+        coords, _ = self._lr_coords()
+        coord = coords[j]
+        others = [i for i in range(len(free)) if i != k]
+        end = coord.ends[1] if direction > 0 else coord.ends[0]
+        path = _LRPath()
+        for u in walk:
+            path.add(u[k], u[others])
+        nll_hat = self._lr_neg_ll(np.asarray(self.params, dtype=float))
+        w = coord.to_u(float(self.params[j]))
+        dev = 0.0
+        if path.w:
+            i = int(np.argmax(direction * np.asarray(path.w)))
+            w, dev = path.w[i], 2.0 * (path.f[i] - nll_hat)
+        out = []
+        step = 1.0
+        for _ in range(12):
+            if not direction * (end - w) > 0:
+                break
+            w_next = w + direction * step
+            if direction * (w_next - end) >= 0:
+                w_next = end
+            step *= 2.0
+            dev_next = 2.0 * (
+                self._profile_neg_ll(j, coord.from_u(w_next), path=path)
+                - nll_hat
+            )
+            if not dev_next <= crit or len(path.w) == 0:
+                break
+            u = np.empty(len(free))
+            u[k], u[others] = w_next, path.u[-1]
+            out.append(u)
+            if abs(dev_next - dev) < _LR_NOISE:
+                break
+            w, dev = w_next, dev_next
+        return out
 
     #: Rays along which ``_lr_trace`` finds a two-parameter region's
     #: boundary, at angles evenly spaced in the Wald metric.
@@ -1692,74 +2521,29 @@ class LikelihoodRatioMixin:
         *Statistical Methods for Reliability Data*, trace the region so to
         draw it).
 
-        ``None`` with more or fewer than two free parameters, without a
-        positive definite covariance, where a ray does not meet the
-        boundary or the deviance cannot be computed on it, or where a
-        walk's point lies beyond the boundary on its ray: the region is
-        not star-shaped about the estimate, and the rays can miss part of
-        it.
+        ``None`` with more or fewer than two free parameters (see
+        ``_lr_traces``), without a positive definite covariance, where a
+        ray does not meet the boundary or the deviance cannot be computed
+        on it, or where a walk's point lies beyond the boundary on its
+        ray: the region is not star-shaped about the estimate, and the
+        rays can miss part of it.
         """
-        if len(free) != 2:
+        if not self._lr_traces(free):
             return None
         hess_inv = getattr(self, "hess_inv", None)
         if hess_inv is None or np.ndim(hess_inv) != 2:
             return None
-        theta_hat = np.array(self.params, dtype=float)
-        nll_hat = self._lr_neg_ll(theta_hat)
-        coords, _ = self._lr_coords()
-        free_coords = [coords[j] for j in free]
-        u_hat = np.array([coords[j].to_u(theta_hat[j]) for j in free])
-        slopes = np.array(
-            [coords[j].slope(theta_hat[j]) for j in free], dtype=float
-        )
-        cov_u = np.asarray(hess_inv, dtype=float)[np.ix_(free, free)]
-        cov_u = cov_u / np.outer(slopes, slopes)
-        try:
-            L = np.linalg.cholesky(cov_u)
-        except np.linalg.LinAlgError:
+        L = self._lr_wald_factor(free)
+        excess, u_hat, nll_hat = self._lr_ray_excess(free, crit)
+        if L is None or not np.isfinite(nll_hat):
             return None
-        if not (np.all(np.isfinite(L)) and np.isfinite(nll_hat)):
-            return None
-
-        def excess(u: npt.NDArray) -> float:
-            # The deviance less crit: inf where the likelihood is 0, nan
-            # where it cannot be right (see ``_lr_neg_ll``).
-            theta = theta_hat.copy()
-            theta[free] = [c.from_u(v) for c, v in zip(free_coords, u)]
-            nll = self._lr_neg_ll(theta)
-            if nll == np.inf:
-                return np.inf
-            return 2.0 * (nll - nll_hat) - crit
 
         def crossing(d: npt.NDArray) -> float | None:
-            # The radius along u_hat + r d at which the deviance is crit.
-            r_lo, r_hi = 0.0, float(np.sqrt(crit))
-            f_hi = excess(u_hat + r_hi * d)
-            for _ in range(60):
-                if not np.isfinite(f_hi):
-                    return None
-                if f_hi > 0.0:
-                    break
-                r_lo, r_hi = r_hi, 2.0 * r_hi
-                f_hi = excess(u_hat + r_hi * d)
-            else:
-                return None
-            r = brentq(
-                lambda r: excess(u_hat + r * d),
-                r_lo,
-                r_hi,
-                xtol=1e-12 * r_hi,
-                rtol=1e-12,
-            )
-            # Just inside: a point of the region.
-            return float(r) * (1.0 - 1e-10)
+            return self._lr_crossing(excess, u_hat, d, crit)
 
         trace = []
         with np.errstate(all="ignore"):
-            rays = self._LR_TRACE_RAYS
-            for k in range(rays):
-                angle = 2.0 * np.pi * k / rays
-                d = L @ np.array([np.cos(angle), np.sin(angle)])
+            for d in self._lr_trace_rays(L):
                 r = crossing(d)
                 if r is None:
                     return None
@@ -1778,6 +2562,99 @@ class LikelihoodRatioMixin:
                     trace.append(u_hat + r * offset / size)
         return trace
 
+    def _lr_traces(self, free: list[int]) -> bool:
+        """Whether ``_lr_trace`` traces the region of the parameters
+        ``free``: with two of them, where 64 rays cover its boundary. (A
+        regression model's searches trace more, ``_lr_trace_rays``.)"""
+        return len(free) == 2
+
+    def _lr_trace_rays(self, L: npt.NDArray) -> list[npt.NDArray]:
+        """The directions of ``_lr_trace``'s rays, in the search
+        coordinates: ``_LR_TRACE_RAYS`` angles evenly spaced in the Wald
+        metric, whose Cholesky factor is ``L``."""
+        rays = self._LR_TRACE_RAYS
+        out = []
+        for k in range(rays):
+            angle = 2.0 * np.pi * k / rays
+            out.append(L @ np.array([np.cos(angle), np.sin(angle)]))
+        return out
+
+    def _lr_wald_factor(self, free: list[int]) -> npt.NDArray | None:
+        """The Cholesky factor of the Wald covariance of the parameters
+        ``free`` in their search coordinates, or ``None`` where it is not
+        positive definite."""
+        theta_hat = np.array(self.params, dtype=float)
+        coords, _ = self._lr_coords()
+        slopes = np.array(
+            [coords[j].slope(theta_hat[j]) for j in free], dtype=float
+        )
+        hess_inv = getattr(self, "hess_inv", None)
+        if hess_inv is None:
+            return None
+        cov_u = np.asarray(hess_inv, dtype=float)[np.ix_(free, free)]
+        cov_u = cov_u / np.outer(slopes, slopes)
+        try:
+            L = np.linalg.cholesky(cov_u)
+        except np.linalg.LinAlgError:
+            return None
+        return L if np.all(np.isfinite(L)) else None
+
+    def _lr_ray_excess(
+        self, free: list[int], crit: float
+    ) -> tuple[Callable[[npt.NDArray], float], npt.NDArray, float]:
+        """``(excess, u_hat, nll_hat)``: the deviance less ``crit`` at a
+        point ``u`` of the search coordinates of the parameters ``free``
+        (``inf`` where the likelihood is 0, ``nan`` where it cannot be
+        right, see ``_lr_neg_ll``), the estimate in those coordinates and
+        the negative log-likelihood there."""
+        theta_hat = np.array(self.params, dtype=float)
+        nll_hat = self._lr_neg_ll(theta_hat)
+        coords, _ = self._lr_coords()
+        free_coords = [coords[j] for j in free]
+        u_hat = np.array([coords[j].to_u(theta_hat[j]) for j in free])
+
+        def excess(u: npt.NDArray) -> float:
+            theta = theta_hat.copy()
+            theta[free] = [c.from_u(v) for c, v in zip(free_coords, u)]
+            nll = self._lr_neg_ll(theta)
+            if nll == np.inf:
+                return np.inf
+            return 2.0 * (nll - nll_hat) - crit
+
+        return excess, u_hat, nll_hat
+
+    @staticmethod
+    def _lr_crossing(
+        excess: Callable[[npt.NDArray], float],
+        u_hat: npt.NDArray,
+        d: npt.NDArray,
+        crit: float,
+    ) -> float | None:
+        """The radius along ``u_hat + r d`` at which ``excess`` (see
+        ``_lr_ray_excess``) is 0, a hair inside; ``None`` where the ray
+        does not meet the boundary, or the deviance is not finite on
+        the way."""
+        r_lo, r_hi = 0.0, float(np.sqrt(crit))
+        f_hi = excess(u_hat + r_hi * d)
+        for _ in range(60):
+            if not np.isfinite(f_hi):
+                return None
+            if f_hi > 0.0:
+                break
+            r_lo, r_hi = r_hi, 2.0 * r_hi
+            f_hi = excess(u_hat + r_hi * d)
+        else:
+            return None
+        r = brentq(
+            lambda r: excess(u_hat + r * d),
+            r_lo,
+            r_hi,
+            xtol=1e-12 * r_hi,
+            rtol=1e-12,
+        )
+        # Just inside: a point of the region.
+        return float(r) * (1.0 - 1e-10)
+
     def _cb_lr_psi_bounds(
         self,
         psi_of: Callable[[npt.NDArray], float],
@@ -1789,14 +2666,25 @@ class LikelihoodRatioMixin:
         box: list[tuple[Any, Any]],
         seeds: list[list[npt.NDArray]],
         trace: list[npt.NDArray] | None = None,
+        hints: dict[float, npt.NDArray] | None = None,
+        unsettled: set[float] | None = None,
     ) -> tuple[float, float]:
         """The likelihood-ratio bounds on a function ``psi_of(theta)`` of
         the free core parameters, searched in ``box``: ``(lower,
         upper)``, ``nan`` for a side not asked for or not found, ``-inf``
         / ``inf`` for one at the edge of the scale. See ``_cb_lr``, and
-        ``_PsiBoundSearch`` for the search."""
+        ``_PsiBoundSearch`` for the search. The sides (-1 lower, 1
+        upper) whose search did not converge are added to
+        ``unsettled``."""
         search = _PsiBoundSearch(self, psi_of, free, crit, ends, box)
-        return search.run(want_lower, want_upper, seeds, trace)
+        if hints is not None:
+            search.hints = dict(hints)
+        out = search.run(want_lower, want_upper, seeds, trace)
+        if hints is not None:
+            hints.update(search.answers)
+        if unsettled is not None:
+            unsettled.update(search.unsettled_sides)
+        return out
 
     def _cb_lr_one_param(
         self, t: Any, g: Any, j: int, alpha_ci: float, bound: str

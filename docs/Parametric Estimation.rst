@@ -666,6 +666,15 @@ rounds to 1 that difference is 0: a LogNormal left-truncated at 1 with
 units the data were recorded in. The same applies to an interval-censored
 observation's window.
 
+In the lower tail the difference :math:`F(t_{r}) - F(t_{l})` keeps its
+digits, but the CDFs themselves underflow: a window whose probability is
+below the smallest normal float (about :math:`2 \times 10^{-308}`) is
+computed from the CDF in log space instead,
+:math:`\ln F(t_{r}) + \ln(1 - F(t_{l}) / F(t_{r}))`. A Normal far above
+truncated windows had log-likelihoods that were rounding (-9.67 where the
+supremum is -10.03) or :math:`-\infty`, and windows of exactly 0 made the
+truncation term NaN, which ended its searches.
+
 Censored and truncated data
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -794,7 +803,8 @@ worth knowing what they are, because they explain the warnings you may see.
    one maximum, and the default start can lie nearer the worse one. For a
    limited failure population without zero inflation (where :math:`p` and the failure distribution
    trade off, see below) SurPyval also starts from the failures alone, fitted
-   as a complete sample, with :math:`p` at the observed failure fraction; for a
+   as a complete sample (an interval-censored failure at its interval's
+   midpoint), with :math:`p` at the observed failure fraction; for a
    ``CustomDistribution`` it also tries the plain default of each parameter (1
    above a lower bound, the middle of a finite interval, 0 if unbounded). Each
    start is optimised and the fit with the best likelihood is kept. These
@@ -850,7 +860,82 @@ worth knowing what they are, because they explain the warnings you may see.
    :math:`\alpha = 10^{7}` stopped at :math:`\beta = 0.099`, 40 below the
    maximum log-likelihood -- and BFGS often reports a loss of precision *at*
    the maximum. If no rung is verified the first rung that reported success
-   is kept, as before. Before BFGS runs, the search is
+   is kept, as before.
+
+   A likelihood with no finite maximum leaves the ladder nothing to verify:
+   it keeps rising as a parameter runs off towards a limit no member of the
+   family reaches (an ExpoWeibull whose :math:`\mu` grows without end
+   approaches a Fréchet distribution; a Normal fitted to rows whose windows
+   are all bounded above has a mean that grows without end). Each rung then
+   ran until its own limit, and the fit ended "unverified" after all five:
+   23 s for an ExpoWeibull on 60 interval censored rows. So, as the
+   regression fits do, SurPyval checks the point a search reached -- after
+   the first rung that stops short of a verified maximum, and in BFGS after
+   100, 200, 400, ... iterations -- for a parameter along whose profile (the
+   likelihood maximised over the others) Newton's method cannot converge,
+   where that profile is flat to the verification's tolerance and the
+   parameter is heading for an infinite end of its range. An offset fit
+   whose offset runs down towards :math:`-\infty` (its shape making up for
+   it) is heading for its family's limit there -- a Normal for the
+   LogNormal and the Gamma, the smallest extreme value distribution
+   (``Gumbel``) for the Weibull, the ``Logistic`` for the LogLogistic --
+   and the likelihood may approach the limit's only as
+   :math:`1 / |\gamma|`, never flat on the way; there the limit fitting the
+   data at least as well as the point reached takes the place of
+   flatness (an offset LogNormal and Gamma on data with a long left tail
+   ran every rung for 4-17 s, and now stop after the first in 0.3 s). A
+   later rung's point heading that way is checked too: the first rung can
+   stop somewhere unrelated, and a later one run off. And where the whole
+   ladder ends unverified with the offset moved down and no point it
+   reached fitting the data better than the limit, the offset is taken to
+   be running off: far out, Newton's test reads derivatives that are
+   rounding, and it missed an offset LogLogistic at
+   :math:`\gamma = -6.9 \times 10^{4}` on a smallest extreme value sample.
+   If one is
+   running off, the search stops there, the fit warns "No finite maximum",
+   naming it (and the limit, where the family knows it), and ``maximum`` is
+   ``'no finite maximum'``; that ExpoWeibull now takes 6 s. A verified
+   answer is checked the same way, since a likelihood that flattens towards
+   its supremum can pass the verification far out on the way to it. A
+   parameter running onto a finite bound of its range (an Exponential's
+   offset onto the first failure) is a maximum on the edge of the space,
+   not a runaway.
+
+   An offset running onto the first failure where the density at its
+   origin is infinite (a Weibull, Gamma or LogLogistic shape below 1) is
+   no maximum either: the likelihood is unbounded there. Data without
+   truncation give it no way back, since with such a density every term
+   of the likelihood rises as the offset moves up. A rung that gets there
+   ends the ladder, and so does the first rung stopping on its way there
+   (its line search failing on the steepening rise) with the offset moved
+   up from its start: the ladder ends with the offset on the first
+   failure, and the fit warns "No finite maximum" and recommends
+   ``how='MPS'``. The remaining rungs used to follow it into the corner,
+   in 5,000 to 15,000 likelihood evaluations (2-8 s), and ended
+   "unverified", "MLE Failed" or "No finite maximum" as the last of them
+   happened to stop. (An interior maximum, where there is one, has a shape
+   above 1, since below 1 the likelihood rises with the offset
+   everywhere. Where one start of a fit, the default or one given with
+   ``init``, finds a verified maximum and another runs into the corner,
+   the maximum is kept.)
+
+   A parameter bounded at both ends -- a limited-failure :math:`p`, a
+   zero-inflation :math:`f_{0}` -- reaches its bound in floating point long
+   before its :math:`u` reaches infinity: :math:`p` is exactly 1 once
+   :math:`u` passes about 190. There the likelihood no longer depends on
+   :math:`u`, its gradient and curvature in it are zero or rounding, and the
+   test of the gradient and Hessian says nothing about it. Such a parameter
+   is judged on its bound instead: it is a maximum there when the likelihood
+   (the other parameters as fitted) does not rise as it moves off the bound
+   by more than the same tolerance, per observation, and the other
+   parameters must pass the test without it. Where the likelihood rises off
+   the bound at all, the fit is also started with that parameter at the
+   middle of its range, and the better answer kept. Without this, a Weibull
+   with ``lfp=True`` fitted to monthly return counts of a 3% defective
+   sub-population ran :math:`p` to 1 and reported a verified maximum 3.8
+   below the one at :math:`p = 0.059` (#579).
+
+   Before BFGS runs, the search is
    rescaled coordinate by coordinate, each :math:`u` divided by the magnitude
    of its starting value, and the objective is divided by the number of
    observations. That does not move the optimum, but it makes the convergence
@@ -1083,6 +1168,14 @@ narrower ``fit``:
   time axis: :math:`\hat{p}` is the (count-weighted) proportion of ones.
 - **Binomial**, the number of events in a known number of trials :math:`m`:
   :math:`\hat{p} = \sum_{i} n_{i} x_{i} / (m \sum_{i} n_{i})`.
+
+  For these three the bounds on :math:`p` come from the :math:`k` events in
+  :math:`N` trials. By default they are exact (Clopper and Pearson): the
+  lower bound is the :math:`\alpha` quantile of
+  :math:`\mathrm{Beta}(k, N - k + 1)` (0 when :math:`k = 0`) and the upper
+  the :math:`1 - \alpha` quantile of :math:`\mathrm{Beta}(k + 1, N - k)`
+  (1 when :math:`k = N`). With :math:`k = 0` the upper bound is
+  :math:`1 - \alpha^{1/N}`, the success-run bound.
 - **ExactEventTime**, an event known to occur at a single time :math:`T`,
   estimated from right-censored ("not yet") and left-censored ("already")
   observations: every :math:`T` between the latest "not yet" and the earliest
@@ -1222,6 +1315,17 @@ deviance from the fit is below the critical value, the upper bound on
 :math:`r` is ``inf``. A band likewise reaches the edge of the function's
 range (0 or 1 for :math:`R`) when the region reaches that far.
 
+The region can also run out along a long, flat valley towards such an
+edge (an ExpoWeibull's as :math:`\beta \to \infty` with :math:`\alpha` at
+the largest observation, or as :math:`\alpha \to 0`), and a band's or a
+quantile's extreme can lie far down it, or be approached only at the end
+of the search's range for the parameter (where it is no longer a double
+distinct from the edge). The search follows each parameter's profile down
+such valleys before seeking the extreme there, so the bound is that
+extreme to about one part in a million. Where a search is still moving
+out when it stops, the bound returned is the most extreme point of the
+region it found, with a warning saying so.
+
 .. _information-criteria:
 
 Comparing models: information criteria
@@ -1252,7 +1356,7 @@ every model in SurPyval that reports a BIC or an :math:`\mathrm{AIC_{c}}`:
     the number of observations (again weighted by ``n``) instead, so the
     criteria stay finite.
 
-    - *Univariate parametric, Royston-Parmar and regression models* (including
+    - *Univariate parametric, mixture, Royston-Parmar and regression models* (including
       frailty and time-varying-covariate fits) count units. A
       time-varying-covariate subject is one unit however many intervals its
       follow-up is split into, and it counts as a failure when its last
@@ -1262,6 +1366,17 @@ every model in SurPyval that reports a BIC or an :math:`\mathrm{AIC_{c}}`:
       end-of-observation rows are not events.
     - *Copula models* count joint rows in which at least one series failed; a
       row right-censored in every series adds nothing.
+    - *Semi-parametric models* -- Cox (including its stratified and
+      time-varying fits and the cause-specific competing-risks model), Cox
+      frailty and proportional odds -- count the events, as R's
+      ``logLik.coxph`` does (its ``nobs`` is ``nevent``); a Fine-Gray model
+      counts the events of its cause of interest, the terms of its
+      weighted partial likelihood. Their criteria are on the partial (Cox),
+      integrated (Cox frailty), profile (proportional odds) or weighted
+      partial (Fine-Gray) likelihood, with :math:`k` the estimated
+      coefficients (and a Cox frailty's ``theta``), so they compare models
+      of the same kind fitted to the same data -- two sets of covariates,
+      say -- not a semi-parametric model with a parametric one.
 
 Using the failures rather than all units follows [Volinsky2000bic]_: a
 censored unit carries less information than a failure. For exact and
@@ -1278,10 +1393,14 @@ Lower is better. Because the likelihood is a property of the parameters and the
 data, not of how they were found, these criteria are available after a fit by
 *any* method (but not for a model built with ``from_params``, which has no
 data). :math:`k` is the number of *estimated* parameters -- the
-distribution's, plus ``gamma``, ``p`` and ``f0`` when they are fitted -- so a
+distribution's, plus ``gamma``, ``lfp_p`` and ``f0`` when they are fitted -- so a
 parameter held with ``fixed`` is not counted: a Weibull with its shape fixed is
 penalised as the one-parameter model it is, and scores exactly as the
 equivalent Rayleigh does.
+
+Every fitted model that reports these spells them the same way (#572):
+``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` are methods, and
+``log_likelihood``, where a model has it, is the number :math:`\ell(\hat{\theta})`.
 
 Two pitfalls. Compare only models fitted to the *same* data. And do not compare
 a discrete model with a continuous one this way: a probability mass and a
@@ -1370,7 +1489,15 @@ information criteria are still available). The objective is minimised with
 BFGS with the automatic gradient, on the rescaled search described in
 :ref:`numerical-mle`, escalating to Newton-CG and then to the
 derivative-free Nelder-Mead if needed; if that too fails,
-SurPyval warns ("MPS FAILED: Try alternate estimation method").
+SurPyval warns ("MPS FAILED: Try alternate estimation method"). The product
+of spacings of an offset fit can have no finite maximum as the likelihood can:
+on data skewed more to the left than any member of the family, the offset
+runs down towards :math:`-\infty` and the family approaches its limit (the
+Normal for the LogNormal and the Gamma, the ``Logistic`` for the
+LogLogistic, the ``Gumbel`` for the Weibull). Where BFGS stops short with
+the offset moved down and the limit's own MPS fit spacing the data at least
+as well, the fit stops there and warns "No finite maximum", recommending the
+limit.
 
 Trading the density for spacings costs nothing asymptotically: under the usual regularity conditions MPS is consistent and asymptotically as efficient as MLE, attaining the same asymptotic variance. Its advantage is that it *stays* consistent in the awkward cases — J- or U-shaped densities, and distributions with unknown support — where the maximum likelihood estimate is inconsistent or fails to exist at all. In surpyval it is requested with ``how='MPS'`` and, like every other estimator, returns a fully-featured model (see the :doc:`Parametric SurPyval Modelling` notes for the code). This makes it a robust fall-back whenever an MLE fit struggles with an offset or a bounded support.
 

@@ -14,8 +14,10 @@ follows a valley to ``mu -> 0`` with ``beta -> inf``), and only a guard in
 """
 
 import decimal
+import math
 import warnings
 
+import autograd.numpy as anp
 import numpy as np
 import pytest
 
@@ -187,3 +189,215 @@ def test_expo_weibull_moments_match_the_weibull_at_mu_one():
     assert surv.ExpoWeibull.moment(3, 7.0, 1.3, 1.0) == pytest.approx(
         W.moment(3, 7.0, 1.3), rel=1e-10
     )
+
+
+# ---------------------------------------------------------------------------
+# #586: the moments by a fixed tanh-sinh rule over the probability, all
+# parameter sets at once, rather than by ``quad`` over a Python integrand.
+# ---------------------------------------------------------------------------
+
+
+def _integer_mu_moment(m, alpha, beta, mu):
+    # For a positive integer mu, (1 - e^-t)^(mu - 1) expands into mu
+    # terms, each a Gamma integral: E[T^s] = mu sum_i C(mu - 1, i) (-1)^i
+    # Gamma(s + 1) / (i + 1)^(s + 1), s = m / beta.
+    s = m / beta
+    return (
+        alpha**m
+        * mu
+        * math.fsum(
+            math.comb(mu - 1, i)
+            * (-1) ** i
+            * math.exp(math.lgamma(s + 1) - (s + 1) * math.log(i + 1))
+            for i in range(mu)
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "m, alpha, beta, mu",
+    [
+        (1, 2.0, 1.5, 4),
+        (2, 3.0, 0.7, 3),
+        (3, 1.0, 1e4, 5),
+        # m / beta = 80: the old integrand's t ** 80 overflowed a Python
+        # float and the moment raised OverflowError
+        (4, 1.0, 0.05, 2),
+        (2, 0.5, 0.08, 1),
+    ],
+)
+def test_586_moments_match_the_finite_series_at_integer_mu(m, alpha, beta, mu):
+    got = no_warnings(ExpoWeibull.moment, m, alpha, beta, float(mu))
+    assert got == pytest.approx(
+        _integer_mu_moment(m, alpha, beta, mu), rel=1e-12, abs=0.0
+    )
+
+
+@pytest.mark.parametrize(
+    "m, beta, mu, want",
+    [
+        # 20-digit values from two independent mpmath quadratures (over
+        # log t and over the probability), which agree to all 20 digits.
+        # quad was off by 1.4e-9 at the first, 1.5e-10 at the second.
+        (2, 1.0, 0.01, 0.023987214196742330358),
+        (2, 1.0, 0.001, 0.0024035728377236159306),
+        (1, 2.0, 0.3, 0.45809047318252310548),
+    ],
+)
+def test_586_moments_match_high_precision_at_small_mu(m, beta, mu, want):
+    got = no_warnings(ExpoWeibull.moment, m, 1.0, beta, mu)
+    assert got == pytest.approx(want, rel=1e-12, abs=0.0)
+
+
+def test_586_moments_are_vectorised_without_quad(monkeypatch):
+    # (The module imports scipy.integrate where it uses it, #470)
+    import scipy.integrate
+
+    def no_quad(*args, **kwargs):
+        raise AssertionError("moment called quad")
+
+    monkeypatch.setattr(scipy.integrate, "quad", no_quad)
+    alpha = np.array([[0.5], [2.0]])
+    beta = np.array([0.3, 1.0, 4.0])
+    mu = np.array([0.05, 1.0, 20.0])
+    got = ExpoWeibull.moment(2, alpha, beta, mu)
+    assert got.shape == (2, 3)
+    want = [
+        [ExpoWeibull.moment(2, a, b, u) for b, u in zip(beta, mu)]
+        for a in alpha[:, 0]
+    ]
+    np.testing.assert_allclose(got, want, rtol=1e-15)
+    assert ExpoWeibull.mean(2.0, 1.0, 1.0) == pytest.approx(
+        2.0, rel=1e-14, abs=0.0
+    )
+
+
+def _likelihood_584():
+    from surpyval.utils.surpyval_data import SurpyvalData
+
+    rng = np.random.default_rng(1)
+    x = 5 + 3 * rng.weibull(2.0, 60)
+    c = rng.choice([0, 1, -1], 60)
+    xi = np.column_stack([x[:10], x[:10] + 1.0])
+    data = SurpyvalData(
+        xl=np.r_[x[10:], xi[:, 0]],
+        xr=np.r_[x[10:], xi[:, 1]],
+        c=np.r_[c[10:], np.full(10, 2)],
+        tl=np.r_[np.zeros(50), np.full(10, 1.0)],
+        group_and_sort=True,
+    )
+    return lambda theta: ExpoWeibull._neg_ll_func(data, *theta, 0.0, 0.0, 1.0)
+
+
+def test_598_the_log_forms_are_not_traced(monkeypatch):
+    # The likelihood's functions are autograd primitives with their
+    # derivatives in closed form: autograd recorded every branch of every
+    # where of the log forms, about 1,300 operations per evaluation of
+    # this 60-row likelihood, most of its 7-9 ms with the gradient.
+    from autograd import grad
+    from autograd.tracer import isbox
+
+    from surpyval.univariate.parametric.distributions import expo_weibull
+
+    traced = []
+    log1mexp = expo_weibull._log1mexp
+
+    def watched(r, log_r, *args):
+        traced.append(isbox(r) or isbox(log_r))
+        return log1mexp(r, log_r, *args)
+
+    monkeypatch.setattr(expo_weibull, "_log1mexp", watched)
+    gradient = grad(_likelihood_584())(np.array([7.0, 3.0, 1.5]))
+    assert traced and not any(traced)
+    assert np.all(np.isfinite(gradient))
+
+
+def _traced(fn, x, alpha, beta, mu):
+    """``fn`` as it was before #598: the value functions traced through by
+    autograd (``autograd.numpy`` for every operation)."""
+    from surpyval.univariate.parametric.distributions import expo_weibull
+
+    p = expo_weibull._log_forms(x, alpha, beta, mu)
+    support = expo_weibull._support
+    if fn == "log_ff":
+        return support(x, p["log_ff"], -np.inf, 0.0)
+    if fn == "ff":
+        return support(x, anp.exp(p["log_ff"]), 0.0, 1.0)
+    if fn == "log_sf":
+        return support(x, p["log_sf"], 0.0, -np.inf)
+    inside = (
+        anp.log(beta)
+        + anp.log(mu)
+        - p["log_x"]
+        + mu * p["log_g"]
+        - p["ratio_g"]
+        - p["t"]
+    )
+    bm = beta * mu
+    at_zero = anp.where(
+        bm < 1, np.inf, anp.where(bm == 1, -anp.log(alpha), -np.inf)
+    )
+    return support(x, inside, at_zero, -np.inf)
+
+
+@pytest.mark.parametrize("fn", ["log_ff", "ff", "log_sf", "log_df"])
+@pytest.mark.parametrize(
+    "theta",
+    [
+        (7.0, 3.0, 1.5),
+        (3.0, 1.0, 50.0),
+        (9.0, 6.0, 0.3),
+        (20.0, 1.2, 0.05),
+        (2.0, 0.8, 1.25),  # beta * mu = 1: log_df(0) is -log(alpha)
+        (4.0, 40.0, 0.02),  # t to 1e136 at x = 1e4
+        (50.0, 0.3, 300.0),
+    ],
+)
+def test_598_closed_form_derivatives_are_autograds(fn, theta):
+    # Gradient and Hessian in (x, alpha, beta, mu), from the lower tail
+    # to the right tail where e^-t underflows (where the survival
+    # function's log is ln(mu) - t, so its derivative in ln t is -t: the
+    # first version of the closed form lost every digit of it there).
+    from autograd import grad, hessian
+
+    x = np.array([0.0, 1e-8, 1e-3, 0.5, 2.0, 5.0, 30.0, 80.0, 1e4])
+
+    def total(v, f):
+        vals = f(x * v[3], v[0], v[1], v[2])
+        return anp.sum(anp.where(anp.isfinite(vals), vals, 0.0))
+
+    def new(v):
+        return total(v, getattr(ExpoWeibull, fn))
+
+    def old(v):
+        return total(v, lambda *a: _traced(fn, *a))
+
+    v = np.r_[theta, 1.0]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        assert new(v) == old(v)
+        g_new, g_old = grad(new)(v), grad(old)(v)
+        h_new, h_old = hessian(new)(v), hessian(old)(v)
+    scale = np.max(np.abs(g_old))
+    np.testing.assert_allclose(g_new, g_old, rtol=1e-11, atol=1e-13 * scale)
+    scale = np.max(np.abs(h_old))
+    np.testing.assert_allclose(h_new, h_old, rtol=1e-9, atol=1e-12 * scale)
+
+
+def test_598_derivatives_broadcast_to_the_parameters():
+    # Per-row parameters (a regression's), and a scalar against rows.
+    from autograd import grad
+
+    x = np.array([2.0, 4.0, 6.0])
+    for fn in ("log_ff", "ff", "log_sf", "log_df"):
+        f = getattr(ExpoWeibull, fn)
+        g = grad(lambda a: anp.sum(f(x, a, 2.0, 1.5)))(np.array([3.0, 5, 7]))
+        ref = grad(lambda a: anp.sum(_traced(fn, x, a, 2.0, 1.5)))(
+            np.array([3.0, 5, 7])
+        )
+        assert g.shape == (3,)
+        np.testing.assert_allclose(g, ref, rtol=1e-12)
+        g = grad(lambda b: anp.sum(f(x, 5.0, b, 1.5)))(2.0)
+        ref = grad(lambda b: anp.sum(_traced(fn, x, 5.0, b, 1.5)))(2.0)
+        assert np.shape(g) == ()
+        assert g == pytest.approx(ref, rel=1e-12)

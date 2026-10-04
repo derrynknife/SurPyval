@@ -57,22 +57,47 @@ from surpyval.serialisation import (
 from surpyval.univariate.parametric import LogNormal
 from surpyval.univariate.parametric.parametric import resolve_distribution
 from surpyval.utils.dataframe import call_fit, frame_column, require_frame
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import percentile_bounds
-from surpyval.utils.no_maximum import warn_no_maximum
+from surpyval.utils.no_maximum import (
+    maximum_entry,
+    restored_maximum,
+    warn_no_maximum,
+)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import BOUNDS, check_option
 
+from ._maximum import verified_search
 from ._measurements import validate_xy
+
+
+# Time-transform bases phi(t). Named functions, not lambdas, so a fitted
+# model, which keeps its basis, pickles (#573).
+def _phi_linear(t: Any) -> Any:
+    return t
+
+
+def _phi_log(t: Any) -> Any:
+    return np.log(t)
+
+
+def _phi_sqrt(t: Any) -> Any:
+    return np.sqrt(t)
+
+
+def _phi_reciprocal(t: Any) -> Any:
+    return 1.0 / t
+
 
 # Time-transform bases phi(t): (callable, display name). The linear predictor
 # is loc(t) = beta0 + beta1 * phi(t); the free parameters are the regression
 # coefficients, so phi carries no parameters of its own.
 _TRANSFORMS = {
-    "linear": (lambda t: t, "t"),
-    "log": (lambda t: np.log(t), "log(t)"),
-    "sqrt": (lambda t: np.sqrt(t), "sqrt(t)"),
-    "reciprocal": (lambda t: 1.0 / t, "1/t"),
+    "linear": (_phi_linear, "t"),
+    "log": (_phi_log, "log(t)"),
+    "sqrt": (_phi_sqrt, "sqrt(t)"),
+    "reciprocal": (_phi_reciprocal, "1/t"),
 }
 
 # Distributions whose response is positive; their location parameter acts on
@@ -101,8 +126,9 @@ def _transform_ok(transform: str, x: npt.NDArray) -> bool:
         return bool(np.isfinite(_TRANSFORMS[transform][0](x)).all())
 
 
-def _warn_if_noise_free(model: Any, x: npt.NDArray) -> None:
-    """Warn when the fitted spread has collapsed onto the path (#392).
+def _warn_if_noise_free(model: Any, x: npt.NDArray) -> bool:
+    """Warn when the fitted spread has collapsed onto the path (#392), and
+    say whether it did.
 
     Measurements that lie exactly on a path ``loc(t)`` (noise-free
     readings, and censored ones on the right side of it) leave the
@@ -126,7 +152,7 @@ def _warn_if_noise_free(model: Any, x: npt.NDArray) -> None:
         mid = np.abs(model.degradation_quantile(0.5, times))
         tight = np.abs(high - low) <= np.sqrt(np.finfo(float).eps) * mid
     if not np.all(tight):
-        return
+        return False
     b0, b1 = model.beta
     path = f"{b0:.6g} + {b1:.6g}*{_TRANSFORMS[model.transform][1]}"
     warn_no_maximum(
@@ -139,6 +165,7 @@ def _warn_if_noise_free(model: Any, x: npt.NDArray) -> None:
         "threshold at the same time; model it as such rather than with a "
         "response distribution",
     )
+    return True
 
 
 class DestructiveDegradationModel(SerialisableMixin):
@@ -148,7 +175,10 @@ class DestructiveDegradationModel(SerialisableMixin):
     Exposes the induced *lifetime* distribution at the failure threshold
     (``sf`` / ``ff`` / ``Hf`` / ``df``) plus the fitted *degradation*
     distribution over time (``degradation_quantile``). The fitted parameters
-    are the location intercept and slope ``beta`` and the scale ``sigma``.
+    are the location intercept and slope ``beta`` and the scale ``sigma``;
+    ``maximum`` says what the fit reached (``"verified"``, ``"unverified"``
+    or ``"no finite maximum"``; ``"not applicable"`` for a model built
+    from its parameters).
 
     Examples
     --------
@@ -194,6 +224,12 @@ class DestructiveDegradationModel(SerialisableMixin):
         self._neg_ll = float(neg_ll)
         self.k = self.beta.shape[0] + 1  # + sigma
         self.transform_scores = transform_scores
+        # What the maximum-likelihood fit reached, one of
+        # ``MAXIMUM_STATES`` (``surpyval.utils.no_maximum``), as its
+        # warnings say: set by the fit; "not applicable" for a model built
+        # from its parameters, "unknown" for one restored from a dict saved
+        # without it (#564).
+        self.maximum = "not applicable"
 
     # -- degradation distribution over time -------------------------------
 
@@ -359,7 +395,8 @@ class DestructiveDegradationModel(SerialisableMixin):
             "beta": self.beta.tolist(),
             "sigma": float(self.sigma),
             "threshold": float(self.threshold),
-            "neg_ll": float(self._neg_ll),
+            # The key every model's dict stores it under (#605).
+            "_neg_ll": float(self._neg_ll),
             "transform_scores": (
                 None
                 if self.transform_scores is None
@@ -376,6 +413,7 @@ class DestructiveDegradationModel(SerialisableMixin):
                     "c": np.asarray(self.data["c"], dtype=int).tolist(),
                 }
             ),
+            **maximum_entry(self.maximum),
         }
         return stamp_schema(out)
 
@@ -397,7 +435,7 @@ class DestructiveDegradationModel(SerialisableMixin):
         )
         dist = _resolve_distribution(d["distribution"])
         data = d.get("data")
-        return cls(
+        model = cls(
             distribution=dist,
             transform=d["transform"],
             direction=d["direction"],
@@ -413,9 +451,12 @@ class DestructiveDegradationModel(SerialisableMixin):
                     "c": np.asarray(data["c"], dtype=int),
                 }
             ),
-            neg_ll=float(d.get("neg_ll", np.nan)),
+            # "neg_ll" is the key of a dict written before v0.23.
+            neg_ll=float(d.get("_neg_ll", d.get("neg_ll", np.nan))),
             transform_scores=d.get("transform_scores"),
         )
+        model.maximum = restored_maximum(d)
+        return model
 
     def __repr__(self) -> str:
         return (
@@ -439,11 +480,14 @@ class DestructiveDegradationModel(SerialisableMixin):
         )
 
 
-class DestructiveDegradation_:
+class DestructiveDegradation_(FitterRepr):
     """
     Fitter for destructive degradation data (one destructive measurement per
     unit). Use the module-level singleton :data:`DestructiveDegradation`.
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "destructive degradation fitter"
 
     def _neg_ll(
         self,
@@ -501,7 +545,7 @@ class DestructiveDegradation_:
 
         beta = res.x[:2]
         sigma = float(np.exp(res.x[2]))
-        return beta, sigma, float(res.fun)
+        return beta, sigma, float(res.fun), res, fun
 
     def fit_from_df(
         self,
@@ -616,7 +660,13 @@ class DestructiveDegradation_:
         UserWarning
             "No finite maximum" when every measurement lies on the fitted
             path (noise-free readings): the fitted spread is then 0 to the
-            precision of the fit, and ``sigma`` is meaningless.
+            precision of the fit, and ``sigma`` is meaningless; the model's
+            ``maximum`` is ``"no finite maximum"``. Otherwise the answer is
+            checked as a maximum (a zero gradient and a positive-definite
+            Hessian of the likelihood in ``(beta0, beta1, log sigma)``);
+            one that is not warns that the fit "did not reach a verified
+            maximum", and ``maximum`` is ``"unverified"`` (``"verified"``
+            when it is).
 
         Examples
         --------
@@ -694,7 +744,9 @@ class DestructiveDegradation_:
                 if not _transform_ok(name, x):
                     continue  # e.g. log(t) or 1/t with a time of zero
                 try:
-                    beta, sigma, nll = self._fit_one(dist, name, x, y, c)
+                    beta, sigma, nll, res, fun = self._fit_one(
+                        dist, name, x, y, c
+                    )
                 except Exception:
                     continue
                 k = 3
@@ -705,11 +757,11 @@ class DestructiveDegradation_:
                     else aic
                 )
                 scores[name] = aicc
-                fits[name] = (beta, sigma, nll)
+                fits[name] = (beta, sigma, nll, res, fun)
             if not fits:
                 raise RuntimeError("no time transform could be fit")
             best = min(scores, key=lambda k: scores[k])
-            beta, sigma, nll = fits[best]
+            beta, sigma, nll, res, fun = fits[best]
             transform = best
             transform_scores = scores
         else:
@@ -723,21 +775,37 @@ class DestructiveDegradation_:
                     "another transform or drop the non-positive "
                     "times".format(transform, _TRANSFORMS[transform][1])
                 )
-            beta, sigma, nll = self._fit_one(dist, transform, x, y, c)
+            beta, sigma, nll, res, fun = self._fit_one(
+                dist, transform, x, y, c
+            )
             transform_scores = None
 
-        model = DestructiveDegradationModel(
-            distribution=dist,
-            transform=transform,
-            direction=direction,
-            beta=beta,
-            sigma=sigma,
-            threshold=threshold,
-            data={"x": x, "y": y, "c": c},
-            neg_ll=nll,
-            transform_scores=transform_scores,
+        def build(beta: npt.NDArray, sigma: float, nll: float) -> Any:
+            return DestructiveDegradationModel(
+                distribution=dist,
+                transform=transform,
+                direction=direction,
+                beta=beta,
+                sigma=sigma,
+                threshold=threshold,
+                data={"x": x, "y": y, "c": c},
+                neg_ll=nll,
+                transform_scores=transform_scores,
+            )
+
+        model = build(beta, sigma, nll)
+        if _warn_if_noise_free(model, x):
+            model.maximum = "no finite maximum"
+            return model
+        # what the search reached, checked as a maximum (#564), in the
+        # space it searched: (beta0, beta1, log sigma)
+        v, maximum = verified_search(
+            fun, res, x.shape[0], "The destructive degradation fit"
         )
-        _warn_if_noise_free(model, x)
+        if not np.array_equal(v, res.x):
+            # polished to a better point
+            model = build(v[:2], float(np.exp(v[2])), float(fun(v)))
+        model.maximum = maximum
         return model
 
 

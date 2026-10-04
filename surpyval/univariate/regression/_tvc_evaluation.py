@@ -1065,25 +1065,39 @@ class TVCEvaluationMixin:
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
+        method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
     ) -> npt.NDArray:
         r"""
         Confidence bounds on the survival, failure probability or
         cumulative hazard along a covariate path ``Z(t)``: a step schedule
         or a continuously varying path, as for :meth:`sf_tvc`.
 
-        The bounds are those of :meth:`cb`, carried along the path: a Wald
-        bound on the baseline family's probability-plot scale, formed from
-        the cumulative hazard of :meth:`Hf_tvc`, its standard error
-        propagated from the fitted parameter covariance by the delta method.
-        ``ff`` and ``Hf`` follow from the same bound, so the three agree with
-        each other, and a constant path gives :meth:`cb`.
+        The bounds are those of :meth:`cb`, carried along the path. With
+        ``method="wald"`` (the default), a Wald bound on the baseline
+        family's probability-plot scale, formed from the cumulative hazard
+        of :meth:`Hf_tvc`, its standard error propagated from the fitted
+        parameter covariance by the delta method. With ``method="lr"``,
+        the likelihood-ratio bound of :meth:`cb`: at each ``x`` the extreme
+        of the function along the path over the likelihood region of all
+        the parameters (#617), about a second a time where the Wald bound
+        takes milliseconds; it needs the data the model was fitted to.
+        With ``method="bootstrap"``, the percentile interval over the
+        parametric bootstrap refits of :meth:`cb` (with the same
+        ``n_boot`` and integer ``random_state`` it reuses them); not for
+        a model fitted to time-varying covariates, whose resamples would
+        need each subject's covariate path.
+        Either way ``ff`` and ``Hf`` follow from the same bound, so the
+        three agree with each other, and a constant path gives :meth:`cb`
+        with the same ``method``.
 
         Along a
         :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`
         the integral is taken on a quadrature mesh adapted at the fitted
-        parameters and then held fixed, so the function differentiated is
-        smooth in the parameters. The cost is ``2k + 1`` evaluations along
-        the path for ``k`` parameters.
+        parameters and then held fixed, so the function differentiated (or
+        searched) is smooth in the parameters. The Wald bound's cost is
+        ``2k + 1`` evaluations along the path for ``k`` parameters.
 
         With ``given`` the bounds are on the conditional survival
         :math:`S(x \mid \text{survived to } g)` of :meth:`sf_tvc`: 1, with
@@ -1108,6 +1122,16 @@ class TVCEvaluationMixin:
             Total tail probability of the bound(s). Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds put ``[lower, upper]`` on the last axis.
+        method : {'wald', 'lr', 'bootstrap'}, optional
+            ``'wald'`` (the default), ``'lr'`` or ``'bootstrap'``, as
+            above and as for :meth:`cb` (``'lr'`` also as
+            ``'likelihood'``, ``'likelihood-ratio'`` or ``'profile'``).
+        n_boot : int, optional
+            The number of bootstrap refits (``method='bootstrap'`` only).
+            Default 200.
+        random_state : None, int or numpy.random.Generator, optional
+            The seed of the bootstrap (``method='bootstrap'`` only), as for
+            :meth:`cb`.
 
         Returns
         -------
@@ -1141,8 +1165,12 @@ class TVCEvaluationMixin:
         ...                  model.cb(np.array([40, 80]), [0.5])))
         True
         """
+        from ._bootstrap import bound_method, function_bounds, tvc_refits
+        from ._likelihood_ratio import cb_tvc_lr, lr_search
         from .tvc_path import CovariatePath
 
+        method = bound_method(method)
+        lr = method == "lr"
         self._check_inference()
         check_option(
             "on",
@@ -1163,12 +1191,21 @@ class TVCEvaluationMixin:
         on_path = isinstance(Z, CovariatePath)
         # In the parameterisation of the centred fit when there is one, as
         # for cb (#463).
-        params, center, cov = self._inference_state()
+        if lr:
+            search = lr_search(self, reported=False)
+            params, center = search.params, search.center
+        elif method == "bootstrap":
+            # The refits are of the model's own parameters, each with the
+            # covariate point of its baseline.
+            fits = tvc_refits(self, n_boot, random_state)
+            params, center = self._eval_params(), self.center
+        else:
+            params, center, cov = self._inference_state()
         # The path's mesh, adapted at the fitted parameters and then held.
         frozen: dict = {}
 
-        def H_of(p: npt.NDArray) -> npt.NDArray:
-            theta = (p, center)
+        def H_of(p: npt.NDArray, at: Any = None) -> npt.NDArray:
+            theta = (p, center if at is None else at)
             if on_path or g is None:
                 H = self._hf_tvc(xq, Z, xl, g, theta, frozen)[0]
             else:
@@ -1187,6 +1224,13 @@ class TVCEvaluationMixin:
             xq, Z, xl, g if on_path else None, (params, center), frozen
         )
         self._warn_tvc(H, falls, accuracy, stacklevel=5)
+        if lr:
+            return cb_tvc_lr(
+                search, xq, H_of, H_of(params), on, alpha_ci, bound
+            )
+        if method == "bootstrap":
+            on = {"R": "sf", "F": "ff"}.get(on, on)
+            return function_bounds(self, fits, H_of, on, alpha_ci, bound)
         return self._sf_bounds(
             H_of,
             lambda p: np.exp(-H_of(p)),

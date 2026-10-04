@@ -5,14 +5,17 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 import numpy.typing as npt
-from scipy.stats import norm
 
 from surpyval.distribution import NonParametricDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
-from surpyval.utils.validation import BOUNDS, check_option
+from surpyval.utils.validation import (
+    BOUNDS,
+    check_option,
+    warn_outside_unit_interval,
+)
 
 from ._bands import BandsMixin
 from ._support import (
@@ -841,6 +844,8 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         dist: str,
     ) -> npt.NDArray:
         # ``R_cb`` without the bounds (see ``set_support``).
+        from scipy.stats import norm
+
         check_option("bound_type", bound_type, ("exp", "normal"))
         _check_bound(bound)
         check_option(
@@ -1018,8 +1023,8 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         ----------
 
         p : array like or scalar
-            The probabilities at which the quantile will be computed.
-            Values must be in (0, 1].
+            The probabilities at which the quantile will be computed, in
+            [0, 1].
 
         Returns
         -------
@@ -1027,6 +1032,17 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         q : numpy array
             The value(s) of the quantile at each p. NaN where the
             estimated CDF never reaches p (e.g. due to right censoring).
+
+        Notes
+        -----
+        ``qf(0)`` is the first time at which the estimate steps, the
+        start of its support as for a parametric model. A probability
+        outside [0, 1] gives NaN with a warning, as every model's ``qf``
+        does (#611; it raised a ``ValueError`` here); NaN gives NaN.
+
+        .. versionchanged:: 0.23
+           A probability outside [0, 1] gives NaN with a warning (it
+           raised), and ``qf(0)`` is accepted.
 
         Examples
         --------
@@ -1039,8 +1055,9 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         array([1., 3., 5.])
         """
         p = np.atleast_1d(p).astype(float)
-        if ((p <= 0) | (p > 1)).any():
-            raise ValueError("'p' must be in the range (0, 1]")
+        # NaN where p is outside [0, 1], with one warning, as for the
+        # parametric models (#576, #611); it raised.
+        p = np.where(warn_outside_unit_interval(p), np.nan, p)
         # F is a product (or exponentiated sum) of ratios, so where it
         # should equal p exactly it carries round-off: the Kaplan-Meier F
         # of 1..30 at 15 is 0.4999999999999999, and a Turnbull ladder is
@@ -1326,6 +1343,8 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         --------
         surpyval.rmst_diff : compare the RMST of two groups.
         """
+        from scipy.stats import norm
+
         if tau is None:
             tau = float(np.max(self.x))
         mu = self.mean(tau=tau)
@@ -1722,7 +1741,9 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         mirroring the parametric ``to_dict``. The estimator ladder
         (``x``, ``r``, ``d``), the derived curves (``R``, ``F``, ``H``),
         the variance estimate (``greenwood``) and, for Turnbull models, the
-        estimator name and the EM's ``tol`` and ``max_iter`` are stored,
+        estimator name, the EM's ``tol`` and ``max_iter`` and, when it is
+        not the EM, the ``turnbull_algorithm`` (as ``"algorithm"``, which
+        makes the dictionary schema 2) are stored,
         which is everything the model's methods need to be reconstructed
         with :meth:`from_dict`.
 
@@ -1772,6 +1793,10 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         for key in ("estimator", "tol", "max_iter"):
             if key in getattr(self, "data", {}):
                 out[key] = self.data[key]
+        # The EM-ICM only where it was used: a reader without it refits
+        # with the EM (the dictionary is then schema 2, #620).
+        if getattr(self, "data", {}).get("algorithm", "EM") != "EM":
+            out["algorithm"] = self.data["algorithm"]
 
         # Only when set: without it the dictionary is readable by v0.20.
         if self.support is not None:
@@ -1854,7 +1879,7 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
                 value = raw.get(ch, None)
                 if value is not None:
                     data[ch] = np.asarray(value)
-            for key in ("estimator", "tol", "max_iter"):
+            for key in ("estimator", "tol", "max_iter", "algorithm"):
                 if key in model_dict:
                     data[key] = model_dict[key]
             out.data = data
@@ -1932,6 +1957,8 @@ def rmst_diff(
     >>> print(round(res["p_value"], 4))
     0.1067
     """
+    from scipy.stats import norm
+
     if tau is None:
         tau = float(min(np.max(model_a.x), np.max(model_b.x)))
 

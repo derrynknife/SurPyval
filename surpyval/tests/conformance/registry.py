@@ -179,6 +179,7 @@ from surpyval.tests.conformance.registry_families import (  # noqa: F401
     query,
     refit,
     regression,
+    skip_without_finite_maximum,
     tvc_path,
 )
 from surpyval.tests.conformance.registry_fixtures import (  # noqa: F401
@@ -206,6 +207,7 @@ from surpyval.tests.conformance.registry_fixtures import (  # noqa: F401
     discrete_data,
     exact_event_data,
     grouped_reg_data,
+    lfp_count_data,
     lfp_data,
     mixture_data,
     offset_data,
@@ -378,6 +380,7 @@ for _fn in (
     "xrd_to_xcnt",
     "handle_xicn",
     "fit_best",
+    "forecast",
     "from_dict",
     "from_json",
     "logrank",

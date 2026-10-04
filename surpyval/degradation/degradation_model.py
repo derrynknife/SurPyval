@@ -36,6 +36,7 @@ from surpyval.utils.validation import (
     alpha_ci_error,
     check_option,
     option_error,
+    warn_outside_unit_interval,
 )
 
 from ._bounds import (
@@ -1333,7 +1334,8 @@ class DegradationModel(SerialisableMixin):
         or a single ``p``, is broadcast). For a step-stress model it is the
         calendar time at which the clock of ``Z`` reaches the
         reference-stress quantile, :math:`\\tau^{-1}(F_0^{-1}(p))`. A
-        missing (``nan``) probability or covariate gives ``nan``.
+        missing (``nan``) probability or covariate gives ``nan``, and a
+        probability outside [0, 1] ``nan`` with a warning (#611).
         """
         if self._is_clock:
             clock = self._clock(Z)
@@ -1584,11 +1586,15 @@ class DegradationModel(SerialisableMixin):
         Inverts the (monotone decreasing) survival function ``sf(t | Z) = 1 -
         p`` for each requested probability. Brackets are grown geometrically
         from the fitted pseudo-failure-time scale until they straddle the
-        target, then bisected.
+        target, then bisected. Every probability is searched at once, each
+        step evaluating ``sf`` on the array of those still searching (#585:
+        a scalar search per probability called ``sf`` some 35 times per
+        draw, and ``random(5000)`` took half a minute).
         """
         p_arr = np.atleast_1d(np.asarray(p, dtype=float))
-        if np.any((p_arr < 0) | (p_arr > 1)):
-            raise ValueError("qf probabilities must lie in [0, 1]")
+        # NaN, with a warning, outside [0, 1], as every model's qf (#611;
+        # it raised).
+        p_arr = np.where(warn_outside_unit_interval(p_arr), np.nan, p_arr)
         # one covariate row per probability, as ``sf`` pairs them with
         # ``x``; only the first row was used, whatever the others held
         Z_rows = np.asarray(Z, dtype=float)
@@ -1605,45 +1611,60 @@ class DegradationModel(SerialisableMixin):
         scale = float(np.median(self.pseudo_failure_times))
         if not (np.isfinite(scale) and scale > 0):
             scale = 1.0
-
-        def target_sf(t: float) -> float:
-            return float(self._reg.sf(np.array([t]), z).ravel()[0])
-
-        out = np.empty(p_arr.shape)
-        for k, pk in enumerate(p_arr):
-            z = Z_rows[rows[k]]
-            if np.isnan(pk) or np.isnan(z).any():
-                # a missing probability or covariate: the bracket search
-                # never met its target and returned inf
-                out[k] = np.nan
-                continue
-            if pk <= 0.0:
-                out[k] = 0.0
-                continue
-            if pk >= 1.0:
-                out[k] = np.inf
-                continue
-            want = 1.0 - pk  # survival at the quantile
-            lo, hi = 0.0, scale
-            # grow the upper bracket until sf(hi) drops below the target
-            for _ in range(200):
-                if target_sf(hi) <= want:
-                    break
-                lo = hi
-                hi *= 2.0
-            else:
-                out[k] = np.inf
-                continue
-            for _ in range(200):
-                mid = 0.5 * (lo + hi)
-                if target_sf(mid) > want:
-                    lo = mid
-                else:
-                    hi = mid
-                if hi - lo <= 1e-10 * max(hi, 1.0):
-                    break
-            out[k] = 0.5 * (lo + hi)
+        # a missing probability or covariate gives nan (the bracket search
+        # never met its target and returned inf); 0 and 1 are the ends
+        missing = np.isnan(p_arr) | np.isnan(Z_rows).any(axis=1)[rows]
+        out = np.where(p_arr <= 0.0, 0.0, np.inf)
+        out[missing] = np.nan
+        inner = np.flatnonzero(~missing & (p_arr > 0.0) & (p_arr < 1.0))
+        if inner.size:
+            Z_in = Z_rows[0] if len(Z_rows) == 1 else Z_rows[rows[inner]]
+            out[inner] = self._invert_reg_sf(1.0 - p_arr[inner], Z_in, scale)
         return out
+
+    def _invert_reg_sf(
+        self, want: npt.NDArray, Z: npt.NDArray, scale: float
+    ) -> npt.NDArray:
+        """
+        The times at which ``sf(t | Z)`` falls to ``want``, all at once.
+
+        ``Z`` is one covariate row for every target, or a row per target.
+        Each upper bracket starts at ``scale`` and doubles (the lower end
+        following it) until ``sf`` there is at most the target, at most 200
+        times (``inf`` if it never is); each bracket is then bisected until
+        it is narrower than ``1e-10 * max(hi, 1)`` or 200 times.
+        """
+        one_row = Z.ndim == 1
+
+        def sf_at(t: npt.NDArray, idx: npt.NDArray) -> npt.NDArray:
+            z = Z if one_row else Z[idx]
+            return np.asarray(self._reg.sf(t, z), dtype=float).ravel()
+
+        lo = np.zeros(want.shape)
+        hi = np.full(want.shape, scale)
+        found = np.zeros(want.shape, dtype=bool)
+        # grow the upper brackets until sf(hi) drops below the target
+        active = np.arange(want.size)
+        for _ in range(200):
+            if not active.size:
+                break
+            reached = sf_at(hi[active], active) <= want[active]
+            found[active[reached]] = True
+            active = active[~reached]
+            lo[active] = hi[active]
+            hi[active] *= 2.0
+        active = np.flatnonzero(found)
+        for _ in range(200):
+            if not active.size:
+                break
+            lo_a, hi_a = lo[active], hi[active]
+            mid = 0.5 * (lo_a + hi_a)
+            above = sf_at(mid, active) > want[active]
+            lo_a = np.where(above, mid, lo_a)
+            hi_a = np.where(above, hi_a, mid)
+            lo[active], hi[active] = lo_a, hi_a
+            active = active[hi_a - lo_a > 1e-10 * np.maximum(hi_a, 1.0)]
+        return np.where(found, 0.5 * (lo + hi), np.inf)
 
     def _reg_mean(self, Z: Any) -> float:
         """

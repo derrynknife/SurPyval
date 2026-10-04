@@ -9,6 +9,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
 )
+from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .._fit_skeleton import (
@@ -56,6 +57,10 @@ class ProportionalOddsFitter(
     Use the pre-built instances (``LogisticPO``, ``WeibullPO``, ...) or the
     ``PO`` factory.
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "proportional odds fitter"
+    name_suffix = "PO"
 
     def __init__(self, distribution: Any) -> None:
         mirror_distribution(self, distribution)
@@ -171,6 +176,7 @@ class ProportionalOddsFitter(
     def neg_ll(self, data: SurpyvalData, *params: Boxable) -> Boxable:
         return regression_neg_ll(self, data, *params)
 
+    @dataframe_covariates
     def fit(
         self,
         x: npt.ArrayLike,
@@ -207,7 +213,10 @@ class ProportionalOddsFitter(
             by the covariate coefficients.
         fixed : dict, optional
             Parameters to hold fixed, by name (a distribution parameter
-            such as ``"beta"``, or a coefficient ``"beta_0"``, ...).
+            such as ``"beta"``, or a coefficient: its covariate's column
+            name, else ``"coef_0"``, ...; the names before v0.23,
+            ``"beta_0"``, ..., are taken until v0.24, with a
+            ``DeprecationWarning``).
         center : bool, optional
             ``False`` (the default) reports the baseline at ``Z = 0``.
             ``True`` reports the baseline at the covariate means (stored as

@@ -56,12 +56,14 @@ def test_kidney_matches_r_coxph(kidney_fits, ties):
     m = kidney_fits[ties]
     # theta maximises a flat profile: R's optimize and ours agree to 1e-5
     assert m.theta == pytest.approx(ref["theta"], rel=2e-5)
-    assert m.loglik == pytest.approx(ref["loglik"], abs=1e-8)
-    assert m.loglik_no_frailty == pytest.approx(ref["loglik_cox"], abs=1e-8)
+    assert m.log_likelihood == pytest.approx(ref["loglik"], abs=1e-8)
+    assert m.log_likelihood_no_frailty == pytest.approx(
+        ref["loglik_cox"], abs=1e-8
+    )
     np.testing.assert_allclose(m.beta, ref["beta"], rtol=0, atol=2e-6)
-    se = m.standard_errors()
+    se = dict(zip(m.parameter_names, m.standard_errors()))
     np.testing.assert_allclose(
-        [se["beta_0"], se["beta_1"]], ref["se"], rtol=1e-4
+        [se["coef_0"], se["coef_1"]], ref["se"], rtol=1e-4
     )
     np.testing.assert_allclose(
         np.log(list(m.frailties.values())),
@@ -88,8 +90,8 @@ def test_kidney_at_rs_theta_is_rs_fit(ties):
         rtol=0,
         atol=1e-7,
     )
-    assert m.loglik == pytest.approx(ref["loglik"], abs=1e-9)
-    assert np.isnan(m.standard_errors()["theta"])  # theta was given
+    assert m.log_likelihood == pytest.approx(ref["loglik"], abs=1e-9)
+    assert np.isnan(m.standard_errors()[-1])  # theta was given
 
 
 def test_kidney_with_disease_has_no_frailty():
@@ -102,7 +104,7 @@ def test_kidney_with_disease_has_no_frailty():
     assert m.theta == 0.0
     np.testing.assert_allclose(m.beta, cox.beta, rtol=1e-9)
     np.testing.assert_allclose(m.beta, ref["beta"], rtol=0, atol=2e-6)
-    assert m.loglik == pytest.approx(ref["loglik_cox"], abs=1e-8)
+    assert m.log_likelihood == pytest.approx(ref["loglik_cox"], abs=1e-8)
     assert set(m.frailties.values()) == {1.0}
     t = np.array([10.0, 100.0, 300.0])
     z = [50.0, 1.0, 0.0]
@@ -164,7 +166,7 @@ def test_breslow_i_likelihood_is_the_marginal_likelihood():
         loglik += np.log(quad(density, 0, np.inf, epsabs=0, epsrel=1e-12)[0])
     _, d = np.unique(x[event], return_counts=True)
     expected = loglik + event.sum() - np.sum(d * np.log(d))
-    assert m.loglik == pytest.approx(expected, abs=1e-8)
+    assert m.log_likelihood == pytest.approx(expected, abs=1e-8)
 
 
 def test_theta_zero_is_the_cox_model():
@@ -173,7 +175,9 @@ def test_theta_zero_is_the_cox_model():
     cox = CoxPH.fit(x, Z, c=c)
     np.testing.assert_allclose(m.beta, cox.beta, rtol=1e-10)
     np.testing.assert_allclose(m.H0, cox.H0, rtol=1e-8)
-    np.testing.assert_allclose(m.standard_errors()["beta_0"], cox.se[0], 1e-6)
+    np.testing.assert_allclose(
+        m.standard_errors()[0], cox.standard_errors()[0], 1e-6
+    )
 
 
 def test_predictions():
@@ -204,8 +208,8 @@ def test_recovers_parameters_on_simulated_data():
     # baseline at t = 10 near its true value 1 (Weibull(10, 1.5)).
     x, c, Z, g = _simulate(3, G=200)
     m = CoxFrailty.fit(x, Z=Z, c=c, groups=g)
-    se = m.standard_errors()
-    assert abs(m.beta[0] - 0.7) < 2.5 * se["beta_0"]
+    se = dict(zip(m.parameter_names, m.standard_errors()))
+    assert abs(m.beta[0] - 0.7) < 2.5 * se["coef_0"]
     assert abs(m.theta - 0.5) < 2.5 * se["theta"]
     lo, hi = m.param_cb("theta")
     assert 0 < lo < m.theta < hi
@@ -216,10 +220,10 @@ def test_summary_repr_serialisation_and_data_frame():
     x, c, Z, g = _simulate(4)
     m = CoxFrailty.fit(x, Z=Z, c=c, groups=g)
     assert list(m.summary().index) == [
-        ("coefficients", "beta_0"),
+        ("coefficients", "coef_0"),
         ("frailty", "theta"),
     ]
-    assert m.parameter_names == ["beta_0", "theta"]
+    assert m.parameter_names == ["coef_0", "theta"]
     np.testing.assert_array_equal(m.params, [m.beta[0], m.theta])
     text = repr(m)
     assert "unspecified (Cox); efron ties" in text
@@ -273,3 +277,89 @@ def test_monotone_likelihood_warns_once():
     messages = [str(w.message) for w in caught]
     assert len(messages) == 1, messages
     assert "No finite maximum: the partial" in messages[0]
+
+
+def test_604_cox_frailty_model_comparison_values(kidney_fits):
+    m = kidney_fits["efron"]
+    # The integrated log-likelihood, penalised by the two coefficients and
+    # theta; BIC's n the events (#604)
+    assert isinstance(m.log_likelihood, float)
+    assert m.neg_ll() == -m.log_likelihood
+    assert m.aic() == pytest.approx(2 * 3 - 2 * m.log_likelihood)
+    events = float((load_kidney()["status"] == 1).sum())
+    assert m.bic() == pytest.approx(3 * np.log(events) + 2 * m.neg_ll())
+    restored = sp.from_dict(m.to_dict())
+    for name in ("neg_ll", "aic", "aic_c", "bic"):
+        assert getattr(restored, name)() == getattr(m, name)()
+    assert restored.log_likelihood_no_frailty == m.log_likelihood_no_frailty
+    # A theta given is not estimated
+    x, c, Z, g = _kidney()
+    fixed = CoxFrailty.fit(x, Z=Z, c=c, groups=g, theta=0.5)
+    assert fixed.aic() == pytest.approx(2 * 2 + 2 * fixed.neg_ll())
+
+
+def test_604_cox_frailty_old_likelihood_names_are_deprecated(kidney_fits):
+    m = kidney_fits["efron"]
+    with pytest.warns(DeprecationWarning, match="'log_likelihood'"):
+        assert m.loglik == m.log_likelihood
+    with pytest.warns(DeprecationWarning, match="log_likelihood_no_frailty"):
+        assert m.loglik_no_frailty == m.log_likelihood_no_frailty
+    # A dict written before v0.23
+    old = m.to_dict()
+    old["loglik"] = -old.pop("_neg_ll")
+    old["loglik_no_frailty"] = old.pop("log_likelihood_no_frailty")
+    for key in ("k", "n_events_weighted", "n_obs_weighted"):
+        del old[key]
+    legacy = sp.from_dict(old)
+    assert legacy.log_likelihood == m.log_likelihood
+    assert legacy.log_likelihood_no_frailty == m.log_likelihood_no_frailty
+    assert legacy.aic() == m.aic()
+
+
+def _em_state(ties, theta, seed=3, G=80, per=6, tied=False):
+    from surpyval.univariate.regression.frailty import cox_frailty as cf
+    from surpyval.univariate.regression.frailty.frailty_fitter import (
+        grouped_data,
+    )
+
+    x, c, Z, g = _simulate(seed, G=G, per=per)
+    Z = np.column_stack([Z, np.random.default_rng(seed).normal(size=len(x))])
+    if tied:
+        x = np.ceil(x)
+    x, Zm, c, w, labels, inv = grouped_data(x, Z, c, None, g)
+    em = cf._CoxFrailtyEM(
+        x, Zm - Zm.mean(axis=0), c, w, inv, labels.shape[0], ties
+    )
+    beta, log_u, _ = em.em(theta, tol=1e-10)
+    return em, beta, log_u
+
+
+@pytest.mark.parametrize("ties", ["efron", "breslow"])
+@pytest.mark.parametrize("tied", [False, True])
+@pytest.mark.parametrize("theta", [1e-12, 0.05, 0.5, 20.0])
+def test_551_covariance_from_the_blocks_is_the_full_inverse(ties, tied, theta):
+    # The Schur complement of the frailty block, solved by conjugate
+    # gradients, is the coefficients' block of the inverse of the full
+    # penalised information, to the last digits.
+    em, beta, log_u = _em_state(ties, max(theta, 1e-6), tied=tied)
+    got = em._schur_covariance(theta, beta, log_u)
+    full = em._dense_beta_covariance(theta, beta, log_u)
+    np.testing.assert_allclose(got, full, rtol=1e-11)
+
+
+def test_551_covariance_does_not_form_the_group_indicators(monkeypatch):
+    # The full information has a column per group: O(n G^2) to form and
+    # O(G^3) to invert, 22 s at G = 4000 (n = 1e4). The covariance takes
+    # the partial likelihood's information in the coefficients alone.
+    em, beta, log_u = _em_state("efron", 0.5)
+    widths = []
+    generator = em.generator
+
+    def spy(x, Z, *args):
+        widths.append(Z.shape[1])
+        return generator(x, Z, *args)
+
+    monkeypatch.setattr(em, "generator", spy)
+    cov = em.beta_covariance(0.5, beta, log_u)
+    assert max(widths) <= em.p + 1 < em.G
+    assert np.all(np.linalg.eigvalsh(cov) > 0)

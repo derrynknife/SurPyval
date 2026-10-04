@@ -220,7 +220,7 @@ def test_553_timeline_from_df_equals_counting_process_fit():
     assert m_tl.is_tvc and m_tl.feature_names == ["z"]
     # options reach the fit: fixed and center, and a formula for Z_cols
     fixed = WeibullAFT.fit_tvc_timeline_from_df(
-        tl, "id", "time", None, "c", formula="z", fixed={"beta_0": 0.1}
+        tl, "id", "time", None, "c", formula="z", fixed={"z": 0.1}
     )
     assert fixed.params[-1] == 0.1 and fixed.formula == "z"
     centred = WeibullAFT.fit_tvc_timeline_from_df(

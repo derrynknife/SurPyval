@@ -1,5 +1,7 @@
-__version__ = "0.22"
+__version__ = "0.23"
 
+# First: autograd's special functions without scipy.stats (#470)
+from surpyval import _autograd_special  # noqa: F401  # isort: skip
 from autograd import numpy as np
 
 from surpyval.distribution import (
@@ -76,6 +78,7 @@ from surpyval.utils import (
 )
 
 from .fit_best import fit_best
+from .forecasting import forecast
 
 from surpyval.utils.recurrent_event_data import (  # isort: skip
     RecurrentEventData,
@@ -88,10 +91,6 @@ from surpyval.utils.recurrent_utils import handle_xicn  # isort: skip
 # `surpyval.from_dict` restore a model of the right class from any
 # model's `to_json` file / `to_dict` dictionary.
 from surpyval.serialisation import from_dict, from_json  # isort: skip
-
-NUM = np.float64
-TINIEST = np.finfo(np.float64).tiny
-EPS = np.sqrt(np.finfo(NUM).eps)
 
 from typing import TYPE_CHECKING, Any  # isort: skip # noqa: E402
 
@@ -267,9 +266,10 @@ if TYPE_CHECKING:
 # ``surpyval.life_models``.
 _SUBPACKAGES = ("degradation", "life_models", "metrics", "recurrent")
 
-# The life models were importable from ``surpyval`` until v0.22; they are
-# in ``surpyval.life_models``, where the exponential one is ``Exponential``
-# (at the top level that name is the distribution).
+# The life models were importable from ``surpyval`` until v0.21 (and,
+# with a warning, v0.22); they are in ``surpyval.life_models``, where the
+# exponential one is ``Exponential`` (at the top level that name is the
+# distribution). Asking for one here says where it is.
 _MOVED_TO_LIFE_MODELS = {
     **{
         name: name
@@ -287,6 +287,16 @@ _MOVED_TO_LIFE_MODELS = {
         )
     },
     "ExponentialLifeModel": "Exponential",
+}
+
+# Numeric constants once at the top level, deprecated there in v0.23
+# (#613): each with what to use instead. They are kept, until v0.24, in
+# ``surpyval.utils.numeric``. ``surpyval.np``, the numpy to write custom
+# distributions with, stays.
+_DEPRECATED_CONSTANTS = {
+    "NUM": "numpy.float64",
+    "TINIEST": "numpy.finfo(float).tiny",
+    "EPS": "numpy.sqrt(numpy.finfo(float).eps)",
 }
 
 # Names that live only in a subpackage: asking for one here
@@ -323,21 +333,24 @@ if not TYPE_CHECKING:  # keep the type checker's view of the module exact
         if name in _SUBPACKAGES:
             return import_module(f"surpyval.{name}")
         if name in _MOVED_TO_LIFE_MODELS:
+            new = _MOVED_TO_LIFE_MODELS[name]
+            raise AttributeError(
+                "module 'surpyval' has no attribute {!r}: it is "
+                "surpyval.life_models.{} (from surpyval import "
+                "life_models)".format(name, new)
+            )
+        if name in _DEPRECATED_CONSTANTS:
             import warnings
 
-            from surpyval.utils.deprecation import _message
+            from surpyval.utils.deprecation import REMOVED_IN
 
-            new = _MOVED_TO_LIFE_MODELS[name]
             warnings.warn(
-                _message(
-                    "surpyval",
-                    f"surpyval.{name}",
-                    f"surpyval.life_models.{new}",
-                ),
+                "surpyval.{} is deprecated and will be removed in v{}; use "
+                "'{}'.".format(name, REMOVED_IN, _DEPRECATED_CONSTANTS[name]),
                 DeprecationWarning,
                 stacklevel=2,
             )
-            return getattr(import_module("surpyval.life_models"), new)
+            return getattr(import_module("surpyval.utils.numeric"), name)
         if name in _ELSEWHERE:
             raise AttributeError(
                 "module 'surpyval' has no attribute {n!r}: it is in "

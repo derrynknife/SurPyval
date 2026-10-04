@@ -49,7 +49,9 @@ def _shift(offset):
 
 def _same(model, ref, s):
     np.testing.assert_allclose(model.beta, ref.beta, rtol=1e-7, atol=1e-10)
-    np.testing.assert_allclose(model.se, ref.se, rtol=1e-6)
+    np.testing.assert_allclose(
+        model.standard_errors(), ref.standard_errors(), rtol=1e-6
+    )
     np.testing.assert_allclose(model.p_values, ref.p_values, rtol=1e-6)
     np.testing.assert_allclose(model._neg_ll, ref._neg_ll, rtol=1e-9)
     for zq in QUERY:

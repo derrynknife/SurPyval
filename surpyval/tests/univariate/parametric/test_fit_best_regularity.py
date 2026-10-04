@@ -6,6 +6,11 @@ default candidates, and any candidate that is not a verified maximum (it
 warns "No finite maximum", or that its search did not reach a verified
 maximum) is set aside: ranked only when no regular candidate fitted, and
 named in one warning.
+
+And fit_best takes its data as ``fit`` does (#570): checked once, so an
+input error raises as ``fit`` raises it, with ``tl``, ``tr``, ``xl`` and
+``xr`` passed through; a candidate that cannot be fitted is named in the
+warning with a short reason, not the data.
 """
 
 import warnings
@@ -55,14 +60,16 @@ def test_a_fit_with_no_maximum_is_set_aside_and_its_warning_replaced():
     assert [m for m in messages if "Beta4 (its likelihood has no" in m]
 
 
-def test_an_unverified_fit_is_set_aside():
+def test_a_runaway_fit_is_set_aside():
     # The ExpoWeibull runs towards a limit of its shapes on this sample
-    # (beta = 468, mu = 0.0027) and warned that its search did not reach
-    # a verified maximum; its AIC (503.5) used to beat every regular fit.
+    # (beta to infinity, mu to 0; the profile log-likelihood rises from
+    # -253.47 at beta = 3 to -248.64 at beta = 1000) and its AIC (503.5)
+    # used to beat every regular fit. Its search used to end "unverified"
+    # after the whole ladder; it now finds the runaway (#584).
     model, messages = _fit_best(WEIBULL_50, include=["ExpoWeibull", "Weibull"])
     assert model.dist.name == "Weibull"
-    assert [m for m in messages if "ExpoWeibull (its fit is not a verif" in m]
-    assert not [m for m in messages if "did not reach a verified" in m]
+    assert [m for m in messages if "ExpoWeibull (its likelihood has no" in m]
+    assert not [m for m in messages if m.startswith("No finite maximum")]
 
 
 def test_set_aside_candidates_are_ranked_when_nothing_else_fits():
@@ -91,3 +98,151 @@ def test_fit_best_checks_distribution_names():
         surv.fit_best(x, include=["Weibul"])
     with pytest.raises(ValueError, match="Unknown distribution"):
         surv.fit_best(x, exclude=["Geometric"])
+
+
+# -- the data, as fit takes them (#570) ------------------------------------
+def test_570_an_input_error_raises_as_fit_raises_it():
+    # A right-censored row written as [xl, inf] with c=1: Weibull.fit
+    # raises; fit_best returned None, warning the data eleven times.
+    x = np.array([[1.0, np.inf], [2.0, 3.0], [4.0, 4.0]])
+    c = np.array([1, 2, 0])
+    with pytest.raises(ValueError) as single:
+        sp.Weibull.fit(x=x, c=c)
+    with pytest.raises(ValueError) as best:
+        sp.fit_best(x=x, c=c)
+    assert str(best.value) == str(single.value)
+
+
+def test_570_a_failure_every_candidate_shares_is_raised():
+    # No failure at all: every family refuses alike, so it is the data
+    x = WEIBULL_50
+    with pytest.raises(ValueError, match="only right censored") as error:
+        sp.fit_best(x, c=np.ones_like(x))
+    with pytest.raises(ValueError) as single:
+        sp.Weibull.fit(x, c=np.ones_like(x))
+    assert str(error.value) == str(single.value)
+
+
+def test_570_data_outside_every_candidate_support_raises():
+    with pytest.raises(ValueError, match="outside the support of every"):
+        sp.fit_best(-WEIBULL_50, include=["Weibull", "Gamma"])
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"tl": 20.0},
+        {"tl": np.where(np.arange(50) % 2 == 0, 20.0, 0.0)},
+        {"tr": 400.0},
+    ],
+    ids=["tl-scalar", "tl-array", "tr"],
+)
+def test_570_truncation_is_passed_through(kwargs):
+    x = WEIBULL_50[WEIBULL_50 > 20]
+    kwargs = {
+        k: v[WEIBULL_50 > 20] if np.ndim(v) else v for k, v in kwargs.items()
+    }
+    model = sp.fit_best(x, include=["Weibull"], **kwargs)
+    np.testing.assert_array_equal(
+        model.params, sp.Weibull.fit(x, **kwargs).params
+    )
+
+
+def test_570_interval_ends_are_passed_through():
+    xl, xr = np.floor(WEIBULL_50 / 10) * 10, np.ceil(WEIBULL_50 / 10) * 10
+    model = sp.fit_best(xl=xl, xr=xr, include=["Weibull", "Gamma"])
+    single = getattr(sp, model.dist.name).fit(xl=xl, xr=xr)
+    np.testing.assert_array_equal(model.params, single.params)
+
+
+def test_570_a_skipped_candidate_is_named_with_a_short_reason(monkeypatch):
+    # A message that quotes the data (as the censoring check's does) is
+    # cut to its first line; the warning names the family and the reason.
+    def refuse(*args, **kwargs):
+        raise ValueError("Gamma cannot be fitted here.\nx:\n" + "1.0 " * 500)
+
+    monkeypatch.setattr(sp.Gamma, "fit", refuse)
+    model, messages = _fit_best(WEIBULL_50, include=["Weibull", "Gamma"])
+    assert model.dist.name == "Weibull"
+    (skipped,) = [m for m in messages if m.startswith("fit_best skipped")]
+    assert "Gamma (ValueError: Gamma cannot be fitted here.)" in skipped
+    assert "\n" not in skipped and len(skipped) < 200
+
+
+# ---------------------------------------------------------------------------
+# #613: a mixture is an opt-in candidate, named in ``include`` as a model of
+# its components, and ranked on the same criterion.
+# ---------------------------------------------------------------------------
+TWO_POPULATIONS = np.concatenate(
+    [
+        sp.Weibull.random(60, 5, 6, random_state=1),
+        sp.Weibull.random(60, 30, 6, random_state=2),
+    ]
+)
+
+
+@pytest.mark.parametrize("metric", ["aic", "bic"])
+def test_613_a_mixture_in_include_is_ranked_on_the_metric(metric):
+    candidate = sp.MixtureModel(sp.Weibull, 2)
+    model, messages = _fit_best(
+        TWO_POPULATIONS, metric=metric, include=["Weibull", candidate]
+    )
+    assert isinstance(model, sp.MixtureModel) and model.m == 2
+    single = sp.Weibull.fit(TWO_POPULATIONS)
+    mixture = sp.MixtureModel.fit(TWO_POPULATIONS, dist=sp.Weibull, m=2)
+    assert getattr(model, metric)() == pytest.approx(
+        getattr(mixture, metric)(), rel=1e-12
+    )
+    assert getattr(model, metric)() < getattr(single, metric)()
+    assert messages == []
+    # The model given describes the candidate, and is left unfitted.
+    assert candidate.params is None
+
+
+def test_613_one_population_keeps_the_single_family():
+    # BIC 2092.7 for the Weibull, 2105.8 for the mixture.
+    x = sp.Weibull.random(200, 100, 2, random_state=5)
+    model, _ = _fit_best(
+        x, metric="bic", include=["Weibull", sp.MixtureModel(sp.Weibull, 2)]
+    )
+    assert isinstance(model, sp.Parametric)
+    assert model.dist.name == "Weibull"
+
+
+def test_613_mixtures_only_when_named():
+    # The default candidates are unchanged: single families only.
+    model = sp.fit_best(TWO_POPULATIONS)
+    assert isinstance(model, sp.Parametric)
+    # A bare mixture is a list of one.
+    alone = sp.fit_best(TWO_POPULATIONS, include=sp.MixtureModel(sp.Weibull))
+    assert isinstance(alone, sp.MixtureModel)
+
+
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        ({"include": [sp.MixtureModel]}, "not the MixtureModel class"),
+        (
+            {"exclude": [sp.MixtureModel(sp.Weibull, 2)]},
+            "distribution names only",
+        ),
+        (
+            {
+                "include": [sp.MixtureModel(sp.Weibull, 2)],
+                "exclude": ["Gamma"],
+            },
+            "either an include or an exclude",
+        ),
+    ],
+)
+def test_613_a_mixture_is_named_only_in_include(kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        sp.fit_best(TWO_POPULATIONS, **kwargs)
+
+
+def test_613_a_mixture_outside_its_support_is_passed_over():
+    # As a single family is (#485): a Weibull mixture cannot hold a
+    # negative value, the Normal can.
+    x = np.append(TWO_POPULATIONS, -1.0)
+    model = sp.fit_best(x, include=["Normal", sp.MixtureModel(sp.Weibull)])
+    assert model.dist.name == "Normal"

@@ -57,6 +57,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     cr_data,
     destructive_data,
     exact_event_data,
+    lfp_count_data,
     lfp_data,
     mixture_data,
     offset_data,
@@ -209,6 +210,23 @@ def _univariate():
             rows=("x", "c", "n", "tl"),
             times=("x", "tl"),
             paths={},
+        )
+    )
+    # A limited failure population in interval-censored counts, whose
+    # default start ran p to its bound of 1 (#579)
+    out.append(
+        continuous(
+            "Weibull",
+            case_name="Weibull[lfp-counts]",
+            fitters=(),
+            data=lfp_count_data,
+            fixed={"lfp": True},
+            rows=("x", "c", "n"),
+            times=("x",),
+            paths={},
+            slow=REFIT_PROPERTIES,
+            draw=lambda m, s: m.random_data(15, random_state=s),
+            explicit_seed=True,
         )
     )
     out.append(
@@ -949,17 +967,17 @@ def _column_names(df, key):
 
 
 def _uni_df(fitter, **fixed):
-    """``x``, ``c``, ``n``, ``tl`` (and ``xl`` / ``xr`` for interval
-    rows), named as the univariate fit_from_df names them."""
+    """``x_col``, ``c_col``, ``n_col``, ``tl_col`` (and ``xl_col`` /
+    ``xr_col`` for interval rows), the univariate fit_from_df's names."""
 
     def run(d):
         df, rest = _frame(d, ("x", "c", "n", "tl", "tr"))
         if "x" in df:
-            names = {"x": "x"}
+            names = {"x_col": "x"}
         else:
             df = df.rename(columns={"x0": "xl", "x1": "xr"})
-            names = {"xl": "xl", "xr": "xr"}
-        names |= {k: k for k in ("c", "n", "tl", "tr") if k in df}
+            names = {"xl_col": "xl", "xr_col": "xr"}
+        names |= {f"{k}_col": k for k in ("c", "n", "tl", "tr") if k in df}
         return fitter.fit_from_df(df, **names, **fixed, **rest)
 
     return run
@@ -997,6 +1015,7 @@ def _df_paths():
     }
     paths["Turnbull"] = _uni_df(sp.Turnbull)
     paths["Weibull[xcnt]"] = _uni_df(sp.Weibull)
+    paths["Weibull[lfp-counts]"] = _uni_df(sp.Weibull, lfp=True)
     paths["RoystonParmar"] = _uni_df(sp.RoystonParmar)
     paths["MixtureModel"] = _uni_df(sp.MixtureModel, dist=sp.Weibull, m=2)
     paths["Binomial"] = _uni_df(sp.Binomial, n_trials=5)
@@ -1077,12 +1096,13 @@ _ON_SURVIVAL = ("sf", "ff", "Hf")
 # raise ValueError, as documented ("Only MLE has confidence bounds"; a
 # closed-form estimate or a model built from its parameters carries none).
 _NO_COVARIANCE = (
-    "Binomial",
-    "Bernoulli",
-    "FixedEventProbability",
     "ExactEventTime",
     "Hypoexponential",
 )
+# The probability models: param_cb bounds p from the counts of events and
+# trials (exact Clopper-Pearson by default, Wald and likelihood ratio as
+# options); cb, quantile_cb and mean_cb raise, pointing to it (#580).
+_PROBABILITY_MODELS = ("Binomial", "Bernoulli", "FixedEventProbability")
 # The likelihood-ratio search runs pointwise, so it is swept at three
 # times, and only in the full suite. Rayleigh, Geometric and Uniform
 # joined in #421 (a df bound stalled on the far side of the estimate;
@@ -1102,6 +1122,18 @@ _LR_X = {
     "ExpoWeibull": np.array([13.0]),
 }
 _LR_NIGHTLY = {"NegativeBinomial", "ExpoWeibull"}
+# The regression models' likelihood-ratio bounds (#583), swept on one
+# case of each kind of covariate link, at two times (with the case's
+# first two covariate rows): a multiplier on the hazard, on the time, on
+# the odds, an additive hazard, and the accelerated life model of #583.
+_WHOLE_LINE = ("Normal", "Gumbel", "Logistic")
+_REGRESSION_LR_X = {
+    "WeibullPH": (2.0, 8.0),
+    "LogNormalAFT": (2.0, 8.0),
+    "WeibullPO": (2.0, 8.0),
+    "WeibullAH": (2.0, 8.0),
+    "WeibullAL[PowerExponential]": (3.0, 10.0),
+}
 
 
 # Fits with no parameter covariance by design, so no Wald bounds: the
@@ -1304,14 +1336,99 @@ def _bounds(case):
     if cls == "Parametric":
         if case.name in _NO_COVARIANCE:
             return ()
+        if case.name in _PROBABILITY_MODELS:
+            return tuple(
+                Bound(
+                    "param_cb",
+                    kind="param",
+                    kwargs={"method": method},
+                    label=f"param_cb[{method}]",
+                    # Clopper-Pearson's and the likelihood-ratio interval
+                    # do not close onto the estimate as alpha_ci -> 1.
+                    wald=method == "wald",
+                )
+                for method in ("exact", "wald", "lr")
+            )
         return _parametric_bounds(case)
     if cls == "NonParametric":
         return _nonparametric_bounds(case)
     if cls == "RoystonParmarModel":
         return (Bound("cb", on=_ON_SURVIVAL),)
     if cls == "ParametricRegressionModel":
-        return (Bound("cb", on=_ON_ALL), _PARAM_CB)
-    if cls in ("FrailtyModel", "ProportionalOddsModel", "CoxFrailtyModel"):
+        wald = (
+            Bound("cb", on=_ON_ALL),
+            _PARAM_CB,
+            Bound(
+                "quantile_cb",
+                point="qf",
+                kwargs={"method": "wald"},
+                label="quantile_cb[wald]",
+                # A baseline on the whole line has its quantile bounded on
+                # its own scale, where an interval at alpha_ci -> 1 is
+                # the estimate +- 1.25e-6 standard errors: more than 1e-5
+                # of a quantile near 0 (GumbelAFT's qf(0.05), -0.147).
+                rtol=1e-4 if case.name.startswith(_WHOLE_LINE) else 1e-8,
+            ),
+        )
+        if case.name not in _REGRESSION_LR_X:
+            return wald
+        lr = dict(
+            kwargs={"method": "lr"},
+            wald=False,
+            nan_ok=True,
+            rtol=1e-3,
+            slow=True,
+        )
+        boot = dict(
+            kwargs={"method": "bootstrap", **_BOOT},
+            wald=False,
+            slow=True,
+        )
+        return (
+            *wald,
+            Bound(
+                "cb",
+                on=_ON_ALL,
+                query=_REGRESSION_LR_X[case.name],
+                label="cb[lr]",
+                **lr,
+            ),
+            Bound("param_cb", kind="param", label="param_cb[lr]", **lr),
+            Bound("quantile_cb", point="qf", label="quantile_cb[lr]", **lr),
+            # The parametric bootstrap (#617): the calls with the same
+            # n_boot and seed share one set of refits.
+            Bound(
+                "cb",
+                on=_ON_ALL,
+                query=_REGRESSION_LR_X[case.name],
+                label="cb[bootstrap]",
+                **boot,
+            ),
+            Bound(
+                "param_cb", kind="param", label="param_cb[bootstrap]", **boot
+            ),
+            Bound(
+                "quantile_cb",
+                point="qf",
+                label="quantile_cb[bootstrap]",
+                **boot,
+            ),
+        )
+    if cls in ("FrailtyModel", "ProportionalOddsModel"):
+        # The profile-likelihood interval (#617), slow as the regression
+        # models' likelihood-ratio bounds are.
+        lr = Bound(
+            "param_cb",
+            kind="param",
+            kwargs={"method": "lr"},
+            label="param_cb[lr]",
+            wald=False,
+            nan_ok=True,
+            rtol=1e-3,
+            slow=True,
+        )
+        return (_PARAM_CB, lr)
+    if cls == "CoxFrailtyModel":
         return (_PARAM_CB,)
     if cls == "BuckleyJamesModel":
         return (
@@ -1323,8 +1440,19 @@ def _bounds(case):
                 wald=False,
             ),
         )
-    if cls in ("ParametricRecurrenceModel", "ProportionalIntensityModel"):
-        return (Bound("cif_cb", point="cif"), _PARAM_CB)
+    if cls == "ParametricRecurrenceModel":
+        return (
+            Bound("cif_cb", point="cif"),
+            Bound("iif_cb", point="iif"),
+            Bound("mtbf_cb", point="mtbf"),
+            _PARAM_CB,
+        )
+    if cls == "ProportionalIntensityModel":
+        return (
+            Bound("cif_cb", point="cif"),
+            Bound("iif_cb", point="iif"),
+            _PARAM_CB,
+        )
     if cls == "RenewalModel":
         return (_PARAM_CB,)
     if cls == "NonParametricCounting":
@@ -1386,6 +1514,18 @@ def _bounds(case):
                 query=((0.0,), (40.0,), (80.0,)),
                 rtol=1e-6,
             ),
+        )
+    if cls == "CopulaModel":
+        # The joint sf and the joint CDF are not complements: one sweep
+        # each, so that cb_transform does not read one as 1 - the other
+        # (#540). The fixture's AMH estimate is on its bound, theta = 1
+        # (the data's Kendall's tau is past the family's 1/3), where no
+        # Wald bound exists: NaN, with a warning, as documented.
+        nan_ok = case.name == "AMHCopula"
+        return (
+            Bound("cb", on=("sf",), nan_ok=nan_ok),
+            Bound("cb", on=("ff",), nan_ok=nan_ok, label="cb[ff]"),
+            replace(_PARAM_CB, nan_ok=nan_ok),
         )
     return ()
 
@@ -1542,7 +1682,7 @@ _FAST_BOUNDS += ("Turnbull", "RoystonParmar", "WeibullPH", "WeibullFrailty")
 _FAST_BOUNDS += ("HPP", "CrowAMSAA", "ProportionalIntensityHPP")
 _FAST_BOUNDS += ("GeneralizedRenewal", "NonParametricCounting")
 _FAST_BOUNDS += ("CauseSpecificMCF", "DegradationAnalysis[linear]")
-_FAST_BOUNDS += ("WienerProcess",)
+_FAST_BOUNDS += ("WienerProcess", "ClaytonCopula")
 
 
 def _with_options(case):
@@ -1559,6 +1699,13 @@ def _with_options(case):
             **exclude,
             "cb_declared": "no covariance: cb and param_cb raise "
             "ValueError, as documented",
+        }
+    if case.name in _PROBABILITY_MODELS:
+        exclude = {
+            **exclude,
+            "cb_declared": "#580: cb, quantile_cb and mean_cb raise "
+            "ValueError, as documented: the bounds are on p (param_cb, "
+            "swept)",
         }
     return replace(
         case,
@@ -1598,7 +1745,7 @@ def _parametric_start(model):
     params = np.array(model.params, dtype=float)
     params[k] = _far(params[k], bounds[k])
     start = ([model.gamma] if model.offset else []) + list(params)
-    start += [model.p] if model.lfp else []
+    start += [model.lfp_p] if model.lfp else []
     return start + ([model.f0] if model.zi else [])
 
 

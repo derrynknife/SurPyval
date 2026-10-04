@@ -11,25 +11,29 @@ separate: its life-model parameter juggling does not fit this shape.
 """
 
 import copy
+import functools
 import warnings
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, Callable, NamedTuple
 
 import autograd.numpy as np
 import numpy.typing as npt
-from autograd import (
-    elementwise_grad,
-    grad,
-    hessian,
-    jacobian,
-    value_and_grad,
-)
-from autograd.differential_operators import make_hvp, make_vjp
+from autograd import elementwise_grad, jacobian
+from autograd.differential_operators import make_vjp
 from scipy.optimize import minimize
 
 from surpyval.univariate.parametric.fitters import (
+    Gradient,
     bounds_convert,
     is_local_minimum,
+    minimize_with_gradient,
     preconditioned_bfgs,
+)
+from surpyval.univariate.parametric.fitters.runaway import (  # noqa: F401
+    LOG_MAX,
+    runaway_coefficients,
+    runaways_in_units,
+    search_derivatives,
 )
 from surpyval.univariate.parametric.parametric_fitter import Boxable, Numeric
 from surpyval.utils import (
@@ -37,12 +41,22 @@ from surpyval.utils import (
     check_covariate_rows,
     finite_covariate_mask,
 )
-from surpyval.utils.deprecation import RenamedAttribute
+from surpyval.utils.covariates import (
+    coefficient_floor,
+    coefficient_names,
+    renamed_coefficient_keys,
+)
+from surpyval.utils.fitter_repr import FitterRepr, baseline_name
 from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
-from ._aliasing import aliased_columns, constant_columns, warn_aliased
+from ._aliasing import (
+    aliased_columns,
+    constant_columns,
+    fit_columns,
+    warn_aliased,
+)
 from ._covariate_link import CovariateLink
 from ._kinds import (
     ACCELERATED_FAILURE_TIME,
@@ -83,8 +97,32 @@ class LogLinearPhi(CovariateLink):
         return ((None, None),) * Z.shape[1]
 
     @staticmethod
-    def make_param_map(Z: npt.NDArray) -> dict[str, int]:
-        return {"beta_" + str(i): i for i in range(Z.shape[1])}
+    def make_param_map(
+        Z: npt.NDArray, taken: "Iterable[str]" = ()
+    ) -> dict[str, int]:
+        """One coefficient per column of ``Z``, named by its column where
+        the fit has the names (:func:`._aliasing.fit_columns`), else
+        ``coef_j``, unique among themselves and ``taken`` (the baseline's
+        parameters; :func:`~surpyval.utils.covariates.coefficient_names`,
+        #614)."""
+        return coefficient_map(Z, taken)
+
+
+def coefficient_map(
+    Z: npt.NDArray, taken: "Iterable[str]" = ()
+) -> dict[str, int]:
+    """:meth:`LogLinearPhi.make_param_map`: one coefficient per column of
+    ``Z``, by name, with its column's number (#614)."""
+    names = coefficient_names(Z.shape[1], fit_columns(), taken)
+    return {name: j for j, name in enumerate(names)}
+
+
+def per_column_map(pmap: dict, p: int) -> bool:
+    """Whether the covariate parameters ``pmap`` were named by a custom
+    ``phi_param_map`` the way coefficients were named before v0.23,
+    ``beta_j`` for column ``j`` of ``p``: a custom link that names them so
+    is treated, as it was, as one coefficient per column."""
+    return pmap == {"beta_{}".format(j): j for j in range(p)}
 
 
 def split_log_linear(
@@ -108,18 +146,31 @@ def make_objective(
     """The optimiser objective every regression fitter used to build
     inline: the fitter's negative log-likelihood evaluated in the
     transformed (unconstrained, fixed-parameters-removed) search space.
+
+    A ``functools.partial`` of a module-level function rather than a
+    closure, so the accelerated life model, which keeps it as ``fun``,
+    pickles (#573).
     """
-
-    def fun(params: npt.NDArray) -> Boxable:
-        return fitter.neg_ll(data, *inv_trans(const(params)))
-
-    return fun
+    return functools.partial(_objective, fitter, data, inv_trans, const)
 
 
-class MirroredDistributionAttrs:
+def _objective(
+    fitter: Any,
+    data: SurpyvalData,
+    inv_trans: Callable,
+    const: Callable,
+    params: npt.NDArray,
+) -> Boxable:
+    """``make_objective``'s objective at ``params``."""
+    return fitter.neg_ll(data, *inv_trans(const(params)))
+
+
+class MirroredDistributionAttrs(FitterRepr):
     """Class-level declarations for the attributes
     :func:`mirror_distribution` sets, so a fitter that inherits this
-    alongside its other mixins has them visible to the type checker."""
+    alongside its other mixins has them visible to the type checker; and
+    the fitter's ``repr``, ``WeibullAFT: accelerated failure time fitter
+    (Weibull baseline)`` (#614)."""
 
     dist: Any
     k_dist: int
@@ -127,9 +178,18 @@ class MirroredDistributionAttrs:
     support: tuple
     parameter_names: list
     param_map: dict
-    # The pre-0.22 name of ``parameter_names``: reads it for one release,
-    # with a DeprecationWarning.
-    param_names = RenamedAttribute("parameter_names")
+    #: The end of the public name of a family's fitter after its
+    #: distribution's, for a fitter without a ``name`` (``WeibullAFT``).
+    name_suffix: str = ""
+
+    def _repr_name(self) -> str:
+        name = getattr(self, "name", None)
+        if isinstance(name, str) and name:
+            return name
+        return str(getattr(self.dist, "name", "")) + self.name_suffix
+
+    def _repr_details(self) -> "list[str]":
+        return baseline_name(self)
 
 
 def mirror_distribution(fitter: Any, distribution: Any) -> None:
@@ -318,9 +378,6 @@ _CENTER_HINT = (
     "Fit with center=True to report the baseline at the covariate means "
     "(model.center) instead, or move the covariates nearer 0."
 )
-
-#: The largest linear predictor exp can take, log(largest float).
-LOG_MAX = float(np.log(np.finfo(float).max))
 
 
 def baseline_at_origin_error(
@@ -550,25 +607,28 @@ def alias_coefficients(
     n: npt.NDArray,
     fixed: dict,
     pmap: dict,
+    per_column: bool = True,
 ) -> dict:
     """``fixed`` with the coefficients the data cannot determine held at
     0 and named, with one warning (#476; see :mod:`._aliasing`).
 
     Only where each coefficient multiplies one column of ``Z``
-    (``beta_j`` for column ``j``). A constant column is aliased where the
-    family has an intercept -- where adding a constant to the linear
-    predictor moves the baseline parameters and nothing else
-    (:data:`ORIGIN_MAPS`, a scale family, as R's ``survreg`` and ``lm``
-    treat an intercept) -- and otherwise only a column of zeros is.
-    Columns whose coefficient the caller fixed are offsets, left out.
+    (``per_column``: the ``j``-th of ``pmap`` for column ``j``). A
+    constant column is aliased where the family has an intercept -- where
+    adding a constant to the linear predictor moves the baseline
+    parameters and nothing else (:data:`ORIGIN_MAPS`, a scale family, as
+    R's ``survreg`` and ``lm`` treat an intercept) -- and otherwise only a
+    column of zeros is. Columns whose coefficient the caller fixed are
+    offsets, left out.
     """
     Z = np.asarray(Z, dtype=float)
     if Z.ndim != 2 or Z.shape[1] == 0 or Z.shape[0] == 0:
         return fixed
     p = Z.shape[1]
-    if pmap != {"beta_{}".format(j): j for j in range(p)}:
+    names = sorted(pmap, key=pmap.__getitem__)
+    if not per_column or sorted(pmap.values()) != list(range(p)):
         return fixed
-    free = np.array([j for j in range(p) if "beta_{}".format(j) not in fixed])
+    free = np.array([j for j in range(p) if names[j] not in fixed])
     if free.size == 0:
         return fixed
     n = np.asarray(n, dtype=float).reshape(-1)
@@ -594,10 +654,23 @@ def alias_coefficients(
             "columns"
         ),
     )
-    names = tuple("beta_{}".format(j) for j in aliased.tolist())
-    out = FixedWithAliased({**fixed, **{name: 0.0 for name in names}})
-    out.aliased = names
+    held = tuple(names[j] for j in aliased.tolist())
+    out = FixedWithAliased({**fixed, **{name: 0.0 for name in held}})
+    out.aliased = held
     return out
+
+
+def check_baseline_support(fitter: Any, data: SurpyvalData) -> None:
+    """Refuse times outside the support of the fitter's baseline
+    distribution (#565), with the univariate fits' check and wording
+    (``OutsideSupportError``, a ``ValueError``), and also a censored time
+    below the support's lower end: a Weibull, Gamma or Exponential AFT
+    took a negative censored time, and its likelihood's derivatives were
+    nan there. A baseline on the whole line (Normal, Gumbel, Logistic)
+    refuses nothing."""
+    check = getattr(fitter.dist, "_check_inside_support", None)
+    if check is not None:
+        check(data, every_row=True)
 
 
 def prepare_regression_fit(
@@ -639,16 +712,31 @@ def prepare_regression_fit(
         Z = np.asarray(Z_in).reshape(-1, 1)
     data, Z = drop_nonfinite_covariates(data, Z)
     data.add_covariates(Z)
+    # After the rows with a missing covariate are dropped (principle 3)
+    check_baseline_support(fitter, data)
 
     fixed = {} if fixed is None else fixed
     Z_data = np.asarray(data.Z)
+    # One coefficient per column, each named by its column or ``coef_j``
+    # (#614), or a custom link's own parameters.
+    if phi_param_map is LogLinearPhi.make_param_map:
+        pmap = coefficient_map(Z_data, fitter.param_map)
+        per_column = True
+    else:
+        pmap = (
+            phi_param_map(Z_data) if callable(phi_param_map) else phi_param_map
+        )
+        per_column = per_column_map(pmap, Z_data.shape[1])
+    if per_column:
+        # The names before v0.23, ``beta_j``, until v0.24
+        fixed = renamed_coefficient_keys(
+            fixed,
+            sorted(pmap, key=pmap.__getitem__),
+            "{}.fit(fixed=...)".format(fitter._repr_name()),
+            fitter.param_map,
+        )
     fixed = alias_coefficients(
-        fitter,
-        kind,
-        Z_data,
-        data.n,
-        fixed,
-        phi_param_map(Z_data) if callable(phi_param_map) else phi_param_map,
+        fitter, kind, Z_data, data.n, fixed, pmap, per_column
     )
     centring = Centring.plan(fitter, kind, Z_data, data.n, fixed, center)
     if centring is not None:
@@ -667,11 +755,10 @@ def prepare_regression_fit(
         *fitter.bounds,
         *(phi_bounds(Z_data) if callable(phi_bounds) else phi_bounds),
     )
-    pmap = phi_param_map(Z_data) if callable(phi_param_map) else phi_param_map
     # The covariate coefficients sit after the distribution parameters in
     # the packed parameter vector, so their map indices must be offset by
     # the number of distribution parameters — otherwise
-    # ``fixed={"beta_0": v}`` silently pins the first *distribution*
+    # ``fixed={"coef_0": v}`` silently pins the first *distribution*
     # parameter instead (#251).
     param_map = {
         **fitter.param_map,
@@ -900,7 +987,10 @@ def assemble_regression_model(
 
 
 def optimise_ph(
-    fun: Callable, init_t: npt.NDArray, quiet: bool = False
+    fun: Callable,
+    init_t: npt.NDArray,
+    quiet: bool = False,
+    floor: "float | npt.ArrayLike" = 1.0,
 ) -> Any:
     """Preconditioned BFGS on the analytic gradient, TNC as the fallback.
 
@@ -931,20 +1021,22 @@ def optimise_ph(
 
     A result that is not verifiably an optimum is flagged
     ``stopped_short``, and warned of unless ``quiet`` (the caller then
-    warns through :func:`finish_search`).
+    warns through :func:`finish_search`). ``floor`` is BFGS's least unit
+    per component (:func:`coefficient_floor`).
     """
-    jac = jacobian(fun)
+    # The value and the gradient from one pass (#593)
+    jac = Gradient(fun)
 
     best = None
     for method in ("BFGS", "TNC", "Nelder-Mead"):
         x0 = init_t if best is None else best.x
         if method == "BFGS":
             res = preconditioned_bfgs(
-                fun, x0, jac=jac, options={"maxiter": 1000}
+                fun, x0, jac=jac, options={"maxiter": 1000}, floor=floor
             )
         elif method == "TNC":
-            res = minimize(
-                fun, x0, method="TNC", jac=jac, options={"maxfun": 1000}
+            res = minimize_with_gradient(
+                fun, x0, (), jac, method="TNC", options={"maxfun": 1000}
             )
         else:
             res = minimize(
@@ -990,463 +1082,10 @@ def warn_if_not_converged(res: Any) -> None:
 
 # -- no finite maximum (#392) -------------------------------------------------
 #
-# A covariate that separates the events from the survivors -- one level of it
-# with no events, say -- gives a likelihood that keeps increasing as its
-# coefficient grows, towards a supremum it never reaches. The optimisers stop
-# wherever the rise has become too small for their tolerances (a WeibullPH
-# coefficient of -16, a PO one of +33), report success, and the fit used to
-# be returned silently. CoxPH detects its own case from the collapse of the
-# information (``cox_ph._warn_if_monotone``); its root-finder runs on until
-# the collapse is complete, whereas these optimisers stop part-way, at a
-# point set by their tolerances, so a fixed collapse ratio cannot tell.
-#
-# Newton's method can. Along a coefficient's profile the log-likelihood of
-# such data approaches its supremum like C - A exp(-s t) (or with a Gaussian
-# tail, for a LogNormal AFT), and at every point on the way the Newton step
-# is as long as the distance over which the curvature itself falls away:
-# the next step is the same length again, and Newton's method never
-# converges. Kantorovich's theorem makes that the test. For the negative
-# log-likelihood f along the profile, the Newton step from the fit is
-# -f'/f'', and Newton's method is guaranteed to converge to a minimum within
-# twice that distance if h = |f'''| |f'| / f''^2 <= 1/2 (the relative change
-# of the curvature over one step, with |f'''| its local bound). At a fit that
-# has reached a maximum the step is at the level of the optimiser's
-# tolerance, and so is h (at most 2e-5 on the ordinary fits of the
-# conformance registry, and 2e-4 over the 1360 refits of their calibration
-# study); on the way to a supremum h is 1 (exactly, for an exponential
-# tail) wherever the optimiser stopped, and the curvature falls in the
-# direction the likelihood rises (f' f''' > 0). A curvature that is zero or
-# negative there is no maximum either: the additive hazards likelihood rises
-# linearly as a no-event level's coefficient falls, without bound.
-#
-# Reading a profile costs about three gradients, traced for Hessian-vector
-# products at the polished point and a quarter of a Newton step either side
-# (#501: it took a third derivative and two full Hessians, two to five times
-# as long on a 100,000-row AFT), so a coefficient's is read only when
-# Newton's method has not already shown the fit to be a maximum in it
-# (``_cleared``, which costs one Hessian, needed for the covariance
-# anyway). The coefficient's part of the
-# Newton step -H^{-1} g is at the level of the optimiser's tolerance at a
-# maximum. On the way to a supremum it is 1/s, however far the optimiser
-# went: write the gradient as H d plus the tail's s A e^{-st} along the flat
-# direction u, d the optimiser's leftover displacement of the other
-# parameters; along u, H d is the curvature s^2 A e^{-st} times d's small
-# component, so the step along u is 1/s plus that component, and the
-# leftover error cannot hide the runaway (which it does on the profile line
-# until polished, see ``_profile``). The coefficient itself is then about t,
-# and s t is the linear predictor the runaway drives, which exp keeps within
-# log(largest float) = 709.8 of 0: beyond it the rows it moves underflow and
-# the likelihood no longer depends on the coefficient at all. So a runaway's
-# step is at least 1/709.8 of its size (measured: 1/100 to 1/5 on every
-# runaway in the conformance registry), and a coefficient with a smaller
-# step has converged. A larger step (at most 1/5900 of the coefficient on
-# the registry's ordinary fits, and on a few of the calibration refits
-# more), or a Hessian that is not positive definite, has the profile read,
-# which only costs time.
+# The check itself, Newton's along each coefficient's profile, is
+# ``runaway_coefficients`` in ``surpyval.univariate.parametric.fitters.
+# runaway``, shared with the univariate maximum-likelihood fit (#584).
 
-
-def search_derivatives(
-    neg_ll: Callable, x: npt.ArrayLike
-) -> "tuple[npt.NDArray, npt.NDArray] | None":
-    """``(H, g)``, the Hessian and gradient of ``neg_ll`` at ``x`` by
-    autograd, from one trace; ``None`` for an objective autograd cannot
-    differentiate. The no-maximum check reads them, and the fitted model
-    keeps the Hessian for its covariance (:func:`keep_information`)."""
-    at = np.asarray(x, dtype=float)
-    try:
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "Output seems independent")
-            hvp, g = make_hvp(neg_ll)(at)
-            H = np.array([hvp(e) for e in np.eye(at.size)], dtype=float)
-            return H, np.asarray(g, dtype=float)
-    except (TypeError, ValueError, ArithmeticError):
-        return None
-
-
-def runaway_coefficients(
-    neg_ll: Callable,
-    x: npt.ArrayLike,
-    coefs: "list[int]",
-    start: "npt.ArrayLike | None" = None,
-    derivatives: "tuple[npt.NDArray, npt.NDArray] | None" = None,
-) -> "list[int]":
-    """The positions in ``coefs`` of the parameters along which the
-    likelihood has no finite maximum near ``x``.
-
-    ``neg_ll`` is the negative log-likelihood the optimiser minimised,
-    differentiable by autograd, ``x`` the point it returned (in its search
-    space), ``coefs`` the positions in ``x`` of the parameters to check
-    (the covariate coefficients) and ``start`` the point the search began
-    from. Each is checked along its profile: the coefficient moves by 1 and
-    the other parameters by the amounts that keep them at their best values
-    for it (to first order), after the other parameters are first brought
-    to their best values for the fitted coefficient (the optimiser stops
-    them only as close as its tolerance, and on a flat profile that residue
-    would swamp its derivatives). Where the profile cannot be formed -- the
-    other parameters have no curvature either, in a fit that has run off in
-    several directions at once -- the coefficient's own axis is used. It
-    runs away when Newton's method cannot converge along that line, the
-    Kantorovich test described above.
-
-    There is no verdict (an empty list) for an objective autograd cannot
-    differentiate, nor along a line on which the derivatives are not
-    finite, or on which the likelihood does not change at all: at ``x``,
-    or, with ``start``, at the start either (see
-    :func:`_flat_at_start`), as it does not along a combination of
-    collinear covariates, whose coefficients are not identified rather than
-    infinite. ``derivatives`` are those of :func:`search_derivatives` at
-    ``x``, if the caller has them.
-    """
-    at = np.asarray(x, dtype=float)
-    if derivatives is None:
-        derivatives = search_derivatives(neg_ll, at)
-    if derivatives is None:
-        return []
-    H, g = derivatives
-    cleared = _cleared(at, H, g)
-    out = []
-    at_start: "tuple[Any] | None" = None  # derivatives at start, if needed
-    for k, j in enumerate(coefs):
-        if cleared[j]:
-            continue
-        axis = np.zeros(at.size)
-        axis[j] = 1.0
-        lines = [(at, axis)]
-        runaway = None
-        with np.errstate(all="ignore"):
-            # The profile's trial points can sit where the hazard is 0
-            # (log 0): a non-finite value ends its polish, quietly.
-            if np.all(np.isfinite(H)):
-                lines.insert(0, _profile(neg_ll, at, H, j))
-            for point, v in lines:
-                d = _line_derivatives(neg_ll, point, v)
-                if d is None:
-                    continue
-                if d[0] != 0.0:
-                    runaway = _no_convergence(neg_ll, point, v, d, j, H)
-                if runaway is not None or d[0] == 0.0:
-                    break
-        if runaway:
-            if start is None:
-                out.append(k)
-                continue
-            if at_start is None:
-                at_start = (_start_derivatives(neg_ll, start),)
-            if not _flat_at_start(neg_ll, start, v, at_start[0]):
-                out.append(k)
-    return out
-
-
-def _cleared(x: npt.NDArray, H: npt.NDArray, g: npt.NDArray) -> npt.NDArray:
-    """Which parameters Newton's method shows to be at a maximum at ``x``,
-    ``H`` and ``g`` the Hessian and gradient there: those whose part of the
-    Newton step ``-H^{-1} g`` is no more than ``1 / log(largest float)`` of
-    their size, which no parameter running off to a supremum can be (see
-    above).
-
-    Parameters the likelihood does not depend on at ``x`` to second order
-    (a zero gradient and Hessian row, as a frailty variance held at its
-    limit of 0 has) are left out of the step. None is cleared where the
-    Hessian of the others is not finite and positive definite: a maximum
-    has one, and a runaway's may not (a linear rise has no curvature)."""
-    cleared = np.zeros(x.size, dtype=bool)
-    if not (np.all(np.isfinite(H)) and np.all(np.isfinite(g))):
-        return cleared
-    used = np.flatnonzero(np.any(H != 0, axis=1) | (g != 0))
-    H_u = H[np.ix_(used, used)]
-    try:
-        np.linalg.cholesky(H_u)
-        step = np.linalg.solve(H_u, g[used])
-    except np.linalg.LinAlgError:
-        return cleared
-    with np.errstate(all="ignore"):
-        # A runaway's Newton step is at least 1 / LOG_MAX of its
-        # coefficient's size (see above).
-        cleared[used] = np.abs(step) * LOG_MAX <= np.abs(x[used])
-    return cleared
-
-
-def _no_convergence(
-    neg_ll: Callable,
-    point: npt.NDArray,
-    v: npt.NDArray,
-    d: "tuple[float, ...]",
-    j: int,
-    H: npt.NDArray,
-) -> "bool | None":
-    """Whether Newton's method cannot be shown to converge along the
-    profile of parameter ``j`` through ``point`` (direction ``v``, with
-    ``v[j] = 1``), where the objective's first two derivatives are ``d``:
-    it has no curvature, or Kantorovich's ``h = |f'''| |f'| / f''^2`` is
-    above 1/2 with the curvature falling the way the likelihood rises (see
-    above). ``H`` is the Hessian at the fit, near ``point``.
-
-    ``f'''`` is the rate of change of the profile's curvature, the Schur
-    complement of the Hessian in ``j``, from the curvature a quarter of a
-    Newton step either side. Autograd's third derivative along the line
-    was rounding noise at a stopped runaway, where the derivatives are
-    near 1e-7: its sign changed with the build, so a WeibullAFT with a
-    fixed coefficient warned on one Python and not on another. The
-    curvature needs second derivatives only, which are well conditioned
-    there. Where it cannot be formed, the line's own third derivative is
-    used, and ``None`` (no verdict along this line) is returned where that
-    is not finite either."""
-    d1, d2 = d[:2]
-    if not d2 > 0.0:
-        return True
-    half = 0.125 * abs(d1 / d2)
-    d3 = None
-    if half > 0.0:
-        ahead = _profile_curvature(neg_ll, point + half * v, j, H, v)
-        behind = _profile_curvature(neg_ll, point - half * v, j, H, v)
-        if ahead is not None and behind is not None:
-            d3 = (ahead - behind) / (2.0 * half)
-    if d3 is None:
-        line = _line_derivatives(neg_ll, point, v, order=3)
-        if line is None:
-            return None
-        d3 = line[2]
-    return d1 * d3 > 0.5 * d2**2
-
-
-def _profile_curvature(
-    neg_ll: Callable,
-    point: npt.NDArray,
-    j: int,
-    H: "npt.NDArray | None" = None,
-    v: "npt.NDArray | None" = None,
-) -> "float | None":
-    """The curvature of the profile of parameter ``j`` at ``point``: the
-    Schur complement ``H_jj - H_jo H_oo^+ H_oj`` of its Hessian, over the
-    other parameters the likelihood depends on there (a frailty variance
-    held at its limit has a zero row). ``None`` where the Hessian is not
-    finite or cannot be taken.
-
-    With ``H``, the Hessian at a point near ``point`` (the fit), and ``v``
-    the profile direction there, the complement is found without forming
-    the Hessian at ``point`` (:func:`_schur_by_products`), which costs
-    one or two Hessian-vector products instead of one per parameter; the
-    Hessian is formed where that does not converge."""
-    if H is not None and v is not None:
-        S = _schur_by_products(neg_ll, point, j, H, v)
-        if S is not None:
-            return S
-    derivatives = search_derivatives(neg_ll, point)
-    if derivatives is None or not np.all(np.isfinite(derivatives[0])):
-        return None
-    H = derivatives[0]
-    others = [i for i in range(H.shape[0]) if i != j and np.any(H[i] != 0.0)]
-    if not others:
-        return float(H[j, j])
-    H_oo = H[np.ix_(others, others)]
-    H_oj = H[others, j]
-    return float(H[j, j] - H_oj @ np.linalg.pinv(H_oo) @ H_oj)
-
-
-#: The relative accuracy to which :func:`_schur_by_products` finds a
-#: profile's curvature: far below the relative change of the curvature over
-#: a quarter of a Newton step that the Kantorovich test reads (``h / 4``,
-#: about 1/4 at a runaway, against a threshold of 1/8), and at the level of
-#: the rounding of a full Hessian's Schur complement, which loses digits to
-#: cancellation where the profile is flat (1e-8 of it on a runaway in
-#: ``test_no_maximum.py``, where the products are exact).
-_SCHUR_RTOL = 1e-12
-
-
-def _schur_by_products(
-    neg_ll: Callable,
-    point: npt.NDArray,
-    j: int,
-    H: npt.NDArray,
-    v: npt.NDArray,
-) -> "float | None":
-    """The Schur complement of :func:`_profile_curvature` at ``point``, by
-    Hessian-vector products there. It is the minimum of ``w' H(point) w``
-    over the ``w`` with ``w_j = 1`` (and 0 for a parameter whose row of
-    ``H`` is zero), which conjugate gradients find from the fit's profile
-    direction ``v``, preconditioned by ``H``'s block of the other
-    parameters, the Hessian a short step away. Near a maximum ``v`` is the
-    answer to rounding and one product is taken; on a runaway's plateau,
-    a few. The error in the minimum is ``r' H_oo^{-1} r`` for the residual
-    ``r``, which is run down to :data:`_SCHUR_RTOL` of it. ``None`` where
-    a product is not finite or it has not converged in as many steps as
-    there are parameters, plus one."""
-    others = [i for i in range(H.shape[0]) if i != j and np.any(H[i] != 0.0)]
-    try:
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "Output seems independent")
-            hvp = make_hvp(neg_ll)(point)[0]
-            w = np.zeros(point.size)
-            w[j] = 1.0
-            w[others] = v[others]
-            Hw = np.asarray(hvp(w), dtype=float)
-            if not others:
-                return float(Hw[j]) if np.isfinite(Hw[j]) else None
-            M = np.linalg.pinv(H[np.ix_(others, others)])
-            r = -Hw[others]
-            z = M @ r
-            rz = float(r @ z)
-            p = z
-            for _ in range(len(others) + 2):
-                S = float(w @ Hw)
-                if not (np.isfinite(S) and np.all(np.isfinite(Hw))):
-                    return None
-                if abs(rz) <= _SCHUR_RTOL * abs(S):
-                    return S
-                u = np.zeros(point.size)
-                u[others] = p
-                Hu = np.asarray(hvp(u), dtype=float)
-                pAp = float(p @ Hu[others])
-                if not (np.isfinite(pAp) and pAp > 0.0 and rz > 0.0):
-                    return None
-                alpha = rz / pAp
-                w = w + alpha * u
-                Hw = Hw + alpha * Hu
-                r = r - alpha * Hu[others]
-                z = M @ r
-                rz, rz_old = float(r @ z), rz
-                p = z + (rz / rz_old) * p
-    except (TypeError, ValueError, ArithmeticError, np.linalg.LinAlgError):
-        return None
-    return None
-
-
-def _start_derivatives(
-    neg_ll: Callable, start: npt.ArrayLike
-) -> "tuple[npt.NDArray, npt.NDArray] | None":
-    """The gradient and Hessian of ``neg_ll`` at ``start``, for
-    :func:`_flat_at_start`; ``None`` where they cannot be taken or are not
-    finite."""
-    x0 = np.asarray(start, dtype=float)
-    try:
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "Output seems independent")
-            g0 = np.asarray(grad(neg_ll)(x0), dtype=float)
-            H0 = np.asarray(hessian(neg_ll)(x0), dtype=float)
-    except (TypeError, ValueError, ArithmeticError):
-        return None
-    if not (np.all(np.isfinite(g0)) and np.all(np.isfinite(H0))):
-        return None
-    return g0, H0
-
-
-def _flat_at_start(
-    neg_ll: Callable,
-    start: npt.ArrayLike,
-    v: npt.NDArray,
-    derivatives: Any = False,
-) -> bool:
-    """Whether ``neg_ll`` has neither slope nor curvature along ``v`` at
-    ``start``, to rounding: its derivatives along ``v`` within ``size *
-    eps`` of the size of its gradient and Hessian there (the tolerance of
-    ``numpy.linalg.matrix_rank``), so that ``v`` is a direction the
-    likelihood does not depend on at all. A likelihood running off to a
-    supremum does depend on it, most of all near the start; one whose
-    covariates are collinear (each level of a factor coded, with no
-    intercept) does not, anywhere, and is no concern of this check (CoxPH
-    warns of it as collinear). ``derivatives`` are those of
-    :func:`_start_derivatives` at ``start``, if the caller has them."""
-    if derivatives is False:
-        derivatives = _start_derivatives(neg_ll, start)
-    if derivatives is None:
-        return False
-    g0, H0 = derivatives
-    tol = g0.size * float(np.finfo(float).eps)
-    size = float(np.dot(v, v))
-    slope = abs(float(np.dot(g0, v)))
-    curvature = abs(float(v @ H0 @ v))
-    return bool(
-        slope <= tol * np.linalg.norm(g0) * np.sqrt(size)
-        and curvature <= tol * np.linalg.norm(H0, 2) * size
-    )
-
-
-def _profile(
-    neg_ll: Callable, x: npt.NDArray, H: npt.NDArray, j: int
-) -> "tuple[npt.NDArray, npt.NDArray]":
-    """``(point, direction)``: parameter ``j``'s profile line (see
-    :func:`runaway_coefficients`), with ``H`` the Hessian at ``x``. The
-    direction is not finite where it cannot be found."""
-    rest = [i for i in range(x.size) if i != j]
-    v = np.zeros(x.size)
-    v[j] = 1.0
-    point = x.copy()
-    if not rest:
-        return point, v
-    try:
-        # The pseudo-inverse: a parameter with no curvature to rounding (a
-        # frailty variance at its boundary of 0) is not moved.
-        inv_rr = np.linalg.pinv(H[np.ix_(rest, rest)])
-        v[rest] = -inv_rr @ H[rest, j]
-        # Newton steps on the other parameters, with the coefficient held
-        # and their Hessian held at its value at x; a step that does not
-        # lower the objective ends it (it has converged to rounding, or the
-        # Hessian is no guide there).
-        gradient = grad(neg_ll)
-        f0 = float(neg_ll(point))
-        for _ in range(_POLISH_STEPS):
-            step = inv_rr @ gradient(point)[rest]
-            trial = point.copy()
-            trial[rest] = trial[rest] - step
-            f1 = float(neg_ll(trial))
-            if not (np.isfinite(f1) and f1 < f0):
-                break
-            point, f0 = trial, f1
-    except (TypeError, ValueError, ArithmeticError, np.linalg.LinAlgError):
-        v[rest] = np.nan
-    return point, v
-
-
-def _line_derivatives(
-    neg_ll: Callable, point: npt.NDArray, v: npt.NDArray, order: int = 2
-) -> "tuple[float, ...] | None":
-    """The first ``order`` (2 or 3) derivatives of ``neg_ll`` at ``point``
-    along ``v``, or ``None`` where they are not finite (or cannot be
-    taken). The third is taken only where :func:`_no_convergence` cannot
-    form the profile's curvature: it costs several times the first two
-    (#501)."""
-    if not np.all(np.isfinite(v)):
-        return None
-    moving = v != 0
-
-    def line(t: Any) -> Any:
-        return neg_ll(point + t * v)
-
-    def moving_only(t: Any) -> Any:
-        # The parameters that do not move held as constants, so that a
-        # derivative that is not finite in one of them (a Gamma baseline's
-        # shape near 0) cannot reach the line's.
-        return neg_ll(
-            np.array(
-                [p + t * u if m else p for p, u, m in zip(point, v, moving)]
-            )
-        )
-
-    out: "tuple[float, ...]"
-    for along in (line,) if moving.all() else (line, moving_only):
-        try:
-            with warnings.catch_warnings():
-                # autograd says so of a derivative that is constant (a
-                # likelihood linear along the line); it is 0, not a fault
-                warnings.filterwarnings("ignore", "Output seems independent")
-                if order == 2:
-                    d1, d2 = value_and_grad(grad(along))(0.0)
-                    out = float(d1), float(d2)
-                else:
-                    d1 = grad(along)(0.0)
-                    d2, d3 = value_and_grad(grad(grad(along)))(0.0)
-                    out = float(d1), float(d2), float(d3)
-        except (TypeError, ValueError, ArithmeticError):
-            return None
-        if np.all(np.isfinite(out)):
-            return out
-    return None
-
-
-#: The most Newton steps taken on the other parameters before a profile is
-#: read (see ``_profile``); they start within the optimiser's
-#: tolerance of their optimum, and two or three reach rounding.
-_POLISH_STEPS = 10
 
 #: What the warning says (through :func:`warn_no_maximum`), with the
 #: coefficients' numbers.
@@ -1473,9 +1112,32 @@ def free_coefficients(
     parameters first, in ``bounds_convert``'s order) and its number in the
     model's ``phi_params``."""
     k_dist = len(fitter.param_map)
-    names = [*fitter.param_map, *sorted(pmap, key=pmap.__getitem__)]
-    free = [i for i, name in enumerate(names) if name not in fixed]
+    free = free_parameters(fitter, fixed, pmap)
     return [(pos, i - k_dist) for pos, i in enumerate(free) if i >= k_dist]
+
+
+def free_parameters(fitter: Any, fixed: dict, pmap: dict) -> "list[int]":
+    """The index, among all the model's parameters (distribution parameters
+    first, then the coefficients in ``pmap``'s order), of each that is not
+    ``fixed``, in the order of the search vector."""
+    names = [*fitter.param_map, *sorted(pmap, key=pmap.__getitem__)]
+    return [i for i, name in enumerate(names) if name not in fixed]
+
+
+def one_sided_positions(
+    bounds: "tuple | list", free: "Iterable[int]"
+) -> "tuple[int, ...]":
+    """The positions in the search vector of the free parameters (``free``,
+    their indices into ``bounds``, as ``bounds_convert``'s ``not_fixed``)
+    that have exactly one bound, which ``bounds_convert`` searches as the
+    log of their distance from it within a unit and linearly beyond: the
+    no-maximum check judges them on the log scale throughout
+    (``runaways_in_units``, #628)."""
+    return tuple(
+        pos
+        for pos, i in enumerate(free)
+        if (bounds[i][0] is None) != (bounds[i][1] is None)
+    )
 
 
 class SearchVerdict(NamedTuple):
@@ -1503,10 +1165,12 @@ def is_verified(
     derivatives: "tuple[npt.NDArray, npt.NDArray] | None",
     n_obs: float,
     held: "tuple[int, ...]" = (),
+    floor: "float | npt.ArrayLike" = 1.0,
 ) -> bool:
     """Whether ``x`` is a verified minimum of the objective whose Hessian
     and gradient there are ``derivatives`` (:func:`search_derivatives`):
-    the test of ``is_local_minimum``, per observation (``n_obs``), on the
+    the test of ``is_local_minimum``, per observation (``n_obs``) and in
+    units of ``max(|x|, floor)`` (:func:`coefficient_floor`), on the
     components of ``x`` other than ``held`` -- a parameter at a boundary of
     its space, whose own condition the caller has checked -- and not
     differentiating again."""
@@ -1516,11 +1180,13 @@ def is_verified(
     at = np.asarray(x, dtype=float)
     keep = [i for i in range(at.size) if i not in held]
     sub = np.ix_(keep, keep)
+    floors = np.broadcast_to(np.asarray(floor, dtype=float), at.shape)
     return is_local_minimum(
         lambda _: 0.0,  # (only the derivatives are read)
         lambda _: g[keep],
         lambda _: H[sub],
         at[keep],
+        floor=floors[keep],
         obj_scale=n_obs,
     )
 
@@ -1533,6 +1199,8 @@ def judge_search(
     n_obs: float = 1.0,
     verified: "bool | None" = None,
     held: "tuple[int, ...]" = (),
+    floor: "float | npt.ArrayLike" = 1.0,
+    one_sided: "tuple[int, ...]" = (),
 ) -> SearchVerdict:
     """What the optimiser's answer ``res`` for the objective ``fun``, from
     ``start``, is (principles 12 and 13), without a word: a likelihood with
@@ -1551,13 +1219,19 @@ def judge_search(
     ``quiet=True``) is usually rescued that way; an ordinary fit is already
     verified and is not touched. An objective autograd cannot differentiate
     keeps the optimiser's verdict: ``"unverified"`` if it stopped short,
-    else ``"unknown"``."""
+    else ``"unknown"``. ``floor`` is each component's least unit for the
+    check and the polish (:func:`coefficient_floor`), and ``one_sided``
+    the positions of the parameters with one bound
+    (:func:`one_sided_positions`), which the no-maximum check judges on the
+    log scale (:func:`runaways_in_units`)."""
     if not (np.isfinite(res.fun) and np.all(np.isfinite(res.x))):
         # No answer to judge (``require_finite_fit`` refuses it)
         return SearchVerdict(res, "unverified", None, [])
     derivatives = search_derivatives(fun, res.x)
     positions = [pos for pos, _ in coefs]
-    runaway = runaway_coefficients(fun, res.x, positions, start, derivatives)
+    runaway = runaways_in_units(
+        fun, res.x, positions, start, derivatives, floor, one_sided
+    )
     if runaway:
         numbers = [coefs[k][1] for k in runaway]
         return SearchVerdict(res, "no finite maximum", derivatives, numbers)
@@ -1566,10 +1240,10 @@ def judge_search(
             stopped = getattr(res, "stopped_short", False)
             state = "unverified" if stopped else "unknown"
             return SearchVerdict(res, state, None, [])
-        verified = is_verified(res.x, derivatives, n_obs, held)
+        verified = is_verified(res.x, derivatives, n_obs, held, floor)
         if not verified:
             res, derivatives, verified = _polish(
-                fun, res, derivatives, n_obs, held
+                fun, res, derivatives, n_obs, held, floor
             )
     state = "verified" if verified else "unverified"
     return SearchVerdict(res, state, derivatives, [])
@@ -1581,6 +1255,7 @@ def _polish(
     derivatives: "tuple[npt.NDArray, npt.NDArray] | None",
     n_obs: float,
     held: "tuple[int, ...]",
+    floor: "float | npt.ArrayLike" = 1.0,
 ) -> "tuple[Any, tuple[npt.NDArray, npt.NDArray] | None, bool]":
     """``(res, derivatives, verified)`` after a BFGS polish of ``res``,
     kept where it is no worse (see :func:`judge_search`)."""
@@ -1588,7 +1263,7 @@ def _polish(
         warnings.filterwarnings("ignore", "Output seems independent")
         try:
             polish = preconditioned_bfgs(
-                fun, res.x, (), jacobian(fun), obj_scale=n_obs
+                fun, res.x, (), Gradient(fun), floor=floor, obj_scale=n_obs
             )
         except (TypeError, ValueError, ArithmeticError):
             polish = None
@@ -1600,7 +1275,11 @@ def _polish(
     ):
         res = polish
         derivatives = search_derivatives(fun, res.x)
-    return res, derivatives, is_verified(res.x, derivatives, n_obs, held)
+    return (
+        res,
+        derivatives,
+        is_verified(res.x, derivatives, n_obs, held, floor),
+    )
 
 
 def say_verdict(
@@ -1636,13 +1315,18 @@ def finish_search(
     verified: "bool | None" = None,
     what: str = "The maximum-likelihood search",
     held: "tuple[int, ...]" = (),
+    floor: "float | npt.ArrayLike" = 1.0,
+    one_sided: "tuple[int, ...]" = (),
 ) -> SearchVerdict:
     """:func:`judge_search`, then its one warning (:func:`say_verdict`),
     for a fit whose model does not depend on the polish (or is built after
-    it). Returns the verdict: its ``res``, its ``maximum`` for the model,
-    and the Hessian and gradient of ``fun`` at ``res.x`` (``None`` where
-    autograd cannot take them), for :func:`keep_information`."""
-    verdict = judge_search(fun, res, coefs, start, n_obs, verified, held)
+    it), with ``floor`` and ``one_sided`` as there. Returns the verdict:
+    its ``res``, its ``maximum`` for the model, and the Hessian and
+    gradient of ``fun`` at ``res.x`` (``None`` where autograd cannot take
+    them), for :func:`keep_information`."""
+    verdict = judge_search(
+        fun, res, coefs, start, n_obs, verified, held, floor, one_sided
+    )
     say_verdict(verdict, what)
     return verdict
 
@@ -1736,7 +1420,10 @@ def keep_information(
 
 
 def optimise_nm_tnc(
-    fun: Callable, init_t: npt.NDArray, quiet: bool = False
+    fun: Callable,
+    init_t: npt.NDArray,
+    quiet: bool = False,
+    floor: "float | npt.ArrayLike" = 1.0,
 ) -> Any:
     """AFT/PO's historical ladder: Nelder-Mead, then TNC kept only on
     success -- and, when that ladder has not reached a stationary point,
@@ -1755,10 +1442,10 @@ def optimise_nm_tnc(
     derivative-free evaluations on a 5-covariate Weibull AFT, where the
     gradient ladder needs a few dozen and reaches the same maximum 4-6x
     sooner (#499). A result it cannot verify falls through to the ladder
-    below, unchanged.
+    below, unchanged. ``floor`` is passed to :func:`optimise_ph`.
     """
     if _gradient(fun, init_t) is not None:
-        fast = optimise_ph(fun, init_t, quiet=True)
+        fast = optimise_ph(fun, init_t, quiet=True, floor=floor)
         stopped_short = getattr(fast, "stopped_short", False)
         if np.isfinite(fast.fun) and not stopped_short:
             return fast
@@ -1778,7 +1465,7 @@ def optimise_nm_tnc(
     if best.success and _is_stationary(g, best.fun):
         return best
     # (optimise_ph warns if it cannot converge, unless quiet.)
-    polished = optimise_ph(fun, best.x, quiet)
+    polished = optimise_ph(fun, best.x, quiet, floor)
     if np.isfinite(polished.fun) and polished.fun <= best.fun:
         return polished
     best.stopped_short = getattr(polished, "stopped_short", False)
@@ -1867,20 +1554,30 @@ def fit_log_linear(
         centring,
     ) = prep
 
+    coefs = free_coefficients(fitter, fixed, pmap)
+    # Each coefficient searched and judged in its own covariate's units
+    # (#577); a custom ``phi``'s parameters need not be one per column.
+    floor = (
+        coefficient_floor(len(init_t), coefs, data.Z) if log_linear else 1.0
+    )
     with np.errstate(all="ignore"):
 
         fun = make_objective(fitter, data, inv_trans, const)
 
-        res = optimiser(fun, init_t, quiet=True)
+        res = optimiser(fun, init_t, quiet=True, floor=floor)
 
         # What the search reached (#392), its answer polished where it was
         # not a verified maximum; said once the model is built.
         verdict = judge_search(
             fun,
             res,
-            free_coefficients(fitter, fixed, pmap),
+            coefs,
             init_t,
             float(np.sum(data.n)),
+            floor=floor,
+            one_sided=one_sided_positions(
+                bounds, free_parameters(fitter, fixed, pmap)
+            ),
         )
         res = verdict.res
 

@@ -68,10 +68,12 @@ def test_qf_outside_the_unit_interval_is_nan():
         ((0, None), (0, None)),
         (0, np.inf),
     )
-    got = dist.qf(np.array([-0.1, 1.5]), 10.0, 3.0)
-    with np.errstate(all="ignore"):
-        # the Weibull's own qf warns as it goes
+    # One warning from every qf there (#611), not numpy's.
+    with pytest.warns(UserWarning, match=r"outside \[0, 1\]"):
+        got = dist.qf(np.array([-0.1, 1.5]), 10.0, 3.0)
+    with pytest.warns(UserWarning, match=r"outside \[0, 1\]"):
         assert np.isnan(surv.Weibull.qf(np.array([-0.1]), 10.0, 3.0)).all()
+    with np.errstate(all="ignore"):
         want = surv.Weibull.qf(np.array([0.0, 0.5, 1.0]), 10.0, 3.0)
     assert np.isnan(got).all()
     np.testing.assert_allclose(

@@ -54,6 +54,9 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.univariate.regression._aliasing import dataframe_covariates
+from surpyval.utils.deprecation import RenamedToMethod
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import safe_inv
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -65,6 +68,8 @@ from .._aliasing import (
     warn_aliased,
 )
 from .._concordance import ConcordanceMixin
+from .._prediction import ConditionalSurvivalMixin
+from .._summary import coefficient_names
 from ..regression_data import (
     LinearPredictorMixin,
     design_matrix_from_df,
@@ -135,7 +140,10 @@ def _aliased(
 
 
 class AdditiveHazardsModel(
-    LinearPredictorMixin, ConcordanceMixin, SerialisableMixin
+    ConditionalSurvivalMixin,
+    LinearPredictorMixin,
+    ConcordanceMixin,
+    SerialisableMixin,
 ):
     """
     A fitted Lin & Ying additive hazards model, returned by
@@ -171,16 +179,23 @@ class AdditiveHazardsModel(
 
     @property
     def parameter_names(self) -> list[str]:
-        """The names of ``params``, entry by entry: ``beta_0``,
-        ``beta_1``, ... for the covariate coefficients, as in the
-        parametric regression models."""
-        return ["beta_{}".format(i) for i in range(len(self.params))]
+        """The names of ``params``, entry by entry: each covariate's
+        column (a formula, ``fit_from_df`` or a DataFrame ``Z``), else
+        ``coef_0``, ``coef_1``, ... (#614), as in the parametric
+        regression models."""
+        return coefficient_names(self, len(self.params))
 
     # Fitted quantities set by ``AdditiveHazards.fit``.
     beta: npt.NDArray
     params: npt.NDArray
-    cov: npt.NDArray
-    se: npt.NDArray
+    #: The coefficients' covariance, ``covariance()`` (#605).
+    _covariance: npt.NDArray
+    #: ``covariance()``'s name before v0.23, for one release.
+    cov = RenamedToMethod("covariance", "_covariance")
+    #: The coefficients' standard errors, ``standard_errors()``.
+    _se: npt.NDArray
+    #: ``standard_errors()``'s name before v0.23, for one release (#613).
+    se = RenamedToMethod("standard_errors", "_se")
     p_values: npt.NDArray
     x: npt.NDArray
     h0: npt.NDArray
@@ -232,8 +247,8 @@ class AdditiveHazardsModel(
             + "\nParameterization    : Semi-Parametric"
             + "\nParameters          :\n"
         )
-        for i, p in enumerate(self.beta):
-            out += "   beta_{i}  :  {p}\n".format(i=i, p=p)
+        for name, p in zip(self.parameter_names, self.beta):
+            out += "   {}  :  {}\n".format(name, p)
         return out
 
     # -- serialisation -----------------------------------------------------
@@ -262,8 +277,9 @@ class AdditiveHazardsModel(
             "x": np.asarray(self.x, dtype=float).tolist(),
             "h0": np.asarray(self.h0, dtype=float).tolist(),
             "H0": np.asarray(self.H0, dtype=float).tolist(),
-            "cov": np.asarray(self.cov, dtype=float).tolist(),
-            "se": np.asarray(self.se, dtype=float).tolist(),
+            # The key every model's dict stores it under (#605).
+            "covariance": np.asarray(self._covariance, dtype=float).tolist(),
+            "se": np.asarray(self._se, dtype=float).tolist(),
         }
         if getattr(self, "p_values", None) is not None:
             out["p_values"] = np.asarray(self.p_values, dtype=float).tolist()
@@ -291,8 +307,11 @@ class AdditiveHazardsModel(
         out.x = np.array(model_dict["x"], dtype=float)
         out.h0 = np.array(model_dict["h0"], dtype=float)
         out.H0 = np.array(model_dict["H0"], dtype=float)
-        out.cov = np.array(model_dict["cov"], dtype=float)
-        out.se = np.array(model_dict["se"], dtype=float)
+        # "cov" is the key of a dict written before v0.23.
+        out._covariance = np.array(
+            model_dict.get("covariance", model_dict.get("cov")), dtype=float
+        )
+        out._se = np.array(model_dict["se"], dtype=float)
         if "p_values" in model_dict:
             out.p_values = np.array(model_dict["p_values"], dtype=float)
         if "drift" in model_dict:
@@ -473,15 +492,18 @@ class AdditiveHazardsModel(
         return self.hf(x, Z) * self.sf(x, Z)
 
     def standard_errors(self) -> npt.NDArray:
-        """Standard errors of the coefficients (Lin-Ying sandwich)."""
-        return self.se
+        """Standard errors of the coefficients (Lin-Ying sandwich), the
+        square roots of the diagonal of :meth:`covariance`. ``se``, the
+        attribute before v0.23, still gives them, with a
+        ``DeprecationWarning``, until v0.24."""
+        return self._se
 
     def covariance(self) -> npt.NDArray:
         """Covariance matrix of the coefficients (Lin-Ying sandwich)."""
-        return self.cov
+        return self._covariance
 
 
-class AdditiveHazards_:
+class AdditiveHazards_(FitterRepr):
     """
     The Lin & Ying semi-parametric additive hazards model: the covariates
     *add* a constant risk difference to a baseline hazard that is left to
@@ -497,6 +519,10 @@ class AdditiveHazards_:
     For a parametric baseline see the ``AH`` family.
     """
 
+    #: The ``repr`` (#614)
+    fitter_kind = "semi-parametric additive hazards fitter"
+
+    @dataframe_covariates
     def fit(
         self,
         x: npt.ArrayLike,
@@ -546,7 +572,7 @@ class AdditiveHazards_:
         >>> c = (x > 15).astype(int)  # follow-up ends at 15
         >>> x = np.minimum(x, 15)
         >>> model = AdditiveHazards.fit(x, Z, c=c)
-        >>> model.beta.round(4), model.se.round(4)
+        >>> model.beta.round(4), model.standard_errors().round(4)
         (array([0.0291]), array([0.0162]))
         >>> model.sf([5, 10], [[1]]).round(4)
         array([0.4465, 0.2387])
@@ -640,8 +666,8 @@ class AdditiveHazards_:
         model = AdditiveHazardsModel()
         model.beta = copy(beta)
         model.params = copy(beta)
-        model.cov = cov
-        model.se = se
+        model._covariance = cov
+        model._se = se
         model.p_values = p_values
         model.x = unique_x
         model.h0 = dLambda

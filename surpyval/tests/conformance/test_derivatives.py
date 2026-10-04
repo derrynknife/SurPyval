@@ -68,6 +68,7 @@ from surpyval.tests.conformance.registry import (
     cases_for,
     fitted,
     refit,
+    skip_without_finite_maximum,
 )
 
 # The finite-difference step, in standard errors of each parameter.
@@ -178,7 +179,7 @@ def _parametric(model, label=""):
 
     def f_natural(phi):
         # (*params, p?, f0?) with the offset held, as the covariance is
-        p = phi[k] if model.lfp else model.p
+        p = phi[k] if model.lfp else model.lfp_p
         f0 = phi[-1] if model.zi else model.f0
         return model.dist._neg_ll_func(
             model.surv_data, *phi[:k], model.gamma, f0, p
@@ -267,7 +268,7 @@ def _cox(model, label=""):
         return np.atleast_1d(score), np.atleast_2d(H)
 
     at = np.asarray(model.params, dtype=float)
-    return [(label + " (analytic)", model.neg_ll, at, derivatives, None)]
+    return [(label + " (analytic)", model.neg_ll_of, at, derivatives, None)]
 
 
 def _competing_parametric(model, label=""):
@@ -320,6 +321,7 @@ OBJECTIVES = {
     cases_for("derivatives", where=lambda c: c.model_class in OBJECTIVES),
 )
 def test_likelihood_derivatives_agree_with_finite_differences(case):
+    skip_without_finite_maximum(case)
     tol = _tolerance(case)
     failures = []
     for label, f, at, derivatives, reported in OBJECTIVES[case.model_class](
@@ -347,13 +349,14 @@ def test_likelihood_derivatives_agree_with_finite_differences(case):
 def _has_covariance(case):
     if case.model_class != "surpyval.Parametric":
         return False
-    return getattr(fitted(case), "cov_matrix", None) is not None
+    return getattr(fitted(case), "_covariance", None) is not None
 
 
 @pytest.mark.parametrize(
     "case", cases_for("derivatives", needs=("sf",), where=_has_covariance)
 )
 def test_delta_method_gradients_agree_with_finite_differences(case):
+    skip_without_finite_maximum(case)
     model = fitted(case)
     ctx = model._cb_context()
     se = np.sqrt(np.clip(np.diag(ctx.cov), 0, None))

@@ -15,7 +15,7 @@ import warnings
 import numpy as np
 import pytest
 from scipy import stats
-from scipy.optimize import minimize
+from scipy.optimize import brentq, minimize
 from scipy.special import gammainc
 
 from surpyval.degradation import (
@@ -165,6 +165,44 @@ def test_gamma_predict_rul():
     assert isinstance(rul, ProcessRUL)
     lo, hi = rul.rul_interval
     assert lo < rul.rul < hi
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        WienerProcessModel(mu=0.5, sigma=0.8, threshold=100),
+        GammaProcessModel(alpha=2.0, beta=4.0, threshold=100),
+    ],
+    ids=["wiener", "gamma"],
+)
+def test_585_process_quantiles_are_found_all_at_once(model, monkeypatch):
+    # qf (and the gamma process's random) ran one brentq per probability,
+    # a dozen scalar CDF evaluations each: qf of 5000 probabilities took
+    # 3 s on the Wiener process. They are now solved together.
+    p = np.linspace(0.001, 0.999, 2000)
+    ff = model._ff_distance
+    calls = []
+
+    def counted(t, distance):
+        calls.append(1)
+        return ff(t, distance)
+
+    monkeypatch.setattr(model, "_ff_distance", counted)
+    q = model.qf(p)
+    assert len(calls) < 200
+    monkeypatch.undo()
+    # the roots brentq finds, to its tolerance
+    expected = [
+        brentq(lambda t: ff(np.array([t]), 100.0)[0] - pk, 1e-12, 1e4)
+        for pk in p[::50]
+    ]
+    np.testing.assert_allclose(q[::50], expected, rtol=0, atol=1e-11)
+    np.testing.assert_allclose(model.ff(q), p, rtol=1e-12)
+    # missing, the ends, and a quantile below the bracket's 1e-12 start
+    # (brentq refused that bracket: qf(1e-300) raised on the gamma process)
+    edge = model.qf([np.nan, 0.0, 1e-300, 1.0])
+    assert np.isnan(edge[0]) and edge[1] == 0.0 and edge[3] == np.inf
+    assert 0.0 <= edge[2] < q[0]
 
 
 # --- shared input validation ------------------------------------------------
@@ -329,3 +367,193 @@ def test_gamma_zero_increments_with_stress() -> None:
     model = GammaProcess.fit(x, y, i, threshold=10.0, Z=Z, stress_ref=[0.0])
     assert model.gamma is not None
     assert model.gamma[0] == pytest.approx(0.7, abs=0.2)
+
+
+# --- #574: the life is the first passage from the starting level ----------
+
+
+def _vibration(seed=574, units=20):
+    """The issue's wind-farm example: bearing vibration read monthly for
+    1-3 years from a healthy 1.0 mm/s, gamma increments of mean 2.0 mm/s
+    per year (alpha 4, beta 2), an alarm (failure) at 7.0 mm/s."""
+    rng = np.random.default_rng(seed)
+    xs, ys, ids = [], [], []
+    for u in range(units):
+        t = np.arange(0, 12 * rng.integers(1, 4) + 1) / 12.0
+        y = 1.0 + np.r_[0.0, np.cumsum(rng.gamma(4.0 * np.diff(t), 0.5))]
+        xs.append(t)
+        ys.append(y)
+        ids.append(np.full(t.size, u))
+    return tuple(np.concatenate(v) for v in (xs, ys, ids))
+
+
+@pytest.mark.parametrize("fitter", [GammaProcess, WienerProcess])
+def test_574_life_is_measured_from_the_starting_level(fitter):
+    x, y, i = _vibration()
+    raw = fitter.fit(x, y, i, threshold=7.0)
+    # the baseline removed by hand: the same distance to go
+    removed = fitter.fit(x, y - 1.0, i, threshold=6.0)
+    np.testing.assert_allclose(raw.params, removed.params, rtol=1e-12)
+    assert raw.y0 == pytest.approx(1.0, abs=1e-12)
+    assert removed.y0 == pytest.approx(0.0, abs=1e-12)
+    # it was 16% (gamma) and 17% (Wiener) longer, measured from 0
+    assert raw.mean() == pytest.approx(removed.mean(), rel=1e-9)
+    t = np.array([0.5, 1.5, 2.5, 4.0])
+    for name in ("sf", "ff", "df", "hf", "Hf"):
+        np.testing.assert_allclose(
+            getattr(raw, name)(t), getattr(removed, name)(t), rtol=1e-9
+        )
+    p = np.array([0.1, 0.5, 0.9])
+    np.testing.assert_allclose(raw.qf(p), removed.qf(p), rtol=1e-9)
+    np.testing.assert_array_equal(
+        raw.random(50, random_state=1), removed.random(50, random_state=1)
+    )
+    # the pre-0.23 life, from 0, is still there on request
+    assert raw.mean(y0=0.0) > 1.15 * raw.mean()
+    assert fitter.fit(x, y, i, threshold=7.0, y0=0.0).mean() == pytest.approx(
+        raw.mean(y0=0.0), rel=1e-12
+    )
+
+
+@pytest.mark.parametrize("fitter", [GammaProcess, WienerProcess])
+def test_574_a_unit_starting_elsewhere_and_its_remaining_life(fitter):
+    x, y, i = _vibration()
+    model = fitter.fit(x, y, i, threshold=7.0)
+    level = 3.0
+    other = type(model)(*model.params, 7.0, y0=level)
+    t = np.array([0.5, 1.5, 2.5])
+    np.testing.assert_allclose(model.sf(t, y0=level), other.sf(t))
+    assert model.mean(y0=level) == pytest.approx(other.mean())
+    # predict_rul from a level is the life of a unit starting there
+    rul = model.predict_rul(level, alpha_ci=0.1)
+    np.testing.assert_allclose(
+        [rul.rul, *rul.rul_interval],
+        model.qf([0.5, 0.05, 0.95], y0=level),
+        rtol=1e-12,
+    )
+    draws = model.random(4000, random_state=2, y0=level)
+    assert np.median(draws) == pytest.approx(rul.rul, rel=0.05)
+    # a level at or past the threshold has no life to describe
+    with pytest.raises(ValueError, match="y0 = 7.*past the threshold"):
+        model.sf(t, y0=7.0)
+    with pytest.raises(ValueError, match="y0 must be finite"):
+        model.qf(0.5, y0=np.nan)
+    with pytest.raises(ValueError, match="past the threshold"):
+        fitter.fit(x, y + 10.0, i, threshold=7.0)
+
+
+def test_574_units_first_read_after_time_zero():
+    # Each unit's level at time zero is its first reading less what the
+    # fitted rate accrues before it, averaged over the units.
+    x, y, i = _simulate_gamma(2.0, 4.0, units=6, npts=12, dt=1.0, seed=5)
+    late = x >= 2.0
+    x, y, i = x[late], y[late] + 3.0, i[late]
+    model = GammaProcess.fit(x, y, i, threshold=20.0)
+    first = np.array([y[i == u][0] for u in range(6)])
+    rate = model.alpha / model.beta
+    assert model.y0 == pytest.approx(np.mean(first - 2.0 * rate), rel=1e-12)
+    assert model.y0 == pytest.approx(3.0, abs=0.5)
+    # on the stress clock, at the stress of the first reading
+    Z = np.where(i % 2 == 0, 0.0, 1.0)
+    stressed = WienerProcess.fit(x, y, i, threshold=20.0, Z=Z, stress_ref=[0])
+    af = np.exp(stressed.gamma[0] * np.where(np.arange(6) % 2 == 0, 0, 1))
+    expected = np.mean(first - stressed.mu * af * 2.0)
+    assert stressed.y0 == pytest.approx(expected, rel=1e-12)
+
+
+def test_574_y0_is_saved_and_old_dictionaries_start_at_zero():
+    model = GammaProcessModel(2.0, 4.0, 10.0, y0=1.5)
+    restored = GammaProcessModel.from_dict(model.to_dict())
+    assert restored.y0 == 1.5
+    assert restored.mean() == pytest.approx(model.mean(), rel=1e-12)
+    old = model.to_dict()
+    del old["y0"]
+    assert GammaProcessModel.from_dict(old).y0 == 0.0
+    assert "Start level (y0)    : 1.5" in repr(model)
+    with pytest.raises(ValueError, match="past the threshold"):
+        WienerProcessModel(0.5, 1.0, 10.0, y0=12.0)
+
+
+def test_574_gauge_fit_starts_where_the_readings_start():
+    x, y, i = _simulate_gamma(2.0, 4.0, units=6, npts=12, dt=1.0, seed=6)
+    y_gauge = np.round((y + 2.0) / 0.5) * 0.5
+    model = GammaProcess.fit(x, y_gauge, i, threshold=10.0, gauge=0.5)
+    assert model.y0 == pytest.approx(2.0)
+
+
+# --- #564: the fits say what they reached ----------------------------------
+
+
+def _stressed_gamma(seed=3):
+    rng = np.random.default_rng(seed)
+    xs, ys, ids, Zs = [], [], [], []
+    for u, z in enumerate(np.repeat([0.0, 1.0], 8)):
+        t = np.arange(0, 21.0)
+        dy = rng.gamma(2.0 * np.exp(0.7 * z), 1 / 4.0, 20)
+        xs.append(t)
+        ys.append(np.r_[0, np.cumsum(dy)])
+        ids.append(np.full(21, u))
+        Zs.append(np.full(21, z))
+    return tuple(np.concatenate(v) for v in (xs, ys, ids, Zs))
+
+
+def test_564_every_process_fit_records_a_verified_maximum():
+    x, y, i, Z = _stressed_gamma()
+    y_gauge = np.round(y / 0.5) * 0.5
+    fits = {
+        "wiener": lambda: WienerProcess.fit(x, y, i, 10.0),
+        "wiener Z": lambda: WienerProcess.fit(x, y, i, 10.0, Z=Z),
+        "gamma": lambda: GammaProcess.fit(x, y, i, 10.0),
+        "gamma zeros": lambda: GammaProcess.fit(x, np.round(y, 1), i, 10.0),
+        "gamma Z": lambda: GammaProcess.fit(x, y, i, 10.0, Z=Z),
+        "gamma Z zeros": lambda: GammaProcess.fit(
+            x, np.round(y, 1), i, 10.0, Z=Z
+        ),
+        "gamma gauge": lambda: GammaProcess.fit(
+            x, y_gauge, i, 10.0, gauge=0.5
+        ),
+        "gamma gauge Z": lambda: GammaProcess.fit(
+            x, y_gauge, i, 10.0, gauge=0.5, Z=Z
+        ),
+    }
+    for name, fit in fits.items():
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            model = fit()
+        assert model.maximum == "verified", name
+        restored = type(model).from_dict(model.to_dict())
+        assert restored.maximum == "verified", name
+    built = GammaProcessModel(2.0, 4.0, 10.0)
+    assert built.maximum == "not applicable"
+    assert GammaProcessModel.from_dict(built.to_dict()).maximum == (
+        "not applicable"
+    )
+    old = built.to_dict()
+    del old["maximum"]
+    assert GammaProcessModel.from_dict(old).maximum == "unknown"
+
+
+def test_564_noise_free_gamma_has_no_finite_maximum():
+    x = np.tile(np.arange(0, 11.0), 3)
+    i = np.repeat(np.arange(3), 11)
+    with pytest.warns(UserWarning, match="No finite maximum") as caught:
+        model = GammaProcess.fit(x, 0.5 * x, i, threshold=10.0)
+    assert model.maximum == "no finite maximum" and len(caught) == 1
+    Z = np.where(i == 0, 0.0, 1.0)
+    with pytest.warns(UserWarning, match="No finite maximum") as caught:
+        stressed = GammaProcess.fit(x, 0.5 * x, i, threshold=10.0, Z=Z)
+    assert stressed.maximum == "no finite maximum" and len(caught) == 1
+
+
+@pytest.mark.parametrize("fitter", [WienerProcess, GammaProcess])
+def test_564_an_unverified_process_fit_says_so(fitter, monkeypatch):
+    import surpyval.degradation._maximum as maximum_module
+
+    x, y, i, Z = _stressed_gamma()
+    monkeypatch.setattr(
+        maximum_module, "verify_or_polish", lambda f, r, n, **k: (r, False)
+    )
+    with pytest.warns(UserWarning, match="did not reach a verified") as w:
+        model = fitter.fit(x, y, i, 10.0, Z=Z)
+    assert model.maximum == "unverified" and len(w) == 1
+    assert w[0].filename == __file__

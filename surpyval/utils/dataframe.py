@@ -7,9 +7,7 @@ same model for the same data (principle 14). Every DataFrame entry point
 names a column argument after the ``fit`` argument it fills, with a
 ``_col`` suffix (``_cols`` for a list of columns; principle 21):
 ``x_col``, ``c_col``, ``n_col``, ``xl_col``, ``xr_col``, ``tl_col``,
-``tr_col``, ``i_col``, ``e_col`` and ``Z_cols``. The univariate names of
-v0.21 (``x``, ``c``, ``n``, ``xl``, ``xr``, ``tl``, ``tr``) are accepted
-with a ``DeprecationWarning`` until v0.23.
+``tr_col``, ``i_col``, ``e_col`` and ``Z_cols``.
 
 The columns are read as they are and handed to ``fit``, which does all
 the checking: a missing value is treated exactly as the same value in an
@@ -33,7 +31,6 @@ if TYPE_CHECKING:
     import pandas as pd
 
 from surpyval.utils import is_missing_event, refuse_time_values
-from surpyval.utils.deprecation import renamed_arguments
 
 
 class fitter_method:
@@ -90,6 +87,18 @@ def frame_columns(
     """Several columns (a name or a list of names) as a 2-D array."""
     names = [names] if isinstance(names, str) else list(names)
     return np.column_stack([frame_column(df, k, arg, time) for k in names])
+
+
+def refuse_column_names(options: Mapping[str, Any], *names: str) -> None:
+    """Refuse a ``fit_from_df`` column argument passed by its name before
+    v0.22 (``x`` for ``x_col``), which would otherwise reach ``fit`` as an
+    option, with Python's ``TypeError`` for an unknown argument."""
+    for name in names:
+        if name in options:
+            raise TypeError(
+                f"fit_from_df() got an unexpected keyword argument "
+                f"'{name}'; name the column with '{name}_col'"
+            )
 
 
 def _fitter_name(fitter: Any) -> str:
@@ -149,15 +158,6 @@ class UnivariateDataFrameMixin:
     """
 
     @fitter_method
-    @renamed_arguments(
-        x="x_col",
-        c="c_col",
-        n="n_col",
-        xl="xl_col",
-        xr="xr_col",
-        tl="tl_col",
-        tr="tr_col",
-    )
     def fit_from_df(
         self,
         df: pd.DataFrame,
@@ -239,9 +239,7 @@ class UnivariateDataFrameMixin:
         Notes
         -----
         Every DataFrame entry point names its columns with a ``_col``
-        suffix (principle 21). The names this method had in v0.21 (``x``,
-        ``c``, ``n``, ``xl``, ``xr``, ``tl``, ``tr``) still work, with a
-        ``DeprecationWarning``, until v0.23.
+        suffix (principle 21).
 
         Examples
         --------
@@ -266,6 +264,7 @@ class UnivariateDataFrameMixin:
         array([0.5861, 0.2571])
         """
         df = require_frame(df)
+        refuse_column_names(fit_options, "x", "c", "n", "xl", "xr", "tl", "tr")
         if (x_col is not None) and (
             (xl_col is not None) or (xr_col is not None)
         ):

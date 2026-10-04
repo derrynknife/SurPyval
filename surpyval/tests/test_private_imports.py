@@ -24,7 +24,6 @@ PACKAGE = Path(surpyval.__file__).resolve().parent
 
 ALLOWED: frozenset[tuple[str, str, str]] = frozenset(
     {
-        ("surpyval", "surpyval.utils.deprecation", "_message"),
         (
             "surpyval.beta.ml.forest.log_rank_split",
             "surpyval.utils.data_formats",
@@ -57,31 +56,6 @@ ALLOWED: frozenset[tuple[str, str, str]] = frozenset(
         ),
         (
             "surpyval.univariate.parametric.distributions.custom_distribution",
-            "surpyval.univariate.parametric._fit_inputs",
-            "_offset_start",
-        ),
-        (
-            "surpyval.univariate.parametric.distributions.expo_weibull",
-            "surpyval.univariate.parametric._fit_inputs",
-            "_offset_start",
-        ),
-        (
-            "surpyval.univariate.parametric.distributions.gamma",
-            "surpyval.univariate.parametric._fit_inputs",
-            "_offset_start",
-        ),
-        (
-            "surpyval.univariate.parametric.distributions.loglogistic",
-            "surpyval.univariate.parametric._fit_inputs",
-            "_offset_start",
-        ),
-        (
-            "surpyval.univariate.parametric.distributions.lognormal",
-            "surpyval.univariate.parametric._fit_inputs",
-            "_offset_start",
-        ),
-        (
-            "surpyval.univariate.parametric.distributions.rayleigh",
             "surpyval.univariate.parametric._fit_inputs",
             "_offset_start",
         ),

@@ -147,6 +147,16 @@ jobs:
         # ``--run-ml`` opts the beta survival tree and forest tests back
         # in. They are skipped by default because they are 97 of the
         # suite's 180 seconds locally, but deployment still tests them.
+        #
+        # From Python 3.12 coverage's default tracer (sys.settrace, the C
+        # tracer) runs much slower than before; coverage's ``sysmon`` core
+        # uses 3.12's ``sys.monitoring`` instead and costs far less. It
+        # measures lines only on 3.12 and 3.13, which is all the coverage
+        # here measures (no ``branch``). 3.11 has no ``sys.monitoring``, so
+        # it keeps the C tracer (named explicitly: asking for ``sysmon``
+        # there warns and falls back).
+        env:
+          COVERAGE_CORE: ${{ matrix.python-version == '3.11' && 'ctrace' || 'sysmon' }}
         run:
           python -m pytest -n auto --cov=surpyval --cov-report= --run-ml
 

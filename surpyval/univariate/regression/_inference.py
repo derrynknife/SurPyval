@@ -14,8 +14,11 @@ from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as np
 import numpy.typing as npt
+from scipy.special import ndtri
 
+from surpyval.utils.covariates import renamed_coefficient
 from surpyval.utils.linalg import (
+    bound_signs,
     cb_link,
     delta_method_se,
     link_band,
@@ -24,7 +27,11 @@ from surpyval.utils.linalg import (
     sf_link_from_H,
     wald_bound_on_support,
 )
-from surpyval.utils.shapes import check_paired_rows, keeps_query_shape
+from surpyval.utils.shapes import (
+    check_paired_rows,
+    covariate_rows,
+    keeps_query_shape,
+)
 from surpyval.utils.validation import BOUNDS, CB_ON, check_option
 from surpyval.utils.warnings import warn_no_covariance
 
@@ -36,7 +43,6 @@ if TYPE_CHECKING:
     from surpyval.univariate.parametric.parametric_fitter import (
         ParametricFitter,
     )
-    from surpyval.utils.deprecation import CallableList
     from surpyval.utils.surpyval_data import SurpyvalData
 
     from ._covariate_link import CovariateLink
@@ -71,15 +77,30 @@ class InferenceMixin:
         _covariance_cache: "tuple | None"
         _restored_covariance: "npt.NDArray | None"
         _restored: bool
+        _lr_searches: "list | None"
+        _bootstrap_refits: "dict | None"
+        is_tvc: bool
 
         @property
-        def parameter_names(self) -> CallableList: ...
+        def parameter_names(self) -> list: ...
+
+        def _coefficient_names(self) -> "list[str]": ...
+
         @property
         def aliased(self) -> npt.NDArray: ...
         @property
         def life_parameter(self) -> "str | None": ...
         def _eval_params(self) -> npt.NDArray: ...
         def _held(self) -> set: ...
+        def _n_covariates(self) -> int: ...
+
+        def qf(
+            self,
+            p: npt.ArrayLike,
+            Z: "npt.ArrayLike | pd.DataFrame",
+            *,
+            grid: bool = False,
+        ) -> npt.NDArray: ...
         def _is_accelerated_life(self) -> bool: ...
         def _is_additive(self) -> bool: ...
         def _life_relation(self) -> str: ...
@@ -313,14 +334,34 @@ class InferenceMixin:
         name: str,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
+        method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
     ) -> npt.NDArray:
         """
         Confidence bound(s) on a single fitted parameter.
 
-        Wald bounds from the observed information, computed on a scale chosen
-        from the parameter's support so the result stays inside it: log for a
-        one-sided-bounded distribution parameter (e.g. a positive scale), the
-        natural scale for the unbounded covariate coefficients.
+        Three methods; ``"wald"`` is the default:
+
+        - ``"wald"`` -- bounds from the observed information, computed on
+          a scale chosen from the parameter's support so the result stays
+          inside it: log for a one-sided-bounded distribution parameter
+          (e.g. a positive scale), the natural scale for the unbounded
+          covariate coefficients.
+        - ``"lr"`` -- the profile-likelihood (likelihood-ratio) interval:
+          the values whose profile deviance, every other parameter
+          re-fitted, stays below the :math:`\\chi^2_1` critical value
+          (aliases ``"likelihood"``, ``"likelihood-ratio"``,
+          ``"profile"``). It respects the parameter's space (a life
+          model's positive constant stays positive) and need not be
+          symmetric about the estimate; where the deviance stays below
+          the critical value to the edge of the space, the bound is that
+          edge, and a side that cannot be found is ``nan``, with a
+          warning. It needs the data the model was fitted to.
+        - ``"bootstrap"`` -- the parametric bootstrap percentile interval:
+          the parameter's ``alpha_ci / 2`` and ``1 - alpha_ci / 2``
+          quantiles over ``n_boot`` refits of the model to data simulated
+          from it, as :meth:`cb` describes. It needs the data.
 
         Parameters
         ----------
@@ -330,9 +371,26 @@ class InferenceMixin:
             Total tail probability of the bound(s). Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds are returned as ``[lower, upper]``.
+        method : {'wald', 'lr', 'bootstrap'}, optional
+            As above. Default ``'wald'``.
+        n_boot : int, optional
+            The number of bootstrap refits (``method='bootstrap'`` only).
+            Default 200.
+        random_state : None, int or numpy.random.Generator, optional
+            The seed of the bootstrap (``method='bootstrap'`` only), as for
+            :meth:`cb`.
         """
+        from ._bootstrap import bound_method, param_cb_bootstrap
+        from ._likelihood_ratio import param_cb_lr
+
+        method = bound_method(method)
+        lr = method == "lr"
         self._check_inference()
         names = self.parameter_names
+        # A coefficient's name before v0.23, ``beta_j``, until v0.24 (#614)
+        name = renamed_coefficient(
+            name, self._coefficient_names(), "param_cb", names
+        )
         if name not in names:
             raise ValueError(
                 "Unknown parameter {!r}; expected one of {}".format(
@@ -349,7 +407,14 @@ class InferenceMixin:
                     ", ".join(names[self.k_dist :]),
                 )
             )
+        if lr:
+            return param_cb_lr(self, name, alpha_ci, bound)
         idx = names.index(name)
+        if method == "bootstrap":
+            check_option("bound", bound, BOUNDS)
+            return param_cb_bootstrap(
+                self, idx, alpha_ci, bound, n_boot, random_state
+            )
         p_hat = float(self.params[idx])
         var = float(self.covariance()[idx, idx])
 
@@ -371,20 +436,72 @@ class InferenceMixin:
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
+        method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
     ) -> npt.NDArray:
         r"""
         Confidence bounds on a predicted function at covariate vector ``Z``.
 
-        The bounds propagate the fitted parameter covariance through the
-        requested function by the delta method. ``sf``/``ff``/``Hf`` are
-        derived from one bound on the baseline family's probability-plot
-        scale, as for the univariate models: ``log H`` for a Weibull,
-        Exponential, Rayleigh or Gumbel baseline, the normal quantile of
-        ``F`` for a Normal or LogNormal one, the logit of ``F`` for the rest
-        (#504; every band was on the logit before v0.22). Each keeps ``sf``
-        in ``(0, 1)``, and is formed from the cumulative hazard so the ``Hf``
-        bound has no ceiling where ``sf`` underflows. ``hf``/``df`` use a
-        log-scale bound (so they stay positive).
+        With ``method="wald"`` (the default) the bounds propagate the
+        fitted parameter covariance through the requested function by the
+        delta method. ``sf``/``ff``/``Hf`` are derived from one bound on
+        the baseline family's probability-plot scale, as for the
+        univariate models: ``log H`` for a Weibull, Exponential, Rayleigh
+        or Gumbel baseline, the normal quantile of ``F`` for a Normal or
+        LogNormal one, the logit of ``F`` for the rest (#504; every band
+        was on the logit before v0.22). Each keeps ``sf`` in ``(0, 1)``,
+        and is formed from the cumulative hazard so the ``Hf`` bound has
+        no ceiling where ``sf`` underflows. ``hf``/``df`` use a log-scale
+        bound (so they stay positive).
+
+        ``method="lr"`` gives the likelihood-ratio bound instead, as for
+        the univariate models' ``cb(method="lr")``: at each ``x`` and row
+        of ``Z`` the bound is the extreme of the function over the
+        likelihood region of all the parameters, ``{theta : 2[nll(theta)
+        - nll_hat] <= chi2_1}``, which is where the function's profile
+        deviance reaches the critical value; the ``sf``, ``ff`` and
+        ``Hf`` bounds are one bound, so they agree exactly. It does not
+        rest on the function being near linear in the parameters, and is
+        invariant to their parameterisation, but takes a search of the
+        likelihood: about a second a bound, where the Wald bound takes
+        milliseconds (the region's boundary is traced once per model and
+        level, and kept). It needs the data the model was fitted to;
+        where a bound cannot be found it is ``nan``, with a warning. Both
+        are large-sample bounds, and neither is exact with few failures:
+        on an accelerated life test of 72 units extrapolated 40 °C below
+        its coolest cell (#583), the 90% bounds on the five-year
+        reliability at the use condition covered 0.897 (Wald) and 0.893
+        (likelihood ratio) with 46 failures on average (1000
+        repetitions), and 0.877 and 0.866 with 11 (900).
+
+        ``method="bootstrap"`` gives a parametric bootstrap bound: the
+        model is refitted to ``n_boot`` data sets simulated from it, each
+        unit at its own covariates and within its own truncation window,
+        and censored as it was -- a censored unit at its censoring time,
+        a failed one at a time drawn from the censoring distribution past
+        its failure (Davison & Hinkley's conditional bootstrap), so a test
+        stopped at a common time censors every unit there. The bound is
+        the BCa interval of the refits' values (Efron 1987: their
+        percentiles, corrected for bias and for skewness, the
+        acceleration taken from each resample's score at the estimate);
+        ``sf``, ``ff`` and ``Hf`` are one interval. On the test above with
+        46 failures it covered 0.903, against 0.880 (Wald), 0.875
+        (likelihood ratio) and 0.866 for the plain percentile interval
+        (1000 repetitions of 1000 refits, #617). With 11 failures it
+        covered 0.71 (Wald 0.87, likelihood ratio 0.85): in 28% of those
+        data sets the likelihood has no finite maximum, and a bootstrap
+        from such a fit closes onto its estimate (it warns so); where the
+        estimate exists it covered 0.979. A refit that reaches no
+        verified maximum (a resample with no failures at some stresses can
+        leave an effect without one) is kept at the estimate it reached,
+        and one that raises is left out; both are counted, with one
+        warning when more than 2% of the refits are. It needs the data,
+        and is not available for left- or interval-censored data or a
+        time-varying-covariate fit. It costs ``n_boot`` refits: about 60
+        s for 1000 on that test with ``WeibullAFT``. With an integer
+        ``random_state`` the refits are kept, and shared by every bound
+        with the same ``n_boot`` and seed.
 
         Parameters
         ----------
@@ -399,12 +516,32 @@ class InferenceMixin:
             Total tail probability of the bound(s). Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds put ``[lower, upper]`` on the last axis.
+        method : {'wald', 'lr', 'bootstrap'}, optional
+            ``'wald'`` (the default), ``'lr'`` or ``'bootstrap'``, as
+            above (``'lr'`` also as ``'likelihood'``,
+            ``'likelihood-ratio'`` or ``'profile'``).
+        n_boot : int, optional
+            The number of bootstrap refits (``method='bootstrap'`` only).
+            Default 200; a bound at a 5% tail is steadier with 1000 or
+            more.
+        random_state : None, int or numpy.random.Generator, optional
+            The seed of the bootstrap (``method='bootstrap'`` only).
+            ``None`` (the default) draws from numpy's global generator,
+            so ``np.random.seed`` reproduces it; an int or a ``Generator``
+            gives a stream of its own. With an int the refits are kept on
+            the model, and every ``cb``, ``param_cb``, ``quantile_cb``
+            and ``cb_tvc`` with the same ``n_boot`` and seed reuses them.
 
         Returns
         -------
         numpy array
             The confidence bound(s) on ``on`` at each ``x``.
         """
+        from ._bootstrap import bound_method, cb_bootstrap
+        from ._likelihood_ratio import cb_lr
+
+        method = bound_method(method)
+        lr = method == "lr"
         self._check_inference()
         check_option("on", on, CB_ON)
         check_option("bound", bound, BOUNDS)
@@ -416,6 +553,19 @@ class InferenceMixin:
             # Rows and times paired, as for sf (#488).
             check_paired_rows(
                 np.size(x), np.shape(self._prepare_Z(Z))[0], grid=False
+            )
+        if method != "wald":
+            if self._is_additive():
+                self._warn_if_hazard_negative(
+                    x,
+                    self._centred(self._prepare_Z(Z)),
+                    np.asarray(x) >= self.distribution.support[0],
+                    stacklevel=4,
+                )
+            if lr:
+                return cb_lr(self, x, Z, on, alpha_ci, bound)
+            return cb_bootstrap(
+                self, x, Z, on, alpha_ci, bound, n_boot, random_state
             )
         params, center, cov = self._inference_state()
         Zp = self._centred(self._prepare_Z(Z), center)
@@ -460,6 +610,114 @@ class InferenceMixin:
             alpha_ci,
             bound,
         )
+
+    @keeps_query_shape
+    def quantile_cb(
+        self,
+        p: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
+    ) -> npt.NDArray:
+        r"""
+        Confidence bounds on the quantile ``qf(p, Z)``: the B-life at
+        ``p`` of a unit with covariates ``Z`` (the B10 life is ``p =
+        0.1``), the time by which a fraction ``p`` of such units have
+        failed; the univariate models' ``quantile_cb`` with the
+        covariates of :meth:`qf`.
+
+        Parameters
+        ----------
+        p : array like or scalar
+            The probabilities, in (0, 1), whose quantiles are bounded.
+        Z : array like or DataFrame
+            The covariates, paired with ``p`` as :meth:`qf` pairs them: one
+            row per probability, a single row for every probability, or a
+            single probability for every row.
+        alpha_ci : float, optional
+            Total tail probability of the bound(s). Default 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds put ``[lower, upper]`` on the last axis.
+        method : {'wald', 'lr', 'bootstrap'}, optional
+            ``'wald'`` (the default) is the delta method on the log of the
+            quantile above the support's start (the quantile itself for a
+            baseline on the whole line), from its gradient in the
+            parameters, :math:`\partial t_p / \partial\theta =
+            -(\partial H / \partial\theta) / h` at :math:`t_p`, as for the
+            univariate models. ``'lr'`` is the likelihood-ratio bound: the
+            extreme of ``qf(p, Z)`` over the parameters' likelihood region,
+            as :meth:`cb` with ``method='lr'`` is for a function of time
+            (aliases as there); it is slower, and needs the data.
+            ``'bootstrap'`` is the percentile interval of the quantile over
+            the parametric bootstrap refits of :meth:`cb`; it needs the
+            data.
+        n_boot : int, optional
+            The number of bootstrap refits (``method='bootstrap'`` only).
+            Default 200.
+        random_state : None, int or numpy.random.Generator, optional
+            The seed of the bootstrap (``method='bootstrap'`` only), as for
+            :meth:`cb`.
+
+        Returns
+        -------
+        numpy array
+            The bound(s) on the quantile at each ``p``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> model.qf(0.1, [1]).round(3)
+        np.float64(1.659)
+        >>> model.quantile_cb(0.1, [1]).round(3)
+        array([1.245, 2.212])
+        """
+        from ._bootstrap import bound_method, quantile_cb_bootstrap
+        from ._likelihood_ratio import quantile_cb_lr
+
+        method = bound_method(method)
+        lr = method == "lr"
+        self._check_inference()
+        check_option("bound", bound, BOUNDS)
+        probs = np.atleast_1d(np.asarray(p, dtype=float)).reshape(-1)
+        if not np.all((probs > 0) & (probs < 1)):
+            raise ValueError(f"'p' must be in (0, 1); got {probs.tolist()}")
+        rows = covariate_rows(self._prepare_Z(Z), self._n_covariates())
+        check_paired_rows(probs.size, rows.shape[0], grid=False)
+        n = max(probs.size, rows.shape[0])
+        probs = np.broadcast_to(probs, (n,)).copy()
+        rows = np.ascontiguousarray(np.broadcast_to(rows, (n, rows.shape[1])))
+        t_hat = np.asarray(self.qf(probs, rows), dtype=float).reshape(-1)
+        if lr:
+            return quantile_cb_lr(self, probs, rows, t_hat, alpha_ci, bound)
+        if method == "bootstrap":
+            return quantile_cb_bootstrap(
+                self, probs, rows, alpha_ci, bound, n_boot, random_state
+            )
+
+        params, center, cov = self._inference_state()
+        Zc = self._centred(rows, center)
+        with np.errstate(all="ignore"):
+            se_H = delta_method_se(
+                lambda q: self.model.Hf(t_hat, Zc, *q), params, cov
+            )
+            h = np.asarray(self.model.hf(t_hat, Zc, *params), dtype=float)
+            se_t = se_H / h
+        lower = float(self.distribution.support[0])
+        if np.isfinite(lower):
+            return lower + log_transformed_cb(
+                t_hat - lower, se_t, alpha_ci, bound
+            )
+        alpha, signs = bound_signs(alpha_ci, bound)
+        out = t_hat[..., None] + signs * ndtri(1.0 - alpha) * se_t[..., None]
+        return out if bound == "two-sided" else out[..., 0]
 
     @property
     def _cb_link(self) -> str:

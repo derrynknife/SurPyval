@@ -44,6 +44,119 @@ def _toward(rho: float) -> float:
     return 1.0 if rho >= 0 else -1.0
 
 
+# Below this, the Gaussian copula's CDF is integrated (``_normal_orthant``):
+# scipy's bivariate normal CDF is accurate to about 1e-16 absolute, so a
+# value of 1e-3 keeps ~13 digits there, and 1e-20 none.
+_SMALL_CDF = 1e-3
+# Gauss-Legendre rule of each piece of ``_normal_orthant``'s graded mesh
+_GL_X, _GL_W = onp.polynomial.legendre.leggauss(20)
+# Pieces per graded segment (the first is ``scale / 2`` long, each next one
+# twice the last, the final one reaching the segment's end)
+_GRADED_PIECES = 40
+# How far below the integrand's mode its tail is followed: its log is
+# concave with curvature at most -1, so beyond this it is below e^-72 of
+# the mode
+_ORTHANT_REACH = 12.0
+
+
+def _normal_orthant(a: Any, b: Any, rho: float) -> Any:
+    """``P(X <= a, Y <= b)`` for standard normals with correlation
+    ``rho``, with its relative accuracy however small it is (#619).
+
+    It is :math:`\\int_{-\\infty}^a \\phi(x)\\, \\Phi((b - \\rho x) /
+    \\sigma)\\, dx`, :math:`\\sigma = \\sqrt{1 - \\rho^2}`, whose integrand
+    is positive and log-concave, with its log (``log_ndtr``) accurate
+    everywhere. The integral is taken by Gauss-Legendre on a mesh graded
+    geometrically away from each place the integrand changes fastest --
+    its mode, the upper end ``a`` and the point where the conditional
+    median of ``Y`` passes ``b`` -- from that place's own scale (the
+    reciprocal of the larger of the log-integrand's slope and the square
+    root of its curvature there), so that a peak a millionth as wide as
+    the range is resolved as well as a broad one.
+    """
+    from scipy.special import log_ndtr
+
+    a, b = onp.broadcast_arrays(
+        onp.asarray(a, dtype=float), onp.asarray(b, dtype=float)
+    )
+    shape = a.shape
+    a, b = a.ravel(), b.ravel()
+    sigma = onp.sqrt(_one_minus_rho2(rho))
+    k = -rho / sigma
+    c = b / sigma
+    log_root = 0.5 * onp.log(2.0 * onp.pi)
+
+    def log_f(x: Any, cc: Any) -> Any:
+        return -0.5 * x * x - log_root + log_ndtr(cc + k * x)
+
+    def mills(z: Any) -> Any:
+        # phi(z) / Phi(z), the slope of log Phi
+        return onp.exp(-0.5 * z * z - log_root - log_ndtr(z))
+
+    def slope(x: Any, cc: Any) -> Any:
+        return -x + k * mills(cc + k * x)
+
+    def scale(x: Any, cc: Any) -> Any:
+        z = cc + k * x
+        m = mills(z)
+        curvature = 1.0 + k * k * m * (z + m)
+        return 1.0 / onp.maximum(
+            onp.abs(slope(x, cc)), onp.sqrt(onp.maximum(curvature, 1.0))
+        )
+
+    # The mode: the root of the (decreasing) slope below a, or a itself.
+    # The slope is positive far enough below (the integrand's log falls
+    # at least quadratically), found by doubling steps, then bisection.
+    rising = slope(a, c) >= 0
+    lo = a - 1.0
+    step = onp.ones_like(a)
+    for _ in range(64):
+        low = slope(lo, c) < 0
+        if not low.any():
+            break
+        step = onp.where(low, 2.0 * step, step)
+        lo = onp.where(low, lo - step, lo)
+    hi = a.copy()
+    for _ in range(64):
+        mid = 0.5 * (lo + hi)
+        up = slope(mid, c) > 0
+        lo, hi = onp.where(up, mid, lo), onp.where(up, hi, mid)
+    mode = onp.where(rising, a, 0.5 * (lo + hi))
+    # Where the conditional median of Y passes b, if that is in range
+    if k != 0.0:
+        kink = onp.clip(-c / k, mode - _ORTHANT_REACH, a)
+    else:
+        kink = a
+    points = onp.sort(onp.stack([mode, kink, a], axis=1), axis=1)
+    scales = scale(points, c[:, None])
+    top = log_f(mode, c)
+
+    def graded(anchor: Any, length: Any, sc: Any, side: float) -> Any:
+        """The integral over ``length`` on ``side`` of ``anchor``, on a
+        mesh graded from it, relative to the mode's value."""
+        j = onp.arange(-1, _GRADED_PIECES - 1)
+        edges = onp.minimum(sc[:, None] * 2.0 ** j[None, :], length[:, None])
+        edges[:, -1] = length
+        edges = onp.concatenate([onp.zeros((len(sc), 1)), edges], axis=1)
+        half = 0.5 * (edges[:, 1:] - edges[:, :-1])
+        mid = 0.5 * (edges[:, 1:] + edges[:, :-1])
+        d = mid[:, :, None] + half[:, :, None] * _GL_X
+        x = anchor[:, None, None] + side * d
+        values = onp.exp(log_f(x, c[:, None, None]) - top[:, None, None])
+        return onp.sum(half[:, :, None] * _GL_W * values, axis=(1, 2))
+
+    # The lower tail from the lowest point, then each gap between points,
+    # each half graded from its own end.
+    total = graded(
+        points[:, 0], onp.full(len(a), _ORTHANT_REACH), scales[:, 0], -1.0
+    )
+    for i in (0, 1):
+        half_gap = 0.5 * (points[:, i + 1] - points[:, i])
+        total += graded(points[:, i], half_gap, scales[:, i], 1.0)
+        total += graded(points[:, i + 1], half_gap, scales[:, i + 1], -1.0)
+    return (onp.exp(top) * total).reshape(shape)
+
+
 def _neg_ll_inside(copula: Copula, params: Any, dims: list, w: Any) -> float:
     """The negative log-likelihood, ``inf`` at ``|rho| = 1`` (where the
     search's tanh rounds to 1): no copula of the family is there, and its
@@ -150,7 +263,12 @@ class GaussianCopula(Copula):
         out = multivariate_normal.cdf(
             pts, mean=[0.0, 0.0], cov=cov, allow_singular=True
         )
-        out = onp.asarray(out).reshape(a.shape)
+        out = onp.array(out, dtype=float).reshape(a.shape)
+        # scipy's value is accurate in absolute terms only: a small one is
+        # integrated instead, keeping its relative accuracy (#619).
+        small = (out < _SMALL_CDF) & ~missing
+        if small.any():
+            out[small] = _normal_orthant(a[small], b[small], rho)
         return onp.where(missing, onp.nan, out)
 
     def du(self, u: Any, v: Any, rho: Any) -> Any:
@@ -164,6 +282,21 @@ class GaussianCopula(Copula):
 
     def dv(self, u: Any, v: Any, rho: Any) -> Any:
         return self.du(v, u, rho)
+
+    # The quadrants and h-function complements (#619), exact: the copula
+    # is radially symmetric, so the upper quadrant at (u, v) is C(1 - u,
+    # 1 - v), and P(U <= u, V > v) is the copula with -rho at (u, 1 - v)
+    # (-Y has correlation -rho with X).
+    exchangeable = True
+
+    def _survival(self, u: Any, v: Any, rho: Any) -> Any:
+        return self.cdf(1.0 - u, 1.0 - v, rho)
+
+    def _below_above(self, u: Any, v: Any, rho: Any) -> Any:
+        return self.cdf(u, 1.0 - v, -float(rho))
+
+    def _du_upper(self, u: Any, v: Any, rho: Any) -> Any:
+        return self.du(1.0 - u, 1.0 - v, rho)
 
     def pdf(self, u: Any, v: Any, rho: Any) -> Any:
         rho = float(rho)
@@ -233,6 +366,56 @@ def _tanh_sinh(step: float = 1.0 / 16.0, reach: float = 3.25) -> tuple:
 
 
 _TS_Z, _TS_ZC, _TS_W = _tanh_sinh()
+
+
+def _log_t_pdf(nu: float, x: Any) -> Any:
+    """``log t_nu(x)``, the univariate t density, accurate for any ``nu``
+    (its constant from scipy's Pochhammer symbol, as
+    :func:`_log_t_constant`'s) and any ``x`` (``log1p(x^2 / nu)``, as
+    ``2 log|x / sqrt(nu)|`` where ``x^2`` would overflow)."""
+    q = onp.abs(x) / onp.sqrt(nu)
+    big = q > 1e150
+    with onp.errstate(divide="ignore"):
+        log1p_q2 = onp.where(
+            big, 2.0 * onp.log(q), onp.log1p(onp.where(big, 0.0, q) ** 2)
+        )
+    log_c = onp.log(poch(nu / 2.0, 0.5)) - 0.5 * onp.log(nu * onp.pi)
+    return log_c - (nu + 1.0) / 2.0 * log1p_q2
+
+
+def _scale_cdf(m: int, x: Any) -> tuple:
+    """``(T_m(x), 1 - T_m(x))`` for the t distribution with ``m = 1``
+    (Cauchy) or ``2`` degrees of freedom, whose CDFs and quantiles are in
+    closed form; each accurate where it is small."""
+    a = onp.abs(x)
+    if m == 2:
+        r = onp.hypot(a, onp.sqrt(2.0))
+        # 1/2 - |x| / (2 r), formed without the cancellation
+        tail = 1.0 / (r * (r + a))
+    else:
+        tail = onp.arctan2(1.0, a) / onp.pi
+    return onp.where(x < 0, tail, 1.0 - tail), onp.where(
+        x < 0, 1.0 - tail, tail
+    )
+
+
+def _scale_quantile(m: int, p: Any, q: Any) -> Any:
+    """``T_m^{-1}(p)`` for ``m = 1`` or ``2`` given ``p`` and ``q = 1 -
+    p``, each used where it is the smaller."""
+    if m == 2:
+        return (p - q) / onp.sqrt(2.0 * p * q)
+    return onp.where(
+        p <= 0.5,
+        -1.0 / onp.tan(onp.pi * onp.minimum(p, 0.5)),
+        1.0 / onp.tan(onp.pi * onp.minimum(q, 0.5)),
+    )
+
+
+def _log_scale_pdf(m: int, x: Any) -> Any:
+    """``log t_m(x)`` for ``m = 1`` or ``2``, overflow-free."""
+    if m == 2:
+        return -3.0 * onp.log(onp.hypot(x, onp.sqrt(2.0)))
+    return -onp.log(onp.pi) - 2.0 * onp.log(onp.hypot(x, 1.0))
 
 
 def _log_t_constant(nu: float) -> float:
@@ -330,8 +513,15 @@ class StudentTCopula(Copula):
         """The h-function in the t scale: :math:`P(Y \\le y \\mid X = x)
         = T_{\\nu+1}\\left((y - \\rho x) \\big/ \\sqrt{(\\nu + x^2)(1 -
         \\rho^2) / (\\nu + 1)}\\right)`, with ``y - rho x`` formed from
-        ``y - s x`` and ``1 - |rho|`` (as the Gaussian's)."""
-        scale = onp.sqrt((nu + x**2) * _one_minus_rho2(rho) / (nu + 1.0))
+        ``y - s x`` and ``1 - |rho|`` (as the Gaussian's), and ``nu +
+        x^2`` from ``hypot`` where ``x^2`` would overflow."""
+        far = onp.abs(x) > 1e150
+        near = onp.where(far, 0.0, x)
+        scale = onp.sqrt((nu + near**2) * _one_minus_rho2(rho) / (nu + 1.0))
+        if onp.any(far):
+            factor = _one_minus_rho2(rho) / (nu + 1.0)
+            far_scale = onp.hypot(x, onp.sqrt(nu)) * onp.sqrt(factor)
+            scale = onp.where(far, far_scale, scale)
         s = _toward(rho)
         num = (y - s * x) + s * (1.0 - abs(rho)) * x
         return stdtr(nu + 1.0, num / scale)
@@ -344,6 +534,28 @@ class StudentTCopula(Copula):
 
     def dv(self, u: Any, v: Any, rho: Any, nu: Any) -> Any:
         return self.du(v, u, rho, nu)
+
+    # The quadrants and h-function complements (#619), as the Gaussian's
+    # (the t copula is radially symmetric, and -Y has correlation -rho
+    # with X). The CDF is called with its smaller argument first, whose
+    # integral (over (0, s) with s <= 1/2) is of a positive integrand and
+    # keeps its relative accuracy however small the value is.
+    exchangeable = True
+
+    def _ordered_cdf(self, u: Any, v: Any, rho: float, nu: Any) -> Any:
+        u, v = onp.broadcast_arrays(
+            onp.asarray(u, dtype=float), onp.asarray(v, dtype=float)
+        )
+        return self.cdf(onp.minimum(u, v), onp.maximum(u, v), rho, nu)
+
+    def _survival(self, u: Any, v: Any, rho: Any, nu: Any) -> Any:
+        return self._ordered_cdf(1.0 - u, 1.0 - v, float(rho), nu)
+
+    def _below_above(self, u: Any, v: Any, rho: Any, nu: Any) -> Any:
+        return self._ordered_cdf(u, 1.0 - v, -float(rho), nu)
+
+    def _du_upper(self, u: Any, v: Any, rho: Any, nu: Any) -> Any:
+        return self.du(1.0 - u, 1.0 - v, rho, nu)
 
     def pdf(self, u: Any, v: Any, rho: Any, nu: Any) -> Any:
         """The density, the bivariate t density over the product of its
@@ -377,15 +589,39 @@ class StudentTCopula(Copula):
         (the shorter of the two is used), evaluated by tanh-sinh
         quadrature (105 nodes per piece), split where the integrand
         changes fastest -- where the conditional median of ``Y`` passes
-        ``y``, at :math:`s^* = T_\\nu(y / \\rho)` -- so that a sharp step
-        at strong dependence sits at the end of a piece, where the rule's
+        ``y``, at :math:`x^* = y / \\rho` -- so that a sharp step at
+        strong dependence sits at the end of a piece, where the rule's
         nodes crowd. The rule also absorbs the algebraic singularities of
-        the integrand at ``s = 0`` and ``1`` (it approaches the
-        tail-dependence limits as a power of ``s``). It agrees with the
-        exact bivariate t CDF of Genz (2004; R's
+        the integrand at the ends (it approaches the tail-dependence
+        limits as a power of ``s``).
+
+        For ``nu >= 1`` the integral is taken over :math:`p = T_m(x)`,
+        the CDF of the t distribution with :math:`m = 2` degrees of
+        freedom (:math:`m = 1`, the Cauchy, below ``nu = 2``), whose
+        quantile is in closed form:
+
+        .. math::
+            \\int_{-\\infty}^{x_u} P(Y \\le y \\mid X = x)\\,
+            t_\\nu(x) \\, dx = \\int_0^{T_m(x_u)} P(Y \\le y \\mid
+            X = x) \\frac{t_\\nu(x)}{t_m(x)} \\, dp,
+            \\quad x = T_m^{-1}(p).
+
+        The ratio of densities is smooth and tends to 0 or a constant in
+        the tails, so the rule converges as fast as over ``s``, without a
+        t quantile at every node: those were 70% of a censored fit
+        (#550). Below ``nu = 1`` the t tail is heavier than the Cauchy's
+        and the ratio is singular at the ends, so the integral is taken
+        over ``s`` itself, with the quantiles.
+
+        It agrees with the exact bivariate t CDF of Genz (2004; R's
         ``mvtnorm::pmvt(algorithm = TVPACK())``, integer ``nu`` only) to
         about 1e-11 (7e-11 at ``rho = 0.999``), and with mpmath's
-        30-digit integration at non-integer ``nu`` to 1e-15. scipy's
+        30-digit integration at non-integer ``nu`` to 1e-15. For ``u`` and
+        ``v`` in ``[1e-4, 1 - 1e-4]``, against the integral over ``s``
+        with a rule eight times as fine, it is at least as accurate as the
+        integral over ``s`` with this rule: within 4e-12 of ``min(u, v)``
+        for ``nu >= 4`` and ``|rho| <= 0.9`` (3e-11 over ``s``), and
+        1e-7 at ``|rho| = 0.999`` (1e-6 over ``s``). scipy's
         ``multivariate_t.cdf`` is a randomised quasi-Monte Carlo
         integration: about 1e-4 off at its default tolerances and
         different on every call, which an optimiser cannot use;
@@ -398,11 +634,21 @@ class StudentTCopula(Copula):
         if rho == 0.0:
             return (u * v).reshape(shape)
         y = self._quantile(nu, v, 1.0 - v)
-        # The split point, kept inside [0, u]: a piece of zero length
-        # contributes nothing.
         # Above u = 1/2 the shorter integral is taken, over (u, 1):
         # C(u, v) = v - int_u^1 P(V <= v | U = s) ds.
         upper = u > 0.5
+        if nu < 1.0:
+            total = self._integral_over_s(u, y, upper, rho, nu)
+        else:
+            total = self._integral_over_scale(u, y, upper, rho, nu)
+        total = onp.where(upper, v - total, total)
+        return onp.clip(total, 0.0, onp.minimum(u, v)).reshape(shape)
+
+    def _integral_over_s(
+        self, u: Any, y: Any, upper: Any, rho: float, nu: float
+    ) -> Any:
+        """The integral of the h-function over ``s`` from 0 to ``u`` (over
+        ``(u, 1)`` where ``upper``), with the t quantile at every node."""
         a = onp.where(upper, u, 0.0)
         b = onp.where(upper, 1.0, u)
         # The split point, kept inside [a, b]: a piece of zero length
@@ -414,12 +660,46 @@ class StudentTCopula(Copula):
             # node s and 1 - s, each accurate at its own end
             s = lo[:, None] + width * _TS_Z[None, :]
             s_c = (1.0 - hi)[:, None] + width * _TS_ZC[None, :]
+            # Both kept off 0: a piece of zero width at s = 1 (a split
+            # point rounded to 1) put x at infinity, and 0 * NaN in the
+            # sum (#550).
             s = onp.clip(s, 1e-300, None)
+            s_c = onp.clip(s_c, 1e-300, None)
             x = self._quantile(nu, s, s_c)
             h = self._h(y[:, None], x, rho, nu)
             total += onp.sum(width * _TS_W[None, :] * h, axis=1)
-        total = onp.where(upper, v - total, total)
-        return onp.clip(total, 0.0, onp.minimum(u, v)).reshape(shape)
+        return total
+
+    def _integral_over_scale(
+        self, u: Any, y: Any, upper: Any, rho: float, nu: float
+    ) -> Any:
+        """:meth:`_integral_over_s` over ``p = T_m(x)`` instead (see
+        :meth:`cdf`): one t quantile per point rather than one per node."""
+        m = 2 if nu >= 2.0 else 1
+        x_u = self._quantile(nu, u, 1.0 - u)
+        p_u, q_u = _scale_cdf(m, x_u)
+        # The ends (and their complements) on the p scale
+        a = onp.where(upper, p_u, 0.0)
+        a_c = onp.where(upper, q_u, 1.0)
+        b = onp.where(upper, 1.0, p_u)
+        b_c = onp.where(upper, 0.0, q_u)
+        # The split point, kept inside [a, b]
+        with onp.errstate(divide="ignore"):
+            p_s, q_s = _scale_cdf(m, y / rho)
+        below, above = p_s < a, p_s > b
+        p_s = onp.where(below, a, onp.where(above, b, p_s))
+        q_s = onp.where(below, a_c, onp.where(above, b_c, q_s))
+        total = onp.zeros_like(u)
+        for lo, hi, hi_c in ((a, p_s, q_s), (p_s, b, b_c)):
+            width = (hi - lo)[:, None]
+            # node p and 1 - p, each accurate at its own end
+            p = onp.clip(lo[:, None] + width * _TS_Z[None, :], 1e-300, None)
+            q = onp.clip(hi_c[:, None] + width * _TS_ZC[None, :], 1e-300, None)
+            x = _scale_quantile(m, p, q)
+            ratio = onp.exp(_log_t_pdf(nu, x) - _log_scale_pdf(m, x))
+            h = self._h(y[:, None], x, rho, nu)
+            total += onp.sum(width * _TS_W[None, :] * ratio * h, axis=1)
+        return total
 
     def kendall_tau(  # type: ignore[override]
         self, rho: float, nu: float

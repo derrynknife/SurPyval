@@ -121,11 +121,34 @@ def test_trend_test_validation():
     model = HPP.fit(exponential_event_times())
     with pytest.raises(ValueError, match="'test' must be one of"):
         model.trend_test(test="nope")
-    truncated = CrowAMSAA.fit(
-        [12, 15, 19, 21], i=[1] * 4, c=[0, 0, 0, 1], tl=10.0
-    )
-    with pytest.raises(ValueError, match="observation from time 0"):
-        truncated.trend_test()
+
+
+@pytest.mark.parametrize("test", ["laplace", "mil_hdbk_189c"])
+def test_575_trend_test_takes_delayed_entry(test):
+    # #575: trend_test raised "trend tests assume observation from time 0"
+    # for any data with delayed entry. Each item is now tested on its own
+    # window (entry, close]: item 1 on (10, 21] (time-truncated), item 2 on
+    # (0, 30], and item 3 entered at 5 and is failure-truncated at 26, its
+    # last event, which is dropped.
+    x = [12, 15, 19, 21, 4, 9, 22, 30, 8, 17, 26]
+    i = [1] * 4 + [2] * 4 + [3] * 3
+    c = [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]
+    tl = [10.0] * 4 + [0.0] * 4 + [5.0] * 3
+    res = CrowAMSAA.fit(x, i=i, c=c, tl=tl).trend_test(test)
+    events = [
+        (np.array([12.0, 15, 19]), 10.0, 21.0),
+        (np.array([4.0, 9, 22]), 0.0, 30.0),
+        (np.array([8.0, 17]), 5.0, 26.0),
+    ]
+    if test == "laplace":
+        num = sum(t.sum() - t.size * (s + e) / 2 for t, s, e in events)
+        var = sum(t.size * (e - s) ** 2 / 12 for t, s, e in events)
+        hand = num / np.sqrt(var)
+    else:
+        hand = sum(2 * np.log((e - s) / (t - s)).sum() for t, s, e in events)
+        assert res.dof == 16
+    assert res.statistic == pytest.approx(hand, rel=1e-12)
+    assert res.n_events == 8 and res.n_systems == 3
 
 
 def test_cvm_statistic_minimum_at_uniform_quantiles():

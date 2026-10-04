@@ -11,14 +11,16 @@ from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
     ic_sample_size,
 )
+from surpyval.utils.covariates import loaded_coefficient_names
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.deprecation import CallableList, RenamedAttribute
+from surpyval.utils.deprecation import RenamedAttribute
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
     keeps_query_shape,
 )
+from surpyval.utils.validation import warn_outside_unit_interval
 
 from ._concordance import ConcordanceMixin
 from ._covariate_link import CovariateLink
@@ -30,6 +32,7 @@ from ._kinds import (
     PROPORTIONAL_HAZARD,
     PROPORTIONAL_ODDS,
 )
+from ._prediction import ConditionalSurvivalMixin, quantiles_by_inversion
 from ._tvc_evaluation import TVCEvaluationMixin
 from .regression_data import (
     prepare_Z,
@@ -73,6 +76,7 @@ _SERIALISABLE_REG_NAMES = {
 
 
 class ParametricRegressionModel(
+    ConditionalSurvivalMixin,
     TVCEvaluationMixin,
     InferenceMixin,
     ConcordanceMixin,
@@ -176,7 +180,9 @@ class ParametricRegressionModel(
     #: models' neutral values (no offset, no defective fraction, no zero
     #: inflation), which ``to_dict`` stores.
     gamma: float = 0.0
-    p: float = 1.0
+    lfp_p: float = 1.0
+    #: ``lfp_p``'s name before v0.23, as on the univariate models (#608).
+    p = RenamedAttribute("lfp_p")
     f0: float = 0.0
     #: The covariate point the baseline parameters are at: zeros (or
     #: ``None``, for an accelerated life model) when they are those of a
@@ -228,8 +234,27 @@ class ParametricRegressionModel(
     _information: "tuple | None" = None
     #: ``(point, covariance)`` of the last covariance computed.
     _covariance_cache: "tuple | None" = None
+    #: The likelihood-ratio searches of ``cb`` / ``param_cb`` with
+    #: ``method="lr"`` (``_likelihood_ratio.lr_search``), with what they
+    #: have found, kept while the parameters and data stay as they are;
+    #: not pickled (``__getstate__``).
+    _lr_searches: "list | None" = None
+    #: The parametric bootstrap refits of the bounds with
+    #: ``method="bootstrap"`` (``_bootstrap.refits``), by ``(n_boot,
+    #: random_state)`` for an integer seed, kept while the parameters and
+    #: data stay as they are; not pickled (``__getstate__``).
+    _bootstrap_refits: "dict | None" = None
     # The information criteria's sample size ``_ic_n`` and their caches
     # ``_aic``, ``_bic``, ``_aic_c`` are InformationCriteriaMixin's.
+
+    def __getstate__(self) -> dict:
+        # The likelihood-ratio searches, with the regions and bounds they
+        # have found, and the bootstrap refits are rebuilt where a bound
+        # is asked for again (#617).
+        state = dict(self.__dict__)
+        state.pop("_lr_searches", None)
+        state.pop("_bootstrap_refits", None)
+        return state
 
     # -- serialisation -----------------------------------------------------
 
@@ -329,7 +354,8 @@ class ParametricRegressionModel(
         out["k_dist"] = int(self.k_dist)
         out["fixed"] = {str(k): float(v) for k, v in self.fixed.items()}
         out["gamma"] = float(self.gamma)
-        out["p"] = float(self.p)
+        # The proportion's key before v0.23, kept for every reader (#608).
+        out["p"] = float(self.lfp_p)
         out["f0"] = float(self.f0)
         if self._has_center():
             # Only a baseline at the covariate means (center=True, #463) is
@@ -401,6 +427,8 @@ class ParametricRegressionModel(
 
         params = np.array(model_dict["params"], dtype=float)
         k_dist = int(model_dict["k_dist"])
+        # Saved coefficient names -> their names now (#614)
+        renamed: dict[str, str] = {}
 
         reg_model: "CovariateLink | LifeModel"
         if kind == ACCELERATED_LIFE:
@@ -443,6 +471,25 @@ class ParametricRegressionModel(
                         "integer).".format(life_name)
                     )
                 reg_model = reg_model.resolve(n_stresses)
+            columns = list(reg_model.coefficient_columns())
+            if columns:
+                # Its column coefficients by the names saved, those of a
+                # dict saved before v0.23 (beta_j) as named now (#614)
+                saved = model_dict.get("phi_param_map", {})
+                saved_names = sorted(saved, key=saved.__getitem__)
+                others = [
+                    *dist.parameter_names,
+                    *(k for k in reg_model.phi_param_map if k not in columns),
+                ]
+                names = loaded_coefficient_names(
+                    [*others, *saved_names[-len(columns) :]],
+                    len(others),
+                    len(columns),
+                    model_dict.get("feature_names"),
+                )[len(others) :]
+                if len(saved_names) == len(reg_model.phi_param_map):
+                    renamed.update(zip(saved_names[-len(columns) :], names))
+                    reg_model = reg_model.named(names)
             fitter = AcceleratedLife(dist, reg_model)
             phi_param_map = dict(reg_model.phi_param_map)
         elif kind in _SERIALISABLE_KINDS:
@@ -451,6 +498,19 @@ class ParametricRegressionModel(
             fitter = factory(dist)
             phi_param_map = {
                 k: int(v) for k, v in model_dict["phi_param_map"].items()
+            }
+            # A dict saved before v0.23 named the coefficients beta_j: they
+            # load with the names the model has now (#614).
+            saved_names = sorted(phi_param_map, key=phi_param_map.__getitem__)
+            names = loaded_coefficient_names(
+                [*dist.parameter_names, *saved_names],
+                len(dist.parameter_names),
+                len(saved_names),
+                model_dict.get("feature_names"),
+            )[len(dist.parameter_names) :]
+            renamed.update(zip(saved_names, names))
+            phi_param_map = {
+                renamed.get(k, k): v for k, v in phi_param_map.items()
             }
             if phi_kind == "exp":
                 # The log-linear multiplier exp(beta'Z), matching the
@@ -484,7 +544,8 @@ class ParametricRegressionModel(
         out.phi_params = params[k_dist:]
         out.k_dist = k_dist
         out.fixed = {
-            k: float(v) for k, v in model_dict.get("fixed", {}).items()
+            renamed.get(k, k): float(v)
+            for k, v in model_dict.get("fixed", {}).items()
         }
         # The number of estimated parameters, recomputed rather than read
         # from the stored ``k``: dicts written before ``k`` excluded the
@@ -494,7 +555,7 @@ class ParametricRegressionModel(
         out._restored = True
         out._data_summary = model_dict.get("data_summary")
         out.gamma = float(model_dict.get("gamma", 0.0))
-        out.p = float(model_dict.get("p", 1.0))
+        out.lfp_p = float(model_dict.get("p", 1.0))
         out.f0 = float(model_dict.get("f0", 0.0))
         if kind != ACCELERATED_LIFE:
             # A dict without one has its baseline at Z = 0 (#463).
@@ -625,13 +686,27 @@ class ParametricRegressionModel(
     def _is_linear_predictor(self) -> bool:
         """Whether the covariate parameters are coefficients of a linear
         predictor ``beta'Z`` (one per column of ``Z``), which the
-        coefficient table is for; an accelerated-life model's are the
-        parameters of its life model."""
+        coefficient table is for: a built-in link's, or a custom link's
+        that names them as coefficients were named before v0.23
+        (``beta_j``); an accelerated-life model's are the parameters of
+        its life model."""
+        if self._is_accelerated_life():
+            return False
+        if self.reg_model.name in _SERIALISABLE_REG_NAMES:
+            return True
         n_phi = len(self.params) - self.k_dist
         pmap = dict(self.reg_model.phi_param_map or {})
-        return not self._is_accelerated_life() and pmap == {
-            "beta_{}".format(i): i for i in range(n_phi)
-        }
+        return pmap == {"beta_{}".format(i): i for i in range(n_phi)}
+
+    def _coefficient_names(self) -> "list[str]":
+        """The names of the coefficients of the columns of ``Z``, in
+        column order (#614): the linear predictor's, or an accelerated
+        life model's (``GeneralLogLinear``'s); none for another life
+        model."""
+        if self._is_linear_predictor():
+            return list(self.parameter_names[self.k_dist :])
+        columns = getattr(self.reg_model, "coefficient_columns", None)
+        return [] if columns is None else list(columns())
 
     def _exp_meaning(self) -> "str | None":
         """What ``exp(coef)`` means, or ``None`` where the link is not
@@ -670,8 +745,9 @@ class ParametricRegressionModel(
         is log-linear: the hazard ratio for proportional hazards, the
         acceleration factor for AFT, the survival odds ratio for
         proportional odds), the Wald statistic ``z`` and its two-sided
-        p-value. The coefficients are named by ``feature_names`` for a
-        model fitted with ``fit_from_df``.
+        p-value. A coefficient is named by its covariate's column (a
+        formula, ``fit_from_df`` or a DataFrame ``Z``), else ``coef_j``
+        (:attr:`parameter_names`).
 
         The baseline parameters' intervals are those of :meth:`param_cb`,
         which stay in the parameter's support (a positive scale's is
@@ -713,7 +789,7 @@ class ParametricRegressionModel(
         """
         import pandas as pd
 
-        from ._summary import coefficient_names, coefficient_table
+        from ._summary import coefficient_table
 
         params = np.asarray(self.params, dtype=float)
         se = self._summary_se()
@@ -723,7 +799,7 @@ class ParametricRegressionModel(
         if self._is_linear_predictor():
             part = "coefficients"
             rows = coefficient_table(
-                coefficient_names(self, len(params) - k),
+                names[k:],
                 params[k:],
                 se[k:],
                 alpha_ci,
@@ -1281,6 +1357,108 @@ class ParametricRegressionModel(
         """
         return self._eval(self.model.Hf, x, Z, 0.0, grid)
 
+    @keeps_query_shape
+    def qf(
+        self,
+        p: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
+    ) -> npt.NDArray:
+        r"""
+        The quantile function: the time by which a proportion ``p`` of the
+        units with covariates ``Z`` have failed, ``ff(qf(p, Z), Z) = p``
+        (the B10 life of a unit is ``qf(0.1, Z)``; #571).
+
+        Parameters
+        ----------
+
+        p : array like or scalar
+            The probabilities, in [0, 1].
+
+        Z : array like or DataFrame
+            The covariates, paired with ``p`` as :meth:`sf` pairs them with
+            ``x``: one row per probability (or a single row for every
+            probability, or a single probability for every row). A model
+            fitted with ``fit_from_df`` also accepts a DataFrame.
+
+        grid : bool, optional
+            ``True`` gives every ``p`` for every row of ``Z``, with shape
+            ``(len(Z),) + p.shape``. Default ``False``: rows and
+            probabilities paired.
+
+        Returns
+        -------
+
+        qf : scalar or numpy array
+            The quantiles.
+
+        Notes
+        -----
+        Every family is inverted the same way, from the model's own
+        cumulative hazard: the time at which :math:`H(t \mid Z)` reaches
+        :math:`-\log(1 - p)`, solved to a relative ``1e-12`` for every
+        probability at once. ``qf(0, Z)`` is the start of the
+        distribution's support and ``qf(1, Z)`` its end; a probability
+        outside [0, 1] gives NaN with a warning, as for the univariate
+        models, and NaN gives NaN. Where the hazard of an additive model
+        turns negative the cumulative hazard is not monotone, and the
+        quantile is one of its crossings (``hf`` warns there).
+
+        Examples
+        --------
+
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> b10 = model.qf(0.1, [[0], [1]])
+        >>> b10.round(4)
+        array([2.6636, 1.6593])
+        >>> model.ff(b10, [[0], [1]]).round(12)
+        array([0.1, 0.1])
+        """
+        u = np.asarray(p, dtype=float)
+        Z = self._prepare_Z(Z)
+        rows = covariate_rows(Z, self._n_covariates())
+        shape = None
+        if grid:
+            shape = (rows.shape[0], u.size)
+            u = np.tile(u, shape[0])
+            rows = np.repeat(rows, shape[1], axis=0)
+        else:
+            check_paired_rows(u.size, rows.shape[0])
+            size = max(u.size, rows.shape[0])
+            u = np.broadcast_to(u, (size,))
+            rows = np.broadcast_to(rows, (size, rows.shape[1]))
+        rows = np.asarray(self._centred(rows), dtype=float)
+        outside = warn_outside_unit_interval(u)
+        u = np.where(outside, np.nan, u)
+        params = self._eval_params()
+        dist_params = params[: self.k_dist]
+        with np.errstate(all="ignore"):
+            # The baseline's quantile, a start for each search.
+            start = np.asarray(
+                self.distribution.qf(np.clip(u, 0.0, 1.0), *dist_params),
+                dtype=float,
+            ) * np.ones(u.shape)
+        out = quantiles_by_inversion(
+            lambda t, k: self.model.Hf(t, rows[k], *params),
+            u,
+            self.distribution.support,
+            start,
+        )
+        if self._is_additive():
+            finite = np.isfinite(out)
+            self._warn_if_hazard_negative(
+                np.where(finite, out, 0.0), rows, finite, stacklevel=5
+            )
+        if shape is not None:
+            out = out.reshape(shape)
+        return out
+
     def random(
         self,
         size: int,
@@ -1397,7 +1575,7 @@ class ParametricRegressionModel(
     # parameter -- used to be counted as well.
 
     @property
-    def parameter_names(self) -> CallableList:
+    def parameter_names(self) -> list:
         """
         Names of ``params``, in order: the distribution's parameters, then
         the covariate coefficients (or life-model parameters). The list
@@ -1405,10 +1583,6 @@ class ParametricRegressionModel(
         :meth:`standard_errors` entry by entry, fixed parameters included.
         In an accelerated life model the slot named by ``life_parameter``
         is a placeholder, not a fitted value, and is named too.
-
-        Until v0.22 this was a method; calling it,
-        ``model.parameter_names()``, still returns the list, with a
-        ``DeprecationWarning``, until v0.23.
 
         Examples
         --------
@@ -1418,21 +1592,14 @@ class ParametricRegressionModel(
         >>> Z = np.array([0.0, 1, 0, 1, 0, 1, 1, 0])
         >>> model = WeibullPH.fit(x=x, Z=Z)
         >>> model.parameter_names
-        ['alpha', 'beta', 'beta_0']
+        ['alpha', 'beta', 'coef_0']
         """
         dist_names = list(self.distribution.parameter_names)
         phi_map = self.reg_model.phi_param_map
         phi_names = [
             k for k, _ in sorted(phi_map.items(), key=lambda kv: kv[1])
         ]
-        return CallableList(
-            dist_names + phi_names,
-            "ParametricRegressionModel.parameter_names",
-        )
-
-    # ``param_names``, the name the model had before v0.22, reads
-    # ``parameter_names`` for one release, with a DeprecationWarning.
-    param_names = RenamedAttribute("parameter_names")
+        return dist_names + phi_names
 
     def plot(
         self,

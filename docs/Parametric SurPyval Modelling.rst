@@ -18,8 +18,8 @@ how to estimate it. Each is demonstrated below:
 - ``how``: the estimation method, one of ``'MLE'`` (the default), ``'MPS'``,
   ``'MSE'``, ``'MPP'`` or ``'MOM'``;
 - ``offset=True``: add a threshold (shift) parameter ``gamma``;
-- ``lfp=True``: a limited failure population, where only a proportion ``p``
-  can ever fail;
+- ``lfp=True``: a limited failure population, where only a proportion
+  ``lfp_p`` can ever fail;
 - ``zi=True``: zero inflation, where a proportion ``f0`` fails at time zero;
 - ``fixed``: a dictionary of parameters to hold at known values;
 - ``init``: a starting point for the optimiser;
@@ -271,8 +271,9 @@ Models from known parameters
 Not every model comes from data. A supplier's datasheet, a handbook value or
 an earlier analysis may give you the parameters, and ``from_params`` builds a
 full model from them, with all of the methods above. It also takes the
-structural options as values: ``gamma`` for an offset, ``p`` for a limited
-failure population and ``f0`` for zero inflation (each explained below).
+structural options as values: ``gamma`` for an offset, ``lfp_p`` for a
+limited failure population and ``f0`` for zero inflation (each explained
+below).
 
 .. jupyter-execute::
 
@@ -870,7 +871,7 @@ The underlying caution still stands, though, and it is worth keeping in mind for
 
 - **Judge an offset fit by what it predicts, not only by the printed parameters.** Plot it against the non-parametric estimate, or compare the survival function, quantiles, mean and variance. Two parameter tuples that look very different can imply nearly the same distribution.
 - **If you need ``gamma`` itself to be meaningful** - you are interpreting it as a guaranteed minimum life, say - prefer ``MLE``, which remains the most accurate on the parameters, and treat a single point estimate of a threshold with care regardless of method. Note that ``gamma`` has no standard error, so ``param_cb`` cannot give an interval for it (see :doc:`Parametric Estimation`).
-- **If the MLE struggles** - a small sample, or a shape that puts an infinite density at the threshold - try ``how='MPS'``, which was designed for exactly this case (see the section on alternate estimation methods below). The likelihood of an offset fit has no finite maximum when ``gamma`` can run onto the first failure: with a Weibull, Gamma or LogLogistic shape below 1 the density there is infinite (for the LogNormal, the scale grows without bound on the way). Such a fit warns "No finite maximum", returns where its search stopped, with ``gamma`` on the smallest observation, and recommends ``how='MPS'``, whose spacings have no such limit. On the seven failures ``[55, 60, 70, 80, 95, 120, 140]`` the three-parameter Weibull does this (its shape falls to 0.09), while its MPS fit puts ``gamma`` at 49.8, with a shape of 0.95. The two-parameter Exponential is the exception: its density is finite at the threshold, so its maximum at ``gamma`` equal to the first failure is a genuine one.
+- **If the MLE struggles** - a small sample, or a shape that puts an infinite density at the threshold - try ``how='MPS'``, which was designed for exactly this case (see the section on alternate estimation methods below). The likelihood of an offset fit has no finite maximum when ``gamma`` can run onto the first failure: with a Weibull, Gamma or LogLogistic shape below 1 the density there is infinite (for the LogNormal, the scale grows without bound on the way). Such a fit warns "No finite maximum", returns where its search stopped, with ``gamma`` on the smallest observation, and recommends ``how='MPS'``, whose spacings have no such limit. On the seven failures ``[55, 60, 70, 80, 95, 120, 140]`` the three-parameter Weibull does this (with its shape at 0.82, below 1), while its MPS fit puts ``gamma`` at 49.8, with a shape of 0.95. The two-parameter Exponential is the exception: its density is finite at the threshold, so its maximum at ``gamma`` equal to the first failure is a genuine one.
 
 .. jupyter-execute::
     :hide-code:
@@ -882,9 +883,33 @@ The underlying caution still stands, though, and it is worth keeping in mind for
         warnings.simplefilter("always")
         _m = surv.Weibull.fit(_x, offset=True)
     assert [str(w.message)[:18] for w in _caught] == ["No finite maximum:"]
-    assert abs(_m.gamma - 55) < 1e-5 and round(_m.params[1], 2) == 0.09
+    assert abs(_m.gamma - 55) < 1e-5 and _m.params[1] < 1
     _m = surv.Weibull.fit(_x, offset=True, how="MPS")
     assert round(_m.gamma, 1) == 49.8 and round(_m.params[1], 2) == 0.95
+
+- **An offset can also run the other way**, down towards :math:`-\infty`, when the data are skewed more to the left than any member of the family can be: the shifted family then approaches its limit -- the Normal for the LogNormal and the Gamma, the smallest extreme value distribution (``Gumbel``) for the Weibull, the ``Logistic`` for the LogLogistic -- and the likelihood rises towards the limit's without reaching it. Such a fit warns "No finite maximum" and recommends the limit itself. With one failure at -1 well below the rest (9 to 22), the offset LogNormal's ``gamma`` runs down past -100 before the search stops, and the Normal (log-likelihood -42.27) fits better than any LogNormal it reached. Maximum product of spacings is no way out here: its product of spacings rises towards the Normal's in the same way, and an ``how="MPS"`` fit warns "No finite maximum" too.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _x = [-1.0, 8.84, 9.956, 10.953, 11.903, 12.846, 13.816, 14.85, 15.997,
+          17.347, 19.096, 21.954]
+    _c = [0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0]
+    _n = [1, 1, 2, 1, 1, 1, 1, 3, 1, 1, 1, 1]
+    with warnings.catch_warnings(record=True) as _caught:
+        warnings.simplefilter("always")
+        _m = surv.LogNormal.fit(_x, _c, _n, offset=True)
+    assert [str(w.message)[:18] for w in _caught] == ["No finite maximum:"]
+    assert "surpyval.Normal" in str(_caught[0].message)
+    assert _m.gamma < -100
+    _normal = surv.Normal.fit(_x, _c, _n).neg_ll()
+    assert round(-_normal, 2) == -42.27 and _m.neg_ll() > _normal
+    with warnings.catch_warnings(record=True) as _caught:
+        warnings.simplefilter("always")
+        _m = surv.LogNormal.fit(_x, _c, _n, offset=True, how="MPS")
+    assert [str(w.message)[:18] for w in _caught] == ["No finite maximum:"]
+    assert "surpyval.Normal" in str(_caught[0].message)
 
 ``test_offset_divergence.py`` in the test suite pins this down for offset Gamma and Rayleigh fits with measured KL and Wasserstein distances alongside parameter tolerances: ``MLE`` is held to 5% on every parameter, and ``MOM`` (on the Rayleigh) to 10%, with the implied distributions essentially identical either way.
 
@@ -988,7 +1013,7 @@ exponential zero-failure bound on the mean life.
 
 Finally, the optimiser can be given a starting point with ``init``: the
 values in the order of ``parameter_names``, with ``gamma`` first if there is an
-offset and ``p`` then ``f0`` last for a limited failure population or zero
+offset and ``lfp_p`` then ``f0`` last for a limited failure population or zero
 inflation. With ``fixed``, ``init`` may list just the free parameters. You
 rarely need it, but if a fit fails, a starting point near the answer -- a
 shape of 1 and a scale near the mean of the data, say -- is the first thing
@@ -1140,13 +1165,13 @@ The other important use case is when, for some reason, an alternate estimation m
     print(str(caught[0].message).splitlines()[0])
     model.plot()
 
-This shows, that the Maximum Likelihood Estimation has failed for this data: SurPyval warns and hands back the optimiser's starting point instead. For many distributions that starting point is a probability-plot fit; for an offset LogLogistic it is only a rough guess, which is why the fitted curve misses the points. The warning is captured and printed above; in your own code it simply appears as a ``UserWarning``. However, because we have access to other methods, we can use an alternate estimation method:
+This shows that the Maximum Likelihood Estimation has failed for this data, and why: the fitted shape is below one, where the LogLogistic density is infinite at its origin, so the likelihood grows without bound as the offset approaches the first failure. There is no maximum to find, and SurPyval warns rather than presenting the point where the search stopped as an estimate. The warning is captured and printed above; in your own code it simply appears as a ``UserWarning``. However, because we have access to other methods, we can use an alternate estimation method:
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert str(caught[0].message).startswith("MLE Failed")
+    assert str(caught[0].message).startswith("No finite maximum")
 
 .. jupyter-execute::
 
@@ -1241,16 +1266,21 @@ Comparing distributions
 ^^^^^^^^^^^^^^^^^^^^^^^
 
 To choose a distribution, fit the candidates to the same data and compare an
-information criterion; lower is better. ``fit_best(x, c, n, t)`` does this by
+information criterion; lower is better. ``fit_best(x, c, n, t)`` (which also
+takes ``tl``, ``tr``, ``xl`` and ``xr``, as ``fit`` does) does this by
 maximum likelihood for eleven continuous distributions -- ``Beta``,
 ``Exponential``, ``ExpoWeibull``, ``Gamma``, ``Gumbel``, ``Logistic``,
 ``LogLogistic``, ``LogNormal``, ``Normal``, ``Rayleigh`` and ``Weibull`` (not
 ``GumbelLEV``, the discrete distributions or offset models) -- and returns the
 winner (see :doc:`comparison_and_validation`). ``metric`` may be ``'aic'``
 (the default), ``'aic_c'``, ``'bic'`` or ``'neg_ll'``, and ``include`` or
-``exclude`` (lists of names, not both) narrow the candidates. A candidate that
-cannot be fitted -- the Beta when the data leave :math:`[0, 1]`, say -- is
-skipped with a warning, and ``None`` is returned if none can.
+``exclude`` (lists of names, not both) narrow the candidates. The data are
+checked once, as ``fit`` checks them, so a mistake in them raises the error
+``fit`` would give. A candidate whose support does not hold the data -- the
+Beta when the data leave :math:`(0, 1)` -- is passed over quietly; one that
+cannot be fitted to them is skipped, named with its reason in one warning,
+and ``None`` is returned if none can (an error every candidate gives alike
+is about the data, and is raised).
 
 The information criteria assume a *regular* maximum of the likelihood, so two
 kinds of candidate are set aside, and ranked only when no regular candidate
@@ -1287,6 +1317,30 @@ model. Information criteria choose the most economical adequate model, not the
     assert best.dist.name == "Rayleigh"
     _gap = surv.Weibull.fit(x).aic() - surv.Rayleigh.fit(x).aic()
     assert 0 < _gap < 2, _gap         # as good a fit, one parameter fewer
+
+Whether the data are one population or two is decided the same way: a mixture
+is a candidate when named in ``include`` as a model of its components,
+``MixtureModel(Weibull, 2)``. It is fitted to the same data (the model given
+is left as it was) and ranked on the same criterion, its parameters counting
+each component's and the free weights. The default candidates stay single
+families.
+
+.. jupyter-execute::
+
+    np.random.seed(2)
+    x = np.concatenate([surv.Weibull.random(60, 5, 6), surv.Weibull.random(60, 30, 6)])
+    best = surv.fit_best(
+        x, metric="bic", include=["Weibull", surv.MixtureModel(surv.Weibull, 2)]
+    )
+    print(type(best).__name__, best.m, "components; BIC", round(best.bic(), 1),
+          "against", round(surv.Weibull.fit(x).bic(), 1), "for one Weibull")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert isinstance(best, surv.MixtureModel)
+    assert best.bic() < surv.Weibull.fit(x).bic() - 10
 
 A warning about truncated data and probability plotting
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1360,7 +1414,7 @@ On occasion, it can appear as though there are one, or two different distributio
 
     F(x) = \sum_{j=1}^{m} w_{j} F_{j}(x), \qquad f(x) = \sum_{j=1}^{m} w_{j} f_{j}(x).
 
-SurPyval uses the Expectation-Maximisation (EM) algorithm to fit a mixture. We do not know which component each unit came from, and EM alternates between two easy problems: given the current fit, compute each unit's probability of belonging to each component (the E step), then refit every component, and the weights, with the units weighted by those probabilities (the M step). Each round cannot decrease the likelihood, but near the maximum EM moves slowly, and on a censored mixture it can crawl along a flat direction of the likelihood for hundreds of rounds. So after a few rounds SurPyval finishes by maximising the likelihood directly (a gradient search on the weights, through a softmax, and the parameters together) and accepts the answer when it is a verified maximum: a zero gradient and the likelihood curving down in every direction. Only if it is not do the rounds go on, and the fit warns if they too end without one; the model records what it reached in ``maximum``, as a parametric model does (``'verified'``, ``'unverified'``, or ``'no finite maximum'`` where a component has collapsed onto a point mass). A mixture is fitted with ``MixtureModel.fit(x, dist=..., m=...)`` -- the distribution to use for every component, and the number of components -- which returns the fitted model like any other ``fit``. (You can also build the model first, ``MixtureModel(dist, m)``, and call its ``fit``, which fits it in place and returns it.)
+SurPyval uses the Expectation-Maximisation (EM) algorithm to fit a mixture. We do not know which component each unit came from, and EM alternates between two easy problems: given the current fit, compute each unit's probability of belonging to each component (the E step), then refit every component, and the weights, with the units weighted by those probabilities (the M step). Each round cannot decrease the likelihood, but near the maximum EM moves slowly, and on a censored mixture it can crawl along a flat direction of the likelihood for hundreds of rounds. So after a few rounds SurPyval finishes by maximising the likelihood directly (a gradient search on the weights, through a softmax, and the parameters together) and accepts the answer when it is a verified maximum: a zero gradient and the likelihood curving down in every direction. Only if it is not do the rounds go on, and the fit warns if they too end without one. Those further rounds, up to a thousand of them, can be accelerated with ``fit(..., em="squarem")`` (SQUAREM: it extrapolates along the path two rounds take, and keeps the result only where the likelihood is no lower than after those two rounds); a fit verified after the first few rounds is the same either way, so the default stays plain EM. The model records what it reached in ``maximum``, as a parametric model does (``'verified'``, ``'unverified'``, or ``'no finite maximum'`` where a component has collapsed onto a point mass). A mixture is fitted with ``MixtureModel.fit(x, dist=..., m=...)`` -- the distribution to use for every component, and the number of components -- which returns the fitted model like any other ``fit``. (You can also build the model first, ``MixtureModel(dist, m)``, and call its ``fit``, which fits it in place and returns it.)
 
 .. jupyter-execute::
 
@@ -1425,7 +1479,7 @@ The weights recover the 40/60/80 split of the simulated data (2/9, 3/9 and 4/9),
 
 Mixture models take counts, censoring flags and truncation as input (``x``, ``c``, ``n``, ``t``, ``tl``, ``tr``, ``xl``, ``xr``, as for any ``fit``). Truncation needs care: the truncation window is a property of the whole mixture, not of any one component, so a truncated mixture cannot be split up the way EM needs. For truncated data SurPyval instead maximises the truncation-corrected likelihood directly, starting from the same initial fit, and polishes and checks the answer as it does EM's.
 
-A fitted mixture is a smaller object than a fitted distribution. It has ``sf``, ``ff``, ``df``, ``Hf``, ``cs``, ``mean``, ``random`` and ``plot``, the weights ``w`` and component parameters ``params`` (one row per component), and ``loglike``, which despite its name is the *negative* log-likelihood of the fit. It has no ``hf``, ``qf``, confidence bounds or information criteria, but an AIC is easily formed by hand: a mixture of :math:`m` components with :math:`k` parameters each has :math:`mk + m - 1` free parameters (the weights sum to one). Here a two-Weibull mixture is compared with a single Weibull on right-censored data, and then saved and restored with ``to_dict`` / ``surpyval.from_dict`` like any other model:
+A fitted mixture is a smaller object than a fitted distribution. It has ``sf``, ``ff``, ``df``, ``Hf``, ``cs``, ``mean``, ``random`` and ``plot``, the weights ``w`` and component parameters ``params`` (one row per component), and, for comparing fits, the same ``log_likelihood``, ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` as a fitted distribution. A mixture of :math:`m` components with :math:`k` parameters each has :math:`mk + m - 1` free parameters (the weights sum to one), which is the :math:`k` of its criteria. (Before v0.23 a mixture had none of these, and its ``loglike`` was, despite its name, the *negative* log-likelihood; it still works until v0.24, with a ``DeprecationWarning``.) It has no ``hf``, ``qf`` or confidence bounds. Here a two-Weibull mixture is compared with a single Weibull on right-censored data, and then saved and restored with ``to_dict`` / ``surpyval.from_dict`` like any other model:
 
 .. jupyter-execute::
 
@@ -1437,9 +1491,8 @@ A fitted mixture is a smaller object than a fitted distribution. It has ``sf``, 
     wmm = surv.MixtureModel.fit(x, c=c, dist=surv.Weibull, m=2)
     print("weights:", wmm.w.round(3))
 
-    k_mix = wmm.m * wmm.dist.k + wmm.m - 1
     print("AIC single Weibull :", surv.Weibull.fit(x, c).aic())
-    print("AIC 2-Weibull mix  :", 2 * k_mix + 2 * wmm.loglike)
+    print("AIC 2-Weibull mix  :", wmm.aic())
 
     restored = surv.from_dict(wmm.to_dict())
     print(restored.sf([5, 10]), wmm.sf([5, 10]))
@@ -1450,12 +1503,13 @@ The mixture's AIC is lower by about 42, decisive evidence for two populations, a
     :hide-code:
     :hide-output:
 
-    _gap = surv.Weibull.fit(x, c).aic() - (2 * k_mix + 2 * wmm.loglike)
+    _gap = surv.Weibull.fit(x, c).aic() - wmm.aic()
+    assert wmm.aic() == 2 * (2 * 2 + 1) - 2 * wmm.log_likelihood
     assert round(_gap) == 42, _gap
     assert np.allclose(np.sort(wmm.w), [0.4, 0.6], atol=0.02), wmm.w
     assert np.allclose(restored.sf([5, 10]), wmm.sf([5, 10]))
 
-This makes SurPyval a truly powerful package for your survival analysis. Two cautions. A mixture has many parameters, so it needs a good amount of data: SurPyval refuses a fit with fewer than :math:`m(k + 1)` units. And the EM finds *a* maximum, which depends on where it starts. SurPyval starts by sorting the data, cutting its distinct values into :math:`m` consecutive blocks and fitting one component to each, with equal weights; with poorly separated components, check that the answer makes sense.
+This makes SurPyval a truly powerful package for your survival analysis. Two cautions. A mixture has many parameters, so it needs a good amount of data: SurPyval refuses a fit with fewer than :math:`m(k + 1)` units. And the EM finds *a* maximum, which depends on where it starts. SurPyval starts twice and keeps the better answer (a verified maximum before one that is not). The first start sorts the data, cuts its distinct values into :math:`m` consecutive blocks and fits one component to each, with equal weights. The second cuts only the failures, by count, into :math:`m` blocks, gives every survivor to the last component and weights each component by its share of the units: the usual reliability shape of a few early (infant-mortality) failures plus wear-out, which on field data with many survivors the first start can miss. With poorly separated components, still check that the answer makes sense.
 
 
 Limited Failure Population
@@ -1471,7 +1525,7 @@ As an example, we can created a Defective Subpopulation Weibull, also known as a
     import numpy as np
     from matplotlib import pyplot as plt
 
-    lfp_weibull = surv.Weibull.from_params([10, 2], p=0.6)
+    lfp_weibull = surv.Weibull.from_params([10, 2], lfp_p=0.6)
     np.random.seed(10)
     # random_data() gives survival data to fit, x, c, n and t, with the
     # units that never fail right-censored
@@ -1492,15 +1546,15 @@ As an example, we can created a Defective Subpopulation Weibull, also known as a
 
 This API works with any distribution so simply changing ``Weibull`` to ``Exponential`` would create a Defective Subpopulation Exponential / Limited Failure Population Exponential model. Further, if it was changed to ``Gamma`` it would create a Defective Subpopulation Gamma model / Limited Failure Population Gamma.
 
-The estimated proportion ``p`` is a parameter like any other, so it has a
-confidence interval, and it changes what the model predicts far into the
-future. The survival function levels off at ``1 - p`` instead of falling to
-zero, and a quantile beyond ``p`` is infinite, because that proportion of the
-population never fails:
+The estimated proportion ``lfp_p`` (``p`` before v0.23) is a parameter like
+any other, so it has a confidence interval, and it changes what the model
+predicts far into the future. The survival function levels off at
+``1 - lfp_p`` instead of falling to zero, and a quantile beyond ``lfp_p`` is
+infinite, because that proportion of the population never fails:
 
 .. jupyter-execute::
 
-    print("p =", lfp_model.p, " 95% CI:", lfp_model.param_cb('p'))
+    print("p =", lfp_model.lfp_p, " 95% CI:", lfp_model.param_cb("lfp_p"))
     print("R(1000) =", lfp_model.sf(1000.))
     print("time by which 70% have failed:", lfp_model.qf(0.7))
 
@@ -1508,13 +1562,13 @@ population never fails:
     :hide-code:
     :hide-output:
 
-    assert np.isclose(lfp_model.sf(1000.), 1 - lfp_model.p)
-    assert lfp_model.p < 0.7 and np.isinf(lfp_model.qf(0.7))
+    assert np.isclose(lfp_model.sf(1000.), 1 - lfp_model.lfp_p)
+    assert lfp_model.lfp_p < 0.7 and np.isinf(lfp_model.qf(0.7))
 
 For the same reason the mean lifetime of an LFP model, ``mean()``, is
 infinite, and so are ``var()`` and ``moment(n)``. The mean life of the units
 that do fail is the base mean, ``surv.Weibull.mean(*lfp_model.params)``.
-``mean(defective=True)`` is the *defective* mean, ``p`` times the base mean,
+``mean(defective=True)`` is the *defective* mean, ``lfp_p`` times the base mean,
 in which a unit that never fails contributes nothing; ``var()`` and
 ``moment()`` take the same keyword, scoring the units that never fail as 0,
 so ``var(defective=True)`` is ``moment(2, defective=True) -
@@ -1532,7 +1586,7 @@ mean(defective=True)**2``.
 
     _base = surv.Weibull.mean(*lfp_model.params)
     assert np.isinf(lfp_model.mean()) and np.isinf(lfp_model.var())
-    assert np.isclose(lfp_model.mean(defective=True), lfp_model.p * _base)
+    assert np.isclose(lfp_model.mean(defective=True), lfp_model.lfp_p * _base)
     assert np.isclose(lfp_model.var(defective=True),
                       lfp_model.moment(2, defective=True)
                       - lfp_model.mean(defective=True) ** 2)
@@ -1561,8 +1615,8 @@ same seed its failures are the finite lifetimes:
     assert np.allclose(np.sort(_life[np.isfinite(_life)]), _x[_c == 0])
     assert _n[_c == 1].sum() == np.isinf(_life).sum() > 0
 
-LFP models can only be fitted with ``MLE``; the other methods raise. And ``p``
-is only well determined when the data follow the units long enough to see the
+LFP models can only be fitted with ``MLE``; the other methods raise. And
+``lfp_p`` is only well determined when the data follow the units long enough to see the
 failure curve level off (see :doc:`Parametric Estimation`). Real data are
 rarely that kind. Meeker's integrated-circuit test put 4156 units on test for
 1370 hours and saw 28 failures, most of them early:
@@ -1577,7 +1631,7 @@ rarely that kind. Meeker's integrated-circuit test put 4156 units on test for
     ic_lfp = surv.Weibull.fit(df['x'], df['c'], df['n'], lfp=True)
     ic_plain = surv.Weibull.fit(df['x'], df['c'], df['n'])
     print(ic_lfp)
-    print("p 95% CI :", ic_lfp.param_cb('p'))
+    print("p 95% CI :", ic_lfp.param_cb("lfp_p"))
     print("AIC LFP  :", ic_lfp.aic(), "  plain Weibull:", ic_plain.aic())
 
 About 0.7% of the population is susceptible to this failure mode, and the
@@ -1596,7 +1650,7 @@ barely moves off it, which is why an explicit ``init`` is not trusted alone:
 
     assert df['n'].sum() == 4156 and df['n'][df['c'] == 0].sum() == 28
     assert df['x'].max() == 1370
-    assert round(100 * ic_lfp.p, 1) == 0.7 and ic_lfp.beta < 1
+    assert round(100 * ic_lfp.lfp_p, 1) == 0.7 and ic_lfp.beta < 1
     assert round(ic_lfp.alpha) == 28, ic_lfp.alpha
     assert round(ic_plain.beta, 1) == 0.2, ic_plain.params
     assert round(np.log10(ic_plain.alpha)) == 14, ic_plain.params
@@ -1606,17 +1660,17 @@ barely moves off it, which is why an explicit ``init`` is not trusted alone:
 
     stuck = surv.Weibull.fit(df['x'], df['c'], df['n'], lfp=True,
                              init=[1e6, 0.3, 0.1])
-    print("from init  : p =", stuck.p, " alpha =", stuck.alpha,
+    print("from init  : p =", stuck.lfp_p, " alpha =", stuck.alpha,
           " neg_ll =", stuck.neg_ll())
-    print("by default : p =", ic_lfp.p, " alpha =", ic_lfp.alpha,
+    print("by default : p =", ic_lfp.lfp_p, " alpha =", ic_lfp.alpha,
           " neg_ll =", ic_lfp.neg_ll())
 
 From ``alpha = 1e6`` the search stops on the ridge, almost ten
 log-likelihood units below the maximum, and that used to be the model
 returned. Now a fit given ``init`` is also started from the default start
 (and, where that is not verifiably a maximum, from its alternatives -- for an
-LFP fit, the failures alone: a Weibull fitted to the 28 failures, with ``p``
-at 28/4156), and the start with the best likelihood wins, so the two fits
+LFP fit, the failures alone: a Weibull fitted to the 28 failures, with
+``lfp_p`` at 28/4156), and the start with the best likelihood wins, so the two fits
 above are the same model.
 
 .. jupyter-execute::
@@ -1626,11 +1680,15 @@ above are the same model.
     assert abs(stuck.neg_ll() - ic_lfp.neg_ll()) < 1e-6  # the same model
     assert abs(stuck.alpha / ic_lfp.alpha - 1) < 1e-4
 
-Distributions that call one of their own parameters ``p`` -- the
-``Geometric`` and the ``NegativeBinomial`` -- keep that name, and their
-limited-failure proportion is called ``lfp_p`` instead (in ``fixed``,
-``param_cb`` and the printed model); see the section on discrete distributions
-below.
+The proportion is ``lfp_p`` everywhere: the attribute, ``fixed``,
+``param_cb``, ``from_params``, ``extras`` and the printed model. It was ``p``
+before v0.23 (#608), which still works until v0.24 with a
+``DeprecationWarning`` -- except on the distributions that call one of their
+own parameters ``p`` (``Bernoulli``, ``Binomial``, ``FixedEventProbability``,
+``Geometric``, ``NegativeBinomial``), where ``model.p`` is that parameter, as
+``model.alpha`` is a Weibull's scale; see the section on discrete
+distributions below. (A saved model's dictionary keeps the key ``"p"``, so
+that every version reads it.)
 
 Zero-Inflated Modelling
 -----------------------
@@ -1690,7 +1748,7 @@ To showcase the SurPyval API again, and to demonstrate the flexibility, it is tr
     import numpy as np
 
     dist = surv.LogNormal
-    model = dist.from_params([2.2, .2], f0=0.05, p=0.6)
+    model = dist.from_params([2.2, .2], f0=0.05, lfp_p=0.6)
     np.random.seed(10)
     # Survival data to fit, with the units that never fail censored
     x, c, n, _ = model.random_data(100)
@@ -1702,14 +1760,14 @@ To showcase the SurPyval API again, and to demonstrate the flexibility, it is tr
 
     fitted_model.plot(plot_bounds=False)
 
-Using a ``LogNormal`` distribution we were able to easily capture the DS/LFP and ZI behaviour of the data. With both options, ``p`` is the total proportion that ever fails, *including* the ``f0`` that fail at time zero, so here about 7% fail at once and about 57% more fail over time (against 5% and 55% in the model the data were drawn from). Zero inflation needs a distribution whose support starts at zero (it is not available for the Normal, say), and like LFP it can only be fitted by ``MLE``.
+Using a ``LogNormal`` distribution we were able to easily capture the DS/LFP and ZI behaviour of the data. With both options, ``lfp_p`` is the total proportion that ever fails, *including* the ``f0`` that fail at time zero, so here about 7% fail at once and about 57% more fail over time (against 5% and 55% in the model the data were drawn from). Zero inflation needs a distribution whose support starts at zero (it is not available for the Normal, say), and like LFP it can only be fitted by ``MLE``.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
     assert round(fitted_model.f0, 2) == 0.07, fitted_model.f0
-    assert round(fitted_model.p - fitted_model.f0, 2) == 0.57
+    assert round(fitted_model.lfp_p - fitted_model.f0, 2) == 0.57
 
 Flexible parametric (Royston-Parmar)
 ------------------------------------
@@ -1848,28 +1906,27 @@ The ``Geometric`` distribution is the discrete analogue of the ``Exponential``: 
     x = surv.Geometric.random(200, 0.15)
     surv.Geometric.fit(x)
 
-A pitfall hides in that parameter's name. ``p`` is also the name SurPyval
-reserves for the proportion of a limited failure population, and the model's
-``p`` attribute means that proportion (1 for an ordinary model). The fitted
-per-cycle probability of a ``Geometric``, and the ``p`` of a
-``NegativeBinomial``, are read from ``params`` instead:
+As for every distribution, the fitted parameter is also an attribute of the
+model: ``geom.p`` is the per-cycle probability, as ``params[0]`` is. The
+proportion of a limited failure population is ``lfp_p`` on every model (it
+was ``p`` before v0.23, which made ``geom.p`` read 1, the proportion, rather
+than the fitted probability):
 
 .. jupyter-execute::
 
     geom = surv.Geometric.fit(x)
-    print("per-cycle probability:", geom.params[0])
-    print("geom.p               :", geom.p, "(the limited-failure proportion)")
+    print("per-cycle probability:", geom.params[0], geom.p)
+    print("geom.lfp_p           :", geom.lfp_p, "(the limited-failure proportion)")
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert geom.p == 1
+    assert geom.p == geom.params[0] and geom.lfp_p == 1
 
-Parameter *names*, though, always mean the distribution's own parameter
-first: ``param_cb('p')`` bounds the per-cycle probability, ``fixed={'p': ...}``
-fixes it, and a limited failure population fitted to these two distributions
-calls its proportion ``lfp_p``:
+Parameter *names* mean the distribution's own parameter too:
+``param_cb('p')`` bounds the per-cycle probability, ``fixed={'p': ...}``
+fixes it, and a limited failure population calls its proportion ``lfp_p``:
 
 .. jupyter-execute::
 
@@ -2026,7 +2083,11 @@ data it needs (no ``how``, ``offset``, ``lfp``, ``zi`` or ``fixed``):
   every ``x``.
 - ``Binomial``: the number of events in ``n`` independent trials; fitted for
   a known number of trials, ``n_trials``, which is reported back as the first
-  of its two parameters ``(n, p)``.
+  of its two parameters ``(n, p)``. ``n_trials`` may also be one number per
+  row, for batches of different sizes (lots of 20, 50 and 80 units): ``p`` is
+  then estimated from the events in all the trials, and the model has no
+  single ``n`` (it is ``nan``, and the functions of the count of events say
+  so; ``model.with_params([n, p])`` is the model of ``n`` trials).
 - ``ExactEventTime``: an event known to occur at one fixed time ``T``,
   estimated from "not yet" (right-censored) and "already" (left-censored)
   checks, as the midpoint between the latest "not yet" and the earliest
@@ -2063,6 +2124,49 @@ data it needs (no ``how``, ``offset``, ``lfp``, ``zi`` or ``fixed``):
     assert np.isclose(
         surv.FixedEventProbability.fit([0, 1, 1, 0, 1]).params[0], 0.6)
     assert np.isclose(event.params[0], (3 + 4) / 2)
+
+The probability ``p`` of a ``Bernoulli``, ``FixedEventProbability`` or
+``Binomial`` fit has confidence bounds from its counts of events and trials,
+``param_cb("p")``. The default is the exact (Clopper-Pearson) interval, the
+usual one for demand-failure probabilities and reliability demonstration (as
+R's ``binom.test`` and scipy's ``binomtest``): it holds its level at any
+sample size, and with no failures it still gives the upper bound, which is
+then the whole answer. ``method="wald"`` (on the logit scale; undefined at
+:math:`\hat p = 0` or 1) and ``method="lr"`` (likelihood ratio) are options.
+These models have no other bounds: ``cb``, ``quantile_cb`` and ``mean_cb``
+raise, pointing to ``param_cb``. A ``Binomial`` fitted to batches of different
+sizes is bounded from its total events in its total trials, which are
+binomial whatever the batches' sizes, so the exact interval holds there too.
+
+.. jupyter-execute::
+
+    # inverter start-ups: 3 failures (coded 1) in 1200 demands
+    starts = surv.Bernoulli.fit([1, 0], n=[3, 1197])
+    print("p, 90% exact :", starts.param_cb("p", alpha_ci=0.1).round(5))
+    print("p, 90% Wald  :", starts.param_cb("p", alpha_ci=0.1,
+                                            method="wald").round(5))
+
+    # no failures in 1200: the 90% upper bound is 1 - 0.1 ** (1 / 1200)
+    clean = surv.Bernoulli.fit([0], n=[1200])
+    print("upper, none  :", clean.param_cb("p", alpha_ci=0.1,
+                                           bound="upper").round(6))
+
+    # lot acceptance: 1, 0 and 3 defectives in lots of 20, 50 and 80
+    lots = surv.Binomial.fit([1, 0, 3], n_trials=[20, 50, 80])
+    print("lots p       :", lots.params[1].round(5),
+          lots.param_cb("p").round(5))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(starts.param_cb("p", alpha_ci=0.1), [0.00068, 0.00645],
+                       atol=5e-6)
+    assert np.isclose(clean.param_cb("p", alpha_ci=0.1, bound="upper")[0],
+                      1 - 0.1 ** (1 / 1200))
+    from scipy.stats import binomtest
+    _ci = binomtest(4, 150).proportion_ci()
+    assert np.allclose(lots.param_cb("p"), [_ci.low, _ci.high])
 
 See :doc:`univariate/bernoulli`, :doc:`univariate/fixed_event_probability`,
 :doc:`univariate/binomial`, :doc:`univariate/exact_event_time` and
@@ -2139,9 +2243,11 @@ likelihood-ratio band usually the better calibrated:
     plt.ylabel('R(t)')
 
 The likelihood-ratio band is computed pointwise, so it is slower than the Wald
-band, needs the original data (a model restored from ``from_dict`` raises), and
-is not yet available for offset / limited-failure-population / zero-inflated
-models.
+band (the likelihood region is found once per confidence level and shared by
+every band, quantile and mean bound at that level, and each time's search
+starts from where the neighbouring time's bound was found), needs the original
+data (a model restored from ``from_dict`` raises), and is not yet available for
+offset / limited-failure-population / zero-inflated models.
 
 Bounds on the *parameters* themselves come from ``param_cb``. By default it
 returns a Wald interval built from the parameter's standard error. For small or
@@ -2222,6 +2328,73 @@ reading the band from ``cb(t, on='ff')`` across: a pointwise band on
     assert _m[0] < model.mean() < _m[1]
 
 
+Forecasting failures in service
+-------------------------------
+
+A fitted model describes a unit from new; the units in service have already
+survived to their ages. A unit at age :math:`a` fails within the next :math:`h`
+with probability :math:`(F(a + h) - F(a)) / (1 - F(a))`, one minus the
+conditional survival ``cs(h, a)``, and :func:`surpyval.forecast` sums that over
+a fleet or a set of cohorts, with a prediction interval for the count from its
+exact (Poisson-binomial) distribution. It takes the units' ``age``, the
+``horizon`` (one time ahead, or the end of each period), the number of units at
+each age ``n``, and optionally a ``limit``: an age past which failures are not
+counted, such as the end of a warranty.
+
+Here 24 monthly shipments of 1,000 units are under a 24-month warranty. A
+Weibull is fitted to the returns so far (each unit returned at its failure age,
+or still in service at its cohort's age), and the next six months' returns are
+forecast for the survivors of each cohort:
+
+.. jupyter-execute::
+
+    import surpyval as surv
+
+    rng = np.random.default_rng(11)
+    cohort_age = np.arange(1, 25)                 # months since shipment
+    T = 200 * rng.weibull(1.4, (24, 1000))         # true failure ages
+    failed = T <= cohort_age[:, None]
+    x_w = np.where(failed, T, cohort_age[:, None]).ravel()
+    warranty = surv.Weibull.fit(x_w, c=(~failed).ravel().astype(int))
+    print('fitted alpha, beta :', warranty.params.round(3))
+
+    returns = surv.forecast(
+        warranty, age=cohort_age, n=1000 - failed.sum(axis=1),
+        horizon=[1, 2, 3, 4, 5, 6], limit=24,
+    )
+    print(returns)
+
+The rows give, for each month ahead, the expected returns by then with a 95%
+prediction interval, and the returns in that month alone. The oldest cohort
+is at the end of its warranty and adds nothing; the next leaves it after one
+month, so it adds to the first month only.
+``returns.probability`` holds each cohort's chance of a return and
+``returns.unit_expected`` its expected count.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _a = cohort_age.astype(float)
+    _n = 1000 - failed.sum(axis=1)
+    _end = np.minimum(_a + 6, 24.0)
+    _p = (warranty.ff(_end) - warranty.ff(_a)) / warranty.sf(_a)
+    assert np.isclose(returns.expected[-1], np.sum(_n * _p), rtol=1e-10)
+    assert np.all(returns.probability[-1] == 0)
+    assert np.all(returns.probability[-2] == returns.probability[-2, 0])
+    assert returns.probability[-2, 0] > 0
+    assert returns.lower[-1] < returns.expected[-1] < returns.upper[-1]
+
+The interval is that of the count with the model taken as known; it does not
+include the uncertainty of the fit. In-warranty counts often barely separate
+candidate models (a Weibull, a mixture, a limited-failure population) while
+their extrapolations differ, so forecast from each plausible model and compare.
+The same function forecasts from a regression model, with each unit's
+covariates (see :doc:`Regression Modelling with SurPyval`), and from the
+recurrent-event models, where a repaired unit can fail again and every
+failure is counted (see :doc:`Recurrent Event Modelling with SurPyval`).
+
+
 Creating a custom Distribution
 ------------------------------
 
@@ -2271,9 +2444,9 @@ parameter, ``(x, nu, b)``. The names ``gamma`` and ``f0`` are reserved for the
 offset and zero-inflation parameters, and a fitted model exposes each parameter
 as an attribute (``model.nu``), so a name that is already an attribute of a
 model -- ``k``, ``dist``, ``data``, ``method``, ``sf`` and so on -- is refused
-with a ``ValueError`` that lists them all (a parameter may be called ``p``: the
-limited-failure proportion of such a model is then ``lfp_p``, as for the
-Geometric). The name of the distribution is how a saved model finds it again
+with a ``ValueError`` that lists them all (a parameter may be called ``p``,
+which ``model.p`` then gives, as for the Geometric; ``lfp_p``, the
+limited-failure proportion, is reserved). The name of the distribution is how a saved model finds it again
 (see below), so constructing a second one under a name already used in the
 session warns that it replaces the first. Everything else is derived:
 the hazard and the density are obtained by automatically differentiating the

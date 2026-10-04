@@ -140,6 +140,8 @@ Other areas of the package add a few more names, always with the same meaning:
 - e = the event type, or cause, of each row, for competing risks (``None`` for a censored row with no attributed cause).
 - y = the measured degradation value at each ``x``, for degradation models (with ``i`` identifying the unit).
 
+A parametric fit refuses times its distribution cannot describe, with a ``ValueError`` that says so: for a distribution on :math:`(0, \infty)` (Weibull, Gamma, Exponential, LogNormal, ...) an observed time at or below 0, or a time left censored at or below 0. A unit right censored at 0 is accepted (it carries no information). A negative time is refused whatever its censoring, by the univariate fits (``fit``, ``fit_from_df``, a zero-inflated or limited-failure fit and every ``how``) and by a parametric regression on such a baseline (the AFT, PH, PO and AH families, accelerated life and frailty models, by ``fit``, ``fit_from_df``, a formula or ``fit_tvc``) alike, as R's ``survreg`` and lifelines do: no unit can be censored before time 0, and the likelihoods are not defined there. An offset fit's support starts at its offset ``gamma``, which lies below every time, so it takes negative times. A distribution on the whole line (Normal, Gumbel, Logistic) takes negative times.
+
 Every fitter with a ``fit`` also has a ``fit_from_df``, which takes a pandas
 ``DataFrame`` and the names of its columns in place of these arrays, passes
 every other option to ``fit``, and gives the model ``fit`` gives on the same
@@ -153,8 +155,8 @@ one). The univariate ``tl_col`` / ``tr_col`` also take one number, a
 truncation shared by every row; a copula takes a column per dimension
 (``x_cols=['pump', 'motor']``). The names of v0.21 without the suffix
 (``Weibull.fit_from_df(df, x='hours', c=...)``, and ``x=``, ``y=``,
-``i=`` of the degradation fitters) still work, with a
-``DeprecationWarning``, until v0.23.
+``i=`` of the degradation fitters) were removed in v0.23 and raise
+``TypeError``.
 
 .. jupyter-execute::
 
@@ -228,13 +230,13 @@ The conventions for single event SurPyval models are that each object returned f
 
 A ``MixtureModel`` is the exception: it has no ``hf()`` or ``qf()``. These are the functions :math:`f(x)`, :math:`F(x)`, :math:`R(x)`, :math:`h(x)` and :math:`H(x)`; how each can be computed from any of the others is shown in :doc:`Handy References - Aide-mémoire`. One caution: a non-parametric estimate (Kaplan-Meier and the others) is a step function, so its ``hf()`` and ``df()`` are the sizes of the jumps between the points you ask for, not rates, and change with how finely you space them; ``smoothed_hf()`` gives a kernel-smoothed hazard rate instead. Most single event models also provide:
 
-- :code:`qf()` - The quantile function, the inverse of the CDF. ``qf(0.1)`` is the B10 life.
+- :code:`qf()` - The quantile function, the inverse of the CDF. ``qf(0.1)`` is the B10 life. Every ``qf`` -- a fitted model's, with or without covariates, and a distribution's own (``surv.Weibull.qf(u, alpha, beta)``) -- gives ``nan`` with one warning for a probability outside [0, 1] (most often a percentage given for a probability, ``qf(10)`` for the B10 life), as scipy's ``ppf`` gives ``nan``; ``nan`` gives ``nan``.
 - :code:`cb()` - Confidence bounds on a function (the survival function by default).
 - :code:`mean()` - The mean.
 - :code:`random()` - Random samples from the model.
 - :code:`plot()` - A plot of the model against the data it was fitted to.
 
-For a parametric model, ``params`` holds the fitted parameters in the order given by ``model.parameter_names`` (the distribution's ``parameter_names``; each is also an attribute, e.g. ``model.alpha``), and those names are what ``fixed={...}`` refers to. Fitted parametric models also have ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` for comparing fits, ``cs(x, given)`` for the conditional survival :math:`R(given + x)/R(given)`, ``var()``, ``moment()`` and ``entropy()``, and ``param_cb()`` for confidence bounds on the parameters themselves. Non-parametric models add, among others, ``rmst()`` (restricted mean survival time) and simultaneous confidence bands with ``band()``; see :doc:`Parametric SurPyval Modelling` and :doc:`Non-Parametric SurPyval Modelling`.
+For a parametric model, ``params`` holds the fitted parameters in the order given by ``model.parameter_names`` (the distribution's ``parameter_names``; each is also an attribute, e.g. ``model.alpha``), and those names are what ``fixed={...}`` refers to. Fitted parametric models also have ``log_likelihood`` (a number) and ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` (methods) for comparing fits, spelt so on every model that has them, ``covariance()`` for the parameters' covariance and ``standard_errors()`` for their standard errors (the square roots of its diagonal, an array in its order; so on every model that has a covariance, the Cox model included), ``cs(x, given)`` for the conditional survival :math:`R(given + x)/R(given)`, ``var()``, ``moment()`` and ``entropy()``, and ``param_cb()`` for confidence bounds on the parameters themselves. Non-parametric models add, among others, ``rmst()`` (restricted mean survival time) and simultaneous confidence bands with ``band()``; see :doc:`Parametric SurPyval Modelling` and :doc:`Non-Parametric SurPyval Modelling`.
 
 Models from other areas follow the same pattern with one extra argument:
 
@@ -369,7 +371,7 @@ With :math:`F_0` and :math:`R_0` the base distribution, the full model is
 
 and the defaults :math:`\gamma = 0`, :math:`p = 1` and :math:`f_0 = 0` give back the base distribution. The conventions to remember are:
 
-- :math:`p` is the proportion that **ever fails**, including the dead-on-arrival fraction, so :math:`F(\infty) = p` and :math:`f_0 \le p`. Writing it this way means every function (``ff``, ``sf``, ``df``, the likelihood, ``mean``, ``qf``) uses the same constant :math:`p - f_0` for the continuous part, and they are mutually consistent.
+- :math:`p` (the model's ``lfp_p``; ``p`` before v0.23) is the proportion that **ever fails**, including the dead-on-arrival fraction, so :math:`F(\infty) = p` and :math:`f_0 \le p`. Writing it this way means every function (``ff``, ``sf``, ``df``, the likelihood, ``mean``, ``qf``) uses the same constant :math:`p - f_0` for the continuous part, and they are mutually consistent.
 - The zero-inflation mass sits at :math:`x = 0`, even when there is an offset. Before 0 nothing has failed: :math:`F(x) = 0` and :math:`R(x) = 1` for :math:`x < 0`.
 - Between 0 and the offset, :math:`F(x) = f_0` and :math:`R(x) = 1 - f_0`: the base distribution has not started.
 - Truncation follows from that, with the window :math:`(t_l, t_r]` open on the left as everywhere: a left truncation below 0 truncates nothing (the mass at 0 is inside the window), and one at 0 excludes the mass: the window's probability is :math:`1 - f_0`, so where every row is truncated at 0, :math:`f_0` cancels from the likelihood and cannot be estimated (an exact 0 at ``tl = 0`` is refused, as any observation at its own truncation time is). This is the convention of the discrete distributions, whose mass at :math:`t_l` is outside the window too.
@@ -377,7 +379,7 @@ and the defaults :math:`\gamma = 0`, :math:`p = 1` and :math:`f_0 = 0` give back
 - ``qf(q)`` is infinite for :math:`q \ge p` (that fraction of the population never fails), and 0 for :math:`q \le f_0`.
 - ``mean()`` is the mean lifetime :math:`E[T]`, which is infinite for an LFP model (:math:`p < 1`), since some units never fail; ``moment(n)`` (:math:`n \ge 1`) and ``var()`` are infinite too. ``mean(defective=True)`` is the *defective* mean :math:`(p - f_0)\,E[\gamma + X_0]`, the integral of :math:`t\,dF(t)` over the units that fail (and ``moment`` and ``var`` take the same keyword). For a zero-inflated model without LFP the two agree: the zeros contribute nothing. Neither is the mean life of the units that fail, :math:`\gamma + E[X_0]`.
 - ``random()`` draws lifetimes, ``qf(u)`` for one uniform ``u`` per draw, for every model: ``inf`` for a unit that never fails and 0 for one dead on arrival. ``random_data()`` draws the same units as xcnt survival data, ``(x, c, n, t)``, with the units that never fail right-censored after the last failure, ready to refit.
-- ``model.extras`` holds the ``gamma``, ``p`` and ``f0`` the model has, as keywords of ``from_params()``, and ``model.with_params(params)`` is the same model with other distribution parameters (``from_params(model.params)`` alone drops them).
+- ``model.extras`` holds the ``gamma``, ``lfp_p`` and ``f0`` the model has, as keywords of ``from_params()``, and ``model.with_params(params)`` is the same model with other distribution parameters (``from_params(model.params)`` alone drops them).
 - LFP and zero-inflated models can only be fitted by maximum likelihood (``how="MLE"``).
 
 .. jupyter-execute::
@@ -385,9 +387,9 @@ and the defaults :math:`\gamma = 0`, :math:`p = 1` and :math:`f_0 = 0` give back
     variants = {
         "base":            surv.Weibull.from_params([10, 2]),
         "offset gamma=5":  surv.Weibull.from_params([10, 2], gamma=5),
-        "lfp p=0.3":       surv.Weibull.from_params([10, 2], p=0.3),
+        "lfp_p=0.3":       surv.Weibull.from_params([10, 2], lfp_p=0.3),
         "zi f0=0.1":       surv.Weibull.from_params([10, 2], f0=0.1),
-        "lfp + zi":        surv.Weibull.from_params([10, 2], p=0.3, f0=0.1),
+        "lfp + zi":        surv.Weibull.from_params([10, 2], lfp_p=0.3, f0=0.1),
     }
     print("                  F(0)    F(5)    F(15)   F(1e6)")
     for name, m in variants.items():
@@ -401,11 +403,11 @@ Reading across the rows: the offset model has not started by 5; the LFP model le
 
     _F = {k: m.ff([0, 5, 15, 1e6]) for k, m in variants.items()}
     assert _F["offset gamma=5"][1] == 0
-    assert np.isclose(_F["lfp p=0.3"][-1], 0.3)
+    assert np.isclose(_F["lfp_p=0.3"][-1], 0.3)
     assert np.isclose(_F["zi f0=0.1"][0], 0.1)
     assert np.allclose(_F["lfp + zi"][[0, -1]], [0.1, 0.3])
 
-The combined model shows the other conventions. Its mean lifetime is infinite, since 70% of the units never fail; its lifetimes come out as ``inf`` for those units and 0 for the ones dead on arrival; and ``with_params`` keeps its ``p`` and ``f0``:
+The combined model shows the other conventions. Its mean lifetime is infinite, since 70% of the units never fail; its lifetimes come out as ``inf`` for those units and 0 for the ones dead on arrival; and ``with_params`` keeps its ``lfp_p`` and ``f0``:
 
 .. jupyter-execute::
 
@@ -425,8 +427,8 @@ The combined model shows the other conventions. Its mean lifetime is infinite, s
     np.random.seed(1)
     _draws = m.random(6)
     assert np.isinf(_draws).any() and (_draws == 0).any()
-    assert m.extras == {"p": 0.3, "f0": 0.1}
-    _expected = surv.Weibull.from_params([20, 2], p=0.3, f0=0.1).ff(15)
+    assert m.extras == {"lfp_p": 0.3, "f0": 0.1}
+    _expected = surv.Weibull.from_params([20, 2], lfp_p=0.3, f0=0.1).ff(15)
     assert m.with_params([20, 2]).ff(15) == _expected
 
 Saving and Loading Models
@@ -483,3 +485,12 @@ The univariate parametric and non-parametric models can carry their data with th
     print("with the data    :", with_data.data["x"])
 
 A few models cannot be saved, and say so when ``to_dict`` is called: a stratified Cox model, an accelerated-life model with a life model of your own, and a copula of a custom family. A regression fitted with a formula keeps its categorical levels and fitted transform statistics (``scale()``, ``poly()``, splines), so it is read back predicting exactly as before. A model of a distribution made with ``Discretize`` is read back like any other. A model of a ``CustomDistribution`` stores only the distribution's name, since its cumulative hazard is a Python function: it is read back in any session that has constructed the same ``CustomDistribution`` (same name) again, and otherwise ``from_dict`` raises an error that says so. Keep the data (for example with ``SurpyvalData.to_json``) whenever you may need to refit. The full API is in :doc:`surpyval.serialisation`.
+
+Every fitted model also pickles, the stratified Cox model included, so it can be sent to worker processes (``multiprocessing``, ``concurrent.futures``, ``joblib``, Dask, Ray) or cached with ``pickle`` or ``joblib.dump``. (A model built on a function of your own -- a custom ``phi``, life model or ``CustomDistribution`` -- pickles where pickle can save that function: one defined at the top level of a module, not a ``lambda``.) Unlike ``to_dict``, a pickle keeps everything, the data and the likelihood too, so the unpickled model predicts and gives bounds exactly as the original; but it is for passing a model between processes or caching it on one machine, not for keeping it: a pickle may not load in another version of SurPyval (or of Python, numpy or autograd), and unpickling runs code, so load only pickles you made. Use ``to_json`` to store a model. The recurrence fitters (``CrowAMSAA``, ``HPP`` and the others) unpickle as themselves, so ``model.dist is surv.CrowAMSAA`` still holds.
+
+.. jupyter-execute::
+
+    import pickle
+
+    copy = pickle.loads(pickle.dumps(weibull))
+    print(copy.params, copy.sf(6) == weibull.sf(6))

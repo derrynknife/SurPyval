@@ -50,7 +50,7 @@ def test_fixed_all_params():
     assert np.allclose(model.params, [10.0, 2.0])
     # Nothing is estimated, so nothing carries variance
     assert np.all(model.hess_inv == 0)
-    assert np.all(model.cov_matrix == 0)
+    assert np.all(model.covariance() == 0)
 
 
 def test_fixed_with_free_only_init():
@@ -96,10 +96,10 @@ W, E, G = surv.Weibull, surv.Exponential, surv.Geometric
             dict(fixed={"shape": 1}),
             r"Unknown parameter\(s\) \['shape'\] in `fixed`",
         ),
-        (dict(fixed={"p": 0.5}), "needs lfp=True"),
+        (dict(fixed={"lfp_p": 0.5}), "needs lfp=True"),
         (dict(fixed={"gamma": 0.5}), "needs offset=True"),
         (dict(fixed={"alpha": -1}), "Cannot fix alpha"),
-        (dict(lfp=True, fixed={"p": 1.5}), "Cannot fix p"),
+        (dict(lfp=True, fixed={"lfp_p": 1.5}), "Cannot fix lfp_p"),
         (dict(offset=True, fixed={"gamma": 1.5}), "Cannot fix gamma"),
         (dict(init=[1.0]), "`init` has 1 value"),
         (dict(init=[-1.0, 2.0]), "Bad `init`: alpha"),

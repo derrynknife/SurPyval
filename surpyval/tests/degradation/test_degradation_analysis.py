@@ -160,6 +160,11 @@ def test_plot():
     x, y, i = linear_data(slopes)
     with pytest.warns(UserWarning):
         model = DegradationAnalysis.fit(x, y, i, threshold=150)
+    # plot() draws on the current axes: start from none, as an earlier
+    # test in the same worker may leave a figure open
+    import matplotlib.pyplot as plt
+
+    plt.close("all")
     ax = model.plot()
     # one path line per unit plus the threshold line
     assert len(ax.get_lines()) == len(slopes) + 1
@@ -803,6 +808,50 @@ def test_adt_predictions_require_and_use_Z():
     assert draws.mean() == pytest.approx(model.mean(Z=[1.0]), rel=0.1)
 
 
+def test_585_adt_quantiles_are_found_all_at_once():
+    # An accelerated model's qf / random searched each probability on its
+    # own, calling the regression model's sf about 35 times per draw:
+    # random(5000) made 175,000 calls and took half a minute. All the
+    # probabilities are now bisected together, an array per step.
+    x, y, i, Z = adt_data()
+    model = DegradationAnalysis.fit(x, y, i, threshold=100.0, Z=Z)
+    reg = model.life_model
+    calls = []
+    sf = reg.sf
+
+    def counted_sf(*args, **kwargs):
+        calls.append(1)
+        return sf(*args, **kwargs)
+
+    reg.sf = counted_sf
+    try:
+        draws = model.random(2000, Z=[1.0], random_state=1)
+        n_calls = len(calls)
+        # one row per probability, with both ends, a missing value and a
+        # missing covariate among them
+        p = np.array([0.0, 1e-9, 0.3, 0.5, 0.97, 1.0, np.nan, 0.5])
+        rows = np.array(
+            [[0.0], [0.5], [1.0], [1.5], [3.0], [1.0], [1.0], [np.nan]]
+        )
+        q = model.qf(p, Z=rows)
+        one_at_a_time = [
+            float(np.ravel(model.qf(pk, Z=row))[0]) for pk, row in zip(p, rows)
+        ]
+    finally:
+        del reg.sf
+    assert draws.shape == (2000,) and np.isfinite(draws).all()
+    # a bracket doubling and a bisection to 1e-10: tens of array calls
+    assert n_calls < 200
+    assert q[0] == 0.0 and q[5] == np.inf
+    assert np.isnan(q[6]) and np.isnan(q[7])
+    # each quantile is the one its own search finds, and inverts sf
+    np.testing.assert_allclose(q, one_at_a_time, rtol=1e-9)
+    inner = slice(1, 5)
+    np.testing.assert_allclose(
+        model.sf(q[inner], Z=rows[inner]), 1.0 - p[inner], rtol=1e-8
+    )
+
+
 def test_adt_missing_Z_raises():
     x, y, i, Z = adt_data()
     model = DegradationAnalysis.fit(x, y, i, threshold=100.0, Z=Z)
@@ -949,7 +998,7 @@ def test_adt_repr():
     out = repr(model)
     assert "Degradation Analysis SurPyval Model" in out
     assert "covariates" in out
-    assert "beta_0" in out
+    assert "coef_0" in out
 
 
 def test_352_measurement_inputs_are_refused_with_one_wording():

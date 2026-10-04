@@ -108,7 +108,8 @@ RULES = {
     "qf": (-np.inf, np.inf, 1),
 }
 # For recurrent events ``cif`` is a cumulative intensity, not a probability.
-COUNTING_RULES = dict(RULES, cif=(0.0, np.inf, 1))
+# The instantaneous MTBF, 1 / iif, of a recurrence model (#578).
+COUNTING_RULES = dict(RULES, cif=(0.0, np.inf, 1), mtbf=(0.0, np.inf, 0))
 
 
 def check_valid(name, values, rule):

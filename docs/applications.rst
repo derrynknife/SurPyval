@@ -109,7 +109,7 @@ It must be said that this is a bit 'hacky'. There is no theory that we are using
     :hide-output:
 
     assert 0.45 < model.params[0] < 0.55, model.params   # knot_frac
-    assert round(100 * model.p, 1) == 97.1, model.p
+    assert round(100 * model.lfp_p, 1) == 97.1, model.lfp_p
 
 
 Applied Reliability Engineering
@@ -142,17 +142,17 @@ LFP likelihoods can be awkward to optimise: the proportion :math:`p` and the sha
     :hide-output:
 
     assert len(f) == 28 and len(f) + len(s) == 4156
-    assert round(100 * model.p, 2) == round(100 * 28 / 4156, 2) == 0.67
-    assert model.ff(1370) / model.p > 0.99
+    assert round(100 * model.lfp_p, 2) == round(100 * 28 / 4156, 2) == 0.67
+    assert model.ff(1370) / model.lfp_p > 0.99
 
 We can see from these results that at maximum we will have approximately 0.67% fail. If the company accepts a 0.1% probability of their products failing in the field then we can calculate the interval at which the difference between the total population and the proportion failed in the test is 0.1%. That is, we need the burn-in duration :math:`T` with :math:`p - F(T) = 0.001`, or :math:`T = F^{-1}(p - 0.001)`, which is the quantile function of the model:
 
 .. jupyter-execute::
 
     field_risk = 0.001
-    burn_in = model.qf(model.p - field_risk)
+    burn_in = model.qf(model.lfp_p - field_risk)
     print("burn-in duration           :", burn_in)
-    print("defectives left after it   :", model.p - model.ff(burn_in))
+    print("defectives left after it   :", model.lfp_p - model.ff(burn_in))
 
 Therefore we should do a burn in test up to approximately 104.4 to make sure we minimize the number of items shipped that are defective while also minimizing the duration of the test. We can simply change the value of ``field_risk`` in the above code to any value we may wish to use. (Strictly, the proportion of *shipped* units that are defective is :math:`(p - F(T)) / (1 - F(T))`, since the units that failed in burn-in are not shipped; with only about 0.6% removed by the burn-in the difference is negligible here.)
 
