@@ -403,7 +403,7 @@ def test_lr_rejects_offset_model():
 
 def test_param_cb_rejects_unknown_method(weibull_model):
     with pytest.raises(ValueError, match="'method' must be one of"):
-        weibull_model.param_cb("beta", method="bootstrap")
+        weibull_model.param_cb("beta", method="jackknife")
 
 
 # ---------------------------------------------------------------------------
@@ -501,7 +501,7 @@ def test_lr_cb_rejects_offset_model():
 
 def test_cb_rejects_unknown_method(weibull_model):
     with pytest.raises(ValueError, match="'method' must be one of"):
-        weibull_model.cb(np.array([10.0]), on="sf", method="bootstrap")
+        weibull_model.cb(np.array([10.0]), on="sf", method="jackknife")
 
 
 def test_lr_bounds_respect_user_fixed_parameters():
@@ -627,6 +627,9 @@ def test_rate_bounds_are_zero_below_an_offset():
     x = surv.Weibull.random(40, 10, 2) + 5
     model = surv.Weibull.fit(x, offset=True)
     assert model.gamma > 4.0
+    # (an offset model's Wald bounds warn that gamma is held, #645; no
+    # other warning)
+    model._warn_offset_wald = lambda what: None
     for on in ("hf", "df"):
         cb = no_warnings(model.cb, [1.0, 4.0], on=on)
         np.testing.assert_array_equal(cb, np.zeros((2, 2)))

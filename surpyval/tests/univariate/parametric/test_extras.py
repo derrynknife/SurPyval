@@ -205,10 +205,10 @@ def test_defective_mean_is_cached_apart_from_the_lifetime_mean():
 MODELS = {
     "plain": dict(),
     "offset": dict(gamma=5.0),
-    "lfp": dict(p=0.8),
+    "lfp": dict(lfp_p=0.8),
     "zi": dict(f0=0.1),
-    "lfp+zi": dict(p=0.8, f0=0.1),
-    "offset+lfp+zi": dict(gamma=5.0, p=0.8, f0=0.1),
+    "lfp+zi": dict(lfp_p=0.8, f0=0.1),
+    "offset+lfp+zi": dict(gamma=5.0, lfp_p=0.8, f0=0.1),
 }
 
 

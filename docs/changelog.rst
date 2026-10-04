@@ -68,6 +68,28 @@ Unreleased
 
 **Fixed**
 
+- An offset (3-parameter) model's Wald bounds -- ``cb``, ``quantile_cb``
+  and ``param_cb`` -- hold the offset at its estimate, which the fit
+  leaves out of the covariance (a threshold's likelihood is not regular),
+  and said nothing: a 90% bound on a 3-parameter Weibull's B1 life from 30
+  failures covered 40% of the time (#645). They now warn so, and the three
+  take ``method="bootstrap"``, a parametric bootstrap whose bounds include
+  the offset's uncertainty: the model is refitted to ``n_boot`` data sets
+  (200 by default) simulated from it, each unit censored as it was, and
+  the bound is the bias-corrected percentile interval of the refits. It
+  is also the one bound on ``gamma`` itself
+  (``param_cb("gamma", method="bootstrap")``). It needs the data, exact
+  or right censored (truncated or not), and is not available for
+  limited-failure or zero-inflated models; the refits are kept on the
+  model for each ``n_boot`` and integer ``random_state``, so later bounds
+  reuse them. An offset refit takes 0.1 to 0.3 s. On #645's design (shape
+  1.5, 30 failures, two runs of 100 samples) the 90% bound on B1 covered
+  64% and 63% (Wald: 35%), on B10 82% and 89% (69%), on B50 89% and 95%
+  (85%), and on ``sf`` just above the offset 66% and 68% (53%): far
+  better, but still short at the offset itself in small samples with a
+  shape below 2, where the offset's estimate is biased up and no interval
+  of the refits makes up for it (the percentile and basic intervals were
+  tried too).
 - The test suite installed with the package can be collected (#661): the
   reference results it reads (``tests/reference/data/*.json``) ship in the
   wheel; the doctest comparison's helpers and the opt-in gating live in
