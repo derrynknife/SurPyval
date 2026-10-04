@@ -766,15 +766,13 @@ def test_cb_rejects_an_unknown_bound():
         model.cb([2.0], bound="both")
 
 
-def test_605_covariance_is_a_method_and_cov_matrix_deprecated():
+def test_605_covariance_is_a_method_and_cov_matrix_gone():
     np.random.seed(1)
     model = surv.Weibull.fit(surv.Weibull.random(50, 10, 3))
     cov = model.covariance()
     assert cov.shape == (2, 2) and np.allclose(cov, model.hess_inv)
-    with pytest.warns(DeprecationWarning, match="covariance()") as caught:
-        old = model.cov_matrix
-    assert caught[0].filename == __file__
-    np.testing.assert_array_equal(old, cov)
+    # Deprecated in v0.23, removed in v0.24
+    assert not hasattr(model, "cov_matrix")
     # Saved under one key, and a dict written before v0.23 still loads
     d = model.to_dict()
     assert "covariance" in d and "cov_matrix" not in d

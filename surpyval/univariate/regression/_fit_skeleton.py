@@ -44,7 +44,6 @@ from surpyval.utils import (
 from surpyval.utils.covariates import (
     coefficient_floor,
     coefficient_names,
-    renamed_coefficient_keys,
 )
 from surpyval.utils.fitter_repr import FitterRepr, baseline_name
 from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
@@ -727,14 +726,6 @@ def prepare_regression_fit(
             phi_param_map(Z_data) if callable(phi_param_map) else phi_param_map
         )
         per_column = per_column_map(pmap, Z_data.shape[1])
-    if per_column:
-        # The names before v0.23, ``beta_j``, until v0.24
-        fixed = renamed_coefficient_keys(
-            fixed,
-            sorted(pmap, key=pmap.__getitem__),
-            "{}.fit(fixed=...)".format(fitter._repr_name()),
-            fitter.param_map,
-        )
     fixed = alias_coefficients(
         fitter, kind, Z_data, data.n, fixed, pmap, per_column
     )

@@ -369,7 +369,7 @@ def test_from_params_accepts_the_params_keyword(dist, params, expected):
         (Binomial, [5, 0.3]),
     ],
 )
-@pytest.mark.parametrize("structural", ["gamma", "p", "f0"])
+@pytest.mark.parametrize("structural", ["gamma", "lfp_p", "f0"])
 def test_from_params_rejects_unsupported_structural_args(
     dist, params, structural
 ):

@@ -1241,12 +1241,10 @@ def test_604_cox_neg_ll_of_beta_is_the_partial_likelihood_function():
     x, Z, c, _ = _rossi()
     model = CoxPH.fit(x, Z, c=c)
     assert model.neg_ll_of(model.params) == pytest.approx(model.neg_ll())
-    # The old spelling still gives the function, deprecated, at the caller
-    with pytest.warns(DeprecationWarning, match="neg_ll_of") as caught:
-        value = model.neg_ll(np.zeros(3))
-    assert caught[0].filename == __file__
-    assert value == pytest.approx(model.neg_ll_of(np.zeros(3)))
-    assert value > model.neg_ll()
+    assert model.neg_ll_of(np.zeros(3)) > model.neg_ll()
+    # The old spelling, neg_ll(beta), deprecated in v0.23, is gone
+    with pytest.raises(TypeError):
+        model.neg_ll(np.zeros(3))
 
 
 def test_604_cox_restored_model_keeps_its_comparison_values():
@@ -1256,10 +1254,8 @@ def test_604_cox_restored_model_keeps_its_comparison_values():
     for name in ("neg_ll", "aic", "aic_c", "bic"):
         assert getattr(restored, name)() == getattr(model, name)()
     assert restored.log_likelihood == model.log_likelihood
-    # The function is not saved, and the old spelling says so
+    # The function is not saved
     assert restored.neg_ll_of is None
-    with pytest.warns(DeprecationWarning), pytest.raises(ValueError):
-        restored.neg_ll(np.zeros(3))
     # A dict written before v0.23 stored the value under another key and
     # no sample size: the events, which the baseline counts, stand in.
     old = model.to_dict()

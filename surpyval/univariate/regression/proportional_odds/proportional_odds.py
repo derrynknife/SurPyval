@@ -88,9 +88,7 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
-from surpyval.utils.covariates import renamed_coefficient
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.deprecation import RenamedToMethod
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import wald_bound_on_support
 from surpyval.utils.no_maximum import (
@@ -545,12 +543,8 @@ class ProportionalOddsModel(
     params: npt.NDArray
     #: The coefficients' standard errors, ``standard_errors()``.
     _se: npt.NDArray
-    #: ``standard_errors()``'s name before v0.23, for one release (#613).
-    se = RenamedToMethod("standard_errors", "_se")
     #: The coefficients' covariance, ``covariance()`` (#605).
     _covariance: npt.NDArray
-    #: ``covariance()``'s name before v0.23, for one release.
-    cov = RenamedToMethod("covariance", "_covariance")
     p_values: npt.NDArray
     x: npt.NDArray
     d: npt.NDArray
@@ -791,8 +785,7 @@ class ProportionalOddsModel(
 
     def standard_errors(self) -> npt.NDArray:
         """The coefficients' standard errors, from :meth:`covariance`.
-        ``se``, the attribute before v0.23, still gives them, with a
-        ``DeprecationWarning``, until v0.24."""
+        They were the attribute ``se`` before v0.23."""
         return self._se
 
     def param_cb(
@@ -851,8 +844,6 @@ class ProportionalOddsModel(
 
         lr = is_lr(method)
         names = self.parameter_names
-        # A coefficient's name before v0.23, ``beta_j``, until v0.24 (#614)
-        name = renamed_coefficient(name, names, "param_cb")
         if name not in names:
             raise ValueError(
                 "Unknown parameter {!r}; expected one of {}".format(

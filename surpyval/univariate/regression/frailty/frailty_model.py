@@ -43,11 +43,7 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.utils import is_missing_event
-from surpyval.utils.covariates import (
-    loaded_coefficient_names,
-    renamed_coefficient,
-)
-from surpyval.utils.deprecation import ArrayMethod
+from surpyval.utils.covariates import loaded_coefficient_names
 from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.validation import (
@@ -125,10 +121,15 @@ class _SharedFrailty(
         # for a model restored from a dict saved without it.
         self.maximum: str = "unknown"
 
-    #: The parameters' covariance, ``covariance()``, in the order of
-    #: ``parameter_names`` (#605): an attribute before v0.23, which still
-    #: reads it, with a DeprecationWarning.
-    covariance = ArrayMethod("_covariance", no_covariance_error)
+    def covariance(self) -> np.ndarray:
+        """The parameters' covariance, in the order of
+        ``parameter_names`` (#605). It was an attribute before v0.23.
+
+        Raises a ``ValueError`` where the model has none (its information
+        was singular)."""
+        if self._covariance is None:
+            raise no_covariance_error()
+        return np.asarray(self._covariance)
 
     # -- information criteria (InformationCriteriaMixin) -------------------
 
@@ -303,17 +304,6 @@ class _SharedFrailty(
         ``beta`` is ``nan`` (R's ``NA``), and predictions take it as 0."""
         return np.flatnonzero(np.isnan(np.asarray(self.beta, dtype=float)))
 
-    def _current_name(self, name: Any) -> Any:
-        """``name``, or a coefficient's name before v0.23 (``beta_j``) as
-        it is named now, with a ``DeprecationWarning`` (#614)."""
-        k, n = self.k_dist, int(np.size(self.beta))
-        return renamed_coefficient(
-            name,
-            self.parameter_names[k : k + n],
-            "param_cb",
-            self.parameter_names,
-        )
-
     def standard_errors(self) -> np.ndarray:
         """Wald standard errors of the parameters, an array in the order of
         ``parameter_names`` and of ``covariance()`` (``nan`` where a
@@ -353,7 +343,6 @@ class _SharedFrailty(
         unbounded coefficients) so the interval stays valid.
         """
         cov = self.covariance()
-        name = self._current_name(name)
         if name not in self.parameter_names:
             raise ValueError(
                 "Unknown parameter {!r}; expected one of {}".format(
@@ -673,7 +662,6 @@ class FrailtyModel(_SharedFrailty):
         from .._likelihood_ratio import profile_interval
 
         check_option("bound", bound, BOUNDS)
-        name = self._current_name(name)
         if name not in self.parameter_names:
             raise ValueError(
                 "Unknown parameter {!r}; expected one of {}".format(

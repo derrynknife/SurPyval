@@ -196,21 +196,13 @@ def test_top_level_names_a_helper_s_subpackage(name, where):
     assert not hasattr(sp, name)
 
 
-@pytest.mark.parametrize(
-    "name, value, instead",
-    [
-        ("NUM", np.float64, "numpy.float64"),
-        ("TINIEST", np.finfo(float).tiny, "numpy.finfo(float).tiny"),
-        ("EPS", np.sqrt(np.finfo(float).eps), "numpy.sqrt("),
-    ],
-)
-def test_613_top_level_constants_are_deprecated(name, value, instead):
-    # They still work until v0.24, with a warning naming what to use, and
-    # are no longer listed; ``surpyval.np`` stays (custom distributions).
-    with pytest.warns(DeprecationWarning, match="v0.24") as caught:
-        assert getattr(sp, name) == value
-    assert instead in str(caught[0].message)
-    assert caught[0].filename == __file__
+@pytest.mark.parametrize("name", ["NUM", "TINIEST", "EPS"])
+def test_613_top_level_constants_are_gone(name):
+    # Deprecated in v0.23 and removed in v0.24: use numpy's own
+    # (``numpy.float64``, ``numpy.finfo(float).tiny`` ...). ``surpyval.np``
+    # stays (custom distributions).
+    with pytest.raises(AttributeError, match=repr(name)):
+        getattr(sp, name)
     assert name not in dir(sp)
     assert "np" in dir(sp)
 

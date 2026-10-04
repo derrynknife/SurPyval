@@ -4,6 +4,47 @@ Changelog
 Unreleased
 ----------
 
+**Removed.** The names 0.23 deprecated are gone; each now raises.
+
+- The limited-failure proportion's old name ``p`` is ``lfp_p``: in
+  ``fixed``, ``param_cb``, ``from_params`` and the attribute of a
+  univariate or regression model (#608). ``model.p`` raises an
+  ``AttributeError`` naming ``lfp_p``; on Bernoulli, Binomial, Geometric,
+  NegativeBinomial and FixedEventProbability it is still the fitted
+  parameter. Saved dicts keep the key ``"p"``.
+- Regression coefficients' old names ``beta_0``, ``beta_1``, ... in
+  ``fixed`` and ``param_cb`` are the covariate's column name, else
+  ``coef_0``, ``coef_1``, ... (#614); dicts saved with them still load.
+- ``se`` (Cox, Lin-Ying, proportional odds, Fine-Gray) is
+  ``standard_errors()`` (#613).
+- ``Parametric.cov_matrix``, ``cov`` (Fine-Gray, proportional odds,
+  additive hazards) and the ``covariance`` attribute (Royston-Parmar, the
+  frailty models) are ``covariance()`` (#605).
+- Recurrent models' ``aic`` and ``bic`` without the call are ``aic()``
+  and ``bic()`` (#572).
+- ``MixtureModel.log_likelihood(params)`` is gone: ``log_likelihood`` is
+  the fitted value, a plain ``float`` (#572); ``MixtureModel.loglike``
+  (the *negative* log-likelihood) is ``neg_ll()``.
+- ``MixtureModel``'s EM steps ``EM``, ``Q``, ``expectation``,
+  ``maximisation``, ``likelihood`` and ``initialise_params`` have no
+  public names; they are internal to the fit (#605).
+- A Cox model's ``neg_ll(beta)`` is ``neg_ll_of(beta)``; ``neg_ll()`` is
+  the fitted value (#604).
+- CoxFrailty's ``loglik`` and ``loglik_no_frailty`` are
+  ``log_likelihood`` and ``log_likelihood_no_frailty`` (#604).
+- ``success_run``'s ``confidence=`` and ``alpha=`` are ``alpha_ci=`` (#580,
+  keyword only: ``success_run(59, 0.95)`` raises a ``TypeError`` rather
+  than reading 0.95 as ``alpha_ci``).
+- ``surpyval.NUM``, ``TINIEST`` and ``EPS`` are ``numpy.float64``,
+  ``numpy.finfo(float).tiny`` and ``numpy.sqrt(numpy.finfo(float).eps)``
+  (#613); ``surpyval.utils.numeric`` no longer has them either.
+- Development: ``REMOVED_IN`` is ``"0.25"`` (the names deprecated in
+  0.24) and ``REMOVED_IN_NEXT`` ``"0.26"``; the removal test's scan
+  checks that it sees every helper of ``surpyval.utils.deprecation``.
+  Two mixture tests that counted EM steps by patching ``EM`` and ``Q``
+  counted nothing since those became aliases; they now patch the
+  internal methods.
+
 **Performance**
 
 - **Building a SurpyvalData is about a third faster.** Every fit builds

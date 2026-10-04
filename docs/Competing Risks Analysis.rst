@@ -662,7 +662,8 @@ takes time and memory linear in the number of rows (after a sort): about a
 second at :math:`10^5` rows and three covariates. Those standard errors
 are the model-based (inverse information) ones; the robust sandwich variance
 that Fine and Gray derived to account for the estimated weights is not
-implemented, so treat the reported ``se`` and ``p_values`` as approximate.
+implemented, so treat the reported ``standard_errors()`` and ``p_values``
+as approximate.
 
 Choosing between them
 ~~~~~~~~~~~~~~~~~~~~~

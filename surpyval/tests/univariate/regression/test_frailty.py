@@ -477,17 +477,16 @@ def test_frailty_predicts_nan_for_a_missing_group():
     assert np.isfinite(model.sf(5.0, [1.0], group=groups[0]))
 
 
-def test_605_covariance_is_a_method_and_the_attribute_deprecated():
+def test_605_covariance_is_a_method():
     x, c, Z, groups = _sim()
     m = WeibullFrailty.fit(x=x, Z=Z, c=c, groups=groups)
     cov = m.covariance()
     assert type(cov) is np.ndarray and cov.shape == (4, 4)
-    with pytest.warns(DeprecationWarning, match=r"use 'covariance\(\)'"):
-        diag = np.diag(m.covariance)
-    np.testing.assert_array_equal(diag, np.diag(cov))
-    # Without one, the call says why (the attribute was None)
+    # The attribute's spelling, deprecated in v0.23, is gone
+    with pytest.raises(TypeError):
+        m.covariance[0]
+    # Without one, the call says why
     m._covariance = None
-    assert not m.covariance
     with pytest.raises(ValueError, match="no parameter covariance"):
         m.covariance()
 

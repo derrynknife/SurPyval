@@ -22,7 +22,6 @@ import numpy.typing as npt
 from surpyval.univariate.parametric.parametric import uniform_draws
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
-    lfp_p_renamed,
     reject_structural_params,
 )
 
@@ -140,16 +139,6 @@ class SingleProbabilityMixin:
             *event_counts(model), alpha_ci, bound, method, name
         )
 
-    # Narrower than ParametricFitter.from_params, which takes
-    # (params, gamma, p, f0). Unlike `fit`, this one is not resolved
-    # by the OptimisedFitMixin split: every distribution has a
-    # from_params. It is a parameter *rename* -- the base's `params`
-    # became `p` -- so positional calls work and keyword calls
-    # raise. Worse here: the base's `p` means the
-    # limited-failure proportion, so the same keyword means two
-    # unrelated things across sibling classes. Fixing it means renaming
-    # back, with a deprecation alias, and is tracked separately.
-    @lfp_p_renamed
     def from_params(
         self,
         params: npt.ArrayLike,

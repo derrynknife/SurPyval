@@ -855,9 +855,8 @@ A fitted parametric recurrence model is more than a point estimate. Every
 model fit by maximum likelihood exposes the usual likelihood quantities for
 comparing models — the ``log_likelihood`` (a number) and the ``neg_ll()``,
 ``aic()`` and ``bic()`` methods, spelt as on every other fitted model (before
-v0.23 ``aic`` and ``bic`` were attributes, which still work until v0.24 with a
-``DeprecationWarning``). Let's go back to the Duane model of the single system
-from earlier:
+v0.23 ``aic`` and ``bic`` were attributes). Let's go back to the Duane model of
+the single system from earlier:
 
 .. jupyter-execute::
 

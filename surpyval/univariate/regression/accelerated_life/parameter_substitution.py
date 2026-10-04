@@ -23,7 +23,6 @@ from surpyval.utils import _caller_stacklevel
 from surpyval.utils.covariates import (
     coefficient_floor,
     coefficient_names,
-    renamed_coefficient_keys,
 )
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -567,13 +566,6 @@ class ParameterSubstitutionFitter(
         life_parameter_idx = self.param_map[self.life_parameter]
         if fixed is None:
             fixed = {}
-        # A column coefficient's name before v0.23, ``beta_j``, until v0.24
-        fixed = renamed_coefficient_keys(
-            fixed,
-            list(self.life_model.coefficient_columns()),
-            "{}.fit(fixed=...)".format(self._repr_name()),
-            [*self.param_map, *self.life_model.phi_param_map],
-        )
 
         def default_init() -> npt.NDArray:
             # The distribution fitted at each distinct stress, with the life

@@ -6,8 +6,8 @@ coefficient is now named by its covariate's column where the fit has one
 (a formula, ``fit_from_df`` or a DataFrame ``Z``), else ``coef_j``, in
 every family; a name that clashes with another parameter's, or with an
 earlier column's, gets the first free suffix ``.1``, ``.2``, ... (R's
-``make.unique``). The old names still work in ``fixed=`` and
-``param_cb`` until v0.24, with a ``DeprecationWarning``, and a dictionary
+``make.unique``). The old names, deprecated in ``fixed=`` and
+``param_cb`` in v0.23, are unknown parameters since v0.24; a dictionary
 saved with them loads with the new ones.
 """
 
@@ -22,8 +22,6 @@ from surpyval.life_models import GeneralLogLinear
 from surpyval.recurrent import ProportionalIntensityHPP
 from surpyval.univariate.competing_risks import FineGray
 from surpyval.univariate.regression import AcceleratedLife
-
-DEPRECATED = "coefficient names beta_0, beta_1, ... are deprecated"
 
 
 def _data(n=120, seed=3):
@@ -171,28 +169,22 @@ def test_614_recurrent_and_competing_risks_name_their_coefficients():
     assert type(fg).from_dict(fg.to_dict()).feature_names == ["z"]
 
 
-def test_614_old_names_in_fixed_and_param_cb_warn_and_work():
+def test_614_old_names_in_fixed_and_param_cb_are_unknown():
     x, Z, c, _ = _data()
+    with pytest.raises(ValueError, match="'beta_1'"):
+        sp.WeibullPH.fit(x, Z, c, fixed={"beta_1": 0.25})
     new = sp.WeibullPH.fit(x, Z, c, fixed={"coef_1": 0.25})
-    with pytest.warns(DeprecationWarning, match=DEPRECATED) as caught:
-        old = sp.WeibullPH.fit(x, Z, c, fixed={"beta_1": 0.25})
-    assert caught[0].filename == __file__
-    assert "'coef_1' for 'beta_1'" in str(caught[0].message)
-    np.testing.assert_array_equal(old.params, new.params)
-    assert old.fixed == {"coef_1": 0.25}
-    with pytest.warns(DeprecationWarning, match=DEPRECATED):
-        np.testing.assert_array_equal(
-            new.param_cb("beta_0"), new.param_cb("coef_0")
-        )
+    assert new.fixed == {"coef_1": 0.25}
+    with pytest.raises(ValueError, match="Unknown parameter 'beta_0'"):
+        new.param_cb("beta_0")
     # The Weibull's own shape is not a coefficient
     with warnings.catch_warnings():
         warnings.simplefilter("error", DeprecationWarning)
         sp.WeibullPH.fit(x, Z, c, fixed={"beta": 2.0})
     stress = np.column_stack([np.repeat([1.0, 2.0, 3.0], 40), Z[:, 0]])
     al = AcceleratedLife(sp.Weibull, GeneralLogLinear)
-    with pytest.warns(DeprecationWarning, match=DEPRECATED):
-        old = al.fit(x, stress, c, fixed={"beta_1": -0.4})
-    assert old.fixed["coef_1"] == -0.4
+    with pytest.raises(ValueError, match="'beta_1'"):
+        al.fit(x, stress, c, fixed={"beta_1": -0.4})
 
 
 def test_614_a_dict_saved_with_the_old_names_loads_with_the_new():

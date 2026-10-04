@@ -1456,8 +1456,8 @@ the fit has its name (a formula, ``fit_from_df`` or a DataFrame ``Z``) and
 ``coef_0``, ``coef_1``, ... otherwise. (A name that is already a
 parameter's, such as a column called ``alpha``, gets a suffix: ``alpha.1``.
 Before v0.23 the coefficients were ``beta_0``, ``beta_1``, ..., beside the
-Weibull's shape ``beta``; ``fixed=`` and ``param_cb`` take those names, with
-a ``DeprecationWarning``, until v0.24.)
+Weibull's shape ``beta``; a model saved with those names loads with the new
+ones.)
 
 .. jupyter-execute::
     :hide-code:

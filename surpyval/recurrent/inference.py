@@ -11,8 +11,6 @@ from surpyval.univariate.information_criteria import (
     corrected_aic,
     ic_sample_size,
 )
-from surpyval.utils.covariates import renamed_coefficient
-from surpyval.utils.deprecation import MethodFloat
 from surpyval.utils.linalg import numerical_hessian, wald_bound_on_support
 from surpyval.utils.warnings import warn_no_covariance
 
@@ -154,26 +152,21 @@ class LikelihoodInferenceMixin:
         """
         return -self.log_likelihood
 
-    @property
-    def aic(self) -> MethodFloat:
+    def aic(self) -> float:
         """
         Akaike's information criterion, :math:`2k - 2\\ln L`, with ``k`` the
         number of fitted parameters. Lower is better. Call it,
         ``model.aic()``, as on every other fitted model.
 
         .. versionchanged:: 0.23
-           ``aic`` is a method, as on every other model (#572); the
-           property's spelling, ``model.aic`` without the call, still
-           gives the number until v0.24, with a ``DeprecationWarning``.
+           ``aic`` is a method, as on every other model (#572); it was a
+           property.
         """
         self._check_fitted()
         k = int(self._estimated().sum())
-        return MethodFloat(
-            2.0 * k - 2.0 * self.log_likelihood, type(self).__name__ + ".aic"
-        )
+        return float(2.0 * k - 2.0 * self.log_likelihood)
 
-    @property
-    def bic(self) -> MethodFloat:
+    def bic(self) -> float:
         """
         The Bayesian information criterion, :math:`k \\ln n - 2\\ln L`,
         with ``n`` the number of observed events the model was fitted to:
@@ -185,16 +178,12 @@ class LikelihoodInferenceMixin:
         fitted model.
 
         .. versionchanged:: 0.23
-           ``bic`` is a method, as on every other model (#572); the
-           property's spelling still gives the number until v0.24, with a
-           ``DeprecationWarning``.
+           ``bic`` is a method, as on every other model (#572); it was a
+           property.
         """
         self._check_fitted()
         k = int(self._estimated().sum())
-        return MethodFloat(
-            k * np.log(self._n_obs) - 2.0 * self.log_likelihood,
-            type(self).__name__ + ".bic",
-        )
+        return float(k * np.log(self._n_obs) - 2.0 * self.log_likelihood)
 
     def aic_c(self) -> float:
         """
@@ -300,10 +289,6 @@ class LikelihoodInferenceMixin:
         """
         self._check_fitted()
         names = self.parameter_names
-        coefficients = getattr(self, "_coefficient_names", None)
-        if coefficients is not None:
-            # A coefficient's name before v0.23, ``beta_j``, until v0.24
-            name = renamed_coefficient(name, coefficients(), "param_cb", names)
         if name not in names:
             raise ValueError(
                 "Unknown parameter {!r}; expected one of {}".format(

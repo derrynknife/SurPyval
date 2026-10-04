@@ -303,7 +303,5 @@ def test_613_cox_covariance_round_trips_and_old_dicts_keep_their_se():
     )
     with pytest.raises(ValueError, match="no parameter covariance"):
         old_model.covariance()
-    # ``se``, the old attribute, still gives them, with a warning.
-    with pytest.warns(DeprecationWarning, match="standard_errors"):
-        se = model.se
-    np.testing.assert_array_equal(se, model.standard_errors())
+    # ``se``, the old attribute, is gone (deprecated in v0.23).
+    assert not hasattr(model, "se")

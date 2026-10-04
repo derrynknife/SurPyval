@@ -151,19 +151,15 @@ def test_success_run_needs_a_positive_run():
 
 def test_580_success_run_takes_alpha_ci():
     # #580: success_run was the one bound without alpha_ci (TypeError);
-    # confidence= and alpha= still work in v0.23, with a warning.
+    # confidence= and alpha=, deprecated in v0.23, are gone in v0.24.
     assert sp.success_run(1200, alpha_ci=0.1) == pytest.approx(
         0.1 ** (1 / 1200), rel=1e-14
     )
     assert sp.success_run(59) == sp.success_run(59, alpha_ci=0.05)
-    with pytest.warns(DeprecationWarning, match="alpha_ci = 1 - confidence"):
-        assert sp.success_run(59, 0.95) == pytest.approx(
-            sp.success_run(59, alpha_ci=0.05), rel=1e-14
-        )
-    with pytest.warns(DeprecationWarning, match="use 'alpha_ci'") as w:
-        assert sp.success_run(22, alpha=0.1) == sp.success_run(
-            22, alpha_ci=0.1
-        )
-    assert w[0].filename == __file__
-    with pytest.raises(ValueError, match="only one of"):
-        sp.success_run(5, alpha=0.1, alpha_ci=0.1)
+    # The old positional confidence is refused, not read as alpha_ci.
+    with pytest.raises(TypeError):
+        sp.success_run(59, 0.95)
+    with pytest.raises(TypeError, match="'confidence'"):
+        sp.success_run(59, confidence=0.95)
+    with pytest.raises(TypeError, match="'alpha'"):
+        sp.success_run(22, alpha=0.1)

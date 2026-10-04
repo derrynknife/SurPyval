@@ -277,7 +277,7 @@ def test_recurrent_hpp_matches_univariate_exponential():
     exp = Exponential.fit(gaps, c=np.r_[np.zeros(30), 1])
     # the same likelihood and the same 30 observed events
     assert hpp.log_likelihood == pytest.approx(-exp.neg_ll(), rel=1e-8)
-    assert hpp.bic == pytest.approx(exp.bic(), rel=1e-8)
+    assert hpp.bic() == pytest.approx(exp.bic(), rel=1e-8)
 
 
 # -- copulas -----------------------------------------------------------------

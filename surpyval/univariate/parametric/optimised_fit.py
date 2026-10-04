@@ -30,7 +30,7 @@ from .fitters.mpp import mpp, mpp_from_ecfd
 from .fitters.mps import mps
 from .fitters.mps import offset_start as mps_offset_start
 from .fitters.mse import mse
-from .parametric import Parametric, renamed_lfp_fixed
+from .parametric import Parametric
 
 
 def _search_units(
@@ -617,7 +617,6 @@ turnbull_estimator
         array([6.022, 1.351])
         """
         how = normalise_how(how)
-        fixed = renamed_lfp_fixed(self, fixed)
         x, c, n, t = surv_data.x, surv_data.c, surv_data.n, surv_data.t
         # Clamp the truncation values to the (possibly finite) support edges
         tl, tr = self._clamp_truncation_to_support(t, offset)

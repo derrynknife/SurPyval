@@ -55,7 +55,6 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.univariate.parametric.fitters import is_local_minimum
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
-from surpyval.utils.deprecation import ArrayMethod
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import (
     numerical_gradient,
@@ -445,9 +444,15 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
     def k(self) -> int:  # type: ignore[override]
         return len(self.params)
 
-    #: The coefficients' covariance, ``covariance()`` (#605): an attribute
-    #: before v0.23, which still reads it, with a DeprecationWarning.
-    covariance = ArrayMethod("_covariance", no_covariance_error)
+    def covariance(self) -> np.ndarray:
+        """The spline coefficients' covariance, in the order of ``params``
+        (#605). It was an attribute before v0.23.
+
+        Raises a ``ValueError`` where the model has none (its information
+        was singular)."""
+        if self._covariance is None:
+            raise no_covariance_error()
+        return np.asarray(self._covariance)
 
     def standard_errors(self) -> np.ndarray:
         """The spline coefficients' standard errors, the square roots of

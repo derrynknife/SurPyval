@@ -544,14 +544,16 @@ def _lfp_weibull(**kwargs):
     return no_warnings(Weibull.fit, LFP_X, LFP_C, lfp=True, **kwargs)
 
 
-def test_608_the_proportion_is_lfp_p_and_p_is_its_deprecated_alias():
+def test_608_the_proportion_is_lfp_p_and_p_is_gone():
     model = _lfp_weibull()
     assert 0 < model.lfp_p < 1
     assert model.extras == {"lfp_p": model.lfp_p}
-    with pytest.warns(DeprecationWarning, match="'Parametric.lfp_p'") as w:
-        old = model.p
-    assert old == model.lfp_p
-    assert w[0].filename == __file__
+    # ``p``, its name before v0.23, is gone in v0.24, and says where it is
+    with pytest.raises(AttributeError, match="'lfp_p'"):
+        model.p
+    assert not hasattr(model, "p")
+    with pytest.raises(AttributeError, match="'lfp_p'"):
+        model.p = 0.5
     # Without lfp=True it is 1, as before
     assert no_warnings(Weibull.fit, LFP_X).lfp_p == 1
 
@@ -576,24 +578,21 @@ def test_608_p_is_the_fitted_probability_where_the_distribution_has_one(
         model.p = 0.5
 
 
-def test_608_the_old_names_still_work_with_a_warning():
+def test_608_the_old_names_are_gone():
+    # ``p`` for the proportion, deprecated in v0.23, is gone in v0.24
     new = _lfp_weibull(fixed={"lfp_p": 0.8})
-    with pytest.warns(DeprecationWarning, match="fixed=\\{'lfp_p'"):
-        old = Weibull.fit(LFP_X, LFP_C, lfp=True, fixed={"p": 0.8})
-    np.testing.assert_array_equal(old.params, new.params)
-    assert old.lfp_p == new.lfp_p == 0.8
+    assert new.lfp_p == 0.8
+    with pytest.raises(ValueError, match="Unknown parameter"):
+        Weibull.fit(LFP_X, LFP_C, lfp=True, fixed={"p": 0.8})
 
     model = _lfp_weibull()
-    with pytest.warns(DeprecationWarning, match="param_cb\\('lfp_p'\\)"):
-        bound = model.param_cb("p")
-    np.testing.assert_array_equal(bound, model.param_cb("lfp_p"))
+    with pytest.raises(ValueError, match="Unknown parameter 'p'"):
+        model.param_cb("p")
 
-    with pytest.warns(DeprecationWarning, match="use 'lfp_p'"):
-        built = Weibull.from_params([10, 2], p=0.7)
+    with pytest.raises(TypeError, match="unexpected keyword argument 'p'"):
+        Weibull.from_params([10, 2], p=0.7)
+    built = Weibull.from_params([10, 2], lfp_p=0.7)
     assert built.lfp_p == 0.7 and built.extras == {"lfp_p": 0.7}
-
-    with pytest.raises(ValueError, match="'lfp_p' only"):
-        Weibull.fit(LFP_X, LFP_C, lfp=True, fixed={"p": 0.8, "lfp_p": 0.8})
 
 
 def test_608_saved_models_keep_their_format_and_old_ones_load():
@@ -623,5 +622,4 @@ def test_608_regression_models_spell_it_alike():
         surv.WeibullPH.fit, Weibull.random(40, 10, 2, random_state=1), Z
     )
     assert model.lfp_p == 1.0
-    with pytest.warns(DeprecationWarning, match="use 'lfp_p'"):
-        assert model.p == 1.0
+    assert not hasattr(model, "p")

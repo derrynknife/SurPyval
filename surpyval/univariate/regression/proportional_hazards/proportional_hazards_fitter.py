@@ -369,8 +369,7 @@ class ProportionalHazardsFitter(
             A dictionary of parameters to fix to a specific value, by name
             (a distribution parameter such as ``"beta"``, or a coefficient:
             its covariate's column name, else ``"coef_0"``, ``"coef_1"``,
-            ...; the names before v0.23, ``"beta_0"``, ..., are taken
-            until v0.24, with a ``DeprecationWarning``).
+            ...).
         center : bool, optional
             ``False`` (the default) reports the baseline at ``Z = 0``.
             ``True`` reports the baseline at the covariate means (stored as

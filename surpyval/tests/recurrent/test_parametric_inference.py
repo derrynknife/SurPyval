@@ -78,9 +78,11 @@ def test_mse_fit_has_no_likelihood():
     # must raise rather than report a meaningless AIC.
     x = exponential_event_times()
     model = CrowAMSAA.fit(x, how="MSE")
-    for attr in ("log_likelihood", "aic", "bic"):
+    with pytest.raises(ValueError, match="fitted from data"):
+        model.log_likelihood
+    for name in ("aic", "bic"):
         with pytest.raises(ValueError, match="fitted from data"):
-            getattr(model, attr)
+            getattr(model, name)()
 
 
 def test_from_params_has_no_likelihood():
@@ -315,8 +317,9 @@ def test_bic_counts_interval_events():
     assert np.isfinite(model.aic())
 
 
-def test_572_aic_and_bic_are_methods_and_the_old_spelling_warns():
-    # They were properties here and methods everywhere else
+def test_572_aic_and_bic_are_methods():
+    # They were properties here and methods everywhere else; the property
+    # spelling, deprecated in v0.23, is gone in v0.24.
     import warnings
 
     x = np.cumsum(np.random.default_rng(0).exponential(10, 20))
@@ -326,10 +329,10 @@ def test_572_aic_and_bic_are_methods_and_the_old_spelling_warns():
         aic, bic = model.aic(), model.bic()
         assert type(aic) is float and type(bic) is float
         assert model.neg_ll() == -model.log_likelihood
-    with pytest.warns(DeprecationWarning, match=r"use 'aic\(\)'"):
-        assert round(model.aic, 6) == round(aic, 6)
-    with pytest.warns(DeprecationWarning, match=r"use 'bic\(\)'"):
-        assert model.bic < bic + 1
+    with pytest.raises(TypeError):
+        model.aic + 1
+    with pytest.raises(TypeError):
+        model.bic < bic + 1
 
 
 # ----------------------------------------------------------------------------
