@@ -133,6 +133,13 @@ Unreleased
   call, of a level above 0.5: ``alpha_ci=0.95`` is a 5% interval.
   ``success_run`` refuses 0 and 1 too.
 
+- An accelerated life model's Wald ``param_cb`` on a positive life-model
+  parameter (Arrhenius's ``b``, Power's ``a``: any bounded (0, None)) is
+  computed on the log scale, as a distribution's positive parameters are
+  (#655); it went below zero, [-3.5e-06, 7.0e-06] for b = 1.75e-06, in
+  ``summary()`` too. The regression models' ``param_cb``, ``cb`` and
+  ``quantile_cb`` take ``method=None`` for the default, as the univariate
+  models do.
 - The Arrhenius-type life models (``Exponential``, ``InverseExponential``,
   the Eyring models, the temperature column of ``DualExponential`` and
   ``PowerExponential``) took a temperature in degrees Celsius in silence

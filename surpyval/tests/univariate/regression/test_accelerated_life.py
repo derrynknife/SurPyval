@@ -549,3 +549,56 @@ def test_592_a_missing_stress_is_nan_and_leaves_the_others():
     cb = model.cb(q, Z)
     assert np.all(np.isnan(cb[1]))
     np.testing.assert_array_equal(cb[[0, 2]], model.cb(q[[0, 2]], Z[[0, 2]]))
+
+
+def _arrhenius_b_data() -> tuple:
+    k = 8.617333e-5
+    a = 0.7 / k
+    T = np.repeat([358.15, 378.15, 398.15], 30)
+    b = 1000 * np.exp(-a / 398.15)
+    rng = np.random.default_rng(1)
+    x = b * np.exp(a / T) * rng.weibull(2.2, T.size)
+    c = (x > 6000).astype(int)
+    return np.minimum(x, 6000), c, T
+
+
+def test_wald_bound_on_a_positive_life_model_parameter_is_log_scale():
+    # Arrhenius's b is bounded (0, None): its Wald bound went below zero,
+    # [-3.5e-06, 7.0e-06] for b = 1.75e-06 (#655).
+    x, c, T = _arrhenius_b_data()
+    model = AcceleratedLife(Weibull, ExponentialLifeModel).fit(x, Z=T, c=c)
+    b = model.params[3]
+    se = model.standard_errors()[3]
+    lower, upper = model.param_cb("b")
+    assert 0 < lower < b < upper
+    # Symmetric on the log scale, with the delta-method se of log b.
+    np.testing.assert_allclose(
+        [np.log(lower), np.log(upper)],
+        np.log(b) + np.array([-1, 1]) * 1.959963984540054 * se / b,
+    )
+    assert model.summary().loc[("life model", "b"), "coef lower 95%"] > 0
+    # The unbounded a keeps its linear-scale bound.
+    lo_a, hi_a = model.param_cb("a")
+    assert (lo_a + hi_a) / 2 == pytest.approx(model.params[2])
+    restored = surpyval.from_dict(model.to_dict())
+    np.testing.assert_allclose(restored.param_cb("b"), [lower, upper])
+
+
+def test_regression_bounds_accept_method_none():
+    # None means the default, as for the univariate models (#655).
+    x, c, T = _arrhenius_b_data()
+    model = AcceleratedLife(Weibull, ExponentialLifeModel).fit(x, Z=T, c=c)
+    np.testing.assert_array_equal(
+        model.param_cb("b", method=None), model.param_cb("b")
+    )
+    np.testing.assert_array_equal(
+        model.cb(5000.0, 378.15, method=None), model.cb(5000.0, 378.15)
+    )
+    np.testing.assert_array_equal(
+        model.quantile_cb(0.1, 378.15, method=None),
+        model.quantile_cb(0.1, 378.15),
+    )
+    po = surpyval.ProportionalOdds.fit(x, T - 378.15, c=c)
+    np.testing.assert_array_equal(
+        po.param_cb("coef_0", method=None), po.param_cb("coef_0")
+    )

@@ -297,7 +297,9 @@ class InferenceMixin:
         if self._is_accelerated_life():
             declared = getattr(self.reg_model, "phi_bounds", phi_bounds)
             if callable(declared):
-                declared = declared(np.asarray(self.data.Z))
+                Z = getattr(getattr(self, "data", None), "Z", None)
+                # A model restored without its data: unbounded.
+                declared = phi_bounds if Z is None else declared(np.asarray(Z))
             phi_bounds = declared
         return [*self.distribution.bounds, *phi_bounds]
 
@@ -348,9 +350,10 @@ class InferenceMixin:
 
         - ``"wald"`` -- bounds from the observed information, computed on
           a scale chosen from the parameter's support so the result stays
-          inside it: log for a one-sided-bounded distribution parameter
-          (e.g. a positive scale), the natural scale for the unbounded
-          covariate coefficients.
+          inside it: log for a one-sided-bounded distribution or
+          life-model parameter (e.g. a positive scale, or Arrhenius's
+          ``b`` and Power's ``a``, #655), the natural scale for the
+          unbounded covariate coefficients.
         - ``"lr"`` -- the profile-likelihood (likelihood-ratio) interval:
           the values whose profile deviance, every other parameter
           re-fitted, stays below the :math:`\\chi^2_1` critical value
@@ -374,8 +377,9 @@ class InferenceMixin:
             Total tail probability of the bound(s). Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds are returned as ``[lower, upper]``.
-        method : {'wald', 'lr', 'bootstrap'}, optional
-            As above. Default ``'wald'``.
+        method : {'wald', 'lr', 'bootstrap'} or None, optional
+            As above. Default ``'wald'``; ``None`` means the default too,
+            as for the univariate models (#655).
         n_boot : int, optional
             The number of bootstrap refits (``method='bootstrap'`` only).
             Default 200.
@@ -418,12 +422,11 @@ class InferenceMixin:
         p_hat = float(self.params[idx])
         var = float(self.covariance()[idx, idx])
 
-        # Distribution parameters carry the distribution's support bounds; the
-        # covariate coefficients are unbounded.
-        dist_bounds = list(self.distribution.bounds)
-        n_phi = len(names) - self.k_dist
-        all_bounds = dist_bounds + [(None, None)] * n_phi
-        lower, upper = all_bounds[idx]
+        # Distribution parameters carry the distribution's support bounds,
+        # and an accelerated life model's parameters its life model's (a
+        # positive constant, Arrhenius's b or Power's a, is bounded on the
+        # log scale, #655); the covariate coefficients are unbounded.
+        lower, upper = self._parameter_bounds()[idx]
         return wald_bound_on_support(
             p_hat, var, lower, upper, alpha_ci, bound, name=name
         )
