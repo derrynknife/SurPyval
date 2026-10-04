@@ -817,6 +817,53 @@ def check_parameters(dist: Any, params: Any) -> None:
             )
 
 
+def dict_numbers(model_dict: dict, key: str, matrix: bool = False) -> Any:
+    """
+    The dictionary's entry ``key`` as a float array: a vector, or with
+    ``matrix=True`` a square matrix (a covariance). Strings of numbers are
+    read as the numbers (as ``fit`` reads them); anything else -- a word,
+    a ragged matrix -- raises a ``ValueError`` naming the entry and what
+    it must be, where numpy's "ufunc 'divide' not supported" or
+    "inhomogeneous shape" came later (#663). ``None`` stays ``None``.
+
+    Examples
+    --------
+    >>> from surpyval.serialisation import dict_numbers
+    >>> dict_numbers({"params": ["10", 2]}, "params")
+    array([10.,  2.])
+    >>> dict_numbers({"covariance": [[1, 0], [0]]}, "covariance", True)
+    Traceback (most recent call last):
+    ...
+    ValueError: The serialised 'covariance' must be a square matrix of numbers, one row and column per parameter; got [[1, 0], [0]].
+    """  # noqa: E501
+    value = model_dict[key]
+    if value is None:
+        return None
+    what = (
+        "a square matrix of numbers, one row and column per parameter"
+        if matrix
+        else "numbers"
+    )
+    try:
+        out = np.asarray(value)
+        if out.dtype.kind not in "biuf":
+            # (numbers keep their type, as a dict of ints did)
+            out = out.astype(float)
+    except (TypeError, ValueError):
+        out = None
+    square = out is not None and out.ndim == 2
+    if out is None or (
+        matrix and not (square and out.shape[0] == out.shape[1])
+    ):
+        shown = repr(value)
+        if len(shown) > 80:
+            shown = shown[:77] + "..."
+        raise ValueError(
+            f"The serialised {key!r} must be {what}; got {shown}."
+        )
+    return out
+
+
 def _check_restored_parametric(model: Any) -> None:
     """Bounds-check a restored univariate parametric model, including the
     limited-failure-population ``p`` and zero-inflation ``f0`` fractions,

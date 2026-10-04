@@ -648,3 +648,15 @@ def test_649_a_fixed_lfp_p_finds_the_better_mode():
     np.testing.assert_allclose(model.params, [92.2466, 2.34462], rtol=1e-4)
     assert model.neg_ll() < 429.07
     assert model.lfp_p == 0.5
+
+
+def test_zi_quantile_cb_within_the_mass_at_zero_is_zero_without_a_warning():
+    # #663: a probability below f0 has the quantile 0, and its bound is
+    # [0, 0]; it came with a warning that the bound was undefined (NaN).
+    rng = np.random.default_rng(0)
+    x = np.r_[np.zeros(10), rng.weibull(2, 40) * 10]
+    model = surv.Weibull.fit(x, zi=True)
+    assert model.f0 > 0.05
+    out = no_warnings(model.quantile_cb, [0.05, 0.5])
+    np.testing.assert_array_equal(out[0], [0.0, 0.0])
+    assert 0 < out[1, 0] < model.qf(0.5) < out[1, 1]

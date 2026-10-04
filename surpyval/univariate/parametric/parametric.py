@@ -16,7 +16,12 @@ from scipy.special import ndtri as z
 
 import surpyval as surv
 from surpyval import ParametricDistribution
-from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
+from surpyval.serialisation import (
+    SerialisableMixin,
+    dict_numbers,
+    stamp_schema,
+    to_native,
+)
 from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
     ic_sample_size,
@@ -227,7 +232,17 @@ def _query_array(x: Any) -> Any:
     is."""
     if isinstance(x, ArrayBox):
         return x
-    return onp.asarray(x)
+    out = onp.asarray(x)
+    if out.dtype.kind in "US":
+        # Strings of numbers are read as the numbers, as ``fit`` reads
+        # them; numpy's "ufunc 'divide' not supported" said neither (#663).
+        try:
+            return out.astype(float)
+        except ValueError:
+            raise ValueError(
+                f"x must be numbers (or strings of numbers); got {x!r}."
+            ) from None
+    return out
 
 
 def _scalar(out: Any) -> Any:
@@ -520,13 +535,15 @@ class Parametric(
         if zi:
             out.f0 = model_dict["f0"]
 
+        # Numbers, a k x k matrix: a hand-edited dict's strings or ragged
+        # rows are named here, not in a numpy error later (#663).
         if "hess_inv" in model_dict:
-            out.hess_inv = np.array(model_dict["hess_inv"])
+            out.hess_inv = dict_numbers(model_dict, "hess_inv", True)
 
         # "cov_matrix" is the key of a dict written before v0.23.
         for key in ("covariance", "cov_matrix"):
             if key in model_dict:
-                out._covariance = np.array(model_dict[key])
+                out._covariance = dict_numbers(model_dict, key, True)
                 break
 
         if "_neg_ll" in model_dict:
@@ -549,7 +566,7 @@ class Parametric(
                 ]
             }
 
-        out.params = np.array(model_dict["params"])
+        out.params = dict_numbers(model_dict, "params")
 
         # Dicts written before ``"maximum"`` existed keep the constructor's
         # value: "unknown" for a maximum-likelihood fit, "not applicable"
@@ -2496,7 +2513,12 @@ class Parametric(
             )
             grad = -jac / dens[:, None]
             var = np.einsum("ij,jk,ik->i", grad, ctx.cov, grad)
-        var = np.where(finite, var, 0.0)
+        # A probability within a zero-inflated model's mass at 0 has the
+        # quantile 0 whatever the parameters near the estimate (the atom
+        # is below the continuous part): its bound is [0, 0], with no
+        # density to divide by and nothing to warn about (#663).
+        at_zero = (np.asarray(p, dtype=float) <= f0) & bool(self.zi)
+        var = np.where(finite & ~at_zero, var, 0.0)
         return self._summary_wald(
             t, var, self._summary_scale(), alpha_ci, bound, "qf"
         )

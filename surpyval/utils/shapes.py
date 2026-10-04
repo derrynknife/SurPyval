@@ -106,6 +106,14 @@ def flatten_query(
     return flat, restore
 
 
+def _plain(value: Any) -> str:
+    """A number as the user would write it (no numpy repr)."""
+    try:
+        return f"{float(value):g}"
+    except (TypeError, ValueError):
+        return repr(value)
+
+
 def keeps_query_shape(
     method: "F | None" = None, *, point_ndim: int = 0
 ) -> Any:
@@ -152,6 +160,17 @@ def keeps_query_shape(
             if x is None:
                 # A query left to its default (the fitted times, say).
                 return method(self, x, *args, **kwargs)
+            if point_ndim and args and np.ndim(x) == 0:
+                # A point's coordinates given as separate arguments,
+                # ``sf(50, 20)``: Python's "takes 2 positional arguments
+                # but 3 were given" did not say how to pass them (#663).
+                point = ", ".join(_plain(v) for v in (x, *args))
+                raise TypeError(
+                    f"{method.__name__}() takes the points as one array, a "
+                    "row per point and a column per series: "
+                    f"{method.__name__}([[{point}]]), not "
+                    f"{method.__name__}({point})."
+                )
             flat, restore = flatten_query(x, point_ndim)
             if kwargs.get("grid"):
                 # A row-by-time grid: the points are on the last axis.

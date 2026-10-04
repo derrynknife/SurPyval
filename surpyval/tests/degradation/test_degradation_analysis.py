@@ -1158,3 +1158,19 @@ def test_minor_argument_checks() -> None:
             model.predict_rul([1.0, 2.0], [2.0, 3.0], alpha_ci=alpha)
     with pytest.raises(ValueError, match="not one of the model's units"):
         model.path([1.0], 42)
+
+
+def test_best_path_says_which_paths_a_reading_at_t_0_left_out():
+    # #663: the power, logarithmic, Lloyd-Lipow and Michaelis-Menten
+    # paths are not defined at t = 0; path="best" left them out silently.
+    rng = np.random.default_rng(0)
+    t = np.tile(np.arange(0.0, 6.0), 5)
+    i = np.repeat(np.arange(5), 6)
+    y = rng.uniform(0.8, 1.2, 5)[i] * t + rng.normal(0, 0.05, t.size)
+    with pytest.warns(UserWarning, match="left out the Power") as caught:
+        DegradationAnalysis.fit(t, y, i, threshold=8.0, path="best")
+    message = next(
+        str(w.message) for w in caught if "left out" in str(w.message)
+    )
+    assert "5 measurement(s) are at t <= 0" in message
+    assert "Drop the t = 0 rows" in message

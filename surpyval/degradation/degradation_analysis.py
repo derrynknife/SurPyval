@@ -1139,6 +1139,27 @@ class DegradationAnalysis_(FitterRepr):
                 + 2.0 * k * (k + 1.0) / (n_total - k - 1.0)
             )
 
+        # The paths not defined at t <= 0 (power, logarithmic, ...) are left
+        # out when there are readings there -- the baseline at t = 0, most
+        # often -- and say so rather than vanish from the comparison (#663).
+        n_nonpositive = int(np.sum(x_arr <= 0))
+        if n_nonpositive:
+            left_out = []
+            for candidate in PATH_MODELS.values():
+                try:
+                    candidate.check_data(x_arr, np.ones_like(x_arr))
+                except ValueError:
+                    left_out.append(candidate.name)
+            if left_out:
+                warnings.warn(
+                    "path='best' left out the {} path(s): they need "
+                    "strictly positive times, and {} measurement(s) are at "
+                    "t <= 0. Drop the t = 0 rows to compare them too.".format(
+                        ", ".join(left_out), n_nonpositive
+                    ),
+                    stacklevel=caller_stacklevel(),
+                )
+
         finite = {
             name: score for name, score in scores.items() if np.isfinite(score)
         }

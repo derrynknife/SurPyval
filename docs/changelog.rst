@@ -77,6 +77,15 @@ Unreleased
   ``fit_from_df(x=)`` names ``x_col``. ``surpyval.datasets`` works after
   ``import surpyval``; ``ProportionalIntensityNHPP`` takes ``baseline=``,
   as ``ARI`` does (``dist=`` warns until v0.25).
+- Messages that sent users the wrong way (#663, items 5-9): copula margins
+  given as names or as one fitter, series of unequal length and
+  ``sf(50, 20)`` say what is expected; the power (and logarithmic,
+  Lloyd-Lipow, Michaelis-Menten) path says to drop the t = 0 rows, and
+  ``path="best"`` warns when it leaves those paths out; Wiener and Gamma
+  fits of a falling signal say to negate y and the threshold; a
+  zero-inflated ``quantile_cb`` below ``f0`` no longer warns of a NaN;
+  ``sf("10")`` reads the number, and a dict's string or ragged entries
+  are named.
 - ``fit_best`` passed over every lifetime family (support from 0) in
   silence when some times were at or below 0, and returned the best of the
   rest: with three zero ages in 50, a Normal that put 3% of the units
