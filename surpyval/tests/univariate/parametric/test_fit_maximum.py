@@ -136,6 +136,42 @@ def test_584_a_runaway_ends_the_search_with_one_warning():
     assert -model._neg_ll > -248.7  # past the profile at beta = 468
 
 
+def test_a_search_stalled_at_a_kink_is_not_a_runaway():
+    # The Weibull-LogLogistic spline of the applications page, whose
+    # cumulative hazard jumps at its knot: BFGS stopped after eight
+    # iterations against the jump with the other parameters' Hessian
+    # indefinite, and Newton's test along alpha_ll's profile read that as
+    # a runaway. The search ended there, and the answer kept was a start
+    # with the knot below every observation (log-likelihood -1750.76),
+    # where the later rungs reach -1741.79 with the knot at half the cap.
+    from autograd import numpy as anp
+
+    from surpyval.datasets import load_boston_housing
+
+    x, c, n, _ = surv.xcnt_handler(load_boston_housing()["medv"].values)
+    c[-1] = 1
+
+    def Hf(x, *params):
+        x = anp.array(x)
+        knot = 50 * params[0]
+        w, ll = params[1:3], params[3:]
+        below = surv.Weibull.Hf(x, *w)
+        above = surv.Weibull.Hf(knot, *w) + surv.LogLogistic.Hf(x, *ll)
+        return anp.where(x < knot, below, above)
+
+    spline = surv.CustomDistribution(
+        "Spline",
+        Hf,
+        ["knot_frac", "alpha_w", "beta_w", "alpha_ll", "beta_ll"],
+        ((0, 1), (0, None), (0, None), (0, None), (0, None)),
+        (0, anp.inf),
+    )
+    model, _ = _caught(spline.fit, x=x, c=c, n=n, lfp=True)
+    assert model.maximum != "no finite maximum"
+    assert 0.45 < model.params[0] < 0.55
+    assert -model._neg_ll > -1742.0
+
+
 def test_584_the_frechet_limit_is_named():
     # Interval censored and truncated rows on which mu runs off (to 8e19
     # by the time the whole ladder had run, 23 s): the likelihood tends to

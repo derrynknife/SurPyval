@@ -1165,13 +1165,13 @@ The other important use case is when, for some reason, an alternate estimation m
     print(str(caught[0].message).splitlines()[0])
     model.plot()
 
-This shows, that the Maximum Likelihood Estimation has failed for this data: SurPyval warns and hands back the optimiser's starting point instead. For many distributions that starting point is a probability-plot fit; for an offset LogLogistic it is only a rough guess, which is why the fitted curve misses the points. The warning is captured and printed above; in your own code it simply appears as a ``UserWarning``. However, because we have access to other methods, we can use an alternate estimation method:
+This shows that the Maximum Likelihood Estimation has failed for this data, and why: the fitted shape is below one, where the LogLogistic density is infinite at its origin, so the likelihood grows without bound as the offset approaches the first failure. There is no maximum to find, and SurPyval warns rather than presenting the point where the search stopped as an estimate. The warning is captured and printed above; in your own code it simply appears as a ``UserWarning``. However, because we have access to other methods, we can use an alternate estimation method:
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert str(caught[0].message).startswith("MLE Failed")
+    assert str(caught[0].message).startswith("No finite maximum")
 
 .. jupyter-execute::
 
