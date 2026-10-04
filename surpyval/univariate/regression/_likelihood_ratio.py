@@ -45,10 +45,12 @@ _FLOAT_MAX = float(np.finfo(float).max)
 LR_NAMES = ("lr", "likelihood", "likelihood-ratio", "profile")
 
 
-def is_lr(method: str) -> bool:
+def is_lr(method: "str | None") -> bool:
     """Whether ``method`` asks for the likelihood-ratio bounds: ``"lr"``
-    or one of its aliases; ``"wald"`` is the other option, and anything
-    else is refused."""
+    or one of its aliases; ``"wald"`` is the other option (and ``None``,
+    the default, means it, #655), and anything else is refused."""
+    if method is None:
+        return False
     m = str(method).lower()
     if m in LR_NAMES:
         return True

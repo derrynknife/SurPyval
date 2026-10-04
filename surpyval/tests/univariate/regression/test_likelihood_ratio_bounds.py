@@ -186,11 +186,13 @@ def test_583_shapes_rows_and_below_the_support(alt):
 
 
 def test_583_param_cb_lr_respects_the_parameter_space(alt):
-    # The life model's constant c is positive: its Wald interval is not
-    # (a standard error ten times the estimate), the profile one is.
+    # The life model's constant c is positive: the profile interval stays
+    # positive, and so (on the log scale, #655) does the Wald one, which
+    # went below zero with a standard error ten times the estimate.
     lo, hi = alt.param_cb("c", alpha_ci=0.1, method="lr")
     assert 0.0 < lo < alt.params[2] < hi
-    assert alt.param_cb("c", alpha_ci=0.1)[0] < 0.0
+    wald = alt.param_cb("c", alpha_ci=0.1)
+    assert 0.0 < wald[0] < alt.params[2] < wald[1]
 
 
 @pytest.mark.parametrize("fitter", [WeibullPH, WeibullAFT])

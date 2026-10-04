@@ -58,10 +58,13 @@ REFIT_ERRORS = (
 )
 
 
-def bound_method(method: str) -> str:
+def bound_method(method: "str | None") -> str:
     """The bound ``method`` asks for: ``"wald"``, ``"lr"`` (or one of
     its aliases) or ``"bootstrap"``; anything else is refused. Case does
-    not matter."""
+    not matter, and ``None`` is the default, ``"wald"``, as for the
+    univariate models (#655)."""
+    if method is None:
+        return "wald"
     m = str(method).lower()
     if m in LR_NAMES:
         return "lr"
