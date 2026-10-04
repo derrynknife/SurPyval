@@ -97,10 +97,15 @@ def test_countermonotone_data_warn_where_the_family_reaches_them(copula):
 
 def test_a_family_without_negative_dependence_is_not_told_about_it():
     # Clayton cannot reach the countermonotone copula; it goes to its
-    # independence end, a valid copula, and says nothing.
+    # independence end, a valid copula: not told "no finite maximum", but
+    # told once that the family cannot model the dependence (#663).
     X = np.column_stack([_X1, 100.0 - _X1])
-    _, caught = _caught(Clayton.fit, X, margins=_MARGINS)
-    _silent(caught)
+    model, caught = _caught(Clayton.fit, X, margins=_MARGINS)
+    assert len(caught) == 1, [str(w.message)[:80] for w in caught]
+    message = str(caught[0].message)
+    assert "No finite maximum" not in message
+    assert "the bound of the family's range" in message
+    assert model.maximum == "verified"
 
 
 @pytest.mark.parametrize("copula", [Clayton, Gumbel, Frank, Gaussian])
