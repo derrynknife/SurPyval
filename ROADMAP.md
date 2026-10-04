@@ -221,6 +221,50 @@ in the package; revisit once the library is otherwise stable.
 
 ---
 
+## The unit as it is now: remaining-life models for live valuation
+
+*Status: idea (design with RePyability). Size: medium. Serves
+RePyability's "Live NPV" roadmap item (its stories MX-18 to MX-25).*
+
+RePyability is to keep a maintenance plan's net present value current as
+the plant changes, so that Reliafy can re-optimise the plan by NPV as
+sensor readings, work orders and failures arrive. Its side (the plant's
+state, the valuation, the re-optimisation) is on RePyability's roadmap.
+What it needs from SurPyval is each unit's life *from its state now*, as a
+model it can take like any other (`sf`, `ff`, `hf`, `Hf`, `qf`, `mean`,
+`random`, with its uncertainty), and cheap updates as data arrive:
+
+- **Remaining life from a degradation level.** `predict_rul` of the
+  process and path models returns a summary (`ProcessRUL`: the median and
+  an interval). Return, or also offer, the remaining-life *distribution*
+  from a current level as a life model: the first passage from the level
+  to the threshold (inverse Gaussian for a Wiener process; the
+  gamma-process first passage), and for path models the conditional
+  pseudo-failure-time distribution, with the parameter uncertainty
+  propagated. Readings at irregular times and a unit's own history should
+  condition it (a unit's random effect, where the model has one).
+- **Remaining life from a repair history.** Renewal models already give a
+  unit's virtual age and next-failure survival (#615): expose that as a
+  life model too, so a repaired unit's state is one object.
+- **Remaining life given covariates now.** A regression model's `cs(x,
+  given, Z)` (#581) as a life model conditioned on the current age and
+  covariates, including a covariate path ahead (load or temperature plans).
+- **Updating as data arrive.** Refitting a component type monthly over
+  thousands of units should be cheap: warm starts from the last fit, and
+  (longer term) a sequential or Bayesian update that carries the
+  covariance forward, so the plan's NPV distribution narrows as evidence
+  accumulates and the value of the next observation can be computed.
+- **One state object.** Whatever the source (age, level, virtual age,
+  covariates), the state a unit is in should save and load with the model
+  (`to_dict`), so a valuation can be reproduced from its inputs.
+
+The checks are the ones the scenario cards already use: the remaining-life
+distribution against simulation from the fitted process, and the
+conditional survival against `sf(x + given) / sf(given)` computed from the
+cumulative hazard (exact where `sf(given)` underflows: see #660).
+
+---
+
 ## Ongoing practice: hardening
 
 Hardening is continuous, not a one-off review before 1.0 (#229 is closed in
@@ -234,7 +278,22 @@ favour of this). It is how every change is made:
   properties on every pull request.
 - **Review rounds.** A periodic adversarial review of one area or of the
   whole package, done as a new user would use it. Each round files concrete
-  issues, which are fixed in the next round.
+  issues, which are fixed in the next round. The 0.23 round (#644) ran
+  five personas on the installed release: a field-data engineer, a
+  repairable-systems engineer, a regression statistician, a component and
+  test engineer, and an integrator following the docs.
+- **Scenario cards in the regular tests.** The practitioner cards (each a
+  persona's end-to-end study on data simulated from a known truth, checked
+  against the truth or an independent likelihood, with each gap a strict
+  xfail led by its issue) are on the `claude/practitioner-audit-harness`
+  branch and not yet merged. Merge them, add a card for each 0.23 persona,
+  and run them with the regular tests on every pull request, not only
+  nightly: a card should run in seconds, so a fix that closes a gap fails
+  the same pull request until the card is updated. Studies that need
+  thousands of repeats stay in the calibration suite.
+- **Tests from the installed wheel.** Run the suite from a clean install
+  of the built wheel in CI, so missing package data and optional
+  dependencies show up before a release (#661).
 - **Performance sweeps.** Profile the main workloads at realistic sizes and
   fix what scales badly. The larger items become issues; this has been done
   once, in #515.
