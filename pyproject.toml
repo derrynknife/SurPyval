@@ -73,6 +73,8 @@ where = ["."]
 
 [tool.setuptools.package-data]
 "*" = ["datasets/*.csv", "py.typed"]
+# The reference results the installed test suite reads (#661)
+"surpyval.tests.reference" = ["data/*.json"]
 
 # pytest
 [tool.pytest.ini_options]
