@@ -332,8 +332,11 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
     # The data are checked once, as ``fit`` checks them, so an input error
     # raises as it would there. It used to fail every candidate the same
     # way, and come back as None with a warning quoting the data once per
-    # candidate (#570).
-    SurpyvalData(x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)
+    # candidate (#570). The same SurpyvalData is then given to every
+    # candidate: each ``fit`` built and checked it again (and estimated
+    # its non-parametric start again), most of fit_best's time on large
+    # data that the fits themselves no longer take.
+    surv_data = SurpyvalData(x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)
 
     # The best (measure, model) among the regular fits (True) and among
     # those set aside (False), which are ranked only when no regular
@@ -350,7 +353,11 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
     # Each candidate as (name, fit, whether its likelihood is regular).
     data: dict[str, Any] = dict(x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)
     fits: list[tuple[str, Callable[[], Any], bool]] = [
-        (dist.name, partial(dist.fit, **data), not _non_regular(dist))
+        (
+            dist.name,
+            partial(dist.fit_from_surpyval_data, surv_data),
+            not _non_regular(dist),
+        )
         for dist in candidates
     ]
     fits += [
@@ -406,7 +413,7 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
     if n_fitted == 0:
         _raise_if_about_the_data(errors, outside)
     _warn_if_lifetimes_passed_over(
-        outside, candidates, model, labels, SurpyvalData(**data)
+        outside, candidates, model, labels, surv_data
     )
     if failed:
         # One warning for all of them, with the count (principle 22); it

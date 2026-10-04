@@ -161,7 +161,8 @@ def test_570_a_skipped_candidate_is_named_with_a_short_reason(monkeypatch):
     def refuse(*args, **kwargs):
         raise ValueError("Gamma cannot be fitted here.\nx:\n" + "1.0 " * 500)
 
-    monkeypatch.setattr(sp.Gamma, "fit", refuse)
+    # fit_best fits each candidate to its one SurpyvalData
+    monkeypatch.setattr(sp.Gamma, "fit_from_surpyval_data", refuse)
     model, messages = _fit_best(WEIBULL_50, include=["Weibull", "Gamma"])
     assert model.dist.name == "Weibull"
     (skipped,) = [m for m in messages if m.startswith("fit_best skipped")]
@@ -270,3 +271,53 @@ def test_646_a_beta_passed_over_stays_quiet():
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         sp.fit_best(x)
+
+
+# ---------------------------------------------------------------------------
+# The data are built and checked once, and that one SurpyvalData is given
+# to every candidate: each ``fit`` used to build it again.
+# ---------------------------------------------------------------------------
+def _censored(n=400, seed=3):
+    rng = np.random.default_rng(seed)
+    t = rng.weibull(1.7, n) * 100
+    cens = rng.uniform(20, 250, n)
+    return np.minimum(t, cens), (t > cens).astype(int)
+
+
+def test_the_data_are_built_once(monkeypatch):
+    import sys
+
+    fit_best_module = sys.modules["surpyval.fit_best"]  # not the function
+    built = []
+    original = fit_best_module.SurpyvalData
+
+    def counting(*args, **kwargs):
+        built.append(1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(fit_best_module, "SurpyvalData", counting)
+    x, c = _censored()
+    _fit_best(x, c=c)
+    assert len(built) == 1
+
+
+def test_every_candidate_is_its_own_fit():
+    # The shared data give each candidate the fit ``fit`` gives it alone,
+    # and are left as they were
+    x, c = _censored()
+    seen = {}
+    names = ["Weibull", "Gamma", "LogNormal", "Normal", "ExpoWeibull"]
+    for name in names:
+        model, _ = _fit_best(x, c=c, include=[name])
+        seen[name] = model
+        alone = getattr(sp, name).fit(x, c=c)
+        np.testing.assert_array_equal(model.params, alone.params)
+        assert model.aic() == alone.aic()
+    best, _ = _fit_best(x, c=c, include=names)
+    data = best.surv_data
+    fresh = sp.SurpyvalData(x=x, c=c)
+    for attr in ("x", "c", "n", "t"):
+        np.testing.assert_array_equal(
+            getattr(data, attr), getattr(fresh, attr)
+        )
+    np.testing.assert_array_equal(best.params, seen[best.dist.name].params)
