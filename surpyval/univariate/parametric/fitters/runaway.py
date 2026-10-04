@@ -412,6 +412,15 @@ def joint_runaway(
     with np.errstate(all="ignore"):
         if not runaway_coefficients(along, y0, [rest.size]):
             return []
+        # And again one Newton step on along the joint profile: a fit
+        # stopped short of a finite maximum a Newton step away can fail
+        # Kantorovich's test where it is (a WeibullPO whose scale was 14
+        # times short of its maximum, 0.006 below it in log-likelihood),
+        # but not from the next point, where Newton's method has all but
+        # converged; a run-off fails it at every point.
+        y1 = _newton_point(along, y0, rest.size)
+        if y1 is None or not runaway_coefficients(along, y1, [rest.size]):
+            return []
         if start is not None:
             # The joint profile's direction, to first order, for the check
             # that the likelihood depends on it at the start (collinear
@@ -423,6 +432,26 @@ def joint_runaway(
             if _flat_at_start(neg_ll, start, v):
                 return []
     return loose
+
+
+def _newton_point(
+    neg_ll: Callable, x: npt.NDArray, j: int
+) -> "npt.NDArray | None":
+    """The point one Newton step along parameter ``j``'s profile from ``x``
+    (:func:`_profile`), or ``None`` where the step cannot be taken or does
+    not lower ``neg_ll``."""
+    derivatives = search_derivatives(neg_ll, x)
+    if derivatives is None or not np.all(np.isfinite(derivatives[0])):
+        return None
+    point, v = _profile(neg_ll, x, derivatives[0], j)
+    d = _line_derivatives(neg_ll, point, v)
+    if d is None or not d[1] > 0.0:
+        return None
+    nxt = point - (d[0] / d[1]) * v
+    f0, f1 = float(neg_ll(point)), float(neg_ll(nxt))
+    if not (np.isfinite(f1) and f1 < f0):
+        return None
+    return nxt
 
 
 def _cleared(
