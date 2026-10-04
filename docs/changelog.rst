@@ -68,6 +68,12 @@ Unreleased
 
 **Fixed**
 
+- A fit with a fixed parameter skipped the alternative starts every other
+  fit tries, and could stop on a worse maximum and call it verified: a
+  limited-failure Weibull with ``lfp_p`` fixed at 0.5 landed on the
+  infant-mortality mode (shape 0.96), 11.3 log-likelihood units below the
+  wear-out one the start from the failures alone reaches (#649). The
+  alternative starts now run with the fixed values in place.
 - An offset (3-parameter) model's Wald bounds -- ``cb``, ``quantile_cb``
   and ``param_cb`` -- hold the offset at its estimate, which the fit
   leaves out of the covariance (a threshold's likelihood is not regular),
