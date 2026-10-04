@@ -235,7 +235,7 @@ def test_617_conditional_censoring_of_the_failed_units():
     c = np.array([0, 1, 0, 1, 0, 0, 1, 0])
     Z = np.array([0.0, 1, 0, 1, 0, 1, 0, 1])
     model = quietly(WeibullPH.fit, x, Z, c=c)
-    design = _bootstrap._Design(model)
+    design = _bootstrap.ResampleDesign(model)
     rng = np.random.default_rng(0)
     draws = np.array([design.censoring(rng) for _ in range(20000)])
     np.testing.assert_array_equal(

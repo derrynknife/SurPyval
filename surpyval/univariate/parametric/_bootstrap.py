@@ -43,9 +43,9 @@ import numpy as np
 import numpy.typing as npt
 
 from surpyval.univariate.regression._bootstrap import (
-    _REFIT_ERRORS,
     FAILED_SHARE,
-    _Design,
+    REFIT_ERRORS,
+    ResampleDesign,
     bca_bounds,
     check_n_boot,
 )
@@ -131,10 +131,11 @@ def check_resamplable(model: Any) -> None:
         )
 
 
-class _UnivariateDesign(_Design):
+class _UnivariateDesign(ResampleDesign):
     """What a resample of a univariate model's data keeps: each unit's
     truncation window and censoring (a row with ``n = k`` is ``k``
-    units); the censoring distribution is the regressions' (``_Design``).
+    units); the censoring distribution is the regressions'
+    (``ResampleDesign``).
     """
 
     def __init__(self, model: Any) -> None:
@@ -260,7 +261,7 @@ def _draw(
                     init=init,
                     **kwargs,
                 )
-        except _REFIT_ERRORS:
+        except REFIT_ERRORS:
             counts["failed"] += 1
             continue
         if refit.maximum in counts:
