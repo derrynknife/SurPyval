@@ -858,6 +858,9 @@ def xcnt_handler(
             [-inf,  inf]]))
     """
 
+    x, c, n, t, xl, xr, tl, tr = (
+        _numeric_list_as_array(v) for v in (x, c, n, t, xl, xr, tl, tr)
+    )
     x = _xcnt_x(x, xl, xr)
     c = _xcnt_censoring(c, x)
     n = _xcnt_counts(n, x)
@@ -896,6 +899,30 @@ def xcnt_handler(
         x, c, n, t = xcnt_sort(x, c, n, t)
 
     return x, c, n, t
+
+
+def _numeric_list_as_array(value: Any) -> Any:
+    """A flat list or tuple of numbers as an array, anything else as given.
+
+    The checks after this convert a list several times over: once each to
+    look for durations and dates (``refuse_time_values``), for missing
+    values and to read it as floats, about 3 ms per 100,000 numbers
+    every time. An array answers the first two from its dtype, so
+    converting once here saves most of that. Only a list numpy reads as
+    one-dimensional numbers is converted: a list of pairs, a ragged one,
+    or one holding objects (dates, pandas ``NA``, numbers too large for
+    an integer dtype) reaches the checks as given, which read it as they
+    always have.
+    """
+    if not isinstance(value, (list, tuple)):
+        return value
+    try:
+        arr = np.asarray(value)
+    except (ValueError, TypeError):
+        return value
+    if arr.ndim == 1 and arr.dtype.kind in "biuf":
+        return arr
+    return value
 
 
 def _xcnt_x(
