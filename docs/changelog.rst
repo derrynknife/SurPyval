@@ -140,6 +140,15 @@ Unreleased
   (``OutsideSupportError`` for a Weibull, "x cannot contain NaN" for a
   LogNormal) before the search started: the starting offset was taken
   above a left-censored row's imputed point (#631, since 0.23).
+- Recurrent input (#658): a scalar ``i`` / ``c`` / ``n`` applies to every
+  row, and ``fit_from_df(c="ev")`` names ``c_col`` (both were an
+  ``IndexError``); an exact event given as ``[l, r]`` with l != r, which
+  the fits read as ``l`` and the MCF as the midpoint, is refused; c=2 with
+  1-D ``x`` is a ``ValueError``, not a bare ``AssertionError``; ``n > 1``
+  on an exact event says to repeat the row; messages give the item's own
+  label. An event exactly at ``tl`` is outside the window ``(tl, T]``:
+  every fit, the MCF and the trend tests now refuse it with one message,
+  and the MCF no longer counts an item at risk at its ``tl``.
 
 v0.23 (4 October 2026)
 ----------------------

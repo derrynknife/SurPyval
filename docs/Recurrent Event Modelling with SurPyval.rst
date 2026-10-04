@@ -314,8 +314,9 @@ estimate and its bounds both rising from 0 at time 0 to the first event):
 
 The ``NonParametricCounting`` model also supports **left truncation** (delayed
 entry): an item that was already in service before observation began only joins
-the at-risk set once its entry time is reached, so events before that entry are
-estimated over a smaller risk set. Pass the entry time with ``tl``, either as
+the at-risk set once its entry time is passed (it is observed over
+:math:`(t_l, T]`, so an event exactly at its ``tl`` is refused), and events up to
+that entry are estimated over a smaller risk set. Pass the entry time with ``tl``, either as
 a scalar for every item or as one value per row (the same on every row of an
 item):
 

@@ -231,7 +231,9 @@ def growth_projection(
             "factor; got {}".format(type(fef).__name__)
         )
     events = c_arr == 0
-    unlabelled = [k for k in np.flatnonzero(events) if _missing(mode_arr[k])]
+    unlabelled = [
+        int(k) for k in np.flatnonzero(events) if _missing(mode_arr[k])
+    ]
     if unlabelled:
         raise ValueError(
             "Every failure (c=0) needs a mode label; {} have none (rows "

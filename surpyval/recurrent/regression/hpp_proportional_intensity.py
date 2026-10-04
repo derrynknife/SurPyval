@@ -349,7 +349,7 @@ class ProportionalIntensityHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
             if not (onp.isfinite(given[0]) and given[0] > 0):
                 raise ValueError(
                     "the baseline rate in init must be positive and finite; "
-                    f"got {given[0]!r}"
+                    f"got {float(given[0])}"
                 )
             start = onp.append(onp.log(given[0]), given[1:])
 

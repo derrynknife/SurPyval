@@ -633,9 +633,10 @@ class NonParametricCounting(
         tl : array like or scalar, optional
             Left-truncation (delayed-entry) time of each item: a scalar for
             every item, or one value per row (the same on every row of an
-            item). An item only
-            enters the at-risk set once observation begins at ``tl``, so
-            earlier event times are estimated over a smaller risk set.
+            item). An item is
+            observed over ``(tl, T]``: it joins the at-risk set just after
+            ``tl``, so earlier event times are estimated over a smaller
+            risk set, and an event exactly at its ``tl`` is refused.
         tr : array like or scalar, optional
             Right-truncation time of each item, given like ``tl``: the end
             of its observation
@@ -750,8 +751,9 @@ def _lawless_nadeau_var(
     # at-risk indicator agrees with its share of ``r`` (including a
     # right-truncation close past its last row).
     entry, exit_ = data.item_observation_windows()
-    # Each item's at-risk run of the grid, lo..hi (empty when lo > hi).
-    lo = np.searchsorted(x, entry, side="left")
+    # Each item's at-risk run of the grid, lo..hi (empty when lo > hi):
+    # the grid times in its window (entry, exit].
+    lo = np.searchsorted(x, entry, side="right")
     hi = np.searchsorted(x, exit_, side="right") - 1
     # Items split into observation windows are regrouped under their
     # original item, as one cluster.

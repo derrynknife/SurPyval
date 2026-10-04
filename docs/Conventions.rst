@@ -79,8 +79,10 @@ Recurrent event data (items that fail, are repaired and fail again) adds ``i``, 
 
 - ``x`` is the **cumulative** time of the event on that item (time since the item was new or first observed), not the time since the previous event. If you have inter-arrival times, take their cumulative sum per item.
 - Each item may have at most one right censored row (``c = 1``), which must be its last: it marks the end of that item's observation. Likewise, at most one left censored row, which must be its first.
-- Truncation (``tl``/``tr``, or ``t``) defines each item's observation window, so it must be the same for every row of an item and contain all of that item's events. An item with no left truncation is taken to have been observed from time 0. Items observed over several separate periods can be described with ``windows``.
-- ``n`` greater than one is only allowed on interval or left censored rows (several events known to have occurred in the same interval).
+- Truncation (``tl``/``tr``, or ``t``) defines each item's observation window, so it must be the same for every row of an item and contain all of that item's events. The window is :math:`(t_l, t_r]`, as for single lifetimes: an item entering at ``tl`` is at risk just after it, so an event exactly at ``tl`` is outside the window and refused (by every fit, the MCF and the trend tests alike). An item with no left truncation is taken to have been observed from time 0. Items observed over several separate periods can be described with ``windows`` (each window ``(start, end]`` likewise).
+- ``n`` greater than one is only allowed on interval or left censored rows (several events known to have occurred in the same interval); for simultaneous exact events, repeat the row.
+- In 2-D ``x`` (mixed with interval counts) an exact event is written ``[t, t]``; a pair with two different times is an interval count, ``c = 2``.
+- A scalar ``i``, ``c`` or ``n`` applies to every row, as a scalar ``tl`` / ``tr`` does.
 
 .. jupyter-execute::
 

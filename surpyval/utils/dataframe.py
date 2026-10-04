@@ -101,6 +101,30 @@ def refuse_column_names(options: Mapping[str, Any], *names: str) -> None:
             )
 
 
+def refuse_recurrent_column_names(
+    options: Mapping[str, Any], *extra: str
+) -> None:
+    """
+    Refuse a recurrent ``fit_from_df`` column passed by its ``fit`` name
+    (``c="ev"`` for ``c_col="ev"``, #658): it reached ``fit`` as a scalar
+    and failed there with a bare ``IndexError``. A number for ``tl`` /
+    ``tr`` is still passed on (``fit`` takes a scalar window), and only a
+    column label there is refused. ``extra`` are further per-row
+    arguments of the host's ``fit`` (``"Z"`` for the regressions, named
+    ``Z_cols`` here).
+    """
+    refuse_column_names(options, "x", "i", "c", "n")
+    for name in ("tl", "tr"):
+        if isinstance(options.get(name), str):
+            refuse_column_names(options, name)
+    for name in extra:
+        if name in options:
+            raise TypeError(
+                f"fit_from_df() got an unexpected keyword argument "
+                f"'{name}'; name the columns with '{name}_cols'"
+            )
+
+
 def _fitter_name(fitter: Any) -> str:
     name = getattr(fitter, "name", None)
     if not isinstance(name, str):
@@ -371,6 +395,11 @@ class RecurrentDataFrameMixin:
         ValueError
             If ``df`` is not a DataFrame, a name is not one of its columns,
             or a column is given that :meth:`fit` has no argument for.
+        TypeError
+            If a column is named with :meth:`fit`'s argument (``c=`` for
+            ``c_col=``, likewise ``x``, ``i``, ``n``, and ``tl`` / ``tr``
+            given a column label); a number for ``tl`` / ``tr`` is passed
+            on to :meth:`fit`.
 
         Examples
         --------
@@ -388,6 +417,7 @@ class RecurrentDataFrameMixin:
         array([260.1738,   1.1522])
         """
         df = require_frame(df)
+        refuse_recurrent_column_names(fit_options)
         columns = {
             "x": x_col,
             "i": i_col,
@@ -494,6 +524,9 @@ class RecurrentRegressionDataFrameMixin:
         ValueError
             If ``df`` is not a DataFrame or a name is not one of its
             columns.
+        TypeError
+            If a column is named with :meth:`fit`'s argument (``c=`` for
+            ``c_col=``, ``Z=`` for ``Z_cols=``, ...).
 
         Examples
         --------
@@ -511,6 +544,7 @@ class RecurrentRegressionDataFrameMixin:
         >>> model.coeffs.round(4)
         array([0.5849])
         """
+        refuse_recurrent_column_names(fit_options, "Z")
         columns = {
             "i": i_col,
             "c": c_col,

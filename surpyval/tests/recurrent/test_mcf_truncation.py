@@ -208,7 +208,9 @@ def test_to_xrd_matches_a_direct_count():
     events = data.c == 0
     for k, t in enumerate(grid):
         assert d[k] == data.n[(data.x == t) & events].sum()
-        assert r[k] == ((entry <= t) & (t <= exit_)).sum()
+        # At risk over (entry, exit]: an item entering at t is not at
+        # risk for an event at t (#658).
+        assert r[k] == ((entry < t) & (t <= exit_)).sum()
 
 
 # ---------------------------------------------------------------------------
