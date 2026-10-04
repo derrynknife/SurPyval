@@ -199,9 +199,10 @@ def forecast(
     age : array_like, optional
         The current age of each unit or cohort: the time it has survived
         so far, on the model's time scale (for a recurrent-event model,
-        its time since new, or since entry). Required for a univariate or
-        regression model. For a recurrent-event model fitted to data it
-        may be left out: the units are then the fitted data's items, each
+        its time since new, or since entry), at least 0. Required for a
+        univariate or regression model. For a recurrent-event model fitted
+        to data it may be left out: the units are then the fitted data's
+        items, each
         at the end of its observation (with its own covariates, and for a
         renewal model its own failure history). Ages given to a renewal
         model are those of units with no failure yet.
@@ -215,7 +216,8 @@ def forecast(
         Not taken by a univariate model.
     n : array_like, optional
         The number of units in service at each age (a cohort's
-        survivors); 1 each by default.
+        survivors): one per age, or one for every age; 1 each by
+        default.
     limit : scalar or array_like, optional
         An age past which a unit's failures are not counted (the end of
         its warranty, or a planned retirement), one for every unit or one
@@ -241,8 +243,10 @@ def forecast(
     Raises
     ------
     ValueError
-        If an age, horizon or limit is missing or infinite, the horizons
-        are not positive and increasing, a count is not a whole number,
+        If an age, horizon or limit is missing or infinite, an age is
+        negative, ``n`` or ``limit`` has neither one value nor one per age,
+        the horizons are not positive and increasing, a count is not a
+        whole number,
         ``Z`` is given to a univariate model or not given to a regression
         model, or ``alpha_ci`` is not strictly between 0 and 1; if ``age``
         is left out for a model that is not a recurrent-event model fitted
@@ -354,7 +358,7 @@ def forecast(
             "a recurrent-event model fitted to data takes its units from "
             "the data)"
         )
-    age_arr = _finite(age, "age").reshape(-1)
+    age_arr = _ages(age)
     k = age_arr.size
     counts = _counts(n, k)
     end_limit = _limits(limit, k)
@@ -415,10 +419,35 @@ def _finite(values: Any, name: str) -> npt.NDArray:
     return arr
 
 
+def _ages(age: Any) -> npt.NDArray:
+    """The ages as a 1-D array: finite and at least 0, for every model
+    type (the renewal models refused a negative age; the others read it
+    as an age before new, or returned nan, #659)."""
+    ages = _finite(age, "age").reshape(-1)
+    if np.any(ages < 0):
+        raise ValueError(
+            "age must be finite times of at least 0 (each unit's time "
+            "since new, or since entry, on the model's time scale); got "
+            "{}".format(ages[ages < 0][:5])
+        )
+    return ages
+
+
+def _per_unit(values: Any, k: int, name: str) -> npt.NDArray:
+    """``values`` (finite) as one per unit: a scalar, or one per age."""
+    arr = _finite(values, name).reshape(-1)
+    if arr.size not in (1, k):
+        raise ValueError(
+            "{} must be one value for every unit or one per age ({} "
+            "ages); got {} values".format(name, k, arr.size)
+        )
+    return np.broadcast_to(arr, (k,)).astype(float)
+
+
 def _counts(n: Any, k: int) -> npt.NDArray:
     if n is None:
         return np.ones(k)
-    counts = np.broadcast_to(_finite(n, "n"), (k,)).astype(float)
+    counts = _per_unit(n, k, "n")
     if np.any(counts < 0) or np.any(counts != np.round(counts)):
         raise ValueError(
             "n must be whole numbers of units, at least 0; got "
@@ -450,7 +479,7 @@ def _recurrent_kind(model: Any) -> str | None:
 def _limits(limit: Any, k: int) -> npt.NDArray:
     if limit is None:
         return np.full(k, np.inf)
-    return np.broadcast_to(_finite(limit, "limit"), (k,)).astype(float)
+    return _per_unit(limit, k, "limit")
 
 
 def _poisson_summary(
@@ -500,7 +529,7 @@ def _intensity_forecast(
         if regression:
             Z = np.asarray(data.Z, dtype=float)[first]
     else:
-        age_arr = _finite(age, "age").reshape(-1)
+        age_arr = _ages(age)
     k = age_arr.size
     counts = _counts(n, k)
     end_limit = _limits(limit, k)
@@ -573,7 +602,7 @@ def _renewal_forecast(
     items = 1000 if items is None else int(items)
     if items < 2:
         raise ValueError("items must be at least 2; got {}".format(items))
-    states = model._states(None if age is None else _finite(age, "age"))
+    states = model._states(None if age is None else _ages(age))
     k = states.now.size
     end_limit = _limits(limit, k)
     span = np.clip(

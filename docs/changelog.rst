@@ -149,6 +149,11 @@ Unreleased
   label. An event exactly at ``tl`` is outside the window ``(tl, T]``:
   every fit, the MCF and the trend tests now refuse it with one message,
   and the MCF no longer counts an item at risk at its ``tl``.
+- ``surpyval.forecast`` refuses a negative age for every model type, with
+  the renewal models' message (#659): a univariate model forecast the
+  window from before new, an intensity model returned NaN or a count. An
+  ``n`` or ``limit`` with neither one value nor one per age says so,
+  rather than raising numpy's broadcast error.
 
 v0.23 (4 October 2026)
 ----------------------
