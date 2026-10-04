@@ -16,6 +16,14 @@ Unreleased
   are the errors: on 100,000 units with mixed censoring and truncation,
   from arrays 58 → 41 ms, from lists 89 → 62 ms, and the identifiability
   check 12 → 2.5 ms.
+- A fitted model's ``sf``, ``ff`` and ``df`` are about twice as fast on
+  small arrays, and up to 2.4x on large ones for a model with no offset,
+  limited-failure or zero-inflation part, with identical results (#642).
+  Such a model now gives its distribution's own functions, skipping the
+  transforms (identities there, but five passes over the query), and the
+  support and missing-value checks around every distribution function use
+  plain numpy rather than autograd's wrappers. A Weibull's ``sf`` on 16
+  points: 58 to 28 us; an Exponential's on 20,000: 193 to 79 us.
 
 **Fixed**
 
