@@ -13,11 +13,7 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.utils.covariates import loaded_coefficient_names
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.deprecation import (
-    REMOVED_IN_NEXT,
-    CallableList,
-    RenamedAttribute,
-)
+from surpyval.utils.deprecation import RenamedAttribute
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import (
     check_paired_rows,
@@ -186,7 +182,7 @@ class ParametricRegressionModel(
     gamma: float = 0.0
     lfp_p: float = 1.0
     #: ``lfp_p``'s name before v0.23, as on the univariate models (#608).
-    p = RenamedAttribute("lfp_p", REMOVED_IN_NEXT)
+    p = RenamedAttribute("lfp_p")
     f0: float = 0.0
     #: The covariate point the baseline parameters are at: zeros (or
     #: ``None``, for an accelerated life model) when they are those of a
@@ -1579,7 +1575,7 @@ class ParametricRegressionModel(
     # parameter -- used to be counted as well.
 
     @property
-    def parameter_names(self) -> CallableList:
+    def parameter_names(self) -> list:
         """
         Names of ``params``, in order: the distribution's parameters, then
         the covariate coefficients (or life-model parameters). The list
@@ -1587,10 +1583,6 @@ class ParametricRegressionModel(
         :meth:`standard_errors` entry by entry, fixed parameters included.
         In an accelerated life model the slot named by ``life_parameter``
         is a placeholder, not a fitted value, and is named too.
-
-        Until v0.22 this was a method; calling it,
-        ``model.parameter_names()``, still returns the list, with a
-        ``DeprecationWarning``, until v0.23.
 
         Examples
         --------
@@ -1607,14 +1599,7 @@ class ParametricRegressionModel(
         phi_names = [
             k for k, _ in sorted(phi_map.items(), key=lambda kv: kv[1])
         ]
-        return CallableList(
-            dist_names + phi_names,
-            "ParametricRegressionModel.parameter_names",
-        )
-
-    # ``param_names``, the name the model had before v0.22, reads
-    # ``parameter_names`` for one release, with a DeprecationWarning.
-    param_names = RenamedAttribute("parameter_names")
+        return dist_names + phi_names
 
     def plot(
         self,

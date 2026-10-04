@@ -46,7 +46,6 @@ from surpyval.utils.covariates import (
     coefficient_names,
     renamed_coefficient_keys,
 )
-from surpyval.utils.deprecation import RenamedAttribute
 from surpyval.utils.fitter_repr import FitterRepr, baseline_name
 from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
 from surpyval.utils.rng import as_generator
@@ -179,9 +178,6 @@ class MirroredDistributionAttrs(FitterRepr):
     support: tuple
     parameter_names: list
     param_map: dict
-    # The pre-0.22 name of ``parameter_names``: reads it for one release,
-    # with a DeprecationWarning.
-    param_names = RenamedAttribute("parameter_names")
     #: The end of the public name of a family's fitter after its
     #: distribution's, for a fitter without a ``name`` (``WeibullAFT``).
     name_suffix: str = ""

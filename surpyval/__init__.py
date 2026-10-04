@@ -1,4 +1,4 @@
-__version__ = "0.22"
+__version__ = "0.23"
 
 # First: autograd's special functions without scipy.stats (#470)
 from surpyval import _autograd_special  # noqa: F401  # isort: skip
@@ -266,9 +266,10 @@ if TYPE_CHECKING:
 # ``surpyval.life_models``.
 _SUBPACKAGES = ("degradation", "life_models", "metrics", "recurrent")
 
-# The life models were importable from ``surpyval`` until v0.22; they are
-# in ``surpyval.life_models``, where the exponential one is ``Exponential``
-# (at the top level that name is the distribution).
+# The life models were importable from ``surpyval`` until v0.21 (and,
+# with a warning, v0.22); they are in ``surpyval.life_models``, where the
+# exponential one is ``Exponential`` (at the top level that name is the
+# distribution). Asking for one here says where it is.
 _MOVED_TO_LIFE_MODELS = {
     **{
         name: name
@@ -332,31 +333,20 @@ if not TYPE_CHECKING:  # keep the type checker's view of the module exact
         if name in _SUBPACKAGES:
             return import_module(f"surpyval.{name}")
         if name in _MOVED_TO_LIFE_MODELS:
-            import warnings
-
-            from surpyval.utils.deprecation import _message
-
             new = _MOVED_TO_LIFE_MODELS[name]
-            warnings.warn(
-                _message(
-                    "surpyval",
-                    f"surpyval.{name}",
-                    f"surpyval.life_models.{new}",
-                ),
-                DeprecationWarning,
-                stacklevel=2,
+            raise AttributeError(
+                "module 'surpyval' has no attribute {!r}: it is "
+                "surpyval.life_models.{} (from surpyval import "
+                "life_models)".format(name, new)
             )
-            return getattr(import_module("surpyval.life_models"), new)
         if name in _DEPRECATED_CONSTANTS:
             import warnings
 
-            from surpyval.utils.deprecation import REMOVED_IN_NEXT
+            from surpyval.utils.deprecation import REMOVED_IN
 
             warnings.warn(
                 "surpyval.{} is deprecated and will be removed in v{}; use "
-                "'{}'.".format(
-                    name, REMOVED_IN_NEXT, _DEPRECATED_CONSTANTS[name]
-                ),
+                "'{}'.".format(name, REMOVED_IN, _DEPRECATED_CONSTANTS[name]),
                 DeprecationWarning,
                 stacklevel=2,
             )

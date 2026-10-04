@@ -22,7 +22,7 @@ This is another pure python survival analysis tool so why was it needed? The int
 | **Kaplan-Meier** | Non-Parametric | Yes | Right only | Left only |
 | **Nelson-Aalen** | Non-Parametric | Yes | Right only | Left only |
 | **Fleming-Harrington** | Non-Parametric | Yes | Right only | Left only |
-| **Turnbull** | Non-Parametric | Yes | Yes | Yes |
+| **Turnbull** (EM, or EM-ICM without truncation) | Non-Parametric | Yes | Yes | Yes |
 
 SurPyval also offers many different distributions for users, and because of the flexible implementation adding new distributions is easy. Further, the power of SurPyval lay in the robust parameter estimation, as such, some distributions, those that are supported on the half real line, can be offset to make a three- or four-parameter version. The currently available distributions are:
 
@@ -43,7 +43,8 @@ SurPyval also offers many different distributions for users, and because of the 
 | **LogLogistic** | Yes |
 
 Discrete distributions: **Poisson**, **Geometric**, **NegativeBinomial**,
-**DiscreteWeibull**, **BetaGeometric**, **Bernoulli** and **Binomial**; any
+**DiscreteWeibull**, **BetaGeometric**, **Bernoulli** and **Binomial** (with
+a number of trials per row); any
 continuous distribution can be discretised with `Discretize`. Any of them can
 be combined in a `MixtureModel`, and custom distributions are supported.
 
@@ -68,18 +69,22 @@ not yet built.
 | Continuous time | Single event | Single | With | `WeibullPH`, `WeibullAFT`, `WeibullPO`, `WeibullAH` (every distribution), `AcceleratedLife` with `surpyval.life_models`, `RoystonParmar`, `WeibullFrailty` | `CoxPH`, `ProportionalOdds`, `AdditiveHazards`, `BuckleyJames`, `CoxFrailty`; survival trees and forests (`surpyval.beta.ml`) |
 | Continuous time | Single event | Competing | Without | `ParametricCompetingRisks` | `CompetingRisks` (CIF) |
 | Continuous time | Single event | Competing | With | &mdash; | `FineGray`, `CompetingRisksProportionalHazards` |
-| Continuous time | Recurrent | Single | Without | `HPP`; NHPP: `CrowAMSAA`, `Duane`, `CoxLewis`; renewal: `GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA`, `ARI` | `NonParametricCounting` (MCF) |
+| Continuous time | Recurrent | Single | Without | `HPP`; NHPP: `CrowAMSAA` (with growth projection), `Duane`, `CoxLewis`; renewal, with each unit's next failure: `GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA`, `ARI` | `NonParametricCounting` (MCF) |
 | Continuous time | Recurrent | Single | With | `ProportionalIntensityHPP`, `ProportionalIntensityNHPP` | &mdash; |
 | Continuous time | Recurrent | Competing | Without | &mdash; | `CauseSpecificMCF` |
 | Continuous time | Recurrent | Competing | With | &mdash; | &mdash; |
-| Discrete time | Single event | Single | Without | `Bernoulli` (single trial), `Binomial` (`n` trials) | &mdash; |
+| Discrete time | Single event | Single | Without | `Bernoulli` (single trial), `Binomial` (`n` trials, or a number per row) | &mdash; |
 | Discrete time | Single event | Single | With | use logistic / binomial regression (out of scope for this package) | &mdash; |
 
 Beyond these axes: the dependence between two lifetimes with copulas
 (`surpyval.multivariate`: Gaussian, Student-t, Clayton, Frank, Gumbel, Joe
-and AMH, with rotations), and degradation and remaining useful life
-(`DegradationAnalysis`, `WienerProcess`, `GammaProcess`,
-`DestructiveDegradation`).
+and AMH, with rotations, standard errors and confidence bounds), degradation
+and remaining useful life (`DegradationAnalysis`, `WienerProcess`,
+`GammaProcess`, `DestructiveDegradation`), and `surpyval.forecast`, the
+expected failures of units in service with prediction intervals, from a
+univariate, regression or repairable-system model. The parametric regression
+models have `qf`, `cs` and `quantile_cb`, with Wald, likelihood-ratio and
+bootstrap bounds.
 
 # Install and Quick Intro
 

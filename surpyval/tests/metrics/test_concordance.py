@@ -7,6 +7,7 @@ Therneau's convention for tied event times (``ties="therneau"``, R's
 fast count must agree with it on every kind of tie, under both.
 """
 
+import importlib
 import time
 import warnings
 from itertools import combinations
@@ -186,12 +187,10 @@ def test_missing_values_and_errors():
         concordance_index([1.0, 2], [1, 1], [3, 2])
 
 
-def test_old_name_warns_and_agrees():
-    from surpyval.utils.score import score
-
-    with pytest.warns(DeprecationWarning, match="concordance_index"):
-        old = score([1.0, 2, 3, 4], [0, 1, 0, 0], [4.0, 1, 2, 3])
-    assert old == concordance_index([1.0, 2, 3, 4], [0, 1, 0, 0], [4, 1, 2, 3])
+def test_old_name_is_gone():
+    # surpyval.utils.score.score, deprecated in v0.22, is removed in v0.23.
+    with pytest.raises(ImportError):
+        importlib.import_module("surpyval.utils.score")
 
 
 def test_exported_from_the_package():

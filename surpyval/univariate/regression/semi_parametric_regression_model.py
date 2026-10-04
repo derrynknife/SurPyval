@@ -16,7 +16,7 @@ from surpyval.serialisation import (
 from surpyval.univariate.information_criteria import InformationCriteriaMixin
 from surpyval.utils import is_missing_event
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.deprecation import REMOVED_IN_NEXT, RenamedToMethod
+from surpyval.utils.deprecation import REMOVED_IN, RenamedToMethod
 from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import (
@@ -216,7 +216,7 @@ class SemiParametricRegressionModel(
                 "SemiParametricRegressionModel.neg_ll(beta) is deprecated "
                 "and will be removed in v{}: neg_ll() is now the fitted "
                 "value; use neg_ll_of(beta) for the negative partial "
-                "log-likelihood at beta.".format(REMOVED_IN_NEXT),
+                "log-likelihood at beta.".format(REMOVED_IN),
                 DeprecationWarning,
                 stacklevel=2,
             )

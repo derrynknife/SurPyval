@@ -1,6 +1,6 @@
 """The life models live in ``surpyval.life_models``; the names they had at
-the top level until v0.22 still work, with a DeprecationWarning, until
-v0.23."""
+the top level until v0.22 are removed in v0.23, and asking for one says
+where it is."""
 
 import warnings
 
@@ -38,11 +38,10 @@ def test_every_life_model_is_in_the_namespace():
 
 
 @pytest.mark.parametrize("old, new", sorted(MOVED.items()))
-def test_old_top_level_name_warns_and_still_works(old, new):
-    with pytest.warns(DeprecationWarning, match=f"life_models.{new}") as w:
-        value = getattr(sp, old)
-    assert value is getattr(life_models, new)
-    assert w[0].filename == __file__
+def test_old_top_level_name_is_gone_and_says_where(old, new):
+    with pytest.raises(AttributeError, match=rf"surpyval\.life_models\.{new}"):
+        getattr(sp, old)
+    assert not hasattr(sp, old)
     assert old not in dir(sp)
 
 

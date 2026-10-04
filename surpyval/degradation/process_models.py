@@ -54,7 +54,7 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
-from surpyval.utils.deprecation import RenamedAttribute, renamed_arguments
+from surpyval.utils.dataframe import refuse_column_names
 from surpyval.utils.no_maximum import (
     maximum_entry,
     restored_maximum,
@@ -249,6 +249,7 @@ def _fit_from_df(
 ) -> Any:
     """The shared body of the process fitters' ``fit_from_df``: fit from
     the columns of ``df`` and record the covariate names on the model."""
+    refuse_column_names(fit_kwargs, "x", "y", "i")
     cols = None
     if Z_cols is not None:
         cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
@@ -514,9 +515,6 @@ class FirstPassageProcessModel(SerialisableMixin):
     _human_name: str
 
     parameter_names: list
-    # ``param_names``, the pre-0.22 name of ``parameter_names``, reads it
-    # for one release, with a DeprecationWarning.
-    param_names = RenamedAttribute("parameter_names")
     threshold: float
     #: The degradation level a new unit starts at, at time zero: its life
     #: is the first passage over ``threshold - y0`` (#574).
@@ -1441,7 +1439,6 @@ class WienerProcess:
         return model
 
     @classmethod
-    @renamed_arguments(x="x_col", y="y_col", i="i_col")
     def fit_from_df(
         cls,
         df: pd.DataFrame,
@@ -1460,10 +1457,9 @@ class WienerProcess:
             The degradation data, one row per measurement.
         x_col, y_col, i_col : str, optional
             The columns of the measurement times, the measurements and the
-            unit identifiers. Default ``"x"``, ``"y"`` and ``"i"``. Their
-            v0.21 names ``x``, ``y`` and ``i`` still work, with a
-            ``DeprecationWarning``, until v0.23 (every DataFrame entry
-            point names its columns with a ``_col`` suffix, principle 21).
+            unit identifiers. Default ``"x"``, ``"y"`` and ``"i"`` (every
+            DataFrame entry point names its columns with a ``_col``
+            suffix, principle 21).
         Z_cols : str or list of str, optional
             The stress column(s), passed to :meth:`fit` as ``Z``. Their
             names are recorded on the model (as ``Z_cols``, kept by
@@ -1985,7 +1981,6 @@ class GammaProcess:
         return model
 
     @classmethod
-    @renamed_arguments(x="x_col", y="y_col", i="i_col")
     def fit_from_df(
         cls,
         df: pd.DataFrame,
@@ -2004,10 +1999,9 @@ class GammaProcess:
             The degradation data, one row per measurement.
         x_col, y_col, i_col : str, optional
             The columns of the measurement times, the measurements and the
-            unit identifiers. Default ``"x"``, ``"y"`` and ``"i"``. Their
-            v0.21 names ``x``, ``y`` and ``i`` still work, with a
-            ``DeprecationWarning``, until v0.23 (every DataFrame entry
-            point names its columns with a ``_col`` suffix, principle 21).
+            unit identifiers. Default ``"x"``, ``"y"`` and ``"i"`` (every
+            DataFrame entry point names its columns with a ``_col``
+            suffix, principle 21).
         Z_cols : str or list of str, optional
             The stress column(s), passed to :meth:`fit` as ``Z``. Their
             names are recorded on the model (as ``Z_cols``, kept by

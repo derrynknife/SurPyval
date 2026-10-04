@@ -1479,9 +1479,8 @@ The true memory, ``m=2``, has the lowest AIC.
 
 ``ARI`` fits the same way but with an intensity (counting process) baseline —
 ``CrowAMSAA`` (the default), ``Duane`` or ``CoxLewis`` — in place of a lifetime
-distribution. It is passed as ``baseline=`` (``dist=``, its name before v0.22,
-still works with a ``DeprecationWarning`` until v0.23), and a lifetime
-distribution there, ``ARI.fit(x, i, baseline=Weibull)``, raises an error
+distribution. It is passed as ``baseline=`` (``dist=`` before v0.22), and a
+lifetime distribution there, ``ARI.fit(x, i, baseline=Weibull)``, raises an error
 saying so and naming ``ARA`` and ``GeneralizedRenewal`` (a Weibull hazard as
 the baseline intensity is the power law, ``baseline=CrowAMSAA``); the other
 fitters likewise refuse an intensity model as their lifetime distribution. Here we simulate from an ARI model with a deteriorating

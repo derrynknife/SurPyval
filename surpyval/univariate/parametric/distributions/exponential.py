@@ -17,7 +17,6 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
     ParametricFitter,
 )
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ._stable import log1mexp, on_support, positive_or_one
@@ -149,7 +148,6 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         """
         return np.exp(-failure_rate * x)
 
-    @renamed_arguments(X="given")
     def cs(self, x: Numeric, given: Numeric, failure_rate: Boxable) -> Boxable:
         r"""
 
@@ -162,9 +160,11 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         the regular survival distribution.
 
         .. versionchanged:: 0.22
-           The time already survived is ``given`` (it was ``X``, which
-           still works until v0.23 with a ``DeprecationWarning``), the
+           The time already survived is ``given`` (it was ``X``), the
            name the regression models' ``sf_tvc(..., given=)`` uses.
+
+        .. versionchanged:: 0.23
+           ``X`` is removed.
 
         Parameters
         ----------

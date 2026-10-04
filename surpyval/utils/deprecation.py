@@ -4,15 +4,13 @@ Renamed names: accept the old name for one release, with a warning.
 When a public name changes so that the same thing has the same name
 everywhere (Design Principles, principle 21), the old one keeps working
 until :data:`REMOVED_IN`, with a ``DeprecationWarning`` that names the new
-one and points at the caller's line. This module holds the three shapes
-such a rename takes:
+one and points at the caller's line: a name renamed in v0.23 is removed in
+v0.24. This module holds the shapes such a rename takes:
 
 - :func:`renamed_arguments`, an argument of a function or method;
 - :class:`RenamedAttribute`, an attribute or property of a class;
-- :class:`CallableList`, a method that became a property returning a list
-  (``model.parameter_names()`` -> ``model.parameter_names``);
-- :class:`CallableFloat`, the same for a property returning a number
-  (``MixtureModel.log_likelihood``);
+- :class:`CallableFloat`, a method that became a property returning a
+  number (``MixtureModel.log_likelihood``);
 - :class:`MethodFloat`, a property returning a number that became a
   method (``CrowAMSAA.aic`` -> ``CrowAMSAA.aic()``);
 - :class:`ArrayMethod` (with :class:`MethodArray`), the same for an array
@@ -22,13 +20,11 @@ such a rename takes:
 - :class:`MadePrivate`, the public name of an internal method or attribute
   (``MixtureModel.EM`` -> ``MixtureModel._em_iteration``).
 
-A name deprecated in v0.23 is accepted until :data:`REMOVED_IN_NEXT`.
+A name deprecated in v0.24 is accepted until :data:`REMOVED_IN_NEXT`.
 """
 
 import functools
-import sys
 import warnings
-from types import FrameType
 from typing import Any, Callable, TypeVar
 
 import numpy as np
@@ -38,21 +34,20 @@ __all__ = [
     "REMOVED_IN_NEXT",
     "ArrayMethod",
     "CallableFloat",
-    "CallableList",
     "MethodArray",
     "MadePrivate",
     "MethodFloat",
     "RenamedAttribute",
     "RenamedToMethod",
     "renamed_arguments",
-    "renamed_class_attribute",
 ]
 
-#: The release in which the old names stop being accepted.
-REMOVED_IN = "0.23"
+#: The release in which the names deprecated in v0.23 stop being
+#: accepted.
+REMOVED_IN = "0.24"
 
-#: The release in which the names deprecated in v0.23 stop being accepted.
-REMOVED_IN_NEXT = "0.24"
+#: The release in which the names deprecated in v0.24 stop being accepted.
+REMOVED_IN_NEXT = "0.25"
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -76,8 +71,8 @@ def renamed_arguments(
     ----------
     removed_in : str, optional
         The release in which the old names stop being accepted:
-        :data:`REMOVED_IN` (the default) for the names renamed in v0.22,
-        :data:`REMOVED_IN_NEXT` for those renamed in v0.23.
+        :data:`REMOVED_IN` (the default) for the names renamed in v0.23,
+        :data:`REMOVED_IN_NEXT` for those renamed in v0.24.
     **renames : str
         ``old="new"``, one per renamed argument.
 
@@ -106,7 +101,7 @@ def renamed_arguments(
     ...     describe(names=["a"])
     ['a']
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    describe: 'names' is deprecated and will be removed in v0.23;
+    describe: 'names' is deprecated and will be removed in v0.24;
     use 'labels'.
     """
 
@@ -142,25 +137,25 @@ class RenamedAttribute:
     new one.
 
     Declare it on the class under the old name,
-    ``param_names = RenamedAttribute("parameter_names")``. It works on
-    instances and on the class itself (``Weibull.param_names`` for a
-    singleton, ``PowerPath.param_names`` for a class attribute). A name
-    deprecated in v0.23 passes ``removed_in=REMOVED_IN_NEXT``.
+    ``loglik = RenamedAttribute("log_likelihood")``. It works on
+    instances and on the class itself (for a singleton fitter, or a class
+    attribute). A name deprecated in v0.24 passes
+    ``removed_in=REMOVED_IN_NEXT``.
 
     Examples
     --------
     >>> import warnings
     >>> from surpyval.utils.deprecation import RenamedAttribute
     >>> class Model:
-    ...     parameter_names = ["a", "b"]
-    ...     param_names = RenamedAttribute("parameter_names")
+    ...     log_likelihood = -12.5
+    ...     loglik = RenamedAttribute("log_likelihood")
     >>> with warnings.catch_warnings(record=True) as caught:
     ...     warnings.simplefilter("always")
-    ...     Model().param_names
-    ['a', 'b']
+    ...     Model().loglik
+    -12.5
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    Model.param_names is deprecated and will be removed in v0.23;
-    use 'parameter_names'.
+    Model.loglik is deprecated and will be removed in v0.24;
+    use 'log_likelihood'.
     """
 
     def __init__(self, new: str, removed_in: str = REMOVED_IN) -> None:
@@ -194,79 +189,6 @@ class RenamedAttribute:
     def __set__(self, obj: Any, value: Any) -> None:
         self._warn(type(obj))
         setattr(obj, self.new, value)
-
-
-def renamed_class_attribute(cls: type, old: str, new: str) -> None:
-    """
-    Accept a subclass that still defines a class attribute by its old name.
-
-    Call it from the base class's ``__init_subclass__``: a subclass body
-    that sets ``old`` (a user's own path model or copula written against the
-    old name) warns once, at class creation, and the value is moved to
-    ``new``, so the package, which reads only ``new``, sees it.
-    """
-    value = cls.__dict__.get(old)
-    if value is None or isinstance(value, RenamedAttribute):
-        return
-    # Point at the class statement: past this function, the caller's
-    # ``__init_subclass__`` and, for an ABC, ``ABCMeta.__new__``.
-    level = 3
-    frame: FrameType | None = sys._getframe(2)
-    while frame is not None and frame.f_globals.get("__name__") == "abc":
-        level, frame = level + 1, frame.f_back
-    warnings.warn(
-        "{}: the class attribute '{}' is deprecated and will be removed in "
-        "v{}; define '{}'.".format(cls.__qualname__, old, REMOVED_IN, new),
-        DeprecationWarning,
-        stacklevel=level,
-    )
-    if new not in cls.__dict__:
-        setattr(cls, new, value)
-    delattr(cls, old)
-
-
-class CallableList(list):
-    """
-    A list that can still be called, for a method that became a property.
-
-    ``model.parameter_names`` was a method, and is now a property; it
-    returns one of these, which is a plain ``list`` in every other respect
-    (equality, ``len``, iteration, indexing, ``json.dumps``, pandas and
-    numpy), and whose call, the old spelling, warns and returns itself.
-
-    Examples
-    --------
-    >>> import warnings
-    >>> from surpyval.utils.deprecation import CallableList
-    >>> names = CallableList(["alpha", "beta"], "WeibullPH.parameter_names")
-    >>> names == ["alpha", "beta"]
-    True
-    >>> with warnings.catch_warnings(record=True) as caught:
-    ...     warnings.simplefilter("always")
-    ...     names()
-    ['alpha', 'beta']
-    >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    WeibullPH.parameter_names is now a property: 'parameter_names()' is
-    deprecated and will be removed in v0.23; use 'parameter_names'.
-    """
-
-    def __init__(self, items: Any = (), where: str = "") -> None:
-        super().__init__(items)
-        self._where = where
-
-    def __call__(self, *args: Any, **kwargs: Any) -> "CallableList":
-        # pandas calls a callable key with the frame (``df.loc[names]``,
-        # ``df[names]``): that is not the old spelling, so no warning.
-        if args or kwargs:
-            return self
-        attr = self._where.rpartition(".")[2]
-        warnings.warn(
-            "{} is now a property: '{}()' is deprecated and will be removed "
-            "in v{}; use '{}'.".format(self._where, attr, REMOVED_IN, attr),
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self
 
 
 class CallableFloat(float):
@@ -317,7 +239,7 @@ class CallableFloat(float):
         warnings.warn(
             "{} is now a property{}: '{}()' is deprecated and will be "
             "removed in v{}; use '{}'.".format(
-                self._where, self._note, attr, REMOVED_IN_NEXT, attr
+                self._where, self._note, attr, REMOVED_IN, attr
             ),
             DeprecationWarning,
             stacklevel=2,
@@ -376,7 +298,7 @@ class MethodFloat(float):
         warnings.warn(
             "{} is now a method: '{}' without the call is deprecated and "
             "will be removed in v{}; use '{}()'.".format(
-                self._where, attr, REMOVED_IN_NEXT, attr
+                self._where, attr, REMOVED_IN, attr
             ),
             DeprecationWarning,
             stacklevel=3,
@@ -446,9 +368,7 @@ def _method_warning(where: str, stacklevel: int) -> None:
     attr = where.rpartition(".")[2]
     warnings.warn(
         "{} is now a method: '{}' without the call is deprecated and will "
-        "be removed in v{}; use '{}()'.".format(
-            where, attr, REMOVED_IN_NEXT, attr
-        ),
+        "be removed in v{}; use '{}()'.".format(where, attr, REMOVED_IN, attr),
         DeprecationWarning,
         stacklevel=stacklevel + 1,
     )
@@ -569,7 +489,7 @@ class ArrayMethod:
     ``model.covariance()`` gives the array; ``model.covariance`` without
     the call, the old spelling, still works as the array (a
     :class:`MethodArray`) with a ``DeprecationWarning`` until
-    :data:`REMOVED_IN_NEXT`. Setting the old attribute sets the stored
+    :data:`REMOVED_IN`. Setting the old attribute sets the stored
     array, with the warning.
     """
 
@@ -636,9 +556,7 @@ class RenamedToMethod:
     def _warn(self, owner: type) -> None:
         warnings.warn(
             "{}.{} is deprecated and will be removed in v{}; use "
-            "'{}()'.".format(
-                owner.__name__, self.old, REMOVED_IN_NEXT, self.new
-            ),
+            "'{}()'.".format(owner.__name__, self.old, REMOVED_IN, self.new),
             DeprecationWarning,
             stacklevel=3,
         )
@@ -663,7 +581,7 @@ class MadePrivate(RenamedAttribute):
 
     Declare it on the class under the public name, ``EM =
     MadePrivate("_em_iteration")``: reading it warns that it is internal
-    and will be removed in :data:`REMOVED_IN_NEXT`, and gives the private
+    and will be removed in :data:`REMOVED_IN`, and gives the private
     one. There is no public replacement to name.
 
     Examples
@@ -684,7 +602,7 @@ class MadePrivate(RenamedAttribute):
     """
 
     def __init__(self, private: str) -> None:
-        super().__init__(private, REMOVED_IN_NEXT)
+        super().__init__(private)
 
     def _warn(self, owner: type) -> None:
         warnings.warn(

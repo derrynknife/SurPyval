@@ -1,8 +1,98 @@
 Changelog
 =========
 
-v0.23 (unreleased)
-------------------
+v0.23 (4 October 2026)
+----------------------
+
+**Upgrading from 0.22.** A breaking release. Most code needs no change; the
+items most likely to need one are listed here, and every entry below says
+what changed. On 0.22, run your code or tests with ``python -W
+error::DeprecationWarning`` first to find the calls to update.
+
+- Names 0.22 deprecated now raise (see *Removed*): ``param_names`` is
+  ``parameter_names``, ``fit_from_df(x=...)`` is ``x_col=``, ``cs(x, X=)``
+  is ``given=``, ARI's ``dist=`` is ``baseline=``, and the life models are
+  only in ``surpyval.life_models``.
+- The limited-failure proportion is ``lfp_p``: in ``fixed``, ``param_cb``,
+  ``from_params``, ``extras`` and the attribute (#608); on Bernoulli,
+  Binomial, Geometric, NegativeBinomial and FixedEventProbability
+  ``model.p`` is now the fitted parameter.
+- Regression coefficients are named by their covariate's column, else
+  ``coef_0``, ``coef_1``, ... (#614): code that looks up ``beta_0``, ...
+  in ``parameter_names``, ``summary()`` or ``to_dict()`` must use the new
+  names (``beta_j`` in ``fixed`` and ``param_cb`` warns until v0.24).
+- ``standard_errors()`` gives an array on every model (#613): use it for
+  ``se`` (Cox, Lin-Ying, proportional odds, Fine-Gray; deprecated until
+  v0.24); the frailty models' ``standard_errors()`` is an array, not a
+  dict, with theta's last.
+- A censored time below the support (e.g. ``-1``) is refused by the
+  univariate fits (#611) and the regressions (#565), as an observed one
+  already was; drop or correct such rows.
+- Offset fits refuse an observed value at ``±inf`` with
+  ``OutsideSupportError`` (#622); remove those rows.
+- Turnbull on untruncated data fits by the EM-ICM (#620), so its
+  Fleming-Harrington (default) and Nelson-Aalen curves move; pass
+  ``turnbull_algorithm="EM"`` for the old result.
+- Renewal fits (``GeneralizedRenewal``, ``GeneralizedOneRenewal``,
+  ``ARA``, ``ARI``) take ``tl``, each item as new at entry (#615); a
+  negative ``tl`` used to be ignored and now changes the fit: drop it to
+  keep the old one.
+- ``GammaProcess`` and ``WienerProcess`` lives start at the fitted
+  ``y0`` (#574); pass ``y0=0.0`` for the old life from zero.
+- ``fit_best`` raises on malformed data, or when every candidate fails
+  alike, rather than returning ``None`` (#570); catch the ``ValueError``.
+- ``Parametric.param_cb``'s ``method`` defaults to ``None`` (#580): Wald,
+  except exact Clopper-Pearson for Bernoulli, FixedEventProbability and
+  Binomial; a wrapper that passes the old default ``"wald"`` on should
+  pass ``None``.
+- Model dicts store ``"_neg_ll"`` and ``"covariance"`` (#605): old dicts
+  load, but a 0.23 dict loses its likelihood or covariance in an older
+  SurPyval; code that reads the dict's keys must use the new ones.
+- Comparison values are spelt alike (#572, #604): recurrent ``aic`` and
+  ``bic`` are methods (``aic()``), ``MixtureModel.log_likelihood`` is the
+  fitted value (``loglike`` is deprecated), and a Cox model's ``neg_ll()``
+  is the fitted value (the function is ``neg_ll_of(beta)``).
+- Survival trees and forests refuse times outside (0, inf) for the
+  parametric kinds and an infinite failure for the non-parametric kind
+  (#618), and zero-inflated fits refuse times outside the support (#610).
+- The non-parametric ``qf`` gives NaN with a warning outside [0, 1]
+  rather than raising (#611); test the result rather than catching
+  ``ValueError``.
+
+**Removed.** The names 0.22 deprecated are gone; each now raises.
+
+- ``param_names`` (every distribution, fitter and model) is
+  ``parameter_names``; calling ``parameter_names()`` on a regression model
+  is ``parameter_names`` (a plain ``list`` now); ``CustomDistribution``'s
+  ``param_names=`` keyword is ``parameter_names=``; a ``param_names``
+  class attribute on your own ``PathModel``, ``Copula`` or
+  ``CountingProcess`` subclass is no longer read (define
+  ``parameter_names``); ``ProportionalIntensityModel.param_names`` (the
+  base-rate names) is ``parameter_names[:len(params)]``. Saved files keep
+  the key ``"param_names"``.
+- ``fit_from_df``'s v0.21 column names (``x``, ``c``, ``n``, ``xl``,
+  ``xr``, ``tl``, ``tr``, and ``x``, ``y``, ``i`` of
+  ``DegradationAnalysis``, ``WienerProcess`` and ``GammaProcess``) are
+  ``x_col``, ``c_col``, ...; the old ones raise a ``TypeError`` naming the
+  new one rather than reaching ``fit``.
+- ``cs(x, X=)`` is ``cs(x, given=)`` (by position, nothing changes).
+- ARI's ``dist=`` is ``baseline=``, and ``fit_from_parameters``'s
+  ``dist_params=`` is ``baseline_params=`` (#507).
+- The life models' top-level names (``surpyval.Power``,
+  ``surpyval.ExponentialLifeModel``, ...) are
+  ``surpyval.life_models.Power``, ``life_models.Exponential``, ...;
+  asking for an old name raises an ``AttributeError`` that says where it
+  is.
+- ``surpyval.utils.score.score`` is
+  ``surpyval.metrics.concordance_index(x, c, risk, ties="harrell")``
+  (Harrell's tie convention, which ``score`` had).
+- Development: ``surpyval.utils.deprecation`` drops ``CallableList`` and
+  ``renamed_class_attribute``, which only these names used.
+  ``REMOVED_IN`` is ``"0.24"`` (the names deprecated in 0.23) and
+  ``REMOVED_IN_NEXT`` ``"0.25"``; the removal test's scan now sees every
+  deprecation helper.
+
+**Changes.**
 
 - **Regression fits with no finite maximum are recognised however far
   the search runs (#628).** With all the failures in one cell of a
@@ -107,6 +197,7 @@ v0.23 (unreleased)
 - **``standard_errors()`` is an array on every model with
   ``covariance()`` (#613).** It is new on ``Parametric`` and
   ``RoystonParmarModel``.
+
   - **Breaking:** the frailty models' ``standard_errors()`` returns an
     array, not a dict; theta's is ``[-1]``.
   - ``se`` on the Cox, Lin-Ying, proportional-odds and Fine-Gray models
@@ -177,13 +268,6 @@ v0.23 (unreleased)
   Gamma leaked RuntimeWarnings.
 - **Fixed:** an offset interval-censored fit with windows in a
   distribution's lower tail raised ``TypeError`` (#622).
-- harness.py
-- analyse.py
-- compare_runs.py
-- totals.py
-- before_*.jsonl / after_*.jsonl / any_*.jsonl
-- per-family strategy results ({family}.jsonl)
-- compare2.txt (snapshot diff)
 - **Zero-inflated fits check the support (#610).** A ``zi=True`` fit
   skipped the support check, so a negative (or infinite) time returned the
   optimiser's start with "MLE Failed"; it raises ``OutsideSupportError``. A
@@ -269,6 +353,15 @@ v0.23 (unreleased)
   the first is not finite. No other result changes.
 - **Log-normal frailty likelihood at an extreme cumulative hazard** raised
   ``OverflowError`` past 1e154; it is finite.
+- **Log-normal frailty likelihood at a huge theta.** The mode of each
+  group's integrand, ``theta D - omega``, cancelled once ``theta D`` was
+  large, so at ``theta = e^50`` the log-integral of a group with 10 events
+  was 30 too low and the likelihood rose spuriously far out. The
+  likelihood-ratio searches followed it: with no frailty in the data the
+  95% and 99% ``param_cb("theta", method="lr")`` upper bounds were 7e275
+  and 6.7e275 (the 99% inside the 95%); they are 0.374 and 0.837. The mode
+  is taken in its logarithmic form above ``theta D = 1e4``; ordinary fits
+  are unchanged.
 - **Cheaper likelihood-ratio bounds on a levelled-off edge valley (#609).**
   Where a parameter's profile has reached its limit, only the deepest slice
   is searched: NegativeBinomial's registry bounds take 80 s rather than
@@ -371,7 +464,7 @@ v0.23 (unreleased)
   (#599).** On data skewed further left than any member of the family the
   offset runs to -inf while the shape compensates, approaching the limit
   (Normal for LogNormal and Gamma, Gumbel for Weibull, Logistic for
-  LogLogistic) only as 1/|gamma|, so it never looked flat: such fits ran
+  LogLogistic) only as ``1/|gamma|``, so it never looked flat: such fits ran
   the whole optimiser ladder and ended "unverified" (6 s for LogNormal,
   17 s for Gamma, with one failure at -1 below the rest). They stop after
   the first rung in 0.3 s with one warning recommending the limit
