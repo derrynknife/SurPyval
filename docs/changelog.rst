@@ -66,6 +66,15 @@ Unreleased
   plain numpy rather than autograd's wrappers. A Weibull's ``sf`` on 16
   points: 58 to 28 us; an Exponential's on 20,000: 193 to 79 us.
 
+**Added**
+
+- ``MixtureModel`` has ``hf`` (``df / sf``), ``qf`` (``ff`` inverted
+  numerically; NaN with a warning outside [0, 1]), ``covariance()`` and
+  ``standard_errors()`` (the observed information, weights as softmax
+  logits, carried to the parameters and weights; named by
+  ``covariance_names``: ``alpha_0``, ..., ``w_0``, ...), and Wald
+  ``param_cb``, ``cb`` and ``quantile_cb`` as ``Parametric``'s (#651).
+
 **Fixed**
 
 - Removed names say what replaced them, and when they went (#653):

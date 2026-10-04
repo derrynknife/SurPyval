@@ -72,6 +72,10 @@ def _quantile_functions(case, model):
         row = np.asarray(case.Z, dtype=float)[0]
         out["qf"] = lambda p: model.qf(p, row)
         return out
+    if type(model).__name__ == "MixtureModel":
+        # ``params`` has a row per component: the mixture's qf alone
+        out["qf"] = model.qf
+        return out
     dist = getattr(model, "dist", None)
     if callable(getattr(dist, "qf", None)) and hasattr(model, "params"):
         out["dist.qf"] = lambda p: dist.qf(p, *model.params)
