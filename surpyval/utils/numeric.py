@@ -41,6 +41,36 @@ def ffill_or_zero(values: npt.ArrayLike) -> npt.NDArray:
     return out
 
 
+def unique_pairs(
+    a: npt.ArrayLike, b: npt.ArrayLike
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    """The distinct pairs ``(a[i], b[i])`` in sorted order, as two arrays,
+    and the index of each row's pair in them.
+
+    The same answer as ``numpy.unique(numpy.column_stack([a, b]), axis=0,
+    return_inverse=True)`` in a fraction of the time: ``axis=0`` sorts the
+    rows as structured records, which at 100,000 rows costs several times
+    more than ranking each column on its own and then the pairs of ranks
+    as integers. A row with a nan is a pair of its own, as there, though
+    such rows may come in a different order.
+
+    Examples
+    --------
+    >>> from surpyval.utils.numeric import unique_pairs
+    >>> unique_pairs([2.0, 1.0, 2.0, 1.0], [5.0, 7.0, 5.0, 3.0])
+    (array([1., 1., 2.]), array([3., 7., 5.]), array([2, 1, 2, 0]))
+    """
+    a_values, a_rank = np.unique(a, return_inverse=True, equal_nan=False)
+    b_values, b_rank = np.unique(b, return_inverse=True, equal_nan=False)
+    codes = a_rank.ravel().astype(np.int64) * b_values.size + b_rank.ravel()
+    pairs, inverse = np.unique(codes, return_inverse=True)
+    return (
+        a_values[pairs // b_values.size],
+        b_values[pairs % b_values.size],
+        inverse.ravel(),
+    )
+
+
 def _round_vals(x: npt.NDArray) -> npt.NDArray:
     """The ticks ``x`` to the fewest significant figures that keep them
     apart (at most 17, a double's full precision, so ticks that are equal

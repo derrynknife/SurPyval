@@ -17,6 +17,7 @@ import numpy.typing as npt
 
 import surpyval
 from surpyval.utils.no_maximum import warn_no_maximum
+from surpyval.utils.numeric import unique_pairs
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import check_option
 
@@ -264,8 +265,7 @@ class FitInputsMixin:
         informative = c != 1
         if not informative.any():
             return
-        rows = np.column_stack([lo, hi])[informative]
-        distinct = np.unique(rows, axis=0).shape[0]
+        distinct = unique_pairs(lo[informative], hi[informative])[0].size
 
         if distinct < n_free:
             raise ValueError(
