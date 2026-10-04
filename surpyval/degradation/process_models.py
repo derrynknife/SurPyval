@@ -65,7 +65,7 @@ from surpyval.utils.removed_names import RemovedNames
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import (
-    alpha_ci_error,
+    check_alpha_ci,
     check_option,
     warn_outside_unit_interval,
 )
@@ -1062,9 +1062,8 @@ class FirstPassageProcessModel(SerialisableMixin):
         ProcessRUL
             The median remaining life and its equal-tailed interval.
         """
-        if not 0.0 < float(alpha_ci) < 1.0:
-            # 1.5 used to give an inverted interval
-            raise alpha_ci_error(alpha_ci)
+        # 1.5 used to give an inverted interval
+        check_alpha_ci(alpha_ci)
         current = float(current_degradation)
         if np.isnan(current):
             # it used to hang the quantile search

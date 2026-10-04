@@ -117,6 +117,14 @@ Unreleased
   ignored, giving plausible wrong predictions, and a missing one raised
   numpy's ``IndexError``; both now raise "The forest has 2 covariates
   (Z0, Z1); got 3 values". The count is saved in ``to_dict``.
+- ``alpha_ci`` outside (0, 1) gave reversed or ``nan`` bounds in silence
+  from ``cb``, ``param_cb``, ``mean_cb``, the non-parametric, regression,
+  copula and degradation bounds and ``summary()`` (#647). Every method
+  that takes it now refuses it with the one message ``quantile_cb`` gave
+  (``surpyval.utils.validation.check_alpha_ci``), and warns, once per
+  call, of a level above 0.5: ``alpha_ci=0.95`` is a 5% interval.
+  ``success_run`` refuses 0 and 1 too.
+
 - ``fit_best`` passed over every lifetime family (support from 0) in
   silence when some times were at or below 0, and returned the best of the
   rest: with three zero ages in 50, a Normal that put 3% of the units

@@ -41,7 +41,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.utils.validation import alpha_ci_error
+from surpyval.utils.validation import check_alpha_ci
 from surpyval.utils.warnings import caller_stacklevel
 
 __all__ = ["Forecast", "forecast"]
@@ -327,8 +327,7 @@ def forecast(
     >>> repairs.expected.round(3), repairs.lower, repairs.upper
     (array([15.833]), array([9.]), array([24.]))
     """
-    if not 0 < alpha_ci < 1:
-        raise alpha_ci_error(alpha_ci)
+    check_alpha_ci(alpha_ci)
     if horizon is None:
         raise ValueError(
             "horizon is required: the time ahead to forecast over, or "

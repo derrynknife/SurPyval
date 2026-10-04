@@ -49,6 +49,7 @@ from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.removed_names import removed_parameter_note
 from surpyval.utils.validation import (
     BOUNDS,
+    check_alpha_ci,
     check_option,
     no_covariance_error,
 )
@@ -343,6 +344,7 @@ class _SharedFrailty(
         for the positive baseline parameters and ``theta``, natural for the
         unbounded coefficients) so the interval stays valid.
         """
+        check_alpha_ci(alpha_ci)
         cov = self.covariance()
         if name not in self.parameter_names:
             raise ValueError(
@@ -440,6 +442,7 @@ class _SharedFrailty(
         [('baseline', 'alpha'), ('baseline', 'beta'),
          ('coefficients', 'coef_0'), ('frailty', 'theta')]
         """
+        check_alpha_ci(alpha_ci)
         import pandas as pd
 
         from .._summary import coefficient_table
@@ -658,6 +661,7 @@ class FrailtyModel(_SharedFrailty):
         >>> model.param_cb("theta", method="lr").round(3)
         array([0.22 , 0.819])
         """
+        check_alpha_ci(alpha_ci)
         from .._likelihood_ratio import is_lr
 
         if not is_lr(method):

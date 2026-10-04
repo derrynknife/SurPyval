@@ -34,6 +34,7 @@ from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import (
     BOUNDS,
     alpha_ci_error,
+    check_alpha_ci,
     check_option,
     option_error,
     warn_outside_unit_interval,
@@ -1091,6 +1092,7 @@ class DegradationModel(SerialisableMixin):
         >>> [round(v) for v in pred.failure_time_interval]
         [1395, 1562]
         """
+        check_alpha_ci(alpha_ci)
         # a numerically-zero variance (exact path fits) makes the
         # posterior degenerate; compare against the scale of y
         noise_floor = np.finfo(float).eps * float(np.mean(self.y**2))
@@ -1780,6 +1782,7 @@ class DegradationModel(SerialisableMixin):
         """
         check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
         check_option("bound", bound, BOUNDS)
+        check_alpha_ci(alpha_ci)
         if self._is_clock:
             self._clock(Z)  # validates the stress
             Z = self._covariates(Z)

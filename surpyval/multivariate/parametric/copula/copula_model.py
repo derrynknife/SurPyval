@@ -22,7 +22,7 @@ from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import (
     BOUNDS,
-    alpha_ci_error,
+    check_alpha_ci,
     check_option,
     no_covariance_error,
 )
@@ -513,9 +513,9 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         >>> model.param_cb("theta").round(3)
         array([1.896, 2.774])
         """
+        check_alpha_ci(alpha_ci)
         check_option("method", method, _CB_METHODS)
         check_option("bound", bound, BOUNDS)
-        _check_alpha_ci(alpha_ci)
         names = self.parameter_names
         if name not in names:
             raise ValueError(
@@ -613,10 +613,10 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         array([[0.6183, 0.7085],
                [0.2544, 0.331 ]])
         """
+        check_alpha_ci(alpha_ci)
         check_option("on", on, _CB_ON)
         check_option("bound", bound, BOUNDS)
         check_option("method", method, _CB_METHODS)
-        _check_alpha_ci(alpha_ci)
         x = onp.atleast_2d(onp.asarray(x, dtype=float))
         if x.shape[1] != 2:
             raise ValueError("x must have two columns (one per dimension)")
@@ -826,9 +826,3 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
             f"\nMargins   : {', '.join(margin_names)}"
             f"\nFitted by : {self.method}"
         )
-
-
-def _check_alpha_ci(alpha_ci: float) -> None:
-    """Refuse a significance level outside (0, 1)."""
-    if not 0.0 < alpha_ci < 1.0:
-        raise alpha_ci_error(alpha_ci)

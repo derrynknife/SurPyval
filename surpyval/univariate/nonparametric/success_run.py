@@ -1,6 +1,7 @@
 import numpy as np
 
 from surpyval.utils.removed_names import removed_arguments
+from surpyval.utils.validation import check_alpha_ci
 
 
 @removed_arguments(
@@ -47,7 +48,7 @@ def success_run(n: int, *, alpha_ci: float = 0.05) -> float:
 
     ValueError
         If ``n`` is not a positive number, or the significance level is
-        not in [0, 1].
+        not strictly between 0 and 1.
 
     Examples
     --------
@@ -67,10 +68,6 @@ def success_run(n: int, *, alpha_ci: float = 0.05) -> float:
         raise ValueError(
             "'n' must be a positive number of successes; got {}".format(n)
         )
-    if not 0 <= alpha_ci <= 1:
-        raise ValueError(
-            "The significance level alpha_ci must be between 0 and 1; got "
-            "alpha_ci = {}".format(alpha_ci)
-        )
+    check_alpha_ci(alpha_ci)
 
     return np.power(alpha_ci, 1.0 / n)

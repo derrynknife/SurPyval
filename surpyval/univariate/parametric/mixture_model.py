@@ -50,7 +50,7 @@ from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import (
     BOUNDS,
     CB_ON,
-    alpha_ci_error,
+    check_alpha_ci,
     check_option,
     no_covariance_error,
     option_error,
@@ -1811,9 +1811,8 @@ class MixtureModel(
         >>> wmm.param_cb("w_0", bound="lower").round(3)
         array([0.375])
         """
+        check_alpha_ci(alpha_ci)
         self._check_wald(method, bound)
-        if not 0 < alpha_ci < 1:
-            raise alpha_ci_error(alpha_ci)
         names = self.covariance_names
         if name not in names:
             raise option_error("name", name, names)
@@ -1915,9 +1914,8 @@ class MixtureModel(
         array([[0.4687, 0.8503],
                [0.1344, 0.5354]])
         """
+        check_alpha_ci(alpha_ci)
         self._check_wald(method, bound)
-        if not 0 < alpha_ci < 1:
-            raise alpha_ci_error(alpha_ci)
         on = {"R": "sf", "F": "ff"}.get(on, on)
         check_option("on", on, CB_ON)
         t = np.atleast_1d(np.asarray(x, dtype=float))
@@ -2003,9 +2001,8 @@ class MixtureModel(
         >>> wmm.quantile_cb(0.1).round(3)
         array([1.203, 4.997])
         """
+        check_alpha_ci(alpha_ci)
         self._check_wald(method, bound)
-        if not 0 < alpha_ci < 1:
-            raise alpha_ci_error(alpha_ci)
         probs = np.asarray(p, dtype=float)
         if probs.size == 0:
             return np.empty((0, 2) if bound == "two-sided" else (0,))

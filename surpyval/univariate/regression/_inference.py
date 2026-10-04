@@ -32,7 +32,12 @@ from surpyval.utils.shapes import (
     covariate_rows,
     keeps_query_shape,
 )
-from surpyval.utils.validation import BOUNDS, CB_ON, check_option
+from surpyval.utils.validation import (
+    BOUNDS,
+    CB_ON,
+    check_alpha_ci,
+    check_option,
+)
 from surpyval.utils.warnings import warn_no_covariance
 
 from ._bounds import logit_sf_bound
@@ -378,6 +383,7 @@ class InferenceMixin:
             The seed of the bootstrap (``method='bootstrap'`` only), as for
             :meth:`cb`.
         """
+        check_alpha_ci(alpha_ci)
         from ._bootstrap import bound_method, param_cb_bootstrap
         from ._likelihood_ratio import param_cb_lr
 
@@ -531,6 +537,7 @@ class InferenceMixin:
         numpy array
             The confidence bound(s) on ``on`` at each ``x``.
         """
+        check_alpha_ci(alpha_ci)
         from ._bootstrap import bound_method, cb_bootstrap
         from ._likelihood_ratio import cb_lr
 
@@ -673,6 +680,7 @@ class InferenceMixin:
         >>> model.quantile_cb(0.1, [1]).round(3)
         array([1.245, 2.212])
         """
+        check_alpha_ci(alpha_ci)
         from ._bootstrap import bound_method, quantile_cb_bootstrap
         from ._likelihood_ratio import quantile_cb_lr
 

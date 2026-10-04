@@ -51,6 +51,7 @@ from surpyval.utils.validation import (
     BOUNDS,
     CB_ON,
     alpha_ci_error,
+    check_alpha_ci,
     check_option,
     no_covariance_error,
     option_error,
@@ -1042,6 +1043,7 @@ class Parametric(
         >>> model.param_cb("beta", method="lr")
         array([1.82826755, 3.27740643])
         """
+        check_alpha_ci(alpha_ci)
         probability_cb = getattr(self.dist, "_probability_cb", None)
         if probability_cb is not None:
             return probability_cb(self, name, alpha_ci, bound, method)
@@ -2139,6 +2141,7 @@ class Parametric(
         >>> model.cb([5, 10], on="sf", bound="lower")
         array([0.67916426, 0.18042915])
         """
+        check_alpha_ci(alpha_ci)
         t = np.atleast_1d(x)
         if self.method != "MLE":
             raise ValueError("Only MLE has confidence bounds")
@@ -2266,6 +2269,7 @@ class Parametric(
         step estimate (Brookmeyer and Crowley); :meth:`mean_cb` bounds the
         mean.
         """
+        check_alpha_ci(alpha_ci)
         probs = np.asarray(p, dtype=float)
         self._check_summary_cb(alpha_ci, bound, "quantile_cb")
         if probs.size == 0:
@@ -2341,6 +2345,7 @@ class Parametric(
         The nonparametric models' ``mean_cb`` bounds their (restricted)
         mean; :meth:`quantile_cb` bounds a quantile.
         """
+        check_alpha_ci(alpha_ci)
         self._check_summary_cb(alpha_ci, bound, "mean_cb")
         if self.lfp_p < 1:
             # A fraction 1 - p never fails: E[T] is infinite (#404).
@@ -2984,6 +2989,7 @@ class Parametric(
         >>> data["x_censored"]
         array([50., 60.])
         """
+        check_alpha_ci(alpha_ci)
         self._require_data("get_plot_data()")
         cb_func: Callable[[Any], Any] | None
         if (
@@ -3125,6 +3131,7 @@ class Parametric(
         ['North', 'South']
         >>> plt.close(fig)
         """
+        check_alpha_ci(alpha_ci)
         if ax is None:
             import matplotlib.pyplot as plt
 

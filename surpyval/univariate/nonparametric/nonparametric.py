@@ -13,6 +13,7 @@ from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import (
     BOUNDS,
+    check_alpha_ci,
     check_option,
     warn_outside_unit_interval,
 )
@@ -745,6 +746,7 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
 
         """
+        check_alpha_ci(alpha_ci)
         # The guard used to test ``on in []`` and so never fired: any other
         # ``on`` (e.g. 'hf') fell through to the survival bounds in
         # ``[upper, lower]`` order, i.e. with the lower above the upper.
@@ -826,6 +828,7 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         from ``lower`` to the first value, the bounds at the last value
         from there to ``upper``, and NaN outside.
         """
+        check_alpha_ci(alpha_ci)
         _check_bound(bound)
         _check_interp(interp)
         return self._bounds_within_support(
@@ -1142,6 +1145,7 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         Brookmeyer, R. and Crowley, J. (1982), "A confidence interval for
         the median survival time", Biometrics 38, 29-41.
         """
+        check_alpha_ci(alpha_ci)
         p = np.atleast_1d(p).astype(float)
         if ((p <= 0) | (p > 1)).any():
             raise ValueError("'p' must be in the range (0, 1]")
@@ -1266,6 +1270,7 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         >>> model.mean_cb(tau=6)
         array([3.36776153, 5.92390514])
         """
+        check_alpha_ci(alpha_ci)
         r = self.rmst(tau=tau, alpha_ci=alpha_ci)
         return np.array([r["lower"], r["upper"]])
 
@@ -1343,6 +1348,7 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         --------
         surpyval.rmst_diff : compare the RMST of two groups.
         """
+        check_alpha_ci(alpha_ci)
         from scipy.stats import norm
 
         if tau is None:
@@ -1957,6 +1963,7 @@ def rmst_diff(
     >>> print(round(res["p_value"], 4))
     0.1067
     """
+    check_alpha_ci(alpha_ci)
     from scipy.stats import norm
 
     if tau is None:
