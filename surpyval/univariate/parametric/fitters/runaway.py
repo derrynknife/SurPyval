@@ -187,7 +187,7 @@ def runaway_coefficients(
     return out
 
 
-# -- the units the check is made in (#628) -------------------------------------
+# -- the units the check is made in (#628) ------------------------------------
 #
 # Newton's test is unchanged by a linear change of units in exact arithmetic,
 # but its parts are not in floating point: the pseudo-inverse of the other
@@ -284,9 +284,7 @@ def runaways_in_units(
         with np.errstate(all="ignore"):
             s = np.where(log & (s >= 0.0), np.log1p(np.abs(s)), s)
         v_start = s / size
-    out = runaway_coefficients(
-        in_units, v0, coefs, v_start, units_derivatives
-    )
+    out = runaway_coefficients(in_units, v0, coefs, v_start, units_derivatives)
     if not out:
         out = flat_profiles(in_units, v0, coefs, v_start, units_derivatives)
     return out
@@ -320,7 +318,9 @@ def flat_profiles(
     curvature of 2e-9 beside a largest of 6e6)."""
     H, g = derivatives
     at = np.asarray(x, dtype=float)
-    if start is None or not (np.all(np.isfinite(H)) and np.all(np.isfinite(g))):
+    if start is None or not (
+        np.all(np.isfinite(H)) and np.all(np.isfinite(g))
+    ):
         return []
     tol = at.size * float(np.finfo(float).eps) * np.linalg.norm(H, 2)
     out = []
