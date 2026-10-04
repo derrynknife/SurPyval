@@ -1510,6 +1510,9 @@ def _bounds(case):
         )
     if cls in ("WienerProcessModel", "GammaProcessModel"):
         return (
+            # Wald bounds from the fit's covariance (#666)
+            Bound("cb", on=_ON_SURVIVAL),
+            _PARAM_CB,
             Bound(
                 "predict_rul",
                 kind="rul",

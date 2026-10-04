@@ -86,6 +86,11 @@ def test_quantile_inverts_cdf(case):
         keep = (ff > 1e-9) & (ff < 1 - 1e-9) & (np.asarray(df) > 1e-12)
         q = _values(case, model, "qf", ff[keep])
         np.testing.assert_allclose(q, x[keep], rtol=1e-6)
+    elif not case.has("df"):
+        # Point masses with no density (FixedEventProbability's 0 and
+        # infinity): the generalised inverse never passes x, qf(F(x)) <= x.
+        q = _values(case, model, "qf", ff[ff < 1 - 1e-12])
+        assert np.all(q <= x[ff < 1 - 1e-12])
     else:
         # At an atom k (P(X = k) > 0) the generalised inverse gives k back.
         keep = _values(case, model, "df", x) > 1e-12

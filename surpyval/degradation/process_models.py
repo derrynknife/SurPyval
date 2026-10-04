@@ -1025,10 +1025,10 @@ class FirstPassageProcessModel(SerialisableMixin):
     def cb(
         self,
         x: npt.ArrayLike,
+        Z: Any = None,
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
-        Z: Any = None,
         *,
         y0: "float | None" = None,
     ) -> npt.NDArray:
@@ -1043,6 +1043,8 @@ class FirstPassageProcessModel(SerialisableMixin):
         ----------
         x : array_like
             The times.
+        Z : optional
+            The stress, as for :meth:`ff`.
         on : {'sf', 'ff', 'Hf'}, optional
             The function to bound (``'R'`` and ``'F'`` are accepted for
             ``'sf'`` and ``'ff'``). Default ``'sf'``.
@@ -1051,8 +1053,8 @@ class FirstPassageProcessModel(SerialisableMixin):
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds put ``[lower, upper]`` on the last axis, with
             ``alpha_ci / 2`` in each tail. Default ``'two-sided'``.
-        Z, y0 : optional
-            The stress and the starting level, as for :meth:`ff`.
+        y0 : float, optional
+            The starting level, as for :meth:`ff`.
 
         Returns
         -------
