@@ -49,6 +49,7 @@ from .._fit_skeleton import (
     keep_information,
     make_objective,
     mirror_distribution,
+    one_sided_positions,
     require_finite_fit,
     uniform_draws,
 )
@@ -772,6 +773,7 @@ class ParameterSubstitutionFitter(
                 verified=verified,
                 what="The accelerated life fit",
                 floor=floor,
+                one_sided=one_sided_positions(bounds, not_fixed),
             )
             model.maximum = verdict.maximum
             # The exact observed information for the covariance, which
