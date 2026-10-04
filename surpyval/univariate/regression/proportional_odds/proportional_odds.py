@@ -545,6 +545,8 @@ class ProportionalOddsModel(
 
     # Covariate metadata populated by ``fit_from_df``.
     feature_names: list[str] | None = None
+    #: Covariates of the wrong width are refused by name (#657).
+    _CHECKS_WIDTH = True
     formula: str | None = None
     _model_spec: Any = None
 

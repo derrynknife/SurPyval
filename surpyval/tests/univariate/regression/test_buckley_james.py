@@ -212,5 +212,8 @@ def test_buckley_james_refuses_a_mismatched_z():
     model = _buckley_james()
     with pytest.raises(ValueError, match="3 covariate rows but there are 2"):
         model.sf([5.0, 10.0], np.zeros((3, 2)))
-    with pytest.raises(ValueError, match="vector of length 2"):
+    # The width named as every regression names it (#657)
+    with pytest.raises(
+        ValueError, match=r"has 2 covariates \(coef_0, coef_1\)"
+    ):
         model.sf([5.0, 10.0], [0.0, 1.0, 2.0])

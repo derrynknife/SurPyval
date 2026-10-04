@@ -47,7 +47,11 @@ from surpyval.utils.covariates import loaded_coefficient_names
 from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.removed_names import removed_parameter_note
-from surpyval.utils.shapes import covariate_rows, keeps_query_shape
+from surpyval.utils.shapes import (
+    check_paired_rows,
+    covariate_rows,
+    keeps_query_shape,
+)
 from surpyval.utils.validation import (
     BOUNDS,
     check_alpha_ci,
@@ -62,6 +66,7 @@ from .._prediction import (
     quantiles_by_inversion,
 )
 from ..regression_data import (
+    check_covariate_width,
     prepare_Z,
     restore_covariate_meta,
     serialise_covariate_meta,
@@ -165,11 +170,24 @@ class _SharedFrailty(
             raise ValueError(
                 "This model was fit with covariates; 'Z' is required."
             )
-        Zp = prepare_Z(Z, self.feature_names, self._model_spec)
-        Zp = np.atleast_2d(np.asarray(Zp, dtype=float))
+        Zp = self._covariate_rows(Z)
         # An aliased coefficient (nan, #476) is predicted with as 0.
         eta = np.exp(Zp @ np.where(np.isnan(self.beta), 0.0, self.beta))
         return eta[0] if eta.shape[0] == 1 else eta
+
+    def _covariate_rows(self, Z: Any) -> np.ndarray:
+        """``Z`` as ``(m, p)`` rows, refused, naming the coefficients,
+        where its width is not the model's (#657)."""
+        Zp = prepare_Z(Z, self.feature_names, self._model_spec)
+        names = list(self.parameter_names[self.k_dist :][: self.beta.size])
+        check_covariate_width(Zp, names)
+        return covariate_rows(Zp, self.beta.size)
+
+    def _paired(self, x: np.ndarray, eta: Any) -> None:
+        """Refuse covariate rows that cannot be paired with the times
+        (#488, #657): one row for every time, or a row per time."""
+        if np.ndim(eta):
+            check_paired_rows(np.size(x), np.size(eta), grid=False)
 
     def _resolve_frailty(self, group: Any, frailty: Any) -> "float | None":
         """Return the frailty value to condition on, or ``None`` (marginal)."""
@@ -216,7 +234,9 @@ class _SharedFrailty(
     ) -> np.ndarray:
         """Cumulative hazard (marginal, or conditional on a frailty)."""
         x = np.asarray(x, dtype=float)
-        s = self._eta(Z) * self._H0(x)
+        eta = self._eta(Z)
+        self._paired(x, eta)
+        s = eta * self._H0(x)
         return self._cumulative(s, self._resolve_frailty(group, frailty))
 
     def sf(
@@ -238,6 +258,7 @@ class _SharedFrailty(
         """Hazard function (marginal by default)."""
         x = np.asarray(x, dtype=float)
         eta = self._eta(Z)
+        self._paired(x, eta)
         H0 = self._H0(x)
         h0 = self._h0(x)
         u = self._resolve_frailty(group, frailty)
@@ -308,10 +329,7 @@ class _SharedFrailty(
                 "This model was fit with covariates; 'Z' is required."
             )
         else:
-            rows = covariate_rows(
-                prepare_Z(Z, self.feature_names, self._model_spec),
-                self.beta.size,
-            )
+            rows = self._covariate_rows(Z)
         u, rows, _ = paired_probabilities(p, rows)
 
         def cumulative(t: np.ndarray, R: np.ndarray) -> np.ndarray:

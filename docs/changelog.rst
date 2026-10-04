@@ -141,6 +141,14 @@ Unreleased
   call, of a level above 0.5: ``alpha_ci=0.95`` is a 5% interval.
   ``success_run`` refuses 0 and 1 too.
 
+- A regression prediction with a ``Z`` of the wrong width gave numpy's
+  error (``shapes (3,) and (2,) not aligned``, ``operands could not be
+  broadcast``) or a prediction from the wrong columns (#657). Every
+  regression model's ``sf``/``ff``/``hf``/``Hf``/``df``/``qf``/``cs``,
+  ``cb``, ``quantile_cb``, ``mean``, ``phi`` and ``random`` now say "The
+  model has 2 covariates (coef_0, coef_1); Z gives 3 per row", and an
+  accelerated life model's stresses against more times give the row-count
+  message.
 - A parametric regression model restored from ``to_dict`` gave ``cb``,
   ``cb(on="Hf")`` and ``quantile_cb`` up to 1e-11, 6e-11 and 2e-9 from the
   original's (#664): a fit on centred covariates (#463) computes its bounds

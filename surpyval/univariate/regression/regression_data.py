@@ -49,6 +49,48 @@ def _aliased_columns(model: Any) -> npt.NDArray:
     return np.flatnonzero(np.isnan(np.asarray(model.beta, dtype=float)))
 
 
+def check_covariate_width(
+    Z: Any, names: "list[str]", what: str = "covariate"
+) -> None:
+    """Refuse prepared covariates ``Z`` whose number of columns is not the
+    model's (#657): ``names`` are the model's covariates, in order. A
+    scalar or a 1-D ``Z`` is one value per row for a one-covariate model,
+    else one row. A wrong width gave numpy's broadcast or alignment error
+    (``shapes (3,) and (2,) not aligned``), or a plausible prediction
+    from the wrong columns.
+
+    Examples
+    --------
+    >>> from surpyval.univariate.regression.regression_data import (
+    ...     check_covariate_width,
+    ... )
+    >>> check_covariate_width([[1.0, 2.0]], ["coef_0", "coef_1"])
+    >>> check_covariate_width([1.0, 2.0, 3.0], ["coef_0", "coef_1"])
+    Traceback (most recent call last):
+    ...
+    ValueError: The model has 2 covariates (coef_0, coef_1); Z gives 3 per row. Give one value per covariate, in that order, for each row of Z.
+    """  # noqa: E501
+    arr = np.asarray(Z)
+    p = len(names)
+    if arr.ndim == 0 or (arr.ndim == 1 and p == 1):
+        width = 1
+    elif arr.ndim in (1, 2):
+        width = arr.shape[-1]
+    else:
+        raise ValueError(
+            "Z must be one covariate row, or a 2-D array with a row per "
+            "prediction; got an array of shape {}.".format(arr.shape)
+        )
+    if width == p:
+        return
+    raise ValueError(
+        "The model has {} {}{} ({}); Z gives {} per row. Give one value per "
+        "{}, in that order, for each row of Z.".format(
+            p, what, "" if p == 1 else "s", ", ".join(names), width, what
+        )
+    )
+
+
 def truncation_window(x: Any, t: Any, tl: Any = None, tr: Any = None) -> Any:
     """The ``t`` of a parametric regression fit, an ``(N, 2)`` array of
     ``[tl, tr]`` rows, from its ``tl`` / ``tr`` (each a value per row of
@@ -172,6 +214,10 @@ class LinearPredictorMixin:
         "combination of the others"
     )
     _ALIASED_ALSO = ""
+    #: Whether :meth:`_prepare_Z` refuses covariates of the wrong width
+    #: with a message naming the coefficients (#657); the models whose
+    #: ``parameter_names`` are one per column of ``Z`` set it.
+    _CHECKS_WIDTH = False
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -205,7 +251,11 @@ class LinearPredictorMixin:
         formula's raw columns were not expanded at all (#370); an array is
         taken as it is, in the fitted column order.
         """
-        return prepare_Z(Z, self.feature_names, self._model_spec)
+        Zp = prepare_Z(Z, self.feature_names, self._model_spec)
+        if self._CHECKS_WIDTH:
+            # One value per coefficient, said so (#657)
+            check_covariate_width(Zp, list(getattr(self, "parameter_names")))
+        return Zp
 
     def _log_risk(self, Z: npt.NDArray) -> npt.NDArray:
         """``beta'(Z - center)`` for numeric covariate rows ``Z``, the log

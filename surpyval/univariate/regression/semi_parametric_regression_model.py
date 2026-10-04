@@ -101,6 +101,8 @@ class SemiParametricRegressionModel(
     feature_names: list[str] | None = None
     formula: str | None = None
     _model_spec: Any = None
+    #: Covariates of the wrong width are refused by name (#657).
+    _CHECKS_WIDTH = True
     #: True when fitted from time-varying-covariate (start-stop) data via
     #: ``CoxPH.fit_tvc``; enables :meth:`predict_tvc`.
     is_tvc: bool = False
