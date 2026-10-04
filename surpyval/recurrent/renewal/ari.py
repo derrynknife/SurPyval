@@ -10,7 +10,6 @@ from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
 if TYPE_CHECKING:
     from surpyval.recurrent.renewal.renewal_model import RenewalModel
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import (
@@ -152,8 +151,7 @@ class ARI(RenewalFitMixin):
     (``CrowAMSAA``, ``Duane``, ``CoxLewis``); ``CrowAMSAA`` (power law) is
     the default. It is named ``baseline`` rather than ``dist`` because it
     is not a lifetime distribution, as ARA's and GeneralizedRenewal's
-    ``dist`` is (#507); ``dist=`` still works, with a
-    ``DeprecationWarning``, until v0.23.
+    ``dist`` is (#507).
 
     There is no closed-form marginal intensity, so the mean cumulative function
     is obtained by simulation (see ``mcf`` and ``plot``).
@@ -285,7 +283,6 @@ class ARI(RenewalFitMixin):
             data, baseline=model.model.dist, m=model.m
         )
 
-    @renamed_arguments(dist="baseline")
     def create_negll_func(
         self, data: Any, baseline: Any, m: "int | float"
     ) -> Callable:
@@ -325,7 +322,6 @@ class ARI(RenewalFitMixin):
 
         return negll_func
 
-    @renamed_arguments(dist="baseline")
     def fit_from_recurrent_data(
         self,
         data: Any,
@@ -346,8 +342,7 @@ class ARI(RenewalFitMixin):
             :meth:`fit`).
         baseline : object, optional
             A recurrent baseline intensity model (``CrowAMSAA``, ``Duane``,
-            ``CoxLewis``). Default is ``CrowAMSAA``. Its old name,
-            ``dist``, works until v0.23 with a ``DeprecationWarning``.
+            ``CoxLewis``). Default is ``CrowAMSAA``.
         m : int or float, optional
             Memory of the ARI model; a positive integer or ``numpy.inf``.
             Default is 1.
@@ -414,7 +409,6 @@ class ARI(RenewalFitMixin):
             base_params = np.asarray(baseline.parameter_initialiser(data.x))
         return base_params
 
-    @renamed_arguments(dist="baseline")
     def fit(
         self,
         x: ArrayLike,
@@ -449,9 +443,7 @@ class ARI(RenewalFitMixin):
             ``CoxLewis``). Default is ``CrowAMSAA``. Unlike ARA's and
             GeneralizedRenewal's ``dist``, it is not a lifetime
             distribution: passing one (e.g. ``Weibull``) raises a
-            ``ValueError`` that names the alternatives. Its old name,
-            ``dist``, works until v0.23 with a ``DeprecationWarning``
-            (#507).
+            ``ValueError`` that names the alternatives (#507).
         m : int or float, optional
             Memory of the ARI model; a positive integer or ``numpy.inf``.
             Default is 1.
@@ -495,7 +487,6 @@ class ARI(RenewalFitMixin):
         data = handle_xicn(x, i, c, n, tl=tl)
         return self.fit_from_recurrent_data(data, baseline, m, init=init)
 
-    @renamed_arguments(dist="baseline")
     def fit_from_df(
         self,
         df: Any,
@@ -514,8 +505,6 @@ class ARI(RenewalFitMixin):
         As every recurrent ``fit_from_df``: the column names are passed in
         place of the arrays :meth:`fit` takes, and every other :meth:`fit`
         option (``baseline``, ``m``, ``init``) is passed to it unchanged.
-        ``dist=``, the old name of ``baseline``, works until v0.23 with a
-        ``DeprecationWarning`` (#507).
 
         Parameters
         ----------
@@ -530,8 +519,11 @@ class ARI(RenewalFitMixin):
             observation).
         n_col : str, optional
             Column of event counts per row.
-        tl_col, tr_col : str, optional
-            Refused: ARI takes no truncation.
+        tl_col : str, optional
+            Column of entry times: each item as new at its entry (see
+            :meth:`fit`).
+        tr_col : str, optional
+            Refused: ARI takes no right truncation.
         **fit_options
             Every other option of :meth:`fit`.
 
@@ -567,7 +559,6 @@ class ARI(RenewalFitMixin):
             **fit_options,
         )
 
-    @renamed_arguments(dist="baseline", dist_params="baseline_params")
     def fit_from_parameters(
         self,
         baseline_params: ArrayLike,
@@ -582,9 +573,7 @@ class ARI(RenewalFitMixin):
         ----------
 
         baseline_params : list
-            Parameters for the baseline intensity model. Its old name,
-            ``dist_params``, works until v0.23 with a
-            ``DeprecationWarning``.
+            Parameters for the baseline intensity model.
         rho : float
             Repair efficiency in ``[0, 1]``.
         m : int or float, optional
@@ -592,8 +581,6 @@ class ARI(RenewalFitMixin):
             Default is 1.
         baseline : object, optional
             A recurrent baseline intensity model. Default is ``CrowAMSAA``.
-            Its old name, ``dist``, works until v0.23 with a
-            ``DeprecationWarning`` (#507).
 
         Returns
         -------

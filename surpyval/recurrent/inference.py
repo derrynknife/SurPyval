@@ -12,7 +12,7 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.utils.covariates import renamed_coefficient
-from surpyval.utils.deprecation import MethodFloat, RenamedAttribute
+from surpyval.utils.deprecation import MethodFloat
 from surpyval.utils.linalg import numerical_hessian, wald_bound_on_support
 from surpyval.utils.warnings import warn_no_covariance
 
@@ -137,10 +137,6 @@ class LikelihoodInferenceMixin:
         A model built from parameters has them too.
         """
         return list(self._parameter_names())
-
-    # ``param_names``, the pre-0.22 name of ``parameter_names``, reads it
-    # for one release, with a DeprecationWarning.
-    param_names = RenamedAttribute("parameter_names")
 
     @property
     def log_likelihood(self) -> float:

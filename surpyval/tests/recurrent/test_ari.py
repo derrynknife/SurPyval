@@ -271,24 +271,14 @@ def test_ari_still_takes_every_intensity_model(dist):
 # -- #507: ARI's baseline intensity is `baseline=`, not `dist=` --------------
 
 
-def _old_name(call):
-    # The result of ``call`` and the one DeprecationWarning it raised.
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        out = call()
-    deprecations = [w for w in caught if w.category is DeprecationWarning]
-    assert len(deprecations) == 1, [str(w.message) for w in caught]
-    return out, deprecations[0]
-
-
 @pytest.mark.parametrize(
     "method", ["fit", "fit_from_recurrent_data", "fit_from_df"]
 )
 def test_ari_takes_its_baseline_as_baseline(method):
     # In ARA, GeneralizedRenewal and GeneralizedOneRenewal `dist` is a
     # lifetime distribution; in ARI it was the baseline intensity model,
-    # so `dist=sp.Weibull` was a natural mistake. `dist=` still works,
-    # warning, until v0.23, and gives the same fit.
+    # so `dist=sp.Weibull` was a natural mistake. `dist=`, deprecated in
+    # v0.22, is removed in v0.23: an unknown argument.
     import pandas as pd
 
     def call(**kw):
@@ -301,15 +291,8 @@ def test_ari_takes_its_baseline_as_baseline(method):
 
     new = call(baseline=Duane)
     assert new.model.dist is Duane
-    old, warning = _old_name(lambda: call(dist=Duane))
-    message = str(warning.message)
-    assert "'dist' is deprecated" in message and "'baseline'" in message
-    assert "0.23" in message
-    # The warning points at the caller's line, not into SurPyval.
-    assert warning.filename == __file__
-    np.testing.assert_array_equal(old.params, new.params)
-    with pytest.raises(ValueError, match="pass 'baseline' only"):
-        call(baseline=Duane, dist=Duane)
+    with pytest.raises(TypeError, match="unexpected keyword argument 'dist'"):
+        call(dist=Duane)
 
 
 def test_ari_fit_from_parameters_takes_baseline():
@@ -317,19 +300,14 @@ def test_ari_fit_from_parameters_takes_baseline():
         baseline_params=[20.0, 1.5], rho=0.5, baseline=Duane
     )
     assert new.model.dist is Duane
-    old, warning = _old_name(
-        lambda: ARI.fit_from_parameters([20.0, 1.5], 0.5, dist=Duane)
-    )
-    assert "'baseline'" in str(warning.message)
-    assert warning.filename == __file__
-    old_params, warning = _old_name(
-        lambda: ARI.fit_from_parameters(
+    with pytest.raises(TypeError, match="unexpected keyword argument 'dist'"):
+        ARI.fit_from_parameters([20.0, 1.5], 0.5, dist=Duane)
+    with pytest.raises(
+        TypeError, match="unexpected keyword argument 'dist_params'"
+    ):
+        ARI.fit_from_parameters(
             dist_params=[20.0, 1.5], rho=0.5, baseline=Duane
         )
-    )
-    assert "'baseline_params'" in str(warning.message)
-    for model in (old, old_params):
-        np.testing.assert_array_equal(model.params, new.params)
 
 
 def test_ari_signatures_name_the_baseline():

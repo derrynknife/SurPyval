@@ -21,7 +21,7 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.utils import fsli_to_xcnt, refuse_time_values
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.deprecation import RenamedToMethod, renamed_arguments
+from surpyval.utils.deprecation import RenamedToMethod
 from surpyval.utils.linalg import (
     cb_link,
     param_name,
@@ -79,12 +79,12 @@ _CBContext = namedtuple("_CBContext", ["phi_hat", "cov", "n_core"])
 def _warn_lfp_p(old: str, new: str) -> None:
     """The one warning for the limited-failure proportion's old name,
     ``p`` (#608), pointing at the caller."""
-    from surpyval.utils.deprecation import REMOVED_IN_NEXT
+    from surpyval.utils.deprecation import REMOVED_IN
     from surpyval.utils.warnings import caller_stacklevel
 
     warnings.warn(
         f"{old}, the limited-failure proportion, is deprecated and will "
-        f"be removed in v{REMOVED_IN_NEXT}; use '{new}'. ('p' names the "
+        f"be removed in v{REMOVED_IN}; use '{new}'. ('p' names the "
         "parameter of a distribution that has one: Bernoulli, Binomial, "
         "Geometric, ...)",
         DeprecationWarning,
@@ -1473,7 +1473,6 @@ class Parametric(
         q = np.asarray(q, dtype=float)
         return q[0] if scalar else q
 
-    @renamed_arguments(X="given")
     def cs(self, x: npt.ArrayLike, given: npt.ArrayLike) -> npt.NDArray:
         r"""
 
@@ -1484,9 +1483,11 @@ class Parametric(
             R(x, given) = \frac{R(x + given)}{R(given)}
 
         .. versionchanged:: 0.22
-           The time already survived is ``given`` (it was ``X``, which
-           still works until v0.23 with a ``DeprecationWarning``), the
+           The time already survived is ``given`` (it was ``X``), the
            name the regression models' ``sf_tvc(..., given=)`` uses.
+
+        .. versionchanged:: 0.23
+           ``X`` is removed.
 
         Parameters
         ----------

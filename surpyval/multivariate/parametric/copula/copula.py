@@ -44,10 +44,6 @@ from surpyval.utils.dataframe import (
     frame_columns,
     require_frame,
 )
-from surpyval.utils.deprecation import (
-    RenamedAttribute,
-    renamed_class_attribute,
-)
 from surpyval.utils.no_maximum import (
     combined_maximum,
     warn_no_maximum,
@@ -78,9 +74,6 @@ class Copula:
     # fitters use, so ``bounds_convert`` can map them to unbounded space.
     bounds: tuple = ((0, None),)
     parameter_names: list[str] = ["theta"]
-    # ``param_names``, the pre-0.22 name of ``parameter_names``, reads it
-    # for one release, with a DeprecationWarning.
-    param_names = RenamedAttribute("parameter_names")
     #: The Frechet bounds the family reaches only as its parameter runs to
     #: a limit: ``+1`` the comonotone copula (perfect positive dependence),
     #: ``-1`` the countermonotone one, each mapped to that limit as the
@@ -90,12 +83,6 @@ class Copula:
 
     def __repr__(self) -> str:
         return f"{self.name} copula"
-
-    def __init_subclass__(cls, **kwargs: Any) -> None:
-        # A family written against the pre-0.22 name, ``param_names``,
-        # still works until v0.23, with a DeprecationWarning.
-        super().__init_subclass__(**kwargs)
-        renamed_class_attribute(cls, "param_names", "parameter_names")
 
     # -- the four copula primitives ---------------------------------------
     def cdf(self, u: Any, v: Any, *params: Any) -> Any:

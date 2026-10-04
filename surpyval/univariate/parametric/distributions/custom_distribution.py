@@ -17,7 +17,6 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
     ParametricFitter,
 )
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -138,12 +137,10 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
         ``fun(x, nu, b)``; anything else raises a ``ValueError``.
 
     parameter_names: list
-        List of parameter names (``param_names``, its name before v0.22,
-        is accepted with a ``DeprecationWarning`` until v0.23). A fitted
-        model exposes each parameter as an attribute, so ``gamma``,
-        ``f0`` and the names of the model's own attributes (``k``,
-        ``dist``, ``data``, ``method``, ``sf``, ...) are refused with a
-        ``ValueError`` that lists them.
+        List of parameter names. A fitted model exposes each parameter as
+        an attribute, so ``gamma``, ``f0`` and the names of the model's
+        own attributes (``k``, ``dist``, ``data``, ``method``, ``sf``,
+        ...) are refused with a ``ValueError`` that lists them.
 
     bounds: list
         List of tuples containing the lower and upper bounds of the
@@ -188,7 +185,6 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
     True
     """
 
-    @renamed_arguments(param_names="parameter_names")
     def __init__(
         self,
         name: str,

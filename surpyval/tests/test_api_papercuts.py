@@ -402,25 +402,17 @@ def test_competing_risks_plots_its_cumulative_incidences():
 # -- cs(x, given) ------------------------------------------------------------
 
 
-def test_cs_takes_given_and_the_old_name_warns():
+def test_cs_takes_given_and_the_old_name_is_gone():
     # The time already survived is ``given``, as in the regression models'
-    # sf_tvc(..., given=); ``X`` works until v0.23 with a warning.
-    import warnings
-
+    # sf_tvc(..., given=); ``X``, deprecated in v0.22, is removed in v0.23.
     model = sp.Weibull.from_params([10, 3])
     expected = model.sf(21) / model.sf(10)
     np.testing.assert_allclose(model.cs(11, given=10), expected)
     np.testing.assert_allclose(
         sp.Weibull.cs(11, 10, 10, 3), model.cs(11, given=10)
     )
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        old = model.cs(11, X=10)
-    np.testing.assert_allclose(old, expected)
-    assert len(caught) == 1
-    assert issubclass(caught[0].category, DeprecationWarning)
-    assert caught[0].filename == __file__
-    assert "use 'given'" in str(caught[0].message)
+    with pytest.raises(TypeError, match="unexpected keyword argument 'X'"):
+        model.cs(11, X=10)
 
 
 # ---------------------------------------------------------------------------

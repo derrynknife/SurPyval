@@ -43,7 +43,6 @@ if TYPE_CHECKING:
     from surpyval.univariate.parametric.parametric_fitter import (
         ParametricFitter,
     )
-    from surpyval.utils.deprecation import CallableList
     from surpyval.utils.surpyval_data import SurpyvalData
 
     from ._covariate_link import CovariateLink
@@ -83,7 +82,7 @@ class InferenceMixin:
         is_tvc: bool
 
         @property
-        def parameter_names(self) -> CallableList: ...
+        def parameter_names(self) -> list: ...
 
         def _coefficient_names(self) -> "list[str]": ...
 

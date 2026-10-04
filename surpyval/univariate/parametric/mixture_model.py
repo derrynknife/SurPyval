@@ -24,10 +24,9 @@ from surpyval.univariate.information_criteria import (
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.deprecation import (
-    REMOVED_IN_NEXT,
+    REMOVED_IN,
     CallableFloat,
     MadePrivate,
-    renamed_arguments,
 )
 from surpyval.utils.no_maximum import (
     maximum_entry,
@@ -279,7 +278,7 @@ class MixtureModel(
         warnings.warn(
             "MixtureModel.loglike is the negative log-likelihood, despite "
             "its name, and is deprecated; it will be removed in "
-            f"v{REMOVED_IN_NEXT}. Use 'neg_ll()' for it, or "
+            f"v{REMOVED_IN}. Use 'neg_ll()' for it, or "
             "'log_likelihood' for the log-likelihood.",
             DeprecationWarning,
             stacklevel=2,
@@ -1391,15 +1390,16 @@ class MixtureModel(
         """
         return 1 - self.ff(x)
 
-    @renamed_arguments(X="given")
     def cs(self, x: Any, given: Any, *args: Any, **kwargs: Any) -> Any:
         """
         The conditional survival function of the fitted model.
 
         .. versionchanged:: 0.22
-           The time already survived is ``given`` (it was ``X``, which
-           still works until v0.23 with a ``DeprecationWarning``), the
+           The time already survived is ``given`` (it was ``X``), the
            name the regression models' ``sf_tvc(..., given=)`` uses.
+
+        .. versionchanged:: 0.23
+           ``X`` is removed.
 
         Parameters
         ----------

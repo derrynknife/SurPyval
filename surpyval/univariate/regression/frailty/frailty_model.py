@@ -47,7 +47,7 @@ from surpyval.utils.covariates import (
     loaded_coefficient_names,
     renamed_coefficient,
 )
-from surpyval.utils.deprecation import ArrayMethod, RenamedAttribute
+from surpyval.utils.deprecation import ArrayMethod
 from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.validation import (
@@ -589,10 +589,6 @@ class FrailtyModel(_SharedFrailty):
     >>> model.sf([5, 10], [1], group=0).round(4)
     array([0.7226, 0.2821])
     """
-
-    # ``param_names``, the pre-0.22 name of ``parameter_names``, reads (and
-    # sets) it for one release, with a DeprecationWarning.
-    param_names = RenamedAttribute("parameter_names")
 
     #: The rows fitted, ``{"x", "c", "w", "Z", "inv"}`` (``Z`` the columns
     #: whose coefficients were estimated, ``inv`` each row's group), for
