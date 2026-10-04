@@ -58,6 +58,11 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import chi2, norm
 
+from surpyval.utils.recurrent_utils import (
+    event_at_entry_error,
+    item_label,
+    number_text,
+)
 from surpyval.utils.validation import alpha_ci_error, check_option
 
 _ALTERNATIVES = ("two-sided", "increasing", "decreasing")
@@ -188,11 +193,11 @@ def _resolve_truncation(
     if T is None:
         return None
     if isinstance(T, dict):
-        missing = [q for q in unique_i if q not in T]
+        missing = [item_label(q) for q in unique_i if q not in T]
         if missing:
             raise ValueError(
                 "`{}` is missing an observation time for system(s) "
-                "{}".format(name, missing)
+                "{}".format(name, ", ".join(missing))
             )
         return {q: float(T[q]) for q in unique_i}
     if np.ndim(T) == 0:
@@ -228,7 +233,7 @@ def _row_starts(
         if not np.all(values == values[0]):
             raise ValueError(
                 "`tl` must be the same on every row of a system; system "
-                "{!r} has {}".format(q, np.unique(values).tolist())
+                "{} has {}".format(item_label(q), np.unique(values).tolist())
             )
         starts[q] = float(values[0])
     return starts
@@ -348,10 +353,8 @@ def _prepare(
         xq = np.sort(x[i == q])
         sq = starts[q]
         if np.any(xq <= sq):
-            raise ValueError(
-                "system {!r} has event time(s) at or before its observation "
-                "start tl={}; its window is (tl, T]".format(q, sq)
-            )
+            # The fitters refuse the same data with the same message.
+            raise event_at_entry_error(q, xq[xq <= sq], sq, noun="System")
         if windows is None:
             # Failure-truncated: the last event is the truncation point.
             Tq = float(xq[-1])
@@ -360,14 +363,16 @@ def _prepare(
             Tq = windows[q]
             if np.any(xq > Tq):
                 raise ValueError(
-                    "system {!r} has event time(s) after its observation "
-                    "time T={}".format(q, Tq)
+                    "system {} has event time(s) after its observation "
+                    "time T={}".format(item_label(q), number_text(Tq))
                 )
             used = xq[xq <= Tq]
         if Tq <= sq:
             raise ValueError(
-                "observation time for system {!r} must be after its start "
-                "(tl={}, T={})".format(q, sq, Tq)
+                "observation time for system {} must be after its start "
+                "(tl={}, T={})".format(
+                    item_label(q), number_text(sq), number_text(Tq)
+                )
             )
         systems.append((used, sq, Tq))
         n_used += used.size
