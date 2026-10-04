@@ -1379,6 +1379,11 @@ def _bounds(case):
             rtol=1e-3,
             slow=True,
         )
+        boot = dict(
+            kwargs={"method": "bootstrap", **_BOOT},
+            wald=False,
+            slow=True,
+        )
         return (
             *wald,
             Bound(
@@ -1390,6 +1395,24 @@ def _bounds(case):
             ),
             Bound("param_cb", kind="param", label="param_cb[lr]", **lr),
             Bound("quantile_cb", point="qf", label="quantile_cb[lr]", **lr),
+            # The parametric bootstrap (#617): the calls with the same
+            # n_boot and seed share one set of refits.
+            Bound(
+                "cb",
+                on=_ON_ALL,
+                query=_REGRESSION_LR_X[case.name],
+                label="cb[bootstrap]",
+                **boot,
+            ),
+            Bound(
+                "param_cb", kind="param", label="param_cb[bootstrap]", **boot
+            ),
+            Bound(
+                "quantile_cb",
+                point="qf",
+                label="quantile_cb[bootstrap]",
+                **boot,
+            ),
         )
     if cls in ("FrailtyModel", "ProportionalOddsModel"):
         # The profile-likelihood interval (#617), slow as the regression

@@ -2287,6 +2287,50 @@ covered 0.897 (Wald) and 0.893 (likelihood ratio) of 1,000 repetitions with
 46 failures on average, and 0.877 and 0.866 of 900 with 11; Wald stays the
 default.
 
+``method="bootstrap"`` gives a third bound, a parametric bootstrap: the model
+is refitted to ``n_boot`` data sets simulated from it, each unit at its own
+stress and censored as it was (here, every unit still running at 6,000 hours
+is censored there), and the bound is the BCa interval of the refits' values
+(Efron's bias-corrected and accelerated percentiles). It assumes neither
+that the reliability is near linear in the parameters nor that the
+likelihood ratio is near its large-sample distribution, and costs ``n_boot``
+refits, so ask for every time you need at once; the calls with the same
+``n_boot`` and an integer ``random_state`` share one set of refits:
+
+.. jupyter-execute::
+
+    boot = model_arr.cb(x_use, Z=Z_use, method='bootstrap', n_boot=100,
+                        random_state=1)
+    print('bootstrap:\n', boot.round(3))
+    print('95% CI on a, in eV:',
+          (model_arr.param_cb('a', method='bootstrap', n_boot=100,
+                              random_state=1) * k).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all((boot[:, 0] <= _est) & (_est <= boot[:, 1]))
+    assert model_arr._bootstrap_refits[(100, 1)].params.shape[0] == 100
+
+A hundred refits keep the example short; use a thousand or more for a bound
+you will act on. On the two-stress test above with 46 failures on average,
+the 90% bootstrap bound on the five-year reliability at use covered 0.903
+of 1,000 repetitions (1,000 refits each), its misses even on both sides,
+against 0.880 (Wald), 0.875 (likelihood ratio) and 0.866 for the plain
+percentile interval of the same refits, whose misses fell mostly below.
+
+With 11 failures on average no bound holds. In 28% of the repetitions the
+failures all fell at stresses that leave the activation energy or the
+voltage exponent without a finite estimate; the fit warns that its
+likelihood has no finite maximum, and the bootstrap from it, whose
+resamples run off the same way, closes onto the meaningless estimate (and
+warns so). Over all the repetitions the bootstrap bound covered 0.71,
+against 0.87 (Wald, which is near [0, 1] or ``nan`` for those fits) and
+0.85 (likelihood ratio); where the estimate exists, they covered 0.917
+(Wald), 0.934 (likelihood ratio) and 0.979 (bootstrap). The remedy there is a design with more
+failures, not another bound.
+
 Two stresses at once
 ~~~~~~~~~~~~~~~~~~~~
 

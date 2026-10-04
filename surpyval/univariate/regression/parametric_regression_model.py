@@ -243,14 +243,21 @@ class ParametricRegressionModel(
     #: have found, kept while the parameters and data stay as they are;
     #: not pickled (``__getstate__``).
     _lr_searches: "list | None" = None
+    #: The parametric bootstrap refits of the bounds with
+    #: ``method="bootstrap"`` (``_bootstrap.refits``), by ``(n_boot,
+    #: random_state)`` for an integer seed, kept while the parameters and
+    #: data stay as they are; not pickled (``__getstate__``).
+    _bootstrap_refits: "dict | None" = None
     # The information criteria's sample size ``_ic_n`` and their caches
     # ``_aic``, ``_bic``, ``_aic_c`` are InformationCriteriaMixin's.
 
     def __getstate__(self) -> dict:
         # The likelihood-ratio searches, with the regions and bounds they
-        # have found, are rebuilt where a bound is asked for again (#617).
+        # have found, and the bootstrap refits are rebuilt where a bound
+        # is asked for again (#617).
         state = dict(self.__dict__)
         state.pop("_lr_searches", None)
+        state.pop("_bootstrap_refits", None)
         return state
 
     # -- serialisation -----------------------------------------------------

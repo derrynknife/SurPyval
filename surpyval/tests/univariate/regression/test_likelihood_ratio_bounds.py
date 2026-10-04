@@ -146,9 +146,9 @@ def test_583_lr_is_an_option_and_wald_stays_the_default(alt):
             lr, alt.cb(FIVE_YEARS, USE, alpha_ci=0.1, method=name)
         )
     with pytest.raises(ValueError, match="method"):
-        alt.cb(FIVE_YEARS, USE, method="bootstrap")
+        alt.cb(FIVE_YEARS, USE, method="boot")
     with pytest.raises(ValueError, match="method"):
-        alt.param_cb("n", method="bootstrap")
+        alt.param_cb("n", method="boot")
 
 
 def test_583_the_sf_ff_and_Hf_bounds_are_one_bound(alt):
@@ -300,7 +300,7 @@ def test_583_quantile_cb_shapes_options_and_sides(alt):
     with pytest.raises(ValueError, match="'p' must be in"):
         alt.quantile_cb(1.0, USE)
     with pytest.raises(ValueError, match="method"):
-        alt.quantile_cb(0.1, USE, method="bootstrap")
+        alt.quantile_cb(0.1, USE, method="boot")
 
 
 @pytest.mark.parametrize("fitter", [WeibullPH, sp.LogNormalAFT])
@@ -410,7 +410,7 @@ def test_617_cb_tvc_lr_is_an_option_with_the_shapes_of_wald(ph):
     assert given[1, 0] < est < given[1, 1]
     assert ph.cb_tvc(80.0, ramp, bound="lower", method="lr").shape == ()
     with pytest.raises(ValueError, match="method"):
-        ph.cb_tvc(t, ramp, method="bootstrap")
+        ph.cb_tvc(t, ramp, method="boot")
 
 
 # -- ray tracing on a curved region (#617) -----------------------------------
