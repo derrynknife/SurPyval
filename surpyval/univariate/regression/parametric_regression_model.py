@@ -215,6 +215,11 @@ class ParametricRegressionModel(
     #: parameter covariance; lets them produce confidence bounds without the
     #: original data. ``None`` on freshly fitted models.
     _restored_covariance: "npt.NDArray | None" = None
+    #: ``(params, center, covariance)`` of the centred fit behind a model
+    #: rebuilt by :meth:`from_dict` from a fit on centred covariates
+    #: (``_fit_centring``): its confidence bounds are computed there, as
+    #: the original's are, so they are the same to the last bit (#664).
+    _restored_inference: "tuple | None" = None
     #: True on models rebuilt by :meth:`from_dict`, which carry no data.
     _restored: bool = False
     #: The printout's "Data" line of a model rebuilt by :meth:`from_dict`
@@ -377,6 +382,12 @@ class ParametricRegressionModel(
             cov = self._restored_covariance
         if cov is not None and np.all(np.isfinite(cov)):
             out["covariance"] = np.asarray(cov, dtype=float).tolist()
+            # The parameterisation the bounds are computed in, where it is
+            # the centred fit's (#463), so the restored model computes
+            # them by the same route (#664).
+            state = self._serialised_inference()
+            if state is not None:
+                out["inference_centring"] = state
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = float(self._neg_ll)
         out.update(maximum_entry(self.maximum))
@@ -390,6 +401,34 @@ class ParametricRegressionModel(
         if self._data_repr():
             out["data_summary"] = self._data_repr()
         return stamp_schema(out)
+
+    def _serialised_inference(self) -> "dict[str, list] | None":
+        """The centred fit's ``params``, ``center`` and ``covariance``
+        that the confidence bounds are computed from (see
+        ``InferenceMixin._inference_state``), for :meth:`to_dict`; ``None``
+        where the bounds are computed at ``params`` itself, or the
+        covariance there is not finite."""
+        state = self._restored_inference
+        if state is None and self._fit_centring is not None:
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    state = self._inference_state()
+            except Exception:
+                return None
+        if state is None or state[1] is None:
+            return None
+        params, center, cov = (np.asarray(v, dtype=float) for v in state)
+        if not np.all(np.isfinite(cov)):
+            return None
+        # The centre as "at": a nonzero "center" marks a baseline kept at
+        # the covariate means, which needs the schema-2 reader; this one
+        # changes nothing a schema-1 reader predicts.
+        return {
+            "params": params.tolist(),
+            "at": center.tolist(),
+            "covariance": cov.tolist(),
+        }
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "ParametricRegressionModel":
@@ -513,14 +552,22 @@ class ParametricRegressionModel(
                 renamed.get(k, k): v for k, v in phi_param_map.items()
             }
             if phi_kind == "exp":
-                # The log-linear multiplier exp(beta'Z), matching the
-                # fitters. Imported here because _fit_skeleton imports
-                # this module at load time.
+                # The log-linear multiplier exp(beta'Z), the link the
+                # fitter builds (#664): AFT and PO carry a LogLinearPhi,
+                # PH a CovariateLink with its phi. Imported here because
+                # _fit_skeleton imports this module at load time.
                 from ._fit_skeleton import LogLinearPhi
 
-                reg_model = LogLinearPhi(
-                    model_dict["reg_model_name"], phi_param_map
-                )
+                if kind == PROPORTIONAL_HAZARD:
+                    reg_model = CovariateLink(
+                        model_dict["reg_model_name"],
+                        phi_param_map,
+                        LogLinearPhi.phi,
+                    )
+                else:
+                    reg_model = LogLinearPhi(
+                        model_dict["reg_model_name"], phi_param_map
+                    )
             else:
                 # Additive: beta'Z is added to the hazard, no multiplier.
                 reg_model = CovariateLink(
@@ -576,6 +623,24 @@ class ParametricRegressionModel(
             out._restored_covariance = np.array(
                 model_dict["covariance"], dtype=float
             )
+        state = model_dict.get("inference_centring")
+        if isinstance(state, dict) and "covariance" in model_dict:
+            n_par = len(params)
+            restored = (
+                np.array(state.get("params", ()), dtype=float),
+                np.array(state.get("at", ()), dtype=float),
+                np.array(state.get("covariance", ()), dtype=float),
+            )
+            if (
+                restored[0].shape != (n_par,)
+                or restored[1].shape != (n_par - k_dist,)
+                or restored[2].shape != (n_par, n_par)
+            ):
+                raise ValueError(
+                    "The model dict's 'inference_centring' does not match "
+                    "its {} parameter(s).".format(n_par)
+                )
+            out._restored_inference = restored
         if "_neg_ll" in model_dict:
             out._neg_ll = float(model_dict["_neg_ll"])
         out.maximum = restored_maximum(model_dict)

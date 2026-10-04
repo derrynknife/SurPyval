@@ -133,6 +133,13 @@ Unreleased
   call, of a level above 0.5: ``alpha_ci=0.95`` is a 5% interval.
   ``success_run`` refuses 0 and 1 too.
 
+- A parametric regression model restored from ``to_dict`` gave ``cb``,
+  ``cb(on="Hf")`` and ``quantile_cb`` up to 1e-11, 6e-11 and 2e-9 from the
+  original's (#664): a fit on centred covariates (#463) computes its bounds
+  in the centred parameters, the restored model at the reported ones. The
+  dict now stores that state (``"inference_centring"``), and a PH model is
+  rebuilt with the ``CovariateLink`` its fitter builds, not a
+  ``LogLinearPhi``: the restored bounds are bit-identical.
 - ``fit_from_df`` of ``CoxPH``, ``ProportionalOdds``, ``AdditiveHazards``,
   ``BuckleyJames``, ``CoxFrailty`` and the parametric frailty models names
   a missing column as the parametric families do (#663): "x_col='time' is
