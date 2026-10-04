@@ -875,8 +875,11 @@ class FitInputsMixin:
                     # data went negative and the initialiser refused them
                     # (#631)
                     x_nonzero = x[x != 0] if zi else x
-                    below = np.concatenate([np.ravel(x_nonzero), x_init])
-                    init = self._offset_seed(imputed, _offset_start(below))
+                    start = _offset_start(x_nonzero)
+                    lowest = float(np.min(x_init)) if x_init.size else start
+                    if lowest <= start:
+                        start = lowest - offset_step(x_nonzero)
+                    init = self._offset_seed(imputed, start)
                 else:
                     init = np.array(self._parameter_initialiser(imputed))
 

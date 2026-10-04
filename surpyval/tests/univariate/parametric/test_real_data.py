@@ -155,8 +155,18 @@ def test_interval_fit_matches_known_values(dist_name, expected):
     assert np.allclose(model.params, expected, rtol=1e-3)
 
 
-@pytest.mark.parametrize("dataset_name", ["A", "B"])
-def test_weibull_offset_fit_converges(dataset_name):
-    x, c = DATASETS[dataset_name]
+def test_weibull_offset_fit_converges():
+    x, c = DATASETS["A"]
     fitted = surv.Weibull.fit(x, c, offset=True)
     assert fitted.res.success or ("Desired error" in fitted.res.message)
+
+
+def test_weibull_offset_fit_on_b_has_no_finite_maximum():
+    # The profile likelihood rises as gamma nears the first failure (5248;
+    # -122.54 at 3961, -121.80 at 5240) with beta falling below 1. Three
+    # right-censored times below it (3961, 4007, 4734) capped gamma at
+    # 3961, where the fit stopped and was reported verified (#633).
+    x, c = DATASETS["B"]
+    with pytest.warns(UserWarning, match="No finite maximum"):
+        fitted = surv.Weibull.fit(x, c, offset=True)
+    assert fitted.maximum == "no finite maximum"
