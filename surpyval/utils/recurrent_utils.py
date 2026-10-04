@@ -71,12 +71,97 @@ def _warn_negative_entry(
     )
 
 
+def close_at_right_truncation(data: RecurrentEventData) -> RecurrentEventData:
+    """
+    The data with each item's finite right-truncation time ``tr`` written
+    as the end-of-observation (``c=1``) row it stands for (#624).
+
+    A finite ``tr`` closes an item's observation window, as the NHPP
+    likelihoods and the MCF take it: the item was watched, with no further
+    events, up to ``tr``. The imperfect-repair likelihoods read the window
+    close from a ``c=1`` row only, so an item whose last row is before its
+    ``tr`` gets a ``c=1`` row at ``tr``. An item already closed at its
+    ``tr`` (a ``c=1`` row, or an event, there) is left as it is.
+
+    Raises ``ValueError`` for an item whose rows go past its ``tr``, or
+    whose ``c=1`` row is before it (``handle_xicn`` refuses both; this is
+    for data assembled by hand).
+    """
+    tr = np.asarray(data.tr, dtype=float)
+    if not np.isfinite(tr).any():
+        return data
+    x = np.asarray(data.x, dtype=float)
+    x_upper = x if x.ndim == 1 else x[:, 1]
+    c = np.asarray(data.c)
+    at: list[int] = []
+    for item in data.items:
+        rows = np.flatnonzero(data.i == item)
+        tr_item = tr[rows[0]]
+        if not np.isfinite(tr_item):
+            continue
+        last = rows[np.argmax(x_upper[rows])]
+        if x_upper[last] > tr_item:
+            raise ValueError(
+                "Item {} has a row at {} after its right truncation time "
+                "tr={}; tr is the end of the item's observation, so every "
+                "row must be at or before it.".format(
+                    item_label(item),
+                    number_text(x_upper[last]),
+                    number_text(tr_item),
+                )
+            )
+        if x_upper[last] == tr_item:
+            continue
+        if c[last] == 1:
+            raise ValueError(
+                "Item {} has an end-of-observation (c=1) row at {} before "
+                "its right truncation time tr={}; both close the "
+                "observation window, so they must agree (drop the c=1 row "
+                "or set tr to its time).".format(
+                    item_label(item),
+                    number_text(x_upper[last]),
+                    number_text(tr_item),
+                )
+            )
+        at.append(int(rows[-1]) + 1)
+    if not at:
+        return data
+    values = tr[np.asarray(at) - 1]
+    new_x = (
+        np.insert(x, at, values)
+        if x.ndim == 1
+        else np.insert(x, at, np.column_stack([values, values]), axis=0)
+    )
+    closed = RecurrentEventData(
+        new_x,
+        np.insert(data.i, at, data.i[np.asarray(at) - 1]),
+        np.insert(c, at, 1),
+        np.insert(data.n, at, 1),
+        e=(
+            None
+            if data.e is None
+            else np.insert(
+                data.e.astype(object), at, np.full(len(at), None, object)
+            )
+        ),
+        tl=np.insert(data.tl, at, data.tl[np.asarray(at) - 1]),
+        tr=np.insert(tr, at, values),
+    )
+    Z = getattr(data, "Z", None)
+    closed.Z = (
+        None if Z is None else np.insert(Z, at, Z[np.asarray(at) - 1], axis=0)
+    )
+    return closed
+
+
 def measure_from_entry(
     data: RecurrentEventData, model_name: str
 ) -> RecurrentEventData:
     """
     The data on the clock of a virtual-age / imperfect-repair model
-    (Kijima, G1, ARA, ARI): each item's times measured from its entry.
+    (Kijima, G1, ARA, ARI): each item's times measured from its entry,
+    and each item's finite right-truncation time ``tr`` as its ``c=1``
+    close (see :func:`close_at_right_truncation`).
 
     These models need an item's state when its observation begins: its
     virtual age, or the intensity reductions of its earlier repairs. With
@@ -91,6 +176,7 @@ def measure_from_entry(
     Raises ``ValueError`` for a negative time without a ``tl`` (these
     models measure time from the start of the item's life).
     """
+    data = close_at_right_truncation(data)
     tl = np.asarray(data.tl, dtype=float)
     entry = np.where(np.isfinite(tl), tl, 0.0)
     x = np.asarray(data.x, dtype=float)
