@@ -183,7 +183,11 @@ def fit_best(
     ``fit`` checks them: an input error -- a malformed censoring flag,
     say -- raises the ``ValueError`` that ``Weibull.fit`` would, rather
     than failing every candidate. A candidate the data lie outside the
-    support of (a Beta for data outside (0, 1)) is passed over quietly; a
+    support of (a Beta for data outside (0, 1)) is passed over quietly,
+    except that a warning names the lifetime families (support from 0)
+    passed over because some times are at or below 0, and says what was
+    chosen instead -- often a family that puts failures before time 0 --
+    and how to fit units that failed at time 0 (``zi=True``; #646); a
     candidate that cannot be fitted to the (valid) data is skipped, and
     the skipped candidates are named, each with its reason, in one
     warning. If no candidate fitted, ``None`` is returned -- unless every
@@ -401,6 +405,9 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
         model = best[False][1]
     if n_fitted == 0:
         _raise_if_about_the_data(errors, outside)
+    _warn_if_lifetimes_passed_over(
+        outside, candidates, model, labels, SurpyvalData(**data)
+    )
     if failed:
         # One warning for all of them, with the count (principle 22); it
         # was two warnings per candidate.
@@ -432,6 +439,45 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
             f"{metric!r}."
         )
     return model
+
+
+def _warn_if_lifetimes_passed_over(
+    outside: list[str],
+    candidates: list,
+    model: Any,
+    labels: dict[int, str],
+    data: SurpyvalData,
+) -> None:
+    """Warn when the lifetime families -- those whose support starts at
+    0 -- were passed over because some times are at or below 0 (#646).
+
+    Maintenance records hold zero ages (failed on the day of
+    installation); every positive family is then outside its support, and
+    the best of the rest was returned in silence: a Normal that put 3% of
+    the units failing before day 0. A Beta passed over for data outside
+    (0, 1) stays quiet (#485)."""
+    lifetimes = [
+        dist.name
+        for dist in candidates
+        if dist.name in outside
+        and float(dist.support[0]) == 0.0
+        and np.isinf(float(dist.support[1]))
+    ]
+    if not lifetimes:
+        return
+    x = np.asarray(data.x, dtype=float)
+    lowest = x[:, -1] if x.ndim == 2 else x
+    at_or_below = int(np.sum(np.asarray(data.n)[lowest <= 0]))
+    chosen = "nothing" if model is None else labels[id(model)]
+    warnings.warn(
+        f"fit_best passed over {', '.join(lifetimes)}: {at_or_below} "
+        "observation(s) at or below 0 are outside their support. Chosen: "
+        f"{chosen}, which may put failures before time 0. For units that "
+        "failed at time 0 (dead on arrival), fit a lifetime family with "
+        "zi=True (e.g. Weibull.fit(x, zi=True)); otherwise correct those "
+        "times.",
+        stacklevel=2,
+    )
 
 
 def _raise_if_about_the_data(

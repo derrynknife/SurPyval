@@ -68,6 +68,13 @@ Unreleased
 
 **Fixed**
 
+- ``fit_best`` passed over every lifetime family (support from 0) in
+  silence when some times were at or below 0, and returned the best of the
+  rest: with three zero ages in 50, a Normal that put 3% of the units
+  failing before day 0 (#646). It now warns, naming the families passed
+  over, the number of such times, what it chose, and ``zi=True`` for units
+  that failed at time 0. A Beta passed over for data outside (0, 1) stays
+  quiet.
 - A mixture component that runs off past the data -- its failures all
   beyond the last observation, so it explains none -- was reported as a
   verified maximum (#650): a two-Weibull mixture came back with a second

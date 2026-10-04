@@ -246,3 +246,27 @@ def test_613_a_mixture_outside_its_support_is_passed_over():
     x = np.append(TWO_POPULATIONS, -1.0)
     model = sp.fit_best(x, include=["Normal", sp.MixtureModel(sp.Weibull)])
     assert model.dist.name == "Normal"
+
+
+def test_646_lifetime_families_passed_over_for_zero_times_warn():
+    # Three zero ages put every positive family outside its support, and
+    # fit_best returned a Normal (3% failing before day 0) in silence.
+    import scipy.stats as ss
+
+    rng = np.random.default_rng(19)
+    x = np.round(ss.weibull_min(1.3, scale=400).rvs(50, random_state=rng))
+    x[:3] = 0
+    with pytest.warns(UserWarning, match="passed over") as record:
+        model = sp.fit_best(x)
+    message = next(
+        str(w.message) for w in record if "passed over" in str(w.message)
+    )
+    assert "Weibull" in message and "3 observation(s) at or below 0" in message
+    assert "zi=True" in message and f"Chosen: {model.dist.name}" in message
+
+
+def test_646_a_beta_passed_over_stays_quiet():
+    x = sp.Weibull.random(40, 10, 2, random_state=1)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        sp.fit_best(x)
