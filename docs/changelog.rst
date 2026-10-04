@@ -68,6 +68,14 @@ Unreleased
 
 **Fixed**
 
+- A mixture component that runs off past the data -- its failures all
+  beyond the last observation, so it explains none -- was reported as a
+  verified maximum (#650): a two-Weibull mixture came back with a second
+  component of scale 33,561 (the largest observation 1,150) and weight
+  0.09, which reads as a second failure mode. The likelihood keeps rising
+  towards the other components with a limited-failure proportion, which
+  no mixture reaches; the fit now warns "No finite maximum", says so, and
+  points to ``lfp=True``, and ``fit_best`` sets it aside.
 - A fit with a fixed parameter skipped the alternative starts every other
   fit tries, and could stop on a worse maximum and call it verified: a
   limited-failure Weibull with ``lfp_p`` fixed at 0.5 landed on the

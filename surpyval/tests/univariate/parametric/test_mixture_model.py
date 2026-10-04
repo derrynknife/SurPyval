@@ -413,3 +413,32 @@ def test_605_em_steps_are_internal(old):
     x = surv.Weibull.random(100, 10, 2, random_state=0)
     model = sp.MixtureModel.fit(x, dist=surv.Weibull, m=2)
     assert not hasattr(model, old)
+
+
+def test_650_a_component_past_the_data_is_no_finite_maximum():
+    # A second Weibull component ran off past the data (scale 33,561, the
+    # largest observation 1,150) and the fit called it verified; its limit
+    # is a one-component limited-failure Weibull, which is 2e-8 higher.
+    import scipy.stats as ss
+
+    rng = np.random.default_rng(21)
+    t = ss.weibull_min(1.6, scale=500, loc=100).rvs(40, random_state=rng)
+    cen = rng.uniform(300, 1500, 40)
+    x, c = np.minimum(t, cen), (t > cen).astype(int)
+    with pytest.warns(UserWarning, match="explains no failure"):
+        mm = surv.MixtureModel(surv.Weibull, 2).fit(x, c)
+    assert mm.maximum == "no finite maximum"
+
+
+def test_650_an_ordinary_mixture_is_still_verified():
+    rng = np.random.default_rng(3)
+    x = np.concatenate(
+        [
+            surv.Weibull.random(60, 10, 3, random_state=rng),
+            surv.Weibull.random(60, 60, 5, random_state=rng),
+        ]
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        mm = surv.MixtureModel(surv.Weibull, 2).fit(x)
+    assert mm.maximum == "verified"
