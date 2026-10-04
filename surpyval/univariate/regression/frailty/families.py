@@ -53,6 +53,11 @@ N_NODES = 30
 _NODES: dict[int, tuple[npt.NDArray, npt.NDArray]] = {}
 
 _EPS = float(np.finfo(float).eps)
+# Above this ``theta D`` the mode ``theta D - omega`` loses more than
+# 1e-12 to cancellation, and is taken in its logarithmic form
+# (``lognormal_mode``). Ordinary fits (theta of a few, D up to hundreds)
+# stay below it.
+_CANCELS = 1e4
 
 
 def check_family(family: Any) -> str:
@@ -84,10 +89,23 @@ def lognormal_mode(
     function of ``theta D + log(theta H)``: closed form, and without the
     overflow of ``exp(theta D)``. The curvature there is
     ``(1 + omega) / theta``.
+
+    Where ``theta D`` is large, ``theta D - omega`` cancels (``omega`` is
+    ``theta D`` less a logarithm): the mode is then taken as
+    ``log(omega) - log(theta H)``, which ``omega + log(omega) = theta D +
+    log(theta H)`` makes equal to it, without the cancellation.
     """
+    theta_d = theta * D
     with np.errstate(divide="ignore"):
-        omega = wrightomega(theta * D + np.log(theta * H)).real
-    return theta * D - omega, omega
+        log_theta_h = np.log(theta * H)
+        omega = wrightomega(theta_d + log_theta_h).real
+    mode = theta_d - omega
+    big = (theta_d > _CANCELS) & (omega > 0) & np.isfinite(log_theta_h)
+    if np.any(big):
+        mode = np.where(
+            big, np.log(np.where(big, omega, 1.0)) - log_theta_h, mode
+        )
+    return mode, omega
 
 
 def lognormal_log_integral(
