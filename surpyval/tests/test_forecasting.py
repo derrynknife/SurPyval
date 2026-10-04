@@ -104,6 +104,17 @@ def test_581_models_without_cs_use_the_survival_ratio():
     )
 
 
+def test_660_units_far_in_the_tail_have_their_failure_probability():
+    # sf(1000) underflows to 0, but Hf is finite: the unit fails within one
+    # more unit of time with probability 1 - exp(-3.003001), not nan.
+    model = sp.Weibull.from_params([100.0, 3.0])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        result = sp.forecast(model, age=[1000.0], horizon=1)
+    expected = -np.expm1(-((1001 / 100) ** 3 - (1000 / 100) ** 3))
+    assert result.expected[0] == pytest.approx(expected, rel=1e-9)
+
+
 def test_581_units_the_model_says_cannot_survive_warn():
     model = sp.Uniform.from_params([0.0, 10.0])
     with pytest.warns(RuntimeWarning, match="survival of 0") as caught:

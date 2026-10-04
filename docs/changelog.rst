@@ -118,6 +118,12 @@ Unreleased
   and an example; the Binomial / Bernoulli convention, the forest's
   ``feature_importances()`` and the recurrent ``n`` (1 on exact events)
   read as the code does; float-sensitive examples are rounded.
+- A univariate model's ``cs(x, given)`` was ``nan``, silently, where
+  ``sf(given)`` underflows (``Weibull(100, 3).cs(1, given=1000)``), and
+  ``forecast`` gave ``nan`` totals for such units (#660). It is now
+  ``exp(-(Hf(x + given) - Hf(given)))`` from the families' accurate
+  ``Hf`` (0.0496 there; the forecast 0.950 failures), ``nan`` only where
+  ``Hf(given)`` is infinite.
 - ``MixtureModel.sf`` sums the components' weighted survival, as ``ff``
   and ``df`` are summed, rather than taking ``1 - ff``, which was 0 (and
   ``Hf`` inf) once the survival fell below about 1e-16 (#671). ``Hf`` is

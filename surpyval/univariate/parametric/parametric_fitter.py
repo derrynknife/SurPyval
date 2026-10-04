@@ -541,12 +541,21 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
 
         .. math::
             R(x, given) = \frac{R(x + given)}{R(given)}
+            = e^{-(H(x + given) - H(given))}
 
-        This is the definition for every distribution, so it lives here
-        rather than being restated on each one. ``Exponential``
-        overrides it because the exponential is memoryless and
-        :math:`R(x, given) = R(x)`, which is both cheaper and free of the
-        cancellation the ratio suffers in the far tail.
+        It is computed from the cumulative hazard, the second form, so it
+        stays exact where :math:`R(given)` underflows to 0 far in the
+        upper tail (the ratio was ``nan`` there); it is ``nan`` only
+        where :math:`H(given)` is itself infinite. This is the definition
+        for every distribution, so it lives here rather than being
+        restated on each one. ``Exponential`` overrides it because the
+        exponential is memoryless and :math:`R(x, given) = R(x)`, which is
+        both cheaper and free of the cancellation the difference suffers
+        in the far tail.
+
+        .. versionchanged:: 0.24
+           From the cumulative hazard, so finite where ``sf(given)``
+           underflows (#660).
 
         .. versionchanged:: 0.22
            The time already survived is ``given`` (it was ``X``), the
@@ -580,8 +589,20 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         >>> Weibull.cs(x, 5, 3, 4)
         array([2.52537548e-04, 3.00394073e-10, 2.45288508e-19, 1.48999440e-32,
                5.42544000e-51])
+
+        Far in the tail, where the survival to ``given`` underflows:
+
+        >>> Weibull.sf(1000, 100, 3)
+        np.float64(0.0)
+        >>> round(float(Weibull.cs(1, 1000, 100, 3)), 6)
+        0.049638
         """
-        return self.sf(x + given, *params) / self.sf(given, *params)
+        x = np.asarray(x, dtype=float)
+        given = np.asarray(given, dtype=float)
+        H_given = self.Hf(given, *params)
+        with np.errstate(invalid="ignore"):
+            out = np.exp(H_given - self.Hf(x + given, *params))
+        return np.where(np.isinf(H_given), np.nan, out)[()]
 
     def _plot_x_bounds(self, x: npt.NDArray, params: Any) -> Any:
         """Return (x_scale_min, x_scale_max) for probability plots.

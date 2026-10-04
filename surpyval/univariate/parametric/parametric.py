@@ -1579,6 +1579,7 @@ class Parametric(
 
         .. math::
             R(x, given) = \frac{R(x + given)}{R(given)}
+            = e^{-(H(x + given) - H(given))}
 
         .. versionchanged:: 0.22
            The time already survived is ``given`` (it was ``X``), the
@@ -1586,6 +1587,10 @@ class Parametric(
 
         .. versionchanged:: 0.23
            ``X`` is removed.
+
+        .. versionchanged:: 0.24
+           From the cumulative hazard, so finite where ``sf(given)``
+           underflows (#660).
 
         Parameters
         ----------
@@ -1610,27 +1615,40 @@ class Parametric(
         >>> model.cs(11, 10)
         np.float64(0.00025840046151723767)
 
+        Far in the tail, where the survival to ``given`` underflows to 0:
+
+        >>> model = Weibull.from_params([100, 3])
+        >>> model.sf(1000)
+        np.float64(0.0)
+        >>> round(float(model.cs(1, 1000)), 6)
+        0.049638
+
         Notes
         -----
-        The ratio is taken of the model's own :meth:`sf`, so a
-        limited-failure proportion ``lfp_p``, a zero-inflation fraction
-        ``f0`` and an offset ``gamma`` all enter it: the never-failing units
-        still count among the survivors at ``given``, and survival to an
-        ``given`` before the offset is certain. Where :math:`R(given) = 0` the
-        conditional survival is undefined and ``nan`` is returned.
+        It is computed from the model's own cumulative hazard, the second
+        form above, so it stays exact where :math:`R(given)` underflows to
+        0 far in the upper tail. A limited-failure proportion ``lfp_p``, a
+        zero-inflation fraction ``f0`` and an offset ``gamma`` all enter
+        it: the never-failing units still count among the survivors at
+        ``given``, and survival to a ``given`` before the offset is
+        certain. Where :math:`H(given)` is infinite (the model says no unit
+        survives to ``given``) the conditional survival is undefined and
+        ``nan`` is returned.
         """
         x_arr = np.asarray(x, dtype=float)
         given_arr = np.asarray(given, dtype=float)
         given_g = given_arr - self.gamma
         s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
         with np.errstate(all="ignore"):
-            # The ratio of the model's own sf. Handing the shifted given to
-            # ``dist.cs`` ignored p and f0 entirely (0.29 instead of 0.67
-            # for p = 0.7) and, for a given before the offset, evaluated the
-            # base sf at a negative time (1.0 or nan instead of 0.96).
-            cs = np.asarray(
-                self.sf(x_arr + given_arr) / self.sf(given_arr), dtype=float
-            )
+            # From the model's own cumulative hazard. Handing the shifted
+            # given to ``dist.cs`` ignored p and f0 entirely (0.29 instead
+            # of 0.67 for p = 0.7) and, for a given before the offset,
+            # evaluated the base sf at a negative time (1.0 or nan instead
+            # of 0.96). The hazards rather than the ratio of sf, so it
+            # stays finite where sf(given) underflows (#660).
+            H_given = np.asarray(self.Hf(given_arr), dtype=float)
+            H_end = np.asarray(self.Hf(x_arr + given_arr), dtype=float)
+            cs = np.where(np.isinf(H_given), np.nan, np.exp(H_given - H_end))
             if (self.lfp_p == 1) and (self.f0 == 0):
                 # A plain model inside its support keeps the
                 # distribution's own form, which is exact where the ratio
