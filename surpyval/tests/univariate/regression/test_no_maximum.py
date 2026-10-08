@@ -34,6 +34,9 @@ from surpyval.univariate.parametric.fitters.runaway import (
     _flat_at_start,
     runaway_coefficients,
 )
+from surpyval.univariate.regression import (
+    _baseline_profile as baseline_profile,
+)
 from surpyval.univariate.regression import _fit_skeleton as skeleton
 
 NO_MAXIMUM = "No finite maximum: the likelihood keeps increasing"
@@ -684,6 +687,80 @@ def test_634_the_life_is_one_exponent():
     Z = np.array([[1.0, 2.0]])
     life = sp.life_models.PowerExponential.phi(Z, 1e-300, 800.0, 0.0)
     assert life[0] == pytest.approx(np.exp(800.0 + np.log(1e-300)))
+
+
+# -- a baseline shape or scale running to its limit (#710) --------------------
+
+
+def test_710_lognormal_ph_sigma_to_0_has_no_finite_maximum():
+    # Draw 35: sigma ran to 2e-95 with the coefficient of 1/T, which takes
+    # up the baseline's scale 1 / sigma^2 (the hazard rises from 0 at a
+    # threshold). The search stopped on a "cliff" -- a gradient of 0.04 and
+    # a curvature of 3e10, both rounding in log_ndtr's derivatives -- and
+    # then where sigma's derivatives overflow, and said "unverified". The
+    # profile in log sigma, walked, rises all the way.
+    x, c, Z = _alt(35)
+    model, w = _fit(lambda: sp.LogNormalPH.fit(x, _alt_terms(Z), c=c))
+    assert model.maximum == "no finite maximum"
+    assert len(w) == 1, [str(m.message) for m in w]
+    message = str(w[0].message)
+    assert message.startswith(NO_MAXIMUM)
+    assert "coefficient(s) [0]" in message
+    assert "the LogNormal baseline's sigma (" in message
+    assert model.params[1] < 1e-40
+
+
+def test_710_lognormal_ph_maximum_at_a_small_sigma_is_verified():
+    # Draw 15: a maximum at sigma = 3.4e-12, "unverified" while the
+    # Hessian there was rounding.
+    x, c, Z = _alt(15)
+    model, w = _fit(lambda: sp.LogNormalPH.fit(x, _alt_terms(Z), c=c))
+    assert not w, [str(m.message) for m in w]
+    assert model.maximum == "verified"
+    assert model.neg_ll() == pytest.approx(148.2040106, abs=1e-6)
+    assert model.params[1] < 1e-9
+
+
+def test_710_weibull_po_maximum_far_along_alpha_is_verified():
+    # Draw 241: the profile in log alpha has its maximum at alpha = 1e-141,
+    # where autograd's second derivatives in alpha overflow (1 / alpha^2 in
+    # the chain rule); the Hessian's column is taken by differences of the
+    # gradient, and the maximum verified.
+    x, c, Z = _alt(241)
+    model, w = _fit(lambda: sp.WeibullPO.fit(x, _alt_terms(Z), c=c))
+    assert not w, [str(m.message) for m in w]
+    assert model.maximum == "verified"
+    assert model.neg_ll() == pytest.approx(109.298285, abs=1e-5)
+
+
+def test_710_a_profile_rising_to_the_limit_is_a_run_off():
+    # exp(0.1 u): the likelihood rises without bound as u runs to -inf,
+    # b with it; c stays where it is.
+    def f(p):
+        return (
+            anp.exp(0.1 * p[0])
+            + 1e-4 * (p[1] - 100.0 * p[0]) ** 2
+            + (p[2] - 1.0) ** 2
+        )
+
+    found = baseline_profile.walk_profile(
+        f, np.array([-15.0, -1500.0, 1.0]), 0, one_sided=(0,)
+    )
+    assert found.kind == "run-off"
+    assert found.running == (0, 1)
+
+
+def test_710_a_profile_with_a_maximum_is_finished_there():
+    # (u + 3)^2 with b = 100 u at its best: from u = -20, the walk finds
+    # the maximum at u = -3.
+    def f(p):
+        return (p[0] + 3.0) ** 2 + 1e-4 * (p[1] - 100.0 * p[0]) ** 2
+
+    found = baseline_profile.walk_profile(
+        f, np.array([-20.0, -2000.0]), 0, one_sided=(0,)
+    )
+    assert found.kind == "interior"
+    np.testing.assert_allclose(found.res.x, [-3.0, -300.0], rtol=1e-6)
 
 
 # ---------------------------------------------------------------------------

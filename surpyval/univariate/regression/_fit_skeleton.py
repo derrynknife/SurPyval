@@ -20,7 +20,7 @@ import autograd.numpy as np
 import numpy.typing as npt
 from autograd import elementwise_grad, jacobian
 from autograd.differential_operators import make_vjp
-from scipy.optimize import minimize
+from scipy.optimize import OptimizeResult, minimize
 
 from surpyval.univariate.parametric.fitters import (
     Gradient,
@@ -57,6 +57,7 @@ from ._aliasing import (
     fit_columns,
     warn_aliased,
 )
+from ._baseline_profile import filled_derivatives, walk_profile
 from ._covariate_link import CovariateLink
 from ._kinds import (
     ACCELERATED_FAILURE_TIME,
@@ -1351,7 +1352,9 @@ def judge_search(
     check and the polish (:func:`coefficient_floor`), and ``one_sided``
     the positions of the parameters with one bound
     (:func:`one_sided_positions`), which the no-maximum check judges on the
-    log scale (:func:`runaways_in_units`)."""
+    log scale (:func:`runaways_in_units`). An answer still not verified
+    has the profiles of the baseline's parameters with one bound walked
+    (:func:`_walk_baseline`, #710)."""
     if not (np.isfinite(res.fun) and np.all(np.isfinite(res.x))):
         # No answer to judge (``require_finite_fit`` refuses it)
         return SearchVerdict(res, "unverified", None, [])
@@ -1375,6 +1378,7 @@ def judge_search(
     off = running_off(res, derivatives)
     if off is not None:
         return off
+    finish = verified is None
     if verified is None:
         if derivatives is None:
             stopped = getattr(res, "stopped_short", False)
@@ -1394,8 +1398,100 @@ def judge_search(
                 off = running_off(res, derivatives)
                 if off is not None:
                     return off
+    if not verified and derivatives is not None:
+        # A baseline shape or scale on its way to a limit of the family,
+        # or a fit stopped short of a maximum where the Hessian cannot be
+        # had: its profile, walked (#710)
+        walked = _walk_baseline(
+            fun,
+            res,
+            derivatives,
+            coefs,
+            n_obs,
+            held,
+            floor,
+            one_sided,
+            baseline,
+            finish,
+        )
+        if walked is not None:
+            return walked
     state = "verified" if verified else "unverified"
     return SearchVerdict(res, state, derivatives, [])
+
+
+def _walk_baseline(
+    fun: Callable,
+    res: Any,
+    at_res: "tuple[npt.NDArray, npt.NDArray]",
+    coefs: "list[tuple[int, int]]",
+    n_obs: float,
+    held: "tuple[int, ...]",
+    floor: "float | npt.ArrayLike",
+    one_sided: "tuple[int, ...]",
+    baseline: "list[tuple[int, str]] | tuple",
+    finish: bool = True,
+) -> "SearchVerdict | None":
+    """The verdict of :func:`judge_search` on an answer ``res`` it has
+    not verified (the derivatives there ``at_res``), from the profile of
+    each of the baseline's parameters with one bound (``walk_profile``,
+    #710): "no finite maximum" where the likelihood rises along one to a
+    limit of the family, naming it and the parameters that run off with
+    it; "verified" where the profile has a maximum and the search,
+    finished from there (as :func:`_polish` does), reaches a verified
+    maximum -- unless ``finish`` is false, for a caller whose model is
+    built from ``res`` already (the accelerated life fit). ``None`` where
+    the profiles say neither (the answer stays unverified)."""
+    for pos, _ in baseline:
+        if pos not in one_sided:
+            continue
+        with np.errstate(all="ignore"), warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "Output seems independent")
+            found = walk_profile(fun, res.x, pos, one_sided, floor)
+        if found is None:
+            continue
+        if found.kind == "run-off":
+            return SearchVerdict(
+                res,
+                "no finite maximum",
+                at_res,
+                [number for at, number in coefs if at in found.running],
+                tuple(name for at, name in baseline if at in found.running),
+            )
+        if not finish:
+            continue
+        # The profile's maximum, or the answer itself where that is no
+        # better (a maximum whose Hessian autograd cannot give)
+        best = found.res if found.res.fun < res.fun else res
+        start = OptimizeResult(
+            x=np.array(best.x, dtype=float),
+            fun=float(best.fun),
+            success=True,
+            nit=0,
+        )
+        polished, derivatives, verified = _polish(
+            fun,
+            start,
+            search_derivatives(fun, start.x),
+            n_obs,
+            held,
+            floor,
+            one_sided,
+        )
+        if not verified:
+            # Its Hessian by differences where autograd's overflows (the
+            # model's covariance is then computed as before)
+            verified = is_verified(
+                polished.x,
+                filled_derivatives(fun, polished.x, floor),
+                n_obs,
+                held,
+                floor,
+                one_sided,
+            )
+        if verified:
+            return SearchVerdict(polished, "verified", derivatives, [])
+    return None
 
 
 def _polish(

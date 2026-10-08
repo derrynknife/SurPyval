@@ -418,6 +418,14 @@ Unreleased
   (#710): it was ``-log sf``, infinite once ``sf`` underflowed. Its Wald
   ``Hf`` bound is formed from it, finite there too (it was NaN or
   ``[inf, inf]``). A missing ``x`` in ``cb`` is NaN without a warning.
+- Regression fits whose baseline shape or scale runs far (#710): the
+  derivatives of ``log_ndtr`` are accurate far into the lower tail (a
+  LogNormalPH with sigma at 2e-7 had a gradient and Hessian of rounding),
+  and an unverified fit has the profile of each such parameter walked:
+  "No finite maximum", naming it, where it rises to the limit, else the
+  search is finished at its maximum. #583's LogNormalPH fits: 130
+  verified, 18 no maximum, 2 unverified (were 120, 7, 23); WeibullPO: 0
+  unverified (was 3).
 
 v0.23 (4 October 2026)
 ----------------------
