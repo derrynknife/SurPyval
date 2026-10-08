@@ -771,6 +771,9 @@ def prepare_regression_fit(
     if getattr(Z_in, "ndim", 2) == 1:
         Z = np.asarray(Z_in).reshape(-1, 1)
     data, Z = drop_nonfinite_covariates(data, Z)
+    order = canonical_order(data, Z)
+    if np.any(order != np.arange(order.size)):
+        data, Z = data[order], Z[order]
     data.add_covariates(Z)
     # After the rows with a missing covariate are dropped (principle 3)
     check_baseline_support(fitter, data)
@@ -849,6 +852,31 @@ def prepare_regression_fit(
         fixed,
         centring,
     )
+
+
+def canonical_order(data: SurpyvalData, Z: npt.ArrayLike) -> npt.NDArray:
+    """The rows of ``data`` (with covariates ``Z``) sorted by every column:
+    time, censoring, count, truncation and covariates, in that order.
+
+    A fit runs on its rows in this order, so that it is the same, to the
+    last digit, whatever order they are given in (#728). In the order
+    given, the sums of the likelihood rounded differently, the search
+    stopped elsewhere, and on data with no finite maximum the verdict
+    could follow: a level with only censored rows gave "No finite
+    maximum" in one order and "unverified" in another, and a refusal of a
+    baseline at Z = 0 in a third. Rows equal in every column contribute
+    the same terms, so their order among themselves does not matter."""
+    rows = len(data)
+    x = np.asarray(data.x, dtype=float).reshape(rows, -1)
+    t = np.asarray(data.t, dtype=float).reshape(rows, -1)
+    keys = [
+        *np.asarray(Z, dtype=float).reshape(rows, -1).T[::-1],
+        *t.T[::-1],
+        np.asarray(data.n, dtype=float),
+        np.asarray(data.c, dtype=float),
+        *x.T[::-1],
+    ]
+    return np.lexsort(keys)
 
 
 def drop_nonfinite_covariates(

@@ -22,6 +22,7 @@ import autograd.numpy as np
 import numpy.typing as npt
 from autograd import grad, hessian, value_and_grad
 from autograd.differential_operators import make_hvp
+from scipy.optimize import minimize
 
 #: The largest linear predictor exp can take, log(largest float).
 LOG_MAX = float(np.log(np.finfo(float).max))
@@ -491,9 +492,73 @@ def flat_profiles(
             pinv = np.linalg.pinv(H[np.ix_(others, others)])
             v[others] = -pinv @ H[others, j]
         curvature = float(v @ H @ v)
-        if abs(curvature) <= tol and not _flat_at_start(neg_ll, start, v):
+        flat = abs(curvature) <= tol
+        if not flat and abs(curvature) <= NEAR_FLAT * tol:
+            flat = _flat_outwards(neg_ll, at, j, v)
+        if flat and not _flat_at_start(neg_ll, start, v):
             out.append(k)
     return out
+
+
+#: A profile curvature within this many times the rounding of the Hessian
+#: has the likelihood itself read along the parameter (``flat_profiles``).
+NEAR_FLAT = 1e3
+
+
+def _flat_outwards(
+    neg_ll: Callable, x: npt.NDArray, j: int, v: npt.NDArray
+) -> bool:
+    """Whether the profile of ``neg_ll`` in parameter ``j`` runs off from
+    ``x`` on its own: one unit further from 0, in the units of
+    :func:`runaways_in_units` (its size doubled), it is no higher than at
+    ``x`` to rounding (64 ulps), the rows the parameter moves no longer
+    counting, and one unit nearer 0 it is higher. Each point is the
+    profile's, the others brought to their best values from the line
+    ``v`` (``v[j] = 1``) by BFGS.
+
+    Its profile curvature, formed through the inverse of the others'
+    Hessian, can be rounding a little above the Hessian's own (#728: all
+    the events in one corner, a GumbelPH's coefficient at -76 had a
+    profile curvature of 1e-11 beside a tolerance of 8e-12, and was called
+    flat or not by the row order). A maximum's profile is higher both
+    ways, by half its curvature; one flat both ways is that of a
+    parameter another running off makes up for, not one running off."""
+    others = [i for i in range(x.size) if i != j]
+    outwards = 1.0 if x[j] >= 0.0 else -1.0
+
+    def profile(t: float) -> float:
+        start = x + t * v
+        held = start[j]
+
+        def holding(y: Any) -> Any:
+            full = [
+                y[others.index(i)] if i != j else held for i in range(x.size)
+            ]
+            return neg_ll(np.array(full))
+
+        if not others:
+            return float(holding(np.zeros(0)))
+        res = minimize(
+            holding,
+            start[others],
+            jac=grad(holding),
+            method="BFGS",
+            options={"gtol": 1e-12, "maxiter": 50},
+        )
+        return float(min(res.fun, holding(start[others])))
+
+    with np.errstate(all="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        try:
+            f0 = float(neg_ll(x))
+            ahead = profile(outwards)
+            behind = profile(-outwards)
+        except (TypeError, ValueError, ArithmeticError):
+            return False
+    if not np.all(np.isfinite([f0, ahead, behind])):
+        return False
+    rounding = 64.0 * float(np.finfo(float).eps) * max(1.0, abs(f0))
+    return ahead <= f0 + rounding and behind > f0 + rounding
 
 
 def _cleared(

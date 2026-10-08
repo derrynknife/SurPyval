@@ -218,9 +218,12 @@ def test_617_resamples_keep_the_design_and_the_censoring(ph, monkeypatch):
     model = quietly(WeibullPH.fit, x1, Z, c=c1, n=np.full(len(x), 2))
     calls = _recording(monkeypatch, model)
     model.cb(5.0, [1, 0.0], method="bootstrap", n_boot=20, random_state=0)
+    # (the model keeps its rows in the order the fit ran them, #728)
+    rows = np.asarray(model.data.Z)
+    np.testing.assert_array_equal(rows[np.lexsort(rows.T)], Z[np.lexsort(Z.T)])
     for xs, Zs, kwargs in calls:
         # each row of n = 2 is two units, at the row's covariates
-        np.testing.assert_array_equal(Zs, np.repeat(Z, 2, axis=0))
+        np.testing.assert_array_equal(Zs, np.repeat(rows, 2, axis=0))
         cs = kwargs["c"]
         assert np.all(xs[cs == 1] == 12.0) and np.all(xs[cs == 0] <= 12.0)
         np.testing.assert_allclose(kwargs["init"], model.params)
@@ -265,9 +268,12 @@ def test_617_truncated_resamples_stay_in_their_windows(monkeypatch):
     model = quietly(WeibullAFT.fit, x, Z, t=tt)
     calls = _recording(monkeypatch, model)
     model.cb(5.0, [0.5], method="bootstrap", n_boot=10, random_state=0)
+    # (the model keeps its rows in the order the fit ran them, #728)
+    windows = np.asarray(model.data.t)
+    np.testing.assert_array_equal(np.sort(windows[:, 0]), np.sort(tl))
     for xs, _, kwargs in calls:
-        np.testing.assert_array_equal(kwargs["t"], tt)
-        assert np.all(xs > tl)
+        np.testing.assert_array_equal(kwargs["t"], windows)
+        assert np.all(xs > windows[:, 0])
 
 
 def test_617_refuses_what_it_cannot_resample(ph):

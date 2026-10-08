@@ -516,6 +516,13 @@ Unreleased
   uncentred was refused with the hint to move the covariates nearer 0.
   Where some parameter runs off, one with a bound whose profile rises
   with a curvature 0 to rounding is named with it.
+- A parametric regression fit (PH, AFT, PO, additive hazards) does not
+  depend on the order of its rows (#728): it runs on them sorted by
+  time, censoring, count, truncation and covariates, and ``model.data``
+  keeps them so. On data with no finite maximum the verdict followed the
+  order ("No finite maximum", "unverified" or a refusal at Z = 0 for a
+  level with only censored rows); fits now agree to the last digit. A
+  profile curvature just above rounding has the profile itself read.
 
 v0.23 (4 October 2026)
 ----------------------
