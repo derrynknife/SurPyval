@@ -74,85 +74,56 @@ def test_renewal_rejects_unsupported_censoring(model):
         model.fit(x, i, c=c_left)
 
 
-@pytest.mark.parametrize(
-    "model, module_path",
-    [
-        (
-            GeneralizedOneRenewal,
-            "surpyval.recurrent.renewal.generalized_one_renewal",
-        ),
-        (
-            GeneralizedRenewal,
-            # The optimiser call for GeneralizedRenewal (like ARA and
-            # ARI) lives in the shared RenewalFitMixin driver.
-            "surpyval.recurrent.renewal.fit_mixin",
-        ),
-    ],
-)
-def test_renewal_raises_when_no_start_converges(
-    model, module_path, monkeypatch
-):
-    # Both renewal models share one contract: if no multi-start initial value
-    # converges, raise rather than silently return an unconverged fit. Force
-    # every optimizer call to report failure to exercise that path.
-    import importlib
+def _make_every_search_fail(monkeypatch):
+    # Every optimiser call the renewal fits make reports failure: the
+    # searches' BFGS and Nelder-Mead (``_search``) and G1's box-bounded
+    # Nelder-Mead for a life without hand-written derivatives.
     from types import SimpleNamespace
 
-    module = importlib.import_module(module_path)
+    from surpyval.recurrent.renewal import _search, generalized_one_renewal
 
     def failing_minimize(*args, **kwargs):
         return SimpleNamespace(
             success=False, fun=np.inf, x=np.array([1.0, 1.0, 1.0])
         )
 
-    monkeypatch.setattr(module, "minimize", failing_minimize)
+    monkeypatch.setattr(_search, "minimize", failing_minimize)
+    monkeypatch.setattr(_search, "preconditioned_bfgs", failing_minimize)
+    monkeypatch.setattr(generalized_one_renewal, "minimize", failing_minimize)
+
+
+# Weibull: the gradient search; Gamma: Nelder-Mead (#728)
+@pytest.mark.parametrize("dist", [Weibull, Gamma])
+@pytest.mark.parametrize("model", [GeneralizedOneRenewal, GeneralizedRenewal])
+def test_renewal_raises_when_no_start_converges(model, dist, monkeypatch):
+    # Both renewal models share one contract: if no multi-start initial value
+    # converges, raise rather than silently return an unconverged fit. Force
+    # every optimizer call to report failure to exercise that path.
+    _make_every_search_fail(monkeypatch)
 
     x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2])
     i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3])
     c = np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1])
 
     with pytest.raises(ValueError, match="Could not find a good solution"):
-        model.fit(x, i, c=c)
+        model.fit(x, i, c=c, dist=dist)
 
 
-@pytest.mark.parametrize(
-    "model, module_path",
-    [
-        (
-            GeneralizedOneRenewal,
-            "surpyval.recurrent.renewal.generalized_one_renewal",
-        ),
-        (
-            GeneralizedRenewal,
-            # The optimiser call for GeneralizedRenewal (like ARA and
-            # ARI) lives in the shared RenewalFitMixin driver.
-            "surpyval.recurrent.renewal.fit_mixin",
-        ),
-    ],
-)
+@pytest.mark.parametrize("dist", [Weibull, Gamma])
+@pytest.mark.parametrize("model", [GeneralizedOneRenewal, GeneralizedRenewal])
 def test_renewal_raises_when_user_init_does_not_converge(
-    model, module_path, monkeypatch
+    model, dist, monkeypatch
 ):
     # A user-supplied `init` that fails to converge must raise too, rather
     # than silently returning the unconverged result.
-    import importlib
-    from types import SimpleNamespace
-
-    module = importlib.import_module(module_path)
-
-    def failing_minimize(*args, **kwargs):
-        return SimpleNamespace(
-            success=False, fun=np.inf, x=np.array([1.0, 1.0, 1.0])
-        )
-
-    monkeypatch.setattr(module, "minimize", failing_minimize)
+    _make_every_search_fail(monkeypatch)
 
     x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2])
     i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3])
     c = np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1])
 
     with pytest.raises(ValueError, match="did not.*converge"):
-        model.fit(x, i, c=c, init=[1.0, 1.0, 1.0])
+        model.fit(x, i, c=c, dist=dist, init=[1.0, 1.0, 1.0])
 
 
 def test_count_terminated_simulation_via_mixin():

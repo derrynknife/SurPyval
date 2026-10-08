@@ -97,25 +97,25 @@ def _ratio_near(z: Any) -> Any:
     return onp.exp(_std_logpdf(z) - special.log_ndtr(z))
 
 
-def _ratio_raw(z: Any) -> Any:
+def ratio_raw(z: Any) -> Any:
     """``r = phi(z) / Phi(z)``, ``log_ndtr``'s derivative."""
     return _by_tail(z, _ratio_near, lambda t: t + _tail(t)[0])
 
 
-def _gap_raw(z: Any) -> Any:
+def gap_raw(z: Any) -> Any:
     """``z + r``: ``-r'/r``, about ``-1 / z`` far below 0."""
     return _by_tail(z, lambda z: z + _ratio_near(z), lambda t: _tail(t)[0])
 
 
 def _gap_slope_raw(z: Any) -> Any:
-    """``1 - r (z + r)``, the derivative of :func:`_gap_raw`: ``gap (c -
+    """``1 - r (z + r)``, the derivative of :func:`gap_raw`: ``gap (c -
     gap)`` in the tail, where it is about ``1 / z^2``."""
 
     def far(t: Any) -> Any:
         gap, c = _tail(t)
         return gap * (c - gap)
 
-    return _by_tail(z, lambda z: 1.0 - _ratio_near(z) * _gap_raw(z), far)
+    return _by_tail(z, lambda z: 1.0 - _ratio_near(z) * gap_raw(z), far)
 
 
 ndtr = primitive(special.ndtr)
@@ -126,8 +126,8 @@ log_ndtr = primitive(special.log_ndtr)
 # second, -1 to 1e-12, came out as +-7e6, and a LogNormal regression with
 # sigma at 2e-7 had a gradient of 0.04 and a Hessian of 3e10 that were
 # rounding (#710).
-_ratio = primitive(_ratio_raw)
-_gap = primitive(_gap_raw)
+_ratio = primitive(ratio_raw)
+_gap = primitive(gap_raw)
 _gap_slope = primitive(_gap_slope_raw)
 defvjp(ndtr, lambda ans, z: lambda g: g * _std_pdf(z))
 defvjp(log_ndtr, lambda ans, z: lambda g: g * _ratio(z))

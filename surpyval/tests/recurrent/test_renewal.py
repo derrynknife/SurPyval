@@ -430,3 +430,133 @@ def test_710_polish_takes_the_exact_gradient():
         neg_ll, off, bounds, model._n_obs
     )
     assert neg_ll(polished) < neg_ll(off)
+
+
+def _728_neg_ll(fitter, life, kw, data):
+    if fitter is ARI:
+        return fitter.create_negll_func(data, life, **kw)
+    if fitter is GeneralizedOneRenewal:
+        return fitter.create_negll_func(
+            data.interarrival_times, data.i, data.c, data.n, life
+        )
+    return fitter.create_negll_func(data, life, **kw)
+
+
+@pytest.mark.parametrize("one_item", [False, True])
+@pytest.mark.parametrize(
+    "fitter, life, kw, params",
+    [
+        (GeneralizedRenewal, "Weibull", {"kijima": "i"}, [0.4, 10.0, 0.7]),
+        (GeneralizedRenewal, "Weibull", {"kijima": "ii"}, [1.7, 10.0, 2.0]),
+        # Virtual ages that dwarf the gaps (Simpson's rule)
+        (GeneralizedRenewal, "Weibull", {"kijima": "ii"}, [40.0, 10.0, 0.6]),
+        (GeneralizedRenewal, "LogNormal", {"kijima": "i"}, [0.7, 2.0, 0.5]),
+        (GeneralizedRenewal, "LogNormal", {"kijima": "ii"}, [30.0, 2.0, 0.5]),
+        (ARA, "Weibull", {"m": 1}, [0.4, 10.0, 0.7]),
+        (ARA, "Weibull", {"m": 3}, [0.4, 10.0, 2.0]),
+        (ARA, "Weibull", {"m": np.inf}, [1 - 1e-9, 10.0, 2.0]),
+        (ARA, "LogNormal", {"m": 2}, [0.4, 2.0, 0.6]),
+        (ARI, "CrowAMSAA", {"m": 1}, [0.3, 10.0, 1.5]),
+        (ARI, "CrowAMSAA", {"m": np.inf}, [0.3, 10.0, 1.5]),
+        (ARI, "Duane", {"m": 2}, [0.3, 1.5, 0.05]),
+        (GeneralizedOneRenewal, "Weibull", {}, [-0.3, 10.0, 0.8]),
+        (GeneralizedOneRenewal, "LogNormal", {}, [0.3, 2.0, 0.8]),
+    ],
+)
+def test_728_hand_written_gradient_is_autograds(
+    fitter, life, kw, params, one_item
+):
+    # The renewal fits search on a gradient written by hand in plain numpy
+    # (#728): autograd's cost 8 to 30 likelihoods on these models' small
+    # data. It is autograd's gradient, and the value the likelihood's.
+    from autograd import grad
+
+    import surpyval
+    from surpyval import recurrent
+
+    life = getattr(surpyval, life, None) or getattr(recurrent, life)
+    if one_item:
+        rng = np.random.default_rng(5)
+        data = handle_xicn(np.cumsum(rng.weibull(2.0, 30) * 3))
+    else:
+        data = _fleet_data()
+    neg_ll = _728_neg_ll(fitter, life, kw, data)
+    p = np.array(params)
+    value, gradient = neg_ll.value_and_grad(p)
+    assert value == pytest.approx(neg_ll(p), rel=1e-13)
+    expected = grad(neg_ll)(p)
+    np.testing.assert_allclose(
+        gradient, expected, rtol=1e-10, atol=1e-13 * np.abs(expected).max()
+    )
+
+
+def test_728_search_map_is_the_fits_map():
+    # The gradient search's own map to the natural parameters, with its
+    # slopes, is bounds_convert's (the one the starts and the answer are
+    # mapped with).
+    from surpyval.recurrent.renewal._search import SearchMap
+    from surpyval.univariate.parametric.fitters import bounds_convert
+
+    bounds = [(0, None), (0, 1), (None, None), (-1, None), (None, 3), (2, 5)]
+    _, inv_trans, *_ = bounds_convert(
+        None, bounds, {}, {str(k): k for k in range(len(bounds))}
+    )
+    to_natural = SearchMap(bounds)
+    for u in np.random.default_rng(1).normal(0, 3, (20, len(bounds))):
+        natural, slopes = to_natural(u)
+        np.testing.assert_allclose(natural, inv_trans(u), rtol=1e-15)
+        step = 1e-6
+        numeric = (to_natural(u + step)[0] - to_natural(u - step)[0]) / (
+            2 * step
+        )
+        np.testing.assert_allclose(slopes, numeric, rtol=1e-7)
+
+
+def test_728_gradient_search_where_written_and_bounds_reached():
+    # BFGS on the hand-written gradient for a Weibull life; Nelder-Mead,
+    # as before, where there is none (a Gamma life). The search still
+    # carries a restoration parameter onto its bound: perfect repair.
+    from surpyval import Gamma, Weibull
+    from surpyval.recurrent.renewal._search import (
+        GradientSearch,
+        SimplexSearch,
+        renewal_search,
+    )
+
+    data = _fleet_data()
+    bounds = [(0, None), *Weibull.bounds]
+    weibull = GeneralizedRenewal.create_negll_func(data, Weibull)
+    gamma = GeneralizedRenewal.create_negll_func(data, Gamma)
+    assert isinstance(
+        renewal_search(weibull, bounds, 1.0, None), GradientSearch
+    )
+    assert isinstance(renewal_search(gamma, bounds, 1.0, None), SimplexSearch)
+
+    x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2])
+    i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3])
+    c = np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        kijima = GeneralizedRenewal.fit(x, i, c)
+        ara = ARA.fit(x, i, c, m=2)
+    assert kijima.maximum == ara.maximum == "verified"
+    assert kijima.q < 1e-12 and ara.rho > 1 - 1e-12
+    # The perfect-repair maximum: a Weibull renewal process
+    assert kijima.log_likelihood == pytest.approx(-12.5054426749, abs=1e-8)
+    assert ara.log_likelihood == pytest.approx(-12.5054426749, abs=1e-8)
+
+
+def test_728_kijima_finds_the_run_off():
+    # On these data the Kijima-I likelihood rises without bound as q -> inf
+    # (-29.37 at q = 2.8, -29.04 at 1e6, -28.93 at 1e300). The Nelder-Mead
+    # search stopped at the local maximum q = 2.8 and called it verified;
+    # the gradient search follows the run-off, and says the fit is not a
+    # verified maximum.
+    x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2, 20, 20, 20])
+    i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 1, 2, 3])
+    c = np.r_[np.zeros(12), 1, 1, 1]
+    with pytest.warns(UserWarning, match="verified maximum"):
+        model = GeneralizedRenewal.fit(x, i, c)
+    assert model.maximum == "unverified"
+    assert model.q > 1e6
+    assert model.log_likelihood > -29.1
