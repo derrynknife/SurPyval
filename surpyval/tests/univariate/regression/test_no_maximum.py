@@ -940,6 +940,48 @@ def test_728_a_far_baseline_run_off_is_not_verified():
     )
 
 
+def test_728_weibull_ph_shape_and_coefficient_run_off_together():
+    # Two exact times, each a point mass in the limit: the Weibull shape
+    # runs to infinity, and the coefficient with it (about beta log 2 / 1.5
+    # keeps the row at Z = 1.5 at its time). The fit ended "unverified"
+    # (shape 1365, coefficient 631), and uncentred was refused with the
+    # hint to move the covariates nearer 0.
+    x, Z = np.array([0.5, 1.0, 0.5, 1.0]), np.array([1.5, 0.0, 0.0, 0.0])
+    c = np.array([0, 0, 1, 0])
+    for center in (True, False):
+        try:
+            model, w = _fit(lambda: sp.WeibullPH.fit(x, Z, c=c, center=center))
+        except ValueError as e:
+            # Where the baseline at Z = 0 is out of range even so
+            assert not center
+            assert "may have no finite maximum" in str(e)
+            assert "nearer 0" not in str(e)
+            continue
+        assert model.maximum == "no finite maximum"
+        assert len(w) == 1, [str(m.message) for m in w]
+        message = str(w[0].message)
+        assert message.startswith(NO_MAXIMUM)
+        assert "coefficient(s) [0]" in message
+        assert "the Weibull baseline's" in message and "beta (" in message
+
+
+def test_728_a_profile_rising_in_a_straight_line_runs_off_with_the_rest():
+    # beta's profile is -3 log beta (three exact times, each a point mass in
+    # the limit), with the coefficient b = beta / 2 at its best: Newton's
+    # test finds b running off, and beta's profile, its curvature 0 but a
+    # little above it to rounding (here 1e-6 (log beta)^2), passed
+    # Kantorovich's test, and beta was not named with it. Its Newton step
+    # is 1.5e6 e-folds, past where beta can be represented.
+    def f(p):
+        w = anp.log1p(p[0])
+        beta = 1.0 + p[0]
+        return -3.0 * w + 1e-6 * w**2 + 1e4 * ((p[1] - 0.5 * beta) / beta) ** 2
+
+    at, start = np.array([485.0, 243.0]), np.array([1.0, 0.0])
+    found = runaway.runaways_in_units(f, at, [1, 0], start, None, 1.0, (0,))
+    assert found == [0, 1]
+
+
 # ---------------------------------------------------------------------------
 # Cox warns on a monotone likelihood.
 # ---------------------------------------------------------------------------
