@@ -304,6 +304,7 @@ Here is that failure on purpose, with data simulated from a Frank copula with
     assert round(Frank.kendall_tau(-5.0), 2) == -0.46
 
 .. jupyter-execute::
+    :stderr:
 
     from scipy.stats import kendalltau
 
@@ -315,15 +316,24 @@ Here is that failure on purpose, with data simulated from a Frank copula with
             fam.name, np.round(m.params, 3), m.log_likelihood))
 
 Clayton and Gumbel collapse onto independence, with exactly its
-log-likelihood; Frank recovers :math:`\theta` and fits far better, with the
+log-likelihood, and each fit warns that it ended on the family's
+independence bound, naming the families that can take the data's
+dependence; Frank recovers :math:`\theta` and fits far better, with the
 Gaussian copula second.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    _neg = {fam.name: fam.fit(neg, margins=[surv.Weibull, surv.LogNormal])
-            for fam in [Independence, Clayton, Gumbel, Frank, Gaussian]}
+    import warnings
+    with warnings.catch_warnings(record=True) as _w:
+        warnings.simplefilter("always")
+        _neg = {fam.name: fam.fit(neg, margins=[surv.Weibull, surv.LogNormal])
+                for fam in [Independence, Clayton, Gumbel, Frank, Gaussian]}
+    _bound = [str(w.message) for w in _w if "independence copula" in str(w.message)]
+    assert len(_bound) == 2, [str(w.message)[:60] for w in _w]
+    assert _bound[0].startswith("The Clayton copula fit ended")
+    assert _bound[1].startswith("The Gumbel copula fit ended")
     _ll = {k: m.log_likelihood for k, m in _neg.items()}
     assert np.isclose(_ll["Clayton"], _ll["Independence"])
     assert np.isclose(_ll["Gumbel"], _ll["Independence"])

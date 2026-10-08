@@ -68,9 +68,17 @@ def test_trucks_print_their_interval_and_the_repair_conclusion():
     model = rc.GeneralizedRenewal.fit(x, i, c)
     table = model.summary()
     assert table.loc["q", "estimate"] == pytest.approx(2.626, abs=1e-3)
-    assert table.loc["q", "se"] == pytest.approx(4.463, rel=1e-2)
+    # The interval of a weakly identified q (se 1.7 times the estimate) is
+    # exp(+-1.96 se / q) about it: a 1% error in se is 2% at its ends. The
+    # values printed when this was written (se 4.463, [0.0939, 73.44])
+    # came from a Hessian step too small for a log-likelihood of 2322,
+    # whose rounding moved them by that much between machines (CI's AVX2
+    # numpy got [0.0921, 74.89]); with the fourth-root step the Hessian
+    # has converged (numdifftools agrees to 1e-5) and two machines agree
+    # to 1e-4. These are not reference values: the data are simulated.
+    assert table.loc["q", "se"] == pytest.approx(4.482, rel=1e-3)
     np.testing.assert_allclose(
-        table.loc["q", ["lower 95%", "upper 95%"]], [0.0939, 73.44], rtol=1e-2
+        table.loc["q", ["lower 95%", "upper 95%"]], [0.0926, 74.48], rtol=1e-3
     )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

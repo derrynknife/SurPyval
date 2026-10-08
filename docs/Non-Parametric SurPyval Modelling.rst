@@ -190,7 +190,7 @@ The survival function ``sf``, failure function ``ff`` and cumulative hazard ``Hf
 
 ``interp='linear'`` (or ``'cubic'``, a shape-preserving interpolant) joins the estimates at the observed values instead; it is ``nan`` outside the observed range because there is nothing to interpolate between. Interpolation can make a plot easier to read but is not part of the estimate: the data say nothing about the shape of the curve between observations.
 
-Outside the data, then, what the estimate gives is a convention, and the step function's (1 before the first value, the last value held however far beyond it) is not always right. When you know the range the variable can take -- nothing can have failed before ``lower``, and the curve is to be held flat up to ``upper`` -- give the model that range with ``set_support(lower, upper)``. For every function and every ``interp``, the estimate is then at its start (``sf`` 1; ``ff``, ``Hf``, ``hf`` and ``df`` 0) from ``lower`` to the first observed value, holds its value at the last observed value up to ``upper``, and is ``nan`` outside ``[lower, upper]``; the confidence bounds from ``cb`` and ``bootstrap_cb`` follow the same rule (without a support they are ``nan`` outside the data). The bounds must contain the data. ``lower`` may be negative (the variable need not be time) and either bound may be infinite. ``set_support`` returns the model, so it can follow ``fit``, and ``to_dict`` saves the bounds with the model. Without it (``model.support`` is ``None``) nothing changes.
+Outside the data, then, what the estimate gives is a convention, and the step function's (1 before the first value, the last value held however far beyond it) is not always right. When you know the range the variable can take -- nothing can have failed before ``lower``, and the curve is to be held flat up to ``upper`` -- give the model that range with ``set_support(lower, upper)``. For every function and every ``interp``, the estimate is then at its start (``sf`` 1; ``ff``, ``Hf``, ``hf`` and ``df`` 0) from ``lower`` to the first observed value, holds its value at the last observed value up to ``upper``, and is ``nan`` outside ``[lower, upper]``; the confidence bounds from ``cb`` and ``bootstrap_cb`` follow the same rule (without a support they are the step estimate's start before the first value and ``nan`` past the last, see `Confidence bounds`_). The bounds must contain the data. ``lower`` may be negative (the variable need not be time) and either bound may be infinite. ``set_support`` returns the model, so it can follow ``fit``, and ``to_dict`` saves the bounds with the model. Without it (``model.support`` is ``None``) nothing changes.
 
 .. jupyter-execute::
 
@@ -280,10 +280,17 @@ The options are:
     print('90% lower sf: ', model.cb(3, bound='lower', alpha_ci=0.1).round(4))
     print("'normal' type:", model.cb(6, bound_type='normal').round(4))
     print('at last value:', model.cb(8).round(4))
-    print('outside data: ', model.cb([0.5, 9]))
+    print('before first: ', model.cb(0.5))
 
 The bounds on ``ff`` are one minus those on ``sf`` (swapped so the lower is still first), and those
-on ``Hf`` are :math:`-\ln` of them. The ``'normal'`` interval at 6 runs below zero, which is impossible for a probability and the reason ``'exp'`` is the default. At 8, the last value, the survival estimate is 0 and Greenwood's variance is undefined, so the lower bound is set to 0 and the upper bound to the last finite one (the upper bound at 5). Outside the range of the data the bounds are ``nan`` (unless the model has bounds from ``set_support``, above). The formulas are in the section *From a variance to confidence bounds* of :doc:`Non-Parametric Estimation`. (``cb()`` also takes ``dist``, but only its default ``'z'`` is accepted; for small samples use ``bootstrap_cb()``, below.)
+on ``Hf`` are :math:`-\ln` of them. The ``'normal'`` interval at 6 runs below zero, which is impossible for a probability and the reason ``'exp'`` is the default. At 8, the last value, the survival estimate is 0 and Greenwood's variance is undefined, so the lower bound is set to 0 and the upper bound to the last finite one (the upper bound at 5). Before the first value the step estimate is exactly its start, and so are both bounds: ``[1, 1]`` on ``sf``, ``[0, 0]`` on ``ff`` and ``Hf`` (the interpolated forms, ``interp='linear'`` or ``'cubic'``, are ``nan`` there, as their ``sf`` is). Past the last value the bounds are ``nan``, with a warning naming the values: the step ``sf`` only holds its last value there, and the data say nothing about it (unless the model has bounds from ``set_support``, above):
+
+.. jupyter-execute::
+    :stderr:
+
+    print('past last:    ', model.cb(9))
+
+The formulas are in the section *From a variance to confidence bounds* of :doc:`Non-Parametric Estimation`. (``cb()`` also takes ``dist``, but only its default ``'z'`` is accepted; for small samples use ``bootstrap_cb()``, below.)
 
 .. jupyter-execute::
     :hide-code:
@@ -294,7 +301,14 @@ on ``Hf`` are :math:`-\ln` of them. The ``'normal'`` interval at 6 runs below ze
     assert np.allclose(model.cb(3, on='Hf'), -np.log(_sf[::-1]))
     assert model.cb(6, bound_type='normal')[0] < 0
     assert np.allclose(model.cb(8), [0, model.cb(5)[1]])
-    assert np.all(np.isnan(model.cb([0.5, 9])))
+    assert np.all(model.cb(0.5) == 1) and np.all(model.cb(0.5, on='ff') == 0)
+    assert np.all(model.cb(0.5, on='Hf') == 0)
+    assert np.all(np.isnan(model.cb(0.5, interp='linear')))
+    import warnings
+    with warnings.catch_warnings(record=True) as _w:
+        warnings.simplefilter('always')
+        assert np.all(np.isnan(model.cb(9)))
+    assert len(_w) == 1 and 'past the last observed value 8' in str(_w[0].message)
 
 ``plot()`` draws the survival curve with the two-sided bounds as a shaded band, and marks right censored values with ticks. It accepts ``plot_bounds``, ``show_censors``, ``interp``, ``alpha_ci``, ``bound_type`` and ``bound`` (a one-sided ``'lower'`` or ``'upper'`` bound is drawn as a dashed line), passes anything else (``color``, ``label``, ...) to matplotlib, and can draw on a given ``ax``. The axes are titled with the estimator ("Kaplan-Meier estimate"), the y axis is "Survival probability" and the x axis "Time" unless it already has a label:
 
@@ -308,8 +322,9 @@ on ``Hf`` are :math:`-\ln` of them. The ``'normal'`` interval at 6 runs below ze
 Starting the curve at zero
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-A fitted curve starts at the first observed value, so ``cb()`` is ``nan`` and ``plot()`` draws
-nothing before it. If you know every item was new at some time (usually 0), pass
+A fitted curve starts at the first observed value: ``plot()`` draws nothing before it, and the
+interpolated ``sf`` and its bounds are ``nan`` there (the step estimate and its ``cb()`` are 1). If
+you know every item was new at some time (usually 0), pass
 ``set_lower_limit``: it adds that value to the ladder with the full risk set and no failures, so the
 estimate and its bounds are 1 there. It must be below the smallest value in the data (a
 ``ValueError`` otherwise); it changes nothing else, and it is ignored by the ``Turnbull``

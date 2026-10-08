@@ -1065,7 +1065,7 @@ any time. Here three prototypes are each tested to 2000 hours:
     print("80% lower (Wald)  :", growth.mtbf_cb(T, alpha_ci=0.2,
                                               bound="lower").round(1))
 
-With 46 failures the two lower bounds are close (about 257 and 260 hours
+With 46 failures the two lower bounds are close (about 257 and 259.5 hours
 against an estimate of 309). With few failures they part: Crow's bound is
 exact for a failure-terminated test and errs on the safe side (covers at least
 its level) for a time-terminated one, while the Wald bound is only
@@ -1079,7 +1079,7 @@ approximate. The MTBF is that of one prototype.
     assert round(float(growth.mtbf(T))) == 309
     _crow = growth.mtbf_cb(T, alpha_ci=0.2, bound="lower", method="crow")
     _wald = growth.mtbf_cb(T, alpha_ci=0.2, bound="lower")
-    assert round(float(_crow)) == 257 and round(float(_wald)) == 260
+    assert round(float(_crow)) == 257 and abs(float(_wald) - 259.5) < 0.1, (_crow, _wald)
 
 Reliability growth: projecting delayed fixes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1267,7 +1267,7 @@ trucks are simulated under minimal repair, so the true ``q`` is 1:
     trucks
 
 The estimate, 2.63, would say every repair makes the truck worse, but its
-interval runs from 0.09 (almost as good as new) to 74. The question the data
+interval runs from 0.09 (almost as good as new) to 74.5. The question the data
 can answer is which kinds of repair they rule out, and the last line of the
 printout answers it: ``repair_test()`` refits the model with ``q`` held at
 perfect repair (``q = 0``, an ordinary Weibull renewal process) and at
@@ -1324,7 +1324,7 @@ intervals of the model held on the edge, as the printout notes.
 
     assert round(trucks.q, 2) == 2.63
     lo_q, hi_q = trucks.summary().loc["q", ["lower 95%", "upper 95%"]]
-    assert round(lo_q, 2) == 0.09 and round(hi_q) == 74
+    assert round(lo_q, 2) == 0.09 and abs(hi_q - 74.5) < 0.1, (lo_q, hi_q)
     assert round(test.minimal.p_value, 2) == 0.53
     assert f"{test.perfect.p_value:.1g}" == "2e-09"
     assert test.conclusion == "consistent with minimal repair; perfect repair rejected"

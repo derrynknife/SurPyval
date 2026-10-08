@@ -293,7 +293,29 @@ class _RunsOff:
 
         if _usable(res):
             self.found = self.check(res.x)
-            return bool(self.found)
+            if self.found:
+                return True
+            # Where BFGS lost precision short of the run-off, before the
+            # profiles show it, the derivative-free rung is run from
+            # there, as for a divergence, and the search ends if it shows
+            # it. Which of the two BFGS does depends on how numpy rounds:
+            # on the #599 offset ExpoWeibull it diverged with AVX-512
+            # kernels and stopped at a finite point (offset -6e4, scaled
+            # gradient 0.5) with AVX2 ones, and Newton-CG then took 19 of
+            # 21 s before the same "no finite maximum". Where it does not
+            # show one, the ladder goes on to Newton-CG as before.
+            with np.errstate(all="ignore"), warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                nm = minimize(
+                    mps_fun, res.x, method="Nelder-Mead", args=self.args
+                )
+            found = self.check(nm.x) if _usable(nm) else ()
+            if found and nm.fun <= res.fun:
+                nm.optimizer = "Nelder-Mead"
+                self.result = nm
+                self.found = found
+                return True
+            return False
         with np.errstate(all="ignore"), warnings.catch_warnings():
             warnings.simplefilter("ignore")
             nm = minimize(
