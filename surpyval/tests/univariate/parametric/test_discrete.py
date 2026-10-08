@@ -592,6 +592,32 @@ def test_fixed_event_probability_is_unchanged_and_separate():
     )
 
 
+def test_fixed_event_probability_random_qf_and_fit_agree():
+    # #626 gave the model a qf of times (0 or inf); the fitted model's
+    # random draws through qf, so it drew times that its fit, which takes
+    # 0/1 indicators, refused ("'x' must be either 0 or 1"): the nightly
+    # refit failed every rep. random draws the indicators fit takes, 1
+    # exactly where qf of the same uniform is 0.
+    from surpyval import FixedEventProbability
+
+    model = FixedEventProbability.from_params(P_BERN)
+    draw = model.random(500, random_state=4)
+    u = np.random.default_rng(4).random(500)
+    np.testing.assert_array_equal(draw, (model.qf(u) == 0).astype(int))
+    np.testing.assert_array_equal(
+        draw, FixedEventProbability.random(500, P_BERN, random_state=4)
+    )
+    refit = FixedEventProbability.fit(draw)
+    assert refit.params[0] == pytest.approx(draw.mean())
+    assert refit.params[0] == pytest.approx(model.mean(), abs=0.07)
+    np.random.seed(2)
+    a = model.random((3, 4))
+    np.random.seed(2)
+    np.testing.assert_array_equal(
+        a, (model.qf(np.random.random_sample((3, 4))) == 0).astype(int)
+    )
+
+
 def test_both_models_round_trip_under_their_own_names():
     import surpyval
     from surpyval import FixedEventProbability

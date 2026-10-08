@@ -14,8 +14,13 @@ now different classes; this one is unchanged.
 ``df`` and ``hf`` are absent by construction: ``F`` is constant, so
 there is no density. ``qf`` is the two-point mixture's: the smallest time
 with ``F(x) >= u``, 0 for ``u <= p`` and infinite above it. There is no
-failure *time* to average either, so ``moment`` and ``mean`` are those of
-the 0/1 event indicator: ``p`` for every order.
+failure *time* to fit or average, so the model's data are the 0/1 event
+indicators (1 for a unit that failed): ``fit`` takes them, ``random``
+draws them, and ``moment`` and ``mean`` are theirs (``p`` for every
+order). The two descriptions are the same draw: ``random`` gives 1
+exactly where ``qf`` of the same uniform is 0 (failed from the start)
+and 0 where it is ``inf`` (never fails), so a sample from a fitted model
+refits.
 """
 
 import autograd.numpy as np
@@ -37,7 +42,7 @@ class FixedEventProbability_(  # type: ignore[misc]
     """``F(x) = p`` at every ``x``: a fraction ``p`` of units fail and the
     rest never do, with nothing said about *when* (see the module
     docstring). It is fitted from 0/1 event indicators, 1 for a unit that
-    failed.
+    failed, and ``random`` draws them, so a sample from a model refits.
 
     Examples
     --------
@@ -49,7 +54,17 @@ class FixedEventProbability_(  # type: ignore[misc]
     array([0.2])
     >>> model.ff([10, 100])
     array([0.2, 0.2])
+    >>> refit = FixedEventProbability.fit(model.random(1000, random_state=1))
+    >>> bool(abs(refit.params[0] - 0.2) < 0.05)
+    True
     """
+
+    #: ``random`` (``SingleProbabilityMixin``'s) draws 0/1 event
+    #: indicators, 1 where ``u <= p``: exactly where ``qf(u)`` is 0. A
+    #: fitted model's ``random`` draws through it rather than ``qf``, whose
+    #: times (0 or ``inf``) ``fit`` does not take (see the module
+    #: docstring).
+    _draws_indicators = True
 
     def __init__(self, name: str) -> None:
         super().__init__(

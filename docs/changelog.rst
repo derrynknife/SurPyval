@@ -138,6 +138,13 @@ Unreleased
   and an example; the Binomial / Bernoulli convention, the forest's
   ``feature_importances()`` and the recurrent ``n`` (1 on exact events)
   read as the code does; float-sensitive examples are rounded.
+- ``FixedEventProbability``'s fitted ``random`` draws the 0/1 event
+  indicators its ``fit`` takes again: since its ``qf`` (#626) it drew
+  through ``qf`` and gave times (0 or ``inf``), which ``fit`` refused, so
+  a sample from a fitted model could not be refitted (the nightly refit
+  calibration). ``random`` is 1 exactly where ``qf`` of the same uniform
+  is 0 and 0 where it is ``inf``; ``qf``, ``sf``, ``ff`` and ``mean`` are
+  unchanged. v0.23's ``random`` gave these indicators too.
 - ``quantile_cb`` gives NaN with one warning for ``p`` outside (0, 1)
   (outside [0, 1] for the non-parametric models, as ``qf``) rather than
   raising (#626). ``MixtureModel.p``, the EM responsibilities, is

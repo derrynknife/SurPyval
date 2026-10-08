@@ -1678,15 +1678,17 @@ class Parametric(
         A method to draw random lifetimes from the distribution using the
         parameters found in the ``.params`` attribute.
 
-        Each draw is ``qf(u)`` for one uniform ``u``, for every model. With
-        no ``random_state`` the uniforms come from numpy's global random
+        Each draw is ``qf(u)`` for one uniform ``u``. With no
+        ``random_state`` the uniforms come from numpy's global random
         generator: so ``np.random.seed`` makes the draws reproducible, and
         ``random(size)`` gives the same values as
         ``qf(np.random.random_sample(size))`` after the same seed. A unit
         of a limited-failure population that never fails (``p < 1``) is
         ``inf``, and one dead on arrival (``f0``) is exactly 0. To simulate
         a data set to fit, with the never-failing units right-censored,
-        use :meth:`random_data`.
+        use :meth:`random_data`. The one exception is
+        ``FixedEventProbability``, whose draws are the 0/1 event indicators
+        its ``fit`` takes: 1 exactly where ``qf(u)`` is 0.
 
         Parameters
         ----------
@@ -1742,7 +1744,12 @@ class Parametric(
 
         if (self.lfp_p == 1) and (self.f0 == 0):
             if (a is None) and (b is None):
-                if hasattr(self.dist, "qf"):
+                # A model whose draws are outcomes, not the times its qf
+                # gives (FixedEventProbability: 0/1 event indicators, which
+                # its fit and mean take), draws them itself.
+                if hasattr(self.dist, "qf") and not getattr(
+                    self.dist, "_draws_indicators", False
+                ):
                     return (
                         self.dist.qf(
                             uniform_draws(size, random_state), *self.params
