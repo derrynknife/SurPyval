@@ -36,7 +36,7 @@ from typing import Any, Callable
 
 import autograd.numpy as np
 import numpy as onp
-from autograd.extend import defvjp, primitive
+from autograd.extend import defjvp, defvjp, primitive
 from scipy import special
 
 # scipy.stats' constants, so that the density is the same to the last bit
@@ -131,6 +131,10 @@ _gap = primitive(_gap_raw)
 _gap_slope = primitive(_gap_slope_raw)
 defvjp(ndtr, lambda ans, z: lambda g: g * _std_pdf(z))
 defvjp(log_ndtr, lambda ans, z: lambda g: g * _ratio(z))
+# The same first derivatives in forward mode, which the Wald confidence
+# bounds take their Jacobian in (one pass per parameter)
+defjvp(ndtr, lambda g, ans, z: g * _std_pdf(z))
+defjvp(log_ndtr, lambda g, ans, z: g * _ratio(z))
 defvjp(_ratio, lambda ans, z: lambda g: -g * ans * _gap(z))
 defvjp(_gap, lambda ans, z: lambda g: g * _gap_slope(z))
 defvjp(
