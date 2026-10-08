@@ -175,4 +175,56 @@ def parametric_log_likelihood(model, data):
         ),
     )
     window = mass(tl, tr)
-    return float(np.sum(n * (_log(p) - _log(window))))
+    with np.errstate(invalid="ignore"):
+        terms = _log(p) - _log(window)
+    # Far in a tail ``df``, ``sf`` and ``ff`` all underflow to 0, and a
+    # row's ratio reads 0 / 0 (or 0) although its log is finite: an exact
+    # 0.5 seen only in (0, 0.5] under a LogNormal with mu 1.32 and sigma
+    # 0.047 (z = -43) contributes log(f(0.5) / F(0.5)) = 7.5 (#714). There
+    # the terms are taken from the family's ``log_df``, ``log_ff`` and
+    # ``log_sf`` instead.
+    bad = ~np.isfinite(terms)
+    if np.any(bad):
+        logs = _log_space_terms(model, xl, xr, c, tl, tr)
+        terms = np.where(bad & ~np.isnan(logs), logs, terms)
+    return float(np.sum(n * terms))
+
+
+def _log_space_terms(model, xl, xr, c, tl, tr):
+    """Each row's log-likelihood from ``model.dist``'s ``log_df``,
+    ``log_ff`` and ``log_sf``: a difference of two values of ``F`` (of
+    ``R``) as ``log F(b) + log(1 - F(a) / F(b))``, on whichever tail is
+    the smaller, as for ``mass`` above."""
+    dist, params = model.dist, model.params
+
+    def at(f, v, inf_value, neginf_value):
+        out = f(np.where(np.isinf(v), 1.0, v), *params)
+        out = np.where(np.isposinf(v), inf_value, out)
+        return np.where(np.isneginf(v), neginf_value, out)
+
+    def log_mass(a, b):
+        # log P(a < X <= b)
+        a_ff = at(dist.log_ff, a, 0.0, -np.inf)
+        b_ff = at(dist.log_ff, b, 0.0, -np.inf)
+        a_sf = at(dist.log_sf, a, -np.inf, 0.0)
+        b_sf = at(dist.log_sf, b, -np.inf, 0.0)
+        lower = b_ff + np.log1p(
+            -np.exp(a_ff - np.where(b_ff == -np.inf, 0, b_ff))
+        )
+        upper = a_sf + np.log1p(
+            -np.exp(b_sf - np.where(a_sf == -np.inf, 0, a_sf))
+        )
+        return np.where(a_sf < np.log(0.5), upper, lower)
+
+    with np.errstate(all="ignore"):
+        exact = np.asarray(dist.log_df(xl, *params), dtype=float)
+        p = np.where(
+            c == EXACT,
+            exact,
+            np.where(
+                c == RIGHT,
+                log_mass(xl, tr),
+                np.where(c == LEFT, log_mass(tl, xr), log_mass(xl, xr)),
+            ),
+        )
+        return p - log_mass(tl, tr)

@@ -462,3 +462,36 @@ def test_every_fit_reports_its_optimizer(how):
     np.random.seed(1)
     model = W.fit(W.random(30, 10, 3), how=how)
     assert isinstance(model.optimizer, str) and model.optimizer
+
+
+def test_714_a_lognormal_tail_row_is_fitted_in_log_space():
+    # An exact 0.5 seen only up to 0.5, next to exact 3.5 and 4: the
+    # LogNormal puts 0.5 at z = -43, where f(0.5) and F(0.5) both
+    # underflow to 0, but the row's log(f / F) is 7.5. The fit is the
+    # maximum (checked against scipy's log-space normal); a property test
+    # read the row as 0 / 0 (#714).
+    from scipy.stats import norm
+
+    x = np.array([3.5, 4.0, 0.5])
+    tr = np.array([np.inf, np.inf, 0.5])
+    model = sp.LogNormal.fit(x, tr=tr)
+    assert model.maximum == "verified"
+
+    def ll(mu, sigma):
+        lx = np.log(x)
+        out = norm.logpdf(lx, mu, sigma) - lx
+        out[2] -= norm.logcdf(lx[2], mu, sigma)
+        return out.sum()
+
+    mu, sigma = model.params
+    np.testing.assert_allclose([mu, sigma], [1.32008, 0.0472186], rtol=1e-4)
+    best = ll(mu, sigma)
+    assert -model.neg_ll() == pytest.approx(best, rel=1e-9)
+    # and so does the property tests' own likelihood
+    from surpyval.tests.properties.common import parametric_log_likelihood
+
+    data = dict(x=x, c=np.zeros(3), n=np.ones(3), tr=tr)
+    assert parametric_log_likelihood(model, data) == pytest.approx(best)
+    for dm in (-1e-4, 1e-4):
+        for ds in (-1e-4, 1e-4):
+            assert ll(mu * (1 + dm), sigma * (1 + ds)) < best

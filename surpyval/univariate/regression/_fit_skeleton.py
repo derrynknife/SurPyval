@@ -262,8 +262,22 @@ class HazardIdentitiesMixin:
         Density at ``x`` for covariates ``Z``,
         :math:`f(x \\mid Z) = h(x \\mid Z) e^{-H(x \\mid Z)}`. ``params`` as
         for :meth:`sf`.
+
+        Far in the upper tail, where :math:`H` is so large that
+        :math:`e^{-H}` underflows to 0, the density is 0, also where the
+        hazard itself has overflowed to ``inf`` (a large Weibull shape, or
+        a covariate far from 0): it is not ``inf * 0`` (#714).
         """
-        return self.hf(x, Z, *params) * np.exp(-self.Hf(x, Z, *params))
+        h = self.hf(x, Z, *params)
+        sf = np.exp(-self.Hf(x, Z, *params))
+        # The families here have h(x) e^{-H(x)} -> 0 as H(x) -> inf (a
+        # Weibull's is beta / x * H e^{-H}): an overflowed hazard next to
+        # an underflowed survival is a density of 0.
+        gone = np.isposinf(h) & (sf == 0)
+        if not np.any(gone):
+            return h * sf
+        with np.errstate(invalid="ignore"):
+            return np.where(gone, 0.0, h * sf)
 
     def log_sf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         return -self.Hf(x, Z, *params)
@@ -380,15 +394,39 @@ _CENTER_HINT = (
     "(model.center) instead, or move the covariates nearer 0."
 )
 #: The parametric refusal's hint where the search found no finite maximum
-#: (#634), with the coefficients' numbers.
+#: (#634), with what ran off (:func:`_runaway_clause`).
 _NO_MAXIMUM_CENTER_HINT = (
     "The data may have no finite maximum: the search found the likelihood "
-    "increasing as coefficient(s) {} grow without bound (a covariate that "
-    "separates the events from the survivors), which takes the baseline at "
-    "Z = 0 out of range. Fit with center=True to have the model at the "
-    "covariate means, with a warning saying so ('No finite maximum'), or "
-    "remove or coarsen the covariate."
+    "increasing as {}, which takes the baseline at Z = 0 out of range. Fit "
+    "with center=True to have the model at the covariate means, with a "
+    "warning saying so ('No finite maximum'), or {}."
 )
+
+
+def _runaway_clause(
+    runaway: "list[int] | None", baseline: "tuple[str, ...]", dist: str
+) -> "tuple[str, str]":
+    """``(what, advice)`` for :data:`_NO_MAXIMUM_CENTER_HINT`: the
+    coefficients (their numbers) and the baseline's parameters (their
+    names, #714) the search found running off."""
+    parts, advice = [], []
+    if runaway:
+        parts.append(
+            "coefficient(s) {} grow without bound (a covariate that "
+            "separates the events from the survivors)".format(runaway)
+        )
+        advice.append("remove or coarsen the covariate")
+    if baseline:
+        parts.append(
+            "the {} baseline's {} run{} on, towards a limit of the family "
+            "that none of its members reaches".format(
+                dist or "distribution",
+                ", ".join(baseline),
+                "s" if len(baseline) == 1 else "",
+            )
+        )
+        advice.append("compare the fits with other baselines")
+    return ", and as ".join(parts), " or ".join(advice)
 
 
 def baseline_at_origin_error(
@@ -525,6 +563,7 @@ class Centring:
         bounds: tuple,
         dist_name: str = "",
         runaway: "list[int] | None" = None,
+        baseline: "tuple[str, ...]" = (),
     ) -> "tuple[npt.NDArray, npt.NDArray, npt.NDArray | None]":
         """``(params, center, jacobian)`` of the fitted model.
 
@@ -538,8 +577,9 @@ class Centring:
         fit had); a ``ValueError`` says so if not. The model then has a
         zero centre, and ``jacobian``, the derivative of the move, carries
         the covariance over. ``runaway`` names the coefficients the search
-        found running off, where it found any: the refusal then says the
-        data may have no finite maximum (#634).
+        found running off, and ``baseline`` the baseline's parameters,
+        where it found any: the refusal then says the data may have no
+        finite maximum (#634, #714), not to move the covariates.
         """
         params_c = np.asarray(params_c, dtype=float)
         if not self.maps_back:
@@ -579,8 +619,10 @@ class Centring:
                         params_c[: self.k_dist], precision=4, separator=", "
                     ),
                     (
-                        _NO_MAXIMUM_CENTER_HINT.format(runaway)
-                        if runaway
+                        _NO_MAXIMUM_CENTER_HINT.format(
+                            *_runaway_clause(runaway, baseline, dist_name)
+                        )
+                        if runaway or baseline
                         else _CENTER_HINT
                     ),
                 )
@@ -942,6 +984,7 @@ def assemble_regression_model(
     centring: "Centring | None" = None,
     raw_neg_ll: "Callable | None" = None,
     runaway: "list[int] | None" = None,
+    baseline: "tuple[str, ...]" = (),
 ) -> ParametricRegressionModel:
     """Common tail of every parametric-regression ``fit``.
 
@@ -949,8 +992,9 @@ def assemble_regression_model(
     fit: the model keeps the data as given, and its parameters and
     ``center`` are placed by :meth:`Centring.finish`, which checks them
     against the likelihood of the data as given, ``raw_neg_ll(*params)``
-    (by default ``fitter.neg_ll`` of ``centring.raw``); ``runaway``, the
-    coefficients the search found running off, for its refusal.
+    (by default ``fitter.neg_ll`` of ``centring.raw``); ``runaway`` and
+    ``baseline``, the coefficients and the baseline's parameters the
+    search found running off, for its refusal.
     """
     require_finite_fit(float(res.fun) if neg_ll is None else neg_ll)
     fit_centring = None
@@ -969,6 +1013,7 @@ def assemble_regression_model(
             bounds,
             fitter.dist.name,
             runaway,
+            baseline,
         )
         if J is not None:
             fit_centring = (params_c, centring.center, J)
@@ -1856,6 +1901,7 @@ def fit_log_linear(
         fixed,
         centring=centring,
         runaway=verdict.runaway,
+        baseline=verdict.baseline,
     )
     # After the model is built (which may refuse the data), one
     # warning for what the search found (#392).

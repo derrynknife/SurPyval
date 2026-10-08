@@ -43,6 +43,22 @@ def _zero_init(Z: npt.NDArray) -> npt.NDArray:
     return np.zeros(Z.shape[1])
 
 
+def _times_phi(phi: Boxable, base: Boxable) -> Boxable:
+    """``phi * base``, the baseline's (cumulative) hazard scaled by the
+    covariate function. A risk score ``exp(beta'Z)`` that overflowed to
+    ``inf`` (a coefficient running off, a covariate far beyond the data)
+    against a baseline of exactly 0 (before the hazard starts, or where it
+    underflowed) is 0, and one that underflowed to 0 against an infinite
+    baseline is ``inf``: the baseline's 0 or ``inf`` stands, as in Cox's
+    predictions, rather than ``inf * 0`` with a raw warning (#714)."""
+    with np.errstate(over="ignore", invalid="ignore"):
+        out = phi * base
+    lost = np.isnan(out) & ~np.isnan(phi) & ~np.isnan(base)
+    if not np.any(lost):
+        return out
+    return np.where(lost, base, out)
+
+
 class ProportionalHazardsFitter(
     MirroredDistributionAttrs,
     HazardIdentitiesMixin,
@@ -168,7 +184,7 @@ class ProportionalHazardsFitter(
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
         Hf_raw = self.Hf_dist(x, *dist_params)
-        return self.phi(Z, *phi_params) * Hf_raw
+        return _times_phi(self.phi(Z, *phi_params), Hf_raw)
 
     def hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         """
@@ -178,7 +194,7 @@ class ProportionalHazardsFitter(
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
         hf_raw = self.hf_dist(x, *dist_params)
-        return self.phi(Z, *phi_params) * hf_raw
+        return _times_phi(self.phi(Z, *phi_params), hf_raw)
 
     def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Numeric:
         return y

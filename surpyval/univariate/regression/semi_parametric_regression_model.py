@@ -724,11 +724,18 @@ class SemiParametricRegressionModel(
         """
         ``hf * sf`` at ``x`` for covariates ``Z``: the probability mass at
         each baseline event time (the baseline is a step function);
-        arguments as for :meth:`sf`.
+        arguments as for :meth:`sf`. It is 0 where ``sf`` has underflowed
+        to 0, also where the hazard step has overflowed to ``inf`` (a
+        risk score far beyond the data's): the step is at most the
+        cumulative hazard ``H``, and ``H e^{-H}`` tends to 0 (#714).
         """
-        return self.hf(x, Z, stratum, grid=grid) * self.sf(
-            x, Z, stratum, grid=grid
-        )
+        h = self.hf(x, Z, stratum, grid=grid)
+        sf = self.sf(x, Z, stratum, grid=grid)
+        gone = np.isposinf(h) & (sf == 0)
+        if not np.any(gone):
+            return h * sf
+        with np.errstate(invalid="ignore"):
+            return np.where(gone, 0.0, h * sf)
 
     @keeps_query_shape
     def qf(

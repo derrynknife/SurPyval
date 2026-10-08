@@ -147,6 +147,14 @@ Unreleased
   verified maximum is polished on the exact gradient rather than central
   differences. The search is still Nelder-Mead, and its likelihoods are
   the same, bit for bit (a gradient-first search was not faster).
+- The nightly property tests (#714). A regression or Cox ``df`` far in the
+  upper tail, where the hazard overflows and ``sf`` underflows, is 0, not
+  ``inf * 0`` with a raw ``RuntimeWarning``; a parametric PH ``Hf`` / ``hf``
+  whose ``exp(beta'Z)`` overflowed keeps a zero baseline 0. A parametric
+  regression's refusal of a baseline at ``Z = 0`` it cannot represent says
+  the data may have no finite maximum where the baseline's own parameters
+  run off (a Weibull shape to 1e15), rather than to move the covariates
+  nearer 0.
 - Answers that differed between machines (numpy's AVX2 and AVX-512
   kernels round ``exp`` and ``log`` differently). The recurrent models'
   covariance (and the degradation life models') took its numerical

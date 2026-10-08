@@ -446,3 +446,29 @@ def test_656_fine_gray_log_likelihood_is_an_attribute_error():
     with pytest.raises(ValueError, match="no likelihood"):
         model.neg_ll()
     assert isinstance(CRPH.fit(x, Z, e).log_likelihood, float)
+
+
+def test_714_a_separated_cause_says_so_whatever_the_row_order():
+    # Four rows tied at 0.5: causes a, a, a, b with z 0, 1, 0, 0. Cause b's
+    # one event has the smallest z of its risk set, so its partial
+    # likelihood has no finite maximum, and its coefficient is wherever
+    # Newton's method stopped (-36.4 or -37.7, by the row order). The fit
+    # says so in either order, and cause a, which has a maximum, does not
+    # move.
+    x = np.full(4, 0.5)
+    e = np.array(["a", "a", "a", "b"], dtype=object)
+    Z = np.array([[0.0], [1.0], [0.0], [0.0]])
+    fits = []
+    for perm in ([0, 1, 2, 3], [1, 0, 2, 3]):
+        with pytest.warns(UserWarning, match="No finite maximum"):
+            fits.append(CRPH.fit(x[perm], Z[perm], e[perm]))
+    for model in fits:
+        assert model.maximum == "no finite maximum"
+        assert model.betas[1, 0] < -30
+    np.testing.assert_allclose(fits[0].betas[0], fits[1].betas[0])
+    np.testing.assert_allclose(
+        fits[0].cif([0.5, 1.0], [[0.5]], "a"),
+        fits[1].cif([0.5, 1.0], [[0.5]], "a"),
+    )
+    for model in fits:
+        assert model.cif([1.0], [[0.5]], "b")[0] < 1e-8
