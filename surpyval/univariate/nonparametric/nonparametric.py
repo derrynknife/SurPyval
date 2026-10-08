@@ -72,11 +72,12 @@ def _check_interp(interp: str) -> None:
 
 
 def _warn_bounds_past_data(
-    method: str, last: float, past: npt.NDArray
+    method: str, last: float, past: npt.NDArray, held: str = "sf"
 ) -> None:
-    # The step ``sf`` holds its last value past the data, but the bounds
-    # say nothing there and are NaN: said once per call, naming the range
-    # (#665), rather than as a silent NaN.
+    # The step ``sf`` (``held``: the competing-risks ``cif`` too) holds
+    # its last value past the data, but the bounds say nothing there and
+    # are NaN: said once per call, naming the range (#665), rather than
+    # as a silent NaN.
     import warnings
 
     from surpyval.utils.warnings import caller_stacklevel
@@ -85,10 +86,10 @@ def _warn_bounds_past_data(
     warnings.warn(
         "{}: the confidence bounds are NaN at x = {}{}, past the last "
         "observed value {:g}; the estimate says nothing about values "
-        "beyond its data (sf there only holds its last value). Use "
+        "beyond its data ({} there only holds its last value). Use "
         "set_support(lower, upper) to carry the bounds at the last "
         "value out to upper.".format(
-            method, shown, ", ..." if past.size > 5 else "", last
+            method, shown, ", ..." if past.size > 5 else "", last, held
         ),
         UserWarning,
         stacklevel=caller_stacklevel(),

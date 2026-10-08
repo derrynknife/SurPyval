@@ -324,6 +324,49 @@ negative and either bound infinite. ``set_support`` returns the model, and
     assert np.isnan(_b[[0, 3]]).all() and _b[1] == 0
     assert _b[2] == model.cif(x.max(), "wear")
 
+Confidence bounds
+~~~~~~~~~~~~~~~~~
+
+``cb(x, event)`` gives pointwise confidence bounds on a cause's cumulative
+incidence: two-sided ``[lower, upper]`` rows by default, or one side with
+``bound="lower"`` or ``"upper"``, at the level ``alpha_ci`` (0.05, a 95%
+interval). The variance is Aalen's, the ``var`` that R's ``cmprsk::cuminc``
+reports, and the interval is formed on the log(-log) scale so that it stays in
+[0, 1] (``bound_type="normal"`` gives the plain estimate :math:`\pm` z
+standard errors); see :doc:`Competing Risks Analysis` for the formula. With
+``on="sf"``, ``"ff"`` or ``"Hf"`` it bounds the all-cause functions
+(``event=None``) or a cause's net ones instead, as ``KaplanMeier`` or
+``NelsonAalen`` (by ``how``) would for the same data.
+
+.. jupyter-execute::
+
+    t = np.array([25.0, 50.0, 100.0, 150.0])
+    bounds = model.cb(t, "wear")
+    for ti, f, (lo, hi) in zip(t, model.cif(t, "wear"), bounds):
+        print(f"CIF wear at {ti:5.0f}: {f:.3f}  95% CI [{lo:.3f}, {hi:.3f}]")
+    print("all-cause sf bounds at 100:", np.round(model.cb(100.0, on="sf"), 3))
+
+    plt.step(t_plot, model.cif(t_plot, "wear"), where="post", label="CIF wear")
+    b = model.cb(t_plot[t_plot <= x.max()], "wear")
+    plt.fill_between(t_plot[t_plot <= x.max()], b[:, 0], b[:, 1], step="post",
+                     alpha=0.3, label="95% bounds")
+    plt.xlabel("Time")
+    plt.ylabel("Cumulative incidence")
+    plt.legend()
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _f = model.cif(t, "wear")
+    assert np.all((bounds[:, 0] <= _f) & (_f <= bounds[:, 1]))
+    assert np.all((bounds >= 0) & (bounds <= 1))
+
+Like the single-cause bounds, they are exactly the estimate's start (0, or 1
+on ``sf``) before the first observed time, and NaN, with a warning, after the
+last, where the estimate only holds its last value; with ``set_support`` they
+are carried from the last time to ``upper`` instead.
+
 Data held in a pandas DataFrame can be passed with ``fit_from_df``, naming the
 time and cause columns (and optionally ``c_col`` and ``n_col``). The frame is
 kept on the model as ``source_df``:

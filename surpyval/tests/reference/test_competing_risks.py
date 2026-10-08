@@ -18,6 +18,9 @@ from numpy.testing import assert_allclose
 
 import surpyval as sp
 from surpyval.univariate.competing_risks import CompetingRisks, FineGray
+from surpyval.univariate.competing_risks.aalen_johansen import (
+    aalen_johansen_variance,
+)
 
 from ._data import fixture, values
 
@@ -55,6 +58,44 @@ def test_cumulative_incidence_matches_cuminc(ref_id):
         assert_allclose(
             model.cif(ref["times"][known], int(cause)), est[known], **EXACT
         )
+
+
+def _cuminc_curves(ref_id):
+    """(model, cause, stored row) of each of a stored cuminc's curves."""
+    if ref_id == "cuminc_competing_pooled":
+        name, time, group = "competing", "x", None
+    else:
+        name, time, group = CUMINC[ref_id]
+    d = fixture(name)
+    e = _causes(d["cause"])
+    for row, curve in enumerate(values("r_cmprsk", ref_id)["curves"]):
+        g, cause = curve.split()
+        keep = np.ones(e.size, bool) if group is None else d[group] == float(g)
+        yield CompetingRisks.fit(d[time][keep], e[keep]), int(cause), row
+
+
+@pytest.mark.parametrize(
+    "ref_id", sorted(CUMINC) + ["cuminc_competing_pooled"]
+)
+def test_cumulative_incidence_variance_matches_cuminc(ref_id):
+    # cuminc's var: Aalen's (1978) variance, with its tie correction (the
+    # competing fixture ties causes with each other and with censorings).
+    # The normal bound is the estimate +- z sqrt(var).
+    from scipy.stats import norm
+
+    ref = values("r_cmprsk", ref_id)
+    times = ref["times"]
+    for model, cause, row in _cuminc_curves(ref_id):
+        known = ~np.isnan(ref["var"][row])
+        k = model.event_idx_map[cause]
+        var = aalen_johansen_variance(model.r, model.d, model.d_e[k])
+        idx = np.searchsorted(model.x, times[known], side="right") - 1
+        got = np.where(idx < 0, 0.0, var[np.maximum(idx, 0)])
+        assert_allclose(got, ref["var"][row][known], **EXACT)
+        b = model.cb(times[known], cause, bound_type="normal")
+        half = norm.ppf(0.975) * np.sqrt(ref["var"][row][known])
+        est = ref["est"][row][known]
+        assert_allclose(b, np.column_stack([est - half, est + half]), **EXACT)
 
 
 def test_pooled_cumulative_incidence_matches_cuminc():

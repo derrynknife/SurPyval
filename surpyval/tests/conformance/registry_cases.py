@@ -1318,6 +1318,36 @@ def _mcf_bounds(per_cause=False):
     )
 
 
+def _competing_risks_bounds():
+    # The cumulative incidence of each cause (#728), and the all-cause and
+    # each cause's net sf / ff / Hf (the single-event estimates' bounds).
+    out = []
+    for bound_type in ("exp", "normal"):
+        common = dict(
+            kwargs={"bound_type": bound_type},
+            in_range=bound_type == "exp",
+            nan_ok=True,
+        )
+        out += [
+            Bound(
+                "cb",
+                on=("cif",),
+                per_cause=True,
+                label=f"cb[cif,{bound_type}]",
+                **common,
+            ),
+            Bound("cb", on=_ON_SURVIVAL, label=f"cb[{bound_type}]", **common),
+            Bound(
+                "cb",
+                on=_ON_SURVIVAL,
+                per_cause=True,
+                label=f"cb[net,{bound_type}]",
+                **common,
+            ),
+        ]
+    return tuple(out)
+
+
 _PARAM_CB = Bound("param_cb", kind="param")
 _BOOT = {"n_boot": 20, "random_state": 1}
 
@@ -1344,6 +1374,8 @@ def _bounds(case):
         return _parametric_bounds(case)
     if cls == "NonParametric":
         return _nonparametric_bounds(case)
+    if cls == "CompetingRisks":
+        return _competing_risks_bounds()
     if cls == "RoystonParmarModel":
         return (Bound("cb", on=_ON_SURVIVAL),)
     if cls == "MixtureModel":

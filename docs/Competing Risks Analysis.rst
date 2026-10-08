@@ -336,6 +336,32 @@ functions, equal to zero (or one, for survival) before the first observed
 time. The fitted all-cause survival at the distinct times is also stored as
 the attribute ``S``.
 
+Confidence bounds
+~~~~~~~~~~~~~~~~~
+
+``cb(x, event)`` gives pointwise confidence bounds on :math:`\hat{F}_k`. The
+variance is Aalen's estimate [Aalen1978cr]_, the one R's ``cmprsk::cuminc``
+reports (SurPyval's agrees with it to rounding):
+
+.. math::
+
+    \widehat{\mathrm{Var}}\,\hat{F}_k(t) = \sum_{x_j \leq t}
+        \frac{\hat{S}(x_{j-1})^2}{r_j^2} \left[
+        d_{k,j} \Big(1 + \frac{\hat{F}_k(x_j) - \hat{F}_k(t)}{\hat{S}(x_j)}\Big)^2
+        + (d_j - d_{k,j}) \Big(\frac{\hat{F}_k(x_j) - \hat{F}_k(t)}{\hat{S}(x_j)}\Big)^2
+        \right],
+
+with a correction for tied events (each count :math:`m > 1` is multiplied
+by :math:`(r_j - m)/(r_j - 1)`). Both kinds of failure enter: a cause-:math:`k`
+failure moves :math:`\hat{F}_k` directly, and a failure from another cause
+moves it through the survival :math:`\hat{S}` that weights the later
+increments. By default the interval is formed on the :math:`\log(-\log)`
+scale, :math:`\hat{F}_k^{\exp(\pm z \hat\sigma / (\hat{F}_k \log \hat{F}_k))}`,
+which keeps it inside :math:`[0, 1]` and covers better in small samples than
+the plain :math:`\hat{F}_k \pm z\hat\sigma` (``bound_type="normal"``)
+[Choudhury2002cr]_. Before the cause's first failure the estimate is exactly 0
+with no variance, and so are both bounds.
+
 Censoring and truncation
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -822,6 +848,14 @@ Further Reading
 .. [AalenJohansen1978cr] Aalen, O. O., & Johansen, S. (1978). An empirical
    transition matrix for non-homogeneous Markov chains based on censored
    observations. *Scandinavian Journal of Statistics*, 5(3), 141–150.
+
+.. [Aalen1978cr] Aalen, O. (1978). Nonparametric estimation of partial
+   transition probabilities in multiple decrement models. *The Annals of
+   Statistics*, 6(3), 534–545.
+
+.. [Choudhury2002cr] Choudhury, J. B. (2002). Non-parametric confidence
+   interval estimation for competing risks analysis: application to
+   contraceptive data. *Statistics in Medicine*, 21(8), 1129–1144.
 
 .. [FineGray1999cr] Fine, J. P., & Gray, R. J. (1999). A proportional hazards
    model for the subdistribution of a competing risk. *Journal of the American
