@@ -1469,6 +1469,12 @@ class Parametric(
             cumulative hazard function at each corresponding value in the
             input array.
 
+        Notes
+        -----
+        It is ``-log sf(x)``. A zero-inflated model's is ``-log(1 - f0) +
+        H(x)`` from 0 on (its survival is ``(1 - f0) R(x)``), so it stays
+        finite far in the tail, where ``sf`` underflows to 0 (#710).
+
         Examples
         --------
 
@@ -1478,6 +1484,9 @@ class Parametric(
         np.float64(0.008000000000000002)
         >>> model.Hf([1, 2, 3, 4, 5])
         array([0.001, 0.008, 0.027, 0.064, 0.125])
+        >>> zi = Weibull.from_params([10, 3], f0=0.1)
+        >>> zi.Hf([0.0, 1000.0]).round(4)
+        array([1.0536e-01, 1.0000e+06])
         """
         refuse_time_values(x, "x")
         x = np.asarray(x)
@@ -1487,10 +1496,23 @@ class Parametric(
             s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
             out = np.where(xg < s0, 0.0, self.dist.Hf(xg, *self.params))
             return out[()]
+        elif self.lfp_p == 1:
+            # Zero inflation alone: sf = (1 - f0) R(x - gamma) from 0 on,
+            # so Hf = -log(1 - f0) + H(x - gamma), finite far past where
+            # sf underflows (-log sf was inf there, #710).
+            xg = np.asarray(x, dtype=float) - self.gamma
+            s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
+            below = xg < s0
+            with np.errstate(invalid="ignore"):
+                H = self.dist.Hf(np.where(below, s0 + 1e-10, xg), *self.params)
+            H = np.where(below, 0.0, H)
+            out = np.where(np.asarray(x) < 0, 0.0, -np.log1p(-self.f0) + H)
+            return out[()]
         else:
             # 0.0 - log(...) rather than -log(...): where sf is exactly 1
             # (before 0, or before the offset) the latter gave -0.0. A
             # survival of 0 is a cumulative hazard of inf, said quietly.
+            # A limited failure population's survival stays above 1 - p.
             with np.errstate(divide="ignore"):
                 return 0.0 - np.log(self.sf(x))
 
@@ -2828,10 +2850,10 @@ class Parametric(
         definite; where it is not finite while the covariance ``cov`` is,
         the function's gradient overflowed at that ``x`` (far in a tail),
         and the message says so rather than blaming the covariance
-        (#652)."""
-        bad = ~(var >= 0)
+        (#652). A missing ``x`` is ``nan`` in silence (#710)."""
+        where = np.broadcast_to(np.atleast_1d(x), np.shape(var))
+        bad = ~(var >= 0) & ~np.isnan(where)
         if np.any(bad):
-            where = np.broadcast_to(np.atleast_1d(x), np.shape(var))
             overflow = bad & ~np.isfinite(var)
             if cov is None or not np.all(np.isfinite(cov)):
                 overflow = np.zeros_like(bad)
@@ -2942,16 +2964,22 @@ class Parametric(
     def _cb_full_Hf(self, x: Any, phi: npt.NDArray, ctx: Any) -> Any:
         """The cumulative hazard, ``-log _cb_full_sf``: the distribution's
         own ``Hf`` for a plain model (finite far past where its survival
-        underflows), else from the failure probability where it is below
-        1/2 and the survival elsewhere (which a limited failure population
-        keeps at least ``1 - p``)."""
-        if not (self.lfp or self.zi):
-            core = phi[: ctx.n_core]
+        underflows), plus ``-log(1 - f0)`` for a zero-inflated one; else
+        (a limited failure population) from the failure probability where
+        it is below 1/2 and the survival elsewhere (which it keeps at
+        least ``1 - p``)."""
+        if not self.lfp:
+            core, _, f0 = self._cb_unpack(phi, ctx)
             s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
             xg = x - self.gamma
             below = xg < s0
             xg = np.where(below, s0 + 1e-10, xg)
-            return np.where(below, 0.0, self.dist.Hf(xg, *core))
+            H = np.where(below, 0.0, self.dist.Hf(xg, *core))
+            if not self.zi:
+                return H
+            # Zero inflation alone: -log(1 - f0) + H from 0 on, finite
+            # where sf underflows, as ``Hf`` (#710).
+            return np.where(x < 0, 0.0, -np.log1p(-f0) + H)
         F = self._cb_full_ff(x, phi, ctx)
         R = self._cb_full_sf(x, phi, ctx)
         return np.where(F < 0.5, -np.log1p(-F), -np.log(R))

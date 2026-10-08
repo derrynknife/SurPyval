@@ -414,6 +414,10 @@ Unreleased
   is NaN alone, with a warning naming it; the ``Hf`` and ``hf`` bounds are
   formed from ``Hf`` and the mixture's own hazard, finite where ``sf``
   underflows (``Hf`` was ``[inf, inf]``).
+- A zero-inflated model's ``Hf`` is ``-log(1 - f0) + H(x)`` from 0 on
+  (#710): it was ``-log sf``, infinite once ``sf`` underflowed. Its Wald
+  ``Hf`` bound is formed from it, finite there too (it was NaN or
+  ``[inf, inf]``). A missing ``x`` in ``cb`` is NaN without a warning.
 
 v0.23 (4 October 2026)
 ----------------------
