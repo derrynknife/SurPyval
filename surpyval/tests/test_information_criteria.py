@@ -482,3 +482,120 @@ def test_605_restored_parametric_model_has_its_log_likelihood(
     model = Weibull.fit(x, c)
     restored = surv.from_dict(json.loads(json.dumps(model.to_dict())))
     assert restored.log_likelihood == model.log_likelihood == -model.neg_ll()
+
+
+# -- #711: the degradation and cause-specific recurrent fits ----------------
+
+
+def _paths(shape=0.2, units=5):
+    """Five units read every 10 time units, wear in gamma increments of
+    mean 0.5 per unit time (skewed for a small ``shape``)."""
+    rng = np.random.default_rng(1)
+    t = np.tile(np.arange(0, 110, 10.0), units)
+    i = np.repeat(np.arange(units), 11)
+    steps = rng.gamma(shape * 10, 0.5 / shape, size=(units, 10))
+    y = np.hstack([np.r_[0.0, np.cumsum(s)] for s in steps])
+    return t, y, i
+
+
+def _check_criteria(model, k, n):
+    neg_ll = model.neg_ll()
+    assert isinstance(neg_ll, float) and np.isfinite(neg_ll)
+    assert model.log_likelihood == -neg_ll
+    assert model.aic() == pytest.approx(2 * k + 2 * neg_ll, rel=1e-12)
+    assert model.bic() == pytest.approx(k * np.log(n) + 2 * neg_ll, rel=1e-12)
+    assert model.aic_c() == pytest.approx(_aic_c(model, k, n), rel=1e-12)
+
+
+def test_711_wiener_and_gamma_process_criteria():
+    from scipy import stats
+
+    from surpyval.degradation import GammaProcess, WienerProcess
+
+    t, y, i = _paths()
+    dt, dy = np.full(50, 10.0), np.diff(y.reshape(5, 11), axis=1).ravel()
+    wiener = WienerProcess.fit(t, y, i, threshold=100)
+    gamma = GammaProcess.fit(t, y, i, threshold=100)
+    # the likelihood of the increments, independently
+    assert wiener.neg_ll() == pytest.approx(
+        -stats.norm.logpdf(
+            dy, wiener.mu * dt, wiener.sigma * np.sqrt(dt)
+        ).sum(),
+        rel=1e-10,
+    )
+    assert gamma.neg_ll() == pytest.approx(
+        -stats.gamma.logpdf(dy, gamma.alpha * dt, scale=1 / gamma.beta).sum(),
+        rel=1e-10,
+    )
+    # two parameters each (y0 is not one), 50 increments
+    _check_criteria(wiener, 2, 50)
+    _check_criteria(gamma, 2, 50)
+    # the same increments, so the two rank: skewed wear is a gamma process
+    assert gamma.aic() < wiener.aic() - 5
+    assert gamma.bic() < wiener.bic() - 5
+
+
+@pytest.mark.parametrize("process", ["WienerProcess", "GammaProcess"])
+def test_711_process_criteria_count_the_stress_coefficients(process):
+    import surpyval.degradation as deg
+
+    t, y, i = _paths()
+    Z = np.repeat([1.0, 1.0, 2.0, 2.0, 3.0], 11)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = getattr(deg, process).fit(t, y, i, threshold=100, Z=Z)
+    _check_criteria(model, 3, 50)
+
+
+def test_711_process_criteria_restored_and_from_params():
+    from surpyval.degradation import GammaProcess, GammaProcessModel
+
+    t, y, i = _paths()
+    model = GammaProcess.fit(t, y, i, threshold=100)
+    restored = GammaProcessModel.from_dict(
+        json.loads(json.dumps(model.to_dict()))
+    )
+    assert restored.aic() == model.aic()
+    assert restored.bic() == model.bic()
+    with pytest.raises(ValueError, match="has no likelihood"):
+        GammaProcessModel(2.0, 4.0, threshold=100).aic()
+
+
+def test_711_destructive_degradation_criteria():
+    from scipy import stats
+
+    from surpyval.degradation import DestructiveDegradation
+
+    rng = np.random.default_rng(1)
+    x = np.repeat([10.0, 20.0, 30.0, 40.0], 6)
+    y = np.exp(4.0 - 0.02 * x + rng.normal(0, 0.1, 24))
+    c = np.zeros(24, int)
+    c[[3, 9]] = 1  # did not break at the maximum load: not counted in n
+    model = DestructiveDegradation.fit(x, y, c=c, threshold=20)
+    mu = model.beta[0] + model.beta[1] * x
+    log_lik = np.where(
+        c == 0,
+        stats.lognorm.logpdf(y, model.sigma, scale=np.exp(mu)),
+        stats.lognorm.logsf(y, model.sigma, scale=np.exp(mu)),
+    )
+    assert model.neg_ll() == pytest.approx(-log_lik.sum(), rel=1e-10)
+    # beta_0, beta_1 and sigma; 22 measurements not right-censored
+    _check_criteria(model, 3, 22)
+
+
+def test_711_cause_specific_nhpp_criteria():
+    from surpyval.recurrent import CauseSpecificNHPP
+
+    x = [3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60]
+    i = [1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2]
+    c = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+    e = ["a", "b", "a", "b", "a", None, "b", "a", "b", "a", None]
+    model = CauseSpecificNHPP.fit(x, i=i, c=c, e=e)
+    # the likelihood factorises over the causes
+    assert model.neg_ll() == pytest.approx(
+        sum(model.models[k].neg_ll() for k in model.event_types)
+    )
+    # two Crow-AMSAA parameters per cause; nine events of either cause
+    _check_criteria(model, 4, 9)
+    with pytest.raises(ValueError, match="how='MSE'"):
+        CauseSpecificNHPP.fit(x, i=i, c=c, e=e, how="MSE").aic()

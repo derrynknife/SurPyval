@@ -54,6 +54,10 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.univariate.information_criteria import (
+    InformationCriteriaMixin,
+    ic_sample_size,
+)
 from surpyval.univariate.parametric import LogNormal
 from surpyval.univariate.parametric.parametric import resolve_distribution
 from surpyval.utils.dataframe import call_fit, frame_column, require_frame
@@ -173,7 +177,7 @@ def _warn_if_noise_free(model: Any, x: npt.NDArray) -> bool:
     return True
 
 
-class DestructiveDegradationModel(SerialisableMixin):
+class DestructiveDegradationModel(InformationCriteriaMixin, SerialisableMixin):
     """
     Result of :meth:`DestructiveDegradation.fit`.
 
@@ -444,6 +448,46 @@ class DestructiveDegradationModel(SerialisableMixin):
         """
         rng = as_generator(random_state)
         return np.asarray(self.qf(rng.uniform(size=size)), dtype=float)
+
+    # -- information criteria (#711) --------------------------------------
+
+    def _ic_sample_size_from_data(self) -> float:
+        if self.data is None:
+            raise ValueError(
+                "This destructive degradation model was restored from a "
+                "dict saved without its data, so it has no sample size for "
+                "bic or aic_c; refit it to the data."
+            )
+        c = np.asarray(self.data["c"])
+        return ic_sample_size(c, np.ones(c.shape[0]))
+
+    def bic(self) -> float:
+        """
+        The Bayesian information criterion, ``k ln n + 2 neg_ll()``, with
+        ``k = 3`` (the location's intercept and slope and the scale
+        ``sigma``) and ``n`` the number of measurements that are not
+        right-censored, the rule of every SurPyval BIC (all of them when
+        every measurement is right-censored). Lower is better.
+
+        Examples
+        --------
+        The same strength data fitted with a lognormal and a normal
+        response (``neg_ll``, ``aic`` and ``bic`` rank them alike):
+
+        >>> import numpy as np
+        >>> from surpyval import Normal
+        >>> from surpyval.degradation import DestructiveDegradation
+        >>> rng = np.random.default_rng(1)
+        >>> x = np.repeat([10.0, 20.0, 30.0, 40.0], 6)
+        >>> y = np.exp(4.0 - 0.02 * x + rng.normal(0, 0.1, 24))
+        >>> lognormal = DestructiveDegradation.fit(x, y, threshold=20)
+        >>> normal = DestructiveDegradation.fit(
+        ...     x, y, threshold=20, distribution=Normal
+        ... )
+        >>> round(lognormal.bic(), 2), round(normal.bic(), 2)
+        (112.14, 118.46)
+        """
+        return float(super().bic())
 
     # -- confidence bounds (bootstrap) ------------------------------------
 

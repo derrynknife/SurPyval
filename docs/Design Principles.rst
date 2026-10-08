@@ -292,10 +292,8 @@ Behaviour and API
     prints what it is, #614), for the column names,
     ``conformance/test_fit_paths.py``, and for the comparison quantities
     ``conformance/test_comparison.py`` and ``conformance/test_surface.py``
-    (#572). Known to break it, as strict expected failures there: the
-    degradation process models (``WienerProcess``, ``GammaProcess``,
-    ``DestructiveDegradation``) and ``CauseSpecificNHPP`` are
-    maximum-likelihood fits with no ``aic`` or ``bic``.
+    (#572; the degradation process models, ``DestructiveDegradation``
+    and ``CauseSpecificNHPP`` have them since #711).
 
 22. **Warnings and errors.** One warning per problem, with counts, saying
     what happened and what to do about it. No raw numpy warning escapes

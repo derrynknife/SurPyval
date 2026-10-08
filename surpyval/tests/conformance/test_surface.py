@@ -73,26 +73,11 @@ PARTIAL_LIKELIHOOD = frozenset(
     }
 )
 # Full-likelihood fits that cannot be ranked against the others, and why.
-# (MixtureModel has aic and bic since #572.) The reason leads with its
-# issue, or with NO_ISSUE until one is filed.
+# (MixtureModel has aic and bic since #572; the degradation process models,
+# DestructiveDegradation and CauseSpecificNHPP since #711.) The reason
+# leads with its issue, or with NO_ISSUE until one is filed.
 NO_ISSUE = "no issue yet: "
-NO_IC_ISSUE = "#711: "
-_NO_IC = (
-    "{} is a maximum-likelihood fit but offers no neg_ll, aic or bic, so "
-    "it cannot be ranked against {}"
-)
-NOT_COMPARABLE: dict[str, str] = {
-    "CauseSpecificNHPP": NO_IC_ISSUE
-    + _NO_IC.format("CauseSpecificNHPP", "a single NHPP fitted to all causes"),
-    "WienerProcess": NO_IC_ISSUE
-    + _NO_IC.format("WienerProcess", "a Gamma process on the same paths"),
-    "GammaProcess": NO_IC_ISSUE
-    + _NO_IC.format("GammaProcess", "a Wiener process on the same paths"),
-    "DestructiveDegradation": NO_IC_ISSUE
-    + _NO_IC.format(
-        "DestructiveDegradation", "another degradation path or distribution"
-    ),
-}
+NOT_COMPARABLE: dict[str, str] = {}
 
 
 def kind(model, name):

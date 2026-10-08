@@ -127,6 +127,12 @@ Unreleased
   recurrent ``summary()`` and an MCF repr; ``forecast`` ignores
   ``random_state`` where exact; ``NonParametric.cb(x, on, alpha_ci, bound)``
   (old order warns); ``to_dict`` / ``to_frame`` on ``Forecast`` and RULs.
+- ``neg_ll()``, ``aic()``, ``bic()``, ``aic_c()`` and ``log_likelihood``
+  on ``WienerProcess`` / ``GammaProcess`` fits (``k`` counts the stress
+  coefficients, not ``y0``; ``n`` is the number of increments, so a
+  Wiener and a gamma process on the same paths can be ranked),
+  ``DestructiveDegradation`` fits and ``CauseSpecificNHPP`` (the causes'
+  sum; BIC's ``n`` the events of any cause) (#711).
 
 **Fixed**
 
