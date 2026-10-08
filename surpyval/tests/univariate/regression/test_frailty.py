@@ -593,3 +593,29 @@ def test_617_frailty_param_cb_lr_lognormal_and_aliased():
     assert np.all(np.isnan(m2.param_cb("coef_1", method="lr")))
     lo, hi = m2.param_cb("coef_0", method="lr")
     assert lo < m2.beta[0] < hi
+
+
+@pytest.mark.parametrize(
+    "fitter",
+    [
+        WeibullFrailty,
+        Frailty(Weibull, family="lognormal"),
+        sp.CoxFrailty,
+    ],
+    ids=["gamma", "lognormal", "cox"],
+)
+def test_frailty_standard_errors_pair_with_params(fitter):
+    # The nightly calibration's frailty recovery tests indexed
+    # standard_errors() by parameter name, as on the dict it was before
+    # #613, and every rep raised numpy's IndexError. It is an array in the
+    # order of parameter_names and params: pair them by position.
+    x, Z, g = _frailty_free()
+    rng = np.random.default_rng(5)
+    x = x * rng.gamma(2.0, 0.5, 30)[g] ** -0.5
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = fitter.fit(x, Z=Z, groups=g.astype(float))
+    se = model.standard_errors()
+    assert isinstance(se, np.ndarray)
+    assert se.shape == model.params.shape == (len(model.parameter_names),)
+    assert np.all(np.isfinite(se) & (se > 0))
