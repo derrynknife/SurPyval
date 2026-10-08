@@ -11,13 +11,18 @@ times), and the fits against values computed on the code before #516
 """
 
 import tracemalloc
+import warnings
 from unittest import mock
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from surpyval import CompetingRisksProportionalHazards, CoxPH
-from surpyval.univariate.regression.proportional_hazards import cox_ph
+from surpyval.univariate.regression.proportional_hazards import (
+    cox_ph,
+    cox_separation,
+)
 from surpyval.utils import validate_coxph
 
 MONOTONE = "No finite maximum: the partial likelihood"
@@ -225,6 +230,122 @@ def test_a_monotone_likelihood_still_warns():
     assert len(w) == 1
     assert w[0].filename == __file__
     assert "Newton" not in str(model.res.message)
+
+
+# Neither column runs off alone; together, in the proportion 0.25 : -1,
+# they separate the events from the survivors (#728)
+COMBINATION = (
+    np.array([2, 1, 1.5, 0.5, 0.5, 2]),
+    np.array([[0, 1.5], [0.5, 1], [-1.5, 1], [2, -1], [0, -1.5], [0, 1.5]]),
+)
+ORDERS = [np.arange(6), np.arange(6)[::-1], np.array([3, 0, 5, 1, 4, 2])]
+
+
+@pytest.mark.parametrize("order", range(len(ORDERS)))
+@pytest.mark.parametrize("method", ["efron", "breslow"])
+def test_a_run_off_along_a_combination_has_no_finite_maximum(method, order):
+    # It ran to (61.9, -247.6), the partial likelihood at its supremum,
+    # with standard errors 0.6 and 0.5, and said "verified" (#728).
+    x, Z = (a[ORDERS[order]] for a in COMBINATION)
+    with pytest.warns(UserWarning, match=MONOTONE) as w:
+        model = CoxPH.fit(x, Z, tie_method=method)
+    assert len(w) == 1
+    assert (
+        "coefficients [0, 1] grow without bound together, in the "
+        "proportion 0.25 : -1" in str(w[0].message)
+    )
+    assert model.maximum == "no finite maximum"
+    assert np.isnan(model.standard_errors()).all()
+
+
+def test_a_stratified_run_off_along_a_combination_is_found():
+    x, Z = COMBINATION
+    with pytest.warns(UserWarning, match="proportion 0.25 : -1"):
+        model = CoxPH.fit(
+            np.r_[x, x + 0.25], np.r_[Z, Z], strata=np.repeat([0, 1], 6)
+        )
+    assert model.maximum == "no finite maximum"
+
+
+@pytest.mark.parametrize(
+    "method, runs_off",
+    [("efron", False), ("breslow", False), ("exact", True), ("kp", True)],
+)
+def test_the_exact_methods_ask_less_of_tied_deaths(method, runs_off):
+    # Two deaths at 1 (z 1 and 2) above the survivor (z 0): Efron and
+    # Breslow need the deaths level as well, the exact methods do not.
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        model = CoxPH.fit([1, 1, 2], [[1.0], [2.0], [0.0]], tie_method=method)
+    assert model.maximum == (
+        "no finite maximum" if runs_off else "verified"
+    ), model.beta
+    assert len(w) == runs_off
+
+
+@pytest.mark.parametrize("order", [[0, 1, 2, 3, 4, 5], [5, 3, 1, 0, 4, 2]])
+def test_a_level_whose_one_row_is_an_event_has_no_finite_maximum(order):
+    # "verified" at (-23.5, 35.9), in either order (#728, #714)
+    df = pd.DataFrame(
+        {
+            "x": [0.5, 1, 0.5, 0.5, 0.5, 0.5],
+            "c": [0, 0, 0, 0, 1, 1],
+            "g": list("baaaaa"),
+            "z0": [0.5, -1, -1, -1, 0.5, 0.5],
+        }
+    ).iloc[order]
+    with pytest.warns(UserWarning, match="together, in the proportion"):
+        model = CoxPH.fit_from_df(
+            df, x_col="x", c_col="c", formula="z0 + C(g)"
+        )
+    assert model.maximum == "no finite maximum"
+
+
+def test_an_ordinary_fit_does_not_look_for_a_run_off():
+    # The data are asked only when the search gives cause (#728)
+    x, Z, c, n, tl, _ = _data("truncated_weighted")
+    with mock.patch.object(
+        cox_ph, "runoff_direction", side_effect=AssertionError
+    ):
+        model = CoxPH.fit(x, Z, c, n=n, tl=tl)
+    assert model.maximum == "verified"
+
+
+def test_runoff_direction_matches_every_pair_of_unit_and_time():
+    # The cutting planes against the full programme, one constraint per
+    # pair of a death and a unit at risk with it, on small random data
+    from scipy.optimize import linprog
+
+    rng = np.random.default_rng(728)
+    for trial in range(60):
+        N, p = rng.integers(4, 10), rng.integers(1, 3)
+        x = rng.integers(1, 5, size=N).astype(float)
+        Z = rng.integers(-2, 3, size=(N, p)).astype(float)
+        c = (rng.random(N) < 0.3).astype(int)
+        tl = np.where(rng.random(N) < 0.3, x - 1.5, -np.inf)
+        method = ("efron", "exact")[trial % 2]
+        if not np.any(c == 0):
+            continue
+        rows, level, gaps = [], [], np.zeros(p)
+        for t in np.unique(x[c == 0]):
+            D = np.flatnonzero((x == t) & (c == 0))
+            S = np.flatnonzero((tl < t) & (x >= t) & ~((x == t) & (c == 0)))
+            rows += [Z[j] - Z[k] for j in S for k in D]
+            gaps += (Z[D].sum(0) * len(S) - Z[S].sum(0) * len(D)) / 4
+            if method == "efron":
+                level += [Z[k] - Z[D[0]] for k in D[1:]]
+        full = linprog(
+            -gaps,
+            A_ub=np.array(rows) if rows else None,
+            b_ub=np.zeros(len(rows)) if rows else None,
+            A_eq=np.array(level) if level else None,
+            b_eq=np.zeros(len(level)) if level else None,
+            bounds=[(-1, 1)] * p,
+        )
+        found = cox_separation.runoff_direction(
+            x, Z, c, np.ones(N), tl, None, method
+        )
+        assert (found is not None) == (-full.fun > 1e-9), (x, Z, c, tl)
 
 
 # beta, se, -log L, H0 at T and sf at T for Z = 0.2, computed with the code

@@ -142,6 +142,13 @@ Unreleased
 
 **Fixed**
 
+- CoxPH finds a run-off along a combination of the coefficients (#728).
+  Its test read each coefficient's information alone, so on data that a
+  combination of covariates separates the fit reported a "verified"
+  maximum (coefficients 61.9 and -247.6, standard errors 0.6 and 0.5), or
+  a verdict that depended on the row order. Where the search gives cause,
+  the data now decide, by a linear programme over the risk sets: the fit
+  warns "No finite maximum" naming the coefficients and their proportion.
 - ``CrowAMSAA.projection`` names the source its BC-mode projection was
   checked against (#710): ReliaSoft's Crow Extended formulas, whose
   demonstrated intensity with BC modes is the Crow-AMSAA intensity at
