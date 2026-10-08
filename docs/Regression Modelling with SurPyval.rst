@@ -4026,7 +4026,7 @@ true distributions):
                                kind='non-parametric', n_features_split='all',
                                selection='ctree')
     print(tree_rt)
-    s_rt = tree_rt.sf([3.0], [[0.2, 0.5, 0.5], [0.8, 0.5, 0.5]])[:, 0]
+    s_rt = tree_rt.sf(3.0, [[0.2, 0.5, 0.5], [0.8, 0.5, 0.5]])
     print('S(3), z0 = 0.2 and 0.8:', s_rt.round(3))
 
 .. jupyter-execute::

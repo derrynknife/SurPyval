@@ -83,6 +83,10 @@ from ..regression_data import (
     serialise_covariate_meta,
 )
 
+# How far below a residual Kaplan-Meier step a query's residual may round
+# and still be at the step, relative to max(|r|, 1) (see ``_resid_sf``).
+RESID_ROUNDING = 1e-12
+
 
 def _residual_km(
     e: npt.NDArray, delta: npt.NDArray, w: npt.NDArray
@@ -321,8 +325,16 @@ class BuckleyJamesModel(
         return np.exp(Y), (delta == 0).astype(int), w, Z
 
     def _resid_sf(self, r: npt.NDArray) -> npt.NDArray:
-        # Right-continuous residual survival at query points ``r``.
-        idx = np.searchsorted(self._resid, r, side="right") - 1
+        # Right-continuous residual survival at query points ``r``. A
+        # residual within RESID_ROUNDING of a step is at the step: a time
+        # is mapped to its residual by ``log t + beta'Z``, and ``qf``'s time
+        # ``exp(r_k - beta'Z)`` mapped back lands an ulp either side of
+        # ``r_k``, depending on how numpy's exp and log round (its AVX2 and
+        # AVX-512 kernels differ). Landing below it, ``ff(qf(p))`` was the
+        # step before p for one random query in ten, and on CI's runners
+        # in #662's test. 1e-12 on the log scale is 1e-12 relative in time.
+        tol = RESID_ROUNDING * np.maximum(np.abs(r), 1.0)
+        idx = np.searchsorted(self._resid, r + tol, side="right") - 1
         out = np.where(
             idx < 0,
             1.0,

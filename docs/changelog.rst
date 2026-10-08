@@ -130,6 +130,19 @@ Unreleased
 
 **Fixed**
 
+- Answers that differed between machines (numpy's AVX2 and AVX-512
+  kernels round ``exp`` and ``log`` differently). The recurrent models'
+  covariance (and the degradation life models') took its numerical
+  Hessian with a first-derivative step, ``eps**(1/3)``, where rounding
+  swamps a small curvature: a generalized renewal ``q`` with a standard
+  error of 4.5 had its interval move by 2% between machines. The default
+  step of ``numerical_hessian`` is now ``eps**(1/4)``, and the standard
+  errors are the converged ones. ``BuckleyJames.ff(qf(p))`` could fall a
+  step short of ``p`` (one query in ten on one machine): a residual
+  within ``1e-12`` of a step is now at it. An offset MPS fit whose BFGS
+  stopped at a finite point on a run-off, rather than diverging, went to
+  Newton-CG (19 of 21 s) before the same "No finite maximum"; it now goes
+  to the derivative-free rung first, as a divergence does.
 - Docs (#667): the regressions' bootstrap ``param_cb`` / ``quantile_cb``
   (and ``cb_tvc``) are described as the BCa interval they are; ``help``
   on ``surpyval`` has a package docstring and ``__all__`` (``import *``

@@ -91,18 +91,28 @@ def numerical_hessian(
     to approximate the observed Fisher information from a negative
     log-likelihood minimised with a derivative-free optimiser.
 
-    ``step`` is the per-parameter step array; the default is the usual
-    cube-root-of-machine-epsilon rule for a second-derivative central
-    difference, ``eps**(1/3) * max(|x|, 1e-2)``. Callers with their own
-    convention (Royston-Parmar and the frailty fitter use
-    ``1e-5 * max(|x|, 1)``) pass it explicitly.
+    ``step`` is the per-parameter step array; the default is the
+    fourth-root-of-machine-epsilon rule for a second-derivative central
+    difference, ``eps**(1/4) * max(|x|, 1e-2)`` (about ``1.2e-4``
+    relative). Callers with their own convention (Royston-Parmar and the
+    frailty fitter use ``1e-5 * max(|x|, 1)``) pass it explicitly.
+
+    The default was ``eps**(1/3)``, the rule for a *first* derivative.
+    A second difference divides the rounding of ``func`` (``eps * |func|``)
+    by ``step**2``, so its rounding error is balanced against the
+    truncation error at ``eps**(1/4)``; at ``eps**(1/3)`` (``6e-6``) the
+    rounding dominates where the curvature is small against ``|func|``.
+    A generalized renewal fit with a weakly identified ``q`` (a negative
+    log-likelihood of 2322, a standard error of 4.5) had a ``q`` standard
+    error 0.5% off and differing by 0.7% between machines whose numpy
+    rounds ``exp`` and ``log`` differently (AVX-512 or AVX2 kernels), and
+    its interval 2% (#513's test); the larger step gives the converged
+    value, to 1e-4, on both.
     """
     x = np.asarray(x, dtype=float)
     n = x.size
     if step is None:
-        step = (np.finfo(float).eps ** (1.0 / 3.0)) * np.maximum(
-            np.abs(x), 1e-2
-        )
+        step = (np.finfo(float).eps ** 0.25) * np.maximum(np.abs(x), 1e-2)
     H = np.zeros((n, n))
     for i in range(n):
         for j in range(i, n):

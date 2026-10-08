@@ -429,6 +429,18 @@ def test_630_offset_mps_without_a_limit_family_fails_fast(monkeypatch):
     # limit family to compare with. BFGS diverged and Newton-CG took 32 s
     # of a 34 s fit before "MPS FAILED"; a diverged BFGS goes to the
     # derivative-free rung now, and the same answer comes back.
+    #
+    # Whether BFGS diverges or loses precision at a finite point on the
+    # way (offset -6e4) depends on how numpy rounds: it diverged with this
+    # machine's AVX-512 kernels and stopped with the AVX2 ones of CI's
+    # runners (seen on 3.11, numpy 2.4 / scipy 1.17), where Newton-CG
+    # then took 19 of 21 s. A finite stop now goes to the derivative-free
+    # rung too, which shows the run-off. The two paths end at different
+    # points of the run-off, where the objective is flat (within 1e-5),
+    # one "MPS FAILED" (the rung hit its evaluation cap from the cold
+    # start) and the other "No finite maximum"; either says there is no
+    # answer and points to how='MLE'. What is checked is that it fails
+    # fast (no Newton-CG, the rung that took the time) with one warning.
     from surpyval.univariate.parametric import fitters
 
     methods = []
@@ -444,20 +456,30 @@ def test_630_offset_mps_without_a_limit_family_fails_fast(monkeypatch):
         model = sp.ExpoWeibull.fit(X_599, C_599, N_599, offset=True, how="MPS")
     assert "Newton-CG" not in methods
     assert len(rec) == 1, [str(w.message)[:60] for w in rec]
-    assert str(rec[0].message).startswith("MPS FAILED: the maximum product")
-    assert "how='MLE'" in str(rec[0].message)
+    message = str(rec[0].message)
+    assert message.startswith(
+        ("MPS FAILED: the maximum product", "No finite maximum: the Expo")
+    ), message
+    assert "how='MLE'" in message
     assert rec[0].filename == __file__
-    assert model.res.fun == pytest.approx(2.5543566, abs=1e-6)
+    assert model.res.fun == pytest.approx(2.55435, abs=1e-5)
 
 
 def test_630_an_mps_success_on_a_flat_objective_is_checked():
     # The offset LogLogistic on the #599 rows (no counts): BFGS reported
     # success with the offset run down to -1.5e5, on the flat objective on
     # the way to the Logistic, and the fit ended there in silence.
+    #
+    # Whether BFGS reports success on the flat stretch or diverges past it
+    # depends on how numpy rounds: with 3.11's numpy 2.4 / scipy 1.17 and
+    # AVX-512 kernels it diverged, and the derivative-free rung (from the
+    # cold start, as after any divergence) stopped at its evaluation cap
+    # further out, offset -2e7. Either way the fit must say that there is
+    # no finite maximum, which is what this checks.
     with warnings.catch_warnings(record=True) as rec:
         warnings.simplefilter("always")
         model = sp.LogLogistic.fit(X_599, offset=True, how="MPS")
-    assert model.res.success
+    assert model.res.success or model.res.optimizer == "Nelder-Mead"
     assert len(rec) == 1, [str(w.message)[:60] for w in rec]
     message = str(rec[0].message)
     assert message.startswith("No finite maximum: the LogLogistic's")
