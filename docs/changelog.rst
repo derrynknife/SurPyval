@@ -510,6 +510,12 @@ Unreleased
   #583 too); a GumbelPH on covariates far from 0 is fitted at Z = 0, not
   refused. A verified fit with a baseline parameter over 50 e-folds from
   its bound has its profile walked (a LogNormalPH sigma at 1e-80).
+- A WeibullPH whose shape runs to infinity with a coefficient (two exact
+  times, each a point mass in the limit) has "No finite maximum", naming
+  both (#728): it ended "unverified" (shape 1365, coefficient 631), and
+  uncentred was refused with the hint to move the covariates nearer 0.
+  Where some parameter runs off, one with a bound whose profile rises
+  with a curvature 0 to rounding is named with it.
 
 v0.23 (4 October 2026)
 ----------------------

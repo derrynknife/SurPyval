@@ -306,8 +306,54 @@ def runaways_in_units(
                 *flat_profiles(
                     in_units, v0, coefs, v_start, units_derivatives
                 ),
+                *far_profiles(
+                    in_units, v0, coefs, units_derivatives, log, size
+                ),
             }
         )
+    return out
+
+
+def far_profiles(
+    neg_ll: Callable,
+    x: npt.ArrayLike,
+    coefs: "list[int]",
+    derivatives: "tuple[npt.NDArray, npt.NDArray]",
+    log: npt.NDArray,
+    size: npt.NDArray,
+) -> "list[int]":
+    """The positions in ``coefs`` of the parameters judged on the log scale
+    of their distance from a bound (``log``, a mask over ``x``, in the
+    units of :func:`runaways_in_units`: ``size`` e-folds a unit) whose
+    profile at ``x`` rises with a curvature so small that its Newton step
+    goes past where the parameter can be represented, more than
+    ``LOG_MAX`` e-folds, and the likelihood would rise by more than a nat
+    on the way: they run off with the others (#728).
+
+    A Weibull PH baseline whose shape runs to infinity with a coefficient
+    (two event times, each a point mass in the limit) has a profile in
+    ``log beta`` that rises in a straight line, about one nat an e-fold
+    for each event time: its curvature is 0, but formed from a Hessian
+    whose entries are millions it is 1e-4 of either sign, and Kantorovich's
+    test (:func:`_no_convergence`) named the shape or not with that sign.
+    Asked only where some parameter is already found to run off, so it
+    names, and never makes, a run-off."""
+    H, g = derivatives
+    at = np.asarray(x, dtype=float)
+    if not (np.all(np.isfinite(H)) and np.all(np.isfinite(g))):
+        return []
+    out = []
+    for k, j in enumerate(coefs):
+        if not log[j]:
+            continue
+        with np.errstate(all="ignore"):
+            point, v = _profile(neg_ll, at, H, j)
+            d = _line_derivatives(neg_ll, point, v)
+        if d is None or not d[1] > 0.0:
+            continue
+        slope = abs(d[0]) / size[j]  # nats an e-fold
+        if abs(d[0] / d[1]) * size[j] > LOG_MAX and slope * LOG_MAX > 1.0:
+            out.append(k)
     return out
 
 
