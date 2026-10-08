@@ -404,6 +404,10 @@ Unreleased
   ``Weibull[lfp-counts]`` case (#715): 1000 units' monthly returns over
   24 months, as its fixture, refitted 100 times; the nightly's
   ``test_every_case_is_planned`` failed without it.
+- A regression model's ``quantile_cb`` gives NaN, with one warning naming
+  ``quantile_cb``, for a ``p`` outside (0, 1), and NaN in silence for a
+  missing ``p``, as the univariate models do (#710, #626); it raised. The
+  other ``p`` are bounded as before.
 
 v0.23 (4 October 2026)
 ----------------------

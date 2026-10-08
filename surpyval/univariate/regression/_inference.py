@@ -37,6 +37,7 @@ from surpyval.utils.validation import (
     CB_ON,
     check_alpha_ci,
     check_option,
+    warn_outside_unit_interval,
 )
 from surpyval.utils.warnings import warn_no_covariance
 
@@ -651,6 +652,9 @@ class InferenceMixin:
         ----------
         p : array like or scalar
             The probabilities, in (0, 1), whose quantiles are bounded.
+            Outside it the bound is ``nan``, with one warning, as for the
+            univariate models (#710; it raised); a missing ``p`` gives
+            ``nan``.
         Z : array like or DataFrame
             The covariates, paired with ``p`` as :meth:`qf` pairs them: one
             row per probability, a single row for every probability, or a
@@ -699,21 +703,59 @@ class InferenceMixin:
         array([1.245, 2.212])
         """
         check_alpha_ci(alpha_ci)
-        from ._bootstrap import bound_method, quantile_cb_bootstrap
-        from ._likelihood_ratio import quantile_cb_lr
+        from ._bootstrap import bound_method
 
         method = bound_method(method)
-        lr = method == "lr"
         self._check_inference()
         check_option("bound", bound, BOUNDS)
         probs = np.atleast_1d(np.asarray(p, dtype=float)).reshape(-1)
-        if not np.all((probs > 0) & (probs < 1)):
-            raise ValueError(f"'p' must be in (0, 1); got {probs.tolist()}")
         rows = covariate_rows(self._prepare_Z(Z), self._n_covariates())
         check_paired_rows(probs.size, rows.shape[0], grid=False)
+        # As the univariate models' quantile_cb (#626): NaN, with one
+        # warning, where p is outside (0, 1), whose quantiles are the ends
+        # of the support and are not bounded; NaN for a missing p. The
+        # other p are bounded as before (#710).
+        outside = warn_outside_unit_interval(
+            probs, "quantile_cb", closed=False
+        )
         n = max(probs.size, rows.shape[0])
         probs = np.broadcast_to(probs, (n,)).copy()
         rows = np.ascontiguousarray(np.broadcast_to(rows, (n, rows.shape[1])))
+        ok = np.broadcast_to(~outside, (n,)) & ~np.isnan(probs)
+        if not ok.all():
+            out = np.full((n, 2) if bound == "two-sided" else (n,), np.nan)
+            if ok.any():
+                out[ok] = self._quantile_cb_rows(
+                    probs[ok],
+                    rows[ok],
+                    alpha_ci,
+                    bound,
+                    method,
+                    n_boot,
+                    random_state,
+                )
+            return out
+        return self._quantile_cb_rows(
+            probs, rows, alpha_ci, bound, method, n_boot, random_state
+        )
+
+    def _quantile_cb_rows(
+        self,
+        probs: npt.NDArray,
+        rows: npt.NDArray,
+        alpha_ci: float,
+        bound: str,
+        method: str,
+        n_boot: int,
+        random_state: Any,
+    ) -> npt.NDArray:
+        """The bounds of :meth:`quantile_cb` at the probabilities
+        ``probs``, all in (0, 1), paired with the covariate ``rows`` (one
+        row each)."""
+        from ._bootstrap import quantile_cb_bootstrap
+        from ._likelihood_ratio import quantile_cb_lr
+
+        lr = method == "lr"
         t_hat = np.asarray(self.qf(probs, rows), dtype=float).reshape(-1)
         if lr:
             return quantile_cb_lr(self, probs, rows, t_hat, alpha_ci, bound)
