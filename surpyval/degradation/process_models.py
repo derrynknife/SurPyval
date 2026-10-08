@@ -54,6 +54,7 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.univariate.information_criteria import InformationCriteriaMixin
 from surpyval.utils.dataframe import refuse_column_names
 from surpyval.utils.linalg import (
     delta_method_se,
@@ -622,7 +623,7 @@ class ProcessRUL:
 # --------------------------------------------------------------------------
 
 
-class FirstPassageProcessModel(SerialisableMixin):
+class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
     """
     The machinery shared by the fitted process models.
 
@@ -1084,6 +1085,103 @@ class FirstPassageProcessModel(SerialisableMixin):
         shape = x_arr.shape + ((2,) if bound == "two-sided" else ())
         return out.reshape(shape)
 
+    # -- information criteria (#711) ----------------------------------------
+
+    def _set_fit_stats(self, neg_ll: float, n_increments: int) -> None:
+        """Record the fit's negative log-likelihood at its estimates and
+        the number of increments it was fitted to (the sample size of
+        :meth:`bic` and :meth:`aic_c`)."""
+        self._neg_ll = float(neg_ll)
+        self._ic_n = float(n_increments)
+
+    def _no_likelihood(self) -> ValueError:
+        return ValueError(
+            f"This {self._human_name} model has no likelihood: it was "
+            "built from its parameters, or restored from a dict saved "
+            "without it; refit it to the data for neg_ll, aic and bic."
+        )
+
+    def _ic_k(self) -> int:
+        # The estimated parameters: the model's, and the stress
+        # coefficients of a model fitted with stress; y0 is not a
+        # parameter of the likelihood.
+        return len(self.covariance_names)
+
+    def _ic_sample_size_from_data(self) -> float:
+        # Reached only when the fit recorded no sample size.
+        raise self._no_likelihood()
+
+    def neg_ll(self) -> float:
+        """
+        The negative log-likelihood of the fitted model: that of the
+        increments between each unit's readings, at the fitted
+        parameters (and stress coefficients). Raises a ``ValueError`` for
+        a model built from its parameters, or restored from a dict saved
+        without it.
+
+        The likelihood is of the increments ``dy``, so two process models
+        fitted to the same readings -- a Wiener and a gamma process on the
+        same paths -- can be ranked by :meth:`aic` or :meth:`bic`. A gamma
+        process fitted with ``gauge`` (the probability of the rounded
+        readings) or with zero increments censored at a ``resolution``
+        has a likelihood partly or wholly of probabilities, not
+        densities: compare it only with fits of the same kind to the
+        same readings.
+
+        Examples
+        --------
+        Five units whose wear grows in skewed gamma increments (mean 0.5
+        per unit time), fitted as a Wiener and as a gamma process: the
+        gamma process has the lower AIC.
+
+        >>> import numpy as np
+        >>> from surpyval.degradation import GammaProcess, WienerProcess
+        >>> rng = np.random.default_rng(1)
+        >>> t = np.tile(np.arange(0, 110, 10.0), 5)
+        >>> i = np.repeat(np.arange(5), 11)
+        >>> steps = rng.gamma(shape=0.2 * 10, scale=2.5, size=(5, 10))
+        >>> y = np.hstack([np.r_[0.0, np.cumsum(s)] for s in steps])
+        >>> wiener = WienerProcess.fit(t, y, i, threshold=100)
+        >>> gamma = GammaProcess.fit(t, y, i, threshold=100)
+        >>> round(wiener.neg_ll(), 2), round(gamma.neg_ll(), 2)
+        (118.06, 112.01)
+        >>> round(wiener.aic(), 2), round(gamma.aic(), 2)
+        (240.12, 228.01)
+        """
+        value = getattr(self, "_neg_ll", None)
+        if value is None:
+            raise self._no_likelihood()
+        return float(value)
+
+    def aic(self) -> float:
+        """
+        Akaike's information criterion, ``2 k + 2 neg_ll()``, with ``k``
+        the number of estimated parameters: the two of the process, and
+        the stress coefficients of a model fitted with stress (the
+        starting level ``y0`` is not counted). Lower is better. Raises the
+        ``ValueError`` of :meth:`neg_ll` where the model has no
+        likelihood.
+        """
+        return float(super().aic())
+
+    def bic(self) -> float:
+        """
+        The Bayesian information criterion, ``k ln n + 2 neg_ll()``, with
+        the ``k`` of :meth:`aic` and ``n`` the number of increments the
+        model was fitted to (one fewer than each unit's readings, summed
+        over the units). Lower is better. Raises the ``ValueError`` of
+        :meth:`neg_ll` where the model has no likelihood.
+        """
+        return float(super().bic())
+
+    def aic_c(self) -> float:
+        """
+        The small-sample corrected AIC, ``aic() + (2k^2 + 2k) / (n - k -
+        1)``, with the ``k`` of :meth:`aic` and the ``n`` of :meth:`bic`;
+        ``nan`` where ``n <= k + 1``, as on every other model.
+        """
+        return float(super().aic_c())
+
     # -- serialisation ------------------------------------------------------
 
     def to_dict(self) -> dict:
@@ -1104,6 +1202,11 @@ class FirstPassageProcessModel(SerialisableMixin):
             out["covariance"] = np.asarray(
                 self._covariance, dtype=float
             ).tolist()
+        if getattr(self, "_neg_ll", None) is not None:
+            # The keys every model's dict stores them under (#605): the
+            # restored model keeps neg_ll, aic and bic.
+            out["_neg_ll"] = float(self._neg_ll)
+            out["ic_n"] = self._ic_n
         out.update(maximum_entry(self.maximum))
         return stamp_schema(out)
 
@@ -1129,6 +1232,8 @@ class FirstPassageProcessModel(SerialisableMixin):
             model._covariance = np.asarray(
                 model_dict["covariance"], dtype=float
             )
+        if model_dict.get("_neg_ll") is not None:
+            model._set_fit_stats(model_dict["_neg_ll"], model_dict["ic_n"])
         return model
 
     # -- the failure-time distribution --------------------------------------
@@ -1781,10 +1886,14 @@ class WienerProcess(RemovedNames):
             )
             # the closed form is the maximum
             model.maximum = "verified"
+            neg_ll = _wiener_neg_ll(dt, dy, None)
             model._covariance = _covariance_of(
-                _wiener_neg_ll(dt, dy, None),
+                neg_ll,
                 [mu, np.log(sigma)],
                 [1.0, sigma],
+            )
+            model._set_fit_stats(
+                neg_ll(np.array([mu, np.log(sigma)])), dy.size
             )
             return model
 
@@ -1823,11 +1932,14 @@ class WienerProcess(RemovedNames):
             y0=_fitted_y0(y0, x, y, i, mu, g / scale, z_ref, Z),
         )
         model.maximum = maximum
+        neg_ll = _wiener_neg_ll(dt, dy, s)
+        v_hat = np.concatenate([[mu, 0.5 * np.log(sigma2)], g])
         model._covariance = _covariance_of(
-            _wiener_neg_ll(dt, dy, s),
-            np.concatenate([[mu, 0.5 * np.log(sigma2)], g]),
+            neg_ll,
+            v_hat,
             np.concatenate([[1.0, np.sqrt(sigma2)], 1.0 / scale]),
         )
+        model._set_fit_stats(neg_ll(v_hat), dy.size)
         return model
 
     @classmethod
@@ -2295,13 +2407,19 @@ class GammaProcess(RemovedNames):
                     maximum = "no finite maximum"
                 else:
                     alpha, beta, maximum = cls._verified_profile(dt, dy, alpha)
+            neg_ll = _gamma_neg_ll(dt, dy, zero, delta, None)
             cov = None
             if maximum != "no finite maximum":
-                cov = _gamma_covariance(
-                    _gamma_neg_ll(dt, dy, zero, delta, None), alpha, beta
-                )
+                cov = _gamma_covariance(neg_ll, alpha, beta)
             return cls._model(
-                alpha, beta, threshold, y0, data, maximum, covariance=cov
+                alpha,
+                beta,
+                threshold,
+                y0,
+                data,
+                maximum,
+                covariance=cov,
+                fit_stats=(neg_ll(np.log([alpha, beta])), dy.size),
             )
         return cls._stress_fit(data, threshold, stress_ref, resolution, y0)
 
@@ -2323,11 +2441,10 @@ class GammaProcess(RemovedNames):
         cls._check_monotone(dy)
         zero, delta = cls._zero_increments(dy, resolution)
         s, z_ref, scale = _stress_design(z_int, stress_ref)
+        full_neg_ll = _gamma_neg_ll(dt, dy, zero, delta, s)
         if zero.any():
             alpha, beta, g, maximum = cls._censored_fit(dt, dy, zero, delta, s)
-            cov = _gamma_covariance(
-                _gamma_neg_ll(dt, dy, zero, delta, s), alpha, beta, g, scale
-            )
+            cov = _gamma_covariance(full_neg_ll, alpha, beta, g, scale)
             return cls._model(
                 alpha,
                 beta,
@@ -2338,6 +2455,10 @@ class GammaProcess(RemovedNames):
                 g / scale,
                 z_ref,
                 covariance=cov,
+                fit_stats=(
+                    full_neg_ll(np.r_[np.log([alpha, beta]), g]),
+                    dy.size,
+                ),
             )
         sum_dy = dy.sum()
         log_dy = np.log(dy)
@@ -2368,13 +2489,7 @@ class GammaProcess(RemovedNames):
             v, maximum = verified_search(neg_ll, res, len(dt), cls._WHAT)
             alpha = float(np.exp(v[0]))
             beta = alpha * float((dt * np.exp(s @ v[1:])).sum()) / sum_dy
-            cov = _gamma_covariance(
-                _gamma_neg_ll(dt, dy, zero, delta, s),
-                alpha,
-                beta,
-                v[1:],
-                scale,
-            )
+            cov = _gamma_covariance(full_neg_ll, alpha, beta, v[1:], scale)
         return cls._model(
             alpha,
             beta,
@@ -2385,6 +2500,10 @@ class GammaProcess(RemovedNames):
             v[1:] / scale,
             z_ref,
             covariance=cov,
+            fit_stats=(
+                full_neg_ll(np.r_[np.log([alpha, beta]), v[1:]]),
+                dy.size,
+            ),
         )
 
     #: The subject of the warning that a fit did not reach a verified
@@ -2402,10 +2521,13 @@ class GammaProcess(RemovedNames):
         gamma: "npt.NDArray | None" = None,
         z_ref: "npt.NDArray | None" = None,
         covariance: "npt.NDArray | None" = None,
+        fit_stats: "tuple[float, int] | None" = None,
     ) -> "GammaProcessModel":
         """The fitted model, its ``y0`` as given or estimated from the
         ``data`` ``(x, y, i, Z)`` at the mean rate ``alpha / beta``, the
-        ``maximum`` the fit reached and the parameter ``covariance``."""
+        ``maximum`` the fit reached, the parameter ``covariance`` and the
+        ``fit_stats``: the negative log-likelihood at the estimates and
+        the number of increments."""
         x, y, i, Z = data
         start = _fitted_y0(y0, x, y, i, alpha / beta, gamma, z_ref, Z)
         model = GammaProcessModel(
@@ -2415,6 +2537,8 @@ class GammaProcess(RemovedNames):
         # a fit with no finite maximum has no information to invert
         if maximum != "no finite maximum":
             model._covariance = covariance
+        if fit_stats is not None:
+            model._set_fit_stats(*fit_stats)
         return model
 
     @classmethod
@@ -2660,9 +2784,17 @@ class GammaProcess(RemovedNames):
             scale if s is not None else None,
             step=1e-4 * np.maximum(np.abs(v), 1.0),
         )
+        fit_stats = (len(dt) * neg_ll(v), len(dt))
         if s is None:
             return cls._model(
-                alpha, beta, threshold, y0, data, maximum, covariance=cov
+                alpha,
+                beta,
+                threshold,
+                y0,
+                data,
+                maximum,
+                covariance=cov,
+                fit_stats=fit_stats,
             )
         return cls._model(
             alpha,
@@ -2674,6 +2806,7 @@ class GammaProcess(RemovedNames):
             v[2:] / scale,
             z_ref,
             covariance=cov,
+            fit_stats=fit_stats,
         )
 
     @staticmethod
