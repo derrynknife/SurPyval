@@ -38,7 +38,7 @@ from surpyval.univariate.nonparametric._support import (
 from surpyval.univariate.nonparametric.kaplan_meier import kaplan_meier as km
 from surpyval.univariate.nonparametric.nelson_aalen import nelson_aalen as na
 from surpyval.univariate.nonparametric.nonparametric import (
-    _warn_bounds_past_data,
+    warn_bounds_past_data,
 )
 from surpyval.univariate.regression.regression_data import (
     check_finite_event_times,
@@ -523,7 +523,7 @@ class CompetingRisks(SerialisableMixin):
             xf = np.atleast_1d(np.asarray(x, dtype=float))
             past = np.unique(xf[xf > last])
             if past.size:
-                _warn_bounds_past_data("cb", last, past, "cif")
+                warn_bounds_past_data("cb", last, past, "cif")
         return on_support(support, first, last, x, step, 0.0)
 
     def _cif_bounds(
