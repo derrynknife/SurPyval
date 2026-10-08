@@ -124,3 +124,31 @@ def test_710_zero_inflated_Hf_is_finite_in_the_far_tail():
         band[0], -np.log(fit.cb(5.0, on="sf"))[::-1], rtol=1e-9
     )
     assert np.isnan(missing[1]).all()
+
+
+@pytest.mark.parametrize("lfp", [False, True])
+def test_728_zero_inflated_hazard_at_zero_is_f0_and_bounded(lfp):
+    # The point mass at 0 is a discrete hazard, f0 / sf(0-) = f0 (it was
+    # df / sf(0) = f0 / (1 - f0)); its df and hf bounds were [0, 0].
+    m = Weibull.from_params([10, 3], lfp_p=0.8 if lfp else 1, f0=0.2)
+    assert m.hf(0.0) == pytest.approx(0.2)
+    assert m.df(0.0) == pytest.approx(m.hf(0.0) * m.sf(-1.0))
+    assert m.Hf(0.0) == pytest.approx(-np.log(0.8))
+
+    np.random.seed(0)
+    data = np.r_[np.zeros(10), Weibull.random(40, 10, 2)]
+    c = np.zeros_like(data)
+    if lfp:
+        data, c = np.r_[data, np.full(5, 1e4)], np.r_[c, np.ones(5)]
+    fit = Weibull.fit(data, c=c, zi=True, lfp=lfp)
+    f0_band = fit.param_cb("f0")
+    for on in ("hf", "df"):
+        assert getattr(fit, on)(0.0) == pytest.approx(fit.f0)
+        band = fit.cb([0.0, 5.0], on=on)
+        # At 0 it is f0's own (logit) Wald interval, as the f0 bound.
+        np.testing.assert_allclose(band[0], f0_band, rtol=1e-6)
+        assert np.all(band[:, 0] < getattr(fit, on)([0.0, 5.0]))
+        assert np.all(getattr(fit, on)([0.0, 5.0]) < band[:, 1])
+    for on in ("sf", "ff", "Hf"):
+        lo, hi = np.sort(fit.cb(0.0, on=on))
+        assert lo < getattr(fit, on)(0.0) < hi

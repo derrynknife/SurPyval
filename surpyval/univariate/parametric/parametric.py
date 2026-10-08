@@ -1417,6 +1417,21 @@ class Parametric(
         np.float64(0.012000000000000002)
         >>> model.hf([1, 2, 3, 4, 5])
         array([0.003, 0.012, 0.027, 0.048, 0.075])
+
+        A zero-inflated model's hazard at 0 is the point mass's discrete
+        hazard, ``f0``:
+
+        >>> zi = Weibull.from_params([10, 3], f0=0.2)
+        >>> zi.hf([0.0, 2.0])
+        array([0.2  , 0.012])
+
+        Notes
+        -----
+        It is ``df(x) / sf(x)`` (for a discrete distribution ``df(k) /
+        sf(k - 1)``, the probability of failing at ``k`` given survival to
+        it). A zero-inflated model's point mass at 0 is a discrete hazard
+        too: ``hf(0) = df(0) / sf(0-) = f0``, the probability of failing at
+        0 given survival to it; ``Hf`` jumps there by ``-log(1 - f0)``.
         """
         refuse_time_values(x, "x")
         x = np.asarray(x)
@@ -1438,14 +1453,22 @@ class Parametric(
             sf = self.sf(x)
             gone = sf == 0
             if not np.any(gone):
-                return self.df(x) / sf
-            # Only a zero-inflated model's survival reaches 0 (an LFP's
-            # stays at 1 - p), and past 0 its 1 - f0 cancels: the hazard
-            # is the base's, where df / sf was 0 / 0 (#561).
-            xg = np.asarray(x, dtype=float) - self.gamma
-            base = self.dist.hf(xg, *self.params)
-            with np.errstate(invalid="ignore", divide="ignore"):
-                return np.where(gone, base, self.df(x) / sf)[()]
+                out = self.df(x) / sf
+            else:
+                # Only a zero-inflated model's survival reaches 0 (an
+                # LFP's stays at 1 - p), and past 0 its 1 - f0 cancels:
+                # the hazard is the base's, where df / sf was 0 / 0 (#561).
+                xg = np.asarray(x, dtype=float) - self.gamma
+                base = self.dist.hf(xg, *self.params)
+                with np.errstate(invalid="ignore", divide="ignore"):
+                    out = np.where(gone, base, self.df(x) / sf)
+            if self.f0 != 0:
+                # The point mass at 0 is a discrete hazard there, conditioned
+                # on survival to just before 0 (which is 1), as a discrete
+                # distribution's: f0 / sf(0-) = f0. df / sf(0) was the odds
+                # f0 / (1 - f0) (#728).
+                out = np.where(np.asarray(x) == 0, self.f0, out)
+            return np.asarray(out)[()]
 
     def Hf(self, x: npt.ArrayLike) -> npt.NDArray:
         """
@@ -3053,7 +3076,10 @@ class Parametric(
         The hazard is the model's own: ``df(x) / sf(x)``, or for a discrete
         distribution ``df(k) / sf(k - 1)`` (#414). Where the rate is 0 --
         below the (offset) support, or at a discrete ``k`` with no mass --
-        both bounds are 0 (#413).
+        both bounds are 0 (#413). A zero-inflated model's density and
+        hazard at 0 are both the point mass ``f0``, a probability bounded on
+        the logit scale from ``f0``'s variance (they were bounded by the
+        continuous part's, ``[0, 0]`` for a Weibull, #728).
         """
         s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
         xg = t - self.gamma
@@ -3066,30 +3092,39 @@ class Parametric(
         # cancels from it (from 0 on, as ``hf``); a limited failure
         # population's survival stays above 1 - p.
         own_hazard = not (self.dist.discrete or self.lfp)
+        # A zero-inflated model's point mass at 0: its density there is
+        # the mass f0 and its hazard f0 / sf(0-) = f0, as ``df`` and ``hf``.
+        atom = (t == 0) & bool(self.zi and self.f0 != 0)
 
         def func_at(idx: Any) -> Callable[..., Any]:
-            ti, xgi, below_i = (np.atleast_1d(a)[idx] for a in (t, xg, below))
+            ti, xgi, below_i, atom_i = (
+                np.atleast_1d(a)[idx] for a in (t, xg, below, atom)
+            )
 
             def density(phi: npt.NDArray) -> Any:
                 core, p, f0 = self._cb_unpack(phi, ctx)
                 base = np.where(below_i, 0.0, self.dist.df(xgi, *core))
-                return (p - f0) * base
+                return np.where(atom_i, f0, (p - f0) * base)
 
             if on == "df":
                 return density
             if own_hazard:
 
                 def hazard(phi: npt.NDArray) -> Any:
-                    core = phi[: ctx.n_core]
-                    return np.where(below_i, 0.0, self.dist.hf(xgi, *core))
+                    core, _, f0 = self._cb_unpack(phi, ctx)
+                    base = np.where(below_i, 0.0, self.dist.hf(xgi, *core))
+                    return np.where(atom_i, f0, base)
 
                 return hazard
             # The survival that conditions the hazard: to the step before
-            # for a discrete distribution, as its hf is defined.
+            # for a discrete distribution, as its hf is defined, and to
+            # just before 0 (1) at the point mass there.
             t_sf = ti - 1.0 if self.dist.discrete else ti
 
             def ratio(phi: npt.NDArray) -> Any:
-                return density(phi) / self._cb_full_sf(t_sf, phi, ctx)
+                f0 = self._cb_unpack(phi, ctx)[2]
+                rate = density(phi) / self._cb_full_sf(t_sf, phi, ctx)
+                return np.where(atom_i, f0, rate)
 
             return ratio
 
@@ -3106,15 +3141,18 @@ class Parametric(
         else:
             diff = z(alpha_ci)
 
-        with np.errstate(divide="ignore", invalid="ignore"):
-            if self.dist.discrete:
-                # A discrete hazard and mass are probabilities: the logit
-                # scale keeps their bounds in [0, 1], as for sf.
-                exponent = -diff * sd_g / (g_hat * (1 - g_hat))
-                cb = g_hat / (g_hat + (1 - g_hat) * np.exp(exponent))
-                cb = np.where(np.broadcast_to(g_hat == 1.0, cb.shape), 1.0, cb)
-            else:
+        # A discrete hazard and mass are probabilities, as is the point
+        # mass at 0 of a zero-inflated model: the logit scale keeps their
+        # bounds in [0, 1], as for sf.
+        logit = np.broadcast_to(atom | bool(self.dist.discrete), np.shape(t))
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            if not logit.all():
                 cb = g_hat * np.exp(diff * sd_g / g_hat)
+            if logit.any():
+                exponent = -diff * sd_g / (g_hat * (1 - g_hat))
+                on_logit = g_hat / (g_hat + (1 - g_hat) * np.exp(exponent))
+                on_logit = np.where(g_hat == 1.0, 1.0, on_logit)
+                cb = on_logit if logit.all() else np.where(logit, on_logit, cb)
         # Neither scale has a point at a rate of 0: the bounds are 0.
         cb = np.where(np.broadcast_to(g_hat == 0.0, cb.shape), 0.0, cb)
         if bound == "two-sided":
