@@ -662,16 +662,17 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         >>> model.Hf([1., 1.5, 2., 2.5])
         array([0.2 , 0.2 , 0.45, 0.45])
         """
-        # Bounded separately so that it starts at 0.0, not -log(1) = -0.0.
         _check_interp(interp)
         return self._within_support(x, lambda q: self._Hf(q, interp), 0.0)
 
     def _Hf(self, x: npt.ArrayLike, interp: str) -> npt.NDArray:
         # ``Hf`` without the bounds (see ``set_support``).
         sf = self._sf(x, interp)
-        # -log(0) = inf is the documented value once sf reaches zero.
+        # -log(0) = inf is the documented value once sf reaches zero. 0.0
+        # - log(sf), not -log(sf): where sf is 1 (before the first time)
+        # the latter is -0.0 (#728).
         with np.errstate(divide="ignore"):
-            return -np.log(sf)
+            return 0.0 - np.log(sf)
 
     @_OLD_CB_ORDER
     @keeps_query_shape
@@ -1802,7 +1803,7 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         out.x = x_arr
         out.F = 1 - out.R
         with np.errstate(all="ignore"):
-            out.H = -np.log(out.R)
+            out.H = 0.0 - np.log(out.R)
         # Without r and d there is no variance estimate, and therefore
         # no confidence bounds, for the model.
         out.greenwood = None  # type: ignore[assignment]
@@ -1948,7 +1949,7 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         # as None; derive it as the fitter does, so ``smoothed_hf`` works.
         if getattr(out, "H", None) is None and hasattr(out, "R"):
             with np.errstate(all="ignore"):
-                out.H = -np.log(out.R)
+                out.H = 0.0 - np.log(out.R)
 
         if "data" in model_dict or "estimator" in model_dict:
             data: dict[str, Any] = {}

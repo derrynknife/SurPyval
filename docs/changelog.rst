@@ -459,6 +459,11 @@ Unreleased
   ``f0`` (#728), as a discrete distribution's ``df(k) / sf(k - 1)``: it
   was ``f0 / (1 - f0)``. Its Wald ``hf`` and ``df`` bounds at 0 are
   ``f0``'s logit interval, around the estimate; they were ``[0, 0]``.
+- ``Hf`` is 0.0 before the first time, not -0.0 (#728): the
+  non-parametric estimators' (Kaplan-Meier, Nelson-Aalen,
+  Fleming-Harrington, Turnbull, and their stored ``H``),
+  ``CompetingRisks(how="Kaplan-Meier")``'s, overall and per cause, and a
+  parametric model's Wald ``cb(on="Hf")`` below its support.
 
 v0.23 (4 October 2026)
 ----------------------

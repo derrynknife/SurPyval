@@ -829,3 +829,15 @@ def test_605_covariance_is_a_method_and_cov_matrix_gone():
     built = surv.Weibull.from_params([10, 3])
     with pytest.raises(ValueError, match="no parameter covariance"):
         built.covariance()
+
+
+@pytest.mark.parametrize("zi", [False, True])
+def test_728_Hf_bound_below_the_support_is_plus_zero(zi):
+    # -log of the survival band's 1 there was -0.0 (#728).
+    np.random.seed(0)
+    x = surv.Weibull.random(40, 10, 2)
+    model = surv.Weibull.fit(np.r_[np.zeros(10), x] if zi else x, zi=zi)
+    for bound in ("two-sided", "lower", "upper"):
+        cb = model.cb([-1.0, 0.0], on="Hf", bound=bound)
+        at_zero = cb[:1] if zi else cb
+        assert np.all(at_zero == 0) and not np.any(np.signbit(at_zero))

@@ -3036,7 +3036,9 @@ class Parametric(
         rest = ~on_log_H
         if rest.any():
             flipped = {"lower": "upper", "upper": "lower"}.get(bound, bound)
-            cb[rest] = -np.log(
+            # 0.0 - log: below the support, where sf's band is 1, -log is
+            # -0.0 (#728).
+            cb[rest] = 0.0 - np.log(
                 self._cb_sf_bound(t[rest], ctx, alpha_ci, flipped, on="Hf")
             )
             # The survival band's end underflowed: Hf's is inf there.
