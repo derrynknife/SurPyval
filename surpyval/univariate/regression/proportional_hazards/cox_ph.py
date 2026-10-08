@@ -123,8 +123,16 @@ def _cox_aliased(
     n = np.asarray(n, dtype=float).reshape(-1)
     Zc = Z - covariate_center(Z, n)
     spread = n_events * (n @ Zc**2) / n.sum()
+    # A column whose information, against its spread, is rounding is
+    # flat (constant within every risk set). Judged only against the
+    # largest eigenvalue, itself small or rounding, it was kept in one
+    # row order and aliased in another, and the fit "verified" or not
+    # with it (#728).
+    with np.errstate(divide="ignore", invalid="ignore"):
+        relative = np.diag(info) / spread
+    flat = ~(relative > max(p, Z.shape[0]) * np.finfo(float).eps)
     return aliased_columns(
-        info, Z.shape[0], constant_columns(Z, strata), spread
+        info, Z.shape[0], constant_columns(Z, strata) | flat, spread
     )
 
 
