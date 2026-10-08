@@ -299,10 +299,30 @@ def test_583_quantile_cb_shapes_options_and_sides(alt):
     two = alt.quantile_cb(0.5, USE, alpha_ci=0.2, method="lr")
     upper = alt.quantile_cb(0.5, USE, alpha_ci=0.1, bound="upper", method="lr")
     assert upper == two[1]
-    with pytest.raises(ValueError, match="'p' must be in"):
-        alt.quantile_cb(1.0, USE)
     with pytest.raises(ValueError, match="method"):
         alt.quantile_cb(0.1, USE, method="boot")
+
+
+@pytest.mark.parametrize("method", ["wald", "lr"])
+def test_710_quantile_cb_outside_unit_interval_is_nan(alt, method):
+    # As the univariate models (#626): NaN with one warning naming
+    # quantile_cb for p outside (0, 1), NaN in silence for a missing p,
+    # and the other p bounded as on their own; it raised.
+    p = [0.1, 1.5, np.nan, 0.0, 1.0]
+    with pytest.warns(UserWarning, match="quantile_cb: 3 of the 5") as rec:
+        got = alt.quantile_cb(p, USE, alpha_ci=0.1, method=method)
+    assert len(rec) == 1
+    assert got.shape == (5, 2)
+    assert np.isnan(got[1:]).all()
+    np.testing.assert_array_equal(
+        got[0], alt.quantile_cb(0.1, USE, alpha_ci=0.1, method=method)
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert np.isnan(alt.quantile_cb(np.nan, USE, bound="lower"))
+    with pytest.warns(UserWarning, match="1 of the 1"):
+        one = alt.quantile_cb(1.0, np.vstack([USE, USE]), bound="upper")
+    assert one.shape == (2,) and np.isnan(one).all()
 
 
 @pytest.mark.parametrize("fitter", [WeibullPH, sp.LogNormalAFT])
