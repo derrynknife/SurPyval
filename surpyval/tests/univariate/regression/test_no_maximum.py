@@ -640,6 +640,66 @@ def test_634_the_refusal_at_z_0_says_there_may_be_no_maximum():
     assert [str(m.message)[:22] for m in w] == ["No finite maximum: the"]
 
 
+def test_714_the_refusal_at_z_0_names_a_baseline_running_off():
+    # Each covariate row's exact times are one value (10.5 three times,
+    # 15 three times, 13 once) and the censored 5.5 is below them all, so
+    # a WeibullAFT can put a point mass on each: its shape runs off (to
+    # 1e15), with covariates whose linear predictor at the means is -0.06.
+    # Where it stops depends on the machine's rounding: moved to Z = 0 it
+    # overflowed with AVX-512 (refused) but not with AVX2 (fitted). The
+    # refusal said to move the covariates nearer 0; it says the data may
+    # have no finite maximum, as the fit warns where it is not refused.
+    x = np.array([10.5, 15.0, 13.0, 5.5])
+    Z = np.array([[-1.0, 1.5], [-1.0, -0.5], [0.5, -1.0], [-1.0, 1.0]])
+    c, n = np.array([0, 0, 0, 1]), np.array([3, 3, 1, 1])
+    try:
+        model, w = _fit(lambda: sp.WeibullAFT.fit(x, Z, c=c, n=n))
+    except ValueError as e:
+        message = str(e)
+        assert "cannot be represented" in message
+        assert "may have no finite maximum" in message
+        assert "Weibull baseline's beta runs on" in message
+        assert "nearer 0" not in message
+    else:
+        assert model.maximum == "no finite maximum"
+        assert [str(m.message)[:22] for m in w] == ["No finite maximum: the"]
+    model, w = _fit(lambda: sp.WeibullAFT.fit(x, Z, c=c, n=n, center=True))
+    assert model.maximum == "no finite maximum"
+    assert [str(m.message)[:22] for m in w] == ["No finite maximum: the"]
+
+
+@pytest.mark.parametrize(
+    "runaway, baseline, says",
+    [
+        ([], ("beta",), "as the Weibull baseline's beta runs on"),
+        ([0], (), "as coefficient(s) [0] grow without bound"),
+        ([0], ("beta",), "[0] grow without bound (a covariate that"),
+    ],
+)
+def test_714_the_refusal_names_what_ran_off(runaway, baseline, says):
+    # The refusal itself, on a Weibull PH baseline that a coefficient of
+    # 3000 at a covariate mean of 1 takes out of range at Z = 0.
+    key = ("Proportional Hazard", "Weibull")
+    centring = skeleton.Centring(
+        np.array([1.0]), 2, skeleton.ORIGIN_MAPS[key][1]
+    )
+    bounds = ((0, None), (0, None), (None, None))
+    with pytest.raises(ValueError) as info:
+        centring.finish(
+            np.array([2.0, 1.5, 3000.0]),
+            1.0,
+            lambda *p: 1.0,
+            bounds,
+            "Weibull",
+            runaway,
+            baseline,
+        )
+    message = str(info.value)
+    assert "may have no finite maximum" in message
+    assert says in message
+    assert "nearer 0" not in message
+
+
 def _power_exponential(draw):
     x, c, Z = _alt(draw)
     fitter = sp.AcceleratedLife(sp.Weibull, sp.life_models.PowerExponential)

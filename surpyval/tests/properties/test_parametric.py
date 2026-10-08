@@ -26,7 +26,7 @@ reached from another side).
 
 import numpy as np
 import pytest
-from hypothesis import assume, given
+from hypothesis import assume, example, given
 from hypothesis import strategies as st
 
 import surpyval as sp
@@ -179,6 +179,27 @@ def _start(model):
 
 @pytest.mark.parametrize("name", DISTRIBUTIONS)
 @given(data=gen.xcnt())
+# Rows whose likelihood is 0 / 0 in floating point, taken in log space
+# (#714): a LogNormal put the exact 0.5, seen only in (0, 0.5], at
+# z = -43; a Gumbel start (mu 1, sigma 0.72) put the right censored 6,
+# seen up to 6.5, where its sf underflows.
+@example(
+    data=dict(
+        x=np.array([3.5, 4.0, 0.5]),
+        c=np.array([0, 0, 0]),
+        n=np.array([1, 1, 1]),
+        tl=np.array([-np.inf, -np.inf, 0.0]),
+        tr=np.array([np.inf, np.inf, 0.5]),
+    )
+)
+@example(
+    data=dict(
+        x=np.array([0.5, 0.5, 1.0, 6.0]),
+        c=np.array([0, 0, 0, 1]),
+        n=np.array([1, 1, 1, 1]),
+        tr=np.array([np.inf, np.inf, np.inf, 6.5]),
+    )
+)
 def test_fit_is_a_local_optimum(name, data):
     assume(_has_optimum(name, data))
     status, model = _fit(name, data)
