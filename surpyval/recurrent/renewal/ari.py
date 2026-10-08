@@ -2,10 +2,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Callable
 
+import autograd.numpy as anp
 import numpy as np
+from autograd.extend import defvjp, primitive
+from autograd.tracer import isbox
 from numpy.typing import ArrayLike
 
 from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
+from surpyval.recurrent.renewal.renewal_model import (
+    discount_weight_derivatives,
+)
 
 if TYPE_CHECKING:
     from surpyval.recurrent.renewal.renewal_model import RenewalModel
@@ -72,20 +78,99 @@ def _reduction_sequence(
     step per failure. The offset ``i`` contributes only where the item
     actually has ``i`` earlier failures, which is the ``position >= i``
     mask and reproduces ``upper = min(m, n)`` above.
-    """
-    lam = np.asarray(failure_intensities, dtype=float)
-    if lam.size == 0:
-        return lam
-    pos = np.asarray(position)
-    longest = int(pos.max()) + 1
-    span = longest if np.isinf(m) else min(int(m), longest)
 
-    q = 1.0 - rho
-    total = np.array(lam, copy=True)
-    for i in range(1, span):
-        shifted = np.concatenate([np.zeros(i), lam[:-i]])
-        total += (q**i) * np.where(pos >= i, shifted, 0.0)
-    return rho * total
+    Differentiable by autograd in ``rho`` and the intensities (#710):
+    the sequence is linear in the intensities, with the weights ``rho (1
+    - rho)**i`` on the offsets, so its derivatives are the same sums
+    over the weights' derivatives (``_Reductions``).
+    """
+    return _Reductions(position, m)(failure_intensities, rho)
+
+
+class _Reductions:
+    """The offsets of ``_reduction_sequence`` for failures at the
+    positions ``position`` within their items, with memory ``m``.
+    ``apply(lam, rho, order)`` is the ``order``-th derivative in ``rho``
+    of the sequence (the sequence at 0), and ``transpose`` the transpose
+    of that linear map of ``lam``: what autograd's derivatives in ``lam``
+    and ``rho`` are made of."""
+
+    def __init__(self, position: Any, m: "int | float") -> None:
+        self.pos = np.asarray(position)
+        longest = int(self.pos.max()) + 1 if self.pos.size else 0
+        self.span = longest if np.isinf(m) else min(int(m), longest)
+
+    def __call__(self, lam: Any, rho: Any) -> Any:
+        """The sequence: ``_reduction_sequence``."""
+        if isbox(lam) or isbox(rho):
+            return _reduce(lam, rho, self, 0)
+        lam = np.asarray(lam, dtype=float)
+        if lam.size == 0:
+            return lam
+        return self.apply(lam, rho, 0)
+
+    def apply(self, lam: np.ndarray, rho: float, order: int) -> np.ndarray:
+        lam = np.asarray(lam, dtype=float)
+        pos = self.pos
+        if order == 0:
+            q = 1.0 - rho
+            total = np.array(lam, copy=True)
+            for i in range(1, self.span):
+                shifted = np.concatenate([np.zeros(i), lam[:-i]])
+                total += (q**i) * np.where(pos >= i, shifted, 0.0)
+            return rho * total
+        if self.span == 0:
+            return np.zeros_like(lam)
+        w = discount_weight_derivatives(float(rho), self.span, order)
+        total = w[0] * lam
+        for i in range(1, self.span):
+            shifted = np.concatenate([np.zeros(i), lam[:-i]])
+            total = total + w[i] * np.where(pos >= i, shifted, 0.0)
+        return total
+
+    def transpose(self, g: np.ndarray, rho: float, order: int) -> np.ndarray:
+        g = np.asarray(g, dtype=float)
+        pos = self.pos
+        if self.span == 0:
+            return np.zeros_like(g)
+        w = discount_weight_derivatives(float(rho), self.span, order)
+        total = w[0] * g
+        for i in range(1, self.span):
+            ahead = np.where(pos[i:] >= i, g[i:], 0.0)
+            total = total + w[i] * np.concatenate([ahead, np.zeros(i)])
+        return total
+
+
+@primitive
+def _reduce(lam: Any, rho: Any, layout: _Reductions, order: int) -> Any:
+    return layout.apply(lam, rho, order)
+
+
+@primitive
+def _reduce_transpose(
+    g: Any, rho: Any, layout: _Reductions, order: int
+) -> Any:
+    return layout.transpose(g, rho, order)
+
+
+defvjp(
+    _reduce,
+    lambda ans, lam, rho, layout, order: lambda g: _reduce_transpose(
+        g, rho, layout, order
+    ),
+    lambda ans, lam, rho, layout, order: lambda g: anp.sum(
+        g * _reduce(lam, rho, layout, order + 1)
+    ),
+)
+defvjp(
+    _reduce_transpose,
+    lambda ans, h, rho, layout, order: lambda g: _reduce(
+        g, rho, layout, order
+    ),
+    lambda ans, h, rho, layout, order: lambda g: anp.sum(
+        g * _reduce_transpose(h, rho, layout, order + 1)
+    ),
+)
 
 
 def _event_layout(data: Any) -> tuple:
@@ -295,6 +380,13 @@ class ARI(RenewalFitMixin):
         prev, observed, failure_pos, in_force = _event_layout(data)
         gap = x - prev
         x_failures = x[observed]
+        reductions_at = _Reductions(failure_pos, m)
+        # The cumulative intensity at the item starts is 0: left out of
+        # a traced evaluation, as autograd's second derivative of a power
+        # law there is nan (0 * inf).
+        started = np.flatnonzero(prev != 0)
+        from_zero = np.flatnonzero(prev == 0)
+        restore = np.argsort(np.concatenate([from_zero, started]))
 
         def negll_func(params: np.ndarray) -> float:
             rho = params[0]
@@ -304,9 +396,11 @@ class ARI(RenewalFitMixin):
             # then picks up whichever reduction was in force over its own
             # interval (`in_force` is -1 before the item's first failure,
             # where the baseline is unreduced).
+            # autograd's numpy where the parameters are traced
+            xp = anp if isbox(params) else np
             lam = baseline.iif(x_failures, *baseline_params)
-            reductions = _reduction_sequence(lam, failure_pos, rho, m)
-            active = np.where(in_force >= 0, reductions[in_force], 0.0)
+            reductions = reductions_at(lam, rho)
+            active = xp.where(in_force >= 0, reductions[in_force], 0.0)
 
             # A non-positive intensity is outside the model's support.
             # Checked before the log so it returns inf rather than
@@ -316,10 +410,17 @@ class ARI(RenewalFitMixin):
             if not np.all(intensity > 0):
                 return np.inf
 
-            delta_cif = baseline.cif(x, *baseline_params) - baseline.cif(
-                prev, *baseline_params
-            )
-            ll = -np.sum(delta_cif - active * gap) + np.sum(np.log(intensity))
+            if xp is anp:
+                cif_prev = anp.concatenate(
+                    [
+                        np.zeros(from_zero.size),
+                        baseline.cif(prev[started], *baseline_params),
+                    ]
+                )[restore]
+            else:
+                cif_prev = baseline.cif(prev, *baseline_params)
+            delta_cif = baseline.cif(x, *baseline_params) - cif_prev
+            ll = -xp.sum(delta_cif - active * gap) + xp.sum(xp.log(intensity))
             return -ll
 
         return negll_func

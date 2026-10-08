@@ -441,6 +441,30 @@ def rows_by_position(position: np.ndarray) -> "list[np.ndarray]":
     return np.split(order, np.cumsum(counts)[:-1])
 
 
+def discount_weight_derivatives(
+    rho: float, count: int, order: int
+) -> np.ndarray:
+    """The ``order``-th derivative in ``rho`` of the weights ``rho * (1 -
+    rho)**j``, ``j = 0 .. count - 1``, that the ARA and ARI models put on
+    the ``j``-th most recent term of their memory (#710). By Leibniz's
+    rule it is ``rho D^n + n D^(n-1)``, with ``D^k`` the ``k``-th
+    derivative of ``(1 - rho)**j``: ``(-1)**k j! / (j - k)! (1 -
+    rho)**(j - k)``, and 0 for ``k > j``."""
+    j = np.arange(count, dtype=float)
+
+    def power_derivative(k: int) -> np.ndarray:
+        if k < 0:
+            return np.zeros(count)
+        falling = np.ones(count)
+        for t in range(k):
+            falling = falling * (j - t)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            power = (1.0 - rho) ** np.maximum(j - k, 0.0)
+        return np.where(j >= k, (-1.0) ** k * falling * power, 0.0)
+
+    return rho * power_derivative(order) + order * power_derivative(order - 1)
+
+
 class DiscountedMemory:
     """
     For sequences simulated together, the discounted sum
