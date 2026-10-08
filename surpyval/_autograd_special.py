@@ -54,8 +54,14 @@ def _forward_rules() -> None:
     per parameter rather than one per point. The rule is the derivative
     autograd's reverse rule uses, ``s (1 - s)``."""
     try:
+        import importlib
+
         from autograd.extend import defjvp
-        from autograd.scipy import special
+
+        # The module _load() put in place, by its full name: ``from
+        # autograd.scipy import special`` would run the ``autograd.scipy``
+        # package and load scipy.stats and scipy.integrate (#470).
+        special = sys.modules.get(_NAME) or importlib.import_module(_NAME)
     except Exception:
         return
     if hasattr(special, "expit"):
