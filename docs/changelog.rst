@@ -464,6 +464,12 @@ Unreleased
   Fleming-Harrington, Turnbull, and their stored ``H``),
   ``CompetingRisks(how="Kaplan-Meier")``'s, overall and per cause, and a
   parametric model's Wald ``cb(on="Hf")`` below its support.
+- A limited failure population's ``Hf`` is ``-log(1 - ff)`` where ``ff``
+  is below 1/2 (#728): ``-log sf`` was 0 once ``sf`` rounded to 1
+  (``Hf(1e-12)`` of 9e-40). The Wald ``ff`` and ``Hf`` bounds are mapped
+  from the band's scale to their own, not ``1 - sf`` and ``-log sf`` of
+  the ``sf`` bound, which were 0 in the left tail for the families not
+  on the log-log scale (LogNormal, Gamma, LogLogistic, ...).
 
 v0.23 (4 October 2026)
 ----------------------

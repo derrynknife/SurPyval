@@ -1496,7 +1496,10 @@ class Parametric(
         -----
         It is ``-log sf(x)``. A zero-inflated model's is ``-log(1 - f0) +
         H(x)`` from 0 on (its survival is ``(1 - f0) R(x)``), so it stays
-        finite far in the tail, where ``sf`` underflows to 0 (#710).
+        finite far in the tail, where ``sf`` underflows to 0 (#710). A
+        limited failure population's is ``-log(1 - ff(x))`` where ``ff`` is
+        below 1/2, accurate where ``ff`` is tiny and ``sf`` rounds to 1
+        (#728); its survival stays above ``1 - p`` in the upper tail.
 
         Examples
         --------
@@ -1532,12 +1535,19 @@ class Parametric(
             out = np.where(np.asarray(x) < 0, 0.0, -np.log1p(-self.f0) + H)
             return out[()]
         else:
-            # 0.0 - log(...) rather than -log(...): where sf is exactly 1
-            # (before 0, or before the offset) the latter gave -0.0. A
-            # survival of 0 is a cumulative hazard of inf, said quietly.
-            # A limited failure population's survival stays above 1 - p.
-            with np.errstate(divide="ignore"):
-                return 0.0 - np.log(self.sf(x))
+            # A limited failure population: -log(1 - ff) from the failure
+            # probability where it is below 1/2, f0 + (p - f0) F, which
+            # keeps its digits where it is tiny (1 - ff rounds to 1 there,
+            # and -log sf was 0, #728); -log sf elsewhere, which stays above
+            # 1 - p, so neither underflows. 0.0 - log(...) rather than
+            # -log(...): where sf is exactly 1 (before 0, or before the
+            # offset) the latter gave -0.0.
+            ff = np.asarray(self.ff(x))
+            with np.errstate(divide="ignore", invalid="ignore"):
+                H = np.where(
+                    ff < 0.5, 0.0 - np.log1p(-ff), 0.0 - np.log(self.sf(x))
+                )
+            return H[()]
 
     def qf(self, p: npt.ArrayLike) -> npt.NDArray:
         r"""
@@ -2146,7 +2156,10 @@ class Parametric(
             bound alone is ``nan``, with a warning naming it. The ``Hf``
             bound is on ``log Hf`` wherever the survival has underflowed
             (for the log-log families everywhere: it is the same bound), so
-            it stays finite and contains the estimate there.
+            it stays finite and contains the estimate there. The ``ff``
+            and ``Hf`` bounds are mapped from the band's scale to their
+            own, so they keep their digits in the left tail, where ``sf``
+            rounds to 1 (``1 - sf`` and ``-log sf`` of its bound were 0).
             The Wald band on ``sf`` and ``ff`` rises (or falls) with ``x``
             as the function does whenever the shape's own Wald interval
             excludes 0; with fewer failures than that it can turn back in a
@@ -2258,7 +2271,7 @@ class Parametric(
         old_err_state = np.seterr(all="ignore")
         try:
             if (on == "ff") or (on == "F"):
-                cb = 1.0 - self._cb_sf_bound(t, ctx, alpha_ci, bound)
+                cb = self._cb_sf_bound(t, ctx, alpha_ci, asked, to="ff")
             elif (on == "sf") or (on == "R"):
                 cb = self._cb_sf_bound(t, ctx, alpha_ci, bound)
                 if bound == "two-sided":
@@ -2911,10 +2924,15 @@ class Parametric(
         bound: str,
         elementwise: bool = False,
         on: str = "sf",
+        to: str = "sf",
     ) -> Any:
         """Confidence bound on the survival function: a Wald bound on the
         scale on which the family is a straight line in (log) time -- its
-        probability-plot scale -- mapped back to ``R``.
+        probability-plot scale -- mapped back to ``R``, or (``to`` = ``"ff"``
+        or ``"Hf"``) straight to the failure probability or the cumulative
+        hazard, ``[lower, upper]`` on it, each to full precision where it
+        is small: ``1 - R`` and ``-log R`` of the bound on ``R`` lost every
+        digit where ``R`` rounds to 1 (#728).
 
         The scale is the distribution's ``_cb_link``: ``log(-log R)`` (the
         log cumulative hazard) for the Weibull, Exponential, Rayleigh and
@@ -2978,8 +2996,11 @@ class Parametric(
         # 0 or 1, e.g. t <= gamma) the transform degenerates to 0/0; the
         # bound there is the boundary itself (#256).
         R_cb = sf_link_bound(
-            R_hat, sd_R, alpha_ci, bound, cb_link(self.dist), ff_hat=F_hat
+            R_hat, sd_R, alpha_ci, bound, cb_link(self.dist), F_hat, on=to
         )
+        if to != "sf":
+            # (+ 0.0: -log_ndtr(inf), at F = 0, is -0.0)
+            return R_cb + 0.0
         # [upper, lower] on R for a two-sided bound: the layout the public
         # cb method expects (it flips it for sf).
         return R_cb[..., ::-1] if bound == "two-sided" else R_cb
@@ -3035,11 +3056,8 @@ class Parametric(
         cb = np.full(shape, np.nan)
         rest = ~on_log_H
         if rest.any():
-            flipped = {"lower": "upper", "upper": "lower"}.get(bound, bound)
-            # 0.0 - log: below the support, where sf's band is 1, -log is
-            # -0.0 (#728).
-            cb[rest] = 0.0 - np.log(
-                self._cb_sf_bound(t[rest], ctx, alpha_ci, flipped, on="Hf")
+            cb[rest] = self._cb_sf_bound(
+                t[rest], ctx, alpha_ci, bound, on="Hf", to="Hf"
             )
             # The survival band's end underflowed: Hf's is inf there.
             ends = np.reshape(cb, (len(t), -1))
