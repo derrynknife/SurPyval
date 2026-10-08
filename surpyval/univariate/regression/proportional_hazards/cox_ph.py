@@ -67,6 +67,7 @@ from .cox_likelihood import (  # noqa: F401
     not_yet_entered,
     strata_labels,
 )
+from .cox_separation import runoff_direction
 from .tvc import handle_tvc, handle_tvc_timeline
 
 nonparametric_dists = {
@@ -136,6 +137,7 @@ def _solve_beta_and_p_values(
     n: npt.NDArray,
     n_events: float,
     strata: "npt.NDArray | None" = None,
+    risk_sets: "tuple | None" = None,
 ) -> tuple[Any, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """Maximise the partial likelihood by Newton-Raphson
     (:func:`newton_raphson`; the score's root-finder, then BFGS, if that
@@ -143,7 +145,9 @@ def _solve_beta_and_p_values(
     shared by ``fit`` and ``_fit_stratified`` so the most-patched block
     in this file exists exactly once. The covariates ``Z``, counts ``n``,
     weighted number of events and stratum labels are for the aliasing
-    check (:func:`_cox_aliased`).
+    check (:func:`_cox_aliased`), and with ``risk_sets``, the rows'
+    ``(x, c, tl, tie_method)``, for the test of a run-off along a
+    combination of the coefficients (:func:`runoff_direction`, #728).
 
     Returns ``(res, p_values, se, aliased, covariance)``: ``res.x`` has 0
     at the aliased columns (the coefficients the predictions use), and
@@ -228,8 +232,22 @@ def _solve_beta_and_p_values(
                     res = fallback
 
             hessian_matrix = jac(res.x)[1]
+    runoff: "Callable | None" = None
+    far = False
+    if risk_sets is not None:
+        x, c, tl, tie_method = risk_sets
+        Zk = np.asarray(Z, dtype=float)[:, kept]
+        with np.errstate(over="ignore", invalid="ignore"):
+            eta = (Zk - covariate_center(Zk, n)) @ np.atleast_1d(res.x)
+        # A hazard ratio of e^20 between a unit and the average one
+        far = not np.all(np.abs(eta) <= _FAR)
+
+        def runoff_of_data() -> "tuple[npt.NDArray, bool] | None":
+            return runoff_direction(x, Zk, c, n, tl, strata, tie_method)
+
+        runoff = runoff_of_data
     res.maximum = _maximum_reached(
-        res, jac, hessian_matrix, info_at_start, kept, n_events
+        res, jac, hessian_matrix, info_at_start, kept, n_events, runoff, far
     )
     # An exactly singular information matrix raises before the
     # pseudo-inverse fallback can run (#259); route it there.
@@ -261,7 +279,9 @@ def _solve_beta_and_p_values(
         # "exact" estimate. It is nan, as for the parametric families'
         # runaway coefficients (#648), and so are its p-value and its row
         # and column of the covariance.
+        # (as are those running off along a combination, #728)
         off = _diverged_columns(hessian_matrix, info_at_start)
+        off = np.union1d(off, getattr(res, "runoff_columns", off))
         se = np.array(se, dtype=float)
         p_values = np.array(p_values, dtype=float)
         covariance = np.array(covariance, dtype=float)
@@ -286,18 +306,32 @@ def _maximum_reached(
     info_at_start: npt.NDArray,
     kept: npt.NDArray,
     n_events: float,
+    runoff: "Callable | None" = None,
+    far: bool = False,
 ) -> str:
     """What the partial-likelihood search reached (see
     :func:`_solve_beta_and_p_values`), with its one warning: no finite
     maximum (:func:`_warn_if_monotone`), else a verified maximum -- the
     score and the information at ``res.x`` (``res.jac`` from
     Newton-Raphson, else ``jac``) pass ``is_local_minimum`` per event --
-    or a search that did not reach one."""
-    if _warn_if_monotone(info, info_at_start, kept):
+    or a search that did not reach one.
+
+    A run-off along a combination of the coefficients leaves no column's
+    information collapsed, and the search can stop at a point that passes
+    as a maximum (#728). Given ``runoff`` (the data's
+    :func:`runoff_direction`), the data decide instead, whatever the
+    search did, where the search was not verified, or the information
+    collapsed in some direction (:func:`_collapsed`), or
+    the search went ``far`` (a linear predictor beyond ``_FAR`` of the
+    average unit's, where the information itself underflows and can
+    look healthy). The columns that run off are then recorded as
+    ``res.runoff_columns``."""
+    if runoff is None and _warn_if_monotone(info, info_at_start, kept):
         return "no finite maximum"
     score = getattr(res, "jac", None)
     if score is None or not isinstance(res.get("hess"), np.ndarray):
-        score = jac(res.x)[0]
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            score = jac(res.x)[0]
     verified = is_local_minimum(
         lambda _: 0.0,  # (only the derivatives are read)
         lambda _: np.atleast_1d(score),
@@ -305,6 +339,20 @@ def _maximum_reached(
         np.atleast_1d(res.x),
         obj_scale=max(n_events, 1.0),
     )
+    if runoff is not None and (
+        not verified or far or _collapsed(info, info_at_start)
+    ):
+        found = runoff()
+        if found is not None:
+            direction, alone = found
+            off = np.flatnonzero(direction)
+            res.runoff_columns = off
+            which = str(np.asarray(kept)[off].tolist())
+            if alone:
+                warn_monotone(which)
+            else:
+                warn_monotone(which, direction[off])
+            return "no finite maximum"
     if verified:
         return "verified"
     warn_unverified(
@@ -341,6 +389,28 @@ def _warn_if_monotone(
     return False
 
 
+#: How far a unit's linear predictor may be from the average unit's
+#: before the fit asks the data whether its likelihood runs off (#728)
+_FAR = 20.0
+
+
+def _collapsed(info: npt.NDArray, info_at_start: npt.NDArray) -> bool:
+    """Whether the information has fallen, in some direction of the
+    coefficients, below 1e-4 of what it was at the start (the least
+    eigenvalue of ``info`` relative to ``info_at_start``): the sign of a
+    run-off along a combination of them, which a maximum's information,
+    however strong the effects, does not show. The data then say whether
+    it is one (:func:`runoff_direction`)."""
+    try:
+        L = np.linalg.cholesky(np.atleast_2d(info_at_start))
+        half = np.linalg.solve(L, np.atleast_2d(info))
+        relative = np.linalg.solve(L, half.T)
+        least = np.linalg.eigvalsh(0.5 * (relative + relative.T))[0]
+    except np.linalg.LinAlgError:
+        return True
+    return not least >= 1e-4
+
+
 def _diverged_columns(
     info: npt.NDArray, info_at_start: npt.NDArray
 ) -> npt.NDArray:
@@ -352,14 +422,34 @@ def _diverged_columns(
     return np.flatnonzero((d0 > 0) & ~(np.nan_to_num(d, nan=0.0) > 1e-8 * d0))
 
 
-def warn_monotone(which: str) -> None:
+def warn_monotone(
+    which: str, proportion: "npt.ArrayLike | None" = None
+) -> None:
     """Warn that the partial likelihood has no finite maximum in the
     coefficients ``which`` names (``"[0]"``, or ``"[0] (cause 'a')"``);
-    shared with the Fine-Gray fit, a weighted partial likelihood (#392)."""
+    shared with the Fine-Gray fit, a weighted partial likelihood (#392).
+    With ``proportion``, they run off together, in that proportion to
+    each other, and no one of them does alone (#728)."""
+    if proportion is None:
+        what = (
+            "the partial likelihood keeps increasing as coefficient(s) {} "
+            "grow without bound, so the estimate is infinite (the "
+            "covariate separates the events from the survivors)".format(which)
+        )
+    else:
+        what = (
+            "the partial likelihood keeps increasing as coefficients {} "
+            "grow without bound together, in the proportion {}, so the "
+            "estimate is infinite (that combination of the covariates "
+            "separates the events from the survivors)".format(
+                which,
+                " : ".join(
+                    "{:.3g}".format(float(v)) for v in np.ravel(proportion)
+                ),
+            )
+        )
     warn_no_maximum(
-        "the partial likelihood keeps increasing as coefficient(s) {} "
-        "grow without bound, so the estimate is infinite (the covariate "
-        "separates the events from the survivors)".format(which),
+        what,
         "The reported value, its standard error and its p-value are "
         "meaningless",
         "consider removing or coarsening the covariate, or a penalised fit",
@@ -572,10 +662,14 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             coefficients and ``p_values`` their Wald p-values; the
             baseline (``h0``, ``H0``) is that of a unit at ``center``
             (zeros unless ``center=True``). If a
-            covariate separates the events from the survivors the partial
-            likelihood has no finite maximum; the fit then warns
-            ("monotone partial likelihood") and the coefficient is
-            meaningless.
+            covariate, or a combination of them, separates the events
+            from the survivors the partial likelihood has no finite
+            maximum; the fit then warns ("No finite maximum", naming the
+            coefficients and, for a combination, their proportion),
+            ``maximum`` is ``"no finite maximum"`` and those coefficients
+            are meaningless (their standard errors nan). This is decided
+            from the data, so it does not depend on the order of the
+            rows.
 
         Examples
         --------
@@ -617,7 +711,14 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         neg_ll, jac = func_generator(*likelihood_args)
 
         res, p_values, se, aliased, covariance = _solve_beta_and_p_values(
-            neg_ll, jac, beta_init, tol, Z, n, float(n[c == 0].sum())
+            neg_ll,
+            jac,
+            beta_init,
+            tol,
+            Z,
+            n,
+            float(n[c == 0].sum()),
+            risk_sets=(x, c, tl, tie_method),
         )
 
         model = SemiParametricRegressionModel("Cox", "Semi-Parametric")
@@ -788,6 +889,12 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             ),
             np.concatenate(
                 [np.full(len(v[1]), k) for k, v in enumerate(validated)]
+            ),
+            risk_sets=(
+                np.concatenate([v[1] for v in validated]),
+                np.concatenate([v[2] for v in validated]),
+                np.concatenate([v[4] for v in validated]),
+                tie_method,
             ),
         )
 
