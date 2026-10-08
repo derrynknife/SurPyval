@@ -168,6 +168,22 @@ class _EfronTies:
             )
         return out
 
+    def log_denominator_of_logs(
+        self, log_R: npt.NDArray, log_D: npt.NDArray
+    ) -> npt.NDArray:
+        """:meth:`log_denominator` from the logs of ``R`` and ``D``:
+        ``log(R - c D) = log R + log(1 - c D / R)``, with ``D <= R``, for
+        sums too large or small to form (#728)."""
+        out = np.zeros(len(log_R))
+        out[self.one] = log_R[self.one]
+        if self.tied.size:
+            lR, lD = log_R[self.tied], log_D[self.tied]
+            ratio = np.exp(np.minimum(lD - lR, 0.0))[self.t_idx]
+            out[self.tied] = self._sum(
+                lR[self.t_idx] + np.log1p(-self.t_c * ratio)
+            )
+        return out
+
     def sums(self, R: npt.NDArray, D: npt.NDArray) -> tuple[npt.NDArray, ...]:
         """At the tied times, ``sum u``, ``sum c u``, ``sum u^2``,
         ``sum c u^2`` and ``sum c^2 u^2`` over the tied deaths, with
@@ -325,6 +341,118 @@ class _CoxRiskSets:
         if not self.rows.truncated:
             return R
         return R - not_yet_entered(self.pos, self.gb_tl.sum(self.n * w)[1])
+
+    def direct(self, beta_z: npt.NDArray) -> "tuple | None":
+        """``exp(beta_z)`` as a column, and the at-risk sums of ``n`` times
+        it per unique time (less the mass not yet entered), where they can
+        be summed directly; ``None`` where the linear predictor is beyond
+        ``_DIRECT_ETA``, or where taking off the mass not yet entered
+        leaves less than ``_KEPT`` of a sum at a time with a death: the
+        difference has then lost more than ``eps / _KEPT`` to rounding
+        (all of it, at a large ``beta``, #728), and the partial likelihood
+        is worked out in logs instead (:meth:`log_risk_sums`)."""
+        if not np.all(np.abs(beta_z) <= _DIRECT_ETA):
+            return None
+        e_beta_z = np.exp(beta_z).reshape(-1, 1)
+        total = at_risk_beta_Z(e_beta_z, self.n, self.gb_x)
+        Ri = self.entered(total, e_beta_z)
+        if self.rows.truncated:
+            active = self.n_d > 0
+            if not np.all(Ri[active, 0] > _KEPT * total[active, 0]):
+                return None
+        return e_beta_z, Ri
+
+    def log_risk_sums(self, beta_z: npt.NDArray) -> tuple:
+        """Per unique time, the logs of the at-risk sum of
+        ``n exp(beta_z)`` (less the mass not yet entered) and of the
+        deaths' ``n_d exp(beta_z)``, without forming either: the partial
+        likelihood at a linear predictor that would over- or underflow
+        ``exp`` (#728). Without delayed entry the at-risk sums are
+        cumulative ``logaddexp``; with it, a time where the mass not yet
+        entered is all but the whole sum is summed over its own risk set
+        (:func:`_log_at_risk`), so the difference is not lost to
+        rounding."""
+        with np.errstate(divide="ignore"):
+            log_w = np.log(self.risk_n) + beta_z
+            log_d = np.log(self.death_n) + beta_z
+        log_D = _group_logsumexp(self.gb_x, log_w=log_d)
+        log_total = _suffix_logsumexp(_group_logsumexp(self.gb_x, log_w))
+        if not self.rows.truncated:
+            return log_total, log_D
+        log_out = _suffix_logsumexp(_group_logsumexp(self.gb_tl, log_w))
+        log_out = np.r_[log_out, -np.inf][self.pos]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            log_R = log_total + np.log1p(-np.exp(log_out - log_total))
+        lost = (self.n_d > 0) & ~(log_out - log_total < np.log1p(-_KEPT))
+        if np.any(lost):
+            log_R[lost] = _log_at_risk(
+                self.rows, log_w, np.flatnonzero(lost), len(log_total)
+            )
+        return log_R, log_D
+
+
+#: The largest linear predictor whose ``exp`` the partial likelihood sums
+#: directly; beyond it the sums are taken in logs (#728).
+_DIRECT_ETA = 300.0
+
+#: The least share of a risk set's sum that may be left once the mass
+#: not yet entered is taken off (#728); below it the risk set is summed
+#: over itself (:func:`_log_at_risk`).
+_KEPT = 1e-6
+
+
+def _group_logsumexp(gb: "_GroupBy", log_w: npt.NDArray) -> npt.NDArray:
+    """Per group of ``gb``, the log of the sum of ``exp(log_w)`` over its
+    rows (``-inf`` where every term is 0)."""
+    top = np.full(gb._n, -np.inf)
+    np.maximum.at(top, gb._inv, log_w)
+    shift = np.where(np.isfinite(top), top, 0.0)
+    total = np.bincount(
+        gb._inv, weights=np.exp(log_w - shift[gb._inv]), minlength=gb._n
+    )
+    with np.errstate(divide="ignore"):
+        return np.log(total) + shift
+
+
+def _suffix_logsumexp(log_v: npt.NDArray) -> npt.NDArray:
+    """The log of each suffix sum of ``exp(log_v)``."""
+    return np.logaddexp.accumulate(log_v[::-1])[::-1]
+
+
+def _log_at_risk(
+    rows: "_RiskSetRows", log_w: npt.NDArray, times: npt.NDArray, m: int
+) -> npt.NDArray:
+    """The log of the sum of ``exp(log_w)`` over the rows at risk at each
+    of the unique ``times`` (indices, of ``m``), summed over the risk set
+    itself rather than as the difference of two sums. Rows are added as
+    they enter, into a Fenwick tree of ``logaddexp`` keyed by their exit,
+    and each time sums those still at risk: ``O((n + T) log m)``, in
+    Python, so kept for the times where the difference is lost
+    (:meth:`_CoxRiskSets.log_risk_sums`)."""
+    exit_at = m - rows.exit  # 1-based, reversed: a suffix is a prefix
+    assert rows.entered is not None  # (only with delayed entry)
+    order = np.argsort(rows.entered, kind="stable")
+    entered = rows.entered[order]
+    tree = [-np.inf] * (m + 1)
+    out = np.empty(len(times))
+    k = 0
+    for q in np.argsort(times, kind="stable").tolist():
+        t = int(times[q])
+        while k < len(order) and entered[k] <= t:
+            j = int(order[k])
+            i = int(exit_at[j])
+            v = float(log_w[j])
+            while i <= m:
+                tree[i] = float(np.logaddexp(tree[i], v))
+                i += i & -i
+            k += 1
+        acc = -np.inf
+        i = m - t
+        while i > 0:
+            acc = float(np.logaddexp(acc, tree[i]))
+            i -= i & -i
+        out[q] = acc
+    return out
 
 
 def _cox_information(
@@ -643,17 +771,37 @@ def _kp_tie_term(
         # The cumulative sums only add non-negative terms, so the last entry
         # is the largest.
         scale = B[-1]
+        if not scale > 0:
+            # Every product of k scores underflowed: their range is wider
+            # than a float's, as at a large beta (#728)
+            break
         log_scale += np.log(scale)
         B = B / scale
         if derivs:
             dB = dB / scale
             d2B = d2B / scale
+    else:
+        log_e = log_scale + d * shift
+        if not derivs:
+            return log_e, np.zeros(p), np.zeros((p, p))
+        g = dB[-1] / B[-1]
+        return log_e, g, d2B[-1] / B[-1] - np.outer(g, g)
+    nan = np.nan if derivs else 0.0
+    return (
+        _log_elementary(eta, d),
+        np.full(p, nan),
+        np.full((p, p), nan),
+    )
 
-    log_e = log_scale + d * shift
-    if not derivs:
-        return log_e, np.zeros(p), np.zeros((p, p))
-    g = dB[-1] / B[-1]
-    return log_e, g, d2B[-1] / B[-1] - np.outer(g, g)
+
+def _log_elementary(eta: npt.NDArray, d: int) -> float:
+    """``log e_d`` of the scores ``exp(eta)`` (see :func:`_kp_tie_term`),
+    by the same recursion taken in logs: for scores too far apart for
+    their products to be formed (#728)."""
+    log_B = np.zeros(len(eta) + 1)
+    for _ in range(d):
+        log_B = np.r_[-np.inf, np.logaddexp.accumulate(eta + log_B[:-1])]
+    return float(log_B[-1])
 
 
 def _weighted_moments(
@@ -718,13 +866,20 @@ def _exact_tie_term(
 
     lse_w, mean_w, cov_w = _weighted_moments(eta_w, Z_w)
     log_c = eta_d - lse_w
+    if not np.all(np.isfinite(log_c)):
+        # (a linear predictor that is not finite, #728)
+        return np.nan, np.full(p, np.nan), np.full((p, p), np.nan)
 
     def log_integrand(w: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
-        x = np.exp(log_c[None, :] + w[:, None])
+        log_x = log_c[None, :] + w[:, None]
+        # Beyond e^700 a factor is 1 to the last bit (and x would
+        # overflow, #728)
+        x = np.exp(np.minimum(log_x, 700.0))
         with np.errstate(divide="ignore"):
-            # log(1 - e^-x); x can underflow to 0 far left of the mode,
-            # where the log is -inf and the node simply carries no weight.
-            g = np.log(-np.expm1(-x)).sum(axis=1) - np.exp(w) + w
+            # log(1 - e^-x), which is log x where x underflows to 0: at a
+            # large beta every node can be that far out (#728).
+            g_j = np.where(x > 0, np.log(-np.expm1(-x)), log_x)
+        g = g_j.sum(axis=1) - np.exp(w) + w
         return g, x
 
     # The mode lies in (0, log(d + 1)): g' = sum x/(e^x - 1) - e^w + 1 with
@@ -976,17 +1131,19 @@ class CoxLikelihoodMixin:
         one, tied = ties.one, ties.tied
 
         def log_like(beta: npt.NDArray) -> float:
-            beta_z = Z @ beta
+            with np.errstate(over="ignore", invalid="ignore"):
+                beta_z = Z @ beta
+            if not np.all(np.isfinite(beta_z)):
+                # (a coefficient or linear predictor that is not finite)
+                return np.nan
 
             S_dz = gb_x.sum(n_d_x * beta_z.reshape(-1, 1))[1].reshape(-1, 1)
-            e_beta_z = np.exp(beta_z).reshape(-1, 1)
-
-            Ri = gb_x.sum(n * e_beta_z)[1]
-
-            Ri = Ri[::-1].cumsum(axis=0)[::-1]
-
-            # Subtract the not-yet-entered mass from the risk sums.
-            Ri = rs.entered(Ri, e_beta_z)
+            direct = rs.direct(beta_z)
+            if direct is None:
+                log_R, log_D = rs.log_risk_sums(beta_z)
+                efron_denom = ties.log_denominator_of_logs(log_R, log_D)
+                return -(S_dz.sum() - efron_denom.sum())
+            e_beta_z, Ri = direct
 
             Di = gb_x.sum(n_d_x * e_beta_z)[1]
 
@@ -1083,15 +1240,20 @@ class CoxLikelihoodMixin:
 
         # Create the log_like function for the data
         def log_like(beta: npt.NDArray) -> float:
-            beta_z = Z @ beta
+            with np.errstate(over="ignore", invalid="ignore"):
+                beta_z = Z @ beta
+            if not np.all(np.isfinite(beta_z)):
+                # (a coefficient or linear predictor that is not finite)
+                return np.nan
             di_beta_z = gb_x.sum(n_d_x * beta_z.reshape(-1, 1))[1].reshape(
                 -1, 1
             )
-            e_beta_z = np.exp(beta_z).reshape(-1, 1)
-            Ri = at_risk_beta_Z(e_beta_z, n, gb_x)
-
-            # Subtract the not-yet-entered mass from the risk sums.
-            Ri = rs.entered(Ri, e_beta_z)
+            direct = rs.direct(beta_z)
+            if direct is None:
+                log_R = rs.log_risk_sums(beta_z)[0]
+                active = n_d > 0
+                return -(di_beta_z.sum() - n_d[active] @ log_R[active])
+            Ri = direct[1]
 
             Ri = np.log(Ri)
             Ri = n_d.reshape(-1, 1) * Ri
@@ -1205,7 +1367,11 @@ class CoxLikelihoodMixin:
             return -ll, -score, -hess
 
         def neg_ll(beta: npt.NDArray) -> float:
-            return float(total(beta, False)[0])
+            # Finite at any finite linear predictor (#728); one that
+            # overflows is not finite, and the value then nan, quietly
+            with np.errstate(over="ignore", invalid="ignore"):
+                value = float(total(beta, False)[0])
+            return value if np.isfinite(value) else np.nan
 
         def jac_hess(beta: npt.NDArray) -> tuple:
             _, score, hess = total(beta, True)
