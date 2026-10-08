@@ -455,6 +455,10 @@ Unreleased
   (#710): with all the failures in one cell, a WeibullPO's alpha (or a
   LogNormalPH's sigma) was named without the two coefficients running
   off with it, whose profiles had gone flat to rounding.
+- A zero-inflated model's ``hf(0)`` is the point mass's discrete hazard
+  ``f0`` (#728), as a discrete distribution's ``df(k) / sf(k - 1)``: it
+  was ``f0 / (1 - f0)``. Its Wald ``hf`` and ``df`` bounds at 0 are
+  ``f0``'s logit interval, around the estimate; they were ``[0, 0]``.
 
 v0.23 (4 October 2026)
 ----------------------
