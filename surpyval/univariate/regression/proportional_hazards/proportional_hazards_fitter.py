@@ -6,6 +6,7 @@ from typing import Any, Callable
 import autograd.numpy as np
 import numpy as onp
 import numpy.typing as npt
+from autograd.tracer import getval
 
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
@@ -57,6 +58,50 @@ def _times_phi(phi: Boxable, base: Boxable) -> Boxable:
     if not np.any(lost):
         return out
     return np.where(lost, base, out)
+
+
+#: A baseline hazard or cumulative hazard below this is scaled by
+#: ``e^(beta'Z)`` on the log scale (``ProportionalHazardsFitter._scaled``):
+#: its square, in the second derivatives of its log, underflows long before
+#: it does, and it underflows to 0 itself while the hazard it is multiplied
+#: into is finite (#728).
+_SMALL_BASELINE = 1e-50
+#: The log of the smallest normal float: a scaled hazard below it is taken
+#: as the product, as it was.
+_LOG_TINY = float(onp.log(onp.finfo(float).tiny))
+
+
+def _stand_in(x: Any, rows: Any) -> Any:
+    """``x`` at ``rows``, and the first of those elsewhere: a function
+    evaluated there for ``rows`` alone gets a value from the other rows
+    that cannot poison its gradient (autograd differentiates both
+    branches of a ``np.where``)."""
+    if onp.ndim(rows) == 0:
+        return x
+    raw = onp.broadcast_to(onp.asarray(getval(x), dtype=float), rows.shape)
+    return np.where(rows, x, raw[rows][0])
+
+
+def _small_on_log_scale(
+    base: Boxable, log_base: Callable, x: Numeric
+) -> "tuple[Any, Boxable] | None":
+    """``(rows, log_values)``: the rows where the baseline (cumulative)
+    hazard ``base`` at ``x`` is below ``_SMALL_BASELINE`` (0 included,
+    where it underflowed) and its log, ``log_base(x)``, is finite, with
+    that log there (and a stand-in elsewhere, :func:`_stand_in`); ``None``
+    where there are none. A baseline that is 0 itself (``x = 0``) is
+    left as it is."""
+    with onp.errstate(invalid="ignore"):
+        rows = onp.asarray(base < _SMALL_BASELINE)
+    for _ in range(2):
+        if not rows.any():
+            return None
+        logs = log_base(_stand_in(x, rows))
+        finite = onp.asarray(np.isfinite(logs)) & rows
+        if (finite == rows).all():
+            return rows, logs
+        rows = finite
+    return None
 
 
 class ProportionalHazardsFitter(
@@ -180,21 +225,121 @@ class ProportionalHazardsFitter(
         Cumulative hazard :math:`\\phi(Z) H_0(x)` at ``x`` for covariates
         ``Z``; ``params`` are the distribution parameters followed by the
         covariate coefficients.
+
+        Where :math:`H_0(x)` is very small (below 1e-50, or 0 where it
+        underflowed), it is :math:`e^{\\log \\phi(Z) + \\log H_0(x)}`,
+        with :math:`\\log H_0` from the baseline's ``log_ff``: finite, and
+        with finite derivatives, where the product is not.
         """
         dist_params = np.array(params[0 : self.k_dist])
-        phi_params = np.array(params[self.k_dist :])
-        Hf_raw = self.Hf_dist(x, *dist_params)
-        return _times_phi(self.phi(Z, *phi_params), Hf_raw)
+        H0 = self.Hf_dist(x, *dist_params)
+        return self._scaled(
+            H0, lambda at: self.dist.log_ff(at, *dist_params), x, Z, params
+        )
 
     def hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         """
         Hazard rate :math:`\\phi(Z) h_0(x)` at ``x`` for covariates ``Z``;
-        ``params`` as for :meth:`Hf`.
+        ``params`` as for :meth:`Hf`, and on the log scale where
+        :math:`h_0(x)` is very small as :meth:`Hf` is, with
+        :math:`\\log h_0 = \\log f_0 - \\log S_0`.
         """
         dist_params = np.array(params[0 : self.k_dist])
+        h0 = self.hf_dist(x, *dist_params)
+        return self._scaled(h0, self._log_h0(dist_params), x, Z, params)
+
+    # -- on the log scale where the baseline is very small (#728) ---------
+    #
+    # At a LogNormal baseline running towards the Weibull limit (sigma
+    # large, #583's draws 93 and 117) the search ends where H0 = 1e-306,
+    # h0 is subnormal and e^(beta'Z) = 1e304: the products are finite, but
+    # the second derivatives of log h0 need h0^2, which underflows, and
+    # the Hessian was inf; a Weibull baseline with a large shape has H0
+    # underflow to 0 where e^(beta'Z) H0 is not small at all, and so has a
+    # baseline moved to Z = 0 from covariates far from it. Where the
+    # baseline is that small, log H and log h are beta'Z + log H0 and
+    # beta'Z + log h0, with log H0 = log F0 (exact to F0 / 2) and
+    # log h0 = log f0 - log S0, from the baseline's log functions, which
+    # stay finite with their derivatives; elsewhere they are what they
+    # were.
+
+    def _log_h0(self, dist_params: Any) -> Callable:
+        """The baseline's log hazard, ``log f0 - log S0``, as a function
+        of ``x``."""
+
+        def log_h0(at: Numeric) -> Boxable:
+            return self.dist.log_df(at, *dist_params) - self.dist.log_sf(
+                at, *dist_params
+            )
+
+        return log_h0
+
+    def _log_phi(self, Z: Numeric, phi_params: Any) -> Boxable:
+        """``log phi(Z)``: ``beta'Z`` itself for the log-linear link,
+        which does not overflow where ``phi`` does."""
+        if self.phi is LogLinearPhi.phi:
+            return np.dot(Z, phi_params)
+        with np.errstate(divide="ignore"):
+            return np.log(self.phi(Z, *phi_params))
+
+    def _phi_off(self, Z: Numeric, phi_params: Any, rows: Any) -> Any:
+        """``phi(Z)`` for the rows not taken on the log scale: for the
+        log-linear link, 1 at ``rows``, where ``e^(beta'Z)`` can be at its
+        largest and its derivatives overflow."""
+        if self.phi is not LogLinearPhi.phi:
+            return self.phi(Z, *phi_params)
+        with np.errstate(over="ignore"):
+            return np.exp(np.where(rows, 0.0, self._log_phi(Z, phi_params)))
+
+    def _scaled(
+        self,
+        base: Boxable,
+        log_base: Callable,
+        x: Numeric,
+        Z: Numeric,
+        params: tuple,
+    ) -> Boxable:
+        """``phi(Z) base``, the baseline's (cumulative) hazard ``base`` at
+        ``x`` scaled, as ``exp(log phi + log_base(x))`` where ``base`` is
+        very small (see above) and the product does not underflow even
+        so: below the smallest normal float it is the product as it was,
+        whose derivatives in a log H0 of -1e160 (a LogNormal sigma at
+        1e-80) are no better."""
         phi_params = np.array(params[self.k_dist :])
-        hf_raw = self.hf_dist(x, *dist_params)
-        return _times_phi(self.phi(Z, *phi_params), hf_raw)
+        found = _small_on_log_scale(base, log_base, x)
+        if found is not None:
+            rows, logs = found
+            log_value = np.where(rows, self._log_phi(Z, phi_params), 0.0)
+            log_value = log_value + logs
+            on = rows & onp.asarray(log_value > _LOG_TINY)
+            if on.any():
+                off = _times_phi(
+                    self._phi_off(Z, phi_params, on), np.where(on, 0.0, base)
+                )
+                on_log = np.exp(np.where(on, log_value, 0.0))
+                return np.where(on, on_log, off)
+        return _times_phi(self.phi(Z, *phi_params), base)
+
+    def log_sf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
+        return -self.Hf(x, Z, *params)
+
+    def log_df(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
+        """The log density, ``log h - H``, with ``log h`` taken as
+        ``log phi + log h0`` where ``h0`` is very small (see above)."""
+        dist_params = np.array(params[0 : self.k_dist])
+        phi_params = np.array(params[self.k_dist :])
+        h0 = self.hf_dist(x, *dist_params)
+        found = _small_on_log_scale(h0, self._log_h0(dist_params), x)
+        if found is None:
+            log_h = np.log(_times_phi(self.phi(Z, *phi_params), h0))
+        else:
+            rows, log_small = found
+            log_phi = np.where(rows, self._log_phi(Z, phi_params), 0.0)
+            phi = self._phi_off(Z, phi_params, rows)
+            with np.errstate(divide="ignore"):
+                off = np.log(_times_phi(phi, np.where(rows, 1.0, h0)))
+            log_h = np.where(rows, log_phi + log_small, off)
+        return log_h - self.Hf(x, Z, *params)
 
     def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Numeric:
         return y

@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from autograd import grad, hessian
+from scipy.optimize import OptimizeResult
 
 import surpyval as sp
 from surpyval import CoxPH
@@ -38,6 +39,7 @@ from surpyval.univariate.regression import (
     _baseline_profile as baseline_profile,
 )
 from surpyval.univariate.regression import _fit_skeleton as skeleton
+from surpyval.utils.surpyval_data import SurpyvalData
 
 NO_MAXIMUM = "No finite maximum: the likelihood keeps increasing"
 MONOTONE = "No finite maximum: the partial likelihood"
@@ -623,16 +625,24 @@ def test_634_weibull_po_derivatives_are_finite_far_out():
 
 def test_634_the_refusal_at_z_0_says_there_may_be_no_maximum():
     # Draw 9: the coefficient of log V runs off, and moving the baseline
-    # to Z = 0 overflows. The refusal stays, and says why it happened and
-    # that center=True fits, with the "No finite maximum" warning.
+    # to Z = 0 overflowed. Where it still does, the refusal says why it
+    # happened and that center=True fits, with the "No finite maximum"
+    # warning. With the hazard on the log scale where the baseline is very
+    # small, the baseline at Z = 0 (alpha 5.5e152) is usually within range
+    # where the search stops (#728), and the fit warns as it does centred.
     x, c, Z = _alt(9)
-    with pytest.raises(ValueError) as info:
-        sp.WeibullPH.fit(x, _alt_terms(Z), c=c)
-    message = str(info.value)
-    assert "cannot be represented" in message
-    assert "may have no finite maximum" in message
-    assert "coefficient(s) [1]" in message
-    assert "center=True" in message
+    try:
+        model, w = _fit(lambda: sp.WeibullPH.fit(x, _alt_terms(Z), c=c))
+    except ValueError as info:
+        message = str(info)
+        assert "cannot be represented" in message
+        assert "may have no finite maximum" in message
+        assert "coefficient(s) [1]" in message
+        assert "center=True" in message
+    else:
+        assert model.maximum == "no finite maximum"
+        assert [str(m.message)[:22] for m in w] == ["No finite maximum: the"]
+        assert np.all(np.isfinite(model.sf(x, _alt_terms(Z))))
     model, w = _fit(
         lambda: sp.WeibullPH.fit(x, _alt_terms(Z), c=c, center=True)
     )
@@ -839,6 +849,95 @@ def test_710_every_parameter_running_off_is_named(fitter, name):
     message = str(w[0].message)
     assert "coefficient(s) [0, 1]" in message
     assert f"{name} (" in message
+
+
+# -- a PH hazard on the log scale where the baseline is very small (#728) -----
+
+
+def _alt_data(draw):
+    x, c, Z = _alt(draw)
+    data = SurpyvalData(x, c, group_and_sort=False)
+    data.add_covariates(_alt_terms(Z))
+    return data
+
+
+def test_728_lognormal_ph_derivatives_are_finite_near_the_weibull_limit():
+    # Draw 93's search stopped here, towards the Weibull limit: H0 = Phi(z)
+    # is 1e-306 and h0 subnormal, e^(beta'Z) 1e304. The products are
+    # finite, but the Hessian was inf (the second derivatives of log h0
+    # need h0^2), and the fit "unverified".
+    data = _alt_data(93)
+    at = np.array([594.171157, 15.7195937, -21087.3453, 121.279848])
+
+    def neg_ll(p):
+        return sp.LogNormalPH.neg_ll(data, *p)
+
+    assert np.all(np.isfinite(hessian(neg_ll)(at)))
+    # The value is the product's, where that is finite
+    H0 = sp.LogNormal.Hf(data.x_r, *at[:2])
+    product = np.exp(data.Z_r @ at[2:]) * H0
+    np.testing.assert_allclose(
+        -sp.LogNormalPH.log_sf(data.x_r, data.Z_r, *at), product, rtol=1e-12
+    )
+
+
+def test_728_a_weibull_ph_baseline_that_underflows_is_scaled_exactly():
+    # (0.5 / 0.84)^1500 underflows to 0, but e^900 times it is e^121.8: the
+    # cumulative hazard is not 0, and the density is not that of a row
+    # that cannot fail.
+    x, Z = np.array([0.5, 1.0]), np.array([[1.0], [0.0]])
+    p = (0.84, 1500.0, 900.0)
+    log_H = 900.0 * Z[:, 0] + 1500.0 * np.log(x / 0.84)
+    np.testing.assert_allclose(
+        -sp.WeibullPH.log_sf(x, Z, *p), np.exp(log_H), rtol=1e-12
+    )
+    np.testing.assert_allclose(sp.WeibullPH.Hf(x, Z, *p), np.exp(log_H))
+    log_h = np.log(1500.0 / 0.84) + 900.0 * Z[:, 0]
+    log_h += 1499.0 * np.log(x / 0.84)
+    np.testing.assert_allclose(
+        sp.WeibullPH.log_df(x, Z, *p), log_h - np.exp(log_H), rtol=1e-12
+    )
+    g = grad(lambda q: sp.WeibullPH.log_df(x, Z, *q).sum())(np.array(p))
+    assert np.all(np.isfinite(g))
+
+
+def test_728_lognormal_ph_towards_the_weibull_limit_has_no_finite_maximum():
+    # Draw 93: mu and sigma run on to the Weibull limit (mu / sigma^2 the
+    # shape) and the coefficient of log V with them, as the WeibullPH fit
+    # of these data runs off (its scale and that coefficient). The fit was
+    # "unverified", its Hessian inf (above).
+    x, c, Z = _alt(93)
+    model, w = _fit(lambda: sp.LogNormalPH.fit(x, _alt_terms(Z), c=c))
+    assert model.maximum == "no finite maximum"
+    assert len(w) == 1, [str(m.message) for m in w]
+    assert str(w[0].message).startswith(NO_MAXIMUM)
+
+
+def test_728_a_far_baseline_run_off_is_not_verified():
+    # A profile rising to the limit (exp(0.1 u), u the log of the distance
+    # from the bound) from 60 e-folds out, where a verified-looking answer
+    # is walked: a LogNormalPH sigma at 1e-80, its derivatives rounding,
+    # passed the test of a maximum (draw 10).
+    def f(p):
+        return anp.exp(0.1 * p[0]) + (p[1] - 1.0) ** 2
+
+    res = OptimizeResult(x=np.array([-60.0, 1.0]), fun=f([-60.0, 1.0]))
+    found = skeleton._far_run_off(
+        f, res, None, [(1, 0)], 1.0, (0,), [(0, "sigma")]
+    )
+    assert found.maximum == "no finite maximum"
+    assert found.baseline == ("sigma",)
+    assert found.runaway == []
+
+    # One with a maximum that far out is left as it is
+    def g(p):
+        return (p[0] + 60.0) ** 2 + (p[1] - 1.0) ** 2
+
+    res = OptimizeResult(x=np.array([-60.0, 1.0]), fun=0.0)
+    assert (
+        skeleton._far_run_off(g, res, None, [(1, 0)], 1.0, (0,), [(0, "s")])
+        is None
+    )
 
 
 # ---------------------------------------------------------------------------
