@@ -71,7 +71,7 @@ def _check_interp(interp: str) -> None:
     check_option("interp", interp, _INTERP)
 
 
-def _warn_bounds_past_data(
+def warn_bounds_past_data(
     method: str, last: float, past: npt.NDArray, held: str = "sf"
 ) -> None:
     # The step ``sf`` (``held``: the competing-risks ``cif`` too) holds
@@ -299,7 +299,7 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
             xf = np.atleast_1d(np.asarray(x, dtype=float))
             past = np.unique(xf[xf > last])
             if past.size:
-                _warn_bounds_past_data(method, last, past)
+                warn_bounds_past_data(method, last, past)
         else:
             support = (first, last)
         return on_support(support, first, last, x, f, start)
