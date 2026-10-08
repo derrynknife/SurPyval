@@ -307,10 +307,11 @@ def test_bounds_are_nan_outside_the_data_without_a_support(case):
     pointwise ones and the bootstrap alike -- is NaN above the last time,
     where the estimate says nothing (principle 11). ``bootstrap_cb`` used
     to carry its step convention there instead (the last bounds; #452).
-    Below the first time a single-event step estimate is exactly at its
-    start (``sf`` 1), and so are its bounds (#665); past the last they
-    warn, as ``sf`` holds a value there. (A missing time is
-    ``test_missing``'s.)"""
+    Below the first time a step estimate (single-event, or the competing
+    risks one, #728) is exactly at its start (``sf`` 1), and so are its
+    bounds (#665); past the last they warn, as ``sf`` holds a value there.
+    (A missing time is ``test_missing``'s.)"""
+    from surpyval.univariate.competing_risks import CompetingRisks
     from surpyval.univariate.nonparametric.nonparametric import (
         NonParametric,
     )
@@ -321,10 +322,8 @@ def test_bounds_are_nan_outside_the_data_without_a_support(case):
     for label, method, kw, fname, event in _bound_calls(case):
         b = _bound(model, method, np.array([lower]), event, kw)
         # (An interpolated estimate is NaN outside the data, as its sf.)
-        if isinstance(model, NonParametric) and kw.get("interp") in (
-            None,
-            "step",
-        ):
+        step = kw.get("interp") in (None, "step")
+        if isinstance(model, (NonParametric, CompetingRisks)) and step:
             assert np.all(b == START.get(fname, 0.0)), f"{label}: {b}"
             with pytest.warns(UserWarning, match="past the last observed"):
                 b = _bound(model, method, np.array([upper]), event, kw)

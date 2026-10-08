@@ -93,6 +93,12 @@ Unreleased
 
 **Added**
 
+- ``CompetingRisks.cb(x, event, on="cif", ...)``: pointwise confidence
+  bounds on a cause's cumulative incidence, with Aalen's variance (the
+  ``var`` of R's ``cmprsk::cuminc``; ``aalen_johansen_variance``) on the
+  log(-log) scale by default, and on the all-cause or net ``sf``, ``ff``
+  and ``Hf`` as ``KaplanMeier`` / ``NelsonAalen`` would give them (#728).
+  0 before the first time, NaN with a warning past the last.
 - ``FixedEventProbability.qf`` (0 up to ``p``, ``inf`` above it; NaN
   with one warning outside [0, 1]) and ``Binomial.fit_from_df(...,
   n_trials_col=)`` for per-row trials (#626).

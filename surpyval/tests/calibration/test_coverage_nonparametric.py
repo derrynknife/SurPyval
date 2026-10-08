@@ -1,10 +1,13 @@
 """Coverage of the non-parametric pointwise bounds and simultaneous bands.
 
-Three studies:
+Four studies:
 
 - **Pointwise** ``cb`` of Kaplan-Meier, Nelson-Aalen and Fleming-Harrington
   (default log(-log) bounds) at the true quartiles of a censored Weibull
   sample, n = 100.
+- **Competing risks**: the pointwise ``cb`` of ``CompetingRisks``' cumulative
+  incidence (Aalen's variance, log(-log) bounds) at two times of a
+  simulated wear-out-or-shock sample, n = 200, at 95% and 90%.
 - **Simultaneous** ``band`` (Hall-Wellner and equal precision, with their
   defaults: the arcsine-square-root scale, and for the equal precision
   band the times with 0.1 <= a <= 0.9): the whole true survival curve,
@@ -186,3 +189,39 @@ def test_band_critical_value(a_l, a_u, standardized):
     )
     print("  at 0.985 x critical value: P(inside) {:.5f}".format(p_low))
     assert p_low < 0.95 - tol
+
+
+def _true_wear_cif(t):
+    """The cumulative incidence of wear (a Weibull(100, 3) latent life)
+    with shocks (an exponential latent life, mean 150) competing."""
+    from scipy.integrate import quad
+
+    wear = sp.Weibull.from_params([100.0, 3.0])
+    return quad(lambda u: wear.df(u) * np.exp(-u / 150.0), 0.0, t)[0]
+
+
+@pytest.mark.parametrize("alpha_ci", [0.05, 0.1])
+def test_competing_risks_cif_coverage(alpha_ci):
+    # n = 200 with uniform censoring on (0, 250); at t = 50 and 100 the
+    # true CIF is 0.09 and 0.40. (At a time with no event of the cause
+    # yet, the bound is [0, 0] and misses, as a Kaplan-Meier's [1, 1]
+    # does; past the last time it is NaN.)
+    from surpyval.univariate.competing_risks import CompetingRisks
+
+    rng = np.random.default_rng(205)
+    t_eval = np.array([50.0, 100.0])
+    truth = np.array([_true_wear_cif(t) for t in t_eval])
+    reps, n = 2000, 200
+    lo, hi = np.empty((reps, 2)), np.empty((reps, 2))
+    for r in range(reps):
+        t_wear = 100.0 * rng.weibull(3.0, n)
+        t_shock = rng.exponential(150.0, n)
+        t_cens = rng.uniform(0.0, 250.0, n)
+        x = np.minimum.reduce([t_wear, t_shock, t_cens])
+        e = np.where(
+            x == t_cens, None, np.where(t_wear < t_shock, "wear", "shock")
+        ).astype(object)
+        b = CompetingRisks.fit(x, e).cb(t_eval, "wear", alpha_ci=alpha_ci)
+        lo[r], hi[r] = b[:, 0], b[:, 1]
+    label = "CompetingRisks cb(cif) at {:.0%}".format(1 - alpha_ci)
+    check_coverage(lo, hi, truth, 1 - alpha_ci, label)

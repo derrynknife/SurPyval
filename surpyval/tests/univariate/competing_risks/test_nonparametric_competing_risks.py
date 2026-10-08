@@ -142,3 +142,168 @@ class TestCIFProductLimit:
     def test_extreme_case_capped_at_one(self):
         cr = CompetingRisks.fit(x=[1] * 9 + [2], e=["a"] * 10)
         assert float(np.ravel(cr.cif(2, "a"))[0]) == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# #728: confidence bounds (``cb``) on the cumulative incidence, and on the
+# all-cause and net sf / ff / Hf.
+# ---------------------------------------------------------------------------
+X10 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+E10 = ["a", "b", "a", None, "a", "b", "a", None, "b", "a"]
+Z95 = 1.959963984540054
+
+
+class TestCIFBounds:
+    def test_normal_bounds_use_aalens_variance(self):
+        # Three units failing from a, b, a: the variance of F_a, by hand
+        # (cmprsk's formula), is 1/9, 1/9 and 1/4 at times 1, 2, 3.
+        model = CompetingRisks.fit([1, 2, 3], ["a", "b", "a"])
+        b = model.cb([1, 2, 3], "a", bound_type="normal")
+        F = np.array([1, 1, 2]) / 3
+        sd = np.sqrt([1 / 9, 1 / 9, 1 / 4])
+        np.testing.assert_allclose(b[:, 0], F - Z95 * sd, rtol=1e-12)
+        np.testing.assert_allclose(b[:, 1], F + Z95 * sd, rtol=1e-12)
+
+    def test_exp_bounds_are_on_the_log_minus_log_scale(self):
+        model = CompetingRisks.fit(X10, E10)
+        F = model.cif(5, "a")
+        # (One side at 0.025 is the two-sided 95% end.)
+        upper = model.cb(
+            5, "a", alpha_ci=0.025, bound="upper", bound_type="normal"
+        )
+        sd = (upper - F) / Z95
+        s = Z95 * sd / (F * abs(np.log(F)))
+        np.testing.assert_allclose(
+            model.cb(5, "a"), [F ** np.exp(s), F ** np.exp(-s)], rtol=1e-12
+        )
+
+    def test_bounds_contain_the_estimate_and_stay_in_the_unit_interval(self):
+        model = CompetingRisks.fit(X10, E10)
+        q = np.linspace(0, 10, 41)
+        for cause in ("a", "b"):
+            F = model.cif(q, cause)
+            b = model.cb(q, cause)
+            assert np.all((b[:, 0] <= F) & (F <= b[:, 1]))
+            assert np.all((b >= 0) & (b <= 1))
+
+    def test_one_sided_bound_is_an_end_of_the_two_sided(self):
+        model = CompetingRisks.fit(X10, E10)
+        q = [2, 5, 9]
+        two = model.cb(q, "b", alpha_ci=0.2)
+        np.testing.assert_allclose(
+            model.cb(q, "b", alpha_ci=0.1, bound="lower"), two[:, 0]
+        )
+        np.testing.assert_allclose(
+            model.cb(q, "b", alpha_ci=0.1, bound="upper"), two[:, 1]
+        )
+
+    def test_zero_before_the_first_time_and_the_cause_first_event(self):
+        # The first time is a's event; b's first is at 2. Both bounds are
+        # exactly 0 (not -0.0) where the incidence is.
+        model = CompetingRisks.fit(X10, E10)
+        b = model.cb([-5, 0.5, 1, 1.5], "b")
+        assert np.all(b == 0) and not np.signbit(b).any()
+        assert np.all(model.cb(0.5, "a") == 0)
+        np.testing.assert_array_equal(model.cb(0.5, on="sf"), [1.0, 1.0])
+
+    def test_nan_past_the_last_time_with_one_warning(self):
+        model = CompetingRisks.fit(X10, E10)
+        with pytest.warns(UserWarning, match="past the last observed") as w:
+            b = model.cb([5, 11, 12], "a")
+        assert len(w) == 1
+        assert "11, 12" in str(w[0].message)
+        assert "cif there only holds" in str(w[0].message)
+        assert np.isnan(b[1:]).all() and np.isfinite(b[0]).all()
+        # Both point at the caller's line.
+        assert w[0].filename == __file__
+        with pytest.warns(UserWarning, match="past the last observed") as w:
+            assert np.isnan(model.cb(11, on="sf")).all()
+        assert len(w) == 1 and w[0].filename == __file__
+
+    def test_support_carries_the_last_bounds(self):
+        model = CompetingRisks.fit(X10, E10).set_support(0, 20)
+        b = model.cb([-1, 0, 10, 15, 25], "a")
+        assert np.isnan(b[[0, 4]]).all()
+        np.testing.assert_array_equal(b[1], [0.0, 0.0])
+        np.testing.assert_array_equal(b[3], b[2])
+        b = model.cb([-1, 0, 15], on="sf")
+        assert np.isnan(b[0]).all()
+        np.testing.assert_array_equal(b[1], [1.0, 1.0])
+
+    def test_the_same_whichever_survival_estimator(self):
+        # The incidence is Aalen-Johansen either way, and so its bounds.
+        q = np.linspace(0, 10, 21)
+        na = CompetingRisks.fit(X10, E10)
+        km = CompetingRisks.fit(X10, E10, how="Kaplan-Meier")
+        np.testing.assert_array_equal(na.cb(q, "a"), km.cb(q, "a"))
+
+    def test_a_cif_that_reaches_one(self):
+        # One cause, no censoring: F reaches 1 at the last time, where
+        # the log(-log) scale has no interval. The upper bound is 1 and
+        # the lower the largest before.
+        model = CompetingRisks.fit([1, 2, 3, 4, 5], ["a"] * 5)
+        b = model.cb([1, 2, 3, 4, 5], "a")
+        assert np.isfinite(b).all()
+        assert b[-1, 1] == 1.0 and b[-1, 0] == b[:-1, 0].max()
+        assert np.all(b[:-1, 0] <= b[:-1, 1])
+
+    def test_shape_and_serialisation(self):
+        import json
+
+        model = CompetingRisks.fit(X10, E10)
+        assert model.cb(5, "a").shape == (2,)
+        assert model.cb(5, "a", bound="lower").shape == ()
+        assert model.cb([[1, 2], [3, 4]], "a").shape == (2, 2, 2)
+        restored = CompetingRisks.from_dict(
+            json.loads(json.dumps(model.to_dict()))
+        )
+        np.testing.assert_array_equal(
+            restored.cb([2, 5, 9], "b"), model.cb([2, 5, 9], "b")
+        )
+
+
+@pytest.mark.parametrize("how", ["Nelson-Aalen", "Kaplan-Meier"])
+@pytest.mark.parametrize("on", ["sf", "ff", "Hf"])
+def test_survival_bounds_are_the_single_event_estimates(how, on):
+    # All causes: every failure is an event; one cause's net function:
+    # the other causes are censored.
+    import surpyval as sp
+
+    fitter = sp.KaplanMeier if how == "Kaplan-Meier" else sp.NelsonAalen
+    model = CompetingRisks.fit(X10, E10, how=how)
+    e = np.array(E10, dtype=object)
+    q = [0.5, 2, 5, 9.5]
+    for event in (None, "a"):
+        failed = np.array([v is not None for v in E10])
+        c = ~failed if event is None else e != event
+        single = fitter.fit(X10, c=c.astype(int))
+        b = model.cb(q, event, on=on)
+        np.testing.assert_allclose(b, single.cb(q, on=on), rtol=1e-12)
+        # And the estimate inside them is the model's own.
+        f = getattr(model, on)(q, event=event)
+        assert np.all((b[:, 0] <= f + 1e-12) & (f <= b[:, 1] + 1e-12))
+
+
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        ({"event": "a", "on": "hf"}, "'on' must be one of"),
+        ({"event": None}, "pass `event`"),
+        ({"event": "c"}, "c"),
+        ({"event": "a", "bound": "both"}, "'bound' must be one of"),
+        ({"event": "a", "bound_type": "log"}, "'bound_type' must be one of"),
+        ({"event": "a", "alpha_ci": 1.5}, "'alpha_ci' must be strictly"),
+    ],
+)
+def test_cb_refuses_bad_arguments(kwargs, match):
+    model = CompetingRisks.fit(X10, E10)
+    with pytest.raises(ValueError, match=match):
+        model.cb([1, 2], **kwargs)
+
+
+def test_cb_warns_of_a_confidence_given_for_alpha_ci():
+    model = CompetingRisks.fit(X10, E10)
+    for on in ("cif", "sf"):
+        with pytest.warns(UserWarning, match="alpha_ci") as w:
+            model.cb([1, 2], "a", on=on, alpha_ci=0.95)
+        assert len(w) == 1
