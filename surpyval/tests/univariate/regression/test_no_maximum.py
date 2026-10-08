@@ -763,6 +763,24 @@ def test_710_a_profile_with_a_maximum_is_finished_there():
     np.testing.assert_allclose(found.res.x, [-3.0, -300.0], rtol=1e-6)
 
 
+@pytest.mark.parametrize(
+    "fitter, name",
+    [(sp.WeibullPO, "Weibull baseline's alpha"), (sp.LogNormalPH, "sigma")],
+    ids=["WeibullPO", "LogNormalPH"],
+)
+def test_710_every_parameter_running_off_is_named(fitter, name):
+    # All six failures in one cell: the baseline's parameter and both
+    # coefficients run off together. The baseline's was named alone: the
+    # coefficients had gone so far that their profiles were flat to
+    # rounding, a test made only where Newton's had found nothing.
+    model, w = _fit(lambda: fitter.fit(*_po(*_one_cell_alt())))
+    assert model.maximum == "no finite maximum"
+    assert len(w) == 1, [str(m.message) for m in w]
+    message = str(w[0].message)
+    assert "coefficient(s) [0, 1]" in message
+    assert f"{name} (" in message
+
+
 # ---------------------------------------------------------------------------
 # Cox warns on a monotone likelihood.
 # ---------------------------------------------------------------------------
