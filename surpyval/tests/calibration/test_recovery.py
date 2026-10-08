@@ -233,8 +233,7 @@ def test_frailty_recovery():
             warnings.simplefilter("ignore")
             model = sp.WeibullFrailty.fit(x, Z=Z, c=c, groups=groups)
         est[r] = model._param_vector()
-        errors = model.standard_errors()
-        se[r] = [errors[p] for p in model.parameter_names]
+        se[r] = model.standard_errors()
     check_bias(est, truth, "WeibullFrailty", standard_errors=se)
 
 
@@ -257,8 +256,7 @@ def test_lognormal_frailty_recovery():
             warnings.simplefilter("ignore")
             model = fitter.fit(x, Z=Z, c=c, groups=groups)
         est[r] = model.params
-        errors = model.standard_errors()
-        se[r] = [errors[p] for p in model.parameter_names]
+        se[r] = model.standard_errors()
     check_bias(est, truth, "WeibullFrailty[lognormal]", standard_errors=se)
 
 
@@ -281,8 +279,7 @@ def test_cox_frailty_recovery():
             warnings.simplefilter("ignore")
             model = sp.CoxFrailty.fit(x, Z=Z, c=c, groups=groups)
         est[r] = model.params
-        errors = model.standard_errors()
-        se[r] = [errors[p] for p in model.parameter_names]
+        se[r] = model.standard_errors()
     check_bias(est, truth, "CoxFrailty", standard_errors=se)
 
 
