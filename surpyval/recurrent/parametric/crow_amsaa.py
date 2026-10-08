@@ -235,6 +235,18 @@ class CrowAMSAA(NHPPFitter):
 
         MIL-HDBK-189C (2011), "Reliability Growth Management", section 6.
 
+        ReliaSoft, "Crow Extended", Reliability Growth and Repairable
+        System Analysis Reference (ReliaWiki, RGA chapter 9): the same
+        projection, :math:`\\hat\\lambda_P = \\hat\\lambda_{CA} -
+        \\hat\\lambda_{BD} + \\sum (1 - d_i) N_i / T + \\bar d\\,
+        \\hat h(T \\mid BD)`, and growth potential without the last term;
+        with BC modes the demonstrated intensity is "the instantaneous
+        failure intensity based on all of the data" (the Crow-AMSAA model
+        fitted to the A, BC and BD failures), without them ``N / T``
+        (#710). Checked against the formulas only: the worked examples'
+        data (Test-Fix-Find-Test: demonstrated MTBF 7.847, projected
+        11.29 at T = 400) were not reachable.
+
         Examples
         --------
         One prototype tested to 400 hours. Modes ``a1`` and ``a2`` will not

@@ -136,6 +136,10 @@ Unreleased
 
 **Fixed**
 
+- ``CrowAMSAA.projection`` names the source its BC-mode projection was
+  checked against (#710): ReliaSoft's Crow Extended formulas, whose
+  demonstrated intensity with BC modes is the Crow-AMSAA intensity at
+  ``T`` fitted to every failure, as the code has it.
 - The renewal likelihoods (GeneralizedRenewal, G1, ARA, ARI) have exact
   derivatives (#710): the Kijima-II, ARA and ARI recursions wrote arrays
   in place, which autograd cannot follow, and are now primitives that
