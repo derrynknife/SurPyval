@@ -64,6 +64,18 @@ Unreleased
 
 **Performance**
 
+- **Wald confidence bounds are 18-36x faster** for the Weibull,
+  Exponential, Rayleigh, Normal, LogNormal, Logistic, LogLogistic and
+  Gumbel families, with or without offset, LFP and zero-inflation:
+  ``cb`` (on ``sf``, ``ff`` and ``Hf``) and ``quantile_cb``. The delta
+  method's Jacobian was ``autograd.jacobian``'s, one reverse pass per time
+  asked for; it is now taken in forward mode, one pass per parameter
+  whatever the number of times. Both are exact: the bounds agree with
+  0.23's to 3e-15. ``ndtr``, ``log_ndtr`` and autograd's ``expit`` gained
+  forward-mode rules (the derivatives their reverse rules use); a family
+  whose functions have none (the Gamma, Beta and ExpoWeibull's incomplete
+  gamma and beta functions) keeps reverse mode. Nine bands and a quantile
+  bound at 200 times on a 300-unit Weibull fit: 552 -> 20 ms.
 - **Building a SurpyvalData is about a third faster.** Every fit builds
   one from its inputs first. The distinct truncation windows, and the
   distinct values the identifiability check counts, came from

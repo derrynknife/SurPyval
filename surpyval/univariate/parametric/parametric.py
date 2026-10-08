@@ -10,6 +10,7 @@ import autograd.numpy as np
 import numpy as onp
 import numpy.typing as npt
 from autograd import grad, jacobian
+from autograd.differential_operators import make_jvp
 from autograd.numpy.numpy_boxes import ArrayBox
 from scipy.special import expit
 from scipy.special import ndtri as z
@@ -308,6 +309,46 @@ def _first_reaching(
             else:
                 lo = mid
     return float(hi)
+
+
+# (family, function) pairs whose Jacobian needs reverse mode: a primitive
+# they use has no forward rule (the incomplete gamma and beta functions).
+# Remembered, so the forward attempt is made once, not once per band.
+_REVERSE_ONLY: set = set()
+
+
+def _parameter_jacobian(
+    func: Callable[..., Any], phi: npt.NDArray, key: Any = None
+) -> Any:
+    """The Jacobian of ``func`` (one value or a vector of them) in the
+    parameters ``phi``, ``(n_values, n_params)``.
+
+    Forward mode: one pass per parameter, whatever the number of values.
+    ``jacobian`` takes one reverse pass per value, so a band at 200 times
+    was 200 passes; the parameters are at most a handful. Both are exact,
+    and they agree to rounding. A value's derivatives stay its own in
+    forward mode, so a point whose gradient overflows does not spread its
+    ``nan`` (#652). Where a primitive in ``func`` has no forward rule
+    (autograd defines only the reverse one for some special functions),
+    the reverse-mode ``jacobian`` is used, as before, and for ``key``
+    from then on.
+    """
+    if key is not None and key in _REVERSE_ONLY:
+        return np.atleast_2d(jacobian(func)(phi))
+    try:
+        jvp = make_jvp(func)(phi)
+        cols = []
+        for i in range(len(phi)):
+            direction = onp.zeros(len(phi))
+            direction[i] = 1.0
+            cols.append(
+                onp.atleast_1d(onp.asarray(jvp(direction)[1], dtype=float))
+            )
+        return onp.stack(cols, axis=-1)
+    except NotImplementedError:
+        if key is not None:
+            _REVERSE_ONLY.add(key)
+        return np.atleast_2d(jacobian(func)(phi))
 
 
 class Parametric(
@@ -2582,10 +2623,10 @@ class Parametric(
         finite = np.isfinite(t)
         t_eval = np.where(finite, t, self.gamma + 1.0)
         with np.errstate(all="ignore"):
-            jac = np.atleast_2d(
-                jacobian(lambda phi: self._cb_full_ff(t_eval, phi, ctx))(
-                    ctx.phi_hat
-                )
+            jac = _parameter_jacobian(
+                lambda phi: self._cb_full_ff(t_eval, phi, ctx),
+                ctx.phi_hat,
+                (type(self.dist), "quantile"),
             )
             dens = (p_lfp - f0) * np.asarray(
                 self.dist.df(t_eval - self.gamma, *core), dtype=float
@@ -2799,6 +2840,11 @@ class Parametric(
             out = np.where(x < 0, 0.0, out)
         return out
 
+    def _jacobian_key(self, func: Callable[..., Any]) -> Any:
+        """What ``_parameter_jacobian`` remembers a reverse-only Jacobian
+        by: the family and the function differentiated."""
+        return (type(self.dist), getattr(func, "__qualname__", None))
+
     def _cb_delta_var(
         self,
         func: Callable[..., Any],
@@ -2807,7 +2853,7 @@ class Parametric(
     ) -> Any:
         """First-order delta-method variance: ``Var(g) = J Sigma J^T``.
 
-        ``jacobian`` takes one reverse pass per value of ``func``. Given
+        ``_parameter_jacobian`` takes one forward pass per parameter. Given
         ``n_points``, ``func`` is elementwise over that many points --
         the value at each depends on the parameters only through the
         parameters at that point -- and is passed the parameter vector
@@ -2815,7 +2861,9 @@ class Parametric(
         of the sum then gives every row at once, each the gradient of its
         own point (#591)."""
         if n_points is None:
-            jac = np.atleast_2d(jacobian(func)(ctx.phi_hat))
+            jac = _parameter_jacobian(
+                func, ctx.phi_hat, self._jacobian_key(func)
+            )
         else:
             copies = np.repeat(ctx.phi_hat[:, None], n_points, axis=1)
             jac = grad(lambda phi: np.sum(func(phi)))(copies).T

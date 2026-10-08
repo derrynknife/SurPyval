@@ -47,4 +47,20 @@ def _load() -> None:
         del sys.modules[_NAME]
 
 
+def _forward_rules() -> None:
+    """``expit`` (the Logistic and LogLogistic distribution function) in
+    forward mode: autograd defines its derivative only in reverse, and the
+    Wald confidence bounds take their Jacobian in forward mode, one pass
+    per parameter rather than one per point. The rule is the derivative
+    autograd's reverse rule uses, ``s (1 - s)``."""
+    try:
+        from autograd.extend import defjvp
+        from autograd.scipy import special
+    except Exception:
+        return
+    if hasattr(special, "expit"):
+        defjvp(special.expit, lambda g, ans, x: g * ans * (1.0 - ans))
+
+
 _load()
+_forward_rules()

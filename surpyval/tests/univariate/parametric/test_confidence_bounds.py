@@ -829,3 +829,96 @@ def test_605_covariance_is_a_method_and_cov_matrix_gone():
     built = surv.Weibull.from_params([10, 3])
     with pytest.raises(ValueError, match="no parameter covariance"):
         built.covariance()
+
+
+# ---------------------------------------------------------------------------
+# The delta method's Jacobian in forward mode: one pass per parameter
+# rather than one per point, exact, and the same as the reverse-mode one.
+# ---------------------------------------------------------------------------
+FORWARD_FAMILIES = {
+    "Weibull": (10.0, 2.0),
+    "Exponential": (0.1,),
+    "Rayleigh": (8.0,),
+    "LogNormal": (2.0, 0.5),
+    "LogLogistic": (10.0, 3.0),
+    "Normal": (10.0, 3.0),
+    "Gumbel": (10.0, 2.0),
+    "GumbelLEV": (10.0, 2.0),
+    "Logistic": (10.0, 2.0),
+    "Gamma": (3.0, 0.3),
+}
+
+
+def _jacobian_cases():
+    for name in FORWARD_FAMILIES:
+        yield name, {}
+        if name not in ("Normal", "Gumbel", "GumbelLEV", "Logistic"):
+            yield name, {"lfp": True, "zi": True}
+
+
+@pytest.mark.parametrize("name,kw", list(_jacobian_cases()))
+def test_forward_jacobian_is_the_reverse_one(name, kw):
+    from surpyval.univariate.parametric.parametric import (
+        _parameter_jacobian,
+    )
+
+    dist = getattr(surv, name)
+    rng = np.random.default_rng(3)
+    x = dist.random(300, *FORWARD_FAMILIES[name], random_state=rng)
+    if kw:
+        x = np.r_[x, np.zeros(10)]
+    model = dist.fit(x, **kw)
+    ctx = model._cb_context()
+    t = np.quantile(x[x > 0], [0.02, 0.3, 0.6, 0.98])
+    for full in (model._cb_full_sf, model._cb_full_ff, model._cb_full_Hf):
+
+        def f(phi):
+            return full(t, phi, ctx)
+
+        reverse = np.atleast_2d(jacobian(f)(ctx.phi_hat))
+        forward = _parameter_jacobian(f, ctx.phi_hat)
+        np.testing.assert_allclose(forward, reverse, rtol=1e-13, atol=0)
+
+
+def test_a_family_without_forward_rules_uses_reverse_once():
+    from surpyval.univariate.parametric import parametric
+
+    rng = np.random.default_rng(4)
+    model = surv.Beta.fit(surv.Beta.random(200, 2, 5, random_state=rng))
+    t = np.linspace(0.05, 0.9, 7)
+    first = model.cb(t)
+    keys = {k for k in parametric._REVERSE_ONLY if k[0] is type(model.dist)}
+    assert keys  # betainc has no forward rule: remembered
+    np.testing.assert_array_equal(model.cb(t), first)
+
+
+@pytest.mark.parametrize(
+    "fn,derivative",
+    [
+        ("expit", lambda x: np.exp(-x) / (1 + np.exp(-x)) ** 2),
+        ("ndtr", lambda x: np.exp(-0.5 * x * x) / np.sqrt(2 * np.pi)),
+    ],
+)
+def test_forward_rules_are_the_derivatives(fn, derivative):
+    from autograd.differential_operators import make_jvp
+
+    if fn == "expit":
+        from autograd.scipy.special import expit as f
+    else:
+        from surpyval.utils.normal import ndtr as f
+    x = np.linspace(-6.0, 6.0, 25)
+    tangent = make_jvp(f)(x)(np.ones_like(x))[1]
+    np.testing.assert_allclose(tangent, derivative(x), rtol=1e-12)
+
+
+def test_log_ndtr_forward_rule_far_in_the_left_tail():
+    from autograd import elementwise_grad
+    from autograd.differential_operators import make_jvp
+
+    from surpyval.utils.normal import log_ndtr
+
+    x = np.array([-40.0, -10.0, -1.0, 0.0, 3.0])
+    tangent = make_jvp(log_ndtr)(x)(np.ones_like(x))[1]
+    np.testing.assert_allclose(
+        tangent, elementwise_grad(log_ndtr)(x), rtol=1e-13
+    )
