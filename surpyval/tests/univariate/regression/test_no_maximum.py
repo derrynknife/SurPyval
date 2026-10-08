@@ -400,7 +400,9 @@ def test_a_profile_is_read_without_more_hessians(monkeypatch, name):
     # either side of the fit come from Hessian-vector products there; the
     # full Hessian is formed once, at the fit, for the covariance (#501:
     # twice more for each profile, which on 100,000 rows took 65% of a
-    # LogNormal AFT fit).
+    # LogNormal AFT fit). (The second copy is 1e-9 longer: fitted in one
+    # row order, two exact copies have a coefficient of exactly 0, whose
+    # Newton step, 0 too, clears it, #728.)
     rng = np.random.default_rng(0)
     x = np.exp(2 + 0.5 * rng.normal(size=20))
     c = (rng.uniform(size=20) < 0.3).astype(int)
@@ -416,7 +418,8 @@ def test_a_profile_is_read_without_more_hessians(monkeypatch, name):
     monkeypatch.setattr(skeleton, "search_derivatives", counted)
     monkeypatch.setattr(runaway, "search_derivatives", counted)
     fitter = getattr(sp, name)
-    model, w = _fit(lambda: fitter.fit(x=np.tile(x, 2), c=np.tile(c, 2), Z=Z))
+    twice = np.concatenate([x, x * (1.0 + 1e-9)])
+    model, w = _fit(lambda: fitter.fit(x=twice, c=np.tile(c, 2), Z=Z))
     assert not w, [str(x.message) for x in w]
     assert calls == [len(fitter.parameter_names)]
     assert len(hessians) == 1
@@ -980,6 +983,58 @@ def test_728_a_profile_rising_in_a_straight_line_runs_off_with_the_rest():
     at, start = np.array([485.0, 243.0]), np.array([1.0, 0.0])
     found = runaway.runaways_in_units(f, at, [1, 0], start, None, 1.0, (0,))
     assert found == [0, 1]
+
+
+# Level a has one row, censored; the verdict was "no finite maximum"
+# (alpha 5.7e6, the coefficients of b and c at 30 and 37) in some row
+# orders and "verified" (-log L 3.6e-5 lower) in others. And all three
+# exact, level a once: "no finite maximum", "unverified" or refused at
+# Z = 0, by the row order.
+ORDER_CASES = [
+    {
+        "x": [1.0, 0.5, 1.5, 3.0, 1.0, 3.0],
+        "n": [2, 3, 1, 2, 1, 1],
+        "c": [1, 1, 0, 1, 1, 0],
+        "g": ["b", "b", "b", "b", "a", "c"],
+        "z0": [0.5, -1.5, 1.0, 1.0, -1.0, 0.5],
+    },
+    {
+        "x": [1.5, 1.0, 1.0],
+        "n": [1, 1, 2],
+        "c": [0, 0, 0],
+        "g": ["a", "b", "b"],
+        "z0": [1.0, 1.5, -1.5],
+    },
+]
+
+
+@pytest.mark.parametrize("case", ORDER_CASES, ids=["censored-level", "exact"])
+def test_728_the_fit_does_not_depend_on_the_row_order(case):
+    # The fit runs on its rows in one order (canonical_order), so it is
+    # the same to the last digit, verdict and all, in any order.
+    df = pd.DataFrame(case)
+    kw = dict(x_col="x", c_col="c", n_col="n", formula="z0 + C(g)")
+    fits = []
+    for frame in (df, df.iloc[::-1].reset_index(drop=True)):
+        try:
+            model, w = _fit(lambda: sp.WeibullPH.fit_from_df(frame, **kw))
+        except ValueError as e:
+            fits.append(("refused", str(e)))
+            continue
+        fits.append((model.maximum, list(model.params), len(w)))
+    assert fits[0] == fits[1]
+
+
+def test_728_canonical_order_sorts_by_every_column():
+    data = SurpyvalData(
+        np.array([2.0, 1.0, 1.0, 1.0]),
+        np.array([0, 1, 0, 0]),
+        group_and_sort=False,
+    )
+    Z = np.array([[0.0], [0.0], [1.0], [-1.0]])
+    np.testing.assert_array_equal(
+        skeleton.canonical_order(data, Z), [3, 2, 1, 0]
+    )
 
 
 # ---------------------------------------------------------------------------

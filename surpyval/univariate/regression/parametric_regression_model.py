@@ -170,7 +170,9 @@ class ParametricRegressionModel(
     _neg_ll: float
 
     # -- set by the fits from data (absent on a model from ``from_dict``) --
-    #: The data fitted to, with its covariates ``Z``.
+    #: The data fitted to, with its covariates ``Z``: for the PH, AFT, PO
+    #: and additive hazards fits, its rows sorted by every column, the
+    #: order the fit runs in whatever order they were given in (#728).
     data: SurpyvalData
     #: The optimiser's result (``scipy.optimize.OptimizeResult``).
     res: Any

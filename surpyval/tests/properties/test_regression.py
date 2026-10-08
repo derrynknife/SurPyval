@@ -102,7 +102,9 @@ def _runs_off(ref, got):
     last step, and on a level with only censored rows (exact 1.0, n 2, and
     0.5 at level a; censored 0.5 at level c) the level's coefficient
     stopped at -8.62 ("no finite maximum") or -8.60 ("unverified", which
-    warns too) by the row order."""
+    warns too) by the row order. (A parametric fit now runs on its rows
+    in one order, so another row order gives the same fit, #728; counts
+    and repeated rows still differ.)"""
     return any(
         getattr(m, "maximum", None) == "no finite maximum" for m in (ref, got)
     )
