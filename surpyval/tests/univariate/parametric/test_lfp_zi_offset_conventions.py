@@ -6,6 +6,8 @@ sits at 0, functions clamp to their boundary values below the (offset)
 support, and the boundary does not produce NaN confidence bounds.
 """
 
+import warnings
+
 import numpy as np
 import pytest
 from scipy.integrate import quad
@@ -93,3 +95,32 @@ def test_aic_c_uses_full_parameter_count():
     n = m.data["n"].sum()
     expected = m.aic() + (2 * k**2 + 2 * k) / (n - k - 1)
     assert m.aic_c() == pytest.approx(expected, abs=1e-12)
+
+
+def test_710_zero_inflated_Hf_is_finite_in_the_far_tail():
+    # Hf was -log sf, inf once sf underflowed; it is -log(1 - f0) + H
+    # from 0 on, and its Wald bound follows it.
+    m = Weibull.from_params([10, 3], gamma=2, f0=0.2)
+    x = np.array([-1.0, 0.0, 1.0, 5.0, 30.0, 1000.0])
+    expected = np.r_[0.0, -np.log(0.8), -np.log(0.8), np.zeros(3)]
+    expected[3:] = -np.log(0.8) + ((x[3:] - 2) / 10) ** 3
+    np.testing.assert_allclose(m.Hf(x), expected, rtol=1e-12)
+    assert m.sf(1000.0) == 0
+    np.testing.assert_allclose(m.Hf(x[:5]), -np.log(m.sf(x[:5])), rtol=1e-12)
+
+    np.random.seed(0)
+    data = np.r_[np.zeros(10), Weibull.random(40, 10, 2)]
+    fit = Weibull.fit(data, zi=True)
+    t = np.array([5.0, 100.0, 1000.0])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        band = fit.cb(t, on="Hf")
+        missing = fit.cb([5.0, np.nan], on="Hf")
+    H = fit.Hf(t)
+    assert np.all(np.isfinite(H)) and np.all(np.isfinite(band))
+    assert np.all((band[:, 0] < H) & (H < band[:, 1]))
+    # Where sf is a normal number the band is -log of the sf band.
+    np.testing.assert_allclose(
+        band[0], -np.log(fit.cb(5.0, on="sf"))[::-1], rtol=1e-9
+    )
+    assert np.isnan(missing[1]).all()
