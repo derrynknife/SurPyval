@@ -408,6 +408,12 @@ Unreleased
   ``quantile_cb``, for a ``p`` outside (0, 1), and NaN in silence for a
   missing ``p``, as the univariate models do (#710, #626); it raised. The
   other ``p`` are bounded as before.
+- ``MixtureModel.cb`` bounds each ``x`` on its own (#710, as #652 did for
+  one distribution): one far-tail ``x`` made every ``hf`` bound NaN, with
+  a warning blaming the covariance. An ``x`` whose derivatives overflow
+  is NaN alone, with a warning naming it; the ``Hf`` and ``hf`` bounds are
+  formed from ``Hf`` and the mixture's own hazard, finite where ``sf``
+  underflows (``Hf`` was ``[inf, inf]``).
 
 v0.23 (4 October 2026)
 ----------------------

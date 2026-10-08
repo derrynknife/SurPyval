@@ -570,6 +570,39 @@ def test_cb_and_quantile_cb_bracket_the_estimate():
     assert mm.quantile_cb([0.1, 0.5]).shape == (2, 2)
 
 
+def test_710_cb_bounds_each_x_on_its_own_in_the_far_tail():
+    # One far-tail x made every x's hf bound NaN, with a warning blaming
+    # the covariance, and the Hf bound was [inf, inf] once sf underflowed.
+    mm = _two_weibulls()
+    near = np.array([5.0, 15.0])
+    far = np.array([200.0, 1e4])
+    for on in ("sf", "ff", "Hf", "hf", "df"):
+        both = no_warnings(mm.cb, np.r_[near, far], on=on)
+        np.testing.assert_allclose(both[:2], mm.cb(near, on=on), rtol=1e-10)
+    H = no_warnings(mm.cb, far, on="Hf")
+    h = no_warnings(mm.cb, far, on="hf")
+    for band, value in ((H, mm.Hf(far)), (h, mm.hf(far))):
+        assert np.isfinite(band).all()
+        assert np.all((band[:, 0] < value) & (value < band[:, 1]))
+    # Hf's band is the sf band's on its own (log-log) scale.
+    np.testing.assert_allclose(
+        mm.cb(near, on="Hf"),
+        -np.log(mm.cb(near, on="sf"))[:, ::-1],
+        rtol=1e-9,
+    )
+    # An x whose derivatives overflow is NaN on its own, and the warning
+    # names it and the overflow, not the covariance.
+    with pytest.warns(RuntimeWarning, match=r"hf at x = \[1e\+160\]") as rec:
+        got = mm.cb([5.0, 1e160], on="hf")
+    assert len(rec) == 1 and "overflow" in str(rec[0].message)
+    assert "covariance" not in str(rec[0].message)
+    assert rec[0].filename == __file__
+    np.testing.assert_allclose(got[0], mm.cb(5.0, on="hf"))
+    assert np.isnan(got[1]).all()
+    # A missing x is NaN in silence.
+    assert np.isnan(no_warnings(mm.cb, [5.0, np.nan])[1]).all()
+
+
 def test_626_quantile_cb_outside_0_1_is_nan_with_one_warning():
     mm = _two_weibulls()
     with pytest.warns(UserWarning, match=r"quantile_cb: 1 of the 2") as rec:

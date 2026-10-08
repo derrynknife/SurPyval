@@ -57,6 +57,7 @@ from surpyval.utils.validation import (
     option_error,
     warn_outside_unit_interval,
 )
+from surpyval.utils.warnings import caller_stacklevel
 
 from .probability_plotting import (
     adjust_heuristic,
@@ -1933,18 +1934,113 @@ class MixtureModel(
         scale = np.einsum("ij,jk,ik->i", abs(jac), abs(cov), abs(jac))
         return np.where((var < 0) & (var >= -1e-10 * scale), 0.0, var)
 
-    @staticmethod
-    def _sd(var: Any, x: Any, on: str) -> Any:
-        """``sqrt(var)``, ``nan`` with one warning where it is negative."""
+    def _delta_var_each(
+        self, func_at: Callable[[Any], Callable[..., Any]], n: int
+    ) -> Any:
+        """``_delta_var`` of a function of ``n`` points, each point's
+        variance its own: ``func_at(idx)`` is the function at the points
+        ``idx``. A gradient that is not finite at one point (far in a
+        tail) is ``0 * nan`` in every other point's reverse pass, so it
+        made every variance ``nan`` (#710, as #652 for one distribution);
+        those points are differentiated again one at a time, and only a
+        point that overflows keeps its ``nan``."""
+        var = np.array(self._delta_var(func_at(slice(None))), dtype=float)
+        bad = ~np.isfinite(var)
+        if n > 1 and bad.any():
+            for i in np.flatnonzero(bad):
+                var[i] = self._delta_var(func_at(slice(i, i + 1)))[0]
+        return var
+
+    def _sd(self, var: Any, x: Any, on: str) -> Any:
+        """``sqrt(var)``, ``nan`` with one warning where there is none:
+        where the variance is negative the covariance is not positive
+        definite; where it is not finite while the covariance is, the
+        function's derivatives overflowed at that ``x`` (far in a tail),
+        and the message names that ``x`` rather than blaming the
+        covariance (#710)."""
+        var = np.asarray(var, dtype=float)
         bad = ~(var >= 0)
-        if np.any(bad):
-            warn_wald_undefined(
-                f"{on} at x = {np.asarray(x)[bad].tolist()}",
-                "its delta-method variance is negative or not finite, so "
-                "the parameter covariance is not positive definite",
-                stacklevel=4,
-            )
+        where = np.broadcast_to(np.atleast_1d(x), var.shape)
+        # A missing x is NaN in silence.
+        warn = bad & ~np.isnan(where)
+        if np.any(warn):
+            overflow = warn & ~np.isfinite(var)
+            if not np.all(np.isfinite(self._theta_covariance())):
+                overflow = np.zeros_like(warn)
+            singular = warn & ~overflow
+            if np.any(singular):
+                warn_wald_undefined(
+                    f"{on} at x = {where[singular].tolist()}",
+                    "its delta-method variance is negative or not finite, "
+                    "so the parameter covariance is not positive definite",
+                    stacklevel=caller_stacklevel(),
+                )
+            if np.any(overflow):
+                warn_wald_undefined(
+                    f"{on} at x = {where[overflow].tolist()}",
+                    f"the derivatives of {on} with respect to the "
+                    "parameters overflow there (that x is too far in the "
+                    "mixture's tail for double precision), so it has no "
+                    "delta-method variance; the bounds at the other x are "
+                    "computed on their own",
+                    stacklevel=caller_stacklevel(),
+                )
         return np.sqrt(np.where(bad, np.nan, var))
+
+    def _log_mixture(self, fn: str, x: Any, theta: Any) -> Any:
+        """The log of the mixture's ``fn`` (``"sf"`` or ``"df"``) at
+        ``x`` for the coordinates ``theta``: the log-sum-exp of the
+        components' weighted logs (autograd-differentiable), finite far
+        in the upper tail, where the sum itself underflows to 0."""
+        w, params = self._unpack(theta)
+        log_fn = getattr(self.dist, "log_" + fn)
+        terms = [np.log(w[i]) + log_fn(x, *params[i]) for i in range(self.m)]
+        return ag_logsumexp(np.stack(terms), axis=0)
+
+    def _tail_fn(self, fn: str, x: Any, theta: Any, head: bool) -> Any:
+        """The mixture's ``Hf`` or ``hf`` at ``x`` for the coordinates
+        ``theta`` (autograd-differentiable), computed as is accurate there:
+        where less than half has failed (``head``) ``Hf`` is
+        ``-log1p(-ff)`` and ``hf`` is ``df / sf``; above, both are from the
+        log-sum-exp of the components' weighted log survivals (and log
+        densities), finite where the survival underflows and ``df / sf``
+        is 0 / 0 (#710)."""
+        if head:
+            if fn == "Hf":
+                return -np.log1p(-self._mixture_fn("ff", x, theta))
+            return self._mixture_fn("df", x, theta) / self._mixture_fn(
+                "sf", x, theta
+            )
+        log_sf = self._log_mixture("sf", x, theta)
+        if fn == "Hf":
+            return -log_sf
+        return np.exp(self._log_mixture("df", x, theta) - log_sf)
+
+    def _tail_var(self, fn: str, t: Any, g: Any, log: bool) -> Any:
+        """The delta-method variance, each time's own, of ``fn``
+        (``"Hf"`` or ``"hf"``; of its log with ``log``) at the times
+        ``t``, where its fitted value ``g`` is positive and finite; 0
+        elsewhere (the bound is the estimate there)."""
+        var = np.zeros(t.shape)
+        positive = (g > 0) & np.isfinite(g)
+        head = np.asarray(self.ff(t), dtype=float) < 0.5
+        for part in (head, ~head):
+            idx = np.flatnonzero(part & positive)
+            if idx.size == 0:
+                continue
+            ts, is_head = t[idx], bool(head[idx[0]])
+
+            def func_at(sel: Any, ts: Any = ts, hd: bool = is_head) -> Any:
+                tsel = ts[sel]
+
+                def func(th: Any) -> Any:
+                    value = self._tail_fn(fn, tsel, th, hd)
+                    return np.log(value) if log else value
+
+                return func
+
+            var[idx] = self._delta_var_each(func_at, idx.size)
+        return var
 
     @keeps_query_shape
     def cb(
@@ -1962,9 +2058,15 @@ class MixtureModel(
         As ``Parametric.cb``'s Wald bounds: those on ``sf``, ``ff`` and
         ``Hf`` are one bound on the log cumulative hazard, ``log(-log
         sf)`` (the "log-log" scale), which keeps them within their range;
-        those on ``hf`` and ``df`` are on the log scale. Where the
-        delta-method variance is negative a bound is ``nan``, with a
-        warning.
+        those on ``hf`` and ``df`` are on the log scale. Each ``x``'s
+        bound is computed on its own. Where the delta-method variance is
+        negative (the covariance is not positive definite) a bound is
+        ``nan``, with a warning; where the function's derivatives overflow
+        at an ``x`` far in the tail, that ``x``'s bound alone is ``nan``,
+        with a warning naming it (#710). The ``Hf`` bound is formed from
+        ``Hf`` itself and the ``hf`` bound from the mixture's own hazard,
+        so both stay finite, and contain the estimate, past where ``sf``
+        underflows.
 
         Parameters
         ----------
@@ -2003,7 +2105,20 @@ class MixtureModel(
         if t.size == 0:
             return np.empty((0, 2) if bound == "two-sided" else (0,))
         theta = self._pack(self.w, self.params)
-        if on in ("sf", "ff", "Hf"):
+        alpha, signs = bound_signs(alpha_ci, bound)
+        k = signs * z(1 - alpha)
+        if on == "Hf":
+            # The sf band's scale, log(-log sf), is log Hf: the bound on
+            # it from Hf itself stays finite, and contains the estimate,
+            # far past where sf underflows (#710; it was [inf, inf]).
+            H = np.asarray(self.Hf(t), dtype=float)
+            with np.errstate(all="ignore"):
+                var = self._tail_var("Hf", t, H, log=True)
+                sd = self._sd(var, t, on)
+                out = H[:, None] * np.exp(k * sd[:, None])
+            out = np.where(((H == 0) | np.isinf(H))[:, None], H[:, None], out)
+            return out if bound == "two-sided" else out[:, 0]
+        if on in ("sf", "ff"):
             S = np.asarray(self._mixture_fn("sf", t, theta), dtype=float)
             F = np.asarray(self._mixture_fn("ff", t, theta), dtype=float)
             # The smaller of S and F, each accurate where it is small;
@@ -2012,30 +2127,51 @@ class MixtureModel(
             small = np.where(left, F, S)
             unit = np.where(small > 0, small, 1.0)
 
-            def func(th: Any) -> Any:
-                value = np.where(
-                    left,
-                    -self._mixture_fn("ff", t, th),
-                    self._mixture_fn("sf", t, th),
-                )
-                return value / unit
+            def func_at(idx: Any) -> Callable[..., Any]:
+                ti, left_i, unit_i = t[idx], left[idx], unit[idx]
 
-            sd = unit * self._sd(self._delta_var(func), t, on)
+                def func(th: Any) -> Any:
+                    value = np.where(
+                        left_i,
+                        -self._mixture_fn("ff", ti, th),
+                        self._mixture_fn("sf", ti, th),
+                    )
+                    return value / unit_i
+
+                return func
+
+            with np.errstate(all="ignore"):
+                var = self._delta_var_each(func_at, t.size)
+            # Where S or F is below the normal range the bound is the edge
+            # it is at (sf_link_bound), whatever its variance.
+            var = np.where(small < np.finfo(float).tiny, 0.0, var)
+            sd = unit * self._sd(var, t, on)
             return sf_link_bound(
                 S, sd, alpha_ci, bound, "loglog", ff_hat=F, on=on
             )
 
-        def rate(th: Any) -> Any:
-            density = self._mixture_fn("df", t, th)
-            if on == "hf":
-                return density / self._mixture_fn("sf", t, th)
-            return density
-
         with np.errstate(all="ignore"):
-            g = np.asarray(rate(theta), dtype=float)
-            sd = self._sd(self._delta_var(rate), t, on)
-            alpha, signs = bound_signs(alpha_ci, bound)
-            out = g[:, None] * np.exp(signs * z(1 - alpha) * (sd / g)[:, None])
+            if on == "hf":
+                # The mixture's own hazard: df / sf is 0 / 0 where sf
+                # underflows (#710).
+                g = np.asarray(self.hf(t), dtype=float)
+                var = self._tail_var("hf", t, g, log=False)
+            else:
+                g = np.asarray(self._mixture_fn("df", t, theta), dtype=float)
+                # Where the density is 0 or infinite the bound is the
+                # estimate, whatever its variance.
+                var = np.zeros(t.shape)
+                idx = np.flatnonzero((g > 0) & np.isfinite(g))
+                if idx.size:
+                    ts = t[idx]
+
+                    def density_at(sel: Any) -> Callable[..., Any]:
+                        ti = ts[sel]
+                        return lambda th: self._mixture_fn("df", ti, th)
+
+                    var[idx] = self._delta_var_each(density_at, idx.size)
+            sd = self._sd(var, t, on)
+            out = g[:, None] * np.exp(k * (sd / g)[:, None])
         out = np.where((g == 0)[:, None], 0.0, out)
         return out if bound == "two-sided" else out[:, 0]
 
