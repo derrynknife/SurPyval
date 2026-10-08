@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 from scipy.integrate import quad
 
-from surpyval import Weibull
+from surpyval import LogNormal, Weibull
 
 
 def test_df_matches_numeric_ff_derivative_for_lfp_zi():
@@ -152,3 +152,44 @@ def test_728_zero_inflated_hazard_at_zero_is_f0_and_bounded(lfp):
     for on in ("sf", "ff", "Hf"):
         lo, hi = np.sort(fit.cb(0.0, on=on))
         assert lo < getattr(fit, on)(0.0) < hi
+
+
+@pytest.mark.parametrize(
+    "kw", [{}, {"f0": 0.1}, {"gamma": 2.0}, {"f0": 0.1, "gamma": 2.0}]
+)
+def test_728_lfp_Hf_keeps_its_digits_where_ff_is_tiny(kw):
+    # -log sf was 0 once sf rounded to 1 (Hf = 9e-40 at x = 1e-12): it is
+    # -log1p(-ff) there, and -log sf in the upper tail (sf -> 1 - p).
+    m = Weibull.from_params([10, 3], lfp_p=0.9, **kw)
+    g, f0 = kw.get("gamma", 0.0), kw.get("f0", 0.0)
+    x = np.array([1e-12, 1e-4, 3.0, 30.0, 1e4]) + g
+    F = -np.expm1(-(((x - g) / 10) ** 3))
+    expected = -np.log1p(-(f0 + (0.9 - f0) * F))
+    np.testing.assert_allclose(m.Hf(x), expected, rtol=1e-13)
+    assert m.Hf(1e4 + g) == pytest.approx(-np.log(0.1), rel=1e-14)
+    if not kw:
+        assert m.Hf(1e-12) == pytest.approx(0.9e-39, rel=1e-13)
+    H0 = m.Hf([-1.0, g / 2])
+    np.testing.assert_array_equal(H0, [0.0, -np.log1p(-f0)])
+    assert not np.any(np.signbit(H0))
+
+
+def test_728_left_tail_ff_and_Hf_bounds_keep_their_digits():
+    # 1 - R and -log R of the survival band were 0 (or 2e-16) where R
+    # rounds to 1; they are now mapped from the band's own scale.
+    np.random.seed(1)
+    x = Weibull.random(60, 10, 2)
+    lfp_x, lfp_c = np.r_[x, np.full(15, 50.0)], np.r_[x * 0, np.ones(15)]
+    t = np.array([1e-4, 1e-2, 1.0])
+    for model in (
+        LogNormal.fit(x),
+        LogNormal.fit(lfp_x, c=lfp_c, lfp=True),
+    ):
+        for on in ("ff", "Hf"):
+            est = getattr(model, on)(t)
+            band = model.cb(t, on=on)
+            assert np.all((band[:, 0] < est) & (est < band[:, 1]))
+        # ff and Hf agree to first order where they are small.
+        np.testing.assert_allclose(
+            model.cb(t[:2], on="ff"), model.cb(t[:2], on="Hf"), rtol=1e-9
+        )
