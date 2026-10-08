@@ -441,3 +441,17 @@ class TestNonParametricScalars:
         with _w.catch_warnings():
             _w.simplefilter("error")
             check_ph(m)
+
+
+@pytest.mark.parametrize(
+    "name", ["KaplanMeier", "NelsonAalen", "FlemingHarrington", "Turnbull"]
+)
+def test_728_Hf_before_the_first_time_is_plus_zero(name):
+    # -log(1) is -0.0; the cumulative hazard there is 0.0 (#728). The
+    # first value is censored, so the stored H starts at sf = 1 too.
+    model = getattr(sp, name).fit([1.0, 2, 3, 4, 5], c=[1, 0, 0, 1, 0])
+    H = model.Hf([0.0, 0.5, 1.0, 3.0])
+    assert np.all(H[:3] == 0) and not np.any(np.signbit(H))
+    assert not np.signbit(model.Hf(0.5))
+    assert H[3] > 0
+    assert not np.any(np.signbit(model.H))

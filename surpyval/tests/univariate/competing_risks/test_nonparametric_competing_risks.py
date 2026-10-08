@@ -307,3 +307,19 @@ def test_cb_warns_of_a_confidence_given_for_alpha_ci():
         with pytest.warns(UserWarning, match="alpha_ci") as w:
             model.cb([1, 2], "a", on=on, alpha_ci=0.95)
         assert len(w) == 1
+
+
+@pytest.mark.parametrize("how", ["Kaplan-Meier", "Nelson-Aalen"])
+def test_728_Hf_before_the_first_time_is_plus_zero(how):
+    # -log(1) was -0.0 with Kaplan-Meier, before the first time and
+    # before a cause's own first event (#728).
+    x = [1.0, 2, 3, 4, 5, 6]
+    e = [1, 2, None, 1, 2, 1]
+    c = [0, 0, 1, 0, 0, 0]
+    model = CompetingRisks.fit(x, e, c, how=how)
+    q = np.array([0.0, 0.5, 1.0])
+    for event in (None, 1, 2):
+        H = model.Hf(q, event=event)
+        assert not np.any(np.signbit(H))
+    assert np.all(model.Hf(q[:2]) == 0)
+    assert model.Hf(1.0, event=2) == 0 and not np.signbit(model.Hf(0.0))

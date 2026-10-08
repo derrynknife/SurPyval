@@ -294,11 +294,12 @@ class CompetingRisks(SerialisableMixin):
 
         def H(q: npt.ArrayLike) -> npt.NDArray:
             if self.how == "Kaplan-Meier":
+                # 0.0 - log, not -log: where the survival is 1 (before
+                # the first time, or the cause's) -log(1) is -0.0 (#728).
                 with np.errstate(divide="ignore"):
-                    return -np.log(self._product_limit(q, event))
+                    return 0.0 - np.log(self._product_limit(q, event))
             return self._f("H", q, event)
 
-        # 0.0 before the first time, not -log(1) = -0.0.
         return self._within_support(x, H, 0.0)
 
     def _product_limit(self, x: npt.ArrayLike, event: Any) -> npt.NDArray:
