@@ -149,6 +149,13 @@ Unreleased
   a verdict that depended on the row order. Where the search gives cause,
   the data now decide, by a linear programme over the risk sets: the fit
   warns "No finite maximum" naming the coefficients and their proportion.
+- CoxPH's verdict no longer depends on the row order (#728). A column
+  whose information at the start is rounding against its own spread (a
+  level whose rows leave before any event; every risk set alike) was
+  judged against the largest eigenvalue, itself small, and kept in some
+  orders: the fit ran it off, "verified" in one order and "unverified" in
+  another. It is aliased. A level with only censored rows is found to run
+  off in every order (the test of the data above).
 - ``CrowAMSAA.projection`` names the source its BC-mode projection was
   checked against (#710): ReliaSoft's Crow Extended formulas, whose
   demonstrated intensity with BC modes is the Crow-AMSAA intensity at
