@@ -861,13 +861,20 @@ _TIME_FUNCTIONS += ("cif_cb", "mcf_cb", "bootstrap_cb", "band")
 _TIME_FUNCTIONS += ("iif_cb", "mtbf", "mtbf_cb")
 
 
-def _default_is(name, value):
+def _default_is(name, value, own=None):
+    # ``own``: documented exceptions, {class name suffix: its default}.
+    own = own or {}
+
     def check(sigs):
         return [
             f"{o}.{m}({name}={p.default!r})"
             for o, m, ps in sigs
             for p in ps
-            if p.name == name and p.default != value
+            if p.name == name
+            and p.default != value
+            and not any(
+                o.endswith(k) and p.default == v for k, v in own.items()
+            )
         ]
 
     return check
@@ -947,7 +954,12 @@ CONVENTIONS = {
         "bound= defaults to 'two-sided'",
         _default_is("bound", "two-sided"),
     ),
-    "on": ("on= defaults to 'sf'", _default_is("on", "sf")),
+    # The non-parametric competing risks' cb bounds one cause's cumulative
+    # incidence by default, its natural quantity (documented, #728).
+    "on": (
+        "on= defaults to 'sf'",
+        _default_is("on", "sf", own={"CompetingRisks": "cif"}),
+    ),
     "interp": ("interp= defaults to 'step'", _default_is("interp", "step")),
     "seed": (
         "the random-number argument has one spelling",
