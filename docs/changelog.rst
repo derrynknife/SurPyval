@@ -426,6 +426,10 @@ Unreleased
   search is finished at its maximum. #583's LogNormalPH fits: 130
   verified, 18 no maximum, 2 unverified (were 120, 7, 23); WeibullPO: 0
   unverified (was 3).
+- A regression's "No finite maximum" names every parameter running off
+  (#710): with all the failures in one cell, a WeibullPO's alpha (or a
+  LogNormalPH's sigma) was named without the two coefficients running
+  off with it, whose profiles had gone flat to rounding.
 
 v0.23 (4 October 2026)
 ----------------------

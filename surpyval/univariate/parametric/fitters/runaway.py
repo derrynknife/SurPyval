@@ -231,9 +231,11 @@ def runaways_in_units(
 ) -> "list[int]":
     """The positions in ``coefs`` of the parameters along which the
     likelihood has no finite maximum near ``x``: Newton's method cannot
-    converge along their profiles (:func:`runaway_coefficients`), or else
-    their profiles are flat to rounding (:func:`flat_profiles`), judged in
-    the units described above.
+    converge along their profiles (:func:`runaway_coefficients`, else
+    :func:`partial_profiles`), or else their profiles are flat to rounding
+    (:func:`flat_profiles`), judged in the units described above. Where
+    some run off, the others found by either of the later tests are named
+    with them: every parameter running off (#710).
 
     ``neg_ll``, ``x``, ``coefs`` and ``start`` are as for
     :func:`runaway_coefficients`, in the search space; ``one_sided`` are the
@@ -288,7 +290,24 @@ def runaways_in_units(
     if not out:
         out = partial_profiles(in_units, v0, coefs, v_start, units_derivatives)
     if not out:
-        out = flat_profiles(in_units, v0, coefs, v_start, units_derivatives)
+        return flat_profiles(in_units, v0, coefs, v_start, units_derivatives)
+    if len(out) < len(coefs):
+        # Some run off: so may others with them, whose own profiles the
+        # first test cannot read. All the failures in one cell: a
+        # WeibullPO's alpha ran off on its profile while the coefficients,
+        # gone so far that their profiles were flat to rounding, were not
+        # named (#710).
+        out = sorted(
+            {
+                *out,
+                *partial_profiles(
+                    in_units, v0, coefs, v_start, units_derivatives
+                ),
+                *flat_profiles(
+                    in_units, v0, coefs, v_start, units_derivatives
+                ),
+            }
+        )
     return out
 
 
