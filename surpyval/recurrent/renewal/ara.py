@@ -2,15 +2,22 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+import autograd.numpy as anp
 import numpy as np
+from autograd.extend import defvjp, primitive
+from autograd.tracer import isbox
 from numpy.typing import ArrayLike
 
 from surpyval import Weibull
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
+from surpyval.recurrent.renewal.generalized_renewal import (
+    VirtualAgeLikelihood,
+)
 from surpyval.recurrent.renewal.renewal_model import (
     DiscountedMemory,
     RenewalModel,
     conditional_gaps,
+    discount_weight_derivatives,
     event_positions,
     rows_by_position,
 )
@@ -80,6 +87,11 @@ class ARAVirtualAges:
     (#515). Each row's terms are gathered in the order the one-item loop
     took them and summed along a row, so the ages are bit-for-bit those of
     that loop.
+
+    Calling the object is differentiable by autograd (#710): the ages are
+    linear in the weights ``rho (1 - rho)**j``, so their derivatives in
+    ``rho`` (``derivative``) are the same sums over the weights'
+    derivatives, to any order.
     """
 
     def __init__(
@@ -98,16 +110,47 @@ class ARAVirtualAges:
         self.groups = groups
         self.max_terms = max((k for k, _ in self.groups), default=0)
 
-    def __call__(self, rho: float) -> np.ndarray:
+    def __call__(self, rho: Any) -> Any:
+        if isbox(rho):
+            return _ara_ages(rho, self, 0)
+        return self.derivative(rho, 0)
+
+    def derivative(self, rho: float, order: int = 0) -> np.ndarray:
+        """The ``order``-th derivative of the ages in ``rho`` (the ages
+        themselves at 0)."""
         T = self.T
         v = np.zeros(T.size)
-        weights = (1.0 - rho) ** np.arange(self.max_terms)
+        if order == 0:
+            weights = (1.0 - rho) ** np.arange(self.max_terms)
+        else:
+            # The ages are T[r - 1] - sum_j rho (1 - rho)**j T[r - 1 - j]
+            weights = discount_weight_derivatives(
+                float(rho), self.max_terms, order
+            )
         for n_terms, rows in self.groups:
             # Row r's terms are T[r - 1], T[r - 2], ... (newest first).
             lagged = T[rows[:, None] - 1 - np.arange(n_terms)]
             discounted = np.sum(weights[:n_terms] * lagged, axis=1)
-            v[rows] = T[rows - 1] - rho * discounted
+            if order == 0:
+                v[rows] = T[rows - 1] - rho * discounted
+            else:
+                v[rows] = -discounted
         return v
+
+
+@primitive
+def _ara_ages(rho: Any, ages: ARAVirtualAges, order: int) -> Any:
+    """``ages.derivative(rho, order)``, as an autograd primitive whose
+    derivative in ``rho`` is the next order's."""
+    return ages.derivative(rho, order)
+
+
+defvjp(
+    _ara_ages,
+    lambda ans, rho, ages, order: lambda g: anp.sum(
+        g * _ara_ages(rho, ages, order + 1)
+    ),
+)
 
 
 @singleton_fitter
@@ -238,25 +281,15 @@ class ARA(RenewalFitMixin):
         virtual_ages_at = ARAVirtualAges(data.x, data.i, m)
         interarrival = data.get_interarrival_times()
         c = data.c
+        # Every item starts at virtual age 0.
+        log_likelihood = VirtualAgeLikelihood(
+            interarrival, c, event_positions(data.i) == 0, aged=0.0
+        )
 
         def negll_func(params: np.ndarray) -> float:
             rho = params[0]
             dist_params = params[1:]
-
-            virtual_ages = virtual_ages_at(rho)
-            x_new = interarrival + virtual_ages
-
-            # Every item starts at virtual age 0, where some distributions
-            # take log(0) on the way to the exact S(0) = 1 (a LogNormal's
-            # log(x)); that warned thousands of times per fit.
-            with np.errstate(divide="ignore"):
-                log_sf_v = dist.log_sf(virtual_ages, *dist_params)
-                ll_o = dist.log_df(x_new, *dist_params) - log_sf_v
-                ll_right = dist.log_sf(x_new, *dist_params) - log_sf_v
-            ll = np.where(c == 0, ll_o, 0.0)
-            ll = np.where(c == 1, ll_right, ll)
-
-            return -ll.sum()
+            return -log_likelihood(dist, dist_params, virtual_ages_at(rho))
 
         return negll_func
 

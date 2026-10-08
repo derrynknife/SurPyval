@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+import autograd.numpy as anp
 import numpy as np
+from autograd.tracer import isbox
 from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 
@@ -188,8 +190,10 @@ class GeneralizedOneRenewal(RenewalFitMixin):
             if not q > -1 or _outside_open_bounds(dist_params, dist.bounds):
                 return np.inf
             # log((1 + q) ** j) in log space, so a q near -1 does not
-            # underflow the scale to zero.
-            log1p_q = np.log1p(q)
+            # underflow the scale to zero. (autograd's numpy where the
+            # parameters are traced, for the exact gradient, #710.)
+            xp = anp if isbox(params) else np
+            log1p_q = xp.log1p(q)
 
             # Far from the optimum the rescaled times can still overflow
             # (x / c_j -> inf) and the densities underflow to zero. That
@@ -205,14 +209,14 @@ class GeneralizedOneRenewal(RenewalFitMixin):
                 ll = 0.0
                 if x_o.size:
                     log_cj = j_o * log1p_q
-                    xj = x_o * np.exp(-log_cj)
-                    ll += np.sum(
+                    xj = x_o * xp.exp(-log_cj)
+                    ll += xp.sum(
                         n_o * (dist.log_df(xj, *dist_params) - log_cj)
                     )
                 if x_r.size:
-                    xj = x_r * np.exp(-(j_r * log1p_q))
-                    ll += np.sum(n_r * dist.log_sf(xj, *dist_params))
-            if not np.isfinite(ll):
+                    xj = x_r * xp.exp(-(j_r * log1p_q))
+                    ll += xp.sum(n_r * dist.log_sf(xj, *dist_params))
+            if not xp.isfinite(ll):
                 return np.inf
             return -ll
 

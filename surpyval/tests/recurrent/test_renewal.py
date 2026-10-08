@@ -317,12 +317,116 @@ def test_630_kijima_ii_likelihood_keeps_the_gaps_of_aged_items():
     # One aged gap against its exact drop, -(H(v + x) - H(v))
     from surpyval import Weibull
     from surpyval.recurrent.renewal.generalized_renewal import (
-        _accurate_where_aged,
+        virtual_age_log_likelihood,
     )
 
     v, gap = np.array([1e18]), np.array([11.0])
-    ll_o, ll_right = _accurate_where_aged(
-        Weibull, (88.0, 1.5), v, gap, np.zeros(1), np.zeros(1)
+    exact = (-1.5 * gap * (v / 88.0) ** 0.5 / 88.0)[0]
+    log_h = np.log(Weibull.hf(v + gap, 88.0, 1.5))[0]
+    for c, density in ((1, 0.0), (0, log_h)):
+        ll = virtual_age_log_likelihood(
+            Weibull, (88.0, 1.5), v, gap, np.array([c]), np.array([False])
+        )
+        assert ll == pytest.approx(exact + density, rel=1e-12)
+
+
+def _fleet_data(seed=0):
+    rng = np.random.default_rng(seed)
+    x, i, c = [], [], []
+    for k in range(12):
+        t = np.cumsum(rng.weibull(2.0, rng.integers(1, 9)) * 10)
+        x += list(t) + [t[-1] + 2.0]
+        i += [k] * (t.size + 1)
+        c += [0] * t.size + [1]
+    return handle_xicn(np.array(x), np.array(i), np.array(c))
+
+
+@pytest.mark.parametrize(
+    "fitter, kw, params",
+    [
+        (GeneralizedRenewal, {"kijima": "i"}, [0.4, 10.0, 0.7]),
+        (GeneralizedRenewal, {"kijima": "ii"}, [0.4, 10.0, 2.0]),
+        # q > 1, and q = 40: virtual ages that dwarf the gaps (Simpson)
+        (GeneralizedRenewal, {"kijima": "ii"}, [1.7, 10.0, 2.0]),
+        (GeneralizedRenewal, {"kijima": "ii"}, [40.0, 10.0, 2.0]),
+        (ARA, {"m": 1}, [0.4, 10.0, 0.7]),
+        (ARA, {"m": 3}, [0.4, 10.0, 2.0]),
+        (ARA, {"m": np.inf}, [0.4, 10.0, 2.0]),
+        (ARI, {"m": 1}, [0.3, 10.0, 1.5]),
+        (ARI, {"m": np.inf}, [0.3, 10.0, 1.5]),
+        (GeneralizedOneRenewal, {}, [0.3, 10.0, 1.5]),
+    ],
+)
+def test_710_renewal_likelihoods_have_exact_derivatives(fitter, kw, params):
+    # The renewal fits search on the likelihood's gradient (#710): the
+    # Kijima-II, ARA and ARI recursions wrote arrays in place, which
+    # autograd cannot follow. Their derivatives are exact now, to the
+    # second order (the Hessian), even at a Weibull beta < 1, whose log
+    # S(v) has an infinite derivative at an item's first age of 0.
+    from autograd import grad, hessian
+
+    from surpyval import Weibull
+    from surpyval.utils.linalg import numerical_gradient, numerical_hessian
+
+    data = _fleet_data()
+    if fitter is ARI:
+        neg_ll = fitter.create_negll_func(data, CrowAMSAA, **kw)
+    elif fitter is GeneralizedOneRenewal:
+        neg_ll = fitter.create_negll_func(
+            data.interarrival_times, data.i, data.c, data.n, Weibull
+        )
+    else:
+        neg_ll = fitter.create_negll_func(data, Weibull, **kw)
+    p = np.array(params)
+
+    def plain(u):
+        return float(neg_ll(u))
+
+    step = np.maximum(np.abs(p), 1.0)
+    np.testing.assert_allclose(
+        grad(neg_ll)(p),
+        numerical_gradient(plain, p, 1e-6 * step),
+        rtol=1e-6,
+        atol=1e-6 * abs(plain(p)),
     )
-    exact = -1.5 * gap * (v / 88.0) ** 0.5 / 88.0
-    assert ll_right[0] == pytest.approx(exact[0], rel=1e-12)
+    np.testing.assert_allclose(
+        hessian(neg_ll)(p),
+        numerical_hessian(plain, p, 1e-4 * step),
+        rtol=1e-4,
+        atol=1e-4 * abs(plain(p)),
+    )
+
+
+def test_710_polish_takes_the_exact_gradient():
+    # A fit that is not a verified maximum is polished by BFGS on the
+    # likelihood's exact gradient (#710), and on central differences
+    # where autograd cannot differentiate it (a Cox-Lewis baseline is
+    # written in plain numpy).
+    from surpyval import Weibull
+    from surpyval.recurrent import CoxLewis
+    from surpyval.univariate.parametric.fitters import verified_maximum
+
+    x, i, c = _kijima_i_sample(0)
+    model = GeneralizedRenewal.fit(x, i, c, kijima="ii")
+    neg_ll = GeneralizedRenewal.create_negll_func(
+        model.data, Weibull, kijima="ii"
+    )
+    bounds = [(0, None), *Weibull.bounds]
+    off = model._mle * np.array([1.0, 1.01, 0.99])
+    assert not verified_maximum(neg_ll, off, bounds, model._n_obs)
+    polished = RenewalFitMixin._polish_unverified(
+        neg_ll, off, bounds, model._n_obs
+    )
+    assert verified_maximum(neg_ll, polished, bounds, model._n_obs)
+    assert -neg_ll(polished) > model.log_likelihood - 1e-9
+
+    x = np.array([3, 9, 20, 35, 56, 4, 11, 25, 44, 70.0])
+    i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2])
+    model = ARI.fit(x, i, baseline=CoxLewis)
+    neg_ll = ARI.create_negll_func(model.data, CoxLewis, 1)
+    bounds = [(0, 1), *CoxLewis.bounds]
+    off = model._mle + np.array([0.0, 0.05, 0.001])
+    polished = RenewalFitMixin._polish_unverified(
+        neg_ll, off, bounds, model._n_obs
+    )
+    assert neg_ll(polished) < neg_ll(off)

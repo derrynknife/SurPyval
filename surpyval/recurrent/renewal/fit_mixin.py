@@ -1,6 +1,7 @@
 from typing import Any, Callable
 
 import numpy as np
+from autograd.tracer import getval
 from numpy.typing import ArrayLike
 from scipy.optimize import OptimizeResult, minimize
 
@@ -90,11 +91,16 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
         where they are not a verified maximum (``verified_maximum``, which
         holds a restoration parameter on its bound out): Nelder-Mead's
         tolerances are absolute, and a G1 renewal fit on twelve failures
-        stopped with a scaled gradient of 3e-4. The polish is BFGS on
-        central differences (the likelihoods are not written for autograd)
-        in the space the searches run in (``unconstraining_maps``), kept
-        only where it improves the likelihood; ``_attach_inference`` then
-        says whether the answer is a verified maximum."""
+        stopped with a scaled gradient of 3e-4. The polish is BFGS in the
+        space the searches run in (``unconstraining_maps``), kept only
+        where it improves the likelihood; ``_attach_inference`` then says
+        whether the answer is a verified maximum.
+
+        The likelihoods are written for autograd (#710), so the polish
+        has their exact gradient; central differences, which can stop
+        short where the likelihood is flat, are the fallback for one that
+        autograd cannot differentiate (a baseline intensity written in
+        plain numpy)."""
         x = np.asarray(params, dtype=float)
         if not np.all(np.isfinite(x)):
             return x
@@ -102,15 +108,23 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
             return x
         to_natural, to_search = unconstraining_maps(list(bounds))
 
-        def fun(u: np.ndarray) -> float:
+        def fun(u: np.ndarray) -> Any:
             with np.errstate(all="ignore"):
                 value = neg_ll(to_natural(u))
-            return float(value) if np.isfinite(value) else 1e300
+            return value if np.isfinite(getval(value)) else 1e300
+
+        def plain(u: np.ndarray) -> float:
+            return float(fun(u))
 
         u0 = to_search(x)
-        start = OptimizeResult(x=u0, fun=fun(u0))
+        start = OptimizeResult(x=u0, fun=plain(u0))
         with np.errstate(all="ignore"):
-            polished, _ = verify_or_polish(fun, start, n_obs, numerical=True)
+            try:
+                polished, _ = verify_or_polish(fun, start, n_obs)
+            except (TypeError, ValueError, AttributeError):
+                polished, _ = verify_or_polish(
+                    plain, start, n_obs, numerical=True
+                )
         if polished.fun < float(neg_ll(x)):
             return np.asarray(to_natural(polished.x), dtype=float)
         return x

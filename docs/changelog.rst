@@ -136,6 +136,13 @@ Unreleased
 
 **Fixed**
 
+- The renewal likelihoods (GeneralizedRenewal, G1, ARA, ARI) have exact
+  derivatives (#710): the Kijima-II, ARA and ARI recursions wrote arrays
+  in place, which autograd cannot follow, and are now primitives that
+  carry their derivatives in ``q`` / ``rho``. A fit that is not a
+  verified maximum is polished on the exact gradient rather than central
+  differences. The search is still Nelder-Mead, and its likelihoods are
+  the same, bit for bit (a gradient-first search was not faster).
 - Answers that differed between machines (numpy's AVX2 and AVX-512
   kernels round ``exp`` and ``log`` differently). The recurrent models'
   covariance (and the degradation life models') took its numerical
