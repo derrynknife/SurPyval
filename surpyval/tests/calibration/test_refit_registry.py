@@ -289,6 +289,28 @@ def _xcnt_turnbull(case, truth, n):
     )
 
 
+def _lfp_counts(case, truth, n):
+    """Warranty returns, as in the fixture: ``n`` units inspected monthly
+    for 24 months, each failure counted in the month it falls in
+    (interval censored) and the units still running at 24 months right
+    censored there; most never fail (a limited failure population)."""
+    months = np.arange(25.0)
+
+    def draw(rng):
+        t = np.asarray(truth.random(n, random_state=rng), dtype=float)
+        failed = t[t <= months[-1]]
+        counts = np.histogram(failed, bins=months)[0]
+        seen = counts > 0
+        lo, hi = months[:-1][seen], months[1:][seen]
+        return {
+            "x": np.r_[np.column_stack([lo, hi]), [[months[-1]] * 2]],
+            "c": np.r_[np.full(lo.size, 2), 1],
+            "n": np.r_[counts[seen], n - failed.size],
+        }
+
+    return draw
+
+
 def _np_law(truth):
     """The law a step estimate's ``random`` draws from: its own jumps at
     the distinct observed values, and the rest (where the estimate stops
@@ -996,6 +1018,10 @@ for _base in ("Weibull", "Exponential"):
     )
 PLANS["Weibull[xcnt]"] = Plan(
     _xcnt_parametric, 300, 100, params=_parametric_params
+)
+# The fixture's 1000 units, 3% of which fail within the 24 months
+PLANS["Weibull[lfp-counts]"] = Plan(
+    _lfp_counts, 1000, 100, params=_parametric_params
 )
 _RENORMALISED = (
     "random() draws the estimate's own law, with the mass it leaves "

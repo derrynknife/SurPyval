@@ -394,6 +394,10 @@ Unreleased
   answer is an optimum: a parameter running off says "No finite
   maximum" (it ended in silence where BFGS reported success), and an
   offset ExpoWeibull MPS fit that cannot converge fails in 2 s, not 34 s.
+- Development: the refit calibration study plans the
+  ``Weibull[lfp-counts]`` case (#715): 1000 units' monthly returns over
+  24 months, as its fixture, refitted 100 times; the nightly's
+  ``test_every_case_is_planned`` failed without it.
 
 v0.23 (4 October 2026)
 ----------------------
