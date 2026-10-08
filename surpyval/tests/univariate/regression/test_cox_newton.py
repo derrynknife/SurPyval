@@ -559,3 +559,120 @@ def test_competing_risks_cox_matches_the_code_before_516():
     np.testing.assert_allclose(
         model.cif(T, np.full(3, 0.2), event=1.0), OLD_CRPH_CIF, rtol=RTOL
     )
+
+
+def _neg_ll_by_definition(x, Z, c, n, tl, beta, efron):
+    """The negative partial log-likelihood straight from its definition,
+    each risk set's sum taken by ``logsumexp`` (so it holds at any
+    ``beta``): ``R - k D`` is the survivors' weights plus ``(1 - k)``
+    times the deaths'."""
+    from scipy.special import logsumexp
+
+    eta = Z @ beta
+    ll = 0.0
+    for tau in np.unique(x[c == 0]):
+        risk = (tl < tau) & (x >= tau)
+        dead = (x == tau) & (c == 0)
+        d = n[dead].sum()
+        ll += n[dead] @ eta[dead]
+        terms = [(j / d, 1.0) for j in range(int(d))] if efron else [(0, d)]
+        for k, mult in terms:
+            b = np.where(dead[risk], (1 - k) * n[risk], n[risk])
+            ll -= mult * logsumexp(eta[risk], b=b)
+    return -ll
+
+
+@pytest.mark.parametrize("kind", ["tied", "heavy_ties", "truncated_weighted"])
+@pytest.mark.parametrize("method", ["efron", "breslow"])
+def test_neg_ll_of_far_out_is_quiet_and_right(kind, method):
+    # At a large beta it gave inf or nan, with numpy's overflow, invalid
+    # and divide warnings (#728); it is the partial likelihood, in logs.
+    x, Z, c, n, tl, _ = _data(kind)
+    x, c, n, tl, Z = validate_coxph(x, c, n, Z, tl, method)
+    generator = {
+        "efron": CoxPH.create_efron_ll_jac_hess,
+        "breslow": CoxPH.create_breslow_ll_jac_hess,
+    }[method]
+    neg_ll, _ = generator(x, Z, c, n, tl)
+    rng = np.random.default_rng(728)
+    for scale in [1e3, 1e5]:
+        beta = scale * rng.normal(size=Z.shape[1])
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            got = neg_ll(beta)
+        want = _neg_ll_by_definition(x, Z, c, n, tl, beta, method == "efron")
+        np.testing.assert_allclose(got, want, rtol=1e-9)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert np.isnan(neg_ll(np.full(Z.shape[1], np.inf)))
+
+
+def test_neg_ll_of_keeps_a_risk_set_far_below_the_entries_to_come():
+    # A unit yet to enter with e^18 times the weight of the one at risk:
+    # the risk set's sum, the difference of two sums of 7e7, was one
+    # rounding step, and the likelihood 1.446 for 1.386 (#728)
+    x = np.array([0.5, 1.0, 0.5, 2.0])
+    Z = np.array([[-1.0, 0.5], [-0.5, 0.5], [1.0, -0.5], [0.5, -0.5]])
+    c = np.zeros(4, int)
+    n = np.ones(4)
+    tl = np.array([-np.inf, 0.0, -np.inf, 1.5])
+    beta = np.array([-36.16, -72.33])
+    neg_ll, _ = CoxPH.create_breslow_ll_jac_hess(x, Z, c, n, tl)
+    want = _neg_ll_by_definition(x, Z, c, n, tl, beta, False)
+    np.testing.assert_allclose(neg_ll(beta), want, rtol=1e-12)
+
+
+def _tie_neg_ll_by_definition(x, Z, c, beta, method):
+    """The exact (sum over the deaths' orderings) and Kalbfleisch-Prentice
+    (sum over the d-subsets of the risk set) negative partial
+    log-likelihoods by enumeration, in logs."""
+    from itertools import combinations, permutations
+
+    from scipy.special import logsumexp
+
+    eta = Z @ beta
+    ll = 0.0
+    for tau in np.unique(x[c == 0]):
+        risk = np.flatnonzero(x >= tau)
+        dead = np.flatnonzero((x == tau) & (c == 0))
+        ll += eta[dead].sum()
+        if method == "kp":
+            ll -= logsumexp(
+                [eta[list(s)].sum() for s in combinations(risk, len(dead))]
+            )
+            continue
+        survivors = np.setdiff1d(risk, dead)
+        log_w = logsumexp(eta[survivors]) if survivors.size else -np.inf
+        orders = [
+            -sum(
+                np.logaddexp(log_w, logsumexp(eta[list(o[k:])]))
+                for k in range(len(o))
+            )
+            for o in permutations(dead)
+        ]
+        ll += logsumexp(orders)
+    return -ll
+
+
+@pytest.mark.parametrize("method", ["exact", "kp"])
+def test_tie_methods_neg_ll_far_out_is_quiet_and_right(method):
+    # The exact term raised IndexError at a large beta, and KP gave -inf
+    # with a divide warning (#728)
+    x = np.array([1.0, 1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0])
+    Z = np.array([[0.3], [-1.2], [0.8], [1.5], [-0.4], [0.1], [2.0], [-1.0]])
+    c = np.array([0, 0, 0, 0, 0, 0, 1, 0])
+    generator = {
+        "exact": CoxPH.create_exact_ll_jac_hess,
+        "kp": CoxPH.create_kalbfleisch_prentice_ll_jac_hess,
+    }[method]
+    neg_ll, _ = generator(x, Z, c, np.ones(8), np.full(8, -np.inf))
+    for b in [0.5, 1e3, -1e3, 1e5]:
+        beta = np.array([b])
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            got = neg_ll(beta)
+        want = _tie_neg_ll_by_definition(x, Z, c, beta, method)
+        np.testing.assert_allclose(got, want, rtol=1e-9)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert np.isnan(neg_ll(np.array([1e308])))

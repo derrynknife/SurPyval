@@ -156,6 +156,13 @@ Unreleased
   orders: the fit ran it off, "verified" in one order and "unverified" in
   another. It is aliased. A level with only censored rows is found to run
   off in every order (the test of the data above).
+- ``CoxPH.neg_ll_of(beta)`` is right and quiet at a large ``beta``
+  (#728). It gave inf or nan with numpy's overflow, invalid and divide
+  warnings (Efron, Breslow), raised ``IndexError`` (exact ties) or gave
+  -inf (Kalbfleisch-Prentice). Past ``|beta'Z| = 300`` the risk-set sums
+  are taken in logs; a delayed-entry risk set that is all but cancelled
+  by the units yet to enter is summed over itself (it gave 1.446 for
+  1.386). A ``beta`` whose linear predictor is not finite gives nan.
 - ``CrowAMSAA.projection`` names the source its BC-mode projection was
   checked against (#710): ReliaSoft's Crow Extended formulas, whose
   demonstrated intensity with BC modes is the Crow-AMSAA intensity at
