@@ -192,7 +192,9 @@ def test_the_reported_baseline_at_zero_across_offsets(name):
         _same_predictions(model, ref, s, cb=False)
 
 
-@pytest.mark.parametrize("name", MAPPED)
+@pytest.mark.parametrize(
+    "name", [name for name in MAPPED if name != "GumbelPH"]
+)
 @pytest.mark.parametrize("offset", [2000.0, 1e5])
 def test_by_default_a_baseline_that_cannot_be_represented_is_refused(
     name, offset
@@ -200,6 +202,26 @@ def test_by_default_a_baseline_that_cannot_be_represented_is_refused(
     x, Z, c = _data()
     with pytest.raises(ValueError, match="center=True"):
         getattr(sp, name).fit(x, Z + _shift(offset), c=c)
+
+
+@pytest.mark.parametrize("offset", [2000.0, 1e5])
+def test_a_gumbel_ph_baseline_far_from_the_data_is_represented(
+    offset, references
+):
+    # The Gumbel PH baseline at Z = 0 is the one at the means with mu moved
+    # by sigma beta'center: 8431 at an offset of 2000, well within range.
+    # It was refused because e^(beta'Z) overflowed on the covariates as
+    # given, against a baseline H0 = e^((x - mu) / sigma) that underflowed;
+    # on the log scale the product is finite, and the model at Z = 0 is the
+    # one at the means (#728).
+    x, Z, c = _data()
+    ref = references["GumbelPH"]
+    s = _shift(offset)
+    model = no_warnings(sp.GumbelPH.fit, x, Z + s, c=c)
+    np.testing.assert_array_equal(model.center, [0.0, 0.0])
+    np.testing.assert_allclose(model.params[1:], ref.params[1:], rtol=1e-6)
+    np.testing.assert_allclose(model.neg_ll(), ref.neg_ll(), rtol=1e-10)
+    _same_predictions(model, ref, s)
 
 
 def test_a_family_without_a_map_is_fitted_as_before_near_zero():

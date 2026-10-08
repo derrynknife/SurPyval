@@ -57,7 +57,7 @@ from ._aliasing import (
     fit_columns,
     warn_aliased,
 )
-from ._baseline_profile import filled_derivatives, walk_profile
+from ._baseline_profile import filled_derivatives, to_log, walk_profile
 from ._covariate_link import CovariateLink
 from ._kinds import (
     ACCELERATED_FAILURE_TIME,
@@ -1461,8 +1461,60 @@ def judge_search(
         )
         if walked is not None:
             return walked
+    if verified and derivatives is not None:
+        far = _far_run_off(
+            fun, res, derivatives, coefs, floor, one_sided, baseline
+        )
+        if far is not None:
+            return far
     state = "verified" if verified else "unverified"
     return SearchVerdict(res, state, derivatives, [])
+
+
+#: A verified answer with a baseline parameter of one bound further than
+#: this many e-folds from it has that parameter's profile walked (#728).
+FAR_EFOLDS = 50.0
+
+
+def _far_run_off(
+    fun: Callable,
+    res: Any,
+    at_res: "tuple[npt.NDArray, npt.NDArray]",
+    coefs: "list[tuple[int, int]]",
+    floor: "float | npt.ArrayLike",
+    one_sided: "tuple[int, ...]",
+    baseline: "list[tuple[int, str]] | tuple",
+) -> "SearchVerdict | None":
+    """The "no finite maximum" of :func:`judge_search` for an answer
+    ``res`` that its derivatives (``at_res``) verify, where a baseline
+    parameter with one bound, more than ``FAR_EFOLDS`` from it, runs to
+    it on its profile (``walk_profile``); else ``None``.
+
+    So far out, the derivatives can be rounding: a LogNormalPH whose sigma
+    runs to 0 with a coefficient (the hazard rising from 0 at a
+    threshold) rises by 1e-9 nats over the 7 e-folds from 1e-80 to
+    1e-83, where log_ndtr's derivatives are rounding, and a search that
+    stopped at 1e-80 passed the test of a maximum there, though one that
+    stopped at 1e-83 did not (its Hessian overflowed) and walked the
+    profile to the limit. A maximum that far out (a WeibullPO's alpha at
+    1e-141) is found on its walk and stays as it was."""
+    for pos, _ in baseline:
+        if pos not in one_sided:
+            continue
+        if abs(to_log(float(res.x[pos]))) <= FAR_EFOLDS:
+            continue
+        with np.errstate(all="ignore"), warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "Output seems independent")
+            found = walk_profile(fun, res.x, pos, one_sided, floor)
+        if found is not None and found.kind == "run-off":
+            return SearchVerdict(
+                res,
+                "no finite maximum",
+                at_res,
+                [number for at, number in coefs if at in found.running],
+                tuple(name for at, name in baseline if at in found.running),
+            )
+    return None
 
 
 def _walk_baseline(

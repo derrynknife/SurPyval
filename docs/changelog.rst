@@ -503,6 +503,13 @@ Unreleased
   from the band's scale to their own, not ``1 - sf`` and ``-log sf`` of
   the ``sf`` bound, which were 0 in the left tail for the families not
   on the log-log scale (LogNormal, Gamma, LogLogistic, ...).
+- A parametric PH model scales a baseline ``H0`` or ``h0`` below 1e-50 as
+  ``exp(beta'Z + log H0)`` (#728): a LogNormalPH heading to the Weibull
+  limit (#583's draws 93, 117: ``H0`` 1e-306) had an infinite Hessian and
+  ended "unverified", now "No finite maximum" (WeibullPH's 4 refusals of
+  #583 too); a GumbelPH on covariates far from 0 is fitted at Z = 0, not
+  refused. A verified fit with a baseline parameter over 50 e-folds from
+  its bound has its profile walked (a LogNormalPH sigma at 1e-80).
 
 v0.23 (4 October 2026)
 ----------------------
