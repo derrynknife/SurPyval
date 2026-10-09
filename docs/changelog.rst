@@ -173,6 +173,12 @@ Unreleased
   reproduces that example (demonstrated MTBF 7.84708, projected
   11.29418), where it gave 7.707 and 11.006. Without BC modes nothing
   changes. With BC modes and a single failure it raises.
+- CoxFrailty's group hazards are right at a run-off coefficient
+  (#777): ``exp(beta'Z)`` overflowed and the baseline underflowed, a nan
+  with numpy's warnings. Past ``|beta'Z| = 300`` they are summed in logs,
+  as CoxPH's baseline is. A coefficient that runs off now has no
+  standard error, as in CoxPH: its variance was the inverse of an
+  information at rounding, and could be negative.
 - Fine-Gray's partial likelihood is right far out along a run-off
   (#760): a risk set's sum underflowed and its ``log(0)`` made the
   objective ``-inf``, the best point a search could find. Such sums are

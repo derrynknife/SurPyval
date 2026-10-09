@@ -615,6 +615,15 @@ def log_baseline_sums(
     return log_r, log_d[:, 0]
 
 
+def sums_directly(eta: npt.NDArray) -> bool:
+    """Whether every linear predictor ``eta`` is within ``_DIRECT_ETA``
+    of 0, where ``CoxPH.baseline`` sums ``n exp(eta)`` directly; beyond it
+    (or at a predictor that is not finite) the sums are taken in logs
+    (:func:`log_baseline_sums`). CoxFrailty's group hazards use the same
+    test (#777)."""
+    return bool(np.all(np.abs(eta) <= _DIRECT_ETA))
+
+
 def _group_logsumexp(gb: "_GroupBy", log_w: npt.NDArray) -> npt.NDArray:
     """Per group of ``gb``, the log of the sum of ``exp(log_w)`` over its
     rows (``-inf`` where every term is 0)."""

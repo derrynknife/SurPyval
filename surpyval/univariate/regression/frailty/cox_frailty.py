@@ -74,7 +74,9 @@ from .._prediction import step_quantiles, unique_rows
 from ..proportional_hazards.cox_likelihood import (
     CoxInformation,
     baseline_at_origin,
+    log_baseline_sums,
     newton_raphson,
+    sums_directly,
 )
 from ..proportional_hazards.cox_ph import CoxPH
 from ..regression_data import (
@@ -248,7 +250,16 @@ class _CoxFrailtyEM:
         deaths, risk sum ``r``, deaths' sum ``r_D``) is at risk for the
         fractions ``1 - l/m`` of the ``m`` steps, ``sum_l (1 - l/m) / (r -
         (l/m) r_D)``, where every other row at risk gets the full increment
-        ``sum_l 1 / (r - (l/m) r_D)``."""
+        ``sum_l 1 / (r - (l/m) r_D)``.
+
+        Where ``beta'Z`` or ``beta'Z + offset`` is beyond the baseline's
+        direct range (a coefficient running off), the sums are taken in
+        logs (:meth:`_log_group_hazard`); elsewhere they are formed
+        directly, as here."""
+        with np.errstate(over="ignore", invalid="ignore"):
+            lin = self.Z @ beta
+        if not (sums_directly(lin) and sums_directly(lin + offset)):
+            return self._log_group_hazard(lin, offset)
         times, r, d, h0 = self.baseline(beta, offset)
         k = np.searchsorted(times, self.x)
         H = np.cumsum(h0)[k]
@@ -266,6 +277,47 @@ class _CoxFrailtyEM:
                     own[t] = np.sum((1.0 - frac) / (r[t] - frac * r_D[t]))
                 H = np.where(event, H - h0[k] + own[k], H)
         weight = self.w * np.exp(self.Z @ beta) * H
+        return np.bincount(self.inv, weights=weight, minlength=self.G)
+
+    def _log_group_hazard(
+        self, lin: npt.NDArray, offset: npt.NDArray
+    ) -> npt.NDArray:
+        # :meth:`group_hazard` in logs: ``w exp(beta'Z)`` overflowed at a
+        # run-off beta, and the increments ``d / r`` underflowed to 0, so
+        # a row's term was nan (#777). Each row's term is exp(log w +
+        # beta'Z + log H), with the risk sums from log_baseline_sums and
+        # the cumulative hazard summed in logs. The term is the row's
+        # expected count over its frailty, at most the deaths over u_g, so
+        # it is representable wherever A_g is.
+        times = np.unique(self.x)
+        k = np.searchsorted(times, self.x)
+        event = self.c == 0
+        d = np.zeros_like(times)
+        np.add.at(d, k[event], self.w[event])
+        log_r, log_rD = log_baseline_sums(
+            self.x, self.c, self.w, lin + offset, self.tl, times
+        )
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            log_h0 = np.where(d > 0, np.log(d) - log_r, -np.inf)
+            log_own = log_h0.copy()
+            if self.tie_method == "efron":
+                share = np.exp(log_rD - log_r)
+                for t in np.flatnonzero(d > 1):
+                    m = int(round(float(d[t])))
+                    frac = np.arange(m) / m
+                    steps = 1.0 - frac * share[t]
+                    log_h0[t] = np.log(np.sum(1.0 / steps)) - log_r[t]
+                    log_own[t] = np.log(np.sum((1.0 - frac) / steps))
+                    log_own[t] -= log_r[t]
+            log_H = np.logaddexp.accumulate(log_h0)
+            log_H_row = log_H[k]
+            if self.tie_method == "efron":
+                # (an event row is at risk for its own Efron fractions)
+                before = np.r_[-np.inf, log_H[:-1]][k]
+                log_H_row = np.where(
+                    event, np.logaddexp(before, log_own[k]), log_H_row
+                )
+            weight = np.exp(np.log(self.w) + lin + log_H_row)
         return np.bincount(self.inv, weights=weight, minlength=self.G)
 
     # -- EM at a given theta ----------------------------------------------
@@ -846,6 +898,14 @@ class CoxFrailtyFitter(FitterRepr):
             covariance[np.ix_(kept, [p_all])] = 0.0
             covariance[np.ix_([p_all], kept)] = 0.0
         covariance[p_all, p_all] = theta_var
+        if monotone and cox is not None:
+            # As CoxPH's: a coefficient running off to infinity has no
+            # standard error (#648, #728). Its variance here was the
+            # inverse of an information that is rounding, and could be
+            # negative (#777).
+            off = np.flatnonzero(np.isnan(cox.standard_errors()))
+            covariance[off, :] = np.nan
+            covariance[:, off] = np.nan
         model._covariance = covariance
         model.parameter_names = names
         model.log_likelihood = float(loglik)
