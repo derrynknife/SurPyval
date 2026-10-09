@@ -578,6 +578,12 @@ Unreleased
   order ("No finite maximum", "unverified" or a refusal at Z = 0 for a
   level with only censored rows); fits now agree to the last digit. A
   profile curvature just above rounding has the profile itself read.
+- ``AcceleratedLife`` and the shared-frailty fits (``WeibullFrailty``,
+  ``CoxFrailty``, ...) run on their rows in one order too (#746), so a
+  fit is the same to the last digit in any row order; ``model.data`` of
+  an accelerated life fit keeps the rows so. A Power model on stresses
+  far from 1 had its constant 1e5 apart by the row order, and a level
+  with only censored rows moved its run-off answer by 5%.
 
 v0.23 (4 October 2026)
 ----------------------

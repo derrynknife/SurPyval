@@ -619,3 +619,29 @@ def test_frailty_standard_errors_pair_with_params(fitter):
     assert isinstance(se, np.ndarray)
     assert se.shape == model.params.shape == (len(model.parameter_names),)
     assert np.all(np.isfinite(se) & (se > 0))
+
+
+@pytest.mark.parametrize("fitter", [WeibullFrailty, sp.CoxFrailty])
+def test_746_the_fit_does_not_depend_on_the_row_order(fitter):
+    # The rows are fitted sorted by every column, group too, so the fit is
+    # the same to the last digit in any order (#746; as for the other
+    # parametric regressions, #728): it moved by 1e-16 to 1e-11 before.
+    rng = np.random.default_rng(3)
+    x, c, Z, groups = _sim(seed=3, G=12, per=5)
+    n = rng.integers(1, 3, x.size)
+    fits = []
+    for order in (np.arange(x.size), rng.permutation(x.size)):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            model = fitter.fit(
+                x[order],
+                Z=Z[order],
+                c=c[order],
+                n=n[order],
+                groups=groups[order],
+            )
+        fits.append(model)
+    a, b = fits
+    np.testing.assert_array_equal(a.beta, b.beta)
+    assert a.theta == b.theta
+    assert a.frailties == b.frailties

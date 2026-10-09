@@ -602,3 +602,39 @@ def test_regression_bounds_accept_method_none():
     np.testing.assert_array_equal(
         po.param_cb("coef_0", method=None), po.param_cb("coef_0")
     )
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_746_the_fit_does_not_depend_on_the_row_order(seed):
+    # The fit runs on its rows sorted by every column (canonical_order),
+    # as the PH, AFT and PO fits do (#728), so it is the same to the last
+    # digit in any order. Before, on small random designs like these, the
+    # answers moved with the order by up to 1e-7 where verified, and by 5%
+    # where a level with only censored rows ran off (seed 3).
+    rng = np.random.default_rng(seed)
+    dist = (Weibull, LogNormal, Exponential)[seed % 3]
+    life_model = (Power, ExponentialLifeModel)[seed // 3]
+    levels = rng.choice([300.0, 330.0, 360.0, 400.0], size=3, replace=False)
+    Z = rng.choice(levels, 10)
+    Z[:3] = levels
+    x = np.round(rng.exponential(10, 10) * np.exp(1500 / Z - 1500 / 330), 1)
+    x = x + 0.1
+    c = (rng.uniform(size=10) < 0.3).astype(int)
+    if seed % 2:
+        c[Z == levels[0]] = 1
+    n = rng.integers(1, 4, 10)
+    fits = []
+    for order in (np.arange(10), rng.permutation(10)):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            model = AcceleratedLife(dist, life_model).fit(
+                x[order], Z=Z[order], c=c[order], n=n[order]
+            )
+        fits.append((model, [str(m.message) for m in w]))
+    (a, wa), (b, wb) = fits
+    np.testing.assert_array_equal(a.params, b.params)
+    assert (a.maximum, a.neg_ll(), wa) == (b.maximum, b.neg_ll(), wb)
+    # model.data keeps the rows in the order the fit ran them
+    np.testing.assert_array_equal(a.data.x, b.data.x)
+    np.testing.assert_array_equal(a.data.Z, b.data.Z)
+    assert np.all(np.diff(a.data.x) >= 0)

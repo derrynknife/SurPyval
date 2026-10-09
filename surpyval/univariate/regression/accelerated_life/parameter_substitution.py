@@ -42,6 +42,7 @@ from .._fit_skeleton import (
     HazardIdentitiesMixin,
     MirroredDistributionAttrs,
     assemble_regression_model,
+    canonical_order,
     check_baseline_support,
     check_fixed_and_init,
     covariate_center,
@@ -616,7 +617,10 @@ class ParameterSubstitutionFitter(
             The fitted model. The life parameter's slot in ``params`` and
             ``dist_params`` holds a placeholder value of 1 (it is replaced
             by the life model at each stress); the life-model parameters
-            are in ``phi_params``.
+            are in ``phi_params``. ``model.data`` holds the rows sorted by
+            every column (time, censoring, count, truncation, stress), the
+            order the fit runs in, so it is the same whatever order they
+            are given in.
 
         Examples
         --------
@@ -665,6 +669,14 @@ class ParameterSubstitutionFitter(
                 )
         data, Z_arr = drop_nonfinite_covariates(data, Z_arr)
         self._check_stresses(Z_arr)
+        # The rows in one order (every column sorted), as for the other
+        # parametric regressions, so the fit is the same to the last digit
+        # whatever order they are given in (#746): a Power model on
+        # stresses far from 1, whose likelihood is flat along a ridge,
+        # stopped 1e5 apart in its constant by the row order.
+        order = canonical_order(data, Z_arr)
+        if np.any(order != np.arange(order.size)):
+            data, Z_arr = data[order], Z_arr[order]
         data.add_covariates(Z_arr)
         check_baseline_support(self, data)
         # The per-stress fallback start uses each row's time (the midpoint
