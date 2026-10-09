@@ -536,3 +536,18 @@ def test_additive_hazards_cb_is_quiet_where_the_hazard_is_negative():
         assert [str(w.message)[:44] for w in rec] == [
             "The additive hazard h_0(x) + beta'Z is negat"
         ], on
+
+
+def test_760_additive_hazards_Hf_bound_is_plus_zero_where_H_is_negative():
+    # Where the fitted H is negative the bounds come from the clipped-sf
+    # logit fallback, whose sf upper bound rounds to 1: the Hf lower bound
+    # was -log(1) = -0.0 (#760), as #746 fixed elsewhere.
+    x, Z, c = _data()
+    model = sp.WeibullAH.fit(x, Z, c=c)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # the negative-hazard warning
+        assert np.any(model.Hf(TIMES, [-1.2, 0.0]) < 0)
+        two = model.cb(TIMES, [-1.2, 0.0], on="Hf")
+        low = model.cb(TIMES, [-1.2, 0.0], on="Hf", bound="lower")
+    assert np.any(two[:, 0] == 0) and np.any(low == 0)
+    assert not np.any(np.signbit(two)) and not np.any(np.signbit(low))
