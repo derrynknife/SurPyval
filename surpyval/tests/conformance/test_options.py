@@ -314,7 +314,13 @@ def _sweep(case, spec):
 
 
 def _tol(spec, ref):
-    return spec.rtol * np.maximum(np.abs(ref), 1.0) + 1e-12
+    # No tolerance where the reference is infinite (a Kaplan-Meier Hf
+    # past a survival of 0, a limited-failure quantile or mean): an
+    # infinity compares by equality, where ``ref - tol`` was inf - inf, a
+    # RuntimeWarning (#746).
+    infinite = np.isinf(ref)
+    scale = np.maximum(np.abs(np.where(infinite, 0.0, ref)), 1.0)
+    return np.where(infinite, 0.0, spec.rtol * scale + 1e-12)
 
 
 # ---------------------------------------------------------------------------
