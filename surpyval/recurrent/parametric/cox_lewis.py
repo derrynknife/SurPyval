@@ -120,6 +120,11 @@ class CoxLewis(NHPPFitter):
             )
         return np.where(reached, ratio, np.inf)
 
+    def _search_units(self, data: Any) -> npt.NDArray:
+        """``alpha`` is a log, of unit 1, and ``beta`` a rate per unit
+        time, of unit one over the longest time (``search_units``)."""
+        return np.array(search_units(data.x))
+
     def _default_start(
         self, data: Any, x_unique: npt.NDArray, mcf_hat: npt.NDArray
     ) -> npt.NDArray:
@@ -133,6 +138,17 @@ class CoxLewis(NHPPFitter):
         if span > 0 and mcf_hat[-1] > 0:
             return np.array([np.log(mcf_hat[-1] / span), 0.0])
         return self.parameter_initialiser(data.x)
+
+
+def search_units(t: npt.ArrayLike) -> list:
+    """The unit of each Cox-Lewis parameter's search, for times ``t``:
+    ``alpha`` is a log, of unit 1, and ``beta`` a rate per unit time, of
+    unit one over the longest time (at most 1). A search in units of 1
+    steps ``e**(beta t)`` past overflow on data in thousands of hours, and
+    a check of the maximum in them differences ``beta`` in steps of a
+    large part of it (#746, #760)."""
+    longest = float(onp.max(onp.abs(onp.asarray(t, dtype=float)), initial=0))
+    return [1.0, min(1.0, 1.0 / longest) if longest > 0 else 1.0]
 
 
 def _expm1_over_value(beta: Any, x: npt.NDArray) -> npt.NDArray:

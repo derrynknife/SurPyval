@@ -205,6 +205,12 @@ Unreleased
   likelihoods on a Cox-Lewis intensity had no autograd gradient. Its
   slope in ``beta`` is a series below ``|beta x|`` of 1/2, exact at
   ``beta = 0``, where the closed form cancels.
+- A Cox-Lewis NHPP fit on data in thousands of hours or more is checked
+  in the units of its ``beta`` (#760), one over the longest time, as the
+  ARI fits are (#746). In units of 1 its check differenced a ``beta`` of
+  1e-5 in steps of 1% of it: of 30 simulated fits on data in 1e5 hours,
+  28 were called unverified, with a warning; all are verified now, in
+  about half the time.
 - ``CompetingRisks.cb`` says why it has no bounds on ``hf``, ``df`` or
   ``iif`` (#746): they are the step estimate's jumps at the event times,
   which the single-event ``cb`` does not bound either (by design); the

@@ -958,6 +958,12 @@ def _search_recurrence(model, data, name=""):
         float(model._n_obs),
         name=name,
     )
+    # A parameter searched in its own unit, where the likelihood carries
+    # one (``search_floor``: a Cox-Lewis ``beta``, a rate per unit time,
+    # in one over the longest time, #746, #760), is checked in it
+    floor = getattr(model._neg_ll, "search_floor", None)
+    if floor is not None:
+        search = search._replace(floor=np.asarray(floor, dtype=float)[free])
     # The covariates' coefficients follow the process's own parameters
     n_base = len(model._parameter_bounds()) - np.size(
         getattr(model, "coeffs", ())
