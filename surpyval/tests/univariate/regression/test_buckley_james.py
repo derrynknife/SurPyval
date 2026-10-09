@@ -226,3 +226,21 @@ def test_746_Hf_before_the_first_time_is_plus_zero():
     model = BuckleyJames.fit(x, Z)
     H = model.Hf([0.0, 0.5], np.array([0.0]))
     assert np.all(H == 0) and not np.any(np.signbit(H))
+
+
+def test_760_the_fit_does_not_depend_on_the_row_order():
+    # The rows are fitted sorted by every column (as the parametric
+    # regressions are, #728), so the fit is the same to the last digit in
+    # any order, and so is its bootstrap, which resamples them. The
+    # coefficients moved by 1e-16 with the order before, and the
+    # bootstrap's draws with it.
+    x, Z, c, _ = _aft_data(60, seed=4)
+    n = np.random.default_rng(4).integers(1, 3, x.size)
+    order = np.random.default_rng(5).permutation(x.size)
+    a = BuckleyJames.fit(x, Z, c=c, n=n)
+    b = BuckleyJames.fit(x[order], Z[order], c=c[order], n=n[order])
+    np.testing.assert_array_equal(a.beta, b.beta)
+    np.testing.assert_array_equal(
+        a.bootstrap_ci(n_boot=20, random_state=1),
+        b.bootstrap_ci(n_boot=20, random_state=1),
+    )

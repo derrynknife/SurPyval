@@ -453,3 +453,19 @@ def test_617_param_cb_lr_options_restored_and_aliased():
     np.testing.assert_allclose(
         aliased.param_cb("coef_1", method="lr"), lr, rtol=1e-6
     )
+
+
+def test_760_the_fit_does_not_depend_on_the_row_order():
+    # The rows are fitted sorted by every column (as the parametric
+    # regressions are, #728), so the fit is the same to the last digit in
+    # any order: it moved by 1e-16 with the order before.
+    x, c, w, tl, Z = _po_data(truncate=True)
+    order = np.random.default_rng(2).permutation(x.size)
+    a = sp.ProportionalOdds.fit(x, Z, c=c, n=w, tl=tl)
+    b = sp.ProportionalOdds.fit(
+        x[order], Z[order], c=c[order], n=w[order], tl=tl[order]
+    )
+    np.testing.assert_array_equal(a.beta, b.beta)
+    np.testing.assert_array_equal(a.standard_errors(), b.standard_errors())
+    np.testing.assert_array_equal(a.G0, b.G0)
+    assert a.log_likelihood == b.log_likelihood

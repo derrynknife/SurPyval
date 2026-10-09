@@ -374,6 +374,40 @@ def semi_parametric_inputs(
     return (x_arr, c_arr, n_arr, tl_arr, Z_arr, *extra)
 
 
+def canonical_rows(
+    x: npt.NDArray,
+    c: npt.NDArray,
+    n: npt.NDArray,
+    tl: npt.NDArray,
+    Z: npt.NDArray,
+) -> npt.NDArray:
+    """The order of the rows sorted by every column: time, censoring,
+    entry time, covariates and count, in that order, as
+    ``canonical_order`` sorts a parametric regression's (#728).
+
+    A semi-parametric fit (Buckley-James, the proportional odds model)
+    runs on its rows in this order, so that it is the same to the last
+    digit whatever order they are given in (#760): its sums rounded
+    differently in each order, by 1e-16, and Buckley-James's bootstrap
+    resampled the rows as given. The count is the last key, so data with
+    counts sort as their rows expanded one per unit do (Buckley-James's
+    bootstrap, which resamples the units, then draws the same).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.univariate.regression.regression_data import (
+    ...     canonical_rows,
+    ... )
+    >>> x = np.array([3.0, 1.0, 3.0])
+    >>> one = np.ones(3)
+    >>> canonical_rows(x, np.zeros(3), one, np.zeros(3), [[2.0], [5.0], [1.0]])
+    array([1, 2, 0])
+    """
+    Z_arr = np.asarray(Z, dtype=float).reshape(len(x), -1)
+    return np.lexsort([n, *Z_arr.T[::-1], tl, c, x])
+
+
 def design_matrix_from_df(
     df: pd.DataFrame,
     Z_cols: str | list[str] | None = None,
