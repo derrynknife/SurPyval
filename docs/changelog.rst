@@ -47,6 +47,12 @@ Unreleased
   hold the curve at its last value out to ``tau``, so the RMSTs and their
   difference were whatever the horizon made them (``tau=1e6`` gave a
   difference of 25,000 on data running to 120).
+- A single group's ``mean(tau)``, ``rmst(tau)`` and ``mean_cb(tau)``
+  refuse a ``tau`` past the largest observed time while the survival
+  estimate there is above zero, as ``rmst_diff`` does. They held the curve
+  at its last value out to ``tau``, so the RMST was whatever ``tau`` made
+  it. Leaving ``tau`` out (the largest observed time) and a curve that
+  reaches zero are unaffected.
 - ``MixtureModel`` refuses an ``m`` that is not a whole number of at least
   1, saying so; ``m=0`` used to fail inside numpy with "number sections
   must be larger than 0".

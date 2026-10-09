@@ -1309,7 +1309,7 @@ proportional-hazards assumption holds. When it does not — survival curves that
 cross, treatments that help early but not late — the **restricted mean survival
 time** (RMST) is an assumption-light alternative. It is simply the area under
 the survival curve up to a horizon :math:`\tau`, i.e. the average event-free
-time over the first :math:`\tau` units, and it is always well defined.
+time over the first :math:`\tau` units, and it is well defined for any :math:`\tau` within the data.
 
 Any fitted non-parametric model exposes ``rmst(tau)``, returning the point
 estimate with its standard error and confidence interval:
@@ -1336,8 +1336,9 @@ ordinary mean:
           ' sample mean:', round(control.mean(), 3))
 
 The interval is the normal one, :math:`\widehat{\text{RMST}} \pm z\,\widehat{SE}`. A ``tau`` beyond
-the last observation is allowed but holds the curve at its final value out to ``tau``, which is an
-extrapolation; keep ``tau`` within the data.
+the last observation is refused while the survival estimate there is above zero: the area past the
+data is not estimable, and holding the curve at its final value would make it whatever ``tau`` is.
+Where the estimate has reached zero the area stops growing, and any ``tau`` is accepted.
 
 .. jupyter-execute::
     :hide-code:

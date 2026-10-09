@@ -1251,6 +1251,17 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
             )
         return out
 
+    def _survival_past_data(self, tau: float) -> float | None:
+        """The survival estimate at the largest observed time when ``tau``
+        is past it and the estimate there is above zero, so the area to
+        ``tau`` is not estimable; None when the area is (``tau`` within
+        the data, or the curve already at zero)."""
+        last = float(np.max(self.x))
+        if not tau > last:
+            return None
+        s_last = float(np.ravel(self.sf(last))[-1])
+        return s_last if s_last > 0 else None
+
     def mean(self, tau: float | None = None) -> float:
         r"""
         The (restricted) mean survival time: the area under the
@@ -1269,8 +1280,10 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         tau : scalar, optional
             The horizon up to which the survival function is
             integrated; must be non-negative. Defaults to the largest
-            observed value. If tau is beyond the last observation the
-            survival function is extended at its final value.
+            observed value. A tau beyond the last observation is refused
+            while the survival estimate there is above zero: the area past
+            it is not estimable. Where the estimate has reached zero the
+            area stops growing, and any tau is accepted.
 
         Returns
         -------
@@ -1297,6 +1310,19 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         if not tau >= 0:
             raise ValueError(
                 "'tau' must be a non-negative number; got {}".format(tau)
+            )
+        # Holding the curve at its last value out to tau made the RMST
+        # whatever tau was (mean(tau=1e6) of data running to 120 was in
+        # the tens of thousands), as rmst_diff's two groups did.
+        s_last = self._survival_past_data(tau)
+        if s_last is not None:
+            last = float(np.max(self.x))
+            raise ValueError(
+                "tau = {:g} is past the largest observed time, {:g}, where "
+                "the survival estimate is still {:.3g}: the RMST beyond it "
+                "is not estimable (holding the curve at its last value "
+                "makes it whatever tau is). Use a tau at or below {:g}, or "
+                "leave tau out for it.".format(tau, last, s_last, last)
             )
 
         xs = self.x[self.x < tau].astype(float)
@@ -1326,7 +1352,8 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
 
         tau : scalar, optional
             The horizon up to which the survival function is
-            integrated. Defaults to the largest observed value.
+            integrated. Defaults to the largest observed value; a tau past
+            it is refused as ``mean`` refuses it.
         alpha_ci : scalar, optional
             The level of significance at which the interval will be
             computed. Defaults to 0.05.
@@ -1401,7 +1428,8 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         ----------
         tau : scalar, optional
             Integration horizon; defaults to the largest observed value. A
-            ``tau`` beyond it holds the curve at its final value.
+            ``tau`` beyond it is refused while the survival estimate there
+            is above zero, as ``mean`` refuses it.
         alpha_ci : scalar, optional
             Significance level for the interval (default 0.05).
 
@@ -2049,8 +2077,8 @@ def rmst_diff(
     if tau is None:
         tau = float(min(np.max(model_a.x), np.max(model_b.x)))
     for name, model in (("model_a", model_a), ("model_b", model_b)):
-        last = float(np.max(model.x))
-        if tau > last and float(np.ravel(model.sf(last))[-1]) > 0:
+        s_last = model._survival_past_data(tau)
+        if s_last is not None:
             raise ValueError(
                 "tau = {:g} is past {}'s largest observed time, {:g}, where "
                 "its survival estimate is still {:.3g}: the RMST beyond it "
@@ -2059,8 +2087,8 @@ def rmst_diff(
                 "groups' common follow-up, or leave tau out for it.".format(
                     tau,
                     name,
-                    last,
-                    float(np.ravel(model.sf(last))[-1]),
+                    float(np.max(model.x)),
+                    s_last,
                     float(min(np.max(model_a.x), np.max(model_b.x))),
                 )
             )

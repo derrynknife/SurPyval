@@ -94,3 +94,20 @@ def test_rmst_diff_refuses_a_tau_past_follow_up():
     # b's curve reaches zero at 5: a tau past it needs no extrapolation.
     assert sp.rmst_diff(a, b, tau=6.0)["tau"] == 6.0
     assert sp.rmst_diff(a, b)["tau"] == 5.0
+
+
+def test_single_group_rmst_refuses_a_tau_past_the_data():
+    # mean, rmst and mean_cb held the curve at its last value out to tau,
+    # so an RMST past the data was whatever tau made it.
+    model = sp.KaplanMeier.fit([1, 2, 3, 4, 5], c=[0, 0, 0, 0, 1])
+    for ask in (
+        lambda: model.mean(tau=6),
+        lambda: model.rmst(tau=1e6),
+        lambda: model.mean_cb(tau=6),
+    ):
+        with pytest.raises(ValueError, match="past the largest observed"):
+            ask()
+    assert model.mean(tau=5) == model.mean()
+    # A curve that reaches zero adds no area past the data.
+    complete = sp.KaplanMeier.fit([1, 2, 3, 4, 5])
+    assert complete.mean(tau=100) == pytest.approx(complete.mean())
