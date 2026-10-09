@@ -676,3 +676,132 @@ def test_tie_methods_neg_ll_far_out_is_quiet_and_right(method):
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         assert np.isnan(neg_ll(np.array([1e308])))
+
+
+def _score_information_far(x, Z, c, n, tl, beta, efron):
+    """The score and information from their definition, each risk set's
+    weights scaled by their largest, so that it holds at any ``beta``: per
+    tie term the weighted mean and covariance of ``Z`` in the risk set,
+    the deaths' weights times ``1 - j / d`` for Efron."""
+    eta = Z @ beta
+    p = Z.shape[1]
+    score, info = np.zeros(p), np.zeros((p, p))
+    for tau in np.unique(x[c == 0]):
+        risk = (tl < tau) & (x >= tau)
+        dead = (x == tau) & (c == 0)
+        d = n[dead].sum()
+        score -= n[dead] @ Z[dead]
+        terms = [(j / d, 1.0) for j in range(int(d))] if efron else [(0, d)]
+        for k, mult in terms:
+            b = np.where(dead[risk], (1 - k) * n[risk], n[risk])
+            w = b * np.exp(eta[risk] - eta[risk].max())
+            w = w / w.sum()
+            mean = w @ Z[risk]
+            centred = Z[risk] - mean
+            score += mult * mean
+            info += mult * (centred.T * w) @ centred
+    return score, info
+
+
+@pytest.mark.parametrize("kind", ["tied", "heavy_ties", "truncated_weighted"])
+@pytest.mark.parametrize("method", ["efron", "breslow"])
+def test_score_and_information_far_out_are_quiet_and_right(kind, method):
+    # At a large beta R^2 overflowed and the information's second term,
+    # ZR ZR' / R^2, went to 0: the information, about 0 there, looked
+    # healthy (or exp overflowed, with numpy's warnings); each risk set's
+    # sums are now scaled by its own total (#746)
+    x, Z, c, n, tl, _ = _data(kind)
+    x, c, n, tl, Z = validate_coxph(x, c, n, Z, tl, method)
+    generator = {
+        "efron": CoxPH.create_efron_ll_jac_hess,
+        "breslow": CoxPH.create_breslow_ll_jac_hess,
+    }[method]
+    _, jac_hess = generator(x, Z, c, n, tl)
+    rng = np.random.default_rng(746)
+    for scale in [20.0, 1e3, 1e5]:
+        beta = scale * rng.normal(size=Z.shape[1])
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            score, info = jac_hess(beta)
+        want_score, want_info = _score_information_far(
+            x, Z, c, n, tl, beta, method == "efron"
+        )
+        # The linear predictor itself is rounded by |eta| eps
+        atol = 1e-14 * np.abs(Z @ beta).max() * n.sum()
+        np.testing.assert_allclose(score, want_score, rtol=0, atol=atol)
+        np.testing.assert_allclose(info, want_info, rtol=0, atol=atol)
+
+
+@pytest.mark.parametrize("method", ["efron", "breslow"])
+def test_information_far_out_does_not_look_healthy(method):
+    # Every death but the last has the largest Z of its risk set: at beta
+    # = 150 the information is e^-225 of the deaths' spread, and it was 9
+    # (R^2 overflowed and ZR ZR' / R^2 was taken as 0, #746)
+    x = np.arange(1.0, 7.0)
+    Z = np.array([[3.0], [2.0], [1.0], [0.0], [-1.0], [0.5]])
+    generator = getattr(CoxPH, f"create_{method}_ll_jac_hess")
+    _, jac_hess = generator(x, Z, np.zeros(6), np.ones(6), np.full(6, -np.inf))
+    score, info = jac_hess(np.array([150.0]))
+    np.testing.assert_allclose(score, [2.0], rtol=1e-12)
+    assert abs(info[0, 0]) < 1e-12
+
+
+def _kp_score_information(x, Z, c, beta):
+    """The Kalbfleisch-Prentice score and information by enumeration: the
+    mean and covariance of the covariate sum of the d-subsets of each risk
+    set, weighted by their scores, scaled by the largest."""
+    from itertools import combinations
+
+    eta = Z @ beta
+    p = Z.shape[1]
+    score, info = np.zeros(p), np.zeros((p, p))
+    for tau in np.unique(x[c == 0]):
+        risk = np.flatnonzero(x >= tau)
+        dead = (x == tau) & (c == 0)
+        score -= Z[dead].sum(axis=0)
+        subsets = [list(s) for s in combinations(risk, int(dead.sum()))]
+        S = np.array([Z[s].sum(axis=0) for s in subsets])
+        log_w = np.array([eta[s].sum() for s in subsets])
+        w = np.exp(log_w - log_w.max())
+        w = w / w.sum()
+        mean = w @ S
+        centred = S - mean
+        score += mean
+        info += (centred.T * w) @ centred
+    return score, info
+
+
+@pytest.mark.parametrize("method", ["exact", "kp"])
+def test_tie_methods_score_and_information_far_out(method):
+    # KP's score and information were nan at a large beta: every product
+    # of d scores underflowed on one scale; each row of the recursion now
+    # has its own (#746). The exact term's held already.
+    x = np.array([1.0, 1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0])
+    z = np.array([0.3, -1.2, 0.8, 1.5, -0.4, 0.1, 2.0, -1.0])
+    Z = np.column_stack([z, np.cos(np.arange(8.0))])
+    c = np.array([0, 0, 0, 0, 0, 0, 1, 0])
+    generator = {
+        "exact": CoxPH.create_exact_ll_jac_hess,
+        "kp": CoxPH.create_kalbfleisch_prentice_ll_jac_hess,
+    }[method]
+    neg_ll, jac_hess = generator(x, Z, c, np.ones(8), np.full(8, -np.inf))
+    for b in [0.5, 1e3, -1e3, 1e5]:
+        beta = np.array([b, -0.7 * b])
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            score, info = jac_hess(beta)
+        if method == "kp":
+            want_score, want_info = _kp_score_information(x, Z, c, beta)
+        else:
+            # Central differences of the likelihood, and of the score
+            steps = 1e-3 * max(abs(b), 1.0) * np.eye(2)
+            want_score = [
+                (neg_ll(beta + h) - neg_ll(beta - h)) / (2 * h.sum())
+                for h in steps
+            ]
+            want_info = [
+                (jac_hess(beta + h)[0] - jac_hess(beta - h)[0]) / (2 * h.sum())
+                for h in steps
+            ]
+        np.testing.assert_allclose(score, want_score, rtol=1e-6, atol=1e-9)
+        np.testing.assert_allclose(info, want_info, rtol=1e-6, atol=1e-9)
