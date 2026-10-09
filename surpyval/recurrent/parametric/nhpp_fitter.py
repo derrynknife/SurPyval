@@ -119,6 +119,13 @@ class NHPPFitter(IntensityModel):
         from the non-parametric MCF (``mcf_hat`` at ``x_unique``)."""
         return self.parameter_initialiser(data.x)
 
+    def _search_units(self, data: RecurrentEventData) -> np.ndarray:
+        """The unit of each parameter in the space where the likelihood
+        is searched and its maximum checked (1 for every parameter, the
+        default; ``CoxLewis``'s ``beta``, a rate per unit time, has one
+        over the longest time)."""
+        return np.ones(len(self.parameter_names))
+
     def _closed_form_mle(
         self, data: RecurrentEventData
     ) -> "np.ndarray | None":
@@ -181,6 +188,13 @@ class NHPPFitter(IntensityModel):
         # positive parameter of exactly 0 (Crow-AMSAA's alpha) divided by
         # zero in the intensity.
         to_natural, to_search = unconstraining_maps(list(self.bounds))
+        # The likelihood's search and the check of its maximum run with
+        # each coordinate in its parameter's unit (``_search_units``):
+        # the check's differences are steps of 1e-7 of that, and a
+        # Cox-Lewis beta of 1e-5 per hour, checked in units of 1, had its
+        # slope differenced in steps of 1% of it; most fits on data in
+        # tens of thousands of hours were called unverified (#760).
+        units = np.asarray(self._search_units(data), dtype=float)
 
         def fun(u: np.ndarray) -> float:
             with np.errstate(all="ignore"):
@@ -198,7 +212,7 @@ class NHPPFitter(IntensityModel):
         def search_ll(u: np.ndarray) -> float:
             assert ll_func is not None
             with np.errstate(all="ignore"):
-                value = ll_func(to_natural(u))
+                value = ll_func(to_natural(u * units))
             return float(value) if np.isfinite(value) else 1e300
 
         def search(start: np.ndarray) -> OptimizeResult:
@@ -206,7 +220,7 @@ class NHPPFitter(IntensityModel):
             # from it
             res = minimize(fun, to_search(np.asarray(start, dtype=float)))
             if how == "MLE":
-                res = minimize(search_ll, res.x, method="Nelder-Mead")
+                res = minimize(search_ll, res.x / units, method="Nelder-Mead")
             elif not res.success:
                 # BFGS's finite-difference gradient can stop it at the
                 # minimum with "precision loss" (Cox-Lewis, whose squared
@@ -240,7 +254,7 @@ class NHPPFitter(IntensityModel):
                 warn_unverified(what)
         elif not (res.success and res.fun < 1e300):
             warn_unverified(what)
-        params = to_natural(res.x)
+        params = to_natural(res.x * units if how == "MLE" else res.x)
 
         model = ParametricRecurrenceModel()
         model.mcf_hat = mcf_hat
@@ -259,6 +273,10 @@ class NHPPFitter(IntensityModel):
             model._neg_ll = Rebuilt(
                 self.create_negll_func, (data,), built=ll_func
             )
+            if np.any(units != 1.0):
+                # The parameters' units, in which the maximum was checked
+                # (as an ARI fit's likelihood carries them)
+                model._neg_ll.search_floor = units  # type: ignore
             model._mle = np.asarray(params, dtype=float)
             model._n_obs = bic_sample_size(data)
         return model

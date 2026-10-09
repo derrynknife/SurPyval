@@ -278,6 +278,37 @@ def test_cox_lewis_fit_does_not_depend_on_the_unit(how):
     np.testing.assert_allclose(hours.cif(t * 24.0), days.cif(t), rtol=1e-3)
 
 
+def test_cox_lewis_maximum_checked_in_the_units_of_beta():
+    # beta is a rate per unit time, 1e-5 on data in tens of thousands of
+    # hours. The fit searched and checked it in units of 1: the check's
+    # central differences stepped it by 1% (gradient) and 100% (Hessian)
+    # of itself, and 28 of 30 such fits were called unverified with a
+    # warning. Both now run in units of one over the longest time (#760),
+    # as the ARI fits do (#746): the fit is verified, its exact gradient
+    # is zero in those units, and it is the fit of the same data in units
+    # of 1e5 hours.
+    from autograd import grad
+
+    rng = np.random.default_rng(2)
+    x, i, c = [], [], []
+    for k in range(8):
+        end = rng.uniform(0.6, 1.2) * 1e5
+        n = rng.poisson(2e-4 * (end / 10.0) ** 1.35)
+        x += [*np.sort(end * rng.random(n) ** (1 / 1.35)), end]
+        i += [k] * (n + 1)
+        c += [0] * n + [1]
+    x, i, c = np.array(x), np.array(i), np.array(c)
+    model = no_warnings(CoxLewis.fit, x, i, c)
+    assert model.maximum == "verified"
+    units = np.array([1.0, 1.0 / x.max()])
+    slope = grad(model._neg_ll)(model.params) * units / model._n_obs
+    assert np.all(np.abs(slope) < 1e-4)
+    scaled = no_warnings(CoxLewis.fit, x / 1e5, i, c)
+    assert scaled.maximum == "verified"
+    t = np.array([2e4, 6e4, 1e5])
+    np.testing.assert_allclose(model.cif(t), scaled.cif(t / 1e5), rtol=1e-3)
+
+
 def test_least_squares_fit_that_stops_early_is_finished():
     # BFGS's "precision loss" stop is now followed by a Nelder-Mead
     # search, as the likelihood's is, so a converged fit does not warn;

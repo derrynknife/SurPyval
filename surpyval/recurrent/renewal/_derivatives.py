@@ -28,7 +28,7 @@ import numpy as np
 from autograd import value_and_grad
 from scipy.special import digamma, expit, gammaln, log_ndtr
 
-from surpyval.recurrent.parametric.cox_lewis import CoxLewis
+from surpyval.recurrent.parametric.cox_lewis import CoxLewis, search_units
 from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
 from surpyval.recurrent.parametric.duane import Duane
 from surpyval.recurrent.parametric.hpp import HPP
@@ -668,9 +668,9 @@ class CoxLewisDerivatives:
         ``alpha`` is a log, of unit 1, and ``beta`` a rate per unit
         time, of unit one over the longest time ``t`` (BFGS's steps of 1
         in ``beta`` overflowed ``e**(beta t)`` on data in thousands of
-        hours, and the search stopped where it started)."""
-        longest = float(np.max(np.abs(t), initial=0.0))
-        return [1.0, min(1.0, 1.0 / longest) if longest > 0 else 1.0]
+        hours, and the search stopped where it started); the plain
+        Cox-Lewis fit's too (``cox_lewis.search_units``)."""
+        return search_units(t)
 
 
 def lifetime_derivatives(dist: Any) -> "Any | None":
