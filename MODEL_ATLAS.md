@@ -80,28 +80,39 @@ Worked classifications:
 | Model | dim | recurrence | events | states | covariates | time | estimation |
 |-------|-----|-----------|--------|--------|------------|------|------------|
 | Weibull, Exponential, … | univariate | single_event | single | terminal | none | continuous | parametric |
-| KaplanMeier, NelsonAalen | univariate | single_event | single | terminal | none | continuous | nonparametric |
-| CoxPH | univariate | single_event | single | terminal | with | continuous | semiparametric |
+| KaplanMeier, NelsonAalen, FlemingHarrington, Turnbull | univariate | single_event | single | terminal | none | continuous | nonparametric |
+| WeibullPH/AFT/PO/AH (every distribution), AcceleratedLife, RoystonParmar | univariate | single_event | single | terminal | with | continuous | parametric |
+| CoxPH, ProportionalOdds, AdditiveHazards, BuckleyJames | univariate | single_event | single | terminal | with | continuous | semiparametric |
+| Survival trees and forests (`surpyval.beta.ml`) | univariate | single_event | single | terminal | with | continuous | nonparametric |
+| ParametricCompetingRisks | univariate | single_event | competing | terminal | none | continuous | parametric |
 | CompetingRisks (CIF) | univariate | single_event | competing | terminal | none | continuous | nonparametric |
 | Fine–Gray, CRPH | univariate | single_event | competing | terminal | with | continuous | semiparametric |
 | NonParametricCounting (MCF) | univariate | recurrent | single | recurrent | none | continuous | nonparametric |
-| HPP/NHPP, Crow-AMSAA, Duane | univariate | recurrent | single | recurrent | none | continuous | parametric |
+| HPP/NHPP (Crow-AMSAA, Duane, Cox-Lewis) | univariate | recurrent | single | recurrent | none | continuous | parametric |
+| Renewal: GeneralizedRenewal, GeneralizedOneRenewal, ARA, ARI | univariate | recurrent | single | recurrent | none | continuous | parametric |
 | ProportionalIntensity HPP/NHPP | univariate | recurrent | single | recurrent | with | continuous | parametric |
 | CauseSpecificMCF | univariate | recurrent | competing | recurrent | none | continuous | nonparametric |
-| Bernoulli, success-run | univariate | single_event | single | terminal | none | discrete | parametric |
-| (future) illness-death, progressive | univariate | single_event | single/competing | multi_state | none/with | continuous | any |
+| Bernoulli, Binomial, success-run | univariate | single_event | single | terminal | none | discrete | parametric |
+| (future, #808) illness-death, progressive | univariate | single_event | single/competing | multi_state | none/with | continuous | any |
 
-Almost every model SurPyval ships today is `univariate`. The first
-`multivariate` models now exist: `surpyval.multivariate` provides **bivariate
-copulas** (Independence, Clayton, Gumbel, Frank, Gaussian) that glue existing
-univariate margins together with a dependence parameter, with full
-censoring/truncation support in the joint likelihood. The frailty branch of
-`multivariate` dependence (the random-effect dual of Archimedean copulas)
-remains future work.
+Most models SurPyval ships are `univariate`. Two kinds of `multivariate`
+model exist:
+
+- **Bivariate copulas** (`surpyval.multivariate`: Independence, Gaussian,
+  Student-t, Clayton, Frank, Gumbel, Joe and AMH, with rotations) glue two
+  univariate margins together with a dependence parameter, with full
+  censoring/truncation support in the joint likelihood, standard errors and
+  confidence bounds. More than two lifetimes is #809.
+- **Shared frailty** for clustered single-event data with covariates
+  (`CoxFrailty`, and `WeibullFrailty` and the other parametric frailty
+  baselines): a random effect per cluster, the random-effect dual of an
+  Archimedean copula. Frailty for repairable systems is #810.
 
 | Model | dim | recurrence | events | states | covariates | time | estimation |
 |-------|-----|-----------|--------|--------|------------|------|------------|
-| Clayton/Gumbel/Frank/Gaussian copula | multivariate | single_event | single | terminal | none | continuous | parametric |
+| Bivariate copulas (Gaussian, Student-t, Clayton, Frank, Gumbel, Joe, AMH) | multivariate | single_event | single | terminal | none | continuous | parametric |
+| WeibullFrailty (and other parametric baselines) | multivariate (clustered) | single_event | single | terminal | with | continuous | parametric |
+| CoxFrailty | multivariate (clustered) | single_event | single | terminal | with | continuous | semiparametric |
 
 One shipped capability sits deliberately *outside* the axes:
 `surpyval.degradation` (pseudo-failure-time degradation analysis) is not itself
@@ -111,16 +122,40 @@ extrapolating a fitted degradation path to a failure threshold, then hands
 those times to an ordinary univariate parametric fitter. The life model it
 produces classifies as univariate / single_event / single / terminal /
 parametric; the degradation stage itself is least-squares regression on
-measurements, not survival modelling. (Stochastic degradation *processes* —
-Wiener, gamma — would be genuine models on the atlas and remain future work.)
+measurements, not survival modelling. The stochastic degradation *processes*
+`WienerProcess` and `GammaProcess` are genuine models: each implies a
+first-passage (failure) time distribution, univariate / single_event /
+single / terminal / parametric, with standard errors, bounds and AIC.
+`DestructiveDegradation` fits destructive degradation tests.
+
+## Gaps
+
+Cells of the axes with nothing built yet, each filed as an issue:
+
+| Gap | Cell | Issue |
+|-----|------|-------|
+| Parametric competing-risks regression | univariate / single_event / competing / terminal / with / continuous / parametric | #804 |
+| Recurrent events with covariates, semi-parametric (Andersen–Gill, PWP, mean model) | univariate / recurrent / single / recurrent / with / continuous / semiparametric | #805 |
+| Recurrent events with competing failure modes, parametric | univariate / recurrent / competing / recurrent / none / continuous / parametric | #806 |
+| Recurrent events with competing failure modes and covariates | univariate / recurrent / competing / recurrent / with / continuous / parametric and semiparametric | #807 |
+| Multi-state models (illness-death, progressive) | `multi_state` | #808 |
+| Copulas for more than two lifetimes | multivariate, more than two series | #809 |
+| Shared frailty and correlated series for repairable systems | multivariate / recurrent | #810 |
+| Bayesian inference (a scope decision first) | the deferred inference axis | #811 |
+
+Not gaps, by choice: discrete time with covariates is logistic or binomial
+regression, out of scope for the package; and discrete time without
+covariates has no separate non-parametric estimator (for single trials it is
+the observed proportion).
 
 ## Deferred orthogonal axes (out of scope for now)
 
 - **Inference paradigm** — frequentist vs Bayesian. The entire library is
-  frequentist (MLE/MPS/MOM/MSE); Bayesian survival would be a genuine new
-  top-level axis.
+  frequentist (MLE/MPS/MOM/MSE/MPP); Bayesian survival would be a genuine new
+  top-level axis (#811).
 - **Effect type** — fixed vs random effects (frailty). Frailty is both the
   *clustered* kind of `multivariate` data and a random-effect modality of the
-  covariate axis. (Shared-frailty models coincide with Archimedean copulas — a
+  covariate axis; the single-event frailty regressions above exist, and
+  frailty for repairable systems is #810. (Shared-frailty models coincide with Archimedean copulas — a
   reason the multivariate-dependence machinery could be framed as
   `none / frailty / copula`.)
