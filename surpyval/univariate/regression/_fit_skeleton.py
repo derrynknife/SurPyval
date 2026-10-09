@@ -1327,6 +1327,23 @@ def newton_gain(
     with alpha 14 times short of it (#634). The gain is in nats whatever
     the units of the parameters, and at an ordinary maximum it is below
     1e-11."""
+    step = _newton_step(x, derivatives, keep, one_sided)
+    if step is None:
+        return float("inf")
+    return step[1]
+
+
+def _newton_step(
+    x: npt.ArrayLike,
+    derivatives: "tuple[npt.NDArray, npt.NDArray]",
+    keep: "list[int]",
+    one_sided: "tuple[int, ...]" = (),
+) -> "tuple[npt.NDArray, float] | None":
+    """The Newton step from ``x`` and its gain (:func:`newton_gain`), as
+    the point it reaches: the components ``keep`` moved, each parameter
+    with one bound (``one_sided``) on the log scale of its distance from
+    it, the others linearly. ``None`` where the Hessian is not positive
+    definite."""
     H, g = derivatives
     at = np.asarray(x, dtype=float)
     log = np.zeros(at.size, dtype=bool)
@@ -1340,13 +1357,21 @@ def newton_gain(
         g_u = d1 * g
         H_u, g_u = H_u[np.ix_(keep, keep)], g_u[keep]
         if not (np.all(np.isfinite(H_u)) and np.all(np.isfinite(g_u))):
-            return float("inf")
+            return None
         try:
             L = np.linalg.cholesky(0.5 * (H_u + H_u.T))
         except np.linalg.LinAlgError:
-            return float("inf")
+            return None
         w = np.linalg.solve(L, g_u)
-    return float(0.5 * np.dot(w, w))
+        du = -np.linalg.solve(L.T, w)
+        # From u back to the search's own scale: x = expm1(u) on the
+        # linear side of a one-sided map, u itself on its log side
+        u = np.where(linear, np.log1p(np.maximum(at, 0.0)), at)[keep] + du
+        moved = np.array(at, dtype=float)
+        moved[keep] = np.where(
+            log[keep], np.where(u >= 0.0, np.expm1(u), u), u
+        )
+    return moved, float(0.5 * np.dot(w, w))
 
 
 def is_verified(
@@ -1427,7 +1452,9 @@ def judge_search(
     (:func:`one_sided_positions`), which the no-maximum check judges on the
     log scale (:func:`runaways_in_units`). An answer still not verified
     has the profiles of the baseline's parameters with one bound walked
-    (:func:`_walk_baseline`, #710)."""
+    (:func:`_walk_baseline`, #710). An answer verified here is taken the
+    rest of the way to the maximum, to 1e-9 nats (1e-11 an observation),
+    by Newton's method (:func:`_newton_finish`, #746)."""
     if not (np.isfinite(res.fun) and np.all(np.isfinite(res.x))):
         # No answer to judge (``require_finite_fit`` refuses it)
         return SearchVerdict(res, "unverified", None, [])
@@ -1471,6 +1498,12 @@ def judge_search(
                 off = running_off(res, derivatives)
                 if off is not None:
                     return off
+    if finish and verified and derivatives is not None:
+        # The rest of the way to the maximum, where a flat direction
+        # left the answer short of it (#746)
+        res, derivatives = _newton_finish(
+            fun, res, derivatives, n_obs, held, floor, one_sided
+        )
     if not verified and derivatives is not None:
         # A baseline shape or scale on its way to a limit of the family,
         # or a fit stopped short of a maximum where the Hessian cannot be
@@ -1615,6 +1648,10 @@ def _walk_baseline(
                 one_sided,
             )
         if verified:
+            if derivatives is not None:
+                polished, derivatives = _newton_finish(
+                    fun, polished, derivatives, n_obs, held, floor, one_sided
+                )
             return SearchVerdict(polished, "verified", derivatives, [])
     return None
 
@@ -1651,6 +1688,83 @@ def _polish(
         derivatives,
         is_verified(res.x, derivatives, n_obs, held, floor, one_sided),
     )
+
+
+#: A verified answer is taken by Newton's method until the log-likelihood
+#: is within this many nats of the maximum of its quadratic model
+#: (``newton_gain``), or this many per observation if more, or within the
+#: rounding of the log-likelihood (:func:`_newton_finish`, #746). (The
+#: searches stop an ordinary fit of 2000 rows 1e-8 nats short, of 20,000
+#: rows 1e-7: a Newton step more for each was 15-25% of the fit's time,
+#: for a change a thousandth of a standard error.)
+FINE_GAIN = 1e-9
+FINE_GAIN_PER_OBS = 1e-11
+#: The most Newton steps :func:`_newton_finish` takes.
+FINISH_STEPS = 10
+
+
+def _newton_finish(
+    fun: Callable,
+    res: Any,
+    derivatives: "tuple[npt.NDArray, npt.NDArray]",
+    n_obs: float,
+    held: "tuple[int, ...]" = (),
+    floor: "float | npt.ArrayLike" = 1.0,
+    one_sided: "tuple[int, ...]" = (),
+) -> "tuple[Any, tuple[npt.NDArray, npt.NDArray]]":
+    """``(res, derivatives)``: the verified answer ``res``, taken the rest
+    of the way to its maximum by Newton's method (each parameter with one
+    bound on the log scale of its distance from it, as ``newton_gain``
+    measures the gain), until the gain left is within ``FINE_GAIN`` nats
+    (``FINE_GAIN_PER_OBS`` for each of ``n_obs`` observations, if more)
+    or the rounding of the log-likelihood; each step is kept only where
+    it lowers ``fun``, halved up to ten times, and the answer only where
+    it is still verified.
+
+    A verified answer may be ``GAIN_TOL`` nats (1e-3) short of the
+    maximum, which is far where the likelihood is very flat in one
+    direction: a WeibullPO with alpha near its limit (#583's draw 207,
+    alpha 8.8e30) stopped 3e-5 nats short of its maximum (alpha 1.16e31),
+    and where it stopped followed the row order (#746). An ordinary fit
+    is usually that close already and is not touched."""
+    keep = [i for i in range(np.size(res.x)) if i not in held]
+    x = np.asarray(res.x, dtype=float)
+    f = float(res.fun)
+    at = derivatives
+    steps = 0
+    eps = float(np.finfo(float).eps)
+    tol = max(FINE_GAIN, FINE_GAIN_PER_OBS * n_obs)
+    with np.errstate(all="ignore"), warnings.catch_warnings():
+        warnings.filterwarnings("ignore", "Output seems independent")
+        for _ in range(FINISH_STEPS):
+            step = _newton_step(x, at, keep, one_sided)
+            if step is None:
+                break
+            point, gain = step
+            if gain <= max(tol, 64.0 * eps * max(1.0, abs(f))):
+                break
+            moved = None
+            for _ in range(11):
+                try:
+                    f_point = float(fun(point))
+                except (TypeError, ValueError, ArithmeticError):
+                    break
+                if np.all(np.isfinite(point)) and f_point < f:
+                    moved = point, f_point
+                    break
+                point = 0.5 * (x + point)
+            if moved is None:
+                break
+            derivs = search_derivatives(fun, moved[0])
+            if derivs is None:
+                break
+            (x, f), at = moved, derivs
+            steps += 1
+    if not steps or not is_verified(x, at, n_obs, held, floor, one_sided):
+        return res, derivatives
+    out = copy.copy(res)
+    out.x, out.fun = x, f
+    return out, at
 
 
 def say_verdict(

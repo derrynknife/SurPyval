@@ -1037,6 +1037,34 @@ def test_728_canonical_order_sorts_by_every_column():
     )
 
 
+def test_746_a_verified_answer_on_a_flat_likelihood_is_the_maximum():
+    # Draw 207: WeibullPO's alpha near its limit, the likelihood flat
+    # along it. The fit was "verified" (its Newton gain, 2e-5 nats, is
+    # within GAIN_TOL) at alpha 8.8e30, 3e-5 nats short of the maximum at
+    # 1.16e31, where it stopped by the row order (#746). A verified answer
+    # is now taken the rest of the way by Newton's method.
+    x, c, Z = _alt(207)
+    model, w = _fit(lambda: sp.WeibullPO.fit(x, _alt_terms(Z), c=c))
+    assert not w, [str(m.message) for m in w]
+    assert model.maximum == "verified"
+    assert model.neg_ll() == pytest.approx(93.3790095623612, abs=1e-9)
+
+
+def test_746_the_newton_finish_converges_along_a_flat_direction():
+    # A quadratic in (u, log a) flat along log a, from a point that passes
+    # the gain test 8e-7 nats short: the finish reaches the minimum.
+    def f(p):
+        return 0.5 * (p[0] - 1.0) ** 2 + 1e-6 * (anp.log1p(p[1]) - 3.0) ** 2
+
+    x = np.array([1.0, np.expm1(3.0 + 0.9)])
+    res = OptimizeResult(x=x, fun=float(f(x)))
+    derivatives = runaway.search_derivatives(f, x)
+    assert skeleton.is_verified(x, derivatives, 10.0, one_sided=(1,))
+    out, _ = skeleton._newton_finish(f, res, derivatives, 10.0, (), 1.0, (1,))
+    assert res.fun > 8e-7 and out.fun < 1e-15
+    assert np.log1p(out.x[1]) == pytest.approx(3.0, abs=1e-6)
+
+
 # ---------------------------------------------------------------------------
 # Cox warns on a monotone likelihood.
 # ---------------------------------------------------------------------------
