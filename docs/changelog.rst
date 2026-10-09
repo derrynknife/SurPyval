@@ -702,6 +702,12 @@ Unreleased
   on a loaded machine (#760): it times in CPU time, best of 5
   interleaved rounds. Its wall-clock ratio reached 85 at a load of 15
   (limit 25); now 10 to 12, against 47 for the pre-#521 code.
+- An ARA or Kijima fit whose lifetime start runs off now starts where its
+  likelihood is finite (#777): an ExpoWeibull fitted to one item's gaps
+  ran off to a power law ending at the longest gap, every start had zero
+  likelihood, and ARA failed with "Could not find a good solution". Where
+  no start is finite, each restoration start takes the lifetime fitted
+  to the gaps from the ages it leaves.
 
 v0.23 (4 October 2026)
 ----------------------

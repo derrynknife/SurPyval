@@ -15,7 +15,10 @@ from surpyval.univariate.parametric.fitters import (
 )
 from surpyval.utils.dataframe import RecurrentDataFrameMixin
 from surpyval.utils.fitter_repr import FitterRepr
-from surpyval.utils.no_maximum import warn_unverified
+from surpyval.utils.no_maximum import (
+    quiet_maximum_warnings,
+    warn_unverified,
+)
 
 
 class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
@@ -237,6 +240,41 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
         return params if np.all(np.isfinite(params)) else None
 
     @staticmethod
+    def _aged_starts(
+        data: Any, dist: Any, neg_ll: Callable, restorations: tuple
+    ) -> list:
+        """Starts ``[r, *lifetime]``, one for each restoration ``r``, with
+        the lifetime fitted to the gaps from the virtual ages that ``r``
+        leaves (each gap's end age, left truncated at its start age):
+        the lifetime that is best for ``r``. ``neg_ll.virtual_ages(r)``
+        gives the ages; without it there are none.
+
+        The fallback where no default start has a finite likelihood
+        (#777). The default starts share one lifetime, fitted to the gaps
+        as from age 0, and a lifetime whose own fit runs off can put all
+        its mass below the longest gap: an ExpoWeibull fitted to one
+        item's gaps ran off to a power law ending at the longest of them,
+        so a gap from any later age had zero likelihood, at every ARA
+        start. A start's own fit can run off too; it is a start, and the
+        renewal fit says what its own search reached, so its warnings
+        are held back."""
+        ages_at = getattr(neg_ll, "virtual_ages", None)
+        if ages_at is None:
+            return []
+        gap = np.asarray(data.get_interarrival_times(), dtype=float)
+        starts = []
+        for r in restorations:
+            try:
+                with quiet_maximum_warnings(), np.errstate(all="ignore"):
+                    ages = np.asarray(ages_at(r), dtype=float)
+                    params = dist.fit(gap + ages, data.c, tl=ages).params
+            except Exception:
+                continue
+            if np.all(np.isfinite(params)):
+                starts.append([r, *params])
+        return starts
+
+    @staticmethod
     def _bounds_transform(
         data_x: np.ndarray, bounds: list, parameter_names: list
     ) -> tuple[Callable, Callable]:
@@ -252,6 +290,15 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
             data_x, bounds, {}, param_map
         )
         return transform, inv_trans
+
+    @staticmethod
+    def _finite_at(neg_ll: Callable, x0: Any) -> bool:
+        """Whether the likelihood is finite at the start ``x0``."""
+        # (A start can overflow: a Kijima-II q of 2 doubles the ages
+        # at every failure, and inf - inf warned from here, #630.)
+        with np.errstate(all="ignore"):
+            value = neg_ll(np.asarray(x0, dtype=float))
+        return bool(np.isfinite(value))
 
     @staticmethod
     def _multistart(
@@ -296,11 +343,7 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
         def feasible(x0: Any) -> bool:
             if neg_ll is None:
                 return True
-            # (A start can overflow: a Kijima-II q of 2 doubles the ages
-            # at every failure, and inf - inf warned from here, #630.)
-            with np.errstate(all="ignore"):
-                value = neg_ll(np.asarray(x0, dtype=float))
-            return bool(np.isfinite(value))
+            return RenewalFitMixin._finite_at(neg_ll, x0)
 
         def usable(res: Any) -> bool:
             return bool(np.isfinite(res.fun))
@@ -408,12 +451,24 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
         inits = None
         if dist_init_params is not None:
             inits = [[r0, *dist_init_params] for r0 in restoration_inits]
-            if renewal_restoration is not None:
+            # (With fewer than two items the start's lifetime is already
+            # this one, fitted to the gaps: not fitted again.)
+            if (
+                renewal_restoration is not None
+                and len(data.get_times_to_first_events().x) >= 2
+            ):
                 renewal = self._renewal_dist_params(data, dist)
                 if renewal is not None and not np.allclose(
                     renewal, dist_init_params
                 ):
                     inits.append([renewal_restoration, *renewal])
+            if not any(self._finite_at(neg_ll, x0) for x0 in inits):
+                # None is feasible: each restoration start with its own
+                # lifetime (#777).
+                restorations = tuple(restoration_inits)
+                if renewal_restoration is not None:
+                    restorations += (renewal_restoration,)
+                inits += self._aged_starts(data, dist, neg_ll, restorations)
         if init is not None:
             init = np.atleast_1d(np.asarray(init, dtype=float))
             expected = 1 + len(dist.parameter_names)
