@@ -380,7 +380,9 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
             Left truncation (delayed entry) time of each item; the
             observation of each item begins here. A scalar applies to every
             item; an array has one value per row (the same on every row of
-            an item).
+            an item) or one value per item, in the sorted order of the item
+            ids (``np.unique(i)``; read per row when there are as many rows
+            as items).
         tr : array_like or scalar, optional
             Right truncation time of each item, given like ``tl``; the
             observation window closes here,

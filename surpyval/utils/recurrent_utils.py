@@ -756,6 +756,44 @@ def _reject_window_conflicts(
         )
 
 
+def _per_item_bound(
+    bound: npt.ArrayLike | None, name: str, i: npt.NDArray, n_rows: int
+) -> npt.ArrayLike | None:
+    """A ``tl`` / ``tr`` given one value per item, as one value per row.
+
+    The values are in the order of the sorted item ids (``np.unique(i)``,
+    the order of ``RecurrentEventData.items``, and of an array ``T`` in
+    the trend tests), and each row takes its item's value, wherever the
+    item's rows are in ``x``. A bound with one entry per row of ``x`` is
+    per row, even when that is also the number of items; a scalar, a
+    2-D array or anything else passes through for ``format_truncation``
+    to read (or refuse) as it always has. Any other length is refused
+    here, naming both lengths that are accepted.
+    """
+    if bound is None or np.ndim(bound) != 1:
+        return bound
+    size = np.shape(bound)[0]
+    if size == n_rows or i.shape[0] != n_rows:
+        # Per row, as before; a mismatched ``i`` is refused by
+        # ``_check_xicn_lengths``, so nothing here can be mapped.
+        return bound
+    _check_item_ids(i)
+    try:
+        items, inverse = np.unique(i, return_inverse=True)
+    except TypeError:
+        raise ValueError(
+            "Item identifiers 'i' must be of one comparable kind (all "
+            "numbers or all strings)"
+        ) from None
+    if size != items.shape[0]:
+        raise ValueError(
+            f"'{name}' must have one entry per row of 'x' ({n_rows}) or one "
+            f"per item in 'i' ({items.shape[0]}, in sorted order of the "
+            f"item ids); it has {size}"
+        )
+    return np.asarray(bound)[inverse.reshape(-1)]
+
+
 def _xicn_covariates(
     Z: npt.ArrayLike | dict | None, i: npt.NDArray
 ) -> npt.NDArray | None:
@@ -1217,7 +1255,14 @@ def handle_xicn(
         bounds instead.
     tl, tr : array like or scalar, optional
         Left-truncation (start of observation) and right-truncation (end
-        of observation) times. An item with a finite ``tl`` is observed
+        of observation) times: a scalar for every item, one value per row
+        (the same on every row of an item) or, with ``i``, one value per
+        item, in the sorted order of the item ids (``np.unique(i)``, the
+        order of ``RecurrentEventData.items``), whichever rows the item
+        has in ``x``. A per-item bound is expanded to one value per row
+        here, so the data built are those of the per-row form. When there
+        are as many rows as items the bound is read per row; any other
+        length is refused. An item with a finite ``tl`` is observed
         over ``(tl, T]``, so an event at ``tl`` itself is refused. An item
         with both a ``c=1`` row and a finite ``tr`` must have them at the
         same time.
@@ -1279,6 +1324,15 @@ def handle_xicn(
         # bound legitimately admits negative event times; an untruncated
         # item is integrated from the fallback origin 0 (see
         # ``get_previous_x``) and so must have non-negative event times.
+        #
+        # ``tl`` / ``tr`` may be given one value per item (sorted ids)
+        # instead of one per row: they are expanded to one per row here,
+        # before anything else reads them, so every fitter, the stored
+        # data and its serialisation see the per-row arrays. Not with
+        # ``t``, which ``format_truncation`` refuses alongside them.
+        if items_given and t is None:
+            tl = _per_item_bound(tl, "tl", i, x.shape[0])
+            tr = _per_item_bound(tr, "tr", i, x.shape[0])
         truncation = format_truncation(t, tl, tr, x.shape[0])
         tl_arr = truncation[:, 0]
         tr_arr = truncation[:, 1]

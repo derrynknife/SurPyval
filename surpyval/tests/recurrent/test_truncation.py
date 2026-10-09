@@ -240,3 +240,93 @@ def test_624_renewal_refuses_rows_past_tr():
     )
     with pytest.raises(ValueError, match=r"Item 1 has a row at 6\.0 after"):
         GeneralizedRenewal.fit_from_recurrent_data(data)
+
+
+def _per_unit_case(labels):
+    # Three units whose rows are interleaved in x (not contiguous), labelled
+    # by ``labels`` in the order the rows name them: per-unit bounds are in
+    # the sorted order of the labels (np.unique(i)), per-row ones follow i.
+    x = np.array([12.0, 30, 5, 44, 61, 18, 90, 75, 9, 130, 52, 110])
+    k = np.array([0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 2, 1])
+    i = np.array(labels)[k]
+    entry, end = {0: 0.0, 1: 2.0, 2: 4.0}, {0: 150.0, 1: 120.0, 2: 140.0}
+    units = np.unique(i).tolist()
+    tl_unit = np.array([entry[labels.index(u)] for u in units])
+    tr_unit = np.array([end[labels.index(u)] for u in units])
+    tl_row = np.array([entry[j] for j in k])
+    tr_row = np.array([end[j] for j in k])
+    return x, i, tl_unit, tr_unit, tl_row, tr_row
+
+
+@pytest.mark.parametrize(
+    "labels",
+    [["pump-b", "pump-c", "pump-a"], [40, 7, 1000], [3, 1, 2]],
+)
+def test_per_unit_tl_tr_equal_per_row(labels):
+    # tl / tr may be given one value per unit (in np.unique(i) order) in
+    # place of one per row: handle_xicn expands them, so the data and every
+    # fit are exactly those of the per-row form.
+    from surpyval.recurrent import NonParametricCounting
+
+    x, i, tl_unit, tr_unit, tl_row, tr_row = _per_unit_case(labels)
+    for kwargs_unit, kwargs_row in [
+        ({"tl": tl_unit, "tr": tr_unit}, {"tl": tl_row, "tr": tr_row}),
+        ({"tr": tr_unit}, {"tr": tr_row}),
+        ({"tl": tl_row, "tr": tr_unit}, {"tl": tl_row, "tr": tr_row}),
+    ]:
+        by_unit = handle_xicn(x, i, **kwargs_unit)
+        by_row = handle_xicn(x, i, **kwargs_row)
+        for name in ("x", "i", "c", "n", "tl", "tr"):
+            assert np.array_equal(
+                getattr(by_unit, name), getattr(by_row, name)
+            ), name
+        for fitter in (CrowAMSAA, HPP):
+            assert np.array_equal(
+                fitter.fit(x, i=i, **kwargs_unit).params,
+                fitter.fit(x, i=i, **kwargs_row).params,
+            )
+    # The stored per-row bound is each row's own unit's value.
+    data = handle_xicn(x, i, tr=tr_unit)
+    by_label = dict(zip(np.unique(i).tolist(), tr_unit.tolist()))
+    assert data.tr.tolist() == [by_label[u] for u in data.i.tolist()]
+
+    unit = {"tl": tl_unit, "tr": tr_unit}
+    row = {"tl": tl_row, "tr": tr_row}
+    mcf_unit = NonParametricCounting.fit(x, i=i, **unit)
+    mcf_row = NonParametricCounting.fit(x, i=i, **row)
+    assert np.array_equal(mcf_unit.mcf_hat, mcf_row.mcf_hat)
+    Z = {u: [float(n % 2)] for n, u in enumerate(np.unique(i).tolist())}
+    assert np.array_equal(
+        ProportionalIntensityNHPP.fit(x, i=i, Z=Z, **unit).params,
+        ProportionalIntensityNHPP.fit(x, i=i, Z=Z, **row).params,
+    )
+    # A renewal fit takes per-unit entry ages too.
+    units = np.unique(i)
+    rows = np.r_[x, tr_unit]
+    items = np.r_[i, units]
+    ends = np.r_[np.zeros_like(x), np.ones(len(units))]
+    tl_rows = np.r_[tl_row, tl_unit]
+    assert np.array_equal(
+        GeneralizedRenewal.fit(rows, items, ends, tl=tl_unit).params,
+        GeneralizedRenewal.fit(rows, items, ends, tl=tl_rows).params,
+    )
+
+
+def test_per_unit_tr_wrong_length_names_both_lengths():
+    # Neither one per row nor one per unit: refused, naming both lengths.
+    x, i, _, tr_unit, _, _ = _per_unit_case([1, 2, 3])
+    with pytest.raises(
+        ValueError,
+        match=r"'tr' must have one entry per row of 'x' \(12\) or one per "
+        r"item in 'i' \(3",
+    ):
+        CrowAMSAA.fit(x, i=i, tr=np.r_[tr_unit, 200.0])
+    with pytest.raises(ValueError, match=r"'tl' must have one entry per row"):
+        handle_xicn(x, i, tl=[0.0, 1.0])
+
+
+def test_per_unit_bound_with_as_many_rows_as_items_is_per_row():
+    # When the rows and units are equally many the bound is read per row.
+    data = handle_xicn([1.0, 2.0], i=[2, 1], tr=[10.0, 20.0])
+    assert data.i.tolist() == [1, 2]
+    assert data.tr.tolist() == [20.0, 10.0]

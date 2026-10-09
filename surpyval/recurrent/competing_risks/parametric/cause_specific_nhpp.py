@@ -385,8 +385,10 @@ class CauseSpecificNHPP(SerialisableMixin):
             tuple, or a mix of these.
         tl : array like or scalar, optional
             Left-truncation (delayed-entry) time of each item: a scalar for
-            every item, or one value per row (the same on every row of an
-            item).
+            every item, one value per row (the same on every row of an
+            item), or one value per item, in the sorted order of the item
+            ids (``np.unique(i)``; read per row when there are as many rows
+            as items).
         tr : array like or scalar, optional
             Right-truncation time of each item, given like ``tl``. It closes
             the item's window, as a ``c=1`` row does; an item with both

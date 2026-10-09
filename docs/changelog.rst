@@ -10,6 +10,18 @@ Unreleased
   ``life_models.Exponential``, which is the Arrhenius model.
 - The plotting ``heuristic=`` is read whatever its case, as ``how=`` is,
   and ``"Bernard"`` (the common misspelling) is Benard's approximation.
+- The recurrent-event fitters take ``tr`` and ``tl`` one value per unit as
+  well as one per row: with ``i`` given, a bound with as many entries as
+  there are units, in the sorted order of the unit ids (``np.unique(i)``,
+  the order of ``RecurrentEventData.items``), gives each row its unit's
+  value, wherever the unit's rows are in ``x``.
+  ``CrowAMSAA.fit(x, i=i, tr=[300, 300, 400])`` for three units used to be
+  refused with "'tl' and 'tr' must be the same length as 'x'". The bound is
+  expanded to one value per row in ``handle_xicn``, so every recurrent
+  model (NHPP, HPP, renewal, proportional intensity, the MCF and the
+  cause-specific models) fits, and stores, exactly the data of the per-row
+  form. When there are as many rows as units the bound is read per row, as
+  before; any other length is refused, naming both accepted lengths.
 
 **Fixed**
 

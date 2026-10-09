@@ -634,7 +634,10 @@ class ARI(RenewalFitMixin):
         tl : array_like or scalar, optional
             Delayed entry: the time each item's observation began, when
             its failures before then were not recorded (a scalar for every
-            item, or one value per row, the same on every row of an item).
+            item; one value per row, the same on every row of an item; or
+            one value per item, in the sorted order of the item ids,
+            ``np.unique(i)``, read per row when there are as many rows as
+            items).
             The item is taken to be **as new at entry**, as after an
             overhaul: the baseline intensity's clock restarts at ``tl``,
             with no reduction from earlier repairs, so its times count

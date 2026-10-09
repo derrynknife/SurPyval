@@ -357,8 +357,10 @@ class HPP(CountingProcess):
             (N, 2) array of [left, right] truncation bounds per observation.
         tl : array_like or scalar, optional
             Left truncation (delayed entry) time of each item: a scalar for
-            every item, or one value per row (the same on every row of an
-            item).
+            every item, one value per row (the same on every row of an
+            item), or one value per item, in the sorted order of the item
+            ids (``np.unique(i)``; read per row when there are as many rows
+            as items).
         tr : array_like or scalar, optional
             Right truncation time of each item, given like ``tl``; the
             observation window closes there, as a ``c=1`` row would close it.
