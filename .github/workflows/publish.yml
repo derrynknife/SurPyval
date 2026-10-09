@@ -4,6 +4,11 @@ name: Publish to PyPI
 # Authentication uses PyPI Trusted Publishing (OIDC) -- no API token is stored
 # in the repository. The trusted publisher must be configured once on PyPI for
 # the ``surpyval`` project (workflow ``publish.yml``, environment ``pypi``).
+#
+# It runs no tests. The one automated test is the full run on the release
+# pull request into ``master`` (actions.yml); publishing accepts that run
+# and checks it: the tagged commit must be the merge of a pull request into
+# ``master`` whose run passed, every job of it, or nothing is published.
 
 on:
   push:
@@ -14,8 +19,52 @@ jobs:
   build:
     name: Build distribution
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
+
+      # The tag's commit is the merge of the release pull request; its
+      # head commit carries the full run's checks. Each job's latest
+      # attempt must have succeeded -- a skipped job is not a pass -- and
+      # the run must include the test suite.
+      - name: Check the release pull request's full run passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+            --jq '[.[] | select(.base.ref == "master" and .merged_at != null)]
+                  | .[0].number // empty')
+          if [ -z "$PR" ]; then
+            echo "$GITHUB_REF_NAME is not the merge of a pull request into master" >&2
+            exit 1
+          fi
+          HEAD=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .head.sha)
+          gh api --paginate \
+            "repos/$GITHUB_REPOSITORY/commits/$HEAD/check-runs?per_page=100" \
+            --jq '.check_runs[] | select(.app.slug == "github-actions")
+                  | [.name, .id, .status, (.conclusion // "")] | @tsv' \
+            > runs.tsv
+          python - "$PR" <<'PY'
+          import sys
+
+          latest = {}
+          for line in open("runs.tsv"):
+              name, run_id, status, conclusion = line.rstrip("\n").split("\t")
+              if name not in latest or int(run_id) > latest[name][0]:
+                  latest[name] = (int(run_id), status, conclusion)
+          bad = {n: (s, c) for n, (_, s, c) in latest.items()
+                 if not (s == "completed" and c == "success")}
+          suite = [n for n in latest if n.startswith("surpyval_ci")]
+          pr = sys.argv[1]
+          if not suite:
+              sys.exit(f"pull request #{pr} has no test-suite run")
+          if bad:
+              sys.exit(f"pull request #{pr}'s full run did not pass: {bad}")
+          print(f"pull request #{pr}: {len(latest)} jobs passed")
+          PY
 
       - name: Set-up Python
         uses: actions/setup-python@v5

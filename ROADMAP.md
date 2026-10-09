@@ -239,7 +239,7 @@ favour of this). It is how every change is made:
   fix what scales badly. The larger items become issues; this has been done
   once, in #515.
 - **Calibration studies** check that intervals and tests achieve their
-  stated coverage and size. They run by hand, with ``--run-calibration``.
+  stated coverage and size. They run in the release pull request's full run.
 
 ## Not planned
 
