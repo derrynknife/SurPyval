@@ -497,10 +497,13 @@ class Centring:
         center: npt.NDArray,
         k_dist: int,
         move: "Callable | None" = None,
+        moved: "tuple[int, ...]" = (),
     ):
         self.center = np.asarray(center, dtype=float)
         self.k_dist = k_dist
         self._move = move
+        #: The baseline's parameters (their indices) that ``move`` moves.
+        self.moved = moved
 
     @classmethod
     def plan(
@@ -533,7 +536,7 @@ class Centring:
         mean = covariate_center(Z, n)
         if not np.all(np.isfinite(mean)) or not np.any(mean):
             return None
-        return cls(mean, fitter.k_dist, move)
+        return cls(mean, fitter.k_dist, move, moved)
 
     @property
     def maps_back(self) -> bool:
@@ -1830,6 +1833,179 @@ def finish_search(
     return verdict
 
 
+#: A baseline parameter moved to Z = 0 that moves, there, less than this
+#: fraction of the run-off's largest component along it (in the units of
+#: ``runaways_in_units``) stays where it is at Z = 0 (#760): about 1e-5
+#: of it where every event is at Z = 0, and as much as the coefficients
+#: where the baseline there runs on with them.
+ORIGIN_STILL = 1e-2
+
+
+def _units(
+    x: npt.NDArray, floor: "float | npt.ArrayLike", one_sided: tuple
+) -> "tuple[npt.NDArray, npt.NDArray, npt.NDArray]":
+    """``(u, size, log)``: the search vector ``x`` in the units of
+    ``runaways_in_units`` (``u / size``), each parameter with one bound
+    (``one_sided``, the mask ``log``) as the log of its distance from
+    it."""
+    log = np.zeros(x.size, dtype=bool)
+    log[list(one_sided)] = True
+    u = np.where(log & (x >= 0.0), np.log1p(np.abs(x)), x)
+    unit = np.where(
+        log, 1.0, np.broadcast_to(np.asarray(floor, dtype=float), x.shape)
+    )
+    return u, np.maximum(np.abs(u), unit), log
+
+
+def _still_at_origin(
+    verdict: SearchVerdict,
+    centring: "Centring",
+    names: "list[tuple[int, int, str]]",
+    free: "list[int]",
+    maps: "tuple[Callable, Callable, Callable]",
+    floor: "float | npt.ArrayLike",
+    one_sided: "tuple[int, ...]",
+) -> "set[str]":
+    """The ``names`` (``(index, position, name)`` of baseline parameters
+    the move to Z = 0 shifts) that stay where they are at Z = 0 along the
+    run-off: the Newton step at the answer, taken in the units of
+    ``runaways_in_units``, where its run-off part dominates, moves each
+    of them at Z = 0 by less than ``ORIGIN_STILL`` of its largest
+    component (see :func:`baseline_at_origin`)."""
+    if verdict.derivatives is None:
+        return set()
+    transform, inv_trans, const = maps
+    H, g = verdict.derivatives
+    x = np.asarray(verdict.res.x, dtype=float)
+    u, size, log = _units(x, floor, one_sided)
+    linear = log & (x >= 0.0)
+    d1 = size * np.where(linear, x + 1.0, 1.0)
+    d2 = size**2 * np.where(linear, x + 1.0, 0.0)
+    H_v = np.outer(d1, d1) * H + np.diag(g * d2)
+    if not (np.all(np.isfinite(H_v)) and np.all(np.isfinite(g))):
+        return set()
+    step = -np.linalg.pinv(H_v, hermitian=True) @ (d1 * g)
+    largest = float(np.max(np.abs(step)))
+    if not (np.isfinite(largest) and largest > 0.0):
+        return set()
+    h = 1e-6 / largest
+
+    def at_origin(v: npt.NDArray) -> npt.NDArray:
+        w = size * v
+        point = np.where(log & (w >= 0.0), np.expm1(w), w)
+        moved = centring.to_origin(np.asarray(inv_trans(const(point))))
+        return np.asarray(transform(moved), dtype=float)[free]
+
+    ahead, behind = at_origin(u / size + h * step), at_origin(
+        u / size - h * step
+    )
+    if not (np.all(np.isfinite(ahead)) and np.all(np.isfinite(behind))):
+        return set()
+    u_a, size_a, _ = _units(ahead, floor, one_sided)
+    u_b, _, _ = _units(behind, floor, one_sided)
+    return {
+        name
+        for _, pos, name in names
+        if abs(u_a[pos] - u_b[pos]) / size_a[pos] < ORIGIN_STILL * 2e-6
+    }
+
+
+def baseline_at_origin(
+    verdict: SearchVerdict,
+    fitter: Any,
+    centring: "Centring | None",
+    params_c: npt.NDArray,
+    start: npt.NDArray,
+    coefs: "list[tuple[int, int]]",
+    fixed: dict,
+    pmap: dict,
+    maps: "tuple[Callable, Callable, Callable]",
+    floor: "float | npt.ArrayLike" = 1.0,
+    one_sided: "tuple[int, ...]" = (),
+) -> SearchVerdict:
+    """``verdict`` naming only the baseline parameters that run off at
+    ``Z = 0``, for a fit with no finite maximum whose baseline is moved
+    there from the covariate means (``centring``) (#760).
+
+    The search runs on centred covariates, where a parameter that the
+    move shifts (``centring.moved``, a location or scale) runs off with
+    the coefficients whenever they do and the covariate means are not 0.
+    With every event at Z = 0, a LogisticPO's mu at the means runs on with
+    the coefficients, while its mu at Z = 0, which the model reports, is
+    the finite 6.941. Where there are no events at Z = 0 the baseline
+    there runs on too (a WeibullPH's alpha to 0 along a coefficient of
+    1/T). Such a parameter is left unnamed where both say it stays where
+    it is at Z = 0: the run-off's direction (:func:`_still_at_origin`),
+    and the check of :func:`judge_search` made as the model has it, at
+    Z = 0 (on the objective of the data as given, from the fit's
+    ``start`` and its answer ``params_c`` moved there, in the search's
+    units: ``maps`` are the ``(transform, inv_trans, const)`` of
+    ``bounds_convert`` for the parameters ``fixed`` and coefficients
+    ``pmap``), which must find the same coefficients running off."""
+    if not (
+        verdict.no_maximum
+        and verdict.runaway
+        and centring is not None
+        and centring.maps_back
+        and centring.raw is not None
+    ):
+        return verdict
+    transform, inv_trans, const = maps
+    free = free_parameters(fitter, fixed, pmap)
+    baseline = free_baseline(fitter, fixed)
+    names = [
+        (i, pos, name)
+        for pos, name in baseline
+        for i in centring.moved
+        if fitter.parameter_names[i] == name and name in verdict.baseline
+    ]
+    if not names:
+        return verdict
+    positions = [pos for pos, _ in coefs] + [pos for pos, _ in baseline]
+    with np.errstate(all="ignore"), warnings.catch_warnings():
+        warnings.filterwarnings("ignore", "Output seems independent")
+        try:
+            still = _still_at_origin(
+                verdict, centring, names, free, maps, floor, one_sided
+            )
+            if not still:
+                return verdict
+            at = np.asarray(
+                transform(centring.to_origin(params_c)), dtype=float
+            )[free]
+            begin = np.asarray(
+                transform(centring.to_origin(inv_trans(const(start)))),
+                dtype=float,
+            )[free]
+            found = runaways_in_units(
+                make_objective(fitter, centring.raw, inv_trans, const),
+                at,
+                positions,
+                begin,
+                None,
+                floor,
+                one_sided,
+            )
+        except (
+            TypeError,
+            ValueError,
+            ArithmeticError,
+            np.linalg.LinAlgError,
+        ):
+            return verdict
+    numbers = [coefs[k][1] for k in found if k < len(coefs)]
+    if not set(verdict.runaway).issubset(numbers):
+        return verdict
+    running = {baseline[k - len(coefs)][1] for k in found if k >= len(coefs)}
+    return verdict._replace(
+        baseline=tuple(
+            name
+            for name in verdict.baseline
+            if name not in still or name in running
+        )
+    )
+
+
 def natural_information(
     derivatives: "tuple[npt.NDArray, npt.NDArray] | None",
     to_natural: Callable,
@@ -2096,6 +2272,20 @@ def fit_log_linear(
         centring=centring,
         runaway=verdict.runaway,
         baseline=verdict.baseline,
+    )
+    # The baseline's run-offs as the model has it, at Z = 0 (#760)
+    verdict = baseline_at_origin(
+        verdict,
+        fitter,
+        centring,
+        params,
+        init_t,
+        coefs,
+        fixed,
+        pmap,
+        (transform, inv_trans, const),
+        floor,
+        one_sided_positions(bounds, free_parameters(fitter, fixed, pmap)),
     )
     # After the model is built (which may refuse the data), one
     # warning for what the search found (#392).
