@@ -81,14 +81,19 @@ def bound_method(method: "str | None") -> str:
 
 
 def check_n_boot(n_boot: Any) -> int:
-    """``n_boot`` as an int, or a ``ValueError`` naming it."""
+    """``n_boot`` as an int, or a ``ValueError`` naming it.
+
+    At least 2: one refit has no spread, and its BCa bounds came back NaN
+    without a word (0.24 review)."""
     if (
         isinstance(n_boot, bool)
         or not isinstance(n_boot, (int, np.integer))
-        or n_boot < 1
+        or n_boot < 2
     ):
         raise ValueError(
-            "'n_boot' must be a positive integer; got {!r}".format(n_boot)
+            "'n_boot' must be a positive integer of at least 2 (the number "
+            "of bootstrap refits; 1000 or more is usual, and a few hundred "
+            "give rough bounds); got {!r}".format(n_boot)
         )
     return int(n_boot)
 
