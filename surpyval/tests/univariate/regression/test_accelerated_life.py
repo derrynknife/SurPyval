@@ -33,12 +33,16 @@ from surpyval.tests._helpers import (
     fitted_accelerated_life_model,
     no_warnings,
 )
+from surpyval.univariate.parametric.fitters.runaway import (
+    search_derivatives,
+)
 from surpyval.univariate.regression import (
     DualPower,
     ExponentialLifeModel,
     InversePower,
     Linear,
 )
+from surpyval.univariate.regression._fit_skeleton import newton_gain
 from surpyval.univariate.regression.accelerated_life.accelerated_life import (
     _LIFE_PARAM_MAP,
 )
@@ -638,3 +642,26 @@ def test_746_the_fit_does_not_depend_on_the_row_order(seed):
     np.testing.assert_array_equal(a.data.x, b.data.x)
     np.testing.assert_array_equal(a.data.Z, b.data.Z)
     assert np.all(np.diff(a.data.x) >= 0)
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_760_the_fit_ends_at_its_maximum(seed):
+    # The search is finished by the Newton steps of the other parametric
+    # regressions (newton_finish, #758), all the way to the rounding of
+    # the log-likelihood: what is left to gain at the answer is rounding.
+    rng = np.random.default_rng(seed)
+    dist = (Weibull, LogNormal, Exponential)[seed % 3]
+    life_model = (Power, ExponentialLifeModel)[seed // 3]
+    levels = rng.choice([300.0, 330.0, 360.0, 400.0], size=3, replace=False)
+    Z = rng.choice(levels, 20)
+    Z[:3] = levels
+    x = np.round(rng.exponential(10, 20) * np.exp(1500 / Z - 1500 / 330), 1)
+    c = (rng.uniform(size=20) < 0.3).astype(int)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = AcceleratedLife(dist, life_model).fit(x + 0.1, Z=Z, c=c)
+    assert model.maximum == "verified"
+    at = model.res.x
+    derivatives = search_derivatives(model.fun, at)
+    gain = newton_gain(at, derivatives, list(range(at.size)))
+    assert gain <= 1e-11 * max(1.0, abs(model.res.fun))

@@ -54,6 +54,7 @@ from .._fit_skeleton import (
     keep_information,
     make_objective,
     mirror_distribution,
+    newton_finish,
     one_sided_positions,
     require_finite_fit,
     uniform_draws,
@@ -69,52 +70,39 @@ def _search(
     x0: npt.NDArray,
     n_obs: float,
     floor: "float | npt.ArrayLike" = 1.0,
+    one_sided: "tuple[int, ...]" = (),
 ) -> tuple[OptimizeResult, bool]:
     """Minimise ``fun`` from ``x0`` with Nelder-Mead then TNC, as the fit
     always searched, and whether the answer is verifiably a minimum (see
     ``verify_or_polish``, which polishes one that is not, each component
-    in units of at least ``floor``)."""
+    in units of at least ``floor``).
+
+    A verified answer is taken the rest of the way to the minimum by
+    Newton's method (``newton_finish``, as the other parametric
+    regressions are, #758; the parameters with one bound, ``one_sided``,
+    on the log scale of their distance from it), all the way to the
+    rounding of the log-likelihood (``fine=0``), not the other fits'
+    1e-9 nats. The searches' tolerances stop them anywhere in a
+    neighbourhood of the minimum that is wide along a flat direction (a
+    constant factor ``c`` against the coefficients of stresses far from
+    0), so the answer depended on the path: 1e-4 apart in the parameters
+    for one fit with and without an aliased column, once ``c`` was
+    searched on its log scale (#634); along such a ridge 1e-10 nats is
+    1e-4 in the parameters."""
     res1 = minimize(fun, x0, method="Nelder-Mead", options={"maxiter": 1000})
     res2 = minimize(fun, res1.x, method="TNC")
     res, verified = verify_or_polish(
         fun, res2 if res2.success else res1, n_obs, floor=floor
     )
     if verified:
-        res = _newton_finish(fun, res)
+        with np.errstate(all="ignore"), warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "Output seems independent")
+            derivatives = search_derivatives(fun, res.x)
+        if derivatives is not None:
+            res, _ = newton_finish(
+                fun, res, derivatives, n_obs, (), floor, one_sided, fine=0.0
+            )
     return res, verified
-
-
-def _newton_finish(fun: Callable[[npt.NDArray], Any], res: Any) -> Any:
-    """``res``, a verified minimum of ``fun``, taken the rest of the way
-    by Newton's method (up to three steps, each kept only where it does
-    not raise ``fun``). The searches' tolerances stop them anywhere in a
-    neighbourhood of the minimum that is wide along a flat direction (a
-    constant factor ``c`` against the coefficients of stresses far from
-    0), so the answer depended on the path: 1e-4 apart in the parameters
-    for one fit with and without an aliased column, once ``c`` was
-    searched on its log scale (#634). From inside the neighbourhood
-    Newton's method converges to the minimum itself."""
-    x = np.asarray(res.x, dtype=float)
-    f = float(res.fun)
-    for _ in range(3):
-        try:
-            with np.errstate(all="ignore"), warnings.catch_warnings():
-                warnings.filterwarnings("ignore", "Output seems independent")
-                H, g = search_derivatives(fun, x) or (None, None)
-                if H is None or not (
-                    np.all(np.isfinite(H)) and np.all(np.isfinite(g))
-                ):
-                    break
-                step = np.linalg.solve(H, g)
-                trial = x - step
-                f_trial = float(fun(trial))
-        except (np.linalg.LinAlgError, ValueError, ArithmeticError):
-            break
-        if not (np.all(np.isfinite(trial)) and f_trial <= f):
-            break
-        x, f = trial, f_trial
-    res.x, res.fun = x, f
-    return res
 
 
 class _LifeOfLogScale:
@@ -833,7 +821,17 @@ class ParameterSubstitutionFitter(
 
             n_obs = float(np.sum(data.n))
             floor = _coefficient_units(self, fixed, phi_param_map, data.Z)
-            res, verified = _search(fun, init, n_obs, floor)
+            # The parameters with one bound, finished and judged on the log
+            # scale of their distance from it (one searched on the log
+            # scale already is judged there)
+            one_sided = one_sided_positions(
+                [
+                    (None, None) if i in log_scale else b
+                    for i, b in enumerate(bounds)
+                ],
+                not_fixed,
+            )
+            res, verified = _search(fun, init, n_obs, floor, one_sided)
             start = init
             # From a start far from the maximum the search can stop short
             # of it, silently: InversePower started with its first
@@ -848,7 +846,9 @@ class ParameterSubstitutionFitter(
                     # No default start (a single stress level, say)
                     default = None
                 if default is not None:
-                    alt, alt_verified = _search(fun, default, n_obs, floor)
+                    alt, alt_verified = _search(
+                        fun, default, n_obs, floor, one_sided
+                    )
                     if alt.fun < res.fun or not np.isfinite(res.fun):
                         res, verified = alt, alt_verified
                         start = default
@@ -909,14 +909,7 @@ class ParameterSubstitutionFitter(
                 verified=verified,
                 what="The accelerated life fit",
                 floor=floor,
-                # (one searched on the log scale already is judged there)
-                one_sided=one_sided_positions(
-                    [
-                        (None, None) if i in log_scale else b
-                        for i, b in enumerate(bounds)
-                    ],
-                    not_fixed,
-                ),
+                one_sided=one_sided,
                 baseline=free_baseline(self, fixed),
                 dist=self.dist.name,
                 values=dict(zip(self.param_map, model.params)),

@@ -1457,7 +1457,7 @@ def judge_search(
     has the profiles of the baseline's parameters with one bound walked
     (:func:`_walk_baseline`, #710). An answer verified here is taken the
     rest of the way to the maximum, to 1e-9 nats (1e-11 an observation),
-    by Newton's method (:func:`_newton_finish`, #746)."""
+    by Newton's method (:func:`newton_finish`, #746)."""
     if not (np.isfinite(res.fun) and np.all(np.isfinite(res.x))):
         # No answer to judge (``require_finite_fit`` refuses it)
         return SearchVerdict(res, "unverified", None, [])
@@ -1504,7 +1504,7 @@ def judge_search(
     if finish and verified and derivatives is not None:
         # The rest of the way to the maximum, where a flat direction
         # left the answer short of it (#746)
-        res, derivatives = _newton_finish(
+        res, derivatives = newton_finish(
             fun, res, derivatives, n_obs, held, floor, one_sided
         )
     if not verified and derivatives is not None:
@@ -1652,7 +1652,7 @@ def _walk_baseline(
             )
         if verified:
             if derivatives is not None:
-                polished, derivatives = _newton_finish(
+                polished, derivatives = newton_finish(
                     fun, polished, derivatives, n_obs, held, floor, one_sided
                 )
             return SearchVerdict(polished, "verified", derivatives, [])
@@ -1696,17 +1696,17 @@ def _polish(
 #: A verified answer is taken by Newton's method until the log-likelihood
 #: is within this many nats of the maximum of its quadratic model
 #: (``newton_gain``), or this many per observation if more, or within the
-#: rounding of the log-likelihood (:func:`_newton_finish`, #746). (The
+#: rounding of the log-likelihood (:func:`newton_finish`, #746). (The
 #: searches stop an ordinary fit of 2000 rows 1e-8 nats short, of 20,000
 #: rows 1e-7: a Newton step more for each was 15-25% of the fit's time,
 #: for a change a thousandth of a standard error.)
 FINE_GAIN = 1e-9
 FINE_GAIN_PER_OBS = 1e-11
-#: The most Newton steps :func:`_newton_finish` takes.
+#: The most Newton steps :func:`newton_finish` takes.
 FINISH_STEPS = 10
 
 
-def _newton_finish(
+def newton_finish(
     fun: Callable,
     res: Any,
     derivatives: "tuple[npt.NDArray, npt.NDArray]",
@@ -1714,15 +1714,17 @@ def _newton_finish(
     held: "tuple[int, ...]" = (),
     floor: "float | npt.ArrayLike" = 1.0,
     one_sided: "tuple[int, ...]" = (),
+    fine: "float | None" = None,
 ) -> "tuple[Any, tuple[npt.NDArray, npt.NDArray]]":
     """``(res, derivatives)``: the verified answer ``res``, taken the rest
     of the way to its maximum by Newton's method (each parameter with one
     bound on the log scale of its distance from it, as ``newton_gain``
-    measures the gain), until the gain left is within ``FINE_GAIN`` nats
-    (``FINE_GAIN_PER_OBS`` for each of ``n_obs`` observations, if more)
-    or the rounding of the log-likelihood; each step is kept only where
-    it lowers ``fun``, halved up to ten times, and the answer only where
-    it is still verified.
+    measures the gain), until the gain left is within ``fine`` nats (by
+    default ``FINE_GAIN``, or ``FINE_GAIN_PER_OBS`` for each of ``n_obs``
+    observations, if more) or the rounding of the log-likelihood (all
+    the way, with ``fine=0``); each step is kept only where it lowers
+    ``fun``, halved up to ten times, and the answer only where it is
+    still verified.
 
     A verified answer may be ``GAIN_TOL`` nats (1e-3) short of the
     maximum, which is far where the likelihood is very flat in one
@@ -1736,7 +1738,7 @@ def _newton_finish(
     at = derivatives
     steps = 0
     eps = float(np.finfo(float).eps)
-    tol = max(FINE_GAIN, FINE_GAIN_PER_OBS * n_obs)
+    tol = max(FINE_GAIN, FINE_GAIN_PER_OBS * n_obs) if fine is None else fine
     with np.errstate(all="ignore"), warnings.catch_warnings():
         warnings.filterwarnings("ignore", "Output seems independent")
         for _ in range(FINISH_STEPS):
