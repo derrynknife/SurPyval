@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+**Added**
+
+- ``life_models.Arrhenius``, the name engineers look for: the same class as
+  ``life_models.Exponential``, which is the Arrhenius model.
+
 **Fixed**
 
 - ``fit_best(include=[])`` is refused, naming the fix; it used to try the
