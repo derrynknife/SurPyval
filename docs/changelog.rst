@@ -60,6 +60,14 @@ Unreleased
   confidence bound at the ``alpha_ci`` it was built with) and to call
   ``weibayes`` again for another level, rather than only "Only MLE has
   confidence bounds".
+- ``MixtureModel.qf`` keeps full precision in the upper tail and is about
+  200 times faster (#821). It solved ``ff(t) = u`` one quantile at a time
+  with ``brentq``, so above ``u = 1/2`` it kept only the digits of ``1 -
+  1e-16``: ``sf(qf(1 - s))`` was off from ``s`` by 1e-4 at ``s = 1e-12``.
+  It now solves every quantile at once by Newton steps with the density,
+  kept in the bracket of the components' quantiles by bisection, against
+  ``s - sf(t)`` above 1/2 and ``ff(t) - u`` below: about 1e-14 at both
+  ends, and 20,000 quantiles in 0.06 s rather than 14.
 
 v0.24 (9 October 2026)
 ----------------------
