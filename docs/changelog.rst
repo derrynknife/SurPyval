@@ -595,6 +595,12 @@ Unreleased
   an accelerated life fit keeps the rows so. A Power model on stresses
   far from 1 had its constant 1e5 apart by the row order, and a level
   with only censored rows moved its run-off answer by 5%.
+- ``RoystonParmar.cb`` at and before time 0, and at infinity, is the
+  survival's own edge (#760): ``cb(0, on="Hf")`` was ``[0, nan]`` with
+  RuntimeWarnings, as the spline in ``log x`` met ``log 0``, and every
+  ``on=`` was nan at negative times and at infinity. The band is now
+  ``sf`` there on both ends (1 at 0, 0 at infinity: ``Hf`` 0.0 and inf),
+  as the parametric models give; ``Hf(inf)`` no longer warns.
 
 v0.23 (4 October 2026)
 ----------------------

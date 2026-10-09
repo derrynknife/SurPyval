@@ -366,3 +366,28 @@ def test_746_Hf_bounds_at_the_origin_are_plus_zero(scale):
     for bound in ("lower", "upper"):
         b = rp.cb([1e-300], on="Hf", bound=bound)
         assert np.all(b == 0) and not np.any(np.signbit(b))
+
+
+@pytest.mark.parametrize("scale", ["hazard", "odds", "normal"])
+def test_760_bounds_at_and_before_the_origin_and_at_infinity(scale):
+    # cb(0, on="Hf") was [0, nan]: the spline is in log x, which is -inf
+    # at 0. The band is now sf's own edge values: 1 at and before 0, 0 at
+    # infinity, on every function and side, with no warning (#760).
+    x = Weibull.random(50, 10, 2, random_state=1)
+    rp = RoystonParmar.fit(x, df=2, scale=scale)
+    t = [0.0, -1.0, np.inf]
+    want = {
+        "sf": [1.0, 1.0, 0.0],
+        "ff": [0.0, 0.0, 1.0],
+        "Hf": [0.0, 0.0, np.inf],
+    }
+    for on, w in want.items():
+        two = no_warnings(rp.cb, t, on=on)
+        np.testing.assert_array_equal(two, np.column_stack([w, w]))
+        assert not np.any(np.signbit(two))
+        for bound in ("lower", "upper"):
+            one = no_warnings(rp.cb, t, on=on, bound=bound)
+            np.testing.assert_array_equal(one, w)
+    np.testing.assert_array_equal(rp.cb(0, on="Hf"), [0.0, 0.0])
+    assert np.all(np.isnan(rp.cb([np.nan], on="Hf")))
+    assert no_warnings(rp.Hf, np.inf) == np.inf
