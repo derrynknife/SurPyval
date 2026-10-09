@@ -56,6 +56,8 @@ from ..tvc_fit import fit_tvc_df
 # at_risk_beta_Z, cox_at_risk_mask, efron_jac, efron_log_denominator and
 # not_yet_entered are re-exported: they were defined here.
 from .cox_likelihood import (  # noqa: F401
+    _DIRECT_ETA,
+    _KEPT,
     CoxLikelihoodMixin,
     _combine_generators,
     at_risk_beta_Z,
@@ -64,6 +66,7 @@ from .cox_likelihood import (  # noqa: F401
     cox_at_risk_mask,
     efron_jac,
     efron_log_denominator,
+    log_baseline_sums,
     newton_raphson,
     not_yet_entered,
     strata_labels,
@@ -555,16 +558,29 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         # ``tl >= tau_i`` (valid because ``tl < x`` on every row) — the same
         # subtraction the Efron generator uses, replacing the previous
         # O(K·N) Python loop (#299).
+        #
+        # Where a linear predictor is beyond ``_DIRECT_ETA`` (a coefficient
+        # running off), or the weight not yet entered all but cancels a
+        # risk set with a death, the sums are taken in logs instead
+        # (:func:`log_baseline_sums`): ``exp`` overflowed, with numpy's
+        # RuntimeWarning, and the increments were 0 (#760).
 
         unique_x = np.unique(x)
         if tl is None:
             tl = np.full(x.shape[0], -np.inf)
 
-        w = n * np.exp(Z @ beta)
+        with np.errstate(over="ignore", invalid="ignore"):
+            eta = np.asarray(Z, dtype=float) @ np.asarray(beta, dtype=float)
 
         event = c == 0
         d = np.zeros_like(unique_x)
         np.add.at(d, np.searchsorted(unique_x, x[event]), n[event])
+
+        if not np.all(np.abs(eta) <= _DIRECT_ETA):
+            return self._log_baseline(
+                x, c, n, eta, tl, tie_method, unique_x, d
+            )
+        w = n * np.exp(eta)
 
         r_exit = np.zeros_like(unique_x)
         np.add.at(r_exit, np.searchsorted(unique_x, x), w)
@@ -578,6 +594,10 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         np.add.at(r_pre, k[entered_late], w[entered_late])
         r_pre = r_pre[::-1].cumsum()[::-1]
         r = r_exit - r_pre
+        if np.any((d > 0) & ~(r > _KEPT * r_exit)):
+            return self._log_baseline(
+                x, c, n, eta, tl, tie_method, unique_x, d
+            )
 
         with np.errstate(divide="ignore", invalid="ignore"):
             h0 = d / r
@@ -588,6 +608,33 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
                 m = int(round(float(d[t])))
                 steps = r[t] - (np.arange(m) / m) * r_tied[t]
                 h0[t] = np.sum(1.0 / steps)
+        return unique_x, r, d, h0
+
+    @staticmethod
+    def _log_baseline(
+        x: npt.NDArray,
+        c: npt.NDArray,
+        n: npt.NDArray,
+        eta: npt.NDArray,
+        tl: npt.NDArray,
+        tie_method: str,
+        unique_x: npt.NDArray,
+        d: npt.NDArray,
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+        # ``baseline`` with the risk sets summed in logs: each increment is
+        # ``d / r`` (Efron's, ``sum_l 1 / (r - (l / m) r_D)``) formed as
+        # ``exp(-log r)`` times a factor of order 1, so it is right where
+        # ``r`` itself is not representable (that ``r`` is inf, or 0).
+        log_r, log_rD = log_baseline_sums(x, c, n, eta, tl, unique_x)
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            r = np.exp(log_r)
+            h0 = np.where(d > 0, np.exp(np.log(d) - log_r), 0.0)
+            if str(tie_method).lower() == "efron":
+                share = np.exp(log_rD - log_r)
+                for t in np.flatnonzero(d > 1):
+                    m = int(round(float(d[t])))
+                    steps = 1.0 - (np.arange(m) / m) * share[t]
+                    h0[t] = np.exp(-log_r[t]) * np.sum(1.0 / steps)
         return unique_x, r, d, h0
 
     @dataframe_covariates

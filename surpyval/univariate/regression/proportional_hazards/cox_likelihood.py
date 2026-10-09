@@ -590,6 +590,31 @@ _DIRECT_ETA = 300.0
 _KEPT = 1e-6
 
 
+def log_baseline_sums(
+    x: npt.NDArray,
+    c: npt.NDArray,
+    n: npt.NDArray,
+    eta: npt.NDArray,
+    tl: npt.NDArray,
+    unique_x: npt.NDArray,
+) -> tuple[npt.NDArray, npt.NDArray]:
+    """Per time of ``unique_x`` (the distinct ``x``), the logs of the
+    risk set's weight, the sum of ``n exp(eta)`` over the rows at risk
+    (entered ``tl < t``, not yet exited ``x >= t``), and of the deaths'
+    there, summed in logs over the risk set itself
+    (:meth:`_RiskSetRows.log_by_time`): ``CoxPH.baseline`` at a linear
+    predictor whose ``exp`` would overflow, or where the weight not yet
+    entered all but cancels a risk set (#760)."""
+    rows = _RiskSetRows(x, unique_x, tl)
+    m = len(unique_x)
+    with np.errstate(divide="ignore"):
+        log_w = np.log(n) + eta
+    log_r = rows.log_by_time(log_w[:, None], m)[:, 0]
+    event = c == 0
+    log_d = _grouped_logsumexp(rows.exit[event], log_w[event][:, None], m)
+    return log_r, log_d[:, 0]
+
+
 def _group_logsumexp(gb: "_GroupBy", log_w: npt.NDArray) -> npt.NDArray:
     """Per group of ``gb``, the log of the sum of ``exp(log_w)`` over its
     rows (``-inf`` where every term is 0)."""

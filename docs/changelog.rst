@@ -159,6 +159,10 @@ Unreleased
 
 **Fixed**
 
+- CoxPH's baseline is quiet and right at a run-off ``beta`` (#760):
+  ``exp(beta'Z)`` overflowed, with numpy's RuntimeWarning, and the
+  increments were 0. Past ``|beta'Z| = 300``, or where the units yet to
+  enter all but cancel a risk set, its sums are taken in logs.
 - CoxPH judges its maximum in each covariate's units, as Fine-Gray and
   the parametric fits do (#760). With a unit of 1, its BFGS fallback's
   answer on a covariate spanning 3e-4 passed as verified where BFGS had
