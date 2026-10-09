@@ -288,24 +288,39 @@ def runaways_in_units(
             s = np.where(log & (s >= 0.0), np.log1p(np.abs(s)), s)
         v_start = s / size
     out = runaway_coefficients(in_units, v0, coefs, v_start, units_derivatives)
+    partial = None
     if not out:
-        out = partial_profiles(in_units, v0, coefs, v_start, units_derivatives)
+        out = partial = partial_profiles(
+            in_units, v0, coefs, v_start, units_derivatives
+        )
     if not out:
-        return flat_profiles(in_units, v0, coefs, v_start, units_derivatives)
-    if len(out) < len(coefs):
+        out = flat_profiles(in_units, v0, coefs, v_start, units_derivatives)
+    if out and len(out) < len(coefs):
         # Some run off: so may others with them, whose own profiles the
         # first test cannot read. All the failures in one cell: a
         # WeibullPO's alpha ran off on its profile while the coefficients,
         # gone so far that their profiles were flat to rounding, were not
-        # named (#710).
+        # named (#710). Every other parameter has its profile itself read
+        # (``near=inf``), whatever its curvature: there a LogisticPO's
+        # second coefficient, its profile curving 2e-5 through the
+        # others' Hessian, singular to rounding, ran off with the first,
+        # which alone was named (#746).
+        if partial is None:
+            partial = partial_profiles(
+                in_units, v0, coefs, v_start, units_derivatives
+            )
         out = sorted(
             {
                 *out,
-                *partial_profiles(
-                    in_units, v0, coefs, v_start, units_derivatives
-                ),
+                *partial,
                 *flat_profiles(
-                    in_units, v0, coefs, v_start, units_derivatives
+                    in_units,
+                    v0,
+                    coefs,
+                    v_start,
+                    units_derivatives,
+                    near=np.inf,
+                    skip=out,
                 ),
                 *far_profiles(
                     in_units, v0, coefs, units_derivatives, log, size
@@ -456,12 +471,19 @@ def flat_profiles(
     coefs: "list[int]",
     start: "npt.ArrayLike | None",
     derivatives: "tuple[npt.NDArray, npt.NDArray]",
+    near: "float | None" = None,
+    skip: "list[int] | tuple[int, ...]" = (),
 ) -> "list[int]":
     """The positions in ``coefs`` of the parameters whose profile has no
     curvature at ``x`` to rounding, though the likelihood depends on them at
     ``start``: they have run so far that the rows they move no longer count
     (see above), where neither Newton's test nor any other made with
-    derivatives can say more.
+    derivatives can say more. A profile whose curvature is within
+    ``near`` times the rounding (``NEAR_FLAT`` by default) has the
+    likelihood itself read along it (:func:`_flat_outwards`); ``near=inf``
+    reads every one, for the parameters that may run off with others
+    already found (:func:`runaways_in_units`). The positions ``skip`` are
+    not checked.
 
     A maximum's profile curves down: its curvature is the estimate's
     precision. Here the curvature, the Schur complement of the Hessian
@@ -483,8 +505,11 @@ def flat_profiles(
     ):
         return []
     tol = at.size * float(np.finfo(float).eps) * np.linalg.norm(H, 2)
+    near = NEAR_FLAT if near is None else near
     out = []
     for k, j in enumerate(coefs):
+        if k in skip:
+            continue
         others = [i for i in range(at.size) if i != j]
         v = np.zeros(at.size)
         v[j] = 1.0
@@ -493,7 +518,7 @@ def flat_profiles(
             v[others] = -pinv @ H[others, j]
         curvature = float(v @ H @ v)
         flat = abs(curvature) <= tol
-        if not flat and abs(curvature) <= NEAR_FLAT * tol:
+        if not flat and abs(curvature) <= near * tol:
             flat = _flat_outwards(neg_ll, at, j, v)
         if flat and not _flat_at_start(neg_ll, start, v):
             out.append(k)

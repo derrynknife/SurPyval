@@ -577,6 +577,11 @@ Unreleased
   uncentred was refused with the hint to move the covariates nearer 0.
   Where some parameter runs off, one with a bound whose profile rises
   with a curvature 0 to rounding is named with it.
+- "No finite maximum" names every coefficient that runs off (#746):
+  with every event in one corner cell of two covariates, a LogisticPO,
+  GumbelPH or WeibullAFT named coefficient [0] only, though both run
+  off. Where some parameter runs off, each other one has its profile
+  itself read, whatever its curvature.
 - A parametric regression fit (PH, AFT, PO, additive hazards) does not
   depend on the order of its rows (#728): it runs on them sorted by
   time, censoring, count, truncation and covariates, and ``model.data``
