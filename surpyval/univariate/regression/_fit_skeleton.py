@@ -706,9 +706,7 @@ class Centring:
                     )
         if reason:
             s = float(np.dot(params_c[k:], self.center))
-            at_means = tuple(
-                names[i] for i in self.moved if i < len(names)
-            )
+            at_means = tuple(names[i] for i in self.moved if i < len(names))
             raise ValueError(
                 "The baseline at Z = 0 cannot be represented for these "
                 "covariates. The fit runs at their means, {}, where the "
