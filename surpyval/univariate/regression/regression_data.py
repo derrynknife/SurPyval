@@ -383,7 +383,7 @@ def canonical_rows(
 ) -> npt.NDArray:
     """The order of the rows sorted by every column: time, censoring,
     entry time, covariates and count, in that order, as
-    ``canonical_order`` sorts a parametric regression's (#728).
+    ``canonical_order`` sorts a parametric regression's (#728, #777).
 
     A semi-parametric fit (Buckley-James, the proportional odds model)
     runs on its rows in this order, so that it is the same to the last

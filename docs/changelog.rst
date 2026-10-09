@@ -173,6 +173,11 @@ Unreleased
   reproduces that example (demonstrated MTBF 7.84708, projected
   11.29418), where it gave 7.707 and 11.006. Without BC modes nothing
   changes. With BC modes and a single failure it raises.
+- The parametric and frailty regressions sort their rows with the count
+  as the last key, as the semi-parametric fits do (#777), so counted
+  data sort as their rows expanded one per unit. On rows tied in time
+  and censoring with different counts the answers move at rounding, as
+  in any other row order, and ``model.data`` lists them in the new order.
 - The refusal of a baseline that cannot be represented at Z = 0 says
   what it can compute (#777). A parametric fit's quoted the parameters
   at Z = 0 (``[inf, 1.5]``) and named a location or scale running on
