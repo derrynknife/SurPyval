@@ -1207,7 +1207,7 @@ class Bound:
     # Relative tolerance of the equalities (a search's own tolerance).
     rtol: float = 1e-8
     slow: bool = False
-    # Run only in the nightly calibration job (``--run-calibration``):
+    # Run only with the calibration studies (``--run-calibration``):
     # a sweep that takes minutes, where a faster family already sweeps
     # the same method in every run.
     nightly: bool = False
