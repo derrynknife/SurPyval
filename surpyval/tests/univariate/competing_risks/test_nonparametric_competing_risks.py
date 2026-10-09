@@ -380,3 +380,16 @@ def test_746_plot_draws_the_cif_bounds():
     with pytest.raises(ValueError, match="bound"):
         model.plot(ax=ax, bound="both")
     plt.close("all")
+
+
+@pytest.mark.parametrize("on", ["hf", "df", "iif"])
+def test_746_no_bounds_on_the_jumps_as_for_a_single_event(on):
+    # By design: the single-event estimates refuse 'hf' and 'df' too.
+    from surpyval import KaplanMeier
+
+    model = CompetingRisks.fit(X10, E10)
+    with pytest.raises(ValueError, match="jumps of the step estimate"):
+        model.cb([1, 2], "a", on=on)
+    if on != "iif":
+        with pytest.raises(ValueError, match="'on' must be one of"):
+            KaplanMeier.fit(X10).cb([1, 2], on=on)

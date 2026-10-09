@@ -159,6 +159,10 @@ Unreleased
 
 **Fixed**
 
+- ``CompetingRisks.cb`` says why it has no bounds on ``hf``, ``df`` or
+  ``iif`` (#746): they are the step estimate's jumps at the event times,
+  which the single-event ``cb`` does not bound either (by design); the
+  message points to the cumulative functions.
 - CoxPH finds a run-off along a combination of the coefficients (#728).
   Its test read each coefficient's information alone, so on data that a
   combination of covariates separates the fit reported a "verified"
