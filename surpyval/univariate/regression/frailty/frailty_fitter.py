@@ -305,6 +305,11 @@ def grouped_data(x: Any, Z: Any, c: Any, n: Any, groups: Any) -> tuple[
     Only observed (c=0) and right-censored (c=1) rows are taken. Rows with
     a missing or infinite covariate, or a missing group label, are dropped
     with a warning; at least one event and two groups are required.
+
+    The rows are returned sorted by every column (time, censoring, count,
+    covariates and group, as ``canonical_order`` sorts), the order the fit
+    runs in, so that it is the same to the last digit whatever order they
+    are given in, as for the other parametric regressions (#746).
     """
     # Through the data handler first, in the caller's row order: the
     # documented ragged form ``[10, [11, 13], ...]`` is not a
@@ -381,6 +386,13 @@ def grouped_data(x: Any, Z: Any, c: Any, n: Any, groups: Any) -> tuple[
             "group; at least two groups are required."
         )
 
+    # (``canonical_order``'s keys, the group by its place among the
+    # sorted labels, ``inv``, last)
+    columns = np.column_stack([Zm, inv]) if Z is not None else inv[:, None]
+    order = np.lexsort([*columns.T[::-1].astype(float), w, c, x])
+    x, c, w, inv = (a[order] for a in (x, c, w, inv))
+    if Z is not None:
+        Zm = Zm[order]
     return x, (Zm if Z is not None else None), c, w, labels, inv
 
 
