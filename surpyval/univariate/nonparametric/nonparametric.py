@@ -2006,9 +2006,12 @@ def rmst_diff(
     tau : scalar, optional
         Common horizon. Defaults to the smaller of the two groups' largest
         observed times, so both survival curves are supported by data up to
-        ``tau`` (the standard choice). A larger ``tau`` is accepted without
-        a warning: a curve is then held at its final value beyond its last
-        observation, an extrapolation that is left to the caller to judge.
+        ``tau`` (the standard choice). A ``tau`` past a group's largest
+        observed time is refused while that group's estimate is above zero
+        there: the curve beyond it is not estimated, and holding it at its
+        last value made the RMST, and the difference, what the horizon
+        made them. (A curve that has reached zero is zero beyond, and
+        needs no extrapolation.)
     alpha_ci : scalar, optional
         Significance level for the interval and test (default 0.05).
 
@@ -2025,7 +2028,9 @@ def rmst_diff(
     Raises
     ------
     ValueError
-        If either model has no variance estimate (``fit_from_ecdf``).
+        If either model has no variance estimate (``fit_from_ecdf``), or
+        ``tau`` is past a group's largest observed time while its estimate
+        is above zero there.
 
     Examples
     --------
@@ -2043,6 +2048,22 @@ def rmst_diff(
 
     if tau is None:
         tau = float(min(np.max(model_a.x), np.max(model_b.x)))
+    for name, model in (("model_a", model_a), ("model_b", model_b)):
+        last = float(np.max(model.x))
+        if tau > last and float(np.ravel(model.sf(last))[-1]) > 0:
+            raise ValueError(
+                "tau = {:g} is past {}'s largest observed time, {:g}, where "
+                "its survival estimate is still {:.3g}: the RMST beyond it "
+                "is not estimable (holding the curve at its last value "
+                "makes it whatever tau is). Use a tau at or below {:g}, the "
+                "groups' common follow-up, or leave tau out for it.".format(
+                    tau,
+                    name,
+                    last,
+                    float(np.ravel(model.sf(last))[-1]),
+                    float(min(np.max(model_a.x), np.max(model_b.x))),
+                )
+            )
 
     mu_a = model_a.mean(tau=tau)
     mu_b = model_b.mean(tau=tau)

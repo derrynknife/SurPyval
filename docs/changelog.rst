@@ -23,6 +23,11 @@ Unreleased
 - The degradation process fits' ``y0`` documentation says the estimated
   start level can be below zero, and to pass ``y0=0.0`` for paths known to
   start at zero.
+- ``rmst_diff`` refuses a ``tau`` past a group's largest observed time
+  while that group's survival estimate is above zero there. It used to
+  hold the curve at its last value out to ``tau``, so the RMSTs and their
+  difference were whatever the horizon made them (``tau=1e6`` gave a
+  difference of 25,000 on data running to 120).
 
 v0.24 (9 October 2026)
 ----------------------
