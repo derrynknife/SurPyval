@@ -601,6 +601,10 @@ Unreleased
   ``on=`` was nan at negative times and at infinity. The band is now
   ``sf`` there on both ends (1 at 0, 0 at infinity: ``Hf`` 0.0 and inf),
   as the parametric models give; ``Hf(inf)`` no longer warns.
+- A parametric additive hazards model's ``cb(on="Hf")`` lower bound is
+  0.0, not -0.0, where the fitted ``H`` is negative (#760): there the
+  bound is the clipped-``sf`` logit fallback, whose upper end rounds to
+  1, and ``-log 1`` was -0.0. The same holds for ``cb_tvc``.
 
 v0.23 (4 October 2026)
 ----------------------

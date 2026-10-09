@@ -835,8 +835,9 @@ class InferenceMixin:
             sf_c = logit_sf_bound(sf_hat, se, sign, tail)
             if name == "sf":
                 return sf_c
+            # 0.0 - log: sf_c rounds to 1 here, and -log(1) is -0.0 (#760).
             with np.errstate(divide="ignore"):
-                return 1.0 - sf_c if name == "ff" else -np.log(sf_c)
+                return 1.0 - sf_c if name == "ff" else 0.0 - np.log(sf_c)
 
         # ff and Hf decrease in sf: their lower end is sf's upper.
         flip = -1.0 if name == "sf" else 1.0
