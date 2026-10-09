@@ -36,6 +36,7 @@ from surpyval.utils import (
     validate_coxph,
     validate_coxph_df_inputs,
 )
+from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
 from surpyval.utils.pickling import Rebuilt
@@ -260,6 +261,13 @@ def _solve_beta_and_p_values(
             return runoff_direction(x, Zk, c, n, tl, strata, tie_method)
 
         runoff = runoff_of_data
+    # Each coefficient judged in its own covariate's units, as Fine-Gray's
+    # and the parametric fits' are (#577, #760)
+    floor = coefficient_floor(
+        kept.size,
+        [(k, int(j)) for k, j in enumerate(kept)],
+        np.asarray(Z, dtype=float),
+    )
     res.maximum = _maximum_reached(
         res,
         jac,
@@ -269,6 +277,7 @@ def _solve_beta_and_p_values(
         n_events,
         runoff,
         far or not converged,
+        floor,
     )
     # An exactly singular information matrix raises before the
     # pseudo-inverse fallback can run (#259); route it there.
@@ -329,13 +338,24 @@ def _maximum_reached(
     n_events: float,
     runoff: "Callable | None" = None,
     suspect: bool = False,
+    floor: "float | npt.NDArray" = 1.0,
 ) -> str:
     """What the partial-likelihood search reached (see
     :func:`_solve_beta_and_p_values`), with its one warning: no finite
     maximum (:func:`_warn_if_monotone`), else a verified maximum -- the
     score and the information at ``res.x`` (``res.jac`` from
-    Newton-Raphson, else ``jac``) pass ``is_local_minimum`` per event --
-    or a search that did not reach one.
+    Newton-Raphson, else ``jac``) pass ``is_local_minimum`` per event,
+    each coefficient in units of ``max(|beta_j|, floor_j)`` (its
+    covariate's, :func:`~surpyval.utils.covariates.coefficient_floor`, as
+    for Fine-Gray and the parametric fits) -- or a search that did not
+    reach one.
+
+    With a unit of 1 for every coefficient, the BFGS fallback's answer on
+    a covariate spanning 3e-4 (a reciprocal temperature in kelvin) passed
+    as verified where BFGS had not moved from its start, 0, with the
+    maximum at 15, its gradient below the test only in the wrong units;
+    and one on a covariate in units of 1e4 failed 2e-9 nats from its
+    maximum (#760).
 
     A run-off along a combination of the coefficients leaves no column's
     information collapsed, and the search can stop at a point that passes
@@ -359,6 +379,7 @@ def _maximum_reached(
         lambda _: np.atleast_1d(score),
         lambda _: np.atleast_2d(info),
         np.atleast_1d(res.x),
+        floor=floor,
         obj_scale=max(n_events, 1.0),
     )
     if runoff is not None and (

@@ -159,6 +159,11 @@ Unreleased
 
 **Fixed**
 
+- CoxPH judges its maximum in each covariate's units, as Fine-Gray and
+  the parametric fits do (#760). With a unit of 1, its BFGS fallback's
+  answer on a covariate spanning 3e-4 passed as verified where BFGS had
+  not moved from 0 (the maximum at 15). Newton-Raphson's fits keep their
+  verdicts.
 - ``CompetingRisks.cb`` says why it has no bounds on ``hf``, ``df`` or
   ``iif`` (#746): they are the step estimate's jumps at the event times,
   which the single-event ``cb`` does not bound either (by design); the
