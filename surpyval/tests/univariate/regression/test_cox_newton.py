@@ -917,3 +917,60 @@ def test_verified_in_the_covariates_units():
                 stopped = CoxPH.fit(x, z[:, None], c=c)
     assert stopped.beta[0] == 0.0
     assert stopped.maximum == "unverified"
+
+
+def _baseline_definition(x, Z, c, n, tl, beta, efron):
+    """The baseline increments from their definition, each risk set's
+    weights scaled by their largest: ``d / r`` (Efron's ``sum_l 1 / (r -
+    (l / m) r_D)``) at each distinct time."""
+    eta = Z @ beta
+    times = np.unique(x)
+    h0 = np.zeros(times.size)
+    for k, tau in enumerate(times):
+        risk = (tl < tau) & (x >= tau)
+        dead = (x == tau) & (c == 0)
+        d = n[dead].sum()
+        if d == 0:
+            continue
+        top = eta[risk].max()
+        r = n[risk] @ np.exp(eta[risk] - top)
+        r_D = n[dead] @ np.exp(eta[dead] - top)
+        m = int(round(d)) if efron and d > 1 else 1
+        steps = r - (np.arange(m) / m) * r_D
+        with np.errstate(over="ignore", under="ignore"):
+            h0[k] = np.exp(-top) * (np.sum(1 / steps) * (d / m))
+    return h0
+
+
+@pytest.mark.parametrize("kind", ["tied", "truncated_weighted"])
+@pytest.mark.parametrize("method", ["efron", "breslow"])
+def test_baseline_far_out_is_quiet_and_right(kind, method):
+    # At a run-off beta exp(beta'Z) overflowed, with numpy's warning, and
+    # the increments were 0; the risk sets are now summed in logs (#760)
+    x, Z, c, n, tl, _ = _data(kind)
+    x, c, n, tl, Z = validate_coxph(x, c, n, Z, tl, method)
+    rng = np.random.default_rng(760)
+    for scale in [1.0, 300.0, 1e4]:
+        beta = scale * rng.normal(size=Z.shape[1])
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            times, r, d, h0 = CoxPH.baseline(beta, x, c, n, Z, tl, method)
+        want = _baseline_definition(x, Z, c, n, tl, beta, method == "efron")
+        # The linear predictor itself is rounded by |eta| eps
+        rtol = 1e-14 * max(np.abs(Z @ beta).max(), 1.0) * 10
+        np.testing.assert_allclose(h0, want, rtol=rtol, atol=0)
+        assert np.all(h0 >= 0)
+
+
+def test_baseline_of_a_run_off_fit_is_quiet():
+    # A fit whose coefficients run off to beta'Z of 1e4: the baseline's
+    # exp overflowed with a RuntimeWarning (#760)
+    rng = np.random.default_rng(1)
+    Z = rng.normal(size=(40, 2))
+    Z = Z[np.argsort(-(Z @ np.array([1.0, -0.6])))]
+    c = (np.arange(40) >= 20).astype(int)
+    with pytest.warns(UserWarning) as record:
+        model = CoxPH.fit(np.arange(1.0, 41), Z, c=c, center=True)
+    assert [w.category for w in record] == [UserWarning]
+    assert model.maximum == "no finite maximum"
+    assert np.all(np.isfinite(model.h0)) and np.all(model.h0 >= 0)
