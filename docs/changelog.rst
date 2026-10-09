@@ -8,6 +8,8 @@ Unreleased
 
 - ``life_models.Arrhenius``, the name engineers look for: the same class as
   ``life_models.Exponential``, which is the Arrhenius model.
+- The plotting ``heuristic=`` is read whatever its case, as ``how=`` is,
+  and ``"Bernard"`` (the common misspelling) is Benard's approximation.
 
 **Fixed**
 

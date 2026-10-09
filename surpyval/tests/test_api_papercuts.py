@@ -271,7 +271,16 @@ def test_signatures_show_arraylike_not_its_expansion():
 
 def test_unknown_heuristic_lists_the_heuristics():
     with pytest.raises(ValueError, match="Nelson-Aalen.*Turnbull|Median"):
-        sp.Weibull.fit(X, how="MPP", heuristic="median")
+        sp.Weibull.fit(X, how="MPP", heuristic="medium")
+
+
+def test_heuristic_is_read_whatever_its_case():
+    # As how= is (0.24 review): 'blom' is Blom's, and Benard's
+    # approximation is often spelled "Bernard".
+    for given, name in (("blom", "Blom"), ("BERNARD", "Benard")):
+        model = sp.Weibull.fit(X, how="MPP", heuristic=given)
+        expected = sp.Weibull.fit(X, how="MPP", heuristic=name)
+        assert np.allclose(model.params, expected.params)
 
 
 # -- the trend tests take the fitters' c -------------------------------------
