@@ -342,3 +342,21 @@ def test_a_constant_column_far_from_zero_is_still_aliased():
         model = CoxPH.fit(x, Z, c=c)
     assert np.isnan(model.beta[1])
     assert model.beta[0] == pytest.approx(CoxPH.fit(x, Z[:, :1], c=c).beta[0])
+
+
+def test_refusal_says_the_rows_overflow_not_the_move():
+    # Covariates already centred on 0, whose coefficient runs off to
+    # beta'Z of 850: the move to Z = 0 is by exp(0), and the refusal said
+    # that it over- or underflowed. It is exp(beta'Z) on the rows (#777).
+    z = np.linspace(-30.0, 30.0, 61)[::-1, None]
+    x = np.arange(1.0, 62.0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(ValueError) as info:
+            CoxPH.fit(x, z)
+    message = str(info.value)
+    assert "exp(beta'Z) on the covariates as given over- or underflows" in (
+        message
+    )
+    assert "times that at the means" not in message
+    assert "center=True" in message

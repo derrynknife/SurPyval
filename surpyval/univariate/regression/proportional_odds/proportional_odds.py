@@ -497,13 +497,13 @@ def _baseline_at_origin(
     jump there over- or underflows, or the linear predictor ``lp`` of a
     fitted row does (as CoxPH and the parametric fits refuse, #463)."""
     out = log_g + shift
-    ok = bool(np.all(np.abs(lp) < LOG_MAX)) and bool(
-        np.all((out < LOG_MAX) & (out > _LOG_TINY))
-    )
-    if not ok:
+    moved = bool(np.all((out < LOG_MAX) & (out > _LOG_TINY)))
+    if not (moved and bool(np.all(np.abs(lp) < LOG_MAX))):
         # shift = -gamma'center = beta'center, the model's coefficients
-        # being beta = -gamma.
-        raise baseline_at_origin_error("baseline odds", center, shift, shift)
+        # being beta = -gamma. (The rows' lp, where only they overflow.)
+        raise baseline_at_origin_error(
+            "baseline odds", center, shift, shift, lp=lp if moved else None
+        )
     return out
 
 

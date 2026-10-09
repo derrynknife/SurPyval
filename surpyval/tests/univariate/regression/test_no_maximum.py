@@ -1153,3 +1153,52 @@ def test_648_cox_runaway_coefficient_has_nan_standard_error():
     assert np.isnan(se[0]) and np.isnan(model.p_values[0])
     assert np.isfinite(se[1]) and se[1] > 0
     assert np.isnan(model.summary()["se(coef)"].iloc[0])
+
+
+def _weibull_ph_refusal(params, raw_neg_ll, runaway=(), baseline=()):
+    key = ("Proportional Hazard", "Weibull")
+    moved, move = skeleton.ORIGIN_MAPS[key]
+    centring = skeleton.Centring(np.array([1.0]), 2, move, moved)
+    bounds = ((0, None), (0, None), (None, None))
+    with pytest.raises(ValueError) as info:
+        centring.finish(
+            np.asarray(params, dtype=float),
+            1.0,
+            raw_neg_ll,
+            bounds,
+            "Weibull",
+            list(runaway),
+            tuple(baseline),
+            ("alpha", "beta"),
+        )
+    return str(info.value)
+
+
+def test_777_the_refusal_at_z_0_names_what_it_can_compute():
+    # Moving alpha to Z = 0 overflows: the refusal quoted the parameters
+    # there ([inf, 1.5]) and said "alpha runs on" of alpha at the means,
+    # where the search ran. It names the parameter out of range, quotes
+    # values only where the fit ran, and says where alpha runs on (#777).
+    message = _weibull_ph_refusal(
+        [2.0, 1.5, 3000.0], lambda *p: 1.0, [0], ("alpha",)
+    )
+    assert "inf" not in message and "nan" not in message
+    assert "at their means, [1], where" in message
+    assert "baseline has alpha = 2, beta = 1.5" in message
+    assert "moved to Z = 0, its alpha would be out of range" in message
+    assert "baseline's alpha at the covariate means, where the fit" in message
+    assert "coefficient(s) [0] grow" in message
+    # A shape, the same at Z = 0, is said to run on as before
+    message = _weibull_ph_refusal(
+        [2.0, 1.5, 3000.0], lambda *p: 1.0, [], ("beta",)
+    )
+    assert "as the Weibull baseline's beta runs on, towards" in message
+
+
+def test_777_the_refusal_at_z_0_quotes_values_it_computed():
+    # Moved to Z = 0 the parameters are finite, but the likelihood of the
+    # data as given does not reproduce the fit's (#714's case): it said
+    # they over- or underflowed. It quotes them and says what failed.
+    message = _weibull_ph_refusal([2.0, 1.5, 0.3], lambda *p: 2.0)
+    assert "alpha = 2.443, beta = 1.5, do not reproduce" in message
+    assert "center=True" in message

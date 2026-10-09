@@ -89,6 +89,13 @@ from .frailty_fitter import _log_rising_ratio, grouped_data
 from .frailty_model import _SharedFrailty
 
 _TIE_METHODS = ("efron", "breslow")
+# The end of the refusal of a baseline at Z = 0 that cannot be
+# represented: CoxPH's points to center=True, which this fit has not.
+_ORIGIN_HINT = (
+    "CoxFrailty reports the baseline at Z = 0: move the covariates nearer "
+    "0 (subtract their means), or, where a coefficient runs off, remove or "
+    "coarsen the covariate that separates the events."
+)
 # The search for theta, on its log: between 1e-6 (no detectable frailty;
 # the profile is then flat to rounding) and 100.
 _LOG_THETA_BOUNDS = (np.log(1e-6), np.log(100.0))
@@ -792,7 +799,12 @@ class CoxFrailtyFitter(FitterRepr):
         if p_all:
             with warnings.catch_warnings(record=True) as caught:
                 warnings.simplefilter("always")
-                cox = CoxPH.fit(x, Zfull, c, w, tie_method=tie_method)
+                # (its baseline kept at the covariate means: only its
+                # coefficients are used, the same either way, and the
+                # baseline at Z = 0 is this fit's to refuse, below)
+                cox = CoxPH.fit(
+                    x, Zfull, c, w, tie_method=tie_method, center=True
+                )
             maximum = cox.maximum
             for caught_warning in caught:
                 message = str(caught_warning.message)
@@ -876,7 +888,9 @@ class CoxFrailtyFitter(FitterRepr):
         # The baseline at Z = 0 and u = 1, as CoxPH reports it.
         times, r, d, h0 = em.baseline(beta, log_u[inv])
         if kept.size:
-            r, h0 = baseline_at_origin(beta, center, Zk, r, h0)
+            r, h0 = baseline_at_origin(
+                beta, center, Zk, r, h0, hint=_ORIGIN_HINT
+            )
 
         model = CoxFrailtyModel()
         model.tie_method = tie_method

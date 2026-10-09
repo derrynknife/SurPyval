@@ -404,11 +404,17 @@ _NO_MAXIMUM_CENTER_HINT = (
 
 
 def _runaway_clause(
-    runaway: "list[int] | None", baseline: "tuple[str, ...]", dist: str
+    runaway: "list[int] | None",
+    baseline: "tuple[str, ...]",
+    dist: str,
+    at_means: "tuple[str, ...]" = (),
 ) -> "tuple[str, str]":
     """``(what, advice)`` for :data:`_NO_MAXIMUM_CENTER_HINT`: the
     coefficients (their numbers) and the baseline's parameters (their
-    names, #714) the search found running off."""
+    names, #714) the search found running off. Those of ``at_means``
+    (parameters the move to Z = 0 shifts) are said to run on at the
+    covariate means, where the search ran: the model reports them at
+    Z = 0, where they may not (#777)."""
     parts, advice = [], []
     if runaway:
         parts.append(
@@ -416,17 +422,51 @@ def _runaway_clause(
             "separates the events from the survivors)".format(runaway)
         )
         advice.append("remove or coarsen the covariate")
-    if baseline:
+    dist = dist or "distribution"
+    same = tuple(name for name in baseline if name not in at_means)
+    moved = tuple(name for name in baseline if name in at_means)
+    if same:
         parts.append(
             "the {} baseline's {} run{} on, towards a limit of the family "
             "that none of its members reaches".format(
-                dist or "distribution",
-                ", ".join(baseline),
-                "s" if len(baseline) == 1 else "",
+                dist, ", ".join(same), "s" if len(same) == 1 else ""
             )
         )
+    if moved:
+        parts.append(
+            "the {} baseline's {} at the covariate means, where the fit "
+            "runs, run{} on".format(
+                dist, ", ".join(moved), "s" if len(moved) == 1 else ""
+            )
+        )
+    if baseline:
         advice.append("compare the fits with other baselines")
     return ", and as ".join(parts), " or ".join(advice)
+
+
+def _named(i: int, names: "tuple[str, ...]") -> str:
+    """The name of parameter ``i`` of a fit whose baseline's parameters are
+    ``names``: a coefficient after them, by its number."""
+    if i < len(names):
+        return names[i]
+    return "coefficient {}".format(i - len(names))
+
+
+def _plain(values: npt.ArrayLike) -> str:
+    """Values for a message, plainly (no numpy repr): ``[1.5, 2e+04]``."""
+    return "[{}]".format(
+        ", ".join(
+            "{:.4g}".format(float(v)) for v in np.ravel(np.asarray(values))
+        )
+    )
+
+
+def _pairs(names: "tuple[str, ...]", values: npt.ArrayLike) -> str:
+    """``alpha = 2, beta = 1.5``: named values for a message."""
+    flat = np.ravel(np.asarray(values, dtype=float))
+    return ", ".join(
+        "{} = {:.4g}".format(name, float(v)) for name, v in zip(names, flat)
+    )
 
 
 def baseline_at_origin_error(
@@ -435,6 +475,8 @@ def baseline_at_origin_error(
     lp_center: float,
     log_ratio: float,
     why: str = "",
+    lp: "npt.ArrayLike | None" = None,
+    hint: str = _CENTER_HINT,
 ) -> ValueError:
     """The refusal of a semi-parametric baseline fitted at the covariate
     means that cannot be moved to ``Z = 0`` (#463): the ``what`` (``"baseline
@@ -443,18 +485,40 @@ def baseline_at_origin_error(
     underflows. ``why`` adds a reason in brackets. Cox, the semi-parametric
     proportional odds model and Fine-Gray raise it; the parametric fits'
     :meth:`Centring.finish` has its own, as their baseline moves through
-    its parameters."""
+    its parameters.
+
+    ``lp`` are the linear predictors ``beta'Z`` of the rows as given,
+    passed where the move itself is representable: where one is too
+    large for ``exp`` (``LOG_MAX``), the refusal says that instead of
+    blaming the move (#777). ``hint``
+    ends it: by default, to fit with ``center=True``."""
+    rows = np.ravel(np.asarray(lp, dtype=float)) if lp is not None else []
+    far = [v for v in rows if not abs(v) < LOG_MAX]
+    if far:
+        return ValueError(
+            "The {} at Z = 0 cannot be represented for these covariates: "
+            "exp(beta'Z) on the covariates as given over- or underflows "
+            "(beta'Z reaches {:.4g}; at their means, {}, it is "
+            "{:.4g}){}. {}".format(
+                what,
+                max(far, key=abs),
+                _plain(center),
+                lp_center,
+                why,
+                hint,
+            )
+        )
     return ValueError(
         "The {} at Z = 0 cannot be represented for these covariates: their "
         "means are {} and the linear predictor there is beta'center = "
         "{:.4g}, so the baseline at Z = 0 is exp({:.4g}) times that at the "
         "means, which over- or underflows{}. {}".format(
             what,
-            np.array2string(np.asarray(center), precision=4),
+            _plain(center),
             lp_center,
             log_ratio,
             why,
-            _CENTER_HINT,
+            hint,
         )
     )
 
@@ -567,6 +631,7 @@ class Centring:
         dist_name: str = "",
         runaway: "list[int] | None" = None,
         baseline: "tuple[str, ...]" = (),
+        names: "tuple[str, ...]" = (),
     ) -> "tuple[npt.NDArray, npt.NDArray, npt.NDArray | None]":
         """``(params, center, jacobian)`` of the fitted model.
 
@@ -583,47 +648,80 @@ class Centring:
         found running off, and ``baseline`` the baseline's parameters,
         where it found any: the refusal then says the data may have no
         finite maximum (#634, #714), not to move the covariates.
+
+        The refusal names the baseline's parameters by ``names`` (the
+        family's, in order). It quotes them where the fit ran, at the
+        covariate means, and at ``Z = 0`` only where they are
+        representable there; a parameter the move shifts that the search
+        found running on is said to run on at the means (#777).
         """
         params_c = np.asarray(params_c, dtype=float)
         if not self.maps_back:
             return params_c, self.center, None
+        k = self.k_dist
+        names = tuple(names) or tuple(
+            "parameter {}".format(i) for i in range(k)
+        )
+        reason = ""
         with np.errstate(all="ignore"):
             params_0 = np.asarray(self.to_origin(params_c), dtype=float)
-            ok = bool(np.all(np.isfinite(params_0)))
-            for value, (lower, upper) in zip(params_0, bounds):
-                if (lower is not None and not value > lower) or (
-                    upper is not None and not value < upper
-                ):
-                    ok = False
-            if ok:
+            out = [
+                i
+                for i, (value, (lower, upper)) in enumerate(
+                    zip(params_0, bounds)
+                )
+                if not np.isfinite(value)
+                or (lower is not None and not value > lower)
+                or (upper is not None and not value < upper)
+            ]
+            if out:
+                reason = (
+                    "its {} would be out of range (beyond floating point "
+                    "or the parameter's bounds), so the model's values "
+                    "there cannot be computed".format(
+                        ", ".join(_named(i, names) for i in out)
+                    )
+                )
+            else:
                 ll_0 = float(raw_neg_ll(*params_0))
-                ok = bool(np.isfinite(ll_0)) and abs(
-                    ll_0 - neg_ll_c
-                ) <= 1e-8 * max(1.0, abs(neg_ll_c))
-            if ok:
+                if not (
+                    np.isfinite(ll_0)
+                    and abs(ll_0 - neg_ll_c) <= 1e-8 * max(1.0, abs(neg_ll_c))
+                ):
+                    reason = (
+                        "its parameters, {}, do not reproduce the fit's "
+                        "likelihood on the covariates as given: exp(beta'Z) "
+                        "over- or underflows there, or the move loses the "
+                        "precision the fit had".format(
+                            _pairs(names, params_0[:k])
+                        )
+                    )
+            if not reason:
                 J = np.asarray(jacobian(self.to_origin)(params_c), float)
-                ok = bool(np.all(np.isfinite(J)))
-        if not ok:
-            s = float(np.dot(params_c[self.k_dist :], self.center))
+                if not np.all(np.isfinite(J)):
+                    reason = (
+                        "its parameters are {}, but the derivative of the "
+                        "move, which carries the covariance there, is not "
+                        "finite".format(_pairs(names, params_0[:k]))
+                    )
+        if reason:
+            s = float(np.dot(params_c[k:], self.center))
+            at_means = tuple(names[i] for i in self.moved if i < len(names))
             raise ValueError(
                 "The baseline at Z = 0 cannot be represented for these "
-                "covariates: their means are {} and the linear predictor "
-                "there is beta'center = {:.4g}, so the {} baseline at Z = 0 "
-                "(parameters {}, moved from {} at the means) over- or "
-                "underflows, and exp(beta'Z) on the covariates as given "
-                "with it. {}".format(
-                    np.array2string(self.center, precision=4),
+                "covariates. The fit runs at their means, {}, where the "
+                "linear predictor is beta'center = {:.4g} and the {} "
+                "baseline has {}; moved to Z = 0, {}. {}".format(
+                    _plain(self.center),
                     s,
-                    dist_name,
-                    np.array2string(
-                        params_0[: self.k_dist], precision=4, separator=", "
-                    ),
-                    np.array2string(
-                        params_c[: self.k_dist], precision=4, separator=", "
-                    ),
+                    dist_name or "distribution",
+                    _pairs(names, params_c[:k]),
+                    reason,
                     (
                         _NO_MAXIMUM_CENTER_HINT.format(
-                            *_runaway_clause(runaway, baseline, dist_name)
+                            *_runaway_clause(
+                                runaway, baseline, dist_name, at_means
+                            )
                         )
                         if runaway or baseline
                         else _CENTER_HINT
@@ -1045,6 +1143,7 @@ def assemble_regression_model(
             fitter.dist.name,
             runaway,
             baseline,
+            tuple(getattr(fitter, "parameter_names", ())[: centring.k_dist]),
         )
         if J is not None:
             fit_centring = (params_c, centring.center, J)
