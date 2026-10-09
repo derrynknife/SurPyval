@@ -26,6 +26,8 @@ from the data alone.
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import numpy.typing as npt
 from scipy.optimize import linprog
@@ -244,3 +246,68 @@ def runoff_direction(
         above, below = np.array(new).T
         planes = np.vstack([planes, Zs[above] - Zs[below]])
     return None
+
+
+#: How far a unit's linear predictor may be from the average unit's
+#: before the fit asks the data whether its likelihood runs off (#728)
+FAR = 20.0
+
+#: The largest Newton decrement, ``sqrt(score' info^-1 score)``, at an
+#: answer of Newton-Raphson's that the fit takes without asking the data
+#: whether the likelihood runs off (#746).
+#:
+#: Why that, with an information not collapsed
+#: (:func:`information_collapsed`), rules a run-off out. Along a run-off
+#: direction ``d`` every event time's term rises: its deaths have the
+#: largest ``d'z`` of its risk set (each death at least the survivors',
+#: for the exact and KP methods; risk sets weighted, for Fine-Gray), so
+#: its slope is the deaths' ``d'z`` less the risk set's weighted mean, at
+#: least 0. Its curvature is the weighted variance of ``d'z`` (of the
+#: subsets' sums for KP), and as every value lies within ``G`` below the
+#: deaths', the variance is at most ``G`` times the slope (``d G`` for d
+#: tied deaths): along ``d`` the information is at most ``G`` times the
+#: slope ``f'``. By Cauchy-Schwarz the decrement ``lam`` has ``lam^2 >=
+#: f'^2 / (d' info d) >= f' / G``, so the information along ``d`` is at
+#: most ``G^2 lam^2``. At the start (every weight alike) the risk set
+#: where a survivor lies ``G`` below a death has a variance of at least
+#: ``G^2 / (2 N)``, ``N`` the units (counted by ``n``, over the least
+#: ``n``). An information not collapsed keeps 1e-4 of that, so ``1e-4 /
+#: (2 N) <= lam^2 <= 1e-12``: a run-off can pass only with ``N`` above
+#: 5e7 (and a risk set as lopsided as that bound). Every other answer
+#: (the root-finder's, BFGS's) is suspect: BFGS stopped where the score
+#: was below the verification's tolerance in the units of a covariate
+#: spanning 1e-7, with every unit within 2 of the average and the
+#: information at 0.29 of the start's, and the fit reported a verified
+#: maximum of a likelihood with none. A search far out, where the
+#: information underflows, is suspect too.
+DECREMENT = 1e-6
+
+
+def newton_converged(res: Any) -> bool:
+    """Whether Newton-Raphson's answer ``res`` has a decrement of at most
+    ``DECREMENT``: it converged, to its own tolerance at most that."""
+    score, hess = np.atleast_1d(res.jac), np.atleast_2d(res.hess)
+    try:
+        lam2 = float(score @ np.linalg.solve(hess, score))
+    except np.linalg.LinAlgError:
+        return False
+    return bool(abs(lam2) <= DECREMENT**2)
+
+
+def information_collapsed(
+    info: npt.NDArray, info_at_start: npt.NDArray
+) -> bool:
+    """Whether the information has fallen, in some direction of the
+    coefficients, below 1e-4 of what it was at the start (the least
+    eigenvalue of ``info`` relative to ``info_at_start``): the sign of a
+    run-off along a combination of them, which a maximum's information,
+    however strong the effects, does not show. The data then say whether
+    it is one (:func:`runoff_direction`)."""
+    try:
+        L = np.linalg.cholesky(np.atleast_2d(info_at_start))
+        half = np.linalg.solve(L, np.atleast_2d(info))
+        relative = np.linalg.solve(L, half.T)
+        least = np.linalg.eigvalsh(0.5 * (relative + relative.T))[0]
+    except np.linalg.LinAlgError:
+        return True
+    return not least >= 1e-4

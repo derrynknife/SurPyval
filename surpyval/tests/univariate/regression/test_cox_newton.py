@@ -311,6 +311,32 @@ def test_an_ordinary_fit_does_not_look_for_a_run_off():
     assert model.maximum == "verified"
 
 
+def test_a_run_off_where_newton_raphson_gave_up_is_found():
+    # Found by a random search (#746): Newton-Raphson gave up and BFGS
+    # stopped where the score was below the verification's tolerance in
+    # the units of the third covariate (a spread of 1e-7), every unit
+    # within 2 of the average and the information at 0.29 of the start's;
+    # none of the three triggers fired, and a likelihood with no finite
+    # maximum was reported "verified". An answer Newton-Raphson did not
+    # converge to now has the data asked.
+    x = np.array([2.0, 1, 3, 1, 3, 4, 2])
+    c = np.array([0, 0, 1, 0, 0, 0, 0])
+    Z = np.array(
+        [
+            [-0.622, 0.08, 1.252],
+            [-0.324, -1.102, -0.799],
+            [1.777, -0.35, -1.184],
+            [-0.302, 0.298, 0.287],
+            [1.863, -0.191, -1.546],
+            [1.509, 0.287, 0.3],
+            [-0.679, -1.036, 1.581],
+        ]
+    ) * np.array([0.52, 179.0, 2.5e-8])
+    with pytest.warns(UserWarning, match="No finite maximum"):
+        model = CoxPH.fit(x, Z, c, tie_method="kp", center=True)
+    assert model.maximum == "no finite maximum"
+
+
 def test_runoff_direction_matches_every_pair_of_unit_and_time():
     # The cutting planes against the full programme, one constraint per
     # pair of a death and a unit at risk with it, on small random data

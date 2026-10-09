@@ -194,6 +194,13 @@ Unreleased
   mass yet to enter where it all but cancels a risk set (#746), as the
   likelihood no longer does (#728): the information was 2.00095 for
   1.99995, or the score -inf. Such a risk set is summed over itself.
+- CoxPH asks the data whether its likelihood runs off wherever
+  Newton-Raphson did not converge (#746). A random search found a
+  run-off that met none of the three conditions that asked: BFGS stopped
+  where the score of a covariate spanning 1e-7 was below the
+  verification's tolerance, and the fit reported a verified maximum of a
+  likelihood with none. Why the conditions now suffice is set out in
+  ``cox_separation.DECREMENT``.
 - ``CrowAMSAA.projection`` names the source its BC-mode projection was
   checked against (#710): ReliaSoft's Crow Extended formulas, whose
   demonstrated intensity with BC modes is the Crow-AMSAA intensity at
