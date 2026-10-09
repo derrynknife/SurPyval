@@ -299,6 +299,25 @@ class _RiskSetRows:
         total = np.concatenate([[0.0], total])
         return total[self.exit + 1] - total[self.entered]
 
+    def over_risk_set_kept(
+        self, per_time: npt.NDArray
+    ) -> "npt.NDArray | None":
+        """:meth:`over_risk_set` of a ``per_time`` of no negative values,
+        or ``None`` where, with delayed entry, the sum over a row's times
+        at risk is the difference of two cumulative sums of which less than
+        ``_KEPT`` is left, at a row at risk at a time with a positive value:
+        the times before it entered outweigh its own, and the difference
+        is rounding (#746)."""
+        out = self.over_risk_set(per_time)
+        if self.entered is None:
+            return out
+        total = np.concatenate([[0.0], np.cumsum(per_time)])
+        some = np.concatenate([[0], np.cumsum(per_time > 0)])
+        counted = some[self.exit + 1] > some[self.entered]
+        if np.any(counted & ~(out > _KEPT * total[self.exit + 1])):
+            return None
+        return out
+
     def log_by_time(self, log_w: npt.NDArray, m: int) -> npt.NDArray:
         """Per event time (of ``m``), the log of the sum of ``exp(log_w)``
         over the rows at risk, for each column of the rows' ``log_w``
@@ -633,7 +652,7 @@ def _cox_information(
     s_u2: npt.NDArray,
     ZR: npt.NDArray,
     efron: tuple[npt.NDArray, ...] | None = None,
-) -> npt.NDArray:
+) -> "npt.NDArray | None":
     """The observed information (Hessian of the negative partial
     log-likelihood) of a Breslow or Efron fit, without a ``p x p`` array
     per event time (#516).
@@ -673,9 +692,14 @@ def _cox_information(
 
     The not-yet-entered rows of left-truncated (start-stop) data need no
     term of their own: each row collects ``s_u`` only over the times at
-    which it is at risk.
+    which it is at risk. ``None`` where that sum is rounding
+    (:meth:`_RiskSetRows.over_risk_set_kept`); the caller then takes the
+    information in logs (:meth:`_CoxRiskSets.log_score_information`).
     """
-    q = risk_w * rows.over_risk_set(s_u)
+    at_risk = rows.over_risk_set_kept(s_u)
+    if at_risk is None:
+        return None
+    q = risk_w * at_risk
     if efron is None:
         return _information_of(Z, q, s_u2, ZR)
     death_w, s_cu = efron[:2]
@@ -1395,19 +1419,16 @@ class CoxLikelihoodMixin:
             # Only call this once.. Yay.
             with np.errstate(over="ignore", invalid="ignore"):
                 beta_z = Z @ beta
-            if not np.all(np.abs(beta_z) <= _DIRECT_ETA):
-                # Summed directly, the information underflows (#746)
+            direct = rs.direct(beta_z)
+            if direct is None:
+                # Summed directly, the information underflows, or the
+                # mass yet to enter all but cancels a risk set (#746)
                 return rs.log_score_information(beta_z, ties)
-
-            e_beta_z = np.exp(beta_z).reshape(-1, 1)
+            e_beta_z, Ri = direct
             z_e_beta_z = Z * e_beta_z
 
-            Ri = at_risk_beta_Z(e_beta_z, n, gb_x)
-            ZRi = at_risk_beta_Z(z_e_beta_z, n, gb_x)
-
             # Subtract the not-yet-entered mass from the risk sums.
-            Ri = rs.entered(Ri, e_beta_z)
-            ZRi = rs.entered(ZRi, z_e_beta_z)
+            ZRi = rs.entered(at_risk_beta_Z(z_e_beta_z, n, gb_x), z_e_beta_z)
 
             Di = gb_x.sum(n_d_x * e_beta_z)[1]
             ZDi = gb_x.sum(n_d_x * z_e_beta_z)[1]
@@ -1452,6 +1473,8 @@ class CoxLikelihoodMixin:
                 ZRi[active],
                 efron,
             )
+            if hess_matrix is None:
+                return rs.log_score_information(beta_z, ties)
 
             return jacobian, hess_matrix
 
@@ -1505,19 +1528,16 @@ class CoxLikelihoodMixin:
             # Only call this once.. Yay.
             with np.errstate(over="ignore", invalid="ignore"):
                 beta_z = Z @ beta
-            if not np.all(np.abs(beta_z) <= _DIRECT_ETA):
-                # Summed directly, the information underflows (#746)
+            direct = rs.direct(beta_z)
+            if direct is None:
+                # Summed directly, the information underflows, or the
+                # mass yet to enter all but cancels a risk set (#746)
                 return rs.log_score_information(beta_z, None)
-
-            e_beta_z = np.exp(beta_z).reshape(-1, 1)
+            e_beta_z, Ri = direct
             z_e_beta_z = Z * e_beta_z
 
-            Ri = at_risk_beta_Z(e_beta_z, n, gb_x)
-            ZRi = at_risk_beta_Z(z_e_beta_z, n, gb_x)
-
             # Subtract the not-yet-entered mass from the risk sums.
-            Ri = rs.entered(Ri, e_beta_z)
-            ZRi = rs.entered(ZRi, z_e_beta_z)
+            ZRi = rs.entered(at_risk_beta_Z(z_e_beta_z, n, gb_x), z_e_beta_z)
 
             EZ = ZRi / Ri
             EZ = n_d.reshape(-1, 1) * EZ
@@ -1538,6 +1558,8 @@ class CoxLikelihoodMixin:
                 n_d_active / R[active] ** 2,
                 ZRi[active],
             )
+            if hess_matrix is None:
+                return rs.log_score_information(beta_z, None)
 
             return jacobian, hess_matrix
 

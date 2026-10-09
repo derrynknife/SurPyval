@@ -622,6 +622,63 @@ def test_neg_ll_of_keeps_a_risk_set_far_below_the_entries_to_come():
     np.testing.assert_allclose(neg_ll(beta), want, rtol=1e-12)
 
 
+@pytest.mark.parametrize("method", ["efron", "breslow"])
+def test_score_and_information_keep_a_risk_set_below_the_entries(method):
+    # The score and information subtracted the mass yet to enter as the
+    # likelihood did: in the case above the information was 2.00095 for
+    # 1.99995 (and 0.50099 for 0.49999), and where the risk set's sum
+    # rounded to 0 the score was -inf and the information nan. Such a risk
+    # set is summed over itself (#746).
+    generator = getattr(CoxPH, f"create_{method}_ll_jac_hess")
+    cases = [
+        (
+            np.array([0.5, 1.0, 0.5, 2.0]),
+            np.array([[-1.0, 0.5], [-0.5, 0.5], [1.0, -0.5], [0.5, -0.5]]),
+            np.array([-np.inf, 0.0, -np.inf, 1.5]),
+            np.array([-36.16, -72.33]),
+        ),
+        (
+            np.array([1.0, 2.0, 3.0]),
+            np.array([[-1.0], [0.0], [-1.0]]),
+            np.array([-np.inf, 1.5, -np.inf]),
+            np.array([40.0]),
+        ),
+    ]
+    for x, Z, tl, beta in cases:
+        c, n = np.zeros(x.size, int), np.ones(x.size)
+        _, jac_hess = generator(x, Z, c, n, tl)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            score, info = jac_hess(beta)
+        want_score, want_info = _score_information_far(
+            x, Z, c, n, tl, beta, method == "efron"
+        )
+        np.testing.assert_allclose(score, want_score, rtol=1e-9, atol=1e-13)
+        np.testing.assert_allclose(info, want_info, rtol=1e-9, atol=1e-13)
+
+
+def test_a_row_sum_lost_to_the_times_before_entry_is_refused():
+    # The information's row weights sum s_u over each row's times at risk
+    # as a difference of cumulative sums; where the times before a row
+    # entered outweigh its own by more than 1e6 that is rounding, and the
+    # direct information gives way to the one in logs (#746)
+    from surpyval.univariate.regression.proportional_hazards import (
+        cox_likelihood as cl,
+    )
+
+    rows = cl._RiskSetRows(
+        np.array([1.0, 2.0, 2.0]), np.array([1.0, 2.0]), np.array([0, 1.5, 0])
+    )
+    np.testing.assert_allclose(
+        rows.over_risk_set_kept(np.array([2.0, 1.0])), [2.0, 1.0, 3.0]
+    )
+    assert rows.over_risk_set_kept(np.array([1e20, 1.0])) is None
+    # A row at risk only where the values are 0 has nothing to lose
+    np.testing.assert_allclose(
+        rows.over_risk_set_kept(np.array([1e20, 0.0])), [1e20, 0.0, 1e20]
+    )
+
+
 def _tie_neg_ll_by_definition(x, Z, c, beta, method):
     """The exact (sum over the deaths' orderings) and Kalbfleisch-Prentice
     (sum over the d-subsets of the risk set) negative partial
