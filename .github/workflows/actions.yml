@@ -12,7 +12,8 @@ run-name: SurPyval CI
 # Every job below runs in that one run: lint, the conformance suite, the
 # test suite on three interpreters (each split into four parts that run at
 # once) with the docstring examples, the calibration studies and scenario
-# cards, the wheel check and the documentation build. Publishing a release
+# cards (in groups that run at once), the wheel check and the documentation
+# build. Publishing a release
 # (publish.yml) checks that this run passed.
 on:
   pull_request:
@@ -101,10 +102,10 @@ jobs:
   # its id hashes to), so the suite takes about a quarter of the time it
   # takes in one job. The parts together run every test.
   #
-  # 3.12 also carries the statistical calibration studies and the
-  # practitioner scenario cards (``--run-calibration --run-scenarios``),
-  # and the coverage measurement, which the ``coverage`` job combines
+  # 3.12 also measures coverage, which the ``coverage`` job combines
   # across its four parts. The doctests run in part 1 of each interpreter.
+  # The calibration studies and scenario cards run in the ``calibration``
+  # job below.
   surpyval_ci:
     runs-on: ubuntu-latest
     strategy:
@@ -144,8 +145,8 @@ jobs:
           COVERAGE_CORE: sysmon
           COVERAGE_FILE: .coverage.${{ matrix.shard }}
           ONLY_312: >-
-            ${{ matrix.python-version == '3.12' && '--run-calibration
-            --run-scenarios --cov=surpyval --cov-report=' || '' }}
+            ${{ matrix.python-version == '3.12'
+            && '--cov=surpyval --cov-report=' || '' }}
         run: >-
           python -m pytest -n auto --run-ml
           --shard=${{ matrix.shard }}/4 $ONLY_312
@@ -189,6 +190,80 @@ jobs:
           python -m pytest --doctest-modules surpyval
           --ignore=surpyval/tests
           --doctest-force-numeric
+
+  # The statistical calibration studies (--run-calibration) and the
+  # practitioner scenario cards (--run-scenarios), on 3.12, in groups that
+  # run at once. A calibration study is one long Monte Carlo test, so the
+  # hash split above cannot spread them: the groups are chosen by the
+  # studies' measured times on these runners (the 9 October 2026 timings,
+  # in seconds on one core: #617's bootstrap 3217, the likelihood-ratio
+  # coverage of LogNormal 659 and Weibull 622, #583 522, the Beta4 refit
+  # 446, the two-stage degradation band 427, every other study under 230),
+  # so that none takes much over a quarter of an hour. #617's study runs
+  # its repetitions on every core itself (workers 0: no xdist). A new
+  # calibration study lands in the "rest" group, or in "copula" or
+  # "refit" by its file; move it out if it is long.
+  calibration:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: 617-bootstrap
+            workers: '0'
+            args: >-
+              'surpyval/tests/calibration/test_coverage_regression.py::test_617_cb_bootstrap_coverage_at_an_extrapolated_use_condition'
+          - group: likelihood-ratio
+            workers: '2'
+            args: >-
+              'surpyval/tests/calibration/test_coverage_parametric.py::test_likelihood_ratio_coverage'
+          - group: long-studies
+            workers: '3'
+            args: >-
+              'surpyval/tests/calibration/test_coverage_regression.py::test_583_cb_coverage_at_an_extrapolated_use_condition'
+              'surpyval/tests/calibration/test_refit_registry.py::test_refit[Beta4]'
+              'surpyval/tests/calibration/test_coverage_degradation.py::test_two_stage_band_coverage'
+          - group: copula
+            workers: auto
+            args: surpyval/tests/calibration/test_coverage_copula.py
+          - group: refit
+            workers: auto
+            args: >-
+              surpyval/tests/calibration/test_refit_registry.py
+              --deselect 'surpyval/tests/calibration/test_refit_registry.py::test_refit[Beta4]'
+          - group: rest
+            workers: auto
+            args: >-
+              surpyval/tests/calibration surpyval/tests/scenarios
+              --ignore=surpyval/tests/calibration/test_coverage_copula.py
+              --ignore=surpyval/tests/calibration/test_refit_registry.py
+              --deselect 'surpyval/tests/calibration/test_coverage_regression.py::test_617_cb_bootstrap_coverage_at_an_extrapolated_use_condition'
+              --deselect 'surpyval/tests/calibration/test_coverage_regression.py::test_583_cb_coverage_at_an_extrapolated_use_condition'
+              --deselect 'surpyval/tests/calibration/test_coverage_parametric.py::test_likelihood_ratio_coverage'
+              --deselect 'surpyval/tests/calibration/test_coverage_degradation.py::test_two_stage_band_coverage'
+          # Tests outside surpyval/tests/calibration that carry the
+          # calibration mark: the likelihood-ratio sweeps of the slow
+          # conformance families (Bound.nightly in the registry).
+          - group: conformance-sweeps
+            workers: auto
+            args: surpyval/tests/conformance -m calibration
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set-up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_dev.txt
+
+      - name: pytest (${{ matrix.group }})
+        run: >-
+          python -m pytest -rP --durations=10 -n ${{ matrix.workers }}
+          --run-calibration --run-scenarios ${{ matrix.args }}
 
   # The 3.12 parts' coverage, combined into one report.
   coverage:

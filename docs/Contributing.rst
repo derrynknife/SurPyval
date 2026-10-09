@@ -362,9 +362,10 @@ else: not on pull requests into ``develop`` and not on pushes to any branch.
    * - Pull request into ``master`` (the release)
      - lint, the conformance suite, the test suite across three
        interpreters (each split into four parts that run at once, with
-       the docstring examples; 3.12 adds the calibration studies, the
-       scenario cards and coverage), the wheel check and the
-       documentation build
+       the docstring examples; 3.12 measures coverage), the calibration
+       studies and scenario cards (on 3.12, in seven groups that run at
+       once, chosen by the studies' measured times), the wheel check and
+       the documentation build
    * - Merge into ``master``
      - none in this repository; Read the Docs rebuilds the hosted
        documentation
