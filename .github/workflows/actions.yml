@@ -10,8 +10,10 @@ run-name: SurPyval CI
 # release flow.
 #
 # Every job below runs in that one run: lint, the conformance suite, the
-# test suite on three interpreters with the docstring examples, the wheel
-# check and the documentation build.
+# test suite on three interpreters (each split into four parts that run at
+# once) with the docstring examples, the calibration studies and scenario
+# cards, the wheel check and the documentation build. Publishing a release
+# (publish.yml) checks that this run passed.
 on:
   pull_request:
     branches: [master]
@@ -92,16 +94,24 @@ jobs:
           python -m pytest surpyval/tests/conformance -m "not slow"
 
   # The test suite runs on the pull request into `master` -- the release --
-  # and on nothing else (see the top of this file). A failure that appears on
-  # one interpreter only is found there, with a release's worth of
-  # commits to search; run the tests for a numerical change on more than
-  # one interpreter locally.
+  # and on nothing else (see the top of this file).
+  #
+  # Each interpreter's run is split into four parts that run at once
+  # (``--shard K/4``, in the root conftest.py: a test belongs to the part
+  # its id hashes to), so the suite takes about a quarter of the time it
+  # takes in one job. The parts together run every test.
+  #
+  # 3.12 also carries the statistical calibration studies and the
+  # practitioner scenario cards (``--run-calibration --run-scenarios``),
+  # and the coverage measurement, which the ``coverage`` job combines
+  # across its four parts. The doctests run in part 1 of each interpreter.
   surpyval_ci:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         python-version: ['3.11', '3.12', '3.13']
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
 
@@ -118,30 +128,35 @@ jobs:
       - name: pytest
         # Run across all available cores: the suite is dominated by a
         # handful of Monte Carlo and bootstrap tests, so it parallelises
-        # well -- 13m21 to 4m10 on four cores locally. Coverage comes
-        # from pytest-cov rather than `coverage run`, because the latter
-        # does not follow the xdist worker subprocesses; the totals are
-        # identical either way. The report and html steps below still
-        # read the .coverage file it writes.
-        # Invoked as ``python -m`` so the plugins resolve against the
-        # interpreter the dependencies were installed into, rather than
-        # whichever ``pytest`` happens to be first on PATH.
+        # well. Coverage comes from pytest-cov rather than `coverage run`,
+        # because the latter does not follow the xdist worker
+        # subprocesses. Invoked as ``python -m`` so the plugins resolve
+        # against the interpreter the dependencies were installed into.
         #
         # ``--run-ml`` opts the beta survival tree and forest tests back
-        # in. They are skipped by default because they are 97 of the
-        # suite's 180 seconds locally, but deployment still tests them.
+        # in. They are skipped by default because they are about half of
+        # a local run, but a release still tests them.
         #
-        # From Python 3.12 coverage's default tracer (sys.settrace, the C
-        # tracer) runs much slower than before; coverage's ``sysmon`` core
-        # uses 3.12's ``sys.monitoring`` instead and costs far less. It
-        # measures lines only on 3.12 and 3.13, which is all the coverage
-        # here measures (no ``branch``). 3.11 has no ``sys.monitoring``, so
-        # it keeps the C tracer (named explicitly: asking for ``sysmon``
-        # there warns and falls back).
+        # Coverage uses the ``sysmon`` core (3.12's ``sys.monitoring``),
+        # which costs far less than the C tracer; it measures lines only,
+        # which is all the coverage here measures (no ``branch``).
         env:
-          COVERAGE_CORE: ${{ matrix.python-version == '3.11' && 'ctrace' || 'sysmon' }}
-        run:
-          python -m pytest -n auto --cov=surpyval --cov-report= --run-ml
+          COVERAGE_CORE: sysmon
+          COVERAGE_FILE: .coverage.${{ matrix.shard }}
+          ONLY_312: >-
+            ${{ matrix.python-version == '3.12' && '--run-calibration
+            --run-scenarios --cov=surpyval --cov-report=' || '' }}
+        run: >-
+          python -m pytest -n auto --run-ml
+          --shard=${{ matrix.shard }}/4 $ONLY_312
+
+      - name: Upload coverage data
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-data-${{ matrix.shard }}
+          path: .coverage.${{ matrix.shard }}
+          include-hidden-files: true
 
       # Execute the ``>>>`` examples in the docstrings and compare their
       # printed output. This is what a user (or an agent) sees from
@@ -149,13 +164,15 @@ jobs:
       # other, and it went stale silently until it was checked. Kept as
       # its own step -- separate from the suite above -- so a failure
       # reads as "the docs drifted", not "a test broke", and so the
-      # doctest collection does not disturb coverage or xdist.
+      # doctest collection does not disturb coverage or xdist. It runs in
+      # part 1 of each interpreter (it is not split).
       #
       # ``surpyval/tests`` is excluded because the test modules have no
       # user-facing examples.
       # Option flags are set in pyproject.toml; conftest.py adds the
       # numeric comparison that lets the examples record real output.
       - name: doctests
+        if: matrix.shard == 1
         run:
           python -m pytest --doctest-modules surpyval
           --ignore=surpyval/tests
@@ -167,18 +184,42 @@ jobs:
       # routes every example through it, so the fallback is checked
       # against all of them. Fifteen seconds.
       - name: doctests (numeric comparison forced)
+        if: matrix.shard == 1
         run:
           python -m pytest --doctest-modules surpyval
           --ignore=surpyval/tests
           --doctest-force-numeric
 
+  # The 3.12 parts' coverage, combined into one report.
+  coverage:
+    needs: surpyval_ci
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set-up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install coverage
+        run: |
+          python -m pip install --upgrade pip
+          pip install coverage
+
+      - name: Download coverage data
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-data-*
+          merge-multiple: true
+
       - name: coverage
         run: |
+          coverage combine
           coverage report
           coverage html
 
       - name: Upload coverage html report artifact
-        if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-html-report

@@ -28,6 +28,6 @@ A card should run in seconds. Studies that need thousands of repeats
 (coverage, bias) belong in ``surpyval/tests/calibration``.
 
 The cards run with ``--run-scenarios`` (declared in
-``surpyval/tests/_suite.py``); no automated run passes it. See
-``docs/Contributing.rst``.
+``surpyval/tests/_suite.py``), which the release pull request's full run
+passes on 3.12. See ``docs/Contributing.rst``.
 """
