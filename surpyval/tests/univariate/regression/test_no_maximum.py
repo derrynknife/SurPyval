@@ -496,6 +496,26 @@ def _alt_terms(Z):
     return np.column_stack([1.0 / Z[:, 0], np.log(Z[:, 1])])
 
 
+@pytest.mark.parametrize("name", ["LogisticPO", "GumbelPH", "WeibullAFT"])
+def test_746_every_coefficient_running_off_is_named(name):
+    # Every event at Z = (0, 0), the censored rows at the other corners of
+    # the unit square (the conformance corner case): both coefficients run
+    # off together. These three named only coefficient [0]: the second's
+    # profile, formed through a Hessian singular to rounding, curved by
+    # 2e-5, not flat to rounding, so only Newton's test or the flatness
+    # test of the first was read. Where some parameter runs off, each
+    # other one now has its profile itself read.
+    d = reg_data()
+    c = np.asarray(d["c"])
+    Z = np.zeros((c.size, 2))
+    Z[c == 1] = np.array([[0.0, 1.0], [1.0, 0.0], [1.0, 1.0]])[
+        np.arange(np.sum(c == 1)) % 3
+    ]
+    model, w = _fit(lambda: getattr(sp, name).fit(**{**d, "Z": Z}))
+    assert model.maximum == "no finite maximum"
+    assert len(w) == 1 and "coefficient(s) [0, 1] grow" in str(w[0].message)
+
+
 def test_628_an_accelerated_life_fit_short_of_its_maximum_is_no_run_off():
     # Draw 4 has failures at enough stresses for a finite maximum (WeibullAFT
     # on the same model finds it at -log L = 100.28769). The accelerated
