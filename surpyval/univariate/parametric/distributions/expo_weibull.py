@@ -206,6 +206,11 @@ def _log_forms(
     return out
 
 
+#: ``_log_forms``, public for the renewal likelihoods' hand-written
+#: derivatives (``surpyval.recurrent.renewal._derivatives``).
+log_forms = _log_forms
+
+
 def _support(
     x: Numeric,
     inside: Boxable,

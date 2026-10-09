@@ -261,21 +261,30 @@ class VirtualAgeLikelihood:
         chained with the age's in ``r``. ``None`` where a later age is
         not positive and finite or the result is not finite (outside the
         terms' domain, or an overflow), for the caller to take autograd's
-        answer there."""
+        answer there.
+
+        A lifetime on the whole line (``terms.real_line``, a Normal) has
+        no such domain to leave, and its ``log S(0)`` is not 0: the fresh
+        rows take it (at their age of 0), as ``_plain`` does."""
         gap, failed, fresh = self.gap, self.c == 0, self.fresh
         later = ~fresh
+        real_line = getattr(terms, "real_line", False)
         with np.errstate(all="ignore"):
-            if not np.all(age[later] > 0) or not np.all(np.isfinite(age)):
+            if not np.all(np.isfinite(age)) or not (
+                real_line or np.all(age[later] > 0)
+            ):
                 return None
-            # The fresh rows' log S(0) = 0, a constant (taken at 1, then
-            # dropped)
-            v = np.where(fresh, 1.0, age)
+            # The rows that subtract their start's log S: every row on the
+            # whole line; elsewhere the fresh rows' log S(0) = 0, a
+            # constant (taken at 1, then dropped)
+            starts = np.ones_like(later) if real_line else later
+            v = np.where(fresh, 0.0 if real_line else 1.0, age)
             sf_v, sf_v_dt, sf_v_dp = terms.log_sf(v, params)
             end, end_dt, end_dp = terms.log_end(gap + age, params, failed)
-            ll_rows = end - np.where(later, sf_v, 0.0)
+            ll_rows = end - np.where(starts, sf_v, 0.0)
             dv_rows = np.where(later, end_dt - sf_v_dt, 0.0)
             dp_rows = [
-                e - np.where(later, s, 0.0) for e, s in zip(end_dp, sf_v_dp)
+                e - np.where(starts, s, 0.0) for e, s in zip(end_dp, sf_v_dp)
             ]
             aged = later & (gap < self.aged * age)
             if np.any(aged):
