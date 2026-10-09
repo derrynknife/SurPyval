@@ -159,6 +159,11 @@ Unreleased
 
 **Fixed**
 
+- Fine-Gray's partial likelihood is right far out along a run-off
+  (#760): a risk set's sum underflowed and its ``log(0)`` made the
+  objective ``-inf``, the best point a search could find. Such sums are
+  now taken in logs over their own risk sets, as are the derivatives
+  there and the baseline, whose ``exp`` overflowed with numpy's warnings.
 - ``CoxInformation``, CoxFrailty's information operator, holds at a
   run-off linear predictor (#760): ``exp(eta)`` and ``1 / R^2``
   overflowed and it was nan. Where the Cox generators take their score

@@ -45,8 +45,9 @@ from typing import TYPE_CHECKING, Any, Callable, NamedTuple
 
 import numpy as np
 import numpy.typing as npt
-from autograd import hessian
+from autograd import grad, hessian
 from autograd import numpy as anp
+from autograd import value_and_grad
 from autograd.tracer import getval
 from scipy.optimize import OptimizeResult, minimize
 from scipy.stats import norm
@@ -142,15 +143,88 @@ def _weighted_neg_ll(
     value at 0 (see ``_fit_cause``), differentiable by autograd. The linear
     predictor is shifted by its largest value inside the risk-set sums and
     the shift added back outside the logarithm, so ``exp(beta'Z)`` cannot
-    overflow (#606)."""
+    overflow (#606).
+
+    A risk set whose rows are all far below the largest linear predictor
+    then has a sum that underflows: far out along a run-off it was 0, and
+    the likelihood ``log(0)``, a negative log-likelihood of ``-inf`` that
+    every search takes for the best point there is (#760). Where a sum is
+    below ``_LEAST_SUM`` the sums are taken in logs instead, each over its
+    own risk set (:func:`_log_risk_set_sums`)."""
     eta = anp.dot(Zk, beta)
+    if not np.all(np.isfinite(getval(eta))):
+        # (a coefficient or linear predictor that is not finite)
+        return np.nan
     shift = float(np.max(getval(eta))) if eta.size else 0.0
     weighted_exp = n_sorted * anp.exp(eta - shift)
     denom = _risk_set_sums(weighted_exp, sets)
+    if not np.all(getval(denom) >= _LEAST_SUM):
+        log_denom = _log_risk_set_sums(eta, n_sorted, sets)
+        ll = anp.dot(nZk_event, beta) - anp.sum(
+            sets.d * (log_denom - np.log(denom0))
+        )
+        return -ll
     ll = anp.dot(nZk_event, beta) - anp.sum(
         sets.d * (anp.log(denom / denom0) + shift)
     )
     return -ll
+
+
+#: The least risk-set sum, of the weights shifted by the largest linear
+#: predictor, that :func:`_weighted_neg_ll` uses as it is: below it the
+#: sums are taken in logs (#760). A sum this large has lost nothing to
+#: terms below the smallest normal number.
+_LEAST_SUM = 1e-200
+
+#: The largest linear predictor whose ``exp`` the baseline sums directly,
+#: CoxPH's (#738); beyond it they are taken in logs (#760).
+_DIRECT_ETA = 300.0
+
+#: A finite stand-in for ``log(0)`` in :func:`_log_risk_set_sums`, whose
+#: derivatives would be nan at ``logaddexp(-inf, -inf)``.
+_LOG_NONE = -1e300
+
+
+def _log_suffix_sums(log_v: Any) -> Any:
+    """The log of each suffix sum of ``exp(log_v)``, by doubling: each of
+    ``log2(N)`` steps adds to every position the partial sum ``2^k`` on,
+    with ``logaddexp``, so that autograd can differentiate it (twice)."""
+    rows = anp.shape(log_v)[0]
+    step = 1
+    while step < rows:
+        later = anp.concatenate(
+            [log_v[step:], anp.full(min(step, rows), _LOG_NONE)]
+        )
+        log_v = anp.logaddexp(log_v, later)
+        step *= 2
+    return log_v
+
+
+def _log_risk_set_sums(
+    eta: Any, n_sorted: npt.NDArray, sets: _RiskSets
+) -> Any:
+    """The log of :func:`_risk_set_sums` of ``n exp(eta)`` (rows in time
+    order) at each event time, summed in logs over each risk set: the
+    suffix of the rows still under observation, plus ``G(t-)`` times the
+    competing failures before ``t``, each over ``G(x_i-)``. Differentiable
+    by autograd; ``O(N log N)``, for a linear predictor whose sums
+    underflow (:func:`_weighted_neg_ll`)."""
+    with np.errstate(divide="ignore"):
+        log_n = np.log(n_sorted)
+        log_competing = np.log(sets.competing_over_G * n_sorted)
+        log_G = np.log(sets.G_t)
+    competing = np.isfinite(log_competing)
+    log_n = np.where(np.isfinite(log_n), log_n, _LOG_NONE)
+    suffix = _log_suffix_sums(log_n + eta)
+    # The competing failures before each row: the suffix sums of the
+    # reversed rows, moved on by one
+    log_c = anp.where(
+        competing, np.where(competing, log_competing, 0.0) + eta, _LOG_NONE
+    )
+    before = _log_suffix_sums(log_c[::-1])[::-1]
+    before = anp.concatenate([anp.full(1, _LOG_NONE), before[:-1]])
+    log_G = np.where(np.isfinite(log_G), log_G, _LOG_NONE)
+    return anp.logaddexp(suffix[sets.start], log_G + before[sets.start])
 
 
 def _fit_cause(
@@ -241,8 +315,18 @@ def _fit_cause(
             weighted_exp = n_sorted * np.exp(eta - shift)
             return weighted_exp, _risk_set_sums(weighted_exp, sets), shift
 
+        def underflows(denom: npt.NDArray) -> bool:
+            # A risk set's sum lost to underflow: the derivatives are then
+            # autograd's, of the objective in logs (_weighted_neg_ll, #760)
+            # (not a coefficient that is not finite, nan either way)
+            finite = np.all(np.isfinite(denom))
+            return bool(finite and not np.all(denom >= _LEAST_SUM))
+
         def value_and_gradient(beta: npt.NDArray) -> tuple:
             weighted_exp, denom, shift = shifted(beta)
+            if underflows(denom):
+                value, gradient = value_and_grad(neg_ll)(beta)
+                return float(value), np.asarray(gradient, dtype=float)
             value = -(
                 nZk_event @ beta
                 - np.sum(sets.d * (np.log(denom / denom0) + shift))
@@ -257,6 +341,8 @@ def _fit_cause(
             # S1_j / S0_j, in O(N p^2) as at beta = 0
             # (_information_at_zero); the shift cancels in every ratio.
             weighted_exp, denom, _ = shifted(beta)
+            if underflows(denom):
+                return grad(neg_ll)(beta), hessian(neg_ll)(beta)
             a = weighted_exp * _risk_set_weights(sets.d / denom, sets)
             M = _risk_set_sums((weighted_exp[:, None] * Zk).T, sets).T
             M = M / denom[:, None]
@@ -394,9 +480,18 @@ def _fit_cause(
 
     # Breslow baseline cumulative subdistribution hazard: at each event-of-
     # interest time, dLambda0 = (events there) / (weighted risk set there).
-    denom = _risk_set_sums(n_sorted * np.exp(Z_sorted @ beta), sets)
+    # Past a linear predictor of 300 (a coefficient running off) exp
+    # overflowed, with numpy's warnings: the sums are then taken in logs
+    # (#760).
+    eta = Z_sorted @ beta
+    if np.all(np.abs(eta) <= _DIRECT_ETA):
+        increments = sets.d / _risk_set_sums(n_sorted * np.exp(eta), sets)
+    else:
+        with np.errstate(over="ignore", under="ignore"):
+            log_denom = _log_risk_set_sums(eta, n_sorted, sets)
+            increments = np.exp(np.log(sets.d) - log_denom)
     uniq_t = sets.times
-    baseline_cumhaz = np.cumsum(sets.d / denom)
+    baseline_cumhaz = np.cumsum(increments)
     if not center:
         baseline_cumhaz = _cumhaz_at_origin(beta, mean, Z_raw, baseline_cumhaz)
         mean = np.zeros_like(mean)
