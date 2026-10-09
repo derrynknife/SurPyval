@@ -276,8 +276,49 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
 
     @keeps_query_shape
     def hf(self, x: Any) -> np.ndarray:
-        """Hazard rate ``df(x) / sf(x)``."""
-        return self.df(x) / self.sf(x)
+        """Hazard rate ``df(x) / sf(x)``: 0 at and before time 0, and at
+        infinity its limit along the spline, quietly.
+
+        It is taken as one exponential of the logs of its terms, which
+        keeps its value where the density and the survival have both
+        underflowed in the tail (a 0/0 there, nan with a warning).
+        Beyond the last knot the spline is linear in ``log x``, with
+        slope ``s``, so on the hazard scale the hazard there is a
+        Weibull's of shape ``s``, and its limit is ``inf`` for ``s > 1``,
+        0 for ``s < 1`` and the constant itself for ``s = 1``; on the odds
+        and normal scales it falls to 0, as a LogLogistic's and a
+        LogNormal's do. Infinity was 0/0 too (#777)."""
+        x = np.asarray(x, dtype=float)
+        with np.errstate(all="ignore"):
+            eta = self._eta(x)
+            log_S, log_negdS = _scale_terms(eta, self.scale)
+            # log(-dS/deta / S): eta itself on the hazard scale, where S
+            # underflows first
+            log_ratio = eta if self.scale == "hazard" else log_negdS - log_S
+            out = np.exp(log_ratio + np.log(self._eta_deriv(x)) - np.log(x))
+        out = np.where(x <= 0.0, 0.0, out)
+        if np.any(np.isposinf(x)):
+            out = np.where(np.isposinf(x), self._hf_at_infinity(), out)
+        return out
+
+    def _hf_at_infinity(self) -> float:
+        """The hazard's limit at infinity (see :meth:`hf`): the spline's
+        slope in ``log x`` beyond the last knot, ``s``, is constant there
+        (the restricted cubic spline is linear), read at that knot; nan
+        for a spline that falls there, where the density is not
+        defined."""
+        last = self.knots[-1:]
+        with np.errstate(all="ignore"):
+            s = float((_rcs_deriv(last, self.knots) @ self.params)[0])
+            if not s >= 0.0:
+                return np.nan
+            if self.scale != "hazard" or s < 1.0:
+                return 0.0
+            if s > 1.0:
+                return np.inf
+            # s = 1: exp(eta(x) - log x), the same at every x past the knot
+            eta = float((_rcs_basis(last, self.knots) @ self.params)[0])
+            return float(np.exp(eta - last[0]))
 
     @keeps_query_shape
     def df(self, x: Any) -> np.ndarray:

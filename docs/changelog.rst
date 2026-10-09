@@ -708,6 +708,12 @@ Unreleased
   likelihood, and ARA failed with "Could not find a good solution". Where
   no start is finite, each restoration start takes the lifetime fitted
   to the gaps from the ages it leaves.
+- ``RoystonParmar.hf`` at infinity is the hazard's limit, quietly (#777):
+  it was ``df / sf``, 0/0 there and wherever both underflow in the tail,
+  nan with a RuntimeWarning. It is now one ``exp`` of the logs of its
+  terms, and at infinity the limit along the spline's last, linear,
+  piece: ``inf``, 0 or a constant on the hazard scale, as a Weibull's,
+  and 0 on the odds and normal scales.
 
 v0.23 (4 October 2026)
 ----------------------

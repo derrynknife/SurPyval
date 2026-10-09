@@ -391,3 +391,32 @@ def test_760_bounds_at_and_before_the_origin_and_at_infinity(scale):
     np.testing.assert_array_equal(rp.cb(0, on="Hf"), [0.0, 0.0])
     assert np.all(np.isnan(rp.cb([np.nan], on="Hf")))
     assert no_warnings(rp.Hf, np.inf) == np.inf
+
+
+@pytest.mark.parametrize("beta", [0.5, 1.0, 2.0])
+def test_777_hf_at_infinity_and_in_the_tail_is_the_weibulls(beta):
+    # hf was df / sf, 0/0 at infinity and wherever both underflow in the
+    # tail (nan, with a warning). With one degree of freedom on the
+    # hazard scale the model is a Weibull: its hazard, to the limit.
+    x = Weibull.random(50, 10, 2, random_state=1)
+    rp = RoystonParmar.fit(x, df=1, scale="hazard")
+    alpha = 10.0
+    rp.params = np.array([-beta * np.log(alpha), beta])
+    t = np.array([5.0, 1e4, 1e300, np.inf])
+    got = no_warnings(rp.hf, t)
+    want = Weibull.hf(t, alpha, beta)
+    np.testing.assert_allclose(got, want, rtol=1e-12)
+    assert no_warnings(rp.hf, np.inf) == pytest.approx(want[-1], rel=1e-12)
+
+
+@pytest.mark.parametrize("scale", ["hazard", "odds", "normal"])
+def test_777_hf_at_infinity_is_its_limit(scale):
+    # Beyond the last knot the spline is linear in log x; the hazard's
+    # limit there: inf for a hazard-scale slope above 1, else 0 (#777).
+    x = Weibull.random(50, 10, 2, random_state=1)
+    rp = RoystonParmar.fit(x, df=2, scale=scale)
+    tail = no_warnings(rp.hf, [1e30, np.inf])
+    assert tail[1] == (np.inf if scale == "hazard" else 0.0)
+    assert np.isfinite(tail[0]) and tail[0] > 0
+    t = np.array([3.0, 8.0, 15.0])
+    np.testing.assert_allclose(rp.hf(t), rp.df(t) / rp.sf(t), rtol=1e-12)
