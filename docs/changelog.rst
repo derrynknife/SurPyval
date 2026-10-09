@@ -107,8 +107,8 @@ Unreleased
   (#769). Each offset, limited-failure and zero-inflation step is taken
   only where it changes something, so a model without them gives its
   distribution's ``qf``; the probabilities are checked once, by two
-  reductions, not in both ``qf``s; and the uniforms skip scipy's argument
-  handling. A Weibull's on a million values: 30 to 15 ns each; on 2,000:
+  reductions, not in both the model's and the distribution's ``qf``; and
+  the uniforms skip scipy's argument handling. A Weibull's on a million values: 30 to 15 ns each; on 2,000:
   101 to 31 us.
 
 **Added**
