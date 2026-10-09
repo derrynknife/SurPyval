@@ -974,3 +974,38 @@ def test_baseline_of_a_run_off_fit_is_quiet():
     assert [w.category for w in record] == [UserWarning]
     assert model.maximum == "no finite maximum"
     assert np.all(np.isfinite(model.h0)) and np.all(model.h0 >= 0)
+
+
+def test_risk_weight_of_a_run_off_fit_overflows_to_inf():
+    # Far along a run-off the risk sets' weight r = sum n exp(beta'(Z -
+    # center)) is beyond floating point: inf (or 0) there, as the
+    # increments d / r underflow to 0 (or are large); the increments are
+    # computed from log r, so they are right (#777). r is reported as it
+    # is, and a saved model keeps it.
+    import json
+
+    import surpyval as sp
+    from surpyval.univariate.regression.proportional_hazards import (
+        cox_likelihood as cl,
+    )
+
+    rng = np.random.default_rng(1)
+    Z = rng.normal(size=(40, 2))
+    Z = Z[np.argsort(-(Z @ np.array([1.0, -0.6])))]
+    c = (np.arange(40) >= 20).astype(int)
+    x = np.arange(1.0, 41)
+    with pytest.warns(UserWarning) as record:
+        model = CoxPH.fit(x, Z, c=c, center=True)
+    assert [w.category for w in record] == [UserWarning]
+    eta = (Z - model.center) @ model.beta
+    one, never = np.ones(40), np.full(40, -np.inf)
+    log_r, _ = cl.log_baseline_sums(x, c, one, eta, never, model.x)
+    assert np.any(np.isinf(model.r)) and np.any(model.r == 0)
+    with np.errstate(over="ignore", under="ignore"):
+        np.testing.assert_allclose(model.r, np.exp(log_r), rtol=1e-12)
+    dead = model.d > 0
+    np.testing.assert_allclose(
+        model.h0[dead], np.exp(-log_r[dead]), rtol=1e-12, atol=0
+    )
+    restored = sp.from_dict(json.loads(json.dumps(model.to_dict())))
+    np.testing.assert_array_equal(restored.r, model.r)

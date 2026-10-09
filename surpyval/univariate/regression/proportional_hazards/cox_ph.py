@@ -737,7 +737,9 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             ``maximum`` is ``"no finite maximum"`` and those coefficients
             are meaningless (their standard errors nan). This is decided
             from the data, so it does not depend on the order of the
-            rows.
+            rows. Far along such a run-off the risk-set weights ``r``
+            can be beyond floating point, ``inf`` (or ``0``); the
+            baseline is computed from their logs and is right.
 
         Examples
         --------

@@ -64,7 +64,12 @@ class SemiParametricRegressionModel(
     increment is 0 at a censoring time). The baseline is that of a unit
     at ``center``: ``Z = 0`` by default (zeros), or the covariate means
     for a fit with ``center=True``; ``phi(Z)``, the hazard multiplier, is
-    relative to it, :math:`e^{\\beta' (Z - \\text{center})}`. The
+    relative to it, :math:`e^{\\beta' (Z - \\text{center})}`. ``r`` is
+    each time's risk-set weight, the sum of ``n e^{beta'(Z - center)}``
+    over the units at risk, and ``d`` its deaths (Breslow's increment is
+    ``d / r``). Far along a coefficient that runs off, ``r`` is beyond
+    floating point and is ``inf`` (or ``0``); the increments are computed
+    from its log, so they are right there (#777). The
     survival functions take
     the covariates as a second argument, ``sf(x, Z)`` (and a ``stratum``
     for a stratified fit); ``sf_tvc`` / ``Hf_tvc`` follow a time-varying
