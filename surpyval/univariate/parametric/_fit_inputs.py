@@ -22,6 +22,7 @@ from surpyval.utils.removed_names import removed_parameter_note
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import check_option
 
+from ..nonparametric import canonical_heuristic
 from ..nonparametric import plotting_positions as pp
 from .fitters import offset_step
 from .parametric import Parametric
@@ -440,6 +441,7 @@ class FitInputsMixin:
         heuristic: str,
         turnbull_estimator: str,
     ) -> Any:
+        heuristic = canonical_heuristic(heuristic)
         self._check_offset_and_grid(surv_data, offset)
         self._check_method(surv_data, how, offset, lfp, zi, fixed)
         self._check_censoring_for_method(surv_data, how, heuristic)

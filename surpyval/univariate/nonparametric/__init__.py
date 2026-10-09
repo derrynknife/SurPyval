@@ -51,3 +51,30 @@ PLOTTING_METHODS = [
     "Larsen",
     "Turnbull",
 ]
+
+#: Heuristic names, written in any case, that mean a listed one: Benard's
+#: approximation is often spelled "Bernard".
+_HEURISTIC_ALIASES = {"bernard": "Benard"}
+
+
+def canonical_heuristic(heuristic: Any) -> Any:
+    """The plotting heuristic as ``PLOTTING_METHODS`` spells it, whatever
+    its case, as ``how=`` is read (0.24 review); ``'Bernard'`` is
+    ``'Benard'``. Anything that is not a known name is returned as given,
+    for the check that refuses it to name it.
+
+    Examples
+    --------
+    >>> from surpyval.univariate.nonparametric import canonical_heuristic
+    >>> canonical_heuristic("blom"), canonical_heuristic("BERNARD")
+    ('Blom', 'Benard')
+    """
+    if not isinstance(heuristic, str):
+        return heuristic
+    key = heuristic.lower()
+    if key in _HEURISTIC_ALIASES:
+        return _HEURISTIC_ALIASES[key]
+    for name in PLOTTING_METHODS:
+        if name.lower() == key:
+            return name
+    return heuristic

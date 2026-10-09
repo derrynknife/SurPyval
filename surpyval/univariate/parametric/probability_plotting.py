@@ -14,7 +14,10 @@ import warnings
 
 import autograd.numpy as np
 
-from surpyval.univariate.nonparametric import plotting_positions
+from surpyval.univariate.nonparametric import (
+    canonical_heuristic,
+    plotting_positions,
+)
 from surpyval.utils.numeric import _round_vals
 
 
@@ -23,8 +26,10 @@ def adjust_heuristic(
 ) -> str:
     """
     Force the Turnbull heuristic when the data is interval censored or
-    truncated, warning that the requested heuristic was changed.
+    truncated, warning that the requested heuristic was changed. The name
+    is read whatever its case.
     """
+    heuristic = canonical_heuristic(heuristic)
     if 2 in c:
         if heuristic != "Turnbull":
             warnings.warn(
