@@ -722,6 +722,13 @@ Unreleased
   derivatives from the same pass: within 1e-14 of mpmath to the second
   order. Gamma PH and AFT fits take about the time they did (at most
   1.08 times, on data far into the tail).
+- A renewal fit (ARA, Kijima, G1) whose life runs off says "No finite
+  maximum" (#777): an ExpoWeibull life running to its power-law limit
+  stopped somewhere on the ridge, "unverified", with the start's own fit
+  warning besides. Where the life, fitted with the restoration held,
+  has no finite maximum, the fit's ``maximum`` is ``"no finite
+  maximum"``, its warning gives the life's reason, and it takes the
+  life's parameters where they are further up the ridge.
 
 v0.23 (4 October 2026)
 ----------------------
