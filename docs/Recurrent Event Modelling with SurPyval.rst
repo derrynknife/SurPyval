@@ -1122,7 +1122,8 @@ projection; the growth potential, 78.4 hours, is what the same factors
 would reach if every BD mode were found and fixed. With modes fixed during
 the test (``bc=``) the system grew while it was tested, and the
 demonstrated intensity is the Crow-AMSAA one at the end of the test (Crow's
-extended model). The test must be time-terminated (every system run to the
+extended model), from the bias-corrected shape :math:`(N - 1)/N \cdot
+\hat\beta`, as in MIL-HDBK-00189A's test-fix-find-test example. The test must be time-terminated (every system run to the
 same ``T``, given as its ``c=1`` row); several systems are taken to have run
 side by side, and the intensities and MTBFs are those of one system.
 

@@ -159,6 +159,12 @@ Unreleased
 
 **Fixed**
 
+- ``CrowAMSAA.projection`` with BC modes takes the demonstrated
+  intensity from the bias-corrected shape, ``(N - 1) / N`` of the MLE
+  (#730), as the handbook's test-fix-find-test example does: it now
+  reproduces that example (demonstrated MTBF 7.84708, projected
+  11.29418), where it gave 7.707 and 11.006. Without BC modes nothing
+  changes. With BC modes and a single failure it raises.
 - Fine-Gray's partial likelihood is right far out along a run-off
   (#760): a risk set's sum underflowed and its ``log(0)`` made the
   objective ``-inf``, the best point a search could find. Such sums are
