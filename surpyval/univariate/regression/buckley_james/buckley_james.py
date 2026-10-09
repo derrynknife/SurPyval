@@ -470,7 +470,8 @@ class BuckleyJamesModel(
         """Cumulative hazard ``-log sf(x, Z)``; ``Z`` as for
         :meth:`sf`."""
         with np.errstate(divide="ignore"):
-            return -np.log(self.sf(x, Z))
+            # 0.0 - log: where sf is 1, -log(1) is -0.0 (#746).
+            return 0.0 - np.log(self.sf(x, Z))
 
     @keeps_query_shape
     def qf(self, p: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:

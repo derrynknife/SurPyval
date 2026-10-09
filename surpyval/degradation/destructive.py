@@ -296,7 +296,8 @@ class DestructiveDegradationModel(InformationCriteriaMixin, SerialisableMixin):
     @keeps_query_shape
     def Hf(self, x: npt.ArrayLike) -> npt.NDArray:
         """Cumulative hazard of the induced lifetime distribution."""
-        return -np.log(np.maximum(self.sf(x), np.finfo(float).tiny))
+        # 0.0 - log, not -log: where sf is 1, -log(1) is -0.0 (#746).
+        return 0.0 - np.log(np.maximum(self.sf(x), np.finfo(float).tiny))
 
     @keeps_query_shape
     def df(self, x: npt.ArrayLike) -> npt.NDArray:

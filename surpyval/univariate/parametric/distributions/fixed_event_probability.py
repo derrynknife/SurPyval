@@ -185,7 +185,8 @@ class FixedEventProbability_(  # type: ignore[misc]
         >>> FixedEventProbability.Hf(x, 0.5)
         array([0.69314718, 0.69314718, 0.69314718])
         """
-        return -np.log(self.sf(x, p))
+        # 0.0 - log: with p = 0 (sf 1), -log(1) is -0.0 (#746).
+        return 0.0 - np.log(self.sf(x, p))
 
     def qf(self, u: Numeric, p: Boxable) -> Boxable:
         r"""

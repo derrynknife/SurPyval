@@ -326,3 +326,18 @@ def test_666_qf_inf_where_ff_levels_off_and_refuses_a_falling_ff():
     wrong = _strength_model(direction="increasing")
     with pytest.raises(ValueError, match="moves away from the threshold"):
         wrong.qf(0.5)
+
+
+def test_746_Hf_where_sf_is_one_is_plus_zero():
+    # Below the threshold's reach sf is 1, and -log(1) was -0.0, in Hf
+    # and in its bounds (#746).
+    rng = np.random.default_rng(1)
+    x = np.repeat([10.0, 20.0, 30.0, 40.0], 6)
+    y = np.exp(4.0 - 0.02 * x + rng.normal(0, 0.1, 24))
+    m = DestructiveDegradation.fit(x, y, threshold=20)
+    assert np.all(m.sf([0.0, 1.0]) == 1)
+    H = m.Hf([0.0, 1.0])
+    assert np.all(H == 0) and not np.any(np.signbit(H))
+    for bound in ("two-sided", "lower", "upper"):
+        b = m.cb([0.0], on="Hf", bound=bound)
+        assert not np.any(np.signbit(b))

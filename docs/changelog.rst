@@ -514,6 +514,12 @@ Unreleased
   Fleming-Harrington, Turnbull, and their stored ``H``),
   ``CompetingRisks(how="Kaplan-Meier")``'s, overall and per cause, and a
   parametric model's Wald ``cb(on="Hf")`` below its support.
+- ``Hf`` is 0.0 where ``sf`` is 1, not -0.0, in the other ``-log sf``
+  cumulative hazards too (#746): ``BuckleyJames``, the Fine-Gray
+  ``CompetingRisksProportionalHazards``, ``FixedEventProbability``
+  (``p = 0``), destructive degradation and the Wiener / gamma process
+  models, the default ``Distribution.Hf``, and the ``cb(on="Hf")`` of the
+  non-parametric estimates, destructive degradation and Royston-Parmar.
 - A limited failure population's ``Hf`` is ``-log(1 - ff)`` where ``ff``
   is below 1/2 (#728): ``-log sf`` was 0 once ``sf`` rounded to 1
   (``Hf(1e-12)`` of 9e-40). The Wald ``ff`` and ``Hf`` bounds are mapped

@@ -867,7 +867,9 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
                 cb = 1.0 - cb
 
             elif on == "Hf":
-                cb = -np.log(cb)
+                # 0.0 - log: where a bound is 1 (before the first
+                # failure), -log(1) is -0.0 (#746).
+                cb = 0.0 - np.log(cb)
 
             elif (on == "sf") or (on == "R"):
                 if bound == "two-sided":

@@ -651,8 +651,9 @@ class CompetingRisksProportionalHazards(
         _check_interp(interp)
         Z = self._prepare_Z(Z)
         if self.model == "Fine-Gray":
-            # Cumulative subdistribution hazard H0_k(x) * exp(beta'Z) = -log S.
-            return -np.log(self.sf(x, Z, event=event))
+            # Cumulative subdistribution hazard H0_k(x) * exp(beta'Z) = -log S
+            # (0.0 - log: where S is 1, -log(1) is -0.0, #746).
+            return 0.0 - np.log(self.sf(x, Z, event=event))
         return self._f(self.H0_e, x, Z, event=event, interp=interp)
 
     @keeps_query_shape

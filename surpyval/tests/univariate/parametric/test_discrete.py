@@ -861,3 +861,14 @@ def test_discretize_round_trips():
     restored = surv.from_dict(model.to_dict())
     assert restored.dist.name == "Discretize(Weibull)"
     assert np.allclose(restored.sf([1, 3, 5]), model.sf([1, 3, 5]))
+
+
+def test_746_fixed_event_probability_Hf_of_p_zero_is_plus_zero():
+    # sf is 1 with p = 0, and -log(1) was -0.0 (#746).
+    from surpyval import FixedEventProbability
+
+    H = FixedEventProbability.Hf(np.array([1.0, 2.0]), 0.0)
+    assert np.all(H == 0) and not np.any(np.signbit(H))
+    np.testing.assert_allclose(
+        FixedEventProbability.Hf(np.array([1.0]), 0.5), np.log(2.0)
+    )

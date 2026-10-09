@@ -455,3 +455,12 @@ def test_728_Hf_before_the_first_time_is_plus_zero(name):
     assert not np.signbit(model.Hf(0.5))
     assert H[3] > 0
     assert not np.any(np.signbit(model.H))
+
+
+@pytest.mark.parametrize("bound", ["two-sided", "lower", "upper"])
+def test_746_Hf_bounds_before_the_first_failure_are_plus_zero(bound):
+    # The survival bounds are 1 at the censored first value; -log(1) of
+    # them was -0.0 (#746).
+    model = sp.KaplanMeier.fit([1.0, 2, 3, 4, 5], c=[1, 0, 0, 0, 0])
+    b = model.cb([0.5, 1.0, 1.5], on="Hf", bound=bound)
+    assert np.all(b == 0) and not np.any(np.signbit(b))

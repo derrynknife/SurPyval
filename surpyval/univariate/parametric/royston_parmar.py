@@ -438,7 +438,8 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
             return band
         if on in ("ff", "F"):
             return 1.0 - (band[:, ::-1] if band.ndim == 2 else band)
-        return -np.log(band[:, ::-1] if band.ndim == 2 else band)
+        # 0.0 - log: where a bound is 1, -log(1) is -0.0 (#746).
+        return 0.0 - np.log(band[:, ::-1] if band.ndim == 2 else band)
 
     # -- information criteria (InformationCriteriaMixin) -------------------
     # neg_ll(), log_likelihood, aic(), aic_c() and bic(), the last two with
