@@ -617,8 +617,8 @@ def test_746_hand_written_gradients(fitter, life, kw, params, one_item):
     # The Gamma, LogLogistic, Rayleigh and Exponential lifetimes and the
     # Cox-Lewis and HPP baselines have hand-written gradients too (#746):
     # the likelihood's value, and the derivatives of its central
-    # differences (autograd's of the Cox-Lewis likelihood fails, and its
-    # Gamma shape derivative is itself a difference).
+    # differences (autograd's of the Cox-Lewis likelihood failed until
+    # #760, and the Gamma shape derivative is itself a difference).
     import surpyval
     from surpyval import recurrent
 

@@ -1,7 +1,12 @@
+import math
 from typing import Any
 
-import numpy as np
+import autograd.numpy as np
+import numpy as onp
 import numpy.typing as npt
+from autograd.extend import defvjp, primitive
+from autograd.numpy.numpy_vjps import unbroadcast_f
+from autograd.tracer import isbox
 
 from surpyval.recurrent.parametric.counting_process import Boxable
 from surpyval.utils.fitter import singleton_fitter
@@ -79,7 +84,10 @@ class CoxLewis(NHPPFitter):
         # is 0/0 at beta = 0 and loses digits for a tiny beta.
         alpha = params[0]
         beta = params[1]
-        x = np.asarray(x, dtype=float)
+        if not any(map(isbox, (x, alpha, beta))):
+            x = onp.asarray(x, dtype=float)
+            return onp.exp(alpha) * _expm1_over_value(beta, x)
+        # Traced: differentiable by autograd (#760)
         return np.exp(alpha) * _expm1_over(beta, x)
 
     def iif(self, x: Boxable, *params: Boxable) -> Boxable:
@@ -127,7 +135,54 @@ class CoxLewis(NHPPFitter):
         return self.parameter_initialiser(data.x)
 
 
-def _expm1_over(beta: Boxable, x: npt.NDArray) -> Boxable:
-    """``(exp(beta * x) - 1) / beta``, with its limit ``x`` at beta = 0."""
-    safe_beta = np.where(beta == 0, 1.0, beta)
-    return np.where(beta == 0, x, np.expm1(beta * x) / safe_beta)
+def _expm1_over_value(beta: Any, x: npt.NDArray) -> npt.NDArray:
+    """``(exp(beta * x) - 1) / beta``, with its limit ``x`` at beta = 0,
+    in plain numpy."""
+    safe_beta = onp.where(beta == 0, 1.0, beta)
+    return onp.where(beta == 0, x, onp.expm1(beta * x) / safe_beta)
+
+
+#: ``_expm1_over_value`` as an autograd primitive (#760), whose
+#: derivatives are ``_expm1_over_slope`` in ``beta`` and ``e**(beta x)``
+#: in ``x``, each differentiable in turn
+_expm1_over = primitive(_expm1_over_value)
+
+
+#: ``(k - 1) / k!`` for ``k = 2, 3, ...``: the series of the slope of
+#: ``expm1(u) / beta`` in ``beta``, over ``x**2``, in powers of ``u =
+#: beta x`` (to 1e-20 below ``|u|`` of 1/2)
+_SLOPE_SERIES = tuple((k - 1) / math.factorial(k) for k in range(2, 20))
+
+
+def _expm1_over_slope(beta: Boxable, x: Boxable) -> Boxable:
+    """The derivative of ``_expm1_over`` in ``beta``, ``(x e**u -
+    expm1(u) / beta) / beta`` with ``u = beta x``, written for autograd.
+    That form cancels as ``u -> 0`` (and is 0 / 0 at 0, where the slope is
+    ``x**2 / 2``): below ``|u|`` of 1/2 it is the series instead. Each
+    branch is evaluated only where it is taken (at a point of the other's
+    where not), so neither puts a nan into the other's gradient."""
+    u = beta * x
+    small = np.abs(u) < 0.5
+    u_small = np.where(small, u, 0.0)
+    series = 0.0
+    for coeff in reversed(_SLOPE_SERIES):
+        series = series * u_small + coeff
+    x_small = np.where(small, x, 0.0)
+    near = x_small * x_small * series
+    beta_far = np.where(small, 1.0, beta)
+    u_far = np.where(small, 1.0, u)
+    with np.errstate(over="ignore"):
+        far = (
+            np.where(small, 1.0, x) * np.exp(u_far)
+            - np.expm1(u_far) / beta_far
+        ) / beta_far
+    return np.where(small, near, far)
+
+
+defvjp(
+    _expm1_over,
+    lambda ans, beta, x: unbroadcast_f(
+        beta, lambda g: g * _expm1_over_slope(beta, x)
+    ),
+    lambda ans, beta, x: unbroadcast_f(x, lambda g: g * np.exp(beta * x)),
+)

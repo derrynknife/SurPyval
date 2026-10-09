@@ -200,6 +200,11 @@ Unreleased
   1000`` it is the continued fraction of the upper incomplete gamma, in
   which the ``e**-y`` cancel exactly: within 1e-15 of mpmath, with exact
   autograd derivatives.
+- ``CoxLewis.cif`` is differentiable by autograd (#760); it was written
+  in plain numpy (``np.where``, ``np.exp``), so the NHPP and ARI
+  likelihoods on a Cox-Lewis intensity had no autograd gradient. Its
+  slope in ``beta`` is a series below ``|beta x|`` of 1/2, exact at
+  ``beta = 0``, where the closed form cancels.
 - ``CompetingRisks.cb`` says why it has no bounds on ``hf``, ``df`` or
   ``iif`` (#746): they are the step estimate's jumps at the event times,
   which the single-event ``cb`` does not bound either (by design); the
