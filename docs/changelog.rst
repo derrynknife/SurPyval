@@ -194,6 +194,12 @@ Unreleased
   every event at Z = 0 it quoted the finite value at Z = 0 (a LogisticPO's
   mu, 6.941); such a parameter is now judged at Z = 0, as the model
   reports it, and named only where it runs off there too.
+- ``Gamma.hf`` keeps its digits far in the tail (#760). As ``f / S``,
+  each of size ``e**-y`` at ``y = beta x``, it lost ``y`` times the
+  machine precision (4e-9 at ``y = 1e8``, 12% at ``1e15``). Past ``y =
+  1000`` it is the continued fraction of the upper incomplete gamma, in
+  which the ``e**-y`` cancel exactly: within 1e-15 of mpmath, with exact
+  autograd derivatives.
 - ``CompetingRisks.cb`` says why it has no bounds on ``hf``, ``df`` or
   ``iif`` (#746): they are the step estimate's jumps at the event times,
   which the single-event ``cb`` does not bound either (by design); the
