@@ -217,3 +217,12 @@ def test_buckley_james_refuses_a_mismatched_z():
         ValueError, match=r"has 2 covariates \(coef_0, coef_1\)"
     ):
         model.sf([5.0, 10.0], [0.0, 1.0, 2.0])
+
+
+def test_746_Hf_before_the_first_time_is_plus_zero():
+    # sf is 1 before the first residual time; -log(1) was -0.0 (#746).
+    x = np.array([1.0, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    Z = np.array([0, 1, 0, 1, 0, 1, 0, 1, 0, 1.0])
+    model = BuckleyJames.fit(x, Z)
+    H = model.Hf([0.0, 0.5], np.array([0.0]))
+    assert np.all(H == 0) and not np.any(np.signbit(H))

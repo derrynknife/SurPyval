@@ -472,3 +472,11 @@ def test_714_a_separated_cause_says_so_whatever_the_row_order():
     )
     for model in fits:
         assert model.cif([1.0], [[0.5]], "b")[0] < 1e-8
+
+
+def test_746_fine_gray_Hf_before_the_first_time_is_plus_zero():
+    # The Fine-Gray Hf is -log(1 - cif); -log(1) was -0.0 (#746).
+    x, Z, e = competing_risks_regression_data()
+    model = CRPH.fit(x, Z, e, model="Fine-Gray")
+    H = model.Hf([0.0, np.min(x) / 2], np.zeros(2), event=1)
+    assert np.all(H == 0) and not np.any(np.signbit(H))

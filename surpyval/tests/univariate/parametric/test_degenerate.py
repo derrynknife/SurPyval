@@ -179,3 +179,18 @@ def test_fixed_event_probability_mean_is_its_first_moment():
     model = surv.FixedEventProbability.from_params([0.3])
     assert model.mean() == pytest.approx(0.3)
     assert model.mean() == pytest.approx(model.moment(1))
+
+
+def test_746_default_Hf_is_plus_zero_where_sf_is_one():
+    # The default Hf of a Distribution is -log sf; -log(1) is -0.0 (#746).
+    from surpyval.distribution import Distribution
+
+    class Never(Distribution):
+        def sf(self, x):
+            return np.ones_like(np.asarray(x, dtype=float))
+
+        def ff(self, x):
+            return 1.0 - self.sf(x)
+
+    H = Never().Hf([0.0, 1.0])
+    assert np.all(H == 0) and not np.any(np.signbit(H))

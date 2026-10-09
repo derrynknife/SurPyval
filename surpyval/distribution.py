@@ -53,8 +53,9 @@ class Distribution(ABC, RemovedNames):
     def Hf(self, x: ArrayLike, *args: Any, **kwargs: Any) -> ArrayLike:
         """The cumulative hazard, ``-log sf(x)`` unless overridden."""
         # Cumulative hazard derived from the survival function. Models
-        # with a closed-form cumulative hazard override this.
-        return -np.log(self.sf(x, *args, **kwargs))
+        # with a closed-form cumulative hazard override this. 0.0 - log,
+        # not -log: where sf is 1, -log(1) is -0.0 (#746).
+        return 0.0 - np.log(self.sf(x, *args, **kwargs))
 
 
 class ParametricDistribution(Distribution):

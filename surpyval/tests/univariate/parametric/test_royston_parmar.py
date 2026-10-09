@@ -356,3 +356,13 @@ def test_595_qf_solves_every_probability_at_once(scale, monkeypatch):
     p = np.linspace(0.01, 0.99, 99)
     np.testing.assert_allclose(model.ff(model.qf(p)), p, rtol=1e-12)
     assert np.all(np.isfinite(draws)) and np.all(draws > 0)
+
+
+@pytest.mark.parametrize("scale", ["hazard", "odds", "normal"])
+def test_746_Hf_bounds_at_the_origin_are_plus_zero(scale):
+    # The survival band is 1 there, and -log(1) was -0.0 (#746).
+    x = Weibull.random(50, 10, 2, random_state=1)
+    rp = RoystonParmar.fit(x, df=1, scale=scale)
+    for bound in ("lower", "upper"):
+        b = rp.cb([1e-300], on="Hf", bound=bound)
+        assert np.all(b == 0) and not np.any(np.signbit(b))

@@ -687,3 +687,17 @@ def test_665_wiener_functions_at_infinity():
         np.testing.assert_allclose(
             model.sf([5.0, np.inf]), [model.sf(5.0), 0.0], rtol=1e-15
         )
+
+
+@pytest.mark.parametrize("process", ["wiener", "gamma"])
+def test_746_Hf_at_time_zero_is_plus_zero(process):
+    # The first passage cannot have happened at t = 0 (sf 1), and -log sf
+    # there was -0.0 (#746).
+    if process == "wiener":
+        x, y, i = _simulate_wiener(0.5, 0.3, units=10, npts=10, dt=0.5, seed=0)
+        m = WienerProcess.fit(x, y, i, threshold=10.0)
+    else:
+        x, y, i = _simulate_gamma(2.0, 1.0, units=10, npts=10, dt=0.5, seed=0)
+        m = GammaProcess.fit(x, y, i, threshold=10.0)
+    H = m.Hf(np.array([0.0]))
+    assert np.all(H == 0) and not np.any(np.signbit(H))

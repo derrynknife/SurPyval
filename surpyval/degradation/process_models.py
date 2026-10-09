@@ -1332,7 +1332,11 @@ class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
         distance = self._distance(y0)
         t_in = np.asarray(x, dtype=float)
         tt = t_in if clock is None else clock.tau(t_in)
-        res = self._missing(-self._log_sf_distance(tt, distance), t_in, tt)
+        # 0.0 - log sf, not -log sf: where sf is 1 (before any wear can
+        # reach the threshold) -0.0 would be returned (#746).
+        res = self._missing(
+            0.0 - self._log_sf_distance(tt, distance), t_in, tt
+        )
         return res
 
     @keeps_query_shape
