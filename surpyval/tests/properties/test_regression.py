@@ -240,20 +240,14 @@ def test_rows_are_independent(name, data):
 
 
 def _cox_ran_off(model):
-    """Whether the Cox fit ``model`` (``None`` for a refusal) ran off: it
-    says so, or a coefficient is beyond 4, a risk score of e^8 on the
-    covariates generated here (within 2 of 0, and 0/1 indicators), as
-    :func:`_separated` judges the data. A Cox fit can miss a run along a
-    combination of coefficients: on exact 0.5 at level b (z 0.5), exact
-    1.0 and 0.5 (z -1, -1, -1) and censored 0.5 (z 0.5, 0.5) at level a,
-    it stopped at (-24.7, 37.6), "unverified", or (-23.1, 35.2),
-    "verified", by the row order (#714)."""
-    if model is None:
-        return False
-    if model.maximum == "no finite maximum":
-        return True
-    beta = np.nan_to_num(np.asarray(model.beta, dtype=float))
-    return bool(np.max(np.abs(beta), initial=0.0) > 4)
+    """Whether the Cox fit ``model`` (``None`` for a refusal) ran off, as
+    it says. It used to miss a run along a combination of coefficients
+    (on exact 0.5 at level b (z 0.5), exact 1.0 and 0.5 (z -1, -1, -1) and
+    censored 0.5 (z 0.5, 0.5) at level a it stopped at (-24.7, 37.6),
+    "unverified", or (-23.1, 35.2), "verified", by the row order, #714),
+    and a coefficient beyond 4 was taken as a run-off too; the data now
+    decide (#728, #746)."""
+    return model is not None and model.maximum == "no finite maximum"
 
 
 def _frame(d):
