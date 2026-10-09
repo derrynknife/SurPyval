@@ -382,3 +382,58 @@ def test_746_every_coefficient_aliased_is_fitted():
         model = FineGray.fit(x, np.ones((8, 1)), e, event="a")
     assert np.isnan(model.beta).all()
     assert np.isnan(model.standard_errors()).all()
+
+
+def test_760_objective_far_along_a_run_off_is_quiet_and_right():
+    # Far out along the run-off direction every later risk set's sum
+    # underflowed, and the objective was log(0): -inf, the best point any
+    # search could find. The sums are taken in logs there (#760): the
+    # objective falls to its limit, and its derivatives are finite.
+    from autograd import grad, hessian
+
+    x, Z, e = _COMBINATION
+    with pytest.warns(UserWarning, match="proportion 0.25 : -1"):
+        model = FineGray.fit(x, Z, e, event="a", center=True)
+    objective = model._objective
+    d = np.array([0.25, -1.0])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        values = [objective(t * d) for t in [10.0, 100.0, 1e3, 1e4, 1e6]]
+        # (to the rounding of a linear predictor of 1e6, 1e-10)
+        assert np.all(np.diff(values) <= 1e-8)
+        np.testing.assert_allclose(values[2:], values[-1], rtol=0, atol=1e-8)
+        # Off the direction it rises, without bound
+        assert objective(np.array([1e4, 0.0])) > 3e4
+        g, h = grad(objective)(1e4 * d), hessian(objective)(1e4 * d)
+    assert np.all(np.isfinite(g)) and np.all(np.isfinite(h))
+    # The run-off direction is flat; the other is not
+    np.testing.assert_allclose(h @ d, 0.0, atol=1e-9)
+    assert np.linalg.eigvalsh(h).max() > 1
+
+
+def test_760_log_risk_set_sums_are_the_sums():
+    # The sums in logs agree with the direct ones where both hold
+    x, Z, e, c = _simulate_fine_gray(300, 2)
+    model = FineGray.fit(x, Z, e, c=c, event=1)
+    objective = model._objective
+    sets, Zk = objective.args[1], objective.args[3]
+    n_sorted = objective.args[0]
+    eta = Zk @ np.array([0.7, -0.4])
+    direct = np.log(fine_gray._risk_set_sums(n_sorted * np.exp(eta), sets))
+    in_logs = fine_gray._log_risk_set_sums(eta, n_sorted, sets)
+    np.testing.assert_allclose(in_logs, direct, rtol=1e-13, atol=1e-13)
+
+
+def test_760_run_off_baseline_is_quiet():
+    # The baseline's exp(beta'Z) overflowed at the run-off coefficients,
+    # with numpy's warnings (#760)
+    rng = np.random.default_rng(2)
+    Z = rng.normal(size=(40, 2))
+    Z = Z[np.argsort(-(Z @ np.array([1.0, -0.6])))]
+    e = np.array(["a"] * 15 + ["b"] * 10 + [None] * 15, dtype=object)
+    with pytest.warns(UserWarning) as record:
+        model = FineGray.fit(np.arange(1.0, 41), Z, e, event="a", center=True)
+    assert [w.category for w in record] == [UserWarning]
+    assert model.maximum == "no finite maximum"
+    H = model._cumhaz
+    assert np.all(np.isfinite(H)) and np.all(np.diff(H) >= 0)
