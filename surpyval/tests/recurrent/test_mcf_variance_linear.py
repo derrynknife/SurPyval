@@ -138,20 +138,34 @@ def test_cause_specific():
     np.testing.assert_allclose(model.models["a"].var, got, rtol=1e-12)
 
 
-def _seconds(n_items):
-    x, i, c, _, _ = _items(n_items, seed=6)
-    data = handle_xicn(x, i, c)
-    xs, r, d = data.to_xrd()
-    best = np.inf
-    for _ in range(3):
-        start = time.perf_counter()
-        _lawless_nadeau_var(data, xs, r, d)
-        best = min(best, time.perf_counter() - start)
+def _cpu_seconds(*n_items, rounds=5):
+    # Each size's best time over interleaved rounds, in this thread's CPU
+    # time: on a loaded machine (xdist beside other work, load near 10 on
+    # 4 cores) wall time counts the waits for a core, which hit the longer
+    # call more, and the wall-clock ratio passed 25. Interleaving puts any
+    # slow spell on both sizes.
+    clock = time.thread_time
+    if time.get_clock_info("thread_time").resolution > 1e-6:
+        clock = time.perf_counter  # a coarse CPU clock (not on Linux)
+    args = []
+    for n in n_items:
+        x, i, c, _, _ = _items(n, seed=6)
+        data = handle_xicn(x, i, c)
+        args.append((data, *data.to_xrd()))
+    best = [np.inf] * len(args)
+    for _ in range(rounds):
+        for k, a in enumerate(args):
+            start = clock()
+            _lawless_nadeau_var(*a)
+            best[k] = min(best[k], clock() - start)
     return best
 
 
 def test_linear_in_the_items():
-    # Eight times the items (and as many more distinct times) took about
-    # fifty times as long (46 to 53, best of 3); it now takes about ten.
-    ratio = _seconds(2400) / _seconds(300)
-    assert ratio < 25, ratio
+    # Eight times the items (and six times the distinct times) took about
+    # fifty times as long (the sum over items, as before #521: 47 to 49);
+    # it now takes about ten (9.9 alone, 10.3 to 11.8 in four processes
+    # beside eight CPU-bound ones on 4 cores, load 15, where the old
+    # wall-clock ratio reached 85), so 25 has a factor of 2 either side.
+    small, large = _cpu_seconds(300, 2400)
+    assert large / small < 25, (large, small)

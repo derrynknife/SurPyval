@@ -605,6 +605,10 @@ Unreleased
   0.0, not -0.0, where the fitted ``H`` is negative (#760): there the
   bound is the clipped-``sf`` logit fallback, whose upper end rounds to
   1, and ``-log 1`` was -0.0. The same holds for ``cb_tvc``.
+- The test that the MCF variance is linear in the items no longer fails
+  on a loaded machine (#760): it times in CPU time, best of 5
+  interleaved rounds. Its wall-clock ratio reached 85 at a load of 15
+  (limit 25); now 10 to 12, against 47 for the pre-#521 code.
 
 v0.23 (4 October 2026)
 ----------------------
