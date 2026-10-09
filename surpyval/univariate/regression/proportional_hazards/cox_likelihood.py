@@ -773,6 +773,16 @@ class CoxInformation:
 
     Rows are taken in the order given; ``tl`` (default untruncated) are
     the entry times, as in the generators.
+
+    Where the generators take the score and information in logs
+    (:meth:`_CoxRiskSets.log_score_information`: a linear predictor
+    beyond ``_DIRECT_ETA``, or a delayed-entry risk set all but cancelled
+    by the rows yet to enter), so does the operator: every risk set's sums
+    are divided by the set's own total before use, so that ``R v`` is the
+    risk set's weighted mean of ``v``, and each row's weight at a time is
+    ``exp(log(n e^eta) - log R)``, summed over its times at risk in logs.
+    Directly, ``exp(eta)`` overflowed and ``1 / R^2`` with it, and ``M``
+    was nan (#760). Elsewhere the direct sums are used, unchanged.
     """
 
     def __init__(
@@ -790,13 +800,20 @@ class CoxInformation:
         self.order = np.argsort(x, kind="stable")
         rs = _CoxRiskSets(x, np.zeros((x.size, 0)), c, n, tl)
         self.rs = rs
-        e = np.exp(np.asarray(eta, dtype=float)[self.order])
+        self.tie_method = tie_method
+        self.logs = False
+        eta = np.asarray(eta, dtype=float)[self.order]
+        direct = rs.direct(eta)
+        if direct is None:
+            self._in_logs(eta)
+            return
+        # (the risk sets' sums of exp(eta), as _risk_set_sums of ones)
+        e, R = direct[0][:, 0], direct[1][:, 0]
         self.e = e
         self.r = rs.risk_n * e
         self.death_w = rs.death_n * e
         m = len(rs.gb_x.unique)
         self.m = m
-        R = self._risk_set_sums(np.ones((x.size, 1)))[:, 0]
         D = rs.gb_x.sum(self.death_w.reshape(-1, 1))[1][:, 0]
         s_u = np.zeros(m)
         self.tied = np.zeros(0, dtype=int)
@@ -819,9 +836,105 @@ class CoxInformation:
                 self.s_cu = np.zeros(m)
                 self.s_cu[ties.tied] = s_cu_t
             self.s_u2 = s_u2[self.active]
-        self.q = self.r * rs.rows.over_risk_set(s_u)
+        at_risk = rs.rows.over_risk_set_kept(s_u)
+        if at_risk is None:
+            # (the sum over a row's times at risk is rounding, #746)
+            self._in_logs(eta)
+            return
+        self.q = self.r * at_risk
         if self.tied.size:
             self.q = self.q - self.death_w * self.s_cu[rs.rows.exit]
+
+    def _in_logs(self, eta: npt.NDArray) -> None:
+        # The operator's terms with every risk set's sums divided by the
+        # set's total R (``log_R``): ``s_u`` and ``s_cu`` are R times
+        # theirs, the squared terms R^2 times, and a row's weight at a time
+        # is exp(log_w - log_R), as in log_score_information.
+        rs = self.rs
+        rows, m = rs.rows, len(rs.gb_x.unique)
+        self.m = m
+        self.logs = True
+        if not np.all(np.isfinite(eta)):
+            # (a linear predictor that is not finite)
+            self.q = np.full(eta.shape, np.nan)
+            return
+        with np.errstate(divide="ignore"):
+            self.log_w = np.log(rs.risk_n) + eta
+            self.log_dw = np.log(rs.death_n) + eta
+        log_R = rows.log_by_time(self.log_w[:, None], m)[:, 0]
+        # (a time whose rows all have no weight has none of its own)
+        L = np.where(np.isfinite(log_R), log_R, 0.0)
+        self.L = L
+        log_D = _grouped_logsumexp(rows.exit, self.log_dw[:, None], m)[:, 0]
+        self.D = np.exp(log_D - L)
+        s_u = np.zeros(m)
+        s_cu = np.zeros(m)
+        self.tied = np.zeros(0, dtype=int)
+        if self.tie_method == "breslow":
+            self.active = np.flatnonzero(rs.n_d > 0)
+            s_u[self.active] = rs.n_d[self.active]
+            self.s_u2 = rs.n_d[self.active]
+        else:
+            ties = _EfronTies(rs.n_d)
+            self.active = ties.active
+            s_u2 = np.zeros(m)
+            s_u[ties.one] = 1.0
+            s_u2[ties.one] = 1.0
+            if ties.tied.size:
+                self.tied = ties.tied
+                sums = ties.sums(np.ones(m), self.D)
+                s_u[ties.tied], s_cu[ties.tied], s_u2[ties.tied] = sums[:3]
+                self.s_cu2, self.s_c2u2 = sums[3], sums[4]
+            self.s_u2 = s_u2[self.active]
+        with np.errstate(divide="ignore"):
+            log_v = np.log(s_u) - L
+        self.q = np.exp(self.log_w + rows.log_by_row(log_v[:, None])[:, 0])
+        if self.tied.size:
+            self.death_share = np.exp(self.log_dw - L[rows.exit])
+            self.q = self.q - self.death_share * s_cu[rows.exit]
+
+    def _log_over_risk_set(self, per_time: npt.NDArray) -> npt.NDArray:
+        # For each row, the sum over the times it is at risk of its weight
+        # there, exp(log_w - log_R), times ``per_time`` (signed; ``m x k``):
+        # the positive and negative parts each summed in logs
+        rows = self.rs.rows
+        out = []
+        for part in (np.maximum(per_time, 0.0), np.maximum(-per_time, 0.0)):
+            with np.errstate(divide="ignore"):
+                log_v = np.log(part) - self.L[:, None]
+            out.append(np.exp(self.log_w[:, None] + rows.log_by_row(log_v)))
+        return out[0] - out[1]
+
+    def _apply_in_logs(self, v: npt.NDArray) -> npt.NDArray:
+        # ``M v`` for sorted row values ``v`` (``n x k``), in logs
+        rs, rows, m = self.rs, self.rs.rows, self.m
+        if not np.all(np.isfinite(self.q)):
+            return np.full(v.shape, np.nan)
+        # Each risk set's weighted mean of v (R v / R), of v less its least
+        # value, which keeps every sum positive (its log defined)
+        low = v.min(axis=0) if v.shape[0] else np.zeros(v.shape[1])
+        with np.errstate(divide="ignore"):
+            log_vp = np.log(v - low)
+        log_Rv = rows.log_by_time(self.log_w[:, None] + log_vp, m)
+        mean = np.exp(log_Rv - self.L[:, None]) + low
+        per_time = np.zeros((m, v.shape[1]))
+        per_time[self.active] = self.s_u2[:, None] * mean[self.active]
+        if self.tied.size:
+            # The deaths' sums of v, D v / R
+            log_Dv = _grouped_logsumexp(
+                rows.exit, self.log_dw[:, None] + log_vp, m
+            )
+            dead = np.exp(log_Dv - self.L[:, None]) + low * self.D[:, None]
+            per_time[self.tied] -= self.s_cu2[:, None] * dead[self.tied]
+        out = self.q[:, None] * v - self._log_over_risk_set(per_time)
+        if self.tied.size:
+            own = np.zeros((m, v.shape[1]))
+            own[self.tied] = (
+                self.s_cu2[:, None] * mean[self.tied]
+                - self.s_c2u2[:, None] * dead[self.tied]
+            )
+            out += self.death_share[:, None] * own[rs.rows.exit]
+        return out
 
     def _risk_set_sums(self, v: npt.NDArray) -> npt.NDArray:
         # Per event time, the sum of n exp(eta) v over its risk set
@@ -844,6 +957,11 @@ class CoxInformation:
         v = np.asarray(v, dtype=float)
         flat = v.ndim == 1
         v = v.reshape(v.shape[0], -1)[self.order]
+        if self.logs:
+            out = self._apply_in_logs(v)
+            result = np.empty_like(out)
+            result[self.order] = out
+            return result[:, 0] if flat else result
         ZR = self._risk_set_sums(v)
         per_time = np.zeros_like(ZR)
         per_time[self.active] = self.s_u2[:, None] * ZR[self.active]
