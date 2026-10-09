@@ -201,6 +201,13 @@ Unreleased
   verification's tolerance, and the fit reported a verified maximum of a
   likelihood with none. Why the conditions now suffice is set out in
   ``cox_separation.DECREMENT``.
+- FineGray finds a run-off along a combination of the coefficients
+  (#746). Its verdict came from the parametric judge, each coefficient
+  alone: on events a combination separates it raised "SVD did not
+  converge". Where the search gives cause, the data now decide, by
+  CoxPH's exact test on the subdistribution risk sets; the fit warns "No
+  finite maximum" with the proportion, and a run-off coefficient's
+  standard error is nan, as CoxPH's.
 - ``CrowAMSAA.projection`` names the source its BC-mode projection was
   checked against (#710): ReliaSoft's Crow Extended formulas, whose
   demonstrated intensity with BC modes is the Crow-AMSAA intensity at
