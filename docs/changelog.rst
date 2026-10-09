@@ -276,6 +276,11 @@ Unreleased
   Cox-Lewis ``beta`` is searched and checked in units of one over the
   longest time: two fits on data in thousands of hours called unverified
   (central differences too coarse for a ``beta`` of 1e-4) are verified.
+- So do the renewal fits with an ExpoWeibull, Normal, Gumbel or Logistic
+  life (#760), whose derivatives are within 3e-13 of mpmath's, far tails
+  included. They take 0.15 to 0.9 of the time (median 0.23 to 0.46), with
+  the same verdicts and likelihoods equal or higher, but on one run-off
+  with no finite maximum, where each search stops elsewhere on the ridge.
 - The nightly property tests (#714). A regression or Cox ``df`` far in the
   upper tail, where the hazard overflows and ``sf`` underflows, is 0, not
   ``inf * 0`` with a raw ``RuntimeWarning``; a parametric PH ``Hf`` / ``hf``

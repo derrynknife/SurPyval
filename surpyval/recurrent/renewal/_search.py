@@ -235,9 +235,10 @@ def renewal_search(
     natural ``bounds``, in the space ``inv_trans`` maps to them
     (``bounds_convert``'s): ``GradientSearch`` where ``neg_ll`` has a
     hand-written gradient (a Weibull, LogNormal, Gamma, LogLogistic,
-    Exponential or Rayleigh life; a power-law, Duane, Cox-Lewis or HPP
-    baseline), and ``SimplexSearch`` otherwise (any other life, such as
-    the ExpoWeibull or Normal)."""
+    Exponential, Rayleigh, ExpoWeibull, Normal, Gumbel or Logistic life;
+    a power-law, Duane, Cox-Lewis or HPP baseline), and ``SimplexSearch``
+    otherwise (any other life, such as the GumbelLEV or a custom
+    distribution)."""
     if getattr(neg_ll, "value_and_grad", None) is not None:
         return GradientSearch(neg_ll, bounds, n_obs)
     return SimplexSearch(neg_ll, inv_trans)

@@ -11,7 +11,8 @@ derivatives in its argument and in each parameter, and the likelihoods
 chain them with their own recursions' derivatives. They have a closed
 form for every lifetime and baseline here but the Gamma's log S in its
 shape, which is taken from differences of its log and from its
-asymptotic series (``GammaDerivatives``, #746).
+asymptotic series (``GammaDerivatives``, #746). The ExpoWeibull's,
+Normal's, Gumbel's and Logistic's followed (#760).
 
 ``lifetime_derivatives(dist)`` and ``intensity_derivatives(baseline)``
 return ``None`` for any other model, whose fits keep their Nelder-Mead
@@ -31,14 +32,21 @@ from surpyval.recurrent.parametric.cox_lewis import CoxLewis
 from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
 from surpyval.recurrent.parametric.duane import Duane
 from surpyval.recurrent.parametric.hpp import HPP
+from surpyval.univariate.parametric.distributions.expo_weibull import (
+    ExpoWeibull,
+    log_forms,
+)
 from surpyval.univariate.parametric.distributions.exponential import (
     Exponential,
 )
 from surpyval.univariate.parametric.distributions.gamma import Gamma
+from surpyval.univariate.parametric.distributions.gumbel import Gumbel
+from surpyval.univariate.parametric.distributions.logistic import Logistic
 from surpyval.univariate.parametric.distributions.loglogistic import (
     LogLogistic,
 )
 from surpyval.univariate.parametric.distributions.lognormal import LogNormal
+from surpyval.univariate.parametric.distributions.normal import Normal
 from surpyval.univariate.parametric.distributions.rayleigh import Rayleigh
 from surpyval.univariate.parametric.distributions.weibull import Weibull
 from surpyval.utils.autograd_gamma_compat import gammainccln
@@ -53,6 +61,10 @@ _LOG_SQRT_2PI = 0.5 * np.log(2.0 * np.pi)
 _GAMMA_STEP = 1e-3
 _GAMMA_TAIL = 50.0
 _GAMMA_TAIL_SHAPES = 20.0
+
+#: The ExpoWeibull's ``(t / alpha)**beta`` past which its hazard takes
+#: ``-log(1 - e**-u) / e**-u`` as 1 (``ExpoWeibull.hf``'s own threshold)
+_EW_T_LARGE = 40.0
 
 
 class WeibullDerivatives:
@@ -234,6 +246,208 @@ class LogLogisticDerivatives:
             h * (S * z_t - 1 / t),
             [h * S * z_alpha, h * (S * z_beta + 1 / beta)],
         )
+
+
+class ExpoWeibullDerivatives:
+    """The ExpoWeibull's ``log S``, ``log f`` and hazard, as
+    ``WeibullDerivatives`` gives the Weibull's, for ``t > 0``.
+
+    Each is a function of ``l = log u`` with ``u = (t / alpha)**beta``
+    (and of ``mu``), taken from the distribution's own log forms
+    (``log_forms``, which keep their digits in both tails), with ``dl /
+    dt = beta / t``, ``dl / dalpha = -beta / alpha`` and ``dl / dbeta =
+    log(t / alpha)``. The values are the distribution's own. With ``g =
+    1 - e**-u`` and ``w = d log g / dl = u e**-u / g``:
+
+    - ``d log S / dl = -mu w F / S`` and ``d log S / dmu = F log g / S``
+      (as ``ExpoWeibull``'s own ``_partials``);
+    - ``d log f / dl = (mu - 1) w + 1 - u`` and ``d log f / dmu = 1 /
+      mu + log g``;
+    - ``d log h / dl = (mu - 1) w + 1 + u (mu w F / (u S) - 1)`` and
+      ``d log h / dmu = (1 - r / (1 - e**-r)) / mu`` with ``r = -log
+      F``, each from ``log f - log S`` with the two terms that cancel in
+      the right tail (``u`` and ``mu w F / S``, ``1 / mu`` and ``log g /
+      S``) taken together, by ``expm1`` of the log of their ratio.
+    """
+
+    @staticmethod
+    def _parts(t: np.ndarray, alpha: float, beta: float, mu: float) -> dict:
+        p = log_forms(t, alpha, beta, mu, xp=np)
+        u = p["t"]
+        large = u > _EW_T_LARGE
+        p["log_u"] = beta * (p["log_x"] - np.log(alpha))
+        # dl / dt, dl / dalpha, dl / dbeta
+        p["l_t"] = beta / t
+        p["l_alpha"] = -beta / alpha
+        p["l_beta"] = p["log_x"] - np.log(alpha)
+        p["w"] = np.exp(-p["ratio_g"] - u)
+        # log(-log g / e**-u), 0 to double precision in the right tail
+        p["log_q"] = np.where(
+            large, 0.0, p["log_nl"] + np.where(large, 0.0, u)
+        )
+        return p
+
+    @staticmethod
+    def _chain(
+        p: dict, t: np.ndarray, beta: float, d_l: Any, d_mu: Any, own: Any
+    ) -> tuple:
+        """``(d/dt, [d/dalpha, d/dbeta, d/dmu])`` from ``d/dl`` and
+        ``d/dmu``, with the slopes of the ``beta / t`` of ``f`` and ``h``
+        where ``own`` (1 there, 0 elsewhere)."""
+        d_t = d_l * p["l_t"] - own / t
+        d_beta = d_l * p["l_beta"] + own / beta
+        return d_t, [d_l * p["l_alpha"], d_beta, d_mu]
+
+    @staticmethod
+    def _log_sf_slopes(p: dict, mu: float) -> tuple:
+        log_f_over_s = p["log_ff"] - p["ratio_r"]
+        # log(-log g) + u first: they cancel exactly in the right tail
+        # (as ``ExpoWeibull``'s own ``_partials`` takes them)
+        log_nl_u = -p["log_nl"] - p["t"]
+        d_l = -np.exp(log_f_over_s - p["ratio_g"] + log_nl_u)
+        return d_l, np.exp(log_f_over_s) / mu
+
+    def log_sf(self, t: np.ndarray, params: Any) -> tuple:
+        alpha, beta, mu = params
+        p = self._parts(t, alpha, beta, mu)
+        d_l, d_mu = self._log_sf_slopes(p, mu)
+        d_t, d_p = self._chain(p, t, beta, d_l, d_mu, 0.0)
+        return p["log_sf"], d_t, d_p
+
+    def log_end(self, t: np.ndarray, params: Any, failed: np.ndarray) -> tuple:
+        alpha, beta, mu = params
+        p = self._parts(t, alpha, beta, mu)
+        # log f as ExpoWeibull.log_df takes it
+        log_df = (
+            np.log(beta)
+            + np.log(mu)
+            - p["log_x"]
+            + mu * p["log_g"]
+            - p["ratio_g"]
+            - p["t"]
+        )
+        sf_l, sf_mu = self._log_sf_slopes(p, mu)
+        df_l = (mu - 1.0) * p["w"] + 1.0 - p["t"]
+        df_mu = 1.0 / mu + p["log_g"]
+        d_t, d_p = self._chain(
+            p,
+            t,
+            beta,
+            np.where(failed, df_l, sf_l),
+            np.where(failed, df_mu, sf_mu),
+            np.where(failed, 1.0, 0.0),
+        )
+        return np.where(failed, log_df, p["log_sf"]), d_t, d_p
+
+    def hf(self, t: np.ndarray, params: Any) -> tuple:
+        alpha, beta, mu = params
+        p = self._parts(t, alpha, beta, mu)
+        u, log_g, ratio_r = p["t"], p["log_g"], p["ratio_r"]
+        # h as ExpoWeibull.hf takes it
+        log_hf = (
+            np.log(beta)
+            - p["log_x"]
+            + mu * log_g
+            - p["ratio_g"]
+            - ratio_r
+            - p["log_q"]
+        )
+        h = np.exp(log_hf)
+        # log(mu w F / (u S)), the ratio of the two terms that cancel
+        ratio = (mu - 1.0) * log_g - ratio_r - p["log_q"]
+        excess = np.where(
+            ratio < 1.0,
+            u * np.expm1(np.minimum(ratio, 1.0)),
+            np.exp(p["log_u"] + np.maximum(ratio, 1.0)) - u,
+        )
+        d_l = (mu - 1.0) * p["w"] + 1.0 + excess
+        d_mu = -np.expm1(-ratio_r) / mu
+        d_t, d_p = self._chain(p, t, beta, d_l, d_mu, 1.0)
+        return h, h * d_t, [h * d for d in d_p]
+
+
+class _LocationScaleDerivatives:
+    """The ``log S``, ``log f`` and hazard of a location-scale lifetime
+    on the whole line, as ``WeibullDerivatives`` gives the Weibull's:
+    each a function of ``z = (t - mu) / sigma``, from the standard
+    distribution's slopes (``_slopes``). The values are the
+    distribution's own (``dist``)."""
+
+    #: A lifetime on the whole line: its log S at 0 is not 0, and an age
+    #: of 0 is inside the terms' domain (``VirtualAgeLikelihood``).
+    real_line = True
+    dist: Any = None
+
+    @staticmethod
+    def _slopes(z: np.ndarray) -> tuple:
+        """``d log S / dz``, ``d log f / dz`` and ``d log h / dz`` of the
+        standard distribution."""
+        raise NotImplementedError
+
+    def log_sf(self, t: np.ndarray, params: Any) -> tuple:
+        mu, sigma = params
+        z = (t - mu) / sigma
+        slope = self._slopes(z)[0] / sigma
+        value = self.dist.log_sf(t, mu, sigma)
+        return value, slope, [-slope, -z * slope]
+
+    def log_end(self, t: np.ndarray, params: Any, failed: np.ndarray) -> tuple:
+        mu, sigma = params
+        z = (t - mu) / sigma
+        sf_z, df_z, _ = self._slopes(z)
+        slope = np.where(failed, df_z, sf_z) / sigma
+        value = np.where(
+            failed,
+            self.dist.log_df(t, mu, sigma),
+            self.dist.log_sf(t, mu, sigma),
+        )
+        d_sigma = -z * slope - np.where(failed, 1.0 / sigma, 0.0)
+        return value, slope, [-slope, d_sigma]
+
+    def hf(self, t: np.ndarray, params: Any) -> tuple:
+        mu, sigma = params
+        z = (t - mu) / sigma
+        h = self.dist.hf(t, mu, sigma)
+        slope = h * self._slopes(z)[2] / sigma
+        return h, slope, [-slope, -z * slope - h / sigma]
+
+
+class NormalDerivatives(_LocationScaleDerivatives):
+    """The Normal's (``_LocationScaleDerivatives``)."""
+
+    dist = Normal
+
+    @staticmethod
+    def _slopes(z: np.ndarray) -> tuple:
+        # The normal hazard at z, phi(z) / Phi(-z), and its excess over z
+        # (the slope of its log), accurate far into the tail
+        # (``LogNormalDerivatives``)
+        mills = ratio_raw(-z)
+        return -mills, -z, gap_raw(-z)
+
+
+class GumbelDerivatives(_LocationScaleDerivatives):
+    """The Gumbel's (``_LocationScaleDerivatives``): ``log S = -e**z``,
+    ``log f = z - e**z``, ``h = e**z / sigma``."""
+
+    dist = Gumbel
+
+    @staticmethod
+    def _slopes(z: np.ndarray) -> tuple:
+        H = np.exp(z)
+        return -H, 1.0 - H, np.ones_like(z)
+
+
+class LogisticDerivatives(_LocationScaleDerivatives):
+    """The Logistic's (``_LocationScaleDerivatives``): ``d log S / dz =
+    -F``, ``d log f / dz = S - F``, ``h = F / sigma``."""
+
+    dist = Logistic
+
+    @staticmethod
+    def _slopes(z: np.ndarray) -> tuple:
+        F, S = expit(z), expit(-z)
+        return -F, S - F, S
 
 
 def _upper_gamma_series(a: float, y: np.ndarray) -> tuple:
@@ -462,8 +676,8 @@ class CoxLewisDerivatives:
 def lifetime_derivatives(dist: Any) -> "Any | None":
     """The hand-written derivatives of the lifetime ``dist``, or ``None``
     where there are none (exactly the package's own Weibull, LogNormal,
-    Gamma, LogLogistic, Exponential and Rayleigh: a subclass may define
-    its functions differently)."""
+    Gamma, LogLogistic, Exponential, Rayleigh, ExpoWeibull, Normal, Gumbel
+    and Logistic: a subclass may define its functions differently)."""
     for life, terms in (
         (Weibull, WeibullDerivatives),
         (LogNormal, LogNormalDerivatives),
@@ -471,6 +685,10 @@ def lifetime_derivatives(dist: Any) -> "Any | None":
         (LogLogistic, LogLogisticDerivatives),
         (Exponential, ExponentialDerivatives),
         (Rayleigh, RayleighDerivatives),
+        (ExpoWeibull, ExpoWeibullDerivatives),
+        (Normal, NormalDerivatives),
+        (Gumbel, GumbelDerivatives),
+        (Logistic, LogisticDerivatives),
     ):
         if type(dist) is type(life):
             return terms()

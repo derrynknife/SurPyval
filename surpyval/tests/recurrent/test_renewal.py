@@ -514,10 +514,10 @@ def test_728_search_map_is_the_fits_map():
 
 def test_728_gradient_search_where_written_and_bounds_reached():
     # BFGS on the hand-written gradient for a Weibull life; Nelder-Mead,
-    # as before, where there is none (an exponentiated Weibull life, #746
-    # gave the Gamma one). The search still carries a restoration
-    # parameter onto its bound: perfect repair.
-    from surpyval import ExpoWeibull, Gamma, Weibull
+    # as before, where there is none (a GumbelLEV life; #746 gave the
+    # Gamma one, #760 the ExpoWeibull and Normal ones). The search still
+    # carries a restoration parameter onto its bound: perfect repair.
+    from surpyval import ExpoWeibull, Gamma, GumbelLEV, Normal, Weibull
     from surpyval.recurrent.renewal._search import (
         GradientSearch,
         SimplexSearch,
@@ -525,15 +525,15 @@ def test_728_gradient_search_where_written_and_bounds_reached():
     )
 
     data = _fleet_data()
-    bounds = [(0, None), *Weibull.bounds]
-    for life in (Weibull, Gamma):
+    for life in (Weibull, Gamma, ExpoWeibull, Normal):
         neg_ll = GeneralizedRenewal.create_negll_func(data, life)
+        bounds = [(0, None), *life.bounds]
         assert isinstance(
             renewal_search(neg_ll, bounds, 1.0, None), GradientSearch
         )
-    expo = GeneralizedRenewal.create_negll_func(data, ExpoWeibull)
-    bounds = [(0, None), *ExpoWeibull.bounds]
-    assert isinstance(renewal_search(expo, bounds, 1.0, None), SimplexSearch)
+    lev = GeneralizedRenewal.create_negll_func(data, GumbelLEV)
+    bounds = [(0, None), *GumbelLEV.bounds]
+    assert isinstance(renewal_search(lev, bounds, 1.0, None), SimplexSearch)
 
     x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2])
     i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3])
@@ -596,6 +596,21 @@ def _richardson_gradient(f, p, rel=1e-4):
         (GeneralizedRenewal, "Rayleigh", {"kijima": "ii"}, [40.0, 8.0]),
         (GeneralizedOneRenewal, "Exponential", {}, [0.3, 0.1]),
         (ARI, "HPP", {"m": np.inf}, [0.3, 0.2]),
+        # and the ExpoWeibull, Normal, Gumbel and Logistic (#760)
+        (
+            GeneralizedRenewal,
+            "ExpoWeibull",
+            {"kijima": "i"},
+            [0.4, 10, 2, 1.3],
+        ),
+        (ARA, "ExpoWeibull", {"m": 2}, [0.4, 10.0, 0.7, 3.0]),
+        (GeneralizedOneRenewal, "ExpoWeibull", {}, [0.1, 10.0, 2.0, 1.3]),
+        (GeneralizedRenewal, "Normal", {"kijima": "i"}, [0.4, 9.0, 5.0]),
+        (ARA, "Normal", {"m": np.inf}, [0.7, 9.0, 5.0]),
+        (GeneralizedRenewal, "Gumbel", {"kijima": "i"}, [0.4, 9.0, 7.0]),
+        (ARA, "Gumbel", {"m": 1}, [0.3, 9.0, 7.0]),
+        (GeneralizedRenewal, "Logistic", {"kijima": "ii"}, [1.7, 9.0, 3.0]),
+        (ARA, "Logistic", {"m": 2}, [0.4, 9.0, 3.0]),
     ],
 )
 def test_746_hand_written_gradients(fitter, life, kw, params, one_item):
@@ -737,3 +752,72 @@ def test_746_cox_lewis_beta_in_its_own_units():
     assert model.maximum == "verified"
     assert model.rho < 1e-10
     assert model.log_likelihood == pytest.approx(-2329.17357703663, abs=1e-6)
+
+
+@pytest.mark.parametrize(
+    "kind, point, expected",
+    [
+        # (value, d/dt, d/dalpha, d/dbeta, d/dmu), mpmath to 500 digits.
+        # The hazard where u = (t / alpha)**beta is 36 and 900: its log
+        # is log f - log S, whose terms in u (and in mu) cancel there.
+        (
+            "hf",
+            (60.0, 10.0, 2.0, 3.0),
+            [
+                1.2,
+                0.0200000000000003,
+                -0.240000000000002,
+                2.75011136307368,
+                -1.4e-16,
+            ],
+        ),
+        ("hf", (300.0, 10.0, 2.0, 0.3), [6.0, 0.02, -1.2, 23.40718428997, 0]),
+        (
+            "log_sf",
+            (300.0, 10.0, 2.0, 0.3),
+            [-901.203972804326, -6.0, 180.0, -3061.07764349594, 10 / 3],
+        ),
+        (
+            "log_sf",
+            (1e5, 10.0, 0.7, 0.4),
+            [
+                -631.873635212067,
+                -0.00441670141136135,
+                44.1670141136135,
+                -5811.33190286081,
+                2.5,
+            ],
+        ),
+        (
+            "log_df",
+            (1e5, 10.0, 0.7, 0.4),
+            [
+                -637.295997360593,
+                -0.00441970141136135,
+                44.0970141136135,
+                -5800.69299106026,
+                2.5,
+            ],
+        ),
+    ],
+)
+def test_760_expo_weibull_derivatives_in_the_tail(kind, point, expected):
+    # The ExpoWeibull's hand-written derivatives (#760) against mpmath's,
+    # far into the right tail where the hazard's own terms cancel.
+    from surpyval.recurrent.renewal._derivatives import (
+        ExpoWeibullDerivatives,
+    )
+
+    t, *params = point
+    terms = ExpoWeibullDerivatives()
+    tt = np.array([t])
+    if kind == "hf":
+        value, d_t, d_p = terms.hf(tt, params)
+    elif kind == "log_sf":
+        value, d_t, d_p = terms.log_sf(tt, params)
+    else:
+        value, d_t, d_p = terms.log_end(tt, params, np.array([True]))
+    got = [value[0], d_t[0], *(d[0] for d in d_p)]
+    # d/dmu of the hazard is below 1e-15 of it: absolute
+    np.testing.assert_allclose(got[:4], expected[:4], rtol=1e-12)
+    assert got[4] == pytest.approx(expected[4], rel=1e-12, abs=1e-15)
