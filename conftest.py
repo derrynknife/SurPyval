@@ -21,8 +21,9 @@ none guards a regression that the default run would miss quickly:
     The simulation studies under ``surpyval/tests/calibration``: coverage
     of confidence intervals, test size and power, estimator bias. They
     check that the answers are statistically right rather than that the
-    code runs, take ten to twenty minutes on four cores, and run nightly
-    (.github/workflows/nightly.yml), not on pull requests. A test
+    code runs, take ten to twenty minutes on four cores, and run in the
+    release pull request's full run (on 3.12) and when asked for with
+    ``--run-calibration``. A test
     elsewhere joins them by carrying the ``calibration`` mark: the
     likelihood-ratio option sweeps of the slow families
     (conformance/registry.py, ``Bound.nightly``).
@@ -35,13 +36,15 @@ none guards a regression that the default run would miss quickly:
     card checks that the package recovers the truth and answers the
     study's questions; what it cannot yet answer is a strict xfail led
     by its issue. Seconds in all, but end to end rather than unit by
-    unit; they run in the nightly workflow.
+    unit; they run in the release pull request's full run (on 3.12) and
+    when asked for with ``--run-scenarios``.
 
-Continuous integration passes ``--run-ml`` only, so its coverage is
-unchanged. The invariant sweep is deliberately *not* run there: it is a
-net for exploring, cast deliberately when the fitting paths are being
-worked on, and three and a half minutes on every pull request across
-three Python versions buys little when its assertions hold. Run it
+Continuous integration passes ``--run-ml`` everywhere, and
+``--run-calibration`` and ``--run-scenarios`` on 3.12. The invariant
+sweep is deliberately *not* run there: it is a net for exploring, cast
+deliberately when the fitting paths are being worked on, and three and a
+half minutes across three Python versions buys little when its
+assertions hold. Run it
 locally after touching a likelihood, an initialiser or an optimiser.
 
 Marks are applied by path so the test modules themselves stay free of
@@ -59,6 +62,9 @@ the run dies on "unrecognized arguments".
 """
 
 import doctest
+import zlib
+
+import pytest
 
 # ---------------------------------------------------------------------------
 # Numeric comparison for the ``--doctest-modules`` run
@@ -121,6 +127,16 @@ def pytest_addoption(parser):
             help=f"run the {description} (skipped by default)",
         )
     parser.addoption(
+        "--shard",
+        default=None,
+        metavar="K/N",
+        help=(
+            "run only the K-th of N parts of the collected tests (1-based), "
+            "chosen by a hash of each test's id; CI splits each "
+            "interpreter's run into parts that run at once"
+        ),
+    )
+    parser.addoption(
         "--doctest-force-numeric",
         action="store_true",
         default=False,
@@ -135,6 +151,32 @@ def pytest_addoption(parser):
 def pytest_configure(config):
     if config.getoption("--doctest-force-numeric"):
         doctest.OutputChecker.check_output = _forced_check_output
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_collection_modifyitems(config, items):
+    """``--shard K/N``: keep the tests whose id hashes to part K of N.
+
+    The hash (CRC-32 of the test id) is the same in every process, so the
+    xdist workers and the controller agree on the part, and every test
+    falls in exactly one part. Parametrised cases of one test land in
+    different parts, which spreads the heavy families of cases."""
+    shard = config.getoption("--shard")
+    if not shard:
+        return
+    try:
+        k, n = (int(v) for v in shard.split("/"))
+    except ValueError:
+        raise pytest.UsageError(f"--shard takes K/N, not {shard!r}")
+    if not 1 <= k <= n:
+        raise pytest.UsageError(f"--shard {shard}: K must be in 1..N")
+    keep, drop = [], []
+    for item in items:
+        part = zlib.crc32(item.nodeid.encode()) % n
+        (keep if part == k - 1 else drop).append(item)
+    if drop:
+        config.hook.pytest_deselected(items=drop)
+        items[:] = keep
 
 
 # ``surpyval/utils/score.py`` raises on import, to say where its function

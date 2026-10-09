@@ -10,8 +10,9 @@ estimator accepts arbitrary combinations of observed, censored, and truncated
 data** through one consistent input convention (the "xcnt" data model). Fit a
 model, then call `sf`/`ff`/`hf`/`Hf`/`df`/`qf` on it.
 
-This skill describes SurPyval 0.22. Check the installed version with
-`surpyval.__version__`; the notes marked **0.22** differ from 0.21 and earlier.
+This skill describes SurPyval 0.24. Check the installed version with
+`surpyval.__version__`; a note marked **0.22**, **0.23** or **0.24** says the
+release whose behaviour it describes, which earlier versions do not share.
 Import as `import surpyval` (commonly `import surpyval as sp`). Every code
 block below runs as written (`surpyval/tests/test_skill.py` executes them).
 
@@ -48,7 +49,7 @@ always `random_state`, bootstrap sizes `n_boot`, times `x` and probabilities
 AIC (or `metric="bic"`, `"aic_c"`, `"neg_ll"`). **0.23:** a mixture is a
 candidate when named, `include=["Weibull", sp.MixtureModel(sp.Weibull, 2)]`.
 Every model with `covariance()` has `standard_errors()`, an array (`se` is
-deprecated; the frailty models' dict became an array).
+removed in 0.24; the frailty models' dict became an array).
 
 A model built from parameters needs no data: `sp.Weibull.from_params([10, 3])`.
 Its `plot()` draws the CDF alone, handy for comparing a spec with a fit.
@@ -117,8 +118,8 @@ suffix (`_cols` for a list): `sp.Weibull.fit_from_df(df, x_col="t",
 c_col="c")`, and `x_col`, `c_col`, `n_col`, `xl_col`, `xr_col`, `tl_col`,
 `tr_col`, `i_col`, `e_col` elsewhere. The regression fitters take `x_col`,
 `c_col` and `Z_cols` or a `formula=` that codes categorical columns
-(`CoxPH.fit_tvc_from_df` too). The v0.21 names `x=`, `c=`, ... still work
-until v0.23, with a `DeprecationWarning`.
+(`CoxPH.fit_tvc_from_df` too). The v0.21 names `x=`, `c=`, ... were removed in
+v0.23 and raise a `TypeError` naming the new one.
 
 ## The xicn data model (recurrent events)
 
@@ -169,7 +170,7 @@ Renewal / imperfect-repair models: `GeneralizedRenewal`,
 `GeneralizedOneRenewal` and `ARA` take a **lifetime distribution** as `dist`
 (`dist=sp.Weibull`), while `ARI` takes a **baseline intensity model** as
 `baseline` (`baseline=CrowAMSAA`, `Duane`, `CoxLewis`; its old name `dist=`
-warns until v0.23); each refuses the other kind with an error naming the
+was removed in v0.23); each refuses the other kind with an error naming the
 right fitter. Their `params` is the repair parameter (`q` or
 `rho`) followed by the distribution's parameters, named by `parameter_names`.
 
@@ -236,8 +237,8 @@ silently wrong numbers, not errors.
   `lfp=True` for a cure fraction (a subpopulation that never fails), `zi=True` for
   dead-on-arrival mass at zero. **0.23:** the fitted cure-model proportion that
   ever fails is `model.lfp_p` (also `fixed={"lfp_p": ...}`,
-  `from_params(..., lfp_p=...)`, `param_cb("lfp_p")`); the old `p` spellings
-  warn.
+  `from_params(..., lfp_p=...)`, `param_cb("lfp_p")`); **0.24:** the old `p`
+  spellings raise.
 
 **Which regression form:**
 

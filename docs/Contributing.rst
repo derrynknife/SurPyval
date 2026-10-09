@@ -48,15 +48,14 @@ changing a likelihood, an initial guess or an optimiser.
 ``--run-scenarios`` runs the practitioner scenario cards (see below).
 ``--run-calibration`` runs the statistical calibration studies (confidence
 interval coverage, test size and power, estimator bias; about 20 minutes on
-four cores), which can also be run against ``develop`` by hand from
-``.github/workflows/nightly.yml`` (Actions tab). They include ``test_refit_registry.py``,
-which draws data from every model in the conformance registry that can
+four cores), which the release pull request's full run also runs, on
+3.12. They include ``test_refit_registry.py``, which draws data from every model in the conformance registry that can
 simulate from itself and checks that the refits recover it (#397); a newly
 registered model must be added to its ``PLANS`` or ``EXCLUDED``.
 The property-based tests in ``surpyval/tests/properties`` run a short
 derandomized search by default (under a minute);
-``SURPYVAL_HYPOTHESIS_PROFILE=nightly`` makes it thorough, as the
-by-hand ``nightly`` run does. When one finds a failure, it prints a minimal example: pin it in
+``SURPYVAL_HYPOTHESIS_PROFILE=nightly`` makes it thorough (400 examples a
+test). When one finds a failure, it prints a minimal example: pin it in
 ``surpyval/tests/properties/test_known_failures.py`` with the issue number.
 
 Describe any change a user would notice in ``docs/changelog.rst``, under the
@@ -216,9 +215,8 @@ on the demonstrated MTBF of a growth test, a B10 by operating condition,
 a forecast from each unit's own repair history, among others; #570-#583.
 Each is now answered, and checked, through the API its fix chose.)
 
-The cards take seconds with ``--run-scenarios``. No pull-request or
-release run passes it: run them when changing what a card uses, and the
-by-hand ``nightly`` workflow runs them against ``develop``. Add a card
+The cards take seconds with ``--run-scenarios``, and the release pull
+request's full run runs them on 3.12. Add a card
 for a kind of study the package claims to support but no card covers;
 its first run is a practitioner review of that part of the package, and
 the issues it files become its xfails.
@@ -349,9 +347,9 @@ next minor number. A name deprecated in one release is removed in the next
 (``REMOVED_IN`` in ``surpyval/utils/deprecation.py``), and a test fails once
 the version reaches it while the old names are still accepted.
 
-Continuous integration (``.github/workflows/actions.yml``) therefore runs on
-**pull requests into develop or master** and on **pushes to master**, rather
-than on every push to every branch. Not every job runs on every event:
+Continuous integration (``.github/workflows/actions.yml``) therefore runs
+once, on the **pull request into master** (the release), and on nothing
+else: not on pull requests into ``develop`` and not on pushes to any branch.
 
 .. list-table::
    :header-rows: 1
@@ -360,23 +358,29 @@ than on every push to every branch. Not every job runs on every event:
    * - Event
      - Jobs
    * - Pull request into ``develop``
-     - lint (about a minute)
+     - none
    * - Pull request into ``master`` (the release)
-     - lint
-   * - Push to ``master`` (the release merge)
      - lint, the conformance suite, the test suite across three
-       interpreters (with the docstring examples and coverage), and the
-       documentation build; Read the Docs rebuilds the hosted documentation
+       interpreters (each split into four parts that run at once, with
+       the docstring examples; 3.12 adds the calibration studies, the
+       scenario cards and coverage), the wheel check and the
+       documentation build
+   * - Merge into ``master``
+     - none in this repository; Read the Docs rebuilds the hosted
+       documentation
    * - Push of a ``v*`` tag
-     - ``.github/workflows/publish.yml`` checks that the tag matches the
-       version in ``pyproject.toml``, builds the package and publishes it
-       to PyPI; Read the Docs builds the tagged documentation
+     - ``.github/workflows/publish.yml`` checks that the tagged commit is
+       the merge of a pull request into ``master`` whose full run passed
+       (every job), and that the tag matches the version in
+       ``pyproject.toml``; it then builds the package and publishes it to
+       PyPI. It runs no tests of its own. Read the Docs builds the tagged
+       documentation
 
-The full test suite and the documentation build run once, when a release is
-merged into ``master``, and nowhere else. Waiting on them at every step made a
-release take hours, and nearly every run confirmed what the tests for the
-change had already shown. A failure the merge run finds is fixed in a point
-release.
+The full test suite and the documentation build run once per release, on the
+release pull request. That run tests the pull request's merge result, so a
+failure is found before ``master`` changes: fix it on ``develop`` (the
+pull request picks the fix up) and merge the release when the run is green.
+Waiting on the full suite at every step made a release take hours.
 
 Every change is tested locally by the tests for what it changed, before it is
 pushed:
