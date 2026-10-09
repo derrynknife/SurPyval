@@ -791,11 +791,12 @@ intensity for ARI. SurPyval maximises these jointly over the repair parameter
 and the lifetime (or baseline intensity) parameters, restarting the optimiser
 from several values of the repair parameter because the likelihood surface can
 have more than one local optimum. Each search is BFGS on the likelihood's
-gradient, written by hand for a Weibull or LogNormal life and a power-law or
-Duane baseline (Nelder-Mead finishes a search BFGS does not settle, and
-carries a repair parameter that stopped next to its bound onto it); with any
-other life or baseline it is Nelder-Mead. The repair parameter is reported as
-``q`` (Kijima, G1) or ``rho`` (ARA, ARI).
+gradient, written by hand for a Weibull, LogNormal, Gamma, LogLogistic,
+Exponential or Rayleigh life and a power-law, Duane, Cox-Lewis or HPP baseline
+(Nelder-Mead finishes a search BFGS does not settle, and carries a repair
+parameter that stopped next to its bound onto it); with any other life it is
+Nelder-Mead. The repair parameter is reported as ``q`` (Kijima, G1) or
+``rho`` (ARA, ARI).
 
 Uncertainty: standard errors and confidence bounds
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

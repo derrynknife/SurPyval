@@ -89,6 +89,10 @@ class GradientSearch:
     ``neg_ll`` is the negative log-likelihood of the natural parameters,
     ``bounds`` their natural bounds (restoration parameter first) and
     ``n_obs`` BIC's sample size, the units of BFGS's convergence test.
+    ``neg_ll.search_floor``, where the likelihood has one, is the
+    smallest unit of each search coordinate (``preconditioned_bfgs``'s
+    ``floor``; 1 otherwise): a Cox-Lewis ``beta``'s is one over the
+    longest time, a rate per unit time searched as itself.
     """
 
     #: BFGS's iterations from a start; a regular maximum takes 15 to 50.
@@ -99,6 +103,7 @@ class GradientSearch:
         self.hand = neg_ll.value_and_grad  # type: ignore[attr-defined]
         self.to_natural = SearchMap(bounds)
         self.n_obs = n_obs
+        self.floor = getattr(neg_ll, "search_floor", 1.0)
         # One object, so that preconditioned_bfgs sees it is the
         # gradient of its function, and takes both from one pass
         self.gradient = _GivenGradient(self.value, self.value_and_grad)
@@ -135,6 +140,7 @@ class GradientSearch:
                 (),
                 self.gradient,
                 options={"maxiter": self.MAX_ITERATIONS},
+                floor=self.floor,
                 obj_scale=self.n_obs,
             )
         found.usable = bool(
@@ -228,9 +234,10 @@ def renewal_search(
     """The search for the likelihood ``neg_ll`` of parameters with the
     natural ``bounds``, in the space ``inv_trans`` maps to them
     (``bounds_convert``'s): ``GradientSearch`` where ``neg_ll`` has a
-    hand-written gradient (a Weibull or LogNormal life, a power-law or
-    Duane baseline), and ``SimplexSearch`` otherwise (a Gamma life, a
-    Cox-Lewis baseline)."""
+    hand-written gradient (a Weibull, LogNormal, Gamma, LogLogistic,
+    Exponential or Rayleigh life; a power-law, Duane, Cox-Lewis or HPP
+    baseline), and ``SimplexSearch`` otherwise (any other life, such as
+    the ExpoWeibull or Normal)."""
     if getattr(neg_ll, "value_and_grad", None) is not None:
         return GradientSearch(neg_ll, bounds, n_obs)
     return SimplexSearch(neg_ll, inv_trans)

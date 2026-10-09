@@ -87,6 +87,47 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
         return out
 
     @staticmethod
+    def _in_units(neg_ll: Callable, bounds: list) -> "tuple | None":
+        """``(neg_ll in units, units)``: the likelihood of the parameters
+        divided by their ``units`` (``neg_ll.search_floor``'s, for the
+        parameters searched as themselves), where some unit is not 1, for
+        the checks and the polish, whose units are 1 (``verified_maximum``
+        differences them in steps of 1e-7 of that). A Cox-Lewis ``beta``,
+        a rate per unit time, is 1e-4 on data in thousands of hours,
+        where such a step is 0.1% of it and its slope was read to 0.3,
+        and whether a fit was a verified maximum was a matter of luck
+        (#746). ``None`` where every unit is 1."""
+        floor = getattr(neg_ll, "search_floor", None)
+        if floor is None:
+            return None
+        units = np.array(
+            [
+                unit if low is None and high is None else 1.0
+                for unit, (low, high) in zip(floor, bounds)
+            ],
+            dtype=float,
+        )
+        if np.all(units == 1.0):
+            return None
+
+        def in_units(params: Any) -> Any:
+            return neg_ll(params * units)
+
+        return in_units, units
+
+    @staticmethod
+    def _verified_maximum(
+        neg_ll: Callable, params: np.ndarray, bounds: list, n_obs: float
+    ) -> bool:
+        """``verified_maximum``, in the parameters' units
+        (``_in_units``)."""
+        scaled = RenewalFitMixin._in_units(neg_ll, bounds)
+        if scaled is not None:
+            neg_ll, units = scaled
+            params = np.asarray(params, dtype=float) / units
+        return verified_maximum(neg_ll, params, bounds, n_obs)
+
+    @staticmethod
     def _polish_unverified(
         neg_ll: Callable, params: np.ndarray, bounds: list, n_obs: float
     ) -> np.ndarray:
@@ -107,6 +148,12 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
         x = np.asarray(params, dtype=float)
         if not np.all(np.isfinite(x)):
             return x
+        scaled = RenewalFitMixin._in_units(neg_ll, bounds)
+        if scaled is not None:
+            in_units, units = scaled
+            return units * RenewalFitMixin._polish_unverified(
+                in_units, x / units, bounds, n_obs
+            )
         if verified_maximum(neg_ll, x, bounds, n_obs):
             return x
         to_natural, to_search = unconstraining_maps(list(bounds))
@@ -418,7 +465,7 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
         # The multi-start search's answer is accepted only as a
         # verified maximum (principle 13): a restoration parameter on its
         # bound held out where the likelihood is highest there.
-        if verified_maximum(
+        if self._verified_maximum(
             neg_ll,
             model._mle,
             model._parameter_bounds(),
