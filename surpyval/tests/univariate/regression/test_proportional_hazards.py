@@ -1305,6 +1305,47 @@ def test_551_information_operator_is_the_generators(ties, seed):
     )
 
 
+@pytest.mark.parametrize("ties", ["efron", "breslow"])
+@pytest.mark.parametrize("seed", [1, 4])
+def test_760_information_operator_far_out(ties, seed):
+    # At a run-off linear predictor exp(eta) and 1 / R^2 overflowed and
+    # the operator was nan, with numpy's warnings; it now scales each risk
+    # set's sums by the set's own total, as the generators do (#760). Its
+    # products with group indicators too (CoxFrailty's frailty block).
+    from surpyval.univariate.regression.proportional_hazards import (
+        cox_likelihood as cl,
+    )
+
+    rng = np.random.default_rng(seed)
+    N, p = 120, 2
+    Z = rng.normal(size=(N, p))
+    groups = np.eye(4)[rng.integers(0, 4, N)]
+    x = np.ceil(rng.exponential(1, N) * 4) / 4
+    c = (rng.uniform(size=N) < 0.3).astype(int)
+    n = rng.integers(1, 4, N).astype(float)
+    tl = np.where(rng.uniform(size=N) < 0.5, -np.inf, 0.5 * x)
+    if seed == 1:
+        tl = np.full(N, -np.inf)
+    X = np.column_stack([Z, groups])
+    _, jac_hess = CoxPH._resolve_func_generator(ties)(x, X, c, n, tl)
+    for scale in [0.5, 1e3, 1e5]:
+        beta = rng.normal(size=p) * scale
+        eta = Z @ beta
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            info = cl.CoxInformation(x, c, n, eta, ties, tl=tl)
+            got = X.T @ info.apply(X)
+        assert info.logs == (scale > 1)
+        want = jac_hess(np.r_[beta, np.zeros(4)])[1]
+        # The linear predictor itself is rounded by |eta| eps
+        atol = 1e-14 * max(np.abs(eta).max(), 1.0) * n.sum()
+        np.testing.assert_allclose(got, want, rtol=1e-12, atol=atol)
+        # One column as a vector
+        np.testing.assert_allclose(
+            info.apply(X[:, 0]), info.apply(X)[:, 0], rtol=0, atol=0
+        )
+
+
 def test_593_parametric_ph_fit_evaluates_each_point_once(monkeypatch):
     # The search used to evaluate the likelihood plainly at each point
     # and again in the gradient's autograd pass (13 such points here);

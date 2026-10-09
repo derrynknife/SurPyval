@@ -159,6 +159,11 @@ Unreleased
 
 **Fixed**
 
+- ``CoxInformation``, CoxFrailty's information operator, holds at a
+  run-off linear predictor (#760): ``exp(eta)`` and ``1 / R^2``
+  overflowed and it was nan. Where the Cox generators take their score
+  and information in logs, it now scales each risk set's sums by the
+  set's own total too; elsewhere it is unchanged to the bit.
 - CoxPH's baseline is quiet and right at a run-off ``beta`` (#760):
   ``exp(beta'Z)`` overflowed, with numpy's RuntimeWarning, and the
   increments were 0. Past ``|beta'Z| = 300``, or where the units yet to
