@@ -7,6 +7,9 @@ tests exercise parameter recovery *under censoring* -- the regime where a
 naive (unweighted) subdistribution risk set would be biased.
 """
 
+import warnings
+from unittest import mock
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -16,6 +19,7 @@ from surpyval.univariate.competing_risks import (
     CompetingRisksProportionalHazards,
     FineGray,
 )
+from surpyval.univariate.competing_risks.regression import fine_gray
 
 
 def _simulate_fine_gray(N, seed, beta=(0.7, -0.4), p=0.5, cens_scale=3.0):
@@ -308,3 +312,73 @@ def test_656_fine_gray_names_params_and_summary():
     # An array Z names them coef_j, as the other regression models (#614)
     array = FineGray.fit(x, Z, e, event="a")
     assert array.parameter_names == ["coef_0", "coef_1"]
+
+
+# Events of interest (cause "a") that 0.25 z0 - z1 separates from the rest
+# of their subdistribution risk sets -- the competing failures, at risk to
+# the end, and the censored row -- with neither column alone (#746)
+_COMBINATION = (
+    np.array([2, 1, 1.5, 0.5, 0.5, 2, 0.3, 0.3, 2.5]),
+    np.array(
+        [
+            [0, 1.5],
+            [0.5, 1],
+            [-1.5, 1],
+            [2, -1],
+            [0, -1.5],
+            [0, 1.5],
+            [0, 2.0],
+            [-2, 1.5],
+            [0, 1.6],
+        ]
+    ),
+    np.array(["a"] * 6 + ["b", "b", None], dtype=object),
+)
+
+
+@pytest.mark.parametrize("order", [np.arange(9), np.arange(9)[::-1]])
+def test_746_fine_gray_finds_a_run_off_along_a_combination(order):
+    # The judge of each coefficient's own profile saw none, and the fit
+    # raised "SVD did not converge" on its nan Hessian; the data decide,
+    # with CoxPH's exact test on the subdistribution risk sets
+    x, Z, e = (a[order] for a in _COMBINATION)
+    with pytest.warns(UserWarning, match="proportion 0.25 : -1") as w:
+        model = FineGray.fit(x, Z, e, event="a", center=True)
+    assert len(w) == 1
+    assert model.maximum == "no finite maximum"
+    assert np.isnan(model.standard_errors()).all()
+
+
+def test_746_fine_gray_competing_failures_stay_at_risk():
+    # A competing failure at 0.3 with 0.25 z0 - z1 above the events at 1,
+    # 1.5 and 2: it stays in their subdistribution risk sets (it would not
+    # in a cause-specific one), so the events are not separated and the
+    # maximum is finite.
+    x, Z, e = _COMBINATION
+    Z = Z.copy()
+    Z[6] = [0.0, -2.0]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = FineGray.fit(x, Z, e, event="a", center=True)
+    assert model.maximum == "verified"
+
+
+def test_746_an_ordinary_fine_gray_fit_does_not_look_for_a_run_off():
+    # The data are asked only when the search gives cause, as for CoxPH
+    x, Z, e, c = _simulate_fine_gray(400, 1)
+    with mock.patch.object(
+        fine_gray, "runoff_direction", side_effect=AssertionError
+    ):
+        model = FineGray.fit(x, Z, e, c=c, event=1)
+    assert model.maximum == "verified"
+
+
+def test_746_every_coefficient_aliased_is_fitted():
+    # A constant column alone raised "need at least one array to stack"
+    # (autograd's Hessian in no coefficients); it is aliased, and nan
+    x = np.arange(1.0, 9)
+    e = np.array(["a", "b", "a", "a", "b", "a", None, "a"], dtype=object)
+    with pytest.warns(UserWarning, match="cannot be estimated"):
+        model = FineGray.fit(x, np.ones((8, 1)), e, event="a")
+    assert np.isnan(model.beta).all()
+    assert np.isnan(model.standard_errors()).all()

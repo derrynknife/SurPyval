@@ -63,6 +63,7 @@ from surpyval.univariate.competing_risks.labels import (
     ordered_labels,
 )
 from surpyval.univariate.information_criteria import InformationCriteriaMixin
+from surpyval.univariate.parametric.fitters import is_local_minimum
 from surpyval.univariate.regression._aliasing import (
     aliased_columns,
     constant_columns,
@@ -85,6 +86,12 @@ from surpyval.univariate.regression.proportional_hazards.cox_likelihood import (
 )
 from surpyval.univariate.regression.proportional_hazards.cox_ph import (
     warn_monotone,
+)
+from surpyval.univariate.regression.proportional_hazards.cox_separation import (  # noqa: E501
+    FAR,
+    information_collapsed,
+    newton_converged,
+    runoff_direction,
 )
 from surpyval.univariate.regression.regression_data import (
     LinearPredictorMixin,
@@ -304,44 +311,72 @@ def _fit_cause(
                 score0,
                 information0,
             )
+        converged = res is not None and newton_converged(res)
         if res is None:
             res = minimize(value_and_gradient, beta0, jac=True, method="BFGS")
-        # A covariate that separates the events of interest from the rest
-        # (a level with none of them) drives its coefficient to infinity;
-        # BFGS stops where the rise is below its tolerance and reports
-        # success (-12.9 on such data). Newton's method cannot converge
-        # from there, which is what the check finds (#392). Otherwise the
-        # answer must be a verified maximum, polished if it is not (BFGS's
-        # absolute tolerance on the gradient is not scale free), each
-        # coefficient in its own covariate's units (#577).
+        # The answer must be a verified maximum, polished if it is not
+        # (BFGS's absolute tolerance on the gradient is not scale free),
+        # each coefficient in its own covariate's units (#577).
+        floor = coefficient_floor(
+            kept.size, [(k, k) for k in range(kept.size)], Z_sorted[:, kept]
+        )
         verdict = judge_search(
             neg_ll,
             res,
             [(k, int(kept[k])) for k in range(kept.size)],
             beta0,
             float(n_event.sum()),
-            floor=coefficient_floor(
-                kept.size,
-                [(k, k) for k in range(kept.size)],
-                Z_sorted[:, kept],
-            ),
+            floor=floor,
         )
         res, derivatives = verdict.res, verdict.derivatives
-        runaway, maximum = verdict.runaway, verdict.maximum
+        # A covariate, or a combination of them, that separates the events
+        # of interest from the rest of their risk sets (a level with none
+        # of them) drives the coefficients to infinity; BFGS stops where
+        # the rise is below its tolerance and reports success (-12.9 on
+        # such data). Where the search gives cause, the data decide, as
+        # for CoxPH (#746).
+        runoff = _runoff_of_cause(
+            res,
+            verdict.maximum,
+            converged,
+            information0,
+            derivatives,
+            newton_derivatives,
+            Z_sorted[:, kept],
+            float(n_event.sum()),
+            floor,
+            (x, Z[:, kept], is_event, is_competing, n),
+        )
+        off = runoff[0]
+        runaway = [int(kept[k]) for k in off]
+        maximum, proportion = runoff[1], runoff[2]
     else:
         # Every coefficient aliased: nothing to fit.
         res = OptimizeResult(
             x=beta0, fun=float(neg_ll(beta0)), success=True, nit=0
         )
         derivatives, runaway, maximum = None, [], "verified"
+        off, proportion = np.zeros(0, dtype=int), None
     # The negative log-likelihood itself.
     res.fun = float(res.fun) + offset
     beta = res.x
 
     # Standard errors from the inverse observed information, the Hessian
     # the check just took.
-    H = hessian(neg_ll)(beta) if derivatives is None else derivatives[0]
-    cov = safe_inv(H)
+    if derivatives is not None:
+        H = derivatives[0]
+    elif kept.size:
+        H = hessian(neg_ll)(beta)
+    else:
+        # (every coefficient aliased: autograd cannot take a Hessian in
+        # none, and raised "need at least one array to stack")
+        H = np.zeros((0, 0))
+    # Where the coefficients ran off far, the Hessian can be nan, and
+    # inverting it raised "SVD did not converge" (#746)
+    cov = safe_inv(H) if np.all(np.isfinite(H)) else np.full(H.shape, np.nan)
+    # A coefficient running off has no standard error, as in CoxPH (#648)
+    cov[off, :] = np.nan
+    cov[:, off] = np.nan
     var = np.diag(cov)
     with np.errstate(invalid="ignore"):
         se = np.sqrt(np.where(var > 0, var, np.nan))
@@ -384,9 +419,95 @@ def _fit_cause(
         "ic_n": float(n_event.sum()),
         "res": res,
         "runaway": runaway,
+        "runaway_proportion": proportion,
         "maximum": maximum,
         "objective": neg_ll,
     }
+
+
+def _runoff_of_cause(
+    res: Any,
+    maximum: str,
+    converged: bool,
+    info_at_start: npt.NDArray,
+    derivatives: Any,
+    newton_derivatives: Callable,
+    Z_sorted: npt.NDArray,
+    n_events: float,
+    floor: npt.NDArray,
+    data: tuple,
+) -> tuple[npt.NDArray, str, "npt.NDArray | None"]:
+    """The positions of the coefficients that run off, the fit's
+    ``maximum`` and, where they run off together and none alone, their
+    proportion: the exact test CoxPH makes (#728, #746), on the
+    subdistribution risk sets, in place of the parametric judge's verdict
+    on each coefficient (``maximum``, of the answer ``res``).
+
+    The weighted partial likelihood is a Breslow likelihood whose risk set
+    at an event time is every row still under observation and every row
+    that failed from a competing cause before, the latter weighted by
+    ``G(t-) / G(x_i-)``, positive (see :func:`_fit_cause`). The weights
+    change the size of each term but not where it rises without bound:
+    it is concave, and along a direction ``d`` its term at a time rises
+    to a limit exactly when the events there share the largest ``d'z`` of
+    the rows in its risk set. So it has no finite maximum exactly when the
+    Cox likelihood of the same rows, with each competing failure at risk
+    to the end (censored at infinity), has none, which
+    :func:`runoff_direction` decides from the data.
+
+    It is asked where the search gives cause, as CoxPH asks it: the
+    answer is not verified, or not one Newton-Raphson converged to
+    (``converged``), or a linear predictor (of ``Z_sorted``, centred) is
+    beyond ``FAR`` of the average unit's, or the information (in
+    ``derivatives``, else at ``res.x`` by ``newton_derivatives``) has
+    collapsed against ``info_at_start``. A run-off the judge saw that the
+    data do not have is a search that stopped short: the answer is then
+    verified or not afresh, with the derivatives, ``n_events`` and
+    ``floor`` the judge uses. ``data`` are the rows ``(x, Z, is_event,
+    is_competing, n)``."""
+    with np.errstate(over="ignore", invalid="ignore"):
+        eta = Z_sorted @ np.atleast_1d(res.x)
+        info = (
+            newton_derivatives(res.x)[1]
+            if derivatives is None
+            else derivatives[0]
+        )
+    suspect = (
+        maximum != "verified"
+        or not converged
+        or not np.all(np.abs(eta) <= FAR)
+        or information_collapsed(info, info_at_start)
+    )
+    none = np.zeros(0, dtype=int)
+    if not suspect:
+        return none, maximum, None
+    x, Z, is_event, is_competing, n = data
+    found = runoff_direction(
+        np.where(is_competing, np.inf, x),
+        Z,
+        np.where(is_event, 0, 1),
+        n,
+        np.full(len(x), -np.inf),
+        None,
+        "breslow",
+    )
+    if found is not None:
+        direction, alone = found
+        off = np.flatnonzero(direction)
+        return off, "no finite maximum", None if alone else direction[off]
+    if maximum != "no finite maximum":
+        return none, maximum, None
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        score, info = newton_derivatives(res.x)
+    verified = is_local_minimum(
+        lambda _: 0.0,  # (only the derivatives are read)
+        lambda _: score,
+        lambda _: info,
+        np.atleast_1d(res.x),
+        floor=floor,
+        obj_scale=max(n_events, 1.0),
+    )
+    return none, "verified" if verified else "unverified", None
 
 
 class _RiskSets(NamedTuple):
@@ -532,15 +653,27 @@ def _warn_if_monotone(fits: list) -> str:
     cause where the model has more than one. Then one for the causes whose
     search did not reach a verified maximum. Returns the model's
     ``maximum``, the worst of the causes'."""
-    runaway = [(fit["cause"], fit["runaway"]) for fit in fits]
-    runaway = [(cause, coefs) for cause, coefs in runaway if coefs]
+    runaway = [
+        (fit["cause"], fit["runaway"], fit.get("runaway_proportion"))
+        for fit in fits
+        if fit["runaway"]
+    ]
     if len(fits) == 1 and runaway:
-        warn_monotone(str(runaway[0][1]))
+        warn_monotone(str(runaway[0][1]), runaway[0][2])
     elif runaway:
         warn_monotone(
             " and ".join(
-                "{} (cause {!r})".format(coefs, cause)
-                for cause, coefs in runaway
+                "{} (cause {!r}{})".format(
+                    coefs,
+                    cause,
+                    (
+                        ""
+                        if proportion is None
+                        else ", together in the proportion "
+                        + " : ".join("{:.3g}".format(v) for v in proportion)
+                    ),
+                )
+                for cause, coefs, proportion in runaway
             )
         )
     unverified = [f["cause"] for f in fits if f["maximum"] == "unverified"]
@@ -1048,6 +1181,14 @@ class FineGray_(FitterRepr):
         -------
         FineGrayModel
             The fitted model, with :meth:`~FineGrayModel.cif` prediction.
+            Where a covariate, or a combination of them, separates the
+            events of interest from the rest of their risk sets, the
+            weighted partial likelihood has no finite maximum: the fit
+            warns ("No finite maximum", naming the coefficients and, for
+            a combination, their proportion), ``maximum`` is ``"no finite
+            maximum"`` and those coefficients are meaningless (their
+            standard errors nan). This is decided from the data, as for
+            ``CoxPH``.
 
         Examples
         --------
