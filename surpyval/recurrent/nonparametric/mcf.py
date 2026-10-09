@@ -674,11 +674,13 @@ class NonParametricCounting(
             repeat the row for simultaneous events). Defaults to 1.
         tl : array like or scalar, optional
             Left-truncation (delayed-entry) time of each item: a scalar for
-            every item, or one value per row (the same on every row of an
-            item). An item is
-            observed over ``(tl, T]``: it joins the at-risk set just after
-            ``tl``, so earlier event times are estimated over a smaller
-            risk set, and an event exactly at its ``tl`` is refused.
+            every item, one value per row (the same on every row of an
+            item), or one value per item, in the sorted order of the item
+            ids (``np.unique(i)``; read per row when there are as many rows
+            as items). An item is observed over ``(tl, T]``: it joins the
+            at-risk set just after ``tl``, so earlier event times are
+            estimated over a smaller risk set, and an event exactly at its
+            ``tl`` is refused.
         tr : array like or scalar, optional
             Right-truncation time of each item, given like ``tl``: the end
             of its observation

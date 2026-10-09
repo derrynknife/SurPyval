@@ -92,8 +92,10 @@ Two further arguments describe the observation window. ``tl`` gives a
 left-truncation (delayed entry) time — the item was already in service when
 observation began — and ``tr`` a right-truncation time at which observation
 closed, which is equivalent to a ``c=1`` row at that time. Both may be a
-scalar (every item) or one value per row, constant within an item, and every
-event must fall inside the item's window (the intensity models also accept
+scalar (every item), one value per row, constant within an item, or one value
+per item in the sorted order of the item ids (``np.unique(i)``; with as many
+rows as items the values are read per row), and every event must fall inside
+the item's window (the intensity models also accept
 them together as an ``(N, 2)`` array ``t``). Items observed over several
 disjoint periods use ``windows`` (see `Gapped (multi-window) observation`_).
 The intensity models accept all of these (see `Delayed entry and right
@@ -320,8 +322,8 @@ entry): an item that was already in service before observation began only joins
 the at-risk set once its entry time is passed (it is observed over
 :math:`(t_l, T]`, so an event exactly at its ``tl`` is refused), and events up to
 that entry are estimated over a smaller risk set. Pass the entry time with ``tl``, either as
-a scalar for every item or as one value per row (the same on every row of an
-item):
+a scalar for every item, as one value per row (the same on every row of an
+item) or as one value per item in the sorted order of the item ids:
 
 .. jupyter-execute::
 
