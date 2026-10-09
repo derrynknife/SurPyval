@@ -92,6 +92,14 @@ _TIE_METHODS = ("efron", "breslow")
 _LOG_THETA_BOUNDS = (np.log(1e-6), np.log(100.0))
 _EM_TOL = 1e-12
 _EM_MAX_ITER = 10000
+# Newton on the penalised partial likelihood, EM's fixed point: its steps,
+# and the step-halvings of each.
+_NEWTON_MAX_ITER = 50
+_NEWTON_MAX_HALVINGS = 30
+# Newton stops at a step of this size (rounding), or once it has taken a
+# full step of _NEWTON_LAST_STEP: the error left is then about its square.
+_NEWTON_STEP_TOL = 1e-14
+_NEWTON_LAST_STEP = 1e-8
 # The step, in log theta, of the profile's second difference that gives
 # theta's standard error.
 _CURVATURE_STEP = 0.02
@@ -167,6 +175,9 @@ class _CoxFrailtyEM:
         self.cox_beta = np.zeros(self.p)
         self.not_converged = 0
         self.max_iter = _EM_MAX_ITER
+        # Whether EM is started from Newton's solution (see ``newton``);
+        # off where the partial likelihood has no finite maximum.
+        self.use_newton = True
 
     # -- the M-step: CoxPH with offsets -----------------------------------
 
@@ -278,6 +289,139 @@ class _CoxFrailtyEM:
         A = self.group_hazard(beta, log_u[self.inv])
         return np.log1p(self.D * theta) - np.log1p(A * theta), beta
 
+    # -- Newton on the penalised partial likelihood ------------------------
+
+    def penalised(
+        self, theta: float, beta: npt.NDArray, log_u: npt.NDArray
+    ) -> float:
+        """The penalised partial log-likelihood, ``PL(beta, omega) +
+        sum_g nu (omega_g - exp(omega_g))`` with ``omega = log u``: EM's
+        fixed point is its maximum."""
+        f, _ = self.partial_likelihood(log_u[self.inv])
+        nu = 1.0 / theta
+        return -f(beta) + nu * float(np.sum(log_u - np.exp(log_u)))
+
+    def newton(
+        self, theta: float, beta: npt.NDArray, log_u: npt.NDArray
+    ) -> "tuple[npt.NDArray, npt.NDArray] | None":
+        """The maximum of the penalised partial likelihood in the
+        coefficients and the log-frailties, by Newton's method from
+        ``(beta, log_u)``, or ``None`` where it does not get there.
+
+        The penalised partial likelihood is concave (the partial
+        likelihood is, in its linear predictor, and so is the gamma
+        penalty), and its maximum is EM's fixed point: its gradient in
+        ``omega_g`` is ``D_g - u_g A_g + nu (1 - u_g)``, zero where the
+        E-step leaves ``u_g`` unchanged, and its gradient in ``beta`` is
+        zero where the M-step does. Its information is that of
+        :meth:`beta_covariance`: the coefficient block ``A`` (CoxPH's),
+        the cross block ``B'`` and the frailty block ``C`` (from
+        :class:`CoxInformation`, with ``exp(omega_g) / theta`` on its
+        diagonal). Each step solves ``C^{-1} [B', g_omega]`` by conjugate
+        gradients and the coefficients by the Schur complement, as the
+        covariance does, then halves until the penalised likelihood rises.
+
+        Where EM needs hundreds of steps (each a Cox fit, its baseline and
+        the groups' hazards), Newton needs a handful."""
+        nu = 1.0 / theta
+        p, G = self.p, self.G
+        beta = np.asarray(beta, dtype=float)
+        log_u = np.asarray(log_u, dtype=float)
+        with np.errstate(all="ignore"):
+            value = self.penalised(theta, beta, log_u)
+            if not np.isfinite(value):
+                return None
+            for _ in range(_NEWTON_MAX_ITER):
+                offset = log_u[self.inv]
+                u = np.exp(log_u)
+                A_g = self.group_hazard(beta, offset)
+                g_omega = self.D - u * A_g + nu * (1.0 - u)
+                info = CoxInformation(
+                    self.x,
+                    self.c,
+                    self.w,
+                    self.Z @ beta + offset,
+                    self.tie_method,
+                )
+                penalty = u * nu
+                diag = (
+                    np.bincount(self.inv, weights=info.q, minlength=G)
+                    + penalty
+                )
+
+                def C(y: npt.NDArray) -> npt.NDArray:
+                    My = info.apply(y[self.inv])
+                    out = np.column_stack(
+                        [
+                            np.bincount(
+                                self.inv, weights=My[:, j], minlength=G
+                            )
+                            for j in range(y.shape[1])
+                        ]
+                    )
+                    return out + penalty[:, None] * y
+
+                if p:
+                    _, jac = self.partial_likelihood(offset)
+                    score, A = jac(beta)
+                    g_beta = -np.atleast_1d(score)
+                    A = np.atleast_2d(A)
+                    MZ = info.apply(self.Z)
+                    Bt = np.column_stack(
+                        [
+                            np.bincount(
+                                self.inv, weights=MZ[:, j], minlength=G
+                            )
+                            for j in range(p)
+                        ]
+                    )
+                    X = _conjugate_gradients(
+                        C, np.column_stack([Bt, g_omega]), diag
+                    )
+                    if X is None:
+                        return None
+                    schur = A - Bt.T @ X[:, :p]
+                    try:
+                        d_beta = np.linalg.solve(
+                            (schur + schur.T) / 2, g_beta - Bt.T @ X[:, p]
+                        )
+                    except np.linalg.LinAlgError:
+                        return None
+                    d_omega = X[:, p] - X[:, :p] @ d_beta
+                else:
+                    X = _conjugate_gradients(C, g_omega[:, None], diag)
+                    if X is None:
+                        return None
+                    d_beta = np.zeros(0)
+                    d_omega = X[:, 0]
+                if not (
+                    np.all(np.isfinite(d_beta))
+                    and np.all(np.isfinite(d_omega))
+                ):
+                    return None
+                size = max(
+                    float(np.max(np.abs(d_beta), initial=0.0)),
+                    float(np.max(np.abs(d_omega), initial=0.0)),
+                )
+                if size <= _NEWTON_STEP_TOL:
+                    return beta, log_u
+                t = 1.0
+                for _ in range(_NEWTON_MAX_HALVINGS):
+                    new_beta = beta + t * d_beta
+                    new_log_u = log_u + t * d_omega
+                    new = self.penalised(theta, new_beta, new_log_u)
+                    if np.isfinite(new) and new >= value - 1e-15 * abs(value):
+                        break
+                    t /= 2
+                else:
+                    return None
+                beta, log_u, value = new_beta, new_log_u, new
+                if t == 1.0 and size <= _NEWTON_LAST_STEP:
+                    # Newton converges quadratically: after a full step
+                    # this small, the next would be at rounding.
+                    return beta, log_u
+        return None
+
     def em(
         self, theta: float, tol: float = _EM_TOL
     ) -> tuple[npt.NDArray, npt.NDArray, float]:
@@ -292,8 +436,16 @@ class _CoxFrailtyEM:
         the point ``v - 2 a r + a^2 s`` with ``a = -max(1, |r| / |s|)``,
         then one more EM step. An extrapolation that is not finite, or
         whose step is longer than ``r``, is replaced by the two plain
-        steps. The fixed point is EM's."""
+        steps. The fixed point is EM's.
+
+        EM starts from Newton's solution (:meth:`newton`) where there is
+        one, and its stopping rule is then usually met at the first step:
+        the answer is EM's, with its own test of convergence."""
         beta, log_u = self.start(theta)
+        if self.use_newton:
+            solved = self.newton(theta, beta, log_u)
+            if solved is not None:
+                beta, log_u = solved
         converged = False
         for _ in range(self.max_iter):
             u1, beta = self.update(theta, log_u, beta)
@@ -607,8 +759,9 @@ class CoxFrailtyFitter(FitterRepr):
         if monotone:
             # The coefficients run off to infinity whatever theta is: the
             # estimates mean nothing (said above), and EM would chase them
-            # to its iteration limit at every theta.
+            # to its iteration limit at every theta (Newton too).
             em.max_iter = 20
+            em.use_newton = False
         em.cox_beta = (
             np.asarray(cox.beta, dtype=float)[kept]
             if cox is not None
