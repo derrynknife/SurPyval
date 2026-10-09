@@ -81,3 +81,16 @@ def test_rmst_requires_variance_estimate():
     m = sp.NonParametric.fit_from_ecdf([1.0, 2.0, 3.0], [0.9, 0.6, 0.2])
     with pytest.raises(ValueError, match="variance"):
         m.rmst()
+
+
+def test_rmst_diff_refuses_a_tau_past_follow_up():
+    # A tau past a group's last observation, while its curve is above zero
+    # there, used to hold the curve at its last value to tau: an RMST (and
+    # a difference) of whatever size tau made it.
+    a = sp.KaplanMeier.fit([1.0, 2, 3, 4, 5, 6], c=[0, 0, 0, 0, 0, 1])
+    b = sp.KaplanMeier.fit([1.0, 2, 2, 3, 4, 5])
+    with pytest.raises(ValueError, match="past model_a's largest"):
+        sp.rmst_diff(a, b, tau=1e6)
+    # b's curve reaches zero at 5: a tau past it needs no extrapolation.
+    assert sp.rmst_diff(a, b, tau=6.0)["tau"] == 6.0
+    assert sp.rmst_diff(a, b)["tau"] == 5.0
