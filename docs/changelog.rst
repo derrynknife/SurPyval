@@ -190,6 +190,10 @@ Unreleased
   ``e^-225``); past ``|beta'Z| = 300`` each risk set's sums are now
   scaled by its own total. Kalbfleisch-Prentice's were nan: each row of
   its recursion now has its own scale.
+- CoxPH's delayed-entry score and information no longer subtract the
+  mass yet to enter where it all but cancels a risk set (#746), as the
+  likelihood no longer does (#728): the information was 2.00095 for
+  1.99995, or the score -inf. Such a risk set is summed over itself.
 - ``CrowAMSAA.projection`` names the source its BC-mode projection was
   checked against (#710): ReliaSoft's Crow Extended formulas, whose
   demonstrated intensity with BC modes is the Crow-AMSAA intensity at
