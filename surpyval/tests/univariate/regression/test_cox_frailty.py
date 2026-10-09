@@ -522,3 +522,19 @@ def test_run_off_fit_takes_the_information_in_logs(monkeypatch):
         warnings.simplefilter("ignore")
         dense = CoxFrailty.fit(x, Z=Z, c=c, groups=g, theta=0.5)
     np.testing.assert_allclose(se[1], dense.standard_errors()[1], rtol=1e-8)
+
+
+def test_refusal_at_z_0_does_not_point_to_center():
+    # A coefficient that runs off to beta'Z of 850: the baseline at Z = 0
+    # cannot be represented, and the refusal, CoxPH's, said to fit with
+    # center=True, which CoxFrailty does not take (#777).
+    z = np.linspace(-30.0, 30.0, 61)[::-1, None]
+    x = np.arange(1.0, 62.0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(ValueError) as info:
+            CoxFrailty.fit(x, Z=z, groups=np.arange(61) % 4, theta=0.5)
+    message = str(info.value)
+    assert "cannot be represented" in message
+    assert "center=True" not in message
+    assert "CoxFrailty reports the baseline at Z = 0" in message

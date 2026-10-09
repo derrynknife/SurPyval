@@ -796,13 +796,15 @@ def _cumhaz_at_origin(
         lp = np.asarray(Z, dtype=float) @ beta
         out = np.exp(np.log(cumhaz) - shift)
     tiny = np.finfo(float).tiny
-    if not (
-        np.all(np.abs(lp) < LOG_MAX)
-        and np.all(np.isfinite(out))
-        and np.all(out[cumhaz > 0] >= tiny)
-    ):
+    moved = bool(np.all(np.isfinite(out)) and np.all(out[cumhaz > 0] >= tiny))
+    if not (moved and np.all(np.abs(lp) < LOG_MAX)):
+        # (the rows' lp, where only they overflow)
         raise baseline_at_origin_error(
-            "baseline cumulative subdistribution hazard", center, shift, -shift
+            "baseline cumulative subdistribution hazard",
+            center,
+            shift,
+            -shift,
+            lp=lp if moved else None,
         )
     return out
 

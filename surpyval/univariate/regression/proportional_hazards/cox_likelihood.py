@@ -1466,6 +1466,7 @@ def baseline_at_origin(
     r: npt.NDArray,
     h0: npt.NDArray,
     what: str = "baseline hazard",
+    hint: "str | None" = None,
 ) -> "tuple[npt.NDArray, npt.NDArray]":
     """The risk weights ``r`` and baseline increments ``h0`` fitted at the
     covariate ``center`` moved to ``Z = 0`` (#463), as R's
@@ -1476,7 +1477,9 @@ def baseline_at_origin(
     that is not representable: a positive increment underflows (to 0 or a
     subnormal number) or overflows, a risk weight does, or ``exp(beta'Z)``
     overflows on the fitted rows ``Z`` -- the covariates are too far from
-    0 for a baseline there to mean anything in floating point.
+    0 for a baseline there to mean anything in floating point. ``hint``
+    ends the refusal in place of the advice to fit with ``center=True``,
+    for a fit that has no such option (CoxFrailty).
     """
     beta = np.asarray(beta, dtype=float)
     shift = float(np.dot(beta, center))
@@ -1491,6 +1494,17 @@ def baseline_at_origin(
         and bool(np.all(r_0[r > 0] >= _TINY))
     )
     if not ok:
+        # Whether the move itself takes a value out of range (one that is
+        # in range at the centre); if not, the rows' exp(beta'Z) is what
+        # overflows, and the refusal says so (#777).
+        held = np.isfinite(r) & (r >= _TINY)
+        jumps = np.isfinite(h0) & (h0 >= _TINY)
+        move_fails = not (
+            np.all(np.isfinite(h0_0[jumps]))
+            and np.all(np.isfinite(r_0[held]))
+            and np.all(h0_0[jumps] >= _TINY)
+            and np.all(r_0[held] >= _TINY)
+        )
         raise baseline_at_origin_error(
             what,
             center,
@@ -1498,6 +1512,8 @@ def baseline_at_origin(
             -shift,
             " (as it does when a covariate separates the events, and the "
             "coefficients run off towards infinity)",
+            None if move_fails else lp,
+            **({} if hint is None else {"hint": hint}),
         )
     return r_0, h0_0
 

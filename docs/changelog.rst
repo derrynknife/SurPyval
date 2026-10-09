@@ -173,6 +173,13 @@ Unreleased
   reproduces that example (demonstrated MTBF 7.84708, projected
   11.29418), where it gave 7.707 and 11.006. Without BC modes nothing
   changes. With BC modes and a single failure it raises.
+- The refusal of a baseline that cannot be represented at Z = 0 says
+  what it can compute (#777). A parametric fit's quoted the parameters
+  at Z = 0 (``[inf, 1.5]``) and named a location or scale running on
+  at the covariate means as if at Z = 0; it names the parameter out of
+  range, and says where it runs on. Cox, proportional odds and
+  Fine-Gray say when the rows' ``exp(beta'Z)`` overflows, not the move;
+  CoxFrailty's no longer points to ``center=True``, which it has not.
 - A Cox model documents ``r``, each time's risk-set weight (#777): far
   along a run-off it is beyond floating point, ``inf`` (or ``0``), and is
   reported so, as the increments ``h0`` there underflow; the increments
