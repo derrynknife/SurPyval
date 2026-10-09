@@ -12,6 +12,9 @@ Unreleased
   a verified maximum of the likelihood (``maximum`` is ``"unverified"`` or
   ``"no finite maximum"``); it used to read as an ordinary fit, with only
   the warning raised by ``fit`` to say otherwise.
+- The parametric and regression bootstrap bounds refuse ``n_boot=1``: a
+  single refit has no spread, and its BCa bounds came back NaN without a
+  warning. The message says that 1000 or more refits is usual.
 
 v0.24 (9 October 2026)
 ----------------------
