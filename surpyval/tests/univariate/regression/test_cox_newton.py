@@ -888,3 +888,32 @@ def test_tie_methods_score_and_information_far_out(method):
             ]
         np.testing.assert_allclose(score, want_score, rtol=1e-6, atol=1e-9)
         np.testing.assert_allclose(info, want_info, rtol=1e-6, atol=1e-9)
+
+
+def test_verified_in_the_covariates_units():
+    # The BFGS fallback (Newton-Raphson and the root-finder failing) on a
+    # covariate spanning 3e-4, a reciprocal temperature in kelvin: BFGS
+    # stops at its start, 0, where the gradient is below its tolerance,
+    # and the maximum is at 15. With a coefficient unit of 1 the score
+    # passed as zero and the answer as verified; in the covariate's units
+    # (1 / range, as Fine-Gray and the parametric fits read it) it is not
+    # (#760)
+    from scipy.optimize import OptimizeResult
+
+    rng = np.random.default_rng(23)
+    z = 1 / rng.uniform(350, 400, size=40)
+    x = rng.weibull(1.5, 40) * np.exp(-400 * (z - z.mean()))
+    c = (rng.uniform(size=40) < 0.25).astype(int)
+    model = CoxPH.fit(x, z[:, None], c=c)
+    assert model.maximum == "verified"
+    assert model.beta[0] > 10
+
+    def failed(fun, x0, **kwargs):
+        return OptimizeResult(x=np.asarray(x0), success=False, message="")
+
+    with mock.patch.object(cox_ph, "newton_raphson", return_value=None):
+        with mock.patch.object(cox_ph, "root", side_effect=failed):
+            with pytest.warns(UserWarning, match="did not reach a verified"):
+                stopped = CoxPH.fit(x, z[:, None], c=c)
+    assert stopped.beta[0] == 0.0
+    assert stopped.maximum == "unverified"
