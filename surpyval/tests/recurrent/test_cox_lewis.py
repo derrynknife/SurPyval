@@ -116,6 +116,56 @@ def test_cox_lewis_zero_and_tiny_beta():
     )
 
 
+@pytest.mark.parametrize("beta", [0.0, 1e-12, 1e-4, 0.2, -0.2])
+def test_cif_and_likelihood_are_differentiable(beta):
+    # cif took plain numpy's where and exp, so autograd could not trace it
+    # (#760). Its derivatives now agree with the closed forms, d/dalpha =
+    # cif and d/dbeta = e**alpha (x e**(beta x) - expm1(beta x) / beta) /
+    # beta, x**2 e**alpha / 2 at beta = 0 (the direct form cancels as
+    # beta x -> 0); and the NHPP likelihood has autograd's gradient.
+    from autograd import grad, jacobian
+
+    from surpyval import handle_xicn
+
+    x = np.array([0.0, 1e-3, 0.5, 2.0, 10.0, 50.0])
+    alpha = 0.3
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        J = jacobian(lambda p: CoxLewis.cif(x, p[0], p[1]))(
+            np.array([alpha, beta])
+        )
+    np.testing.assert_allclose(J[:, 0], CoxLewis.cif(x, alpha, beta))
+    u = beta * x
+    with np.errstate(all="ignore"):
+        direct = (x * np.exp(u) - np.expm1(u) / beta) / beta
+    # (the series of the slope, (k - 1) / k! (beta x)**(k - 2) x**2)
+    series = sum(
+        (k - 1) / np.prod(np.arange(1.0, k + 1)) * u ** (k - 2) * x**2
+        for k in range(2, 20)
+    )
+    d_beta = np.exp(alpha) * np.where(np.abs(u) < 0.01, series, direct)
+    np.testing.assert_allclose(J[:, 1], d_beta, rtol=1e-12, atol=1e-300)
+
+    data = handle_xicn(np.cumsum(np.random.default_rng(1).exponential(1, 20)))
+    neg_ll = CoxLewis.create_negll_func(data)
+    p = np.array([0.1, beta / 10])
+    step = 1e-6
+    numeric = [
+        (neg_ll(p + e) - neg_ll(p - e)) / (2 * step) for e in np.eye(2) * step
+    ]
+    np.testing.assert_allclose(grad(neg_ll)(p), numeric, rtol=1e-6)
+
+    # and an ARI likelihood on a Cox-Lewis baseline: autograd's gradient
+    # is the hand-written one
+    from surpyval.recurrent import ARI
+
+    neg_ll = ARI.create_negll_func(data, CoxLewis, 2)
+    p = np.array([0.3, 0.1, beta / 10])
+    np.testing.assert_allclose(
+        grad(neg_ll)(p), neg_ll.value_and_grad(p)[1], rtol=1e-10
+    )
+
+
 # ---------------------------------------------------------------------------
 # Count termination (#386) and the least-squares fit (#419).
 # ---------------------------------------------------------------------------
