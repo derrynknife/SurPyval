@@ -510,6 +510,21 @@ def test_qf_inverts_ff():
     assert mm.qf(0.0) == 0.0 and mm.qf(1.0) == np.inf
 
 
+@pytest.mark.parametrize("dist", [sp.Weibull, sp.LogNormal])
+def test_qf_keeps_full_precision_in_both_tails(dist):
+    # #821: the quantile was the root of ff(t) = u, so above u = 1/2 it
+    # kept only the digits of 1 - 1e-16 (a relative error of 1e-4 in the
+    # survival at 1e-12). Measured against 1 - u, which is exact there.
+    rng = np.random.default_rng(0)
+    x = np.r_[rng.weibull(2, 200) * 100, rng.weibull(4, 200) * 300]
+    mm = sp.MixtureModel.fit(x, dist=dist, m=2)
+    small = np.logspace(-12, np.log10(0.5), 60)
+    u = 1 - small
+    assert np.allclose(mm.sf(mm.qf(u)), 1 - u, rtol=1e-12, atol=0)
+    assert np.allclose(mm.ff(mm.qf(small)), small, rtol=1e-12, atol=0)
+    assert np.all(np.diff(mm.qf(np.linspace(0.001, 0.999, 500))) > 0)
+
+
 def test_qf_outside_unit_interval_is_nan_with_one_warning():
     mm = _two_weibulls()
     with pytest.warns(UserWarning, match="outside") as caught:

@@ -9,7 +9,7 @@ import autograd.numpy as np
 import numpy.typing as npt
 from autograd import grad, hessian, jacobian, value_and_grad
 from autograd.scipy.special import logsumexp as ag_logsumexp
-from scipy.optimize import brentq, minimize
+from scipy.optimize import minimize
 from scipy.special import logsumexp
 from scipy.special import ndtri as z
 
@@ -1673,22 +1673,70 @@ class MixtureModel(
         ok = ~outside & ~np.isnan(u)
         q = np.where(ok & (u == 0), lo, q)
         q = np.where(ok & (u == 1), hi, q)
-        discrete = getattr(self.dist, "discrete", False)
-        for i in np.flatnonzero(ok & (u > 0) & (u < 1)):
-            a, b, target = float(lo[i]), float(hi[i]), float(u[i])
-            if discrete:
-                q[i] = self._discrete_quantile(target, a, b)
-            elif a == b:
-                q[i] = a
-            else:
-                q[i] = brentq(
-                    lambda t: float(self.ff(t)) - target,
-                    a,
-                    b,
-                    xtol=1e-14 * max(1.0, abs(a)),
-                    rtol=4 * np.finfo(float).eps,
+        inner = np.flatnonzero(ok & (u > 0) & (u < 1))
+        if getattr(self.dist, "discrete", False):
+            for i in inner:
+                q[i] = self._discrete_quantile(
+                    float(u[i]), float(lo[i]), float(hi[i])
                 )
+        elif inner.size:
+            q[inner] = self._invert_ff(u[inner], lo[inner], hi[inner])
         return q
+
+    def _invert_ff(self, u: Any, a: Any, b: Any) -> Any:
+        """The continuous mixture's quantiles at ``u`` (1-d, in (0, 1)),
+        each in its bracket ``[a, b]`` of the components' quantiles.
+
+        All of them at once: Newton steps with the density, a step that
+        leaves the bracket replaced by bisection (geometric where the
+        bracket is positive, so a wide one closes in relative terms), and
+        the bracket tightened by the sign of each residual (#821). Above
+        ``u = 1/2`` the residual is ``s - sf(t)`` with ``s = 1 - u``, which
+        is exact there (Sterbenz) and keeps every digit of a small
+        survival, where ``ff(t) - u`` would keep only those of 1 - 1e-16
+        (the precision ``sf`` itself gained in #671); below it, ``ff(t) -
+        u``, precise for a small ``u``."""
+        u = np.asarray(u, float)
+        a, b = np.array(a, float), np.array(b, float)
+        upper = u > 0.5
+        s = np.where(upper, 1.0 - u, u)
+        eps = np.finfo(float).eps
+
+        def middle(a: Any, b: Any) -> Any:
+            with np.errstate(all="ignore"):
+                return np.where(a > 0, np.sqrt(a * b), 0.5 * (a + b))
+
+        t = middle(a, b)
+        active = a < b
+        with np.errstate(all="ignore"):
+            for _ in range(200):
+                idx = np.flatnonzero(active)
+                if idx.size == 0:
+                    break
+                ti, up = t[idx], upper[idx]
+                resid = np.empty(idx.size)
+                if up.any():
+                    resid[up] = s[idx][up] - np.asarray(self.sf(ti[up]), float)
+                if (~up).any():
+                    resid[~up] = (
+                        np.asarray(self.ff(ti[~up]), float) - s[idx][~up]
+                    )
+                ai = np.where(resid < 0, ti, a[idx])
+                bi = np.where(resid > 0, ti, b[idx])
+                a[idx], b[idx] = ai, bi
+                step = resid / np.asarray(self.df(ti), float)
+                tn = ti - step
+                bad = ~np.isfinite(tn) | (tn <= ai) | (tn >= bi)
+                tn = np.where(bad, middle(ai, bi), tn)
+                tol = 2 * eps * np.maximum(np.abs(ti), np.finfo(float).tiny)
+                done = (
+                    (resid == 0)
+                    | (np.abs(tn - ti) <= tol)
+                    | (bi - ai <= 2 * eps * np.abs(bi))
+                )
+                t[idx] = np.where(resid == 0, ti, tn)
+                active[idx[done]] = False
+        return t
 
     def _discrete_quantile(self, target: float, a: float, b: float) -> float:
         """The smallest integer ``k`` in ``[a, b]`` with ``ff(k) >=
