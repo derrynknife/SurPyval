@@ -648,21 +648,23 @@ class GeneralizedRenewal(RenewalFitMixin):
                 _previous_in_item(x_interarrival, data.i), data.i
             )
 
-        def negll_func(params: np.ndarray) -> float:
-            q = params[0]
-            params = params[1:]
-
+        def virtual_ages_at(q: Any) -> Any:
             if kijima == "i":
                 # Kijima-I is defined by:
                 # Vn+1 = Vn + q * Xn
                 # Where Vn is the virtual age at the nth event and Xn is the
                 # interarrival time between the n-1th and nth event.
                 # Kijima-I is much simpler to implement than Kijima-II
-                virtual_ages = q * cumulative_previous
-            else:
-                virtual_ages = kijima_ii_ages(q)
+                return q * cumulative_previous
+            return kijima_ii_ages(q)
 
-            return -log_likelihood(dist, params, virtual_ages)
+        def negll_func(params: np.ndarray) -> float:
+            q = params[0]
+            params = params[1:]
+            return -log_likelihood(dist, params, virtual_ages_at(q))
+
+        # The ages a q leaves, for the fallback starts (``_aged_starts``)
+        negll_func.virtual_ages = virtual_ages_at  # type: ignore
 
         terms = lifetime_derivatives(dist)
         if terms is not None:

@@ -72,3 +72,29 @@ def test_ara_inference_requires_fit_from_data():
     model = ARA.fit_from_parameters([10.0, 2.0], rho=0.4, m=2, dist=Weibull)
     with pytest.raises(ValueError, match="fitted from data"):
         model.aic()
+
+
+def test_777_starts_where_the_lifetime_fit_runs_off():
+    # An ExpoWeibull fitted to this item's gaps runs off to a power law
+    # ending at the longest gap, so a gap from any later age had zero
+    # likelihood at every default start, and the fit failed with "Could
+    # not find a good solution". Each restoration start now has its own
+    # lifetime, fitted to the gaps from the ages it leaves (#777).
+    from surpyval import ExpoWeibull
+    from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
+
+    x = np.array([1.87, 5.28, 5.82, 8.2, 10.77, 11.18, 14.6, 19.4])
+    data = ARA.fit(x).data
+    neg_ll = ARA.create_negll_func(data, ExpoWeibull, 2)
+    with pytest.warns(UserWarning, match="No finite maximum"):
+        life = RenewalFitMixin._initial_dist_params(data, ExpoWeibull)
+    assert not any(
+        RenewalFitMixin._finite_at(neg_ll, [rho, *life])
+        for rho in (0.1, 0.5, 0.9, 0.99)
+    )
+    with pytest.warns(UserWarning):
+        model = ARA.fit(x, dist=ExpoWeibull, m=2)
+    assert np.isfinite(model.log_likelihood)
+    # At least as high as perfect repair with the gaps' own lifetime,
+    # whose fit stops at -12.5385
+    assert model.log_likelihood > -12.5386

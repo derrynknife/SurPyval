@@ -309,6 +309,8 @@ class ARA(RenewalFitMixin):
             dist_params = params[1:]
             return -log_likelihood(dist, dist_params, virtual_ages_at(rho))
 
+        # The ages a rho leaves, for the fallback starts (``_aged_starts``)
+        negll_func.virtual_ages = virtual_ages_at  # type: ignore
         terms = lifetime_derivatives(dist)
         if terms is not None:
 
