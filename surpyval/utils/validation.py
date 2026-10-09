@@ -106,6 +106,8 @@ def alpha_ci_error(alpha_ci: Any, note: str | None = None) -> ValueError:
     message = "'alpha_ci' must be strictly between 0 and 1; got {}".format(
         _plain_value(alpha_ci)
     )
+    if not isinstance(alpha_ci, (int, float, np.integer, np.floating)):
+        message += " (expected a number, e.g. 0.05)"
     if note:
         message += ". " + note
     return ValueError(message)

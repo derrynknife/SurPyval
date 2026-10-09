@@ -15,6 +15,14 @@ Unreleased
 - The parametric and regression bootstrap bounds refuse ``n_boot=1``: a
   single refit has no spread, and its BCa bounds came back NaN without a
   warning. The message says that 1000 or more refits is usual.
+- Messages: the MLE-failure warning's run-together sentence ("closer.A
+  good way") and "it's inverse"; the refusal of a censoring flag other than
+  -1, 0 or 1 says what each means and that interval censoring is ``c=2``
+  with ``[left, right]`` pairs; a non-numeric ``alpha_ci`` is refused
+  saying a number is expected.
+- The degradation process fits' ``y0`` documentation says the estimated
+  start level can be below zero, and to pass ``y0=0.0`` for paths known to
+  start at zero.
 
 v0.24 (9 October 2026)
 ----------------------
@@ -48,8 +56,10 @@ every entry below says what changed. On 0.23, run your code or tests with
 - ``CoxPH`` and ``BuckleyJames`` refuse data with no event (#648).
 - A regression, tree or forest prediction with the wrong number of
   covariates raises (#657); an extra column was ignored in silence.
-- The Arrhenius-type life models refuse a stress at or below 0 and warn
-  below 200 K (#654): give temperatures in kelvin.
+- The Arrhenius-type life models refuse a stress at or below 0, and warn
+  when every stress in the temperature column is below 200 K, as
+  temperatures typed in degrees Celsius are (#654): give temperatures in
+  kelvin.
 - An offset model's Wald ``cb``, ``quantile_cb`` and ``param_cb`` warn
   that they hold the offset fixed (#645); pass ``method="bootstrap"`` for
   bounds that include it. Offset fits on interval data can move (#633).

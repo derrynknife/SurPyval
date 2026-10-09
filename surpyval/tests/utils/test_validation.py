@@ -391,3 +391,14 @@ def test_printout_says_when_the_fit_is_not_a_verified_maximum():
     assert "Maximum             : unverified" in repr(model)
     model.maximum = "no finite maximum"
     assert "Maximum             : none finite" in repr(model)
+
+
+def test_censoring_flag_refusal_names_interval_censoring():
+    with pytest.raises(ValueError, match="interval censoring use c=2"):
+        sp.Weibull.fit([1.0, 2, 3], c=[0, 5, 0])
+
+
+def test_alpha_ci_as_text_is_refused_asking_for_a_number():
+    model = sp.Weibull.fit([1.0, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    with pytest.raises(ValueError, match="expected a number"):
+        model.cb([5.0], alpha_ci="0.05")
