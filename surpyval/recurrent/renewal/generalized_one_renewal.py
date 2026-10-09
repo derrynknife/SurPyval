@@ -22,6 +22,7 @@ from surpyval.recurrent.renewal.renewal_model import (
     event_positions,
 )
 from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.no_maximum import quiet_maximum_warnings
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
@@ -225,6 +226,13 @@ class GeneralizedOneRenewal(RenewalFitMixin):
                 return np.inf
             return -ll
 
+        def scaled_times(q: float) -> np.ndarray:
+            # Every gap on the base time axis, x / (1 + q) ** j: at a
+            # given q the likelihood is the life's of these, up to a
+            # constant (``RenewalFitMixin._life_data``)
+            return x * np.exp(-j * np.log1p(q))
+
+        negll_func.scaled_times = scaled_times  # type: ignore
         terms = lifetime_derivatives(dist)
         if terms is None:
             return negll_func
@@ -392,10 +400,12 @@ class GeneralizedOneRenewal(RenewalFitMixin):
             def polish(res: Any) -> Any:
                 return fit_once(res.x)
 
-        dist_params = self._default_start(
-            lambda: dist.fit(data.interarrival_times, data.c, data.n).params,
-            init,
-        )
+        def start() -> np.ndarray:
+            # A start, its warnings held back (``_initial_dist_params``)
+            with quiet_maximum_warnings():
+                return dist.fit(data.interarrival_times, data.c, data.n).params
+
+        dist_params = self._default_start(start, init)
         inits = None
         if dist_params is not None:
             inits = [[q_init, *dist_params] for q_init in (0.0001, 1.0, 2.0)]
@@ -415,6 +425,10 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         res = self._multistart(fit_once, inits, init, neg_ll, polish)
         params = self._polish_unverified(
             neg_ll, to_natural(res.x), bounds, n_obs
+        )
+        # What the answer is, for ``_attach_inference`` (#777)
+        params, res.maximum, res.run_off = self._judge_maximum(
+            data, dist, neg_ll, params, bounds, n_obs
         )
 
         underlying_model = dist.from_params(list(params[1:]))

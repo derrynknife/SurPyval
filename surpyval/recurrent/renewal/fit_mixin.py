@@ -1,3 +1,5 @@
+import re
+import warnings
 from typing import Any, Callable
 
 import numpy as np
@@ -17,6 +19,7 @@ from surpyval.utils.dataframe import RecurrentDataFrameMixin
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import (
     quiet_maximum_warnings,
+    warn_no_maximum,
     warn_unverified,
 )
 
@@ -188,22 +191,28 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
         Initial parameters for the underlying lifetime distribution, fitted to
         the times-to-first-event when there are enough of them (these are
         genuine renewal cycles) and otherwise to the raw interarrival times.
+
+        The fit is a start, and its warnings that it is not a maximum
+        are held back: the renewal fit says what its own search reached
+        (#777).
         """
         first_events = data.get_times_to_first_events()
         dist_params = None
         if len(first_events.x) >= 2:
             try:
-                dist_params = dist.fit(
-                    first_events.x, first_events.c, first_events.n
-                ).params
+                with quiet_maximum_warnings():
+                    dist_params = dist.fit(
+                        first_events.x, first_events.c, first_events.n
+                    ).params
                 if np.isnan(dist_params).any():
                     dist_params = None
             except Exception:
                 dist_params = None
         if dist_params is None:
-            dist_params = dist.fit(
-                data.interarrival_times, data.c, data.n
-            ).params
+            with quiet_maximum_warnings():
+                dist_params = dist.fit(
+                    data.interarrival_times, data.c, data.n
+                ).params
         return dist_params
 
     @staticmethod
@@ -228,13 +237,12 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
         """
         The distribution fitted to the interarrival times, the MLE of an
         ordinary renewal process (perfect repair), or ``None`` if that fit
-        fails.
+        fails. A start, quietly (``_initial_dist_params``).
         """
         try:
-            params = np.asarray(
-                dist.fit(data.interarrival_times, data.c, data.n).params,
-                dtype=float,
-            )
+            with quiet_maximum_warnings():
+                fitted = dist.fit(data.interarrival_times, data.c, data.n)
+            params = np.asarray(fitted.params, dtype=float)
         except Exception:
             return None
         return params if np.all(np.isfinite(params)) else None
@@ -258,21 +266,137 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
         start. A start's own fit can run off too; it is a start, and the
         renewal fit says what its own search reached, so its warnings
         are held back."""
-        ages_at = getattr(neg_ll, "virtual_ages", None)
-        if ages_at is None:
+        if getattr(neg_ll, "virtual_ages", None) is None:
             return []
-        gap = np.asarray(data.get_interarrival_times(), dtype=float)
         starts = []
         for r in restorations:
             try:
                 with quiet_maximum_warnings(), np.errstate(all="ignore"):
-                    ages = np.asarray(ages_at(r), dtype=float)
-                    params = dist.fit(gap + ages, data.c, tl=ages).params
+                    given = RenewalFitMixin._life_data(data, neg_ll, r)
+                    assert given is not None
+                    x, c, n, tl = given
+                    params = dist.fit(x, c, n, tl=tl).params
             except Exception:
                 continue
             if np.all(np.isfinite(params)):
                 starts.append([r, *params])
         return starts
+
+    @staticmethod
+    def _life_data(data: Any, neg_ll: Callable, r: float) -> "tuple | None":
+        """``(x, c, n, tl)``: the times whose likelihood, with the
+        restoration held at ``r``, is the fit's (up to a constant) as a
+        plain fit of the life to them: each gap's end age left truncated
+        at the virtual age it starts from (``neg_ll.virtual_ages``, the
+        ARA and Kijima models), or each gap rescaled
+        (``neg_ll.scaled_times``, G1). ``None`` for a likelihood with
+        neither."""
+        ages_at = getattr(neg_ll, "virtual_ages", None)
+        if ages_at is not None:
+            ages = np.asarray(ages_at(r), dtype=float)
+            gap = np.asarray(data.get_interarrival_times(), dtype=float)
+            return gap + ages, data.c, data.n, ages
+        scaled = getattr(neg_ll, "scaled_times", None)
+        if scaled is not None:
+            return np.asarray(scaled(r), dtype=float), data.c, data.n, None
+        return None
+
+    def _judge_maximum(
+        self,
+        data: Any,
+        dist: Any,
+        neg_ll: Callable,
+        params: np.ndarray,
+        bounds: list,
+        n_obs: float,
+    ) -> tuple:
+        """``(params, maximum, said)``: what the search's answer
+        ``params`` is, ``"verified"``, ``"unverified"`` or ``"no finite
+        maximum"`` (``MAXIMUM_STATES``), for ``_attach_inference``, with
+        what the life's own fit said of a run-off (``said``).
+
+        An answer that is not a verified maximum is on a run-off of the
+        life where, with the restoration held at its value, the life
+        fitted to the times that leaves (``_life_data``), whose
+        likelihood is then the fit's, has no finite maximum (#777): an
+        ExpoWeibull life running to its power-law limit, its ``beta`` to
+        1e11 and ``mu`` to 1e-11, had the search stop somewhere on the
+        ridge, called unverified. The life's own fit has the family's
+        no-maximum check, and the answer takes its parameters where they
+        are further up the ridge (the restoration as it is)."""
+        params = np.asarray(params, dtype=float)
+        if self._verified_maximum(neg_ll, params, bounds, n_obs):
+            return params, "verified", None
+        try:
+            given = self._life_data(data, neg_ll, float(params[0]))
+        except Exception:
+            given = None
+        if given is None:
+            return params, "unverified", None
+        x, c, n, tl = given
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            try:
+                with np.errstate(all="ignore"):
+                    life = dist.fit(x, c, n, tl=tl)
+            except Exception:
+                return params, "unverified", None
+        if getattr(life, "maximum", None) != "no finite maximum":
+            return params, "unverified", None
+        said = next(
+            (
+                str(w.message)
+                for w in caught
+                if str(w.message).startswith("No finite maximum: ")
+            ),
+            "",
+        )
+        further = np.array([params[0], *life.params], dtype=float)
+        with np.errstate(all="ignore"):
+            if np.all(np.isfinite(further)) and neg_ll(further) < neg_ll(
+                params
+            ):
+                params = further
+        return params, "no finite maximum", said
+
+    @staticmethod
+    def _warn_run_off(model: Any, said: str) -> None:
+        """Say that ``model``'s fit has no finite maximum, its life
+        running off (``_judge_maximum``), in the life's own words
+        ``said`` where it gave them."""
+        consequence = (
+            "The reported parameters are where the search stopped, and "
+            "their standard errors and bounds are meaningless"
+        )
+        life = model.model.dist.name
+        detail = said[len("No finite maximum: ") :].rstrip(".")
+        what, _, advice = detail.partition(". " + consequence + "; ")
+        if not advice:
+            what = "the {} fitted to them has no finite maximum".format(life)
+            advice = "compare a fit with another life"
+        # The life's values, where its own search stopped, as reported
+        for p, v in zip(model.model.dist.parameter_names, model.model.params):
+            what = re.sub(
+                r"\b{} \([^)]*\)".format(re.escape(p)),
+                "{} ({:.4g})".format(p, float(v)),
+                what,
+            )
+        name = model._restoration_param_name
+        warn_no_maximum(
+            "the {} likelihood keeps increasing as its {} life runs off: "
+            "with {} held at the fitted {:.4g}, it is the {} likelihood of "
+            "the times that {} gives, and there {}".format(
+                model.kind,
+                life,
+                name,
+                float(model.restoration),
+                life,
+                name,
+                what,
+            ),
+            consequence,
+            advice,
+        )
 
     @staticmethod
     def _bounds_transform(
@@ -490,6 +614,10 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
         params = self._polish_unverified(
             neg_ll, inv_trans(res.x), bounds, n_obs
         )
+        # What the answer is, for ``_attach_inference`` (#777)
+        params, res.maximum, res.run_off = self._judge_maximum(
+            data, dist, neg_ll, params, bounds, n_obs
+        )
         return res, params
 
     def _attach_inference(
@@ -519,15 +647,21 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
         model._n_obs = bic_sample_size(data)
         # The multi-start search's answer is accepted only as a
         # verified maximum (principle 13): a restoration parameter on its
-        # bound held out where the likelihood is highest there.
-        if self._verified_maximum(
-            neg_ll,
-            model._mle,
-            model._parameter_bounds(),
-            max(float(model._n_obs), 1.0),
-        ):
-            model.maximum = "verified"
-        else:
-            model.maximum = "unverified"
+        # bound held out where the likelihood is highest there. The
+        # fitter may have judged it already (``_judge_maximum``), and
+        # found the life running off.
+        maximum = res.get("maximum") if isinstance(res, dict) else None
+        if maximum is None:
+            verified = self._verified_maximum(
+                neg_ll,
+                model._mle,
+                model._parameter_bounds(),
+                max(float(model._n_obs), 1.0),
+            )
+            maximum = "verified" if verified else "unverified"
+        model.maximum = maximum
+        if maximum == "unverified":
             warn_unverified("The {} fit".format(model.kind))
+        elif maximum == "no finite maximum":
+            self._warn_run_off(model, res.get("run_off") or "")
         return model
