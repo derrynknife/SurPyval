@@ -5,6 +5,7 @@ kidney catheter data (McGilchrist and Aisbett 1991), stored by
 scripts/reference/reference_r_frailty.R.
 """
 
+import copy
 import json
 import warnings
 
@@ -439,3 +440,85 @@ def test_newton_is_off_where_the_partial_likelihood_has_no_maximum():
         warnings.simplefilter("ignore")
         model = CoxFrailty.fit(x, Z=Z, groups=groups)
     assert model.maximum == "no finite maximum"
+
+
+@pytest.mark.parametrize("ties", ["efron", "breslow"])
+@pytest.mark.parametrize("shift", [400.0, 1000.0, 1e5])
+def test_group_hazard_far_out_is_quiet_and_right(ties, shift):
+    # A_g is unchanged when every row's beta'Z moves by the same amount
+    # (the risk sums scale by exp(shift), the baseline by exp(-shift)).
+    # Formed directly, exp(beta'Z) overflowed and the baseline underflowed:
+    # nan with numpy's warnings; past beta'Z = 300 it is summed in logs
+    # (#777).
+    em, beta, log_u = _em_state(ties, 0.5, tied=True)
+    offset = log_u[em.inv]
+    want = em.group_hazard(beta, offset)
+    moved = copy.copy(em)
+    moved.Z = em.Z + shift / (beta.size * beta)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        got = moved.group_hazard(beta, offset)
+        # and with the offsets moved instead: A_g scales by exp(-400)
+        down = em.group_hazard(beta, offset + 400.0)
+    rtol = 1e-15 * shift * 100
+    np.testing.assert_allclose(got, want, rtol=rtol)
+    np.testing.assert_allclose(down, want * np.exp(-400.0), rtol=1e-12)
+    # The log path is the direct one where both can be taken
+    lin = em.Z @ beta
+    np.testing.assert_allclose(
+        em._log_group_hazard(lin, offset), want, rtol=1e-13
+    )
+
+
+def _run_off_data():
+    # Fifteen rows die first, in decreasing order of z1, so its
+    # coefficient runs off (beta'Z beyond 300); z2 is an ordinary
+    # covariate, whose coefficient has a standard error.
+    rng = np.random.default_rng(777)
+    top, late = 15, 40
+    z1 = np.r_[np.arange(top, 0, -1.0), np.zeros(late)]
+    z2 = rng.normal(size=top + late)
+    order = np.argsort(rng.exponential(size=late) * np.exp(-z2[top:]))
+    x = np.r_[np.arange(1.0, top + 1), top + 1 + np.argsort(order)]
+    c = np.r_[np.zeros(top, int), (rng.uniform(size=late) < 0.25)]
+    return x, np.column_stack([z1, z2]), c.astype(int), np.arange(x.size) % 5
+
+
+def test_run_off_fit_takes_the_information_in_logs(monkeypatch):
+    # A fit whose coefficient runs off far enough that CoxInformation (the
+    # covariance's operator) and the group hazards are taken in logs, end
+    # to end (#767, #777): quiet but for the monotone likelihood's
+    # warning, the run-off coefficient without a standard error (as
+    # CoxPH's), and the other's that of the full information.
+    from surpyval.univariate.regression.frailty import cox_frailty as cf
+    from surpyval.univariate.regression.proportional_hazards import (
+        cox_likelihood as cl,
+    )
+
+    x, Z, c, g = _run_off_data()
+    in_logs = []
+    original = cl.CoxInformation._in_logs
+
+    def spy(self, eta):
+        in_logs.append(float(np.max(np.abs(eta))))
+        return original(self, eta)
+
+    monkeypatch.setattr(cl.CoxInformation, "_in_logs", spy)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = CoxFrailty.fit(x, Z=Z, c=c, groups=g, theta=0.5)
+    assert [w.category for w in caught] == [UserWarning]
+    assert model.maximum == "no finite maximum"
+    assert in_logs and max(in_logs) > 300
+    se = model.standard_errors()
+    assert np.isnan(se[0]) and np.isfinite(se[1])
+    assert np.all(np.isfinite(list(model.frailties.values())))
+    assert np.all(np.isfinite(model.h0)) and np.all(model.h0 >= 0)
+    # The covariance from the full information, without the operator
+    monkeypatch.setattr(
+        cf._CoxFrailtyEM, "_schur_covariance", lambda *args: None
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        dense = CoxFrailty.fit(x, Z=Z, c=c, groups=g, theta=0.5)
+    np.testing.assert_allclose(se[1], dense.standard_errors()[1], rtol=1e-8)
