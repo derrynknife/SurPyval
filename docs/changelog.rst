@@ -565,6 +565,12 @@ Unreleased
   #583 too); a GumbelPH on covariates far from 0 is fitted at Z = 0, not
   refused. A verified fit with a baseline parameter over 50 e-folds from
   its bound has its profile walked (a LogNormalPH sigma at 1e-80).
+- A verified regression fit is the maximum to 1e-9 nats, or 1e-11 an
+  observation (#746): it could be 1e-3 short where the likelihood is
+  very flat in one direction (#583's draw 207, a WeibullPO with alpha
+  near its limit, was 3e-5 nats short and stopped by the row order).
+  Such an answer is finished by Newton's method, the parameters with
+  one bound on their log scale; fits already that close are untouched.
 - A WeibullPH whose shape runs to infinity with a coefficient (two exact
   times, each a point mass in the limit) has "No finite maximum", naming
   both (#728): it ended "unverified" (shape 1365, coefficient 631), and
