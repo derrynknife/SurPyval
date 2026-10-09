@@ -9,7 +9,8 @@ distribution's life (scale) parameter:
 ==========================  ===============================================
 ``Power``                   :math:`L(V) = a V^{n}`
 ``InversePower``            :math:`L(V) = 1 / (a V^{n})`
-``Exponential``             :math:`L(V) = b e^{a / V}`
+``Exponential``             :math:`L(V) = b e^{a / V}` (the Arrhenius model;
+                            also ``Arrhenius``)
 ``InverseExponential``      :math:`L(V) = 1 / (b e^{a / V})`
 ``Eyring``                  :math:`L(V) = (1 / V) e^{-(b - a / V)}`
 ``InverseEyring``           :math:`L(V) = V e^{c - a / V}`
@@ -58,7 +59,14 @@ from surpyval.univariate.regression.accelerated_life import (
     PowerExponential,
 )
 
+#: The exponential life model by the name engineers know it by: the
+#: Arrhenius model, with ``V`` an absolute temperature in kelvin and ``a``
+#: the activation energy over Boltzmann's constant (0.24 review). The same
+#: class: a model fitted with either is the same model.
+Arrhenius = Exponential
+
 __all__ = [
+    "Arrhenius",
     "DualExponential",
     "DualPower",
     "Exponential",
