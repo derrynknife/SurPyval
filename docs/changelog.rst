@@ -173,6 +173,10 @@ Unreleased
   reproduces that example (demonstrated MTBF 7.84708, projected
   11.29418), where it gave 7.707 and 11.006. Without BC modes nothing
   changes. With BC modes and a single failure it raises.
+- A Cox model documents ``r``, each time's risk-set weight (#777): far
+  along a run-off it is beyond floating point, ``inf`` (or ``0``), and is
+  reported so, as the increments ``h0`` there underflow; the increments
+  are computed from its log and are right. Saved models keep it.
 - CoxFrailty's group hazards are right at a run-off coefficient
   (#777): ``exp(beta'Z)`` overflowed and the baseline underflowed, a nan
   with numpy's warnings. Past ``|beta'Z| = 300`` they are summed in logs,
