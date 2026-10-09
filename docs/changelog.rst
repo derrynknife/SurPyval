@@ -1,6 +1,14 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+**Fixed**
+
+- ``fit_best(include=[])`` is refused, naming the fix; it used to try the
+  default candidates as if ``include`` had been left out.
+
 v0.24 (9 October 2026)
 ----------------------
 

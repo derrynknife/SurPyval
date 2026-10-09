@@ -371,3 +371,10 @@ def test_647_a_level_above_one_half_warns_once_at_the_caller():
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         model.cb([2.0], alpha_ci=0.5)
+
+
+def test_fit_best_refuses_an_empty_include():
+    # An empty include used to try the default candidates, as if it had
+    # been left out.
+    with pytest.raises(ValueError, match="`include` is empty"):
+        sp.fit_best([1.0, 2, 3, 4, 5, 6, 7, 8], include=[])
