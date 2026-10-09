@@ -6,6 +6,7 @@ import autograd.numpy as np
 import numpy.typing as npt
 from autograd.scipy.special import gamma as agamma
 from autograd.scipy.special import gammaln as agammaln
+from autograd.tracer import getval, isbox
 from scipy.special import digamma, gammaincinv
 
 from surpyval.univariate.parametric.parametric_fitter import (
@@ -20,6 +21,59 @@ from surpyval.utils.autograd_gamma_compat import gammaincln as agammaincln
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ._stable import on_support, positive_or_one, power_at_zero
+
+#: The standard-Gamma time past which (and past ``a + 2 sqrt(a) + 1``)
+#: the hazard is taken from the continued fraction (``Gamma_.hf``), which
+#: converges there within 100 terms for any shape (5 for a shape below
+#: 100). Below it ``f / S`` loses about ``y eps`` to rounding (at most
+#: 1.5e-13 for a shape below 100), and costs a fraction of what the
+#: fraction does where autograd traces it (a Gamma PH fit's likelihood).
+_FRACTION_FROM = 1000.0
+#: The fraction's most terms, and its convergence test.
+_FRACTION_TERMS = 500
+_FRACTION_TOL = 4e-16
+
+
+def _hazard_over_rate(a: Boxable, y: Boxable) -> Boxable:
+    r"""
+    The standard Gamma's hazard at ``y`` (the Gamma's over its rate, at
+    :math:`y = \beta x`), for :math:`y > a + 1`, from Legendre's continued
+    fraction of the upper incomplete gamma,
+
+    .. math::
+        \Gamma(a, y) = \frac{y^{a} e^{-y}}{y + 1 - a -
+        \frac{1 (1 - a)}{y + 3 - a - \frac{2 (2 - a)}{y + 5 - a -
+        \cdots}}}.
+
+    The hazard :math:`y^{a - 1} e^{-y} / \Gamma(a, y)` is that
+    denominator over :math:`y`, which is :math:`1 + (1 - a)(1 - g) / y`
+    with :math:`g = 1 / (y + 3 - a - \cdots)`, the fraction from its
+    second term: its excess over 1 is carried as itself, so neither the
+    value nor its derivative in ``y`` (of size :math:`y^{-2}`) is a
+    difference of terms of size 1. ``g`` is evaluated forwards by the
+    modified Lentz method (Numerical Recipes, ``gcf``): from :math:`y =
+    a + 1` up, the hazard is within 1e-15 of mpmath's (5e-15 at a shape
+    of 1e4). Written in ``autograd.numpy``, so it is differentiable; the
+    loop stops once every point has converged.
+    """
+    tiny = 1e-300
+    b = y + 3.0 - a
+    c: Boxable = 1.0 / tiny
+    d = 1.0 / b
+    g = d
+    for i in range(2, _FRACTION_TERMS):
+        an = -i * (i - a)
+        b = b + 2.0
+        d = an * d + b
+        d = np.where(np.abs(d) < tiny, tiny, d)
+        c = b + an / c
+        c = np.where(np.abs(c) < tiny, tiny, c)
+        d = 1.0 / d
+        delta = d * c
+        g = g * delta
+        if np.all(np.abs(getval(delta) - 1.0) <= _FRACTION_TOL):
+            break
+    return 1.0 + (1.0 - a) * (1.0 - g) / y
 
 
 class Gamma_(OptimisedFitMixin, ParametricFitter):
@@ -248,6 +302,13 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
             }x^{\alpha - 1}e^{-\beta x}}{1 - \frac{\gamma \left ( \alpha, \beta
             x \right )}{\Gamma \left ( \alpha \right )}}
 
+        Far in the tail (:math:`\beta x` past 1000 and past
+        :math:`\alpha + 2\sqrt{\alpha} + 1`) it is taken from the continued
+        fraction of the upper incomplete gamma, in which the density's and
+        the survival function's :math:`e^{-\beta x}` cancel exactly: the
+        quotient of the two loses :math:`\beta x` times the machine
+        precision to rounding (every digit by :math:`10^{15}`).
+
         Parameters
         ----------
 
@@ -273,6 +334,29 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         >>> Gamma.hf(x, 3, 2)
         array([0.8       , 1.23076923, 1.44      , 1.56097561, 1.63934426])
         """
+        x = np.asarray(x) if not isbox(x) else x
+        y = beta * x
+        # f / S is a difference of two logs of size y: it loses y eps to
+        # rounding (4e-9 at y = 1e8, every digit past 1e15, #760). In the
+        # tail their e**-y is cancelled exactly, by the continued
+        # fraction of the upper incomplete gamma (``_hazard_over_rate``)
+        tail = (y > _FRACTION_FROM) & (y < np.inf)
+        tail = tail & (y > alpha + 2.0 * np.sqrt(alpha) + 1.0)
+        if not np.any(tail):
+            return self._hf_from_logs(x, alpha, beta)
+        # each branch at a point it is finite at (y = 1 in the body, and
+        # well inside the tail in the tail, where the fraction converges
+        # fast), so neither puts a nan into the other's gradient
+        body = self._hf_from_logs(np.where(tail, 1.0 / beta, x), alpha, beta)
+        far = 2.0 * (alpha + 2.0 * np.sqrt(alpha) + 1.0 + _FRACTION_FROM)
+        y_tail = np.where(tail, y, far)
+        ratio = _hazard_over_rate(alpha, y_tail)
+        return np.where(tail, beta * ratio, body)
+
+    def _hf_from_logs(
+        self, x: Numeric, alpha: Boxable, beta: Boxable
+    ) -> Boxable:
+        """The hazard as ``exp(log f - log S)``."""
         # in logs, so the ratio stays finite deep in the tail
         log_sf = self.log_sf(x, alpha, beta)
         gone = log_sf == -np.inf

@@ -43,6 +43,79 @@ def test_gamma_cumulative_hazard_in_the_tail(a, x):
     assert hf == pytest.approx(1 - (a - 1) / x, rel=1e-4)
 
 
+@pytest.mark.parametrize(
+    "a, beta, x, hf, d_x, d_a",
+    [
+        # (mpmath, 60 digits) f / S lost y eps to rounding: 4e-9 at
+        # y = beta x = 1e8, 12% at 1e15 (#760)
+        (
+            2.5,
+            0.25,
+            4e4,
+            0.24996250374981247,
+            9.3731251406531092e-10,
+            -2.4997499750131224e-5,
+        ),
+        (
+            2.5,
+            0.25,
+            4e8,
+            0.24999999625000004,
+            9.3749998125000014e-18,
+            -2.4999999749999998e-9,
+        ),
+        (
+            10.0,
+            1.0,
+            1e15,
+            0.999999999999991,
+            8.999999999999982e-30,
+            -9.99999999999999e-16,
+        ),
+        (
+            0.7,
+            1.0,
+            1500.0,
+            1.0001998668706449,
+            -1.3315596320225885e-7,
+            -0.00066622299064922648,
+        ),
+        (
+            40.0,
+            1.0,
+            1200.0,
+            0.96752794340260667,
+            2.7036022855697686e-5,
+            -0.00083259285276073516,
+        ),
+        (
+            1000.0,
+            1.0,
+            3000.0,
+            0.66716616809812125,
+            0.00011086173328370967,
+            -0.00033308420413947986,
+        ),
+    ],
+)
+def test_gamma_hazard_far_in_the_tail(a, beta, x, hf, d_x, d_a):
+    # Past y = 1000 (and a + 2 sqrt(a) + 1) the hazard is the continued
+    # fraction of the upper incomplete gamma, whose e**-y cancels exactly
+    # (#760): its value and its autograd derivatives are mpmath's.
+    from autograd import elementwise_grad, grad
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        value = surv.Gamma.hf(np.array([x]), a, beta)[0]
+        slope_x = elementwise_grad(lambda t: surv.Gamma.hf(t, a, beta))(
+            np.array([x])
+        )[0]
+        slope_a = grad(lambda s: surv.Gamma.hf(np.array([x]), s, beta)[0])(a)
+    assert value == pytest.approx(hf, rel=1e-14)
+    assert slope_x == pytest.approx(d_x, rel=1e-12)
+    assert slope_a == pytest.approx(d_a, rel=1e-12)
+
+
 # -- every distribution, far out and at extreme parameters (#561) ---------
 
 FUNCTIONS = ("sf", "ff", "df", "hf", "Hf", "log_sf", "log_ff", "log_df")
