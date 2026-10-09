@@ -47,6 +47,12 @@ Unreleased
   hold the curve at its last value out to ``tau``, so the RMSTs and their
   difference were whatever the horizon made them (``tau=1e6`` gave a
   difference of 25,000 on data running to 120).
+- ``MixtureModel`` refuses an ``m`` that is not a whole number of at least
+  1, saying so; ``m=0`` used to fail inside numpy with "number sections
+  must be larger than 0".
+- ``from_json`` given a string that is neither a file nor JSON text (which
+  starts with ``{``) says that it read the string as a file path, rather
+  than only that the file was not found.
 
 v0.24 (9 October 2026)
 ----------------------

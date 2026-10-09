@@ -495,3 +495,20 @@ def test_distribution_class_docstrings_have_formula_and_example(name):
     assert "Examples" in doc and ">>> " in doc
     for parameter in fitter.parameter_names:
         assert f"``{parameter}``" in doc
+
+
+# -- MixtureModel refuses an m that is not a whole number of at least 1 --
+
+
+@pytest.mark.parametrize("m", [0, -1, 2.5, True])
+def test_mixture_model_refuses_a_bad_m(m):
+    with pytest.raises(ValueError, match="whole number of at least 1"):
+        sp.MixtureModel.fit(X, dist=sp.Weibull, m=m)
+
+
+# -- from_json says a string that is not JSON was read as a file path ----
+
+
+def test_from_json_says_a_non_json_string_is_read_as_a_path():
+    with pytest.raises(FileNotFoundError, match="as a file path"):
+        sp.from_json("not json")

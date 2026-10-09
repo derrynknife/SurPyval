@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import numbers
 import warnings
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -177,8 +178,8 @@ class MixtureModel(
         surpyval distribution.
 
     m : int, optional
-        The number of sub-distributions to be used in the mixture model.
-        Defaults to 2.
+        The number of sub-distributions to be used in the mixture model,
+        a whole number of at least 1. Defaults to 2.
 
     Examples
     --------
@@ -216,6 +217,11 @@ class MixtureModel(
         return list(self.dist.parameter_names)
 
     def __init__(self, dist: Any, m: int = 2) -> None:
+        if isinstance(m, bool) or not isinstance(m, numbers.Integral) or m < 1:
+            raise ValueError(
+                "'m', the number of sub-distributions in the mixture, must "
+                f"be a whole number of at least 1; got {m!r}"
+            )
         self.m = m
         self.dist = dist
         # These are None until ``fit`` runs and arrays afterwards, so the

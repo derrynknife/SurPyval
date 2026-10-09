@@ -1097,8 +1097,18 @@ def read_json(fp: str | os.PathLike) -> Any:
     (#485)."""
     if isinstance(fp, str) and fp.lstrip().startswith("{"):
         return json.loads(fp)
-    with open(fp, "r") as f:
-        return json.load(f)
+    try:
+        with open(fp, "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        # A string is read as JSON text only when it starts with ``{``;
+        # anything else is taken for a path, so say so rather than leave a
+        # garbled JSON string looking like a missing file.
+        raise FileNotFoundError(
+            f"No such file: {str(fp)!r}. from_json reads its argument as a "
+            "file path unless it is JSON text, which starts with '{' (as "
+            "the text to_json() returns does)."
+        ) from None
 
 
 def from_dict(model_dict: dict) -> Any:
