@@ -15,6 +15,7 @@ from surpyval.utils.removed_names import removed_arguments
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import (
     _check_x_not_empty,
+    all_in_unit_interval,
     warn_outside_unit_interval,
 )
 
@@ -225,7 +226,10 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
     warning, as the fitted models' ``qf`` do (#611): the formulas gave
     whatever they gave -- an Exponential's ``qf(-0.5)`` a negative time,
     a Uniform's ``qf(1.5)`` a point past its end, a Weibull's NaN with a
-    raw numpy warning.
+    raw numpy warning. Probabilities all in [0, 1], the usual case, go
+    straight to the formula after two reductions (#769); the function
+    without these checks is ``wrapped._unchecked[1]``, for a caller that
+    has checked them itself (``Parametric.qf`` and ``random``).
     """
     at_infinity = _AT_INFINITY.get(fn.__name__)
     is_qf = fn.__name__ == "qf"
@@ -241,6 +245,9 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
         if isinstance(x, ArrayBox):
             return fn(self, x, *params)
         x_arr = onp.asarray(x, dtype=float)
+        if is_qf and all_in_unit_interval(x_arr):
+            # none missing or out of range: what the checks below conclude
+            return fn(self, x, *params)
         missing = onp.isnan(x_arr)
         if is_qf:
             missing = missing | warn_outside_unit_interval(x_arr)
@@ -272,6 +279,10 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
         return out[()] if isinstance(out, np.ndarray) else out
 
     wrapped._array_inputs = True  # type: ignore[attr-defined]
+    # The wrapper with the function it wraps: ``functools.wraps`` would
+    # copy this to a decorator wrapped around it, which the pair's first
+    # element then tells apart.
+    wrapped._unchecked = (wrapped, fn)  # type: ignore[attr-defined]
     return wrapped
 
 

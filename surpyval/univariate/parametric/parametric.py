@@ -52,6 +52,7 @@ from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import (
     BOUNDS,
     CB_ON,
+    all_in_unit_interval,
     alpha_ci_error,
     check_alpha_ci,
     check_option,
@@ -126,10 +127,38 @@ def draw_state(random_state: Any = None) -> Any:
 def uniform_draws(
     size: int | tuple[int, ...], random_state: Any = None
 ) -> npt.NDArray:
-    """Uniform draws on (0, 1) of shape ``size``: see :func:`draw_state`."""
+    """Uniform draws on (0, 1) of shape ``size``: see :func:`draw_state`.
+
+    They are scipy's ``uniform.rvs(size=size, random_state=...)``, drawn
+    as it draws them, from the global stream or ``uniform.random_state``
+    by default, without the fixed cost of its argument handling: the
+    same numbers, and the stream left in the same state (#769)."""
     from scipy.stats import uniform
 
-    return uniform.rvs(size=size, random_state=draw_state(random_state))
+    state = draw_state(random_state)
+    if _is_shape(size):
+        if state is None:
+            state = uniform.random_state
+        # scipy's ``uniform._rvs``; its ``* scale + loc`` is ``* 1.0 +
+        # 0.0``, which changes no draw
+        return state.uniform(0.0, 1.0, size)
+    return uniform.rvs(size=size, random_state=state)
+
+
+def _is_shape(size: Any) -> bool:
+    """Whether ``size`` is a count or a tuple of counts, at least one
+    dimension long, which ``uniform_draws`` passes to the generator."""
+    if isinstance(size, tuple):
+        return len(size) > 0 and all(_is_count(n) for n in size)
+    return _is_count(size)
+
+
+def _is_count(n: Any) -> bool:
+    return (
+        isinstance(n, (int, onp.integer))
+        and not isinstance(n, bool)
+        and bool(n >= 0)
+    )
 
 
 def is_custom_distribution(dist: Any) -> bool:
@@ -246,6 +275,53 @@ def _query_array(x: Any) -> Any:
                 f"x must be numbers (or strings of numbers); got {x!r}."
             ) from None
     return out
+
+
+def _unchecked_qf(dist: Any) -> Callable[..., Any] | None:
+    """The quantile formula of ``dist`` without the checks of its ``qf``
+    wrapper (``parametric_fitter._array_inputs``), called as ``f(dist, u,
+    *params)`` with probabilities already known to be in [0, 1], none NaN
+    (#769). None where ``dist.qf`` is not that wrapper (set on the
+    instance, or decorated again): it is then called as it is."""
+    if "qf" in getattr(dist, "__dict__", ()):
+        return None
+    qf = getattr(type(dist), "qf", None)
+    pair = getattr(qf, "_unchecked", None)
+    if pair is None or pair[0] is not qf:
+        return None
+    return pair[1]
+
+
+def _fresh(q: Any, u: Any) -> bool:
+    """Whether ``q``, computed from the probabilities ``u``, is a float
+    array of its own, which ``qf`` may change in place: not ``u``, nor a
+    view of anything, nor an autograd box (#769)."""
+    return (
+        type(q) is onp.ndarray
+        and q.dtype == onp.float64
+        and q.base is None
+        and q.flags.writeable
+        and q is not u
+    )
+
+
+def _plus(gamma: Any, q: Any, u: Any) -> Any:
+    """``gamma + q``: the quantile ``q`` of the distribution shifted by
+    the offset (with ``gamma = 0``, a -0.0 made 0.0, as the shift always
+    made it). Added into ``q`` itself where it is :func:`_fresh`, which
+    saves a pass and an array as large as the query (#769)."""
+    if _fresh(q, u) and not isinstance(gamma, ArrayBox):
+        return onp.add(gamma, q, out=q)
+    return gamma + q
+
+
+def _put(q: Any, where: Any, value: float, u: Any) -> Any:
+    """``np.where(where, value, q)``, into ``q`` itself where it is
+    :func:`_fresh` (#769)."""
+    if _fresh(q, u):
+        onp.putmask(q, where, value)
+        return q
+    return np.where(where, value, q)
 
 
 def _scalar(out: Any) -> Any:
@@ -1630,7 +1706,61 @@ class Parametric(
         [0, 1] gives NaN, as scipy's ``ppf`` does, with a warning (it is
         most often a percentage given for a probability: ``qf(10)`` for
         the B10 life, which is ``qf(0.1)``); NaN gives NaN.
+
+        Each of the steps for ``f0``, ``lfp_p`` and ``gamma`` is taken only
+        where it changes something, and the probabilities are checked
+        once, here: a model without them gives its distribution's own
+        ``qf`` at no further cost (with a -0.0 as 0.0) (#769).
         """
+        if isinstance(p, ArrayBox):
+            return self._qf_checked(p)
+        if isinstance(p, list):
+            p = onp.array(p)
+        u = onp.asarray(p, dtype=float)
+        scalar = u.ndim == 0
+        u = onp.atleast_1d(u)
+        formula = _unchecked_qf(self.dist)
+        f0, lfp_p = self.f0, self.lfp_p
+        if formula is None or not (f0 < lfp_p and all_in_unit_interval(u)):
+            # NaN, or a probability outside [0, 1], to be checked for and
+            # warned of: the full path.
+            return self._qf_checked(p)
+        # Under the floating-point settings of ``_qf_checked``: the
+        # distribution's (``_array_inputs``) inside the model's.
+        if f0 == 0 and lfp_p == 1:
+            base = u
+        else:
+            with np.errstate(divide="ignore", invalid="ignore"):
+                base = onp.subtract(u, f0)
+                onp.divide(base, lfp_p - f0, out=base)
+                onp.clip(base, 0.0, 1.0, out=base)
+        with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+            q = formula(self.dist, base, *self.params)
+        if self.gamma == 0:
+            # 0 + q raises no floating-point error
+            q = _plus(self.gamma, q, u)
+        else:
+            with np.errstate(divide="ignore", invalid="ignore"):
+                q = _plus(self.gamma, q, u)
+        if onp.shape(q) != u.shape:
+            # A formula that gives other than one value per probability:
+            # the full path broadcasts it.
+            return self._qf_checked(p)
+        # The steps of ``_qf_checked``, where they change anything.
+        if (f0 > 0 or getattr(self.dist, "discrete", False)) and (
+            u.min() <= f0
+        ):
+            q = _put(q, u <= f0, 0.0, u)
+        if lfp_p < 1 and u.max() >= lfp_p:
+            q = _put(q, u >= lfp_p, np.inf, u)
+        q = (np if isinstance(q, ArrayBox) else onp).asarray(q, dtype=float)
+        return q[0] if scalar else q
+
+    def _qf_checked(self, p: Any) -> Any:
+        """``qf`` with every step taken, and the probabilities checked for
+        NaN and [0, 1] here and again in the distribution's ``qf``: for
+        such probabilities, an autograd box, or a distribution ``qf`` of
+        its own. ``qf`` gives the same values, faster, for the rest."""
         if isinstance(p, list):
             p = np.array(p)
         u = np.asarray(p, dtype=float)
@@ -1846,12 +1976,16 @@ class Parametric(
                 if hasattr(self.dist, "qf") and not getattr(
                     self.dist, "_draws_indicators", False
                 ):
-                    return (
-                        self.dist.qf(
-                            uniform_draws(size, random_state), *self.params
-                        )
-                        + self.gamma
-                    )
+                    u = uniform_draws(size, random_state)
+                    formula = _unchecked_qf(self.dist)
+                    if formula is None:
+                        q = self.dist.qf(u, *self.params)
+                    else:
+                        # uniforms are in [0, 1): nothing for the checks
+                        # of the distribution's qf to find (#769)
+                        with np.errstate(over="ignore", divide="ignore"):
+                            q = formula(self.dist, u, *self.params)
+                    return _plus(self.gamma, q, u)
                 else:
                     return self.dist.random(
                         size, *self.params, random_state=random_state
