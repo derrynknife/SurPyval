@@ -271,7 +271,8 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
     def Hf(self, x: Any) -> np.ndarray:
         """Cumulative hazard ``-log sf(x)``."""
         # + 0.0 turns the -0.0 of -log(1) at x <= 0 into 0.0
-        return -np.log(self.sf(x)) + 0.0
+        with np.errstate(divide="ignore"):  # inf at infinity
+            return -np.log(self.sf(x)) + 0.0
 
     @keeps_query_shape
     def hf(self, x: Any) -> np.ndarray:
@@ -390,7 +391,9 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
         The bound is formed on the (unbounded) linear predictor ``eta`` --
         whose variance is ``B Sigma B'`` from the covariance -- and then
         pushed through the link, so ``sf`` / ``ff`` bounds stay in ``(0, 1)``.
-        ``S`` is monotone decreasing in ``eta`` on every scale.
+        ``S`` is monotone decreasing in ``eta`` on every scale. At and
+        before time 0, and at infinity, there is no spline (it is in
+        ``log x``): both ends of the band are ``sf`` there, 1 and 0.
 
         Parameters
         ----------
@@ -417,7 +420,12 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
         if on in ("ff", "F", "Hf") and bound != "two-sided":
             bound = "upper" if bound == "lower" else "lower"
         x = np.atleast_1d(np.asarray(x, dtype=float))
-        B = _rcs_basis(np.log(x), self.knots)
+        # The spline is in log x, which does not exist at or before time 0
+        # (nor at infinity): there the band is the survival itself, 1 (0 at
+        # infinity), as sf gives. It was nan (#760).
+        inside = np.isfinite(x) & (x > 0.0)
+        edge = np.where(np.isposinf(x), 0.0, np.where(np.isnan(x), x, 1.0))
+        B = _rcs_basis(np.log(np.where(inside, x, 1.0)), self.knots)
         eta = B @ self.params
         var = np.einsum("ij,jk,ik->i", B, cov, B)
         se = np.sqrt(np.maximum(var, 0.0))
@@ -433,13 +441,17 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
             z = _ndtri(1.0 - alpha_ci)
             signed = eta + (z if bound == "lower" else -z) * se
             band = _sf_from_eta(signed, self.scale)
+        band[~inside] = (
+            edge[~inside, None] if band.ndim == 2 else edge[~inside]
+        )
 
         if on in ("sf", "R"):
             return band
         if on in ("ff", "F"):
             return 1.0 - (band[:, ::-1] if band.ndim == 2 else band)
         # 0.0 - log: where a bound is 1, -log(1) is -0.0 (#746).
-        return 0.0 - np.log(band[:, ::-1] if band.ndim == 2 else band)
+        with np.errstate(divide="ignore"):  # inf where a bound is 0
+            return 0.0 - np.log(band[:, ::-1] if band.ndim == 2 else band)
 
     # -- information criteria (InformationCriteriaMixin) -------------------
     # neg_ll(), log_likelihood, aic(), aic_c() and bic(), the last two with
