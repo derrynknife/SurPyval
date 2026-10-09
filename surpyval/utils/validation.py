@@ -313,6 +313,32 @@ def warn_outside_unit_interval(
     return outside
 
 
+def all_in_unit_interval(u: npt.NDArray) -> bool:
+    """Whether every value of the float array ``u`` is in [0, 1], none
+    NaN: the probabilities a quantile function is nearly always given,
+    for which :func:`warn_outside_unit_interval` and the NaN check have
+    nothing to do (#769).
+
+    It takes two reductions and makes no array, where those checks make
+    four (NaN propagates through ``min`` and ``max``, and fails both
+    comparisons). An empty ``u`` gives False, for the full checks.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.utils.validation import all_in_unit_interval
+    >>> all_in_unit_interval(np.array([0.0, 0.5, 1.0]))
+    True
+    >>> all_in_unit_interval(np.array([0.5, float("nan")]))
+    False
+    >>> all_in_unit_interval(np.array(1.5))
+    False
+    """
+    if not u.size:
+        return False
+    return 0.0 <= float(u.min()) and float(u.max()) <= 1.0
+
+
 def _check_x_not_empty(func: Callable) -> Callable:
     # Decorator to check that x is not empty
     def wrap(obj: Any, x: Any, *args: Any, **kwargs: Any) -> Any:

@@ -102,6 +102,14 @@ Unreleased
   support and missing-value checks around every distribution function use
   plain numpy rather than autograd's wrappers. A Weibull's ``sf`` on 16
   points: 58 to 28 us; an Exponential's on 20,000: 193 to 79 us.
+- A fitted model's ``qf`` is about twice as fast, three times on small
+  arrays, and ``random`` up to 2x, with identical values and warnings
+  (#769). Each offset, limited-failure and zero-inflation step is taken
+  only where it changes something, so a model without them gives its
+  distribution's ``qf``; the probabilities are checked once, by two
+  reductions, not in both ``qf``s; and the uniforms skip scipy's argument
+  handling. A Weibull's on a million values: 30 to 15 ns each; on 2,000:
+  101 to 31 us.
 
 **Added**
 
