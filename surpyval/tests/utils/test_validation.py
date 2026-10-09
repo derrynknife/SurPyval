@@ -378,3 +378,16 @@ def test_fit_best_refuses_an_empty_include():
     # been left out.
     with pytest.raises(ValueError, match="`include` is empty"):
         sp.fit_best([1.0, 2, 3, 4, 5, 6, 7, 8], include=[])
+
+
+def test_printout_says_when_the_fit_is_not_a_verified_maximum():
+    # The printout of a fit whose maximum is unverified, or not finite,
+    # used to read as an ordinary fit; the warning raised by fit is easy
+    # to miss or filter.
+    model = sp.Weibull.fit([1.0, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    assert model.maximum == "verified"
+    assert "Maximum" not in repr(model)
+    model.maximum = "unverified"
+    assert "Maximum             : unverified" in repr(model)
+    model.maximum = "no finite maximum"
+    assert "Maximum             : none finite" in repr(model)

@@ -427,6 +427,22 @@ def _parameter_jacobian(
         return np.atleast_2d(jacobian(func)(phi))
 
 
+#: The printout's warning line for a fit whose answer is not a verified
+#: maximum of the likelihood (0.24 review): the warning raised at the fit
+#: is easy to miss, or filtered, and the printout otherwise reads as an
+#: ordinary fit.
+_MAXIMUM_NOTES = {
+    "unverified": (
+        "unverified -- not shown to be a maximum of the likelihood; "
+        "check the fit (see the warning raised by fit)"
+    ),
+    "no finite maximum": (
+        "none finite -- a parameter runs off to a limit of its range; "
+        "the values are where the search stopped"
+    ),
+}
+
+
 class Parametric(
     LikelihoodRatioMixin,
     InformationCriteriaMixin,
@@ -980,6 +996,9 @@ class Parametric(
                 f"\nDistribution        : {self.dist.name}"
                 f"\nFitted by           : {self.method}"
             )
+            maximum = getattr(self, "maximum", None)
+            if maximum in _MAXIMUM_NOTES:
+                out += f"\nMaximum             : {_MAXIMUM_NOTES[maximum]}"
             data_line = self._data_repr()
             if data_line:
                 out += f"\nData                : {data_line}"
