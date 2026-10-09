@@ -1099,9 +1099,25 @@ def test_746_the_newton_finish_converges_along_a_flat_direction():
     res = OptimizeResult(x=x, fun=float(f(x)))
     derivatives = runaway.search_derivatives(f, x)
     assert skeleton.is_verified(x, derivatives, 10.0, one_sided=(1,))
-    out, _ = skeleton._newton_finish(f, res, derivatives, 10.0, (), 1.0, (1,))
+    out, _ = skeleton.newton_finish(f, res, derivatives, 10.0, (), 1.0, (1,))
     assert res.fun > 8e-7 and out.fun < 1e-15
     assert np.log1p(out.x[1]) == pytest.approx(3.0, abs=1e-6)
+
+
+def test_760_the_newton_finish_can_go_to_the_rounding():
+    # By default the finish stops within FINE_GAIN nats of the maximum;
+    # fine=0 (the accelerated life fit's) goes on to the rounding of the
+    # objective, where a ridge flat to 1e-10 nats is still 1e-4 long.
+    def f(p):
+        return anp.cosh(p[0]) - 1.0
+
+    x = np.array([0.01])
+    res = OptimizeResult(x=x, fun=float(f(x)))
+    derivatives = runaway.search_derivatives(f, x)
+    near, _ = skeleton.newton_finish(f, res, derivatives, 1.0)
+    assert 1e-9 < abs(near.x[0]) < 1e-5
+    out, _ = skeleton.newton_finish(f, res, derivatives, 1.0, fine=0.0)
+    assert abs(out.x[0]) < 1e-12
 
 
 # ---------------------------------------------------------------------------

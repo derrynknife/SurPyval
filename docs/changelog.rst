@@ -178,6 +178,16 @@ Unreleased
   answer on a covariate spanning 3e-4 passed as verified where BFGS had
   not moved from 0 (the maximum at 15). Newton-Raphson's fits keep their
   verdicts.
+- ``AcceleratedLife`` finishes its search with the Newton steps the other
+  parametric regressions use (#760): on the log scale of a parameter with
+  one bound, each step halved until it lowers the likelihood, and kept
+  only where the answer is still a verified maximum. Answers move by
+  about 1e-6 of a standard error; on random designs no verdict changes.
+- ``BuckleyJames`` and the semi-parametric ``ProportionalOdds`` no longer
+  depend on the row order (#760): they fit their rows sorted by every
+  column, as the parametric regressions do. They moved by 1e-16 with the
+  order, and Buckley-James's ``bootstrap_ci``, which resamples the rows,
+  drew differently in each order.
 - "No finite maximum" no longer says a parametric regression's baseline
   location or scale "runs on" when only the baseline at the covariate
   means, where the fit runs, runs off with the coefficients (#760). With
