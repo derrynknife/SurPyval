@@ -11,13 +11,18 @@ times), and the fits against values computed on the code before #516
 """
 
 import tracemalloc
+import warnings
 from unittest import mock
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from surpyval import CompetingRisksProportionalHazards, CoxPH
-from surpyval.univariate.regression.proportional_hazards import cox_ph
+from surpyval.univariate.regression.proportional_hazards import (
+    cox_ph,
+    cox_separation,
+)
 from surpyval.utils import validate_coxph
 
 MONOTONE = "No finite maximum: the partial likelihood"
@@ -225,6 +230,148 @@ def test_a_monotone_likelihood_still_warns():
     assert len(w) == 1
     assert w[0].filename == __file__
     assert "Newton" not in str(model.res.message)
+
+
+# Neither column runs off alone; together, in the proportion 0.25 : -1,
+# they separate the events from the survivors (#728)
+COMBINATION = (
+    np.array([2, 1, 1.5, 0.5, 0.5, 2]),
+    np.array([[0, 1.5], [0.5, 1], [-1.5, 1], [2, -1], [0, -1.5], [0, 1.5]]),
+)
+ORDERS = [np.arange(6), np.arange(6)[::-1], np.array([3, 0, 5, 1, 4, 2])]
+
+
+@pytest.mark.parametrize("order", range(len(ORDERS)))
+@pytest.mark.parametrize("method", ["efron", "breslow"])
+def test_a_run_off_along_a_combination_has_no_finite_maximum(method, order):
+    # It ran to (61.9, -247.6), the partial likelihood at its supremum,
+    # with standard errors 0.6 and 0.5, and said "verified" (#728).
+    x, Z = (a[ORDERS[order]] for a in COMBINATION)
+    with pytest.warns(UserWarning, match=MONOTONE) as w:
+        model = CoxPH.fit(x, Z, tie_method=method)
+    assert len(w) == 1
+    assert (
+        "coefficients [0, 1] grow without bound together, in the "
+        "proportion 0.25 : -1" in str(w[0].message)
+    )
+    assert model.maximum == "no finite maximum"
+    assert np.isnan(model.standard_errors()).all()
+
+
+def test_a_stratified_run_off_along_a_combination_is_found():
+    x, Z = COMBINATION
+    with pytest.warns(UserWarning, match="proportion 0.25 : -1"):
+        model = CoxPH.fit(
+            np.r_[x, x + 0.25], np.r_[Z, Z], strata=np.repeat([0, 1], 6)
+        )
+    assert model.maximum == "no finite maximum"
+
+
+@pytest.mark.parametrize(
+    "method, runs_off",
+    [("efron", False), ("breslow", False), ("exact", True), ("kp", True)],
+)
+def test_the_exact_methods_ask_less_of_tied_deaths(method, runs_off):
+    # Two deaths at 1 (z 1 and 2) above the survivor (z 0): Efron and
+    # Breslow need the deaths level as well, the exact methods do not.
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        model = CoxPH.fit([1, 1, 2], [[1.0], [2.0], [0.0]], tie_method=method)
+    assert model.maximum == (
+        "no finite maximum" if runs_off else "verified"
+    ), model.beta
+    assert len(w) == runs_off
+
+
+@pytest.mark.parametrize("order", [[0, 1, 2, 3, 4, 5], [5, 3, 1, 0, 4, 2]])
+def test_a_level_whose_one_row_is_an_event_has_no_finite_maximum(order):
+    # "verified" at (-23.5, 35.9), in either order (#728, #714)
+    df = pd.DataFrame(
+        {
+            "x": [0.5, 1, 0.5, 0.5, 0.5, 0.5],
+            "c": [0, 0, 0, 0, 1, 1],
+            "g": list("baaaaa"),
+            "z0": [0.5, -1, -1, -1, 0.5, 0.5],
+        }
+    ).iloc[order]
+    with pytest.warns(UserWarning, match="together, in the proportion"):
+        model = CoxPH.fit_from_df(
+            df, x_col="x", c_col="c", formula="z0 + C(g)"
+        )
+    assert model.maximum == "no finite maximum"
+
+
+def test_an_ordinary_fit_does_not_look_for_a_run_off():
+    # The data are asked only when the search gives cause (#728)
+    x, Z, c, n, tl, _ = _data("truncated_weighted")
+    with mock.patch.object(
+        cox_ph, "runoff_direction", side_effect=AssertionError
+    ):
+        model = CoxPH.fit(x, Z, c, n=n, tl=tl)
+    assert model.maximum == "verified"
+
+
+def test_a_run_off_where_newton_raphson_gave_up_is_found():
+    # Found by a random search (#746): Newton-Raphson gave up and BFGS
+    # stopped where the score was below the verification's tolerance in
+    # the units of the third covariate (a spread of 1e-7), every unit
+    # within 2 of the average and the information at 0.29 of the start's;
+    # none of the three triggers fired, and a likelihood with no finite
+    # maximum was reported "verified". An answer Newton-Raphson did not
+    # converge to now has the data asked.
+    x = np.array([2.0, 1, 3, 1, 3, 4, 2])
+    c = np.array([0, 0, 1, 0, 0, 0, 0])
+    Z = np.array(
+        [
+            [-0.622, 0.08, 1.252],
+            [-0.324, -1.102, -0.799],
+            [1.777, -0.35, -1.184],
+            [-0.302, 0.298, 0.287],
+            [1.863, -0.191, -1.546],
+            [1.509, 0.287, 0.3],
+            [-0.679, -1.036, 1.581],
+        ]
+    ) * np.array([0.52, 179.0, 2.5e-8])
+    with pytest.warns(UserWarning, match="No finite maximum"):
+        model = CoxPH.fit(x, Z, c, tie_method="kp", center=True)
+    assert model.maximum == "no finite maximum"
+
+
+def test_runoff_direction_matches_every_pair_of_unit_and_time():
+    # The cutting planes against the full programme, one constraint per
+    # pair of a death and a unit at risk with it, on small random data
+    from scipy.optimize import linprog
+
+    rng = np.random.default_rng(728)
+    for trial in range(60):
+        N, p = rng.integers(4, 10), rng.integers(1, 3)
+        x = rng.integers(1, 5, size=N).astype(float)
+        Z = rng.integers(-2, 3, size=(N, p)).astype(float)
+        c = (rng.random(N) < 0.3).astype(int)
+        tl = np.where(rng.random(N) < 0.3, x - 1.5, -np.inf)
+        method = ("efron", "exact")[trial % 2]
+        if not np.any(c == 0):
+            continue
+        rows, level, gaps = [], [], np.zeros(p)
+        for t in np.unique(x[c == 0]):
+            D = np.flatnonzero((x == t) & (c == 0))
+            S = np.flatnonzero((tl < t) & (x >= t) & ~((x == t) & (c == 0)))
+            rows += [Z[j] - Z[k] for j in S for k in D]
+            gaps += (Z[D].sum(0) * len(S) - Z[S].sum(0) * len(D)) / 4
+            if method == "efron":
+                level += [Z[k] - Z[D[0]] for k in D[1:]]
+        full = linprog(
+            -gaps,
+            A_ub=np.array(rows) if rows else None,
+            b_ub=np.zeros(len(rows)) if rows else None,
+            A_eq=np.array(level) if level else None,
+            b_eq=np.zeros(len(level)) if level else None,
+            bounds=[(-1, 1)] * p,
+        )
+        found = cox_separation.runoff_direction(
+            x, Z, c, np.ones(N), tl, None, method
+        )
+        assert (found is not None) == (-full.fun > 1e-9), (x, Z, c, tl)
 
 
 # beta, se, -log L, H0 at T and sf at T for Z = 0.2, computed with the code
@@ -438,3 +585,427 @@ def test_competing_risks_cox_matches_the_code_before_516():
     np.testing.assert_allclose(
         model.cif(T, np.full(3, 0.2), event=1.0), OLD_CRPH_CIF, rtol=RTOL
     )
+
+
+def _neg_ll_by_definition(x, Z, c, n, tl, beta, efron):
+    """The negative partial log-likelihood straight from its definition,
+    each risk set's sum taken by ``logsumexp`` (so it holds at any
+    ``beta``): ``R - k D`` is the survivors' weights plus ``(1 - k)``
+    times the deaths'."""
+    from scipy.special import logsumexp
+
+    eta = Z @ beta
+    ll = 0.0
+    for tau in np.unique(x[c == 0]):
+        risk = (tl < tau) & (x >= tau)
+        dead = (x == tau) & (c == 0)
+        d = n[dead].sum()
+        ll += n[dead] @ eta[dead]
+        terms = [(j / d, 1.0) for j in range(int(d))] if efron else [(0, d)]
+        for k, mult in terms:
+            b = np.where(dead[risk], (1 - k) * n[risk], n[risk])
+            ll -= mult * logsumexp(eta[risk], b=b)
+    return -ll
+
+
+@pytest.mark.parametrize("kind", ["tied", "heavy_ties", "truncated_weighted"])
+@pytest.mark.parametrize("method", ["efron", "breslow"])
+def test_neg_ll_of_far_out_is_quiet_and_right(kind, method):
+    # At a large beta it gave inf or nan, with numpy's overflow, invalid
+    # and divide warnings (#728); it is the partial likelihood, in logs.
+    x, Z, c, n, tl, _ = _data(kind)
+    x, c, n, tl, Z = validate_coxph(x, c, n, Z, tl, method)
+    generator = {
+        "efron": CoxPH.create_efron_ll_jac_hess,
+        "breslow": CoxPH.create_breslow_ll_jac_hess,
+    }[method]
+    neg_ll, _ = generator(x, Z, c, n, tl)
+    rng = np.random.default_rng(728)
+    for scale in [1e3, 1e5]:
+        beta = scale * rng.normal(size=Z.shape[1])
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            got = neg_ll(beta)
+        want = _neg_ll_by_definition(x, Z, c, n, tl, beta, method == "efron")
+        np.testing.assert_allclose(got, want, rtol=1e-9)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert np.isnan(neg_ll(np.full(Z.shape[1], np.inf)))
+
+
+def test_neg_ll_of_keeps_a_risk_set_far_below_the_entries_to_come():
+    # A unit yet to enter with e^18 times the weight of the one at risk:
+    # the risk set's sum, the difference of two sums of 7e7, was one
+    # rounding step, and the likelihood 1.446 for 1.386 (#728)
+    x = np.array([0.5, 1.0, 0.5, 2.0])
+    Z = np.array([[-1.0, 0.5], [-0.5, 0.5], [1.0, -0.5], [0.5, -0.5]])
+    c = np.zeros(4, int)
+    n = np.ones(4)
+    tl = np.array([-np.inf, 0.0, -np.inf, 1.5])
+    beta = np.array([-36.16, -72.33])
+    neg_ll, _ = CoxPH.create_breslow_ll_jac_hess(x, Z, c, n, tl)
+    want = _neg_ll_by_definition(x, Z, c, n, tl, beta, False)
+    np.testing.assert_allclose(neg_ll(beta), want, rtol=1e-12)
+
+
+@pytest.mark.parametrize("method", ["efron", "breslow"])
+def test_score_and_information_keep_a_risk_set_below_the_entries(method):
+    # The score and information subtracted the mass yet to enter as the
+    # likelihood did: in the case above the information was 2.00095 for
+    # 1.99995 (and 0.50099 for 0.49999), and where the risk set's sum
+    # rounded to 0 the score was -inf and the information nan. Such a risk
+    # set is summed over itself (#746).
+    generator = getattr(CoxPH, f"create_{method}_ll_jac_hess")
+    cases = [
+        (
+            np.array([0.5, 1.0, 0.5, 2.0]),
+            np.array([[-1.0, 0.5], [-0.5, 0.5], [1.0, -0.5], [0.5, -0.5]]),
+            np.array([-np.inf, 0.0, -np.inf, 1.5]),
+            np.array([-36.16, -72.33]),
+        ),
+        (
+            np.array([1.0, 2.0, 3.0]),
+            np.array([[-1.0], [0.0], [-1.0]]),
+            np.array([-np.inf, 1.5, -np.inf]),
+            np.array([40.0]),
+        ),
+    ]
+    for x, Z, tl, beta in cases:
+        c, n = np.zeros(x.size, int), np.ones(x.size)
+        _, jac_hess = generator(x, Z, c, n, tl)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            score, info = jac_hess(beta)
+        want_score, want_info = _score_information_far(
+            x, Z, c, n, tl, beta, method == "efron"
+        )
+        np.testing.assert_allclose(score, want_score, rtol=1e-9, atol=1e-13)
+        np.testing.assert_allclose(info, want_info, rtol=1e-9, atol=1e-13)
+
+
+def test_a_row_sum_lost_to_the_times_before_entry_is_refused():
+    # The information's row weights sum s_u over each row's times at risk
+    # as a difference of cumulative sums; where the times before a row
+    # entered outweigh its own by more than 1e6 that is rounding, and the
+    # direct information gives way to the one in logs (#746)
+    from surpyval.univariate.regression.proportional_hazards import (
+        cox_likelihood as cl,
+    )
+
+    rows = cl._RiskSetRows(
+        np.array([1.0, 2.0, 2.0]), np.array([1.0, 2.0]), np.array([0, 1.5, 0])
+    )
+    np.testing.assert_allclose(
+        rows.over_risk_set_kept(np.array([2.0, 1.0])), [2.0, 1.0, 3.0]
+    )
+    assert rows.over_risk_set_kept(np.array([1e20, 1.0])) is None
+    # A row at risk only where the values are 0 has nothing to lose
+    np.testing.assert_allclose(
+        rows.over_risk_set_kept(np.array([1e20, 0.0])), [1e20, 0.0, 1e20]
+    )
+
+
+def _tie_neg_ll_by_definition(x, Z, c, beta, method):
+    """The exact (sum over the deaths' orderings) and Kalbfleisch-Prentice
+    (sum over the d-subsets of the risk set) negative partial
+    log-likelihoods by enumeration, in logs."""
+    from itertools import combinations, permutations
+
+    from scipy.special import logsumexp
+
+    eta = Z @ beta
+    ll = 0.0
+    for tau in np.unique(x[c == 0]):
+        risk = np.flatnonzero(x >= tau)
+        dead = np.flatnonzero((x == tau) & (c == 0))
+        ll += eta[dead].sum()
+        if method == "kp":
+            ll -= logsumexp(
+                [eta[list(s)].sum() for s in combinations(risk, len(dead))]
+            )
+            continue
+        survivors = np.setdiff1d(risk, dead)
+        log_w = logsumexp(eta[survivors]) if survivors.size else -np.inf
+        orders = [
+            -sum(
+                np.logaddexp(log_w, logsumexp(eta[list(o[k:])]))
+                for k in range(len(o))
+            )
+            for o in permutations(dead)
+        ]
+        ll += logsumexp(orders)
+    return -ll
+
+
+@pytest.mark.parametrize("method", ["exact", "kp"])
+def test_tie_methods_neg_ll_far_out_is_quiet_and_right(method):
+    # The exact term raised IndexError at a large beta, and KP gave -inf
+    # with a divide warning (#728)
+    x = np.array([1.0, 1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0])
+    Z = np.array([[0.3], [-1.2], [0.8], [1.5], [-0.4], [0.1], [2.0], [-1.0]])
+    c = np.array([0, 0, 0, 0, 0, 0, 1, 0])
+    generator = {
+        "exact": CoxPH.create_exact_ll_jac_hess,
+        "kp": CoxPH.create_kalbfleisch_prentice_ll_jac_hess,
+    }[method]
+    neg_ll, _ = generator(x, Z, c, np.ones(8), np.full(8, -np.inf))
+    for b in [0.5, 1e3, -1e3, 1e5]:
+        beta = np.array([b])
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            got = neg_ll(beta)
+        want = _tie_neg_ll_by_definition(x, Z, c, beta, method)
+        np.testing.assert_allclose(got, want, rtol=1e-9)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert np.isnan(neg_ll(np.array([1e308])))
+
+
+def _score_information_far(x, Z, c, n, tl, beta, efron):
+    """The score and information from their definition, each risk set's
+    weights scaled by their largest, so that it holds at any ``beta``: per
+    tie term the weighted mean and covariance of ``Z`` in the risk set,
+    the deaths' weights times ``1 - j / d`` for Efron."""
+    eta = Z @ beta
+    p = Z.shape[1]
+    score, info = np.zeros(p), np.zeros((p, p))
+    for tau in np.unique(x[c == 0]):
+        risk = (tl < tau) & (x >= tau)
+        dead = (x == tau) & (c == 0)
+        d = n[dead].sum()
+        score -= n[dead] @ Z[dead]
+        terms = [(j / d, 1.0) for j in range(int(d))] if efron else [(0, d)]
+        for k, mult in terms:
+            b = np.where(dead[risk], (1 - k) * n[risk], n[risk])
+            w = b * np.exp(eta[risk] - eta[risk].max())
+            w = w / w.sum()
+            mean = w @ Z[risk]
+            centred = Z[risk] - mean
+            score += mult * mean
+            info += mult * (centred.T * w) @ centred
+    return score, info
+
+
+@pytest.mark.parametrize("kind", ["tied", "heavy_ties", "truncated_weighted"])
+@pytest.mark.parametrize("method", ["efron", "breslow"])
+def test_score_and_information_far_out_are_quiet_and_right(kind, method):
+    # At a large beta R^2 overflowed and the information's second term,
+    # ZR ZR' / R^2, went to 0: the information, about 0 there, looked
+    # healthy (or exp overflowed, with numpy's warnings); each risk set's
+    # sums are now scaled by its own total (#746)
+    x, Z, c, n, tl, _ = _data(kind)
+    x, c, n, tl, Z = validate_coxph(x, c, n, Z, tl, method)
+    generator = {
+        "efron": CoxPH.create_efron_ll_jac_hess,
+        "breslow": CoxPH.create_breslow_ll_jac_hess,
+    }[method]
+    _, jac_hess = generator(x, Z, c, n, tl)
+    rng = np.random.default_rng(746)
+    for scale in [20.0, 1e3, 1e5]:
+        beta = scale * rng.normal(size=Z.shape[1])
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            score, info = jac_hess(beta)
+        want_score, want_info = _score_information_far(
+            x, Z, c, n, tl, beta, method == "efron"
+        )
+        # The linear predictor itself is rounded by |eta| eps
+        atol = 1e-14 * np.abs(Z @ beta).max() * n.sum()
+        np.testing.assert_allclose(score, want_score, rtol=0, atol=atol)
+        np.testing.assert_allclose(info, want_info, rtol=0, atol=atol)
+
+
+@pytest.mark.parametrize("method", ["efron", "breslow"])
+def test_information_far_out_does_not_look_healthy(method):
+    # Every death but the last has the largest Z of its risk set: at beta
+    # = 150 the information is e^-225 of the deaths' spread, and it was 9
+    # (R^2 overflowed and ZR ZR' / R^2 was taken as 0, #746)
+    x = np.arange(1.0, 7.0)
+    Z = np.array([[3.0], [2.0], [1.0], [0.0], [-1.0], [0.5]])
+    generator = getattr(CoxPH, f"create_{method}_ll_jac_hess")
+    _, jac_hess = generator(x, Z, np.zeros(6), np.ones(6), np.full(6, -np.inf))
+    score, info = jac_hess(np.array([150.0]))
+    np.testing.assert_allclose(score, [2.0], rtol=1e-12)
+    assert abs(info[0, 0]) < 1e-12
+
+
+def _kp_score_information(x, Z, c, beta):
+    """The Kalbfleisch-Prentice score and information by enumeration: the
+    mean and covariance of the covariate sum of the d-subsets of each risk
+    set, weighted by their scores, scaled by the largest."""
+    from itertools import combinations
+
+    eta = Z @ beta
+    p = Z.shape[1]
+    score, info = np.zeros(p), np.zeros((p, p))
+    for tau in np.unique(x[c == 0]):
+        risk = np.flatnonzero(x >= tau)
+        dead = (x == tau) & (c == 0)
+        score -= Z[dead].sum(axis=0)
+        subsets = [list(s) for s in combinations(risk, int(dead.sum()))]
+        S = np.array([Z[s].sum(axis=0) for s in subsets])
+        log_w = np.array([eta[s].sum() for s in subsets])
+        w = np.exp(log_w - log_w.max())
+        w = w / w.sum()
+        mean = w @ S
+        centred = S - mean
+        score += mean
+        info += (centred.T * w) @ centred
+    return score, info
+
+
+@pytest.mark.parametrize("method", ["exact", "kp"])
+def test_tie_methods_score_and_information_far_out(method):
+    # KP's score and information were nan at a large beta: every product
+    # of d scores underflowed on one scale; each row of the recursion now
+    # has its own (#746). The exact term's held already.
+    x = np.array([1.0, 1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0])
+    z = np.array([0.3, -1.2, 0.8, 1.5, -0.4, 0.1, 2.0, -1.0])
+    Z = np.column_stack([z, np.cos(np.arange(8.0))])
+    c = np.array([0, 0, 0, 0, 0, 0, 1, 0])
+    generator = {
+        "exact": CoxPH.create_exact_ll_jac_hess,
+        "kp": CoxPH.create_kalbfleisch_prentice_ll_jac_hess,
+    }[method]
+    neg_ll, jac_hess = generator(x, Z, c, np.ones(8), np.full(8, -np.inf))
+    for b in [0.5, 1e3, -1e3, 1e5]:
+        beta = np.array([b, -0.7 * b])
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            score, info = jac_hess(beta)
+        if method == "kp":
+            want_score, want_info = _kp_score_information(x, Z, c, beta)
+        else:
+            # Central differences of the likelihood, and of the score
+            steps = 1e-3 * max(abs(b), 1.0) * np.eye(2)
+            want_score = [
+                (neg_ll(beta + h) - neg_ll(beta - h)) / (2 * h.sum())
+                for h in steps
+            ]
+            want_info = [
+                (jac_hess(beta + h)[0] - jac_hess(beta - h)[0]) / (2 * h.sum())
+                for h in steps
+            ]
+        np.testing.assert_allclose(score, want_score, rtol=1e-6, atol=1e-9)
+        np.testing.assert_allclose(info, want_info, rtol=1e-6, atol=1e-9)
+
+
+def test_verified_in_the_covariates_units():
+    # The BFGS fallback (Newton-Raphson and the root-finder failing) on a
+    # covariate spanning 3e-4, a reciprocal temperature in kelvin: BFGS
+    # stops at its start, 0, where the gradient is below its tolerance,
+    # and the maximum is at 15. With a coefficient unit of 1 the score
+    # passed as zero and the answer as verified; in the covariate's units
+    # (1 / range, as Fine-Gray and the parametric fits read it) it is not
+    # (#760)
+    from scipy.optimize import OptimizeResult
+
+    rng = np.random.default_rng(23)
+    z = 1 / rng.uniform(350, 400, size=40)
+    x = rng.weibull(1.5, 40) * np.exp(-400 * (z - z.mean()))
+    c = (rng.uniform(size=40) < 0.25).astype(int)
+    model = CoxPH.fit(x, z[:, None], c=c)
+    assert model.maximum == "verified"
+    assert model.beta[0] > 10
+
+    def failed(fun, x0, **kwargs):
+        return OptimizeResult(x=np.asarray(x0), success=False, message="")
+
+    with mock.patch.object(cox_ph, "newton_raphson", return_value=None):
+        with mock.patch.object(cox_ph, "root", side_effect=failed):
+            with pytest.warns(UserWarning, match="did not reach a verified"):
+                stopped = CoxPH.fit(x, z[:, None], c=c)
+    assert stopped.beta[0] == 0.0
+    assert stopped.maximum == "unverified"
+
+
+def _baseline_definition(x, Z, c, n, tl, beta, efron):
+    """The baseline increments from their definition, each risk set's
+    weights scaled by their largest: ``d / r`` (Efron's ``sum_l 1 / (r -
+    (l / m) r_D)``) at each distinct time."""
+    eta = Z @ beta
+    times = np.unique(x)
+    h0 = np.zeros(times.size)
+    for k, tau in enumerate(times):
+        risk = (tl < tau) & (x >= tau)
+        dead = (x == tau) & (c == 0)
+        d = n[dead].sum()
+        if d == 0:
+            continue
+        top = eta[risk].max()
+        r = n[risk] @ np.exp(eta[risk] - top)
+        r_D = n[dead] @ np.exp(eta[dead] - top)
+        m = int(round(d)) if efron and d > 1 else 1
+        steps = r - (np.arange(m) / m) * r_D
+        with np.errstate(over="ignore", under="ignore"):
+            h0[k] = np.exp(-top) * (np.sum(1 / steps) * (d / m))
+    return h0
+
+
+@pytest.mark.parametrize("kind", ["tied", "truncated_weighted"])
+@pytest.mark.parametrize("method", ["efron", "breslow"])
+def test_baseline_far_out_is_quiet_and_right(kind, method):
+    # At a run-off beta exp(beta'Z) overflowed, with numpy's warning, and
+    # the increments were 0; the risk sets are now summed in logs (#760)
+    x, Z, c, n, tl, _ = _data(kind)
+    x, c, n, tl, Z = validate_coxph(x, c, n, Z, tl, method)
+    rng = np.random.default_rng(760)
+    for scale in [1.0, 300.0, 1e4]:
+        beta = scale * rng.normal(size=Z.shape[1])
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            times, r, d, h0 = CoxPH.baseline(beta, x, c, n, Z, tl, method)
+        want = _baseline_definition(x, Z, c, n, tl, beta, method == "efron")
+        # The linear predictor itself is rounded by |eta| eps
+        rtol = 1e-14 * max(np.abs(Z @ beta).max(), 1.0) * 10
+        np.testing.assert_allclose(h0, want, rtol=rtol, atol=0)
+        assert np.all(h0 >= 0)
+
+
+def test_baseline_of_a_run_off_fit_is_quiet():
+    # A fit whose coefficients run off to beta'Z of 1e4: the baseline's
+    # exp overflowed with a RuntimeWarning (#760)
+    rng = np.random.default_rng(1)
+    Z = rng.normal(size=(40, 2))
+    Z = Z[np.argsort(-(Z @ np.array([1.0, -0.6])))]
+    c = (np.arange(40) >= 20).astype(int)
+    with pytest.warns(UserWarning) as record:
+        model = CoxPH.fit(np.arange(1.0, 41), Z, c=c, center=True)
+    assert [w.category for w in record] == [UserWarning]
+    assert model.maximum == "no finite maximum"
+    assert np.all(np.isfinite(model.h0)) and np.all(model.h0 >= 0)
+
+
+def test_risk_weight_of_a_run_off_fit_overflows_to_inf():
+    # Far along a run-off the risk sets' weight r = sum n exp(beta'(Z -
+    # center)) is beyond floating point: inf (or 0) there, as the
+    # increments d / r underflow to 0 (or are large); the increments are
+    # computed from log r, so they are right (#777). r is reported as it
+    # is, and a saved model keeps it.
+    import json
+
+    import surpyval as sp
+    from surpyval.univariate.regression.proportional_hazards import (
+        cox_likelihood as cl,
+    )
+
+    rng = np.random.default_rng(1)
+    Z = rng.normal(size=(40, 2))
+    Z = Z[np.argsort(-(Z @ np.array([1.0, -0.6])))]
+    c = (np.arange(40) >= 20).astype(int)
+    x = np.arange(1.0, 41)
+    with pytest.warns(UserWarning) as record:
+        model = CoxPH.fit(x, Z, c=c, center=True)
+    assert [w.category for w in record] == [UserWarning]
+    eta = (Z - model.center) @ model.beta
+    one, never = np.ones(40), np.full(40, -np.inf)
+    log_r, _ = cl.log_baseline_sums(x, c, one, eta, never, model.x)
+    assert np.any(np.isinf(model.r)) and np.any(model.r == 0)
+    with np.errstate(over="ignore", under="ignore"):
+        np.testing.assert_allclose(model.r, np.exp(log_r), rtol=1e-12)
+    dead = model.d > 0
+    np.testing.assert_allclose(
+        model.h0[dead], np.exp(-log_r[dead]), rtol=1e-12, atol=0
+    )
+    restored = sp.from_dict(json.loads(json.dumps(model.to_dict())))
+    np.testing.assert_array_equal(restored.r, model.r)

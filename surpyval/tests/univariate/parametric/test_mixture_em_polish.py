@@ -36,13 +36,13 @@ def test_censored_mixture_is_fitted_quickly_without_a_false_alarm(
     # under a second each on a quiet machine. Counted rather than timed,
     # which a loaded machine would make flaky.
     steps = []
-    em = sp.MixtureModel.EM
+    em = sp.MixtureModel._em_iteration
 
     def counted(self):
         steps.append(1)
         return em(self)
 
-    monkeypatch.setattr(sp.MixtureModel, "EM", counted)
+    monkeypatch.setattr(sp.MixtureModel, "_em_iteration", counted)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         model = sp.MixtureModel.fit(x, c=c, dist=sp.Weibull, m=2)
@@ -121,7 +121,7 @@ def test_warns_only_when_neither_em_nor_the_polish_reaches_a_maximum(
         warnings.simplefilter("always")
         model.data = sp.utils.surpyval_data.SurpyvalData(x=x, c=c)
         model._truncated = False
-        model.p = np.ones((2, len(x))) / 2
+        model._resp = np.ones((2, len(x))) / 2
         model._initialise_params()
         reason = model._em(max_iter=4, budget=2)
     # ``_em`` says why; the fit gives the one warning (unless the
@@ -230,13 +230,13 @@ def test_582_gradient_is_finite_on_an_interval_from_zero():
 
 def _count_em(monkeypatch):
     steps = []
-    em = sp.MixtureModel.EM
+    em = sp.MixtureModel._em_iteration
 
     def counted(self):
         steps.append(1)
         return em(self)
 
-    monkeypatch.setattr(sp.MixtureModel, "EM", counted)
+    monkeypatch.setattr(sp.MixtureModel, "_em_iteration", counted)
     return steps
 
 
@@ -283,7 +283,7 @@ def test_589_m_step_evaluates_q_only_with_its_gradient(monkeypatch):
             plain_calls.append(1)
         return q(self, params)
 
-    monkeypatch.setattr(sp.MixtureModel, "Q", recorded)
+    monkeypatch.setattr(sp.MixtureModel, "_Q", recorded)
     model._expectation()
     model._Q_jac()  # the one-off check that autograd can differentiate it
     plain_calls.clear()

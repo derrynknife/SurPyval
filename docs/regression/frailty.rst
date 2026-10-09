@@ -58,8 +58,8 @@ profile likelihood -- the fit of R's ``coxph(... + frailty(id, dist =
     model = CoxFrailty.fit(x, Z=Z, c=c, groups=unit_id)
 
 It predicts like the parametric models, from a step baseline as ``CoxPH``
-does, and reports R's integrated likelihood (``loglik``) in place of the
-information criteria, which a nonparametric baseline does not have.
+does, and reports R's integrated likelihood (its ``loglik``) as
+``log_likelihood``, which ``aic()`` and ``bic()`` penalise.
 
 .. autofunction:: surpyval.univariate.regression.frailty.Frailty
 

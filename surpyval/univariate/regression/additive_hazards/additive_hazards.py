@@ -55,10 +55,15 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
-from surpyval.utils.deprecation import RenamedToMethod
+from surpyval.utils.dataframe import check_columns
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import safe_inv
-from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.removed_names import column_arguments
+from surpyval.utils.shapes import (
+    check_paired_rows,
+    covariate_rows,
+    keeps_query_shape,
+)
 
 from .._aliasing import (
     aliased_columns,
@@ -68,11 +73,18 @@ from .._aliasing import (
     warn_aliased,
 )
 from .._concordance import ConcordanceMixin
-from .._prediction import ConditionalSurvivalMixin
-from .._summary import coefficient_names
+from .._prediction import (
+    STEP_QF_TOL,
+    ConditionalSurvivalMixin,
+    paired_probabilities,
+    quantiles_by_inversion,
+)
+from .._summary import coefficient_names, coefficient_table
 from ..regression_data import (
     LinearPredictorMixin,
+    NoLikelihoodMixin,
     design_matrix_from_df,
+    prepare_Z,
     restore_covariate_meta,
     semi_parametric_inputs,
     serialise_covariate_meta,
@@ -141,6 +153,7 @@ def _aliased(
 
 class AdditiveHazardsModel(
     ConditionalSurvivalMixin,
+    NoLikelihoodMixin,
     LinearPredictorMixin,
     ConcordanceMixin,
     SerialisableMixin,
@@ -174,6 +187,8 @@ class AdditiveHazardsModel(
 
     # Populated by ``fit`` / ``fit_from_df``.
     feature_names: list[str] | None = None
+    #: Covariates of the wrong width are refused by name (#657).
+    _CHECKS_WIDTH = True
     formula: str | None = None
     _model_spec: object = None
 
@@ -190,12 +205,8 @@ class AdditiveHazardsModel(
     params: npt.NDArray
     #: The coefficients' covariance, ``covariance()`` (#605).
     _covariance: npt.NDArray
-    #: ``covariance()``'s name before v0.23, for one release.
-    cov = RenamedToMethod("covariance", "_covariance")
     #: The coefficients' standard errors, ``standard_errors()``.
     _se: npt.NDArray
-    #: ``standard_errors()``'s name before v0.23, for one release (#613).
-    se = RenamedToMethod("standard_errors", "_se")
     p_values: npt.NDArray
     x: npt.NDArray
     h0: npt.NDArray
@@ -233,10 +244,18 @@ class AdditiveHazardsModel(
         "linear combination of the others"
     )
     _ALIASED_ALSO = ", as are their standard errors and p-values"
+    _NO_LIKELIHOOD_WHY = (
+        "Lin and Ying's estimator solves linear estimating equations; "
+        "there is no likelihood to maximise"
+    )
 
     def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
-        # One row per prediction, as the model's functions index it.
-        return np.atleast_2d(super()._prepare_Z(Z))
+        # One row per prediction, as the model's functions index it: a
+        # 1-D Z of a one-covariate model is one value per row (#657), as
+        # for the other models (it was read as one row of that width).
+        return covariate_rows(
+            super()._prepare_Z(Z), np.asarray(self.beta).shape[0]
+        )
 
     def __repr__(self) -> str:
         out = (
@@ -373,8 +392,11 @@ class AdditiveHazardsModel(
         ``H(x | Z) = H0(x) + x beta'Z`` and its running maximum from time
         0, ``H*(x) = max(0, max_{0 <= s <= x} H(s | Z))``, the cumulative
         hazard the model predicts with (#376)."""
+        rows = self._prepare_Z(Z)
+        # Rows and times paired, as for the other models (#488, #657)
+        check_paired_rows(x.size, rows.shape[0], grid=False)
         bz = np.broadcast_to(
-            np.asarray(self._prepare_Z(Z) @ self._coef(), dtype=float), x.shape
+            np.asarray(rows @ self._coef(), dtype=float), x.shape
         )
         # Past the last observed time there is no risk set: hold (#400).
         x_held = np.where(x > self.x[-1], self.x[-1], x)
@@ -491,11 +513,112 @@ class AdditiveHazardsModel(
         """Density ``hf(x, Z) * sf(x, Z)``, with the smoothed hazard."""
         return self.hf(x, Z) * self.sf(x, Z)
 
+    @keeps_query_shape
+    def qf(
+        self, p: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+    ) -> npt.NDArray:
+        """
+        The quantile function: the first time at which the predicted
+        failure probability ``ff(x, Z)`` reaches ``p`` (#662), ``nan``
+        where it never does -- the curve is held after the last observed
+        time, above ``1 - p`` where the data end censored. The median life
+        of a unit with covariates ``Z`` is ``qf(0.5, Z)``.
+
+        The cumulative hazard :meth:`Hf` never decreases, rising both
+        between the event times and in jumps at them, so the quantile is
+        found by bisection to a relative ``1e-12``, and is an event time
+        where the curve jumps past ``p`` there. ``Z`` is paired with
+        ``p`` as :meth:`sf` pairs it with ``x``: one row for every ``p``,
+        or one ``p`` for every row. A probability outside [0, 1] gives
+        ``nan``, with a warning.
+
+        Examples
+        --------
+        >>> from surpyval import AdditiveHazards
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = AdditiveHazards.fit(x, df[["fin", "prio"]].values, c=c)
+        >>> b10 = model.qf(0.1, [[0, 0], [1, 0], [0, 10]])
+        >>> b10.round(2)
+        array([27.  , 46.  , 10.79])
+        >>> model.ff(b10, [[0, 0], [1, 0], [0, 10]]).round(3)
+        array([0.103, 0.103, 0.1  ])
+        """
+        rows = covariate_rows(
+            prepare_Z(Z, self.feature_names, self._model_spec),
+            np.asarray(self.beta).shape[0],
+        )
+        u, rows, _ = paired_probabilities(p, rows)
+        end = float(self.x[-1])
+        out = quantiles_by_inversion(
+            lambda t, k: self.Hf(t, rows[k]),
+            u,
+            (0.0, end),
+            np.full(u.shape, end / 2),
+        )
+        # Not reached by the last time, where the curve is held: never.
+        last = self.ff(np.full(u.shape, end), rows) if u.size else u
+        target = np.maximum(u - STEP_QF_TOL, np.finfo(float).tiny)
+        out = np.where(last >= target, out, np.nan)
+        # A jump past p at an event time is found to within the bisection's
+        # tolerance of it: it is that time.
+        if self.x.size and out.size:
+            idx = np.clip(np.searchsorted(self.x, out), 0, self.x.size - 1)
+            near = np.abs(self.x[idx] - out) <= 1e-9 * np.abs(self.x[idx])
+            out = np.where(near, self.x[idx], out)
+        return out
+
+    def summary(self, alpha_ci: float = 0.05) -> "pd.DataFrame":
+        """
+        The coefficient table (#662), in the layout of ``CoxPH``'s
+        :meth:`summary`: each coefficient (an excess hazard per unit of
+        its covariate) with its Lin-Ying sandwich standard error, a
+        two-sided ``1 - alpha_ci`` Wald interval, the Wald statistic ``z``
+        and its p-value (:attr:`p_values`). ``exp(coef)`` and its bounds
+        are ``nan``: an additive effect is not a ratio, as for the
+        parametric additive hazards models. An aliased coefficient is
+        ``nan`` throughout.
+
+        Parameters
+        ----------
+        alpha_ci : float, optional
+            The intervals' total tail probability. Default 0.05.
+
+        Returns
+        -------
+        pandas.DataFrame
+            One row per covariate, with the columns of ``CoxPH``'s
+            :meth:`summary`.
+
+        Examples
+        --------
+        >>> from surpyval import AdditiveHazards
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> df["censored"] = 1 - df["arrest"]
+        >>> model = AdditiveHazards.fit_from_df(
+        ...     df, x_col="week", c_col="censored", Z_cols=["fin", "age"]
+        ... )
+        >>> model.summary()[["coef", "se(coef)", "p"]].round(4)
+                     coef  se(coef)       p
+        covariate
+        fin       -0.0018    0.0011  0.0918
+        age       -0.0003    0.0001  0.0002
+        """
+        return coefficient_table(
+            self.parameter_names,
+            np.asarray(self.beta, dtype=float),
+            np.asarray(self._se, dtype=float),
+            alpha_ci,
+            exp=False,
+            p=getattr(self, "p_values", None),
+        )
+
     def standard_errors(self) -> npt.NDArray:
         """Standard errors of the coefficients (Lin-Ying sandwich), the
-        square roots of the diagonal of :meth:`covariance`. ``se``, the
-        attribute before v0.23, still gives them, with a
-        ``DeprecationWarning``, until v0.24."""
+        square roots of the diagonal of :meth:`covariance`. They were the
+        attribute ``se`` before v0.23."""
         return self._se
 
     def covariance(self) -> npt.NDArray:
@@ -679,6 +802,7 @@ class AdditiveHazards_(FitterRepr):
         model._fit_data = (x, c, n, Z)
         return model
 
+    @column_arguments("x", "c", "n")
     def fit_from_df(
         self,
         df: "pd.DataFrame",
@@ -692,6 +816,7 @@ class AdditiveHazards_(FitterRepr):
         Fit the additive hazards model from a pandas DataFrame, retaining the
         covariate names for prediction (see :meth:`fit` for the model).
         """
+        check_columns(df, x_col=x_col, c_col=c_col, n_col=n_col)
         Z, feature_names, model_spec = design_matrix_from_df(
             df, Z_cols, formula
         )

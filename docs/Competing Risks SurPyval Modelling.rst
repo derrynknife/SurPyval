@@ -324,6 +324,59 @@ negative and either bound infinite. ``set_support`` returns the model, and
     assert np.isnan(_b[[0, 3]]).all() and _b[1] == 0
     assert _b[2] == model.cif(x.max(), "wear")
 
+Confidence bounds
+~~~~~~~~~~~~~~~~~
+
+``cb(x, event)`` gives pointwise confidence bounds on a cause's cumulative
+incidence: two-sided ``[lower, upper]`` rows by default, or one side with
+``bound="lower"`` or ``"upper"``, at the level ``alpha_ci`` (0.05, a 95%
+interval). The variance is Aalen's, the ``var`` that R's ``cmprsk::cuminc``
+reports, and the interval is formed on the log(-log) scale so that it stays in
+[0, 1] (``bound_type="normal"`` gives the plain estimate :math:`\pm` z
+standard errors); see :doc:`Competing Risks Analysis` for the formula. With
+``on="sf"``, ``"ff"`` or ``"Hf"`` it bounds the all-cause functions
+(``event=None``) or a cause's net ones instead, as ``KaplanMeier`` or
+``NelsonAalen`` (by ``how``) would for the same data.
+
+.. jupyter-execute::
+
+    t = np.array([25.0, 50.0, 100.0, 150.0])
+    bounds = model.cb(t, "wear")
+    for ti, f, (lo, hi) in zip(t, model.cif(t, "wear"), bounds):
+        print(f"CIF wear at {ti:5.0f}: {f:.3f}  95% CI [{lo:.3f}, {hi:.3f}]")
+    print("all-cause sf bounds at 100:", np.round(model.cb(100.0, on="sf"), 3))
+
+    plt.step(t_plot, model.cif(t_plot, "wear"), where="post", label="CIF wear")
+    b = model.cb(t_plot[t_plot <= x.max()], "wear")
+    plt.fill_between(t_plot[t_plot <= x.max()], b[:, 0], b[:, 1], step="post",
+                     alpha=0.3, label="95% bounds")
+    plt.xlabel("Time")
+    plt.ylabel("Cumulative incidence")
+    plt.legend()
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _f = model.cif(t, "wear")
+    assert np.all((bounds[:, 0] <= _f) & (_f <= bounds[:, 1]))
+    assert np.all((bounds >= 0) & (bounds <= 1))
+
+Like the single-cause bounds, they are exactly the estimate's start (0, or 1
+on ``sf``) before the first observed time, and NaN, with a warning, after the
+last, where the estimate only holds its last value; with ``set_support`` they
+are carried from the last time to ``upper`` instead.
+
+``plot`` draws the bounds as a shaded band, as the single-event estimates'
+plots do (``plot_bounds=False`` leaves them out; ``alpha_ci``, ``bound`` and
+``bound_type`` are passed to ``cb``). Unstacked, each cause has its own band;
+stacked (the default), a cause's bounds do not bound its layer, so the band is
+on the top of the stack, the all-cause failure probability:
+
+.. jupyter-execute::
+
+    model.plot(stacked=False)
+
 Data held in a pandas DataFrame can be passed with ``fit_from_df``, naming the
 time and cause columns (and optionally ``c_col`` and ``n_col``). The frame is
 kept on the model as ``source_df``:
@@ -917,19 +970,28 @@ together produce the incidence effect.
     assert _b[1][0] > 0 and _b[2][0] < 0, _b
 
 The causes are sorted, so the row order of ``betas`` is reproducible.
-``phi_e(Z, row)`` is a cause's hazard multiplier :math:`e^{Z\hat\beta_k}`
+``phi_e(Z, event)`` is a cause's hazard multiplier :math:`e^{Z\hat\beta_k}`
 (relative to a unit at the covariate means, ``center``, for a fit with
-``center=True``, which keeps the baselines there), and
-``results`` holds each cause's optimiser result. The model also has ``beta``
-and ``phi``. These are kept for backward compatibility: ``beta`` is the *sum*
-of the rows of ``betas``, which is not a quantity of the model, and no
-prediction uses it. Read the coefficients from ``betas``.
+``center=True``, which keeps the baselines there), the cause given by its
+label as for ``cif``; and ``results`` holds each cause's optimiser result.
+The model also has ``phi``, kept for backward compatibility, and ``beta``,
+deprecated: ``beta`` is the *sum* of the rows of ``betas``, which is not a
+quantity of the model, and no prediction uses it. Read the coefficients from
+``betas``, or from ``params`` (flattened cause by cause).
 
 .. jupyter-execute::
 
-    row = csph.event_idx_map[1]
     print("cause-1 hazard multiplier at z = [0.5, -0.5]:",
-          np.round(csph.phi_e(np.array([0.5, -0.5]), row), 3))
+          np.round(csph.phi_e(np.array([0.5, -0.5]), 1), 3))
+
+``summary()`` is the coefficient table, one row per cause and covariate,
+named ``"<cause>: <covariate>"`` (``parameter_names``), with the standard
+errors, Wald intervals and p-values of each cause's fit; ``covariance()`` is
+block-diagonal across the causes, as their fits are separate:
+
+.. jupyter-execute::
+
+    csph.summary()[["coef", "exp(coef)", "se(coef)", "p"]].round(4)
 
 ``tie_method`` chooses how the Cox fits handle tied failure times (see
 :doc:`regression/cox_ph`): ``"efron"`` (the default, as for ``CoxPH``), ``"breslow"``, ``"exact"`` or

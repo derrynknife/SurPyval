@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pytest
 
@@ -544,14 +546,16 @@ def _lfp_weibull(**kwargs):
     return no_warnings(Weibull.fit, LFP_X, LFP_C, lfp=True, **kwargs)
 
 
-def test_608_the_proportion_is_lfp_p_and_p_is_its_deprecated_alias():
+def test_608_the_proportion_is_lfp_p_and_p_is_gone():
     model = _lfp_weibull()
     assert 0 < model.lfp_p < 1
     assert model.extras == {"lfp_p": model.lfp_p}
-    with pytest.warns(DeprecationWarning, match="'Parametric.lfp_p'") as w:
-        old = model.p
-    assert old == model.lfp_p
-    assert w[0].filename == __file__
+    # ``p``, its name before v0.23, is gone in v0.24, and says where it is
+    with pytest.raises(AttributeError, match="'lfp_p'"):
+        model.p
+    assert not hasattr(model, "p")
+    with pytest.raises(AttributeError, match="'lfp_p'"):
+        model.p = 0.5
     # Without lfp=True it is 1, as before
     assert no_warnings(Weibull.fit, LFP_X).lfp_p == 1
 
@@ -576,24 +580,21 @@ def test_608_p_is_the_fitted_probability_where_the_distribution_has_one(
         model.p = 0.5
 
 
-def test_608_the_old_names_still_work_with_a_warning():
+def test_608_the_old_names_are_gone():
+    # ``p`` for the proportion, deprecated in v0.23, is gone in v0.24
     new = _lfp_weibull(fixed={"lfp_p": 0.8})
-    with pytest.warns(DeprecationWarning, match="fixed=\\{'lfp_p'"):
-        old = Weibull.fit(LFP_X, LFP_C, lfp=True, fixed={"p": 0.8})
-    np.testing.assert_array_equal(old.params, new.params)
-    assert old.lfp_p == new.lfp_p == 0.8
+    assert new.lfp_p == 0.8
+    with pytest.raises(ValueError, match="Unknown parameter"):
+        Weibull.fit(LFP_X, LFP_C, lfp=True, fixed={"p": 0.8})
 
     model = _lfp_weibull()
-    with pytest.warns(DeprecationWarning, match="param_cb\\('lfp_p'\\)"):
-        bound = model.param_cb("p")
-    np.testing.assert_array_equal(bound, model.param_cb("lfp_p"))
+    with pytest.raises(ValueError, match="Unknown parameter 'p'"):
+        model.param_cb("p")
 
-    with pytest.warns(DeprecationWarning, match="use 'lfp_p'"):
-        built = Weibull.from_params([10, 2], p=0.7)
+    with pytest.raises(TypeError, match="unexpected keyword argument 'p'"):
+        Weibull.from_params([10, 2], p=0.7)
+    built = Weibull.from_params([10, 2], lfp_p=0.7)
     assert built.lfp_p == 0.7 and built.extras == {"lfp_p": 0.7}
-
-    with pytest.raises(ValueError, match="'lfp_p' only"):
-        Weibull.fit(LFP_X, LFP_C, lfp=True, fixed={"p": 0.8, "lfp_p": 0.8})
 
 
 def test_608_saved_models_keep_their_format_and_old_ones_load():
@@ -623,5 +624,39 @@ def test_608_regression_models_spell_it_alike():
         surv.WeibullPH.fit, Weibull.random(40, 10, 2, random_state=1), Z
     )
     assert model.lfp_p == 1.0
-    with pytest.warns(DeprecationWarning, match="use 'lfp_p'"):
-        assert model.p == 1.0
+    assert not hasattr(model, "p")
+
+
+def test_649_a_fixed_lfp_p_finds_the_better_mode():
+    # 30% susceptible, wear-out Weibull(100, 2), withdrawn at 300. With
+    # lfp_p fixed at 0.5 the fit stopped on the infant-mortality mode
+    # (alpha 262.7, beta 0.96, -440.38) and called it verified; the
+    # wear-out mode is 11.3 log-likelihood units higher. The alternative
+    # starts (the failures alone among them) were skipped for any fit
+    # with a fixed parameter.
+    import scipy.stats as ss
+
+    rng = np.random.default_rng(6)
+    s = rng.random(200) < 0.3
+    t = np.where(
+        s, ss.weibull_min(2, scale=100).rvs(200, random_state=rng), np.inf
+    )
+    x, c = np.minimum(t, 300.0), (t > 300).astype(int)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = Weibull.fit(x, c, lfp=True, fixed={"lfp_p": 0.5})
+    np.testing.assert_allclose(model.params, [92.2466, 2.34462], rtol=1e-4)
+    assert model.neg_ll() < 429.07
+    assert model.lfp_p == 0.5
+
+
+def test_zi_quantile_cb_within_the_mass_at_zero_is_zero_without_a_warning():
+    # #663: a probability below f0 has the quantile 0, and its bound is
+    # [0, 0]; it came with a warning that the bound was undefined (NaN).
+    rng = np.random.default_rng(0)
+    x = np.r_[np.zeros(10), rng.weibull(2, 40) * 10]
+    model = surv.Weibull.fit(x, zi=True)
+    assert model.f0 > 0.05
+    out = no_warnings(model.quantile_cb, [0.05, 0.5])
+    np.testing.assert_array_equal(out[0], [0.0, 0.0])
+    assert 0 < out[1, 0] < model.qf(0.5) < out[1, 1]

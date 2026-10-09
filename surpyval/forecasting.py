@@ -41,7 +41,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.utils.validation import alpha_ci_error
+from surpyval.utils.validation import check_alpha_ci
 from surpyval.utils.warnings import caller_stacklevel
 
 __all__ = ["Forecast", "forecast"]
@@ -111,6 +111,75 @@ class Forecast:
         column for the units most at risk."""
         each = self.probability if self.per_unit is None else self.per_unit
         return self.n[:, None] * each
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        The forecast as a plain dict of native Python numbers and lists,
+        ready for ``json.dumps`` (#666): each field by its name
+        (``per_unit``, ``units`` and ``simulations`` are ``None`` where the
+        forecast has none).
+
+        Examples
+        --------
+        >>> import json
+        >>> import surpyval as surv
+        >>> model = surv.Weibull.from_params([60.0, 1.5])
+        >>> result = surv.forecast(model, age=[3, 2], n=[950, 1000], horizon=1)
+        >>> d = result.to_dict()
+        >>> d["lower"], d["upper"]
+        ([5.0], [18.0])
+        >>> isinstance(json.dumps(d), str)
+        True
+        """
+        from dataclasses import fields
+
+        from surpyval.serialisation import to_native
+
+        out: dict[str, Any] = {}
+        for f in fields(self):
+            value = getattr(self, f.name)
+            if isinstance(value, np.ndarray):
+                value = to_native(value)
+            elif isinstance(value, (np.generic, float)):
+                value = to_native(value)
+            out[f.name] = value
+        return out
+
+    def to_frame(self) -> Any:
+        """
+        The totals over the horizons as a :class:`pandas.DataFrame`, one
+        row per horizon (the index, ``horizon``), with the columns
+        ``expected``, ``variance``, ``lower``, ``upper``,
+        ``period_expected``, ``period_lower`` and ``period_upper`` (#666).
+        Each unit's ``probability`` (or ``per_unit``) is
+        :meth:`to_dict`'s.
+
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> model = surv.Weibull.from_params([60.0, 1.5])
+        >>> result = surv.forecast(
+        ...     model, age=[3, 2], n=[950, 1000], horizon=[1, 2]
+        ... )
+        >>> list(result.to_frame().columns)  # doctest: +NORMALIZE_WHITESPACE
+        ['expected', 'variance', 'lower', 'upper', 'period_expected',
+         'period_lower', 'period_upper']
+        """
+        import pandas as pd
+
+        columns = [
+            "expected",
+            "variance",
+            "lower",
+            "upper",
+            "period_expected",
+            "period_lower",
+            "period_upper",
+        ]
+        return pd.DataFrame(
+            {name: np.asarray(getattr(self, name), float) for name in columns},
+            index=pd.Index(np.asarray(self.horizon, float), name="horizon"),
+        )
 
     def __repr__(self) -> str:
         level = 100 * (1 - self.alpha_ci)
@@ -199,9 +268,10 @@ def forecast(
     age : array_like, optional
         The current age of each unit or cohort: the time it has survived
         so far, on the model's time scale (for a recurrent-event model,
-        its time since new, or since entry). Required for a univariate or
-        regression model. For a recurrent-event model fitted to data it
-        may be left out: the units are then the fitted data's items, each
+        its time since new, or since entry), at least 0. Required for a
+        univariate or regression model. For a recurrent-event model fitted
+        to data it may be left out: the units are then the fitted data's
+        items, each
         at the end of its observation (with its own covariates, and for a
         renewal model its own failure history). Ages given to a renewal
         model are those of units with no failure yet.
@@ -215,7 +285,8 @@ def forecast(
         Not taken by a univariate model.
     n : array_like, optional
         The number of units in service at each age (a cohort's
-        survivors); 1 each by default.
+        survivors): one per age, or one for every age; 1 each by
+        default.
     limit : scalar or array_like, optional
         An age past which a unit's failures are not counted (the end of
         its warranty, or a planned retirement), one for every unit or one
@@ -227,8 +298,10 @@ def forecast(
         For a renewal model only: the number of simulated futures of
         each unit (default 1000). Keyword only.
     random_state : int or numpy.random.Generator, optional
-        For a renewal model only: the seed of the simulation. Keyword
-        only.
+        The seed of a renewal model's simulation. Keyword only. Every
+        other model's forecast is exact, with nothing to simulate, so it
+        ignores ``random_state`` (it is accepted so that one call serves a
+        loop over model types; #666).
 
     Returns
     -------
@@ -241,14 +314,16 @@ def forecast(
     Raises
     ------
     ValueError
-        If an age, horizon or limit is missing or infinite, the horizons
-        are not positive and increasing, a count is not a whole number,
+        If an age, horizon or limit is missing or infinite, an age is
+        negative, ``n`` or ``limit`` has neither one value nor one per age,
+        the horizons are not positive and increasing, a count is not a
+        whole number,
         ``Z`` is given to a univariate model or not given to a regression
         model, or ``alpha_ci`` is not strictly between 0 and 1; if ``age``
         is left out for a model that is not a recurrent-event model fitted
         to data; if ``n`` is given to a renewal model (each unit is
         simulated from its own state: give one age per unit), or ``items``
-        or ``random_state`` to a model that is not one.
+        to a model that is not one.
 
     Warns
     -----
@@ -323,8 +398,7 @@ def forecast(
     >>> repairs.expected.round(3), repairs.lower, repairs.upper
     (array([15.833]), array([9.]), array([24.]))
     """
-    if not 0 < alpha_ci < 1:
-        raise alpha_ci_error(alpha_ci)
+    check_alpha_ci(alpha_ci)
     if horizon is None:
         raise ValueError(
             "horizon is required: the time ahead to forecast over, or "
@@ -337,10 +411,13 @@ def forecast(
             "{}".format(h.tolist())
         )
     kind = _recurrent_kind(model)
-    if kind != "renewal" and (items is not None or random_state is not None):
+    # random_state is ignored where the forecast is exact (#666): a loop
+    # over model types passes it to every one.
+    if kind != "renewal" and items is not None:
         raise ValueError(
-            "items and random_state set the simulation of a renewal "
-            "model's forecast; this model's forecast is exact"
+            "items sets the number of simulated futures of a renewal "
+            "model's forecast; this model's forecast is exact, so there is "
+            "nothing to simulate"
         )
     if kind == "renewal":
         return _renewal_forecast(
@@ -354,7 +431,7 @@ def forecast(
             "a recurrent-event model fitted to data takes its units from "
             "the data)"
         )
-    age_arr = _finite(age, "age").reshape(-1)
+    age_arr = _ages(age)
     k = age_arr.size
     counts = _counts(n, k)
     end_limit = _limits(limit, k)
@@ -415,10 +492,35 @@ def _finite(values: Any, name: str) -> npt.NDArray:
     return arr
 
 
+def _ages(age: Any) -> npt.NDArray:
+    """The ages as a 1-D array: finite and at least 0, for every model
+    type (the renewal models refused a negative age; the others read it
+    as an age before new, or returned nan, #659)."""
+    ages = _finite(age, "age").reshape(-1)
+    if np.any(ages < 0):
+        raise ValueError(
+            "age must be finite times of at least 0 (each unit's time "
+            "since new, or since entry, on the model's time scale); got "
+            "{}".format(ages[ages < 0][:5])
+        )
+    return ages
+
+
+def _per_unit(values: Any, k: int, name: str) -> npt.NDArray:
+    """``values`` (finite) as one per unit: a scalar, or one per age."""
+    arr = _finite(values, name).reshape(-1)
+    if arr.size not in (1, k):
+        raise ValueError(
+            "{} must be one value for every unit or one per age ({} "
+            "ages); got {} values".format(name, k, arr.size)
+        )
+    return np.broadcast_to(arr, (k,)).astype(float)
+
+
 def _counts(n: Any, k: int) -> npt.NDArray:
     if n is None:
         return np.ones(k)
-    counts = np.broadcast_to(_finite(n, "n"), (k,)).astype(float)
+    counts = _per_unit(n, k, "n")
     if np.any(counts < 0) or np.any(counts != np.round(counts)):
         raise ValueError(
             "n must be whole numbers of units, at least 0; got "
@@ -450,7 +552,7 @@ def _recurrent_kind(model: Any) -> str | None:
 def _limits(limit: Any, k: int) -> npt.NDArray:
     if limit is None:
         return np.full(k, np.inf)
-    return np.broadcast_to(_finite(limit, "limit"), (k,)).astype(float)
+    return _per_unit(limit, k, "limit")
 
 
 def _poisson_summary(
@@ -500,7 +602,7 @@ def _intensity_forecast(
         if regression:
             Z = np.asarray(data.Z, dtype=float)[first]
     else:
-        age_arr = _finite(age, "age").reshape(-1)
+        age_arr = _ages(age)
     k = age_arr.size
     counts = _counts(n, k)
     end_limit = _limits(limit, k)
@@ -573,7 +675,7 @@ def _renewal_forecast(
     items = 1000 if items is None else int(items)
     if items < 2:
         raise ValueError("items must be at least 2; got {}".format(items))
-    states = model._states(None if age is None else _finite(age, "age"))
+    states = model._states(None if age is None else _ages(age))
     k = states.now.size
     end_limit = _limits(limit, k)
     span = np.clip(

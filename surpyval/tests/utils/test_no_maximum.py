@@ -94,6 +94,9 @@ def _starve_ladder(monkeypatch):
     monkeypatch.setattr(_fit_skeleton, "preconditioned_bfgs", stuck)
     monkeypatch.setattr(_fit_skeleton, "minimize", stuck)
     monkeypatch.setattr(_fit_skeleton, "minimize_with_gradient", stuck)
+    # and the baseline's profile walk (#710), which re-optimises with its
+    # own Newton steps and would otherwise rescue the starved search
+    monkeypatch.setattr(_fit_skeleton, "walk_profile", lambda *a, **k: None)
 
 
 _CASES = {

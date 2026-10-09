@@ -152,15 +152,18 @@ class RecurrentEventData:
                 weights=self.n[is_event],
                 minlength=len(x_unique),
             ).astype(self.n.dtype)
-            # Each item is at risk over its observation window, from its
-            # entry up to and including its exit (see
+            # Each item is at risk over its observation window (entry,
+            # exit]: after its entry, up to and including its exit (see
             # ``item_observation_windows``). An item with a delayed entry
-            # only joins the risk set once ``x`` reaches its ``tl``, so event
-            # times before that entry see a correspondingly smaller risk set
-            # (ignoring ``tl`` here would inflate the MCF). The count is
-            # those entered by ``xi`` less those that left before it.
+            # only joins the risk set once ``x`` passes its ``tl``, so event
+            # times up to that entry see a correspondingly smaller risk set
+            # (ignoring ``tl`` here would inflate the MCF); an item entering
+            # at an event's time is not at risk for it, as in the NHPP
+            # likelihood, which integrates from ``tl``, and the univariate
+            # estimators (#658). The count is those entered before ``xi``
+            # less those that left before it.
             r = np.searchsorted(
-                np.sort(entry), x_unique, side="right"
+                np.sort(entry), x_unique, side="left"
             ) - np.searchsorted(np.sort(exit_), x_unique, side="left")
 
             self.xrd = x_unique, r, d
@@ -175,8 +178,11 @@ class RecurrentEventData:
 
         The entry is the item's left-truncation bound ``tl`` (delayed
         entry); with no truncation it is -inf, so the item is at risk from
-        the start. The exit is the item's last recorded time (its last event
-        or its end-of-observation ``c=1`` row) or, when the item carries a
+        the start. The window is open at the entry: the item is at risk
+        only after it, so an event at ``tl`` is outside it (and refused by
+        ``handle_xicn``). The exit is the item's last recorded time (its
+        last event or its end-of-observation ``c=1`` row) or, when the item
+        carries a
         finite right-truncation time ``tr``, that ``tr``: observation of the
         item ends there, exactly as if it had an end-of-observation row at
         ``tr``. This is the same window-close the NHPP likelihoods integrate
@@ -361,10 +367,17 @@ class RecurrentEventData:
             x_prev if x_prev.ndim == 1 else x_prev[:, 0]
         )  # not x[:, 0] (#288)
         x_prev_r = x_prev[:, 1] if x_prev.ndim == 2 else None
-        # ``has_interval`` implies 2-D data, so the right columns exist;
-        # assert the link for the type checker.
+        # Interval counts need 2-D data, for the right columns. This was
+        # an assert, which gave a bare AssertionError (and vanishes under
+        # ``python -O``, #658).
         if has_interval:
-            assert x_r is not None and x_prev_r is not None
+            if x_r is None or x_prev_r is None:
+                raise ValueError(
+                    "Interval-counted rows (c=2) need x as [start, end] "
+                    "pairs (a 2-D x, one row per count); x here is a single "
+                    "time per row. Give each row as [start, end], with "
+                    "[t, t] for an exact event (c=0)."
+                )
             prev = x_prev_r
         else:
             prev = x_prev_l

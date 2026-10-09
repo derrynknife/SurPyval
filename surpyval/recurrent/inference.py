@@ -11,10 +11,25 @@ from surpyval.univariate.information_criteria import (
     corrected_aic,
     ic_sample_size,
 )
-from surpyval.utils.covariates import renamed_coefficient
-from surpyval.utils.deprecation import MethodFloat
 from surpyval.utils.linalg import numerical_hessian, wald_bound_on_support
+from surpyval.utils.validation import alpha_ci_error
 from surpyval.utils.warnings import warn_no_covariance
+
+
+def check_alpha_ci(alpha_ci: Any) -> None:
+    """
+    Refuse an ``alpha_ci`` outside (0, 1) in a recurrent bound method
+    (``cif_cb``, ``iif_cb``, ``mtbf_cb``, ``mcf_cb``, ``param_cb`` and the
+    plots that draw them), with the package's one message. Outside (0, 1)
+    the bounds came back reversed (``alpha_ci=1.5``), equal (1) or NaN
+    (below 0), silently (#647).
+    """
+    if not (
+        isinstance(alpha_ci, (int, float, np.integer, np.floating))
+        and not isinstance(alpha_ci, bool)
+        and 0 < alpha_ci < 1
+    ):
+        raise alpha_ci_error(alpha_ci)
 
 
 def bic_sample_size(data: Any) -> float:
@@ -97,10 +112,19 @@ class LikelihoodInferenceMixin:
                     "a how='MSE' fit minimises squared error on the MCF "
                     "and has no likelihood; refit with how='MLE'."
                 )
+            elif getattr(self, "how", None) == "MLE":
+                # A fit restored with from_dict / from_json still says how
+                # it was fitted (#663).
+                reason = (
+                    "this model was restored with from_dict / from_json, "
+                    "and restored models carry no data, so no likelihood; "
+                    "refit it to the data for bounds and standard errors."
+                )
             else:
                 reason = (
-                    "a model built from parameters (from_params or "
-                    "fit_from_parameters) has no likelihood."
+                    "models built from parameters (from_params or "
+                    "fit_from_parameters) or restored with from_dict / "
+                    "from_json carry no data, so no likelihood."
                 )
             raise ValueError(
                 "Likelihood inference is only available for models fitted "
@@ -154,26 +178,21 @@ class LikelihoodInferenceMixin:
         """
         return -self.log_likelihood
 
-    @property
-    def aic(self) -> MethodFloat:
+    def aic(self) -> float:
         """
         Akaike's information criterion, :math:`2k - 2\\ln L`, with ``k`` the
         number of fitted parameters. Lower is better. Call it,
         ``model.aic()``, as on every other fitted model.
 
         .. versionchanged:: 0.23
-           ``aic`` is a method, as on every other model (#572); the
-           property's spelling, ``model.aic`` without the call, still
-           gives the number until v0.24, with a ``DeprecationWarning``.
+           ``aic`` is a method, as on every other model (#572); it was a
+           property.
         """
         self._check_fitted()
         k = int(self._estimated().sum())
-        return MethodFloat(
-            2.0 * k - 2.0 * self.log_likelihood, type(self).__name__ + ".aic"
-        )
+        return float(2.0 * k - 2.0 * self.log_likelihood)
 
-    @property
-    def bic(self) -> MethodFloat:
+    def bic(self) -> float:
         """
         The Bayesian information criterion, :math:`k \\ln n - 2\\ln L`,
         with ``n`` the number of observed events the model was fitted to:
@@ -185,16 +204,12 @@ class LikelihoodInferenceMixin:
         fitted model.
 
         .. versionchanged:: 0.23
-           ``bic`` is a method, as on every other model (#572); the
-           property's spelling still gives the number until v0.24, with a
-           ``DeprecationWarning``.
+           ``bic`` is a method, as on every other model (#572); it was a
+           property.
         """
         self._check_fitted()
         k = int(self._estimated().sum())
-        return MethodFloat(
-            k * np.log(self._n_obs) - 2.0 * self.log_likelihood,
-            type(self).__name__ + ".bic",
-        )
+        return float(k * np.log(self._n_obs) - 2.0 * self.log_likelihood)
 
     def aic_c(self) -> float:
         """
@@ -298,12 +313,9 @@ class LikelihoodInferenceMixin:
         numpy array
             The confidence bound(s) on the parameter.
         """
+        check_alpha_ci(alpha_ci)
         self._check_fitted()
         names = self.parameter_names
-        coefficients = getattr(self, "_coefficient_names", None)
-        if coefficients is not None:
-            # A coefficient's name before v0.23, ``beta_j``, until v0.24
-            name = renamed_coefficient(name, coefficients(), "param_cb", names)
         if name not in names:
             raise ValueError(
                 "Unknown parameter {!r}; expected one of {}".format(
@@ -316,4 +328,70 @@ class LikelihoodInferenceMixin:
         lower, upper = self._parameter_bounds()[idx]
         return wald_bound_on_support(
             p_hat, var, lower, upper, alpha_ci, bound, name=name
+        )
+
+    def summary(self, alpha_ci: float = 0.05) -> Any:
+        """
+        The fitted parameters with their standard errors and Wald
+        intervals, one row per entry of :attr:`parameter_names`, as the
+        renewal models' ``summary`` (#666).
+
+        The intervals are those of :meth:`param_cb`: on the log scale for
+        a positive parameter, on its own scale for an unbounded one (a
+        regression coefficient). A parameter whose variance is not
+        positive (an estimate on a boundary), or that was not estimated
+        (an aliased coefficient), has ``nan`` for its standard error and
+        interval.
+
+        Parameters
+        ----------
+        alpha_ci : float, optional
+            The intervals' total tail probability. Default 0.05.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Columns ``estimate``, ``se``, ``lower <level>`` and
+            ``upper <level>``.
+
+        Examples
+        --------
+        >>> from surpyval.recurrent import CrowAMSAA
+        >>> x = [1, 3, 5, 7, 2, 4, 9, 10, 1.5, 6]
+        >>> i = [1, 1, 1, 1, 2, 2, 2, 2, 3, 3]
+        >>> c = [0, 0, 0, 1, 0, 0, 0, 1, 0, 1]
+        >>> model = CrowAMSAA.fit(x, i, c)
+        >>> model.summary().round(3)  # doctest: +NORMALIZE_WHITESPACE
+               estimate     se  lower 95%  upper 95%
+        alpha     3.272  1.632      1.231      8.695
+        beta      0.995  0.367      0.483      2.052
+        """
+        import pandas as pd
+
+        check_alpha_ci(alpha_ci)
+        self._check_fitted()
+        with warnings.catch_warnings():
+            # A boundary is reported in the table (nan), not warned.
+            warnings.simplefilter("ignore")
+            cov = self.covariance()
+        level = "{:g}%".format(100 * (1 - alpha_ci))
+        rows = []
+        for k, (value, (lo, hi)) in enumerate(
+            zip(np.asarray(self._mle, dtype=float), self._parameter_bounds())
+        ):
+            var = float(cov[k, k])
+            if not (np.isfinite(value) and var > 0):
+                rows.append([value, np.nan, np.nan, np.nan])
+                continue
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                cb = wald_bound_on_support(
+                    float(value), var, lo, hi, alpha_ci, "two-sided"
+                )
+            rows.append([value, np.sqrt(var), cb[0], cb[1]])
+        return pd.DataFrame(
+            rows,
+            index=self.parameter_names,
+            columns=["estimate", "se", f"lower {level}", f"upper {level}"],
+            dtype=float,
         )

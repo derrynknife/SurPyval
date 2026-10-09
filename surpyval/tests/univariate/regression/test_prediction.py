@@ -168,3 +168,181 @@ def test_581_cs_grid_and_cox_strata():
     got = cox.cs(1.0, 3.0, ZQ[0], stratum=1)
     ratio = cox.sf(4.0, ZQ[0], stratum=1) / cox.sf(3.0, ZQ[0], stratum=1)
     np.testing.assert_allclose(got, ratio, rtol=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# #662: qf on the semi-parametric and frailty models, mean(Z)
+# ---------------------------------------------------------------------------
+
+
+def _grouped(n=150):
+    x, Z, c = _data(n=n)
+    return x, Z, c, np.arange(n) % 15
+
+
+def _step_models():
+    x, Z, c, g = _grouped()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return {
+            "CoxPH": (sp.CoxPH.fit(x, Z, c=c), {}),
+            "ProportionalOdds": (sp.ProportionalOdds.fit(x, Z, c=c), {}),
+            "BuckleyJames": (sp.BuckleyJames.fit(x, Z, c=c), {}),
+            "AdditiveHazards": (sp.AdditiveHazards.fit(x, Z, c=c), {}),
+            "CoxFrailty": (sp.CoxFrailty.fit(x, Z, c=c, groups=g), {}),
+            "CoxFrailty[group]": (
+                sp.CoxFrailty.fit(x, Z, c=c, groups=g),
+                {"group": 3},
+            ),
+        }
+
+
+@pytest.mark.parametrize("name", list(_step_models()))
+def test_662_qf_is_the_first_time_the_curve_reaches_p(name):
+    # CoxPH, ProportionalOdds, BuckleyJames, AdditiveHazards and CoxFrailty
+    # had no qf (AttributeError); the changelog said regression models do.
+    model, extra = _step_models()[name]
+    p = np.array([0.0, 0.05, 0.3, 0.5])
+    q = model.qf(p, ZQ[:4], **extra)
+    assert q.shape == (4,) and np.all(np.isfinite(q))
+    F = model.ff(q, ZQ[:4], **extra)
+    assert np.all(F >= p - 1e-9)
+    # A step earlier the curve is short of p (a jump crossed it at q).
+    before = model.ff(q * (1 - 1e-6), ZQ[:4], **extra)
+    assert np.all(before[1:] < p[1:])
+    # Never reached by the end of the curve: nan, as KaplanMeier.qf.
+    end = model.ff(np.full(4, 1e6), ZQ[:4], **extra)
+    beyond = model.qf(np.minimum(end + 0.005, 1.0), ZQ[:4], **extra)
+    assert np.isnan(beyond[end < 0.99]).all()
+    # Every model's qf rule (#611): outside [0, 1] is nan, with a warning.
+    with pytest.warns(UserWarning, match="outside"):
+        assert np.isnan(model.qf(1.5, ZQ[0], **extra))
+
+
+def test_662_cox_qf_grid_strata_and_shape():
+    x, Z, c = _data()
+    model = sp.CoxPH.fit(x, Z, c=c)
+    grid = model.qf([0.1, 0.3], ZQ[:3], grid=True)
+    assert grid.shape == (3, 2)
+    np.testing.assert_array_equal(grid[:, 1], model.qf(0.3, ZQ[:3]))
+    assert np.ndim(model.qf(0.3, ZQ[0])) == 0
+    strata = np.arange(len(x)) % 2
+    st = sp.CoxPH.fit(x, Z, c=c, strata=strata)
+    q = st.qf(0.3, ZQ[0], stratum=1)
+    assert st.ff(q, ZQ[0], stratum=1) >= 0.3 - 1e-9
+    with pytest.raises(ValueError, match="stratum"):
+        st.qf(0.3, ZQ[0])
+
+
+@pytest.mark.parametrize("name", ["WeibullFrailty", "LogNormalFrailty"])
+def test_662_parametric_frailty_qf_inverts_ff(name):
+    x, Z, c, g = _grouped()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = getattr(sp, name).fit(x, Z, c=c, groups=g)
+    for extra in ({}, {"group": 3}, {"frailty": 2.0}):
+        q = model.qf(P[1:-1], ZQ[1:-1], **extra)
+        np.testing.assert_allclose(
+            model.ff(q, ZQ[1:-1], **extra), P[1:-1], rtol=1e-10
+        )
+
+
+def test_662_mean_at_constant_covariates():
+    from scipy.special import gamma
+
+    from surpyval.univariate.regression.tvc_schedule import StepSchedule
+
+    x, Z, c = _data()
+    model = sp.WeibullAFT.fit(x, Z, c=c)
+    alpha, beta, b0, b1 = model.params
+    scale = alpha / np.exp(ZQ[:3] @ np.array([b0, b1]))
+    np.testing.assert_allclose(
+        model.mean(ZQ[:3]), scale * gamma(1 + 1 / beta), rtol=1e-8
+    )
+    assert np.ndim(model.mean(ZQ[0])) == 0
+    assert np.isnan(model.mean([np.nan, 0.5]))
+    # An accelerated life model's MTTF is the distribution's closed form,
+    # which mean_tvc reproduces.
+    stress = np.repeat([20.0, 30.0, 40.0], 30)
+    t = 1000 * stress**-1.2 * np.random.default_rng(1).weibull(2, 90)
+    al = sp.AcceleratedLife(sp.Weibull, Power).fit(t, Z=stress)
+    _, shape, a, n = al.params
+    np.testing.assert_allclose(
+        al.mean([10.0, 25.0]),
+        a * np.array([10.0, 25.0]) ** n * gamma(1 + 1 / shape),
+        rtol=1e-12,
+    )
+    tvc = al.mean_tvc(StepSchedule.constant([10.0]))
+    assert al.mean(10.0) == pytest.approx(tvc, rel=1e-8)
+    restored = sp.from_dict(al.to_dict())
+    assert restored.mean(10.0) == al.mean(10.0)
+
+
+# ---------------------------------------------------------------------------
+# #657: a Z of the wrong width is refused, naming the covariates
+# ---------------------------------------------------------------------------
+
+WIDTH = r"The model has 2 covariates \(coef_0, coef_1\); Z gives 3 per row"
+
+
+def _width_models():
+    x, Z, c, g = _grouped(n=90)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return {
+            "WeibullPH": sp.WeibullPH.fit(x, Z, c=c),
+            "LogNormalAFT": sp.LogNormalAFT.fit(x, Z, c=c),
+            "WeibullAH": sp.WeibullAH.fit(x, Z, c=c),
+            "CoxPH": sp.CoxPH.fit(x, Z, c=c),
+            "ProportionalOdds": sp.ProportionalOdds.fit(x, Z, c=c),
+            "AdditiveHazards": sp.AdditiveHazards.fit(x, Z, c=c),
+            "BuckleyJames": sp.BuckleyJames.fit(x, Z, c=c),
+            "CoxFrailty": sp.CoxFrailty.fit(x, Z, c=c, groups=g),
+            "WeibullFrailty": sp.WeibullFrailty.fit(x, Z, c=c, groups=g),
+        }
+
+
+@pytest.mark.parametrize("name", list(_width_models()))
+def test_657_wrong_covariate_width_is_named(name):
+    # numpy's "operands could not be broadcast together with shapes (3,)
+    # (2,)" (Cox) or "shapes (3,) and (2,) not aligned" (WeibullPH).
+    model = _width_models()[name]
+    for fn in ("sf", "ff", "Hf", "hf", "df", "qf"):
+        method = getattr(model, fn, None)
+        if method is None:
+            continue
+        query = [0.5] if fn == "qf" else [5.0]
+        with pytest.raises(ValueError, match=WIDTH):
+            method(query, [1.0, 2.0, 3.0])
+        with pytest.raises(ValueError, match=WIDTH):
+            method(query, [[1.0, 2.0, 3.0], [0.0, 0.0, 0.0]])
+    with pytest.raises(ValueError, match=WIDTH):
+        model.cs(1.0, 2.0, [1.0, 2.0, 3.0])
+    if hasattr(model, "cb"):
+        with pytest.raises(ValueError, match=WIDTH):
+            model.cb([5.0], [1.0, 2.0, 3.0])
+        with pytest.raises(ValueError, match=WIDTH):
+            model.quantile_cb([0.5], [1.0, 2.0, 3.0])
+        with pytest.raises(ValueError, match=WIDTH):
+            model.mean([1.0, 2.0, 3.0])
+    # The right width still predicts, a row per time.
+    assert np.shape(model.sf([5.0, 6.0], ZQ[:2])) == (2,)
+
+
+def test_657_accelerated_life_stresses_and_times():
+    # A 1-D stress per time, against more times, was a raw broadcast
+    # error; it is the row-count message every regression gives.
+    stress = np.repeat([1.0, 2.0, 4.0], 30)
+    t = 1000 * stress**-1.2 * np.random.default_rng(1).weibull(2, 90)
+    al = sp.AcceleratedLife(sp.Weibull, Power).fit(t, Z=stress)
+    with pytest.raises(ValueError, match="Z has 2 covariate rows for 3"):
+        al.sf(np.array([1e2, 2e2, 3e2]), np.array([1.0, 2.0]))
+    with pytest.raises(ValueError, match="1 stress column"):
+        al.sf([1e2], [[1.0, 2.0]])
+    np.testing.assert_allclose(
+        al.sf([1e2, 2e2], [1.0, 2.0]),
+        [al.sf(1e2, 1.0), al.sf(2e2, 2.0)],
+    )
+    restored = sp.from_dict(al.to_dict())
+    with pytest.raises(ValueError, match="Z has 2 covariate rows for 3"):
+        restored.sf(np.array([1e2, 2e2, 3e2]), np.array([1.0, 2.0]))

@@ -26,7 +26,8 @@ every digit where they are small (#619).
 from __future__ import annotations
 
 import functools
-from typing import Any
+import warnings
+from typing import Any, Callable
 
 import autograd.numpy as np
 import numpy as onp
@@ -49,8 +50,10 @@ from surpyval.utils.no_maximum import (
     warn_no_maximum,
     warn_unverified,
 )
+from surpyval.utils.removed_names import RemovedNames
 from surpyval.utils.rng import as_generator
 from surpyval.utils.validation import check_option
+from surpyval.utils.warnings import caller_stacklevel
 
 # Margin probabilities are kept strictly inside (0, 1): the Archimedean
 # generators blow up at the boundary and the optimiser only ever needs
@@ -61,7 +64,99 @@ _U_CLIP = 1e-10
 _LOG_FLOOR = 1e-300
 
 
-class Copula:
+def _describe(margin: Any) -> str:
+    """A margin as the user wrote it: ``the string 'Weibull'``, ``the
+    Weibull fitter``, ``a Parametric model``, ..."""
+    if isinstance(margin, str):
+        return f"the string {margin!r}"
+    if hasattr(margin, "fit"):
+        name = getattr(margin, "name", None)
+        if not isinstance(name, str):
+            name = (
+                margin if isinstance(margin, type) else type(margin)
+            ).__name__.rstrip("_")
+        return f"the {name} fitter"
+    return f"a {type(margin).__name__}"
+
+
+def _check_margins(margins: Any, D: int, fitted_only: bool) -> list:
+    """The ``margins`` of a copula fit (``fitted_only=False``: fitters or
+    fitted models) or of ``from_params`` (fitted models), as a list of
+    ``D``; anything else raises a ``ValueError`` saying what is expected
+    (#663): a fitter's name as a string, a single fitter for both
+    dimensions, or the wrong number used to fail inside numpy or with an
+    ``AttributeError``."""
+    example = (
+        "[Weibull.from_params([10, 2]), LogNormal.from_params([2, 0.5])]"
+        if fitted_only
+        else "[Weibull, Weibull]"
+    )
+    if margins is None:
+        raise ValueError(
+            f"margins must be provided, one per dimension: e.g. {example}."
+        )
+    if isinstance(margins, str) or not isinstance(
+        margins, (list, tuple, onp.ndarray)
+    ):
+        raise ValueError(
+            f"margins must be a list of {D} margins, one per dimension (e.g. "
+            f"{example}); got {_describe(margins)}."
+        )
+    margins = list(margins)
+    if len(margins) != D:
+        raise ValueError(
+            f"A copula of {D} series needs {D} margins, one per dimension; "
+            f"got {len(margins)}."
+        )
+    for d, margin in enumerate(margins):
+        if isinstance(margin, str):
+            instead = (
+                f"a fitted model, e.g. surpyval.{margin}.from_params(...)"
+                if fitted_only
+                else f"the fitter itself (surpyval.{margin})"
+            )
+            raise ValueError(
+                f"Margin {d} is {_describe(margin)}: pass {instead}, not "
+                "its name."
+            )
+        is_model = all(
+            callable(getattr(margin, a, None)) for a in ("ff", "df")
+        )
+        if fitted_only and not is_model:
+            raise ValueError(
+                f"Margin {d} is not a fitted univariate model (it needs `ff` "
+                f"and `df`), but {_describe(margin)}; build one with e.g. "
+                "`Weibull.from_params`."
+            )
+        if not fitted_only and not (is_model or hasattr(margin, "fit")):
+            raise ValueError(
+                f"Margin {d} is {_describe(margin)}: each margin is a "
+                "univariate fitter (e.g. surpyval.Weibull) or a fitted "
+                "univariate model (with `ff` and `df`)."
+            )
+    return margins
+
+
+#: The dependence measures, which check their parameters against the
+#: family's range (#664).
+_DOMAIN_CHECKED = ("kendall_tau", "spearman_rho", "tail_dependence")
+
+
+def _domain_checked(method: Callable[..., Any]) -> Callable[..., Any]:
+    """``method`` (a dependence measure of the parameters) refusing a
+    parameter outside the family's range: a Gumbel ``kendall_tau(0.5)``
+    gave -1.0, a Clayton ``kendall_tau(-0.5)`` -0.333 (#664)."""
+
+    @functools.wraps(method)
+    def checked(self: "Copula", *params: Any, **kwargs: Any) -> Any:
+        self._check_domain(params, kwargs, method.__name__)
+        return method(self, *params, **kwargs)
+
+    checked._domain_checked = True  # type: ignore[attr-defined]
+    return checked
+
+
+class Copula(RemovedNames):
     """Bivariate copula family.
 
     Subclasses define :meth:`cdf` (and, for speed/stability, may override the
@@ -80,6 +175,106 @@ class Copula:
     #: fit's warning names it (see :meth:`_warn_if_perfectly_dependent`).
     #: Empty for a family that is not known to reach either.
     dependence_limits: dict = {}
+    #: The parameter values, on a bound of the family's range, at which it
+    #: is the independence copula (Clayton's ``theta = 0``, Gumbel's and
+    #: Joe's ``theta = 1``): a fit that ends there on data the family
+    #: cannot model warns (#664).
+    independence_at: dict = {}
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # A family's own dependence measures check their parameters too.
+        for name in _DOMAIN_CHECKED:
+            method = cls.__dict__.get(name)
+            if callable(method) and not getattr(
+                method, "_domain_checked", False
+            ):
+                setattr(cls, name, _domain_checked(method))
+
+    def _check_domain(self, params: tuple, kwargs: dict, what: str) -> None:
+        """Refuse a parameter of a dependence measure outside the family's
+        range, naming the range (a value on a finite bound, the family's
+        limit there, is accepted)."""
+        names = list(self.parameter_names)
+        values = list(params) + [
+            kwargs[n] for n in names[len(params) :] if n in kwargs
+        ]
+        for name, value, (low, high) in zip(names, values, self.bounds):
+            try:
+                v = float(value)
+            except (TypeError, ValueError):
+                continue  # not a single number: the method's own business
+            if not (
+                onp.isnan(v)
+                or (low is not None and v < low)
+                or (high is not None and v > high)
+            ):
+                continue
+            closed = name in self.closed_bounds
+            lo = "(-inf" if low is None else f"{'[' if closed else '('}{low:g}"
+            hi = (
+                "inf)" if high is None else f"{high:g}{']' if closed else ')'}"
+            )
+            raise ValueError(
+                f"{self.name} copula {what}: {name} = {v:g} is outside the "
+                f"family's range, {name} in {lo}, {hi}."
+            )
+
+    def _at_independence(self, params: Any) -> npt.NDArray:
+        """Whether each parameter is at (within 1e-6 of) the bound of the
+        family's range where it is the independence copula."""
+        params = onp.atleast_1d(onp.asarray(params, dtype=float))
+        out = onp.zeros(len(self.parameter_names), dtype=bool)
+        for i, name in enumerate(self.parameter_names):
+            if name in self.independence_at and i < params.size:
+                at = float(self.independence_at[name])
+                out[i] = abs(params[i] - at) <= 1e-6 * max(1.0, abs(at))
+        return out
+
+    def _warn_if_at_independence(self, data: Any, theta: npt.NDArray) -> None:
+        """Warn when a fit ends at the family's independence bound
+        (#664): a Clayton, Gumbel or Joe copula on negatively dependent
+        data. It is the constrained maximum -- a maximum on a bound of the
+        parameter space, verified as the univariate fits' are -- but it
+        says only that the family cannot model the data's dependence, and
+        its standard error and Wald bound do not exist."""
+        at = self._at_independence(theta)
+        if not at.any():
+            return
+        from scipy.stats import kendalltau
+
+        both = (data.c[:, 0] == 0) & (data.c[:, 1] == 0)
+        tau = (
+            float(kendalltau(data.x[both, 0], data.x[both, 1]).statistic)
+            if both.sum() >= 3
+            else onp.nan
+        )
+        params = ", ".join(
+            f"{name} = {float(theta[i]):.4g}"
+            for i, name in enumerate(self.parameter_names)
+            if at[i]
+        )
+        base = getattr(self, "base", self)
+        rotate = ""
+        if base.rotatable and onp.isfinite(tau):
+            turn = 90 if (tau < 0) == (self.rotation in (0, 180)) else 0
+            rotate = f", or the {base.name} copula with rotation={turn}"
+        observed = (
+            f" (Kendall's tau of the fully observed pairs is {tau:.3g})"
+            if onp.isfinite(tau)
+            else ""
+        )
+        warnings.warn(
+            f"The {self.name} copula fit ended at {params}, the bound of "
+            "the family's range where it is the independence copula: the "
+            f"data's dependence{observed} is outside what the family can "
+            "model. The estimate is the independence copula, with no "
+            "standard error or Wald bound; compare a family that covers "
+            f"the data's dependence (Frank or Gaussian take either "
+            f"sign{rotate}).",
+            UserWarning,
+            stacklevel=caller_stacklevel(),
+        )
 
     def __repr__(self) -> str:
         return f"{self.name} copula"
@@ -185,6 +380,10 @@ class Copula:
         integrand sharpening along the diagonal as the dependence grows);
         families with a closed form override it. It used to estimate tau
         from 50 000 simulated pairs, with an error near 1e-3.
+
+        A parameter outside the family's range raises a ``ValueError``
+        naming the range (a Gumbel's ``kendall_tau(0.5)`` used to give
+        -1.0), as do :meth:`spearman_rho` and :meth:`tail_dependence`.
         """
         u, v, w = _quadrature_grid()
         du = onp.asarray(self.du(u, v, *params), dtype=float)
@@ -661,6 +860,13 @@ class Copula:
             are perfectly dependent (Kendall's tau of +-1) and the family
             reaches that dependence only as its parameter runs to a limit:
             the returned parameter is then meaningless.
+        UserWarning
+            When the fit ends at the bound of the family's range where it is
+            the independence copula (a Clayton, Gumbel or Joe copula on
+            negatively dependent data): the family cannot model the data's
+            dependence. The estimate is the constrained maximum
+            (``maximum`` is "verified", as for a univariate fit on a bound),
+            with no standard error or Wald bound.
 
         Examples
         --------
@@ -702,10 +908,7 @@ class Copula:
         data = MultivariateSurpyvalData(x, c=c, n=n, t=t, xl=xl, xr=xr)
         if data.D != 2:
             raise NotImplementedError("only bivariate copulas are supported")
-        if margins is None:
-            raise ValueError("margins must be provided (one per dimension)")
-        if len(margins) != data.D:
-            raise ValueError("need one margin per dimension")
+        margins = _check_margins(margins, data.D, fitted_only=False)
 
         check_option("how", how, ("IFM", "MLE"))
         if init is not None:
@@ -744,6 +947,7 @@ class Copula:
             maximum = "no finite maximum"
         elif verified:
             maximum = "verified"
+            self._warn_if_at_independence(data, theta)
         else:
             maximum = "unverified"
             warn_unverified("The {} copula fit".format(self.name))
@@ -874,19 +1078,7 @@ class Copula:
         if rotation:
             return self.rotated(rotation).from_params(params, margins)
         params = self._check_params(params)
-        margins = list(margins)
-        if len(margins) != 2:
-            raise ValueError(
-                f"A bivariate copula needs 2 margins, one per dimension; "
-                f"got {len(margins)}."
-            )
-        for d, m in enumerate(margins):
-            if not all(callable(getattr(m, a, None)) for a in ("ff", "df")):
-                raise ValueError(
-                    f"Margin {d} is not a fitted univariate model (it needs "
-                    "`ff` and `df`); build one with e.g. "
-                    "`Weibull.from_params`."
-                )
+        margins = _check_margins(margins, 2, fitted_only=True)
         return CopulaModel(self, params, margins, data=None, how="given")
 
     #: Names of parameters whose finite bounds are themselves valid values
@@ -1208,6 +1400,11 @@ class Copula:
         return 0.0 if not onp.isfinite(tau) else float(tau)
 
 
+# The base class's own dependence measures check their parameters too.
+for _name in _DOMAIN_CHECKED:
+    setattr(Copula, _name, _domain_checked(Copula.__dict__[_name]))
+
+
 class _JointMargin:
     """One margin's parameters in the joint (``how="MLE"``) search.
 
@@ -1349,6 +1546,7 @@ class RotatedCopula(Copula):
         self.bounds = base.bounds
         self.parameter_names = list(base.parameter_names)
         self.closed_bounds = base.closed_bounds
+        self.independence_at = base.independence_at
         # A quarter turn swaps the comonotone and countermonotone limits
         flip = -1 if rotation in (90, 270) else 1
         self.dependence_limits = {

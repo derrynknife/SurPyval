@@ -58,6 +58,18 @@ def test_611_qf_outside_unit_interval_warns_nan():
     np.testing.assert_array_equal(q, [np.nan, 2.0, np.nan])
 
 
+def test_626_quantile_cb_outside_unit_interval_warns_nan():
+    # The same rule as qf (it raised): NaN with one warning outside
+    # [0, 1], the other probabilities bounded as before.
+    model = surpyval.KaplanMeier.fit(np.arange(1.0, 11.0))
+    with pytest.warns(UserWarning, match=r"quantile_cb: 2 of the 4") as rec:
+        got = model.quantile_cb([-0.5, 0.5, 1.0, 1.5])
+    assert len(rec) == 1 and rec[0].filename == __file__
+    np.testing.assert_array_equal(got[1], model.quantile_cb([0.5])[0])
+    assert got[2, 0] == 10.0
+    assert np.isnan(got[[0, 3]]).all()
+
+
 def test_quantile_cb_brookmeyer_crowley_inversion():
     # The quantile interval limits must be the first observed times at
     # which the survival bounds cross 1 - p.
@@ -429,3 +441,26 @@ class TestNonParametricScalars:
         with _w.catch_warnings():
             _w.simplefilter("error")
             check_ph(m)
+
+
+@pytest.mark.parametrize(
+    "name", ["KaplanMeier", "NelsonAalen", "FlemingHarrington", "Turnbull"]
+)
+def test_728_Hf_before_the_first_time_is_plus_zero(name):
+    # -log(1) is -0.0; the cumulative hazard there is 0.0 (#728). The
+    # first value is censored, so the stored H starts at sf = 1 too.
+    model = getattr(sp, name).fit([1.0, 2, 3, 4, 5], c=[1, 0, 0, 1, 0])
+    H = model.Hf([0.0, 0.5, 1.0, 3.0])
+    assert np.all(H[:3] == 0) and not np.any(np.signbit(H))
+    assert not np.signbit(model.Hf(0.5))
+    assert H[3] > 0
+    assert not np.any(np.signbit(model.H))
+
+
+@pytest.mark.parametrize("bound", ["two-sided", "lower", "upper"])
+def test_746_Hf_bounds_before_the_first_failure_are_plus_zero(bound):
+    # The survival bounds are 1 at the censored first value; -log(1) of
+    # them was -0.0 (#746).
+    model = sp.KaplanMeier.fit([1.0, 2, 3, 4, 5], c=[1, 0, 0, 0, 0])
+    b = model.cb([0.5, 1.0, 1.5], on="Hf", bound=bound)
+    assert np.all(b == 0) and not np.any(np.signbit(b))

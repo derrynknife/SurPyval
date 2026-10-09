@@ -50,7 +50,7 @@ from ._prediction import quantiles_by_inversion
 FAILED_SHARE = 0.02
 
 #: What a refit that raises is counted as failing with.
-_REFIT_ERRORS = (
+REFIT_ERRORS = (
     ValueError,
     RuntimeError,
     ArithmeticError,
@@ -58,10 +58,13 @@ _REFIT_ERRORS = (
 )
 
 
-def bound_method(method: str) -> str:
+def bound_method(method: "str | None") -> str:
     """The bound ``method`` asks for: ``"wald"``, ``"lr"`` (or one of
     its aliases) or ``"bootstrap"``; anything else is refused. Case does
-    not matter."""
+    not matter, and ``None`` is the default, ``"wald"``, as for the
+    univariate models (#655)."""
+    if method is None:
+        return "wald"
     m = str(method).lower()
     if m in LR_NAMES:
         return "lr"
@@ -168,7 +171,7 @@ def refits(model: Any, n_boot: Any, random_state: Any) -> Refits:
     from ._inference import _same_point
 
     n_boot = check_n_boot(n_boot)
-    design = _Design(model)
+    design = ResampleDesign(model)
     point = model._covariance_point(model._eval_params(), model.center)
     key = None
     if isinstance(random_state, (int, np.integer)) and not isinstance(
@@ -187,7 +190,7 @@ def refits(model: Any, n_boot: Any, random_state: Any) -> Refits:
     return out
 
 
-class _Design:
+class ResampleDesign:
     """What a resample of ``model``'s data keeps: each unit's covariates,
     truncation window and censoring (a row with ``n = k`` is ``k``
     units)."""
@@ -270,7 +273,7 @@ class _Design:
 
 def _draw(
     model: Any,
-    design: _Design,
+    design: ResampleDesign,
     point: tuple,
     n_boot: int,
     rng: np.random.Generator,
@@ -308,7 +311,7 @@ def _draw(
                     t=t if design.truncated else None,
                     **kwargs,
                 )
-        except _REFIT_ERRORS:
+        except REFIT_ERRORS:
             counts["failed"] += 1
             continue
         if refit.maximum in counts:
@@ -351,7 +354,7 @@ def _cumulative_hazard(
 
 def _simulate(
     model: Any,
-    design: _Design,
+    design: ResampleDesign,
     p_hat: npt.NDArray,
     H_lo: npt.NDArray,
     H_hi: npt.NDArray,
@@ -674,7 +677,8 @@ def bca_bounds(
         v_lo, v_hi = ordered[lo, cols], ordered[hi, cols]
         with np.errstate(invalid="ignore", over="ignore"):
             v = np.where(frac > 0, v_lo + frac * (v_hi - v_lo), v_lo)
-        v = np.where(np.abs(v) >= big, np.sign(v) * np.inf, v)
+        with np.errstate(invalid="ignore"):
+            v = np.where(np.abs(v) >= big, np.sign(v) * np.inf, v)
         # A missing estimate (a nan time) gives nan.
         out.append(np.where(np.isnan(est), np.nan, v))
     return np.stack(out, axis=-1) if bound == "two-sided" else out[0]

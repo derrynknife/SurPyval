@@ -623,7 +623,7 @@ def test_greedy_is_todays_tree(censoring, kind, explicit):
     )
     assert _splits(tree._root) == GREEDY_SPLITS[censoring, kind]
     if (censoring, kind) in GREEDY_SF:
-        sf = tree.sf([2.0, 6.0], [[0.0, 0.2, 0.7], [2.0, 0.8, 0.1]])
+        sf = tree.sf([2.0, 6.0], [[0.0, 0.2, 0.7], [2.0, 0.8, 0.1]], grid=True)
         # The leaves are maximum likelihood fits, whose last digits move
         # with the optimiser (#366); the splits above are exact.
         np.testing.assert_allclose(sf, GREEDY_SF[censoring, kind], rtol=1e-6)
@@ -648,7 +648,9 @@ def test_ctree_options_round_trip():
     assert restored.selection == "ctree" and restored.alpha_split == 0.01
     assert restored._root.p_value == tree._root.p_value < 0.01
     x, Z = [1.0, 5.0], d["Z"][:6]
-    np.testing.assert_array_equal(restored.sf(x, Z), tree.sf(x, Z))
+    np.testing.assert_array_equal(
+        restored.sf(x, Z, grid=True), tree.sf(x, Z, grid=True)
+    )
 
     with contextlib.redirect_stderr(io.StringIO()):
         forest = RandomSurvivalForest.fit(
@@ -662,7 +664,9 @@ def test_ctree_options_round_trip():
     blob = json.loads(json.dumps(forest.to_dict()))
     restored = RandomSurvivalForest.from_dict(blob)
     assert restored.selection == "ctree" and restored.alpha_split == 0.2
-    np.testing.assert_array_equal(restored.sf(x, Z), forest.sf(x, Z))
+    np.testing.assert_array_equal(
+        restored.sf(x, Z, grid=True), forest.sf(x, Z, grid=True)
+    )
 
 
 def test_a_tree_saved_before_selection_reads_as_greedy():

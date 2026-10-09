@@ -3,15 +3,17 @@ name: actions
 run-name: SurPyval CI
 
 # Run CI on pull requests into the integration branches and on pushes to
-# master (i.e. release merges + tags). Feature work accumulates on `develop`
-# via PRs; day-to-day pushes to feature branches no longer each trigger the
-# full suite. See docs/Contributing.rst for the branching / release flow.
+# master (i.e. release merges). Feature work accumulates on `develop` via
+# PRs. See docs/Contributing.rst for the branching / release flow.
 #
-# The jobs below are not all gated the same way. Lint runs on everything;
-# the test suite and the documentation build run only on the release pull
-# request into `master`, where the time they cost is worth paying. Each
-# job carries the reasoning for its own condition. The fast conformance
-# suite runs on everything, like lint.
+# The full test suite and the documentation build run once, when a release
+# is merged into `master`, and nowhere else: not on pull requests into
+# `develop`, not on the release pull request itself. A pull request runs
+# lint only; the change is tested locally, by the tests for what it
+# changed. Waiting on the full suite at every step made a release take
+# hours, and nearly every run confirmed what the targeted tests had
+# already shown. A failure the merge run finds is fixed in a point
+# release.
 on:
   pull_request:
     branches: [develop, master]
@@ -53,8 +55,9 @@ jobs:
       - name: black
         run: black --check $LINT
 
-  # The conformance suite runs on every pull request, like lint, rather
-  # than waiting for the release pull request with the rest of the tests.
+  # The conformance suite runs with the rest of the tests, on the merge
+  # into `master`; a pull request runs the conformance tests for the
+  # models it touches locally.
   #
   # It runs every public model, listed once in a registry
   # (surpyval/tests/conformance/registry.py), through one battery of
@@ -65,17 +68,17 @@ jobs:
   # that were an old kind of failure in a model nobody had checked for it
   # -- unsorted input, units, row routing, missing values -- and each fix
   # tested only its own case (#379). This is the check that makes the next
-  # change meet the same properties, and the one worth paying for on every
-  # pull request.
+  # change meet the same properties.
   #
   # It takes about forty seconds on one core: the fixtures are tiny, and
   # the refits of the less common variants (the other regression baselines
   # and life models, the offset / LFP / zero-inflated forms beyond
   # Weibull) are marked ``slow`` and left out here. The full suite, on the
-  # release pull request and nightly, runs them too. A known failure is a
+  # same merge, runs them too. A known failure is a
   # strict xfail, so this stays green, and turns red the day the failure
   # is fixed, as a reminder to remove its entry.
   conformance:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -94,26 +97,13 @@ jobs:
         run:
           python -m pytest surpyval/tests/conformance -m "not slow"
 
-  # The test suite runs on the release pull request into `master`, and on
-  # pushes to `master`, but not on pull requests into `develop`.
-  #
-  # It is roughly nine minutes across the three interpreters, against
-  # about one for lint, and paying that on every feature pull request
-  # made the edit-review loop the slowest part of working on the
-  # package. Development is single-maintainer and the suite is run
-  # locally before pushing, so the pull-request run was mostly
-  # confirming what was already known.
-  #
-  # What that gives up is real, and worth naming: a failure that only
-  # appears on one interpreter is now found when the release is
-  # prepared, with a release's worth of commits to search rather than
-  # one. That is not hypothetical -- the doctest comparison landed
-  # green on 3.11 and broke on 3.12 and 3.13, and it was the
-  # pull-request run that caught it. Run the suite locally across more
-  # than one interpreter when touching numerics, or open the release
-  # pull request early and let it sit.
+  # The test suite runs on pushes to `master` -- the release merge -- and
+  # on nothing else (see the top of this file). A failure that appears on
+  # one interpreter only is found there, with a release's worth of
+  # commits to search; run the tests for a numerical change on more than
+  # one interpreter locally.
   surpyval_ci:
-    if: github.event_name != 'pull_request' || github.base_ref == 'master'
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -201,29 +191,56 @@ jobs:
           name: coverage-html-report
           path: htmlcov/
 
-  # Build the documentation on the release pull request only.
+  # The suite as installed from the built wheel, collected (not run) in a
+  # clean environment with only pytest beside the package's own
+  # dependencies, on the merge into `master`. The repository run above
+  # sees files the wheel does not carry: 0.23 shipped tests that read
+  # reference data and a root-conftest helper left out of it, and the
+  # installed suite could not be collected (#661). Collection is what
+  # breaks that way, and takes about a minute.
+  wheel:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set-up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build the wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel --outdir dist
+
+      - name: Install it in a clean environment
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install dist/*.whl pytest
+
+      - name: Collect the installed suite
+        # Outside the checkout, so the package imported is the installed
+        # one and the repository's conftest is not seen
+        working-directory: /tmp
+        run: /tmp/clean/bin/python -m pytest --pyargs surpyval --collect-only -q
+
+  # Build the documentation on the merge into `master`, with the test
+  # suite.
   #
   # The docs execute every ``.. jupyter-execute::`` cell during the
   # build, so they are a second test suite that runs the public API for
   # real -- and one that can be broken by a change that touches no
   # documentation file at all. Removing Gamma's probability-plot fitting
   # did exactly that: a cell looping over the fit methods started
-  # raising, and nothing noticed, because Read the Docs builds only
-  # ``master`` and tags. The failure would have appeared as a broken
-  # hosted build after the release rather than on the change that caused
-  # it.
-  #
-  # ``github.base_ref`` is set only for pull_request events, so this
-  # runs on the develop -> master release pull request and nowhere else.
-  # It is deliberately not run on pushes to master: Read the Docs
-  # rebuilds there anyway, and by that point the gate has nothing left
-  # to gate.
+  # raising. Read the Docs builds ``master`` and tags too, but with no
+  # check on the result; this run is what fails visibly.
   #
   # The point is to reproduce the hosted build, so this matches
   # .readthedocs.yaml rather than the test jobs above: Python 3.12, and
   # the package installed with its own ``docs`` extra.
   docs:
-    if: github.event_name == 'pull_request' && github.base_ref == 'master'
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

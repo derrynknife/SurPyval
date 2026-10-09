@@ -36,7 +36,9 @@ class PowerExponential_(LifeModel):
 
     n_stresses = 2
     positive_stress_columns = (1,)
+    kelvin_stress_columns = (0,)
     phi_takes_rows = True
+    log_scale_parameters = ("c",)
 
     def __init__(self) -> None:
         super().__init__(
@@ -46,13 +48,14 @@ class PowerExponential_(LifeModel):
         )
 
     def phi(self, Z: ndarray, *params: float) -> ndarray:
+        # One exponent: e^(a / U) alone overflows where the life is finite
+        # (#634)
+        return self._phi_from_log_life(Z, params)
+
+    def log_life(self, Z: ndarray, *params: float) -> ndarray:
         Z = np.atleast_2d(Z)
-        Z1 = Z[:, 0]
-        Z2 = Z[:, 1]
-        c = params[0]
-        a = params[1]
-        n = params[2]
-        return c * np.exp(a / Z1) * Z2**n
+        log_c, a, n = params[0], params[1], params[2]
+        return log_c + a / Z[:, 0] + n * np.log(Z[:, 1])
 
     def phi_init(self, life: float, Z: ndarray) -> list[float]:
         A = np.atleast_2d(Z)

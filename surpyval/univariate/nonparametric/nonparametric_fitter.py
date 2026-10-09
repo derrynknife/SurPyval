@@ -40,7 +40,7 @@ class NonParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         out.model = self.how
         out.F = 1 - out.R
         with np.errstate(all="ignore"):
-            out.H = -np.log(out.R)
+            out.H = 0.0 - np.log(out.R)
 
         out.greenwood = self._compute_var(estimator, r, d)
         return out
@@ -340,7 +340,7 @@ class NonParametricFitter(FitterRepr, UnivariateDataFrameMixin):
             # For the NA and FH options that is exactly their summed
             # hazard, since they report R = exp(-H).
             with np.errstate(all="ignore"):
-                out.H = -np.log(out.R)
+                out.H = 0.0 - np.log(out.R)
 
             out.data = data
             return out

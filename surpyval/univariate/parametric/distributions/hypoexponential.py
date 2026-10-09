@@ -44,7 +44,6 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
     ParametricFitter,
-    lfp_p_renamed,
 )
 
 from ..parametric import Parametric
@@ -192,7 +191,6 @@ class Hypoexponential_(ParametricFitter):
             return self
         return Hypoexponential_(self.name, m=m)
 
-    @lfp_p_renamed
     def from_params(
         self,
         params: npt.ArrayLike,
@@ -214,7 +212,7 @@ class Hypoexponential_(ParametricFitter):
             An offset (shift) of the distribution.
         lfp_p : scalar, optional
             The proportion of the population that ever fails
-            (limited-failure population); ``p`` before v0.23.
+            (limited-failure population).
         f0 : scalar, optional
             The proportion of the population that fails at time zero
             (zero inflation).

@@ -603,3 +603,25 @@ def test_lr_bounds_after_restoring_with_the_data():
         restored.param_cb("beta", method="lr"),
         model.param_cb("beta", method="lr"),
     )
+
+
+def test_652_lr_hf_band_far_in_the_tail_contains_the_estimate():
+    # The sf, ff and Hf bands are one band on the logit of sf, which has
+    # no room past sf = 1e-308: the Hf band was [inf, inf] around Hf(1e6)
+    # = 85302. There it is found on the scale of log Hf, the same extreme
+    # of the same region.
+    rng = np.random.default_rng(9)
+    t = 500 * rng.weibull(1.8, 25)
+    cen = rng.uniform(200, 900, 25)
+    model = surv.Weibull.fit(np.minimum(t, cen), (t > cen).astype(int))
+    x = np.array([300.0, 1e4, 1e6])
+    band = no_warnings(model.cb, x, on="Hf", method="lr")
+    Hf = model.Hf(x)
+    assert np.all(band[:, 0] < Hf) and np.all(Hf < band[:, 1])
+    assert np.all(np.isfinite(band))
+    sf = model.cb([300.0], on="sf", method="lr")
+    np.testing.assert_allclose(band[0], -np.log(sf[0, ::-1]), rtol=1e-10)
+    upper = no_warnings(model.cb, x, on="Hf", method="lr", bound="upper")
+    assert np.all(Hf < upper) and np.all(upper < band[:, 1])
+    lower = no_warnings(model.cb, x, on="Hf", method="lr", bound="lower")
+    assert np.all(band[:, 0] < lower) and np.all(lower < Hf)

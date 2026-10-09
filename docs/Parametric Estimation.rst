@@ -885,13 +885,22 @@ worth knowing what they are, because they explain the warnings you may see.
    flatness (an offset LogNormal and Gamma on data with a long left tail
    ran every rung for 4-17 s, and now stop after the first in 0.3 s). A
    later rung's point heading that way is checked too: the first rung can
-   stop somewhere unrelated, and a later one run off. And where the whole
-   ladder ends unverified with the offset moved down and no point it
-   reached fitting the data better than the limit, the offset is taken to
-   be running off: far out, Newton's test reads derivatives that are
-   rounding, and it missed an offset LogLogistic at
+   stop somewhere unrelated, and a later one run off. And where a rung
+   ends unverified with the offset moved down and neither the point it
+   reached nor any offset on the way there (a profile of the likelihood
+   over the offset, read at up to eight offsets between the search's
+   start and that point) fitting the data better than the limit, the
+   offset is taken to be running off: far out, Newton's test reads
+   derivatives that are rounding, and it missed an offset LogLogistic at
    :math:`\gamma = -6.9 \times 10^{4}` on a smallest extreme value sample.
-   If one is
+   That ends the ladder at the rung that finds it (left skewed LogLogistic
+   samples took 1,000 to 3,000 likelihood evaluations to reach the verdict
+   at the end of the ladder, and now 200 to 400). A point, or an offset on
+   the way, that fits better than the limit is never called a runaway,
+   however flat the profile: the likelihood then has a maximum short of
+   the limit, which an offset LogNormal 0.012 above the Normal had been
+   denied. "Better" is beyond a relative tolerance of :math:`10^{-7}`,
+   since far out the likelihood is computed to rounding. If one is
    running off, the search stops there, the fit warns "No finite maximum",
    naming it (and the limit, where the family knows it), and ``maximum`` is
    ``'no finite maximum'``; that ExpoWeibull now takes 6 s. A verified

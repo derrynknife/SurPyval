@@ -1,6 +1,8 @@
 """Cox predictions: the baseline before the first event, and pairing of
 times with covariate rows."""
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -125,3 +127,69 @@ def test_cox_accepts_a_scalar_covariate():
             getattr(model, fn)([3.0], 0.5), getattr(model, fn)([3.0], [0.5])
         )
     np.testing.assert_allclose(model.phi(0.5), np.exp(0.5 * model.beta[0]))
+
+
+# ---------------------------------------------------------------------------
+# The density far in the upper tail (#714).
+# ---------------------------------------------------------------------------
+
+
+def test_cox_density_is_zero_where_the_hazard_step_overflows(model):
+    # A risk score far beyond the data's (exp(0.8 * 2000) overflows) makes
+    # the hazard step and the cumulative hazard inf after the first event
+    # time. The density hf * sf was inf * 0, nan with a raw RuntimeWarning
+    # (seen on separated data, whose coefficients run off); it is 0 (the
+    # step is at most H, and H e^{-H} -> 0).
+    query = np.array([0.1, model.x[0], model.x[5], model.x[-1]])
+    Z = np.array([[0.0], [2000.0], [2000.0], [0.5]])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert np.isposinf(model.hf(query, Z)[1:3]).all()
+        df = model.df(query, Z)
+        grid = model.df(query, Z, grid=True)
+    np.testing.assert_array_equal(df[1:3], 0.0)
+    assert np.isfinite(df).all() and np.isfinite(grid).all()
+    np.testing.assert_array_equal(np.diagonal(grid), df)
+    # elsewhere it is hf * sf, as it was
+    keep = [0, 3]
+    np.testing.assert_allclose(
+        df[keep], model.hf(query, Z)[keep] * model.sf(query, Z)[keep]
+    )
+    assert df[3] > 0
+
+
+@pytest.mark.parametrize("name", ["WeibullPH", "WeibullAFT"])
+def test_parametric_density_is_zero_where_the_hazard_overflows(name):
+    # A Weibull hazard (shape 5) overflows to inf at 1e80 where e^{-H}
+    # underflows to 0: the density was inf * 0, nan with a raw
+    # RuntimeWarning (from the generated data of the property tests).
+    import surpyval
+
+    fitter = getattr(surpyval, name)
+    x = np.array([1.0, 1e80])
+    Z = np.zeros((2, 1))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        df = fitter.df(x, Z, 1.0, 5.0, 0.3)
+    assert df[1] == 0.0
+    assert df[0] == pytest.approx(5 * np.exp(-1.0))
+
+
+def test_parametric_ph_risk_score_overflow_keeps_the_baseline_0_and_inf():
+    # exp(beta'Z) overflows to inf at beta'Z = 800 (a coefficient running
+    # off): against a baseline of exactly 0 (x = 0, a Weibull shape above
+    # 1) the hazard and H are 0, not inf * 0; and a risk score that
+    # underflowed to 0 against an infinite baseline (x = inf) leaves them
+    # inf (#714).
+    from surpyval import WeibullPH
+
+    x = np.array([0.0, 1.0, np.inf])
+    Z = np.array([[800.0], [800.0], [-800.0]])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        H = WeibullPH.Hf(x, Z, 1.0, 2.0, 1.0)
+        h = WeibullPH.hf(x, Z, 1.0, 2.0, 1.0)
+        sf = WeibullPH.sf(x, Z, 1.0, 2.0, 1.0)
+    np.testing.assert_array_equal(H, [0.0, np.inf, np.inf])
+    np.testing.assert_array_equal(h, [0.0, np.inf, np.inf])
+    np.testing.assert_array_equal(sf, [1.0, 0.0, 0.0])

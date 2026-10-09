@@ -361,3 +361,122 @@ def test_604_cause_specific_cox_comparison_values_are_r_survivals():
     restored = sp.from_dict(model.to_dict())
     for name in ("neg_ll", "aic", "aic_c", "bic"):
         assert getattr(restored, name)() == getattr(model, name)()
+
+
+# -- inference, names, phi_e and beta (#656) -------------------------------
+
+
+def _656_data():
+    rng = np.random.default_rng(0)
+    N = 200
+    Z = np.c_[rng.binomial(1, 0.5, N), rng.normal(size=N)]
+    ta = rng.exponential(1 / (0.1 * np.exp(0.7 * Z[:, 0])))
+    tb = rng.exponential(1 / 0.05, N)
+    tc = rng.uniform(0, 20, N)
+    x = np.minimum(np.minimum(ta, tb), tc).round(2)
+    first = np.where(ta < tb, "a", "b")
+    e = np.where(tc < np.minimum(ta, tb), None, first).astype(object)
+    return x, Z, e
+
+
+@pytest.mark.parametrize("how", ["Cox", "Fine-Gray"])
+def test_656_per_cause_inference(how):
+    import surpyval as sp
+
+    x, Z, e = _656_data()
+    model = CRPH.fit(x, Z, e, model=how)
+    names = ["a: coef_0", "a: coef_1", "b: coef_0", "b: coef_1"]
+    assert model.parameter_names == names
+    np.testing.assert_array_equal(model.params, model.betas.ravel())
+    # Each cause's block is that cause's own fit's
+    for i, cause in enumerate(["a", "b"]):
+        if how == "Cox":
+            own = sp.CoxPH.fit(x, Z, (e != cause).astype(int))
+        else:
+            own = FineGray.fit(x, Z, e, event=cause)
+        block = model.covariance()[2 * i : 2 * i + 2, 2 * i : 2 * i + 2]
+        np.testing.assert_allclose(block, own.covariance(), rtol=1e-8)
+    assert model.covariance()[0, 2] == 0.0
+    se = model.standard_errors()
+    np.testing.assert_allclose(se, np.sqrt(np.diag(model.covariance())))
+    table = model.summary()
+    assert table.index.tolist() == names
+    np.testing.assert_allclose(table["se(coef)"], se)
+    np.testing.assert_allclose(table["p"], model.p_values)
+    text = repr(model)
+    assert "a: coef_0" in text and "object at" not in text
+    restored = sp.from_dict(model.to_dict())
+    np.testing.assert_allclose(restored.covariance(), model.covariance())
+
+
+def test_656_names_from_dataframe_columns():
+    x, Z, e = _656_data()
+    df = pd.DataFrame({"x": x, "e": e, "grp": Z[:, 0], "age": Z[:, 1]})
+    model = CRPH.fit_from_df(df, "x", "e", ["grp", "age"])
+    assert model.parameter_names == ["a: grp", "a: age", "b: grp", "b: age"]
+
+
+def test_656_phi_e_takes_the_cause_label():
+    x, Z, e = _656_data()
+    model = CRPH.fit(x, Z, e)
+    expected = np.exp(Z[:2] @ model.betas[model.event_idx_map["b"]])
+    np.testing.assert_allclose(model.phi_e(Z[:2], "b"), expected)
+    # The row index it took before is deprecated, not refused
+    with pytest.warns(DeprecationWarning, match="'b'"):
+        np.testing.assert_allclose(model.phi_e(Z[:2], 1), expected)
+    with pytest.raises(ValueError, match="Unknown cause 'c'"):
+        model.phi_e(Z[:2], "c")
+
+
+def test_656_beta_is_deprecated():
+    x, Z, e = _656_data()
+    model = CRPH.fit(x, Z, e)
+    with pytest.warns(DeprecationWarning, match="betas"):
+        beta = model.beta
+    np.testing.assert_allclose(beta, model.betas.sum(axis=0))
+
+
+def test_656_fine_gray_log_likelihood_is_an_attribute_error():
+    x, Z, e = _656_data()
+    model = CRPH.fit(x, Z, e, model="Fine-Gray")
+    assert not hasattr(model, "log_likelihood")
+    assert getattr(model, "log_likelihood", None) is None
+    with pytest.raises(AttributeError, match="no likelihood"):
+        model.log_likelihood
+    with pytest.raises(ValueError, match="no likelihood"):
+        model.neg_ll()
+    assert isinstance(CRPH.fit(x, Z, e).log_likelihood, float)
+
+
+def test_714_a_separated_cause_says_so_whatever_the_row_order():
+    # Four rows tied at 0.5: causes a, a, a, b with z 0, 1, 0, 0. Cause b's
+    # one event has the smallest z of its risk set, so its partial
+    # likelihood has no finite maximum, and its coefficient is wherever
+    # Newton's method stopped (-36.4 or -37.7, by the row order). The fit
+    # says so in either order, and cause a, which has a maximum, does not
+    # move.
+    x = np.full(4, 0.5)
+    e = np.array(["a", "a", "a", "b"], dtype=object)
+    Z = np.array([[0.0], [1.0], [0.0], [0.0]])
+    fits = []
+    for perm in ([0, 1, 2, 3], [1, 0, 2, 3]):
+        with pytest.warns(UserWarning, match="No finite maximum"):
+            fits.append(CRPH.fit(x[perm], Z[perm], e[perm]))
+    for model in fits:
+        assert model.maximum == "no finite maximum"
+        assert model.betas[1, 0] < -30
+    np.testing.assert_allclose(fits[0].betas[0], fits[1].betas[0])
+    np.testing.assert_allclose(
+        fits[0].cif([0.5, 1.0], [[0.5]], "a"),
+        fits[1].cif([0.5, 1.0], [[0.5]], "a"),
+    )
+    for model in fits:
+        assert model.cif([1.0], [[0.5]], "b")[0] < 1e-8
+
+
+def test_746_fine_gray_Hf_before_the_first_time_is_plus_zero():
+    # The Fine-Gray Hf is -log(1 - cif); -log(1) was -0.0 (#746).
+    x, Z, e = competing_risks_regression_data()
+    model = CRPH.fit(x, Z, e, model="Fine-Gray")
+    H = model.Hf([0.0, np.min(x) / 2], np.zeros(2), event=1)
+    assert np.all(H == 0) and not np.any(np.signbit(H))

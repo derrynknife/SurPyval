@@ -5,6 +5,7 @@ kidney catheter data (McGilchrist and Aisbett 1991), stored by
 scripts/reference/reference_r_frailty.R.
 """
 
+import copy
 import json
 import warnings
 
@@ -298,12 +299,11 @@ def test_604_cox_frailty_model_comparison_values(kidney_fits):
     assert fixed.aic() == pytest.approx(2 * 2 + 2 * fixed.neg_ll())
 
 
-def test_604_cox_frailty_old_likelihood_names_are_deprecated(kidney_fits):
+def test_604_cox_frailty_old_likelihood_names_are_gone(kidney_fits):
+    # Deprecated in v0.23, removed in v0.24
     m = kidney_fits["efron"]
-    with pytest.warns(DeprecationWarning, match="'log_likelihood'"):
-        assert m.loglik == m.log_likelihood
-    with pytest.warns(DeprecationWarning, match="log_likelihood_no_frailty"):
-        assert m.loglik_no_frailty == m.log_likelihood_no_frailty
+    assert not hasattr(m, "loglik")
+    assert not hasattr(m, "loglik_no_frailty")
     # A dict written before v0.23
     old = m.to_dict()
     old["loglik"] = -old.pop("_neg_ll")
@@ -363,3 +363,178 @@ def test_551_covariance_does_not_form_the_group_indicators(monkeypatch):
     cov = em.beta_covariance(0.5, beta, log_u)
     assert max(widths) <= em.p + 1 < em.G
     assert np.all(np.linalg.eigvalsh(cov) > 0)
+
+
+def _em_pair(ties, tied=False, covariates=True, seed=3, G=80, per=6):
+    """The same data in two EM fits, one started from Newton's solution
+    and one EM alone."""
+    from surpyval.univariate.regression.frailty import cox_frailty as cf
+    from surpyval.univariate.regression.frailty.frailty_fitter import (
+        grouped_data,
+    )
+
+    x, c, Z, g = _simulate(seed, G=G, per=per)
+    Z = np.column_stack([Z, np.random.default_rng(seed).normal(size=len(x))])
+    if tied:
+        x = np.ceil(x)
+    x, Zm, c, w, labels, inv = grouped_data(x, Z, c, None, g)
+    Zc = Zm - Zm.mean(axis=0) if covariates else np.zeros((len(x), 0))
+    fits = []
+    for newton in (True, False):
+        em = cf._CoxFrailtyEM(x, Zc, c, w, inv, labels.shape[0], ties)
+        em.use_newton = newton
+        fits.append(em)
+    return fits
+
+
+@pytest.mark.parametrize("ties", ["efron", "breslow"])
+@pytest.mark.parametrize("tied", [False, True])
+@pytest.mark.parametrize("covariates", [True, False])
+@pytest.mark.parametrize("theta", [1e-6, 0.05, 0.5, 20.0])
+def test_newton_reaches_ems_fixed_point(ties, tied, covariates, theta):
+    # Newton on the penalised partial likelihood and EM alone end at the
+    # same fixed point, to EM's tolerance.
+    with_newton, em_alone = _em_pair(ties, tied, covariates)
+    beta_n, log_u_n, neg_pl_n = with_newton.em(theta)
+    beta_e, log_u_e, neg_pl_e = em_alone.em(theta)
+    np.testing.assert_allclose(log_u_n, log_u_e, rtol=0, atol=1e-9)
+    np.testing.assert_allclose(beta_n, beta_e, rtol=0, atol=1e-9)
+    assert neg_pl_n == pytest.approx(neg_pl_e, rel=1e-13)
+    assert not with_newton.not_converged and not em_alone.not_converged
+
+
+@pytest.mark.parametrize("ties", ["efron", "breslow"])
+def test_newton_leaves_em_a_step_or_two(ties, monkeypatch):
+    # From Newton's solution EM's stopping rule is met at once: a couple
+    # of EM steps (each a Cox fit and its baseline) where EM alone takes
+    # many.
+    counts = {}
+    for em in _em_pair(ties):
+        update = em.update
+        n = [0]
+
+        def counted(*args, update=update, n=n):
+            n[0] += 1
+            return update(*args)
+
+        monkeypatch.setattr(em, "update", counted)
+        em.em(0.5)
+        counts[em.use_newton] = n[0]
+    assert counts[True] <= 3 < counts[False]
+
+
+def test_newton_that_fails_leaves_em_to_it(monkeypatch):
+    # Where Newton gives up, EM runs from the start as before.
+    with_newton, em_alone = _em_pair("efron")
+    monkeypatch.setattr(with_newton, "newton", lambda *args: None)
+    np.testing.assert_array_equal(with_newton.em(0.5)[1], em_alone.em(0.5)[1])
+
+
+def test_newton_is_off_where_the_partial_likelihood_has_no_maximum():
+    # A covariate that separates the events: the coefficient runs off
+    # whatever theta is, and the fit keeps EM's short iteration limit.
+    x = np.arange(1.0, 41.0)
+    Z = (x < 20).astype(float)
+    groups = np.repeat(np.arange(10), 4)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = CoxFrailty.fit(x, Z=Z, groups=groups)
+    assert model.maximum == "no finite maximum"
+
+
+@pytest.mark.parametrize("ties", ["efron", "breslow"])
+@pytest.mark.parametrize("shift", [400.0, 1000.0, 1e5])
+def test_group_hazard_far_out_is_quiet_and_right(ties, shift):
+    # A_g is unchanged when every row's beta'Z moves by the same amount
+    # (the risk sums scale by exp(shift), the baseline by exp(-shift)).
+    # Formed directly, exp(beta'Z) overflowed and the baseline underflowed:
+    # nan with numpy's warnings; past beta'Z = 300 it is summed in logs
+    # (#777).
+    em, beta, log_u = _em_state(ties, 0.5, tied=True)
+    offset = log_u[em.inv]
+    want = em.group_hazard(beta, offset)
+    moved = copy.copy(em)
+    moved.Z = em.Z + shift / (beta.size * beta)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        got = moved.group_hazard(beta, offset)
+        # and with the offsets moved instead: A_g scales by exp(-400)
+        down = em.group_hazard(beta, offset + 400.0)
+    rtol = 1e-15 * shift * 100
+    np.testing.assert_allclose(got, want, rtol=rtol)
+    np.testing.assert_allclose(down, want * np.exp(-400.0), rtol=1e-12)
+    # The log path is the direct one where both can be taken
+    lin = em.Z @ beta
+    np.testing.assert_allclose(
+        em._log_group_hazard(lin, offset), want, rtol=1e-13
+    )
+
+
+def _run_off_data():
+    # Fifteen rows die first, in decreasing order of z1, so its
+    # coefficient runs off (beta'Z beyond 300); z2 is an ordinary
+    # covariate, whose coefficient has a standard error.
+    rng = np.random.default_rng(777)
+    top, late = 15, 40
+    z1 = np.r_[np.arange(top, 0, -1.0), np.zeros(late)]
+    z2 = rng.normal(size=top + late)
+    order = np.argsort(rng.exponential(size=late) * np.exp(-z2[top:]))
+    x = np.r_[np.arange(1.0, top + 1), top + 1 + np.argsort(order)]
+    c = np.r_[np.zeros(top, int), (rng.uniform(size=late) < 0.25)]
+    return x, np.column_stack([z1, z2]), c.astype(int), np.arange(x.size) % 5
+
+
+def test_run_off_fit_takes_the_information_in_logs(monkeypatch):
+    # A fit whose coefficient runs off far enough that CoxInformation (the
+    # covariance's operator) and the group hazards are taken in logs, end
+    # to end (#767, #777): quiet but for the monotone likelihood's
+    # warning, the run-off coefficient without a standard error (as
+    # CoxPH's), and the other's that of the full information.
+    from surpyval.univariate.regression.frailty import cox_frailty as cf
+    from surpyval.univariate.regression.proportional_hazards import (
+        cox_likelihood as cl,
+    )
+
+    x, Z, c, g = _run_off_data()
+    in_logs = []
+    original = cl.CoxInformation._in_logs
+
+    def spy(self, eta):
+        in_logs.append(float(np.max(np.abs(eta))))
+        return original(self, eta)
+
+    monkeypatch.setattr(cl.CoxInformation, "_in_logs", spy)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = CoxFrailty.fit(x, Z=Z, c=c, groups=g, theta=0.5)
+    assert [w.category for w in caught] == [UserWarning]
+    assert model.maximum == "no finite maximum"
+    assert in_logs and max(in_logs) > 300
+    se = model.standard_errors()
+    assert np.isnan(se[0]) and np.isfinite(se[1])
+    assert np.all(np.isfinite(list(model.frailties.values())))
+    assert np.all(np.isfinite(model.h0)) and np.all(model.h0 >= 0)
+    # The covariance from the full information, without the operator
+    monkeypatch.setattr(
+        cf._CoxFrailtyEM, "_schur_covariance", lambda *args: None
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        dense = CoxFrailty.fit(x, Z=Z, c=c, groups=g, theta=0.5)
+    np.testing.assert_allclose(se[1], dense.standard_errors()[1], rtol=1e-8)
+
+
+def test_refusal_at_z_0_does_not_point_to_center():
+    # A coefficient that runs off to beta'Z of 850: the baseline at Z = 0
+    # cannot be represented, and the refusal, CoxPH's, said to fit with
+    # center=True, which CoxFrailty does not take (#777).
+    z = np.linspace(-30.0, 30.0, 61)[::-1, None]
+    x = np.arange(1.0, 62.0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(ValueError) as info:
+            CoxFrailty.fit(x, Z=z, groups=np.arange(61) % 4, theta=0.5)
+    message = str(info.value)
+    assert "cannot be represented" in message
+    assert "center=True" not in message
+    assert "CoxFrailty reports the baseline at Z = 0" in message

@@ -41,12 +41,13 @@ the left limits equal :math:`G(t)` and :math:`G(x_i)`.
 from __future__ import annotations
 
 import functools
-from typing import Any, Callable, NamedTuple
+from typing import TYPE_CHECKING, Any, Callable, NamedTuple
 
 import numpy as np
 import numpy.typing as npt
-from autograd import hessian
+from autograd import grad, hessian
 from autograd import numpy as anp
+from autograd import value_and_grad
 from autograd.tracer import getval
 from scipy.optimize import OptimizeResult, minimize
 from scipy.stats import norm
@@ -63,6 +64,7 @@ from surpyval.univariate.competing_risks.labels import (
     ordered_labels,
 )
 from surpyval.univariate.information_criteria import InformationCriteriaMixin
+from surpyval.univariate.parametric.fitters import is_local_minimum
 from surpyval.univariate.regression._aliasing import (
     aliased_columns,
     constant_columns,
@@ -76,12 +78,21 @@ from surpyval.univariate.regression._fit_skeleton import (
     baseline_at_origin_error,
     judge_search,
 )
-from surpyval.univariate.regression._summary import coefficient_names
+from surpyval.univariate.regression._summary import (
+    coefficient_names,
+    coefficient_table,
+)
 from surpyval.univariate.regression.proportional_hazards.cox_likelihood import (  # noqa: E501
     newton_raphson,
 )
 from surpyval.univariate.regression.proportional_hazards.cox_ph import (
     warn_monotone,
+)
+from surpyval.univariate.regression.proportional_hazards.cox_separation import (  # noqa: E501
+    FAR,
+    information_collapsed,
+    newton_converged,
+    runoff_direction,
 )
 from surpyval.univariate.regression.regression_data import (
     LinearPredictorMixin,
@@ -95,7 +106,6 @@ from surpyval.utils.dataframe import (
     frame_columns,
     require_frame,
 )
-from surpyval.utils.deprecation import RenamedToMethod
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.ipcw import censoring_survival, step_at, step_left_limit
 from surpyval.utils.linalg import safe_inv
@@ -105,11 +115,16 @@ from surpyval.utils.no_maximum import (
     restored_maximum,
     warn_unverified,
 )
+from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import (
+    check_alpha_ci,
     missing_cause_error,
     unknown_cause_error,
 )
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 #: Newton-Raphson's convergence tolerance, in standard errors of the step
 #: (``newton_raphson``), CoxPH's default.
@@ -128,15 +143,88 @@ def _weighted_neg_ll(
     value at 0 (see ``_fit_cause``), differentiable by autograd. The linear
     predictor is shifted by its largest value inside the risk-set sums and
     the shift added back outside the logarithm, so ``exp(beta'Z)`` cannot
-    overflow (#606)."""
+    overflow (#606).
+
+    A risk set whose rows are all far below the largest linear predictor
+    then has a sum that underflows: far out along a run-off it was 0, and
+    the likelihood ``log(0)``, a negative log-likelihood of ``-inf`` that
+    every search takes for the best point there is (#760). Where a sum is
+    below ``_LEAST_SUM`` the sums are taken in logs instead, each over its
+    own risk set (:func:`_log_risk_set_sums`)."""
     eta = anp.dot(Zk, beta)
+    if not np.all(np.isfinite(getval(eta))):
+        # (a coefficient or linear predictor that is not finite)
+        return np.nan
     shift = float(np.max(getval(eta))) if eta.size else 0.0
     weighted_exp = n_sorted * anp.exp(eta - shift)
     denom = _risk_set_sums(weighted_exp, sets)
+    if not np.all(getval(denom) >= _LEAST_SUM):
+        log_denom = _log_risk_set_sums(eta, n_sorted, sets)
+        ll = anp.dot(nZk_event, beta) - anp.sum(
+            sets.d * (log_denom - np.log(denom0))
+        )
+        return -ll
     ll = anp.dot(nZk_event, beta) - anp.sum(
         sets.d * (anp.log(denom / denom0) + shift)
     )
     return -ll
+
+
+#: The least risk-set sum, of the weights shifted by the largest linear
+#: predictor, that :func:`_weighted_neg_ll` uses as it is: below it the
+#: sums are taken in logs (#760). A sum this large has lost nothing to
+#: terms below the smallest normal number.
+_LEAST_SUM = 1e-200
+
+#: The largest linear predictor whose ``exp`` the baseline sums directly,
+#: CoxPH's (#738); beyond it they are taken in logs (#760).
+_DIRECT_ETA = 300.0
+
+#: A finite stand-in for ``log(0)`` in :func:`_log_risk_set_sums`, whose
+#: derivatives would be nan at ``logaddexp(-inf, -inf)``.
+_LOG_NONE = -1e300
+
+
+def _log_suffix_sums(log_v: Any) -> Any:
+    """The log of each suffix sum of ``exp(log_v)``, by doubling: each of
+    ``log2(N)`` steps adds to every position the partial sum ``2^k`` on,
+    with ``logaddexp``, so that autograd can differentiate it (twice)."""
+    rows = anp.shape(log_v)[0]
+    step = 1
+    while step < rows:
+        later = anp.concatenate(
+            [log_v[step:], anp.full(min(step, rows), _LOG_NONE)]
+        )
+        log_v = anp.logaddexp(log_v, later)
+        step *= 2
+    return log_v
+
+
+def _log_risk_set_sums(
+    eta: Any, n_sorted: npt.NDArray, sets: _RiskSets
+) -> Any:
+    """The log of :func:`_risk_set_sums` of ``n exp(eta)`` (rows in time
+    order) at each event time, summed in logs over each risk set: the
+    suffix of the rows still under observation, plus ``G(t-)`` times the
+    competing failures before ``t``, each over ``G(x_i-)``. Differentiable
+    by autograd; ``O(N log N)``, for a linear predictor whose sums
+    underflow (:func:`_weighted_neg_ll`)."""
+    with np.errstate(divide="ignore"):
+        log_n = np.log(n_sorted)
+        log_competing = np.log(sets.competing_over_G * n_sorted)
+        log_G = np.log(sets.G_t)
+    competing = np.isfinite(log_competing)
+    log_n = np.where(np.isfinite(log_n), log_n, _LOG_NONE)
+    suffix = _log_suffix_sums(log_n + eta)
+    # The competing failures before each row: the suffix sums of the
+    # reversed rows, moved on by one
+    log_c = anp.where(
+        competing, np.where(competing, log_competing, 0.0) + eta, _LOG_NONE
+    )
+    before = _log_suffix_sums(log_c[::-1])[::-1]
+    before = anp.concatenate([anp.full(1, _LOG_NONE), before[:-1]])
+    log_G = np.where(np.isfinite(log_G), log_G, _LOG_NONE)
+    return anp.logaddexp(suffix[sets.start], log_G + before[sets.start])
 
 
 def _fit_cause(
@@ -227,8 +315,18 @@ def _fit_cause(
             weighted_exp = n_sorted * np.exp(eta - shift)
             return weighted_exp, _risk_set_sums(weighted_exp, sets), shift
 
+        def underflows(denom: npt.NDArray) -> bool:
+            # A risk set's sum lost to underflow: the derivatives are then
+            # autograd's, of the objective in logs (_weighted_neg_ll, #760)
+            # (not a coefficient that is not finite, nan either way)
+            finite = np.all(np.isfinite(denom))
+            return bool(finite and not np.all(denom >= _LEAST_SUM))
+
         def value_and_gradient(beta: npt.NDArray) -> tuple:
             weighted_exp, denom, shift = shifted(beta)
+            if underflows(denom):
+                value, gradient = value_and_grad(neg_ll)(beta)
+                return float(value), np.asarray(gradient, dtype=float)
             value = -(
                 nZk_event @ beta
                 - np.sum(sets.d * (np.log(denom / denom0) + shift))
@@ -243,6 +341,8 @@ def _fit_cause(
             # S1_j / S0_j, in O(N p^2) as at beta = 0
             # (_information_at_zero); the shift cancels in every ratio.
             weighted_exp, denom, _ = shifted(beta)
+            if underflows(denom):
+                return grad(neg_ll)(beta), hessian(neg_ll)(beta)
             a = weighted_exp * _risk_set_weights(sets.d / denom, sets)
             M = _risk_set_sums((weighted_exp[:, None] * Zk).T, sets).T
             M = M / denom[:, None]
@@ -297,44 +397,72 @@ def _fit_cause(
                 score0,
                 information0,
             )
+        converged = res is not None and newton_converged(res)
         if res is None:
             res = minimize(value_and_gradient, beta0, jac=True, method="BFGS")
-        # A covariate that separates the events of interest from the rest
-        # (a level with none of them) drives its coefficient to infinity;
-        # BFGS stops where the rise is below its tolerance and reports
-        # success (-12.9 on such data). Newton's method cannot converge
-        # from there, which is what the check finds (#392). Otherwise the
-        # answer must be a verified maximum, polished if it is not (BFGS's
-        # absolute tolerance on the gradient is not scale free), each
-        # coefficient in its own covariate's units (#577).
+        # The answer must be a verified maximum, polished if it is not
+        # (BFGS's absolute tolerance on the gradient is not scale free),
+        # each coefficient in its own covariate's units (#577).
+        floor = coefficient_floor(
+            kept.size, [(k, k) for k in range(kept.size)], Z_sorted[:, kept]
+        )
         verdict = judge_search(
             neg_ll,
             res,
             [(k, int(kept[k])) for k in range(kept.size)],
             beta0,
             float(n_event.sum()),
-            floor=coefficient_floor(
-                kept.size,
-                [(k, k) for k in range(kept.size)],
-                Z_sorted[:, kept],
-            ),
+            floor=floor,
         )
         res, derivatives = verdict.res, verdict.derivatives
-        runaway, maximum = verdict.runaway, verdict.maximum
+        # A covariate, or a combination of them, that separates the events
+        # of interest from the rest of their risk sets (a level with none
+        # of them) drives the coefficients to infinity; BFGS stops where
+        # the rise is below its tolerance and reports success (-12.9 on
+        # such data). Where the search gives cause, the data decide, as
+        # for CoxPH (#746).
+        runoff = _runoff_of_cause(
+            res,
+            verdict.maximum,
+            converged,
+            information0,
+            derivatives,
+            newton_derivatives,
+            Z_sorted[:, kept],
+            float(n_event.sum()),
+            floor,
+            (x, Z[:, kept], is_event, is_competing, n),
+        )
+        off = runoff[0]
+        runaway = [int(kept[k]) for k in off]
+        maximum, proportion = runoff[1], runoff[2]
     else:
         # Every coefficient aliased: nothing to fit.
         res = OptimizeResult(
             x=beta0, fun=float(neg_ll(beta0)), success=True, nit=0
         )
         derivatives, runaway, maximum = None, [], "verified"
+        off, proportion = np.zeros(0, dtype=int), None
     # The negative log-likelihood itself.
     res.fun = float(res.fun) + offset
     beta = res.x
 
     # Standard errors from the inverse observed information, the Hessian
     # the check just took.
-    H = hessian(neg_ll)(beta) if derivatives is None else derivatives[0]
-    cov = safe_inv(H)
+    if derivatives is not None:
+        H = derivatives[0]
+    elif kept.size:
+        H = hessian(neg_ll)(beta)
+    else:
+        # (every coefficient aliased: autograd cannot take a Hessian in
+        # none, and raised "need at least one array to stack")
+        H = np.zeros((0, 0))
+    # Where the coefficients ran off far, the Hessian can be nan, and
+    # inverting it raised "SVD did not converge" (#746)
+    cov = safe_inv(H) if np.all(np.isfinite(H)) else np.full(H.shape, np.nan)
+    # A coefficient running off has no standard error, as in CoxPH (#648)
+    cov[off, :] = np.nan
+    cov[:, off] = np.nan
     var = np.diag(cov)
     with np.errstate(invalid="ignore"):
         se = np.sqrt(np.where(var > 0, var, np.nan))
@@ -352,9 +480,18 @@ def _fit_cause(
 
     # Breslow baseline cumulative subdistribution hazard: at each event-of-
     # interest time, dLambda0 = (events there) / (weighted risk set there).
-    denom = _risk_set_sums(n_sorted * np.exp(Z_sorted @ beta), sets)
+    # Past a linear predictor of 300 (a coefficient running off) exp
+    # overflowed, with numpy's warnings: the sums are then taken in logs
+    # (#760).
+    eta = Z_sorted @ beta
+    if np.all(np.abs(eta) <= _DIRECT_ETA):
+        increments = sets.d / _risk_set_sums(n_sorted * np.exp(eta), sets)
+    else:
+        with np.errstate(over="ignore", under="ignore"):
+            log_denom = _log_risk_set_sums(eta, n_sorted, sets)
+            increments = np.exp(np.log(sets.d) - log_denom)
     uniq_t = sets.times
-    baseline_cumhaz = np.cumsum(sets.d / denom)
+    baseline_cumhaz = np.cumsum(increments)
     if not center:
         baseline_cumhaz = _cumhaz_at_origin(beta, mean, Z_raw, baseline_cumhaz)
         mean = np.zeros_like(mean)
@@ -377,9 +514,95 @@ def _fit_cause(
         "ic_n": float(n_event.sum()),
         "res": res,
         "runaway": runaway,
+        "runaway_proportion": proportion,
         "maximum": maximum,
         "objective": neg_ll,
     }
+
+
+def _runoff_of_cause(
+    res: Any,
+    maximum: str,
+    converged: bool,
+    info_at_start: npt.NDArray,
+    derivatives: Any,
+    newton_derivatives: Callable,
+    Z_sorted: npt.NDArray,
+    n_events: float,
+    floor: npt.NDArray,
+    data: tuple,
+) -> tuple[npt.NDArray, str, "npt.NDArray | None"]:
+    """The positions of the coefficients that run off, the fit's
+    ``maximum`` and, where they run off together and none alone, their
+    proportion: the exact test CoxPH makes (#728, #746), on the
+    subdistribution risk sets, in place of the parametric judge's verdict
+    on each coefficient (``maximum``, of the answer ``res``).
+
+    The weighted partial likelihood is a Breslow likelihood whose risk set
+    at an event time is every row still under observation and every row
+    that failed from a competing cause before, the latter weighted by
+    ``G(t-) / G(x_i-)``, positive (see :func:`_fit_cause`). The weights
+    change the size of each term but not where it rises without bound:
+    it is concave, and along a direction ``d`` its term at a time rises
+    to a limit exactly when the events there share the largest ``d'z`` of
+    the rows in its risk set. So it has no finite maximum exactly when the
+    Cox likelihood of the same rows, with each competing failure at risk
+    to the end (censored at infinity), has none, which
+    :func:`runoff_direction` decides from the data.
+
+    It is asked where the search gives cause, as CoxPH asks it: the
+    answer is not verified, or not one Newton-Raphson converged to
+    (``converged``), or a linear predictor (of ``Z_sorted``, centred) is
+    beyond ``FAR`` of the average unit's, or the information (in
+    ``derivatives``, else at ``res.x`` by ``newton_derivatives``) has
+    collapsed against ``info_at_start``. A run-off the judge saw that the
+    data do not have is a search that stopped short: the answer is then
+    verified or not afresh, with the derivatives, ``n_events`` and
+    ``floor`` the judge uses. ``data`` are the rows ``(x, Z, is_event,
+    is_competing, n)``."""
+    with np.errstate(over="ignore", invalid="ignore"):
+        eta = Z_sorted @ np.atleast_1d(res.x)
+        info = (
+            newton_derivatives(res.x)[1]
+            if derivatives is None
+            else derivatives[0]
+        )
+    suspect = (
+        maximum != "verified"
+        or not converged
+        or not np.all(np.abs(eta) <= FAR)
+        or information_collapsed(info, info_at_start)
+    )
+    none = np.zeros(0, dtype=int)
+    if not suspect:
+        return none, maximum, None
+    x, Z, is_event, is_competing, n = data
+    found = runoff_direction(
+        np.where(is_competing, np.inf, x),
+        Z,
+        np.where(is_event, 0, 1),
+        n,
+        np.full(len(x), -np.inf),
+        None,
+        "breslow",
+    )
+    if found is not None:
+        direction, alone = found
+        off = np.flatnonzero(direction)
+        return off, "no finite maximum", None if alone else direction[off]
+    if maximum != "no finite maximum":
+        return none, maximum, None
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        score, info = newton_derivatives(res.x)
+    verified = is_local_minimum(
+        lambda _: 0.0,  # (only the derivatives are read)
+        lambda _: score,
+        lambda _: info,
+        np.atleast_1d(res.x),
+        floor=floor,
+        obj_scale=max(n_events, 1.0),
+    )
+    return none, "verified" if verified else "unverified", None
 
 
 class _RiskSets(NamedTuple):
@@ -525,15 +748,27 @@ def _warn_if_monotone(fits: list) -> str:
     cause where the model has more than one. Then one for the causes whose
     search did not reach a verified maximum. Returns the model's
     ``maximum``, the worst of the causes'."""
-    runaway = [(fit["cause"], fit["runaway"]) for fit in fits]
-    runaway = [(cause, coefs) for cause, coefs in runaway if coefs]
+    runaway = [
+        (fit["cause"], fit["runaway"], fit.get("runaway_proportion"))
+        for fit in fits
+        if fit["runaway"]
+    ]
     if len(fits) == 1 and runaway:
-        warn_monotone(str(runaway[0][1]))
+        warn_monotone(str(runaway[0][1]), runaway[0][2])
     elif runaway:
         warn_monotone(
             " and ".join(
-                "{} (cause {!r})".format(coefs, cause)
-                for cause, coefs in runaway
+                "{} (cause {!r}{})".format(
+                    coefs,
+                    cause,
+                    (
+                        ""
+                        if proportion is None
+                        else ", together in the proportion "
+                        + " : ".join("{:.3g}".format(v) for v in proportion)
+                    ),
+                )
+                for cause, coefs, proportion in runaway
             )
         )
     unverified = [f["cause"] for f in fits if f["maximum"] == "unverified"]
@@ -561,13 +796,15 @@ def _cumhaz_at_origin(
         lp = np.asarray(Z, dtype=float) @ beta
         out = np.exp(np.log(cumhaz) - shift)
     tiny = np.finfo(float).tiny
-    if not (
-        np.all(np.abs(lp) < LOG_MAX)
-        and np.all(np.isfinite(out))
-        and np.all(out[cumhaz > 0] >= tiny)
-    ):
+    moved = bool(np.all(np.isfinite(out)) and np.all(out[cumhaz > 0] >= tiny))
+    if not (moved and np.all(np.abs(lp) < LOG_MAX)):
+        # (the rows' lp, where only they overflow)
         raise baseline_at_origin_error(
-            "baseline cumulative subdistribution hazard", center, shift, -shift
+            "baseline cumulative subdistribution hazard",
+            center,
+            shift,
+            -shift,
+            lp=lp if moved else None,
         )
     return out
 
@@ -626,13 +863,9 @@ class FineGrayModel(
     coefficients: npt.NDArray
     #: The coefficients' standard errors, ``standard_errors()``.
     _se: npt.NDArray
-    #: ``standard_errors()``'s name before v0.23, for one release (#613).
-    se = RenamedToMethod("standard_errors", "_se")
     p_values: npt.NDArray
     #: The coefficients' covariance, ``covariance()`` (#605).
     _covariance: npt.NDArray
-    #: ``covariance()``'s name before v0.23, for one release.
-    cov = RenamedToMethod("covariance", "_covariance")
     #: The baseline subdistribution cumulative hazard: its step times and
     #: values.
     _times: npt.NDArray
@@ -683,16 +916,62 @@ class FineGrayModel(
     def covariance(self) -> npt.NDArray:
         """The coefficients' covariance: the inverse of the weighted
         partial likelihood's information at the fit (a ``nan`` row and
-        column for an aliased coefficient). ``cov``, its name before
-        v0.23, still gives it, with a ``DeprecationWarning``, until
-        v0.24."""
+        column for an aliased coefficient). It was ``cov`` before
+        v0.23."""
         return self._covariance
 
     def standard_errors(self) -> npt.NDArray:
         """The coefficients' standard errors, from :meth:`covariance`.
-        ``se``, the attribute before v0.23, still gives them, with a
-        ``DeprecationWarning``, until v0.24."""
+        They were the attribute ``se`` before v0.23."""
         return self._se
+
+    @property
+    def params(self) -> npt.NDArray:
+        """The coefficients (``beta``), named by ``parameter_names``, as
+        on the other regression models."""
+        return np.asarray(self.beta, dtype=float)
+
+    @property
+    def parameter_names(self) -> list[str]:
+        """The names of ``params``, entry by entry: each covariate's
+        column (a DataFrame ``Z`` or ``fit_from_df``), else ``coef_0``,
+        ``coef_1``, ... for an array ``Z`` (#614), as for ``CoxPH``."""
+        return coefficient_names(self, np.size(self.beta))
+
+    def summary(self, alpha_ci: float = 0.05) -> "pd.DataFrame":
+        """
+        The coefficient table, as ``CoxPH.summary``: one row per covariate
+        (named by ``parameter_names``), with the coefficient, the
+        subdistribution hazard ratio ``exp(coef)``, the standard error, a
+        two-sided ``1 - alpha_ci`` Wald interval for both, the Wald
+        statistic ``z`` and its two-sided p-value. An aliased coefficient
+        is ``nan`` throughout.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from surpyval import FineGray
+        >>> rng = np.random.default_rng(0)
+        >>> Z = pd.DataFrame({"grp": rng.binomial(1, 0.5, 200)})
+        >>> t_a = rng.exponential(1 / (0.1 * np.exp(0.7 * Z["grp"])))
+        >>> t_b = rng.exponential(1 / 0.05, 200)
+        >>> x = np.minimum(t_a, t_b).round(3)
+        >>> e = np.where(t_a < t_b, "a", "b")
+        >>> model = FineGray.fit(x, Z, e, event="a")
+        >>> model.summary()[["coef", "exp(coef)", "se(coef)"]].round(4)
+                     coef  exp(coef)  se(coef)
+        covariate
+        grp        0.6626     1.9398    0.1741
+        """
+        check_alpha_ci(alpha_ci)
+        return coefficient_table(
+            self.parameter_names,
+            self.params,
+            self._se,
+            alpha_ci,
+            p=self.p_values,
+        )
 
     def _ic_k(self) -> int:
         # The estimated coefficients (an aliased one, nan, is not).
@@ -869,6 +1148,7 @@ class FineGray_(FitterRepr):
     #: The ``repr`` (#614)
     fitter_kind = "semi-parametric subdistribution hazards fitter"
 
+    @column_arguments("x", "c", "n")
     def fit_from_df(
         self,
         df: Any,
@@ -998,6 +1278,14 @@ class FineGray_(FitterRepr):
         -------
         FineGrayModel
             The fitted model, with :meth:`~FineGrayModel.cif` prediction.
+            Where a covariate, or a combination of them, separates the
+            events of interest from the rest of their risk sets, the
+            weighted partial likelihood has no finite maximum: the fit
+            warns ("No finite maximum", naming the coefficients and, for
+            a combination, their proportion), ``maximum`` is ``"no finite
+            maximum"`` and those coefficients are meaningless (their
+            standard errors nan). This is decided from the data, as for
+            ``CoxPH``.
 
         Examples
         --------

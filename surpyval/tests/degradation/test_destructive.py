@@ -279,3 +279,65 @@ def test_564_destructive_fit_records_and_saves_its_maximum(monkeypatch):
         stalled = DestructiveDegradation.fit(t, y, threshold=10.0)
     assert stalled.maximum == "unverified" and len(w) == 1
     assert "destructive degradation fit" in str(w[0].message)
+
+
+def _strength_model(**kwargs: Any) -> Any:
+    rng = np.random.default_rng(1)
+    x = np.repeat([10.0, 20.0, 30.0, 40.0], 6)
+    y = np.exp(4.0 - 0.02 * x + rng.normal(0, 0.1, 24))
+    return DestructiveDegradation.fit(x, y, threshold=20, **kwargs)
+
+
+def test_666_qf_inverts_ff_and_random_mean_follow():
+    model = _strength_model()
+    p = np.array([0.01, 0.1, 0.5, 0.9, 0.99])
+    q = model.qf(p)
+    np.testing.assert_allclose(model.ff(q), p, rtol=1e-8)
+    assert np.all(np.diff(q) > 0)
+    assert model.qf(0.0) == 0.0 and np.isinf(model.qf(1.0))
+    assert np.isnan(model.qf(np.nan))
+    with pytest.warns(UserWarning, match="outside"):
+        assert np.isnan(model.qf(1.5))
+    # the mean is the integral of sf; the draws are around it
+    from scipy.integrate import quad
+
+    direct, _ = quad(lambda t: float(model.sf(t)), 0, 200, limit=200)
+    assert model.mean() == pytest.approx(direct, rel=1e-6)
+    draws = model.random(4000, random_state=0)
+    assert draws.mean() == pytest.approx(model.mean(), rel=0.01)
+    np.testing.assert_array_equal(draws, model.random(4000, random_state=0))
+
+
+def test_666_hf_is_df_over_sf():
+    model = _strength_model()
+    t = np.array([45.0, 50.0, 55.0])
+    np.testing.assert_allclose(model.hf(t), model.df(t) / model.sf(t))
+    assert model.hf(500.0) == np.inf
+
+
+def test_666_qf_inf_where_ff_levels_off_and_refuses_a_falling_ff():
+    # a reciprocal transform levels off: some units never cross
+    model = _strength_model(transform="reciprocal")
+    limit = float(model.ff(1e12))
+    assert limit < 1.0
+    assert np.isinf(model.qf(min(1.0, limit + 0.01)))
+    assert np.isinf(model.mean())
+    # a direction against the fitted trend: ff falls with time
+    wrong = _strength_model(direction="increasing")
+    with pytest.raises(ValueError, match="moves away from the threshold"):
+        wrong.qf(0.5)
+
+
+def test_746_Hf_where_sf_is_one_is_plus_zero():
+    # Below the threshold's reach sf is 1, and -log(1) was -0.0, in Hf
+    # and in its bounds (#746).
+    rng = np.random.default_rng(1)
+    x = np.repeat([10.0, 20.0, 30.0, 40.0], 6)
+    y = np.exp(4.0 - 0.02 * x + rng.normal(0, 0.1, 24))
+    m = DestructiveDegradation.fit(x, y, threshold=20)
+    assert np.all(m.sf([0.0, 1.0]) == 1)
+    H = m.Hf([0.0, 1.0])
+    assert np.all(H == 0) and not np.any(np.signbit(H))
+    for bound in ("two-sided", "lower", "upper"):
+        b = m.cb([0.0], on="Hf", bound=bound)
+        assert not np.any(np.signbit(b))

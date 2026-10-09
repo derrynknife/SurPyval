@@ -18,9 +18,8 @@ parametric model and a property on a recurrence model, and a mixture's
 A model need not have every one (a non-parametric estimate has none),
 but those it has must be spelt so. One that is not available for a fit
 (a model with no likelihood) raises ``ValueError`` saying so. The old
-spellings still work, with a ``DeprecationWarning``
-(``surpyval.utils.deprecation``), which this property treats as an
-error.
+spellings, deprecated in v0.23, are gone since v0.24; a
+``DeprecationWarning`` is treated as an error.
 """
 
 import numbers
@@ -132,8 +131,8 @@ def test_613_standard_errors_are_the_covariance_diagonal(case):
     """Where a model has ``covariance()`` it has ``standard_errors()``,
     an array in the covariance's order whose entries are the square roots
     of its diagonal (``nan`` where a variance is not positive); and
-    ``se``, the old spelling on some models, is gone or deprecated
-    (#613)."""
+    ``se``, the old spelling on some models, is gone (#613; removed in
+    v0.24)."""
     model = fitted(case)
     with warnings.catch_warnings():
         warnings.simplefilter("error", DeprecationWarning)
@@ -153,12 +152,4 @@ def test_613_standard_errors_are_the_covariance_diagonal(case):
                 var = np.diag(cov)
                 expected = np.sqrt(np.where(var >= 0, var, np.nan))
                 np.testing.assert_allclose(se, expected, rtol=1e-12)
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        try:
-            model.se
-        except AttributeError:
-            return
-    assert any(
-        issubclass(w.category, DeprecationWarning) for w in caught
-    ), "model.se without a DeprecationWarning"
+    assert not _has(model, "se"), "model.se, the old spelling, is left"

@@ -22,11 +22,19 @@ from surpyval import (
     LogNormal,
     Weibull,
 )
-from surpyval.life_models import Eyring, Power
+from surpyval.life_models import (
+    Eyring,
+    InverseExponential,
+    InverseEyring,
+    Power,
+)
 from surpyval.tests._helpers import (
     finite_difference_covariance,
     fitted_accelerated_life_model,
     no_warnings,
+)
+from surpyval.univariate.parametric.fitters.runaway import (
+    search_derivatives,
 )
 from surpyval.univariate.regression import (
     DualPower,
@@ -34,6 +42,7 @@ from surpyval.univariate.regression import (
     InversePower,
     Linear,
 )
+from surpyval.univariate.regression._fit_skeleton import newton_gain
 from surpyval.univariate.regression.accelerated_life.accelerated_life import (
     _LIFE_PARAM_MAP,
 )
@@ -327,6 +336,40 @@ def test_power_life_model_refuses_non_positive_stress(capfd):
     assert capfd.readouterr().err == ""
 
 
+def _celsius_data(levels: list) -> tuple:
+    TC = np.repeat(levels, 20)
+    rng = np.random.default_rng(1)
+    x = 1e-3 * np.exp(5000 / (TC + 273.15)) * rng.weibull(2.0, TC.size)
+    return x, TC
+
+
+@pytest.mark.parametrize(
+    "life_model",
+    [ExponentialLifeModel, InverseExponential, Eyring, InverseEyring],
+)
+@pytest.mark.parametrize("levels", [[0.0, 25.0, 50.0], [-40.0, 25.0, 85.0]])
+def test_arrhenius_life_models_refuse_non_positive_kelvin(
+    capfd, life_model, levels
+):
+    # A 0 degrees Celsius level crashed inside LAPACK; a negative one fitted
+    # a nonsense activation energy in silence (#654).
+    x, TC = _celsius_data(levels)
+    with pytest.raises(ValueError, match="kelvin") as info:
+        AcceleratedLife(Weibull, life_model).fit(x=x, Z=TC)
+    assert "Z + 273.15" in str(info.value)
+    assert capfd.readouterr().err == ""
+
+
+def test_arrhenius_life_model_warns_below_200_kelvin():
+    x, TC = _celsius_data([20.0, 85.0, 125.0])
+    with pytest.warns(UserWarning, match="Did you pass degrees Celsius"):
+        AcceleratedLife(Weibull, ExponentialLifeModel).fit(x=x, Z=TC)
+    model = no_warnings(
+        AcceleratedLife(Weibull, ExponentialLifeModel).fit, x=x, Z=TC + 273.15
+    )
+    assert model.params[2] == pytest.approx(5000, rel=0.1)
+
+
 @pytest.mark.parametrize("dist", [Weibull, LogNormal, Exponential, Gamma])
 def test_linear_life_model_finds_a_feasible_start(dist):
     x, stress = _arrhenius_data()
@@ -355,6 +398,11 @@ def test_accelerated_life_and_gamma_frailty_accept_ragged_x():
     )
 
 
+#: The warning of an Arrhenius life model whose stresses are all below
+#: 200 K (#654), which these tests' unitless stresses give.
+_BELOW_200_KELVIN = "Every stress in column"
+
+
 def _separated_stress_data():
     """Two stress levels, no failure at the higher: the life there has no
     finite estimate, so neither has the life model's."""
@@ -374,6 +422,8 @@ def test_555_separated_stresses_warn_no_finite_maximum_once(life_model):
     x, stress, c = _separated_stress_data()
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
+        # ExponentialLifeModel on a stress that is not a temperature (#654)
+        warnings.filterwarnings("ignore", message=_BELOW_200_KELVIN)
         AcceleratedLife(Weibull, life_model).fit(x, Z=stress, c=c)
     assert len(w) == 1, [str(a.message) for a in w]
     assert str(w[0].message).startswith(
@@ -400,7 +450,11 @@ def test_555_the_covariance_is_the_exact_information(dist, life_model):
     # (Through np.where, autograd's Hessian of a LogNormal model was 6e-3
     # off: see ParameterSubstitutionFitter._dist_params_at.)
     x, stress = _three_stresses()
-    model = no_warnings(AcceleratedLife(dist, life_model).fit, x, Z=stress)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        # ExponentialLifeModel on a stress that is not a temperature (#654)
+        warnings.filterwarnings("ignore", message=_BELOW_200_KELVIN)
+        model = AcceleratedLife(dist, life_model).fit(x, Z=stress)
     assert model._information is not None
     cov, ref = finite_difference_covariance(model)
     se = np.sqrt(np.diag(ref))
@@ -499,3 +553,115 @@ def test_592_a_missing_stress_is_nan_and_leaves_the_others():
     cb = model.cb(q, Z)
     assert np.all(np.isnan(cb[1]))
     np.testing.assert_array_equal(cb[[0, 2]], model.cb(q[[0, 2]], Z[[0, 2]]))
+
+
+def _arrhenius_b_data() -> tuple:
+    k = 8.617333e-5
+    a = 0.7 / k
+    T = np.repeat([358.15, 378.15, 398.15], 30)
+    b = 1000 * np.exp(-a / 398.15)
+    rng = np.random.default_rng(1)
+    x = b * np.exp(a / T) * rng.weibull(2.2, T.size)
+    c = (x > 6000).astype(int)
+    return np.minimum(x, 6000), c, T
+
+
+def test_wald_bound_on_a_positive_life_model_parameter_is_log_scale():
+    # Arrhenius's b is bounded (0, None): its Wald bound went below zero,
+    # [-3.5e-06, 7.0e-06] for b = 1.75e-06 (#655).
+    x, c, T = _arrhenius_b_data()
+    model = AcceleratedLife(Weibull, ExponentialLifeModel).fit(x, Z=T, c=c)
+    b = model.params[3]
+    se = model.standard_errors()[3]
+    lower, upper = model.param_cb("b")
+    assert 0 < lower < b < upper
+    # Symmetric on the log scale, with the delta-method se of log b.
+    np.testing.assert_allclose(
+        [np.log(lower), np.log(upper)],
+        np.log(b) + np.array([-1, 1]) * 1.959963984540054 * se / b,
+    )
+    assert model.summary().loc[("life model", "b"), "coef lower 95%"] > 0
+    # The unbounded a keeps its linear-scale bound.
+    lo_a, hi_a = model.param_cb("a")
+    assert (lo_a + hi_a) / 2 == pytest.approx(model.params[2])
+    restored = surpyval.from_dict(model.to_dict())
+    np.testing.assert_allclose(restored.param_cb("b"), [lower, upper])
+
+
+def test_regression_bounds_accept_method_none():
+    # None means the default, as for the univariate models (#655).
+    x, c, T = _arrhenius_b_data()
+    model = AcceleratedLife(Weibull, ExponentialLifeModel).fit(x, Z=T, c=c)
+    np.testing.assert_array_equal(
+        model.param_cb("b", method=None), model.param_cb("b")
+    )
+    np.testing.assert_array_equal(
+        model.cb(5000.0, 378.15, method=None), model.cb(5000.0, 378.15)
+    )
+    np.testing.assert_array_equal(
+        model.quantile_cb(0.1, 378.15, method=None),
+        model.quantile_cb(0.1, 378.15),
+    )
+    po = surpyval.ProportionalOdds.fit(x, T - 378.15, c=c)
+    np.testing.assert_array_equal(
+        po.param_cb("coef_0", method=None), po.param_cb("coef_0")
+    )
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_746_the_fit_does_not_depend_on_the_row_order(seed):
+    # The fit runs on its rows sorted by every column (canonical_order),
+    # as the PH, AFT and PO fits do (#728), so it is the same to the last
+    # digit in any order. Before, on small random designs like these, the
+    # answers moved with the order by up to 1e-7 where verified, and by 5%
+    # where a level with only censored rows ran off (seed 3).
+    rng = np.random.default_rng(seed)
+    dist = (Weibull, LogNormal, Exponential)[seed % 3]
+    life_model = (Power, ExponentialLifeModel)[seed // 3]
+    levels = rng.choice([300.0, 330.0, 360.0, 400.0], size=3, replace=False)
+    Z = rng.choice(levels, 10)
+    Z[:3] = levels
+    x = np.round(rng.exponential(10, 10) * np.exp(1500 / Z - 1500 / 330), 1)
+    x = x + 0.1
+    c = (rng.uniform(size=10) < 0.3).astype(int)
+    if seed % 2:
+        c[Z == levels[0]] = 1
+    n = rng.integers(1, 4, 10)
+    fits = []
+    for order in (np.arange(10), rng.permutation(10)):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            model = AcceleratedLife(dist, life_model).fit(
+                x[order], Z=Z[order], c=c[order], n=n[order]
+            )
+        fits.append((model, [str(m.message) for m in w]))
+    (a, wa), (b, wb) = fits
+    np.testing.assert_array_equal(a.params, b.params)
+    assert (a.maximum, a.neg_ll(), wa) == (b.maximum, b.neg_ll(), wb)
+    # model.data keeps the rows in the order the fit ran them
+    np.testing.assert_array_equal(a.data.x, b.data.x)
+    np.testing.assert_array_equal(a.data.Z, b.data.Z)
+    assert np.all(np.diff(a.data.x) >= 0)
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_760_the_fit_ends_at_its_maximum(seed):
+    # The search is finished by the Newton steps of the other parametric
+    # regressions (newton_finish, #758), all the way to the rounding of
+    # the log-likelihood: what is left to gain at the answer is rounding.
+    rng = np.random.default_rng(seed)
+    dist = (Weibull, LogNormal, Exponential)[seed % 3]
+    life_model = (Power, ExponentialLifeModel)[seed // 3]
+    levels = rng.choice([300.0, 330.0, 360.0, 400.0], size=3, replace=False)
+    Z = rng.choice(levels, 20)
+    Z[:3] = levels
+    x = np.round(rng.exponential(10, 20) * np.exp(1500 / Z - 1500 / 330), 1)
+    c = (rng.uniform(size=20) < 0.3).astype(int)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = AcceleratedLife(dist, life_model).fit(x + 0.1, Z=Z, c=c)
+    assert model.maximum == "verified"
+    at = model.res.x
+    derivatives = search_derivatives(model.fun, at)
+    gain = newton_gain(at, derivatives, list(range(at.size)))
+    assert gain <= 1e-11 * max(1.0, abs(model.res.fun))

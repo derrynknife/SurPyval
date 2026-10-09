@@ -313,13 +313,13 @@ def test_lin_ying_predictions_inside_the_data_are_the_estimate():
     )
 
 
-def test_605_cov_is_deprecated_for_covariance():
+def test_605_cov_is_gone_for_covariance():
     df = load_rossi_static()
     model = AdditiveHazards.fit(
         df["week"].values, df[["fin", "age"]].values, c=1 - df["arrest"].values
     )
-    with pytest.warns(DeprecationWarning, match=r"use 'covariance\(\)'"):
-        np.testing.assert_array_equal(model.cov, model.covariance())
+    # ``cov`` and ``se``, deprecated in v0.23, are gone
+    assert not hasattr(model, "cov") and not hasattr(model, "se")
     d = model.to_dict()
     assert "covariance" in d and "cov" not in d
     d["cov"] = d.pop("covariance")

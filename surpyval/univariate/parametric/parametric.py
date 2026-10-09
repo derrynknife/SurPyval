@@ -7,22 +7,30 @@ from math import comb
 from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
+import numpy as onp
 import numpy.typing as npt
 from autograd import grad, jacobian
+from autograd.differential_operators import make_jvp
+from autograd.numpy.numpy_boxes import ArrayBox
 from scipy.special import expit
 from scipy.special import ndtri as z
 
 import surpyval as surv
 from surpyval import ParametricDistribution
-from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
+from surpyval.serialisation import (
+    SerialisableMixin,
+    dict_numbers,
+    stamp_schema,
+    to_native,
+)
 from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
     ic_sample_size,
 )
 from surpyval.utils import fsli_to_xcnt, refuse_time_values
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.deprecation import RenamedToMethod
 from surpyval.utils.linalg import (
+    bound_signs,
     cb_link,
     param_name,
     sf_link_bound,
@@ -34,18 +42,25 @@ from surpyval.utils.no_maximum import (  # noqa: F401 (re-exported)
     MAXIMUM_STATES,
     restored_maximum,
 )
+from surpyval.utils.removed_names import (
+    removed_arguments,
+    removed_parameter_note,
+)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import (
     BOUNDS,
     CB_ON,
+    all_in_unit_interval,
     alpha_ci_error,
+    check_alpha_ci,
     check_option,
     no_covariance_error,
     option_error,
     warn_outside_unit_interval,
 )
+from surpyval.utils.warnings import caller_stacklevel
 
 from ._likelihood_ratio import (
     _LN_MAX,
@@ -76,47 +91,24 @@ _NO_COVARIANCE_WHY = (
 _CBContext = namedtuple("_CBContext", ["phi_hat", "cov", "n_core"])
 
 
-def _warn_lfp_p(old: str, new: str) -> None:
-    """The one warning for the limited-failure proportion's old name,
-    ``p`` (#608), pointing at the caller."""
-    from surpyval.utils.deprecation import REMOVED_IN
-    from surpyval.utils.warnings import caller_stacklevel
-
-    warnings.warn(
-        f"{old}, the limited-failure proportion, is deprecated and will "
-        f"be removed in v{REMOVED_IN}; use '{new}'. ('p' names the "
-        "parameter of a distribution that has one: Bernoulli, Binomial, "
-        "Geometric, ...)",
-        DeprecationWarning,
-        stacklevel=caller_stacklevel(),
-    )
-
-
-def renamed_lfp_fixed(
-    dist: Any, fixed: "dict[str, float] | None"
-) -> "dict[str, float] | None":
-    """``fixed`` with ``p``, the limited-failure proportion's name before
-    v0.23, renamed ``lfp_p`` (with a ``DeprecationWarning``) where the
-    distribution has no ``p`` of its own (#608)."""
-    if not fixed or "p" not in fixed or "p" in dist.param_map:
-        return fixed
-    if "lfp_p" in fixed:
-        raise ValueError(
-            "fixed: pass 'lfp_p' only; 'p' is its deprecated old name."
-        )
-    _warn_lfp_p("fixed={'p': ...}", "fixed={'lfp_p': ...}")
-    out = dict(fixed)
-    out["lfp_p"] = out.pop("p")
-    return out
-
-
 def _lfp_key(dist: Any, name: str) -> str:
-    """``name`` as a key of a model's ``param_map``: ``p``, the
-    limited-failure proportion's name before v0.23 (#608), is ``lfp_p``
-    where the distribution has no ``p`` of its own."""
+    """``name``, a fixed parameter's name in a saved dict, as a key of a
+    model's ``param_map``: ``p``, the limited-failure proportion's key in
+    a dict (#608), is ``lfp_p`` where the distribution has no ``p`` of its
+    own."""
     if name == "p" and "p" not in dist.param_map:
         return "lfp_p"
     return name
+
+
+def _no_p_error(dist_name: str) -> AttributeError:
+    """``model.p`` on a distribution without a parameter ``p``: the
+    limited-failure proportion's name before v0.23 is ``lfp_p`` (#608)."""
+    return AttributeError(
+        f"'Parametric' object has no attribute 'p': the {dist_name} "
+        "distribution has no parameter 'p', and the limited-failure "
+        "proportion is 'lfp_p'."
+    )
 
 
 def draw_state(random_state: Any = None) -> Any:
@@ -135,10 +127,38 @@ def draw_state(random_state: Any = None) -> Any:
 def uniform_draws(
     size: int | tuple[int, ...], random_state: Any = None
 ) -> npt.NDArray:
-    """Uniform draws on (0, 1) of shape ``size``: see :func:`draw_state`."""
+    """Uniform draws on (0, 1) of shape ``size``: see :func:`draw_state`.
+
+    They are scipy's ``uniform.rvs(size=size, random_state=...)``, drawn
+    as it draws them, from the global stream or ``uniform.random_state``
+    by default, without the fixed cost of its argument handling: the
+    same numbers, and the stream left in the same state (#769)."""
     from scipy.stats import uniform
 
-    return uniform.rvs(size=size, random_state=draw_state(random_state))
+    state = draw_state(random_state)
+    if _is_shape(size):
+        if state is None:
+            state = uniform.random_state
+        # scipy's ``uniform._rvs``; its ``* scale + loc`` is ``* 1.0 +
+        # 0.0``, which changes no draw
+        return state.uniform(0.0, 1.0, size)
+    return uniform.rvs(size=size, random_state=state)
+
+
+def _is_shape(size: Any) -> bool:
+    """Whether ``size`` is a count or a tuple of counts, at least one
+    dimension long, which ``uniform_draws`` passes to the generator."""
+    if isinstance(size, tuple):
+        return len(size) > 0 and all(_is_count(n) for n in size)
+    return _is_count(size)
+
+
+def _is_count(n: Any) -> bool:
+    return (
+        isinstance(n, (int, onp.integer))
+        and not isinstance(n, bool)
+        and bool(n >= 0)
+    )
 
 
 def is_custom_distribution(dist: Any) -> bool:
@@ -198,6 +218,120 @@ def resolve_distribution(name: str, custom: bool = False) -> Any:
 _QUANTILE_BLOCK = 2**10 - 1
 
 
+def _offset_upper(data: dict, zi: bool) -> float:
+    """The upper bound of an offset fit's ``gamma``: the smallest value
+    that constrains it, where the likelihood needs the distribution's
+    support to have started -- an exact failure, a left-censoring time or
+    an interval's upper end. A right-censored time, an interval's lower
+    end and a truncation time below ``gamma`` only meet the survival
+    function at 1 (the CDF at 0), as the likelihood already computes
+    them; capping the offset there pinned it below its maximum on
+    interval inspection data and reported the bound as a verified
+    maximum (#633). With ``zi`` exact zeros belong to the zero-inflation
+    mass, and a left-censoring time is met by it, so neither caps the
+    continuous part's offset. Data with no
+    such value (all right censored) keep the smallest value of all."""
+    x = np.asarray(data["x"], dtype=float)
+    c = np.asarray(data["c"])
+    upper = x[:, -1] if x.ndim == 2 else x
+    constrains = c != 1
+    if zi:
+        # (with zero inflation a left-censoring time is met by the mass at
+        # 0 whatever the offset)
+        constrains &= ~((c == 0) & (upper == 0)) & (c != -1)
+    if np.any(constrains):
+        return float(np.min(upper[constrains]))
+    everything = x[x != 0] if zi else x
+    return float(np.min(everything))
+
+
+#: The start of the warning on an offset model's Wald bound (#645).
+_OFFSET_WALD_START = "The Wald bounds of an offset model hold the offset"
+_OFFSET_WALD_WARNING = (
+    _OFFSET_WALD_START + " gamma at its estimate: it is a threshold, "
+    "whose likelihood is not regular, so the fit estimates no standard "
+    "error for it, and these {what} bounds leave its uncertainty out. "
+    "They are too narrow near gamma (a 90% bound on a 3-parameter "
+    "Weibull's B1 life from 30 failures covered 40% of the time). "
+    "method='bootstrap' includes it."
+)
+
+
+def _query_array(x: Any) -> Any:
+    """A model function's query ``x`` as an array (a plain numpy one: the
+    query is not traced, and autograd's wrapper was a fixed cost on every
+    call, #642); an autograd box differentiating with respect to it as it
+    is."""
+    if isinstance(x, ArrayBox):
+        return x
+    out = onp.asarray(x)
+    if out.dtype.kind in "US":
+        # Strings of numbers are read as the numbers, as ``fit`` reads
+        # them; numpy's "ufunc 'divide' not supported" said neither (#663).
+        try:
+            return out.astype(float)
+        except ValueError:
+            raise ValueError(
+                f"x must be numbers (or strings of numbers); got {x!r}."
+            ) from None
+    return out
+
+
+def _unchecked_qf(dist: Any) -> Callable[..., Any] | None:
+    """The quantile formula of ``dist`` without the checks of its ``qf``
+    wrapper (``parametric_fitter._array_inputs``), called as ``f(dist, u,
+    *params)`` with probabilities already known to be in [0, 1], none NaN
+    (#769). None where ``dist.qf`` is not that wrapper (set on the
+    instance, or decorated again): it is then called as it is."""
+    if "qf" in getattr(dist, "__dict__", ()):
+        return None
+    qf = getattr(type(dist), "qf", None)
+    pair = getattr(qf, "_unchecked", None)
+    if pair is None or pair[0] is not qf:
+        return None
+    return pair[1]
+
+
+def _fresh(q: Any, u: Any) -> bool:
+    """Whether ``q``, computed from the probabilities ``u``, is a float
+    array of its own, which ``qf`` may change in place: not ``u``, nor a
+    view of anything, nor an autograd box (#769)."""
+    return (
+        type(q) is onp.ndarray
+        and q.dtype == onp.float64
+        and q.base is None
+        and q.flags.writeable
+        and q is not u
+    )
+
+
+def _plus(gamma: Any, q: Any, u: Any) -> Any:
+    """``gamma + q``: the quantile ``q`` of the distribution shifted by
+    the offset (with ``gamma = 0``, a -0.0 made 0.0, as the shift always
+    made it). Added into ``q`` itself where it is :func:`_fresh`, which
+    saves a pass and an array as large as the query (#769)."""
+    if _fresh(q, u) and not isinstance(gamma, ArrayBox):
+        return onp.add(gamma, q, out=q)
+    return gamma + q
+
+
+def _put(q: Any, where: Any, value: float, u: Any) -> Any:
+    """``np.where(where, value, q)``, into ``q`` itself where it is
+    :func:`_fresh` (#769)."""
+    if _fresh(q, u):
+        onp.putmask(q, where, value)
+        return q
+    return np.where(where, value, q)
+
+
+def _scalar(out: Any) -> Any:
+    """A 0-d array as its scalar, as the models' functions give for a
+    scalar query; anything else as it is."""
+    if isinstance(out, onp.ndarray) and out.ndim == 0:
+        return out[()]
+    return out
+
+
 def _first_reaching(
     values: Callable[[npt.NDArray], npt.NDArray],
     start: float,
@@ -251,6 +385,46 @@ def _first_reaching(
             else:
                 lo = mid
     return float(hi)
+
+
+# (family, function) pairs whose Jacobian needs reverse mode: a primitive
+# they use has no forward rule (the incomplete gamma and beta functions).
+# Remembered, so the forward attempt is made once, not once per band.
+_REVERSE_ONLY: set = set()
+
+
+def _parameter_jacobian(
+    func: Callable[..., Any], phi: npt.NDArray, key: Any = None
+) -> Any:
+    """The Jacobian of ``func`` (one value or a vector of them) in the
+    parameters ``phi``, ``(n_values, n_params)``.
+
+    Forward mode: one pass per parameter, whatever the number of values.
+    ``jacobian`` takes one reverse pass per value, so a band at 200 times
+    was 200 passes; the parameters are at most a handful. Both are exact,
+    and they agree to rounding. A value's derivatives stay its own in
+    forward mode, so a point whose gradient overflows does not spread its
+    ``nan`` (#652). Where a primitive in ``func`` has no forward rule
+    (autograd defines only the reverse one for some special functions),
+    the reverse-mode ``jacobian`` is used, as before, and for ``key``
+    from then on.
+    """
+    if key is not None and key in _REVERSE_ONLY:
+        return np.atleast_2d(jacobian(func)(phi))
+    try:
+        jvp = make_jvp(func)(phi)
+        cols = []
+        for i in range(len(phi)):
+            direction = onp.zeros(len(phi))
+            direction[i] = 1.0
+            cols.append(
+                onp.atleast_1d(onp.asarray(jvp(direction)[1], dtype=float))
+            )
+        return onp.stack(cols, axis=-1)
+    except NotImplementedError:
+        if key is not None:
+            _REVERSE_ONLY.add(key)
+        return np.atleast_2d(jacobian(func)(phi))
 
 
 class Parametric(
@@ -354,9 +528,6 @@ class Parametric(
     _aic: float
     _aic_c: float
 
-    #: ``covariance()``'s name before v0.23 (#605), for one release.
-    cov_matrix = RenamedToMethod("covariance", "_covariance")
-
     def __init__(
         self,
         dist: Any,
@@ -382,12 +553,7 @@ class Parametric(
 
         if offset:
             if data is not None:
-                x_min = np.asarray(data["x"])
-                if zi:
-                    # Exact zeros belong to the zero-inflation mass, so
-                    # they must not cap the offset of the continuous part
-                    x_min = x_min[x_min != 0]
-                bounds = ((None, np.min(x_min)), *bounds)
+                bounds = ((None, _offset_upper(data, zi)), *bounds)
             else:
                 bounds = ((None, None), *bounds)
 
@@ -402,8 +568,6 @@ class Parametric(
         # was ``p`` -- which is also the parameter of several
         # distributions (Bernoulli, Binomial, Geometric, ...), whose
         # ``model.p`` read 1, the proportion, not their fitted ``p``.
-        # ``p`` still names the proportion, with a DeprecationWarning,
-        # where the distribution has no ``p`` of its own.
         self.lfp_name = "lfp_p"
         if lfp:
             bounds = (*bounds, (0, 1))
@@ -490,13 +654,15 @@ class Parametric(
         if zi:
             out.f0 = model_dict["f0"]
 
+        # Numbers, a k x k matrix: a hand-edited dict's strings or ragged
+        # rows are named here, not in a numpy error later (#663).
         if "hess_inv" in model_dict:
-            out.hess_inv = np.array(model_dict["hess_inv"])
+            out.hess_inv = dict_numbers(model_dict, "hess_inv", True)
 
         # "cov_matrix" is the key of a dict written before v0.23.
         for key in ("covariance", "cov_matrix"):
             if key in model_dict:
-                out._covariance = np.array(model_dict[key])
+                out._covariance = dict_numbers(model_dict, key, True)
                 break
 
         if "_neg_ll" in model_dict:
@@ -519,7 +685,7 @@ class Parametric(
                 ]
             }
 
-        out.params = np.array(model_dict["params"])
+        out.params = dict_numbers(model_dict, "params")
 
         # Dicts written before ``"maximum"`` existed keep the constructor's
         # value: "unknown" for a maximum-likelihood fit, "not applicable"
@@ -722,9 +888,9 @@ class Parametric(
         The distribution's parameter ``p`` where it has one (``Bernoulli``,
         ``Binomial``, ``FixedEventProbability``, ``Geometric``,
         ``NegativeBinomial``): the fitted probability, as ``model.alpha``
-        is a Weibull's scale. Elsewhere the limited-failure proportion,
-        ``lfp_p``, its name before v0.23 (#608), which still works until
-        v0.24 with a ``DeprecationWarning``.
+        is a Weibull's scale. A distribution without one has no ``p``: the
+        limited-failure proportion, ``p`` before v0.23, is ``lfp_p``
+        (#608).
 
         Examples
         --------
@@ -735,8 +901,7 @@ class Parametric(
         index = self.dist.param_map.get("p")
         if index is not None:
             return self.params[index]
-        _warn_lfp_p("Parametric.p", "Parametric.lfp_p")
-        return self.lfp_p
+        raise _no_p_error(self.dist.name)
 
     @p.setter
     def p(self, value: Any) -> None:
@@ -745,8 +910,18 @@ class Parametric(
                 f"'p' is a parameter of the {self.dist.name} distribution; "
                 "its value is in 'params'."
             )
-        _warn_lfp_p("Parametric.p", "Parametric.lfp_p")
-        self.lfp_p = value
+        raise _no_p_error(self.dist.name)
+
+    #: The bootstrap refits drawn for ``method="bootstrap"``
+    #: (``_bootstrap.refits``), by ``(n_boot, random_state)``; not pickled.
+    _bootstrap_refits: "dict | None" = None
+
+    def __getstate__(self) -> dict:
+        # The bootstrap refits are a cache, rebuilt on demand (#645), as
+        # are the likelihood-ratio bounds' (the mixin's own)
+        state = super().__getstate__()
+        state.pop("_bootstrap_refits", None)
+        return state
 
     def __setstate__(self, state: dict) -> None:
         # A model pickled before v0.23 holds the proportion as "p" (#608).
@@ -849,8 +1024,6 @@ class Parametric(
         the model has them (a held parameter has a zero row and column). The
         inverse of the observed information at the maximum, carried to
         the parameters through their transforms; what Wald bounds use.
-        ``cov_matrix``, its name before v0.23, still gives it, with a
-        ``DeprecationWarning``, until v0.24.
 
         Raises a ``ValueError`` where the model has none: one built with
         ``from_params``, one whose information was singular, or a
@@ -894,6 +1067,8 @@ class Parametric(
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         method: str | None = None,
+        n_boot: int = 200,
+        random_state: Any = None,
     ) -> npt.NDArray:
         """
         Method to calculate the confidence bound on a parameter.
@@ -920,6 +1095,13 @@ class Parametric(
           ``r`` does as the model tends to a Poisson), the bound is that
           edge: 0, 1 or ``inf``. A side whose bound cannot be found is
           ``nan``, with a warning.
+        - ``"bootstrap"`` -- the parametric bootstrap, as for ``cb``: the
+          bias-corrected percentile interval of the parameter over
+          ``n_boot`` refits to data simulated from the model. It is the
+          one bound on an offset's ``gamma``, and the one on another
+          parameter of an offset model that includes the offset's
+          uncertainty (the Wald bound holds it at its estimate, with a
+          warning; #645).
 
         The probability ``p`` of a ``Bernoulli``,
         ``FixedEventProbability`` or ``Binomial`` fit is bounded from its
@@ -944,10 +1126,9 @@ class Parametric(
             The parameter, by name (e.g. ``"alpha"``; ``"lfp_p"`` for a
             limited-failure model, ``"f0"`` for a zero-inflated one). A
             distribution parameter named ``p`` (``Geometric``,
-            ``NegativeBinomial``) is that parameter; elsewhere ``"p"``, the
-            proportion's name before v0.23, still gives it with a
-            ``DeprecationWarning`` until v0.24 (#608). The offset
-            ``"gamma"`` has no confidence bound: it is a threshold
+            ``NegativeBinomial``) is that parameter; the proportion,
+            ``"p"`` before v0.23, is ``"lfp_p"`` (#608). The offset
+            ``"gamma"`` has only the bootstrap bound: it is a threshold
             parameter, whose likelihood is not regular, so no standard
             error is estimated for it.
         alpha_ci : float, optional
@@ -955,9 +1136,14 @@ class Parametric(
         bound : str, optional
             ``"two-sided"`` (the default), ``"upper"`` or ``"lower"``.
         method : str, optional
-            ``"wald"`` (the default) or ``"lr"``, as above; ``"exact"``
-            (the default), ``"wald"`` or ``"lr"`` for the probability
-            models.
+            ``"wald"`` (the default), ``"lr"`` or ``"bootstrap"``, as
+            above; ``"exact"`` (the default), ``"wald"`` or ``"lr"`` for
+            the probability models.
+        n_boot : int, optional
+            The number of bootstrap refits, with ``method="bootstrap"``.
+            Defaults to 200.
+        random_state : int or numpy Generator, optional
+            The seed of the bootstrap's simulations.
 
         Returns
         -------
@@ -975,15 +1161,27 @@ class Parametric(
         >>> model.param_cb("beta", method="lr")
         array([1.82826755, 3.27740643])
         """
+        check_alpha_ci(alpha_ci)
         probability_cb = getattr(self.dist, "_probability_cb", None)
         if probability_cb is not None:
             return probability_cb(self, name, alpha_ci, bound, method)
         if method is None:
             method = "wald"
-        if self._is_lr(method):
+        if self._is_lr(method, bootstrap=True):
             return self._param_cb_lr(name, alpha_ci, bound)
+        if method.lower() == "bootstrap":
+            check_option("bound", bound, BOUNDS)
+            if not 0 < alpha_ci < 1:
+                raise alpha_ci_error(alpha_ci)
+            from . import _bootstrap
+
+            return _bootstrap.param_cb_bootstrap(
+                self, name, alpha_ci, bound, n_boot, random_state
+            )
 
         is_core, idx = self._resolve_param_name(name)
+        if is_core:
+            self._warn_offset_wald("param_cb")
         if not is_core:
             cov = self.covariance()
             p_hat = self.f0 if name == "f0" else self.lfp_p
@@ -1045,9 +1243,6 @@ class Parametric(
         """
         if name in self.dist.param_map:
             return True, self.dist.param_map[name]
-        if name == "p":
-            _warn_lfp_p("param_cb('p')", "param_cb('lfp_p')")
-            name = self.lfp_name
         if name == self.lfp_name:
             if not self.lfp:
                 raise ValueError(f"'{name}' is only estimated for lfp models")
@@ -1063,9 +1258,11 @@ class Parametric(
             # offset model is non-regular (the likelihood's support moves
             # with it), so a Wald variance for it would be misleading.
             raise ValueError(
-                "No confidence bound is available for the offset 'gamma': "
-                "it is a threshold parameter whose likelihood is not "
-                "regular, so no standard error is estimated for it."
+                "No Wald or likelihood-ratio bound is available for the "
+                "offset 'gamma': it is a threshold parameter whose "
+                "likelihood is not regular, so no standard error is "
+                "estimated for it. param_cb('gamma', method='bootstrap') "
+                "bounds it by the parametric bootstrap."
             )
         valid = list(self.dist.parameter_names)
         if self.lfp:
@@ -1074,6 +1271,7 @@ class Parametric(
             valid.append("f0")
         raise ValueError(
             f"Unknown parameter {name!r}; expected one of {valid}"
+            + removed_parameter_note(name, valid)
         )
 
     def _ensure_surv_data(self) -> None:
@@ -1117,6 +1315,16 @@ class Parametric(
         info = getattr(self, "fitting_info", None) or {}
         return set(info.get("fixed_idx", []) or [])
 
+    def _plain(self) -> bool:
+        """Whether the model has no offset, limited-failure or
+        zero-inflation part (``gamma = 0``, ``lfp_p = 1``, ``f0 = 0``):
+        then ``sf``, ``ff`` and ``df`` are the distribution's own, whose
+        support guard holds them at their edge values below 0 as the
+        model's transforms do, and the transforms -- identities here, but
+        five passes over the query on a large array -- are skipped
+        (#642)."""
+        return bool(self.gamma == 0 and self.lfp_p == 1 and self.f0 == 0)
+
     def sf(self, x: npt.ArrayLike) -> npt.NDArray:
         r"""
 
@@ -1149,7 +1357,10 @@ class Parametric(
         array([0.9990005 , 0.99203191, 0.97336124, 0.938005  , 0.8824969 ])
         """
         refuse_time_values(x, "x")
-        x = np.asarray(x)
+        x = _query_array(x)
+        if self._plain():
+            # (+ 0.0: a -0.0 is 0.0, as the transforms made it)
+            return _scalar(self.dist.sf(x, *self.params) + 0.0)
         xg = x - self.gamma  # type: ignore[operator]
         base_sf = self.dist.sf(xg, *self.params)
         # Below the (possibly offset) support the base distribution has not
@@ -1197,7 +1408,9 @@ class Parametric(
         array([0.0009995 , 0.00796809, 0.02663876, 0.061995  , 0.1175031 ])
         """
         refuse_time_values(x, "x")
-        x = np.asarray(x)
+        x = _query_array(x)
+        if self._plain():
+            return _scalar(self.dist.ff(x, *self.params) + 0.0)
         xg = x - self.gamma  # type: ignore[operator]
         base_ff = self.dist.ff(xg, *self.params)
         # Below the (possibly offset) support the base CDF is 0; evaluating
@@ -1269,7 +1482,9 @@ class Parametric(
         that, and add the mass ``f0`` at 0 separately if it is wanted.
         """
         refuse_time_values(x, "x")
-        x = np.asarray(x)
+        x = _query_array(x)
+        if self._plain():
+            return _scalar(self.dist.df(x, *self.params))
         xg = x - self.gamma  # type: ignore[operator]
         base_df = self.dist.df(xg, *self.params)
         # Below the (possibly offset) support the density is 0 (#256).
@@ -1319,6 +1534,21 @@ class Parametric(
         np.float64(0.012000000000000002)
         >>> model.hf([1, 2, 3, 4, 5])
         array([0.003, 0.012, 0.027, 0.048, 0.075])
+
+        A zero-inflated model's hazard at 0 is the point mass's discrete
+        hazard, ``f0``:
+
+        >>> zi = Weibull.from_params([10, 3], f0=0.2)
+        >>> zi.hf([0.0, 2.0])
+        array([0.2  , 0.012])
+
+        Notes
+        -----
+        It is ``df(x) / sf(x)`` (for a discrete distribution ``df(k) /
+        sf(k - 1)``, the probability of failing at ``k`` given survival to
+        it). A zero-inflated model's point mass at 0 is a discrete hazard
+        too: ``hf(0) = df(0) / sf(0-) = f0``, the probability of failing at
+        0 given survival to it; ``Hf`` jumps there by ``-log(1 - f0)``.
         """
         refuse_time_values(x, "x")
         x = np.asarray(x)
@@ -1340,14 +1570,22 @@ class Parametric(
             sf = self.sf(x)
             gone = sf == 0
             if not np.any(gone):
-                return self.df(x) / sf
-            # Only a zero-inflated model's survival reaches 0 (an LFP's
-            # stays at 1 - p), and past 0 its 1 - f0 cancels: the hazard
-            # is the base's, where df / sf was 0 / 0 (#561).
-            xg = np.asarray(x, dtype=float) - self.gamma
-            base = self.dist.hf(xg, *self.params)
-            with np.errstate(invalid="ignore", divide="ignore"):
-                return np.where(gone, base, self.df(x) / sf)[()]
+                out = self.df(x) / sf
+            else:
+                # Only a zero-inflated model's survival reaches 0 (an
+                # LFP's stays at 1 - p), and past 0 its 1 - f0 cancels:
+                # the hazard is the base's, where df / sf was 0 / 0 (#561).
+                xg = np.asarray(x, dtype=float) - self.gamma
+                base = self.dist.hf(xg, *self.params)
+                with np.errstate(invalid="ignore", divide="ignore"):
+                    out = np.where(gone, base, self.df(x) / sf)
+            if self.f0 != 0:
+                # The point mass at 0 is a discrete hazard there, conditioned
+                # on survival to just before 0 (which is 1), as a discrete
+                # distribution's: f0 / sf(0-) = f0. df / sf(0) was the odds
+                # f0 / (1 - f0) (#728).
+                out = np.where(np.asarray(x) == 0, self.f0, out)
+            return np.asarray(out)[()]
 
     def Hf(self, x: npt.ArrayLike) -> npt.NDArray:
         """
@@ -1371,6 +1609,15 @@ class Parametric(
             cumulative hazard function at each corresponding value in the
             input array.
 
+        Notes
+        -----
+        It is ``-log sf(x)``. A zero-inflated model's is ``-log(1 - f0) +
+        H(x)`` from 0 on (its survival is ``(1 - f0) R(x)``), so it stays
+        finite far in the tail, where ``sf`` underflows to 0 (#710). A
+        limited failure population's is ``-log(1 - ff(x))`` where ``ff`` is
+        below 1/2, accurate where ``ff`` is tiny and ``sf`` rounds to 1
+        (#728); its survival stays above ``1 - p`` in the upper tail.
+
         Examples
         --------
 
@@ -1380,6 +1627,9 @@ class Parametric(
         np.float64(0.008000000000000002)
         >>> model.Hf([1, 2, 3, 4, 5])
         array([0.001, 0.008, 0.027, 0.064, 0.125])
+        >>> zi = Weibull.from_params([10, 3], f0=0.1)
+        >>> zi.Hf([0.0, 1000.0]).round(4)
+        array([1.0536e-01, 1.0000e+06])
         """
         refuse_time_values(x, "x")
         x = np.asarray(x)
@@ -1389,12 +1639,32 @@ class Parametric(
             s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
             out = np.where(xg < s0, 0.0, self.dist.Hf(xg, *self.params))
             return out[()]
+        elif self.lfp_p == 1:
+            # Zero inflation alone: sf = (1 - f0) R(x - gamma) from 0 on,
+            # so Hf = -log(1 - f0) + H(x - gamma), finite far past where
+            # sf underflows (-log sf was inf there, #710).
+            xg = np.asarray(x, dtype=float) - self.gamma
+            s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
+            below = xg < s0
+            with np.errstate(invalid="ignore"):
+                H = self.dist.Hf(np.where(below, s0 + 1e-10, xg), *self.params)
+            H = np.where(below, 0.0, H)
+            out = np.where(np.asarray(x) < 0, 0.0, -np.log1p(-self.f0) + H)
+            return out[()]
         else:
-            # 0.0 - log(...) rather than -log(...): where sf is exactly 1
-            # (before 0, or before the offset) the latter gave -0.0. A
-            # survival of 0 is a cumulative hazard of inf, said quietly.
-            with np.errstate(divide="ignore"):
-                return 0.0 - np.log(self.sf(x))
+            # A limited failure population: -log(1 - ff) from the failure
+            # probability where it is below 1/2, f0 + (p - f0) F, which
+            # keeps its digits where it is tiny (1 - ff rounds to 1 there,
+            # and -log sf was 0, #728); -log sf elsewhere, which stays above
+            # 1 - p, so neither underflows. 0.0 - log(...) rather than
+            # -log(...): where sf is exactly 1 (before 0, or before the
+            # offset) the latter gave -0.0.
+            ff = np.asarray(self.ff(x))
+            with np.errstate(divide="ignore", invalid="ignore"):
+                H = np.where(
+                    ff < 0.5, 0.0 - np.log1p(-ff), 0.0 - np.log(self.sf(x))
+                )
+            return H[()]
 
     def qf(self, p: npt.ArrayLike) -> npt.NDArray:
         r"""
@@ -1436,7 +1706,61 @@ class Parametric(
         [0, 1] gives NaN, as scipy's ``ppf`` does, with a warning (it is
         most often a percentage given for a probability: ``qf(10)`` for
         the B10 life, which is ``qf(0.1)``); NaN gives NaN.
+
+        Each of the steps for ``f0``, ``lfp_p`` and ``gamma`` is taken only
+        where it changes something, and the probabilities are checked
+        once, here: a model without them gives its distribution's own
+        ``qf`` at no further cost (with a -0.0 as 0.0) (#769).
         """
+        if isinstance(p, ArrayBox):
+            return self._qf_checked(p)
+        if isinstance(p, list):
+            p = onp.array(p)
+        u = onp.asarray(p, dtype=float)
+        scalar = u.ndim == 0
+        u = onp.atleast_1d(u)
+        formula = _unchecked_qf(self.dist)
+        f0, lfp_p = self.f0, self.lfp_p
+        if formula is None or not (f0 < lfp_p and all_in_unit_interval(u)):
+            # NaN, or a probability outside [0, 1], to be checked for and
+            # warned of: the full path.
+            return self._qf_checked(p)
+        # Under the floating-point settings of ``_qf_checked``: the
+        # distribution's (``_array_inputs``) inside the model's.
+        if f0 == 0 and lfp_p == 1:
+            base = u
+        else:
+            with np.errstate(divide="ignore", invalid="ignore"):
+                base = onp.subtract(u, f0)
+                onp.divide(base, lfp_p - f0, out=base)
+                onp.clip(base, 0.0, 1.0, out=base)
+        with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+            q = formula(self.dist, base, *self.params)
+        if self.gamma == 0:
+            # 0 + q raises no floating-point error
+            q = _plus(self.gamma, q, u)
+        else:
+            with np.errstate(divide="ignore", invalid="ignore"):
+                q = _plus(self.gamma, q, u)
+        if onp.shape(q) != u.shape:
+            # A formula that gives other than one value per probability:
+            # the full path broadcasts it.
+            return self._qf_checked(p)
+        # The steps of ``_qf_checked``, where they change anything.
+        if (f0 > 0 or getattr(self.dist, "discrete", False)) and (
+            u.min() <= f0
+        ):
+            q = _put(q, u <= f0, 0.0, u)
+        if lfp_p < 1 and u.max() >= lfp_p:
+            q = _put(q, u >= lfp_p, np.inf, u)
+        q = (np if isinstance(q, ArrayBox) else onp).asarray(q, dtype=float)
+        return q[0] if scalar else q
+
+    def _qf_checked(self, p: Any) -> Any:
+        """``qf`` with every step taken, and the probabilities checked for
+        NaN and [0, 1] here and again in the distribution's ``qf``: for
+        such probabilities, an autograd box, or a distribution ``qf`` of
+        its own. ``qf`` gives the same values, faster, for the rest."""
         if isinstance(p, list):
             p = np.array(p)
         u = np.asarray(p, dtype=float)
@@ -1473,6 +1797,7 @@ class Parametric(
         q = np.asarray(q, dtype=float)
         return q[0] if scalar else q
 
+    @removed_arguments("0.23", X="'given'")
     def cs(self, x: npt.ArrayLike, given: npt.ArrayLike) -> npt.NDArray:
         r"""
 
@@ -1481,6 +1806,7 @@ class Parametric(
 
         .. math::
             R(x, given) = \frac{R(x + given)}{R(given)}
+            = e^{-(H(x + given) - H(given))}
 
         .. versionchanged:: 0.22
            The time already survived is ``given`` (it was ``X``), the
@@ -1488,6 +1814,10 @@ class Parametric(
 
         .. versionchanged:: 0.23
            ``X`` is removed.
+
+        .. versionchanged:: 0.24
+           From the cumulative hazard, so finite where ``sf(given)``
+           underflows (#660).
 
         Parameters
         ----------
@@ -1512,27 +1842,40 @@ class Parametric(
         >>> model.cs(11, 10)
         np.float64(0.00025840046151723767)
 
+        Far in the tail, where the survival to ``given`` underflows to 0:
+
+        >>> model = Weibull.from_params([100, 3])
+        >>> model.sf(1000)
+        np.float64(0.0)
+        >>> round(float(model.cs(1, 1000)), 6)
+        0.049638
+
         Notes
         -----
-        The ratio is taken of the model's own :meth:`sf`, so a
-        limited-failure proportion ``lfp_p``, a zero-inflation fraction
-        ``f0`` and an offset ``gamma`` all enter it: the never-failing units
-        still count among the survivors at ``given``, and survival to an
-        ``given`` before the offset is certain. Where :math:`R(given) = 0` the
-        conditional survival is undefined and ``nan`` is returned.
+        It is computed from the model's own cumulative hazard, the second
+        form above, so it stays exact where :math:`R(given)` underflows to
+        0 far in the upper tail. A limited-failure proportion ``lfp_p``, a
+        zero-inflation fraction ``f0`` and an offset ``gamma`` all enter
+        it: the never-failing units still count among the survivors at
+        ``given``, and survival to a ``given`` before the offset is
+        certain. Where :math:`H(given)` is infinite (the model says no unit
+        survives to ``given``) the conditional survival is undefined and
+        ``nan`` is returned.
         """
         x_arr = np.asarray(x, dtype=float)
         given_arr = np.asarray(given, dtype=float)
         given_g = given_arr - self.gamma
         s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
         with np.errstate(all="ignore"):
-            # The ratio of the model's own sf. Handing the shifted given to
-            # ``dist.cs`` ignored p and f0 entirely (0.29 instead of 0.67
-            # for p = 0.7) and, for a given before the offset, evaluated the
-            # base sf at a negative time (1.0 or nan instead of 0.96).
-            cs = np.asarray(
-                self.sf(x_arr + given_arr) / self.sf(given_arr), dtype=float
-            )
+            # From the model's own cumulative hazard. Handing the shifted
+            # given to ``dist.cs`` ignored p and f0 entirely (0.29 instead
+            # of 0.67 for p = 0.7) and, for a given before the offset,
+            # evaluated the base sf at a negative time (1.0 or nan instead
+            # of 0.96). The hazards rather than the ratio of sf, so it
+            # stays finite where sf(given) underflows (#660).
+            H_given = np.asarray(self.Hf(given_arr), dtype=float)
+            H_end = np.asarray(self.Hf(x_arr + given_arr), dtype=float)
+            cs = np.where(np.isinf(H_given), np.nan, np.exp(H_given - H_end))
             if (self.lfp_p == 1) and (self.f0 == 0):
                 # A plain model inside its support keeps the
                 # distribution's own form, which is exact where the ratio
@@ -1561,15 +1904,17 @@ class Parametric(
         A method to draw random lifetimes from the distribution using the
         parameters found in the ``.params`` attribute.
 
-        Each draw is ``qf(u)`` for one uniform ``u``, for every model. With
-        no ``random_state`` the uniforms come from numpy's global random
+        Each draw is ``qf(u)`` for one uniform ``u``. With no
+        ``random_state`` the uniforms come from numpy's global random
         generator: so ``np.random.seed`` makes the draws reproducible, and
         ``random(size)`` gives the same values as
         ``qf(np.random.random_sample(size))`` after the same seed. A unit
         of a limited-failure population that never fails (``p < 1``) is
         ``inf``, and one dead on arrival (``f0``) is exactly 0. To simulate
         a data set to fit, with the never-failing units right-censored,
-        use :meth:`random_data`.
+        use :meth:`random_data`. The one exception is
+        ``FixedEventProbability``, whose draws are the 0/1 event indicators
+        its ``fit`` takes: 1 exactly where ``qf(u)`` is 0.
 
         Parameters
         ----------
@@ -1625,13 +1970,22 @@ class Parametric(
 
         if (self.lfp_p == 1) and (self.f0 == 0):
             if (a is None) and (b is None):
-                if hasattr(self.dist, "qf"):
-                    return (
-                        self.dist.qf(
-                            uniform_draws(size, random_state), *self.params
-                        )
-                        + self.gamma
-                    )
+                # A model whose draws are outcomes, not the times its qf
+                # gives (FixedEventProbability: 0/1 event indicators, which
+                # its fit and mean take), draws them itself.
+                if hasattr(self.dist, "qf") and not getattr(
+                    self.dist, "_draws_indicators", False
+                ):
+                    u = uniform_draws(size, random_state)
+                    formula = _unchecked_qf(self.dist)
+                    if formula is None:
+                        q = self.dist.qf(u, *self.params)
+                    else:
+                        # uniforms are in [0, 1): nothing for the checks
+                        # of the distribution's qf to find (#769)
+                        with np.errstate(over="ignore", divide="ignore"):
+                            q = formula(self.dist, u, *self.params)
+                    return _plus(self.gamma, q, u)
                 else:
                     return self.dist.random(
                         size, *self.params, random_state=random_state
@@ -1948,6 +2302,8 @@ class Parametric(
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
     ) -> npt.NDArray:
         r"""
         Confidence bounds of the ``on`` function at the ``alpha_ci`` level of
@@ -1967,9 +2323,18 @@ class Parametric(
             "log-log" transform, on which a Weibull is a straight line in
             log time); those on ``hf`` and ``df`` are on the log scale (the
             logit scale for a discrete distribution, whose hazard and mass
-            are probabilities), and are 0 where the rate is 0. Where the
-            delta-method variance is negative (the covariance is not
-            positive definite) a Wald bound is ``nan``, with a warning.
+            are probabilities), and are 0 where the rate is 0. Each ``x``'s
+            Wald bound is computed on its own. Where the delta-method
+            variance is negative (the covariance is not positive definite)
+            a Wald bound is ``nan``, with a warning; where the function's
+            derivatives overflow at an ``x`` far in a tail, that ``x``'s
+            bound alone is ``nan``, with a warning naming it. The ``Hf``
+            bound is on ``log Hf`` wherever the survival has underflowed
+            (for the log-log families everywhere: it is the same bound), so
+            it stays finite and contains the estimate there. The ``ff``
+            and ``Hf`` bounds are mapped from the band's scale to their
+            own, so they keep their digits in the left tail, where ``sf``
+            rounds to 1 (``1 - sf`` and ``-log sf`` of its bound were 0).
             The Wald band on ``sf`` and ``ff`` rises (or falls) with ``x``
             as the function does whenever the shape's own Wald interval
             excludes 0; with fewer failures than that it can turn back in a
@@ -1980,9 +2345,13 @@ class Parametric(
             Defaults to two-sided.
         alpha_ci : scalar, optional
             The level of significance at which the bound will be computed.
-        method : ('wald', 'lr'), str, optional
+        method : ('wald', 'lr', 'bootstrap'), str, optional
             ``"wald"`` (default) propagates the parameter covariance through
-            the ``on`` function by the delta method. ``"lr"`` gives a
+            the ``on`` function by the delta method. For an offset model
+            the covariance leaves the offset out (it is a threshold, whose
+            likelihood is not regular), so the Wald bounds hold it at its
+            estimate and are too narrow near it, with a warning saying so;
+            ``"bootstrap"`` includes it (#645). ``"lr"`` gives a
             profile-likelihood (likelihood-ratio) band: at each ``x`` the bound
             is the extreme value of the ``on`` function over the parameter
             confidence region ``{theta : 2[nll(theta) - nll_hat] <= chi2}``
@@ -1990,7 +2359,10 @@ class Parametric(
             function's own profile deviance reaches ``chi2``; a band whose
             region reaches the edge of the function's range (0 or 1 for
             ``sf``) is that edge. The ``sf``, ``ff`` and ``Hf`` bands are
-            one band, so they agree exactly.
+            one band, so they agree exactly, except far in the upper tail,
+            where ``sf`` has no room left (below 1e-308) and the ``Hf``
+            band is found on the scale of ``log Hf`` (the same extreme of
+            the same region).
             The likelihood-ratio band is transformation-invariant and does not
             rely on a quadratic approximation, so it is usually better in small
             samples (Meeker and Escobar recommend it there), but it is computed
@@ -1999,6 +2371,22 @@ class Parametric(
             without it raises), and is not yet available for offset / LFP /
             ZI models. Where the constrained search cannot find a bound
             from any start, that bound is ``nan``, with a warning.
+            ``"bootstrap"`` is the parametric bootstrap: the model is
+            refitted to ``n_boot`` data sets simulated from it (each unit
+            censored as it was, within its truncation window), and the
+            bound is the bias-corrected percentile interval of the refits'
+            ``on`` function. It includes the uncertainty of every
+            estimated parameter, an offset's among them, and needs the
+            original data, exact or right censored (truncated or not); it
+            is not available for limited-failure or zero-inflated models.
+            The refits are kept on the model for each ``n_boot`` and integer
+            ``random_state``, so bounds at other ``x`` (and ``quantile_cb``
+            and ``param_cb``) reuse them.
+        n_boot : int, optional
+            The number of bootstrap refits, with ``method="bootstrap"``.
+            Defaults to 200.
+        random_state : int or numpy Generator, optional
+            The seed of the bootstrap's simulations.
 
         Returns
         -------
@@ -2021,6 +2409,7 @@ class Parametric(
         >>> model.cb([5, 10], on="sf", bound="lower")
         array([0.67916426, 0.18042915])
         """
+        check_alpha_ci(alpha_ci)
         t = np.atleast_1d(x)
         if self.method != "MLE":
             raise ValueError("Only MLE has confidence bounds")
@@ -2033,10 +2422,20 @@ class Parametric(
             # Nothing to bound (the Jacobian of no values fails).
             return np.empty((0, 2) if bound == "two-sided" else (0,))
 
-        if self._is_lr(method):
+        if self._is_lr(method, bootstrap=True):
             return self._cb_lr(t, on, alpha_ci, bound)
+        if method.lower() == "bootstrap":
+            if not 0 < alpha_ci < 1:
+                raise alpha_ci_error(alpha_ci)
+            from . import _bootstrap
+
+            return _bootstrap.cb_bootstrap(
+                self, t, on, alpha_ci, bound, n_boot, random_state
+            )
+        self._warn_offset_wald("cb")
 
         ctx = self._cb_context()
+        asked = bound
 
         # ff, F and Hf are decreasing transforms of R; flip one-sided bounds
         if on in ["ff", "F", "Hf"] and bound == "lower":
@@ -2047,13 +2446,13 @@ class Parametric(
         old_err_state = np.seterr(all="ignore")
         try:
             if (on == "ff") or (on == "F"):
-                cb = 1.0 - self._cb_sf_bound(t, ctx, alpha_ci, bound)
+                cb = self._cb_sf_bound(t, ctx, alpha_ci, asked, to="ff")
             elif (on == "sf") or (on == "R"):
                 cb = self._cb_sf_bound(t, ctx, alpha_ci, bound)
                 if bound == "two-sided":
                     cb = np.fliplr(cb)
             elif on == "Hf":
-                cb = -np.log(self._cb_sf_bound(t, ctx, alpha_ci, bound))
+                cb = self._cb_Hf_bound(t, ctx, alpha_ci, asked)
             elif on in ["hf", "df"]:
                 cb = self._cb_rate_bound(t, ctx, alpha_ci, bound, on)
             else:
@@ -2070,6 +2469,8 @@ class Parametric(
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
     ) -> npt.NDArray:
         r"""
         Confidence bounds on the quantile ``qf(p)``: the B-life at ``p``
@@ -2081,6 +2482,9 @@ class Parametric(
 
         p : array like or scalar
             The probabilities, in (0, 1), whose quantiles are bounded.
+            Outside it the bound is ``nan``, with one warning, as ``qf``
+            gives outside [0, 1] (#626; it raised); a missing ``p`` gives
+            ``nan``.
         alpha_ci : scalar, optional
             The level of significance at which the bound will be computed.
             Defaults to 0.05.
@@ -2101,6 +2505,14 @@ class Parametric(
             a function of time. It is invariant to the parameterisation
             and better in small samples, slower, and, like ``cb``'s, not
             available for offset, limited-failure or zero-inflated models.
+            For an offset model the Wald bound holds the offset at its
+            estimate, with a warning; ``"bootstrap"`` (the parametric
+            bootstrap, as for ``cb``) includes its uncertainty (#645).
+        n_boot : int, optional
+            The number of bootstrap refits, with ``method="bootstrap"``.
+            Defaults to 200.
+        random_state : int or numpy Generator, optional
+            The seed of the bootstrap's simulations.
 
         Returns
         -------
@@ -2129,21 +2541,42 @@ class Parametric(
         step estimate (Brookmeyer and Crowley); :meth:`mean_cb` bounds the
         mean.
         """
-        probs = np.asarray(p, dtype=float)
+        check_alpha_ci(alpha_ci)
+        probs = np.atleast_1d(np.asarray(p, dtype=float))
         self._check_summary_cb(alpha_ci, bound, "quantile_cb")
         if probs.size == 0:
             return np.empty((0, 2) if bound == "two-sided" else (0,))
-        if not np.all((probs > 0) & (probs < 1)):
-            raise ValueError(f"'p' must be in (0, 1); got {probs.tolist()}")
+        # As qf (#611): NaN, with one warning, where p is outside (0, 1),
+        # and NaN for a missing p; the others are bounded (#626).
+        outside = warn_outside_unit_interval(
+            probs, "quantile_cb", closed=False
+        )
+        ok = ~outside & ~np.isnan(probs)
+        if not ok.all():
+            out = np.full(
+                probs.shape + ((2,) if bound == "two-sided" else ()), np.nan
+            )
+            if ok.any():
+                out[ok] = self.quantile_cb(
+                    probs[ok], alpha_ci, bound, method, n_boot, random_state
+                )
+            return out
         if self.dist.discrete:
             self._is_lr(method)  # checks the name
             return self._quantile_cb_discrete(probs, alpha_ci, bound, method)
-        if self._is_lr(method):
+        if self._is_lr(method, bootstrap=True):
             fns = [
                 lambda theta, p_i=p_i: self.dist.qf(np.array([p_i]), *theta)[0]
                 for p_i in probs
             ]
             return self._summary_cb_lr(fns, alpha_ci, bound, "qf")
+        if method.lower() == "bootstrap":
+            from . import _bootstrap
+
+            return _bootstrap.quantile_cb_bootstrap(
+                self, probs, alpha_ci, bound, n_boot, random_state
+            )
+        self._warn_offset_wald("quantile_cb")
         return self._quantile_cb_wald(probs, alpha_ci, bound)
 
     def mean_cb(
@@ -2197,6 +2630,7 @@ class Parametric(
         The nonparametric models' ``mean_cb`` bounds their (restricted)
         mean; :meth:`quantile_cb` bounds a quantile.
         """
+        check_alpha_ci(alpha_ci)
         self._check_summary_cb(alpha_ci, bound, "mean_cb")
         if self.lfp_p < 1:
             # A fraction 1 - p never fails: E[T] is infinite (#404).
@@ -2222,19 +2656,35 @@ class Parametric(
         return out[0]
 
     @staticmethod
-    def _is_lr(method: str) -> bool:
+    def _is_lr(method: str, bootstrap: bool = False) -> bool:
+        """Whether ``method`` asks for the likelihood-ratio bound;
+        ``"wald"`` (and, where the caller has it, ``"bootstrap"``) is not,
+        and anything else is refused."""
         m = method.lower()
         if m in ("lr", "likelihood", "likelihood-ratio", "profile"):
             return True
+        if m == "bootstrap" and bootstrap:
+            return False
         if m != "wald":
             check_option(
                 "method",
                 method,
-                ("wald", "lr"),
+                ("wald", "lr", "bootstrap") if bootstrap else ("wald", "lr"),
                 "Case does not matter, and 'likelihood', "
                 "'likelihood-ratio' and 'profile' also mean 'lr'.",
             )
         return False
+
+    def _warn_offset_wald(self, what: str) -> None:
+        """Warn that an offset model's Wald bound holds the offset at its
+        estimate (#645)."""
+        if not self.offset:
+            return
+        warnings.warn(
+            _OFFSET_WALD_WARNING.format(what=what),
+            UserWarning,
+            stacklevel=caller_stacklevel(),
+        )
 
     def _check_summary_cb(
         self, alpha_ci: float, bound: str, what: str = "this bound"
@@ -2343,17 +2793,22 @@ class Parametric(
         finite = np.isfinite(t)
         t_eval = np.where(finite, t, self.gamma + 1.0)
         with np.errstate(all="ignore"):
-            jac = np.atleast_2d(
-                jacobian(lambda phi: self._cb_full_ff(t_eval, phi, ctx))(
-                    ctx.phi_hat
-                )
+            jac = _parameter_jacobian(
+                lambda phi: self._cb_full_ff(t_eval, phi, ctx),
+                ctx.phi_hat,
+                (type(self.dist), "quantile"),
             )
             dens = (p_lfp - f0) * np.asarray(
                 self.dist.df(t_eval - self.gamma, *core), dtype=float
             )
             grad = -jac / dens[:, None]
             var = np.einsum("ij,jk,ik->i", grad, ctx.cov, grad)
-        var = np.where(finite, var, 0.0)
+        # A probability within a zero-inflated model's mass at 0 has the
+        # quantile 0 whatever the parameters near the estimate (the atom
+        # is below the continuous part): its bound is [0, 0], with no
+        # density to divide by and nothing to warn about (#663).
+        at_zero = (np.asarray(p, dtype=float) <= f0) & bool(self.zi)
+        var = np.where(finite & ~at_zero, var, 0.0)
         return self._summary_wald(
             t, var, self._summary_scale(), alpha_ci, bound, "qf"
         )
@@ -2555,6 +3010,11 @@ class Parametric(
             out = np.where(x < 0, 0.0, out)
         return out
 
+    def _jacobian_key(self, func: Callable[..., Any]) -> Any:
+        """What ``_parameter_jacobian`` remembers a reverse-only Jacobian
+        by: the family and the function differentiated."""
+        return (type(self.dist), getattr(func, "__qualname__", None))
+
     def _cb_delta_var(
         self,
         func: Callable[..., Any],
@@ -2563,7 +3023,7 @@ class Parametric(
     ) -> Any:
         """First-order delta-method variance: ``Var(g) = J Sigma J^T``.
 
-        ``jacobian`` takes one reverse pass per value of ``func``. Given
+        ``_parameter_jacobian`` takes one forward pass per parameter. Given
         ``n_points``, ``func`` is elementwise over that many points --
         the value at each depends on the parameters only through the
         parameters at that point -- and is passed the parameter vector
@@ -2571,7 +3031,9 @@ class Parametric(
         of the sum then gives every row at once, each the gradient of its
         own point (#591)."""
         if n_points is None:
-            jac = np.atleast_2d(jacobian(func)(ctx.phi_hat))
+            jac = _parameter_jacobian(
+                func, ctx.phi_hat, self._jacobian_key(func)
+            )
         else:
             copies = np.repeat(ctx.phi_hat[:, None], n_points, axis=1)
             jac = grad(lambda phi: np.sum(func(phi)))(copies).T
@@ -2582,24 +3044,58 @@ class Parametric(
         scale = np.einsum("ij,jk,ik->i", abs(jac), abs(ctx.cov), abs(jac))
         return np.where((var < 0) & (var >= -1e-10 * scale), 0.0, var)
 
-    def _cb_sd(self, var: Any, x: Any, on: str) -> Any:
-        """The delta-method standard error, ``sqrt(var)``, with one
-        warning where the variance is negative (#411): the covariance is
-        not positive definite, so no Wald bound exists there, and the
-        bound is nan. It used to be a silent nan."""
-        bad = ~(var >= 0)
+    def _cb_delta_var_each(
+        self, func_at: Callable[[Any], Callable[..., Any]], ctx: Any, n: int
+    ) -> Any:
+        """``_cb_delta_var`` of a function of ``n`` points, each point's
+        variance its own: ``func_at(idx)`` is the function at the points
+        ``idx``. A gradient that is not finite at one point (its function
+        overflows far in a tail) is ``0 * nan`` in every other point's
+        reverse pass, so it made every variance ``nan`` (#652); those
+        points are differentiated again one at a time, and only the point
+        that overflows keeps its ``nan``."""
+        var = np.array(self._cb_delta_var(func_at(slice(None)), ctx))
+        bad = ~np.isfinite(var)
+        if n > 1 and bad.any():
+            for i in np.flatnonzero(bad):
+                var[i] = self._cb_delta_var(func_at(slice(i, i + 1)), ctx)[0]
+        return var
+
+    def _cb_sd(self, var: Any, x: Any, on: str, cov: Any = None) -> Any:
+        """The delta-method standard error, ``sqrt(var)``, ``nan`` with one
+        warning where there is none (#411; it used to be a silent nan):
+        where the variance is negative the covariance is not positive
+        definite; where it is not finite while the covariance ``cov`` is,
+        the function's gradient overflowed at that ``x`` (far in a tail),
+        and the message says so rather than blaming the covariance
+        (#652). A missing ``x`` is ``nan`` in silence (#710)."""
+        where = np.broadcast_to(np.atleast_1d(x), np.shape(var))
+        bad = ~(var >= 0) & ~np.isnan(where)
         if np.any(bad):
-            where = np.broadcast_to(np.atleast_1d(x), np.shape(var))[bad]
-            warn_wald_undefined(
-                f"{on} at x = {where.tolist()}",
-                "its delta-method variance is negative or not finite, so "
-                "the parameter covariance is not positive definite (the "
-                "estimate is at or near a boundary of the parameter space, "
-                "or the likelihood is not regular there)",
-                # _cb_sd -> the bound helper -> cb -> the query-shape
-                # wrapper -> the caller
-                stacklevel=5,
-            )
+            overflow = bad & ~np.isfinite(var)
+            if cov is None or not np.all(np.isfinite(cov)):
+                overflow = np.zeros_like(bad)
+            singular = bad & ~overflow
+            if np.any(singular):
+                warn_wald_undefined(
+                    f"{on} at x = {where[singular].tolist()}",
+                    "its delta-method variance is negative or not finite, "
+                    "so the parameter covariance is not positive definite "
+                    "(the estimate is at or near a boundary of the "
+                    "parameter space, or the likelihood is not regular "
+                    "there)",
+                    stacklevel=caller_stacklevel(),
+                )
+            if np.any(overflow):
+                warn_wald_undefined(
+                    f"{on} at x = {where[overflow].tolist()}",
+                    f"the derivatives of {on} with respect to the "
+                    "parameters overflow there (that x is too far in the "
+                    "distribution's tail for double precision), so it has "
+                    "no delta-method variance; the bounds at the other x "
+                    "are computed on their own",
+                    stacklevel=caller_stacklevel(),
+                )
         return np.sqrt(np.where(bad, np.nan, var))
 
     def _cb_sf_bound(
@@ -2609,10 +3105,16 @@ class Parametric(
         alpha_ci: float,
         bound: str,
         elementwise: bool = False,
+        on: str = "sf",
+        to: str = "sf",
     ) -> Any:
         """Confidence bound on the survival function: a Wald bound on the
         scale on which the family is a straight line in (log) time -- its
-        probability-plot scale -- mapped back to ``R``.
+        probability-plot scale -- mapped back to ``R``, or (``to`` = ``"ff"``
+        or ``"Hf"``) straight to the failure probability or the cumulative
+        hazard, ``[lower, upper]`` on it, each to full precision where it
+        is small: ``1 - R`` and ``-log R`` of the bound on ``R`` lost every
+        digit where ``R`` rounds to 1 (#728).
 
         The scale is the distribution's ``_cb_link``: ``log(-log R)`` (the
         log cumulative hazard) for the Weibull, Exponential, Rayleigh and
@@ -2650,24 +3152,120 @@ class Parametric(
         small = np.where(left, F_hat, R_hat)
         unit = np.where(small > 0, small, 1.0)
 
-        def sf_func(phi: npt.NDArray) -> Any:
-            R = self._cb_full_sf(x, phi, ctx)
-            F = self._cb_full_ff(x, phi, ctx)
-            return np.where(left, -F, R) / unit
+        def sf_at(idx: Any) -> Callable[..., Any]:
+            xi, left_i, unit_i = (
+                np.atleast_1d(a)[idx] for a in (x, left, unit)
+            )
 
-        n_points = np.size(x) if elementwise else None
-        var = self._cb_delta_var(sf_func, ctx, n_points)
-        sd_R = unit * self._cb_sd(var, x, "sf")
+            def sf_func(phi: npt.NDArray) -> Any:
+                R = self._cb_full_sf(xi, phi, ctx)
+                F = self._cb_full_ff(xi, phi, ctx)
+                return np.where(left_i, -F, R) / unit_i
+
+            return sf_func
+
+        if elementwise:
+            # Each point's gradient is its own parameters' already.
+            var = self._cb_delta_var(sf_at(slice(None)), ctx, np.size(x))
+        else:
+            var = self._cb_delta_var_each(sf_at, ctx, np.size(x))
+        # Where R or F is below the normal range the bound is the edge it
+        # is at (sf_link_bound), whatever its variance.
+        var = np.where(small < np.finfo(float).tiny, 0.0, var)
+        sd_R = unit * self._cb_sd(var, x, on, ctx.cov)
         # On the family's scale (surpyval.utils.linalg.sf_link_bound, which
         # the degradation and regression bands share). At the boundary (R =
         # 0 or 1, e.g. t <= gamma) the transform degenerates to 0/0; the
         # bound there is the boundary itself (#256).
         R_cb = sf_link_bound(
-            R_hat, sd_R, alpha_ci, bound, cb_link(self.dist), ff_hat=F_hat
+            R_hat, sd_R, alpha_ci, bound, cb_link(self.dist), F_hat, on=to
         )
+        if to != "sf":
+            # (+ 0.0: -log_ndtr(inf), at F = 0, is -0.0)
+            return R_cb + 0.0
         # [upper, lower] on R for a two-sided bound: the layout the public
         # cb method expects (it flips it for sf).
         return R_cb[..., ::-1] if bound == "two-sided" else R_cb
+
+    def _cb_full_Hf(self, x: Any, phi: npt.NDArray, ctx: Any) -> Any:
+        """The cumulative hazard, ``-log _cb_full_sf``: the distribution's
+        own ``Hf`` for a plain model (finite far past where its survival
+        underflows), plus ``-log(1 - f0)`` for a zero-inflated one; else
+        (a limited failure population) from the failure probability where
+        it is below 1/2 and the survival elsewhere (which it keeps at
+        least ``1 - p``)."""
+        if not self.lfp:
+            core, _, f0 = self._cb_unpack(phi, ctx)
+            s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
+            xg = x - self.gamma
+            below = xg < s0
+            xg = np.where(below, s0 + 1e-10, xg)
+            H = np.where(below, 0.0, self.dist.Hf(xg, *core))
+            if not self.zi:
+                return H
+            # Zero inflation alone: -log(1 - f0) + H from 0 on, finite
+            # where sf underflows, as ``Hf`` (#710).
+            return np.where(x < 0, 0.0, -np.log1p(-f0) + H)
+        F = self._cb_full_ff(x, phi, ctx)
+        R = self._cb_full_sf(x, phi, ctx)
+        return np.where(F < 0.5, -np.log1p(-F), -np.log(R))
+
+    def _cb_Hf_bound(
+        self, t: Any, ctx: Any, alpha_ci: float, bound: str
+    ) -> Any:
+        """The Wald bound on the cumulative hazard, ``[lower, upper]`` for
+        a two-sided bound.
+
+        For a family whose band scale is ``log(-log R)`` (the Weibull,
+        Exponential, Rayleigh and Gumbel) the band is the bound on ``log
+        H`` itself, the same bound as the ``sf`` band's, computed from the
+        cumulative hazard so that it stays finite, and contains the
+        estimate, far past where the survival underflows (#652: it was
+        ``[inf, inf]`` at ``Hf = 85302``). For the other families it is
+        ``-log`` of the ``sf`` band, except where the survival has
+        underflowed to 0, or the band's end does: there, too, it is the
+        bound on ``log H``.
+        """
+        t = np.atleast_1d(t)
+        H_hat = np.asarray(self._cb_full_Hf(t, ctx.phi_hat, ctx), dtype=float)
+        R_hat = np.asarray(self._cb_full_sf(t, ctx.phi_hat, ctx), dtype=float)
+        finite = np.isfinite(H_hat) & (H_hat > 0)
+        if cb_link(self.dist) == "loglog":
+            on_log_H = finite
+        else:
+            on_log_H = finite & (R_hat == 0)
+        shape = t.shape + ((2,) if bound == "two-sided" else ())
+        cb = np.full(shape, np.nan)
+        rest = ~on_log_H
+        if rest.any():
+            cb[rest] = self._cb_sf_bound(
+                t[rest], ctx, alpha_ci, bound, on="Hf", to="Hf"
+            )
+            # The survival band's end underflowed: Hf's is inf there.
+            ends = np.reshape(cb, (len(t), -1))
+            on_log_H = on_log_H | (finite & np.any(ends == np.inf, axis=1))
+        if on_log_H.any():
+            cb[on_log_H] = self._cb_log_Hf_bound(
+                t[on_log_H], H_hat[on_log_H], ctx, alpha_ci, bound
+            )
+        return cb
+
+    def _cb_log_Hf_bound(
+        self, t: Any, H_hat: Any, ctx: Any, alpha_ci: float, bound: str
+    ) -> Any:
+        """The Wald bound on ``log H`` at the times ``t`` (where the
+        cumulative hazard ``H_hat`` is finite and positive), back on the
+        scale of ``H``."""
+
+        def func_at(idx: Any) -> Callable[..., Any]:
+            ti = t[idx]
+            return lambda phi: np.log(self._cb_full_Hf(ti, phi, ctx))
+
+        var = self._cb_delta_var_each(func_at, ctx, len(t))
+        sd = self._cb_sd(var, t, "Hf", ctx.cov)
+        alpha, signs = bound_signs(alpha_ci, bound)
+        out = H_hat[:, None] * np.exp(signs * z(1 - alpha) * sd[:, None])
+        return out if bound == "two-sided" else out[:, 0]
 
     def _cb_rate_bound(
         self, t: Any, ctx: Any, alpha_ci: float, bound: str, on: str
@@ -2680,7 +3278,10 @@ class Parametric(
         The hazard is the model's own: ``df(x) / sf(x)``, or for a discrete
         distribution ``df(k) / sf(k - 1)`` (#414). Where the rate is 0 --
         below the (offset) support, or at a discrete ``k`` with no mass --
-        both bounds are 0 (#413).
+        both bounds are 0 (#413). A zero-inflated model's density and
+        hazard at 0 are both the point mass ``f0``, a probability bounded on
+        the logit scale from ``f0``'s variance (they were bounded by the
+        continuous part's, ``[0, 0]`` for a Weibull, #728).
         """
         s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
         xg = t - self.gamma
@@ -2688,25 +3289,52 @@ class Parametric(
         # Evaluated just inside the support there (and then replaced), so
         # a negative argument cannot put a nan in the Jacobian (#256).
         xg = np.where(below, s0 + 1e-10, xg)
+        # A continuous model's hazard is the distribution's own, accurate
+        # far in the tail, where df / sf is 0 / 0 (#652). Zero inflation
+        # cancels from it (from 0 on, as ``hf``); a limited failure
+        # population's survival stays above 1 - p.
+        own_hazard = not (self.dist.discrete or self.lfp)
+        # A zero-inflated model's point mass at 0: its density there is
+        # the mass f0 and its hazard f0 / sf(0-) = f0, as ``df`` and ``hf``.
+        atom = (t == 0) & bool(self.zi and self.f0 != 0)
 
-        def density(phi: npt.NDArray) -> Any:
-            core, p, f0 = self._cb_unpack(phi, ctx)
-            base = np.where(below, 0.0, self.dist.df(xg, *core))
-            return (p - f0) * base
+        def func_at(idx: Any) -> Callable[..., Any]:
+            ti, xgi, below_i, atom_i = (
+                np.atleast_1d(a)[idx] for a in (t, xg, below, atom)
+            )
 
-        if on == "hf":
+            def density(phi: npt.NDArray) -> Any:
+                core, p, f0 = self._cb_unpack(phi, ctx)
+                base = np.where(below_i, 0.0, self.dist.df(xgi, *core))
+                return np.where(atom_i, f0, (p - f0) * base)
+
+            if on == "df":
+                return density
+            if own_hazard:
+
+                def hazard(phi: npt.NDArray) -> Any:
+                    core, _, f0 = self._cb_unpack(phi, ctx)
+                    base = np.where(below_i, 0.0, self.dist.hf(xgi, *core))
+                    return np.where(atom_i, f0, base)
+
+                return hazard
             # The survival that conditions the hazard: to the step before
-            # for a discrete distribution, as its hf is defined.
-            t_sf = t - 1.0 if self.dist.discrete else t
+            # for a discrete distribution, as its hf is defined, and to
+            # just before 0 (1) at the point mass there.
+            t_sf = ti - 1.0 if self.dist.discrete else ti
 
-            def func(phi: npt.NDArray) -> Any:
-                return density(phi) / self._cb_full_sf(t_sf, phi, ctx)
+            def ratio(phi: npt.NDArray) -> Any:
+                f0 = self._cb_unpack(phi, ctx)[2]
+                rate = density(phi) / self._cb_full_sf(t_sf, phi, ctx)
+                return np.where(atom_i, f0, rate)
 
-        else:
-            func = density
+            return ratio
 
-        g_hat = func(ctx.phi_hat)
-        sd_g = self._cb_sd(self._cb_delta_var(func, ctx), t, on)
+        g_hat = func_at(slice(None))(ctx.phi_hat)
+        var = self._cb_delta_var_each(func_at, ctx, np.size(t))
+        # A rate of 0 is bounded by 0 (below), whatever its variance.
+        var = np.where(g_hat == 0.0, 0.0, var)
+        sd_g = self._cb_sd(var, t, on, ctx.cov)
 
         if bound == "two-sided":
             diff = z(alpha_ci / 2) * np.array([1.0, -1.0]).reshape(2, 1)
@@ -2715,15 +3343,18 @@ class Parametric(
         else:
             diff = z(alpha_ci)
 
-        with np.errstate(divide="ignore", invalid="ignore"):
-            if self.dist.discrete:
-                # A discrete hazard and mass are probabilities: the logit
-                # scale keeps their bounds in [0, 1], as for sf.
-                exponent = -diff * sd_g / (g_hat * (1 - g_hat))
-                cb = g_hat / (g_hat + (1 - g_hat) * np.exp(exponent))
-                cb = np.where(np.broadcast_to(g_hat == 1.0, cb.shape), 1.0, cb)
-            else:
+        # A discrete hazard and mass are probabilities, as is the point
+        # mass at 0 of a zero-inflated model: the logit scale keeps their
+        # bounds in [0, 1], as for sf.
+        logit = np.broadcast_to(atom | bool(self.dist.discrete), np.shape(t))
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            if not logit.all():
                 cb = g_hat * np.exp(diff * sd_g / g_hat)
+            if logit.any():
+                exponent = -diff * sd_g / (g_hat * (1 - g_hat))
+                on_logit = g_hat / (g_hat + (1 - g_hat) * np.exp(exponent))
+                on_logit = np.where(g_hat == 1.0, 1.0, on_logit)
+                cb = on_logit if logit.all() else np.where(logit, on_logit, cb)
         # Neither scale has a point at a rate of 0: the bounds are 0.
         cb = np.where(np.broadcast_to(g_hat == 0.0, cb.shape), 0.0, cb)
         if bound == "two-sided":
@@ -2819,6 +3450,7 @@ class Parametric(
         >>> data["x_censored"]
         array([50., 60.])
         """
+        check_alpha_ci(alpha_ci)
         self._require_data("get_plot_data()")
         cb_func: Callable[[Any], Any] | None
         if (
@@ -2828,9 +3460,15 @@ class Parametric(
         ):
 
             def _cb_func(x_model: npt.NDArray) -> Any:
-                return self.cb(
-                    x_model, on="ff", alpha_ci=alpha_ci, method=method
-                )
+                # (the plot's band is drawn as the bound is, and an offset
+                # model's caveat is the bound's to give, not the plot's)
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore", message=_OFFSET_WALD_START
+                    )
+                    return self.cb(
+                        x_model, on="ff", alpha_ci=alpha_ci, method=method
+                    )
 
             cb_func = _cb_func
         else:
@@ -2954,6 +3592,7 @@ class Parametric(
         ['North', 'South']
         >>> plt.close(fig)
         """
+        check_alpha_ci(alpha_ci)
         if ax is None:
             import matplotlib.pyplot as plt
 

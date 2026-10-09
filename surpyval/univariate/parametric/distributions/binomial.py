@@ -13,7 +13,6 @@ from surpyval.univariate.parametric.parametric import draw_state
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
-    lfp_p_renamed,
     reject_structural_params,
 )
 from surpyval.utils.autograd_gamma_compat import betainccln, betaincln
@@ -72,12 +71,12 @@ class Binomial_(DiscreteParametricFitter):
 
     It is the recurrent (repeated-trials) counterpart of the
     :class:`Bernoulli` distribution, which is the special case ``n = 1``.
-    The two agree exactly on the probability mass there. Their survival
-    functions are offset by one, which is a convention rather than a
-    disagreement: this class follows the package's discrete rule
-    :math:`R(k) = P(K > k)`, while Bernoulli uses :math:`P(X \geq x)` so
-    that ``R(0) = 1`` and ``R(1) = p``. Hence
-    ``Bernoulli.sf(x, p) == Binomial.sf(x - 1, 1, p)``.
+    The two agree exactly there, every function included: both follow
+    the package's discrete rule :math:`R(k) = P(K > k)`, so
+    ``Bernoulli.sf([0, 1], 0.3)`` and ``Binomial.sf([0, 1], 1, 0.3)`` are
+    both ``[0.3, 0]``, and ``Bernoulli.sf(x, p) == Binomial.sf(x, 1, p)``
+    with no offset (Bernoulli's survival function was :math:`P(X \geq x)`
+    before 0.22, #344).
 
     The distribution is parameterised by ``n`` (the number of trials, a
     positive integer) and ``p`` (the per-trial event probability). Because
@@ -85,6 +84,14 @@ class Binomial_(DiscreteParametricFitter):
     the gradient-based MLE machinery; instead ``fit`` uses the closed-form
     maximum likelihood estimate of ``p`` for a known number of trials, in the
     same spirit as :class:`Bernoulli`.
+
+    Examples
+    --------
+    >>> from surpyval import Bernoulli, Binomial
+    >>> Binomial.sf([0, 1], 1, 0.3)
+    array([0.3, 0. ])
+    >>> Bernoulli.sf([0, 1], 0.3)
+    array([0.3, 0. ])
     """
 
     def __init__(self, name: str) -> None:
@@ -576,6 +583,80 @@ class Binomial_(DiscreteParametricFitter):
         self._set_support(model, False)
         return model
 
+    def fit_from_df(
+        self,
+        df: Any,
+        x_col: str | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        n_trials_col: str | None = None,
+        **fit_options: Any,
+    ) -> Parametric:
+        """
+        Fit to the counts of events held in the columns of a
+        :class:`pandas.DataFrame`, as :meth:`fit` does to arrays.
+
+        Parameters
+        ----------
+        df : DataFrame
+            The data, one experiment (batch) per row.
+        x_col : str
+            The column of the number of events in each row.
+        c_col : str, optional
+            The column of censoring flags (every one must be 0).
+        n_col : str, optional
+            The column of the count (multiplicity) of each row.
+        n_trials_col : str, optional
+            The column of the number of trials in each row, for batches
+            of different sizes (#626); or pass one number for every row as
+            ``n_trials=``. One of the two is needed.
+        fit_options : dict, optional
+            Every other option of :meth:`fit`, passed to it unchanged.
+
+        Returns
+        -------
+        model : Parametric
+            The model :meth:`fit` returns.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> from surpyval import Binomial
+        >>> df = pd.DataFrame({"failed": [1, 0, 3], "tested": [20, 50, 80]})
+        >>> lots = Binomial.fit_from_df(
+        ...     df, x_col="failed", n_trials_col="tested"
+        ... )
+        >>> lots.params.round(4)
+        array([  nan, 0.0267])
+        """
+        from surpyval.utils.dataframe import frame_column, require_frame
+
+        df = require_frame(df)
+        if isinstance(fit_options.get("n_trials"), str):
+            raise ValueError(
+                f"n_trials={fit_options['n_trials']!r} is a column label: "
+                "name the column of trials with `n_trials_col`"
+            )
+        if n_trials_col is not None:
+            if "n_trials" in fit_options:
+                raise ValueError(
+                    "Pass the number of trials as `n_trials` (one number "
+                    "for every row) or as the column `n_trials_col`, not "
+                    "both"
+                )
+            fit_options["n_trials"] = frame_column(
+                df, n_trials_col, "n_trials_col"
+            )
+        elif "n_trials" not in fit_options:
+            raise ValueError(
+                "The Binomial needs the number of trials: name its column "
+                "with `n_trials_col`, or pass one number for every row as "
+                "`n_trials`"
+            )
+        return super().fit_from_df(
+            df, x_col=x_col, c_col=c_col, n_col=n_col, **fit_options
+        )
+
     def _probability_cb(
         self,
         model: Parametric,
@@ -614,14 +695,6 @@ class Binomial_(DiscreteParametricFitter):
             n = float(np.max(np.asarray(model._n_trials, dtype=float)))
         model.support = np.array([-1, n + 1])
 
-    # Narrower than ParametricFitter.from_params, which takes
-    # (params, gamma, p, f0). Unlike `fit`, this one is not resolved
-    # by the OptimisedFitMixin split: every distribution has a
-    # from_params. It is a parameter *rename* -- the base's `params`
-    # became `params` -- so positional calls work and keyword calls
-    # raise. Fixing it means renaming
-    # back, with a deprecation alias, and is tracked separately.
-    @lfp_p_renamed
     def from_params(
         self,
         params: npt.ArrayLike,

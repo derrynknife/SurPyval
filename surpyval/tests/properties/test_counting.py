@@ -115,6 +115,16 @@ def test_competing_risks_cox_row_order(data):
     assert status == status2, (ref, got)
     if status != "ok":
         return
+    # Where a cause's partial likelihood has no finite maximum (a
+    # covariate separates its events from the rest of their risk sets) the
+    # fit warns so, and its coefficient is wherever Newton's method
+    # stopped on the way to infinity, which round-off in a reordered sum
+    # moves: on four rows tied at 0.5, causes a, a, a, b and z 0, 1, 0, 0,
+    # cause b's coefficient stopped at -36.4 or -37.7 and its incidence
+    # at z = 0.5 at 2.4e-9 or 1.2e-9 (#714). Only the verdict is promised.
+    assert ref.maximum == got.maximum, (ref.maximum, got.maximum)
+    if ref.maximum == "no finite maximum":
+        return
     x = query_points(d)
     Z = np.full((x.size, 1), 0.5)
     for e in causes:

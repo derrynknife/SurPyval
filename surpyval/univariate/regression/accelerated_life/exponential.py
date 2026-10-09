@@ -30,7 +30,9 @@ class InverseExponential_(LifeModel):
     array([22026.46579481])
     """
 
+    kelvin_stress_columns = (0,)
     phi_takes_rows = True
+    log_scale_parameters = ("b",)
 
     def __init__(self) -> None:
         super().__init__(
@@ -40,9 +42,11 @@ class InverseExponential_(LifeModel):
         )
 
     def phi(self, Z: ndarray, *params: float) -> ndarray:
-        a = params[0]
-        b = params[1]
-        return 1.0 / (b * np.exp(a / Z))
+        # One exponent, which e^(a / Z) alone can overflow (#634)
+        return self._phi_from_log_life(Z, params)
+
+    def log_life(self, Z: ndarray, *params: float) -> ndarray:
+        return -(params[1] + params[0] / Z)
 
     def phi_init(self, life: float, Z: ndarray) -> list[float]:
         Z = Z.flatten()
@@ -84,7 +88,9 @@ class ExponentialLifeModel_(LifeModel):
     array([50687.9,  5364.6])
     """
 
+    kelvin_stress_columns = (0,)
     phi_takes_rows = True
+    log_scale_parameters = ("b",)
 
     def __init__(self) -> None:
         super().__init__(
@@ -94,9 +100,11 @@ class ExponentialLifeModel_(LifeModel):
         )
 
     def phi(self, Z: ndarray, *params: float) -> ndarray:
-        a = params[0]
-        b = params[1]
-        return b * np.exp(a / Z)
+        # One exponent, which e^(a / Z) alone can overflow (#634)
+        return self._phi_from_log_life(Z, params)
+
+    def log_life(self, Z: ndarray, *params: float) -> ndarray:
+        return params[1] + params[0] / Z
 
     def phi_init(self, life: float, Z: ndarray) -> list[float]:
         Z = Z.flatten()

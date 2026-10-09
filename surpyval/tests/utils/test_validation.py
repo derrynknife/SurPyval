@@ -267,3 +267,107 @@ def test_a_column_of_the_wrong_length_has_one_message(kwargs, name):
         ValueError, match=f"^{name} must be the same length as 'x'$"
     ):
         sp.Weibull.fit([1.0, 2.0, 3.0], **kwargs)
+
+
+def _every_bound():
+    """One call per method that takes ``alpha_ci`` (#647), recurrent
+    models aside, as a function of the level."""
+
+    def model(name):
+        return fitted(CASE_BY_NAME[name])
+
+    Z1 = [[0.5, 0.5]]
+    return {
+        "Parametric.cb": lambda a: _weibull().cb([2.0], alpha_ci=a),
+        "Parametric.param_cb": lambda a: _weibull().param_cb(
+            "beta", alpha_ci=a
+        ),
+        "Parametric.mean_cb": lambda a: _weibull().mean_cb(alpha_ci=a),
+        "Parametric.cb[lr]": lambda a: _weibull().cb(
+            [2.0], alpha_ci=a, method="lr"
+        ),
+        "NonParametric.cb": lambda a: sp.KaplanMeier.fit(X, C).cb(
+            [2.0], alpha_ci=a
+        ),
+        "NonParametric.quantile_cb": lambda a: sp.KaplanMeier.fit(
+            X, C
+        ).quantile_cb(0.5, alpha_ci=a),
+        "NonParametric.rmst": lambda a: sp.KaplanMeier.fit(X, C).rmst(
+            5.0, alpha_ci=a
+        ),
+        "success_run": lambda a: sp.success_run(5, alpha_ci=a),
+        "MixtureModel.param_cb": lambda a: model("MixtureModel").param_cb(
+            "w_0", alpha_ci=a
+        ),
+        "RoystonParmar.cb": lambda a: model("RoystonParmar").cb(
+            [2.0], alpha_ci=a
+        ),
+        "regression cb": lambda a: model("WeibullPH").cb(
+            [2.0], Z1, alpha_ci=a
+        ),
+        "regression param_cb": lambda a: model("WeibullPH").param_cb(
+            "coef_0", alpha_ci=a
+        ),
+        "regression summary": lambda a: model("WeibullPH").summary(alpha_ci=a),
+        "CoxPH.summary": lambda a: model("CoxPH").summary(alpha_ci=a),
+        "FineGray.summary": lambda a: model("FineGray").summary(alpha_ci=a),
+        "Frailty.param_cb": lambda a: model("WeibullFrailty").param_cb(
+            "theta", alpha_ci=a
+        ),
+        "Copula.param_cb": lambda a: model("ClaytonCopula").param_cb(
+            "theta", alpha_ci=a
+        ),
+        "Copula.cb": lambda a: model("ClaytonCopula").cb(
+            [[1.0, 1.0]], alpha_ci=a
+        ),
+        "DegradationModel.cb": lambda a: model(
+            "DegradationAnalysis[linear]"
+        ).cb([10.0], alpha_ci=a),
+        "DestructiveDegradation.cb": lambda a: model(
+            "DestructiveDegradation"
+        ).cb([10.0], alpha_ci=a),
+    }
+
+
+@pytest.mark.parametrize("name", sorted(_every_bound()))
+@pytest.mark.parametrize("alpha_ci", [1.5, -0.1, 0.0, 1.0, float("nan")])
+def test_647_every_bound_refuses_a_level_outside_zero_one(name, alpha_ci):
+    # They gave reversed (1.5) or nan (-0.1) bounds in silence, or a
+    # root-finder's error (1.0, method="lr").
+    with pytest.raises(
+        ValueError, match=r"^'alpha_ci' must be strictly between 0 and 1"
+    ):
+        _every_bound()[name](alpha_ci)
+
+
+def test_647_the_value_is_shown_plainly():
+    with pytest.raises(ValueError, match=r"got 1\.5$"):
+        _weibull().cb([2.0], alpha_ci=np.float64(1.5))
+
+
+def test_647_a_level_above_one_half_warns_once_at_the_caller():
+    import warnings
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    model = _weibull()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model.cb([2.0], alpha_ci=0.95)
+        # plot calls get_plot_data and cb, each checking the level
+        model.plot(alpha_ci=0.9)
+        sp.KaplanMeier.fit(X, C).cb([2.0], alpha_ci=0.6)
+    level = [w for w in caught if "significance level" in str(w.message)]
+    assert [str(w.message) for w in level] == [
+        "alpha_ci is the significance level: alpha_ci=0.95 gives a 5% "
+        "interval; for a 95% interval pass alpha_ci=0.05.",
+        "alpha_ci is the significance level: alpha_ci=0.9 gives a 10% "
+        "interval; for a 90% interval pass alpha_ci=0.1.",
+        "alpha_ci is the significance level: alpha_ci=0.6 gives a 40% "
+        "interval; for a 60% interval pass alpha_ci=0.4.",
+    ]
+    assert {w.filename for w in level} == {__file__}
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model.cb([2.0], alpha_ci=0.5)

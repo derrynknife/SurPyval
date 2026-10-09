@@ -7,7 +7,8 @@ same model for the same data (principle 14). Every DataFrame entry point
 names a column argument after the ``fit`` argument it fills, with a
 ``_col`` suffix (``_cols`` for a list of columns; principle 21):
 ``x_col``, ``c_col``, ``n_col``, ``xl_col``, ``xr_col``, ``tl_col``,
-``tr_col``, ``i_col``, ``e_col`` and ``Z_cols``.
+``tr_col``, ``i_col``, ``e_col`` and ``Z_cols`` (and the Binomial's
+``n_trials_col``, its trials per row).
 
 The columns are read as they are and handed to ``fit``, which does all
 the checking: a missing value is treated exactly as the same value in an
@@ -31,6 +32,10 @@ if TYPE_CHECKING:
     import pandas as pd
 
 from surpyval.utils import is_missing_event, refuse_time_values
+from surpyval.utils.removed_names import (
+    column_arguments,
+    removed_message,
+)
 
 
 class fitter_method:
@@ -81,6 +86,36 @@ def frame_column(
     return column.to_numpy()
 
 
+def check_columns(df: pd.DataFrame, **named: Any) -> None:
+    """Refuse a column argument naming no column of ``df``, with the
+    message of :func:`frame_column` (#571, #663): ``check_columns(df,
+    x_col="time", c_col=None, Z_cols=["age", "zz"])``. An argument left
+    at ``None`` is skipped; a list (``Z_cols``) is checked entry by
+    entry."""
+    columns = list(df.columns)
+    for arg, name in named.items():
+        if name is None:
+            continue
+        if isinstance(name, (list, tuple)):
+            unknown = [k for k in name if k not in df.columns]
+            if len(unknown) == 1:
+                raise ValueError(
+                    f"{arg} entry {unknown[0]!r} is not a column of the "
+                    f"DataFrame; its columns are {columns}"
+                )
+            if unknown:
+                listed = ", ".join(repr(k) for k in unknown)
+                raise ValueError(
+                    f"{arg} entries {listed} are not columns of the "
+                    f"DataFrame; its columns are {columns}"
+                )
+        elif name not in df.columns:
+            raise ValueError(
+                f"{arg}={name!r} is not a column of the DataFrame; its "
+                f"columns are {columns}"
+            )
+
+
 def frame_columns(
     df: pd.DataFrame, names: Any, arg: str, time: bool = False
 ) -> npt.NDArray:
@@ -96,8 +131,35 @@ def refuse_column_names(options: Mapping[str, Any], *names: str) -> None:
     for name in names:
         if name in options:
             raise TypeError(
+                removed_message(
+                    "fit_from_df() got an unexpected keyword argument "
+                    f"'{name}'",
+                    (f"name the column with '{name}_col'", "0.23"),
+                )
+            )
+
+
+def refuse_recurrent_column_names(
+    options: Mapping[str, Any], *extra: str
+) -> None:
+    """
+    Refuse a recurrent ``fit_from_df`` column passed by its ``fit`` name
+    (``c="ev"`` for ``c_col="ev"``, #658): it reached ``fit`` as a scalar
+    and failed there with a bare ``IndexError``. A number for ``tl`` /
+    ``tr`` is still passed on (``fit`` takes a scalar window), and only a
+    column label there is refused. ``extra`` are further per-row
+    arguments of the host's ``fit`` (``"Z"`` for the regressions, named
+    ``Z_cols`` here).
+    """
+    refuse_column_names(options, "x", "i", "c", "n")
+    for name in ("tl", "tr"):
+        if isinstance(options.get(name), str):
+            refuse_column_names(options, name)
+    for name in extra:
+        if name in options:
+            raise TypeError(
                 f"fit_from_df() got an unexpected keyword argument "
-                f"'{name}'; name the column with '{name}_col'"
+                f"'{name}'; name the columns with '{name}_cols'"
             )
 
 
@@ -318,6 +380,7 @@ class RecurrentDataFrameMixin:
     row per event (or end of observation) and a column of unit ids."""
 
     @fitter_method
+    @column_arguments("x", "i", "c", "n")
     def fit_from_df(
         self,
         df: pd.DataFrame,
@@ -371,6 +434,11 @@ class RecurrentDataFrameMixin:
         ValueError
             If ``df`` is not a DataFrame, a name is not one of its columns,
             or a column is given that :meth:`fit` has no argument for.
+        TypeError
+            If a column is named with :meth:`fit`'s argument (``c=`` for
+            ``c_col=``, likewise ``x``, ``i``, ``n``, and ``tl`` / ``tr``
+            given a column label); a number for ``tl`` / ``tr`` is passed
+            on to :meth:`fit`.
 
         Examples
         --------
@@ -388,6 +456,7 @@ class RecurrentDataFrameMixin:
         array([260.1738,   1.1522])
         """
         df = require_frame(df)
+        refuse_recurrent_column_names(fit_options)
         columns = {
             "x": x_col,
             "i": i_col,
@@ -440,6 +509,7 @@ class RecurrentRegressionDataFrameMixin:
     a column of unit ids and covariate columns."""
 
     @fitter_method
+    @column_arguments("x", "i", "c", "n")
     def fit_from_df(
         self,
         df: pd.DataFrame,
@@ -494,6 +564,9 @@ class RecurrentRegressionDataFrameMixin:
         ValueError
             If ``df`` is not a DataFrame or a name is not one of its
             columns.
+        TypeError
+            If a column is named with :meth:`fit`'s argument (``c=`` for
+            ``c_col=``, ``Z=`` for ``Z_cols=``, ...).
 
         Examples
         --------
@@ -511,6 +584,7 @@ class RecurrentRegressionDataFrameMixin:
         >>> model.coeffs.round(4)
         array([0.5849])
         """
+        refuse_recurrent_column_names(fit_options, "Z")
         columns = {
             "i": i_col,
             "c": c_col,
@@ -528,6 +602,7 @@ class RegressionDataFrameMixin:
     columns or a formula, and the univariate time columns."""
 
     @fitter_method
+    @column_arguments("x", "c", "n", "xl", "xr", "tl", "tr")
     def fit_from_df(
         self,
         df: pd.DataFrame,

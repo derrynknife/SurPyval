@@ -54,8 +54,6 @@ _WITH_PARAMS = [
         "RandomSurvivalForest",
         "CompetingRisks",
         "ParametricCompetingRisks",
-        "CompetingRisksProportionalHazards",
-        "FineGrayModel",
         "NonParametricCounting",
         "CauseSpecificMCF",
         "CauseSpecificNHPP",

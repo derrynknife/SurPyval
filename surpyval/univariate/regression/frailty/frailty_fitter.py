@@ -50,8 +50,10 @@ from surpyval.utils import (
     xcnt_handler,
 )
 from surpyval.utils.covariates import coefficient_floor, coefficient_names
+from surpyval.utils.dataframe import check_columns
 from surpyval.utils.fitter_repr import FitterRepr, baseline_name
 from surpyval.utils.linalg import numerical_hessian
+from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .._aliasing import covariate_columns, expand, fit_columns
@@ -303,6 +305,12 @@ def grouped_data(x: Any, Z: Any, c: Any, n: Any, groups: Any) -> tuple[
     Only observed (c=0) and right-censored (c=1) rows are taken. Rows with
     a missing or infinite covariate, or a missing group label, are dropped
     with a warning; at least one event and two groups are required.
+
+    The rows are returned sorted by every column (time, censoring,
+    covariates, group and count, as ``canonical_order`` sorts), the order
+    the fit runs in, so that it is the same to the last digit whatever
+    order they are given in, as for the other parametric regressions
+    (#746).
     """
     # Through the data handler first, in the caller's row order: the
     # documented ragged form ``[10, [11, 13], ...]`` is not a
@@ -379,6 +387,13 @@ def grouped_data(x: Any, Z: Any, c: Any, n: Any, groups: Any) -> tuple[
             "group; at least two groups are required."
         )
 
+    # (``canonical_order``'s keys, the group by its place among the
+    # sorted labels, ``inv``, after the covariates, and the count last)
+    columns = np.column_stack([Zm, inv]) if Z is not None else inv[:, None]
+    order = np.lexsort([w, *columns.T[::-1].astype(float), c, x])
+    x, c, w, inv = (a[order] for a in (x, c, w, inv))
+    if Z is not None:
+        Zm = Zm[order]
     return x, (Zm if Z is not None else None), c, w, labels, inv
 
 
@@ -731,6 +746,7 @@ class FrailtyFitter(FitterRepr):
         model._fit_data = {"x": x, "c": c, "w": w, "Z": Zc, "inv": inv}
         return model
 
+    @column_arguments("x", "c", "n")
     def fit_from_df(
         self,
         df: pd.DataFrame,
@@ -773,6 +789,9 @@ class FrailtyFitter(FitterRepr):
         FrailtyModel
             The fitted model.
         """
+        check_columns(
+            df, x_col=x_col, c_col=c_col, n_col=n_col, group_col=group_col
+        )
         x = df[x_col].values
         c = None if c_col is None else df[c_col].values
         n = None if n_col is None else df[n_col].values

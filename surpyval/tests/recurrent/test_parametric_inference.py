@@ -78,9 +78,11 @@ def test_mse_fit_has_no_likelihood():
     # must raise rather than report a meaningless AIC.
     x = exponential_event_times()
     model = CrowAMSAA.fit(x, how="MSE")
-    for attr in ("log_likelihood", "aic", "bic"):
+    with pytest.raises(ValueError, match="fitted from data"):
+        model.log_likelihood
+    for name in ("aic", "bic"):
         with pytest.raises(ValueError, match="fitted from data"):
-            getattr(model, attr)
+            getattr(model, name)()
 
 
 def test_from_params_has_no_likelihood():
@@ -100,7 +102,7 @@ def _regression_data():
 
 def test_nhpp_regression_information_criteria():
     x, i, c, Z = _regression_data()
-    model = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=CrowAMSAA)
+    model = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, baseline=CrowAMSAA)
     k = model._mle.size
     n = model._n_obs
     ll = model.log_likelihood
@@ -226,7 +228,7 @@ def test_plot_confidence_band():
 
 def test_regression_param_cb():
     x, i, c, Z = _regression_data()
-    model = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=CrowAMSAA)
+    model = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, baseline=CrowAMSAA)
     # Positive base-rate parameter: log-Wald bounds stay positive.
     lower, upper = model.param_cb("alpha")
     assert 0 < lower < model.params[0] < upper
@@ -242,7 +244,7 @@ def test_regression_cif_cb_brackets_cif():
     t = np.array([5.0, 10.0, 20.0])
     for model in (
         ProportionalIntensityHPP.fit(x, Z, i=i, c=c),
-        ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=CrowAMSAA),
+        ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, baseline=CrowAMSAA),
     ):
         cb = model.cif_cb(t, Z_0)
         cif = model.cif(t, Z_0)
@@ -315,8 +317,9 @@ def test_bic_counts_interval_events():
     assert np.isfinite(model.aic())
 
 
-def test_572_aic_and_bic_are_methods_and_the_old_spelling_warns():
-    # They were properties here and methods everywhere else
+def test_572_aic_and_bic_are_methods():
+    # They were properties here and methods everywhere else; the property
+    # spelling, deprecated in v0.23, is gone in v0.24.
     import warnings
 
     x = np.cumsum(np.random.default_rng(0).exponential(10, 20))
@@ -326,10 +329,10 @@ def test_572_aic_and_bic_are_methods_and_the_old_spelling_warns():
         aic, bic = model.aic(), model.bic()
         assert type(aic) is float and type(bic) is float
         assert model.neg_ll() == -model.log_likelihood
-    with pytest.warns(DeprecationWarning, match=r"use 'aic\(\)'"):
-        assert round(model.aic, 6) == round(aic, 6)
-    with pytest.warns(DeprecationWarning, match=r"use 'bic\(\)'"):
-        assert model.bic < bic + 1
+    with pytest.raises(TypeError):
+        model.aic + 1
+    with pytest.raises(TypeError):
+        model.bic < bic + 1
 
 
 # ----------------------------------------------------------------------------
@@ -536,3 +539,22 @@ def test_578_regression_iif_cb_brackets_iif():
     hpp = ProportionalIntensityHPP.fit(x, Z, i, c)
     ratio = hpp.iif_cb(t, [0.0]) / hpp.iif(t, [0.0])[:, None]
     np.testing.assert_allclose(ratio, ratio[0] * np.ones((3, 1)))
+
+
+def test_666_intensity_and_proportional_intensity_models_have_summary():
+    from surpyval.recurrent import ProportionalIntensityHPP
+
+    x = [3, 8, 12, 15, 20, 4, 6, 9, 11, 13, 20]
+    i = [1] * 5 + [2] * 6
+    c = [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1]
+    model = CrowAMSAA.fit(x, i, c)
+    table = model.summary(alpha_ci=0.1)
+    assert list(table.index) == model.parameter_names
+    assert list(table.columns) == ["estimate", "se", "lower 90%", "upper 90%"]
+    np.testing.assert_allclose(table["se"], model.standard_errors())
+    np.testing.assert_allclose(
+        table.loc["beta", ["lower 90%", "upper 90%"]],
+        model.param_cb("beta", alpha_ci=0.1),
+    )
+    pi = ProportionalIntensityHPP.fit(x, [[0.0]] * 5 + [[1.0]] * 6, i, c)
+    assert list(pi.summary().index) == pi.parameter_names

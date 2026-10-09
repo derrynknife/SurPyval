@@ -217,3 +217,20 @@ def test_cs_before_the_offset(dist, params):
     value = no_warnings(model.cs, 5, 2)
     assert value == pytest.approx(model.sf(7) / model.sf(2))
     assert value < 1
+
+
+def test_cs_stays_exact_where_the_survival_to_given_underflows():
+    # #660: the ratio of sf was nan (silently) where sf(given) is 0; it is
+    # now taken from the cumulative hazards, nan only where Hf(given) is inf.
+    exact = np.exp(-((1001 / 100) ** 3 - (1000 / 100) ** 3))
+    model = W.from_params([100.0, 3.0])
+    assert model.sf(1000) == 0
+    assert no_warnings(model.cs, 1, 1000) == pytest.approx(exact, rel=1e-9)
+    assert no_warnings(W.cs, 1, 1000, 100.0, 3.0) == pytest.approx(exact)
+    assert np.isnan(model.cs(1, np.inf))
+    # A model with a limited-failure proportion follows its own Hf
+    lfp = W.from_params([100.0, 3.0], lfp_p=0.5)
+    assert lfp.cs(1, 1000) == pytest.approx(1.0)
+    # Outside a bounded support the survival really is 0: nan
+    assert np.isnan(surv.Uniform.from_params([1.0, 5.0]).cs(1.0, 6.0))
+    assert np.isfinite(surv.Normal.from_params([10.0, 3.0]).cs(1.0, 500.0))

@@ -223,3 +223,50 @@ def test_571_fit_from_df_takes_the_times_once():
     ):
         with pytest.raises(ValueError, match="Give the times exactly once"):
             WeibullPH.fit_from_df(df, Z_cols=["age"], **kwargs)
+
+
+def _semi_parametric_fits():
+    from surpyval import (
+        AdditiveHazards,
+        BuckleyJames,
+        CoxFrailty,
+        ProportionalOdds,
+        WeibullFrailty,
+    )
+
+    grouped = {"group_col": "g"}
+    return [
+        (CoxPH, {}),
+        (ProportionalOdds, {}),
+        (AdditiveHazards, {}),
+        (BuckleyJames, {}),
+        (CoxFrailty, grouped),
+        (WeibullFrailty, grouped),
+        (WeibullPH, {}),
+    ]
+
+
+@pytest.mark.parametrize("fitter, extra", _semi_parametric_fits())
+def test_663_fit_from_df_names_a_missing_column(fitter, extra):
+    # A missing x_col was a bare KeyError, a missing Z_cols entry "['zz']
+    # not in dataframe columns", without the columns there are (#663);
+    # the parametric families' message (#571).
+    df = _make_df(n=40)
+    df["g"] = np.arange(40) % 4
+    columns = str(list(df.columns))
+    with pytest.raises(ValueError) as info:
+        fitter.fit_from_df(df, x_col="tme", Z_cols=["age"], **extra)
+    assert str(info.value) == (
+        "x_col='tme' is not a column of the DataFrame; its columns are "
+        + columns
+    )
+    with pytest.raises(ValueError) as info:
+        fitter.fit_from_df(df, x_col="time", Z_cols=["age", "zz"], **extra)
+    assert str(info.value) == (
+        "Z_cols entry 'zz' is not a column of the DataFrame; its columns "
+        "are " + columns
+    )
+    with pytest.raises(ValueError, match="c_col='cens' is not a column"):
+        fitter.fit_from_df(
+            df, x_col="time", Z_cols=["age"], c_col="cens", **extra
+        )

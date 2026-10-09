@@ -122,16 +122,26 @@ def fallback_minimize(
         )
         if failed and give_up is not None and give_up(res):
             return res
-        if failed and np.any(hess(np.array(init, dtype=float), *args)):
-            newton = minimize_with_gradient(
-                fun,
-                init,
-                args,
-                jac,
-                method="Newton-CG",
-                hess=hess,
-                tol=newton_tol,
-            )
+        newton = None
+        try:
+            # autograd cannot take every second derivative: on a truncated
+            # LogLogistic's MPS objective it raises TypeError('first
+            # operand must be array') from its backward pass, which ended
+            # the fit (#630). Without a Hessian the derivative-free rung
+            # below takes over.
+            if failed and np.any(hess(np.array(init, dtype=float), *args)):
+                newton = minimize_with_gradient(
+                    fun,
+                    init,
+                    args,
+                    jac,
+                    method="Newton-CG",
+                    hess=hess,
+                    tol=newton_tol,
+                )
+        except TypeError:
+            newton = None
+        if newton is not None:
             # Only an improvement replaces what BFGS found. BFGS often
             # reports "precision loss" *at* the optimum, and a Newton-CG
             # run from the cold start can then "succeed" at a worse point,
@@ -727,6 +737,9 @@ class ParameterMap:
             lo, width = float(low), float(upp) - float(low)
             return D * np.arctanh((2 * (x - lo) / width) - 1)
         elif upp is None:
+            if unit == np.inf:
+                # Logarithmic over the whole range (see ``add_to_funcs``)
+                return np.log(x - np.copy(low))
             return inv_adj_relu((x - np.copy(low)) / unit)
         else:
             return inv_rev_adj_relu((x - np.copy(upp)) / unit)
@@ -743,6 +756,10 @@ class ParameterMap:
             lo, width = float(low), float(upp) - float(low)
             return lo + width * (np.tanh(x / D) + 1) / 2
         elif upp is None:
+            if unit == np.inf:
+                # (a run-off can take it past the largest float: inf)
+                with np.errstate(over="ignore"):
+                    return np.exp(x) + np.copy(low)
             return unit * adj_relu(x) + np.copy(low)
         else:
             return np.copy(upp) + unit * rev_adj_relu(x)
@@ -765,7 +782,11 @@ def add_to_funcs(
     with one bound is searched as the log of its distance from the bound
     where that distance is below ``unit``, and linearly beyond it
     (``adj_relu``). ``unit`` is 1 unless the caller passes one: see
-    ``bounds_convert``.
+    ``bounds_convert``. A ``unit`` of ``inf``, for a parameter with only a
+    lower bound, searches the log of its distance from it over the whole
+    range: an accelerated life model's constant factor ``c``, which
+    multiplies the life, can be anywhere from 1e-30 to 1e30, and searched
+    linearly beyond 1 a fit stopped short of its maximum at 1e22 (#634).
     """
     mapping = ParameterMap(low, upp, unit)
     funcs.append(mapping.forward)

@@ -10,7 +10,7 @@ fixture does not. Each must survive ``to_dict`` as strict JSON and
 
 import numpy as np
 import pytest
-from hypothesis import assume, given
+from hypothesis import assume, example, given
 from hypothesis import strategies as st
 
 import surpyval as sp
@@ -50,6 +50,18 @@ def test_parametric(name, data):
 
 
 @given(data=gen.regression(constant_column=False))
+# Separated data: the coefficients run off, and on a row far beyond the
+# data the hazard step and H overflow, so the density was inf * 0 (#714).
+@example(
+    data=dict(
+        x=np.array([2.0, 1.0, 1.5, 0.5, 0.5, 2.0]),
+        Z=np.array(
+            [[0, 1.5], [0.5, 1], [-1.5, 1], [2, -1], [0, -1.5], [0, 1.5]]
+        ),
+        c=np.zeros(6, dtype=int),
+        n=np.ones(6, dtype=int),
+    )
+)
 def test_cox(data):
     status, model = outcome(
         sp.CoxPH.fit, **{k: data[k] for k in ("x", "Z", "c", "n")}

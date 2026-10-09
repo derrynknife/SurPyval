@@ -2,15 +2,26 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+import autograd.numpy as anp
 import numpy as np
+from autograd.extend import defvjp, primitive
+from autograd.tracer import isbox
 from numpy.typing import ArrayLike
 
 from surpyval import Weibull
+from surpyval.recurrent.renewal._derivatives import (
+    lifetime_derivatives,
+    negated,
+)
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
+from surpyval.recurrent.renewal.generalized_renewal import (
+    VirtualAgeLikelihood,
+)
 from surpyval.recurrent.renewal.renewal_model import (
     DiscountedMemory,
     RenewalModel,
     conditional_gaps,
+    discount_weight_derivatives,
     event_positions,
     rows_by_position,
 )
@@ -80,6 +91,11 @@ class ARAVirtualAges:
     (#515). Each row's terms are gathered in the order the one-item loop
     took them and summed along a row, so the ages are bit-for-bit those of
     that loop.
+
+    Calling the object is differentiable by autograd (#710): the ages are
+    linear in the weights ``rho (1 - rho)**j``, so their derivatives in
+    ``rho`` (``derivative``) are the same sums over the weights'
+    derivatives, to any order.
     """
 
     def __init__(
@@ -98,16 +114,61 @@ class ARAVirtualAges:
         self.groups = groups
         self.max_terms = max((k for k, _ in self.groups), default=0)
 
-    def __call__(self, rho: float) -> np.ndarray:
+    def __call__(self, rho: Any) -> Any:
+        if isbox(rho):
+            return _ara_ages(rho, self, 0)
+        return self.derivative(rho, 0)
+
+    def derivative(self, rho: float, order: int = 0) -> np.ndarray:
+        """The ``order``-th derivative of the ages in ``rho`` (the ages
+        themselves at 0)."""
         T = self.T
         v = np.zeros(T.size)
-        weights = (1.0 - rho) ** np.arange(self.max_terms)
+        if order == 0:
+            weights = (1.0 - rho) ** np.arange(self.max_terms)
+        else:
+            # The ages are T[r - 1] - sum_j rho (1 - rho)**j T[r - 1 - j]
+            weights = discount_weight_derivatives(
+                float(rho), self.max_terms, order
+            )
         for n_terms, rows in self.groups:
             # Row r's terms are T[r - 1], T[r - 2], ... (newest first).
             lagged = T[rows[:, None] - 1 - np.arange(n_terms)]
             discounted = np.sum(weights[:n_terms] * lagged, axis=1)
-            v[rows] = T[rows - 1] - rho * discounted
+            if order == 0:
+                v[rows] = T[rows - 1] - rho * discounted
+            else:
+                v[rows] = -discounted
         return v
+
+    def ages_and_slopes(self, rho: float) -> tuple:
+        """The ages and their derivative in ``rho``, from one pass over
+        the groups, for the search (#728)."""
+        T = self.T
+        v = np.zeros(T.size)
+        slope = np.zeros(T.size)
+        powers = (1.0 - rho) ** np.arange(self.max_terms)
+        weights = discount_weight_derivatives(float(rho), self.max_terms, 1)
+        for n_terms, rows in self.groups:
+            lagged = T[rows[:, None] - 1 - np.arange(n_terms)]
+            v[rows] = T[rows - 1] - rho * (lagged @ powers[:n_terms])
+            slope[rows] = -(lagged @ weights[:n_terms])
+        return v, slope
+
+
+@primitive
+def _ara_ages(rho: Any, ages: ARAVirtualAges, order: int) -> Any:
+    """``ages.derivative(rho, order)``, as an autograd primitive whose
+    derivative in ``rho`` is the next order's."""
+    return ages.derivative(rho, order)
+
+
+defvjp(
+    _ara_ages,
+    lambda ans, rho, ages, order: lambda g: anp.sum(
+        g * _ara_ages(rho, ages, order + 1)
+    ),
+)
 
 
 @singleton_fitter
@@ -238,25 +299,31 @@ class ARA(RenewalFitMixin):
         virtual_ages_at = ARAVirtualAges(data.x, data.i, m)
         interarrival = data.get_interarrival_times()
         c = data.c
+        # Every item starts at virtual age 0.
+        log_likelihood = VirtualAgeLikelihood(
+            interarrival, c, event_positions(data.i) == 0, aged=0.0
+        )
 
         def negll_func(params: np.ndarray) -> float:
             rho = params[0]
             dist_params = params[1:]
+            return -log_likelihood(dist, dist_params, virtual_ages_at(rho))
 
-            virtual_ages = virtual_ages_at(rho)
-            x_new = interarrival + virtual_ages
+        # The ages a rho leaves, for the fallback starts (``_aged_starts``)
+        negll_func.virtual_ages = virtual_ages_at  # type: ignore
+        terms = lifetime_derivatives(dist)
+        if terms is not None:
 
-            # Every item starts at virtual age 0, where some distributions
-            # take log(0) on the way to the exact S(0) = 1 (a LogNormal's
-            # log(x)); that warned thousands of times per fit.
-            with np.errstate(divide="ignore"):
-                log_sf_v = dist.log_sf(virtual_ages, *dist_params)
-                ll_o = dist.log_df(x_new, *dist_params) - log_sf_v
-                ll_right = dist.log_sf(x_new, *dist_params) - log_sf_v
-            ll = np.where(c == 0, ll_o, 0.0)
-            ll = np.where(c == 1, ll_right, ll)
+            def value_and_grad(params: np.ndarray) -> tuple:
+                ages, slopes = virtual_ages_at.ages_and_slopes(
+                    float(params[0])
+                )
+                found = log_likelihood.value_and_grad(
+                    terms, params[1:], ages, slopes
+                )
+                return negated(found, negll_func, params)
 
-            return -ll.sum()
+            negll_func.value_and_grad = value_and_grad  # type: ignore
 
         return negll_func
 
@@ -277,7 +344,9 @@ class ARA(RenewalFitMixin):
             Data containing the recurrence details.
             An item with delayed entry (a ``tl``) is taken to be as
             new at entry, with its times counted from there (see
-            :meth:`fit`).
+            :meth:`fit`). A finite right truncation ``tr`` ends an
+            item's observation there, as a ``c=1`` row at ``tr``
+            would (#624).
         dist : Distribution, optional
             A surpyval distribution object. Default is Weibull.
         m : int or float, optional
@@ -316,6 +385,7 @@ class ARA(RenewalFitMixin):
             renewal_restoration=0.99,
         )
         rho, *dist_params = params
+        self._warn_if_memoryless(dist, "rho")
         model = dist.from_params(list(dist_params))
         out = self._make_model(model, rho, m)
         # The likelihood kept as what it is built from, so the model
@@ -352,7 +422,10 @@ class ARA(RenewalFitMixin):
             right-censored end of an item's observation. Other codes raise
             a ``ValueError``. Defaults to all observed.
         n : array_like, optional
-            Count of events at each row. Defaults to 1.
+            The number of events each row stands for. This model takes exact
+            events (``c=0``) and end-of-observation rows (``c=1``), each of
+            which stands for one, so every ``n`` is 1 (``n > 1`` is refused:
+            repeat the row for simultaneous events). Defaults to 1.
         dist : object, optional
             A surpyval distribution object. Default is Weibull.
         m : int or float, optional
@@ -369,6 +442,9 @@ class ARA(RenewalFitMixin):
             and its history before entry plays no part. That is exact for
             an item renewed at entry and an assumption otherwise; the
             fitted model's ``data`` hold the times from entry.
+            A negative ``tl`` (an entry age below 0, almost always a
+            data error on an age scale) is used as given, with a
+            ``UserWarning``.
 
         Returns
         -------

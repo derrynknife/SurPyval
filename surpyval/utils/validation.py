@@ -103,12 +103,106 @@ def alpha_ci_error(alpha_ci: Any, note: str | None = None) -> ValueError:
     >>> alpha_ci_error(1.5)
     ValueError("'alpha_ci' must be strictly between 0 and 1; got 1.5")
     """
-    message = "'alpha_ci' must be strictly between 0 and 1; got {!r}".format(
-        alpha_ci
+    message = "'alpha_ci' must be strictly between 0 and 1; got {}".format(
+        _plain_value(alpha_ci)
     )
     if note:
         message += ". " + note
     return ValueError(message)
+
+
+def _plain_value(value: Any) -> str:
+    """A number as the user wrote it (``1.5``, not ``np.float64(1.5)``);
+    anything else as its repr."""
+    if isinstance(value, (bool, np.bool_)):
+        return repr(bool(value))
+    if isinstance(value, (int, np.integer)):
+        return repr(int(value))
+    if isinstance(value, (float, np.floating)):
+        return repr(float(value))
+    return repr(value)
+
+
+# The modules of the wrappers between a caller and a method that checks
+# its ``alpha_ci`` (``keeps_query_shape``, the renamed-argument shims):
+# not callers in their own right.
+_WRAPPER_MODULES = ("shapes.py", "deprecation.py")
+
+
+def _called_by_user(depth: int) -> bool:
+    """Whether the function ``depth`` frames above the caller of this one
+    was called from outside surpyval (or from its tests), looking past
+    the wrappers of :data:`_WRAPPER_MODULES`."""
+    import os
+    import sys
+
+    utils_dir = os.path.dirname(os.path.abspath(__file__))
+    package_dir = os.path.dirname(utils_dir) + os.sep
+    tests_dir = os.path.join(package_dir, "tests") + os.sep
+    wrappers = tuple(os.path.join(utils_dir, m) for m in _WRAPPER_MODULES)
+    frame = sys._getframe(depth + 2).f_back
+    while frame is not None:
+        name = os.path.abspath(frame.f_code.co_filename)
+        if name not in wrappers:
+            break
+        frame = frame.f_back
+    if frame is None:
+        return True
+    name = os.path.abspath(frame.f_code.co_filename)
+    return not name.startswith(package_dir) or name.startswith(tests_dir)
+
+
+def check_alpha_ci(alpha_ci: Any, note: str | None = None) -> None:
+    """Refuse an ``alpha_ci`` that is not strictly between 0 and 1 (with
+    :func:`alpha_ci_error`), and warn of one above 0.5 (#647). Every
+    method that takes ``alpha_ci`` calls it first.
+
+    ``alpha_ci`` is the significance level, the bound's total tail
+    probability: 0.05 gives a 95% interval. A level above 0.5 is almost
+    always the confidence given for it (``alpha_ci=0.95``, as
+    ``reliability``'s ``CI=0.95``), which gives a 5% interval, so it is
+    warned of, once per call: only where the method checking it was
+    called by the user, not where one of surpyval's methods called it in
+    turn (``plot`` calls ``cb``, which checks it again).
+
+    Examples
+    --------
+    >>> import warnings
+    >>> from surpyval.utils.validation import check_alpha_ci
+    >>> check_alpha_ci(0.05)
+    >>> check_alpha_ci(1.5)
+    Traceback (most recent call last):
+    ...
+    ValueError: 'alpha_ci' must be strictly between 0 and 1; got 1.5
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     check_alpha_ci(0.95)
+    >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
+    alpha_ci is the significance level: alpha_ci=0.95 gives a 5%
+    interval; for a 95% interval pass alpha_ci=0.05.
+    """
+    try:
+        inside = bool(0 < alpha_ci < 1)
+    except (TypeError, ValueError):
+        # Not a number, or an array (whose comparison has no truth value)
+        inside = False
+    if not inside:
+        raise alpha_ci_error(alpha_ci, note)
+    if alpha_ci > 0.5 and _called_by_user(0):
+        from surpyval.utils.warnings import caller_stacklevel
+
+        level = float(alpha_ci)
+        warnings.warn(
+            "alpha_ci is the significance level: alpha_ci={:g} gives a {:g}% "
+            "interval; for a {:g}% interval pass alpha_ci={:g}.".format(
+                level,
+                round(100 * (1 - level), 10),
+                round(100 * level, 10),
+                round(1 - level, 12),
+            ),
+            UserWarning,
+            stacklevel=caller_stacklevel(),
+        )
 
 
 def unknown_cause_error(cause: Any, causes: Any) -> ValueError:
@@ -158,7 +252,9 @@ def missing_cause_error(what: str) -> ValueError:
     )
 
 
-def warn_outside_unit_interval(p: npt.ArrayLike) -> npt.NDArray:
+def warn_outside_unit_interval(
+    p: npt.ArrayLike, what: str = "qf", closed: bool = True
+) -> npt.NDArray:
     """Where the probabilities ``p`` given to a quantile function are
     outside [0, 1], with one warning saying so if any are (#576).
 
@@ -167,6 +263,11 @@ def warn_outside_unit_interval(p: npt.ArrayLike) -> npt.NDArray:
     percentage given for a probability, ``qf(10)`` for the B10 life --
     and it used to give NaN in silence. NaN itself is a missing value
     (principle 3), and is not warned of.
+
+    ``what`` names the method in the message (``"quantile_cb"`` for the
+    bounds on the quantiles, #626); ``closed=False`` takes the open
+    interval (0, 1) instead, for a parametric ``quantile_cb``, which does
+    not bound ``qf(0)`` and ``qf(1)``, the ends of the support.
 
     Examples
     --------
@@ -181,26 +282,61 @@ def warn_outside_unit_interval(p: npt.ArrayLike) -> npt.NDArray:
     qf: 1 of the 3 probabilities given is outside [0, 1] (10.0), ...
     """
     u = np.asarray(p, dtype=float)
-    outside = (u < 0) | (u > 1)
+    if closed:
+        outside = (u < 0) | (u > 1)
+        interval = "[0, 1]"
+    else:
+        outside = (u <= 0) | (u >= 1)
+        interval = "(0, 1)"
+    noun = "quantile" if what == "qf" else "bound"
     if outside.any():
         from surpyval.utils.warnings import caller_stacklevel
 
         k = int(outside.sum())
         warnings.warn(
-            "qf: {} of the {} probabilities given {} outside [0, 1] ({}), "
-            "so {} quantile{} NaN. `p` is a probability: for the B10 life "
+            "{}: {} of the {} probabilities given {} outside {} ({}), "
+            "so {} {}{} NaN. `p` is a probability: for the B10 life "
             "pass 0.1, not 10.".format(
+                what,
                 k,
                 u.size,
                 "is" if k == 1 else "are",
+                interval,
                 ", ".join(str(float(v)) for v in u[outside][:3])
                 + (", ..." if k > 3 else ""),
                 "its" if k == 1 else "their",
+                noun,
                 " is" if k == 1 else "s are",
             ),
             stacklevel=caller_stacklevel(),
         )
     return outside
+
+
+def all_in_unit_interval(u: npt.NDArray) -> bool:
+    """Whether every value of the float array ``u`` is in [0, 1], none
+    NaN: the probabilities a quantile function is nearly always given,
+    for which :func:`warn_outside_unit_interval` and the NaN check have
+    nothing to do (#769).
+
+    It takes two reductions and makes no array, where those checks make
+    four (NaN propagates through ``min`` and ``max``, and fails both
+    comparisons). An empty ``u`` gives False, for the full checks.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.utils.validation import all_in_unit_interval
+    >>> all_in_unit_interval(np.array([0.0, 0.5, 1.0]))
+    True
+    >>> all_in_unit_interval(np.array([0.5, float("nan")]))
+    False
+    >>> all_in_unit_interval(np.array(1.5))
+    False
+    """
+    if not u.size:
+        return False
+    return 0.0 <= float(u.min()) and float(u.max()) <= 1.0
 
 
 def _check_x_not_empty(func: Callable) -> Callable:
@@ -348,7 +484,19 @@ def validate_coxph_df_inputs(
     from surpyval.univariate.regression.regression_data import (
         design_matrix_from_df,
     )
+    from surpyval.utils.dataframe import check_columns
 
+    # A missing column is named, with the columns there are, as the
+    # parametric families' fit_from_df names it (#571, #663); it was a
+    # bare KeyError.
+    check_columns(
+        df,
+        x_col=x_col,
+        c_col=c_col,
+        n_col=n_col,
+        tl_col=tl_col,
+        strata_col=strata_col,
+    )
     # Rows with a missing covariate drop (with one warning), and the times,
     # flags, counts, entry times and strata with them.
     Z, feature_names, model_spec = design_matrix_from_df(df, Z_cols, formula)

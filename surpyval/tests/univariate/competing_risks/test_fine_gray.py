@@ -7,7 +7,11 @@ tests exercise parameter recovery *under censoring* -- the regime where a
 naive (unweighted) subdistribution risk set would be biased.
 """
 
+import warnings
+from unittest import mock
+
 import numpy as np
+import pandas as pd
 import pytest
 
 from surpyval.tests._helpers import competing_risks_regression_data
@@ -15,6 +19,7 @@ from surpyval.univariate.competing_risks import (
     CompetingRisksProportionalHazards,
     FineGray,
 )
+from surpyval.univariate.competing_risks.regression import fine_gray
 
 
 def _simulate_fine_gray(N, seed, beta=(0.7, -0.4), p=0.5, cens_scale=3.0):
@@ -268,15 +273,15 @@ def test_606_large_scale_covariates_reach_the_same_maximum(scale):
     np.testing.assert_allclose(both.betas[0] * scale, model.beta, rtol=1e-8)
 
 
-def test_605_fine_gray_covariance_is_a_method_and_cov_deprecated():
+def test_605_fine_gray_covariance_is_a_method_and_cov_gone():
     import surpyval as sp
 
     x, Z, e = competing_risks_regression_data()
     model = FineGray.fit(x, Z, e, event=1)
     cov = model.covariance()
     np.testing.assert_allclose(np.sqrt(np.diag(cov)), model.standard_errors())
-    with pytest.warns(DeprecationWarning, match=r"use 'covariance\(\)'"):
-        np.testing.assert_array_equal(model.cov, cov)
+    # ``cov`` and ``se``, deprecated in v0.23, are gone
+    assert not hasattr(model, "cov") and not hasattr(model, "se")
     d = model.to_dict()
     assert "covariance" in d and "cov" not in d and "_neg_ll" in d
     # A dict written before v0.23
@@ -284,3 +289,151 @@ def test_605_fine_gray_covariance_is_a_method_and_cov_deprecated():
     restored = sp.from_dict(d)
     np.testing.assert_array_equal(restored.covariance(), cov)
     assert restored.neg_ll() == model.neg_ll()
+
+
+def test_656_fine_gray_names_params_and_summary():
+    rng = np.random.default_rng(0)
+    N = 200
+    Z = np.c_[rng.binomial(1, 0.5, N), rng.normal(size=N)]
+    ta = rng.exponential(1 / (0.1 * np.exp(0.7 * Z[:, 0])))
+    tb = rng.exponential(1 / 0.05, N)
+    x = np.minimum(ta, tb).round(2)
+    e = np.where(ta < tb, "a", "b")
+    frame = FineGray.fit(
+        x, pd.DataFrame(Z, columns=["grp", "age"]), e, event="a"
+    )
+    assert frame.parameter_names == ["grp", "age"]
+    np.testing.assert_array_equal(frame.params, frame.beta)
+    table = frame.summary(alpha_ci=0.1)
+    assert table.index.tolist() == ["grp", "age"]
+    np.testing.assert_allclose(table["se(coef)"], frame.standard_errors())
+    np.testing.assert_allclose(table["p"], frame.p_values)
+    assert "coef lower 90%" in table.columns
+    # An array Z names them coef_j, as the other regression models (#614)
+    array = FineGray.fit(x, Z, e, event="a")
+    assert array.parameter_names == ["coef_0", "coef_1"]
+
+
+# Events of interest (cause "a") that 0.25 z0 - z1 separates from the rest
+# of their subdistribution risk sets -- the competing failures, at risk to
+# the end, and the censored row -- with neither column alone (#746)
+_COMBINATION = (
+    np.array([2, 1, 1.5, 0.5, 0.5, 2, 0.3, 0.3, 2.5]),
+    np.array(
+        [
+            [0, 1.5],
+            [0.5, 1],
+            [-1.5, 1],
+            [2, -1],
+            [0, -1.5],
+            [0, 1.5],
+            [0, 2.0],
+            [-2, 1.5],
+            [0, 1.6],
+        ]
+    ),
+    np.array(["a"] * 6 + ["b", "b", None], dtype=object),
+)
+
+
+@pytest.mark.parametrize("order", [np.arange(9), np.arange(9)[::-1]])
+def test_746_fine_gray_finds_a_run_off_along_a_combination(order):
+    # The judge of each coefficient's own profile saw none, and the fit
+    # raised "SVD did not converge" on its nan Hessian; the data decide,
+    # with CoxPH's exact test on the subdistribution risk sets
+    x, Z, e = (a[order] for a in _COMBINATION)
+    with pytest.warns(UserWarning, match="proportion 0.25 : -1") as w:
+        model = FineGray.fit(x, Z, e, event="a", center=True)
+    assert len(w) == 1
+    assert model.maximum == "no finite maximum"
+    assert np.isnan(model.standard_errors()).all()
+
+
+def test_746_fine_gray_competing_failures_stay_at_risk():
+    # A competing failure at 0.3 with 0.25 z0 - z1 above the events at 1,
+    # 1.5 and 2: it stays in their subdistribution risk sets (it would not
+    # in a cause-specific one), so the events are not separated and the
+    # maximum is finite.
+    x, Z, e = _COMBINATION
+    Z = Z.copy()
+    Z[6] = [0.0, -2.0]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = FineGray.fit(x, Z, e, event="a", center=True)
+    assert model.maximum == "verified"
+
+
+def test_746_an_ordinary_fine_gray_fit_does_not_look_for_a_run_off():
+    # The data are asked only when the search gives cause, as for CoxPH
+    x, Z, e, c = _simulate_fine_gray(400, 1)
+    with mock.patch.object(
+        fine_gray, "runoff_direction", side_effect=AssertionError
+    ):
+        model = FineGray.fit(x, Z, e, c=c, event=1)
+    assert model.maximum == "verified"
+
+
+def test_746_every_coefficient_aliased_is_fitted():
+    # A constant column alone raised "need at least one array to stack"
+    # (autograd's Hessian in no coefficients); it is aliased, and nan
+    x = np.arange(1.0, 9)
+    e = np.array(["a", "b", "a", "a", "b", "a", None, "a"], dtype=object)
+    with pytest.warns(UserWarning, match="cannot be estimated"):
+        model = FineGray.fit(x, np.ones((8, 1)), e, event="a")
+    assert np.isnan(model.beta).all()
+    assert np.isnan(model.standard_errors()).all()
+
+
+def test_760_objective_far_along_a_run_off_is_quiet_and_right():
+    # Far out along the run-off direction every later risk set's sum
+    # underflowed, and the objective was log(0): -inf, the best point any
+    # search could find. The sums are taken in logs there (#760): the
+    # objective falls to its limit, and its derivatives are finite.
+    from autograd import grad, hessian
+
+    x, Z, e = _COMBINATION
+    with pytest.warns(UserWarning, match="proportion 0.25 : -1"):
+        model = FineGray.fit(x, Z, e, event="a", center=True)
+    objective = model._objective
+    d = np.array([0.25, -1.0])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        values = [objective(t * d) for t in [10.0, 100.0, 1e3, 1e4, 1e6]]
+        # (to the rounding of a linear predictor of 1e6, 1e-10)
+        assert np.all(np.diff(values) <= 1e-8)
+        np.testing.assert_allclose(values[2:], values[-1], rtol=0, atol=1e-8)
+        # Off the direction it rises, without bound
+        assert objective(np.array([1e4, 0.0])) > 3e4
+        g, h = grad(objective)(1e4 * d), hessian(objective)(1e4 * d)
+    assert np.all(np.isfinite(g)) and np.all(np.isfinite(h))
+    # The run-off direction is flat; the other is not
+    np.testing.assert_allclose(h @ d, 0.0, atol=1e-9)
+    assert np.linalg.eigvalsh(h).max() > 1
+
+
+def test_760_log_risk_set_sums_are_the_sums():
+    # The sums in logs agree with the direct ones where both hold
+    x, Z, e, c = _simulate_fine_gray(300, 2)
+    model = FineGray.fit(x, Z, e, c=c, event=1)
+    objective = model._objective
+    sets, Zk = objective.args[1], objective.args[3]
+    n_sorted = objective.args[0]
+    eta = Zk @ np.array([0.7, -0.4])
+    direct = np.log(fine_gray._risk_set_sums(n_sorted * np.exp(eta), sets))
+    in_logs = fine_gray._log_risk_set_sums(eta, n_sorted, sets)
+    np.testing.assert_allclose(in_logs, direct, rtol=1e-13, atol=1e-13)
+
+
+def test_760_run_off_baseline_is_quiet():
+    # The baseline's exp(beta'Z) overflowed at the run-off coefficients,
+    # with numpy's warnings (#760)
+    rng = np.random.default_rng(2)
+    Z = rng.normal(size=(40, 2))
+    Z = Z[np.argsort(-(Z @ np.array([1.0, -0.6])))]
+    e = np.array(["a"] * 15 + ["b"] * 10 + [None] * 15, dtype=object)
+    with pytest.warns(UserWarning) as record:
+        model = FineGray.fit(np.arange(1.0, 41), Z, e, event="a", center=True)
+    assert [w.category for w in record] == [UserWarning]
+    assert model.maximum == "no finite maximum"
+    H = model._cumhaz
+    assert np.all(np.isfinite(H)) and np.all(np.diff(H) >= 0)

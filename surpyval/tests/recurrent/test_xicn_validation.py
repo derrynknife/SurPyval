@@ -242,3 +242,126 @@ def test_covariates_must_be_constant_within_an_item():
         ProportionalIntensityHPP.fit([1, 2, 3], [[0], [1], [1]], [1, 1, 2])
     # the same values on every row of an item are fine
     ProportionalIntensityHPP.fit([1, 2, 3], [[0], [0], [1]], [1, 1, 2])
+
+
+# --- #658: recurrent input handling ----------------------------------------
+
+
+def test_658_scalar_i_c_n_apply_to_every_row():
+    x = [100.0, 250.0, 400.0]
+    ref = CrowAMSAA.fit(x).params
+    for kw in ({"c": 0}, {"i": 1}, {"n": 1}, {"i": "pump"}):
+        assert np.allclose(CrowAMSAA.fit(x, **kw).params, ref)
+    assert np.array_equal(
+        NonParametricCounting.fit(x, c=0).mcf_hat,
+        NonParametricCounting.fit(x).mcf_hat,
+    )
+
+
+def test_658_fit_from_df_names_the_column_arguments():
+    df = pd.DataFrame(
+        {
+            "hours": [100, 250, 400, 500, 80, 300],
+            "unit": [1, 1, 1, 1, 2, 2],
+            "ev": [0, 0, 0, 1, 0, 1],
+        }
+    )
+    with pytest.raises(TypeError, match="'c_col'"):
+        CrowAMSAA.fit_from_df(df, x_col="hours", i_col="unit", c="ev")
+    with pytest.raises(TypeError, match="'i_col'"):
+        CrowAMSAA.fit_from_df(df, x_col="hours", i="unit", c_col="ev")
+    with pytest.raises(TypeError, match="'tl_col'"):
+        CrowAMSAA.fit_from_df(df, x_col="hours", tl="start")
+    with pytest.raises(TypeError, match="'Z_cols'"):
+        ProportionalIntensityHPP.fit_from_df(
+            df.assign(z=0.5), x_col="hours", Z_cols="z", Z="z"
+        )
+    # a number for tl is still fit's scalar window
+    a = CrowAMSAA.fit_from_df(
+        df, x_col="hours", i_col="unit", c_col="ev", tl=10.0
+    )
+    b = CrowAMSAA.fit(df.hours, i=df.unit, c=df.ev, tl=10.0)
+    assert np.allclose(a.params, b.params)
+
+
+def test_658_exact_event_pair_must_be_one_time():
+    xa = [[10, 20], [30, 60], [70, 100]]
+    for fitter in (CrowAMSAA, NonParametricCounting):
+        with pytest.raises(ValueError, match=r"\[t, t\].*item 1 has"):
+            fitter.fit(xa)
+    # [t, t] is an exact event, as in 1-D x
+    pairs = [[10, 10], [30, 30], [70, 70], [100, 100]]
+    flat = CrowAMSAA.fit([10, 30, 70, 100], c=[0, 0, 0, 1]).params
+    assert np.allclose(
+        CrowAMSAA.fit(pairs, c=[0, 0, 0, 1]).params, flat, rtol=1e-6
+    )
+
+
+@pytest.mark.parametrize("fitter", [CrowAMSAA, HPP])
+def test_658_interval_count_with_1d_x_is_a_value_error(fitter):
+    with pytest.raises(ValueError, match=r"c=2\) need x as \[start, end\]"):
+        fitter.fit([1.0, 2.0, 3.0, 5.0], c=[0, 0, 0, 2])
+
+
+def test_658_n_on_an_exact_event_says_repeat_the_row():
+    with pytest.raises(ValueError, match="repeat the row") as info:
+        CrowAMSAA.fit([1.0, 2.0, 3.0, 5.0], n=[1, 2, 1, 1], c=[0, 0, 0, 1])
+    assert "item 1 has n=2 at x=2.0" in str(info.value)
+    with pytest.raises(ValueError, match=r"end-of-observation row \(c=1\)"):
+        CrowAMSAA.fit([1.0, 2.0, 5.0], n=[1, 1, 2], c=[0, 0, 1])
+
+
+def test_658_messages_use_the_users_labels():
+    # no i: every row is one item, and the message says so
+    log = pd.DataFrame({"x": [10, 50, 100, 20, 60, 100.0]})
+    log["c"] = [0, 0, 1, 0, 0, 1]
+    with pytest.raises(ValueError, match="No item ids were given") as info:
+        CrowAMSAA.fit_from_df(log, x_col="x", c_col="c")
+    assert "Item 1 " in str(info.value)
+    with pytest.raises(ValueError, match="Item pumpB") as info:
+        CrowAMSAA.fit(
+            [10, 60, 100, 70, 100.0],
+            i=np.array(["pumpA"] * 3 + ["pumpB"] * 2),
+            c=[0, 0, 1, 0, 1],
+            tl=[0] * 3 + [70] * 2,
+        )
+    assert "np." not in str(info.value)
+
+
+EVENT_AT_TL = dict(
+    x=[80.0, 120.0, 200.0, 30.0, 90.0, 200.0],
+    i=np.array(["A"] * 3 + ["B"] * 3),
+    c=[0, 0, 1, 0, 0, 1],
+    tl=[80.0] * 3 + [0.0] * 3,
+)
+
+
+def test_658_event_at_tl_is_refused_the_same_way_everywhere():
+    from surpyval.recurrent import GeneralizedRenewal
+    from surpyval.recurrent.tests import laplace
+
+    match = r"Item A has an event at 80.0, at or before its observation "
+    match += r"start tl=80.0.*\(tl, T\]"
+    for fitter in (CrowAMSAA, HPP, NonParametricCounting, GeneralizedRenewal):
+        with pytest.raises(ValueError, match=match):
+            fitter.fit(**EVENT_AT_TL)
+    with pytest.raises(ValueError, match=match.replace("Item", "System")):
+        laplace(**EVENT_AT_TL)
+
+
+def test_658_item_entering_at_an_event_time_is_not_at_risk_for_it():
+    # B enters at 30, when A has an event: B is at risk over (30, 100]
+    model = NonParametricCounting.fit(
+        [30, 60, 100, 50, 100.0],
+        i=[1, 1, 1, 2, 2],
+        c=[0, 0, 1, 0, 1],
+        tl=[0] * 3 + [30] * 2,
+    )
+    assert np.allclose(model.mcf([30.0, 50.0]), [1.0, 1.5])
+    # a gapped item's windows are (start, end] too: an event at the start
+    # of a window belongs to the window that ends there
+    data = handle_xicn([10.0, 20.0], [1, 1], windows={1: [(0, 10), (10, 20)]})
+    assert data.x.tolist() == [10.0, 10.0, 20.0, 20.0]
+    assert data.c.tolist() == [0, 1, 0, 1]
+    with pytest.raises(ValueError, match=r"\(start, end\] holds"):
+        handle_xicn([5.0, 20.0], [1, 1], windows={1: [(0, 4), (5, 20)]})

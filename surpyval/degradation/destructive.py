@@ -54,6 +54,10 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.univariate.information_criteria import (
+    InformationCriteriaMixin,
+    ic_sample_size,
+)
 from surpyval.univariate.parametric import LogNormal
 from surpyval.univariate.parametric.parametric import resolve_distribution
 from surpyval.utils.dataframe import call_fit, frame_column, require_frame
@@ -66,7 +70,12 @@ from surpyval.utils.no_maximum import (
 )
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
-from surpyval.utils.validation import BOUNDS, check_option
+from surpyval.utils.validation import (
+    BOUNDS,
+    check_alpha_ci,
+    check_option,
+    warn_outside_unit_interval,
+)
 
 from ._maximum import verified_search
 from ._measurements import validate_xy
@@ -168,13 +177,14 @@ def _warn_if_noise_free(model: Any, x: npt.NDArray) -> bool:
     return True
 
 
-class DestructiveDegradationModel(SerialisableMixin):
+class DestructiveDegradationModel(InformationCriteriaMixin, SerialisableMixin):
     """
     Result of :meth:`DestructiveDegradation.fit`.
 
     Exposes the induced *lifetime* distribution at the failure threshold
-    (``sf`` / ``ff`` / ``Hf`` / ``df``) plus the fitted *degradation*
-    distribution over time (``degradation_quantile``). The fitted parameters
+    (``sf`` / ``ff`` / ``Hf`` / ``hf`` / ``df`` / ``qf`` / ``mean`` /
+    ``random``) plus the fitted *degradation* distribution over time
+    (``degradation_quantile``). The fitted parameters
     are the location intercept and slope ``beta`` and the scale ``sigma``;
     ``maximum`` says what the fit reached (``"verified"``, ``"unverified"``
     or ``"no finite maximum"``; ``"not applicable"`` for a model built
@@ -286,7 +296,8 @@ class DestructiveDegradationModel(SerialisableMixin):
     @keeps_query_shape
     def Hf(self, x: npt.ArrayLike) -> npt.NDArray:
         """Cumulative hazard of the induced lifetime distribution."""
-        return -np.log(np.maximum(self.sf(x), np.finfo(float).tiny))
+        # 0.0 - log, not -log: where sf is 1, -log(1) is -0.0 (#746).
+        return 0.0 - np.log(np.maximum(self.sf(x), np.finfo(float).tiny))
 
     @keeps_query_shape
     def df(self, x: npt.ArrayLike) -> npt.NDArray:
@@ -297,6 +308,187 @@ class DestructiveDegradationModel(SerialisableMixin):
         x = np.asarray(x, dtype=float)
         h = np.maximum(np.abs(x), 1.0) * 1e-6
         return (self.ff(x + h) - self.ff(x - h)) / (2.0 * h)
+
+    @keeps_query_shape
+    def hf(self, x: npt.ArrayLike) -> npt.NDArray:
+        """
+        Hazard of the induced lifetime distribution, ``df / sf`` (``inf``
+        where no unit is left above the threshold).
+        """
+        sf = np.asarray(self.sf(x), dtype=float)
+        df = np.asarray(self.df(x), dtype=float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return np.where(sf > 0, df / np.where(sf > 0, sf, 1.0), np.inf)
+
+    #: The time range the quantile search covers, as ``log t``: the
+    #: induced ``ff`` at its ends stands for its limits at 0 and infinity.
+    _LOG_T_RANGE = (-700.0, 700.0)
+
+    def _ff_limits(self) -> tuple[float, float]:
+        """The induced ``ff`` at the ends of the time range (#666),
+        refusing a fit whose ``ff`` falls with time: the fitted location
+        moves away from the threshold, so the induced lifetime is not a
+        distribution and has no quantiles."""
+        lo, hi = np.exp(self._LOG_T_RANGE)
+        with np.errstate(all="ignore"):
+            f_lo, f_hi = np.asarray(self.ff([lo, hi]), dtype=float)
+        if f_hi < f_lo:
+            raise ValueError(
+                "The fitted degradation moves away from the threshold "
+                f"(slope {self.beta[1]:.6g} on {self.transform} time, "
+                f"direction {self.direction!r}), so the probability of "
+                "having crossed it falls with time: the induced lifetime "
+                "is not a distribution, and has no quantiles, mean or "
+                "random draws. Check the direction and the threshold."
+            )
+        return float(f_lo), float(f_hi)
+
+    @keeps_query_shape
+    def qf(self, p: npt.ArrayLike) -> npt.NDArray:
+        """
+        Quantile (inverse CDF) of the induced lifetime: the earliest time
+        by which a fraction ``p`` of the units has crossed the threshold
+        (#666). ``ff`` is monotone in time, so it is found by bisection.
+        It is 0 for a ``p`` at or below the fraction already past the
+        threshold at time 0 and ``inf`` for one the fit never reaches
+        (``ff`` levelling off below 1, as with a ``reciprocal``
+        transform); ``nan`` for a missing ``p``, and ``nan`` with a
+        warning for one outside [0, 1], as every model's ``qf``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.degradation import DestructiveDegradation
+        >>> rng = np.random.default_rng(1)
+        >>> x = np.repeat([10.0, 20.0, 30.0, 40.0], 6)
+        >>> y = np.exp(4.0 - 0.02 * x + rng.normal(0, 0.1, 24))
+        >>> model = DestructiveDegradation.fit(x, y, threshold=20)
+        >>> model.qf([0.1, 0.5]).round(2)
+        array([46.17, 49.97])
+        """
+        p = np.asarray(p, dtype=float)
+        p = np.where(warn_outside_unit_interval(p), np.nan, p)
+        f_lo, f_hi = self._ff_limits()
+        out = np.where(p <= f_lo, 0.0, np.inf)
+        inner = (p > f_lo) & (p <= f_hi) & (p < 1.0)
+        out = np.where(np.isnan(p), np.nan, out)
+        if inner.any():
+            target = p[inner]
+            a = np.full(target.shape, self._LOG_T_RANGE[0])
+            b = np.full(target.shape, self._LOG_T_RANGE[1])
+            # ``ff(exp(a)) < target <= ff(exp(b))`` throughout
+            with np.errstate(all="ignore"):
+                for _ in range(80):
+                    mid = 0.5 * (a + b)
+                    up = np.asarray(self.ff(np.exp(mid)), float) >= target
+                    b = np.where(up, mid, b)
+                    a = np.where(up, a, mid)
+            out[inner] = np.exp(b)
+        return out
+
+    def mean(self) -> float:
+        """
+        Mean of the induced lifetime, the integral of ``sf`` (#666);
+        ``inf`` when ``ff`` levels off below 1, so that some units never
+        cross the threshold.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.degradation import DestructiveDegradation
+        >>> rng = np.random.default_rng(1)
+        >>> x = np.repeat([10.0, 20.0, 30.0, 40.0], 6)
+        >>> y = np.exp(4.0 - 0.02 * x + rng.normal(0, 0.1, 24))
+        >>> model = DestructiveDegradation.fit(x, y, threshold=20)
+        >>> round(model.mean(), 2)
+        49.97
+        """
+        from scipy.integrate import quad
+
+        _, f_hi = self._ff_limits()
+        if f_hi < 1.0:
+            return np.inf
+        # Integrate where ``sf`` falls (between its extreme quantiles,
+        # split at the interior ones), adding the stretch before it, where
+        # ``sf`` is 1 to within the tail probability.
+        qs = np.asarray(
+            self.qf([1e-12, 0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99, 1 - 1e-10]),
+            dtype=float,
+        )
+        if not np.isfinite(qs[-1]):
+            return np.inf
+        edges = np.unique(qs)
+        total = float(qs[0])
+        for a, b in zip(edges[:-1], edges[1:]):
+            val, _ = quad(
+                lambda t: float(np.ravel(self.sf(t))[0]),
+                float(a),
+                float(b),
+                limit=200,
+            )
+            total += val
+        return total
+
+    def random(
+        self, size: int, random_state: "int | None" = None
+    ) -> npt.NDArray:
+        """
+        Draw lifetimes from the induced lifetime distribution (#666), by
+        inverting ``ff`` at uniform draws (:meth:`qf`): a draw is 0 for a
+        unit already past the threshold at time 0, and ``inf`` for one
+        that never crosses it.
+
+        Parameters
+        ----------
+        size : int
+            Number of draws.
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for reproducible draws. ``None`` (the
+            default) seeds from numpy's global RNG, so ``np.random.seed``
+            controls it.
+        """
+        rng = as_generator(random_state)
+        return np.asarray(self.qf(rng.uniform(size=size)), dtype=float)
+
+    # -- information criteria (#711) --------------------------------------
+
+    def _ic_sample_size_from_data(self) -> float:
+        if self.data is None:
+            raise ValueError(
+                "This destructive degradation model was restored from a "
+                "dict saved without its data, so it has no sample size for "
+                "bic or aic_c; refit it to the data."
+            )
+        c = np.asarray(self.data["c"])
+        return ic_sample_size(c, np.ones(c.shape[0]))
+
+    def bic(self) -> float:
+        """
+        The Bayesian information criterion, ``k ln n + 2 neg_ll()``, with
+        ``k = 3`` (the location's intercept and slope and the scale
+        ``sigma``) and ``n`` the number of measurements that are not
+        right-censored, the rule of every SurPyval BIC (all of them when
+        every measurement is right-censored). Lower is better.
+
+        Examples
+        --------
+        The same strength data fitted with a lognormal and a normal
+        response (``neg_ll``, ``aic`` and ``bic`` rank them alike):
+
+        >>> import numpy as np
+        >>> from surpyval import Normal
+        >>> from surpyval.degradation import DestructiveDegradation
+        >>> rng = np.random.default_rng(1)
+        >>> x = np.repeat([10.0, 20.0, 30.0, 40.0], 6)
+        >>> y = np.exp(4.0 - 0.02 * x + rng.normal(0, 0.1, 24))
+        >>> lognormal = DestructiveDegradation.fit(x, y, threshold=20)
+        >>> normal = DestructiveDegradation.fit(
+        ...     x, y, threshold=20, distribution=Normal
+        ... )
+        >>> round(lognormal.bic(), 2), round(normal.bic(), 2)
+        (112.14, 118.46)
+        """
+        return float(super().bic())
 
     # -- confidence bounds (bootstrap) ------------------------------------
 
@@ -340,6 +532,7 @@ class DestructiveDegradationModel(SerialisableMixin):
         check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
         on = {"R": "sf", "F": "ff"}.get(on, on)
         check_option("bound", bound, BOUNDS)
+        check_alpha_ci(alpha_ci)
         x = np.atleast_1d(np.asarray(x, dtype=float))
         rng = as_generator(random_state)
         if self.data is None:

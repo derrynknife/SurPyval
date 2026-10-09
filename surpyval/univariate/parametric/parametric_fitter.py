@@ -5,15 +5,17 @@ from math import comb
 from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
+import numpy as onp
 import numpy.typing as npt
 from autograd.numpy.numpy_boxes import ArrayBox
 
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.fitter_repr import FitterRepr
+from surpyval.utils.removed_names import removed_arguments
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import (
     _check_x_not_empty,
+    all_in_unit_interval,
     warn_outside_unit_interval,
 )
 
@@ -69,12 +71,6 @@ from .parametric import Parametric, uniform_draws
 # data; in this one it destroys the thing being computed.
 Numeric = npt.NDArray | float
 Boxable = npt.NDArray | float | ArrayBox
-
-
-#: ``from_params``'s ``p``, the limited-failure proportion, is
-#: ``lfp_p`` since v0.23 (#608); ``p`` still works, with a
-#: ``DeprecationWarning``, until v0.24.
-lfp_p_renamed = renamed_arguments(p="lfp_p")
 
 
 def reject_structural_params(
@@ -154,10 +150,13 @@ def _support_guarded(
         if self.discrete or isinstance(x, ArrayBox):
             return fn(self, x, *params)
         lo, hi = self._support_edges(*params)
-        x_arr = np.asarray(x, dtype=float)
+        # (plain numpy for the checks: x is not traced here, and autograd's
+        # wrappers were half the cost of a model's sf on a small array,
+        # #642)
+        x_arr = onp.asarray(x, dtype=float)
         is_below = x_arr < lo
         is_above = x_arr > hi
-        if not (np.any(is_below) or np.any(is_above)):
+        if not (is_below.any() or is_above.any()):
             return fn(self, x, *params)
         if np.isfinite(lo) and np.isfinite(hi):
             inside = 0.5 * (lo + hi)
@@ -227,7 +226,10 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
     warning, as the fitted models' ``qf`` do (#611): the formulas gave
     whatever they gave -- an Exponential's ``qf(-0.5)`` a negative time,
     a Uniform's ``qf(1.5)`` a point past its end, a Weibull's NaN with a
-    raw numpy warning.
+    raw numpy warning. Probabilities all in [0, 1], the usual case, go
+    straight to the formula after two reductions (#769); the function
+    without these checks is ``wrapped._unchecked[1]``, for a caller that
+    has checked them itself (``Parametric.qf`` and ``random``).
     """
     at_infinity = _AT_INFINITY.get(fn.__name__)
     is_qf = fn.__name__ == "qf"
@@ -242,8 +244,11 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
         params = tuple(_as_array(p) for p in params)
         if isinstance(x, ArrayBox):
             return fn(self, x, *params)
-        x_arr = np.asarray(x, dtype=float)
-        missing = np.isnan(x_arr)
+        x_arr = onp.asarray(x, dtype=float)
+        if is_qf and all_in_unit_interval(x_arr):
+            # none missing or out of range: what the checks below conclude
+            return fn(self, x, *params)
+        missing = onp.isnan(x_arr)
         if is_qf:
             missing = missing | warn_outside_unit_interval(x_arr)
         top = None
@@ -253,9 +258,9 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
             and self.discrete
             and self.support[1] == np.inf
         ):
-            top = np.isposinf(x_arr)
+            top = onp.isposinf(x_arr)
             replaced = missing | top
-        if not np.any(replaced):
+        if not replaced.any():
             return fn(self, x, *params)
         # A point asked for alongside is one the function accepts; failing
         # that, the middle probability or the support's finite edge.
@@ -274,6 +279,10 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
         return out[()] if isinstance(out, np.ndarray) else out
 
     wrapped._array_inputs = True  # type: ignore[attr-defined]
+    # The wrapper with the function it wraps: ``functools.wraps`` would
+    # copy this to a decorator wrapped around it, which the pair's first
+    # element then tells apart.
+    wrapped._unchecked = (wrapped, fn)  # type: ignore[attr-defined]
     return wrapped
 
 
@@ -429,9 +438,9 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         ``support_param_index`` nominates (``a``/``b`` of the Uniform and
         the 4-parameter Beta)."""
         lo, hi = (float(v) for v in self.support)
-        if np.isnan(lo):
+        if lo != lo:  # NaN
             lo = float(_raw(params[self.support_param_index[0]]))
-        if np.isnan(hi):
+        if hi != hi:
             hi = float(_raw(params[self.support_param_index[1]]))
         return lo, hi
 
@@ -534,6 +543,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         small."""
         return np.log(-np.expm1(-self.Hf(x, *params)))
 
+    @removed_arguments("0.23", X="'given'")
     def cs(self, x: Numeric, given: Numeric, *params: Any) -> Any:
         r"""
 
@@ -542,12 +552,21 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
 
         .. math::
             R(x, given) = \frac{R(x + given)}{R(given)}
+            = e^{-(H(x + given) - H(given))}
 
-        This is the definition for every distribution, so it lives here
-        rather than being restated on each one. ``Exponential``
-        overrides it because the exponential is memoryless and
-        :math:`R(x, given) = R(x)`, which is both cheaper and free of the
-        cancellation the ratio suffers in the far tail.
+        It is computed from the cumulative hazard, the second form, so it
+        stays exact where :math:`R(given)` underflows to 0 far in the
+        upper tail (the ratio was ``nan`` there); it is ``nan`` only
+        where :math:`H(given)` is itself infinite. This is the definition
+        for every distribution, so it lives here rather than being
+        restated on each one. ``Exponential`` overrides it because the
+        exponential is memoryless and :math:`R(x, given) = R(x)`, which is
+        both cheaper and free of the cancellation the difference suffers
+        in the far tail.
+
+        .. versionchanged:: 0.24
+           From the cumulative hazard, so finite where ``sf(given)``
+           underflows (#660).
 
         .. versionchanged:: 0.22
            The time already survived is ``given`` (it was ``X``), the
@@ -581,8 +600,20 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         >>> Weibull.cs(x, 5, 3, 4)
         array([2.52537548e-04, 3.00394073e-10, 2.45288508e-19, 1.48999440e-32,
                5.42544000e-51])
+
+        Far in the tail, where the survival to ``given`` underflows:
+
+        >>> Weibull.sf(1000, 100, 3)
+        np.float64(0.0)
+        >>> round(float(Weibull.cs(1, 1000, 100, 3)), 6)
+        0.049638
         """
-        return self.sf(x + given, *params) / self.sf(given, *params)
+        x = np.asarray(x, dtype=float)
+        given = np.asarray(given, dtype=float)
+        H_given = self.Hf(given, *params)
+        with np.errstate(invalid="ignore"):
+            out = np.exp(H_given - self.Hf(x + given, *params))
+        return np.where(np.isinf(H_given), np.nan, out)[()]
 
     def _plot_x_bounds(self, x: npt.NDArray, params: Any) -> Any:
         """Return (x_scale_min, x_scale_max) for probability plots.
@@ -614,12 +645,26 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
             + N * np.log(p - f0)
         )
 
+    def _shifted_censored(self, x: npt.NDArray, gamma: Any) -> Any:
+        """A censored time ``x`` less the offset ``gamma``, held at the
+        support's lower edge: a right-censored time (or, with zero
+        inflation, a left-censoring time) below the offset does not cap it
+        (``parametric._offset_upper``, #633), and there the survival
+        function is 1 and the CDF 0 -- the edge's values, which a family's
+        own functions give below it but a custom cumulative hazard need
+        not (``(x / alpha) ** beta`` is NaN for a negative ``x``)."""
+        x = x - gamma
+        lo = float(self.support[0])
+        if np.isfinite(lo):
+            x = np.maximum(x, lo)
+        return x
+
     @_check_x_not_empty
     def ll_right_censored(
         self, x: npt.NDArray, n: npt.NDArray, *params: Any
     ) -> Any:
         *dist_params, gamma, f0, p = params
-        x = x - gamma
+        x = self._shifted_censored(x, gamma)
         if p == 1:
             return np.sum(n * (np.log1p(-f0) + self.log_sf(x, *dist_params)))
         else:
@@ -631,7 +676,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         self, x: npt.NDArray, n: npt.NDArray, *params: Any
     ) -> Any:
         *dist_params, gamma, f0, p = params
-        x = x - gamma
+        x = self._shifted_censored(x, gamma)
         if f0 == 0:
             # No zero-inflation: F_mix = p * F, so the numerically stable
             # log_ff path applies (the branch was inverted as ``f0 == 1``,
@@ -977,7 +1022,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         """
         return self
 
-    @lfp_p_renamed
+    @removed_arguments("0.24", p="'lfp_p'")
     def from_params(
         self,
         params: Any,
@@ -1004,8 +1049,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
             proportion that will *ever* die or fail (a limited failure
             population); ``1 - lfp_p`` never fails. If used it must be a
             value between 0 and 1. If None will assume 1, i.e. every unit
-            eventually fails. It was ``p`` before v0.23 (#608), which
-            still works until v0.24 with a ``DeprecationWarning``.
+            eventually fails. It was ``p`` before v0.23 (#608).
 
         f0 : scalar, optional
             The proportion of the population that will die or fail at time 0.

@@ -265,12 +265,12 @@ def test_qf_accepts_p_of_one():
     assert _flat(model.qf(1.0))[0] == 10.0
 
 
-@pytest.mark.parametrize("p", [0.0, -0.1, 1.5, 2.5])
-def test_quantile_cb_refuses_p_outside_0_1(p):
-    # Kills nonparametric.py:1101 ('|' -> '&', 'p <= 0' -> 'p < 0',
-    # 'p > 1' -> 'p > 2').
-    with pytest.raises(ValueError, match="'p' must be in the range"):
-        _fit().quantile_cb(p)
+@pytest.mark.parametrize("p", [-0.1, 1.5, 2.5])
+def test_quantile_cb_is_nan_for_p_outside_0_1(p):
+    # As qf (#626; it raised): NaN with one warning, the other p bounded.
+    with pytest.warns(UserWarning, match=r"quantile_cb: .* outside \[0, 1\]"):
+        got = _fit().quantile_cb([0.5, p])
+    assert np.isnan(got[1]).all() and not np.isnan(got[0, 0])
 
 
 @pytest.mark.parametrize("alpha_ci", [0.05, 0.3])
@@ -452,14 +452,20 @@ def test_bootstrap_cb_is_nan_outside_the_data_like_cb(bound):
     # past the last step. Found while triaging the bootstrap mutants
     # (principle 11: behaviour outside the data is the same for all of a
     # model's bounds; principle 3: missing in, missing out).
+    # Before the first time both are the estimate, exactly 1 (#665); past
+    # the last, NaN with a warning.
     model = _fit(c=np.r_[C[:-1], 1])
-    q = [0.5, 11, np.nan, 5]
+    q = [11, np.nan, 5, 0.5]
     kw = dict(bound=bound, n_boot=50, random_state=0)
-    assert np.isnan(model.cb(q, bound=bound)[:3]).all()
-    got = model.bootstrap_cb(q, **kw)
-    assert np.isnan(got[:3]).all() and np.isfinite(got[3]).all()
+    with pytest.warns(UserWarning, match="past the last observed"):
+        ref = model.cb(q, bound=bound)
+    assert np.isnan(ref[:2]).all()
+    with pytest.warns(UserWarning, match="bootstrap_cb: .* x = 11,"):
+        got = model.bootstrap_cb(q, **kw)
+    assert np.isnan(got[:2]).all() and np.isfinite(got[2]).all()
+    assert np.all(got[3] == 1.0) and np.all(ref[3] == 1.0)
     # Inside the data, the same bounds as before.
-    assert_allclose(got[3:], model.bootstrap_cb([5], **kw))
+    assert_allclose(got[2], model.bootstrap_cb([5], **kw)[0])
 
 
 def test_bootstrap_cb_follows_cb_with_a_support():

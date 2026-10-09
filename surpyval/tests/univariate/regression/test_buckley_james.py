@@ -131,6 +131,13 @@ def test_rejects_non_positive_times():
         BuckleyJames.fit(x, Z)
 
 
+def test_648_refuses_data_with_no_event():
+    # It reported converged=True with the slope of the censoring times.
+    x, Z, c, beta = _aft_data(50, 8)
+    with pytest.raises(ValueError, match=r"needs at least one event \(c=0\)"):
+        BuckleyJames.fit(x, Z, c=np.ones(50))
+
+
 # --- fit_from_df ----------------------------------------------------------
 
 
@@ -205,5 +212,35 @@ def test_buckley_james_refuses_a_mismatched_z():
     model = _buckley_james()
     with pytest.raises(ValueError, match="3 covariate rows but there are 2"):
         model.sf([5.0, 10.0], np.zeros((3, 2)))
-    with pytest.raises(ValueError, match="vector of length 2"):
+    # The width named as every regression names it (#657)
+    with pytest.raises(
+        ValueError, match=r"has 2 covariates \(coef_0, coef_1\)"
+    ):
         model.sf([5.0, 10.0], [0.0, 1.0, 2.0])
+
+
+def test_746_Hf_before_the_first_time_is_plus_zero():
+    # sf is 1 before the first residual time; -log(1) was -0.0 (#746).
+    x = np.array([1.0, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    Z = np.array([0, 1, 0, 1, 0, 1, 0, 1, 0, 1.0])
+    model = BuckleyJames.fit(x, Z)
+    H = model.Hf([0.0, 0.5], np.array([0.0]))
+    assert np.all(H == 0) and not np.any(np.signbit(H))
+
+
+def test_760_the_fit_does_not_depend_on_the_row_order():
+    # The rows are fitted sorted by every column (as the parametric
+    # regressions are, #728), so the fit is the same to the last digit in
+    # any order, and so is its bootstrap, which resamples them. The
+    # coefficients moved by 1e-16 with the order before, and the
+    # bootstrap's draws with it.
+    x, Z, c, _ = _aft_data(60, seed=4)
+    n = np.random.default_rng(4).integers(1, 3, x.size)
+    order = np.random.default_rng(5).permutation(x.size)
+    a = BuckleyJames.fit(x, Z, c=c, n=n)
+    b = BuckleyJames.fit(x[order], Z[order], c=c[order], n=n[order])
+    np.testing.assert_array_equal(a.beta, b.beta)
+    np.testing.assert_array_equal(
+        a.bootstrap_ci(n_boot=20, random_state=1),
+        b.bootstrap_ci(n_boot=20, random_state=1),
+    )

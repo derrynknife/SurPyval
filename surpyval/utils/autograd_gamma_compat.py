@@ -132,12 +132,21 @@ def _cdiff2_b(f: Callable, a: Boxable, b: Boxable, x: Boxable) -> Boxable:
     return _cdiff(lambda bb: f(a, bb, x), b)
 
 
-def _make_da_primitive(f: Callable) -> Callable:
+def _make_da_primitive(f: Callable, dfdx: Callable) -> Callable:
     """Traced first derivative w.r.t. the shape parameter of f(a, x).
 
     Returns a primitive ``f_da(a, x) = df/da`` whose own VJPs are the
     numerical second derivatives d2f/da2 and d2f/dadx, so a Hessian pass
     through ``f_da`` picks up the correct curvature (further orders cut).
+
+    The mixed derivative d2f/dadx is the difference in ``a`` of ``dfdx``,
+    f's analytic derivative in x (plain numpy). It was the difference in
+    x of the difference in a, whose step in x has a floor of 1e-7: at an
+    x below 2e-7 its stencil reached a negative x, where the incomplete
+    gamma is NaN, and the NaN reached every entry of a Hessian through x
+    (a GammaAFT whose coefficients ran off to -23, its censored rows at
+    x ~ 1e-10, #634). The step in ``a`` is relative to it, and ``a`` is
+    positive.
     """
 
     @primitive
@@ -151,11 +160,19 @@ def _make_da_primitive(f: Callable) -> Callable:
 
     def vjp_x(ans: Boxable, a: Boxable, x: Boxable) -> Callable:
         av, xv = getval(a), getval(x)
-        mixed = _cdiff(lambda xx: _cdiff1(f, av, xx), xv)
+        with np.errstate(all="ignore"):
+            mixed = _cdiff(lambda aa: dfdx(aa, xv), av)
         return unbroadcast_f(x, lambda g: getval(g) * mixed)
 
     defvjp(f_da, vjp_a, vjp_x)
     return f_da
+
+
+def _log_gamma_density(a: npt.NDArray, x: npt.NDArray) -> npt.NDArray:
+    """``log(x^(a-1) e^-x / Gamma(a))``, the log of dP(a, x)/dx, in plain
+    numpy (for the mixed derivatives of ``_make_da_primitive``)."""
+    with np.errstate(all="ignore"):
+        return -x + np.log(x) * (a - 1) - _sc_gammaln(a)
 
 
 def _make_dab_primitives(f: Callable) -> tuple[Callable, Callable]:
@@ -223,7 +240,9 @@ def gammainc(a: Boxable, x: Boxable) -> Boxable:
     return _sc_gammainc(a, x)
 
 
-_gammainc_da = _make_da_primitive(_sc_gammainc)
+_gammainc_da = _make_da_primitive(
+    _sc_gammainc, lambda a, x: np.exp(_log_gamma_density(a, x))
+)
 
 defvjp(
     gammainc,
@@ -280,7 +299,10 @@ def gammaincln(a: Boxable, x: Boxable) -> Boxable:
     return _gammaincln_raw(a, x)
 
 
-_gammaincln_da = _make_da_primitive(_gammaincln_raw)
+_gammaincln_da = _make_da_primitive(
+    _gammaincln_raw,
+    lambda a, x: np.exp(_log_gamma_density(a, x) - _gammaincln_raw(a, x)),
+)
 
 defvjp(
     gammaincln,
@@ -337,7 +359,10 @@ def gammainccln(a: Boxable, x: Boxable) -> Boxable:
     return _gammainccln_raw(a, x)
 
 
-_gammainccln_da = _make_da_primitive(_gammainccln_raw)
+_gammainccln_da = _make_da_primitive(
+    _gammainccln_raw,
+    lambda a, x: -np.exp(_log_gamma_density(a, x) - _gammainccln_raw(a, x)),
+)
 
 defvjp(
     gammainccln,
@@ -432,8 +457,11 @@ def log_gamma_ratio(y: Boxable, a: Boxable) -> Boxable:
         z_safe = anp.where(below, z, 1.0)
         shifted = shifted + anp.where(below, anp.log1p(a / z_safe), 0.0)
         z = anp.where(below, z + 1.0, z)
-    # z >= 10 here for every y > 0.
-    z = anp.maximum(z, _ASYMPTOTIC_FROM)
+    # z >= 10 here for every y > 0. (A ``where``, not ``maximum``: at a
+    # tie, z = 10 exactly from y = 1, 2, ..., 10, autograd's ``maximum``
+    # gives each side half the gradient, and d/dy came out halved. A
+    # NegativeBinomial fit from r = 4 could not move, #665.)
+    z = anp.where(z < _ASYMPTOTIC_FROM, _ASYMPTOTIC_FROM, z)
     return (
         (z - 0.5) * anp.log1p(a / z)
         + a * anp.log(z + a)

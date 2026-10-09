@@ -9,10 +9,12 @@ import numpy.typing as npt
 from surpyval.distribution import NonParametricDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.utils.data_summary import data_summary
+from surpyval.utils.deprecation import reordered_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import (
     BOUNDS,
+    check_alpha_ci,
     check_option,
     warn_outside_unit_interval,
 )
@@ -36,6 +38,20 @@ _QF_TOL = 1e-9
 # The functions ``cb`` can bound ('R' and 'F' are aliases of 'sf' and 'ff').
 _CB_ON = ("sf", "ff", "Hf", "R", "F")
 
+# ``cb`` took ``(x, on, bound, interp, alpha_ci, ...)`` where every other
+# model's takes ``(x, on, alpha_ci, bound, ...)``, so ``km.cb(x, "sf", 0.1)``
+# raised "bound must be ..." where ``model.cb(x, "sf", 0.1)`` meant
+# ``alpha_ci=0.1`` (#666). It takes the common order now; a string third
+# positional argument (a ``bound``) is the old order, read as before with a
+# warning until v0.25.
+_OLD_CB_ORDER = reordered_arguments(
+    ("x", "on", "bound", "interp", "alpha_ci", "bound_type", "dist"),
+    lambda args: len(args) >= 3 and isinstance(args[2], str),
+    "the third positional argument is now alpha_ci, as in every model's "
+    "cb(x, on, alpha_ci, bound, ...). Pass bound by name, e.g. "
+    "cb(x, 'sf', bound='lower').",
+)
+
 
 # The ``interp`` values: the step estimate, and the interpolation kinds
 # of ``interp_function`` ('cubic' is PCHIP, the rest scipy's interp1d).
@@ -53,6 +69,31 @@ def _check_interp(interp: str) -> None:
     # An unknown ``interp`` used to reach scipy, which raised
     # NotImplementedError (#416).
     check_option("interp", interp, _INTERP)
+
+
+def warn_bounds_past_data(
+    method: str, last: float, past: npt.NDArray, held: str = "sf"
+) -> None:
+    # The step ``sf`` (``held``: the competing-risks ``cif`` too) holds
+    # its last value past the data, but the bounds say nothing there and
+    # are NaN: said once per call, naming the range (#665), rather than
+    # as a silent NaN.
+    import warnings
+
+    from surpyval.utils.warnings import caller_stacklevel
+
+    shown = ", ".join("{:g}".format(float(v)) for v in past[:5])
+    warnings.warn(
+        "{}: the confidence bounds are NaN at x = {}{}, past the last "
+        "observed value {:g}; the estimate says nothing about values "
+        "beyond its data ({} there only holds its last value). Use "
+        "set_support(lower, upper) to carry the bounds at the last "
+        "value out to upper.".format(
+            method, shown, ", ..." if past.size > 5 else "", last, held
+        ),
+        UserWarning,
+        stacklevel=caller_stacklevel(),
+    )
 
 
 class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
@@ -152,7 +193,9 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         values, and what its functions give there is a convention: the
         step functions start at their initial value and hold their last
         one, while the interpolated forms (``interp="linear"`` and so on)
-        and the confidence bounds are NaN. With a support set, every
+        are NaN; the confidence bounds are the initial value before the
+        first value (for the step estimate) and NaN, with a warning, after
+        the last. With a support set, every
         function and every ``interp`` gives
 
         - in ``[lower, x[0])``, the value before the first observed value:
@@ -235,15 +278,30 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         x: npt.ArrayLike,
         f: Callable[[npt.ArrayLike], npt.ArrayLike],
         start: float,
+        interp: str = "step",
+        method: str = "cb",
     ) -> npt.NDArray:
         """The confidence bounds ``f(x)``, as :meth:`_within_support`
-        gives them with a support set, and without one NaN outside the
-        observed values (and at a missing x). ``cb``, ``R_cb`` and
-        ``bootstrap_cb`` all go through here so that they agree outside
-        the data: ``bootstrap_cb`` used to carry its step convention there
-        (1 before the first value, the last bounds after it; #452)."""
+        gives them with a support set. Without one they are NaN above the
+        last observed value (and at a missing x), with a warning where
+        the step ``sf`` has a value there (#665); below the first value
+        the step estimate is exactly ``start`` (``sf`` 1), so its bounds
+        collapse onto it, as ``sf`` gives (the interpolated forms are NaN
+        there, as their ``sf`` is). ``cb``, ``R_cb`` and ``bootstrap_cb``
+        all go through here so that they agree outside the data:
+        ``bootstrap_cb`` used to carry its step convention past the last
+        value (#452)."""
         first, last = float(self.x[0]), float(self.x[-1])
-        support = (first, last) if self.support is None else self.support
+        if self.support is not None:
+            support = self.support
+        elif interp == "step":
+            support = (-np.inf, last)
+            xf = np.atleast_1d(np.asarray(x, dtype=float))
+            past = np.unique(xf[xf > last])
+            if past.size:
+                warn_bounds_past_data(method, last, past)
+        else:
+            support = (first, last)
         return on_support(support, first, last, x, f, start)
 
     @keeps_query_shape
@@ -604,25 +662,27 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         >>> model.Hf([1., 1.5, 2., 2.5])
         array([0.2 , 0.2 , 0.45, 0.45])
         """
-        # Bounded separately so that it starts at 0.0, not -log(1) = -0.0.
         _check_interp(interp)
         return self._within_support(x, lambda q: self._Hf(q, interp), 0.0)
 
     def _Hf(self, x: npt.ArrayLike, interp: str) -> npt.NDArray:
         # ``Hf`` without the bounds (see ``set_support``).
         sf = self._sf(x, interp)
-        # -log(0) = inf is the documented value once sf reaches zero.
+        # -log(0) = inf is the documented value once sf reaches zero. 0.0
+        # - log(sf), not -log(sf): where sf is 1 (before the first time)
+        # the latter is -0.0 (#728).
         with np.errstate(divide="ignore"):
-            return -np.log(sf)
+            return 0.0 - np.log(sf)
 
+    @_OLD_CB_ORDER
     @keeps_query_shape
     def cb(
         self,
         x: npt.ArrayLike,
         on: str = "sf",
+        alpha_ci: float = 0.05,
         bound: str = "two-sided",
         interp: str = "step",
-        alpha_ci: float = 0.05,
         bound_type: str = "exp",
         dist: str = "z",
     ) -> npt.NDArray:
@@ -661,6 +721,9 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
             'sf', and those on 'Hf' are minus their logarithm; a two-sided
             result is always ``[lower, upper]`` for the function asked
             about.
+        alpha_ci : scalar, optional
+            The level of significance at which the bound will be computed.
+            Defaults to 0.05.
         bound : ('two-sided', 'upper', 'lower'), str, optional
             Compute either the two-sided, upper or lower confidence bound(s).
             Defaults to two-sided. A one-sided bound puts all of
@@ -671,9 +734,6 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
             statistics traditionally uses step functions, but can use
             interpolated values if desired. Defaults to step. Takes the
             values of ``sf``'s ``interp``.
-        alpha_ci : scalar, optional
-            The level of significance at which the bound will be computed.
-            Defaults to 0.05.
         bound_type : ('exp', 'normal'), str, optional
             The method with which the bounds will be calculated. Using
             'normal' (i.e. the plain Greenwood-style interval,
@@ -717,11 +777,16 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         estimate itself, 0.
 
         Where the variance is zero (before the first failure) the bounds
-        are the estimate, 1. Below the first and above the last observed
-        value the bounds are NaN, unless the model has bounds (see
-        ``set_support``): then they are the estimate's initial value from
-        ``lower`` to the first value, the bounds at the last value carried
-        from there to ``upper``, and NaN outside ``[lower, upper]``.
+        are the estimate, 1. Below the first observed value the step
+        estimate is exactly its initial value (``sf`` 1), and so are both
+        bounds (``[1, 1]`` on ``sf``, ``[0, 0]`` on ``ff`` and ``Hf``);
+        the interpolated forms are NaN there, as their ``sf`` is. Above
+        the last observed value the bounds are NaN, with a warning naming
+        the values (the step ``sf`` only holds its last value there),
+        unless the model has bounds (see ``set_support``): then they are
+        the estimate's initial value from ``lower`` to the first value,
+        the bounds at the last value carried from there to ``upper``, and
+        NaN outside ``[lower, upper]``.
 
         Examples
         --------
@@ -745,6 +810,7 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
 
         """
+        check_alpha_ci(alpha_ci)
         # The guard used to test ``on in []`` and so never fired: any other
         # ``on`` (e.g. 'hf') fell through to the survival bounds in
         # ``[upper, lower]`` order, i.e. with the lower above the upper.
@@ -765,6 +831,8 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
                 q, on, bound, interp, alpha_ci, bound_type, dist
             ),
             1.0 if on in ("sf", "R") else 0.0,
+            interp,
+            "cb",
         )
 
     def _cb(
@@ -799,7 +867,9 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
                 cb = 1.0 - cb
 
             elif on == "Hf":
-                cb = -np.log(cb)
+                # 0.0 - log: where a bound is 1 (before the first
+                # failure), -log(1) is -0.0 (#746).
+                cb = 0.0 - np.log(cb)
 
             elif (on == "sf") or (on == "R"):
                 if bound == "two-sided":
@@ -822,16 +892,21 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         ``plot``. Takes the same arguments as ``cb`` (without ``on``), but
         a two-sided result has the columns in ``[upper, lower]`` order;
         ``cb(x, on='sf')`` returns them as ``[lower, upper]`` and is the
-        method to call. With a support set (see ``set_support``) they are 1
+        method to call. Outside the data they are those of ``cb`` (1 below
+        the first value for the step estimate, NaN with a warning above
+        the last). With a support set (see ``set_support``) they are 1
         from ``lower`` to the first value, the bounds at the last value
         from there to ``upper``, and NaN outside.
         """
+        check_alpha_ci(alpha_ci)
         _check_bound(bound)
         _check_interp(interp)
         return self._bounds_within_support(
             x,
             lambda q: self._R_cb(q, bound, interp, alpha_ci, bound_type, dist),
             1.0,
+            interp,
+            "R_cb",
         )
 
     def _R_cb(
@@ -1108,7 +1183,8 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
 
         p : array like or scalar
             The probabilities at which the quantile interval will be
-            computed. Values must be in (0, 1].
+            computed, in [0, 1]. Outside it the interval is ``[nan, nan]``,
+            with one warning, as ``qf`` gives (#626; it raised).
         alpha_ci : scalar, optional
             The level of significance at which the interval will be
             computed. Defaults to 0.05.
@@ -1142,9 +1218,9 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         Brookmeyer, R. and Crowley, J. (1982), "A confidence interval for
         the median survival time", Biometrics 38, 29-41.
         """
+        check_alpha_ci(alpha_ci)
         p = np.atleast_1d(p).astype(float)
-        if ((p <= 0) | (p > 1)).any():
-            raise ValueError("'p' must be in the range (0, 1]")
+        outside = warn_outside_unit_interval(p, "quantile_cb")
 
         bounds = self.cb(
             self.x,
@@ -1158,6 +1234,9 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
 
         out = np.empty((p.size, 2))
         for i, p_i in enumerate(p):
+            if outside[i] or np.isnan(p_i):
+                out[i] = np.nan
+                continue
             level = 1.0 - p_i
             # Times enter the interval when the lower survival bound
             # falls to the level, and leave it once the upper survival
@@ -1266,6 +1345,7 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         >>> model.mean_cb(tau=6)
         array([3.36776153, 5.92390514])
         """
+        check_alpha_ci(alpha_ci)
         r = self.rmst(tau=tau, alpha_ci=alpha_ci)
         return np.array([r["lower"], r["upper"]])
 
@@ -1343,6 +1423,7 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         --------
         surpyval.rmst_diff : compare the RMST of two groups.
         """
+        check_alpha_ci(alpha_ci)
         from scipy.stats import norm
 
         if tau is None:
@@ -1724,7 +1805,7 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         out.x = x_arr
         out.F = 1 - out.R
         with np.errstate(all="ignore"):
-            out.H = -np.log(out.R)
+            out.H = 0.0 - np.log(out.R)
         # Without r and d there is no variance estimate, and therefore
         # no confidence bounds, for the model.
         out.greenwood = None  # type: ignore[assignment]
@@ -1870,7 +1951,7 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         # as None; derive it as the fitter does, so ``smoothed_hf`` works.
         if getattr(out, "H", None) is None and hasattr(out, "R"):
             with np.errstate(all="ignore"):
-                out.H = -np.log(out.R)
+                out.H = 0.0 - np.log(out.R)
 
         if "data" in model_dict or "estimator" in model_dict:
             data: dict[str, Any] = {}
@@ -1957,6 +2038,7 @@ def rmst_diff(
     >>> print(round(res["p_value"], 4))
     0.1067
     """
+    check_alpha_ci(alpha_ci)
     from scipy.stats import norm
 
     if tau is None:

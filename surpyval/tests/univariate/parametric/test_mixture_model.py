@@ -370,16 +370,13 @@ def test_572_log_likelihood_is_the_fitted_value_with_the_criteria():
     assert mm.aic() > weibull.aic()
 
 
-def test_572_old_spellings_warn_and_keep_their_meaning():
+def test_572_old_spellings_are_gone():
+    # Deprecated in v0.23, removed in v0.24
     mm = _fitted_model()
-    with pytest.warns(DeprecationWarning, match="negative log-likelihood"):
-        old = mm.loglike
-    assert old == mm.neg_ll()
-    with pytest.warns(DeprecationWarning, match="log_likelihood"):
-        per_row = mm.log_likelihood(mm.params[0])
-    np.testing.assert_array_equal(
-        per_row, mm._component_log_likelihood(mm.params[0])
-    )
+    assert not hasattr(mm, "loglike")
+    assert type(mm.log_likelihood) is float
+    with pytest.raises(TypeError):
+        mm.log_likelihood(mm.params[0])
 
 
 def test_572_criteria_survive_a_round_trip_and_a_refit():
@@ -401,11 +398,225 @@ def test_572_criteria_survive_a_round_trip_and_a_refit():
 
 
 @pytest.mark.parametrize(
-    "old", ["likelihood", "Q", "expectation", "maximisation", "EM"]
+    "old",
+    [
+        "likelihood",
+        "Q",
+        "expectation",
+        "maximisation",
+        "EM",
+        "initialise_params",
+    ],
 )
 def test_605_em_steps_are_internal(old):
+    # Their public names, deprecated in v0.23, are gone in v0.24
     x = surv.Weibull.random(100, 10, 2, random_state=0)
     model = sp.MixtureModel.fit(x, dist=surv.Weibull, m=2)
-    with pytest.warns(DeprecationWarning, match="internal to the fit"):
-        step = getattr(model, old)
-    assert callable(step)
+    assert not hasattr(model, old)
+
+
+def test_626_responsibilities_are_internal():
+    # ``p`` held the EM responsibilities, a meaning ``p`` has nowhere
+    # else; its public name warns until v0.25 and the fit does not use it.
+    x = surv.Weibull.random(100, 10, 2, random_state=0)
+    model = no_warnings(sp.MixtureModel.fit, x, dist=surv.Weibull, m=2)
+    with pytest.warns(DeprecationWarning, match="internal to the fit") as rec:
+        resp = model.p
+    assert rec[0].filename == __file__
+    assert resp is model._resp and resp.shape == (2, len(model.data.x))
+    np.testing.assert_allclose(resp.sum(axis=0), 1.0)
+
+
+def test_650_a_component_past_the_data_is_no_finite_maximum():
+    # A second Weibull component ran off past the data (scale 33,561, the
+    # largest observation 1,150) and the fit called it verified; its limit
+    # is a one-component limited-failure Weibull, which is 2e-8 higher.
+    import scipy.stats as ss
+
+    rng = np.random.default_rng(21)
+    t = ss.weibull_min(1.6, scale=500, loc=100).rvs(40, random_state=rng)
+    cen = rng.uniform(300, 1500, 40)
+    x, c = np.minimum(t, cen), (t > cen).astype(int)
+    with pytest.warns(UserWarning, match="explains no failure"):
+        mm = surv.MixtureModel(surv.Weibull, 2).fit(x, c)
+    assert mm.maximum == "no finite maximum"
+
+
+def test_650_an_ordinary_mixture_is_still_verified():
+    rng = np.random.default_rng(3)
+    x = np.concatenate(
+        [
+            surv.Weibull.random(60, 10, 3, random_state=rng),
+            surv.Weibull.random(60, 60, 5, random_state=rng),
+        ]
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        mm = surv.MixtureModel(surv.Weibull, 2).fit(x)
+    assert mm.maximum == "verified"
+
+
+# -- hf, qf and the Wald inference (#651) ----------------------------------
+
+
+def _two_weibulls():
+    x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+    return sp.MixtureModel.fit(x, dist=sp.Weibull, m=2)
+
+
+def test_hf_is_df_over_sf():
+    mm = _two_weibulls()
+    grid = np.array([0.5, 5.0, 15.0, 30.0])
+    assert np.allclose(mm.hf(grid), mm.df(grid) / mm.sf(grid))
+    assert np.ndim(mm.hf(5.0)) == 0
+    # Finite where the survival has underflowed to 0
+    assert np.isfinite(mm.hf(1e4)) and mm.hf(1e4) > 0
+
+
+def test_sf_hf_and_cs_keep_their_precision_in_the_upper_tail():
+    # #671: sf was 1 - ff, 0 (and Hf inf) once the survival fell below
+    # about 1e-16; the components' summed survival keeps it.
+    g = np.random.default_rng(7)
+    mm = sp.MixtureModel(sp.Weibull, 2)
+    mm.fit(np.r_[20 * g.weibull(1, 15), 150 * g.weibull(3, 45)])
+    x = np.array([1e-6, 600.0, 1000.0, 1e4])
+    exact = sum(w * sp.Weibull.sf(x, *p) for w, p in zip(mm.w, mm.params))
+    assert np.allclose(mm.sf(x), exact, rtol=1e-12, atol=0)
+    # (near 0, -log1p(-ff) is the exact reference: log(sf) cancels there)
+    F = sum(w * sp.Weibull.ff(x, *p) for w, p in zip(mm.w, mm.params))
+    with np.errstate(divide="ignore"):
+        H = np.where(F < 0.5, -np.log1p(-F), -np.log(exact))
+    assert np.allclose(mm.Hf(x), H, rtol=1e-12, atol=0)
+    assert np.allclose(mm.sf(x) + mm.ff(x), 1.0)
+    # Past the survival's underflow, Hf is the components' log-sum-exp
+    log_s = [
+        np.log(w) + sp.Weibull.log_sf(1e5, *p) for w, p in zip(mm.w, mm.params)
+    ]
+    assert mm.sf(1e5) == 0
+    assert np.isclose(mm.Hf(1e5), -np.logaddexp(*log_s), rtol=1e-12)
+    assert mm.Hf(0.0) == 0 and mm.Hf(np.inf) == np.inf
+    # cs from the cumulative hazard: finite where sf(given) is 0
+    assert np.isclose(mm.cs(10.0, 1000.0), mm.sf(1010.0) / exact[2])
+    assert 0 < mm.cs(1.0, 1e5) < 1
+    assert np.isclose(mm.cs(3.0, 5.0), mm.sf(8.0) / mm.sf(5.0))
+    assert np.isnan(mm.cs(1.0, np.inf))
+
+
+def test_qf_inverts_ff():
+    mm = _two_weibulls()
+    p = np.array([0.01, 0.1, 0.5, 0.9, 0.99])
+    assert np.allclose(mm.ff(mm.qf(p)), p, atol=1e-10)
+    assert mm.qf([[0.1], [0.5]]).shape == (2, 1)
+    assert mm.qf(0.0) == 0.0 and mm.qf(1.0) == np.inf
+
+
+def test_qf_outside_unit_interval_is_nan_with_one_warning():
+    mm = _two_weibulls()
+    with pytest.warns(UserWarning, match="outside") as caught:
+        q = mm.qf([10.0, -0.1, np.nan, 0.5])
+    assert len(caught) == 1
+    assert np.isnan(q[:3]).all() and np.isfinite(q[3])
+
+
+def test_covariance_matches_direct_hessian():
+    from surpyval.utils.linalg import numerical_hessian
+
+    mm = _two_weibulls()
+    assert mm.covariance_names == [
+        "alpha_0",
+        "beta_0",
+        "alpha_1",
+        "beta_1",
+        "w_0",
+        "w_1",
+    ]
+
+    def nll(v):
+        w = np.array([v[4], 1 - v[4]])
+        return float(mm.neg_ll_of(w, v[:4].reshape(2, 2)))
+
+    v = np.r_[mm.params.ravel(), mm.w[0]]
+    se = np.sqrt(np.diag(np.linalg.inv(numerical_hessian(nll, v))))
+    assert np.allclose(mm.standard_errors()[:5], se, rtol=1e-3)
+    assert np.isclose(mm.standard_errors()[4], mm.standard_errors()[5])
+    assert mm.covariance().shape == (6, 6)
+
+
+def test_param_cb_names_and_scales():
+    mm = _two_weibulls()
+    lo, hi = mm.param_cb("alpha_1")
+    assert 0 < lo < mm.params[1, 0] < hi
+    lo, hi = mm.param_cb("w_0")
+    assert 0 < lo < mm.w[0] < hi < 1
+    with pytest.raises(ValueError, match="'alpha_0'"):
+        mm.param_cb("alpha")
+    with pytest.raises(ValueError, match="Wald"):
+        mm.param_cb("alpha_0", method="lr")
+
+
+def test_cb_and_quantile_cb_bracket_the_estimate():
+    mm = _two_weibulls()
+    grid = np.array([2.0, 8.0, 16.0])
+    for on in ("sf", "ff", "Hf", "hf", "df"):
+        band = mm.cb(grid, on=on)
+        value = getattr(mm, on)(grid)
+        assert band.shape == (3, 2)
+        assert np.all(band[:, 0] <= value) and np.all(value <= band[:, 1])
+    assert np.allclose(mm.cb(grid, on="ff"), 1 - mm.cb(grid)[:, ::-1])
+    lower = mm.cb(grid, bound="lower")
+    assert np.allclose(lower, mm.cb(grid, alpha_ci=0.1)[:, 0])
+    lo, hi = mm.quantile_cb(0.1)
+    assert lo < mm.qf(0.1) < hi
+    assert mm.quantile_cb([0.1, 0.5]).shape == (2, 2)
+
+
+def test_710_cb_bounds_each_x_on_its_own_in_the_far_tail():
+    # One far-tail x made every x's hf bound NaN, with a warning blaming
+    # the covariance, and the Hf bound was [inf, inf] once sf underflowed.
+    mm = _two_weibulls()
+    near = np.array([5.0, 15.0])
+    far = np.array([200.0, 1e4])
+    for on in ("sf", "ff", "Hf", "hf", "df"):
+        both = no_warnings(mm.cb, np.r_[near, far], on=on)
+        np.testing.assert_allclose(both[:2], mm.cb(near, on=on), rtol=1e-10)
+    H = no_warnings(mm.cb, far, on="Hf")
+    h = no_warnings(mm.cb, far, on="hf")
+    for band, value in ((H, mm.Hf(far)), (h, mm.hf(far))):
+        assert np.isfinite(band).all()
+        assert np.all((band[:, 0] < value) & (value < band[:, 1]))
+    # Hf's band is the sf band's on its own (log-log) scale.
+    np.testing.assert_allclose(
+        mm.cb(near, on="Hf"),
+        -np.log(mm.cb(near, on="sf"))[:, ::-1],
+        rtol=1e-9,
+    )
+    # An x whose derivatives overflow is NaN on its own, and the warning
+    # names it and the overflow, not the covariance.
+    with pytest.warns(RuntimeWarning, match=r"hf at x = \[1e\+160\]") as rec:
+        got = mm.cb([5.0, 1e160], on="hf")
+    assert len(rec) == 1 and "overflow" in str(rec[0].message)
+    assert "covariance" not in str(rec[0].message)
+    assert rec[0].filename == __file__
+    np.testing.assert_allclose(got[0], mm.cb(5.0, on="hf"))
+    assert np.isnan(got[1]).all()
+    # A missing x is NaN in silence.
+    assert np.isnan(no_warnings(mm.cb, [5.0, np.nan])[1]).all()
+
+
+def test_626_quantile_cb_outside_0_1_is_nan_with_one_warning():
+    mm = _two_weibulls()
+    with pytest.warns(UserWarning, match=r"quantile_cb: 1 of the 2") as rec:
+        got = mm.quantile_cb([0.1, 1.5])
+    assert len(rec) == 1 and rec[0].filename == __file__
+    np.testing.assert_allclose(got[0], mm.quantile_cb(0.1))
+    assert np.isnan(got[1]).all()
+
+
+def test_covariance_survives_to_dict_and_refit():
+    mm = _two_weibulls()
+    restored = sp.MixtureModel.from_dict(mm.to_dict())
+    assert np.allclose(restored.standard_errors(), mm.standard_errors())
+    assert np.allclose(restored.cb([5.0]), mm.cb([5.0]))
+    before = mm.standard_errors()
+    mm.fit(np.arange(1.0, 30.0))
+    assert not np.allclose(mm.standard_errors(), before)

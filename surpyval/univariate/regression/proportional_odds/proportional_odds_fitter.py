@@ -23,7 +23,7 @@ from .._fit_skeleton import (
 from .._kinds import PROPORTIONAL_ODDS
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
-from ..regression_data import DataFrameRegressionMixin
+from ..regression_data import DataFrameRegressionMixin, truncation_window
 from ..tvc_fit import TVCFitMixin
 
 _TINY = float(np.finfo(float).tiny)
@@ -137,27 +137,26 @@ class ProportionalOddsFitter(
         Log of the survival function, :math:`-H(x \\mid Z)`; see :meth:`Hf`.
         """
         x, dist_params, phi = split_log_linear(self, x, Z, params)
-        S0 = self.sf_dist(x, *dist_params)
-        F0 = self.ff_dist(x, *dist_params)
-        # S = phi S0 / (F0 + phi S0) = 1 / (1 + F0 / (phi S0)). The old
-        # log(phi) + log(S0) - log(F0 + phi S0) cancelled to about 1e-16
-        # absolute where H is small: 20 % wrong at H = 4e-16 (#528).
-        scaled = phi * S0
-        # Where phi S0 is below the normal range (or 0), F0 / (phi S0) can
-        # overflow; there H is large and nothing cancels: log S0 from the
-        # baseline's log_sf, which stays finite where S0 is 0, and
-        # log(F0 + phi S0) = log1p((phi - 1) S0).
-        normal = scaled >= _TINY
-        # A denominator of 1 in the branch not taken keeps the value (and
-        # autograd's derivative) free of inf.
-        safe = np.where(normal, scaled, 1.0)
-        return np.where(
-            normal,
-            -np.log1p(F0 / safe),
-            np.log(phi)
-            + self.log_sf_dist(x, *dist_params)
-            - np.log1p((phi - 1.0) * S0),
-        )
+        # S = phi S0 / (F0 + phi S0) = 1 / (1 + F0 / (phi S0)), so
+        # log S = -log(1 + e^r) with r = log F0 - log phi - log S0, the log
+        # of the baseline's odds over phi: ``logaddexp`` keeps full
+        # relative precision where H is small (the old log(phi) + log(S0)
+        # - log(F0 + phi S0) cancelled to about 1e-16 absolute: 20 % wrong
+        # at H = 4e-16, #528) and stays finite where phi S0 is below the
+        # normal range, where log S is log phi + log S0 - log F0. Each log
+        # from the baseline's own log_ff and log_sf. The ratio F0 / (phi
+        # S0) it replaced had a second derivative of 1 / (phi S0)^3, which
+        # overflowed where phi S0 was 1e-115 (a WeibullPO whose alpha ran
+        # off to 6e43, towards the log-logistic PO): its Hessian was not
+        # finite, and the no-maximum check had nothing to read (#634).
+        # (A missing query value, nan, is nan quietly, as it was)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            r = (
+                self.dist.log_ff(x, *dist_params)
+                - np.log(phi)
+                - self.log_sf_dist(x, *dist_params)
+            )
+            return -np.logaddexp(0.0, r)
 
     def log_ff(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         x, dist_params, phi = split_log_linear(self, x, Z, params)
@@ -187,6 +186,8 @@ class ProportionalOddsFitter(
         init: npt.ArrayLike | None = None,
         fixed: dict[str, float] | None = None,
         center: bool = False,
+        tl: npt.ArrayLike | None = None,
+        tr: npt.ArrayLike | None = None,
     ) -> ParametricRegressionModel:
         """
         Fit the proportional odds model by maximum likelihood.
@@ -208,15 +209,17 @@ class ProportionalOddsFitter(
         t : array_like, optional
             Truncation bounds: an (N, 2) array of the left and right
             truncation times of each observation.
+        tl, tr : array_like or float, optional
+            The left / right truncation times of each observation (or one
+            for every observation), the columns of ``t``, which they
+            replace (#662).
         init : array_like, optional
             Initial parameter values: the distribution parameters followed
             by the covariate coefficients.
         fixed : dict, optional
             Parameters to hold fixed, by name (a distribution parameter
             such as ``"beta"``, or a coefficient: its covariate's column
-            name, else ``"coef_0"``, ...; the names before v0.23,
-            ``"beta_0"``, ..., are taken until v0.24, with a
-            ``DeprecationWarning``).
+            name, else ``"coef_0"``, ...).
         center : bool, optional
             ``False`` (the default) reports the baseline at ``Z = 0``.
             ``True`` reports the baseline at the covariate means (stored as
@@ -244,6 +247,7 @@ class ProportionalOddsFitter(
         >>> model.params.round(3)
         array([9.708, 2.337, 0.918])
         """
+        t = truncation_window(x, t, tl, tr)
         return fit_log_linear(
             self,
             x,

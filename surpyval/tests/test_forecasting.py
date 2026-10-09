@@ -104,6 +104,17 @@ def test_581_models_without_cs_use_the_survival_ratio():
     )
 
 
+def test_660_units_far_in_the_tail_have_their_failure_probability():
+    # sf(1000) underflows to 0, but Hf is finite: the unit fails within one
+    # more unit of time with probability 1 - exp(-3.003001), not nan.
+    model = sp.Weibull.from_params([100.0, 3.0])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        result = sp.forecast(model, age=[1000.0], horizon=1)
+    expected = -np.expm1(-((1001 / 100) ** 3 - (1000 / 100) ** 3))
+    assert result.expected[0] == pytest.approx(expected, rel=1e-9)
+
+
 def test_581_units_the_model_says_cannot_survive_warn():
     model = sp.Uniform.from_params([0.0, 10.0])
     with pytest.warns(RuntimeWarning, match="survival of 0") as caught:
@@ -242,3 +253,58 @@ def test_615_forecast_option_errors():
         sp.forecast(weibull, horizon=1.0)
     with pytest.raises(ValueError, match="horizon is required"):
         sp.forecast(weibull, [1.0])
+
+
+def test_659_negative_age_and_wrong_length_n_are_refused():
+    from surpyval.recurrent import HPP, CoxLewis, CrowAMSAA, GeneralizedRenewal
+
+    x = [3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60]
+    i = [1] * 6 + [2] * 5
+    c = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+    models = [
+        sp.Weibull.from_params([1000.0, 2.0]),
+        CrowAMSAA.from_params([50.0, 1.3]),
+        HPP.from_params([0.1]),
+        CoxLewis.fit(x, i=i, c=c),
+        GeneralizedRenewal.fit(x, i=i, c=c),
+    ]
+    for model in models:
+        with pytest.raises(ValueError, match="age must be finite times of"):
+            sp.forecast(model, age=[5.0, -10.0], horizon=10.0)
+    nhpp = models[1]
+    with pytest.raises(ValueError, match=r"one per age \(2 ages\); got 3"):
+        sp.forecast(nhpp, age=[30.0, 40.0], n=[1, 2, 3], horizon=10.0)
+    with pytest.raises(ValueError, match=r"^n must be one value"):
+        sp.forecast(models[0], age=[30.0, 40.0], n=[1, 2, 3], horizon=10.0)
+    with pytest.raises(ValueError, match=r"^limit must be one value"):
+        sp.forecast(nhpp, age=[30.0, 40.0], limit=[50, 60, 70], horizon=10.0)
+    # an age of 0, and one n for every age, are fine
+    one = sp.forecast(nhpp, age=[0.0, 40.0], n=2, horizon=10.0)
+    each = sp.forecast(nhpp, age=[0.0, 40.0], n=[2, 2], horizon=10.0)
+    assert np.allclose(one.expected, each.expected)
+
+
+def test_666_random_state_is_ignored_where_the_forecast_is_exact():
+    from surpyval.recurrent import CrowAMSAA
+
+    nhpp = CrowAMSAA.from_params([50.0, 1.3])
+    exact = sp.forecast(nhpp, [200.0], horizon=100.0)
+    seeded = sp.forecast(nhpp, [200.0], horizon=100.0, random_state=1)
+    np.testing.assert_array_equal(exact.expected, seeded.expected)
+    weibull = sp.Weibull.from_params([10.0, 2.0])
+    sp.forecast(weibull, [1.0], horizon=1.0, random_state=1)
+
+
+def test_666_forecast_to_dict_and_to_frame():
+    import json
+
+    model = sp.Weibull.from_params([60.0, 1.5])
+    result = sp.forecast(model, age=[3, 2], n=[950, 1000], horizon=[1, 2])
+    d = result.to_dict()
+    back = json.loads(json.dumps(d))
+    assert back["expected"] == pytest.approx(list(result.expected))
+    assert back["probability"][1][0] == pytest.approx(result.probability[1, 0])
+    assert back["per_unit"] is None
+    frame = result.to_frame()
+    assert list(frame.index) == [1.0, 2.0]
+    np.testing.assert_array_equal(frame["upper"], result.upper)

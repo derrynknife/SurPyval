@@ -2,10 +2,17 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+import autograd.numpy as anp
 import numpy as np
+from autograd.extend import defvjp, primitive
+from autograd.tracer import getval, isbox
 from numpy.typing import ArrayLike
 
 from surpyval import Weibull
+from surpyval.recurrent.renewal._derivatives import (
+    lifetime_derivatives,
+    negated,
+)
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
 from surpyval.recurrent.renewal.renewal_model import (
     RenewalModel,
@@ -58,6 +65,256 @@ def kijima_ii_from_prev_interarrival(
     )
 
 
+#: Below this ratio of a gap to the virtual age it starts from, the
+#: survival's drop over the gap is integrated from the hazard
+#: (``_accurate_where_aged``).
+_AGED = 1e-3
+
+
+def virtual_age_log_likelihood(
+    dist: Any,
+    params: Any,
+    age: Any,
+    gap: np.ndarray,
+    c: np.ndarray,
+    fresh: np.ndarray,
+) -> Any:
+    """The log-likelihood of the gaps ``gap`` between events, each from
+    the virtual age ``age`` it starts at, for the lifetime ``dist`` with
+    ``params``: ``log f(v + x) - log S(v)`` for a failure (``c == 0``) and
+    ``log S(v + x) - log S(v)`` for the censored end of an observation
+    (``c == 1``), summed over the rows in row order. ``fresh`` marks the
+    rows whose age is 0 by construction (an item's first gap).
+
+    The gaps far shorter than the virtual age they start from are
+    computed differently (#630). The survival's drop over a gap, ``log
+    S(v + x) - log S(v)``, is the difference of two logs of size
+    ``H(v)``. Once ``v`` dwarfs ``x`` it is lost to rounding, and ``v +
+    x`` itself rounds to ``v`` from ``v / x`` of 1e16: a Kijima-II ``q``
+    of 611 ages an item to 1e30 within a dozen failures, every drop read 0
+    or a rounding step, and the likelihood appeared to rise without bound
+    (-172 at q = 611 against -284 at the maximum, q = 0.95). Below a gap
+    of ``_AGED`` of the age, the drop is minus the hazard's integral over
+    the gap, taken by Simpson's rule (to a relative ``(x / v)**4``), and
+    the density term is the hazard at ``v + x`` times that survival.
+
+    Written for autograd (#710): ``age`` may be traced, and every term is
+    evaluated only on the rows that use it, so that a term a row does not
+    use cannot put a nan into the gradient (``0 * inf``). The fresh rows
+    take their age as the constant 0: the derivative of ``log S(v)`` at
+    ``v = 0`` is infinite for a hazard that is there (a Weibull ``beta <
+    1``), though the age does not depend on the parameters there; and
+    for a lifetime on ``[0, inf)`` their ``log S(0)`` is the 0 it is.
+    Each row's term is the same arithmetic as before (#515), bit for bit.
+    """
+    return VirtualAgeLikelihood(gap, c, fresh)(dist, params, age)
+
+
+class VirtualAgeLikelihood:
+    """``virtual_age_log_likelihood`` for fixed gaps, censoring and fresh
+    rows: the likelihood calls the object with each trial's ages. Which
+    rows take which term depends on the data and on which gaps are aged;
+    that bookkeeping is kept for the last few patterns of aged gaps (at
+    most fits' trials, none), so a call is the arithmetic alone."""
+
+    def __init__(
+        self, gap: Any, c: Any, fresh: Any, aged: float = _AGED
+    ) -> None:
+        self.gap = np.asarray(gap, dtype=float)
+        self.c = np.asarray(c)
+        self.fresh = np.asarray(fresh, dtype=bool)
+        # The ratio of gap to age below which the gap is integrated (0:
+        # never, as ARA's likelihood has always been computed)
+        self.aged = aged
+        self._layouts: dict = {}
+
+    def _layout(self, aged: np.ndarray) -> tuple:
+        key = aged.tobytes() if aged.any() else b""
+        layout = self._layouts.get(key)
+        if layout is not None:
+            return layout
+        c, fresh = self.c, self.fresh
+        first = np.flatnonzero(fresh)
+        later = np.flatnonzero(~fresh & ~aged)
+        main = np.concatenate([first, later])
+        failed = np.flatnonzero(c[main] == 0)
+        censored = np.flatnonzero(c[main] == 1)
+        aged_rows = np.flatnonzero(aged)
+        aged_failed = np.flatnonzero(c[aged_rows] == 0)
+        aged_censored = np.flatnonzero(c[aged_rows] == 1)
+        rows = np.concatenate(
+            [
+                main[failed],
+                main[censored],
+                aged_rows[aged_failed],
+                aged_rows[aged_censored],
+            ]
+        )
+        # Back in row order, so the sum is the one it always was.
+        order = np.argsort(rows, kind="stable")
+        layout = (
+            np.zeros(first.size),
+            later,
+            self.gap[main],
+            failed,
+            censored,
+            aged_rows,
+            self.gap[aged_rows],
+            aged_failed,
+            aged_censored,
+            order,
+        )
+        if len(self._layouts) >= 8:
+            self._layouts.clear()
+        self._layouts[key] = layout
+        return layout
+
+    def __call__(self, dist: Any, params: Any, age: Any) -> Any:
+        if not (isbox(age) or isbox(params) or any(map(isbox, params))):
+            return self._plain(dist, params, age)
+        with np.errstate(all="ignore"):
+            aged = ~self.fresh & (
+                self.gap < self.aged * np.asarray(getval(age), dtype=float)
+            )
+            (
+                zeros,
+                later,
+                gap_main,
+                failed,
+                censored,
+                aged_rows,
+                gap_aged,
+                aged_failed,
+                aged_censored,
+                order,
+            ) = self._layout(aged)
+            terms = []
+            v_later = age[later]
+            x_new = gap_main + anp.concatenate([zeros, v_later])
+            if dist.support[0] >= 0:
+                # S(0) = 1: autograd's derivative of a Weibull's log S
+                # at 0 is nan in alpha (0 * inf) for beta < 1.
+                log_sf_v = anp.concatenate(
+                    [zeros, dist.log_sf(v_later, *params)]
+                )
+            else:
+                log_sf_v = dist.log_sf(
+                    anp.concatenate([zeros, v_later]), *params
+                )
+            if failed.size:
+                log_df = dist.log_df(x_new[failed], *params)
+                terms.append(log_df - log_sf_v[failed])
+            if censored.size:
+                log_sf = dist.log_sf(x_new[censored], *params)
+                terms.append(log_sf - log_sf_v[censored])
+            if aged_rows.size:
+                v, x = age[aged_rows], gap_aged
+                h0 = dist.hf(v, *params)
+                h_mid = dist.hf(v + 0.5 * x, *params)
+                h1 = dist.hf(v + x, *params)
+                drop = -x / 6.0 * (h0 + 4.0 * h_mid + h1)
+                if aged_failed.size:
+                    terms.append(anp.log(h1[aged_failed]) + drop[aged_failed])
+                if aged_censored.size:
+                    terms.append(drop[aged_censored])
+        if not terms:
+            return 0.0
+        return anp.sum(anp.concatenate(terms)[order])
+
+    def _plain(self, dist: Any, params: Any, age: np.ndarray) -> float:
+        """The same likelihood where nothing is traced (a derivative-free
+        search's trials): each term on every row, then the one each row
+        takes, which is fewer and larger array operations than taking
+        each term on its own rows. The rows' terms, and their sum, are
+        the same, bit for bit."""
+        gap, c = self.gap, self.c
+        x_new = gap + age
+        with np.errstate(all="ignore"):
+            log_sf_v = dist.log_sf(age, *params)
+            ll_o = dist.log_df(x_new, *params) - log_sf_v
+            ll_right = dist.log_sf(x_new, *params) - log_sf_v
+            aged = ~self.fresh & (gap < self.aged * age)
+            if np.any(aged):
+                v, x = age[aged], gap[aged]
+                h0 = dist.hf(v, *params)
+                h_mid = dist.hf(v + 0.5 * x, *params)
+                h1 = dist.hf(v + x, *params)
+                drop = -x / 6.0 * (h0 + 4.0 * h_mid + h1)
+                ll_o = np.array(ll_o, dtype=float)
+                ll_right = np.array(ll_right, dtype=float)
+                ll_o[aged] = np.log(h1) + drop
+                ll_right[aged] = drop
+        ll = np.where(c == 0, ll_o, 0.0)
+        ll = np.where(c == 1, ll_right, ll)
+        return float(ll.sum())
+
+    def value_and_grad(
+        self, terms: Any, params: Any, age: np.ndarray, age_slope: np.ndarray
+    ) -> "tuple[float, float, np.ndarray] | None":
+        """The likelihood with its derivatives in a restoration parameter
+        and in ``params``, in one pass of plain numpy, for the search
+        (#728): ``(ll, d ll / d r, d ll / d params)`` where the ages
+        ``age`` have the derivative ``age_slope`` in ``r``. ``terms`` are
+        the lifetime's hand-written derivatives (``lifetime_derivatives``).
+
+        The same terms as ``_plain``, each row's derivative in its age
+        chained with the age's in ``r``. ``None`` where a later age is
+        not positive and finite or the result is not finite (outside the
+        terms' domain, or an overflow), for the caller to take autograd's
+        answer there.
+
+        A lifetime on the whole line (``terms.real_line``, a Normal) has
+        no such domain to leave, and its ``log S(0)`` is not 0: the fresh
+        rows take it (at their age of 0), as ``_plain`` does."""
+        gap, failed, fresh = self.gap, self.c == 0, self.fresh
+        later = ~fresh
+        real_line = getattr(terms, "real_line", False)
+        with np.errstate(all="ignore"):
+            if not np.all(np.isfinite(age)) or not (
+                real_line or np.all(age[later] > 0)
+            ):
+                return None
+            # The rows that subtract their start's log S: every row on the
+            # whole line; elsewhere the fresh rows' log S(0) = 0, a
+            # constant (taken at 1, then dropped)
+            starts = np.ones_like(later) if real_line else later
+            v = np.where(fresh, 0.0 if real_line else 1.0, age)
+            sf_v, sf_v_dt, sf_v_dp = terms.log_sf(v, params)
+            end, end_dt, end_dp = terms.log_end(gap + age, params, failed)
+            ll_rows = end - np.where(starts, sf_v, 0.0)
+            dv_rows = np.where(later, end_dt - sf_v_dt, 0.0)
+            dp_rows = [
+                e - np.where(starts, s, 0.0) for e, s in zip(end_dp, sf_v_dp)
+            ]
+            aged = later & (gap < self.aged * age)
+            if np.any(aged):
+                # Simpson's rule over the gap (see ``_plain``)
+                va, xa = age[aged], gap[aged]
+                h0, h0_dt, h0_dp = terms.hf(va, params)
+                hm, hm_dt, hm_dp = terms.hf(va + 0.5 * xa, params)
+                h1, h1_dt, h1_dp = terms.hf(va + xa, params)
+                w = -xa / 6.0
+                fa = failed[aged]
+                ll_rows[aged] = w * (h0 + 4.0 * hm + h1) + np.where(
+                    fa, np.log(h1), 0.0
+                )
+                dv_rows[aged] = w * (h0_dt + 4.0 * hm_dt + h1_dt) + np.where(
+                    fa, h1_dt / h1, 0.0
+                )
+                for k in range(len(dp_rows)):
+                    dp_rows[k][aged] = w * (
+                        h0_dp[k] + 4.0 * hm_dp[k] + h1_dp[k]
+                    ) + np.where(fa, h1_dp[k] / h1, 0.0)
+            ll = float(np.sum(ll_rows))
+            d_r = float(np.dot(dv_rows, age_slope))
+            d_p = np.array([np.sum(d) for d in dp_rows])
+        if not (
+            np.isfinite(ll) and np.isfinite(d_r) and np.all(np.isfinite(d_p))
+        ):
+            return None
+        return ll, d_r, d_p
+
+
 class KijimaIIVirtualAges:
     """
     The Kijima-II virtual ages ``V_k = q * (V_{k-1} + X_k)`` for many items
@@ -76,6 +333,12 @@ class KijimaIIVirtualAges:
     their remaining events are stepped one at a time, where a scalar step
     is the cheaper one. Both do the same arithmetic in the same order as
     the one-item loop, so the ages are bit-for-bit the same.
+
+    Calling the object is differentiable by autograd (#710): the ages'
+    derivatives in ``q`` follow the same recursion (``derivative``), to
+    any order, so the likelihood has an exact gradient and Hessian. The
+    closed form, ``V_k = sum_j q**(k - j + 1) X_j``, would overflow when
+    ``q > 1``.
     """
 
     #: Fewest items at an event position for a whole-array step there.
@@ -105,7 +368,64 @@ class KijimaIIVirtualAges:
                 self.scalar_runs.append((int(start), int(end)))
         self.from_start = n_vector == 0
 
-    def __call__(self, q: float) -> np.ndarray:
+    def __call__(self, q: Any) -> Any:
+        if isbox(q):
+            return _kijima_ii_ages(q, self, 0)
+        return self._ages(q)
+
+    def derivative(self, q: float, order: int = 0) -> np.ndarray:
+        """The ``order``-th derivative of the ages in ``q`` (the ages
+        themselves at 0). Differentiating ``V_k = q (V_{k-1} + X_k)``
+        ``n`` times gives ``V_k^(n) = q V_{k-1}^(n) + n V_{k-1}^(n-1)``,
+        plus ``X_k`` for ``n = 1``, so each derivative runs along the same
+        steps as the ages, carrying the lower orders with it."""
+        if order == 0:
+            return self._ages(q)
+        return self.derivatives(q, order)[order]
+
+    def derivatives(self, q: float, order: int) -> np.ndarray:
+        """The ages and their derivatives in ``q`` up to ``order``, one
+        row each (``derivative``): the search takes the ages with their
+        slope from one pass (#728)."""
+        q = float(q)
+        x = self.x
+        d = np.zeros((order + 1, x.size))
+        n = np.arange(2, order + 1)[:, None]
+
+        def step(before: np.ndarray, gap: np.ndarray) -> np.ndarray:
+            new = np.empty_like(before)
+            new[0] = q * (before[0] + gap)
+            new[1] = q * before[1] + before[0] + gap
+            new[2:] = q * before[2:] + n * before[1:-1]
+            return new
+
+        with np.errstate(over="ignore", invalid="ignore"):
+            for k, rows in enumerate(self.vector_steps):
+                if k:
+                    before = d[:, rows - 1]
+                else:
+                    before = np.zeros((order + 1, rows.size))
+                d[:, rows] = step(before, x[rows])
+            # One row at a time in Python floats, where they are cheaper.
+            for start, end in self.scalar_runs:
+                if self.from_start:
+                    state = [0.0] * (order + 1)
+                else:
+                    state = d[:, start - 1].tolist()
+                run = []
+                for gap in x[start:end].tolist():
+                    state = [
+                        q * (state[0] + gap),
+                        q * state[1] + state[0] + gap,
+                    ] + [
+                        q * state[j] + j * state[j - 1]
+                        for j in range(2, order + 1)
+                    ]
+                    run.append(state)
+                d[:, start:end] = np.array(run).T
+        return d
+
+    def _ages(self, q: float) -> np.ndarray:
         x = self.x
         v = np.empty(x.size)
         for k, rows in enumerate(self.vector_steps):
@@ -120,6 +440,22 @@ class KijimaIIVirtualAges:
                 ages.append(age)
             v[start:end] = ages
         return v
+
+
+@primitive
+def _kijima_ii_ages(q: Any, ages: KijimaIIVirtualAges, order: int) -> Any:
+    """``ages.derivative(q, order)``, as an autograd primitive whose
+    derivative in ``q`` is the next order's: differentiable to any
+    order."""
+    return ages.derivative(q, order)
+
+
+defvjp(
+    _kijima_ii_ages,
+    lambda ans, q, ages, order: lambda g: anp.sum(
+        g * _kijima_ii_ages(q, ages, order + 1)
+    ),
+)
 
 
 @singleton_fitter
@@ -300,6 +636,10 @@ class GeneralizedRenewal(RenewalFitMixin):
     ) -> Callable:
         c = data.c
         x_interarrival = data.get_interarrival_times()
+        # Every item starts at virtual age 0.
+        log_likelihood = VirtualAgeLikelihood(
+            x_interarrival, c, event_positions(data.i) == 0
+        )
 
         if kijima == "i":
             cumulative_previous = _previous_in_item(data.x, data.i)
@@ -308,33 +648,39 @@ class GeneralizedRenewal(RenewalFitMixin):
                 _previous_in_item(x_interarrival, data.i), data.i
             )
 
-        def negll_func(params: np.ndarray) -> float:
-            q = params[0]
-            params = params[1:]
-
+        def virtual_ages_at(q: Any) -> Any:
             if kijima == "i":
                 # Kijima-I is defined by:
                 # Vn+1 = Vn + q * Xn
                 # Where Vn is the virtual age at the nth event and Xn is the
                 # interarrival time between the n-1th and nth event.
                 # Kijima-I is much simpler to implement than Kijima-II
-                virtual_ages = q * cumulative_previous
-            else:
-                virtual_ages = kijima_ii_ages(q)
+                return q * cumulative_previous
+            return kijima_ii_ages(q)
 
-            x_new = x_interarrival + virtual_ages
+        def negll_func(params: np.ndarray) -> float:
+            q = params[0]
+            params = params[1:]
+            return -log_likelihood(dist, params, virtual_ages_at(q))
 
-            # Every item starts at virtual age 0, where some distributions
-            # take log(0) on the way to the exact S(0) = 1 (a LogNormal's
-            # log(x)); that warned thousands of times per fit.
-            with np.errstate(divide="ignore"):
-                log_sf_v = dist.log_sf(virtual_ages, *params)
-                ll_o = dist.log_df(x_new, *params) - log_sf_v
-                ll_right = dist.log_sf(x_new, *params) - log_sf_v
-            ll = np.where(c == 0, ll_o, 0)
-            ll = np.where(c == 1, ll_right, ll)
+        # The ages a q leaves, for the fallback starts (``_aged_starts``)
+        negll_func.virtual_ages = virtual_ages_at  # type: ignore
 
-            return -ll.sum()
+        terms = lifetime_derivatives(dist)
+        if terms is not None:
+
+            def value_and_grad(params: np.ndarray) -> tuple:
+                q = float(params[0])
+                if kijima == "i":
+                    ages, slopes = q * cumulative_previous, cumulative_previous
+                else:
+                    ages, slopes = kijima_ii_ages.derivatives(q, 1)
+                found = log_likelihood.value_and_grad(
+                    terms, params[1:], ages, slopes
+                )
+                return negated(found, negll_func, params)
+
+            negll_func.value_and_grad = value_and_grad  # type: ignore
 
         return negll_func
 
@@ -355,7 +701,9 @@ class GeneralizedRenewal(RenewalFitMixin):
             Data containing the recurrence details.
             An item with delayed entry (a ``tl``) is taken to be as
             new at entry, with its times counted from there (see
-            :meth:`fit`).
+            :meth:`fit`). A finite right truncation ``tr`` ends an
+            item's observation there, as a ``c=1`` row at ``tr``
+            would (#624).
         dist : Distribution, optional
             A surpyval distribution object. Default is Weibull.
         kijima : str, optional
@@ -437,6 +785,7 @@ class GeneralizedRenewal(RenewalFitMixin):
             renewal_restoration=0.0001,
         )
         q, *dist_params = params
+        self._warn_if_memoryless(dist, "q")
         model = dist.from_params(list(dist_params))
         out = self._make_model(model, q, kijima)
         # The likelihood kept as what it is built from, so the model
@@ -475,7 +824,10 @@ class GeneralizedRenewal(RenewalFitMixin):
             right-censored end of an item's observation. Other codes raise
             a ``ValueError``. Defaults to all observed.
         n : array_like, optional
-            Count of events at each row. Defaults to 1.
+            The number of events each row stands for. This model takes exact
+            events (``c=0``) and end-of-observation rows (``c=1``), each of
+            which stands for one, so every ``n`` is 1 (``n > 1`` is refused:
+            repeat the row for simultaneous events). Defaults to 1.
         dist : object, optional
             A surpyval distribution object. Default is Weibull.
         kijima : str, optional
@@ -493,6 +845,9 @@ class GeneralizedRenewal(RenewalFitMixin):
             and its history before entry plays no part. That is exact for
             an item renewed at entry and an assumption otherwise; the
             fitted model's ``data`` hold the times from entry.
+            A negative ``tl`` (an entry age below 0, almost always a
+            data error on an age scale) is used as given, with a
+            ``UserWarning``.
 
         Returns
         -------

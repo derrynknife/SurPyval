@@ -49,9 +49,10 @@ A few things worth knowing:
 - Fitted from a DataFrame (``fit_from_df`` with ``Z_cols`` or a
   ``formula``, or ``fit`` with a DataFrame ``Z``), a tree or forest keeps
   the covariate names as ``feature_names``; ``print(tree)`` shows its splits
-  by name (``temp <= 42``), ``feature_importances`` is a ``pandas.Series``
-  keyed by name, and predictions read a DataFrame by those names. Fitted
-  from arrays the covariates are shown as ``Z0``, ``Z1``, ...
+  by name (``temp <= 42``), a forest's ``feature_importances()`` method
+  returns a ``pandas.Series`` keyed by name, and predictions read a
+  DataFrame by those names. Fitted from arrays the covariates are shown as
+  ``Z0``, ``Z1``, ...
 - A ``"weibull"`` or ``"exponential"`` tree grows until ``min_leaf_samples``
   or ``min_leaf_failures`` stops it, which suits a forest. For a tree used on
   its own, set ``min_split_gain="aic"`` (or ``"bic"``, or a log-likelihood
@@ -62,6 +63,11 @@ A few things worth knowing:
   candidate needs an optimiser and growing a forest takes much longer. A
   parametric leaf is fitted when the tree first predicts, so the first
   prediction of a ``"weibull"`` forest can take longer than growing it.
+- ``sf(x, Z)`` (and ``ff``, ``df``, ``hf``, ``Hf``) pair row ``i`` of a
+  covariate matrix with the time ``x[i]``, as the regression models do: one
+  row is used at every time and one time for every row, and other counts
+  are refused. ``grid=True`` gives every time for every row, shape
+  ``(len(Z),) + x.shape``, which was the default before 0.24.
 - A forest grows its trees one after another by default. ``n_jobs`` (as in
   joblib and scikit-learn; ``-1`` for every core) grows them in worker
   processes; given a ``random_state`` the forest is the same whatever

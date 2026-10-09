@@ -146,3 +146,18 @@ def test_621_shape_derivatives_of_arrays_and_edges():
     np.testing.assert_array_equal(again[0], g_a)
     single = ag._beta_log_shape_grad(40.0, 60.0, 0.3, True)
     assert single[1] == g_b[1]
+
+
+@pytest.mark.parametrize("y", [1.0, 4.0, 10.0, 0.5, 37.0])
+def test_665_log_gamma_ratio_gradient_at_whole_numbers(y):
+    # d/dy of ln G(y + a) - ln G(y) is digamma(y + a) - digamma(y). At
+    # y = 1, ..., 10 the shifted argument met its floor of 10 exactly, and
+    # autograd's maximum split the gradient there in half: a
+    # NegativeBinomial fit from r = 4 could not move.
+    from scipy.special import digamma
+
+    a = 2.5
+    expected = digamma(y + a) - digamma(y)
+    assert grad(ag.log_gamma_ratio, 0)(y, a) == pytest.approx(
+        expected, rel=1e-12
+    )

@@ -210,14 +210,17 @@ def analytic_cb(
         elif on in ("ff", "F"):
             return np.stack([1.0 - sf_hi, 1.0 - sf_lo], axis=-1)
         else:  # Hf
-            return np.stack([-np.log(sf_hi), -np.log(sf_lo)], axis=-1)
+            # 0.0 - log: where sf is 1, -log(1) is -0.0 (#746).
+            return np.stack(
+                [0.0 - np.log(sf_hi), 0.0 - np.log(sf_lo)], axis=-1
+            )
 
     # one-sided: ff and Hf decrease in sf, so flip the tail
     if on in ("sf", "R"):
         return sf_link_bound(sf_hat, se, alpha_ci, bound, link)
     flip = "upper" if bound == "lower" else "lower"
     sf_b = sf_link_bound(sf_hat, se, alpha_ci, flip, link)
-    return (1.0 - sf_b) if on in ("ff", "F") else -np.log(sf_b)
+    return (1.0 - sf_b) if on in ("ff", "F") else 0.0 - np.log(sf_b)
 
 
 def bootstrap_cb(

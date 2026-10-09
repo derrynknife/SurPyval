@@ -2,12 +2,19 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+import autograd.numpy as anp
 import numpy as np
+from autograd.tracer import isbox
 from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 
 from surpyval import Weibull
 from surpyval.recurrent.inference import bic_sample_size
+from surpyval.recurrent.renewal._derivatives import (
+    lifetime_derivatives,
+    negated,
+)
+from surpyval.recurrent.renewal._search import renewal_search
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
 from surpyval.recurrent.renewal.renewal_model import (
     RenewalModel,
@@ -15,6 +22,7 @@ from surpyval.recurrent.renewal.renewal_model import (
     event_positions,
 )
 from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.no_maximum import quiet_maximum_warnings
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
@@ -188,8 +196,10 @@ class GeneralizedOneRenewal(RenewalFitMixin):
             if not q > -1 or _outside_open_bounds(dist_params, dist.bounds):
                 return np.inf
             # log((1 + q) ** j) in log space, so a q near -1 does not
-            # underflow the scale to zero.
-            log1p_q = np.log1p(q)
+            # underflow the scale to zero. (autograd's numpy where the
+            # parameters are traced, for the exact gradient, #710.)
+            xp = anp if isbox(params) else np
+            log1p_q = xp.log1p(q)
 
             # Far from the optimum the rescaled times can still overflow
             # (x / c_j -> inf) and the densities underflow to zero. That
@@ -205,17 +215,63 @@ class GeneralizedOneRenewal(RenewalFitMixin):
                 ll = 0.0
                 if x_o.size:
                     log_cj = j_o * log1p_q
-                    xj = x_o * np.exp(-log_cj)
-                    ll += np.sum(
+                    xj = x_o * xp.exp(-log_cj)
+                    ll += xp.sum(
                         n_o * (dist.log_df(xj, *dist_params) - log_cj)
                     )
                 if x_r.size:
-                    xj = x_r * np.exp(-(j_r * log1p_q))
-                    ll += np.sum(n_r * dist.log_sf(xj, *dist_params))
-            if not np.isfinite(ll):
+                    xj = x_r * xp.exp(-(j_r * log1p_q))
+                    ll += xp.sum(n_r * dist.log_sf(xj, *dist_params))
+            if not xp.isfinite(ll):
                 return np.inf
             return -ll
 
+        def scaled_times(q: float) -> np.ndarray:
+            # Every gap on the base time axis, x / (1 + q) ** j: at a
+            # given q the likelihood is the life's of these, up to a
+            # constant (``RenewalFitMixin._life_data``)
+            return x * np.exp(-j * np.log1p(q))
+
+        negll_func.scaled_times = scaled_times  # type: ignore
+        terms = lifetime_derivatives(dist)
+        if terms is None:
+            return negll_func
+        j_f = j.astype(float)
+        weight = np.where(observed | censored, n, 0)
+
+        def value_and_grad(params: np.ndarray) -> tuple:
+            """``negll_func`` with its gradient, by hand (#728): the
+            ``j``-th gap is read at ``x_j = x / (1 + q)**j``, whose slope
+            in ``q`` is ``-j x_j / (1 + q)``."""
+            q = float(params[0])
+            dist_params = params[1:]
+            if not q > -1 or _outside_open_bounds(dist_params, dist.bounds):
+                return np.inf, np.zeros(len(params))
+            found = None
+            with np.errstate(all="ignore"):
+                log_cj = j_f * np.log1p(q)
+                xj = x * np.exp(-log_cj)
+                if np.all(xj > 0):
+                    end, end_dt, end_dp = terms.log_end(
+                        xj, dist_params, observed
+                    )
+                    rows = end - np.where(observed, log_cj, 0.0)
+                    slope = -j_f / (1.0 + q)
+                    d_rows = end_dt * xj * slope + np.where(
+                        observed, slope, 0.0
+                    )
+                    ll = float(np.dot(weight, rows))
+                    d_q = float(np.dot(weight, d_rows))
+                    d_p = np.array([np.dot(weight, d) for d in end_dp])
+                    if (
+                        np.isfinite(ll)
+                        and np.isfinite(d_q)
+                        and np.all(np.isfinite(d_p))
+                    ):
+                        found = (ll, d_q, d_p)
+            return negated(found, negll_func, params)
+
+        negll_func.value_and_grad = value_and_grad  # type: ignore
         return negll_func
 
     @staticmethod
@@ -251,7 +307,9 @@ class GeneralizedOneRenewal(RenewalFitMixin):
             Data containing the recurrence details.
             An item with delayed entry (a ``tl``) is taken to be as
             new at entry, with its times counted from there (see
-            :meth:`fit`).
+            :meth:`fit`). A finite right truncation ``tr`` ends an
+            item's observation there, as a ``c=1`` row at ``tr``
+            would (#624).
         dist : Distribution, optional
             A surpyval distribution object. Default is Weibull.
         init : list, optional
@@ -305,24 +363,49 @@ class GeneralizedOneRenewal(RenewalFitMixin):
             data.interarrival_times, data.i, data.c, data.n, dist
         )
 
-        # The G1 likelihood only needs ``q > -1``, so it is optimised directly
-        # under simple box bounds rather than an unconstrained transform.
-        # result is sensitive to the initial value of q.
-        def fit_once(x0: np.ndarray) -> Any:
-            return minimize(
-                neg_ll,
-                np.asarray(x0, dtype=float),
-                bounds=[(-1, None), *dist.bounds],
-                method="Nelder-Mead",
+        bounds = [(-1, None), *dist.bounds]
+        n_obs = max(float(bic_sample_size(data)), 1.0)
+        # The result is sensitive to the initial value of q.
+        unbounded = getattr(neg_ll, "value_and_grad", None) is not None
+        if unbounded:
+            # The gradient search (#728), in the unbounded space the other
+            # renewal fits search (``q > -1`` and the distribution's
+            # bounds at infinity)
+            transform, to_natural = self._bounds_transform(
+                data.x, bounds, ["q", *dist.parameter_names]
             )
+            search = renewal_search(neg_ll, bounds, n_obs, to_natural)
 
-        def polish(res: Any) -> Any:
-            return fit_once(res.x)
+            def fit_once(x0: np.ndarray) -> Any:
+                return search.minimize(transform(np.asarray(x0, dtype=float)))
 
-        dist_params = self._default_start(
-            lambda: dist.fit(data.interarrival_times, data.c, data.n).params,
-            init,
-        )
+            def polish(res: Any) -> Any:
+                return search.simplex(res.x)
+
+        else:
+            # The G1 likelihood only needs ``q > -1``, so it is optimised
+            # directly under simple box bounds rather than an unconstrained
+            # transform.
+            def to_natural(x: np.ndarray) -> np.ndarray:
+                return x
+
+            def fit_once(x0: np.ndarray) -> Any:
+                return minimize(
+                    neg_ll,
+                    np.asarray(x0, dtype=float),
+                    bounds=bounds,
+                    method="Nelder-Mead",
+                )
+
+            def polish(res: Any) -> Any:
+                return fit_once(res.x)
+
+        def start() -> np.ndarray:
+            # A start, its warnings held back (``_initial_dist_params``)
+            with quiet_maximum_warnings():
+                return dist.fit(data.interarrival_times, data.c, data.n).params
+
+        dist_params = self._default_start(start, init)
         inits = None
         if dist_params is not None:
             inits = [[q_init, *dist_params] for q_init in (0.0001, 1.0, 2.0)]
@@ -336,12 +419,16 @@ class GeneralizedOneRenewal(RenewalFitMixin):
                         init.size,
                     )
                 )
+            if unbounded:
+                # (a start on a bound is at infinity there)
+                init = self._inside_bounds(init, bounds)
         res = self._multistart(fit_once, inits, init, neg_ll, polish)
         params = self._polish_unverified(
-            neg_ll,
-            res.x,
-            [(-1, None), *dist.bounds],
-            max(float(bic_sample_size(data)), 1.0),
+            neg_ll, to_natural(res.x), bounds, n_obs
+        )
+        # What the answer is, for ``_attach_inference`` (#777)
+        params, res.maximum, res.run_off = self._judge_maximum(
+            data, dist, neg_ll, params, bounds, n_obs
         )
 
         underlying_model = dist.from_params(list(params[1:]))
@@ -384,7 +471,10 @@ class GeneralizedOneRenewal(RenewalFitMixin):
             right-censored end of an item's observation. Other codes raise
             a ``ValueError``. Defaults to all observed.
         n : array_like, optional
-            Count of events at each row. Defaults to 1.
+            The number of events each row stands for. This model takes exact
+            events (``c=0``) and end-of-observation rows (``c=1``), each of
+            which stands for one, so every ``n`` is 1 (``n > 1`` is refused:
+            repeat the row for simultaneous events). Defaults to 1.
         dist : object, optional
             A surpyval distribution object. Default is Weibull.
         init : list, optional
@@ -398,6 +488,9 @@ class GeneralizedOneRenewal(RenewalFitMixin):
             and its history before entry plays no part. That is exact for
             an item renewed at entry and an assumption otherwise; the
             fitted model's ``data`` hold the times from entry.
+            A negative ``tl`` (an entry age below 0, almost always a
+            data error on an age scale) is used as given, with a
+            ``UserWarning``.
 
         Returns
         -------

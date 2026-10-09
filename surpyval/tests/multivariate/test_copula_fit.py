@@ -230,6 +230,34 @@ def test_from_params_validates_margins():
         Clayton.from_params([2.0], [WEIBULL_MARGINS[0], 3.0])
 
 
+def test_margins_given_wrongly_say_what_is_expected():
+    # #663: a fitter's name, a single fitter for both dimensions, or series
+    # of different lengths failed inside numpy or with an AttributeError.
+    X = Clayton.from_params([2.0], WEIBULL_MARGINS).random(50, random_state=0)
+    with pytest.raises(ValueError, match="string 'Weibull': pass the fitter"):
+        Clayton.fit(X, margins=["Weibull", "Weibull"])
+    with pytest.raises(
+        ValueError, match="a list of 2 margins.*Weibull fitter"
+    ):
+        Clayton.fit(X, margins=Weibull)
+    with pytest.raises(ValueError, match="a list of 2 margins"):
+        Clayton.from_params([2.0], Weibull)
+    with pytest.raises(ValueError, match=r"Weibull.from_params\(...\)"):
+        Clayton.from_params([2.0], ["Weibull", "Weibull"])
+    with pytest.raises(ValueError, match=r"different lengths \[50, 40\]"):
+        Clayton.fit([X[:, 0], X[:40, 1]], margins=[Weibull, Weibull])
+
+
+def test_a_point_given_as_separate_arguments_says_how_to_pass_it():
+    model = Clayton.from_params([2.0], WEIBULL_MARGINS)
+    for name in ("sf", "cdf", "pdf"):
+        with pytest.raises(
+            TypeError, match=rf"{name}\(\[\[50, 20\]\]\), not {name}\(50, 20\)"
+        ):
+            getattr(model, name)(50, 20)
+    assert model.sf([[50, 20]]).shape == (1,)
+
+
 def test_from_params_accepts_gumbel_independence():
     model = Gumbel.from_params([1.0], WEIBULL_MARGINS)
     assert model.kendall_tau() == 0.0
@@ -286,3 +314,49 @@ def test_mle_refuses_a_non_parametric_margin():
     km = surv.KaplanMeier.fit(X[:, 0])
     with pytest.raises(ValueError, match="how='IFM'"):
         Clayton.fit(X, margins=[km, surv.LogNormal], how="MLE")
+
+
+@pytest.mark.parametrize(
+    "call, match",
+    [
+        (lambda: Gumbel.kendall_tau(0.5), r"theta in \[1, inf\)"),
+        (lambda: Clayton.kendall_tau(-0.5), r"theta in \(0, inf\)"),
+        (lambda: Gumbel.spearman_rho(0.5), r"theta = 0.5 is outside"),
+        (lambda: Gumbel.tail_dependence(0.5), "outside the family's range"),
+        (lambda: Gaussian.kendall_tau(rho=1.5), r"rho in \(-1, 1\)"),
+        (lambda: Clayton.rotated(90).kendall_tau(-1.0), r"\(0, inf\)"),
+    ],
+)
+def test_dependence_measures_refuse_a_parameter_outside_the_range(call, match):
+    # #664: Gumbel.kendall_tau(0.5) was -1.0, Clayton's at -0.5 -0.333.
+    with pytest.raises(ValueError, match=match):
+        call()
+    # The range's ends are the family's limits
+    assert Clayton.kendall_tau(0.0) == 0.0
+    assert Gumbel.kendall_tau(1.0) == 0.0
+
+
+@pytest.mark.parametrize("family", [Clayton, Gumbel])
+def test_a_fit_at_the_independence_bound_warns(family):
+    # #664: Clayton, Gumbel and Joe on negatively dependent data end at
+    # their independence bound; it is the constrained maximum (verified,
+    # as a univariate fit on a bound is), but says only that the family
+    # cannot model the data's dependence.
+    x = _negatively_dependent()
+    margins = [surv.LogNormal, surv.LogNormal]
+    with pytest.warns(UserWarning, match="independence copula") as caught:
+        model = family.fit(x, margins=margins)
+    message = next(
+        str(w.message) for w in caught if "independence" in str(w.message)
+    )
+    assert "Kendall's tau" in message and "rotation=90" in message
+    assert model.maximum == "verified"
+    with pytest.warns(RuntimeWarning) as caught:
+        assert np.isnan(model.param_cb("theta")).all()
+    message = str(caught[0].message)
+    assert "no profile-likelihood or bootstrap bound" in message
+    assert "independence end" in message
+    # A family that covers the dependence fits without it
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        Frank.fit(x, margins=margins)

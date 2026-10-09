@@ -222,7 +222,7 @@ One practical point: a ``CustomDistribution`` knows nothing about its parameters
 .. jupyter-execute::
 
     model = GompertzMakeham.fit(x)
-    model.plot(alpha_ci=0.99, heuristic='Nelson-Aalen')
+    model.plot(alpha_ci=0.01, heuristic='Nelson-Aalen')
     model
 
 The fitted parameters are close to the ones used to simulate the data (:math:`\lambda = 6.8 \times 10^{-4}`, :math:`\alpha = 2.87 \times 10^{-5}`, :math:`\beta = 0.1023`). :math:`\alpha` is the least precisely determined of the three, because a smaller :math:`\alpha` with a larger :math:`\beta` produces a very similar mortality curve over the ages where most deaths occur.

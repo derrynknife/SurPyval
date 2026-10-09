@@ -10,12 +10,158 @@ from surpyval.utils import coerce_xcnt_x, format_truncation
 from .recurrent_event_data import RecurrentEventData
 
 
+def item_label(item: object) -> str:
+    """
+    An item (unit, system) id as plain text for a message: the user's own
+    label, without numpy's repr (``np.str_('pumpB')``, ``np.int64(1)``),
+    and a whole-number float id (the default single item is ``1.0``)
+    written as the integer.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> item_label(np.str_("pumpB")), item_label(np.float64(1.0))
+    ('pumpB', '1')
+    """
+    if isinstance(item, np.generic):
+        item = item.item()
+    if isinstance(item, float) and item.is_integer():
+        return str(int(item))
+    return str(item)
+
+
+def number_text(value: object) -> str:
+    """A time as plain text (``80.0`` rather than ``np.float64(80.0)``)."""
+    if isinstance(value, np.generic):
+        value = value.item()
+    return str(value)
+
+
+def _warn_negative_entry(
+    data: RecurrentEventData, entry: npt.NDArray, model_name: str
+) -> None:
+    """
+    Warn of a negative entry age ``tl`` on a renewal fit (#664). These
+    models count each item's age from new, so a negative entry is almost
+    always a data error (a calendar time, or an offset scale); it is
+    still accepted (and taken as given, the item as new at entry), as the
+    changelog for #615 says.
+    """
+    import warnings
+
+    from surpyval.utils.warnings import caller_stacklevel
+
+    first, _ = data.item_rows()
+    negative = [
+        "{} (tl={})".format(item_label(data.i[k]), number_text(entry[k]))
+        for k in first
+        if entry[k] < 0
+    ]
+    warnings.warn(
+        "{} takes tl as each item's age at entry, but {} item(s) enter at "
+        "a negative age: {}. On an age scale a negative entry is almost "
+        "always a data error (calendar times, or another origin); the fit "
+        "uses it as given, each item as new at its entry.".format(
+            model_name,
+            len(negative),
+            ", ".join(negative[:5]) + (", ..." if len(negative) > 5 else ""),
+        ),
+        UserWarning,
+        stacklevel=caller_stacklevel(),
+    )
+
+
+def close_at_right_truncation(data: RecurrentEventData) -> RecurrentEventData:
+    """
+    The data with each item's finite right-truncation time ``tr`` written
+    as the end-of-observation (``c=1``) row it stands for (#624).
+
+    A finite ``tr`` closes an item's observation window, as the NHPP
+    likelihoods and the MCF take it: the item was watched, with no further
+    events, up to ``tr``. The imperfect-repair likelihoods read the window
+    close from a ``c=1`` row only, so an item whose last row is before its
+    ``tr`` gets a ``c=1`` row at ``tr``. An item already closed at its
+    ``tr`` (a ``c=1`` row, or an event, there) is left as it is.
+
+    Raises ``ValueError`` for an item whose rows go past its ``tr``, or
+    whose ``c=1`` row is before it (``handle_xicn`` refuses both; this is
+    for data assembled by hand).
+    """
+    tr = np.asarray(data.tr, dtype=float)
+    if not np.isfinite(tr).any():
+        return data
+    x = np.asarray(data.x, dtype=float)
+    x_upper = x if x.ndim == 1 else x[:, 1]
+    c = np.asarray(data.c)
+    at: list[int] = []
+    for item in data.items:
+        rows = np.flatnonzero(data.i == item)
+        tr_item = tr[rows[0]]
+        if not np.isfinite(tr_item):
+            continue
+        last = rows[np.argmax(x_upper[rows])]
+        if x_upper[last] > tr_item:
+            raise ValueError(
+                "Item {} has a row at {} after its right truncation time "
+                "tr={}; tr is the end of the item's observation, so every "
+                "row must be at or before it.".format(
+                    item_label(item),
+                    number_text(x_upper[last]),
+                    number_text(tr_item),
+                )
+            )
+        if x_upper[last] == tr_item:
+            continue
+        if c[last] == 1:
+            raise ValueError(
+                "Item {} has an end-of-observation (c=1) row at {} before "
+                "its right truncation time tr={}; both close the "
+                "observation window, so they must agree (drop the c=1 row "
+                "or set tr to its time).".format(
+                    item_label(item),
+                    number_text(x_upper[last]),
+                    number_text(tr_item),
+                )
+            )
+        at.append(int(rows[-1]) + 1)
+    if not at:
+        return data
+    values = tr[np.asarray(at) - 1]
+    new_x = (
+        np.insert(x, at, values)
+        if x.ndim == 1
+        else np.insert(x, at, np.column_stack([values, values]), axis=0)
+    )
+    closed = RecurrentEventData(
+        new_x,
+        np.insert(data.i, at, data.i[np.asarray(at) - 1]),
+        np.insert(c, at, 1),
+        np.insert(data.n, at, 1),
+        e=(
+            None
+            if data.e is None
+            else np.insert(
+                data.e.astype(object), at, np.full(len(at), None, object)
+            )
+        ),
+        tl=np.insert(data.tl, at, data.tl[np.asarray(at) - 1]),
+        tr=np.insert(tr, at, values),
+    )
+    Z = getattr(data, "Z", None)
+    closed.Z = (
+        None if Z is None else np.insert(Z, at, Z[np.asarray(at) - 1], axis=0)
+    )
+    return closed
+
+
 def measure_from_entry(
     data: RecurrentEventData, model_name: str
 ) -> RecurrentEventData:
     """
     The data on the clock of a virtual-age / imperfect-repair model
-    (Kijima, G1, ARA, ARI): each item's times measured from its entry.
+    (Kijima, G1, ARA, ARI): each item's times measured from its entry,
+    and each item's finite right-truncation time ``tr`` as its ``c=1``
+    close (see :func:`close_at_right_truncation`).
 
     These models need an item's state when its observation begins: its
     virtual age, or the intensity reductions of its earlier repairs. With
@@ -30,9 +176,12 @@ def measure_from_entry(
     Raises ``ValueError`` for a negative time without a ``tl`` (these
     models measure time from the start of the item's life).
     """
+    data = close_at_right_truncation(data)
     tl = np.asarray(data.tl, dtype=float)
     entry = np.where(np.isfinite(tl), tl, 0.0)
     x = np.asarray(data.x, dtype=float)
+    if np.any(entry < 0):
+        _warn_negative_entry(data, entry, model_name)
     if np.any(entry != 0):
         tr = np.asarray(data.tr, dtype=float)
         shifted = RecurrentEventData(
@@ -282,6 +431,32 @@ def validate_lifetime_dist(dist: object, fitter: str) -> None:
     )
 
 
+def _check_renewal_identifiable(
+    gaps: npt.NDArray, c: npt.NDArray, dist: object, model_name: str
+) -> None:
+    """
+    Refuse data with fewer distinct times between failures than the
+    lifetime distribution has parameters: its likelihood is flat there.
+    The fit used to fail inside the distribution's own fit, with advice
+    in single-sample terms to "fix a parameter with `fixed=`", which the
+    renewal fits do not take (#663).
+    """
+    k = getattr(dist, "k", None)
+    if not isinstance(k, (int, np.integer)):
+        return
+    distinct = np.unique(gaps[c == 0]).size
+    if distinct < k:
+        name = getattr(dist, "name", "lifetime")
+        raise ValueError(
+            "{m} fits the {k} parameters of the {d} times between "
+            "failures, with its repair parameter, but the data has only {n} "
+            "distinct time(s) between failures, so no unique fit exists. "
+            "Give more failures (more items, or a longer observation of "
+            "each), or a lifetime distribution with fewer parameters "
+            "(dist=Exponential).".format(m=model_name, k=k, d=name, n=distinct)
+        )
+
+
 def validate_renewal_times(
     data: RecurrentEventData,
     dist: object,
@@ -302,21 +477,29 @@ def validate_renewal_times(
     models allow tied events later on, where the virtual age is positive.
     """
     x = np.asarray(data.x, dtype=float)
+    c = np.asarray(data.c)
+    gaps = data.get_interarrival_times()
+    _check_renewal_identifiable(gaps, c, dist, model_name)
     support = getattr(dist, "support", (0.0, np.inf))
     if support[0] < 0:
         return
-    c = np.asarray(data.c)
-    gaps = data.get_interarrival_times()
     _, first = np.unique(data.i, return_index=True)
     is_first = np.zeros(len(x), dtype=bool)
     is_first[first] = True
     exact_zero = (gaps == 0) & (c == 0)
     if np.any(exact_zero & is_first):
+        # (An event at a delayed entry tl, which would be at age 0 here
+        # too, is refused before this by handle_xicn, naming the tl.)
+        k = int(np.flatnonzero(exact_zero & is_first)[0])
         raise ValueError(
-            "{} has an event at time 0: the gap from a new item's age 0 is "
-            "then zero, where the {} density is 0 or infinite, so the "
-            "likelihood has no maximum. Record events at positive "
-            "times.".format(model_name, getattr(dist, "name", "lifetime"))
+            "{} has an event at time 0 (item {}): the gap from a new item's "
+            "age 0 is then zero, where the {} density is 0 or infinite, so "
+            "the likelihood has no maximum. Record events at positive "
+            "times.".format(
+                model_name,
+                item_label(data.i[k]),
+                getattr(dist, "name", "lifetime"),
+            )
         )
     if every_gap_from_new and np.any(exact_zero):
         raise ValueError(
@@ -421,23 +604,27 @@ def _expand_windows(
     for ii in unique_i:
         wins = [tuple(w) for w in windows[ii]]
         if len(wins) == 0:
-            raise ValueError("item {} has no observation windows".format(ii))
+            raise ValueError(
+                "item {} has no observation windows".format(item_label(ii))
+            )
         for w in wins:
             if len(w) != 2:
                 raise ValueError(
                     "item {} has a malformed window {!r}; each window must be "
-                    "a (start, end) pair".format(ii, w)
+                    "a (start, end) pair".format(item_label(ii), w)
                 )
             a, b = float(w[0]), float(w[1])
             if not (np.isfinite(a) and np.isfinite(b)):
                 raise ValueError(
                     "item {} has a non-finite observation window "
-                    "({}, {})".format(ii, w[0], w[1])
+                    "({}, {})".format(item_label(ii), w[0], w[1])
                 )
             if not (a < b):
                 raise ValueError(
                     "item {} has an empty or reversed observation window "
-                    "({}, {}); require start < end".format(ii, w[0], w[1])
+                    "({}, {}); require start < end".format(
+                        item_label(ii), w[0], w[1]
+                    )
                 )
         # sort windows by start and require they are disjoint (touching, i.e.
         # end == next start, is allowed)
@@ -446,7 +633,10 @@ def _expand_windows(
             if float(a2) < float(b1):
                 raise ValueError(
                     "item {} has overlapping observation windows "
-                    "{} and {}".format(ii, (a1, b1), (a2, b2))
+                    "({}, {}) and ({}, {})".format(
+                        item_label(ii),
+                        *(number_text(v) for v in (a1, b1, a2, b2)),
+                    )
                 )
 
         mask = np.asarray(i) == ii
@@ -456,7 +646,10 @@ def _expand_windows(
         for w in wins:
             a, b = float(w[0]), float(w[1])
             synth += 1
-            in_win = (item_x >= a) & (item_x <= b) & (~assigned)
+            # A window (start, end] holds the events after its start, as
+            # a delayed entry tl does: an event at a window's start
+            # belongs to the window that ends there, if any (#658).
+            in_win = (item_x > a) & (item_x <= b) & (~assigned)
             assigned |= in_win
             for xv, nv in zip(item_x[in_win], item_n[in_win]):
                 new_x.append(float(xv))
@@ -477,7 +670,8 @@ def _expand_windows(
             outside = item_x[~assigned].tolist()
             raise ValueError(
                 "item {} has events outside all its observation windows: "
-                "{}".format(ii, outside)
+                "{} (a window (start, end] holds the events after its "
+                "start)".format(item_label(ii), outside)
             )
 
     return (
@@ -497,11 +691,20 @@ def _xicn_defaults(
     c: npt.ArrayLike | None,
     n: npt.ArrayLike | None,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
-    """``i``, ``c`` and ``n`` as arrays: one item, observed, one event."""
-    i_arr = np.ones(x.shape[0]) if i is None else np.array(i)
-    n_arr = np.ones(x.shape[0]) if n is None else np.array(n)
-    c_arr = np.zeros(x.shape[0]) if c is None else np.array(c)
-    return i_arr, c_arr, n_arr
+    """``i``, ``c`` and ``n`` as arrays: one item, observed, one event.
+
+    A scalar applies to every row, as a scalar ``tl`` / ``tr`` does
+    (``i=1``: one item; ``c=0``: every row an event).
+    """
+    rows = x.shape[0]
+
+    def per_row(value: npt.ArrayLike | None, default: float) -> npt.NDArray:
+        if value is None:
+            return np.full(rows, default)
+        arr = np.array(value)
+        return np.full(rows, arr) if arr.ndim == 0 else arr
+
+    return per_row(i, 1.0), per_row(c, 0.0), per_row(n, 1.0)
 
 
 def _xicn_marks(
@@ -658,9 +861,64 @@ def _check_xicn_values(
     ):
         raise ValueError("Covariates 'Z' must be finite (no NaN or inf)")
 
-    if np.any((n > 1) & ((c == 0) | (c == 1))):
+    _check_row_kinds(x, i, c, n)
+
+
+def _first_row_text(
+    mask: npt.NDArray, x: npt.NDArray, i: npt.NDArray, n: npt.NDArray
+) -> str:
+    """'item <label> has <x>' for the first row in ``mask``."""
+    k = int(np.flatnonzero(mask)[0])
+    xk = (
+        "[{}, {}]".format(number_text(x[k, 0]), number_text(x[k, 1]))
+        if x.ndim == 2
+        else number_text(x[k])
+    )
+    return "item {} has n={} at x={}".format(
+        item_label(i[k]), number_text(n[k]), xk
+    )
+
+
+def _check_row_kinds(
+    x: npt.NDArray, i: npt.NDArray, c: npt.NDArray, n: npt.NDArray
+) -> None:
+    """Each row's ``x`` and ``n`` fit what its ``c`` says the row is.
+
+    An exact event written as an interval ``[l, r]`` used to be accepted,
+    and read as its left end by the intensity fits and as its midpoint by
+    the MCF (#658).
+    """
+    # (c=2 with 1-D x is refused by the intensity likelihoods, which are
+    # the ones that take interval counts: see
+    # ``RecurrentEventData.split_for_nhpp_likelihood``. The renewal models
+    # and the MCF refuse c=2 outright, with their own message.)
+    if x.ndim == 2:
+        spread = (c == 0) & (x[:, 0] != x[:, 1])
+        if np.any(spread):
+            k = int(np.flatnonzero(spread)[0])
+            raise ValueError(
+                "An exact event (c=0) is at one time, written [t, t] in "
+                "2-D x, but item {} has [{}, {}]. For events counted "
+                "somewhere in an interval set c=2 on that row.".format(
+                    item_label(i[k]),
+                    number_text(x[k, 0]),
+                    number_text(x[k, 1]),
+                )
+            )
+    many = n > 1
+    if np.any(many & (c == 0)):
         raise ValueError(
-            "Counts greater than 1 must be intervally or left censored"
+            "An exact event row (c=0) stands for one event, but {}. For "
+            "simultaneous events at one time repeat the row, once per "
+            "event; n > 1 is for counts in an interval (c=2) or before "
+            "a time (c=-1).".format(_first_row_text(many & (c == 0), x, i, n))
+        )
+    if np.any(many & (c == 1)):
+        raise ValueError(
+            "An end-of-observation row (c=1) closes one item's window, so "
+            "its n must be 1, but {}.".format(
+                _first_row_text(many & (c == 1), x, i, n)
+            )
         )
 
 
@@ -693,27 +951,45 @@ def _rows_in_order(
 
 
 def _check_censoring_positions(
-    unique_i: npt.NDArray, censoring_by_i: list
+    unique_i: npt.NDArray, censoring_by_i: list, items_given: bool = True
 ) -> None:
-    """At most one c=1 row, last, and one c=-1 row, first, per item."""
+    """At most one c=1 row, last, and one c=-1 row, first, per item.
+
+    Without ``i`` every row is one item's, so a log of several units read
+    without its unit column fails here: the message says so (#658).
+    """
+    hint = (
+        ""
+        if items_given
+        else (
+            " No item ids were given (`i`, or `i_col` in fit_from_df), so "
+            "every row is read as one item's; pass the item of each row."
+        )
+    )
     for ii, arr in zip(unique_i, censoring_by_i):
+        label = item_label(ii)
         if 1 in arr:
             if (arr == 1).sum() > 1:
                 raise ValueError(
-                    f"Item {ii} has more than one right censored time"
+                    f"Item {label} has more than one end-of-observation "
+                    f"(right censored, c=1) row.{hint}"
                 )
             if arr[-1] != 1:
                 raise ValueError(
-                    f"Item {ii} has right censored event which is not the last"
+                    f"Item {label} has an end-of-observation (right "
+                    f"censored, c=1) row before its last event; it must be "
+                    f"the item's last row.{hint}"
                 )
         if -1 in arr:
             if (arr == -1).sum() > 1:
                 raise ValueError(
-                    f"Item {ii} has more than one left censored event"
+                    f"Item {label} has more than one left censored "
+                    f"(c=-1) row.{hint}"
                 )
             if arr[0] != -1:
                 raise ValueError(
-                    f"Item {ii} has left censored event that is not the first"
+                    f"Item {label} has a left censored (c=-1) row that is "
+                    f"not its first.{hint}"
                 )
 
 
@@ -728,7 +1004,35 @@ def _check_interval_overlaps(
         starts = arr[1:][:, 0]
         ends = arr[:-1][:, 1]
         if (ends > starts).any():
-            raise ValueError(f"Item {ii} has overlapping intervals")
+            raise ValueError(
+                f"Item {item_label(ii)} has overlapping intervals"
+            )
+
+
+def event_at_entry_error(
+    item: object, times: npt.ArrayLike, tl: float, noun: str = "Item"
+) -> ValueError:
+    """
+    The refusal of an event at or before an item's observation start.
+
+    An item entering at ``tl`` is observed over ``(tl, T]``: the
+    likelihood integrates its intensity from ``tl`` and the MCF counts it
+    at risk only after ``tl``. An event at ``tl`` itself is outside that
+    window, so every recurrent fit, the MCF, the trend tests and the
+    renewal models refuse it with this one message (#658).
+    """
+    shown = np.unique(np.asarray(times, dtype=float))[:5]
+    return ValueError(
+        "{} {} has an event at {}, at or before its observation start "
+        "tl={}. An item entering at tl is observed over (tl, T], so an "
+        "event at tl falls outside its window: record the event after tl, "
+        "or set tl earlier.".format(
+            noun,
+            item_label(item),
+            ", ".join(number_text(t) for t in shown),
+            number_text(tl),
+        )
+    )
 
 
 def _check_item_window(
@@ -740,23 +1044,24 @@ def _check_item_window(
     c_i: npt.NDArray,
 ) -> None:
     """One item's truncation bounds form one window holding its events."""
+    label = item_label(ii)
     if not (np.all(tl_i == tl_i[0]) and np.all(tr_i == tr_i[0])):
         raise ValueError(
-            f"Item {ii} has inconsistent truncation bounds; each item "
+            f"Item {label} has inconsistent truncation bounds; each item "
             "must have a single observation window."
         )
     if tl_i[0] > tr_i[0]:
-        raise ValueError(f"Item {ii} has left truncation beyond right")
+        raise ValueError(f"Item {label} has left truncation beyond right")
     # An end-of-observation (c=1) row and a finite right truncation both
     # say where the item's window closes, so they must agree: a tr past
     # the c=1 row claims the item was watched (with no events) after its
     # observation ended, and every model closes the window at one place.
     if np.isfinite(tr_i[0]) and c_i[-1] == 1 and xu_i[-1] < tr_i[0]:
         raise ValueError(
-            f"Item {ii} has an end-of-observation (c=1) row at "
-            f"{xu_i[-1]} before its right truncation time tr="
-            f"{tr_i[0]}; both close the observation window, so they "
-            "must agree (drop the c=1 row or set tr to its time)."
+            f"Item {label} has an end-of-observation (c=1) row at "
+            f"{number_text(xu_i[-1])} before its right truncation time tr="
+            f"{number_text(tr_i[0])}; both close the observation window, "
+            "so they must agree (drop the c=1 row or set tr to its time)."
         )
     # The item's first interval is integrated from its entry time: the
     # left-truncation bound when finite, otherwise the fallback origin 0
@@ -768,9 +1073,16 @@ def _check_item_window(
     lower = tl_i[0] if np.isfinite(tl_i[0]) else 0.0
     if (xl_i < lower).any() or (xu_i > tr_i[0]).any():
         raise ValueError(
-            f"Item {ii} has events outside its observation window "
-            f"[{lower}, {tr_i[0]}]"
+            f"Item {label} has events outside its observation window "
+            f"[{number_text(lower)}, {number_text(tr_i[0])}]"
         )
+    # The window opens just after the entry: an event (any row but the
+    # c=1 close) exactly at a finite tl is outside it too (see
+    # ``event_at_entry_error``).
+    if np.isfinite(tl_i[0]):
+        at_entry = (c_i != 1) & (xu_i <= tl_i[0])
+        if at_entry.any():
+            raise event_at_entry_error(ii, xu_i[at_entry], tl_i[0])
 
 
 def _check_observation_windows(
@@ -813,7 +1125,8 @@ def _check_static_covariates(
     for ii, Z_i in zip(unique_i, np.split(Z_arr, idx)[1:]):
         if not np.all(Z_i == Z_i[0]):
             raise ValueError(
-                f"Item {ii} has covariates Z that change between its "
+                f"Item {item_label(ii)} has covariates Z that change "
+                "between its "
                 "rows; covariates are per item (static) and must be "
                 "the same on every row of an item."
             )
@@ -885,24 +1198,29 @@ def handle_xicn(
     ----------
     x : array like
         The event times (a 2-D ``[left, right]`` row for an
-        interval-censored count).
-    i : array like, optional
+        interval-censored count; in 2-D an exact event is ``[t, t]``).
+    i : array like or scalar, optional
         The item each row belongs to. Defaults to one item.
-    c : array like, optional
+    c : array like or scalar, optional
         Censoring flags: 0 an observed event, 1 the right-censored end of
-        observation, -1 left-censored and 2 interval-censored counts.
-        Defaults to all observed. Rows are sorted by item and time; an
-        end-of-observation row at the same time as an event goes after
-        it, whatever the input order.
-    n : array like, optional
-        The number of events in each row. Defaults to 1.
+        observation, -1 left-censored and 2 interval-censored counts
+        (which need 2-D ``x``). Defaults to all observed. Rows are sorted
+        by item and time; an end-of-observation row at the same time as
+        an event goes after it, whatever the input order.
+    n : array like or scalar, optional
+        The number of events in each row. Defaults to 1. Only a count
+        (``c=2`` or ``c=-1``) can stand for several events: repeat an
+        exact event's row for simultaneous events. A scalar ``i``, ``c``
+        or ``n`` applies to every row.
     t : array like, optional
         (N, 2) truncation bounds per row. Use ``tl`` / ``tr`` for per-item
         bounds instead.
     tl, tr : array like or scalar, optional
         Left-truncation (start of observation) and right-truncation (end
-        of observation) times. An item with both a ``c=1`` row and a
-        finite ``tr`` must have them at the same time.
+        of observation) times. An item with a finite ``tl`` is observed
+        over ``(tl, T]``, so an event at ``tl`` itself is refused. An item
+        with both a ``c=1`` row and a finite ``tr`` must have them at the
+        same time.
     Z : array like or dict, optional
         Covariates: one row per row of ``x`` (the same on every row of an
         item: covariates are per item), or a ``{item: covariates}``
@@ -937,6 +1255,7 @@ def handle_xicn(
     if x.shape[0] == 0:
         raise ValueError("'x' cannot be empty")
 
+    items_given = i is not None
     i, c, n = _xicn_defaults(x, i, c, n)
     e_arr = _xicn_marks(e, c, x)
 
@@ -982,7 +1301,7 @@ def handle_xicn(
     unique_i, idx = np.unique(i, return_index=True)
     censoring_by_i = np.split(c, idx)[1:]
 
-    _check_censoring_positions(unique_i, censoring_by_i)
+    _check_censoring_positions(unique_i, censoring_by_i, items_given)
     _check_interval_overlaps(x, idx, unique_i)
     _check_observation_windows(
         x, tl_arr, tr_arr, idx, unique_i, censoring_by_i

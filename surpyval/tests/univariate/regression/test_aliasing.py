@@ -41,6 +41,9 @@ def _rossi():
 def _fit(fit):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
+        # The unitless stresses of the Arrhenius life models here are
+        # below 200 K, which warns of degrees Celsius (#654).
+        warnings.filterwarnings("ignore", message="Every stress in column")
         model = fit()
     return model, [str(w.message) for w in caught], caught
 
@@ -526,6 +529,73 @@ def test_cox_aliases_a_constant_column_on_separated_data():
         model = sp.CoxPH.fit(**_SEPARATED, center=True)
     assert np.isnan(model.beta[2]) and np.isnan(model.p_values[2])
     assert np.isfinite(model.sf([5.0], [[0.5, 1.5, 1.0]])).all()
+
+
+_ORDERS = [[0, 1, 2, 3, 4], [2, 4, 3, 0, 1], [4, 1, 2, 0, 3]]
+
+
+@pytest.mark.parametrize("order", _ORDERS)
+def test_cox_aliases_a_level_censored_before_the_first_event(order):
+    # Level b's only row leaves before any event, so its column is 0 in
+    # every risk set. Judged against a largest eigenvalue of 0.02, its
+    # information (1e-17, rounding) was kept in some row orders: the
+    # fit ran it to -40, "verified" or "unverified" by the order (#728).
+    df = pd.DataFrame(
+        {
+            "x": [0.5, 1.0, 1.0, 1.5, 1.5],
+            "c": [1, 0, 0, 1, 0],
+            "n": [2, 2, 1, 2, 2],
+            "g": list("baaaa"),
+            "z0": [-0.5, 1.5, 2.0, 1.5, 1.5],
+        }
+    ).iloc[order]
+    with pytest.warns(UserWarning, match=r"column\(s\) 1 \('C\(g\)\[T.b\]"):
+        model = sp.CoxPH.fit_from_df(
+            df, x_col="x", c_col="c", n_col="n", formula="z0 + C(g)"
+        )
+    assert model.maximum == "verified"
+    assert np.isnan(model.beta[1])
+    np.testing.assert_allclose(model.beta[0], 2.910947, rtol=1e-6)
+
+
+@pytest.mark.parametrize("order", [_ORDERS[0] + [5], [5, 3, 1, 0, 4, 2]])
+def test_cox_aliases_every_column_where_no_risk_set_varies(order):
+    # Every event's risk set has the same covariates: the partial
+    # likelihood is flat, and the fit gave (2.2, -19.9) "unverified" or
+    # (1.2, -2.9) "verified" by the row order (#728).
+    df = pd.DataFrame(
+        {
+            "x": [1.0, 0.5, 1.5, 1.5, 2.0, 2.0],
+            "c": [1, 1, 0, 0, 0, 1],
+            "n": [1, 1, 2, 1, 1, 2],
+            "g": list("baaaaa"),
+            "z0": [1.0, 2.0, -1.5, -1.5, -1.5, -1.5],
+        }
+    ).iloc[order]
+    with pytest.warns(UserWarning, match=r"column\(s\) 0 \('z0'\), 1 "):
+        model = sp.CoxPH.fit_from_df(
+            df, x_col="x", c_col="c", n_col="n", formula="z0 + C(g)"
+        )
+    assert model.maximum == "verified"
+    assert np.isnan(model.beta).all()
+
+
+@pytest.mark.parametrize("order", _ORDERS)
+def test_cox_a_level_with_only_censored_rows_runs_off_in_any_order(order):
+    # "no finite maximum" in one row order, "unverified" in another (#728)
+    df = pd.DataFrame(
+        {
+            "x": [1.0, 2.0, 3.0, 1.5, 2.5],
+            "c": [0, 0, 0, 1, 1],
+            "g": list("aaabb"),
+            "z0": [0.1, -0.3, 0.4, 0.0, 0.2],
+        }
+    ).iloc[order]
+    with pytest.warns(UserWarning, match=r"coefficient\(s\) \[1\] grow"):
+        model = sp.CoxPH.fit_from_df(
+            df, x_col="x", c_col="c", formula="z0 + C(g)"
+        )
+    assert model.maximum == "no finite maximum"
 
 
 @pytest.mark.parametrize("value", [1.0, 2000.0])

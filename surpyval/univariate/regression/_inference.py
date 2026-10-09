@@ -16,7 +16,6 @@ import autograd.numpy as np
 import numpy.typing as npt
 from scipy.special import ndtri
 
-from surpyval.utils.covariates import renamed_coefficient
 from surpyval.utils.linalg import (
     bound_signs,
     cb_link,
@@ -27,12 +26,19 @@ from surpyval.utils.linalg import (
     sf_link_from_H,
     wald_bound_on_support,
 )
+from surpyval.utils.removed_names import removed_parameter_note
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
     keeps_query_shape,
 )
-from surpyval.utils.validation import BOUNDS, CB_ON, check_option
+from surpyval.utils.validation import (
+    BOUNDS,
+    CB_ON,
+    check_alpha_ci,
+    check_option,
+    warn_outside_unit_interval,
+)
 from surpyval.utils.warnings import warn_no_covariance
 
 from ._bounds import logit_sf_bound
@@ -76,6 +82,7 @@ class InferenceMixin:
         _information: "tuple | None"
         _covariance_cache: "tuple | None"
         _restored_covariance: "npt.NDArray | None"
+        _restored_inference: "tuple | None"
         _restored: bool
         _lr_searches: "list | None"
         _bootstrap_refits: "dict | None"
@@ -83,8 +90,6 @@ class InferenceMixin:
 
         @property
         def parameter_names(self) -> list: ...
-
-        def _coefficient_names(self) -> "list[str]": ...
 
         @property
         def aliased(self) -> npt.NDArray: ...
@@ -190,6 +195,11 @@ class InferenceMixin:
         model's own."""
         restored = self._restored_covariance
         if restored is not None:
+            state = self._restored_inference
+            if state is not None:
+                # The centred fit's, as the original model computes its
+                # bounds (#664).
+                return state[0], state[1], state[2].copy()
             return (
                 np.asarray(self._eval_params(), dtype=float),
                 self.center,
@@ -294,7 +304,9 @@ class InferenceMixin:
         if self._is_accelerated_life():
             declared = getattr(self.reg_model, "phi_bounds", phi_bounds)
             if callable(declared):
-                declared = declared(np.asarray(self.data.Z))
+                Z = getattr(getattr(self, "data", None), "Z", None)
+                # A model restored without its data: unbounded.
+                declared = phi_bounds if Z is None else declared(np.asarray(Z))
             phi_bounds = declared
         return [*self.distribution.bounds, *phi_bounds]
 
@@ -325,6 +337,11 @@ class InferenceMixin:
         """
         Standard errors of the fitted parameters (square roots of the diagonal
         of :meth:`covariance`), ordered to match :attr:`parameter_names`.
+        A fixed parameter's is 0, as is that of an accelerated life model's
+        life parameter, whose slot in ``params`` holds a placeholder 1
+        (the life model gives the life at each stress): index the
+        life-model parameters by name, or use :meth:`summary`, which
+        leaves the placeholder out.
         """
         with np.errstate(invalid="ignore"):
             return np.sqrt(np.diag(self.covariance()))
@@ -345,9 +362,10 @@ class InferenceMixin:
 
         - ``"wald"`` -- bounds from the observed information, computed on
           a scale chosen from the parameter's support so the result stays
-          inside it: log for a one-sided-bounded distribution parameter
-          (e.g. a positive scale), the natural scale for the unbounded
-          covariate coefficients.
+          inside it: log for a one-sided-bounded distribution or
+          life-model parameter (e.g. a positive scale, or Arrhenius's
+          ``b`` and Power's ``a``, #655), the natural scale for the
+          unbounded covariate coefficients.
         - ``"lr"`` -- the profile-likelihood (likelihood-ratio) interval:
           the values whose profile deviance, every other parameter
           re-fitted, stays below the :math:`\\chi^2_1` critical value
@@ -358,10 +376,15 @@ class InferenceMixin:
           the critical value to the edge of the space, the bound is that
           edge, and a side that cannot be found is ``nan``, with a
           warning. It needs the data the model was fitted to.
-        - ``"bootstrap"`` -- the parametric bootstrap percentile interval:
-          the parameter's ``alpha_ci / 2`` and ``1 - alpha_ci / 2``
-          quantiles over ``n_boot`` refits of the model to data simulated
-          from it, as :meth:`cb` describes. It needs the data.
+        - ``"bootstrap"`` -- the parametric bootstrap BCa interval (Efron
+          1987) over ``n_boot`` refits of the model to data simulated from
+          it, as :meth:`cb` describes: the parameter's percentiles over the
+          refits, corrected for bias (the share of refits below the
+          estimate) and for skewness (the acceleration, from each
+          resample's score at the estimate; 0, which leaves the
+          bias-corrected percentile interval, where the covariance is not
+          finite). A parameter held at fit time has its value as its
+          interval. It needs the data.
 
         Parameters
         ----------
@@ -371,8 +394,9 @@ class InferenceMixin:
             Total tail probability of the bound(s). Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds are returned as ``[lower, upper]``.
-        method : {'wald', 'lr', 'bootstrap'}, optional
-            As above. Default ``'wald'``.
+        method : {'wald', 'lr', 'bootstrap'} or None, optional
+            As above. Default ``'wald'``; ``None`` means the default too,
+            as for the univariate models (#655).
         n_boot : int, optional
             The number of bootstrap refits (``method='bootstrap'`` only).
             Default 200.
@@ -380,6 +404,7 @@ class InferenceMixin:
             The seed of the bootstrap (``method='bootstrap'`` only), as for
             :meth:`cb`.
         """
+        check_alpha_ci(alpha_ci)
         from ._bootstrap import bound_method, param_cb_bootstrap
         from ._likelihood_ratio import param_cb_lr
 
@@ -387,14 +412,10 @@ class InferenceMixin:
         lr = method == "lr"
         self._check_inference()
         names = self.parameter_names
-        # A coefficient's name before v0.23, ``beta_j``, until v0.24 (#614)
-        name = renamed_coefficient(
-            name, self._coefficient_names(), "param_cb", names
-        )
         if name not in names:
             raise ValueError(
-                "Unknown parameter {!r}; expected one of {}".format(
-                    name, names
+                "Unknown parameter {!r}; expected one of {}{}".format(
+                    name, names, removed_parameter_note(name, names)
                 )
             )
         if name == self.life_parameter:
@@ -418,12 +439,11 @@ class InferenceMixin:
         p_hat = float(self.params[idx])
         var = float(self.covariance()[idx, idx])
 
-        # Distribution parameters carry the distribution's support bounds; the
-        # covariate coefficients are unbounded.
-        dist_bounds = list(self.distribution.bounds)
-        n_phi = len(names) - self.k_dist
-        all_bounds = dist_bounds + [(None, None)] * n_phi
-        lower, upper = all_bounds[idx]
+        # Distribution parameters carry the distribution's support bounds,
+        # and an accelerated life model's parameters its life model's (a
+        # positive constant, Arrhenius's b or Power's a, is bounded on the
+        # log scale, #655); the covariate coefficients are unbounded.
+        lower, upper = self._parameter_bounds()[idx]
         return wald_bound_on_support(
             p_hat, var, lower, upper, alpha_ci, bound, name=name
         )
@@ -537,6 +557,7 @@ class InferenceMixin:
         numpy array
             The confidence bound(s) on ``on`` at each ``x``.
         """
+        check_alpha_ci(alpha_ci)
         from ._bootstrap import bound_method, cb_bootstrap
         from ._likelihood_ratio import cb_lr
 
@@ -549,11 +570,9 @@ class InferenceMixin:
         # In the parameterisation of the centred fit when there is one
         # (#463): the bounds are the same function of the data, and there
         # the coefficients are not nearly collinear with the baseline.
-        if np.ndim(self._prepare_Z(Z)) == 2:
-            # Rows and times paired, as for sf (#488).
-            check_paired_rows(
-                np.size(x), np.shape(self._prepare_Z(Z))[0], grid=False
-            )
+        # Rows and times paired, as for sf (#488, #657).
+        rows = covariate_rows(self._prepare_Z(Z), self._n_covariates())
+        check_paired_rows(np.size(x), rows.shape[0], grid=False)
         if method != "wald":
             if self._is_additive():
                 self._warn_if_hazard_negative(
@@ -633,6 +652,9 @@ class InferenceMixin:
         ----------
         p : array like or scalar
             The probabilities, in (0, 1), whose quantiles are bounded.
+            Outside it the bound is ``nan``, with one warning, as for the
+            univariate models (#710; it raised); a missing ``p`` gives
+            ``nan``.
         Z : array like or DataFrame
             The covariates, paired with ``p`` as :meth:`qf` pairs them: one
             row per probability, a single row for every probability, or a
@@ -651,9 +673,10 @@ class InferenceMixin:
             extreme of ``qf(p, Z)`` over the parameters' likelihood region,
             as :meth:`cb` with ``method='lr'`` is for a function of time
             (aliases as there); it is slower, and needs the data.
-            ``'bootstrap'`` is the percentile interval of the quantile over
-            the parametric bootstrap refits of :meth:`cb`; it needs the
-            data.
+            ``'bootstrap'`` is the BCa interval of the quantile over the
+            parametric bootstrap refits of :meth:`cb` (the refits'
+            quantiles, corrected for bias and skewness as there); it needs
+            the data.
         n_boot : int, optional
             The number of bootstrap refits (``method='bootstrap'`` only).
             Default 200.
@@ -679,21 +702,60 @@ class InferenceMixin:
         >>> model.quantile_cb(0.1, [1]).round(3)
         array([1.245, 2.212])
         """
-        from ._bootstrap import bound_method, quantile_cb_bootstrap
-        from ._likelihood_ratio import quantile_cb_lr
+        check_alpha_ci(alpha_ci)
+        from ._bootstrap import bound_method
 
         method = bound_method(method)
-        lr = method == "lr"
         self._check_inference()
         check_option("bound", bound, BOUNDS)
         probs = np.atleast_1d(np.asarray(p, dtype=float)).reshape(-1)
-        if not np.all((probs > 0) & (probs < 1)):
-            raise ValueError(f"'p' must be in (0, 1); got {probs.tolist()}")
         rows = covariate_rows(self._prepare_Z(Z), self._n_covariates())
         check_paired_rows(probs.size, rows.shape[0], grid=False)
+        # As the univariate models' quantile_cb (#626): NaN, with one
+        # warning, where p is outside (0, 1), whose quantiles are the ends
+        # of the support and are not bounded; NaN for a missing p. The
+        # other p are bounded as before (#710).
+        outside = warn_outside_unit_interval(
+            probs, "quantile_cb", closed=False
+        )
         n = max(probs.size, rows.shape[0])
         probs = np.broadcast_to(probs, (n,)).copy()
         rows = np.ascontiguousarray(np.broadcast_to(rows, (n, rows.shape[1])))
+        ok = np.broadcast_to(~outside, (n,)) & ~np.isnan(probs)
+        if not ok.all():
+            out = np.full((n, 2) if bound == "two-sided" else (n,), np.nan)
+            if ok.any():
+                out[ok] = self._quantile_cb_rows(
+                    probs[ok],
+                    rows[ok],
+                    alpha_ci,
+                    bound,
+                    method,
+                    n_boot,
+                    random_state,
+                )
+            return out
+        return self._quantile_cb_rows(
+            probs, rows, alpha_ci, bound, method, n_boot, random_state
+        )
+
+    def _quantile_cb_rows(
+        self,
+        probs: npt.NDArray,
+        rows: npt.NDArray,
+        alpha_ci: float,
+        bound: str,
+        method: str,
+        n_boot: int,
+        random_state: Any,
+    ) -> npt.NDArray:
+        """The bounds of :meth:`quantile_cb` at the probabilities
+        ``probs``, all in (0, 1), paired with the covariate ``rows`` (one
+        row each)."""
+        from ._bootstrap import quantile_cb_bootstrap
+        from ._likelihood_ratio import quantile_cb_lr
+
+        lr = method == "lr"
         t_hat = np.asarray(self.qf(probs, rows), dtype=float).reshape(-1)
         if lr:
             return quantile_cb_lr(self, probs, rows, t_hat, alpha_ci, bound)
@@ -773,8 +835,9 @@ class InferenceMixin:
             sf_c = logit_sf_bound(sf_hat, se, sign, tail)
             if name == "sf":
                 return sf_c
+            # 0.0 - log: sf_c rounds to 1 here, and -log(1) is -0.0 (#760).
             with np.errstate(divide="ignore"):
-                return 1.0 - sf_c if name == "ff" else -np.log(sf_c)
+                return 1.0 - sf_c if name == "ff" else 0.0 - np.log(sf_c)
 
         # ff and Hf decrease in sf: their lower end is sf's upper.
         flip = -1.0 if name == "sf" else 1.0

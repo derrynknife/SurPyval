@@ -161,7 +161,8 @@ def test_570_a_skipped_candidate_is_named_with_a_short_reason(monkeypatch):
     def refuse(*args, **kwargs):
         raise ValueError("Gamma cannot be fitted here.\nx:\n" + "1.0 " * 500)
 
-    monkeypatch.setattr(sp.Gamma, "fit", refuse)
+    # fit_best fits each candidate to its one SurpyvalData
+    monkeypatch.setattr(sp.Gamma, "fit_from_surpyval_data", refuse)
     model, messages = _fit_best(WEIBULL_50, include=["Weibull", "Gamma"])
     assert model.dist.name == "Weibull"
     (skipped,) = [m for m in messages if m.startswith("fit_best skipped")]
@@ -246,3 +247,132 @@ def test_613_a_mixture_outside_its_support_is_passed_over():
     x = np.append(TWO_POPULATIONS, -1.0)
     model = sp.fit_best(x, include=["Normal", sp.MixtureModel(sp.Weibull)])
     assert model.dist.name == "Normal"
+
+
+def test_646_lifetime_families_passed_over_for_zero_times_warn():
+    # Three zero ages put every positive family outside its support, and
+    # fit_best returned a Normal (3% failing before day 0) in silence.
+    import scipy.stats as ss
+
+    rng = np.random.default_rng(19)
+    x = np.round(ss.weibull_min(1.3, scale=400).rvs(50, random_state=rng))
+    x[:3] = 0
+    with pytest.warns(UserWarning, match="passed over") as record:
+        model = sp.fit_best(x)
+    message = next(
+        str(w.message) for w in record if "passed over" in str(w.message)
+    )
+    assert "Weibull" in message and "3 observation(s) at or below 0" in message
+    assert "zi=True" in message and f"Chosen: {model.dist.name}" in message
+
+
+def test_646_a_beta_passed_over_stays_quiet():
+    x = sp.Weibull.random(40, 10, 2, random_state=1)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        sp.fit_best(x)
+
+
+# ---------------------------------------------------------------------------
+# The data are built and checked once, and that one SurpyvalData is given
+# to every candidate: each ``fit`` used to build it again.
+# ---------------------------------------------------------------------------
+def _censored(n=400, seed=3):
+    rng = np.random.default_rng(seed)
+    t = rng.weibull(1.7, n) * 100
+    cens = rng.uniform(20, 250, n)
+    return np.minimum(t, cens), (t > cens).astype(int)
+
+
+def test_the_data_are_built_once(monkeypatch):
+    import sys
+
+    fit_best_module = sys.modules["surpyval.fit_best"]  # not the function
+    built = []
+    original = fit_best_module.SurpyvalData
+
+    def counting(*args, **kwargs):
+        built.append(1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(fit_best_module, "SurpyvalData", counting)
+    x, c = _censored()
+    _fit_best(x, c=c)
+    assert len(built) == 1
+
+
+def test_every_candidate_is_its_own_fit():
+    # The shared data give each candidate the fit ``fit`` gives it alone,
+    # and are left as they were
+    x, c = _censored()
+    seen = {}
+    names = ["Weibull", "Gamma", "LogNormal", "Normal", "ExpoWeibull"]
+    for name in names:
+        model, _ = _fit_best(x, c=c, include=[name])
+        seen[name] = model
+        alone = getattr(sp, name).fit(x, c=c)
+        np.testing.assert_array_equal(model.params, alone.params)
+        assert model.aic() == alone.aic()
+    best, _ = _fit_best(x, c=c, include=names)
+    data = best.surv_data
+    fresh = sp.SurpyvalData(x=x, c=c)
+    for attr in ("x", "c", "n", "t"):
+        np.testing.assert_array_equal(
+            getattr(data, attr), getattr(fresh, attr)
+        )
+    np.testing.assert_array_equal(best.params, seen[best.dist.name].params)
+
+
+def test_666_return_table_ranks_every_candidate():
+    from surpyval import LogNormal, fit_best
+
+    np.random.seed(0)
+    x = LogNormal.random(60, 3, 0.5)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        alone = fit_best(x, include=["Weibull", "LogNormal", "Beta"])
+        model, table = fit_best(
+            x, include=["Weibull", "LogNormal", "Beta"], return_table=True
+        )
+    # the default is unchanged, and the table's first row is the model
+    assert type(alone) is type(model)
+    assert alone.params == pytest.approx(model.params)
+    assert list(table.columns) == [
+        "model",
+        "aic",
+        "delta",
+        "weight",
+        "status",
+        "reason",
+    ]
+    assert table.loc[0, "model"] == model.dist.name
+    assert table.loc[0, "status"] == "chosen"
+    assert table.loc[0, "delta"] == 0.0
+    assert table.loc[0, "aic"] == pytest.approx(model.aic())
+    ranked = table[table["status"].isin(["chosen", "ranked"])]
+    assert ranked["weight"].sum() == pytest.approx(1.0)
+    assert (np.diff(ranked["aic"]) >= 0).all()
+    # the Beta cannot hold the data, and says so
+    beta = table[table["model"] == "Beta"].iloc[0]
+    assert beta["status"] == "outside support"
+    assert np.isnan(beta["aic"]) and np.isnan(beta["weight"])
+    assert "support" in beta["reason"]
+
+
+def test_666_return_table_neg_ll_has_no_weights_and_shows_set_aside():
+    from surpyval import Weibull, fit_best
+
+    np.random.seed(1)
+    x = Weibull.random(40, 10, 2)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        _, table = fit_best(
+            x,
+            include=["Weibull", "Uniform"],
+            metric="neg_ll",
+            return_table=True,
+        )
+    assert table["weight"].isna().all()
+    uniform = table[table["model"] == "Uniform"].iloc[0]
+    assert uniform["status"] == "set aside"
+    assert "support ends" in uniform["reason"]

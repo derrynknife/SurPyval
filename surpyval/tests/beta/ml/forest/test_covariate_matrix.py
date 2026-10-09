@@ -3,9 +3,10 @@ Prediction with a matrix of covariate vectors (issue #369).
 
 ``SurvivalTree`` routed a 2-D ``Z`` by ``Z[split_index]`` -- a *row* -- so
 with one covariate every subject got the first subject's prediction and
-with several the routing raised. A 2-D ``Z`` must give the same result as
-evaluating each row on its own and stacking, for the tree, the forest and
-every prediction method, and ``survival_probability`` must work for both.
+with several the routing raised. A 2-D ``Z`` with ``grid=True`` must give
+the same result as evaluating each row on its own and stacking, for the
+tree, the forest and every prediction method, and ``survival_probability``
+must work for both.
 """
 
 import contextlib
@@ -80,7 +81,7 @@ def test_tree_matrix_equals_stacked_rows(tree, n_features, fn):
     # every row the first row's leaf)
     assert not np.allclose(expected[0], expected[3])
 
-    got = getattr(tree, fn)(XS, Zq)
+    got = getattr(tree, fn)(XS, Zq, grid=True)
     assert got.shape == (len(Zq), XS.size)
     np.testing.assert_allclose(got, expected, rtol=0, atol=0)
 
@@ -94,12 +95,14 @@ def test_tree_matrix_x_conventions(tree, n_features):
     # One subject (1-D Z) is unchanged: values shaped like x
     assert tree.sf(XS, Zq[0]).shape == XS.shape
     assert tree.sf(5.0, Zq[0]).shape == ()
-    # A matrix with a single row is a one-row grid
+    # A matrix with a single row is used at every time, as a 1-D Z is;
+    # on the grid it is a one-row grid
+    np.testing.assert_array_equal(tree.sf(XS, Zq[:1]), tree.sf(XS, Zq[0]))
     np.testing.assert_array_equal(
-        tree.sf(XS, Zq[:1]), tree.sf(XS, Zq[0])[None, :]
+        tree.sf(XS, Zq[:1], grid=True), tree.sf(XS, Zq[0])[None, :]
     )
     # No rows: an empty grid
-    assert tree.sf(XS, Zq[:0]).shape == (0, XS.size)
+    assert tree.sf(XS, Zq[:0], grid=True).shape == (0, XS.size)
 
 
 def test_tree_one_feature_scalar_Z(tree, n_features):
@@ -107,7 +110,7 @@ def test_tree_one_feature_scalar_Z(tree, n_features):
         pytest.skip("scalar Z only names a subject for a one-feature tree")
     np.testing.assert_array_equal(tree.sf(XS, 0.8), tree.sf(XS, [0.8]))
     np.testing.assert_array_equal(
-        tree.sf(XS, [[0.2], [0.8]]),
+        tree.sf(XS, [[0.2], [0.8]], grid=True),
         np.vstack([tree.sf(XS, 0.2), tree.sf(XS, 0.8)]),
     )
 
@@ -120,13 +123,15 @@ def test_tree_rejects_3d_Z(tree, n_features):
 def test_restored_tree_routes_matrix(tree, n_features):
     Zq = _query(n_features)
     restored = SurvivalTree.from_dict(tree.to_dict())
-    np.testing.assert_allclose(restored.sf(XS, Zq), _stack(tree, "sf", XS, Zq))
+    np.testing.assert_allclose(
+        restored.sf(XS, Zq, grid=True), _stack(tree, "sf", XS, Zq)
+    )
 
 
 @pytest.mark.parametrize("fn", FUNCTIONS)
 def test_forest_matrix_equals_stacked_rows(forest, n_features, fn):
     Zq = _query(n_features)
-    got = getattr(forest, fn)(XS, Zq)
+    got = getattr(forest, fn)(XS, Zq, grid=True)
     assert got.shape == (len(Zq), XS.size)
     np.testing.assert_allclose(got, _stack(forest, fn, XS, Zq), rtol=1e-14)
 
@@ -134,7 +139,7 @@ def test_forest_matrix_equals_stacked_rows(forest, n_features, fn):
 def test_forest_other_methods_row_by_row(forest, n_features):
     Zq = _query(n_features)
     np.testing.assert_allclose(
-        forest.sf(XS, Zq, ensemble_method="Hf"),
+        forest.sf(XS, Zq, ensemble_method="Hf", grid=True),
         np.vstack([forest.sf(XS, z, ensemble_method="Hf") for z in Zq]),
         rtol=1e-14,
     )
@@ -148,8 +153,8 @@ def test_forest_other_methods_row_by_row(forest, n_features):
 
 
 def test_survival_probability_tree(tree, n_features):
-    # survival_probability passes x = np.full(n, t) with the whole matrix
-    # and reads the (n, n) grid's first column
+    # survival_probability passes x = np.full(n, t) with the whole matrix,
+    # paired row by row
     Zq = _query(n_features)
     S = survival_probability(tree, Zq, XS)
     np.testing.assert_allclose(S, _stack(tree, "sf", XS, Zq), rtol=0, atol=0)
@@ -159,3 +164,56 @@ def test_survival_probability_forest(forest, n_features):
     Zq = _query(n_features)
     S = survival_probability(forest, Zq, XS)
     np.testing.assert_allclose(S, _stack(forest, "sf", XS, Zq), rtol=1e-14)
+
+
+# ---------------------------------------------------------------------------
+# The covariate count is checked against the fitted model (#657)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def two_feature_models():
+    x, c, Z = _data(2)
+    tree = SurvivalTree.fit(x, Z, c=c, kind="exponential", random_state=0)
+    forest = RandomSurvivalForest.fit(
+        x, Z, c=c, n_trees=3, kind="exponential", random_state=0
+    )
+    return tree, forest
+
+
+@pytest.mark.parametrize("which", [0, 1], ids=["tree", "forest"])
+def test_a_wrong_covariate_count_is_refused(two_feature_models, which):
+    # An extra column was ignored (a plausible, wrong prediction), and a
+    # missing one raised numpy's IndexError.
+    model = two_feature_models[which]
+    what = ["tree", "forest"][which]
+    model.sf(5.0, [0.5, 0.2])
+    expected = f"The {what} has 2 covariates \\(Z0, Z1\\); got 3 values"
+    with pytest.raises(ValueError, match=expected):
+        model.sf(5.0, [0.5, 0.2, 99.0])
+    with pytest.raises(ValueError, match="has 2 covariates.*got 1 value"):
+        model.sf(5.0, [0.5])
+    with pytest.raises(ValueError, match="got 3 columns"):
+        model.ff(XS, np.zeros((XS.size, 3)))
+    # Restored from a dict, it still knows how many
+    restored = type(model).from_dict(model.to_dict())
+    with pytest.raises(ValueError, match="has 2 covariates"):
+        restored.sf(5.0, [0.5, 0.2, 99.0])
+
+
+def test_a_tree_restored_from_an_old_dict_checks_what_its_splits_read(
+    two_feature_models,
+):
+    # A dict saved before the count was stored, without feature names:
+    # only too few columns for its splits can be refused.
+    tree = two_feature_models[0]
+    d = tree.to_dict()
+    d.pop("n_covariates")
+    restored = SurvivalTree.from_dict(d)
+    assert restored._n_covariates() is None
+    needed = max(
+        1, len(restored.feature_labels)
+    )  # the features its splits use or drew
+    restored.sf(5.0, np.zeros(needed))
+    with pytest.raises(ValueError, match="at least"):
+        restored.sf(5.0, np.zeros(needed - 1))

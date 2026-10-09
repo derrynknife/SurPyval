@@ -36,9 +36,11 @@ from surpyval.utils import (
     validate_coxph,
     validate_coxph_df_inputs,
 )
+from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
 from surpyval.utils.pickling import Rebuilt
+from surpyval.utils.removed_names import column_arguments
 
 from .._aliasing import (
     aliased_columns,
@@ -54,6 +56,8 @@ from ..tvc_fit import fit_tvc_df
 # at_risk_beta_Z, cox_at_risk_mask, efron_jac, efron_log_denominator and
 # not_yet_entered are re-exported: they were defined here.
 from .cox_likelihood import (  # noqa: F401
+    _DIRECT_ETA,
+    _KEPT,
     CoxLikelihoodMixin,
     _combine_generators,
     at_risk_beta_Z,
@@ -62,9 +66,16 @@ from .cox_likelihood import (  # noqa: F401
     cox_at_risk_mask,
     efron_jac,
     efron_log_denominator,
+    log_baseline_sums,
     newton_raphson,
     not_yet_entered,
     strata_labels,
+)
+from .cox_separation import (
+    FAR,
+    information_collapsed,
+    newton_converged,
+    runoff_direction,
 )
 from .tvc import handle_tvc, handle_tvc_timeline
 
@@ -121,8 +132,16 @@ def _cox_aliased(
     n = np.asarray(n, dtype=float).reshape(-1)
     Zc = Z - covariate_center(Z, n)
     spread = n_events * (n @ Zc**2) / n.sum()
+    # A column whose information, against its spread, is rounding is
+    # flat (constant within every risk set). Judged only against the
+    # largest eigenvalue, itself small or rounding, it was kept in one
+    # row order and aliased in another, and the fit "verified" or not
+    # with it (#728).
+    with np.errstate(divide="ignore", invalid="ignore"):
+        relative = np.diag(info) / spread
+    flat = ~(relative > max(p, Z.shape[0]) * np.finfo(float).eps)
     return aliased_columns(
-        info, Z.shape[0], constant_columns(Z, strata), spread
+        info, Z.shape[0], constant_columns(Z, strata) | flat, spread
     )
 
 
@@ -135,6 +154,7 @@ def _solve_beta_and_p_values(
     n: npt.NDArray,
     n_events: float,
     strata: "npt.NDArray | None" = None,
+    risk_sets: "tuple | None" = None,
 ) -> tuple[Any, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """Maximise the partial likelihood by Newton-Raphson
     (:func:`newton_raphson`; the score's root-finder, then BFGS, if that
@@ -142,7 +162,9 @@ def _solve_beta_and_p_values(
     shared by ``fit`` and ``_fit_stratified`` so the most-patched block
     in this file exists exactly once. The covariates ``Z``, counts ``n``,
     weighted number of events and stratum labels are for the aliasing
-    check (:func:`_cox_aliased`).
+    check (:func:`_cox_aliased`), and with ``risk_sets``, the rows'
+    ``(x, c, tl, tie_method)``, for the test of a run-off along a
+    combination of the coefficients (:func:`runoff_direction`, #728).
 
     Returns ``(res, p_values, se, aliased, covariance)``: ``res.x`` has 0
     at the aliased columns (the coefficients the predictions use), and
@@ -202,6 +224,7 @@ def _solve_beta_and_p_values(
         res = newton_raphson(
             neg_ll, jac, beta_init, tol, score_at_start, info_at_start
         )
+        converged = res is not None and newton_converged(res)
         if res is not None:
             hessian_matrix = res.hess
         else:
@@ -227,8 +250,37 @@ def _solve_beta_and_p_values(
                     res = fallback
 
             hessian_matrix = jac(res.x)[1]
+    runoff: "Callable | None" = None
+    far = False
+    if risk_sets is not None:
+        x, c, tl, tie_method = risk_sets
+        Zk = np.asarray(Z, dtype=float)[:, kept]
+        with np.errstate(over="ignore", invalid="ignore"):
+            eta = (Zk - covariate_center(Zk, n)) @ np.atleast_1d(res.x)
+        # A hazard ratio of e^20 between a unit and the average one
+        far = not np.all(np.abs(eta) <= FAR)
+
+        def runoff_of_data() -> "tuple[npt.NDArray, bool] | None":
+            return runoff_direction(x, Zk, c, n, tl, strata, tie_method)
+
+        runoff = runoff_of_data
+    # Each coefficient judged in its own covariate's units, as Fine-Gray's
+    # and the parametric fits' are (#577, #760)
+    floor = coefficient_floor(
+        kept.size,
+        [(k, int(j)) for k, j in enumerate(kept)],
+        np.asarray(Z, dtype=float),
+    )
     res.maximum = _maximum_reached(
-        res, jac, hessian_matrix, info_at_start, kept, n_events
+        res,
+        jac,
+        hessian_matrix,
+        info_at_start,
+        kept,
+        n_events,
+        runoff,
+        far or not converged,
+        floor,
     )
     # An exactly singular information matrix raises before the
     # pseudo-inverse fallback can run (#259); route it there.
@@ -254,6 +306,22 @@ def _solve_beta_and_p_values(
         se = np.sqrt(var)
         z_score = res.x / se
     p_values = 2 * (1 - norm.cdf(np.abs(z_score)))
+    if res.maximum == "no finite maximum":
+        # A coefficient running off to infinity has no standard error: the
+        # pseudo-inverse of its collapsed information gave 0, a confident
+        # "exact" estimate. It is nan, as for the parametric families'
+        # runaway coefficients (#648), and so are its p-value and its row
+        # and column of the covariance.
+        # (as are those running off along a combination, #728)
+        off = _diverged_columns(hessian_matrix, info_at_start)
+        off = np.union1d(off, getattr(res, "runoff_columns", off))
+        se = np.array(se, dtype=float)
+        p_values = np.array(p_values, dtype=float)
+        covariance = np.array(covariance, dtype=float)
+        se[off] = np.nan
+        p_values[off] = np.nan
+        covariance[off, :] = np.nan
+        covariance[:, off] = np.nan
     if aliased.size:
         res.x = embed(res.x)
         p_values = expand(p_values, kept, p)
@@ -271,25 +339,66 @@ def _maximum_reached(
     info_at_start: npt.NDArray,
     kept: npt.NDArray,
     n_events: float,
+    runoff: "Callable | None" = None,
+    suspect: bool = False,
+    floor: "float | npt.NDArray" = 1.0,
 ) -> str:
     """What the partial-likelihood search reached (see
     :func:`_solve_beta_and_p_values`), with its one warning: no finite
     maximum (:func:`_warn_if_monotone`), else a verified maximum -- the
     score and the information at ``res.x`` (``res.jac`` from
-    Newton-Raphson, else ``jac``) pass ``is_local_minimum`` per event --
-    or a search that did not reach one."""
-    if _warn_if_monotone(info, info_at_start, kept):
+    Newton-Raphson, else ``jac``) pass ``is_local_minimum`` per event,
+    each coefficient in units of ``max(|beta_j|, floor_j)`` (its
+    covariate's, :func:`~surpyval.utils.covariates.coefficient_floor`, as
+    for Fine-Gray and the parametric fits) -- or a search that did not
+    reach one.
+
+    With a unit of 1 for every coefficient, the BFGS fallback's answer on
+    a covariate spanning 3e-4 (a reciprocal temperature in kelvin) passed
+    as verified where BFGS had not moved from its start, 0, with the
+    maximum at 15, its gradient below the test only in the wrong units;
+    and one on a covariate in units of 1e4 failed 2e-9 nats from its
+    maximum (#760).
+
+    A run-off along a combination of the coefficients leaves no column's
+    information collapsed, and the search can stop at a point that passes
+    as a maximum (#728). Given ``runoff`` (the data's
+    :func:`runoff_direction`), the data decide instead, whatever the
+    search did, where the search was not verified, or the information
+    collapsed in some direction (:func:`information_collapsed`), or the
+    search is ``suspect``: it went far (a linear predictor beyond ``FAR``
+    of the average unit's), or its answer is not one Newton-Raphson
+    converged to (:func:`newton_converged`). Why these suffice is set out
+    at ``cox_separation.DECREMENT``. The columns that run off are then
+    recorded as ``res.runoff_columns``."""
+    if runoff is None and _warn_if_monotone(info, info_at_start, kept):
         return "no finite maximum"
     score = getattr(res, "jac", None)
     if score is None or not isinstance(res.get("hess"), np.ndarray):
-        score = jac(res.x)[0]
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            score = jac(res.x)[0]
     verified = is_local_minimum(
         lambda _: 0.0,  # (only the derivatives are read)
         lambda _: np.atleast_1d(score),
         lambda _: np.atleast_2d(info),
         np.atleast_1d(res.x),
+        floor=floor,
         obj_scale=max(n_events, 1.0),
     )
+    if runoff is not None and (
+        not verified or suspect or information_collapsed(info, info_at_start)
+    ):
+        found = runoff()
+        if found is not None:
+            direction, alone = found
+            off = np.flatnonzero(direction)
+            res.runoff_columns = off
+            which = str(np.asarray(kept)[off].tolist())
+            if alone:
+                warn_monotone(which)
+            else:
+                warn_monotone(which, direction[off])
+            return "no finite maximum"
     if verified:
         return "verified"
     warn_unverified(
@@ -317,11 +426,7 @@ def _warn_if_monotone(
     them by default; the identified ones after aliasing). Returns whether
     it warned.
     """
-    d = np.diag(np.atleast_2d(info))
-    d0 = np.diag(np.atleast_2d(info_at_start))
-    diverged = np.flatnonzero(
-        (d0 > 0) & ~(np.nan_to_num(d, nan=0.0) > 1e-8 * d0)
-    )
+    diverged = _diverged_columns(info, info_at_start)
     if diverged.size:
         if columns is not None:
             diverged = np.asarray(columns)[diverged]
@@ -330,18 +435,62 @@ def _warn_if_monotone(
     return False
 
 
-def warn_monotone(which: str) -> None:
+def _diverged_columns(
+    info: npt.NDArray, info_at_start: npt.NDArray
+) -> npt.NDArray:
+    """The positions whose information has collapsed from the start (to
+    below 1e-8 of it): the coefficients running off to infinity on a
+    monotone partial likelihood (see :func:`_warn_if_monotone`)."""
+    d = np.diag(np.atleast_2d(info))
+    d0 = np.diag(np.atleast_2d(info_at_start))
+    return np.flatnonzero((d0 > 0) & ~(np.nan_to_num(d, nan=0.0) > 1e-8 * d0))
+
+
+def warn_monotone(
+    which: str, proportion: "npt.ArrayLike | None" = None
+) -> None:
     """Warn that the partial likelihood has no finite maximum in the
     coefficients ``which`` names (``"[0]"``, or ``"[0] (cause 'a')"``);
-    shared with the Fine-Gray fit, a weighted partial likelihood (#392)."""
+    shared with the Fine-Gray fit, a weighted partial likelihood (#392).
+    With ``proportion``, they run off together, in that proportion to
+    each other, and no one of them does alone (#728)."""
+    if proportion is None:
+        what = (
+            "the partial likelihood keeps increasing as coefficient(s) {} "
+            "grow without bound, so the estimate is infinite (the "
+            "covariate separates the events from the survivors)".format(which)
+        )
+    else:
+        what = (
+            "the partial likelihood keeps increasing as coefficients {} "
+            "grow without bound together, in the proportion {}, so the "
+            "estimate is infinite (that combination of the covariates "
+            "separates the events from the survivors)".format(
+                which,
+                " : ".join(
+                    "{:.3g}".format(float(v)) for v in np.ravel(proportion)
+                ),
+            )
+        )
     warn_no_maximum(
-        "the partial likelihood keeps increasing as coefficient(s) {} "
-        "grow without bound, so the estimate is infinite (the covariate "
-        "separates the events from the survivors)".format(which),
+        what,
         "The reported value, its standard error and its p-value are "
         "meaningless",
         "consider removing or coarsening the covariate, or a penalised fit",
     )
+
+
+def _require_an_event(c: npt.NDArray, n: npt.NDArray) -> None:
+    """Refuse data with no event, as ProportionalOdds and AdditiveHazards
+    do (#648): with every row censored the partial likelihood is flat, its
+    information 0, and the fit returned coefficients 0 with standard
+    errors 0 -- a confident hazard ratio of exactly 1."""
+    if not np.any((np.asarray(c) == 0) & (np.asarray(n) > 0)):
+        raise ValueError(
+            "CoxPH needs at least one event (c=0); with every observation "
+            "censored the partial likelihood carries no information about "
+            "the coefficients."
+        )
 
 
 class CoxPH_(FitterRepr, CoxLikelihoodMixin):
@@ -409,16 +558,29 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         # ``tl >= tau_i`` (valid because ``tl < x`` on every row) — the same
         # subtraction the Efron generator uses, replacing the previous
         # O(K·N) Python loop (#299).
+        #
+        # Where a linear predictor is beyond ``_DIRECT_ETA`` (a coefficient
+        # running off), or the weight not yet entered all but cancels a
+        # risk set with a death, the sums are taken in logs instead
+        # (:func:`log_baseline_sums`): ``exp`` overflowed, with numpy's
+        # RuntimeWarning, and the increments were 0 (#760).
 
         unique_x = np.unique(x)
         if tl is None:
             tl = np.full(x.shape[0], -np.inf)
 
-        w = n * np.exp(Z @ beta)
+        with np.errstate(over="ignore", invalid="ignore"):
+            eta = np.asarray(Z, dtype=float) @ np.asarray(beta, dtype=float)
 
         event = c == 0
         d = np.zeros_like(unique_x)
         np.add.at(d, np.searchsorted(unique_x, x[event]), n[event])
+
+        if not np.all(np.abs(eta) <= _DIRECT_ETA):
+            return self._log_baseline(
+                x, c, n, eta, tl, tie_method, unique_x, d
+            )
+        w = n * np.exp(eta)
 
         r_exit = np.zeros_like(unique_x)
         np.add.at(r_exit, np.searchsorted(unique_x, x), w)
@@ -432,6 +594,10 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         np.add.at(r_pre, k[entered_late], w[entered_late])
         r_pre = r_pre[::-1].cumsum()[::-1]
         r = r_exit - r_pre
+        if np.any((d > 0) & ~(r > _KEPT * r_exit)):
+            return self._log_baseline(
+                x, c, n, eta, tl, tie_method, unique_x, d
+            )
 
         with np.errstate(divide="ignore", invalid="ignore"):
             h0 = d / r
@@ -442,6 +608,33 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
                 m = int(round(float(d[t])))
                 steps = r[t] - (np.arange(m) / m) * r_tied[t]
                 h0[t] = np.sum(1.0 / steps)
+        return unique_x, r, d, h0
+
+    @staticmethod
+    def _log_baseline(
+        x: npt.NDArray,
+        c: npt.NDArray,
+        n: npt.NDArray,
+        eta: npt.NDArray,
+        tl: npt.NDArray,
+        tie_method: str,
+        unique_x: npt.NDArray,
+        d: npt.NDArray,
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+        # ``baseline`` with the risk sets summed in logs: each increment is
+        # ``d / r`` (Efron's, ``sum_l 1 / (r - (l / m) r_D)``) formed as
+        # ``exp(-log r)`` times a factor of order 1, so it is right where
+        # ``r`` itself is not representable (that ``r`` is inf, or 0).
+        log_r, log_rD = log_baseline_sums(x, c, n, eta, tl, unique_x)
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            r = np.exp(log_r)
+            h0 = np.where(d > 0, np.exp(np.log(d) - log_r), 0.0)
+            if str(tie_method).lower() == "efron":
+                share = np.exp(log_rD - log_r)
+                for t in np.flatnonzero(d > 1):
+                    m = int(round(float(d[t])))
+                    steps = 1.0 - (np.arange(m) / m) * share[t]
+                    h0[t] = np.exp(-log_r[t]) * np.sum(1.0 / steps)
         return unique_x, r, d, h0
 
     @dataframe_covariates
@@ -537,10 +730,16 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             coefficients and ``p_values`` their Wald p-values; the
             baseline (``h0``, ``H0``) is that of a unit at ``center``
             (zeros unless ``center=True``). If a
-            covariate separates the events from the survivors the partial
-            likelihood has no finite maximum; the fit then warns
-            ("monotone partial likelihood") and the coefficient is
-            meaningless.
+            covariate, or a combination of them, separates the events
+            from the survivors the partial likelihood has no finite
+            maximum; the fit then warns ("No finite maximum", naming the
+            coefficients and, for a combination, their proportion),
+            ``maximum`` is ``"no finite maximum"`` and those coefficients
+            are meaningless (their standard errors nan). This is decided
+            from the data, so it does not depend on the order of the
+            rows. Far along such a run-off the risk-set weights ``r``
+            can be beyond floating point, ``inf`` (or ``0``); the
+            baseline is computed from their logs and is right.
 
         Examples
         --------
@@ -569,6 +768,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             )
 
         x, c, n, tl, Z = validate_coxph(x, c, n, Z, tl, tie_method)
+        _require_an_event(c, n)
 
         # Good initial guess assumes no impact
         beta_init = np.zeros(Z.shape[1])
@@ -581,7 +781,14 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         neg_ll, jac = func_generator(*likelihood_args)
 
         res, p_values, se, aliased, covariance = _solve_beta_and_p_values(
-            neg_ll, jac, beta_init, tol, Z, n, float(n[c == 0].sum())
+            neg_ll,
+            jac,
+            beta_init,
+            tol,
+            Z,
+            n,
+            float(n[c == 0].sum()),
+            risk_sets=(x, c, tl, tie_method),
         )
 
         model = SemiParametricRegressionModel("Cox", "Semi-Parametric")
@@ -710,6 +917,10 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
 
         if not validated:
             raise ValueError("no observations to fit")
+        _require_an_event(
+            np.concatenate([v[2] for v in validated]),
+            np.concatenate([v[3] for v in validated]),
+        )
         n_params = validated[0][5].shape[1]
         # One centre for every stratum, the mean over all the rows (as R's
         # coxph), so the strata's baselines stay comparable (#459).
@@ -748,6 +959,12 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             ),
             np.concatenate(
                 [np.full(len(v[1]), k) for k, v in enumerate(validated)]
+            ),
+            risk_sets=(
+                np.concatenate([v[1] for v in validated]),
+                np.concatenate([v[2] for v in validated]),
+                np.concatenate([v[4] for v in validated]),
+                tie_method,
             ),
         )
 
@@ -816,6 +1033,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
 
         return model
 
+    @column_arguments("x", "c", "n", "tl")
     def fit_from_df(
         self,
         df: "pd.DataFrame",

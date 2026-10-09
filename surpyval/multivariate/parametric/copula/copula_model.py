@@ -22,13 +22,19 @@ from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import (
     BOUNDS,
-    alpha_ci_error,
+    check_alpha_ci,
     check_option,
     no_covariance_error,
 )
 from surpyval.utils.warnings import warn_no_covariance
 
 from ._inference import ParameterLayout, jacobian, joint_covariance
+
+#: The advice of a copula model's undefined Wald bound: it has no other.
+_NO_OTHER_BOUND = (
+    "the copula models have no profile-likelihood or bootstrap bound to "
+    "fall back on"
+)
 
 # Margin probabilities are kept strictly inside (0, 1), as in copula.py.
 _U_CLIP = 1e-10
@@ -507,9 +513,9 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         >>> model.param_cb("theta").round(3)
         array([1.896, 2.774])
         """
+        check_alpha_ci(alpha_ci)
         check_option("method", method, _CB_METHODS)
         check_option("bound", bound, BOUNDS)
-        _check_alpha_ci(alpha_ci)
         names = self.parameter_names
         if name not in names:
             raise ValueError(
@@ -524,8 +530,25 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
             # bound: the warning says so.
             var = 0.0
         lower, upper = self.copula.bounds[i]
+        # The copula models have the Wald bound only (#664): the default
+        # advice, a profile-likelihood or bootstrap interval, is not here.
+        advice = _NO_OTHER_BOUND
+        if self.copula._at_independence(self.params)[i]:
+            advice += (
+                f"; {name} = {float(self.params[i]):.6g} is the independence "
+                f"end of the {self.copula.name} family's range, so the "
+                "data's dependence is outside it: compare a family that "
+                "covers it (Frank or Gaussian take either sign)"
+            )
         return wald_bound_on_support(
-            float(self.params[i]), var, lower, upper, alpha_ci, bound, name
+            float(self.params[i]),
+            var,
+            lower,
+            upper,
+            alpha_ci,
+            bound,
+            name,
+            advice=advice,
         )
 
     @keeps_query_shape(point_ndim=1)
@@ -590,10 +613,10 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         array([[0.6183, 0.7085],
                [0.2544, 0.331 ]])
         """
+        check_alpha_ci(alpha_ci)
         check_option("on", on, _CB_ON)
         check_option("bound", bound, BOUNDS)
         check_option("method", method, _CB_METHODS)
-        _check_alpha_ci(alpha_ci)
         x = onp.atleast_2d(onp.asarray(x, dtype=float))
         if x.shape[1] != 2:
             raise ValueError("x must have two columns (one per dimension)")
@@ -633,6 +656,7 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
                 "likelihood is not regular there)",
                 # cb -> the query-shape wrapper -> the caller
                 stacklevel=3,
+                advice=_NO_OTHER_BOUND,
             )
         with onp.errstate(invalid="ignore"):
             se = onp.sqrt(onp.where(var >= 0, var, onp.nan))
@@ -802,9 +826,3 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
             f"\nMargins   : {', '.join(margin_names)}"
             f"\nFitted by : {self.method}"
         )
-
-
-def _check_alpha_ci(alpha_ci: float) -> None:
-    """Refuse a significance level outside (0, 1)."""
-    if not 0.0 < alpha_ci < 1.0:
-        raise alpha_ci_error(alpha_ci)

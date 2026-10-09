@@ -9,7 +9,10 @@ from numpy.typing import ArrayLike
 from scipy.optimize import brentq, minimize
 from scipy.stats import chi2
 
-from surpyval.recurrent.inference import LikelihoodInferenceMixin
+from surpyval.recurrent.inference import (
+    LikelihoodInferenceMixin,
+    check_alpha_ci,
+)
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -24,7 +27,7 @@ from surpyval.utils.linalg import (
 )
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.numeric import solve_bracketed
-from surpyval.utils.validation import alpha_ci_error, option_error
+from surpyval.utils.validation import option_error
 from surpyval.utils.warnings import warn_no_covariance
 
 #: The values of the restoration parameter at which each family is a
@@ -436,6 +439,30 @@ def rows_by_position(position: np.ndarray) -> "list[np.ndarray]":
     order = np.argsort(position, kind="stable")
     counts = np.bincount(position)
     return np.split(order, np.cumsum(counts)[:-1])
+
+
+def discount_weight_derivatives(
+    rho: float, count: int, order: int
+) -> np.ndarray:
+    """The ``order``-th derivative in ``rho`` of the weights ``rho * (1 -
+    rho)**j``, ``j = 0 .. count - 1``, that the ARA and ARI models put on
+    the ``j``-th most recent term of their memory (#710). By Leibniz's
+    rule it is ``rho D^n + n D^(n-1)``, with ``D^k`` the ``k``-th
+    derivative of ``(1 - rho)**j``: ``(-1)**k j! / (j - k)! (1 -
+    rho)**(j - k)``, and 0 for ``k > j``."""
+    j = np.arange(count, dtype=float)
+
+    def power_derivative(k: int) -> np.ndarray:
+        if k < 0:
+            return np.zeros(count)
+        falling = np.ones(count)
+        for t in range(k):
+            falling = falling * (j - t)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            power = (1.0 - rho) ** np.maximum(j - k, 0.0)
+        return np.where(j >= k, (-1.0) ** k * falling * power, 0.0)
+
+    return rho * power_derivative(order) + order * power_derivative(order - 1)
 
 
 class DiscountedMemory:
@@ -1362,6 +1389,7 @@ class RenewalModel(
         alpha     2.399  0.287      1.898      3.033
         beta      2.754  0.652      1.732      4.379
         """
+        check_alpha_ci(alpha_ci)
         self._check_fitted()
         with warnings.catch_warnings():
             # The boundary is reported in the table (nan), not warned.
@@ -1450,6 +1478,7 @@ class RenewalModel(
         name: str,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
+        method: str = "wald",
     ) -> np.ndarray:
         """
         Confidence bound(s) on a fitted parameter.
@@ -1458,6 +1487,12 @@ class RenewalModel(
         the parameter's range so they stay inside it: log for one bounded
         below (the Kijima ``q``, a positive scale), logit for one bounded
         on both sides (``rho`` of ARA and ARI), natural otherwise.
+
+        The Wald interval on the restoration parameter can under-cover in
+        samples of the usual size: for a Kijima-I ``q`` of 0.4 with six
+        units and about 70 failures, a nominal 90% interval covered 83%
+        of the time (#665). ``method="lr"`` gives its profile-likelihood
+        interval instead, as below, from the estimate out on each side.
 
         A restoration parameter on the edge of its range (a ``q`` driven
         to 0; an ARA or ARI ``rho`` at 1 or 0) has no Wald interval: the
@@ -1481,6 +1516,12 @@ class RenewalModel(
             The total tail probability of the bound(s). Default is 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds are returned as ``[lower, upper]``.
+        method : {'wald', 'lr'}, optional
+            ``"wald"`` (the default) or ``"lr"``, the profile-likelihood
+            interval, which is available for the restoration parameter
+            only (the others are refused). On the edge of its range the
+            restoration parameter's interval is the profile-likelihood one
+            either way.
 
         Returns
         -------
@@ -1501,15 +1542,30 @@ class RenewalModel(
         >>> model.param_cb("q", bound="lower").round(3)
         array([0.])
         """
+        if method not in ("wald", "lr"):
+            raise option_error("method", method, ["wald", "lr"])
+        restoration = name == self._restoration_param_name
+        if method == "lr" and not restoration and name in self.parameter_names:
+            raise ValueError(
+                "method='lr' is available for the restoration parameter "
+                "{!r} only; use method='wald' for {!r}.".format(
+                    self._restoration_param_name, name
+                )
+            )
         edge = self._edge_value()
-        if name != self._restoration_param_name or edge is None:
+        if not restoration or (edge is None and method == "wald"):
             return super().param_cb(name, alpha_ci, bound)
         self._check_fitted()
-        if not 0 < alpha_ci < 1:
-            raise alpha_ci_error(alpha_ci)
+        check_alpha_ci(alpha_ci)
         alpha, signs = bound_signs(alpha_ci, bound)
         crit = float(chi2.ppf(1.0 - 2.0 * alpha, 1)) if alpha < 0.5 else 0.0
         lower, upper = self._restoration_bounds
+        if edge is None:
+            # Inside its range (#665): from the estimate out on each side.
+            start = float(self._mle[0])
+            return np.array(
+                [self._profile_end(start, crit, float(s)) for s in signs]
+            )
         # Away from the edge: up from a lower edge, down from an upper one.
         away = 1.0 if edge == lower else -1.0
         out = np.full(signs.shape, edge)
@@ -1536,9 +1592,10 @@ class RenewalModel(
         return -fun
 
     def _profile_end(self, edge: float, crit: float, away: float) -> float:
-        """The end, away from ``edge``, of the profile-likelihood interval:
-        where twice the drop of the profile log-likelihood from its
-        maximum reaches ``crit``; the far end of the range if it never
+        """The end, away from ``edge`` (the edge of the range the
+        estimate is on, or the estimate itself), of the profile-likelihood
+        interval: where twice the drop of the profile log-likelihood from
+        its maximum reaches ``crit``; the far end of the range if it never
         does."""
         ll_hat = self.log_likelihood
 

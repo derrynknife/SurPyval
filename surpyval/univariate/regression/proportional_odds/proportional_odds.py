@@ -88,9 +88,8 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
-from surpyval.utils.covariates import renamed_coefficient
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.deprecation import RenamedToMethod
+from surpyval.utils.dataframe import check_columns
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import wald_bound_on_support
 from surpyval.utils.no_maximum import (
@@ -99,12 +98,16 @@ from surpyval.utils.no_maximum import (
     warn_no_maximum,
     warn_unverified,
 )
+from surpyval.utils.removed_names import (
+    column_arguments,
+    removed_parameter_note,
+)
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
     keeps_query_shape,
 )
-from surpyval.utils.validation import BOUNDS, check_option
+from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
 
 from .._aliasing import (
     aliased_columns,
@@ -120,10 +123,16 @@ from .._fit_skeleton import (
     covariate_center,
 )
 from .._kinds import PROPORTIONAL_ODDS
-from .._prediction import ConditionalSurvivalMixin
+from .._prediction import (
+    ConditionalSurvivalMixin,
+    paired_probabilities,
+    step_quantiles,
+    unique_rows,
+)
 from .._summary import coefficient_names, coefficient_repr, coefficient_table
 from ..regression_data import (
     LinearPredictorMixin,
+    canonical_rows,
     design_matrix_from_df,
     restore_covariate_meta,
     semi_parametric_inputs,
@@ -439,7 +448,16 @@ def _validate(
             "ProportionalOdds needs at least one event (c=0); with every "
             "observation censored there is no baseline to estimate."
         )
-    return x_arr, c_arr, n_arr, tl_arr, Z_arr
+    # The rows in one order, every column sorted, so the fit is the same
+    # to the last digit whatever order they are given in (#760)
+    order = canonical_rows(x_arr, c_arr, n_arr, tl_arr, Z_arr)
+    return (
+        x_arr[order],
+        c_arr[order],
+        n_arr[order],
+        tl_arr[order],
+        Z_arr[order],
+    )
 
 
 def _po_aliased(
@@ -479,13 +497,13 @@ def _baseline_at_origin(
     jump there over- or underflows, or the linear predictor ``lp`` of a
     fitted row does (as CoxPH and the parametric fits refuse, #463)."""
     out = log_g + shift
-    ok = bool(np.all(np.abs(lp) < LOG_MAX)) and bool(
-        np.all((out < LOG_MAX) & (out > _LOG_TINY))
-    )
-    if not ok:
+    moved = bool(np.all((out < LOG_MAX) & (out > _LOG_TINY)))
+    if not (moved and bool(np.all(np.abs(lp) < LOG_MAX))):
         # shift = -gamma'center = beta'center, the model's coefficients
-        # being beta = -gamma.
-        raise baseline_at_origin_error("baseline odds", center, shift, shift)
+        # being beta = -gamma. (The rows' lp, where only they overflow.)
+        raise baseline_at_origin_error(
+            "baseline odds", center, shift, shift, lp=lp if moved else None
+        )
     return out
 
 
@@ -537,6 +555,8 @@ class ProportionalOddsModel(
 
     # Covariate metadata populated by ``fit_from_df``.
     feature_names: list[str] | None = None
+    #: Covariates of the wrong width are refused by name (#657).
+    _CHECKS_WIDTH = True
     formula: str | None = None
     _model_spec: Any = None
 
@@ -545,12 +565,8 @@ class ProportionalOddsModel(
     params: npt.NDArray
     #: The coefficients' standard errors, ``standard_errors()``.
     _se: npt.NDArray
-    #: ``standard_errors()``'s name before v0.23, for one release (#613).
-    se = RenamedToMethod("standard_errors", "_se")
     #: The coefficients' covariance, ``covariance()`` (#605).
     _covariance: npt.NDArray
-    #: ``covariance()``'s name before v0.23, for one release.
-    cov = RenamedToMethod("covariance", "_covariance")
     p_values: npt.NDArray
     x: npt.NDArray
     d: npt.NDArray
@@ -767,6 +783,52 @@ class ProportionalOddsModel(
                 - np.logaddexp(0.0, lGp + eta)
             )
 
+    @keeps_query_shape
+    def qf(
+        self,
+        p: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
+    ) -> npt.NDArray:
+        """
+        The quantile function: the first baseline time at which the
+        predicted failure probability ``ff(x, Z)`` reaches ``p`` (#662),
+        ``nan`` where it never does -- the curve stops at the last
+        observed time, above ``1 - p`` where the data end censored -- as
+        the non-parametric estimates' ``qf`` gives it. The median life of
+        a unit with covariates ``Z`` is ``qf(0.5, Z)`` (R's
+        ``quantile(survfit(fit, newdata))``, lifelines'
+        ``predict_median``), its B10 life ``qf(0.1, Z)``.
+
+        ``Z`` is paired with ``p`` as :meth:`sf` pairs it with ``x``: one
+        row for every ``p``, or one ``p`` for every row; ``grid=True``
+        gives every ``p`` for every row, with shape ``(len(Z),) +
+        p.shape``. A predicted curve within ``1e-9`` of ``p``
+        counts as reaching it (round-off would otherwise put the quantile
+        a step late), and ``qf(0, Z)`` is the first time the curve rises
+        above 0. A probability outside [0, 1] gives ``nan``, with a
+        warning, as every model's ``qf``.
+
+        Examples
+        --------
+        >>> from surpyval import ProportionalOdds
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = ProportionalOdds.fit(x, df[["fin", "prio"]].values, c=c)
+        >>> model.qf(0.1, [[0, 0], [1, 0], [0, 10]])
+        array([26., 37., 12.])
+        """
+        rows = covariate_rows(
+            self._prepare_Z(Z), np.asarray(self.beta).shape[0]
+        )
+        u, rows, shape = paired_probabilities(p, rows, grid)
+        uniq, which = unique_rows(rows)
+        F = np.atleast_2d(self.ff(self.x, uniq, grid=True))
+        out = step_quantiles(F[which], self.x, u)
+        return out if shape is None else out.reshape(shape)
+
     # -- model comparison (#604) -------------------------------------------
 
     def _ic_k(self) -> int:
@@ -791,8 +853,7 @@ class ProportionalOddsModel(
 
     def standard_errors(self) -> npt.NDArray:
         """The coefficients' standard errors, from :meth:`covariance`.
-        ``se``, the attribute before v0.23, still gives them, with a
-        ``DeprecationWarning``, until v0.24."""
+        They were the attribute ``se`` before v0.23."""
         return self._se
 
     def param_cb(
@@ -847,16 +908,15 @@ class ProportionalOddsModel(
         >>> model.param_cb("coef_1", method="lr").round(4)
         array([-0.1849, -0.0548])
         """
+        check_alpha_ci(alpha_ci)
         from .._likelihood_ratio import is_lr, profile_interval
 
         lr = is_lr(method)
         names = self.parameter_names
-        # A coefficient's name before v0.23, ``beta_j``, until v0.24 (#614)
-        name = renamed_coefficient(name, names, "param_cb")
         if name not in names:
             raise ValueError(
-                "Unknown parameter {!r}; expected one of {}".format(
-                    name, names
+                "Unknown parameter {!r}; expected one of {}{}".format(
+                    name, names, removed_parameter_note(name, names)
                 )
             )
         if lr:
@@ -958,6 +1018,7 @@ class ProportionalOddsModel(
         fin        0.3896     1.4764    0.2191  0.0754
         age        0.0751     1.0780    0.0227  0.0009
         """
+        check_alpha_ci(alpha_ci)
         beta = np.asarray(self.beta, dtype=float)
         names = coefficient_names(self, beta.size)
         se = np.asarray(self._se, dtype=float)
@@ -1127,7 +1188,10 @@ class ProportionalOdds_(FitterRepr):
         maximised over the baseline odds at each ``beta`` (see the module
         notes), and their standard errors are the profile likelihood's
         (the inverse of its negative Hessian at the maximum), as Murphy,
-        Rossini and van der Vaart (1997) justify.
+        Rossini and van der Vaart (1997) justify. The rows are fitted
+        sorted by every column (time, censoring, entry time,
+        covariates, count), so the fit is the same to the last digit whatever
+        order they are given in.
 
         Parameters
         ----------
@@ -1267,6 +1331,7 @@ class ProportionalOdds_(FitterRepr):
         model._fit_data = {"x": x, "c": c, "n": n, "Z": Z, "tl": tl}
         return model
 
+    @column_arguments("x", "c", "n", "tl")
     def fit_from_df(
         self,
         df: "pd.DataFrame",
@@ -1312,6 +1377,7 @@ class ProportionalOdds_(FitterRepr):
         >>> model.beta.round(4)
         array([ 0.4275, -0.1206])
         """
+        check_columns(df, x_col=x_col, c_col=c_col, n_col=n_col, tl_col=tl_col)
         Z, feature_names, model_spec = design_matrix_from_df(
             df, Z_cols, formula
         )

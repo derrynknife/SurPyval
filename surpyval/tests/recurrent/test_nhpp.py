@@ -39,7 +39,7 @@ def test_all_censored_data_is_a_clear_error(model):
         elif model == "PI-HPP":
             ProportionalIntensityHPP.fit(x, Z, i, c)
         else:
-            ProportionalIntensityNHPP.fit(x, Z, i, c, dist=CrowAMSAA)
+            ProportionalIntensityNHPP.fit(x, Z, i, c, baseline=CrowAMSAA)
 
 
 def test_power_law_event_at_time_zero_is_a_clear_error():
@@ -98,3 +98,31 @@ def test_mse_fit_says_why_it_has_no_likelihood():
     assert "MSE" in repr(model)
     with pytest.raises(ValueError, match="how='MSE'"):
         model.aic()
+
+
+def test_665_crow_amsaa_closed_form_mle():
+    # Every item observed from 0 to a common end: the MIL-HDBK-189C closed
+    # form, to full precision (the search agreed only to about 1e-5).
+    rng = np.random.default_rng(0)
+    t = np.sort(rng.uniform(0, 100, 15))
+    beta = 15 / np.log(100 / t).sum()
+    expected = [100 * (1 / 15) ** (1 / beta), beta]
+    # Time terminated, by a c=1 row or by tr
+    via_row = CrowAMSAA.fit(np.r_[t, 100], c=np.r_[np.zeros(15), 1])
+    np.testing.assert_allclose(via_row.params, expected, rtol=1e-14)
+    assert via_row.maximum == "verified"
+    via_tr = CrowAMSAA.fit(t, tr=100.0)
+    np.testing.assert_allclose(via_tr.params, expected, rtol=1e-14)
+    # Failure terminated
+    failure = CrowAMSAA.fit(t)
+    beta = 15 / np.log(t[-1] / t).sum()
+    np.testing.assert_allclose(failure.params[1], beta, rtol=1e-14)
+    # Two systems to a common T: the expected count at T is N / k.
+    x = [3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60]
+    i = [1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2]
+    c = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+    model = CrowAMSAA.fit(x, i=i, c=c)
+    assert model.cif(60) == pytest.approx(4.5, rel=1e-14)
+    # Unequal ends are searched, as before.
+    searched = CrowAMSAA.fit(x[:-1] + [50], i=i, c=c)
+    assert searched.maximum == "verified"

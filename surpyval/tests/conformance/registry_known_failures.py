@@ -55,15 +55,9 @@ for _name, _failures in _OPTION_FAILURES.items():
     }
     KNOWN_FAILURES[_name] = {**KNOWN_FAILURES.get(_name, {}), **_failures}
 
-# -- every event in one corner cell (test_maximum.py, #628) ------------------
-KNOWN_FAILURES["GammaAFT"] = {
-    **KNOWN_FAILURES.get("GammaAFT", {}),
-    "maximum[corner]": (
-        "#628: the Hessian at the point the search stops is not finite "
-        "(the incomplete gamma's central differences), so the no-maximum "
-        "check has nothing to read and the fit says 'unverified'"
-    ),
-}
+# (Every event in one corner cell, test_maximum.py: GammaAFT's Hessian
+# there is finite since its mixed derivatives in the shape and x are taken
+# from the analytic x-derivative, #634.)
 
 # -- convergence (test_convergence.py) --------------------------------------
 # Each starved fit returns silently -- no warning, no error -- a model that
@@ -94,6 +88,18 @@ for _name, _reason in _COMPARISON_FAILURES.items():
         **KNOWN_FAILURES.get(_name, {}),
         "comparison": _reason,
     }
+
+
+# -- covariate scale (test_metamorphic.py) ----------------------------------
+# A covariate multiplied by 1/731, 731 or 1e-6 must reach the maximised
+# likelihood of the fit in its own units. Keyed "covariate_scale[<label>]",
+# and "covariate_scale[tvc <label>]" for fit_tvc; case -> key -> reason.
+# (None since #577 and #612: at 1e-6 the regression, frailty, Fine-Gray
+# and proportional-intensity fits stopped 0.6 to 10 log-likelihood units
+# short and reported a verified maximum.)
+_SCALE_FAILURES: dict[str, dict[str, str]] = {}
+for _name, _failures in _SCALE_FAILURES.items():
+    KNOWN_FAILURES[_name] = {**KNOWN_FAILURES.get(_name, {}), **_failures}
 
 
 # Known failures whose outcome depends on the numpy / scipy / BLAS build,

@@ -403,7 +403,7 @@ def test_lr_rejects_offset_model():
 
 def test_param_cb_rejects_unknown_method(weibull_model):
     with pytest.raises(ValueError, match="'method' must be one of"):
-        weibull_model.param_cb("beta", method="bootstrap")
+        weibull_model.param_cb("beta", method="jackknife")
 
 
 # ---------------------------------------------------------------------------
@@ -501,7 +501,7 @@ def test_lr_cb_rejects_offset_model():
 
 def test_cb_rejects_unknown_method(weibull_model):
     with pytest.raises(ValueError, match="'method' must be one of"):
-        weibull_model.cb(np.array([10.0]), on="sf", method="bootstrap")
+        weibull_model.cb(np.array([10.0]), on="sf", method="jackknife")
 
 
 def test_lr_bounds_respect_user_fixed_parameters():
@@ -627,6 +627,9 @@ def test_rate_bounds_are_zero_below_an_offset():
     x = surv.Weibull.random(40, 10, 2) + 5
     model = surv.Weibull.fit(x, offset=True)
     assert model.gamma > 4.0
+    # (an offset model's Wald bounds warn that gamma is held, #645; no
+    # other warning)
+    model._warn_offset_wald = lambda what: None
     for on in ("hf", "df"):
         cb = no_warnings(model.cb, [1.0, 4.0], on=on)
         np.testing.assert_array_equal(cb, np.zeros((2, 2)))
@@ -727,6 +730,50 @@ def test_function_cb_with_a_negative_variance_warns():
     assert np.all(np.isnan(cb))
 
 
+def _far_tail_weibull():
+    rng = np.random.default_rng(9)
+    t = 500 * rng.weibull(1.8, 25)
+    cen = rng.uniform(200, 900, 25)
+    return surv.Weibull.fit(np.minimum(t, cen), (t > cen).astype(int))
+
+
+def test_652_each_x_has_its_own_wald_bound_far_in_the_tail():
+    # One x far in the tail made every x's hf bound nan, with a warning
+    # blaming the covariance; each x's bound is now its own, and the hazard
+    # is taken from the log density and log survival, finite there.
+    model = _far_tail_weibull()
+    alone = no_warnings(model.cb, [300.0], on="hf")
+    both = no_warnings(model.cb, [300.0, 1e6], on="hf")
+    np.testing.assert_allclose(both[0], alone[0], rtol=1e-12)
+    hf = model.hf(1e6)
+    assert both[1, 0] < hf < both[1, 1]
+    for on in ("sf", "ff", "df"):
+        band = no_warnings(model.cb, [300.0, 1e6], on=on)
+        np.testing.assert_allclose(band[0], model.cb([300.0], on=on)[0])
+    # Hf on the log scale: it contains the estimate (it was [inf, inf]),
+    # and agrees with -log of the sf band where that is finite.
+    H = no_warnings(model.cb, [300.0, 1e6], on="Hf")
+    assert H[1, 0] < model.Hf(1e6) < H[1, 1] < np.inf
+    sf = model.cb([300.0], on="sf")
+    np.testing.assert_allclose(H[0], -np.log(sf[0, ::-1]), rtol=1e-12)
+    upper = model.cb([300.0, 1e6], on="Hf", bound="upper")
+    assert model.Hf(1e6) < upper[1] < H[1, 1]
+
+
+def test_652_an_overflowing_gradient_is_named_not_the_covariance():
+    # Where a gradient overflows at one x (a Gumbel's hazard, e^(x/sigma),
+    # far in its tail), that x alone is nan, and the warning says so (the
+    # covariance is fine).
+    np.random.seed(1)
+    model = surv.Gumbel.fit(surv.Gumbel.random(50, 10, 2))
+    with pytest.warns(RuntimeWarning, match=r"hf at x = \[10000.0\]") as rec:
+        band = model.cb([8.0, 1e4], on="hf")
+    assert len(rec) == 1 and rec[0].filename == __file__
+    assert "overflow" in str(rec[0].message)
+    assert "positive definite" not in str(rec[0].message)
+    assert np.all(np.isfinite(band[0])) and np.all(np.isnan(band[1]))
+
+
 # ---------------------------------------------------------------------------
 # ``param_cb`` on the offset.
 # ---------------------------------------------------------------------------
@@ -766,15 +813,13 @@ def test_cb_rejects_an_unknown_bound():
         model.cb([2.0], bound="both")
 
 
-def test_605_covariance_is_a_method_and_cov_matrix_deprecated():
+def test_605_covariance_is_a_method_and_cov_matrix_gone():
     np.random.seed(1)
     model = surv.Weibull.fit(surv.Weibull.random(50, 10, 3))
     cov = model.covariance()
     assert cov.shape == (2, 2) and np.allclose(cov, model.hess_inv)
-    with pytest.warns(DeprecationWarning, match="covariance()") as caught:
-        old = model.cov_matrix
-    assert caught[0].filename == __file__
-    np.testing.assert_array_equal(old, cov)
+    # Deprecated in v0.23, removed in v0.24
+    assert not hasattr(model, "cov_matrix")
     # Saved under one key, and a dict written before v0.23 still loads
     d = model.to_dict()
     assert "covariance" in d and "cov_matrix" not in d
@@ -784,3 +829,108 @@ def test_605_covariance_is_a_method_and_cov_matrix_deprecated():
     built = surv.Weibull.from_params([10, 3])
     with pytest.raises(ValueError, match="no parameter covariance"):
         built.covariance()
+
+
+@pytest.mark.parametrize("zi", [False, True])
+def test_728_Hf_bound_below_the_support_is_plus_zero(zi):
+    # -log of the survival band's 1 there was -0.0 (#728).
+    np.random.seed(0)
+    x = surv.Weibull.random(40, 10, 2)
+    model = surv.Weibull.fit(np.r_[np.zeros(10), x] if zi else x, zi=zi)
+    for bound in ("two-sided", "lower", "upper"):
+        cb = model.cb([-1.0, 0.0], on="Hf", bound=bound)
+        at_zero = cb[:1] if zi else cb
+        assert np.all(at_zero == 0) and not np.any(np.signbit(at_zero))
+
+
+# ---------------------------------------------------------------------------
+# The delta method's Jacobian in forward mode: one pass per parameter
+# rather than one per point, exact, and the same as the reverse-mode one.
+# ---------------------------------------------------------------------------
+FORWARD_FAMILIES = {
+    "Weibull": (10.0, 2.0),
+    "Exponential": (0.1,),
+    "Rayleigh": (8.0,),
+    "LogNormal": (2.0, 0.5),
+    "LogLogistic": (10.0, 3.0),
+    "Normal": (10.0, 3.0),
+    "Gumbel": (10.0, 2.0),
+    "GumbelLEV": (10.0, 2.0),
+    "Logistic": (10.0, 2.0),
+    "Gamma": (3.0, 0.3),
+}
+
+
+def _jacobian_cases():
+    for name in FORWARD_FAMILIES:
+        yield name, {}
+        if name not in ("Normal", "Gumbel", "GumbelLEV", "Logistic"):
+            yield name, {"lfp": True, "zi": True}
+
+
+@pytest.mark.parametrize("name,kw", list(_jacobian_cases()))
+def test_forward_jacobian_is_the_reverse_one(name, kw):
+    from surpyval.univariate.parametric.parametric import (
+        _parameter_jacobian,
+    )
+
+    dist = getattr(surv, name)
+    rng = np.random.default_rng(3)
+    x = dist.random(300, *FORWARD_FAMILIES[name], random_state=rng)
+    if kw:
+        x = np.r_[x, np.zeros(10)]
+    model = dist.fit(x, **kw)
+    ctx = model._cb_context()
+    t = np.quantile(x[x > 0], [0.02, 0.3, 0.6, 0.98])
+    for full in (model._cb_full_sf, model._cb_full_ff, model._cb_full_Hf):
+
+        def f(phi):
+            return full(t, phi, ctx)
+
+        reverse = np.atleast_2d(jacobian(f)(ctx.phi_hat))
+        forward = _parameter_jacobian(f, ctx.phi_hat)
+        np.testing.assert_allclose(forward, reverse, rtol=1e-13, atol=0)
+
+
+def test_a_family_without_forward_rules_uses_reverse_once():
+    from surpyval.univariate.parametric import parametric
+
+    rng = np.random.default_rng(4)
+    model = surv.Beta.fit(surv.Beta.random(200, 2, 5, random_state=rng))
+    t = np.linspace(0.05, 0.9, 7)
+    first = model.cb(t)
+    keys = {k for k in parametric._REVERSE_ONLY if k[0] is type(model.dist)}
+    assert keys  # betainc has no forward rule: remembered
+    np.testing.assert_array_equal(model.cb(t), first)
+
+
+@pytest.mark.parametrize(
+    "fn,derivative",
+    [
+        ("expit", lambda x: np.exp(-x) / (1 + np.exp(-x)) ** 2),
+        ("ndtr", lambda x: np.exp(-0.5 * x * x) / np.sqrt(2 * np.pi)),
+    ],
+)
+def test_forward_rules_are_the_derivatives(fn, derivative):
+    from autograd.differential_operators import make_jvp
+
+    if fn == "expit":
+        from autograd.scipy.special import expit as f
+    else:
+        from surpyval.utils.normal import ndtr as f
+    x = np.linspace(-6.0, 6.0, 25)
+    tangent = make_jvp(f)(x)(np.ones_like(x))[1]
+    np.testing.assert_allclose(tangent, derivative(x), rtol=1e-12)
+
+
+def test_log_ndtr_forward_rule_far_in_the_left_tail():
+    from autograd import elementwise_grad
+    from autograd.differential_operators import make_jvp
+
+    from surpyval.utils.normal import log_ndtr
+
+    x = np.array([-40.0, -10.0, -1.0, 0.0, 3.0])
+    tangent = make_jvp(log_ndtr)(x)(np.ones_like(x))[1]
+    np.testing.assert_allclose(
+        tangent, elementwise_grad(log_ndtr)(x), rtol=1e-13
+    )

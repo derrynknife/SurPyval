@@ -97,10 +97,15 @@ def test_countermonotone_data_warn_where_the_family_reaches_them(copula):
 
 def test_a_family_without_negative_dependence_is_not_told_about_it():
     # Clayton cannot reach the countermonotone copula; it goes to its
-    # independence end, a valid copula, and says nothing.
+    # independence end, a valid copula: not told "no finite maximum", but
+    # told once that the family cannot model the dependence (#663).
     X = np.column_stack([_X1, 100.0 - _X1])
-    _, caught = _caught(Clayton.fit, X, margins=_MARGINS)
-    _silent(caught)
+    model, caught = _caught(Clayton.fit, X, margins=_MARGINS)
+    assert len(caught) == 1, [str(w.message)[:80] for w in caught]
+    message = str(caught[0].message)
+    assert "No finite maximum" not in message
+    assert "the bound of the family's range" in message
+    assert model.maximum == "verified"
 
 
 @pytest.mark.parametrize("copula", [Clayton, Gumbel, Frank, Gaussian])
@@ -276,6 +281,29 @@ def test_an_ordinary_beta_geometric_fit_is_silent():
     model, caught = _caught(sp.BetaGeometric.fit, x)
     _silent(caught)
     np.testing.assert_allclose(model.params, [6.47, 11.79], rtol=1e-2)
+
+
+# ---------------------------------------------------------------------------
+# NegativeBinomial: the Poisson limit (#665)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("c", [None, [0, 0, 0, 0, 0, 0, 1]])
+def test_a_negative_binomial_fit_in_its_poisson_limit_warns(c):
+    # Under-dispersed counts: it ended at r = 299 "unverified", with the
+    # generic message, after 2.9 s.
+    model, caught = _caught(sp.NegativeBinomial.fit, [4, 5, 5, 6, 5, 4, 6], c)
+    _one_no_maximum(caught, "Poisson limit", "use Poisson on x - 1")
+    assert model.maximum == "no finite maximum"
+    shifted = sp.Poisson.fit(np.array([4, 5, 5, 6, 5, 4, 6]) - 1.0, c)
+    assert model.log_likelihood <= shifted.log_likelihood + 1e-8
+
+
+def test_an_ordinary_negative_binomial_fit_is_silent():
+    x = sp.NegativeBinomial.random(200, 3.0, 0.4, random_state=0)
+    model, caught = _caught(sp.NegativeBinomial.fit, x)
+    _silent(caught)
+    assert model.maximum == "verified"
 
 
 # ---------------------------------------------------------------------------

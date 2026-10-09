@@ -34,6 +34,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.optimize import curve_fit
 
+from surpyval.utils.removed_names import RemovedNames
 from surpyval.utils.validation import option_error
 
 
@@ -49,7 +50,7 @@ def _ols(z: npt.NDArray, y: npt.NDArray) -> tuple[float, float]:
     return intercept, slope
 
 
-class PathModel(ABC):
+class PathModel(ABC, RemovedNames):
     """
     Base class for degradation path models.
 
@@ -110,6 +111,19 @@ class PathModel(ABC):
 
     def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
         """Raise ``ValueError`` if the data is outside the model domain."""
+
+    def _require_positive_times(self, x: npt.NDArray, why: str) -> None:
+        """Refuse times at or below 0, saying ``why`` the model cannot use
+        them and to drop them: the baseline reading at ``t = 0`` is the
+        usual case (#663)."""
+        if np.any(np.asarray(x, dtype=float) <= 0):
+            raise ValueError(
+                f"The {self.name.lower()} path model requires strictly "
+                "positive times (there are measurements at t <= 0): "
+                f"{why}. "
+                "Drop the t = 0 rows, or use a path defined there (such as "
+                "'linear', 'quadratic' or 'exponential')."
+            )
 
     def _initial_guess(
         self, x: npt.NDArray, y: npt.NDArray
@@ -274,10 +288,11 @@ class PowerPath_(PathModel):
         return np.column_stack([xb, a * xb * np.log(x)])
 
     def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
-        if (x <= 0).any():
-            raise ValueError(
-                "The power path model requires strictly positive times"
-            )
+        self._require_positive_times(
+            x,
+            "y = a * t**b is 0 at t = 0, so a reading there says nothing "
+            "about a and b, and the fit works on log t",
+        )
         if (y <= 0).any():
             raise ValueError(
                 "The power path model requires strictly positive "
@@ -314,10 +329,9 @@ class LogarithmicPath_(PathModel):
         return np.column_stack([np.ones_like(x), np.log(x)])
 
     def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
-        if (x <= 0).any():
-            raise ValueError(
-                "The logarithmic path model requires strictly positive times"
-            )
+        self._require_positive_times(
+            x, "y = a + b * ln(t) is undefined at t = 0"
+        )
 
     def fit(self, x: npt.ArrayLike, y: npt.ArrayLike) -> npt.NDArray:
         x = np.asarray(x, dtype=float)
@@ -349,10 +363,7 @@ class LloydLipowPath_(PathModel):
         return np.column_stack([np.ones_like(x), -1.0 / x])
 
     def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
-        if (x <= 0).any():
-            raise ValueError(
-                "The Lloyd-Lipow path model requires strictly positive times"
-            )
+        self._require_positive_times(x, "y = a - b / t is undefined at t = 0")
 
     def fit(self, x: npt.ArrayLike, y: npt.ArrayLike) -> npt.NDArray:
         x = np.asarray(x, dtype=float)
@@ -642,11 +653,11 @@ class MichaelisMentenPath_(PathModel):
         return np.column_stack([x / denominator, -a * x / denominator**2])
 
     def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
-        if (x <= 0).any():
-            raise ValueError(
-                "The Michaelis-Menten path model requires strictly "
-                "positive times"
-            )
+        self._require_positive_times(
+            x,
+            "y = a * t / (b + t) is 0 at t = 0, so a reading there says "
+            "nothing about a and b, and the fit works on 1 / t",
+        )
         if (y <= 0).any():
             raise ValueError(
                 "The Michaelis-Menten path model requires strictly "

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import warnings
 from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
@@ -16,7 +15,6 @@ from surpyval.serialisation import (
 from surpyval.univariate.information_criteria import InformationCriteriaMixin
 from surpyval.utils import is_missing_event
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.deprecation import REMOVED_IN, RenamedToMethod
 from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import (
@@ -24,10 +22,15 @@ from surpyval.utils.shapes import (
     covariate_rows,
     keeps_query_shape,
 )
-from surpyval.utils.validation import no_covariance_error
+from surpyval.utils.validation import check_alpha_ci, no_covariance_error
 
 from ._concordance import ConcordanceMixin
-from ._prediction import ConditionalSurvivalMixin
+from ._prediction import (
+    ConditionalSurvivalMixin,
+    paired_probabilities,
+    step_quantiles,
+    unique_rows,
+)
 from ._summary import (
     coefficient_names,
     coefficient_repr,
@@ -61,7 +64,12 @@ class SemiParametricRegressionModel(
     increment is 0 at a censoring time). The baseline is that of a unit
     at ``center``: ``Z = 0`` by default (zeros), or the covariate means
     for a fit with ``center=True``; ``phi(Z)``, the hazard multiplier, is
-    relative to it, :math:`e^{\\beta' (Z - \\text{center})}`. The
+    relative to it, :math:`e^{\\beta' (Z - \\text{center})}`. ``r`` is
+    each time's risk-set weight, the sum of ``n e^{beta'(Z - center)}``
+    over the units at risk, and ``d`` its deaths (Breslow's increment is
+    ``d / r``). Far along a coefficient that runs off, ``r`` is beyond
+    floating point and is ``inf`` (or ``0``); the increments are computed
+    from its log, so they are right there (#777). The
     survival functions take
     the covariates as a second argument, ``sf(x, Z)`` (and a ``stratum``
     for a stratified fit); ``sf_tvc`` / ``Hf_tvc`` follow a time-varying
@@ -98,6 +106,8 @@ class SemiParametricRegressionModel(
     feature_names: list[str] | None = None
     formula: str | None = None
     _model_spec: Any = None
+    #: Covariates of the wrong width are refused by name (#657).
+    _CHECKS_WIDTH = True
     #: True when fitted from time-varying-covariate (start-stop) data via
     #: ``CoxPH.fit_tvc``; enables :meth:`predict_tvc`.
     is_tvc: bool = False
@@ -149,8 +159,6 @@ class SemiParametricRegressionModel(
     #: The coefficients' standard errors, ``standard_errors()`` (``None``
     #: for a model saved before they were stored).
     _se: "npt.NDArray | None" = None
-    #: ``standard_errors()``'s name before v0.23, for one release.
-    se = RenamedToMethod("standard_errors", "_se")
     #: The fit's score/Hessian closure, ``jac(beta) -> (score,
     #: information)``, and the negative partial log-likelihood as a
     #: function of the coefficients, ``neg_ll_of(beta)`` (``None`` for a
@@ -189,7 +197,7 @@ class SemiParametricRegressionModel(
 
     # -- model comparison (#604) -------------------------------------------
 
-    def neg_ll(self, beta: Any = None) -> float:
+    def neg_ll(self, *beta: Any) -> float:
         """The negative partial log-likelihood at the fitted coefficients:
         a number, as every model's ``neg_ll()`` is (#604), so that
         :meth:`aic`, :meth:`bic` and :meth:`aic_c`, and ``log_likelihood``
@@ -197,9 +205,8 @@ class SemiParametricRegressionModel(
         other. The partial likelihood is not the likelihood of the data,
         so these do not compare a Cox model with a parametric one.
 
-        As a function of the coefficients it is ``neg_ll_of(beta)``;
-        ``neg_ll(beta)``, its old spelling, still gives it with a
-        ``DeprecationWarning`` until v0.24.
+        As a function of the coefficients it is ``neg_ll_of(beta)``
+        (``neg_ll(beta)`` before v0.23).
 
         Examples
         --------
@@ -211,22 +218,13 @@ class SemiParametricRegressionModel(
         >>> round(model.log_likelihood, 3), round(model.aic(), 3)
         (-660.857, 1327.714)
         """
-        if beta is not None:
-            warnings.warn(
-                "SemiParametricRegressionModel.neg_ll(beta) is deprecated "
-                "and will be removed in v{}: neg_ll() is now the fitted "
-                "value; use neg_ll_of(beta) for the negative partial "
-                "log-likelihood at beta.".format(REMOVED_IN),
-                DeprecationWarning,
-                stacklevel=2,
+        if beta:
+            # The function of the coefficients' old name says where it went
+            # (#653), rather than "takes 1 positional argument".
+            raise TypeError(
+                "neg_ll() takes no arguments: it is the fitted value; "
+                "neg_ll(beta) was removed in v0.24: use neg_ll_of(beta)."
             )
-            if self.neg_ll_of is None:
-                raise ValueError(
-                    "The partial likelihood is not stored with a model "
-                    "restored from a dict; refit it to evaluate it at "
-                    "other coefficients."
-                )
-            return float(self.neg_ll_of(beta))
         if getattr(self, "_neg_ll", None) is None:
             raise ValueError("Must have been fit with data")
         return float(self._neg_ll)
@@ -379,6 +377,7 @@ class SemiParametricRegressionModel(
         fin       -0.3279     0.7204    0.1899  0.0841
         age       -0.0715     0.9310    0.0209  0.0006
         """
+        check_alpha_ci(alpha_ci)
         beta = np.asarray(self.beta, dtype=float)
         names = coefficient_names(self, beta.size)
         if robust:
@@ -730,11 +729,75 @@ class SemiParametricRegressionModel(
         """
         ``hf * sf`` at ``x`` for covariates ``Z``: the probability mass at
         each baseline event time (the baseline is a step function);
-        arguments as for :meth:`sf`.
+        arguments as for :meth:`sf`. It is 0 where ``sf`` has underflowed
+        to 0, also where the hazard step has overflowed to ``inf`` (a
+        risk score far beyond the data's): the step is at most the
+        cumulative hazard ``H``, and ``H e^{-H}`` tends to 0 (#714).
         """
-        return self.hf(x, Z, stratum, grid=grid) * self.sf(
-            x, Z, stratum, grid=grid
+        h = self.hf(x, Z, stratum, grid=grid)
+        sf = self.sf(x, Z, stratum, grid=grid)
+        gone = np.isposinf(h) & (sf == 0)
+        if not np.any(gone):
+            return h * sf
+        with np.errstate(invalid="ignore"):
+            return np.where(gone, 0.0, h * sf)
+
+    @keeps_query_shape
+    def qf(
+        self,
+        p: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        stratum: Any = None,
+        *,
+        grid: bool = False,
+    ) -> npt.NDArray:
+        """
+        The quantile function: the first baseline time at which the
+        predicted failure probability ``ff(x, Z)`` reaches ``p`` (#662),
+        ``nan`` where it never does -- the curve stops at the last
+        observed time, above ``1 - p`` where the data end censored -- as
+        the non-parametric estimates' ``qf`` gives it. The median life of
+        a unit with covariates ``Z`` is ``qf(0.5, Z)`` (R's
+        ``quantile(survfit(fit, newdata))``, lifelines'
+        ``predict_median``), its B10 life ``qf(0.1, Z)``.
+
+        ``Z`` is paired with ``p`` as :meth:`sf` pairs it with ``x``: one
+        row for every ``p``, or one ``p`` for every row; ``grid=True``
+        gives every ``p`` for every row, with shape ``(len(Z),) +
+        p.shape``. ``stratum`` selects the baseline of a stratified fit.
+        A predicted curve within ``1e-9`` of ``p`` counts as reaching it
+        (round-off would otherwise put the quantile a step late), and
+        ``qf(0, Z)`` is the first time the curve rises above 0. A
+        probability outside [0, 1] gives ``nan``, with a warning, as every
+        model's ``qf``.
+
+        Examples
+        --------
+        >>> from surpyval import CoxPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = CoxPH.fit(x, df[["fin", "prio"]].values, c=c)
+        >>> model.qf(0.1, [[0, 0], [1, 0], [0, 10]])
+        array([25., 36., 12.])
+        >>> model.ff([24.0, 25.0], [0, 0]).round(4)
+        array([0.0942, 0.1003])
+
+        Fewer than half are arrested within the year, so the median is
+        not reached:
+
+        >>> model.qf(0.5, [0, 0])
+        np.float64(nan)
+        """
+        bx, _, _ = self._baseline_arrays(stratum)
+        rows = covariate_rows(
+            self._prepare_Z(Z), np.asarray(self.beta).shape[0]
         )
+        u, rows, shape = paired_probabilities(p, rows, grid)
+        uniq, which = unique_rows(rows)
+        F = np.atleast_2d(self.ff(bx, uniq, stratum, grid=True))
+        out = step_quantiles(F[which], bx, u)
+        return out if shape is None else out.reshape(shape)
 
     def compute_residuals(self, kind: str = "martingale") -> npt.NDArray:
         """
@@ -842,9 +905,8 @@ class SemiParametricRegressionModel(
         """
         The coefficients' standard errors, the square roots of the diagonal
         of :meth:`covariance` in the order of ``params`` (``nan`` for an
-        aliased coefficient), R's ``se(coef)``. ``se``, the attribute
-        before v0.23, still gives them, with a ``DeprecationWarning``,
-        until v0.24.
+        aliased coefficient), R's ``se(coef)``. They were the attribute
+        ``se`` before v0.23.
 
         Examples
         --------

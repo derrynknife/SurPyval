@@ -4,7 +4,10 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 from surpyval.recurrent import diagnostics
-from surpyval.recurrent.inference import LikelihoodInferenceMixin
+from surpyval.recurrent.inference import (
+    LikelihoodInferenceMixin,
+    check_alpha_ci,
+)
 from surpyval.recurrent.serialisation import intensity_dist_by_name
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
 from surpyval.serialisation import (
@@ -97,7 +100,9 @@ class ProportionalIntensityModel(
     >>> c = 1 - data['arrest'].values
     >>> i = np.arange(len(x))  # one item per subject
     >>> Z = data[["fin", "age", "race", "wexp", "mar", "paro", "prio"]].values
-    >>> model = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=CrowAMSAA)
+    >>> model = ProportionalIntensityNHPP.fit(
+    ...     x, Z, i=i, c=c, baseline=CrowAMSAA
+    ... )
     >>> type(model).__name__
     'ProportionalIntensityModel'
     >>> model.cif([1, 2, 3], Z.mean(axis=0))
@@ -514,6 +519,7 @@ class ProportionalIntensityModel(
     ) -> np.ndarray:
         """Delta-method bounds, on the log scale, on the ``cif`` or the
         ``iif`` (``function``) at ``x`` for covariates ``Z``."""
+        check_alpha_ci(alpha_ci)
         self._check_fitted()
         x = np.atleast_1d(np.asarray(x, dtype=float))
         Z = np.asarray(Z, dtype=float)
@@ -571,6 +577,7 @@ class ProportionalIntensityModel(
         ax : matplotlib.axes.Axes
             The axes the data was plotted on.
         """
+        check_alpha_ci(alpha_ci)
         self._check_has_data("plot")
         x, r, d = self.data.to_xrd()
         if ax is None:

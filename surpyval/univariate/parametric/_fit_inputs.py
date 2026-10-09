@@ -17,6 +17,8 @@ import numpy.typing as npt
 
 import surpyval
 from surpyval.utils.no_maximum import warn_no_maximum
+from surpyval.utils.numeric import unique_pairs
+from surpyval.utils.removed_names import removed_parameter_note
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import check_option
 
@@ -91,7 +93,7 @@ def _offset_start(x: npt.ArrayLike) -> float:
     return float(np.min(finite[np.isfinite(finite)])) - offset_step(x)
 
 
-def _imputed_data(
+def imputed_data(
     x: npt.NDArray, c: npt.NDArray, n: npt.NDArray
 ) -> SurpyvalData:
     """Wrap ``_initial_guess``'s working copy as a ``SurpyvalData``.
@@ -264,8 +266,7 @@ class FitInputsMixin:
         informative = c != 1
         if not informative.any():
             return
-        rows = np.column_stack([lo, hi])[informative]
-        distinct = np.unique(rows, axis=0).shape[0]
+        distinct = unique_pairs(lo[informative], hi[informative])[0].size
 
         if distinct < n_free:
             raise ValueError(
@@ -836,7 +837,7 @@ class FitInputsMixin:
             with np.errstate(all="ignore"):
                 init = np.array(
                     self._parameter_initialiser(
-                        _imputed_data(x_init, c_init, n_init)
+                        imputed_data(x_init, c_init, n_init)
                     )
                 )
         else:
@@ -866,10 +867,20 @@ class FitInputsMixin:
                 # offset, at the starting offset (below every value of the
                 # data, the imputed ones' own bounds included) and from the
                 # points shifted by it
-                imputed = _imputed_data(x_init, c_init, n_init)
+                imputed = imputed_data(x_init, c_init, n_init)
                 if offset:
+                    # Below the imputed points too: a left-censored row is
+                    # imputed half way down to the smallest value, which
+                    # with ``zi`` is an exact zero, below the nonzero data
+                    # the start was taken from; shifted by it, the seed's
+                    # data went negative and the initialiser refused them
+                    # (#631)
                     x_nonzero = x[x != 0] if zi else x
-                    init = self._offset_seed(imputed, _offset_start(x_nonzero))
+                    start = _offset_start(x_nonzero)
+                    lowest = float(np.min(x_init)) if x_init.size else start
+                    if lowest <= start:
+                        start = lowest - offset_step(x_nonzero)
+                    init = self._offset_seed(imputed, start)
                 else:
                     init = np.array(self._parameter_initialiser(imputed))
 
@@ -920,7 +931,7 @@ class FitInputsMixin:
         x = np.asarray(data.x, dtype=float)
         if gamma is None:
             gamma = _offset_start(x)
-        shifted = _imputed_data(x - gamma, data.c, data.n)
+        shifted = imputed_data(x - gamma, data.c, data.n)
         with np.errstate(all="ignore"):
             base = np.atleast_1d(
                 np.asarray(self._shifted_initialiser(shifted), dtype=float)
@@ -997,7 +1008,7 @@ class FitInputsMixin:
         observed = c == 0
         if n[observed].sum() < 2 or np.unique(x[observed]).size < 2:
             return None
-        failures = _imputed_data(
+        failures = imputed_data(
             x[observed],
             np.zeros(int(observed.sum()), dtype=int),
             n[observed],
@@ -1053,8 +1064,15 @@ class FitInputsMixin:
             hint = "; ".join(hints[k] for k in unknown if k in hints)
             raise ValueError(
                 "Unknown parameter(s) {} in `fixed`{}; this model's "
-                "parameters are {}.".format(
-                    unknown, " ({})".format(hint) if hint else "", names
+                "parameters are {}{}.".format(
+                    unknown,
+                    " ({})".format(hint) if hint else "",
+                    names,
+                    "".join(
+                        removed_parameter_note(k, [*names, model.lfp_name])
+                        for k in unknown
+                        if k not in hints
+                    ),
                 )
             )
         for name, value in (fixed or {}).items():

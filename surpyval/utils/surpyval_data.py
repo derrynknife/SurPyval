@@ -11,6 +11,7 @@ from numpy.typing import ArrayLike
 import surpyval
 from surpyval.serialisation import decode_non_finite, encode_non_finite
 from surpyval.utils import xcnt_handler
+from surpyval.utils.numeric import unique_pairs
 
 
 class SurpyvalData:
@@ -273,11 +274,10 @@ class SurpyvalData:
         # collapses hundreds of CDF evaluations per likelihood call into
         # one, and the likelihood is called hundreds of times per fit.
         if self.x_tl.size:
-            windows = np.column_stack([self.x_tl, self.x_tr])
-            unique, inverse = np.unique(windows, axis=0, return_inverse=True)
-            self.tl_unique = unique[:, 0]
-            self.tr_unique = unique[:, 1]
-            self.n_t_unique = np.bincount(inverse.ravel(), weights=self.n_t)
+            self.tl_unique, self.tr_unique, inverse = unique_pairs(
+                self.x_tl, self.x_tr
+            )
+            self.n_t_unique = np.bincount(inverse, weights=self.n_t)
         else:
             self.tl_unique = np.array([])
             self.tr_unique = np.array([])

@@ -36,6 +36,7 @@ class DualPower_(LifeModel):
     n_stresses = 2
     positive_stress_columns = (0, 1)
     phi_takes_rows = True
+    log_scale_parameters = ("c",)
 
     def __init__(self) -> None:
         super().__init__(
@@ -45,13 +46,13 @@ class DualPower_(LifeModel):
         )
 
     def phi(self, Z: ndarray, *params: float) -> ndarray:
+        # One exponent, which a factor alone can overflow (#634)
+        return self._phi_from_log_life(Z, params)
+
+    def log_life(self, Z: ndarray, *params: float) -> ndarray:
         Z = np.atleast_2d(Z)
-        Z1 = Z[:, 0]
-        Z2 = Z[:, 1]
-        c = params[0]
-        m = params[1]
-        n = params[2]
-        return c * Z1**m * Z2**n
+        log_c, m, n = params[0], params[1], params[2]
+        return log_c + m * np.log(Z[:, 0]) + n * np.log(Z[:, 1])
 
     def phi_init(self, life: float, Z: ndarray) -> list[float]:
         A = np.atleast_2d(Z)

@@ -57,7 +57,7 @@ from surpyval.utils.covariates import (
     loaded_coefficient_names,
 )
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.deprecation import RenamedAttribute
+from surpyval.utils.dataframe import check_columns
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import (
     maximum_entry,
@@ -65,14 +65,18 @@ from surpyval.utils.no_maximum import (
     warn_no_maximum,
     warn_unverified,
 )
+from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.validation import check_option
 
 from .._aliasing import covariate_columns, expand, fit_columns
 from .._fit_skeleton import covariate_center
+from .._prediction import step_quantiles, unique_rows
 from ..proportional_hazards.cox_likelihood import (
     CoxInformation,
     baseline_at_origin,
+    log_baseline_sums,
     newton_raphson,
+    sums_directly,
 )
 from ..proportional_hazards.cox_ph import CoxPH
 from ..regression_data import (
@@ -85,11 +89,26 @@ from .frailty_fitter import _log_rising_ratio, grouped_data
 from .frailty_model import _SharedFrailty
 
 _TIE_METHODS = ("efron", "breslow")
+# The end of the refusal of a baseline at Z = 0 that cannot be
+# represented: CoxPH's points to center=True, which this fit has not.
+_ORIGIN_HINT = (
+    "CoxFrailty reports the baseline at Z = 0: move the covariates nearer "
+    "0 (subtract their means), or, where a coefficient runs off, remove or "
+    "coarsen the covariate that separates the events."
+)
 # The search for theta, on its log: between 1e-6 (no detectable frailty;
 # the profile is then flat to rounding) and 100.
 _LOG_THETA_BOUNDS = (np.log(1e-6), np.log(100.0))
 _EM_TOL = 1e-12
 _EM_MAX_ITER = 10000
+# Newton on the penalised partial likelihood, EM's fixed point: its steps,
+# and the step-halvings of each.
+_NEWTON_MAX_ITER = 50
+_NEWTON_MAX_HALVINGS = 30
+# Newton stops at a step of this size (rounding), or once it has taken a
+# full step of _NEWTON_LAST_STEP: the error left is then about its square.
+_NEWTON_STEP_TOL = 1e-14
+_NEWTON_LAST_STEP = 1e-8
 # The step, in log theta, of the profile's second difference that gives
 # theta's standard error.
 _CURVATURE_STEP = 0.02
@@ -165,6 +184,9 @@ class _CoxFrailtyEM:
         self.cox_beta = np.zeros(self.p)
         self.not_converged = 0
         self.max_iter = _EM_MAX_ITER
+        # Whether EM is started from Newton's solution (see ``newton``);
+        # off where the partial likelihood has no finite maximum.
+        self.use_newton = True
 
     # -- the M-step: CoxPH with offsets -----------------------------------
 
@@ -235,7 +257,16 @@ class _CoxFrailtyEM:
         deaths, risk sum ``r``, deaths' sum ``r_D``) is at risk for the
         fractions ``1 - l/m`` of the ``m`` steps, ``sum_l (1 - l/m) / (r -
         (l/m) r_D)``, where every other row at risk gets the full increment
-        ``sum_l 1 / (r - (l/m) r_D)``."""
+        ``sum_l 1 / (r - (l/m) r_D)``.
+
+        Where ``beta'Z`` or ``beta'Z + offset`` is beyond the baseline's
+        direct range (a coefficient running off), the sums are taken in
+        logs (:meth:`_log_group_hazard`); elsewhere they are formed
+        directly, as here."""
+        with np.errstate(over="ignore", invalid="ignore"):
+            lin = self.Z @ beta
+        if not (sums_directly(lin) and sums_directly(lin + offset)):
+            return self._log_group_hazard(lin, offset)
         times, r, d, h0 = self.baseline(beta, offset)
         k = np.searchsorted(times, self.x)
         H = np.cumsum(h0)[k]
@@ -253,6 +284,47 @@ class _CoxFrailtyEM:
                     own[t] = np.sum((1.0 - frac) / (r[t] - frac * r_D[t]))
                 H = np.where(event, H - h0[k] + own[k], H)
         weight = self.w * np.exp(self.Z @ beta) * H
+        return np.bincount(self.inv, weights=weight, minlength=self.G)
+
+    def _log_group_hazard(
+        self, lin: npt.NDArray, offset: npt.NDArray
+    ) -> npt.NDArray:
+        # :meth:`group_hazard` in logs: ``w exp(beta'Z)`` overflowed at a
+        # run-off beta, and the increments ``d / r`` underflowed to 0, so
+        # a row's term was nan (#777). Each row's term is exp(log w +
+        # beta'Z + log H), with the risk sums from log_baseline_sums and
+        # the cumulative hazard summed in logs. The term is the row's
+        # expected count over its frailty, at most the deaths over u_g, so
+        # it is representable wherever A_g is.
+        times = np.unique(self.x)
+        k = np.searchsorted(times, self.x)
+        event = self.c == 0
+        d = np.zeros_like(times)
+        np.add.at(d, k[event], self.w[event])
+        log_r, log_rD = log_baseline_sums(
+            self.x, self.c, self.w, lin + offset, self.tl, times
+        )
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            log_h0 = np.where(d > 0, np.log(d) - log_r, -np.inf)
+            log_own = log_h0.copy()
+            if self.tie_method == "efron":
+                share = np.exp(log_rD - log_r)
+                for t in np.flatnonzero(d > 1):
+                    m = int(round(float(d[t])))
+                    frac = np.arange(m) / m
+                    steps = 1.0 - frac * share[t]
+                    log_h0[t] = np.log(np.sum(1.0 / steps)) - log_r[t]
+                    log_own[t] = np.log(np.sum((1.0 - frac) / steps))
+                    log_own[t] -= log_r[t]
+            log_H = np.logaddexp.accumulate(log_h0)
+            log_H_row = log_H[k]
+            if self.tie_method == "efron":
+                # (an event row is at risk for its own Efron fractions)
+                before = np.r_[-np.inf, log_H[:-1]][k]
+                log_H_row = np.where(
+                    event, np.logaddexp(before, log_own[k]), log_H_row
+                )
+            weight = np.exp(np.log(self.w) + lin + log_H_row)
         return np.bincount(self.inv, weights=weight, minlength=self.G)
 
     # -- EM at a given theta ----------------------------------------------
@@ -276,6 +348,139 @@ class _CoxFrailtyEM:
         A = self.group_hazard(beta, log_u[self.inv])
         return np.log1p(self.D * theta) - np.log1p(A * theta), beta
 
+    # -- Newton on the penalised partial likelihood ------------------------
+
+    def penalised(
+        self, theta: float, beta: npt.NDArray, log_u: npt.NDArray
+    ) -> float:
+        """The penalised partial log-likelihood, ``PL(beta, omega) +
+        sum_g nu (omega_g - exp(omega_g))`` with ``omega = log u``: EM's
+        fixed point is its maximum."""
+        f, _ = self.partial_likelihood(log_u[self.inv])
+        nu = 1.0 / theta
+        return -f(beta) + nu * float(np.sum(log_u - np.exp(log_u)))
+
+    def newton(
+        self, theta: float, beta: npt.NDArray, log_u: npt.NDArray
+    ) -> "tuple[npt.NDArray, npt.NDArray] | None":
+        """The maximum of the penalised partial likelihood in the
+        coefficients and the log-frailties, by Newton's method from
+        ``(beta, log_u)``, or ``None`` where it does not get there.
+
+        The penalised partial likelihood is concave (the partial
+        likelihood is, in its linear predictor, and so is the gamma
+        penalty), and its maximum is EM's fixed point: its gradient in
+        ``omega_g`` is ``D_g - u_g A_g + nu (1 - u_g)``, zero where the
+        E-step leaves ``u_g`` unchanged, and its gradient in ``beta`` is
+        zero where the M-step does. Its information is that of
+        :meth:`beta_covariance`: the coefficient block ``A`` (CoxPH's),
+        the cross block ``B'`` and the frailty block ``C`` (from
+        :class:`CoxInformation`, with ``exp(omega_g) / theta`` on its
+        diagonal). Each step solves ``C^{-1} [B', g_omega]`` by conjugate
+        gradients and the coefficients by the Schur complement, as the
+        covariance does, then halves until the penalised likelihood rises.
+
+        Where EM needs hundreds of steps (each a Cox fit, its baseline and
+        the groups' hazards), Newton needs a handful."""
+        nu = 1.0 / theta
+        p, G = self.p, self.G
+        beta = np.asarray(beta, dtype=float)
+        log_u = np.asarray(log_u, dtype=float)
+        with np.errstate(all="ignore"):
+            value = self.penalised(theta, beta, log_u)
+            if not np.isfinite(value):
+                return None
+            for _ in range(_NEWTON_MAX_ITER):
+                offset = log_u[self.inv]
+                u = np.exp(log_u)
+                A_g = self.group_hazard(beta, offset)
+                g_omega = self.D - u * A_g + nu * (1.0 - u)
+                info = CoxInformation(
+                    self.x,
+                    self.c,
+                    self.w,
+                    self.Z @ beta + offset,
+                    self.tie_method,
+                )
+                penalty = u * nu
+                diag = (
+                    np.bincount(self.inv, weights=info.q, minlength=G)
+                    + penalty
+                )
+
+                def C(y: npt.NDArray) -> npt.NDArray:
+                    My = info.apply(y[self.inv])
+                    out = np.column_stack(
+                        [
+                            np.bincount(
+                                self.inv, weights=My[:, j], minlength=G
+                            )
+                            for j in range(y.shape[1])
+                        ]
+                    )
+                    return out + penalty[:, None] * y
+
+                if p:
+                    _, jac = self.partial_likelihood(offset)
+                    score, A = jac(beta)
+                    g_beta = -np.atleast_1d(score)
+                    A = np.atleast_2d(A)
+                    MZ = info.apply(self.Z)
+                    Bt = np.column_stack(
+                        [
+                            np.bincount(
+                                self.inv, weights=MZ[:, j], minlength=G
+                            )
+                            for j in range(p)
+                        ]
+                    )
+                    X = _conjugate_gradients(
+                        C, np.column_stack([Bt, g_omega]), diag
+                    )
+                    if X is None:
+                        return None
+                    schur = A - Bt.T @ X[:, :p]
+                    try:
+                        d_beta = np.linalg.solve(
+                            (schur + schur.T) / 2, g_beta - Bt.T @ X[:, p]
+                        )
+                    except np.linalg.LinAlgError:
+                        return None
+                    d_omega = X[:, p] - X[:, :p] @ d_beta
+                else:
+                    X = _conjugate_gradients(C, g_omega[:, None], diag)
+                    if X is None:
+                        return None
+                    d_beta = np.zeros(0)
+                    d_omega = X[:, 0]
+                if not (
+                    np.all(np.isfinite(d_beta))
+                    and np.all(np.isfinite(d_omega))
+                ):
+                    return None
+                size = max(
+                    float(np.max(np.abs(d_beta), initial=0.0)),
+                    float(np.max(np.abs(d_omega), initial=0.0)),
+                )
+                if size <= _NEWTON_STEP_TOL:
+                    return beta, log_u
+                t = 1.0
+                for _ in range(_NEWTON_MAX_HALVINGS):
+                    new_beta = beta + t * d_beta
+                    new_log_u = log_u + t * d_omega
+                    new = self.penalised(theta, new_beta, new_log_u)
+                    if np.isfinite(new) and new >= value - 1e-15 * abs(value):
+                        break
+                    t /= 2
+                else:
+                    return None
+                beta, log_u, value = new_beta, new_log_u, new
+                if t == 1.0 and size <= _NEWTON_LAST_STEP:
+                    # Newton converges quadratically: after a full step
+                    # this small, the next would be at rounding.
+                    return beta, log_u
+        return None
+
     def em(
         self, theta: float, tol: float = _EM_TOL
     ) -> tuple[npt.NDArray, npt.NDArray, float]:
@@ -290,8 +495,16 @@ class _CoxFrailtyEM:
         the point ``v - 2 a r + a^2 s`` with ``a = -max(1, |r| / |s|)``,
         then one more EM step. An extrapolation that is not finite, or
         whose step is longer than ``r``, is replaced by the two plain
-        steps. The fixed point is EM's."""
+        steps. The fixed point is EM's.
+
+        EM starts from Newton's solution (:meth:`newton`) where there is
+        one, and its stopping rule is then usually met at the first step:
+        the answer is EM's, with its own test of convergence."""
         beta, log_u = self.start(theta)
+        if self.use_newton:
+            solved = self.newton(theta, beta, log_u)
+            if solved is not None:
+                beta, log_u = solved
         converged = False
         for _ in range(self.max_iter):
             u1, beta = self.update(theta, log_u, beta)
@@ -586,7 +799,12 @@ class CoxFrailtyFitter(FitterRepr):
         if p_all:
             with warnings.catch_warnings(record=True) as caught:
                 warnings.simplefilter("always")
-                cox = CoxPH.fit(x, Zfull, c, w, tie_method=tie_method)
+                # (its baseline kept at the covariate means: only its
+                # coefficients are used, the same either way, and the
+                # baseline at Z = 0 is this fit's to refuse, below)
+                cox = CoxPH.fit(
+                    x, Zfull, c, w, tie_method=tie_method, center=True
+                )
             maximum = cox.maximum
             for caught_warning in caught:
                 message = str(caught_warning.message)
@@ -605,8 +823,9 @@ class CoxFrailtyFitter(FitterRepr):
         if monotone:
             # The coefficients run off to infinity whatever theta is: the
             # estimates mean nothing (said above), and EM would chase them
-            # to its iteration limit at every theta.
+            # to its iteration limit at every theta (Newton too).
             em.max_iter = 20
+            em.use_newton = False
         em.cox_beta = (
             np.asarray(cox.beta, dtype=float)[kept]
             if cox is not None
@@ -669,7 +888,9 @@ class CoxFrailtyFitter(FitterRepr):
         # The baseline at Z = 0 and u = 1, as CoxPH reports it.
         times, r, d, h0 = em.baseline(beta, log_u[inv])
         if kept.size:
-            r, h0 = baseline_at_origin(beta, center, Zk, r, h0)
+            r, h0 = baseline_at_origin(
+                beta, center, Zk, r, h0, hint=_ORIGIN_HINT
+            )
 
         model = CoxFrailtyModel()
         model.tie_method = tie_method
@@ -691,6 +912,14 @@ class CoxFrailtyFitter(FitterRepr):
             covariance[np.ix_(kept, [p_all])] = 0.0
             covariance[np.ix_([p_all], kept)] = 0.0
         covariance[p_all, p_all] = theta_var
+        if monotone and cox is not None:
+            # As CoxPH's: a coefficient running off to infinity has no
+            # standard error (#648, #728). Its variance here was the
+            # inverse of an information that is rounding, and could be
+            # negative (#777).
+            off = np.flatnonzero(np.isnan(cox.standard_errors()))
+            covariance[off, :] = np.nan
+            covariance[:, off] = np.nan
         model._covariance = covariance
         model.parameter_names = names
         model.log_likelihood = float(loglik)
@@ -708,6 +937,7 @@ class CoxFrailtyFitter(FitterRepr):
         model.maximum = maximum
         return model
 
+    @column_arguments("x", "c", "n")
     def fit_from_df(
         self,
         df: pd.DataFrame,
@@ -763,6 +993,9 @@ class CoxFrailtyFitter(FitterRepr):
         >>> model.feature_names
         ['age', 'C(sex)[T.2]']
         """
+        check_columns(
+            df, x_col=x_col, c_col=c_col, n_col=n_col, group_col=group_col
+        )
         x = df[x_col].values
         c = None if c_col is None else df[c_col].values
         n = None if n_col is None else df[n_col].values
@@ -824,8 +1057,7 @@ class CoxFrailtyModel(_SharedFrailty):
     is the likelihood-ratio statistic for a frailty, whose null
     distribution is the 50:50 mixture of 0 and a chi-square on one degree
     of freedom (``theta`` is on its boundary under the null). (Before
-    v0.23 they were ``loglik`` and ``loglik_no_frailty``, which still work
-    until v0.24, with a ``DeprecationWarning``.)
+    v0.23 they were ``loglik`` and ``loglik_no_frailty``.)
 
     ``neg_ll()`` is the negative integrated log-likelihood, and
     :meth:`aic`, :meth:`aic_c` and :meth:`bic` penalise it by the
@@ -861,11 +1093,6 @@ class CoxFrailtyModel(_SharedFrailty):
     array([0.968, 0.936])
     """
 
-    # The pre-0.23 names of ``log_likelihood`` and
-    # ``log_likelihood_no_frailty`` (#605), for one release.
-    loglik = RenamedAttribute("log_likelihood")
-    loglik_no_frailty = RenamedAttribute("log_likelihood_no_frailty")
-
     def __init__(self) -> None:
         super().__init__()
         self.kind = "CoxFrailty"
@@ -895,6 +1122,18 @@ class CoxFrailtyModel(_SharedFrailty):
     def _baseline_names(self) -> "list[str]":
         return []
 
+    def _quantiles(
+        self, cumulative: Any, u: np.ndarray, rows: np.ndarray
+    ) -> np.ndarray:
+        # The step baseline: the first baseline time at which the failure
+        # probability reaches each p, as CoxPH.qf (#662).
+        times = np.asarray(self.x, dtype=float)
+        uniq, which = unique_rows(rows)
+        m, size = uniq.shape[0], times.size
+        H = cumulative(np.tile(times, m), np.repeat(uniq, size, axis=0))
+        F = -np.expm1(-np.asarray(H, dtype=float).reshape(m, size))
+        return step_quantiles(F[which], times, u)
+
     def hf(
         self, x: Any, Z: Any = None, group: Any = None, frailty: Any = None
     ) -> np.ndarray:
@@ -904,6 +1143,7 @@ class CoxFrailtyModel(_SharedFrailty):
         no hazard rate; as ``CoxPH``'s ``hf``, this is a step size."""
         x = np.asarray(x, dtype=float)
         eta = self._eta(Z)
+        self._paired(x, eta)
         u = self._resolve_frailty(group, frailty)
         H0 = self._H0(x)
         before = H0 - self._h0(x)

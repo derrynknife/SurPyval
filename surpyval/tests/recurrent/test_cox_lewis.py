@@ -116,6 +116,56 @@ def test_cox_lewis_zero_and_tiny_beta():
     )
 
 
+@pytest.mark.parametrize("beta", [0.0, 1e-12, 1e-4, 0.2, -0.2])
+def test_cif_and_likelihood_are_differentiable(beta):
+    # cif took plain numpy's where and exp, so autograd could not trace it
+    # (#760). Its derivatives now agree with the closed forms, d/dalpha =
+    # cif and d/dbeta = e**alpha (x e**(beta x) - expm1(beta x) / beta) /
+    # beta, x**2 e**alpha / 2 at beta = 0 (the direct form cancels as
+    # beta x -> 0); and the NHPP likelihood has autograd's gradient.
+    from autograd import grad, jacobian
+
+    from surpyval import handle_xicn
+
+    x = np.array([0.0, 1e-3, 0.5, 2.0, 10.0, 50.0])
+    alpha = 0.3
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        J = jacobian(lambda p: CoxLewis.cif(x, p[0], p[1]))(
+            np.array([alpha, beta])
+        )
+    np.testing.assert_allclose(J[:, 0], CoxLewis.cif(x, alpha, beta))
+    u = beta * x
+    with np.errstate(all="ignore"):
+        direct = (x * np.exp(u) - np.expm1(u) / beta) / beta
+    # (the series of the slope, (k - 1) / k! (beta x)**(k - 2) x**2)
+    series = sum(
+        (k - 1) / np.prod(np.arange(1.0, k + 1)) * u ** (k - 2) * x**2
+        for k in range(2, 20)
+    )
+    d_beta = np.exp(alpha) * np.where(np.abs(u) < 0.01, series, direct)
+    np.testing.assert_allclose(J[:, 1], d_beta, rtol=1e-12, atol=1e-300)
+
+    data = handle_xicn(np.cumsum(np.random.default_rng(1).exponential(1, 20)))
+    neg_ll = CoxLewis.create_negll_func(data)
+    p = np.array([0.1, beta / 10])
+    step = 1e-6
+    numeric = [
+        (neg_ll(p + e) - neg_ll(p - e)) / (2 * step) for e in np.eye(2) * step
+    ]
+    np.testing.assert_allclose(grad(neg_ll)(p), numeric, rtol=1e-6)
+
+    # and an ARI likelihood on a Cox-Lewis baseline: autograd's gradient
+    # is the hand-written one
+    from surpyval.recurrent import ARI
+
+    neg_ll = ARI.create_negll_func(data, CoxLewis, 2)
+    p = np.array([0.3, 0.1, beta / 10])
+    np.testing.assert_allclose(
+        grad(neg_ll)(p), neg_ll.value_and_grad(p)[1], rtol=1e-10
+    )
+
+
 # ---------------------------------------------------------------------------
 # Count termination (#386) and the least-squares fit (#419).
 # ---------------------------------------------------------------------------
@@ -138,7 +188,7 @@ def test_count_termination_of_a_bounded_count_is_refused(seed):
 
 def test_count_termination_of_a_bounded_count_with_covariates():
     d = recurrent_data(with_Z=True)
-    model = no_warnings(ProportionalIntensityNHPP.fit, **d, dist=CoxLewis)
+    model = no_warnings(ProportionalIntensityNHPP.fit, **d, baseline=CoxLewis)
     with pytest.raises(ValueError, match=r"cif\(inf\)"):
         model.count_terminated_simulation(3, Z=[0.5], random_state=1)
 
@@ -226,6 +276,37 @@ def test_cox_lewis_fit_does_not_depend_on_the_unit(how):
     hours = no_warnings(CoxLewis.fit, **{**d, "x": d["x"] * 24.0}, how=how)
     t = np.array([5.0, 30.0, 60.0])
     np.testing.assert_allclose(hours.cif(t * 24.0), days.cif(t), rtol=1e-3)
+
+
+def test_cox_lewis_maximum_checked_in_the_units_of_beta():
+    # beta is a rate per unit time, 1e-5 on data in tens of thousands of
+    # hours. The fit searched and checked it in units of 1: the check's
+    # central differences stepped it by 1% (gradient) and 100% (Hessian)
+    # of itself, and 28 of 30 such fits were called unverified with a
+    # warning. Both now run in units of one over the longest time (#760),
+    # as the ARI fits do (#746): the fit is verified, its exact gradient
+    # is zero in those units, and it is the fit of the same data in units
+    # of 1e5 hours.
+    from autograd import grad
+
+    rng = np.random.default_rng(2)
+    x, i, c = [], [], []
+    for k in range(8):
+        end = rng.uniform(0.6, 1.2) * 1e5
+        n = rng.poisson(2e-4 * (end / 10.0) ** 1.35)
+        x += [*np.sort(end * rng.random(n) ** (1 / 1.35)), end]
+        i += [k] * (n + 1)
+        c += [0] * n + [1]
+    x, i, c = np.array(x), np.array(i), np.array(c)
+    model = no_warnings(CoxLewis.fit, x, i, c)
+    assert model.maximum == "verified"
+    units = np.array([1.0, 1.0 / x.max()])
+    slope = grad(model._neg_ll)(model.params) * units / model._n_obs
+    assert np.all(np.abs(slope) < 1e-4)
+    scaled = no_warnings(CoxLewis.fit, x / 1e5, i, c)
+    assert scaled.maximum == "verified"
+    t = np.array([2e4, 6e4, 1e5])
+    np.testing.assert_allclose(model.cif(t), scaled.cif(t / 1e5), rtol=1e-3)
 
 
 def test_least_squares_fit_that_stops_early_is_finished():

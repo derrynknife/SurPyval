@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 import surpyval
-from surpyval.tests._helpers import no_warnings, sharp_drop_long_tail_data
+from surpyval.tests._helpers import sharp_drop_long_tail_data
 
 
 def test_cubic_interpolation_is_monotone_and_bounded():
@@ -71,9 +71,14 @@ def test_cubic_bounds_close_onto_sf(bound_type):
     model = _km_ending_at_zero()
     x = np.array([2.0, 6.0, 10.0, 13.0])
     sf = model.sf(x, interp="cubic")
-    cb = no_warnings(
-        model.cb, x, interp="cubic", alpha_ci=1 - 1e-6, bound_type=bound_type
-    )
+    with pytest.warns(UserWarning) as caught:
+        cb = model.cb(
+            x, interp="cubic", alpha_ci=1 - 1e-6, bound_type=bound_type
+        )
+    # The one warning is of the level, near 1 on purpose here (#647)
+    assert [str(w.message).split(":")[0] for w in caught] == [
+        "alpha_ci is the significance level"
+    ]
     # 13 is between the last two times with a variance: the upper bound
     # there was 0.1873 against sf 0.1948.
     np.testing.assert_allclose(cb[:, 0], sf, rtol=1e-5)

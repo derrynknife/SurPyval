@@ -42,9 +42,11 @@ from surpyval.univariate.competing_risks.labels import (
     label_from_native,
     label_mask,
 )
+from surpyval.univariate.information_criteria import corrected_aic
 from surpyval.utils import optional_column
 from surpyval.utils.no_maximum import combined_maximum
 from surpyval.utils.recurrent_utils import handle_xicn
+from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.validation import unknown_cause_error
 
 
@@ -111,6 +113,84 @@ class CauseSpecificNHPP(SerialisableMixin):
             getattr(self.models[k], "maximum", "unknown")
             for k in self.event_types
         )
+
+    # -- information criteria (#711): the likelihood factorises over causes
+
+    def neg_ll(self) -> float:
+        """
+        The negative log-likelihood of the joint model: the sum of the
+        causes' fits' (each cause's events are a Poisson process of their
+        own, so the likelihood factorises). Raises the ``ValueError`` of a
+        cause's model where there is no likelihood: a ``how="MSE"`` fit,
+        or a model restored with ``from_dict`` / ``from_json``.
+
+        Examples
+        --------
+        >>> from surpyval.recurrent import CauseSpecificNHPP
+        >>> x = [3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60]
+        >>> i = [1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2]
+        >>> c = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+        >>> e = ["a", "b", "a", "b", "a", None, "b", "a", "b", "a", None]
+        >>> model = CauseSpecificNHPP.fit(x, i=i, c=c, e=e)
+        >>> round(model.neg_ll(), 4)
+        37.9917
+
+        Two Crow-AMSAA parameters per cause, and nine events:
+
+        >>> round(model.aic(), 4), round(2 * 4 + 2 * model.neg_ll(), 4)
+        (83.9833, 83.9833)
+        >>> round(model.bic(), 4)
+        84.7722
+        """
+        return float(sum(self.models[k].neg_ll() for k in self.event_types))
+
+    @property
+    def log_likelihood(self) -> float:
+        """The maximised log-likelihood of the joint model, ``-neg_ll()``:
+        the sum of the causes'."""
+        return -self.neg_ll()
+
+    def _ic_terms(self) -> "tuple[int, float]":
+        # The parameters estimated over every cause, and the number of
+        # events of any cause (the sum of the causes' own counts).
+        k_total, n_total = 0, 0.0
+        for cause in self.event_types:
+            model = self.models[cause]
+            model._check_fitted()
+            k_total += int(model._estimated().sum())
+            n_total += float(model._n_obs)
+        return k_total, n_total
+
+    def aic(self) -> float:
+        """
+        Akaike's information criterion of the joint model, ``2 K + 2
+        neg_ll()`` with ``K`` the number of parameters estimated over all
+        causes: the sum of the causes' AICs. Lower is better.
+        """
+        k_total, _ = self._ic_terms()
+        return float(2 * k_total + 2 * self.neg_ll())
+
+    def bic(self) -> float:
+        """
+        The Bayesian information criterion of the joint model, ``K ln n +
+        2 neg_ll()``, with the ``K`` of :meth:`aic` and ``n`` the number
+        of events of any cause (end-of-observation rows add nothing), the
+        rule of every SurPyval BIC. It is not the sum of the causes' BICs,
+        which would charge each cause's parameters ``ln`` of its own
+        events. Lower is better.
+        """
+        k_total, n_total = self._ic_terms()
+        return float(k_total * np.log(n_total) + 2 * self.neg_ll())
+
+    def aic_c(self) -> float:
+        """
+        The small-sample corrected AIC of the joint model, ``aic() +
+        (2K^2 + 2K) / (n - K - 1)``, with the ``K`` and ``n`` of
+        :meth:`bic`; ``nan`` where ``n <= K + 1``, as on every other
+        model.
+        """
+        k_total, n_total = self._ic_terms()
+        return corrected_aic(self.aic(), k_total, n_total)
 
     def __repr__(self) -> str:
         return "Cause-specific {} with causes: {}".format(
@@ -295,7 +375,10 @@ class CauseSpecificNHPP(SerialisableMixin):
         c : array like, optional
             Censoring flag for each row (0 observed, 1 right censored).
         n : array like, optional
-            Count of events at each row. Defaults to 1.
+            The number of events each row stands for. This model takes exact
+            events (``c=0``) and end-of-observation rows (``c=1``), each of
+            which stands for one, so every ``n`` is 1 (``n > 1`` is refused:
+            repeat the row for simultaneous events). Defaults to 1.
         e : array like
             Event type (mark) for each row. ``None``/``NaN`` for censored rows.
             A mark may be any hashable label: an integer, a string, a
@@ -329,6 +412,7 @@ class CauseSpecificNHPP(SerialisableMixin):
         return cls.fit_from_recurrent_data(data, dist=dist, how=how, init=init)
 
     @classmethod
+    @column_arguments("x", "i", "c", "n", "tl", "tr")
     def fit_from_df(
         cls,
         df: Any,

@@ -22,6 +22,27 @@ _LOG2 = float(np.log(2.0))
 
 
 class Rayleigh_(OptimisedFitMixin, ParametricFitter):
+    r"""
+    The Rayleigh distribution: a Weibull with shape 2, whose hazard rises
+    linearly with time.
+
+    The one parameter is the scale ``sigma`` (positive). On the support
+    :math:`(0, \infty)`,
+
+    .. math::
+        R(x) = e^{-\frac{x^2}{2\sigma^2}}.
+
+    ``fit`` estimates the parameters from data (which may be censored
+    and truncated); ``from_params`` builds the model from known values.
+
+    Examples
+    --------
+    >>> from surpyval import Rayleigh
+    >>> model = Rayleigh.from_params([10])
+    >>> model.sf([5, 10, 20]).round(4)
+    array([0.8825, 0.6065, 0.1353])
+    """
+
     # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
     # log(-log sf), on which this family is a straight line in
     # log time (#477).

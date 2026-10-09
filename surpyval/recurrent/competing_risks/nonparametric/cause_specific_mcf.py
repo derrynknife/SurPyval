@@ -19,6 +19,7 @@ from typing import Any
 import numpy as np
 from numpy.typing import ArrayLike
 
+from surpyval.recurrent.inference import check_alpha_ci
 from surpyval.recurrent.nonparametric.mcf import (
     _MCF_RANGE,
     NonParametricCounting,
@@ -44,6 +45,7 @@ from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
 )
+from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.validation import unknown_cause_error
 
 
@@ -253,6 +255,7 @@ class CauseSpecificMCF(SerialisableMixin):
         ``1 - alpha_ci`` bounds are drawn as dashed steps in the colour of
         its MCF. The arguments are keyword only.
         """
+        check_alpha_ci(alpha_ci)
         if ax is None:
             import matplotlib.pyplot as plt
 
@@ -315,7 +318,10 @@ class CauseSpecificMCF(SerialisableMixin):
         c : array like, optional
             Censoring flag for each row (0 observed, 1 right censored).
         n : array like, optional
-            Count of events at each row. Defaults to 1.
+            The number of events each row stands for. This model takes exact
+            events (``c=0``) and end-of-observation rows (``c=1``), each of
+            which stands for one, so every ``n`` is 1 (``n > 1`` is refused:
+            repeat the row for simultaneous events). Defaults to 1.
         e : array like
             Event type (mark) for each row. ``None`` for censored rows.
             A mark may be any hashable label: an integer, a string, a
@@ -347,6 +353,7 @@ class CauseSpecificMCF(SerialisableMixin):
         return cls.fit_from_recurrent_data(data)
 
     @classmethod
+    @column_arguments("x", "i", "c", "n", "tl", "tr")
     def fit_from_df(
         cls,
         df: Any,

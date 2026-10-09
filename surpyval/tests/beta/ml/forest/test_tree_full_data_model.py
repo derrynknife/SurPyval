@@ -345,7 +345,7 @@ def test_non_parametric_kind_on_every_data_case(case):
     tree = SurvivalTree(
         data, Z, kind="non-parametric", n_features_split="all", max_depth=2
     )
-    s = tree.sf([2.0, 6.0], Z[:3])
+    s = tree.sf([2.0, 6.0], Z[:3], grid=True)
     assert np.isfinite(s).all() and (np.diff(s, axis=1) <= 0).all()
 
 
@@ -496,13 +496,13 @@ def test_543_non_parametric_tree_on_mixed_interval_data():
         tree = SurvivalTree.fit(
             x=X, Z=Z, c=c, kind="non-parametric", selection=selection
         )
-        sf = tree.sf([1.0, 5.0, 10.0, 20.0], Z)
+        sf = tree.sf([1.0, 5.0, 10.0, 20.0], Z, grid=True)
         assert np.all((sf >= 0) & (sf <= 1))
         assert np.all(np.diff(sf, axis=1) <= 0)
     forest = RandomSurvivalForest.fit(
         x=X, Z=Z, c=c, kind="non-parametric", n_trees=5, random_state=1
     )
-    sf = forest.sf([1.0, 5.0, 10.0, 20.0], Z)
+    sf = forest.sf([1.0, 5.0, 10.0, 20.0], Z, grid=True)
     assert np.all(np.isfinite(sf)) and np.all(np.diff(sf, axis=1) <= 0)
 
 

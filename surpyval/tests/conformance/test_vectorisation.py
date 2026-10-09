@@ -82,7 +82,7 @@ def test_empty_query(case):
         if case.interface in WITH_COVARIATES:
             Z = np.empty((0, case.Z.shape[1]))
             if case.z_style != "paired":
-                # One vector (a tree's rows would add a grid axis).
+                # One vector per call (a Buckley-James model).
                 Z = case.Z[0]
             got = call_native(case, model, fname, x, Z, event)
         else:

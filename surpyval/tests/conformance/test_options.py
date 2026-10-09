@@ -168,6 +168,16 @@ def _parameters(model):
             for k, n in enumerate(names)
         ]
         return names, np.asarray(model._param_vector(), float), supports
+    if hasattr(model, "_with_estimates"):  # a process model (#666)
+        names = list(model.covariance_names)
+        k = len(model.parameter_names)
+        supports = [(0, None)] * k + [(None, None)] * (len(names) - k)
+        return names, model._estimates(), supports
+    if hasattr(model, "covariance_names"):  # a mixture (#651)
+        names = list(model.covariance_names)
+        values = np.r_[np.ravel(model.params), model.w]
+        supports = list(model.dist.bounds) * model.m + [(0, 1)] * model.m
+        return names, np.asarray(values, float), supports
     names = list(model.dist.parameter_names)
     values = list(model.params)
     supports = list(model.dist.bounds)
@@ -304,7 +314,13 @@ def _sweep(case, spec):
 
 
 def _tol(spec, ref):
-    return spec.rtol * np.maximum(np.abs(ref), 1.0) + 1e-12
+    # No tolerance where the reference is infinite (a Kaplan-Meier Hf
+    # past a survival of 0, a limited-failure quantile or mean): an
+    # infinity compares by equality, where ``ref - tol`` was inf - inf, a
+    # RuntimeWarning (#746).
+    infinite = np.isinf(ref)
+    scale = np.maximum(np.abs(np.where(infinite, 0.0, ref)), 1.0)
+    return np.where(infinite, 0.0, spec.rtol * scale + 1e-12)
 
 
 # ---------------------------------------------------------------------------
@@ -851,13 +867,20 @@ _TIME_FUNCTIONS += ("cif_cb", "mcf_cb", "bootstrap_cb", "band")
 _TIME_FUNCTIONS += ("iif_cb", "mtbf", "mtbf_cb")
 
 
-def _default_is(name, value):
+def _default_is(name, value, own=None):
+    # ``own``: documented exceptions, {class name suffix: its default}.
+    own = own or {}
+
     def check(sigs):
         return [
             f"{o}.{m}({name}={p.default!r})"
             for o, m, ps in sigs
             for p in ps
-            if p.name == name and p.default != value
+            if p.name == name
+            and p.default != value
+            and not any(
+                o.endswith(k) and p.default == v for k, v in own.items()
+            )
         ]
 
     return check
@@ -937,7 +960,12 @@ CONVENTIONS = {
         "bound= defaults to 'two-sided'",
         _default_is("bound", "two-sided"),
     ),
-    "on": ("on= defaults to 'sf'", _default_is("on", "sf")),
+    # The non-parametric competing risks' cb bounds one cause's cumulative
+    # incidence by default, its natural quantity (documented, #728).
+    "on": (
+        "on= defaults to 'sf'",
+        _default_is("on", "sf", own={"CompetingRisks": "cif"}),
+    ),
     "interp": ("interp= defaults to 'step'", _default_is("interp", "step")),
     "seed": (
         "the random-number argument has one spelling",

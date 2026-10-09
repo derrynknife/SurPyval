@@ -6,10 +6,11 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
 import numpy.typing as npt
-from autograd import grad, hessian, value_and_grad
+from autograd import grad, hessian, jacobian, value_and_grad
 from autograd.scipy.special import logsumexp as ag_logsumexp
-from scipy.optimize import minimize
+from scipy.optimize import brentq, minimize
 from scipy.special import logsumexp
+from scipy.special import ndtri as z
 
 from surpyval import Distribution
 from surpyval.serialisation import (
@@ -21,12 +22,17 @@ from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
     ic_sample_size,
 )
+from surpyval.univariate.parametric.fitters import OPTIMUM_GTOL
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
-from surpyval.utils.deprecation import (
-    REMOVED_IN,
-    CallableFloat,
-    MadePrivate,
+from surpyval.utils.deprecation import MadePrivate
+from surpyval.utils.linalg import (
+    bound_signs,
+    safe_inv,
+    sf_link_bound,
+    standard_errors_of,
+    wald_bound_on_support,
+    warn_wald_undefined,
 )
 from surpyval.utils.no_maximum import (
     maximum_entry,
@@ -34,10 +40,24 @@ from surpyval.utils.no_maximum import (
     warn_no_maximum,
     warn_unverified,
 )
+from surpyval.utils.removed_names import (
+    MIXTURE_EM_ATTRIBUTES,
+    removed_arguments,
+    removed_attributes,
+)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
-from surpyval.utils.validation import check_option
+from surpyval.utils.validation import (
+    BOUNDS,
+    CB_ON,
+    check_alpha_ci,
+    check_option,
+    no_covariance_error,
+    option_error,
+    warn_outside_unit_interval,
+)
+from surpyval.utils.warnings import caller_stacklevel
 
 from .probability_plotting import (
     adjust_heuristic,
@@ -182,14 +202,11 @@ class MixtureModel(
     _em_method = "plain"
     _exact_m_step = False
 
-    # The EM iteration's steps, public before v0.23 (#605): internal to
-    # the fit, they still work with a DeprecationWarning until v0.24.
-    likelihood = MadePrivate("_likelihood")
-    Q = MadePrivate("_Q")
-    expectation = MadePrivate("_expectation")
-    maximisation = MadePrivate("_maximisation")
-    EM = MadePrivate("_em_iteration")
-    initialise_params = MadePrivate("_initialise_params")
+    # The EM responsibilities (one row per component, one column per
+    # observation) are internal to the fit, as the EM steps are (#605); the
+    # public name ``p`` means a distribution's own parameter elsewhere, and
+    # ``lfp_p`` the limited-failure proportion (#626).
+    p = MadePrivate("_resp")
 
     @property
     def parameter_names(self) -> list[str]:
@@ -211,7 +228,7 @@ class MixtureModel(
         self.data: Any = None
         self.params: Any = None
         self.w: Any = None
-        self.p: Any = None
+        self._resp: Any = None
         # The observed-data negative log-likelihood at the current
         # parameters, which the EM iteration tracks: the fitted one after
         # a fit (``neg_ll()``, ``log_likelihood``).
@@ -243,8 +260,7 @@ class MixtureModel(
 
         .. versionchanged:: 0.23
            It was a method, ``log_likelihood(params)``, giving one
-           component's log-likelihood of each observation; that call
-           still works until v0.24, with a ``DeprecationWarning``.
+           component's log-likelihood of each observation.
 
         Examples
         --------
@@ -256,34 +272,13 @@ class MixtureModel(
         >>> round(wmm.aic(), 4), wmm.aic() == 2 * 5 - 2 * wmm.log_likelihood
         (107.4211, True)
         """
-        return CallableFloat(
-            -self.neg_ll(),
-            "MixtureModel.log_likelihood",
-            old=self._component_log_likelihood,
-            note=" (the fitted log-likelihood; 'log_likelihood(params)' was "
-            "one component's log-likelihood of each observation)",
-        )
+        return float(-self.neg_ll())
 
     @log_likelihood.setter
     def log_likelihood(self, value: float) -> None:
         # As every model's: it records the negative log-likelihood.
         mixin: Any = InformationCriteriaMixin
         mixin.log_likelihood.fset(self, value)
-
-    @property
-    def loglike(self) -> float:
-        """Deprecated: the fitted *negative* log-likelihood, despite its
-        name. Use :meth:`neg_ll` for it, or ``log_likelihood`` for the
-        log-likelihood; it will be removed in v0.24."""
-        warnings.warn(
-            "MixtureModel.loglike is the negative log-likelihood, despite "
-            "its name, and is deprecated; it will be removed in "
-            f"v{REMOVED_IN}. Use 'neg_ll()' for it, or "
-            "'log_likelihood' for the log-likelihood.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._neg_ll
 
     # -- serialisation -----------------------------------------------------
 
@@ -298,7 +293,11 @@ class MixtureModel(
         negative log-likelihood and the sample size of the information
         criteria are, so the restored model's :meth:`neg_ll`,
         ``log_likelihood``, :meth:`aic`, :meth:`aic_c` and :meth:`bic` are
-        the fitted model's.
+        the fitted model's; and so is the parameters' covariance
+        (``"theta_covariance"``, in the coordinates :meth:`covariance`
+        describes), where the fit has one, so the restored model's
+        :meth:`standard_errors`, :meth:`param_cb`, :meth:`cb` and
+        :meth:`quantile_cb` are the fitted model's too.
         """
         from .parametric import is_custom_distribution
 
@@ -316,6 +315,14 @@ class MixtureModel(
         ic_n = self._ic_sample_size_or_none()
         if ic_n is not None:
             out["ic_n"] = ic_n
+        # The covariance of the search coordinates, so the restored
+        # model's standard errors and Wald bounds are the fitted model's
+        try:
+            theta_cov = self._theta_covariance()
+        except ValueError:
+            pass
+        else:
+            out["theta_covariance"] = np.asarray(theta_cov, float).tolist()
         if is_custom_distribution(self.dist):
             # Resolved through the CustomDistribution registry on reading
             out["custom"] = True
@@ -326,8 +333,9 @@ class MixtureModel(
         """Rebuild a mixture model from a :meth:`to_dict` dictionary.
 
         The restored model evaluates the mixture (``sf``, ``ff``, ``df``,
-        ``cs``, ``mean``, ``random``) exactly, but holds no data, so
-        :meth:`plot` and :meth:`get_plot_data` raise. A mixture of a
+        ``hf``, ``qf``, ``cs``, ``mean``, ``random``) exactly, and has the
+        fitted model's covariance where the dict stores it, but holds no
+        data, so :meth:`plot` and :meth:`get_plot_data` raise. A mixture of a
         ``CustomDistribution`` or a ``Discretize`` distribution is read
         back as described in ``Parametric.from_dict``.
         """
@@ -344,6 +352,10 @@ class MixtureModel(
         if "_neg_ll" in model_dict:
             out._neg_ll = float(model_dict["_neg_ll"])
         out._ic_n = cls._restored_ic_n(model_dict)
+        if "theta_covariance" in model_dict:
+            out._theta_cov = np.array(
+                model_dict["theta_covariance"], dtype=float
+            )
         return out
 
     def __repr__(self) -> str:
@@ -556,11 +568,11 @@ class MixtureModel(
             # Finite by construction (see _component_log_likelihood), so a
             # zero responsibility contributes exactly 0 and none inf.
             loglike = self._component_log_likelihood(params[i])
-            total -= np.sum(self.data.n * self.p[i] * loglike)
+            total -= np.sum(self.data.n * self._resp[i] * loglike)
         return total
 
     def _expectation(self) -> Any:
-        """EM E-step: set each observation's responsibilities ``p`` (the
+        """EM E-step: set each observation's responsibilities ``_resp`` (the
         probability it belongs to each component, given the current fit)
         and the count-weighted mixing weights ``w``."""
         # Normalised in the log domain: dividing likelihoods that had all
@@ -578,9 +590,9 @@ class MixtureModel(
         else:
             log_r = self._log_resp(self.w, self.params)
         with np.errstate(all="ignore"):
-            self.p = np.exp(log_r - logsumexp(log_r, axis=0))
+            self._resp = np.exp(log_r - logsumexp(log_r, axis=0))
         # Mixing weights are count-weighted responsibility totals.
-        self.w = (self.p * self.data.n).sum(axis=1) / self.data.n.sum()
+        self.w = (self._resp * self.data.n).sum(axis=1) / self.data.n.sum()
 
     def _maximisation(self) -> Any:
         """EM M-step: refit every component's parameters by minimising
@@ -742,9 +754,9 @@ class MixtureModel(
             verified = self._polish()
             end = (verified, float(self._neg_ll), converged)
             if best is None or self._better_start(end, best[0]):
-                best = (end, self.w, self.params, self.p)
+                best = (end, self.w, self.params, self._resp)
         assert best is not None
-        (verified, loglike, converged), self.w, self.params, self.p = best
+        (verified, loglike, converged), self.w, self.params, self._resp = best
         self._neg_ll = loglike
         return verified, converged
 
@@ -1131,10 +1143,10 @@ class MixtureModel(
         self._em_method = em
         # A refit in place: the criteria are recomputed from the new fit
         self._ic_n = None
-        for name in ("_aic", "_aic_c", "_bic"):
+        for name in ("_aic", "_aic_c", "_bic", "_theta_cov"):
             self.__dict__.pop(name, None)
         self._truncated = bool(np.isfinite(data.t).any())
-        self.p = np.ones(shape=(self.m, len(self.data.x))) / self.m
+        self._resp = np.ones(shape=(self.m, len(self.data.x))) / self.m
 
         self._initialise_params()
 
@@ -1160,7 +1172,7 @@ class MixtureModel(
                     self.__dict__.pop(name, None)
         # One warning: a component collapsed onto a point mass has no
         # finite maximum, which is also why its search was not verified.
-        if self._warn_if_point_mass():
+        if self._warn_if_point_mass() or self._warn_if_lfp_limit():
             self.maximum = "no finite maximum"
         elif unverified is not None:
             self.maximum = "unverified"
@@ -1168,6 +1180,64 @@ class MixtureModel(
         else:
             self.maximum = "verified"
         return self
+
+    def _warn_if_lfp_limit(self) -> bool:
+        """Warn when a component has run off past the data (#650), and
+        say whether one did.
+
+        A component whose failures all lie beyond the last observation
+        explains no failure: it only holds back a share of the units that
+        never fail within the data, as a limited-failure proportion does.
+        The likelihood then keeps rising as it moves further out, towards
+        the limit where it never fails -- the other components with a
+        limited-failure proportion -- which no member of the mixture
+        reaches: a two-Weibull fit came back with a second component of
+        scale 33,561 (the largest observation 1,150), shape 5.2 and weight
+        0.09, as a verified maximum, 2e-8 below that limit.
+
+        A component is that, here, when the likelihood with it replaced
+        by one that never fails (survival 1 at every time) is at least as
+        high as the fit's, to the verification's tolerance. One that
+        explains a single failure loses its density there, which is
+        never within that. Truncated data are not checked: a component
+        that never fails has no probability in a window.
+        """
+        if self._truncated or self.m < 2:
+            return False
+        data = self.data
+        never = np.where(data.mask_r, 0.0, LOG_FLOOR)
+        with np.errstate(all="ignore"):
+            log_r = self._log_resp(self.w, self.params)
+            nll = float(self._neg_ll_from(log_r, self.w, self.params))
+            for i in range(self.m):
+                limit = np.array(log_r)
+                limit[i] = np.log(self.w[i]) + never
+                nll_limit = float(
+                    self._neg_ll_from(limit, self.w, self.params)
+                )
+                if not nll_limit <= nll + OPTIMUM_GTOL * max(1.0, abs(nll)):
+                    continue
+                params = ", ".join(
+                    f"{name} = {value:.4g}"
+                    for name, value in zip(
+                        self.dist.parameter_names, self.params[i]
+                    )
+                )
+                warn_no_maximum(
+                    f"mixture component {i} ({params}, weight "
+                    f"{self.w[i]:.3g}) explains no failure: its failures "
+                    "all lie beyond the data, and the likelihood keeps "
+                    "increasing as it moves further out, towards the other "
+                    "components with a limited-failure proportion of "
+                    f"{1 - self.w[i]:.3g}, which no mixture reaches",
+                    "Its parameters are where the search stopped and "
+                    "describe nothing in the data",
+                    "the data hold units that do not fail within them: fit "
+                    "one component fewer with lfp=True (for two components, "
+                    "dist.fit(x, c, lfp=True))",
+                )
+                return True
+        return False
 
     def _warn_if_point_mass(self) -> bool:
         """Warn when a component has collapsed onto a point mass (#392),
@@ -1387,9 +1457,77 @@ class MixtureModel(
 
         array like
             The survival function evaluated at x.
-        """
-        return 1 - self.ff(x)
 
+        Notes
+        -----
+        The components' survival functions are summed, weighted, as
+        ``ff`` and ``df`` sum theirs, rather than taken as ``1 - ff``:
+        each keeps its precision far in the upper tail, so their sum does
+        too, where ``1 - ff`` would round to 0 once the survival is below
+        about 1e-16.
+
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+        >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
+        >>> wmm.sf([5, 15]).round(4)
+        array([0.7043, 0.3264])
+        """
+        x = np.asarray(x, dtype=float)
+        S = np.zeros_like(x)
+        for i in range(self.m):
+            S = S + self.w[i] * self.dist.sf(x, *self.params[i])
+        return S
+
+    @keeps_query_shape
+    def Hf(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """
+        The cumulative hazard function of the fitted mixture, ``-log
+        sf(x)``.
+
+        It keeps its precision at both ends: where the mixture has failed
+        less than half it is ``-log1p(-ff(x))`` (``ff`` is accurate where
+        it is small), elsewhere ``-log sf(x)`` from the summed survival,
+        and where that survival underflows to 0 it is the log-sum-exp of
+        the components' log survivals, so it stays finite far in the tail.
+
+        Parameters
+        ----------
+
+        x : array like
+            The values at which the cumulative hazard will be evaluated.
+
+        Returns
+        -------
+
+        array like
+            The cumulative hazard evaluated at x.
+
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+        >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
+        >>> wmm.Hf([5, 15]).round(4)
+        array([0.3505, 1.1196])
+        """
+        x = np.asarray(x, dtype=float)
+        F = np.asarray(self.ff(x), dtype=float)
+        S = np.asarray(self.sf(x), dtype=float)
+        with np.errstate(all="ignore"):
+            H = np.where(F < 0.5, -np.log1p(-F), -np.log(S))
+            gone = (S == 0) & np.isfinite(x)
+            if np.any(gone):
+                xs = x[gone]
+                log_w = np.log(self.w)[:, None]
+                log_s = np.array(
+                    [self.dist.log_sf(xs, *row) for row in self.params]
+                )
+                H[gone] = -logsumexp(log_w + log_s, axis=0)
+        return H
+
+    @removed_arguments("0.23", X="'given'")
     def cs(self, x: Any, given: Any, *args: Any, **kwargs: Any) -> Any:
         """
         The conditional survival function of the fitted model.
@@ -1415,13 +1553,708 @@ class MixtureModel(
         -------
 
         array like
-            The conditional survival function evaluated at x given given.
+            The conditional survival function evaluated at x given given:
+            ``exp(-(Hf(x + given) - Hf(given)))``, from the cumulative
+            hazard, so it stays exact where ``sf(given)`` underflows;
+            ``nan`` only where ``Hf(given)`` is itself infinite.
         """
         # As arrays: ``x + given`` on a list concatenated (or raised) rather
         # than adding.
         x = np.asarray(x, dtype=float)
         given = np.asarray(given, dtype=float)
-        return self.sf(x + given) / self.sf(given)
+        H_given = np.asarray(self.Hf(given), dtype=float)
+        H_end = np.asarray(self.Hf(x + given), dtype=float)
+        with np.errstate(invalid="ignore"):
+            out = np.exp(H_given - H_end)
+        return np.where(np.isinf(H_given), np.nan, out)[()]
+
+    @keeps_query_shape
+    def hf(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """
+        The hazard function of the fitted mixture, ``df(x) / sf(x)``.
+
+        Where the mixture's survival underflows to 0 (far in its upper
+        tail) the ratio is taken from the components' log densities and
+        log survivals instead, so it stays finite there.
+
+        Parameters
+        ----------
+
+        x : array like
+            The values at which the hazard function will be evaluated.
+
+        Returns
+        -------
+
+        array like
+            The hazard function evaluated at x.
+
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+        >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
+        >>> wmm.hf([5, 15]).round(4)
+        array([0.1091, 0.1435])
+        """
+        x = np.asarray(x, dtype=float)
+        sf = self.sf(x)
+        with np.errstate(all="ignore"):
+            hf = self.df(x) / sf
+            gone = (sf == 0) & np.isfinite(x)
+            if np.any(gone):
+                xs = x[gone]
+                log_w = np.log(self.w)[:, None]
+                log_f = np.array(
+                    [self.dist.log_df(xs, *row) for row in self.params]
+                )
+                log_s = np.array(
+                    [self.dist.log_sf(xs, *row) for row in self.params]
+                )
+                hf[gone] = np.exp(
+                    logsumexp(log_w + log_f, axis=0)
+                    - logsumexp(log_w + log_s, axis=0)
+                )
+        return hf
+
+    @keeps_query_shape
+    def qf(self, p: Any, *args: Any, **kwargs: Any) -> Any:
+        """
+        The quantile function of the fitted mixture: the time by which a
+        fraction ``p`` has failed (the B10 life is ``qf(0.1)``).
+
+        A mixture's failure function has no closed-form inverse, so the
+        quantile is found numerically: it lies between the smallest and
+        the largest of the components' quantiles at ``p``, and is the root
+        of ``ff(t) = p`` between them (for a discrete distribution, the
+        smallest ``t`` with ``ff(t) >= p``). ``qf(0)`` and ``qf(1)`` are
+        the ends of the support. A probability outside [0, 1] gives NaN,
+        with one warning, as the other models' ``qf`` (it is most often a
+        percentage given for a probability: ``qf(10)`` for the B10 life);
+        NaN gives NaN.
+
+        Parameters
+        ----------
+
+        p : array like
+            The probabilities, in [0, 1], at which to find the quantiles.
+
+        Returns
+        -------
+
+        array like
+            The quantiles, shaped as ``p``.
+
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+        >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
+        >>> wmm.qf([0.1, 0.5]).round(4)
+        array([2.4519, 8.3201])
+        """
+        u = np.asarray(p, dtype=float)
+        outside = warn_outside_unit_interval(u)
+        q = np.full(u.shape, np.nan)
+        with np.errstate(all="ignore"):
+            comp = np.array(
+                [
+                    np.asarray(self.dist.qf(np.clip(u, 0, 1), *row), float)
+                    for row in self.params
+                ]
+            ).reshape((self.m,) + u.shape)
+        lo, hi = comp.min(axis=0), comp.max(axis=0)
+        ok = ~outside & ~np.isnan(u)
+        q = np.where(ok & (u == 0), lo, q)
+        q = np.where(ok & (u == 1), hi, q)
+        discrete = getattr(self.dist, "discrete", False)
+        for i in np.flatnonzero(ok & (u > 0) & (u < 1)):
+            a, b, target = float(lo[i]), float(hi[i]), float(u[i])
+            if discrete:
+                q[i] = self._discrete_quantile(target, a, b)
+            elif a == b:
+                q[i] = a
+            else:
+                q[i] = brentq(
+                    lambda t: float(self.ff(t)) - target,
+                    a,
+                    b,
+                    xtol=1e-14 * max(1.0, abs(a)),
+                    rtol=4 * np.finfo(float).eps,
+                )
+        return q
+
+    def _discrete_quantile(self, target: float, a: float, b: float) -> float:
+        """The smallest integer ``k`` in ``[a, b]`` with ``ff(k) >=
+        target``, by bisection (``ff(b) >= target`` there)."""
+        a, b = float(np.floor(a)), float(np.ceil(b))
+        while b - a > 1:
+            mid = float(np.floor((a + b) / 2))
+            if float(self.ff(mid)) >= target:
+                b = mid
+            else:
+                a = mid
+        return a if float(self.ff(a)) >= target else b
+
+    # -- inference (#651) --------------------------------------------------
+
+    @property
+    def covariance_names(self) -> list[str]:
+        """The names of the rows (and columns) of :meth:`covariance`, in
+        its order, which :meth:`param_cb` takes: each component's
+        parameters suffixed by the component's index (``alpha_0``,
+        ``beta_0``, ``alpha_1``, ...: the rows of ``params`` in turn),
+        then the weights ``w_0``, ..., ``w_{m-1}``.
+
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> surv.MixtureModel(surv.Weibull, 2).covariance_names
+        ['alpha_0', 'beta_0', 'alpha_1', 'beta_1', 'w_0', 'w_1']
+        """
+        names = [
+            f"{name}_{i}"
+            for i in range(self.m)
+            for name in self.dist.parameter_names
+        ]
+        return names + [f"w_{i}" for i in range(self.m)]
+
+    def _theta_covariance(self) -> npt.NDArray:
+        """The inverse of the observed information in the unconstrained
+        coordinates of :meth:`_pack` (the weights' log-ratios to the last
+        one, then each component's parameters on the scale the polish
+        searches), at the fitted maximum; computed once and kept."""
+        cached = self.__dict__.get("_theta_cov")
+        if cached is not None:
+            return cached
+        if self.params is None:
+            raise ValueError("covariance() needs a fitted mixture")
+        if self.data is None:
+            raise no_covariance_error(
+                "the dict this mixture was restored from has none, and the "
+                "mixture does not carry the data to compute it from"
+            )
+        if self.maximum == "no finite maximum":
+            raise no_covariance_error(
+                "the fit has no finite maximum, so there is no observed "
+                "information to invert"
+            )
+        theta = self._pack(self.w, self.params)
+        if not np.all(np.isfinite(theta)):
+            raise no_covariance_error(
+                "a weight is 0 or a parameter is on its bound, where the "
+                "likelihood is not regular"
+            )
+
+        def fun(th: Any) -> Any:
+            w, params = self._unpack(th)
+            return self.neg_ll_of(w, params)
+
+        with np.errstate(all="ignore"), warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            info = np.asarray(hessian(fun)(theta), dtype=float)
+            if not np.all(np.isfinite(info)):
+                # autograd's second derivative can be NaN where the first
+                # is finite: central differences of the gradient instead.
+                jac = grad(fun)
+                steps = 1e-5 * np.maximum(np.abs(theta), 1.0)
+                cols = []
+                for j, step in enumerate(steps):
+                    e = np.zeros_like(theta)
+                    e[j] = step
+                    up = np.asarray(jac(theta + e), dtype=float)
+                    down = np.asarray(jac(theta - e), dtype=float)
+                    cols.append((up - down) / (2 * step))
+                info = np.array(cols).T
+        info = (info + info.T) / 2
+        if not np.all(np.isfinite(info)):
+            raise no_covariance_error(
+                "the observed information is not finite at the fit"
+            )
+        cov = safe_inv(info)
+        self._theta_cov = cov
+        return cov
+
+    def _natural(self, theta: Any) -> Any:
+        """The parameters and weights, in the order of
+        :attr:`covariance_names`, at the coordinates ``theta``."""
+        w, params = self._unpack(theta)
+        return np.concatenate([np.ravel(params), w])
+
+    def covariance(self) -> npt.NDArray:
+        """
+        The covariance of the fitted parameters and weights, in the order
+        of :attr:`covariance_names`: each component's parameters in turn
+        (the rows of ``params``), then the ``m`` weights.
+
+        It is the inverse of the observed information of the mixture's
+        log-likelihood at the fitted maximum, taken in the coordinates
+        the fit's final direct maximisation searches -- the weights as
+        the ``m - 1`` log-ratios ``log(w_j / w_{m-1})`` (a softmax), each
+        parameter with a bound as the log of its distance from it (the
+        logit between two bounds) -- and carried to the parameters and
+        weights by the delta method. As the weights sum to one, their
+        block is singular: each of its rows sums to 0.
+
+        Raises a ``ValueError`` where there is none: a mixture restored
+        from a dict that does not store it (it carries no data), a fit
+        with no finite maximum (a component collapsed onto a point mass),
+        or one with a weight of 0 or a parameter on its bound.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import surpyval as surv
+        >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+        >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
+        >>> wmm.covariance().shape
+        (6, 6)
+        >>> bool(np.allclose(wmm.covariance()[4:, 4:].sum(axis=1), 0))
+        True
+        """
+        cov_theta = self._theta_covariance()
+        theta = self._pack(self.w, self.params)
+        jac = np.atleast_2d(jacobian(self._natural)(theta))
+        return jac @ cov_theta @ jac.T
+
+    def standard_errors(self) -> npt.NDArray:
+        """
+        The standard errors of the fitted parameters and weights, the
+        square roots of the diagonal of :meth:`covariance`, in the order
+        of :attr:`covariance_names`; ``nan`` where a variance is not
+        positive. Raises the ``ValueError`` of :meth:`covariance` where
+        the model has none.
+
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+        >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
+        >>> wmm.standard_errors().round(3)
+        array([1.619, 0.589, 0.733, 5.275, 0.143, 0.143])
+        """
+        return standard_errors_of(self.covariance())
+
+    @staticmethod
+    def _check_wald(method: "str | None", bound: str) -> None:
+        """A mixture has Wald bounds only."""
+        if method is not None:
+            check_option(
+                "method",
+                method,
+                ("wald",),
+                "A mixture has Wald (delta-method) bounds only",
+            )
+        check_option("bound", bound, BOUNDS)
+
+    def param_cb(
+        self,
+        name: str,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: "str | None" = None,
+    ) -> npt.NDArray:
+        """
+        The Wald confidence bound on one component's parameter or weight.
+
+        As ``Parametric.param_cb``'s Wald bound: from the standard error
+        of :meth:`standard_errors`, on a scale chosen from the
+        parameter's support so the interval stays in it -- the log of a
+        positive parameter, the logit of a weight -- or its own scale
+        for an unbounded one. Where the variance is not positive the
+        bound is ``nan``, with a warning saying why.
+
+        Parameters
+        ----------
+        name : str
+            The parameter, as :attr:`covariance_names` names it: a
+            component's parameter suffixed by its index (``"alpha_0"``,
+            ``"beta_1"``), or a weight (``"w_0"``).
+        alpha_ci : float, optional
+            The significance level: 0.05 (the default) gives a 95% bound.
+        bound : str, optional
+            ``"two-sided"`` (the default), ``"upper"`` or ``"lower"``.
+        method : str, optional
+            ``"wald"``, the only bound a mixture has (``None``, the
+            default, is it).
+
+        Returns
+        -------
+        numpy array
+            ``[lower, upper]`` for a two-sided bound, else the one bound.
+
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+        >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
+        >>> wmm.param_cb("alpha_1").round(3)
+        array([15.998, 18.875])
+        >>> wmm.param_cb("w_0", bound="lower").round(3)
+        array([0.375])
+        """
+        check_alpha_ci(alpha_ci)
+        self._check_wald(method, bound)
+        names = self.covariance_names
+        if name not in names:
+            raise option_error("name", name, names)
+        idx = names.index(name)
+        n_params = self.m * self.dist.k
+        lower: "float | None"
+        upper: "float | None"
+        if idx < n_params:
+            p_hat = float(np.ravel(self.params)[idx])
+            lower, upper = self.dist.bounds[idx % self.dist.k]
+        else:
+            p_hat = float(self.w[idx - n_params])
+            lower, upper = 0.0, 1.0
+        var = float(self.covariance()[idx, idx])
+        return wald_bound_on_support(
+            p_hat, var, lower, upper, alpha_ci, bound, name
+        )
+
+    def _mixture_fn(self, fn: str, x: Any, theta: Any) -> Any:
+        """The mixture's ``fn`` (``"sf"``, ``"ff"`` or ``"df"``) at ``x``
+        for the coordinates ``theta`` (autograd-differentiable)."""
+        w, params = self._unpack(theta)
+        out = 0.0
+        for i in range(self.m):
+            out = out + w[i] * getattr(self.dist, fn)(x, *params[i])
+        return out
+
+    def _delta_var(self, func: Callable[..., Any]) -> Any:
+        """The delta-method variance of ``func(theta)`` at the fit, in the
+        coordinates of :meth:`_theta_covariance`."""
+        cov = self._theta_covariance()
+        theta = self._pack(self.w, self.params)
+        with np.errstate(all="ignore"):
+            jac = np.atleast_2d(jacobian(func)(theta))
+        var = np.einsum("ij,jk,ik->i", jac, cov, jac)
+        # Rounding can leave a zero variance a hair below zero.
+        scale = np.einsum("ij,jk,ik->i", abs(jac), abs(cov), abs(jac))
+        return np.where((var < 0) & (var >= -1e-10 * scale), 0.0, var)
+
+    def _delta_var_each(
+        self, func_at: Callable[[Any], Callable[..., Any]], n: int
+    ) -> Any:
+        """``_delta_var`` of a function of ``n`` points, each point's
+        variance its own: ``func_at(idx)`` is the function at the points
+        ``idx``. A gradient that is not finite at one point (far in a
+        tail) is ``0 * nan`` in every other point's reverse pass, so it
+        made every variance ``nan`` (#710, as #652 for one distribution);
+        those points are differentiated again one at a time, and only a
+        point that overflows keeps its ``nan``."""
+        var = np.array(self._delta_var(func_at(slice(None))), dtype=float)
+        bad = ~np.isfinite(var)
+        if n > 1 and bad.any():
+            for i in np.flatnonzero(bad):
+                var[i] = self._delta_var(func_at(slice(i, i + 1)))[0]
+        return var
+
+    def _sd(self, var: Any, x: Any, on: str) -> Any:
+        """``sqrt(var)``, ``nan`` with one warning where there is none:
+        where the variance is negative the covariance is not positive
+        definite; where it is not finite while the covariance is, the
+        function's derivatives overflowed at that ``x`` (far in a tail),
+        and the message names that ``x`` rather than blaming the
+        covariance (#710)."""
+        var = np.asarray(var, dtype=float)
+        bad = ~(var >= 0)
+        where = np.broadcast_to(np.atleast_1d(x), var.shape)
+        # A missing x is NaN in silence.
+        warn = bad & ~np.isnan(where)
+        if np.any(warn):
+            overflow = warn & ~np.isfinite(var)
+            if not np.all(np.isfinite(self._theta_covariance())):
+                overflow = np.zeros_like(warn)
+            singular = warn & ~overflow
+            if np.any(singular):
+                warn_wald_undefined(
+                    f"{on} at x = {where[singular].tolist()}",
+                    "its delta-method variance is negative or not finite, "
+                    "so the parameter covariance is not positive definite",
+                    stacklevel=caller_stacklevel(),
+                )
+            if np.any(overflow):
+                warn_wald_undefined(
+                    f"{on} at x = {where[overflow].tolist()}",
+                    f"the derivatives of {on} with respect to the "
+                    "parameters overflow there (that x is too far in the "
+                    "mixture's tail for double precision), so it has no "
+                    "delta-method variance; the bounds at the other x are "
+                    "computed on their own",
+                    stacklevel=caller_stacklevel(),
+                )
+        return np.sqrt(np.where(bad, np.nan, var))
+
+    def _log_mixture(self, fn: str, x: Any, theta: Any) -> Any:
+        """The log of the mixture's ``fn`` (``"sf"`` or ``"df"``) at
+        ``x`` for the coordinates ``theta``: the log-sum-exp of the
+        components' weighted logs (autograd-differentiable), finite far
+        in the upper tail, where the sum itself underflows to 0."""
+        w, params = self._unpack(theta)
+        log_fn = getattr(self.dist, "log_" + fn)
+        terms = [np.log(w[i]) + log_fn(x, *params[i]) for i in range(self.m)]
+        return ag_logsumexp(np.stack(terms), axis=0)
+
+    def _tail_fn(self, fn: str, x: Any, theta: Any, head: bool) -> Any:
+        """The mixture's ``Hf`` or ``hf`` at ``x`` for the coordinates
+        ``theta`` (autograd-differentiable), computed as is accurate there:
+        where less than half has failed (``head``) ``Hf`` is
+        ``-log1p(-ff)`` and ``hf`` is ``df / sf``; above, both are from the
+        log-sum-exp of the components' weighted log survivals (and log
+        densities), finite where the survival underflows and ``df / sf``
+        is 0 / 0 (#710)."""
+        if head:
+            if fn == "Hf":
+                return -np.log1p(-self._mixture_fn("ff", x, theta))
+            return self._mixture_fn("df", x, theta) / self._mixture_fn(
+                "sf", x, theta
+            )
+        log_sf = self._log_mixture("sf", x, theta)
+        if fn == "Hf":
+            return -log_sf
+        return np.exp(self._log_mixture("df", x, theta) - log_sf)
+
+    def _tail_var(self, fn: str, t: Any, g: Any, log: bool) -> Any:
+        """The delta-method variance, each time's own, of ``fn``
+        (``"Hf"`` or ``"hf"``; of its log with ``log``) at the times
+        ``t``, where its fitted value ``g`` is positive and finite; 0
+        elsewhere (the bound is the estimate there)."""
+        var = np.zeros(t.shape)
+        positive = (g > 0) & np.isfinite(g)
+        head = np.asarray(self.ff(t), dtype=float) < 0.5
+        for part in (head, ~head):
+            idx = np.flatnonzero(part & positive)
+            if idx.size == 0:
+                continue
+            ts, is_head = t[idx], bool(head[idx[0]])
+
+            def func_at(sel: Any, ts: Any = ts, hd: bool = is_head) -> Any:
+                tsel = ts[sel]
+
+                def func(th: Any) -> Any:
+                    value = self._tail_fn(fn, tsel, th, hd)
+                    return np.log(value) if log else value
+
+                return func
+
+            var[idx] = self._delta_var_each(func_at, idx.size)
+        return var
+
+    @keeps_query_shape
+    def cb(
+        self,
+        x: Any,
+        on: str = "sf",
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
+    ) -> npt.NDArray:
+        r"""
+        Wald confidence bounds of the ``on`` function at ``x``, by the
+        delta method from :meth:`covariance`.
+
+        As ``Parametric.cb``'s Wald bounds: those on ``sf``, ``ff`` and
+        ``Hf`` are one bound on the log cumulative hazard, ``log(-log
+        sf)`` (the "log-log" scale), which keeps them within their range;
+        those on ``hf`` and ``df`` are on the log scale. Each ``x``'s
+        bound is computed on its own. Where the delta-method variance is
+        negative (the covariance is not positive definite) a bound is
+        ``nan``, with a warning; where the function's derivatives overflow
+        at an ``x`` far in the tail, that ``x``'s bound alone is ``nan``,
+        with a warning naming it (#710). The ``Hf`` bound is formed from
+        ``Hf`` itself and the ``hf`` bound from the mixture's own hazard,
+        so both stay finite, and contain the estimate, past where ``sf``
+        underflows.
+
+        Parameters
+        ----------
+        x : array like or scalar
+            The times at which to bound the function.
+        on : ('sf', 'ff', 'Hf', 'hf', 'df'), optional
+            The function to bound (``'R'`` and ``'F'`` are ``'sf'`` and
+            ``'ff'``). Defaults to ``'sf'``.
+        alpha_ci : float, optional
+            The significance level: 0.05 (the default) gives a 95% bound.
+        bound : ('two-sided', 'upper', 'lower'), optional
+            Defaults to two-sided.
+        method : 'wald', optional
+            The only bound a mixture has.
+
+        Returns
+        -------
+        numpy array
+            The bound(s), shaped as ``x``; a two-sided bound adds a last
+            ``[lower, upper]`` axis.
+
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+        >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
+        >>> wmm.cb([5, 15]).round(4)
+        array([[0.4687, 0.8503],
+               [0.1344, 0.5354]])
+        """
+        check_alpha_ci(alpha_ci)
+        self._check_wald(method, bound)
+        on = {"R": "sf", "F": "ff"}.get(on, on)
+        check_option("on", on, CB_ON)
+        t = np.atleast_1d(np.asarray(x, dtype=float))
+        if t.size == 0:
+            return np.empty((0, 2) if bound == "two-sided" else (0,))
+        theta = self._pack(self.w, self.params)
+        alpha, signs = bound_signs(alpha_ci, bound)
+        k = signs * z(1 - alpha)
+        if on == "Hf":
+            # The sf band's scale, log(-log sf), is log Hf: the bound on
+            # it from Hf itself stays finite, and contains the estimate,
+            # far past where sf underflows (#710; it was [inf, inf]).
+            H = np.asarray(self.Hf(t), dtype=float)
+            with np.errstate(all="ignore"):
+                var = self._tail_var("Hf", t, H, log=True)
+                sd = self._sd(var, t, on)
+                out = H[:, None] * np.exp(k * sd[:, None])
+            out = np.where(((H == 0) | np.isinf(H))[:, None], H[:, None], out)
+            return out if bound == "two-sided" else out[:, 0]
+        if on in ("sf", "ff"):
+            S = np.asarray(self._mixture_fn("sf", t, theta), dtype=float)
+            F = np.asarray(self._mixture_fn("ff", t, theta), dtype=float)
+            # The smaller of S and F, each accurate where it is small;
+            # Var S = Var F, taken relative to it.
+            left = F < 0.5
+            small = np.where(left, F, S)
+            unit = np.where(small > 0, small, 1.0)
+
+            def func_at(idx: Any) -> Callable[..., Any]:
+                ti, left_i, unit_i = t[idx], left[idx], unit[idx]
+
+                def func(th: Any) -> Any:
+                    value = np.where(
+                        left_i,
+                        -self._mixture_fn("ff", ti, th),
+                        self._mixture_fn("sf", ti, th),
+                    )
+                    return value / unit_i
+
+                return func
+
+            with np.errstate(all="ignore"):
+                var = self._delta_var_each(func_at, t.size)
+            # Where S or F is below the normal range the bound is the edge
+            # it is at (sf_link_bound), whatever its variance.
+            var = np.where(small < np.finfo(float).tiny, 0.0, var)
+            sd = unit * self._sd(var, t, on)
+            return sf_link_bound(
+                S, sd, alpha_ci, bound, "loglog", ff_hat=F, on=on
+            )
+
+        with np.errstate(all="ignore"):
+            if on == "hf":
+                # The mixture's own hazard: df / sf is 0 / 0 where sf
+                # underflows (#710).
+                g = np.asarray(self.hf(t), dtype=float)
+                var = self._tail_var("hf", t, g, log=False)
+            else:
+                g = np.asarray(self._mixture_fn("df", t, theta), dtype=float)
+                # Where the density is 0 or infinite the bound is the
+                # estimate, whatever its variance.
+                var = np.zeros(t.shape)
+                idx = np.flatnonzero((g > 0) & np.isfinite(g))
+                if idx.size:
+                    ts = t[idx]
+
+                    def density_at(sel: Any) -> Callable[..., Any]:
+                        ti = ts[sel]
+                        return lambda th: self._mixture_fn("df", ti, th)
+
+                    var[idx] = self._delta_var_each(density_at, idx.size)
+            sd = self._sd(var, t, on)
+            out = g[:, None] * np.exp(k * (sd / g)[:, None])
+        out = np.where((g == 0)[:, None], 0.0, out)
+        return out if bound == "two-sided" else out[:, 0]
+
+    @keeps_query_shape
+    def quantile_cb(
+        self,
+        p: Any,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
+    ) -> npt.NDArray:
+        r"""
+        Wald confidence bounds on the quantile ``qf(p)``, the B-life at
+        ``p`` (the B10 life is ``p = 0.1``).
+
+        As ``Parametric.quantile_cb``'s Wald bound: the delta method on
+        the log of the quantile above the support's start (the quantile
+        itself for a distribution on the whole line), with the
+        quantile's gradient implicit from ``ff(t) = p``, ``dt/dtheta =
+        -(dF/dtheta) / f(t)``.
+
+        Parameters
+        ----------
+        p : array like or scalar
+            The probabilities, in (0, 1), whose quantiles are bounded;
+            outside it the bound is ``nan``, with one warning (#626).
+        alpha_ci : float, optional
+            The significance level: 0.05 (the default) gives a 95% bound.
+        bound : ('two-sided', 'upper', 'lower'), optional
+            Defaults to two-sided.
+        method : 'wald', optional
+            The only bound a mixture has.
+
+        Returns
+        -------
+        numpy array
+            The bound(s), shaped as ``p``; a two-sided bound adds a last
+            ``[lower, upper]`` axis.
+
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+        >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
+        >>> wmm.quantile_cb(0.1).round(3)
+        array([1.203, 4.997])
+        """
+        check_alpha_ci(alpha_ci)
+        self._check_wald(method, bound)
+        probs = np.atleast_1d(np.asarray(p, dtype=float))
+        if probs.size == 0:
+            return np.empty((0, 2) if bound == "two-sided" else (0,))
+        # As qf: NaN, with one warning, outside (0, 1) (#626).
+        outside = warn_outside_unit_interval(
+            probs, "quantile_cb", closed=False
+        )
+        ok = ~outside & ~np.isnan(probs)
+        if not ok.all():
+            out = np.full(
+                probs.shape + ((2,) if bound == "two-sided" else ()), np.nan
+            )
+            if ok.any():
+                out[ok] = self.quantile_cb(probs[ok], alpha_ci, bound, method)
+            return out
+        t = np.asarray(self.qf(probs), dtype=float)
+        dens = np.asarray(self.df(t), dtype=float)
+        # The variance of F(t) at the fixed t, over f(t)^2: that of t.
+        with np.errstate(all="ignore"):
+            var = self._delta_var(lambda th: self._mixture_fn("ff", t, th)) / (
+                dens**2
+            )
+        sd = self._sd(var, probs, "qf")
+        lower = float(self.dist.support[0])
+        alpha, signs = bound_signs(alpha_ci, bound)
+        k = signs * z(1 - alpha)
+        with np.errstate(all="ignore"):
+            if np.isfinite(lower):
+                out = lower + (t - lower)[:, None] * np.exp(
+                    k * (sd / (t - lower))[:, None]
+                )
+            else:
+                out = t[:, None] + k * sd[:, None]
+        return out if bound == "two-sided" else out[:, 0]
 
     def _require_fit_data(self, what: str) -> None:
         # The likelihood pieces also run mid-fit, before ``params`` is
@@ -1548,3 +2381,8 @@ class MixtureModel(
             label=label,
             **kwargs,
         )
+
+
+# The EM steps' public names before v0.24 say where they went (#653).
+for _old, _removed in removed_attributes(MIXTURE_EM_ATTRIBUTES).items():
+    setattr(MixtureModel, _old, _removed)

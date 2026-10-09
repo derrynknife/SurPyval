@@ -68,9 +68,17 @@ def test_trucks_print_their_interval_and_the_repair_conclusion():
     model = rc.GeneralizedRenewal.fit(x, i, c)
     table = model.summary()
     assert table.loc["q", "estimate"] == pytest.approx(2.626, abs=1e-3)
-    assert table.loc["q", "se"] == pytest.approx(4.463, rel=1e-2)
+    # The interval of a weakly identified q (se 1.7 times the estimate) is
+    # exp(+-1.96 se / q) about it: a 1% error in se is 2% at its ends. The
+    # values printed when this was written (se 4.463, [0.0939, 73.44])
+    # came from a Hessian step too small for a log-likelihood of 2322,
+    # whose rounding moved them by that much between machines (CI's AVX2
+    # numpy got [0.0921, 74.89]); with the fourth-root step the Hessian
+    # has converged (numdifftools agrees to 1e-5) and two machines agree
+    # to 1e-4. These are not reference values: the data are simulated.
+    assert table.loc["q", "se"] == pytest.approx(4.482, rel=1e-3)
     np.testing.assert_allclose(
-        table.loc["q", ["lower 95%", "upper 95%"]], [0.0939, 73.44], rtol=1e-2
+        table.loc["q", ["lower 95%", "upper 95%"]], [0.0926, 74.48], rtol=1e-3
     )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -325,3 +333,58 @@ def test_q_at_its_edge_says_so():
     model = rc.GeneralizedRenewal.fit(x, i, c)
     assert "at the edge of its range" in _text(model)
     assert np.isnan(model.summary().loc["q", "se"])
+
+
+@pytest.mark.parametrize(
+    "fitter", [rc.GeneralizedRenewal, rc.ARA, rc.GeneralizedOneRenewal]
+)
+def test_663_too_few_failures_is_said_in_recurrent_terms(fitter):
+    with pytest.raises(ValueError, match="1 distinct time.s. between") as info:
+        fitter.fit([50.0, 100.0], c=[0, 1])
+    assert "fixed=" not in str(info.value)
+
+
+def test_663_restored_models_say_they_carry_no_data():
+    x = [3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60]
+    i = [1] * 6 + [2] * 5
+    c = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+    for model in (
+        rc.CrowAMSAA.fit(x, i, c),
+        rc.GeneralizedRenewal.fit(x, i, c),
+    ):
+        restored = type(model).from_dict(model.to_dict())
+        with pytest.raises(
+            ValueError, match="restored with from_dict / from_json"
+        ):
+            restored.param_cb(restored._parameter_names()[0])
+    restored = rc.CrowAMSAA.fit(x, i, c)
+    restored = type(restored).from_dict(restored.to_dict())
+    with pytest.raises(
+        ValueError, match="restored with from_dict / from_json"
+    ):
+        restored.cif_cb(10.0)
+
+
+def test_665_profile_interval_for_an_interior_restoration_parameter():
+    # method="lr": the values the likelihood-ratio test does not reject,
+    # from the estimate out on each side; the Wald interval on a Kijima q
+    # under-covered (83% for a nominal 90%).
+    x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2])
+    c = np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1])
+    i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3])
+    model = rc.GeneralizedOneRenewal.fit(x, i, c)
+    q = float(model._mle[0])
+    lower, upper = model.param_cb("q", alpha_ci=0.1, method="lr")
+    assert lower < q < upper
+    crit = chi2.ppf(0.9, 1)
+    for end in (lower, upper):
+        drop = 2 * (model.log_likelihood - model._profile_ll(end))
+        assert drop == pytest.approx(crit, abs=1e-5)
+    # A one-sided bound is the two-sided one's end at twice alpha.
+    assert model.param_cb("q", 0.05, "upper", method="lr")[0] == (
+        pytest.approx(upper, rel=1e-6)
+    )
+    with pytest.raises(ValueError, match="restoration parameter 'q' only"):
+        model.param_cb("alpha", method="lr")
+    with pytest.raises(ValueError, match="'method' must be one of"):
+        model.param_cb("q", method="profile")

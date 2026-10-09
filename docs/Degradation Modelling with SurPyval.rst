@@ -1816,6 +1816,14 @@ physically honest choice — and if you try to give monotone-only data that
 happens to dip (usually a measurement glitch) to the Gamma process, the error it
 raises is a useful signal in itself.
 
+Monotone paths can be fitted by both, and the data can then help decide: both
+likelihoods are of the same increments, so the fitted models' ``neg_ll()``,
+``aic()`` and ``bic()`` rank them, the lower the better (``k`` counts ``mu`` and
+``sigma`` or ``alpha`` and ``beta``, plus any stress coefficients; ``n`` of the
+BIC is the number of increments). A gamma process fitted with ``gauge`` or with
+zero increments censored at a ``resolution`` has a likelihood of probabilities
+rather than densities, so compare it only with fits of the same kind.
+
 Compared with the general-path approach at the top of this page, both process
 models share two advantages: they handle **irregular measurement spacing**
 without any special treatment (each increment simply carries its own ``dt``),

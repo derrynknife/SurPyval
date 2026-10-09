@@ -34,7 +34,10 @@ Every recurrent model in SurPyval takes the same ``xicn`` arrays (see
 - ``c`` — the censoring flag: ``0`` for an observed event, ``1`` for the
   end-of-observation row (the item is still running but we stopped watching);
   ``2`` and ``-1`` are used for counts of events, described below;
-- ``n`` — the number of events a row stands for (defaults to 1).
+- ``n`` — the number of events a row stands for (defaults to 1): a count
+  only on a row of ``c=2`` or ``c=-1``. An observed event (``c=0``) and
+  the end-of-observation row (``c=1``) stand for one, so ``n > 1`` there
+  is refused; repeat the row for simultaneous events.
 
 The rows of each item must describe a coherent timeline. An item can have at
 most one right-censored row and it must be its last row: it makes no sense to
@@ -314,8 +317,9 @@ estimate and its bounds both rising from 0 at time 0 to the first event):
 
 The ``NonParametricCounting`` model also supports **left truncation** (delayed
 entry): an item that was already in service before observation began only joins
-the at-risk set once its entry time is reached, so events before that entry are
-estimated over a smaller risk set. Pass the entry time with ``tl``, either as
+the at-risk set once its entry time is passed (it is observed over
+:math:`(t_l, T]`, so an event exactly at its ``tl`` is refused), and events up to
+that entry are estimated over a smaller risk set. Pass the entry time with ``tl``, either as
 a scalar for every item or as one value per row (the same on every row of an
 item):
 
@@ -855,9 +859,8 @@ A fitted parametric recurrence model is more than a point estimate. Every
 model fit by maximum likelihood exposes the usual likelihood quantities for
 comparing models — the ``log_likelihood`` (a number) and the ``neg_ll()``,
 ``aic()`` and ``bic()`` methods, spelt as on every other fitted model (before
-v0.23 ``aic`` and ``bic`` were attributes, which still work until v0.24 with a
-``DeprecationWarning``). Let's go back to the Duane model of the single system
-from earlier:
+v0.23 ``aic`` and ``bic`` were attributes). Let's go back to the Duane model of
+the single system from earlier:
 
 .. jupyter-execute::
 
@@ -1062,7 +1065,7 @@ any time. Here three prototypes are each tested to 2000 hours:
     print("80% lower (Wald)  :", growth.mtbf_cb(T, alpha_ci=0.2,
                                               bound="lower").round(1))
 
-With 46 failures the two lower bounds are close (about 257 and 260 hours
+With 46 failures the two lower bounds are close (about 257 and 259.5 hours
 against an estimate of 309). With few failures they part: Crow's bound is
 exact for a failure-terminated test and errs on the safe side (covers at least
 its level) for a time-terminated one, while the Wald bound is only
@@ -1076,7 +1079,7 @@ approximate. The MTBF is that of one prototype.
     assert round(float(growth.mtbf(T))) == 309
     _crow = growth.mtbf_cb(T, alpha_ci=0.2, bound="lower", method="crow")
     _wald = growth.mtbf_cb(T, alpha_ci=0.2, bound="lower")
-    assert round(float(_crow)) == 257 and round(float(_wald)) == 260
+    assert round(float(_crow)) == 257 and abs(float(_wald) - 259.5) < 0.1, (_crow, _wald)
 
 Reliability growth: projecting delayed fixes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1119,7 +1122,8 @@ projection; the growth potential, 78.4 hours, is what the same factors
 would reach if every BD mode were found and fixed. With modes fixed during
 the test (``bc=``) the system grew while it was tested, and the
 demonstrated intensity is the Crow-AMSAA one at the end of the test (Crow's
-extended model). The test must be time-terminated (every system run to the
+extended model), from the bias-corrected shape :math:`(N - 1)/N \cdot
+\hat\beta`, as in MIL-HDBK-00189A's test-fix-find-test example. The test must be time-terminated (every system run to the
 same ``T``, given as its ``c=1`` row); several systems are taken to have run
 side by side, and the intensities and MTBFs are those of one system.
 
@@ -1264,7 +1268,7 @@ trucks are simulated under minimal repair, so the true ``q`` is 1:
     trucks
 
 The estimate, 2.63, would say every repair makes the truck worse, but its
-interval runs from 0.09 (almost as good as new) to 74. The question the data
+interval runs from 0.09 (almost as good as new) to 74.5. The question the data
 can answer is which kinds of repair they rule out, and the last line of the
 printout answers it: ``repair_test()`` refits the model with ``q`` held at
 perfect repair (``q = 0``, an ordinary Weibull renewal process) and at
@@ -1321,7 +1325,7 @@ intervals of the model held on the edge, as the printout notes.
 
     assert round(trucks.q, 2) == 2.63
     lo_q, hi_q = trucks.summary().loc["q", ["lower 95%", "upper 95%"]]
-    assert round(lo_q, 2) == 0.09 and round(hi_q) == 74
+    assert round(lo_q, 2) == 0.09 and abs(hi_q - 74.5) < 0.1, (lo_q, hi_q)
     assert round(test.minimal.p_value, 2) == 0.53
     assert f"{test.perfect.p_value:.1g}" == "2e-09"
     assert test.conclusion == "consistent with minimal repair; perfect repair rejected"

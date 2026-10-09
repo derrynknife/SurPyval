@@ -304,14 +304,31 @@ def _case(name):
 @pytest.mark.parametrize("case", cases_for("outside_data", where=_with_bounds))
 def test_bounds_are_nan_outside_the_data_without_a_support(case):
     """Without a support every confidence bound of the case -- the
-    pointwise ones and the bootstrap alike -- is NaN below the first and
-    above the last time, where the estimate says nothing (principle 11).
-    ``bootstrap_cb`` used to carry its step convention there instead (1,
-    and the last bounds; #452). (A missing time is ``test_missing``'s.)"""
+    pointwise ones and the bootstrap alike -- is NaN above the last time,
+    where the estimate says nothing (principle 11). ``bootstrap_cb`` used
+    to carry its step convention there instead (the last bounds; #452).
+    Below the first time a step estimate (single-event, or the competing
+    risks one, #728) is exactly at its start (``sf`` 1), and so are its
+    bounds (#665); past the last they warn, as ``sf`` holds a value there.
+    (A missing time is ``test_missing``'s.)"""
+    from surpyval.univariate.competing_risks import CompetingRisks
+    from surpyval.univariate.nonparametric.nonparametric import (
+        NonParametric,
+    )
+
     model = fitted(case)
     assert model.support is None
     lower, upper, _ = _support(case)
-    x = np.array([lower, upper])
-    for label, method, kw, _, event in _bound_calls(case):
-        b = _bound(model, method, x, event, kw)
+    for label, method, kw, fname, event in _bound_calls(case):
+        b = _bound(model, method, np.array([lower]), event, kw)
+        # (An interpolated estimate is NaN outside the data, as its sf.)
+        step = kw.get("interp") in (None, "step")
+        if isinstance(model, (NonParametric, CompetingRisks)) and step:
+            assert np.all(b == START.get(fname, 0.0)), f"{label}: {b}"
+            with pytest.warns(UserWarning, match="past the last observed"):
+                b = _bound(model, method, np.array([upper]), event, kw)
+        else:
+            b = np.append(
+                b, _bound(model, method, np.array([upper]), event, kw)
+            )
         assert np.isnan(b).all(), f"{label}: {b}"

@@ -187,6 +187,53 @@ def _run_rung(
 #: How many BFGS iterations pass before ``_Judge.watch`` first checks one.
 _WATCH_EVERY = 100
 
+#: The relative tolerance of comparing a point's negative log-likelihood
+#: with the offset family's limit's (``_Judge.toward_limit``, #627).
+_LIMIT_RTOL = 1e-7
+
+#: The most offsets the profile before a runaway by the limit is read at
+#: (``_profile_offsets``), the least ratio of their distances below the
+#: data, and the most BFGS iterations of each one's search.
+_PROFILE_POINTS = 8
+_PROFILE_RATIO = 4.0
+_PROFILE_ITERATIONS = 100
+
+
+def _profile_offsets(high: float, start: float, reached: float) -> list:
+    """The offsets ``_Judge.interior_beats_limit`` reads the profile at:
+    from the search's ``start`` towards the offset it ``reached`` (both
+    below ``high``, the data's least value), spaced geometrically in
+    their distance below ``high`` (a flat maximum is wide in it), at most
+    ``_PROFILE_POINTS`` of them, ``reached`` itself left out (the search's
+    own point is there); none where the search did not move down."""
+    d_start, d_reached = high - start, high - reached
+    if not (0 < d_start < d_reached and np.isfinite(d_reached)):
+        return []
+    span = np.log(d_reached / d_start)
+    ratio = max(_PROFILE_RATIO, np.exp(span / _PROFILE_POINTS))
+    count = int(np.ceil(span / np.log(ratio)))
+    return [high - d_start * ratio**i for i in range(count)]
+
+
+def _seed_data(surv_data: Any) -> Any:
+    """The data as the distributions' starts read them (as
+    ``_initial_guess`` imputes them): an interval at its midpoint, a
+    left-censored value as observed, the truncation dropped; ``None``
+    where no value is finite."""
+    from surpyval.univariate.parametric._fit_inputs import imputed_data
+
+    x = np.asarray(surv_data.x, dtype=float)
+    c = np.asarray(surv_data.c)
+    n = np.asarray(surv_data.n)
+    if x.ndim == 2:
+        with np.errstate(all="ignore"):
+            x = np.where(np.isfinite(x[:, 1]), x.mean(axis=1), x[:, 0])
+    c = np.where(c == 1, 1, 0)
+    finite = np.isfinite(x)
+    if not np.any(finite & (c == 0)):
+        return None
+    return imputed_data(x[finite], c[finite], n[finite])
+
 
 def _runaway(
     fun: Callable[..., Any],
@@ -324,6 +371,8 @@ class _Judge(NamedTuple):
     space: tuple
     #: The runaways found while watching a search, by the point's bytes.
     found: dict
+    #: The last few iterates of the search watched (``watch``).
+    last: list
     #: The negative log-likelihood of the family's limit as an offset
     #: runs to -inf, fitted to the data, or ``None`` (``_offset_limit``).
     limit: Callable[[], "float | None"]
@@ -341,6 +390,7 @@ class _Judge(NamedTuple):
         count = [0]
 
         def callback(x: npt.NDArray) -> None:
+            self.last[:] = self.last[-2:] + [np.array(x, dtype=float)]
             count[0] += 1
             k, rest = divmod(count[0], _WATCH_EVERY)
             if rest or k & (k - 1):
@@ -353,6 +403,18 @@ class _Judge(NamedTuple):
                 raise StopIteration
 
         return callback
+
+    def last_iterate(self) -> "OptimizeResult | None":
+        """The last of the last few iterates of the search watched
+        (``watch``) whose likelihood is finite, as a result; ``None``
+        where there is none. (BFGS can step onto a point where it is not:
+        an offset LogLogistic's search vector from 5e5 to -3e10, #627.)"""
+        for x in self.last[::-1]:
+            with np.errstate(all="ignore"):
+                f = float(self.fun(x, *self.args))
+            if np.all(np.isfinite(x)) and np.isfinite(f):
+                return OptimizeResult(x=x, fun=f, success=False, message="")
+        return None
 
     def keep(self, x: npt.NDArray) -> Callable[[int, float], bool]:
         """What else a parameter ``j`` that Newton's method cannot
@@ -367,9 +429,12 @@ class _Judge(NamedTuple):
           likelihood is not defined, its iterations ran out on a slope)
           says nothing about where the likelihood goes. Or, for an
           offset running to -inf, the family's limit there fits the data
-          at least as well as the point reached (``toward_limit``): the
-          rise then goes on to that limit, though it may never look flat
-          on the way (#599).
+          at least as well as the point reached, and as any offset on
+          the way (``runs_to_limit``): the rise then goes on to that
+          limit, though it may never look flat on the way (#599).
+        - For an offset moved down, the point fits the data no better
+          than that limit (``beats_limit``), flat or not: one that fits
+          better is short of the limit, and so of a run to it (#627).
         - The likelihood rises towards an infinite end of the parameter's
           range. Towards a finite bound the rise ends at the bound, a
           maximum on the edge of the space (an Exponential's offset at
@@ -382,7 +447,9 @@ class _Judge(NamedTuple):
 
         def keep(j: int, slope: float) -> bool:
             flat = abs(slope) * size[j] / self.obj_scale < OPTIMUM_GTOL
-            if not flat and not self.toward_limit(x):
+            if self.beats_limit(x):
+                return False
+            if not flat and not self.runs_to_limit(x):
                 return False
             ahead = np.array(x, dtype=float)
             # (each parameter's map is monotone and its own)
@@ -414,20 +481,144 @@ class _Judge(NamedTuple):
         approaches the Normal's only as ``1 / |gamma|``, so a search
         stopped at gamma = -2765 was still 7 times the verification's
         tolerance from flat, every rung of the ladder ran, and the fits
-        ended "unverified" after 4-17 s (#599)."""
+        ended "unverified" after 4-17 s (#599).
+
+        "At least as well" is to a relative tolerance (``_LIMIT_RTOL``):
+        far out the family's likelihood is computed to rounding, and the
+        limit's own fit is a maximum only to its verification's
+        tolerance, so a point on the way can come out a hair better than
+        the limit (a Weibull 1.8e-7 below the Gumbel's, #627)."""
+        gap = self._limit_gap(x)
+        return gap is not None and gap[0] >= -gap[1]
+
+    def beats_limit(self, x: npt.NDArray) -> bool:
+        """Whether ``x`` has its offset moved down from the start and
+        fits the data better than the family's limit (beyond
+        ``toward_limit``'s tolerance): the search is then not running off
+        towards the limit, whose likelihood the family only approaches,
+        however flat the profile looks there. An offset LogNormal stopped
+        at gamma = -141, 0.012 better than the Normal, was called a
+        runaway though its maximum is near -150 (#627)."""
+        gap = self._limit_gap(x)
+        return gap is not None and gap[0] < -gap[1]
+
+    def runs_to_limit(self, x: npt.NDArray) -> bool:
+        """Whether the search reaching ``x`` runs off towards the family's
+        limit: ``toward_limit``, and no offset on its way there, between
+        its start and ``x``, fits the data better than the limit
+        (``interior_beats_limit``). The likelihood can have a very flat
+        maximum just below the limit's, past which the search ran (a
+        LogNormal's 0.003 better than the Normal's, #627); this is the
+        test before calling a runaway by the limit."""
+        return self.toward_limit(x) and not self.interior_beats_limit(x)
+
+    def _limit_gap(self, x: npt.NDArray) -> "tuple[float, float] | None":
+        """``(here - limit, tolerance)``: how much worse ``x`` fits the
+        data than the family's limit as the offset runs to -inf, and the
+        tolerance of the comparison; ``None`` for a fit without an offset
+        (or one whose limit is not known), and where the search has not
+        moved the offset down from its start."""
         if not self.args[0]:
-            return False
+            return None
         natural = self.space[0]
         with np.errstate(all="ignore"):
             moved_down = float(natural(x)[0]) < float(natural(self.init)[0])
         if not moved_down:
-            return False
+            return None
+        limit = self.limit()
+        if limit is None:
+            return None
+        with np.errstate(all="ignore"):
+            here = float(self.fun(x, *self.args))
+        if not np.isfinite(here):
+            return None
+        return here - limit, _LIMIT_RTOL * max(abs(limit), 1.0)
+
+    def interior_beats_limit(self, x: npt.NDArray) -> bool:
+        """Whether an offset between the search's start and ``x``'s fits
+        the data better than the family's limit (beyond ``toward_limit``'s
+        tolerance), its other parameters at their best for it: a profile
+        of the likelihood over the offset, at points spaced geometrically
+        in their distance below the data (``_profile_offsets``). Where
+        one does, the likelihood has a maximum on the way, short of the
+        limit, and the search ran past it.
+
+        The search ran its offset down from the start, so a maximum it
+        passed is between the two; the profile is not read nearer the
+        data than the start, where the likelihood rises towards the
+        first failure without bound for a density infinite at its origin
+        (``corner``), a different end of the search."""
         limit = self.limit()
         if limit is None:
             return False
+        tol = _LIMIT_RTOL * max(abs(limit), 1.0)
+        for value in self._offset_profile(x):
+            if value < limit - tol:
+                return True
+        return False
+
+    def _offset_profile(self, x: npt.NDArray) -> Any:
+        """The profile negative log-likelihood at the offsets
+        ``_profile_offsets`` gives between the start and ``x``, one at a
+        time: at each, the distribution's own parameters searched with
+        the offset held, from the distribution's start for the data
+        shifted by it (``_offset_seed``). A point whose search fails is
+        skipped."""
+        natural, _, free = self.space[:3]
+        model = self.model
+        if model is None or not free or free[0] != 0:
+            return
         with np.errstate(all="ignore"):
-            here = float(self.fun(x, *self.args))
-        return bool(limit <= here)
+            values = np.array(natural(x), dtype=float)
+            start = float(natural(self.init)[0])
+        high = model.bounds[0][1]
+        if high is None or not np.isfinite(high):
+            return
+        seed_data = _seed_data(model.surv_data)
+        if seed_data is None:
+            return
+        transform = model.fitting_info["transform"]
+        k = len(model.dist.parameter_names)
+        for gamma in _profile_offsets(float(high), start, float(values[0])):
+            point = values.copy()
+            try:
+                with np.errstate(all="ignore"):
+                    seed = model.dist._offset_seed(seed_data, gamma)
+                    point[: 1 + k] = seed
+                    u = np.asarray(transform(point), dtype=float)[free]
+            except (ValueError, ArithmeticError, TypeError, IndexError):
+                continue
+            if not np.all(np.isfinite(u)):
+                continue
+            value = self._held_offset_minimum(u)
+            if value is not None:
+                yield value
+
+    def _held_offset_minimum(self, u: npt.NDArray) -> "float | None":
+        """The least negative log-likelihood a BFGS search over the search
+        vector's other parameters finds from ``u``, its offset (first)
+        held; ``None`` where it is not finite."""
+        head = u[:1]
+        fun, args = self.fun, self.args
+
+        def held(v: Any) -> Any:
+            return fun(np.concatenate([head, v]), *args)
+
+        with np.errstate(all="ignore"), warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            try:
+                f0 = float(held(u[1:]))
+                res = minimize_with_gradient(
+                    held,
+                    u[1:],
+                    jac=Gradient(held),
+                    method="BFGS",
+                    options={"maxiter": _PROFILE_ITERATIONS},
+                )
+                f = min(f0, float(res.fun)) if np.isfinite(res.fun) else f0
+            except (ValueError, ArithmeticError, TypeError):
+                return None
+        return f if np.isfinite(f) else None
 
     def corner(self, x: npt.NDArray) -> "OptimizeResult | None":
         """Where a search that stopped short of a verified maximum at
@@ -736,11 +927,14 @@ def _search(
     the way to an offset family's limit, or at a verified answer that is
     really on the way to a supremum. The answer is then the point
     checked, and ``runaway`` names the parameters running off. An offset
-    fit whose ladder ends unverified at a best point no better than the
-    family's limit (``_Judge.toward_limit``) has its offset running off
-    too (``by_limit``, #616). And a rung that runs the offset onto the
-    first failure, where the likelihood is unbounded, ends the search
-    there, as does the first rung stopping on its way there
+    fit whose rung ends unverified at a best point no better than the
+    family's limit, with no offset on the way there better either
+    (``_Judge.runs_to_limit``), has its offset running off too, and the
+    search ends there (``by_limit``, #616, #627); so does a first BFGS
+    search that overshot to a point where the likelihood is not finite,
+    whose last finite iterate is such a point. And a rung that runs the
+    offset onto the first failure, where the likelihood is unbounded, ends
+    the search there, as does the first rung stopping on its way there
     (``_Judge.corner``, #622); the offset is then the parameter named.
     """
     if len(init) == 0:
@@ -764,6 +958,7 @@ def _search(
     verified = False
     first_success = None
     runaway: tuple[int, ...] = ()
+    by_limit = False
     checked = False
     judge = _Judge(
         fun,
@@ -775,6 +970,7 @@ def _search(
         obj_scale,
         _space(model),
         {},
+        [],
         _offset_limit(model),
         model,
     )
@@ -809,6 +1005,16 @@ def _search(
                 best_result, best_method, best = res, method, res.fun
         if runaway:
             break
+        if best_result is None and not checked:
+            # The first search ended where the likelihood is not finite
+            # (BFGS overshot by 1e10 on its way to the family's limit):
+            # its last iterate tells whether it was running off there,
+            # rather than the next rung's 1,000 evaluations (#627)
+            last = judge.last_iterate()
+            if last is not None and judge.runs_to_limit(last.x):
+                best_result, best_method = last, method
+                runaway, by_limit = (0,), True
+                break
         if best_result is None:
             continue
         # After the first rung that stops short of a verified maximum: is
@@ -826,20 +1032,19 @@ def _search(
         if corner is not None:
             best_result, runaway = corner, (0,)
             break
+        # Or towards the family's limit as the offset runs to -inf: the
+        # best point reached is no better than the limit, nor is any
+        # offset on the way there (``_Judge.runs_to_limit``). No member
+        # the search found fits the data better than the limit, which the
+        # family only approaches, though Newton's test could not show the
+        # rise there (its derivatives are rounding far out, #616). The
+        # offset is the parameter that runs off. This was only asked at
+        # the end of the ladder, whose rest took 1,000 to 3,000
+        # evaluations to reach the same verdict (#627).
+        if judge.runs_to_limit(best_result.x):
+            runaway, by_limit = (0,), True
+            break
 
-    # The ladder ran out with the best point reached no better than the
-    # family's limit as the offset runs to -inf: no member the search
-    # found fits the data better than the limit, which the family only
-    # approaches, though Newton's test could not show the rise there (its
-    # derivatives are rounding far out, #616). The offset is the parameter
-    # that runs off.
-    by_limit = bool(
-        not (verified or runaway)
-        and best_result is not None
-        and judge.toward_limit(best_result.x)
-    )
-    if by_limit:
-        runaway = (0,)
     if not (verified or runaway) and first_success is not None:
         best_result, best_method = first_success
     off_bound = None

@@ -296,13 +296,9 @@ def _univariate():
                 interface=UNIVARIATE,
                 data=binary_data,
                 fit=_fit(fitter),
-                # Bernoulli's qf inverts its ff since #344; the flat
-                # FixedEventProbability has no quantile to test.
-                functions=(
-                    ("sf", "ff", "Hf", "qf")
-                    if name == "Bernoulli"
-                    else ("sf", "ff", "Hf")
-                ),
+                # Bernoulli's qf inverts its ff since #344, and the flat
+                # FixedEventProbability's is 0 or inf since #626.
+                functions=("sf", "ff", "Hf", "qf"),
                 # Bernoulli is defined at the outcomes 0 and 1 only.
                 x=(
                     np.array([0.0, 1.0])
@@ -410,14 +406,10 @@ def _univariate():
             interface=UNIVARIATE,
             data=mixture_data,
             fit=lambda d: _fit_mixture(d),
-            functions=("sf", "ff", "df", "Hf"),
+            functions=("sf", "ff", "df", "hf", "Hf", "qf"),
             x=np.array([1.0, 3.0, 5.0, 10.0, 22.0, 30.0, 45.0]),
             draw=lambda m, s: m.random(15, random_state=s),
             explicit_seed=True,
-            exclude={
-                "df_hf_sf": "MixtureModel has no hf (Conventions)",
-                "qf_ff": "MixtureModel has no qf (Conventions)",
-            },
         )
     )
     out.append(
@@ -1326,6 +1318,36 @@ def _mcf_bounds(per_cause=False):
     )
 
 
+def _competing_risks_bounds():
+    # The cumulative incidence of each cause (#728), and the all-cause and
+    # each cause's net sf / ff / Hf (the single-event estimates' bounds).
+    out = []
+    for bound_type in ("exp", "normal"):
+        common = dict(
+            kwargs={"bound_type": bound_type},
+            in_range=bound_type == "exp",
+            nan_ok=True,
+        )
+        out += [
+            Bound(
+                "cb",
+                on=("cif",),
+                per_cause=True,
+                label=f"cb[cif,{bound_type}]",
+                **common,
+            ),
+            Bound("cb", on=_ON_SURVIVAL, label=f"cb[{bound_type}]", **common),
+            Bound(
+                "cb",
+                on=_ON_SURVIVAL,
+                per_cause=True,
+                label=f"cb[net,{bound_type}]",
+                **common,
+            ),
+        ]
+    return tuple(out)
+
+
 _PARAM_CB = Bound("param_cb", kind="param")
 _BOOT = {"n_boot": 20, "random_state": 1}
 
@@ -1352,8 +1374,21 @@ def _bounds(case):
         return _parametric_bounds(case)
     if cls == "NonParametric":
         return _nonparametric_bounds(case)
+    if cls == "CompetingRisks":
+        return _competing_risks_bounds()
     if cls == "RoystonParmarModel":
         return (Bound("cb", on=_ON_SURVIVAL),)
+    if cls == "MixtureModel":
+        # Wald bounds only (#651)
+        return (
+            Bound("cb", on=_ON_ALL),
+            _PARAM_CB,
+            # The median falls in the gap between the components, where
+            # the density is small and the quantile's standard error 24
+            # times the quantile: at alpha_ci -> 1 the interval is the
+            # estimate +- 3e-5 of it.
+            Bound("quantile_cb", point="qf", rtol=1e-3),
+        )
     if cls == "ParametricRegressionModel":
         wald = (
             Bound("cb", on=_ON_ALL),
@@ -1507,6 +1542,9 @@ def _bounds(case):
         )
     if cls in ("WienerProcessModel", "GammaProcessModel"):
         return (
+            # Wald bounds from the fit's covariance (#666)
+            Bound("cb", on=_ON_SURVIVAL),
+            _PARAM_CB,
             Bound(
                 "predict_rul",
                 kind="rul",

@@ -176,7 +176,16 @@ class MultivariateSurpyvalData:
         # A list/tuple is read as a sequence of per-dimension (column)
         # vectors; an ndarray is taken as already row-by-dimension.
         if isinstance(x, (list, tuple)):
-            x = np.column_stack([np.asarray(xi, dtype=float) for xi in x])
+            series = [np.asarray(xi, dtype=float) for xi in x]
+            lengths = [len(np.atleast_1d(xi)) for xi in series]
+            if len(set(lengths)) > 1:
+                # numpy's "all the input array dimensions ... must match"
+                raise ValueError(
+                    f"The series have different lengths {lengths}: the "
+                    "values are paired by position (row i of each series "
+                    "is unit i), so each series needs one value per unit."
+                )
+            x = np.column_stack(series)
         else:
             x = np.asarray(x, dtype=float)
             if x.ndim == 1:

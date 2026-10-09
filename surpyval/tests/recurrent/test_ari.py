@@ -358,7 +358,8 @@ def test_ari_fit_skips_infeasible_start_without_warnings():
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         model = ARI.fit(REPAIR_FLEET_X, REPAIR_FLEET_I, REPAIR_FLEET_C, m=1)
-    assert 0 < model.rho < 1
+    # (its maximum is on the edge, rho = 1: maximal repair)
+    assert 0 < model.rho <= 1
 
 
 def test_infeasible_user_init_is_reported():

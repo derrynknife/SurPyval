@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 from autograd import elementwise_grad, hessian
 from autograd.scipy.stats import norm as autograd_norm
+from scipy import special
 from scipy.stats import norm as scipy_norm
 
 import surpyval as sp
@@ -146,3 +147,28 @@ def test_no_overflow_warning_far_out():
         np.testing.assert_array_equal(
             sp.Normal.log_df(x, 3.0, 4.0), [-np.inf, -np.inf]
         )
+
+
+@pytest.mark.parametrize("t", [6.0, 40.0, 6e5, 1e8])
+def test_710_log_ndtr_derivatives_far_into_the_lower_tail(t):
+    # As differences of the ratio phi / Phi, the derivatives of log_ndtr
+    # kept the ratio's rounding, |z| times that of its log: at z = -6e5 the
+    # first was 3e-5 out and the second (-1 to 1e-12) came out as +-7e6,
+    # so a LogNormalPH with sigma at 2e-7 had a Hessian of 3e10 that was
+    # rounding. Against Mills' ratio by erfcx, or its asymptotic series.
+    def d(k):
+        f = normal.log_ndtr
+        for _ in range(k):
+            f = elementwise_grad(f)
+        return float(f(np.array([-t]))[0])
+
+    if t < 100:
+        gap = 1.0 / (np.sqrt(np.pi / 2) * special.erfcx(t / np.sqrt(2))) - t
+        r = t + gap
+        want = r, -r * gap
+    else:
+        want = t + 1 / t - 2 / t**3, -(1 - 1 / t**2 + 6 / t**4)
+    assert d(1) == pytest.approx(want[0], rel=1e-14)
+    assert d(2) == pytest.approx(want[1], rel=1e-12)
+    if t >= 100:
+        assert d(3) == pytest.approx(2 / t**3, rel=1e-6)

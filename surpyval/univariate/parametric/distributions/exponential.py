@@ -17,6 +17,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
     ParametricFitter,
 )
+from surpyval.utils.removed_names import removed_arguments
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ._stable import log1mexp, on_support, positive_or_one
@@ -24,13 +25,28 @@ from ._stable import log1mexp, on_support, positive_or_one
 
 class Exponential_(OptimisedFitMixin, ParametricFitter):
     r"""
+    The Exponential distribution: a constant hazard, the
+    ``failure_rate``, so a unit's remaining life does not depend on its
+    age (random failures, no wear). Its mean life is
+    ``1 / failure_rate``.
 
-    Class used to generate the Exponential class.
+    The one parameter is the ``failure_rate`` :math:`\lambda` (positive).
+    On the support :math:`(0, \infty)`,
 
-    .. code:: python
+    .. math::
+        R(x) = e^{-\lambda x}.
 
-        from surpyval import Exponential
+    ``fit`` estimates the parameters from data (which may be censored
+    and truncated); ``from_params`` builds the model from known values.
 
+    Examples
+    --------
+    >>> from surpyval import Exponential
+    >>> model = Exponential.from_params([0.01])
+    >>> model.sf([50, 100, 200]).round(4)
+    array([0.6065, 0.3679, 0.1353])
+    >>> round(float(model.mean()), 6)
+    100.0
     """
 
     # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
@@ -148,6 +164,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         """
         return np.exp(-failure_rate * x)
 
+    @removed_arguments("0.23", X="'given'")
     def cs(self, x: Numeric, given: Numeric, failure_rate: Boxable) -> Boxable:
         r"""
 

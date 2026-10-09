@@ -306,3 +306,39 @@ def test_restored_model_without_covariance_says_so():
     restored = surpyval.from_dict(d)
     with pytest.raises(ValueError, match="restored from a dict"):
         restored.cb([3.0], [0.0])
+
+
+@pytest.mark.parametrize(
+    "fitter",
+    [
+        surv.WeibullPH,
+        surv.ExponentialPH,
+        surv.WeibullAFT,
+        surv.LogNormalAFT,
+        surv.GammaAFT,
+        surv.WeibullPO,
+    ],
+)
+def test_664_restored_bounds_are_bit_identical(fitter):
+    # The restored model computed its bounds at the reported parameters,
+    # the original in the centred fit behind them (#463): cb differed by
+    # up to 1e-11, quantile_cb by 2e-9 (#664). The dict now carries the
+    # centred fit's state, and a PH model its CovariateLink.
+    rng = np.random.default_rng(0)
+    Z = np.c_[rng.normal(size=80), rng.uniform(0, 1, 80)]
+    x = 10 * rng.weibull(1.5, 80) * np.exp(-0.3 * Z[:, 0])
+    c = (rng.uniform(size=80) < 0.2).astype(int)
+    model = fitter.fit(x, Z, c=c)
+    restored = surpyval.from_json(model.to_json())
+    again = surpyval.from_dict(restored.to_dict())
+    assert type(restored.reg_model) is type(model.reg_model)
+    t, rows = np.array([2.0, 5.0, 9.0]), Z[:3]
+    for other in (restored, again):
+        np.testing.assert_array_equal(other.cb(t, rows), model.cb(t, rows))
+        np.testing.assert_array_equal(
+            other.cb(t, rows, on="Hf"), model.cb(t, rows, on="Hf")
+        )
+        np.testing.assert_array_equal(
+            other.quantile_cb(0.3, rows), model.quantile_cb(0.3, rows)
+        )
+        np.testing.assert_array_equal(other.covariance(), model.covariance())

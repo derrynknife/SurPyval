@@ -1,3 +1,28 @@
+"""
+SurPyval: survival and reliability analysis in Python.
+
+Fit parametric distributions (``Weibull``, ``LogNormal``, ``Exponential``,
+...), non-parametric estimates (``KaplanMeier``, ``NelsonAalen``,
+``Turnbull``), regression models (``CoxPH``, ``WeibullPH``, the AFT, PO
+and AH families, ...), competing risks, recurrent-event, degradation and
+multivariate models to data that may be censored (left, right or
+interval) and truncated, in one data format: ``x`` the times, ``c`` the
+censoring flag, ``n`` the counts and ``t`` the truncation (``xcnt``).
+
+>>> import surpyval
+>>> x, c = [10.0, 12.0, 15.0, 21.0, 30.0], [0, 0, 1, 0, 1]
+>>> model = surpyval.Weibull.fit(x, c=c)
+>>> model.dist.name
+'Weibull'
+
+The regression, competing-risks, recurrent-event and degradation models
+and the metrics load on first use; ``surpyval.recurrent``,
+``surpyval.degradation``, ``surpyval.multivariate``,
+``surpyval.life_models``, ``surpyval.metrics`` and ``surpyval.datasets``
+hold the rest. ``help(surpyval.Weibull)`` and the other classes document
+each model, with examples.
+"""
+
 __version__ = "0.23"
 
 # First: autograd's special functions without scipy.stats (#470)
@@ -93,6 +118,11 @@ from surpyval.utils.recurrent_utils import handle_xicn  # isort: skip
 from surpyval.serialisation import from_dict, from_json  # isort: skip
 
 from typing import TYPE_CHECKING, Any  # isort: skip # noqa: E402
+from surpyval.utils.removed_names import (  # isort: skip
+    REMOVED_TOP_LEVEL as _REMOVED_TOP_LEVEL,
+    from_import as _from_import,
+    removed_message as _removed_message,
+)
 
 # The regression, competing-risks, recurrent-event and degradation models
 # and the metrics are importable directly from `surpyval` too, but are
@@ -222,8 +252,87 @@ _LAZY = {
     ),
 }
 
+#: The public names: what ``from surpyval import *`` gives, the eager
+#: imports above and the lazily imported models (not ``np``, ``Any`` or
+#: ``TYPE_CHECKING``, #667). Every name the docs, tests and README import
+#: from ``surpyval`` is here.
+__all__ = [
+    # The base classes
+    "Distribution",
+    "MultivariateDistribution",
+    "NonParametricDistribution",
+    "ParametricDistribution",
+    # Non-parametric
+    "FlemingHarrington",
+    "KaplanMeier",
+    "LogRankResult",
+    "NelsonAalen",
+    "NonParametric",
+    "Turnbull",
+    "logrank",
+    "rmst_diff",
+    "success_run",
+    # Parametric
+    "Bernoulli",
+    "Beta",
+    "Beta4",
+    "BetaGeometric",
+    "Binomial",
+    "CustomDistribution",
+    "DiscreteWeibull",
+    "Discretize",
+    "DiscretizedFitter",
+    "ExactEventTime",
+    "Exponential",
+    "ExpoWeibull",
+    "FixedEventProbability",
+    "Galton",
+    "Gamma",
+    "Gauss",
+    "Geometric",
+    "Gumbel",
+    "GumbelLEV",
+    "Hypoexponential",
+    "InstantlyOccurs",
+    "Logistic",
+    "LogLogistic",
+    "LogNormal",
+    "MixtureModel",
+    "NegativeBinomial",
+    "NeverOccurs",
+    "Normal",
+    "Parametric",
+    "Poisson",
+    "Rayleigh",
+    "RoystonParmar",
+    "RoystonParmarModel",
+    "Uniform",
+    "Weibull",
+    "weibayes",
+    # Data formats
+    "fs_to_xcnt",
+    "fs_to_xrd",
+    "fsl_to_xcnt",
+    "fsli_handler",
+    "fsli_to_xcnt",
+    "round_sig",
+    "xcn_to_fs",
+    "xcnt_handler",
+    "xcnt_to_xrd",
+    "xrd_handler",
+    "xrd_to_xcnt",
+    "RecurrentEventData",
+    "SurpyvalData",
+    "handle_xicn",
+    # Model selection, forecasting and serialisation
+    "fit_best",
+    "forecast",
+    "from_dict",
+    "from_json",
+] + sorted(_LAZY)
+
 if TYPE_CHECKING:
-    from surpyval import degradation, life_models, metrics, recurrent
+    from surpyval import datasets, degradation, life_models, metrics, recurrent
     from surpyval.degradation import (
         DegradationAnalysis,
         DestructiveDegradation,
@@ -263,41 +372,25 @@ if TYPE_CHECKING:
 
 # The subpackages ``import surpyval`` used to import, so that
 # ``surpyval.recurrent.laplace`` works without an import of its own, and
-# ``surpyval.life_models``.
-_SUBPACKAGES = ("degradation", "life_models", "metrics", "recurrent")
+# ``surpyval.life_models``; and ``surpyval.datasets``, whose loaders the
+# docs call as ``surpyval.datasets.load_...()`` (#653). Each is imported on
+# first use.
+_SUBPACKAGES = (
+    "datasets",
+    "degradation",
+    "life_models",
+    "metrics",
+    "recurrent",
+)
 
-# The life models were importable from ``surpyval`` until v0.21 (and,
-# with a warning, v0.22); they are in ``surpyval.life_models``, where the
-# exponential one is ``Exponential`` (at the top level that name is the
-# distribution). Asking for one here says where it is.
-_MOVED_TO_LIFE_MODELS = {
-    **{
-        name: name
-        for name in (
-            "DualExponential",
-            "DualPower",
-            "Eyring",
-            "InverseExponential",
-            "InverseEyring",
-            "InversePower",
-            "LifeModel",
-            "Linear",
-            "Power",
-            "PowerExponential",
-        )
-    },
-    "ExponentialLifeModel": "Exponential",
-}
-
-# Numeric constants once at the top level, deprecated there in v0.23
-# (#613): each with what to use instead. They are kept, until v0.24, in
-# ``surpyval.utils.numeric``. ``surpyval.np``, the numpy to write custom
-# distributions with, stays.
-_DEPRECATED_CONSTANTS = {
-    "NUM": "numpy.float64",
-    "TINIEST": "numpy.finfo(float).tiny",
-    "EPS": "numpy.sqrt(numpy.finfo(float).eps)",
-}
+# The package's removed names (the life models' top-level names, removed
+# in v0.23, and the numeric constants, removed in v0.24) say what replaced
+# them: ``surpyval.utils.removed_names.REMOVED_TOP_LEVEL`` (#653).
+_MOVED_TO_LIFE_MODELS = tuple(
+    name
+    for name, (instead, _) in _REMOVED_TOP_LEVEL.items()
+    if instead.startswith("it is surpyval.life_models.")
+)
 
 # Names that live only in a subpackage: asking for one here
 # (``surpyval.laplace``) says where it is, rather than only that
@@ -332,33 +425,34 @@ if not TYPE_CHECKING:  # keep the type checker's view of the module exact
             return value
         if name in _SUBPACKAGES:
             return import_module(f"surpyval.{name}")
-        if name in _MOVED_TO_LIFE_MODELS:
-            new = _MOVED_TO_LIFE_MODELS[name]
-            raise AttributeError(
-                "module 'surpyval' has no attribute {!r}: it is "
-                "surpyval.life_models.{} (from surpyval import "
-                "life_models)".format(name, new)
+        if name in _REMOVED_TOP_LEVEL:
+            message = _removed_message(
+                f"module 'surpyval' has no attribute {name!r}",
+                _REMOVED_TOP_LEVEL[name],
             )
-        if name in _DEPRECATED_CONSTANTS:
-            import warnings
-
-            from surpyval.utils.deprecation import REMOVED_IN
-
-            warnings.warn(
-                "surpyval.{} is deprecated and will be removed in v{}; use "
-                "'{}'.".format(name, REMOVED_IN, _DEPRECATED_CONSTANTS[name]),
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            return getattr(import_module("surpyval.utils.numeric"), name)
-        if name in _ELSEWHERE:
-            raise AttributeError(
+        elif name in _ELSEWHERE:
+            message = (
                 "module 'surpyval' has no attribute {n!r}: it is in "
                 "{m} (from {m} import {n})".format(n=name, m=_ELSEWHERE[name])
             )
-        raise AttributeError(
-            "module 'surpyval' has no attribute {!r}".format(name)
-        )
+        else:
+            raise AttributeError(
+                "module 'surpyval' has no attribute {!r}".format(name),
+                name=name,
+            )
+        # ``from surpyval import Power`` would turn an AttributeError into
+        # a bare "cannot import name 'Power'": an ImportError keeps the
+        # message (an attribute access still gets an AttributeError).
+        if _from_import():
+            raise ImportError(
+                message.replace(
+                    "module 'surpyval' has no attribute",
+                    "cannot import name",
+                    1,
+                ),
+                name="surpyval",
+            )
+        raise AttributeError(message, name=name)
 
     def __dir__() -> list[str]:
         return sorted(set(globals()) | set(_LAZY) | set(_SUBPACKAGES))

@@ -37,7 +37,7 @@ right-truncation. Right-censored contribute ``log S``, left-censored
 each observation's contribution by ``S(t_l) - S(t_r)``.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from scipy.optimize import minimize
@@ -55,7 +55,6 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.univariate.parametric.fitters import is_local_minimum
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
-from surpyval.utils.deprecation import ArrayMethod
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import (
     numerical_gradient,
@@ -72,11 +71,15 @@ from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import (
     BOUNDS,
+    check_alpha_ci,
     check_option,
     no_covariance_error,
     option_error,
     warn_outside_unit_interval,
 )
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 _SCALES = ("hazard", "odds", "normal")
 
@@ -268,12 +271,54 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
     def Hf(self, x: Any) -> np.ndarray:
         """Cumulative hazard ``-log sf(x)``."""
         # + 0.0 turns the -0.0 of -log(1) at x <= 0 into 0.0
-        return -np.log(self.sf(x)) + 0.0
+        with np.errstate(divide="ignore"):  # inf at infinity
+            return -np.log(self.sf(x)) + 0.0
 
     @keeps_query_shape
     def hf(self, x: Any) -> np.ndarray:
-        """Hazard rate ``df(x) / sf(x)``."""
-        return self.df(x) / self.sf(x)
+        """Hazard rate ``df(x) / sf(x)``: 0 at and before time 0, and at
+        infinity its limit along the spline, quietly.
+
+        It is taken as one exponential of the logs of its terms, which
+        keeps its value where the density and the survival have both
+        underflowed in the tail (a 0/0 there, nan with a warning).
+        Beyond the last knot the spline is linear in ``log x``, with
+        slope ``s``, so on the hazard scale the hazard there is a
+        Weibull's of shape ``s``, and its limit is ``inf`` for ``s > 1``,
+        0 for ``s < 1`` and the constant itself for ``s = 1``; on the odds
+        and normal scales it falls to 0, as a LogLogistic's and a
+        LogNormal's do. Infinity was 0/0 too (#777)."""
+        x = np.asarray(x, dtype=float)
+        with np.errstate(all="ignore"):
+            eta = self._eta(x)
+            log_S, log_negdS = _scale_terms(eta, self.scale)
+            # log(-dS/deta / S): eta itself on the hazard scale, where S
+            # underflows first
+            log_ratio = eta if self.scale == "hazard" else log_negdS - log_S
+            out = np.exp(log_ratio + np.log(self._eta_deriv(x)) - np.log(x))
+        out = np.where(x <= 0.0, 0.0, out)
+        if np.any(np.isposinf(x)):
+            out = np.where(np.isposinf(x), self._hf_at_infinity(), out)
+        return out
+
+    def _hf_at_infinity(self) -> float:
+        """The hazard's limit at infinity (see :meth:`hf`): the spline's
+        slope in ``log x`` beyond the last knot, ``s``, is constant there
+        (the restricted cubic spline is linear), read at that knot; nan
+        for a spline that falls there, where the density is not
+        defined."""
+        last = self.knots[-1:]
+        with np.errstate(all="ignore"):
+            s = float((_rcs_deriv(last, self.knots) @ self.params)[0])
+            if not s >= 0.0:
+                return np.nan
+            if self.scale != "hazard" or s < 1.0:
+                return 0.0
+            if s > 1.0:
+                return np.inf
+            # s = 1: exp(eta(x) - log x), the same at every x past the knot
+            eta = float((_rcs_basis(last, self.knots) @ self.params)[0])
+            return float(np.exp(eta - last[0]))
 
     @keeps_query_shape
     def df(self, x: Any) -> np.ndarray:
@@ -387,7 +432,9 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
         The bound is formed on the (unbounded) linear predictor ``eta`` --
         whose variance is ``B Sigma B'`` from the covariance -- and then
         pushed through the link, so ``sf`` / ``ff`` bounds stay in ``(0, 1)``.
-        ``S`` is monotone decreasing in ``eta`` on every scale.
+        ``S`` is monotone decreasing in ``eta`` on every scale. At and
+        before time 0, and at infinity, there is no spline (it is in
+        ``log x``): both ends of the band are ``sf`` there, 1 and 0.
 
         Parameters
         ----------
@@ -403,6 +450,7 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
             one-sided bound at ``alpha_ci`` is the matching end of the
             two-sided bound at ``2 * alpha_ci``.
         """
+        check_alpha_ci(alpha_ci)
         cov = self.covariance()
         check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
         # An unknown bound (say 'both') used to be taken as 'upper' (#415).
@@ -413,7 +461,12 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
         if on in ("ff", "F", "Hf") and bound != "two-sided":
             bound = "upper" if bound == "lower" else "lower"
         x = np.atleast_1d(np.asarray(x, dtype=float))
-        B = _rcs_basis(np.log(x), self.knots)
+        # The spline is in log x, which does not exist at or before time 0
+        # (nor at infinity): there the band is the survival itself, 1 (0 at
+        # infinity), as sf gives. It was nan (#760).
+        inside = np.isfinite(x) & (x > 0.0)
+        edge = np.where(np.isposinf(x), 0.0, np.where(np.isnan(x), x, 1.0))
+        B = _rcs_basis(np.log(np.where(inside, x, 1.0)), self.knots)
         eta = B @ self.params
         var = np.einsum("ij,jk,ik->i", B, cov, B)
         se = np.sqrt(np.maximum(var, 0.0))
@@ -429,12 +482,17 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
             z = _ndtri(1.0 - alpha_ci)
             signed = eta + (z if bound == "lower" else -z) * se
             band = _sf_from_eta(signed, self.scale)
+        band[~inside] = (
+            edge[~inside, None] if band.ndim == 2 else edge[~inside]
+        )
 
         if on in ("sf", "R"):
             return band
         if on in ("ff", "F"):
             return 1.0 - (band[:, ::-1] if band.ndim == 2 else band)
-        return -np.log(band[:, ::-1] if band.ndim == 2 else band)
+        # 0.0 - log: where a bound is 1, -log(1) is -0.0 (#746).
+        with np.errstate(divide="ignore"):  # inf where a bound is 0
+            return 0.0 - np.log(band[:, ::-1] if band.ndim == 2 else band)
 
     # -- information criteria (InformationCriteriaMixin) -------------------
     # neg_ll(), log_likelihood, aic(), aic_c() and bic(), the last two with
@@ -445,9 +503,15 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
     def k(self) -> int:  # type: ignore[override]
         return len(self.params)
 
-    #: The coefficients' covariance, ``covariance()`` (#605): an attribute
-    #: before v0.23, which still reads it, with a DeprecationWarning.
-    covariance = ArrayMethod("_covariance", no_covariance_error)
+    def covariance(self) -> np.ndarray:
+        """The spline coefficients' covariance, in the order of ``params``
+        (#605). It was an attribute before v0.23.
+
+        Raises a ``ValueError`` where the model has none (its information
+        was singular)."""
+        if self._covariance is None:
+            raise no_covariance_error()
+        return np.asarray(self._covariance)
 
     def standard_errors(self) -> np.ndarray:
         """The spline coefficients' standard errors, the square roots of
@@ -465,9 +529,52 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
         """
         return standard_errors_of(self.covariance())
 
-    def summary(self) -> str:
-        """A text summary of the fit: link scale, knots, likelihood and
-        coefficients."""
+    def summary(self, alpha_ci: float = 0.05) -> "pd.DataFrame":
+        """
+        The coefficient table, in the layout of the regression models'
+        :meth:`summary` (#662): each spline coefficient ``gamma_j`` with
+        its standard error, a two-sided ``1 - alpha_ci`` Wald interval and
+        the Wald ``z`` and p-value; ``exp(coef)`` and its bounds are
+        ``nan`` (a spline coefficient is not a log ratio). Without a
+        covariance the standard errors, intervals and tests are ``nan``.
+        The text summary (scale, knots, likelihood) is the model's
+        ``repr``.
+
+        .. versionchanged:: 0.24
+           Returns a ``DataFrame``; it returned the text ``repr`` prints.
+
+        Parameters
+        ----------
+        alpha_ci : float, optional
+            The intervals' total tail probability. Default 0.05.
+
+        Returns
+        -------
+        pandas.DataFrame
+            One row per coefficient, indexed by name.
+
+        Examples
+        --------
+        >>> from surpyval import RoystonParmar, Weibull
+        >>> x = Weibull.random(200, 10, 2, random_state=1)
+        >>> model = RoystonParmar.fit(x, df=2)
+        >>> list(model.summary().index)
+        ['gamma_0', 'gamma_1', 'gamma_2']
+        """
+        from surpyval.univariate.regression._summary import (
+            coefficient_table,
+        )
+
+        params = np.asarray(self.params, dtype=float)
+        se = np.full(params.shape, np.nan)
+        if self._covariance is not None:
+            se = self.standard_errors()
+        names = ["gamma_{}".format(i) for i in range(params.size)]
+        table = coefficient_table(names, params, se, alpha_ci, exp=False)
+        table.index.name = "name"
+        return table
+
+    def __repr__(self) -> str:
         lines = [
             "Royston-Parmar Flexible Parametric Model",
             "========================================",
@@ -482,9 +589,6 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
         for i, g in enumerate(self.params):
             lines.append(f"    gamma_{i:<3}: {g:.6g}")
         return "\n".join(lines)
-
-    def __repr__(self) -> str:
-        return self.summary()
 
     # -- serialisation -----------------------------------------------------
 

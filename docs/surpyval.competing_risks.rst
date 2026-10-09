@@ -14,13 +14,16 @@ other hypothesis tests in :doc:`comparison_and_validation`.
 Non-Parametric (Aalen-Johansen)
 -------------------------------
 
-The cumulative incidence of each cause estimated without a model, and
-the incidence-increment helper it (and Gray's test) is built on.
+The cumulative incidence of each cause estimated without a model, the
+incidence-increment helper it (and Gray's test) is built on, and the
+variance its confidence bounds (``cb``) use.
 
 .. autoclass:: surpyval.univariate.competing_risks.nonparametric.competing_risks.CompetingRisks
    :members:
 
 .. autofunction:: surpyval.univariate.competing_risks.aalen_johansen.aalen_johansen_iif
+
+.. autofunction:: surpyval.univariate.competing_risks.aalen_johansen.aalen_johansen_variance
 
 Parametric
 ----------

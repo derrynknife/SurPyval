@@ -6,6 +6,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import norm
 
+from surpyval.recurrent.inference import check_alpha_ci
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -69,8 +70,44 @@ class NonParametricCounting(
         # A fitted estimate is an instance of this class too: it is not
         # the fitter.
         if hasattr(self, "mcf_hat"):
-            return object.__repr__(self)
+            return self._fitted_repr()
         return super().__repr__()
+
+    def _fitted_repr(self) -> str:
+        """The printout of a fitted estimate, as its siblings' (#666): what
+        it is, the data it was fitted to, and the MCF at the last event
+        time. It was the default ``<... object at 0x...>``."""
+        title = "Non-Parametric Recurrence SurPyval Model"
+        lines = [
+            title,
+            "=" * len(title),
+            "Model            : Mean cumulative function (Nelson-Aalen)",
+        ]
+        data = getattr(self, "data", None)
+        if data is not None:
+            c = np.asarray(data.c)
+            n = np.asarray(data.n)
+            events = int(np.sum(n[c == 0]))
+            times = int(np.unique(np.asarray(data.x)[c == 0]).size)
+            items = len(data.items)
+            lines.append(
+                "Data             : {} item{}: {} event{} at {} unique "
+                "time{}".format(
+                    items,
+                    "" if items == 1 else "s",
+                    events,
+                    "" if events == 1 else "s",
+                    times,
+                    "" if times == 1 else "s",
+                )
+            )
+        if np.size(self.mcf_hat):
+            lines.append(
+                "MCF at last time : {:.6g} at t = {:.6g}".format(
+                    float(self.mcf_hat[-1]), float(self.x[-1])
+                )
+            )
+        return "\n".join(lines)
 
     # Set on the instance the fit returns, not in __init__ -- the
     # singleton fitter is called on a bare class and hands back a
@@ -362,6 +399,7 @@ class NonParametricCounting(
         # unselected bounds (#416).
         check_option("bound", bound, BOUNDS)
         check_option("interp", interp, _MCF_INTERP)
+        check_alpha_ci(alpha_ci)
         return self._within_support(
             x,
             lambda q: self._mcf_cb(
@@ -493,6 +531,7 @@ class NonParametricCounting(
         -------
         matplotlib Axes
         """
+        check_alpha_ci(alpha_ci)
         if ax is None:
             import matplotlib.pyplot as plt
 
@@ -629,13 +668,17 @@ class NonParametricCounting(
             interval- (2) censored rows are not supported and raise a
             ``ValueError``.
         n : array like, optional
-            Count of events at each row. Defaults to 1.
+            The number of events each row stands for. This model takes exact
+            events (``c=0``) and end-of-observation rows (``c=1``), each of
+            which stands for one, so every ``n`` is 1 (``n > 1`` is refused:
+            repeat the row for simultaneous events). Defaults to 1.
         tl : array like or scalar, optional
             Left-truncation (delayed-entry) time of each item: a scalar for
             every item, or one value per row (the same on every row of an
-            item). An item only
-            enters the at-risk set once observation begins at ``tl``, so
-            earlier event times are estimated over a smaller risk set.
+            item). An item is
+            observed over ``(tl, T]``: it joins the at-risk set just after
+            ``tl``, so earlier event times are estimated over a smaller
+            risk set, and an event exactly at its ``tl`` is refused.
         tr : array like or scalar, optional
             Right-truncation time of each item, given like ``tl``: the end
             of its observation
@@ -750,8 +793,9 @@ def _lawless_nadeau_var(
     # at-risk indicator agrees with its share of ``r`` (including a
     # right-truncation close past its last row).
     entry, exit_ = data.item_observation_windows()
-    # Each item's at-risk run of the grid, lo..hi (empty when lo > hi).
-    lo = np.searchsorted(x, entry, side="left")
+    # Each item's at-risk run of the grid, lo..hi (empty when lo > hi):
+    # the grid times in its window (entry, exit].
+    lo = np.searchsorted(x, entry, side="right")
     hi = np.searchsorted(x, exit_, side="right") - 1
     # Items split into observation windows are regrouped under their
     # original item, as one cluster.

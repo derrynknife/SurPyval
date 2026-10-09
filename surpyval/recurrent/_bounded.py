@@ -7,6 +7,7 @@ parameter is 0 and a likelihood or cumulative intensity divides by it.
 
 from typing import Callable
 
+import autograd.numpy as anp
 import numpy as np
 
 
@@ -22,15 +23,21 @@ def unconstraining_maps(bounds: list) -> tuple[Callable, Callable]:
     highs = [b[1] for b in bounds]
 
     def to_natural(u: np.ndarray) -> np.ndarray:
-        out = np.array(u, dtype=float)
+        # Built as a list rather than written into an array, so it is
+        # differentiable by autograd (#710); the values are the same.
+        out = []
         for k, (low, high) in enumerate(zip(lows, highs)):
             if low is not None and high is not None:
-                out[k] = low + (high - low) / (1.0 + np.exp(-u[k]))
+                out.append(low + (high - low) / (1.0 + anp.exp(-u[k])))
             elif low is not None:
-                out[k] = low + np.exp(u[k])
+                out.append(low + anp.exp(u[k]))
             elif high is not None:
-                out[k] = high - np.exp(u[k])
-        return out
+                out.append(high - anp.exp(u[k]))
+            else:
+                out.append(u[k] * 1.0)
+        if not out:
+            return np.zeros(0)
+        return anp.array(out)
 
     def to_search(v: np.ndarray) -> np.ndarray:
         out = np.array(v, dtype=float)

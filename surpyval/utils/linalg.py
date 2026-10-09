@@ -91,18 +91,28 @@ def numerical_hessian(
     to approximate the observed Fisher information from a negative
     log-likelihood minimised with a derivative-free optimiser.
 
-    ``step`` is the per-parameter step array; the default is the usual
-    cube-root-of-machine-epsilon rule for a second-derivative central
-    difference, ``eps**(1/3) * max(|x|, 1e-2)``. Callers with their own
-    convention (Royston-Parmar and the frailty fitter use
-    ``1e-5 * max(|x|, 1)``) pass it explicitly.
+    ``step`` is the per-parameter step array; the default is the
+    fourth-root-of-machine-epsilon rule for a second-derivative central
+    difference, ``eps**(1/4) * max(|x|, 1e-2)`` (about ``1.2e-4``
+    relative). Callers with their own convention (Royston-Parmar and the
+    frailty fitter use ``1e-5 * max(|x|, 1)``) pass it explicitly.
+
+    The default was ``eps**(1/3)``, the rule for a *first* derivative.
+    A second difference divides the rounding of ``func`` (``eps * |func|``)
+    by ``step**2``, so its rounding error is balanced against the
+    truncation error at ``eps**(1/4)``; at ``eps**(1/3)`` (``6e-6``) the
+    rounding dominates where the curvature is small against ``|func|``.
+    A generalized renewal fit with a weakly identified ``q`` (a negative
+    log-likelihood of 2322, a standard error of 4.5) had a ``q`` standard
+    error 0.5% off and differing by 0.7% between machines whose numpy
+    rounds ``exp`` and ``log`` differently (AVX-512 or AVX2 kernels), and
+    its interval 2% (#513's test); the larger step gives the converged
+    value, to 1e-4, on both.
     """
     x = np.asarray(x, dtype=float)
     n = x.size
     if step is None:
-        step = (np.finfo(float).eps ** (1.0 / 3.0)) * np.maximum(
-            np.abs(x), 1e-2
-        )
+        step = (np.finfo(float).eps ** 0.25) * np.maximum(np.abs(x), 1e-2)
     H = np.zeros((n, n))
     for i in range(n):
         for j in range(i, n):
@@ -434,13 +444,23 @@ def wald_undefined(
     return None
 
 
-def warn_wald_undefined(what: str, reason: str, stacklevel: int = 3) -> None:
+#: What :func:`warn_wald_undefined` suggests by default.
+_WALD_ADVICE = (
+    "a profile-likelihood or bootstrap interval, where the model has one, "
+    "does not need the variance"
+)
+
+
+def warn_wald_undefined(
+    what: str, reason: str, stacklevel: int = 3, advice: "str | None" = None
+) -> None:
     """The one warning a Wald bound that does not exist gives (#411):
-    the bound on ``what`` is undefined because of ``reason``."""
+    the bound on ``what`` is undefined because of ``reason``. ``advice``
+    replaces the default suggestion, a profile-likelihood or bootstrap
+    interval, for a model that has neither (#664)."""
     warnings.warn(
         f"The Wald confidence bound on {what} is undefined: {reason}. "
-        "nan is returned; a profile-likelihood or bootstrap interval, "
-        "where the model has one, does not need the variance.",
+        f"nan is returned; {_WALD_ADVICE if advice is None else advice}.",
         RuntimeWarning,
         stacklevel=stacklevel + 1,
     )
@@ -459,6 +479,7 @@ def wald_bound_on_support(
     alpha_ci: float = 0.05,
     bound: str = "two-sided",
     name: "str | None" = None,
+    advice: "str | None" = None,
 ) -> npt.NDArray:
     """
     Wald confidence bound(s) on a single fitted parameter, computed on a
@@ -474,10 +495,11 @@ def wald_bound_on_support(
     parameter's ``(lower, upper)`` from its own bookkeeping.
 
     Where the bound does not exist (see :func:`wald_undefined`) it is
-    ``nan``, with a warning naming the parameter ``name`` and why; it
-    used to be ``nan`` with only numpy's raw "invalid value encountered
-    in sqrt", or a ``ZeroDivisionError`` for an estimate on the edge of
-    an interval support (#411).
+    ``nan``, with a warning naming the parameter ``name`` and why (and
+    ``advice``, what to do instead, where the default suggestion does not
+    apply); it used to be ``nan`` with only numpy's raw "invalid value
+    encountered in sqrt", or a ``ZeroDivisionError`` for an estimate on
+    the edge of an interval support (#411).
     """
     from scipy.stats import norm
 
@@ -485,7 +507,9 @@ def wald_bound_on_support(
     reason = wald_undefined(p_hat, var, lower, upper)
     if reason is not None:
         # wald_bound_on_support -> param_cb -> the caller
-        warn_wald_undefined(param_name(name), reason, stacklevel=3)
+        warn_wald_undefined(
+            param_name(name), reason, stacklevel=3, advice=advice
+        )
         return np.full(signs.shape, np.nan)
     offsets = signs * norm.ppf(1.0 - alpha) * np.sqrt(var)
 

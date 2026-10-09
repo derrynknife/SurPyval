@@ -31,7 +31,8 @@ from surpyval.utils import (
     refuse_time_values,
     xcnt_handler,
 )
-from surpyval.utils.dataframe import frame_column
+from surpyval.utils.dataframe import check_columns, frame_column
+from surpyval.utils.removed_names import column_arguments
 
 from ._aliasing import covariate_columns
 
@@ -46,6 +47,147 @@ predictions take it as 0."""
 
 def _aliased_columns(model: Any) -> npt.NDArray:
     return np.flatnonzero(np.isnan(np.asarray(model.beta, dtype=float)))
+
+
+def check_covariate_width(
+    Z: Any, names: "list[str]", what: str = "covariate"
+) -> None:
+    """Refuse prepared covariates ``Z`` whose number of columns is not the
+    model's (#657): ``names`` are the model's covariates, in order. A
+    scalar or a 1-D ``Z`` is one value per row for a one-covariate model,
+    else one row. A wrong width gave numpy's broadcast or alignment error
+    (``shapes (3,) and (2,) not aligned``), or a plausible prediction
+    from the wrong columns.
+
+    Examples
+    --------
+    >>> from surpyval.univariate.regression.regression_data import (
+    ...     check_covariate_width,
+    ... )
+    >>> check_covariate_width([[1.0, 2.0]], ["coef_0", "coef_1"])
+    >>> check_covariate_width([1.0, 2.0, 3.0], ["coef_0", "coef_1"])
+    Traceback (most recent call last):
+    ...
+    ValueError: The model has 2 covariates (coef_0, coef_1); Z gives 3 per row. Give one value per covariate, in that order, for each row of Z.
+    """  # noqa: E501
+    arr = np.asarray(Z)
+    p = len(names)
+    if arr.ndim == 0 or (arr.ndim == 1 and p == 1):
+        width = 1
+    elif arr.ndim in (1, 2):
+        width = arr.shape[-1]
+    else:
+        raise ValueError(
+            "Z must be one covariate row, or a 2-D array with a row per "
+            "prediction; got an array of shape {}.".format(arr.shape)
+        )
+    if width == p:
+        return
+    raise ValueError(
+        "The model has {} {}{} ({}); Z gives {} per row. Give one value per "
+        "{}, in that order, for each row of Z.".format(
+            p, what, "" if p == 1 else "s", ", ".join(names), width, what
+        )
+    )
+
+
+def truncation_window(x: Any, t: Any, tl: Any = None, tr: Any = None) -> Any:
+    """The ``t`` of a parametric regression fit, an ``(N, 2)`` array of
+    ``[tl, tr]`` rows, from its ``tl`` / ``tr`` (each a value per row of
+    ``x``, or one for every row; the side not given is untruncated), so
+    that every fitter takes ``t``, ``tl`` and ``tr`` (Design Principle 1,
+    #662). ``t`` itself is returned as it is; given with ``tl`` or
+    ``tr`` it is refused.
+
+    Examples
+    --------
+    >>> from surpyval.univariate.regression.regression_data import (
+    ...     truncation_window,
+    ... )
+    >>> truncation_window([5.0, 7.0], None, tl=[1.0, 2.0])
+    array([[ 1., inf],
+           [ 2., inf]])
+    """
+    if tl is None and tr is None:
+        return t
+    if t is not None:
+        raise ValueError(
+            "Give the truncation once: as t (an (N, 2) array of [tl, tr] "
+            "rows) or as tl / tr, not both."
+        )
+    rows = len(x) if hasattr(x, "__len__") else 1
+
+    def column(value: Any, fill: float, name: str) -> npt.NDArray:
+        if value is None:
+            return np.full(rows, fill)
+        arr = np.asarray(value, dtype=float)
+        if arr.ndim == 0:
+            return np.full(rows, float(arr))
+        if arr.ndim != 1 or arr.size != rows:
+            raise ValueError(
+                "{} has {} values for {} rows of x; give one per row, or "
+                "a single value for every row.".format(name, arr.size, rows)
+            )
+        return arr
+
+    return np.column_stack(
+        [column(tl, -np.inf, "tl"), column(tr, np.inf, "tr")]
+    )
+
+
+class NoLikelihoodError(ValueError, NotImplementedError, AttributeError):
+    """A model fitted by estimating equations, not by maximising a
+    likelihood, asked for one (#662). A ``ValueError``, as every model
+    says a comparison value is not available for its fit (Fine-Gray's
+    ``neg_ll``, a model built from parameters); a
+    ``NotImplementedError``, as the model has none to implement; and an
+    ``AttributeError``, so that ``hasattr(model, "log_likelihood")`` is
+    ``False``, as for a model without the attribute."""
+
+
+class NoLikelihoodMixin:
+    """``neg_ll``, ``log_likelihood``, ``aic``, ``bic`` and ``aic_c`` on a
+    model that has no likelihood to give them (Lin and Ying's additive
+    hazards, Buckley-James): each raises :class:`NoLikelihoodError`
+    saying why, rather than being absent (#662). The host gives the
+    reason, ``_NO_LIKELIHOOD_WHY``."""
+
+    _NO_LIKELIHOOD_WHY = "it is not fitted by maximum likelihood"
+
+    def _no_likelihood(self, what: str) -> NoLikelihoodError:
+        return NoLikelihoodError(
+            "{} has no {}: {}. Compare such models by their fit to the "
+            "data (concordance(), or the predictions), or fit a "
+            "likelihood-based model to compare by likelihood.".format(
+                type(self).__name__, what, self._NO_LIKELIHOOD_WHY
+            )
+        )
+
+    def neg_ll(self) -> float:
+        """Raises :class:`NoLikelihoodError`: the model has no
+        likelihood."""
+        raise self._no_likelihood("likelihood (neg_ll)")
+
+    @property
+    def log_likelihood(self) -> float:
+        """Raises :class:`NoLikelihoodError` (an ``AttributeError``, so
+        ``hasattr`` is ``False``): the model has no likelihood."""
+        raise self._no_likelihood("likelihood (log_likelihood)")
+
+    def aic(self) -> float:
+        """Raises :class:`NoLikelihoodError`: there is no likelihood to
+        penalise."""
+        raise self._no_likelihood("AIC")
+
+    def bic(self) -> float:
+        """Raises :class:`NoLikelihoodError`: there is no likelihood to
+        penalise."""
+        raise self._no_likelihood("BIC")
+
+    def aic_c(self) -> float:
+        """Raises :class:`NoLikelihoodError`: there is no likelihood to
+        penalise."""
+        raise self._no_likelihood("AIC_c")
 
 
 class LinearPredictorMixin:
@@ -72,6 +214,10 @@ class LinearPredictorMixin:
         "combination of the others"
     )
     _ALIASED_ALSO = ""
+    #: Whether :meth:`_prepare_Z` refuses covariates of the wrong width
+    #: with a message naming the coefficients (#657); the models whose
+    #: ``parameter_names`` are one per column of ``Z`` set it.
+    _CHECKS_WIDTH = False
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -105,7 +251,11 @@ class LinearPredictorMixin:
         formula's raw columns were not expanded at all (#370); an array is
         taken as it is, in the fitted column order.
         """
-        return prepare_Z(Z, self.feature_names, self._model_spec)
+        Zp = prepare_Z(Z, self.feature_names, self._model_spec)
+        if self._CHECKS_WIDTH:
+            # One value per coefficient, said so (#657)
+            check_covariate_width(Zp, list(getattr(self, "parameter_names")))
+        return Zp
 
     def _log_risk(self, Z: npt.NDArray) -> npt.NDArray:
         """``beta'(Z - center)`` for numeric covariate rows ``Z``, the log
@@ -224,6 +374,40 @@ def semi_parametric_inputs(
     return (x_arr, c_arr, n_arr, tl_arr, Z_arr, *extra)
 
 
+def canonical_rows(
+    x: npt.NDArray,
+    c: npt.NDArray,
+    n: npt.NDArray,
+    tl: npt.NDArray,
+    Z: npt.NDArray,
+) -> npt.NDArray:
+    """The order of the rows sorted by every column: time, censoring,
+    entry time, covariates and count, in that order, as
+    ``canonical_order`` sorts a parametric regression's (#728, #777).
+
+    A semi-parametric fit (Buckley-James, the proportional odds model)
+    runs on its rows in this order, so that it is the same to the last
+    digit whatever order they are given in (#760): its sums rounded
+    differently in each order, by 1e-16, and Buckley-James's bootstrap
+    resampled the rows as given. The count is the last key, so data with
+    counts sort as their rows expanded one per unit do (Buckley-James's
+    bootstrap, which resamples the units, then draws the same).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.univariate.regression.regression_data import (
+    ...     canonical_rows,
+    ... )
+    >>> x = np.array([3.0, 1.0, 3.0])
+    >>> one = np.ones(3)
+    >>> canonical_rows(x, np.zeros(3), one, np.zeros(3), [[2.0], [5.0], [1.0]])
+    array([1, 2, 0])
+    """
+    Z_arr = np.asarray(Z, dtype=float).reshape(len(x), -1)
+    return np.lexsort([n, *Z_arr.T[::-1], tl, c, x])
+
+
 def design_matrix_from_df(
     df: pd.DataFrame,
     Z_cols: str | list[str] | None = None,
@@ -290,9 +474,8 @@ def design_matrix_from_df(
     else:
         Z_cols = list(Z_cols)
 
-    unknown = [c for c in Z_cols if c not in df.columns]
-    if len(unknown) > 0:
-        raise ValueError("{} not in dataframe columns".format(unknown))
+    # Named, with the columns there are, as a missing x_col is (#663).
+    check_columns(df, Z_cols=Z_cols)
 
     Z = numeric_columns(df, Z_cols)
     return Z, Z_cols, None
@@ -906,6 +1089,7 @@ class DataFrameRegressionMixin:
     # Provided by the host fitter class this mixin is combined with.
     fit: Callable[..., "ParametricRegressionModel"]
 
+    @column_arguments("x", "c", "n", "xl", "xr", "tl", "tr")
     def fit_from_df(
         self,
         df: pd.DataFrame,
@@ -995,6 +1179,8 @@ class DataFrameRegressionMixin:
         array([0.4757, 0.0024])
         """
         x = _regression_times(df, x_col, xl_col, xr_col)
+        check_columns(df, c_col=c_col, n_col=n_col, tl_col=tl_col)
+        check_columns(df, tr_col=tr_col)
         Z, feature_names, model_spec = design_matrix_from_df(
             df, Z_cols, formula
         )

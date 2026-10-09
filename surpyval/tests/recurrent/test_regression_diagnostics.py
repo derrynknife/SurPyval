@@ -106,7 +106,7 @@ def _two_group_data():
 
 def _fitted():
     x, i, c, Z = _two_group_data()
-    return ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=CrowAMSAA)
+    return ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, baseline=CrowAMSAA)
 
 
 def test_cumulative_hazard_residuals_are_per_item_cif_gaps():
@@ -198,7 +198,7 @@ def test_residuals_reject_interval_censored_data():
     x = np.array([xl, xr]).T
     Z = np.array([0.0, 0.0, 0.0]).reshape(-1, 1)
     model = ProportionalIntensityNHPP.fit(
-        x, Z, i=[1, 1, 1], c=[2, 2, 2], dist=CrowAMSAA
+        x, Z, i=[1, 1, 1], c=[2, 2, 2], baseline=CrowAMSAA
     )
     with pytest.raises(ValueError, match="exact event times"):
         model.residuals()
@@ -264,7 +264,7 @@ def test_cvm_flags_a_misspecified_baseline():
         np.array([0, 0, 1, 1]).reshape(-1, 1),
         i=[1, 1, 2, 2],
         c=[0, 1, 0, 1],
-        dist=CrowAMSAA,
+        baseline=CrowAMSAA,
     )
     truth.params = np.array([12.0, 3.0])  # sharply increasing intensity
     truth.coeffs = np.array([0.5])
@@ -289,7 +289,7 @@ def test_cvm_flags_a_misspecified_baseline():
     Zs = np.array(Zs).reshape(-1, 1)
 
     good = ProportionalIntensityNHPP.fit(
-        xs, Zs, i=iis, c=cs, dist=CrowAMSAA
+        xs, Zs, i=iis, c=cs, baseline=CrowAMSAA
     ).cramer_von_mises(n_boot=60, random_state=10)
     bad = ProportionalIntensityHPP.fit(xs, Zs, i=iis, c=cs).cramer_von_mises(
         n_boot=60, random_state=11

@@ -1,9 +1,15 @@
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
+from autograd import numpy as np
 from numpy import ndarray
 
 from surpyval.utils.fitter_repr import FitterRepr
+
+#: An absolute temperature below this, in kelvin (-73 degrees Celsius), is
+#: far colder than any life test: every stress of a kelvin column below it
+#: is most likely a temperature typed in degrees Celsius (#654).
+KELVIN_WARNING_BELOW = 200.0
 
 
 class LifeModel(FitterRepr, ABC):
@@ -52,11 +58,26 @@ class LifeModel(FitterRepr, ABC):
     #: a power or logarithm of them (``Z**n``, ``log Z``), or reads them as
     #: an absolute temperature.
     positive_stress_columns: "tuple[int, ...]" = ()
+    #: Stress columns read as an absolute temperature, in kelvin (the
+    #: Arrhenius-type models): the fit refuses a value <= 0 there, naming
+    #: kelvin, and warns when every value is below
+    #: ``KELVIN_WARNING_BELOW`` (a temperature typed in degrees Celsius,
+    #: #654).
+    kelvin_stress_columns: "tuple[int, ...]" = ()
+    #: Whether the fit warns when every value of a kelvin column is below
+    #: ``KELVIN_WARNING_BELOW``; ``Eyring``, also used for a non-thermal
+    #: stress, does not.
+    warns_below_kelvin: bool = True
     #: Whether :meth:`phi` takes a 2-D array of stress rows and gives one
     #: life per row, as the built-in models do; the fit then finds every
     #: row's life in one call. ``False`` (the default, for a custom model
     #: written for a single stress) calls it once per distinct stress.
     phi_takes_rows: bool = False
+    #: The parameters that multiply the life, a positive factor (``c`` of
+    #: ``PowerExponential``, ``a`` of ``Power``): :meth:`log_life` takes
+    #: each as its log, and the fit searches it on the log scale over its
+    #: whole range (#634).
+    log_scale_parameters: "tuple[str, ...]" = ()
 
     def __init__(
         self,
@@ -93,6 +114,35 @@ class LifeModel(FitterRepr, ABC):
         parameters ``params``. Must be written with ``autograd.numpy`` so
         the fit can differentiate it.
         """
+
+    def log_life(self, Z: ndarray, *params: float) -> ndarray:
+        r"""
+        The log of the life, :math:`\ln L(Z)`, with each of
+        :attr:`log_scale_parameters` given as its log: for a life model
+        whose log-life is linear in them (``PowerExponential``'s
+        :math:`\ln c + a / U + n \ln V`), which its :meth:`phi` is the
+        exponent of. The fit computes the life from it, on the log scale
+        it searches those parameters on, so that the life stays finite
+        where a factor alone would not (:math:`e^{a/U}` overflowing, or
+        ``c`` underflowing, where their product is an ordinary life,
+        #634). Only for a model with :attr:`log_scale_parameters`.
+        """
+        raise NotImplementedError(
+            "{} has no log_life: it has no log_scale_parameters".format(
+                self.name
+            )
+        )
+
+    def _phi_from_log_life(self, Z: ndarray, params: tuple) -> ndarray:
+        """:meth:`phi` as the exponent of :meth:`log_life` at the
+        parameters ``params``, each of :attr:`log_scale_parameters` given
+        as itself (its log taken here)."""
+        logged = list(params)
+        with np.errstate(divide="ignore"):
+            for name in self.log_scale_parameters:
+                i = self.phi_param_map[name]
+                logged[i] = np.log(params[i])
+        return np.exp(self.log_life(Z, *logged))
 
     @abstractmethod
     def phi_init(self, life: float, Z: ndarray) -> list[float]:

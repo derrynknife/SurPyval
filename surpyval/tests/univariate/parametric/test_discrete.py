@@ -557,12 +557,16 @@ def test_fixed_event_probability_is_unchanged_and_separate():
         np.testing.assert_allclose(
             FixedEventProbability.sf(x, P_BERN), 1 - P_BERN
         )
-    # Its F is constant, so it still has no density, hazard rate or
-    # quantile: the mass is an atom rather than a density, and there is no
-    # time axis to invert. Its moments are those of the 0/1 event
+    # Its F is constant, so it still has no density or hazard rate: the
+    # mass is an atom rather than a density. Its quantile is the two-point
+    # mixture's, 0 up to p and infinite above (#626: every model has a
+    # qf, principle 2). Its moments are those of the 0/1 event
     # indicator, and ``mean`` (once missing while ``moment`` existed) is
     # the first of them.
-    for absent in ("df", "hf", "qf"):
+    np.testing.assert_array_equal(
+        FixedEventProbability.qf([P_BERN, 0.99], P_BERN), [0.0, np.inf]
+    )
+    for absent in ("df", "hf"):
         assert not any(
             absent in k.__dict__ for k in type(FixedEventProbability).__mro__
         ), absent
@@ -585,6 +589,32 @@ def test_fixed_event_probability_is_unchanged_and_separate():
     np.testing.assert_allclose(
         FixedEventProbability.log_ff(np.array([1.0, 9.0]), P_BERN),
         np.log(P_BERN),
+    )
+
+
+def test_fixed_event_probability_random_qf_and_fit_agree():
+    # #626 gave the model a qf of times (0 or inf); the fitted model's
+    # random draws through qf, so it drew times that its fit, which takes
+    # 0/1 indicators, refused ("'x' must be either 0 or 1"): the nightly
+    # refit failed every rep. random draws the indicators fit takes, 1
+    # exactly where qf of the same uniform is 0.
+    from surpyval import FixedEventProbability
+
+    model = FixedEventProbability.from_params(P_BERN)
+    draw = model.random(500, random_state=4)
+    u = np.random.default_rng(4).random(500)
+    np.testing.assert_array_equal(draw, (model.qf(u) == 0).astype(int))
+    np.testing.assert_array_equal(
+        draw, FixedEventProbability.random(500, P_BERN, random_state=4)
+    )
+    refit = FixedEventProbability.fit(draw)
+    assert refit.params[0] == pytest.approx(draw.mean())
+    assert refit.params[0] == pytest.approx(model.mean(), abs=0.07)
+    np.random.seed(2)
+    a = model.random((3, 4))
+    np.random.seed(2)
+    np.testing.assert_array_equal(
+        a, (model.qf(np.random.random_sample((3, 4))) == 0).astype(int)
     )
 
 
@@ -831,3 +861,14 @@ def test_discretize_round_trips():
     restored = surv.from_dict(model.to_dict())
     assert restored.dist.name == "Discretize(Weibull)"
     assert np.allclose(restored.sf([1, 3, 5]), model.sf([1, 3, 5]))
+
+
+def test_746_fixed_event_probability_Hf_of_p_zero_is_plus_zero():
+    # sf is 1 with p = 0, and -log(1) was -0.0 (#746).
+    from surpyval import FixedEventProbability
+
+    H = FixedEventProbability.Hf(np.array([1.0, 2.0]), 0.0)
+    assert np.all(H == 0) and not np.any(np.signbit(H))
+    np.testing.assert_allclose(
+        FixedEventProbability.Hf(np.array([1.0]), 0.5), np.log(2.0)
+    )

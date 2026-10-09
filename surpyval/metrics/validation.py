@@ -127,9 +127,9 @@ def survival_probability(
     model : object
         Any fitted model exposing ``sf(x, Z)`` where ``x`` is paired
         element-wise with the rows of ``Z`` (the parametric regression
-        families, ``CoxPH``, ``AdditiveHazards``), or returning an
-        ``(n_samples, n_times)`` grid (the ``beta.ml`` ``SurvivalTree`` and
-        ``RandomSurvivalForest``). Models whose ``sf`` takes a single
+        families, ``CoxPH``, ``AdditiveHazards``, the ``beta.ml``
+        ``SurvivalTree`` and ``RandomSurvivalForest``), or returning an
+        ``(n_samples, n_times)`` grid. Models whose ``sf`` takes a single
         covariate vector (``BuckleyJames``) are not supported: build their
         matrix row by row with ``model.sf(times, Z[i])``.
     Z : array_like or pandas.DataFrame
@@ -181,11 +181,11 @@ def survival_probability(
     cols = []
     for t in times:
         out = np.asarray(model.sf(np.full(n, float(t)), Z_in), dtype=float)
-        # ``sf`` conventions differ across model families: the regression
-        # models pair ``x`` with the rows of ``Z`` and return a 1-D vector,
-        # while the ``beta.ml`` forest returns an ``(n_samples, n_times)``
-        # grid. Because every requested time here equals ``t``, every column
-        # of the grid is the same ``S(t | Z_i)`` vector, so take column 0.
+        # The regression models, survival trees and forests pair ``x`` with
+        # the rows of ``Z`` and return a 1-D vector; a model returning an
+        # ``(n_samples, n_times)`` grid instead has, since every requested
+        # time here equals ``t``, the same ``S(t | Z_i)`` vector in every
+        # column, so take column 0.
         col = out[:, 0] if out.ndim == 2 else out.ravel()
         if col.shape[0] != n:
             raise ValueError(

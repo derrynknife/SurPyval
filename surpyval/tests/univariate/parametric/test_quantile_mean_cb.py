@@ -246,8 +246,6 @@ def test_591_a_custom_distribution_is_differentiated_a_point_at_a_time(
 @pytest.mark.parametrize(
     "kwargs, match",
     [
-        ({"p": 0.0}, "'p' must be in"),
-        ({"p": 1.0}, "'p' must be in"),
         ({"p": 0.1, "bound": "both"}, "'bound' must be one of"),
         ({"p": 0.1, "method": "boot"}, "'method' must be one of"),
         ({"p": 0.1, "alpha_ci": 1.2}, "'alpha_ci'"),
@@ -257,6 +255,20 @@ def test_invalid_arguments_raise(kwargs, match):
     model = sp.Weibull.fit(X, C)
     with pytest.raises(ValueError, match=match):
         model.quantile_cb(**kwargs)
+
+
+@pytest.mark.parametrize("method", ["wald", "lr"])
+def test_626_p_outside_0_1_is_nan_with_one_warning(method):
+    # As qf (#611): it raised a ValueError; the others are bounded, and a
+    # missing p is nan without a warning.
+    model = sp.Weibull.fit(X, C)
+    with pytest.warns(UserWarning, match=r"quantile_cb: 3 of the 5") as rec:
+        got = model.quantile_cb([0.1, 0.0, 1.0, 10.0, np.nan], method=method)
+    assert len(rec) == 1 and rec[0].filename == __file__
+    np.testing.assert_allclose(got[0], model.quantile_cb(0.1, method=method))
+    assert np.isnan(got[1:]).all()
+    lower = model.quantile_cb([0.1, 2.0], bound="lower", method=method)
+    assert np.isfinite(lower[0]) and np.isnan(lower[1])
 
 
 def test_only_mle_has_bounds():

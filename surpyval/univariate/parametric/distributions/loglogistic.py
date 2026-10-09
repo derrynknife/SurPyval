@@ -24,6 +24,28 @@ from ._stable import (
 
 
 class LogLogistic_(OptimisedFitMixin, ParametricFitter):
+    r"""
+    The LogLogistic distribution: the logarithm of the time to failure is
+    Logistic. Like the LogNormal its hazard can rise and then fall, and
+    its survival function has a closed form.
+
+    The parameters are the scale ``alpha``, the median life, and the shape
+    ``beta``, both positive. On the support :math:`(0, \infty)`,
+
+    .. math::
+        R(x) = \frac{1}{1 + \left ( x / \alpha \right )^{\beta}}.
+
+    ``fit`` estimates the parameters from data (which may be censored
+    and truncated); ``from_params`` builds the model from known values.
+
+    Examples
+    --------
+    >>> from surpyval import LogLogistic
+    >>> model = LogLogistic.from_params([50, 3])
+    >>> model.sf([25, 50, 100]).round(4)
+    array([0.8889, 0.5   , 0.1111])
+    """
+
     # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
     # the logit of ff, on which this family is a straight line in
     # log time (#477).

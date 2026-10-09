@@ -10,7 +10,6 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
     ParametricFitter,
-    lfp_p_renamed,
     reject_structural_params,
 )
 
@@ -252,7 +251,6 @@ class ExactEventTime_(ParametricFitter):
         self._set_support(model, False)
         return model
 
-    @lfp_p_renamed
     def from_params(
         self,
         params: npt.ArrayLike,

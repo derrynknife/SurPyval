@@ -173,13 +173,15 @@ def test_611_right_censoring_at_the_support_start_is_kept():
 
 
 def test_611_offset_fit_takes_a_negative_censored_time():
-    # The offset moves the support to (gamma, inf), and gamma lies below
-    # every time, so a negative time is inside it.
+    # The offset moves the support to (gamma, inf), so a negative time is
+    # not refused; a right-censored one does not cap gamma either (S = 1
+    # below it, #633), which stays below the first failure.
     np.random.seed(2)
     x = np.append(W.random(100, 10, 2), -1.0)
     c = np.append(np.zeros(100), 1)
     model = W.fit(x, c, offset=True)
-    assert model.gamma <= -1.0
+    assert model.gamma < x[:100].min()
+    assert np.isfinite(model.neg_ll())
 
 
 def test_611_mixture_and_dataframe_fits_refuse_it_too():

@@ -329,3 +329,166 @@ def test_622_a_later_rung_run_into_the_first_failure_ends_there(
     assert str(rec[0].message).startswith(NO_MAXIMUM)
     assert model.maximum == "no finite maximum"
     assert model.gamma == pytest.approx(np.min(x), abs=1e-6)
+
+
+def _location_sample(family, seed):
+    """A sample of 15, 30 or 100 from a location-scale ``family`` (the
+    limits of the offset families) at 50, its scale 2 to 10: a symmetric
+    or left skewed sample, on which an offset fit can run to the limit."""
+    rng = np.random.default_rng(seed)
+    n = int(rng.choice([15, 30, 100]))
+    scale = float(rng.uniform(2, 10))
+    return family.random(n, 50.0, scale, random_state=rng)
+
+
+@pytest.mark.parametrize("seed", [1, 13, 27])
+def test_627_a_left_skewed_loglogistic_runs_to_the_logistic_quickly(
+    seed, monkeypatch
+):
+    # Smallest extreme value samples (left skewed): the offset LogLogistic
+    # runs to the Logistic. Newton's test reads rounding that far out, so
+    # the runaway was only called at the end of the ladder (after 1,800,
+    # 1,100 and 3,100 evaluations on these; the first search of seed 13
+    # and 27 overshot to where the likelihood is not finite, and TNC ran
+    # its 1,000 from the start). Now the rung that reaches the run ends
+    # the search, after a profile over the offset finds nothing on the way
+    # fitting better than the limit.
+    x = _location_sample(sp.Gumbel, seed)
+    calls = _count_evaluations(monkeypatch)
+    model, rec = _fit(sp.LogLogistic, x=x)
+    assert len(calls) < 600
+    assert len(rec) == 1, [str(w.message)[:60] for w in rec]
+    message = str(rec[0].message)
+    assert message.startswith("No finite maximum: the LogLogistic")
+    assert "approaches a Logistic distribution" in message
+    assert model.maximum == "no finite maximum"
+    assert model.gamma < x.min() - 1e4
+    assert model.neg_ll() >= sp.Logistic.fit(x).neg_ll() - 1e-9
+
+
+@pytest.mark.parametrize("dist", [sp.LogNormal, sp.Gamma])
+def test_627_a_flat_maximum_just_above_the_normal_is_not_a_runaway(dist):
+    # Thirty points from a Normal: the profile likelihood over the offset
+    # has a very flat maximum near gamma = -150, 0.012 above the Normal
+    # limit's log-likelihood. The search stopped on the way, its profile
+    # flat to the verification's tolerance, and was called a runaway
+    # ("No finite maximum") though it already fitted better than the
+    # limit. Now a point better than the limit is not a runaway, and the
+    # fit ends at the maximum.
+    x = _location_sample(sp.Normal, 6)
+    model, rec = _fit(dist, x=x)
+    assert not rec, [str(w.message)[:60] for w in rec]
+    assert model.maximum == "verified"
+    normal = sp.Normal.fit(x).neg_ll()
+    assert model.neg_ll() < normal - 0.01
+    assert -300 < model.gamma < x.min()
+
+
+def test_627_a_runaway_still_runs_where_nothing_beats_the_limit():
+    # The same family of samples where the profile rises all the way to
+    # the Normal: still "No finite maximum", towards the Normal.
+    x = _location_sample(sp.Normal, 0)
+    model, rec = _fit(sp.LogNormal, x=x)
+    assert len(rec) == 1, [str(w.message)[:60] for w in rec]
+    assert "approaches a Normal distribution" in str(rec[0].message)
+    assert model.maximum == "no finite maximum"
+
+
+def test_627_the_comparison_with_the_limit_has_a_tolerance():
+    # A point within rounding of the limit (1.8e-7 better, where the
+    # family is computed far out) is on the way to it; one clearly
+    # better is not.
+    from surpyval.univariate.parametric.fitters import mle
+
+    def judge(here, limit):
+        return mle._Judge(
+            lambda x, *args: here,
+            None,
+            None,
+            (True, False, False, True),
+            np.array([0.0]),
+            0.0,
+            1.0,
+            (lambda u: np.asarray(u, dtype=float),),
+            {},
+            [],
+            lambda: limit,
+        )
+
+    below = np.array([-5.0])
+    assert judge(100.0, 100.0 + 1.8e-7).toward_limit(below)
+    assert not judge(100.0, 100.0 + 1.8e-7).beats_limit(below)
+    assert judge(100.0, 100.01).beats_limit(below)
+    assert not judge(100.0, 100.01).toward_limit(below)
+    # not moved down from the start: neither
+    assert not judge(100.0, 100.0).toward_limit(np.array([1.0]))
+
+
+def test_630_offset_mps_without_a_limit_family_fails_fast(monkeypatch):
+    # An offset ExpoWeibull on the #599 data: its spacings run off with no
+    # limit family to compare with. BFGS diverged and Newton-CG took 32 s
+    # of a 34 s fit before "MPS FAILED"; a diverged BFGS goes to the
+    # derivative-free rung now, and the same answer comes back.
+    #
+    # Whether BFGS diverges or loses precision at a finite point on the
+    # way (offset -6e4) depends on how numpy rounds: it diverged with this
+    # machine's AVX-512 kernels and stopped with the AVX2 ones of CI's
+    # runners (seen on 3.11, numpy 2.4 / scipy 1.17), where Newton-CG
+    # then took 19 of 21 s. A finite stop now goes to the derivative-free
+    # rung too, which shows the run-off. The two paths end at different
+    # points of the run-off, where the objective is flat (within 1e-5),
+    # one "MPS FAILED" (the rung hit its evaluation cap from the cold
+    # start) and the other "No finite maximum"; either says there is no
+    # answer and points to how='MLE'. What is checked is that it fails
+    # fast (no Newton-CG, the rung that took the time) with one warning.
+    from surpyval.univariate.parametric import fitters
+
+    methods = []
+    newton = fitters.minimize_with_gradient
+
+    def counted(*args, **kwargs):
+        methods.append(kwargs.get("method"))
+        return newton(*args, **kwargs)
+
+    monkeypatch.setattr(fitters, "minimize_with_gradient", counted)
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        model = sp.ExpoWeibull.fit(X_599, C_599, N_599, offset=True, how="MPS")
+    assert "Newton-CG" not in methods
+    assert len(rec) == 1, [str(w.message)[:60] for w in rec]
+    message = str(rec[0].message)
+    assert message.startswith(
+        ("MPS FAILED: the maximum product", "No finite maximum: the Expo")
+    ), message
+    assert "how='MLE'" in message
+    assert rec[0].filename == __file__
+    assert model.res.fun == pytest.approx(2.55435, abs=1e-5)
+
+
+def test_630_an_mps_success_on_a_flat_objective_is_checked():
+    # The offset LogLogistic on the #599 rows (no counts): BFGS reported
+    # success with the offset run down to -1.5e5, on the flat objective on
+    # the way to the Logistic, and the fit ended there in silence.
+    #
+    # Whether BFGS reports success on the flat stretch or diverges past it
+    # depends on how numpy rounds: with 3.11's numpy 2.4 / scipy 1.17 and
+    # AVX-512 kernels it diverged, and the derivative-free rung (from the
+    # cold start, as after any divergence) stopped at its evaluation cap
+    # further out, offset -2e7. Either way the fit must say that there is
+    # no finite maximum, which is what this checks.
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        model = sp.LogLogistic.fit(X_599, offset=True, how="MPS")
+    assert model.res.success or model.res.optimizer == "Nelder-Mead"
+    assert len(rec) == 1, [str(w.message)[:60] for w in rec]
+    message = str(rec[0].message)
+    assert message.startswith("No finite maximum: the LogLogistic's")
+    assert "surpyval.Logistic" in message
+
+
+def test_630_ordinary_mps_fits_are_verified_and_silent():
+    x = 40.0 + sp.Weibull.random(30, 60.0, 4.0, random_state=3)
+    for kwargs in ({}, {"offset": True}):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            sp.Weibull.fit(x, how="MPS", **kwargs)

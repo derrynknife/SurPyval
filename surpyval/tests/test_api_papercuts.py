@@ -196,21 +196,13 @@ def test_top_level_names_a_helper_s_subpackage(name, where):
     assert not hasattr(sp, name)
 
 
-@pytest.mark.parametrize(
-    "name, value, instead",
-    [
-        ("NUM", np.float64, "numpy.float64"),
-        ("TINIEST", np.finfo(float).tiny, "numpy.finfo(float).tiny"),
-        ("EPS", np.sqrt(np.finfo(float).eps), "numpy.sqrt("),
-    ],
-)
-def test_613_top_level_constants_are_deprecated(name, value, instead):
-    # They still work until v0.24, with a warning naming what to use, and
-    # are no longer listed; ``surpyval.np`` stays (custom distributions).
-    with pytest.warns(DeprecationWarning, match="v0.24") as caught:
-        assert getattr(sp, name) == value
-    assert instead in str(caught[0].message)
-    assert caught[0].filename == __file__
+@pytest.mark.parametrize("name", ["NUM", "TINIEST", "EPS"])
+def test_613_top_level_constants_are_gone(name):
+    # Deprecated in v0.23 and removed in v0.24: use numpy's own
+    # (``numpy.float64``, ``numpy.finfo(float).tiny`` ...). ``surpyval.np``
+    # stays (custom distributions).
+    with pytest.raises(AttributeError, match=repr(name)):
+        getattr(sp, name)
     assert name not in dir(sp)
     assert "np" in dir(sp)
 
@@ -388,8 +380,9 @@ def test_competing_risks_plots_its_cumulative_incidences():
     model = CompetingRisks.fit(x, e, c=[0, 0, 0, 0, 0, 1, 0, 0])
     _, ax = plt.subplots()
     model.plot(ax=ax)
-    # the top of the stack is the sum of the causes' incidences
-    top = ax.collections[-1].get_paths()[0].vertices[:, 1].max()
+    # the top of the stack is the sum of the causes' incidences (the last
+    # cause's layer; the bounds' band is drawn after the stack)
+    top = ax.collections[1].get_paths()[0].vertices[:, 1].max()
     assert top == pytest.approx(model.cif(8, "a") + model.cif(8, "b"))
     _, ax = plt.subplots()
     model.plot(stacked=False, ax=ax)
@@ -448,3 +441,48 @@ def test_576_qf_warns_of_a_probability_outside_the_unit_interval():
     with pytest.warns(UserWarning, match=r"outside \[0, 1\]"):
         out = rp.qf(np.array([0.5, 1.5]))
     assert np.isfinite(out[0]) and np.isnan(out[1])
+
+
+# -- help(surpyval): a package docstring, __all__ and class docstrings (#667)
+
+
+def test_package_has_a_docstring_and_all():
+    assert surpyval.__doc__ and "survival" in surpyval.__doc__
+    names = set(surpyval.__all__)
+    assert set(surpyval._LAZY) <= names
+    assert not names & {"np", "Any", "TYPE_CHECKING"}
+    assert len(names) == len(surpyval.__all__)
+    namespace: dict = {}
+    exec("from surpyval import *", namespace)
+    for name in ("np", "Any", "TYPE_CHECKING"):
+        assert name not in namespace
+    for name in surpyval.__all__:
+        assert namespace[name] is getattr(surpyval, name)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Weibull",
+        "LogNormal",
+        "LogLogistic",
+        "ExpoWeibull",
+        "Gumbel",
+        "Logistic",
+        "Rayleigh",
+        "Uniform",
+        "Beta",
+        "Galton",
+        "GumbelLEV",
+        "Exponential",
+        "Gamma",
+    ],
+)
+def test_distribution_class_docstrings_have_formula_and_example(name):
+    fitter = getattr(sp, name)
+    doc = inspect.getdoc(type(fitter))
+    assert doc and "Class used to generate" not in doc
+    assert "R(x)" in doc
+    assert "Examples" in doc and ">>> " in doc
+    for parameter in fitter.parameter_names:
+        assert f"``{parameter}``" in doc

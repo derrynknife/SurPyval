@@ -119,6 +119,21 @@ class NHPPFitter(IntensityModel):
         from the non-parametric MCF (``mcf_hat`` at ``x_unique``)."""
         return self.parameter_initialiser(data.x)
 
+    def _search_units(self, data: RecurrentEventData) -> np.ndarray:
+        """The unit of each parameter in the space where the likelihood
+        is searched and its maximum checked (1 for every parameter, the
+        default; ``CoxLewis``'s ``beta``, a rate per unit time, has one
+        over the longest time)."""
+        return np.ones(len(self.parameter_names))
+
+    def _closed_form_mle(
+        self, data: RecurrentEventData
+    ) -> "np.ndarray | None":
+        """The exact maximum-likelihood parameters where the model has a
+        closed form for ``data``, else ``None`` (the default): the search
+        is then run."""
+        return None
+
     def fit_from_recurrent_data(
         self,
         data: RecurrentEventData,
@@ -173,6 +188,13 @@ class NHPPFitter(IntensityModel):
         # positive parameter of exactly 0 (Crow-AMSAA's alpha) divided by
         # zero in the intensity.
         to_natural, to_search = unconstraining_maps(list(self.bounds))
+        # The likelihood's search and the check of its maximum run with
+        # each coordinate in its parameter's unit (``_search_units``):
+        # the check's differences are steps of 1e-7 of that, and a
+        # Cox-Lewis beta of 1e-5 per hour, checked in units of 1, had its
+        # slope differenced in steps of 1% of it; most fits on data in
+        # tens of thousands of hours were called unverified (#760).
+        units = np.asarray(self._search_units(data), dtype=float)
 
         def fun(u: np.ndarray) -> float:
             with np.errstate(all="ignore"):
@@ -182,11 +204,15 @@ class NHPPFitter(IntensityModel):
             return float(value) if np.isfinite(value) else 1e300
 
         ll_func = self.create_negll_func(data) if how == "MLE" else None
+        exact = self._closed_form_mle(data) if how == "MLE" else None
+        if exact is not None:
+            assert ll_func is not None
+            return self._closed_form_model(data, exact, ll_func, mcf_hat)
 
         def search_ll(u: np.ndarray) -> float:
             assert ll_func is not None
             with np.errstate(all="ignore"):
-                value = ll_func(to_natural(u))
+                value = ll_func(to_natural(u * units))
             return float(value) if np.isfinite(value) else 1e300
 
         def search(start: np.ndarray) -> OptimizeResult:
@@ -194,7 +220,7 @@ class NHPPFitter(IntensityModel):
             # from it
             res = minimize(fun, to_search(np.asarray(start, dtype=float)))
             if how == "MLE":
-                res = minimize(search_ll, res.x, method="Nelder-Mead")
+                res = minimize(search_ll, res.x / units, method="Nelder-Mead")
             elif not res.success:
                 # BFGS's finite-difference gradient can stop it at the
                 # minimum with "precision loss" (Cox-Lewis, whose squared
@@ -228,7 +254,7 @@ class NHPPFitter(IntensityModel):
                 warn_unverified(what)
         elif not (res.success and res.fun < 1e300):
             warn_unverified(what)
-        params = to_natural(res.x)
+        params = to_natural(res.x * units if how == "MLE" else res.x)
 
         model = ParametricRecurrenceModel()
         model.mcf_hat = mcf_hat
@@ -247,8 +273,41 @@ class NHPPFitter(IntensityModel):
             model._neg_ll = Rebuilt(
                 self.create_negll_func, (data,), built=ll_func
             )
+            if np.any(units != 1.0):
+                # The parameters' units, in which the maximum was checked
+                # (as an ARI fit's likelihood carries them)
+                model._neg_ll.search_floor = units  # type: ignore
             model._mle = np.asarray(params, dtype=float)
             model._n_obs = bic_sample_size(data)
+        return model
+
+    def _closed_form_model(
+        self,
+        data: RecurrentEventData,
+        params: np.ndarray,
+        ll_func: Callable,
+        mcf_hat: np.ndarray,
+    ) -> ParametricRecurrenceModel:
+        """The fitted model at the closed-form MLE ``params``: exact,
+        so a verified maximum, with no search (``res`` records the
+        likelihood there)."""
+        params = np.asarray(params, dtype=float)
+        model = ParametricRecurrenceModel()
+        model.mcf_hat = mcf_hat
+        model.res = OptimizeResult(
+            x=params,
+            fun=float(ll_func(params)),
+            success=True,
+            message="closed-form maximum-likelihood estimate",
+        )
+        model.params = params
+        model.data = data
+        model.dist = self
+        model.how = "MLE"
+        model.maximum = "verified"
+        model._neg_ll = Rebuilt(self.create_negll_func, (data,), built=ll_func)
+        model._mle = params
+        model._n_obs = bic_sample_size(data)
         return model
 
     def fit(
@@ -288,8 +347,11 @@ class NHPPFitter(IntensityModel):
             left-censored and 2 interval-censored counts (with ``n``).
             Defaults to all observed.
         n: array_like, optional
-            Number of events in each row (for left- and interval-censored
-            counts). Defaults to 1.
+            Number of events in each row: a count on a left- or
+            interval-censored row (``c=-1`` or ``c=2``). An exact event
+            (``c=0``) and an end-of-observation row (``c=1``) stand for one,
+            so ``n > 1`` there is refused: repeat the row for simultaneous
+            events. Defaults to 1.
         t: array_like, optional
             (N, 2) array of [left, right] truncation bounds per observation.
         tl: array_like or scalar, optional
@@ -336,9 +398,9 @@ class NHPPFitter(IntensityModel):
         >>> c = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
         >>> model = CrowAMSAA.fit(x, i=i, c=c)
         >>> model.params
-        array([7.82428586, 0.73833691])
+        array([7.82423499, 0.73833571])
         >>> model.cif(60)
-        np.float64(4.49998940938965)
+        np.float64(4.5)
         """
         data = handle_xicn(
             x,

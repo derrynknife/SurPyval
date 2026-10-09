@@ -9,9 +9,13 @@ import numpy.typing as npt
 from scipy.optimize import OptimizeResult, minimize
 
 from surpyval.univariate.parametric.fitters import (
+    EachParameter,
     bounds_convert,
     identity,
     verify_or_polish,
+)
+from surpyval.univariate.parametric.fitters.runaway import (
+    search_derivatives,
 )
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
@@ -23,7 +27,6 @@ from surpyval.utils import _caller_stacklevel
 from surpyval.utils.covariates import (
     coefficient_floor,
     coefficient_names,
-    renamed_coefficient_keys,
 )
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -39,23 +42,26 @@ from .._fit_skeleton import (
     HazardIdentitiesMixin,
     MirroredDistributionAttrs,
     assemble_regression_model,
+    canonical_order,
     check_baseline_support,
     check_fixed_and_init,
     covariate_center,
     drop_nonfinite_covariates,
     finish_search,
     finite_start,
+    free_baseline,
     free_coefficients,
     keep_information,
     make_objective,
     mirror_distribution,
+    newton_finish,
     one_sided_positions,
     require_finite_fit,
     uniform_draws,
 )
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
-from ..regression_data import DataFrameRegressionMixin
+from ..regression_data import DataFrameRegressionMixin, truncation_window
 from .lifemodel import LifeModel
 
 
@@ -64,16 +70,56 @@ def _search(
     x0: npt.NDArray,
     n_obs: float,
     floor: "float | npt.ArrayLike" = 1.0,
+    one_sided: "tuple[int, ...]" = (),
 ) -> tuple[OptimizeResult, bool]:
     """Minimise ``fun`` from ``x0`` with Nelder-Mead then TNC, as the fit
     always searched, and whether the answer is verifiably a minimum (see
     ``verify_or_polish``, which polishes one that is not, each component
-    in units of at least ``floor``)."""
+    in units of at least ``floor``).
+
+    A verified answer is taken the rest of the way to the minimum by
+    Newton's method (``newton_finish``, as the other parametric
+    regressions are, #758; the parameters with one bound, ``one_sided``,
+    on the log scale of their distance from it), all the way to the
+    rounding of the log-likelihood (``fine=0``), not the other fits'
+    1e-9 nats. The searches' tolerances stop them anywhere in a
+    neighbourhood of the minimum that is wide along a flat direction (a
+    constant factor ``c`` against the coefficients of stresses far from
+    0), so the answer depended on the path: 1e-4 apart in the parameters
+    for one fit with and without an aliased column, once ``c`` was
+    searched on its log scale (#634); along such a ridge 1e-10 nats is
+    1e-4 in the parameters."""
     res1 = minimize(fun, x0, method="Nelder-Mead", options={"maxiter": 1000})
     res2 = minimize(fun, res1.x, method="TNC")
-    return verify_or_polish(
+    res, verified = verify_or_polish(
         fun, res2 if res2.success else res1, n_obs, floor=floor
     )
+    if verified:
+        with np.errstate(all="ignore"), warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "Output seems independent")
+            derivatives = search_derivatives(fun, res.x)
+        if derivatives is not None:
+            res, _ = newton_finish(
+                fun, res, derivatives, n_obs, (), floor, one_sided, fine=0.0
+            )
+    return res, verified
+
+
+class _LifeOfLogScale:
+    """A life model's ``phi`` for the fit's objective, taking the
+    parameters it searches on the log scale (``log_scale_parameters``) as
+    their logs, the search's own values: the life is then one exponent of
+    them (``LifeModel.log_life``), which neither underflows where ``c``
+    alone would (1e-322, where the search could go no further and the fit
+    could only say "unverified") nor overflows where ``e^(a / U)`` alone
+    would (#634). A class, not a closure, so the model that keeps the
+    objective pickles (#573)."""
+
+    def __init__(self, life_model: LifeModel) -> None:
+        self.life_model = life_model
+
+    def __call__(self, Z: Any, *params: Any) -> Any:
+        return np.exp(self.life_model.log_life(Z, *params))
 
 
 def _coefficient_units(
@@ -354,29 +400,69 @@ class ParameterSubstitutionFitter(
     def _check_stresses(self, Z_arr: npt.NDArray) -> None:
         """Refuse stresses the life model is not defined at.
 
-        ``Power`` (``a Z**n``), ``InversePower``, ``DualPower``, the power
-        column of ``PowerExponential`` and the Eyring models (an absolute
-        temperature) need strictly positive stresses. A non-positive one
-        used to reach the log-linear starting fit and fail there with an
-        SVD ``LinAlgError`` and LAPACK messages on stderr.
+        ``Power`` (``a Z**n``), ``InversePower``, ``DualPower`` and the
+        power column of ``PowerExponential`` need strictly positive
+        stresses. A non-positive one used to reach the log-linear starting
+        fit and fail there with an SVD ``LinAlgError`` and LAPACK messages
+        on stderr. The Arrhenius-type models (``Exponential``,
+        ``InverseExponential``, the Eyring models, the temperature column
+        of ``DualExponential`` and ``PowerExponential``) read a column as
+        an absolute temperature: a value <= 0 there is refused naming
+        kelvin, and a column below 200 K throughout warns, as a
+        temperature typed in degrees Celsius (#654).
         """
-        cols = getattr(self.life_model, "positive_stress_columns", ())
-        n_stresses = getattr(self.life_model, "n_stresses", None)
+        from .lifemodel import KELVIN_WARNING_BELOW
+
+        life_model = self.life_model
+        cols = getattr(life_model, "positive_stress_columns", ())
+        kelvin = getattr(life_model, "kelvin_stress_columns", ())
+        n_stresses = getattr(life_model, "n_stresses", None)
         if n_stresses is not None and Z_arr.shape[1] != n_stresses:
             raise ValueError(
                 "The {} life model takes {} stress column(s); Z has "
-                "{}.".format(self.life_model.name, n_stresses, Z_arr.shape[1])
+                "{}.".format(life_model.name, n_stresses, Z_arr.shape[1])
             )
-        for col in cols:
-            if np.any(np.asarray(Z_arr[:, col], dtype=float) <= 0):
+        for col in sorted({*cols, *kelvin}):
+            values = np.asarray(Z_arr[:, col], dtype=float)
+            if not values.size:
+                continue
+            lowest = float(np.min(values))
+            if col in kelvin and lowest <= 0:
+                raise ValueError(
+                    "The {} life model reads column {} of Z as an absolute "
+                    "temperature, in kelvin, which must be positive; its "
+                    "lowest value is {:g}. Kelvin is degrees Celsius plus "
+                    "273.15: for a Z in degrees Celsius pass Z + "
+                    "273.15.".format(life_model.name, col, lowest)
+                )
+            if lowest <= 0:
                 raise ValueError(
                     "The {} life model needs strictly positive stresses "
-                    "(column {} of Z has a value <= 0): it raises the stress "
-                    "to a power or takes its logarithm. Shift or rescale the "
+                    "(the lowest in column {} of Z is {:g}): it raises the "
+                    "stress to a "
+                    "power or takes its logarithm. Shift or rescale the "
                     "stress, or use a life model defined there (e.g. "
-                    "Linear or ExponentialLifeModel).".format(
-                        self.life_model.name, col
-                    )
+                    "life_models.Linear or life_models.GeneralLogLinear)."
+                    "".format(life_model.name, col, lowest)
+                )
+            highest = float(np.max(values))
+            if (
+                col in kelvin
+                and getattr(life_model, "warns_below_kelvin", True)
+                and highest < KELVIN_WARNING_BELOW
+            ):
+                warnings.warn(
+                    "Every stress in column {} of Z is below {:g} K (the "
+                    "highest is {:g}): the {} life model reads it as an "
+                    "absolute temperature, in kelvin. Did you pass degrees "
+                    "Celsius? Add 273.15.".format(
+                        col,
+                        KELVIN_WARNING_BELOW,
+                        highest,
+                        life_model.name,
+                    ),
+                    UserWarning,
+                    stacklevel=_caller_stacklevel(),
                 )
 
     def _aliased_stresses(
@@ -464,6 +550,8 @@ class ParameterSubstitutionFitter(
         t: npt.ArrayLike | None = None,
         init: npt.ArrayLike | None = None,
         fixed: dict[str, float] | None = None,
+        tl: npt.ArrayLike | None = None,
+        tr: npt.ArrayLike | None = None,
     ) -> ParametricRegressionModel:
         """
         Fit the accelerated life model by maximum likelihood.
@@ -481,10 +569,14 @@ class ParameterSubstitutionFitter(
             controlled stress levels: without ``init`` the starting point
             comes from fitting the distribution at each distinct stress
             level, so at least two levels are needed. ``Power``,
-            ``InversePower``, ``DualPower``, the Eyring models and the
-            second (power) stress of ``PowerExponential`` need strictly
-            positive stresses. Rows with a missing or infinite stress are
-            dropped, with a warning.
+            ``InversePower``, ``DualPower`` and the second (power) stress
+            of ``PowerExponential`` need strictly positive stresses; the
+            Arrhenius-type models (``Exponential``, ``InverseExponential``,
+            the Eyring models, the first stress of ``DualExponential`` and
+            ``PowerExponential``) an absolute temperature, in kelvin (a
+            value <= 0 is refused, and a stress below 200 K throughout
+            warns, as degrees Celsius would be). Rows with a missing or
+            infinite stress are dropped, with a warning.
         c : array_like, optional
             The censoring indicators (0 observed, 1 right, -1 left, 2
             interval). Defaults to all observed.
@@ -493,6 +585,10 @@ class ParameterSubstitutionFitter(
         t : array_like, optional
             Truncation bounds: an (N, 2) array of the left and right
             truncation times of each observation.
+        tl, tr : array_like or float, optional
+            The left / right truncation times of each observation (or one
+            for every observation), the columns of ``t``, which they
+            replace (#662).
         init : array_like, optional
             Initial parameter values: the distribution parameters (with any
             value in the life parameter's slot) followed by the life-model
@@ -509,7 +605,10 @@ class ParameterSubstitutionFitter(
             The fitted model. The life parameter's slot in ``params`` and
             ``dist_params`` holds a placeholder value of 1 (it is replaced
             by the life model at each stress); the life-model parameters
-            are in ``phi_params``.
+            are in ``phi_params``. ``model.data`` holds the rows sorted by
+            every column (time, censoring, count, truncation, stress), the
+            order the fit runs in, so it is the same whatever order they
+            are given in.
 
         Examples
         --------
@@ -524,6 +623,7 @@ class ParameterSubstitutionFitter(
         >>> model.params.round(3)
         array([  1.   ,   2.831, 558.686,  -0.828])
         """
+        t = truncation_window(x, t, tl, tr)
         # ``x`` goes through the data handler before anything reads it as
         # an array: the documented ragged form ``[10, [11, 13], ...]`` is
         # not a rectangular array, and ``np.asarray(x)`` on it raised a raw
@@ -557,6 +657,14 @@ class ParameterSubstitutionFitter(
                 )
         data, Z_arr = drop_nonfinite_covariates(data, Z_arr)
         self._check_stresses(Z_arr)
+        # The rows in one order (every column sorted), as for the other
+        # parametric regressions, so the fit is the same to the last digit
+        # whatever order they are given in (#746): a Power model on
+        # stresses far from 1, whose likelihood is flat along a ridge,
+        # stopped 1e5 apart in its constant by the row order.
+        order = canonical_order(data, Z_arr)
+        if np.any(order != np.arange(order.size)):
+            data, Z_arr = data[order], Z_arr[order]
         data.add_covariates(Z_arr)
         check_baseline_support(self, data)
         # The per-stress fallback start uses each row's time (the midpoint
@@ -567,13 +675,6 @@ class ParameterSubstitutionFitter(
         life_parameter_idx = self.param_map[self.life_parameter]
         if fixed is None:
             fixed = {}
-        # A column coefficient's name before v0.23, ``beta_j``, until v0.24
-        fixed = renamed_coefficient_keys(
-            fixed,
-            list(self.life_model.coefficient_columns()),
-            "{}.fit(fixed=...)".format(self._repr_name()),
-            [*self.param_map, *self.life_model.phi_param_map],
-        )
 
         def default_init() -> npt.NDArray:
             # The distribution fitted at each distinct stress, with the life
@@ -676,15 +777,38 @@ class ParameterSubstitutionFitter(
         else:
             bounds = (*self.bounds, *self.life_model.phi_bounds)
 
+        # A factor that multiplies the life (``c``) is searched on the log
+        # scale over its whole range: linearly beyond 1, a fit stopped short
+        # of its maximum at c = 1e22 (#634)
+        log_scale = [
+            len(self.param_map) + phi_param_map[name]
+            for name in getattr(self.life_model, "log_scale_parameters", ())
+            if name in phi_param_map
+        ]
+        units = [np.inf if i in log_scale else 1.0 for i in range(len(bounds))]
         transform, inv_trans, const, fixed_idx, not_fixed = bounds_convert(
-            data.x, bounds, fixed, param_map
+            data.x, bounds, fixed, param_map, units
         )
 
         init = transform(init)[not_fixed]
 
         with np.errstate(all="ignore"):
 
-            fun = make_objective(self, data, inv_trans, const)
+            if log_scale:
+                # The objective's life from the logs the search runs on
+                # (``_LifeOfLogScale``); the model is built with the life
+                # model's own ``phi`` and the natural parameters.
+                searcher = copy.copy(self)
+                searcher.phi = _LifeOfLogScale(self.life_model)
+                on_log_scale = EachParameter(
+                    [
+                        identity if i in log_scale else f
+                        for i, f in enumerate(inv_trans.funcs)
+                    ]
+                )
+                fun = make_objective(searcher, data, on_log_scale, const)
+            else:
+                fun = make_objective(self, data, inv_trans, const)
             init = finite_start(
                 fun,
                 init,
@@ -697,7 +821,17 @@ class ParameterSubstitutionFitter(
 
             n_obs = float(np.sum(data.n))
             floor = _coefficient_units(self, fixed, phi_param_map, data.Z)
-            res, verified = _search(fun, init, n_obs, floor)
+            # The parameters with one bound, finished and judged on the log
+            # scale of their distance from it (one searched on the log
+            # scale already is judged there)
+            one_sided = one_sided_positions(
+                [
+                    (None, None) if i in log_scale else b
+                    for i, b in enumerate(bounds)
+                ],
+                not_fixed,
+            )
+            res, verified = _search(fun, init, n_obs, floor, one_sided)
             start = init
             # From a start far from the maximum the search can stop short
             # of it, silently: InversePower started with its first
@@ -712,7 +846,9 @@ class ParameterSubstitutionFitter(
                     # No default start (a single stress level, say)
                     default = None
                 if default is not None:
-                    alt, alt_verified = _search(fun, default, n_obs, floor)
+                    alt, alt_verified = _search(
+                        fun, default, n_obs, floor, one_sided
+                    )
                     if alt.fun < res.fun or not np.isfinite(res.fun):
                         res, verified = alt, alt_verified
                         start = default
@@ -773,7 +909,10 @@ class ParameterSubstitutionFitter(
                 verified=verified,
                 what="The accelerated life fit",
                 floor=floor,
-                one_sided=one_sided_positions(bounds, not_fixed),
+                one_sided=one_sided,
+                baseline=free_baseline(self, fixed),
+                dist=self.dist.name,
+                values=dict(zip(self.param_map, model.params)),
             )
             model.maximum = verdict.maximum
             # The exact observed information for the covariance, which
