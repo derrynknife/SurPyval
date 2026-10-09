@@ -91,3 +91,21 @@ def test_invalid_input_raises(kwargs, match):
 def test_a_large_shape_does_not_overflow():
     model = sp.weibayes([1e6] * 3, c=[1] * 3, beta=80)
     assert np.isfinite(model.params[0]) and model.params[0] > 1e6
+
+
+def test_cb_says_a_weibayes_model_is_itself_the_bound():
+    model = sp.weibayes([500] * 10, c=[1] * 10, beta=2, alpha_ci=0.1)
+    for ask in (
+        lambda: model.cb([100]),
+        lambda: model.param_cb("alpha", method="lr"),
+        lambda: model.param_cb("alpha"),
+        lambda: model.standard_errors(),
+    ):
+        with pytest.raises(ValueError, match="(?i)itself the bound") as info:
+            ask()
+        assert "lower 90% confidence bound" in str(info.value)
+    # A model built from parameters some other way keeps the plain message
+    plain = sp.Weibull.from_params([913.5, 2.0])
+    with pytest.raises(ValueError, match="Only MLE") as info:
+        plain.cb([100])
+    assert "weibayes" not in str(info.value)

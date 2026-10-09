@@ -928,6 +928,10 @@ class Parametric(
             )
         raise _no_p_error(self.dist.name)
 
+    #: The ``alpha_ci`` of a model built by ``weibayes``, whose scale is
+    #: itself a lower confidence bound; None for any other model.
+    _weibayes_alpha_ci: "float | None" = None
+
     #: The bootstrap refits drawn for ``method="bootstrap"``
     #: (``_bootstrap.refits``), by ``(n_boot, random_state)``; not pickled.
     _bootstrap_refits: "dict | None" = None
@@ -1058,7 +1062,7 @@ class Parametric(
         array([0.3589, 0.2286])
         """
         if self._covariance is None:
-            raise no_covariance_error(_NO_COVARIANCE_WHY)
+            raise self._no_covariance_error()
         return self._covariance
 
     def standard_errors(self) -> npt.NDArray:
@@ -1210,7 +1214,7 @@ class Parametric(
             p_hat = self.params[idx]
             hess_inv = getattr(self, "hess_inv", None)
             if hess_inv is None:
-                raise no_covariance_error(_NO_COVARIANCE_WHY)
+                raise self._no_covariance_error()
             var = hess_inv[idx, idx]
             param_bounds = self.dist.bounds[idx]
 
@@ -2431,7 +2435,7 @@ class Parametric(
         check_alpha_ci(alpha_ci)
         t = np.atleast_1d(x)
         if self.method != "MLE":
-            raise ValueError("Only MLE has confidence bounds")
+            raise self._no_bounds_error()
         self._refuse_probability_model("cb")
         # Checked up front, as param_cb does: an unrecognised value (say
         # 'both') used to fall through to the lower-bound branch and
@@ -2709,11 +2713,47 @@ class Parametric(
         self, alpha_ci: float, bound: str, what: str = "this bound"
     ) -> None:
         if self.method != "MLE":
-            raise ValueError("Only MLE has confidence bounds")
+            raise self._no_bounds_error()
         self._refuse_probability_model(what)
         check_option("bound", bound, BOUNDS)
         if not 0 < alpha_ci < 1:
             raise alpha_ci_error(alpha_ci)
+
+    def _weibayes_note(self) -> str:
+        """Why a model built by ``weibayes`` has no bounds of its own."""
+        alpha_ci = float(self._weibayes_alpha_ci or 0.0)
+        level = f"{100 * (1 - alpha_ci):g}%"
+        return (
+            f"a weibayes model is itself the bound. Its scale is the lower "
+            f"{level} confidence bound, so its sf(x) is the lower bound on "
+            "the reliability at x and its qf(p) the lower bound on the life "
+            "at p. Call weibayes with another alpha_ci for another "
+            "confidence level."
+        )
+
+    def _no_bounds_error(self) -> ValueError:
+        """The refusal of a bound on a model that was not fitted by MLE.
+
+        A Weibayes model gets its own explanation: its parameters already
+        are the bound, so asking ``cb`` for one is a misunderstanding the
+        bare "Only MLE" message does not clear up."""
+        message = "Only MLE has confidence bounds"
+        if self._weibayes_alpha_ci is not None:
+            message += ": " + self._weibayes_note()
+        return ValueError(message)
+
+    def _no_covariance_error(self) -> ValueError:
+        """The refusal of a standard error or Wald bound: as
+        ``no_covariance_error``, but a Weibayes model says why it has
+        none (see ``_no_bounds_error``)."""
+        if self._weibayes_alpha_ci is not None:
+            note = self._weibayes_note()
+            return ValueError(
+                "The model carries no parameter covariance: "
+                + note[0].upper()
+                + note[1:]
+            )
+        return no_covariance_error(_NO_COVARIANCE_WHY)
 
     def _refuse_probability_model(self, what: str) -> None:
         """The one message for the bounds a Bernoulli,
@@ -2972,7 +3012,7 @@ class Parametric(
         if cov is None:
             hess_inv = getattr(self, "hess_inv", None)
             if hess_inv is None:
-                raise no_covariance_error(_NO_COVARIANCE_WHY)
+                raise self._no_covariance_error()
             cov = np.zeros((len(phi_hat), len(phi_hat)))
             cov[:n_core, :n_core] = np.copy(hess_inv)
 
