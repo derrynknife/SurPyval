@@ -99,9 +99,10 @@ def test_gamma_cumulative_hazard_in_the_tail(a, x):
     ],
 )
 def test_gamma_hazard_far_in_the_tail(a, beta, x, hf, d_x, d_a):
-    # Past y = 1000 (and a + 2 sqrt(a) + 1) the hazard is the continued
-    # fraction of the upper incomplete gamma, whose e**-y cancels exactly
-    # (#760): its value and its autograd derivatives are mpmath's.
+    # Past y = 1000 (30 since #777; and a + 2 sqrt(a) + 1) the hazard is
+    # the continued fraction of the upper incomplete gamma, whose e**-y
+    # cancels exactly (#760): its value and its autograd derivatives are
+    # mpmath's.
     from autograd import elementwise_grad, grad
 
     with warnings.catch_warnings():
@@ -114,6 +115,89 @@ def test_gamma_hazard_far_in_the_tail(a, beta, x, hf, d_x, d_a):
     assert value == pytest.approx(hf, rel=1e-14)
     assert slope_x == pytest.approx(d_x, rel=1e-12)
     assert slope_a == pytest.approx(d_a, rel=1e-12)
+
+
+@pytest.mark.parametrize(
+    "a, beta, x, want",
+    [
+        # (mpmath, 60 digits) hf, d/dx, d/da, d2/da2, d2/dadx, d2/dx2
+        (
+            0.7,
+            1.0,
+            120.0,
+            [
+                1.0024795549645153,
+                -2.0495730073969042e-5,
+                -0.0082653477508986985,
+                1.094299267067353e-6,
+                6.8323141751136921e-5,
+                3.3885940113073551e-7,
+            ],
+        ),
+        (
+            2.5,
+            0.5,
+            200.0,
+            [
+                0.49257461962091225,
+                3.6755731387106147e-5,
+                -0.004949525731123334,
+                9.843966214468137e-7,
+                2.4493012058815598e-5,
+                -3.6386513014951545e-7,
+            ],
+        ),
+        (
+            0.3,
+            2.0,
+            25.0,
+            [
+                2.0274680616550884,
+                -0.0010784880050780106,
+                -0.039249834227961605,
+                2.7501533443865596e-5,
+                0.0015418156356119566,
+                8.4737933004350062e-5,
+            ],
+        ),
+        (
+            40.0,
+            1.0,
+            100.0,
+            [
+                0.61608035429922089,
+                0.0037459868309287988,
+                -0.0097536617123594265,
+                7.2076371422332832e-6,
+                9.2458460601177029e-5,
+                -7.210756063586866e-5,
+            ],
+        ),
+    ],
+)
+def test_777_gamma_hazard_derivatives_near_y_100(a, beta, x, want):
+    # Below y = 1000 the hazard was f / S, whose derivatives in x and a
+    # cancel to a size 1 / y: a's was 2e-7 off at y = 100, and its second
+    # derivative in a off by more than itself. The continued fraction
+    # now takes over from y = 30, differentiated with it (#777).
+    import autograd.numpy as anp
+    from autograd import elementwise_grad, grad, hessian
+
+    def hf(p):
+        return surv.Gamma.hf(anp.ones(1) * p[1], p[0], beta)[0]
+
+    p = np.array([a, x])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        got = [hf(p), *grad(hf)(p)[::-1]]
+        H = hessian(hf)(p)
+        slope_x = elementwise_grad(lambda t: surv.Gamma.hf(t, a, beta))(
+            np.array([x])
+        )[0]
+    got = [got[0], got[1], got[2], H[0, 0], H[0, 1], H[1, 1]]
+    np.testing.assert_allclose(got, want, rtol=1e-12)
+    assert H[0, 1] == H[1, 0]
+    assert slope_x == pytest.approx(want[1], rel=1e-12)
 
 
 # -- every distribution, far out and at extreme parameters (#561) ---------

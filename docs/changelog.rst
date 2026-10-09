@@ -714,6 +714,14 @@ Unreleased
   terms, and at infinity the limit along the spline's last, linear,
   piece: ``inf``, 0 or a constant on the hazard scale, as a Weibull's,
   and 0 on the odds and normal scales.
+- ``Gamma.hf``'s derivatives keep their digits from ``y = beta x`` of 30
+  (#777): below 1000 the hazard was ``f / S``, whose derivatives in ``x``
+  and ``alpha`` cancel to a size ``1 / y`` (``alpha``'s 2e-7 off at ``y =
+  100``, its second derivative off by more than itself). The continued
+  fraction now takes over at 30, an autograd primitive with its
+  derivatives from the same pass: within 1e-14 of mpmath to the second
+  order. Gamma PH and AFT fits take about the time they did (at most
+  1.08 times, on data far into the tail).
 
 v0.23 (4 October 2026)
 ----------------------

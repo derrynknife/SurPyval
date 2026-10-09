@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 import autograd.numpy as np
+import numpy as onp
 import numpy.typing as npt
+from autograd.extend import defvjp, primitive
+from autograd.numpy.numpy_vjps import unbroadcast_f
 from autograd.scipy.special import gamma as agamma
 from autograd.scipy.special import gammaln as agammaln
 from autograd.tracer import getval, isbox
@@ -24,16 +27,19 @@ from ._stable import on_support, positive_or_one, power_at_zero
 
 #: The standard-Gamma time past which (and past ``a + 2 sqrt(a) + 1``)
 #: the hazard is taken from the continued fraction (``Gamma_.hf``), which
-#: converges there within 100 terms for any shape (5 for a shape below
-#: 100). Below it ``f / S`` loses about ``y eps`` to rounding (at most
-#: 1.5e-13 for a shape below 100), and costs a fraction of what the
-#: fraction does where autograd traces it (a Gamma PH fit's likelihood).
-_FRACTION_FROM = 1000.0
+#: converges there within 12 terms for a shape up to 10, 30 below 100 and
+#: 100 for any shape. Below it ``f / S`` is kept. That loses about ``y
+#: eps`` to rounding, and its derivatives in ``x`` and ``alpha``,
+#: differences of terms of size 1 that cancel to one of size ``1 / y``, a
+#: factor ``y`` more: ``alpha``'s was 2e-7 off mpmath's at ``y = 100``
+#: and 4e-5 at 1000, ``x``'s 8e-8 at 1000 (#777).
+_FRACTION_FROM = 30.0
 #: The fraction's most terms, and its convergence test.
 _FRACTION_TERMS = 500
 _FRACTION_TOL = 4e-16
 
 
+@primitive
 def _hazard_over_rate(a: Boxable, y: Boxable) -> Boxable:
     r"""
     The standard Gamma's hazard at ``y`` (the Gamma's over its rate, at
@@ -45,35 +51,245 @@ def _hazard_over_rate(a: Boxable, y: Boxable) -> Boxable:
         \frac{1 (1 - a)}{y + 3 - a - \frac{2 (2 - a)}{y + 5 - a -
         \cdots}}}.
 
-    The hazard :math:`y^{a - 1} e^{-y} / \Gamma(a, y)` is that
+    The hazard :math:`r = y^{a - 1} e^{-y} / \Gamma(a, y)` is that
     denominator over :math:`y`, which is :math:`1 + (1 - a)(1 - g) / y`
     with :math:`g = 1 / (y + 3 - a - \cdots)`, the fraction from its
-    second term: its excess over 1 is carried as itself, so neither the
-    value nor its derivative in ``y`` (of size :math:`y^{-2}`) is a
-    difference of terms of size 1. ``g`` is evaluated forwards by the
-    modified Lentz method (Numerical Recipes, ``gcf``): from :math:`y =
-    a + 1` up, the hazard is within 1e-15 of mpmath's (5e-15 at a shape
-    of 1e4). Written in ``autograd.numpy``, so it is differentiable; the
-    loop stops once every point has converged.
+    second term (:func:`_fraction_jet`): its excess over 1 is carried as
+    itself, so neither the value nor its derivatives is a difference of
+    terms of size 1. From :math:`y = a + 1` up, the hazard is within
+    1e-15 of mpmath's (5e-15 at a shape of 1e4).
+
+    An autograd primitive (#777), with the fraction differentiated along
+    with it (:func:`_fraction_jet`) rather than traced: its derivative in
+    ``y`` is :math:`r (a - 1) g / y` (the hazard's own, :math:`r ((a -
+    1) / y - 1 + r)`, with the cancelling terms taken out), in ``a`` it
+    is :math:`-(1 - g + (1 - a) g_a) / y`, and their derivatives are the
+    fraction's second ones, so a Hessian is exact. Traced, the fraction
+    from a time of 10 made a Gamma PH fit 1.7 times slower (#760).
     """
+    return _plain_float(_ratio(a, y, _cached_jet(a, y, 0)[0]))
+
+
+def _ratio(a: Any, y: Any, g: Any) -> Any:
+    """``r = 1 + (1 - a)(1 - g) / y`` (see :func:`_hazard_over_rate`)."""
+    return 1.0 + (1.0 - a) * (1.0 - g) / y
+
+
+@primitive
+def _hazard_over_rate_da(a: Boxable, y: Boxable) -> Boxable:
+    """``d r / d a`` (:func:`_hazard_over_rate`)."""
+    g, first, _ = _cached_jet(a, y, 1)
+    return _plain_float(-((1.0 - g) + (1.0 - a) * first[0]) / y)
+
+
+@primitive
+def _hazard_over_rate_dy(a: Boxable, y: Boxable) -> Boxable:
+    """``d r / d y = r (a - 1) g / y`` (:func:`_hazard_over_rate`)."""
+    g = _cached_jet(a, y, 0)[0]
+    return _plain_float(_ratio(a, y, g) * (a - 1.0) * g / y)
+
+
+def _hazard_over_rate_second(a: Any, y: Any) -> tuple:
+    """``(r_aa, r_ay, r_yy)``, from the fraction's derivatives."""
+    g, (g_a, g_y), (g_aa, g_ay, g_yy) = _cached_jet(a, y, 2)
+    u, v = 1.0 - a, 1.0 - g
+    return (
+        (2.0 * g_a - u * g_aa) / y,
+        (v + u * g_a) / y**2 + (g_y - u * g_ay) / y,
+        u / y * (2.0 * g_y / y + 2.0 * v / y**2 - g_yy),
+    )
+
+
+def _vjp(target_is_a: bool, k: int) -> Callable:
+    """The VJP maker, in ``a`` or ``y``, of a first derivative of
+    :func:`_hazard_over_rate`: entry ``k`` of
+    :func:`_hazard_over_rate_second` (higher orders cut)."""
+
+    def make(ans: Any, a: Any, y: Any) -> Callable:
+        second = _hazard_over_rate_second(getval(a), getval(y))[k]
+        target = a if target_is_a else y
+        return unbroadcast_f(target, lambda g: getval(g) * second)
+
+    return make
+
+
+defvjp(
+    _hazard_over_rate,
+    lambda ans, a, y: unbroadcast_f(
+        a, lambda g: g * _hazard_over_rate_da(a, y)
+    ),
+    lambda ans, a, y: unbroadcast_f(
+        y, lambda g: g * _hazard_over_rate_dy(a, y)
+    ),
+)
+defvjp(_hazard_over_rate_da, _vjp(True, 0), _vjp(False, 1))
+defvjp(_hazard_over_rate_dy, _vjp(True, 1), _vjp(False, 2))
+
+
+def _fraction_jet(a: Any, y: Any, order: int = 0) -> tuple:
+    """``(g, first, second)``: the continued fraction's tail ``g`` (see
+    :func:`_hazard_over_rate`) with, at ``order`` 1, its derivative in
+    ``a``, ``[g_a]``, and at ``order`` 2 its first derivatives ``[g_a,
+    g_y]`` and second ``[g_aa, g_ay, g_yy]`` (``None`` where not taken),
+    in plain numpy.
+
+    ``g`` is evaluated forwards by the modified Lentz method
+    (:func:`_fraction_value`). Its derivative in ``a``, which a gradient
+    takes, is a complex step: the same loop at ``a + i h``, whose
+    imaginary part is ``h g_a`` to rounding, with no difference taken
+    (the step's error is ``h**2`` relative), in about the time of the
+    value alone. The second derivatives, which only a Hessian takes, are
+    carried along the loop's steps (:func:`_fraction_second`)."""
+    if order == 2:
+        return _fraction_second(a, y)
+    if order == 1:
+        a = onp.asarray(a, dtype=float)
+        step = _COMPLEX_STEP * onp.maximum(a, 1.0)
+        g = _fraction_value(a + 1j * step, y)
+        return g.real, (g.imag / step)[None], None
+    return _fraction_value(a, y), None, None
+
+
+#: The complex step in ``a``, relative to it (at least 1), of
+#: ``_fraction_jet``'s derivative.
+_COMPLEX_STEP = 1e-20
+
+
+def _fraction_value(a: Any, y: Any) -> Any:
+    """The fraction's tail ``g`` (:func:`_hazard_over_rate`) by the
+    modified Lentz method (Numerical Recipes, ``gcf``), until every
+    point's has converged. ``a`` may be complex (a complex step,
+    :func:`_fraction_jet`): the imaginary parts must have converged
+    too."""
     tiny = 1e-300
     b = y + 3.0 - a
-    c: Boxable = 1.0 / tiny
+    c: Any = 1.0 / tiny
     d = 1.0 / b
     g = d
-    for i in range(2, _FRACTION_TERMS):
-        an = -i * (i - a)
-        b = b + 2.0
-        d = an * d + b
-        d = np.where(np.abs(d) < tiny, tiny, d)
-        c = b + an / c
-        c = np.where(np.abs(c) < tiny, tiny, c)
-        d = 1.0 / d
-        delta = d * c
-        g = g * delta
-        if np.all(np.abs(getval(delta) - 1.0) <= _FRACTION_TOL):
-            break
-    return 1.0 + (1.0 - a) * (1.0 - g) / y
+    stepped = onp.iscomplexobj(g)
+    with onp.errstate(all="ignore"):
+        for i in range(2, _FRACTION_TERMS):
+            an = -i * (i - a)
+            b = b + 2.0
+            d = an * d + b
+            d = onp.where(onp.abs(d) < tiny, tiny, d)
+            c = b + an / c
+            c = onp.where(onp.abs(c) < tiny, tiny, c)
+            d = 1.0 / d
+            delta = d * c
+            last, g = g, g * delta
+            if onp.all(onp.abs(delta - 1.0) <= _FRACTION_TOL) and (
+                not stepped or _settled(last.imag, g.imag)
+            ):
+                break
+    return g
+
+
+def _fraction_second(a: Any, y: Any) -> tuple:
+    """``(g, [g_a, g_y], [g_aa, g_ay, g_yy])``: the fraction's tail with
+    its first and second derivatives, carried along each step of the
+    Lentz loop (:func:`_fraction_value`) until every point's have
+    converged."""
+    a = onp.asarray(a, dtype=float)
+    y = onp.asarray(y, dtype=float)
+    shape = onp.broadcast_shapes(a.shape, y.shape)
+    a = onp.broadcast_to(a, shape) if a.ndim else float(a)
+    tiny = 1e-300
+    b = onp.broadcast_to(y, shape) + 3.0 - a
+    c = onp.full(b.shape, 1.0 / tiny)
+    d = 1.0 / b
+    g = d
+    # Each quantity's derivatives are stacked: first [q_a, q_y], second
+    # [q_aa, q_ay, q_yy]. b moves by -1 with a and +1 with y at every
+    # step, and an = -i (i - a) by i with a.
+    b1 = onp.array([-1.0, 1.0]).reshape((2,) + (1,) * b.ndim)
+    an1 = onp.zeros_like(b1)
+    c1 = onp.zeros((2,) + b.shape)
+    d1 = -b1 * d * d
+    g1 = d1
+    c2 = onp.zeros((3,) + b.shape)
+    d2 = _pairs(b1, b1) * d**3
+    g2 = d2
+    with onp.errstate(all="ignore"):
+        for i in range(2, _FRACTION_TERMS):
+            an = -i * (i - a)
+            an1[0] = i
+            b = b + 2.0
+            big_d = an * d + b
+            big_c = b + an / c
+            keep_d = onp.abs(big_d) >= tiny
+            keep_c = onp.abs(big_c) >= tiny
+            big_d = onp.where(keep_d, big_d, tiny)
+            big_c = onp.where(keep_c, big_c, tiny)
+            new_d = 1.0 / big_d
+            delta = new_d * big_c
+            w = 1.0 / c
+            w1 = -c1 * w * w
+            w2 = (-c2 + _pairs(c1, c1) * w) * w * w
+            # (a clamped term is a constant)
+            D1 = (an1 * d + an * d1 + b1) * keep_d
+            C1 = (b1 + an1 * w + an * w1) * keep_c
+            D2 = (_pairs(an1, d1) + an * d2) * keep_d
+            C2 = (_pairs(an1, w1) + an * w2) * keep_c
+            nd1 = -D1 * new_d * new_d
+            nd2 = (-D2 + _pairs(D1, D1) * new_d) * new_d * new_d
+            e1 = nd1 * big_c + new_d * C1
+            e2 = nd2 * big_c + _pairs(nd1, C1) + new_d * C2
+            new_g1 = g1 * delta + g * e1
+            new_g2 = g2 * delta + _pairs(g1, e1) + g * e2
+            done = (
+                onp.all(onp.abs(delta - 1.0) <= _FRACTION_TOL)
+                and _settled(g1, new_g1)
+                and _settled(g2, new_g2)
+            )
+            g1, c1, d1 = new_g1, C1, nd1
+            g2, c2, d2 = new_g2, C2, nd2
+            c, d = big_c, new_d
+            g = g * delta
+            if done:
+                break
+    return g, g1, g2
+
+
+def _pairs(u: Any, v: Any) -> Any:
+    """``[2 u_a v_a, u_a v_y + u_y v_a, 2 u_y v_y]`` from first
+    derivatives ``u = [u_a, u_y]`` and ``v``: the second derivatives of
+    a product ``u v`` carried by its factors' first."""
+    return u[_FIRST] * v[_SECOND] + u[_SECOND] * v[_FIRST]
+
+
+#: The rows of first derivatives each of [aa, ay, yy] pairs (``_pairs``).
+_FIRST = [0, 0, 1]
+_SECOND = [0, 1, 1]
+
+
+def _settled(old: Any, new: Any) -> bool:
+    """Whether every one of the derivatives ``new`` is within the
+    fraction's tolerance of ``old``."""
+    return bool(onp.all(onp.abs(new - old) <= _FRACTION_TOL * onp.abs(new)))
+
+
+#: The last jet taken (``_cached_jet``): ``(key, order, jet)``.
+_LAST_JET: list = [None]
+
+
+def _cached_jet(a: Any, y: Any, order: int) -> tuple:
+    """``_fraction_jet(a, y, order)``, or the last one taken where it was
+    at the same point to at least that order: the hazard, its
+    derivatives and their derivatives each come from one jet."""
+    a = onp.asarray(a, dtype=float)
+    y = onp.asarray(y, dtype=float)
+    key = (a.shape, y.shape, a.tobytes(), y.tobytes())
+    last = _LAST_JET[0]
+    if last is not None and last[0] == key and last[1] >= order:
+        return last[2]
+    jet = _fraction_jet(a, y, order)
+    _LAST_JET[0] = (key, order, jet)
+    return jet
+
+
+def _plain_float(v: Any) -> Any:
+    return v if onp.ndim(v) else float(v)
 
 
 class Gamma_(OptimisedFitMixin, ParametricFitter):
@@ -302,12 +518,13 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
             }x^{\alpha - 1}e^{-\beta x}}{1 - \frac{\gamma \left ( \alpha, \beta
             x \right )}{\Gamma \left ( \alpha \right )}}
 
-        Far in the tail (:math:`\beta x` past 1000 and past
+        In the tail (:math:`\beta x` past 30 and past
         :math:`\alpha + 2\sqrt{\alpha} + 1`) it is taken from the continued
         fraction of the upper incomplete gamma, in which the density's and
         the survival function's :math:`e^{-\beta x}` cancel exactly: the
         quotient of the two loses :math:`\beta x` times the machine
-        precision to rounding (every digit by :math:`10^{15}`).
+        precision to rounding (every digit by :math:`10^{15}`), and its
+        derivatives in ``x`` and ``alpha`` a factor :math:`\beta x` more.
 
         Parameters
         ----------
@@ -337,19 +554,28 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         x = np.asarray(x) if not isbox(x) else x
         y = beta * x
         # f / S is a difference of two logs of size y: it loses y eps to
-        # rounding (4e-9 at y = 1e8, every digit past 1e15, #760). In the
-        # tail their e**-y is cancelled exactly, by the continued
-        # fraction of the upper incomplete gamma (``_hazard_over_rate``)
-        tail = (y > _FRACTION_FROM) & (y < np.inf)
-        tail = tail & (y > alpha + 2.0 * np.sqrt(alpha) + 1.0)
+        # rounding (4e-9 at y = 1e8, every digit past 1e15, #760), and
+        # its derivatives a factor y more (#777). In the tail their e**-y
+        # is cancelled exactly, by the continued fraction of the upper
+        # incomplete gamma (``_hazard_over_rate``)
+        # (which points are in the tail, and the stand-ins below, are
+        # plain values: traced, they were operations in every gradient)
+        y_v, a_v = getval(y), getval(alpha)
+        start = a_v + 2.0 * np.sqrt(a_v) + 1.0
+        tail = (y_v > _FRACTION_FROM) & (y_v < np.inf) & (y_v > start)
         if not np.any(tail):
             return self._hf_from_logs(x, alpha, beta)
         # each branch at a point it is finite at (y = 1 in the body, and
         # well inside the tail in the tail, where the fraction converges
         # fast), so neither puts a nan into the other's gradient
-        body = self._hf_from_logs(np.where(tail, 1.0 / beta, x), alpha, beta)
-        far = 2.0 * (alpha + 2.0 * np.sqrt(alpha) + 1.0 + _FRACTION_FROM)
-        y_tail = np.where(tail, y, far)
+        body = self._hf_from_logs(
+            np.where(tail, 1.0 / getval(beta), x), alpha, beta
+        )
+        y_tail = np.where(tail, y, 2.0 * (start + _FRACTION_FROM))
+        if isbox(alpha):
+            # the fraction with its slope in alpha, which the gradient
+            # takes, in the one pass (``_cached_jet``)
+            _cached_jet(a_v, getval(y_tail), 1)
         ratio = _hazard_over_rate(alpha, y_tail)
         return np.where(tail, beta * ratio, body)
 
