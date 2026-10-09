@@ -46,7 +46,8 @@ Discrete distributions: **Poisson**, **Geometric**, **NegativeBinomial**,
 **DiscreteWeibull**, **BetaGeometric**, **Bernoulli** and **Binomial** (with
 a number of trials per row); any
 continuous distribution can be discretised with `Discretize`. Any of them can
-be combined in a `MixtureModel`, and custom distributions are supported.
+be combined in a `MixtureModel` (with standard errors and Wald bounds),
+and custom distributions are supported.
 
 This project spawned from a Reliaility Engineering project; due to the history of reliability engineers estimating parameters from a probability plot. SurPyval has continued this tradition to ensure that any parametric distribution can have the estimate plotted on a probability plot. These visualisations enable an analyst to get a sense of the goodness of fit of the parametric distribution with the non-parametric distribution.
 
@@ -67,8 +68,8 @@ not yet built.
 | --- | --- | --- | --- | --- | --- |
 | Continuous time | Single event | Single | Without | `Weibull`, `Exponential`, `LogNormal`, `Gamma`, &hellip; | `KaplanMeier`, `NelsonAalen`, `FlemingHarrington`, `Turnbull` |
 | Continuous time | Single event | Single | With | `WeibullPH`, `WeibullAFT`, `WeibullPO`, `WeibullAH` (every distribution), `AcceleratedLife` with `surpyval.life_models`, `RoystonParmar`, `WeibullFrailty` | `CoxPH`, `ProportionalOdds`, `AdditiveHazards`, `BuckleyJames`, `CoxFrailty`; survival trees and forests (`surpyval.beta.ml`) |
-| Continuous time | Single event | Competing | Without | `ParametricCompetingRisks` | `CompetingRisks` (CIF) |
-| Continuous time | Single event | Competing | With | &mdash; | `FineGray`, `CompetingRisksProportionalHazards` |
+| Continuous time | Single event | Competing | Without | `ParametricCompetingRisks` | `CompetingRisks` (CIF, with confidence bounds) |
+| Continuous time | Single event | Competing | With | &mdash; | `FineGray`, `CompetingRisksProportionalHazards` (with standard errors and `summary()`) |
 | Continuous time | Recurrent | Single | Without | `HPP`; NHPP: `CrowAMSAA` (with growth projection), `Duane`, `CoxLewis`; renewal, with each unit's next failure: `GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA`, `ARI` | `NonParametricCounting` (MCF) |
 | Continuous time | Recurrent | Single | With | `ProportionalIntensityHPP`, `ProportionalIntensityNHPP` | &mdash; |
 | Continuous time | Recurrent | Competing | Without | &mdash; | `CauseSpecificMCF` |
@@ -80,11 +81,14 @@ Beyond these axes: the dependence between two lifetimes with copulas
 (`surpyval.multivariate`: Gaussian, Student-t, Clayton, Frank, Gumbel, Joe
 and AMH, with rotations, standard errors and confidence bounds), degradation
 and remaining useful life (`DegradationAnalysis`, `WienerProcess`,
-`GammaProcess`, `DestructiveDegradation`), and `surpyval.forecast`, the
+`GammaProcess`, `DestructiveDegradation`; the Wiener and gamma processes
+with standard errors, bounds and AIC), and `surpyval.forecast`, the
 expected failures of units in service with prediction intervals, from a
 univariate, regression or repairable-system model. The parametric regression
 models have `qf`, `cs` and `quantile_cb`, with Wald, likelihood-ratio and
-bootstrap bounds.
+bootstrap bounds, and the semi-parametric and frailty regressions have `qf`.
+An offset model's bounds can be bootstrapped (`method="bootstrap"`) to take
+in the offset's uncertainty.
 
 # Install and Quick Intro
 

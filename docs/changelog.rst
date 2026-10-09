@@ -1,8 +1,57 @@
 Changelog
 =========
 
-Unreleased
-----------
+v0.24 (9 October 2026)
+----------------------
+
+**Upgrading from 0.23.** A breaking release. Most code needs no change; the
+items most likely to need one, or to change a result, are listed here, and
+every entry below says what changed. On 0.23, run your code or tests with
+``python -W error::DeprecationWarning`` first to find the calls to update.
+
+- Names 0.23 deprecated now raise (see *Removed*): the limited-failure
+  ``p`` is ``lfp_p``, ``beta_j`` in ``fixed`` and ``param_cb`` is the
+  coefficient's name, ``se`` is ``standard_errors()``, ``cov_matrix`` and
+  ``cov`` are ``covariance()``, recurrent ``aic`` and ``bic`` are
+  ``aic()`` and ``bic()``, and ``success_run`` takes ``alpha_ci=``.
+- ``SurvivalTree`` and ``RandomSurvivalForest`` ``sf(x, Z)`` pair row
+  ``i`` of ``Z`` with ``x[i]``, as the regressions do (#666); pass
+  ``grid=True`` for the old grid of every time for every row.
+- ``alpha_ci`` outside (0, 1) is refused by every bound, and one above 0.5
+  warns (#647): ``alpha_ci=0.05`` is a 95% interval.
+- ``CrowAMSAA.projection`` with BC modes uses the bias-corrected shape
+  (#730): its demonstrated and projected MTBF move (the handbook example's
+  7.707 and 11.006 are 7.847 and 11.294); one failure now raises.
+- The parametric, accelerated life and frailty regressions,
+  ``BuckleyJames`` and the semi-parametric ``ProportionalOdds`` fit their
+  rows in one sorted order (#728, #746, #760, #777): answers no longer
+  depend on the row order, may move at rounding, and ``model.data`` lists
+  the rows sorted.
+- ``CoxPH`` and ``FineGray`` find a run-off along a combination of
+  covariates (#728, #746): a fit once "verified" may now warn "No finite
+  maximum", with ``nan`` standard errors for the coefficients that run off.
+- ``CoxPH`` and ``BuckleyJames`` refuse data with no event (#648).
+- A regression, tree or forest prediction with the wrong number of
+  covariates raises (#657); an extra column was ignored in silence.
+- The Arrhenius-type life models refuse a stress at or below 0 and warn
+  below 200 K (#654): give temperatures in kelvin.
+- An offset model's Wald ``cb``, ``quantile_cb`` and ``param_cb`` warn
+  that they hold the offset fixed (#645); pass ``method="bootstrap"`` for
+  bounds that include it. Offset fits on interval data can move (#633).
+- Renewal fits read a finite ``tr`` as each item's end of observation
+  (#624) and search on exact gradients (#728, #746, #760): likelihoods
+  are equal or higher, so parameters can move.
+- Recurrent data with an event exactly at ``tl``, or an exact event given
+  as ``[l, r]`` with ``l != r``, are refused (#658).
+- ``quantile_cb`` gives NaN with a warning for ``p`` outside (0, 1) rather
+  than raising (#626, #710); test the result rather than catching
+  ``ValueError``.
+- ``from surpyval import *`` no longer exports ``np`` (#667); import numpy
+  yourself.
+- Deprecated in 0.24, removed in v0.25: ``CompetingRisksProportionalHazards``
+  ``phi_e`` by row index (pass the cause label) and ``beta``,
+  ``NonParametric.cb``'s old argument order, ``MixtureModel.p`` and
+  ``ProportionalIntensityNHPP(dist=)`` (``baseline=``).
 
 **Removed.** The names 0.23 deprecated are gone; each now raises.
 
@@ -86,7 +135,7 @@ Unreleased
   are the errors: on 100,000 units with mixed censoring and truncation,
   from arrays 58 → 41 ms, from lists 89 → 62 ms, and the identifiability
   check 12 → 2.5 ms.
-- **``fit_best`` builds its data once.** It checked the data as a
+- ``fit_best`` **builds its data once.** It checked the data as a
   ``SurpyvalData`` and then gave each candidate the raw inputs, so every
   family built and checked them again, and estimated the non-parametric
   start again. Every candidate is now fitted to that one ``SurpyvalData``
