@@ -174,7 +174,9 @@ class CrowAMSAA(NHPPFitter):
         ``d_i`` with mean :math:`\\bar d`, and :math:`\\lambda_{CA}` the
         intensity the test demonstrates: ``N / (kT)`` when there are no BC
         modes (the system did not change during the test), the Crow-AMSAA
-        intensity at ``T`` fitted to every failure when there are.
+        intensity at ``T`` fitted to every failure when there are, with the
+        bias-corrected shape: :math:`\\bar\\beta_{CA} N / (kT)`,
+        :math:`\\bar\\beta_{CA} = (N - 1) / N \\cdot \\hat\\beta_{CA}`.
         :math:`h(T) = K \\bar\\beta / (kT)` is the rate at which new BD
         modes were still being found, from the power-law fit to the BD
         modes' first occurrences ``t_i`` with the unbiased shape
@@ -215,7 +217,8 @@ class CrowAMSAA(NHPPFitter):
         ValueError
             If a failure has no mode label, a mode is in both ``fef`` and
             ``bc``, a classified mode has no failures, a factor is outside
-            [0, 1], or the test is not time-terminated.
+            [0, 1], the test is not time-terminated, or there are BC
+            modes and fewer than 2 failures.
 
         Notes
         -----
@@ -235,6 +238,9 @@ class CrowAMSAA(NHPPFitter):
 
         MIL-HDBK-189C (2011), "Reliability Growth Management", section 6.
 
+        MIL-HDBK-00189A (2009), "Reliability Growth Management", section
+        7.5 (the Crow extended model and its test-fix-find-test example).
+
         ReliaSoft, "Crow Extended", Reliability Growth and Repairable
         System Analysis Reference (ReliaWiki, RGA chapter 9): the same
         projection, :math:`\\hat\\lambda_P = \\hat\\lambda_{CA} -
@@ -243,9 +249,11 @@ class CrowAMSAA(NHPPFitter):
         with BC modes the demonstrated intensity is "the instantaneous
         failure intensity based on all of the data" (the Crow-AMSAA model
         fitted to the A, BC and BD failures), without them ``N / T``
-        (#710). Checked against the formulas only: the worked examples'
-        data (Test-Fix-Find-Test: demonstrated MTBF 7.847, projected
-        11.29 at T = 400) were not reachable.
+        (#710). The handbook's test-fix-find-test example (MIL-HDBK-00189A
+        section 7.5; ReliaWiki's Crow Extended examples), 56 failures to
+        T = 400 with 14 BC and 16 BD modes, is reproduced: shape 0.9103
+        (bias-corrected; the MLE is 0.9268), demonstrated MTBF 7.84708,
+        BD modes' shape 0.7472, projected MTBF 11.29418 (#730).
 
         Examples
         --------

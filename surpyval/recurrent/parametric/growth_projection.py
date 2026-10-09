@@ -34,7 +34,13 @@ Without BC modes the system did not change during the test (test-find-
 test), so :math:`\\lambda_{CA} = N / (kT)` and the projection is the ACPM:
 :math:`r_P = N_A/(kT) + \\sum (1 - d_i) N_i/(kT) + \\bar d\\, h(T)`. With BC
 modes the system grew during the test, and :math:`\\lambda_{CA}` is the
-Crow-AMSAA intensity at ``T`` fitted to every failure (Crow 2004).
+Crow-AMSAA intensity at ``T`` fitted to every failure (Crow 2004), with the
+bias-corrected shape: :math:`\\lambda_{CA} = \\bar\\beta_{CA} N / (kT)`,
+:math:`\\bar\\beta_{CA} = (N - 1) / N \\cdot \\hat\\beta_{CA}`. That is
+the handbook's worked example (MIL-HDBK-00189A section 7.5,
+test-fix-find-test, 56 failures to T = 400): it demonstrates
+0.12744 = 0.9103 * 56 / 400, where the MLE of the shape is 0.9268, and
+projects an MTBF of 11.29 (#730).
 
 The growth potential is the intensity once every BD mode has been found and
 fixed with these FEFs, :math:`r_{GP} = \\lambda_{CA} - N_{BD}/(kT) +
@@ -87,7 +93,9 @@ class GrowthProjection:
     demonstrated_intensity : float
         The intensity the test demonstrates at ``T``, before the delayed
         fixes: ``N / (kT)`` without BC modes, the Crow-AMSAA intensity at
-        ``T`` with them.
+        ``T`` with them, from the bias-corrected shape
+        ``(N - 1) / N * beta_hat`` (so ``(N - 1) beta_hat / (kT)``; ``model``
+        holds the MLE).
     projected_intensity : float
         The intensity once the delayed fixes are in.
     growth_potential_intensity : float
@@ -314,8 +322,19 @@ def growth_projection(
 
     if counts["BC"] == 0:
         demonstrated = n_events / total_time
+    elif n_events < 2:
+        raise ValueError(
+            "With BC modes (fixed during the test) the demonstrated "
+            "intensity is the Crow-AMSAA one at T with the bias-corrected "
+            "shape, (N - 1) / N times its estimate, which needs at least 2 "
+            "failures; there is {}.".format(n_events)
+        )
     else:
-        demonstrated = float(model.iif(T))
+        # beta_bar N / (kT), beta_bar = (N - 1) / N beta_hat: the
+        # handbook's worked example (MIL-HDBK-00189A, test-fix-find-test)
+        # demonstrates 0.12744 = 0.9103 * 56 / 400, where the MLE is
+        # 0.9268 (#730).
+        demonstrated = (n_events - 1) * float(model.params[1]) / total_time
     remaining = demonstrated - n_i.sum() / total_time
     potential = remaining + float(table["projected"].sum())
     projected = potential + (mean_fef * h if K else 0.0)

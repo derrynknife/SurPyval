@@ -77,11 +77,12 @@ def test_607_several_systems_pool_their_test_time():
 
 def test_607_bc_modes_use_the_demonstrated_crow_amsaa_intensity():
     # With a mode fixed during the test the system grew, so the
-    # demonstrated intensity is the Crow-AMSAA one at T, and the BD
+    # demonstrated intensity is the Crow-AMSAA one at T (with the
+    # bias-corrected shape, (N - 1) / N of the MLE: #730), and the BD
     # modes' intensities are taken off it.
     result = CrowAMSAA.projection(X, MODES, FEF, c=C, bc=["a2"])
     model = CrowAMSAA.fit(X, c=C)
-    lam_ca = float(model.iif(400.0))
+    lam_ca = 10 / 11 * float(model.iif(400.0))
     assert result.failures == {"A": 2, "BC": 1, "BD": 8}
     assert result.demonstrated_intensity == pytest.approx(lam_ca)
     _, potential_acpm = _acpm(
@@ -187,3 +188,80 @@ def test_663_projection_of_systems_ending_at_different_times():
             x, MODES + ["b1", "a1", None], FEF, i=i, c=C + [0, 0, 1]
         )
     assert "method=" not in str(info.value)
+
+
+# MIL-HDBK-00189A's test-fix-find-test example (section 7.5), as ReliaWiki's
+# "Crow Extended Model Examples" gives it: one system to T = 400, 56
+# failures: 10 A, 14 BC (modes BC17..BC28) and 32 BD (modes BD1..BD16).
+HDBK = """
+0.7 BC17, 3.7 BC17, 13.2 BC17, 15 BD1, 17.6 BC18, 25.3 BD2, 47.5 BD3,
+54 BD4, 54.5 BC19, 56.4 BD5, 63.6 A, 72.2 BD5, 99.2 BC20, 99.6 BD6,
+100.3 BD7, 102.5 A, 112 BD8, 112.2 BC21, 120.9 BD2, 121.9 BC22, 125.5 BD9,
+133.4 BD10, 151 BC23, 163 BC24, 164.7 BD9, 174.5 BC25, 177.4 BD10,
+191.6 BC26, 192.7 BD11, 213 A, 244.8 A, 249 BD12, 250.8 A, 260.1 BD1,
+263.5 BD8, 273.1 A, 274.7 BD6, 282.8 BC27, 285 BD13, 304 BD9, 315.4 BD4,
+317.1 A, 320.6 A, 324.5 BD12, 324.9 BD10, 342 BD5, 350.2 BD3, 355.2 BC28,
+364.6 BD10, 364.9 A, 366.3 BD2, 373 BD8, 379.4 BD14, 389 BD15, 394.9 A,
+395.2 BD16
+"""
+# The BD modes' fix-effectiveness factors, BD1..BD16.
+HDBK_FEF = [0.67, 0.72, 0.77, 0.77, 0.87, 0.92, 0.5, 0.85, 0.89, 0.74, 0.7]
+HDBK_FEF += [0.63, 0.64, 0.72, 0.69, 0.46]
+
+
+def _handbook_example(fefs):
+    rows = [row.split() for row in HDBK.split(",")]
+    x = [float(t) for t, _ in rows] + [400.0]
+    modes = [m for _, m in rows] + [None]
+    c = [0] * len(rows) + [1]
+    fef = {"BD{}".format(j + 1): d for j, d in enumerate(fefs)}
+    bc = ["BC{}".format(j) for j in range(17, 29)]
+    return CrowAMSAA.projection(x, modes, fef, c=c, bc=bc)
+
+
+def test_730_handbook_test_fix_find_test_example():
+    # The published results: the Crow-AMSAA fit to all 56 failures has
+    # beta 0.91026 and lambda 0.23969 (0.91026 is 55/56 of the MLE,
+    # 0.9268), demonstrating 0.12744 (MTBF 7.84708); the BD modes' first
+    # occurrences give beta 0.7970, unbiased ((K - 1) / K) 0.7472, and
+    # lambda 0.1820; the growth potential intensity is 0.0670 and the
+    # projection 0.0885, an MTBF of 11.29418.
+    result = _handbook_example(HDBK_FEF)
+    assert result.failures == {"A": 10, "BC": 14, "BD": 32}
+    assert len(result.modes) == 16
+    beta_mle = float(result.model.params[1])
+    assert beta_mle == pytest.approx(0.9268, abs=1e-4)
+    beta_bar = 55 / 56 * beta_mle
+    assert beta_bar == pytest.approx(0.91026, abs=1e-5)
+    assert 56 / 400**beta_bar == pytest.approx(0.23969, abs=1e-5)
+    assert result.demonstrated_intensity == pytest.approx(0.12744, abs=1e-5)
+    assert result.demonstrated_mtbf == pytest.approx(7.84708, abs=1e-5)
+    assert result.beta * 16 / 15 == pytest.approx(0.7970, abs=1e-4)
+    assert result.beta == pytest.approx(0.7472, abs=1e-4)
+    assert 16 / 400**result.beta == pytest.approx(0.1820, abs=1e-4)
+    assert result.mean_fef == pytest.approx(0.72125)
+    assert result.growth_potential_intensity == pytest.approx(0.0670, abs=1e-4)
+    assert result.projected_intensity == pytest.approx(0.0885, abs=1e-4)
+    assert result.projected_mtbf == pytest.approx(11.29418, abs=1e-5)
+
+
+def test_730_weibull_example_with_one_decimal_factors():
+    # Weibull++'s version of the example (and ReliaSoft's Hotwire 36): the
+    # same data with the factors to one decimal (0.7, 0.7, 0.8, 0.8, 0.9,
+    # 0.9, 0.5, 0.9, 0.9, ...; mean 0.725) projects an MTBF of 11.3182
+    # with a growth potential of 14.9957. The difference from 11.29418 is
+    # the factors, not the choice of beta.
+    fefs = [0.7, 0.7, 0.8, 0.8, 0.9, 0.9, 0.5, 0.9, 0.9, 0.7, 0.7, 0.6]
+    fefs += [0.6, 0.7, 0.7, 0.5]
+    result = _handbook_example(fefs)
+    assert result.mean_fef == pytest.approx(0.725)
+    assert result.demonstrated_mtbf == pytest.approx(7.8471, abs=1e-4)
+    assert result.projected_mtbf == pytest.approx(11.3182, abs=1e-4)
+    assert result.growth_potential_mtbf == pytest.approx(14.9957, abs=1e-4)
+
+
+def test_730_bc_modes_need_two_failures():
+    with pytest.raises(ValueError, match="at least 2 failures"):
+        CrowAMSAA.projection(
+            [15.0, 400.0], ["a1", None], {}, c=[0, 1], bc=["a1"]
+        )
