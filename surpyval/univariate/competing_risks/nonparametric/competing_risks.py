@@ -574,9 +574,30 @@ class CompetingRisks(SerialisableMixin):
             model.set_support(*self.support)
         return model
 
-    def plot(self, stacked: bool = True, ax: Any = None) -> Any:
+    def plot(
+        self,
+        stacked: bool = True,
+        ax: Any = None,
+        plot_bounds: bool = True,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        bound_type: str = "exp",
+    ) -> Any:
         """
-        Plot the cumulative incidence of every cause (#485).
+        Plot the cumulative incidence of every cause (#485), with its
+        confidence bounds.
+
+        As the single-event estimates' ``plot``, two-sided bounds are drawn
+        as a shaded band in the colour of their curve (a one-sided bound
+        as a dashed step line), unless ``plot_bounds=False``. Unstacked,
+        each cause's band is its cumulative incidence's :meth:`cb`
+        (``on="cif"``). Stacked, a cause's bounds do not bound its layer
+        (which sits on the causes below it), so the band is drawn on the
+        top of the stack, the all-cause failure probability
+        :math:`1 - S` (the sum of the cumulative incidences): the
+        Kaplan-Meier (Greenwood) bounds of the all-cause failures, as
+        ``KaplanMeier``'s plot of the same data draws them, which is
+        ``cb(x, on="ff")`` of a model fitted with ``how="Kaplan-Meier"``.
 
         Parameters
         ----------
@@ -586,6 +607,10 @@ class CompetingRisks(SerialisableMixin):
             :math:`1 - S`; ``False`` draws each as its own step curve.
         ax : matplotlib.axes.Axes, optional
             The axes to draw on; the current axes by default.
+        plot_bounds : bool, optional
+            Whether to draw the confidence bounds. Defaults to True.
+        alpha_ci, bound, bound_type : optional
+            Passed to the confidence bound calculation; see :meth:`cb`.
 
         Returns
         -------
@@ -607,6 +632,11 @@ class CompetingRisks(SerialisableMixin):
         'Cumulative incidence'
         >>> plt.close(fig)
         """
+        from surpyval import KaplanMeier
+
+        check_alpha_ci(alpha_ci)
+        check_option("bound", bound, BOUNDS)
+        check_option("bound_type", bound_type, ("exp", "normal"))
         if ax is None:
             import matplotlib.pyplot as plt
 
@@ -621,11 +651,48 @@ class CompetingRisks(SerialisableMixin):
             for e in causes
         ]
         labels = [str(e) for e in causes]
+
+        def draw_bounds(cb: npt.NDArray, color: Any) -> None:
+            # At 0 (before the first time) the bounds are the estimate, 0.
+            if bound == "two-sided":
+                cb = np.vstack([[0.0, 0.0], cb])
+                ax.fill_between(
+                    x,
+                    cb[:, 0],
+                    cb[:, 1],
+                    step="post",
+                    alpha=0.3,
+                    color=color,
+                    linewidth=0,
+                )
+            else:
+                cb = np.concatenate([[0.0], cb])
+                ax.step(x, cb, where="post", color=color, linestyle="--")
+
         if stacked:
             ax.stackplot(x, *cifs, labels=labels, step="post", alpha=0.7)
+            if plot_bounds:
+                all_cause = KaplanMeier.from_xrd(self.x, self.r, self.d)
+                cb = all_cause.cb(
+                    self.x,
+                    on="ff",
+                    alpha_ci=alpha_ci,
+                    bound=bound,
+                    bound_type=bound_type,
+                )
+                draw_bounds(cb, "k")
         else:
-            for cif, label in zip(cifs, labels):
-                ax.step(x, cif, where="post", label=label)
+            for cause, cif, label in zip(causes, cifs, labels):
+                (line,) = ax.step(x, cif, where="post", label=label)
+                if plot_bounds:
+                    cb = self.cb(
+                        self.x,
+                        cause,
+                        alpha_ci=alpha_ci,
+                        bound=bound,
+                        bound_type=bound_type,
+                    )
+                    draw_bounds(cb, line.get_color())
         ax.set_ylim(0, 1)
         if not ax.get_xlabel():
             # "Time", as the other estimates' plots (#514)

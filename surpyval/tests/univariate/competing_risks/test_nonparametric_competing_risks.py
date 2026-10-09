@@ -323,3 +323,60 @@ def test_728_Hf_before_the_first_time_is_plus_zero(how):
         assert not np.any(np.signbit(H))
     assert np.all(model.Hf(q[:2]) == 0)
     assert model.Hf(1.0, event=2) == 0 and not np.signbit(model.Hf(0.0))
+
+
+def _band_values(collection):
+    # The y values of a fill_between band's outline.
+    return np.unique(collection.get_paths()[0].vertices[:, 1])
+
+
+def test_746_plot_draws_the_cif_bounds():
+    import matplotlib
+
+    matplotlib.use("Agg")
+    from matplotlib import pyplot as plt
+
+    from surpyval import KaplanMeier
+
+    model = CompetingRisks.fit(X10, E10)
+    # Unstacked: a band per cause, the cause's cb, in its curve's colour.
+    _, ax = plt.subplots()
+    model.plot(stacked=False, ax=ax, alpha_ci=0.1)
+    assert len(ax.collections) == 2
+    for line, band, cause in zip(ax.lines, ax.collections, ["a", "b"]):
+        cb = model.cb(model.x, cause, alpha_ci=0.1)
+        np.testing.assert_allclose(
+            _band_values(band), np.unique(np.concatenate([[0.0], *cb.T]))
+        )
+        np.testing.assert_allclose(
+            band.get_facecolor()[0][:3],
+            matplotlib.colors.to_rgb(line.get_color()),
+        )
+    # Stacked (the default): one band, on the all-cause failure
+    # probability at the top of the stack, as KaplanMeier's.
+    _, ax = plt.subplots()
+    model.plot(ax=ax)
+    assert len(ax.collections) == 3
+    km = KaplanMeier.from_xrd(model.x, model.r, model.d)
+    cb = km.cb(model.x, on="ff")
+    np.testing.assert_allclose(
+        _band_values(ax.collections[-1]),
+        np.unique(np.concatenate([[0.0], *cb.T])),
+    )
+    # A one-sided bound is a dashed step line.
+    _, ax = plt.subplots()
+    model.plot(stacked=False, ax=ax, bound="upper")
+    assert len(ax.lines) == 4 and not ax.collections
+    np.testing.assert_allclose(
+        ax.lines[1].get_ydata()[1:], model.cb(model.x, "a", bound="upper")
+    )
+    # plot_bounds=False draws the curves alone.
+    _, ax = plt.subplots()
+    model.plot(stacked=False, ax=ax, plot_bounds=False)
+    assert len(ax.lines) == 2 and not ax.collections
+    _, ax = plt.subplots()
+    model.plot(ax=ax, plot_bounds=False)
+    assert len(ax.collections) == 2
+    with pytest.raises(ValueError, match="bound"):
+        model.plot(ax=ax, bound="both")
+    plt.close("all")

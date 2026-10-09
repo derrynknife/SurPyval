@@ -380,8 +380,9 @@ def test_competing_risks_plots_its_cumulative_incidences():
     model = CompetingRisks.fit(x, e, c=[0, 0, 0, 0, 0, 1, 0, 0])
     _, ax = plt.subplots()
     model.plot(ax=ax)
-    # the top of the stack is the sum of the causes' incidences
-    top = ax.collections[-1].get_paths()[0].vertices[:, 1].max()
+    # the top of the stack is the sum of the causes' incidences (the last
+    # cause's layer; the bounds' band is drawn after the stack)
+    top = ax.collections[1].get_paths()[0].vertices[:, 1].max()
     assert top == pytest.approx(model.cif(8, "a") + model.cif(8, "b"))
     _, ax = plt.subplots()
     model.plot(stacked=False, ax=ax)

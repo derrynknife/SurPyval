@@ -111,6 +111,11 @@ Unreleased
   log(-log) scale by default, and on the all-cause or net ``sf``, ``ff``
   and ``Hf`` as ``KaplanMeier`` / ``NelsonAalen`` would give them (#728).
   0 before the first time, NaN with a warning past the last.
+- ``CompetingRisks.plot`` draws the bounds, as a shaded band by default
+  as the single-event plots (``plot_bounds``, ``alpha_ci``, ``bound``,
+  ``bound_type``; #746). Unstacked, each cause's CIF band; stacked, the
+  band of the top of the stack, the all-cause failure probability
+  (Kaplan-Meier's), since a cause's bounds do not bound its layer.
 - ``FixedEventProbability.qf`` (0 up to ``p``, ``inf`` above it; NaN
   with one warning outside [0, 1]) and ``Binomial.fit_from_df(...,
   n_trials_col=)`` for per-row trials (#626).
