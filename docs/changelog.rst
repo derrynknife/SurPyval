@@ -8,6 +8,10 @@ Unreleased
 
 - ``fit_best(include=[])`` is refused, naming the fix; it used to try the
   default candidates as if ``include`` had been left out.
+- A parametric model's printout has a ``Maximum`` line when the fit is not
+  a verified maximum of the likelihood (``maximum`` is ``"unverified"`` or
+  ``"no finite maximum"``); it used to read as an ordinary fit, with only
+  the warning raised by ``fit`` to say otherwise.
 
 v0.24 (9 October 2026)
 ----------------------
