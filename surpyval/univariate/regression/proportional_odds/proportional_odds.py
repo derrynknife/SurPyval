@@ -132,6 +132,7 @@ from .._prediction import (
 from .._summary import coefficient_names, coefficient_repr, coefficient_table
 from ..regression_data import (
     LinearPredictorMixin,
+    canonical_rows,
     design_matrix_from_df,
     restore_covariate_meta,
     semi_parametric_inputs,
@@ -447,7 +448,16 @@ def _validate(
             "ProportionalOdds needs at least one event (c=0); with every "
             "observation censored there is no baseline to estimate."
         )
-    return x_arr, c_arr, n_arr, tl_arr, Z_arr
+    # The rows in one order, every column sorted, so the fit is the same
+    # to the last digit whatever order they are given in (#760)
+    order = canonical_rows(x_arr, c_arr, n_arr, tl_arr, Z_arr)
+    return (
+        x_arr[order],
+        c_arr[order],
+        n_arr[order],
+        tl_arr[order],
+        Z_arr[order],
+    )
 
 
 def _po_aliased(
@@ -1178,7 +1188,10 @@ class ProportionalOdds_(FitterRepr):
         maximised over the baseline odds at each ``beta`` (see the module
         notes), and their standard errors are the profile likelihood's
         (the inverse of its negative Hessian at the maximum), as Murphy,
-        Rossini and van der Vaart (1997) justify.
+        Rossini and van der Vaart (1997) justify. The rows are fitted
+        sorted by every column (time, censoring, entry time,
+        covariates, count), so the fit is the same to the last digit whatever
+        order they are given in.
 
         Parameters
         ----------

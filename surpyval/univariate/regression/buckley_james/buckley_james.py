@@ -77,6 +77,7 @@ from .._summary import coefficient_names, coefficient_table
 from ..regression_data import (
     LinearPredictorMixin,
     NoLikelihoodMixin,
+    canonical_rows,
     design_matrix_from_df,
     restore_covariate_meta,
     semi_parametric_inputs,
@@ -706,7 +707,9 @@ class BuckleyJames_(FitterRepr):
         column is aliased, as in :class:`~surpyval.CoxPH`. Its coefficient
         is ``nan`` (``model.aliased`` lists it), the others are those of
         the fit without it, predictions take it as 0, and one warning
-        names it.
+        names it. The rows are fitted sorted by every column (time,
+        censoring, covariates, count), so the fit, and its bootstrap, is
+        the same to the last digit whatever order they are given in.
 
         Parameters
         ----------
@@ -746,11 +749,11 @@ class BuckleyJames_(FitterRepr):
         >>> model.beta.round(3)
         array([0.435])
         >>> model.bootstrap_ci(random_state=1).round(3)
-        array([[0.33 , 0.541]])
+        array([[0.343, 0.528]])
         >>> model.sf([5, 10], [0.0]).round(4)
         array([0.7366, 0.2693])
         """
-        x_a, c_a, n_a, _, Z_a = semi_parametric_inputs(
+        x_a, c_a, n_a, tl_a, Z_a = semi_parametric_inputs(
             x,
             Z,
             c,
@@ -760,6 +763,11 @@ class BuckleyJames_(FitterRepr):
                 "right-censored (c=1) data."
             ),
         )
+        # The rows in one order, every column sorted, so the fit (and its
+        # bootstrap, which resamples them) is the same whatever order they
+        # are given in (#760)
+        order = canonical_rows(x_a, c_a, n_a, tl_a, Z_a)
+        x_a, c_a, n_a, Z_a = (a[order] for a in (x_a, c_a, n_a, Z_a))
 
         if np.any(x_a <= 0):
             raise ValueError(
