@@ -2,22 +2,18 @@ name: actions
 
 run-name: SurPyval CI
 
-# Run CI on pull requests into the integration branches and on pushes to
-# master (i.e. release merges). Feature work accumulates on `develop` via
-# PRs. See docs/Contributing.rst for the branching / release flow.
+# One automated run: the full check, on a pull request into `master` (the
+# release). Nothing runs on pull requests into `develop` or on pushes to any
+# branch. The run tests the pull request's merge result, so a failure is
+# found, and fixed on `develop`, before `master` changes; merge the release
+# only when it is green. See docs/Contributing.rst for the branching /
+# release flow.
 #
-# The full test suite and the documentation build run once, when a release
-# is merged into `master`, and nowhere else: not on pull requests into
-# `develop`, not on the release pull request itself. A pull request runs
-# lint only; the change is tested locally, by the tests for what it
-# changed. Waiting on the full suite at every step made a release take
-# hours, and nearly every run confirmed what the targeted tests had
-# already shown. A failure the merge run finds is fixed in a point
-# release.
+# Every job below runs in that one run: lint, the conformance suite, the
+# test suite on three interpreters with the docstring examples, the wheel
+# check and the documentation build.
 on:
   pull_request:
-    branches: [develop, master]
-  push:
     branches: [master]
 
 env:
@@ -55,9 +51,8 @@ jobs:
       - name: black
         run: black --check $LINT
 
-  # The conformance suite runs with the rest of the tests, on the merge
-  # into `master`; a pull request runs the conformance tests for the
-  # models it touches locally.
+  # The conformance suite runs with the rest of the tests, on the pull
+  # request into `master`.
   #
   # It runs every public model, listed once in a registry
   # (surpyval/tests/conformance/registry.py), through one battery of
@@ -73,12 +68,11 @@ jobs:
   # It takes about forty seconds on one core: the fixtures are tiny, and
   # the refits of the less common variants (the other regression baselines
   # and life models, the offset / LFP / zero-inflated forms beyond
-  # Weibull) are marked ``slow`` and left out here. The full suite, on the
-  # same merge, runs them too. A known failure is a
+  # Weibull) are marked ``slow`` and left out here. The full suite, in the
+  # same run, runs them too. A known failure is a
   # strict xfail, so this stays green, and turns red the day the failure
   # is fixed, as a reminder to remove its entry.
   conformance:
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -97,13 +91,12 @@ jobs:
         run:
           python -m pytest surpyval/tests/conformance -m "not slow"
 
-  # The test suite runs on pushes to `master` -- the release merge -- and
-  # on nothing else (see the top of this file). A failure that appears on
+  # The test suite runs on the pull request into `master` -- the release --
+  # and on nothing else (see the top of this file). A failure that appears on
   # one interpreter only is found there, with a release's worth of
   # commits to search; run the tests for a numerical change on more than
   # one interpreter locally.
   surpyval_ci:
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -193,13 +186,12 @@ jobs:
 
   # The suite as installed from the built wheel, collected (not run) in a
   # clean environment with only pytest beside the package's own
-  # dependencies, on the merge into `master`. The repository run above
+  # dependencies, on the pull request into `master`. The repository run above
   # sees files the wheel does not carry: 0.23 shipped tests that read
   # reference data and a root-conftest helper left out of it, and the
   # installed suite could not be collected (#661). Collection is what
   # breaks that way, and takes about a minute.
   wheel:
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -225,7 +217,7 @@ jobs:
         working-directory: /tmp
         run: /tmp/clean/bin/python -m pytest --pyargs surpyval --collect-only -q
 
-  # Build the documentation on the merge into `master`, with the test
+  # Build the documentation on the pull request into `master`, with the test
   # suite.
   #
   # The docs execute every ``.. jupyter-execute::`` cell during the
@@ -240,7 +232,6 @@ jobs:
   # .readthedocs.yaml rather than the test jobs above: Python 3.12, and
   # the package installed with its own ``docs`` extra.
   docs:
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
