@@ -184,6 +184,12 @@ Unreleased
   are taken in logs; a delayed-entry risk set that is all but cancelled
   by the units yet to enter is summed over itself (it gave 1.446 for
   1.386). A ``beta`` whose linear predictor is not finite gives nan.
+- CoxPH's score and information are right and quiet at a large ``beta``
+  (#746). Efron's and Breslow's information lost its ``ZR ZR' / R^2``
+  term to overflow and looked healthy where it is about 0 (9 for
+  ``e^-225``); past ``|beta'Z| = 300`` each risk set's sums are now
+  scaled by its own total. Kalbfleisch-Prentice's were nan: each row of
+  its recursion now has its own scale.
 - ``CrowAMSAA.projection`` names the source its BC-mode projection was
   checked against (#710): ReliaSoft's Crow Extended formulas, whose
   demonstrated intensity with BC modes is the Crow-AMSAA intensity at
