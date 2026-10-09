@@ -30,7 +30,7 @@ is how likely a correct method would have been to fail for the seed chosen,
 not a flake rate.
 
 Each check prints a one-line summary (run pytest with ``-rP`` to see them
-for passing tests), so the nightly log records how close every study is.
+for passing tests), so a run's log records how close every study is.
 """
 
 import math

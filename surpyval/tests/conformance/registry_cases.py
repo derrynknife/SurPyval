@@ -1169,7 +1169,7 @@ def _parametric_bounds(case):
     # The likelihood-ratio search is swept on the cases in _LR_X only.
     # The ExpoWeibull's and NegativeBinomial's sweeps (searches in
     # multi-parameter valleys, seconds each) took about ten minutes on
-    # four cores, so they run nightly, with the calibration studies; the
+    # four cores, so they run with the calibration studies; the
     # other four sweep in every run, and test_likelihood_ratio_edges.py
     # checks those two families' edges and valleys directly (#421).
     # (Documented: it is not available for offset, limited-failure or

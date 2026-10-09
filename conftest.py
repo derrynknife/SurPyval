@@ -21,8 +21,8 @@ none guards a regression that the default run would miss quickly:
     The simulation studies under ``surpyval/tests/calibration``: coverage
     of confidence intervals, test size and power, estimator bias. They
     check that the answers are statistically right rather than that the
-    code runs, take ten to twenty minutes on four cores, and run nightly
-    (.github/workflows/nightly.yml), not on pull requests. A test
+    code runs, take ten to twenty minutes on four cores, and run only when
+    asked for with ``--run-calibration``; no automated run passes it. A test
     elsewhere joins them by carrying the ``calibration`` mark: the
     likelihood-ratio option sweeps of the slow families
     (conformance/registry.py, ``Bound.nightly``).
@@ -35,7 +35,7 @@ none guards a regression that the default run would miss quickly:
     card checks that the package recovers the truth and answers the
     study's questions; what it cannot yet answer is a strict xfail led
     by its issue. Seconds in all, but end to end rather than unit by
-    unit; they run in the nightly workflow.
+    unit; they run only when asked for with ``--run-scenarios``.
 
 Continuous integration passes ``--run-ml`` only, so its coverage is
 unchanged. The invariant sweep is deliberately *not* run there: it is a

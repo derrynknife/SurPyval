@@ -43,7 +43,7 @@ def pytest_collection_modifyitems(config, items):
         for item in items:
             location = str(item.fspath).replace("\\", "/")
             # A test outside the path opts in by carrying the mark (the
-            # conformance sweeps that run nightly).
+            # conformance sweeps that run with the calibration studies).
             if path not in location and item.get_closest_marker(mark) is None:
                 continue
             item.add_marker(getattr(pytest.mark, mark))

@@ -53,7 +53,7 @@ bias rule; each plan's ``note`` says which and why. Every registered case
 is either in :data:`PLANS` or in :data:`EXCLUDED` with a reason, which
 ``test_every_case_is_planned`` enforces.
 
-Run with ``--run-calibration`` (nightly). The whole module is about 20
+Run with ``--run-calibration``. The whole module is about 20
 CPU-minutes, the slowest cases (ARA, GeneralizedOneRenewal, MixtureModel,
 RoystonParmar) one to two minutes each: five to six minutes with
 ``-n auto`` on four cores.

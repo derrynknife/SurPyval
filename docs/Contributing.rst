@@ -48,15 +48,15 @@ changing a likelihood, an initial guess or an optimiser.
 ``--run-scenarios`` runs the practitioner scenario cards (see below).
 ``--run-calibration`` runs the statistical calibration studies (confidence
 interval coverage, test size and power, estimator bias; about 20 minutes on
-four cores), which can also be run against ``develop`` by hand from
-``.github/workflows/nightly.yml`` (Actions tab). They include ``test_refit_registry.py``,
+four cores). No automated run passes it. They include
+``test_refit_registry.py``,
 which draws data from every model in the conformance registry that can
 simulate from itself and checks that the refits recover it (#397); a newly
 registered model must be added to its ``PLANS`` or ``EXCLUDED``.
 The property-based tests in ``surpyval/tests/properties`` run a short
 derandomized search by default (under a minute);
-``SURPYVAL_HYPOTHESIS_PROFILE=nightly`` makes it thorough, as the
-by-hand ``nightly`` run does. When one finds a failure, it prints a minimal example: pin it in
+``SURPYVAL_HYPOTHESIS_PROFILE=nightly`` makes it thorough (400 examples a
+test). When one finds a failure, it prints a minimal example: pin it in
 ``surpyval/tests/properties/test_known_failures.py`` with the issue number.
 
 Describe any change a user would notice in ``docs/changelog.rst``, under the
@@ -217,8 +217,7 @@ a forecast from each unit's own repair history, among others; #570-#583.
 Each is now answered, and checked, through the API its fix chose.)
 
 The cards take seconds with ``--run-scenarios``. No pull-request or
-release run passes it: run them when changing what a card uses, and the
-by-hand ``nightly`` workflow runs them against ``develop``. Add a card
+release run passes it: run them when changing what a card uses. Add a card
 for a kind of study the package claims to support but no card covers;
 its first run is a practitioner review of that part of the package, and
 the issues it files become its xfails.
