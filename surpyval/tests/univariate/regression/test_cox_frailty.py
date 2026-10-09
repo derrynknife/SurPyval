@@ -362,3 +362,80 @@ def test_551_covariance_does_not_form_the_group_indicators(monkeypatch):
     cov = em.beta_covariance(0.5, beta, log_u)
     assert max(widths) <= em.p + 1 < em.G
     assert np.all(np.linalg.eigvalsh(cov) > 0)
+
+
+def _em_pair(ties, tied=False, covariates=True, seed=3, G=80, per=6):
+    """The same data in two EM fits, one started from Newton's solution
+    and one EM alone."""
+    from surpyval.univariate.regression.frailty import cox_frailty as cf
+    from surpyval.univariate.regression.frailty.frailty_fitter import (
+        grouped_data,
+    )
+
+    x, c, Z, g = _simulate(seed, G=G, per=per)
+    Z = np.column_stack([Z, np.random.default_rng(seed).normal(size=len(x))])
+    if tied:
+        x = np.ceil(x)
+    x, Zm, c, w, labels, inv = grouped_data(x, Z, c, None, g)
+    Zc = Zm - Zm.mean(axis=0) if covariates else np.zeros((len(x), 0))
+    fits = []
+    for newton in (True, False):
+        em = cf._CoxFrailtyEM(x, Zc, c, w, inv, labels.shape[0], ties)
+        em.use_newton = newton
+        fits.append(em)
+    return fits
+
+
+@pytest.mark.parametrize("ties", ["efron", "breslow"])
+@pytest.mark.parametrize("tied", [False, True])
+@pytest.mark.parametrize("covariates", [True, False])
+@pytest.mark.parametrize("theta", [1e-6, 0.05, 0.5, 20.0])
+def test_newton_reaches_ems_fixed_point(ties, tied, covariates, theta):
+    # Newton on the penalised partial likelihood and EM alone end at the
+    # same fixed point, to EM's tolerance.
+    with_newton, em_alone = _em_pair(ties, tied, covariates)
+    beta_n, log_u_n, neg_pl_n = with_newton.em(theta)
+    beta_e, log_u_e, neg_pl_e = em_alone.em(theta)
+    np.testing.assert_allclose(log_u_n, log_u_e, rtol=0, atol=1e-9)
+    np.testing.assert_allclose(beta_n, beta_e, rtol=0, atol=1e-9)
+    assert neg_pl_n == pytest.approx(neg_pl_e, rel=1e-13)
+    assert not with_newton.not_converged and not em_alone.not_converged
+
+
+@pytest.mark.parametrize("ties", ["efron", "breslow"])
+def test_newton_leaves_em_a_step_or_two(ties, monkeypatch):
+    # From Newton's solution EM's stopping rule is met at once: a couple
+    # of EM steps (each a Cox fit and its baseline) where EM alone takes
+    # many.
+    counts = {}
+    for em in _em_pair(ties):
+        update = em.update
+        n = [0]
+
+        def counted(*args, update=update, n=n):
+            n[0] += 1
+            return update(*args)
+
+        monkeypatch.setattr(em, "update", counted)
+        em.em(0.5)
+        counts[em.use_newton] = n[0]
+    assert counts[True] <= 3 < counts[False]
+
+
+def test_newton_that_fails_leaves_em_to_it(monkeypatch):
+    # Where Newton gives up, EM runs from the start as before.
+    with_newton, em_alone = _em_pair("efron")
+    monkeypatch.setattr(with_newton, "newton", lambda *args: None)
+    np.testing.assert_array_equal(with_newton.em(0.5)[1], em_alone.em(0.5)[1])
+
+
+def test_newton_is_off_where_the_partial_likelihood_has_no_maximum():
+    # A covariate that separates the events: the coefficient runs off
+    # whatever theta is, and the fit keeps EM's short iteration limit.
+    x = np.arange(1.0, 41.0)
+    Z = (x < 20).astype(float)
+    groups = np.repeat(np.arange(10), 4)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = CoxFrailty.fit(x, Z=Z, groups=groups)
+    assert model.maximum == "no finite maximum"
