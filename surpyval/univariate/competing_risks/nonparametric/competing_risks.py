@@ -452,6 +452,13 @@ class CompetingRisks(SerialisableMixin):
         failure from that cause and no one left at risk) the 'exp' upper
         bound there is 1 and the lower bound the largest one before it.
 
+        There are no bounds on ``hf``, ``df`` or ``iif``, by design and as
+        for the single-event estimates (``KaplanMeier.cb`` refuses 'hf'
+        and 'df' too): they are the jumps of the step estimate, point
+        masses at the event times and 0 between them, so a pointwise
+        interval would be one about a single time's increment and nothing
+        anywhere else. Bound the cumulative functions instead.
+
         References
         ----------
         Aalen, O. (1978), "Nonparametric estimation of partial transition
@@ -488,7 +495,10 @@ class CompetingRisks(SerialisableMixin):
             on,
             _CB_ON,
             "Bounds on the hazard, the density or the incidence increments "
-            "('hf', 'df', 'iif') are not available.",
+            "('hf', 'df', 'iif') are not available: they are the jumps of "
+            "the step estimate at the event times, which the single-event "
+            "estimates do not bound either. Bound the cumulative functions "
+            "('cif', 'sf', 'ff', 'Hf') instead.",
         )
         check_option("bound", bound, BOUNDS)
         check_option("bound_type", bound_type, ("exp", "normal"))
