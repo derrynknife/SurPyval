@@ -1,3 +1,5 @@
+import numbers
+
 import numpy as np
 
 from surpyval.utils.removed_names import removed_arguments
@@ -30,7 +32,7 @@ def success_run(n: int, *, alpha_ci: float = 0.05) -> float:
     ----------
 
     n : int
-        The number of independent successes in the run.
+        The number of independent successes in the run, a whole number.
     alpha_ci : float, optional
         Keyword only: the significance level, the total tail probability
         of the bound, as every bound in SurPyval takes it (default 0.05,
@@ -47,7 +49,7 @@ def success_run(n: int, *, alpha_ci: float = 0.05) -> float:
     ------
 
     ValueError
-        If ``n`` is not a positive number, or the significance level is
+        If ``n`` is not a whole, positive number, or the significance level is
         not strictly between 0 and 1.
 
     Examples
@@ -64,9 +66,17 @@ def success_run(n: int, *, alpha_ci: float = 0.05) -> float:
     """
     # A run of no successes demonstrates nothing; n = 0 used to fail as a
     # ZeroDivisionError and a negative n returned a "probability" above 1.
-    if not n > 0:
+    # A run is counted in whole trials, so 2.5 is refused too (a float
+    # that is whole, 10.0, is a count all the same).
+    whole = (
+        not isinstance(n, bool)
+        and isinstance(n, numbers.Real)
+        and float(n).is_integer()
+    )
+    if not (whole and n > 0):
         raise ValueError(
-            "'n' must be a positive number of successes; got {}".format(n)
+            "'n' must be a whole, positive number of successes; "
+            "got {}".format(n)
         )
     check_alpha_ci(alpha_ci)
 

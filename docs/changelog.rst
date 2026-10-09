@@ -53,6 +53,13 @@ Unreleased
 - ``from_json`` given a string that is neither a file nor JSON text (which
   starts with ``{``) says that it read the string as a file path, rather
   than only that the file was not found.
+- ``success_run`` refuses a number of successes that is not a whole
+  number; ``success_run(2.5)`` used to return a bound for half a trial.
+- ``cb``, ``param_cb`` and the other bounds on a model built by
+  ``weibayes`` say that the model is itself the bound (its scale the lower
+  confidence bound at the ``alpha_ci`` it was built with) and to call
+  ``weibayes`` again for another level, rather than only "Only MLE has
+  confidence bounds".
 
 v0.24 (9 October 2026)
 ----------------------

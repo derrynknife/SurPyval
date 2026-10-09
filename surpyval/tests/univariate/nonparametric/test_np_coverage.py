@@ -145,6 +145,10 @@ def test_fit_from_ecdf_can_plot_without_bounds():
 def test_success_run_needs_a_positive_run():
     with pytest.raises(ValueError, match="'n'"):
         sp.success_run(0)
+    # A run is counted in whole trials
+    with pytest.raises(ValueError, match="whole, positive"):
+        sp.success_run(2.5)
+    assert sp.success_run(10.0) == sp.success_run(10)
     with pytest.raises(ValueError, match="between 0 and 1"):
         sp.success_run(5, alpha_ci=1.5)
 

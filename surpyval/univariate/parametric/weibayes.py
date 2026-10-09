@@ -76,6 +76,8 @@ def weibayes(
     Parametric
         The Weibull with scale :math:`\alpha_L` and shape ``beta``, built
         with ``Weibull.from_params``; ``model.params[0]`` is the bound.
+        Being a bound already, it has none of its own: its ``cb`` and
+        ``param_cb`` raise, saying so.
 
     Raises
     ------
@@ -141,4 +143,8 @@ def weibayes(
     r = int(np.sum(n_arr[c_arr == 0]))
     quantile = chi2.ppf(1 - alpha_ci, 2 * r + 2)
     alpha_lower = scale * (2 * total / quantile) ** (1 / beta_f)
-    return Weibull.from_params([alpha_lower, beta_f])
+    model = Weibull.from_params([alpha_lower, beta_f])
+    # So that cb() and its kin, asked for a bound on what already is one,
+    # say so rather than only "Only MLE has confidence bounds".
+    model._weibayes_alpha_ci = float(alpha_ci)
+    return model
