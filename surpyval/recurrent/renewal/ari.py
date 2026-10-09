@@ -485,6 +485,11 @@ class ARI(RenewalFitMixin):
             return negated(found, negll_func, params)
 
         negll_func.value_and_grad = value_and_grad  # type: ignore
+        floor = getattr(terms, "search_floor", None)
+        if floor is not None:
+            negll_func.search_floor = np.array(  # type: ignore
+                [1.0, *floor(x)]
+            )
         return negll_func
 
     @removed_arguments("0.23", dist="'baseline'")
@@ -552,10 +557,14 @@ class ARI(RenewalFitMixin):
         rho, *baseline_params = params
         out = self._make_model(baseline, baseline_params, rho, m)
         # The likelihood kept as what it is built from, so the model
-        # pickles (#573).
+        # pickles (#573), with its parameters' units for the check that
+        # this is a maximum (``_in_units``)
+        built = neg_ll
         neg_ll = Rebuilt(
             self.create_negll_func, (data, baseline, m), built=neg_ll
         )
+        if hasattr(built, "search_floor"):
+            neg_ll.search_floor = built.search_floor  # type: ignore
         self._attach_inference(out, neg_ll, [rho, *baseline_params], res, data)
         return out
 

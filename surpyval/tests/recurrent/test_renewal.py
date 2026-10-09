@@ -514,9 +514,10 @@ def test_728_search_map_is_the_fits_map():
 
 def test_728_gradient_search_where_written_and_bounds_reached():
     # BFGS on the hand-written gradient for a Weibull life; Nelder-Mead,
-    # as before, where there is none (a Gamma life). The search still
-    # carries a restoration parameter onto its bound: perfect repair.
-    from surpyval import Gamma, Weibull
+    # as before, where there is none (an exponentiated Weibull life, #746
+    # gave the Gamma one). The search still carries a restoration
+    # parameter onto its bound: perfect repair.
+    from surpyval import ExpoWeibull, Gamma, Weibull
     from surpyval.recurrent.renewal._search import (
         GradientSearch,
         SimplexSearch,
@@ -525,12 +526,14 @@ def test_728_gradient_search_where_written_and_bounds_reached():
 
     data = _fleet_data()
     bounds = [(0, None), *Weibull.bounds]
-    weibull = GeneralizedRenewal.create_negll_func(data, Weibull)
-    gamma = GeneralizedRenewal.create_negll_func(data, Gamma)
-    assert isinstance(
-        renewal_search(weibull, bounds, 1.0, None), GradientSearch
-    )
-    assert isinstance(renewal_search(gamma, bounds, 1.0, None), SimplexSearch)
+    for life in (Weibull, Gamma):
+        neg_ll = GeneralizedRenewal.create_negll_func(data, life)
+        assert isinstance(
+            renewal_search(neg_ll, bounds, 1.0, None), GradientSearch
+        )
+    expo = GeneralizedRenewal.create_negll_func(data, ExpoWeibull)
+    bounds = [(0, None), *ExpoWeibull.bounds]
+    assert isinstance(renewal_search(expo, bounds, 1.0, None), SimplexSearch)
 
     x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2])
     i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3])
@@ -560,3 +563,177 @@ def test_728_kijima_finds_the_run_off():
     assert model.maximum == "unverified"
     assert model.q > 1e6
     assert model.log_likelihood > -29.1
+
+
+def _richardson_gradient(f, p, rel=1e-4):
+    # Fourth-order central differences of f at p
+    g = np.zeros(p.size)
+    for k in range(p.size):
+        e = np.zeros(p.size)
+        e[k] = rel * max(abs(p[k]), 1e-2)
+        g[k] = (8 * (f(p + e) - f(p - e)) - (f(p + 2 * e) - f(p - 2 * e))) / (
+            12 * e[k]
+        )
+    return g
+
+
+@pytest.mark.parametrize("one_item", [False, True])
+@pytest.mark.parametrize(
+    "fitter, life, kw, params",
+    [
+        (GeneralizedRenewal, "Gamma", {"kijima": "i"}, [0.4, 2.5, 0.25]),
+        (GeneralizedRenewal, "Gamma", {"kijima": "i"}, [0.4, 0.6, 0.05]),
+        (GeneralizedRenewal, "Gamma", {"kijima": "ii"}, [1.2, 2.5, 0.25]),
+        (ARA, "Gamma", {"m": 1}, [0.4, 2.5, 0.25]),
+        (ARA, "Gamma", {"m": np.inf}, [0.7, 0.8, 0.1]),
+        (GeneralizedOneRenewal, "Gamma", {}, [-0.3, 2.5, 0.25]),
+        (ARI, "CoxLewis", {"m": 1}, [0.3, -1.0, 0.05]),
+        (ARI, "CoxLewis", {"m": 2}, [0.3, -2.0, 0.0]),
+        (ARI, "CoxLewis", {"m": np.inf}, [0.2, -1.5, 0.02]),
+        (GeneralizedRenewal, "LogLogistic", {"kijima": "ii"}, [1.7, 10, 0.7]),
+        (ARA, "LogLogistic", {"m": 2}, [0.4, 10.0, 2.5]),
+        (GeneralizedOneRenewal, "LogLogistic", {}, [-0.3, 10.0, 2.5]),
+        (GeneralizedRenewal, "Rayleigh", {"kijima": "ii"}, [40.0, 8.0]),
+        (GeneralizedOneRenewal, "Exponential", {}, [0.3, 0.1]),
+        (ARI, "HPP", {"m": np.inf}, [0.3, 0.2]),
+    ],
+)
+def test_746_hand_written_gradients(fitter, life, kw, params, one_item):
+    # The Gamma, LogLogistic, Rayleigh and Exponential lifetimes and the
+    # Cox-Lewis and HPP baselines have hand-written gradients too (#746):
+    # the likelihood's value, and the derivatives of its central
+    # differences (autograd's of the Cox-Lewis likelihood fails, and its
+    # Gamma shape derivative is itself a difference).
+    import surpyval
+    from surpyval import recurrent
+
+    life = getattr(surpyval, life, None) or getattr(recurrent, life)
+    if one_item:
+        rng = np.random.default_rng(5)
+        data = handle_xicn(np.cumsum(rng.weibull(2.0, 30) * 3))
+    else:
+        data = _fleet_data()
+    neg_ll = _728_neg_ll(fitter, life, kw, data)
+    p = np.array(params)
+    value, gradient = neg_ll.value_and_grad(p)
+    assert value == pytest.approx(neg_ll(p), rel=1e-13)
+    expected = _richardson_gradient(neg_ll, p)
+    np.testing.assert_allclose(
+        gradient, expected, rtol=1e-8, atol=1e-9 * np.abs(expected).max()
+    )
+
+
+@pytest.mark.parametrize(
+    "alpha, beta, t, d_log_sf, d_hf_alpha, d_hf_beta",
+    [
+        # S near 1, the body of the differences, their edge, and far into
+        # the asymptotic series (mpmath, 50 digits)
+        (
+            0.3,
+            2.0,
+            1e-4,
+            0.790993230187813,
+            -1650.02396635922,
+            46.6417442345232,
+        ),
+        (
+            2.5,
+            0.25,
+            0.01,
+            6.65947660112928e-7,
+            -1.56983561371224e-4,
+            2.34257581625340e-4,
+        ),
+        (
+            2.5,
+            0.25,
+            10.0,
+            0.627211804085023,
+            -0.0607562894483123,
+            0.861149917949485,
+        ),
+        (
+            40.0,
+            1.0,
+            35.0,
+            0.0615249734365236,
+            -0.0119628381471453,
+            0.478121390927338,
+        ),
+        (
+            0.7,
+            1.0,
+            120.0,
+            6.01576020053809,
+            -0.00826534775089870,
+            1.00002006735564,
+        ),
+        (2.5, 0.25, 4e8, 17.7175241133071, -2.49999997500000e-9, 1.0),
+    ],
+)
+def test_746_gamma_shape_derivatives(
+    alpha, beta, t, d_log_sf, d_hf_alpha, d_hf_beta
+):
+    # The Gamma's log S has no closed-form derivative in its shape: it is
+    # a difference of log(-log S) in the body and the asymptotic series in
+    # the tail (#746), each within 1e-11 of mpmath's.
+    from surpyval.recurrent.renewal._derivatives import GammaDerivatives
+
+    terms = GammaDerivatives()
+    t = np.array([t])
+    _, _, (sf_alpha, _) = terms.log_sf(t, (alpha, beta))
+    _, _, (hf_alpha, hf_beta) = terms.hf(t, (alpha, beta))
+    assert sf_alpha[0] == pytest.approx(d_log_sf, rel=1e-10)
+    assert hf_alpha[0] == pytest.approx(d_hf_alpha, rel=1e-10)
+    assert hf_beta[0] == pytest.approx(d_hf_beta, rel=1e-10)
+
+
+def test_746_gamma_kijima_ii_deep_tail_gradient():
+    # Kijima-II with q = 40 ages the item past 1e40 within a few dozen
+    # failures, where Gamma.hf (f / S, each of size e**-y) has lost its
+    # excess over beta. The hand-written likelihood takes the hazard there
+    # from the upper incomplete gamma's asymptotic series: its value and
+    # gradient are mpmath's (with the same Simpson's rule over the aged
+    # gaps) to 1e-13.
+    from surpyval import Gamma
+
+    rng = np.random.default_rng(5)
+    data = handle_xicn(np.cumsum(rng.weibull(2.0, 30) * 3))
+    neg_ll = GeneralizedRenewal.create_negll_func(data, Gamma, "ii")
+    value, gradient = neg_ll.value_and_grad(np.array([40.0, 3.0, 2.0]))
+    assert value == pytest.approx(116.7551230645448, rel=1e-12)
+    np.testing.assert_allclose(
+        gradient, [6.51809079e-4, -1.22491737, 54.5728753], rtol=1e-8
+    )
+
+
+def test_746_cox_lewis_beta_in_its_own_units():
+    # A Cox-Lewis beta is a rate per unit time, 8e-5 on data in thousands
+    # of hours. BFGS stepped it in units of 1, overflowed e**(beta t) and
+    # stopped where it started; and the check of the maximum differenced
+    # it in steps of 1e-7, where its slope was read to 0.3 and a maximum
+    # was verified or not by luck. Both now take its unit as one over the
+    # longest time (#746).
+    from surpyval.recurrent import CoxLewis
+    from surpyval.recurrent.renewal._search import GradientSearch
+
+    rng = np.random.default_rng(8)
+    x, i, c = [], [], []
+    for k in range(8):
+        end = rng.uniform(6000, 12000)
+        n = rng.poisson(2e-4 * end**1.35)
+        times = np.sort(end * rng.random(n) ** (1 / 1.35))
+        x += [*times, end]
+        i += [k] * (n + 1)
+        c += [0] * n + [1]
+    data = handle_xicn(np.array(x), np.array(i), np.array(c))
+    neg_ll = ARI.create_negll_func(data, CoxLewis, 1)
+    search = GradientSearch(neg_ll, [(0, 1), (None, None), (None, None)], 1)
+    found = search.bfgs(np.array([-2.2, -5.8, 8e-5]))
+    assert found.success and found.nit > 5
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = ARI.fit(x, i, c, baseline=CoxLewis, m=1)
+    assert model.maximum == "verified"
+    assert model.rho < 1e-10
+    assert model.log_likelihood == pytest.approx(-2329.17357703663, abs=1e-6)

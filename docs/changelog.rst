@@ -203,6 +203,14 @@ Unreleased
   to 4 times faster, with likelihoods equal or higher; a Kijima fit on
   data with no finite maximum now finds the run-off rather than a local
   maximum.
+- The renewal fits with a Gamma, LogLogistic, Exponential or Rayleigh
+  life or a Cox-Lewis or HPP ARI baseline search on a hand-written
+  gradient too (#746); the Gamma's shape derivative, with no closed form,
+  to 1e-10 of mpmath's, deep tails included. They take 0.15 to 0.9 of
+  the time (Gamma 0.15 to 0.55), with likelihoods equal or higher. A
+  Cox-Lewis ``beta`` is searched and checked in units of one over the
+  longest time: two fits on data in thousands of hours called unverified
+  (central differences too coarse for a ``beta`` of 1e-4) are verified.
 - The nightly property tests (#714). A regression or Cox ``df`` far in the
   upper tail, where the hazard overflows and ``sf`` underflows, is 0, not
   ``inf * 0`` with a raw ``RuntimeWarning``; a parametric PH ``Hf`` / ``hf``
