@@ -9,6 +9,10 @@ from autograd.tracer import getval, isbox
 from numpy.typing import ArrayLike
 
 from surpyval import Weibull
+from surpyval.recurrent.renewal._derivatives import (
+    lifetime_derivatives,
+    negated,
+)
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
 from surpyval.recurrent.renewal.renewal_model import (
     RenewalModel,
@@ -244,6 +248,63 @@ class VirtualAgeLikelihood:
         ll = np.where(c == 1, ll_right, ll)
         return float(ll.sum())
 
+    def value_and_grad(
+        self, terms: Any, params: Any, age: np.ndarray, age_slope: np.ndarray
+    ) -> "tuple[float, float, np.ndarray] | None":
+        """The likelihood with its derivatives in a restoration parameter
+        and in ``params``, in one pass of plain numpy, for the search
+        (#728): ``(ll, d ll / d r, d ll / d params)`` where the ages
+        ``age`` have the derivative ``age_slope`` in ``r``. ``terms`` are
+        the lifetime's hand-written derivatives (``lifetime_derivatives``).
+
+        The same terms as ``_plain``, each row's derivative in its age
+        chained with the age's in ``r``. ``None`` where a later age is
+        not positive and finite or the result is not finite (outside the
+        terms' domain, or an overflow), for the caller to take autograd's
+        answer there."""
+        gap, failed, fresh = self.gap, self.c == 0, self.fresh
+        later = ~fresh
+        with np.errstate(all="ignore"):
+            if not np.all(age[later] > 0) or not np.all(np.isfinite(age)):
+                return None
+            # The fresh rows' log S(0) = 0, a constant (taken at 1, then
+            # dropped)
+            v = np.where(fresh, 1.0, age)
+            sf_v, sf_v_dt, sf_v_dp = terms.log_sf(v, params)
+            end, end_dt, end_dp = terms.log_end(gap + age, params, failed)
+            ll_rows = end - np.where(later, sf_v, 0.0)
+            dv_rows = np.where(later, end_dt - sf_v_dt, 0.0)
+            dp_rows = [
+                e - np.where(later, s, 0.0) for e, s in zip(end_dp, sf_v_dp)
+            ]
+            aged = later & (gap < self.aged * age)
+            if np.any(aged):
+                # Simpson's rule over the gap (see ``_plain``)
+                va, xa = age[aged], gap[aged]
+                h0, h0_dt, h0_dp = terms.hf(va, params)
+                hm, hm_dt, hm_dp = terms.hf(va + 0.5 * xa, params)
+                h1, h1_dt, h1_dp = terms.hf(va + xa, params)
+                w = -xa / 6.0
+                fa = failed[aged]
+                ll_rows[aged] = w * (h0 + 4.0 * hm + h1) + np.where(
+                    fa, np.log(h1), 0.0
+                )
+                dv_rows[aged] = w * (h0_dt + 4.0 * hm_dt + h1_dt) + np.where(
+                    fa, h1_dt / h1, 0.0
+                )
+                for k in range(len(dp_rows)):
+                    dp_rows[k][aged] = w * (
+                        h0_dp[k] + 4.0 * hm_dp[k] + h1_dp[k]
+                    ) + np.where(fa, h1_dp[k] / h1, 0.0)
+            ll = float(np.sum(ll_rows))
+            d_r = float(np.dot(dv_rows, age_slope))
+            d_p = np.array([np.sum(d) for d in dp_rows])
+        if not (
+            np.isfinite(ll) and np.isfinite(d_r) and np.all(np.isfinite(d_p))
+        ):
+            return None
+        return ll, d_r, d_p
+
 
 class KijimaIIVirtualAges:
     """
@@ -311,6 +372,12 @@ class KijimaIIVirtualAges:
         steps as the ages, carrying the lower orders with it."""
         if order == 0:
             return self._ages(q)
+        return self.derivatives(q, order)[order]
+
+    def derivatives(self, q: float, order: int) -> np.ndarray:
+        """The ages and their derivatives in ``q`` up to ``order``, one
+        row each (``derivative``): the search takes the ages with their
+        slope from one pass (#728)."""
         q = float(q)
         x = self.x
         d = np.zeros((order + 1, x.size))
@@ -347,7 +414,7 @@ class KijimaIIVirtualAges:
                     ]
                     run.append(state)
                 d[:, start:end] = np.array(run).T
-        return d[order]
+        return d
 
     def _ages(self, q: float) -> np.ndarray:
         x = self.x
@@ -587,6 +654,22 @@ class GeneralizedRenewal(RenewalFitMixin):
                 virtual_ages = kijima_ii_ages(q)
 
             return -log_likelihood(dist, params, virtual_ages)
+
+        terms = lifetime_derivatives(dist)
+        if terms is not None:
+
+            def value_and_grad(params: np.ndarray) -> tuple:
+                q = float(params[0])
+                if kijima == "i":
+                    ages, slopes = q * cumulative_previous, cumulative_previous
+                else:
+                    ages, slopes = kijima_ii_ages.derivatives(q, 1)
+                found = log_likelihood.value_and_grad(
+                    terms, params[1:], ages, slopes
+                )
+                return negated(found, negll_func, params)
+
+            negll_func.value_and_grad = value_and_grad  # type: ignore
 
         return negll_func
 

@@ -16,6 +16,10 @@ from surpyval.recurrent.renewal.renewal_model import (
 if TYPE_CHECKING:
     from surpyval.recurrent.renewal.renewal_model import RenewalModel
 
+from surpyval.recurrent.renewal._derivatives import (
+    intensity_derivatives,
+    negated,
+)
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.pickling import Rebuilt
@@ -423,6 +427,64 @@ class ARI(RenewalFitMixin):
             ll = -xp.sum(delta_cif - active * gap) + xp.sum(xp.log(intensity))
             return -ll
 
+        terms = intensity_derivatives(baseline)
+        if terms is None:
+            return negll_func
+        has_reduction = in_force >= 0
+        acting = in_force[has_reduction]
+        n_failures = x_failures.size
+        prev_started = prev[started]
+
+        def value_and_grad(params: np.ndarray) -> tuple:
+            """``negll_func`` with its gradient, by hand (#728). The
+            reductions are linear in the intensities at the failures,
+            ``R = A(rho) lam``: the gradient in ``rho`` takes ``A'(rho)
+            lam`` and the one in ``lam`` ``A(rho)^T``."""
+            rho = float(params[0])
+            baseline_params = params[1:]
+            with np.errstate(all="ignore"):
+                lam, lam_dp = terms.iif(x_failures, baseline_params)
+                reductions = reductions_at.apply(lam, rho, 0)
+                active = np.where(has_reduction, reductions[in_force], 0.0)
+                intensity = lam - active[observed]
+                if not np.all(intensity > 0):
+                    return np.inf, np.zeros(len(params))
+                cif_x, cif_x_dp = terms.cif(x, baseline_params)
+                cif_prev, cif_prev_dp = terms.cif(
+                    prev_started, baseline_params
+                )
+                ll = (
+                    -(np.sum(cif_x) - np.sum(cif_prev))
+                    + np.dot(active, gap)
+                    + np.sum(np.log(intensity))
+                )
+                # d ll / d active, then d ll / d R
+                d_active = np.array(gap)
+                d_active[observed] -= 1.0 / intensity
+                d_reductions = np.bincount(
+                    acting,
+                    weights=d_active[has_reduction],
+                    minlength=n_failures,
+                )
+                d_rho = np.dot(d_reductions, reductions_at.apply(lam, rho, 1))
+                d_lam = 1.0 / intensity + reductions_at.transpose(
+                    d_reductions, rho, 0
+                )
+                d_p = np.array(
+                    [
+                        np.dot(d_lam, dl) - np.sum(dx) + np.sum(dprev)
+                        for dl, dx, dprev in zip(lam_dp, cif_x_dp, cif_prev_dp)
+                    ]
+                )
+            finite = bool(
+                np.isfinite(ll)
+                and np.isfinite(d_rho)
+                and np.all(np.isfinite(d_p))
+            )
+            found = (float(ll), float(d_rho), d_p) if finite else None
+            return negated(found, negll_func, params)
+
+        negll_func.value_and_grad = value_and_grad  # type: ignore
         return negll_func
 
     @removed_arguments("0.23", dist="'baseline'")

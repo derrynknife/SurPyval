@@ -9,6 +9,10 @@ from autograd.tracer import isbox
 from numpy.typing import ArrayLike
 
 from surpyval import Weibull
+from surpyval.recurrent.renewal._derivatives import (
+    lifetime_derivatives,
+    negated,
+)
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
 from surpyval.recurrent.renewal.generalized_renewal import (
     VirtualAgeLikelihood,
@@ -136,6 +140,20 @@ class ARAVirtualAges:
             else:
                 v[rows] = -discounted
         return v
+
+    def ages_and_slopes(self, rho: float) -> tuple:
+        """The ages and their derivative in ``rho``, from one pass over
+        the groups, for the search (#728)."""
+        T = self.T
+        v = np.zeros(T.size)
+        slope = np.zeros(T.size)
+        powers = (1.0 - rho) ** np.arange(self.max_terms)
+        weights = discount_weight_derivatives(float(rho), self.max_terms, 1)
+        for n_terms, rows in self.groups:
+            lagged = T[rows[:, None] - 1 - np.arange(n_terms)]
+            v[rows] = T[rows - 1] - rho * (lagged @ powers[:n_terms])
+            slope[rows] = -(lagged @ weights[:n_terms])
+        return v, slope
 
 
 @primitive
@@ -290,6 +308,20 @@ class ARA(RenewalFitMixin):
             rho = params[0]
             dist_params = params[1:]
             return -log_likelihood(dist, dist_params, virtual_ages_at(rho))
+
+        terms = lifetime_derivatives(dist)
+        if terms is not None:
+
+            def value_and_grad(params: np.ndarray) -> tuple:
+                ages, slopes = virtual_ages_at.ages_and_slopes(
+                    float(params[0])
+                )
+                found = log_likelihood.value_and_grad(
+                    terms, params[1:], ages, slopes
+                )
+                return negated(found, negll_func, params)
+
+            negll_func.value_and_grad = value_and_grad  # type: ignore
 
         return negll_func
 

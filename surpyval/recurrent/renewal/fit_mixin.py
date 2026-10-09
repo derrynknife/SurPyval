@@ -3,10 +3,11 @@ from typing import Any, Callable
 import numpy as np
 from autograd.tracer import getval
 from numpy.typing import ArrayLike
-from scipy.optimize import OptimizeResult, minimize
+from scipy.optimize import OptimizeResult
 
 from surpyval.recurrent._bounded import unconstraining_maps
 from surpyval.recurrent.inference import bic_sample_size
+from surpyval.recurrent.renewal._search import renewal_search
 from surpyval.univariate.parametric.fitters import (
     bounds_convert,
     verified_maximum,
@@ -23,10 +24,12 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
     (``GeneralizedRenewal``, ``GeneralizedOneRenewal``, ``ARA``, ``ARI``).
 
     Each of those fits a leading restoration parameter (``q``/``rho``) together
-    with the parameters of an underlying lifetime or intensity model by
-    multi-start Nelder-Mead on the negative log-likelihood, then attaches the
-    attributes that :class:`LikelihoodInferenceMixin` reads (``_neg_ll``,
-    ``_mle``, ``_n_obs``). The genuinely model-specific pieces -- how the
+    with the parameters of an underlying lifetime or intensity model by a
+    multi-start search on the negative log-likelihood (BFGS on its
+    hand-written gradient where it has one, Nelder-Mead otherwise: see
+    ``_search``), then attaches the attributes that
+    :class:`LikelihoodInferenceMixin` reads (``_neg_ll``, ``_mle``,
+    ``_n_obs``). The genuinely model-specific pieces -- how the
     negative log-likelihood is built, whether the search runs in an
     unconstrained transform space, the multi-start values to try, and what
     counts as an observation -- are supplied by the caller. The parts that
@@ -315,9 +318,13 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
     ) -> tuple[Any, np.ndarray]:
         """
         The transform-space fitting spine shared by ``ARA``, ``ARI`` and
-        ``GeneralizedRenewal``: multi-start Nelder-Mead on the negative
+        ``GeneralizedRenewal``: a multi-start search on the negative
         log-likelihood over ``[restoration, *dist params]``, run in the
-        unconstrained (bounded-to-unbounded) transform space. Each family
+        unconstrained (bounded-to-unbounded) transform space
+        (``renewal_search``: BFGS on the likelihood's hand-written
+        gradient, #728, or Nelder-Mead where it has none), with the best
+        start's answer carried onto the restoration parameter's bound where
+        it stopped next to it. Each family
         supplies its restoration parameter's name, bounds and start grid,
         and the initial distribution parameters (``None`` where they could
         not be found; a user ``init`` is then tried alone). Returns
@@ -331,30 +338,25 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
         first-event fit, the search can settle on a local maximum at the
         other end and miss a perfect-repair maximum altogether.
 
-        ``GeneralizedOneRenewal`` does not use this: its likelihood only
-        needs ``q > -1``, so it optimises directly under box bounds
-        rather than in a transform space.
+        ``GeneralizedOneRenewal`` does not use this: its ``q`` has no
+        repair bound to settle on, and it runs the same search itself
+        (under box bounds, where its likelihood has no hand-written
+        gradient).
         """
+        bounds = [restoration_bounds, *dist.bounds]
         transform, inv_trans = self._bounds_transform(
-            data.x,
-            [restoration_bounds, *dist.bounds],
-            [restoration_name, *dist.parameter_names],
+            data.x, bounds, [restoration_name, *dist.parameter_names]
         )
-
-        def objective(p: np.ndarray) -> float:
-            return neg_ll(inv_trans(p))
+        n_obs = max(float(bic_sample_size(data)), 1.0)
+        search = renewal_search(neg_ll, bounds, n_obs, inv_trans)
 
         def fit_once(x0: np.ndarray) -> Any:
-            return minimize(
-                objective,
-                transform(np.asarray(x0, dtype=float)),
-                method="Nelder-Mead",
-            )
+            return search.minimize(transform(np.asarray(x0, dtype=float)))
 
         def polish(res: Any) -> Any:
             # Restart from where a capped search stopped (``res.x`` is
             # already in the transformed space).
-            return minimize(objective, res.x, method="Nelder-Mead")
+            return search.simplex(res.x)
 
         inits = None
         if dist_init_params is not None:
@@ -381,11 +383,10 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
                 init, [restoration_bounds, *dist.bounds]
             )
         res = self._multistart(fit_once, inits, init, neg_ll, polish)
+        with np.errstate(all="ignore"):
+            res = search.settle(res, restoration_bounds)
         params = self._polish_unverified(
-            neg_ll,
-            inv_trans(res.x),
-            [restoration_bounds, *dist.bounds],
-            max(float(bic_sample_size(data)), 1.0),
+            neg_ll, inv_trans(res.x), bounds, n_obs
         )
         return res, params
 
@@ -414,7 +415,7 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
         model._neg_ll = neg_ll
         model._mle = np.asarray(mle, dtype=float)
         model._n_obs = bic_sample_size(data)
-        # The multi-start Nelder-Mead's answer is accepted only as a
+        # The multi-start search's answer is accepted only as a
         # verified maximum (principle 13): a restoration parameter on its
         # bound held out where the likelihood is highest there.
         if verified_maximum(

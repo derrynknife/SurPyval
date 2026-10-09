@@ -186,6 +186,14 @@ Unreleased
   verified maximum is polished on the exact gradient rather than central
   differences. The search is still Nelder-Mead, and its likelihoods are
   the same, bit for bit (a gradient-first search was not faster).
+- The renewal fits search on a hand-written gradient (#728): BFGS, with
+  Nelder-Mead for a start it does not settle and to carry ``q`` / ``rho``
+  onto its bound, for a Weibull or LogNormal life and a power-law or
+  Duane ARI baseline (others keep Nelder-Mead). The value and gradient
+  cost about one likelihood, against 8 to 30 for autograd's. Fits are 2
+  to 4 times faster, with likelihoods equal or higher; a Kijima fit on
+  data with no finite maximum now finds the run-off rather than a local
+  maximum.
 - The nightly property tests (#714). A regression or Cox ``df`` far in the
   upper tail, where the hazard overflows and ``sf`` underflows, is 0, not
   ``inf * 0`` with a raw ``RuntimeWarning``; a parametric PH ``Hf`` / ``hf``
