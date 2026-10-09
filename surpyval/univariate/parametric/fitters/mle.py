@@ -43,10 +43,10 @@ _MLE_FAILED = (
     "1 by dividing or multiplying by some constant."
     "\n\nAlternately try setting the `init` keyword in"
     " the `fit()`"
-    " method to a value you believe is closer."
-    "A good way to do this is to set any shape parameter to 1. "
-    "and any scale parameter to be the mean of the data "
-    "(or it's inverse)"
+    " method to a value you believe is closer. "
+    "A good way to do this is to set any shape parameter to 1 "
+    "and any scale parameter to the mean of the data "
+    "(or its inverse)."
     "\n\nModel returned with the initial guesses."
 )
 

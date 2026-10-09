@@ -1046,7 +1046,9 @@ def _xcnt_censoring(c: "npt.ArrayLike | None", x: npt.NDArray) -> npt.NDArray:
     elif np.any((c_arr != 0) & (c_arr != 1) & (c_arr != -1)):
         raise ValueError(
             "Censoring value must only be one of -1, 0, 1 for single"
-            + " dimension input"
+            + " dimension input (0 failure, 1 right-censored, -1"
+            + " left-censored). For interval censoring use c=2 with x"
+            + " given as [left, right] pairs."
         )
     return c_arr
 

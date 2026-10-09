@@ -1824,7 +1824,9 @@ class WienerProcess(RemovedNames):
             with every unit read at time zero, the mean of those readings.
             Pass it when it is known: a healthy baseline, or ``0.0`` for a
             life measured from zero as before v0.23. It must be below
-            ``threshold``.
+            ``threshold``. The estimate can be below zero (readings that
+            start low, or a drift that overshoots the first readings); pass
+            ``y0=0.0`` for paths known to start at zero.
 
         Returns
         -------
@@ -2307,7 +2309,9 @@ class GammaProcess(RemovedNames):
             stress), averaged over the units -- with every unit read at
             time zero, the mean of those readings. Pass it when it is
             known: a healthy baseline, or ``0.0`` for a life measured from
-            zero as before v0.23. It must be below ``threshold``.
+            zero as before v0.23. It must be below ``threshold``. The
+            estimate can be below zero (readings that start low); pass
+            ``y0=0.0`` for paths known to start at zero.
 
         Returns
         -------
