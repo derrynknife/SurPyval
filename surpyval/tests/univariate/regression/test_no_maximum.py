@@ -1202,3 +1202,22 @@ def test_777_the_refusal_at_z_0_quotes_values_it_computed():
     message = _weibull_ph_refusal([2.0, 1.5, 0.3], lambda *p: 2.0)
     assert "alpha = 2.443, beta = 1.5, do not reproduce" in message
     assert "center=True" in message
+
+
+def test_777_canonical_order_puts_the_count_last():
+    # Tied in time and censoring, rows sort by their covariates before
+    # their counts, as canonical_rows sorts the semi-parametric fits' rows
+    # (and as the rows expanded one per unit would sort) (#777).
+    from surpyval.univariate.regression.regression_data import (
+        canonical_rows,
+    )
+
+    x = np.array([1.0, 1.0, 1.0, 1.0])
+    c = np.zeros(4, dtype=int)
+    n = np.array([1, 3, 2, 2])
+    Z = np.array([[2.0], [0.0], [1.0], [-1.0]])
+    data = SurpyvalData(x, c, n, group_and_sort=False)
+    order = skeleton.canonical_order(data, Z)
+    np.testing.assert_array_equal(order, [3, 1, 2, 0])
+    tl = np.full(4, -np.inf)
+    np.testing.assert_array_equal(order, canonical_rows(x, c, n, tl, Z))

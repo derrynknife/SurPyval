@@ -957,7 +957,7 @@ def prepare_regression_fit(
 
 def canonical_order(data: SurpyvalData, Z: npt.ArrayLike) -> npt.NDArray:
     """The rows of ``data`` (with covariates ``Z``) sorted by every column:
-    time, censoring, count, truncation and covariates, in that order.
+    time, censoring, truncation, covariates and count, in that order.
 
     A fit runs on its rows in this order, so that it is the same, to the
     last digit, whatever order they are given in (#728). In the order
@@ -966,14 +966,18 @@ def canonical_order(data: SurpyvalData, Z: npt.ArrayLike) -> npt.NDArray:
     could follow: a level with only censored rows gave "No finite
     maximum" in one order and "unverified" in another, and a refusal of a
     baseline at Z = 0 in a third. Rows equal in every column contribute
-    the same terms, so their order among themselves does not matter."""
+    the same terms, so their order among themselves does not matter.
+
+    The count is the last key, as in ``canonical_rows`` (the
+    semi-parametric fits' order), so data with counts sort as their rows
+    expanded one per unit do (#777)."""
     rows = len(data)
     x = np.asarray(data.x, dtype=float).reshape(rows, -1)
     t = np.asarray(data.t, dtype=float).reshape(rows, -1)
     keys = [
+        np.asarray(data.n, dtype=float),
         *np.asarray(Z, dtype=float).reshape(rows, -1).T[::-1],
         *t.T[::-1],
-        np.asarray(data.n, dtype=float),
         np.asarray(data.c, dtype=float),
         *x.T[::-1],
     ]
