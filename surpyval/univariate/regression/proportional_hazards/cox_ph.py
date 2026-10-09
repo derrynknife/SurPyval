@@ -67,7 +67,12 @@ from .cox_likelihood import (  # noqa: F401
     not_yet_entered,
     strata_labels,
 )
-from .cox_separation import runoff_direction
+from .cox_separation import (
+    FAR,
+    information_collapsed,
+    newton_converged,
+    runoff_direction,
+)
 from .tvc import handle_tvc, handle_tvc_timeline
 
 nonparametric_dists = {
@@ -215,6 +220,7 @@ def _solve_beta_and_p_values(
         res = newton_raphson(
             neg_ll, jac, beta_init, tol, score_at_start, info_at_start
         )
+        converged = res is not None and newton_converged(res)
         if res is not None:
             hessian_matrix = res.hess
         else:
@@ -248,14 +254,21 @@ def _solve_beta_and_p_values(
         with np.errstate(over="ignore", invalid="ignore"):
             eta = (Zk - covariate_center(Zk, n)) @ np.atleast_1d(res.x)
         # A hazard ratio of e^20 between a unit and the average one
-        far = not np.all(np.abs(eta) <= _FAR)
+        far = not np.all(np.abs(eta) <= FAR)
 
         def runoff_of_data() -> "tuple[npt.NDArray, bool] | None":
             return runoff_direction(x, Zk, c, n, tl, strata, tie_method)
 
         runoff = runoff_of_data
     res.maximum = _maximum_reached(
-        res, jac, hessian_matrix, info_at_start, kept, n_events, runoff, far
+        res,
+        jac,
+        hessian_matrix,
+        info_at_start,
+        kept,
+        n_events,
+        runoff,
+        far or not converged,
     )
     # An exactly singular information matrix raises before the
     # pseudo-inverse fallback can run (#259); route it there.
@@ -315,7 +328,7 @@ def _maximum_reached(
     kept: npt.NDArray,
     n_events: float,
     runoff: "Callable | None" = None,
-    far: bool = False,
+    suspect: bool = False,
 ) -> str:
     """What the partial-likelihood search reached (see
     :func:`_solve_beta_and_p_values`), with its one warning: no finite
@@ -329,11 +342,12 @@ def _maximum_reached(
     as a maximum (#728). Given ``runoff`` (the data's
     :func:`runoff_direction`), the data decide instead, whatever the
     search did, where the search was not verified, or the information
-    collapsed in some direction (:func:`_collapsed`), or
-    the search went ``far`` (a linear predictor beyond ``_FAR`` of the
-    average unit's, where the information itself underflows and can
-    look healthy). The columns that run off are then recorded as
-    ``res.runoff_columns``."""
+    collapsed in some direction (:func:`information_collapsed`), or the
+    search is ``suspect``: it went far (a linear predictor beyond ``FAR``
+    of the average unit's), or its answer is not one Newton-Raphson
+    converged to (:func:`newton_converged`). Why these suffice is set out
+    at ``cox_separation.DECREMENT``. The columns that run off are then
+    recorded as ``res.runoff_columns``."""
     if runoff is None and _warn_if_monotone(info, info_at_start, kept):
         return "no finite maximum"
     score = getattr(res, "jac", None)
@@ -348,7 +362,7 @@ def _maximum_reached(
         obj_scale=max(n_events, 1.0),
     )
     if runoff is not None and (
-        not verified or far or _collapsed(info, info_at_start)
+        not verified or suspect or information_collapsed(info, info_at_start)
     ):
         found = runoff()
         if found is not None:
@@ -395,28 +409,6 @@ def _warn_if_monotone(
         warn_monotone(str(diverged.tolist()))
         return True
     return False
-
-
-#: How far a unit's linear predictor may be from the average unit's
-#: before the fit asks the data whether its likelihood runs off (#728)
-_FAR = 20.0
-
-
-def _collapsed(info: npt.NDArray, info_at_start: npt.NDArray) -> bool:
-    """Whether the information has fallen, in some direction of the
-    coefficients, below 1e-4 of what it was at the start (the least
-    eigenvalue of ``info`` relative to ``info_at_start``): the sign of a
-    run-off along a combination of them, which a maximum's information,
-    however strong the effects, does not show. The data then say whether
-    it is one (:func:`runoff_direction`)."""
-    try:
-        L = np.linalg.cholesky(np.atleast_2d(info_at_start))
-        half = np.linalg.solve(L, np.atleast_2d(info))
-        relative = np.linalg.solve(L, half.T)
-        least = np.linalg.eigvalsh(0.5 * (relative + relative.T))[0]
-    except np.linalg.LinAlgError:
-        return True
-    return not least >= 1e-4
 
 
 def _diverged_columns(
