@@ -178,6 +178,12 @@ Unreleased
   answer on a covariate spanning 3e-4 passed as verified where BFGS had
   not moved from 0 (the maximum at 15). Newton-Raphson's fits keep their
   verdicts.
+- "No finite maximum" no longer says a parametric regression's baseline
+  location or scale "runs on" when only the baseline at the covariate
+  means, where the fit runs, runs off with the coefficients (#760). With
+  every event at Z = 0 it quoted the finite value at Z = 0 (a LogisticPO's
+  mu, 6.941); such a parameter is now judged at Z = 0, as the model
+  reports it, and named only where it runs off there too.
 - ``CompetingRisks.cb`` says why it has no bounds on ``hf``, ``df`` or
   ``iif`` (#746): they are the step estimate's jumps at the event times,
   which the single-event ``cb`` does not bound either (by design); the

@@ -514,6 +514,25 @@ def test_746_every_coefficient_running_off_is_named(name):
     model, w = _fit(lambda: getattr(sp, name).fit(**{**d, "Z": Z}))
     assert model.maximum == "no finite maximum"
     assert len(w) == 1 and "coefficient(s) [0, 1] grow" in str(w[0].message)
+    # The baseline at Z = 0, which the model reports, is finite: only the
+    # one at the covariate means, where the fit runs, runs off with the
+    # coefficients, and the message named it with its finite value at
+    # Z = 0 (LogisticPO's mu, 6.941) (#760).
+    assert "baseline's" not in str(w[0].message)
+
+
+def test_760_a_baseline_running_off_at_the_origin_is_still_named():
+    # Draw 24 of #583's test: coefficient [0] (of 1/T) runs off, and with
+    # it the baseline at Z = 0, far from the stresses: alpha there runs to
+    # 0 (3e-55, then 1e-82 with the coefficient half as far again), so it
+    # is named, as the model reports it.
+    x, c, Z = _alt(24)
+    model, w = _fit(lambda: sp.WeibullPH.fit(x, _alt_terms(Z), c=c))
+    assert model.maximum == "no finite maximum"
+    assert len(w) == 1
+    message = str(w[0].message)
+    assert "coefficient(s) [0] grow" in message
+    assert "the Weibull baseline's alpha (" in message
 
 
 def test_628_an_accelerated_life_fit_short_of_its_maximum_is_no_run_off():
