@@ -1745,7 +1745,9 @@ class Parametric(
         u = onp.atleast_1d(u)
         formula = _unchecked_qf(self.dist)
         f0, lfp_p = self.f0, self.lfp_p
-        span = unit_interval_range(u) if formula is not None else None
+        if formula is None:
+            return self._qf_checked(p)
+        span = unit_interval_range(u)
         if span is None or not f0 < lfp_p:
             # NaN, or a probability outside [0, 1], to be checked for and
             # warned of: the full path.
