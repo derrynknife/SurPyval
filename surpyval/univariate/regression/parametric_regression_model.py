@@ -1559,6 +1559,7 @@ class ParametricRegressionModel(
             u,
             self.distribution.support,
             start,
+            lambda t, k: self.model.hf(t, rows[k], *params),
         )
         if self._is_additive():
             finite = np.isfinite(out)

@@ -402,6 +402,7 @@ def _times_at(
         p,
         model.distribution.support,
         start,
+        lambda t, k: model.model.hf(t, rows[k], *params),
     )
 
 

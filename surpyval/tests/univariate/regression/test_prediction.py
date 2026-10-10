@@ -44,11 +44,37 @@ def test_571_qf_inverts_ff_for_every_family(name):
         warnings.simplefilter("ignore")
         model = getattr(sp, name).fit(x, Z, c=c)
         q = model.qf(P, ZQ)
-        back = model.ff(q, ZQ)
-    # Relative to the smaller tail, where the probability is resolved.
-    tail = np.minimum(P, 1 - P)
-    tol = 1e-7 if name.endswith("AH") else 1e-10
-    np.testing.assert_array_less(np.abs(back - P) / tail, tol)
+        ff, sf = model.ff(q, ZQ), model.sf(q, ZQ)
+    # Relative to the smaller tail, where the probability is resolved: ff
+    # below 1/2, sf above it. Newton's finish (#828) takes every family to
+    # rounding; an additive model's H = H0 + x beta'Z cancels near the
+    # start of its support, so it keeps fewer digits there.
+    upper = P > 0.5
+    err = np.where(upper, np.abs(sf - (1 - P)) / (1 - P), np.abs(ff - P) / P)
+    tol = 1e-8 if name.endswith("AH") else 1e-12
+    np.testing.assert_array_less(err, tol)
+
+
+@pytest.mark.parametrize("name", ["NormalAH", "GumbelAH", "LogisticAH"])
+def test_828_qf_is_exact_near_the_start_of_the_support(name):
+    # The issue's data: the quantiles of a small p are just above where
+    # the support starts (x* < 0 for beta'Z > 0 on these baselines). The
+    # solver's tolerance, relative to |t|, left sf(qf(1 - s)) off by up to
+    # 1.8e-5 of s; Newton's finish on H leaves the cancellation in
+    # H0 + x beta'Z there, below 1e-8 of it.
+    rng = np.random.default_rng(0)
+    x = rng.weibull(1.5, 300) * 100
+    Z = rng.uniform(0, 1, (300, 1))
+    x = x * np.exp(0.5 * Z[:, 0])
+    s = np.logspace(-9, np.log10(0.5), 40)
+    z = np.repeat([[0.5]], s.size, 0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = getattr(sp, name).fit(x, Z=Z)
+        low = model.ff(model.qf(s, z), z)
+        high = model.sf(model.qf(1 - s, z), z)
+    assert np.max(np.abs(low - s) / s) < 1e-8
+    assert np.max(np.abs(high - (1 - (1 - s))) / s) < 1e-8
 
 
 def test_571_qf_matches_the_closed_forms():

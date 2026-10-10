@@ -101,6 +101,14 @@ Unreleased
   Gumbel baseline), and ``nan`` with a warning where the model is not a
   distribution along the way. Likelihood-ratio bounds whose region reaches
   that limit can stop short of its edge (#837).
+- A parametric regression model's ``qf(p, Z)`` is exact to rounding (#828):
+  each quantile is finished by Newton's method on the cumulative hazard. It
+  was solved to a tolerance on the time relative to the time, which near
+  an additive model's support start (at -27 on a Normal baseline) left
+  ``sf(qf(1 - s))`` off by up to 1.8e-5 of ``s``; every family is now within
+  about 1e-14 of the probability asked for, and an additive model within
+  the cancellation in ``H0(x) + x beta'Z`` near its support start (5e-9 at
+  ``p = 1e-9``). The bootstrap's quantile bounds use the same finish.
 
 v0.24 (9 October 2026)
 ----------------------
