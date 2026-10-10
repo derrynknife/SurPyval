@@ -65,11 +65,7 @@ class TVCEvaluationMixin:
         ) -> Any: ...
 
         def _warn_negative_hazard(
-            self,
-            count: int,
-            size: int,
-            max_sf: "float | None",
-            stacklevel: int,
+            self, count: int, size: int, stacklevel: int
         ) -> None: ...
 
         def _check_inference(self) -> None: ...
@@ -334,9 +330,7 @@ class TVCEvaluationMixin:
         ``stacklevel`` counts from here to the caller of the public
         method."""
         if falls:
-            self._warn_negative_hazard(
-                falls, H.size, self._max_sf(H), stacklevel=stacklevel
-            )
+            self._warn_negative_hazard(falls, H.size, stacklevel=stacklevel)
         if accuracy is not None:
             from .tvc_path import warn_missed_target
 
@@ -344,13 +338,6 @@ class TVCEvaluationMixin:
             warn_missed_target(
                 missed, total, worst, limit, self._tvc_rtol, stacklevel
             )
-
-    @staticmethod
-    def _max_sf(H: npt.NDArray) -> "float | None":
-        finite = H[np.isfinite(H)]
-        if finite.size and finite.min() < 0:
-            return float(np.exp(-finite.min()))
-        return None
 
     def _hf_tvc(
         self,
@@ -404,7 +391,9 @@ class TVCEvaluationMixin:
         if self._is_additive():
             falls |= H < 0
         falls &= ~missing
-        return np.where(missing, np.nan, H), int(falls.sum()), None
+        # Outside an additive model's support (a hazard that fell before
+        # x, or H < 0) the value is nan (#828).
+        return np.where(missing | falls, np.nan, H), int(falls.sum()), None
 
     #: The relative accuracy the quadrature along a ``CovariatePath``
     #: aims for on the cumulative hazard (private: tests change it).
@@ -562,7 +551,12 @@ class TVCEvaluationMixin:
         if self._is_additive():
             falls |= H_full < 0
         falls &= ~missing
-        return np.where(missing, np.nan, H), int(falls.sum()), accuracy
+        # As for a step schedule: nan outside the support (#828).
+        return (
+            np.where(missing | falls, np.nan, H),
+            int(falls.sum()),
+            accuracy,
+        )
 
     def _aft_H0(
         self, psi: npt.NDArray, theta: "tuple | None" = None
@@ -823,6 +817,17 @@ class TVCEvaluationMixin:
         )
         H, falls, accuracy = self._hf_tvc(x, Z, xl, g if from_given else None)
         self._warn_tvc(H, falls, accuracy, stacklevel=5)
+        if (
+            self._is_additive()
+            and g is not None
+            and not np.isnan(g)
+            and np.isnan(self._hf_tvc(g, Z, xl)[0]).any()
+        ):
+            # Survival given an age outside an additive model's support,
+            # where it is not a distribution, is undefined (#828).
+            if not falls:
+                self._warn_negative_hazard(1, 1, stacklevel=4)
+            return np.full(np.shape(H), np.nan)
         if g is not None and not from_given:
             if np.isnan(g):
                 # A missing conditioning age: nothing is known (as Cox).
@@ -978,11 +983,24 @@ class TVCEvaluationMixin:
         )
         if g is None and float(self.distribution.support[0]) < 0:
             # Less the area under F before 0, where the value at 0 holds.
+            additive = self._is_additive()
+
             def ff_below(t: npt.NDArray) -> npt.NDArray:
                 with np.errstate(all="ignore"):
-                    return np.asarray(
+                    F = np.asarray(
                         self.model.ff(-t, zc, *params), dtype=float
                     ).ravel()
+                    if not additive:
+                        return F
+                    # An additive model's support starts where H reaches
+                    # 0: nothing has failed before it, so F is 0 there
+                    # (#828). A hazard negative before 0 (beta'Z < 0) is
+                    # outside the support, and leaves no mean.
+                    H = np.ravel(self.model.Hf(-t, zc, *params))
+                    h = np.ravel(self.model.hf(-t, zc, *params))
+                if np.any((h < 0) & (H >= 0)):
+                    seen["falls"] += 1
+                return np.where(H < 0, 0.0, F)
 
             below, below_tail = integrate_to_infinity(
                 ff_below, 0.0, scale, self._tvc_rtol
@@ -993,9 +1011,12 @@ class TVCEvaluationMixin:
                 # is negative there (#376) makes it grow without limit.
                 value = np.nan
         if seen["falls"]:
+            # Somewhere along the path the model is outside its support
+            # (nan there, #828): it is not a distribution, and has no mean.
             self._warn_negative_hazard(
-                seen["falls"], seen["points"], None, stacklevel=3
+                seen["falls"], seen["points"], stacklevel=3
             )
+            return np.nan
         if seen["missed"]:
             from .tvc_path import warn_missed_target
 

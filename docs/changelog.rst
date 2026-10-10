@@ -74,6 +74,33 @@ Unreleased
   kept in the bracket of the components' quantiles by bisection, against
   ``s - sf(t)`` above 1/2 and ``ff(t) - u`` below: about 1e-14 at both
   ends, and 20,000 quantiles in 0.06 s rather than 14.
+- Additive hazards models stay inside their support (#828). The model is a
+  distribution only where the hazard ``h_0(x) + beta'Z`` and its integral
+  ``H(x | Z)`` are both non-negative, and nothing kept the fit there: the
+  likelihood rises without limit as ``H`` falls below 0 at an observation,
+  so fits put ``sf`` above 1 at their own data. That happened on ordinary
+  positive data with a protective covariate (WeibullAH, LogNormalAH and
+  GammaAH on the regression test fixture, at one or two observations), and
+  on a baseline over the whole real line the fit ran off entirely, with
+  ``sf`` up to 1e22 at the data and ``mean(Z)`` up to 1e39. The fit now
+  keeps every observed point inside the support (``H >= 0`` at the times,
+  interval bounds and finite truncation times, ``h >= 0`` at the times and
+  bounds), which recovers the truth on simulated real-line data with half
+  the times negative. A fit that ends against that limit (``H = 0`` at an
+  observation, where that unit's support starts) is a maximum on the
+  boundary, as a threshold's is at the smallest observation: it warns, its
+  ``maximum`` is ``"unverified"`` and its standard errors are approximate.
+  Its estimates differ from 0.24's, which were not those of a
+  distribution. A level with no events now has a finite coefficient, held
+  at that limit, rather than none. Predictions outside the support
+  (``sf``, ``ff``, ``df``, ``hf``, ``Hf``, ``qf``, ``cb``, ``random`` and
+  the time-varying functions) are ``nan`` with one warning, where they
+  returned ``sf`` above 1 or negative ``ff`` with a warning. ``mean(Z)`` of
+  a row on a real-line baseline with ``beta'Z > 0`` is the mean from where
+  its support starts (it integrated the whole real line, 6.9e25 for a
+  Gumbel baseline), and ``nan`` with a warning where the model is not a
+  distribution along the way. Likelihood-ratio bounds whose region reaches
+  that limit can stop short of its edge (#837).
 
 v0.24 (9 October 2026)
 ----------------------

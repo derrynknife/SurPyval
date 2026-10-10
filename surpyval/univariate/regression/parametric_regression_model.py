@@ -1066,11 +1066,11 @@ class ParametricRegressionModel(
         # a linear predictor it ranks the rows as that predictor does, with
         # the sign of a higher risk, at every t* (see ``concordance``).
         t = np.full(x.size, np.nanmedian(x))
-        with warnings.catch_warnings():
-            # An additive model's negative hazard at t* does not change
-            # the ranking.
-            warnings.filterwarnings("ignore", message="The additive hazard")
-            return np.asarray(self.Hf(t, Z), dtype=float)
+        # The model's own values: outside an additive model's support at
+        # t* the ranking is still the linear predictor's.
+        return np.asarray(
+            self._eval(self.model.Hf, t, Z, 0.0, raw=True), dtype=float
+        )
 
     def _concordance_data(self) -> "tuple | None":
         data = getattr(self, "data", None)
@@ -1100,6 +1100,7 @@ class ParametricRegressionModel(
         Z: "npt.ArrayLike | pd.DataFrame",
         below_support: float,
         grid: bool = False,
+        raw: bool = False,
     ) -> npt.NDArray:
         # The shared body of the five distribution functions below: coerce
         # ``x``, resolve DataFrame covariates against the fit-time design,
@@ -1134,66 +1135,57 @@ class ParametricRegressionModel(
             x = np.where(below, inside, x)
         with np.errstate(divide="ignore"):
             out = fn(x, Z, *self._eval_params())
-        if self._is_additive():
-            self._warn_if_hazard_negative(x, Z, ~below, stacklevel=5)
+        if self._is_additive() and not raw:
+            outside = self._outside_support(x, Z, ~below, stacklevel=5)
+            if outside is not None:
+                out = np.where(outside, np.nan, out)
         if np.any(below):
             out = np.where(below, below_support, out)
         if shape is not None:
             out = np.asarray(out, dtype=float).reshape(shape)
         return out
 
-    def _warn_if_hazard_negative(
+    def _outside_support(
         self,
         x: npt.ArrayLike,
         Z: npt.NDArray,
         valid: Any = True,
         stacklevel: int = 4,
-    ) -> None:
-        """Warn (once) when the additive hazard ``h_0(x) + beta'Z`` or its
-        integral is negative at a queried point (#376).
+    ) -> "npt.NDArray | None":
+        """The queried points outside an additive model's support, warned
+        of once, or None where there are none (#376, #828).
 
-        Nothing in the additive model keeps the hazard positive: the fit
-        keeps it positive at the observed failures only, so for a
-        protective covariate row, or far from the data, ``h`` can be
-        negative. The cumulative hazard then falls, and the predictions
-        stop being those of a distribution -- ``sf`` above 1, ``ff`` and
-        ``df`` negative. They are returned as the model defines them, with
-        this warning.
+        The additive model is a distribution only where the hazard
+        ``h_0(x) + beta'Z`` and its integral ``H(x | Z)`` are both
+        non-negative. The fit keeps every observed point there, but for a
+        protective covariate row, or far from the data, either can be
+        negative -- ``sf`` above 1, ``ff`` or ``df`` negative -- and on a
+        baseline over the whole real line ``H`` is negative far enough
+        below 0 for any row with ``beta'Z > 0``: the support starts where
+        ``H`` reaches 0. The predictions there are ``nan``.
         """
         with np.errstate(all="ignore"):
             params = self._eval_params()
             h = np.asarray(self.model.hf(x, Z, *params), dtype=float)
             H = np.asarray(self.model.Hf(x, Z, *params), dtype=float)
         valid = np.broadcast_to(valid, h.shape)
-        neg_h = valid & (h < 0)
-        neg_H = valid & (H < 0)
-        if not (neg_h.any() or neg_H.any()):
-            return
-        self._warn_negative_hazard(
-            int((neg_h | neg_H).sum()),
-            h.size,
-            float(np.exp(-np.min(H[valid]))) if neg_H.any() else None,
-            stacklevel + 1,
-        )
+        outside = valid & ((h < 0) | (H < 0))
+        if not outside.any():
+            return None
+        self._warn_negative_hazard(int(outside.sum()), h.size, stacklevel + 1)
+        return outside
 
     def _warn_negative_hazard(
-        self, count: int, size: int, max_sf: "float | None", stacklevel: int
+        self, count: int, size: int, stacklevel: int
     ) -> None:
-        above = (
-            ", so sf exceeds 1 (up to {:.4g}) and ff is negative".format(
-                max_sf
-            )
-            if max_sf is not None
-            else ""
-        )
         warnings.warn(
-            "The additive hazard h_0(x) + beta'Z is negative at {} of the "
-            "{} queried points: the model's cumulative hazard falls there"
-            "{}. The additive model does not keep the hazard positive "
-            "(the fit does so only at the observed failures); these "
-            "values are the model's, not a distribution's. A proportional "
-            "hazards model (e.g. {}PH) keeps the hazard positive by "
-            "construction.".format(count, size, above, self.distribution.name),
+            "The additive hazard h_0(x) + beta'Z or its integral H(x | Z) "
+            "is negative at {} of the {} queried points: they are outside "
+            "the model's support for those covariates, where it is not a "
+            "distribution (sf would exceed 1, or fall and rise again), and "
+            "the values there are nan. The fit keeps every observed point "
+            "inside the support; a proportional hazards model (e.g. {}PH) "
+            "has no such limit.".format(count, size, self.distribution.name),
             RuntimeWarning,
             stacklevel=stacklevel,
         )
@@ -1570,9 +1562,11 @@ class ParametricRegressionModel(
         )
         if self._is_additive():
             finite = np.isfinite(out)
-            self._warn_if_hazard_negative(
+            outside = self._outside_support(
                 np.where(finite, out, 0.0), rows, finite, stacklevel=5
             )
+            if outside is not None:
+                out = np.where(outside, np.nan, out)
         if shape is not None:
             out = out.reshape(shape)
         return out

@@ -223,13 +223,12 @@ def test_no_nelder_mead_when_the_gradient_search_converges(name):
 
 
 def test_the_gradient_search_has_a_budget():
-    # On a likelihood with no maximum the line searches chase the runaway
-    # coefficient with thousands of gradients; past the budget the fit
-    # falls back to its derivative-free search, and still warns once.
-    rng = np.random.default_rng(2)
-    Z = np.r_[np.zeros(50), np.ones(20)].reshape(-1, 1)
-    x = np.r_[rng.weibull(1.5, 50) * 5, np.full(20, 6.0)]
-    c = np.r_[np.zeros(50), np.ones(20)]
+    # Line searches that chase a coefficient can take thousands of
+    # gradients (a no-event level's ran away before #828 kept the fit
+    # inside its support); past the budget the fit falls back to its
+    # derivative-free search, and reaches the same fit.
+    x, Z = weibull_binary_covariate_data()
+    full = WeibullAH.fit(x, Z)
     calls = []
     real = additive_hazards_fitter.AdditiveHazardsFitter._gradient_first
 
@@ -238,16 +237,12 @@ def test_the_gradient_search_has_a_budget():
         calls.append(out[1])
         return out
 
-    with mock.patch.object(
-        additive_hazards_fitter.AdditiveHazardsFitter,
-        "_gradient_first",
-        staticmethod(spy),
-    ):
-        with pytest.warns(UserWarning) as record:
-            sp.ExponentialAH.fit(x=x, Z=Z, c=c)
+    fitter = additive_hazards_fitter.AdditiveHazardsFitter
+    with mock.patch.object(fitter, "GRADIENT_FIRST_BUDGET", 3):
+        with mock.patch.object(fitter, "_gradient_first", staticmethod(spy)):
+            fell_back = WeibullAH.fit(x, Z)
     assert calls == [False]
-    assert len(record) == 1
-    assert "No finite maximum" in str(record[0].message)
+    np.testing.assert_allclose(fell_back.params, full.params, rtol=1e-4)
 
 
 # ---------------------------------------------------------------------------
@@ -272,11 +267,31 @@ def test_ah_random_matches_ph_shapes():
 
 
 def test_additive_hazards_warns_on_positivity_boundary():
+    # A strongly protective group with one failure: its hazard at that
+    # failure is pressed towards 0 (the barrier of log h), and that one
+    # failure carries most of the information about beta.
+    rng = np.random.default_rng(0)
+    x = np.r_[rng.exponential(10, 60), 1.0, np.full(30, 50.0)]
+    Z = np.r_[np.zeros(60), np.ones(31)].reshape(-1, 1)
+    c = np.r_[np.zeros(61), np.ones(30)]
+    with pytest.warns(UserWarning, match="positivity boundary"):
+        model = sp.ExponentialAH.fit(x, Z, c=c)
+    assert model.maximum == "unverified"
+
+
+def test_additive_hazards_warns_on_the_support_boundary():
+    # A strongly protective covariate on a baseline whose hazard starts at
+    # 0: unconstrained, the fit put sf above 1 at an early observation of
+    # the protective rows. Kept inside its support (#828) it ends where H
+    # reaches 0 there, and says so.
     np.random.seed(0)
     Z = np.random.binomial(1, 0.5, 300).reshape(-1, 1).astype(float)
     x = Weibull.random(300, 10, 2) * np.exp(1.5 * Z[:, 0])
-    with pytest.warns(UserWarning, match="positivity boundary"):
-        WeibullAH.fit(x, Z)
+    with pytest.warns(UserWarning, match="boundary of the model's support"):
+        model = WeibullAH.fit(x, Z)
+    assert model.maximum == "unverified"
+    H = np.ravel(model.model.Hf(x, Z, *model.params))
+    assert H.min() >= 0 and H.min() < 1e-6
 
 
 def test_additive_hazards_interior_fit_does_not_warn():

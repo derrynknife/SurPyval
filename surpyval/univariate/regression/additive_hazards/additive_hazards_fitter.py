@@ -28,13 +28,25 @@ strongly protective covariate -- the fit ends pressed against that barrier,
 with the hazard nearly zero at one failure, ``beta`` held there and the
 baseline distorted to compensate. Such a fit is returned with a warning (the
 fit raises only if the optimiser cannot end at a finite likelihood at all).
-Positivity is not enforced between the observed times or at other covariate
-rows: a prediction (``sf``, ``Hf``, ``cb``, the time-varying ``sf_tvc``, ...)
-where the hazard is negative returns the model's values -- ``sf`` above 1,
-``ff`` and ``df`` negative -- with one ``RuntimeWarning`` saying so (#376).
-When covariate effects are strongly protective a proportional hazards model,
-whose exponential form keeps the hazard positive by construction, is the
-safer choice.
+The model is a distribution only where both the hazard and the cumulative
+hazard are non-negative: its support at a covariate row starts where
+:math:`H(x \\mid Z)` reaches 0. For a row with :math:`\\beta' Z > 0` on a
+baseline over the whole real line (Normal, Gumbel, Logistic) that is below 0,
+and the model is a distribution from there on; for a protective row on a
+baseline that starts at 0 the hazard can be negative at first. The fit keeps
+every observed point inside the support -- :math:`H \\ge 0` at every time,
+interval bound and finite truncation time, and :math:`h \\ge 0` at the times
+and bounds -- since the likelihood would otherwise rise without limit by
+putting ``sf`` above 1 at the data (#828). A fit that ends against that limit
+(:math:`H = 0` at an observation: that unit's support starts there) is a
+maximum on the boundary, as a threshold's is at the smallest observation,
+and is returned with a warning, its ``maximum`` ``"unverified"`` and its
+standard errors approximate. A prediction (``sf``, ``Hf``, ``qf``, ``cb``,
+``random``, the time-varying ``sf_tvc``, ...) outside the support is
+``nan``, with one ``RuntimeWarning`` (#376), and so is ``mean`` where the
+model is not a distribution along the way. When covariate effects are
+strongly protective a proportional hazards model, whose exponential form
+keeps the hazard positive by construction, is the safer choice.
 """
 
 from __future__ import annotations
@@ -45,6 +57,7 @@ from typing import Any
 import autograd.numpy as np
 import numpy.typing as npt
 from autograd import hessian, jacobian
+from autograd.tracer import getval
 from scipy.optimize import minimize
 
 from surpyval.univariate.parametric.fitters import (
@@ -62,6 +75,7 @@ from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.warnings import caller_stacklevel
 
 from .._covariate_link import CovariateLink
 from .._fit_skeleton import (
@@ -121,13 +135,14 @@ class AdditiveHazardsFitter(
         H(x \\mid Z) = H_0(x) + x\\, \\beta' Z.
 
     Use the pre-built instances (``WeibullAH``, ``ExponentialAH``, ...) or
-    the ``AH`` factory. Nothing keeps the hazard positive except the
-    likelihood itself, which needs ``log h`` at every observed failure:
-    the fit keeps the hazard positive at the failures, and when a strongly
-    protective covariate pushes it to that limit the fit ends on the
-    boundary -- the hazard nearly zero at one failure, the baseline
-    distorted -- and warns. A proportional hazards model, which keeps the
-    hazard positive by construction, is then the safer choice.
+    the ``AH`` factory. The model is a distribution where the hazard and
+    its integral are non-negative, and the fit keeps every observed point
+    there (#828): when the data press against that limit -- the hazard
+    nearly zero at a failure, or ``H`` zero at an observation -- the fit
+    ends on the boundary and warns. Predictions outside the support are
+    ``nan``. A proportional hazards model, which keeps the hazard positive
+    by construction, is the safer choice for strongly protective
+    covariates.
     """
 
     #: The ``repr`` (#614)
@@ -179,7 +194,112 @@ class AdditiveHazardsFitter(
         return y
 
     def neg_ll(self, data: SurpyvalData, *params: Boxable) -> Boxable:
-        return regression_neg_ll(self, data, *params)
+        value = regression_neg_ll(self, data, *params)
+        # Every observed point must lie inside the model's support, where
+        # it is a distribution: H(x | Z) >= 0 and h(x | Z) >= 0 (#828).
+        # Nothing else keeps it there. The likelihood rises without limit
+        # as H falls below 0 at an observation (sf above 1), and the fit
+        # used to go there: on a baseline over the whole real line with sf
+        # up to 1e22 at the data, and on the regression test fixture with
+        # sf above 1 at one or two observations for the Weibull, LogNormal
+        # and Gamma baselines. NaN is the barrier the fit already uses for
+        # a hazard that is not positive at a failure.
+        if self._outside_support(data, [getval(p) for p in params]):
+            return value * np.nan
+        return value
+
+    @staticmethod
+    def _observed_points(data: SurpyvalData) -> "list[tuple]":
+        """The points of ``data`` that must be inside the support, as
+        ``(x, Z, observed)``: the times and interval bounds (where the
+        hazard must also be non-negative), and the finite truncation
+        times (where only the cumulative hazard is checked: a window may
+        open where the hazard of a protective row is still negative, as
+        at 0)."""
+        points = [
+            (data.x_o, data.Z_o, True),
+            (data.x_r, data.Z_r, True),
+            (data.x_l, data.Z_l, True),
+            (data.x_il, data.Z_i, True),
+            (data.x_ir, data.Z_i, True),
+        ]
+        if data.x_tl.size:
+            for bound in (data.x_tl, data.x_tr):
+                finite = np.isfinite(bound)
+                if finite.any():
+                    points.append((bound[finite], data.Z_t[finite], False))
+        return [p for p in points if np.size(p[0])]
+
+    def _outside_support(self, data: SurpyvalData, params: Any) -> bool:
+        """Whether an observed point of ``data`` is outside the model's
+        support at ``params``: ``H < 0`` there, or ``h < 0`` at a time or
+        an interval's bound."""
+        with np.errstate(all="ignore"):
+            for x, Z, observed in self._observed_points(data):
+                H = np.asarray(self.Hf(x, Z, *params), dtype=float)
+                if np.any(H < 0):
+                    return True
+                if observed and np.any(
+                    np.asarray(self.hf(x, Z, *params), dtype=float) < 0
+                ):
+                    return True
+        return False
+
+    #: A fit is on the support boundary where H (or h, at an observed
+    #: time) is below this fraction of the baseline's at an observed point:
+    #: the covariate term has cancelled the baseline there. Fits pressed
+    #: against the boundary leave about 1e-8 of it; one inside it, far more
+    #: (the smallest share on the regression test fixture's interior fits
+    #: is 0.15).
+    SUPPORT_BOUNDARY_FRACTION = 1e-6
+
+    def _warn_if_on_support_boundary(
+        self, data: SurpyvalData, params: npt.NDArray
+    ) -> bool:
+        """Warn when the fit ends on the boundary of the model's support,
+        and say whether it did.
+
+        The limits H >= 0 and h >= 0 at the observed points (``neg_ll``)
+        bind wherever the unconstrained likelihood would rise by putting
+        sf above 1 at the data. The maximum is then on that boundary, as
+        a threshold parameter's is at the smallest observation: a maximum
+        of the likelihood, but not a stationary point, so the search's own
+        checks would read it as one with no finite maximum, and the
+        standard errors from the information there are approximate.
+        """
+        k = self.k_dist
+        worst = None
+        with np.errstate(all="ignore"):
+            for x, Z, observed in self._observed_points(data):
+                pairs = [(self.Hf, self.Hf_dist)]
+                if observed:
+                    pairs.append((self.hf, self.hf_dist))
+                for f, f0 in pairs:
+                    v = np.asarray(f(x, Z, *params), dtype=float).ravel()
+                    v0 = np.broadcast_to(
+                        np.asarray(f0(x, *params[:k]), dtype=float).ravel(),
+                        v.shape,
+                    )
+                    share = np.where(v0 > 0, v / v0, np.inf)
+                    i = int(np.argmin(share))
+                    if worst is None or share[i] < worst[0]:
+                        worst = (share[i], float(np.ravel(x)[i]))
+        if worst is None or not worst[0] < self.SUPPORT_BOUNDARY_FRACTION:
+            return False
+        warnings.warn(
+            "The additive hazards fit ended on the boundary of the model's "
+            "support: at the observation x = {:.4g} the covariate term "
+            "cancels the baseline, so H(x | Z) (or the hazard) is 0 there "
+            "and that unit's support starts at it. Without that limit the "
+            "likelihood would rise further by putting sf above 1 at the "
+            "data. The maximum is on the boundary, as a threshold's is at "
+            "the smallest observation, not at a stationary point, so the "
+            "standard errors and Wald bounds are approximate. A "
+            "proportional hazards model (e.g. {}PH) has no such "
+            "boundary.".format(worst[1], self.dist.name),
+            stacklevel=caller_stacklevel(),
+        )
+        return True
 
     def random(
         self,
@@ -192,8 +312,9 @@ class AdditiveHazardsFitter(
         Draw ``size`` samples for each covariate row of ``Z`` by numerically
         inverting the (monotone) cumulative hazard over the baseline's
         whole support: on a baseline over the whole real line a share
-        ``ff(0)`` of the draws is below 0. Requires the additive hazard to
-        stay positive over the sampled range.
+        ``ff(0)`` of the draws is below 0. A draw outside the model's
+        support (where the hazard or its integral is negative, so the model
+        is not a distribution) is ``nan``, with one warning (#828).
 
         Returns the draws and a 2-D array of the covariate row each was
         drawn at, row by row -- the same contract as the proportional
@@ -231,7 +352,24 @@ class AdditiveHazardsFitter(
             U = uniform_draws(size, rng)
             x.append(self._invert_cumulative_hazard(U, row, dist_params, beta))
             Z_out.append(np.tile(row, (size, 1)))
-        return np.concatenate(x), np.vstack(Z_out)
+        x_all, Z_all = np.concatenate(x), np.vstack(Z_out)
+        with np.errstate(all="ignore"):
+            outside = (np.asarray(self.hf(x_all, Z_all, *params)) < 0) | (
+                np.asarray(self.Hf(x_all, Z_all, *params)) < 0
+            )
+        if outside.any():
+            warnings.warn(
+                "The additive hazard h_0(x) + beta'Z or its integral "
+                "H(x | Z) is negative at {} of the {} draws: they are "
+                "outside the model's support for those covariates, where "
+                "it is not a distribution, and are nan.".format(
+                    int(outside.sum()), outside.size
+                ),
+                RuntimeWarning,
+                stacklevel=caller_stacklevel(),
+            )
+            x_all = np.where(outside, np.nan, x_all)
+        return x_all, Z_all
 
     def _invert_cumulative_hazard(
         self,
@@ -609,7 +747,12 @@ class AdditiveHazardsFitter(
             true_neg_ll, res, coefs, init, n_obs, verified=converged
         )
         maximum = verdict.maximum
-        if verdict.no_maximum:
+        no_maximum = verdict.no_maximum
+        if self._warn_if_on_support_boundary(data, params):
+            # A maximum on the boundary, which the search's checks take
+            # for a likelihood still rising (said in its own words).
+            maximum, no_maximum = "unverified", False
+        elif verdict.no_maximum:
             say_verdict(verdict)
         elif self._warn_if_on_positivity_boundary(data, params):
             # (said in its own words: held by the barrier, not stationary)
@@ -637,7 +780,7 @@ class AdditiveHazardsFitter(
         # The exact information for the model's covariance (#392).
         keep_information(
             model,
-            verdict.no_maximum,
+            no_maximum,
             verdict.derivatives,
             inv_trans,
             const,
