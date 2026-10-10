@@ -1,19 +1,52 @@
 name: Publish to PyPI
 
-# Publishes a release to PyPI when a version tag (e.g. v0.12.0) is pushed.
-# Authentication uses PyPI Trusted Publishing (OIDC) -- no API token is stored
-# in the repository. The trusted publisher must be configured once on PyPI for
-# the ``surpyval`` project (workflow ``publish.yml``, environment ``pypi``).
+# Publishes a release to PyPI, in either of two ways.
 #
-# It runs no tests. The one automated test is the full run on the release
-# pull request into ``master`` (actions.yml); publishing accepts that run
-# and checks it: the tagged commit must be the merge of a pull request into
-# ``master`` whose run passed, every job of it, or nothing is published.
+# 1. Push a version tag (e.g. v0.24) to the merge of the release pull request
+#    into ``master``.
+#
+# 2. Run this workflow by hand on ``master`` (Actions -> Publish to PyPI ->
+#    Run workflow; ``gh workflow run publish.yml --ref master -f
+#    version=0.25``; or the REST API). It checks the version typed in against
+#    pyproject.toml, that the tag v<version> does not exist yet and that PyPI
+#    does not have the version. After publishing it creates the tag
+#    v<version> on that commit and a GitHub Release, so no one needs to push
+#    a tag. ``dry_run`` does the checks and the build only. A tag created by
+#    this workflow starts no second run: GitHub starts no workflow for events
+#    made with a workflow's own token, so nothing is published twice.
+#
+# Either way, publishing runs no tests. The one automated test is the full
+# run on the release pull request into ``master`` (actions.yml); publishing
+# accepts that run and checks it: the commit must be the merge of a pull
+# request into ``master`` whose run passed, every job of it, or nothing is
+# published.
+#
+# Authentication uses PyPI Trusted Publishing (OIDC) -- no API token is stored
+# in the repository. The trusted publisher is configured on PyPI for the
+# ``surpyval`` project (workflow ``publish.yml``, environment ``pypi``), so
+# keep this file's name.
 
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The version to release, MAJOR.MINOR as in pyproject.toml (e.g. 0.25)"
+        required: true
+        type: string
+      dry_run:
+        description: "Only check and build: publish nothing, create no tag or release"
+        required: false
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -23,13 +56,41 @@ jobs:
       contents: read
       checks: read
       pull-requests: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
-      # The tag's commit is the merge of the release pull request; its
-      # head commit carries the full run's checks. Each job's latest
-      # attempt must have succeeded -- a skipped job is not a pass -- and
-      # the run must include the test suite.
+      # A run by hand: it releases the head of master, as a version that
+      # has neither a tag nor a PyPI release yet.
+      - name: Check the run by hand
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$REQUESTED" =~ ^[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$REQUESTED' isn't MAJOR.MINOR (e.g. 0.25)."
+            exit 1
+          fi
+          if [ "$GITHUB_REF" != "refs/heads/master" ]; then
+            echo "::error::Releases are made from master, not $GITHUB_REF."
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v$REQUESTED" > /dev/null; then
+            echo "::error::The tag v$REQUESTED already exists."
+            exit 1
+          fi
+          pypi=$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/surpyval/$REQUESTED/json")
+          if [ "$pypi" = 200 ]; then
+            echo "::error::surpyval $REQUESTED is already on PyPI."
+            exit 1
+          fi
+
+      # The commit is the merge of the release pull request; its head
+      # commit carries the full run's checks. Each job's latest attempt
+      # must have succeeded -- a skipped job is not a pass -- and the run
+      # must include the test suite.
       - name: Check the release pull request's full run passed
         env:
           GH_TOKEN: ${{ github.token }}
@@ -38,7 +99,7 @@ jobs:
             --jq '[.[] | select(.base.ref == "master" and .merged_at != null)]
                   | .[0].number // empty')
           if [ -z "$PR" ]; then
-            echo "$GITHUB_REF_NAME is not the merge of a pull request into master" >&2
+            echo "$GITHUB_SHA is not the merge of a pull request into master" >&2
             exit 1
           fi
           HEAD=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .head.sha)
@@ -71,14 +132,19 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Check tag matches package version
+      # The tag pushed, or the version typed in, must be pyproject.toml's.
+      - name: Check the version matches the package
+        id: version
+        env:
+          REQUESTED: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
+          WANT="${REQUESTED:-${GITHUB_REF_NAME#v}}"
           PKG=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
-          if [ "$TAG" != "$PKG" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match pyproject version $PKG" >&2
+          if [ "$WANT" != "$PKG" ]; then
+            echo "Version $WANT does not match pyproject version $PKG" >&2
             exit 1
           fi
+          echo "version=$PKG" >> "$GITHUB_OUTPUT"
 
       - name: Build sdist and wheel
         run: |
@@ -94,6 +160,7 @@ jobs:
   publish:
     name: Publish to PyPI
     needs: build
+    if: github.event_name == 'push' || !inputs.dry_run
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -109,3 +176,25 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  tag:
+    name: Tag and GitHub Release
+    needs: [build, publish]
+    # Only for a run by hand, and only once PyPI has the version, so a
+    # failed publish leaves no tag.
+    if: github.event_name == 'workflow_dispatch' && !inputs.dry_run && needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create the tag and the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/releases" \
+            -f tag_name="v$VERSION" \
+            -f target_commitish="$GITHUB_SHA" \
+            -f name="v$VERSION" \
+            -F generate_release_notes=true \
+            --jq '.html_url'

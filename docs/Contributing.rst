@@ -339,7 +339,11 @@ documentation build from running on every change:
 * **develop** is the long-lived integration branch. Feature work is done on a
   short-lived branch and opened as a pull request into ``develop``.
 * At release time ``develop`` is merged into ``master`` in a single pull
-  request and the new version is tagged.
+  request and the new version is tagged. Either push the tag, or run the
+  publish workflow by hand on ``master`` (``gh workflow run publish.yml
+  --ref master -f version=0.25``): it publishes first, then creates the tag
+  and a GitHub Release itself, so no tag needs pushing. ``-f dry_run=true``
+  checks and builds only.
 
 Versions have two parts, ``MAJOR.MINOR`` (``0.22``, tagged ``v0.22``), since
 0.22; earlier releases had three. Every release, fixes only or not, takes the
@@ -376,6 +380,10 @@ else: not on pull requests into ``develop`` and not on pushes to any branch.
        ``pyproject.toml``; it then builds the package and publishes it to
        PyPI. It runs no tests of its own. Read the Docs builds the tagged
        documentation
+   * - Publish workflow run by hand on ``master``
+     - the same checks and publishing, for the version typed in (which
+       must have no tag and no PyPI release yet); then it creates the tag
+       and a GitHub Release
 
 The full test suite and the documentation build run once per release, on the
 release pull request. That run tests the pull request's merge result, so a
