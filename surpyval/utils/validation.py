@@ -336,9 +336,29 @@ def all_in_unit_interval(u: npt.NDArray) -> bool:
     >>> all_in_unit_interval(np.array(1.5))
     False
     """
+    return unit_interval_range(u) is not None
+
+
+def unit_interval_range(u: npt.NDArray) -> tuple[float, float] | None:
+    """The least and greatest values of the float array ``u`` where
+    :func:`all_in_unit_interval` holds, else None: the same two
+    reductions, for a caller with a use for them (#798).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.utils.validation import unit_interval_range
+    >>> unit_interval_range(np.array([0.25, 0.5, 0.75]))
+    (0.25, 0.75)
+    >>> unit_interval_range(np.array([0.5, float("nan")])) is None
+    True
+    """
     if not u.size:
-        return False
-    return 0.0 <= float(u.min()) and float(u.max()) <= 1.0
+        return None
+    lo, hi = float(u.min()), float(u.max())
+    if 0.0 <= lo and hi <= 1.0:
+        return lo, hi
+    return None
 
 
 def _check_x_not_empty(func: Callable) -> Callable:

@@ -52,12 +52,12 @@ from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import (
     BOUNDS,
     CB_ON,
-    all_in_unit_interval,
     alpha_ci_error,
     check_alpha_ci,
     check_option,
     no_covariance_error,
     option_error,
+    unit_interval_range,
     warn_outside_unit_interval,
 )
 from surpyval.utils.warnings import caller_stacklevel
@@ -1744,10 +1744,19 @@ class Parametric(
         u = onp.atleast_1d(u)
         formula = _unchecked_qf(self.dist)
         f0, lfp_p = self.f0, self.lfp_p
-        if formula is None or not (f0 < lfp_p and all_in_unit_interval(u)):
+        span = unit_interval_range(u) if formula is not None else None
+        if span is None or not f0 < lfp_p:
             # NaN, or a probability outside [0, 1], to be checked for and
             # warned of: the full path.
             return self._qf_checked(p)
+        # The steps of ``_qf_checked`` that set a quantile outright, where
+        # they change anything: the zero-inflation mass at 0, and the
+        # cure fraction's infinite quantiles.
+        lo, hi = span
+        at_zero = None
+        if (f0 > 0 or getattr(self.dist, "discrete", False)) and lo <= f0:
+            at_zero = u <= f0
+        never = u >= lfp_p if lfp_p < 1 and hi >= lfp_p else None
         # Under the floating-point settings of ``_qf_checked``: the
         # distribution's (``_array_inputs``) inside the model's.
         if f0 == 0 and lfp_p == 1:
@@ -1756,7 +1765,16 @@ class Parametric(
             with np.errstate(divide="ignore", invalid="ignore"):
                 base = onp.subtract(u, f0)
                 onp.divide(base, lfp_p - f0, out=base)
-                onp.clip(base, 0.0, 1.0, out=base)
+            # No clip to [0, 1] (#798): rounding keeps the quotient of
+            # any probability between f0 and lfp_p in [0, 1], so a clip
+            # changes only those whose quantiles are set outright below.
+            # It sent them to 0 and 1, where the formula takes the log of
+            # 0, a path slow enough to take half again the formula's time
+            # on 1e6 values; they are given 0.5 instead, in one pass.
+            if at_zero is not None and never is not None:
+                onp.putmask(base, at_zero | never, 0.5)
+            elif at_zero is not None or never is not None:
+                onp.putmask(base, at_zero if never is None else never, 0.5)
         with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
             q = formula(self.dist, base, *self.params)
         if self.gamma == 0:
@@ -1769,13 +1787,10 @@ class Parametric(
             # A formula that gives other than one value per probability:
             # the full path broadcasts it.
             return self._qf_checked(p)
-        # The steps of ``_qf_checked``, where they change anything.
-        if (f0 > 0 or getattr(self.dist, "discrete", False)) and (
-            u.min() <= f0
-        ):
-            q = _put(q, u <= f0, 0.0, u)
-        if lfp_p < 1 and u.max() >= lfp_p:
-            q = _put(q, u >= lfp_p, np.inf, u)
+        if at_zero is not None:
+            q = _put(q, at_zero, 0.0, u)
+        if never is not None:
+            q = _put(q, never, np.inf, u)
         q = (np if isinstance(q, ArrayBox) else onp).asarray(q, dtype=float)
         return q[0] if scalar else q
 

@@ -161,6 +161,19 @@ Unreleased
   (above 30 the hazard already had them from its own fraction, #786). It
   costs time: a GammaPH fit on 400 rows takes 0.32 s where it took 0.21 s.
 
+**Performance**
+
+- ``qf`` of a limited-failure or zero-inflated model takes one pass fewer
+  and no longer evaluates its distribution's quantile at 0 and 1 for the
+  probabilities whose quantiles it sets to 0 or infinity (#798). Those
+  went through the log of 0, a slow path; they are given 0.5, and the
+  clip to [0, 1] goes, since rounding keeps every other rescaled
+  probability inside it. The bounds check's least and greatest values are
+  reused. A Weibull with ``lfp_p=0.9`` takes about 25 ns a value where it
+  took 30 on 1e6 values. The results and warnings are those of 0.24, bit
+  for bit, over 23 distributions, ten ``lfp_p``/``f0``/``gamma`` settings
+  and fifteen kinds of input.
+
 v0.24 (9 October 2026)
 ----------------------
 
