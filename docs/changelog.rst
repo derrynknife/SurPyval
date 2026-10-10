@@ -22,6 +22,17 @@ Unreleased
   cause-specific models) fits, and stores, exactly the data of the per-row
   form. When there are as many rows as units the bound is read per row, as
   before; any other length is refused, naming both accepted lengths.
+- ``MixtureModel.with_params`` and ``MixtureModel.from_params`` (#829): a
+  mixture with other component parameters and weights, keeping its
+  ``dist`` and ``m``, as ``Parametric.with_params`` is for one
+  distribution. The parameters are taken as an ``(m, k)`` array or flat in
+  the order of ``covariance_names`` (with or without the weights at the
+  end, as a draw from ``covariance()`` comes), and the weights as ``w`` or
+  as log-ratios to the last one, ``w_logits``, the coordinates the
+  covariance is fitted in. Each component is checked as ``from_params``
+  checks a distribution, and the weights must be non-negative and sum to
+  1. Drawing a fit's parameters and propagating them through a mixture
+  used to need ``to_dict``, an edit and ``from_dict``.
 
 **Fixed**
 

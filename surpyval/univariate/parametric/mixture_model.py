@@ -364,6 +364,177 @@ class MixtureModel(
             )
         return out
 
+    @classmethod
+    def from_params(
+        cls,
+        dist: Any,
+        params: npt.ArrayLike,
+        w: npt.ArrayLike | None = None,
+        *,
+        w_logits: npt.ArrayLike | None = None,
+    ) -> "MixtureModel":
+        """
+        A mixture of ``dist`` built from its components' parameters and
+        weights, ready for ``sf``, ``ff``, ``df``, ``hf``, ``Hf``, ``qf``,
+        ``mean`` and ``random`` (#829).
+
+        Parameters
+        ----------
+        dist : surpyval distribution
+            The components' distribution.
+        params : array like
+            One row of ``dist``'s parameters per component, shape
+            ``(m, k)``: ``params`` as a fitted mixture holds it.
+        w : array like, optional
+            The ``m`` weights: non-negative, summing to 1.
+        w_logits : array like, optional
+            The weights as ``m - 1`` log-ratios to the last one,
+            ``log(w_j / w_{m-1})`` (or ``m`` logits of any origin), the
+            coordinates the covariance is fitted in; in place of ``w``.
+
+        Returns
+        -------
+        MixtureModel
+            A mixture built from parameters: it has no data, covariance or
+            fitted likelihood.
+
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> mm = surv.MixtureModel.from_params(
+        ...     surv.Weibull, [[10, 2], [50, 4]], [0.3, 0.7]
+        ... )
+        >>> mm.sf([5, 40]).round(4)
+        array([0.9336, 0.4647])
+        """
+        rows = np.atleast_2d(np.asarray(params, dtype=float))
+        if rows.ndim != 2 or rows.shape[1] != dist.k:
+            raise ValueError(
+                "'params' must have one row of {} parameters ({}) per "
+                "component; got shape {}".format(
+                    dist.k,
+                    ", ".join(dist.parameter_names),
+                    np.shape(params),
+                )
+            )
+        out = cls(dist=dist, m=rows.shape[0])
+        out.params, out.w = rows, out._checked_weights(w, w_logits)
+        for row in rows:
+            # Each component checked as from_params checks a distribution
+            dist.from_params(row)
+        out.maximum = "unknown"
+        return out
+
+    def with_params(
+        self,
+        params: npt.ArrayLike,
+        w: npt.ArrayLike | None = None,
+        *,
+        w_logits: npt.ArrayLike | None = None,
+    ) -> "MixtureModel":
+        """
+        The same mixture -- its ``dist`` and ``m`` -- with other component
+        parameters and weights, as ``Parametric.with_params`` is for one
+        distribution (#829): for drawing a fit's parameters from its
+        covariance and propagating them, say.
+
+        Parameters
+        ----------
+        params : array like
+            The components' parameters: an ``(m, k)`` array as ``params``
+            holds them, or a flat vector in the order of
+            :attr:`covariance_names` -- each component's parameters in
+            turn, then (optionally) the ``m`` weights, as a draw from
+            :meth:`covariance` comes. (A draw there can take a weight
+            below 0, which is refused; drawn as log-ratios, ``w_logits``,
+            the weights are always valid.)
+        w : array like, optional
+            The weights, where ``params`` does not end with them. Without
+            either, the weights are kept.
+        w_logits : array like, optional
+            The weights as log-ratios to the last one (see
+            :meth:`from_params`), in place of ``w``.
+
+        Returns
+        -------
+        MixtureModel
+            A mixture built from parameters (see :meth:`from_params`).
+
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+        >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
+        >>> other = wmm.with_params(wmm.params * [1.1, 1.0], w=[0.5, 0.5])
+        >>> other.w, other.m, other.dist.name
+        (array([0.5, 0.5]), 2, 'Weibull')
+        >>> flat = list(other.params.ravel()) + list(other.w)
+        >>> bool((wmm.with_params(flat).params == other.params).all())
+        True
+        """
+        m, k = self.m, self.dist.k
+        values = np.asarray(params, dtype=float)
+        if values.ndim == 1 and values.size in (m * k, m * k + m):
+            if values.size == m * k + m:
+                if w is not None or w_logits is not None:
+                    raise ValueError(
+                        "'params' ends with the weights (it has {} "
+                        "entries, as covariance_names); give 'w' or "
+                        "'w_logits' only with the {} parameters".format(
+                            values.size, m * k
+                        )
+                    )
+                w = values[m * k :]
+            values = values[: m * k].reshape(m, k)
+        if np.shape(values) != (m, k):
+            raise ValueError(
+                "'params' must be of shape ({m}, {k}), or flat with {mk} "
+                "entries (or {mkw} with the weights, in the order of "
+                "covariance_names); got shape {got}".format(
+                    m=m, k=k, mk=m * k, mkw=m * k + m, got=np.shape(params)
+                )
+            )
+        if w is None and w_logits is None:
+            if self.w is None:
+                raise ValueError(
+                    "an unfitted mixture has no weights to keep: give 'w'"
+                )
+            w = self.w
+        return type(self).from_params(self.dist, values, w, w_logits=w_logits)
+
+    def _checked_weights(
+        self, w: npt.ArrayLike | None, w_logits: npt.ArrayLike | None
+    ) -> npt.NDArray:
+        """The ``m`` weights from ``w`` or ``w_logits`` (exactly one),
+        checked: non-negative and summing to 1, to rounding."""
+        m = self.m
+        if (w is None) == (w_logits is None):
+            raise ValueError("give the weights as one of 'w' or 'w_logits'")
+        if w_logits is not None:
+            logits = np.asarray(w_logits, dtype=float).ravel()
+            if logits.size == m - 1:
+                logits = np.append(logits, 0.0)
+            if logits.size != m or not np.all(np.isfinite(logits)):
+                raise ValueError(
+                    "'w_logits' must be {} finite log-ratios to the last "
+                    "weight (or {} logits); got {}".format(
+                        m - 1, m, np.asarray(w_logits).tolist()
+                    )
+                )
+            return np.exp(logits - logsumexp(logits))
+        weights = np.asarray(w, dtype=float).ravel()
+        if (
+            weights.size != m
+            or not np.all(np.isfinite(weights))
+            or np.any(weights < 0)
+            or abs(weights.sum() - 1.0) > 1e-9
+        ):
+            raise ValueError(
+                "'w' must be {} non-negative weights summing to 1; got "
+                "{}".format(m, np.asarray(w).tolist())
+            )
+        return weights / weights.sum()
+
     def __repr__(self) -> str:
         if self.params is not None:
             param_string = "\n".join(

@@ -635,3 +635,60 @@ def test_covariance_survives_to_dict_and_refit():
     before = mm.standard_errors()
     mm.fit(np.arange(1.0, 30.0))
     assert not np.allclose(mm.standard_errors(), before)
+
+
+# -- with_params / from_params (#829) ---------------------------------------
+
+
+def test_from_params_builds_a_mixture_to_evaluate():
+    mm = sp.MixtureModel.from_params(
+        sp.Weibull, [[10, 2], [50, 4]], [0.3, 0.7]
+    )
+    x = np.array([5.0, 40.0])
+    want = 0.3 * sp.Weibull.sf(x, 10, 2) + 0.7 * sp.Weibull.sf(x, 50, 4)
+    np.testing.assert_allclose(mm.sf(x), want, rtol=1e-14)
+    np.testing.assert_allclose(mm.ff(mm.qf([0.1, 0.9])), [0.1, 0.9])
+    assert mm.m == 2 and mm.data is None
+
+
+def test_with_params_keeps_dist_and_m_and_reads_the_covariance_order():
+    mm = _fitted_model()
+    flat = np.r_[mm.params.ravel(), mm.w]
+    assert len(flat) == len(mm.covariance_names)
+    same = mm.with_params(flat)
+    np.testing.assert_array_equal(same.params, mm.params)
+    np.testing.assert_array_equal(same.w, mm.w)
+    np.testing.assert_allclose(same.sf([20.0, 60.0]), mm.sf([20.0, 60.0]))
+    assert same.dist is mm.dist and same.m == mm.m
+    # The parameters alone keep the weights; an (m, k) array as well.
+    np.testing.assert_array_equal(mm.with_params(mm.params.ravel()).w, mm.w)
+    moved = mm.with_params(mm.params * 1.1, w=[0.5, 0.5])
+    np.testing.assert_allclose(moved.params, mm.params * 1.1)
+    np.testing.assert_array_equal(moved.w, [0.5, 0.5])
+
+
+def test_with_params_takes_the_weights_as_log_ratios():
+    mm = _fitted_model()
+    logits = np.log(mm.w[:-1]) - np.log(mm.w[-1])
+    np.testing.assert_allclose(
+        mm.with_params(mm.params, w_logits=logits).w, mm.w, rtol=1e-12
+    )
+
+
+@pytest.mark.parametrize(
+    "args, kwargs, match",
+    [
+        (([[1.0, 2.0]],), {}, "must be of shape"),
+        (([[10.0, 2.0], [50.0, 4.0]],), {"w": [0.6, 0.6]}, "summing to 1"),
+        (([[10.0, 2.0], [50.0, 4.0]],), {"w": [1.2, -0.2]}, "non-negative"),
+        (([[-1.0, 2.0], [50.0, 4.0]],), {}, "bounds"),
+        (
+            ([10.0, 2.0, 50.0, 4.0, 0.5, 0.5],),
+            {"w": [0.5, 0.5]},
+            "ends with the weights",
+        ),
+    ],
+)
+def test_with_params_refuses_what_is_not_a_mixture(args, kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        _fitted_model().with_params(*args, **kwargs)
