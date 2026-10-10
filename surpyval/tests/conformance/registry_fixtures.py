@@ -172,6 +172,20 @@ def reg_data():
     return {"x": x, "Z": np.column_stack([z0, z1]), "c": c, "n": n}
 
 
+def ah_data():
+    """The regression fixture with its covariates turned to add hazard,
+    for the additive hazards cases (#828): ``1 - z1`` for ``z1``, so both
+    covariates are non-negative and shorten life. On ``reg_data`` a
+    protective row's ``h0(t) + beta'Z`` is negative near 0, where the
+    baselines' hazards start at 0, and every AH fit but the Exponential's
+    and the Gumbel's ends on the boundary of its support (``H = 0`` at an
+    early observation), with a warning; here each is an ordinary maximum
+    inside it."""
+    d = reg_data()
+    d["Z"] = np.column_stack([d["Z"][:, 0], 1.0 - d["Z"][:, 1]])
+    return d
+
+
 def stress_data(columns=1):
     """Accelerated life data: life falls with stress (1, 2 or 3)."""
     d = reg_data()
@@ -212,6 +226,8 @@ Z_REG = np.array(
         [1.0, -0.2],
     ]
 )
+#: The query rows of ``ah_data``: ``Z_REG`` turned as its covariates are.
+Z_AH = np.column_stack([Z_REG[:, 0], 1.0 - Z_REG[:, 1]])
 X_STRESS = np.array([1.0, 3.0, 6.0, 10.0, 15.0, 22.0])
 Z_STRESS = np.array([[1.0], [1.5], [2.0], [2.5], [3.0], [1.2]])
 Z_STRESS2 = np.array(

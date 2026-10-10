@@ -25,7 +25,11 @@ from scipy.optimize import OptimizeResult
 
 import surpyval as sp
 from surpyval import CoxPH
-from surpyval.tests.conformance.registry import grouped_reg_data, reg_data
+from surpyval.tests.conformance.registry import (
+    ah_data,
+    grouped_reg_data,
+    reg_data,
+)
 from surpyval.univariate.competing_risks import FineGray
 from surpyval.univariate.competing_risks.regression import (
     CompetingRisksProportionalHazards,
@@ -134,15 +138,33 @@ def test_a_fixed_coefficient_keeps_the_numbering():
 @pytest.mark.parametrize(
     "name", ["WeibullAH", "LogNormalAH", "ExponentialAH", "LogisticAH"]
 )
-def test_additive_hazards_warn_once_that_there_is_no_maximum(name):
-    # The additive model's likelihood rises linearly without bound as the
-    # no-event level's coefficient falls; it said instead that the fit had
-    # ended on the positivity boundary, or had not converged.
-    model, w = _fit(lambda: getattr(sp, name).fit(**_no_events(reg_data())))
+def test_additive_hazards_no_event_level_stops_at_the_support(name):
+    # The additive model's likelihood rose linearly without bound as the
+    # no-event level's coefficient fell -- by sending H below 0, and sf
+    # above 1, at that level's rows (it warned that there was no finite
+    # maximum, #392). Kept inside its support (#828), the coefficient falls
+    # only until H reaches 0 at one of them: a maximum on the boundary,
+    # said once.
+    d = _no_events(reg_data())
+    model, w = _fit(lambda: getattr(sp, name).fit(**d))
     assert len(w) == 1, [str(x.message) for x in w]
-    assert str(w[0].message).startswith(NO_MAXIMUM)
+    assert str(w[0].message).startswith(
+        "The additive hazards fit ended on the boundary"
+    )
     assert w[0].filename == __file__
-    assert model.phi_params[0] < -100
+    assert model.maximum == "unverified"
+    assert np.isfinite(model.phi_params).all()
+    # H, or the hazard, is 0 (to the fit's precision) at one of the rows.
+    params, k = model.params, model.k_dist
+    shares = []
+    for f, f0 in (
+        (model.model.Hf, model.distribution.Hf),
+        (model.model.hf, model.distribution.hf),
+    ):
+        v = np.ravel(f(d["x"], d["Z"], *params))
+        assert v.min() >= 0
+        shares.append(np.min(v / np.ravel(f0(d["x"], *params[:k]))))
+    assert min(shares) < 1e-6
 
 
 @pytest.mark.parametrize(
@@ -321,7 +343,8 @@ def _count_profiles(monkeypatch):
         lambda: sp.WeibullPH.fit(**reg_data()),
         lambda: sp.LogNormalAFT.fit(**reg_data()),
         lambda: sp.LogisticPO.fit(**reg_data()),
-        lambda: sp.WeibullAH.fit(**reg_data()),
+        # (on its own fixture, inside its support: see ah_data)
+        lambda: sp.WeibullAH.fit(**ah_data()),
         lambda: FineGray.fit(**_competing(reg_data()), event="a"),
     ],
     ids=["PH", "AFT", "PO", "AH", "FineGray"],

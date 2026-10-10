@@ -24,9 +24,11 @@ from surpyval.tests.conformance.registry_fixtures import (
     X_REG,
     X_STRESS,
     X_UNI,
+    Z_AH,
     Z_REG,
     Z_STRESS,
     Z_STRESS2,
+    ah_data,
     discrete_data,
     grouped_reg_data,
     reg_data,
@@ -793,11 +795,16 @@ def _regression_family():
                 frozenset() if name in FAST_REGRESSIONS else REFIT_PROPERTIES
             )
             exclude = {}
+            data = {}
             if kind == "AH":
                 exclude["bounds"] = (
-                    "documented: nothing keeps h0(x) + beta'Z positive "
-                    "between the observed times, so sf can exceed 1"
+                    "documented: outside the model's support (h0(x) + "
+                    "beta'Z or its integral negative) the predictions are "
+                    "nan (#828)"
                 )
+                # Covariates that add hazard: an ordinary fit inside the
+                # support (see ah_data).
+                data = {"data": ah_data, "Z": Z_AH}
             out.append(
                 regression(
                     name,
@@ -805,6 +812,7 @@ def _regression_family():
                     slow=slow,
                     exclude=exclude,
                     intercept=(_KINDS[kind], base) in ORIGIN_MAPS,
+                    **data,
                 )
             )
     return out

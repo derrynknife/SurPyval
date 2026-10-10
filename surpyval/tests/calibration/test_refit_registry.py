@@ -1375,7 +1375,9 @@ def test_additive_hazards_random_below_zero(name):
     GumbelAH's sigma by -4.5 sd (n = 300, 40 refits)."""
     case = CASE_BY_NAME[name]
     model = reg.fitted(case)
-    row = np.array([0.0, -0.8])
+    # (0, -0.8) of the regression fixture, in the additive cases' own
+    # covariates (ah_data: 1 - z1, #828)
+    row = np.array([0.0, 1.8])
     state = np.random.get_state()
     np.random.seed(397)
     try:

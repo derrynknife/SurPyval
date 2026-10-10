@@ -354,7 +354,8 @@ def test_given_is_the_ratio_of_survivals(F, params):
         rtol=1e-11,
     )
     # A conditioning age at or before 0 conditions on nothing (for a
-    # baseline that starts at 0) or divides by sf(given).
+    # baseline that starts at 0) or divides by sf(given): nan for both
+    # where the age is outside an additive model's support (#828).
     np.testing.assert_allclose(
         model.sf_tvc(tt, path, given=-1.0),
         model.sf_tvc(tt, path) / model.sf_tvc(-1.0, path),

@@ -38,11 +38,15 @@ TVC_FITTERS = {
 }
 
 
-def _constant_covariate_split(seed=0, n=300):
+def _constant_covariate_split(seed=0, n=300, adds_hazard=False):
     """Constant-covariate survival data, plus a start-stop split of each
-    subject at an interior time (same covariate on both halves)."""
+    subject at an interior time (same covariate on both halves).
+    ``adds_hazard`` makes the covariate non-negative, for an additive
+    hazards model to fit inside its support."""
     rng = np.random.default_rng(seed)
     Z = rng.normal(size=(n, 1))
+    if adds_hazard:
+        Z = np.abs(Z)
     T = 10.0 * np.exp(-Z[:, 0] * 0.8 / 1.5) * rng.weibull(1.5, n) + 0.2
     c0 = np.zeros(n, dtype=int)
 
@@ -58,7 +62,13 @@ def _constant_covariate_split(seed=0, n=300):
 @pytest.mark.parametrize("name", list(TVC_FITTERS))
 def test_episode_split_is_an_identity(name):
     fitter = TVC_FITTERS[name]
-    (Z, T, c0), (ident, xl, xr, c, Zs) = _constant_covariate_split()
+    # A protective row's additive hazard is negative early on, where the
+    # fit holds every observed point inside the support (#828): the split
+    # points are observed points of the split fit only, so it is the same
+    # model only inside the support.
+    (Z, T, c0), (ident, xl, xr, c, Zs) = _constant_covariate_split(
+        adds_hazard=name.endswith("AH")
+    )
 
     plain = fitter.fit(x=T, Z=Z, c=c0)
     tvc = fitter.fit_tvc(i=ident, xl=xl, xr=xr, c=c, Z=Zs)

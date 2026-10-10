@@ -493,6 +493,7 @@ def cb_bootstrap(
     lower = float(model.distribution.support[0])
     below = t < lower
     x_in = np.where(below, lower + 1.0 if np.isfinite(lower) else 0.0, t)
+    additive = model._is_additive()
     if on in ("hf", "df"):
         fn = model.model.hf if on == "hf" else model.model.df
 
@@ -500,6 +501,9 @@ def cb_bootstrap(
             with np.errstate(all="ignore"):
                 v = fn(x_in, model._centred(rows, center), *p)
             v = np.broadcast_to(np.asarray(v, dtype=float), t.shape)
+            if additive:
+                # Before a refit's support starts nothing happens (#828).
+                v = np.maximum(v, 0.0)
             return np.where(below, 0.0, v)
 
         return function_bounds(model, fits, value, None, alpha_ci, bound)
@@ -508,6 +512,11 @@ def cb_bootstrap(
         with np.errstate(all="ignore"):
             H = model.model.Hf(x_in, model._centred(rows, center), *p)
         H = np.broadcast_to(np.asarray(H, dtype=float), t.shape)
+        if additive:
+            # An additive refit's support starts where its H reaches 0:
+            # before it nothing has failed, H is 0 (#828). (Where the
+            # model itself is outside its support the bound is nan.)
+            H = np.maximum(H, 0.0)
         return np.where(below, 0.0, H)
 
     return function_bounds(model, fits, H_of, on, alpha_ci, bound)

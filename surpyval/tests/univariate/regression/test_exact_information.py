@@ -23,7 +23,11 @@ import surpyval.univariate.competing_risks.regression.fine_gray as fine_gray
 import surpyval.univariate.regression._fit_skeleton as skeleton
 import surpyval.univariate.regression._inference as inference
 import surpyval.univariate.regression.frailty.frailty_fitter as frailty
-from surpyval.tests.conformance.registry import CASE_BY_NAME, reg_data
+from surpyval.tests.conformance.registry import (
+    CASE_BY_NAME,
+    ah_data,
+    reg_data,
+)
 from surpyval.univariate.regression._fit_skeleton import (
     centred_copy,
     natural_information,
@@ -43,7 +47,16 @@ FAMILIES = [
 #: step lands depends on the point: at the ExponentialPO fit the gradient
 #: ladder reaches (#499; neg_ll 4e-9 lower) it is 1.8e-3, while ten times
 #: the step still agrees to 1.3e-5, and the exact values move by 1e-6.
-OLD_ROUNDING = {"ExponentialPO": 2e-3, "ExponentialAH": 2e-4}
+#: The additive hazards cases on their own fixture (``ah_data``, #828) are
+#: the same: 3.6e-4 at most at the default step (WeibullAH), 1.8e-5 at
+#: most at ten times it.
+OLD_ROUNDING = {
+    "ExponentialPO": 2e-3,
+    "ExponentialAH": 2e-4,
+    "WeibullAH": 5e-4,
+    "GammaAH": 2e-4,
+    "LogisticAH": 2e-4,
+}
 
 
 def _fit(fit):
@@ -230,11 +243,16 @@ def test_aft_time_varying_fit_keeps_the_exact_information(monkeypatch):
         # the baseline kept at the covariate means
         ("WeibullPH", {"center": True}, False),
         ("LogisticPO", {"center": True}, False),
-        ("WeibullAH", {"center": True}, False),
+        # (an Exponential baseline: centred, the rows below the means are
+        # protective, and the others' hazards, which start at 0, put the
+        # fit on its support's boundary there, #828)
+        ("ExponentialAH", {"center": True}, False),
     ],
 )
 def test_fixed_and_centred_fits(monkeypatch, fitter, options, maps_back):
-    model = _fit(lambda: getattr(sp, fitter).fit(**reg_data(), **options))
+    # An additive hazards model on its own fixture, inside its support.
+    data = ah_data() if fitter.endswith("AH") else reg_data()
+    model = _fit(lambda: getattr(sp, fitter).fit(**data, **options))
     assert (model._fit_centring is not None) == maps_back
     assert model._information is not None
     (_, center, _, fixed), kept = model._information
@@ -249,7 +267,10 @@ def test_fixed_and_centred_fits(monkeypatch, fitter, options, maps_back):
         k = model.parameter_names.index(name)
         assert not np.any(exact[k]) and not np.any(exact[:, k])
     np.testing.assert_allclose(
-        np.sqrt(np.diag(exact)), _numerical_se(model), rtol=1e-4, atol=0
+        np.sqrt(np.diag(exact)),
+        _numerical_se(model),
+        rtol=OLD_ROUNDING.get(fitter, 1e-4),
+        atol=0,
     )
 
 

@@ -395,8 +395,10 @@ def test_constant_path_mean_is_the_integral_of_sf(case):
         if np.isfinite(mean):
             ref = quad(sf, 0, np.inf, epsabs=0, epsrel=1e-12, limit=500)[0]
             if model.distribution.support[0] < 0:
+                # (an additive model's sf is nan before its support starts,
+                # where nothing has failed yet, #828)
                 ref -= quad(
-                    lambda t: 1 - sf(t),
+                    lambda t: 1 - np.nan_to_num(sf(t), nan=1.0),
                     -np.inf,
                     0,
                     epsabs=0,

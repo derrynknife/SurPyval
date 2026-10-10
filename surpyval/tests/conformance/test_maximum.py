@@ -85,6 +85,11 @@ OWN_WORDS = {
     "MLE Failed": "the univariate search returned its start",
     # The parametric additive hazards fit held by the positivity barrier
     "ended on the positivity boundary": "the additive hazards barrier",
+    # ... or ended on the boundary of its support, H = 0 at an observation
+    # (#828)
+    "ended on the boundary of the model's support": (
+        "the additive hazards support"
+    ),
     # An accelerated life fit with fewer stress levels than parameters
     "is not identifiable": "a ridge of accelerated life parameters",
 }
