@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import types
 from math import comb
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -128,6 +129,65 @@ def _raw(value: Any) -> Any:
     return value
 
 
+def _unwrapped(value: Any) -> Any:
+    """The numpy or scipy function an autograd primitive wraps; anything
+    else as it is."""
+    if getattr(value, "_is_autograd_primitive", False):
+        return value.fun
+    return value
+
+
+#: ``autograd.numpy`` with each primitive unwrapped. Its other functions
+#: are autograd's own and are kept: its ``where``, for one, gives Python
+#: types where numpy's gives arrays.
+_UNTRACED_NP = types.ModuleType("autograd.numpy (untraced)")
+_UNTRACED_NP.__dict__.update(
+    {key: _unwrapped(value) for key, value in vars(np).items()}
+)
+
+
+def _plain_numpy_clone(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """``fn`` as it runs on inputs autograd is not tracing: the same code
+    with autograd's primitives unwrapped, among its module's names and in
+    ``autograd.numpy`` (``_UNTRACED_NP``). A primitive looks for a box in
+    every argument before calling the function it wraps, about 0.8 us an
+    operation (#799); given none it calls that function with the same
+    arguments, so the values are the same to the bit. The module's names
+    are read once, when the clone is made."""
+    names = {}
+    for key, value in fn.__globals__.items():
+        names[key] = _UNTRACED_NP if value is np else _unwrapped(value)
+    clone = types.FunctionType(
+        fn.__code__, names, fn.__name__, fn.__defaults__, fn.__closure__
+    )
+    clone.__kwdefaults__ = fn.__kwdefaults__
+    return clone
+
+
+def _untraced_plain(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Wrap a distribution formula ``fn(self, x, *params)`` so that it
+    runs on plain numpy (:func:`_plain_numpy_clone`) unless one of its
+    arguments is an autograd box: a fit's parameters while it is being
+    differentiated, or ``x`` for the derivatives in ``x``
+    (CustomDistribution). Only surpyval's own formulas are wrapped; the
+    clone is made at the first call, when the formula's module is
+    complete."""
+    plain: list[Callable[..., Any]] = []
+
+    @functools.wraps(fn)
+    def dispatch(self: "ParametricFitter", x: Any, *params: Any) -> Any:
+        if isinstance(x, ArrayBox) or any(
+            isinstance(p, ArrayBox) for p in params
+        ):
+            return fn(self, x, *params)
+        if not plain:
+            plain.append(_plain_numpy_clone(fn))
+        return plain[0](self, x, *params)
+
+    dispatch._untraced_plain = True  # type: ignore[attr-defined]
+    return dispatch
+
+
 def _support_guarded(
     fn: Callable[..., Any], below: float, above: float
 ) -> Callable[..., Any]:
@@ -169,6 +229,9 @@ def _support_guarded(
         return out[()] if isinstance(out, np.ndarray) else out
 
     guarded._support_guarded = True  # type: ignore[attr-defined]
+    # The function inside the guard, for a caller that has found every
+    # point inside the support itself (``_array_inputs``).
+    guarded._inside = fn  # type: ignore[attr-defined]
     return guarded
 
 
@@ -233,6 +296,7 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
     """
     at_infinity = _AT_INFINITY.get(fn.__name__)
     is_qf = fn.__name__ == "qf"
+    inside = getattr(fn, "_inside", None)
 
     @functools.wraps(fn)
     def wrapped(self: "ParametricFitter", x: Any, *params: Any) -> Any:
@@ -248,6 +312,16 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
         if is_qf and all_in_unit_interval(x_arr):
             # none missing or out of range: what the checks below conclude
             return fn(self, x, *params)
+        if inside is not None and x_arr.size and not self.discrete:
+            # Every point inside a continuous distribution's support, none
+            # missing (NaN fails both comparisons): the conclusion of the
+            # NaN check here and of the support guard's, from two
+            # reductions where they take six numpy calls (#799).
+            lo, hi = self._support_edges(*params)
+            if lo <= onp.minimum.reduce(x_arr, axis=None) and (
+                onp.maximum.reduce(x_arr, axis=None) <= hi
+            ):
+                return inside(self, x, *params)
         missing = onp.isnan(x_arr)
         if is_qf:
             missing = missing | warn_outside_unit_interval(x_arr)
@@ -420,6 +494,15 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         # ``_support_guarded``). The discrete ones guard their integer
         # supports themselves, as their docstrings describe.
         super().__init_subclass__(**kwargs)
+        # Innermost, surpyval's own formulas run on plain numpy where
+        # nothing is being differentiated (``_untraced_plain``).
+        if cls.__module__.startswith("surpyval."):
+            for name in _QUERY_FUNCTIONS:
+                fn = cls.__dict__.get(name)
+                if isinstance(fn, types.FunctionType) and not hasattr(
+                    fn, "__wrapped__"
+                ):
+                    setattr(cls, name, _untraced_plain(fn))
         if not cls.discrete:
             for name, (below, above) in _OUTSIDE_SUPPORT.items():
                 fn = cls.__dict__.get(name)
@@ -1186,7 +1269,8 @@ for _name in ("log_df", "log_sf", "log_ff"):
         _name,
         _array_inputs(
             _support_guarded(
-                ParametricFitter.__dict__[_name], *_OUTSIDE_SUPPORT[_name]
+                _untraced_plain(ParametricFitter.__dict__[_name]),
+                *_OUTSIDE_SUPPORT[_name],
             )
         ),
     )
