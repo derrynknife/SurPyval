@@ -123,6 +123,136 @@ def test_665_crow_amsaa_closed_form_mle():
     c = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
     model = CrowAMSAA.fit(x, i=i, c=c)
     assert model.cif(60) == pytest.approx(4.5, rel=1e-14)
-    # Unequal ends are searched, as before.
-    searched = CrowAMSAA.fit(x[:-1] + [50], i=i, c=c)
-    assert searched.maximum == "verified"
+    # Unequal ends are exact too (#839).
+    unequal = CrowAMSAA.fit(x[:-1] + [50], i=i, c=c)
+    assert unequal.maximum == "verified"
+    assert unequal.res.message == "closed-form maximum-likelihood estimate"
+
+
+# Ten pumps observed to different ends, from #839: (end, failure hours).
+PUMPS_839 = [
+    (8760, [3470, 5410, 7150, 8030]),
+    (8000, [3000, 7380]),
+    (8760, [1350, 2730, 2960, 4080, 4100, 4120, 5540, 7170, 7450, 8180]),
+    (7200, [400, 1400, 4900, 6240, 6630, 6640, 7030]),
+    (8760, [780, 2980, 6150, 7960]),
+    (
+        8760,
+        [
+            670,
+            3010,
+            3090,
+            5840,
+            6000,
+            6480,
+            6510,
+            6720,
+            6740,
+            7030,
+            7810,
+            8540,
+            8620,
+        ],
+    ),
+    (8400, [1720, 5730, 5740, 5950, 6250, 7920, 8310, 8380]),
+    (
+        8760,
+        [
+            2000,
+            2270,
+            2450,
+            2710,
+            2990,
+            3680,
+            4840,
+            5280,
+            5350,
+            5650,
+            5940,
+            5980,
+            6050,
+            6310,
+            6410,
+            7760,
+            7910,
+            7980,
+            8520,
+        ],
+    ),
+    (
+        6800,
+        [
+            550,
+            950,
+            1170,
+            1180,
+            1870,
+            2100,
+            2320,
+            3180,
+            3440,
+            3450,
+            3840,
+            4320,
+            4910,
+            4920,
+            6300,
+            6320,
+            6590,
+        ],
+    ),
+    (8760, [2470, 2610, 4010, 4960, 5230, 5320, 7050, 7770, 7800, 8020, 8510]),
+]
+
+
+def _pumps_839():
+    x = np.concatenate([np.asarray(t, float) for _, t in PUMPS_839])
+    i = np.concatenate([[q] * len(t) for q, (_, t) in enumerate(PUMPS_839)])
+    tr = np.concatenate([[T] * len(t) for T, t in PUMPS_839]).astype(float)
+    return x, i, tr
+
+
+def test_839_crow_amsaa_unequal_ends_exact_mle():
+    # Systems observed for different lengths: the fit ran to alpha = inf,
+    # beta = 4e47 from its all-ones start. The MLE is exact, both score
+    # equations zero, and the same on any time scale.
+    x, i, tr = _pumps_839()
+    model = CrowAMSAA.fit(x, i=i, tr=tr)
+    assert model.maximum == "verified"
+    alpha, beta = model.params
+    ends = np.array([T for T, _ in PUMPS_839], float)
+    N = len(x)
+    # d/d alpha: the expected count over the windows is N
+    assert np.sum((ends / alpha) ** beta) == pytest.approx(N, rel=1e-13)
+    # d/d beta, with the first equation in
+    score = (
+        N / beta
+        + np.log(x / alpha).sum()
+        - np.sum((ends / alpha) ** beta * np.log(ends / alpha))
+    )
+    assert abs(score) < 1e-10 * N
+    np.testing.assert_allclose(
+        model.params, [1856.2101086516, 1.5018351757732], rtol=1e-12
+    )
+    s = x.max()
+    scaled = CrowAMSAA.fit(x / s, i=i, tr=tr / s)
+    np.testing.assert_allclose(
+        scaled.params * [s, 1.0], model.params, rtol=1e-12
+    )
+
+
+def test_839_crow_amsaa_search_starts_at_the_mcf():
+    # Delayed entry is searched: from the HPP through the end of the MCF,
+    # where the all-ones start (a cif of x, thousands against an MCF of
+    # ten) ran to the same infinite alpha.
+    x, i, tr = _pumps_839()
+    tl = np.where(i == 0, 100.0, 0.0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = CrowAMSAA.fit(x, i=i, tr=tr, tl=tl)
+    assert model.maximum == "verified"
+    s = x.max()
+    scaled = CrowAMSAA.fit(x / s, i=i, tr=tr / s, tl=tl / s)
+    np.testing.assert_allclose(
+        model.params, scaled.params * [s, 1.0], rtol=1e-4
+    )
