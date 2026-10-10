@@ -138,6 +138,13 @@ Unreleased
   about 1e-14 of the probability asked for, and an additive model within
   the cancellation in ``H0(x) + x beta'Z`` near its support start (5e-9 at
   ``p = 1e-9``). The bootstrap's quantile bounds use the same finish.
+- A renewal fit whose life runs off (no finite maximum, #777) climbs the
+  ridge with the restoration and the life together (#795). It refitted the
+  life with the restoration held where the search had stalled: a Kijima-II
+  fit to one item's ExpoWeibull run-off stayed at q = 0.061 and a
+  log-likelihood of -43.93, while ARA-inf, the same model, reached -43.81
+  at rho = 0.922. Kijima-II now reaches -43.81 at q = 0.078 = 1 - rho.
+  The verdict is unchanged, and so are the fits with a maximum.
 
 v0.24 (9 October 2026)
 ----------------------

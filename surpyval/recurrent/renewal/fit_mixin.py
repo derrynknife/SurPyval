@@ -5,7 +5,7 @@ from typing import Any, Callable
 import numpy as np
 from autograd.tracer import getval
 from numpy.typing import ArrayLike
-from scipy.optimize import OptimizeResult
+from scipy.optimize import OptimizeResult, minimize
 
 from surpyval.recurrent._bounded import unconstraining_maps
 from surpyval.recurrent.inference import bic_sample_size
@@ -22,6 +22,9 @@ from surpyval.utils.no_maximum import (
     warn_no_maximum,
     warn_unverified,
 )
+
+#: The Nelder-Mead runs up a life's run-off ridge (``_climb_run_off``)
+_RUN_OFF_RESTARTS = 5
 
 
 class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
@@ -357,7 +360,58 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
                 params
             ):
                 params = further
-        return params, "no finite maximum", said
+        return (
+            self._climb_run_off(neg_ll, params, bounds),
+            "no finite maximum",
+            said,
+        )
+
+    @staticmethod
+    def _climb_run_off(
+        neg_ll: Callable, params: np.ndarray, bounds: list
+    ) -> np.ndarray:
+        """``params``, on a run-off of the life, moved up the ridge with
+        the restoration and the life together (Nelder-Mead in the
+        unconstrained space the searches run in), where that raises the
+        likelihood.
+
+        The supremum is not attained, but the restoration is not where the
+        search stalled: with the life held to its run-off at the stalled
+        restoration, a Kijima-II fit on one item's ExpoWeibull run-off
+        stayed at q = 0.061 and -43.93, while ARA-inf, the same model,
+        reached -43.81 at q = 1 - rho = 0.078 (#795). Climbing both
+        together takes Kijima-II there too, in about 1.5 s."""
+        x = np.asarray(params, dtype=float)
+        if not np.all(np.isfinite(x)):
+            return x
+        to_natural, to_search = unconstraining_maps(list(bounds))
+
+        def fun(u: np.ndarray) -> float:
+            with np.errstate(all="ignore"):
+                value = float(neg_ll(np.asarray(to_natural(u), dtype=float)))
+            return value if np.isfinite(value) else 1e300
+
+        u = np.asarray(to_search(x), dtype=float)
+        if not np.all(np.isfinite(u)):
+            return x
+        best = fun(u)
+        # Restarted while it gains: Nelder-Mead's simplex collapses along
+        # a ridge, and a fresh one goes on from where it stopped.
+        for _ in range(_RUN_OFF_RESTARTS):
+            res = minimize(
+                fun,
+                u,
+                method="Nelder-Mead",
+                options={"xatol": 1e-9, "fatol": 1e-10, "maxiter": 2000},
+            )
+            if not res.fun < best - 1e-7:
+                break
+            u, best = np.asarray(res.x, dtype=float), float(res.fun)
+        with np.errstate(all="ignore"):
+            climbed = np.asarray(to_natural(u), dtype=float)
+            if np.all(np.isfinite(climbed)) and best < float(neg_ll(x)):
+                return climbed
+        return x
 
     @staticmethod
     def _warn_run_off(model: Any, said: str) -> None:
