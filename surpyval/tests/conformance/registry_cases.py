@@ -1165,6 +1165,15 @@ def _parametric_bounds(case):
                 in_range=case.name != "Beta4",
                 label="mean_cb[wald]",
             ),
+            # The mean residual life at the case's query times (#825)
+            Bound(
+                "mrl_cb",
+                point="mrl",
+                kwargs={"method": "wald"},
+                in_range=case.name != "Beta4",
+                nan_ok=True,
+                label="mrl_cb[wald]",
+            ),
         ]
     # The likelihood-ratio search is swept on the cases in _LR_X only.
     # The ExpoWeibull's and NegativeBinomial's sweeps (searches in
@@ -1223,6 +1232,16 @@ def _parametric_bounds(case):
                 kwargs={"method": "lr"},
                 query=((),),
                 label="mean_cb[lr]",
+                **lr,
+            )
+        )
+        out.append(
+            Bound(
+                "mrl_cb",
+                point="mrl",
+                kwargs={"method": "lr"},
+                query=tuple(x[:2]),
+                label="mrl_cb[lr]",
                 **lr,
             )
         )

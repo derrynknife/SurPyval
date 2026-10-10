@@ -355,6 +355,21 @@ def quantile_cb_bootstrap(
     return _bounds(model, fits, lambda m: m.qf(p), alpha_ci, bound)
 
 
+def mrl_cb_bootstrap(
+    model: Any,
+    x: npt.NDArray,
+    alpha_ci: float,
+    bound: str,
+    n_boot: Any,
+    random_state: Any,
+) -> npt.NDArray:
+    """``mrl_cb(method="bootstrap")``: the bounds of the refits' mean
+    residual lives ``mrl(x)``."""
+    fits = refits(model, n_boot, random_state)
+    fits.warn()
+    return _bounds(model, fits, lambda m: m.mrl(x), alpha_ci, bound)
+
+
 def param_cb_bootstrap(
     model: Any,
     name: str,

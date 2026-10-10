@@ -22,6 +22,7 @@ from surpyval.utils.validation import (
 
 # The estimation machinery lives in ``optimised_fit`` and ``_fit_inputs``;
 # its public names are importable from here as they always were.
+from ._residual_life import continuous_mrl, discrete_mrl
 from ._fit_inputs import (  # noqa: F401
     PARA_METHODS,
     OutsideSupportError,
@@ -625,6 +626,75 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         computed with ``expm1`` so it stays accurate where :math:`F` is
         small."""
         return np.log(-np.expm1(-self.Hf(x, *params)))
+
+    def mrl(self, x: Numeric, *params: Any) -> Any:
+        r"""
+        Mean residual life: the expected remaining life of a unit that
+        has survived to ``x``,
+
+        .. math::
+            \mathrm{MRL}(x) = E[T - x \mid T > x]
+            = \frac{1}{R(x)} \int_x^\infty R(u)\, du ,
+
+        so ``mrl(0)`` of a lifetime is its mean, and below the support's
+        start ``mrl(x) = mean - x``. It is in closed form for the
+        Exponential (``1 / failure_rate``, memoryless) and the Weibull
+        (an upper incomplete gamma function); otherwise it is the
+        integral of the conditional survival :meth:`cs`, finite far in
+        the tail where ``R(x)`` underflows, or for a discrete
+        distribution the sum over the integers. Infinite where the mean
+        is; ``nan`` at or past a finite end of the support (no unit
+        survives to it) and for a missing ``x``.
+
+        Parameters
+        ----------
+
+        x : numpy array or scalar
+            The ages survived to
+        *params : numpy array like or scalar
+            The parameters of the distribution, in the order given by
+            its ``parameter_names``
+
+        Returns
+        -------
+
+        mrl : scalar or numpy array
+            The mean residual life at each ``x``, shaped as ``x``.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> Weibull.mrl([0, 5, 10, 20], 10, 2).round(4)
+        array([8.8623, 5.4564, 3.7894, 2.2634])
+        >>> Weibull.mean(10, 2).round(4)
+        np.float64(8.8623)
+        """
+        xa = np.asarray(x, dtype=float)
+        flat = onp.atleast_1d(onp.asarray(xa, dtype=float)).ravel()
+        params = tuple(float(p) for p in params)
+        out = onp.full(flat.shape, onp.nan)
+        mean = float(self.mean(*params))
+        lo, hi = self._support_edges(*params)
+        inside = ~onp.isnan(flat) & (flat < hi)
+        if mean == onp.inf:
+            out[inside] = onp.inf
+        elif onp.isfinite(mean) and inside.any():
+            if self.discrete:
+                out[inside] = discrete_mrl(self, flat[inside], mean, *params)
+            else:
+                below = inside & (flat <= lo)
+                out[below] = mean - flat[below]
+                rest = inside & ~below
+                if rest.any():
+                    out[rest] = self._mrl_inside(flat[rest], *params)
+        return out.reshape(xa.shape)[()]
+
+    def _mrl_inside(self, x: Any, *params: Any) -> Any:
+        """The mean residual life at the points ``x`` (an array), each
+        strictly inside the support of a continuous distribution with a
+        finite mean (see :meth:`mrl`): the integral, unless the
+        distribution has a closed form."""
+        return continuous_mrl(self, x, *params)
 
     @removed_arguments("0.23", X="'given'")
     def cs(self, x: Numeric, given: Numeric, *params: Any) -> Any:

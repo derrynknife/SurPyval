@@ -414,3 +414,6 @@ for _fn in (
     OUT_OF_SCOPE[f"surpyval.univariate.nonparametric.{_fn}"] = (
         _FUNCTION + " (the estimator behind a registered fitter)"
     )
+OUT_OF_SCOPE["surpyval.univariate.nonparametric.canonical_heuristic"] = (
+    _FUNCTION + " (reads a plotting-position heuristic's name)"
+)
