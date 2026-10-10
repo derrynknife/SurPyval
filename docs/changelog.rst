@@ -153,6 +153,13 @@ Unreleased
   6.7 and 5.8 s, with the same verdicts. They have no finite maximum, so
   the point reported is where the search stops on the ridge, which moves
   by at most 3e-4 of log-likelihood.
+- The Gamma's shape derivatives below a standardised time of 30 are exact
+  to rounding (#797). The derivatives of the logs of the incomplete gamma
+  in its shape were five-point differences, 1e-10 off mpmath's typically
+  and up to 4e-9 (at a shape of 0.5 and a time of 1); they are now carried
+  along the series of P and the continued fraction of Q, within 1e-14
+  (above 30 the hazard already had them from its own fraction, #786). It
+  costs time: a GammaPH fit on 400 rows takes 0.32 s where it took 0.21 s.
 
 v0.24 (9 October 2026)
 ----------------------
