@@ -821,3 +821,24 @@ def test_760_expo_weibull_derivatives_in_the_tail(kind, point, expected):
     # d/dmu of the hazard is below 1e-15 of it: absolute
     np.testing.assert_allclose(got[:4], expected[:4], rtol=1e-12)
     assert got[4] == pytest.approx(expected[4], rel=1e-12, abs=1e-15)
+
+
+def test_795_kijima_ii_run_off_reaches_ara_inf():
+    # Kijima-II is ARA-inf with q = 1 - rho. On one item's ExpoWeibull
+    # run-off (no finite maximum, #777) the Kijima-II search stalled at
+    # q = 0.061 and -43.93, its life then refitted with q held there,
+    # while ARA-inf reached -43.81 at rho = 0.922. Climbing the ridge with
+    # the restoration and the life together takes Kijima-II there too.
+    from surpyval import ExpoWeibull
+
+    rng = np.random.default_rng(5)
+    data = handle_xicn(np.cumsum(rng.weibull(2.0, 30) * 3))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        kijima = GeneralizedRenewal.fit_from_recurrent_data(
+            data, ExpoWeibull, "ii"
+        )
+        ara = ARA.fit_from_recurrent_data(data, ExpoWeibull, np.inf)
+    assert kijima.maximum == ara.maximum == "no finite maximum"
+    assert kijima.log_likelihood >= ara.log_likelihood - 1e-3
+    assert kijima.params[0] == pytest.approx(1 - ara.params[0], abs=2e-3)
