@@ -67,6 +67,7 @@ from ._likelihood_ratio import (
     _LN_TINY,
     LikelihoodRatioMixin,
     central_gradient,
+    central_jacobian,
 )
 from .probability_plotting import (
     adjust_heuristic,
@@ -2692,6 +2693,186 @@ class Parametric(
         scale = self._summary_scale(zero_floor=bool(self.zi))
         out = self._summary_wald(value, var, scale, alpha_ci, bound, "mean")
         return out[0]
+
+    @keeps_query_shape
+    def mrl(self, x: npt.ArrayLike) -> npt.NDArray:
+        r"""
+        The mean residual life: the expected remaining life of a unit
+        that has survived to age ``x``,
+
+        .. math::
+            \mathrm{MRL}(x) = E[T - x \mid T > x]
+            = \frac{1}{R(x)} \int_x^\infty R(u)\, du .
+
+        ``mrl(0)`` of a lifetime is its :meth:`mean`, and before the
+        support starts ``mrl(x) = mean() - x``: no time has been used up.
+        It is the distribution's own (``dist.mrl``): in closed form for the
+        Exponential (constant) and the Weibull, and otherwise the integral
+        of the conditional survival, finite far in the tail where
+        ``sf(x)`` underflows. A zero-inflated model's mass at 0 is behind
+        any unit that has survived past 0, and an offset shifts the
+        distribution's. With a limited failure population (``lfp_p < 1``)
+        it is infinite, as the mean is: a fraction of the survivors never
+        fails. It is ``nan`` at or past a finite end of the support and
+        for a missing ``x``.
+
+        Parameters
+        ----------
+
+        x : array like or scalar
+            The ages survived to.
+
+        Returns
+        -------
+
+        mrl : scalar or numpy array
+            The mean residual life at each ``x``, shaped as ``x``.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> model = Weibull.from_params([10, 2])
+        >>> model.mrl([0, 5, 10, 20]).round(4)
+        array([8.8623, 5.4564, 3.7894, 2.2634])
+
+        A wearing-out unit's expected remaining life falls with age; an
+        infant-mortality one's (``beta < 1``) rises:
+
+        >>> Weibull.from_params([10, 0.5]).mrl([0, 5, 10]).round(2)
+        array([20.  , 34.14, 40.  ])
+
+        See Also
+        --------
+        mrl_cb : confidence bounds on it.
+        """
+        t = np.atleast_1d(np.asarray(x, dtype=float))
+        if self.lfp_p < 1:
+            # A fraction 1 - p never fails: E[T - x | T > x] is infinite
+            # wherever there are survivors, which is everywhere.
+            return np.where(np.isnan(t), np.nan, np.inf)
+        out = np.atleast_1d(
+            np.asarray(self.dist.mrl(t - self.gamma, *self.params), float)
+        )
+        if self.f0 > 0:
+            # Before 0, the mass at 0 is still ahead: S(x) = 1.
+            out = np.where(t < 0, self.mean() - t, out)
+        return out
+
+    @keeps_query_shape
+    def mrl_cb(
+        self,
+        x: npt.ArrayLike,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
+    ) -> npt.NDArray:
+        r"""
+        Confidence bounds on the mean residual life, :meth:`mrl`.
+
+        Parameters
+        ----------
+
+        x : array like or scalar
+            The ages survived to.
+        alpha_ci : scalar, optional
+            The level of significance at which the bound will be computed.
+            Defaults to 0.05.
+        bound : ('two-sided', 'upper', 'lower'), str, optional
+            Compute either the two-sided, upper or lower confidence bound(s).
+            Defaults to two-sided.
+        method : ('wald', 'lr', 'bootstrap'), str, optional
+            ``"wald"`` (default) is the delta method on the log of the mean
+            residual life, which is positive; ``"lr"`` is the
+            likelihood-ratio bound, the extreme of ``mrl(x)`` over the
+            parameters' likelihood region (not available for offset,
+            limited-failure or zero-inflated models), as for
+            :meth:`mean_cb`; ``"bootstrap"`` the parametric bootstrap, as
+            for :meth:`quantile_cb`, which includes an offset's
+            uncertainty (the Wald bound holds it at its estimate, with a
+            warning).
+        n_boot : int, optional
+            The number of bootstrap refits, with ``method="bootstrap"``.
+            Defaults to 200.
+        random_state : int or numpy Generator, optional
+            The seed of the bootstrap's simulations.
+
+        Returns
+        -------
+
+        cb : scalar or numpy array
+            The bound(s), shaped as ``x``; a two-sided bound adds a last
+            ``[lower, upper]`` axis. Where the mean residual life is
+            infinite (a limited failure population) or ``nan``, so are its
+            bounds.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> np.random.seed(1)
+        >>> x = Weibull.random(30, 10, 3)
+        >>> model = Weibull.fit(x)
+        >>> model.mrl(5).round(3)
+        np.float64(4.222)
+        >>> model.mrl_cb(5).round(3)
+        array([3.316, 5.375])
+        """
+        check_alpha_ci(alpha_ci)
+        self._check_summary_cb(alpha_ci, bound, "mrl_cb")
+        t = np.atleast_1d(np.asarray(x, dtype=float))
+        value = np.asarray(self.mrl(t), dtype=float)
+        out = np.repeat(value[:, None], 2 if bound == "two-sided" else 1, 1)
+        ok = np.isfinite(value)
+        if ok.any():
+            log_scale = (
+                np.log,
+                np.exp,
+                lambda v: 1.0 / v,
+                (_LN_TINY, _LN_MAX),
+            )
+            if self._is_lr(method, bootstrap=True):
+                fns = [
+                    lambda theta, t_i=t_i: float(
+                        self.dist.mrl(t_i - self.gamma, *theta)
+                    )
+                    for t_i in t[ok]
+                ]
+                found = self._summary_cb_lr(
+                    fns, alpha_ci, bound, "mrl", scale=log_scale
+                )
+            elif method.lower() == "bootstrap":
+                from . import _bootstrap
+
+                found = _bootstrap.mrl_cb_bootstrap(
+                    self, t[ok], alpha_ci, bound, n_boot, random_state
+                )
+            else:
+                self._warn_offset_wald("mrl_cb")
+                ctx = self._cb_context()
+                t_ok = t[ok]
+
+                def mrl_of(phi: npt.NDArray) -> Any:
+                    core, p, f0 = self._cb_unpack(phi, ctx)
+                    out = np.atleast_1d(
+                        np.asarray(
+                            self.dist.mrl(t_ok - self.gamma, *core), float
+                        )
+                    )
+                    if f0 > 0:
+                        mean = (p - f0) * (self.dist.mean(*core) + self.gamma)
+                        out = np.where(t_ok < 0, mean - t_ok, out)
+                    return out
+
+                with np.errstate(all="ignore"):
+                    jac = central_jacobian(mrl_of, ctx.phi_hat)
+                    var = np.einsum("ij,jk,ik->i", jac, ctx.cov, jac)
+                found = self._summary_wald(
+                    value[ok], var, log_scale, alpha_ci, bound, "mrl"
+                )
+            out[ok] = np.reshape(found, (int(ok.sum()), -1))
+        return out if bound == "two-sided" else out[:, 0]
 
     @staticmethod
     def _is_lr(method: str, bootstrap: bool = False) -> bool:

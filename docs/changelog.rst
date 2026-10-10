@@ -22,6 +22,21 @@ Unreleased
   cause-specific models) fits, and stores, exactly the data of the per-row
   form. When there are as many rows as units the bound is read per row, as
   before; any other length is refused, naming both accepted lengths.
+- The mean residual life, ``mrl(x)``: the expected remaining life
+  :math:`E[T - x \mid T > x]` of a unit that has survived to ``x`` (#825),
+  on every distribution (``Weibull.mrl(x, alpha, beta)``), on the fitted
+  parametric models, with confidence bounds ``mrl_cb`` (Wald on its log,
+  likelihood ratio or bootstrap), and on the non-parametric estimators,
+  restricted to a horizon ``tau`` as the RMST is (and refused past the data
+  as ``mean`` refuses it). ``mrl(0)`` is the mean, and before the support
+  starts it is the mean less ``x``. It is in closed form for the Exponential
+  and the Weibull (through ``Gamma(a, z) e^z``, from its continued fraction,
+  so finite where the survival underflows); otherwise the integral of the
+  conditional survival, broken where the cumulative hazard has risen by
+  steps past ``H(x)``, within 1e-12 of mpmath's on the families checked; a
+  discrete distribution's is the sum over the integers. An offset shifts
+  it, a limited failure population makes it infinite (as its mean), and a
+  zero-inflated model's mass at 0 counts only before 0.
 - ``MixtureModel.with_params`` and ``MixtureModel.from_params`` (#829): a
   mixture with other component parameters and weights, keeping its
   ``dist`` and ``m``, as ``Parametric.with_params`` is for one
@@ -170,6 +185,8 @@ Unreleased
   in closed form at it), so to rounding where the search agreed to 5e-5.
   Other data (delayed entry, censored counts) is searched from the HPP
   through the end of the MCF, as Cox-Lewis starts, on any time scale.
+- ``LogLogistic.mean`` with ``beta <= 1`` is infinite: the tail falls as
+  ``x**-beta``, so the mean of the positive lifetime is. It was ``nan``.
 - A proportional-hazards model whose cumulative hazard passes exp(709) at
   a query point, as on a fit run off along a coefficient, gives H = inf
   and sf = 0 there without numpy's "overflow encountered in exp" (#801):

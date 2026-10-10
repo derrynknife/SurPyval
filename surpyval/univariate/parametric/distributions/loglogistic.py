@@ -331,7 +331,8 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         -------
 
         mean : scalar or numpy array
-            The mean(s) of the LogLogistic distribution
+            The mean(s) of the LogLogistic distribution; infinite for
+            ``beta <= 1``
 
         Examples
         --------
@@ -341,8 +342,9 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         """
         if beta > 1:
             return (alpha * np.pi / beta) / (np.sin(np.pi / beta))
-        else:
-            return np.nan
+        # The tail falls as x**-beta: a positive lifetime's mean is
+        # infinite (it was nan, #825).
+        return np.inf
 
     @staticmethod
     def _z(x: Numeric, alpha: Boxable, beta: Boxable) -> tuple:

@@ -1468,6 +1468,67 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         }
 
     @keeps_query_shape
+    def mrl(self, x: npt.ArrayLike, tau: float | None = None) -> npt.NDArray:
+        r"""
+        The restricted mean residual life: the expected remaining life up
+        to ``tau`` of a unit that has survived to age ``x``,
+
+        .. math::
+            \mathrm{MRL}_\tau(x) = E[\min(T, \tau) - x \mid T > x]
+            = \frac{1}{\hat S(x)} \int_x^\tau \hat S(u)\, du ,
+
+        the area under the estimated survival curve from ``x`` to ``tau``
+        over the survival to ``x``. ``mrl(0)`` is the restricted mean,
+        :meth:`mean`, when nothing fails at 0, and before 0 it is
+        ``mean(tau) - x``. Where the estimate reaches zero by ``tau`` it is
+        the mean residual life itself; with censoring it is restricted, as
+        the RMST is, since the curve past the data is not estimated.
+
+        Parameters
+        ----------
+
+        x : array like or scalar
+            The ages survived to.
+        tau : scalar, optional
+            The horizon, as for :meth:`mean`: the largest observed time by
+            default, and refused past it while the estimate there is above
+            zero.
+
+        Returns
+        -------
+
+        mrl : scalar or numpy array
+            The restricted mean residual life at each ``x``, shaped as
+            ``x``: ``nan`` where the estimate has fallen to 0 (no unit
+            survives to ``x``) or ``x`` is missing, and otherwise 0 at and
+            after ``tau`` (no time is left before it).
+
+        Examples
+        --------
+        >>> from surpyval import KaplanMeier
+        >>> model = KaplanMeier.fit([1, 2, 3, 4, 5])
+        >>> model.mrl([0, 2, 4.5])
+        array([3. , 2. , 0.5])
+        """
+        t = np.atleast_1d(np.asarray(x, dtype=float))
+        if tau is None:
+            tau = float(np.max(self.x))
+        total = self.mean(tau=tau)
+        out = np.full(t.shape, np.nan)
+        survival = np.atleast_1d(np.asarray(self.sf(t), dtype=float))
+        for i, t_i in enumerate(t):
+            if np.isnan(t_i) or not survival[i] > 0:
+                continue
+            if t_i >= tau:
+                out[i] = 0.0
+            elif t_i < 0:
+                # Nothing has failed before 0: the area from x to 0 is -x.
+                out[i] = total - t_i
+            else:
+                out[i] = (total - self.mean(tau=t_i)) / survival[i]
+        return out
+
+    @keeps_query_shape
     def smoothed_hf(
         self, x: npt.ArrayLike, bandwidth: float | None = None
     ) -> npt.NDArray:

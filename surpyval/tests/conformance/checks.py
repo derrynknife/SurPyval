@@ -106,6 +106,8 @@ RULES = {
     "mcf": (0.0, np.inf, 1),
     "iif": (0.0, np.inf, 0),
     "qf": (-np.inf, np.inf, 1),
+    # The mean residual life (#825): non-negative, rising or falling.
+    "mrl": (0.0, np.inf, 0),
 }
 # For recurrent events ``cif`` is a cumulative intensity, not a probability.
 # The instantaneous MTBF, 1 / iif, of a recurrence model (#578).

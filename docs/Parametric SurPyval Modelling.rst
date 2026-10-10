@@ -2327,6 +2327,25 @@ reading the band from ``cb(t, on='ff')`` across: a pointwise band on
     _m = model.mean_cb()
     assert _m[0] < model.mean() < _m[1]
 
+The expected remaining life of a unit that has survived to an age, the mean
+residual life :math:`E[T - t \mid T > t]`, is ``mrl(t)``; ``mrl(0)`` is the
+mean. "How much longer will a 5,000-hour pump last?" ``mrl_cb(t)`` bounds it,
+with the same ``alpha_ci``, ``bound`` and ``method`` (``"wald"``, ``"lr"`` or
+``"bootstrap"``):
+
+.. jupyter-execute::
+
+    print("MRL at 0, 5 and 10:", model.mrl([0, 5, 10]))
+    print("MRL at 5, 95% bounds:", model.mrl_cb(5))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert abs(model.mrl(0) - model.mean()) < 1e-8 * model.mean()
+    _r = model.mrl_cb(5)
+    assert _r[0] < model.mrl(5) < _r[1]
+
 
 Forecasting failures in service
 -------------------------------

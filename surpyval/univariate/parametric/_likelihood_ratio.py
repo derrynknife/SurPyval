@@ -2057,11 +2057,14 @@ class LikelihoodRatioMixin:
         alpha_ci: float,
         bound: str,
         what: str,
+        scale: tuple | None = None,
     ) -> npt.NDArray:
         """Likelihood-ratio bounds on the functions ``fns`` of the core
         parameters (a quantile, the mean): the extreme of each over the
         parameters' likelihood region, searched as ``_cb_lr`` searches for
-        a function of time, on the scale of ``_summary_scale``."""
+        a function of time, on the scale of ``_summary_scale`` (or the
+        ``scale`` given, in its form: the log for the mean residual
+        life)."""
         self._ensure_surv_data()
         if self.offset or self.lfp or self.zi:
             raise NotImplementedError(
@@ -2099,7 +2102,9 @@ class LikelihoodRatioMixin:
             if band is not None:
                 return band
 
-        to_psi_, to_value, _, ends = self._summary_scale()
+        to_psi_, to_value, _, ends = (
+            self._summary_scale() if scale is None else scale
+        )
 
         def to_psi(v: Any) -> float:
             return float(to_psi_(v))
