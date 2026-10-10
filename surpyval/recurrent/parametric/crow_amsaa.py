@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Callable, Iterable
 
 import numpy as np
 from numpy.typing import ArrayLike
+from scipy.optimize import brentq
 
 from surpyval.recurrent.parametric.counting_process import Boxable
 from surpyval.utils.fitter import singleton_fitter
@@ -91,13 +92,31 @@ class CrowAMSAA(NHPPFitter):
         beta = params[1]
         return alpha * (N ** (1.0 / beta))
 
+    def _default_start(
+        self,
+        data: "RecurrentEventData",
+        x_unique: np.ndarray,
+        mcf_hat: np.ndarray,
+    ) -> np.ndarray:
+        # The HPP through the end of the MCF (beta = 1, as Cox-Lewis
+        # starts, #419). The all-ones start has a cif of x, thousands
+        # against an MCF of ten on data in hours, and the least-squares
+        # search ran from it to where the cif is 0 everywhere (alpha
+        # infinite, beta 4e47), a flat the likelihood search could not
+        # leave (#839). Equal ends never searched: they have the closed
+        # form.
+        span = float(x_unique[-1])
+        if span > 0 and mcf_hat[-1] > 0:
+            return np.array([span / mcf_hat[-1], 1.0])
+        return self.parameter_initialiser(data.x)
+
     def _closed_form_mle(
         self, data: "RecurrentEventData"
     ) -> "np.ndarray | None":
-        """The closed-form MLE (MIL-HDBK-189C, Crow 1974) where every
-        item is observed from 0 to a common end ``T``, closed by a ``c=1``
-        row, by its ``tr`` or by its last failure (time- or
-        failure-terminated), with exact failures only:
+        """The exact MLE (MIL-HDBK-189C, Crow 1974) where every item is
+        observed from 0 to an end ``T_q``, closed by a ``c=1`` row, by its
+        ``tr`` or by its last failure (time- or failure-terminated), with
+        exact failures only. With a common end ``T`` it is in closed form:
 
         .. math::
             \\hat\\beta = \\frac{N}{\\sum_{q, i} \\ln(T / t_{qi})},
@@ -105,10 +124,21 @@ class CrowAMSAA(NHPPFitter):
             \\hat\\alpha = T \\left(\\frac{k}{N}\\right)^{1 /
             \\hat\\beta}
 
-        for ``N`` failures over ``k`` items. The search agreed with it to
-        only about 1e-5 (#665), where a handbook check reads four or five
+        for ``N`` failures over ``k`` items. With unequal ends ``alpha``
+        is ``(sum_q T_q^beta / N)^(1 / beta)`` at a given ``beta``, and
+        ``beta`` the root of the profile likelihood's slope,
+
+        .. math::
+            \\frac{N}{\\beta} + \\sum_{q, i} \\ln t_{qi}
+            - N \\frac{\\sum_q T_q^{\\beta} \\ln T_q}
+            {\\sum_q T_q^{\\beta}} = 0,
+
+        which falls from infinity to a negative limit (unless every
+        failure is at the latest end), so has one root, found to rounding.
+        The search agreed with these to only about 1e-5 (#665, and 5e-5 on
+        unequal ends, #839), where a handbook check reads four or five
         figures. ``None`` for any other data (delayed entry, censored
-        counts, unequal ends), which are searched."""
+        counts), which are searched."""
         x = np.asarray(data.x, dtype=float)
         c = np.asarray(data.c)
         if not np.all((c == 0) | (c == 1)):
@@ -122,9 +152,10 @@ class CrowAMSAA(NHPPFitter):
         if np.any(np.isfinite(tl) & (tl != 0)):
             return None
         _, ends = data.item_observation_windows()
-        T = float(ends[0])
-        if not (np.isfinite(T) and T > 0 and np.all(ends == T)):
+        ends = np.asarray(ends, dtype=float)
+        if not (np.all(np.isfinite(ends)) and np.all(ends > 0)):
             return None
+        T = float(ends.max())
         failures = c == 0
         times = x[failures]
         counts = np.asarray(data.n, dtype=float)[failures]
@@ -134,9 +165,11 @@ class CrowAMSAA(NHPPFitter):
         log_sum = float(np.sum(counts * np.log(T / times)))
         if not log_sum > 0:
             return None
-        beta = N / log_sum
-        alpha = T * (len(ends) / N) ** (1.0 / beta)
-        return np.array([alpha, beta])
+        if np.all(ends == T):
+            beta = N / log_sum
+            alpha = T * (len(ends) / N) ** (1.0 / beta)
+            return np.array([alpha, beta])
+        return _unequal_ends_mle(ends / T, N, log_sum) * np.array([T, 1.0])
 
     def projection(
         self,
@@ -309,6 +342,32 @@ class CrowAMSAA(NHPPFitter):
 # psi S, free of beta; normalised by sqrt(z) I_1(2 sqrt(z)). As
 # z = n^2 M_hat / M, inverting this conditional test of psi gives
 # L = n^2 / z_U with P(N <= n | z_U) = a, and U = n^2 / z_L with
+def _unequal_ends_mle(u: np.ndarray, N: float, log_sum: float) -> np.ndarray:
+    """The Crow-AMSAA MLE ``[alpha, beta]`` for items observed from 0 to
+    the ends ``u`` (as fractions of the latest, so ``u <= 1`` and
+    ``u**beta`` cannot overflow), with ``N`` failures whose
+    ``sum ln(1 / t)`` is ``log_sum > 0``: ``beta`` the root of the
+    profile slope ``N / beta - log_sum - N * mean_w(ln u)``, weights
+    ``u**beta`` (``CrowAMSAA._closed_form_mle``); ``alpha`` in the same
+    unit as ``u``."""
+    log_u = np.log(u)
+
+    def slope(beta: float) -> float:
+        w = u**beta
+        return N / beta - log_sum - N * float(w @ log_u) / float(w.sum())
+
+    # The slope is positive near 0 and tends to -log_sum: bracket the root
+    # from the common-end estimate outward.
+    lo = hi = N / log_sum
+    while slope(lo) <= 0:
+        lo /= 2.0
+    while slope(hi) >= 0:
+        hi *= 2.0
+    beta = brentq(slope, lo, hi, xtol=1e-300, rtol=4 * np.finfo(float).eps)
+    alpha = (float(np.sum(u**beta)) / N) ** (1.0 / beta)
+    return np.array([alpha, beta])
+
+
 # P(N >= n | z_L) = a (U is infinite for n = 1).
 
 
@@ -337,8 +396,6 @@ def _solve_log(
 ) -> float:
     """The root in ``u`` of ``f(u) = target`` for ``f`` decreasing in
     ``u``, bracketed outward from ``centre``."""
-    from scipy.optimize import brentq
-
     lo, hi = centre - 2.0, centre + 2.0
     while f(lo) < target:
         lo -= 2.0

@@ -160,6 +160,16 @@ Unreleased
   along the series of P and the continued fraction of Q, within 1e-14
   (above 30 the hazard already had them from its own fraction, #786). It
   costs time: a GammaPH fit on 400 rows takes 0.32 s where it took 0.21 s.
+- ``CrowAMSAA.fit`` on systems observed for different lengths (#839). It
+  ran from its all-ones start (a cif of ``x``, thousands against an MCF
+  of ten on data in hours) to where the cif is 0 everywhere, alpha
+  infinite and beta 4e47, with an infinite likelihood and an "unverified"
+  warning: ten pumps observed to 6800--8760 hours did. With exact failures
+  from time 0 the MLE is now exact for unequal ends as it was for a
+  common one (beta the one root of the profile likelihood's slope, alpha
+  in closed form at it), so to rounding where the search agreed to 5e-5.
+  Other data (delayed entry, censored counts) is searched from the HPP
+  through the end of the MCF, as Cox-Lewis starts, on any time scale.
 - A proportional-hazards model whose cumulative hazard passes exp(709) at
   a query point, as on a fit run off along a coefficient, gives H = inf
   and sf = 0 there without numpy's "overflow encountered in exp" (#801):
