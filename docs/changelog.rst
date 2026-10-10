@@ -33,6 +33,15 @@ Unreleased
   checks a distribution, and the weights must be non-negative and sum to
   1. Drawing a fit's parameters and propagating them through a mixture
   used to need ``to_dict``, an edit and ``from_dict``.
+- ``CoxFrailty.fit(center=True)`` (and ``fit_from_df``), as ``CoxPH`` has
+  it (#794): the baseline is kept at the covariate means, stored as
+  ``model.center``, and predictions use ``exp(beta'(Z - center))``. It is
+  the same model -- the coefficients, ``theta``, the frailties and every
+  prediction are those of the fit at ``Z = 0`` -- and the way to fit
+  covariates far from 0 (a date as a day count), whose baseline at
+  ``Z = 0`` cannot be represented and is refused; the refusal now points
+  to it. The default, ``False``, reports the baseline at ``Z = 0`` as
+  before, and a model saved before has its baseline there.
 
 **Fixed**
 
