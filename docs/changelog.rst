@@ -173,6 +173,19 @@ Unreleased
   took 30 on 1e6 values. The results and warnings are those of 0.24, bit
   for bit, over 23 distributions, ten ``lfp_p``/``f0``/``gamma`` settings
   and fifteen kinds of input.
+- The distribution functions cost less per call on small arrays (#799).
+  Two steps, each with the results of 0.24 to the bit (values, types and
+  warnings, the derivatives in the parameters and the fits, over 23
+  distributions and 5037 cases). surpyval's own formulas run with
+  autograd's primitives unwrapped when nothing is being differentiated:
+  a primitive looks through every argument for a box before calling the
+  numpy function, about 0.8 us an operation. And where every point is
+  inside a continuous distribution's support, none missing, two
+  reductions say so and the formula is called directly, in place of the
+  NaN check and the support guard's six numpy calls. On 10 values the
+  median function is 11% quicker: a Weibull's ``sf`` takes 13 us where
+  it took 20 and a fitted model's 18.5 where it took 27. The overhead
+  left is mostly those checks and numpy's own per-call cost.
 
 v0.24 (9 October 2026)
 ----------------------
