@@ -371,6 +371,35 @@ class RegressionLikelihoodRatio(LikelihoodRegion):
     def _regression_neg_ll(self, theta: npt.NDArray) -> float:
         return float(self.fitted.model.neg_ll(self.surv_data, *theta))
 
+    def _lr_support(self) -> "Callable[[npt.NDArray], npt.NDArray] | None":
+        """An additive hazards model's support at the observed points
+        (#828): ``H`` at every one, and ``h`` at the times and bounds,
+        each as a share of the baseline's (so the constraints are of a
+        size), which must be ``>= 0``; the likelihood is not defined
+        where one is not, and its region is cut off there (#837)."""
+        if not self.fitted._is_additive():
+            return None
+        fitter = self.fitted.model
+        points = fitter._observed_points(self.surv_data)
+        k = fitter.k_dist
+
+        def shares(theta: npt.NDArray) -> npt.NDArray:
+            out = []
+            for x, Z, observed in points:
+                pairs = [(fitter.Hf, fitter.Hf_dist)]
+                if observed:
+                    pairs.append((fitter.hf, fitter.hf_dist))
+                for f, f0 in pairs:
+                    v = np.ravel(np.asarray(f(x, Z, *theta), dtype=float))
+                    v0 = np.broadcast_to(
+                        np.ravel(np.asarray(f0(x, *theta[:k]), dtype=float)),
+                        v.shape,
+                    )
+                    out.append(np.where(v0 > 0, v / v0, v))
+            return np.concatenate(out)
+
+        return shares
+
     def band(
         self,
         x: npt.NDArray,

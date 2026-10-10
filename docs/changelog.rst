@@ -110,8 +110,17 @@ Unreleased
   a row on a real-line baseline with ``beta'Z > 0`` is the mean from where
   its support starts (it integrated the whole real line, 6.9e25 for a
   Gumbel baseline), and ``nan`` with a warning where the model is not a
-  distribution along the way. Likelihood-ratio bounds whose region reaches
-  that limit can stop short of its edge (#837).
+  distribution along the way.
+- Likelihood-ratio bounds of an additive hazards model reach the edge of
+  its support (#837). Its likelihood is not defined outside the support
+  (#828), so the region is cut off where that limit binds. The searches
+  stepped into the undefined part, and the line back to the estimate
+  crossed it, so a 99% bound could come out inside the 95% one (coef_1's
+  lower bound, -0.0188 against -0.0176). The searches are now held to the
+  support as constraints, and both bounds are where the deviance reaches
+  its limit with the support active: -0.0419 and -0.0265, as a
+  brute-force constrained search finds. Other models' searches are
+  unchanged.
 - A parametric regression model's ``qf(p, Z)`` is exact to rounding (#828):
   each quantile is finished by Newton's method on the cumulative hazard. It
   was solved to a tolerance on the time relative to the time, which near

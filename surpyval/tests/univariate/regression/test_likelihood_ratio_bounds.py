@@ -529,3 +529,25 @@ def test_617_wald_bound_of_a_constant_smaller_than_the_difference_step():
         assert lo < value < hi
     lo, hi = model.quantile_cb(0.1, USE, alpha_ci=0.1)
     assert lo < model.qf(0.1, USE) < hi
+
+
+def test_837_additive_hazards_bound_reaches_the_edge_of_the_support():
+    # The likelihood-ratio region of an additive hazards model is cut off
+    # where its support limit binds (H >= 0 at the observations, #828).
+    # The searches stepped into the undefined likelihood beyond it, and
+    # the line back to the estimate crossed it, so coef_1's 99% lower
+    # bound (-0.0188) came out inside its 95% one. Held to the support,
+    # both are where the deviance reaches crit with that limit active:
+    # -0.02651 and -0.04187 by a brute-force constrained search.
+    from surpyval.tests.conformance.registry import CASE_BY_NAME
+
+    case = CASE_BY_NAME["WeibullAH"]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = case.fit(case.data())
+        b95 = model.param_cb("coef_1", alpha_ci=0.05, method="lr")
+        b99 = model.param_cb("coef_1", alpha_ci=0.01, method="lr")
+    np.testing.assert_allclose(
+        [b95[0], b99[0]], [-0.02651, -0.04187], atol=2e-5
+    )
+    assert b99[0] < b95[0] and b99[1] > b95[1]

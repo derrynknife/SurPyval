@@ -42,17 +42,8 @@ _OPTION_FAILURES: dict[str, dict[str, str]] = {
 }
 # The issue tracking each case's option failures (by key where a case
 # has failures of more than one kind); it leads each reason.
-_OPTION_FAILURES["WeibullAH"] = {
-    "cb_nested[param_cb[lr]]": (
-        "the likelihood-ratio region is cut off where the fit's support "
-        "limit (H >= 0 at the observations, #828) binds, and the searches "
-        "stop at different points of its edge: coef_1's 99% lower bound "
-        "-0.0138 is above its 95% one, -0.0176"
-    ),
-}
 _OPTION_ISSUES: dict[str, str | dict[str, str]] = {
     "Beta4": "#461",
-    "WeibullAH": "#837",
 }
 for _name, _failures in _OPTION_FAILURES.items():
     _issue = _OPTION_ISSUES[_name]
