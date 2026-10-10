@@ -17,7 +17,6 @@ import warnings
 from typing import Any
 
 import numpy as np
-from scipy.integrate import IntegrationWarning, quad
 from scipy.special import gammaincc, gammaln
 
 #: Terms of a discrete distribution's tail sum taken directly before the
@@ -48,6 +47,10 @@ def continuous_mrl(dist: Any, x: np.ndarray, *params: Any) -> np.ndarray:
     the last break (or from ``x`` where there is none, far in the tail),
     is integrated in steps of ``1 / h`` there. A point whose integral
     ``quad`` cannot settle gets a ``RuntimeWarning``."""
+    # Imported here: ``import surpyval`` does not load scipy.integrate
+    # (#470).
+    from scipy.integrate import IntegrationWarning, quad
+
     hi = float(dist._support_edges(*params)[1])
     out = np.full(x.shape, np.nan)
     unsettled = []
