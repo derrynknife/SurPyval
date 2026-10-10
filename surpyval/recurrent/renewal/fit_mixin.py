@@ -22,6 +22,7 @@ from surpyval.utils.no_maximum import (
     warn_no_maximum,
     warn_unverified,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 #: The Nelder-Mead runs up a life's run-off ridge (``_climb_run_off``)
 _RUN_OFF_RESTARTS = 5
@@ -278,12 +279,38 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
                     given = RenewalFitMixin._life_data(data, neg_ll, r)
                     assert given is not None
                     x, c, n, tl = given
-                    params = dist.fit(x, c, n, tl=tl).params
+                    params = RenewalFitMixin._aged_life(
+                        dist, neg_ll, r, x, c, n, tl
+                    )
             except Exception:
                 continue
             if np.all(np.isfinite(params)):
                 starts.append([r, *params])
         return starts
+
+    @staticmethod
+    def _aged_life(
+        dist: Any, neg_ll: Callable, r: float, x: Any, c: Any, n: Any, tl: Any
+    ) -> np.ndarray:
+        """The lifetime of the aged start at restoration ``r``: the
+        family's own initial guess for ``(x, c, n, tl)`` where the renewal
+        likelihood is finite there, else ``dist`` fitted to them.
+
+        It is a start: the renewal search goes on from it. The fits were
+        run-off ExpoWeibull fits, at about 0.5 s each (#796), while the
+        initial guess (a Weibull's, for the ExpoWeibull) has the whole
+        positive axis for its support, where the run-off a fit reaches
+        put all its mass below the longest gap -- the zero likelihood
+        these starts are for (#777)."""
+        seed = np.asarray(
+            dist._parameter_initialiser(SurpyvalData(x, c, n, tl=tl)),
+            dtype=float,
+        )
+        if np.all(np.isfinite(seed)) and RenewalFitMixin._finite_at(
+            neg_ll, [r, *seed]
+        ):
+            return seed
+        return np.asarray(dist.fit(x, c, n, tl=tl).params, dtype=float)
 
     @staticmethod
     def _life_data(data: Any, neg_ll: Callable, r: float) -> "tuple | None":

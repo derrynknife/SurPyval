@@ -145,6 +145,14 @@ Unreleased
   log-likelihood of -43.93, while ARA-inf, the same model, reached -43.81
   at rho = 0.922. Kijima-II now reaches -43.81 at q = 0.078 = 1 - rho.
   The verdict is unchanged, and so are the fits with a maximum.
+- A renewal fit with no finite default start takes its restoration starts'
+  lifetimes from the family's own initial guess (#796). They were
+  lifetimes fitted to the aged gaps, about 0.5 s each for the ExpoWeibull
+  run-offs that need them. On #774's benchmarks only one data set's three
+  ExpoWeibull ARA fits use these starts: 6.4, 6.8 and 7.5 s become 4.3,
+  6.7 and 5.8 s, with the same verdicts. They have no finite maximum, so
+  the point reported is where the search stops on the ridge, which moves
+  by at most 3e-4 of log-likelihood.
 
 v0.24 (9 October 2026)
 ----------------------

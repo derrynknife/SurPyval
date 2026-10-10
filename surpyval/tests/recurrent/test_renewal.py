@@ -842,3 +842,26 @@ def test_795_kijima_ii_run_off_reaches_ara_inf():
     assert kijima.maximum == ara.maximum == "no finite maximum"
     assert kijima.log_likelihood >= ara.log_likelihood - 1e-3
     assert kijima.params[0] == pytest.approx(1 - ara.params[0], abs=2e-3)
+
+
+def test_796_aged_starts_take_the_family_seed():
+    # Where no default start has a finite likelihood, each restoration
+    # start gets its own lifetime (#777). Those were run-off ExpoWeibull
+    # fits, about 0.5 s each; the family's own initial guess (a Weibull's)
+    # has a finite likelihood there and costs nothing (#796).
+    from unittest import mock
+
+    from surpyval import ExpoWeibull
+    from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
+
+    rng = np.random.default_rng(5)
+    data = handle_xicn(np.cumsum(rng.weibull(2.0, 30) * 3))
+    neg_ll = ARA.create_negll_func(data, ExpoWeibull, 1)
+    with mock.patch.object(
+        type(ExpoWeibull), "fit", side_effect=AssertionError("fitted")
+    ):
+        starts = RenewalFitMixin._aged_starts(
+            data, ExpoWeibull, neg_ll, (0.1, 0.5, 0.9, 0.99)
+        )
+    assert len(starts) == 4
+    assert all(np.isfinite(neg_ll(np.array(s))) for s in starts)
