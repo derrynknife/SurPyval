@@ -316,7 +316,10 @@ class ProportionalHazardsFitter(
                 off = _times_phi(
                     self._phi_off(Z, phi_params, on), np.where(on, 0.0, base)
                 )
-                on_log = np.exp(np.where(on, log_value, 0.0))
+                # Past exp(709) the product is the infinite H it tends to
+                # (sf 0), as on a fit run off along a coefficient (#801).
+                with np.errstate(over="ignore"):
+                    on_log = np.exp(np.where(on, log_value, 0.0))
                 return np.where(on, on_log, off)
         return _times_phi(self.phi(Z, *phi_params), base)
 

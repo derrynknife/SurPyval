@@ -160,6 +160,10 @@ Unreleased
   along the series of P and the continued fraction of Q, within 1e-14
   (above 30 the hazard already had them from its own fraction, #786). It
   costs time: a GammaPH fit on 400 rows takes 0.32 s where it took 0.21 s.
+- A proportional-hazards model whose cumulative hazard passes exp(709) at
+  a query point, as on a fit run off along a coefficient, gives H = inf
+  and sf = 0 there without numpy's "overflow encountered in exp" (#801):
+  the overflow is the infinite limit the product tends to.
 
 **Performance**
 

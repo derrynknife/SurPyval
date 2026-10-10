@@ -210,6 +210,35 @@ def test_counts_equal_repeated_rows(name, data):
         np.zeros((6, 1)),
     )
 )
+# A WeibullPH fit that runs off (shape 2258) has H past exp(709) at some
+# of these rows: it is infinite, without numpy's overflow warning (#801).
+@example(
+    data=(
+        dict(
+            x=np.array([8.5, 13.5, 2.5, 8.5]),
+            Z=np.array(
+                [
+                    [1.0, 1.5, 1.0],
+                    [0.5, -0.5, 1.0],
+                    [0.0, 1.0, 1.0],
+                    [1.5, -1.0, 1.0],
+                ]
+            ),
+            c=np.array([0, 0, 1, 0]),
+            n=np.array([3, 2, 1, 3]),
+        ),
+        np.array(
+            [
+                [-1.0, -2.0, 1.0],
+                [1.5, -2.0, 1.0],
+                [1.0, -1.5, 1.0],
+                [2.0, -0.5, 1.0],
+                [0.0, 0.0, 1.0],
+                [0.0, 0.0, 1.0],
+            ]
+        ),
+    )
+)
 def test_rows_are_independent(name, data):
     d, Z = _prepared(name, *data)
     status, model = outcome(getattr(sp, name).fit, **_columns(d))
