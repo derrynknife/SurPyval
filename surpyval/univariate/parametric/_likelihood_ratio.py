@@ -338,6 +338,21 @@ def central_gradient(
     return grad
 
 
+def central_jacobian(
+    f: Callable[..., Any], u: npt.NDArray, rel_step: float = 1e-6
+) -> npt.NDArray:
+    """Central-difference Jacobian of the vector function ``f`` at ``u``
+    (one row per entry of ``f``), in steps as ``central_gradient``'s."""
+    cols = []
+    for j in range(len(u)):
+        h = rel_step * max(1.0, abs(u[j]))
+        up, down = np.array(u, dtype=float), np.array(u, dtype=float)
+        up[j] += h
+        down[j] -= h
+        cols.append((np.asarray(f(up)) - np.asarray(f(down))) / (2 * h))
+    return np.column_stack(cols)
+
+
 def _wald_sd(model: Any, coords: list[_LRCoord], free: list[int]) -> Any:
     """The Wald standard errors of the core parameters ``free`` in their
     search coordinates, or ``None`` without a usable covariance.
@@ -516,6 +531,42 @@ class _PsiBoundSearch:
         # The most extreme answer that has checked out on each side
         # (``checks_out``)
         self.checked: dict[float, float] = {}
+        # Where the likelihood itself has a limit inside the parameters'
+        # box -- an additive hazards model's support (#828) -- a vector
+        # function of theta that is >= 0 there; the region is cut off
+        # where it is not (#837).
+        support = getattr(model, "_lr_support", None)
+        self.support: Callable[[npt.NDArray], npt.NDArray] | None = (
+            support() if support is not None else None
+        )
+
+    def support_constraints(
+        self, to_u: Callable[[npt.NDArray], npt.NDArray]
+    ) -> list[dict]:
+        """``support`` as SLSQP's inequality constraints in the
+        coordinates ``z`` of a search (``u = to_u(z)``), or none.
+
+        Without them a search stepped from inside the support to where the
+        likelihood is not defined (an infinite deviance) and stopped where
+        it happened to, so a 99% bound came out inside a 95% one (#837);
+        held to them, it ends on the edge of the support where the region
+        reaches it."""
+        support = self.support
+        if support is None:
+            return []
+
+        def fun(z: npt.NDArray) -> npt.NDArray:
+            with np.errstate(all="ignore"):
+                v = np.asarray(support(self.theta_of(to_u(z))), dtype=float)
+            return np.where(np.isfinite(v), v, -1.0)
+
+        return [
+            {
+                "type": "ineq",
+                "fun": fun,
+                "jac": lambda z: central_jacobian(fun, z, self.fd_step),
+            }
+        ]
 
     # -- the functions of the search coordinates --------------------------
     def theta_of(self, u: npt.NDArray) -> npt.NDArray:
@@ -686,7 +737,12 @@ class _PsiBoundSearch:
                         method="SLSQP",
                         jac=lambda z: central_gradient(nll_z, z),
                         bounds=_scaled_bounds(self.bounds, origin, scale),
-                        constraints=[constraint],
+                        constraints=[
+                            constraint,
+                            *self.support_constraints(
+                                lambda z: origin + scale * z
+                            ),
+                        ],
                         options={"ftol": 1e-10, "maxiter": 60},
                     )
                 except (ValueError, np.linalg.LinAlgError):
@@ -793,7 +849,8 @@ class _PsiBoundSearch:
                         "type": "ineq",
                         "fun": lambda z: c * (level - g(z)),
                         "jac": lambda z: -c * g_jac(z),
-                    }
+                    },
+                    *self.support_constraints(to_u),
                 ],
                 options={"ftol": 1e-10, "maxiter": 100},
             )
@@ -1047,16 +1104,27 @@ class _PsiBoundSearch:
         # against its boundary's minimum, found by brute force).
         end = self.reached[-1][1]
         if self.dev_u(end) > crit:
-            ray = end - u_hat
-            r = brentq(
-                lambda r: self.dev_u(u_hat + r * ray) - crit,
-                0.0,
-                1.0,
-                xtol=1e-14,
-                rtol=1e-14,
-            )
-            quick = self.psi_u(u_hat + r * ray)
-            self.known[-1] = (quick, u_hat + r * ray)
+            if self.support is None:
+                ray = end - u_hat
+                r = brentq(
+                    lambda r: self.dev_u(u_hat + r * ray) - crit,
+                    0.0,
+                    1.0,
+                    xtol=1e-14,
+                    rtol=1e-14,
+                )
+                point: npt.NDArray | None = u_hat + r * ray
+            else:
+                # The support is not convex in the search coordinates:
+                # the line back to the estimate can leave it, where the
+                # deviance jumps to inf, and brentq took that edge for the
+                # region's -- a 99% bound inside the 95% one (#837). The
+                # nearest point of the region instead, or the answer as
+                # ``direct`` allowed it.
+                point = self.back_onto_boundary(end, crit)
+            if point is not None:
+                quick = self.psi_u(point)
+                self.known[-1] = (quick, point)
         far = max(direction * k[0] for k in self.known)
         slack = 1e-9 * max(1.0, abs(top_psi))
         if direction * quick >= max(far, direction * top_psi - slack):
@@ -1470,6 +1538,13 @@ class LikelihoodRatioMixin:
         return {
             k: v for k, v in self.__dict__.items() if not k.startswith("_lr_")
         }
+
+    def _lr_support(self) -> "Callable[[npt.NDArray], npt.NDArray] | None":
+        """A vector function of the core parameters that is ``>= 0`` where
+        the likelihood is defined, for a likelihood with a limit inside
+        the parameters' box (``_PsiBoundSearch.support``); ``None`` for
+        none, as for every univariate model."""
+        return None
 
     def _lr_neg_ll(self, theta: npt.NDArray) -> float:
         """The negative log-likelihood at core parameters ``theta``, as
