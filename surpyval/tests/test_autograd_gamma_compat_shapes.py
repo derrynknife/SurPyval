@@ -150,3 +150,23 @@ def test_634_the_hessian_is_finite_and_symmetric_at_a_small_x(func, x):
         2 * h
     )
     assert H[0, 1] == pytest.approx(mixed, rel=1e-4)
+
+
+# (a, x, d log P / da, d log Q / da), mpmath to 200 digits
+_SHAPE_DERIVATIVES = [
+    (0.5, 1.0, -0.46260460128909919, 2.4783167800959613),
+    (3.0, 5.0, -0.12988301934579997, 0.91208180308075389),
+    (0.05, 22.0, -1.7246321268286373e-11, 23.630836283427879),
+    (2.0, 2.2, -0.43017998070682501, 0.78306381087611433),
+    (20.0, 0.1, -5.3233367808916811, 1.9893098575756317e-38),
+    (7.0, 12.0, -0.035373596580522695, 0.7365996841729115),
+]
+
+
+@pytest.mark.parametrize("a, x, d_log_p, d_log_q", _SHAPE_DERIVATIVES)
+def test_797_shape_derivatives_are_exact(a, x, d_log_p, d_log_q):
+    # The shape derivatives of log P and log Q were five-point differences,
+    # up to 4e-9 off (at a = 0.5, x = 1); carried along the series and the
+    # continued fraction they are within rounding (#797).
+    assert grad(gammaincln, 0)(a, x) == pytest.approx(d_log_p, rel=1e-13)
+    assert grad(gammainccln, 0)(a, x) == pytest.approx(d_log_q, rel=1e-13)

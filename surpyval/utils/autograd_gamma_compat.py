@@ -132,7 +132,137 @@ def _cdiff2_b(f: Callable, a: Boxable, b: Boxable, x: Boxable) -> Boxable:
     return _cdiff(lambda bb: f(a, bb, x), b)
 
 
-def _make_da_primitive(f: Callable, dfdx: Callable) -> Callable:
+#: The most terms of the series and fraction of the incomplete gamma's
+#: exact shape derivatives (``_log_pq_da``, #797), and their tolerance.
+_PQ_TERMS = 5000
+_PQ_TOL = 4e-16
+
+
+def _log_pq_shape_derivatives(a: npt.NDArray, x: npt.NDArray) -> tuple:
+    """``(d log P / da, d log Q / da, converged)`` of the regularised
+    incomplete gamma at shapes ``a > 0`` and times ``0 < x < inf``,
+    elementwise, each to rounding (#797).
+
+    Below ``x = a + 1`` from the series of P, ``P = x^a e^-x / Gamma(a +
+    1) S`` with ``S = sum_n t_n``, ``t_n = t_{n-1} x / (a + n)``, whose
+    terms' derivatives are carried along with them, ``t_n' = (t_{n-1}' x
+    - t_n) / (a + n)``: ``d log P = log x - psi(a + 1) + S' / S``, and
+    ``d log Q = -(P / Q) d log P`` (P is there below about 0.6). At or
+    above it from Legendre's continued fraction of Q by the modified
+    Lentz method (Numerical Recipes' ``gser`` and ``gcf``), each step's
+    derivative in ``a`` carried along it: ``d log Q = log x - psi(a) + h'
+    / h``, and ``d log P = -(Q / P) d log Q``. No difference is taken;
+    the five-point differences these replace were up to 4e-9 off mpmath's
+    (at ``a = 0.5``, ``x = 1``), these 1e-14. ``converged`` is False
+    where neither settled within ``_PQ_TERMS`` terms."""
+    a, x = np.broadcast_arrays(
+        np.asarray(a, dtype=float), np.asarray(x, dtype=float)
+    )
+    d_log_p = np.full(a.shape, np.nan)
+    d_log_q = np.full(a.shape, np.nan)
+    converged = np.zeros(a.shape, dtype=bool)
+    lx = np.log(x)
+    series = x < a + 1.0
+    with np.errstate(all="ignore"):
+        if np.any(series):
+            aa, xx = a[series], x[series]
+            t = np.ones(aa.shape)
+            dt = np.zeros(aa.shape)
+            total, d_total = t.copy(), dt.copy()
+            done = np.zeros(aa.shape, dtype=bool)
+            for n in range(1, _PQ_TERMS):
+                inv = 1.0 / (aa + n)
+                t_new = t * xx * inv
+                dt = (dt * xx - t_new) * inv
+                t = t_new
+                total += t
+                d_total += dt
+                # (checked every fourth term: the checks cost as much as
+                # the terms, and a converged sum takes no harm from more)
+                if n % 4 == 0:
+                    done = (np.abs(t) <= _PQ_TOL * total) & (
+                        np.abs(dt) <= _PQ_TOL * np.abs(d_total)
+                    )
+                    if np.all(done):
+                        break
+            dlp = lx[series] - _sc_digamma(aa + 1.0) + d_total / total
+            log_p = (
+                aa * lx[series] - xx - _sc_gammaln(aa + 1.0) + np.log(total)
+            )
+            p_val = np.exp(log_p)
+            d_log_p[series] = dlp
+            d_log_q[series] = -p_val / (1.0 - p_val) * dlp
+            converged[series] = done
+        frac = ~series
+        if np.any(frac):
+            aa, xx = a[frac], x[frac]
+            tiny = 1e-300
+            b = xx + 1.0 - aa
+            c = np.full(aa.shape, 1.0 / tiny)
+            dc = np.zeros(aa.shape)
+            d = 1.0 / b
+            dd = d * d  # d(1 / b)/da, with db/da = -1
+            h, dh = d.copy(), dd.copy()
+            done = np.zeros(aa.shape, dtype=bool)
+            # (From x >= a + 1 the denominators stay away from 0: no
+            # guard against one is needed, and a point that is not finite
+            # is not converged, so is differenced instead.)
+            for i in range(1, _PQ_TERMS):
+                an = -i * (i - aa)
+                b += 2.0
+                inv_c = 1.0 / c
+                d_big_d = i * d + an * dd - 1.0
+                dc = i * inv_c - an * dc * inv_c * inv_c - 1.0
+                c = b + an * inv_c
+                d = 1.0 / (an * d + b)
+                dd = -d_big_d * d * d
+                delta = d * c
+                dh_new = dh * delta + h * (dd * c + d * dc)
+                h = h * delta
+                if i % 4 == 0:
+                    done = (np.abs(delta - 1.0) <= _PQ_TOL) & (
+                        np.abs(dh_new - dh) <= _PQ_TOL * np.abs(dh_new)
+                    )
+                    dh = dh_new
+                    if np.all(done):
+                        break
+                else:
+                    dh = dh_new
+            dlq = lx[frac] - _sc_digamma(aa) + dh / h
+            log_q = aa * lx[frac] - xx - _sc_gammaln(aa) + np.log(h)
+            q_val = np.exp(log_q)
+            d_log_q[frac] = dlq
+            d_log_p[frac] = -q_val / (1.0 - q_val) * dlq
+            converged[frac] = done
+    return d_log_p, d_log_q, converged
+
+
+def _log_pq_da(which: int) -> Callable:
+    """The exact shape derivative of log P (``which`` 0) or log Q (1),
+    ``f(a, x)`` in plain numpy (:func:`_log_pq_shape_derivatives`);
+    ``nan`` where that did not converge, or at an ``x`` of 0 or inf
+    (``_make_da_primitive`` differences those)."""
+
+    def f_a(a: Boxable, x: Boxable) -> npt.NDArray:
+        a_arr, x_arr = np.broadcast_arrays(
+            np.asarray(a, dtype=float), np.asarray(x, dtype=float)
+        )
+        inside = (x_arr > 0) & np.isfinite(x_arr) & (a_arr > 0)
+        out = np.full(a_arr.shape, np.nan)
+        if np.any(inside):
+            found = _log_pq_shape_derivatives(a_arr[inside], x_arr[inside])
+            value = found[which]
+            out[inside] = np.where(
+                found[2] & np.isfinite(value), value, np.nan
+            )
+        return out
+
+    return f_a
+
+
+def _make_da_primitive(
+    f: Callable, dfdx: Callable, f_a: "Callable | None" = None
+) -> Callable:
     """Traced first derivative w.r.t. the shape parameter of f(a, x).
 
     Returns a primitive ``f_da(a, x) = df/da`` whose own VJPs are the
@@ -147,15 +277,37 @@ def _make_da_primitive(f: Callable, dfdx: Callable) -> Callable:
     (a GammaAFT whose coefficients ran off to -23, its censored rows at
     x ~ 1e-10, #634). The step in ``a`` is relative to it, and ``a`` is
     positive.
+
+    With ``f_a``, f's exact derivative in the shape where it is not
+    ``nan`` (``_log_pq_da``, #797), ``df/da`` is that: the five-point
+    differences of ``f`` were up to 4e-9 off mpmath's for the logs of the
+    incomplete gamma below x = 30. ``d2f/da2`` is then the difference of
+    that first derivative.
     """
+
+    def first(a: Boxable, x: Boxable) -> Boxable:
+        if f_a is None:
+            return _cdiff1(f, a, x)
+        out = np.array(f_a(a, x), dtype=float)
+        missing = np.isnan(out)
+        if np.any(missing):
+            # (only where the exact form did not settle)
+            a_b, x_b = np.broadcast_arrays(
+                np.asarray(a, dtype=float), np.asarray(x, dtype=float)
+            )
+            out[missing] = _cdiff1(f, a_b[missing], x_b[missing])
+        return out if out.ndim else float(out)
 
     @primitive
     def f_da(a: Boxable, x: Boxable) -> Boxable:
-        return _cdiff1(f, a, x)
+        return first(a, x)
 
     def vjp_a(ans: Boxable, a: Boxable, x: Boxable) -> Callable:
         av, xv = getval(a), getval(x)
-        d2 = _cdiff_second(lambda aa: f(aa, xv), av)
+        if f_a is None:
+            d2 = _cdiff_second(lambda aa: f(aa, xv), av)
+        else:
+            d2 = _cdiff(lambda aa: first(aa, xv), av)
         return unbroadcast_f(a, lambda g: getval(g) * d2)
 
     def vjp_x(ans: Boxable, a: Boxable, x: Boxable) -> Callable:
@@ -302,6 +454,7 @@ def gammaincln(a: Boxable, x: Boxable) -> Boxable:
 _gammaincln_da = _make_da_primitive(
     _gammaincln_raw,
     lambda a, x: np.exp(_log_gamma_density(a, x) - _gammaincln_raw(a, x)),
+    _log_pq_da(0),
 )
 
 defvjp(
@@ -362,6 +515,7 @@ def gammainccln(a: Boxable, x: Boxable) -> Boxable:
 _gammainccln_da = _make_da_primitive(
     _gammainccln_raw,
     lambda a, x: -np.exp(_log_gamma_density(a, x) - _gammainccln_raw(a, x)),
+    _log_pq_da(1),
 )
 
 defvjp(
