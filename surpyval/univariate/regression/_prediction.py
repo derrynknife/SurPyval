@@ -209,6 +209,7 @@ def quantiles_by_inversion(
     p: npt.NDArray,
     support: tuple[float, float],
     start: npt.NDArray,
+    hf: "Callable[[npt.NDArray, npt.NDArray], npt.NDArray] | None" = None,
 ) -> npt.NDArray:
     """The times at which ``Hf(t, k)``, the cumulative hazard of problem
     ``k``, reaches ``-log(1 - p[k])``, for every ``k`` at once.
@@ -220,6 +221,15 @@ def quantiles_by_inversion(
     brackets the target; a target never reached is ``inf`` (a cure
     fraction, or a hazard that stops growing). The brackets are then
     solved together to ``rtol=1e-12`` (:func:`solve_bracketed`).
+
+    That tolerance is on the time, relative to the time itself, so where
+    the quantile is far from 0 but close to where the hazard starts to
+    accumulate -- an additive hazards model's support starting at -27, a
+    small ``p`` there -- the cumulative hazard reached was off by 1e-5 of
+    the target (#828). With the hazard ``hf(t, k)`` each answer is then
+    taken by Newton's method on the cumulative hazard (a step is kept only
+    where it stays in the bracket and brings the cumulative hazard closer
+    to its target), which is accurate relative to the target.
     """
     lower, upper = (float(v) for v in support)
     out = np.full(p.shape, np.nan)
@@ -261,8 +271,44 @@ def quantiles_by_inversion(
             xtol=1e-300,
             rtol=1e-12,
         )
+        if hf is not None:
+            found[sel] = _newton_finish(
+                gap, hf, k, sel, found[sel], lo[sel], hi[sel]
+            )
     out[k] = found
     return out
+
+
+def _newton_finish(
+    gap: Callable[[npt.NDArray, npt.NDArray], npt.NDArray],
+    hf: Callable[[npt.NDArray, npt.NDArray], npt.NDArray],
+    k: npt.NDArray,
+    sel: npt.NDArray,
+    t: npt.NDArray,
+    lo: npt.NDArray,
+    hi: npt.NDArray,
+    steps: int = 3,
+) -> npt.NDArray:
+    """Newton's steps on ``gap`` (the cumulative hazard less its target)
+    from the bracketed answers ``t`` of the problems ``k[sel]``, with the
+    hazard ``hf`` its derivative; a step is kept only where it stays in
+    ``[lo, hi]`` and makes ``|gap|`` smaller."""
+    t = t.copy()
+    with np.errstate(all="ignore"):
+        g = gap(t, sel)
+        for _ in range(steps):
+            h = np.asarray(hf(t, k[sel]), dtype=float)
+            new = t - g / h
+            ok = np.isfinite(new) & (h > 0) & (new >= lo) & (new <= hi)
+            if not ok.any():
+                break
+            g_new = gap(np.where(ok, new, t), sel)
+            better = ok & (np.abs(g_new) < np.abs(g))
+            if not better.any():
+                break
+            t = np.where(better, new, t)
+            g = np.where(better, g_new, g)
+    return t
 
 
 def _expand(
