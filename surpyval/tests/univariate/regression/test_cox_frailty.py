@@ -524,17 +524,52 @@ def test_run_off_fit_takes_the_information_in_logs(monkeypatch):
     np.testing.assert_allclose(se[1], dense.standard_errors()[1], rtol=1e-8)
 
 
-def test_refusal_at_z_0_does_not_point_to_center():
-    # A coefficient that runs off to beta'Z of 850: the baseline at Z = 0
-    # cannot be represented, and the refusal, CoxPH's, said to fit with
-    # center=True, which CoxFrailty does not take (#777).
-    z = np.linspace(-30.0, 30.0, 61)[::-1, None]
-    x = np.arange(1.0, 62.0)
+def test_refusal_at_z_0_points_to_center():
+    # A covariate far from 0 (a date as a day count): the baseline at
+    # Z = 0 is exp(-2e4) of the one at the means, which cannot be
+    # represented. The refusal said to subtract the means by hand, as
+    # CoxFrailty had no center= (#777); now it has (#794).
+    rng = np.random.default_rng(1)
+    z = rng.normal(0, 1, 200)
+    t = rng.exponential(np.exp(-z))
+    far = (z + 20000.0)[:, None]
+    groups = np.arange(200) % 20
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         with pytest.raises(ValueError) as info:
-            CoxFrailty.fit(x, Z=z, groups=np.arange(61) % 4, theta=0.5)
+            CoxFrailty.fit(t, Z=far, groups=groups)
     message = str(info.value)
     assert "cannot be represented" in message
-    assert "center=True" not in message
-    assert "CoxFrailty reports the baseline at Z = 0" in message
+    assert "center=True" in message
+    model = CoxFrailty.fit(t, Z=far, groups=groups, center=True)
+    np.testing.assert_allclose(model.center, [far.mean()])
+    near = CoxFrailty.fit(t, Z=far - 20000.0, groups=groups)
+    np.testing.assert_allclose(model.beta, near.beta, rtol=1e-8)
+    np.testing.assert_allclose(
+        model.sf([0.5, 2.0], [[20000.5]]),
+        near.sf([0.5, 2.0], [[0.5]]),
+        rtol=1e-8,
+    )
+
+
+def test_center_true_is_the_same_model():
+    # The baseline kept at the covariate means (#794): the coefficients,
+    # theta, frailties and every prediction are the fit's at Z = 0.
+    df = load_kidney()
+    Z = np.column_stack([df["age"], df["sex"] == 2]).astype(float)
+    args = (df["time"],)
+    kw = {"Z": Z, "c": 1 - df["status"], "groups": df["id"]}
+    at_0 = CoxFrailty.fit(*args, **kw)
+    centred = CoxFrailty.fit(*args, **kw, center=True)
+    np.testing.assert_allclose(centred.center, Z.mean(axis=0))
+    np.testing.assert_allclose(centred.beta, at_0.beta, rtol=1e-12)
+    assert centred.theta == pytest.approx(at_0.theta, rel=1e-12)
+    t, zq = np.array([10.0, 50.0, 200.0]), np.array([[40.0, 1.0]])
+    group = str(df["id"].iloc[0])
+    for kwargs in ({}, {"group": group}):
+        np.testing.assert_allclose(
+            centred.sf(t, zq, **kwargs), at_0.sf(t, zq, **kwargs), rtol=1e-10
+        )
+    restored = sp.from_dict(centred.to_dict())
+    np.testing.assert_array_equal(restored.center, centred.center)
+    np.testing.assert_allclose(restored.sf(t, zq), centred.sf(t, zq))

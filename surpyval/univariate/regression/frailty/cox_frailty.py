@@ -90,11 +90,11 @@ from .frailty_model import _SharedFrailty
 
 _TIE_METHODS = ("efron", "breslow")
 # The end of the refusal of a baseline at Z = 0 that cannot be
-# represented: CoxPH's points to center=True, which this fit has not.
+# represented, as CoxPH's.
 _ORIGIN_HINT = (
-    "CoxFrailty reports the baseline at Z = 0: move the covariates nearer "
-    "0 (subtract their means), or, where a coefficient runs off, remove or "
-    "coarsen the covariate that separates the events."
+    "Fit with center=True to keep the baseline at the covariate means, or, "
+    "where a coefficient runs off, remove or coarsen the covariate that "
+    "separates the events."
 )
 # The search for theta, on its log: between 1e-6 (no detectable frailty;
 # the profile is then flat to rounding) and 100.
@@ -704,6 +704,7 @@ class CoxFrailtyFitter(FitterRepr):
         groups: Any = None,
         tie_method: str = "efron",
         theta: "float | None" = None,
+        center: bool = False,
     ) -> "CoxFrailtyModel":
         """
         Fit the shared gamma frailty Cox model.
@@ -746,12 +747,23 @@ class CoxFrailtyFitter(FitterRepr):
             A fixed frailty variance (R's ``frailty(..., theta = )``), in
             place of its maximum likelihood estimate; it then has no
             standard error. ``0`` is the Cox model.
+        center : bool, optional
+            ``False`` (the default) reports the baseline at ``Z = 0``, as
+            ``CoxPH`` does. ``True`` keeps it at the (count-weighted)
+            covariate means, stored as ``model.center``, and predicts with
+            ``exp(beta'(Z - center))`` (as R's ``coxph``): the same model,
+            and the way to fit one whose ``beta'Z`` at ``Z = 0`` is beyond
+            what ``exp`` can represent (a coefficient running off on
+            covariates far from 0), which is refused at ``Z = 0`` (#794).
+            The coefficients, ``theta`` and the frailties are the same
+            either way.
 
         Returns
         -------
         CoxFrailtyModel
             The coefficients ``beta``, the frailty variance ``theta``, each
-            group's posterior frailty and the baseline at ``Z = 0``.
+            group's posterior frailty and the baseline at ``Z = 0`` (or at
+            ``center``).
 
         Examples
         --------
@@ -817,8 +829,8 @@ class CoxFrailtyFitter(FitterRepr):
         if cox is not None and cox.aliased.size:
             kept = np.setdiff1d(kept, cox.aliased)
         Zk = Zfull[:, kept]
-        center = covariate_center(Zk, w) if kept.size else np.zeros(0)
-        em = _CoxFrailtyEM(x, Zk - center, c, w, inv, n_groups, tie_method)
+        means = covariate_center(Zk, w) if kept.size else np.zeros(0)
+        em = _CoxFrailtyEM(x, Zk - means, c, w, inv, n_groups, tie_method)
         monotone = maximum == "no finite maximum"
         if monotone:
             # The coefficients run off to infinity whatever theta is: the
@@ -885,16 +897,22 @@ class CoxFrailtyFitter(FitterRepr):
                 ),
             )
 
-        # The baseline at Z = 0 and u = 1, as CoxPH reports it.
+        # The baseline at Z = 0 and u = 1, as CoxPH reports it (or, with
+        # center=True, at the covariate means, where EM ran).
         times, r, d, h0 = em.baseline(beta, log_u[inv])
-        if kept.size:
+        if kept.size and not center:
             r, h0 = baseline_at_origin(
-                beta, center, Zk, r, h0, hint=_ORIGIN_HINT
+                beta, means, Zk, r, h0, hint=_ORIGIN_HINT
             )
 
         model = CoxFrailtyModel()
         model.tie_method = tie_method
         model.beta = expand(beta, kept, p_all) if p_all else np.zeros(0)
+        # Every column's mean (an aliased column's coefficient is predicted
+        # with as 0, so its entry does not count)
+        model.center = (
+            covariate_center(Zfull, w) if center and p_all else np.zeros(p_all)
+        )
         model.theta = theta_hat
         model.x = times
         model.h0 = h0
@@ -949,6 +967,7 @@ class CoxFrailtyFitter(FitterRepr):
         formula: "str | None" = None,
         tie_method: str = "efron",
         theta: "float | None" = None,
+        center: bool = False,
     ) -> "CoxFrailtyModel":
         """Fit from a :class:`pandas.DataFrame` naming the columns.
 
@@ -972,7 +991,7 @@ class CoxFrailtyFitter(FitterRepr):
         formula : str, optional
             A formula (formulaic syntax) for the covariates, instead of
             ``Z_cols``.
-        tie_method, theta : optional
+        tie_method, theta, center : optional
             As for :meth:`fit`.
 
         Returns
@@ -1017,6 +1036,7 @@ class CoxFrailtyFitter(FitterRepr):
                 groups=groups,
                 tie_method=tie_method,
                 theta=theta,
+                center=center,
             )
         model.feature_names = feature_names
         model.formula = formula
@@ -1100,6 +1120,9 @@ class CoxFrailtyModel(_SharedFrailty):
         self.x: np.ndarray = np.array([])
         self.h0: np.ndarray = np.array([])
         self.H0: np.ndarray = np.array([])
+        #: The covariates the baseline is kept at: the means with
+        #: ``center=True`` (#794), else zeros.
+        self.center: np.ndarray = np.array([])
         self.log_likelihood = float("nan")
         self.log_likelihood_no_frailty: float = float("nan")
         self._data_summary: "str | None" = None
@@ -1212,6 +1235,7 @@ class CoxFrailtyModel(_SharedFrailty):
             "tie_method": self.tie_method,
             "beta": np.asarray(self.beta, float).tolist(),
             "theta": float(self.theta),
+            "center": np.asarray(self.center, float).tolist(),
             "x": np.asarray(self.x, float).tolist(),
             "h0": np.asarray(self.h0, float).tolist(),
             "H0": np.asarray(self.H0, float).tolist(),
@@ -1246,6 +1270,10 @@ class CoxFrailtyModel(_SharedFrailty):
         out.tie_method = model_dict["tie_method"]
         out.beta = np.array(model_dict["beta"], dtype=float)
         out.theta = float(model_dict["theta"])
+        # (a dict saved before #794 has its baseline at Z = 0)
+        out.center = np.array(
+            model_dict.get("center", np.zeros(out.beta.size)), dtype=float
+        )
         out.x = np.array(model_dict["x"], dtype=float)
         out.h0 = np.array(model_dict["h0"], dtype=float)
         out.H0 = np.array(model_dict["H0"], dtype=float)
