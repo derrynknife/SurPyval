@@ -158,6 +158,10 @@ coverage html           # Make a html coverage report (really useful), open html
 - When you go to commit, it will only proceed after all the hooks succeed
 
 
+# Related
+
+[Reliafy](https://reliafy.com) is a hosted, browser-based app built on SurPyval, for fitting life distributions, regression and recurrent-event models to censored data without writing code.
+
 # Contact
 
 Email [derryn](mailto:derryn.knife@gmail.com) if you want any features or to see how SurPyval can be used for you.

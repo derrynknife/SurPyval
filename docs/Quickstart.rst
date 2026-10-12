@@ -336,3 +336,6 @@ Where to go next
 - :doc:`comparison_and_validation` covers comparing groups and validating
   models.
 - :doc:`surpyval` is the full API reference.
+
+Much of this also runs in the browser in
+`Reliafy <https://reliafy.com/guides>`__, a hosted app built on SurPyval.

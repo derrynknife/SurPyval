@@ -1377,3 +1377,6 @@ right censoring and delayed entry are handled by those fits.
     assert round(diff['difference']) == 4, diff['difference']
     assert np.isclose(diff['ratio'], diff['rmst_a'] / diff['rmst_b'])
     assert np.isclose(diff['difference'], diff['rmst_a'] - diff['rmst_b'])
+
+The Kaplan-Meier, Nelson-Aalen, Fleming-Harrington and Turnbull estimates also
+run in the browser in `Reliafy <https://reliafy.com/reference/nonparametric>`__.
