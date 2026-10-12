@@ -87,8 +87,11 @@ def test_to_observations_round_trips():
         interval_censored=[[2, 4], [2, 4], [6, 8]],
     )
     lists = data.to_observations()
-    assert lists["observed"].tolist() == [1, 3, 3, 7]
-    assert lists["interval_censored"].tolist() == [[2, 4], [2, 4], [6, 8]]
+    # each value once, with its count
+    assert lists["observed"].tolist() == [1, 3, 7]
+    assert lists["observed_counts"].tolist() == [1, 2, 1]
+    assert lists["interval_censored"].tolist() == [[2, 4], [6, 8]]
+    assert lists["interval_censored_counts"].tolist() == [2, 1]
     again = SurpyvalData.from_observations(**lists)
     for a, b in zip(again.to_xcnt(), data.to_xcnt()):
         np.testing.assert_array_equal(a, b)
@@ -156,7 +159,8 @@ def test_to_observations_round_trips_truncated_data():
         tl=[500, 0, 0, 500, 100],
     )
     lists = data.to_observations()
-    assert lists["observed_left_truncation"].tolist() == [0, 500, 500, 0]
+    assert lists["observed_left_truncation"].tolist() == [0, 500, 0]
+    assert lists["observed_counts"].tolist() == [1, 2, 1]
     assert "observed_right_truncation" not in lists
     again = SurpyvalData.from_observations(**lists)
     for a, b in zip(again.to_xcnt(), data.to_xcnt()):
@@ -380,3 +384,125 @@ def test_dated_removal_is_not_overdue():
         f"{DATA_FUNCTIONS_DEPRECATED_ON} are due for removal: remove "
         "DATED_DATA_FUNCTIONS and its branch in surpyval.__getattr__."
     )
+
+
+# -- counts and covariates per kind ----------------------------------------
+
+
+def test_counts_per_kind_read_a_life_table():
+    data = SurpyvalData.from_observations(
+        interval_censored=[[0, 100], [100, 200], [200, 300], [300, 400]],
+        interval_censored_counts=[3, 0, 9, 4],
+        right_censored=[400],
+        right_censored_counts=12,
+    )
+    by_hand = SurpyvalData(
+        [[0, 100], [200, 300], [300, 400], [400, 400]],
+        c=[2, 2, 2, 1],
+        n=[3, 9, 4, 12],
+    )
+    for got, want in zip(data.to_xcnt(), by_hand.to_xcnt()):
+        np.testing.assert_array_equal(got, want)
+
+
+def test_counts_equal_repeating_the_values():
+    counted = SurpyvalData.from_observations(
+        observed=[10, 20],
+        observed_counts=[2, 3],
+        right_censored=30,
+        right_censored_counts=4,
+    )
+    repeated = SurpyvalData.from_observations(
+        observed=[10, 10, 20, 20, 20], right_censored=[30] * 4
+    )
+    for got, want in zip(counted.to_xcnt(), repeated.to_xcnt()):
+        np.testing.assert_array_equal(got, want)
+
+
+@pytest.mark.parametrize(
+    "counts, match",
+    [([1, 2, 3], "one per item"), ([1, -1], "0 or more"), ([1, 0.5], "whole")],
+)
+def test_bad_counts_are_refused(counts, match):
+    with pytest.raises(ValueError, match=match):
+        SurpyvalData.from_observations(observed=[1, 2], observed_counts=counts)
+
+
+def test_every_count_zero_is_no_data():
+    with pytest.raises(ValueError, match="count above 0"):
+        SurpyvalData.from_observations(observed=[1, 2], observed_counts=0)
+
+
+def test_covariates_per_kind_fit_as_the_arrays():
+    zo, zr = Z[C == 0], Z[C == 1]
+    data = SurpyvalData.from_observations(
+        observed=X[C == 0],
+        observed_covariates=zo,
+        right_censored=X[C == 1],
+        right_censored_covariates=zr,
+    )
+    by_hand = sp.WeibullPH.fit(
+        np.r_[X[C == 0], X[C == 1]],
+        np.r_[zo, zr],
+        np.r_[np.zeros((C == 0).sum()), np.ones((C == 1).sum())],
+    )
+    np.testing.assert_allclose(sp.WeibullPH.fit(data).params, by_hand.params)
+
+
+def test_covariates_with_counts_drop_the_zero_counted_rows():
+    data = SurpyvalData.from_observations(
+        observed=[10, 20, 30],
+        observed_counts=[1, 0, 2],
+        observed_covariates=[[1, 0], [0, 1], [1, 1]],
+    )
+    np.testing.assert_array_equal(data.Z, [[1, 0], [1, 1]])
+    np.testing.assert_array_equal(data.n, [1, 2])
+
+
+def test_covariates_needed_for_every_kind_with_items():
+    with pytest.raises(ValueError, match="'right_censored_covariates' too"):
+        SurpyvalData.from_observations(
+            observed=[1, 2], observed_covariates=[0, 1], right_censored=[3]
+        )
+    # an empty kind needs none
+    data = SurpyvalData.from_observations(
+        observed=[1, 2], observed_covariates=[0, 1], right_censored=[]
+    )
+    assert data.Z.shape == (2, 1)
+
+
+def test_covariates_need_the_same_columns_and_one_row_per_item():
+    with pytest.raises(ValueError, match="same columns"):
+        SurpyvalData.from_observations(
+            observed=[1, 2],
+            observed_covariates=[[0, 1], [1, 0]],
+            right_censored=[3],
+            right_censored_covariates=[1],
+        )
+    with pytest.raises(ValueError, match=r"\[\[z1, z2"):
+        SurpyvalData.from_observations(
+            observed=[1], observed_covariates=[1, 0, 2]
+        )
+
+
+def test_a_kinds_values_need_its_list():
+    for name in ("right_censored_counts", "right_censored_covariates"):
+        with pytest.raises(ValueError, match="without 'right_censored'"):
+            SurpyvalData.from_observations(observed=[1], **{name: 1})
+
+
+def test_to_observations_round_trips_counts_truncation_and_covariates():
+    data = SurpyvalData.from_observations(
+        observed=[10, 20, 20],
+        observed_counts=[1, 2, 3],
+        observed_left_truncation=[0, 5, 0],
+        observed_covariates=[[1, 0], [0, 1], [1, 1]],
+        interval_censored=[[30, 40]],
+        interval_censored_covariates=[[0, 0]],
+    )
+    lists = data.to_observations()
+    assert lists["observed_covariates"].tolist() == [[1, 0], [0, 1], [1, 1]]
+    again = SurpyvalData.from_observations(**lists)
+    for a, b in zip(again.to_xcnt(), data.to_xcnt()):
+        np.testing.assert_array_equal(a, b)
+    np.testing.assert_array_equal(again.Z, data.Z)

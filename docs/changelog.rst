@@ -15,10 +15,16 @@ Unreleased
   on: one number for every item of that kind, or one per item in the
   order of its list. ``left_truncation`` and ``right_truncation`` are one
   window shared by everything (given with a kind's own bound on the same
-  side, it is refused). ``SurpyvalData.from_xrd(x, r, d)`` reads the
+  side, it is refused). Each kind also takes ``<kind>_counts`` (one whole
+  number for every item or one per item; an item counted 0 is left out,
+  as a life table's empty interval) and ``<kind>_covariates`` (one row per
+  item, the same columns for every kind, needed for every kind with items
+  once given for one), which a regression ``fit`` takes as ``Z``.
+  ``SurpyvalData.from_xrd(x, r, d)`` reads the
   at-risk / deaths form; both validate as the fitters do. ``to_xcnt()``
   gives the arrays ``x, c, n, t`` (copies) and ``to_observations()`` the
-  lists back, with each kind's bounds for truncated data, so
+  lists back, each value once with its kind's counts, bounds and
+  covariates where the data has them, so
   ``from_observations(**data.to_observations())`` is the same data.
   ``from_observations`` refuses an infinite single time by name (an
   interval open at one end is ``[lower, inf]`` in ``interval_censored``),
