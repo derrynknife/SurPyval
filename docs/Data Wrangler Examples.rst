@@ -140,6 +140,22 @@ each one stands for goes in ``counts``:
         counts=[3, 40, 2, 5],
     )).params
 
+Records are updated as items age, each update giving a new, checked record
+(the old one is left as it was), and copied for a new item with ``clone``:
+
+.. jupyter-execute::
+
+    b8 = ItemLifetime("B8", right_censored=2400)
+    print(b8.extend(2800))            # still running at 2800
+    print(b8.fail(2650, "spall"))     # failed at 2650
+    print(b8.found_failed(3000))      # found failed at the 3000 inspection
+    print(b8.clone("B11"))            # the same record for another item
+
+    from surpyval import ItemHistory
+
+    pump = ItemHistory("P1", observed=[420], right_censored=600)
+    print(pump.add_failure(700).add_failures_between(800, 1000, failures=2))
+
 Every check names the item, and ``data.to_items()`` gives the items back
 (``SurpyvalData.from_items(data.to_items(), counts=data.n)`` is the same
 data). An item's ``event_type`` and ``time_varying_covariates`` (``{age:

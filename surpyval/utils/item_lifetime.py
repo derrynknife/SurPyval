@@ -13,6 +13,7 @@ from surpyval.utils.item_history import (
     _covariate_row,
     _schedule_field,
     _time_varying,
+    _with_step,
 )
 
 __all__ = ["ItemLifetime"]
@@ -179,6 +180,88 @@ class ItemLifetime:
         if self.outcome == "interval_censored":
             return [float(self.value[0]), float(self.value[1])], flag
         return [self.value, self.value], flag
+
+    # -- updates (each returns a new, checked ItemLifetime) ---------------
+
+    def clone(self, item: Any = None, **changes: Any) -> "ItemLifetime":
+        """
+        A copy of this lifetime, under the id ``item`` (else the same id),
+        with any of its arguments replaced by ``changes`` (an outcome
+        given replaces its outcome).
+
+        Examples
+        --------
+        >>> from surpyval import ItemLifetime
+        >>> ItemLifetime("B7", observed=1820, covariates=1).clone("B8")
+        ItemLifetime('B8', observed=1820.0, covariates=[1.0])
+        """
+        fields = self._fields()
+        if any(name in changes for name in _OUTCOMES):
+            fields.pop(self.outcome)
+            if "right_censored" in changes:
+                fields.pop("event_type", None)
+        fields.update(changes)
+        return ItemLifetime(self.item if item is None else item, **fields)
+
+    def _still_running(self, what: str) -> float:
+        if self.outcome != "right_censored":
+            raise ValueError(
+                f"Item {self.item!r} is {self.outcome}, not still running "
+                f"(right_censored), so it cannot {what}."
+            )
+        return self.value
+
+    def extend(self, age: Any) -> "ItemLifetime":
+        """This lifetime, still running and seen working up to a later
+        ``age``.
+
+        >>> from surpyval import ItemLifetime
+        >>> ItemLifetime("B8", right_censored=2400).extend(3000)
+        ItemLifetime('B8', right_censored=3000.0)
+        """
+        last = self._still_running("be extended")
+        age = _age(self.item, "age", age)
+        if age < last:
+            raise ValueError(
+                f"Item {self.item!r}: extend moves it later, but {age:g} is "
+                f"before it was last seen working, {last:g}."
+            )
+        return self.clone(right_censored=age)
+
+    def fail(self, age: Any, event_type: Any = None) -> "ItemLifetime":
+        """This lifetime, still running, failed at ``age``.
+
+        >>> from surpyval import ItemLifetime
+        >>> ItemLifetime("B8", right_censored=2400).fail(2550, "spall")
+        ItemLifetime('B8', observed=2550.0, event_type='spall')
+        """
+        last = self._still_running("fail")
+        age = _age(self.item, "age", age)
+        if age < last:
+            raise ValueError(
+                f"Item {self.item!r}: it was seen working at {last:g}, so it "
+                f"cannot have failed at {age:g}."
+            )
+        return self.clone(observed=age, event_type=event_type)
+
+    def found_failed(self, age: Any, event_type: Any = None) -> "ItemLifetime":
+        """This lifetime, still running, found failed at an inspection at
+        ``age``: it failed between when it was last seen working and then.
+
+        >>> from surpyval import ItemLifetime
+        >>> ItemLifetime("B8", right_censored=2400).found_failed(2800)
+        ItemLifetime('B8', interval_censored=[2400.0, 2800.0])
+        """
+        last = self._still_running("be found failed")
+        return self.clone(interval_censored=[last, age], event_type=event_type)
+
+    def update_covariates(self, age: Any, values: Any) -> "ItemLifetime":
+        """This lifetime with its time-varying covariates taking ``values``
+        from ``age`` on (a step added to its schedule)."""
+        steps = _with_step(
+            self.item, self.time_varying_covariates, age, values
+        )
+        return self.clone(time_varying_covariates=steps)
 
     def _fields(self) -> dict:
         value = (

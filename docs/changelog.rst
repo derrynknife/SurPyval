@@ -30,6 +30,15 @@ Unreleased
   interval open at one end is ``[lower, inf]`` in ``interval_censored``),
   and a pandas list and its per-item values with different indexes, since
   they are matched by position.
+- Updating an ``ItemLifetime`` or ``ItemHistory``: each method returns a
+  new, checked record and leaves the old one as it was. Both have
+  ``clone(new_id, **changes)``, ``extend(age)`` (seen working to a later
+  age) and ``update_covariates(age, values)`` (a step added to the
+  time-varying covariates). A running ``ItemLifetime`` can ``fail(age,
+  event_type)`` or be ``found_failed(age)`` at an inspection (failed since
+  it was last seen working); an ``ItemHistory`` takes ``add_failure``,
+  ``add_failures_between``, ``change_state`` and ``change_state_between``,
+  an event after its end of observation moving the end to it.
 - ``ItemLifetime``, one item's lifetime: exactly one outcome
   (``observed``, ``right_censored``, ``left_censored`` or
   ``interval_censored``), its observation window (``left_truncation`` /
