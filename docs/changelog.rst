@@ -22,6 +22,29 @@ Unreleased
   cause-specific models) fits, and stores, exactly the data of the per-row
   form. When there are as many rows as units the bound is read per row, as
   before; any other length is refused, naming both accepted lengths.
+- One plot theme for the package, ``surpyval.plotting``: every model's
+  ``plot`` takes its colours in order from a fixed palette (checked to stay
+  apart under the common colour-vision deficiencies), draws 2-point lines,
+  ringed points and its confidence bounds as a pale band of the curve's
+  colour, with hairline grids, no top or right spine and grey text. An
+  estimate from the data behind a fitted model (the recurrent-event and
+  regression plots) is a grey step under the model's colour; they were a
+  red step and a blue line. ``set_theme(False)`` turns it off,
+  ``style_axes`` styles axes of your own and ``rc_params`` gives the
+  theme as ``matplotlib.rcParams``. A ``color`` given to ``plot`` wins.
+- Probability plots redrawn: the probability axis is labelled as densely
+  as the distribution's scale has room for, the tails included (a Normal
+  plot's points below 10% had no label beside them; a Weibull's 99.9% no
+  room), the time axis at 1, 2 and 5 a decade on a log scale (it was seven
+  log-spaced times rounded to a figure: 200, 300, 400, 600, 900) and at
+  round times on a linear one, with faint minor lines where the green
+  grid of 51 evenly spaced probabilities was. The y axis is "Fraction
+  failed" (it was "CDF"). The confidence bounds are a band (they were
+  dashed lines).
+- ``CompetingRisks.plot`` draws each cause's cumulative incidence as its
+  own curve by default (``stacked=False``); ``stacked=True`` still stacks
+  them, separated by thin white edges, with the all-cause bounds as thin
+  grey lines (a grey band laid over the layers).
 - ``unit=``, the unit of the data, on every ``fit``, ``fit_from_df`` and
   ``from_params`` (#845): any unit, not only of time (``"hours"``, ``"km"``,
   ``"cycles"``, ``"pump starts"``). It is a label, kept as ``model.unit``,

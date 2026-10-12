@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Callable
 import numpy as np
 import numpy.typing as npt
 
+from surpyval import plotting
 from surpyval.distribution import NonParametricDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.utils.data_summary import data_summary
@@ -1786,6 +1787,12 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         if not ax.get_xlabel():
             # "Time", or what the model's unit measures (#845)
             ax.set_xlabel(axis_label(self.unit))
+        # The theme's next colour unless one is given
+        color = plotting.next_color(ax, kwargs.pop("color", None))
+        if color is not None:
+            kwargs["color"] = color
+        if plotting.theme_enabled():
+            kwargs.setdefault("linewidth", plotting.LINE_WIDTH)
         if interp != "step":
             (line,) = ax.plot(d["x_"], d["R"], **kwargs)
         else:
@@ -1795,7 +1802,9 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         if plot_bounds:
             cbs = d["cbs"]
             band_kwargs: dict[str, Any] = {
-                "alpha": 0.3,
+                "alpha": (
+                    plotting.BAND_ALPHA if plotting.theme_enabled() else 0.3
+                ),
                 "color": color,
                 "linewidth": 0,
             }
@@ -1825,6 +1834,7 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
                     color=color,
                 )
 
+        plotting.style_axes(ax)
         return ax
 
     @classmethod

@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, Callable
 import numpy as np
 from numpy.typing import ArrayLike
 
+from surpyval import plotting
 from surpyval.recurrent.inference import require_data
 from surpyval.recurrent.nonparametric import NonParametricCounting
 from surpyval.utils.rng import as_generator
@@ -597,11 +598,14 @@ class RecurrenceSimulationMixin:
             ax = plt.gcf().gca()
 
         x_plot = np.linspace(0, float(self.data.x.max()), 200)
-        ax.step(x, (d / r).cumsum(), color="r", where="post")
-        ax.plot(
-            x_plot,
-            self.mcf(x_plot, items=items, random_state=random_state),
-            color="b",
+        plotting.observed_and_fitted(
+            ax,
+            (x, (d / r).cumsum()),
+            (x_plot, self.mcf(x_plot, items=items, random_state=random_state)),
+            observed_label="Observed MCF",
+            fitted_label="Model MCF",
         )
         label_axes(ax, getattr(self, "unit", None), "Mean cumulative function")
+        plotting.style_axes(ax)
+        plotting.style_legend(ax)
         return ax

@@ -367,15 +367,17 @@ on ``sf``) before the first observed time, and NaN, with a warning, after the
 last, where the estimate only holds its last value; with ``set_support`` they
 are carried from the last time to ``upper`` instead.
 
-``plot`` draws the bounds as a shaded band, as the single-event estimates'
-plots do (``plot_bounds=False`` leaves them out; ``alpha_ci``, ``bound`` and
-``bound_type`` are passed to ``cb``). Unstacked, each cause has its own band;
-stacked (the default), a cause's bounds do not bound its layer, so the band is
-on the top of the stack, the all-cause failure probability:
+``plot`` draws each cause's cumulative incidence as its own curve, with its
+bounds as a pale band of its colour, as the single-event estimates' plots do
+(``plot_bounds=False`` leaves them out; ``alpha_ci``, ``bound`` and
+``bound_type`` are passed to ``cb``). ``stacked=True`` stacks the causes
+instead, so that the top is the all-cause failure probability; a cause's
+bounds do not bound its layer, so the bounds drawn are the top's, as two thin
+grey lines:
 
 .. jupyter-execute::
 
-    model.plot(stacked=False)
+    model.plot()
 
 Data held in a pandas DataFrame can be passed with ``fit_from_df``, naming the
 time and cause columns (and optionally ``c_col`` and ``n_col``). The frame is
