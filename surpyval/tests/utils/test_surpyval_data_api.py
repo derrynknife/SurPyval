@@ -46,11 +46,23 @@ def test_from_observations_matches_the_old_function():
 
 
 def test_from_observations_takes_a_shared_truncation():
-    data = SurpyvalData.from_observations(observed=[2, 4], tl=0.5, tr=9)
+    data = SurpyvalData.from_observations(
+        observed=[2, 4], left_truncation=0.5, right_truncation=9
+    )
     np.testing.assert_array_equal(data.tl, [0.5, 0.5])
     np.testing.assert_array_equal(data.tr, [9, 9])
-    with pytest.raises(ValueError, match="one bound shared"):
-        SurpyvalData.from_observations(observed=[2, 4], tl=[0, 1])
+    with pytest.raises(ValueError, match="'left_truncation' must be one"):
+        SurpyvalData.from_observations(observed=[2, 4], left_truncation=[0, 1])
+    with pytest.raises(TypeError):
+        SurpyvalData.from_observations(observed=[2, 4], tl=0.5)
+
+
+def test_from_observations_takes_a_single_time_as_a_number():
+    data = SurpyvalData.from_observations(
+        observed=12, right_censored=30.0, left_censored=np.float64(8)
+    )
+    np.testing.assert_array_equal(data.x, [8, 12, 30])
+    np.testing.assert_array_equal(data.c, [-1, 0, 1])
 
 
 def test_from_observations_needs_data():
@@ -129,7 +141,9 @@ def test_regressions_take_covariates_from_the_data():
 
 def test_truncated_interval_data_fits_as_from_its_arrays():
     data = SurpyvalData.from_observations(
-        observed=[2, 4, 5], interval_censored=[[1, 3], [4, 6]], tl=0.5
+        observed=[2, 4, 5],
+        interval_censored=[[1, 3], [4, 6]],
+        left_truncation=0.5,
     )
     np.testing.assert_allclose(
         sp.Weibull.fit(data).params,

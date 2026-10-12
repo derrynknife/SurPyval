@@ -8,8 +8,9 @@ Unreleased
 
 - The data utilities live on ``SurpyvalData``.
   ``SurpyvalData.from_observations(observed=..., right_censored=...,
-  left_censored=..., interval_censored=..., tl=..., tr=...)`` reads a list
-  of each kind of observation (any may be left out), and
+  left_censored=..., interval_censored=..., left_truncation=...,
+  right_truncation=...)`` reads a list of each kind of observation (any
+  may be left out; the truncation is one window shared by all), and
   ``SurpyvalData.from_xrd(x, r, d)`` the at-risk / deaths form; both
   validate as the fitters do. ``to_xcnt()`` gives the arrays ``x, c, n,
   t`` (copies) and ``to_observations()`` the four lists back, refusing
