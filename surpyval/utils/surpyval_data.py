@@ -43,6 +43,13 @@ class SurpyvalData:
     (array([2.]), array([3.]))
     """
 
+    # Attached by ``from_items``: each row's item id, the event type of
+    # each failure (None for a suspension), and each item's time-varying
+    # covariates (``{item: StepSchedule or CovariatePath}``).
+    ids: "list | None" = None
+    e: "np.ndarray | None" = None
+    time_varying_covariates: "dict | None" = None
+
     def __init__(
         self,
         x: ArrayLike | None = None,
@@ -559,6 +566,164 @@ class SurpyvalData:
         x_, c_, n_, t_ = xrd_to_xcnt(x, r, d)
         return cls(x_, c_, n_, t_)
 
+    @classmethod
+    def from_items(cls, items: Any, counts: Any = None) -> "SurpyvalData":
+        """
+        The data of several items' lifetimes, each an
+        :class:`~surpyval.utils.item_lifetime.ItemLifetime`, with ``counts``
+        (one number for every item, or one per item) saying how many
+        identical items each stands for; an item counted 0 is left out.
+        Ids must differ and be of one type; covariates, given for one item,
+        are needed for every item (the same number of values), and so are
+        time-varying covariates; event types, given for one failure, are
+        needed for every failure. The rows stay in the order of the items.
+
+        Examples
+        --------
+        >>> from surpyval import ItemLifetime, SurpyvalData
+        >>> data = SurpyvalData.from_items(
+        ...     [
+        ...         ItemLifetime("A", observed=5),
+        ...         ItemLifetime("B", right_censored=9),
+        ...     ],
+        ...     counts=[3, 10],
+        ... )
+        >>> data.x, data.c, data.n
+        (array([5., 9.]), array([0, 1]), array([ 3, 10]))
+        """
+        from surpyval.utils.item_lifetime import ItemLifetime
+
+        items = list(items)
+        if not items:
+            raise ValueError("Give at least one ItemLifetime.")
+        for item in items:
+            if not isinstance(item, ItemLifetime):
+                raise TypeError(
+                    "from_items takes ItemLifetime objects; got "
+                    f"{type(item).__name__}."
+                )
+        n = _item_counts("counts", counts, len(items))
+        items = [item for item, k in zip(items, n) if k > 0]
+        n = n[n > 0]
+        if not items:
+            raise ValueError("Every count is 0: there is no data.")
+        ids = [item.item for item in items]
+        if len({type(i) for i in ids}) > 1:
+            raise ValueError(
+                "The item ids must all be of one type (all text or all "
+                "numbers): mixed, '1' and 1 could not be told apart."
+            )
+        repeated = sorted({repr(i) for i in ids if ids.count(i) > 1})
+        if repeated:
+            raise ValueError(
+                "Each item needs one ItemLifetime (identical items are its "
+                "counts); given twice: " + ", ".join(repeated) + "."
+            )
+        static = _every_or_none(items, "covariates", lambda i: i.covariates)
+        varying = _every_or_none(
+            items,
+            "time_varying_covariates",
+            lambda i: (
+                None
+                if i.time_varying_covariates is None
+                else [0.0] * i.time_varying_covariates.p
+            ),
+        )
+        failures = [i for i in items if i.outcome != "right_censored"]
+        typed = [i.event_type is not None for i in failures]
+        if any(typed) and not all(typed):
+            missing = [i.item for i, t in zip(failures, typed) if not t]
+            raise ValueError(
+                "Event types were given for some failures but not for "
+                f"{missing!r}: every failure needs its event_type."
+            )
+        rows, flags = zip(*(item._row() for item in items))
+        x = np.array(rows, dtype=float)
+        if 2 not in flags:
+            x = x[:, 0]
+        tl = np.array(
+            [
+                -np.inf if i.left_truncation is None else i.left_truncation
+                for i in items
+            ]
+        )
+        tr = np.array(
+            [
+                np.inf if i.right_truncation is None else i.right_truncation
+                for i in items
+            ]
+        )
+        truncated = np.isfinite(tl).any() or np.isfinite(tr).any()
+        data = cls(
+            x,
+            np.array(flags),
+            n,
+            tl=tl if truncated else None,
+            tr=tr if truncated else None,
+            Z=np.vstack([i.covariates for i in items]) if static else None,
+            group_and_sort=False,
+        )
+        data.ids = ids
+        if any(typed):
+            e = np.empty(len(items), dtype=object)
+            e[:] = [i.event_type for i in items]
+            data.e = e
+        if varying:
+            data.time_varying_covariates = {
+                i.item: i.time_varying_covariates for i in items
+            }
+        return data
+
+    def to_items(self) -> list:
+        """
+        One :class:`~surpyval.utils.item_lifetime.ItemLifetime` per row, in
+        order (the item ids of :meth:`from_items`, else the row numbers);
+        ``data.n`` gives how many identical items each stands for, so
+        ``SurpyvalData.from_items(data.to_items(), counts=data.n)`` is the
+        same data.
+
+        Examples
+        --------
+        >>> from surpyval import SurpyvalData
+        >>> SurpyvalData([3, 7], c=[0, 1]).to_items()
+        [ItemLifetime(0, observed=3.0), ItemLifetime(1, right_censored=7.0)]
+        """
+        from surpyval.utils.item_lifetime import ItemLifetime
+
+        outcome = {
+            0: "observed",
+            1: "right_censored",
+            -1: "left_censored",
+            2: "interval_censored",
+        }
+        x = self.x if self.x.ndim == 2 else np.column_stack([self.x] * 2)
+        ids = self.ids if self.ids is not None else list(range(len(x)))
+        Z = None
+        if self.Z is not None:
+            Z = np.asarray(self.Z, dtype=float)
+            Z = Z[:, None] if Z.ndim == 1 else Z
+        items = []
+        for k, item in enumerate(ids):
+            flag = int(self.c[k])
+            value = x[k].tolist() if flag == 2 else float(x[k, 0])
+            tl, tr = self.t[k]
+            items.append(
+                ItemLifetime(
+                    item,
+                    **{outcome[flag]: value},
+                    left_truncation=float(tl) if np.isfinite(tl) else None,
+                    right_truncation=float(tr) if np.isfinite(tr) else None,
+                    event_type=None if self.e is None else self.e[k],
+                    covariates=None if Z is None else Z[k],
+                    time_varying_covariates=(
+                        None
+                        if self.time_varying_covariates is None
+                        else self.time_varying_covariates[item]
+                    ),
+                )
+            )
+        return items
+
     def to_xcnt(self) -> tuple:
         """
         The data in the ``xcnt`` format, ``(x, c, n, t)``: the times (a
@@ -879,6 +1044,25 @@ def _check_same_index(kind: str, times: Any, name: str, values: Any) -> None:
         )
 
 
+def _every_or_none(items: list, name: str, get: Callable) -> bool:
+    """Whether the items have ``name``: every one, or none (refused
+    otherwise), with values of one length."""
+    values = [get(item) for item in items]
+    given = [value is not None for value in values]
+    if not any(given):
+        return False
+    if not all(given):
+        missing = [i.item for i, g in zip(items, given) if not g]
+        raise ValueError(
+            f"'{name}' must be given for every item; missing {missing!r}."
+        )
+    if len({len(np.atleast_1d(value)) for value in values}) > 1:
+        raise ValueError(
+            f"Every item's '{name}' must have the same number of values."
+        )
+    return True
+
+
 def _item_counts(name: str, counts: Any, k: int) -> np.ndarray:
     """A kind's counts, ``name``, one per item: 1 each where not given, a
     number for every item, or a list of ``k``; whole numbers, 0 or
@@ -1053,6 +1237,7 @@ def accepts_surpyval_data(method: F) -> F:
                 filled["Z"] = data.Z
             else:
                 lost.append("covariates")
+        lost += _not_taken_yet(data)
         if lost:
             raise ValueError(
                 f"This fit takes no {' or '.join(lost)}, which the "
@@ -1062,4 +1247,34 @@ def accepts_surpyval_data(method: F) -> F:
         return method(*bound.args, **bound.kwargs)
 
     setattr(wrapper, "_accepts_surpyval_data", True)
+    return wrapper  # type: ignore[return-value]
+
+
+def _not_taken_yet(data: SurpyvalData) -> list:
+    """What a SurpyvalData from ``from_items`` holds that ``fit(data)``
+    does not take yet: fitting without it would be another model."""
+    out = []
+    if data.e is not None:
+        out.append("event types")
+    if data.time_varying_covariates is not None:
+        out.append("time-varying covariates (fit them with fit_tvc for now)")
+    return out
+
+
+def refuses_what_fit_cannot_take(method: F) -> F:
+    """Refuse, in a ``fit_from_surpyval_data``, data that holds event
+    types or time-varying covariates, which it would otherwise ignore."""
+
+    @functools.wraps(method)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        data = kwargs.get("surv_data", args[1] if len(args) > 1 else None)
+        if isinstance(data, SurpyvalData):
+            missing = _not_taken_yet(data)
+            if missing:
+                raise ValueError(
+                    f"This fit takes no {' or '.join(missing)}, which the "
+                    "SurpyvalData holds."
+                )
+        return method(*args, **kwargs)
+
     return wrapper  # type: ignore[return-value]

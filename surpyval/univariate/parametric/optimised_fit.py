@@ -19,7 +19,11 @@ from surpyval.utils.no_maximum import (
     warn_no_maximum,
     warn_unverified,
 )
-from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
+from surpyval.utils.surpyval_data import (
+    SurpyvalData,
+    accepts_surpyval_data,
+    refuses_what_fit_cannot_take,
+)
 from surpyval.utils.units import takes_unit
 
 from ._fit_inputs import FitInputsMixin, normalise_how
@@ -572,6 +576,7 @@ class OptimisedFitMixin(FitInputsMixin):
         keep = (np.asarray(non_parametric_model.d) > 0) & np.isfinite(x)
         return self.fit_from_ecdf(x[keep], F[keep])
 
+    @refuses_what_fit_cannot_take
     def fit_from_surpyval_data(
         self,
         surv_data: SurpyvalData,
