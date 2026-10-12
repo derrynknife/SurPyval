@@ -39,6 +39,26 @@ Unreleased
   it was last seen working); an ``ItemHistory`` takes ``add_failure``,
   ``add_failures_between``, ``change_state`` and ``change_state_between``,
   an event after its end of observation moving the end to it.
+- ``SurpyvalData`` carries event types: ``SurpyvalData(x, c, ..., e=...)``
+  (one per row; every failure needs one, a suspension has none) and
+  ``from_observations(..., observed_event_types=...,
+  left_censored_event_types=..., interval_censored_event_types=...)``, one
+  type for every item of the kind or one per item; ``to_observations()``
+  gives them back. The competing-risks fitters (``CompetingRisks``,
+  ``ParametricCompetingRisks``, ``CompetingRisksProportionalHazards``,
+  ``FineGray``) take ``fit(data)``, the event types coming from the data;
+  given data without them, they say so. Rows with event types are not
+  grouped, so each keeps its type, and a subset keeps them too.
+- ``fit(data)`` of a regression model fits the step time-varying
+  covariates of ``SurpyvalData.from_items`` data with the model's
+  ``fit_tvc``: each item's life, from the start of its observation to its
+  outcome, is split where its schedule steps, and each row's covariates
+  are the item's static covariates followed by its time-varying ones. The
+  fit is exactly the ``fit_tvc`` of those rows (proportional hazards, Cox,
+  accelerated failure time, ...). Left or interval censored items, right
+  truncation and continuous ``CovariatePath`` covariates (#908) are
+  refused. A fit taking ``tl`` but not ``t`` now gets a ``SurpyvalData``'s
+  left truncation, rather than refusing it.
 - ``ItemLifetime``, one item's lifetime: exactly one outcome
   (``observed``, ``right_censored``, ``left_censored`` or
   ``interval_censored``), its observation window (``left_truncation`` /
@@ -48,9 +68,9 @@ Unreleased
   the data, ``counts`` saying how many identical items each stands for (an
   item is one item); ``to_items()`` gives the items back, so
   ``from_items(data.to_items(), counts=data.n)`` is the same data. Every
-  check names the item. Event types and time-varying covariates are kept
-  with the data, and refused by ``fit(data)`` and
-  ``fit_from_surpyval_data`` until they can use them, rather than ignored.
+  check names the item. Event types go to the competing-risks fitters and
+  step time-varying covariates to ``fit_tvc`` (below); a fit that cannot
+  use them refuses them rather than ignoring them.
 - ``ItemHistory``, one repairable item's history: exact failures
   (``observed``), failures found between two ages
   (``interval_censored`` with ``interval_censored_counts``), a count of

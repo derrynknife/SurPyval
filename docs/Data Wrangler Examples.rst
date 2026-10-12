@@ -158,10 +158,25 @@ Records are updated as items age, each update giving a new, checked record
 
 Every check names the item, and ``data.to_items()`` gives the items back
 (``SurpyvalData.from_items(data.to_items(), counts=data.n)`` is the same
-data). An item's ``event_type`` and ``time_varying_covariates`` (``{age:
-values}``, a ``StepSchedule`` or a ``CovariatePath``) are kept with the
-data; ``fit(data)`` refuses them until it can use them (fit time-varying
-covariates with ``fit_tvc`` meanwhile).
+data). An item's ``event_type`` goes to the competing-risks fitters
+(``CompetingRisks.fit(data)``), and its step ``time_varying_covariates``
+(``{age: values}`` or a ``StepSchedule``) to a regression's ``fit_tvc``:
+``WeibullPH.fit(data)`` splits each item's life where its covariates step.
+A continuously varying ``CovariatePath`` is kept with the data but not
+fitted yet (#908).
+
+.. jupyter-execute::
+
+    from surpyval import StepSchedule
+
+    stress = StepSchedule.from_changepoints([0, 500], [[0.0], [1.0]])
+    rng = np.random.default_rng(1)
+    life = rng.weibull(2.0, 60) * 900
+    items = [
+        ItemLifetime(k, observed=t, time_varying_covariates=stress)
+        for k, t in enumerate(life)
+    ]
+    surv.WeibullPH.fit(SurpyvalData.from_items(items)).params
 
 Combining every input type in one fit
 -------------------------------------
