@@ -26,7 +26,7 @@ from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_event_data import (
     accepts_recurrent_data,
-    refuses_time_varying_covariates,
+    refuses_unmodelled_data,
 )
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 from surpyval.utils.units import takes_unit
@@ -170,7 +170,7 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
         return start
 
     @renamed_arguments(dist="baseline")
-    @refuses_time_varying_covariates
+    @refuses_unmodelled_data
     def fit_from_recurrent_data(
         self,
         data: Any,

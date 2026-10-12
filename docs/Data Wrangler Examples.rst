@@ -400,10 +400,19 @@ with an ``ItemHistory`` and build the dataset from the list:
     data.to_items()[1]
 
 Every check names the item and says what is wrong with its history, and
-``data.to_items()`` gives the items back. ``time_varying_covariates``
-(``{age: values}``) are kept with the data, though no model uses them yet
-(#905); ``markers`` (#891) and ``states`` (#887) are reserved for the joint
-and multi-state models.
+``data.to_items()`` gives the items back. Two kinds of history are kept with
+the data for the models that will use them, and refused by every fit until
+then:
+
+- ``time_varying_covariates`` (#905): ``{age: values}``, a ``StepSchedule``
+  or a continuously varying ``CovariatePath``.
+- The item's path through states (#887), recorded like its failures: an
+  ``initial_state``, changes seen as they happened (``observed_states={age:
+  state}``), changes between two inspections (``interval_censored_states=
+  [[lower, upper, state]]``) and a state already reached at the first look
+  (``left_censored_states``).
+
+``markers`` (repeated measurements, #891) are reserved for the joint models.
 
 If your log records the time *between* failures instead, take a cumulative sum within each item first, for example ``df.groupby("machine")["hours_between"].cumsum()``. Leaving out the end-of-observation rows is a mistake: without them the models cannot know that M3, for example, has run a further 1,380 hours without failing since its failure at 1,720 hours, and would treat it as if it had been scrapped straight after that failure. See :doc:`Recurrent Event Modelling with SurPyval` for the models that use this data.
 

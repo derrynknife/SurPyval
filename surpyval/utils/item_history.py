@@ -58,16 +58,40 @@ class ItemHistory:
         one per entry.
     left_censored_event_types : optional
         The type of the failures counted by ``left_censored``.
-    time_varying_covariates : dict, optional
-        ``{age: values}``: covariates that change over its history, each
-        value holding from its age on; the first age must be at or before
-        the start of observation (``left_truncation``, else 0). No model
-        uses these yet (#905): every fit refuses data that has them.
+    time_varying_covariates : dict, StepSchedule or CovariatePath, optional
+        Covariates that change over its history: ``{age: values}``, each
+        value holding from its age on (the first age at or before the
+        start of observation, ``left_truncation``, else 0); a
+        :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`;
+        or a continuously varying
+        :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`
+        (both of these hold their first value back to age 0). A dict is
+        kept as a ``StepSchedule``. No recurrent model uses them yet
+        (#905): every fit refuses data that has them.
+
+    initial_state : optional
+        The state the item was in when it came under observation (at
+        ``left_truncation``, else age 0), for multi-state models; needed
+        once any change of state is given.
+    observed_states : dict, optional
+        ``{age: state}``: changes of state seen as they happened.
+    interval_censored_states : array like, optional
+        ``[lower, upper, state]`` rows: a change into ``state`` somewhere
+        between two inspections.
+    left_censored_states : dict, optional
+        ``{age: state}``: already in ``state`` at the first look, ``age``,
+        having changed into it since the start of observation (at most
+        one, before every other change).
 
     Event types, given for some failures, are needed for all of them (the
-    end of observation has none). ``markers`` (repeated measurements,
-    #891) and ``states`` (multi-state paths, #887) are reserved for the
-    models that will use them.
+    end of observation has none). Changes of state are the item's path
+    through its states: each into a state other than the one it was in,
+    in order of age and not overlapping, and within its observation; the
+    end of observation (``right_censored``, needed where there are no
+    failures) is the age up to which it was seen in its last state. No
+    model uses states yet (#887): every fit refuses data that has them.
+    ``markers`` (repeated measurements, #891) are reserved for the joint
+    models.
 
     Examples
     --------
@@ -100,10 +124,14 @@ class ItemHistory:
         left_truncation: Any = None,
         right_truncation: Any = None,
         covariates: Any = None,
-        time_varying_covariates: "dict | None" = None,
+        time_varying_covariates: Any = None,
         observed_event_types: Any = None,
         interval_censored_event_types: Any = None,
         left_censored_event_types: Any = None,
+        initial_state: Any = None,
+        observed_states: "dict | None" = None,
+        interval_censored_states: Any = None,
+        left_censored_states: "dict | None" = None,
     ) -> None:
         self.item = item
         ages = _ages(item, "observed", observed)
@@ -178,8 +206,16 @@ class ItemHistory:
             item, "right_truncation", right_truncation
         )
         self.covariates = _covariate_row(item, "covariates", covariates)
-        self.time_varying_covariates = _step_covariates(
+        self.time_varying_covariates, self._first_change = _time_varying(
             item, time_varying_covariates
+        )
+        self.initial_state = initial_state
+        self.state_changes = _state_changes(
+            item,
+            observed_states,
+            interval_censored_states,
+            left_censored_states,
+            0.0 if self.left_truncation is None else self.left_truncation,
         )
         self._check()
 
@@ -233,8 +269,15 @@ class ItemHistory:
         if not events and self.right_censored is None:
             raise ValueError(
                 f"Item {item!r} has no failures and no end of observation: "
-                "give at least one."
+                "give at least one"
+                + (
+                    " (a path through states needs the age up to which it "
+                    "was seen, right_censored)."
+                    if self.state_changes
+                    else "."
+                )
             )
+        self._check_states()
         tl, tr = self.left_truncation, self.right_truncation
         if tl is not None and tr is not None and not tl < tr:
             raise ValueError(
@@ -285,15 +328,78 @@ class ItemHistory:
                 f"Item {item!r} has a failure at {last:g}, after "
                 f"right_truncation ({tr:g}), past which none could be seen."
             )
-        if self.time_varying_covariates is not None:
+        if self._first_change is not None:
             start = 0.0 if tl is None else tl
-            first = self.time_varying_covariates[0][0]
+            first = self._first_change
             if first > start:
                 raise ValueError(
                     f"Item {item!r}: its time-varying covariates start at age "
                     f"{first:g}, after the start of its observation "
                     f"({start:g}): give their values from {start:g} on."
                 )
+
+    @property
+    def has_states(self) -> bool:
+        """Whether this item's path through states is given."""
+        return self.initial_state is not None
+
+    def _check_states(self) -> None:
+        item = self.item
+        changes = self.state_changes
+        if changes and self.initial_state is None:
+            raise ValueError(
+                f"Item {item!r}: changes of state were given without "
+                "'initial_state', the state it was in when it came under "
+                "observation."
+            )
+        if self.initial_state is None:
+            return
+        state = self.initial_state
+        previous_end = -np.inf
+        for kind, lower, upper, new in changes:
+            if kind == "left_censored" and previous_end > -np.inf:
+                raise ValueError(
+                    f"Item {item!r}: left_censored_states counts a change "
+                    "before the first look, so it must come before every "
+                    "other change of state."
+                )
+            if new == state:
+                raise ValueError(
+                    f"Item {item!r}: a change into {new!r} at "
+                    f"{_when(kind, lower, upper)} is from {new!r} itself; a "
+                    "change of state is into another state."
+                )
+            if lower < previous_end or (
+                kind == "observed" and lower == previous_end
+            ):
+                raise ValueError(
+                    f"Item {item!r}: its changes of state overlap or are out "
+                    f"of order at {_when(kind, lower, upper)}: each must "
+                    "follow the one before."
+                )
+            state, previous_end = new, upper
+        tl, tr = self.left_truncation, self.right_truncation
+        for kind, lower, upper, new in changes:
+            if tl is not None and (
+                lower < tl or (kind == "observed" and lower <= tl)
+            ):
+                raise ValueError(
+                    f"Item {item!r}: the change into {new!r} at "
+                    f"{_when(kind, lower, upper)} is not after it came under "
+                    f"observation ({tl:g}, left_truncation)."
+                )
+            if tr is not None and upper > tr:
+                raise ValueError(
+                    f"Item {item!r}: the change into {new!r} at "
+                    f"{_when(kind, lower, upper)} is after right_truncation "
+                    f"({tr:g})."
+                )
+        end = self.right_censored
+        if changes and end is not None and end < changes[-1][2]:
+            raise ValueError(
+                f"Item {item!r}: the end of observation, {end:g}, is before "
+                f"its last change of state, {changes[-1][2]:g}."
+            )
 
     # -- rows for the dataset ----------------------------------------------
 
@@ -375,10 +481,28 @@ class ItemHistory:
         if self.covariates is not None:
             out["covariates"] = self.covariates.tolist()
         if self.time_varying_covariates is not None:
-            ages, values = self.time_varying_covariates
-            out["time_varying_covariates"] = {
-                float(age): row.tolist() for age, row in zip(ages, values)
-            }
+            out["time_varying_covariates"] = _schedule_field(
+                self.time_varying_covariates
+            )
+        if self.initial_state is not None:
+            out["initial_state"] = self.initial_state
+        observed = {
+            u: st for k, _, u, st in self.state_changes if k == "observed"
+        }
+        if observed:
+            out["observed_states"] = observed
+        intervals = [
+            [lo, u, st]
+            for k, lo, u, st in self.state_changes
+            if k == "interval_censored"
+        ]
+        if intervals:
+            out["interval_censored_states"] = intervals
+        left = {
+            u: st for k, _, u, st in self.state_changes if k == "left_censored"
+        }
+        if left:
+            out["left_censored_states"] = left
         return out
 
     def __eq__(self, other: object) -> bool:
@@ -502,16 +626,22 @@ def _covariate_row(item: Any, name: str, value: Any) -> "np.ndarray | None":
     return row
 
 
-def _step_covariates(
-    item: Any, value: "dict | None"
-) -> "tuple[np.ndarray, np.ndarray] | None":
-    """``{age: values}`` as sorted ``(ages, values)``, values ``(k, p)``."""
+def _time_varying(item: Any, value: Any) -> tuple[Any, "float | None"]:
+    """The time-varying covariates as a StepSchedule or CovariatePath,
+    and, for a ``{age: values}`` dict, its first age (checked against the
+    start of observation); ``(None, None)`` where not given."""
+    from surpyval.univariate.regression.tvc_path import CovariatePath
+    from surpyval.univariate.regression.tvc_schedule import StepSchedule
+
     if value is None:
-        return None
+        return None, None
+    if isinstance(value, (StepSchedule, CovariatePath)):
+        return value, None
     if not isinstance(value, dict) or not value:
         raise ValueError(
             f"Item {item!r}: 'time_varying_covariates' must be a dict "
-            "{age: values}, the values holding from each age on."
+            "{age: values} (the values holding from each age on), a "
+            "StepSchedule or a CovariatePath."
         )
     ages = np.array([_age(item, "time_varying_covariates", a) for a in value])
     rows = [
@@ -524,7 +654,24 @@ def _step_covariates(
             "the same number of values."
         )
     order = np.argsort(ages)
-    return ages[order], np.vstack(rows)[order]
+    schedule = StepSchedule.from_changepoints(
+        ages[order], np.vstack(rows)[order]
+    )
+    return schedule, float(ages.min())
+
+
+def _schedule_field(schedule: Any) -> Any:
+    """A StepSchedule without a period as the ``{age: values}`` dict that
+    rebuilds it; anything else (a cyclic schedule, a CovariatePath) as
+    itself."""
+    from surpyval.univariate.regression.tvc_schedule import StepSchedule
+
+    if isinstance(schedule, StepSchedule) and schedule.period is None:
+        return {
+            float(age): row.tolist()
+            for age, row in zip(schedule.edges[:-1], schedule.Z)
+        }
+    return schedule
 
 
 def _event_types(
@@ -556,3 +703,86 @@ def _event_types(
             "its type."
         )
     return types
+
+
+def _state_label(item: Any, name: str, state: Any) -> Any:
+    """A state label: anything but None."""
+    if state is None:
+        raise ValueError(
+            f"Item {item!r}: '{name}' cannot hold None as a state."
+        )
+    return state
+
+
+def _state_changes(
+    item: Any,
+    observed: "dict | None",
+    intervals: Any,
+    left: "dict | None",
+    start: float,
+) -> list:
+    """The changes of state as ``(kind, lower, upper, state)``, sorted by
+    age; an observed change has ``lower == upper``, a left censored one
+    runs from the start of observation."""
+    changes: list = []
+    for name, value in (
+        ("observed_states", observed),
+        ("left_censored_states", left),
+    ):
+        if value is None:
+            continue
+        if not isinstance(value, dict):
+            raise ValueError(
+                f"Item {item!r}: '{name}' must be a dict {{age: state}}."
+            )
+        kind = name[: -len("_states")]
+        for age, state in value.items():
+            age = _age(item, name, age)
+            changes.append(
+                (
+                    kind,
+                    age if kind == "observed" else start,
+                    age,
+                    _state_label(item, name, state),
+                )
+            )
+    if left is not None and len(left) > 1:
+        raise ValueError(
+            f"Item {item!r}: 'left_censored_states' holds at most one change "
+            "(the state at the first look)."
+        )
+    if intervals is not None:
+        for row in intervals:
+            try:
+                lower, upper, state = row
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f"Item {item!r}: 'interval_censored_states' must be "
+                    "[lower, upper, state] rows."
+                )
+            lower = _age(item, "interval_censored_states", lower)
+            upper = _age(item, "interval_censored_states", upper)
+            if not lower < upper:  # type: ignore[operator]
+                raise ValueError(
+                    f"Item {item!r}: each row of 'interval_censored_states' "
+                    "needs lower < upper."
+                )
+            changes.append(
+                (
+                    "interval_censored",
+                    lower,
+                    upper,
+                    _state_label(item, "interval_censored_states", state),
+                )
+            )
+    changes.sort(key=lambda change: (change[2], change[1]))
+    return changes
+
+
+def _when(kind: str, lower: float, upper: float) -> str:
+    """Where a change of state happened, for a message."""
+    if kind == "observed":
+        return f"{upper:g}"
+    if kind == "left_censored":
+        return f"before {upper:g}"
+    return f"({lower:g}, {upper:g}]"

@@ -38,13 +38,16 @@ Unreleased
   left out, observation ends at the last failure), its observation window
   (``left_truncation`` / ``right_truncation``), what each failure was
   (``observed_event_types`` and so on, for the cause-specific models),
-  static ``covariates`` and ``time_varying_covariates`` (``{age:
-  values}``; kept with the data, refused by every fit until a model uses
-  them, #905). Every check names the item and what is wrong.
+  static ``covariates``, ``time_varying_covariates`` (``{age: values}``,
+  a ``StepSchedule`` or a ``CovariatePath``; #905) and its path through
+  states, recorded like its failures (``initial_state``,
+  ``observed_states``, ``interval_censored_states``,
+  ``left_censored_states``; #887). The last two are kept with the data
+  and refused by every fit until a model uses them. Every check names the
+  item and what is wrong.
   ``RecurrentEventData.from_items([...])`` builds the dataset and
   ``to_items()`` gives the items back; ``from_histories`` builds its items
-  the same way. ``markers`` (#891) and ``states`` (#887) are reserved for
-  the joint and multi-state models.
+  the same way. ``markers`` (#891) are reserved for the joint models.
 - ``RecurrentEventData.from_histories`` reads recurrent event data as each
   item's history, keyed by the item's id: ``observed={item: [ages at its
   failures]}`` and ``right_censored={item: age at the end of

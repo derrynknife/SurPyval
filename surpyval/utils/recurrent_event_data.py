@@ -61,10 +61,14 @@ class RecurrentEventData:
     # stay ``None`` for ordinary single-window data.
     window_map: dict | None = None
     observation_windows: dict | None = None
-    # Time-varying covariates, ``{item: (ages, values)}``, attached by
-    # ``from_items`` when an ItemHistory has them; no model uses them yet
-    # (#905), so every fit refuses data that has them.
+    # Time-varying covariates, ``{item: StepSchedule or CovariatePath}``,
+    # attached by ``from_items`` when an ItemHistory has them; no model uses
+    # them yet (#905), so every fit refuses data that has them.
     time_varying_covariates: dict | None = None
+    # Each item's path through its states, ``{item: (initial_state,
+    # changes)}``, attached by ``from_items``; no model uses them yet
+    # (#887), so every fit refuses data that has them.
+    states: dict | None = None
 
     def __init__(
         self,
@@ -682,7 +686,7 @@ class RecurrentEventData:
             lambda h: (
                 None
                 if h.time_varying_covariates is None
-                else h.time_varying_covariates[1][0]
+                else [0.0] * h.time_varying_covariates.p
             ),
         )
         typed = [h.has_event_types for h in items]
@@ -752,6 +756,20 @@ class RecurrentEventData:
                 history.item: history.time_varying_covariates
                 for history in items
             }
+        with_states = [history.has_states for history in items]
+        if any(with_states):
+            missing = [
+                h.item for h, given in zip(items, with_states) if not given
+            ]
+            if missing:
+                raise ValueError(
+                    "States were given for some items but not for "
+                    f"{missing!r}: every item needs its 'initial_state'."
+                )
+            data.states = {
+                history.item: (history.initial_state, history.state_changes)
+                for history in items
+            }
         return data
 
     def to_items(self) -> list:
@@ -782,8 +800,29 @@ class RecurrentEventData:
             tl, tr = self.tl[rows][0], self.tr[rows][0]
             varying = None
             if self.time_varying_covariates is not None:
-                ages, values = self.time_varying_covariates[key]
-                varying = {float(a): v for a, v in zip(ages, values)}
+                varying = self.time_varying_covariates[key]
+            state_args: dict = {}
+            if self.states is not None:
+                initial, changes = self.states[key]
+                state_args = {
+                    "initial_state": initial,
+                    "observed_states": {
+                        u: st for k, _, u, st in changes if k == "observed"
+                    }
+                    or None,
+                    "interval_censored_states": [
+                        [lo, u, st]
+                        for k, lo, u, st in changes
+                        if k == "interval_censored"
+                    ]
+                    or None,
+                    "left_censored_states": {
+                        u: st
+                        for k, _, u, st in changes
+                        if k == "left_censored"
+                    }
+                    or None,
+                }
             histories.append(
                 ItemHistory(
                     key,
@@ -812,6 +851,7 @@ class RecurrentEventData:
                         if e is None or not (c == -1).any()
                         else e[c == -1][0]
                     ),
+                    **state_args,
                 )
             )
         return histories
@@ -847,6 +887,10 @@ class RecurrentEventData:
             problems.append("event types")
         if self.window_map is not None:
             problems.append("observation windows")
+        if self.time_varying_covariates is not None:
+            problems.append("time-varying covariates")
+        if self.states is not None:
+            problems.append("states")
         if problems:
             raise ValueError(
                 "This data has " + " and ".join(problems) + ", which a "
@@ -1112,10 +1156,7 @@ def accepts_recurrent_data(method: F) -> F:
                 filled["e"] = data.e
             else:
                 lost.append("event types")
-        if data.time_varying_covariates is not None:
-            lost.append(
-                "time-varying covariates (no model uses them yet, #905)"
-            )
+        lost += _unmodelled(data)
         if lost:
             raise ValueError(
                 f"This fit takes no {' or '.join(lost)}, which the "
@@ -1128,18 +1169,31 @@ def accepts_recurrent_data(method: F) -> F:
     return wrapper  # type: ignore[return-value]
 
 
-def refuses_time_varying_covariates(method: F) -> F:
-    """Refuse, in a ``fit_from_recurrent_data``, data with time-varying
-    covariates, which no model uses yet (#905): fitting it as if they
-    were not there would be a different model from the one asked for."""
+def _unmodelled(data: Any) -> list:
+    """What ``data`` holds that no model uses yet."""
+    out = []
+    if getattr(data, "time_varying_covariates", None) is not None:
+        out.append("time-varying covariates (no model uses them yet, #905)")
+    if getattr(data, "states", None) is not None:
+        out.append("states (no model uses them yet, #887)")
+    return out
+
+
+def refuses_unmodelled_data(method: F) -> F:
+    """Refuse, in a ``fit_from_recurrent_data``, data that holds what no
+    model uses yet (time-varying covariates, #905; states, #887): fitting
+    it as if they were not there would be a different model from the one
+    asked for."""
 
     @functools.wraps(method)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         data = kwargs.get("data", args[1] if len(args) > 1 else None)
-        if getattr(data, "time_varying_covariates", None) is not None:
+        unmodelled = _unmodelled(data)
+        if unmodelled:
             raise ValueError(
-                "This fit takes no time-varying covariates, which the "
-                "RecurrentEventData holds (no model uses them yet, #905)."
+                "This fit takes no "
+                + " or ".join(unmodelled)
+                + ", which the RecurrentEventData holds."
             )
         return method(*args, **kwargs)
 
