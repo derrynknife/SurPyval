@@ -202,6 +202,23 @@ and ``tr_col`` are all optional columns you point ``fit_from_df`` at:
         df, x_col='x', c_col='c', n_col='n', tl_col='tl'
     )
 
+Data kept as a list of each kind of observation takes its truncation with
+each list: ``observed_left_truncation``, ``right_censored_left_truncation``
+and so on (and ``..._right_truncation``), one number for every item of
+that kind or one bound per item, in the same order. ``left_truncation`` and
+``right_truncation`` are one window shared by everything:
+
+.. jupyter-execute::
+
+    data = SurpyvalData.from_observations(
+        observed=[674, 792, 1153, 1555],
+        observed_left_truncation=[100, 200, 300, 500],
+        right_censored=[1450, 2000],
+        right_censored_left_truncation=500,
+    )
+    print(data.t)
+    surv.Weibull.fit(data).params
+
 
 From dates to durations
 -----------------------
@@ -329,14 +346,17 @@ non-parametric estimators' "at risk / deaths" (``xrd``) form too:
    * - ``SurpyvalData.from_observations(observed, right_censored,
        left_censored, interval_censored, left_truncation=,
        right_truncation=)``
-     - a list of each kind of observation (the ``fsli`` layout), with an
-       optional truncation window shared by all → data
+     - a list of each kind of observation (the ``fsli`` layout), each
+       with truncation bounds of its own (``observed_left_truncation=``,
+       ``right_censored_right_truncation=``, ...) or one window shared by
+       all → data
    * - ``SurpyvalData.from_xrd(x, r, d)``
      - at-risk / deaths (``xrd``) → data
    * - ``data.to_xcnt()``
      - data → the arrays ``x, c, n, t``
    * - ``data.to_observations()``
-     - data → a dict of the four lists ``from_observations`` reads
+     - data → a dict of the four lists ``from_observations`` reads, and
+       each kind's truncation bounds if the data is truncated
    * - ``data.to_xrd()``
      - data → ``x, r, d``
    * - ``data.to_json()``, ``SurpyvalData.from_json(...)``
@@ -360,9 +380,9 @@ information:
   time once; rows given out of order are sorted by time (keeping their
   ``r`` and ``d``), and a time listed twice is an error. More deaths than
   items at risk is an error too.
-- ``to_observations`` refuses truncated data, since the lists have no place
-  for the bounds; ``from_observations`` takes a truncation window only as
-  one ``tl`` / ``tr`` shared by every observation.
+- ``to_observations`` and ``from_observations`` lose nothing:
+  ``SurpyvalData.from_observations(**data.to_observations())`` is the same
+  data, truncation included.
 
 Observed and right censored data folds into the ``xrd`` form, the count at
 risk and the number of deaths at each distinct time:

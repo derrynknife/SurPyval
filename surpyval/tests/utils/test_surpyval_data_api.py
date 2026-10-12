@@ -93,9 +93,73 @@ def test_to_observations_round_trips():
         np.testing.assert_array_equal(a, b)
 
 
-def test_to_observations_refuses_truncated_data():
-    with pytest.raises(ValueError, match="truncation"):
-        SurpyvalData([1, 2, 3], tl=0.5).to_observations()
+def test_each_kind_takes_its_own_truncation():
+    data = SurpyvalData.from_observations(
+        observed=[600, 700, 900],
+        observed_left_truncation=[500, 0, 650],
+        right_censored=[1000, 1200],
+        right_censored_left_truncation=500,
+        interval_censored=[[300, 400]],
+        interval_censored_right_truncation=800,
+    )
+    by_hand = SurpyvalData(
+        [600, 700, 900, 1000, 1200, [300, 400]],
+        c=[0, 0, 0, 1, 1, 2],
+        tl=[500, 0, 650, 500, 500, -np.inf],
+        tr=[np.inf] * 5 + [800],
+    )
+    for got, want in zip(data.to_xcnt(), by_hand.to_xcnt()):
+        np.testing.assert_array_equal(got, want)
+    np.testing.assert_allclose(
+        sp.Weibull.fit(data).params, sp.Weibull.fit(by_hand).params
+    )
+
+
+def test_a_kinds_own_bound_needs_its_list_and_the_right_length():
+    with pytest.raises(ValueError, match="one per item \\(2"):
+        SurpyvalData.from_observations(
+            observed=[600, 700], observed_left_truncation=[1, 2, 3]
+        )
+    with pytest.raises(ValueError, match="without 'right_censored'"):
+        SurpyvalData.from_observations(
+            observed=[600], right_censored_left_truncation=500
+        )
+    with pytest.raises(ValueError, match="use -inf"):
+        SurpyvalData.from_observations(
+            observed=[600, 700], observed_left_truncation=[1, np.nan]
+        )
+
+
+def test_shared_and_own_bound_on_one_side_are_refused():
+    with pytest.raises(ValueError, match="give one"):
+        SurpyvalData.from_observations(
+            observed=[600],
+            left_truncation=0,
+            observed_left_truncation=500,
+        )
+    # the other side, or another kind, is no clash
+    data = SurpyvalData.from_observations(
+        observed=[600],
+        right_censored=[1000],
+        left_truncation=100,
+        observed_right_truncation=800,
+    )
+    np.testing.assert_array_equal(data.t, [[100, 800], [100, np.inf]])
+
+
+def test_to_observations_round_trips_truncated_data():
+    data = SurpyvalData(
+        [600, 600, 700, 1000, [300, 400]],
+        c=[0, 0, 0, 1, 2],
+        n=[2, 1, 1, 3, 1],
+        tl=[500, 0, 0, 500, 100],
+    )
+    lists = data.to_observations()
+    assert lists["observed_left_truncation"].tolist() == [0, 500, 500, 0]
+    assert "observed_right_truncation" not in lists
+    again = SurpyvalData.from_observations(**lists)
+    for a, b in zip(again.to_xcnt(), data.to_xcnt()):
+        np.testing.assert_array_equal(a, b)
 
 
 def test_to_xcnt_gives_copies():
