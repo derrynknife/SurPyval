@@ -20,6 +20,10 @@ Unreleased
   gives the arrays ``x, c, n, t`` (copies) and ``to_observations()`` the
   lists back, with each kind's bounds for truncated data, so
   ``from_observations(**data.to_observations())`` is the same data.
+  ``from_observations`` refuses an infinite single time by name (an
+  interval open at one end is ``[lower, inf]`` in ``interval_censored``),
+  and a pandas list and its per-item values with different indexes, since
+  they are matched by position.
 - The parametric, non-parametric and regression ``fit`` methods (with
   ``MixtureModel`` and ``fit_best``) take a ``SurpyvalData`` as ``x``:
   ``Weibull.fit(data)``. The values, flags, counts, truncation and, for a
@@ -126,11 +130,25 @@ Unreleased
   (``surpyval.fs_to_xcnt`` and so on), for the ``SurpyvalData`` methods
   above. Unlike other deprecations, these have a date: deprecated on
   2026-10-12, they warn (naming the replacement) when used, and the first
-  release on or after 2027-04-12 removes them. ``surpyval.utils`` keeps
+  release on or after 2027-04-12 removes them. The warning is a
+  ``FutureWarning``, which Python shows wherever the name is used (a
+  ``DeprecationWarning`` is hidden outside ``__main__``), and the names
+  stay in ``__all__``, so ``from surpyval import *`` still gets them, with
+  the warning, until then. ``surpyval.utils`` keeps
   the functions. :doc:`Data Wrangler Examples` maps each to its
   replacement.
 
 **Fixed**
+
+- ``SurpyvalData.to_xrd()`` returned the arrays it keeps for the next
+  call, so editing the result (``r *= 10``) changed what that data gave
+  from then on; it returns copies, as ``to_xcnt()`` does.
+- A ``SurpyvalData`` given to a function that takes arrays only (the
+  recurrent-event and competing-risks fitters) said "Variable 'x' must be
+  numbers"; it now says the function takes arrays, and that ``to_xcnt()``
+  gives them. A regression ``fit`` given a ``SurpyvalData`` without
+  covariates says the data holds none, not that ``Z`` is a missing
+  positional argument.
 
 - ``fit_best(include=[])`` is refused, naming the fix; it used to try the
   default candidates as if ``include`` had been left out.

@@ -4,6 +4,7 @@ the dated deprecation of the top-level data-format functions they
 replace."""
 
 import datetime
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -162,6 +163,39 @@ def test_to_observations_round_trips_truncated_data():
         np.testing.assert_array_equal(a, b)
 
 
+def test_to_xrd_gives_copies():
+    data = SurpyvalData([1, 2, 3], [0, 1, 0])
+    x, r, d = data.to_xrd()
+    r *= 10
+    d[:] = 0
+    np.testing.assert_array_equal(data.to_xrd()[1], [3, 2, 1])
+    np.testing.assert_array_equal(data.to_xrd()[2], [1, 0, 1])
+
+
+@pytest.mark.parametrize(
+    "kind", ["observed", "right_censored", "left_censored"]
+)
+def test_infinite_single_times_are_refused_by_name(kind):
+    with pytest.raises(ValueError, match=f"'{kind}' times must be finite"):
+        SurpyvalData.from_observations(**{kind: [1.0, np.inf]})
+
+
+def test_pandas_lists_and_bounds_must_share_an_index():
+    import pandas as pd
+
+    times = pd.Series([600.0, 700.0], index=[1, 0])
+    with pytest.raises(ValueError, match="different indexes"):
+        SurpyvalData.from_observations(
+            observed=times,
+            observed_left_truncation=pd.Series([500.0, 0.0], index=[0, 1]),
+        )
+    data = SurpyvalData.from_observations(
+        observed=times,
+        observed_left_truncation=pd.Series([500.0, 0.0], index=[1, 0]),
+    )
+    np.testing.assert_array_equal(data.tl, [500, 0])
+
+
 def test_to_xcnt_gives_copies():
     data = SurpyvalData([3, 1, 3], [0, 1, 0])
     x, c, n, t = data.to_xcnt()
@@ -228,6 +262,23 @@ def test_data_and_separate_data_arguments_are_refused(call):
         call(SurpyvalData(X, C))
 
 
+def test_a_regression_given_data_without_covariates_says_so():
+    with pytest.raises(TypeError, match="holds none"):
+        sp.WeibullPH.fit(SurpyvalData(X, C))
+
+
+@pytest.mark.parametrize(
+    "fit",
+    [
+        lambda d: sp.recurrent.CrowAMSAA.fit(d),
+        lambda d: sp.recurrent.NonParametricCounting.fit(d),
+    ],
+)
+def test_a_fit_taking_arrays_only_names_the_data(fit):
+    with pytest.raises(TypeError, match="does not take"):
+        fit(SurpyvalData(np.cumsum(X[:10])))
+
+
 def test_covariates_in_both_places_are_refused():
     with pytest.raises(TypeError, match="'Z'"):
         sp.WeibullPH.fit(SurpyvalData(X, C, Z=Z), Z=Z)
@@ -246,13 +297,43 @@ def test_fit_from_surpyval_data_is_kept():
 
 @pytest.mark.parametrize("name", sorted(DATED_DATA_FUNCTIONS))
 def test_old_top_level_names_warn_with_their_date_and_replacement(name):
-    with pytest.warns(DeprecationWarning) as caught:
+    with pytest.warns(FutureWarning) as caught:
         function = getattr(sp, name)
     message = str(caught[0].message)
     assert DATA_FUNCTIONS_REMOVED_AFTER.isoformat() in message
     assert "SurpyvalData" in message
     assert function is getattr(data_formats, name)
-    assert name not in sp.__all__
+    # Listed, so that a star import still gets it until the removal date
+    assert name in sp.__all__
+
+
+def test_a_star_import_still_gets_the_old_names_with_the_warning():
+    namespace: dict = {}
+    with pytest.warns(FutureWarning) as caught:
+        exec("from surpyval import *", namespace)
+    assert any("fs_to_xcnt" in str(w.message) for w in caught)
+    assert namespace["fs_to_xcnt"] is data_formats.fs_to_xcnt
+
+
+def test_the_warning_shows_in_code_outside_main(tmp_path):
+    # A DeprecationWarning would be hidden here by Python's default
+    # filters; the removal is on a date, so the warning must show.
+    import subprocess
+    import sys
+
+    (tmp_path / "usermod.py").write_text(
+        "import surpyval\n"
+        "def go():\n"
+        "    return surpyval.fs_to_xcnt([1, 2], [3])\n"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", "import usermod; usermod.go()"],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        check=True,
+    )
+    assert "FutureWarning" in out.stderr and "fs_to_xcnt" in out.stderr
 
 
 def test_the_window_is_six_months():
@@ -275,6 +356,8 @@ def test_importing_surpyval_does_not_warn():
             sys.executable,
             "-W",
             "error::DeprecationWarning",
+            "-W",
+            "error::FutureWarning",
             "-c",
             "import surpyval, surpyval.recurrent, surpyval.degradation",
         ],
@@ -282,10 +365,16 @@ def test_importing_surpyval_does_not_warn():
     )
 
 
+@pytest.mark.skipif(
+    not (Path(sp.__file__).resolve().parent.parent / ".git").exists(),
+    reason="a reminder for SurPyval's own repository: an installed copy "
+    "keeps working past the date",
+)
 def test_dated_removal_is_not_overdue():
     # Fails from the removal date on: the first release on or after it
     # removes the top-level names (the functions stay internal in
-    # surpyval.utils.data_formats).
+    # surpyval.utils.data_formats). Only in the repository: the installed
+    # test suite (#661) must not start failing for users on a date.
     assert datetime.date.today() < DATA_FUNCTIONS_REMOVED_AFTER, (
         "The top-level data-format functions deprecated on "
         f"{DATA_FUNCTIONS_DEPRECATED_ON} are due for removal: remove "

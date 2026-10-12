@@ -100,7 +100,10 @@ DATED_DATA_FUNCTIONS: dict[str, str] = {
 
 def dated_data_function(name: str) -> Any:
     """``surpyval.<name>``, one of :data:`DATED_DATA_FUNCTIONS`, with a
-    DeprecationWarning that gives the dates and the replacement. Called
+    FutureWarning that gives the dates and the replacement. A
+    FutureWarning, not a DeprecationWarning: Python shows it wherever the
+    name is used, while a DeprecationWarning is hidden outside
+    ``__main__``, and these are removed on a date, not at a release. Called
     by the package ``__getattr__``, so the warning points at the code
     that used the name. The release-based scan of
     ``test_removed_arguments`` leaves these alone: the date decides when
@@ -113,7 +116,7 @@ def dated_data_function(name: str) -> Any:
         "the first release on or after "
         f"{DATA_FUNCTIONS_REMOVED_AFTER.isoformat()}; use "
         f"{DATED_DATA_FUNCTIONS[name]}.",
-        DeprecationWarning,
+        FutureWarning,
         stacklevel=3,
     )
     return getattr(import_module("surpyval.utils.data_formats"), name)
