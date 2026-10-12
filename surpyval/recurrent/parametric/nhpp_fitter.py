@@ -20,7 +20,7 @@ from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_event_data import (
     RecurrentEventData,
     accepts_recurrent_data,
-    refuses_time_varying_covariates,
+    refuses_unmodelled_data,
 )
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 from surpyval.utils.units import takes_unit
@@ -139,7 +139,7 @@ class NHPPFitter(IntensityModel):
         is then run."""
         return None
 
-    @refuses_time_varying_covariates
+    @refuses_unmodelled_data
     def fit_from_recurrent_data(
         self,
         data: RecurrentEventData,

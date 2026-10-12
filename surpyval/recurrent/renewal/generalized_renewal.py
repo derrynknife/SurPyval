@@ -24,7 +24,7 @@ from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_event_data import (
     accepts_recurrent_data,
-    refuses_time_varying_covariates,
+    refuses_unmodelled_data,
 )
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
@@ -689,7 +689,7 @@ class GeneralizedRenewal(RenewalFitMixin):
 
         return negll_func
 
-    @refuses_time_varying_covariates
+    @refuses_unmodelled_data
     def fit_from_recurrent_data(
         self,
         data: Any,

@@ -48,7 +48,7 @@ from surpyval.utils import optional_column
 from surpyval.utils.no_maximum import combined_maximum
 from surpyval.utils.recurrent_event_data import (
     accepts_recurrent_data,
-    refuses_time_varying_covariates,
+    refuses_unmodelled_data,
 )
 from surpyval.utils.recurrent_utils import handle_xicn
 from surpyval.utils.removed_names import column_arguments
@@ -275,7 +275,7 @@ class CauseSpecificNHPP(SerialisableMixin):
         return entry, end
 
     @classmethod
-    @refuses_time_varying_covariates
+    @refuses_unmodelled_data
     def fit_from_recurrent_data(
         cls,
         data: Any,
