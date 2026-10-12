@@ -25,6 +25,7 @@ from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_event_data import (
     RecurrentEventData,
     accepts_recurrent_data,
+    refuses_time_varying_covariates,
 )
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 from surpyval.utils.units import takes_unit
@@ -234,6 +235,7 @@ class HPP(CountingProcess):
 
         return negll_func
 
+    @refuses_time_varying_covariates
     def fit_from_recurrent_data(
         self,
         data: RecurrentEventData,

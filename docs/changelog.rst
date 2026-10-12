@@ -30,6 +30,21 @@ Unreleased
   interval open at one end is ``[lower, inf]`` in ``interval_censored``),
   and a pandas list and its per-item values with different indexes, since
   they are matched by position.
+- ``ItemHistory``, one repairable item's history: exact failures
+  (``observed``), failures found between two ages
+  (``interval_censored`` with ``interval_censored_counts``), a count of
+  failures before an age (``left_censored`` with
+  ``left_censored_counts``), the end of observation (``right_censored``;
+  left out, observation ends at the last failure), its observation window
+  (``left_truncation`` / ``right_truncation``), what each failure was
+  (``observed_event_types`` and so on, for the cause-specific models),
+  static ``covariates`` and ``time_varying_covariates`` (``{age:
+  values}``; kept with the data, refused by every fit until a model uses
+  them, #905). Every check names the item and what is wrong.
+  ``RecurrentEventData.from_items([...])`` builds the dataset and
+  ``to_items()`` gives the items back; ``from_histories`` builds its items
+  the same way. ``markers`` (#891) and ``states`` (#887) are reserved for
+  the joint and multi-state models.
 - ``RecurrentEventData.from_histories`` reads recurrent event data as each
   item's history, keyed by the item's id: ``observed={item: [ages at its
   failures]}`` and ``right_censored={item: age at the end of

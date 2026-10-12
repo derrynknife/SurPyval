@@ -46,7 +46,10 @@ from surpyval.univariate.competing_risks.labels import (
 from surpyval.univariate.information_criteria import corrected_aic
 from surpyval.utils import optional_column
 from surpyval.utils.no_maximum import combined_maximum
-from surpyval.utils.recurrent_event_data import accepts_recurrent_data
+from surpyval.utils.recurrent_event_data import (
+    accepts_recurrent_data,
+    refuses_time_varying_covariates,
+)
 from surpyval.utils.recurrent_utils import handle_xicn
 from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.units import label_axes, takes_unit
@@ -272,6 +275,7 @@ class CauseSpecificNHPP(SerialisableMixin):
         return entry, end
 
     @classmethod
+    @refuses_time_varying_covariates
     def fit_from_recurrent_data(
         cls,
         data: Any,
