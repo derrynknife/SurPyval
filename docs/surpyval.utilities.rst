@@ -31,6 +31,8 @@ layouts, and ``to_xcnt``, ``to_observations`` and ``to_xrd`` write them. ``Recur
 
 .. autoclass:: surpyval.utils.item_history.ItemHistory
 
+.. autoclass:: surpyval.utils.item_lifetime.ItemLifetime
+
 Data Wrangling Utilities
 ------------------------
 

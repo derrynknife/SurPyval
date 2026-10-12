@@ -115,6 +115,38 @@ If you have mixed interval and observed or censored data, the two columns can st
 (``SurpyvalData`` validates its input exactly as every fitter does; building one yourself is a quick way to check how SurPyval has read your data. Its rows are sorted, so the flags come back in order of time.)
 
 
+One record per item
+-------------------
+
+When each item's record carries more than a time and a flag (its own
+observation window, what failed, its covariates), describe it with an
+``ItemLifetime`` and build the data from the list. How many identical items
+each one stands for goes in ``counts``:
+
+.. jupyter-execute::
+
+    from surpyval import ItemLifetime
+
+    items = [
+        ItemLifetime("B7", observed=1820, covariates=[1.0]),
+        ItemLifetime("B8", right_censored=2400, covariates=[0.0]),
+        ItemLifetime("B9", interval_censored=[1000, 1500], covariates=[1.0]),
+        ItemLifetime("B10", observed=950, left_truncation=200, covariates=[0.0]),
+    ]
+    data = SurpyvalData.from_items(items, counts=[3, 40, 2, 5])
+    print(data.n)
+    surv.Weibull.fit(SurpyvalData.from_items(
+        [ItemLifetime(i.item, **{i.outcome: i.value}) for i in items],
+        counts=[3, 40, 2, 5],
+    )).params
+
+Every check names the item, and ``data.to_items()`` gives the items back
+(``SurpyvalData.from_items(data.to_items(), counts=data.n)`` is the same
+data). An item's ``event_type`` and ``time_varying_covariates`` (``{age:
+values}``, a ``StepSchedule`` or a ``CovariatePath``) are kept with the
+data; ``fit(data)`` refuses them until it can use them (fit time-varying
+covariates with ``fit_tvc`` meanwhile).
+
 Combining every input type in one fit
 -------------------------------------
 

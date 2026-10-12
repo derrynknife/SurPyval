@@ -30,6 +30,18 @@ Unreleased
   interval open at one end is ``[lower, inf]`` in ``interval_censored``),
   and a pandas list and its per-item values with different indexes, since
   they are matched by position.
+- ``ItemLifetime``, one item's lifetime: exactly one outcome
+  (``observed``, ``right_censored``, ``left_censored`` or
+  ``interval_censored``), its observation window (``left_truncation`` /
+  ``right_truncation``), what failed (``event_type``), ``covariates`` and
+  ``time_varying_covariates`` (``{age: values}``, a ``StepSchedule`` or a
+  ``CovariatePath``). ``SurpyvalData.from_items(items, counts=...)`` builds
+  the data, ``counts`` saying how many identical items each stands for (an
+  item is one item); ``to_items()`` gives the items back, so
+  ``from_items(data.to_items(), counts=data.n)`` is the same data. Every
+  check names the item. Event types and time-varying covariates are kept
+  with the data, and refused by ``fit(data)`` and
+  ``fit_from_surpyval_data`` until they can use them, rather than ignored.
 - ``ItemHistory``, one repairable item's history: exact failures
   (``observed``), failures found between two ages
   (``interval_censored`` with ``interval_censored_counts``), a count of
