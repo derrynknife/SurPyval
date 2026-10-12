@@ -23,7 +23,10 @@ from surpyval.recurrent.renewal._derivatives import (
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.pickling import Rebuilt
-from surpyval.utils.recurrent_event_data import accepts_recurrent_data
+from surpyval.utils.recurrent_event_data import (
+    accepts_recurrent_data,
+    refuses_time_varying_covariates,
+)
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     measure_from_entry,
@@ -495,6 +498,7 @@ class ARI(RenewalFitMixin):
         return negll_func
 
     @removed_arguments("0.23", dist="'baseline'")
+    @refuses_time_varying_covariates
     def fit_from_recurrent_data(
         self,
         data: Any,

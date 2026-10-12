@@ -24,7 +24,10 @@ from surpyval.recurrent.renewal.renewal_model import (
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.no_maximum import quiet_maximum_warnings
 from surpyval.utils.pickling import Rebuilt
-from surpyval.utils.recurrent_event_data import accepts_recurrent_data
+from surpyval.utils.recurrent_event_data import (
+    accepts_recurrent_data,
+    refuses_time_varying_covariates,
+)
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     measure_from_entry,
@@ -293,6 +296,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
                 "LogNormal).".format(dist.name, dist.support)
             )
 
+    @refuses_time_varying_covariates
     def fit_from_recurrent_data(
         self,
         data: Any,

@@ -375,6 +375,36 @@ reads the times between failures, adding them up within each machine.
         mcf.mcf([1000, 2000, 2600]),
     )
 
+When an item's history holds more than exact failures (failures found
+between inspections, a count of failures before the first look, what each
+failure was, a window it was watched in, covariates), describe each item
+with an ``ItemHistory`` and build the dataset from the list:
+
+.. jupyter-execute::
+
+    from surpyval import ItemHistory
+
+    pump = ItemHistory(
+        "P1",
+        observed=[420, 1310],
+        observed_event_types=["seal", "bearing"],
+        interval_censored=[[2100, 2300]],   # found failed at an inspection
+        interval_censored_counts=2,
+        interval_censored_event_types="seal",
+        right_censored=2600,
+        left_truncation=150,                # records start at 150 hours
+    )
+    fan = ItemHistory("F1", observed=[800], observed_event_types="bearing",
+                      right_censored=3000)
+    data = RecurrentEventData.from_items([pump, fan])
+    data.to_items()[1]
+
+Every check names the item and says what is wrong with its history, and
+``data.to_items()`` gives the items back. ``time_varying_covariates``
+(``{age: values}``) are kept with the data, though no model uses them yet
+(#905); ``markers`` (#891) and ``states`` (#887) are reserved for the joint
+and multi-state models.
+
 If your log records the time *between* failures instead, take a cumulative sum within each item first, for example ``df.groupby("machine")["hours_between"].cumsum()``. Leaving out the end-of-observation rows is a mistake: without them the models cannot know that M3, for example, has run a further 1,380 hours without failing since its failure at 1,720 hours, and would treat it as if it had been scrapped straight after that failure. See :doc:`Recurrent Event Modelling with SurPyval` for the models that use this data.
 
 

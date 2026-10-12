@@ -98,6 +98,7 @@ from surpyval.utils.recurrent_event_data import (  # isort: skip
 )
 
 from surpyval.utils.surpyval_data import SurpyvalData  # isort: skip
+from surpyval.utils.item_history import ItemHistory  # isort: skip
 from surpyval.utils.recurrent_utils import handle_xicn  # isort: skip
 
 # Package-level readers for serialised models: `surpyval.from_json` /
@@ -313,6 +314,7 @@ __all__ = [
     "xrd_handler",
     "xrd_to_xcnt",
     "RecurrentEventData",
+    "ItemHistory",
     "SurpyvalData",
     "handle_xicn",
     # Model selection, forecasting and serialisation

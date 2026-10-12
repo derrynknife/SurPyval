@@ -24,6 +24,7 @@ from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.recurrent_event_data import (
     RecurrentEventData,
     accepts_recurrent_data,
+    refuses_time_varying_covariates,
 )
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
@@ -634,6 +635,7 @@ class NonParametricCounting(
         out.var = np.cumsum(step_var)
         return out
 
+    @refuses_time_varying_covariates
     def fit_from_recurrent_data(
         self, data: RecurrentEventData
     ) -> "NonParametricCounting":

@@ -61,6 +61,10 @@ class RecurrentEventData:
     # stay ``None`` for ordinary single-window data.
     window_map: dict | None = None
     observation_windows: dict | None = None
+    # Time-varying covariates, ``{item: (ages, values)}``, attached by
+    # ``from_items`` when an ItemHistory has them; no model uses them yet
+    # (#905), so every fit refuses data that has them.
+    time_varying_covariates: dict | None = None
 
     def __init__(
         self,
@@ -580,7 +584,7 @@ class RecurrentEventData:
         >>> bool((again.x == data.x).all())
         True
         """
-        from surpyval.utils.recurrent_utils import handle_xicn
+        from surpyval.utils.item_history import ItemHistory
 
         observed = _history_dict("observed", observed)
         right_censored = _history_dict("right_censored", right_censored)
@@ -590,25 +594,14 @@ class RecurrentEventData:
                 "Give each item's failures (observed) or end of observation "
                 "(right_censored), keyed by the item's id."
             )
-        if len({type(item) for item in items}) > 1:
-            raise ValueError(
-                "The item ids must all be of one type (all text or all "
-                "numbers): mixed, '1' and 1 could not be told apart."
-            )
-        starts = _per_item("left_truncation", left_truncation, items, -np.inf)
-        ends = _per_item("right_truncation", right_truncation, items, np.inf)
-        Z_items = None
+        starts = _per_item("left_truncation", left_truncation, items, None)
+        ends = _per_item("right_truncation", right_truncation, items, None)
+        rows = None
         if covariates is not None:
-            Z_items = _item_covariate_rows(
+            rows = _item_covariate_rows(
                 _history_dict("covariates", covariates), items
             )
-
-        x: list = []
-        i: list = []
-        c: list = []
-        tl: list = []
-        tr: list = []
-        Z_rows: list = []
+        histories = []
         for k, item in enumerate(items):
             ages = _failure_times(item, observed.get(item, []))
             end = right_censored.get(item)
@@ -620,39 +613,208 @@ class RecurrentEventData:
                         f"Item {item!r}: with gaps=True the times are times "
                         "between failures, which cannot be negative."
                     )
-                origin = starts[k] if np.isfinite(starts[k]) else 0.0
+                origin = 0.0 if starts[k] is None else starts[k]
                 ages = origin + np.cumsum(ages)
                 if end is not None:
                     end = (ages[-1] if len(ages) else origin) + end
-            if end is not None and len(ages) and end < ages.max():
-                raise ValueError(
-                    f"Item {item!r}: the end of observation, {end:g}, is "
-                    f"before its last failure, {ages.max():g}: "
-                    "right_censored is the age when the item was last "
-                    "checked, at or after every failure."
+            histories.append(
+                ItemHistory(
+                    item,
+                    observed=ages,
+                    right_censored=end,
+                    left_truncation=starts[k],
+                    right_truncation=ends[k],
+                    covariates=None if rows is None else rows[k],
                 )
-            rows = list(ages) + ([end] if end is not None else [])
-            if not rows:
-                raise ValueError(
-                    f"Item {item!r} has no failures and no end of "
-                    "observation: give at least one."
+            )
+        return cls.from_items(histories)
+
+    @classmethod
+    def from_items(cls, items: Any) -> "RecurrentEventData":
+        """
+        The dataset of several items' histories, each an
+        :class:`~surpyval.utils.item_history.ItemHistory`: their failures
+        (exact, in intervals or before an age), ends of observation,
+        truncation and covariates. Covariates, given for one item, are
+        needed for every item, with the same number of values; so are
+        time-varying covariates, which no model uses yet (#905).
+
+        Examples
+        --------
+        >>> from surpyval import ItemHistory, RecurrentEventData
+        >>> data = RecurrentEventData.from_items([
+        ...     ItemHistory("A", observed=[5, 9], right_censored=12),
+        ...     ItemHistory("B", interval_censored=[[0, 10]],
+        ...                 interval_censored_counts=3, right_censored=10),
+        ... ])
+        >>> data.c, data.n
+        (array([0, 0, 1, 2, 1]), array([1, 1, 1, 3, 1]))
+        """
+        from surpyval.utils.item_history import ItemHistory
+        from surpyval.utils.recurrent_utils import handle_xicn
+
+        items = list(items)
+        if not items:
+            raise ValueError("Give at least one ItemHistory.")
+        for history in items:
+            if not isinstance(history, ItemHistory):
+                raise TypeError(
+                    "from_items takes ItemHistory objects; got "
+                    f"{type(history).__name__}."
                 )
-            x += rows
-            i += [item] * len(rows)
-            c += [0] * len(ages) + ([1] if end is not None else [])
-            tl += [starts[k]] * len(rows)
-            tr += [ends[k]] * len(rows)
-            if Z_items is not None:
-                Z_rows += [Z_items[k]] * len(rows)
+        ids = [history.item for history in items]
+        if len({type(item) for item in ids}) > 1:
+            raise ValueError(
+                "The item ids must all be of one type (all text or all "
+                "numbers): mixed, '1' and 1 could not be told apart."
+            )
+        repeated = sorted({repr(i) for i in ids if ids.count(i) > 1})
+        if repeated:
+            raise ValueError(
+                "Each item needs one ItemHistory; given twice: "
+                + ", ".join(repeated)
+                + "."
+            )
+        static = _all_or_none(items, "covariates", lambda h: h.covariates)
+        varying = _all_or_none(
+            items,
+            "time_varying_covariates",
+            lambda h: (
+                None
+                if h.time_varying_covariates is None
+                else h.time_varying_covariates[1][0]
+            ),
+        )
+        typed = [h.has_event_types for h in items]
+        events = [
+            bool(len(h.observed) or len(h.interval_censored))
+            or h.left_censored is not None
+            for h in items
+        ]
+        if any(typed):
+            untyped = [
+                h.item
+                for h, t, ev in zip(items, typed, events)
+                if ev and not t
+            ]
+            if untyped:
+                raise ValueError(
+                    "Event types were given for some items' failures but not "
+                    f"for {untyped!r}: every failure needs its type."
+                )
+        x: list = []
+        i: list = []
+        c: list = []
+        n: list = []
+        e: list = []
+        tl: list = []
+        tr: list = []
+        Z: list = []
+        for history in items:
+            xs, cs, ns, es = history._rows()
+            x += xs
+            c += cs
+            n += ns
+            e += es
+            i += [history.item] * len(xs)
+            tl += [
+                (
+                    -np.inf
+                    if history.left_truncation is None
+                    else history.left_truncation
+                )
+            ] * len(xs)
+            tr += [
+                (
+                    np.inf
+                    if history.right_truncation is None
+                    else history.right_truncation
+                )
+            ] * len(xs)
+            if static:
+                Z += [history.covariates] * len(xs)
+        x_arr = np.array(x, dtype=float)
+        if not (np.isin(c, (-1, 2))).any():
+            x_arr = x_arr[:, 0]
         truncated = np.isfinite(tl).any() or np.isfinite(tr).any()
-        return handle_xicn(
-            np.array(x, dtype=float),
+        data = handle_xicn(
+            x_arr,
             np.array(i),
             np.array(c),
+            np.array(n),
             tl=np.array(tl) if truncated else None,
             tr=np.array(tr) if truncated else None,
-            Z=np.array(Z_rows) if Z_items is not None else None,
+            Z=np.array(Z) if static else None,
+            e=_object_array(e) if any(typed) else None,
         )
+        if varying:
+            data.time_varying_covariates = {
+                history.item: history.time_varying_covariates
+                for history in items
+            }
+        return data
+
+    def to_items(self) -> list:
+        """
+        The data as one :class:`~surpyval.utils.item_history.ItemHistory`
+        per item, in the order of ``items``:
+        ``RecurrentEventData.from_items(data.to_items())`` is the same
+        data. Event types and observation windows have no place in an
+        item's history, and are refused.
+        """
+        from surpyval.utils.item_history import ItemHistory
+
+        if self.window_map is not None:
+            raise ValueError(
+                "This data has observation windows, which an ItemHistory has "
+                "no place for: use its arrays."
+            )
+        x = self.x if np.ndim(self.x) == 2 else np.column_stack([self.x] * 2)
+        Z = None if self.Z is None else np.asarray(self.Z, dtype=float)
+        histories = []
+        for item in self.items:
+            rows = self.i == item
+            key = item.item() if isinstance(item, np.generic) else item
+            c, n, xi = self.c[rows], self.n[rows], x[rows]
+            e = None if self.e is None else self.e[rows]
+            left = xi[c == -1]
+            end = xi[c == 1]
+            tl, tr = self.tl[rows][0], self.tr[rows][0]
+            varying = None
+            if self.time_varying_covariates is not None:
+                ages, values = self.time_varying_covariates[key]
+                varying = {float(a): v for a, v in zip(ages, values)}
+            histories.append(
+                ItemHistory(
+                    key,
+                    observed=xi[c == 0, 0],
+                    right_censored=float(end[0, 0]) if len(end) else None,
+                    interval_censored=xi[c == 2],
+                    interval_censored_counts=n[c == 2],
+                    left_censored=float(left[0, 0]) if len(left) else None,
+                    left_censored_counts=(
+                        int(n[c == -1][0]) if len(left) else None
+                    ),
+                    left_truncation=float(tl) if np.isfinite(tl) else None,
+                    right_truncation=float(tr) if np.isfinite(tr) else None,
+                    covariates=None if Z is None else Z[rows][0],
+                    time_varying_covariates=varying,
+                    observed_event_types=(
+                        None if e is None else list(e[c == 0])
+                    ),
+                    interval_censored_event_types=(
+                        None
+                        if e is None or not (c == 2).any()
+                        else list(e[c == 2])
+                    ),
+                    left_censored_event_types=(
+                        None
+                        if e is None or not (c == -1).any()
+                        else e[c == -1][0]
+                    ),
+                )
+            )
+        return histories
 
     def to_histories(self) -> dict:
         """
@@ -785,7 +947,7 @@ def _single_age(name: str, item: Any, value: Any) -> float:
     return age
 
 
-def _per_item(name: str, value: Any, items: list, none: float) -> list:
+def _per_item(name: str, value: Any, items: list, none: Any) -> list:
     """A bound for each item, in the order of ``items``: ``none`` where
     not given; a dict keyed by item, or one number for every item."""
     if value is None:
@@ -807,6 +969,32 @@ def _per_item(name: str, value: Any, items: list, none: float) -> list:
             "item."
         )
     return [float(value)] * len(items)
+
+
+def _object_array(values: list) -> np.ndarray:
+    """``values`` as a 1-D object array (types may be text or numbers)."""
+    out = np.empty(len(values), dtype=object)
+    out[:] = values
+    return out
+
+
+def _all_or_none(items: list, name: str, get: Callable) -> bool:
+    """Whether the ItemHistory objects have ``name``: all of them, or none
+    (refused otherwise), with values of one length."""
+    values = [get(history) for history in items]
+    given = [value is not None for value in values]
+    if not any(given):
+        return False
+    if not all(given):
+        missing = [h.item for h, g in zip(items, given) if not g]
+        raise ValueError(
+            f"'{name}' must be given for every item; missing {missing!r}."
+        )
+    if len({len(np.atleast_1d(value)) for value in values}) > 1:
+        raise ValueError(
+            f"Every item's '{name}' must have the same number of values."
+        )
+    return True
 
 
 def _item_covariate_rows(covariates: dict, items: list) -> list:
@@ -924,6 +1112,10 @@ def accepts_recurrent_data(method: F) -> F:
                 filled["e"] = data.e
             else:
                 lost.append("event types")
+        if data.time_varying_covariates is not None:
+            lost.append(
+                "time-varying covariates (no model uses them yet, #905)"
+            )
         if lost:
             raise ValueError(
                 f"This fit takes no {' or '.join(lost)}, which the "
@@ -933,4 +1125,22 @@ def accepts_recurrent_data(method: F) -> F:
         return method(*bound.args, **bound.kwargs)
 
     setattr(wrapper, "_accepts_recurrent_data", True)
+    return wrapper  # type: ignore[return-value]
+
+
+def refuses_time_varying_covariates(method: F) -> F:
+    """Refuse, in a ``fit_from_recurrent_data``, data with time-varying
+    covariates, which no model uses yet (#905): fitting it as if they
+    were not there would be a different model from the one asked for."""
+
+    @functools.wraps(method)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        data = kwargs.get("data", args[1] if len(args) > 1 else None)
+        if getattr(data, "time_varying_covariates", None) is not None:
+            raise ValueError(
+                "This fit takes no time-varying covariates, which the "
+                "RecurrentEventData holds (no model uses them yet, #905)."
+            )
+        return method(*args, **kwargs)
+
     return wrapper  # type: ignore[return-value]
