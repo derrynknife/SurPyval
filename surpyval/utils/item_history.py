@@ -446,6 +446,146 @@ class ItemHistory:
             e.append(None)
         return x, c, n, e
 
+    # -- updates (each returns a new, checked ItemHistory) ----------------
+
+    def clone(self, item: Any = None, **changes: Any) -> "ItemHistory":
+        """
+        A copy of this history, under the id ``item`` (else the same id),
+        with any of its arguments replaced by ``changes``.
+
+        Examples
+        --------
+        >>> from surpyval import ItemHistory
+        >>> pump = ItemHistory("P1", observed=[420, 1310], right_censored=2600)
+        >>> pump.clone("P2", right_censored=3000)
+        ItemHistory(
+            'P2',
+            observed=[420.0, 1310.0],
+            right_censored=3000.0
+        )
+        """
+        fields = self._fields()
+        fields.update(changes)
+        return ItemHistory(self.item if item is None else item, **fields)
+
+    def extend(self, age: Any) -> "ItemHistory":
+        """This history, seen working up to ``age``: its end of
+        observation moved later (at or after its last event).
+
+        >>> from surpyval import ItemHistory
+        >>> ItemHistory("P1", observed=[420], right_censored=600).extend(900)
+        ItemHistory(
+            'P1',
+            observed=[420.0],
+            right_censored=900.0
+        )
+        """
+        age = _age(self.item, "age", age)
+        if self.right_censored is not None and age < self.right_censored:
+            raise ValueError(
+                f"Item {self.item!r}: extend moves the end of observation "
+                f"later, but {age:g} is before its end, "
+                f"{self.right_censored:g}."
+            )
+        return self.clone(right_censored=age)
+
+    def _after_event(self, fields: dict, age: float) -> dict:
+        # An event after the end of observation was seen, so the item was
+        # watched until it: the end moves to it.
+        end = fields.get("right_censored")
+        if end is not None and age > end:
+            fields["right_censored"] = age
+        return fields
+
+    def add_failure(self, age: Any, event_type: Any = None) -> "ItemHistory":
+        """This history with another failure at ``age`` (of
+        ``event_type``, needed where its failures have types).
+
+        >>> from surpyval import ItemHistory
+        >>> pump = ItemHistory("P1", observed=[420], right_censored=600)
+        >>> pump.add_failure(700).right_censored
+        700.0
+        """
+        age = _age(self.item, "age", age)
+        fields = self._fields()
+        fields["observed"] = [*fields.get("observed", []), age]
+        if self.has_event_types or event_type is not None:
+            fields["observed_event_types"] = [
+                *fields.get(
+                    "observed_event_types",
+                    (
+                        [None] * len(self.observed)
+                        if self.observed_event_types is None
+                        else list(self.observed_event_types)
+                    ),
+                ),
+                event_type,
+            ]
+        return ItemHistory(self.item, **self._after_event(fields, age))
+
+    def add_failures_between(
+        self,
+        lower: Any,
+        upper: Any,
+        failures: Any = 1,
+        event_type: Any = None,
+    ) -> "ItemHistory":
+        """This history with ``failures`` failures found between two
+        inspections, ``lower`` and ``upper``."""
+        fields = self._fields()
+        fields["interval_censored"] = [
+            *fields.get("interval_censored", []),
+            [lower, upper],
+        ]
+        counts = (
+            list(self.interval_censored_counts)
+            if len(self.interval_censored)
+            else []
+        )
+        fields["interval_censored_counts"] = [*counts, failures]
+        if self.has_event_types or event_type is not None:
+            types = (
+                [None] * len(self.interval_censored)
+                if self.interval_censored_event_types is None
+                else list(self.interval_censored_event_types)
+            )
+            fields["interval_censored_event_types"] = [*types, event_type]
+        upper = _age(self.item, "upper", upper)
+        return ItemHistory(self.item, **self._after_event(fields, upper))
+
+    def change_state(self, age: Any, state: Any) -> "ItemHistory":
+        """This history with a change into ``state`` seen at ``age``."""
+        age = _age(self.item, "age", age)
+        fields = self._fields()
+        fields["observed_states"] = {
+            **fields.get("observed_states", {}),
+            age: state,
+        }
+        return ItemHistory(self.item, **self._after_event(fields, age))
+
+    def change_state_between(
+        self, lower: Any, upper: Any, state: Any
+    ) -> "ItemHistory":
+        """This history with a change into ``state`` somewhere between two
+        inspections, ``lower`` and ``upper``."""
+        fields = self._fields()
+        fields["interval_censored_states"] = [
+            *fields.get("interval_censored_states", []),
+            [lower, upper, state],
+        ]
+        upper = _age(self.item, "upper", upper)
+        return ItemHistory(self.item, **self._after_event(fields, upper))
+
+    def update_covariates(self, age: Any, values: Any) -> "ItemHistory":
+        """This history with its time-varying covariates taking ``values``
+        from ``age`` on (a step added to its schedule; a first schedule
+        starts at ``age``, which must then be at or before the start of
+        observation)."""
+        steps = _with_step(
+            self.item, self.time_varying_covariates, age, values
+        )
+        return self.clone(time_varying_covariates=steps)
+
     # -- display and comparison ---------------------------------------------
 
     def _fields(self) -> dict:
@@ -786,3 +926,28 @@ def _when(kind: str, lower: float, upper: float) -> str:
     if kind == "left_censored":
         return f"before {upper:g}"
     return f"({lower:g}, {upper:g}]"
+
+
+def _with_step(item: Any, schedule: Any, age: float, values: Any) -> dict:
+    """``schedule`` (None, or a StepSchedule without a period) with its
+    values from ``age`` on replaced by ``values``, as the ``{age: values}``
+    dict that builds it."""
+    from surpyval.univariate.regression.tvc_schedule import StepSchedule
+
+    if schedule is not None and not (
+        isinstance(schedule, StepSchedule) and schedule.period is None
+    ):
+        kind = type(schedule).__name__
+        if isinstance(schedule, StepSchedule):
+            kind += " with a period"
+        raise ValueError(
+            f"Item {item!r}: update_covariates adds a step to a step "
+            f"schedule; its covariates are a {kind}, so give the whole path "
+            "with clone(time_varying_covariates=...)."
+        )
+    steps = {} if schedule is None else _schedule_field(schedule)
+    age = float(age)
+    steps = {a: v for a, v in steps.items() if a < age}
+    row = _covariate_row(item, "values", values)
+    steps[age] = row.tolist()  # type: ignore[union-attr]
+    return steps
