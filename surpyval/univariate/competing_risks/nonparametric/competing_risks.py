@@ -15,7 +15,6 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
-import surpyval as surv
 from surpyval import plotting
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -50,7 +49,7 @@ from surpyval.utils import (
     validate_cr_inputs,
     validate_event,
 )
-from surpyval.utils.data_formats import _get_idx
+from surpyval.utils.data_formats import _get_idx, xcnt_to_xrd
 from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import axis_label, takes_unit
@@ -862,7 +861,7 @@ class CompetingRisks(SerialisableMixin):
         event_idx_map = {state: i for i, state in enumerate(causes)}
 
         # Get the x, r, d format agnostic of event.
-        unique_x, r, d = surv.xcnt_to_xrd(x, c, n)
+        unique_x, r, d = xcnt_to_xrd(x, c, n)
 
         # The count of events (d) of each cause (e) at each time (x). Every
         # x is one of unique_x, so its column is found with searchsorted;

@@ -88,19 +88,7 @@ from surpyval.univariate.parametric import (
 # A broadcast-aware derivative rule for ``np.where``, registered on import
 # (autograd's does not unbroadcast; #562).
 from surpyval.utils import autograd_where_compat as _where  # noqa: F401
-from surpyval.utils import (
-    fs_to_xcnt,
-    fs_to_xrd,
-    fsl_to_xcnt,
-    fsli_handler,
-    fsli_to_xcnt,
-    round_sig,
-    xcn_to_fs,
-    xcnt_handler,
-    xcnt_to_xrd,
-    xrd_handler,
-    xrd_to_xcnt,
-)
+from surpyval.utils import round_sig
 
 from .fit_best import fit_best
 from .forecasting import forecast
@@ -309,18 +297,8 @@ __all__ = [
     "Uniform",
     "Weibull",
     "weibayes",
-    # Data formats
-    "fs_to_xcnt",
-    "fs_to_xrd",
-    "fsl_to_xcnt",
-    "fsli_handler",
-    "fsli_to_xcnt",
+    # Data
     "round_sig",
-    "xcn_to_fs",
-    "xcnt_handler",
-    "xcnt_to_xrd",
-    "xrd_handler",
-    "xrd_to_xcnt",
     "RecurrentEventData",
     "SurpyvalData",
     "handle_xicn",
@@ -433,6 +411,13 @@ if not TYPE_CHECKING:  # keep the type checker's view of the module exact
             return value
         if name in _SUBPACKAGES:
             return import_module(f"surpyval.{name}")
+        from surpyval.utils.deprecation import (
+            DATED_DATA_FUNCTIONS,
+            dated_data_function,
+        )
+
+        if name in DATED_DATA_FUNCTIONS:
+            return dated_data_function(name)
         if name in _REMOVED_TOP_LEVEL:
             message = _removed_message(
                 f"module 'surpyval' has no attribute {name!r}",

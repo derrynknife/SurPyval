@@ -41,6 +41,7 @@ from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.removed_names import column_arguments
+from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 
 from .._aliasing import (
@@ -640,6 +641,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
 
     @dataframe_covariates
     @takes_unit
+    @accepts_surpyval_data
     def fit(
         self,
         x: npt.ArrayLike,

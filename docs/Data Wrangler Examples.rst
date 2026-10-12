@@ -2,25 +2,27 @@
 Data Wrangling Examples
 =======================
 
-Every SurPyval fitter takes data in the same form: values ``x``, censoring flags ``c``, counts ``n`` and truncation ``t`` (or ``tl`` and ``tr``), described in :doc:`Conventions`. Data rarely arrives that way. It comes as a list of failures and a list of survivors, as text with "+" marks, as a spreadsheet of install and removal dates, or as counts found at each inspection. This page shows how to get from each of these to something ``fit()`` accepts. The general recipe is always the same: decide, for each item, *what is known about its value* (exact, above a value, below a value, or between two values) and *whether it could have been missed altogether* (truncation), then write that down as ``x``, ``c``, ``n`` and ``t``.
+Every SurPyval fitter takes data in the same form: values ``x``, censoring flags ``c``, counts ``n`` and truncation ``t`` (or ``tl`` and ``tr``), described in :doc:`Conventions`. Data rarely arrives that way. It comes as a list of failures and a list of survivors, as text with "+" marks, as a spreadsheet of install and removal dates, or as counts found at each inspection. This page shows how to get from each of these to something ``fit()`` accepts. The tool for it is :class:`~surpyval.SurpyvalData`: its constructors read each common layout, it validates the data exactly as the fitters do, and the parametric, non-parametric and regression ``fit`` methods take one in place of the arrays. The general recipe is always the same: decide, for each item, *what is known about its value* (exact, above a value, below a value, or between two values) and *whether it could have been missed altogether* (truncation), then write that down as ``x``, ``c``, ``n`` and ``t``.
 
-Let's say we have a list of failures and a list of right censored (suspended) values. How can we wrangle these into data for the :code:`fit()` method to accept?
+Let's say we have a list of failures and a list of right censored (suspended) values. ``SurpyvalData.from_observations`` takes a list of each kind of observation, and the fitters take what it returns:
 
 .. jupyter-execute::
 
     import surpyval as surv
+    from surpyval import SurpyvalData
 
     # Failure data
     f = [2, 3, 4, 5, 6, 7, 8, 8, 9]
     # 'suspended' or right censored data
     s = [1, 2, 10]
 
-    # convert to xcnt format!
-    x, c, n, t = surv.fs_to_xcnt(f, s)
-    print(x, c, n)
+    data = SurpyvalData.from_observations(observed=f, right_censored=s)
+    print(data.x, data.c, data.n)
 
-    model = surv.Weibull.fit(x, c, n)
+    model = surv.Weibull.fit(data)
     print(model)
+
+A ``fit`` given a ``SurpyvalData`` takes everything from it -- values, flags, counts, truncation and, for a regression, the covariates ``Z`` -- so it refuses ``c``, ``n``, ``t`` (and the rest) given alongside it. ``data.to_xcnt()`` gives the arrays themselves, ``x, c, n, t``, where a function of your own needs them.
 
 
 You can even bring in your left censored data as well:
@@ -34,11 +36,12 @@ You can even bring in your left censored data as well:
     # left censored data
     l = [7, 8, 9]
 
-    # convert to xcnt format!
-    x, c, n, t = surv.fsl_to_xcnt(f, s, l)
-    print(x, c, n)
+    data = SurpyvalData.from_observations(
+        observed=f, right_censored=s, left_censored=l
+    )
+    print(data.x, data.c, data.n)
 
-    model = surv.Weibull.fit(x, c, n)
+    model = surv.Weibull.fit(data)
     print(model)
 
 
@@ -52,9 +55,9 @@ Another common type of data that is provided is in a simple text list with "+" i
     f = [float(x) for x in data.split(',') if "+" not in x]
     s = [float(x[0:-1]) for x in data.split(',') if "+" in x]
 
-    data = surv.fs_to_xcnt(f, s)
+    data = SurpyvalData.from_observations(observed=f, right_censored=s)
 
-    model = surv.Weibull.fit(*data)
+    model = surv.Weibull.fit(data)
     model
 
 Again, this can be extended to left censored data as well:
@@ -68,10 +71,11 @@ Again, this can be extended to left censored data as well:
     s = [float(x[0:-1]) for x in split_data if "+" in x]
     l = [float(x[0:-1]) for x in split_data if "-" in x]
 
-    # Create the x, c, n data
-    data = surv.fsl_to_xcnt(f, s, l)
+    data = SurpyvalData.from_observations(
+        observed=f, right_censored=s, left_censored=l
+    )
 
-    model = surv.Weibull.fit(*data)
+    model = surv.Weibull.fit(data)
 
 Surpyval also offers the ability to use a pandas DataFrame as an input to every fitter. All you need to do is tell ``fit_from_df`` which columns to look at for x, c, n, and the truncation, tl and tr. Columns for c, n, tl and tr are optional, and tl and tr can also be given as a single number that applies to every row. Further, if you have interval censored data you can use the 'xl' and 'xr' column names instead. Any other ``fit`` option is passed straight to ``fit``, and the model is the one ``fit`` gives on the same arrays. The parametric distributions (``Weibull.fit_from_df``), the non-parametric estimators (``KaplanMeier.fit_from_df``), ``RoystonParmar`` and ``MixtureModel`` take the arguments below; the regression, competing-risks and recurrent-event fitters name their columns ``x_col``, ``c_col``, ``Z_cols``, ``e_col``, ``i_col``, ... (see :doc:`Conventions`).
 
@@ -100,15 +104,15 @@ If you have mixed interval and observed or censored data, the two columns can st
     # rows 1 and 4: failure time known exactly         -> observed
     # row 2: failed between inspections at 300 and 380 -> interval censored
     # rows 3 and 5: never seen failed                  -> right censored
-    x, c, n, t = surv.xcnt_handler(xl=df['last_ok'], xr=df['first_failed'])
-    print(c)
+    data = SurpyvalData(xl=df['last_ok'], xr=df['first_failed'])
+    print(data.c)
 
     model = surv.Weibull.fit_from_df(
         df, xl_col='last_ok', xr_col='first_failed'
     )
     print(model.params)
 
-(``xcnt_handler`` is the function every fitter uses to validate its input; calling it yourself is a quick way to check how SurPyval has read your data. Its output is sorted, so the flags come back in order of time.)
+(``SurpyvalData`` validates its input exactly as every fitter does; building one yourself is a quick way to check how SurPyval has read your data. Its rows are sorted, so the flags come back in order of time.)
 
 
 Combining every input type in one fit
@@ -137,8 +141,8 @@ Same data, whichever format you have it in
 
 Because the formats all describe the same thing, the same dataset gives the same
 fit however you assemble it. Here failure / suspension / left / interval lists
-are converted with ``fsli_to_xcnt`` and compared to the hand-built ``xcnt``
-form — the fitted parameters agree exactly:
+are read with ``SurpyvalData.from_observations`` and compared to the
+hand-built ``xcnt`` form — the fitted parameters agree exactly:
 
 .. jupyter-execute::
 
@@ -147,8 +151,10 @@ form — the fitted parameters agree exactly:
     l = [8]                     # left-censored
     i = [[15, 20], [22, 26]]    # interval-censored
 
-    x, c, n, t = surv.fsli_to_xcnt(f, s, l, i)
-    from_lists = surv.Weibull.fit(x=x, c=c, n=n)
+    data = SurpyvalData.from_observations(
+        observed=f, right_censored=s, left_censored=l, interval_censored=i
+    )
+    from_lists = surv.Weibull.fit(data)
 
     hand = surv.Weibull.fit(
         x=[12, 18, 25, 30, 8, [15, 20], [22, 26]],
@@ -308,43 +314,33 @@ If your log records the time *between* failures instead, take a cumulative sum w
 Format converters
 -----------------
 
-surpyval ships helpers to reshape common external layouts into the ``xcnt``
-format its fitters use, and into the "at risk / deaths" (``xrd``) format the
-non-parametric estimators think in:
+``SurpyvalData`` reads the common layouts and writes them back out, and the
+non-parametric estimators' "at risk / deaths" (``xrd``) form too:
 
 .. list-table::
    :header-rows: 1
-   :widths: 34 66
+   :widths: 40 60
 
-   * - Helper
+   * - Method
      - Converts
-   * - ``fs_to_xcnt(f, s)``
-     - failures + suspensions (right-censored) → ``xcnt``
-   * - ``fsl_to_xcnt(f, s, l)``
-     - as above, plus left-censored
-   * - ``fsli_to_xcnt(f, s, l, i)``
-     - as above, plus interval-censored
-   * - ``fs_to_xrd(f, s)``
-     - failures + suspensions → ``xrd``
-   * - ``xcnt_to_xrd(x, c, n, t)``
-     - ``xcnt`` → at-risk / deaths (``xrd``)
-   * - ``xrd_to_xcnt(x, r, d)``
-     - ``xrd`` → ``xcnt``
-   * - ``xcn_to_fs(x, c, n)``
-     - ``x``, ``c``, ``n`` (no truncation) → failure / suspension lists
-   * - ``xcnt_handler(x, c, n, t, xl, xr, tl, tr)``
-     - validates any ``xcnt`` input and returns it grouped and sorted, as the
-       fitters see it
-   * - ``SurpyvalData(x, c, n, t, xl, xr, tl, tr)``
-     - the same validation, returned as the object the fitters use
-       internally; ``.to_xrd()`` gives its ``xrd`` form and ``to_json`` /
-       ``from_json`` save and restore it (``from_json`` reads a file only
-       when given a ``pathlib.Path``; a string is parsed as JSON text)
-   * - ``fsli_handler(f, s, l, i)``, ``xrd_handler(x, r, d)``
-     - validate data already in the ``fsli`` or ``xrd`` layout (for example,
-       more deaths than items at risk is an error). ``xrd_handler`` sorts
-       rows given out of order, carrying ``r`` and ``d`` with their time,
-       and refuses a time listed twice
+   * - ``SurpyvalData(x, c, n, t, xl, xr, tl, tr, Z)``
+     - ``xcnt`` arrays (or ``xl`` / ``xr`` columns) → data, validated,
+       grouped and sorted as the fitters see it
+   * - ``SurpyvalData.from_observations(observed, right_censored,
+       left_censored, interval_censored, tl=, tr=)``
+     - a list of each kind of observation (the ``fsli`` layout), with an
+       optional truncation window shared by all → data
+   * - ``SurpyvalData.from_xrd(x, r, d)``
+     - at-risk / deaths (``xrd``) → data
+   * - ``data.to_xcnt()``
+     - data → the arrays ``x, c, n, t``
+   * - ``data.to_observations()``
+     - data → a dict of the four lists ``from_observations`` reads
+   * - ``data.to_xrd()``
+     - data → ``x, r, d``
+   * - ``data.to_json()``, ``SurpyvalData.from_json(...)``
+     - save and restore the data (``from_json`` reads a file only when
+       given a ``pathlib.Path``; a string is parsed as JSON text)
    * - ``handle_xicn(x, i, c, n, ...)``
      - validates recurrent event data (``xicnt``) and returns the
        ``RecurrentEventData`` object the recurrent models use
@@ -352,36 +348,41 @@ non-parametric estimators think in:
 The conversions are not all lossless, and it pays to know where they drop
 information:
 
-- ``xcnt_to_xrd`` (and ``fs_to_xrd``) only accept observed and right censored
-  data without right truncation: a left or interval censored value has no
-  single time at which to count its death. Left truncation is allowed, and is
-  used to build the risk sets.
-- ``xrd_to_xcnt`` cannot recover left truncation, and raises an error if the
-  risk set ever grows from one time to the next.
-- ``xcn_to_fs`` returns only the observed (``c = 0``) and right censored
-  (``c = 1``) values; left and interval censored rows are left out. The
-  counts must be whole numbers, and ``c`` and ``n`` the same length as
-  ``x``; the two-column ``x`` that ``xcnt_handler`` returns for interval
-  data is accepted.
+- ``to_xrd`` is exact for observed and right censored data without right
+  truncation; left truncation is allowed, and is used to build the risk
+  sets. Left or interval censored values have no single time at which to
+  count a death, so for those (or for right truncated data) it fits the
+  Turnbull estimator and returns its numbers at risk and deaths, which can
+  be fractional.
+- ``from_xrd`` cannot recover left truncation, and raises an error if the
+  risk set ever grows from one time to the next. xrd data must list each
+  time once; rows given out of order are sorted by time (keeping their
+  ``r`` and ``d``), and a time listed twice is an error. More deaths than
+  items at risk is an error too.
+- ``to_observations`` refuses truncated data, since the lists have no place
+  for the bounds; ``from_observations`` takes a truncation window only as
+  one ``tl`` / ``tr`` shared by every observation.
 
-Observed and right censored ``xcnt`` data folds into the ``xrd`` form, the count at risk
-and the number of deaths at each distinct time:
+Observed and right censored data folds into the ``xrd`` form, the count at
+risk and the number of deaths at each distinct time:
 
 .. jupyter-execute::
 
     x, c, n = [1, 2, 3, 4, 5], [0, 0, 1, 0, 1], [2, 1, 1, 3, 1]
-    times, at_risk, deaths = surv.xcnt_to_xrd(x, c, n)
+    times, at_risk, deaths = SurpyvalData(x, c, n).to_xrd()
     print("times  :", times)
     print("at risk:", at_risk)
     print("deaths :", deaths)
 
-Going back with ``xrd_to_xcnt`` recovers the same rows here. The
-number censored at each time is what is left of the risk set after the
-deaths, ``r[j] - d[j] - r[j + 1]``, and it is placed at that time:
+Going back with ``from_xrd`` recovers the same rows here. The number
+censored at each time is what is left of the risk set after the deaths,
+``r[j] - d[j] - r[j + 1]``, and it is placed at that time:
 
 .. jupyter-execute::
 
-    x_back, c_back, n_back, _ = surv.xrd_to_xcnt(times, at_risk, deaths)
+    x_back, c_back, n_back, _ = SurpyvalData.from_xrd(
+        times, at_risk, deaths
+    ).to_xcnt()
     print("x:", x_back)
     print("c:", c_back)
     print("n:", n_back)
@@ -393,6 +394,35 @@ deaths, ``r[j] - d[j] - r[j + 1]``, and it is placed at that time:
     assert np.array_equal(x_back, x) and np.array_equal(c_back, c)
     assert np.array_equal(n_back, n)
 
+Before version 0.25 these conversions were functions at the top level of
+``surpyval``. They still work, with a warning, until 2027-04-12, and the
+first release on or after that date removes them:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Deprecated
+     - Use
+   * - ``fs_to_xcnt(f, s)``
+     - ``SurpyvalData.from_observations(observed=f, right_censored=s)``
+       (``.to_xcnt()`` for the arrays)
+   * - ``fsl_to_xcnt(f, s, l)``, ``fsli_to_xcnt(f, s, l, i)``,
+       ``fsli_handler(f, s, l, i)``
+     - ``SurpyvalData.from_observations(...)`` with ``left_censored=l``
+       and ``interval_censored=i``
+   * - ``fs_to_xrd(f, s)``
+     - ``SurpyvalData.from_observations(observed=f,
+       right_censored=s).to_xrd()``
+   * - ``xcnt_handler(x, c, n, t, ...)``
+     - ``SurpyvalData(x, c, n, t, ...)`` (``.to_xcnt()`` for the arrays)
+   * - ``xcnt_to_xrd(x, c, n, t)``
+     - ``SurpyvalData(x, c, n, t).to_xrd()``
+   * - ``xrd_to_xcnt(x, r, d)``, ``xrd_handler(x, r, d)``
+     - ``SurpyvalData.from_xrd(x, r, d)`` (``.to_xcnt()`` for the arrays)
+   * - ``xcn_to_fs(x, c, n)``
+     - ``SurpyvalData(x, c, n).to_observations()``
+
 If the risk set ever grows from one time to the next, some items entered
 late (left truncation). ``xrd`` has no record of when each item entered,
 so the conversion cannot be undone, and SurPyval refuses rather than
@@ -401,6 +431,6 @@ guessing:
 .. jupyter-execute::
 
     try:
-        surv.xrd_to_xcnt([1, 2, 3], [4, 6, 3], [1, 2, 3])
+        SurpyvalData.from_xrd([1, 2, 3], [4, 6, 3], [1, 2, 3])
     except ValueError as err:
         print(err)

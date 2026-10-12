@@ -88,7 +88,9 @@ def test_lfp_default_start_reaches_the_better_optimum():
     f = [0.1, 0.1, 0.15, 0.6, 0.8, 0.8, 1.2, 2.5, 3.0, 4.0, 4.0, 6.0]
     f += [10.0, 10.0, 12.5, 20.0, 20.0, 43.0, 43.0, 48.0, 48.0, 54.0]
     f += [74.0, 84.0, 94.0, 168.0, 263.0, 593.0]
-    x, c, n, _ = surv.fs_to_xcnt(f, [1370.0] * 4128)
+    x, c, n, _ = surv.SurpyvalData.from_observations(
+        observed=f, right_censored=[1370.0] * 4128
+    ).to_xcnt()
     model = surv.Weibull.fit(x, c, n, lfp=True)
     assert model.lfp_p == pytest.approx(0.0067, abs=0.0005)
     assert model.neg_ll() == pytest.approx(293.03, abs=0.01)

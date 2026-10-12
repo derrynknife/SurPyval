@@ -16,6 +16,14 @@ from surpyval import (
     SurpyvalData,
     Turnbull,
     Weibull,
+)
+from surpyval.univariate.competing_risks import (
+    CompetingRisks,
+    CompetingRisksProportionalHazards,
+    FineGray,
+    ParametricCompetingRisks,
+)
+from surpyval.utils.data_formats import (
     fsl_to_xcnt,
     fsli_handler,
     xcn_to_fs,
@@ -23,12 +31,6 @@ from surpyval import (
     xcnt_to_xrd,
     xrd_handler,
     xrd_to_xcnt,
-)
-from surpyval.univariate.competing_risks import (
-    CompetingRisks,
-    CompetingRisksProportionalHazards,
-    FineGray,
-    ParametricCompetingRisks,
 )
 
 nan = np.nan

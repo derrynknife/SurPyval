@@ -19,7 +19,7 @@ On consideration, one can see that there are no houses above $50,000 and that th
     import surpyval as surv
     from surpyval.datasets import load_boston_housing
     x = load_boston_housing()['medv'].values
-    x, c, n, _ = surv.xcnt_handler(x)
+    x, c, n, _ = surv.SurpyvalData(x).to_xcnt()
 
     model = surv.Weibull.fit(x, c, n)
     print(model)
@@ -34,7 +34,7 @@ From the above plot you can see that near 50, the parametric model diverges subs
     import surpyval as surv
     from surpyval.datasets import load_boston_housing
     x = load_boston_housing()['medv'].values
-    x, c, n, _ = surv.xcnt_handler(x)
+    x, c, n, _ = surv.SurpyvalData(x).to_xcnt()
     # Right censor the highest value
     c[-1] = 1
 
@@ -51,7 +51,7 @@ We can see that the model has changed slightly, however, there appears to be a '
     import surpyval as surv
     from surpyval.datasets import load_boston_housing
     x = load_boston_housing()['medv'].values
-    x, c, n, _ = surv.xcnt_handler(x)
+    x, c, n, _ = surv.SurpyvalData(x).to_xcnt()
     # Right censor the highest value
     c[-1] = 1
 
@@ -71,7 +71,7 @@ A ``CustomDistribution`` only needs the cumulative hazard function; SurPyval der
     from surpyval.datasets import load_boston_housing
     from autograd import numpy as np
     x = load_boston_housing()['medv'].values
-    x, c, n, _ = surv.xcnt_handler(x)
+    x, c, n, _ = surv.SurpyvalData(x).to_xcnt()
     # Right censor the highest value
     c[-1] = 1
 
@@ -129,8 +129,8 @@ In the test, 4,156 integrated circuits were run for 1,370 hours, and 28 of them 
          12.5, 20., 20., 43., 43., 48., 48., 54., 74., 84., 94., 168., 263., 593.]
     s = [1370.] * 4128
 
-    x, c, n, _ = surv.fs_to_xcnt(f, s)
-    model = surv.Weibull.fit(x, c, n, lfp=True)
+    data = surv.SurpyvalData.from_observations(observed=f, right_censored=s)
+    model = surv.Weibull.fit(data, lfp=True)
     print(model)
     print("negative log-likelihood:", model.neg_ll())
     model.plot()

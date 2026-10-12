@@ -48,7 +48,7 @@ from surpyval.utils.removed_names import (
 )
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
-from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import axis_label, takes_unit
 from surpyval.utils.validation import (
     BOUNDS,
@@ -155,7 +155,7 @@ class _FitMethod:
         del fit.__wrapped__
         fit.__dict__.pop("__signature__", None)
         fit.__dict__.pop("_takes_unit", None)
-        return takes_unit(fit)
+        return takes_unit(accepts_surpyval_data(fit))
 
 
 class MixtureModel(
@@ -1199,6 +1199,7 @@ class MixtureModel(
 
     @_FitMethod
     @takes_unit
+    @accepts_surpyval_data
     def fit(
         self,
         x: npt.ArrayLike | None = None,

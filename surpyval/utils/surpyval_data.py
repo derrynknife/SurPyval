@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import functools
+import inspect
 import json
 from numbers import Number
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, TypeVar
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -283,6 +285,169 @@ class SurpyvalData:
             self.tr_unique = np.array([])
             self.n_t_unique = np.array([])
 
+    @classmethod
+    def from_observations(
+        cls,
+        observed: ArrayLike | None = None,
+        right_censored: ArrayLike | None = None,
+        left_censored: ArrayLike | None = None,
+        interval_censored: ArrayLike | None = None,
+        *,
+        tl: Number | None = None,
+        tr: Number | None = None,
+    ) -> "SurpyvalData":
+        """
+        The data from a list of each kind of observation: the times at
+        which a failure was observed, the times right censored at (the
+        suspensions), the times left censored at, and the intervals a
+        failure is known to lie in. Any of them may be left out, but not
+        all; a time repeated is counted.
+
+        Parameters
+        ----------
+        observed : array like, optional
+            The observed failure times.
+        right_censored : array like, optional
+            The right censored times (suspensions): the unit had not failed
+            by then.
+        left_censored : array like, optional
+            The left censored times: the unit had failed by then.
+        interval_censored : array like, optional
+            ``[lower, upper]`` pairs, one per unit failed within the
+            interval, with ``lower < upper``.
+        tl, tr : scalar, optional
+            A truncation bound shared by every observation: the window the
+            units were seen in, left (``tl``) and right (``tr``).
+
+        Returns
+        -------
+        SurpyvalData
+
+        Examples
+        --------
+        >>> from surpyval import SurpyvalData
+        >>> data = SurpyvalData.from_observations(
+        ...     observed=[1, 3, 3, 7], right_censored=[5, 9]
+        ... )
+        >>> data.x
+        array([1., 3., 5., 7., 9.])
+        >>> data.c, data.n
+        (array([0, 0, 1, 0, 1]), array([1, 2, 1, 1, 1]))
+        >>> data = SurpyvalData.from_observations(
+        ...     observed=[2, 4], interval_censored=[[1, 3]], tl=0.5
+        ... )
+        >>> data.x_il, data.x_ir, data.tl
+        (array([1.]), array([3.]), array([0.5, 0.5, 0.5]))
+        """
+        from surpyval.utils.data_formats import fsli_to_xcnt
+
+        for name, bound in (("tl", tl), ("tr", tr)):
+            if bound is not None and np.ndim(bound) != 0:
+                raise ValueError(
+                    f"'{name}' must be one bound shared by every "
+                    "observation: the lists give no order to match "
+                    "per-observation bounds to. Build per-observation "
+                    "truncation with SurpyvalData(x, c, n, tl=..., tr=...)."
+                )
+        x, c, n, _ = fsli_to_xcnt(
+            observed, right_censored, left_censored, interval_censored
+        )
+        return cls(x, c, n, tl=tl, tr=tr)
+
+    @classmethod
+    def from_xrd(
+        cls, x: ArrayLike, r: ArrayLike, d: ArrayLike
+    ) -> "SurpyvalData":
+        """
+        The data from the ``xrd`` format: the distinct times ``x``, the
+        number at risk ``r`` and the number failing ``d`` at each. Each
+        failure becomes an observed row, and the units that leave the risk
+        set without failing between ``x[j]`` and ``x[j + 1]`` (``r[j] -
+        d[j] - r[j + 1]``) right censored rows at ``x[j]``. The format
+        cannot hold left truncation (the numbers at risk have absorbed
+        it): give that data as ``SurpyvalData(x, c, n, tl=...)``.
+
+        Parameters
+        ----------
+        x : array like
+            The distinct times.
+        r : array like
+            The number at risk at each time (those failing there
+            included).
+        d : array like
+            The number failing at each time.
+
+        Returns
+        -------
+        SurpyvalData
+
+        Examples
+        --------
+        >>> from surpyval import SurpyvalData
+        >>> data = SurpyvalData.from_xrd([1, 2, 3], [5, 3, 1], [1, 1, 1])
+        >>> data.x, data.c
+        (array([1., 1., 2., 2., 3.]), array([0, 1, 0, 1, 0]))
+        """
+        from surpyval.utils.data_formats import xrd_to_xcnt
+
+        x_, c_, n_, t_ = xrd_to_xcnt(x, r, d)
+        return cls(x_, c_, n_, t_)
+
+    def to_xcnt(self) -> tuple:
+        """
+        The data in the ``xcnt`` format, ``(x, c, n, t)``: the times (a
+        ``[lower, upper]`` row where any observation is an interval), the
+        censoring flags (0 observed, 1 right, -1 left, 2 interval), the
+        counts and the ``[left, right]`` truncation bounds, as copies.
+
+        Examples
+        --------
+        >>> from surpyval import SurpyvalData
+        >>> x, c, n, t = SurpyvalData([3, 1, 3], [0, 1, 0]).to_xcnt()
+        >>> x, c, n
+        (array([1., 3.]), array([1, 0]), array([1, 2]))
+        """
+        return self.x.copy(), self.c.copy(), self.n.copy(), self.t.copy()
+
+    def to_observations(self) -> dict:
+        """
+        The data as a list of each kind of observation, the form
+        :meth:`from_observations` reads: ``"observed"``,
+        ``"right_censored"`` and ``"left_censored"`` times and
+        ``"interval_censored"`` ``[lower, upper]`` pairs, each repeated by
+        its count. Truncated data has no such form (the lists have no
+        place for the bounds), and is refused.
+
+        Examples
+        --------
+        >>> from surpyval import SurpyvalData
+        >>> data = SurpyvalData([1, 3, 5], c=[0, 0, 1], n=[1, 2, 1])
+        >>> data.to_observations()["observed"]
+        array([1., 3., 3.])
+        """
+        if np.isfinite(self.t).any():
+            raise ValueError(
+                "Truncated data has no lists-of-observations form: the "
+                "lists have no place for the truncation bounds. Use "
+                "to_xcnt(), whose t holds them."
+            )
+        counts = self.n.astype(int)
+        x = self.x if self.x.ndim == 2 else np.column_stack([self.x] * 2)
+
+        def times(flag: int) -> np.ndarray:
+            mask = self.c == flag
+            return np.repeat(x[mask, 0], counts[mask]).astype(float)
+
+        mask = self.c == 2
+        return {
+            "observed": times(0),
+            "right_censored": times(1),
+            "left_censored": times(-1),
+            "interval_censored": np.repeat(
+                x[mask], counts[mask], axis=0
+            ).astype(float),
+        }
+
     def to_xrd(self, estimator: str = "Nelson-Aalen") -> tuple:
         """
         Converts the data into the xrd format. Observed and right censored
@@ -463,3 +628,73 @@ class SurpyvalData:
         Z = np.array(data["Z"]) if "Z" in data else None
 
         return cls(x, c, n, t, Z=Z, handle=False)
+
+
+# The arguments a fit takes its data in, besides ``x``.
+_DATA_ARGUMENTS = ("c", "n", "t", "tl", "tr", "xl", "xr")
+
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+def accepts_surpyval_data(method: F) -> F:
+    """Let a fitter's ``fit`` take a :class:`SurpyvalData` as its ``x``:
+    ``Weibull.fit(data)``. The data is the whole of it, so its other data
+    arguments (``c``, ``n``, ``t``, ``tl``, ``tr``, ``xl``, ``xr``, and
+    ``Z`` where the data carries covariates) must be left out; the fit
+    then runs on the data's own arrays, as from the arrays themselves.
+    A data's censoring, counts or truncation that the fit has no argument
+    for is refused, not dropped."""
+    signature = inspect.signature(method)
+    names = set(signature.parameters)
+    if "x" not in names:
+        return method
+
+    @functools.wraps(method)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        bound = signature.bind_partial(*args, **kwargs)
+        data = bound.arguments.get("x")
+        if not isinstance(data, SurpyvalData):
+            return method(*args, **kwargs)
+        given = [
+            name
+            for name in _DATA_ARGUMENTS + ("Z",)
+            if bound.arguments.get(name) is not None
+            and not (name == "Z" and data.Z is None)
+        ]
+        if given:
+            raise TypeError(
+                "x is a SurpyvalData, which holds the data: leave out "
+                + ", ".join(repr(g) for g in given)
+                + " (or pass arrays rather than a SurpyvalData)."
+            )
+        filled = {"x": data.x}
+        lost = []
+        if "c" in names:
+            filled["c"] = data.c
+        elif np.any(data.c != 0):
+            lost.append("censoring")
+        if "n" in names:
+            filled["n"] = data.n
+        elif np.any(data.n != 1):
+            lost.append("counts")
+        if "t" in names:
+            filled["t"] = data.t
+        elif "tl" in names and "tr" in names:
+            filled["tl"], filled["tr"] = data.tl, data.tr
+        elif np.isfinite(data.t).any():
+            lost.append("truncation")
+        if data.Z is not None:
+            if "Z" in names:
+                filled["Z"] = data.Z
+            else:
+                lost.append("covariates")
+        if lost:
+            raise ValueError(
+                f"This fit takes no {' or '.join(lost)}, which the "
+                "SurpyvalData holds."
+            )
+        bound.arguments.update(filled)
+        return method(*bound.args, **bound.kwargs)
+
+    setattr(wrapper, "_accepts_surpyval_data", True)
+    return wrapper  # type: ignore[return-value]

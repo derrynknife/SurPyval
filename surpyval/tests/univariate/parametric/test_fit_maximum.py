@@ -148,7 +148,9 @@ def test_a_search_stalled_at_a_kink_is_not_a_runaway():
 
     from surpyval.datasets import load_boston_housing
 
-    x, c, n, _ = surv.xcnt_handler(load_boston_housing()["medv"].values)
+    x, c, n, _ = surv.SurpyvalData(
+        load_boston_housing()["medv"].values
+    ).to_xcnt()
     c[-1] = 1
 
     def Hf(x, *params):
