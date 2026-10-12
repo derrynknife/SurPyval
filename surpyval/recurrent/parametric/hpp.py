@@ -22,7 +22,10 @@ from surpyval.univariate.parametric.fitters import is_local_minimum
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.pickling import Rebuilt
-from surpyval.utils.recurrent_event_data import RecurrentEventData
+from surpyval.utils.recurrent_event_data import (
+    RecurrentEventData,
+    accepts_recurrent_data,
+)
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
@@ -321,6 +324,7 @@ class HPP(CountingProcess):
         return out
 
     @takes_unit
+    @accepts_recurrent_data
     def fit(
         self,
         x: ArrayLike,

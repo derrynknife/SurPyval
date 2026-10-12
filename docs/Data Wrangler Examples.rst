@@ -344,6 +344,37 @@ For repairable items, each item can fail many times. The recurrent event models 
                                     c=events["c"])
     print(mcf.mcf([1000, 2000, 2600]))
 
+The same log, written as each machine's history keyed by its id, is read by
+``RecurrentEventData.from_histories``: ``observed`` holds each machine's age
+at its failures and ``right_censored`` its current reading. Every recurrent
+``fit`` takes the result in place of the arrays:
+
+.. jupyter-execute::
+
+    from surpyval import RecurrentEventData
+
+    data = RecurrentEventData.from_histories(
+        observed={"M1": [420, 1310, 2050], "M2": [980, 2400], "M3": [1720]},
+        right_censored={"M1": 2600, "M2": 2900, "M3": 3100},
+    )
+    print(NonParametricCounting.fit(data).mcf([1000, 2000, 2600]))
+
+A machine left out of ``right_censored`` is taken to have been observed
+until its last failure. ``left_truncation`` (the age at which a machine came
+under observation) and ``covariates`` (one row per machine, for the
+proportional intensity models) are keyed the same way, and ``gaps=True``
+reads the times between failures, adding them up within each machine.
+``data.to_histories()`` gives the dictionaries back.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(
+        NonParametricCounting.fit(data).mcf([1000, 2000, 2600]),
+        mcf.mcf([1000, 2000, 2600]),
+    )
+
 If your log records the time *between* failures instead, take a cumulative sum within each item first, for example ``df.groupby("machine")["hours_between"].cumsum()``. Leaving out the end-of-observation rows is a mistake: without them the models cannot know that M3, for example, has run a further 1,380 hours without failing since its failure at 1,720 hours, and would treat it as if it had been scrapped straight after that failure. See :doc:`Recurrent Event Modelling with SurPyval` for the models that use this data.
 
 

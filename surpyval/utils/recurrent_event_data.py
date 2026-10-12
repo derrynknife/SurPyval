@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
+import functools
+import inspect
+from typing import Any, Callable, TypeVar
 
 import numpy as np
 import numpy.typing as npt
@@ -14,10 +16,11 @@ class RecurrentEventData:
     A class to handle and manipulate recurrent event data. Recurrent events are
     those that can occur more than once for each subject or item.
 
-    The recurrent fitters build one from their ``x``, ``i``, ``c``, ``n``
-    arrays with ``surpyval.handle_xicn``, which validates the input; build
-    one that way to pass to a fitter's ``fit_from_recurrent_data``. The
-    constructor itself does no validation.
+    Build one from each item's history with :meth:`from_histories`, or
+    from ``x``, ``i``, ``c``, ``n`` arrays with ``surpyval.handle_xicn``;
+    both validate the input, and every recurrent ``fit`` takes the result
+    as ``x`` (``CrowAMSAA.fit(data)``). The constructor itself does no
+    validation.
 
     Examples
     --------
@@ -506,6 +509,216 @@ class RecurrentEventData:
         n_ttff = np.array([self.n[self.i == item][0] for item in self.items])
         return SurpyvalData(x_ttff, c_ttff, n_ttff)
 
+    @classmethod
+    def from_histories(
+        cls,
+        observed: "dict | None" = None,
+        right_censored: "dict | None" = None,
+        *,
+        left_truncation: Any = None,
+        right_truncation: Any = None,
+        covariates: "dict | None" = None,
+        gaps: bool = False,
+    ) -> "RecurrentEventData":
+        """
+        Recurrent event data from each item's history, keyed by the item's
+        id: the ages at which it failed, ``observed``, and the age at which
+        its observation ended, ``right_censored``. An item with no end of
+        observation is taken to have been observed until its last failure;
+        an item that has not failed has an end of observation and no
+        failures.
+
+        Parameters
+        ----------
+        observed : dict, optional
+            ``{item: [age, age, ...]}``, the item's age (time since new or
+            first observed) at each failure; a single failure may be a
+            number.
+        right_censored : dict, optional
+            ``{item: age}``, the item's age when its observation ended
+            (when it was last checked), at or after its last failure.
+        left_truncation : dict or scalar, optional
+            ``{item: age}``, the age at which an item came under
+            observation (its failures before then are unknown), or one
+            number for every item.
+        right_truncation : dict or scalar, optional
+            ``{item: age}``, the age after which an item's failures would
+            not have been seen, or one number for every item.
+        covariates : dict, optional
+            ``{item: row}``, each item's covariates (a number, or a row of
+            them), for every item; a proportional intensity ``fit`` takes
+            them as ``Z``.
+        gaps : bool, default False
+            Read ``observed`` as the times between failures (the first
+            from the start of observation: ``left_truncation``, else 0) and
+            ``right_censored`` as the time from the last failure to the end
+            of observation; each item's ages are their running totals.
+
+        Returns
+        -------
+        RecurrentEventData
+
+        Examples
+        --------
+        >>> from surpyval import RecurrentEventData
+        >>> data = RecurrentEventData.from_histories(
+        ...     observed={"M1": [420, 1310, 2050], "M2": [980, 2400]},
+        ...     right_censored={"M1": 2600, "M2": 2900, "M3": 3100},
+        ... )
+        >>> data.items
+        ['M1', 'M2', 'M3']
+        >>> data.x[data.i == "M1"], data.c[data.i == "M1"]
+        (array([ 420., 1310., 2050., 2600.]), array([0, 0, 0, 1]))
+
+        The same history, recorded as the time between failures:
+
+        >>> again = RecurrentEventData.from_histories(
+        ...     observed={"M1": [420, 890, 740], "M2": [980, 1420]},
+        ...     right_censored={"M1": 550, "M2": 500, "M3": 3100},
+        ...     gaps=True,
+        ... )
+        >>> bool((again.x == data.x).all())
+        True
+        """
+        from surpyval.utils.recurrent_utils import handle_xicn
+
+        observed = _history_dict("observed", observed)
+        right_censored = _history_dict("right_censored", right_censored)
+        items = list(dict.fromkeys([*observed, *right_censored]))
+        if not items:
+            raise ValueError(
+                "Give each item's failures (observed) or end of observation "
+                "(right_censored), keyed by the item's id."
+            )
+        if len({type(item) for item in items}) > 1:
+            raise ValueError(
+                "The item ids must all be of one type (all text or all "
+                "numbers): mixed, '1' and 1 could not be told apart."
+            )
+        starts = _per_item("left_truncation", left_truncation, items, -np.inf)
+        ends = _per_item("right_truncation", right_truncation, items, np.inf)
+        Z_items = None
+        if covariates is not None:
+            Z_items = _item_covariate_rows(
+                _history_dict("covariates", covariates), items
+            )
+
+        x: list = []
+        i: list = []
+        c: list = []
+        tl: list = []
+        tr: list = []
+        Z_rows: list = []
+        for k, item in enumerate(items):
+            ages = _failure_times(item, observed.get(item, []))
+            end = right_censored.get(item)
+            if end is not None:
+                end = _single_age("right_censored", item, end)
+            if gaps:
+                if (ages < 0).any() or (end is not None and end < 0):
+                    raise ValueError(
+                        f"Item {item!r}: with gaps=True the times are times "
+                        "between failures, which cannot be negative."
+                    )
+                origin = starts[k] if np.isfinite(starts[k]) else 0.0
+                ages = origin + np.cumsum(ages)
+                if end is not None:
+                    end = (ages[-1] if len(ages) else origin) + end
+            if end is not None and len(ages) and end < ages.max():
+                raise ValueError(
+                    f"Item {item!r}: the end of observation, {end:g}, is "
+                    f"before its last failure, {ages.max():g}: "
+                    "right_censored is the age when the item was last "
+                    "checked, at or after every failure."
+                )
+            rows = list(ages) + ([end] if end is not None else [])
+            if not rows:
+                raise ValueError(
+                    f"Item {item!r} has no failures and no end of "
+                    "observation: give at least one."
+                )
+            x += rows
+            i += [item] * len(rows)
+            c += [0] * len(ages) + ([1] if end is not None else [])
+            tl += [starts[k]] * len(rows)
+            tr += [ends[k]] * len(rows)
+            if Z_items is not None:
+                Z_rows += [Z_items[k]] * len(rows)
+        truncated = np.isfinite(tl).any() or np.isfinite(tr).any()
+        return handle_xicn(
+            np.array(x, dtype=float),
+            np.array(i),
+            np.array(c),
+            tl=np.array(tl) if truncated else None,
+            tr=np.array(tr) if truncated else None,
+            Z=np.array(Z_rows) if Z_items is not None else None,
+        )
+
+    def to_histories(self) -> dict:
+        """
+        The data as each item's history, the form :meth:`from_histories`
+        reads: ``"observed"`` (``{item: ages at its failures}``) and
+        ``"right_censored"`` (``{item: age at the end of observation}``,
+        for the items with one), with ``"left_truncation"`` /
+        ``"right_truncation"`` for the items that are truncated and
+        ``"covariates"`` where the data has them. So
+        ``RecurrentEventData.from_histories(**data.to_histories())`` is the
+        same data. Interval or left censored counts, repeated rows,
+        event types and observation windows have no place in a history,
+        and are refused.
+
+        Examples
+        --------
+        >>> from surpyval import RecurrentEventData
+        >>> data = RecurrentEventData.from_histories(
+        ...     observed={"A": [5, 9]}, right_censored={"A": 12, "B": 4}
+        ... )
+        >>> data.to_histories()["right_censored"]
+        {'A': 12.0, 'B': 4.0}
+        """
+        problems = []
+        if np.ndim(self.x) != 1 or np.isin(self.c, (-1, 2)).any():
+            problems.append("left or interval censored counts")
+        if (np.asarray(self.n) != 1).any():
+            problems.append("rows counted more than once")
+        if self.e is not None:
+            problems.append("event types")
+        if self.window_map is not None:
+            problems.append("observation windows")
+        if problems:
+            raise ValueError(
+                "This data has " + " and ".join(problems) + ", which a "
+                "history has no place for: use its arrays (x, i, c, n, ...)."
+            )
+        observed: dict = {}
+        right_censored: dict = {}
+        left: dict = {}
+        right: dict = {}
+        covariates: dict = {}
+        Z = None if self.Z is None else np.asarray(self.Z, dtype=float)
+        for item in self.items:
+            rows = self.i == item
+            key = item.item() if isinstance(item, np.generic) else item
+            observed[key] = self.x[rows & (self.c == 0)].astype(float)
+            ends = self.x[rows & (self.c == 1)]
+            if len(ends):
+                right_censored[key] = float(ends[0])
+            left[key] = float(self.tl[rows][0])
+            right[key] = float(self.tr[rows][0])
+            if Z is not None:
+                covariates[key] = Z[rows][0]
+        out: dict = {"observed": observed, "right_censored": right_censored}
+        # Only the items with a bound: the others have none (-inf / inf)
+        left = {key: age for key, age in left.items() if np.isfinite(age)}
+        right = {key: age for key, age in right.items() if np.isfinite(age)}
+        if left:
+            out["left_truncation"] = left
+        if right:
+            out["right_truncation"] = right
+        if Z is not None:
+            out["covariates"] = covariates
+        return out
+
     def __getitem__(self, index: Any) -> "RecurrentEventData":
         return RecurrentEventData(
             self.x[index],
@@ -530,3 +743,194 @@ class RecurrentEventData:
     c={self.c},
     n={self.n}\n)
         """.strip()
+
+
+def _history_dict(name: str, value: Any) -> dict:
+    """``value``, a dict keyed by item id, or empty for None."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise TypeError(
+            f"'{name}' must be a dict keyed by each item's id, such as "
+            "{'M1': ..., 'M2': ...}; for flat arrays use the fit's x, i, c "
+            "or handle_xicn."
+        )
+    return value
+
+
+def _failure_times(item: Any, ages: Any) -> np.ndarray:
+    """An item's failure ages (or gaps) as a 1-D float array."""
+    try:
+        arr = np.atleast_1d(np.asarray(ages, dtype=float))
+    except (TypeError, ValueError):
+        raise ValueError(f"Item {item!r}: 'observed' must be numbers.")
+    if arr.ndim != 1:
+        raise ValueError(f"Item {item!r}: 'observed' must be a list of times.")
+    if not np.isfinite(arr).all():
+        raise ValueError(f"Item {item!r}: 'observed' times must be finite.")
+    return arr
+
+
+def _single_age(name: str, item: Any, value: Any) -> float:
+    """One finite age for ``item``."""
+    try:
+        age = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"Item {item!r}: '{name}' must be one number, the age at the end "
+            "of observation."
+        )
+    if not np.isfinite(age):
+        raise ValueError(f"Item {item!r}: '{name}' must be finite.")
+    return age
+
+
+def _per_item(name: str, value: Any, items: list, none: float) -> list:
+    """A bound for each item, in the order of ``items``: ``none`` where
+    not given; a dict keyed by item, or one number for every item."""
+    if value is None:
+        return [none] * len(items)
+    if isinstance(value, dict):
+        unknown = [item for item in value if item not in items]
+        if unknown:
+            raise ValueError(
+                f"'{name}' names items with no failures and no end of "
+                f"observation: {unknown!r}."
+            )
+        return [
+            none if item not in value else _single_age(name, item, value[item])
+            for item in items
+        ]
+    if np.ndim(value) != 0:
+        raise ValueError(
+            f"'{name}' must be a dict keyed by item, or one number for every "
+            "item."
+        )
+    return [float(value)] * len(items)
+
+
+def _item_covariate_rows(covariates: dict, items: list) -> list:
+    """Each item's covariates as a 1-D row, in the order of ``items``:
+    every item needs them, with the same number of values."""
+    unknown = [item for item in covariates if item not in items]
+    if unknown:
+        raise ValueError(
+            "'covariates' names items with no failures and no end of "
+            f"observation: {unknown!r}."
+        )
+    missing = [item for item in items if item not in covariates]
+    if missing:
+        raise ValueError(
+            f"'covariates' must be given for every item; missing {missing!r}."
+        )
+    rows = []
+    for item in items:
+        try:
+            row = np.atleast_1d(np.asarray(covariates[item], dtype=float))
+        except (TypeError, ValueError):
+            raise ValueError(f"Item {item!r}: 'covariates' must be numbers.")
+        if row.ndim != 1 or not np.isfinite(row).all():
+            raise ValueError(
+                f"Item {item!r}: 'covariates' must be one finite number or "
+                "a row of them (they are constant over the item's history)."
+            )
+        rows.append(row)
+    if len({len(row) for row in rows}) > 1:
+        raise ValueError(
+            "Every item's 'covariates' must have the same length."
+        )
+    return rows
+
+
+# The arguments a recurrent fit takes its data in, besides ``x``.
+_RECURRENT_ARGUMENTS = ("i", "c", "n", "t", "tl", "tr", "windows")
+
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+def accepts_recurrent_data(method: F) -> F:
+    """Let a recurrent fitter's ``fit`` take a :class:`RecurrentEventData`
+    as its ``x``: ``CrowAMSAA.fit(data)``. The data is the whole of it, so
+    the other data arguments (``i``, ``c``, ``n``, ``t``, ``tl``, ``tr``,
+    ``windows``, and ``Z`` or ``e`` where the data carries them) must be
+    left out. The data's truncation, covariates or event types that the
+    fit has no argument for are refused, not dropped."""
+    signature = inspect.signature(method)
+    names = set(signature.parameters)
+    if "x" not in names:
+        return method
+
+    @functools.wraps(method)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        bound = signature.bind_partial(*args, **kwargs)
+        data = bound.arguments.get("x")
+        if not isinstance(data, RecurrentEventData):
+            return method(*args, **kwargs)
+        given = [
+            name
+            for name in _RECURRENT_ARGUMENTS + ("Z", "e")
+            if bound.arguments.get(name) is not None
+            and not (name == "Z" and data.Z is None)
+            and not (name == "e" and data.e is None)
+        ]
+        if given:
+            raise TypeError(
+                "x is a RecurrentEventData, which holds the data: leave out "
+                + ", ".join(repr(g) for g in given)
+                + " (or pass arrays rather than a RecurrentEventData)."
+            )
+        if data.window_map is not None:
+            raise ValueError(
+                "This RecurrentEventData was built with observation windows: "
+                "pass its arrays and the windows to fit instead."
+            )
+        if (
+            data.Z is None
+            and "Z" in names
+            and bound.arguments.get("Z") is None
+            and signature.parameters["Z"].default is inspect.Parameter.empty
+        ):
+            raise TypeError(
+                "This fit needs covariates, Z, and the RecurrentEventData "
+                "holds none: build it with from_histories(..., "
+                "covariates={item: row, ...})."
+            )
+        filled: dict = {"x": data.x, "i": data.i, "c": data.c, "n": data.n}
+        lost = []
+        left = bool(np.isfinite(data.tl).any())
+        right = bool(np.isfinite(data.tr).any())
+        fill_tl = left and "tl" in names
+        fill_tr = right and "tr" in names
+        if (left and not fill_tl) or (right and not fill_tr):
+            if "t" in names:
+                filled["t"] = np.column_stack([data.tl, data.tr])
+            else:
+                if left and not fill_tl:
+                    lost.append("left truncation")
+                if right and not fill_tr:
+                    lost.append("right truncation")
+        else:
+            if fill_tl:
+                filled["tl"] = data.tl
+            if fill_tr:
+                filled["tr"] = data.tr
+        if data.Z is not None:
+            if "Z" in names:
+                filled["Z"] = data.Z
+            else:
+                lost.append("covariates")
+        if data.e is not None:
+            if "e" in names:
+                filled["e"] = data.e
+            else:
+                lost.append("event types")
+        if lost:
+            raise ValueError(
+                f"This fit takes no {' or '.join(lost)}, which the "
+                "RecurrentEventData holds."
+            )
+        bound.arguments.update(filled)
+        return method(*bound.args, **bound.kwargs)
+
+    setattr(wrapper, "_accepts_recurrent_data", True)
+    return wrapper  # type: ignore[return-value]
