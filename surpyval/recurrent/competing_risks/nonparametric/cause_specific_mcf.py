@@ -19,6 +19,7 @@ from typing import Any
 import numpy as np
 from numpy.typing import ArrayLike
 
+from surpyval import plotting
 from surpyval.recurrent.inference import check_alpha_ci
 from surpyval.recurrent.nonparametric.mcf import (
     _MCF_RANGE,
@@ -264,19 +265,38 @@ class CauseSpecificMCF(SerialisableMixin):
         for cause in self.event_types:
             model = self.models[cause]
             (line,) = ax.step(
-                model.x, model.mcf_hat, where="post", label=str(cause)
+                model.x,
+                model.mcf_hat,
+                where="post",
+                label=str(cause),
+                color=plotting.next_color(ax),
+                linewidth=(
+                    plotting.LINE_WIDTH if plotting.theme_enabled() else None
+                ),
             )
             if plot_bounds and model.var is not None:
                 cb = model.mcf_cb(model.x, alpha_ci=alpha_ci)
-                ax.step(
-                    model.x,
-                    cb,
-                    where="post",
-                    color=line.get_color(),
-                    linestyle="--",
-                    linewidth=0.8,
-                )
-        ax.legend()
+                if plotting.theme_enabled():
+                    ax.fill_between(
+                        model.x,
+                        cb[:, 0],
+                        cb[:, 1],
+                        step="post",
+                        color=line.get_color(),
+                        alpha=plotting.BAND_ALPHA,
+                        linewidth=0,
+                    )
+                else:
+                    ax.step(
+                        model.x,
+                        cb,
+                        where="post",
+                        color=line.get_color(),
+                        linestyle="--",
+                        linewidth=0.8,
+                    )
+        plotting.style_axes(ax)
+        plotting.style_legend(ax, title="Cause")
         label_axes(ax, getattr(self, "unit", None), "Mean cumulative function")
         return ax
 

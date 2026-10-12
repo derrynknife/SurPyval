@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Callable, cast
 import autograd.numpy as np
 import numpy.typing as npt
 
+from surpyval import plotting
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
@@ -1865,18 +1866,19 @@ class ParametricRegressionModel(
         x_plot = np.linspace(self.data.x.min(), self.data.x.max(), 1000)
 
         Z_mean = np.asarray(self.data.Z).mean(axis=0)
-        ax.step(x, np.exp(-(d / r).cumsum()), color="r", where="post")
-        sf = self.sf(x_plot, Z_mean)
-        ax.plot(x_plot, sf, color="b")
+        band = None
         if plot_bounds:
-            cb = self.cb(x_plot, Z_mean, on="sf", alpha_ci=alpha_ci)
-            ax.fill_between(
-                x_plot,
-                cb[:, 0],
-                cb[:, 1],
-                color="b",
-                alpha=0.2,
-                label=f"{(1 - alpha_ci) * 100:g}% Confidence Band",
-            )
+            band = self.cb(x_plot, Z_mean, on="sf", alpha_ci=alpha_ci)
+        plotting.observed_and_fitted(
+            ax,
+            (x, np.exp(-(d / r).cumsum())),
+            (x_plot, self.sf(x_plot, Z_mean)),
+            band,
+            observed_label="Nelson-Aalen, all units",
+            fitted_label="Model, at the mean covariates",
+            band_label=f"{(1 - alpha_ci) * 100:g}% confidence band",
+        )
         label_axes(ax, self.unit, "Survival probability")
+        plotting.style_axes(ax)
+        plotting.style_legend(ax)
         return ax

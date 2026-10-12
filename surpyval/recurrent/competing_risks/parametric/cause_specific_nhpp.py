@@ -26,6 +26,7 @@ from typing import Any
 import numpy as np
 from numpy.typing import ArrayLike
 
+from surpyval import plotting
 from surpyval.recurrent.inference import require_data
 from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
 from surpyval.recurrent.parametric.parametric_recurrence import (
@@ -497,7 +498,16 @@ class CauseSpecificNHPP(SerialisableMixin):
             ax = plt.gcf().gca()
         x_plot = np.linspace(0, float(self.data.x.max()), 200)
         for cause in self.event_types:
-            ax.plot(x_plot, self.cif(x_plot, cause), label=str(cause))
-        ax.legend()
+            ax.plot(
+                x_plot,
+                self.cif(x_plot, cause),
+                label=str(cause),
+                color=plotting.next_color(ax),
+                linewidth=(
+                    plotting.LINE_WIDTH if plotting.theme_enabled() else None
+                ),
+            )
+        plotting.style_axes(ax)
+        plotting.style_legend(ax, title="Cause")
         label_axes(ax, getattr(self, "unit", None), "Mean cumulative function")
         return ax

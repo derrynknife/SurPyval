@@ -332,7 +332,14 @@ __all__ = [
 ] + sorted(_LAZY)
 
 if TYPE_CHECKING:
-    from surpyval import datasets, degradation, life_models, metrics, recurrent
+    from surpyval import (
+        datasets,
+        degradation,
+        life_models,
+        metrics,
+        plotting,
+        recurrent,
+    )
     from surpyval.degradation import (
         DegradationAnalysis,
         DestructiveDegradation,
@@ -380,6 +387,7 @@ _SUBPACKAGES = (
     "degradation",
     "life_models",
     "metrics",
+    "plotting",
     "recurrent",
 )
 

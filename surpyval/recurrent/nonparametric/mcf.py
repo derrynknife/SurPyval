@@ -6,6 +6,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import norm
 
+from surpyval import plotting
 from surpyval.recurrent.inference import check_alpha_ci
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -547,20 +548,36 @@ class NonParametricCounting(
             x = self.x
             mcf_hat = self.mcf_hat
 
-        ax.step(x, mcf_hat, where="post", label="MCF")
+        themed = plotting.theme_enabled()
+        (line,) = ax.step(
+            x,
+            mcf_hat,
+            where="post",
+            label="MCF",
+            color=plotting.next_color(ax),
+            linewidth=plotting.LINE_WIDTH if themed else None,
+        )
         if plot_bounds:
             if self.var is not None:
                 cb = self.mcf_cb(self.x, bound="two-sided", alpha_ci=alpha_ci)
                 if start is not None and start < self.x.min():
                     cb = np.vstack([[0.0, 0.0], cb])
-                ax.step(
-                    x,
-                    cb,
-                    where="post",
-                    label=f"{(1 - alpha_ci) * 100:g}% Confidence Bounds",
-                    color="red",
-                )
+                label = f"{(1 - alpha_ci) * 100:g}% confidence bounds"
+                if themed:
+                    ax.fill_between(
+                        x,
+                        cb[:, 0],
+                        cb[:, 1],
+                        step="post",
+                        color=line.get_color(),
+                        alpha=plotting.BAND_ALPHA,
+                        linewidth=0,
+                        label=label,
+                    )
+                else:
+                    ax.step(x, cb, where="post", label=label, color="red")
         label_axes(ax, self.unit, "Mean cumulative function")
+        plotting.style_axes(ax)
         return ax
 
     @classmethod

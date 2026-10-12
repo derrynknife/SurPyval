@@ -77,10 +77,10 @@ def test_alpha_ci_sets_the_level():
     assert np.all(wide[:, 1] >= narrow[:, 1])
     _, ax = plt.subplots()
     mcf.plot(ax=ax, alpha_ci=0.1)
-    assert ax.lines[1].get_label() == "90% Confidence Bounds"
+    assert ax.collections[0].get_label() == "90% confidence bounds"
     _, ax = plt.subplots()
     _nhpp().plot(ax=ax, alpha_ci=0.1)
-    assert ax.collections[0].get_label() == "90% Confidence Band"
+    assert ax.collections[0].get_label() == "90% confidence band"
     plt.close("all")
 
 

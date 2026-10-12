@@ -465,6 +465,38 @@ can convert between units with pint from the stored names.
     assert model.unit == "hour"
     assert surv.from_dict(model.to_dict()).unit == "hour"
 
+Plots
+~~~~~
+
+Every model's ``plot`` draws in one theme, ``surpyval.plotting``: a fixed
+palette taken in order on each axes (the first model blue, the next orange,
+...), checked to stay distinguishable under the common colour-vision
+deficiencies; 2-point lines and ringed points; confidence bounds as a pale
+band of the curve's colour; hairline grids; no top or right spine; greys for
+text. Where a plot shows an estimate from the data behind a fitted model
+(the recurrent-event and regression plots), the data's step is grey and the
+model is in colour. A ``color`` (or any line keyword) passed to ``plot`` is
+used as given.
+
+On a probability plot the probability axis is labelled as densely as the
+distribution's scale has room for, the tails included (1%, 99%, 99.9%,
+...), and the time axis at 1, 2 and 5 a decade on log scales and at round
+times on linear ones. Several models drawn on one axes widen it to cover
+them all.
+
+.. jupyter-execute::
+
+    import numpy as np
+    x = surv.Weibull.random(30, 1000, 2.2, random_state=1)
+    ax = surv.Weibull.fit(x[:15], unit="hours").plot(label="Supplier A")
+    surv.Weibull.fit(x[15:] * 1.8, unit="hours").plot(ax=ax, label="Supplier B")
+    surv.plotting.style_legend(ax);
+
+``surpyval.plotting.set_theme(False)`` turns the theme off (matplotlib's
+colours, and axes left as they are); ``surpyval.plotting.style_axes(ax)``
+gives axes of your own its look, and ``surpyval.plotting.rc_params()`` the
+whole theme as ``matplotlib.rcParams``.
+
 Saving and Loading Models
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 

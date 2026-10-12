@@ -16,6 +16,7 @@ import numpy as np
 import numpy.typing as npt
 
 import surpyval as surv
+from surpyval import plotting
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -587,7 +588,7 @@ class CompetingRisks(SerialisableMixin):
 
     def plot(
         self,
-        stacked: bool = True,
+        stacked: bool = False,
         ax: Any = None,
         plot_bounds: bool = True,
         alpha_ci: float = 0.05,
@@ -598,24 +599,29 @@ class CompetingRisks(SerialisableMixin):
         Plot the cumulative incidence of every cause (#485), with its
         confidence bounds.
 
-        As the single-event estimates' ``plot``, two-sided bounds are drawn
-        as a shaded band in the colour of their curve (a one-sided bound
-        as a dashed step line), unless ``plot_bounds=False``. Unstacked,
-        each cause's band is its cumulative incidence's :meth:`cb`
-        (``on="cif"``). Stacked, a cause's bounds do not bound its layer
-        (which sits on the causes below it), so the band is drawn on the
-        top of the stack, the all-cause failure probability
-        :math:`1 - S` (the sum of the cumulative incidences): the
+        By default each cause's cumulative incidence is its own step curve
+        in the theme's next colour (:mod:`surpyval.plotting`), with its
+        two-sided bounds, its :meth:`cb` (``on="cif"``), as a pale band of
+        that colour (a one-sided bound as a dashed step line), unless
+        ``plot_bounds=False``. ``stacked=True`` stacks them instead, the
+        causes' layers separated by a thin white edge, so that the top of
+        the stack is the all-cause failure probability :math:`1 - S`. A
+        cause's bounds do not bound its layer (which sits on the causes
+        below it), so stacked, the bounds drawn are the top's: the
         Kaplan-Meier (Greenwood) bounds of the all-cause failures, as
-        ``KaplanMeier``'s plot of the same data draws them, which is
-        ``cb(x, on="ff")`` of a model fitted with ``how="Kaplan-Meier"``.
+        ``KaplanMeier``'s plot of the same data draws them (``cb(x,
+        on="ff")`` of a model fitted with ``how="Kaplan-Meier"``), as two
+        thin grey step lines.
+
+        .. versionchanged:: 0.25
+           Unstacked by default (it stacked), in the package's theme.
 
         Parameters
         ----------
         stacked : bool, optional
-            Stack the causes' cumulative incidences (the default), so the
-            top of the stack is the all-cause failure probability
-            :math:`1 - S`; ``False`` draws each as its own step curve.
+            Stack the causes' cumulative incidences, so the top of the
+            stack is the all-cause failure probability :math:`1 - S`;
+            ``False`` (the default) draws each as its own step curve.
         ax : matplotlib.axes.Axes, optional
             The axes to draw on; the current axes by default.
         plot_bounds : bool, optional
@@ -663,6 +669,8 @@ class CompetingRisks(SerialisableMixin):
         ]
         labels = [str(e) for e in causes]
 
+        themed = plotting.theme_enabled()
+
         def draw_bounds(cb: npt.NDArray, color: Any) -> None:
             # At 0 (before the first time) the bounds are the estimate, 0.
             if bound == "two-sided":
@@ -672,7 +680,7 @@ class CompetingRisks(SerialisableMixin):
                     cb[:, 0],
                     cb[:, 1],
                     step="post",
-                    alpha=0.3,
+                    alpha=plotting.BAND_ALPHA if themed else 0.3,
                     color=color,
                     linewidth=0,
                 )
@@ -681,7 +689,17 @@ class CompetingRisks(SerialisableMixin):
                 ax.step(x, cb, where="post", color=color, linestyle="--")
 
         if stacked:
-            ax.stackplot(x, *cifs, labels=labels, step="post", alpha=0.7)
+            colors = [plotting.next_color(ax) for _ in causes]
+            ax.stackplot(
+                x,
+                *cifs,
+                labels=labels,
+                step="post",
+                colors=colors if themed else None,
+                alpha=0.85 if themed else 0.7,
+                edgecolor=plotting.INK["surface"] if themed else None,
+                linewidth=0.8 if themed else None,
+            )
             if plot_bounds:
                 all_cause = KaplanMeier.from_xrd(self.x, self.r, self.d)
                 cb = all_cause.cb(
@@ -691,10 +709,31 @@ class CompetingRisks(SerialisableMixin):
                     bound=bound,
                     bound_type=bound_type,
                 )
-                draw_bounds(cb, "k")
+                cb = (
+                    np.vstack([[0.0, 0.0], cb])
+                    if np.ndim(cb) == 2
+                    else (np.concatenate([[0.0], cb]))
+                )
+                ax.step(
+                    x,
+                    cb,
+                    where="post",
+                    color=plotting.INK["secondary"] if themed else "k",
+                    linewidth=0.8,
+                    linestyle="-" if bound == "two-sided" else "--",
+                    label=[f"{(1 - alpha_ci) * 100:g}% bounds, all causes"]
+                    + (["_"] if np.ndim(cb) == 2 else []),
+                )
         else:
             for cause, cif, label in zip(causes, cifs, labels):
-                (line,) = ax.step(x, cif, where="post", label=label)
+                (line,) = ax.step(
+                    x,
+                    cif,
+                    where="post",
+                    label=label,
+                    color=plotting.next_color(ax),
+                    linewidth=plotting.LINE_WIDTH if themed else None,
+                )
                 if plot_bounds:
                     cb = self.cb(
                         self.x,
@@ -713,7 +752,8 @@ class CompetingRisks(SerialisableMixin):
         ax.set_title(
             "Cumulative incidence by cause" + (" (stacked)" if stacked else "")
         )
-        ax.legend(title="Cause")
+        plotting.style_axes(ax)
+        plotting.style_legend(ax, title="Cause")
         return ax
 
     @classmethod

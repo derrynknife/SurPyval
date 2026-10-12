@@ -3,6 +3,7 @@ from typing import Any
 import numpy as np
 from numpy.typing import ArrayLike
 
+from surpyval import plotting
 from surpyval.recurrent import diagnostics
 from surpyval.recurrent.inference import (
     LikelihoodInferenceMixin,
@@ -589,19 +590,21 @@ class ProportionalIntensityModel(
         x_plot = np.linspace(0, self.data.x.max(), 1000)
         Z_0 = self.data.Z.mean(axis=0)
 
-        ax.step(x, (d / r).cumsum(), color="r", where="post")
-        ax.plot(x_plot, self.cif(x_plot, Z_0), color="b")
+        band = None
         if plot_bounds and hasattr(self, "_neg_ll"):
-            cb = self.cif_cb(x_plot, Z_0, alpha_ci=alpha_ci)
-            ax.fill_between(
-                x_plot,
-                cb[:, 0],
-                cb[:, 1],
-                color="b",
-                alpha=0.2,
-                label=f"{(1 - alpha_ci) * 100:g}% Confidence Band",
-            )
+            band = self.cif_cb(x_plot, Z_0, alpha_ci=alpha_ci)
+        plotting.observed_and_fitted(
+            ax,
+            (x, (d / r).cumsum()),
+            (x_plot, self.cif(x_plot, Z_0)),
+            band,
+            observed_label="Observed MCF",
+            fitted_label="Model, at the mean covariates",
+            band_label=f"{(1 - alpha_ci) * 100:g}% confidence band",
+        )
         label_axes(ax, self.unit, "Mean cumulative function")
+        plotting.style_axes(ax)
+        plotting.style_legend(ax)
         return ax
 
     def _parameter_names(self) -> list:

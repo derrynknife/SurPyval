@@ -122,10 +122,12 @@ def test_cause_specific_mcf_plot_draws_bounds_on_request():
     assert len(ax.lines) == 2
     _, ax = plt.subplots()
     model.plot(ax=ax, alpha_ci=0.2)
-    # an MCF plus a [lower, upper] pair per cause
-    assert len(ax.lines) == 6
-    upper = model.models["a"].mcf_cb(model.models["a"].x, alpha_ci=0.2)
-    np.testing.assert_allclose(ax.lines[2].get_ydata(), upper[:, 1])
+    # an MCF per cause, each with its bounds as a band of its colour
+    assert len(ax.lines) == 2 and len(ax.collections) == 2
+    cb = model.models["a"].mcf_cb(model.models["a"].x, alpha_ci=0.2)
+    band = ax.collections[0].get_paths()[0].vertices[:, 1]
+    assert np.isclose(band.max(), cb[:, 1].max())
+    assert np.isclose(band.min(), cb[:, 0].min())
     plt.close("all")
 
 

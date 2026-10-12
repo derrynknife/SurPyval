@@ -3835,7 +3835,7 @@ class Parametric(
         >>> model = Weibull.fit(x)
         >>> model.plot()
         <Axes: title={'center': 'Weibull Probability Plot'}, xlabel='Time',
-        ylabel='CDF'>
+        ylabel='Fraction failed'>
 
         Two populations on one plot, each in its own colour, with a
         legend:
