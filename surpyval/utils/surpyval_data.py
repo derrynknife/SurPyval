@@ -295,6 +295,14 @@ class SurpyvalData:
         *,
         left_truncation: Number | None = None,
         right_truncation: Number | None = None,
+        observed_left_truncation: ArrayLike | None = None,
+        observed_right_truncation: ArrayLike | None = None,
+        right_censored_left_truncation: ArrayLike | None = None,
+        right_censored_right_truncation: ArrayLike | None = None,
+        left_censored_left_truncation: ArrayLike | None = None,
+        left_censored_right_truncation: ArrayLike | None = None,
+        interval_censored_left_truncation: ArrayLike | None = None,
+        interval_censored_right_truncation: ArrayLike | None = None,
     ) -> "SurpyvalData":
         """
         The data from a list of each kind of observation: the times at
@@ -303,6 +311,15 @@ class SurpyvalData:
         failure is known to lie in. Any of them may be left out, but not
         all; a time repeated is counted, and a single time may be given as
         a number.
+
+        Each kind has its own truncation bounds, ``<kind>_left_truncation``
+        and ``<kind>_right_truncation``: one number for every item of that
+        kind, or a list with one bound per item, in the same order
+        (``-inf`` or ``inf`` for an item with no bound).
+        ``left_truncation`` and ``right_truncation`` are one bound shared
+        by every item of every kind; giving both it and a kind's own bound
+        on the same side is refused, as one would silently replace the
+        other.
 
         Parameters
         ----------
@@ -318,9 +335,12 @@ class SurpyvalData:
             interval, with ``lower < upper``.
         left_truncation, right_truncation : scalar, optional
             One truncation bound shared by every observation: the window
-            the units could be seen in, from ``left_truncation`` to
-            ``right_truncation``. For a bound per observation, use
-            ``SurpyvalData(x, c, n, tl=..., tr=...)``.
+            the units could be seen in.
+        <kind>_left_truncation, <kind>_right_truncation : array like, optional
+            The truncation bounds of one kind's items, where ``<kind>`` is
+            ``observed``, ``right_censored``, ``left_censored`` or
+            ``interval_censored``: one number for every item of the kind,
+            or one per item, in the order of its list.
 
         Returns
         -------
@@ -336,36 +356,100 @@ class SurpyvalData:
         array([1., 3., 5., 7., 9.])
         >>> data.c, data.n
         (array([0, 0, 1, 0, 1]), array([1, 2, 1, 1, 1]))
+
+        A window shared by everything, and bounds of each kind's own:
+
         >>> data = SurpyvalData.from_observations(
         ...     observed=[2, 4],
         ...     interval_censored=[[1, 3]],
         ...     left_truncation=0.5,
         ... )
-        >>> data.x_il, data.x_ir, data.tl
-        (array([1.]), array([3.]), array([0.5, 0.5, 0.5]))
+        >>> data.tl
+        array([0.5, 0.5, 0.5])
+        >>> data = SurpyvalData.from_observations(
+        ...     observed=[600, 700],
+        ...     observed_left_truncation=[500, 0],
+        ...     right_censored=[1000],
+        ...     right_censored_left_truncation=500,
+        ... )
+        >>> data.x, data.tl
+        (array([ 600.,  700., 1000.]), array([500.,   0., 500.]))
         """
-        from surpyval.utils.data_formats import fsli_to_xcnt
-
-        for name, bound in (
-            ("left_truncation", left_truncation),
-            ("right_truncation", right_truncation),
-        ):
+        lists = {
+            "observed": observed,
+            "right_censored": right_censored,
+            "left_censored": left_censored,
+            "interval_censored": interval_censored,
+        }
+        own = {
+            "observed_left_truncation": observed_left_truncation,
+            "observed_right_truncation": observed_right_truncation,
+            "right_censored_left_truncation": right_censored_left_truncation,
+            "right_censored_right_truncation": (
+                right_censored_right_truncation
+            ),
+            "left_censored_left_truncation": left_censored_left_truncation,
+            "left_censored_right_truncation": left_censored_right_truncation,
+            "interval_censored_left_truncation": (
+                interval_censored_left_truncation
+            ),
+            "interval_censored_right_truncation": (
+                interval_censored_right_truncation
+            ),
+        }
+        shared = {"left": left_truncation, "right": right_truncation}
+        if all(times is None for times in lists.values()):
+            raise ValueError(
+                "Give at least one of observed, right_censored, "
+                "left_censored or interval_censored."
+            )
+        for side, bound in shared.items():
             if bound is not None and np.ndim(bound) != 0:
                 raise ValueError(
-                    f"'{name}' must be one bound shared by every "
-                    "observation: the lists give no order to match "
-                    "per-observation bounds to. Build per-observation "
-                    "truncation with SurpyvalData(x, c, n, tl=..., tr=...)."
+                    f"'{side}_truncation' must be one bound shared by every "
+                    "observation. For a bound per observation, give it "
+                    f"with each kind's list: 'observed_{side}_truncation', "
+                    f"'right_censored_{side}_truncation' and so on, one "
+                    "bound per item in the same order."
                 )
-        # A single time given as a number is a list of one
-        observed, right_censored, left_censored = (
-            [times] if times is not None and np.ndim(times) == 0 else times
-            for times in (observed, right_censored, left_censored)
+
+        xs, cs, tls, trs = [], [], [], []
+        for kind, flag in _OBSERVATION_KINDS:
+            times = _observation_times(kind, lists[kind])
+            bounds = {}
+            for side, none in (("left", -np.inf), ("right", np.inf)):
+                name = f"{kind}_{side}_truncation"
+                bound = own[name]
+                if bound is None:
+                    bound = shared[side]
+                elif lists[kind] is None:
+                    raise ValueError(
+                        f"'{name}' was given without '{kind}': it bounds "
+                        f"each of the {kind.replace('_', ' ')} times."
+                    )
+                elif shared[side] is not None:
+                    raise ValueError(
+                        f"Both '{side}_truncation' (shared by every "
+                        f"observation) and '{name}' were given: give one."
+                    )
+                bounds[side] = _truncation_bounds(
+                    name, bound, len(times), none
+                )
+            xs.append(times if flag == 2 else np.column_stack([times, times]))
+            cs.append(np.full(len(times), flag))
+            tls.append(bounds["left"])
+            trs.append(bounds["right"])
+        x = np.concatenate(xs)
+        if len(x) == 0:
+            raise ValueError(
+                "The lists hold no observations: give at least one time."
+            )
+        return cls(
+            x,
+            np.concatenate(cs),
+            tl=np.concatenate(tls),
+            tr=np.concatenate(trs),
         )
-        x, c, n, _ = fsli_to_xcnt(
-            observed, right_censored, left_censored, interval_censored
-        )
-        return cls(x, c, n, tl=left_truncation, tr=right_truncation)
 
     @classmethod
     def from_xrd(
@@ -428,8 +512,11 @@ class SurpyvalData:
         :meth:`from_observations` reads: ``"observed"``,
         ``"right_censored"`` and ``"left_censored"`` times and
         ``"interval_censored"`` ``[lower, upper]`` pairs, each repeated by
-        its count. Truncated data has no such form (the lists have no
-        place for the bounds), and is refused.
+        its count. Truncated data adds each kind's bounds, one per item
+        (``"observed_left_truncation"`` and so on, ``-inf`` or ``inf``
+        where an item has none), for each side on which anything is
+        truncated; so ``from_observations(**data.to_observations())`` is
+        the same data.
 
         Examples
         --------
@@ -437,29 +524,30 @@ class SurpyvalData:
         >>> data = SurpyvalData([1, 3, 5], c=[0, 0, 1], n=[1, 2, 1])
         >>> data.to_observations()["observed"]
         array([1., 3., 3.])
+        >>> data = SurpyvalData(
+        ...     [600, 700, 1000], c=[0, 0, 1], tl=[500, 0, 500]
+        ... )
+        >>> data.to_observations()["observed_left_truncation"]
+        array([500.,   0.])
         """
-        if np.isfinite(self.t).any():
-            raise ValueError(
-                "Truncated data has no lists-of-observations form: the "
-                "lists have no place for the truncation bounds. Use "
-                "to_xcnt(), whose t holds them."
-            )
         counts = self.n.astype(int)
         x = self.x if self.x.ndim == 2 else np.column_stack([self.x] * 2)
-
-        def times(flag: int) -> np.ndarray:
+        truncated = [
+            (side, column)
+            for column, side in enumerate(("left", "right"))
+            if np.isfinite(self.t[:, column]).any()
+        ]
+        lists: dict[str, np.ndarray] = {}
+        bounds: dict[str, np.ndarray] = {}
+        for kind, flag in _OBSERVATION_KINDS:
             mask = self.c == flag
-            return np.repeat(x[mask, 0], counts[mask]).astype(float)
-
-        mask = self.c == 2
-        return {
-            "observed": times(0),
-            "right_censored": times(1),
-            "left_censored": times(-1),
-            "interval_censored": np.repeat(
-                x[mask], counts[mask], axis=0
-            ).astype(float),
-        }
+            values = x[mask] if flag == 2 else x[mask, 0]
+            lists[kind] = np.repeat(values, counts[mask], axis=0).astype(float)
+            for side, column in truncated:
+                bounds[f"{kind}_{side}_truncation"] = np.repeat(
+                    self.t[mask, column], counts[mask]
+                ).astype(float)
+        return {**lists, **bounds}
 
     def to_xrd(self, estimator: str = "Nelson-Aalen") -> tuple:
         """
@@ -641,6 +729,72 @@ class SurpyvalData:
         Z = np.array(data["Z"]) if "Z" in data else None
 
         return cls(x, c, n, t, Z=Z, handle=False)
+
+
+# The kinds of observation from_observations reads, with their flags.
+_OBSERVATION_KINDS = (
+    ("observed", 0),
+    ("right_censored", 1),
+    ("left_censored", -1),
+    ("interval_censored", 2),
+)
+
+
+def _observation_times(kind: str, times: Any) -> np.ndarray:
+    """The ``kind`` list of :meth:`SurpyvalData.from_observations` as a
+    float array: one-dimensional (a number is a list of one), or
+    ``(k, 2)`` ``[lower, upper]`` pairs with ``lower < upper`` for the
+    intervals; empty where it was not given."""
+    from surpyval.utils.data_formats import validate_float_array
+
+    interval = kind == "interval_censored"
+    arr = validate_float_array(times, kind)
+    if interval:
+        if arr.size == 0:
+            arr = arr.reshape(0, 2)
+        if arr.ndim != 2 or arr.shape[1] != 2:
+            raise ValueError(
+                "'interval_censored' must be [lower, upper] pairs, one per "
+                "interval (shape (k, 2)); for a single interval, "
+                "[[lower, upper]]."
+            )
+    else:
+        arr = arr.reshape(1) if arr.ndim == 0 else arr
+        if arr.ndim != 1:
+            raise ValueError(f"'{kind}' must be a list of times.")
+    if np.isnan(arr).any():
+        raise ValueError(f"'{kind}' cannot contain NaN values.")
+    if interval and (arr[:, 0] >= arr[:, 1]).any():
+        raise ValueError(
+            "Each interval in 'interval_censored' needs lower < upper."
+        )
+    return arr
+
+
+def _truncation_bounds(
+    name: str, bound: Any, k: int, none: float
+) -> np.ndarray:
+    """A kind's truncation bounds, ``name``, as one per item: ``none``
+    (an infinity) for no bound, a number for every item, or a list of
+    ``k``, one per item."""
+    from surpyval.utils.data_formats import validate_float_array
+
+    if bound is None:
+        return np.full(k, none)
+    arr = validate_float_array(bound, name)
+    if arr.ndim == 0:
+        arr = np.full(k, float(arr))
+    elif arr.ndim != 1 or len(arr) != k:
+        raise ValueError(
+            f"'{name}' must be one bound for every item or one per item "
+            f"({k}, in the order of its list); got {np.shape(bound)}."
+        )
+    if np.isnan(arr).any():
+        raise ValueError(
+            f"'{name}' cannot contain NaN: use {'-inf' if none < 0 else 'inf'}"
+            " for an item with no bound."
+        )
+    return arr
 
 
 # The arguments a fit takes its data in, besides ``x``.

@@ -10,11 +10,16 @@ Unreleased
   ``SurpyvalData.from_observations(observed=..., right_censored=...,
   left_censored=..., interval_censored=..., left_truncation=...,
   right_truncation=...)`` reads a list of each kind of observation (any
-  may be left out; the truncation is one window shared by all), and
-  ``SurpyvalData.from_xrd(x, r, d)`` the at-risk / deaths form; both
-  validate as the fitters do. ``to_xcnt()`` gives the arrays ``x, c, n,
-  t`` (copies) and ``to_observations()`` the four lists back, refusing
-  truncated data, which they cannot hold.
+  may be left out). Each kind takes truncation bounds of its own,
+  ``observed_left_truncation``, ``right_censored_right_truncation`` and so
+  on: one number for every item of that kind, or one per item in the
+  order of its list. ``left_truncation`` and ``right_truncation`` are one
+  window shared by everything (given with a kind's own bound on the same
+  side, it is refused). ``SurpyvalData.from_xrd(x, r, d)`` reads the
+  at-risk / deaths form; both validate as the fitters do. ``to_xcnt()``
+  gives the arrays ``x, c, n, t`` (copies) and ``to_observations()`` the
+  lists back, with each kind's bounds for truncated data, so
+  ``from_observations(**data.to_observations())`` is the same data.
 - The parametric, non-parametric and regression ``fit`` methods (with
   ``MixtureModel`` and ``fit_best``) take a ``SurpyvalData`` as ``x``:
   ``Weibull.fit(data)``. The values, flags, counts, truncation and, for a
