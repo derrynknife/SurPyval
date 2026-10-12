@@ -20,6 +20,7 @@ from surpyval.utils.no_maximum import (
     warn_unverified,
 )
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.units import takes_unit
 
 from ._fit_inputs import FitInputsMixin, normalise_how
 from .fitters import bounds_convert
@@ -242,6 +243,7 @@ class OptimisedFitMixin(FitInputsMixin):
             moments[i] = self._moment(n, *params, offset=offset)
         return moments
 
+    @takes_unit
     def fit(
         self,
         x: npt.ArrayLike | None = None,

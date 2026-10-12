@@ -65,6 +65,7 @@ from surpyval.utils.no_maximum import (
 )
 from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import (
     check_alpha_ci,
     check_option,
@@ -817,6 +818,7 @@ class CompetingRisksProportionalHazards(
 
     @classmethod
     @column_arguments("x", "c", "n")
+    @takes_unit
     def fit_from_df(
         cls,
         df: Any,
@@ -935,6 +937,7 @@ class CompetingRisksProportionalHazards(
 
     @classmethod
     @dataframe_covariates
+    @takes_unit
     def fit(
         cls,
         x: npt.ArrayLike,

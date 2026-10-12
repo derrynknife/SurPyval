@@ -117,6 +117,7 @@ from surpyval.utils.no_maximum import (
 )
 from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import (
     check_alpha_ci,
     missing_cause_error,
@@ -1149,6 +1150,7 @@ class FineGray_(FitterRepr):
     fitter_kind = "semi-parametric subdistribution hazards fitter"
 
     @column_arguments("x", "c", "n")
+    @takes_unit
     def fit_from_df(
         self,
         df: Any,
@@ -1232,6 +1234,7 @@ class FineGray_(FitterRepr):
         return model
 
     @dataframe_covariates
+    @takes_unit
     def fit(
         self,
         x: npt.ArrayLike,

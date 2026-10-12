@@ -64,6 +64,7 @@ from surpyval.utils.shapes import (
     covariate_rows,
     keeps_query_shape,
 )
+from surpyval.utils.units import takes_unit
 
 from .._aliasing import (
     aliased_columns,
@@ -646,6 +647,7 @@ class AdditiveHazards_(FitterRepr):
     fitter_kind = "semi-parametric additive hazards fitter"
 
     @dataframe_covariates
+    @takes_unit
     def fit(
         self,
         x: npt.ArrayLike,
@@ -803,6 +805,7 @@ class AdditiveHazards_(FitterRepr):
         return model
 
     @column_arguments("x", "c", "n")
+    @takes_unit
     def fit_from_df(
         self,
         df: "pd.DataFrame",

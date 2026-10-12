@@ -34,6 +34,7 @@ from surpyval.utils.recurrent_utils import (
     validate_restoration,
 )
 from surpyval.utils.removed_names import column_arguments, removed_arguments
+from surpyval.utils.units import takes_unit
 
 
 def ari_reduction(
@@ -587,6 +588,7 @@ class ARI(RenewalFitMixin):
         return base_params
 
     @removed_arguments("0.23", dist="'baseline'")
+    @takes_unit
     def fit(
         self,
         x: ArrayLike,
@@ -675,6 +677,7 @@ class ARI(RenewalFitMixin):
         return self.fit_from_recurrent_data(data, baseline, m, init=init)
 
     @column_arguments("x", "i", "c", "n", "tl", "tr")
+    @takes_unit
     def fit_from_df(
         self,
         df: Any,

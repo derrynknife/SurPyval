@@ -265,7 +265,8 @@ def _axes_data(
 
 def _spread(ticks: list, x_lim: list, log: bool) -> list:
     """The ticks, dropping any closer than a fourteenth of the axis to the
-    one before, so that the merged ticks of two plots do not overlap."""
+    one before, so that their labels do not overlap (on one plot, or the
+    merged ticks of two)."""
     if log:
         ticks = [t for t in ticks if t > 0]
         pos, ends = np.log10(ticks), np.log10(np.maximum(x_lim, 1e-300))
@@ -291,6 +292,7 @@ def draw_probability_plot(
     show_censored: bool = False,
     color: Any = None,
     label: "str | None" = None,
+    xlabel: str = "Time",
     **line_kwargs: Any,
 ) -> Any:
     """
@@ -322,9 +324,9 @@ def draw_probability_plot(
         previous = zip(ax.get_xticks(), ax.get_xticklabels())
         x_ticks = {t: lab.get_text() for t, lab in previous} | x_ticks
         x_minor = sorted(set(x_minor) | set(ax.get_xticks(minor=True)))
-    ticks = sorted(x_ticks)
-    if ax.has_data():
-        ticks = _spread(ticks, x_lim, d["x_scale"] == "log")
+    # Spaced on one plot too: seven log-spaced times rounded to one
+    # figure can land side by side (900 and 1000 printed as "9001000").
+    ticks = _spread(sorted(x_ticks), x_lim, d["x_scale"] == "log")
 
     # Set limits and scale
     ax.set_ylim(y_lim)
@@ -346,7 +348,8 @@ def draw_probability_plot(
     ax.set_title(title)
     ax.set_ylabel("CDF")
     if not ax.get_xlabel():
-        ax.set_xlabel("Time")
+        # "Time", or what the model's unit measures: "Time (h)" (#845)
+        ax.set_xlabel(xlabel)
 
     # The fitted line first, so that it takes the next colour of the
     # axes' cycle; the points and bounds then share it.

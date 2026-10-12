@@ -12,6 +12,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     ParametricFitter,
     reject_structural_params,
 )
+from surpyval.utils.units import takes_unit
 
 from ..parametric import Parametric
 
@@ -163,6 +164,7 @@ class ExactEventTime_(ParametricFitter):
     # so there is no wider fit above this one. The event time is
     # bracketed exactly by the censoring bounds, so there is nothing
     # for how, offset, zi or lfp to do.
+    @takes_unit
     def fit(
         self,
         x: npt.ArrayLike,
@@ -251,6 +253,7 @@ class ExactEventTime_(ParametricFitter):
         self._set_support(model, False)
         return model
 
+    @takes_unit
     def from_params(
         self,
         params: npt.ArrayLike,

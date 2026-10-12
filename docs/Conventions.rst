@@ -434,6 +434,37 @@ The combined model shows the other conventions. Its mean lifetime is infinite, s
     _expected = surv.Weibull.from_params([20, 2], lfp_p=0.3, f0=0.1).ff(15)
     assert m.with_params([20, 2]).ff(15) == _expected
 
+Units
+~~~~~
+
+Every ``fit``, ``fit_from_df`` and ``from_params`` takes an optional
+``unit=``: the unit the data were measured in, of any kind -- ``"hours"``,
+``"km"``, ``"cycles"``, ``"pump starts"``. It is a label. The model keeps it
+as ``model.unit``, shows it in its printout and on its plots, and saves it
+with ``to_dict``; nothing is converted or checked. A unit `pint
+<https://pint.readthedocs.io>`_ knows is stored by its canonical name, so
+the same unit always reads the same (``"hrs"``, ``"hours"`` and ``"Hours"``
+are all ``"hour"``, and ``"cycles"`` is ``"cycle"``, a count); anything else
+is kept as written. Left out, it is ``None``: unknown, as before.
+
+.. jupyter-execute::
+
+    model = surv.Weibull.from_params([1000, 2], unit="hrs")
+    print(model.unit)
+    print(model)
+
+A plot names its time axis by what the unit measures: "Time (h)",
+"Distance (km)", or "Usage (cycles)" for a count or any other unit. A label
+already on the axes is kept. Tools that combine models (RePyability, say)
+can convert between units with pint from the stored names.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert model.unit == "hour"
+    assert surv.from_dict(model.to_dict()).unit == "hour"
+
 Saving and Loading Models
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 

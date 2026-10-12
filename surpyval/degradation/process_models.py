@@ -72,6 +72,7 @@ from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.removed_names import RemovedNames
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import (
     BOUNDS,
     check_alpha_ci,
@@ -1770,6 +1771,7 @@ class WienerProcess(RemovedNames):
     :class:`WienerProcessModel`)."""
 
     @classmethod
+    @takes_unit
     def fit(
         cls,
         x: npt.ArrayLike,
@@ -1949,6 +1951,7 @@ class WienerProcess(RemovedNames):
         return model
 
     @classmethod
+    @takes_unit
     def fit_from_df(
         cls,
         df: pd.DataFrame,
@@ -2184,6 +2187,7 @@ class GammaProcess(RemovedNames):
     :class:`GammaProcessModel`)."""
 
     @classmethod
+    @takes_unit
     def fit(
         cls,
         x: npt.ArrayLike,
@@ -2550,6 +2554,7 @@ class GammaProcess(RemovedNames):
         return model
 
     @classmethod
+    @takes_unit
     def fit_from_df(
         cls,
         df: pd.DataFrame,

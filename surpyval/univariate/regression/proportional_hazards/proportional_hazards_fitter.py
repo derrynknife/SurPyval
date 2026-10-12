@@ -16,6 +16,7 @@ from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.units import takes_unit
 
 from .._covariate_link import CovariateLink
 from .._fit_skeleton import (
@@ -496,6 +497,7 @@ class ProportionalHazardsFitter(
         )
 
     @dataframe_covariates
+    @takes_unit
     def fit(
         self,
         x: npt.ArrayLike,

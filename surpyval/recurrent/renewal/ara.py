@@ -37,6 +37,7 @@ from surpyval.utils.recurrent_utils import (
     validate_renewal_times,
     validate_restoration,
 )
+from surpyval.utils.units import takes_unit
 
 
 def ara_virtual_ages(
@@ -394,6 +395,7 @@ class ARA(RenewalFitMixin):
         self._attach_inference(out, neg_ll, [rho, *dist_params], res, data)
         return out
 
+    @takes_unit
     def fit(
         self,
         x: ArrayLike,

@@ -47,6 +47,7 @@ from surpyval.utils import optional_column
 from surpyval.utils.no_maximum import combined_maximum
 from surpyval.utils.recurrent_utils import handle_xicn
 from surpyval.utils.removed_names import column_arguments
+from surpyval.utils.units import label_axes, takes_unit
 from surpyval.utils.validation import unknown_cause_error
 
 
@@ -350,6 +351,7 @@ class CauseSpecificNHPP(SerialisableMixin):
         return out
 
     @classmethod
+    @takes_unit
     def fit(
         cls,
         x: ArrayLike,
@@ -415,6 +417,7 @@ class CauseSpecificNHPP(SerialisableMixin):
 
     @classmethod
     @column_arguments("x", "i", "c", "n", "tl", "tr")
+    @takes_unit
     def fit_from_df(
         cls,
         df: Any,
@@ -496,4 +499,5 @@ class CauseSpecificNHPP(SerialisableMixin):
         for cause in self.event_types:
             ax.plot(x_plot, self.cif(x_plot, cause), label=str(cause))
         ax.legend()
+        label_axes(ax, getattr(self, "unit", None), "Mean cumulative function")
         return ax

@@ -35,6 +35,7 @@ import numpy.typing as npt
 from scipy.optimize import curve_fit
 
 from surpyval.utils.removed_names import RemovedNames
+from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import option_error
 
 
@@ -131,6 +132,7 @@ class PathModel(ABC, RemovedNames):
         """One starting parameter vector, or a list of candidates."""
         raise NotImplementedError
 
+    @takes_unit
     def fit(self, x: npt.ArrayLike, y: npt.ArrayLike) -> npt.NDArray:
         """
         Fit the path parameters to one unit's measurements by
@@ -221,6 +223,7 @@ class LinearPath_(PathModel):
         x = np.asarray(x, dtype=float)
         return np.column_stack([np.ones_like(x), x])
 
+    @takes_unit
     def fit(self, x: npt.ArrayLike, y: npt.ArrayLike) -> npt.NDArray:
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)
@@ -333,6 +336,7 @@ class LogarithmicPath_(PathModel):
             x, "y = a + b * ln(t) is undefined at t = 0"
         )
 
+    @takes_unit
     def fit(self, x: npt.ArrayLike, y: npt.ArrayLike) -> npt.NDArray:
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)
@@ -365,6 +369,7 @@ class LloydLipowPath_(PathModel):
     def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
         self._require_positive_times(x, "y = a - b / t is undefined at t = 0")
 
+    @takes_unit
     def fit(self, x: npt.ArrayLike, y: npt.ArrayLike) -> npt.NDArray:
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)
@@ -419,6 +424,7 @@ class QuadraticPath_(PathModel):
         x = np.asarray(x, dtype=float)
         return np.column_stack([np.ones_like(x), x, x**2])
 
+    @takes_unit
     def fit(self, x: npt.ArrayLike, y: npt.ArrayLike) -> npt.NDArray:
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)
@@ -521,6 +527,7 @@ class OffsetExponentialPath_(PathModel):
             guesses.append([a0, sign * np.exp(intercept), slope])
         return guesses
 
+    @takes_unit
     def fit(self, x: npt.ArrayLike, y: npt.ArrayLike) -> npt.NDArray:
         """
         Fit the path parameters to one unit's measurements by nonlinear

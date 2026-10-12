@@ -19,6 +19,7 @@ from surpyval.utils.shapes import (
     covariate_rows,
     keeps_query_shape,
 )
+from surpyval.utils.units import label_axes
 from surpyval.utils.validation import (
     check_alpha_ci,
     warn_outside_unit_interval,
@@ -1877,4 +1878,5 @@ class ParametricRegressionModel(
                 alpha=0.2,
                 label=f"{(1 - alpha_ci) * 100:g}% Confidence Band",
             )
+        label_axes(ax, self.unit, "Survival probability")
         return ax

@@ -20,6 +20,7 @@ from scipy.optimize import brentq
 
 from surpyval.multivariate.parametric.copula.copula import _U_CLIP, Copula
 from surpyval.utils.rng import as_generator
+from surpyval.utils.units import takes_unit
 
 
 class IndependenceCopula(Copula):
@@ -79,6 +80,7 @@ class IndependenceCopula(Copula):
     def spearman_rho(self, *params: float) -> float:
         return 0.0
 
+    @takes_unit
     def fit(
         self,
         x: npt.ArrayLike,

@@ -107,6 +107,7 @@ from surpyval.utils.shapes import (
     covariate_rows,
     keeps_query_shape,
 )
+from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
 
 from .._aliasing import (
@@ -1171,6 +1172,7 @@ class ProportionalOdds_(FitterRepr):
     fitter_kind = "semi-parametric proportional odds fitter"
 
     @dataframe_covariates
+    @takes_unit
     def fit(
         self,
         x: npt.ArrayLike,
@@ -1332,6 +1334,7 @@ class ProportionalOdds_(FitterRepr):
         return model
 
     @column_arguments("x", "c", "n", "tl")
+    @takes_unit
     def fit_from_df(
         self,
         df: "pd.DataFrame",

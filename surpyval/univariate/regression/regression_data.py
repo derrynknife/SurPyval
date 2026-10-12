@@ -33,6 +33,7 @@ from surpyval.utils import (
 )
 from surpyval.utils.dataframe import check_columns, frame_column
 from surpyval.utils.removed_names import column_arguments
+from surpyval.utils.units import takes_unit
 
 from ._aliasing import covariate_columns
 
@@ -1090,6 +1091,7 @@ class DataFrameRegressionMixin:
     fit: Callable[..., "ParametricRegressionModel"]
 
     @column_arguments("x", "c", "n", "xl", "xr", "tl", "tr")
+    @takes_unit
     def fit_from_df(
         self,
         df: pd.DataFrame,
