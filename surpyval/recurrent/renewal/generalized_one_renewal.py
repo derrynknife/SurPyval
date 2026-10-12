@@ -24,6 +24,7 @@ from surpyval.recurrent.renewal.renewal_model import (
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.no_maximum import quiet_maximum_warnings
 from surpyval.utils.pickling import Rebuilt
+from surpyval.utils.recurrent_event_data import accepts_recurrent_data
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     measure_from_entry,
@@ -446,6 +447,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         return out
 
     @takes_unit
+    @accepts_recurrent_data
     def fit(
         self,
         x: ArrayLike,

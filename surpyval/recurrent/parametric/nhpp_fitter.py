@@ -17,7 +17,10 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
 from surpyval.univariate.parametric.fitters import verify_or_polish
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.pickling import Rebuilt
-from surpyval.utils.recurrent_event_data import RecurrentEventData
+from surpyval.utils.recurrent_event_data import (
+    RecurrentEventData,
+    accepts_recurrent_data,
+)
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
@@ -312,6 +315,7 @@ class NHPPFitter(IntensityModel):
         return model
 
     @takes_unit
+    @accepts_recurrent_data
     def fit(
         self,
         x: ArrayLike,

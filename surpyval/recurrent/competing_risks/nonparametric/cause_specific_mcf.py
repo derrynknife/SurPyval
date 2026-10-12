@@ -42,6 +42,7 @@ from surpyval.univariate.nonparametric._support import (
     support_from_dict,
 )
 from surpyval.utils import optional_column
+from surpyval.utils.recurrent_event_data import accepts_recurrent_data
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
@@ -319,6 +320,7 @@ class CauseSpecificMCF(SerialisableMixin):
 
     @classmethod
     @takes_unit
+    @accepts_recurrent_data
     def fit(
         cls,
         x: ArrayLike,

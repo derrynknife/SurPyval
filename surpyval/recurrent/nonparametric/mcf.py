@@ -21,7 +21,10 @@ from surpyval.univariate.nonparametric._support import (
 from surpyval.utils.dataframe import RecurrentDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.fitter_repr import FitterRepr
-from surpyval.utils.recurrent_event_data import RecurrentEventData
+from surpyval.utils.recurrent_event_data import (
+    RecurrentEventData,
+    accepts_recurrent_data,
+)
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
@@ -663,6 +666,7 @@ class NonParametricCounting(
         return out
 
     @takes_unit
+    @accepts_recurrent_data
     def fit(
         self,
         x: npt.ArrayLike,

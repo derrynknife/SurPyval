@@ -30,6 +30,21 @@ Unreleased
   interval open at one end is ``[lower, inf]`` in ``interval_censored``),
   and a pandas list and its per-item values with different indexes, since
   they are matched by position.
+- ``RecurrentEventData.from_histories`` reads recurrent event data as each
+  item's history, keyed by the item's id: ``observed={item: [ages at its
+  failures]}`` and ``right_censored={item: age at the end of
+  observation}`` (an item left out is taken to have been observed until
+  its last failure), with ``left_truncation`` / ``right_truncation`` per
+  item or shared and ``covariates`` one row per item. ``gaps=True`` reads
+  the times between failures and adds them up within each item.
+  ``to_histories()`` gives the dictionaries back, so
+  ``from_histories(**data.to_histories())`` is the same data. Every
+  recurrent ``fit`` (NHPP, HPP, the renewal models, the MCF, the
+  proportional intensity and cause-specific models) takes a
+  ``RecurrentEventData`` as ``x``, by the same rules as ``fit(data)`` for
+  ``SurpyvalData``: other data arguments given with it, and data the fit
+  has no argument for (right truncation for a renewal model, say), are
+  refused.
 - The parametric, non-parametric and regression ``fit`` methods (with
   ``MixtureModel`` and ``fit_best``) take a ``SurpyvalData`` as ``x``:
   ``Weibull.fit(data)``. The values, flags, counts, truncation and, for a
