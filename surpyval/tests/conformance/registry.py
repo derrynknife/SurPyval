@@ -368,18 +368,10 @@ for _path in (
     OUT_OF_SCOPE[f"surpyval.degradation.{_path}"] = (
         _COMPONENT + ": a DegradationAnalysis path shape"
     )
+# The top-level data-format functions (fs_to_xcnt, ...) are deprecated by
+# date and skipped by the completeness scan (DATED_DATA_FUNCTIONS).
 for _fn in (
-    "fs_to_xcnt",
-    "fs_to_xrd",
-    "fsl_to_xcnt",
-    "fsli_handler",
-    "fsli_to_xcnt",
     "round_sig",
-    "xcn_to_fs",
-    "xcnt_handler",
-    "xcnt_to_xrd",
-    "xrd_handler",
-    "xrd_to_xcnt",
     "handle_xicn",
     "fit_best",
     "forecast",

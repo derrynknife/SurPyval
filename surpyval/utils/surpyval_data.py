@@ -413,6 +413,10 @@ class SurpyvalData:
                     "bound per item in the same order."
                 )
 
+        for name, values in own.items():
+            kind = name.rsplit("_", 2)[0]
+            _check_same_index(kind, lists[kind], name, values)
+
         xs, cs, tls, trs = [], [], [], []
         for kind, flag in _OBSERVATION_KINDS:
             times = _observation_times(kind, lists[kind])
@@ -496,6 +500,7 @@ class SurpyvalData:
         ``[lower, upper]`` row where any observation is an interval), the
         censoring flags (0 observed, 1 right, -1 left, 2 interval), the
         counts and the ``[left, right]`` truncation bounds, as copies.
+        Covariates are not part of the format: they are ``data.Z``.
 
         Examples
         --------
@@ -593,7 +598,9 @@ class SurpyvalData:
                     self.x, self.c, self.n, self.t
                 )
             self._xrd_cache[estimator] = xrd
-        return self._xrd_cache[estimator]
+        # Copies, as to_xcnt gives: an edit to the result must not change
+        # what the next call returns.
+        return tuple(np.copy(part) for part in self._xrd_cache[estimator])
 
     def _split_by_mask(
         self, mask: np.ndarray
@@ -764,11 +771,36 @@ def _observation_times(kind: str, times: Any) -> np.ndarray:
             raise ValueError(f"'{kind}' must be a list of times.")
     if np.isnan(arr).any():
         raise ValueError(f"'{kind}' cannot contain NaN values.")
+    if not interval and not np.isfinite(arr).all():
+        raise ValueError(
+            f"'{kind}' times must be finite: an infinite time carries no "
+            "information. For an interval open at one end, give it in "
+            "interval_censored as [lower, inf] or [-inf, upper]."
+        )
     if interval and (arr[:, 0] >= arr[:, 1]).any():
         raise ValueError(
             "Each interval in 'interval_censored' needs lower < upper."
         )
     return arr
+
+
+def _check_same_index(kind: str, times: Any, name: str, values: Any) -> None:
+    """Refuse a list and its per-item ``values`` that are both pandas
+    objects with different indexes: they are matched by position, and
+    pandas users expect matching by index, so a reordered or filtered
+    index would pair the wrong values silently."""
+    index = getattr(times, "index", None)
+    other = getattr(values, "index", None)
+    # A list's .index is a method; only a pandas index has .equals
+    if not (hasattr(index, "equals") and hasattr(other, "equals")):
+        return
+    if not index.equals(other):
+        raise ValueError(
+            f"'{kind}' and '{name}' are pandas objects with different "
+            "indexes. They are matched by position, not by index: give them "
+            "the same index (for example both from one DataFrame), or pass "
+            "arrays."
+        )
 
 
 def _truncation_bounds(
@@ -833,6 +865,16 @@ def accepts_surpyval_data(method: F) -> F:
                 "x is a SurpyvalData, which holds the data: leave out "
                 + ", ".join(repr(g) for g in given)
                 + " (or pass arrays rather than a SurpyvalData)."
+            )
+        if (
+            data.Z is None
+            and "Z" in names
+            and bound.arguments.get("Z") is None
+            and signature.parameters["Z"].default is inspect.Parameter.empty
+        ):
+            raise TypeError(
+                "This fit needs covariates, Z, and the SurpyvalData holds "
+                "none: build it with SurpyvalData(x, c, ..., Z=Z)."
             )
         filled = {"x": data.x}
         lost = []

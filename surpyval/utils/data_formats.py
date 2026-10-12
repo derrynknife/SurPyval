@@ -550,6 +550,14 @@ def coerce_xcnt_x(x: npt.ArrayLike) -> npt.NDArray:
         try:
             x = np.atleast_1d(np.array(x, dtype=float))
         except (ValueError, TypeError):
+            from surpyval.utils.surpyval_data import SurpyvalData
+
+            if isinstance(x, SurpyvalData):
+                raise TypeError(
+                    "x is a SurpyvalData, which this function does not "
+                    "take: pass arrays (x, c, n, t = data.to_xcnt() gives "
+                    "the data's own)."
+                )
             raise ValueError(
                 "Variable 'x' must be numbers, or [left, right] pairs of"
                 " numbers"

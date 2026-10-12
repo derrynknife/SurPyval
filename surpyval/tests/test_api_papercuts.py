@@ -462,11 +462,15 @@ def test_package_has_a_docstring_and_all():
     assert not names & {"np", "Any", "TYPE_CHECKING"}
     assert len(names) == len(surpyval.__all__)
     namespace: dict = {}
-    exec("from surpyval import *", namespace)
-    for name in ("np", "Any", "TYPE_CHECKING"):
-        assert name not in namespace
-    for name in surpyval.__all__:
-        assert namespace[name] is getattr(surpyval, name)
+    with warnings.catch_warnings():
+        # The data-format functions deprecated by date are listed, with a
+        # FutureWarning (tests/utils/test_surpyval_data_api.py)
+        warnings.simplefilter("ignore", FutureWarning)
+        exec("from surpyval import *", namespace)
+        for name in ("np", "Any", "TYPE_CHECKING"):
+            assert name not in namespace
+        for name in surpyval.__all__:
+            assert namespace[name] is getattr(surpyval, name)
 
 
 @pytest.mark.parametrize(

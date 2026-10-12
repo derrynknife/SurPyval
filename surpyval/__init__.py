@@ -299,6 +299,19 @@ __all__ = [
     "weibayes",
     # Data
     "round_sig",
+    # Deprecated (dated): reached through __getattr__ with a FutureWarning,
+    # listed so that ``from surpyval import *`` still gets them until the
+    # removal date (DATED_DATA_FUNCTIONS).
+    "fs_to_xcnt",
+    "fs_to_xrd",
+    "fsl_to_xcnt",
+    "fsli_handler",
+    "fsli_to_xcnt",
+    "xcn_to_fs",
+    "xcnt_handler",
+    "xcnt_to_xrd",
+    "xrd_handler",
+    "xrd_to_xcnt",
     "RecurrentEventData",
     "SurpyvalData",
     "handle_xicn",
