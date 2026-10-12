@@ -327,7 +327,8 @@ non-parametric estimators' "at risk / deaths" (``xrd``) form too:
      - ``xcnt`` arrays (or ``xl`` / ``xr`` columns) → data, validated,
        grouped and sorted as the fitters see it
    * - ``SurpyvalData.from_observations(observed, right_censored,
-       left_censored, interval_censored, tl=, tr=)``
+       left_censored, interval_censored, left_truncation=,
+       right_truncation=)``
      - a list of each kind of observation (the ``fsli`` layout), with an
        optional truncation window shared by all → data
    * - ``SurpyvalData.from_xrd(x, r, d)``

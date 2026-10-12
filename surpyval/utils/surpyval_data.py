@@ -293,15 +293,16 @@ class SurpyvalData:
         left_censored: ArrayLike | None = None,
         interval_censored: ArrayLike | None = None,
         *,
-        tl: Number | None = None,
-        tr: Number | None = None,
+        left_truncation: Number | None = None,
+        right_truncation: Number | None = None,
     ) -> "SurpyvalData":
         """
         The data from a list of each kind of observation: the times at
         which a failure was observed, the times right censored at (the
         suspensions), the times left censored at, and the intervals a
         failure is known to lie in. Any of them may be left out, but not
-        all; a time repeated is counted.
+        all; a time repeated is counted, and a single time may be given as
+        a number.
 
         Parameters
         ----------
@@ -315,9 +316,11 @@ class SurpyvalData:
         interval_censored : array like, optional
             ``[lower, upper]`` pairs, one per unit failed within the
             interval, with ``lower < upper``.
-        tl, tr : scalar, optional
-            A truncation bound shared by every observation: the window the
-            units were seen in, left (``tl``) and right (``tr``).
+        left_truncation, right_truncation : scalar, optional
+            One truncation bound shared by every observation: the window
+            the units could be seen in, from ``left_truncation`` to
+            ``right_truncation``. For a bound per observation, use
+            ``SurpyvalData(x, c, n, tl=..., tr=...)``.
 
         Returns
         -------
@@ -334,14 +337,19 @@ class SurpyvalData:
         >>> data.c, data.n
         (array([0, 0, 1, 0, 1]), array([1, 2, 1, 1, 1]))
         >>> data = SurpyvalData.from_observations(
-        ...     observed=[2, 4], interval_censored=[[1, 3]], tl=0.5
+        ...     observed=[2, 4],
+        ...     interval_censored=[[1, 3]],
+        ...     left_truncation=0.5,
         ... )
         >>> data.x_il, data.x_ir, data.tl
         (array([1.]), array([3.]), array([0.5, 0.5, 0.5]))
         """
         from surpyval.utils.data_formats import fsli_to_xcnt
 
-        for name, bound in (("tl", tl), ("tr", tr)):
+        for name, bound in (
+            ("left_truncation", left_truncation),
+            ("right_truncation", right_truncation),
+        ):
             if bound is not None and np.ndim(bound) != 0:
                 raise ValueError(
                     f"'{name}' must be one bound shared by every "
@@ -349,10 +357,15 @@ class SurpyvalData:
                     "per-observation bounds to. Build per-observation "
                     "truncation with SurpyvalData(x, c, n, tl=..., tr=...)."
                 )
+        # A single time given as a number is a list of one
+        observed, right_censored, left_censored = (
+            [times] if times is not None and np.ndim(times) == 0 else times
+            for times in (observed, right_censored, left_censored)
+        )
         x, c, n, _ = fsli_to_xcnt(
             observed, right_censored, left_censored, interval_censored
         )
-        return cls(x, c, n, tl=tl, tr=tr)
+        return cls(x, c, n, tl=left_truncation, tr=right_truncation)
 
     @classmethod
     def from_xrd(
