@@ -63,6 +63,7 @@ class SurpyvalData:
         Z: ArrayLike | None = None,
         group_and_sort: bool = True,
         handle: bool = True,
+        e: ArrayLike | None = None,
     ) -> None:
         """Initialize a SurpyvalData instance for survival analysis.
 
@@ -102,6 +103,11 @@ class SurpyvalData:
             Covariates, one row per value of x (see also
             :meth:`add_covariates`). Giving ``Z`` turns ``group_and_sort``
             off, so the rows stay aligned with x.
+        e : array-like, optional
+            The event type (failure mode or cause) of each row, for the
+            competing-risks fitters, which take it from the data; a
+            suspension (``c == 1``) has none (None). Giving ``e`` turns
+            ``group_and_sort`` off, as ``Z`` does.
         group_and_sort : bool, default=True
             Whether to group and sort the data. Set False when using covariates
             to maintain data order.
@@ -138,7 +144,7 @@ class SurpyvalData:
         >>> data = SurpyvalData(x, t=t)
         """
 
-        if Z is not None:
+        if Z is not None or e is not None:
             group_and_sort = False
 
         if handle:
@@ -163,6 +169,8 @@ class SurpyvalData:
             self.add_covariates(Z)
         else:
             self.Z: np.ndarray | None = None
+        if e is not None:
+            self.e = _event_type_array(e, self.c)
 
     def add_covariates(self, Z: ArrayLike) -> None:
         """
@@ -318,6 +326,9 @@ class SurpyvalData:
         right_censored_covariates: ArrayLike | None = None,
         left_censored_covariates: ArrayLike | None = None,
         interval_censored_covariates: ArrayLike | None = None,
+        observed_event_types: Any = None,
+        left_censored_event_types: Any = None,
+        interval_censored_event_types: Any = None,
     ) -> "SurpyvalData":
         """
         The data from a list of each kind of observation: the times at
@@ -366,6 +377,12 @@ class SurpyvalData:
         <kind>_counts : array like, optional
             How many items had each value: one whole number (0 or more) for
             every item of the kind, or one per item.
+        <kind>_event_types : optional
+            What each failure was (a failure mode or cause, for the
+            competing-risks fitters), for ``observed``, ``left_censored``
+            and ``interval_censored``: one type for every item of the kind,
+            or one per item; given for one kind, needed for every kind of
+            failure with items. Suspensions have none.
         <kind>_covariates : array like, optional
             The covariates of each item, one row per item (a single column
             may be given as a list, one value per item); a regression
@@ -443,6 +460,11 @@ class SurpyvalData:
             "left_censored": left_censored_counts,
             "interval_censored": interval_censored_counts,
         }
+        event_types = {
+            "observed": observed_event_types,
+            "left_censored": left_censored_event_types,
+            "interval_censored": interval_censored_event_types,
+        }
         covariates = {
             "observed": observed_covariates,
             "right_censored": right_censored_covariates,
@@ -470,6 +492,9 @@ class SurpyvalData:
         ]
         per_item += [(k, f"{k}_counts", v) for k, v in counts.items()]
         per_item += [(k, f"{k}_covariates", v) for k, v in covariates.items()]
+        per_item += [
+            (k, f"{k}_event_types", v) for k, v in event_types.items()
+        ]
         for kind, name, values in per_item:
             if values is not None and lists[kind] is None:
                 raise ValueError(
@@ -480,6 +505,8 @@ class SurpyvalData:
 
         xs, cs, ns, tls, trs = [], [], [], [], []
         Zs: dict[str, np.ndarray] = {}
+        es: list = []
+        typed: dict[str, bool] = {}
         for kind, flag in _OBSERVATION_KINDS:
             times = _observation_times(kind, lists[kind])
             bounds = {}
@@ -502,6 +529,15 @@ class SurpyvalData:
                 Zs[kind] = _item_covariates(
                     f"{kind}_covariates", covariates[kind], len(times)
                 )[keep]
+            types = event_types.get(kind)
+            typed[kind] = types is not None
+            if types is not None:
+                kind_types = _kind_event_types(
+                    f"{kind}_event_types", types, len(times)
+                )[keep]
+            else:
+                kind_types = np.full(len(times), None, dtype=object)[keep]
+            es.append(kind_types)
             times = times[keep]
             xs.append(times if flag == 2 else np.column_stack([times, times]))
             cs.append(np.full(len(times), flag))
@@ -514,6 +550,25 @@ class SurpyvalData:
                 "The lists hold no observations: give at least one time "
                 "(with a count above 0)."
             )
+        e = None
+        if any(typed.values()):
+            sizes_now = {
+                kind: len(xk) for (kind, _), xk in zip(_OBSERVATION_KINDS, xs)
+            }
+            untyped = [
+                kind
+                for kind in ("observed", "left_censored", "interval_censored")
+                if sizes_now[kind] and not typed[kind]
+            ]
+            if untyped:
+                raise ValueError(
+                    "Event types were given for some failures but not for "
+                    + ", ".join(untyped)
+                    + ": every failure needs its type ("
+                    + ", ".join(f"'{kind}_event_types'" for kind in untyped)
+                    + ")."
+                )
+            e = np.concatenate(es)
         Z = _stack_covariates(
             Zs,
             {kind: len(xk) for (kind, _), xk in zip(_OBSERVATION_KINDS, xs)},
@@ -525,6 +580,7 @@ class SurpyvalData:
             tl=np.concatenate(tls),
             tr=np.concatenate(trs),
             Z=Z,
+            e=e,
         )
 
     @classmethod
@@ -654,6 +710,10 @@ class SurpyvalData:
             ]
         )
         truncated = np.isfinite(tl).any() or np.isfinite(tr).any()
+        e = None
+        if any(typed):
+            e = np.empty(len(items), dtype=object)
+            e[:] = [i.event_type for i in items]
         data = cls(
             x,
             np.array(flags),
@@ -662,12 +722,9 @@ class SurpyvalData:
             tr=tr if truncated else None,
             Z=np.vstack([i.covariates for i in items]) if static else None,
             group_and_sort=False,
+            e=e,
         )
         data.ids = ids
-        if any(typed):
-            e = np.empty(len(items), dtype=object)
-            e[:] = [i.event_type for i in items]
-            data.e = e
         if varying:
             data.time_varying_covariates = {
                 i.item: i.time_varying_covariates for i in items
@@ -791,6 +848,8 @@ class SurpyvalData:
                 ].astype(float)
             if Z is not None:
                 extra[f"{kind}_covariates"] = Z[mask]
+            if self.e is not None and kind != "right_censored":
+                extra[f"{kind}_event_types"] = list(self.e[mask])
         return {**lists, **extra}
 
     def to_xrd(self, estimator: str = "Nelson-Aalen") -> tuple:
@@ -872,6 +931,8 @@ class SurpyvalData:
             else:
                 Z_idx = np.atleast_1d(Z_idx)
             out.add_covariates(Z_idx)
+        if self.e is not None:
+            out.e = np.atleast_1d(self.e[index])
         return out
 
     def __len__(self) -> int:
@@ -1178,12 +1239,15 @@ def accepts_surpyval_data(method: F) -> F:
     """Let a fitter's ``fit`` take a :class:`SurpyvalData` as its ``x``:
     ``Weibull.fit(data)``. The data is the whole of it, so its other data
     arguments (``c``, ``n``, ``t``, ``tl``, ``tr``, ``xl``, ``xr``, and
-    ``Z`` where the data carries covariates) must be left out; the fit
-    then runs on the data's own arrays, as from the arrays themselves.
-    A data's censoring, counts or truncation that the fit has no argument
-    for is refused, not dropped."""
+    ``Z`` or ``e`` where the data carries covariates or event types) must
+    be left out; the fit then runs on the data's own arrays, as from the
+    arrays themselves. Data with step time-varying covariates (from
+    ``from_items``) is fitted by the model's ``fit_tvc``. A data's
+    censoring, counts, truncation, covariates or event types that the fit
+    has no argument for are refused, not dropped."""
     signature = inspect.signature(method)
-    names = set(signature.parameters)
+    params = list(signature.parameters)
+    names = set(params)
     if "x" not in names:
         return method
 
@@ -1195,9 +1259,10 @@ def accepts_surpyval_data(method: F) -> F:
             return method(*args, **kwargs)
         given = [
             name
-            for name in _DATA_ARGUMENTS + ("Z",)
+            for name in _DATA_ARGUMENTS + ("Z", "e")
             if bound.arguments.get(name) is not None
             and not (name == "Z" and data.Z is None)
+            and not (name == "e" and data.e is None)
         ]
         if given:
             raise TypeError(
@@ -1205,17 +1270,39 @@ def accepts_surpyval_data(method: F) -> F:
                 + ", ".join(repr(g) for g in given)
                 + " (or pass arrays rather than a SurpyvalData)."
             )
-        if (
-            data.Z is None
-            and "Z" in names
-            and bound.arguments.get("Z") is None
-            and signature.parameters["Z"].default is inspect.Parameter.empty
+        if data.time_varying_covariates is not None:
+            owner = bound.arguments.get(params[0]) if params else None
+            fit_tvc = getattr(owner, "fit_tvc", None)
+            if params[0] in ("self", "cls") and callable(fit_tvc):
+                return _fit_tvc_from_data(
+                    fit_tvc, data, _options(bound, signature)
+                )
+        for name, held, how in (
+            (
+                "Z",
+                data.Z,
+                "SurpyvalData(x, c, ..., Z=Z), or "
+                "from_observations(..., observed_covariates=..., ...)",
+            ),
+            (
+                "e",
+                data.e,
+                "SurpyvalData(x, c, ..., e=e), or "
+                "from_observations(..., observed_event_types=..., ...)",
+            ),
         ):
-            raise TypeError(
-                "This fit needs covariates, Z, and the SurpyvalData holds "
-                "none: build it with SurpyvalData(x, c, ..., Z=Z), or "
-                "from_observations(..., observed_covariates=..., ...)."
-            )
+            if (
+                held is None
+                and name in names
+                and bound.arguments.get(name) is None
+                and signature.parameters[name].default
+                is inspect.Parameter.empty
+            ):
+                what = "covariates" if name == "Z" else "event types"
+                raise TypeError(
+                    f"This fit needs {what}, {name}, and the SurpyvalData "
+                    f"holds none: build it with {how}."
+                )
         filled = {"x": data.x}
         lost = []
         if "c" in names:
@@ -1226,18 +1313,32 @@ def accepts_surpyval_data(method: F) -> F:
             filled["n"] = data.n
         elif np.any(data.n != 1):
             lost.append("counts")
+        left = bool(np.isfinite(data.tl).any())
+        right = bool(np.isfinite(data.tr).any())
         if "t" in names:
             filled["t"] = data.t
-        elif "tl" in names and "tr" in names:
-            filled["tl"], filled["tr"] = data.tl, data.tr
-        elif np.isfinite(data.t).any():
-            lost.append("truncation")
+        else:
+            for side, flag, column in (
+                ("left", left, data.tl),
+                ("right", right, data.tr),
+            ):
+                arg = "tl" if side == "left" else "tr"
+                if arg in names:
+                    filled[arg] = column
+                elif flag:
+                    lost.append(f"{side} truncation")
         if data.Z is not None:
             if "Z" in names:
                 filled["Z"] = data.Z
             else:
                 lost.append("covariates")
-        lost += _not_taken_yet(data)
+        if data.e is not None:
+            if "e" in names:
+                filled["e"] = data.e
+            else:
+                lost.append("event types")
+        if data.time_varying_covariates is not None:
+            lost.append("time-varying covariates")
         if lost:
             raise ValueError(
                 f"This fit takes no {' or '.join(lost)}, which the "
@@ -1278,3 +1379,139 @@ def refuses_what_fit_cannot_take(method: F) -> F:
         return method(*args, **kwargs)
 
     return wrapper  # type: ignore[return-value]
+
+
+def _event_type_array(e: Any, c: np.ndarray) -> np.ndarray:
+    """``e`` as a 1-D object array, one event type per row; every failure
+    (a row not right censored) needs one."""
+    if isinstance(e, (str, bytes)) or np.ndim(e) == 0:
+        raise ValueError(
+            "'e' must hold one event type per row, not a single value."
+        )
+    out = np.empty(len(c), dtype=object)
+    listed = list(e)
+    if len(listed) != len(c):
+        raise ValueError(
+            f"'e' must hold one event type per row ({len(c)}); got "
+            f"{len(listed)}."
+        )
+    out[:] = listed
+    untyped = np.array([v is None for v in out]) & (np.asarray(c) != 1)
+    if untyped.any():
+        raise ValueError(
+            "Every failure (a row not right censored) needs its event type; "
+            f"{int(untyped.sum())} have none."
+        )
+    return out
+
+
+def _kind_event_types(name: str, value: Any, k: int) -> np.ndarray:
+    """A kind's event types, ``name``: one for every item or one per item,
+    as an object array of ``k``; None is refused."""
+    out = np.empty(k, dtype=object)
+    if isinstance(value, (str, bytes)) or np.ndim(value) == 0:
+        out[:] = [value] * k
+    else:
+        listed = list(value)
+        if len(listed) != k:
+            raise ValueError(
+                f"'{name}' must be one type for every item or one per item "
+                f"({k}, in the order of its list); got {len(listed)}."
+            )
+        out[:] = listed
+    if any(v is None for v in out):
+        raise ValueError(
+            f"'{name}' cannot hold None: every failure needs its type."
+        )
+    return out
+
+
+# Arguments a fit takes its data in, or names the fitter itself.
+_NOT_OPTIONS = frozenset(_DATA_ARGUMENTS + ("x", "Z", "e", "self", "cls"))
+
+
+def _options(
+    bound: inspect.BoundArguments, signature: inspect.Signature
+) -> dict:
+    """The fit options given (``init``, ``fixed``, ``how``, ...), with any
+    ``**kwargs`` spread out."""
+    options = {}
+    for name, value in bound.arguments.items():
+        if name in _NOT_OPTIONS:
+            continue
+        kind = signature.parameters[name].kind
+        if kind is inspect.Parameter.VAR_KEYWORD:
+            options.update(value)
+        elif kind is not inspect.Parameter.VAR_POSITIONAL:
+            options[name] = value
+    return options
+
+
+def _fit_tvc_from_data(
+    fit_tvc: Callable, data: SurpyvalData, options: dict
+) -> Any:
+    """Fit ``data`` with step time-varying covariates by the model's
+    ``fit_tvc``: each item's life, from the start of its observation
+    (``left_truncation``, else 0) to its outcome, split where its schedule
+    steps into ``(start, stop]`` rows, the covariates of each row being the
+    item's static ones (if any) followed by its time-varying ones in force
+    there."""
+    from surpyval.univariate.regression.tvc_path import CovariatePath
+
+    if np.isin(data.c, (-1, 2)).any():
+        raise ValueError(
+            "Time-varying covariates are fitted for observed or right "
+            "censored lifetimes (fit_tvc); this data has left or interval "
+            "censored items."
+        )
+    if np.isfinite(data.tr).any():
+        raise ValueError(
+            "Time-varying covariates are fitted without right truncation "
+            "(fit_tvc); this data has right truncated items."
+        )
+    ids = data.ids if data.ids is not None else list(range(len(data.x)))
+    static = None
+    if data.Z is not None:
+        static = np.asarray(data.Z, dtype=float)
+        static = static[:, None] if static.ndim == 1 else static
+    x = data.x if data.x.ndim == 1 else data.x[:, 0]
+    rows: dict[str, list] = {k: [] for k in ("i", "xl", "xr", "c", "Z", "n")}
+    for k, item in enumerate(ids):
+        schedule = data.time_varying_covariates[item]  # type: ignore[index]
+        if isinstance(schedule, CovariatePath):
+            raise ValueError(
+                f"Item {item!r}'s time-varying covariates are a continuous "
+                "CovariatePath; fitting on continuous paths is not provided "
+                "yet (#908). Give the path as a StepSchedule to fit it."
+            )
+        start = data.tl[k] if np.isfinite(data.tl[k]) else 0.0
+        stop = float(x[k])
+        starts, ends, values = schedule.segments(
+            max(stop, schedule.edges[0] + 1e-12)
+        )
+        if schedule.edges[0] > start:
+            # The schedule holds its first value back to the start
+            starts = np.r_[start, starts]
+            ends = np.r_[schedule.edges[0], ends]
+            values = np.vstack([values[:1], values])
+        keep = (ends > start) & (starts < stop)
+        starts = np.maximum(starts[keep], start)
+        ends = np.minimum(ends[keep], stop)
+        values = values[keep]
+        last = len(starts) - 1
+        for j, (a, b, z) in enumerate(zip(starts, ends, values)):
+            rows["i"].append(item)
+            rows["xl"].append(a)
+            rows["xr"].append(b)
+            rows["c"].append(int(data.c[k]) if j == last else 1)
+            rows["Z"].append(z if static is None else np.r_[static[k], z])
+            rows["n"].append(data.n[k])
+    return fit_tvc(
+        np.array(rows["i"]),
+        np.array(rows["xl"], dtype=float),
+        np.array(rows["xr"], dtype=float),
+        np.array(rows["c"]),
+        np.array(rows["Z"], dtype=float),
+        np.array(rows["n"]),
+        **options,
+    )
