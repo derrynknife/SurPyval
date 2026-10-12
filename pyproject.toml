@@ -29,6 +29,8 @@ dependencies = [
     "formulaic>=1.2",
     "numdifftools>=0.9.42",
     "joblib",
+    # The units= label (#845), imported only when a unit is given
+    "pint>=0.24",
 ]
 
 [project.optional-dependencies]

@@ -46,6 +46,7 @@ from surpyval.utils.recurrent_utils import (
     reject_unsupported_nonparametric,
 )
 from surpyval.utils.removed_names import column_arguments
+from surpyval.utils.units import label_axes, takes_unit
 from surpyval.utils.validation import unknown_cause_error
 
 
@@ -276,6 +277,7 @@ class CauseSpecificMCF(SerialisableMixin):
                     linewidth=0.8,
                 )
         ax.legend()
+        label_axes(ax, getattr(self, "unit", None), "Mean cumulative function")
         return ax
 
     @classmethod
@@ -296,6 +298,7 @@ class CauseSpecificMCF(SerialisableMixin):
         return out
 
     @classmethod
+    @takes_unit
     def fit(
         cls,
         x: ArrayLike,
@@ -356,6 +359,7 @@ class CauseSpecificMCF(SerialisableMixin):
 
     @classmethod
     @column_arguments("x", "i", "c", "n", "tl", "tr")
+    @takes_unit
     def fit_from_df(
         cls,
         df: Any,

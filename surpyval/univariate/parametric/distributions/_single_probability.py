@@ -24,6 +24,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     reject_structural_params,
 )
+from surpyval.utils.units import takes_unit
 
 from ..parametric import Parametric
 
@@ -73,6 +74,7 @@ class SingleProbabilityMixin:
         U = uniform_draws(size, random_state)
         return (U <= p).astype(int)
 
+    @takes_unit
     def fit(
         self, x: npt.ArrayLike, n: npt.NDArray | None = None
     ) -> Parametric:
@@ -139,6 +141,7 @@ class SingleProbabilityMixin:
             *event_counts(model), alpha_ci, bound, method, name
         )
 
+    @takes_unit
     def from_params(
         self,
         params: npt.ArrayLike,

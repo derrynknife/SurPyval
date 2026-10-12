@@ -11,6 +11,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.units import takes_unit
 
 from .._fit_skeleton import (
     LogLinearPhi,
@@ -176,6 +177,7 @@ class ProportionalOddsFitter(
         return regression_neg_ll(self, data, *params)
 
     @dataframe_covariates
+    @takes_unit
     def fit(
         self,
         x: npt.ArrayLike,

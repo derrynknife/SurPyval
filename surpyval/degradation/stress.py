@@ -33,6 +33,8 @@ from typing import Any, Callable
 import numpy as np
 import numpy.typing as npt
 
+from surpyval.utils.units import takes_unit
+
 from .path_models import PathModel
 
 #: ``link name -> (h, h^-1, h')``: the natural-scale parameter as a
@@ -187,6 +189,7 @@ class LinkedPathModel(PathModel):
     def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
         self.base.check_data(x, y)
 
+    @takes_unit
     def fit(self, x: npt.ArrayLike, y: npt.ArrayLike) -> npt.NDArray:
         """The base model's per-unit fit, returned on the link scale."""
         return self.to_link(self.base.fit(x, y))

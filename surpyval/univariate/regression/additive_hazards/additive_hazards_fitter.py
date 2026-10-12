@@ -75,6 +75,7 @@ from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.units import takes_unit
 from surpyval.utils.warnings import caller_stacklevel
 
 from .._covariate_link import CovariateLink
@@ -598,6 +599,7 @@ class AdditiveHazardsFitter(
     # -- fitting ----------------------------------------------------------
 
     @dataframe_covariates
+    @takes_unit
     def fit(
         self,
         x: npt.ArrayLike,

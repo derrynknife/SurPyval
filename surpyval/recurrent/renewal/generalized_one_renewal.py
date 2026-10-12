@@ -33,6 +33,7 @@ from surpyval.utils.recurrent_utils import (
     validate_renewal_times,
     validate_restoration,
 )
+from surpyval.utils.units import takes_unit
 
 
 @singleton_fitter
@@ -444,6 +445,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         self._attach_inference(out, neg_ll, params, res, data)
         return out
 
+    @takes_unit
     def fit(
         self,
         x: ArrayLike,

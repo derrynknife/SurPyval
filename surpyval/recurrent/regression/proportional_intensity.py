@@ -24,6 +24,7 @@ from surpyval.utils.covariates import coefficient_names
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.units import label_axes
 from surpyval.utils.validation import option_error
 
 
@@ -600,6 +601,7 @@ class ProportionalIntensityModel(
                 alpha=0.2,
                 label=f"{(1 - alpha_ci) * 100:g}% Confidence Band",
             )
+        label_axes(ax, self.unit, "Mean cumulative function")
         return ax
 
     def _parameter_names(self) -> list:

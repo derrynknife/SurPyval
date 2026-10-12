@@ -8,6 +8,7 @@ from surpyval.recurrent.inference import require_data
 from surpyval.recurrent.nonparametric import NonParametricCounting
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.units import label_axes
 
 STALLED_WARNING = (
     "Some sequences produced a near-zero interarrival time (< tol) before "
@@ -602,4 +603,5 @@ class RecurrenceSimulationMixin:
             self.mcf(x_plot, items=items, random_state=random_state),
             color="b",
         )
+        label_axes(ax, getattr(self, "unit", None), "Mean cumulative function")
         return ax

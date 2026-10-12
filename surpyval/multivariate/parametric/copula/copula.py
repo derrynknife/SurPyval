@@ -52,6 +52,7 @@ from surpyval.utils.no_maximum import (
 )
 from surpyval.utils.removed_names import RemovedNames
 from surpyval.utils.rng import as_generator
+from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
 from surpyval.utils.warnings import caller_stacklevel
 
@@ -690,6 +691,7 @@ class Copula(RemovedNames):
         ll = self._pair_loglik(params, dims[0], dims[1])
         return -float(onp.sum(weights * ll))
 
+    @takes_unit
     def fit_from_df(
         self,
         df: Any,
@@ -787,6 +789,7 @@ class Copula(RemovedNames):
         names["t"] = "tl_cols` / `tr_cols"
         return call_fit(self, arrays, names, fit_options)
 
+    @takes_unit
     def fit(
         self,
         x: npt.ArrayLike,
@@ -1034,6 +1037,7 @@ class Copula(RemovedNames):
         )
         return True
 
+    @takes_unit
     def from_params(self, params: Any, margins: Any, rotation: int = 0) -> Any:
         """
         Build a

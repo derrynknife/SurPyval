@@ -31,6 +31,7 @@ from surpyval.univariate.regression.tvc_schedule import StepSchedule
 from surpyval.utils.linalg import psd_precision, psd_root
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.units import axis_label
 from surpyval.utils.validation import (
     BOUNDS,
     alpha_ci_error,
@@ -1868,7 +1869,7 @@ class DegradationModel(SerialisableMixin):
         ax.axhline(
             self.threshold, color="k", linestyle="--", label="Threshold"
         )
-        ax.set_xlabel("Time")
+        ax.set_xlabel(axis_label(self.unit))
         ax.set_ylabel("Degradation")
         ax.legend()
         return ax

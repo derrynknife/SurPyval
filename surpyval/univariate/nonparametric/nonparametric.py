@@ -12,6 +12,7 @@ from surpyval.utils.data_summary import data_summary
 from surpyval.utils.deprecation import reordered_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.units import axis_label
 from surpyval.utils.validation import (
     BOUNDS,
     check_alpha_ci,
@@ -1783,7 +1784,8 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         )
         ax.set_ylabel("Survival probability")
         if not ax.get_xlabel():
-            ax.set_xlabel("Time")
+            # "Time", or what the model's unit measures (#845)
+            ax.set_xlabel(axis_label(self.unit))
         if interp != "step":
             (line,) = ax.plot(d["x_"], d["R"], **kwargs)
         else:

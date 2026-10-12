@@ -40,6 +40,7 @@ from surpyval.utils.dataframe import RegressionDataFrameMixin
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import flatten_query
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
 from surpyval.utils.warnings import caller_stacklevel
 
@@ -215,6 +216,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         )
 
     @classmethod
+    @takes_unit
     def fit(
         cls,
         x: ArrayLike | None = None,

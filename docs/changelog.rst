@@ -22,6 +22,20 @@ Unreleased
   cause-specific models) fits, and stores, exactly the data of the per-row
   form. When there are as many rows as units the bound is read per row, as
   before; any other length is refused, naming both accepted lengths.
+- ``unit=``, the unit of the data, on every ``fit``, ``fit_from_df`` and
+  ``from_params`` (#845): any unit, not only of time (``"hours"``, ``"km"``,
+  ``"cycles"``, ``"pump starts"``). It is a label, kept as ``model.unit``,
+  shown in the model's printout and on the time axis of its plots ("Time
+  (h)", "Distance (km)", "Usage (cycles)"), saved by ``to_dict`` and
+  restored by ``from_dict``, and carried by ``with_params``; nothing is
+  converted or checked. A unit pint knows is stored by its canonical name,
+  so the same unit always reads the same (``"hrs"``, ``"hours"`` and
+  ``"Hours"`` are ``"hour"``; ``"cycles"`` is ``"cycle"``, a count, not
+  pint's angle); anything else is kept as written. pint is a new
+  dependency, imported only when a unit is given. Left out, the unit is
+  ``None`` and a model and its dictionary are as before. It is ``unit``,
+  singular: ``units`` already names the items measured (a degradation
+  model's unit ids).
 - The mean residual life, ``mrl(x)``: the expected remaining life
   :math:`E[T - x \mid T > x]` of a unit that has survived to ``x`` (#825),
   on every distribution (``Weibull.mrl(x, alpha, beta)``), on the fitted
@@ -185,6 +199,11 @@ Unreleased
   in closed form at it), so to rounding where the search agreed to 5e-5.
   Other data (delayed entry, censored counts) is searched from the HPP
   through the end of the MCF, as Cox-Lewis starts, on any time scale.
+- Plots: the recurrent-event plots (MCF, Crow-AMSAA and the other
+  NHPPs, proportional intensity, cause-specific) and the parametric
+  regression's survival plot label their axes, and a single probability
+  plot's time ticks are spaced as two plots' merged ticks were: rounded to
+  a figure, 900 and 1000 printed as "9001000".
 - ``LogLogistic.mean`` with ``beta <= 1`` is infinite: the tail falls as
   ``x**-beta``, so the mean of the positive lifetime is. It was ``nan``.
 - A proportional-hazards model whose cumulative hazard passes exp(709) at

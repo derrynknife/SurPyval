@@ -30,6 +30,7 @@ from surpyval.utils.covariates import (
 )
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.units import takes_unit
 
 from .._aliasing import (
     aliased_columns,
@@ -541,6 +542,7 @@ class ParameterSubstitutionFitter(
         )
 
     @dataframe_covariates
+    @takes_unit
     def fit(
         self,
         x: npt.ArrayLike,

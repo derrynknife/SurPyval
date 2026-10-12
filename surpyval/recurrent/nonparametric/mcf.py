@@ -26,6 +26,7 @@ from surpyval.utils.recurrent_utils import (
     reject_unsupported_nonparametric,
 )
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.units import label_axes, takes_unit
 from surpyval.utils.validation import BOUNDS, check_option
 
 if TYPE_CHECKING:
@@ -559,6 +560,7 @@ class NonParametricCounting(
                     label=f"{(1 - alpha_ci) * 100:g}% Confidence Bounds",
                     color="red",
                 )
+        label_axes(ax, self.unit, "Mean cumulative function")
         return ax
 
     @classmethod
@@ -643,6 +645,7 @@ class NonParametricCounting(
         out.origin = _observation_origin(data)
         return out
 
+    @takes_unit
     def fit(
         self,
         x: npt.ArrayLike,

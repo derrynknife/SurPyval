@@ -52,6 +52,7 @@ from surpyval.utils import (
 from surpyval.utils.data_formats import _get_idx
 from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.units import axis_label, takes_unit
 from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
 
 # The functions ``cb`` can bound ('R' and 'F' are aliases of 'sf' and 'ff',
@@ -705,8 +706,9 @@ class CompetingRisks(SerialisableMixin):
                     draw_bounds(cb, line.get_color())
         ax.set_ylim(0, 1)
         if not ax.get_xlabel():
-            # "Time", as the other estimates' plots (#514)
-            ax.set_xlabel("Time")
+            # "Time", as the other estimates' plots (#514), with the
+            # model's unit (#845)
+            ax.set_xlabel(axis_label(self.unit))
         ax.set_ylabel("Cumulative incidence")
         ax.set_title(
             "Cumulative incidence by cause" + (" (stacked)" if stacked else "")
@@ -716,6 +718,7 @@ class CompetingRisks(SerialisableMixin):
 
     @classmethod
     @column_arguments("x", "c", "n")
+    @takes_unit
     def fit_from_df(
         cls,
         df: Any,
@@ -757,6 +760,7 @@ class CompetingRisks(SerialisableMixin):
         return model
 
     @classmethod
+    @takes_unit
     def fit(
         cls,
         x: npt.ArrayLike,

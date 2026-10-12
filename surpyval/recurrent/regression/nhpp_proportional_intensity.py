@@ -25,6 +25,7 @@ from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
+from surpyval.utils.units import takes_unit
 
 from .proportional_intensity import (
     ProportionalIntensityModel,
@@ -333,6 +334,7 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
 
     @renamed_arguments(dist="baseline")
     @dataframe_covariates
+    @takes_unit
     def fit(
         self,
         x: ArrayLike,

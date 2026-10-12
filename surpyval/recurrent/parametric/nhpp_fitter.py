@@ -19,6 +19,7 @@ from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_event_data import RecurrentEventData
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
+from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
 
 
@@ -310,6 +311,7 @@ class NHPPFitter(IntensityModel):
         model._n_obs = bic_sample_size(data)
         return model
 
+    @takes_unit
     def fit(
         self,
         x: ArrayLike,
@@ -417,6 +419,7 @@ class NHPPFitter(IntensityModel):
         )
         return self.fit_from_recurrent_data(data, how, init)
 
+    @takes_unit
     def from_params(self, params: ArrayLike) -> ParametricRecurrenceModel:
         """
         Create a model instance directly from parameters without fitting.

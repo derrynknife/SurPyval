@@ -49,6 +49,7 @@ from surpyval.utils.removed_names import (
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.units import axis_label
 from surpyval.utils.validation import (
     BOUNDS,
     CB_ON,
@@ -985,7 +986,8 @@ class Parametric(
         >>> other.params, other.gamma, other.lfp_p, other.f0
         (array([120,   2]), 5.0, 0.9, 0.1)
         """
-        return self.dist.from_params(params, **self.extras)
+        # The data's unit is the model's whatever its parameters (#845)
+        return self.dist.from_params(params, **self.extras, unit=self.unit)
 
     def __repr__(self) -> str:
         if hasattr(self, "params"):
@@ -3891,5 +3893,6 @@ class Parametric(
             show_censored=show_censored,
             color=color,
             label=label,
+            xlabel=axis_label(self.unit),
             **kwargs,
         )
