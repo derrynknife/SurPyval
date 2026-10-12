@@ -301,6 +301,25 @@ When units are only checked periodically, the data is a count of failures found 
     print(life_table.params)
     print(surv.Turnbull.fit(x=x, c=c, n=n).sf(inspections[1:]))
 
+``from_observations`` reads the table as it is written, with a count for
+each item (an interval in which nothing was found can stay in, counted 0):
+
+.. jupyter-execute::
+
+    data = SurpyvalData.from_observations(
+        interval_censored=[[0, 100], [100, 200], [200, 300], [300, 400]],
+        interval_censored_counts=[3, 7, 9, 4],
+        right_censored=[400],
+        right_censored_counts=12,
+    )
+    print(surv.Weibull.fit(data).params)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(surv.Weibull.fit(data).params, life_table.params)
+
 Resist the temptation to put each failure at the inspection time at which it was found (or at the midpoint of the interval). Doing so invents precision the data does not have, and pushes every failure later (or to an arbitrary point) within its interval. Interval censoring uses exactly what was observed. Turnbull, the non-parametric estimator that handles interval censoring, is a good check on the parametric fit.
 
 Recurrent events from a maintenance log
@@ -347,16 +366,18 @@ non-parametric estimators' "at risk / deaths" (``xrd``) form too:
        left_censored, interval_censored, left_truncation=,
        right_truncation=)``
      - a list of each kind of observation (the ``fsli`` layout), each
-       with truncation bounds of its own (``observed_left_truncation=``,
-       ``right_censored_right_truncation=``, ...) or one window shared by
-       all → data
+       with counts (``observed_counts=``, ...), covariates
+       (``observed_covariates=``, ...) and truncation bounds
+       (``observed_left_truncation=``, ...) of its own, one per item, or
+       one truncation window shared by all → data
    * - ``SurpyvalData.from_xrd(x, r, d)``
      - at-risk / deaths (``xrd``) → data
    * - ``data.to_xcnt()``
      - data → the arrays ``x, c, n, t``
    * - ``data.to_observations()``
-     - data → a dict of the four lists ``from_observations`` reads, and
-       each kind's truncation bounds if the data is truncated
+     - data → the lists ``from_observations`` reads: each value once,
+       with each kind's counts, truncation bounds and covariates where the
+       data has them
    * - ``data.to_xrd()``
      - data → ``x, r, d``
    * - ``data.to_json()``, ``SurpyvalData.from_json(...)``
@@ -382,7 +403,7 @@ information:
   items at risk is an error too.
 - ``to_observations`` and ``from_observations`` lose nothing:
   ``SurpyvalData.from_observations(**data.to_observations())`` is the same
-  data, truncation included.
+  data, counts, truncation and covariates included.
 
 Observed and right censored data folds into the ``xrd`` form, the count at
 risk and the number of deaths at each distinct time:

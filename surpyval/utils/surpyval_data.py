@@ -303,6 +303,14 @@ class SurpyvalData:
         left_censored_right_truncation: ArrayLike | None = None,
         interval_censored_left_truncation: ArrayLike | None = None,
         interval_censored_right_truncation: ArrayLike | None = None,
+        observed_counts: ArrayLike | None = None,
+        right_censored_counts: ArrayLike | None = None,
+        left_censored_counts: ArrayLike | None = None,
+        interval_censored_counts: ArrayLike | None = None,
+        observed_covariates: ArrayLike | None = None,
+        right_censored_covariates: ArrayLike | None = None,
+        left_censored_covariates: ArrayLike | None = None,
+        interval_censored_covariates: ArrayLike | None = None,
     ) -> "SurpyvalData":
         """
         The data from a list of each kind of observation: the times at
@@ -311,6 +319,13 @@ class SurpyvalData:
         failure is known to lie in. Any of them may be left out, but not
         all; a time repeated is counted, and a single time may be given as
         a number.
+
+        Each kind takes counts, ``<kind>_counts`` (how many items had
+        each value: one number for every item of the kind or one per item;
+        an item counted 0 is left out, as in a life table's empty
+        interval), and covariates, ``<kind>_covariates`` (one row per
+        item, the same columns for every kind; given for one kind, they
+        are needed for every kind with items).
 
         Each kind has its own truncation bounds, ``<kind>_left_truncation``
         and ``<kind>_right_truncation``: one number for every item of that
@@ -341,6 +356,13 @@ class SurpyvalData:
             ``observed``, ``right_censored``, ``left_censored`` or
             ``interval_censored``: one number for every item of the kind,
             or one per item, in the order of its list.
+        <kind>_counts : array like, optional
+            How many items had each value: one whole number (0 or more) for
+            every item of the kind, or one per item.
+        <kind>_covariates : array like, optional
+            The covariates of each item, one row per item (a single column
+            may be given as a list, one value per item); a regression
+            ``fit`` takes them as ``Z``.
 
         Returns
         -------
@@ -374,6 +396,17 @@ class SurpyvalData:
         ... )
         >>> data.x, data.tl
         (array([ 600.,  700., 1000.]), array([500.,   0., 500.]))
+
+        A life table, with counts:
+
+        >>> data = SurpyvalData.from_observations(
+        ...     interval_censored=[[0, 100], [100, 200], [200, 300]],
+        ...     interval_censored_counts=[3, 0, 9],
+        ...     right_censored=[300],
+        ...     right_censored_counts=12,
+        ... )
+        >>> data.n
+        array([ 3,  9, 12])
         """
         lists = {
             "observed": observed,
@@ -397,6 +430,18 @@ class SurpyvalData:
                 interval_censored_right_truncation
             ),
         }
+        counts = {
+            "observed": observed_counts,
+            "right_censored": right_censored_counts,
+            "left_censored": left_censored_counts,
+            "interval_censored": interval_censored_counts,
+        }
+        covariates = {
+            "observed": observed_covariates,
+            "right_censored": right_censored_covariates,
+            "left_censored": left_censored_covariates,
+            "interval_censored": interval_censored_covariates,
+        }
         shared = {"left": left_truncation, "right": right_truncation}
         if all(times is None for times in lists.values()):
             raise ValueError(
@@ -413,11 +458,21 @@ class SurpyvalData:
                     "bound per item in the same order."
                 )
 
-        for name, values in own.items():
-            kind = name.rsplit("_", 2)[0]
+        per_item = [
+            (name.rsplit("_", 2)[0], name, v) for name, v in own.items()
+        ]
+        per_item += [(k, f"{k}_counts", v) for k, v in counts.items()]
+        per_item += [(k, f"{k}_covariates", v) for k, v in covariates.items()]
+        for kind, name, values in per_item:
+            if values is not None and lists[kind] is None:
+                raise ValueError(
+                    f"'{name}' was given without '{kind}': it is one value "
+                    f"per item of the {kind.replace('_', ' ')} list."
+                )
             _check_same_index(kind, lists[kind], name, values)
 
-        xs, cs, tls, trs = [], [], [], []
+        xs, cs, ns, tls, trs = [], [], [], [], []
+        Zs: dict[str, np.ndarray] = {}
         for kind, flag in _OBSERVATION_KINDS:
             times = _observation_times(kind, lists[kind])
             bounds = {}
@@ -426,11 +481,6 @@ class SurpyvalData:
                 bound = own[name]
                 if bound is None:
                     bound = shared[side]
-                elif lists[kind] is None:
-                    raise ValueError(
-                        f"'{name}' was given without '{kind}': it bounds "
-                        f"each of the {kind.replace('_', ' ')} times."
-                    )
                 elif shared[side] is not None:
                     raise ValueError(
                         f"Both '{side}_truncation' (shared by every "
@@ -439,20 +489,35 @@ class SurpyvalData:
                 bounds[side] = _truncation_bounds(
                     name, bound, len(times), none
                 )
+            n = _item_counts(f"{kind}_counts", counts[kind], len(times))
+            keep = n > 0
+            if covariates[kind] is not None:
+                Zs[kind] = _item_covariates(
+                    f"{kind}_covariates", covariates[kind], len(times)
+                )[keep]
+            times = times[keep]
             xs.append(times if flag == 2 else np.column_stack([times, times]))
             cs.append(np.full(len(times), flag))
-            tls.append(bounds["left"])
-            trs.append(bounds["right"])
+            ns.append(n[keep])
+            tls.append(bounds["left"][keep])
+            trs.append(bounds["right"][keep])
         x = np.concatenate(xs)
         if len(x) == 0:
             raise ValueError(
-                "The lists hold no observations: give at least one time."
+                "The lists hold no observations: give at least one time "
+                "(with a count above 0)."
             )
+        Z = _stack_covariates(
+            Zs,
+            {kind: len(xk) for (kind, _), xk in zip(_OBSERVATION_KINDS, xs)},
+        )
         return cls(
             x,
             np.concatenate(cs),
+            np.concatenate(ns),
             tl=np.concatenate(tls),
             tr=np.concatenate(trs),
+            Z=Z,
         )
 
     @classmethod
@@ -513,22 +578,24 @@ class SurpyvalData:
 
     def to_observations(self) -> dict:
         """
-        The data as a list of each kind of observation, the form
-        :meth:`from_observations` reads: ``"observed"``,
-        ``"right_censored"`` and ``"left_censored"`` times and
-        ``"interval_censored"`` ``[lower, upper]`` pairs, each repeated by
-        its count. Truncated data adds each kind's bounds, one per item
-        (``"observed_left_truncation"`` and so on, ``-inf`` or ``inf``
-        where an item has none), for each side on which anything is
-        truncated; so ``from_observations(**data.to_observations())`` is
-        the same data.
+        The data in the form :meth:`from_observations` reads, so that
+        ``SurpyvalData.from_observations(**data.to_observations())`` is the
+        same data: the ``"observed"``, ``"right_censored"`` and
+        ``"left_censored"`` times and the ``"interval_censored"``
+        ``[lower, upper]`` pairs, each value once, with each kind's
+        ``"<kind>_counts"`` where any count is not 1, its
+        ``"<kind>_left_truncation"`` / ``"<kind>_right_truncation"`` for each
+        side on which anything is truncated (``-inf`` or ``inf`` for an item
+        with no bound), and its ``"<kind>_covariates"`` where the data has
+        covariates. ``np.repeat(times, counts)`` gives one entry per item.
 
         Examples
         --------
         >>> from surpyval import SurpyvalData
         >>> data = SurpyvalData([1, 3, 5], c=[0, 0, 1], n=[1, 2, 1])
-        >>> data.to_observations()["observed"]
-        array([1., 3., 3.])
+        >>> lists = data.to_observations()
+        >>> lists["observed"], lists["observed_counts"]
+        (array([1., 3.]), array([1, 2]))
         >>> data = SurpyvalData(
         ...     [600, 700, 1000], c=[0, 0, 1], tl=[500, 0, 500]
         ... )
@@ -537,22 +604,29 @@ class SurpyvalData:
         """
         counts = self.n.astype(int)
         x = self.x if self.x.ndim == 2 else np.column_stack([self.x] * 2)
+        Z = None
+        if self.Z is not None:
+            Z = np.asarray(self.Z, dtype=float)
+            Z = Z[:, None] if Z.ndim == 1 else Z
         truncated = [
             (side, column)
             for column, side in enumerate(("left", "right"))
             if np.isfinite(self.t[:, column]).any()
         ]
         lists: dict[str, np.ndarray] = {}
-        bounds: dict[str, np.ndarray] = {}
+        extra: dict[str, np.ndarray] = {}
         for kind, flag in _OBSERVATION_KINDS:
             mask = self.c == flag
-            values = x[mask] if flag == 2 else x[mask, 0]
-            lists[kind] = np.repeat(values, counts[mask], axis=0).astype(float)
+            lists[kind] = (x[mask] if flag == 2 else x[mask, 0]).astype(float)
+            if (counts != 1).any():
+                extra[f"{kind}_counts"] = counts[mask]
             for side, column in truncated:
-                bounds[f"{kind}_{side}_truncation"] = np.repeat(
-                    self.t[mask, column], counts[mask]
-                ).astype(float)
-        return {**lists, **bounds}
+                extra[f"{kind}_{side}_truncation"] = self.t[
+                    mask, column
+                ].astype(float)
+            if Z is not None:
+                extra[f"{kind}_covariates"] = Z[mask]
+        return {**lists, **extra}
 
     def to_xrd(self, estimator: str = "Nelson-Aalen") -> tuple:
         """
@@ -792,6 +866,8 @@ def _check_same_index(kind: str, times: Any, name: str, values: Any) -> None:
     index = getattr(times, "index", None)
     other = getattr(values, "index", None)
     # A list's .index is a method; only a pandas index has .equals
+    if index is None or other is None:
+        return
     if not (hasattr(index, "equals") and hasattr(other, "equals")):
         return
     if not index.equals(other):
@@ -801,6 +877,85 @@ def _check_same_index(kind: str, times: Any, name: str, values: Any) -> None:
             "the same index (for example both from one DataFrame), or pass "
             "arrays."
         )
+
+
+def _item_counts(name: str, counts: Any, k: int) -> np.ndarray:
+    """A kind's counts, ``name``, one per item: 1 each where not given, a
+    number for every item, or a list of ``k``; whole numbers, 0 or
+    more."""
+    from surpyval.utils.data_formats import validate_float_array
+
+    if counts is None:
+        return np.ones(k, dtype=int)
+    arr = validate_float_array(counts, name)
+    if arr.ndim == 0:
+        arr = np.full(k, float(arr))
+    elif arr.ndim != 1 or len(arr) != k:
+        raise ValueError(
+            f"'{name}' must be one count for every item or one per item "
+            f"({k}, in the order of its list); got {np.shape(counts)}."
+        )
+    if not np.isfinite(arr).all() or (arr < 0).any() or (arr % 1).any():
+        raise ValueError(f"'{name}' must be whole numbers, 0 or more.")
+    return arr.astype(int)
+
+
+def _item_covariates(name: str, Z: Any, k: int) -> np.ndarray:
+    """A kind's covariates, ``name``, as ``(k, p)``: one row per item (a
+    list of ``k`` is one covariate; a number, one covariate the same for
+    every item)."""
+    from surpyval.utils.data_formats import validate_float_array
+
+    arr = validate_float_array(Z, name)
+    if arr.ndim == 0:
+        arr = np.full((k, 1), float(arr))
+    elif arr.ndim == 1 and len(arr) == k:
+        arr = arr[:, None]
+    if arr.ndim != 2 or len(arr) != k:
+        raise ValueError(
+            f"'{name}' must have one row per item ({k}, in the order of its "
+            f"list); got {np.shape(Z)}. For one item with several "
+            "covariates, give a list of one row: [[z1, z2, ...]]."
+        )
+    if not np.isfinite(arr).all():
+        raise ValueError(f"'{name}' must be finite numbers.")
+    return arr
+
+
+def _stack_covariates(
+    Zs: dict[str, np.ndarray], sizes: dict[str, int]
+) -> np.ndarray | None:
+    """The covariates of every kind, stacked in the order of the rows, or
+    None where none were given. Given for one kind, they are needed for
+    every kind with items, with the same columns."""
+    if not Zs:
+        return None
+    missing = [kind for kind, k in sizes.items() if k and kind not in Zs]
+    if missing:
+        raise ValueError(
+            "Covariates were given for "
+            + ", ".join(sorted(Zs))
+            + " but not for "
+            + ", ".join(missing)
+            + ": every item needs its covariates, so give "
+            + ", ".join(f"'{kind}_covariates'" for kind in missing)
+            + " too."
+        )
+    widths = {kind: Z.shape[1] for kind, Z in Zs.items() if sizes[kind]}
+    if len(set(widths.values())) > 1:
+        raise ValueError(
+            "Each kind's covariates must have the same columns; got "
+            + ", ".join(f"{w} for {kind}" for kind, w in widths.items())
+            + "."
+        )
+    p = next(iter(widths.values()), 1)
+    return np.vstack(
+        [
+            Zs[kind] if sizes[kind] else np.empty((0, p))
+            for kind, _ in _OBSERVATION_KINDS
+            if kind in Zs or not sizes[kind]
+        ]
+    )
 
 
 def _truncation_bounds(
@@ -874,7 +1029,8 @@ def accepts_surpyval_data(method: F) -> F:
         ):
             raise TypeError(
                 "This fit needs covariates, Z, and the SurpyvalData holds "
-                "none: build it with SurpyvalData(x, c, ..., Z=Z)."
+                "none: build it with SurpyvalData(x, c, ..., Z=Z), or "
+                "from_observations(..., observed_covariates=..., ...)."
             )
         filled = {"x": data.x}
         lost = []
