@@ -6,6 +6,23 @@ Unreleased
 
 **Added**
 
+- The data utilities live on ``SurpyvalData``.
+  ``SurpyvalData.from_observations(observed=..., right_censored=...,
+  left_censored=..., interval_censored=..., tl=..., tr=...)`` reads a list
+  of each kind of observation (any may be left out), and
+  ``SurpyvalData.from_xrd(x, r, d)`` the at-risk / deaths form; both
+  validate as the fitters do. ``to_xcnt()`` gives the arrays ``x, c, n,
+  t`` (copies) and ``to_observations()`` the four lists back, refusing
+  truncated data, which they cannot hold.
+- The parametric, non-parametric and regression ``fit`` methods (with
+  ``MixtureModel`` and ``fit_best``) take a ``SurpyvalData`` as ``x``:
+  ``Weibull.fit(data)``. The values, flags, counts, truncation and, for a
+  regression, the covariates ``Z`` all come from the data, so a ``c``,
+  ``n``, ``t``, ``tl``, ``tr``, ``xl``, ``xr`` (or a second ``Z``) given
+  with it is refused rather than one silently winning, and data the fit
+  has no argument for (censoring for a fit of exact times, say) is
+  refused too. ``fit_from_surpyval_data`` stays.
+
 - ``life_models.Arrhenius``, the name engineers look for: the same class as
   ``life_models.Exponential``, which is the Arrhenius model.
 - The plotting ``heuristic=`` is read whatever its case, as ``how=`` is,
@@ -94,6 +111,18 @@ Unreleased
   ``Z = 0`` cannot be represented and is refused; the refusal now points
   to it. The default, ``False``, reports the baseline at ``Z = 0`` as
   before, and a model saved before has its baseline there.
+
+**Deprecated**
+
+- The top-level data-format functions ``fs_to_xcnt``, ``fsl_to_xcnt``,
+  ``fsli_to_xcnt``, ``fsli_handler``, ``fs_to_xrd``, ``xcn_to_fs``,
+  ``xcnt_handler``, ``xcnt_to_xrd``, ``xrd_handler`` and ``xrd_to_xcnt``
+  (``surpyval.fs_to_xcnt`` and so on), for the ``SurpyvalData`` methods
+  above. Unlike other deprecations, these have a date: deprecated on
+  2026-10-12, they warn (naming the replacement) when used, and the first
+  release on or after 2027-04-12 removes them. ``surpyval.utils`` keeps
+  the functions. :doc:`Data Wrangler Examples` maps each to its
+  replacement.
 
 **Fixed**
 

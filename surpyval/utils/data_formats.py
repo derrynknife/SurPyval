@@ -171,6 +171,16 @@ def fsli_handler(
     Any combination may be given, but at least one must hold data. Each
     is returned as a float array.
 
+    .. deprecated:: 0.25
+       ``surpyval.fsli_handler`` is deprecated (2026-10-12), and is removed
+       in the first release on or after 2027-04-12. Use (it validates the
+       data too)::
+
+           SurpyvalData.from_observations(
+               observed=f, right_censored=s, left_censored=l,
+               interval_censored=i,
+           )
+
     Parameters
     ----------
     f: array-like, optional (default: None)
@@ -209,7 +219,7 @@ def fsli_handler(
     Examples
     --------
 
-    >>> from surpyval import fsli_handler
+    >>> from surpyval.utils.data_formats import fsli_handler
     >>> f = [1, 2, 3, 4, 5, 6]
     >>> s = [1, 2, 3]
     >>> l = [4, 5, 6]
@@ -295,12 +305,12 @@ def xrd_handler(
     ``r`` is at least one, no ``d`` is negative and no ``d`` exceeds its
     ``r``.
 
-    xrd data lists each distinct time once, with the number at risk and
-    the number of deaths *at that time*. Each ``(x, r, d)`` row is
-    therefore self-contained, so rows given out of order are sorted by
-    ``x`` (carrying their ``r`` and ``d`` with them) rather than refused.
-    A repeated time is refused: there is no unambiguous way to merge two
-    rows that each claim to be the risk set at that time.
+    .. deprecated:: 0.25
+       ``surpyval.xrd_handler`` is deprecated (2026-10-12), and is removed
+       in the first release on or after 2027-04-12. Use (it validates the
+       data too)::
+
+           SurpyvalData.from_xrd(x, r, d)
 
     Does not check that ``r`` decreases, as it can grow when there is
     left truncation (late entry).
@@ -333,7 +343,7 @@ def xrd_handler(
     Examples
     --------
 
-    >>> from surpyval import xrd_handler
+    >>> from surpyval.utils.data_formats import xrd_handler
     >>> x = [1, 2, 3, 4, 5]
     >>> r = [5, 4, 3, 2, 1]
     >>> d = [1, 1, 1, 1, 1]
@@ -737,6 +747,12 @@ def xcnt_handler(
     Main handler that ensures any input to a surpyval fitter meets the
     requirements to be used in one of the parametric or nonparametric fitters.
 
+    .. deprecated:: 0.25
+       ``surpyval.xcnt_handler`` is deprecated (2026-10-12), and is removed
+       in the first release on or after 2027-04-12. Use::
+
+           SurpyvalData(x, c, n, t, ...).to_xcnt()
+
     It converts the inputs to numpy arrays and checks them: ``x`` is not
     empty and has no NaN (a scalar is one observation); ``c`` holds only
     -1, 0 and 1 (and 2 for a two-column ``x``); ``n`` holds positive
@@ -818,7 +834,7 @@ def xcnt_handler(
     Examples
     --------
 
-    >>> from surpyval import xcnt_handler
+    >>> from surpyval.utils.data_formats import xcnt_handler
     >>> x = [1, 2, 3, 4, 5]
     >>> c = [0, 0, 1, 1, 1]
     >>> n = [1, 1, 1, 1, 1]
@@ -1131,6 +1147,12 @@ def xcn_to_fs(
     one array of failure times and one of suspension (right-censored)
     times, each time repeated by its count.
 
+    .. deprecated:: 0.25
+       ``surpyval.xcn_to_fs`` is deprecated (2026-10-12), and is removed
+       in the first release on or after 2027-04-12. Use::
+
+           SurpyvalData(x, c, n).to_observations()
+
     Parameters
     ----------
     x : array like
@@ -1161,7 +1183,7 @@ def xcn_to_fs(
 
     Examples
     --------
-    >>> from surpyval import xcn_to_fs
+    >>> from surpyval.utils.data_formats import xcn_to_fs
     >>> xcn_to_fs([1, 2, 5], [0, 1, 0], [2, 1, 1])
     (array([1, 1, 5]), array([2]))
     """
@@ -1268,6 +1290,12 @@ def xcnt_to_xrd(
     censored rows without right truncation can be converted; left
     truncation is allowed and sets when each item enters the risk set,
     under the (entry, exit] convention.
+
+    .. deprecated:: 0.25
+       ``surpyval.xcnt_to_xrd`` is deprecated (2026-10-12), and is removed
+       in the first release on or after 2027-04-12. Use::
+
+           SurpyvalData(x, c, n, t).to_xrd()
 
     Parameters
     ----------
@@ -1384,6 +1412,12 @@ def xrd_to_xcnt(
     distinct; rows out of order are sorted first. The result has no
     truncation and no left or interval censoring.
 
+    .. deprecated:: 0.25
+       ``surpyval.xrd_to_xcnt`` is deprecated (2026-10-12), and is removed
+       in the first release on or after 2027-04-12. Use::
+
+           SurpyvalData.from_xrd(x, r, d).to_xcnt()
+
     Note: left truncation cannot be recovered from the xrd format because
     the at-risk count `r` collapses per-subject truncation times into a
     single scalar. Use xcnt format directly when left truncation is present.
@@ -1454,8 +1488,9 @@ def xrd_to_xcnt(
     if (np.diff(r_arr) + d_arr[:-1] > 0).any():
         raise ValueError(
             "The risk set increases between observation times (late entry /"
-            " left truncation); truncation cannot be represented in xcnt"
-            " output, so this data cannot be converted with xrd_to_xcnt."
+            " left truncation), and the xrd format has no record of when each"
+            " item entered, so this data cannot be read from it: give it as"
+            " SurpyvalData(x, c, n, tl=...) instead."
         )
 
     x = np.asarray(x)
@@ -1483,6 +1518,15 @@ def fsli_to_xcnt(
     are validated with :func:`fsli_handler`. Repeated values are counted
     in ``n``. When there are intervals, ``x`` is returned with two
     columns, the other rows repeating their value.
+
+    .. deprecated:: 0.25
+       ``surpyval.fsli_to_xcnt`` is deprecated (2026-10-12), and is removed
+       in the first release on or after 2027-04-12. Use::
+
+           SurpyvalData.from_observations(
+               observed=f, right_censored=s, left_censored=l,
+               interval_censored=i,
+           ).to_xcnt()
 
     Parameters
     ----------
@@ -1512,7 +1556,7 @@ def fsli_to_xcnt(
     Examples
     --------
 
-    >>> from surpyval import fsli_to_xcnt
+    >>> from surpyval.utils.data_formats import fsli_to_xcnt
     >>> f = [1, 4, 5]
     >>> s = [2, 3]
     >>> l = []
@@ -1562,6 +1606,14 @@ def fsl_to_xcnt(
     left-censored (``l``) times to the ``xcnt`` format, counting repeated
     times.
 
+    .. deprecated:: 0.25
+       ``surpyval.fsl_to_xcnt`` is deprecated (2026-10-12), and is removed
+       in the first release on or after 2027-04-12. Use::
+
+           SurpyvalData.from_observations(
+               observed=f, right_censored=s, left_censored=l,
+           ).to_xcnt()
+
     Parameters
     ----------
     f : array like, optional
@@ -1579,7 +1631,7 @@ def fsl_to_xcnt(
 
     Examples
     --------
-    >>> from surpyval import fsl_to_xcnt
+    >>> from surpyval.utils.data_formats import fsl_to_xcnt
     >>> x, c, n, t = fsl_to_xcnt([4, 6], [8], [2])
     >>> x, c, n
     (array([2, 4, 6, 8]), array([-1,  0,  0,  1]), array([1, 1, 1, 1]))
@@ -1623,6 +1675,14 @@ def fs_to_xcnt(
     Convert failure (``f``) and suspension (right-censored, ``s``) times to
     the ``xcnt`` format, counting repeated times; see :func:`fsl_to_xcnt`.
 
+    .. deprecated:: 0.25
+       ``surpyval.fs_to_xcnt`` is deprecated (2026-10-12), and is removed
+       in the first release on or after 2027-04-12. Use::
+
+           SurpyvalData.from_observations(
+               observed=f, right_censored=s,
+           ).to_xcnt()
+
     Parameters
     ----------
     f : array like, optional
@@ -1638,7 +1698,7 @@ def fs_to_xcnt(
 
     Examples
     --------
-    >>> from surpyval import fs_to_xcnt
+    >>> from surpyval.utils.data_formats import fs_to_xcnt
     >>> x, c, n, t = fs_to_xcnt([1, 3, 3, 7], [5, 9])
     >>> x
     array([1., 3., 5., 7., 9.])
@@ -1770,6 +1830,14 @@ def fs_to_xrd(
     """
     Converts the fs format to the xrd format.
 
+    .. deprecated:: 0.25
+       ``surpyval.fs_to_xrd`` is deprecated (2026-10-12), and is removed
+       in the first release on or after 2027-04-12. Use::
+
+           SurpyvalData.from_observations(
+               observed=f, right_censored=s,
+           ).to_xrd()
+
     Parameters
     ----------
     f: array
@@ -1791,7 +1859,7 @@ def fs_to_xrd(
     Examples
     --------
 
-    >>> from surpyval import fs_to_xrd
+    >>> from surpyval.utils.data_formats import fs_to_xrd
     >>> f = [1, 4, 5]
     >>> s = [2, 3]
     >>> x, r, d = fs_to_xrd(f, s)

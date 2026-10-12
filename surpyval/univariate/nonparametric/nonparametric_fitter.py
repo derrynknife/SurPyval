@@ -12,6 +12,7 @@ from surpyval.utils import xcnt_handler, xrd_handler
 from surpyval.utils.data_formats import _handled_xcnt_to_xrd
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.fitter_repr import FitterRepr
+from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 
 
@@ -57,6 +58,7 @@ class NonParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         )
 
     @takes_unit
+    @accepts_surpyval_data
     def fit(
         self,
         x: npt.ArrayLike | None = None,

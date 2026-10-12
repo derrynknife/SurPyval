@@ -93,9 +93,10 @@ A few rules make the flags unambiguous:
 
 .. jupyter-execute::
 
-    x, c, n, t = surpyval.xcnt_handler(
+    data = surpyval.SurpyvalData(
         x=[[1000, np.inf], [-np.inf, 1000], [1300, 1400], [1200, 1200]]
     )
+    x, c = data.x, data.c
     print(x)
     print(c)
 

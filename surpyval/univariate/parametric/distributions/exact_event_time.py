@@ -5,13 +5,14 @@ from typing import Any
 import autograd.numpy as np
 import numpy.typing as npt
 
-import surpyval
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
     ParametricFitter,
     reject_structural_params,
 )
+from surpyval.utils.data_formats import xcnt_handler
+from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 
 from ..parametric import Parametric
@@ -165,6 +166,7 @@ class ExactEventTime_(ParametricFitter):
     # bracketed exactly by the censoring bounds, so there is nothing
     # for how, offset, zi or lfp to do.
     @takes_unit
+    @accepts_surpyval_data
     def fit(
         self,
         x: npt.ArrayLike,
@@ -206,7 +208,7 @@ class ExactEventTime_(ParametricFitter):
         >>> ExactEventTime.fit([2, 3, 4, 5, 6], c=[1, 1, -1, -1, -1]).params
         array([3.5])
         """
-        x, c, n, t = surpyval.xcnt_handler(x=x, c=c, n=n, t=t)
+        x, c, n, t = xcnt_handler(x=x, c=c, n=n, t=t)
 
         if 0 in c:
             raise ValueError(

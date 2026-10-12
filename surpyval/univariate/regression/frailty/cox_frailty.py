@@ -66,6 +66,7 @@ from surpyval.utils.no_maximum import (
     warn_unverified,
 )
 from surpyval.utils.removed_names import column_arguments
+from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
 
@@ -697,6 +698,7 @@ class CoxFrailtyFitter(FitterRepr):
 
     @dataframe_covariates
     @takes_unit
+    @accepts_surpyval_data
     def fit(
         self,
         x: Any,

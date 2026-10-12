@@ -30,7 +30,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OutsideSupportError,
 )
 from surpyval.utils.no_maximum import quiet_maximum_warnings
-from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.validation import check_option
 
 if TYPE_CHECKING:
@@ -197,6 +197,7 @@ def fit_best(
 ) -> tuple[Parametric | MixtureModel | None, pd.DataFrame]: ...
 
 
+@accepts_surpyval_data
 def fit_best(
     x: npt.ArrayLike | None = None,
     c: npt.ArrayLike | None = None,

@@ -9,7 +9,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
-from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 
 from .._fit_skeleton import (
@@ -85,6 +85,7 @@ class AFTFitter(
 
     @dataframe_covariates
     @takes_unit
+    @accepts_surpyval_data
     def fit(
         self,
         x: npt.ArrayLike,

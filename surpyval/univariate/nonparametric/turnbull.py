@@ -911,14 +911,14 @@ def turnbull(
 
     This is the low-level function behind :code:`Turnbull.fit()`: it
     takes data already put in the ``x``, ``c``, ``n``, ``t`` form by
-    :code:`surpyval.xcnt_handler` and returns a dictionary with the
+    :class:`~surpyval.SurpyvalData` and returns a dictionary with the
     Turnbull ladder (``x``, ``r``, ``d``), the survival estimate ``R``
     and the EM diagnostics (``converged``, ``iters``, ``npmle``...).
     Use :code:`Turnbull.fit()` unless you need those raw pieces.
 
     Examples
     --------
-    >>> from surpyval import xcnt_handler
+    >>> from surpyval.utils.data_formats import xcnt_handler
     >>> from surpyval.univariate.nonparametric import turnbull
     >>> x, c, n, t = xcnt_handler(xl=[1, 2, 3, 1, 9], xr=[5, 3, 6, 8, 10])
     >>> out = turnbull(x, c, n, t)

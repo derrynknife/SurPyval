@@ -43,7 +43,7 @@ When you call ``fit()``, SurPyval validates the arrays, converts them to numpy, 
     data = surv.SurpyvalData(x=[1, 2, 3, [4, 5], 2], c=[0, 1, 0, 2, 1], tl=0)
     print(data)
 
-Notice three things. The two right censored values at 2 have been merged into one row with ``n = 2``. Because one row is an interval, ``x`` is stored as two columns, with the lower and upper values equal for the rows that are not intervals (with no interval row, ``x`` is stored as one column). And the scalar ``tl=0`` has been expanded to a ``[tl, tr]`` row for every observation, with no right truncation (``inf``). Parametric fitters accept a ``SurpyvalData`` object directly through ``fit_from_surpyval_data``, and ``SurpyvalData.to_json`` / ``SurpyvalData.from_json`` save and restore the data itself. ``to_json()`` returns JSON text, or writes a file when given a path; ``from_json`` parses a string as JSON *text*, so to read a file pass a ``pathlib.Path``: ``SurpyvalData.from_json(Path("data.json"))``.
+Notice three things. The two right censored values at 2 have been merged into one row with ``n = 2``. Because one row is an interval, ``x`` is stored as two columns, with the lower and upper values equal for the rows that are not intervals (with no interval row, ``x`` is stored as one column). And the scalar ``tl=0`` has been expanded to a ``[tl, tr]`` row for every observation, with no right truncation (``inf``). The parametric, non-parametric and regression ``fit`` methods accept a ``SurpyvalData`` object in place of the arrays (``Weibull.fit(data)``; ``fit_from_surpyval_data`` does the same), its constructors ``SurpyvalData.from_observations`` and ``SurpyvalData.from_xrd`` read the other layouts (see :doc:`Data Wrangler Examples`), and ``SurpyvalData.to_json`` / ``SurpyvalData.from_json`` save and restore the data itself. ``to_json()`` returns JSON text, or writes a file when given a path; ``from_json`` parses a string as JSON *text*, so to read a file pass a ``pathlib.Path``: ``SurpyvalData.from_json(Path("data.json"))``.
 
 .. jupyter-execute::
     :hide-code:
@@ -61,16 +61,16 @@ The non-parametric estimators (Kaplan-Meier, Nelson-Aalen and Fleming-Harrington
 
 .. jupyter-execute::
 
-    x, r, d = surv.xcnt_to_xrd(x=[1, 2, 3, 4, 5], c=[0, 1, 1, 0, 0])
+    x, r, d = surv.SurpyvalData(x=[1, 2, 3, 4, 5], c=[0, 1, 1, 0, 0]).to_xrd()
     print("x:", x)
     print("r:", r)
     print("d:", d)
 
 Converting between the two formats loses information in both directions, so the conversions have restrictions:
 
-- ``xcnt_to_xrd`` needs data that is observed or right censored (``c`` of 0 or 1) and not right truncated. Left censored and interval censored data have no single time at which to count a death, so they need the Turnbull estimator instead.
-- ``xrd_to_xcnt`` recovers the individual observed and right censored values from ``r`` and ``d``. It cannot recover left truncation: if the risk set ever *grows* between two times (items entering late), the per-item entry times are lost, and the function raises an error rather than returning a different study.
-- xrd data given directly (to ``xrd_to_xcnt``, or to ``KaplanMeier.from_xrd`` and the other non-parametric ``from_xrd`` methods) must list each time once, as ``xcnt_to_xrd`` returns it. Each ``(x, r, d)`` row stands on its own, so rows given out of order are sorted by time (keeping their ``r`` and ``d``); a time listed twice is an error, since there is no single risk set to use for it.
+- ``SurpyvalData.to_xrd`` is exact for data that is observed or right censored (``c`` of 0 or 1) and not right truncated. Left censored and interval censored data have no single time at which to count a death, so for those it fits the Turnbull estimator and returns its (possibly fractional) numbers at risk and deaths.
+- ``SurpyvalData.from_xrd`` recovers the individual observed and right censored values from ``r`` and ``d``. It cannot recover left truncation: if the risk set ever *grows* between two times (items entering late), the per-item entry times are lost, and it raises an error rather than returning a different study.
+- xrd data given directly (to ``SurpyvalData.from_xrd``, or to ``KaplanMeier.from_xrd`` and the other non-parametric ``from_xrd`` methods) must list each time once, as ``to_xrd`` returns it. Each ``(x, r, d)`` row stands on its own, so rows given out of order are sorted by time (keeping their ``r`` and ``d``); a time listed twice is an error, since there is no single risk set to use for it.
 
 The xicnt format
 ~~~~~~~~~~~~~~~~
