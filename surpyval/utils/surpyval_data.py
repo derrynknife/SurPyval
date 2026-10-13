@@ -1037,6 +1037,13 @@ class SurpyvalData(ReshapeMixin):
         return x, self.n[mask]
 
     def __getitem__(self, index: Any) -> "SurpyvalData":
+        if np.atleast_1d(np.arange(len(self.x))[index]).size == 0:
+            # It used to fail on numpy's "zero-size array to reduction
+            # operation minimum" (#925).
+            raise ValueError(
+                "The index selects no rows; a SurpyvalData needs at least "
+                "one."
+            )
         # A scalar index on interval-censored (2-D) data used to flatten
         # one [xl, xr] row into two 1-D observations and crash the type
         # split; keep the row structure instead (#282).
