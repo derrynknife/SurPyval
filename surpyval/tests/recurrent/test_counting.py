@@ -142,15 +142,15 @@ def test_count_terminated_simulation_via_mixin():
 
 
 def test_count_terminated_simulation_data_is_recurrent_data():
-    # The data simulator returns raw xicn events (RecurrentEventData), not the
+    # The data simulator returns raw xicn events (EventHistoryData), not the
     # aggregated MCF, with events+1 exact events per item.
-    from surpyval.utils.recurrent_event_data import RecurrentEventData
+    from surpyval.utils.event_history_data import EventHistoryData
 
     model = GeneralizedOneRenewal.fit_from_parameters(
         [5.0, 1.5], q=0.2, dist=Weibull
     )
     data = model.count_terminated_simulation_data(8, items=20, random_state=0)
-    assert isinstance(data, RecurrentEventData)
+    assert isinstance(data, EventHistoryData)
     assert len(data.x) == 20 * (8 + 1)
     assert len(set(data.i.tolist())) == 20
     assert set(data.c.tolist()) == {0}
@@ -169,7 +169,7 @@ def test_simulated_data_round_trips_through_fit():
 
 
 def test_time_terminated_simulation_data_is_censored_at_T():
-    from surpyval.utils.recurrent_event_data import RecurrentEventData
+    from surpyval.utils.event_history_data import EventHistoryData
 
     model = GeneralizedOneRenewal.fit_from_parameters(
         [5.0, 1.5], q=0.2, dist=Weibull
@@ -177,7 +177,7 @@ def test_time_terminated_simulation_data_is_censored_at_T():
     data = model.time_terminated_simulation_data(
         T=60, items=20, random_state=2
     )
-    assert isinstance(data, RecurrentEventData)
+    assert isinstance(data, EventHistoryData)
     # Each reaching sequence ends in a right-censored row at T.
     assert (data.c == 1).any()
     assert data.x[data.c == 1].max() <= 60.0 + 1e-9
@@ -186,12 +186,12 @@ def test_time_terminated_simulation_data_is_censored_at_T():
 def test_parametric_recurrence_model_has_data_simulators():
     # The data simulators come from the shared mixin, so the intensity models
     # (HPP, CrowAMSAA, ...) get them too.
-    from surpyval.utils.recurrent_event_data import RecurrentEventData
+    from surpyval.utils.event_history_data import EventHistoryData
 
     x = Exponential.random(20, 1.0).cumsum()
     hpp = HPP.fit(x)
     data = hpp.count_terminated_simulation_data(10, items=15, random_state=0)
-    assert isinstance(data, RecurrentEventData)
+    assert isinstance(data, EventHistoryData)
     assert len(data.x) == 15 * (10 + 1)
 
 

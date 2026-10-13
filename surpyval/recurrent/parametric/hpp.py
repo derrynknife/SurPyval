@@ -19,14 +19,14 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
 from surpyval.univariate.parametric.fitters import is_local_minimum
+from surpyval.utils.event_history_data import (
+    EventHistoryData,
+    accepts_event_history_data,
+    refuses_unmodelled_data,
+)
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.pickling import Rebuilt
-from surpyval.utils.recurrent_event_data import (
-    RecurrentEventData,
-    accepts_recurrent_data,
-    refuses_unmodelled_data,
-)
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
@@ -178,7 +178,7 @@ class HPP(CountingProcess):
         """
         return np.array(cif) / rate
 
-    def create_negll_func(self, data: RecurrentEventData) -> Callable:
+    def create_negll_func(self, data: EventHistoryData) -> Callable:
         # The pieces of the NHPP likelihood (#350): per censoring type, the
         # times and previous times, and the right-truncation window close.
         s = data.split_for_nhpp_likelihood()
@@ -238,7 +238,7 @@ class HPP(CountingProcess):
     @refuses_unmodelled_data
     def fit_from_recurrent_data(
         self,
-        data: RecurrentEventData,
+        data: EventHistoryData,
         how: str = "MLE",
         init: "ArrayLike | None" = None,
     ) -> Any:
@@ -247,7 +247,7 @@ class HPP(CountingProcess):
 
         Parameters
         ----------
-        data : RecurrentEventData
+        data : EventHistoryData
             The recurrent event data, as built by ``surpyval.handle_xicn``.
             :meth:`fit` builds one from its arrays and calls this.
         how : str, optional
@@ -326,7 +326,7 @@ class HPP(CountingProcess):
         return out
 
     @takes_unit
-    @accepts_recurrent_data
+    @accepts_event_history_data
     def fit(
         self,
         x: ArrayLike,

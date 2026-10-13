@@ -1,6 +1,6 @@
 """One item's recurrent event history, :class:`ItemHistory`; a list of
-them is a dataset (:meth:`RecurrentEventData.from_items
-<surpyval.utils.recurrent_event_data.RecurrentEventData.from_items>`)."""
+them is a dataset (:meth:`EventHistoryData.from_items
+<surpyval.utils.event_history_data.EventHistoryData.from_items>`)."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ class ItemHistory:
     it was watched, the window in which it could be seen, and its
     covariates. Ages are the item's own age (time since new or first
     observed). A list of them makes a dataset:
-    ``RecurrentEventData.from_items([pump, fan, ...])``, which every
+    ``EventHistoryData.from_items([pump, fan, ...])``, which every
     recurrent ``fit`` takes.
 
     Parameters
@@ -95,7 +95,7 @@ class ItemHistory:
 
     Examples
     --------
-    >>> from surpyval import ItemHistory, RecurrentEventData
+    >>> from surpyval import ItemHistory, EventHistoryData
     >>> pump = ItemHistory(
     ...     "P1",
     ...     observed=[420, 1310],
@@ -104,7 +104,7 @@ class ItemHistory:
     ...     right_censored=2600,
     ... )
     >>> fan = ItemHistory("F1", observed=[800], right_censored=3000)
-    >>> data = RecurrentEventData.from_items([pump, fan])
+    >>> data = EventHistoryData.from_items([pump, fan])
     >>> data.items
     ['F1', 'P1']
     >>> data.to_items()[1] == pump

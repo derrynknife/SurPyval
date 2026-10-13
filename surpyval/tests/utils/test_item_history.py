@@ -1,10 +1,10 @@
-"""ItemHistory: one repairable item's history, and RecurrentEventData
+"""ItemHistory: one repairable item's history, and EventHistoryData
 built from (and back to) a list of them."""
 
 import numpy as np
 import pytest
 
-from surpyval import ItemHistory, RecurrentEventData, handle_xicn
+from surpyval import EventHistoryData, ItemHistory, handle_xicn
 from surpyval import recurrent as rc
 
 PUMP = ItemHistory(
@@ -27,7 +27,7 @@ FAN = ItemHistory(
 
 
 def test_from_items_is_the_arrays():
-    data = RecurrentEventData.from_items([PUMP, FAN])
+    data = EventHistoryData.from_items([PUMP, FAN])
     by_hand = handle_xicn(
         [
             [800, 800],
@@ -52,17 +52,17 @@ def test_from_items_is_the_arrays():
 
 
 def test_exact_failures_only_give_one_column():
-    data = RecurrentEventData.from_items(
+    data = EventHistoryData.from_items(
         [ItemHistory("A", observed=[5, 9], right_censored=12)]
     )
     assert data.x.ndim == 1
 
 
 def test_to_items_round_trips():
-    data = RecurrentEventData.from_items([PUMP, FAN])
+    data = EventHistoryData.from_items([PUMP, FAN])
     items = data.to_items()
     assert items == [FAN, PUMP]
-    again = RecurrentEventData.from_items(items)
+    again = EventHistoryData.from_items(items)
     for name in ("x", "i", "c", "n", "tl", "tr", "Z"):
         np.testing.assert_array_equal(
             getattr(again, name), getattr(data, name)
@@ -70,12 +70,12 @@ def test_to_items_round_trips():
 
 
 def test_from_histories_is_from_items():
-    a = RecurrentEventData.from_histories(
+    a = EventHistoryData.from_histories(
         observed={"A": [5, 9]},
         right_censored={"A": 12, "B": 4},
         left_truncation={"B": 1},
     )
-    b = RecurrentEventData.from_items(
+    b = EventHistoryData.from_items(
         [
             ItemHistory("A", observed=[5, 9], right_censored=12),
             ItemHistory("B", right_censored=4, left_truncation=1),
@@ -161,22 +161,22 @@ def test_an_item_refuses(kwargs, match):
 
 def test_the_dataset_needs_consistent_items():
     with pytest.raises(ValueError, match="given twice: 'A'"):
-        RecurrentEventData.from_items(
+        EventHistoryData.from_items(
             [ItemHistory("A", observed=[1]), ItemHistory("A", observed=[2])]
         )
     with pytest.raises(ValueError, match="missing \\['B'\\]"):
-        RecurrentEventData.from_items(
+        EventHistoryData.from_items(
             [
                 ItemHistory("A", observed=[1], covariates=1),
                 ItemHistory("B", observed=[2]),
             ]
         )
     with pytest.raises(ValueError, match="one type"):
-        RecurrentEventData.from_items(
+        EventHistoryData.from_items(
             [ItemHistory("A", observed=[1]), ItemHistory(2, observed=[2])]
         )
     with pytest.raises(TypeError, match="ItemHistory objects"):
-        RecurrentEventData.from_items([{"observed": [1]}])
+        EventHistoryData.from_items([{"observed": [1]}])
 
 
 def test_interval_and_left_censored_items_fit_as_their_arrays():
@@ -197,7 +197,7 @@ def test_interval_and_left_censored_items_fit_as_their_arrays():
         ),
         ItemHistory("C", observed=[80, 210, 330], right_censored=380),
     ]
-    data = RecurrentEventData.from_items(items)
+    data = EventHistoryData.from_items(items)
     np.testing.assert_allclose(
         rc.CrowAMSAA.fit(data).params,
         rc.CrowAMSAA.fit(data.x, data.i, data.c, data.n).params,
@@ -219,7 +219,7 @@ def test_time_varying_covariates_are_kept_and_refused_by_every_fit():
             time_varying_covariates={0: [0.5]},
         ),
     ]
-    data = RecurrentEventData.from_items(items)
+    data = EventHistoryData.from_items(items)
     schedule = data.time_varying_covariates["A"]
     assert schedule.edges.tolist() == [0, 6, np.inf]
     assert schedule.Z.tolist() == [[1.0], [2.0]]
@@ -251,7 +251,7 @@ def test_event_types_go_with_their_failures_and_round_trip():
         ),
         ItemHistory("C", right_censored=40),  # no failures: needs no type
     ]
-    data = RecurrentEventData.from_items(items)
+    data = EventHistoryData.from_items(items)
     a = data.i == "A"
     assert list(data.e[a]) == ["bearing", "seal", "seal", None]
     assert data.to_items() == items
@@ -269,7 +269,7 @@ def test_cause_specific_fits_take_items_with_event_types():
             "B", observed=[2, 6], observed_event_types="a", right_censored=7
         ),
     ]
-    data = RecurrentEventData.from_items(items)
+    data = EventHistoryData.from_items(items)
     by_hand = rc.CauseSpecificMCF.fit(
         [1, 3, 5, 2, 6, 7],
         [1, 1, 1, 2, 2, 2],
@@ -316,7 +316,7 @@ def test_event_types_are_checked(kwargs, match):
 
 def test_event_types_for_every_item_with_failures():
     with pytest.raises(ValueError, match="\\['B'\\]"):
-        RecurrentEventData.from_items(
+        EventHistoryData.from_items(
             [
                 ItemHistory("A", observed=[1], observed_event_types="a"),
                 ItemHistory("B", observed=[2]),
@@ -346,7 +346,7 @@ def test_time_varying_covariates_take_schedules_and_paths():
             time_varying_covariates={0: [1.0], 5: [2.0]},
         ),
     ]
-    data = RecurrentEventData.from_items(items)
+    data = EventHistoryData.from_items(items)
     assert data.time_varying_covariates["A"] is ramp
     assert data.time_varying_covariates["B"] is steps
     assert isinstance(data.time_varying_covariates["C"], StepSchedule)
@@ -359,7 +359,7 @@ def test_time_varying_covariates_need_the_same_number_of_values():
     from surpyval import StepSchedule
 
     with pytest.raises(ValueError, match="same number of values"):
-        RecurrentEventData.from_items(
+        EventHistoryData.from_items(
             [
                 ItemHistory(
                     "A", observed=[5], time_varying_covariates={0: [1]}
@@ -396,7 +396,7 @@ def test_states_are_changes_with_censoring_and_round_trip():
         ),
         ItemHistory("U2", initial_state="healthy", right_censored=2500),
     ]
-    data = RecurrentEventData.from_items(items)
+    data = EventHistoryData.from_items(items)
     initial, changes = data.states["U1"]
     assert initial == "healthy"
     assert [(k, st) for k, _, _, st in changes] == [
@@ -459,7 +459,7 @@ def test_states_are_checked(kwargs, match):
 
 def test_states_for_every_item_once_given():
     with pytest.raises(ValueError, match="'initial_state'"):
-        RecurrentEventData.from_items(
+        EventHistoryData.from_items(
             [
                 _path(observed_states={900: "degraded"}),
                 ItemHistory("U2", right_censored=10),

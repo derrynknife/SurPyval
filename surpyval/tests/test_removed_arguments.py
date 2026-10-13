@@ -435,6 +435,7 @@ _SHIM_NAMES = frozenset(
         "MethodArray",
         "RenamedToMethod",
         "MadePrivate",
+        "renamed_name",
         "DeprecationWarning",
     }
 )

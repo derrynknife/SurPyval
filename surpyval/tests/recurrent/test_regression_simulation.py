@@ -17,8 +17,8 @@ from surpyval.recurrent import (  # noqa: E402
     ProportionalIntensityHPP,
     ProportionalIntensityNHPP,
 )
-from surpyval.utils.recurrent_event_data import (  # noqa: E402
-    RecurrentEventData,
+from surpyval.utils.event_history_data import (  # noqa: E402
+    EventHistoryData,
 )
 
 
@@ -56,13 +56,13 @@ def test_regression_data_simulators_return_recurrent_data():
     count = model.count_terminated_simulation_data(
         5, Z=np.array([1.0]), items=12, random_state=0
     )
-    assert isinstance(count, RecurrentEventData)
+    assert isinstance(count, EventHistoryData)
     assert len(count.x) == 12 * (5 + 1)
 
     timed = model.time_terminated_simulation_data(
         T=20, Z=np.array([1.0]), items=12, random_state=0
     )
-    assert isinstance(timed, RecurrentEventData)
+    assert isinstance(timed, EventHistoryData)
     assert (timed.c == 1).any()
 
 

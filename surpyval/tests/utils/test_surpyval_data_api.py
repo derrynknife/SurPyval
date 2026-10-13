@@ -313,7 +313,9 @@ def test_old_top_level_names_warn_with_their_date_and_replacement(name):
 
 def test_a_star_import_still_gets_the_old_names_with_the_warning():
     namespace: dict = {}
-    with pytest.warns(FutureWarning) as caught:
+    # FutureWarnings for these, and a DeprecationWarning for the renamed
+    # RecurrentEventData, which a star import also reaches
+    with pytest.warns((FutureWarning, DeprecationWarning)) as caught:
         exec("from surpyval import *", namespace)
     assert any("fs_to_xcnt" in str(w.message) for w in caught)
     assert namespace["fs_to_xcnt"] is data_formats.fs_to_xcnt

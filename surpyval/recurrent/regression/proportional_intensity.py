@@ -773,7 +773,7 @@ class ProportionalIntensityModel(
         """
         Simulate count-terminated recurrence data and return the raw events.
         Like :meth:`count_terminated_simulation` but yields the simulated
-        ``RecurrentEventData`` rather than the fitted MCF.
+        ``EventHistoryData`` rather than the fitted MCF.
         """
         self._sim_Z = self._unit_covariates(Z)
         return super().count_terminated_simulation_data(
@@ -794,7 +794,7 @@ class ProportionalIntensityModel(
         """
         Simulate time-terminated recurrence data and return the raw events.
         Like :meth:`time_terminated_simulation` but yields the simulated
-        ``RecurrentEventData`` rather than the fitted MCF.
+        ``EventHistoryData`` rather than the fitted MCF.
         """
         self._sim_Z = self._unit_covariates(Z)
         return super().time_terminated_simulation_data(

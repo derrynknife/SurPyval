@@ -27,6 +27,14 @@ from surpyval.tests.conformance.registry import (
 )
 from surpyval.utils.deprecation import DATED_DATA_FUNCTIONS
 
+
+def sp_renamed():
+    """The top-level names renamed with a deprecation."""
+    import surpyval
+
+    return surpyval._RENAMED_TOP_LEVEL
+
+
 NAMESPACES = (
     "surpyval",
     "surpyval.univariate.parametric",
@@ -54,8 +62,10 @@ def _public(namespace):
     if names is None:
         names = [n for n in dir(module) if not n.startswith("_")]
     for name in names:
-        if namespace == "surpyval" and name in DATED_DATA_FUNCTIONS:
-            continue  # deprecated by date: a FutureWarning on access
+        if namespace == "surpyval" and (
+            name in DATED_DATA_FUNCTIONS or name in sp_renamed()
+        ):
+            continue  # deprecated: a warning on access
         obj = getattr(module, name)
         if inspect.ismodule(obj):
             continue

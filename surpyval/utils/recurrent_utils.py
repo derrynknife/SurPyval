@@ -7,7 +7,7 @@ import numpy.typing as npt
 
 from surpyval.utils import coerce_xcnt_x, format_truncation
 
-from .recurrent_event_data import RecurrentEventData
+from .event_history_data import EventHistoryData
 
 
 def item_label(item: object) -> str:
@@ -38,7 +38,7 @@ def number_text(value: object) -> str:
 
 
 def _warn_negative_entry(
-    data: RecurrentEventData, entry: npt.NDArray, model_name: str
+    data: EventHistoryData, entry: npt.NDArray, model_name: str
 ) -> None:
     """
     Warn of a negative entry age ``tl`` on a renewal fit (#664). These
@@ -71,7 +71,7 @@ def _warn_negative_entry(
     )
 
 
-def close_at_right_truncation(data: RecurrentEventData) -> RecurrentEventData:
+def close_at_right_truncation(data: EventHistoryData) -> EventHistoryData:
     """
     The data with each item's finite right-truncation time ``tr`` written
     as the end-of-observation (``c=1``) row it stands for (#624).
@@ -132,7 +132,7 @@ def close_at_right_truncation(data: RecurrentEventData) -> RecurrentEventData:
         if x.ndim == 1
         else np.insert(x, at, np.column_stack([values, values]), axis=0)
     )
-    closed = RecurrentEventData(
+    closed = EventHistoryData(
         new_x,
         np.insert(data.i, at, data.i[np.asarray(at) - 1]),
         np.insert(c, at, 1),
@@ -155,8 +155,8 @@ def close_at_right_truncation(data: RecurrentEventData) -> RecurrentEventData:
 
 
 def measure_from_entry(
-    data: RecurrentEventData, model_name: str
-) -> RecurrentEventData:
+    data: EventHistoryData, model_name: str
+) -> EventHistoryData:
     """
     The data on the clock of a virtual-age / imperfect-repair model
     (Kijima, G1, ARA, ARI): each item's times measured from its entry,
@@ -184,7 +184,7 @@ def measure_from_entry(
         _warn_negative_entry(data, entry, model_name)
     if np.any(entry != 0):
         tr = np.asarray(data.tr, dtype=float)
-        shifted = RecurrentEventData(
+        shifted = EventHistoryData(
             x - entry,
             data.i,
             data.c,
@@ -206,7 +206,7 @@ def measure_from_entry(
 
 
 def reject_unsupported_nonparametric(
-    data: RecurrentEventData, model_name: str
+    data: EventHistoryData, model_name: str
 ) -> None:
     """
     The nonparametric MCF estimators (``NonParametricCounting`` and
@@ -302,7 +302,7 @@ def validate_renewal_censoring(c: npt.ArrayLike, model_name: str) -> None:
         )
 
 
-def validate_nhpp_data(data: RecurrentEventData, dist: object) -> None:
+def validate_nhpp_data(data: EventHistoryData, dist: object) -> None:
     """
     Reject data an intensity (NHPP) model cannot be fitted to, rather than
     return an optimiser's meaningless stopping point as the MLE.
@@ -458,7 +458,7 @@ def _check_renewal_identifiable(
 
 
 def validate_renewal_times(
-    data: RecurrentEventData,
+    data: EventHistoryData,
     dist: object,
     model_name: str,
     every_gap_from_new: bool = False,
@@ -512,9 +512,7 @@ def validate_renewal_times(
         )
 
 
-def reject_gapped_observation(
-    data: RecurrentEventData, model_name: str
-) -> None:
+def reject_gapped_observation(data: EventHistoryData, model_name: str) -> None:
     """
     The virtual-age / imperfect-repair models (Kijima/G1/ARA/ARI) cannot be
     fitted to gapped (multi-window) observation. Their likelihood is built from
@@ -762,7 +760,7 @@ def _per_item_bound(
     """A ``tl`` / ``tr`` given one value per item, as one value per row.
 
     The values are in the order of the sorted item ids (``np.unique(i)``,
-    the order of ``RecurrentEventData.items``, and of an array ``T`` in
+    the order of ``EventHistoryData.items``, and of an array ``T`` in
     the trend tests), and each row takes its item's value, wherever the
     item's rows are in ``x``. A bound with one entry per row of ``x`` is
     per row, even when that is also the number of items; a scalar, a
@@ -928,7 +926,7 @@ def _check_row_kinds(
     """
     # (c=2 with 1-D x is refused by the intensity likelihoods, which are
     # the ones that take interval counts: see
-    # ``RecurrentEventData.split_for_nhpp_likelihood``. The renewal models
+    # ``EventHistoryData.split_for_nhpp_likelihood``. The renewal models
     # and the MCF refuse c=2 outright, with their own message.)
     if x.ndim == 2:
         spread = (c == 0) & (x[:, 0] != x[:, 1])
@@ -1103,7 +1101,7 @@ def _check_item_window(
         )
     # The item's first interval is integrated from its entry time: the
     # left-truncation bound when finite, otherwise the fallback origin 0
-    # (see RecurrentEventData.get_previous_x). Events below that origin
+    # (see EventHistoryData.get_previous_x). Events below that origin
     # would give negative interarrival times, so they are rejected. This
     # is why untruncated event times must be non-negative while an
     # explicit (possibly negative) left-truncation window admits negative
@@ -1187,7 +1185,7 @@ def handle_xicn(
     as_recurrent_data: Literal[True] = True,
     windows: dict | None = None,
     e: npt.ArrayLike | None = None,
-) -> RecurrentEventData: ...
+) -> EventHistoryData: ...
 
 
 @overload
@@ -1220,12 +1218,12 @@ def handle_xicn(
     windows: dict | None = None,
     e: npt.ArrayLike | None = None,
 ) -> (
-    RecurrentEventData
+    EventHistoryData
     | tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]
 ):
     """
     Validate recurrent-event data given as arrays and assemble it into a
-    :class:`~surpyval.utils.recurrent_event_data.RecurrentEventData`, the
+    :class:`~surpyval.utils.event_history_data.EventHistoryData`, the
     object every recurrent fitter's ``fit_from_recurrent_data`` takes.
 
     Each row is one event (or the right-censored end of observation) of
@@ -1258,7 +1256,7 @@ def handle_xicn(
         of observation) times: a scalar for every item, one value per row
         (the same on every row of an item) or, with ``i``, one value per
         item, in the sorted order of the item ids (``np.unique(i)``, the
-        order of ``RecurrentEventData.items``), whichever rows the item
+        order of ``EventHistoryData.items``), whichever rows the item
         has in ``x``. A per-item bound is expanded to one value per row
         here, so the data built are those of the per-row form. When there
         are as many rows as items the bound is read per row; any other
@@ -1271,7 +1269,7 @@ def handle_xicn(
         item: covariates are per item), or a ``{item: covariates}``
         mapping applied to every row of that item.
     as_recurrent_data : bool, optional
-        If :code:`True` (the default) return a ``RecurrentEventData``;
+        If :code:`True` (the default) return a ``EventHistoryData``;
         otherwise return the validated ``(x, i, c, n)`` arrays.
     windows : dict, optional
         Gapped observation: ``{item: [(start, end), ...]}``. Every row must
@@ -1284,7 +1282,7 @@ def handle_xicn(
 
     Returns
     -------
-    RecurrentEventData or tuple
+    EventHistoryData or tuple
         The assembled data, or ``(x, i, c, n)``.
 
     Examples
@@ -1363,7 +1361,7 @@ def handle_xicn(
     _check_static_covariates(Z_arr, idx, unique_i)
 
     if as_recurrent_data:
-        data = RecurrentEventData(x, i, c, n, e=e_arr, tl=tl_arr, tr=tr_arr)
+        data = EventHistoryData(x, i, c, n, e=e_arr, tl=tl_arr, tr=tr_arr)
         data.Z = Z_arr
         # ``window_map`` (synthetic-item id -> (real item, (start, end))) is
         # set only for gapped observation; it stays ``None`` otherwise and is

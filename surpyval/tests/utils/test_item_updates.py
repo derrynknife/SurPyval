@@ -5,9 +5,9 @@ import pytest
 
 from surpyval import (
     CovariatePath,
+    EventHistoryData,
     ItemHistory,
     ItemLifetime,
-    RecurrentEventData,
     StepSchedule,
     SurpyvalData,
 )
@@ -118,7 +118,7 @@ def test_state_changes_add_and_are_checked():
 
 def test_updated_items_build_a_dataset():
     items = [PUMP.add_failure(500).extend(900), PUMP.clone("P2")]
-    data = RecurrentEventData.from_items(items)
+    data = EventHistoryData.from_items(items)
     assert data.to_items() == items
     lifetimes = [
         ItemLifetime("A", right_censored=10).fail(12),

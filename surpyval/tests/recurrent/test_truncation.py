@@ -229,9 +229,9 @@ def test_624_renewal_fits_close_the_window_at_tr(model, kwargs):
 def test_624_renewal_refuses_rows_past_tr():
     # Hand-built data (handle_xicn refuses it too): rows after the end of
     # observation.
-    from surpyval.utils.recurrent_event_data import RecurrentEventData
+    from surpyval.utils.event_history_data import EventHistoryData
 
-    data = RecurrentEventData(
+    data = EventHistoryData(
         np.array([1.0, 3.0, 6.0, 2.0, 4.0]),
         np.array([1, 1, 1, 2, 2]),
         np.zeros(5),

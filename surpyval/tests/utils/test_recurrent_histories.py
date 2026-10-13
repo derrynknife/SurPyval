@@ -1,10 +1,10 @@
-"""RecurrentEventData.from_histories / to_histories, and the recurrent
-fitters taking a RecurrentEventData as ``x``."""
+"""EventHistoryData.from_histories / to_histories, and the recurrent
+fitters taking a EventHistoryData as ``x``."""
 
 import numpy as np
 import pytest
 
-from surpyval import RecurrentEventData, SurpyvalData, handle_xicn
+from surpyval import EventHistoryData, SurpyvalData, handle_xicn
 from surpyval import recurrent as rc
 
 RNG = np.random.default_rng(4)
@@ -17,10 +17,8 @@ for _k in range(8):
     ENDS[f"U{_k}"] = float(round(_ages[-1] + RNG.uniform(10, 400), 1))
     COVARIATES[f"U{_k}"] = [float(_k % 2)]
 
-DATA = RecurrentEventData.from_histories(
-    observed=OBSERVED, right_censored=ENDS
-)
-DZ = RecurrentEventData.from_histories(
+DATA = EventHistoryData.from_histories(observed=OBSERVED, right_censored=ENDS)
+DZ = EventHistoryData.from_histories(
     observed=OBSERVED, right_censored=ENDS, covariates=COVARIATES
 )
 
@@ -51,7 +49,7 @@ def test_from_histories_is_the_arrays():
 
 
 def test_an_item_without_an_end_ends_at_its_last_failure():
-    data = RecurrentEventData.from_histories(
+    data = EventHistoryData.from_histories(
         observed={"A": [5, 9], "B": [3]}, right_censored={"A": 12}
     )
     np.testing.assert_array_equal(data.x[data.i == "B"], [3])
@@ -59,7 +57,7 @@ def test_an_item_without_an_end_ends_at_its_last_failure():
 
 
 def test_an_item_with_no_failures_has_only_its_end():
-    data = RecurrentEventData.from_histories(
+    data = EventHistoryData.from_histories(
         observed={"A": [5]}, right_censored={"A": 8, "B": 20}
     )
     assert data.items == ["A", "B"]
@@ -67,7 +65,7 @@ def test_an_item_with_no_failures_has_only_its_end():
 
 
 def test_gaps_are_running_totals_from_the_start_of_observation():
-    data = RecurrentEventData.from_histories(
+    data = EventHistoryData.from_histories(
         observed={"A": [10, 5], "B": [4]},
         right_censored={"A": 2, "B": 1},
         left_truncation={"B": 100},
@@ -79,7 +77,7 @@ def test_gaps_are_running_totals_from_the_start_of_observation():
 
 
 def test_truncation_per_item_or_shared():
-    data = RecurrentEventData.from_histories(
+    data = EventHistoryData.from_histories(
         observed={"A": [5, 9], "B": [30]},
         left_truncation={"B": 20},
         right_truncation=50,
@@ -134,14 +132,14 @@ def test_covariates_are_one_row_per_item_on_every_row():
 )
 def test_from_histories_refuses(kwargs, error, match):
     with pytest.raises(error, match=match):
-        RecurrentEventData.from_histories(**kwargs)
+        EventHistoryData.from_histories(**kwargs)
 
 
 # -- to_histories -------------------------------------------------------------
 
 
 def test_to_histories_round_trips():
-    data = RecurrentEventData.from_histories(
+    data = EventHistoryData.from_histories(
         observed={"A": [5, 9], "B": [30]},
         right_censored={"A": 12, "C": 40},
         left_truncation={"B": 20},
@@ -150,7 +148,7 @@ def test_to_histories_round_trips():
     histories = data.to_histories()
     assert histories["right_censored"] == {"A": 12.0, "C": 40.0}
     assert "right_truncation" not in histories
-    again = RecurrentEventData.from_histories(**histories)
+    again = EventHistoryData.from_histories(**histories)
     for name in ("x", "i", "c", "n", "tl", "tr", "Z"):
         np.testing.assert_array_equal(
             getattr(again, name), getattr(data, name)
@@ -222,7 +220,7 @@ def test_cause_specific_fits_take_the_event_types_from_the_data():
 
 
 def test_left_truncated_data_fits_as_its_arrays():
-    data = RecurrentEventData.from_histories(
+    data = EventHistoryData.from_histories(
         observed=OBSERVED, right_censored=ENDS, left_truncation={"U0": 1.0}
     )
     np.testing.assert_allclose(
@@ -243,7 +241,7 @@ def test_left_truncated_data_fits_as_its_arrays():
         ),
         (
             lambda: rc.GeneralizedRenewal.fit(
-                RecurrentEventData.from_histories(
+                EventHistoryData.from_histories(
                     observed=OBSERVED, right_truncation=1e6
                 )
             ),

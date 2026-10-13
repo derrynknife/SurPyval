@@ -45,11 +45,11 @@ from surpyval.univariate.competing_risks.labels import (
 )
 from surpyval.univariate.information_criteria import corrected_aic
 from surpyval.utils import optional_column
-from surpyval.utils.no_maximum import combined_maximum
-from surpyval.utils.recurrent_event_data import (
-    accepts_recurrent_data,
+from surpyval.utils.event_history_data import (
+    accepts_event_history_data,
     refuses_unmodelled_data,
 )
+from surpyval.utils.no_maximum import combined_maximum
 from surpyval.utils.recurrent_utils import handle_xicn
 from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.units import label_axes, takes_unit
@@ -285,11 +285,11 @@ class CauseSpecificNHPP(SerialisableMixin):
     ) -> "CauseSpecificNHPP":
         """
         Fit the cause-specific intensity model from prepared
-        :class:`RecurrentEventData` carrying event-type marks ``e``.
+        :class:`EventHistoryData` carrying event-type marks ``e``.
 
         Parameters
         ----------
-        data : RecurrentEventData
+        data : EventHistoryData
             Recurrent data with event-type marks (``data.e`` not ``None``).
         dist : counting-process fitter, optional
             The intensity model fitted per cause (``CrowAMSAA`` by default;
@@ -305,7 +305,7 @@ class CauseSpecificNHPP(SerialisableMixin):
         """
         if data.e is None:
             raise ValueError(
-                "RecurrentEventData has no event-type marks; pass `e` to "
+                "EventHistoryData has no event-type marks; pass `e` to "
                 "fit a cause-specific intensity model."
             )
         if data.x.ndim != 1:
@@ -358,7 +358,7 @@ class CauseSpecificNHPP(SerialisableMixin):
 
     @classmethod
     @takes_unit
-    @accepts_recurrent_data
+    @accepts_event_history_data
     def fit(
         cls,
         x: ArrayLike,

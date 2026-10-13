@@ -20,7 +20,9 @@ v0.23 rename it was written for, removed in v0.24):
 - :class:`RenamedToMethod`, an attribute whose value a method of another
   name now gives (``Parametric.cov_matrix`` -> ``covariance()``);
 - :class:`MadePrivate`, the public name of an internal method or attribute
-  (``MixtureModel.EM`` -> ``MixtureModel._em_iteration``).
+  (``MixtureModel.EM`` -> ``MixtureModel._em_iteration``);
+- :func:`renamed_name`, a class or other name in a module's namespace
+  (``RecurrentEventData`` -> ``EventHistoryData``, v0.25).
 
 A name deprecated in v0.25 is accepted until :data:`REMOVED_IN_NEXT`.
 
@@ -52,6 +54,7 @@ __all__ = [
     "RenamedAttribute",
     "RenamedToMethod",
     "renamed_arguments",
+    "renamed_name",
     "reordered_arguments",
 ]
 
@@ -132,6 +135,26 @@ def _message(
         f"{where}: '{old}' is deprecated and will be removed in "
         f"v{removed_in}; use '{new}'."
     )
+
+
+def renamed_name(
+    where: str,
+    old: str,
+    new: str,
+    value: Any,
+    removed_in: str = REMOVED_IN_NEXT,
+) -> Any:
+    """``value``, reached by its old name ``old`` in the namespace ``where``
+    (a module's ``__getattr__``), with a DeprecationWarning naming ``new``
+    and pointing at the line that used the old name. ``value`` is the
+    renamed object itself, so ``isinstance`` checks against the old name
+    keep working until it is removed."""
+    warnings.warn(
+        _message(where, old, new, removed_in),
+        DeprecationWarning,
+        stacklevel=3,
+    )
+    return value
 
 
 def renamed_arguments(

@@ -15,13 +15,13 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
 from surpyval.univariate.parametric.fitters import verify_or_polish
-from surpyval.utils.no_maximum import warn_unverified
-from surpyval.utils.pickling import Rebuilt
-from surpyval.utils.recurrent_event_data import (
-    RecurrentEventData,
-    accepts_recurrent_data,
+from surpyval.utils.event_history_data import (
+    EventHistoryData,
+    accepts_event_history_data,
     refuses_unmodelled_data,
 )
+from surpyval.utils.no_maximum import warn_unverified
+from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
@@ -36,7 +36,7 @@ def nhpp_log_likelihood(
     """The log-likelihood of an NHPP, for the plain and the
     proportional-intensity fitters (#350).
 
-    ``s`` is the data split by ``RecurrentEventData.
+    ``s`` is the data split by ``EventHistoryData.
     split_for_nhpp_likelihood``, and ``cif`` and ``log_iif`` the baseline's
     cumulative and log instantaneous intensity at the current parameters,
     as functions of time. ``eta`` holds the linear predictor of each piece
@@ -101,7 +101,7 @@ class NHPPFitter(IntensityModel):
     #: Natural-space parameter bounds, set by each concrete intensity model.
     bounds: tuple
 
-    def create_negll_func(self, data: RecurrentEventData) -> Callable:
+    def create_negll_func(self, data: EventHistoryData) -> Callable:
         s = data.split_for_nhpp_likelihood()
 
         def negll_func(params: np.ndarray) -> float:
@@ -115,7 +115,7 @@ class NHPPFitter(IntensityModel):
 
     def _default_start(
         self,
-        data: RecurrentEventData,
+        data: EventHistoryData,
         x_unique: np.ndarray,
         mcf_hat: np.ndarray,
     ) -> np.ndarray:
@@ -124,16 +124,14 @@ class NHPPFitter(IntensityModel):
         from the non-parametric MCF (``mcf_hat`` at ``x_unique``)."""
         return self.parameter_initialiser(data.x)
 
-    def _search_units(self, data: RecurrentEventData) -> np.ndarray:
+    def _search_units(self, data: EventHistoryData) -> np.ndarray:
         """The unit of each parameter in the space where the likelihood
         is searched and its maximum checked (1 for every parameter, the
         default; ``CoxLewis``'s ``beta``, a rate per unit time, has one
         over the longest time)."""
         return np.ones(len(self.parameter_names))
 
-    def _closed_form_mle(
-        self, data: RecurrentEventData
-    ) -> "np.ndarray | None":
+    def _closed_form_mle(self, data: EventHistoryData) -> "np.ndarray | None":
         """The exact maximum-likelihood parameters where the model has a
         closed form for ``data``, else ``None`` (the default): the search
         is then run."""
@@ -142,7 +140,7 @@ class NHPPFitter(IntensityModel):
     @refuses_unmodelled_data
     def fit_from_recurrent_data(
         self,
-        data: RecurrentEventData,
+        data: EventHistoryData,
         how: str = "MLE",
         init: "ArrayLike | None" = None,
     ) -> ParametricRecurrenceModel:
@@ -153,7 +151,7 @@ class NHPPFitter(IntensityModel):
         Parameters
         ----------
 
-        data: RecurrentEventData
+        data: EventHistoryData
             The recurrent event data, as built by ``surpyval.handle_xicn``.
             :meth:`fit` builds one from its arrays and calls this.
         how: str, optional
@@ -289,7 +287,7 @@ class NHPPFitter(IntensityModel):
 
     def _closed_form_model(
         self,
-        data: RecurrentEventData,
+        data: EventHistoryData,
         params: np.ndarray,
         ll_func: Callable,
         mcf_hat: np.ndarray,
@@ -317,7 +315,7 @@ class NHPPFitter(IntensityModel):
         return model
 
     @takes_unit
-    @accepts_recurrent_data
+    @accepts_event_history_data
     def fit(
         self,
         x: ArrayLike,
