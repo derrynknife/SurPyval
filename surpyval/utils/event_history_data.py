@@ -14,7 +14,12 @@ import numpy.typing as npt
 
 from surpyval.utils.data_reshape import HISTORY_PARTS, ReshapeMixin
 from surpyval.utils.deprecation import REMOVED_IN_NEXT, RenamedAttribute
-from surpyval.utils.surpyval_data import SurpyvalData, _plural
+from surpyval.utils.surpyval_data import (
+    SurpyvalData,
+    _named_row,
+    _plural,
+    named_fit,
+)
 from surpyval.utils.validation import unknown_cause_error
 
 
@@ -76,6 +81,9 @@ class EventHistoryData(ReshapeMixin):
     # attached by ``from_items`` when an ItemHistory has them; no model uses
     # them yet (#905), so every fit refuses data that has them.
     time_varying_covariates: dict | None = None
+    # The name of each column of Z, from the items' covariates={name:
+    # value}; they name a fitted model's coefficients.
+    covariate_names: list | None = None
     # The item ids were ``items`` before v0.25 (``from_items`` and
     # ``to_items`` are about item records): accepted until v0.26.
     items = RenamedAttribute("ids", removed_in=REMOVED_IN_NEXT)
@@ -567,9 +575,9 @@ class EventHistoryData(ReshapeMixin):
             ``{item: age}``, the age after which an item's failures would
             not have been seen, or one number for every item.
         covariates : dict, optional
-            ``{item: row}``, each item's covariates (a number, or a row of
-            them), for every item; a proportional intensity ``fit`` takes
-            them as ``Z``.
+            ``{item: row}``, each item's covariates (a number, a row of
+            them, or ``{name: value}``, which names them), for every item;
+            a proportional intensity ``fit`` takes them as ``Z``.
         gaps : bool, default False
             Read ``observed`` as the times between failures (the first
             from the start of observation: ``left_truncation``, else 0) and
@@ -680,11 +688,16 @@ class EventHistoryData(ReshapeMixin):
                     "from_items takes ItemHistory objects; got "
                     f"{type(history).__name__}."
                 )
-        from surpyval.utils.item_history import check_item_ids
+        from surpyval.utils.item_history import (
+            check_item_ids,
+            covariate_names_of,
+            covariate_row_in,
+        )
 
         ids = [history.id for history in items]
         check_item_ids(ids, "ItemHistory")
         static = _all_or_none(items, "covariates", lambda h: h.covariates)
+        names = covariate_names_of(items)
         varying = _all_or_none(
             items,
             "time_varying_covariates",
@@ -739,7 +752,7 @@ class EventHistoryData(ReshapeMixin):
                 )
             ] * len(xs)
             if static:
-                Z += [history.covariates] * len(xs)
+                Z += [covariate_row_in(history, names)] * len(xs)
         x_arr = np.array(x, dtype=float)
         if not (np.isin(c, (-1, 2))).any():
             x_arr = x_arr[:, 0]
@@ -754,6 +767,8 @@ class EventHistoryData(ReshapeMixin):
             Z=np.array(Z) if static else None,
             e=_object_array(e) if any(typed) else None,
         )
+        if static:
+            data.covariate_names = names
         if varying:
             data.time_varying_covariates = {
                 history.id: history.time_varying_covariates
@@ -831,7 +846,7 @@ class EventHistoryData(ReshapeMixin):
             left[key] = float(self.tl[rows][0])
             right[key] = float(self.tr[rows][0])
             if Z is not None:
-                covariates[key] = Z[rows][0]
+                covariates[key] = _named_row(Z[rows], 0, self.covariate_names)
         out: dict = {"observed": observed, "right_censored": right_censored}
         # Only the items with a bound: the others have none (-inf / inf)
         left = {key: age for key, age in left.items() if np.isfinite(age)}
@@ -942,7 +957,11 @@ class EventHistoryData(ReshapeMixin):
             left_censored_counts=int(n[c == -1][0]) if len(left) else None,
             left_truncation=float(tl) if np.isfinite(tl) else None,
             right_truncation=float(tr) if np.isfinite(tr) else None,
-            covariates=None if Z is None else Z[rows][0],
+            covariates=(
+                None
+                if Z is None
+                else _named_row(Z[rows], 0, self.covariate_names)
+            ),
             time_varying_covariates=(
                 None
                 if self.time_varying_covariates is None
@@ -1031,6 +1050,7 @@ class EventHistoryData(ReshapeMixin):
         # to: a fit of a slice must see what a fit of the whole would.
         if self.Z is not None:
             out.Z = np.asarray(self.Z)[index]
+            out.covariate_names = self.covariate_names
         for name in ("time_varying_covariates", "states"):
             held = getattr(self, name)
             if held is not None:
@@ -1158,8 +1178,12 @@ def _item_covariate_rows(covariates: dict, items: list) -> list:
         )
     rows = []
     for item in items:
+        value = covariates[item]
+        if isinstance(value, dict) or type(value).__name__ == "Series":
+            rows.append(value)  # named: the ItemHistory reads it
+            continue
         try:
-            row = np.atleast_1d(np.asarray(covariates[item], dtype=float))
+            row = np.atleast_1d(np.asarray(value, dtype=float))
         except (TypeError, ValueError):
             raise ValueError(f"Item {item!r}: 'covariates' must be numbers.")
         if row.ndim != 1 or not np.isfinite(row).all():
@@ -1264,7 +1288,10 @@ def accepts_event_history_data(method: F) -> F:
                 "EventHistoryData holds."
             )
         bound.arguments.update(filled)
-        return method(*bound.args, **bound.kwargs)
+        return named_fit(
+            lambda: method(*bound.args, **bound.kwargs),
+            data.covariate_names if "Z" in filled else None,
+        )
 
     setattr(wrapper, "_accepts_event_history_data", True)
     return wrapper  # type: ignore[return-value]
@@ -1345,9 +1372,11 @@ def _held(data: Any, rows: "int | None") -> list:
         )
     if getattr(data, "Z", None) is not None:
         Z = np.asarray(data.Z)
-        lines.append(
-            f"  covariates: {1 if Z.ndim == 1 else Z.shape[1]} column(s)"
-        )
+        width = 1 if Z.ndim == 1 else Z.shape[1]
+        line = f"  covariates: {width} column{'' if width == 1 else 's'}"
+        if getattr(data, "covariate_names", None) is not None:
+            line += " (" + ", ".join(data.covariate_names) + ")"
+        lines.append(line)
     if getattr(data, "time_varying_covariates", None) is not None:
         kinds = Counter(
             type(v).__name__ for v in data.time_varying_covariates.values()

@@ -10,7 +10,8 @@ import numpy as np
 
 from surpyval.utils.item_history import (
     _age,
-    _covariate_row,
+    _covariate_field,
+    _covariates,
     _schedule_field,
     _time_varying,
     _with_step,
@@ -63,8 +64,10 @@ class ItemLifetime:
     event_type : optional
         What failed (a failure mode or cause, for competing risks); not for
         a right censored item, which has not failed.
-    covariates : scalar or array like, optional
-        Its covariates (a number or a row).
+    covariates : scalar, array like or dict, optional
+        Its covariates: a number, a row, or ``{name: value}`` (a pandas
+        Series too), which names them (``covariate_names``);
+        ``covariates`` is then the row of values, in that order.
     time_varying_covariates : dict, StepSchedule or CovariatePath, optional
         Covariates that change over its life: ``{age: values}`` (each
         value holding from its age on, the first at or before the start of
@@ -135,7 +138,7 @@ class ItemLifetime:
                 "has no event_type."
             )
         self.event_type = event_type
-        self.covariates = _covariate_row(item, "covariates", covariates)
+        self.covariates, self.covariate_names = _covariates(item, covariates)
         self.time_varying_covariates, first = _time_varying(
             item, time_varying_covariates
         )
@@ -314,7 +317,9 @@ class ItemLifetime:
             if getattr(self, name) is not None:
                 out[name] = getattr(self, name)
         if self.covariates is not None:
-            out["covariates"] = self.covariates.tolist()
+            out["covariates"] = _covariate_field(
+                self.covariates, self.covariate_names
+            )
         if self.time_varying_covariates is not None:
             out["time_varying_covariates"] = _schedule_field(
                 self.time_varying_covariates

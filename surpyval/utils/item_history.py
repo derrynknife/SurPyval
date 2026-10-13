@@ -51,8 +51,11 @@ class ItemHistory:
     right_truncation : scalar, optional
         The age after which its failures would not have been seen. With
         ``right_censored``, the two must be the same age.
-    covariates : scalar or array like, optional
-        Its covariates, constant over its history (a number or a row).
+    covariates : scalar, array like or dict, optional
+        Its covariates, constant over its history: a number, a row, or
+        ``{name: value}`` (a pandas Series too), which names them
+        (``covariate_names``); ``covariates`` is then the row of values,
+        in that order.
     observed_event_types, interval_censored_event_types : optional
         What each failure was (a failure mode or cause, for the
         cause-specific models): one type for every entry of the list, or
@@ -207,7 +210,7 @@ class ItemHistory:
         self.right_truncation = _age(
             item, "right_truncation", right_truncation
         )
-        self.covariates = _covariate_row(item, "covariates", covariates)
+        self.covariates, self.covariate_names = _covariates(item, covariates)
         self.time_varying_covariates, self._first_change = _time_varying(
             item, time_varying_covariates
         )
@@ -690,7 +693,9 @@ class ItemHistory:
             if getattr(self, name) is not None:
                 out[name] = getattr(self, name)
         if self.covariates is not None:
-            out["covariates"] = self.covariates.tolist()
+            out["covariates"] = _covariate_field(
+                self.covariates, self.covariate_names
+            )
         if self.time_varying_covariates is not None:
             out["time_varying_covariates"] = _schedule_field(
                 self.time_varying_covariates
@@ -870,6 +875,76 @@ def _covariate_row(item: Any, name: str, value: Any) -> "np.ndarray | None":
             "of them."
         )
     return row
+
+
+def _covariates(item: Any, value: Any) -> tuple:
+    """A record's covariates and their names: ``(row, None)`` for a
+    number or a row; ``(row, names)`` for ``{name: value}`` or a pandas
+    Series, the row in the order of the names; ``(None, None)``."""
+    if type(value).__name__ == "Series":
+        value = dict(value.items())
+    if not isinstance(value, dict):
+        return _covariate_row(item, "covariates", value), None
+    names = list(value)
+    if not names:
+        raise ValueError(f"Item {item!r}: 'covariates' is an empty dict.")
+    bad = [name for name in names if not isinstance(name, str) or not name]
+    if bad:
+        raise ValueError(
+            f"Item {item!r}: covariate names must be text; got {bad!r}."
+        )
+    several = [name for name in names if np.ndim(value[name]) != 0]
+    if several:
+        raise ValueError(
+            f"Item {item!r}: each named covariate is one number; "
+            f"{several!r} are not."
+        )
+    row = _covariate_row(item, "covariates", [value[k] for k in names])
+    return row, tuple(names)
+
+
+def _covariate_field(row: np.ndarray, names: "tuple | None") -> Any:
+    """A record's covariates as given back: ``{name: value}`` where they
+    are named, else the row as a list."""
+    if names is None:
+        return row.tolist()
+    return dict(zip(names, row.tolist()))
+
+
+def covariate_names_of(items: list) -> "list | None":
+    """The covariate names of a dataset's records: None where none are
+    named; the first record's names where all are named with the same
+    names (in any order); refused otherwise."""
+    have = [item for item in items if item.covariates is not None]
+    named = [item.covariate_names is not None for item in have]
+    if not any(named):
+        return None
+    if not all(named):
+        unnamed = [i.id for i, n in zip(have, named) if not n]
+        raise ValueError(
+            "Covariates are named for some items but not for "
+            f"{unnamed!r}: name them for every item (covariates={{name: "
+            "value}) or for none."
+        )
+    first = have[0]
+    for item in have[1:]:
+        if set(item.covariate_names) != set(first.covariate_names):
+            raise ValueError(
+                f"Item {item.id!r} has covariates "
+                f"{sorted(item.covariate_names)!r} and item {first.id!r} "
+                f"has {sorted(first.covariate_names)!r}: every item needs "
+                "the same covariates."
+            )
+    return list(first.covariate_names)
+
+
+def covariate_row_in(item: Any, names: "list | None") -> np.ndarray:
+    """``item``'s covariates in the order of ``names`` (as they are, where
+    ``names`` is None)."""
+    if names is None or item.covariate_names is None:
+        return item.covariates
+    where = {name: j for j, name in enumerate(item.covariate_names)}
+    return item.covariates[[where[name] for name in names]]
 
 
 def _time_varying(item: Any, value: Any) -> tuple[Any, "float | None"]:

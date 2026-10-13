@@ -185,6 +185,22 @@ took them. Datasets from several sources join with
     ]
     surv.WeibullPH.fit(SurpyvalData.from_items(items)).params
 
+Covariates given by name, ``covariates={"age": 54, "arm": 1}``, are
+named in the data (``covariate_names``) and in the fitted model, whose
+coefficients take the names; an item's names may come in any order:
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(3)
+    trial = []
+    for k in range(80):
+        arm, age = k % 2, float(rng.uniform(40, 70))
+        t = rng.weibull(1.5) * 1000 * np.exp(-0.6 * arm)
+        trial.append(ItemLifetime(k, observed=t, covariates={"arm": arm, "age": age}))
+    data = SurpyvalData.from_items(trial)
+    print(data.covariate_names)
+    surv.WeibullPH.fit(data).params
+
 One dataset, several analyses
 -----------------------------
 
@@ -196,17 +212,18 @@ the analysis instead; each operation returns a new dataset:
 
     fleet = SurpyvalData.from_items(
         [
-            ItemLifetime("P1", observed=820, event_type="seal", covariates=[1]),
-            ItemLifetime("P2", observed=1450, event_type="bearing", covariates=[0]),
-            ItemLifetime("P3", right_censored=2000, covariates=[1]),
-            ItemLifetime("P4", observed=1100, event_type="seal", covariates=[0]),
-            ItemLifetime("P5", right_censored=1700, covariates=[0]),
+            ItemLifetime("P1", observed=820, event_type="seal", covariates={"site": 1, "load": 0.8}),
+            ItemLifetime("P2", observed=1450, event_type="bearing", covariates={"site": 0, "load": 0.5}),
+            ItemLifetime("P3", right_censored=2000, covariates={"site": 1, "load": 0.4}),
+            ItemLifetime("P4", observed=1100, event_type="seal", covariates={"site": 0, "load": 0.9}),
+            ItemLifetime("P5", right_censored=1700, covariates={"site": 0, "load": 0.6}),
         ]
     )
     print(fleet.summary())
 
     everything = fleet.without("covariates", "event_types")   # a plain fit
     seals = fleet.for_event_type("seal").without("covariates")  # one mode
+    by_load = fleet.with_covariates(["load"])   # a regression on load alone
     site1 = fleet.select(where=lambda item: item.covariates[0] == 1)
     first_1500 = fleet.censor_at(1500)   # as seen at the end of a study
     print(surv.Weibull.fit(everything).params)
