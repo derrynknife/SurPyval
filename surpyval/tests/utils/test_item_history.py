@@ -348,7 +348,9 @@ def test_time_varying_covariates_take_schedules_and_paths():
     ]
     data = EventHistoryData.from_items(items)
     assert data.time_varying_covariates["A"] is ramp
-    assert data.time_varying_covariates["B"] is steps
+    held = data.time_varying_covariates["B"]
+    assert held.edges.tolist() == steps.edges.tolist()
+    assert held.Z.tolist() == steps.Z.tolist()
     assert isinstance(data.time_varying_covariates["C"], StepSchedule)
     assert data.to_items() == items
     with pytest.raises(ValueError, match="#905"):

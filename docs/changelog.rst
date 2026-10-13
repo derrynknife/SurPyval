@@ -274,6 +274,14 @@ Unreleased
 
 **Changed**
 
+- A dataset's arrays (``SurpyvalData`` and ``EventHistoryData``: ``x``,
+  ``c``, ``n``, ``t``, ``Z``, ``e`` and the arrays split from them) are
+  read-only (#927). Changing one in place (``data.c[2] = 1``) left the
+  split arrays and the summary out of step with it, so two fits of the
+  same data could differ; make a changed dataset with the reshaping
+  methods, or from changed arrays. Arrays given to a dataset are copied
+  where they come in, so changing them afterwards does not change it.
+
 - A True/False ``c`` is refused (#920), by every fitter, ``fit_from_df``
   and ``SurpyvalData``. ``c`` is the censoring flag (1 = right censored),
   and a boolean column is far more often an event indicator (True =
@@ -321,6 +329,13 @@ Unreleased
 
 **Fixed**
 
+- Item records (``ItemLifetime``, ``ItemHistory``) came back from
+  ``pickle`` or ``copy.deepcopy`` with writeable arrays, so a copy could
+  be changed in place, bypassing its checks; they are fixed again when
+  unpickled (#927). A ``StepSchedule`` given as a record's
+  ``time_varying_covariates`` is copied: changing the caller's schedule
+  used to change the record and its hash (a record in a set was then not
+  found).
 - ``EventHistoryData`` (#925): one row, ``data[k]``, kept neither an
   interval row ``[start, end]`` (it became two times) nor its covariate
   columns (all but the first were dropped); it is one row, as a slice

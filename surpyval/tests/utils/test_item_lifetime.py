@@ -90,7 +90,9 @@ def test_event_types_and_time_varying_covariates_are_kept_but_not_fitted_yet():
     ]
     data = SurpyvalData.from_items(items)
     assert list(data.e) == ["spall", None]
-    assert data.time_varying_covariates["A"] is schedule
+    held = data.time_varying_covariates["A"]
+    assert held.edges.tolist() == schedule.edges.tolist()
+    assert held.Z.tolist() == schedule.Z.tolist()
     assert data.to_items() == items
     with pytest.raises(ValueError, match="no event types"):
         sp.Weibull.fit(data)

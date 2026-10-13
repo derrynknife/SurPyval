@@ -17,6 +17,7 @@ from surpyval.utils.item_history import (
     _with_step,
     freeze,
     frozen_setattr,
+    frozen_setstate,
     hashable,
     item_id,
 )
@@ -147,6 +148,9 @@ class ItemLifetime:
 
     def __setattr__(self, name: str, value: Any) -> None:
         frozen_setattr(self, name, value)
+
+    def __setstate__(self, state: dict) -> None:
+        frozen_setstate(self, state)
 
     # The outcome by name, as ItemHistory reads: its value, or None.
     @property

@@ -105,13 +105,13 @@ class EventHistoryData(ReshapeMixin):
         tl: "npt.ArrayLike | None" = None,
         tr: "npt.ArrayLike | None" = None,
     ) -> None:
-        self.x = np.atleast_1d(x)
+        self.x = np.atleast_1d(x).copy()  # the caller's stays theirs
         # One i, c or n is every row's, as for handle_xicn
         self.i, self.c, self.n = (
             (
                 np.full(self.x.shape[0], value)
                 if np.ndim(value) == 0
-                else np.atleast_1d(value)
+                else np.atleast_1d(value).copy()
             )
             for value in (i, c, n)
         )
@@ -146,7 +146,7 @@ class EventHistoryData(ReshapeMixin):
         # turns the data into a competing-risks recurrent process: each
         # event belongs to one of several mutually-exclusive types. ``None``
         # marks (e.g. the end-of-observation censoring row) are permitted.
-        self.e = np.atleast_1d(e) if e is not None else None
+        self.e = np.atleast_1d(e).copy() if e is not None else None
         self._check_rows()
         self.ids = np.unique(self.i).tolist()
 

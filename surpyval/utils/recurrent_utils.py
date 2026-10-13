@@ -1364,7 +1364,7 @@ def handle_xicn(
 
     if as_recurrent_data:
         data = EventHistoryData(x, i, c, n, e=e_arr, tl=tl_arr, tr=tr_arr)
-        data.Z = Z_arr
+        data.Z = None if Z_arr is None else np.array(Z_arr)
         # ``window_map`` (synthetic-item id -> (real item, (start, end))) is
         # set only for gapped observation; it stays ``None`` otherwise and is
         # what ``reject_gapped_observation`` keys off. ``observation_windows``
