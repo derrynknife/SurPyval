@@ -160,7 +160,7 @@ def test_an_item_refuses(kwargs, match):
 
 
 def test_the_dataset_needs_consistent_items():
-    with pytest.raises(ValueError, match="given twice: 'A'"):
+    with pytest.raises(ValueError, match="more than once: 'A'"):
         EventHistoryData.from_items(
             [ItemHistory("A", observed=[1]), ItemHistory("A", observed=[2])]
         )
@@ -171,7 +171,7 @@ def test_the_dataset_needs_consistent_items():
                 ItemHistory("B", observed=[2]),
             ]
         )
-    with pytest.raises(ValueError, match="one type"):
+    with pytest.raises(ValueError, match="one kind"):
         EventHistoryData.from_items(
             [ItemHistory("A", observed=[1]), ItemHistory(2, observed=[2])]
         )

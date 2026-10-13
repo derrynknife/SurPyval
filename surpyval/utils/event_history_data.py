@@ -675,19 +675,10 @@ class EventHistoryData:
                     "from_items takes ItemHistory objects; got "
                     f"{type(history).__name__}."
                 )
+        from surpyval.utils.item_history import check_item_ids
+
         ids = [history.item for history in items]
-        if len({type(item) for item in ids}) > 1:
-            raise ValueError(
-                "The item ids must all be of one type (all text or all "
-                "numbers): mixed, '1' and 1 could not be told apart."
-            )
-        repeated = sorted({repr(i) for i in ids if ids.count(i) > 1})
-        if repeated:
-            raise ValueError(
-                "Each item needs one ItemHistory; given twice: "
-                + ", ".join(repeated)
-                + "."
-            )
+        check_item_ids(ids, "ItemHistory")
         static = _all_or_none(items, "covariates", lambda h: h.covariates)
         varying = _all_or_none(
             items,
@@ -935,7 +926,7 @@ class EventHistoryData:
         return out
 
     def __getitem__(self, index: Any) -> "EventHistoryData":
-        return EventHistoryData(
+        out = EventHistoryData(
             self.x[index],
             self.i[index],
             self.c[index],
@@ -944,6 +935,17 @@ class EventHistoryData:
             tl=self.tl[index],
             tr=self.tr[index],
         )
+        # Covariates, schedules and states go with the rows they belong
+        # to: a fit of a slice must see what a fit of the whole would.
+        if self.Z is not None:
+            out.Z = np.asarray(self.Z)[index]
+        for name in ("time_varying_covariates", "states"):
+            held = getattr(self, name)
+            if held is not None:
+                setattr(
+                    out, name, {i: held[i] for i in out.items if i in held}
+                )
+        return out
 
     def __iter__(self) -> Any:
         # A stateless iterator: the old hand-rolled _index version broke

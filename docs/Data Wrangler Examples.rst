@@ -141,7 +141,8 @@ each one stands for goes in ``counts``:
     )).params
 
 Records are updated as items age, each update giving a new, checked record
-(the old one is left as it was), and copied for a new item with ``clone``:
+(the old one is left as it was), and copied for a new item with ``clone``.
+A record is fixed once made, so it is always one that passed its checks:
 
 .. jupyter-execute::
 

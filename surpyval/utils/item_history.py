@@ -4,6 +4,7 @@ them is a dataset (:meth:`EventHistoryData.from_items
 
 from __future__ import annotations
 
+from numbers import Number
 from typing import Any
 
 import numpy as np
@@ -133,7 +134,7 @@ class ItemHistory:
         interval_censored_states: Any = None,
         left_censored_states: "dict | None" = None,
     ) -> None:
-        self.item = item
+        self.item = item_id(item)
         ages = _ages(item, "observed", observed)
         types = _event_types(
             item,
@@ -218,6 +219,10 @@ class ItemHistory:
             0.0 if self.left_truncation is None else self.left_truncation,
         )
         self._check()
+        freeze(self)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        frozen_setattr(self, name, value)
 
     # -- checks -------------------------------------------------------------
 
@@ -650,7 +655,8 @@ class ItemHistory:
             return NotImplemented
         return self.item == other.item and self._fields() == other._fields()
 
-    __hash__ = None  # type: ignore[assignment]
+    def __hash__(self) -> int:
+        return hash((self.item, hashable(self._fields())))
 
     def __repr__(self) -> str:
         fields = "".join(
@@ -951,3 +957,67 @@ def _with_step(item: Any, schedule: Any, age: float, values: Any) -> dict:
     row = _covariate_row(item, "values", values)
     steps[age] = row.tolist()  # type: ignore[union-attr]
     return steps
+
+
+def item_id(item: Any) -> Any:
+    """An item's id as a plain Python value (a numpy number or string as
+    the int, float or str it holds), so that ids from numpy or pandas and
+    ids typed in compare and sort alike."""
+    return item.item() if isinstance(item, np.generic) else item
+
+
+def check_item_ids(ids: list, record: str) -> None:
+    """Refuse ids of mixed kinds (text and numbers: '1' and 1 could not be
+    told apart) and an id given twice (each item has one record), counting
+    once, in linear time."""
+    from collections import Counter
+
+    kinds = {
+        (
+            "text"
+            if isinstance(i, str)
+            else "number" if isinstance(i, Number) else type(i).__name__
+        )
+        for i in ids
+    }
+    if len(kinds) > 1:
+        raise ValueError(
+            "The item ids must all be of one kind (all text or all "
+            "numbers): mixed, '1' and 1 could not be told apart."
+        )
+    repeated = sorted(repr(i) for i, k in Counter(ids).items() if k > 1)
+    if repeated:
+        raise ValueError(
+            f"Each item needs one {record}; given more than once: "
+            + ", ".join(repeated)
+            + "."
+        )
+
+
+def freeze(obj: Any) -> None:
+    """Make a record's arrays read-only and its attributes fixed: a record
+    is checked when made, and changed only through clone and the update
+    methods, which make (and check) a new one."""
+    for value in vars(obj).values():
+        if isinstance(value, np.ndarray):
+            value.flags.writeable = False
+    object.__setattr__(obj, "_frozen", True)
+
+
+def frozen_setattr(obj: Any, name: str, value: Any) -> None:
+    if getattr(obj, "_frozen", False):
+        raise AttributeError(
+            f"{type(obj).__name__} records are fixed once made: for a "
+            "changed one use clone(...) or an update method, which return "
+            "a new, checked record."
+        )
+    object.__setattr__(obj, name, value)
+
+
+def hashable(value: Any) -> Any:
+    """``value`` (a record's fields) as something hashable."""
+    if isinstance(value, dict):
+        return tuple(sorted((k, hashable(v)) for k, v in value.items()))
+    if isinstance(value, (list, tuple, np.ndarray)):
+        return tuple(hashable(v) for v in value)
+    return value
