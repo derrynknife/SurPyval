@@ -30,6 +30,15 @@ Unreleased
   interval open at one end is ``[lower, inf]`` in ``interval_censored``),
   and a pandas list and its per-item values with different indexes, since
   they are matched by position.
+- A model fitted on item records predicts for an item:
+  ``model.sf_tvc(t, item)`` (and the other ``*_tvc`` methods) reads the
+  item's fixed covariates and its time-varying ones (a ``StepSchedule``
+  or a ``CovariatePath``) and lines them up as the fit did, fixed columns
+  first. ``SurpyvalData.combine(a, b, ...)`` and
+  ``EventHistoryData.combine(...)`` join datasets: those with item ids item
+  by item (an id in two of them is refused), those without by stacking;
+  they must all have ids or none, and covariates, event types and
+  time-varying covariates all or none.
 - Reshaping a dataset for another analysis, on ``SurpyvalData`` and
   ``EventHistoryData`` alike (each returns a new dataset, built again from
   its item records, so it passes the same checks):
