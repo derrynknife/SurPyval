@@ -770,7 +770,11 @@ def as_step_schedule(
     return StepSchedule.from_changepoints(xl, Z)
 
 
-def as_covariate_path(Z: Any, xl: "npt.ArrayLike | None" = None) -> Any:
+def as_covariate_path(
+    Z: Any,
+    xl: "npt.ArrayLike | None" = None,
+    names: "list | None" = None,
+) -> Any:
     """
     Coerce a model ``sf_tvc`` covariate argument into a :class:`StepSchedule`
     or a :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`.
@@ -779,7 +783,9 @@ def as_covariate_path(Z: Any, xl: "npt.ArrayLike | None" = None) -> Any:
     an item record (:class:`~surpyval.utils.item_lifetime.ItemLifetime` or
     :class:`~surpyval.utils.item_history.ItemHistory`) gives its own
     covariates, the fixed ones followed by the time-varying ones, as a
-    model fitted on such items takes them; anything else is as for
+    model fitted on such items takes them (named covariates in the order
+    of the model's ``names``, its ``feature_names``, where both have
+    names); anything else is as for
     :func:`as_step_schedule`. The type decides the method: a schedule is
     summed exactly, a path is integrated.
     """
@@ -791,7 +797,7 @@ def as_covariate_path(Z: Any, xl: "npt.ArrayLike | None" = None) -> Any:
                 "xl must not be given when Z is an item: the item gives its "
                 "own covariates over time"
             )
-        return item_covariate_path(Z)
+        return item_covariate_path(Z, names)
     if isinstance(Z, CovariatePath):
         if xl is not None:
             raise ValueError(
@@ -833,6 +839,24 @@ def segments_from_origin(
     return starts, ends, Z
 
 
+def _in_model_order(item: Any, names: "list | None") -> Any:
+    """``item``'s fixed covariates, in the order of the model's ``names``
+    where both are named (the fixed columns come first in a model's
+    names)."""
+    have = getattr(item, "covariate_names", None)
+    if item.covariates is None or have is None or names is None:
+        return item.covariates
+    wanted = list(names)[: len(have)]
+    if set(wanted) != set(have):
+        raise ValueError(
+            f"Item {item.id!r} has covariates {list(have)!r}; the model was "
+            f"fitted on {wanted!r}."
+        )
+    from surpyval.utils.item_history import covariate_row_in
+
+    return covariate_row_in(item, wanted)
+
+
 def _is_item(Z: Any) -> bool:
     from surpyval.utils.item_history import ItemHistory
     from surpyval.utils.item_lifetime import ItemLifetime
@@ -840,14 +864,17 @@ def _is_item(Z: Any) -> bool:
     return isinstance(Z, (ItemLifetime, ItemHistory))
 
 
-def item_covariate_path(item: Any) -> Any:
+def item_covariate_path(item: Any, names: "list | None" = None) -> Any:
     """
     An item record's covariates over time, in the column order of a model
     fitted on such items (``fit(SurpyvalData.from_items(...))``): its fixed
     covariates, then its time-varying ones. A constant
     :class:`StepSchedule` for fixed covariates alone; the item's schedule
     with the fixed columns added for a ``StepSchedule``; and for a
-    ``CovariatePath``, a path with the fixed columns in front.
+    ``CovariatePath``, a path with the fixed columns in front. Where the
+    item's covariates are named and ``names`` (a model's
+    ``feature_names``) are given, its fixed covariates are put in the
+    order of ``names``, whatever order the item has them in.
 
     Examples
     --------
@@ -866,7 +893,7 @@ def item_covariate_path(item: Any) -> Any:
     """
     from .tvc_path import CovariatePath
 
-    fixed = item.covariates
+    fixed = _in_model_order(item, names)
     varying = item.time_varying_covariates
     if fixed is None and varying is None:
         raise ValueError(

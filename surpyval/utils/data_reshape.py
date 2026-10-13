@@ -77,12 +77,21 @@ def with_covariates(record: Any, columns: list) -> Any:
     if record.covariates is None:
         raise ValueError(f"Item {record.id!r} has no covariates to pick from.")
     width = len(record.covariates)
+    names = record.covariate_names
     named = [c for c in columns if not isinstance(c, (int, np.integer))]
-    if named:
+    if named and names is None:
         raise ValueError(
             f"Covariates are picked by column number (0 to {width - 1}), "
-            f"and these covariates have no names; got {named!r}."
+            f"and these covariates have no names (name them with "
+            f"covariates={{name: value}}); got {named!r}."
         )
+    unknown = [c for c in named if c not in names]
+    if unknown:
+        raise ValueError(
+            f"Item {record.id!r} has no covariates {unknown!r}; its "
+            f"covariates are {list(names)!r}."
+        )
+    columns = [names.index(c) if c in named else c for c in columns]
     bad = [
         c
         for c in columns
@@ -95,6 +104,10 @@ def with_covariates(record: Any, columns: list) -> Any:
         )
     fields = record._fields()
     fields["covariates"] = [record.covariates[c] for c in columns]
+    if names is not None:
+        fields["covariates"] = {
+            names[c]: record.covariates[c] for c in columns
+        }
     return _rebuild(record, fields)
 
 
@@ -468,13 +481,28 @@ class ReshapeMixin:
         return self._map(lambda r: without(r, parts))
 
     def with_covariates(self, columns: Any) -> Any:
-        """The data with only the covariate ``columns`` (their indices), to
-        fit a regression on some of the covariates."""
+        """The data with only the covariate ``columns`` -- their names,
+        where the covariates are named (``covariate_names``), or their
+        column numbers -- in that order, to fit a regression on some of
+        the covariates: ``data.with_covariates(["age", "arm"])``."""
         if np.isscalar(columns):
             columns = [columns]
         columns = list(columns)
         if getattr(self, "Z", None) is None:
             raise ValueError("This data has no covariates.")
+        names = getattr(self, "covariate_names", None)
+        unknown = [
+            c
+            for c in columns
+            if not isinstance(c, (int, np.integer))
+            and names is not None
+            and c not in names
+        ]
+        if unknown:
+            raise ValueError(
+                f"This data has no covariates {unknown!r}; its covariates "
+                f"are {list(names or [])!r}."
+            )
         return self._map(lambda r: with_covariates(r, columns))
 
     def for_event_type(self, event_type: Any) -> Any:

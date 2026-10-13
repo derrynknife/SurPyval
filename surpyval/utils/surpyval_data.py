@@ -50,6 +50,11 @@ class SurpyvalData(ReshapeMixin):
     ids: "list | None" = None
     e: "np.ndarray | None" = None
     time_varying_covariates: "dict | None" = None
+    # The name of each column of Z, where they have names: given as
+    # ``covariate_names``, the columns of a DataFrame ``Z``, or the items'
+    # ``covariates={name: value}``. They name a fitted model's
+    # coefficients.
+    covariate_names: "list | None" = None
 
     def __init__(
         self,
@@ -65,6 +70,7 @@ class SurpyvalData(ReshapeMixin):
         group_and_sort: bool = True,
         handle: bool = True,
         e: ArrayLike | None = None,
+        covariate_names: "list | None" = None,
     ) -> None:
         """Initialize a SurpyvalData instance for survival analysis.
 
@@ -103,7 +109,12 @@ class SurpyvalData(ReshapeMixin):
         Z : array-like, optional
             Covariates, one row per value of x (see also
             :meth:`add_covariates`). Giving ``Z`` turns ``group_and_sort``
-            off, so the rows stay aligned with x.
+            off, so the rows stay aligned with x. A DataFrame's columns
+            name the covariates.
+        covariate_names : list of str, optional
+            The name of each column of ``Z``; ``fit(data)`` names the
+            model's coefficients by them, and ``with_covariates`` picks
+            columns by them.
         e : array-like, optional
             The event type (failure mode or cause) of each row, for the
             competing-risks fitters, which take it from the data; a
@@ -170,6 +181,8 @@ class SurpyvalData(ReshapeMixin):
             self.add_covariates(Z)
         else:
             self.Z: np.ndarray | None = None
+        if covariate_names is not None:
+            self.covariate_names = _checked_names(covariate_names, self.Z)
         if e is not None:
             self.e = _event_type_array(e, self.c)
 
@@ -187,6 +200,11 @@ class SurpyvalData(ReshapeMixin):
         Z : numpy.ndarray
             The covariate array.
         """
+        self.covariate_names = (
+            _checked_names([str(c) for c in Z.columns], np.asarray(Z))
+            if type(Z).__name__ == "DataFrame"
+            else None
+        )
         Z_arr: np.ndarray = np.asarray(Z)
         self.Z = Z_arr
         # The same masks the observation split used, not fresh ``c``
@@ -330,6 +348,7 @@ class SurpyvalData(ReshapeMixin):
         observed_event_types: Any = None,
         left_censored_event_types: Any = None,
         interval_censored_event_types: Any = None,
+        covariate_names: "list | None" = None,
     ) -> "SurpyvalData":
         """
         The data from a list of each kind of observation: the times at
@@ -388,6 +407,9 @@ class SurpyvalData(ReshapeMixin):
             The covariates of each item, one row per item (a single column
             may be given as a list, one value per item); a regression
             ``fit`` takes them as ``Z``.
+        covariate_names : list of str, optional
+            The name of each covariate column, which names the fitted
+            model's coefficients.
 
         Returns
         -------
@@ -582,6 +604,7 @@ class SurpyvalData(ReshapeMixin):
             tr=np.concatenate(trs),
             Z=Z,
             e=e,
+            covariate_names=covariate_names,
         )
 
     @classmethod
@@ -660,7 +683,11 @@ class SurpyvalData(ReshapeMixin):
                     "from_items takes ItemLifetime objects; got "
                     f"{type(item).__name__}."
                 )
-        from surpyval.utils.item_history import check_item_ids
+        from surpyval.utils.item_history import (
+            check_item_ids,
+            covariate_names_of,
+            covariate_row_in,
+        )
 
         if isinstance(counts, dict):
             from surpyval.utils.item_history import item_id
@@ -684,6 +711,7 @@ class SurpyvalData(ReshapeMixin):
         ids = [item.id for item in items]
         check_item_ids(ids, "ItemLifetime (identical items are its counts)")
         static = _every_or_none(items, "covariates", lambda i: i.covariates)
+        names = covariate_names_of(items)
         varying = _every_or_none(
             items,
             "time_varying_covariates",
@@ -728,9 +756,14 @@ class SurpyvalData(ReshapeMixin):
             n,
             tl=tl if truncated else None,
             tr=tr if truncated else None,
-            Z=np.vstack([i.covariates for i in items]) if static else None,
+            Z=(
+                np.vstack([covariate_row_in(i, names) for i in items])
+                if static
+                else None
+            ),
             group_and_sort=False,
             e=e,
+            covariate_names=names,
         )
         data.ids = ids
         if varying:
@@ -830,7 +863,7 @@ class SurpyvalData(ReshapeMixin):
             left_truncation=float(tl) if np.isfinite(tl) else None,
             right_truncation=float(tr) if np.isfinite(tr) else None,
             event_type=None if self.e is None else self.e[k],
-            covariates=None if Z is None else Z[k],
+            covariates=_named_row(Z, k, self.covariate_names),
             time_varying_covariates=(
                 None
                 if self.time_varying_covariates is None
@@ -916,6 +949,12 @@ class SurpyvalData(ReshapeMixin):
                     f'without("{what.replace(" ", "_").replace("-", "_")}") '
                     "on those that do, or give them all."
                 )
+        if any(d.covariate_names != given[0].covariate_names for d in given):
+            raise ValueError(
+                "The datasets' covariates have different names: "
+                + "; ".join(repr(d.covariate_names) for d in given)
+                + "."
+            )
         if all(with_ids):
             records: list = []
             counts: list = []
@@ -948,6 +987,7 @@ class SurpyvalData(ReshapeMixin):
             np.concatenate([d.t for d in given]),
             Z=Z,
             e=e,
+            covariate_names=given[0].covariate_names,
         )
 
     def to_xcnt(self) -> tuple:
@@ -1100,6 +1140,7 @@ class SurpyvalData(ReshapeMixin):
             else:
                 Z_idx = np.atleast_1d(Z_idx)
             out.add_covariates(Z_idx)
+            out.covariate_names = self.covariate_names
         if self.e is not None:
             out.e = np.atleast_1d(self.e[index])
         if self.ids is not None:
@@ -1163,6 +1204,8 @@ class SurpyvalData(ReshapeMixin):
 
         if self.Z is not None:
             data["Z"] = self.Z.tolist()
+        if self.covariate_names is not None:
+            data["covariate_names"] = list(self.covariate_names)
         if self.e is not None:
             data["e"] = [_plain(v) for v in self.e]
         if self.ids is not None:
@@ -1223,7 +1266,15 @@ class SurpyvalData(ReshapeMixin):
         t = np.array(data["t"])
         Z = np.array(data["Z"]) if "Z" in data else None
 
-        out = cls(x, c, n, t, Z=Z, handle=False)
+        out = cls(
+            x,
+            c,
+            n,
+            t,
+            Z=Z,
+            handle=False,
+            covariate_names=data.get("covariate_names"),
+        )
         if "e" in data:
             out.e = _event_type_array(data["e"], out.c)
         if "ids" in data:
@@ -1472,8 +1523,11 @@ def accepts_surpyval_data(method: F) -> F:
             owner = bound.arguments.get(params[0]) if params else None
             fit_tvc = getattr(owner, "fit_tvc", None)
             if params[0] in ("self", "cls") and callable(fit_tvc):
-                return _fit_tvc_from_data(
-                    fit_tvc, data, _options(bound, signature)
+                return named_fit(
+                    lambda: _fit_tvc_from_data(
+                        fit_tvc, data, _options(bound, signature)
+                    ),
+                    _tvc_names(data),
                 )
         for name, held, how in (
             (
@@ -1543,7 +1597,10 @@ def accepts_surpyval_data(method: F) -> F:
                 "SurpyvalData holds."
             )
         bound.arguments.update(filled)
-        return method(*bound.args, **bound.kwargs)
+        return named_fit(
+            lambda: method(*bound.args, **bound.kwargs),
+            data.covariate_names if data.Z is not None else None,
+        )
 
     setattr(wrapper, "_accepts_surpyval_data", True)
     return wrapper  # type: ignore[return-value]
@@ -1732,6 +1789,66 @@ def _fit_tvc_from_data(
         np.array(rows["n"]),
         **options,
     )
+
+
+def named_fit(fit: Callable, names: "list | None") -> Any:
+    """``fit()``, with ``names`` (where given) naming the columns of its
+    covariates, as a DataFrame's columns do: the coefficients take them,
+    and the model keeps them as its ``feature_names``."""
+    if names is None:
+        return fit()
+    from surpyval.univariate.regression._aliasing import covariate_columns
+
+    with covariate_columns(list(names)):
+        model = fit()
+    if getattr(model, "feature_names", None) is None:
+        try:
+            model.feature_names = list(names)
+        except AttributeError:
+            pass
+    return model
+
+
+def _tvc_names(data: SurpyvalData) -> "list | None":
+    """The names of the columns ``fit_tvc`` is given: the named fixed
+    covariates, then ``time_varying_0``, ``time_varying_1``, ... for the
+    time-varying ones."""
+    schedules = data.time_varying_covariates
+    if data.covariate_names is None or data.Z is None or not schedules:
+        return None
+    width = next(iter(schedules.values())).p
+    return list(data.covariate_names) + [
+        f"time_varying_{j}" for j in range(width)
+    ]
+
+
+def _checked_names(names: Any, Z: Any) -> list:
+    """``names`` for the columns of ``Z``: text, one per column, with no
+    name twice."""
+    if Z is None:
+        raise ValueError("covariate_names were given without covariates, Z.")
+    names = [names] if isinstance(names, str) else list(names)
+    width = 1 if np.ndim(Z) == 1 else np.shape(Z)[1]
+    if len(names) != width:
+        raise ValueError(
+            f"{len(names)} covariate_names for {width} covariate "
+            f"column(s)."
+        )
+    bad = [name for name in names if not isinstance(name, str) or not name]
+    if bad:
+        raise ValueError(f"covariate_names must be text; got {bad!r}.")
+    twice = sorted({name for name in names if names.count(name) > 1})
+    if twice:
+        raise ValueError(f"covariate_names has {twice!r} more than once.")
+    return names
+
+
+def _named_row(Z: "np.ndarray | None", k: int, names: "list | None") -> Any:
+    """Row ``k`` of ``Z`` as a record's covariates: ``{name: value}``
+    where the columns are named."""
+    if Z is None:
+        return None
+    return Z[k] if names is None else dict(zip(names, Z[k].tolist()))
 
 
 def _plain(value: Any) -> Any:

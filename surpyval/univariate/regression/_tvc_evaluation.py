@@ -194,7 +194,9 @@ class TVCEvaluationMixin:
         """
         from .tvc_schedule import as_covariate_path
 
-        schedule = as_covariate_path(Z, xl)
+        schedule = as_covariate_path(
+            Z, xl, getattr(self, "feature_names", None)
+        )
         # Columns of Z (an accelerated life model's life-model parameters
         # are not one per column).
         n_cov = self._n_covariates()

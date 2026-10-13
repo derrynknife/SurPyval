@@ -114,7 +114,7 @@ def test_summaries():
         "SurpyvalData: 2 rows, 5 items (with item ids)",
         "  outcomes: 2 observed, 3 right censored",
         "  event types: x (1)",
-        "  covariates: 1 column(s)",
+        "  covariates: 1 column",
     ]
     history = EventHistoryData.from_items(
         [

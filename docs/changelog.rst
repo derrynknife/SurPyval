@@ -39,6 +39,18 @@ Unreleased
   by item (an id in two of them is refused), those without by stacking;
   they must all have ids or none, and covariates, event types and
   time-varying covariates all or none.
+- Covariates by name: a record's ``covariates`` may be ``{name: value}``
+  (or a pandas Series), its ``covariate_names``; a dataset of such
+  records has ``covariate_names`` (all its items named alike, in any
+  order, or none), as does ``SurpyvalData(..., Z=Z,
+  covariate_names=[...])``, a DataFrame ``Z``, and
+  ``from_observations(..., covariate_names=[...])``. The names go with
+  the data through ``to_items``, slicing, ``combine``, JSON and the
+  summary; ``with_covariates(["age"])`` picks covariates by name; and
+  ``fit(data)`` names the model's coefficients by them (``feature_names``),
+  for the time-varying fit too (the time-varying columns follow as
+  ``time_varying_0``, ...). ``model.sf_tvc(t, item)`` reads a named
+  item's covariates in the model's order.
 - Reshaping a dataset for another analysis, on ``SurpyvalData`` and
   ``EventHistoryData`` alike (each returns a new dataset, built again from
   its item records, so it passes the same checks):

@@ -1147,7 +1147,9 @@ class SemiParametricRegressionModel(
         from .tvc_path import CovariatePath
         from .tvc_schedule import as_covariate_path, segments_from_origin
 
-        schedule = as_covariate_path(Z, xl)
+        schedule = as_covariate_path(
+            Z, xl, getattr(self, "feature_names", None)
+        )
         n_cov = np.asarray(self.beta).shape[0]
         if schedule.p != n_cov:
             raise ValueError(
