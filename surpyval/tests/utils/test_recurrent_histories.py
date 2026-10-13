@@ -60,7 +60,7 @@ def test_an_item_with_no_failures_has_only_its_end():
     data = EventHistoryData.from_histories(
         observed={"A": [5]}, right_censored={"A": 8, "B": 20}
     )
-    assert data.items == ["A", "B"]
+    assert data.ids == ["A", "B"]
     np.testing.assert_array_equal(data.c[data.i == "B"], [1])
 
 

@@ -1015,7 +1015,7 @@ class RenewalModel(
             x = np.asarray(data.x, dtype=float)[order]
             failed = np.asarray(data.c)[order] == 0
             _, first = np.unique(item[order], return_index=True)
-            units = list(data.items)
+            units = list(data.ids)
             times = np.split(x, first[1:])
             events = np.split(failed, first[1:])
             failures = [np.sort(t[e]) for t, e in zip(times, events)]

@@ -627,7 +627,8 @@ class SurpyvalData:
         """
         The data of several items' lifetimes, each an
         :class:`~surpyval.utils.item_lifetime.ItemLifetime`, with ``counts``
-        (one number for every item, or one per item) saying how many
+        (one number for every item, one per item, or a dict ``{id:
+        count}``, the items it leaves out counting 1) saying how many
         identical items each stands for; an item counted 0 is left out.
         Ids must differ and be of one type; covariates, given for one item,
         are needed for every item (the same number of values), and so are
@@ -660,12 +661,26 @@ class SurpyvalData:
                 )
         from surpyval.utils.item_history import check_item_ids
 
+        if isinstance(counts, dict):
+            from surpyval.utils.item_history import item_id
+
+            given = {item_id(k): v for k, v in counts.items()}
+            unknown = sorted(
+                (repr(k) for k in set(given) - {i.id for i in items}), key=str
+            )
+            if unknown:
+                raise ValueError(
+                    "'counts' names items not given: "
+                    + ", ".join(unknown)
+                    + "."
+                )
+            counts = [given.get(i.id, 1) for i in items]
         n = _item_counts("counts", counts, len(items))
         items = [item for item, k in zip(items, n) if k > 0]
         n = n[n > 0]
         if not items:
             raise ValueError("Every count is 0: there is no data.")
-        ids = [item.item for item in items]
+        ids = [item.id for item in items]
         check_item_ids(ids, "ItemLifetime (identical items are its counts)")
         static = _every_or_none(items, "covariates", lambda i: i.covariates)
         varying = _every_or_none(
@@ -680,7 +695,7 @@ class SurpyvalData:
         failures = [i for i in items if i.outcome != "right_censored"]
         typed = [i.event_type is not None for i in failures]
         if any(typed) and not all(typed):
-            missing = [i.item for i, t in zip(failures, typed) if not t]
+            missing = [i.id for i, t in zip(failures, typed) if not t]
             raise ValueError(
                 "Event types were given for some failures but not for "
                 f"{missing!r}: every failure needs its event_type."
@@ -719,7 +734,7 @@ class SurpyvalData:
         data.ids = ids
         if varying:
             data.time_varying_covariates = {
-                i.item: i.time_varying_covariates for i in items
+                i.id: i.time_varying_covariates for i in items
             }
         return data
 
@@ -737,6 +752,43 @@ class SurpyvalData:
         >>> SurpyvalData([3, 7], c=[0, 1]).to_items()
         [ItemLifetime(0, observed=3.0), ItemLifetime(1, right_censored=7.0)]
         """
+        return [self._item_at(k) for k in range(len(self.x))]
+
+    def item(self, id: Any) -> Any:
+        """
+        The lifetime of the item ``id`` (its id from :meth:`from_items`,
+        else its row number), as an
+        :class:`~surpyval.utils.item_lifetime.ItemLifetime`; how many
+        identical items it stands for is its count in ``n``.
+
+        Examples
+        --------
+        >>> from surpyval import ItemLifetime, SurpyvalData
+        >>> data = SurpyvalData.from_items(
+        ...     [
+        ...         ItemLifetime("B7", observed=1820),
+        ...         ItemLifetime("B8", right_censored=2400),
+        ...     ]
+        ... )
+        >>> data.item("B8")
+        ItemLifetime('B8', right_censored=2400.0)
+        """
+        from surpyval.utils.item_history import item_id
+
+        key = item_id(id)
+        if self.ids is not None:
+            matches = [k for k, i in enumerate(self.ids) if i == key]
+            if not matches:
+                raise KeyError(f"No item {key!r} in the data.")
+            return self._item_at(matches[0])
+        if isinstance(key, (int, np.integer)) and 0 <= key < len(self.x):
+            return self._item_at(int(key))
+        raise KeyError(
+            f"No item {key!r}: this data has no item ids, so its items are "
+            f"its row numbers, 0 to {len(self.x) - 1}."
+        )
+
+    def _item_at(self, k: int) -> Any:
         from surpyval.utils.item_lifetime import ItemLifetime
 
         outcome = {
@@ -746,32 +798,64 @@ class SurpyvalData:
             2: "interval_censored",
         }
         x = self.x if self.x.ndim == 2 else np.column_stack([self.x] * 2)
-        ids = self.ids if self.ids is not None else list(range(len(x)))
+        item = self.ids[k] if self.ids is not None else k
         Z = None
         if self.Z is not None:
             Z = np.asarray(self.Z, dtype=float)
             Z = Z[:, None] if Z.ndim == 1 else Z
-        items = []
-        for k, item in enumerate(ids):
-            flag = int(self.c[k])
-            value = x[k].tolist() if flag == 2 else float(x[k, 0])
-            tl, tr = self.t[k]
-            items.append(
-                ItemLifetime(
-                    item,
-                    **{outcome[flag]: value},
-                    left_truncation=float(tl) if np.isfinite(tl) else None,
-                    right_truncation=float(tr) if np.isfinite(tr) else None,
-                    event_type=None if self.e is None else self.e[k],
-                    covariates=None if Z is None else Z[k],
-                    time_varying_covariates=(
-                        None
-                        if self.time_varying_covariates is None
-                        else self.time_varying_covariates[item]
-                    ),
-                )
-            )
-        return items
+        flag = int(self.c[k])
+        value = x[k].tolist() if flag == 2 else float(x[k, 0])
+        tl, tr = self.t[k]
+        return ItemLifetime(
+            item,
+            **{outcome[flag]: value},
+            left_truncation=float(tl) if np.isfinite(tl) else None,
+            right_truncation=float(tr) if np.isfinite(tr) else None,
+            event_type=None if self.e is None else self.e[k],
+            covariates=None if Z is None else Z[k],
+            time_varying_covariates=(
+                None
+                if self.time_varying_covariates is None
+                else self.time_varying_covariates[item]
+            ),
+        )
+
+    def summary(self) -> str:
+        """
+        A short description of the data: its rows, items and outcomes, and
+        what else it holds (truncation, event types, covariates,
+        time-varying covariates).
+
+        Examples
+        --------
+        >>> from surpyval import SurpyvalData
+        >>> print(SurpyvalData([1, 2, 2, 5], c=[0, 0, 0, 1]).summary())
+        SurpyvalData: 3 rows, 4 items
+          outcomes: 3 observed, 1 right censored
+        """
+        from surpyval.utils.event_history_data import _held
+
+        c, n = np.asarray(self.c), np.asarray(self.n)
+        names = (
+            (0, "observed"),
+            (1, "right censored"),
+            (-1, "left censored"),
+            (2, "interval censored"),
+        )
+        head = f"SurpyvalData: {len(self.x)} rows, {int(n.sum())} items"
+        if self.ids is not None:
+            head += " (with item ids)"
+        lines = [
+            head,
+            "  outcomes: "
+            + ", ".join(
+                f"{int(n[c == flag].sum())} {name}"
+                for flag, name in names
+                if (c == flag).any()
+            ),
+        ]
+        lines += _held(self, rows=len(self.x))
+        return "\n".join(lines)
 
     def to_xcnt(self) -> tuple:
         """
@@ -1129,7 +1213,7 @@ def _every_or_none(items: list, name: str, get: Callable) -> bool:
     if not any(given):
         return False
     if not all(given):
-        missing = [i.item for i, g in zip(items, given) if not g]
+        missing = [i.id for i, g in zip(items, given) if not g]
         raise ValueError(
             f"'{name}' must be given for every item; missing {missing!r}."
         )

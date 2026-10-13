@@ -12,6 +12,7 @@ from typing import Any, Callable, TypeVar
 import numpy as np
 import numpy.typing as npt
 
+from surpyval.utils.deprecation import REMOVED_IN_NEXT, RenamedAttribute
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import unknown_cause_error
 
@@ -74,6 +75,9 @@ class EventHistoryData:
     # attached by ``from_items`` when an ItemHistory has them; no model uses
     # them yet (#905), so every fit refuses data that has them.
     time_varying_covariates: dict | None = None
+    # The item ids were ``items`` before v0.25 (``from_items`` and
+    # ``to_items`` are about item records): accepted until v0.26.
+    items = RenamedAttribute("ids", removed_in=REMOVED_IN_NEXT)
     # Each item's path through its states, ``{item: (initial_state,
     # changes)}``, attached by ``from_items``; no model uses them yet
     # (#887), so every fit refuses data that has them.
@@ -113,7 +117,7 @@ class EventHistoryData:
         # event belongs to one of several mutually-exclusive types. ``None``
         # marks (e.g. the end-of-observation censoring row) are permitted.
         self.e = np.atleast_1d(e) if e is not None else None
-        self.items = np.unique(self.i).tolist()
+        self.ids = np.unique(self.i).tolist()
 
         if self.x.ndim == 1:
             self.interarrival_times = self.get_interarrival_times()
@@ -240,7 +244,7 @@ class EventHistoryData:
         --------
         >>> from surpyval import handle_xicn
         >>> data = handle_xicn([1, 2, 3, 4], i=[2, 1, 2, 1])
-        >>> data.items, data.i
+        >>> data.ids, data.i
         ([1, 2], array([1, 1, 2, 2]))
         >>> data.item_rows()
         (array([0, 2]), array([0, 0, 1, 1]))
@@ -474,7 +478,7 @@ class EventHistoryData:
         """
         x_upper = self.x if self.x.ndim == 1 else self.x[:, 1]
         x_last, x_close, rep_idx = [], [], []
-        for item in self.items:
+        for item in self.ids:
             mask = self.i == item
             tr_item = float(self.tr[mask][0])
             if np.isfinite(tr_item):
@@ -521,9 +525,9 @@ class EventHistoryData:
         SurpyvalData
             A transformed dataset containing times to the first events.
         """
-        x_ttff = np.array([self.x[self.i == item][0] for item in self.items])
-        c_ttff = np.array([self.c[self.i == item][0] for item in self.items])
-        n_ttff = np.array([self.n[self.i == item][0] for item in self.items])
+        x_ttff = np.array([self.x[self.i == item][0] for item in self.ids])
+        c_ttff = np.array([self.c[self.i == item][0] for item in self.ids])
+        n_ttff = np.array([self.n[self.i == item][0] for item in self.ids])
         return SurpyvalData(x_ttff, c_ttff, n_ttff)
 
     @classmethod
@@ -582,7 +586,7 @@ class EventHistoryData:
         ...     observed={"M1": [420, 1310, 2050], "M2": [980, 2400]},
         ...     right_censored={"M1": 2600, "M2": 2900, "M3": 3100},
         ... )
-        >>> data.items
+        >>> data.ids
         ['M1', 'M2', 'M3']
         >>> data.x[data.i == "M1"], data.c[data.i == "M1"]
         (array([ 420., 1310., 2050., 2600.]), array([0, 0, 0, 1]))
@@ -677,7 +681,7 @@ class EventHistoryData:
                 )
         from surpyval.utils.item_history import check_item_ids
 
-        ids = [history.item for history in items]
+        ids = [history.id for history in items]
         check_item_ids(ids, "ItemHistory")
         static = _all_or_none(items, "covariates", lambda h: h.covariates)
         varying = _all_or_none(
@@ -697,9 +701,7 @@ class EventHistoryData:
         ]
         if any(typed):
             untyped = [
-                h.item
-                for h, t, ev in zip(items, typed, events)
-                if ev and not t
+                h.id for h, t, ev in zip(items, typed, events) if ev and not t
             ]
             if untyped:
                 raise ValueError(
@@ -720,7 +722,7 @@ class EventHistoryData:
             c += cs
             n += ns
             e += es
-            i += [history.item] * len(xs)
+            i += [history.id] * len(xs)
             tl += [
                 (
                     -np.inf
@@ -753,13 +755,13 @@ class EventHistoryData:
         )
         if varying:
             data.time_varying_covariates = {
-                history.item: history.time_varying_covariates
+                history.id: history.time_varying_covariates
                 for history in items
             }
         with_states = [history.has_states for history in items]
         if any(with_states):
             missing = [
-                h.item for h, given in zip(items, with_states) if not given
+                h.id for h, given in zip(items, with_states) if not given
             ]
             if missing:
                 raise ValueError(
@@ -767,94 +769,10 @@ class EventHistoryData:
                     f"{missing!r}: every item needs its 'initial_state'."
                 )
             data.states = {
-                history.item: (history.initial_state, history.state_changes)
+                history.id: (history.initial_state, history.state_changes)
                 for history in items
             }
         return data
-
-    def to_items(self) -> list:
-        """
-        The data as one :class:`~surpyval.utils.item_history.ItemHistory`
-        per item, in the order of ``items``:
-        ``EventHistoryData.from_items(data.to_items())`` is the same
-        data. Event types and observation windows have no place in an
-        item's history, and are refused.
-        """
-        from surpyval.utils.item_history import ItemHistory
-
-        if self.window_map is not None:
-            raise ValueError(
-                "This data has observation windows, which an ItemHistory has "
-                "no place for: use its arrays."
-            )
-        x = self.x if np.ndim(self.x) == 2 else np.column_stack([self.x] * 2)
-        Z = None if self.Z is None else np.asarray(self.Z, dtype=float)
-        histories = []
-        for item in self.items:
-            rows = self.i == item
-            key = item.item() if isinstance(item, np.generic) else item
-            c, n, xi = self.c[rows], self.n[rows], x[rows]
-            e = None if self.e is None else self.e[rows]
-            left = xi[c == -1]
-            end = xi[c == 1]
-            tl, tr = self.tl[rows][0], self.tr[rows][0]
-            varying = None
-            if self.time_varying_covariates is not None:
-                varying = self.time_varying_covariates[key]
-            state_args: dict = {}
-            if self.states is not None:
-                initial, changes = self.states[key]
-                state_args = {
-                    "initial_state": initial,
-                    "observed_states": {
-                        u: st for k, _, u, st in changes if k == "observed"
-                    }
-                    or None,
-                    "interval_censored_states": [
-                        [lo, u, st]
-                        for k, lo, u, st in changes
-                        if k == "interval_censored"
-                    ]
-                    or None,
-                    "left_censored_states": {
-                        u: st
-                        for k, _, u, st in changes
-                        if k == "left_censored"
-                    }
-                    or None,
-                }
-            histories.append(
-                ItemHistory(
-                    key,
-                    observed=xi[c == 0, 0],
-                    right_censored=float(end[0, 0]) if len(end) else None,
-                    interval_censored=xi[c == 2],
-                    interval_censored_counts=n[c == 2],
-                    left_censored=float(left[0, 0]) if len(left) else None,
-                    left_censored_counts=(
-                        int(n[c == -1][0]) if len(left) else None
-                    ),
-                    left_truncation=float(tl) if np.isfinite(tl) else None,
-                    right_truncation=float(tr) if np.isfinite(tr) else None,
-                    covariates=None if Z is None else Z[rows][0],
-                    time_varying_covariates=varying,
-                    observed_event_types=(
-                        None if e is None else list(e[c == 0])
-                    ),
-                    interval_censored_event_types=(
-                        None
-                        if e is None or not (c == 2).any()
-                        else list(e[c == 2])
-                    ),
-                    left_censored_event_types=(
-                        None
-                        if e is None or not (c == -1).any()
-                        else e[c == -1][0]
-                    ),
-                    **state_args,
-                )
-            )
-        return histories
 
     def to_histories(self) -> dict:
         """
@@ -902,7 +820,7 @@ class EventHistoryData:
         right: dict = {}
         covariates: dict = {}
         Z = None if self.Z is None else np.asarray(self.Z, dtype=float)
-        for item in self.items:
+        for item in self.ids:
             rows = self.i == item
             key = item.item() if isinstance(item, np.generic) else item
             observed[key] = self.x[rows & (self.c == 0)].astype(float)
@@ -925,6 +843,128 @@ class EventHistoryData:
             out["covariates"] = covariates
         return out
 
+    def to_items(self) -> list:
+        """
+        The data as one :class:`~surpyval.utils.item_history.ItemHistory`
+        per item, in the order of ``ids``:
+        ``EventHistoryData.from_items(data.to_items())`` is the same data.
+        Observation windows have no place in an item's history, and are
+        refused.
+        """
+        return [self.item(item) for item in self.ids]
+
+    def item(self, id: Any) -> Any:
+        """
+        The history of the item ``id``, as an
+        :class:`~surpyval.utils.item_history.ItemHistory`.
+
+        Examples
+        --------
+        >>> from surpyval import EventHistoryData
+        >>> data = EventHistoryData.from_histories(
+        ...     observed={"M1": [420, 1310], "M2": [980]},
+        ...     right_censored={"M1": 2600, "M2": 2900},
+        ... )
+        >>> data.item("M2")
+        ItemHistory(
+            'M2',
+            observed=[980.0],
+            right_censored=2900.0
+        )
+        """
+        from surpyval.utils.item_history import ItemHistory, item_id
+
+        if self.window_map is not None:
+            raise ValueError(
+                "This data has observation windows, which an ItemHistory has "
+                "no place for: use its arrays."
+            )
+        key = item_id(id)
+        if key not in self.ids:
+            raise KeyError(f"No item {key!r} in the data.")
+        rows = self.i == key
+        x = self.x if np.ndim(self.x) == 2 else np.column_stack([self.x] * 2)
+        c, n, xi = self.c[rows], self.n[rows], x[rows]
+        e = None if self.e is None else self.e[rows]
+        left = xi[c == -1]
+        end = xi[c == 1]
+        tl, tr = self.tl[rows][0], self.tr[rows][0]
+        Z = None if self.Z is None else np.asarray(self.Z, dtype=float)
+        state_args: dict = {}
+        if self.states is not None:
+            initial, changes = self.states[key]
+            state_args = {
+                "initial_state": initial,
+                **_state_fields(changes),
+            }
+        return ItemHistory(
+            key,
+            observed=xi[c == 0, 0],
+            right_censored=float(end[0, 0]) if len(end) else None,
+            interval_censored=xi[c == 2],
+            interval_censored_counts=n[c == 2],
+            left_censored=float(left[0, 0]) if len(left) else None,
+            left_censored_counts=int(n[c == -1][0]) if len(left) else None,
+            left_truncation=float(tl) if np.isfinite(tl) else None,
+            right_truncation=float(tr) if np.isfinite(tr) else None,
+            covariates=None if Z is None else Z[rows][0],
+            time_varying_covariates=(
+                None
+                if self.time_varying_covariates is None
+                else self.time_varying_covariates[key]
+            ),
+            observed_event_types=None if e is None else list(e[c == 0]),
+            interval_censored_event_types=(
+                None if e is None or not (c == 2).any() else list(e[c == 2])
+            ),
+            left_censored_event_types=(
+                None if e is None or not (c == -1).any() else e[c == -1][0]
+            ),
+            **state_args,
+        )
+
+    def __len__(self) -> int:
+        """The number of rows (events and ends of observation), as
+        ``SurpyvalData``'s length is its rows; ``len(data.ids)`` is the
+        number of items."""
+        return len(self.x)
+
+    def summary(self) -> str:
+        """
+        A short description of the data: its items and events, and what
+        else it holds (counts, truncation, event types, covariates,
+        time-varying covariates, states).
+
+        Examples
+        --------
+        >>> from surpyval import EventHistoryData
+        >>> data = EventHistoryData.from_histories(
+        ...     observed={"M1": [420, 1310], "M2": [980]},
+        ...     right_censored={"M1": 2600, "M2": 2900},
+        ... )
+        >>> print(data.summary())
+        EventHistoryData: 2 items, 5 rows
+          events: 3 observed
+          ends of observation: 2
+        """
+        c, n = np.asarray(self.c), np.asarray(self.n)
+        kinds = [
+            (f"{int(n[c == 0].sum())} observed", (c == 0).any()),
+            (f"{int(n[c == 2].sum())} in intervals", (c == 2).any()),
+            (f"{int(n[c == -1].sum())} before a first look", (c == -1).any()),
+        ]
+        lines = [
+            f"EventHistoryData: {len(self.ids)} items, {len(self.x)} rows",
+            (
+                "  events: " + ", ".join(k for k, given in kinds if given)
+                if any(given for _, given in kinds)
+                else "  events: none"
+            ),
+            f"  ends of observation: {int((c == 1).sum())}",
+        ]
+        lines += _held(self, rows=None)
+        return "\n".join(lines)
+
     def __getitem__(self, index: Any) -> "EventHistoryData":
         out = EventHistoryData(
             self.x[index],
@@ -942,9 +982,7 @@ class EventHistoryData:
         for name in ("time_varying_covariates", "states"):
             held = getattr(self, name)
             if held is not None:
-                setattr(
-                    out, name, {i: held[i] for i in out.items if i in held}
-                )
+                setattr(out, name, {i: held[i] for i in out.ids if i in held})
         return out
 
     def __iter__(self) -> Any:
@@ -1041,7 +1079,7 @@ def _all_or_none(items: list, name: str, get: Callable) -> bool:
     if not any(given):
         return False
     if not all(given):
-        missing = [h.item for h, g in zip(items, given) if not g]
+        missing = [h.id for h, g in zip(items, given) if not g]
         raise ValueError(
             f"'{name}' must be given for every item; missing {missing!r}."
         )
@@ -1209,3 +1247,68 @@ def refuses_unmodelled_data(method: F) -> F:
         return method(*args, **kwargs)
 
     return wrapper  # type: ignore[return-value]
+
+
+def _state_fields(changes: list) -> dict:
+    """An item's changes of state as the ItemHistory arguments that make
+    them (None for a kind with none)."""
+    return {
+        "observed_states": {
+            u: st for k, _, u, st in changes if k == "observed"
+        }
+        or None,
+        "interval_censored_states": [
+            [lo, u, st] for k, lo, u, st in changes if k == "interval_censored"
+        ]
+        or None,
+        "left_censored_states": {
+            u: st for k, _, u, st in changes if k == "left_censored"
+        }
+        or None,
+    }
+
+
+def _held(data: Any, rows: "int | None") -> list:
+    """The summary lines for what a data object holds beyond its times."""
+    from collections import Counter
+
+    lines = []
+    tl, tr = np.asarray(data.tl), np.asarray(data.tr)
+    if np.isfinite(tl).any() or np.isfinite(tr).any():
+        lines.append(
+            "  truncation: "
+            + ", ".join(
+                f"{int(np.isfinite(b).sum())} {side}"
+                for side, b in (("left", tl), ("right", tr))
+                if np.isfinite(b).any()
+            )
+        )
+    if getattr(data, "e", None) is not None:
+        counts = Counter(v for v in data.e if v is not None)
+        lines.append(
+            "  event types: "
+            + ", ".join(
+                f"{k} ({v})" for k, v in sorted(counts.items(), key=str)
+            )
+        )
+    if getattr(data, "Z", None) is not None:
+        Z = np.asarray(data.Z)
+        lines.append(
+            f"  covariates: {1 if Z.ndim == 1 else Z.shape[1]} column(s)"
+        )
+    if getattr(data, "time_varying_covariates", None) is not None:
+        kinds = Counter(
+            type(v).__name__ for v in data.time_varying_covariates.values()
+        )
+        lines.append(
+            "  time-varying covariates: "
+            + ", ".join(f"{v} {k}" for k, v in sorted(kinds.items()))
+        )
+    if getattr(data, "states", None) is not None:
+        found = sorted(
+            {st for _, changes in data.states.values() for *_, st in changes}
+            | {initial for initial, _ in data.states.values()},
+            key=str,
+        )
+        lines.append("  states: " + ", ".join(map(str, found)))
+    return lines

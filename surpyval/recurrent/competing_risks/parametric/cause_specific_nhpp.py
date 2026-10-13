@@ -327,7 +327,7 @@ class CauseSpecificNHPP(SerialisableMixin):
         out.dist = dist
 
         # Each item's shared observation window [entry, end].
-        windows = {item: cls._item_window(data, item) for item in data.items}
+        windows = {item: cls._item_window(data, item) for item in data.ids}
 
         out.models = {}
         for cause in out.event_types:
@@ -343,7 +343,7 @@ class CauseSpecificNHPP(SerialisableMixin):
             # One right-censored window-close per item (present for every item,
             # even those with no events of this cause, so the compensator is
             # integrated over the whole window).
-            for item in data.items:
+            for item in data.ids:
                 entry, end = windows[item]
                 cx.append(end)
                 ci.append(item)

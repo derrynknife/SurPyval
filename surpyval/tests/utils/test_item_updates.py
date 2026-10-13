@@ -23,7 +23,7 @@ def test_clone_takes_a_new_id_and_changes():
     )
     b9 = b7.clone("B9", right_censored=2000)
     assert b9.outcome == "right_censored" and b9.value == 2000
-    assert b7.item == "B7" and b7.outcome == "observed"
+    assert b7.id == "B7" and b7.outcome == "observed"
 
 
 def test_a_running_lifetime_extends_fails_or_is_found_failed():
@@ -75,7 +75,7 @@ PUMP = ItemHistory("P1", observed=[420], right_censored=600)
 
 
 def test_history_clone_and_extend():
-    assert PUMP.clone("P2").item == "P2"
+    assert PUMP.clone("P2").id == "P2"
     assert PUMP.extend(900).right_censored == 900
     with pytest.raises(ValueError, match="before its end"):
         PUMP.extend(500)
@@ -101,7 +101,7 @@ def test_add_failures_keep_their_types():
     assert more.interval_censored.tolist() == [[700, 800]]
     assert more.interval_censored_counts.tolist() == [2]
     assert more.right_censored == 800
-    with pytest.raises(ValueError, match="every failure needs its type"):
+    with pytest.raises(ValueError, match="its failures have event types"):
         typed.add_failure(650)
 
 

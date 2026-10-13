@@ -31,7 +31,7 @@ def _by_items(data, x, r, d, counted=None):
     inv_r = np.where(r > 0, 1.0 / np.where(r > 0, r, 1), 0.0)
     window_map = getattr(data, "window_map", None) or {}
     clusters: dict = {}
-    for item in data.items:
+    for item in data.ids:
         rows = data.i == item
         entry = float(data.tl[rows][0])
         upper = data.x if data.x.ndim == 1 else data.x[:, 1]

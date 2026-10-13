@@ -94,7 +94,7 @@ def close_at_right_truncation(data: EventHistoryData) -> EventHistoryData:
     x_upper = x if x.ndim == 1 else x[:, 1]
     c = np.asarray(data.c)
     at: list[int] = []
-    for item in data.items:
+    for item in data.ids:
         rows = np.flatnonzero(data.i == item)
         tr_item = tr[rows[0]]
         if not np.isfinite(tr_item):
@@ -760,7 +760,7 @@ def _per_item_bound(
     """A ``tl`` / ``tr`` given one value per item, as one value per row.
 
     The values are in the order of the sorted item ids (``np.unique(i)``,
-    the order of ``EventHistoryData.items``, and of an array ``T`` in
+    the order of ``EventHistoryData.ids``, and of an array ``T`` in
     the trend tests), and each row takes its item's value, wherever the
     item's rows are in ``x``. A bound with one entry per row of ``x`` is
     per row, even when that is also the number of items; a scalar, a
@@ -1256,7 +1256,7 @@ def handle_xicn(
         of observation) times: a scalar for every item, one value per row
         (the same on every row of an item) or, with ``i``, one value per
         item, in the sorted order of the item ids (``np.unique(i)``, the
-        order of ``EventHistoryData.items``), whichever rows the item
+        order of ``EventHistoryData.ids``), whichever rows the item
         has in ``x``. A per-item bound is expanded to one value per row
         here, so the data built are those of the per-row form. When there
         are as many rows as items the bound is read per row; any other
@@ -1290,7 +1290,7 @@ def handle_xicn(
     >>> from surpyval import handle_xicn
     >>> data = handle_xicn([2, 5, 8, 3, 9], i=[1, 1, 1, 2, 2],
     ...                    c=[0, 0, 1, 0, 1])
-    >>> data.items
+    >>> data.ids
     [1, 2]
     """
     x = coerce_xcnt_x(x)

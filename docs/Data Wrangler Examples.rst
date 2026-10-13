@@ -136,7 +136,7 @@ each one stands for goes in ``counts``:
     data = SurpyvalData.from_items(items, counts=[3, 40, 2, 5])
     print(data.n)
     surv.Weibull.fit(SurpyvalData.from_items(
-        [ItemLifetime(i.item, **{i.outcome: i.value}) for i in items],
+        [ItemLifetime(i.id, **{i.outcome: i.value}) for i in items],
         counts=[3, 40, 2, 5],
     )).params
 

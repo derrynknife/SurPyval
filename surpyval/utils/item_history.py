@@ -24,8 +24,8 @@ class ItemHistory:
 
     Parameters
     ----------
-    item : hashable
-        The item's id.
+    id : hashable
+        The item's id (``.id``).
     observed : array like, optional
         The ages at which it failed (a single failure may be a number;
         repeat an age for simultaneous failures).
@@ -106,7 +106,7 @@ class ItemHistory:
     ... )
     >>> fan = ItemHistory("F1", observed=[800], right_censored=3000)
     >>> data = EventHistoryData.from_items([pump, fan])
-    >>> data.items
+    >>> data.ids
     ['F1', 'P1']
     >>> data.to_items()[1] == pump
     True
@@ -114,7 +114,7 @@ class ItemHistory:
 
     def __init__(
         self,
-        item: Any,
+        id: Any,
         observed: Any = None,
         right_censored: Any = None,
         *,
@@ -134,7 +134,8 @@ class ItemHistory:
         interval_censored_states: Any = None,
         left_censored_states: "dict | None" = None,
     ) -> None:
-        self.item = item_id(item)
+        item = item_id(id)
+        self.id = item
         ages = _ages(item, "observed", observed)
         types = _event_types(
             item,
@@ -236,7 +237,7 @@ class ItemHistory:
         )
 
     def _check(self) -> None:
-        item = self.item
+        item = self.id
         if self.has_event_types:
             untyped = [
                 name
@@ -344,12 +345,73 @@ class ItemHistory:
                 )
 
     @property
+    def observed_states(self) -> dict:
+        """``{age: state}``, the changes of state seen as they happened."""
+        return {u: st for k, _, u, st in self.state_changes if k == "observed"}
+
+    @property
+    def interval_censored_states(self) -> list:
+        """``[lower, upper, state]`` rows, the changes between two
+        inspections."""
+        return [
+            [lo, u, st]
+            for k, lo, u, st in self.state_changes
+            if k == "interval_censored"
+        ]
+
+    @property
+    def left_censored_states(self) -> dict:
+        """``{age: state}``, a state already reached at the first look."""
+        return {
+            u: st for k, _, u, st in self.state_changes if k == "left_censored"
+        }
+
+    def state_at(self, age: Any) -> Any:
+        """
+        The state the item was in at ``age``, where it is known: from the
+        start of observation, through each change, to the end of
+        observation. None where it is not known: before observation starts,
+        after it ends, or between two inspections across which it changed
+        (or before a first look, for a left censored state).
+
+        Examples
+        --------
+        >>> from surpyval import ItemHistory
+        >>> u = ItemHistory(
+        ...     "U1",
+        ...     initial_state="healthy",
+        ...     observed_states={900: "degraded"},
+        ...     interval_censored_states=[[1000, 1500, "failed"]],
+        ...     right_censored=2000,
+        ... )
+        >>> [u.state_at(age) for age in (500, 950, 1200, 1800)]
+        ['healthy', 'degraded', None, 'failed']
+        """
+        if self.initial_state is None:
+            raise ValueError(f"Item {self.id!r} has no states.")
+        age = _age(self.id, "age", age)
+        start = 0.0 if self.left_truncation is None else self.left_truncation
+        if age < start or (
+            self.right_censored is not None and age > self.right_censored
+        ):
+            return None
+        state = self.initial_state
+        for kind, lower, upper, new in self.state_changes:
+            if age >= upper:
+                state = new
+            elif kind != "observed" and age > lower:
+                return None
+            else:
+                break
+        return state
+
+    @property
     def has_states(self) -> bool:
         """Whether this item's path through states is given."""
         return self.initial_state is not None
 
     def _check_states(self) -> None:
-        item = self.item
+        item = self.id
         changes = self.state_changes
         if changes and self.initial_state is None:
             raise ValueError(
@@ -453,9 +515,9 @@ class ItemHistory:
 
     # -- updates (each returns a new, checked ItemHistory) ----------------
 
-    def clone(self, item: Any = None, **changes: Any) -> "ItemHistory":
+    def clone(self, id: Any = None, **changes: Any) -> "ItemHistory":
         """
-        A copy of this history, under the id ``item`` (else the same id),
+        A copy of this history, under the id ``id`` (else the same id),
         with any of its arguments replaced by ``changes``.
 
         Examples
@@ -471,7 +533,7 @@ class ItemHistory:
         """
         fields = self._fields()
         fields.update(changes)
-        return ItemHistory(self.item if item is None else item, **fields)
+        return ItemHistory(self.id if id is None else id, **fields)
 
     def extend(self, age: Any) -> "ItemHistory":
         """This history, seen working up to ``age``: its end of
@@ -485,10 +547,10 @@ class ItemHistory:
             right_censored=900.0
         )
         """
-        age = _age(self.item, "age", age)
+        age = _age(self.id, "age", age)
         if self.right_censored is not None and age < self.right_censored:
             raise ValueError(
-                f"Item {self.item!r}: extend moves the end of observation "
+                f"Item {self.id!r}: extend moves the end of observation "
                 f"later, but {age:g} is before its end, "
                 f"{self.right_censored:g}."
             )
@@ -511,7 +573,8 @@ class ItemHistory:
         >>> pump.add_failure(700).right_censored
         700.0
         """
-        age = _age(self.item, "age", age)
+        age = _age(self.id, "age", age)
+        _needs_type(self, "add_failure(age, event_type=...)", event_type)
         fields = self._fields()
         fields["observed"] = [*fields.get("observed", []), age]
         if self.has_event_types or event_type is not None:
@@ -526,7 +589,7 @@ class ItemHistory:
                 ),
                 event_type,
             ]
-        return ItemHistory(self.item, **self._after_event(fields, age))
+        return ItemHistory(self.id, **self._after_event(fields, age))
 
     def add_failures_between(
         self,
@@ -537,6 +600,11 @@ class ItemHistory:
     ) -> "ItemHistory":
         """This history with ``failures`` failures found between two
         inspections, ``lower`` and ``upper``."""
+        _needs_type(
+            self,
+            "add_failures_between(lower, upper, failures, event_type=...)",
+            event_type,
+        )
         fields = self._fields()
         fields["interval_censored"] = [
             *fields.get("interval_censored", []),
@@ -555,18 +623,18 @@ class ItemHistory:
                 else list(self.interval_censored_event_types)
             )
             fields["interval_censored_event_types"] = [*types, event_type]
-        upper = _age(self.item, "upper", upper)
-        return ItemHistory(self.item, **self._after_event(fields, upper))
+        upper = _age(self.id, "upper", upper)
+        return ItemHistory(self.id, **self._after_event(fields, upper))
 
     def change_state(self, age: Any, state: Any) -> "ItemHistory":
         """This history with a change into ``state`` seen at ``age``."""
-        age = _age(self.item, "age", age)
+        age = _age(self.id, "age", age)
         fields = self._fields()
         fields["observed_states"] = {
             **fields.get("observed_states", {}),
             age: state,
         }
-        return ItemHistory(self.item, **self._after_event(fields, age))
+        return ItemHistory(self.id, **self._after_event(fields, age))
 
     def change_state_between(
         self, lower: Any, upper: Any, state: Any
@@ -578,17 +646,15 @@ class ItemHistory:
             *fields.get("interval_censored_states", []),
             [lower, upper, state],
         ]
-        upper = _age(self.item, "upper", upper)
-        return ItemHistory(self.item, **self._after_event(fields, upper))
+        upper = _age(self.id, "upper", upper)
+        return ItemHistory(self.id, **self._after_event(fields, upper))
 
     def update_covariates(self, age: Any, values: Any) -> "ItemHistory":
         """This history with its time-varying covariates taking ``values``
         from ``age`` on (a step added to its schedule; a first schedule
         starts at ``age``, which must then be at or before the start of
         observation)."""
-        steps = _with_step(
-            self.item, self.time_varying_covariates, age, values
-        )
+        steps = _with_step(self.id, self.time_varying_covariates, age, values)
         return self.clone(time_varying_covariates=steps)
 
     # -- display and comparison ---------------------------------------------
@@ -653,26 +719,49 @@ class ItemHistory:
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ItemHistory):
             return NotImplemented
-        return self.item == other.item and self._fields() == other._fields()
+        return self.id == other.id and self._fields() == other._fields()
 
     def __hash__(self) -> int:
-        return hash((self.item, hashable(self._fields())))
+        return hash((self.id, hashable(self._fields())))
 
     def __repr__(self) -> str:
         fields = "".join(
             f",\n    {name}={value!r}"
             for name, value in self._fields().items()
         )
-        return f"ItemHistory(\n    {self.item!r}{fields}\n)"
+        return f"ItemHistory(\n    {self.id!r}{fields}\n)"
 
 
 # -- validation helpers -----------------------------------------------------
+
+
+def _not_a_date(item: Any, name: str, value: Any) -> None:
+    """Refuse a date or a duration for an age, saying how to convert it."""
+    import datetime
+
+    values = value if isinstance(value, (list, tuple, np.ndarray)) else [value]
+    for v in values:
+        if isinstance(v, (datetime.timedelta, np.timedelta64)):
+            raise ValueError(
+                f"Item {item!r}: '{name}' is a duration; ages are numbers. "
+                "Convert it to the unit you work in, e.g. "
+                "duration / pd.Timedelta(hours=1) for hours (and give "
+                "unit='hours' to the fit)."
+            )
+        if isinstance(v, (datetime.date, np.datetime64)):
+            raise ValueError(
+                f"Item {item!r}: '{name}' is a date; ages are numbers, "
+                "measured from when the item was new (or first observed). "
+                "Subtract its start date and convert, e.g. "
+                "(date - installed) / pd.Timedelta(days=1) for days."
+            )
 
 
 def _ages(item: Any, name: str, value: Any) -> np.ndarray:
     """A list of finite ages (a number is a list of one; None, none)."""
     if value is None:
         return np.empty(0)
+    _not_a_date(item, name, value)
     try:
         arr = np.atleast_1d(np.asarray(value, dtype=float))
     except (TypeError, ValueError):
@@ -684,10 +773,21 @@ def _ages(item: Any, name: str, value: Any) -> np.ndarray:
     return arr
 
 
+def _needs_type(history: Any, call: str, event_type: Any) -> None:
+    """Refuse a failure without a type on a history whose failures have
+    types, in the words of the update method."""
+    if history.has_event_types and event_type is None:
+        raise ValueError(
+            f"Item {history.id!r}: its failures have event types, so give "
+            f"this one's: {call}."
+        )
+
+
 def _age(item: Any, name: str, value: Any) -> "float | None":
     """One finite age, or None."""
     if value is None:
         return None
+    _not_a_date(item, name, value)
     if np.ndim(value) != 0:
         raise ValueError(f"Item {item!r}: '{name}' must be one age.")
     try:
