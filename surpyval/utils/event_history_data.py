@@ -17,6 +17,7 @@ from surpyval.utils.deprecation import REMOVED_IN_NEXT, RenamedAttribute
 from surpyval.utils.surpyval_data import (
     SurpyvalData,
     _named_row,
+    _plain,
     _plural,
     named_fit,
 )
@@ -32,31 +33,32 @@ class EventHistoryData(ReshapeMixin):
     called ``RecurrentEventData`` before v0.25, a name still accepted, with
     a DeprecationWarning, until v0.26.
 
-    Build one from each item's history with :meth:`from_histories`, or
-    from ``x``, ``i``, ``c``, ``n`` arrays with ``surpyval.handle_xicn``;
-    both validate the input, and every recurrent ``fit`` takes the result
-    as ``x`` (``CrowAMSAA.fit(data)``). The constructor itself does no
-    validation.
+    Build one from each item's record with :meth:`from_items`
+    (:class:`~surpyval.utils.item_history.ItemHistory`), from each item's
+    failure ages with :meth:`from_histories`, or from ``x``, ``i``, ``c``,
+    ``n`` arrays with ``surpyval.handle_xicn``, which also takes counts in
+    intervals, truncation, windows and covariates; every recurrent ``fit``
+    takes the result as ``x`` (``CrowAMSAA.fit(data)``). The constructor,
+    ``EventHistoryData(x, i, c, n)``, takes arrays as ``handle_xicn``
+    returns them, and checks them as it does: rows of one length, censoring
+    codes -1, 0, 1 or 2, positive counts and finite times.
 
     Examples
     --------
 
-    >>> import numpy as np
     >>> from surpyval import EventHistoryData
-    >>> x = np.array([1, 2, 3, 4, 5, 1, 2, 3, 4, 5])
-    >>> c = np.array([0, 0, 1, 1, 1, 0, 0, 0, 0, 1])
-    >>> n = np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
-    >>> i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2])
-    >>> data = EventHistoryData(x, i, c, n)
-    >>> data.to_xrd()
-    (array([1, 2, 3, 4, 5]), array([2, 2, 2, 2, 2]), array([2, 2, 1, 1, 0]))
+    >>> data = EventHistoryData.from_histories(
+    ...     observed={1: [1, 2], 2: [1, 2, 3, 4]},
+    ...     right_censored={1: 5, 2: 5},
+    ... )
+    >>> x, r, d = data.to_xrd()
+    >>> x, d
+    (array([1., 2., 3., 4., 5.]), array([2, 2, 1, 1, 0]))
     >>> data[0:2]
-    EventHistoryData(
-        x=[1 2],
-        i=[1 1],
-        c=[0 0],
-        n=[1 1]
-    )
+    EventHistoryData: 1 item, 2 rows
+      i    x  c  n
+      1  1.0  0  1
+      1  2.0  0  1
     >>> data.get_times_to_first_events()
     SurpyvalData(
         x=array([1.]),
@@ -65,7 +67,7 @@ class EventHistoryData(ReshapeMixin):
         t=array([[-inf,  inf]])
     )
     >>> data.get_interarrival_times()
-    array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
+    array([1., 1., 3., 1., 1., 1., 1., 1.])
     """
 
     # Optional covariate matrix, attached by ``handle_xicn`` for regression.
@@ -103,9 +105,15 @@ class EventHistoryData(ReshapeMixin):
         tr: "npt.ArrayLike | None" = None,
     ) -> None:
         self.x = np.atleast_1d(x)
-        self.i = np.atleast_1d(i)
-        self.c = np.atleast_1d(c)
-        self.n = np.atleast_1d(n)
+        # One i, c or n is every row's, as for handle_xicn
+        self.i, self.c, self.n = (
+            (
+                np.full(self.x.shape[0], value)
+                if np.ndim(value) == 0
+                else np.atleast_1d(value)
+            )
+            for value in (i, c, n)
+        )
         # Per-row truncation bounds defining each item's observation window.
         # The default window is the whole real line so that no non-negativity
         # assumption is imposed on ``x`` (e.g. a log-intensity variable may be
@@ -114,18 +122,31 @@ class EventHistoryData(ReshapeMixin):
         self.tl = (
             np.full(n_rows, -np.inf)
             if tl is None
-            else np.atleast_1d(tl).astype(float)
+            else (
+                np.broadcast_to(
+                    np.atleast_1d(tl).astype(float), (n_rows,)
+                ).copy()
+                if np.size(tl) == 1
+                else np.atleast_1d(tl).astype(float)
+            )
         )
         self.tr = (
             np.full(n_rows, np.inf)
             if tr is None
-            else np.atleast_1d(tr).astype(float)
+            else (
+                np.broadcast_to(
+                    np.atleast_1d(tr).astype(float), (n_rows,)
+                ).copy()
+                if np.size(tr) == 1
+                else np.atleast_1d(tr).astype(float)
+            )
         )
         # Optional event-type (mark) per observation. When provided this
         # turns the data into a competing-risks recurrent process: each
         # event belongs to one of several mutually-exclusive types. ``None``
         # marks (e.g. the end-of-observation censoring row) are permitted.
         self.e = np.atleast_1d(e) if e is not None else None
+        self._check_rows()
         self.ids = np.unique(self.i).tolist()
 
         if self.x.ndim == 1:
@@ -134,6 +155,37 @@ class EventHistoryData(ReshapeMixin):
             x_midpoints = self.x.copy()
             x_midpoints[self.c == -1, 0] = x_midpoints.min()
             self.midpoints = x_midpoints.mean(axis=1)
+
+    def _check_rows(self) -> None:
+        """The arrays checked as ``handle_xicn`` checks them (#925): the
+        constructor used to accept rows of different lengths, censoring
+        codes such as 7 and negative counts, which went on to give
+        negative event counts."""
+        from surpyval.utils.data_formats import refuse_boolean_censoring
+        from surpyval.utils.recurrent_utils import (
+            _check_xicn_lengths,
+            _check_xicn_values,
+        )
+
+        if self.x.shape[0] == 0:
+            raise ValueError("An EventHistoryData needs at least one row.")
+        if not np.issubdtype(self.x.dtype, np.number) or not (
+            self.x.ndim == 1 or (self.x.ndim == 2 and self.x.shape[1] == 2)
+        ):
+            raise ValueError(
+                "'x' must be numbers, one time per row or [start, end] "
+                "pairs; build the data from records with "
+                "EventHistoryData.from_items, or from arrays with "
+                "surpyval.handle_xicn."
+            )
+        refuse_boolean_censoring(self.c)
+        _check_xicn_lengths(self.x, self.i, self.c, self.n, None)
+        for name, values in (("e", self.e), ("tl", self.tl), ("tr", self.tr)):
+            if values is not None and values.shape[0] != self.x.shape[0]:
+                raise ValueError(f"x and {name} must have the same length")
+        _check_xicn_values(
+            self.x, self.i, self.c, self.n, self.tl, self.tr, None
+        )
 
     def to_xrd(
         self, estimator: str = "Nelson-Aalen"
@@ -1021,6 +1073,16 @@ class EventHistoryData(ReshapeMixin):
         return "\n".join(lines)
 
     def __getitem__(self, index: Any) -> "EventHistoryData":
+        # As row numbers, so one row stays a row: a scalar index used to
+        # turn an interval row [l, r] into two times and drop covariate
+        # columns (#925).
+        rows = np.atleast_1d(np.arange(len(self.x))[index])
+        if rows.size == 0:
+            raise ValueError(
+                "The index selects no rows; an EventHistoryData needs at "
+                "least one."
+            )
+        index = rows
         out = EventHistoryData(
             self.x[index],
             self.i[index],
@@ -1047,13 +1109,64 @@ class EventHistoryData(ReshapeMixin):
         return zip(self.x, self.i, self.c, self.n)
 
     def __repr__(self) -> str:
-        return f"""
-            EventHistoryData(
-    x={self.x},
-    i={self.i},
-    c={self.c},
-    n={self.n}\n)
-        """.strip()
+        """Its size and its first rows, as a table: ``i``, ``x`` (a time,
+        or ``[start, end]``), ``c``, ``n``, and the truncation, event types
+        and covariates where it has them; :meth:`summary` describes all of
+        it."""
+        shown = min(len(self.x), _REPR_ROWS)
+        columns: dict = {
+            "i": [repr(_plain(v)) for v in self.i[:shown]],
+            "x": [_time_text(v) for v in self.x[:shown]],
+            "c": [str(int(v)) for v in self.c[:shown]],
+            "n": [_time_text(v) for v in self.n[:shown]],
+        }
+        if np.isfinite(self.tl).any():
+            columns["tl"] = [_time_text(v) for v in self.tl[:shown]]
+        if np.isfinite(self.tr).any():
+            columns["tr"] = [_time_text(v) for v in self.tr[:shown]]
+        if self.e is not None:
+            columns["e"] = [repr(_plain(v)) for v in self.e[:shown]]
+        if self.Z is not None:
+            Z = np.asarray(self.Z, dtype=float)
+            Z = Z[:, None] if Z.ndim == 1 else Z
+            names = self.covariate_names or [
+                f"Z{j}" for j in range(Z.shape[1])
+            ]
+            for j, name in enumerate(names):
+                columns[name] = [_time_text(v) for v in Z[:shown, j]]
+        widths = {
+            k: max(len(k), *(len(v) for v in vals))
+            for k, vals in columns.items()
+        }
+        lines = [
+            f"EventHistoryData: {_plural(len(self.ids), 'item')}, "
+            f"{_plural(len(self.x), 'row')}",
+            "  " + "  ".join(k.rjust(widths[k]) for k in columns),
+        ]
+        for r in range(shown):
+            lines.append(
+                "  "
+                + "  ".join(columns[k][r].rjust(widths[k]) for k in columns)
+            )
+        if len(self.x) > shown:
+            lines.append(
+                f"  ... {_plural(len(self.x) - shown, 'more row')}; "
+                "summary() describes it all"
+            )
+        return "\n".join(lines)
+
+
+_REPR_ROWS = 10
+
+
+def _time_text(value: Any) -> str:
+    """A time, count or ``[start, end]`` pair as the repr shows it."""
+    if np.ndim(value):
+        return "[" + ", ".join(_time_text(v) for v in value) + "]"
+    value = _plain(value)
+    if isinstance(value, float) and value.is_integer():
+        return f"{value:.1f}"
+    return str(value)
 
 
 def _history_dict(name: str, value: Any) -> dict:

@@ -304,6 +304,20 @@ Unreleased
 
 **Fixed**
 
+- ``EventHistoryData`` (#925): one row, ``data[k]``, kept neither an
+  interval row ``[start, end]`` (it became two times) nor its covariate
+  columns (all but the first were dropped); it is one row, as a slice
+  of one is. The constructor ``EventHistoryData(x, i, c, n, ...)``
+  checked nothing, and took rows of different lengths, censoring codes
+  such as 7 and negative counts (which went on to give negative event
+  counts); it checks its arrays as ``handle_xicn`` does, and takes one
+  ``i``, ``c``, ``n``, ``tl`` or ``tr`` for every row. An index that
+  selects no rows (``data[5:5]``, of ``SurpyvalData`` too) failed on
+  numpy's "zero-size array"; it says it selects no rows. The repr was
+  numpy's text of four of its arrays; it is the size of the data and a
+  table of its first rows (with truncation, event types and covariates
+  where it has them), and the class docstring starts from
+  ``from_items`` and ``from_histories``.
 - A regression model fitted with named covariates read a pandas Series
   of one item's covariates by position, not by name, giving a wrong
   prediction with no warning (``sf(t, pd.Series({"age": 50, "arm": 1}))``
