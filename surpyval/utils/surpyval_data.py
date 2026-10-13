@@ -911,85 +911,6 @@ class SurpyvalData(ReshapeMixin):
         lines += _held(self, rows=len(self.x))
         return "\n".join(lines)
 
-    @classmethod
-    def combine(cls, *datasets: "SurpyvalData") -> "SurpyvalData":
-        """
-        Several datasets as one: ``SurpyvalData.combine(site_a, site_b)``.
-        Datasets with item ids (from :meth:`from_items`) are joined item by
-        item, so an id in two of them is refused, as two records for one
-        item would be; datasets without ids are stacked. They must agree:
-        all with ids or none, and covariates, event types and time-varying
-        covariates in all of them or none.
-
-        Examples
-        --------
-        >>> from surpyval import SurpyvalData
-        >>> a = SurpyvalData([1, 2], c=[0, 1])
-        >>> b = SurpyvalData([3], c=[0])
-        >>> SurpyvalData.combine(a, b).x
-        array([1., 2., 3.])
-        """
-        given = _datasets(datasets, cls)
-        with_ids = [d.ids is not None for d in given]
-        if any(with_ids) and not all(with_ids):
-            raise ValueError(
-                "Some of the given have item ids and some do not: give "
-                "them all ids (build them with from_items) or none."
-            )
-        for name in ("Z", "e", "time_varying_covariates"):
-            held = [getattr(d, name) is not None for d in given]
-            if any(held) and not all(held):
-                what = {
-                    "Z": "covariates",
-                    "e": "event types",
-                    "time_varying_covariates": "time-varying covariates",
-                }[name]
-                raise ValueError(
-                    f"Some of the given have {what} and some do not; use "
-                    f'without("{what.replace(" ", "_").replace("-", "_")}") '
-                    "on those that do, or give them all."
-                )
-        if any(d.covariate_names != given[0].covariate_names for d in given):
-            raise ValueError(
-                "The datasets' covariates have different names: "
-                + "; ".join(repr(d.covariate_names) for d in given)
-                + "."
-            )
-        if all(with_ids):
-            records: list = []
-            counts: list = []
-            for d in given:
-                records += d.to_items()
-                counts += list(np.asarray(d.n))
-            return cls.from_items(records, counts=counts)
-        two_d = any(d.x.ndim == 2 for d in given)
-        x = np.concatenate(
-            [
-                np.column_stack([d.x, d.x]) if two_d and d.x.ndim == 1 else d.x
-                for d in given
-            ]
-        )
-        Z = None
-        if given[0].Z is not None:
-            Z = np.vstack(
-                [
-                    np.asarray(d.Z, dtype=float).reshape(len(d.x), -1)
-                    for d in given
-                ]
-            )
-        e = None
-        if given[0].e is not None:
-            e = np.concatenate([d.e for d in given])
-        return cls(
-            x,
-            np.concatenate([d.c for d in given]),
-            np.concatenate([d.n for d in given]),
-            np.concatenate([d.t for d in given]),
-            Z=Z,
-            e=e,
-            covariate_names=given[0].covariate_names,
-        )
-
     def to_xcnt(self) -> tuple:
         """
         The data in the ``xcnt`` format, ``(x, c, n, t)``: the times (a
@@ -1854,22 +1775,6 @@ def _named_row(Z: "np.ndarray | None", k: int, names: "list | None") -> Any:
 def _plain(value: Any) -> Any:
     """A numpy scalar as the plain Python value JSON stores."""
     return value.item() if isinstance(value, np.generic) else value
-
-
-def _datasets(datasets: tuple, cls: type) -> list:
-    """``combine``'s datasets, given one by one or as one list."""
-    if len(datasets) == 1 and isinstance(datasets[0], (list, tuple)):
-        datasets = tuple(datasets[0])
-    if not datasets:
-        raise ValueError("Give the datasets to combine.")
-    wrong = [type(d).__name__ for d in datasets if not isinstance(d, cls)]
-    if wrong:
-        raise TypeError(
-            f"{cls.__name__}.combine takes {cls.__name__} datasets; got "
-            + ", ".join(wrong)
-            + "."
-        )
-    return list(datasets)
 
 
 def _plural(k: int, word: str) -> str:

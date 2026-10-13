@@ -34,18 +34,14 @@ Unreleased
   ``model.sf_tvc(t, item)`` (and the other ``*_tvc`` methods) reads the
   item's fixed covariates and its time-varying ones (a ``StepSchedule``
   or a ``CovariatePath``) and lines them up as the fit did, fixed columns
-  first. ``SurpyvalData.combine(a, b, ...)`` and
-  ``EventHistoryData.combine(...)`` join datasets: those with item ids item
-  by item (an id in two of them is refused), those without by stacking;
-  they must all have ids or none, and covariates, event types and
-  time-varying covariates all or none.
+  first.
 - Covariates by name: a record's ``covariates`` may be ``{name: value}``
   (or a pandas Series), its ``covariate_names``; a dataset of such
   records has ``covariate_names`` (all its items named alike, in any
   order, or none), as does ``SurpyvalData(..., Z=Z,
   covariate_names=[...])``, a DataFrame ``Z``, and
   ``from_observations(..., covariate_names=[...])``. The names go with
-  the data through ``to_items``, slicing, ``combine``, JSON and the
+  the data through ``to_items``, slicing, JSON and the
   summary; ``with_covariates(["age"])`` picks covariates by name; and
   ``fit(data)`` names the model's coefficients by them (``feature_names``),
   for the time-varying fit too (the time-varying columns follow as

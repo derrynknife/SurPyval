@@ -977,22 +977,6 @@ class EventHistoryData(ReshapeMixin):
             **state_args,
         )
 
-    @classmethod
-    def combine(cls, *datasets: "EventHistoryData") -> "EventHistoryData":
-        """
-        Several datasets as one, item by item: ``EventHistoryData.combine(
-        fleet_a, fleet_b)``. Each item has one history, so an item id in two
-        of them is refused; covariates, event types, time-varying covariates
-        and states must be in all of them or none, as for
-        :meth:`from_items`.
-        """
-        from surpyval.utils.surpyval_data import _datasets
-
-        records: list = []
-        for data in _datasets(datasets, cls):
-            records += data.to_items()
-        return cls.from_items(records)
-
     def __len__(self) -> int:
         """The number of rows (events and ends of observation), as
         ``SurpyvalData``'s length is its rows; ``len(data.ids)`` is the
