@@ -12,12 +12,13 @@ from typing import Any, Callable, TypeVar
 import numpy as np
 import numpy.typing as npt
 
+from surpyval.utils.data_reshape import HISTORY_PARTS, ReshapeMixin
 from surpyval.utils.deprecation import REMOVED_IN_NEXT, RenamedAttribute
-from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.surpyval_data import SurpyvalData, _plural
 from surpyval.utils.validation import unknown_cause_error
 
 
-class EventHistoryData:
+class EventHistoryData(ReshapeMixin):
     """
     Event history data: the history of each of several items over time --
     events that can happen more than once (recurrent failures and
@@ -851,7 +852,27 @@ class EventHistoryData:
         Observation windows have no place in an item's history, and are
         refused.
         """
-        return [self.item(item) for item in self.ids]
+        self._no_windows()
+        # The rows of each item, found once for all items by one sort; the
+        # groups come in the order of np.unique, as self.ids does
+        _, inverse = np.unique(self.i, return_inverse=True)
+        order = np.argsort(inverse, kind="stable")
+        bounds = np.cumsum(np.bincount(inverse))
+        groups = np.split(order, bounds[:-1])
+        prepared = self._prepared()
+        return [
+            self._history_at(key, rows, prepared)
+            for key, rows in zip(self.ids, groups)
+        ]
+
+    _PARTS = HISTORY_PARTS
+
+    def _records(self) -> tuple[list, list]:
+        records = self.to_items()
+        return records, [1] * len(records)
+
+    def _from_records(self, records: list, counts: list) -> "EventHistoryData":
+        return EventHistoryData.from_items(records)
 
     def item(self, id: Any) -> Any:
         """
@@ -872,24 +893,38 @@ class EventHistoryData:
             right_censored=2900.0
         )
         """
-        from surpyval.utils.item_history import ItemHistory, item_id
+        from surpyval.utils.item_history import item_id
 
+        self._no_windows()
+        key = item_id(id)
+        if key not in self.ids:
+            raise KeyError(f"No item {key!r} in the data.")
+        return self._history_at(
+            key, np.flatnonzero(self.i == key), self._prepared()
+        )
+
+    def _no_windows(self) -> None:
         if self.window_map is not None:
             raise ValueError(
                 "This data has observation windows, which an ItemHistory has "
                 "no place for: use its arrays."
             )
-        key = item_id(id)
-        if key not in self.ids:
-            raise KeyError(f"No item {key!r} in the data.")
-        rows = self.i == key
+
+    def _prepared(self) -> tuple:
+        """The arrays every item's record reads, made once for all items."""
         x = self.x if np.ndim(self.x) == 2 else np.column_stack([self.x] * 2)
+        Z = None if self.Z is None else np.asarray(self.Z, dtype=float)
+        return x, Z
+
+    def _history_at(self, key: Any, rows: np.ndarray, prepared: tuple) -> Any:
+        from surpyval.utils.item_history import ItemHistory
+
+        x, Z = prepared
         c, n, xi = self.c[rows], self.n[rows], x[rows]
         e = None if self.e is None else self.e[rows]
         left = xi[c == -1]
         end = xi[c == 1]
         tl, tr = self.tl[rows][0], self.tr[rows][0]
-        Z = None if self.Z is None else np.asarray(self.Z, dtype=float)
         state_args: dict = {}
         if self.states is not None:
             initial, changes = self.states[key]
@@ -954,7 +989,8 @@ class EventHistoryData:
             (f"{int(n[c == -1].sum())} before a first look", (c == -1).any()),
         ]
         lines = [
-            f"EventHistoryData: {len(self.ids)} items, {len(self.x)} rows",
+            f"EventHistoryData: {_plural(len(self.ids), 'item')}, "
+            f"{_plural(len(self.x), 'row')}",
             (
                 "  events: " + ", ".join(k for k, given in kinds if given)
                 if any(given for _, given in kinds)

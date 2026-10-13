@@ -13,10 +13,11 @@ from numpy.typing import ArrayLike
 import surpyval
 from surpyval.serialisation import decode_non_finite, encode_non_finite
 from surpyval.utils import xcnt_handler
+from surpyval.utils.data_reshape import LIFETIME_PARTS, ReshapeMixin
 from surpyval.utils.numeric import unique_pairs
 
 
-class SurpyvalData:
+class SurpyvalData(ReshapeMixin):
     """
     Validated univariate survival data in the ``xcnt`` format, split by
     type of observation for the likelihoods.
@@ -752,7 +753,19 @@ class SurpyvalData:
         >>> SurpyvalData([3, 7], c=[0, 1]).to_items()
         [ItemLifetime(0, observed=3.0), ItemLifetime(1, right_censored=7.0)]
         """
-        return [self._item_at(k) for k in range(len(self.x))]
+        prepared = self._prepared()
+        return [self._item_at(k, prepared) for k in range(len(self.x))]
+
+    _PARTS = LIFETIME_PARTS
+
+    def _records(self) -> tuple[list, list]:
+        return self.to_items(), list(np.asarray(self.n))
+
+    def _from_records(self, records: list, counts: list) -> "SurpyvalData":
+        out = SurpyvalData.from_items(records, counts=counts)
+        if self.ids is None:
+            out.ids = None  # its items were row numbers, not ids
+        return out
 
     def item(self, id: Any) -> Any:
         """
@@ -780,15 +793,24 @@ class SurpyvalData:
             matches = [k for k, i in enumerate(self.ids) if i == key]
             if not matches:
                 raise KeyError(f"No item {key!r} in the data.")
-            return self._item_at(matches[0])
+            return self._item_at(matches[0], self._prepared())
         if isinstance(key, (int, np.integer)) and 0 <= key < len(self.x):
-            return self._item_at(int(key))
+            return self._item_at(int(key), self._prepared())
         raise KeyError(
             f"No item {key!r}: this data has no item ids, so its items are "
             f"its row numbers, 0 to {len(self.x) - 1}."
         )
 
-    def _item_at(self, k: int) -> Any:
+    def _prepared(self) -> tuple:
+        """The arrays every row's record reads, made once for all rows."""
+        x = self.x if self.x.ndim == 2 else np.column_stack([self.x] * 2)
+        Z = None
+        if self.Z is not None:
+            Z = np.asarray(self.Z, dtype=float)
+            Z = Z[:, None] if Z.ndim == 1 else Z
+        return x, Z
+
+    def _item_at(self, k: int, prepared: tuple) -> Any:
         from surpyval.utils.item_lifetime import ItemLifetime
 
         outcome = {
@@ -797,12 +819,8 @@ class SurpyvalData:
             -1: "left_censored",
             2: "interval_censored",
         }
-        x = self.x if self.x.ndim == 2 else np.column_stack([self.x] * 2)
+        x, Z = prepared
         item = self.ids[k] if self.ids is not None else k
-        Z = None
-        if self.Z is not None:
-            Z = np.asarray(self.Z, dtype=float)
-            Z = Z[:, None] if Z.ndim == 1 else Z
         flag = int(self.c[k])
         value = x[k].tolist() if flag == 2 else float(x[k, 0])
         tl, tr = self.t[k]
@@ -842,7 +860,10 @@ class SurpyvalData:
             (-1, "left censored"),
             (2, "interval censored"),
         )
-        head = f"SurpyvalData: {len(self.x)} rows, {int(n.sum())} items"
+        head = (
+            f"SurpyvalData: {_plural(len(self.x), 'row')}, "
+            f"{_plural(int(n.sum()), 'item')}"
+        )
         if self.ids is not None:
             head += " (with item ids)"
         lines = [
@@ -1644,3 +1665,7 @@ def _fit_tvc_from_data(
 def _plain(value: Any) -> Any:
     """A numpy scalar as the plain Python value JSON stores."""
     return value.item() if isinstance(value, np.generic) else value
+
+
+def _plural(k: int, word: str) -> str:
+    return f"{k} {word}" + ("" if k == 1 else "s")
