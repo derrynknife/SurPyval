@@ -6,6 +6,7 @@ import numpy as np
 import numpy.typing as npt
 
 from surpyval.utils import coerce_xcnt_x, format_truncation
+from surpyval.utils.data_formats import refuse_boolean_censoring
 
 from .event_history_data import EventHistoryData
 
@@ -1299,6 +1300,7 @@ def handle_xicn(
         raise ValueError("'x' cannot be empty")
 
     items_given = i is not None
+    refuse_boolean_censoring(c)
     i, c, n = _xicn_defaults(x, i, c, n)
     e_arr = _xicn_marks(e, c, x)
 

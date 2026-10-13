@@ -96,6 +96,7 @@ from surpyval.univariate.regression.proportional_hazards.cox_separation import (
 )
 from surpyval.univariate.regression.regression_data import (
     LinearPredictorMixin,
+    named_covariates,
 )
 from surpyval.utils import validate_fine_gray_inputs
 from surpyval.utils.covariates import coefficient_floor
@@ -1079,7 +1080,13 @@ class FineGrayModel(
         baseline on the log scale."""
         with np.errstate(over="ignore"):
             return np.exp(
-                (np.asarray(Z, dtype=float) - self.center) @ self._coef()
+                (
+                    np.asarray(
+                        named_covariates(Z, self.feature_names), dtype=float
+                    )
+                    - self.center
+                )
+                @ self._coef()
             )
 
     @keeps_query_shape
@@ -1095,6 +1102,7 @@ class FineGrayModel(
         (``NaN``) time or covariate gives ``nan`` in its place.
         """
         x = np.atleast_1d(np.asarray(x, dtype=float)).ravel()
+        Z = named_covariates(Z, self.feature_names)
         rows = paired_covariate_rows(Z, x.size, np.size(self.beta))
         H0 = step_at(self._times, self._cumhaz, x, before=0.0)
         # step_at reads a nan time as the value after the last jump.

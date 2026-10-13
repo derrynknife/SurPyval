@@ -260,6 +260,17 @@ Unreleased
   to it. The default, ``False``, reports the baseline at ``Z = 0`` as
   before, and a model saved before has its baseline there.
 
+**Changed**
+
+- A True/False ``c`` is refused (#920), by every fitter, ``fit_from_df``
+  and ``SurpyvalData``. ``c`` is the censoring flag (1 = right censored),
+  and a boolean column is far more often an event indicator (True =
+  failed: ``died``, ``churned``), which was read the wrong way round,
+  every failure taken as a suspension and every suspension as a failure,
+  with no warning. The message says how to pass either: an event
+  indicator as ``c=1 - event``, a censoring indicator as 0/1 numbers.
+  Integer and float flags are read as before.
+
 **Deprecated**
 
 - ``EventHistoryData.items`` (the item ids) is ``EventHistoryData.ids``,
@@ -292,6 +303,16 @@ Unreleased
 
 **Fixed**
 
+- A regression model fitted with named covariates read a pandas Series
+  of one item's covariates by position, not by name, giving a wrong
+  prediction with no warning (``sf(t, pd.Series({"age": 50, "arm": 1}))``
+  read ``age`` as ``arm``), and a dict raised a ``TypeError`` (#921). A
+  Series labelled by covariate names, and a dict ``{name: value}`` (or
+  ``{name: values}`` for several items), are read by name, as a DataFrame
+  is; a dict for a model fitted without names is refused, saying why.
+  Fine-Gray and the proportional intensity models read covariates by
+  position even from a DataFrame; they now read a DataFrame, Series or
+  dict by the names they were fitted with, as the other regressions do.
 - ``SurpyvalData.to_xrd()`` returned the arrays it keeps for the next
   call, so editing the result (``r *= 10``) changed what that data gave
   from then on; it returns copies, as ``to_xcnt()`` does.

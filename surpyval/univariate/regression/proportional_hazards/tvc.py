@@ -18,6 +18,8 @@ intervals with the same covariates gives the same fit as the unsplit subject.
 import numpy as np
 import numpy.typing as npt
 
+from surpyval.utils.data_formats import refuse_boolean_censoring
+
 
 def handle_tvc(
     i: npt.ArrayLike,
@@ -69,6 +71,7 @@ def handle_tvc(
     ident = np.asarray(i)
     xl = np.asarray(xl, dtype=float)
     xr = np.asarray(xr, dtype=float)
+    refuse_boolean_censoring(c)
     c = np.asarray(c)
     Z = np.asarray(Z, dtype=float)
     if Z.ndim == 1:

@@ -21,6 +21,7 @@ from surpyval.univariate.regression._aliasing import (
     constant_columns,
     warn_aliased,
 )
+from surpyval.univariate.regression.regression_data import named_covariates
 from surpyval.utils.covariates import coefficient_names
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
@@ -253,6 +254,7 @@ class ProportionalIntensityModel(
         Z : array_like
             The covariates for the item.
         """
+        Z = named_covariates(Z, self.feature_names)
         return self.dist.cif(x, *self.params) * np.exp(Z @ self._coef())
 
     @keeps_query_shape
@@ -271,9 +273,11 @@ class ProportionalIntensityModel(
         Z : array_like
             The covariates for the item.
         """
+        Z = named_covariates(Z, self.feature_names)
         return self.dist.iif(x, *self.params) * np.exp(Z @ self._coef())
 
     def inv_cif(self, x: ArrayLike, Z: ArrayLike) -> np.ndarray:
+        Z = named_covariates(Z, self.feature_names)
         if hasattr(self.dist, "inv_cif"):
             return self.dist.inv_cif(
                 x / np.exp(self._coef() @ Z), *self.params
@@ -524,7 +528,7 @@ class ProportionalIntensityModel(
         check_alpha_ci(alpha_ci)
         self._check_fitted()
         x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.asarray(Z, dtype=float)
+        Z = np.asarray(named_covariates(Z, self.feature_names), dtype=float)
         n_dist_params = len(self.params)
         baseline = getattr(self.dist, function)
 
@@ -637,7 +641,11 @@ class ProportionalIntensityModel(
         ``max_events`` and then failed on the NaN event times.
         """
         try:
-            Z_arr = np.atleast_1d(np.asarray(Z, dtype=float))
+            Z_arr = np.atleast_1d(
+                np.asarray(
+                    named_covariates(Z, self.feature_names), dtype=float
+                )
+            )
         except (TypeError, ValueError):
             raise ValueError(
                 "Z must be one unit's covariate vector of numbers; got "

@@ -1039,6 +1039,47 @@ def _has_missing(values: Any) -> bool:
     )
 
 
+def refuse_boolean_censoring(c: Any) -> None:
+    """Refuse a True/False censoring flag ``c`` (#920).
+
+    ``c`` is a censoring flag (1 = right censored), and a boolean column
+    is far more often an *event* indicator (True = failed: ``died``,
+    ``churned``), which read as ``c`` swaps every failure for a
+    suspension, silently. A boolean ``c`` is refused rather than guessed
+    at; 0/1 numbers are taken as they are.
+
+    Examples
+    --------
+    >>> from surpyval.utils.data_formats import refuse_boolean_censoring
+    >>> refuse_boolean_censoring([0, 1, 0])
+    >>> refuse_boolean_censoring([True, False])  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+    ...
+    ValueError: 'c' is the censoring flag ...
+    """
+    if c is None:
+        return
+    values = np.asarray(
+        c, dtype=object if isinstance(c, (list, tuple)) else None
+    )
+    if values.dtype == object:
+        flat = values.ravel()
+        boolean = flat.size > 0 and all(
+            isinstance(v, (bool, np.bool_)) for v in flat
+        )
+    else:
+        boolean = values.dtype == bool
+    if boolean:
+        raise ValueError(
+            "'c' is the censoring flag (0 = observed, 1 = right censored, "
+            "-1 = left censored, 2 = interval censored), and a True/False "
+            "'c' could mean either way round. For an event indicator (True "
+            "= failed) pass c=1 - event (with numpy, (~event).astype(int)); "
+            "for a censoring indicator (True = censored) pass it as 0/1 "
+            "numbers, c=censored.astype(int)."
+        )
+
+
 def _xcnt_censoring(c: "npt.ArrayLike | None", x: npt.NDArray) -> npt.NDArray:
     """The censoring flags, checked against ``x``, or the default.
 
@@ -1051,6 +1092,7 @@ def _xcnt_censoring(c: "npt.ArrayLike | None", x: npt.NDArray) -> npt.NDArray:
             default[x[:, 0] != x[:, 1]] = 2
         return default
 
+    refuse_boolean_censoring(c)
     c_arr = np.atleast_1d(np.array(c))
     # Said as it is said of ``x``: a missing flag used to be reported as
     # an invalid censoring value (#576).
@@ -1198,6 +1240,7 @@ def xcn_to_fs(
     # Validated because the conversion is silent otherwise: a count of
     # 1.7 would be truncated to one item, a length mismatch would surface
     # as an IndexError, and a two-column x would crash inside np.repeat.
+    refuse_boolean_censoring(c)
     x = np.atleast_1d(np.array(x))
     if x.ndim == 2 and x.shape[1] == 2:
         interval = x[:, 0] != x[:, 1]
@@ -1788,6 +1831,7 @@ def resolve_cr_censoring(
     to convert the data; passing ``c`` says which rows are censored and
     silences it.
     """
+    refuse_boolean_censoring(c)
     if isinstance(e, (list, tuple)):
         # One element per row, whatever it is: ``np.asarray`` would split a
         # tuple cause label (``("a", 1)``) into a column of its own.
