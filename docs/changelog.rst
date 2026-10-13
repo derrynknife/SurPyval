@@ -261,6 +261,17 @@ Unreleased
   to it. The default, ``False``, reports the baseline at ``Z = 0`` as
   before, and a model saved before has its baseline there.
 
+- Event histories as lifetime data (#926):
+  ``EventHistoryData.to_first_events()`` gives each item's time to its
+  first failure (observed, interval or left censored, or right censored
+  at the end of its observation where it has none) and
+  ``EventHistoryData.to_gaps()`` the times between its failures, each
+  repair taken as making it as good as new, with each item's last gap
+  right censored. Both are ``SurpyvalData`` built from item records, so
+  they keep each item's delayed entry, id (``(item, k)`` for a gap),
+  covariates and event types; ``Weibull.fit(data.to_gaps())`` fits them. A
+  lifetime fit given an ``EventHistoryData`` says to use them.
+
 **Changed**
 
 - A True/False ``c`` is refused (#920), by every fitter, ``fit_from_df``
@@ -273,6 +284,12 @@ Unreleased
   Integer and float flags are read as before.
 
 **Deprecated**
+
+- ``EventHistoryData.get_times_to_first_events()`` is
+  ``to_first_events()`` (#926), which returns what it should have: each
+  item's first failure with its delayed entry, id and covariates, one row
+  per item (the old method lost all three and grouped the items). The old
+  name gives the new result, with a ``DeprecationWarning``, until v0.26.
 
 - ``EventHistoryData.items`` (the item ids) is ``EventHistoryData.ids``,
   as on ``SurpyvalData``; "items" is kept for item records

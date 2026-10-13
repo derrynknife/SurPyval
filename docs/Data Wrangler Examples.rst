@@ -490,6 +490,18 @@ reads the times between failures, adding them up within each machine.
         mcf.mcf([1000, 2000, 2600]),
     )
 
+The same histories give lifetime data for the lifetime models:
+``to_first_events()`` is each machine's time to its first failure (right
+censored where it has none), and ``to_gaps()`` the times between its
+failures, each repair taken to make it as good as new, its last gap right
+censored at the end of its observation. Both keep each machine's delayed
+entry, covariates and ids (``("M1", 2)`` for M1's second gap):
+
+.. jupyter-execute::
+
+    print(data.to_first_events().x)
+    surv.Weibull.fit(data.to_gaps()).params
+
 When an item's history holds more than exact failures (failures found
 between inspections, a count of failures before the first look, what each
 failure was, a window it was watched in, covariates), describe each item

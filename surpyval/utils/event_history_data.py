@@ -59,15 +59,16 @@ class EventHistoryData(ReshapeMixin):
       i    x  c  n
       1  1.0  0  1
       1  2.0  0  1
-    >>> data.get_times_to_first_events()
-    SurpyvalData(
-        x=array([1.]),
-        c=array([0]),
-        n=array([2]),
-        t=array([[-inf,  inf]])
-    )
-    >>> data.get_interarrival_times()
-    array([1., 1., 3., 1., 1., 1., 1., 1.])
+
+    As lifetime data: the time to each item's first failure, and the
+    times between failures (each repair as good as new), the last gap of
+    each item right censored:
+
+    >>> data.to_first_events().x
+    array([1., 1.])
+    >>> gaps = data.to_gaps()
+    >>> gaps.x, gaps.c
+    (array([1., 1., 3., 1., 1., 1., 1., 1.]), array([0, 0, 1, 0, 0, 0, 0, 1]))
     """
 
     # Optional covariate matrix, attached by ``handle_xicn`` for regression.
@@ -572,20 +573,82 @@ class EventHistoryData(ReshapeMixin):
         mask = self.i == item
         return self.x[mask], self.c[mask], self.n[mask]
 
-    def get_times_to_first_events(self) -> "SurpyvalData":
-        """
-        Get the times to the first events for each item or subject. In the
-        estimation of recurrent or renewal events it can be helpful to know
-        the distribution of the times to the first event per item. This method
-        returns the times to the first events for each item. It is aligned with
-        the items attribute.
+    # Until v0.25 the times to the first events came back with neither
+    # the items' delayed entry, ids nor covariates (#926).
+    get_times_to_first_events = RenamedAttribute(
+        "to_first_events", removed_in=REMOVED_IN_NEXT
+    )
 
-        Returns
-        -------
-
-        SurpyvalData
-            A transformed dataset containing times to the first events.
+    def to_first_events(self) -> "SurpyvalData":
         """
+        Each item's time to its first failure, as lifetime data, one
+        :class:`~surpyval.utils.item_lifetime.ItemLifetime` per item: its
+        first failure (observed; between two inspections, interval
+        censored; before its first look, left censored), or right censored
+        at the end of its observation where it has none, with its delayed
+        entry (left truncation), id, covariates, time-varying covariates
+        and the first failure's event type. Fit it with any lifetime
+        model: ``Weibull.fit(data.to_first_events())``.
+
+        Examples
+        --------
+        >>> from surpyval import EventHistoryData, ItemHistory
+        >>> data = EventHistoryData.from_items([
+        ...     ItemHistory("A", [5, 9], right_censored=12, left_truncation=2),
+        ...     ItemHistory("B", [4], right_censored=10),
+        ...     ItemHistory("C", right_censored=8),
+        ... ])
+        >>> for item in data.to_first_events().to_items():
+        ...     print(item)
+        ItemLifetime('A', observed=5.0, left_truncation=2.0)
+        ItemLifetime('B', observed=4.0)
+        ItemLifetime('C', right_censored=8.0)
+        """
+        return SurpyvalData.from_items(
+            [_first_event(history) for history in self.to_items()]
+        )
+
+    def to_gaps(self) -> "SurpyvalData":
+        """
+        The times between each item's failures, as lifetime data, each
+        repair taken to make the item as good as new (a renewal process):
+        one :class:`~surpyval.utils.item_lifetime.ItemLifetime` per gap,
+        with id ``(item, k)`` for the item's ``k``-th gap, its covariates
+        and the event type of the failure that ended it. The first gap runs
+        from new to the first failure, left truncated at the item's entry
+        where observation began late (taking it to have had no failure
+        before then); each item's last gap, from its last failure to the
+        end of its observation, is right censored. Fit it with any lifetime
+        model: ``Weibull.fit(data.to_gaps())``.
+
+        It needs each failure's age, so failures counted between
+        inspections or before a first look are refused (their gaps are not
+        known; :meth:`to_first_events` takes them), as are time-varying
+        covariates, which follow an item's age rather than the time since
+        its last repair, and two failures at one age.
+
+        Examples
+        --------
+        >>> from surpyval import EventHistoryData, ItemHistory
+        >>> data = EventHistoryData.from_items([
+        ...     ItemHistory("A", [5, 9], right_censored=12),
+        ...     ItemHistory("B", [4], right_censored=10),
+        ... ])
+        >>> for gap in data.to_gaps().to_items():
+        ...     print(gap)
+        ItemLifetime(('A', 1), observed=5.0)
+        ItemLifetime(('A', 2), observed=4.0)
+        ItemLifetime(('A', 3), right_censored=3.0)
+        ItemLifetime(('B', 1), observed=4.0)
+        ItemLifetime(('B', 2), right_censored=6.0)
+        """
+        gaps: list = []
+        for history in self.to_items():
+            gaps += _gaps(history)
+        return SurpyvalData.from_items(gaps)
+
+    def _first_event_times(self) -> "SurpyvalData":
+        """Each item's first row, grouped (the renewal fits' start)."""
         x_ttff = np.array([self.x[self.i == item][0] for item in self.ids])
         c_ttff = np.array([self.c[self.i == item][0] for item in self.ids])
         n_ttff = np.array([self.n[self.i == item][0] for item in self.ids])
@@ -1167,6 +1230,137 @@ def _time_text(value: Any) -> str:
     if isinstance(value, float) and value.is_integer():
         return f"{value:.1f}"
     return str(value)
+
+
+def _history_end(history: Any) -> "float | None":
+    """Where ``history``'s observation ends: its ``right_censored``, else
+    its ``right_truncation``, else its last failure."""
+    for end in (history.right_censored, history.right_truncation):
+        if end is not None:
+            return float(end)
+    ages = [*history.observed, *history.interval_censored[:, 1]]
+    if history.left_censored is not None:
+        ages.append(history.left_censored)
+    return float(max(ages)) if ages else None
+
+
+def _lifetime_parts(history: Any) -> dict:
+    """What a lifetime made from ``history`` keeps of it: its covariates
+    (named, where they are)."""
+    covariates = history._fields().get("covariates")
+    return {} if covariates is None else {"covariates": covariates}
+
+
+def _first_event(history: Any) -> Any:
+    """``history``'s time to its first failure, as an ItemLifetime."""
+    from surpyval.utils.item_lifetime import ItemLifetime
+
+    parts = _lifetime_parts(history)
+    parts["left_truncation"] = history.left_truncation
+    parts["time_varying_covariates"] = history.time_varying_covariates
+    if history.left_censored is not None:
+        return ItemLifetime(
+            history.id,
+            left_censored=history.left_censored,
+            event_type=history.left_censored_event_types,
+            **parts,
+        )
+    first_observed = (
+        int(np.argmin(history.observed)) if len(history.observed) else None
+    )
+    first_interval = (
+        int(np.argmin(history.interval_censored[:, 0]))
+        if len(history.interval_censored)
+        else None
+    )
+    if first_interval is not None and (
+        first_observed is None
+        or history.interval_censored[first_interval, 0]
+        < history.observed[first_observed]
+    ):
+        types = history.interval_censored_event_types
+        return ItemLifetime(
+            history.id,
+            interval_censored=history.interval_censored[first_interval],
+            event_type=None if types is None else types[first_interval],
+            **parts,
+        )
+    if first_observed is not None:
+        types = history.observed_event_types
+        return ItemLifetime(
+            history.id,
+            observed=history.observed[first_observed],
+            event_type=None if types is None else types[first_observed],
+            **parts,
+        )
+    return ItemLifetime(
+        history.id, right_censored=_history_end(history), **parts
+    )
+
+
+def _gaps(history: Any) -> list:
+    """``history``'s times between failures, as ItemLifetimes."""
+    from surpyval.utils.item_lifetime import ItemLifetime
+
+    if len(history.interval_censored) or history.left_censored is not None:
+        raise ValueError(
+            f"Item {history.id!r} has failures counted between inspections "
+            "(or before its first look), so the times between its failures "
+            "are not known: to_gaps needs each failure's age. "
+            "to_first_events() takes such items."
+        )
+    if history.time_varying_covariates is not None:
+        raise ValueError(
+            f"Item {history.id!r} has time-varying covariates, which follow "
+            "its age, not the time since its last repair: to_gaps has no "
+            "place for them; use without('time_varying_covariates') first."
+        )
+    order = np.argsort(history.observed, kind="stable")
+    ages = [float(history.observed[k]) for k in order]
+    types = history.observed_event_types
+    types = [None] * len(ages) if types is None else [types[k] for k in order]
+    twice = sorted({a for a, b in zip(ages, ages[1:]) if a == b})
+    if twice:
+        raise ValueError(
+            f"Item {history.id!r} has more than one failure at age "
+            f"{twice[0]:g}: the time between them is 0, which a lifetime "
+            "cannot be."
+        )
+    parts = _lifetime_parts(history)
+    gaps = []
+    previous = 0.0
+    for k, (age, event_type) in enumerate(zip(ages, types)):
+        entry = (
+            {"left_truncation": history.left_truncation}
+            if k == 0 and history.left_truncation is not None
+            else {}
+        )
+        gaps.append(
+            ItemLifetime(
+                (history.id, k + 1),
+                observed=age - previous,
+                event_type=event_type,
+                **entry,
+                **parts,
+            )
+        )
+        previous = age
+    end = _history_end(history)
+    if end is not None and (not ages or end > previous):
+        entry = (
+            {"left_truncation": history.left_truncation}
+            if not ages and history.left_truncation is not None
+            else {}
+        )
+        gaps.append(
+            ItemLifetime(
+                (history.id, len(ages) + 1),
+                right_censored=end - previous,
+                **entry,
+                **parts,
+            )
+        )
+    return gaps
 
 
 def _history_dict(name: str, value: Any) -> dict:

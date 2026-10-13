@@ -550,8 +550,18 @@ def coerce_xcnt_x(x: npt.ArrayLike) -> npt.NDArray:
         try:
             x = np.atleast_1d(np.array(x, dtype=float))
         except (ValueError, TypeError):
+            from surpyval.utils.event_history_data import EventHistoryData
             from surpyval.utils.surpyval_data import SurpyvalData
 
+            if isinstance(x, EventHistoryData):
+                raise TypeError(
+                    "x is an EventHistoryData (items' histories of repeated "
+                    "events), which a lifetime fit does not take: fit "
+                    "x.to_first_events() for the time to each item's first "
+                    "failure, or x.to_gaps() for the times between failures "
+                    "(each repair as good as new); a recurrent model (such "
+                    "as surpyval.recurrent.CrowAMSAA) fits it as it is."
+                )
             if isinstance(x, SurpyvalData):
                 raise TypeError(
                     "x is a SurpyvalData, which this function does not "
