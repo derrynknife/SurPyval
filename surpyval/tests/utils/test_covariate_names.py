@@ -150,21 +150,13 @@ def test_bad_covariate_names_are_refused(names, Z, match):
         SurpyvalData([1], Z=Z, covariate_names=names)
 
 
-def test_names_survive_slicing_json_combining_and_summary():
+def test_names_survive_slicing_json_and_summary():
     assert DATA[:3].covariate_names == ["arm", "age"]
     back = SurpyvalData.from_json(DATA.to_json())
     assert back.covariate_names == ["arm", "age"] and back.item(
         0
     ) == DATA.item(0)
-    assert SurpyvalData.combine(DATA[:3], DATA[3:6]).covariate_names == [
-        "arm",
-        "age",
-    ]
     assert "covariates: 2 columns (arm, age)" in DATA.summary()
-    other = SurpyvalData([1.0], Z=[[1.0, 2.0]], covariate_names=["x", "y"])
-    plain = SurpyvalData([2.0], Z=[[1.0, 2.0]])
-    with pytest.raises(ValueError, match="different names"):
-        SurpyvalData.combine(other, plain)
 
 
 def test_with_covariates_by_name():

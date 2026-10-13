@@ -169,8 +169,9 @@ fitted yet (#908).
 The fitted model predicts for an item from its own covariates,
 ``model.sf_tvc(times, item)``, with no schedule to build by hand: the
 item's fixed covariates and its time-varying ones are lined up as the fit
-took them. Datasets from several sources join with
-``SurpyvalData.combine(site_a, site_b)``.
+took them. Datasets from several sources join through their records,
+``SurpyvalData.from_items(site_a.to_items() + site_b.to_items(),
+counts=[*site_a.n, *site_b.n])``, which refuses an item id found in both.
 
 .. jupyter-execute::
 
