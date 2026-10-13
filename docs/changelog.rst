@@ -31,7 +31,13 @@ Unreleased
   and a pandas list and its per-item values with different indexes, since
   they are matched by position.
 - Updating an ``ItemLifetime`` or ``ItemHistory``: each method returns a
-  new, checked record and leaves the old one as it was. Both have
+  new, checked record and leaves the old one as it was. Records are fixed
+  once made (their arrays are read-only and their attributes cannot be
+  set), so a record is always one that passed its checks, and they are
+  hashable by value. Item ids from numpy (``np.int64``, ``np.str_``) are
+  kept as the plain Python value. ``ItemLifetime`` reads its outcome by
+  name, as ``ItemHistory`` does: ``.observed``, ``.right_censored``,
+  ``.left_censored`` and ``.interval_censored`` are its value or None. Both have
   ``clone(new_id, **changes)``, ``extend(age)`` (seen working to a later
   age) and ``update_covariates(age, values)`` (a step added to the
   time-varying covariates). A running ``ItemLifetime`` can ``fail(age,
@@ -48,7 +54,13 @@ Unreleased
   ``ParametricCompetingRisks``, ``CompetingRisksProportionalHazards``,
   ``FineGray``) take ``fit(data)``, the event types coming from the data;
   given data without them, they say so. Rows with event types are not
-  grouped, so each keeps its type, and a subset keeps them too.
+  grouped, so each keeps its type. A subset (``data[...]``) keeps the
+  event types, item ids and time-varying covariates, and ``to_json`` /
+  ``from_json`` the event types and ids (data with time-varying
+  covariates has no JSON form, and says so; pickle keeps it). A subset of
+  ``EventHistoryData`` keeps its covariates, time-varying covariates and
+  states. ``from_items`` checks ids in linear time (it took a minute for
+  100,000 items).
 - ``fit(data)`` of a regression model fits the step time-varying
   covariates of ``SurpyvalData.from_items`` data with the model's
   ``fit_tvc``: each item's life, from the start of its observation to its

@@ -45,7 +45,7 @@ def test_a_running_lifetime_extends_fails_or_is_found_failed():
     [
         (lambda b: b.extend(50), "before it was last seen working"),
         (lambda b: b.fail(50), "cannot have failed at 50"),
-        (lambda b: b.found_failed(50), "lower < upper"),
+        (lambda b: b.found_failed(50), "last seen working at 100"),
         (lambda b: b.fail(150).extend(200), "not still running"),
     ],
 )

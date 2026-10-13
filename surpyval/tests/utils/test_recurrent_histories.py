@@ -97,7 +97,7 @@ def test_covariates_are_one_row_per_item_on_every_row():
     [
         ({}, ValueError, "Give each item"),
         ({"observed": [1, 2]}, TypeError, "dict keyed"),
-        ({"observed": {"A": [1], 2: [3]}}, ValueError, "one type"),
+        ({"observed": {"A": [1], 2: [3]}}, ValueError, "one kind"),
         ({"observed": {"A": []}}, ValueError, "no failures and no end"),
         ({"observed": {"A": [1, np.inf]}}, ValueError, "finite"),
         (

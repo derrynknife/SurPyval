@@ -14,6 +14,10 @@ from surpyval.utils.item_history import (
     _schedule_field,
     _time_varying,
     _with_step,
+    freeze,
+    frozen_setattr,
+    hashable,
+    item_id,
 )
 
 __all__ = ["ItemLifetime"]
@@ -98,7 +102,7 @@ class ItemLifetime:
         covariates: Any = None,
         time_varying_covariates: Any = None,
     ) -> None:
-        self.item = item
+        self.item = item_id(item)
         given = {
             name: value
             for name, value in zip(
@@ -135,6 +139,31 @@ class ItemLifetime:
             item, time_varying_covariates
         )
         self._check(first)
+        freeze(self)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        frozen_setattr(self, name, value)
+
+    # The outcome by name, as ItemHistory reads: its value, or None.
+    @property
+    def observed(self) -> "float | None":
+        """The age at failure, if it failed at a known age."""
+        return self.value if self.outcome == "observed" else None
+
+    @property
+    def right_censored(self) -> "float | None":
+        """The age it was last seen working, if still running."""
+        return self.value if self.outcome == "right_censored" else None
+
+    @property
+    def left_censored(self) -> "float | None":
+        """The age by which it had failed, if that is all that is known."""
+        return self.value if self.outcome == "left_censored" else None
+
+    @property
+    def interval_censored(self) -> "np.ndarray | None":
+        """``[lower, upper]``, if it failed between two ages."""
+        return self.value if self.outcome == "interval_censored" else None
 
     def _check(self, first_change: "float | None") -> None:
         item, tl, tr = self.item, self.left_truncation, self.right_truncation
@@ -253,6 +282,18 @@ class ItemLifetime:
         ItemLifetime('B8', interval_censored=[2400.0, 2800.0])
         """
         last = self._still_running("be found failed")
+        age = _age(self.item, "age", age)
+        if age <= last:
+            hint = (
+                f"; if it failed at {last:g}, use fail({last:g})"
+                if age == last
+                else ""
+            )
+            raise ValueError(
+                f"Item {self.item!r} was last seen working at {last:g}, so "
+                f"it cannot be found failed at {age:g}: an inspection that "
+                f"finds it failed is after that{hint}."
+            )
         return self.clone(interval_censored=[last, age], event_type=event_type)
 
     def update_covariates(self, age: Any, values: Any) -> "ItemLifetime":
@@ -286,7 +327,8 @@ class ItemLifetime:
             return NotImplemented
         return self.item == other.item and self._fields() == other._fields()
 
-    __hash__ = None  # type: ignore[assignment]
+    def __hash__(self) -> int:
+        return hash((self.item, hashable(self._fields())))
 
     def __repr__(self) -> str:
         fields = "".join(

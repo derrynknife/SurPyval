@@ -658,23 +658,15 @@ class SurpyvalData:
                     "from_items takes ItemLifetime objects; got "
                     f"{type(item).__name__}."
                 )
+        from surpyval.utils.item_history import check_item_ids
+
         n = _item_counts("counts", counts, len(items))
         items = [item for item, k in zip(items, n) if k > 0]
         n = n[n > 0]
         if not items:
             raise ValueError("Every count is 0: there is no data.")
         ids = [item.item for item in items]
-        if len({type(i) for i in ids}) > 1:
-            raise ValueError(
-                "The item ids must all be of one type (all text or all "
-                "numbers): mixed, '1' and 1 could not be told apart."
-            )
-        repeated = sorted({repr(i) for i in ids if ids.count(i) > 1})
-        if repeated:
-            raise ValueError(
-                "Each item needs one ItemLifetime (identical items are its "
-                "counts); given twice: " + ", ".join(repeated) + "."
-            )
+        check_item_ids(ids, "ItemLifetime (identical items are its counts)")
         static = _every_or_none(items, "covariates", lambda i: i.covariates)
         varying = _every_or_none(
             items,
@@ -933,6 +925,15 @@ class SurpyvalData:
             out.add_covariates(Z_idx)
         if self.e is not None:
             out.e = np.atleast_1d(self.e[index])
+        if self.ids is not None:
+            ids = np.empty(len(self.ids), dtype=object)
+            ids[:] = self.ids
+            out.ids = list(np.atleast_1d(ids[index]))
+        if self.time_varying_covariates is not None:
+            kept = out.ids if out.ids is not None else []
+            out.time_varying_covariates = {
+                i: self.time_varying_covariates[i] for i in kept
+            }
         return out
 
     def __len__(self) -> int:
@@ -970,7 +971,13 @@ class SurpyvalData:
         str | None
             JSON string if no filepath provided, None if saved to file
         """
-        data = {
+        if self.time_varying_covariates is not None:
+            raise ValueError(
+                "Data with time-varying covariates has no JSON form (a "
+                "CovariatePath is a function): keep it with pickle, or keep "
+                "its items."
+            )
+        data: dict[str, Any] = {
             "x": self.x.tolist(),
             "c": self.c.tolist(),
             "n": self.n.tolist(),
@@ -979,6 +986,10 @@ class SurpyvalData:
 
         if self.Z is not None:
             data["Z"] = self.Z.tolist()
+        if self.e is not None:
+            data["e"] = [_plain(v) for v in self.e]
+        if self.ids is not None:
+            data["ids"] = [_plain(v) for v in self.ids]
 
         # Strict JSON, as for the models: the -inf/inf truncation bounds
         # (and any other non-finite value) are written as null with a
@@ -1035,7 +1046,12 @@ class SurpyvalData:
         t = np.array(data["t"])
         Z = np.array(data["Z"]) if "Z" in data else None
 
-        return cls(x, c, n, t, Z=Z, handle=False)
+        out = cls(x, c, n, t, Z=Z, handle=False)
+        if "e" in data:
+            out.e = _event_type_array(data["e"], out.c)
+        if "ids" in data:
+            out.ids = list(data["ids"])
+        return out
 
 
 # The kinds of observation from_observations reads, with their flags.
@@ -1271,6 +1287,11 @@ def accepts_surpyval_data(method: F) -> F:
                 + " (or pass arrays rather than a SurpyvalData)."
             )
         if data.time_varying_covariates is not None:
+            if data.e is not None and "e" not in names:
+                raise ValueError(
+                    "This fit takes no event types, which the SurpyvalData "
+                    "holds."
+                )
             owner = bound.arguments.get(params[0]) if params else None
             fit_tvc = getattr(owner, "fit_tvc", None)
             if params[0] in ("self", "cls") and callable(fit_tvc):
@@ -1506,6 +1527,25 @@ def _fit_tvc_from_data(
             rows["c"].append(int(data.c[k]) if j == last else 1)
             rows["Z"].append(z if static is None else np.r_[static[k], z])
             rows["n"].append(data.n[k])
+    accepted = inspect.signature(fit_tvc).parameters
+    if not any(
+        p.kind is inspect.Parameter.VAR_KEYWORD for p in accepted.values()
+    ):
+        unknown = sorted(set(options) - set(accepted))
+        if unknown:
+            takes = [
+                name
+                for name in accepted
+                if name not in ("i", "xl", "xr", "c", "Z", "n")
+            ]
+            raise TypeError(
+                "Data with time-varying covariates is fitted by the model's "
+                "fit_tvc, which takes no "
+                + ", ".join(repr(u) for u in unknown)
+                + "; it takes "
+                + (", ".join(repr(t) for t in takes) or "no options")
+                + "."
+            )
     return fit_tvc(
         np.array(rows["i"]),
         np.array(rows["xl"], dtype=float),
@@ -1515,3 +1555,8 @@ def _fit_tvc_from_data(
         np.array(rows["n"]),
         **options,
     )
+
+
+def _plain(value: Any) -> Any:
+    """A numpy scalar as the plain Python value JSON stores."""
+    return value.item() if isinstance(value, np.generic) else value

@@ -92,7 +92,7 @@ def test_event_types_and_time_varying_covariates_are_kept_but_not_fitted_yet():
     assert list(data.e) == ["spall", None]
     assert data.time_varying_covariates["A"] is schedule
     assert data.to_items() == items
-    with pytest.raises(ValueError, match="event types or time-varying"):
+    with pytest.raises(ValueError, match="no event types"):
         sp.Weibull.fit(data)
     with pytest.raises(ValueError, match="event types"):
         sp.Weibull.fit_from_surpyval_data(data)
@@ -131,7 +131,7 @@ def test_an_item_refuses(kwargs, match):
 
 def test_the_dataset_needs_consistent_items():
     a = ItemLifetime("A", observed=5, covariates=1)
-    with pytest.raises(ValueError, match="given twice"):
+    with pytest.raises(ValueError, match="more than once"):
         SurpyvalData.from_items(
             [a, ItemLifetime("A", observed=6, covariates=1)]
         )
