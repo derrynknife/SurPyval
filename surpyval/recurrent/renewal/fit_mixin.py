@@ -200,7 +200,7 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
         are held back: the renewal fit says what its own search reached
         (#777).
         """
-        first_events = data.get_times_to_first_events()
+        first_events = data._first_event_times()
         dist_params = None
         if len(first_events.x) >= 2:
             try:
@@ -660,7 +660,7 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
             # this one, fitted to the gaps: not fitted again.)
             if (
                 renewal_restoration is not None
-                and len(data.get_times_to_first_events().x) >= 2
+                and len(data._first_event_times().x) >= 2
             ):
                 renewal = self._renewal_dist_params(data, dist)
                 if renewal is not None and not np.allclose(
