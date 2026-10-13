@@ -172,3 +172,49 @@ def test_history_select_and_relabel():
     merged = EHD.relabel_event_types({"bearing": "seal"})
     assert {v for v in merged.e if v is not None} == {"seal"}
     assert EHD.without("states").for_event_type("seal").states is None
+
+
+# #923: one mode of right-truncated lifetimes
+
+
+def _truncated_modes():
+    items = [
+        ItemLifetime(k, observed=k, event_type="B", right_truncation=25)
+        for k in range(1, 21)
+    ]
+    items += [
+        ItemLifetime(
+            100,
+            observed=5,
+            event_type="A",
+            left_truncation=1,
+            right_truncation=25,
+        ),
+        ItemLifetime(101, observed=7, event_type="A", right_truncation=25),
+    ]
+    return SurpyvalData.from_items(items)
+
+
+def test_for_event_type_drops_right_truncation_with_a_warning():
+    with pytest.warns(UserWarning, match="drops the data's right truncation"):
+        only_a = _truncated_modes().for_event_type("A")
+    # Another mode's failure is a suspension, not an A failure before 25
+    assert only_a.item(3) == ItemLifetime(3, right_censored=3)
+    assert only_a.item(100) == ItemLifetime(100, observed=5, left_truncation=1)
+    assert not np.isfinite(only_a.tr).any()
+    assert (only_a.c == 0).sum() == 2
+
+
+def test_for_event_type_without_right_truncation_does_not_warn():
+    import warnings
+
+    data = SurpyvalData.from_items(
+        [
+            ItemLifetime(1, observed=2, event_type="A", left_truncation=1),
+            ItemLifetime(2, observed=3, event_type="B"),
+        ]
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        only_a = data.for_event_type("A")
+    assert only_a.item(1).left_truncation == 1

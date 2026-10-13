@@ -56,7 +56,8 @@ Unreleased
   covariates; ``for_event_type(t)`` gives the data of one failure mode
   (another mode's failure becomes right censored at its age, or at the
   last good inspection; for a history, it is removed and observation runs
-  on to it); ``relabel_event_types({old: new})`` renames or merges modes;
+  on to it; lifetimes lose their right truncation, with a warning, since
+  it selects on the first failure of any mode); ``relabel_event_types({old: new})`` renames or merges modes;
   ``select(ids=..., where=...)`` keeps some items (``where`` is given each
   item's record); ``censor_at(age)`` stops observation at an age; and
   ``enter_at(age)`` starts it at one, keeping the items known to have
