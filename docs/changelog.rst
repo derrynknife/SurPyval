@@ -30,6 +30,22 @@ Unreleased
   interval open at one end is ``[lower, inf]`` in ``interval_censored``),
   and a pandas list and its per-item values with different indexes, since
   they are matched by position.
+- Reshaping a dataset for another analysis, on ``SurpyvalData`` and
+  ``EventHistoryData`` alike (each returns a new dataset, built again from
+  its item records, so it passes the same checks):
+  ``without("covariates", "event_types", "time_varying_covariates",
+  "truncation", "states")`` leaves parts out, so one dataset serves a plain
+  fit as well as a regression; ``with_covariates(columns)`` keeps some
+  covariates; ``for_event_type(t)`` gives the data of one failure mode
+  (another mode's failure becomes right censored at its age, or at the
+  last good inspection; for a history, it is removed and observation runs
+  on to it); ``relabel_event_types({old: new})`` renames or merges modes;
+  ``select(ids=..., where=...)`` keeps some items (``where`` is given each
+  item's record); ``censor_at(age)`` stops observation at an age; and
+  ``enter_at(age)`` starts it at one, keeping the items known to have
+  reached it. A history whose failures are counted, or whose state
+  changed, between two inspections either side of the age is cut at the
+  earlier inspection, or entered at the later one. Counts carry through.
 - The data classes, from using them: ``data.item(id)`` gives one item's
   record (``SurpyvalData`` and ``EventHistoryData``); ids have one name,
   ``.id`` on a record and ``.ids`` on a dataset (a record's ``.item`` was

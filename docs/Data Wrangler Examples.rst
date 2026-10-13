@@ -179,6 +179,33 @@ fitted yet (#908).
     ]
     surv.WeibullPH.fit(SurpyvalData.from_items(items)).params
 
+One dataset, several analyses
+-----------------------------
+
+A dataset built with covariates and failure modes is refused by a fit that
+takes neither, rather than fitted as if they were not there. Reshape it for
+the analysis instead; each operation returns a new dataset:
+
+.. jupyter-execute::
+
+    fleet = SurpyvalData.from_items(
+        [
+            ItemLifetime("P1", observed=820, event_type="seal", covariates=[1]),
+            ItemLifetime("P2", observed=1450, event_type="bearing", covariates=[0]),
+            ItemLifetime("P3", right_censored=2000, covariates=[1]),
+            ItemLifetime("P4", observed=1100, event_type="seal", covariates=[0]),
+            ItemLifetime("P5", right_censored=1700, covariates=[0]),
+        ]
+    )
+    print(fleet.summary())
+
+    everything = fleet.without("covariates", "event_types")   # a plain fit
+    seals = fleet.for_event_type("seal").without("covariates")  # one mode
+    site1 = fleet.select(where=lambda item: item.covariates[0] == 1)
+    first_1500 = fleet.censor_at(1500)   # as seen at the end of a study
+    print(surv.Weibull.fit(everything).params)
+    print(seals.summary())
+
 Combining every input type in one fit
 -------------------------------------
 
