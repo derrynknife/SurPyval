@@ -9,9 +9,12 @@ these."""
 
 from __future__ import annotations
 
+import warnings
 from typing import Any, Callable
 
 import numpy as np
+
+from surpyval.utils.warnings import caller_stacklevel
 
 LIFETIME_PARTS = {
     "covariates": ("covariates",),
@@ -135,12 +138,15 @@ def relabel(record: Any, mapping: dict) -> Any:
 
 def for_event_type(record: Any, event_type: Any) -> Any:
     """``record`` as data of one failure mode, ``event_type``: the other
-    modes' failures stop being failures."""
+    modes' failures stop being failures. A lifetime loses its right
+    truncation (#923): it says the item's first failure, of any mode, came
+    by that age, which says nothing of when this mode's would have come."""
     if _is_history(record):
         return _history_for_event_type(record, event_type)
     fields = record._fields()
+    fields.pop("right_truncation", None)
     if record.outcome == "right_censored":
-        return record
+        return _rebuild(record, fields)
     if record.event_type == event_type:
         fields.pop("event_type")
         return _rebuild(record, fields)
@@ -514,6 +520,14 @@ class ReshapeMixin:
         before an age is left out); for a history, the other modes'
         failures are removed and its observation runs at least to the last
         of them. The result has no event types.
+
+        Lifetimes lose their right truncation, with a warning: an item is
+        in right-truncated data because its first failure, of any mode,
+        came by the truncation age, and a fit of one mode cannot account
+        for a selection that depends on every mode, so the result is
+        treated as not right truncated (an approximation). Kept, the
+        truncation would turn each other mode's failure into a failure of
+        this one before the truncation age. Left truncation is kept.
         """
         types = self._event_types()
         if event_type not in types:
@@ -521,6 +535,20 @@ class ReshapeMixin:
                 f"No failures of type {event_type!r}; the data's types are "
                 + ", ".join(repr(t) for t in sorted(types, key=str))
                 + "."
+            )
+        if (
+            self._PARTS is LIFETIME_PARTS
+            and np.isfinite(getattr(self, "tr")).any()
+        ):
+            warnings.warn(
+                "for_event_type drops the data's right truncation: an item "
+                "is in right-truncated data because its first failure, of "
+                "any mode, came by the truncation age, which a fit of one "
+                "mode cannot account for, so the result is treated as not "
+                "right truncated (an approximation). Left truncation is "
+                "kept.",
+                UserWarning,
+                stacklevel=caller_stacklevel(),
             )
         return self._map(lambda r: for_event_type(r, event_type))
 
