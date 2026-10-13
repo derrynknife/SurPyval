@@ -168,10 +168,14 @@ class ItemHistory:
         )
         order = np.lexsort((intervals[:, 1], intervals[:, 0]))
         keep = counts[order] > 0
-        self.interval_censored = intervals[order][keep]
-        self.interval_censored_counts = counts[order][keep]
-        self.interval_censored_event_types = (
-            None if types is None else types[order][keep]
+        (
+            self.interval_censored,
+            self.interval_censored_counts,
+            self.interval_censored_event_types,
+        ) = _merged_inspections(
+            intervals[order][keep],
+            counts[order][keep],
+            None if types is None else types[order][keep],
         )
         self.left_censored = _age(item, "left_censored", left_censored)
         if left_censored_counts is not None and left_censored is None:
@@ -214,6 +218,17 @@ class ItemHistory:
         self.time_varying_covariates, self._first_change = _time_varying(
             item, time_varying_covariates
         )
+        if self.has_event_types:
+            # A kind of failure given without types is of types not
+            # recorded: masked causes.
+            if self.observed_event_types is None:
+                self.observed_event_types = np.full(
+                    len(self.observed), None, dtype=object
+                )
+            if self.interval_censored_event_types is None:
+                self.interval_censored_event_types = np.full(
+                    len(self.interval_censored), None, dtype=object
+                )
         self.initial_state = initial_state
         self.state_changes = _state_changes(
             item,
@@ -233,6 +248,71 @@ class ItemHistory:
 
     # -- checks -------------------------------------------------------------
 
+    def _check_inspections(self) -> None:
+        """Each event type's failures are consistent: its inspections'
+        windows do not overlap, no failure of it is seen at an age inside
+        one, and its count before a first look comes before its other
+        failures. Different types may overlap: they can be found by
+        different inspections (a monthly look for leaks, a yearly teardown
+        for wear). A history without types is one type."""
+        item = self.id
+        groups: dict = {}
+
+        def key(kind: Any) -> Any:
+            return ("type", kind) if self.has_event_types else ("all",)
+
+        observed_types = self.observed_event_types
+        for k, age in enumerate(self.observed):
+            kind = None if observed_types is None else observed_types[k]
+            groups.setdefault(key(kind), {"points": [], "windows": []})[
+                "points"
+            ].append(float(age))
+        interval_types = self.interval_censored_event_types
+        for k, (lower, upper) in enumerate(self.interval_censored):
+            kind = None if interval_types is None else interval_types[k]
+            groups.setdefault(key(kind), {"points": [], "windows": []})[
+                "windows"
+            ].append((float(lower), float(upper)))
+        left_key = key(self.left_censored_event_types)
+        for group_key, group in groups.items():
+            of = (
+                f" of type {group_key[1]!r}"
+                if self.has_event_types and group_key[1] is not None
+                else (" of unrecorded type" if self.has_event_types else "")
+            )
+            windows = sorted(group["windows"])
+            for (lo_a, hi_a), (lo_b, hi_b) in zip(windows, windows[1:]):
+                if lo_b < hi_a:
+                    raise ValueError(
+                        f"Item {item!r}: its failures{of} counted between "
+                        f"inspections overlap, [{lo_a:g}, {hi_a:g}] and "
+                        f"[{lo_b:g}, {hi_b:g}]: a type's counts are of its "
+                        "own inspections, which follow one another. (Windows "
+                        "of different types may overlap; with the types "
+                        "removed they would count the same time twice: fit "
+                        "each type with for_event_type, or a cause-specific "
+                        "model.)"
+                    )
+            for age in group["points"]:
+                inside = [(lo, hi) for lo, hi in windows if lo < age <= hi]
+                if inside:
+                    lo, hi = inside[0]
+                    raise ValueError(
+                        f"Item {item!r}: a failure{of} at {age:g} is inside "
+                        f"the inspection window [{lo:g}, {hi:g}] that counts "
+                        "the failures of its type, so it would be counted "
+                        "twice."
+                    )
+            if self.left_censored is not None and group_key == left_key:
+                later = [*group["points"], *(lo for lo, _ in windows)]
+                if later and self.left_censored > min(later):
+                    raise ValueError(
+                        f"Item {item!r}: left_censored "
+                        f"({self.left_censored:g}) counts the failures{of} "
+                        "before an age, so it must be at or before its "
+                        f"other failures{of} (the first at {min(later):g})."
+                    )
+
     @property
     def has_event_types(self) -> bool:
         """Whether this item's failures carry event types."""
@@ -244,37 +324,7 @@ class ItemHistory:
 
     def _check(self) -> None:
         item = self.id
-        if self.has_event_types:
-            untyped = [
-                name
-                for name, entries, types in (
-                    (
-                        "observed",
-                        len(self.observed),
-                        self.observed_event_types,
-                    ),
-                    (
-                        "interval_censored",
-                        len(self.interval_censored),
-                        self.interval_censored_event_types,
-                    ),
-                    (
-                        "left_censored",
-                        int(self.left_censored is not None),
-                        self.left_censored_event_types,
-                    ),
-                )
-                if entries and types is None
-            ]
-            if untyped:
-                raise ValueError(
-                    f"Item {item!r}: event types were given for some failures "
-                    "but not for "
-                    + ", ".join(untyped)
-                    + ": every failure needs its type ("
-                    + ", ".join(f"'{name}_event_types'" for name in untyped)
-                    + ")."
-                )
+        self._check_inspections()
         events = [*self.observed, *self.interval_censored.ravel()]
         if self.left_censored is not None:
             events.append(self.left_censored)
@@ -310,14 +360,6 @@ class ItemHistory:
                 f"right_truncation ({tr:g}) both end its observation, so "
                 "they must be the same age; give one."
             )
-        if self.left_censored is not None:
-            later = [*self.observed, *self.interval_censored[:, 0]]
-            if later and self.left_censored > min(later):
-                raise ValueError(
-                    f"Item {item!r}: left_censored ({self.left_censored:g}) "
-                    "counts the failures before an age, so it must be at or "
-                    f"before its other failures (the first at {min(later):g})."
-                )
         if tl is not None:
             early = [
                 *self.observed[self.observed <= tl],
@@ -571,8 +613,9 @@ class ItemHistory:
         return fields
 
     def add_failure(self, age: Any, event_type: Any = None) -> "ItemHistory":
-        """This history with another failure at ``age`` (of
-        ``event_type``, needed where its failures have types).
+        """This history with another failure at ``age``, of ``event_type``
+        (where its failures have types; left out, its type was not recorded:
+        a masked cause).
 
         >>> from surpyval import ItemHistory
         >>> pump = ItemHistory("P1", observed=[420], right_censored=600)
@@ -580,7 +623,6 @@ class ItemHistory:
         700.0
         """
         age = _age(self.id, "age", age)
-        _needs_type(self, "add_failure(age, event_type=...)", event_type)
         fields = self._fields()
         fields["observed"] = [*fields.get("observed", []), age]
         if self.has_event_types or event_type is not None:
@@ -596,64 +638,6 @@ class ItemHistory:
                 event_type,
             ]
         return ItemHistory(self.id, **self._after_event(fields, age))
-
-    def add_failures_between(
-        self,
-        lower: Any,
-        upper: Any,
-        failures: Any = 1,
-        event_type: Any = None,
-    ) -> "ItemHistory":
-        """This history with ``failures`` failures found between two
-        inspections, ``lower`` and ``upper``."""
-        _needs_type(
-            self,
-            "add_failures_between(lower, upper, failures, event_type=...)",
-            event_type,
-        )
-        fields = self._fields()
-        fields["interval_censored"] = [
-            *fields.get("interval_censored", []),
-            [lower, upper],
-        ]
-        counts = (
-            list(self.interval_censored_counts)
-            if len(self.interval_censored)
-            else []
-        )
-        fields["interval_censored_counts"] = [*counts, failures]
-        if self.has_event_types or event_type is not None:
-            types = (
-                [None] * len(self.interval_censored)
-                if self.interval_censored_event_types is None
-                else list(self.interval_censored_event_types)
-            )
-            fields["interval_censored_event_types"] = [*types, event_type]
-        upper = _age(self.id, "upper", upper)
-        return ItemHistory(self.id, **self._after_event(fields, upper))
-
-    def change_state(self, age: Any, state: Any) -> "ItemHistory":
-        """This history with a change into ``state`` seen at ``age``."""
-        age = _age(self.id, "age", age)
-        fields = self._fields()
-        fields["observed_states"] = {
-            **fields.get("observed_states", {}),
-            age: state,
-        }
-        return ItemHistory(self.id, **self._after_event(fields, age))
-
-    def change_state_between(
-        self, lower: Any, upper: Any, state: Any
-    ) -> "ItemHistory":
-        """This history with a change into ``state`` somewhere between two
-        inspections, ``lower`` and ``upper``."""
-        fields = self._fields()
-        fields["interval_censored_states"] = [
-            *fields.get("interval_censored_states", []),
-            [lower, upper, state],
-        ]
-        upper = _age(self.id, "upper", upper)
-        return ItemHistory(self.id, **self._after_event(fields, upper))
 
     def update_covariates(self, age: Any, values: Any) -> "ItemHistory":
         """This history with its time-varying covariates taking ``values``
@@ -779,16 +763,6 @@ def _ages(item: Any, name: str, value: Any) -> np.ndarray:
     if not np.isfinite(arr).all():
         raise ValueError(f"Item {item!r}: '{name}' ages must be finite.")
     return arr
-
-
-def _needs_type(history: Any, call: str, event_type: Any) -> None:
-    """Refuse a failure without a type on a history whose failures have
-    types, in the words of the update method."""
-    if history.has_event_types and event_type is None:
-        raise ValueError(
-            f"Item {history.id!r}: its failures have event types, so give "
-            f"this one's: {call}."
-        )
 
 
 def _age(item: Any, name: str, value: Any) -> "float | None":
@@ -1031,12 +1005,45 @@ def _event_types(
             )
         types = np.empty(k, dtype=object)
         types[:] = listed
-    if any(t is None for t in types):
-        raise ValueError(
-            f"Item {item!r}: '{name}' cannot hold None: every failure needs "
-            "its type."
-        )
+    # A missing type (None, NaN, pandas NA, "") is a failure whose type was
+    # not recorded: a masked cause, None.
+    types[:] = [None if missing_type(t) else t for t in types]
     return types
+
+
+def _merged_inspections(
+    intervals: np.ndarray, counts: np.ndarray, types: "np.ndarray | None"
+) -> tuple:
+    """One count per inspection window and type: the same window given
+    twice for one type (two seals found at one inspection) is one count of
+    both."""
+    merged: dict = {}
+    for k, (lower, upper) in enumerate(intervals):
+        kind = None if types is None else types[k]
+        key = (float(lower), float(upper), kind)
+        merged[key] = merged.get(key, 0) + int(counts[k])
+    if len(merged) == len(intervals):
+        return intervals, counts, types
+    keys = list(merged)
+    out_types = None
+    if types is not None:
+        out_types = np.empty(len(keys), dtype=object)
+        out_types[:] = [kind for _, _, kind in keys]
+    return (
+        np.array([[lo, hi] for lo, hi, _ in keys], dtype=float).reshape(-1, 2),
+        np.array([merged[k] for k in keys]),
+        out_types,
+    )
+
+
+def missing_type(value: Any) -> bool:
+    """Whether an event type is missing: None, NaN, pandas NA or an empty
+    string (a blank cell)."""
+    if isinstance(value, str):
+        return value.strip() == ""
+    from surpyval.utils.data_formats import is_missing_event
+
+    return is_missing_event(value)
 
 
 def _state_label(item: Any, name: str, state: Any) -> Any:

@@ -184,7 +184,7 @@ def validate_fine_gray_inputs(
 
     check_e_and_x(e_arr, x_a)
     check_Z_and_x(Z_arr, x_a)
-    check_c_and_e(c_a, e_arr)
+    e_arr = check_c_and_e(c_a, e_arr)
     check_left_or_int_cens(c_a)
 
     return x_a, Z_arr, e_arr, c_a, n_a

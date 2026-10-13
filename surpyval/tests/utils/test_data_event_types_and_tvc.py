@@ -75,8 +75,10 @@ def test_the_constructor_takes_event_types():
     data = SurpyvalData([1, 2, 3], c=[0, 0, 1], e=["a", "b", None])
     assert list(data.e) == ["a", "b", None]
     assert list(data[0:2].e) == ["a", "b"]
-    with pytest.raises(ValueError, match="needs its event type"):
-        SurpyvalData([1, 2], c=[0, 0], e=["a", None])
+    # A failure without a type is a masked cause, warned of (#928)
+    with pytest.warns(sp.utils.warnings.MaskedCauseWarning, match="rows 1"):
+        masked = SurpyvalData([1, 2], c=[0, 0], e=["a", None])
+    assert list(masked.e) == ["a", None]
     with pytest.raises(ValueError, match="one event type per row"):
         SurpyvalData([1, 2], e=["a"])
 

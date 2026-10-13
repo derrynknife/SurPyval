@@ -94,12 +94,9 @@ def test_dates_and_durations_say_how_to_convert(age, match):
         ItemHistory("A", observed=[age])
 
 
-def test_a_failure_needs_its_type_in_the_words_of_the_update():
+def test_a_failure_added_without_its_type_is_a_masked_cause():
     typed = ItemHistory("P", observed=[5], observed_event_types="seal")
-    with pytest.raises(ValueError, match=r"add_failure\(age, event_type"):
-        typed.add_failure(9)
-    with pytest.raises(ValueError, match=r"add_failures_between\("):
-        typed.add_failures_between(10, 20)
+    assert typed.add_failure(9).observed_event_types.tolist() == ["seal", None]
 
 
 def test_summaries():

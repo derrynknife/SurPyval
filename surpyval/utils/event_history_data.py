@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import functools
 import inspect
+import warnings
 from typing import Any, Callable, TypeVar
 
 import numpy as np
@@ -22,6 +23,12 @@ from surpyval.utils.surpyval_data import (
     named_fit,
 )
 from surpyval.utils.validation import unknown_cause_error
+from surpyval.utils.warnings import (
+    MaskedCauseWarning,
+    caller_stacklevel,
+    named,
+    warn_masked,
+)
 
 
 class EventHistoryData(ReshapeMixin):
@@ -434,6 +441,32 @@ class EventHistoryData(ReshapeMixin):
 
         return np.concatenate(x_previous)
 
+    def _refuse_crossed_inspections(self) -> None:
+        """Refuse an all-failure intensity fit of data whose inspection
+        windows of different event types overlap or coincide (#928): the
+        counts of each type are of its own inspections, so the total in a
+        window is not known (overlapping) or would be read as two counts
+        of one window (coinciding)."""
+        if self.e is None or self.x.ndim != 2:
+            return
+        windows = (self.c != 1) & (self.x[:, 0] < self.x[:, 1])
+        for item in np.unique(self.i[windows]):
+            rows = np.flatnonzero(windows & (self.i == item))
+            spans = sorted((tuple(self.x[r]), self.e[r]) for r in rows)
+            for (a, kind_a), (b, kind_b) in zip(spans, spans[1:]):
+                if b[0] < a[1] and kind_a != kind_b:
+                    raise ValueError(
+                        f"Item {_plain(item)!r} has inspection windows of "
+                        "different event types that overlap or coincide "
+                        f"({kind_a!r} "
+                        f"in [{a[0]:g}, {a[1]:g}], {kind_b!r} in "
+                        f"[{b[0]:g}, {b[1]:g}]), so a fit of every failure "
+                        "cannot read its counts: fit "
+                        "data.without('event_types') (which combines the "
+                        "failures found at one inspection) or each type "
+                        "with data.for_event_type(t)."
+                    )
+
     def split_for_nhpp_likelihood(self) -> dict:
         """Split the data into the pieces every NHPP-style likelihood
         needs: per-censoring-type event and previous-event times, the
@@ -442,6 +475,7 @@ class EventHistoryData(ReshapeMixin):
         to be copy-pasted between the plain and proportional-intensity
         NHPP fitters and drifted (#288); it now lives here once (#296).
         """
+        self._refuse_crossed_inspections()
         x, c, n = self.x, self.c, self.n
         x_prev = self.get_previous_x()
 
@@ -604,9 +638,28 @@ class EventHistoryData(ReshapeMixin):
         ItemLifetime('B', observed=4.0)
         ItemLifetime('C', right_censored=8.0)
         """
-        return SurpyvalData.from_items(
-            [_first_event(history) for history in self.to_items()]
-        )
+        firsts = [_first_event(history) for history in self.to_items()]
+        if self.e is None:
+            return SurpyvalData.from_items(firsts)
+        masked = [
+            first.id
+            for first in firsts
+            if first.outcome != "right_censored" and first.event_type is None
+        ]
+        if masked:
+            warnings.warn(
+                f"{len(masked)} first failure{'' if len(masked) == 1 else 's'}"
+                " of no known event type (masked causes): items "
+                f"{named(masked)}, their type not recorded or the first "
+                "failure found with failures of other types at one "
+                "inspection. A fit of one type of first event is "
+                "data.for_event_type(t).to_first_events().",
+                MaskedCauseWarning,
+                stacklevel=caller_stacklevel(),
+            )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", MaskedCauseWarning)
+            return SurpyvalData.from_items(firsts)
 
     def to_gaps(self) -> "SurpyvalData":
         """
@@ -828,15 +881,30 @@ class EventHistoryData(ReshapeMixin):
             or h.left_censored is not None
             for h in items
         ]
+        masked = []
         if any(typed):
-            untyped = [
-                h.id for h, t, ev in zip(items, typed, events) if ev and not t
-            ]
-            if untyped:
-                raise ValueError(
-                    "Event types were given for some items' failures but not "
-                    f"for {untyped!r}: every failure needs its type."
+            # Failures whose type was not recorded: masked causes
+            masked = [
+                h.id
+                for h, t, ev in zip(items, typed, events)
+                if ev
+                and (
+                    not t
+                    or any(
+                        k is None
+                        for k in (
+                            *h.observed_event_types,
+                            *h.interval_censored_event_types,
+                        )
+                    )
+                    or (
+                        h.left_censored is not None
+                        and h.left_censored_event_types is None
+                    )
                 )
+            ]
+            if masked:
+                warn_masked(len(masked), "items " + named(masked))
         x: list = []
         i: list = []
         c: list = []
@@ -872,16 +940,19 @@ class EventHistoryData(ReshapeMixin):
         if not (np.isin(c, (-1, 2))).any():
             x_arr = x_arr[:, 0]
         truncated = np.isfinite(tl).any() or np.isfinite(tr).any()
-        data = handle_xicn(
-            x_arr,
-            np.array(i),
-            np.array(c),
-            np.array(n),
-            tl=np.array(tl) if truncated else None,
-            tr=np.array(tr) if truncated else None,
-            Z=np.array(Z) if static else None,
-            e=_object_array(e) if any(typed) else None,
-        )
+        with warnings.catch_warnings():
+            # Warned of above, by item
+            warnings.simplefilter("ignore", MaskedCauseWarning)
+            data = handle_xicn(
+                x_arr,
+                np.array(i),
+                np.array(c),
+                np.array(n),
+                tl=np.array(tl) if truncated else None,
+                tr=np.array(tr) if truncated else None,
+                Z=np.array(Z) if static else None,
+                e=_object_array(e) if any(typed) else None,
+            )
         if static:
             data.covariate_names = names
         if varying:
@@ -1252,50 +1323,52 @@ def _lifetime_parts(history: Any) -> dict:
 
 
 def _first_event(history: Any) -> Any:
-    """``history``'s time to its first failure, as an ItemLifetime."""
+    """``history``'s time to its first failure, as an ItemLifetime: the
+    earliest of its failures (seen, between inspections or before a first
+    look). Where failures that could each be the first are of different
+    types (a seal and a bearing found at one inspection), it is known only
+    to lie between the earliest of their lower bounds and the first age
+    by which one was known, and its type is not known: a masked cause
+    (#928)."""
     from surpyval.utils.item_lifetime import ItemLifetime
 
     parts = _lifetime_parts(history)
     parts["left_truncation"] = history.left_truncation
     parts["time_varying_covariates"] = history.time_varying_covariates
+    # (lower, upper, type) of each failure that could be the first
+    candidates: list = []
     if history.left_censored is not None:
-        return ItemLifetime(
-            history.id,
-            left_censored=history.left_censored,
-            event_type=history.left_censored_event_types,
-            **parts,
+        candidates.append(
+            (-np.inf, history.left_censored, history.left_censored_event_types)
         )
-    first_observed = (
-        int(np.argmin(history.observed)) if len(history.observed) else None
-    )
-    first_interval = (
-        int(np.argmin(history.interval_censored[:, 0]))
-        if len(history.interval_censored)
-        else None
-    )
-    if first_interval is not None and (
-        first_observed is None
-        or history.interval_censored[first_interval, 0]
-        < history.observed[first_observed]
-    ):
-        types = history.interval_censored_event_types
+    observed_types = history.observed_event_types
+    for k, age in enumerate(history.observed):
+        kind = None if observed_types is None else observed_types[k]
+        candidates.append((float(age), float(age), kind))
+    interval_types = history.interval_censored_event_types
+    for k, (lower, upper) in enumerate(history.interval_censored):
+        kind = None if interval_types is None else interval_types[k]
+        candidates.append((float(lower), float(upper), kind))
+    if not candidates:
         return ItemLifetime(
-            history.id,
-            interval_censored=history.interval_censored[first_interval],
-            event_type=None if types is None else types[first_interval],
-            **parts,
+            history.id, right_censored=_history_end(history), **parts
         )
-    if first_observed is not None:
-        types = history.observed_event_types
-        return ItemLifetime(
-            history.id,
-            observed=history.observed[first_observed],
-            event_type=None if types is None else types[first_observed],
-            **parts,
-        )
-    return ItemLifetime(
-        history.id, right_censored=_history_end(history), **parts
-    )
+    first = min(upper for _, upper, _ in candidates)
+    possible = [
+        (lower, upper, kind)
+        for lower, upper, kind in candidates
+        if lower < first or upper == first
+    ]
+    kinds = {kind for _, _, kind in possible}
+    event_type = next(iter(kinds)) if len(kinds) == 1 else None
+    lower = min(low for low, _, _ in possible)
+    if lower == -np.inf:
+        when: dict = {"left_censored": first}
+    elif lower == first:
+        when = {"observed": first}
+    else:
+        when = {"interval_censored": [lower, first]}
+    return ItemLifetime(history.id, event_type=event_type, **when, **parts)
 
 
 def _gaps(history: Any) -> list:
@@ -1655,10 +1728,13 @@ def _held(data: Any, rows: "int | None") -> list:
         )
     if getattr(data, "e", None) is not None:
         counts = Counter(v for v in data.e if v is not None)
+        failed = np.asarray(data.c) != 1
+        masked = int(sum(1 for v, f in zip(data.e, failed) if f and v is None))
         lines.append(
             "  event types: "
             + ", ".join(
-                f"{k} ({v})" for k, v in sorted(counts.items(), key=str)
+                [f"{k} ({v})" for k, v in sorted(counts.items(), key=str)]
+                + ([f"not recorded ({masked})"] if masked else [])
             )
         )
     if getattr(data, "Z", None) is not None:

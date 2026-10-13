@@ -292,18 +292,6 @@ def test_cause_specific_fits_take_items_with_event_types():
             "one per entry \\(2\\)",
         ),
         (
-            {"observed": [1], "observed_event_types": [None]},
-            "cannot hold None",
-        ),
-        (
-            {
-                "observed": [1],
-                "observed_event_types": "a",
-                "interval_censored": [[2, 3]],
-            },
-            "'interval_censored_event_types'",
-        ),
-        (
             {"observed": [1], "left_censored_event_types": "a"},
             "without 'left_censored'",
         ),
@@ -314,14 +302,26 @@ def test_event_types_are_checked(kwargs, match):
         ItemHistory("A", **kwargs)
 
 
-def test_event_types_for_every_item_with_failures():
-    with pytest.raises(ValueError, match="\\['B'\\]"):
-        EventHistoryData.from_items(
+def test_failures_without_types_are_masked_causes():
+    # A failure without a type, in data with types, is a masked cause:
+    # accepted, and warned of by item (#928)
+    from surpyval.utils.warnings import MaskedCauseWarning
+
+    assert ItemHistory(
+        "A", observed=[1], observed_event_types=[None]
+    ).observed_event_types.tolist() == [None]
+    counted = ItemHistory(
+        "A", observed=[1], observed_event_types="a", interval_censored=[[2, 3]]
+    )
+    assert counted.interval_censored_event_types.tolist() == [None]
+    with pytest.warns(MaskedCauseWarning, match="items 'B'"):
+        data = EventHistoryData.from_items(
             [
                 ItemHistory("A", observed=[1], observed_event_types="a"),
                 ItemHistory("B", observed=[2]),
             ]
         )
+    assert "not recorded (1)" in data.summary()
 
 
 def test_time_varying_covariates_take_schedules_and_paths():

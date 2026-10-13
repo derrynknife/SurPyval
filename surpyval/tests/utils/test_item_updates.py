@@ -90,30 +90,29 @@ def test_add_failure_before_and_after_the_end():
     assert after.right_censored == 700  # it was watched until it failed
 
 
-def test_add_failures_keep_their_types():
+def test_add_failure_keeps_its_type():
     typed = ItemHistory(
         "P1", observed=[420], observed_event_types="seal", right_censored=600
     )
-    more = typed.add_failure(650, "bearing").add_failures_between(
-        700, 800, failures=2, event_type="seal"
-    )
+    more = typed.add_failure(650, "bearing")
     assert more.observed_event_types.tolist() == ["seal", "bearing"]
-    assert more.interval_censored.tolist() == [[700, 800]]
-    assert more.interval_censored_counts.tolist() == [2]
-    assert more.right_censored == 800
-    with pytest.raises(ValueError, match="its failures have event types"):
-        typed.add_failure(650)
+    assert more.right_censored == 650
+    # Without one, its type was not recorded: a masked cause (#928)
+    assert typed.add_failure(650).observed_event_types.tolist() == [
+        "seal",
+        None,
+    ]
 
 
-def test_state_changes_add_and_are_checked():
-    unit = ItemHistory("U", initial_state="healthy", right_censored=100)
-    later = unit.change_state(150, "degraded").change_state_between(
-        200, 300, "failed"
-    )
-    assert later.right_censored == 300
-    assert [c[3] for c in later.state_changes] == ["degraded", "failed"]
-    with pytest.raises(ValueError, match="itself"):
-        unit.change_state(50, "healthy")
+def test_only_failures_are_added_by_method():
+    # Counts between inspections and changes of state are given to the
+    # constructor (or clone); there are no methods for them (#928)
+    for name in (
+        "add_failures_between",
+        "change_state",
+        "change_state_between",
+    ):
+        assert not hasattr(ItemHistory, name)
 
 
 def test_updated_items_build_a_dataset():
