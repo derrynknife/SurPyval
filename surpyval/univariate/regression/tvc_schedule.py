@@ -776,11 +776,22 @@ def as_covariate_path(Z: Any, xl: "npt.ArrayLike | None" = None) -> Any:
     or a :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`.
 
     A ``CovariatePath`` is passed through (then ``xl`` must be ``None``);
-    anything else is as for :func:`as_step_schedule`. The type decides the
-    method: a schedule is summed exactly, a path is integrated.
+    an item record (:class:`~surpyval.utils.item_lifetime.ItemLifetime` or
+    :class:`~surpyval.utils.item_history.ItemHistory`) gives its own
+    covariates, the fixed ones followed by the time-varying ones, as a
+    model fitted on such items takes them; anything else is as for
+    :func:`as_step_schedule`. The type decides the method: a schedule is
+    summed exactly, a path is integrated.
     """
     from .tvc_path import CovariatePath
 
+    if _is_item(Z):
+        if xl is not None:
+            raise ValueError(
+                "xl must not be given when Z is an item: the item gives its "
+                "own covariates over time"
+            )
+        return item_covariate_path(Z)
     if isinstance(Z, CovariatePath):
         if xl is not None:
             raise ValueError(
@@ -820,3 +831,72 @@ def segments_from_origin(
     if end == 0:
         return starts[:1], np.array([0.0]), Z[:1]
     return starts, ends, Z
+
+
+def _is_item(Z: Any) -> bool:
+    from surpyval.utils.item_history import ItemHistory
+    from surpyval.utils.item_lifetime import ItemLifetime
+
+    return isinstance(Z, (ItemLifetime, ItemHistory))
+
+
+def item_covariate_path(item: Any) -> Any:
+    """
+    An item record's covariates over time, in the column order of a model
+    fitted on such items (``fit(SurpyvalData.from_items(...))``): its fixed
+    covariates, then its time-varying ones. A constant
+    :class:`StepSchedule` for fixed covariates alone; the item's schedule
+    with the fixed columns added for a ``StepSchedule``; and for a
+    ``CovariatePath``, a path with the fixed columns in front.
+
+    Examples
+    --------
+    >>> from surpyval import ItemLifetime, StepSchedule
+    >>> from surpyval.univariate.regression.tvc_schedule import (
+    ...     item_covariate_path,
+    ... )
+    >>> stress = StepSchedule.from_changepoints([0, 400], [[0.0], [1.0]])
+    >>> item = ItemLifetime(
+    ...     "P7", right_censored=900, covariates=[2.0],
+    ...     time_varying_covariates=stress,
+    ... )
+    >>> item_covariate_path(item).Z
+    array([[2., 0.],
+           [2., 1.]])
+    """
+    from .tvc_path import CovariatePath
+
+    fixed = item.covariates
+    varying = item.time_varying_covariates
+    if fixed is None and varying is None:
+        raise ValueError(
+            f"Item {item.id!r} has no covariates to predict with."
+        )
+    if varying is None:
+        return StepSchedule.constant(fixed)
+    if fixed is None:
+        return varying
+    fixed = np.asarray(fixed, dtype=float)
+    if isinstance(varying, StepSchedule):
+        return StepSchedule(
+            varying.edges,
+            np.hstack([np.tile(fixed, (len(varying.Z), 1)), varying.Z]),
+            varying.period,
+        )
+    if isinstance(varying, CovariatePath):
+
+        def combined(t: npt.NDArray) -> npt.NDArray:
+            values = varying(np.atleast_1d(t))
+            return np.hstack([np.tile(fixed, (len(values), 1)), values])
+
+        knots = getattr(varying, "_knots", None)
+        return CovariatePath.from_callable(
+            combined,
+            p=len(fixed) + varying.p,
+            breakpoints=None if knots is None or len(knots) == 0 else knots,
+            period=varying.period,
+        )
+    raise TypeError(
+        f"Item {item.id!r}'s time-varying covariates are a "
+        f"{type(varying).__name__}, not a StepSchedule or a CovariatePath."
+    )

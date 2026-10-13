@@ -166,6 +166,12 @@ data). An item's ``event_type`` goes to the competing-risks fitters
 A continuously varying ``CovariatePath`` is kept with the data but not
 fitted yet (#908).
 
+The fitted model predicts for an item from its own covariates,
+``model.sf_tvc(times, item)``, with no schedule to build by hand: the
+item's fixed covariates and its time-varying ones are lined up as the fit
+took them. Datasets from several sources join with
+``SurpyvalData.combine(site_a, site_b)``.
+
 .. jupyter-execute::
 
     from surpyval import StepSchedule
