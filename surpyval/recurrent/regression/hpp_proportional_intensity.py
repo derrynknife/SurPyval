@@ -18,14 +18,14 @@ from surpyval.univariate.regression._aliasing import (
 )
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
+from surpyval.utils.event_history_data import (
+    accepts_event_history_data,
+    refuses_unmodelled_data,
+)
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.pickling import Rebuilt
-from surpyval.utils.recurrent_event_data import (
-    accepts_recurrent_data,
-    refuses_unmodelled_data,
-)
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 from surpyval.utils.units import takes_unit
 
@@ -233,7 +233,7 @@ class ProportionalIntensityHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
 
     @dataframe_covariates
     @takes_unit
-    @accepts_recurrent_data
+    @accepts_event_history_data
     def fit(
         self,
         x: ArrayLike,
@@ -311,14 +311,14 @@ class ProportionalIntensityHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
     ) -> Any:
         """
         Fit from a prepared
-        :class:`~surpyval.utils.recurrent_event_data.RecurrentEventData`
+        :class:`~surpyval.utils.event_history_data.EventHistoryData`
         (with covariates attached), as built by ``surpyval.handle_xicn``.
         :meth:`fit` builds one from its arrays and calls this.
 
         Parameters
         ----------
 
-        data : RecurrentEventData
+        data : EventHistoryData
             The recurrent event data, including ``Z``.
         dist : optional
             Accepted for a uniform interface with the NHPP fitter but

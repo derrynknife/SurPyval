@@ -408,15 +408,15 @@ For repairable items, each item can fail many times. The recurrent event models 
     print(mcf.mcf([1000, 2000, 2600]))
 
 The same log, written as each machine's history keyed by its id, is read by
-``RecurrentEventData.from_histories``: ``observed`` holds each machine's age
+``EventHistoryData.from_histories``: ``observed`` holds each machine's age
 at its failures and ``right_censored`` its current reading. Every recurrent
 ``fit`` takes the result in place of the arrays:
 
 .. jupyter-execute::
 
-    from surpyval import RecurrentEventData
+    from surpyval import EventHistoryData
 
-    data = RecurrentEventData.from_histories(
+    data = EventHistoryData.from_histories(
         observed={"M1": [420, 1310, 2050], "M2": [980, 2400], "M3": [1720]},
         right_censored={"M1": 2600, "M2": 2900, "M3": 3100},
     )
@@ -459,7 +459,7 @@ with an ``ItemHistory`` and build the dataset from the list:
     )
     fan = ItemHistory("F1", observed=[800], observed_event_types="bearing",
                       right_censored=3000)
-    data = RecurrentEventData.from_items([pump, fan])
+    data = EventHistoryData.from_items([pump, fan])
     data.to_items()[1]
 
 Every check names the item and says what is wrong with its history, and
@@ -518,7 +518,7 @@ non-parametric estimators' "at risk / deaths" (``xrd``) form too:
        given a ``pathlib.Path``; a string is parsed as JSON text)
    * - ``handle_xicn(x, i, c, n, ...)``
      - validates recurrent event data (``xicnt``) and returns the
-       ``RecurrentEventData`` object the recurrent models use
+       ``EventHistoryData`` object the recurrent models use
 
 The conversions are not all lossless, and it pays to know where they drop
 information:

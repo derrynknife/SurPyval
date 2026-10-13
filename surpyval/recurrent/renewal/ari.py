@@ -21,12 +21,12 @@ from surpyval.recurrent.renewal._derivatives import (
     negated,
 )
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
-from surpyval.utils.fitter import singleton_fitter
-from surpyval.utils.pickling import Rebuilt
-from surpyval.utils.recurrent_event_data import (
-    accepts_recurrent_data,
+from surpyval.utils.event_history_data import (
+    accepts_event_history_data,
     refuses_unmodelled_data,
 )
+from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     measure_from_entry,
@@ -512,7 +512,7 @@ class ARI(RenewalFitMixin):
         Parameters
         ----------
 
-        data : RecurrentEventData
+        data : EventHistoryData
             Data containing the recurrence details.
             An item with delayed entry (a ``tl``) is taken to be as
             new at entry, with its times counted from there (see
@@ -594,7 +594,7 @@ class ARI(RenewalFitMixin):
 
     @removed_arguments("0.23", dist="'baseline'")
     @takes_unit
-    @accepts_recurrent_data
+    @accepts_event_history_data
     def fit(
         self,
         x: ArrayLike,

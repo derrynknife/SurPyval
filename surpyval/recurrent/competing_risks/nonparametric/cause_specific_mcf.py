@@ -42,8 +42,8 @@ from surpyval.univariate.nonparametric._support import (
     support_from_dict,
 )
 from surpyval.utils import optional_column
-from surpyval.utils.recurrent_event_data import (
-    accepts_recurrent_data,
+from surpyval.utils.event_history_data import (
+    accepts_event_history_data,
     refuses_unmodelled_data,
 )
 from surpyval.utils.recurrent_utils import (
@@ -309,7 +309,7 @@ class CauseSpecificMCF(SerialisableMixin):
     def fit_from_recurrent_data(cls, data: Any) -> "CauseSpecificMCF":
         if data.e is None:
             raise ValueError(
-                "RecurrentEventData has no event-type marks; pass `e` to "
+                "EventHistoryData has no event-type marks; pass `e` to "
                 "fit a cause-specific MCF."
             )
         reject_unsupported_nonparametric(data, "CauseSpecificMCF")
@@ -324,7 +324,7 @@ class CauseSpecificMCF(SerialisableMixin):
 
     @classmethod
     @takes_unit
-    @accepts_recurrent_data
+    @accepts_event_history_data
     def fit(
         cls,
         x: ArrayLike,

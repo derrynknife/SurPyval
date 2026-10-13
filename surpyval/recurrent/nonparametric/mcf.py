@@ -19,13 +19,13 @@ from surpyval.univariate.nonparametric._support import (
     support_from_dict,
 )
 from surpyval.utils.dataframe import RecurrentDataFrameMixin
-from surpyval.utils.fitter import singleton_fitter
-from surpyval.utils.fitter_repr import FitterRepr
-from surpyval.utils.recurrent_event_data import (
-    RecurrentEventData,
-    accepts_recurrent_data,
+from surpyval.utils.event_history_data import (
+    EventHistoryData,
+    accepts_event_history_data,
     refuses_unmodelled_data,
 )
+from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
@@ -126,7 +126,7 @@ class NonParametricCounting(
     mcf_hat: npt.NDArray
     #: ``None`` on simulated models, which carry no variance.
     var: "npt.NDArray | None"
-    data: RecurrentEventData
+    data: EventHistoryData
     #: Where observation begins: the MCF is 0 from here to the first event
     #: and undefined (NaN) before it. That is time 0 unless an item enters
     #: earlier (a negative ``tl``), which makes negative times observed.
@@ -637,11 +637,11 @@ class NonParametricCounting(
 
     @refuses_unmodelled_data
     def fit_from_recurrent_data(
-        self, data: RecurrentEventData
+        self, data: EventHistoryData
     ) -> "NonParametricCounting":
         """
         Fit the MCF from a prepared
-        :class:`~surpyval.utils.recurrent_event_data.RecurrentEventData`,
+        :class:`~surpyval.utils.event_history_data.EventHistoryData`,
         as built by ``surpyval.handle_xicn``. :meth:`fit` builds one from
         its arrays and calls this; the same restrictions on censoring and
         truncation apply.
@@ -656,7 +656,7 @@ class NonParametricCounting(
         return out
 
     def _point_estimate(
-        self, data: RecurrentEventData
+        self, data: EventHistoryData
     ) -> "NonParametricCounting":
         """:meth:`fit_from_recurrent_data` without the Lawless-Nadeau
         variance, which costs about (items x distinct times) and which the
@@ -668,7 +668,7 @@ class NonParametricCounting(
         return out
 
     @takes_unit
-    @accepts_recurrent_data
+    @accepts_event_history_data
     def fit(
         self,
         x: npt.ArrayLike,
@@ -747,7 +747,7 @@ class NonParametricCounting(
         return self.fit_from_recurrent_data(data)
 
 
-def _observation_origin(data: RecurrentEventData) -> float:
+def _observation_origin(data: EventHistoryData) -> float:
     """Where the MCF starts: time 0, or the earliest entry ``tl`` when an
     item enters before 0 (its negative times are then observed; the MCF
     used to be NaN there)."""
@@ -761,7 +761,7 @@ _LN_BLOCKS = 64
 
 
 def _lawless_nadeau_var(
-    data: RecurrentEventData,
+    data: EventHistoryData,
     x: npt.NDArray,
     r: npt.NDArray,
     d: npt.NDArray,

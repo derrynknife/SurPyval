@@ -19,7 +19,7 @@ Three consequences are used:
   (the construction behind Crow's power-law goodness-of-fit test,
   generalised to any fitted intensity).
 
-The functions take the fitted model's ``RecurrentEventData`` plus its CIF,
+The functions take the fitted model's ``EventHistoryData`` plus its CIF,
 and are exposed as methods on ``ParametricRecurrenceModel``.
 """
 
@@ -439,7 +439,7 @@ def cramer_von_mises(
     parameters having been estimated. Failure-truncated items are approximated
     by a window fixed at their last observed event.
     """
-    from surpyval.utils.recurrent_event_data import RecurrentEventData
+    from surpyval.utils.event_history_data import EventHistoryData
 
     data = model.data
     if not hasattr(model.dist, "inv_cif"):
@@ -463,7 +463,7 @@ def cramer_von_mises(
             tl_b.extend([entry] * (count + 1))
         if (np.asarray(c_b) == 0).sum() < 2:
             raise ValueError("too few simulated events to refit")
-        sim_data = RecurrentEventData(
+        sim_data = EventHistoryData(
             np.asarray(x_b, dtype=float),
             np.asarray(i_b),
             np.asarray(c_b),
@@ -487,7 +487,7 @@ def cramer_von_mises_regression(
     computed under its own covariate-scaled intensity ``Lambda_0 exp(Z'beta)``,
     and the bootstrap refits the full regression model per replicate.
     """
-    from surpyval.utils.recurrent_event_data import RecurrentEventData
+    from surpyval.utils.event_history_data import EventHistoryData
 
     data = model.data
     if not hasattr(model.dist, "inv_cif"):
@@ -524,7 +524,7 @@ def cramer_von_mises_regression(
             Z_b.extend([Z_item] * (count + 1))
         if (np.asarray(c_b) == 0).sum() < 2:
             raise ValueError("too few simulated events to refit")
-        sim_data = RecurrentEventData(
+        sim_data = EventHistoryData(
             np.asarray(x_b, dtype=float),
             np.asarray(i_b),
             np.asarray(c_b),

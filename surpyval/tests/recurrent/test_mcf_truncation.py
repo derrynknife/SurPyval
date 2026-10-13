@@ -2,7 +2,7 @@
 Tests for delayed-entry (left-truncation) handling in the nonparametric
 recurrent risk set.
 
-``RecurrentEventData.to_xrd`` used to build the at-risk set assuming every
+``EventHistoryData.to_xrd`` used to build the at-risk set assuming every
 item enters observation at ``t=0``, ignoring each item's left-truncation
 bound ``tl``. A delayed-entry item must only join the risk set once
 observation begins at its ``tl``; counting it earlier gives the wrong risk
@@ -13,7 +13,7 @@ which shares this risk set).
 import numpy as np
 import pytest
 
-from surpyval import RecurrentEventData
+from surpyval import EventHistoryData
 from surpyval.recurrent.competing_risks import CauseSpecificMCF
 from surpyval.recurrent.nonparametric import NonParametricCounting
 from surpyval.utils.recurrent_utils import handle_xicn
@@ -80,7 +80,7 @@ def test_default_fit_unchanged_without_truncation():
     i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2])
     c = np.array([0, 0, 1, 1, 1, 0, 0, 0, 0, 1])
 
-    data = RecurrentEventData(x, i, c, np.ones_like(x))
+    data = EventHistoryData(x, i, c, np.ones_like(x))
     x_unique, r, d = data.to_xrd()
 
     np.testing.assert_array_equal(x_unique, [1, 2, 3, 4, 5])
@@ -121,7 +121,7 @@ def test_nonparametric_right_truncation_closes_the_window():
 
 
 def test_nonparametric_rejects_left_censoring():
-    data = RecurrentEventData(
+    data = EventHistoryData(
         np.array([1.0, 3.0, 5.0]),
         np.array([1, 1, 1]),
         np.array([-1, 0, 1]),
@@ -132,7 +132,7 @@ def test_nonparametric_rejects_left_censoring():
 
 
 def test_nonparametric_rejects_interval_censoring():
-    data = RecurrentEventData(
+    data = EventHistoryData(
         np.array([1.0, 3.0, 5.0]),
         np.array([1, 1, 1]),
         np.array([0, 2, 1]),

@@ -93,8 +93,8 @@ from surpyval.utils import round_sig
 from .fit_best import fit_best
 from .forecasting import forecast
 
-from surpyval.utils.recurrent_event_data import (  # isort: skip
-    RecurrentEventData,
+from surpyval.utils.event_history_data import (  # isort: skip
+    EventHistoryData,
 )
 
 from surpyval.utils.surpyval_data import SurpyvalData  # isort: skip
@@ -314,6 +314,10 @@ __all__ = [
     "xcnt_to_xrd",
     "xrd_handler",
     "xrd_to_xcnt",
+    "EventHistoryData",
+    # Deprecated (v0.25): renamed EventHistoryData, removed in v0.26;
+    # reached through __getattr__ with a DeprecationWarning, and listed so
+    # that ``from surpyval import *`` still gets it until then.
     "RecurrentEventData",
     "ItemHistory",
     "ItemLifetime",
@@ -417,6 +421,10 @@ _ELSEWHERE = {
     ),
 }
 
+#: Top-level names renamed in v0.25 (old -> new), reached through
+#: ``__getattr__`` with a DeprecationWarning until v0.26.
+_RENAMED_TOP_LEVEL = {"RecurrentEventData": "EventHistoryData"}
+
 if not TYPE_CHECKING:  # keep the type checker's view of the module exact
 
     def __getattr__(name: str) -> Any:
@@ -435,6 +443,11 @@ if not TYPE_CHECKING:  # keep the type checker's view of the module exact
 
         if name in DATED_DATA_FUNCTIONS:
             return dated_data_function(name)
+        if name in _RENAMED_TOP_LEVEL:
+            from surpyval.utils.deprecation import renamed_name
+
+            new = _RENAMED_TOP_LEVEL[name]
+            return renamed_name("surpyval", name, new, globals()[new])
         if name in _REMOVED_TOP_LEVEL:
             message = _removed_message(
                 f"module 'surpyval' has no attribute {name!r}",

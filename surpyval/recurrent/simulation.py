@@ -345,7 +345,7 @@ class RecurrenceSimulationMixin:
         Returns
         -------
 
-        RecurrentEventData
+        EventHistoryData
             The simulated recurrence data in xicn format.
 
         Raises
@@ -412,7 +412,7 @@ class RecurrenceSimulationMixin:
         Returns
         -------
 
-        RecurrentEventData
+        EventHistoryData
             The simulated recurrence data in xicn format.
         """
         from surpyval.utils.recurrent_utils import handle_xicn

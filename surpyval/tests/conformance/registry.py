@@ -334,7 +334,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.AH": _FACTORY,
     # data, schedules and result records
     "surpyval.SurpyvalData": _DATA,
-    "surpyval.RecurrentEventData": _DATA,
+    "surpyval.EventHistoryData": _DATA,
     "surpyval.ItemHistory": _DATA,
     "surpyval.ItemLifetime": _DATA,
     "surpyval.multivariate.MultivariateSurpyvalData": _DATA,

@@ -86,10 +86,10 @@ Unreleased
   ``left_censored_states``; #887). The last two are kept with the data
   and refused by every fit until a model uses them. Every check names the
   item and what is wrong.
-  ``RecurrentEventData.from_items([...])`` builds the dataset and
+  ``EventHistoryData.from_items([...])`` builds the dataset and
   ``to_items()`` gives the items back; ``from_histories`` builds its items
   the same way. ``markers`` (#891) are reserved for the joint models.
-- ``RecurrentEventData.from_histories`` reads recurrent event data as each
+- ``EventHistoryData.from_histories`` reads recurrent event data as each
   item's history, keyed by the item's id: ``observed={item: [ages at its
   failures]}`` and ``right_censored={item: age at the end of
   observation}`` (an item left out is taken to have been observed until
@@ -100,7 +100,7 @@ Unreleased
   ``from_histories(**data.to_histories())`` is the same data. Every
   recurrent ``fit`` (NHPP, HPP, the renewal models, the MCF, the
   proportional intensity and cause-specific models) takes a
-  ``RecurrentEventData`` as ``x``, by the same rules as ``fit(data)`` for
+  ``EventHistoryData`` as ``x``, by the same rules as ``fit(data)`` for
   ``SurpyvalData``: other data arguments given with it, and data the fit
   has no argument for (right truncation for a renewal model, say), are
   refused.
@@ -120,7 +120,7 @@ Unreleased
 - The recurrent-event fitters take ``tr`` and ``tl`` one value per unit as
   well as one per row: with ``i`` given, a bound with as many entries as
   there are units, in the sorted order of the unit ids (``np.unique(i)``,
-  the order of ``RecurrentEventData.items``), gives each row its unit's
+  the order of ``EventHistoryData.items``), gives each row its unit's
   value, wherever the unit's rows are in ``x``.
   ``CrowAMSAA.fit(x, i=i, tr=[300, 300, 400])`` for three units used to be
   refused with "'tl' and 'tr' must be the same length as 'x'". The bound is
@@ -203,6 +203,15 @@ Unreleased
   before, and a model saved before has its baseline there.
 
 **Deprecated**
+
+- ``RecurrentEventData`` is renamed ``EventHistoryData`` (and its module
+  ``surpyval.utils.recurrent_event_data`` is
+  ``surpyval.utils.event_history_data``): it holds any item's event
+  history -- recurrent events now, and the changes of state and markers of
+  the multi-state and joint models to come -- not recurrent events only.
+  The old names are the same class, with a ``DeprecationWarning``, until
+  v0.26; ``isinstance`` checks against the old name keep working. The
+  recurrent fitters' ``fit_from_recurrent_data`` keeps its name.
 
 - The top-level data-format functions ``fs_to_xcnt``, ``fsl_to_xcnt``,
   ``fsli_to_xcnt``, ``fsli_handler``, ``fs_to_xrd``, ``xcn_to_fs``,

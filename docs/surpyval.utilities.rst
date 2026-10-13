@@ -16,17 +16,17 @@ Data Classes
 every univariate fitter builds one, and the parametric, non-parametric
 and regression ``fit`` methods accept one in place of the arrays (``Weibull.fit(data)``). Its constructors
 ``from_observations`` and ``from_xrd`` read the ``fsli`` and ``xrd``
-layouts, and ``to_xcnt``, ``to_observations`` and ``to_xrd`` write them. ``RecurrentEventData`` holds recurrent-event data
+layouts, and ``to_xcnt``, ``to_observations`` and ``to_xrd`` write them. ``EventHistoryData`` holds recurrent-event data
 (each row an event of an item); build it from one
 :class:`~surpyval.utils.item_history.ItemHistory` per item
-(``RecurrentEventData.from_items``), from dictionaries keyed by item
+(``EventHistoryData.from_items``), from dictionaries keyed by item
 (``from_histories``), or from arrays with :func:`handle_xicn
 <surpyval.utils.recurrent_utils.handle_xicn>`.
 
 .. autoclass:: surpyval.utils.surpyval_data.SurpyvalData
    :members:
 
-.. autoclass:: surpyval.utils.recurrent_event_data.RecurrentEventData
+.. autoclass:: surpyval.utils.event_history_data.EventHistoryData
    :members:
 
 .. autoclass:: surpyval.utils.item_history.ItemHistory
