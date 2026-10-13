@@ -598,7 +598,7 @@ def _intensity_forecast(
         first, _ = data.item_rows()
         _, age_arr = data.item_observation_windows()
         age_arr = np.asarray(age_arr, dtype=float)
-        units = np.asarray(data.items)
+        units = np.asarray(data.ids)
         if regression:
             Z = np.asarray(data.Z, dtype=float)[first]
     else:

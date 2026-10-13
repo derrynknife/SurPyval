@@ -280,7 +280,7 @@ def growth_projection(
             "run from 0 to the same end of test, T, each recorded with a "
             "c=1 row at T. Add that row (the time the test stopped)."
         )
-    k = len(model.data.items)
+    k = len(model.data.ids)
     total_time = k * T
 
     t_ev = x_arr[events]

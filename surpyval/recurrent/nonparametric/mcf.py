@@ -95,7 +95,7 @@ class NonParametricCounting(
             n = np.asarray(data.n)
             events = int(np.sum(n[c == 0]))
             times = int(np.unique(np.asarray(data.x)[c == 0]).size)
-            items = len(data.items)
+            items = len(data.ids)
             lines.append(
                 "Data             : {} item{}: {} event{} at {} unique "
                 "time{}".format(
@@ -833,11 +833,11 @@ def _lawless_nadeau_var(
             keys.setdefault(
                 window_map[item][0] if item in window_map else item, len(keys)
             )
-            for item in data.items
+            for item in data.ids
         ],
         dtype=np.intp,
     )
-    # Each row's item, as its position in ``data.items``.
+    # Each row's item, as its position in ``data.ids``.
     row_item = data.item_rows()[1]
     # An event counts where its item is at risk, as the at-risk indicator
     # multiplied it before.

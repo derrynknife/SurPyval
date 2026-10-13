@@ -45,8 +45,8 @@ class ItemLifetime:
 
     Parameters
     ----------
-    item : hashable
-        The item's id.
+    id : hashable
+        The item's id (``.id``).
     observed : scalar, optional
         Its age at failure.
     right_censored : scalar, optional
@@ -90,7 +90,7 @@ class ItemLifetime:
 
     def __init__(
         self,
-        item: Any,
+        id: Any,
         observed: Any = None,
         right_censored: Any = None,
         left_censored: Any = None,
@@ -102,7 +102,8 @@ class ItemLifetime:
         covariates: Any = None,
         time_varying_covariates: Any = None,
     ) -> None:
-        self.item = item_id(item)
+        item = item_id(id)
+        self.id = item
         given = {
             name: value
             for name, value in zip(
@@ -166,7 +167,7 @@ class ItemLifetime:
         return self.value if self.outcome == "interval_censored" else None
 
     def _check(self, first_change: "float | None") -> None:
-        item, tl, tr = self.item, self.left_truncation, self.right_truncation
+        item, tl, tr = self.id, self.left_truncation, self.right_truncation
         if tl is not None and tr is not None and not tl < tr:
             raise ValueError(
                 f"Item {item!r}: left_truncation ({tl:g}) must be below "
@@ -212,9 +213,9 @@ class ItemLifetime:
 
     # -- updates (each returns a new, checked ItemLifetime) ---------------
 
-    def clone(self, item: Any = None, **changes: Any) -> "ItemLifetime":
+    def clone(self, id: Any = None, **changes: Any) -> "ItemLifetime":
         """
-        A copy of this lifetime, under the id ``item`` (else the same id),
+        A copy of this lifetime, under the id ``id`` (else the same id),
         with any of its arguments replaced by ``changes`` (an outcome
         given replaces its outcome).
 
@@ -230,12 +231,12 @@ class ItemLifetime:
             if "right_censored" in changes:
                 fields.pop("event_type", None)
         fields.update(changes)
-        return ItemLifetime(self.item if item is None else item, **fields)
+        return ItemLifetime(self.id if id is None else id, **fields)
 
     def _still_running(self, what: str) -> float:
         if self.outcome != "right_censored":
             raise ValueError(
-                f"Item {self.item!r} is {self.outcome}, not still running "
+                f"Item {self.id!r} is {self.outcome}, not still running "
                 f"(right_censored), so it cannot {what}."
             )
         return self.value
@@ -249,10 +250,10 @@ class ItemLifetime:
         ItemLifetime('B8', right_censored=3000.0)
         """
         last = self._still_running("be extended")
-        age = _age(self.item, "age", age)
+        age = _age(self.id, "age", age)
         if age < last:
             raise ValueError(
-                f"Item {self.item!r}: extend moves it later, but {age:g} is "
+                f"Item {self.id!r}: extend moves it later, but {age:g} is "
                 f"before it was last seen working, {last:g}."
             )
         return self.clone(right_censored=age)
@@ -265,10 +266,10 @@ class ItemLifetime:
         ItemLifetime('B8', observed=2550.0, event_type='spall')
         """
         last = self._still_running("fail")
-        age = _age(self.item, "age", age)
+        age = _age(self.id, "age", age)
         if age < last:
             raise ValueError(
-                f"Item {self.item!r}: it was seen working at {last:g}, so it "
+                f"Item {self.id!r}: it was seen working at {last:g}, so it "
                 f"cannot have failed at {age:g}."
             )
         return self.clone(observed=age, event_type=event_type)
@@ -282,7 +283,7 @@ class ItemLifetime:
         ItemLifetime('B8', interval_censored=[2400.0, 2800.0])
         """
         last = self._still_running("be found failed")
-        age = _age(self.item, "age", age)
+        age = _age(self.id, "age", age)
         if age <= last:
             hint = (
                 f"; if it failed at {last:g}, use fail({last:g})"
@@ -290,7 +291,7 @@ class ItemLifetime:
                 else ""
             )
             raise ValueError(
-                f"Item {self.item!r} was last seen working at {last:g}, so "
+                f"Item {self.id!r} was last seen working at {last:g}, so "
                 f"it cannot be found failed at {age:g}: an inspection that "
                 f"finds it failed is after that{hint}."
             )
@@ -299,9 +300,7 @@ class ItemLifetime:
     def update_covariates(self, age: Any, values: Any) -> "ItemLifetime":
         """This lifetime with its time-varying covariates taking ``values``
         from ``age`` on (a step added to its schedule)."""
-        steps = _with_step(
-            self.item, self.time_varying_covariates, age, values
-        )
+        steps = _with_step(self.id, self.time_varying_covariates, age, values)
         return self.clone(time_varying_covariates=steps)
 
     def _fields(self) -> dict:
@@ -325,16 +324,16 @@ class ItemLifetime:
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ItemLifetime):
             return NotImplemented
-        return self.item == other.item and self._fields() == other._fields()
+        return self.id == other.id and self._fields() == other._fields()
 
     def __hash__(self) -> int:
-        return hash((self.item, hashable(self._fields())))
+        return hash((self.id, hashable(self._fields())))
 
     def __repr__(self) -> str:
         fields = "".join(
             f", {name}={value!r}" for name, value in self._fields().items()
         )
-        return f"ItemLifetime({self.item!r}{fields})"
+        return f"ItemLifetime({self.id!r}{fields})"
 
 
 def _interval(item: Any, value: Any) -> np.ndarray:

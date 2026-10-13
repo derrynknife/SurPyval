@@ -30,8 +30,10 @@ layouts, and ``to_xcnt``, ``to_observations`` and ``to_xrd`` write them. ``Event
    :members:
 
 .. autoclass:: surpyval.utils.item_history.ItemHistory
+   :members:
 
 .. autoclass:: surpyval.utils.item_lifetime.ItemLifetime
+   :members:
 
 Data Wrangling Utilities
 ------------------------

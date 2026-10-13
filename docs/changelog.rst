@@ -30,6 +30,19 @@ Unreleased
   interval open at one end is ``[lower, inf]`` in ``interval_censored``),
   and a pandas list and its per-item values with different indexes, since
   they are matched by position.
+- The data classes, from using them: ``data.item(id)`` gives one item's
+  record (``SurpyvalData`` and ``EventHistoryData``); ids have one name,
+  ``.id`` on a record and ``.ids`` on a dataset (a record's ``.item`` was
+  never released, so is simply renamed); ``len(EventHistoryData)`` is its
+  rows, as for ``SurpyvalData``; ``ItemHistory`` reads its states back by
+  the names that make them (``observed_states``,
+  ``interval_censored_states``, ``left_censored_states``) and
+  ``state_at(age)`` gives the state at an age, or None where it is not
+  known; ``from_items(..., counts={id: count})`` takes counts by id; a date
+  or a duration given for an age says how to convert it; a failure added
+  without a type to a typed history says so in the words of the update;
+  ``summary()`` describes a dataset in a few lines; and the API page
+  lists the records' methods.
 - Updating an ``ItemLifetime`` or ``ItemHistory``: each method returns a
   new, checked record and leaves the old one as it was. Records are fixed
   once made (their arrays are read-only and their attributes cannot be
@@ -215,6 +228,11 @@ Unreleased
   before, and a model saved before has its baseline there.
 
 **Deprecated**
+
+- ``EventHistoryData.items`` (the item ids) is ``EventHistoryData.ids``,
+  as on ``SurpyvalData``; "items" is kept for item records
+  (``from_items``, ``to_items``, ``item(id)``). The old name works, with a
+  ``DeprecationWarning``, until v0.26.
 
 - ``RecurrentEventData`` is renamed ``EventHistoryData`` (and its module
   ``surpyval.utils.recurrent_event_data`` is

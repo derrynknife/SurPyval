@@ -26,17 +26,23 @@ X = sp.Weibull.random(40, 10, 2, random_state=1)
 # 1. linear in the number of items
 
 
+def _best_time(items, runs=3):
+    best = float("inf")
+    for _ in range(runs):
+        t = time.perf_counter()
+        SurpyvalData.from_items(items)
+        best = min(best, time.perf_counter() - t)
+    return best
+
+
 def test_from_items_is_linear():
     small = [ItemLifetime(k, observed=1.0 + k % 97) for k in range(5_000)]
-    big = [ItemLifetime(k, observed=1.0 + k % 97) for k in range(50_000)]
-    t = time.perf_counter()
-    SurpyvalData.from_items(small)
-    t_small = time.perf_counter() - t
-    t = time.perf_counter()
-    SurpyvalData.from_items(big)
-    t_big = time.perf_counter() - t
-    # ten times the items: linear is ~10x, quadratic ~100x
-    assert t_big < 40 * max(t_small, 1e-3), (t_small, t_big)
+    big = [ItemLifetime(k, observed=1.0 + k % 97) for k in range(80_000)]
+    per_small = _best_time(small) / len(small)
+    per_big = _best_time(big) / len(big)
+    # 16 times the items: the time per item stays about level when linear
+    # (it grows ~2.5x here with memory), and grows 16x when quadratic
+    assert per_big < 8 * per_small, (per_small, per_big)
 
 
 def test_repeated_ids_are_still_found():
@@ -108,7 +114,7 @@ def test_event_history_slices_keep_covariates_schedules_and_states():
         ]
     )
     part = data[0:3]
-    assert part.items == ["A"]
+    assert part.ids == ["A"]
     assert part.Z.tolist() == [[1.0]] * 3
     assert set(part.time_varying_covariates) == {"A"}
     assert set(part.states) == {"A"}
@@ -154,13 +160,13 @@ def test_json_refuses_time_varying_covariates():
 )
 def test_records_cannot_be_edited_in_place(record):
     with pytest.raises(AttributeError, match="fixed once made"):
-        record.item = "C"
+        record.id = "C"
     arrays = [v for v in vars(record).values() if isinstance(v, np.ndarray)]
     assert arrays
     for arr in arrays:
         with pytest.raises(ValueError, match="read-only"):
             arr[...] = 0
-    assert record.clone("C").item == "C"
+    assert record.clone("C").id == "C"
     assert pickle.loads(pickle.dumps(record)) == record
 
 
