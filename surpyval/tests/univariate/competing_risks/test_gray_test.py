@@ -125,7 +125,7 @@ def test_gray_test_pandas_missing_cause_is_censored():
 def test_gray_test_c_must_agree_with_missing_causes():
     # a NaN cause on a row flagged as a failure is as ambiguous here as it is
     # for the model classes
-    with pytest.raises(ValueError, match="missing event"):
+    with pytest.raises(ValueError, match="masked causes"):
         gray_test(
             X8,
             [1, 2, np.nan, 1, 2, 1, np.nan, 2],

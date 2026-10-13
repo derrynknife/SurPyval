@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 import numpy as np
 
-from surpyval.utils.warnings import caller_stacklevel
+from surpyval.utils.warnings import MaskedCauseWarning, caller_stacklevel
 
 LIFETIME_PARTS = {
     "covariates": ("covariates",),
@@ -115,14 +115,26 @@ def with_covariates(record: Any, columns: list) -> Any:
 
 
 def relabel(record: Any, mapping: dict) -> Any:
-    """``record`` with its event types renamed by ``mapping``."""
+    """``record`` with its event types renamed by ``mapping``; a ``None``
+    key renames the failures whose type was not recorded (masked causes),
+    never a suspension."""
     fields = record._fields()
-    for name in (
-        "event_type",
-        "observed_event_types",
-        "interval_censored_event_types",
-        "left_censored_event_types",
-    ):
+    if _is_history(record):
+        if not record.has_event_types:
+            return record
+        names: tuple = (
+            "observed_event_types",
+            "interval_censored_event_types",
+            "left_censored_event_types",
+        )
+        if record.left_censored is not None:
+            fields.setdefault("left_censored_event_types", None)
+    else:
+        if record.outcome == "right_censored":
+            return record
+        names = ("event_type",)
+        fields.setdefault("event_type", None)
+    for name in names:
         if name not in fields:
             continue
         value = fields[name]
@@ -136,19 +148,25 @@ def relabel(record: Any, mapping: dict) -> Any:
 # -- one failure mode ---------------------------------------------------------
 
 
-def for_event_type(record: Any, event_type: Any) -> Any:
+def for_event_type(
+    record: Any, event_type: Any, masked: str = "censor"
+) -> Any:
     """``record`` as data of one failure mode, ``event_type``: the other
-    modes' failures stop being failures. A lifetime loses its right
-    truncation (#923): it says the item's first failure, of any mode, came
-    by that age, which says nothing of when this mode's would have come."""
+    modes' failures stop being failures, as do failures whose type was not
+    recorded (masked causes) unless ``masked="count"``, which counts them
+    as of this type. A lifetime loses its right truncation (#923): it says
+    the item's first failure, of any mode, came by that age, which says
+    nothing of when this mode's would have come."""
     if _is_history(record):
-        return _history_for_event_type(record, event_type)
+        return _history_for_event_type(record, event_type, masked)
     fields = record._fields()
     fields.pop("right_truncation", None)
     if record.outcome == "right_censored":
         return _rebuild(record, fields)
-    if record.event_type == event_type:
-        fields.pop("event_type")
+    if record.event_type == event_type or (
+        record.event_type is None and masked == "count"
+    ):
+        fields.pop("event_type", None)
         return _rebuild(record, fields)
     # A failure of another mode: for this mode, the item was last known
     # to be without it when it failed of the other one.
@@ -171,9 +189,14 @@ def for_event_type(record: Any, event_type: Any) -> Any:
     return _rebuild(record, fields)
 
 
-def _history_for_event_type(history: Any, event_type: Any) -> Any:
+def _history_for_event_type(
+    history: Any, event_type: Any, masked: str = "censor"
+) -> Any:
     if not history.has_event_types:
         return history
+    if masked == "count":
+        # Its failures of no recorded type are counted as of this one
+        history = relabel(history, {None: event_type})
     fields = history._fields()
     ages = list(history.observed)
     types = list(history.observed_event_types)
@@ -456,6 +479,11 @@ def read_only(value: Any) -> Any:
     return value
 
 
+def _failures(k: int) -> str:
+    """'1 failure has' or 'k failures have'."""
+    return f"{k} failure has" if k == 1 else f"{k} failures have"
+
+
 class ReadOnlyArrays:
     """A dataset whose arrays are read-only (#927). Changing one in place
     (``data.c[2] = 1``) used to leave the arrays split from it (``x_o``,
@@ -537,7 +565,7 @@ class ReshapeMixin(ReadOnlyArrays):
             )
         return self._map(lambda r: with_covariates(r, columns))
 
-    def for_event_type(self, event_type: Any) -> Any:
+    def for_event_type(self, event_type: Any, masked: str = "censor") -> Any:
         """
         The data of one failure mode, ``event_type``, as for a
         cause-specific analysis: for a lifetime, a failure of another mode
@@ -554,6 +582,12 @@ class ReshapeMixin(ReadOnlyArrays):
         treated as not right truncated (an approximation). Kept, the
         truncation would turn each other mode's failure into a failure of
         this one before the truncation age. Left truncation is kept.
+
+        Failures whose type was not recorded (masked causes) may or may
+        not be of this type; ``masked`` says how they are taken:
+        ``"censor"`` (the default) as not of it, with a warning that its
+        rate is underestimated if some were; ``"count"`` as of it (then
+        overestimated if some were not); ``"refuse"`` refuses the data.
         """
         types = self._event_types()
         if event_type not in types:
@@ -561,6 +595,34 @@ class ReshapeMixin(ReadOnlyArrays):
                 f"No failures of type {event_type!r}; the data's types are "
                 + ", ".join(repr(t) for t in sorted(types, key=str))
                 + "."
+            )
+        options = ("censor", "count", "refuse")
+        if masked not in options:
+            raise ValueError(
+                f"masked must be one of {options!r}; got {masked!r}."
+            )
+        e, c = getattr(self, "e"), np.asarray(getattr(self, "c"))
+        n = np.asarray(getattr(self, "n"))
+        unrecorded = int(
+            sum(n[k] for k in range(len(c)) if c[k] != 1 and e[k] is None)
+        )
+        if unrecorded and masked == "refuse":
+            raise ValueError(
+                f"{_failures(unrecorded)} no recorded event type (masked "
+                f"causes), which may or may not be of type {event_type!r}: "
+                "relabel them (relabel_event_types({None: ...})), leave "
+                "their items out, or choose masked='censor' or 'count'."
+            )
+        if unrecorded and masked == "censor":
+            warnings.warn(
+                f"{unrecorded} failure{'' if unrecorded == 1 else 's'} of no "
+                "recorded event type (masked causes) "
+                f"{'is' if unrecorded == 1 else 'are'} taken as not of type "
+                f"{event_type!r}: its rate "
+                "is underestimated if some of them were. masked='count' "
+                "takes them as of this type instead.",
+                MaskedCauseWarning,
+                stacklevel=caller_stacklevel(),
             )
         if (
             self._PARTS is LIFETIME_PARTS
@@ -576,13 +638,19 @@ class ReshapeMixin(ReadOnlyArrays):
                 UserWarning,
                 stacklevel=caller_stacklevel(),
             )
-        return self._map(lambda r: for_event_type(r, event_type))
+        return self._map(lambda r: for_event_type(r, event_type, masked))
 
     def relabel_event_types(self, mapping: dict) -> Any:
         """The data with its event types renamed by ``mapping`` (``{old:
         new}``): to merge failure modes, map several to one."""
+        from surpyval.utils.item_history import missing_type
+
+        # A missing key (None, NaN, "") names the masked causes
+        mapping = {
+            None if missing_type(k) else k: v for k, v in mapping.items()
+        }
         types = self._event_types()
-        unknown = [k for k in mapping if k not in types]
+        unknown = [k for k in mapping if k is not None and k not in types]
         if unknown:
             raise ValueError(
                 f"No failures of type(s) {unknown!r}; the data's types are "

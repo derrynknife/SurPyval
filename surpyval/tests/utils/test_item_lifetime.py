@@ -139,7 +139,7 @@ def test_the_dataset_needs_consistent_items():
         )
     with pytest.raises(ValueError, match="missing \\['B'\\]"):
         SurpyvalData.from_items([a, ItemLifetime("B", observed=6)])
-    with pytest.raises(ValueError, match="every failure needs"):
+    with pytest.warns(UserWarning, match="masked causes\\): items 'B'"):
         SurpyvalData.from_items(
             [
                 ItemLifetime("A", observed=5, event_type="a"),

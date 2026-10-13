@@ -155,7 +155,7 @@ A record is fixed once made, so it is always one that passed its checks:
     from surpyval import ItemHistory
 
     pump = ItemHistory("P1", observed=[420], right_censored=600)
-    print(pump.add_failure(700).add_failures_between(800, 1000, failures=2))
+    print(pump.add_failure(700))      # failed again at 700
 
 Every check names the item, and ``data.to_items()`` gives the items back
 (``SurpyvalData.from_items(data.to_items(), counts=data.n)`` is the same

@@ -3,6 +3,7 @@ from __future__ import annotations
 import functools
 import inspect
 import json
+import warnings
 from numbers import Number
 from pathlib import Path
 from typing import Any, Callable, TypeVar
@@ -14,7 +15,14 @@ import surpyval
 from surpyval.serialisation import decode_non_finite, encode_non_finite
 from surpyval.utils import xcnt_handler
 from surpyval.utils.data_reshape import LIFETIME_PARTS, ReshapeMixin
+from surpyval.utils.item_history import missing_type
 from surpyval.utils.numeric import unique_pairs
+from surpyval.utils.warnings import (
+    MaskedCauseWarning,
+    named,
+    warn_masked,
+    warn_suspension_types,
+)
 
 
 class SurpyvalData(ReshapeMixin):
@@ -724,12 +732,7 @@ class SurpyvalData(ReshapeMixin):
         )
         failures = [i for i in items if i.outcome != "right_censored"]
         typed = [i.event_type is not None for i in failures]
-        if any(typed) and not all(typed):
-            missing = [i.id for i, t in zip(failures, typed) if not t]
-            raise ValueError(
-                "Event types were given for some failures but not for "
-                f"{missing!r}: every failure needs its event_type."
-            )
+        masked = [i.id for i, t in zip(failures, typed) if not t]
         rows, flags = zip(*(item._row() for item in items))
         x = np.array(rows, dtype=float)
         if 2 not in flags:
@@ -751,21 +754,26 @@ class SurpyvalData(ReshapeMixin):
         if any(typed):
             e = np.empty(len(items), dtype=object)
             e[:] = [i.event_type for i in items]
-        data = cls(
-            x,
-            np.array(flags),
-            n,
-            tl=tl if truncated else None,
-            tr=tr if truncated else None,
-            Z=(
-                np.vstack([covariate_row_in(i, names) for i in items])
-                if static
-                else None
-            ),
-            group_and_sort=False,
-            e=e,
-            covariate_names=names,
-        )
+            if masked:
+                warn_masked(len(masked), "items " + named(masked))
+        with warnings.catch_warnings():
+            # Warned of above, by item
+            warnings.simplefilter("ignore", MaskedCauseWarning)
+            data = cls(
+                x,
+                np.array(flags),
+                n,
+                tl=tl if truncated else None,
+                tr=tr if truncated else None,
+                Z=(
+                    np.vstack([covariate_row_in(i, names) for i in items])
+                    if static
+                    else None
+                ),
+                group_and_sort=False,
+                e=e,
+                covariate_names=names,
+            )
         data.ids = ids
         if varying:
             data.time_varying_covariates = {
@@ -1070,12 +1078,12 @@ class SurpyvalData(ReshapeMixin):
                 Z_idx = np.atleast_1d(Z_idx)
             out.add_covariates(Z_idx)
             out.covariate_names = self.covariate_names
+        # By row number, so a tuple id or type stays one value (#928)
+        rows = np.atleast_1d(np.arange(len(self.x))[index])
         if self.e is not None:
-            out.e = np.atleast_1d(self.e[index])
+            out.e = self.e[rows]
         if self.ids is not None:
-            ids = np.empty(len(self.ids), dtype=object)
-            ids[:] = self.ids
-            out.ids = list(np.atleast_1d(ids[index]))
+            out.ids = [self.ids[r] for r in rows]
         if self.time_varying_covariates is not None:
             kept = out.ids if out.ids is not None else []
             out.time_varying_covariates = {
@@ -1136,9 +1144,9 @@ class SurpyvalData(ReshapeMixin):
         if self.covariate_names is not None:
             data["covariate_names"] = list(self.covariate_names)
         if self.e is not None:
-            data["e"] = [_plain(v) for v in self.e]
+            data["e"] = [_json_label(v) for v in self.e]
         if self.ids is not None:
-            data["ids"] = [_plain(v) for v in self.ids]
+            data["ids"] = [_json_label(v) for v in self.ids]
 
         # Strict JSON, as for the models: the -inf/inf truncation bounds
         # (and any other non-finite value) are written as null with a
@@ -1205,9 +1213,11 @@ class SurpyvalData(ReshapeMixin):
             covariate_names=data.get("covariate_names"),
         )
         if "e" in data:
-            out.e = _event_type_array(data["e"], out.c)
+            out.e = _event_type_array(
+                [_label_from_json(v) for v in data["e"]], out.c, warn=False
+            )
         if "ids" in data:
-            out.ids = list(data["ids"])
+            out.ids = [_label_from_json(v) for v in data["ids"]]
         return out
 
 
@@ -1565,10 +1575,14 @@ def refuses_what_fit_cannot_take(method: F) -> F:
     return wrapper  # type: ignore[return-value]
 
 
-def _event_type_array(e: Any, c: np.ndarray) -> np.ndarray:
-    """``e`` as a 1-D object array, one event type per row; every failure
-    (a row not right censored) needs one."""
-    if isinstance(e, (str, bytes)) or np.ndim(e) == 0:
+def _event_type_array(e: Any, c: np.ndarray, warn: bool = True) -> np.ndarray:
+    """``e`` as a 1-D object array, one event type per row: a missing one
+    (None, NaN, pandas NA, "") is None. A suspension's type is dropped,
+    with a warning (it has not failed); a failure without one is a masked
+    cause, warned of where ``warn``."""
+    if isinstance(e, (str, bytes)) or (
+        not isinstance(e, (list, tuple)) and np.ndim(e) == 0
+    ):
         raise ValueError(
             "'e' must hold one event type per row, not a single value."
         )
@@ -1580,11 +1594,21 @@ def _event_type_array(e: Any, c: np.ndarray) -> np.ndarray:
             f"{len(listed)}."
         )
     out[:] = listed
-    untyped = np.array([v is None for v in out]) & (np.asarray(c) != 1)
-    if untyped.any():
-        raise ValueError(
-            "Every failure (a row not right censored) needs its event type; "
-            f"{int(untyped.sum())} have none."
+    out[:] = [None if missing_type(v) else v for v in out]
+    c = np.asarray(c)
+    typed = np.array([v is not None for v in out], dtype=bool)
+    suspended = (c == 1) & typed
+    if suspended.any():
+        out[suspended] = None
+        if warn:
+            warn_suspension_types(
+                int(suspended.sum()),
+                "rows " + named(np.flatnonzero(suspended).tolist()),
+            )
+    masked = (c != 1) & ~typed
+    if warn and masked.any():
+        warn_masked(
+            int(masked.sum()), "rows " + named(np.flatnonzero(masked).tolist())
         )
     return out
 
@@ -1778,6 +1802,22 @@ def _named_row(Z: "np.ndarray | None", k: int, names: "list | None") -> Any:
     if Z is None:
         return None
     return Z[k] if names is None else dict(zip(names, Z[k].tolist()))
+
+
+def _json_label(value: Any) -> Any:
+    """An id or event type as JSON keeps it: a tuple (a gap's id,
+    ``("A", 2)``) as ``{"tuple": [...]}``, which JSON's lists would
+    otherwise turn into a list (#928)."""
+    if isinstance(value, tuple):
+        return {"tuple": [_json_label(v) for v in value]}
+    return _plain(value)
+
+
+def _label_from_json(value: Any) -> Any:
+    """An id or event type read back from JSON (:func:`_json_label`)."""
+    if isinstance(value, dict) and set(value) == {"tuple"}:
+        return tuple(_label_from_json(v) for v in value["tuple"])
+    return value
 
 
 def _plain(value: Any) -> Any:

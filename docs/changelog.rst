@@ -89,11 +89,10 @@ Unreleased
   age) and ``update_covariates(age, values)`` (a step added to the
   time-varying covariates). A running ``ItemLifetime`` can ``fail(age,
   event_type)`` or be ``found_failed(age)`` at an inspection (failed since
-  it was last seen working); an ``ItemHistory`` takes ``add_failure``,
-  ``add_failures_between``, ``change_state`` and ``change_state_between``,
-  an event after its end of observation moving the end to it.
+  it was last seen working); an ``ItemHistory`` takes ``add_failure``, a
+  failure after its end of observation moving the end to it.
 - ``SurpyvalData`` carries event types: ``SurpyvalData(x, c, ..., e=...)``
-  (one per row; every failure needs one, a suspension has none) and
+  (one per row; a suspension has none) and
   ``from_observations(..., observed_event_types=...,
   left_censored_event_types=..., interval_censored_event_types=...)``, one
   type for every item of the kind or one per item; ``to_observations()``
@@ -272,6 +271,28 @@ Unreleased
   covariates and event types; ``Weibull.fit(data.to_gaps())`` fits them. A
   lifetime fit given an ``EventHistoryData`` says to use them.
 
+- Event types (#928). A failure whose type was not recorded -- None,
+  NaN, pandas NA or an empty string, on a record, in ``e`` or from a
+  blank cell -- is a masked cause: accepted, and warned of once per
+  dataset (``MaskedCauseWarning``, naming the items or rows), and counted
+  as "not recorded" in the summary. Fits of every failure count masked
+  causes; ``for_event_type(t, masked=...)`` takes them as not of type
+  ``t`` (``"censor"``, the default, with a warning that its rate is then
+  underestimated if some were), as of it (``"count"``), or refuses them
+  (``"refuse"``); competing-risks fits refuse them, saying how to give
+  them a type; ``relabel_event_types({None: "unknown"})`` makes them a
+  type of their own. A first failure found with failures of other types
+  at one inspection is a masked cause of ``to_first_events()``, known to
+  lie between the earliest lower bound and the first age a failure was
+  known by. Failure modes found by different inspections may overlap: an
+  ``ItemHistory`` takes inspection windows of different types that
+  overlap or coincide (a seal and a bearing found at one inspection),
+  and the same window given twice for one type is one count of both;
+  windows of one type still may not overlap. A fit of every failure
+  refuses data whose windows of different types overlap or coincide,
+  pointing to ``without("event_types")`` (which combines the failures
+  found at one inspection) or ``for_event_type``.
+
 **Changed**
 
 - A dataset's arrays (``SurpyvalData`` and ``EventHistoryData``: ``x``,
@@ -329,6 +350,17 @@ Unreleased
 
 **Fixed**
 
+- Event types on rows that have not failed (#928): a suspension given a
+  type in ``SurpyvalData(..., e=...)``, ``from_observations`` or a
+  competing-risks fit was accepted, after which every reshape (even
+  ``without("event_types")``) failed; and a type on an end-of-observation
+  row of ``handle_xicn`` was silently lost by ``to_items``. Both are
+  dropped, with a warning. The competing-risks fits' refusal of a
+  censored row with a type read as the opposite of what it meant. A
+  tuple id or event type (a gap's id from ``to_gaps``, ``("A", 2)``) was
+  split by slicing one row and came back from JSON as a list, after
+  which ``item(id)`` failed; it is kept as one value, and JSON keeps it
+  a tuple.
 - Item records (``ItemLifetime``, ``ItemHistory``) came back from
   ``pickle`` or ``copy.deepcopy`` with writeable arrays, so a copy could
   be changed in place, bypassing its checks; they are fixed again when

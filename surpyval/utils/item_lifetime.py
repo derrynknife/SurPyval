@@ -20,6 +20,7 @@ from surpyval.utils.item_history import (
     frozen_setstate,
     hashable,
     item_id,
+    missing_type,
 )
 
 __all__ = ["ItemLifetime"]
@@ -133,6 +134,9 @@ class ItemLifetime:
         self.right_truncation = _age(
             item, "right_truncation", right_truncation
         )
+        # A missing type (None, NaN, pandas NA, "") is None: on a failure,
+        # a type not recorded (a masked cause).
+        event_type = None if missing_type(event_type) else event_type
         if event_type is not None and outcome == "right_censored":
             raise ValueError(
                 f"Item {item!r}: a right censored item has not failed, so it "

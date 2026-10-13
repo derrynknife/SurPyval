@@ -728,6 +728,29 @@ def _xicn_marks(
     e_arr, _ = resolve_cr_censoring(e, c)
     if e_arr.shape[0] != x.shape[0]:
         raise ValueError("x and e must have the same length")
+    from surpyval.utils.item_history import missing_type
+    from surpyval.utils.warnings import (
+        named,
+        warn_masked,
+        warn_suspension_types,
+    )
+
+    e_arr[:] = [None if missing_type(v) else v for v in e_arr]
+    c_arr = np.broadcast_to(np.asarray(c), e_arr.shape)
+    typed = np.array([v is not None for v in e_arr], dtype=bool)
+    # An end of observation has not failed: its type, silently lost by
+    # the records before (#928), is dropped with a warning.
+    ended = (c_arr == 1) & typed
+    if ended.any():
+        e_arr[ended] = None
+        warn_suspension_types(
+            int(ended.sum()), "rows " + named(np.flatnonzero(ended).tolist())
+        )
+    masked = (c_arr != 1) & ~typed
+    if masked.any():
+        warn_masked(
+            int(masked.sum()), "rows " + named(np.flatnonzero(masked).tolist())
+        )
     return e_arr
 
 
@@ -1031,19 +1054,53 @@ def _check_censoring_positions(
 
 
 def _check_interval_overlaps(
-    x: npt.NDArray, idx: npt.NDArray, unique_i: npt.NDArray
+    x: npt.NDArray,
+    idx: npt.NDArray,
+    unique_i: npt.NDArray,
+    c: "npt.NDArray | None" = None,
+    e: "npt.NDArray | None" = None,
 ) -> None:
-    """An item's interval-censored rows do not overlap (2-D ``x`` only)."""
+    """An item's rows of one event type do not overlap (2-D ``x`` only):
+    a type's counts are of its own inspections, which follow one another.
+    Rows of different types may overlap (#928): they can be found by
+    different inspections. Without types, all the rows are of one type."""
     if x.ndim != 2:
         return
-    times_by_i = np.split(x, idx)[1:]
-    for ii, arr in zip(unique_i, times_by_i):
-        starts = arr[1:][:, 0]
-        ends = arr[:-1][:, 1]
-        if (ends > starts).any():
-            raise ValueError(
-                f"Item {item_label(ii)} has overlapping intervals"
+    kinds = (
+        np.zeros(len(x), dtype=object)
+        if e is None
+        else np.asarray(e, dtype=object)
+    )
+    ends = np.zeros(len(x), dtype=bool) if c is None else (np.asarray(c) == 1)
+    for ii, rows in zip(unique_i, np.split(np.arange(len(x)), idx)[1:]):
+        groups: dict = {}
+        for r in rows:
+            # (the end of observation is checked with the windows)
+            if e is None or not ends[r]:
+                key = kinds[r] if kinds[r] is not None else ("masked",)
+                groups.setdefault(key, []).append(r)
+        for kind, members in groups.items():
+            arr = x[sorted(members, key=lambda r: (x[r, 0], x[r, 1]))]
+            starts = arr[1:][:, 0]
+            stops = arr[:-1][:, 1]
+            same = (arr[1:] == arr[:-1]).all(axis=1) & (
+                arr[1:, 0] != arr[1:, 1]
             )
+            if same.any():
+                of = "" if e is None else f" of type {kind!r}"
+                raise ValueError(
+                    f"Item {item_label(ii)} has the same inspection window"
+                    f"{of} twice: give it once, with n the number of "
+                    "failures it found."
+                )
+            if (stops > starts).any():
+                of = "" if e is None else f" of type {kind!r}"
+                raise ValueError(
+                    f"Item {item_label(ii)} has overlapping intervals{of}: "
+                    "a type's counts are of its own inspections, which "
+                    "follow one another (windows of different types may "
+                    "overlap)."
+                )
 
 
 def event_at_entry_error(
@@ -1356,7 +1413,7 @@ def handle_xicn(
     censoring_by_i = np.split(c, idx)[1:]
 
     _check_censoring_positions(unique_i, censoring_by_i, items_given)
-    _check_interval_overlaps(x, idx, unique_i)
+    _check_interval_overlaps(x, idx, unique_i, c, e_arr)
     _check_observation_windows(
         x, tl_arr, tr_arr, idx, unique_i, censoring_by_i
     )
