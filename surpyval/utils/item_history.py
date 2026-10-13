@@ -228,6 +228,9 @@ class ItemHistory:
     def __setattr__(self, name: str, value: Any) -> None:
         frozen_setattr(self, name, value)
 
+    def __setstate__(self, state: dict) -> None:
+        frozen_setstate(self, state)
+
     # -- checks -------------------------------------------------------------
 
     @property
@@ -956,7 +959,17 @@ def _time_varying(item: Any, value: Any) -> tuple[Any, "float | None"]:
 
     if value is None:
         return None, None
-    if isinstance(value, (StepSchedule, CovariatePath)):
+    if isinstance(value, StepSchedule):
+        # A copy of its own: a schedule shared with the caller used to
+        # change the record, and its hash, when the caller changed it
+        # (#927).
+        return (
+            StepSchedule(
+                np.array(value.edges), np.array(value.Z), value.period
+            ),
+            None,
+        )
+    if isinstance(value, CovariatePath):
         return value, None
     if not isinstance(value, dict) or not value:
         raise ValueError(
@@ -1176,7 +1189,18 @@ def freeze(obj: Any) -> None:
     for value in vars(obj).values():
         if isinstance(value, np.ndarray):
             value.flags.writeable = False
+        elif type(value).__name__ == "StepSchedule":
+            value.edges.flags.writeable = False
+            value.Z.flags.writeable = False
     object.__setattr__(obj, "_frozen", True)
+
+
+def frozen_setstate(obj: Any, state: dict) -> None:
+    """A record unpickled or deep-copied, fixed again: its arrays come
+    back writeable, which let a copy be changed in place (#927)."""
+    for name, value in state.items():
+        object.__setattr__(obj, name, value)
+    freeze(obj)
 
 
 def frozen_setattr(obj: Any, name: str, value: Any) -> None:

@@ -445,7 +445,33 @@ def select(records: list, ids: Any, where: "Callable | None") -> list:
     return records
 
 
-class ReshapeMixin:
+def read_only(value: Any) -> Any:
+    """``value``, where it is a writeable array, as a read-only view of
+    it: the dataset's arrays cannot be changed in place. (An array that
+    came from the caller is copied where it came in, so changing theirs
+    does not change the dataset either.)"""
+    if isinstance(value, np.ndarray) and value.flags.writeable:
+        value = value.view()
+        value.flags.writeable = False
+    return value
+
+
+class ReadOnlyArrays:
+    """A dataset whose arrays are read-only (#927). Changing one in place
+    (``data.c[2] = 1``) used to leave the arrays split from it (``x_o``,
+    ``x_r``, ...) and the summary out of step with it, so two fits of the
+    same data could differ; a changed dataset is made with the reshaping
+    methods, or from changed arrays."""
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        object.__setattr__(self, name, read_only(value))
+
+    def __setstate__(self, state: dict) -> None:
+        for name, value in state.items():
+            object.__setattr__(self, name, read_only(value))
+
+
+class ReshapeMixin(ReadOnlyArrays):
     """The reshaping operations of a dataset (``SurpyvalData``,
     ``EventHistoryData``); each returns a new dataset, built again from
     the reshaped item records."""

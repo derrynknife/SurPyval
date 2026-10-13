@@ -205,7 +205,8 @@ class SurpyvalData(ReshapeMixin):
             if type(Z).__name__ == "DataFrame"
             else None
         )
-        Z_arr: np.ndarray = np.asarray(Z)
+        # A copy: the caller's array stays theirs (#927)
+        Z_arr: np.ndarray = np.array(Z)
         self.Z = Z_arr
         # The same masks the observation split used, not fresh ``c``
         # comparisons: censored rows with a finite truncation bound are
