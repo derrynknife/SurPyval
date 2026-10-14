@@ -17,6 +17,9 @@ Test planning: designing reliability tests before they are run.
   :func:`sequential_mtbf_test` and :func:`sequential_demonstration_test`
   (Wald's sequential probability ratio test, truncated at the
   fixed-length test).
+- **Comparing two groups** (#880): the events, units and power of a
+  log-rank test of a hazard ratio: :func:`logrank_events`,
+  :func:`logrank_sample_size` and :func:`logrank_power`.
 
 Every confidence level is given as ``alpha_ci``, the significance level,
 as everywhere in SurPyval: for a demonstration test it is the consumer's
@@ -34,6 +37,11 @@ Examples
 4744
 """
 
+from surpyval.test_planning.comparison import (
+    logrank_events,
+    logrank_power,
+    logrank_sample_size,
+)
 from surpyval.test_planning.demonstration import (
     DemonstrationPlan,
     demonstrated_mtbf,
@@ -70,4 +78,8 @@ __all__ = [
     "SequentialMTBFTest",
     "sequential_demonstration_test",
     "sequential_mtbf_test",
+    # Comparing two groups (#880)
+    "logrank_events",
+    "logrank_power",
+    "logrank_sample_size",
 ]
