@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, overload
+from typing import Any, Literal, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -72,87 +72,26 @@ def _warn_negative_entry(
     )
 
 
-def close_at_right_truncation(data: EventHistoryData) -> EventHistoryData:
+def refuse_right_truncation(data: Any, model_name: str) -> None:
     """
-    The data with each item's finite right-truncation time ``tr`` written
-    as the end-of-observation (``c=1``) row it stands for (#624).
-
-    A finite ``tr`` closes an item's observation window, as the NHPP
-    likelihoods and the MCF take it: the item was watched, with no further
-    events, up to ``tr``. The imperfect-repair likelihoods read the window
-    close from a ``c=1`` row only, so an item whose last row is before its
-    ``tr`` gets a ``c=1`` row at ``tr``. An item already closed at its
-    ``tr`` (a ``c=1`` row, or an event, there) is left as it is.
-
-    Raises ``ValueError`` for an item whose rows go past its ``tr``, or
-    whose ``c=1`` row is before it (``handle_xicn`` refuses both; this is
-    for data assembled by hand).
+    Refuse right-truncated data (a finite ``tr``) for a model that cannot
+    account for it (#924). Right truncation says each item is in the data
+    because it failed by ``tr``: the parametric intensity models divide
+    each item's likelihood by the chance of that, but the non-parametric
+    MCF, the imperfect-repair (renewal) models, the cause-specific models
+    and the diagnostics have no such term, and used to read ``tr`` as the
+    end of observation instead.
     """
     tr = np.asarray(data.tr, dtype=float)
-    if not np.isfinite(tr).any():
-        return data
-    x = np.asarray(data.x, dtype=float)
-    x_upper = x if x.ndim == 1 else x[:, 1]
-    c = np.asarray(data.c)
-    at: list[int] = []
-    for item in data.ids:
-        rows = np.flatnonzero(data.i == item)
-        tr_item = tr[rows[0]]
-        if not np.isfinite(tr_item):
-            continue
-        last = rows[np.argmax(x_upper[rows])]
-        if x_upper[last] > tr_item:
-            raise ValueError(
-                "Item {} has a row at {} after its right truncation time "
-                "tr={}; tr is the end of the item's observation, so every "
-                "row must be at or before it.".format(
-                    item_label(item),
-                    number_text(x_upper[last]),
-                    number_text(tr_item),
-                )
-            )
-        if x_upper[last] == tr_item:
-            continue
-        if c[last] == 1:
-            raise ValueError(
-                "Item {} has an end-of-observation (c=1) row at {} before "
-                "its right truncation time tr={}; both close the "
-                "observation window, so they must agree (drop the c=1 row "
-                "or set tr to its time).".format(
-                    item_label(item),
-                    number_text(x_upper[last]),
-                    number_text(tr_item),
-                )
-            )
-        at.append(int(rows[-1]) + 1)
-    if not at:
-        return data
-    values = tr[np.asarray(at) - 1]
-    new_x = (
-        np.insert(x, at, values)
-        if x.ndim == 1
-        else np.insert(x, at, np.column_stack([values, values]), axis=0)
-    )
-    closed = EventHistoryData(
-        new_x,
-        np.insert(data.i, at, data.i[np.asarray(at) - 1]),
-        np.insert(c, at, 1),
-        np.insert(data.n, at, 1),
-        e=(
-            None
-            if data.e is None
-            else np.insert(
-                data.e.astype(object), at, np.full(len(at), None, object)
-            )
-        ),
-        tl=np.insert(data.tl, at, data.tl[np.asarray(at) - 1]),
-        tr=np.insert(tr, at, values),
-    )
-    Z = getattr(data, "Z", None)
-    closed.Z = (
-        None if Z is None else np.insert(Z, at, Z[np.asarray(at) - 1], axis=0)
-    )
-    return closed
+    if np.isfinite(tr).any():
+        raise ValueError(
+            f"{model_name} does not take right truncation: a finite tr says "
+            "an item is in the data because it failed by tr, a selection "
+            "it cannot account for (the parametric intensity models, such "
+            "as CrowAMSAA, can). If tr was meant as the end of an item's "
+            "observation, give that as an end-of-observation (c=1) row "
+            "instead."
+        )
 
 
 def measure_from_entry(
@@ -160,9 +99,8 @@ def measure_from_entry(
 ) -> EventHistoryData:
     """
     The data on the clock of a virtual-age / imperfect-repair model
-    (Kijima, G1, ARA, ARI): each item's times measured from its entry,
-    and each item's finite right-truncation time ``tr`` as its ``c=1``
-    close (see :func:`close_at_right_truncation`).
+    (Kijima, G1, ARA, ARI): each item's times measured from its entry.
+    Right-truncated data is refused (:func:`refuse_right_truncation`).
 
     These models need an item's state when its observation begins: its
     virtual age, or the intensity reductions of its earlier repairs. With
@@ -177,7 +115,7 @@ def measure_from_entry(
     Raises ``ValueError`` for a negative time without a ``tl`` (these
     models measure time from the start of the item's life).
     """
-    data = close_at_right_truncation(data)
+    refuse_right_truncation(data, model_name)
     tl = np.asarray(data.tl, dtype=float)
     entry = np.where(np.isfinite(tl), tl, 0.0)
     x = np.asarray(data.x, dtype=float)
@@ -213,12 +151,12 @@ def reject_unsupported_nonparametric(
     The nonparametric MCF estimators (``NonParametricCounting`` and
     ``CauseSpecificMCF``) currently only support exact events (``c=0``) and
     right-censored end-of-observation rows (``c=1``), on an observation window
-    that may be left truncated (delayed entry, ``tl``) and right truncated
-    (``tr``, which closes the window like an end-of-observation row). Left
-    and interval censoring are not yet handled correctly by the risk-set
-    construction, so reject them up front rather than silently returning a
-    wrong MCF.
+    that may be left truncated (delayed entry, ``tl``). Left and interval
+    censoring are not yet handled correctly by the risk-set construction,
+    and right truncation (a selection, #924) not at all, so reject them up
+    front rather than silently returning a wrong MCF.
     """
+    refuse_right_truncation(data, model_name)
     c = np.asarray(data.c)
     if np.any(c == -1):
         raise ValueError(
@@ -1153,19 +1091,25 @@ def _check_item_window(
             f"Item {label} has inconsistent truncation bounds; each item "
             "must have a single observation window."
         )
-    if tl_i[0] > tr_i[0]:
-        raise ValueError(f"Item {label} has left truncation beyond right")
-    # An end-of-observation (c=1) row and a finite right truncation both
-    # say where the item's window closes, so they must agree: a tr past
-    # the c=1 row claims the item was watched (with no events) after its
-    # observation ended, and every model closes the window at one place.
-    if np.isfinite(tr_i[0]) and c_i[-1] == 1 and xu_i[-1] < tr_i[0]:
+    if tl_i[0] >= tr_i[0]:
         raise ValueError(
-            f"Item {label} has an end-of-observation (c=1) row at "
-            f"{number_text(xu_i[-1])} before its right truncation time tr="
-            f"{number_text(tr_i[0])}; both close the observation window, "
-            "so they must agree (drop the c=1 row or set tr to its time)."
+            f"Item {label} has left truncation at or beyond its right "
+            "truncation: it entered after the age by which it failed."
         )
+    # Right truncation is not the end of observation (#924): the item is
+    # in the data because it failed by tr. Watched to tr or beyond, that
+    # failure is seen: a failure at or before tr.
+    if np.isfinite(tr_i[0]) and xu_i[-1] >= tr_i[0]:
+        known = (c_i != 1) & (xu_i <= tr_i[0])
+        if not known.any():
+            raise ValueError(
+                f"Item {label} is right truncated at tr="
+                f"{number_text(tr_i[0])} (in the data because it failed by "
+                "then) and was watched to "
+                f"{number_text(xu_i[-1])}, but has no failure known at or "
+                "before tr. If tr was meant as the end of its observation, "
+                "give that as an end-of-observation (c=1) row instead."
+            )
     # The item's first interval is integrated from its entry time: the
     # left-truncation bound when finite, otherwise the fallback origin 0
     # (see EventHistoryData.get_previous_x). Events below that origin
@@ -1174,10 +1118,10 @@ def _check_item_window(
     # explicit (possibly negative) left-truncation window admits negative
     # times.
     lower = tl_i[0] if np.isfinite(tl_i[0]) else 0.0
-    if (xl_i < lower).any() or (xu_i > tr_i[0]).any():
+    if (xl_i < lower).any():
         raise ValueError(
-            f"Item {label} has events outside its observation window "
-            f"[{number_text(lower)}, {number_text(tr_i[0])}]"
+            f"Item {label} has events before its observation began, at "
+            f"{number_text(lower)}"
         )
     # The window opens just after the entry: an event (any row but the
     # c=1 close) exactly at a finite tl is outside it too (see

@@ -265,11 +265,8 @@ class CauseSpecificNHPP(SerialisableMixin):
         entry = float(data.tl[mask][0])
         x_upper = data.x[mask] if data.x.ndim == 1 else data.x[mask][:, 1]
         c_item = data.c[mask]
-        tr_item = float(data.tr[mask][0])
         if (c_item == 1).any():
             end = float(x_upper[c_item == 1][0])
-        elif tr_item == tr_item and tr_item != float("inf"):
-            end = tr_item
         else:
             end = float(x_upper.max())
         return entry, end
@@ -313,6 +310,11 @@ class CauseSpecificNHPP(SerialisableMixin):
                 "Cause-specific intensity models require exact (1D) event "
                 "times."
             )
+        from surpyval.utils.recurrent_utils import refuse_right_truncation
+
+        # Selection on the first failure of any type, which a model of each
+        # type apart cannot account for (#924)
+        refuse_right_truncation(data, "CauseSpecificNHPP")
         unsupported = sorted(set(data.c.tolist()) - {0, 1})
         if unsupported:
             raise ValueError(

@@ -235,6 +235,9 @@ def _history_for_event_type(
             fields.pop(name, None)
     for name in HISTORY_PARTS["event_types"]:
         fields.pop(name, None)
+    # Selected on a failure of any type: not accounted for (warned of by
+    # the dataset, as for lifetimes)
+    fields.pop("right_truncation", None)
     # Observation went on at least to the last failure of another mode.
     if last and fields.get("right_censored") is None:
         kept = [*keep, *(p[1] for p in fields["interval_censored"])]
@@ -355,8 +358,6 @@ def _history_censor_at(history: Any, age: float) -> Any:
             a: s for a, s in history.left_censored_states.items() if a <= age
         } or None
     fields["right_censored"] = age
-    if history.right_truncation is not None:
-        fields["right_truncation"] = age
     for name in (
         "observed",
         "observed_event_types",
@@ -375,10 +376,10 @@ def enter_at(record: Any, age: float) -> Any:
     state), with ``age`` as its left truncation."""
     if record.left_truncation is not None and record.left_truncation >= age:
         return record
-    if record.right_truncation is not None and record.right_truncation <= age:
-        return None
     if _is_history(record):
         return _history_enter_at(record, age)
+    if record.right_truncation is not None and record.right_truncation <= age:
+        return None  # it failed by then
     fields = record._fields()
     outcome, value = record.outcome, record.value
     if outcome in ("observed", "right_censored"):
@@ -447,6 +448,9 @@ def _history_enter_at(history: Any, age: float) -> Any:
     if fields.get("right_censored") is None:
         fields["right_censored"] = seen_to
     fields["left_truncation"] = age
+    # Selected on a failure by tr, some of whose window is now before the
+    # start of observation: not accounted for (warned of by the dataset)
+    fields.pop("right_truncation", None)
     for name in (
         "observed",
         "observed_event_types",
@@ -633,17 +637,13 @@ class ReshapeMixin(ReadOnlyArrays):
                 MaskedCauseWarning,
                 stacklevel=caller_stacklevel(),
             )
-        if (
-            self._PARTS is LIFETIME_PARTS
-            and np.isfinite(getattr(self, "tr")).any()
-        ):
+        if np.isfinite(getattr(self, "tr")).any():
             warnings.warn(
                 "for_event_type drops the data's right truncation: an item "
-                "is in right-truncated data because its first failure, of "
-                "any mode, came by the truncation age, which a fit of one "
-                "mode cannot account for, so the result is treated as not "
-                "right truncated (an approximation). Left truncation is "
-                "kept.",
+                "is in right-truncated data because it failed, of any mode, "
+                "by the truncation age, which a fit of one mode cannot "
+                "account for, so the result is treated as not right "
+                "truncated (an approximation). Left truncation is kept.",
                 UserWarning,
                 stacklevel=caller_stacklevel(),
             )
@@ -714,4 +714,17 @@ class ReshapeMixin(ReadOnlyArrays):
         inspection, from which it is known again.
         """
         age = float(age)
+        if (
+            self._PARTS is not LIFETIME_PARTS
+            and np.isfinite(getattr(self, "tr")).any()
+        ):
+            warnings.warn(
+                "enter_at drops the histories' right truncation: an item is "
+                "in the data because it failed by its truncation age, "
+                "possibly before the new start of observation, which the "
+                "fit cannot account for, so the result is treated as not "
+                "right truncated (an approximation).",
+                UserWarning,
+                stacklevel=caller_stacklevel(),
+            )
         return self._map(lambda r: enter_at(r, age))

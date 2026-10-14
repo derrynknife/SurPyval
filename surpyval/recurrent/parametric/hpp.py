@@ -191,10 +191,10 @@ class HPP(CountingProcess):
         len_observed = len(s["x_o"])
         observed_time = (s["x_o_prev"] - s["x_o"]).sum()
         right_censored_time = (s["x_right_prev"] - s["x_right"]).sum()
-        # Right window-close: extend the integral to each item's finite
-        # right-truncation time tr, cif(x_last) - cif(tr) = rate * (x_last
-        # - tr). Empty / zero when no item carries a finite tr.
-        right_truncation_time = (s["x_close_last"] - s["x_close_tr"]).sum()
+        # Right truncation (#924): the windows over which each truncated
+        # item is known to have failed (it is in the data because of it).
+        selection_time = s["sel_to"] - s["sel_from"]
+        gap_time = s["gap_to"] - s["gap_from"]
 
         # A left-censored count covers the item's window from its entry
         # (its first row, so the previous time is the entry: ``tl``, or
@@ -217,7 +217,8 @@ class HPP(CountingProcess):
             rate = anp.exp(log_rate)
             ll = len_observed * log_rate + rate * observed_time
             ll += rate * right_censored_time
-            ll += rate * right_truncation_time
+            ll -= anp.sum(anp.log(-anp.expm1(-rate * selection_time)))
+            ll += anp.sum(anp.log(-anp.expm1(-rate * gap_time)))
             ll += (
                 log_rate * n_left_sum
                 + n_log_x_left_sum

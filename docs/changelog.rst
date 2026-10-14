@@ -362,6 +362,41 @@ Unreleased
 
 **Fixed**
 
+- **Right truncation of recurrent (event history) data is right
+  truncation** (#924). A finite ``tr`` given to the recurrent fits,
+  ``handle_xicn`` or an ``ItemHistory`` was read as the end of the item's
+  observation -- the same as an end-of-observation (``c=1``) row at
+  ``tr`` -- so a fit with ``tr`` gave exactly the fit with that row. Right
+  truncation is a selection: the item is in the data because it failed by
+  ``tr`` (a repair or warranty-claim database holds only the units that
+  came back), and ignoring that makes the items look less reliable than
+  they are (in a simulated fleet kept for a failure by 10 hours, a
+  Crow-AMSAA ``alpha`` of 8.1 against a true 15). The parametric intensity
+  models (Crow-AMSAA, Duane, Cox-Lewis, the HPP and the other NHPPs, and
+  the proportional intensity models) now divide each truncated item's
+  likelihood by the chance of at least one failure in its window up to
+  ``tr``, ``1 - exp(-(Lambda(tr) - Lambda(entry)))`` -- and, for an item
+  whose observation ended before ``tr`` with no failure seen (cut by
+  ``censor_at``), multiply it by the chance of a failure after its end
+  but by ``tr``. The end of observation is a ``c=1`` row (or
+  ``right_censored``), else the item's last failure, and may be before or
+  after ``tr``; an item watched to ``tr`` or beyond must have a failure by
+  ``tr``. The non-parametric MCF, the cause-specific models, the renewal
+  (imperfect repair) models and the trend tests and residuals cannot
+  account for the selection, and refuse ``tr``, saying to give a ``c=1``
+  row if the end of observation was meant. **Upgrading:** where ``tr`` was
+  used for the end of observation, give an end-of-observation (``c=1``)
+  row (or ``right_censored``) instead; the fits are then as before. On
+  item records, ``to_first_events()`` keeps the right truncation (an
+  item's first failure came by ``tr``), as does the first gap of
+  ``to_gaps()``; ``enter_at`` and ``for_event_type`` drop it from
+  histories, with a warning, as ``for_event_type`` does for lifetimes.
+  ``EventHistoryData.get_right_truncation_close`` is replaced by
+  ``selection_terms``.
+- ``ItemHistory.state_at`` gave a state after observation ended (with no
+  ``right_censored``, after the last failure), and a change of state after
+  that end was accepted; ``state_at`` is None there and the change is
+  refused, saying to give ``right_censored`` (#924).
 - Covariates (#929): ``with_covariates`` given one covariate twice kept
   one column by name and two by number; both are refused. A dataset whose
   covariates had a NaN could not be reshaped -- even

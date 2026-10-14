@@ -49,8 +49,12 @@ class ItemHistory:
         The age at which the item came under observation: failures before
         it are not known.
     right_truncation : scalar, optional
-        The age after which its failures would not have been seen. With
-        ``right_censored``, the two must be the same age.
+        The age by which it failed, which is why it is in the data (right
+        truncation: the data hold only items that failed by then, such as
+        a repair or warranty-claim database). It is not the end of
+        observation, which is ``right_censored`` (else the last failure),
+        and may come before or after it; watched to it or beyond, the item
+        has a failure at or before it.
     covariates : scalar, array like or dict, optional
         Its covariates, constant over its history: a number, a row, or
         ``{name: value}`` (a pandas Series too), which names them
@@ -361,12 +365,21 @@ class ItemHistory:
                 f"its last failure, {last:g}: right_censored is the age when "
                 "the item was last checked, at or after every failure."
             )
-        if end is not None and tr is not None and end != tr:
-            raise ValueError(
-                f"Item {item!r}: right_censored ({end:g}) and "
-                f"right_truncation ({tr:g}) both end its observation, so "
-                "they must be the same age; give one."
-            )
+        seen_to = end if end is not None else last
+        if tr is not None and seen_to is not None and seen_to >= tr:
+            # Watched to tr or beyond, the failure that put it in the data
+            # is seen (#924)
+            known = [*self.observed, *self.interval_censored[:, 1]]
+            if self.left_censored is not None:
+                known.append(self.left_censored)
+            if not any(age <= tr for age in known):
+                raise ValueError(
+                    f"Item {item!r} is right truncated at {tr:g} (in the "
+                    "data because it failed by then) and was watched to "
+                    f"{seen_to:g}, but has no failure at or before "
+                    f"{tr:g}. If right_truncation was meant as the end of "
+                    "its observation, that is right_censored."
+                )
         if tl is not None:
             early = [
                 *self.observed[self.observed <= tl],
@@ -384,11 +397,6 @@ class ItemHistory:
                     "(left_truncation, ...], so nothing can happen at or "
                     "before that age."
                 )
-        if tr is not None and last is not None and last > tr:
-            raise ValueError(
-                f"Item {item!r} has a failure at {last:g}, after "
-                f"right_truncation ({tr:g}), past which none could be seen."
-            )
         if self._first_change is not None:
             start = 0.0 if tl is None else tl
             first = self._first_change
@@ -446,9 +454,8 @@ class ItemHistory:
             raise ValueError(f"Item {self.id!r} has no states.")
         age = _age(self.id, "age", age)
         start = 0.0 if self.left_truncation is None else self.left_truncation
-        if age < start or (
-            self.right_censored is not None and age > self.right_censored
-        ):
+        end = self._end()
+        if age < start or (end is not None and age > end):
             return None
         state = self.initial_state
         for kind, lower, upper, new in self.state_changes:
@@ -459,6 +466,21 @@ class ItemHistory:
             else:
                 break
         return state
+
+    def _last_failure(self) -> "float | None":
+        """The age of its last failure (the upper end of a count), or
+        None."""
+        ages = [*self.observed, *self.interval_censored[:, 1]]
+        if self.left_censored is not None:
+            ages.append(self.left_censored)
+        return float(max(ages)) if ages else None
+
+    def _end(self) -> "float | None":
+        """Where its observation ends: right_censored, else its last
+        failure (#924)."""
+        if self.right_censored is not None:
+            return self.right_censored
+        return self._last_failure()
 
     @property
     def has_states(self) -> bool:
@@ -500,7 +522,7 @@ class ItemHistory:
                     "follow the one before."
                 )
             state, previous_end = new, upper
-        tl, tr = self.left_truncation, self.right_truncation
+        tl = self.left_truncation
         for kind, lower, upper, new in changes:
             if tl is not None and (
                 lower < tl or (kind == "observed" and lower <= tl)
@@ -510,17 +532,25 @@ class ItemHistory:
                     f"{_when(kind, lower, upper)} is not after it came under "
                     f"observation ({tl:g}, left_truncation)."
                 )
-            if tr is not None and upper > tr:
-                raise ValueError(
-                    f"Item {item!r}: the change into {new!r} at "
-                    f"{_when(kind, lower, upper)} is after right_truncation "
-                    f"({tr:g})."
-                )
         end = self.right_censored
         if changes and end is not None and end < changes[-1][2]:
             raise ValueError(
                 f"Item {item!r}: the end of observation, {end:g}, is before "
                 f"its last change of state, {changes[-1][2]:g}."
+            )
+        last = self._last_failure()
+        if (
+            changes
+            and end is None
+            and last is not None
+            and (changes[-1][2] > last)
+        ):
+            # Without right_censored it was watched until its last failure
+            raise ValueError(
+                f"Item {item!r}: a change of state is seen at "
+                f"{changes[-1][2]:g}, after its observation ended at its "
+                f"last failure ({last:g}): give right_censored, the age it "
+                "was last seen."
             )
 
     # -- rows for the dataset ----------------------------------------------

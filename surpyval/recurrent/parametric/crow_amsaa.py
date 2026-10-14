@@ -151,6 +151,8 @@ class CrowAMSAA(NHPPFitter):
         tl = np.asarray(data.tl, dtype=float)
         if np.any(np.isfinite(tl) & (tl != 0)):
             return None
+        if np.isfinite(np.asarray(data.tr, dtype=float)).any():
+            return None  # right truncated: the selection term is searched
         _, ends = data.item_observation_windows()
         ends = np.asarray(ends, dtype=float)
         if not (np.all(np.isfinite(ends)) and np.all(ends > 0)):

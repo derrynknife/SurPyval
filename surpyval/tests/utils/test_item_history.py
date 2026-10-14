@@ -114,12 +114,12 @@ def test_repr_shows_what_was_given():
             "at or before it came under",
         ),
         (
-            {"observed": [5, 30], "right_truncation": 20},
-            "after right_truncation",
+            {"observed": [25, 30], "right_truncation": 20},
+            "has no failure at or before 20",
         ),
         (
-            {"observed": [5], "right_censored": 8, "right_truncation": 9},
-            "same age",
+            {"observed": [22], "right_censored": 25, "right_truncation": 20},
+            "has no failure at or before 20",
         ),
         (
             {"observed": [5], "left_censored": 7},
@@ -157,6 +157,26 @@ def test_repr_shows_what_was_given():
 def test_an_item_refuses(kwargs, match):
     with pytest.raises(ValueError, match=match):
         ItemHistory("A", **kwargs)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"observed": [5, 30], "right_truncation": 20},
+        {"observed": [5], "right_censored": 8, "right_truncation": 9},
+        {"right_censored": 8, "right_truncation": 9},
+        {"observed": [20, 30], "right_censored": 40, "right_truncation": 20},
+    ],
+)
+def test_right_truncation_is_not_the_end_of_observation(kwargs):
+    # right_truncation is the age by which the item failed, why it is in
+    # the data (#924): failures after it, and an end of observation before
+    # or after it, are fine, so long as one watched to it or beyond has a
+    # failure at or before it.
+    item = ItemHistory("A", **kwargs)
+    data = EventHistoryData.from_items([item])
+    assert np.all(data.tr == kwargs["right_truncation"])
+    assert data.to_items() == [item]
 
 
 def test_the_dataset_needs_consistent_items():
@@ -452,6 +472,15 @@ def test_states_are_changes_with_censoring_and_round_trip():
         ),
         ({"observed_states": {900: None}}, "cannot hold None"),
         ({"left_censored_states": {300: "a", 400: "b"}}, "at most one"),
+        (
+            # with no right_censored, observation ends at the last failure
+            {
+                "right_censored": None,
+                "observed": [500],
+                "observed_states": {900: "a"},
+            },
+            "after its observation ended at its last failure",
+        ),
     ],
 )
 def test_states_are_checked(kwargs, match):
