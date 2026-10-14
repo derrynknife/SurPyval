@@ -411,7 +411,11 @@ for _fn in (
 # Test planning (#862-#865, #880): functions of planning values, and the
 # plans and tests they return; they fit nothing, and have their own tests
 # in tests/test_planning.
-for _result in ("DemonstrationPlan",):
+for _result in (
+    "DemonstrationPlan",
+    "SequentialDemonstrationTest",
+    "SequentialMTBFTest",
+):
     OUT_OF_SCOPE[f"surpyval.test_planning.{_result}"] = _RESULT
 for _fn in (
     "demonstrated_mtbf",
@@ -423,6 +427,8 @@ for _fn in (
     "mtbf_demonstration_plan",
     "mtbf_pass_probability",
     "mtbf_test_time",
+    "sequential_demonstration_test",
+    "sequential_mtbf_test",
 ):
     OUT_OF_SCOPE[f"surpyval.test_planning.{_fn}"] = _FUNCTION
 OUT_OF_SCOPE["surpyval.univariate.nonparametric.canonical_heuristic"] = (

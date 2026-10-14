@@ -12,6 +12,11 @@ Test planning: designing reliability tests before they are run.
   :func:`demonstrated_mtbf` and :func:`mtbf_pass_probability`. Plans that
   keep both the consumer's and the producer's risk:
   :func:`demonstration_plan` and :func:`mtbf_demonstration_plan`.
+- **Sequential tests** (#865) decide as the evidence comes in, usually
+  sooner than a fixed-length test with the same risks:
+  :func:`sequential_mtbf_test` and :func:`sequential_demonstration_test`
+  (Wald's sequential probability ratio test, truncated at the
+  fixed-length test).
 
 Every confidence level is given as ``alpha_ci``, the significance level,
 as everywhere in SurPyval: for a demonstration test it is the consumer's
@@ -41,6 +46,12 @@ from surpyval.test_planning.demonstration import (
     mtbf_pass_probability,
     mtbf_test_time,
 )
+from surpyval.test_planning.sequential import (
+    SequentialDemonstrationTest,
+    SequentialMTBFTest,
+    sequential_demonstration_test,
+    sequential_mtbf_test,
+)
 
 __all__ = [
     # Demonstration tests (#862)
@@ -54,4 +65,9 @@ __all__ = [
     "mtbf_demonstration_plan",
     "mtbf_pass_probability",
     "mtbf_test_time",
+    # Sequential tests (#865)
+    "SequentialDemonstrationTest",
+    "SequentialMTBFTest",
+    "sequential_demonstration_test",
+    "sequential_mtbf_test",
 ]
