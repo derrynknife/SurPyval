@@ -408,6 +408,23 @@ for _fn in (
     OUT_OF_SCOPE[f"surpyval.univariate.nonparametric.{_fn}"] = (
         _FUNCTION + " (the estimator behind a registered fitter)"
     )
+# Test planning (#862-#865, #880): functions of planning values, and the
+# plans and tests they return; they fit nothing, and have their own tests
+# in tests/test_planning.
+for _result in ("DemonstrationPlan",):
+    OUT_OF_SCOPE[f"surpyval.test_planning.{_result}"] = _RESULT
+for _fn in (
+    "demonstrated_mtbf",
+    "demonstrated_reliability",
+    "demonstration_pass_probability",
+    "demonstration_plan",
+    "demonstration_sample_size",
+    "demonstration_test_multiple",
+    "mtbf_demonstration_plan",
+    "mtbf_pass_probability",
+    "mtbf_test_time",
+):
+    OUT_OF_SCOPE[f"surpyval.test_planning.{_fn}"] = _FUNCTION
 OUT_OF_SCOPE["surpyval.univariate.nonparametric.canonical_heuristic"] = (
     _FUNCTION + " (reads a plotting-position heuristic's name)"
 )
