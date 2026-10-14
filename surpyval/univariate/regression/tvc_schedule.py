@@ -440,18 +440,21 @@ class StepSchedule:
             raise ValueError("a schedule needs at least one segment")
         if not np.all(np.diff(edges) > 0):
             raise ValueError("edges must be strictly increasing")
-        if not np.isfinite(edges[:-1]).all():
-            raise ValueError("every edge except the last must be finite")
+        if not np.isfinite(edges[1:-1]).all() or np.isnan(edges[0]):
+            raise ValueError(
+                "every edge except the first and last must be finite (the "
+                "first may be -inf: a value held since -inf)"
+            )
         if not np.isfinite(Z).all():
             raise ValueError("Z must contain only finite values")
         if period is not None:
             period = float(period)
             if not (period > 0):
                 raise ValueError("period must be positive")
-            if not np.isfinite(edges[-1]):
+            if not np.isfinite(edges[[0, -1]]).all():
                 raise ValueError(
-                    "a cyclic schedule needs a finite final edge (the pattern "
-                    "length); use cyclic() to build one"
+                    "a cyclic schedule needs finite first and last edges "
+                    "(the pattern); use cyclic() to build one"
                 )
             if edges[-1] - edges[0] > period + 1e-12:
                 raise ValueError("the pattern spans longer than one period")
@@ -466,8 +469,8 @@ class StepSchedule:
 
     @property
     def start(self) -> float:
-        """The time the schedule starts, its first edge: it gives no value
-        before it."""
+        """The time the schedule starts, its first edge (``-inf`` for one
+        held since ``-inf``): it gives no value before it."""
         return float(self.edges[0])
 
     # -- structural constructors ------------------------------------------
@@ -475,11 +478,11 @@ class StepSchedule:
     @classmethod
     def constant(cls, Z: npt.ArrayLike) -> "StepSchedule":
         """
-        A constant covariate ``Z`` over all time. Evaluating a model on it is
-        identical to ``model.sf(x, Z)``.
+        A constant covariate ``Z`` over all time, from ``-inf`` (#952).
+        Evaluating a model on it is identical to ``model.sf(x, Z)``.
         """
         Z = np.asarray(Z, dtype=float).reshape(1, -1)
-        return cls(np.array([0.0, np.inf]), Z)
+        return cls(np.array([-np.inf, np.inf]), Z)
 
     @classmethod
     def from_changepoints(
@@ -491,10 +494,16 @@ class StepSchedule:
         ``values[i]`` is the covariate row in effect from ``times[i]`` until
         the next change-point; the last value is held to the horizon.
         ``times`` must be strictly increasing; ``times[0]`` is the path's
-        start, :attr:`start`. A model evaluates the path from time ``0``,
-        so a path for a prediction must start at or before ``0`` (the part
-        before ``0`` is ignored); one starting later is refused, as nothing
-        says what the covariate was before it. On a record it must start
+        start, :attr:`start`, and may be ``-inf`` (the first value held
+        since ``-inf``). A path must cover every time a model's answer
+        depends on, and one starting later is refused, as nothing says
+        what the covariate was before it: from ``0`` for a baseline that
+        starts at ``0`` (the part before ``0`` is ignored); from ``-inf``
+        for a proportional hazards or proportional odds model on a
+        baseline over the whole real line (``Normal``, ``Gumbel``,
+        ``Logistic``), and from ``0``, and any earlier time asked about,
+        for accelerated failure time and additive hazards, which measure
+        the covariate's effect from ``0`` (#952). On a record it must start
         at or before the start of the item's observation.
 
         Parameters
@@ -764,7 +773,7 @@ class StepSchedule:
     def __repr__(self) -> str:
         """The call that builds the schedule (#930); a long schedule in
         short."""
-        edges, Z = self.edges.tolist(), self.Z.tolist()
+        edges, Z = [_number(e) for e in self.edges], self.Z.tolist()
         n = self.Z.shape[0]
         if n > self._REPR_SEGMENTS:
             kind = "cyclic" if self.period is not None else "step"
@@ -779,13 +788,31 @@ class StepSchedule:
             return "StepSchedule({}, {}, period={!r})".format(
                 edges, Z, self.period
             )
-        if np.isfinite(edges[-1]):
+        if np.isfinite(self.edges[-1]):
             return "StepSchedule.from_intervals({}, {}, {})".format(
-                edges[:-1], edges[1:], Z
+                _listed(edges[:-1]), _listed(edges[1:]), Z
             )
-        if n == 1 and edges[0] == 0:
+        if n == 1 and np.isneginf(self.edges[0]):
             return "StepSchedule.constant({})".format(Z[0])
-        return "StepSchedule.from_changepoints({}, {})".format(edges[:-1], Z)
+        return "StepSchedule.from_changepoints({}, {})".format(
+            _listed(edges[:-1]), Z
+        )
+
+
+class _Inf(float):
+    """``-inf`` that shows as code that makes it."""
+
+    def __repr__(self) -> str:
+        return "-np.inf"
+
+
+def _number(edge: float) -> float:
+    # -inf in a repr as -np.inf, which pastes back.
+    return _Inf(edge) if np.isneginf(edge) else float(edge)
+
+
+def _listed(values: list) -> str:
+    return "[" + ", ".join(repr(v) for v in values) + "]"
 
 
 # -- shared helpers for the model ``sf_tvc`` / ``Hf_tvc`` methods ----------
@@ -901,16 +928,28 @@ def segments_from_origin(
     segment, ``[0, 0]``.
     """
     check_from_origin(schedule)
+    return segments_from(schedule, 0.0, t_max)
+
+
+def segments_from(
+    schedule: StepSchedule, lo: float, t_max: float
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    """
+    Materialise ``schedule`` on ``[lo, t_max]`` (``lo`` may be ``-inf``),
+    the schedule starting at or before ``lo``: the part of it before
+    ``lo`` is dropped, the segment in force at ``lo`` then starting there.
+    For ``t_max <= lo`` the result is that one segment, ``[lo, lo]``.
+    """
     t_max = float(t_max)
-    end = max(t_max, 0.0)
-    # Any positive horizon shows the value in force at 0.
-    starts, ends, Z = schedule.segments(end if end > 0 else 1.0)
-    # Drop what ends at or before 0 and start the rest at 0.
-    keep = ends > 0
+    end = max(t_max, lo)
+    # Any horizon past lo shows the value in force at lo.
+    starts, ends, Z = schedule.segments(end if end > lo else lo + 1.0)
+    # Drop what ends at or before lo and start the rest at lo.
+    keep = ends > lo
     starts, ends, Z = starts[keep].copy(), ends[keep], Z[keep]
-    starts[0] = 0.0
-    if end == 0:
-        return starts[:1], np.array([0.0]), Z[:1]
+    starts[0] = lo
+    if end == lo:
+        return starts[:1], np.array([lo]), Z[:1]
     return starts, ends, Z
 
 

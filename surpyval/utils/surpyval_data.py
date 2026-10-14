@@ -1726,6 +1726,9 @@ def _fit_tvc_from_data(
         static = np.asarray(data.Z, dtype=float)
         static = static[:, None] if static.ndim == 1 else static
     x = data.x if data.x.ndim == 1 else data.x[:, 0]
+    fitter = getattr(fit_tvc, "__self__", None)
+    support = getattr(fitter, "support", (0.0, np.inf))
+    real_line = float(support[0]) < 0
     rows: dict[str, list] = {k: [] for k in ("i", "xl", "xr", "c", "Z", "n")}
     for k, item in enumerate(ids):
         schedule = data.time_varying_covariates[item]  # type: ignore[index]
@@ -1735,7 +1738,24 @@ def _fit_tvc_from_data(
                 "CovariatePath; fitting on continuous paths is not provided "
                 "yet (#908). Give the path as a StepSchedule to fit it."
             )
-        start = data.tl[k] if np.isfinite(data.tl[k]) else 0.0
+        if np.isfinite(data.tl[k]):
+            start = float(data.tl[k])
+        elif real_line:
+            # Not left truncated: followed since -inf, as the ordinary fit
+            # reads it, on a baseline defined below 0 (#952).
+            if schedule.start > -np.inf:
+                raise ValueError(
+                    f"Item {item!r} has no left_truncation, so on this "
+                    "model's baseline, defined below 0, it is followed "
+                    "since -inf, but its time-varying covariates start at "
+                    f"{schedule.start:g}. Give their value since -inf "
+                    "(StepSchedule.from_changepoints([-np.inf, ...], ...)), "
+                    "or left_truncation=0 if it came under observation at "
+                    "0."
+                )
+            start = -np.inf
+        else:
+            start = 0.0
         stop = float(x[k])
         if schedule.start > start:
             # Nothing says what the covariates were before (#930).

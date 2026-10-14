@@ -1033,7 +1033,17 @@ def _time_varying(item: Any, value: Any) -> tuple[Any, "float | None", bool]:
             "{age: values} (the values holding from each age on), a "
             "StepSchedule or a CovariatePath."
         )
-    ages = np.array([_age(item, "time_varying_covariates", a) for a in value])
+    # An age of -inf: the value held since -inf (#952).
+    ages = np.array(
+        [
+            (
+                -np.inf
+                if _is_minus_inf(a)
+                else _age(item, "time_varying_covariates", a)
+            )
+            for a in value
+        ]
+    )
     rows = [
         _covariate_row(item, "time_varying_covariates", v)
         for v in value.values()
@@ -1048,6 +1058,13 @@ def _time_varying(item: Any, value: Any) -> tuple[Any, "float | None", bool]:
         ages[order], np.vstack(rows)[order]
     )
     return schedule, float(ages.min()), True
+
+
+def _is_minus_inf(value: Any) -> bool:
+    try:
+        return np.ndim(value) == 0 and float(value) == -np.inf
+    except (TypeError, ValueError):
+        return False
 
 
 def late_covariates(item: Any, first: float, start: float) -> ValueError:

@@ -2507,7 +2507,8 @@ is about 1 as well.
 
 Because the accelerated age is integrated from time zero, the AFT fit needs each
 subject's whole covariate history: every subject's first interval must start
-at 0 and its intervals must be contiguous. Delayed entry or a gap would mean
+at or before 0 (at ``-inf`` for one followed since then, on a baseline defined
+below 0) and its intervals must be contiguous. Delayed entry or a gap would mean
 ageing at an unknown rate over the unobserved stretch, so instead of guessing,
 the fit refuses and points to Cox, which handles both exactly:
 
@@ -2583,11 +2584,16 @@ time (``AFT``) — exposes the same ``sf_tvc(x, Z, xl=None, given=None)`` (plus
 the matching ``Hf_tvc``). Pass either ``(xl, Z)`` arrays or a
 :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`, and
 ``given=`` for conditional survival :math:`S(x \mid \text{survived to } g)`.
-The path is measured from time 0, so it must start at or before 0: one that
-starts later is refused, as nothing says what the covariate was before it.
-The part of a schedule before 0 is ignored (the value in force at 0 applies
-from there), so a constant path gives ``sf(x, Z)`` wherever before 0 it
-starts. Any time is a valid query, 0 and below included.
+A path must cover every time the answer depends on, and one that starts later
+is refused, as nothing says what the covariate was before it. For a baseline
+that starts at 0 that is from 0 (the part of a schedule before 0 is ignored).
+On a baseline defined below 0 (``Normal``, ``Gumbel``, ``Logistic``), PH and
+PO depend on the covariate back to :math:`-\infty`, so a schedule starts
+there, ``StepSchedule.from_changepoints([-np.inf, ...], ...)``;
+``StepSchedule.constant`` does. AFT and AH measure the covariate's effect from
+0, so for them a path from 0 serves times from 0, and an earlier time needs
+the covariate from that time on. Any time is a valid query, 0 and below
+included.
 Proportional hazards, additive hazards and proportional odds accumulate a
 cumulative hazard over the segments: in each of them the hazard at time
 :math:`t` depends only on :math:`t` and the covariate at :math:`t`, so
@@ -2598,11 +2604,12 @@ constant-covariate cumulative hazard is
 instead accumulates an *accelerated age*
 :math:`\psi(x) = \sum e^{\beta'z}\,(b - a)` and evaluates the baseline once at
 :math:`\psi`. A single constant segment gives ``sf(x, Z)`` in every family,
-including baselines defined below zero (``Normal``, ``Gumbel``, ``Logistic``),
-for which the value in force at time 0 is taken to hold before it as well.
-``fit_tvc`` treats a subject observed from time 0 the same way (its first
-interval is not left-truncated), so for PH, AH and PO a constant covariate
-split into intervals reproduces the ordinary ``fit``.
+including baselines defined below zero (``Normal``, ``Gumbel``, ``Logistic``).
+In ``fit_tvc`` a subject's first interval enters at its ``xl``, as any other
+does: on such a baseline, a first ``xl`` of 0 means the subject entered at 0
+(the fit conditions on its surviving to 0), and ``-inf`` that it is followed
+since then, its first covariate row holding since then. Split into intervals
+from ``-inf``, a constant covariate reproduces the ordinary ``fit``.
 An accelerated life model whose life parameter scales time (Weibull,
 Exponential, Gamma, LogNormal) accumulates an age like AFT, at the rate
 :math:`1 / L(V)` (see :ref:`tvc-bounds-mean`); one whose life parameter is a

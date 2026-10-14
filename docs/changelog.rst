@@ -307,6 +307,37 @@ Unreleased
 
 **Changed**
 
+- On a baseline defined below 0 (``Normal``, ``Gumbel``, ``Logistic``) a
+  covariate path must cover every time the answer depends on (#952). The
+  value at 0 was taken to hold back to ``-inf``, and values given before
+  0 were ignored. A schedule may now start at ``-inf``
+  (``StepSchedule.from_changepoints([-np.inf, ...], ...)``, ``{-np.inf:
+  ...}`` on a record), and ``StepSchedule.constant`` does.
+  - Proportional hazards and odds depend on the covariate back to
+    ``-inf``: their schedules must start there. A ``CovariatePath``,
+    integrated from 0, serves them only for survival given an age at or
+    after 0 (``given=``).
+  - Accelerated failure time and additive hazards measure the covariate's
+    effect from 0: a path from 0 serves times from 0, and an earlier time
+    needs the covariate from that time on.
+  - Cox needs the covariate before every baseline jump below 0 that a
+    query counts.
+  - ``mean_tvc`` without ``given`` needs a schedule from ``-inf`` with one
+    value before 0.
+- In ``fit_tvc`` a subject's first row enters at its ``xl``, as any other
+  row does (#952). On a baseline defined below 0, a first ``xl`` of 0 now
+  means the subject entered at 0, and the fit conditions on its surviving
+  to 0, which changes those fits. ``xl = -inf`` is a subject followed
+  since ``-inf``, which gives the old fit. Baselines that start at 0 are
+  unchanged.
+  - A fit from item records reads an item with no ``left_truncation`` as
+    followed since ``-inf`` there, and refuses one whose covariates start
+    later.
+  - Additive hazards refuse a subject followed since ``-inf`` whose
+    covariate changes before 0.
+  - The accelerated failure time fit measures accelerated age from 0,
+    and refuses an exit at or before 0 on such a baseline.
+
 - A covariate schedule must start at or before the point time is
   measured from (#930). A ``StepSchedule`` or ``CovariatePath`` that
   started later had its first value taken as the value from the start, a

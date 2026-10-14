@@ -1095,8 +1095,9 @@ class SemiParametricRegressionModel(
         continuously varying path this is still exact, with no quadrature:
         only the covariate just before each jump time counts (the value
         before a jump in the path, as for ``(start, stop]`` rows). The path
-        is measured from time zero (a path starting after zero is refused;
-        the part before zero is ignored), and any
+        is measured from time zero (a path starting after zero is refused,
+        as is one starting at or after a baseline jump before zero that a
+        query counts, #952), and any
         time is a valid query: ``H`` is ``0`` up to the first baseline jump.
 
         Parameters
@@ -1145,7 +1146,7 @@ class SemiParametricRegressionModel(
         ``CovariatePath`` given one (summed from ``given`` on)."""
         base_t, base_h0, _ = self._baseline_arrays(stratum)
         from .tvc_path import CovariatePath
-        from .tvc_schedule import as_covariate_path, segments_from_origin
+        from .tvc_schedule import as_covariate_path, segments_from
 
         schedule = as_covariate_path(
             Z, xl, getattr(self, "feature_names", None)
@@ -1169,12 +1170,15 @@ class SemiParametricRegressionModel(
             # Nothing to evaluate: a missing time is nan (the schedule
             # cannot be materialised to a nan horizon).
             return np.full(xq.shape, np.nan)
+        t_max = float(np.nanmax(xq))
+        _check_jumps_covered(schedule.start, base_t, t_max, given)
         if isinstance(schedule, CovariatePath):
             return self._tvc_cumhaz_path(xq, schedule, base_t, base_h0, given)
-        # A horizon at or below 0 materialises the segment in force at 0
-        # (H is 0 there, before the first baseline jump).
-        t_max = float(np.nanmax(xq))
-        starts, _, Zseg = segments_from_origin(schedule, t_max)
+        # From the schedule's own start (at or before 0, and before every
+        # baseline jump that counts, #952). A horizon at or below 0
+        # materialises the segment in force at 0.
+        lo = min(schedule.start, 0.0)
+        starts, _, Zseg = segments_from(schedule, lo, max(t_max, 0.0))
         return self._tvc_cumhaz(xq, starts, Zseg, base_t, base_h0)
 
     def _tvc_cumhaz_path(
@@ -1192,16 +1196,20 @@ class SemiParametricRegressionModel(
             H(t) = \sum_{u_j \le t} h_0(u_j)\, e^{\beta' (Z(u_j-) - c)},
 
         exact, with the path's value just before each jump time (its value
-        at 0 for a jump at or before 0).
+        at its start for a jump there).
         With ``given`` the jumps in ``(given, t]`` are summed (negated for
         ``t < given``).
         """
         from .tvc_path import sum_between
 
-        Z_at = np.asarray(path._values(np.maximum(base_t, 0.0)), dtype=float)
-        at0 = base_t <= 0
-        if at0.any():
-            Z_at[at0] = path._values(np.zeros(1), left=False)[0]
+        # The value just before each jump; for a jump at or before the
+        # path's start, which no query counts (_check_jumps_covered) unless
+        # it is the start itself, the value there.
+        start = path.start
+        Z_at = np.asarray(path._values(np.maximum(base_t, start)), dtype=float)
+        early = base_t <= start
+        if early.any():
+            Z_at[early] = path._values(np.array([start]), left=False)[0]
         weight = self._times_risk(base_h0, self._log_risk(Z_at))
         # The jumps between baseline times: panel i is (t_{i-1}, t_i], so
         # a time's cumulative sum is that of the last baseline time at or
@@ -1309,3 +1317,23 @@ class SemiParametricRegressionModel(
             xq = np.atleast_1d(np.asarray(x, dtype=float))
             H = np.where(xq <= g, 0.0, H)
         return np.exp(-H)
+
+
+def _check_jumps_covered(
+    start: float, base_t: npt.NDArray, t_max: float, given: "float | None"
+) -> None:
+    """Refuse a covariate path that starts at or after a baseline jump
+    before 0 that a query counts (the jumps up to the largest query time,
+    after ``given``): the hazard there needs the covariate just before the
+    jump (#952). A jump at the start itself, 0, takes the value there."""
+    counted = base_t <= t_max
+    if given is not None and not np.isnan(given):
+        counted &= base_t > given
+    early = base_t[counted & (base_t <= start) & (base_t < 0)]
+    if early.size:
+        raise ValueError(
+            f"The covariates start at {start:g}, but the baseline has a "
+            f"jump at {float(early[0]):g}, before it: the hazard there "
+            "needs the covariate just before that time. Give their values "
+            f"from before {float(early[0]):g} (from -np.inf, say)."
+        )
