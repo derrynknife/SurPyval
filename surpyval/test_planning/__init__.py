@@ -21,6 +21,10 @@ Test planning: designing reliability tests before they are run.
   to estimate a Weibull or lognormal quantile or mean to a given
   precision: :func:`life_test_precision`, :func:`life_test_sample_size`
   and :func:`life_test_length`.
+- **Accelerated life tests** (#864): the stresses and the units at each
+  that estimate a quantile at the use stress most precisely:
+  :func:`accelerated_test_plan` (optimum and compromise plans) and
+  :func:`accelerated_test_precision` for a test of your own.
 - **Comparing two groups** (#880): the events, units and power of a
   log-rank test of a hazard ratio: :func:`logrank_events`,
   :func:`logrank_sample_size` and :func:`logrank_power`.
@@ -41,6 +45,11 @@ Examples
 4744
 """
 
+from surpyval.test_planning.accelerated import (
+    AcceleratedTestPlan,
+    accelerated_test_plan,
+    accelerated_test_precision,
+)
 from surpyval.test_planning.comparison import (
     logrank_events,
     logrank_power,
@@ -95,6 +104,10 @@ __all__ = [
     "life_test_length",
     "life_test_precision",
     "life_test_sample_size",
+    # Accelerated life tests (#864)
+    "AcceleratedTestPlan",
+    "accelerated_test_plan",
+    "accelerated_test_precision",
     # Comparing two groups (#880)
     "logrank_events",
     "logrank_power",

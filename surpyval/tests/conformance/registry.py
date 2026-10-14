@@ -412,6 +412,7 @@ for _fn in (
 # plans and tests they return; they fit nothing, and have their own tests
 # in tests/test_planning.
 for _result in (
+    "AcceleratedTestPlan",
     "DemonstrationPlan",
     "LifeTestPlan",
     "SequentialDemonstrationTest",
@@ -420,6 +421,8 @@ for _result in (
 ):
     OUT_OF_SCOPE[f"surpyval.test_planning.{_result}"] = _RESULT
 for _fn in (
+    "accelerated_test_plan",
+    "accelerated_test_precision",
     "demonstrated_mtbf",
     "demonstrated_reliability",
     "demonstration_pass_probability",
