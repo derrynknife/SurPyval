@@ -293,6 +293,18 @@ Unreleased
   pointing to ``without("event_types")`` (which combines the failures
   found at one inspection) or ``for_event_type``.
 
+- A record's covariate by name: ``item.covariate("site")`` (NaN where
+  not recorded), for ``select(where=lambda item: item.covariate("site")
+  == 1)`` (#929). A covariate not recorded (NaN, or None) is accepted by
+  ``ItemLifetime`` and ``ItemHistory``, as the datasets accept it, and
+  follows the package's missing-value rule: fits of independent items
+  drop the row with one warning, the recurrent fits refuse it, naming the
+  items. ``to_observations()`` gives each kind's ids (``"<kind>_ids"``)
+  and the covariate names, which ``from_observations`` takes back, so
+  ``SurpyvalData.from_observations(**data.to_observations())`` keeps the
+  ids and names it used to lose (and failures of a kind given without
+  event types are masked causes, as elsewhere).
+
 **Changed**
 
 - A dataset's arrays (``SurpyvalData`` and ``EventHistoryData``: ``x``,
@@ -350,6 +362,11 @@ Unreleased
 
 **Fixed**
 
+- Covariates (#929): ``with_covariates`` given one covariate twice kept
+  one column by name and two by number; both are refused. A dataset whose
+  covariates had a NaN could not be reshaped -- even
+  ``without("covariates")`` failed on the NaN it was removing -- as its
+  records refused NaN; records accept it now.
 - Event types on rows that have not failed (#928): a suspension given a
   type in ``SurpyvalData(..., e=...)``, ``from_observations`` or a
   competing-risks fit was accepted, after which every reshape (even

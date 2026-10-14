@@ -919,7 +919,16 @@ def _check_xicn_values(
         and np.issubdtype(Z_arr.dtype, np.number)
         and not np.isfinite(Z_arr).all()
     ):
-        raise ValueError("Covariates 'Z' must be finite (no NaN or inf)")
+        bad = np.unique(
+            i[~np.isfinite(Z_arr).reshape(len(Z_arr), -1).all(axis=1)]
+        ).tolist()
+        raise ValueError(
+            "Covariates 'Z' must be finite (no NaN or inf): a recurrent fit "
+            "takes each item's covariates, and item(s) "
+            + ", ".join(item_label(k) for k in bad[:5])
+            + " have one missing (NaN) or infinite: leave them out "
+            "(data.select) or give a value."
+        )
 
     _check_row_kinds(x, i, c, n)
 

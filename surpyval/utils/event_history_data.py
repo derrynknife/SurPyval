@@ -950,9 +950,18 @@ class EventHistoryData(ReshapeMixin):
                 np.array(n),
                 tl=np.array(tl) if truncated else None,
                 tr=np.array(tr) if truncated else None,
-                Z=np.array(Z) if static else None,
+                # (a covariate not recorded, NaN, is kept with the data,
+                # though the recurrent fits refuse it: handle_xicn checks
+                # the arrays a fit is given)
+                Z=np.nan_to_num(np.array(Z), nan=0.0) if static else None,
                 e=_object_array(e) if any(typed) else None,
             )
+        if static:
+            rows = {
+                history.id: covariate_row_in(history, names)
+                for history in items
+            }
+            data.Z = np.array([rows[_plain(k)] for k in data.i], dtype=float)
         if static:
             data.covariate_names = names
         if varying:

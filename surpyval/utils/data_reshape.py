@@ -94,7 +94,16 @@ def with_covariates(record: Any, columns: list) -> Any:
             f"Item {record.id!r} has no covariates {unknown!r}; its "
             f"covariates are {list(names)!r}."
         )
-    columns = [names.index(c) if c in named else c for c in columns]
+    picked = [names.index(c) if c in named else c for c in columns]
+    if len(
+        {c % width for c in picked if isinstance(c, (int, np.integer))}
+    ) < len(picked):
+        twice = [c for c in columns if columns.count(c) > 1] or columns
+        raise ValueError(
+            f"Covariate {twice[0]!r} is picked more than once: each column "
+            "once (the same column twice is not two covariates)."
+        )
+    columns = picked
     bad = [
         c
         for c in columns

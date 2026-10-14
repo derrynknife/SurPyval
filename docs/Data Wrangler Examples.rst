@@ -225,7 +225,7 @@ the analysis instead; each operation returns a new dataset:
     everything = fleet.without("covariates", "event_types")   # a plain fit
     seals = fleet.for_event_type("seal").without("covariates")  # one mode
     by_load = fleet.with_covariates(["load"])   # a regression on load alone
-    site1 = fleet.select(where=lambda item: item.covariates[0] == 1)
+    site1 = fleet.select(where=lambda item: item.covariate("site") == 1)
     first_1500 = fleet.censor_at(1500)   # as seen at the end of a study
     print(surv.Weibull.fit(everything).params)
     print(seals.summary())

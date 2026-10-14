@@ -100,26 +100,26 @@ def test_competing_risks_need_event_types_and_others_refuse_them():
             "one per item",
         ),
         (
-            {
-                "observed": [1],
-                "observed_event_types": "a",
-                "left_censored": [0.5],
-            },
-            "'left_censored_event_types'",
-        ),
-        (
             {"right_censored": [1], "observed_event_types": "a"},
             "without 'observed'",
-        ),
-        (
-            {"observed": [1], "observed_event_types": [None]},
-            "cannot hold None",
         ),
     ],
 )
 def test_from_observations_checks_event_types(kwargs, match):
     with pytest.raises(ValueError, match=match):
         SurpyvalData.from_observations(**kwargs)
+
+
+def test_from_observations_takes_masked_causes():
+    # A failure without a type, or a kind of failure given without types,
+    # is a masked cause (#928)
+    with pytest.warns(sp.utils.warnings.MaskedCauseWarning):
+        data = SurpyvalData.from_observations(
+            observed=[1, 2],
+            observed_event_types=["a", None],
+            left_censored=[0.5],
+        )
+    assert list(data.e) == ["a", None, None]
 
 
 def test_left_truncation_reaches_a_fit_taking_only_tl():
