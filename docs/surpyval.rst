@@ -38,6 +38,7 @@ truncation; where one does not, its ``fit`` docstring says so.
    surpyval.counting
    surpyval.degradation
    surpyval.multivariate
+   surpyval.test_planning
    surpyval.beta
    comparison_and_validation
    surpyval.serialisation
