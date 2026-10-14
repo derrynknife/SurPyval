@@ -413,8 +413,10 @@ for _fn in (
 # in tests/test_planning.
 for _result in (
     "DemonstrationPlan",
+    "LifeTestPlan",
     "SequentialDemonstrationTest",
     "SequentialMTBFTest",
+    "SimulatedPrecision",
 ):
     OUT_OF_SCOPE[f"surpyval.test_planning.{_result}"] = _RESULT
 for _fn in (
@@ -424,6 +426,9 @@ for _fn in (
     "demonstration_plan",
     "demonstration_sample_size",
     "demonstration_test_multiple",
+    "life_test_length",
+    "life_test_precision",
+    "life_test_sample_size",
     "logrank_events",
     "logrank_power",
     "logrank_sample_size",

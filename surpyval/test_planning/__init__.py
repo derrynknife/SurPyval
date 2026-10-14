@@ -17,6 +17,10 @@ Test planning: designing reliability tests before they are run.
   :func:`sequential_mtbf_test` and :func:`sequential_demonstration_test`
   (Wald's sequential probability ratio test, truncated at the
   fixed-length test).
+- **Estimation precision** (#863): how many units, and how long a test,
+  to estimate a Weibull or lognormal quantile or mean to a given
+  precision: :func:`life_test_precision`, :func:`life_test_sample_size`
+  and :func:`life_test_length`.
 - **Comparing two groups** (#880): the events, units and power of a
   log-rank test of a hazard ratio: :func:`logrank_events`,
   :func:`logrank_sample_size` and :func:`logrank_power`.
@@ -54,6 +58,13 @@ from surpyval.test_planning.demonstration import (
     mtbf_pass_probability,
     mtbf_test_time,
 )
+from surpyval.test_planning.estimation import (
+    LifeTestPlan,
+    SimulatedPrecision,
+    life_test_length,
+    life_test_precision,
+    life_test_sample_size,
+)
 from surpyval.test_planning.sequential import (
     SequentialDemonstrationTest,
     SequentialMTBFTest,
@@ -78,6 +89,12 @@ __all__ = [
     "SequentialMTBFTest",
     "sequential_demonstration_test",
     "sequential_mtbf_test",
+    # Estimation precision (#863)
+    "LifeTestPlan",
+    "SimulatedPrecision",
+    "life_test_length",
+    "life_test_precision",
+    "life_test_sample_size",
     # Comparing two groups (#880)
     "logrank_events",
     "logrank_power",
