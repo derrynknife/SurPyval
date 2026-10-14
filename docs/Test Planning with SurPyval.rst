@@ -20,7 +20,9 @@ a test; the fitters elsewhere in SurPyval analyse it once it is run. As
 everywhere in SurPyval, a confidence level is given as ``alpha_ci``, the
 significance level: for a demonstration test it is the *consumer's risk*,
 the chance that a design no better than the target passes, ``0.05`` for 95%
-confidence.
+confidence. The other party's risk, the *supplier's* or producer's (that a
+good design fails), is ``producer_risk``; the section on procurement below
+works through both.
 
 Demonstration tests
 -------------------
@@ -151,6 +153,185 @@ analogue is :func:`~surpyval.test_planning.sequential_demonstration_test`.
     assert test.decide(failures=2, test_time=800.0) == "accept"
     assert round(test.consumer_risk, 2) == 0.13
     assert round(test.producer_risk, 2) == 0.10
+
+Supplier's and consumer's risk in procurement
+---------------------------------------------
+
+A reliability requirement in a contract is usually checked by an acceptance
+test, and every acceptance test carries two risks, one for each party:
+
+- the **consumer's risk** (the buyer's): that a design no better than the
+  requirement passes the test and is accepted;
+- the **supplier's risk**, or producer's risk: that a design which is good
+  fails the test and is rejected.
+
+A contract that states only a reliability "at 90% confidence" fixes the
+first and leaves the second to chance. The examples below show how large it
+can be, how to agree a test that bounds both, and how to check a test clause
+that is already written.
+
+**Notation.** MIL-HDBK-781 and most procurement standards call the
+producer's (supplier's) risk :math:`\alpha` and the consumer's risk
+:math:`\beta`. SurPyval writes every confidence level as ``alpha_ci``, and
+for a demonstration test that is the *consumer's* risk; the supplier's is
+``producer_risk``. So a handbook plan with :math:`\alpha = 10\%` and
+:math:`\beta = 20\%` is ``producer_risk=0.1, alpha_ci=0.2``.
+
+The supplier's risk hidden in a zero-failure test
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The familiar 59-unit, zero-failure test demonstrates 95% reliability at 95%
+confidence: a design at exactly 95% passes it only 5% of the time. But the
+supplier's side is far worse than most contracts realise. A design of 99%
+reliability, five times fewer failures than the requirement allows, fails
+the test 45% of the time; to pass it nine times in ten, a design needs about
+99.8%. The test's *operating characteristic*, its chance of passing against
+the design's true reliability, shows both risks at once:
+
+.. jupyter-execute::
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    reliability = np.linspace(0.9, 0.999, 200)
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(reliability, demonstration_pass_probability(reliability, 59),
+            label="59 units, no failures allowed")
+    ax.plot(reliability, demonstration_pass_probability(reliability, 128, 8),
+            label="128 units, 8 failures allowed")
+    ax.axvline(0.95, color="grey", lw=0.8, ls="--")
+    ax.set_xlabel("True reliability of the design")
+    ax.set_ylabel("Chance of passing the test")
+    ax.legend()
+    plt.show()
+
+    for r in (0.97, 0.98, 0.99, 0.995):
+        print(f"{r}: supplier's risk {1 - demonstration_pass_probability(r, 59):.3f}")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    from scipy import optimize
+
+    assert round(1 - demonstration_pass_probability(0.99, 59), 2) == 0.45
+    needed = optimize.brentq(
+        lambda r: demonstration_pass_probability(r, 59) - 0.9, 0.95, 0.99999)
+    assert round(needed, 3) == 0.998
+
+The steeper the curve, the better the test separates good designs from bad
+ones; allowing a few failures with more units is what makes it steep.
+
+Agreeing a plan that bounds both risks
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A fair acceptance test is agreed from four numbers, two from each party:
+the buyer's requirement and consumer's risk, and the supplier's expected
+("good") reliability and supplier's risk.
+:func:`~surpyval.test_planning.demonstration_plan` gives the smallest test
+that keeps both. The closer the good reliability is to the requirement, the
+larger the test: for a requirement of 95% and both risks 10%, a supplier
+confident of 99% needs 105 units allowing 2 failures, but one expecting only
+97% needs 628 units allowing 24.
+
+.. jupyter-execute::
+
+    for good in (0.99, 0.98, 0.97):
+        plan = demonstration_plan(0.95, good, alpha_ci=0.1, producer_risk=0.1)
+        print(f"good design {good}: {plan.n} units, "
+              f"accept with up to {plan.failures} failures "
+              f"(consumer's risk {plan.consumer_risk:.3f}, "
+              f"supplier's risk {plan.producer_risk:.3f})")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    near = demonstration_plan(0.95, 0.99, alpha_ci=0.1, producer_risk=0.1)
+    far = demonstration_plan(0.95, 0.97, alpha_ci=0.1, producer_risk=0.1)
+    assert (near.n, near.failures) == (105, 2)
+    assert (far.n, far.failures) == (628, 24)
+
+An MTBF acceptance test (MIL-HDBK-781)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For equipment with a constant failure rate the requirement is an MTBF, and
+the test runs a total number of unit-hours, failed units repaired. The
+handbook calls the requirement the *lower test MTBF* (:math:`\theta_1`), the
+supplier's design goal the *upper test MTBF* (:math:`\theta_0`), and their
+ratio the *discrimination ratio* :math:`d = \theta_0 / \theta_1`. For a
+requirement of 500 hours, the test shrinks quickly as the ratio grows or the
+risks are relaxed: with both risks 20% and a ratio of 3 it is about 2,140
+unit hours, accepting with up to 2 failures (the handbook's plan XVII-D,
+4.3 times the requirement).
+
+.. jupyter-execute::
+
+    for risk in (0.1, 0.2):
+        for ratio in (1.5, 2.0, 3.0):
+            plan = mtbf_demonstration_plan(
+                500.0, 500.0 * ratio, alpha_ci=risk, producer_risk=risk)
+            print(f"risks {risk:.0%}, d = {ratio}: {plan.test_time:,.0f} unit hours, "
+                  f"accept with up to {plan.failures} failures")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    xvii = mtbf_demonstration_plan(500.0, 1500.0, alpha_ci=0.2,
+                                   producer_risk=0.2)
+    assert (round(xvii.test_time, -1), xvii.failures) == (2140, 2)
+    assert round(xvii.test_time / 500.0, 1) == 4.3
+
+A sequential test with the same risks
+(:func:`~surpyval.test_planning.sequential_mtbf_test`) usually finishes much
+sooner: for the requirement of 500 hours, a goal of 1000 and both risks 10%,
+about 5,400 unit hours on average for a design at the goal, against 10,064
+for the fixed-length test. Its exact risks as run are a little different
+from the 10% asked for (about 13% consumer's and 10% supplier's), because of
+the truncation; a contract that must not exceed a stated consumer's risk
+should say which kind of test is meant.
+
+.. jupyter-execute::
+
+    test = sequential_mtbf_test(500.0, 1000.0, alpha_ci=0.1, producer_risk=0.1)
+    print(round(test.expected_test_time(1000.0)), round(test.max_time))
+    print(round(test.consumer_risk, 3), round(test.producer_risk, 3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(test.expected_test_time(1000.0), -2) == 5400
+    assert round(test.max_time) == 10064
+    assert round(test.consumer_risk, 2) == 0.13
+    assert round(test.producer_risk, 2) == 0.10
+
+Checking a test clause that is already written
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Contracts often state a test without its risks: *"the equipment shall be
+tested for 3,000 hours and accepted with no more than 2 failures; required
+MTBF 500 hours."* :func:`~surpyval.test_planning.mtbf_pass_probability`
+gives both risks. Equipment at the required MTBF passes 6% of the time, so
+the buyer is well protected; but equipment twice as good, at 1000 hours,
+fails 58% of the time. The clause puts almost all of the risk on the
+supplier, who would want either a longer test allowing more failures, or a
+design goal well above 1000 hours.
+
+.. jupyter-execute::
+
+    from surpyval.test_planning import mtbf_pass_probability
+
+    for mtbf in (500.0, 750.0, 1000.0, 1500.0):
+        print(f"true MTBF {mtbf:,.0f} h: passes {mtbf_pass_probability(mtbf, 3000.0, 2):.1%}")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(mtbf_pass_probability(500.0, 3000.0, 2), 2) == 0.06
+    assert round(1 - mtbf_pass_probability(1000.0, 3000.0, 2), 2) == 0.58
 
 Planning a life test for precision
 ----------------------------------
