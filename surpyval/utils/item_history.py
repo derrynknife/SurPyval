@@ -246,6 +246,13 @@ class ItemHistory:
     def __setstate__(self, state: dict) -> None:
         frozen_setstate(self, state)
 
+    def covariate(self, name: str) -> float:
+        """The value of the covariate ``name`` (where the covariates are
+        named, ``covariates={name: value}``): NaN where it was not
+        recorded. ``data.select(where=lambda item: item.covariate("site")
+        == 1)`` keeps the items of one site."""
+        return covariate_value(self, name)
+
     # -- checks -------------------------------------------------------------
 
     def _check_inspections(self) -> None:
@@ -838,18 +845,23 @@ def _counts(
     return arr.astype(int)
 
 
-def _covariate_row(item: Any, name: str, value: Any) -> "np.ndarray | None":
-    """A finite 1-D row of covariates, or None."""
+def _covariate_row(
+    item: Any, name: str, value: Any, missing: bool = False
+) -> "np.ndarray | None":
+    """A 1-D row of covariates, or None: finite numbers, or, where
+    ``missing``, NaN (or None) for a value not recorded (#929)."""
     if value is None:
         return None
     try:
         row = np.atleast_1d(np.asarray(value, dtype=float))
     except (TypeError, ValueError):
         raise ValueError(f"Item {item!r}: '{name}' must be numbers.")
-    if row.ndim != 1 or not np.isfinite(row).all():
+    allowed = np.isfinite(row) | (np.isnan(row) if missing else False)
+    if row.ndim != 1 or not np.all(allowed):
         raise ValueError(
             f"Item {item!r}: '{name}' must be one finite number or a row "
-            "of them."
+            "of them"
+            + (" (NaN, or None, for one not recorded)." if missing else ".")
         )
     return row
 
@@ -861,7 +873,7 @@ def _covariates(item: Any, value: Any) -> tuple:
     if type(value).__name__ == "Series":
         value = dict(value.items())
     if not isinstance(value, dict):
-        return _covariate_row(item, "covariates", value), None
+        return _covariate_row(item, "covariates", value, missing=True), None
     names = list(value)
     if not names:
         raise ValueError(f"Item {item!r}: 'covariates' is an empty dict.")
@@ -876,16 +888,39 @@ def _covariates(item: Any, value: Any) -> tuple:
             f"Item {item!r}: each named covariate is one number; "
             f"{several!r} are not."
         )
-    row = _covariate_row(item, "covariates", [value[k] for k in names])
+    row = _covariate_row(
+        item, "covariates", [value[k] for k in names], missing=True
+    )
     return row, tuple(names)
 
 
 def _covariate_field(row: np.ndarray, names: "tuple | None") -> Any:
     """A record's covariates as given back: ``{name: value}`` where they
     are named, else the row as a list."""
+    # A missing value as None, so the record equals (and hashes as) itself
+    values = [None if np.isnan(v) else v for v in row.tolist()]
     if names is None:
-        return row.tolist()
-    return dict(zip(names, row.tolist()))
+        return values
+    return dict(zip(names, values))
+
+
+def covariate_value(record: Any, name: str) -> float:
+    """``record``'s covariate ``name`` (NaN where it was not recorded)."""
+    if record.covariates is None:
+        raise ValueError(f"Item {record.id!r} has no covariates.")
+    names = record.covariate_names
+    if names is None:
+        raise ValueError(
+            f"The covariates of item {record.id!r} have no names: read them "
+            "by column, covariates[j], or name them with covariates={name: "
+            "value}."
+        )
+    if name not in names:
+        raise ValueError(
+            f"Item {record.id!r} has no covariate {name!r}; its covariates "
+            f"are {list(names)!r}."
+        )
+    return float(record.covariates[names.index(name)])
 
 
 def covariate_names_of(items: list) -> "list | None":

@@ -12,6 +12,7 @@ from surpyval.utils.item_history import (
     _age,
     _covariate_field,
     _covariates,
+    covariate_value,
     _schedule_field,
     _time_varying,
     _with_step,
@@ -155,6 +156,13 @@ class ItemLifetime:
 
     def __setstate__(self, state: dict) -> None:
         frozen_setstate(self, state)
+
+    def covariate(self, name: str) -> float:
+        """The value of the covariate ``name`` (where the covariates are
+        named, ``covariates={name: value}``): NaN where it was not
+        recorded. ``data.select(where=lambda item: item.covariate("site")
+        == 1)`` keeps the items of one site."""
+        return covariate_value(self, name)
 
     # The outcome by name, as ItemHistory reads: its value, or None.
     @property

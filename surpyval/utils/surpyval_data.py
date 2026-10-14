@@ -358,6 +358,10 @@ class SurpyvalData(ReshapeMixin):
         left_censored_event_types: Any = None,
         interval_censored_event_types: Any = None,
         covariate_names: "list | None" = None,
+        observed_ids: Any = None,
+        right_censored_ids: Any = None,
+        left_censored_ids: Any = None,
+        interval_censored_ids: Any = None,
     ) -> "SurpyvalData":
         """
         The data from a list of each kind of observation: the times at
@@ -419,6 +423,10 @@ class SurpyvalData(ReshapeMixin):
         covariate_names : list of str, optional
             The name of each covariate column, which names the fitted
             model's coefficients.
+        <kind>_ids : array like, optional
+            Each item's id, one per entry of the kind's list (given for
+            every kind with entries, or for none), as ``from_items`` gives
+            them: ``data.item(id)`` and ``select(ids=...)`` then find them.
 
         Returns
         -------
@@ -503,6 +511,12 @@ class SurpyvalData(ReshapeMixin):
             "left_censored": left_censored_covariates,
             "interval_censored": interval_censored_covariates,
         }
+        ids = {
+            "observed": observed_ids,
+            "right_censored": right_censored_ids,
+            "left_censored": left_censored_ids,
+            "interval_censored": interval_censored_ids,
+        }
         shared = {"left": left_truncation, "right": right_truncation}
         if all(times is None for times in lists.values()):
             raise ValueError(
@@ -527,6 +541,7 @@ class SurpyvalData(ReshapeMixin):
         per_item += [
             (k, f"{k}_event_types", v) for k, v in event_types.items()
         ]
+        per_item += [(k, f"{k}_ids", v) for k, v in ids.items()]
         for kind, name, values in per_item:
             if values is not None and lists[kind] is None:
                 raise ValueError(
@@ -538,6 +553,7 @@ class SurpyvalData(ReshapeMixin):
         xs, cs, ns, tls, trs = [], [], [], [], []
         Zs: dict[str, np.ndarray] = {}
         es: list = []
+        id_parts: list = []
         typed: dict[str, bool] = {}
         for kind, flag in _OBSERVATION_KINDS:
             times = _observation_times(kind, lists[kind])
@@ -570,6 +586,11 @@ class SurpyvalData(ReshapeMixin):
             else:
                 kind_types = np.full(len(times), None, dtype=object)[keep]
             es.append(kind_types)
+            if ids[kind] is not None:
+                kind_ids = _kind_ids(f"{kind}_ids", ids[kind], len(times))
+                id_parts.append([kind_ids[k] for k in np.flatnonzero(keep)])
+            elif len(times[keep]):
+                id_parts.append(None)
             times = times[keep]
             xs.append(times if flag == 2 else np.column_stack([times, times]))
             cs.append(np.full(len(times), flag))
@@ -584,28 +605,26 @@ class SurpyvalData(ReshapeMixin):
             )
         e = None
         if any(typed.values()):
-            sizes_now = {
-                kind: len(xk) for (kind, _), xk in zip(_OBSERVATION_KINDS, xs)
-            }
-            untyped = [
-                kind
-                for kind in ("observed", "left_censored", "interval_censored")
-                if sizes_now[kind] and not typed[kind]
-            ]
-            if untyped:
-                raise ValueError(
-                    "Event types were given for some failures but not for "
-                    + ", ".join(untyped)
-                    + ": every failure needs its type ("
-                    + ", ".join(f"'{kind}_event_types'" for kind in untyped)
-                    + ")."
-                )
+            # A kind's failures given without types are masked causes,
+            # warned of with the rest (#928)
             e = np.concatenate(es)
+        item_ids = None
+        if any(part is not None for part in id_parts):
+            if any(part is None for part in id_parts):
+                raise ValueError(
+                    "Ids were given for some kinds of observation but not "
+                    "for all: give '<kind>_ids' for every kind with "
+                    "entries, or for none."
+                )
+            from surpyval.utils.item_history import check_item_ids, item_id
+
+            item_ids = [item_id(i) for part in id_parts for i in part]
+            check_item_ids(item_ids, "item (identical items are its counts)")
         Z = _stack_covariates(
             Zs,
             {kind: len(xk) for (kind, _), xk in zip(_OBSERVATION_KINDS, xs)},
         )
-        return cls(
+        data = cls(
             x,
             np.concatenate(cs),
             np.concatenate(ns),
@@ -615,6 +634,9 @@ class SurpyvalData(ReshapeMixin):
             e=e,
             covariate_names=covariate_names,
         )
+        if item_ids is not None:
+            data.ids = item_ids
+        return data
 
     @classmethod
     def from_xrd(
@@ -948,7 +970,9 @@ class SurpyvalData(ReshapeMixin):
         ``"<kind>_left_truncation"`` / ``"<kind>_right_truncation"`` for each
         side on which anything is truncated (``-inf`` or ``inf`` for an item
         with no bound), and its ``"<kind>_covariates"`` where the data has
-        covariates. ``np.repeat(times, counts)`` gives one entry per item.
+        covariates (with ``"covariate_names"`` where they are named), its
+        ``"<kind>_event_types"`` and ``"<kind>_ids"`` where the data has
+        them. ``np.repeat(times, counts)`` gives one entry per item.
 
         Examples
         --------
@@ -989,6 +1013,12 @@ class SurpyvalData(ReshapeMixin):
                 extra[f"{kind}_covariates"] = Z[mask]
             if self.e is not None and kind != "right_censored":
                 extra[f"{kind}_event_types"] = list(self.e[mask])
+            if self.ids is not None:
+                extra[f"{kind}_ids"] = [
+                    self.ids[k] for k in np.flatnonzero(mask)
+                ]
+        if self.covariate_names is not None:
+            extra["covariate_names"] = list(self.covariate_names)
         return {**lists, **extra}
 
     def to_xrd(self, estimator: str = "Nelson-Aalen") -> tuple:
@@ -1345,8 +1375,12 @@ def _item_covariates(name: str, Z: Any, k: int) -> np.ndarray:
             f"list); got {np.shape(Z)}. For one item with several "
             "covariates, give a list of one row: [[z1, z2, ...]]."
         )
-    if not np.isfinite(arr).all():
-        raise ValueError(f"'{name}' must be finite numbers.")
+    # A covariate not recorded is NaN, kept as the datasets keep it
+    # (#929); an infinite one is refused
+    if np.isinf(arr).any():
+        raise ValueError(
+            f"'{name}' must be finite numbers (NaN for one not recorded)."
+        )
     return arr
 
 
@@ -1613,9 +1647,20 @@ def _event_type_array(e: Any, c: np.ndarray, warn: bool = True) -> np.ndarray:
     return out
 
 
+def _kind_ids(name: str, value: Any, k: int) -> list:
+    """A kind's item ids, ``name``: one per entry of its list."""
+    listed = [value] if isinstance(value, (str, bytes)) else list(value)
+    if len(listed) != k:
+        raise ValueError(
+            f"'{name}' must hold one id per entry ({k}); got {len(listed)}."
+        )
+    return listed
+
+
 def _kind_event_types(name: str, value: Any, k: int) -> np.ndarray:
     """A kind's event types, ``name``: one for every item or one per item,
-    as an object array of ``k``; None is refused."""
+    as an object array of ``k``; a missing one (None, NaN, "") is a masked
+    cause, None (#928)."""
     out = np.empty(k, dtype=object)
     if isinstance(value, (str, bytes)) or np.ndim(value) == 0:
         out[:] = [value] * k
@@ -1627,10 +1672,7 @@ def _kind_event_types(name: str, value: Any, k: int) -> np.ndarray:
                 f"({k}, in the order of its list); got {len(listed)}."
             )
         out[:] = listed
-    if any(v is None for v in out):
-        raise ValueError(
-            f"'{name}' cannot hold None: every failure needs its type."
-        )
+    out[:] = [None if missing_type(v) else v for v in out]
     return out
 
 
