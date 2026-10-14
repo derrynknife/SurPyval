@@ -123,7 +123,8 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
                 ("i", s["mask_i"]),
             ]
         }
-        Z_pieces["close"] = Z[s["close_idx"]]
+        Z_pieces["sel"] = Z[s["sel_idx"]]
+        Z_pieces["gap"] = Z[s["gap_idx"]]
         k_dist = len(dist.parameter_names)
 
         def negll_func(params: np.ndarray) -> float:

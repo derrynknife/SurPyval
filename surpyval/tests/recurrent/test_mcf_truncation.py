@@ -103,21 +103,23 @@ def test_cause_specific_mcf_shares_truncated_risk_set():
     np.testing.assert_array_equal(model.r, [1, 2, 2, 2, 2, 1])
 
 
-def test_nonparametric_right_truncation_closes_the_window():
-    # A finite tr ends the item's observation window there: the MCF is the
-    # one an end-of-observation (c=1) row at tr would give.
-    truncated = NonParametricCounting.fit(
-        np.array([3.0, 7.0, 5.0]), np.array([1, 1, 2]), tr=10.0
-    )
+def test_nonparametric_refuses_right_truncation():
+    # A finite tr is a selection (#924): the item is in the data because it
+    # failed by tr, which the MCF cannot account for, so it is refused (it
+    # used to be read as a c=1 row at tr).
+    with pytest.raises(ValueError, match="does not take right truncation"):
+        NonParametricCounting.fit(
+            np.array([3.0, 7.0, 5.0]), np.array([1, 1, 2]), tr=10.0
+        )
+    # The end of observation is a c=1 row, which closes the window there.
     censored = NonParametricCounting.fit(
         np.array([3.0, 7.0, 10.0, 5.0, 10.0]),
         np.array([1, 1, 1, 2, 2]),
         c=np.array([0, 0, 1, 0, 1]),
     )
-    np.testing.assert_array_equal(truncated.x, censored.x)
-    np.testing.assert_array_equal(truncated.r, [2, 2, 2, 2])
-    np.testing.assert_allclose(truncated.mcf_hat, censored.mcf_hat)
-    np.testing.assert_allclose(truncated.var, censored.var)
+    np.testing.assert_array_equal(censored.x, [3.0, 5.0, 7.0, 10.0])
+    np.testing.assert_array_equal(censored.r, [2, 2, 2, 2])
+    np.testing.assert_allclose(censored.mcf_hat, [0.5, 1.0, 1.5, 1.5])
 
 
 def test_nonparametric_rejects_left_censoring():
@@ -214,43 +216,42 @@ def test_to_xrd_matches_a_direct_count():
 
 
 # ---------------------------------------------------------------------------
-# Right truncation in the non-parametric MCF is a censoring row
-# at ``tr``.
+# Right truncation is a selection (#924), which the non-parametric MCFs
+# refuse; the end of observation is a c=1 row.
 # ---------------------------------------------------------------------------
 
 
-def test_mcf_right_truncation_equals_censoring_row_at_tr():
+def test_mcf_refuses_right_truncation():
     x = [1, 2, 3, 2, 5, 4]
     i = [1, 1, 1, 2, 2, 3]
-    tr = [6, 6, 6, 6, 6, 8]
-    truncated = NonParametricCounting.fit(x, i, tr=tr)
+    with pytest.raises(
+        ValueError, match="NonParametricCounting does not take right trunc"
+    ):
+        NonParametricCounting.fit(x, i, tr=[6, 6, 6, 6, 6, 8])
     censored = NonParametricCounting.fit(
         x + [6, 6, 8], i + [1, 2, 3], [0] * 6 + [1, 1, 1]
     )
-    np.testing.assert_array_equal(truncated.x, censored.x)
-    np.testing.assert_array_equal(truncated.r, censored.r)
-    np.testing.assert_allclose(truncated.mcf_hat, censored.mcf_hat)
-    np.testing.assert_allclose(truncated.var, censored.var)
+    np.testing.assert_array_equal(censored.x, [1, 2, 3, 4, 5, 6, 8])
+    np.testing.assert_array_equal(censored.r, [3, 3, 3, 3, 3, 3, 1])
     # item 3 is watched to 8, past its only event at 4
-    assert truncated.mcf(7) == pytest.approx(censored.mcf(7))
-    assert np.isnan(truncated.mcf(9))
+    assert censored.mcf(7) == pytest.approx(censored.mcf(6))
+    assert np.isnan(censored.mcf(9))
 
 
-def test_cause_specific_mcf_right_truncation_equals_censoring_row_at_tr():
+def test_cause_specific_mcf_refuses_right_truncation():
     x = [1, 2, 3, 2, 5, 4]
     i = [1, 1, 1, 2, 2, 3]
     e = ["A", "B", "A", "B", "A", "A"]
-    truncated = CauseSpecificMCF.fit(x, i, e=e, tr=[6, 6, 6, 6, 6, 8])
+    with pytest.raises(
+        ValueError, match="CauseSpecificMCF does not take right truncation"
+    ):
+        CauseSpecificMCF.fit(x, i, e=e, tr=[6, 6, 6, 6, 6, 8])
     censored = CauseSpecificMCF.fit(
         x + [6, 6, 8],
         i + [1, 2, 3],
         [0] * 6 + [1, 1, 1],
         e=e + [None] * 3,
     )
-    for cause in ("A", "B"):
-        np.testing.assert_allclose(
-            truncated.models[cause].mcf_hat, censored.models[cause].mcf_hat
-        )
-        np.testing.assert_allclose(
-            truncated.models[cause].var, censored.models[cause].var
-        )
+    # Four A events and two B events over a risk set of three
+    assert censored.models["A"].mcf_hat[-1] == pytest.approx(4 / 3)
+    assert censored.models["B"].mcf_hat[-1] == pytest.approx(2 / 3)

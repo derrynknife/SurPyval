@@ -220,17 +220,7 @@ class EventHistoryData(ReshapeMixin):
                 x_out = self.x
 
             entry, exit_ = self.item_observation_windows()
-
-            # A finite right-truncation time closes the item's window just
-            # as an end-of-observation (c=1) row there would, so it joins
-            # the time grid (with no events) exactly as that row would.
-            item_tr = np.asarray(self.tr)[self.item_rows()[0]]
-            truncated_exit = exit_[np.isfinite(item_tr)]
-            x_unique = np.unique(
-                np.concatenate([x_out, truncated_exit])
-                if truncated_exit.size
-                else x_out
-            )
+            x_unique = np.unique(x_out)
 
             # TODO: consider having the presence of left-censored
             # data use the midpoints instead of the end value of the left
@@ -273,13 +263,12 @@ class EventHistoryData(ReshapeMixin):
         entry); with no truncation it is -inf, so the item is at risk from
         the start. The window is open at the entry: the item is at risk
         only after it, so an event at ``tl`` is outside it (and refused by
-        ``handle_xicn``). The exit is the item's last recorded time (its
-        last event or its end-of-observation ``c=1`` row) or, when the item
-        carries a
-        finite right-truncation time ``tr``, that ``tr``: observation of the
-        item ends there, exactly as if it had an end-of-observation row at
-        ``tr``. This is the same window-close the NHPP likelihoods integrate
-        to (see :meth:`get_right_truncation_close`).
+        ``handle_xicn``). The exit is the item's last recorded time: its
+        end-of-observation ``c=1`` row, or its last event where it has none
+        (watched until it last failed). An item's right truncation ``tr``
+        is not where its observation ends: it is the age by which the item
+        failed, which is why it is in the data (#924; see
+        :meth:`selection_terms`).
 
         Returns
         -------
@@ -293,9 +282,7 @@ class EventHistoryData(ReshapeMixin):
         entry = np.asarray(self.tl, dtype=float)[first]
         last = np.full(len(first), -np.inf)
         np.maximum.at(last, inverse, np.asarray(x_upper, dtype=float))
-        tr_item = np.asarray(self.tr, dtype=float)[first]
-        exit_ = np.where(np.isfinite(tr_item), np.maximum(last, tr_item), last)
-        return entry, exit_
+        return entry, last
 
     def item_rows(self) -> tuple[npt.NDArray, npt.NDArray]:
         """
@@ -529,63 +516,53 @@ class EventHistoryData(ReshapeMixin):
             "mask_left": mask_left,
             "mask_i": mask_i,
         }
-        # Right window-close: for items with a finite right-truncation
-        # time ``tr`` the intensity is integrated out to ``tr`` rather
-        # than merely to the last observed event / censoring row. Empty
-        # for untruncated data.
-        (
-            out["x_close_last"],
-            out["x_close_tr"],
-            out["close_idx"],
-        ) = self.get_right_truncation_close()
+        # Right truncation (#924): each truncated item is in the data
+        # because it failed by its tr, so its likelihood is conditioned on
+        # that. Empty for untruncated data.
+        out.update(self.selection_terms())
         return out
 
-    def get_right_truncation_close(
-        self,
-    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    def selection_terms(self) -> dict:
         """
-        Per-item integration bounds for the NHPP likelihood's right
-        window-close.
-
-        The NHPP integral runs from each item's entry time (its left
-        truncation ``tl``, handled by :meth:`get_previous_x`) to the time its
-        observation window closes. Historically that close was only known from
-        an explicit right-censoring (``c=1``) row, so the integral stopped at
-        the item's last recorded time. When an item instead carries a finite
-        right-truncation time ``tr`` the window closes there, and the integral
-        must be extended from the last in-window time out to ``tr``.
-
-        Returns three aligned arrays ``(x_last, x_close, rep_idx)`` with one
-        entry per item whose ``tr`` is finite: ``x_last`` is the item's last
-        in-window time (its last event or right-censoring row), ``x_close`` is
-        its ``tr``, and ``rep_idx`` is a representative row index for the item
-        (so per-item covariates ``Z`` can be gathered). Items with the default
-        ``tr = inf`` are omitted, so untruncated data yields empty arrays and
-        contributes nothing to the integral. Adding
-        ``cif(x_last) - cif(x_close)`` to the log-likelihood therefore extends
-        the telescoped integral to ``tr`` (and is exactly zero when a ``c=1``
-        row already sits at ``tr``, so the two ways of closing the window never
-        double-count).
+        The pieces of the right-truncation term of an intensity likelihood
+        (#924). An item right truncated at ``tr`` is in the data because it
+        had a failure in its window up to ``tr``, ``(entry, tr]``, so its
+        likelihood is its history's divided by the chance of that:
+        ``P(N(entry, tr] >= 1) = 1 - exp(-(Lambda(tr) - Lambda(entry)))``,
+        ``entry`` its left truncation (else 0). Where its observation ended
+        at ``T`` before ``tr`` with no failure seen (data cut by
+        ``censor_at``), the failure that put it in the data came after
+        ``T``, which multiplies the history's chance by ``P(N(T, tr] >=
+        1)``.
 
         Returns
         -------
-        tuple of numpy.ndarray
-            ``(x_last, x_close, rep_idx)`` as described above.
+        dict
+            ``sel_from``, ``sel_to`` and ``sel_idx`` (each truncated item's
+            entry, ``tr`` and a row of it, for its covariates), and
+            ``gap_from``, ``gap_to`` and ``gap_idx`` (the end of
+            observation, ``tr`` and a row, of each item seen to ``T < tr``
+            with no failure). Empty arrays for untruncated data.
         """
         x_upper = self.x if self.x.ndim == 1 else self.x[:, 1]
-        x_last, x_close, rep_idx = [], [], []
-        for item in self.ids:
-            mask = self.i == item
-            tr_item = float(self.tr[mask][0])
-            if np.isfinite(tr_item):
-                x_last.append(float(x_upper[mask].max()))
-                x_close.append(tr_item)
-                rep_idx.append(int(np.flatnonzero(mask)[0]))
-        return (
-            np.array(x_last, dtype=float),
-            np.array(x_close, dtype=float),
-            np.array(rep_idx, dtype=int),
-        )
+        first, inverse = self.item_rows()
+        tr = np.asarray(self.tr, dtype=float)[first]
+        tl = np.asarray(self.tl, dtype=float)[first]
+        last = np.full(len(first), -np.inf)
+        np.maximum.at(last, inverse, np.asarray(x_upper, dtype=float))
+        seen = np.zeros(len(first), dtype=bool)
+        np.logical_or.at(seen, inverse, np.asarray(self.c) != 1)
+        truncated = np.isfinite(tr)
+        gap = truncated & ~seen & (last < tr)
+        entry = np.where(np.isfinite(tl), tl, 0.0)
+        return {
+            "sel_from": entry[truncated],
+            "sel_to": tr[truncated],
+            "sel_idx": np.asarray(first)[truncated].astype(int),
+            "gap_from": last[gap],
+            "gap_to": tr[gap],
+            "gap_idx": np.asarray(first)[gap].astype(int),
+        }
 
     def get_events_for_item(
         self, item: Any
@@ -740,8 +717,10 @@ class EventHistoryData(ReshapeMixin):
             observation (its failures before then are unknown), or one
             number for every item.
         right_truncation : dict or scalar, optional
-            ``{item: age}``, the age after which an item's failures would
-            not have been seen, or one number for every item.
+            ``{item: age}``, the age by which an item failed, which is why
+            it is in the data (right truncation, #924: not the end of its
+            observation, which is ``right_censored``), or one number for
+            every item.
         covariates : dict, optional
             ``{item: row}``, each item's covariates (a number, a row of
             them, or ``{name: value}``, which names them), for every item;
@@ -1315,9 +1294,8 @@ def _time_text(value: Any) -> str:
 def _history_end(history: Any) -> "float | None":
     """Where ``history``'s observation ends: its ``right_censored``, else
     its ``right_truncation``, else its last failure."""
-    for end in (history.right_censored, history.right_truncation):
-        if end is not None:
-            return float(end)
+    if history.right_censored is not None:
+        return float(history.right_censored)
     ages = [*history.observed, *history.interval_censored[:, 1]]
     if history.left_censored is not None:
         ages.append(history.left_censored)
@@ -1343,6 +1321,8 @@ def _first_event(history: Any) -> Any:
 
     parts = _lifetime_parts(history)
     parts["left_truncation"] = history.left_truncation
+    # In the data because it failed by tr: its first failure came by then
+    parts["right_truncation"] = history.right_truncation
     parts["time_varying_covariates"] = history.time_varying_covariates
     # (lower, upper, type) of each failure that could be the first
     candidates: list = []
@@ -1380,6 +1360,18 @@ def _first_event(history: Any) -> Any:
     return ItemLifetime(history.id, event_type=event_type, **when, **parts)
 
 
+def _first_gap_bounds(history: Any) -> dict:
+    """The truncation of an item's first gap: from its entry, and, where
+    the item is in the data because it failed by ``tr``, by ``tr`` (the
+    selection is of its first failure)."""
+    bounds = {}
+    if history.left_truncation is not None:
+        bounds["left_truncation"] = history.left_truncation
+    if history.right_truncation is not None:
+        bounds["right_truncation"] = history.right_truncation
+    return bounds
+
+
 def _gaps(history: Any) -> list:
     """``history``'s times between failures, as ItemLifetimes."""
     from surpyval.utils.item_lifetime import ItemLifetime
@@ -1412,11 +1404,7 @@ def _gaps(history: Any) -> list:
     gaps = []
     previous = 0.0
     for k, (age, event_type) in enumerate(zip(ages, types)):
-        entry = (
-            {"left_truncation": history.left_truncation}
-            if k == 0 and history.left_truncation is not None
-            else {}
-        )
+        entry = _first_gap_bounds(history) if k == 0 else {}
         gaps.append(
             ItemLifetime(
                 (history.id, k + 1),
@@ -1429,11 +1417,7 @@ def _gaps(history: Any) -> list:
         previous = age
     end = _history_end(history)
     if end is not None and (not ages or end > previous):
-        entry = (
-            {"left_truncation": history.left_truncation}
-            if not ages and history.left_truncation is not None
-            else {}
-        )
+        entry = _first_gap_bounds(history) if not ages else {}
         gaps.append(
             ItemLifetime(
                 (history.id, len(ages) + 1),

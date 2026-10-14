@@ -85,13 +85,23 @@ def nhpp_log_likelihood(
     # ll of interval censored
     ll += counted(s["n_i"], cif(s["x_i_r"]) - cif(s["x_i_l"]), "i")
 
-    # extend the integral from each item's last in-window time to its
-    # right-truncation time tr (zero when tr is infinite or already
-    # coincides with a right-censoring row)
+    # Right truncation (#924): each truncated item is in the data because
+    # it failed in (entry, tr], so its likelihood is divided by the chance
+    # of that; one seen to T < tr with no failure failed in (T, tr].
+    ll -= np.sum(
+        log_one_minus_exp(scaled(cif(s["sel_to"]) - cif(s["sel_from"]), "sel"))
+    )
     ll += np.sum(
-        scaled(cif(s["x_close_last"]) - cif(s["x_close_tr"]), "close")
+        log_one_minus_exp(scaled(cif(s["gap_to"]) - cif(s["gap_from"]), "gap"))
     )
     return ll
+
+
+def log_one_minus_exp(delta: "np.ndarray") -> "np.ndarray":
+    """``log(1 - exp(-delta))``, the log chance of at least one event of a
+    Poisson count with mean ``delta``, without the loss of precision of
+    the direct form for small ``delta``."""
+    return np.log(-np.expm1(-delta))
 
 
 class NHPPFitter(IntensityModel):

@@ -37,8 +37,13 @@ def _validate_diagnostic_data(data: Any, what: str) -> None:
     """
     The diagnostics need exact event times: interval-censored (2D ``x`` or
     ``c == 2``) and left-censored (``c == -1``) observations cannot be
-    placed in time, so they are rejected with an explanation.
+    placed in time, so they are rejected with an explanation; so is
+    right-truncated data, a selection the diagnostics do not account for
+    (#924).
     """
+    from surpyval.utils.recurrent_utils import refuse_right_truncation
+
+    refuse_right_truncation(data, what)
     if data.x.ndim != 1:
         raise ValueError(
             "{} requires exact event times; interval-censored data is not "
@@ -73,10 +78,7 @@ def _per_item_windows(data: Any) -> list:
         entry = float(data.tl[mask][0])
         entry = entry if np.isfinite(entry) else 0.0
 
-        tr = float(data.tr[mask][0])
-        if np.isfinite(tr):
-            close, explicit_close = tr, True
-        elif np.any(c == 1):
+        if np.any(c == 1):
             close, explicit_close = float(x[c == 1].max()), True
         elif events.size:
             close, explicit_close = float(events[-1]), False
