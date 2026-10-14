@@ -16,6 +16,7 @@ import pandas as pd
 
 from surpyval.univariate.regression.tvc_schedule import (
     StepSchedule,
+    check_from_origin,
     segments_from_origin,
 )
 
@@ -97,7 +98,8 @@ class StressClock:
                     "the StepSchedule has {} covariate(s) but the model was "
                     "fitted with {}".format(Z.p, q)
                 )
-            self.schedule = Z
+            # A schedule starting after 0 is refused (#930).
+            self.schedule = check_from_origin(Z)
         else:
             self.rate = acceleration_factor(Z)
 

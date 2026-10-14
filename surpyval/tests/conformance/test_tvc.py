@@ -154,10 +154,13 @@ def test_path_is_measured_from_zero(case):
         "differs below 0": StepSchedule.from_changepoints(
             [-5.0, 0.0], [other, z]
         ),
-        "starts after 0": StepSchedule.from_changepoints([3.0], [z]),
     }
     for name, schedule in paths.items():
         _close(model.sf_tvc(x, schedule, **kw), ref, name)
+    # One starting after 0 is refused: nothing says what the covariate
+    # was before it (#930).
+    with pytest.raises(ValueError, match="after the time origin"):
+        model.sf_tvc(x, StepSchedule.from_changepoints([3.0], [z]), **kw)
 
 
 @pytest.mark.parametrize("case", TVC_CASES)
@@ -242,10 +245,11 @@ def test_covariate_path_is_measured_from_zero(case):
         "differs below 0": CovariatePath.from_points(
             [-5.0, 0.0, 0.0], [other, other, z]
         ),
-        "starts after 0": CovariatePath.from_points([3.0], [z]),
     }
     for name, path in paths.items():
         _close(model.sf_tvc(x, path, **kw), ref, name)
+    with pytest.raises(ValueError, match="after the time origin"):
+        model.sf_tvc(x, CovariatePath.from_points([3.0], [z]), **kw)
 
 
 @pytest.mark.parametrize("case", TVC_CASES)

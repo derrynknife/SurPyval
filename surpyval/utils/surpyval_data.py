@@ -1707,6 +1707,7 @@ def _fit_tvc_from_data(
     item's static ones (if any) followed by its time-varying ones in force
     there."""
     from surpyval.univariate.regression.tvc_path import CovariatePath
+    from surpyval.utils.item_history import late_covariates
 
     if np.isin(data.c, (-1, 2)).any():
         raise ValueError(
@@ -1736,14 +1737,12 @@ def _fit_tvc_from_data(
             )
         start = data.tl[k] if np.isfinite(data.tl[k]) else 0.0
         stop = float(x[k])
+        if schedule.start > start:
+            # Nothing says what the covariates were before (#930).
+            raise late_covariates(item, schedule.start, start)
         starts, ends, values = schedule.segments(
-            max(stop, schedule.edges[0] + 1e-12)
+            max(stop, schedule.start + 1e-12)
         )
-        if schedule.edges[0] > start:
-            # The schedule holds its first value back to the start
-            starts = np.r_[start, starts]
-            ends = np.r_[schedule.edges[0], ends]
-            values = np.vstack([values[:1], values])
         keep = (ends > start) & (starts < stop)
         starts = np.maximum(starts[keep], start)
         ends = np.minimum(ends[keep], stop)

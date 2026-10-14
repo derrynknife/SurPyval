@@ -2583,10 +2583,11 @@ time (``AFT``) — exposes the same ``sf_tvc(x, Z, xl=None, given=None)`` (plus
 the matching ``Hf_tvc``). Pass either ``(xl, Z)`` arrays or a
 :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`, and
 ``given=`` for conditional survival :math:`S(x \mid \text{survived to } g)`.
-The path is measured from time 0: a schedule that starts later has its first
-value held back to 0, and the part of a schedule before 0 is ignored (the value
-in force at 0 applies from there), so a constant path gives ``sf(x, Z)``
-wherever it starts. Any time is a valid query, 0 and below included.
+The path is measured from time 0, so it must start at or before 0: one that
+starts later is refused, as nothing says what the covariate was before it.
+The part of a schedule before 0 is ignored (the value in force at 0 applies
+from there), so a constant path gives ``sf(x, Z)`` wherever before 0 it
+starts. Any time is a valid query, 0 and below included.
 Proportional hazards, additive hazards and proportional odds accumulate a
 cumulative hazard over the segments: in each of them the hazard at time
 :math:`t` depends only on :math:`t` and the covariate at :math:`t`, so

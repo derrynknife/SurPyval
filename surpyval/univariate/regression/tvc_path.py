@@ -170,8 +170,8 @@ class CovariatePath:
     over the segments, a ``CovariatePath`` is integrated by adaptive
     quadrature to a relative accuracy of about ``1e-10`` on the cumulative
     hazard (exactly, with no quadrature, for Cox). The path is measured from
-    time ``0``: before its first time the first value applies, after its
-    last the last value.
+    time ``0``, so for a prediction it must start at or before ``0``
+    (:attr:`start`); after its last time the last value applies.
 
     The path must be *external* -- known in advance and not driven by the
     unit's own failure process (a planned load, a test profile, ambient
@@ -221,6 +221,22 @@ class CovariatePath:
         self._knots = np.asarray(knots, dtype=float)
         self.period = period
         self._kind = kind
+        # Where the path starts: the first point of a path through points
+        # (it gives no value before it); a function, or a pattern that
+        # repeats, has a value at every time.
+        self._start = (
+            float(self._knots[0])
+            if kind == "points" and period is None
+            else -np.inf
+        )
+
+    @property
+    def start(self) -> float:
+        """The time the path starts: its first point (for
+        :meth:`from_points` without a period), else ``-inf``, as a
+        function of time, or a pattern that repeats, has a value at every
+        time. It gives no value before it."""
+        return self._start
 
     @property
     def p(self) -> int:
@@ -241,9 +257,10 @@ class CovariatePath:
 
         Between two points the covariate changes linearly; a time given
         twice is a jump from the first value to the second. Before the
-        first point the first value applies, and after the last point the
-        last value. With ``period`` the pattern repeats: the path at ``t``
-        is the pattern at ``t mod period``, so ``times`` must lie in
+        first point the path has no value (it starts there, :attr:`start`),
+        and after the last point the last value applies. With ``period``
+        the pattern repeats: the path at ``t`` is the pattern at
+        ``t mod period``, so ``times`` must start at ``0`` and lie in
         ``[0, period]`` (a sawtooth or a thermal cycle).
 
         Parameters
@@ -300,10 +317,10 @@ class CovariatePath:
                 "once with the value after"
             )
         period = _as_period(period)
-        if period is not None and (t[0] < 0 or t[-1] > period):
+        if period is not None and (t[0] != 0 or t[-1] > period):
             raise ValueError(
-                "with a period, 'times' describe one repetition and must "
-                "lie in [0, period] = [0, {:g}]".format(period)
+                "with a period, 'times' describe one repetition: they must "
+                "start at 0 and lie in [0, period] = [0, {:g}]".format(period)
             )
         m = t.shape[0]
 
@@ -466,6 +483,11 @@ class CovariatePath:
         u = np.atleast_1d(np.asarray(t, dtype=float)).ravel()
         out = np.full((u.shape[0], self.p), np.nan)
         known = ~np.isnan(u)
+        if np.any(u[known] < self._start):
+            raise ValueError(
+                "The path starts at {:g}: it has no value before it (asked "
+                "at {:g}).".format(self._start, float(np.min(u[known])))
+            )
         if known.any():
             out[known] = self._values(u[known])
         return out
