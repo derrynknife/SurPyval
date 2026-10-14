@@ -2592,8 +2592,11 @@ PO depend on the covariate back to :math:`-\infty`, so a schedule starts
 there, ``StepSchedule.from_changepoints([-np.inf, ...], ...)``;
 ``StepSchedule.constant`` does. AFT and AH measure the covariate's effect from
 0, so for them a path from 0 serves times from 0, and an earlier time needs
-the covariate from that time on. Any time is a valid query, 0 and below
-included.
+the covariate from that time on. A ``CovariatePath`` is integrated below 0 as
+far as needed, to :math:`-\infty` for PH and PO, where the baseline's hazard
+dies away; a formula (``CovariatePath.from_callable``) has a value at every
+time, while a path through points starts at its first point. Any time is a
+valid query, 0 and below included.
 Proportional hazards, additive hazards and proportional odds accumulate a
 cumulative hazard over the segments: in each of them the hazard at time
 :math:`t` depends only on :math:`t` and the covariate at :math:`t`, so

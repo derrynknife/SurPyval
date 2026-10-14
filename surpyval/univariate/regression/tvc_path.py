@@ -171,7 +171,10 @@ class CovariatePath:
     quadrature to a relative accuracy of about ``1e-10`` on the cumulative
     hazard (exactly, with no quadrature, for Cox). The path is measured from
     time ``0``, so for a prediction it must start at or before ``0``
-    (:attr:`start`); after its last time the last value applies.
+    (:attr:`start`), and on a baseline defined below 0 at or before every
+    time the answer depends on, to ``-inf`` for proportional hazards and
+    odds, where it is integrated below 0 too (#957); after its last time
+    the last value applies.
 
     The path must be *external* -- known in advance and not driven by the
     unit's own failure process (a planned load, a test profile, ambient
@@ -790,6 +793,26 @@ def warn_missed_target(
     )
 
 
+def mirrored(path: CovariatePath) -> CovariatePath:
+    """
+    ``path`` reflected about 0, for its breakpoints only: those of the
+    reflection in ``(0, t)`` are the path's in ``(-t, 0)``, negated, so
+    that :func:`path_mesh` lays the panels of an integral below 0 (in
+    ``s = -u``) on them (#957). It is not evaluated: the panel terms of an
+    integral below 0 evaluate the path itself on ``[-b, -a]``.
+    """
+    knots = -np.asarray(path._knots, dtype=float)
+    if path.period is not None:
+        knots = np.mod(knots, path.period)
+    return CovariatePath(
+        lambda u, left: np.empty((np.size(u), path.p)),
+        path.p,
+        np.sort(knots),
+        path.period,
+        "callable",
+    )
+
+
 def step_path(schedule: Any) -> CovariatePath:
     """
     The :class:`CovariatePath` of a
@@ -842,6 +865,7 @@ def integrate_to_infinity(
     scale: float,
     rtol: float,
     knots: "Callable[[float], npt.NDArray] | None" = None,
+    edges_out: "list | None" = None,
 ) -> "tuple[float, tuple[float, float] | None]":
     r"""
     :math:`\int_{\text{origin}}^\infty f(t)\,dt` for a vectorised ``func``
@@ -858,7 +882,10 @@ def integrate_to_infinity(
 
     Returns the integral and ``None``, or, when ``f`` has not fallen
     away by ``scale * 2**_TAIL_DOUBLINGS`` past ``origin`` (it levels off:
-    a fraction never fails), the integral so far and ``(T, f(T))``.
+    a fraction never fails), the integral so far and ``(T, f(T))``. The
+    final panel edges (from ``origin``) are appended to ``edges_out``,
+    when given, to integrate on again with no refinement
+    (:func:`integrate_on`).
     """
 
     # The outer edges so far. They are passed with every call: an
@@ -899,6 +926,8 @@ def integrate_to_infinity(
         with np.errstate(invalid="ignore", over="ignore"):
             # inf - inf where f has overflowed; caught below.
             res = integrate_panels(terms, edges, rtol)
+        if edges_out is not None:
+            edges_out.append(res["edges"])
         total += float(np.sum(res["value"]))
         end = float(edges[-1])
         seen[0] = np.union1d(seen[0], edges[:-1])
@@ -912,3 +941,26 @@ def integrate_to_infinity(
         if end >= scale * 2.0**_TAIL_DOUBLINGS:
             return total, (origin + end, f_end)
         edges = stretch(end, end * 2.0 ** np.arange(0, _TAIL_STEP + 1))
+
+
+def integrate_on(
+    func: Callable[[npt.NDArray], npt.NDArray],
+    origin: float,
+    edges: npt.NDArray,
+) -> float:
+    """``func`` integrated from ``origin`` on the panels between ``origin +
+    edges``, with no refinement: an integral of
+    :func:`integrate_to_infinity` again on the edges it reached, so that
+    it is smooth in what ``func`` depends on (``cb_tvc``'s delta method,
+    #957)."""
+
+    def terms(a: npt.NDArray, b: npt.NDArray) -> tuple:
+        m = a.shape[0]
+        mid, half = 0.5 * (a + b), 0.5 * (b - a)
+        u = (mid[:, None] + half[:, None] * _NODES[None, :]).ravel()
+        values = np.asarray(func(origin + u), dtype=float).reshape(m, -1)
+        return np.zeros(m), values, np.abs(values), np.zeros(m, dtype=bool)
+
+    with np.errstate(invalid="ignore", over="ignore"):
+        res = integrate_panels(terms, edges, 0.0, max_rounds=0)
+    return float(np.sum(res["value"]))

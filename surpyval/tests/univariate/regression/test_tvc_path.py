@@ -377,24 +377,14 @@ def test_given_is_the_ratio_of_survivals(F, params):
     )
     tt = np.array([4.0, 6.0, 9.0, 15.0])
     assert np.isnan(model.sf_tvc(tt, path, given=np.nan)).all()
-    if _from_minus_inf(model):
-        # Only given an age at or after 0 (#952).
-        assert np.all(model.sf_tvc(tt, path, given=4.0) <= 1)
-        with pytest.raises(ValueError, match="back to -inf"):
-            model.sf_tvc(tt, path)
-        return
     np.testing.assert_allclose(
         model.sf_tvc(tt, path, given=4.0),
         model.sf_tvc(tt, path) / model.sf_tvc(4.0, path),
         rtol=1e-11,
     )
-    if _real_line(model):
-        # An age before 0 needs the path before 0 (#952).
-        with pytest.raises(ValueError, match="before 0"):
-            model.sf_tvc(tt, path, given=-1.0)
-        return
     # A conditioning age at or before 0 conditions on nothing (for a
-    # baseline that starts at 0) or divides by sf(given): nan for both
+    # baseline that starts at 0) or divides by sf(given), the path
+    # integrated below 0 on a baseline defined there (#957): nan for both
     # where the age is outside an additive model's support (#828).
     np.testing.assert_allclose(
         model.sf_tvc(tt, path, given=-1.0),

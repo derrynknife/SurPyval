@@ -90,8 +90,13 @@ def test_a_path_serves_ph_and_po_given_an_age(name):
     ramp = CovariatePath.from_points([0, 10], [0.0, 1.0])
     with pytest.raises(ValueError, match="back to -inf"):
         m.sf_tvc([2.0], ramp)
-    with pytest.raises(ValueError, match="back to -inf"):
-        m.sf_tvc([2.0], CovariatePath.from_callable(lambda t: 0 * t + 1.0))
+    # A formula has a value at every time: it is integrated from -inf
+    # (#957).
+    np.testing.assert_allclose(
+        m.sf_tvc([2.0], CovariatePath.from_callable(lambda t: 0 * t + 1.0)),
+        m.sf(np.array([2.0]), [1.0]),
+        rtol=1e-9,
+    )
     # Given an age from 0, only the path after it counts.
     got = m.sf_tvc([4.0, 6.0], ramp, given=2.0)
     steps = StepSchedule.from_changepoints([-INF, 2.0], [[0.0], [0.2]])
@@ -122,8 +127,17 @@ def test_the_mean_needs_the_covariate_back_to_minus_inf():
     np.testing.assert_allclose(m.mean_tvc(const), np.ravel(m.mean([1.0]))[0])
     with pytest.raises(ValueError, match="back to -inf"):
         m.mean_tvc(StepSchedule.from_changepoints([0], [[1.0]]))
-    with pytest.raises(ValueError, match="not provided yet"):
-        m.mean_tvc(BEFORE)
+    # Along a schedule that changes before 0, summed from -inf (#957).
+    sf = lambda t: float(m.sf_tvc([t], BEFORE)[0])  # noqa: E731
+    from scipy.integrate import quad
+
+    ref = (
+        quad(sf, 0, np.inf, epsrel=1e-11, limit=500)[0]
+        - quad(lambda t: 1 - sf(t), -np.inf, 0, epsrel=1e-11, limit=500)[0]
+    )
+    np.testing.assert_allclose(m.mean_tvc(BEFORE), ref, rtol=1e-8)
+    with pytest.raises(ValueError, match="not provided"):
+        _fit("NormalAH").mean_tvc(BEFORE)
     ramp = CovariatePath.from_points([0, 10], [0.0, 1.0])
     with pytest.raises(ValueError, match="back to -inf"):
         m.mean_tvc(ramp)
