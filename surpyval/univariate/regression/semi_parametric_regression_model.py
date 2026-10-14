@@ -1095,8 +1095,8 @@ class SemiParametricRegressionModel(
         continuously varying path this is still exact, with no quadrature:
         only the covariate just before each jump time counts (the value
         before a jump in the path, as for ``(start, stop]`` rows). The path
-        is measured from time zero (a path starting after zero has its first
-        value held back to zero; the part before zero is ignored), and any
+        is measured from time zero (a path starting after zero is refused;
+        the part before zero is ignored), and any
         time is a valid query: ``H`` is ``0`` up to the first baseline jump.
 
         Parameters
@@ -1192,7 +1192,7 @@ class SemiParametricRegressionModel(
             H(t) = \sum_{u_j \le t} h_0(u_j)\, e^{\beta' (Z(u_j-) - c)},
 
         exact, with the path's value just before each jump time (its value
-        at 0 for a jump at or before 0, where the path is held back to).
+        at 0 for a jump at or before 0).
         With ``given`` the jumps in ``(given, t]`` are summed (negated for
         ``t < given``).
         """

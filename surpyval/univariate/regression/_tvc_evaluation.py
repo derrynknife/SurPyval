@@ -179,8 +179,8 @@ class TVCEvaluationMixin:
         self, schedule: Any, t_max: float
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         """
-        Materialise ``schedule`` to ``t_max`` with the first segment held back
-        to the time origin (survival measured from ``0``).
+        Materialise ``schedule`` to ``t_max`` from the time origin (survival
+        measured from ``0``); a schedule starting after ``0`` is refused.
         """
         from .tvc_schedule import segments_from_origin
 
@@ -272,11 +272,11 @@ class TVCEvaluationMixin:
         how many query times. The type of ``Z`` picks the method: a
         ``StepSchedule`` is always summed exactly.
 
-        The path is measured from time zero: a schedule starting after zero
-        has its first value held back to zero, and the part of a schedule
-        before zero is ignored (the value in force at zero applies from
-        there). Any time is a valid query, zero and below included: a
-        constant path gives ``Hf(x, Z)`` there too.
+        The path is measured from time zero: a schedule or path starting
+        after zero is refused (nothing says what the covariate was before
+        it), and the part of one before zero is ignored (the value in force
+        at zero applies from there). Any time is a valid query, zero and
+        below included: a constant path gives ``Hf(x, Z)`` there too.
 
         Parameters
         ----------

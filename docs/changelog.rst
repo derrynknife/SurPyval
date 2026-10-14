@@ -307,6 +307,31 @@ Unreleased
 
 **Changed**
 
+- A covariate schedule must start at or before the point time is
+  measured from (#930). A ``StepSchedule`` or ``CovariatePath`` that
+  started later had its first value taken as the value from the start, a
+  silent assumption: now a prediction (``sf_tvc`` and the other ``*_tvc``
+  methods, the degradation clock) refuses a schedule starting after 0, a
+  record refuses one starting after the start of its observation
+  (``left_truncation``, else 0), as a ``{age: values}`` dict already was,
+  and a fit from item records refuses it too. Give the values from the
+  start, e.g. ``StepSchedule.from_changepoints([0, 5, 8], ...)``. A path
+  through points (``CovariatePath.from_points``) has no value before its
+  first point (``path(t)`` there is refused), and its ``start`` says
+  where it starts (``StepSchedule.start`` too); with a period its points
+  must start at 0, as ``StepSchedule.cyclic``'s do.
+- Records keep the time-varying covariates as given (#930): a
+  ``StepSchedule`` or ``CovariatePath`` shows as itself in the repr, a
+  dict as the dict, and ``clone``, ``update_covariates`` and the dataset
+  reshapes keep it. A record whose schedule started late was accepted,
+  but cloning, updating or reshaping it failed. ``StepSchedule``s compare
+  by their edges, values and period (two equal cyclic schedules were
+  unequal), and a record with one hashes by contents, so equal records
+  hash alike however the schedule was given. A ``StepSchedule``'s repr is
+  the call that builds it, e.g.
+  ``StepSchedule.from_changepoints([0.0, 8.0], [[0.0], [1.0]])`` (one of
+  more than 20 segments in short).
+
 - A dataset's arrays (``SurpyvalData`` and ``EventHistoryData``: ``x``,
   ``c``, ``n``, ``t``, ``Z``, ``e`` and the arrays split from them) are
   read-only (#927). Changing one in place (``data.c[2] = 1``) left the

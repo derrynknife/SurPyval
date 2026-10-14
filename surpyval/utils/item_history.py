@@ -68,14 +68,15 @@ class ItemHistory:
         The type of the failures counted by ``left_censored``.
     time_varying_covariates : dict, StepSchedule or CovariatePath, optional
         Covariates that change over its history: ``{age: values}``, each
-        value holding from its age on (the first age at or before the
-        start of observation, ``left_truncation``, else 0); a
+        value holding from its age on; a
         :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`;
         or a continuously varying
-        :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`
-        (both of these hold their first value back to age 0). A dict is
-        kept as a ``StepSchedule``. No recurrent model uses them yet
-        (#905): every fit refuses data that has them.
+        :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`.
+        Each must start at or before the start of observation
+        (``left_truncation``, else 0): nothing says what they were before
+        their first age. A dict is kept as a ``StepSchedule``, and shown
+        as the dict. No recurrent model uses them yet (#905): every fit
+        refuses data that has them.
 
     initial_state : optional
         The state the item was in when it came under observation (at
@@ -219,9 +220,11 @@ class ItemHistory:
             item, "right_truncation", right_truncation
         )
         self.covariates, self.covariate_names = _covariates(item, covariates)
-        self.time_varying_covariates, self._first_change = _time_varying(
-            item, time_varying_covariates
-        )
+        (
+            self.time_varying_covariates,
+            self._first_change,
+            self._tvc_dict,
+        ) = _time_varying(item, time_varying_covariates)
         if self.has_event_types:
             # A kind of failure given without types is of types not
             # recorded: masked causes.
@@ -401,11 +404,7 @@ class ItemHistory:
             start = 0.0 if tl is None else tl
             first = self._first_change
             if first > start:
-                raise ValueError(
-                    f"Item {item!r}: its time-varying covariates start at age "
-                    f"{first:g}, after the start of its observation "
-                    f"({start:g}): give their values from {start:g} on."
-                )
+                raise late_covariates(item, first, start)
 
     @property
     def observed_states(self) -> dict:
@@ -681,7 +680,13 @@ class ItemHistory:
         from ``age`` on (a step added to its schedule; a first schedule
         starts at ``age``, which must then be at or before the start of
         observation)."""
-        steps = _with_step(self.id, self.time_varying_covariates, age, values)
+        steps = _with_step(
+            self.id,
+            self.time_varying_covariates,
+            age,
+            values,
+            self._as_dict(),
+        )
         return self.clone(time_varying_covariates=steps)
 
     # -- display and comparison ---------------------------------------------
@@ -722,7 +727,7 @@ class ItemHistory:
             )
         if self.time_varying_covariates is not None:
             out["time_varying_covariates"] = _schedule_field(
-                self.time_varying_covariates
+                self.time_varying_covariates, self._as_dict()
             )
         if self.initial_state is not None:
             out["initial_state"] = self.initial_state
@@ -748,10 +753,18 @@ class ItemHistory:
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ItemHistory):
             return NotImplemented
-        return self.id == other.id and self._fields() == other._fields()
+        return self.id == other.id and self._compared() == other._compared()
 
     def __hash__(self) -> int:
-        return hash((self.id, hashable(self._fields())))
+        return hash((self.id, hashable(self._compared())))
+
+    def _compared(self) -> dict:
+        return comparable(self._fields(), self.time_varying_covariates)
+
+    def _as_dict(self) -> bool:
+        # A record pickled before #930 has no _tvc_dict: its schedule
+        # showed as a dict.
+        return getattr(self, "_tvc_dict", True)
 
     def __repr__(self) -> str:
         fields = "".join(
@@ -989,15 +1002,17 @@ def covariate_row_in(item: Any, names: "list | None") -> np.ndarray:
     return item.covariates[[where[name] for name in names]]
 
 
-def _time_varying(item: Any, value: Any) -> tuple[Any, "float | None"]:
+def _time_varying(item: Any, value: Any) -> tuple[Any, "float | None", bool]:
     """The time-varying covariates as a StepSchedule or CovariatePath,
-    and, for a ``{age: values}`` dict, its first age (checked against the
-    start of observation); ``(None, None)`` where not given."""
+    the age they start at (checked against the start of observation;
+    None where they have a value at every age), and whether they were
+    given as a ``{age: values}`` dict; ``(None, None, False)`` where not
+    given."""
     from surpyval.univariate.regression.tvc_path import CovariatePath
     from surpyval.univariate.regression.tvc_schedule import StepSchedule
 
     if value is None:
-        return None, None
+        return None, None, False
     if isinstance(value, StepSchedule):
         # A copy of its own: a schedule shared with the caller used to
         # change the record, and its hash, when the caller changed it
@@ -1006,10 +1021,12 @@ def _time_varying(item: Any, value: Any) -> tuple[Any, "float | None"]:
             StepSchedule(
                 np.array(value.edges), np.array(value.Z), value.period
             ),
-            None,
+            value.start,
+            False,
         )
     if isinstance(value, CovariatePath):
-        return value, None
+        start = value.start
+        return value, (start if np.isfinite(start) else None), False
     if not isinstance(value, dict) or not value:
         raise ValueError(
             f"Item {item!r}: 'time_varying_covariates' must be a dict "
@@ -1030,16 +1047,32 @@ def _time_varying(item: Any, value: Any) -> tuple[Any, "float | None"]:
     schedule = StepSchedule.from_changepoints(
         ages[order], np.vstack(rows)[order]
     )
-    return schedule, float(ages.min())
+    return schedule, float(ages.min()), True
 
 
-def _schedule_field(schedule: Any) -> Any:
-    """A StepSchedule without a period as the ``{age: values}`` dict that
-    rebuilds it; anything else (a cyclic schedule, a CovariatePath) as
-    itself."""
+def late_covariates(item: Any, first: float, start: float) -> ValueError:
+    """The refusal of time-varying covariates that start at ``first``,
+    after the start of observation, ``start`` (#930)."""
+    return ValueError(
+        f"Item {item!r}: its time-varying covariates start at age "
+        f"{first:g}, after the start of its observation ({start:g}): "
+        f"give their values from {start:g} on (a schedule's first "
+        f"change-point at or before {start:g}), as nothing says what they "
+        f"were before {first:g}."
+    )
+
+
+def _schedule_field(schedule: Any, as_dict: bool) -> Any:
+    """The time-varying covariates as given: a schedule given as a
+    ``{age: values}`` dict (``as_dict``) as the dict that rebuilds it, and
+    anything else (a StepSchedule, a CovariatePath) as itself (#930)."""
     from surpyval.univariate.regression.tvc_schedule import StepSchedule
 
-    if isinstance(schedule, StepSchedule) and schedule.period is None:
+    if (
+        as_dict
+        and isinstance(schedule, StepSchedule)
+        and schedule.period is None
+    ):
         return {
             float(age): row.tolist()
             for age, row in zip(schedule.edges[:-1], schedule.Z)
@@ -1194,10 +1227,13 @@ def _when(kind: str, lower: float, upper: float) -> str:
     return f"({lower:g}, {upper:g}]"
 
 
-def _with_step(item: Any, schedule: Any, age: float, values: Any) -> dict:
+def _with_step(
+    item: Any, schedule: Any, age: float, values: Any, as_dict: bool
+) -> Any:
     """``schedule`` (None, or a StepSchedule without a period) with its
-    values from ``age`` on replaced by ``values``, as the ``{age: values}``
-    dict that builds it."""
+    values from ``age`` on replaced by ``values``: as the
+    ``{age: values}`` dict that builds it where there was none or it was
+    given as one (``as_dict``), else as a StepSchedule."""
     from surpyval.univariate.regression.tvc_schedule import StepSchedule
 
     if schedule is not None and not (
@@ -1211,12 +1247,14 @@ def _with_step(item: Any, schedule: Any, age: float, values: Any) -> dict:
             f"schedule; its covariates are a {kind}, so give the whole path "
             "with clone(time_varying_covariates=...)."
         )
-    steps = {} if schedule is None else _schedule_field(schedule)
+    steps = {} if schedule is None else _schedule_field(schedule, True)
     age = float(age)
     steps = {a: v for a, v in steps.items() if a < age}
     row = _covariate_row(item, "values", values)
     steps[age] = row.tolist()  # type: ignore[union-attr]
-    return steps
+    if schedule is None or as_dict:
+        return steps
+    return StepSchedule.from_changepoints(list(steps), list(steps.values()))
 
 
 def item_id(item: Any) -> Any:
@@ -1285,8 +1323,26 @@ def frozen_setattr(obj: Any, name: str, value: Any) -> None:
     object.__setattr__(obj, name, value)
 
 
+def comparable(fields: dict, schedule: Any) -> dict:
+    """A record's ``fields`` with its time-varying covariates as the
+    ``schedule`` it keeps, for equality and hashing: equal however they
+    were given (a dict, or the StepSchedule it makes), and compared by
+    contents (#930)."""
+    if schedule is None:
+        return fields
+    return {**fields, "time_varying_covariates": schedule}
+
+
 def hashable(value: Any) -> Any:
     """``value`` (a record's fields) as something hashable."""
+    if type(value).__name__ == "StepSchedule":
+        # By contents, as it compares.
+        return (
+            "StepSchedule",
+            tuple(value.edges.tolist()),
+            hashable(value.Z.tolist()),
+            value.period,
+        )
     if isinstance(value, dict):
         return tuple(sorted((k, hashable(v)) for k, v in value.items()))
     if isinstance(value, (list, tuple, np.ndarray)):

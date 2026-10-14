@@ -189,9 +189,9 @@ def test_po_generic_factory_supports_tvc():
 # -- baselines supported below zero ---------------------------------------
 #
 # The path starts at 0, but a Logistic / Normal / Gumbel baseline puts
-# survival probability below 1 at 0. The first segment is held back to the
-# bottom of the support, so a constant path still gives the ordinary sf(x, Z)
-# rather than the conditional S(x | z) / S(0 | z) it gave before.
+# survival probability below 1 at 0. The value in force at 0 applies down to
+# the bottom of the support, so a constant path still gives the ordinary
+# sf(x, Z) rather than the conditional S(x | z) / S(0 | z) it gave before.
 
 
 @pytest.mark.parametrize(

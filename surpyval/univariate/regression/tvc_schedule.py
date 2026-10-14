@@ -95,8 +95,8 @@ class StepValuedError(ValueError):
 
     Quantized, the same growth is accepted:
 
-    >>> StepSchedule.from_expression("2 * floor(t / 5)", 20)
-    StepSchedule(step, 5 segment(s), p=1)
+    >>> StepSchedule.from_expression("2 * floor(t / 5)", 10)
+    StepSchedule.from_changepoints([0.0, 5.0, 10.0], [[0.0], [2.0], [4.0]])
     """
 
 
@@ -464,6 +464,12 @@ class StepSchedule:
         """Number of covariates (columns of ``Z``)."""
         return self.Z.shape[1]
 
+    @property
+    def start(self) -> float:
+        """The time the schedule starts, its first edge: it gives no value
+        before it."""
+        return float(self.edges[0])
+
     # -- structural constructors ------------------------------------------
 
     @classmethod
@@ -485,9 +491,11 @@ class StepSchedule:
         ``values[i]`` is the covariate row in effect from ``times[i]`` until
         the next change-point; the last value is held to the horizon.
         ``times`` must be strictly increasing; ``times[0]`` is the path's
-        start (usually ``0``). A model evaluates the path from time ``0``:
-        a path starting later has its first value held back to ``0``, and
-        the part of a path before ``0`` is ignored.
+        start, :attr:`start`. A model evaluates the path from time ``0``,
+        so a path for a prediction must start at or before ``0`` (the part
+        before ``0`` is ignored); one starting later is refused, as nothing
+        says what the covariate was before it. On a record it must start
+        at or before the start of the item's observation.
 
         Parameters
         ----------
@@ -627,10 +635,13 @@ class StepSchedule:
 
         Examples
         --------
-        >>> StepSchedule.from_expression("0.9 if t % 24 < 8 else 0.3", 96)
-        StepSchedule(step, 9 segment(s), p=1)
-        >>> StepSchedule.from_expression("0.3 * 2 ** floor(t / 1000)", 5000)
-        StepSchedule(step, 6 segment(s), p=1)
+        >>> duty = StepSchedule.from_expression(
+        ...     "0.9 if t % 24 < 8 else 0.3", 96
+        ... )
+        >>> duty.edges[:4], duty.Z[:4].ravel()
+        (array([ 0.,  8., 24., 32.]), array([0.9, 0.3, 0.9, 0.3]))
+        >>> StepSchedule.from_expression("0.3 * 2 ** floor(t / 1000)", 1000)
+        StepSchedule.from_changepoints([0.0, 1000.0], [[0.3], [0.6]])
         """
         exprs = [expr] if isinstance(expr, str) else list(expr)
         if len(exprs) == 0:
@@ -732,11 +743,49 @@ class StepSchedule:
         ends = np.minimum(ends, t_max)
         return starts, ends, Z
 
-    def __repr__(self) -> str:
-        kind = "cyclic" if self.period is not None else "step"
-        return "StepSchedule({}, {} segment(s), p={})".format(
-            kind, self.Z.shape[0], self.p
+    def __eq__(self, other: object) -> bool:
+        """Two schedules are equal when they have the same edges, values
+        and period (#930)."""
+        if not isinstance(other, StepSchedule):
+            return NotImplemented
+        return (
+            self.period == other.period
+            and np.array_equal(self.edges, other.edges)
+            and np.array_equal(self.Z, other.Z)
         )
+
+    # Equal by contents, which can change: not hashable (a record hashes
+    # its own, fixed, copy by contents).
+    __hash__ = None  # type: ignore[assignment]
+
+    #: A schedule of more segments than this shows in short.
+    _REPR_SEGMENTS = 20
+
+    def __repr__(self) -> str:
+        """The call that builds the schedule (#930); a long schedule in
+        short."""
+        edges, Z = self.edges.tolist(), self.Z.tolist()
+        n = self.Z.shape[0]
+        if n > self._REPR_SEGMENTS:
+            kind = "cyclic" if self.period is not None else "step"
+            return "StepSchedule({}, {} segments, p={})".format(
+                kind, n, self.p
+            )
+        if self.period is not None:
+            if edges[0] == 0 and edges[-1] == self.period:
+                return "StepSchedule.cyclic({}, {}, period={!r})".format(
+                    edges[:-1], Z, self.period
+                )
+            return "StepSchedule({}, {}, period={!r})".format(
+                edges, Z, self.period
+            )
+        if np.isfinite(edges[-1]):
+            return "StepSchedule.from_intervals({}, {}, {})".format(
+                edges[:-1], edges[1:], Z
+            )
+        if n == 1 and edges[0] == 0:
+            return "StepSchedule.constant({})".format(Z[0])
+        return "StepSchedule.from_changepoints({}, {})".format(edges[:-1], Z)
 
 
 # -- shared helpers for the model ``sf_tvc`` / ``Hf_tvc`` methods ----------
@@ -797,15 +846,44 @@ def as_covariate_path(
                 "xl must not be given when Z is an item: the item gives its "
                 "own covariates over time"
             )
-        return item_covariate_path(Z, names)
+        return check_from_origin(item_covariate_path(Z, names), Z.id)
     if isinstance(Z, CovariatePath):
         if xl is not None:
             raise ValueError(
                 "xl must not be given when Z is a CovariatePath (it gives "
                 "the segment start times of the array form only)"
             )
-        return Z
-    return as_step_schedule(Z, xl)
+        return check_from_origin(Z)
+    return check_from_origin(as_step_schedule(Z, xl))
+
+
+def check_from_origin(path: Any, item: Any = None) -> Any:
+    """
+    ``path`` (a :class:`StepSchedule` or a
+    :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`),
+    refused if it starts after the time origin, ``0``: a prediction is
+    measured from ``0``, and nothing says what the covariate was before
+    the path starts (#930; it used to be taken as the path's first value).
+    ``item`` is the id of the item it is the covariates of.
+    """
+    start = path.start
+    if start <= 0:
+        return path
+    who = (
+        "The covariates"
+        if item is None
+        else f"Item {item!r}: its time-varying covariates"
+    )
+    example = (
+        f"StepSchedule.from_changepoints([0, {start:g}, ...], ...)"
+        if isinstance(path, StepSchedule)
+        else f"CovariatePath.from_points([0, {start:g}, ...], ...)"
+    )
+    raise ValueError(
+        f"{who} start at {start:g}, after the time origin (0): a "
+        "prediction is measured from 0, so it needs the covariates from 0 "
+        f"on. Give their values from 0, e.g. {example}."
+    )
 
 
 def segments_from_origin(
@@ -817,17 +895,14 @@ def segments_from_origin(
     is the unconditional survival. Returns ``(starts, ends, Z)`` with
     ``starts[0] == 0``.
 
-    The path is clipped to start at ``0``: a schedule starting after ``0``
-    has its first value held back to ``0``, and the part of a schedule
-    before ``0`` is dropped, the segment in force at ``0`` then starting
-    there. For ``t_max <= 0`` the result is that one segment, ``[0, 0]``.
+    The schedule must start at or before ``0`` (:func:`check_from_origin`);
+    the part of it before ``0`` is dropped, the segment in force at ``0``
+    then starting there. For ``t_max <= 0`` the result is that one
+    segment, ``[0, 0]``.
     """
+    check_from_origin(schedule)
     t_max = float(t_max)
     end = max(t_max, 0.0)
-    if schedule.edges[0] >= end:
-        # The path starts at or after the horizon: only its first value
-        # (held back to 0) is ever in force.
-        return np.array([0.0]), np.array([end]), schedule.Z[:1].copy()
     # Any positive horizon shows the value in force at 0.
     starts, ends, Z = schedule.segments(end if end > 0 else 1.0)
     # Drop what ends at or before 0 and start the rest at 0.
@@ -917,12 +992,15 @@ def item_covariate_path(item: Any, names: "list | None" = None) -> Any:
             return np.hstack([np.tile(fixed, (len(values), 1)), values])
 
         knots = getattr(varying, "_knots", None)
-        return CovariatePath.from_callable(
+        path = CovariatePath.from_callable(
             combined,
             p=len(fixed) + varying.p,
             breakpoints=None if knots is None or len(knots) == 0 else knots,
             period=varying.period,
         )
+        # It starts where the item's path does.
+        path._start = varying.start
+        return path
     raise TypeError(
         f"Item {item.id!r}'s time-varying covariates are a "
         f"{type(varying).__name__}, not a StepSchedule or a CovariatePath."

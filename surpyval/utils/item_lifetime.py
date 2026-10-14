@@ -16,11 +16,13 @@ from surpyval.utils.item_history import (
     _schedule_field,
     _time_varying,
     _with_step,
+    comparable,
     freeze,
     frozen_setattr,
     frozen_setstate,
     hashable,
     item_id,
+    late_covariates,
     missing_type,
 )
 
@@ -73,11 +75,13 @@ class ItemLifetime:
         ``covariates`` is then the row of values, in that order.
     time_varying_covariates : dict, StepSchedule or CovariatePath, optional
         Covariates that change over its life: ``{age: values}`` (each
-        value holding from its age on, the first at or before the start of
-        observation), a
+        value holding from its age on), a
         :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`,
         or a continuously varying
         :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`.
+        Each must start at or before the start of observation
+        (``left_truncation``, else 0): nothing says what they were before
+        their first age.
 
     Examples
     --------
@@ -145,7 +149,7 @@ class ItemLifetime:
             )
         self.event_type = event_type
         self.covariates, self.covariate_names = _covariates(item, covariates)
-        self.time_varying_covariates, first = _time_varying(
+        self.time_varying_covariates, first, self._tvc_dict = _time_varying(
             item, time_varying_covariates
         )
         self._check(first)
@@ -212,11 +216,7 @@ class ItemLifetime:
         if first_change is not None:
             start = 0.0 if tl is None else tl
             if first_change > start:
-                raise ValueError(
-                    f"Item {item!r}: its time-varying covariates start at age "
-                    f"{first_change:g}, after the start of its observation "
-                    f"({start:g}): give their values from {start:g} on."
-                )
+                raise late_covariates(item, first_change, start)
 
     def _row(self) -> tuple[list, int]:
         """``([lower, upper], c)`` in the xcnt layout."""
@@ -319,7 +319,13 @@ class ItemLifetime:
     def update_covariates(self, age: Any, values: Any) -> "ItemLifetime":
         """This lifetime with its time-varying covariates taking ``values``
         from ``age`` on (a step added to its schedule)."""
-        steps = _with_step(self.id, self.time_varying_covariates, age, values)
+        steps = _with_step(
+            self.id,
+            self.time_varying_covariates,
+            age,
+            values,
+            self._as_dict(),
+        )
         return self.clone(time_varying_covariates=steps)
 
     def _fields(self) -> dict:
@@ -338,17 +344,25 @@ class ItemLifetime:
             )
         if self.time_varying_covariates is not None:
             out["time_varying_covariates"] = _schedule_field(
-                self.time_varying_covariates
+                self.time_varying_covariates, self._as_dict()
             )
         return out
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ItemLifetime):
             return NotImplemented
-        return self.id == other.id and self._fields() == other._fields()
+        return self.id == other.id and self._compared() == other._compared()
 
     def __hash__(self) -> int:
-        return hash((self.id, hashable(self._fields())))
+        return hash((self.id, hashable(self._compared())))
+
+    def _compared(self) -> dict:
+        return comparable(self._fields(), self.time_varying_covariates)
+
+    def _as_dict(self) -> bool:
+        # A record pickled before #930 has no _tvc_dict: its schedule
+        # showed as a dict.
+        return getattr(self, "_tvc_dict", True)
 
     def __repr__(self) -> str:
         fields = "".join(
