@@ -802,6 +802,12 @@ def step_path(schedule: Any) -> CovariatePath:
     """
     starts = np.asarray(schedule.edges[:-1], dtype=float)
     Z = np.asarray(schedule.Z, dtype=float)
+    if starts[0] < 0 and schedule.period is None:
+        # From 0, where the integration starts: the segment in force at 0
+        # starts there (one from -inf, say, #952).
+        keep = np.append(starts[1:] > 0, True)
+        starts, Z = starts[keep].copy(), Z[keep]
+        starts[0] = 0.0
     times = np.repeat(starts, 2)[1:]
     values = np.repeat(Z, 2, axis=0)[:-1]
     period = schedule.period

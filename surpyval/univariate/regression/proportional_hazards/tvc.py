@@ -47,8 +47,10 @@ def handle_tvc(
         are the successive observation intervals of one subject.
     xl, xr : array_like
         The open-closed observation interval ``(xl, xr]`` each row covers.
-        ``xl`` is the delayed-entry (left-truncation) time; ``xr`` is the exit
-        time. (These follow surpyval's ``xl``/``xr`` interval naming.)
+        ``xl`` is the delayed-entry (left-truncation) time, ``-inf`` for a
+        subject's first row followed since ``-inf`` (not truncated); ``xr``
+        is the exit time. (These follow surpyval's ``xl``/``xr`` interval
+        naming.)
     c : array_like
         Censoring flag at ``xr``, in surpyval's convention: ``0`` if the
         subject's terminal event occurs at ``xr`` on this interval, ``1`` if
@@ -97,8 +99,13 @@ def handle_tvc(
         )
     if nrow == 0:
         raise ValueError("no interval rows were supplied")
-    if not (np.isfinite(xl).all() and np.isfinite(xr).all()):
-        raise ValueError("xl and xr must be finite")
+    if not (
+        np.isfinite(xr).all() and (np.isfinite(xl) | (xl == -np.inf)).all()
+    ):
+        raise ValueError(
+            "xr must be finite, and xl finite or -inf (a subject's first "
+            "row followed since -inf)"
+        )
     if np.any(xl >= xr):
         raise ValueError(
             "every interval must have xl < xr (an interval covers the "
@@ -132,6 +139,11 @@ def handle_tvc(
         # interval's exit (touching intervals are contiguous, which is the
         # usual case; a gap is allowed -- the subject is simply not at risk in
         # the gap).
+        if cnt > 1 and np.isneginf(s_xl[1:]).any():
+            raise ValueError(
+                "subject {!r} has a row from -inf after its first; only a "
+                "subject's first row can be followed since -inf".format(u)
+            )
         if cnt > 1 and np.any(s_xl[1:] < s_xr[:-1] - 1e-12):
             raise ValueError(
                 "subject {!r} has overlapping intervals; (xl, xr] rows for a "

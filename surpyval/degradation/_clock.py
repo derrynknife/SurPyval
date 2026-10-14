@@ -106,7 +106,7 @@ class StressClock:
     def _knots(self, horizon: float) -> tuple[npt.NDArray, npt.NDArray]:
         assert self.schedule is not None
         finite_edges = self.schedule.edges[np.isfinite(self.schedule.edges)]
-        horizon = max(horizon, float(finite_edges.max()) + 1.0, 1.0)
+        horizon = max(horizon, float(finite_edges.max(initial=0.0)) + 1.0, 1.0)
         starts, ends, Zs = segments_from_origin(self.schedule, horizon)
         af = np.array([self.acceleration_factor(z) for z in Zs])
         knots_t = np.concatenate([[starts[0]], ends])

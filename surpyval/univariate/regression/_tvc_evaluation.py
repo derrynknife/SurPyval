@@ -176,15 +176,102 @@ class TVCEvaluationMixin:
         return rate
 
     def _tvc_segments(
-        self, schedule: Any, t_max: float
+        self, schedule: Any, t_max: float, lo: float = 0.0
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         """
-        Materialise ``schedule`` to ``t_max`` from the time origin (survival
-        measured from ``0``); a schedule starting after ``0`` is refused.
+        Materialise ``schedule`` from ``lo`` (:meth:`_tvc_reach`, the
+        earliest time the answer depends on) to ``t_max``.
         """
-        from .tvc_schedule import segments_from_origin
+        from .tvc_schedule import segments_from
 
-        return segments_from_origin(schedule, t_max)
+        return segments_from(schedule, lo, t_max)
+
+    def _tvc_real_line(self) -> bool:
+        """Whether the baseline is defined below 0 (Normal, Gumbel,
+        Logistic): survival is then measured from ``-inf`` (#952)."""
+        return float(self.distribution.support[0]) < 0
+
+    def _tvc_from_minus_inf(self) -> bool:
+        """Whether the answer depends on the covariate back to ``-inf``:
+        proportional hazards and proportional odds on a baseline defined
+        below 0, whose hazard at every time depends on the covariate then.
+        Accelerated failure time and additive hazards measure the
+        covariate's effect from 0 (#952)."""
+        return self._tvc_real_line() and self.kind in (
+            PROPORTIONAL_HAZARD,
+            PROPORTIONAL_ODDS,
+        )
+
+    def _tvc_reach(self, schedule: Any, times: npt.NDArray) -> float:
+        """
+        The earliest time the answer at ``times`` depends on the
+        covariate, which ``schedule`` must start at or before (#930,
+        #952): 0 for a baseline starting at 0; ``-inf`` for proportional
+        hazards and odds on a baseline defined below 0; and 0, or the
+        earliest of ``times`` below it, for accelerated failure time and
+        additive hazards there, which measure the covariate's effect
+        from 0.
+        """
+        if not self._tvc_real_line():
+            return 0.0
+        start = schedule.start
+        if self._tvc_from_minus_inf():
+            if start > -np.inf:
+                raise ValueError(
+                    f"The covariates start at {start:g}, but this model's "
+                    f"baseline ({self.distribution.name}) is defined below "
+                    "0, so its survival at any time depends on the "
+                    "covariate at every earlier time, back to -inf. Give "
+                    "their value since -inf, e.g. "
+                    f"StepSchedule.from_changepoints([-np.inf, {start:g}, "
+                    "...], ...)."
+                )
+            return -np.inf
+        known = times[np.isfinite(times)]
+        lo = min(0.0, float(np.min(known))) if known.size else 0.0
+        if start > lo:
+            raise ValueError(
+                f"The covariates start at {start:g}, after {lo:g}, the "
+                "earliest time asked about: this model measures the "
+                "covariate's effect from 0, so a time before 0 needs the "
+                f"covariate from that time on. Give their values from "
+                f"{lo:g} or earlier."
+            )
+        return lo
+
+    def _tvc_check_path(
+        self, path: Any, xq: npt.NDArray, given: "float | None"
+    ) -> None:
+        """Refuse a CovariatePath where the answer depends on the
+        covariate before 0 (#952): it is integrated from 0 only."""
+        if not self._tvc_real_line():
+            return
+        name = self.distribution.name
+        if self._tvc_from_minus_inf():
+            if given is None or not given >= 0:
+                raise ValueError(
+                    f"This model's baseline ({name}) is defined below 0, so "
+                    "its survival depends on the covariate back to -inf, "
+                    "and a CovariatePath is integrated from 0 only. Give "
+                    "the covariates as a StepSchedule starting at -inf, or "
+                    "ask for survival given an age at or after 0 "
+                    "(given=...), which depends on them from then on only."
+                )
+            return
+        # Survival given an age is certain at and before it, whatever the
+        # covariate.
+        counted = np.isfinite(xq) & (xq < 0)
+        if given is not None:
+            counted &= xq > given
+        early = xq[counted]
+        if early.size or (given is not None and given < 0):
+            first = min([*early.tolist(), *([given] if given else [])])
+            raise ValueError(
+                f"A time before 0 ({first:g}) on this model's baseline "
+                f"({name}) depends on the covariate between it and 0, and "
+                "a CovariatePath is integrated from 0 only. Give the "
+                "covariates as a StepSchedule covering that time."
+            )
 
     def _to_schedule(self, Z: Any, xl: "npt.ArrayLike | None") -> Any:
         """
@@ -377,14 +464,26 @@ class TVCEvaluationMixin:
         if isinstance(schedule, CovariatePath):
             # Integrated, not summed.
             return self._tvc_hf_path(xq, schedule, given, theta, frozen)
-        # A horizon at or below 0 materialises the one segment in force at
-        # 0: H is then 0, or the baseline's value for a time below 0.
+        # From the earliest time the answer depends on (#952). A horizon
+        # at or below it materialises the one segment in force there.
+        lo = self._tvc_reach(schedule, xq[~missing])
         t_max = float(np.max(xq[~missing]))
-        starts, ends, Zseg = self._tvc_segments(schedule, t_max)
+        from_zero = self._tvc_real_line() and not self._tvc_from_minus_inf()
+        # Measured from 0, the segments cover 0 too.
+        starts, ends, Zseg = self._tvc_segments(
+            schedule, max(t_max, 0.0) if from_zero else t_max, lo
+        )
         xq_eval = np.where(missing, t_max, xq)
 
         falls = np.zeros(xq.shape[0], dtype=bool)
-        if self.kind in self._TVC_ADDITIVE_KINDS:
+        if from_zero:
+            # Accelerated failure time and additive hazards on a baseline
+            # defined below 0: the covariate's effect is measured from 0,
+            # before it as well as after.
+            H = self._tvc_hf_from_zero(
+                xq_eval, starts, ends, Zseg, falls, theta
+            )
+        elif self.kind in self._TVC_ADDITIVE_KINDS:
             H = self._tvc_hf_additive(
                 xq_eval, starts, ends, Zseg, falls, theta
             )
@@ -408,6 +507,7 @@ class TVCEvaluationMixin:
         given: "float | None",
         theta: "tuple | None" = None,
         frozen: "dict | None" = None,
+        held_at_0: bool = False,
     ) -> "tuple[npt.NDArray, int, tuple | None]":
         r"""
         The cumulative hazard along a continuously varying ``path`` (#172),
@@ -435,6 +535,10 @@ class TVCEvaluationMixin:
             sum_between,
         )
 
+        if not held_at_0:
+            # (A schedule mean_tvc has checked holds its value at 0 back
+            # to -inf, which is what is used before 0 here.)
+            self._tvc_check_path(path, xq, given)
         aft = self._tvc_scales_time()
         missing = np.isnan(xq)
         xe = np.where(missing, 0.0, xq)
@@ -689,6 +793,57 @@ class TVCEvaluationMixin:
             H = H + (hi - lo)
         return H
 
+    def _tvc_hf_from_zero(
+        self,
+        xq: npt.NDArray,
+        starts: npt.NDArray,
+        ends: npt.NDArray,
+        Zseg: npt.NDArray,
+        falls: npt.NDArray,
+        theta: "tuple | None" = None,
+    ) -> npt.NDArray:
+        r"""
+        Cumulative hazard along a step path for accelerated failure time
+        and additive hazards on a baseline defined below 0, which measure
+        the covariate's effect from 0 (#952): the accelerated age
+        :math:`\psi(x) = \int_0^x \phi(Z(u))\, du` and the additive
+        :math:`H(x) = H_0(x) + \int_0^x \beta' Z(u)\, du`, negative
+        integrals for ``x < 0``. The segments cover 0 and every query
+        time; on each, the model's own constant-covariate form gives the
+        part between 0 and the query time (clipped to the segment).
+        """
+        params, center = self._tvc_theta(theta)
+        aft = self._tvc_scales_time()
+        total = np.zeros(xq.shape[0], dtype=float)
+        H0 = None
+        for a, b, z in zip(starts, ends, Zseg):
+            zrow = self._centred(
+                np.asarray(z, dtype=float).reshape(1, -1), center
+            )
+            # The part of this segment between 0 and each query time.
+            at_x = np.clip(xq, a, b)
+            at_0 = float(np.clip(0.0, a, b))
+            if aft:
+                rate = float(self._tvc_rate(zrow, params)[0])
+                total = total + rate * (at_x - at_0)
+                continue
+            hi = np.maximum(at_x, at_0)
+            lo = np.minimum(at_x, at_0)
+            H_hi = np.asarray(self.model.Hf(hi, zrow, *params), float).ravel()
+            H_lo = np.asarray(self.model.Hf(lo, zrow, *params), float).ravel()
+            # A negative increment over the part covered: the hazard fell
+            # there (#376).
+            falls |= (H_hi - H_lo) < 0
+            total = total + np.where(at_x >= at_0, 1.0, -1.0) * (H_hi - H_lo)
+            if H0 is None and a <= 0.0 <= b:
+                # H at 0, where the covariate's effect is 0.
+                H0 = float(
+                    np.ravel(self.model.Hf(np.zeros(1), zrow, *params))[0]
+                )
+        if aft:
+            return self._aft_H0(total, theta)
+        return total + (0.0 if H0 is None else H0)
+
     def _tvc_hf_aft(
         self,
         xq: npt.NDArray,
@@ -812,6 +967,10 @@ class TVCEvaluationMixin:
         from .tvc_path import CovariatePath
 
         g = None if given is None else float(given)
+        if g is not None and np.isnan(g):
+            # A missing conditioning age: nothing is known (as Cox).
+            self._to_schedule(Z, xl)
+            return np.full(np.atleast_1d(np.asarray(x, float)).shape, np.nan)
         # Along a path the hazard is integrated from given on; a step
         # schedule subtracts H(given).
         from_given = (
@@ -869,8 +1028,9 @@ class TVCEvaluationMixin:
         as the matching piecewise-constant path, whose survival is its step
         sum to rounding. For a baseline defined below zero (``Normal``,
         ``Gumbel``, ``Logistic``) the mean without ``given`` also takes off
-        :math:`\int_{-\infty}^0 F(t)\, dt`, the covariate held at its value
-        at 0 before it, as :meth:`sf_tvc` does.
+        :math:`\int_{-\infty}^0 F(t)\, dt`, which depends on the covariate
+        back to ``-inf``: it needs a ``StepSchedule`` starting at ``-inf``,
+        with one value before 0 (#952).
 
         A path can stop units from failing: a hazard that dies away (a
         stress driven to a level with no failures, an additive hazard
@@ -941,11 +1101,36 @@ class TVCEvaluationMixin:
 
         self._check_tvc_evaluable()
         path = self._to_schedule(Z, xl)
-        if not isinstance(path, CovariatePath):
-            path = step_path(path)
         g = None if given is None else float(given)
         if g is not None and np.isnan(g):
             return np.nan
+        if self._tvc_real_line() and g is None:
+            # The mean takes off the area under F before 0, which depends
+            # on the covariate back to -inf (#952).
+            if isinstance(path, CovariatePath) or path.start > -np.inf:
+                raise ValueError(
+                    "The mean on a baseline defined below 0 ("
+                    f"{self.distribution.name}) depends on the covariate "
+                    "back to -inf: give it as a StepSchedule starting at "
+                    "-inf (a CovariatePath is integrated from 0 only), or "
+                    "ask for the mean residual life given an age "
+                    "(given=...)."
+                )
+            if path.edges[1] <= 0:
+                raise ValueError(
+                    "The mean on a baseline defined below 0 ("
+                    f"{self.distribution.name}) along a schedule that "
+                    "changes before 0 is not provided yet: its value "
+                    "before 0 must be the one in force at 0."
+                )
+        held_at_0 = False
+        if not isinstance(path, CovariatePath):
+            if g is not None:
+                self._tvc_reach(path, np.array([g]))
+            # Checked above: on a baseline defined below 0 it holds its
+            # value at 0 back to -inf.
+            held_at_0 = self._tvc_real_line() and path.start == -np.inf
+            path = step_path(path)
         origin = 0.0 if g is None else g
         # What the passes along the path warn of, gathered into one
         # warning each.
@@ -954,7 +1139,7 @@ class TVCEvaluationMixin:
 
         def sf_at(t: npt.NDArray) -> npt.NDArray:
             H, falls, accuracy = self._tvc_hf_path(
-                np.asarray(t, dtype=float), path, g
+                np.asarray(t, dtype=float), path, g, held_at_0=held_at_0
             )
             seen["falls"] += falls
             seen["points"] += H.size
@@ -984,7 +1169,8 @@ class TVCEvaluationMixin:
             sf_at, origin, scale, self._tvc_rtol, knots
         )
         if g is None and float(self.distribution.support[0]) < 0:
-            # Less the area under F before 0, where the value at 0 holds.
+            # Less the area under F before 0, where the schedule holds the
+            # value it has at 0 (checked above).
             additive = self._is_additive()
 
             def ff_below(t: npt.NDArray) -> npt.NDArray:
