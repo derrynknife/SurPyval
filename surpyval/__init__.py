@@ -194,6 +194,10 @@ _LAZY = {
         "surpyval.univariate.regression",
     ),
     **dict.fromkeys(
+        ("JointModel", "JointPH", "WeibullJointPH"),
+        "surpyval.univariate.joint",
+    ),
+    **dict.fromkeys(
         (
             "CompetingRisks",
             "CompetingRisksProportionalHazards",
@@ -373,6 +377,11 @@ if TYPE_CHECKING:
         FineGray,
         ParametricCompetingRisks,
         gray_test,
+    )
+    from surpyval.univariate.joint import (
+        JointModel,
+        JointPH,
+        WeibullJointPH,
     )
     from surpyval.univariate.regression import *  # noqa: F401,F403
 
