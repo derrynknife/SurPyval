@@ -21,6 +21,7 @@ LIFETIME_PARTS = {
     "event_types": ("event_type",),
     "time_varying_covariates": ("time_varying_covariates",),
     "truncation": ("left_truncation", "right_truncation"),
+    "markers": ("markers",),
 }
 HISTORY_PARTS = {
     "covariates": ("covariates",),
@@ -41,7 +42,35 @@ HISTORY_PARTS = {
 
 
 def _rebuild(record: Any, fields: dict) -> Any:
+    if fields.get("markers"):
+        fields["markers"] = _readings_inside(fields)
     return type(record)(record.id, **fields)
+
+
+_OUTCOMES = (
+    "observed",
+    "right_censored",
+    "left_censored",
+    "interval_censored",
+)
+
+
+def _readings_inside(fields: dict) -> "dict | None":
+    """A lifetime's marker readings that are inside the observation its
+    ``fields`` give: a reshape that moves its window (``censor_at``,
+    ``enter_at``, ``for_event_type``) keeps the readings taken inside the
+    new one, as what was seen there, and drops the rest."""
+    outcome = next(name for name in _OUTCOMES if name in fields)
+    value = fields[outcome]
+    end = float(value[1]) if outcome == "interval_censored" else float(value)
+    start = fields.get("left_truncation")
+    start = 0.0 if start is None else float(start)
+    kept = {
+        age: reading
+        for age, reading in fields["markers"].items()
+        if start <= age <= end
+    }
+    return kept or None
 
 
 def _is_history(record: Any) -> bool:
@@ -545,9 +574,10 @@ class ReshapeMixin(ReadOnlyArrays):
         """
         The data without some of what it holds, to fit a model that does
         not take it: any of ``"covariates"``, ``"event_types"``,
-        ``"time_varying_covariates"``, ``"truncation"`` (and ``"states"``
-        for event history data). A plain ``Weibull.fit`` of data built with
-        covariates and failure modes, say, is
+        ``"time_varying_covariates"``, ``"truncation"`` (and ``"markers"``
+        for lifetime data, ``"states"`` for event history data). A plain
+        ``Weibull.fit`` of data built with covariates and failure modes,
+        say, is
         ``Weibull.fit(data.without("covariates", "event_types"))``.
         """
         check_parts(parts, self._PARTS)
@@ -689,7 +719,8 @@ class ReshapeMixin(ReadOnlyArrays):
         after ``age`` is no longer seen. A failure found between
         inspections either side of ``age`` becomes right censored at the
         last good inspection, since it may have come after ``age``; an item
-        that came under observation at or after ``age`` is left out.
+        that came under observation at or after ``age`` is left out. A
+        lifetime keeps the marker readings taken up to its new end.
 
         A history's failures counted between two inspections, or a change
         of state between two, are known only as a whole: where ``age``
@@ -706,7 +737,8 @@ class ReshapeMixin(ReadOnlyArrays):
         history, in a known state -- stay in, with ``age`` as the start of
         their observation; a failure found between inspections either side
         of ``age``, or known only to have happened before a look, may have
-        come before it, so its item is left out.
+        come before it, so its item is left out. A lifetime keeps the
+        marker readings taken from ``age`` on.
 
         A history goes on after its failures, so where ``age`` falls
         between two inspections that count failures, or a change of state,

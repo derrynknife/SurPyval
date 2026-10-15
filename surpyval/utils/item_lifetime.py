@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
@@ -82,6 +83,15 @@ class ItemLifetime:
         Each must start at or before the start of observation
         (``left_truncation``, else 0): nothing says what they were before
         their first age.
+    markers : dict, optional
+        Repeated measurements of one marker (a vibration level, a wear or
+        oil-debris reading, a biomarker), ``{age: value}``: one reading
+        per age, each a finite number taken while the item was observed,
+        at or after the start of observation (``left_truncation``, else
+        0) and at or before its outcome's age (the upper end of an
+        interval). The joint models (``WeibullJointPH``) fit them with
+        the lifetime; every other fit refuses data that has them
+        (``data.without("markers")`` leaves them out).
 
     Examples
     --------
@@ -96,6 +106,14 @@ class ItemLifetime:
     (array([0, 1, 2]), array([ 1, 40,  2]))
     >>> data.to_items()[0] == items[0]
     True
+
+    A pump's vibration readings, taken monthly while it ran:
+
+    >>> pump = ItemLifetime(
+    ...     "P1", right_censored=90, markers={0: 2.1, 30: 2.3}
+    ... )
+    >>> pump.update_markers(60, 2.6).markers
+    {0.0: 2.1, 30.0: 2.3, 60.0: 2.6}
     """
 
     def __init__(
@@ -111,6 +129,7 @@ class ItemLifetime:
         event_type: Any = None,
         covariates: Any = None,
         time_varying_covariates: Any = None,
+        markers: Any = None,
     ) -> None:
         item = item_id(id)
         self.id = item
@@ -153,6 +172,9 @@ class ItemLifetime:
             item, time_varying_covariates
         )
         self._check(first)
+        # The readings as two read-only arrays (frozen with the record), in
+        # order of age; ``markers`` gives them as a dict.
+        self._marker_ages, self._marker_values = self._checked_markers(markers)
         freeze(self)
 
     def __setattr__(self, name: str, value: Any) -> None:
@@ -188,6 +210,90 @@ class ItemLifetime:
     def interval_censored(self) -> "np.ndarray | None":
         """``[lower, upper]``, if it failed between two ages."""
         return self.value if self.outcome == "interval_censored" else None
+
+    @property
+    def markers(self) -> "dict | None":
+        """The marker readings, ``{age: value}`` in order of age, or None
+        where it has none."""
+        ages = getattr(self, "_marker_ages", None)
+        if ages is None or not len(ages):
+            return None
+        return dict(zip(ages.tolist(), self._marker_values.tolist()))
+
+    def _window(self) -> "tuple[float, float]":
+        """The ages over which it was observed: from the start of
+        observation (``left_truncation``, else 0) to its outcome's age
+        (the upper end of an interval)."""
+        start = 0.0 if self.left_truncation is None else self.left_truncation
+        end = (
+            float(self.value[1])
+            if self.outcome == "interval_censored"
+            else float(self.value)
+        )
+        return start, end
+
+    def _checked_markers(self, value: Any) -> "tuple[np.ndarray, np.ndarray]":
+        """The readings ``{age: value}`` as arrays of ages and values in
+        order of age (empty where none), each a finite number read inside
+        the item's observation."""
+        item = self.id
+        if value is None:
+            return np.empty(0), np.empty(0)
+        if not isinstance(value, Mapping):
+            raise ValueError(
+                f"Item {item!r}: 'markers' must be a dict {{age: value}}, "
+                "one reading per age (a pandas Series indexed by age: "
+                "series.to_dict())."
+            )
+        ages, values = [], []
+        for age, reading in value.items():
+            age = _age(item, "markers", age)
+            try:
+                number = float(reading) if np.ndim(reading) == 0 else None
+            except (TypeError, ValueError):
+                number = None
+            if number is None or not np.isfinite(number):
+                raise ValueError(
+                    f"Item {item!r}: the marker reading at age {age:g} must "
+                    f"be one finite number; got {reading!r} (leave a "
+                    "reading not taken out of markers)."
+                )
+            ages.append(age)
+            values.append(number)
+        ages_arr, values_arr = np.array(ages), np.array(values)
+        if len(np.unique(ages_arr)) < len(ages_arr):
+            raise ValueError(
+                f"Item {item!r}: 'markers' has two readings at one age; "
+                "give one reading per age."
+            )
+        start, end = self._window()
+        early = ages_arr[ages_arr < start]
+        if early.size:
+            since = (
+                f"left_truncation, {start:g}"
+                if self.left_truncation is not None
+                else "age 0"
+            )
+            raise ValueError(
+                f"Item {item!r}: a marker reading at age {early.min():g} is "
+                f"before the start of its observation ({since}): markers "
+                "are the readings taken while it was observed."
+            )
+        late = ages_arr[ages_arr > end]
+        if late.size:
+            hint = (
+                f" If it was still running at {late.max():g}, extend it "
+                f"first: extend({late.max():g})."
+                if self.outcome == "right_censored"
+                else ""
+            )
+            raise ValueError(
+                f"Item {item!r}: a marker reading at age {late.max():g} is "
+                f"after its {self.outcome} age, {end:g}: markers are the "
+                f"readings taken while it was observed.{hint}"
+            )
+        order = np.argsort(ages_arr, kind="stable")
+        return ages_arr[order], values_arr[order]
 
     def _check(self, first_change: "float | None") -> None:
         item, tl, tr = self.id, self.left_truncation, self.right_truncation
@@ -328,6 +434,21 @@ class ItemLifetime:
         )
         return self.clone(time_varying_covariates=steps)
 
+    def update_markers(self, age: Any, value: Any) -> "ItemLifetime":
+        """This lifetime with a marker reading ``value`` at ``age`` (in
+        place of one already at that age). The reading must be inside its
+        observation: for a new reading of an item still running, extend it
+        first, ``item.extend(age).update_markers(age, value)``.
+
+        >>> from surpyval import ItemLifetime
+        >>> pump = ItemLifetime("P1", right_censored=60, markers={0: 2.1})
+        >>> pump.extend(90).update_markers(90, 2.8).markers
+        {0.0: 2.1, 90.0: 2.8}
+        """
+        readings = dict(self.markers or {})
+        readings[_age(self.id, "age", age)] = value
+        return self.clone(markers=readings)
+
     def _fields(self) -> dict:
         value = (
             self.value.tolist()
@@ -346,6 +467,8 @@ class ItemLifetime:
             out["time_varying_covariates"] = _schedule_field(
                 self.time_varying_covariates, self._as_dict()
             )
+        if self.markers is not None:
+            out["markers"] = self.markers
         return out
 
     def __eq__(self, other: object) -> bool:
