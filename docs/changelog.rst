@@ -6,6 +6,26 @@ Unreleased
 
 **Added**
 
+- Joint models of a marker and a lifetime (#891). An ``ItemLifetime``
+  takes ``markers={age: value}``, repeated readings of one measurement
+  (vibration, wear, a biomarker), each inside the item's observation
+  (refused otherwise, naming the item); ``update_markers(age, value)``
+  adds one. ``SurpyvalData`` keeps them as ``data.markers`` through
+  ``from_items``/``to_items``, slicing, ``summary()``, its repr, JSON and
+  every reshape (``censor_at`` and ``enter_at`` keep the readings inside
+  the new window, ``without("markers")`` drops them), and every other fit
+  refuses data that holds them, naming ``data.without("markers")``.
+  ``WeibullJointPH`` (``JointPH(Weibull)``) fits the joint model: each
+  item's marker a straight line with a random intercept and slope plus
+  noise, its hazard Weibull PH in the line's current value, covariates in
+  both parts, by maximum likelihood with adaptive Gauss-Hermite
+  quadrature; failures, right censoring and left truncation.
+  ``WeibullJointPH.fit(data)`` returns a ``JointModel`` with ``params``,
+  ``covariance()``, ``standard_errors()``, ``neg_ll()``, ``aic()``,
+  ``bic()``, ``summary()`` and ``to_dict``/``from_dict``, and predicts for
+  an item still running given its readings so far: ``sf(x, item)``,
+  ``ff(x, item)`` and ``cb(x, item)`` (delta-method bounds). See
+  :doc:`Joint Models`.
 - The data utilities live on ``SurpyvalData``.
   ``SurpyvalData.from_observations(observed=..., right_censored=...,
   left_censored=..., interval_censored=..., left_truncation=...,

@@ -272,6 +272,7 @@ Contents:
    Recurrent Event Analysis
    Recurrent Event Regression Analysis
    Degradation Analysis
+   Joint Models
    Multivariate Analysis
 
 .. toctree::
