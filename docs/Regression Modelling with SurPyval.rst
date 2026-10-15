@@ -1683,6 +1683,16 @@ For distributions not in the pre-built list:
     model = AFT(Gamma).fit(x=x, Z=Z, c=c)
     model
 
+On a baseline defined below 0 (``Normal``, ``Gumbel``, ``Logistic``) the
+rescaling is about 0, :math:`S(x \mid Z) = S_0(\phi(Z)\, x)`, so where 0 is
+matters: put it at a real origin, such as the start of service. Moving 0
+changes the fit, as it would for a Weibull. A model in which the covariates
+shift the distribution's location, :math:`\mu = a + bV`, is an accelerated
+life model, ``AcceleratedLife(Normal, life_models.Linear)``, and does not
+depend on where 0 is; R's ``survreg`` calls it a gaussian (or logistic) AFT.
+Additive hazards on these baselines likewise counts the covariate's effect
+from 0.
+
 We can visualise the "time shift" interpretation by plotting survival curves.
 The entire curve moves left (shorter life) or right (longer life) on the time
 axis as the covariates change — a hallmark of the AFT model:
@@ -2592,7 +2602,10 @@ PO depend on the covariate back to :math:`-\infty`, so a schedule starts
 there, ``StepSchedule.from_changepoints([-np.inf, ...], ...)``;
 ``StepSchedule.constant`` does. AFT and AH measure the covariate's effect from
 0, so for them a path from 0 serves times from 0, and an earlier time needs
-the covariate from that time on. A ``CovariatePath`` is integrated below 0 as
+the covariate from that time on. Survival given an age (``given=``) under PH,
+PO, AH or Cox depends on the covariate from that age on only, the part before
+it dividing out, so there a path need only start by then; under AFT the age
+reached by then depends on the covariate before it too. A ``CovariatePath`` is integrated below 0 as
 far as needed, to :math:`-\infty` for PH and PO, where the baseline's hazard
 dies away; a formula (``CovariatePath.from_callable``) has a value at every
 time, while a path through points starts at its first point. Any time is a

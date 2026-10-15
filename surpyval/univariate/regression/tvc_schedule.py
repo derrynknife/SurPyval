@@ -850,6 +850,7 @@ def as_covariate_path(
     Z: Any,
     xl: "npt.ArrayLike | None" = None,
     names: "list | None" = None,
+    given: "float | None" = None,
 ) -> Any:
     """
     Coerce a model ``sf_tvc`` covariate argument into a :class:`StepSchedule`
@@ -864,8 +865,21 @@ def as_covariate_path(
     names); anything else is as for
     :func:`as_step_schedule`. The type decides the method: a schedule is
     summed exactly, a path is integrated.
+
+    It must start at or before the time origin (:func:`check_from_origin`),
+    or, with ``given``, at or before that age (:func:`from_given`).
     """
     from .tvc_path import CovariatePath
+
+    if given is None:
+
+        def check(path: Any, item: Any = None) -> Any:
+            return check_from_origin(path, item)
+
+    else:
+
+        def check(path: Any, item: Any = None) -> Any:
+            return from_given(path, float(given), item)
 
     if _is_item(Z):
         if xl is not None:
@@ -873,15 +887,71 @@ def as_covariate_path(
                 "xl must not be given when Z is an item: the item gives its "
                 "own covariates over time"
             )
-        return check_from_origin(item_covariate_path(Z, names), Z.id)
+        return check(item_covariate_path(Z, names), Z.id)
     if isinstance(Z, CovariatePath):
         if xl is not None:
             raise ValueError(
                 "xl must not be given when Z is a CovariatePath (it gives "
                 "the segment start times of the array form only)"
             )
-        return check_from_origin(Z)
-    return check_from_origin(as_step_schedule(Z, xl))
+        return check(Z)
+    return check(as_step_schedule(Z, xl))
+
+
+def from_given(path: Any, given: float, item: Any = None) -> Any:
+    """
+    ``path`` for survival given the age ``given`` under a model whose
+    hazard at a time depends only on the covariate then (proportional
+    hazards and odds, additive hazards, Cox): that survival depends on the
+    covariate from ``given`` on only, as the earlier part divides out, so
+    a path starting at or before ``given`` is enough (#962). It is
+    returned held back to ``-inf`` at its first value, which changes no
+    answer given that age, and one starting after it is refused. ``item``
+    is as for :func:`check_from_origin`.
+    """
+    start = path.start
+    if start > given:
+        who = (
+            "The covariates"
+            if item is None
+            else f"Item {item!r}: its time-varying covariates"
+        )
+        raise ValueError(
+            f"{who} start at {start:g}, after the age given ({given:g}): "
+            "survival given that age depends on the covariate from then "
+            f"on. Give their values from {given:g} or earlier."
+        )
+    return held_back(path)
+
+
+def held_back(path: Any) -> Any:
+    """
+    ``path`` (a :class:`StepSchedule` or a
+    :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`) with
+    its first value held back to ``-inf``; unchanged from its start on. A
+    repeating one is returned as it is.
+    """
+    from .tvc_path import CovariatePath
+
+    start = path.start
+    if start == -np.inf or path.period is not None:
+        return path
+    if isinstance(path, StepSchedule):
+        edges = np.asarray(path.edges, dtype=float).copy()
+        edges[0] = -np.inf
+        return StepSchedule(edges, path.Z)
+    first = path._values(np.array([start]), left=False)[0]
+
+    def evaluate(u: npt.NDArray, left: bool) -> npt.NDArray:
+        u = np.asarray(u, dtype=float)
+        before = u < start
+        out = np.asarray(
+            path._values(np.maximum(u, start), left), dtype=float
+        ).copy()
+        out[before] = first
+        return out
+
+    return CovariatePath(evaluate, path.p, path._knots, None, "callable")
 
 
 def check_from_origin(path: Any, item: Any = None) -> Any:

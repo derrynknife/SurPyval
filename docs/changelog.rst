@@ -423,6 +423,16 @@ Unreleased
 
 **Fixed**
 
+- **Survival given an age needs the covariate from that age only** under
+  proportional hazards and odds, additive hazards and Cox (#962). There
+  ``S(x | g)`` depends on the covariate from ``g`` on, the part before it
+  dividing out, as a fit already takes a subject entering late with no
+  covariates before its entry. ``sf_tvc``, ``cb_tvc`` and ``mean_tvc``
+  with ``given=g`` refused a schedule (and, on a baseline starting at 0, a
+  path) that started after 0, or on a baseline defined below 0 after
+  ``-inf``, though it started by ``g``; one starting after ``g`` is refused
+  by name. Accelerated failure time and life still need the covariate from
+  0: the age reached by ``g`` depends on it before ``g`` too.
 - **Right truncation of recurrent (event history) data is right
   truncation** (#924). A finite ``tr`` given to the recurrent fits,
   ``handle_xicn`` or an ``ItemHistory`` was read as the end of the item's
