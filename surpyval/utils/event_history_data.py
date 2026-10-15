@@ -1598,19 +1598,10 @@ def accepts_event_history_data(method: F) -> F:
                 "This EventHistoryData was built with observation windows: "
                 "pass its arrays and the windows to fit instead."
             )
-        if (
-            data.Z is None
-            and "Z" in names
-            and bound.arguments.get("Z") is None
-            and signature.parameters["Z"].default is inspect.Parameter.empty
-        ):
-            raise TypeError(
-                "This fit needs covariates, Z, and the EventHistoryData "
-                "holds none: build it with from_histories(..., "
-                "covariates={item: row, ...})."
-            )
+        if bound.arguments.get("Z") is None:
+            _check_needs_covariates(data, signature)
         filled: dict = {"x": data.x, "i": data.i, "c": data.c, "n": data.n}
-        lost = []
+        lost: list = []
         left = bool(np.isfinite(data.tl).any())
         right = bool(np.isfinite(data.tr).any())
         fill_tl = left and "tl" in names
@@ -1620,30 +1611,19 @@ def accepts_event_history_data(method: F) -> F:
                 filled["t"] = np.column_stack([data.tl, data.tr])
             else:
                 if left and not fill_tl:
-                    lost.append("left truncation")
+                    lost.append(("left truncation", "truncation"))
                 if right and not fill_tr:
-                    lost.append("right truncation")
+                    lost.append(("right truncation", "truncation"))
         else:
             if fill_tl:
                 filled["tl"] = data.tl
             if fill_tr:
                 filled["tr"] = data.tr
-        if data.Z is not None:
-            if "Z" in names:
-                filled["Z"] = data.Z
-            else:
-                lost.append("covariates")
-        if data.e is not None:
-            if "e" in names:
-                filled["e"] = data.e
-            else:
-                lost.append("event types")
-        lost += _unmodelled(data)
-        if lost:
-            raise ValueError(
-                f"This fit takes no {' or '.join(lost)}, which the "
-                "EventHistoryData holds."
-            )
+        if data.Z is not None and "Z" in names:
+            filled["Z"] = data.Z
+        if data.e is not None and "e" in names:
+            filled["e"] = data.e
+        _refuse_what_fit_cannot_take(data, names, lost)
         bound.arguments.update(filled)
         return named_fit(
             lambda: method(*bound.args, **bound.kwargs),
@@ -1655,31 +1635,85 @@ def accepts_event_history_data(method: F) -> F:
 
 
 def _unmodelled(data: Any) -> list:
-    """What ``data`` holds that no model uses yet."""
+    """What ``data`` holds that no model uses yet, as ``(what, part)``:
+    the ``part`` of :meth:`~ReshapeMixin.without` that leaves it out."""
     out = []
     if getattr(data, "time_varying_covariates", None) is not None:
-        out.append("time-varying covariates (no model uses them yet, #905)")
+        out.append(
+            (
+                "time-varying covariates (no model uses them yet, #905)",
+                "time_varying_covariates",
+            )
+        )
     if getattr(data, "states", None) is not None:
-        out.append("states (no model uses them yet, #887)")
+        out.append(("states (no model uses them yet, #887)", "states"))
     return out
 
 
+def _check_needs_covariates(data: Any, signature: inspect.Signature) -> None:
+    """Refuse data with no covariates for a fit that needs them (its
+    ``Z`` has no default)."""
+    parameter = signature.parameters.get("Z")
+    if (
+        getattr(data, "Z", None) is None
+        and parameter is not None
+        and parameter.default is inspect.Parameter.empty
+    ):
+        raise TypeError(
+            "This fit needs covariates, Z, and the EventHistoryData "
+            "holds none: build it with from_histories(..., "
+            "covariates={item: row, ...})."
+        )
+
+
+def _refuse_what_fit_cannot_take(
+    data: Any, names: "set[str]", lost: "list | None" = None
+) -> None:
+    """Refuse ``data`` that holds what a fit taking the arguments
+    ``names`` cannot use -- covariates without a ``Z``, event types
+    without an ``e``, what no model uses yet, and the ``lost`` already
+    found -- naming the way to fit without them (#959). Fitting as if
+    they were not there would be a different model from the one the data
+    describes."""
+    lost = list(lost or [])
+    if getattr(data, "Z", None) is not None and "Z" not in names:
+        lost.append(("covariates", "covariates"))
+    if getattr(data, "e", None) is not None and "e" not in names:
+        lost.append(("event types", "event_types"))
+    lost += _unmodelled(data)
+    if not lost:
+        return
+    parts = list(dict.fromkeys(part for _, part in lost))
+    hint = "data.without(" + ", ".join(repr(p) for p in parts) + ")"
+    if "event_types" in parts:
+        hint += ", or data.for_event_type(t) for the failures of one type"
+    raise ValueError(
+        "This fit takes no "
+        + " or ".join(what for what, _ in lost)
+        + ", which the EventHistoryData holds. To fit without them, use "
+        + hint
+        + "."
+    )
+
+
 def refuses_unmodelled_data(method: F) -> F:
-    """Refuse, in a ``fit_from_recurrent_data``, data that holds what no
-    model uses yet (time-varying covariates, #905; states, #887): fitting
-    it as if they were not there would be a different model from the one
-    asked for."""
+    """Refuse, in a ``fit_from_recurrent_data``, data that holds what the
+    fitter's ``fit`` has no argument for -- covariates (``Z``), event
+    types (``e``) -- or what no model uses yet (time-varying covariates,
+    #905; states, #887), as ``fit(data)`` does (#959): fitting it as if
+    they were not there would be a different model from the one the data
+    describes. What the fitter takes is read from its ``fit``, so the two
+    ways of fitting refuse the same data."""
 
     @functools.wraps(method)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         data = kwargs.get("data", args[1] if len(args) > 1 else None)
-        unmodelled = _unmodelled(data)
-        if unmodelled:
-            raise ValueError(
-                "This fit takes no "
-                + " or ".join(unmodelled)
-                + ", which the EventHistoryData holds."
-            )
+        fit = getattr(args[0], "fit", None) if args else None
+        signature = inspect.signature(fit) if fit is not None else None
+        names = set(signature.parameters) if signature is not None else set()
+        if signature is not None:
+            _check_needs_covariates(data, signature)
+        _refuse_what_fit_cannot_take(data, names)
         return method(*args, **kwargs)
 
     return wrapper  # type: ignore[return-value]

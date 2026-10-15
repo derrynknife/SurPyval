@@ -423,6 +423,18 @@ Unreleased
 
 **Fixed**
 
+- **``fit_from_recurrent_data`` refuses what ``fit(data)`` refuses**
+  (#959). Given an ``EventHistoryData`` holding covariates or event types
+  that the fitter has no argument for, every recurrent fitter's
+  ``fit_from_recurrent_data`` fitted anyway, dropping the covariates or
+  pooling the failure modes into one process, where ``fit(data)``
+  refused. It now refuses with the same message, which names the way to
+  fit without them (``data.without("covariates")``,
+  ``data.without("event_types")`` or ``data.for_event_type(t)``). What a
+  fitter takes is read from its ``fit``, so the two cannot disagree.
+  ``CauseSpecificMCF`` given covariates as well as event types dropped the
+  covariates; ``ProportionalIntensityHPP`` / ``NHPP`` given event types
+  and no covariates failed with a raw ``AttributeError``.
 - **Survival given an age needs the covariate from that age only** under
   proportional hazards and odds, additive hazards and Cox (#962). There
   ``S(x | g)`` depends on the covariate from ``g`` on, the part before it
