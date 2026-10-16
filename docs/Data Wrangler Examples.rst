@@ -578,8 +578,9 @@ non-parametric estimators' "at risk / deaths" (``xrd``) form too:
    * - ``data.to_xrd()``
      - data → ``x, r, d``
    * - ``data.to_json()``, ``SurpyvalData.from_json(...)``
-     - save and restore the data (``from_json`` reads a file only when
-       given a ``pathlib.Path``; a string is parsed as JSON text)
+     - save and restore the data, as JSON text or a file (``to_dict`` /
+       ``from_dict`` give the dictionary; ``surpyval.from_json`` reads it
+       too; every data class has them)
    * - ``handle_xicn(x, i, c, n, ...)``
      - validates recurrent event data (``xicnt``) and returns the
        ``EventHistoryData`` object the recurrent models use

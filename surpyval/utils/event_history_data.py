@@ -8,6 +8,7 @@ from __future__ import annotations
 import functools
 import inspect
 import warnings
+from pathlib import Path
 from typing import Any, Callable, TypeVar
 
 import numpy as np
@@ -1279,6 +1280,187 @@ class EventHistoryData(ReshapeMixin):
             if held is not None:
                 setattr(out, name, {i: held[i] for i in out.ids if i in held})
         return out
+
+    def to_dict(self) -> dict:
+        """
+        The data as a dictionary of plain Python values, strict JSON when
+        dumped: its ``"class"``, the ``x``, ``i``, ``c``, ``n``, ``tl``
+        and ``tr`` arrays as lists, and the event types, covariates (with
+        their names), time-varying covariates (step schedules; a
+        ``CovariatePath`` is refused) and states where it has them. Data
+        built with observation windows is refused: keep its arrays and
+        windows, and build it again with ``handle_xicn``. Non-finite
+        values are written as ``null`` and recorded under
+        ``"non_finite"`` (see :doc:`/surpyval.serialisation`).
+        ``surpyval.from_dict`` reads it too.
+
+        Examples
+        --------
+        >>> from surpyval import EventHistoryData
+        >>> data = EventHistoryData.from_histories(
+        ...     observed={"A": [5, 9]}, right_censored={"A": 12}
+        ... )
+        >>> sorted(data.to_dict())
+        ['c', 'class', 'i', 'n', 'non_finite', 'tl', 'tr', 'x']
+        """
+        from surpyval.serialisation import encode_non_finite
+        from surpyval.utils.data_json import label, schedule_dict
+
+        self._no_windows()
+        data: dict = {
+            "class": "EventHistoryData",
+            "x": self.x.tolist(),
+            "i": [label(v) for v in self.i],
+            "c": self.c.tolist(),
+            "n": self.n.tolist(),
+            "tl": self.tl.tolist(),
+            "tr": self.tr.tolist(),
+        }
+        if self.e is not None:
+            data["e"] = [label(v) for v in self.e]
+        if self.Z is not None:
+            data["Z"] = np.asarray(self.Z).tolist()
+        if self.covariate_names is not None:
+            data["covariate_names"] = list(self.covariate_names)
+        if self.time_varying_covariates is not None:
+            data["time_varying_covariates"] = [
+                schedule_dict(self.time_varying_covariates[item], True)
+                for item in self.ids
+            ]
+        if self.states is not None:
+            data["states"] = [
+                {
+                    "initial_state": label(initial),
+                    "changes": [
+                        [kind, lo, hi, label(st)]
+                        for kind, lo, hi, st in changes
+                    ],
+                }
+                for initial, changes in (
+                    self.states[item] for item in self.ids
+                )
+            ]
+        unit = getattr(self, "unit", None)
+        if unit is not None:
+            data["unit"] = unit
+        return encode_non_finite(data)
+
+    @classmethod
+    def from_dict(cls, data_dict: dict) -> "EventHistoryData":
+        """
+        The data back from its :meth:`to_dict` dictionary.
+
+        Examples
+        --------
+        >>> from surpyval import EventHistoryData
+        >>> data = EventHistoryData.from_histories(
+        ...     observed={"A": [5, 9]}, right_censored={"A": 12}
+        ... )
+        >>> EventHistoryData.from_dict(data.to_dict()).x
+        array([ 5.,  9., 12.])
+        """
+        from surpyval.serialisation import decode_non_finite
+        from surpyval.utils.data_json import label_back, schedule_back
+
+        if not isinstance(data_dict, dict):
+            raise ValueError(
+                "Expected a serialised EventHistoryData dict, got "
+                f"{type(data_dict).__name__}."
+            )
+        tag = data_dict.get("class")
+        if tag is not None and tag != "EventHistoryData":
+            raise ValueError(
+                f"This dictionary was written by {tag}, not "
+                f"EventHistoryData: read it with {tag}.from_dict, or "
+                "surpyval.from_dict."
+            )
+        for key in ("x", "i", "c", "n"):
+            if key not in data_dict:
+                raise ValueError(
+                    f"A serialised EventHistoryData needs {key!r}; this "
+                    "dictionary has no such entry."
+                )
+        data = decode_non_finite(dict(data_dict))
+        i = np.empty(len(data["i"]), dtype=object)
+        i[:] = [label_back(v) for v in data["i"]]
+        if all(isinstance(v, (int, float)) for v in i):
+            i = np.array(i.tolist())
+        elif all(isinstance(v, str) for v in i):
+            i = np.array(i.tolist(), dtype=str)
+        e = None
+        if "e" in data:
+            e = np.empty(len(data["e"]), dtype=object)
+            e[:] = [label_back(v) for v in data["e"]]
+        out = cls(
+            np.array(data["x"], dtype=float),
+            i,
+            np.array(data["c"]),
+            np.array(data["n"]),
+            e,
+            tl=np.array(data["tl"], dtype=float) if "tl" in data else None,
+            tr=np.array(data["tr"], dtype=float) if "tr" in data else None,
+        )
+        if "Z" in data:
+            out.Z = np.array(data["Z"], dtype=float)
+            out.covariate_names = data.get("covariate_names")
+        if "time_varying_covariates" in data:
+            from surpyval.utils.item_history import _time_varying
+
+            out.time_varying_covariates = {
+                item: _time_varying(item, schedule_back(held))[0]
+                for item, held in zip(out.ids, data["time_varying_covariates"])
+            }
+        if "states" in data:
+            out.states = {
+                item: (
+                    label_back(entry["initial_state"]),
+                    [
+                        (kind, lo, hi, label_back(st))
+                        for kind, lo, hi, st in entry["changes"]
+                    ],
+                )
+                for item, entry in zip(out.ids, data["states"])
+            }
+        if data.get("unit") is not None:
+            out.unit = data["unit"]
+        return out
+
+    def to_json(self, filepath: "str | Path | None" = None) -> "str | None":
+        """
+        The data as strict JSON text (:meth:`to_dict` dumped), or written
+        to the file ``filepath``.
+
+        Examples
+        --------
+        >>> from surpyval import EventHistoryData
+        >>> data = EventHistoryData.from_histories(
+        ...     observed={"A": [5, 9]}, right_censored={"A": 12}
+        ... )
+        >>> data.to_json().startswith('{"class": "EventHistoryData"')
+        True
+        """
+        from surpyval.utils.data_json import dump
+
+        return dump(self.to_dict(), filepath)
+
+    @classmethod
+    def from_json(cls, source: "str | Path") -> "EventHistoryData":
+        """
+        The data back from JSON text (a string starting with ``{``), or
+        from the file holding it (``surpyval.from_json`` reads it too).
+
+        Examples
+        --------
+        >>> from surpyval import EventHistoryData
+        >>> data = EventHistoryData.from_histories(
+        ...     observed={"A": [5, 9]}, right_censored={"A": 12}
+        ... )
+        >>> EventHistoryData.from_json(data.to_json()).ids
+        ['A']
+        """
+        from surpyval.utils.data_json import load
+
+        return cls.from_dict(load(source))
 
     def __iter__(self) -> Any:
         # A stateless iterator: the old hand-rolled _index version broke

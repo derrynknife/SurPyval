@@ -764,6 +764,60 @@ class ItemHistory:
             out["left_censored_states"] = left
         return out
 
+    def to_dict(self) -> dict:
+        """
+        The record as a dictionary of plain Python values (strict JSON
+        when dumped): its ``"class"``, ``"id"`` and the arguments that
+        rebuild it, as :meth:`from_dict` reads them. A tuple id or event
+        type is written as ``{"tuple": [...]}``; a step schedule of
+        time-varying covariates by its ages and values; a
+        ``CovariatePath`` is refused.
+
+        Examples
+        --------
+        >>> from surpyval import ItemHistory
+        >>> ItemHistory("B7", observed=[1820]).to_dict()
+        {'class': 'ItemHistory', 'id': 'B7', 'observed': [1820.0]}
+        """
+        from surpyval.utils.data_json import record_dict
+
+        return record_dict(self)
+
+    @classmethod
+    def from_dict(cls, record_dict: dict) -> "ItemHistory":
+        """The record back from its :meth:`to_dict` dictionary, checked
+        as one built from its arguments.
+
+        >>> from surpyval import ItemHistory
+        >>> item = ItemHistory("B7", observed=[1820])
+        >>> ItemHistory.from_dict(item.to_dict()) == item
+        True
+        """
+        from surpyval.utils.data_json import record_from_dict
+
+        return record_from_dict(cls, record_dict)
+
+    def to_json(self, filepath: Any = None) -> "str | None":
+        """The record as strict JSON text (:meth:`to_dict` dumped), or
+        written to the file ``filepath``."""
+        from surpyval.utils.data_json import dump
+
+        return dump(self.to_dict(), filepath)
+
+    @classmethod
+    def from_json(cls, source: Any) -> "ItemHistory":
+        """The record back from JSON text (a string starting with ``{``)
+        or the file holding it.
+
+        >>> from surpyval import ItemHistory
+        >>> item = ItemHistory("B7", observed=[1820])
+        >>> ItemHistory.from_json(item.to_json()) == item
+        True
+        """
+        from surpyval.utils.data_json import load
+
+        return cls.from_dict(load(source))
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ItemHistory):
             return NotImplemented
@@ -1137,7 +1191,11 @@ def _event_types(
         raise ValueError(
             f"Item {item!r}: '{name}' was given without 'left_censored'."
         )
-    if isinstance(value, (str, bytes)) or np.ndim(value) == 0:
+    # One type for all: text, a tuple (one label, as a gap's id is) or a
+    # scalar; a list may mix text and tuples, which np.ndim cannot take
+    if isinstance(value, (str, bytes, tuple)) or (
+        not isinstance(value, (list, np.ndarray)) and np.ndim(value) == 0
+    ):
         types = np.empty(k, dtype=object)
         types[:] = [value] * k
     else:

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import functools
 import inspect
-import json
 import warnings
 from numbers import Number
 from pathlib import Path
@@ -1258,95 +1257,93 @@ class SurpyvalData(ReshapeMixin):
 
         return public_dir(self, LIFETIME_INTERNALS)
 
-    def to_json(self, filepath: str | Path | None = None) -> str | None:
+    def to_dict(self) -> dict:
         """
-        Serialize SurpyvalData to JSON format.
+        The data as a dictionary of plain Python values, strict JSON when
+        dumped: its ``"class"``, the ``x``, ``c``, ``n`` and ``t`` arrays
+        as lists, and the covariates, their names, the event types, the
+        ids and the time-varying covariates (step schedules; a
+        ``CovariatePath`` is a function and is refused) where it has
+        them. The infinite truncation bounds (and any other non-finite
+        value) are written as ``null`` and recorded under
+        ``"non_finite"``, which :meth:`from_dict` reads back (see
+        :doc:`/surpyval.serialisation`). ``surpyval.from_dict`` reads it
+        too.
 
-        The JSON is strict: the infinite truncation bounds (and any other
-        non-finite value) are written as ``null`` and recorded under
-        ``"non_finite"``, which :meth:`from_json` reads back (see
-        :doc:`/surpyval.serialisation`).
-
-        Parameters
-        ----------
-        filepath : str | Path, optional
-            If provided, saves JSON to this file path
-
-        Returns
-        -------
-        str | None
-            JSON string if no filepath provided, None if saved to file
+        Examples
+        --------
+        >>> from surpyval import SurpyvalData
+        >>> SurpyvalData([1, 2], c=[0, 1]).to_dict()["class"]
+        'SurpyvalData'
         """
-        if self.time_varying_covariates is not None:
-            raise ValueError(
-                "Data with time-varying covariates has no JSON form (a "
-                "CovariatePath is a function): keep it with pickle, or keep "
-                "its items."
-            )
+        from surpyval.utils.data_json import label, schedule_dict
+
         data: dict[str, Any] = {
+            "class": "SurpyvalData",
             "x": self.x.tolist(),
             "c": self.c.tolist(),
             "n": self.n.tolist(),
             "t": self.t.tolist(),
         }
-
         if self.Z is not None:
             data["Z"] = self.Z.tolist()
         if self.covariate_names is not None:
             data["covariate_names"] = list(self.covariate_names)
         if self.e is not None:
-            data["e"] = [_json_label(v) for v in self.e]
+            data["e"] = [label(v) for v in self.e]
         if self.ids is not None:
-            data["ids"] = [_json_label(v) for v in self.ids]
-
+            data["ids"] = [label(v) for v in self.ids]
+        if self.time_varying_covariates is not None:
+            data["time_varying_covariates"] = [
+                schedule_dict(schedule, True)
+                for schedule in self.time_varying_covariates.values()
+            ]
+        unit = getattr(self, "unit", None)
+        if unit is not None:
+            data["unit"] = unit
         # Strict JSON, as for the models: the -inf/inf truncation bounds
         # (and any other non-finite value) are written as null with a
         # "non_finite" record of what each stood for (see
         # surpyval.serialisation.encode_non_finite), not as the
         # ``Infinity`` literals strict parsers reject.
-        encode_non_finite(data)
-        if filepath:
-            Path(filepath).write_text(
-                json.dumps(data, indent=2, allow_nan=False)
-            )
-            return None
-
-        return json.dumps(data, allow_nan=False)
+        return encode_non_finite(data)
 
     @classmethod
-    def from_json(cls, source: str | Path) -> "SurpyvalData":
+    def from_dict(cls, data_dict: dict) -> "SurpyvalData":
         """
-        Create SurpyvalData instance from JSON text or a file.
-
-        Parameters
-        ----------
-        source : str | Path
-            Pass a ``pathlib.Path`` to load from a file; a ``str`` is always
-            parsed as JSON text, so ``from_json("data.json")`` fails even
-            though ``to_json("data.json")`` writes that file. The data is
-            not re-validated.
-
-        Returns
-        -------
-        SurpyvalData
-            New instance created from JSON data
+        The data back from its :meth:`to_dict` dictionary. The data is
+        not re-validated.
 
         Examples
         --------
         >>> from surpyval import SurpyvalData
-        >>> data = SurpyvalData(x=[1, 2, 2, 5], c=[0, 0, 0, 1])
-        >>> restored = SurpyvalData.from_json(data.to_json())
-        >>> restored.x, restored.n
-        (array([1., 2., 5.]), array([1, 2, 1]))
+        >>> data = SurpyvalData([1, 2, 2, 5], c=[0, 0, 0, 1], tl=0.5)
+        >>> again = SurpyvalData.from_dict(data.to_dict())
+        >>> again.x, again.n, again.tl
+        (array([1., 2., 5.]), array([1, 2, 1]), array([0.5, 0.5, 0.5]))
         """
-        if isinstance(source, Path):
-            text = source.read_text()
-        else:
-            text = source
+        from surpyval.utils.data_json import label_back, schedule_back
 
+        if not isinstance(data_dict, dict):
+            raise ValueError(
+                "Expected a serialised SurpyvalData dict, got "
+                f"{type(data_dict).__name__}."
+            )
+        tag = data_dict.get("class")
+        if tag is not None and tag != "SurpyvalData":
+            raise ValueError(
+                f"This dictionary was written by {tag}, not SurpyvalData: "
+                f"read it with {tag}.from_dict, or surpyval.from_dict."
+            )
+        for key in ("x", "c", "n", "t"):
+            if key not in data_dict:
+                raise ValueError(
+                    f"A serialised SurpyvalData needs {key!r}; this "
+                    "dictionary has no such entry."
+                )
         # Files written before the strict-JSON convention hold the
         # ``Infinity`` literals, which json.loads still reads.
-        data = decode_non_finite(json.loads(text))
+        data = decode_non_finite(dict(data_dict))
 
         x = np.array(data["x"])
         c = np.array(data["c"])
@@ -1365,11 +1362,81 @@ class SurpyvalData(ReshapeMixin):
         )
         if "e" in data:
             out.e = _event_type_array(
-                [_label_from_json(v) for v in data["e"]], out.c, warn=False
+                [label_back(v) for v in data["e"]], out.c, warn=False
             )
         if "ids" in data:
-            out.ids = [_label_from_json(v) for v in data["ids"]]
+            out.ids = [label_back(v) for v in data["ids"]]
+        if "time_varying_covariates" in data:
+            from surpyval.utils.item_history import _time_varying
+
+            ids = out.ids if out.ids is not None else list(range(len(x)))
+            out.time_varying_covariates = {
+                i: _time_varying(i, schedule_back(v))[0]
+                for i, v in zip(ids, data["time_varying_covariates"])
+            }
+        if data.get("unit") is not None:
+            out.unit = data["unit"]
         return out
+
+    def to_json(self, filepath: str | Path | None = None) -> str | None:
+        """
+        The data as strict JSON text (:meth:`to_dict` dumped), or written
+        to the file ``filepath``.
+
+        Parameters
+        ----------
+        filepath : str | Path, optional
+            If provided, saves JSON to this file path
+
+        Returns
+        -------
+        str | None
+            JSON string if no filepath provided, None if saved to file
+
+        Examples
+        --------
+        >>> from surpyval import SurpyvalData
+        >>> text = SurpyvalData([1, 2], c=[0, 1]).to_json()
+        >>> text.startswith('{"class": "SurpyvalData"')
+        True
+        """
+        from surpyval.utils.data_json import dump
+
+        return dump(self.to_dict(), filepath)
+
+    @classmethod
+    def from_json(cls, source: str | Path) -> "SurpyvalData":
+        """
+        The data back from JSON text, or from the file holding it
+        (``surpyval.from_json`` reads it too).
+
+        Parameters
+        ----------
+        source : str | Path
+            The JSON text ``to_json()`` returned (a string starting with
+            ``{``), or the path of a file ``to_json(path)`` wrote. The
+            data is not re-validated.
+
+        Returns
+        -------
+        SurpyvalData
+
+        Examples
+        --------
+        >>> import os, tempfile
+        >>> from surpyval import SurpyvalData
+        >>> data = SurpyvalData(x=[1, 2, 2, 5], c=[0, 0, 0, 1])
+        >>> restored = SurpyvalData.from_json(data.to_json())
+        >>> restored.x, restored.n
+        (array([1., 2., 5.]), array([1, 2, 1]))
+        >>> path = os.path.join(tempfile.mkdtemp(), "data.json")
+        >>> data.to_json(path)
+        >>> SurpyvalData.from_json(path).n
+        array([1, 2, 1])
+        """
+        from surpyval.utils.data_json import load
+
+        return cls.from_dict(load(source))
 
 
 # The kinds of observation from_observations reads, with their flags.

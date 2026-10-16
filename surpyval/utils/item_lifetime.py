@@ -381,6 +381,60 @@ class ItemLifetime:
             )
         return out
 
+    def to_dict(self) -> dict:
+        """
+        The record as a dictionary of plain Python values (strict JSON
+        when dumped): its ``"class"``, ``"id"`` and the arguments that
+        rebuild it, as :meth:`from_dict` reads them. A tuple id or event
+        type is written as ``{"tuple": [...]}``; a step schedule of
+        time-varying covariates by its ages and values; a
+        ``CovariatePath`` is refused.
+
+        Examples
+        --------
+        >>> from surpyval import ItemLifetime
+        >>> ItemLifetime("B7", observed=1820).to_dict()
+        {'class': 'ItemLifetime', 'id': 'B7', 'observed': 1820.0}
+        """
+        from surpyval.utils.data_json import record_dict
+
+        return record_dict(self)
+
+    @classmethod
+    def from_dict(cls, record_dict: dict) -> "ItemLifetime":
+        """The record back from its :meth:`to_dict` dictionary, checked
+        as one built from its arguments.
+
+        >>> from surpyval import ItemLifetime
+        >>> item = ItemLifetime("B7", observed=1820)
+        >>> ItemLifetime.from_dict(item.to_dict()) == item
+        True
+        """
+        from surpyval.utils.data_json import record_from_dict
+
+        return record_from_dict(cls, record_dict)
+
+    def to_json(self, filepath: Any = None) -> "str | None":
+        """The record as strict JSON text (:meth:`to_dict` dumped), or
+        written to the file ``filepath``."""
+        from surpyval.utils.data_json import dump
+
+        return dump(self.to_dict(), filepath)
+
+    @classmethod
+    def from_json(cls, source: Any) -> "ItemLifetime":
+        """The record back from JSON text (a string starting with ``{``)
+        or the file holding it.
+
+        >>> from surpyval import ItemLifetime
+        >>> item = ItemLifetime("B7", observed=1820)
+        >>> ItemLifetime.from_json(item.to_json()) == item
+        True
+        """
+        from surpyval.utils.data_json import load
+
+        return cls.from_dict(load(source))
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ItemLifetime):
             return NotImplemented
