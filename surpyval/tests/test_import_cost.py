@@ -89,7 +89,13 @@ def test_lazy_names_are_the_packages_names() -> None:
         assert name in dir(surpyval)
         package = importlib.import_module(module)
         assert getattr(surpyval, name) is getattr(package, name)
-    for name in ("degradation", "life_models", "metrics", "recurrent"):
+    for name in (
+        "degradation",
+        "life_models",
+        "metrics",
+        "recurrent",
+        "test_planning",
+    ):
         assert isinstance(getattr(surpyval, name), types.ModuleType)
     assert isinstance(surpyval.univariate.regression, types.ModuleType)
     assert isinstance(surpyval.univariate.competing_risks, types.ModuleType)
