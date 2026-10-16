@@ -973,6 +973,198 @@ class ReshapeMixin(ReadOnlyArrays):
             raise ValueError("No items are left.")
         return self._from_records([r for r, _ in pairs], [k for _, k in pairs])
 
+    def update(self, records: Any, counts: Any = None) -> Any:
+        """
+        The data with ``records`` (one record, or a list) taken in: a
+        record whose id is in the data replaces that item's record, one
+        with a new id is added at the end. An item's count (``n``, for
+        lifetime data) is kept; ``counts={id: k}`` sets the count of a
+        record given (a new one counts 1 otherwise). Everything else --
+        covariates, event types, attributes, the unit -- must agree with
+        the data's, as in ``from_items``. The monthly refresh of a fleet
+        is ``data.update([data.item("CV-1").fail(ages["CV-1"]), ...])``.
+        Needs item ids (``from_items``, ``ids=``).
+
+        Examples
+        --------
+        >>> from surpyval import ItemLifetime, SurpyvalData
+        >>> data = SurpyvalData.from_items([
+        ...     ItemLifetime("A", right_censored=5),
+        ...     ItemLifetime("B", right_censored=7),
+        ... ], counts=[1, 3])
+        >>> later = data.update([
+        ...     data.item("A").fail(6), ItemLifetime("C", right_censored=2)
+        ... ])
+        >>> later.ids, later.c.tolist(), later.n.tolist()
+        (['A', 'B', 'C'], [0, 1, 1], [1, 3, 1])
+        """
+        from surpyval.utils.item_history import checked_id, item_id
+
+        if getattr(self, "ids", None) is None:
+            raise ValueError(
+                "update needs item ids, and this data has none (its rows "
+                "are sorted and grouped): build it with from_items, ids=, "
+                "or from_dataframe(..., i_col=...)."
+            )
+        kind = self._record_type()
+        if isinstance(records, kind):
+            records = [records]
+        records = list(records)
+        other = next((r for r in records if not isinstance(r, kind)), None)
+        if other is not None:
+            raise TypeError(
+                f"update takes {kind.__name__} records; got "
+                f"{type(other).__name__}."
+            )
+        if isinstance(counts, dict):
+            counts = {checked_id(k): v for k, v in counts.items()}
+        elif counts is not None:
+            raise ValueError(
+                "counts must be {id: count}, the count of each record "
+                "given (one not named counts as before, or 1 when new)."
+            )
+        given = {}
+        for record in records:
+            if record.id in given:
+                raise ValueError(
+                    f"Item {record.id!r} is given twice: one record per item."
+                )
+            given[record.id] = record
+        unknown = [k for k in (counts or {}) if k not in given]
+        if unknown:
+            raise ValueError(
+                "'counts' names items not given: "
+                + ", ".join(repr(k) for k in unknown)
+                + "."
+            )
+        held, held_counts = self._records()
+        out: list = []
+        out_counts: list = []
+        for record, k in zip(held, held_counts):
+            key = item_id(record.id)
+            if key in given:
+                out.append(given.pop(key))
+                out_counts.append((counts or {}).get(key, k))
+            else:
+                out.append(record)
+                out_counts.append(k)
+        for key, record in given.items():
+            out.append(record)
+            out_counts.append((counts or {}).get(key, 1))
+        return self._from_records(out, out_counts)
+
+    def drop(self, ids: Any) -> Any:
+        """
+        The data without the items ``ids`` (one id, or a list); every id
+        must be in the data. Needs item ids.
+
+        Examples
+        --------
+        >>> from surpyval import ItemLifetime, SurpyvalData
+        >>> data = SurpyvalData.from_items([
+        ...     ItemLifetime("A", observed=5), ItemLifetime("B", observed=7)
+        ... ])
+        >>> data.drop("A").ids
+        ['B']
+        """
+        have = getattr(self, "ids", None)
+        if have is None:
+            raise ValueError(
+                "drop needs item ids, and this data has none (its rows are "
+                "sorted and grouped): build it with from_items, ids=, or "
+                "from_dataframe(..., i_col=...); select(where=) keeps the "
+                "items a test picks."
+            )
+        wanted = id_list(ids, self)
+        missing = [i for i in wanted if i not in set(have)]
+        if missing:
+            raise KeyError(
+                f"No item{'s' if len(missing) > 1 else ''} "
+                + ", ".join(repr(i) for i in missing)
+                + " in the data."
+            )
+        dropped = set(wanted)
+        keep = np.array([i not in dropped for i in have], dtype=bool)
+        if not keep.any():
+            raise ValueError("No items are left.")
+        return self._rows_of_items(keep)
+
+    def extend_running(self, age: Any) -> Any:
+        """
+        The data with every item still running seen working to a later
+        ``age``: for lifetime data, each right censored item is extended
+        to ``age`` (:meth:`ItemLifetime.extend
+        <surpyval.utils.item_lifetime.ItemLifetime.extend>`); for event
+        history data, each item's observation runs on to ``age`` (a
+        history has no end but the end of its observation, so every item
+        is taken as running). An item already seen later than ``age`` is
+        left as it is. ``age`` is one age for every item, ``{id: age}``
+        for the items named, or a function of each item's record giving
+        its age.
+
+        Examples
+        --------
+        >>> from surpyval import ItemLifetime, SurpyvalData
+        >>> data = SurpyvalData.from_items([
+        ...     ItemLifetime("A", observed=5),
+        ...     ItemLifetime("B", right_censored=7),
+        ...     ItemLifetime("C", right_censored=12),
+        ... ])
+        >>> data.extend_running(10).x.tolist()
+        [5.0, 10.0, 12.0]
+        """
+        if isinstance(age, dict):
+            ages = per_item_ages("extend_running", age, self)
+
+            def to(record: Any) -> Any:
+                return ages.get(record.id)
+
+        elif callable(age):
+            fn = age
+
+            def to(record: Any) -> Any:
+                return cut_age("extend_running", fn(record), self)
+
+        else:
+            value = cut_age("extend_running", age, self)
+
+            def to(record: Any) -> Any:
+                return value
+
+        def extended(record: Any) -> Any:
+            later = to(record)
+            if later is None:
+                return record
+            if self._on_arrays:
+                if record.outcome != "right_censored":
+                    if record.id in (age if isinstance(age, dict) else ()):
+                        raise ValueError(
+                            f"Item {record.id!r} is {record.outcome}, not "
+                            "still running (right censored), so it cannot "
+                            "be extended."
+                        )
+                    return record
+                return (
+                    record if record.value >= later else record.extend(later)
+                )
+            end = record._end()
+            return (
+                record
+                if end is not None and end >= later
+                else record.extend(later)
+            )
+
+        return self._map(extended)
+
+    def _record_type(self) -> type:
+        if self._on_arrays:
+            from surpyval.utils.item_lifetime import ItemLifetime
+
+            return ItemLifetime
+        from surpyval.utils.item_history import ItemHistory
+
+        return ItemHistory
+
     def censor_at(self, age: Any) -> Any:
         """
         The data as seen if observation stopped at ``age`` (administrative

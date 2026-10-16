@@ -271,6 +271,28 @@ dataset:
     print(surv.Weibull.fit(everything).params)
     print(seals.summary())
 
+Updating a dataset as items age
+-------------------------------
+
+A fleet's data is refreshed as the months pass: some items fail, the rest
+run on, new ones are installed. The records' update methods (``fail``,
+``found_failed``, ``extend``, ``add_failure``) give the new records, and
+``update`` takes them back into the dataset -- a record whose id is in the
+data replaces that item's, a new id is added -- while ``extend_running``
+moves every item still running on to the age it was last seen, and
+``drop`` removes items. Counts, covariates, event types, attributes and
+the unit carry through:
+
+.. jupyter-execute::
+
+    month_end = {"P1": 900, "P2": 1500, "P3": 2100, "P4": 1200, "P5": 1800}
+    refreshed = fleet.update([
+        fleet.item("P3").fail(2050, "bearing"),           # failed this month
+        ItemLifetime("P6", right_censored=90, covariates={"site": 1, "load": 0.7}),
+    ]).extend_running(lambda item: month_end.get(item.id, 90))
+    print(refreshed.summary())
+    print(refreshed.item("P3"), refreshed.item("P5"), sep="\n")
+
 Comparing sites, arms or product lines
 --------------------------------------
 
