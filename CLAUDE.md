@@ -19,14 +19,14 @@ this summary, and fix them, not this file, when they are wrong.
 
 ## Branches and releases
 
-- Branch from `develop`; open pull requests into `develop`. Never into
-  `master`.
-- A release is one pull request `develop` -> `master`, then the publish
-  workflow run on `master`
-  (`gh workflow run publish.yml --ref master -f version=X.Y`), which
+- Branch from `dev`; open pull requests into `dev`. Never into
+  `main`.
+- A release is one pull request `dev` -> `main`, then the publish
+  workflow run on `main`
+  (`gh workflow run publish.yml --ref main -f version=X.Y`), which
   publishes, tags and creates the GitHub Release.
-- CI runs only on the pull request into `master`. Pull requests into
-  `develop` get no checks, so test locally before pushing.
+- CI runs only on the pull request into `main`. Pull requests into
+  `dev` get no checks, so test locally before pushing.
 
 ## Running things
 
@@ -52,7 +52,7 @@ run the tests for what it touches (`-k` on the conformance suite), its
 doctests and lint; `scripts/check_all_pythons.py` covers numerical changes
 on every interpreter.
 
-Known failures on `develop` (checked 2026-10-17): four `test_541_*` tests
+Known failures on `dev` (checked 2026-10-17): four `test_541_*` tests
 near rho = +/-1 in `surpyval/tests/multivariate/test_copula_verification.py`
 (`elliptical_density_near_rho_one` and `gaussian_cdf_and_h_function_near_rho_one`,
 each at 0.99999999 and -0.999999999999). They are not caused by your change.
