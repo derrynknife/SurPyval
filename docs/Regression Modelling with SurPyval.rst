@@ -1683,6 +1683,16 @@ For distributions not in the pre-built list:
     model = AFT(Gamma).fit(x=x, Z=Z, c=c)
     model
 
+On a baseline defined below 0 (``Normal``, ``Gumbel``, ``Logistic``) the
+rescaling is about 0, :math:`S(x \mid Z) = S_0(\phi(Z)\, x)`, so where 0 is
+matters: put it at a real origin, such as the start of service. Moving 0
+changes the fit, as it would for a Weibull. A model in which the covariates
+shift the distribution's location, :math:`\mu = a + bV`, is an accelerated
+life model, ``AcceleratedLife(Normal, life_models.Linear)``, and does not
+depend on where 0 is; R's ``survreg`` calls it a gaussian (or logistic) AFT.
+Additive hazards on these baselines likewise counts the covariate's effect
+from 0.
+
 We can visualise the "time shift" interpretation by plotting survival curves.
 The entire curve moves left (shorter life) or right (longer life) on the time
 axis as the covariates change — a hallmark of the AFT model:
@@ -2585,14 +2595,10 @@ the matching ``Hf_tvc``). Pass either ``(xl, Z)`` arrays or a
 :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`, and
 ``given=`` for conditional survival :math:`S(x \mid \text{survived to } g)`.
 A path must cover every time the answer depends on, and one that starts later
-is refused, as nothing says what the covariate was before it. For a baseline
-that starts at 0 that is from 0 (the part of a schedule before 0 is ignored).
-On a baseline defined below 0 (``Normal``, ``Gumbel``, ``Logistic``), PH and
-PO depend on the covariate back to :math:`-\infty`, so a schedule starts
-there, ``StepSchedule.from_changepoints([-np.inf, ...], ...)``;
-``StepSchedule.constant`` does. AFT and AH measure the covariate's effect from
-0, so for them a path from 0 serves times from 0, and an earlier time needs
-the covariate from that time on. A ``CovariatePath`` is integrated below 0 as
+is refused: from 0 on a baseline that starts at 0, from :math:`-\infty` for PH
+and PO on one defined below 0 (``Normal``, ``Gumbel``, ``Logistic``), and,
+given an age, from that age for PH, PO, AH and Cox (see `How far back the
+covariates must go`_). A ``CovariatePath`` is integrated below 0 as
 far as needed, to :math:`-\infty` for PH and PO, where the baseline's hazard
 dies away; a formula (``CovariatePath.from_callable``) has a value at every
 time, while a path through points starts at its first point. Any time is a
@@ -2617,6 +2623,220 @@ An accelerated life model whose life parameter scales time (Weibull,
 Exponential, Gamma, LogNormal) accumulates an age like AFT, at the rate
 :math:`1 / L(V)` (see :ref:`tvc-bounds-mean`); one whose life parameter is a
 location (Normal, Gumbel, Logistic) raises ``NotImplementedError``.
+
+.. _tvc-coverage:
+
+How far back the covariates must go
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``sf_tvc(x, Z)`` is the chance of surviving to ``x`` while the covariate
+follows ``Z``. To work it out, a model adds up the risk over time, from where
+its time starts to ``x``, and in every stretch it needs to know what the
+covariate was. So the covariates must cover every time the answer depends on.
+One that starts later is refused rather than guessed: nothing says what the
+covariate was before it starts (before 0.25 its first value was taken to hold
+back to the start, which gave a number with no warning). How far back that is
+depends on the baseline and on the family, and this section goes through each
+case. The examples use one data set, fitted by several families.
+
+.. jupyter-execute::
+
+    import warnings
+    from surpyval import (CoxPH, NormalAFT, NormalAH, NormalPH, StepSchedule,
+                          WeibullAFT, WeibullPH)
+
+    rng = np.random.default_rng(1)
+    cov_Z = rng.binomial(1, 0.5, (300, 1)).astype(float)
+    cov_x = rng.normal(3, 2, 300) - 0.8 * cov_Z[:, 0]
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        cov_wph = WeibullPH.fit(np.abs(cov_x) + 0.1, cov_Z)
+        cov_waft = WeibullAFT.fit(np.abs(cov_x) + 0.1, cov_Z)
+        cov_nph = NormalPH.fit(cov_x, cov_Z)
+        cov_naft = NormalAFT.fit(cov_x, cov_Z)
+
+**A baseline that starts at 0.** A Weibull's time starts at 0, so survival to
+10 needs the covariate from 0 to 10. A schedule that starts at 3 leaves 0 to 3
+unknown, and is refused:
+
+.. jupyter-execute::
+
+    print(cov_wph.sf_tvc(10, StepSchedule.from_changepoints([0, 5], [[0], [1]])))
+    try:
+        cov_wph.sf_tvc(10, StepSchedule.from_changepoints([3, 5], [[0], [1]]))
+    except ValueError as err:
+        print(str(err).split(': ')[0])
+
+**A baseline defined below 0, proportional hazards and odds.** A Normal,
+Gumbel or Logistic distribution has no starting point: its time runs from
+:math:`-\infty`, and some units have failed by 0. Risk is added up from there,
+so survival at any time depends on the covariate back to :math:`-\infty`. Two
+schedules that agree from 0 on, and differ only before it, give different
+answers:
+
+.. jupyter-execute::
+
+    for before in (0, 1):
+        sched = StepSchedule.from_changepoints([-np.inf, 0, 2],
+                                               [[before], [0], [1]])
+        print(before, cov_nph.sf_tvc(4, sched))
+
+So a schedule from 0 is refused, and one starts from :math:`-\infty` by
+giving ``-np.inf`` as its first change-point: the first value then holds for
+all time before the next one. ``StepSchedule.constant`` starts there, and
+gives the ordinary ``sf``:
+
+.. jupyter-execute::
+
+    try:
+        cov_nph.sf_tvc(4, StepSchedule.from_changepoints([0, 2], [[0], [1]]))
+    except ValueError as err:
+        print(str(err).split(': ')[0])
+    print(cov_nph.sf_tvc(4, StepSchedule.from_changepoints([-np.inf, 2],
+                                                           [[0], [1]])))
+    print(cov_nph.sf_tvc(4, StepSchedule.constant([1])), cov_nph.sf(4, [1]))
+
+**Accelerated failure time: a clock started at 0.** In an AFT model the
+covariate sets how fast a unit ages, :math:`S(x \mid Z) = S_0(\phi(Z)\, x)`:
+the baseline is read at the unit's age, and its age is time times speed.
+Every unit's age is 0 at time 0, whatever its covariate, so ``sf`` at 0 is the
+same for every covariate value (under PH it is not):
+
+.. jupyter-execute::
+
+    for t in (-1, 0, 4):
+        print(t, cov_naft.sf(t, [0]), cov_naft.sf(t, [1]),
+              '  PH:', cov_nph.sf(t, [0]), cov_nph.sf(t, [1]))
+
+With a changing covariate the age at :math:`x` is
+:math:`\psi(x) = \int_0^x \phi(Z(u))\,du`, the distance the clock has run
+since 0.
+
+- *A time after 0* depends on the covariate from 0 to it. Nothing before 0
+  matters: the baseline at the age reached already covers the chance of
+  failing before it. So a schedule from 0 is enough, on any baseline.
+- *A time before 0*, such as :math:`-1`, is measured backwards from the 0
+  mark: the clock runs back from 0 to :math:`-1` at the speed the covariate
+  sets, so the age at :math:`-1` is :math:`-\int_{-1}^{0} \phi(Z(u))\,du`. It
+  depends on the covariate from :math:`-1` to 0, and nothing earlier.
+
+.. jupyter-execute::
+
+    from_0 = StepSchedule.from_changepoints([0, 2], [[0], [1]])
+    print(cov_naft.sf_tvc(4, from_0))
+    for before in (0, 1):
+        sched = StepSchedule.from_changepoints([-np.inf, -1, 2],
+                                               [[before], [0], [1]])
+        print(before, cov_naft.sf_tvc([-1, 4], sched))
+    try:
+        cov_naft.sf_tvc(-1, from_0)
+    except ValueError as err:
+        print(str(err).split(': ')[0])
+
+The covariate before :math:`-1` changes nothing, and the schedule from 0 is
+refused only for the time before 0. One consequence follows from the
+arithmetic: before 0 a unit that ages faster runs its clock back further, to
+an age where fewer have failed, so it shows the *higher* survival at
+:math:`-1` (above, ``sf(-1)`` is larger for ``z = 1``) though it fails sooner
+after 0. Additive hazards is anchored at 0 in the same way (the covariate's
+added hazard is counted from 0), and needs the covariate over the same
+stretch.
+
+**Where 0 is.** Because AFT rescales time about 0, on a Normal, Gumbel or
+Logistic baseline the fit depends on where 0 is, as a Weibull's does; PH and
+PO do not. Fitting the same data with 0 moved by 30 (decibels referred to a
+watt, dBW, and to a milliwatt, dBm, say) only moves PH's :math:`\mu` by 30,
+but gives a different AFT fit:
+
+.. jupyter-execute::
+
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        for name, family in [('NormalPH', NormalPH), ('NormalAFT', NormalAFT)]:
+            a, b = family.fit(cov_x, cov_Z), family.fit(cov_x + 30, cov_Z)
+            print(name, a.sf(4, [1]), b.sf(34, [1]))
+
+So put 0 at a real origin, such as the start of service, for AFT or additive
+hazards on these baselines. For a quantity whose 0 is only a reference point
+(decibels, a temperature in °C, a log-scale measurement) use PH or PO, or a
+model in which the covariate shifts the distribution's location,
+``AcceleratedLife(Normal, life_models.Linear)``, which is an accelerated life
+model and not an AFT (see `Accelerated Failure Time (AFT)`_).
+
+**Survival given an age.** ``sf_tvc(x, Z, given=g)`` is
+:math:`S(x \mid g) = S(x) / S(g)`. The covariate before :math:`g` changes the
+chance of reaching :math:`g`, but under proportional hazards and odds,
+additive hazards and Cox it divides out: the hazard at each moment depends
+only on the covariate then, so :math:`S(x \mid g) =
+\exp\{-\int_g^x h(u \mid Z(u))\,du\}`, which needs the covariate from
+:math:`g` on only. Under AFT it does not divide out: the age reached by
+:math:`g` depends on how fast the clock ran before it. Two schedules that
+differ only before 1:
+
+.. jupyter-execute::
+
+    from surpyval import CovariatePath, ItemLifetime
+
+    for name, model in [('WeibullPH', cov_wph), ('NormalPH', cov_nph),
+                        ('WeibullAFT', cov_waft), ('NormalAFT', cov_naft)]:
+        lo = 0 if name.startswith('Weibull') else -np.inf
+        print(name, [float(model.sf_tvc(4, StepSchedule.from_changepoints(
+            [lo, 1, 2], [[before], [0], [1]]), given=1))
+            for before in (0, 1)])
+
+So under PH, PO, AH and Cox, given an age, the covariates need only start by
+then, whatever the baseline, and one that starts after it is refused; under
+AFT they are needed from 0 as before. This is the prediction counterpart of a
+fit: ``fit_tvc``, and a record with ``left_truncation``, take a unit that
+entered late with no covariates before its entry, and such a unit can be
+asked about given its entry:
+
+.. jupyter-execute::
+
+    late = StepSchedule.from_changepoints([1, 2], [[0], [1]])
+    print(cov_nph.sf_tvc(4, late, given=1))
+    try:
+        cov_nph.sf_tvc(4, late, given=0.5)
+    except ValueError as err:
+        print(str(err).split(': ')[0])
+    unit = ItemLifetime('a', observed=10, left_truncation=6,
+                        time_varying_covariates={5: [0.0], 8: [1.0]})
+    print(cov_wph.sf_tvc([7, 9], unit, given=6))
+
+**In short**, the covariates must start at or before:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 33 33
+
+   * - Family
+     - Baseline starting at 0
+     - Baseline defined below 0
+   * - PH, PO
+     - 0
+     - :math:`-\infty`
+   * - AFT
+     - 0
+     - 0, or the earliest time asked about if before 0
+   * - Accelerated life
+     - 0
+     - not available (the life parameter is a location)
+   * - AH
+     - 0
+     - 0, or the earliest time asked about if before 0
+   * - Cox
+     - 0
+     - before every baseline jump counted
+   * - PH, PO, AH, Cox, given an age :math:`g`
+     - :math:`g`
+     - :math:`g`
+   * - AFT and accelerated life, given an age :math:`g`
+     - 0
+     - 0, or :math:`g` if before 0 (AFT)
+
+A ``CovariatePath`` follows the same rules: a formula
+(``CovariatePath.from_callable``) has a value at every time, so it covers
+any stretch, and a path through points starts at its first point.
 
 Describing the covariate path
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

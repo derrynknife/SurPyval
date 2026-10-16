@@ -423,6 +423,28 @@ Unreleased
 
 **Fixed**
 
+- **``fit_from_recurrent_data`` refuses what ``fit(data)`` refuses**
+  (#959). Given an ``EventHistoryData`` holding covariates or event types
+  that the fitter has no argument for, every recurrent fitter's
+  ``fit_from_recurrent_data`` fitted anyway, dropping the covariates or
+  pooling the failure modes into one process, where ``fit(data)``
+  refused. It now refuses with the same message, which names the way to
+  fit without them (``data.without("covariates")``,
+  ``data.without("event_types")`` or ``data.for_event_type(t)``). What a
+  fitter takes is read from its ``fit``, so the two cannot disagree.
+  ``CauseSpecificMCF`` given covariates as well as event types dropped the
+  covariates; ``ProportionalIntensityHPP`` / ``NHPP`` given event types
+  and no covariates failed with a raw ``AttributeError``.
+- **Survival given an age needs the covariate from that age only** under
+  proportional hazards and odds, additive hazards and Cox (#962). There
+  ``S(x | g)`` depends on the covariate from ``g`` on, the part before it
+  dividing out, as a fit already takes a subject entering late with no
+  covariates before its entry. ``sf_tvc``, ``cb_tvc`` and ``mean_tvc``
+  with ``given=g`` refused a schedule (and, on a baseline starting at 0, a
+  path) that started after 0, or on a baseline defined below 0 after
+  ``-inf``, though it started by ``g``; one starting after ``g`` is refused
+  by name. Accelerated failure time and life still need the covariate from
+  0: the age reached by ``g`` depends on it before ``g`` too.
 - **Right truncation of recurrent (event history) data is right
   truncation** (#924). A finite ``tr`` given to the recurrent fits,
   ``handle_xicn`` or an ``ItemHistory`` was read as the end of the item's

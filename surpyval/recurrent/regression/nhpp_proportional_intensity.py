@@ -157,7 +157,9 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
         fallback = np.ones(len(dist.parameter_names))
         try:
             with np.errstate(all="ignore"):
-                base = dist.fit_from_recurrent_data(data)
+                # Without the covariates, which the baseline's own fit
+                # refuses (#959).
+                base = dist.fit_from_recurrent_data(data.without("covariates"))
             start = np.asarray(base.params, dtype=float)
         except Exception:
             return fallback

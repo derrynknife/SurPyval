@@ -174,7 +174,9 @@ class CovariatePath:
     (:attr:`start`), and on a baseline defined below 0 at or before every
     time the answer depends on, to ``-inf`` for proportional hazards and
     odds, where it is integrated below 0 too (#957); after its last time
-    the last value applies.
+    the last value applies. Survival given an age (``given=``) under
+    proportional hazards or odds, additive hazards or Cox depends on the
+    path from that age on only, so it need only start by then (#962).
 
     The path must be *external* -- known in advance and not driven by the
     unit's own failure process (a planned load, a test profile, ambient

@@ -224,7 +224,9 @@ class TVCEvaluationMixin:
                     "covariate at every earlier time, back to -inf. Give "
                     "their value since -inf, e.g. "
                     f"StepSchedule.from_changepoints([-np.inf, {start:g}, "
-                    "...], ...)."
+                    "...], ...), or ask for survival given an age at or "
+                    f"after {start:g} (given=...), which depends on the "
+                    "covariate from then on only."
                 )
             return -np.inf
         known = times[np.isfinite(times)]
@@ -279,6 +281,21 @@ class TVCEvaluationMixin:
                 f"but this path starts at {start:g}. Give one that starts "
                 "at or before that time."
             )
+
+    def _tvc_given(
+        self, Z: Any, xl: "npt.ArrayLike | None", given: "float | None"
+    ) -> "tuple[Any, npt.ArrayLike | None]":
+        """``(Z, xl)`` for survival given the age ``given``: for a family
+        whose hazard at a time depends only on the covariate then (not
+        accelerated failure time or life, whose age at ``given`` depends
+        on the covariate before it), the covariates need only start at or
+        before ``given`` (#962), and are held back from their start."""
+        if given is None or np.isnan(given) or self._tvc_scales_time():
+            return Z, xl
+        from .tvc_schedule import as_covariate_path
+
+        names = getattr(self, "feature_names", None)
+        return as_covariate_path(Z, xl, names, given=given), None
 
     def _to_schedule(self, Z: Any, xl: "npt.ArrayLike | None") -> Any:
         """
@@ -762,9 +779,7 @@ class TVCEvaluationMixin:
             edges, value = res["edges"], res["value"]
             G_x = sum_between(edges, value, 0.0, s_x)
             if g_neg:
-                G_g = float(
-                    sum_between(edges, value, 0.0, np.array([s_g]))[0]
-                )
+                G_g = float(sum_between(edges, value, 0.0, np.array([s_g]))[0])
             if self._is_additive():
                 # A negative hazard between the time and 0 (#376).
                 fell = sum_between(edges, res["flag"], 0.0, s_x, False) > 0
@@ -1070,8 +1085,12 @@ class TVCEvaluationMixin:
             ``S(x | given) = exp(-(H(x) - H(given)))`` for ``x > given``,
             and 1 for ``x <= given`` (survival to those times is certain).
             Along a ``CovariatePath`` the hazard is integrated from
-            ``given`` on, so nothing is subtracted. A ``nan`` ``given``
-            gives ``nan``.
+            ``given`` on, so nothing is subtracted. For proportional
+            hazards and odds and additive hazards this depends on the
+            covariate from ``given`` on only, so ``Z`` need only start by
+            then (#962); for accelerated failure time and life the age
+            reached by ``given`` depends on it before too. A ``nan``
+            ``given`` gives ``nan``.
 
         Returns
         -------
@@ -1114,6 +1133,7 @@ class TVCEvaluationMixin:
             # A missing conditioning age: nothing is known (as Cox).
             self._to_schedule(Z, xl)
             return np.full(np.atleast_1d(np.asarray(x, float)).shape, np.nan)
+        Z, xl = self._tvc_given(Z, xl, g)
         # Along a path the hazard is integrated from given on; a step
         # schedule subtracts H(given).
         from_given = (
@@ -1195,7 +1215,8 @@ class TVCEvaluationMixin:
         xl : array_like, optional
             Segment start times, required only when ``Z`` is an array.
         given : float, optional
-            An age survived to: the mean remaining life from it. A ``nan``
+            An age survived to: the mean remaining life from it. ``Z``
+            need only start by then, as for :meth:`sf_tvc`. A ``nan``
             ``given`` gives ``nan``.
 
         Returns
@@ -1244,8 +1265,9 @@ class TVCEvaluationMixin:
         )
 
         self._check_tvc_evaluable()
-        path = self._to_schedule(Z, xl)
         g = None if given is None else float(given)
+        Z, xl = self._tvc_given(Z, xl, g)
+        path = self._to_schedule(Z, xl)
         if g is not None and np.isnan(g):
             return np.nan
         real_line = self._tvc_real_line()
@@ -1562,6 +1584,7 @@ class TVCEvaluationMixin:
             # A missing conditioning age: nothing is known (as sf_tvc).
             self._to_schedule(Z, xl)
             return np.full(shape, np.nan)
+        Z, xl = self._tvc_given(Z, xl, g)
         on_path = isinstance(Z, CovariatePath)
         # In the parameterisation of the centred fit when there is one, as
         # for cb (#463).

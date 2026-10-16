@@ -1272,8 +1272,9 @@ class SemiParametricRegressionModel(
             ``S(x | given) = exp(-(H(x) - H(given)))`` for ``x > given``,
             and 1 for ``x <= given`` (survival to those times is certain).
             Along a ``CovariatePath`` the baseline jumps after ``given``
-            are summed, so nothing is subtracted. A ``nan`` ``given`` gives
-            ``nan``.
+            are summed, so nothing is subtracted. This depends on the
+            covariate from ``given`` on only, so ``Z`` need only start by
+            then (#962). A ``nan`` ``given`` gives ``nan``.
         stratum : optional
             For a stratified fit, the stratum whose baseline hazard to use
             (required there, as for :meth:`sf`).
@@ -1299,6 +1300,12 @@ class SemiParametricRegressionModel(
         from .tvc_path import CovariatePath
 
         g = None if given is None else float(given)
+        if g is not None and not np.isnan(g):
+            # Given an age, the covariates need only start by then (#962).
+            from .tvc_schedule import as_covariate_path
+
+            names = getattr(self, "feature_names", None)
+            Z, xl = as_covariate_path(Z, xl, names, given=g), None
         if isinstance(Z, CovariatePath) and g is not None and not np.isnan(g):
             # Summed from given on.
             H = self._hf_tvc(x, Z, xl, stratum, given=g)
