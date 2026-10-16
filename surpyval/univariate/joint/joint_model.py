@@ -37,13 +37,19 @@ from ._likelihood import (
     Layout,
     Model,
     PathFunction,
+    _at,
+    _path_params,
     adaptive_nodes,
     continued_modes,
     log_integrals,
+    log_integrand,
+    scatter,
 )
 
 if TYPE_CHECKING:
     import pandas as pd
+
+    from .dynamic import DynamicPrediction
 
 #: The functions ``cb`` bounds ('R' and 'F' are 'sf' and 'ff').
 _CB_ON = ("sf", "R", "ff", "F")
@@ -83,25 +89,101 @@ def path_formula(path_model: Any) -> str:
     )
 
 
+def covariate_parts(
+    path_names: list[str],
+    covariates: list[str],
+    path_covariates: Any = None,
+    hazard_covariates: Any = None,
+) -> tuple[dict[str, list[str]], list[str]]:
+    """``(shifts, hazard)``: the covariates that shift each path
+    parameter's mean, ``{path parameter: [covariate, ...]}``, and those
+    in the hazard, each in the order of ``covariates``, from a fit's
+    ``path_covariates`` and ``hazard_covariates``. ``None`` is every
+    covariate; ``path_covariates`` may be a list (each path parameter) or
+    a dict by path parameter (one left out has none). A name that is not
+    a covariate, or a covariate in neither part, is refused."""
+
+    def names_of(value: Any, what: str) -> list[str]:
+        if isinstance(value, str):
+            value = [value]
+        try:
+            given = [str(v) for v in value]
+        except TypeError:
+            raise ValueError(
+                f"{what} is a list of covariate names; got {value!r}."
+            ) from None
+        unknown = [v for v in given if v not in covariates]
+        if unknown:
+            raise ValueError(
+                f"{what} names {unknown!r}, which are not covariates of the "
+                f"data; its covariates are {list(covariates)!r}."
+            )
+        return [c for c in covariates if c in given]
+
+    if hazard_covariates is None:
+        hazard = list(covariates)
+    else:
+        hazard = names_of(hazard_covariates, "hazard_covariates")
+    if path_covariates is None:
+        shifts = {name: list(covariates) for name in path_names}
+    elif isinstance(path_covariates, Mapping):
+        unknown = [k for k in path_covariates if k not in path_names]
+        if unknown:
+            raise ValueError(
+                "path_covariates names the path parameters whose means the "
+                f"covariates shift, of {list(path_names)!r}; got "
+                f"{unknown!r}."
+            )
+        shifts = {
+            name: names_of(
+                path_covariates.get(name, []),
+                f"path_covariates[{name!r}]",
+            )
+            for name in path_names
+        }
+    else:
+        every = names_of(path_covariates, "path_covariates")
+        shifts = {name: list(every) for name in path_names}
+    used = set(hazard).union(*shifts.values())
+    unused = [c for c in covariates if c not in used]
+    if unused:
+        raise ValueError(
+            f"The covariates {unused!r} enter neither the hazard nor the "
+            "path: name them in hazard_covariates or path_covariates, or "
+            "leave them out of the data."
+        )
+    return shifts, hazard
+
+
 def parameter_names(
-    path_names: list[str], varying: list[str], covariates: list[str]
+    path_names: list[str],
+    varying: list[str],
+    covariates: list[str],
+    shifts: dict[str, list[str]] | None = None,
+    hazard: list[str] | None = None,
 ) -> list[str]:
     """The names of a joint model's parameters: each path parameter
     followed by its covariates' shifts of its mean (``a``, ``a_<cov>``,
     ``b``, ``b_<cov>``, ...); the spread of the varying ones (``sd_a``,
     ``sd_b``, ..., then ``corr_a_b``, ...); ``sd_noise``; the Weibull
     ``alpha`` and ``beta``; the hazard's covariate coefficients
-    (``<cov>``); and ``marker_effect``."""
+    (``<cov>``); and ``marker_effect``. ``shifts`` and ``hazard`` (as
+    :func:`covariate_parts` gives them) say which covariates enter which
+    part; default every one in both."""
+    if shifts is None:
+        shifts = {name: list(covariates) for name in path_names}
+    if hazard is None:
+        hazard = list(covariates)
     out = []
     for name in path_names:
-        out += [name] + [f"{name}_{cov}" for cov in covariates]
+        out += [name] + [f"{name}_{cov}" for cov in shifts.get(name, [])]
     out += [f"sd_{name}" for name in varying]
     out += [
         f"corr_{a}_{b}"
         for i, a in enumerate(varying)
         for b in varying[i + 1 :]
     ]
-    return out + ["sd_noise", "alpha", "beta", *covariates, "marker_effect"]
+    return out + ["sd_noise", "alpha", "beta", *hazard, "marker_effect"]
 
 
 def reported_params(theta: dict, layout: Layout, refs: tuple) -> Any:
@@ -116,7 +198,11 @@ def reported_params(theta: dict, layout: Layout, refs: tuple) -> Any:
     for j in range(P):
         shift = theta["Delta"][j]
         parts.append(anp.reshape(theta["mu"][j] - anp.dot(shift, zbar), (1,)))
-        parts.append(anp.reshape(shift, (p,)))
+        kept = np.flatnonzero(layout.shifts[j])
+        if kept.size == p:
+            parts.append(anp.reshape(shift, (p,)))
+        elif kept.size:
+            parts.append(anp.stack([shift[k] for k in kept]))
     if q:
         L = theta["L"]
         D = anp.dot(L, anp.transpose(L))
@@ -134,7 +220,12 @@ def reported_params(theta: dict, layout: Layout, refs: tuple) -> Any:
         (anp.dot(gamma, zbar) - zeta * (r - c)) / beta
     )
     parts.append(anp.stack([theta["sigma"], alpha, beta]))
-    parts.append(anp.reshape(gamma, (p,)))
+    if layout.hazard.all():
+        parts.append(anp.reshape(gamma, (p,)))
+    elif layout.hazard.any():
+        parts.append(
+            anp.stack([gamma[k] for k in np.flatnonzero(layout.hazard)])
+        )
     parts.append(anp.reshape(zeta, (1,)))
     return anp.concatenate(parts)
 
@@ -148,11 +239,12 @@ def internal_theta(params: Any, layout: Layout, refs: tuple) -> dict:
     P, p, q = layout.P, layout.p, layout.q
     i = 0
     mus, shifts = [], []
-    for _ in range(P):
-        shift = params[i + 1 : i + 1 + p]
+    for j in range(P):
+        n = int(layout.shifts[j].sum())
+        shift = scatter(params[i + 1 : i + 1 + n], layout.shifts[j])
         mus.append(params[i] + anp.dot(shift, zbar))
         shifts.append(shift)
-        i += 1 + p
+        i += 1 + n
     sd = params[i : i + q]
     i += q
     n_corr = q * (q - 1) // 2
@@ -179,8 +271,9 @@ def internal_theta(params: Any, layout: Layout, refs: tuple) -> dict:
     else:
         L = anp.zeros((0, 0))
     sigma, alpha_r, beta = params[i], params[i + 1], params[i + 2]
-    gamma = params[i + 3 : i + 3 + p]
-    zeta = params[i + 3 + p]
+    n_hazard = layout.n_hazard
+    gamma = layout._gamma(params[i + 3 : i + 3 + n_hazard])
+    zeta = params[i + 3 + n_hazard]
     return {
         "mu": anp.stack(mus),
         "Delta": anp.stack(shifts) if p else anp.zeros((P, 0)),
@@ -301,6 +394,12 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     #: determine (``nan`` in ``params``).
     feature_names: list[str]
     aliased: npt.NDArray
+    #: The covariates that shift each path parameter's mean, ``{path
+    #: parameter: [covariate, ...]}``, and those in the hazard (every
+    #: covariate in both, unless the fit was given ``path_covariates`` or
+    #: ``hazard_covariates``).
+    path_covariates: dict[str, list[str]] | None = None
+    hazard_covariates: list[str] | None = None
     #: The marker value at which ``alpha`` is reported.
     marker_reference: float
     #: The number of estimated parameters, the ``k`` of the criteria.
@@ -329,13 +428,31 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         p = len(self.feature_names)
         return np.setdiff1d(np.arange(p), np.asarray(self.aliased, int))
 
+    def _covariate_parts(self) -> tuple[dict[str, list[str]], list[str]]:
+        """``(shifts, hazard)`` of every covariate (aliased ones too)."""
+        names = list(self.path_model.parameter_names)
+        shifts = self.path_covariates
+        if shifts is None:
+            shifts = {name: list(self.feature_names) for name in names}
+        hazard = self.hazard_covariates
+        if hazard is None:
+            hazard = list(self.feature_names)
+        return shifts, hazard
+
     @property
     def _layout(self) -> Layout:
         names = list(self.path_model.parameter_names)
+        kept = [self.feature_names[k] for k in self._kept]
+        shifts, hazard = self._covariate_parts()
         return Layout(
             len(names),
-            len(self._kept),
+            len(kept),
             tuple(names.index(v) for v in self.varying),
+            np.array(
+                [[cov in shifts.get(n, []) for cov in kept] for n in names],
+                dtype=bool,
+            ).reshape(len(names), len(kept)),
+            np.array([cov in hazard for cov in kept], dtype=bool),
         )
 
     @property
@@ -377,12 +494,14 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
 
     def _parts(self) -> list[tuple[str, list[int]]]:
         """``(heading, positions in params)`` of each part."""
-        P = len(self.path_model.parameter_names)
-        p = len(self.feature_names)
+        names = list(self.path_model.parameter_names)
+        shifts, hazard = self._covariate_parts()
+        n_path = len(names) + sum(len(shifts.get(n, [])) for n in names)
+        p = len(hazard)
         q = len(self.varying)
-        path = list(range(P * (1 + p)))
-        spread = list(range(P * (1 + p), P * (1 + p) + q + q * (q - 1) // 2))
-        i = spread[-1] + 1 if spread else P * (1 + p)
+        path = list(range(n_path))
+        spread = list(range(n_path, n_path + q + q * (q - 1) // 2))
+        i = spread[-1] + 1 if spread else n_path
         return [
             (
                 "path: {} ({})".format(
@@ -660,6 +779,145 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             values.append(_finite_number(f"the reading at age {age:g}", value))
         order = np.argsort(ages, kind="stable")
         return np.array(ages)[order], np.array(values)[order]
+
+    def _conditional(
+        self, x: npt.NDArray, z: npt.NDArray, ages: Any, values: Any, u: float
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """``(log_sf, log_hf)`` of one item at the ages ``x`` (each after
+        ``u``; ``z`` its covariates, checked, ``ages`` and ``values`` its
+        readings), at the fitted parameters: the log of its survival to
+        each from ``u``, and of its hazard there given its readings and
+        that it reached that age,
+
+            h(x | y) = int p(y | theta) h(x | theta) S(x | theta) phi
+                       / int p(y | theta) S(x | theta) phi,
+
+        both integrals on the nodes of the second (centred at the mode of
+        its integrand), and the survival as :meth:`sf` computes it."""
+        kept = self._kept
+        zc = (z[kept] - self._zbar).reshape(1, -1)
+        times = np.concatenate([[u], np.asarray(x, dtype=float)])
+        M = times.size
+        many = JointArrays.build(
+            np.ones(M),
+            np.maximum(times, 1e-300),
+            np.zeros(M),
+            np.zeros(M),
+            np.repeat(zc, M, axis=0),
+            [ages] * M,
+            [values] * M,
+        )
+        model = Model(
+            self._layout, PathFunction(self.path_model), self._centre
+        )
+        theta = self._theta()
+        with np.errstate(all="ignore"):
+            mode, root = continued_modes(
+                theta, model.layout, model.path, many, times, self._centre
+            )
+            nodes = adaptive_nodes(mode, root, GH_PREDICT[model.layout.q])
+            log_I = log_integrals(
+                theta, model, many, nodes, times, np.zeros(M), readings=True
+            )
+            log_J = log_integrals(
+                theta, model, many, nodes, times, np.ones(M), readings=True
+            )
+        return log_I[1:] - log_I[0], (log_J - log_I)[1:]
+
+    def _marker_moments(
+        self, x: npt.NDArray, z: npt.NDArray, ages: Any, values: Any, u: float
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """The mean and standard deviation of one item's noise-free
+        marker at the ages ``x``, over its path parameters' distribution
+        given its readings and that it reached ``u`` (adaptive
+        Gauss-Hermite quadrature, at the fitted parameters)."""
+        kept = self._kept
+        zc = (z[kept] - self._zbar).reshape(1, -1)
+        one = JointArrays.build(
+            np.ones(1),
+            np.array([max(u, 1e-300)]),
+            np.zeros(1),
+            np.zeros(1),
+            zc,
+            [ages],
+            [values],
+        )
+        model = Model(
+            self._layout, PathFunction(self.path_model), self._centre
+        )
+        theta = self._theta()
+        t = np.array([u])
+        with np.errstate(all="ignore"):
+            mode, root = continued_modes(
+                theta, model.layout, model.path, one, t, self._centre
+            )
+            nodes = adaptive_nodes(mode, root, GH_PREDICT[model.layout.q])
+            log_g = np.asarray(
+                log_integrand(
+                    theta, model, one, nodes, t, np.zeros(1), readings=True
+                ),
+                dtype=float,
+            )[0]
+            weights = np.exp(log_g - np.max(log_g))
+            weights = weights / weights.sum()
+            params = np.asarray(
+                _path_params(theta, model.layout, one.Z, nodes[0]),
+                dtype=float,
+            )
+            x = np.asarray(x, dtype=float)
+            m = _at(model.path, params, x[None, :])[0]  # (K, M)
+            m = np.asarray(m, dtype=float)
+        mean = weights @ m
+        var = weights @ (m - mean) ** 2
+        return mean, np.sqrt(np.maximum(var, 0.0))
+
+    def predict(
+        self,
+        Z: Any = None,
+        markers: dict | None = None,
+        given: float | None = None,
+    ) -> DynamicPrediction:
+        """
+        The dynamic prediction of one item: its failure-age distribution
+        given its covariates ``Z``, its readings so far ``markers`` and
+        that it was still running at age ``given`` (an ``ItemLifetime``
+        still running, as ``Z``, stands for all three), as an object with
+        the conditional ``sf``, ``ff``, ``hf``, ``df`` and ``Hf``, ``qf``
+        and the remaining life's quantiles, a Wald band from the
+        parameters' uncertainty (``cb``), the item's smoothed and
+        projected marker (``marker``, ``marker_interval``) and draws
+        (``random``). Each new reading, given to ``predict`` again,
+        updates it. :meth:`sf`, :meth:`ff` and :meth:`cb` give the same
+        numbers for an array of ages.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import ItemLifetime, SurpyvalData, WeibullJointPH
+        >>> rng = np.random.default_rng(3)
+        >>> items = []
+        >>> for k in range(60):
+        ...     start, rate = rng.normal(2.0, 0.4), rng.normal(0.02, 0.005)
+        ...     life = 100 * rng.weibull(2.0) * np.exp(-0.9 * (start - 2))
+        ...     end = min(life, 120.0)
+        ...     ages = np.arange(0.0, end, 10.0)
+        ...     y = start + rate * ages + rng.normal(0, 0.2, ages.size)
+        ...     outcome = "observed" if life < 120 else "right_censored"
+        ...     items.append(
+        ...         ItemLifetime(k, **{outcome: end},
+        ...                      markers=dict(zip(ages, y)))
+        ...     )
+        >>> model = WeibullJointPH.fit(SurpyvalData.from_items(items))
+        >>> hot = model.predict(markers={0: 2.4, 20: 2.9, 40: 3.4}, given=40)
+        >>> cool = model.predict(markers={0: 1.8, 20: 1.9, 40: 2.0}, given=40)
+        >>> bool(hot.remaining_life(0.5) < cool.remaining_life(0.5))
+        True
+        >>> bool(hot.sf(60) == model.sf(60, markers=hot.markers, given=40))
+        True
+        """
+        from .dynamic import DynamicPrediction
+
+        return DynamicPrediction(self, Z, markers, given)
 
     def _log_sf_function(
         self, x: npt.NDArray, Z: Any, markers: Any, given: Any
@@ -989,6 +1247,16 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             "parameter_names": list(self.parameter_names),
             "feature_names": list(self.feature_names),
             "aliased": np.asarray(self.aliased, dtype=int).tolist(),
+            "path_covariates": (
+                None
+                if self.path_covariates is None
+                else {k: list(v) for k, v in self.path_covariates.items()}
+            ),
+            "hazard_covariates": (
+                None
+                if self.hazard_covariates is None
+                else list(self.hazard_covariates)
+            ),
             "marker_reference": float(self.marker_reference),
             "centre": float(self._centre),
             "covariate_means": np.asarray(self._zbar, dtype=float).tolist(),
@@ -1063,6 +1331,13 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         out.parameter_names = list(model_dict["parameter_names"])
         out.feature_names = list(model_dict["feature_names"])
         out.aliased = np.array(model_dict.get("aliased", []), dtype=int)
+        # saved before the parts' covariates could differ: every one in both
+        shifts = model_dict.get("path_covariates")
+        out.path_covariates = (
+            None if shifts is None else {k: list(v) for k, v in shifts.items()}
+        )
+        hazard = model_dict.get("hazard_covariates")
+        out.hazard_covariates = None if hazard is None else list(hazard)
         out.marker_reference = float(model_dict["marker_reference"])
         out._centre = float(model_dict["centre"])
         out._zbar = np.array(model_dict["covariate_means"], dtype=float)

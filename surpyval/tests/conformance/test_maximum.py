@@ -1136,11 +1136,8 @@ def _search_joint(model, data):
     # a coefficient in its covariate's units: the path means' shifts, then
     # the hazard's (search order)
     layout = model._layout
-    P, p = layout.P, layout.p
-    q = layout.q
-    shifts = [(P + j * p + col, col) for j in range(P) for col in range(p)]
-    start = P + P * p + q * (q + 1) // 2 + 3
-    hazard = [(start + col, col) for col in range(p)]
+    shifts = [(at, col) for at, _, col in layout.shift_positions()]
+    hazard = layout.hazard_positions()
     Z = np.asarray(data["Z"], dtype=float)[:, model._kept]
     return [Search(f, u, n).in_covariate_units(shifts + hazard, Z)]
 
