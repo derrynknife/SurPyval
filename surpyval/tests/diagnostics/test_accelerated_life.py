@@ -468,3 +468,121 @@ def test_plot():
     plt.close(fig)
     with pytest.raises(ValueError, match="which"):
         d.plot("extrapolation")
+
+
+# -- the use stress (the family's option) ---------------------------------
+def _use_row(d, name="stress"):
+    table = d.table[
+        (d.table["check"] == "extrapolation")
+        & (d.table["test"] == "use stress vs tested range")
+        & (d.table["covariates"] == (name,))
+    ]
+    assert len(table) == 1, d.table
+    return table.iloc[0]
+
+
+def test_the_use_stress_is_measured_on_the_life_model_s_scale():
+    model = _fit(sp.Weibull, X, V)
+    near = model.diagnose(use_stress=20.0)
+    row = _use_row(near)
+    # The power law is linear in log V: 20 kV is 0.69 of the tested
+    # range's width (26 to 38 kV) below it
+    width = np.log(38) - np.log(26)
+    expected = (np.log(26) - np.log(20)) / width
+    np.testing.assert_allclose(row["statistic"], expected, rtol=1e-12)
+    assert row["verdict"] == "ok" and near.ok and not near.advice
+    assert "log scale of the Power model" in row["detail"]
+    assert not any("diagnose(use_stress=...)" in n for n in near.notes)
+    inside = _use_row(model.diagnose(use_stress=30.0))
+    assert inside["statistic"] == 0 and inside["verdict"] == "ok"
+    # The comparison gives each life model's life at the use stress
+    own = _row(near, "life_model_comparison", "Power")
+    life = float(np.ravel(model.phi(np.array([[20.0]])))[0])
+    assert own["detail"].endswith("life at the use stress {:.3g}".format(life))
+
+
+def test_a_far_use_stress_warns_and_is_advised_caution():
+    model = _fit(sp.Weibull, X, V)
+    d = model.diagnose(use_stress=10.0)
+    row = _use_row(d)
+    width = np.log(38) - np.log(26)
+    np.testing.assert_allclose(
+        row["statistic"], (np.log(26) - np.log(10)) / width
+    )
+    assert row["verdict"] == "warn" and d.ok
+    [advice] = [a for a in d.advice if a.check == "extrapolation"]
+    assert advice.features == ("cb(Z=)", "random(Z=)")
+    assert "far outside the tested range" in advice
+
+
+def test_an_arrhenius_model_measures_the_use_stress_in_one_over_kelvin():
+    rng = np.random.default_rng(7)
+    T = np.repeat([350.0, 375.0, 400.0], 30)
+    t = sp.Weibull.random(90, 1, 2, random_state=rng) * np.exp(-10 + 6000 / T)
+    model = _fit(sp.Weibull, t, T, life_model=lm.Arrhenius)
+    row = _use_row(model.diagnose(use_stress=300.0))
+    expected = (1 / 300 - 1 / 350) / (1 / 350 - 1 / 400)
+    np.testing.assert_allclose(row["statistic"], expected, rtol=1e-12)
+    assert row["verdict"] == "warn"
+    assert "1 / stress scale" in row["detail"]
+
+
+def test_two_stresses_take_a_use_stress_each():
+    rng = np.random.default_rng(3)
+    T = np.tile(np.repeat([320.0, 350.0, 380.0], 20), 2)
+    U = np.repeat([5.0, 10.0], 60)
+    t = sp.Weibull.random(120, 1, 2, random_state=rng)
+    t = t * np.exp(-5 + 4000 / T) * U**-1.2
+    model = _fit(sp.Weibull, t, np.column_stack([T, U]), lm.PowerExponential)
+    d = model.diagnose(use_stress=[300.0, 2.0])
+    temperature, voltage = _use_row(d, "stress_0"), _use_row(d, "stress_1")
+    np.testing.assert_allclose(
+        temperature["statistic"],
+        (1 / 300 - 1 / 320) / (1 / 320 - 1 / 380),
+    )
+    np.testing.assert_allclose(
+        voltage["statistic"], (np.log(5) - np.log(2)) / np.log(2)
+    )
+    only = model.diagnose(use_stress=[300.0, 2.0], columns=["stress_1"])
+    use_rows = only.table[only.table["test"] == "use stress vs tested range"]
+    assert list(use_rows["covariates"]) == [("stress_1",)]
+
+
+@pytest.mark.parametrize("bad", [[20.0, 30.0], -5.0, 0.0, "x", np.nan, []])
+def test_a_use_stress_must_be_one_stress_the_model_takes(bad):
+    model = _fit(sp.Weibull, X, V)
+    with pytest.raises(ValueError, match="'use_stress'"):
+        model.diagnose(use_stress=bad)
+
+
+def test_an_option_the_family_does_not_take_is_refused():
+    model = _fit(sp.Weibull, X, V)
+    with pytest.raises(ValueError, match="no option 'stress'.*'use_stress'"):
+        model.diagnose(stress=20.0)
+    from surpyval.datasets import load_rossi_static
+
+    df = load_rossi_static()
+    cox = sp.CoxPH.fit(
+        df["week"].values, df[["fin"]].values, c=1 - df["arrest"].values
+    )
+    with pytest.raises(ValueError, match="only alpha and columns"):
+        cox.diagnose(use_stress=20.0)
+
+
+def test_without_a_use_stress_the_report_says_how_to_give_one():
+    d = _fit(sp.Weibull, X, V).diagnose()
+    assert any("diagnose(use_stress=...)" in n for n in d.notes)
+    assert "use stress vs tested range" not in set(d.table["test"])
+
+
+def test_the_plot_marks_the_use_stress():
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    d = _fit(sp.Weibull, X, V).diagnose(use_stress=20.0)
+    fig = d.plot("life_stress")
+    labels = [line.get_label() for line in fig.axes[0].get_lines()]
+    assert "use stress" in labels
+    plt.close(fig)

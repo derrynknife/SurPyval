@@ -23,6 +23,7 @@ class DiagnoseMixin:
         *,
         n_boot: "int | None" = None,
         random_state: Any = None,
+        **options: Any,
     ) -> "Diagnosis":
         """
         Check the model's assumptions, fit and influential points, and
@@ -61,6 +62,13 @@ class DiagnoseMixin:
         random_state : optional
             The seed of those resamples (SurPyval's one seed rule:
             ``None`` draws from numpy's global generator).
+        **options
+            Options of the model's family, named in
+            :doc:`/Model Diagnostics`: for an accelerated life model,
+            ``use_stress``, the stress the model is to predict at (a
+            number, or one per stress column), whose distance from the
+            tested stresses the report screens. A family refuses an
+            option it does not take.
 
         Returns
         -------
@@ -103,4 +111,5 @@ class DiagnoseMixin:
             columns=columns,
             n_boot=n_boot,
             random_state=random_state,
+            **options,
         )

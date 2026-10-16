@@ -57,7 +57,22 @@ The checks
     A screen, not a test: for each stress column, the number of distinct
     levels tested. It warns with two or fewer: a two-parameter life model
     then passes through each level's life exactly, so the data cannot
-    check its form, and any extrapolation rests on the form alone.
+    check its form, and any extrapolation rests on the form alone. With
+    ``diagnose(use_stress=...)``, also the distance of the use stress
+    from the tested range, as a multiple of the range's width, on the
+    scale the life model's log-life is linear in (``log s`` for a power
+    term, ``1 / s`` for an exponential one, ``s`` for ``Linear`` and
+    ``GeneralLogLinear``): it warns beyond :data:`EXTRAPOLATION_LIMIT`
+    (1, an extrapolation longer than the tested range is wide). The
+    comparison rows then also give each life model's life at the use
+    stress.
+
+The option
+----------
+``use_stress``, the stress the model is to predict at: a number for a
+one-stress model, one per stress column otherwise (in ``Z``'s order). The
+model has no notion of it, so the report screens the extrapolation only
+when it is given.
 """
 
 from __future__ import annotations
@@ -80,6 +95,10 @@ DELTA_AIC = 2.0
 #: The fewest distinct levels of a stress column that do not warn: with
 #: this many or fewer, a two-parameter life model fits every level.
 FEW_LEVELS = 2
+#: The use stress warns when it lies outside the tested range by more
+#: than this many times the range's width, on the life model's scale of
+#: the stress (``log s`` for a power law, ``1 / s`` for Arrhenius).
+EXTRAPOLATION_LIMIT = 1.0
 
 #: The built-in life models the comparison refits, by number of stress
 #: columns (names as ``surpyval.life_models`` spells them).
@@ -317,6 +336,142 @@ def _too_few_levels(ctx: Context, kept: int) -> str:
             "" if kept else " (none)",
         )
     )
+
+
+def _use_stress(ctx: Context) -> "np.ndarray | None":
+    """The ``use_stress`` option as one row of ``Z``, or ``None``; a
+    value the life model cannot take is refused."""
+
+    def compute() -> "np.ndarray | None":
+        given = ctx.options.get("use_stress")
+        if given is None:
+            return None
+        model = ctx.model
+        p = int(np.asarray(model.data.Z).shape[1])
+        try:
+            use = np.asarray(given, dtype=float).ravel()
+        except (TypeError, ValueError):
+            use = np.array([np.nan])
+        if use.size != p or not np.all(np.isfinite(use)):
+            raise ValueError(
+                "'use_stress' must be the stress the model is to predict "
+                "at: {} finite number{} (one per stress column of Z, {}); "
+                "got {!r}.".format(
+                    p, "" if p == 1 else "s", ", ".join(ctx.names), given
+                )
+            )
+        life_model = model.reg_model
+        for col in sorted(
+            {
+                *getattr(life_model, "positive_stress_columns", ()),
+                *getattr(life_model, "kelvin_stress_columns", ()),
+            }
+        ):
+            if use[col] <= 0:
+                raise ValueError(
+                    "'use_stress' must be positive in column {} ({}): the "
+                    "{} life model takes its power or logarithm, or reads "
+                    "it in kelvin; got {:g}.".format(
+                        col, ctx.names[col], life_model.name, use[col]
+                    )
+                )
+        return use.reshape(1, -1)
+
+    return ctx.cached("use_stress", compute)
+
+
+def _stress_scale(ctx: Context, Z: np.ndarray) -> tuple[np.ndarray, list]:
+    """The stresses ``Z`` on the scale the life model's log-life is
+    linear in, column by column, and each column's scale's name."""
+    life_model = ctx.model.reg_model
+    found = None
+    try:
+        found = life_model._stress_terms(Z)
+    except Exception:  # noqa: BLE001 -- a custom model's own terms
+        found = None
+    if found is not None and np.shape(found[0]) == Z.shape:
+        terms = np.asarray(found[0], dtype=float)
+        names = []
+        for j in range(Z.shape[1]):
+            if np.allclose(terms[:, j], np.log(Z[:, j])):
+                names.append("log")
+            elif np.allclose(terms[:, j], 1.0 / Z[:, j]):
+                names.append("1 / stress")
+            else:
+                names.append("linear")
+        return terms, names
+    kelvin = getattr(life_model, "kelvin_stress_columns", ())
+    positive = getattr(life_model, "positive_stress_columns", ())
+    out = np.array(Z, dtype=float)
+    names = []
+    for j in range(Z.shape[1]):
+        if j in kelvin:
+            out[:, j] = 1.0 / Z[:, j]
+            names.append("1 / stress")
+        elif j in positive:
+            out[:, j] = np.log(Z[:, j])
+            names.append("log")
+        else:
+            names.append("linear")
+    return out, names
+
+
+def _use_rows(ctx: Context) -> list[dict]:
+    use = _use_stress(ctx)
+    if use is None:
+        return []
+    Z = np.asarray(ctx.model.data.Z, dtype=float)
+    scaled, scales = _stress_scale(ctx, np.vstack([Z, use]))
+    rows = []
+    for j, name in ctx.checked:
+        tested, u = scaled[:-1, j], scaled[-1, j]
+        lo, hi = float(tested.min()), float(tested.max())
+        outside = max(lo - u, u - hi, 0.0)
+        width = hi - lo
+        if outside == 0:
+            ratio = 0.0
+        else:
+            ratio = outside / width if width > 0 else float("inf")
+        far = ratio > EXTRAPOLATION_LIMIT
+        tested_range = "{} to {}".format(
+            _fmt(Z[:, j].min()), _fmt(Z[:, j].max())
+        )
+        if outside == 0:
+            detail = "{} is within the tested range, {}".format(
+                _fmt(use[0, j]), tested_range
+            )
+        else:
+            detail = (
+                "{} is outside the tested range, {}, by {} times its "
+                "width ({} scale of the {} model)".format(
+                    _fmt(use[0, j]),
+                    tested_range,
+                    _fmt(ratio),
+                    scales[j],
+                    ctx.model.reg_model.name,
+                )
+            )
+        rows.append(
+            {
+                "test": "use stress vs tested range",
+                "covariates": (name,),
+                "statistic": ratio,
+                "verdict": "warn" if far else "ok",
+                "detail": detail,
+                "_kind": "use",
+                "_use": float(use[0, j]),
+                "_range": tested_range,
+            }
+        )
+    return rows
+
+
+def _life_at_use(fit: Any, use: "np.ndarray | None") -> str:
+    if use is None:
+        return ""
+    with np.errstate(all="ignore"):
+        life = float(np.asarray(fit.phi(use), dtype=float).ravel()[0])
+    return "; life at the use stress {}".format(_fmt(life))
 
 
 # ---------------------------------------------------------------------------
@@ -580,6 +735,7 @@ def _lof_rows(ctx: Context) -> list[dict]:
 def _comparison_rows(ctx: Context) -> list[dict]:
     found = _comparison(ctx)
     own = found[0]
+    use = _use_stress(ctx)
     rows = [
         {
             "test": "AIC",
@@ -587,7 +743,8 @@ def _comparison_rows(ctx: Context) -> list[dict]:
             "covariates": (),
             "statistic": own["aic"],
             "verdict": "ok",
-            "detail": "the fitted life model",
+            "detail": "the fitted life model"
+            + _life_at_use(own["model"], use),
         }
     ]
     for cand in found[1:]:
@@ -615,7 +772,7 @@ def _comparison_rows(ctx: Context) -> list[dict]:
                 "covariates": (),
                 "statistic": cand["aic"],
                 "verdict": "warn" if better else "ok",
-                "detail": detail,
+                "detail": detail + _life_at_use(cand["model"], use),
                 "_delta": -delta,
                 "_best": cand is found[1],
             }
@@ -630,6 +787,7 @@ def _life_panels(ctx: Context) -> list[Panel]:
     common = _common(ctx, kept) if len(kept) >= 2 else None
     levels = info["levels"]
     best = _best_alternative(ctx)
+    use = _use_stress(ctx)
     if common is None:
         return []
     lives = common["lives"]
@@ -641,6 +799,15 @@ def _life_panels(ctx: Context) -> list[Panel]:
         if single:
             s = levels[kept, 0]
             lo, hi = float(s.min()), float(s.max())
+            if use is not None:
+                lo, hi = min(lo, use[0, 0]), max(hi, use[0, 0])
+                ax.axvline(
+                    use[0, 0],
+                    color=INK["secondary"],
+                    ls=":",
+                    lw=1.0,
+                    label="use stress",
+                )
             grid = np.linspace(lo, hi, 100)
             ax.scatter(
                 s, lives, color=INK["muted"], zorder=3, label="each level"
@@ -723,7 +890,7 @@ def _extrapolation_rows(ctx: Context) -> list[dict]:
                 "_kind": "levels",
             }
         )
-    return rows
+    return rows + _use_rows(ctx)
 
 
 # ---------------------------------------------------------------------------
@@ -775,6 +942,23 @@ def _covariates(model: Any) -> list[str]:
 
 
 def _notes(ctx: Context) -> list[str]:
+    if _use_stress(ctx) is not None:
+        extrapolation = (
+            "Extrapolation: the use stress's distance from the tested "
+            "range, in widths of the range, on the scale the life model's "
+            "log-life is linear in; beyond {:g} it warns. The data cannot "
+            "test the life model there: compare the life models' lives at "
+            "the use stress (the life_model_comparison rows), and quote "
+            "the life with its confidence bounds (cb).".format(
+                EXTRAPOLATION_LIMIT
+            )
+        )
+    else:
+        extrapolation = (
+            "Extrapolation to the use stress is not screened: the model "
+            "does not know its use stress; give it as "
+            "diagnose(use_stress=...)."
+        )
     return [
         "Common shape: the likelihood-ratio test of each stress level "
         "fitted alone against one shape shared by all, each level keeping "
@@ -787,10 +971,7 @@ def _notes(ctx: Context) -> list[str]:
         "models as Power and Exponential. A life model is also a physical "
         "claim (Arrhenius for temperature, the inverse power law for "
         "voltage): prefer a better AIC only where its physics fits.",
-        "Extrapolation to the use stress is not screened: the model does "
-        "not know its use stress. Compare its tested range in the "
-        "extrapolation rows with the use stress, and quote the life there "
-        "with its confidence bounds (cb).",
+        extrapolation,
     ]
 
 
@@ -880,6 +1061,26 @@ def _levels_message(row: dict, ctx: Context) -> str:
     )
 
 
+def _far_message(row: dict, ctx: Context) -> str:
+    return (
+        "The use stress, {name} = {use:g}, is far outside the tested range "
+        "({tested}; {ratio} times its width away): the life there is the "
+        "life model's extrapolation, which the data cannot check. Quote "
+        "it with its confidence bounds, cb(x, Z=<the use stress>), and "
+        "compare it with the other plausible life models' (the "
+        "life_model_comparison rows give each one's life at the use "
+        "stress): where they disagree, the bounds understate the "
+        "uncertainty. If you can, test nearer the use stress; to compare "
+        "plans, simulate each with the fitted model's random(size, "
+        "Z=<the planned levels>) and refit.".format(
+            name=row["covariates"][0],
+            use=row["_use"],
+            tested=row["_range"],
+            ratio=_fmt(row["statistic"]),
+        )
+    )
+
+
 def _for_distribution(dist: str) -> Callable[[Any, Context], bool]:
     def when(row: Any, ctx: Context) -> bool:
         return bool(ctx.model.distribution.name == dist)
@@ -952,6 +1153,15 @@ def _advice() -> tuple[AdviceRule, ...]:
             on=("warn",),
         )
     )
+    rules.append(
+        AdviceRule(
+            "extrapolation",
+            _far_message,
+            ("cb(Z=)", "random(Z=)"),
+            when=lambda row, ctx: row.get("_kind") == "use",
+            on=("warn",),
+        )
+    )
     return tuple(rules)
 
 
@@ -965,6 +1175,7 @@ ACCELERATED_LIFE = register(
         validate=_validate,
         covariates=_covariates,
         columns=("life_model",),
+        options=("use_stress",),
         checks=(
             Check(
                 "common_shape",
@@ -988,7 +1199,8 @@ ACCELERATED_LIFE = register(
             Check(
                 "extrapolation",
                 "The test's stress levels can support the life model's "
-                "form.",
+                "form, and the use stress (if given) is not far outside "
+                "them.",
                 rows=_extrapolation_rows,
             ),
         ),

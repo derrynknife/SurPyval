@@ -92,7 +92,11 @@ to copy. The steps:
      columns=(...)))``. ``applies(model)`` is True for the family's
      fitted models; import their class inside it. ``columns`` names the
      family's own table columns (the Cox ``transform``; a ``cause`` for
-     competing risks); they follow ``check``.
+     competing risks); they follow ``check``. ``options`` names any
+     keyword options of the family's ``diagnose()`` besides ``alpha`` and
+     ``columns`` (an accelerated life model's ``use_stress``): the checks
+     read them from ``ctx.options``, and every other family refuses
+     them.
 
 2. **Add the module to** :data:`.registry.FAMILY_MODULES` **and delete
    the family's entries from** :data:`.registry.PENDING`.

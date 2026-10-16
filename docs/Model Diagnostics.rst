@@ -734,6 +734,50 @@ stress, with the life model's curve and the best alternative's:
 
     fig = d.plot()
 
+The use stress
+~~~~~~~~~~~~~~
+
+The model has no notion of the stress it will be used at, so the report
+screens the extrapolation only when it is told: ``use_stress`` is an
+option of this family's ``diagnose()``, a number for a one-stress model
+and one per stress column otherwise. Nelson's design voltage is 20 kV:
+
+.. jupyter-execute::
+
+    d20 = weibull.diagnose(use_stress=20)
+    rows = d20.table[d20.table['check'].isin(['life_model_comparison', 'extrapolation'])]
+    rows[['check', 'life_model', 'test', 'statistic', 'verdict', 'detail']]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _use = d20.table[d20.table['test'] == 'use stress vs tested range'].iloc[0]
+    assert round(_use['statistic'], 2) == 0.69 and _use['verdict'] == 'ok'
+    _power = float(np.ravel(weibull.phi([[20.0]]))[0])
+    _gll = surv.AcceleratedLife(surv.Weibull, life_models.GeneralLogLinear).fit(x, kv)
+    _exp_law = float(np.ravel(_gll.phi([[20.0]]))[0])
+    assert round(_power, -3) == 125000 and round(_exp_law, -2) == 25500
+    assert round(_power / _exp_law) == 5
+
+20 kV is 0.69 of the tested range's width below it, on the log scale the
+power law is straight on: not far, so the row is ok. But the comparison
+rows show what the data cannot settle: the power law puts the
+characteristic life at 20 kV near 125,000 minutes, and the exponential law,
+whose AIC is as good, near 25,500 -- five times shorter, from two models
+the tests cannot tell apart. A use stress more than one width outside the
+tested range warns, and the advice is to quote the life with its bounds
+(``cb``), compare the plausible life models there, and test nearer the
+use stress if possible:
+
+.. jupyter-execute::
+
+    print(weibull.diagnose(use_stress=10).advice[0])
+
+.. jupyter-execute::
+
+    fig = d20.plot('life_stress')
+
 The checks
 ~~~~~~~~~~
 
@@ -777,7 +821,13 @@ out.
     A screen: for each stress column, the number of levels tested. Two or
     fewer warn: a two-parameter life model then passes through each
     level's life, so nothing in the data checks its form, and the life
-    at the use stress rests on the form alone.
+    at the use stress rests on the form alone. With ``use_stress``, also
+    the use stress's distance outside the tested range, in widths of the
+    range, on the scale the life model's log-life is linear in (``log``
+    for a power term, ``1 / stress`` for an Arrhenius or Eyring one, the
+    stress itself for ``Linear`` and ``GeneralLogLinear``); more than 1
+    warns. The comparison rows then give each life model's life at the
+    use stress.
 
 With a continuous stress (each unit at its own stress) no level has two
 failures: the two tests cannot be computed, their rows warn and say so,
@@ -791,7 +841,9 @@ a life model that does not follow the levels, the best alternative by AIC
 (``AcceleratedLife(dist, life_models.<name>)``), or, if none is better, a
 life model of your own (a ``LifeModel`` subclass) or a second stress; for
 a better alternative alone, to refit with it and compare the two models'
-lives at the use stress; and for two levels, to test at three or more.
+lives at the use stress; for a use stress far outside the tested range,
+caution (its bounds, the other life models' lives there, testing nearer
+it); and for two levels, to test at three or more.
 SurPyval has no accelerated-test planning tool, so the advice suggests
 simulating a candidate plan with the fitted model's ``random(size, Z=...)``
 and refitting, to see how wide the bounds (``cb``) at the use stress

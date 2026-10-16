@@ -66,7 +66,10 @@ class Context:
     quantity once per report (residuals that several checks and the plots
     share). ``n_boot`` and ``random_state`` are ``diagnose()``'s, for a
     family whose tests resample (``None``: the family's default size, and
-    numpy's global generator).
+    numpy's global generator). ``options`` holds the
+    family's own keyword options given to ``diagnose()`` (those in
+    ``Family.options``, e.g. an accelerated life model's ``use_stress``),
+    by name.
     """
 
     model: Any
@@ -76,6 +79,7 @@ class Context:
     notes: list[str] = field(default_factory=list)
     n_boot: "int | None" = None
     random_state: Any = None
+    options: dict = field(default_factory=dict)
     _cache: dict = field(default_factory=dict, repr=False)
 
     def cached(self, key: str, compute: Callable[[], Any]) -> Any:
@@ -156,7 +160,10 @@ class Family:
     model's ``summary()`` names its coefficients). ``checks`` and
     ``advice`` are the :class:`Check` and :class:`AdviceRule` lists;
     ``notes(ctx)`` the notes every report of the family carries;
-    ``columns`` the family's own table columns, after ``check``.
+    ``columns`` the family's own table columns, after ``check``;
+    ``options`` the names of the keyword options its ``diagnose()``
+    takes besides ``alpha`` and ``columns`` (given to the checks as
+    ``ctx.options``; another name is refused).
     """
 
     name: str
@@ -168,6 +175,7 @@ class Family:
     covariates: "Callable[[Any], list[str]] | None" = None
     notes: "Callable[[Context], list[str]] | None" = None
     columns: tuple[str, ...] = ()
+    options: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -378,12 +386,15 @@ def diagnose(
     *,
     n_boot: "int | None" = None,
     random_state: Any = None,
+    **options: Any,
 ) -> Diagnosis:
     """
     Run the checks of ``model``'s family and report: the engine behind
     every model's ``diagnose()`` (see the method for the arguments).
     ``n_boot`` and ``random_state`` reach the family's checks on the
     :class:`Context`; a family whose tests do not resample ignores them.
+    ``options`` are the family's own (``Family.options``); one the family
+    does not take is refused.
 
     Examples
     --------
@@ -397,6 +408,20 @@ def diagnose(
     """
     alpha = _check_alpha(alpha)
     family = family_for(model)
+    unknown = sorted(set(options) - set(family.options))
+    if unknown:
+        raise ValueError(
+            "diagnose() of the {} family takes no option {}; {}.".format(
+                family.name,
+                ", ".join(repr(k) for k in unknown),
+                (
+                    "its options are "
+                    + ", ".join(repr(k) for k in family.options)
+                    if family.options
+                    else "it takes only alpha and columns"
+                ),
+            )
+        )
     if family.validate is not None:
         family.validate(model)
     names = (family.covariates or _covariate_names)(model)
@@ -408,6 +433,7 @@ def diagnose(
         n_boot=n_boot,
         random_state=random_state,
     )
+    ctx.options = dict(options)
 
     rows: list[dict] = []
     for check in family.checks:

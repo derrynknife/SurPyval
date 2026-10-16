@@ -81,7 +81,12 @@ Unreleased
   model better by more than 2 warns); and a warning for a stress tested
   at two levels or fewer. Advice names the better life model, separate
   fits of the levels, or more stress levels. Both tests agree with R's
-  ``survreg`` to 1e-5.
+  ``survreg`` to 1e-5. ``diagnose(use_stress=...)`` gives the stress the
+  model is to predict at: the report then warns when it is more than one
+  width of the tested range outside it (on the life model's scale of the
+  stress), and gives each life model's life there. A family's own
+  options are declared in ``Family.options``, reach its checks as
+  ``ctx.options``, and are refused by the other families.
 - The recurrent-event families of ``diagnose()`` (#873), for the Poisson
   processes (``HPP``, ``CrowAMSAA``, ``Duane``, ``CoxLewis``), the
   imperfect-repair models (``GeneralizedRenewal``,
