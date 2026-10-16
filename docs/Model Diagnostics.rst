@@ -1423,3 +1423,146 @@ has no rows, and a note says why, for a model fitted to left- or
 interval-censored or right-truncated rows (the calibration model is a Cox
 model), to time-varying covariates (``fit_tvc``), with fewer than 10
 failures, or that predicts the same survival for every unit.
+
+Shared frailty
+--------------
+
+A shared-frailty model (``WeibullFrailty``, ...,
+``Frailty(dist, family=...)``, and ``CoxFrailty``) is a proportional
+hazards model *given the frailty*: :math:`h(t \mid Z, u) = u\, h_0(t)
+e^{\beta'Z}`, with :math:`u` shared by the rows of a group. Its checks are
+of the frailty and of that conditional model. They are not those of the
+same model refitted without the frailty: integrating a frailty out makes
+the marginal hazards non-proportional (the hazard ratio fades as the
+frailer units fail), so ``WeibullPH`` or ``CoxPH`` diagnostics on
+clustered data would flag a model that holds.
+
+R's kidney catheter data: two infection times for each of 38 patients,
+with the patient's age and sex.
+
+.. jupyter-execute::
+
+    from surpyval.datasets import load_kidney
+
+    kidney = load_kidney()
+    kidney['female'] = (kidney['sex'] == 2).astype(float)
+    kidney['censored'] = 1 - kidney['status']
+    frail = surv.WeibullFrailty.fit_from_df(
+        kidney, x_col='time', c_col='censored', group_col='id',
+        Z_cols=['age', 'female'],
+    )
+    d = frail.diagnose()
+    d.table[['check', 'covariates', 'statistic', 'df', 'p', 'verdict']]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _row = d.table.iloc[0]
+    assert _row['check'] == 'frailty_variance'
+    assert round(_row['statistic'], 2) == 8.73
+    assert round(_row['p'], 4) == 0.0016
+    assert '43' in d.table['test'][2]
+    assert d.ok and not d.advice
+    assert set(d.table['verdict']) == {'ok'}
+
+The patients differ: the frailty raises twice the log-likelihood by 8.73
+over ``WeibullPH`` on the same rows, ``p = 0.0016``. Given the frailty,
+neither effect changes at the median infection time (43 days) and age
+acts linearly; the log-normal frailty and the other baselines fit no
+better. The posterior frailties, age's martingale residuals given the
+frailty, the AIC of each baseline and the marginal Cox-Snell residuals:
+
+.. jupyter-execute::
+
+    fig = d.plot()
+
+With the disease type as well the frailty vanishes: the Cox frailty
+model's variance is 0, and the report advises the model without it.
+
+.. jupyter-execute::
+
+    kidney['pkd'] = (kidney['disease'] == 'PKD').astype(float)
+    cox = surv.CoxFrailty.fit_from_df(
+        kidney, x_col='time', c_col='censored', group_col='id',
+        Z_cols=['age', 'female', 'pkd'],
+    )
+    d = cox.diagnose()
+    print(d)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert d.table['verdict'].tolist() == ['warn'] and d.table['p'][0] == 1
+    assert d.advice[0].features == ('CoxPH.fit', 'CoxPH.fit_from_df')
+
+The checks of a frailty model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``frailty_variance`` (both)
+    The likelihood-ratio test of no frailty, ``theta = 0``: twice the
+    frailty fit's log-likelihood less that of the same model without the
+    frailty fitted to the same rows -- ``<Dist>PH.fit(x, Z, c, n)`` for a
+    parametric baseline (``<Dist>.fit`` without covariates), and for
+    ``CoxFrailty`` the Cox partial likelihood of ``CoxPH.fit``, against
+    R's integrated likelihood. ``theta = 0`` is on the boundary, so the
+    p-value is that of the 50:50 mixture of :math:`\chi^2_0` and
+    :math:`\chi^2_1` (Self and Liang 1987): half the :math:`\chi^2_1`
+    p-value, and 1 for a fit with ``theta`` at 0. A screen: it warns when
+    the frailty is not significant (``p >= alpha``), and the advice names
+    the model without it. The statistics agree with R's (``coxph(... +
+    frailty(id, dist = 'gamma'))``, lme4's ``glmer`` for the log-normal
+    frailty, ``survreg`` without a frailty) to 1e-9. On data simulated
+    without a frailty the test rejected 5.1% of 1000 Weibull data sets at
+    ``alpha = 0.05`` (4.75% and 3% of 400 for the log-normal and Cox
+    frailties); more than half of the fits put ``theta`` on its boundary,
+    which makes the test conservative at larger levels.
+``frailty_family`` (parametric)
+    A screen: the AIC against the other frailty family (``family="gamma"``
+    or ``"lognormal"``) refitted to the same rows; it warns when the
+    other's is more than 2 lower. ``CoxFrailty`` has the gamma frailty
+    only.
+``proportional_hazards`` (parametric)
+    For each covariate, the likelihood-ratio test of a step in its
+    coefficient, given the frailty, at the median failure time (1 df),
+    with a step in the baseline under both models, as for ``WeibullPH``;
+    and a ``GLOBAL`` test of a step in every coefficient. Both models are
+    maximised over the marginal likelihood (the frailty integrated out,
+    ``theta`` re-estimated). R's values (a Poisson GLMM of the split
+    follow-up for the log-normal frailty, the closed-form gamma-frailty
+    likelihood for the gamma) agree to 1e-6.
+``functional_form`` (parametric)
+    For each covariate with three or more distinct values, the
+    likelihood-ratio test of adding its square, given the frailty, and
+    the martingale residuals given each group's posterior frailty.
+``baseline_distribution`` (parametric)
+    A screen: the AIC against each other built-in baseline with the same
+    frailty, refitted to the same rows; it warns when the best is more
+    than 2 lower.
+``overall_fit`` (both)
+    A plot: the marginal Cox-Snell residuals, the frailty integrated out,
+    against the unit exponential.
+
+The advice: the model without the frailty when it is not significant;
+``Frailty(dist, family=...)`` for the other family or a better baseline; a
+transform in a formula for a covariate that is not linear; and, as the
+frailty fitters have no strata or time-varying effects, a separate frailty
+fit per level, or a stratified or time-varying Cox model of the marginal
+hazard with standard errors clustered by group, for an effect that
+changes with time.
+
+What these checks support
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Both frailty families (gamma and log-normal), any baseline, counts
+(``n``), formulas and fits without covariates; for ``CoxFrailty`` both tie
+methods. A ``CoxFrailty`` fit with ``theta=`` given has no variance to
+test, and the report says so. A ``CoxFrailtyModel`` does not keep which
+group each row is in, so its conditional model is not checked (only the
+frailty variance and the Cox-Snell plot), and the report says why.
+Influence and outliers are not screened: a frailty model's residuals
+depend on each group's shrunken frailty estimate, and the rows of a group
+are not independent. ``diagnose()`` refuses, saying what to do: a model
+restored with ``from_dict``, one with an aliased coefficient, and one
+whose fit is not a verified maximum.

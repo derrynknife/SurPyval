@@ -52,6 +52,24 @@ Unreleased
   model of the split follow-up) to 1e-6 (``scripts/reference/
   reference_r_ph_aft.R``). Time-varying fits and custom links are refused
   for now.
+- The shared-frailty families of ``diagnose()`` (#872), for
+  ``WeibullFrailty``, ..., ``Frailty(dist, family=...)`` and
+  ``CoxFrailty``: the boundary likelihood-ratio test of no frailty
+  against the same model without it refitted to the same rows
+  (``<Dist>PH.fit``, or the Cox partial likelihood against R's
+  I-likelihood), with the 50:50 mixture of chi2(0) and chi2(1)
+  (``surpyval.diagnostics.frailty.zero_variance_test``); for a parametric
+  baseline also the AIC against the other frailty family and the other
+  built-in baselines, and the likelihood-ratio tests, over the marginal
+  likelihood, of a step in each coefficient at the median failure time and
+  of a covariate's square given the frailty; posterior-frailty,
+  martingale-residual and marginal Cox-Snell plots. Advice names the model
+  without the frailty when it is not significant, ``Frailty(dist,
+  family=...)``, a formula transform, and per-level or clustered Cox fits
+  for an effect that changes with time. The statistics agree with R's
+  ``coxph(... + frailty(id))``, lme4's ``glmer`` and ``survreg`` to 1e-6
+  (``scripts/reference/reference_r_frailty_diag.R``). A ``CoxFrailtyModel``
+  keeps no group of each row, so only its frailty variance is tested.
 - The calibration of predicted survival, a ``calibration`` check shared by
   the Cox, parametric PH and AFT families of ``diagnose()`` (#881): at the
   quartiles of the failure times, the smoothed calibration curve of

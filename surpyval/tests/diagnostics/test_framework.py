@@ -337,8 +337,6 @@ REG = "surpyval.univariate.regression."
 @pytest.mark.parametrize(
     "path, attributes, issue",
     [
-        (REG + "FrailtyModel", {}, 872),
-        (REG + "CoxFrailtyModel", {}, 872),
         (
             "surpyval.univariate.competing_risks.ParametricCompetingRisks",
             {},

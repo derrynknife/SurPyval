@@ -1,0 +1,125 @@
+{
+  "generator": "scripts/reference/reference_r_frailty_diag.R",
+  "R": "R version 4.3.3 (2024-02-29)",
+  "references": {
+    "kidney_cox_gamma_efron": {
+      "fixture": "kidney",
+      "software": "R survival",
+      "version": "3.5.8",
+      "call": "coxph(Surv(time, status) ~ age + female + frailty(id, dist = 'gamma', theta = theta, sparse = FALSE), ties = 'efron') against coxph(Surv(time, status) ~ age + female)",
+      "settings": {
+        "ties": "efron",
+        "loglik": "R's I-likelihood, history[[1]]$c.loglik, at the theta maximising it",
+        "statistic": "2 (I-likelihood - partial likelihood without frailty)",
+        "p": "pchisq(statistic, 1, lower.tail = FALSE) / 2"
+      },
+      "values": {
+        "theta": 0.407769582313804,
+        "loglik": -181.638626525392,
+        "loglik_null": -184.344568139567,
+        "statistic": 5.41188322834967,
+        "p": 0.0100000641729193
+      }
+    },
+    "kidney_cox_gamma_breslow": {
+      "fixture": "kidney",
+      "software": "R survival",
+      "version": "3.5.8",
+      "call": "coxph(Surv(time, status) ~ age + female + frailty(id, dist = 'gamma', theta = theta, sparse = FALSE), ties = 'breslow') against coxph(Surv(time, status) ~ age + female)",
+      "settings": {
+        "ties": "breslow",
+        "loglik": "R's I-likelihood, history[[1]]$c.loglik, at the theta maximising it",
+        "statistic": "2 (I-likelihood - partial likelihood without frailty)",
+        "p": "pchisq(statistic, 1, lower.tail = FALSE) / 2"
+      },
+      "values": {
+        "theta": 0.397313398258975,
+        "loglik": -182.05335892518,
+        "loglik_null": -184.657093708687,
+        "statistic": 5.20746956701333,
+        "p": 0.0112450222020367
+      }
+    },
+    "kidney_cox_gamma_no_frailty": {
+      "fixture": "kidney",
+      "software": "R survival",
+      "version": "3.5.8",
+      "call": "coxph(Surv(time, status) ~ age + female + I(disease == 'PKD') + frailty(id, dist = 'gamma')) against the same without frailty",
+      "settings": {
+        "ties": "efron",
+        "note": "R's theta is 5e-9: no frailty"
+      },
+      "values": {
+        "theta": 5e-09,
+        "statistic": 0,
+        "p": 1
+      }
+    },
+    "kidney_lognormal_weibull": {
+      "fixture": "kidney",
+      "software": "R lme4",
+      "version": "1.1.35.1",
+      "call": "glmer(status ~ <terms> + (1 | id) + offset(log(stop^shape - start^shape)), family = poisson, nAGQ = 25), profiled over shape; null survreg(Surv(time, status) ~ age + female, dist = 'weibull')",
+      "settings": {
+        "model": "Weibull PH baseline, log-normal frailty u = exp(w), w ~ N(0, theta)",
+        "step": "the split at tau with `late` under both models; step_z = 2 (loglik with late:z - loglik with late)",
+        "square_age": "2 (loglik with I((age / 10)^2) - loglik without): the model with I(age^2), scaled (unscaled, glmer stops 0.004 short)",
+        "aic": "2 * 5 - 2 loglik (alpha, beta, two coefficients, theta)"
+      },
+      "values": {
+        "tau": 43,
+        "loglik": -333.030184026759,
+        "loglik_null": -336.554156478568,
+        "statistic": 7.04794490361928,
+        "p": 0.00396781228583715,
+        "step_age": 0.88937014080534,
+        "step_female": 3.48151129598136,
+        "step_global": 5.04746511786993,
+        "square_age": 0.59740554058601,
+        "aic": 676.060368053518
+      }
+    },
+    "kidney_lognormal_exponential": {
+      "fixture": "kidney",
+      "software": "R lme4",
+      "version": "1.1.35.1",
+      "call": "glmer(status ~ age + female + (1 | id) + offset(log(time)), family = poisson, nAGQ = 25); null survreg(..., dist = 'exponential')",
+      "settings": {
+        "model": "exponential baseline, log-normal frailty",
+        "aic": "2 * 4 - 2 loglik"
+      },
+      "values": {
+        "loglik": -333.745080284292,
+        "loglik_null": -337.132050003756,
+        "statistic": 6.7739394389265,
+        "p": 0.00462492194171382,
+        "aic": 675.490160568585
+      }
+    },
+    "kidney_gamma_weibull": {
+      "fixture": "kidney",
+      "software": "R stats",
+      "version": "4.3.3",
+      "call": "optim() of the closed-form gamma-frailty Weibull PH marginal likelihood (see the comment above gamma_nll); null survreg(Surv(time, status) ~ age + female, dist = 'weibull')",
+      "settings": {
+        "model": "Weibull PH baseline, gamma frailty of mean 1, variance theta",
+        "step": "the split at tau with `late` under both models; step_z = 2 (loglik with late:z - loglik with late)",
+        "square_age": "2 (loglik with I((age / 10)^2) - loglik without)",
+        "aic": "2 * 5 - 2 loglik"
+      },
+      "values": {
+        "tau": 43,
+        "loglik": -332.187817750801,
+        "loglik_null": -336.554156478568,
+        "statistic": 8.73267745553551,
+        "p": 0.00156278593584768,
+        "step_age": 0.799635887683053,
+        "step_female": 1.91587275115864,
+        "step_global": 3.35495387158346,
+        "square_age": 0.268621480869797,
+        "aic": 674.375635501601,
+        "theta": 0.510189588655646
+      }
+    }
+  }
+}
