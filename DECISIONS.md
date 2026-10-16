@@ -13,6 +13,13 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-10-16
 
+### Branches left behind
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Test planning (#862–#865, #880), built on branch `claude/happy-einstein-9bpmln` on 14 Oct but never opened as a PR, is merged. | maintainer | Test planning is statistics, so it belongs in SurPyval. | merged (#965) |
+| Leave `claude/roadmap-live-npv` (a ROADMAP section) and PR #858 (Reliafy links) unmerged. | maintainer | No code in either. | left as is |
+
 ### Diagnostics: `diagnose()` (#867–#875, #881)
 
 | Decision | By | Reason | Status |
@@ -23,6 +30,7 @@ Design decisions made while working on the open issues, with the reason for each
 | Rows that choose between models, where the test rejecting is the good outcome, are screens: ok or warn, never fail. These are the recurrent trend and repair rows and the frailty variance row. | principle (framework rule: screens set ok/warn) | They are model-choice screens, not tests of an assumption. | to be documented once in the Verdicts section |
 | Competing risks runs the Cox checks per cause, but not calibration. | proposed | A cause's exp(−H_k) is not the probability of being free of that cause when other causes compete, so there is nothing to calibrate it against. | on branch |
 | Docs data typed from memory (Nelson's insulating fluid) must be checked against a published source, or replaced with simulated data. | principle 16, 23 | Quoted data and numbers must be checked. | to do |
+| The accelerated-life advice to "plan more stress levels" names `surpyval.test_planning`'s accelerated life test planning (#864), not "simulate a plan with `model.random`". | proposed | Test planning is now in SurPyval. | to do |
 
 ### Partial-effects plots (#876)
 
