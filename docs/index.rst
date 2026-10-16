@@ -126,11 +126,13 @@ so on.
      - Repairable items that fail again and again: the mean cumulative
        function, homogeneous and non-homogeneous Poisson processes
        (Crow-AMSAA, Duane, Cox-Lewis), imperfect repair (Kijima, G1, ARA,
-       ARI), trend tests, and proportional-intensity regression.
+       ARI), trend tests, proportional-intensity regression, and whether
+       a corrective action changed the failure rate.
      - :doc:`Recurrent Event Analysis` /
        :doc:`Recurrent Event Modelling with SurPyval`;
        :doc:`Recurrent Event Regression Analysis` /
-       :doc:`Recurrent Event Regression Modelling with SurPyval`
+       :doc:`Recurrent Event Regression Modelling with SurPyval`;
+       :doc:`Intervention Analysis with SurPyval`
    * - Degradation
      - Measurements that drift towards a failure threshold: general path
        models, Wiener and Gamma processes, destructive degradation,
@@ -147,8 +149,9 @@ so on.
      - Planning tests before they are run: reliability and MTBF
        demonstration tests (fixed-length and sequential), the units and
        test length to estimate a B-life to a given precision, optimum and
-       compromise accelerated life test plans, and the sample size and
-       power of a log-rank comparison.
+       compromise accelerated life test plans, the sample size and power
+       of a log-rank comparison, and the power of a comparison of failure
+       rates before and after a change.
      - :doc:`Test Planning with SurPyval`
 
 Almost every fitted model can be saved to a dictionary or a JSON file and
@@ -292,6 +295,7 @@ Contents:
    Competing Risks SurPyval Modelling
    Recurrent Event Modelling with SurPyval
    Recurrent Event Regression Modelling with SurPyval
+   Intervention Analysis with SurPyval
    Degradation Modelling with SurPyval
    Multivariate Modelling with SurPyval
    Test Planning with SurPyval

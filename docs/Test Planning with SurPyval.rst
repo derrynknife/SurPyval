@@ -474,6 +474,15 @@ new units and 35% of the old would fail, detecting a 30% lower hazard takes
 Freedman's formula, as lifelines' ``sample_size_necessary_under_cph`` uses,
 is the option ``method="freedman"``.
 
+To show that a change to a repairable system lowered its *rate* of
+failures, the comparison is of the failures before and after the change,
+over the operating time of each: :func:`~surpyval.test_planning.rate_ratio_power`,
+:func:`~surpyval.test_planning.rate_ratio_detectable` and
+:func:`~surpyval.test_planning.rate_ratio_exposure` give the power, the
+smallest change detectable and the operating time needed, for the test of
+:func:`surpyval.recurrent.intervention_test`. They are worked through in
+:doc:`Intervention Analysis with SurPyval`.
+
 References
 ----------
 

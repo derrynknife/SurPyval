@@ -352,6 +352,39 @@ Unreleased
     Schoenfeld's formula or, with ``method="freedman"``, Freedman's (as
     lifelines' ``sample_size_necessary_under_cph`` and
     ``power_under_cph``).
+  - Power of a comparison of failure rates before and after a change:
+    ``rate_ratio_power``, ``rate_ratio_detectable`` (the smallest change
+    an exposure detects) and ``rate_ratio_exposure`` (the exposure after
+    the change a test needs; ``inf`` when the failures before it are too
+    few for any), for the exact conditional test of
+    ``surpyval.recurrent.intervention_test``. The power is the exact sum
+    over the counts, not a normal approximation.
+- ``surpyval.recurrent.intervention_test``: did an intervention (a design
+  change, a corrective action) change the rate of failures of one
+  repairable system or a fleet, and is the evidence enough to say? It
+  splits each system's record at its own intervention time and gives the
+  ratio of the rates after and before, its confidence interval and the
+  p-value of no change. ``model="hpp"`` (the default) is the exact
+  conditional test of two Poisson rates, with the Clopper-Pearson interval
+  (``method="mid-p"`` for the mid-p versions); with
+  ``baseline="per-system"`` (the default) each system keeps its own rate
+  and the test is the exact stratified test, which pooled systems with
+  different rates cannot fool. ``model="power-law"`` lets the rate trend
+  with age as the Crow-AMSAA power law, multiplied by the ratio after the
+  change, and uses the likelihood ratio and the profile-likelihood
+  interval. The ``InterventionTestResult`` gives a verdict
+  (``"decrease"``, ``"increase"``, ``"no change detected"``,
+  ``"inconclusive"`` or ``"untestable"``), the power the exposure had to
+  detect a target change, the smallest change it could detect, the
+  exposure still needed, and notes saying what to do when the evidence is
+  short; data that cannot answer (no exposure after the change, no
+  failure before it) give an ``"untestable"`` result that says why,
+  rather than an error. The HPP result flags a trend within the periods
+  (the Laplace test), which the power law accounts for. It takes ``T``,
+  the fitters' ``c``, delayed entry ``tl`` or gapped ``windows``, and
+  round-trips through strict JSON (``to_dict`` / ``from_dict``). The
+  calibration studies check its size, power and coverage by simulation.
+  See the new page "Intervention Analysis with SurPyval".
 
 **Changed**
 

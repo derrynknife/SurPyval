@@ -95,3 +95,14 @@ the tests and of the models' goodness-of-fit methods.
     :maxdepth: 1
 
     counting/trend_tests
+
+Interventions
+-------------
+
+Whether the rate of failures changed at an intervention (a design
+change, a corrective action), with the evidence to say so.
+
+.. toctree::
+    :maxdepth: 1
+
+    counting/intervention
