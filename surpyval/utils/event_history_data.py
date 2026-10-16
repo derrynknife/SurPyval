@@ -21,6 +21,7 @@ from surpyval.utils.surpyval_data import (
     _named_row,
     _plain,
     named_fit,
+    with_data_unit,
 )
 from surpyval.utils.validation import unknown_cause_error
 from surpyval.utils.warnings import (
@@ -105,6 +106,9 @@ class EventHistoryData(ReshapeMixin):
     # without being fitted), in the order of ``ids``, from the records or
     # ``from_dataframe``; None where the data has none.
     attributes: "list | None" = None
+    # The unit of the ages (``"hour"``), a label as a model's ``unit`` is;
+    # None where unknown (#945).
+    unit: "str | None" = None
 
     def __init__(
         self,
@@ -115,6 +119,7 @@ class EventHistoryData(ReshapeMixin):
         e: "npt.ArrayLike | None" = None,
         tl: "npt.ArrayLike | None" = None,
         tr: "npt.ArrayLike | None" = None,
+        unit: Any = None,
     ) -> None:
         self.x = np.atleast_1d(x).copy()  # the caller's stays theirs
         # One i, c or n is every row's, as for handle_xicn
@@ -160,6 +165,10 @@ class EventHistoryData(ReshapeMixin):
         self.e = np.atleast_1d(e).copy() if e is not None else None
         self._check_rows()
         self.ids = np.unique(self.i).tolist()
+        if unit is not None:
+            from surpyval.utils.item_history import _unit
+
+            self.unit = _unit("(data)", unit)
 
         if self.x.ndim == 1:
             self.interarrival_times = self.get_interarrival_times()
@@ -698,6 +707,7 @@ class EventHistoryData(ReshapeMixin):
         right_truncation: Any = None,
         covariates: "dict | None" = None,
         gaps: bool = False,
+        unit: Any = None,
         **unknown: Any,
     ) -> "EventHistoryData":
         """
@@ -735,6 +745,8 @@ class EventHistoryData(ReshapeMixin):
             from the start of observation: ``left_truncation``, else 0) and
             ``right_censored`` as the time from the last failure to the end
             of observation; each item's ages are their running totals.
+        unit : str, optional
+            The unit of the ages, kept with the data.
 
         Returns
         -------
@@ -818,7 +830,7 @@ class EventHistoryData(ReshapeMixin):
                     covariates=None if rows is None else rows[k],
                 )
             )
-        return cls.from_items(histories)
+        return cls.from_items(histories, unit=unit)
 
     @classmethod
     def from_dataframe(
@@ -966,7 +978,9 @@ class EventHistoryData(ReshapeMixin):
         return history_to_frame(self)
 
     @classmethod
-    def from_items(cls, items: Any, **unknown: Any) -> "EventHistoryData":
+    def from_items(
+        cls, items: Any, unit: Any = None, **unknown: Any
+    ) -> "EventHistoryData":
         """
         The dataset of several items' histories, each an
         :class:`~surpyval.utils.item_history.ItemHistory`: their failures
@@ -997,7 +1011,7 @@ class EventHistoryData(ReshapeMixin):
         refuse_unknown_keywords(
             "EventHistoryData.from_items",
             unknown,
-            ["items"],
+            ["items", "unit"],
             {
                 k: v
                 for k, v in FROM_ITEMS_ALIASES.items()
@@ -1013,6 +1027,9 @@ class EventHistoryData(ReshapeMixin):
 
         ids = [history.id for history in items]
         check_item_ids(ids, "ItemHistory")
+        from surpyval.utils.item_history import units_of
+
+        unit = units_of(items, unit, "items' ages")
         static = _all_or_none(items, "covariates", lambda h: h.covariates)
         names = covariate_names_of(items)
         varying = _all_or_none(
@@ -1104,6 +1121,7 @@ class EventHistoryData(ReshapeMixin):
                 # the arrays a fit is given)
                 Z=np.nan_to_num(np.array(Z), nan=0.0) if static else None,
                 e=_object_array(e) if any(typed) else None,
+                unit=unit,
             )
         if static:
             rows = {
@@ -1330,6 +1348,7 @@ class EventHistoryData(ReshapeMixin):
                 if self.attributes is None
                 else self.attributes[self.ids.index(key)]
             ),
+            unit=self.unit,
             **state_args,
         )
 
@@ -1426,6 +1445,7 @@ class EventHistoryData(ReshapeMixin):
             None if self.e is None else self.e[index],
             tl=self.tl[index],
             tr=self.tr[index],
+            unit=self.unit,
         )
         # Covariates, schedules and states go with the rows they belong
         # to: a fit of a slice must see what a fit of the whole would.
@@ -1694,9 +1714,13 @@ def _history_end(history: Any) -> "float | None":
 
 def _lifetime_parts(history: Any) -> dict:
     """What a lifetime made from ``history`` keeps of it: its covariates
-    (named, where they are)."""
-    covariates = history._fields().get("covariates")
-    return {} if covariates is None else {"covariates": covariates}
+    (named, where they are), attributes and unit."""
+    fields = history._fields()
+    return {
+        name: fields[name]
+        for name in ("covariates", "attributes", "unit")
+        if name in fields
+    }
 
 
 def _first_event(history: Any) -> Any:
@@ -2015,9 +2039,12 @@ def accepts_event_history_data(method: F) -> F:
             filled["e"] = data.e
         _refuse_what_fit_cannot_take(data, names, lost)
         bound.arguments.update(filled)
-        return named_fit(
-            lambda: method(*bound.args, **bound.kwargs),
-            data.covariate_names if "Z" in filled else None,
+        return with_data_unit(
+            named_fit(
+                lambda: method(*bound.args, **bound.kwargs),
+                data.covariate_names if "Z" in filled else None,
+            ),
+            data,
         )
 
     setattr(wrapper, "_accepts_event_history_data", True)
@@ -2104,7 +2131,7 @@ def refuses_unmodelled_data(method: F) -> F:
         if signature is not None:
             _check_needs_covariates(data, signature)
         _refuse_what_fit_cannot_take(data, names)
-        return method(*args, **kwargs)
+        return with_data_unit(method(*args, **kwargs), data)
 
     return wrapper  # type: ignore[return-value]
 

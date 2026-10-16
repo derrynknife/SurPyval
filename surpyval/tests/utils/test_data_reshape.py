@@ -482,3 +482,54 @@ def test_issue_932_reshapes_are_fast_at_fifty_thousand_items():
         start = time.perf_counter()
         op()
         assert time.perf_counter() - start < 0.5
+
+
+# -- #937: a cut-off per item, by dict or by a function of the record ----
+
+
+def test_issue_937_cut_offs_per_item():
+    data = SurpyvalData.from_items(
+        [
+            ItemLifetime("P1", observed=500, attributes={"installed": 100}),
+            ItemLifetime(
+                "P2", right_censored=1200, attributes={"installed": 0}
+            ),
+            ItemLifetime("P3", observed=900, attributes={"installed": 300}),
+        ]
+    )
+    by_id = data.censor_at({"P2": 1000, "P3": 800})
+    assert by_id.c.tolist() == [0, 1, 1]
+    assert by_id.x.tolist() == [500.0, 1000.0, 800.0]
+    # The same as combining per-item cuts
+    parts = [
+        data.select(ids="P1"),
+        data.select(ids="P2").censor_at(1000),
+        data.select(ids="P3").censor_at(800),
+    ]
+    joined = SurpyvalData.from_items(sum((p.to_items() for p in parts), []))
+    assert joined.to_items() == by_id.to_items()
+    # A study ending at calendar time 1000: each item's age at the end
+    study_end = 1000
+    by_record = data.censor_at(
+        lambda item: study_end - item.attribute("installed")
+    )
+    assert by_record.x.tolist() == [500.0, 1000.0, 700.0]
+    assert by_record.c.tolist() == [0, 1, 1]
+    entered = data.enter_at({"P1": 200, "P3": 1000})
+    assert entered.ids == ["P1", "P2"] and entered.tl.tolist() == [
+        200.0,
+        -np.inf,
+    ]
+    assert data.enter_at(lambda item: 200).tl.tolist() == [200.0] * 3
+    with pytest.raises(KeyError, match="No item 'X'"):
+        data.censor_at({"X": 5})
+    with pytest.raises(ValueError, match="needs item ids, and this data"):
+        SurpyvalData([1, 2]).censor_at({0: 1.5})
+    with pytest.raises(ValueError, match="censor_at takes one age"):
+        data.censor_at({"P1": "2024-01-01"})
+    history = EventHistoryData.from_items(HISTORIES)
+    cut = history.censor_at({"M1": 1500})
+    assert (
+        cut.item("M1").right_censored == 1500
+        and cut.item("M2") == HISTORIES[1]
+    )

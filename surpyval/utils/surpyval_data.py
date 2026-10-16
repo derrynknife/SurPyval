@@ -106,6 +106,9 @@ class SurpyvalData(ReshapeMixin):
     # without being fitted), from the records or ``from_dataframe``; None
     # where the data has none, and None for a row without any.
     attributes: "list | None" = None
+    # The unit of the times (``"hour"``), a label as a model's ``unit``
+    # is; None where unknown (#945).
+    unit: "str | None" = None
 
     def __init__(
         self,
@@ -123,6 +126,7 @@ class SurpyvalData(ReshapeMixin):
         e: ArrayLike | None = None,
         covariate_names: "list | None" = None,
         ids: Any = None,
+        unit: Any = None,
     ) -> None:
         """Initialize a SurpyvalData instance for survival analysis.
 
@@ -177,6 +181,10 @@ class SurpyvalData(ReshapeMixin):
             ``from_items`` gives them: ``data.item(id)`` and
             ``select(ids=...)`` then find the rows. Giving ``ids`` turns
             ``group_and_sort`` off, as ``Z`` does.
+        unit : str, optional
+            The unit of the times (``"hours"``, ``"km"``), a label kept
+            with the data as a model keeps its ``unit``; ``fit(data)``
+            gives it to the model.
         group_and_sort : bool, default=True
             Whether to group and sort the data. Set False when using covariates
             to maintain data order.
@@ -250,6 +258,10 @@ class SurpyvalData(ReshapeMixin):
             listed = _kind_ids("ids", ids, len(self.c))
             check_item_ids(listed, "row (identical items are its count, n)")
             self.ids = listed
+        if unit is not None:
+            from surpyval.utils.item_history import _unit
+
+            self.unit = _unit("(data)", unit)
 
     def add_covariates(self, Z: ArrayLike) -> None:
         """
@@ -426,6 +438,7 @@ class SurpyvalData(ReshapeMixin):
         right_censored_ids: Any = None,
         left_censored_ids: Any = None,
         interval_censored_ids: Any = None,
+        unit: Any = None,
         **unknown: Any,
     ) -> "SurpyvalData":
         """
@@ -492,6 +505,8 @@ class SurpyvalData(ReshapeMixin):
             Each item's id, one per entry of the kind's list (given for
             every kind with entries, or for none), as ``from_items`` gives
             them: ``data.item(id)`` and ``select(ids=...)`` then find them.
+        unit : str, optional
+            The unit of the times, kept with the data.
 
         Returns
         -------
@@ -711,6 +726,7 @@ class SurpyvalData(ReshapeMixin):
             Z=Z,
             e=e,
             covariate_names=covariate_names,
+            unit=unit,
         )
         if item_ids is not None:
             data.ids = item_ids
@@ -911,7 +927,7 @@ class SurpyvalData(ReshapeMixin):
 
     @classmethod
     def from_items(
-        cls, items: Any, counts: Any = None, **unknown: Any
+        cls, items: Any, counts: Any = None, unit: Any = None, **unknown: Any
     ) -> "SurpyvalData":
         """
         The data of several items' lifetimes, each an
@@ -923,6 +939,8 @@ class SurpyvalData(ReshapeMixin):
         are needed for every item (the same number of values), and so are
         time-varying covariates; event types, given for one failure, are
         needed for every failure. The rows stay in the order of the items.
+        The data's ``unit`` is the records' (which must agree), or
+        ``unit=`` where they have none.
 
         Examples
         --------
@@ -946,7 +964,7 @@ class SurpyvalData(ReshapeMixin):
         refuse_unknown_keywords(
             "SurpyvalData.from_items",
             unknown,
-            ["items", "counts"],
+            ["items", "counts", "unit"],
             FROM_ITEMS_ALIASES,
         )
         items = _record_list(items, ItemLifetime, "SurpyvalData")
@@ -977,6 +995,9 @@ class SurpyvalData(ReshapeMixin):
             raise ValueError("Every count is 0: there is no data.")
         ids = [item.id for item in items]
         check_item_ids(ids, "ItemLifetime (identical items are its counts)")
+        from surpyval.utils.item_history import units_of
+
+        unit = units_of(items, unit, "items' ages")
         static = _every_or_none(items, "covariates", lambda i: i.covariates)
         names = covariate_names_of(items)
         varying = _every_or_none(
@@ -1031,6 +1052,7 @@ class SurpyvalData(ReshapeMixin):
                 group_and_sort=False,
                 e=e,
                 covariate_names=names,
+                unit=unit,
             )
         data.ids = ids
         if any(i.attributes is not None for i in items):
@@ -1157,6 +1179,7 @@ class SurpyvalData(ReshapeMixin):
             attributes=(
                 None if self.attributes is None else self.attributes[k]
             ),
+            unit=self.unit,
         )
 
     def summary(self) -> str:
@@ -1406,6 +1429,7 @@ class SurpyvalData(ReshapeMixin):
             out.ids = [self.ids[r] for r in rows]
         if self.attributes is not None:
             out.attributes = [self.attributes[r] for r in rows]
+        out.unit = self.unit
         if self.time_varying_covariates is not None:
             kept = out.ids if out.ids is not None else []
             out.time_varying_covariates = {
@@ -1869,11 +1893,14 @@ def accepts_surpyval_data(method: F) -> F:
             owner = bound.arguments.get(params[0]) if params else None
             fit_tvc = getattr(owner, "fit_tvc", None)
             if params[0] in ("self", "cls") and callable(fit_tvc):
-                return named_fit(
-                    lambda: _fit_tvc_from_data(
-                        fit_tvc, data, _options(bound, signature)
+                return with_data_unit(
+                    named_fit(
+                        lambda: _fit_tvc_from_data(
+                            fit_tvc, data, _options(bound, signature)
+                        ),
+                        _tvc_names(data),
                     ),
-                    _tvc_names(data),
+                    data,
                 )
         for name, held, how in (
             (
@@ -1940,9 +1967,12 @@ def accepts_surpyval_data(method: F) -> F:
         if lost:
             raise ValueError(lost_message(lost, "e" in names))
         bound.arguments.update(filled)
-        return named_fit(
-            lambda: method(*bound.args, **bound.kwargs),
-            data.covariate_names if data.Z is not None else None,
+        return with_data_unit(
+            named_fit(
+                lambda: method(*bound.args, **bound.kwargs),
+                data.covariate_names if data.Z is not None else None,
+            ),
+            data,
         )
 
     setattr(wrapper, "_accepts_surpyval_data", True)
@@ -2032,9 +2062,31 @@ def refuses_what_fit_cannot_take(method: F) -> F:
             missing = _not_taken_yet(data)
             if missing:
                 raise ValueError(lost_message(missing, False))
+            return with_data_unit(method(*args, **kwargs), data)
         return method(*args, **kwargs)
 
     return wrapper  # type: ignore[return-value]
+
+
+def with_data_unit(model: Any, data: Any) -> Any:
+    """``model``, fitted to ``data``, with the data's unit where the
+    data has one (#945): a unit the model already has (from ``unit=`` at
+    the fit, applied first by ``takes_unit``) must agree."""
+    unit = getattr(data, "unit", None)
+    if unit is None or model is None:
+        return model
+    held = getattr(model, "unit", None)
+    if held is not None and held != unit:
+        raise ValueError(
+            f"The data's ages are in {unit!r}, but unit={held!r} was given "
+            "to the fit: a model is in the unit of its data (no conversion "
+            "is made), so leave unit= out, or convert the data."
+        )
+    try:
+        model.unit = unit
+    except AttributeError:
+        pass
+    return model
 
 
 def _event_type_array(e: Any, c: np.ndarray, warn: bool = True) -> np.ndarray:

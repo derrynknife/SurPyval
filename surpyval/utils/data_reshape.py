@@ -982,10 +982,12 @@ class ReshapeMixin(ReadOnlyArrays):
         last good inspection, since it may have come after ``age``; an item
         that came under observation at or after ``age`` is left out.
 
-        ``age`` is one age for every item, in the data's time unit, or
-        ``{id: age}``, a cut-off per item (the items it leaves out are kept
-        as they are): a study that ends on one date ends at a different
-        age for each item.
+        ``age`` is one age for every item, in the data's time unit;
+        ``{id: age}``, a cut-off per item (the items it leaves out are
+        kept as they are); or a function of each item's record giving
+        its cut-off: a study that ends on one date ends at a different
+        age for each item, ``data.censor_at(lambda item: (end -
+        item.attribute("installed")).days)``.
 
         A history's failures counted between two inspections, or a change
         of state between two, are known only as a whole: where ``age``
@@ -996,6 +998,10 @@ class ReshapeMixin(ReadOnlyArrays):
             cuts = per_item_ages("censor_at", age, self)
             return self._map(
                 lambda r: censor_at(r, cuts[r.id]) if r.id in cuts else r
+            )
+        if callable(age):
+            return self._map(
+                lambda r: censor_at(r, cut_age("censor_at", age(r), self))
             )
         value = cut_age("censor_at", age, self)
         if self._on_arrays:
@@ -1012,8 +1018,9 @@ class ReshapeMixin(ReadOnlyArrays):
         their observation; a failure found between inspections either side
         of ``age``, or known only to have happened before a look, may have
         come before it, so its item is left out. ``age`` is one age for
-        every item, or ``{id: age}``, an entry per item (the items it
-        leaves out are kept as they are).
+        every item, ``{id: age}``, an entry per item (the items it leaves
+        out are kept as they are), or a function of each item's record
+        giving its entry.
 
         A history goes on after its failures, so where ``age`` falls
         between two inspections that count failures, or a change of state,
@@ -1022,6 +1029,11 @@ class ReshapeMixin(ReadOnlyArrays):
         """
         if isinstance(age, dict):
             cuts = per_item_ages("enter_at", age, self)
+        elif callable(age):
+            cuts = {
+                r.id: cut_age("enter_at", age(r), self)
+                for r in self._records()[0]
+            }
         else:
             value = cut_age("enter_at", age, self)
             cuts = None

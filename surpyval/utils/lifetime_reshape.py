@@ -87,6 +87,7 @@ def rebuilt(
             group_and_sort=False,
             e=e,
             covariate_names=names if Z is not None else None,
+            unit=data.unit,
         )
     out.ids = ids
     out.attributes = attributes

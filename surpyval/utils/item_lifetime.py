@@ -15,6 +15,7 @@ from surpyval.utils.item_history import (
     _covariates,
     _schedule_field,
     _time_varying,
+    _unit,
     _with_step,
     checked_id,
     comparable,
@@ -93,6 +94,11 @@ class ItemLifetime:
         ``{name: value}``, what describes the item without being fitted
         (a site, a batch, a product line: any values), for
         ``data.groupby(name)`` and ``data.select(where={name: value})``.
+    unit : str, optional
+        The unit its ages are in (``"hours"``, ``"km"``, ``"cycles"``), a
+        label kept with the record (pint's canonical name for a unit it
+        knows): a dataset takes it from its records, which must agree,
+        and ``fit(data)`` gives it to the model.
 
     Examples
     --------
@@ -123,6 +129,7 @@ class ItemLifetime:
         covariates: Any = None,
         time_varying_covariates: Any = None,
         attributes: Any = None,
+        unit: Any = None,
         **unknown: Any,
     ) -> None:
         if unknown:
@@ -171,6 +178,7 @@ class ItemLifetime:
         self.event_type = event_type
         self.covariates, self.covariate_names = _covariates(item, covariates)
         self.attributes = _attributes(item, attributes)
+        self.unit = _unit(item, unit)
         self.time_varying_covariates, first, self._tvc_dict = _time_varying(
             item, time_varying_covariates
         )
@@ -394,6 +402,8 @@ class ItemLifetime:
             )
         if self.attributes is not None:
             out["attributes"] = dict(self.attributes)
+        if self.unit is not None:
+            out["unit"] = self.unit
         if self.time_varying_covariates is not None:
             out["time_varying_covariates"] = _schedule_field(
                 self.time_varying_covariates, self._as_dict()

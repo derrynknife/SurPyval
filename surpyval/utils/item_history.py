@@ -96,6 +96,10 @@ class ItemHistory:
         ``{name: value}``, what describes the item without being fitted
         (a site, a product line: any values), for ``data.groupby(name)``
         and ``data.select(where={name: value})``.
+    unit : str, optional
+        The unit its ages are in (``"hours"``, ``"km"``), a label kept
+        with the record: a dataset takes it from its records, which must
+        agree, and ``fit(data)`` gives it to the model.
 
     Event types, given for some failures, are needed for all of them (the
     end of observation has none). Changes of state are the item's path
@@ -147,6 +151,7 @@ class ItemHistory:
         interval_censored_states: Any = None,
         left_censored_states: "dict | None" = None,
         attributes: Any = None,
+        unit: Any = None,
         **unknown: Any,
     ) -> None:
         if unknown:
@@ -241,6 +246,7 @@ class ItemHistory:
         )
         self.covariates, self.covariate_names = _covariates(item, covariates)
         self.attributes = _attributes(item, attributes)
+        self.unit = _unit(item, unit)
         (
             self.time_varying_covariates,
             self._first_change,
@@ -758,6 +764,8 @@ class ItemHistory:
             )
         if self.attributes is not None:
             out["attributes"] = dict(self.attributes)
+        if self.unit is not None:
+            out["unit"] = self.unit
         if self.time_varying_covariates is not None:
             out["time_varying_covariates"] = _schedule_field(
                 self.time_varying_covariates, self._as_dict()
@@ -1073,6 +1081,53 @@ def _attributes(item: Any, value: Any) -> "dict | None":
                 v = None
         out[k] = v
     return out
+
+
+def _unit(item: Any, unit: Any) -> "str | None":
+    """A record's unit, as the models store it (:func:`normalise_unit`):
+    text, or None."""
+    from surpyval.utils.units import normalise_unit
+
+    if unit is None:
+        return None
+    if not isinstance(unit, str) or not unit.strip():
+        raise ValueError(
+            f"Item {item!r}: 'unit' is the name of the unit its ages are "
+            f"in ('hours', 'km', 'cycles'); got {unit!r}."
+        )
+    return normalise_unit(unit)
+
+
+def units_of(records: list, unit: Any, what: str) -> "str | None":
+    """The unit of a dataset built from ``records``: the records' unit,
+    which must agree (refused naming the items and units otherwise), and
+    must agree with ``unit`` where that is given; ``unit`` alone where
+    the records have none; None where neither (#945)."""
+    from surpyval.utils.units import normalise_unit
+
+    given = normalise_unit(unit)
+    found: dict = {}
+    for record in records:
+        if record.unit is not None:
+            found.setdefault(record.unit, record.id)
+    if len(found) > 1:
+        raise ValueError(
+            f"The {what} are in different units: "
+            + ", ".join(
+                f"item {item!r} in {u!r}"
+                for u, item in list(found.items())[:3]
+            )
+            + ". A dataset is in one unit: convert the ages first."
+        )
+    if not found:
+        return given
+    ((held, item),) = found.items()
+    if given is not None and given != held:
+        raise ValueError(
+            f"unit={unit!r} was given, but the {what} are in {held!r} "
+            f"(item {item!r}): a dataset is in one unit."
+        )
+    return held
 
 
 def _covariate_field(row: np.ndarray, names: "tuple | None") -> Any:

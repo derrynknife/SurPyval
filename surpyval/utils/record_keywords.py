@@ -18,6 +18,8 @@ _OUTCOME = (
 )
 
 LIFETIME_ALIASES: dict[str, str] = {
+    "units": "the unit of the ages is unit=",
+    "time_unit": "the unit of the ages is unit=",
     "x": _OUTCOME,
     "c": _OUTCOME,
     "xl": "an interval is interval_censored=[lower, upper]",
@@ -72,6 +74,8 @@ LIFETIME_ALIASES: dict[str, str] = {
 }
 
 HISTORY_ALIASES: dict[str, str] = {
+    "units": "the unit of the ages is unit=",
+    "time_unit": "the unit of the ages is unit=",
     "x": "the ages at failure are observed=[...]",
     "failures": "the ages at failure are observed=[...]",
     "failed": "the ages at failure are observed=[...]",
@@ -144,6 +148,8 @@ HISTORY_ALIASES: dict[str, str] = {
 }
 
 FROM_ITEMS_ALIASES: dict[str, str] = {
+    "units": "the unit of the ages is unit=",
+    "time_unit": "the unit of the ages is unit=",
     "n": "how many identical items each stands for is counts=",
     "count": "how many identical items each stands for is counts=",
     "weights": "how many identical items each stands for is counts=",
@@ -159,6 +165,8 @@ FROM_ITEMS_ALIASES: dict[str, str] = {
 }
 
 FROM_OBSERVATIONS_ALIASES: dict[str, str] = {
+    "units": "the unit of the ages is unit=",
+    "time_unit": "the unit of the ages is unit=",
     "x": "the times go in the list of their kind: observed=, "
     "right_censored=, left_censored= or interval_censored=",
     "c": "the kind of each time is its list: observed=, right_censored=, "
@@ -195,6 +203,8 @@ FROM_OBSERVATIONS_ALIASES: dict[str, str] = {
 }
 
 FROM_HISTORIES_ALIASES: dict[str, str] = {
+    "units": "the unit of the ages is unit=",
+    "time_unit": "the unit of the ages is unit=",
     "x": "the failures are observed={item: [ages]}",
     "failures": "the failures are observed={item: [ages]}",
     "events": "the failures are observed={item: [ages]}",

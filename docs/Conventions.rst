@@ -458,6 +458,16 @@ A plot names its time axis by what the unit measures: "Time (h)",
 already on the axes is kept. Tools that combine models (RePyability, say)
 can convert between units with pint from the stored names.
 
+The data classes carry the unit too: ``ItemLifetime(..., unit="hours")``,
+``SurpyvalData(..., unit=)``, ``from_items`` (from its records, which must
+agree), ``from_observations``, ``from_histories``, ``from_dataframe`` and
+``handle_xicn`` all take it, every reshape, slice, ``to_first_events``,
+``to_gaps`` and the JSON form keep it, the summary and printout show it,
+and ``fit(data)`` gives it to the model, so it is given once:
+``Weibull.fit(SurpyvalData.from_items(items_in_hours)).unit == "hour"``. A
+``unit=`` at the fit that differs from the data's is refused, as are
+records in different units in one dataset; nothing is converted.
+
 .. jupyter-execute::
     :hide-code:
     :hide-output:

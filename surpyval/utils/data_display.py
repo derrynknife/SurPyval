@@ -95,7 +95,9 @@ def heading(data: Any, recurrent: bool) -> str:
         items = len(data.ids)
     else:
         items = int(np.asarray(data.n).sum())
-    return f"{name}: {plural(items, 'item')}, {plural(len(data.x), 'row')}"
+    head = f"{name}: {plural(items, 'item')}, {plural(len(data.x), 'row')}"
+    unit = getattr(data, "unit", None)
+    return head if unit is None else f"{head}, ages in {unit}"
 
 
 def table_repr(data: Any, recurrent: bool) -> str:
@@ -218,9 +220,6 @@ def held_lines(data: Any, recurrent: bool) -> list:
     if attributes:
         names = list(dict.fromkeys(k for a in attributes if a for k in a))
         lines.append("  attributes: " + ", ".join(names))
-    unit = getattr(data, "unit", None)
-    if unit is not None:
-        lines.append(f"  unit: {unit}")
     return lines
 
 
