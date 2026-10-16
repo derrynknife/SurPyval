@@ -101,6 +101,10 @@ class EventHistoryData(ReshapeMixin):
     # changes)}``, attached by ``from_items``; no model uses them yet
     # (#887), so every fit refuses data that has them.
     states: dict | None = None
+    # Each item's attributes (``{name: value}``, what describes the item
+    # without being fitted), in the order of ``ids``, from the records or
+    # ``from_dataframe``; None where the data has none.
+    attributes: "list | None" = None
 
     def __init__(
         self,
@@ -1109,6 +1113,9 @@ class EventHistoryData(ReshapeMixin):
             data.Z = np.array([rows[_plain(k)] for k in data.i], dtype=float)
         if static:
             data.covariate_names = names
+        if any(h.attributes is not None for h in items):
+            held = {h.id: h.attributes for h in items}
+            data.attributes = [held[_plain(i)] for i in data.ids]
         if varying:
             data.time_varying_covariates = {
                 history.id: history.time_varying_covariates
@@ -1318,6 +1325,11 @@ class EventHistoryData(ReshapeMixin):
             left_censored_event_types=(
                 None if e is None or not (c == -1).any() else e[c == -1][0]
             ),
+            attributes=(
+                None
+                if self.attributes is None
+                else self.attributes[self.ids.index(key)]
+            ),
             **state_args,
         )
 
@@ -1424,7 +1436,28 @@ class EventHistoryData(ReshapeMixin):
             held = getattr(self, name)
             if held is not None:
                 setattr(out, name, {i: held[i] for i in out.ids if i in held})
+        if self.attributes is not None:
+            by_item = dict(zip(self.ids, self.attributes))
+            out.attributes = [by_item[i] for i in out.ids]
         return out
+
+    def _covariate_levels(self, column: int) -> list:
+        first, _ = self.item_rows()
+        Z = np.asarray(self.Z, dtype=float)
+        Z = Z[:, None] if Z.ndim == 1 else Z
+        return Z[first, column].tolist()
+
+    def _rows_of_items(self, keep: np.ndarray) -> "EventHistoryData":
+        _, inverse = np.unique(self.i, return_inverse=True)
+        return self[np.flatnonzero(np.asarray(keep)[inverse.reshape(-1)])]
+
+    @property
+    def attribute_names(self) -> list:
+        """The names of the attributes any item has (an empty list where
+        the data has none)."""
+        from surpyval.utils.surpyval_data import _attribute_names
+
+        return _attribute_names(self.attributes)
 
     def to_dict(self) -> dict:
         """
@@ -1467,6 +1500,10 @@ class EventHistoryData(ReshapeMixin):
             data["Z"] = np.asarray(self.Z).tolist()
         if self.covariate_names is not None:
             data["covariate_names"] = list(self.covariate_names)
+        if self.attributes is not None:
+            from surpyval.utils.surpyval_data import _attributes_json
+
+            data["attributes"] = _attributes_json(self.attributes)
         if self.time_varying_covariates is not None:
             data["time_varying_covariates"] = [
                 schedule_dict(self.time_varying_covariates[item], True)
@@ -1555,6 +1592,10 @@ class EventHistoryData(ReshapeMixin):
                 item: _time_varying(item, schedule_back(held))[0]
                 for item, held in zip(out.ids, data["time_varying_covariates"])
             }
+        if "attributes" in data:
+            from surpyval.utils.surpyval_data import _attributes_back
+
+            out.attributes = _attributes_back(data["attributes"])
         if "states" in data:
             out.states = {
                 item: (

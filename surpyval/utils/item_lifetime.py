@@ -10,6 +10,7 @@ import numpy as np
 
 from surpyval.utils.item_history import (
     _age,
+    _attributes,
     _covariate_field,
     _covariates,
     _schedule_field,
@@ -88,6 +89,10 @@ class ItemLifetime:
         Each must start at or before the start of observation
         (``left_truncation``, else 0): nothing says what they were before
         their first age.
+    attributes : dict, optional
+        ``{name: value}``, what describes the item without being fitted
+        (a site, a batch, a product line: any values), for
+        ``data.groupby(name)`` and ``data.select(where={name: value})``.
 
     Examples
     --------
@@ -117,6 +122,7 @@ class ItemLifetime:
         event_type: Any = None,
         covariates: Any = None,
         time_varying_covariates: Any = None,
+        attributes: Any = None,
         **unknown: Any,
     ) -> None:
         if unknown:
@@ -164,6 +170,7 @@ class ItemLifetime:
             )
         self.event_type = event_type
         self.covariates, self.covariate_names = _covariates(item, covariates)
+        self.attributes = _attributes(item, attributes)
         self.time_varying_covariates, first, self._tvc_dict = _time_varying(
             item, time_varying_covariates
         )
@@ -175,6 +182,16 @@ class ItemLifetime:
 
     def __setstate__(self, state: dict) -> None:
         frozen_setstate(self, state)
+
+    def attribute(self, name: str) -> Any:
+        """The value of the attribute ``name`` (``attributes={name:
+        value}``, what describes the item without being fitted: a site, a
+        batch); None where the item does not have it.
+        ``data.select(where={"site": "North"})`` keeps the items of one
+        site, and ``data.groupby("site")`` splits the data by it."""
+        if self.attributes is None:
+            return None
+        return self.attributes.get(name)
 
     def covariate(self, name: str) -> float:
         """The value of the covariate ``name`` (where the covariates are
@@ -375,6 +392,8 @@ class ItemLifetime:
             out["covariates"] = _covariate_field(
                 self.covariates, self.covariate_names
             )
+        if self.attributes is not None:
+            out["attributes"] = dict(self.attributes)
         if self.time_varying_covariates is not None:
             out["time_varying_covariates"] = _schedule_field(
                 self.time_varying_covariates, self._as_dict()

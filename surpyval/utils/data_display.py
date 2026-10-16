@@ -71,6 +71,18 @@ def columns_of(data: Any, shown: int, recurrent: bool) -> dict:
         ]
         for j, name in enumerate(names):
             columns[name] = [time_text(v) for v in Z[:shown, j]]
+    attributes = getattr(data, "attributes", None)
+    if attributes:
+        if recurrent:
+            by_item = dict(zip(data.ids, attributes))
+            rows = [by_item.get(plain(v)) for v in data.i[:shown]]
+        else:
+            rows = attributes[:shown]
+        names = list(dict.fromkeys(k for a in attributes if a for k in a))
+        for name in names:
+            columns[name] = [
+                repr(None if a is None else a.get(name)) for a in rows
+            ]
     return columns
 
 
@@ -202,6 +214,10 @@ def held_lines(data: Any, recurrent: bool) -> list:
             key=str,
         )
         lines.append("  states: " + ", ".join(map(str, found)))
+    attributes = getattr(data, "attributes", None)
+    if attributes:
+        names = list(dict.fromkeys(k for a in attributes if a for k in a))
+        lines.append("  attributes: " + ", ".join(names))
     unit = getattr(data, "unit", None)
     if unit is not None:
         lines.append(f"  unit: {unit}")

@@ -271,6 +271,36 @@ dataset:
     print(surv.Weibull.fit(everything).params)
     print(seals.summary())
 
+Comparing sites, arms or product lines
+--------------------------------------
+
+What describes an item without being fitted -- its site, its batch, a
+trial's arm -- is an ``attribute`` (any value, text included), given on the
+record (``attributes={"site": "North"}``) or read from the table
+(``attribute_cols=``); a fit never refuses it. ``groupby`` splits the data
+by an attribute (or a covariate) and ``select(where={name: value})`` keeps
+one group, so a fit per group is one line:
+
+.. jupyter-execute::
+
+    trial = SurpyvalData.from_dataframe(
+        pd.DataFrame({
+            "weeks":  [5, 7, 9, 4, 6, 8, 10, 3],
+            "event":  [1, 1, 0, 1, 1, 0, 1, 1],
+            "age":    [50, 60, 70, 55, 65, 45, 75, 40],
+            "arm":    ["drug", "placebo"] * 4,
+            "site":   ["A", "A", "B", "B", "A", "B", "A", "B"],
+        }),
+        x_col="weeks", event_col="event", Z_cols=["age"],
+        attribute_cols=["arm", "site"],
+    )
+    plain = trial.without("covariates")   # the age is for a regression
+    km_by_arm = {arm: surv.KaplanMeier.fit(part) for arm, part in plain.groupby("arm").items()}
+    weibull_by_site = {site: surv.Weibull.fit(part) for site, part in plain.groupby("site").items()}
+    print({arm: km.sf(6).round(3) for arm, km in km_by_arm.items()})
+    print({site: model.params.round(2) for site, model in weibull_by_site.items()})
+    print(trial.select(where={"arm": "drug", "site": "A"}).summary())
+
 Combining every input type in one fit
 -------------------------------------
 

@@ -59,6 +59,7 @@ def rebuilt(
         else time_varying
     )
     ids = data.ids
+    attributes = getattr(data, "attributes", None)
     if keep is not None:
         keep = np.asarray(keep, dtype=bool)
         if not keep.any():
@@ -68,6 +69,8 @@ def rebuilt(
         Z = None if Z is None else np.asarray(Z)[rows]
         e = None if e is None else e[rows]
         ids = None if ids is None else [ids[r] for r in rows]
+        if attributes is not None:
+            attributes = [attributes[r] for r in rows]
     if not (c == 2).any():
         x = x[:, 0]
     truncated = np.isfinite(tl).any() or np.isfinite(tr).any()
@@ -86,6 +89,7 @@ def rebuilt(
             covariate_names=names if Z is not None else None,
         )
     out.ids = ids
+    out.attributes = attributes
     if time_varying is not None:
         kept = ids if ids is not None else list(range(len(x)))
         out.time_varying_covariates = {i: time_varying[i] for i in kept}
@@ -105,7 +109,10 @@ def without(data: Any, parts: tuple) -> Any:
     if "truncation" in parts:
         changes["tl"] = np.full(len(data.c), -np.inf)
         changes["tr"] = np.full(len(data.c), np.inf)
-    return rebuilt(data, **changes)
+    out = rebuilt(data, **changes)
+    if "attributes" in parts:
+        out.attributes = None
+    return out
 
 
 def with_covariates(data: Any, columns: list) -> Any:

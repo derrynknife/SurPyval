@@ -102,6 +102,10 @@ class SurpyvalData(ReshapeMixin):
     # ``covariates={name: value}``. They name a fitted model's
     # coefficients.
     covariate_names: "list | None" = None
+    # Each row's attributes (``{name: value}``, what describes the item
+    # without being fitted), from the records or ``from_dataframe``; None
+    # where the data has none, and None for a row without any.
+    attributes: "list | None" = None
 
     def __init__(
         self,
@@ -1029,6 +1033,8 @@ class SurpyvalData(ReshapeMixin):
                 covariate_names=names,
             )
         data.ids = ids
+        if any(i.attributes is not None for i in items):
+            data.attributes = [i.attributes for i in items]
         if varying:
             data.time_varying_covariates = {
                 i.id: i.time_varying_covariates for i in items
@@ -1062,6 +1068,22 @@ class SurpyvalData(ReshapeMixin):
         if self.ids is None:
             out.ids = None  # its items were row numbers, not ids
         return out
+
+    def _covariate_levels(self, column: int) -> list:
+        Z = np.asarray(self.Z, dtype=float)
+        Z = Z[:, None] if Z.ndim == 1 else Z
+        return Z[:, column].tolist()
+
+    def _rows_of_items(self, keep: np.ndarray) -> "SurpyvalData":
+        from surpyval.utils.lifetime_reshape import rebuilt
+
+        return rebuilt(self, keep)
+
+    @property
+    def attribute_names(self) -> list:
+        """The names of the attributes any item has (an empty list where
+        the data has none)."""
+        return _attribute_names(self.attributes)
 
     def item(self, id: Any) -> Any:
         """
@@ -1131,6 +1153,9 @@ class SurpyvalData(ReshapeMixin):
                 None
                 if self.time_varying_covariates is None
                 else self.time_varying_covariates[item]
+            ),
+            attributes=(
+                None if self.attributes is None else self.attributes[k]
             ),
         )
 
@@ -1379,6 +1404,8 @@ class SurpyvalData(ReshapeMixin):
             out.e = self.e[rows]
         if self.ids is not None:
             out.ids = [self.ids[r] for r in rows]
+        if self.attributes is not None:
+            out.attributes = [self.attributes[r] for r in rows]
         if self.time_varying_covariates is not None:
             kept = out.ids if out.ids is not None else []
             out.time_varying_covariates = {
@@ -1447,6 +1474,8 @@ class SurpyvalData(ReshapeMixin):
             data["e"] = [label(v) for v in self.e]
         if self.ids is not None:
             data["ids"] = [label(v) for v in self.ids]
+        if self.attributes is not None:
+            data["attributes"] = _attributes_json(self.attributes)
         if self.time_varying_covariates is not None:
             data["time_varying_covariates"] = [
                 schedule_dict(schedule, True)
@@ -1520,6 +1549,8 @@ class SurpyvalData(ReshapeMixin):
             )
         if "ids" in data:
             out.ids = [label_back(v) for v in data["ids"]]
+        if "attributes" in data:
+            out.attributes = _attributes_back(data["attributes"])
         if "time_varying_covariates" in data:
             from surpyval.utils.item_history import _time_varying
 
@@ -2347,6 +2378,33 @@ def _label_from_json(value: Any) -> Any:
 def _plain(value: Any) -> Any:
     """A numpy scalar as the plain Python value JSON stores."""
     return value.item() if isinstance(value, np.generic) else value
+
+
+def _attribute_names(attributes: "list | None") -> list:
+    """The names of the attributes any record of a dataset has."""
+    if not attributes:
+        return []
+    return list(dict.fromkeys(k for a in attributes if a for k in a))
+
+
+def _attributes_json(attributes: list) -> list:
+    """A dataset's attributes as JSON keeps them (tuples as
+    ``{"tuple": [...]}``)."""
+    from surpyval.utils.data_json import label
+
+    return [
+        None if a is None else {k: label(v) for k, v in a.items()}
+        for a in attributes
+    ]
+
+
+def _attributes_back(attributes: list) -> list:
+    from surpyval.utils.data_json import label_back
+
+    return [
+        None if a is None else {k: label_back(v) for k, v in a.items()}
+        for a in attributes
+    ]
 
 
 def _plural(k: int, word: str) -> str:

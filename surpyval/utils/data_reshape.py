@@ -21,6 +21,7 @@ LIFETIME_PARTS = {
     "event_types": ("event_type",),
     "time_varying_covariates": ("time_varying_covariates",),
     "truncation": ("left_truncation", "right_truncation"),
+    "attributes": ("attributes",),
 }
 HISTORY_PARTS = {
     "covariates": ("covariates",),
@@ -37,6 +38,7 @@ HISTORY_PARTS = {
         "interval_censored_states",
         "left_censored_states",
     ),
+    "attributes": ("attributes",),
 }
 
 
@@ -819,15 +821,107 @@ class ReshapeMixin(ReadOnlyArrays):
             return lifetime_reshape.relabel(self, mapping)
         return self._map(lambda r: relabel(r, mapping))
 
-    def select(self, ids: Any = None, where: "Callable | None" = None) -> Any:
+    def _levels(self, name: str, every: bool = True) -> list:
+        """Each item's value of the attribute or covariate ``name``, in
+        the order of the rows (lifetimes) or of ``ids`` (histories);
+        where ``every``, an item without the attribute is refused, else
+        its value is None."""
+        attributes = getattr(self, "attributes", None)
+        names = getattr(self, "covariate_names", None)
+        if attributes is not None and any(
+            a is not None and name in a for a in attributes
+        ):
+            missing = [
+                i
+                for i, a in zip(self._item_keys(), attributes)
+                if a is None or a.get(name) is None
+            ]
+            if missing and every:
+                from surpyval.utils.warnings import named
+
+                raise ValueError(
+                    f"Items {named(missing)} have no attribute {name!r}: "
+                    "give it for every item, or select the items that "
+                    "have it first."
+                )
+            return [None if a is None else a.get(name) for a in attributes]
+        if names is not None and name in names:
+            return self._covariate_levels(list(names).index(name))
+        have = sorted(
+            {k for a in attributes or [] if a is not None for k in a}, key=str
+        )
+        raise ValueError(
+            f"No attribute or covariate {name!r}: the data's attributes are "
+            + (", ".join(repr(k) for k in have) if have else "none")
+            + " and its covariates "
+            + (", ".join(repr(k) for k in names) if names else "none")
+            + " (attributes={name: value} on the records, or "
+            "from_dataframe(..., attribute_cols=[...]))."
+        )
+
+    def _item_keys(self) -> list:
+        """One key per item, for messages: its id, else its row."""
+        ids = getattr(self, "ids", None)
+        if ids is not None:
+            return list(ids)
+        return list(range(len(getattr(self, "x"))))
+
+    def _covariate_levels(self, column: int) -> list:
+        raise NotImplementedError  # pragma: no cover
+
+    def _rows_of_items(self, keep: np.ndarray) -> Any:
+        raise NotImplementedError  # pragma: no cover
+
+    def groupby(self, name: str) -> dict:
+        """
+        The data split by the attribute (or covariate) ``name``:
+        ``{level: dataset}``, one dataset per value, in sorted order, for
+        a fit per site, arm or product line:
+        ``{site: Weibull.fit(part) for site, part in data.groupby("site")
+        .items()}``. Every item needs the attribute.
+
+        Examples
+        --------
+        >>> from surpyval import ItemLifetime, SurpyvalData
+        >>> data = SurpyvalData.from_items([
+        ...     ItemLifetime("A", observed=5, attributes={"site": "N"}),
+        ...     ItemLifetime("B", observed=7, attributes={"site": "S"}),
+        ...     ItemLifetime("C", right_censored=9, attributes={"site": "N"}),
+        ... ])
+        >>> {site: part.ids for site, part in data.groupby("site").items()}
+        {'N': ['A', 'C'], 'S': ['B']}
+        """
+        levels = self._levels(name)
+        out = {}
+        for level in sorted(set(levels), key=str):
+            keep = np.array([v == level for v in levels], dtype=bool)
+            out[level] = self._rows_of_items(keep)
+        return out
+
+    def select(self, ids: Any = None, where: Any = None) -> Any:
         """
         Some of the items: those with an id in ``ids`` (one id, or a list
         of them; the items stay in the data's order), and for which
-        ``where(item)`` is true (``where`` is given each item's record, an
-        ``ItemLifetime`` or an ``ItemHistory``):
-        ``data.select(where=lambda item: item.covariates[0] == 1)``.
-        Selecting by id needs item ids (``from_items``, ``ids=``).
+        ``where`` holds: a function of each item's record (an
+        ``ItemLifetime`` or an ``ItemHistory``),
+        ``data.select(where=lambda item: item.covariates[0] == 1)``, or a
+        dict ``{name: value}`` of attributes (or covariates) the item
+        must have, ``data.select(where={"site": "North"})``. Selecting by
+        id needs item ids (``from_items``, ``ids=``).
         """
+        if isinstance(where, dict):
+            keep = np.ones(len(self._item_keys()), dtype=bool)
+            for name, value in where.items():
+                levels = self._levels(name, every=False)
+                keep &= np.array([v == value for v in levels], dtype=bool)
+            if ids is not None:
+                wanted_ids = set(id_list(ids, self))
+                keep &= np.array(
+                    [k in wanted_ids for k in self._item_keys()], dtype=bool
+                )
+            if not keep.any():
+                raise ValueError("No items are left.")
+            return self._rows_of_items(keep)
         if ids is None and where is None:
             raise ValueError(
                 "select takes the ids to keep (ids=), a test of each item's "

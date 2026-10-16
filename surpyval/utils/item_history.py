@@ -92,6 +92,11 @@ class ItemHistory:
         having changed into it since the start of observation (at most
         one, before every other change).
 
+    attributes : dict, optional
+        ``{name: value}``, what describes the item without being fitted
+        (a site, a product line: any values), for ``data.groupby(name)``
+        and ``data.select(where={name: value})``.
+
     Event types, given for some failures, are needed for all of them (the
     end of observation has none). Changes of state are the item's path
     through its states: each into a state other than the one it was in,
@@ -141,6 +146,7 @@ class ItemHistory:
         observed_states: "dict | None" = None,
         interval_censored_states: Any = None,
         left_censored_states: "dict | None" = None,
+        attributes: Any = None,
         **unknown: Any,
     ) -> None:
         if unknown:
@@ -234,6 +240,7 @@ class ItemHistory:
             item, "right_truncation", right_truncation
         )
         self.covariates, self.covariate_names = _covariates(item, covariates)
+        self.attributes = _attributes(item, attributes)
         (
             self.time_varying_covariates,
             self._first_change,
@@ -266,6 +273,16 @@ class ItemHistory:
 
     def __setstate__(self, state: dict) -> None:
         frozen_setstate(self, state)
+
+    def attribute(self, name: str) -> Any:
+        """The value of the attribute ``name`` (``attributes={name:
+        value}``, what describes the item without being fitted: a site, a
+        batch); None where the item does not have it.
+        ``data.select(where={"site": "North"})`` keeps the items of one
+        site, and ``data.groupby("site")`` splits the data by it."""
+        if self.attributes is None:
+            return None
+        return self.attributes.get(name)
 
     def covariate(self, name: str) -> float:
         """The value of the covariate ``name`` (where the covariates are
@@ -739,6 +756,8 @@ class ItemHistory:
             out["covariates"] = _covariate_field(
                 self.covariates, self.covariate_names
             )
+        if self.attributes is not None:
+            out["attributes"] = dict(self.attributes)
         if self.time_varying_covariates is not None:
             out["time_varying_covariates"] = _schedule_field(
                 self.time_varying_covariates, self._as_dict()
@@ -1018,6 +1037,42 @@ def _covariates(item: Any, value: Any) -> tuple:
         item, "covariates", [value[k] for k in names], missing=True
     )
     return row, tuple(names)
+
+
+def _attributes(item: Any, value: Any) -> "dict | None":
+    """A record's attributes, ``{name: value}``: names are text, values
+    anything (None for one not known); a pandas Series is read as a
+    dict. Kept as a plain dict, which the record's fields give back."""
+    if value is None:
+        return None
+    if type(value).__name__ == "Series":
+        value = dict(value.items())
+    if not isinstance(value, dict):
+        raise ValueError(
+            f"Item {item!r}: 'attributes' must be a dict {{name: value}}; "
+            f"got {type(value).__name__}."
+        )
+    bad = [k for k in value if not isinstance(k, str) or not k]
+    if bad:
+        raise ValueError(
+            f"Item {item!r}: attribute names must be text; got {bad!r}."
+        )
+    out = {}
+    for k, v in value.items():
+        v = item_id(v)
+        if v is not None and not isinstance(v, str):
+            try:
+                hash(v)
+            except TypeError:
+                raise ValueError(
+                    f"Item {item!r}: attribute {k!r} must be a value the "
+                    f"data can group by (text, a number, a tuple); got "
+                    f"{v!r}."
+                )
+            if isinstance(v, float) and v != v:
+                v = None
+        out[k] = v
+    return out
 
 
 def _covariate_field(row: np.ndarray, names: "tuple | None") -> Any:
