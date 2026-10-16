@@ -393,12 +393,14 @@ def test_lr_rejects_deserialised_model(weibull_model):
     restored.param_cb("beta", method="wald")
 
 
-def test_lr_rejects_offset_model():
+def test_lr_bounds_an_offset_model():
+    # It raised NotImplementedError; the offset is profiled (and bounded)
+    # too: test_likelihood_ratio_extra_parameters.py
     np.random.seed(13)
     x = surv.Weibull.random(200, 10.0, 2.0) + 5.0
     m = surv.Weibull.fit(x, offset=True)
-    with pytest.raises(NotImplementedError):
-        m.param_cb("alpha", method="lr")
+    lower, upper = m.param_cb("alpha", method="lr")
+    assert lower < m.params[0] < upper
 
 
 def test_param_cb_rejects_unknown_method(weibull_model):
@@ -491,12 +493,12 @@ def test_lr_cb_rejects_deserialised(weibull_model):
         restored.cb(np.array([10.0]), on="sf", method="lr")
 
 
-def test_lr_cb_rejects_offset_model():
+def test_lr_cb_bounds_an_offset_model():
     np.random.seed(13)
     x = surv.Weibull.random(200, 10.0, 2.0) + 5.0
     m = surv.Weibull.fit(x, offset=True)
-    with pytest.raises(NotImplementedError):
-        m.cb(np.array([12.0]), on="sf", method="lr")
+    lower, upper = m.cb(np.array([12.0]), on="sf", method="lr")[0]
+    assert lower < m.sf(12.0) < upper
 
 
 def test_cb_rejects_unknown_method(weibull_model):

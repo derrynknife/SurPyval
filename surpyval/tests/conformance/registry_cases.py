@@ -1113,7 +1113,20 @@ _LR_X = {
     # tail (13) is where its bands were hardest (the hf nesting in #421).
     "ExpoWeibull": np.array([13.0]),
 }
-_LR_NIGHTLY = {"NegativeBinomial", "ExpoWeibull"}
+# The offset, limited-failure and zero-inflated fits' searches run over
+# their extra parameters too: the Weibull's in every full run, the other
+# families' with the calibration studies. An offset model's times include
+# one before its estimated offset (6 on the Weibull's 6.56),
+# where the survival is 1 at the estimate but not over the region.
+for _family in ("Weibull", "Exponential", "Gamma", "LogNormal"):
+    _LR_X[f"{_family}[offset]"] = np.array([6.0, 9.0, 13.0, 18.0])
+    _LR_X[f"{_family}[lfp]"] = np.array([4.0, 8.0, 13.0])
+    _LR_X[f"{_family}[zi]"] = np.array([4.0, 8.0, 13.0])
+_LR_NIGHTLY = {"NegativeBinomial", "ExpoWeibull"} | {
+    f"{family}[{variant}]"
+    for family in ("Exponential", "Gamma", "LogNormal")
+    for variant in ("offset", "lfp", "zi")
+}
 # The regression models' likelihood-ratio bounds (#583), swept on one
 # case of each kind of covariate link, at two times (with the case's
 # first two covariate rows): a multiplier on the hazard, on the time, on
@@ -1180,9 +1193,8 @@ def _parametric_bounds(case):
     # multi-parameter valleys, seconds each) took about ten minutes on
     # four cores, so they run with the calibration studies; the
     # other four sweep in every run, and test_likelihood_ratio_edges.py
-    # checks those two families' edges and valleys directly (#421).
-    # (Documented: it is not available for offset, limited-failure or
-    # zero-inflated models.)
+    # checks those two families' edges and valleys directly (#421). The
+    # offset, limited-failure and zero-inflated fits sweep theirs too.
     if case.name not in _LR_X:
         return tuple(out)
     x = _LR_X[case.name]
@@ -1235,6 +1247,12 @@ def _parametric_bounds(case):
                 **lr,
             )
         )
+        if case.name in _LR_NIGHTLY and "[" in case.name:
+            # (an offset, LFP or ZI variant's mean residual life is an
+            # integral at every point the searches try: 24 minutes for
+            # the offset LogNormal's sweep alone; the Weibull's, in
+            # closed form, sweeps the same path)
+            return tuple(out)
         out.append(
             Bound(
                 "mrl_cb",
