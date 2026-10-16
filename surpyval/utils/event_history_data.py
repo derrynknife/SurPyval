@@ -1779,6 +1779,13 @@ def _held(data: Any, rows: "int | None") -> list:
             "  time-varying covariates: "
             + ", ".join(f"{v} {k}" for k, v in sorted(kinds.items()))
         )
+    if getattr(data, "markers", None) is not None:
+        readings = sum(len(m) for m in data.markers.values())
+        read = sum(1 for m in data.markers.values() if m)
+        lines.append(
+            f"  markers: {readings} reading{'' if readings == 1 else 's'} "
+            f"on {read} item{'' if read == 1 else 's'}"
+        )
     if getattr(data, "states", None) is not None:
         found = sorted(
             {st for _, changes in data.states.values() for *_, st in changes}

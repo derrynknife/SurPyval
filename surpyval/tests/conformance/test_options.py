@@ -223,7 +223,11 @@ def _call(case, spec, model, side, alpha, fname, event, k):
             kw["on"] = fname
         args = [x if k is None else x[k]]
         if case.interface in WITH_COVARIATES:
-            args.append(case.Z[: x.size] if k is None else case.Z[k])
+            if case.z_style != "paired":
+                # one covariate vector a call (a joint model's item)
+                args.append(case.Z[0] if k is None else case.Z[k])
+            else:
+                args.append(case.Z[: x.size] if k is None else case.Z[k])
         if spec.per_cause:
             args.append(event)
         return np.asarray(method(*args, **kw), float)

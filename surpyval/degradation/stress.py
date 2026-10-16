@@ -140,6 +140,11 @@ class LinkedPathModel(PathModel):
         self._inverse = [f[1] for f in fns]
         self._deriv = [f[2] for f in fns]
 
+    def __reduce__(self) -> tuple:
+        # rebuilt from its base and links: the link functions it holds
+        # are lambdas, which do not pickle
+        return (type(self), (self.base, dict(self.links)))
+
     def to_natural(self, eta: npt.ArrayLike) -> npt.NDArray:
         """Natural-scale parameters ``theta = h(eta)``.
 
@@ -169,22 +174,36 @@ class LinkedPathModel(PathModel):
             axis=-1,
         )
 
-    def _link_derivative(self, eta: npt.NDArray) -> npt.NDArray:
-        return np.array([d(e) for d, e in zip(self._deriv, eta)])
+    # The path's parameters come one per argument, each a number or an
+    # array broadcasting with the ages (as the built-in paths take them),
+    # so the links apply argument by argument.
+    def _natural_args(self, params: tuple) -> list:
+        return [
+            h(np.asarray(e, dtype=float))
+            for h, e in zip(self._forward, params)
+        ]
 
     def path(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
-        return self.base.path(x, *self.to_natural(params))
+        return self.base.path(x, *self._natural_args(params))
 
     def inv_path(self, y: npt.ArrayLike, *params: float) -> npt.NDArray:
-        return self.base.inv_path(y, *self.to_natural(params))
+        return self.base.inv_path(y, *self._natural_args(params))
 
     def jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         # chain rule: d path / d eta = (d path / d theta) * h'(eta)
-        eta = np.asarray(params, dtype=float)
         natural = np.asarray(
-            self.base.jacobian(x, *self.to_natural(eta)), dtype=float
+            self.base.jacobian(x, *self._natural_args(params)), dtype=float
         )
-        return natural * self._link_derivative(eta)[None, :]
+        derivative = np.stack(
+            np.broadcast_arrays(
+                *[
+                    d(np.asarray(e, dtype=float))
+                    for d, e in zip(self._deriv, params)
+                ]
+            ),
+            axis=-1,
+        )
+        return natural * derivative
 
     def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
         self.base.check_data(x, y)

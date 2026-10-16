@@ -1,5 +1,6 @@
 """Stage-2 accelerated degradation: stress-dependent path parameters."""
 
+import pickle
 import warnings
 
 import numpy as np
@@ -73,6 +74,26 @@ def test_linked_model_names_and_linearity():
         ExponentialPath, {"b": "identity"}
     ).linear_in_parameters
     assert "Linear" in repr(linked)
+
+
+def test_linked_model_takes_arrays_of_parameters_and_pickles():
+    # as the built-in paths do: one parameter array per argument, each
+    # broadcasting with the ages (the joint model evaluates it so)
+    linked = LinkedPathModel(ExponentialPath, {"b": "log"})
+    x = np.array([0.0, 10.0, 20.0])
+    a = np.array([2.0, 2.5, 3.0])
+    log_b = np.log([0.01, 0.02, 0.03])
+    one_by_one = [linked.path(t, ai, bi) for t, ai, bi in zip(x, a, log_b)]
+    assert np.allclose(linked.path(x, a, log_b), one_by_one)
+    jac = linked.jacobian(x, a, log_b)
+    assert jac.shape == (3, 2)
+    for k in range(3):
+        assert np.allclose(
+            jac[k], linked.jacobian(x[k : k + 1], a[k], log_b[k])
+        )
+    copy = pickle.loads(pickle.dumps(linked))
+    assert copy.links == linked.links
+    assert np.allclose(copy.path(x, a, log_b), one_by_one)
 
 
 def test_log_link_rejects_non_positive_parameter():

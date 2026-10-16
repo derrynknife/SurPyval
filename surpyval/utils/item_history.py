@@ -99,8 +99,8 @@ class ItemHistory:
     end of observation (``right_censored``, needed where there are no
     failures) is the age up to which it was seen in its last state. No
     model uses states yet (#887): every fit refuses data that has them.
-    ``markers`` (repeated measurements, #891) are reserved for the joint
-    models.
+    ``markers`` (repeated measurements, #891) are reserved for joint models
+    of histories; a lifetime's record, ``ItemLifetime``, takes them now.
 
     Examples
     --------

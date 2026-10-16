@@ -35,8 +35,9 @@ from surpyval.univariate.regression._fit_skeleton import (
 
 FAMILIES = [
     name
-    for name in CASE_BY_NAME
-    if name.endswith(("PH", "AFT", "PO", "AH")) and name != "CoxPH"
+    for name, case in CASE_BY_NAME.items()
+    if name.endswith(("PH", "AFT", "PO", "AH"))
+    and case.model_class == "surpyval.ParametricRegressionModel"
 ]
 
 #: Where the old numerical standard errors are further than 1e-4 from the
