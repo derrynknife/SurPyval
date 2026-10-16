@@ -667,8 +667,9 @@ be fitted at each level on its own. Neither can be checked at the use
 stress, so the report also looks at what the test can say about the
 extrapolation there.
 
-Nelson's insulating fluid (*Accelerated Testing*, 1990) broke down under
-seven voltages, from 26 to 38 kV; the times are in minutes:
+Nelson's insulating fluid (*Accelerated Testing*, 1990; the data as R's
+``Sleuth3::case0802`` has them) broke down under seven voltages, from 26 to
+38 kV; the times are in minutes:
 
 .. jupyter-execute::
 
@@ -682,7 +683,7 @@ seven voltages, from 26 to 38 kV; the times are in minutes:
         30: [7.74, 17.05, 20.46, 21.02, 22.66, 43.40, 47.30, 139.07,
              144.12, 175.88, 194.90],
         32: [0.27, 0.40, 0.69, 0.79, 2.75, 3.91, 9.88, 13.95, 15.93, 27.80,
-             53.24, 82.85, 89.29, 100.58, 215.10],
+             53.24, 82.85, 89.29, 100.59, 215.10],
         34: [0.19, 0.78, 0.96, 1.31, 2.78, 3.16, 4.15, 4.67, 4.85, 6.50,
              7.35, 8.01, 8.27, 12.06, 31.75, 32.52, 33.91, 36.71, 72.89],
         36: [0.35, 0.59, 0.96, 0.99, 1.69, 1.97, 2.07, 2.58, 2.71, 2.90,

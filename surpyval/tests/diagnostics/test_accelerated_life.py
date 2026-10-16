@@ -28,15 +28,17 @@ from surpyval.diagnostics import Diagnosis
 from surpyval.diagnostics.accelerated_life import DELTA_AIC
 
 #: Time to breakdown (minutes) of an insulating fluid at seven voltages
-#: (kV): Nelson (1990), Accelerated Testing, chapter 3. The Weibull and
-#: power-law fit gives Nelson's shape 0.777 and exponent -17.7.
+#: (kV): Nelson (1990), Accelerated Testing, chapter 3, checked value by
+#: value against R's Sleuth3::case0802 (Nelson's G.E. report 71-C-011).
+#: The Weibull and power-law fit gives Nelson's shape 0.777 and exponent
+#: -17.7.
 FLUID = {
     26: [5.79, 1579.52, 2323.70],
     28: [68.85, 108.29, 110.29, 426.07, 1067.60],
     30: [7.74, 17.05, 20.46, 21.02, 22.66, 43.40, 47.30, 139.07, 144.12]
     + [175.88, 194.90],
     32: [0.27, 0.40, 0.69, 0.79, 2.75, 3.91, 9.88, 13.95, 15.93, 27.80]
-    + [53.24, 82.85, 89.29, 100.58, 215.10],
+    + [53.24, 82.85, 89.29, 100.59, 215.10],
     34: [0.19, 0.78, 0.96, 1.31, 2.78, 3.16, 4.15, 4.67, 4.85, 6.50, 7.35]
     + [8.01, 8.27, 12.06, 31.75, 32.52, 33.91, 36.71, 72.89],
     36: [0.35, 0.59, 0.96, 0.99, 1.69, 1.97, 2.07, 2.58, 2.71, 2.90, 3.67]
@@ -50,39 +52,39 @@ V = np.concatenate([[float(k)] * len(v) for k, v in FLUID.items()])
 R: dict[str, dict] = {
     "weibull_complete": {
         "loglik": {
-            "Power": -300.817420918309,
-            "Exponential": -301.441035333287,
-            "Eyring": -301.396316646099,
-            "InverseEyring": -301.486816635028,
-            "GeneralLogLinear": -300.535924813629,
+            "Power": -300.817640677522,
+            "Exponential": -301.441265467227,
+            "Eyring": -301.396546267294,
+            "InverseEyring": -301.487047274705,
+            "GeneralLogLinear": -300.536133052196,
         },
-        "shape": (8.79399689064144, 6, 0.185499296570397),
-        "lof": (2.33905340891386, 5, 0.800514313287846),
+        "shape": (8.79408647966511, 6, 0.185493964326913),
+        "lof": (2.3390772239934, 5, 0.800510795393503),
     },
     "weibull_censored": {
-        "shape": (8.41073756261733, 5, 0.135004835452272),
-        "lof": (2.4450568743066, 4, 0.654500484279483),
+        "shape": (8.41083147667177, 5, 0.13500029190021),
+        "lof": (2.44508230270799, 4, 0.654495906971069),
     },
     "lognormal_complete": {
         "loglik": {
-            "Power": -303.601886152819,
-            "Exponential": -303.78289705497,
-            "Eyring": -303.764069472245,
-            "InverseEyring": -303.802729039181,
-            "GeneralLogLinear": -303.689362804071,
+            "Power": -303.602068456626,
+            "Exponential": -303.783082529146,
+            "Eyring": -303.764254772088,
+            "InverseEyring": -303.802914685217,
+            "GeneralLogLinear": -303.689541576808,
         },
-        "shape": (16.791938003206, 6, 0.0100791003969729),
-        "lof": (2.54295011327497, 5, 0.770013262379025),
+        "shape": (16.7920401668439, 6, 0.0100786939100739),
+        "lof": (2.54290867026884, 5, 0.770019529259505),
     },
     "exponential_complete": {
         "loglik": {
-            "Power": -305.537270054426,
-            "Exponential": -306.726422905734,
-            "Eyring": -306.643450735608,
-            "InverseEyring": -306.811181414002,
-            "GeneralLogLinear": -304.891220716566,
+            "Power": -305.53755605246,
+            "Exponential": -306.726733023418,
+            "Eyring": -306.643759550301,
+            "InverseEyring": -306.811492831371,
+            "GeneralLogLinear": -304.891483204593,
         },
-        "lof": (4.87862091229931, 5, 0.430872492031304),
+        "lof": (4.87870702726161, 5, 0.430861729105031),
     },
 }
 CASES = {
