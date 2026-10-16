@@ -3,10 +3,10 @@ name: Publish to PyPI
 # Publishes a release to PyPI, in either of two ways.
 #
 # 1. Push a version tag (e.g. v0.24) to the merge of the release pull request
-#    into ``master``.
+#    into ``main``.
 #
-# 2. Run this workflow by hand on ``master`` (Actions -> Publish to PyPI ->
-#    Run workflow; ``gh workflow run publish.yml --ref master -f
+# 2. Run this workflow by hand on ``main`` (Actions -> Publish to PyPI ->
+#    Run workflow; ``gh workflow run publish.yml --ref main -f
 #    version=0.25``; or the REST API). It checks the version typed in against
 #    pyproject.toml, that the tag v<version> does not exist yet and that PyPI
 #    does not have the version. After publishing it creates the tag
@@ -16,9 +16,9 @@ name: Publish to PyPI
 #    made with a workflow's own token, so nothing is published twice.
 #
 # Either way, publishing runs no tests. The one automated test is the full
-# run on the release pull request into ``master`` (actions.yml); publishing
+# run on the release pull request into ``main`` (actions.yml); publishing
 # accepts that run and checks it: the commit must be the merge of a pull
-# request into ``master`` whose run passed, every job of it, or nothing is
+# request into ``main`` whose run passed, every job of it, or nothing is
 # published.
 #
 # Authentication uses PyPI Trusted Publishing (OIDC) -- no API token is stored
@@ -61,7 +61,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # A run by hand: it releases the head of master, as a version that
+      # A run by hand: it releases the head of main, as a version that
       # has neither a tag nor a PyPI release yet.
       - name: Check the run by hand
         if: github.event_name == 'workflow_dispatch'
@@ -73,8 +73,8 @@ jobs:
             echo "::error::'$REQUESTED' isn't MAJOR.MINOR (e.g. 0.25)."
             exit 1
           fi
-          if [ "$GITHUB_REF" != "refs/heads/master" ]; then
-            echo "::error::Releases are made from master, not $GITHUB_REF."
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Releases are made from main, not $GITHUB_REF."
             exit 1
           fi
           if git ls-remote --exit-code --tags origin "refs/tags/v$REQUESTED" > /dev/null; then
@@ -96,10 +96,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           PR=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
-            --jq '[.[] | select(.base.ref == "master" and .merged_at != null)]
+            --jq '[.[] | select(.base.ref == "main" and .merged_at != null)]
                   | .[0].number // empty')
           if [ -z "$PR" ]; then
-            echo "$GITHUB_SHA is not the merge of a pull request into master" >&2
+            echo "$GITHUB_SHA is not the merge of a pull request into main" >&2
             exit 1
           fi
           HEAD=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .head.sha)
