@@ -25,6 +25,7 @@ from surpyval.utils.shapes import (
 from surpyval.utils.validation import check_alpha_ci, no_covariance_error
 
 from ._concordance import ConcordanceMixin
+from ._partial_effects import PartialEffectsMixin
 from ._prediction import (
     ConditionalSurvivalMixin,
     paired_probabilities,
@@ -48,6 +49,7 @@ if TYPE_CHECKING:
 
 class SemiParametricRegressionModel(
     ConditionalSurvivalMixin,
+    PartialEffectsMixin,
     InformationCriteriaMixin,
     LinearPredictorMixin,
     ConcordanceMixin,
@@ -194,6 +196,39 @@ class SemiParametricRegressionModel(
     def __init__(self, kind: str, parameterization: str) -> None:
         self.kind = kind
         self.parameterization = parameterization
+
+    # -- plot_partial_effects (PartialEffectsMixin) ------------------------
+
+    #: The Breslow baseline is a step function, drawn as steps.
+    _PARTIAL_EFFECTS_STEP = True
+
+    def _partial_effects_refusal(self) -> "str | None":
+        if self.is_stratified:
+            return (
+                "A stratified Cox model has a baseline per stratum, and "
+                "plot_partial_effects does not take a stratum: draw each "
+                "stratum's curves with sf(x, Z, stratum=...)."
+            )
+        return None
+
+    def _partial_effects_width(self) -> int:
+        return int(np.size(self.params))
+
+    def _partial_effects_rows(
+        self,
+    ) -> "tuple[npt.NDArray, npt.NDArray] | str":
+        data = getattr(self, "_fit_data", None)
+        if not data:
+            return "the model does not hold the data it was fitted to"
+        return (
+            onp.asarray(data["Z"], dtype=float),
+            onp.asarray(data["n"], dtype=float),
+        )
+
+    def _partial_effects_times(self) -> "npt.NDArray | None":
+        data = getattr(self, "_fit_data", None)
+        fitted = [] if not data else [onp.ravel(data["x"])]
+        return onp.concatenate([onp.ravel(self.x)] + fitted)
 
     # -- model comparison (#604) -------------------------------------------
 

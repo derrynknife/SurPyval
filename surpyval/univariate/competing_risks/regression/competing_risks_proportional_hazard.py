@@ -39,6 +39,9 @@ from surpyval.univariate.regression._aliasing import (
     dataframe_covariates,
     warn_collected,
 )
+from surpyval.univariate.regression._partial_effects import (
+    CompetingRisksPartialEffectsMixin,
+)
 from surpyval.univariate.regression._summary import (
     coefficient_names,
     coefficient_repr,
@@ -94,7 +97,10 @@ def _check_interp(interp: str) -> None:
 
 
 class CompetingRisksProportionalHazards(
-    InformationCriteriaMixin, LinearPredictorMixin, SerialisableMixin
+    CompetingRisksPartialEffectsMixin,
+    InformationCriteriaMixin,
+    LinearPredictorMixin,
+    SerialisableMixin,
 ):
     """
     Competing-risks proportional-hazards regression.
@@ -754,6 +760,19 @@ class CompetingRisksProportionalHazards(
             return self._incidence_steps(z)[e_i].cumsum()
 
         return self._per_covariate_row(x, Z, incidence, 0.0)
+
+    # -- plot_partial_effects (CompetingRisksPartialEffectsMixin) ----------
+
+    def _partial_effects_width(self) -> int:
+        return int(np.atleast_2d(np.asarray(self.betas)).shape[1])
+
+    def _partial_effects_times(self) -> "npt.NDArray | None":
+        return np.asarray(self.x, dtype=float)
+
+    def _partial_effects_curve(
+        self, on: str, x: npt.NDArray, row: npt.NDArray, event: Any
+    ) -> npt.NDArray:
+        return np.asarray(self.cif(x, row, event), dtype=float)
 
     def _per_covariate_row(
         self, x: npt.ArrayLike, Z: npt.ArrayLike, curve: Any, start: float

@@ -60,6 +60,7 @@ SIDES = ("two-sided", "lower", "upper")
 # Public methods taking a level or bound= that are not swept, and why.
 NOT_SWEPT = {
     "plot": "draws the bounds of a swept method",
+    "plot_partial_effects": "draws the bounds of cb, a swept method (#876)",
     "get_plot_data": "collects the bounds of a swept method for plot",
     "R_cb": "the survival bounds behind cb in [upper, lower] order "
     "(documented); cb(on='sf') is the method to call",
