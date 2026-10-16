@@ -15,17 +15,28 @@ Unreleased
   every reshape (``censor_at`` and ``enter_at`` keep the readings inside
   the new window, ``without("markers")`` drops them), and every other fit
   refuses data that holds them, naming ``data.without("markers")``.
-  ``WeibullJointPH`` (``JointPH(Weibull)``) fits the joint model: each
-  item's marker a straight line with a random intercept and slope plus
-  noise, its hazard Weibull PH in the line's current value, covariates in
-  both parts, by maximum likelihood with adaptive Gauss-Hermite
-  quadrature; failures, right censoring and left truncation.
-  ``WeibullJointPH.fit(data)`` returns a ``JointModel`` with ``params``,
-  ``covariance()``, ``standard_errors()``, ``neg_ll()``, ``aic()``,
-  ``bic()``, ``summary()`` and ``to_dict``/``from_dict``, and predicts for
-  an item still running given its readings so far: ``sf(x, item)``,
-  ``ff(x, item)`` and ``cb(x, item)`` (delta-method bounds). See
-  :doc:`Joint Models`.
+  ``JointPH(Weibull, path_model, varying=...)`` fits the joint model:
+  each item's marker follows a degradation path model (``LinearPath`` by
+  default, which ``WeibullJointPH`` is; ``QuadraticPath``,
+  ``ExponentialPath``, ... or a ``PathModel`` of one's own) with the
+  parameters named in ``varying`` (default all, at most three) varying
+  between items, multivariate normal, and the rest common, plus noise;
+  its hazard is Weibull PH in the path's current value; covariates shift
+  every path parameter's mean and enter the hazard; by maximum likelihood
+  with adaptive Gauss-Hermite quadrature; failures, right censoring and
+  left truncation; a covariate the data cannot determine is aliased.
+  ``fit(data)`` (also arrays with ``markers=[...]``, and ``fit_from_df``
+  with a ``markers_col``) returns a ``JointModel``, its parameters named
+  by the parts (the path's own ``a``, ``b``, ...; ``a_<cov>``; ``sd_a``,
+  ``corr_a_b``; ``sd_noise``; ``alpha``, ``beta``, ``<cov>``;
+  ``marker_effect``), with ``covariance()``, ``standard_errors()``,
+  ``neg_ll()``, ``aic()``, ``bic()``, ``summary()`` and
+  ``to_dict``/``from_dict``; ``marker_reference=`` chooses the marker
+  value at which ``alpha`` is reported (default the mean reading). It
+  predicts for one item given its readings so far: ``sf(x, Z,
+  markers=..., given=...)``, ``ff`` and ``cb`` (delta-method bounds), or
+  ``sf(x, item)`` from an item record, the same prediction; with no
+  readings and no ``given``, a new item's. See :doc:`Joint Models`.
 - The data utilities live on ``SurpyvalData``.
   ``SurpyvalData.from_observations(observed=..., right_censored=...,
   left_censored=..., interval_censored=..., left_truncation=...,

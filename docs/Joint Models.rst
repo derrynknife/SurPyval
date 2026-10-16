@@ -13,11 +13,13 @@ remaining life given its readings so far, updated as new readings arrive.
 SurPyval's joint model (``WeibullJointPH``, #891) is the standard one
 (Rizopoulos, 2012):
 
-- **the marker** is a straight line in age with an intercept and a slope of
-  the item's own (drawn, across items, from a bivariate normal), read with
-  normal noise;
-- **the hazard** is Weibull proportional hazards in the line's *current,
-  noise-free* value, and the item's covariates, which also shift its line.
+- **the marker** follows a degradation path model -- a straight line in
+  age for ``WeibullJointPH``, or any of the degradation module's paths
+  (``QuadraticPath``, ``ExponentialPath``, ...) or one of your own -- with
+  parameters of the item's own (drawn, across items, from a multivariate
+  normal), read with normal noise;
+- **the hazard** is Weibull proportional hazards in the path's *current,
+  noise-free* value, and the item's covariates, which also shift its path.
 
 Why not the obvious approaches?
 -------------------------------
@@ -43,50 +45,67 @@ The model
 ---------
 
 Item :math:`i` has readings :math:`y_{ij}` at ages :math:`t_{ij}`,
-covariates :math:`z_i`, and fails or is censored at :math:`T_i`:
+covariates :math:`z_i`, and fails or is censored at :math:`T_i`. Its marker
+follows the path model :math:`m(t; \theta)` (``path(t, *theta)``; for
+``WeibullJointPH`` the line :math:`a + b t`) with parameters
+:math:`\theta_i` of its own, read with noise:
 
 .. math::
 
-    m_i(t) = (\beta_0 + b_{i0}) + (\beta_1 + b_{i1})\, t + \delta' z_i,
-    \qquad y_{ij} = m_i(t_{ij}) + \varepsilon_{ij},
+    y_{ij} = m(t_{ij}; \theta_i) + \varepsilon_{ij}, \qquad
+    \theta_{iV} \sim N(\mu_V + \Delta_V z_i, D), \qquad
+    \theta_{iC} = \mu_C + \Delta_C z_i,
+
+the parameters that vary between items (:math:`V`, all of them by default)
+multivariate normal about means the covariates shift, the others
+(:math:`C`) common to every item, and :math:`\varepsilon_{ij} \sim N(0,
+\sigma^2)`. The hazard is
 
 .. math::
 
     h_i(t) = \frac{\beta}{\alpha}\left(\frac{t}{\alpha}\right)^{\beta-1}
-    \exp\left(\gamma' z_i + \zeta\,\bigl(m_i(t) - c\bigr)\right),
+    \exp\left(\gamma' z_i + \zeta\,\bigl(m(t; \theta_i) - r\bigr)\right).
 
-with :math:`b_i \sim N(0, D)` and :math:`\varepsilon_{ij} \sim
-N(0, \sigma^2)`. :math:`\zeta` (``marker_effect``) is the change in the log
-hazard per unit of the marker: ``exp(marker_effect)`` is the hazard ratio of
-one unit. The marker enters centred at :math:`c` (``marker_center``, the mean
-reading of the data), so the Weibull :math:`\alpha` and :math:`\beta` are the
-baseline of an item with its marker at :math:`c` and its covariates at 0.
+:math:`\zeta` (``marker_effect``) is the change in the log hazard per unit of
+the marker: ``exp(marker_effect)`` is the hazard ratio of one unit. The
+marker enters relative to :math:`r` (``marker_reference``: the mean reading
+of the data, unless the fit is given another), so the Weibull :math:`\alpha`
+and :math:`\beta` are the baseline of an item with its marker at
+:math:`r` and its covariates at 0.
 
-Given its line, an item's readings and lifetime are independent, so its
-likelihood is
+Given its path, an item's readings and lifetime are independent, so its
+likelihood is the integral over its varying parameters
 
 .. math::
 
-    L_i = \int p(y_i \mid b)\, h_i(T_i \mid b)^{d_i}\, S_i(T_i \mid b)\,
-    \phi(b; 0, D)\, db,
+    L_i = \int p(y_i \mid \theta)\, h_i(T_i \mid \theta)^{d_i}\,
+    S_i(T_i \mid \theta)\, \phi(\theta_V; \mu_V + \Delta_V z_i, D)\,
+    d\theta_V,
 
 :math:`d_i` 1 for a failure and 0 for a censoring. The fit maximises the sum
-of the :math:`\log L_i`, each two-dimensional integral by adaptive
-Gauss--Hermite quadrature (7 points a dimension, the grid centred at each
-item's most likely line and scaled by how sure its readings make it); the
-nodes are held fixed while the parameters are searched (with autograd's
-gradient), then placed again at the new parameters, until the
-log-likelihood stops moving. The cumulative hazard along a line is by
-15-point Gauss--Legendre quadrature. The fit starts from the marker's mixed
-model alone (by REML, the longitudinal part of ``DegradationAnalysis``) and
-a survival fit with each item's predicted line plugged in -- a two-stage
+of the :math:`\log L_i`, each integral by adaptive Gauss--Hermite
+quadrature: a product grid of 7 points a dimension (49 for two varying
+parameters, 343 for three, the most that may vary), centred at each item's
+most likely parameters and scaled by how sure its readings make them (the
+Gauss--Newton curvature, from the path's Jacobian: exact for a path linear
+in its parameters). The nodes are held fixed while the parameters are
+searched (with autograd's gradient, in the parameters' standard errors),
+and a step is taken only as far as the likelihood with the nodes placed
+again at the new point improves; this repeats until the log-likelihood
+stops moving. A common path parameter is searched through the path model
+itself (its Jacobian, and differences of it for the Hessian). The
+cumulative hazard along a path is by 15-point Gauss--Legendre quadrature.
+The fit starts from the path fitted to each item alone (the path model's
+own ``fit``; items with too few readings for it are left out of this
+step), the spread of those fits about the covariates' means, and a
+survival fit with each item's predicted path plugged in -- a two-stage
 estimate, which is biased, and only a start. The covariance is the inverse
 of the Hessian of the negative log-likelihood, by autograd.
 
 An item that came under observation at age :math:`L_i > 0`
 (``left_truncation``) is in the data because it reached :math:`L_i`: its
-likelihood is divided by the probability of that, :math:`\int S(L_i \mid b)
-\phi(b; 0, D)\, db`, over the population's lines.
+likelihood is divided by the probability of that, :math:`\int S(L_i \mid
+\theta) \phi(\theta_V)\, d\theta_V`, over the population's paths.
 
 The data: readings on the item records
 --------------------------------------
@@ -175,13 +194,23 @@ Fitting
     model = WeibullJointPH.fit(fleet, unit="days")
     model
 
-The marker part recovers the simulation (a line from 3 mm/s, rising 1/365
-= 0.00274 mm/s a day, noise 0.7), and the survival part a marker effect of
-about 0.9. (The data can also be given as arrays, as for every fitter:
-``WeibullJointPH.fit(x, c=c, Z=Z, markers=[{age: value, ...}, ...])``, one
-``{age: value}`` per item.) The model has ``params`` (named by ``parameter_names``),
-``covariance()``, ``standard_errors()``, ``neg_ll()``, ``aic()``, ``bic()``
-and ``summary()``, as every model does:
+The path recovers the simulation (a line from ``a`` = 3 mm/s, rising ``b``
+= 1/365 = 0.00274 mm/s a day, the pumps' levels spread by ``sd_a`` = 0.6 and
+rates by ``sd_b`` = 0.5/365, noise ``sd_noise`` = 0.7), and the survival part
+a marker effect of about 0.9. The names come from the parts: the path
+model's own parameter names (``a``, ``b``), ``sd_<name>`` and
+``corr_<name>_<name>`` for their spread between items, ``sd_noise``, the
+Weibull ``alpha`` and ``beta`` (the heading says at which marker value
+``alpha`` is), each covariate's coefficient in the hazard (``<cov>``) and
+shifts of the path means (``a_<cov>``, ``b_<cov>``), and
+``marker_effect``. The data can also be given as arrays, as for every
+fitter -- ``WeibullJointPH.fit(x, c=c, Z=Z, markers=[{age: value, ...},
+...])``, one ``{age: value}`` per item -- or as a DataFrame of one row per
+item, ``fit_from_df(df, x_col=..., markers_col=..., c_col=...,
+Z_cols=[...])``, its ``markers_col`` holding each item's ``{age: value}``.
+The model has ``params`` (named by ``parameter_names``), ``covariance()``,
+``standard_errors()``, ``neg_ll()``, ``aic()``, ``bic()`` and
+``summary()``, as every model does:
 
 .. jupyter-execute::
 
@@ -198,7 +227,7 @@ carried forward (each reading a step of its ``time_varying_covariates``):
 
     from surpyval import WeibullPH
 
-    centre = model.marker_center
+    centre = model.marker_reference
     last_reading = SurpyvalData.from_items(
         [
             item.clone(
@@ -224,9 +253,10 @@ carried forward (each reading a step of its ``time_varying_covariates``):
     assert abs(model.params[-1] - 0.9) < model.standard_errors()[-1]
     assert model.maximum == "verified"
     est = dict(zip(model.parameter_names, model.params))
-    assert round(est["marker_intercept"], 1) == 3.0
-    assert round(est["marker_slope"], 5) == 0.00273
+    assert round(est["a"], 1) == 3.0
+    assert round(est["b"], 5) == 0.00273
     assert round(est["sd_noise"], 1) == 0.7
+    assert round(est["sd_a"], 1) == 0.6
 
 The last-reading fit puts the marker's effect at 0.55, 39% below the 0.9
 it was simulated with; the joint model's 0.98 is within its standard error
@@ -238,25 +268,101 @@ covering it 96% of the time.
 Covariates and late entry
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A record's ``covariates`` enter both parts: the marker's line
-(``marker_<name>``, a shift of its level) and the hazard (``<name>``, a log
-hazard ratio at a given marker). Named covariates (``covariates={"site":
-1}``) name the parameters. Items that came under observation late -- a
-fleet whose records start when monitoring was installed -- are
+A record's ``covariates`` enter both parts: each path parameter's mean
+(``a_<name>``, ``b_<name>``: a shift of the level, of the rate) and the
+hazard (``<name>``, a log hazard ratio at a given marker). Named covariates
+(``covariates={"site": 1}``) name the parameters; a covariate the data
+cannot determine (constant, or a combination of others) is aliased, its
+coefficients ``nan``, with one warning. Items that came under observation
+late -- a fleet whose records start when monitoring was installed -- are
 ``left_truncation``-ed, and the fit accounts for having seen only the ones
 that reached that age.
+
+The marker reference
+~~~~~~~~~~~~~~~~~~~~
+
+``alpha`` is the baseline of an item whose marker is at
+``marker_reference``, by default the mean reading (3.66 mm/s here). A
+round value reads more easily: ``fit(..., marker_reference=4.0)`` reports
+``alpha`` for an item at 4 mm/s. Nothing else moves -- the other
+parameters, the likelihood and every prediction are the same:
+
+.. jupyter-execute::
+
+    at_four = WeibullJointPH.fit(fleet, unit="days", marker_reference=4.0)
+    print(round(model.marker_reference, 3), round(model.params[6], 1))
+    print(at_four.marker_reference, round(at_four.params[6], 1))
+    at_four.summary().index[6]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(np.delete(at_four.params, 6), np.delete(model.params, 6))
+    assert at_four.parameter_names[6] == "alpha"
+
+Other paths
+~~~~~~~~~~~
+
+``JointPH(Weibull, path_model)`` takes any of the degradation module's path
+models, or a ``PathModel`` of your own; ``varying=`` names the path
+parameters that vary between items (the others are common to all). A wear
+signal growing exponentially, ``a exp(b t)``, from a level and at a rate of
+each item's own:
+
+.. jupyter-execute::
+
+    from surpyval import JointPH, Weibull
+    from surpyval.degradation import ExponentialPath, QuadraticPath
+
+
+    def wearing(k):
+        a, b = rng.normal(3.0, 0.4), rng.normal(0.0008, 0.0003)
+        t = np.linspace(0, 3000, 30001)
+        h = (2 / 800) * (t / 800) * np.exp(0.9 * (a * np.exp(b * t) - 4.0))
+        H = np.concatenate([[0], np.cumsum((h[1:] + h[:-1]) / 2 * np.diff(t))])
+        life = np.interp(rng.exponential(), H, t)
+        end = min(life, 730.0)
+        ages = np.arange(0.0, end, 30.0)
+        y = a * np.exp(b * ages) + rng.normal(0, 0.3, ages.size)
+        outcome = "observed" if life <= 730 else "right_censored"
+        return ItemLifetime(k, **{outcome: end}, markers=dict(zip(ages, y)))
+
+
+    wear = SurpyvalData.from_items([wearing(k) for k in range(200)])
+    exponential = JointPH(Weibull, ExponentialPath).fit(wear, marker_reference=4.0)
+    exponential.summary()[["coef", "se(coef)"]].round(5)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert exponential.maximum == "verified"
+    z = (exponential.params[-1] - 0.9) / exponential.standard_errors()[-1]
+    assert abs(z) < 3
+
+A path's parameters can be held common: ``JointPH(Weibull, QuadraticPath,
+varying=("a", "b"))`` gives each item its own level and rate, and every item
+the same curvature ``c``. At most three may vary (the quadrature's grid is
+7 points in each). A path model fitted to a curve it cannot follow biases
+the joint model, as it does a degradation model: choose it as you would
+there (see :doc:`Degradation Analysis`).
 
 Prediction: survival given the readings so far
 ----------------------------------------------
 
-The model predicts for an item, given as a record: still running at its
-``right_censored`` age, with its readings so far and its covariates.
-``model.sf(x, item)`` is its survival to each age ``x``, given its readings
-and that it was running at that age (1 at or before it), over the lines its
-readings leave possible; ``ff`` is its failure probability, and ``cb`` bounds
-either from the parameters' uncertainty (the delta method on
-:math:`\log(-\log S)`, with the parameters' covariance). Two pumps a year
-old, one whose vibration has stayed low and one whose has risen:
+The model predicts for one item: ``model.sf(x, Z, markers=..., given=...)``
+is its survival to each age ``x`` given its covariates ``Z``, its readings
+so far ``markers`` (``{age: value}``) and that it was still running at age
+``given`` (1 at or before it), over the paths its readings leave possible;
+``ff`` is its failure probability, and ``cb`` bounds either from the
+parameters' uncertainty (the delta method on :math:`\log(-\log S)`, with
+the parameters' covariance). With no readings and no ``given`` it is a new
+item's survival, averaged over the population's paths. An item record
+gives all three at once: ``model.sf(x, item)`` reads its covariates, its
+``markers`` and its ``right_censored`` age as ``given``, so the two forms
+are the same prediction. Two pumps a year old, one whose vibration has
+stayed low and one whose has risen:
 
 .. jupyter-execute::
 
@@ -274,6 +380,16 @@ old, one whose vibration has stayed low and one whose has risen:
     :hide-output:
 
     assert model.ff(545, rising) > 2 * model.ff(545, quiet)
+    assert model.ff(545, rising) == model.ff(
+        545, markers=rising.markers, given=365
+    )
+
+The same without the records, and for a new pump:
+
+.. jupyter-execute::
+
+    print(model.ff([425, 545], markers=rising.markers, given=365).round(3))
+    print(model.ff([365, 730]).round(3))  # a new pump, no readings yet
 
 The rising pump is more than twice as likely to fail in the next six months.
 Bounds, and a new reading as it arrives (the prediction is updated by
@@ -303,7 +419,9 @@ asking again with the updated record):
 array of its shape, and a two-sided ``cb`` adds a last ``[lower, upper]``
 axis). Far beyond the data the survival can level off above 0: the lines
 are straight, and one whose slope is negative takes the hazard towards 0, as
-the model says (a reason to read predictions far beyond the data with care).
+the model says (a reason to read predictions far beyond the data with care;
+past about ten times the data's ages the levelled-off value moves by the
+quadrature's error, about 1e-5 of itself).
 
 Saving and loading
 ------------------
@@ -323,20 +441,22 @@ What v1 does and does not do
 
 The joint model of v1 (#891) is the standard one. It has:
 
-- one marker, a straight line in age with a random intercept and slope;
-- a Weibull proportional hazards survival part in the line's current value
-  (``JointPH(Weibull)``, which is ``WeibullJointPH``; other baselines are
-  refused);
-- covariates in both parts;
+- one marker, following any degradation path model (a straight line by
+  default), with up to three of its parameters varying between items
+  (multivariate normal on their natural scale) and the rest common;
+- a Weibull proportional hazards survival part in the path's current value
+  (``JointPH(Weibull, path_model)``; ``WeibullJointPH`` is the line; other
+  baselines are refused);
+- covariates in both parts (every path parameter's mean, and the hazard);
 - failures and right censoring, with left truncation; left or interval
   censored items and right truncation are refused;
 - predictions for one item given its readings, with Wald (delta method)
   bounds.
 
-Not yet (see #891's roadmap): curved (spline) paths, which real late-life
-rises often need -- a straight line fitted to a curve biases the joint
-model too; the slope or the cumulative marker as the link; other survival
-parts (AFT, splines); several markers; ``fit_from_df``.
+Not yet (see #891's roadmap): spline paths; a log scale for a positive
+path parameter's spread (the degradation module's ``links``); the slope or
+the cumulative marker as the link; other survival parts (AFT, splines);
+several markers.
 
 References
 ----------
@@ -351,14 +471,14 @@ References
 API reference
 -------------
 
-``WeibullJointPH`` is ``JointPH(Weibull)``, an instance of the fitter class
-below; import everything from ``surpyval`` (or
+``WeibullJointPH`` is ``JointPH(Weibull, LinearPath)``, an instance of the
+fitter class below; import everything from ``surpyval`` (or
 ``surpyval.univariate.joint``).
 
 .. autofunction:: surpyval.univariate.joint.joint_ph.JointPH
 
 .. autoclass:: surpyval.univariate.joint.joint_ph.JointPHFitter
-   :members: fit
+   :members: fit, fit_from_df
 
 .. autoclass:: surpyval.univariate.joint.joint_model.JointModel
    :members: sf, ff, cb, summary, covariance, standard_errors, to_dict, from_dict
