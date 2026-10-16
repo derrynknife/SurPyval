@@ -26,6 +26,7 @@ FAMILY_MODULES: tuple[str, ...] = (
     "surpyval.diagnostics.ph_aft",
     "surpyval.diagnostics.odds_additive",
     "surpyval.diagnostics.accelerated_life",
+    "surpyval.diagnostics.recurrent",
 )
 
 
@@ -260,27 +261,6 @@ _CR = "surpyval.univariate.competing_risks."
 PENDING: tuple[Pending, ...] = (
     Pending("frailty models", 872, _instance_of(_REG + "FrailtyModel")),
     Pending("frailty models", 872, _instance_of(_REG + "CoxFrailtyModel")),
-    Pending(
-        "recurrent-event models",
-        873,
-        _instance_of(
-            "surpyval.recurrent.parametric.parametric_recurrence."
-            "ParametricRecurrenceModel"
-        ),
-    ),
-    Pending(
-        "recurrent-event models",
-        873,
-        _instance_of("surpyval.recurrent.RenewalModel"),
-    ),
-    Pending(
-        "recurrent-event models",
-        873,
-        _instance_of(
-            "surpyval.recurrent.regression.proportional_intensity."
-            "ProportionalIntensityModel"
-        ),
-    ),
     Pending(
         "competing-risks models",
         874,

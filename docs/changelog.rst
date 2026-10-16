@@ -82,6 +82,23 @@ Unreleased
   at two levels or fewer. Advice names the better life model, separate
   fits of the levels, or more stress levels. Both tests agree with R's
   ``survreg`` to 1e-5.
+- The recurrent-event families of ``diagnose()`` (#873), for the Poisson
+  processes (``HPP``, ``CrowAMSAA``, ``Duane``, ``CoxLewis``), the
+  imperfect-repair models (``GeneralizedRenewal``,
+  ``GeneralizedOneRenewal``, ``ARA``, ``ARI``) and the proportional-
+  intensity models: the Laplace, MIL-HDBK-189C and Lewis-Robinson trend
+  tests (tests of a constant-rate model, a model-choice screen for the
+  others); the model's Cramer-von Mises test (99 seeded bootstrap refits);
+  for the Poisson processes the Pearson dispersion test of the items'
+  counts; for the imperfect-repair models the likelihood-ratio tests of
+  perfect and minimal repair (``repair_test``) as a screen; plots of the
+  mean cumulative function, the transformed event times, the items'
+  counts and the restoration parameter's profile likelihood; and advice
+  between a constant rate, an NHPP, a renewal process and imperfect
+  repair, and towards proportional intensity for items that differ. The
+  Lewis-Robinson test is ``surpyval.diagnostics.recurrent.lewis_robinson``
+  and agrees with R. Models without data, least-squares fits and inexact
+  or right-truncated times are refused.
 - The data utilities live on ``SurpyvalData``.
   ``SurpyvalData.from_observations(observed=..., right_censored=...,
   left_censored=..., interval_censored=..., left_truncation=...,

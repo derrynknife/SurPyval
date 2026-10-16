@@ -800,3 +800,163 @@ would be.
 ``diagnose()`` refuses a model restored with ``from_dict`` (it has no
 data) and one whose fit has no finite maximum. Every kind of censoring,
 truncation, counts and a ``fixed`` parameter are supported.
+
+Recurrent events
+----------------
+
+A repairable system fails, is repaired and fails again. Its fitted model
+is one of three kinds, and each has its own family of checks:
+
+- a **Poisson process** (``HPP``, ``CrowAMSAA``, ``Duane``, ``CoxLewis``):
+  minimal repair, every item with the one intensity;
+- an **imperfect-repair** model (``GeneralizedRenewal``,
+  ``GeneralizedOneRenewal``, ``ARA``, ``ARI``), whose restoration
+  parameter places the repairs between as good as new and as bad as old;
+- a **proportional-intensity** model (``ProportionalIntensityHPP``,
+  ``ProportionalIntensityNHPP``): a Poisson process whose intensity each
+  item's covariates scale.
+
+Eight pumps are each watched for 100 days, and their failures come ever
+faster. A constant rate of failures, an HPP, is the simplest model:
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(1)
+    x, i, c = [], [], []
+    for pump in range(8):
+        # a power law: the expected number of failures by day t is (t / 25)^2
+        times = np.sort(100 * rng.random(rng.poisson(16)) ** 0.5)
+        x += [*times, 100]
+        i += [pump] * (len(times) + 1)
+        c += [0] * len(times) + [1]   # the last row ends the observation
+    x, i, c = np.array(x), np.array(i), np.array(c)
+
+    hpp = surv.HPP.fit(x, i, c)
+    d = hpp.diagnose()
+    print(d)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = d.table.set_index('test')
+    assert (_t.loc[_t['check'] == 'trend', 'verdict'] == 'fail').all()
+    assert not d.ok
+    assert d.advice[0].startswith('The rate of failures increases')
+
+The three trend tests reject a constant rate, and the advice names the
+models whose rate changes. The power law, ``CrowAMSAA``, passes:
+
+.. jupyter-execute::
+
+    crow = surv.CrowAMSAA.fit(x, i, c)
+    d = crow.diagnose()
+    d.table[['check', 'test', 'statistic', 'p', 'verdict']]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert d.ok and not d.advice
+    assert set(d.table['verdict']) == {'ok'}
+
+For a model that lets the rate change, a trend is no fault, so the trend
+rows are a model-choice screen (they are ok here: a trend was found). The
+plots show the data's mean cumulative function against a constant rate,
+the transformed event times the fit test uses (a straight line when the
+model fits) and each pump's count against the one it expects:
+
+.. jupyter-execute::
+
+    fig = d.plot()
+
+Mettas and Zhao's six systems, fitted with a Kijima generalized renewal
+process, show the repair check: the likelihood-ratio tests of perfect
+repair (``q = 0``, as good as new) and of minimal repair (``q = 1``, as
+bad as old). Neither is an assumption of the model, so they are a screen
+too: a row warns when its repair fits as well, and the advice names the
+simpler model.
+
+.. jupyter-execute::
+
+    from surpyval.datasets import load_mettas_and_zhao
+
+    mz = load_mettas_and_zhao()
+    grp = surv.GeneralizedRenewal.fit(mz['x'], mz['i'], mz['c'])
+    d = grp.diagnose()
+    d.table[['check', 'test', 'p', 'verdict']]
+
+.. jupyter-execute::
+
+    for advice in d.advice:
+        print('-', advice, '\n')
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _r = d.table[d.table['check'] == 'repair']
+    assert list(_r['verdict']) == ['warn', 'warn'] and d.ok
+    assert 0.3 < _r['p'].iloc[0] < 0.31 and 0.46 < _r['p'].iloc[1] < 0.47
+
+With 33 failures the data cannot tell perfect from minimal repair (q is
+0.106), and nothing fails. ``d.plot('repair')`` draws the profile
+log-likelihood of ``q`` with both values marked:
+
+.. jupyter-execute::
+
+    fig = d.plot('repair')
+
+The recurrent checks
+~~~~~~~~~~~~~~~~~~~~
+
+``trend``
+    The Laplace and MIL-HDBK-189C tests, whose null is a homogeneous
+    Poisson process (a constant rate), and the Lewis-Robinson test, whose
+    null is any renewal process: the Laplace statistic divided by the
+    coefficient of variation of the times between failures. The first two
+    are the model's own ``trend_test``; each item is tested on its own
+    window. For Lewis-Robinson each item runs from its first renewal (its
+    start if it was observed from new, else its first failure) to its last
+    failure, so that it is centred under any renewal process. For a model
+    with a constant rate (``HPP``, ``ProportionalIntensityHPP``) these are
+    tests of it; for the others a screen, whose row warns when its test
+    does not reject its simpler null. A trend against a constant rate that
+    Lewis-Robinson does not confirm points to a renewal process whose
+    times between failures are not exponential (advised
+    ``GeneralizedRenewal.fit``); no trend at all, to a constant rate
+    (``HPP.fit``, ``ProportionalIntensityHPP.fit``).
+``fit``
+    The model's ``cramer_von_mises`` test, with 99 bootstrap refits from
+    a fixed seed, so a report is the same each time it runs;
+    ``model.cramer_von_mises(n_boot=..., random_state=...)`` gives a finer
+    p-value. A failure is advised another intensity, another repair model
+    or another baseline, as the model calls for.
+``between_items``
+    (Poisson processes.) The Pearson dispersion test of the items' event
+    counts against those the model expects over their windows, with
+    :math:`m - 1 - p` degrees of freedom for :math:`m` items and
+    :math:`p` covariate coefficients. Items that differ by more than chance
+    fail it, and are advised a proportional-intensity model with what
+    tells them apart as covariates (or, for one, more covariates). An item
+    observed up to its last failure has a fixed count and is left out.
+``repair``
+    (Imperfect repair.) The model's ``repair_test``: likelihood-ratio
+    tests of perfect repair and of minimal repair (ARI: maximal repair,
+    ``rho = 1``; G1 has no minimal repair), with the 50:50 mixture of
+    chi-squared(0) and chi-squared(1) for a value on the edge of the
+    parameter's range. A row warns when its repair is not rejected.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    from surpyval.diagnostics import recurrent as _rec
+    assert _rec.N_BOOT == 99
+
+``diagnose()`` refuses, saying what to do, a model built from its
+parameters or restored with ``from_dict`` (it has no data), a least-squares
+(``how='MSE'``) fit, one with no finite maximum, and data with interval-
+or left-censored rows or right truncation. Every recurrent check is about
+the model as a whole: ``columns=`` is accepted for a proportional-intensity
+model and changes nothing.

@@ -340,19 +340,6 @@ REG = "surpyval.univariate.regression."
         (REG + "FrailtyModel", {}, 872),
         (REG + "CoxFrailtyModel", {}, 872),
         (
-            "surpyval.recurrent.parametric.parametric_recurrence."
-            "ParametricRecurrenceModel",
-            {},
-            873,
-        ),
-        ("surpyval.recurrent.RenewalModel", {}, 873),
-        (
-            "surpyval.recurrent.regression.proportional_intensity."
-            "ProportionalIntensityModel",
-            {},
-            873,
-        ),
-        (
             "surpyval.univariate.competing_risks."
             "CompetingRisksProportionalHazards",
             {},
