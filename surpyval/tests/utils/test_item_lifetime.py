@@ -150,5 +150,94 @@ def test_the_dataset_needs_consistent_items():
         SurpyvalData.from_items([ItemLifetime("A", observed=5)], counts=0)
     with pytest.raises(ValueError, match="one per item"):
         SurpyvalData.from_items([ItemLifetime("A", observed=5)], counts=[1, 2])
-    with pytest.raises(TypeError, match="ItemLifetime objects"):
+    with pytest.raises(TypeError, match="ItemLifetime records"):
         SurpyvalData.from_items([sp.ItemHistory("A", observed=[5])])
+
+
+# -- #931: every record that builds goes into a dataset ----------------------
+
+
+def test_issue_931_right_censored_at_its_right_truncation_is_refused():
+    with pytest.raises(ValueError, match="Item 'a': right censored at 12"):
+        ItemLifetime("a", right_censored=12, right_truncation=12)
+    with pytest.raises(ValueError, match="Item 'a': right censored at 10"):
+        ItemLifetime("a", right_censored=5, right_truncation=10).extend(10)
+    # Observed or found failed by the truncation age is fine: it failed
+    ok = ItemLifetime("a", observed=12, right_truncation=12)
+    assert SurpyvalData.from_items([ok]).tr.tolist() == [12.0]
+    ok = ItemLifetime("a", interval_censored=[8, 12], right_truncation=12)
+    assert SurpyvalData.from_items([ok]).c.tolist() == [2]
+
+
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        ({"observed": 5, "tl": 2}, "'tl': a record's left truncation"),
+        ({"observed": 5, "Z": 2}, "'Z': a record's covariates are"),
+        ({"observed": 5, "e": "x"}, "'e': what failed is event_type="),
+        ({"x": 5}, "'x': the outcome is one of observed="),
+        ({"observed": 5, "n": 3}, "'n': how many identical items"),
+        (
+            {"observed": 5, "left_truncaton": 2},
+            "did you mean 'left_truncation'",
+        ),
+    ],
+)
+def test_issue_931_unknown_keywords_name_the_argument_meant(kwargs, match):
+    with pytest.raises(TypeError, match=match):
+        ItemLifetime("a", **kwargs)
+    with pytest.raises(TypeError, match=match):
+        ItemLifetime("a", observed=1).clone(**kwargs)
+
+
+def test_issue_931_from_items_and_from_observations_check_keywords():
+    items = [ItemLifetime("a", observed=5)]
+    with pytest.raises(TypeError, match="'n': how many identical items"):
+        SurpyvalData.from_items(items, n=[2])
+    with pytest.raises(TypeError, match="'count'.*counts="):
+        SurpyvalData.from_items(items, count=[2])
+    with pytest.raises(TypeError, match="'tl': left truncation is"):
+        SurpyvalData.from_observations(observed=[1, 2], tl=0.5)
+    with pytest.raises(TypeError, match="'x': the times go in the list"):
+        SurpyvalData.from_observations(x=[1, 2])
+    with pytest.raises(TypeError, match="did you mean 'observed_counts'"):
+        SurpyvalData.from_observations(observed=[1, 2], observed_count=[1, 2])
+
+
+@pytest.mark.parametrize(
+    "bad, match",
+    [
+        (None, "needs an id.*None, which is missing"),
+        (np.nan, "needs an id.*which is missing"),
+        ("", "needs an id.*which is missing"),
+        (["a"], r"got \['a'\], a list"),
+        ({"a": 1}, "a dict"),
+    ],
+)
+def test_issue_931_bad_ids_are_refused_when_the_record_is_made(bad, match):
+    with pytest.raises(ValueError, match=match):
+        ItemLifetime(bad, observed=1)
+    with pytest.raises(ValueError, match=match):
+        sp.ItemHistory(bad, observed=[1])
+    with pytest.raises(ValueError, match=match):
+        SurpyvalData.from_observations(observed=[1], observed_ids=[bad])
+
+
+def test_issue_931_mixed_id_kinds_name_one_of_each():
+    with pytest.raises(
+        ValueError, match=r"ids 1 \(a number\) and 'b' \(text\) are mixed"
+    ):
+        SurpyvalData.from_items(
+            [ItemLifetime(1, observed=1), ItemLifetime("b", observed=2)]
+        )
+    with pytest.raises(
+        ValueError, match=r"ids 'b' \(text\) and 1 \(a number\)"
+    ):
+        SurpyvalData.from_observations(observed=[1, 2], observed_ids=["b", 1])
+    # Tuple ids (a gap's id) are one kind
+    SurpyvalData.from_items(
+        [
+            ItemLifetime(("a", 1), observed=1),
+            ItemLifetime(("a", 2), observed=2),
+        ]
+    )

@@ -12,18 +12,23 @@ from surpyval.utils.item_history import (
     _age,
     _covariate_field,
     _covariates,
-    covariate_value,
     _schedule_field,
     _time_varying,
     _with_step,
+    checked_id,
     comparable,
+    covariate_value,
     freeze,
     frozen_setattr,
     frozen_setstate,
     hashable,
-    item_id,
     late_covariates,
     missing_type,
+)
+from surpyval.utils.record_keywords import (
+    LIFETIME_ALIASES,
+    accepted_names,
+    refuse_unknown_keywords,
 )
 
 __all__ = ["ItemLifetime"]
@@ -111,8 +116,16 @@ class ItemLifetime:
         event_type: Any = None,
         covariates: Any = None,
         time_varying_covariates: Any = None,
+        **unknown: Any,
     ) -> None:
-        item = item_id(id)
+        if unknown:
+            refuse_unknown_keywords(
+                "ItemLifetime",
+                unknown,
+                accepted_names(ItemLifetime.__init__, "self"),
+                LIFETIME_ALIASES,
+            )
+        item = checked_id(id)
         self.id = item
         given = {
             name: value
@@ -212,6 +225,18 @@ class ItemLifetime:
             raise ValueError(
                 f"Item {item!r}: its {self.outcome} age is after "
                 f"right_truncation ({tr:g})."
+            )
+        if tr is not None and self.outcome == "right_censored" and high >= tr:
+            # The dataset refuses it (xcnt_handler); refused here, naming
+            # the item, so that every record that builds goes into a
+            # dataset (#931).
+            raise ValueError(
+                f"Item {item!r}: right censored at {high:g}, at its "
+                f"right_truncation ({tr:g}). An item right truncated at "
+                f"{tr:g} is in the data because it failed by then, so it "
+                f"cannot have been seen working at {high:g}. If {tr:g} is "
+                "the end of its observation, that is right_censored alone, "
+                "without right_truncation."
             )
         if first_change is not None:
             start = 0.0 if tl is None else tl

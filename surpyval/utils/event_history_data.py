@@ -694,6 +694,7 @@ class EventHistoryData(ReshapeMixin):
         right_truncation: Any = None,
         covariates: "dict | None" = None,
         gaps: bool = False,
+        **unknown: Any,
     ) -> "EventHistoryData":
         """
         Recurrent event data from each item's history, keyed by the item's
@@ -759,6 +760,19 @@ class EventHistoryData(ReshapeMixin):
         """
         from surpyval.utils.item_history import ItemHistory
 
+        if unknown:
+            from surpyval.utils.record_keywords import (
+                FROM_HISTORIES_ALIASES,
+                accepted_names,
+                refuse_unknown_keywords,
+            )
+
+            refuse_unknown_keywords(
+                "EventHistoryData.from_histories",
+                unknown,
+                accepted_names(EventHistoryData.from_histories),
+                FROM_HISTORIES_ALIASES,
+            )
         observed = _history_dict("observed", observed)
         right_censored = _history_dict("right_censored", right_censored)
         items = list(dict.fromkeys([*observed, *right_censored]))
@@ -803,7 +817,7 @@ class EventHistoryData(ReshapeMixin):
         return cls.from_items(histories)
 
     @classmethod
-    def from_items(cls, items: Any) -> "EventHistoryData":
+    def from_items(cls, items: Any, **unknown: Any) -> "EventHistoryData":
         """
         The dataset of several items' histories, each an
         :class:`~surpyval.utils.item_history.ItemHistory`: their failures
@@ -824,17 +838,24 @@ class EventHistoryData(ReshapeMixin):
         (array([0, 0, 1, 2, 1]), array([1, 1, 1, 3, 1]))
         """
         from surpyval.utils.item_history import ItemHistory
+        from surpyval.utils.record_keywords import (
+            FROM_ITEMS_ALIASES,
+            refuse_unknown_keywords,
+        )
         from surpyval.utils.recurrent_utils import handle_xicn
+        from surpyval.utils.surpyval_data import _record_list
 
-        items = list(items)
-        if not items:
-            raise ValueError("Give at least one ItemHistory.")
-        for history in items:
-            if not isinstance(history, ItemHistory):
-                raise TypeError(
-                    "from_items takes ItemHistory objects; got "
-                    f"{type(history).__name__}."
-                )
+        refuse_unknown_keywords(
+            "EventHistoryData.from_items",
+            unknown,
+            ["items"],
+            {
+                k: v
+                for k, v in FROM_ITEMS_ALIASES.items()
+                if k not in ("n", "count", "weights")
+            },
+        )
+        items = _record_list(items, ItemHistory, "EventHistoryData")
         from surpyval.utils.item_history import (
             check_item_ids,
             covariate_names_of,

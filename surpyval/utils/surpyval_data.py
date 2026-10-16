@@ -362,6 +362,7 @@ class SurpyvalData(ReshapeMixin):
         right_censored_ids: Any = None,
         left_censored_ids: Any = None,
         interval_censored_ids: Any = None,
+        **unknown: Any,
     ) -> "SurpyvalData":
         """
         The data from a list of each kind of observation: the times at
@@ -472,6 +473,19 @@ class SurpyvalData(ReshapeMixin):
         >>> data.n
         array([ 3,  9, 12])
         """
+        if unknown:
+            from surpyval.utils.record_keywords import (
+                FROM_OBSERVATIONS_ALIASES,
+                accepted_names,
+                refuse_unknown_keywords,
+            )
+
+            refuse_unknown_keywords(
+                "SurpyvalData.from_observations",
+                unknown,
+                accepted_names(SurpyvalData.from_observations),
+                FROM_OBSERVATIONS_ALIASES,
+            )
         lists = {
             "observed": observed,
             "right_censored": right_censored,
@@ -678,7 +692,9 @@ class SurpyvalData(ReshapeMixin):
         return cls(x_, c_, n_, t_)
 
     @classmethod
-    def from_items(cls, items: Any, counts: Any = None) -> "SurpyvalData":
+    def from_items(
+        cls, items: Any, counts: Any = None, **unknown: Any
+    ) -> "SurpyvalData":
         """
         The data of several items' lifetimes, each an
         :class:`~surpyval.utils.item_lifetime.ItemLifetime`, with ``counts``
@@ -704,16 +720,18 @@ class SurpyvalData(ReshapeMixin):
         (array([5., 9.]), array([0, 1]), array([ 3, 10]))
         """
         from surpyval.utils.item_lifetime import ItemLifetime
+        from surpyval.utils.record_keywords import (
+            FROM_ITEMS_ALIASES,
+            refuse_unknown_keywords,
+        )
 
-        items = list(items)
-        if not items:
-            raise ValueError("Give at least one ItemLifetime.")
-        for item in items:
-            if not isinstance(item, ItemLifetime):
-                raise TypeError(
-                    "from_items takes ItemLifetime objects; got "
-                    f"{type(item).__name__}."
-                )
+        refuse_unknown_keywords(
+            "SurpyvalData.from_items",
+            unknown,
+            ["items", "counts"],
+            FROM_ITEMS_ALIASES,
+        )
+        items = _record_list(items, ItemLifetime, "SurpyvalData")
         from surpyval.utils.item_history import (
             check_item_ids,
             covariate_names_of,
@@ -724,13 +742,13 @@ class SurpyvalData(ReshapeMixin):
             from surpyval.utils.item_history import item_id
 
             given = {item_id(k): v for k, v in counts.items()}
-            unknown = sorted(
+            not_given = sorted(
                 (repr(k) for k in set(given) - {i.id for i in items}), key=str
             )
-            if unknown:
+            if not_given:
                 raise ValueError(
                     "'counts' names items not given: "
-                    + ", ".join(unknown)
+                    + ", ".join(not_given)
                     + "."
                 )
             counts = [given.get(i.id, 1) for i in items]
@@ -1649,12 +1667,78 @@ def _event_type_array(e: Any, c: np.ndarray, warn: bool = True) -> np.ndarray:
 
 def _kind_ids(name: str, value: Any, k: int) -> list:
     """A kind's item ids, ``name``: one per entry of its list."""
+    from surpyval.utils.item_history import checked_id
+
     listed = [value] if isinstance(value, (str, bytes)) else list(value)
     if len(listed) != k:
         raise ValueError(
             f"'{name}' must hold one id per entry ({k}); got {len(listed)}."
         )
+    return [checked_id(i) for i in listed]
+
+
+def _record_list(items: Any, record: type, dataset: str) -> list:
+    """``items`` as a list of ``record`` objects (an ``ItemLifetime`` or
+    ``ItemHistory``) for ``dataset.from_items``: a single record, a
+    dataset or anything else is refused, naming what to give (#933)."""
+    name = record.__name__
+    if isinstance(items, record):
+        raise TypeError(
+            f"{dataset}.from_items takes a list of {name} records; got one "
+            f"{name}: give [item]."
+        )
+    if isinstance(items, (str, bytes)) or type(items).__name__ in (
+        "SurpyvalData",
+        "EventHistoryData",
+        "DataFrame",
+    ):
+        raise TypeError(
+            f"{dataset}.from_items takes a list of {name} records; got "
+            f"{_a(type(items).__name__)}"
+            + (
+                ": its records are its to_items()."
+                if type(items).__name__.endswith("Data")
+                else (
+                    f": build the records from its rows, or use "
+                    f"{dataset}.from_dataframe(df, ...)."
+                    if type(items).__name__ == "DataFrame"
+                    else "."
+                )
+            )
+        )
+    try:
+        listed = list(items)
+    except TypeError:
+        raise TypeError(
+            f"{dataset}.from_items takes a list of {name} records; got "
+            f"{_a(type(items).__name__)}."
+        )
+    if not listed:
+        raise ValueError(f"Give at least one {name}.")
+    other = next((i for i in listed if not isinstance(i, record)), None)
+    if other is not None:
+        kind = type(other).__name__
+        hint = ""
+        if kind in ("ItemLifetime", "ItemHistory"):
+            built = (
+                "EventHistoryData" if kind == "ItemHistory" else "SurpyvalData"
+            )
+            hint = f": a list of {kind} records builds {_a(built)}"
+            if kind == "ItemHistory":
+                hint += (
+                    " (EventHistoryData.from_items(items).to_first_events() "
+                    "for their first failures as lifetimes)"
+                )
+        raise TypeError(
+            f"{dataset}.from_items takes {name} records; got "
+            f"{_a(kind)}{hint}."
+        )
     return listed
+
+
+def _a(word: str) -> str:
+    """'a list', 'an ItemHistory'."""
+    return ("an " if word[:1].lower() in "aeiou" else "a ") + word
 
 
 def _kind_event_types(name: str, value: Any, k: int) -> np.ndarray:

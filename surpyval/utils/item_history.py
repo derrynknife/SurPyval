@@ -141,8 +141,22 @@ class ItemHistory:
         observed_states: "dict | None" = None,
         interval_censored_states: Any = None,
         left_censored_states: "dict | None" = None,
+        **unknown: Any,
     ) -> None:
-        item = item_id(id)
+        if unknown:
+            from surpyval.utils.record_keywords import (
+                HISTORY_ALIASES,
+                accepted_names,
+                refuse_unknown_keywords,
+            )
+
+            refuse_unknown_keywords(
+                "ItemHistory",
+                unknown,
+                accepted_names(ItemHistory.__init__, "self"),
+                HISTORY_ALIASES,
+            )
+        item = checked_id(id)
         self.id = item
         ages = _ages(item, "observed", observed)
         types = _event_types(
@@ -1281,24 +1295,57 @@ def item_id(item: Any) -> Any:
     return item.item() if isinstance(item, np.generic) else item
 
 
+def checked_id(item: Any) -> Any:
+    """An item's id (:func:`item_id`), refused where it could not name an
+    item (#931): a missing value (None, NaN, pandas NA, a blank string),
+    which cannot say which item a record is, or an unhashable one (a
+    list, a dict), which no dataset could look up or hash."""
+    item = item_id(item)
+    if missing_type(item):
+        raise ValueError(
+            f"An item needs an id (its name or number); got {item!r}, "
+            "which is missing."
+        )
+    try:
+        hash(item)
+    except TypeError:
+        raise ValueError(
+            f"An item's id must be text, a number or a tuple of them, "
+            f"which a dataset can look up; got {item!r}, "
+            f"{_an(type(item).__name__)}."
+        )
+    return item
+
+
+def _an(word: str) -> str:
+    """'a list', 'an ItemHistory'."""
+    return ("an " if word[:1].lower() in "aeiou" else "a ") + word
+
+
+def _kind_of(item: Any) -> str:
+    return (
+        "text"
+        if isinstance(item, str)
+        else "a number" if isinstance(item, Number) else type(item).__name__
+    )
+
+
 def check_item_ids(ids: list, record: str) -> None:
     """Refuse ids of mixed kinds (text and numbers: '1' and 1 could not be
     told apart) and an id given twice (each item has one record), counting
     once, in linear time."""
     from collections import Counter
 
-    kinds = {
-        (
-            "text"
-            if isinstance(i, str)
-            else "number" if isinstance(i, Number) else type(i).__name__
-        )
-        for i in ids
-    }
-    if len(kinds) > 1:
+    first: dict = {}
+    for i in ids:
+        first.setdefault(_kind_of(i), i)
+    if len(first) > 1:
+        examples = list(first.items())[:2]
         raise ValueError(
             "The item ids must all be of one kind (all text or all "
-            "numbers): mixed, '1' and 1 could not be told apart."
+            "numbers): ids "
+            + " and ".join(f"{i!r} ({kind})" for kind, i in examples)
+            + " are mixed, and '1' and 1 could not be told apart."
         )
     repeated = sorted(repr(i) for i, k in Counter(ids).items() if k > 1)
     if repeated:
