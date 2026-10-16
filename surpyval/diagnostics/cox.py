@@ -292,7 +292,7 @@ def _form_panels(ctx: Context) -> list[Panel]:
     panels = []
     for j, name in _form_columns(ctx):
 
-        def draw(ax: Any, options: Any, j: int = j) -> None:
+        def draw(ax: Any, options: Any, j: int = j, name: str = name) -> None:
             from surpyval.plotting import INK, PALETTE
 
             z = Z[:, j]
