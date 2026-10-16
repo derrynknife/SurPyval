@@ -237,6 +237,7 @@ DIFFERENTIATED = frozenset(
         ".ProportionalIntensityModel",
         "surpyval.multivariate.CopulaModel",
         "surpyval.degradation.DegradationModel",
+        "surpyval.JointModel",
     }
 )
 _NO_DERIVATIVES = "the fit takes no derivatives: "
@@ -359,10 +360,15 @@ class Case:
     event_functions: tuple[str, ...] = ()
     # Keyword arguments every prediction call gets (e.g. ``stratum``).
     call_kwargs: dict = field(default_factory=dict)
+    # The entries of ``call_kwargs`` that are ages, rescaled with the times
+    # by the units property: an age (a joint model's ``given``), or
+    # readings by age (its ``markers``, ``{age: value}``).
+    call_times: tuple[str, ...] = ()
     # Alternate fit paths: name -> function of the fixture dict.
     paths: dict[str, Callable[[dict], Any]] = field(default_factory=dict)
     # Per-row arrays of the fixture (permuted / repeated together) and the
-    # entries that are times (rescaled by the units property).
+    # entries that are times (rescaled by the units property; an entry of
+    # readings by age, ``{age: value}`` per row, has its ages rescaled).
     rows: tuple[str, ...] = ("x", "c", "n")
     times: tuple[str, ...] = ("x",)
     # Row-level covariate matrix key and whether a missing covariate at fit

@@ -11,12 +11,13 @@ Two kinds of fixture:
 
 * classic data sets that SurPyval ships and R's ``survival`` has too
   (``lung``, ``heart``) or that are small enough to carry here (``aml``,
-  ``ovarian``); ``reference_r.R`` checks each against R's own copy, and
-  the PBC trial's baseline rows from ``load_pbc2``;
+  ``ovarian``, ``veteran``); ``reference_r.R`` checks each against R's
+  own copy, and the PBC trial's baseline rows from ``load_pbc2``;
 * small seeded synthetic sets aimed at one feature each: ties between
   event and censoring times, left truncation, interval censoring,
   competing risks with ties, a prediction matrix for the Brier score and
-  AUC, and continuous data for the additive hazards model.
+  AUC, continuous data for the additive hazards model, and a deliberate
+  violation of proportional hazards for the Cox diagnostics.
 
 Run from the repository root::
 
@@ -74,6 +75,69 @@ OVARIAN = {
     + [1, 1, 2, 2, 2],
     "ecog_ps": [1, 1, 2, 1, 1, 2, 2, 2, 1, 2, 2, 1, 2, 1, 1, 2, 2, 1, 1]
     + [1, 2, 2, 1, 2, 1, 1],
+}
+
+# R's survival::veteran (the Veterans' Administration lung cancer
+# trial), copied by hand; celltype is R's factor code (1 squamous,
+# 2 smallcell, 3 adeno, 4 large). reference_r.R stops if it differs.
+VETERAN = {
+    "trt": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    + [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    + [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2]
+    + [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+    + [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+    + [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+    "celltype": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2]
+    + [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+    + [2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+    + [4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2]
+    + [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+    + [3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+    "time": [72, 411, 228, 126, 118, 10, 82, 110, 314, 100, 42, 8, 144, 25]
+    + [11, 30, 384, 4, 54, 13, 123, 97, 153, 59, 117, 16, 151, 22, 56, 21, 18]
+    + [139, 20, 31, 52, 287, 18, 51, 122, 27, 54, 7, 63, 392, 10, 8, 92, 35]
+    + [117, 132, 12, 162, 3, 95, 177, 162, 216, 553, 278, 12, 260, 200, 156]
+    + [182, 143, 105, 103, 250, 100, 999, 112, 87, 231, 242, 991, 111, 1, 587]
+    + [389, 33, 25, 357, 467, 201, 1, 30, 44, 283, 15, 25, 103, 21, 13, 87, 2]
+    + [20, 7, 24, 99, 8, 99, 61, 25, 95, 80, 51, 29, 24, 18, 83, 31, 51, 90]
+    + [52, 73, 8, 36, 48, 7, 140, 186, 84, 19, 45, 80, 52, 164, 19, 53, 15]
+    + [43, 340, 133, 111, 231, 378, 49],
+    "status": [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0]
+    + [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    + [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1]
+    + [1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1]
+    + [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1]
+    + [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    "karno": [60, 70, 60, 60, 70, 20, 40, 80, 50, 70, 60, 40, 30, 80, 70, 60]
+    + [60, 40, 80, 60, 40, 60, 60, 30, 80, 30, 50, 60, 80, 40, 20, 80, 30, 75]
+    + [70, 60, 30, 60, 80, 60, 70, 50, 50, 40, 40, 20, 70, 40, 80, 80, 50, 80]
+    + [30, 80, 50, 80, 50, 70, 60, 40, 80, 80, 70, 90, 90, 80, 80, 70, 60, 90]
+    + [80, 80, 50, 50, 70, 70, 20, 60, 90, 30, 20, 70, 90, 80, 50, 70, 60, 90]
+    + [50, 30, 70, 20, 30, 60, 40, 30, 20, 60, 70, 80, 85, 70, 70, 70, 50, 30]
+    + [40, 40, 40, 99, 80, 60, 60, 60, 60, 50, 70, 10, 40, 70, 90, 80, 50, 40]
+    + [40, 60, 70, 30, 60, 30, 60, 80, 75, 60, 70, 80, 30],
+    "diagtime": [7, 5, 3, 9, 11, 5, 10, 29, 18, 6, 4, 58, 4, 9, 11, 3, 9, 2]
+    + [4, 4, 3, 5, 14, 2, 3, 4, 12, 4, 12, 2, 15, 2, 5, 3, 2, 25, 4, 1, 28, 8]
+    + [1, 7, 11, 4, 23, 19, 10, 6, 2, 5, 4, 5, 3, 4, 16, 5, 15, 2, 12, 12, 5]
+    + [12, 2, 2, 8, 11, 5, 8, 13, 12, 6, 3, 8, 1, 7, 3, 21, 3, 2, 6, 36, 13]
+    + [2, 28, 7, 11, 13, 2, 13, 2, 22, 4, 2, 2, 36, 9, 11, 8, 3, 2, 4, 2, 2]
+    + [1, 17, 87, 8, 2, 5, 3, 3, 5, 22, 3, 3, 5, 8, 4, 4, 3, 3, 4, 10, 3, 4]
+    + [4, 15, 4, 12, 5, 11, 10, 1, 5, 18, 4, 3],
+    "age": [69, 64, 38, 63, 65, 49, 69, 68, 43, 70, 81, 63, 63, 52, 48, 61]
+    + [42, 35, 63, 56, 55, 67, 63, 65, 46, 53, 69, 68, 43, 55, 42, 64, 65, 65]
+    + [55, 66, 60, 67, 53, 62, 67, 72, 48, 68, 67, 61, 60, 62, 38, 50, 63, 64]
+    + [43, 34, 66, 62, 52, 47, 63, 68, 45, 41, 66, 62, 60, 66, 38, 53, 37, 54]
+    + [60, 48, 52, 70, 50, 62, 65, 58, 62, 64, 63, 58, 64, 52, 35, 63, 70, 51]
+    + [40, 69, 36, 71, 62, 60, 44, 54, 66, 49, 72, 68, 62, 71, 70, 61, 71, 59]
+    + [67, 60, 69, 57, 39, 62, 50, 43, 70, 66, 61, 81, 58, 63, 60, 62, 42, 69]
+    + [63, 45, 68, 39, 66, 63, 49, 64, 65, 64, 67, 65, 37],
+    "prior": [0, 10, 0, 10, 10, 0, 10, 0, 0, 0, 0, 10, 0, 10, 10, 0, 0, 0, 10]
+    + [0, 0, 0, 10, 0, 0, 10, 0, 0, 10, 10, 0, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0]
+    + [0, 0, 0, 10, 10, 0, 0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 0, 10, 0, 10, 0]
+    + [0, 0, 0, 0, 10, 10, 10, 0, 0, 10, 0, 10, 0, 10, 0, 0, 0, 0, 0, 0, 10]
+    + [0, 0, 10, 0, 10, 0, 10, 0, 0, 0, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10]
+    + [0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 0, 10, 10]
+    + [0, 0, 10, 10, 0, 0, 10, 0, 0],
 }
 
 
@@ -337,6 +401,43 @@ def additive():
     }
 
 
+def ph_violation():
+    """A deliberate violation of proportional hazards, for the Cox
+    diagnostics (#868): a binary ``z1`` whose hazard ratio reverses at
+    t = 1 (e^1.3 before, e^-1.3 after), a continuous ``z2`` with a
+    proportional, linear effect, and a continuous ``z3`` that acts on the
+    log hazard through its square (a wrong functional form for a linear
+    fit). A third of the units enter late (``tl``); times are rounded up
+    to quarters, so there are ties."""
+    rng = np.random.default_rng(3797)
+    n = 320
+    z1 = rng.binomial(1, 0.5, n)
+    z2 = np.round(rng.normal(0, 1, n), 2)
+    z3 = np.round(rng.uniform(-2, 2, n), 2)
+    rate = 0.2 * np.exp(0.5 * z2 + 0.4 * z3**2)
+    early, late = rate * np.exp(1.3 * z1), rate * np.exp(-1.3 * z1)
+    e = rng.exponential(size=n)
+    t = np.where(e < early, e / early, 1 + (e - early) / late)
+    tl = np.where(rng.uniform(size=n) < 1 / 3, rng.uniform(0, 1, n), 0.0)
+    tl = np.round(tl, 2)
+    cens = rng.uniform(0, 8, n)
+    seen = np.minimum(t, cens)
+    keep = seen > tl  # delayed entry: units gone before entry are unseen
+    x = np.ceil(seen * 4) / 4
+    c = (cens < t).astype(int)
+    return {
+        "source": "seeded synthetic, make_fixtures.ph_violation (rng 3797)",
+        "columns": {
+            "tl": _native(tl[keep]),
+            "x": _native(x[keep]),
+            "c": _native(c[keep]),
+            "z1": _native(z1[keep]),
+            "z2": _native(z2[keep]),
+            "z3": _native(z3[keep]),
+        },
+    }
+
+
 def build():
     return {
         "_about": "Shared fixtures for surpyval/tests/reference; written "
@@ -363,6 +464,13 @@ def build():
         "prediction_ties": prediction("prediction_ties", 3795, 0),
         "prediction_continuous": prediction("prediction_continuous", 3795, 3),
         "additive": additive(),
+        "veteran": {
+            "source": "R survival::veteran; status 1 is a death; "
+            "celltype is R's factor code (1 squamous, 2 smallcell, "
+            "3 adeno, 4 large)",
+            "columns": VETERAN,
+        },
+        "ph_violation": ph_violation(),
     }
 
 

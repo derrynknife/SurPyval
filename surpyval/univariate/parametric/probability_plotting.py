@@ -260,25 +260,141 @@ def _axes_data(
         "x_": x_,
         "F": F,
         "x_censored": x_censored,
+        "gamma": gamma,
     }
 
 
-def _spread(ticks: list, x_lim: list, log: bool) -> list:
-    """The ticks, dropping any closer than a fourteenth of the axis to the
-    one before, so that the merged ticks of two plots do not overlap."""
-    if log:
-        ticks = [t for t in ticks if t > 0]
-        pos, ends = np.log10(ticks), np.log10(np.maximum(x_lim, 1e-300))
+#: Probabilities that may label a probability plot's axis, in the order
+#: they are wanted: the median, then the decades and their mirrors, then
+#: the halves and fifths between. Each is kept where it is far enough,
+#: on the distribution's own scale, from those kept before it.
+_PROBABILITY_TICKS = (
+    0.5, 0.1, 0.9, 0.01, 0.99, 0.001, 0.999, 0.0001, 0.9999,
+    0.05, 0.95, 0.2, 0.8, 0.3, 0.7, 0.02, 0.98, 0.005, 0.995,
+    0.4, 0.6, 0.002, 0.998, 0.0005, 0.9995, 0.03, 0.97, 0.003, 0.997,
+    0.0002, 0.9998,
+)  # fmt: skip
+
+#: The faint lines between them: 1 to 9 of each decade, and 91% to 99%
+#: (finer near 1 they crowded into a band on a Weibull's scale).
+_PROBABILITY_MINOR = tuple(
+    sorted(
+        {m * 10.0**e for e in range(-4, 0) for m in range(1, 10)}
+        | {1 - m / 100 for m in range(1, 10)}
+    )
+)
+
+
+def _probability_ticks(
+    y_transform: Callable[..., Any], lo: float, hi: float, n: int = 14
+) -> tuple[list, list]:
+    """The labelled and the faint probabilities of an axis spanning
+    ``(lo, hi)``: from ``_PROBABILITY_TICKS`` in order, each kept where it
+    is at least ``1 / n`` of the axis, on its own scale, from every one
+    kept before (a Weibull's 99% and 99.9% sit close; a Normal's do not),
+    so that every distribution's axis is labelled as densely as it has
+    room for, the tails included."""
+
+    def at(p: float) -> float:
+        return float(np.ravel(y_transform(np.array([p])))[0])
+
+    with np.errstate(all="ignore"):
+        span = at(hi) - at(lo)
+        kept: list = []
+        if np.isfinite(span) and span > 0:
+            gap = span / n
+            for p in _PROBABILITY_TICKS:
+                if lo < p < hi and all(
+                    abs(at(p) - at(k)) >= gap for k in kept
+                ):
+                    kept.append(p)
+    minor = [p for p in _PROBABILITY_MINOR if lo < p < hi]
+    return sorted(kept), minor
+
+
+def _probability_label(p: float) -> str:
+    """``0.001`` as ``"0.1%"``, ``0.5`` as ``"50%"``."""
+    return f"{100 * p:.10g}%"
+
+
+def _nice_value(v: float) -> str:
+    """A time for a tick label: thousands separated, no trailing zeros."""
+    if abs(v) >= 1000 and float(v).is_integer():
+        return f"{v:,.0f}"
+    return f"{v:.6g}"
+
+
+def _roundness(v: float) -> int:
+    """How round a time is, for picking ticks (lower is rounder): its
+    significant figures, less one for a leading 1, 2 or 5 (``1000`` and
+    ``500`` before ``800``, which is before ``1300``)."""
+    digits = f"{abs(v):.6g}".replace(".", "").strip("0") or "0"
+    return 2 * len(digits) - (digits[0] in "125" and len(digits) == 1)
+
+
+def _log_ticks(
+    lo: float, hi: float, gamma: float = 0.0, n: int = 8
+) -> tuple[list, list, list]:
+    """The labelled and faint positions, and the labels, of a log time
+    axis spanning ``(lo, hi)`` (times less ``gamma``, an offset): times
+    of 1, 2 and 5 a decade, the decades first, kept at least ``1 / n`` of
+    the axis apart; 1 to 9 a decade where those give fewer than three (a
+    narrow range). With an offset the labelled times are round times
+    (``gamma`` plus the position), not round positions."""
+    if not (lo > 0 and hi > lo):
+        return [], [], []
+    shown_lo, shown_hi = lo + gamma, hi + gamma
+    if gamma == 0:
+        d0, d1 = int(np.floor(np.log10(lo))), int(np.ceil(np.log10(hi)))
+        pick: list[tuple[float, int]] = [
+            (m * 10.0**e, rank)
+            for e in range(d0, d1 + 1)
+            for m, rank in ((1, 0), (5, 1), (2, 2))
+        ]
+        fine = [m * 10.0**e for e in range(d0, d1 + 1) for m in range(1, 10)]
     else:
-        pos, ends = np.asarray(ticks, dtype=float), np.asarray(x_lim)
-    gap = (ends[1] - ends[0]) / 14
-    kept: list = []
-    last = -np.inf
-    for t, p in zip(ticks, pos):
-        if p - last >= gap:
-            kept.append(t)
-            last = p
-    return kept
+        from matplotlib.ticker import MaxNLocator
+
+        values = MaxNLocator(nbins=24, steps=[1, 2, 5, 10]).tick_values(
+            shown_lo, shown_hi
+        )
+        # The roundest first: 1, 2 or 5 and zeros, then fewer figures
+        pick = [(float(v), _roundness(float(v))) for v in values if v > 0]
+        fine = []
+
+    def thin(candidates: list) -> list:
+        gap = (np.log10(hi) - np.log10(lo)) / n
+        kept: list = []
+        for v, _ in sorted(candidates, key=lambda c: c[1]):
+            position = v - gamma
+            if not (lo <= position <= hi) or position <= 0:
+                continue
+            if all(
+                abs(np.log10(position) - np.log10(k - gamma)) >= gap
+                for k in kept
+            ):
+                kept.append(v)
+        return sorted(kept)
+
+    kept = thin(pick)
+    if len(kept) < 3 and gamma == 0:
+        kept = thin([(v, 0) for v in fine])
+    minor = [v for v in fine if lo <= v <= hi]
+    return [v - gamma for v in kept], minor, [_nice_value(v) for v in kept]
+
+
+def _linear_ticks(
+    lo: float, hi: float, gamma: float = 0.0
+) -> tuple[list, list]:
+    """The positions and labels of a linear time axis spanning ``(lo,
+    hi)`` (times less ``gamma``): round times, about seven."""
+    from matplotlib.ticker import MaxNLocator
+
+    values = MaxNLocator(nbins=7, steps=[1, 2, 2.5, 5, 10]).tick_values(
+        lo + gamma, hi + gamma
+    )
+    kept = [float(v) for v in values if lo <= v - gamma <= hi]
+    return [v - gamma for v in kept], [_nice_value(v) for v in kept]
 
 
 def draw_probability_plot(
@@ -291,72 +407,88 @@ def draw_probability_plot(
     show_censored: bool = False,
     color: Any = None,
     label: "str | None" = None,
+    xlabel: str = "Time",
     **line_kwargs: Any,
 ) -> Any:
     """
     Draw the probability plot described by the ``probability_plot_data``
-    dictionary ``d`` onto the matplotlib axes ``ax``. The points are the
-    rows ``d["failed"]`` selects, the failures; with ``show_censored``,
-    each suspension time is marked by a tick on the time axis (they have
-    no plotting position of their own).
+    dictionary ``d`` onto the matplotlib axes ``ax``, in SurPyval's theme
+    (:mod:`surpyval.plotting`). The points are the rows ``d["failed"]``
+    selects, the failures; with ``show_censored``, each suspension time
+    is marked by a tick on the time axis (they have no plotting position
+    of their own).
 
     The points, the fitted line and its bounds are drawn in one colour,
-    ``color``, or by default the next colour of the axes' colour cycle, so
+    ``color``, or by default the theme's next colour for these axes, so
     that several models plotted on one axes can be told apart (#510).
     ``label`` and any other keyword arguments go to the fitted line (a
-    ``matplotlib.lines.Line2D``); the bounds are dashed. The x label is
-    "Time" unless the axes already have one, and on axes that already hold
-    a plot the limits and time ticks are widened to cover both.
+    ``matplotlib.lines.Line2D``); the two-sided bounds are a pale band of
+    the line's colour. The probability axis is labelled as densely as the
+    distribution's scale has room for (:func:`_probability_ticks`), a log
+    time axis at 1, 2 and 5 a decade, a linear one at round times; on
+    axes that already hold a plot the limits are widened to cover both
+    and the ticks chosen again. The x label is ``xlabel`` unless the axes
+    already have one.
     """
-    from matplotlib.ticker import FixedLocator
+    from matplotlib.ticker import FixedLocator, NullFormatter
+
+    from surpyval import plotting
 
     y_lim = [max(d["y_scale_min"], 1e-4), min(d["y_scale_max"], 0.9999)]
     x_lim = [d["x_scale_min"], d["x_scale_max"]]
-    x_ticks = dict(zip(d["x_ticks"], d["x_ticks_labels"]))
-    x_minor = list(d.get("x_minor_ticks", []))
     if ax.has_data():
-        # Drawing over an earlier plot: keep its range and ticks in view.
+        # Drawing over an earlier plot: keep its range in view.
         (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
         x_lim = [min(x_lim[0], x0), max(x_lim[1], x1)]
         y_lim = [min(y_lim[0], y0), max(y_lim[1], y1)]
-        previous = zip(ax.get_xticks(), ax.get_xticklabels())
-        x_ticks = {t: lab.get_text() for t, lab in previous} | x_ticks
-        x_minor = sorted(set(x_minor) | set(ax.get_xticks(minor=True)))
-    ticks = sorted(x_ticks)
-    if ax.has_data():
-        ticks = _spread(ticks, x_lim, d["x_scale"] == "log")
+    log = d["x_scale"] == "log"
+    gamma = float(d.get("gamma", 0.0))
 
-    # Set limits and scale
-    ax.set_ylim(y_lim)
     ax.set_xscale(d["x_scale"])
     ax.set_yscale("function", functions=(y_transform, inv_y_transform))
-    ax.set_yticks(d["y_ticks"])
-    ax.set_yticklabels(d["y_ticks_labels"])
-    ax.yaxis.set_minor_locator(FixedLocator(np.linspace(0, 1, 51)))
-    ax.set_xticks(ticks)
-    ax.set_xticklabels([x_ticks[t] for t in ticks])
 
-    if d["x_scale"] == "log":
-        ax.set_xticks(x_minor, minor=True)
-        ax.set_xticklabels([], minor=True)
-
-    ax.grid(visible=True, which="major", color="g", alpha=0.4, linestyle="-")
-    ax.grid(visible=True, which="minor", color="g", alpha=0.1, linestyle="-")
-
-    ax.set_title(title)
-    ax.set_ylabel("CDF")
-    if not ax.get_xlabel():
-        ax.set_xlabel("Time")
-
+    color = plotting.next_color(ax, color)
+    line_kwargs.setdefault("linewidth", plotting.LINE_WIDTH)
+    line_kwargs.setdefault("solid_capstyle", "round")
     # The fitted line first, so that it takes the next colour of the
-    # axes' cycle; the points and bounds then share it.
+    # axes' cycle where the theme is off; the points and bounds share it.
     (line,) = ax.plot(
         d["x_model"], d["cdf"], color=color, label=label, **line_kwargs
     )
     color = line.get_color()
 
+    if plot_bounds and (len(d["cbs"]) != 0):
+        cbs = np.asarray(d["cbs"], dtype=float)
+        if cbs.ndim == 2 and cbs.shape[1] == 2:
+            ax.fill_between(
+                d["x_model"],
+                cbs[:, 0],
+                cbs[:, 1],
+                color=color,
+                alpha=plotting.BAND_ALPHA,
+                linewidth=0,
+                zorder=line.get_zorder() - 1,
+            )
+        else:
+            ax.plot(
+                d["x_model"],
+                cbs,
+                color=color,
+                linestyle="--",
+                linewidth=0.8 * line.get_linewidth(),
+            )
+
     failed = d["failed"]
-    ax.scatter(d["x_"][failed], d["F"][failed], color=color)
+    themed = plotting.theme_enabled()
+    ax.scatter(
+        d["x_"][failed],
+        d["F"][failed],
+        color=color,
+        s=plotting.MARKER_SIZE**2 if themed else None,
+        edgecolors=plotting.INK["surface"] if themed else None,
+        linewidths=1.0 if themed else None,
+        zorder=line.get_zorder() + 1,
+    )
 
     if show_censored and len(d.get("x_censored", [])) != 0:
         # A rug of suspension times along the bottom of the axes
@@ -373,13 +505,34 @@ def draw_probability_plot(
         )
 
     ax.set_xlim(x_lim)
-    if plot_bounds and (len(d["cbs"]) != 0):
-        ax.plot(
-            d["x_model"],
-            d["cbs"],
-            color=color,
-            linestyle="--",
-            linewidth=0.8 * line.get_linewidth(),
-        )
+    ax.set_ylim(y_lim)
 
+    # The probability axis
+    y_ticks, y_minor = _probability_ticks(y_transform, *y_lim)
+    ax.yaxis.set_major_locator(FixedLocator(y_ticks))
+    ax.set_yticklabels([_probability_label(p) for p in y_ticks])
+    ax.yaxis.set_minor_locator(FixedLocator(y_minor))
+    ax.yaxis.set_minor_formatter(NullFormatter())
+
+    # The time axis
+    if log:
+        x_ticks, x_minor, x_labels = _log_ticks(x_lim[0], x_lim[1], gamma)
+        ax.xaxis.set_minor_locator(FixedLocator(x_minor))
+        ax.xaxis.set_minor_formatter(NullFormatter())
+    else:
+        x_ticks, x_labels = _linear_ticks(x_lim[0], x_lim[1], gamma)
+    if x_ticks:
+        ax.xaxis.set_major_locator(FixedLocator(x_ticks))
+        ax.set_xticklabels(x_labels)
+
+    ax.set_title(title)
+    ax.set_ylabel("Fraction failed")
+    if not ax.get_xlabel():
+        # "Time", or what the model's unit measures: "Time (h)" (#845)
+        ax.set_xlabel(xlabel)
+    if plotting.theme_enabled():
+        plotting.style_axes(ax, minor_grid=True)
+    else:
+        ax.grid(visible=True, which="major", alpha=0.4)
+        ax.grid(visible=True, which="minor", alpha=0.1)
     return ax

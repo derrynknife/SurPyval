@@ -54,7 +54,8 @@ from surpyval.utils.dataframe import check_columns
 from surpyval.utils.fitter_repr import FitterRepr, baseline_name
 from surpyval.utils.linalg import numerical_hessian
 from surpyval.utils.removed_names import column_arguments
-from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
+from surpyval.utils.units import takes_unit
 
 from .._aliasing import covariate_columns, expand, fit_columns
 from .._fit_skeleton import (
@@ -461,6 +462,8 @@ class FrailtyFitter(FitterRepr):
     # -- fit ---------------------------------------------------------------
 
     @dataframe_covariates
+    @takes_unit
+    @accepts_surpyval_data
     def fit(
         self,
         x: Any,
@@ -747,6 +750,7 @@ class FrailtyFitter(FitterRepr):
         return model
 
     @column_arguments("x", "c", "n")
+    @takes_unit
     def fit_from_df(
         self,
         df: pd.DataFrame,

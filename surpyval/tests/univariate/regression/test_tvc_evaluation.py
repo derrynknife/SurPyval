@@ -43,7 +43,7 @@ from surpyval.univariate.regression.accelerated_life import (
 def test_constant_schedule_is_single_segment():
     s = StepSchedule.constant([0.5])
     starts, ends, Z = s.segments(10.0)
-    assert starts.tolist() == [0.0]
+    assert starts.tolist() == [-np.inf]  # constant over all time (#952)
     assert ends.tolist() == [10.0]
     assert Z.tolist() == [[0.5]]
     assert s.p == 1

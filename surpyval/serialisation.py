@@ -64,6 +64,7 @@ _TAGGED_MODELS: dict[str, str] = {
         "surpyval.univariate.regression.proportional_odds.proportional_odds"
     ),
     "MixtureModel": "surpyval.univariate.parametric.mixture_model",
+    "JointModel": "surpyval.univariate.joint.joint_model",
     "RoystonParmarModel": ("surpyval.univariate.parametric.royston_parmar"),
     "FineGrayModel": (
         "surpyval.univariate.competing_risks.regression.fine_gray"
@@ -931,6 +932,18 @@ def _read_checked(
             "The serialised model dictionary is incomplete or corrupt: it"
             f" has no {key!r} entry, which {name}.from_dict needs."
         ) from err
+    # The unit of the data (#845), restored whichever class reads it.
+    unit = model_dict.get("unit")
+    if unit is not None:
+        if not isinstance(unit, str):
+            raise ValueError(
+                "The serialised 'unit' must be text naming the unit of the"
+                f" data; got {type(unit).__name__}."
+            )
+        try:
+            model.unit = unit
+        except AttributeError:
+            pass
     # Only the core univariate parametric dictionary carries no "model"
     # tag; tagged models that also say "parametric" (mixtures, ...) keep
     # their parameters in other shapes.
@@ -1004,6 +1017,60 @@ def to_native(value: Any) -> Any:
     return value
 
 
+# Marks a to_dict or __repr__ already wrapped to carry the model's unit.
+_UNIT_ATTR = "_surpyval_unit"
+
+
+def _writes_unit(to_dict: Callable[..., Any]) -> Callable[..., Any]:
+    """``to_dict`` with the model's ``unit`` added where it has one, so a
+    dictionary without a unit is what it always was."""
+
+    @functools.wraps(to_dict)
+    def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+        out = to_dict(self, *args, **kwargs)
+        unit = getattr(self, "unit", None)
+        if isinstance(unit, str) and isinstance(out, dict):
+            out["unit"] = unit
+        return out
+
+    setattr(wrapper, _UNIT_ATTR, True)
+    return wrapper
+
+
+def _shows_unit(repr_: Callable[[Any], str]) -> Callable[[Any], str]:
+    """``__repr__`` with a ``Unit`` line where the model has a unit."""
+
+    @functools.wraps(repr_)
+    def wrapper(self: Any) -> str:
+        text = repr_(self)
+        unit = getattr(self, "unit", None)
+        if not isinstance(unit, str) or not isinstance(text, str):
+            return text
+        return with_unit_line(text, unit)
+
+    setattr(wrapper, _UNIT_ATTR, True)
+    return wrapper
+
+
+def with_unit_line(text: str, unit: str) -> str:
+    """A model's ``repr`` ``text`` with ``Unit : <unit>`` as its second
+    field, aligned with the first (the fields follow the title's ``===``
+    underline); at the end where the text has no such layout, and as it
+    is where it already shows a unit."""
+    lines = text.split("\n")
+    if any(line.lstrip().startswith("Unit ") for line in lines):
+        return text
+    for i, line in enumerate(lines[:-1]):
+        if line and set(line.strip()) == {"="}:
+            first = lines[i + 1]
+            colon = first.find(":")
+            if colon > 0 and first[:colon].strip():
+                field = "Unit".ljust(colon) + ": " + unit
+                return "\n".join(lines[: i + 2] + [field] + lines[i + 2 :])
+            break
+    return text + "\nUnit : " + unit
+
+
 class SerialisableMixin(RemovedNames):
     """Shared ``to_json`` / ``from_json`` plumbing for serialisable
     models: every class keeps only its ``to_dict`` / ``from_dict``
@@ -1015,6 +1082,13 @@ class SerialisableMixin(RemovedNames):
     does; it used to skip the schema check and let a missing entry
     escape as a bare ``KeyError``."""
 
+    #: The unit of the data the model describes (#845): a label, set by
+    #: ``unit=`` on ``fit``, ``fit_from_df`` and ``from_params``, shown
+    #: in the ``repr`` and on plots and saved by ``to_dict``. None is
+    #: unknown. See :mod:`surpyval.utils.units`. (Not ``units``, which
+    #: names the items measured: a degradation model's unit ids.)
+    unit: str | None = None
+
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         own = cls.__dict__.get("from_dict")
@@ -1022,6 +1096,14 @@ class SerialisableMixin(RemovedNames):
             setattr(
                 cls, "from_dict", classmethod(checked_from_dict(own.__func__))
             )
+        # The unit, written by every to_dict and shown by every repr,
+        # whichever class defines them.
+        writer = cls.__dict__.get("to_dict")
+        if callable(writer) and not getattr(writer, _UNIT_ATTR, False):
+            setattr(cls, "to_dict", _writes_unit(writer))
+        shown = cls.__dict__.get("__repr__")
+        if callable(shown) and not getattr(shown, _UNIT_ATTR, False):
+            setattr(cls, "__repr__", _shows_unit(shown))
 
     if TYPE_CHECKING:
         # The contract every user of this mixin fulfils, declared for
@@ -1172,6 +1254,14 @@ def from_dict(model_dict: dict) -> Any:
             f"{type(model_dict).__name__}"
         )
 
+    # Data (a SurpyvalData, an EventHistoryData, a record) is tagged by
+    # its "class", and read by that class (#935).
+    from surpyval.utils.data_json import reader_of
+
+    data_reader = reader_of(model_dict)
+    if data_reader is not None:
+        return data_reader.from_dict(model_dict)
+
     # Before dispatch too: a model class added by a newer SurPyval is
     # unknown here, and "upgrade" is the useful answer for it.
     check_schema(model_dict)
@@ -1196,7 +1286,9 @@ def from_dict(model_dict: dict) -> Any:
     raise ValueError(
         "Not a recognisable serialised SurPyval model"
         + (f" ({described})" if described else "")
-        + ": expected a 'model' class tag or a known 'parameterization'."
+        + ": expected a 'model' class tag or a known 'parameterization' "
+        "(a dataset or record is tagged by its 'class': SurpyvalData, "
+        "EventHistoryData, ItemLifetime or ItemHistory)."
     )
 
 

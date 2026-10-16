@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Any, Callable, cast
 import autograd.numpy as np
 import numpy.typing as npt
 
+from surpyval import plotting
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
@@ -14,11 +16,13 @@ from surpyval.univariate.information_criteria import (
 from surpyval.utils.covariates import loaded_coefficient_names
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
+from surpyval.utils.record_predict import PredictsRecordsMixin
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
     keeps_query_shape,
 )
+from surpyval.utils.units import label_axes
 from surpyval.utils.validation import (
     check_alpha_ci,
     warn_outside_unit_interval,
@@ -34,6 +38,7 @@ from ._kinds import (
     PROPORTIONAL_HAZARD,
     PROPORTIONAL_ODDS,
 )
+from ._partial_effects import PartialEffectsMixin
 from ._prediction import ConditionalSurvivalMixin, quantiles_by_inversion
 from ._tvc_evaluation import TVCEvaluationMixin
 from .regression_data import (
@@ -80,11 +85,14 @@ _SERIALISABLE_REG_NAMES = {
 
 class ParametricRegressionModel(
     ConditionalSurvivalMixin,
+    PartialEffectsMixin,
     TVCEvaluationMixin,
     InferenceMixin,
     ConcordanceMixin,
     InformationCriteriaMixin,
+    DiagnoseMixin,
     SerialisableMixin,
+    PredictsRecordsMixin,
 ):
     """
     The fitted model returned by every parametric regression fitter: the
@@ -1828,6 +1836,25 @@ class ParametricRegressionModel(
         ]
         return dist_names + phi_names
 
+    # -- plot_partial_effects (PartialEffectsMixin) ------------------------
+
+    def _partial_effects_width(self) -> int:
+        return self._n_covariates()
+
+    def _partial_effects_rows(
+        self,
+    ) -> "tuple[npt.NDArray, npt.NDArray] | str":
+        data = getattr(self, "data", None)
+        if data is None or getattr(data, "Z", None) is None:
+            return "the model does not hold the data it was fitted to"
+        return np.asarray(data.Z, dtype=float), np.asarray(data.n, float)
+
+    def _partial_effects_times(self) -> "npt.NDArray | None":
+        data = getattr(self, "data", None)
+        if data is None:
+            return None
+        return np.asarray(data.x, dtype=float).ravel()
+
     def plot(
         self,
         ax: "Axes | None" = None,
@@ -1864,17 +1891,19 @@ class ParametricRegressionModel(
         x_plot = np.linspace(self.data.x.min(), self.data.x.max(), 1000)
 
         Z_mean = np.asarray(self.data.Z).mean(axis=0)
-        ax.step(x, np.exp(-(d / r).cumsum()), color="r", where="post")
-        sf = self.sf(x_plot, Z_mean)
-        ax.plot(x_plot, sf, color="b")
+        band = None
         if plot_bounds:
-            cb = self.cb(x_plot, Z_mean, on="sf", alpha_ci=alpha_ci)
-            ax.fill_between(
-                x_plot,
-                cb[:, 0],
-                cb[:, 1],
-                color="b",
-                alpha=0.2,
-                label=f"{(1 - alpha_ci) * 100:g}% Confidence Band",
-            )
+            band = self.cb(x_plot, Z_mean, on="sf", alpha_ci=alpha_ci)
+        plotting.observed_and_fitted(
+            ax,
+            (x, np.exp(-(d / r).cumsum())),
+            (x_plot, self.sf(x_plot, Z_mean)),
+            band,
+            observed_label="Nelson-Aalen, all units",
+            fitted_label="Model, at the mean covariates",
+            band_label=f"{(1 - alpha_ci) * 100:g}% confidence band",
+        )
+        label_axes(ax, self.unit, "Survival probability")
+        plotting.style_axes(ax)
+        plotting.style_legend(ax)
         return ax

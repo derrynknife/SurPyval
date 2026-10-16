@@ -6,6 +6,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import norm
 
+from surpyval import plotting
 from surpyval.recurrent.inference import check_alpha_ci
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -18,14 +19,19 @@ from surpyval.univariate.nonparametric._support import (
     support_from_dict,
 )
 from surpyval.utils.dataframe import RecurrentDataFrameMixin
+from surpyval.utils.event_history_data import (
+    EventHistoryData,
+    accepts_event_history_data,
+    refuses_unmodelled_data,
+)
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.fitter_repr import FitterRepr
-from surpyval.utils.recurrent_event_data import RecurrentEventData
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
 )
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.units import label_axes, takes_unit
 from surpyval.utils.validation import BOUNDS, check_option
 
 if TYPE_CHECKING:
@@ -89,7 +95,7 @@ class NonParametricCounting(
             n = np.asarray(data.n)
             events = int(np.sum(n[c == 0]))
             times = int(np.unique(np.asarray(data.x)[c == 0]).size)
-            items = len(data.items)
+            items = len(data.ids)
             lines.append(
                 "Data             : {} item{}: {} event{} at {} unique "
                 "time{}".format(
@@ -120,7 +126,7 @@ class NonParametricCounting(
     mcf_hat: npt.NDArray
     #: ``None`` on simulated models, which carry no variance.
     var: "npt.NDArray | None"
-    data: RecurrentEventData
+    data: EventHistoryData
     #: Where observation begins: the MCF is 0 from here to the first event
     #: and undefined (NaN) before it. That is time 0 unless an item enters
     #: earlier (a negative ``tl``), which makes negative times observed.
@@ -546,19 +552,36 @@ class NonParametricCounting(
             x = self.x
             mcf_hat = self.mcf_hat
 
-        ax.step(x, mcf_hat, where="post", label="MCF")
+        themed = plotting.theme_enabled()
+        (line,) = ax.step(
+            x,
+            mcf_hat,
+            where="post",
+            label="MCF",
+            color=plotting.next_color(ax),
+            linewidth=plotting.LINE_WIDTH if themed else None,
+        )
         if plot_bounds:
             if self.var is not None:
                 cb = self.mcf_cb(self.x, bound="two-sided", alpha_ci=alpha_ci)
                 if start is not None and start < self.x.min():
                     cb = np.vstack([[0.0, 0.0], cb])
-                ax.step(
-                    x,
-                    cb,
-                    where="post",
-                    label=f"{(1 - alpha_ci) * 100:g}% Confidence Bounds",
-                    color="red",
-                )
+                label = f"{(1 - alpha_ci) * 100:g}% confidence bounds"
+                if themed:
+                    ax.fill_between(
+                        x,
+                        cb[:, 0],
+                        cb[:, 1],
+                        step="post",
+                        color=line.get_color(),
+                        alpha=plotting.BAND_ALPHA,
+                        linewidth=0,
+                        label=label,
+                    )
+                else:
+                    ax.step(x, cb, where="post", label=label, color="red")
+        label_axes(ax, self.unit, "Mean cumulative function")
+        plotting.style_axes(ax)
         return ax
 
     @classmethod
@@ -612,12 +635,13 @@ class NonParametricCounting(
         out.var = np.cumsum(step_var)
         return out
 
+    @refuses_unmodelled_data
     def fit_from_recurrent_data(
-        self, data: RecurrentEventData
+        self, data: EventHistoryData
     ) -> "NonParametricCounting":
         """
         Fit the MCF from a prepared
-        :class:`~surpyval.utils.recurrent_event_data.RecurrentEventData`,
+        :class:`~surpyval.utils.event_history_data.EventHistoryData`,
         as built by ``surpyval.handle_xicn``. :meth:`fit` builds one from
         its arrays and calls this; the same restrictions on censoring and
         truncation apply.
@@ -632,7 +656,7 @@ class NonParametricCounting(
         return out
 
     def _point_estimate(
-        self, data: RecurrentEventData
+        self, data: EventHistoryData
     ) -> "NonParametricCounting":
         """:meth:`fit_from_recurrent_data` without the Lawless-Nadeau
         variance, which costs about (items x distinct times) and which the
@@ -643,6 +667,8 @@ class NonParametricCounting(
         out.origin = _observation_origin(data)
         return out
 
+    @takes_unit
+    @accepts_event_history_data
     def fit(
         self,
         x: npt.ArrayLike,
@@ -721,7 +747,7 @@ class NonParametricCounting(
         return self.fit_from_recurrent_data(data)
 
 
-def _observation_origin(data: RecurrentEventData) -> float:
+def _observation_origin(data: EventHistoryData) -> float:
     """Where the MCF starts: time 0, or the earliest entry ``tl`` when an
     item enters before 0 (its negative times are then observed; the MCF
     used to be NaN there)."""
@@ -735,7 +761,7 @@ _LN_BLOCKS = 64
 
 
 def _lawless_nadeau_var(
-    data: RecurrentEventData,
+    data: EventHistoryData,
     x: npt.NDArray,
     r: npt.NDArray,
     d: npt.NDArray,
@@ -807,11 +833,11 @@ def _lawless_nadeau_var(
             keys.setdefault(
                 window_map[item][0] if item in window_map else item, len(keys)
             )
-            for item in data.items
+            for item in data.ids
         ],
         dtype=np.intp,
     )
-    # Each row's item, as its position in ``data.items``.
+    # Each row's item, as its position in ``data.ids``.
     row_item = data.item_rows()[1]
     # An event counts where its item is at risk, as the at-risk indicator
     # multiplied it before.

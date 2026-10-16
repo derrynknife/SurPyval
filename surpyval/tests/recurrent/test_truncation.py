@@ -1,11 +1,13 @@
 import numpy as np
 import pytest
+from scipy.optimize import minimize, minimize_scalar
 
 from surpyval.recurrent import (
     ARA,
     ARI,
     HPP,
     CrowAMSAA,
+    Duane,
     GeneralizedOneRenewal,
     GeneralizedRenewal,
     ProportionalIntensityHPP,
@@ -28,7 +30,7 @@ def test_handle_xicn_rejects_negative_x_when_untruncated():
     # than silently corrupting the likelihood. (Genuinely negative event
     # times are admitted only with an explicit negative left-truncation
     # window; see test_explicit_negative_left_truncation_is_used_as_origin.)
-    with pytest.raises(ValueError, match="outside its observation window"):
+    with pytest.raises(ValueError, match="before its observation began"):
         handle_xicn(np.array([-3.0, -1.0, 2.0]), np.array([1, 1, 1]))
 
 
@@ -48,9 +50,16 @@ def test_handle_xicn_scalar_truncation_broadcasts():
     assert np.all(data.tr == 10.0)
 
 
-def test_handle_xicn_rejects_events_outside_window():
-    with pytest.raises(ValueError, match="outside its observation window"):
+def test_handle_xicn_rejects_events_before_entry():
+    with pytest.raises(ValueError, match="before its observation began"):
         handle_xicn(np.array([1.0, 5.0]), np.array([1, 1]), tl=2.0)
+
+
+def test_handle_xicn_accepts_events_after_right_truncation():
+    # tr is not the end of observation (#924): the item is in the data
+    # because it failed by tr, and may be watched (and fail) after it.
+    data = handle_xicn(np.array([3.0, 12.0]), np.array([1, 1]), tr=10.0)
+    assert data.x.tolist() == [3.0, 12.0]
 
 
 def test_handle_xicn_rejects_inconsistent_window_within_item():
@@ -92,50 +101,115 @@ def test_nhpp_left_truncation_changes_fit():
     assert not np.allclose(untruncated.params, truncated.params)
 
 
-def test_hpp_right_truncation_closes_window_like_censoring_row():
-    # A finite tr closes the observation window in the NHPP integral, so the
-    # rate is events / exposure even with no explicit right-censoring row:
-    # two events observed over [2, 10] gives exactly 0.25.
+def _log_one_minus_exp(delta):
+    # log P(N >= 1) for a Poisson count N with mean delta
+    return np.log(-np.expm1(-delta))
+
+
+def test_hpp_right_truncation_is_a_selection():
+    # A finite tr is a selection (#924), not the end of observation: the
+    # item is in the data because it failed in (tl, tr], so its window
+    # likelihood (to its last event, 7) is divided by P(N(2, 10] >= 1).
     x = np.array([3.0, 7.0])
     i = np.array([1, 1])
     model = HPP.fit(x, i, c=np.array([0, 0]), tl=2.0, tr=10.0)
-    assert np.isclose(model.params[0], 0.25)
 
-    # The same window expressed with an explicit c=1 row at the close time
-    # must give an identical fit.
+    def neg_ll(rate):
+        return -(2 * np.log(rate) - 5 * rate - _log_one_minus_exp(8 * rate))
+
+    res = minimize_scalar(
+        neg_ll, bounds=(1e-6, 10.0), method="bounded", options={"xatol": 1e-12}
+    )
+    assert model.params[0] == pytest.approx(res.x, rel=1e-6)
+    assert model.log_likelihood == pytest.approx(-res.fun, rel=1e-10)
+    # Not the old reading of tr as a c=1 row at 10 (events / exposure).
+    assert not np.isclose(model.params[0], 0.25)
+
+    # The end of observation is a c=1 row: two events over [2, 10] give
+    # exactly 0.25, as before.
     model_c1 = HPP.fit(
         np.array([3.0, 7.0, 10.0]),
         np.array([1, 1, 1]),
         c=np.array([0, 0, 1]),
         tl=2.0,
     )
-    assert np.isclose(model.params[0], model_c1.params[0])
+    assert np.isclose(model_c1.params[0], 0.25)
 
-    # Without tr (or a c=1 row) the window closes at the last event (t=7), so
-    # the integral is shorter and the rate is larger: 2 / 5.
+    # Without a c=1 row (or tr) the window closes at the last event (t=7),
+    # so the integral is shorter and the rate is larger: 2 / 5.
     model_open = HPP.fit(x, i, c=np.array([0, 0]), tl=2.0)
     assert np.isclose(model_open.params[0], 0.4)
 
 
-def test_nhpp_right_truncation_matches_censoring_row():
-    # For a genuine NHPP the tr window-close must agree with supplying the
-    # close time as an explicit right-censoring row.
-    x = [3.0, 7.0, 12.0]
-    i = [1, 1, 1]
-    via_tr = CrowAMSAA.fit(x, i, c=[0, 0, 0], tr=15.0)
+def test_hpp_right_truncation_gap_term():
+    # An item seen to T < tr with no failure (a c=1 row before tr) was
+    # selected on a failure in (T, tr]: its likelihood gains the factor
+    # P(N(T, tr] >= 1) on top of the division by P(N(entry, tr] >= 1).
+    x = np.array([3.0, 7.0, 10.0, 4.0])
+    i = np.array([1, 1, 1, 2])
+    c = np.array([0, 0, 1, 1])
+    model = HPP.fit(x, i, c=c, tr=12.0)
+
+    def ll(rate):
+        out = 2 * np.log(rate) - 10 * rate  # item 1, watched over (0, 10]
+        out -= 4 * rate  # item 2, watched over (0, 4] with no failure
+        out -= 2 * _log_one_minus_exp(12 * rate)  # both selected by 12
+        out += _log_one_minus_exp(8 * rate)  # item 2 failed in (4, 12]
+        return out
+
+    res = minimize_scalar(
+        lambda r: -ll(r),
+        bounds=(1e-6, 10.0),
+        method="bounded",
+        options={"xatol": 1e-12},
+    )
+    assert model.params[0] == pytest.approx(res.x, rel=1e-6)
+    assert model.log_likelihood == pytest.approx(ll(model.params[0]))
+
+
+def test_nhpp_right_truncation_is_a_selection():
+    # Crow-AMSAA with tr: the history to the last event (12), divided by
+    # P(N(0, 15] >= 1) = 1 - exp(-Lambda(15)). Its closed form is not used
+    # (the selection term is searched); the hand-written conditioned
+    # likelihood, maximised with scipy, gives the same fit.
+    x = np.array([3.0, 7.0, 12.0])
+    via_tr = CrowAMSAA.fit(x, [1, 1, 1], c=[0, 0, 0], tr=15.0)
+
+    def ll(alpha, beta):
+        def cif(t):
+            return (t / alpha) ** beta
+
+        log_iif = np.log(beta) - beta * np.log(alpha) + (beta - 1) * np.log(x)
+        return log_iif.sum() - cif(12.0) - _log_one_minus_exp(cif(15.0))
+
+    res = minimize(
+        lambda u: -ll(*np.exp(u)),
+        np.log([10.0, 1.0]),
+        method="Nelder-Mead",
+        options={"xatol": 1e-10, "fatol": 1e-12, "maxiter": 10000},
+    )
+    assert np.allclose(via_tr.params, np.exp(res.x), rtol=1e-3)
+    assert via_tr.log_likelihood == pytest.approx(-res.fun, rel=1e-8)
+    assert via_tr.log_likelihood == pytest.approx(ll(*via_tr.params))
+
+    # The end of observation as a c=1 row at 15 is the time-terminated
+    # closed form, as before, and a different fit.
     via_row = CrowAMSAA.fit(
         [3.0, 7.0, 12.0, 15.0], [1, 1, 1, 1], c=[0, 0, 0, 1]
     )
-    assert np.allclose(via_tr.params, via_row.params, atol=1e-4)
+    beta = 3 / np.sum(np.log(15.0 / x))
+    alpha = 15.0 * (1 / 3) ** (1 / beta)
+    assert np.allclose(via_row.params, [alpha, beta], rtol=1e-8)
+    assert not np.allclose(via_tr.params, via_row.params, rtol=1e-2)
 
 
 @pytest.mark.parametrize(
     "fitter", [ProportionalIntensityNHPP, ProportionalIntensityHPP]
 )
 def test_proportional_intensity_right_truncation(fitter):
-    # The proportional-intensity regression fitters now accept truncation and
-    # close each item's window at tr; this must match the equivalent fit with
-    # explicit c=1 rows at the window close.
+    # The proportional-intensity regression fitters condition each
+    # truncated item on its selection (#924): its history to its last
+    # event, divided by P(N(0, tr] >= 1) = 1 - exp(-exp(eta) Lambda(tr)).
     x = [9, 14, 18, 7, 12, 16, 19, 5, 9, 13, 16, 18, 6, 10, 13, 15, 17, 19]
     i = [1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4]
     Z = np.array(
@@ -143,14 +217,53 @@ def test_proportional_intensity_right_truncation(fitter):
     ).reshape(-1, 1)
     via_tr = fitter.fit(x, Z, i=i, tr=20.0)
 
+    if fitter is ProportionalIntensityHPP:
+        k, start = 1, [0.1]
+
+        def cif(t, rate):
+            return rate * t
+
+        def log_iif(t, rate):
+            return np.log(rate) + 0 * t
+
+    else:
+        # the default Duane baseline, Lambda(t) = b t**alpha
+        k, start = 2, [1.0, 0.1]
+        cif, log_iif = Duane.cif, Duane.log_iif
+
+    times, items, z = np.asarray(x, float), np.asarray(i), Z[:, 0]
+
+    def ll(params):
+        base, coeff = params[:k], params[k]
+        out = 0.0
+        for item in np.unique(items):
+            t = times[items == item]
+            eta = coeff * z[items == item][0]
+            out += np.sum(log_iif(t, *base) + eta)
+            out -= np.exp(eta) * cif(t.max(), *base)
+            out -= _log_one_minus_exp(np.exp(eta) * cif(20.0, *base))
+        return out
+
+    res = minimize(
+        lambda u: -ll(np.r_[np.exp(u[:k]), u[k]]),
+        np.r_[np.log(start), 0.0],
+        method="Nelder-Mead",
+        options={"xatol": 1e-10, "fatol": 1e-12, "maxiter": 20000},
+    )
+    assert np.allclose(via_tr.params, np.exp(res.x[:k]), rtol=1e-4)
+    assert np.allclose(via_tr.coeffs, res.x[k], rtol=1e-4)
+    assert via_tr.log_likelihood == pytest.approx(-res.fun, rel=1e-8)
+    assert via_tr.log_likelihood == pytest.approx(
+        ll(np.r_[via_tr.params, via_tr.coeffs])
+    )
+
+    # The end of observation as c=1 rows still fits (and differently).
     x_c1 = x + [20, 20, 20, 20]
     i_c1 = i + [1, 2, 3, 4]
     Z_c1 = np.vstack([Z, np.array([[0], [0], [1], [1]])])
     c_c1 = [0] * len(x) + [1, 1, 1, 1]
     via_row = fitter.fit(x_c1, Z_c1, i=i_c1, c=c_c1)
-
-    assert np.allclose(via_tr.params, via_row.params, atol=1e-3)
-    assert np.allclose(via_tr.coeffs, via_row.coeffs, atol=1e-3)
+    assert not np.allclose(via_tr.params, via_row.params, rtol=1e-2)
 
 
 @pytest.mark.parametrize(
@@ -202,43 +315,46 @@ def test_615_renewal_fits_take_delayed_entry_as_new(model, kwargs):
         (ARI, {"m": 1}),
     ],
 )
-def test_624_renewal_fits_close_the_window_at_tr(model, kwargs):
-    # A finite tr is each item's end of observation, as the NHPP fitters
-    # take it: the same fit as a c=1 row at tr. It used to be ignored.
+def test_624_renewal_fits_refuse_right_truncation(model, kwargs):
+    # A finite tr is a selection (#924): the item is in the data because it
+    # failed by tr, which the virtual-age models cannot account for, so
+    # they refuse it (they used to read it as a c=1 row at tr). The end of
+    # observation is given as a c=1 row.
     x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2])
     i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3])
-    via_tr = model.fit_from_recurrent_data(
-        handle_xicn(x, i, tl=np.where(i == 3, 0.5, 0.0), tr=20.0), **kwargs
-    )
+    with pytest.raises(ValueError, match="does not take right truncation"):
+        model.fit_from_recurrent_data(
+            handle_xicn(x, i, tl=np.where(i == 3, 0.5, 0.0), tr=20.0),
+            **kwargs,
+        )
     rows = np.r_[x, 20, 20, 20]
     items = np.r_[i, 1, 2, 3]
     ends = np.r_[np.zeros_like(x), 1, 1, 1]
+    tl = np.where(items == 3, 0.5, 0.0)
     via_row = model.fit_from_recurrent_data(
-        handle_xicn(rows, items, ends, tl=np.where(items == 3, 0.5, 0.0)),
-        **kwargs,
+        handle_xicn(rows, items, ends, tl=tl), **kwargs
     )
-    assert np.allclose(via_tr.params, via_row.params, rtol=1e-8)
-    assert via_tr.log_likelihood == pytest.approx(via_row.log_likelihood)
-    # A c=1 row already at tr is not doubled.
-    closed = model.fit_from_recurrent_data(
-        handle_xicn(rows, items, ends, tr=20.0), **kwargs
-    )
-    assert len(closed.data.x) == len(rows)
+    assert np.isfinite(via_row.log_likelihood)
+    # The c=1 rows are the window close as given: none is added.
+    assert len(via_row.data.x) == len(rows)
+    assert np.allclose(np.sort(via_row.data.x), np.sort(rows - tl))
 
 
-def test_624_renewal_refuses_rows_past_tr():
-    # Hand-built data (handle_xicn refuses it too): rows after the end of
-    # observation.
-    from surpyval.utils.recurrent_event_data import RecurrentEventData
+def test_624_renewal_refuses_hand_built_right_truncation():
+    # Hand-built data (bypassing handle_xicn) with a finite tr is refused
+    # too, whatever its rows.
+    from surpyval.utils.event_history_data import EventHistoryData
 
-    data = RecurrentEventData(
+    data = EventHistoryData(
         np.array([1.0, 3.0, 6.0, 2.0, 4.0]),
         np.array([1, 1, 1, 2, 2]),
         np.zeros(5),
         np.ones(5),
         tr=np.array([5.0, 5.0, 5.0, 9.0, 9.0]),
     )
-    with pytest.raises(ValueError, match=r"Item 1 has a row at 6\.0 after"):
+    with pytest.raises(
+        ValueError, match="GeneralizedRenewal does not take right truncation"
+    ):
         GeneralizedRenewal.fit_from_recurrent_data(data)
 
 
@@ -292,9 +408,12 @@ def test_per_unit_tl_tr_equal_per_row(labels):
 
     unit = {"tl": tl_unit, "tr": tr_unit}
     row = {"tl": tl_row, "tr": tr_row}
-    mcf_unit = NonParametricCounting.fit(x, i=i, **unit)
-    mcf_row = NonParametricCounting.fit(x, i=i, **row)
+    # The MCF takes per-unit entry ages; it refuses right truncation (#924).
+    mcf_unit = NonParametricCounting.fit(x, i=i, tl=tl_unit)
+    mcf_row = NonParametricCounting.fit(x, i=i, tl=tl_row)
     assert np.array_equal(mcf_unit.mcf_hat, mcf_row.mcf_hat)
+    with pytest.raises(ValueError, match="does not take right truncation"):
+        NonParametricCounting.fit(x, i=i, **unit)
     Z = {u: [float(n % 2)] for n, u in enumerate(np.unique(i).tolist())}
     assert np.array_equal(
         ProportionalIntensityNHPP.fit(x, i=i, Z=Z, **unit).params,

@@ -435,7 +435,20 @@ _SHIM_NAMES = frozenset(
         "MethodArray",
         "RenamedToMethod",
         "MadePrivate",
+        "renamed_name",
         "DeprecationWarning",
+    }
+)
+
+# The deprecation helpers removed by date rather than by release (the
+# top-level data-format functions): test_dated_removal_is_not_overdue
+# (tests/utils/test_surpyval_data_api.py) fails when they are due.
+_DATED_NAMES = frozenset(
+    {
+        "DATA_FUNCTIONS_DEPRECATED_ON",
+        "DATA_FUNCTIONS_REMOVED_AFTER",
+        "DATED_DATA_FUNCTIONS",
+        "dated_data_function",
     }
 )
 
@@ -501,7 +514,7 @@ def test_the_scan_sees_every_kind_of_shim():
     # Every helper of surpyval.utils.deprecation is a shim the scan sees,
     # however it is used, or the test below would pass with one left
     # behind.
-    assert set(deprecation.__all__) <= _SHIM_NAMES
+    assert set(deprecation.__all__) <= _SHIM_NAMES | _DATED_NAMES
     for name in sorted(_SHIM_NAMES):
         assert _deprecation_shims(f"x = {name}\n") == [1], name
         assert _deprecation_shims(f"x = deprecation.{name}\n") == [1], name

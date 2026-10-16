@@ -18,6 +18,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.integrate import quad
 
+from surpyval import plotting
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -31,6 +32,7 @@ from surpyval.univariate.regression.tvc_schedule import StepSchedule
 from surpyval.utils.linalg import psd_precision, psd_root
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.units import axis_label
 from surpyval.utils.validation import (
     BOUNDS,
     alpha_ci_error,
@@ -1844,6 +1846,12 @@ class DegradationModel(SerialisableMixin):
 
             ax = plt.gcf().gca()
 
+        themed = plotting.theme_enabled()
+        # One colour a unit, in the palette's order, up to its eight; past
+        # them the units are one colour (identity is not the point there,
+        # and a ninth hue would not be told apart).
+        many = len(self.units) > len(plotting.PALETTE)
+        shared = plotting.next_color(ax) if (themed and many) else None
         for idx, unit in enumerate(self.units):
             mask = self.i == unit
             x_unit = self.x[mask]
@@ -1857,20 +1865,37 @@ class DegradationModel(SerialisableMixin):
                     pseudo = self._unit_calendar_time(unit, pseudo)
                 start, end = min(start, pseudo), max(end, pseudo)
             x_plot = np.linspace(start, end, 200)
+            color = shared if many else plotting.next_color(ax)
             (line,) = ax.plot(
                 x_plot,
                 self.path(x_plot, unit),
-                linewidth=1,
-                alpha=0.8,
+                color=color,
+                linewidth=1.4 if themed else 1,
+                alpha=(0.6 if many else 0.9) if themed else 0.8,
             )
-            ax.scatter(x_unit, y_unit, s=12, color=line.get_color())
+            ax.scatter(
+                x_unit,
+                y_unit,
+                s=24 if themed else 12,
+                color=line.get_color(),
+                edgecolors=plotting.INK["surface"] if themed else None,
+                linewidths=0.8 if themed else None,
+                zorder=line.get_zorder() + 1,
+            )
 
         ax.axhline(
-            self.threshold, color="k", linestyle="--", label="Threshold"
+            self.threshold,
+            color=plotting.INK["primary"] if themed else "k",
+            linestyle="--",
+            linewidth=1.0 if themed else None,
+            label="Threshold",
         )
-        ax.set_xlabel("Time")
+        ax.set_xlabel(axis_label(self.unit))
         ax.set_ylabel("Degradation")
-        ax.legend()
+        if not ax.get_title():
+            ax.set_title("Degradation paths")
+        plotting.style_axes(ax)
+        plotting.style_legend(ax)
         return ax
 
     def _left_censored_repr(self) -> str:

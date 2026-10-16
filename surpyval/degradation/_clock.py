@@ -16,6 +16,7 @@ import pandas as pd
 
 from surpyval.univariate.regression.tvc_schedule import (
     StepSchedule,
+    check_from_origin,
     segments_from_origin,
 )
 
@@ -97,14 +98,15 @@ class StressClock:
                     "the StepSchedule has {} covariate(s) but the model was "
                     "fitted with {}".format(Z.p, q)
                 )
-            self.schedule = Z
+            # A schedule starting after 0 is refused (#930).
+            self.schedule = check_from_origin(Z)
         else:
             self.rate = acceleration_factor(Z)
 
     def _knots(self, horizon: float) -> tuple[npt.NDArray, npt.NDArray]:
         assert self.schedule is not None
         finite_edges = self.schedule.edges[np.isfinite(self.schedule.edges)]
-        horizon = max(horizon, float(finite_edges.max()) + 1.0, 1.0)
+        horizon = max(horizon, float(finite_edges.max(initial=0.0)) + 1.0, 1.0)
         starts, ends, Zs = segments_from_origin(self.schedule, horizon)
         af = np.array([self.acceleration_factor(z) for z in Zs])
         knots_t = np.concatenate([[starts[0]], ends])

@@ -332,15 +332,19 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.PH": _FACTORY,
     "surpyval.PO": _FACTORY,
     "surpyval.AH": _FACTORY,
+    "surpyval.JointPH": _FACTORY,
     # data, schedules and result records
     "surpyval.SurpyvalData": _DATA,
-    "surpyval.RecurrentEventData": _DATA,
+    "surpyval.EventHistoryData": _DATA,
+    "surpyval.ItemHistory": _DATA,
+    "surpyval.ItemLifetime": _DATA,
     "surpyval.multivariate.MultivariateSurpyvalData": _DATA,
     "surpyval.StepSchedule": _DATA,
     "surpyval.CovariatePath": _DATA,
     "surpyval.StepValuedError": "an exception type",
     "surpyval.LogRankResult": _RESULT,
     "surpyval.recurrent.TrendTestResult": _RESULT,
+    "surpyval.recurrent.InterventionTestResult": _RESULT,
     "surpyval.recurrent.GoodnessOfFitResult": _RESULT,
     "surpyval.degradation.RULPrediction": _RESULT,
     "surpyval.degradation.ProcessRUL": _RESULT,
@@ -368,18 +372,10 @@ for _path in (
     OUT_OF_SCOPE[f"surpyval.degradation.{_path}"] = (
         _COMPONENT + ": a DegradationAnalysis path shape"
     )
+# The top-level data-format functions (fs_to_xcnt, ...) are deprecated by
+# date and skipped by the completeness scan (DATED_DATA_FUNCTIONS).
 for _fn in (
-    "fs_to_xcnt",
-    "fs_to_xrd",
-    "fsl_to_xcnt",
-    "fsli_handler",
-    "fsli_to_xcnt",
     "round_sig",
-    "xcn_to_fs",
-    "xcnt_handler",
-    "xcnt_to_xrd",
-    "xrd_handler",
-    "xrd_to_xcnt",
     "handle_xicn",
     "fit_best",
     "forecast",
@@ -397,7 +393,7 @@ for _fn in (
     "survival_probability",
 ):
     OUT_OF_SCOPE[f"surpyval.{_fn}"] = _FUNCTION
-for _fn in ("laplace", "mil_hdbk_189c"):
+for _fn in ("laplace", "mil_hdbk_189c", "intervention_test"):
     OUT_OF_SCOPE[f"surpyval.recurrent.{_fn}"] = _FUNCTION
 for _fn in (
     "filliben",
@@ -414,6 +410,43 @@ for _fn in (
     OUT_OF_SCOPE[f"surpyval.univariate.nonparametric.{_fn}"] = (
         _FUNCTION + " (the estimator behind a registered fitter)"
     )
+# Test planning (#862-#865, #880): functions of planning values, and the
+# plans and tests they return; they fit nothing, and have their own tests
+# in tests/test_planning.
+for _result in (
+    "AcceleratedTestPlan",
+    "DemonstrationPlan",
+    "LifeTestPlan",
+    "SequentialDemonstrationTest",
+    "SequentialMTBFTest",
+    "SimulatedPrecision",
+):
+    OUT_OF_SCOPE[f"surpyval.test_planning.{_result}"] = _RESULT
+for _fn in (
+    "accelerated_test_plan",
+    "accelerated_test_precision",
+    "demonstrated_mtbf",
+    "demonstrated_reliability",
+    "demonstration_pass_probability",
+    "demonstration_plan",
+    "demonstration_sample_size",
+    "demonstration_test_multiple",
+    "life_test_length",
+    "life_test_precision",
+    "life_test_sample_size",
+    "logrank_events",
+    "logrank_power",
+    "logrank_sample_size",
+    "mtbf_demonstration_plan",
+    "mtbf_pass_probability",
+    "mtbf_test_time",
+    "rate_ratio_detectable",
+    "rate_ratio_exposure",
+    "rate_ratio_power",
+    "sequential_demonstration_test",
+    "sequential_mtbf_test",
+):
+    OUT_OF_SCOPE[f"surpyval.test_planning.{_fn}"] = _FUNCTION
 OUT_OF_SCOPE["surpyval.univariate.nonparametric.canonical_heuristic"] = (
     _FUNCTION + " (reads a plotting-position heuristic's name)"
 )

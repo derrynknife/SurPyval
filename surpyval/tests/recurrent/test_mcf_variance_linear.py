@@ -5,8 +5,8 @@ item at a time, and found each item's observation window with a pass
 over every row: O(items x times), 4.6 s at 5k items. It is now
 accumulated from each item's own rows and window ends. These check it
 against the sum over items, written out here as it was, on plain,
-truncated, windowed, tied and cause-specific data, and that doubling the
-items no longer quadruples the time.
+left-truncated (closed or open-ended), windowed, tied and cause-specific
+data, and that doubling the items no longer quadruples the time.
 """
 
 import time
@@ -31,13 +31,13 @@ def _by_items(data, x, r, d, counted=None):
     inv_r = np.where(r > 0, 1.0 / np.where(r > 0, r, 1), 0.0)
     window_map = getattr(data, "window_map", None) or {}
     clusters: dict = {}
-    for item in data.items:
+    for item in data.ids:
         rows = data.i == item
         entry = float(data.tl[rows][0])
         upper = data.x if data.x.ndim == 1 else data.x[:, 1]
+        # An item's observation ends at its last row: its c=1 row, else its
+        # last event (a right truncation tr is not its end, #924).
         exit_ = float(upper[rows].max())
-        tr = float(data.tr[rows][0])
-        exit_ = max(exit_, tr) if np.isfinite(tr) else exit_
         at_risk = (entry <= x) & (x <= exit_)
         n_k = np.bincount(
             col[rows & is_event],
@@ -53,9 +53,11 @@ def _by_items(data, x, r, d, counted=None):
     return total
 
 
-def _items(n_items, seed=0, spread=1.0, entry=False, tr=False):
+def _items(n_items, seed=0, spread=1.0, entry=False, closed=True):
+    # closed=False: no end-of-observation row, so each item is watched
+    # until its last event.
     rng = np.random.default_rng(seed)
-    x, i, c, tl, trs = [], [], [], [], []
+    x, i, c, tl = [], [], [], []
     for k in range(n_items):
         end = round(float(rng.uniform(50, 100)), 2)
         rate = rng.gamma(2.0, spread) / 10.0
@@ -64,13 +66,12 @@ def _items(n_items, seed=0, spread=1.0, entry=False, tr=False):
         # On a 0.001 grid (a few ties across items), inside (start, end)
         t = np.unique(np.floor(t * 1000) / 1000)
         t = t[(t < end) & (t > start)]
-        close = [] if tr else [end]
+        close = [end] if closed else []
         x += t.tolist() + close
         i += [k] * (len(t) + len(close))
         c += [0] * len(t) + [1] * len(close)
         tl += [start] * (len(t) + len(close))
-        trs += [end if tr else np.inf] * (len(t) + len(close))
-    return [np.array(v) for v in (x, i, c, tl, trs)]
+    return [np.array(v) for v in (x, i, c, tl)]
 
 
 def _check(data, counted=None, xrd=None):
@@ -86,13 +87,17 @@ def test_matches_the_sum_over_items(spread):
     # spread 20: nearly every item reaches the generator's 40 events,
     # so the items' counts are alike and the sums of squares nearly
     # cancel (the case the blocks are for).
-    x, i, c, _, _ = _items(300, seed=2, spread=spread)
+    x, i, c, _ = _items(300, seed=2, spread=spread)
     _check(handle_xicn(x, i, c))
 
 
-def test_truncated_items():
-    x, i, c, tl, tr = _items(300, seed=1, entry=True, tr=True)
-    _check(handle_xicn(x, i, c, tl=tl, tr=tr))
+@pytest.mark.parametrize("closed", [True, False])
+def test_left_truncated_items(closed):
+    # Delayed entry, with each item's observation closed by a c=1 row or
+    # open-ended (watched to its last event). Right truncation is refused
+    # by the MCF (#924), so it is not a case here.
+    x, i, c, tl = _items(300, seed=1, entry=True, closed=closed)
+    _check(handle_xicn(x, i, c, tl=tl))
 
 
 def test_windowed_items_are_one_cluster():
@@ -126,7 +131,7 @@ def test_ties_and_a_single_item():
 def test_cause_specific():
     # One cause's events count; the other's are non-events.
     rng = np.random.default_rng(3)
-    x, i, c, _, _ = _items(80, seed=4)
+    x, i, c, _ = _items(80, seed=4)
     e = np.where(c == 0, rng.choice(["a", "b"], len(x)), None)
     model = CauseSpecificMCF.fit(x, i=i, c=c, e=e)
     data = handle_xicn(x, i, c, e=e)
@@ -149,7 +154,7 @@ def _cpu_seconds(*n_items, rounds=5):
         clock = time.perf_counter  # a coarse CPU clock (not on Linux)
     args = []
     for n in n_items:
-        x, i, c, _, _ = _items(n, seed=6)
+        x, i, c, _ = _items(n, seed=6)
         data = handle_xicn(x, i, c)
         args.append((data, *data.to_xrd()))
     best = [np.inf] * len(args)

@@ -16,6 +16,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     reject_structural_params,
 )
 from surpyval.utils.autograd_gamma_compat import betainccln, betaincln
+from surpyval.utils.units import takes_unit
 
 from ..parametric import Parametric
 from ._discrete_tails import refine_quantile
@@ -471,6 +472,7 @@ class Binomial_(DiscreteParametricFitter):
             random_state=draw_state(random_state),
         )
 
+    @takes_unit
     def fit(
         self,
         x: npt.ArrayLike,
@@ -583,6 +585,7 @@ class Binomial_(DiscreteParametricFitter):
         self._set_support(model, False)
         return model
 
+    @takes_unit
     def fit_from_df(
         self,
         df: Any,
@@ -695,6 +698,7 @@ class Binomial_(DiscreteParametricFitter):
             n = float(np.max(np.asarray(model._n_trials, dtype=float)))
         model.support = np.array([-1, n + 1])
 
+    @takes_unit
     def from_params(
         self,
         params: npt.ArrayLike,

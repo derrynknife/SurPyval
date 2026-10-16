@@ -1310,9 +1310,31 @@ vectors inside that same likelihood region. These bounds are invariant to how
 the model is parameterised, respect the parameter's range naturally, and are
 usually better calibrated than Wald bounds in small or heavily censored
 samples, which is why they are the reliability-engineering convention. They
-cost more (every bound is an optimisation), they need the original data, and
-they are not yet available for offset, limited-failure-population or
-zero-inflated models.
+cost more (every bound is an optimisation) and they need the original data.
+For an offset, limited-failure-population or zero-inflated model the region is
+over every fitted parameter, the offset :math:`\gamma`, the proportion
+:math:`p` and the zero-inflation fraction :math:`f_0` among them, so their
+uncertainty is in every bound, and they are bounded themselves.
+
+:math:`p` and :math:`f_0` have a closed edge, :math:`p = 1` and
+:math:`f_0 = 0`, where the model is the plain one, and their estimates can
+sit on it. A side of the interval towards the edge is the edge itself
+whenever the deviance there is within the critical value. When the truth is
+on the edge, the deviance there is a 50:50 mixture of 0 and
+:math:`\chi^{2}_{1}` asymptotically (Self and Liang, 1987), so a two-sided
+interval covers it with probability :math:`1 - \alpha/2` and a one-sided
+bound towards it with :math:`1 - \alpha`. With the estimate on the edge the
+other side is found by walking out in the parameter itself, where the
+deviance has curvature, rather than in its logit, which puts the edge at
+infinity.
+
+The offset :math:`\gamma` is a threshold: as it reaches the first failure
+the likelihood is unbounded for a shape below 1 (Smith, 1985). Where the
+deviance stays below the critical value all the way to the first failure,
+the interval on :math:`\gamma` runs up to it, the region holds points of
+any likelihood, and the bounds on functions of the model at that level are
+``nan``, with a warning. The :math:`\chi^{2}_{1}` calibration also needs the
+likelihood to be regular, as an offset Weibull's is for a shape above 2.
 
 The interval is the stretch of values around the estimate whose deviance
 stays below the critical value. Where the profile levels off below it on

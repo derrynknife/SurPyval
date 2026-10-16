@@ -346,10 +346,28 @@ between ``a`` and ``b``:
     print(model.random(5))                   # from a fitted model
     print(model.random(5, a=25, b=30))       # only values between 25 and 30
 
-A model with a limited failure population returns its sample as
-``(x, c, n, t)`` arrays instead of a single array, because some of the drawn
-units never fail and have to be recorded as right censored. The limited
-failure population section below uses this.
+A unit of a limited failure population that never fails is drawn as ``inf``,
+and one dead on arrival (zero inflation) as exactly 0; ``random_data`` returns
+the sample as ``(x, c, n, t)`` arrays to fit, with the never-failing units right
+censored. A truncated draw from an offset, limited-failure or zero-inflated
+model is the model's own distribution given the window ``(a, b]``: the units
+dead on arrival are in it where it holds 0, the ones that never fail where it
+has no upper end, and nothing lies below the offset.
+
+.. jupyter-execute::
+
+    lfp_zi = surv.Weibull.from_params([10, 3], lfp_p=0.8, f0=0.1)
+    print(lfp_zi.random(6, a=-1, b=12, random_state=2))   # can hold 0, never inf
+    print(lfp_zi.random(6, a=5, random_state=2))          # can hold inf, never 0
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _x = lfp_zi.random(200, a=-1, b=12, random_state=2)
+    assert np.all((_x > -1) & (_x <= 12)) and np.any(_x == 0)
+    _x = lfp_zi.random(200, a=5, random_state=2)
+    assert np.all(_x > 5) and np.any(np.isinf(_x))
 
 Saving and loading a model
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -2245,9 +2263,10 @@ likelihood-ratio band usually the better calibrated:
 The likelihood-ratio band is computed pointwise, so it is slower than the Wald
 band (the likelihood region is found once per confidence level and shared by
 every band, quantile and mean bound at that level, and each time's search
-starts from where the neighbouring time's bound was found), needs the original
-data (a model restored from ``from_dict`` raises), and is not yet available for
-offset / limited-failure-population / zero-inflated models.
+starts from where the neighbouring time's bound was found), and needs the original
+data (a model restored from ``from_dict`` raises). For an offset,
+limited-failure-population or zero-inflated model the region is over every
+fitted parameter, ``gamma``, ``lfp_p`` and ``f0`` among them (see below).
 
 Bounds on the *parameters* themselves come from ``param_cb``. By default it
 returns a Wald interval built from the parameter's standard error. For small or
@@ -2278,8 +2297,7 @@ you would expect for a shape parameter from a small sample - and the
 likelihood-ratio interval is invariant to how the model is parameterised.
 Because it is computed from the likelihood directly it needs the original data,
 so it is only available on a model fit in-process (not one restored from
-``from_dict``), and is not yet supported for offset / limited-failure-population
-/ zero-inflated models; for those use ``method='wald'``. ``param_cb`` also takes
+``from_dict``, unless saved ``with_data=True``). ``param_cb`` also takes
 ``alpha_ci`` and ``bound``, like ``cb``. How both kinds of bound are computed is
 explained in :doc:`Parametric Estimation`.
 
@@ -2290,6 +2308,74 @@ explained in :doc:`Parametric Estimation`.
     _b = model.params[1]
     for _lo, _hi in [wald_cb, lr_cb]:
         assert _hi - _b > _b - _lo, (_lo, _hi)
+
+Likelihood-ratio bounds with an offset, a limited failure population or zero inflation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The likelihood-ratio bounds of an offset, limited-failure-population or
+zero-inflated model profile the extra parameters with the others: the region is
+over ``gamma``, ``lfp_p`` and ``f0`` as well as the distribution's parameters,
+so every bound includes their uncertainty, and ``param_cb`` bounds them too
+(the offset ``gamma`` has no Wald bound: it is a threshold, so no standard error
+is estimated for it).
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(1)
+    t = 10 * rng.weibull(2.0, 150)
+    t = np.where(rng.uniform(size=150) > 0.6, np.inf, t)   # 40% never fail
+    stop = rng.uniform(0, 30, 150)
+    x, c = np.minimum(t, stop), (stop < t).astype(int)
+    lfp_model = Weibull.fit(x, c=c, lfp=True)
+
+    print("lfp_p:", lfp_model.lfp_p)
+    print("lfp_p, LR  :", lfp_model.param_cb('lfp_p', method='lr'))
+    print("lfp_p, Wald:", lfp_model.param_cb('lfp_p'))
+    print("R(8), LR   :", lfp_model.cb(8, method='lr'))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _lo, _hi = lfp_model.param_cb('lfp_p', method='lr')
+    assert _lo < lfp_model.lfp_p < _hi < 1
+    _r = lfp_model.cb(8, method='lr')
+    assert _r[0] < lfp_model.sf(8) < _r[1]
+
+``lfp_p`` and ``f0`` have a closed edge, ``lfp_p = 1`` (every unit can fail)
+and ``f0 = 0`` (none is dead on arrival), where the model is the plain one. A
+side of the interval towards the edge is the edge itself whenever the profile
+deviance there is within the critical value, so an interval ``[L, 1.0]`` says that the
+data cannot exclude a population in which every unit fails. When that is the
+truth the estimate is on the edge (asymptotically half of the time), and the
+deviance there is 0: a two-sided interval at level :math:`1 - \alpha` then
+covers the edge with probability :math:`1 - \alpha/2` (it is conservative
+there), and the one-sided bound towards the edge (the upper bound on
+``lfp_p``, the lower on ``f0``) at level :math:`1 - \alpha` with probability
+:math:`1 - \alpha` (Self and Liang, 1987). In small samples the estimate is
+on the edge more often than half the time, and both cover more: with 100
+units, 98.5% and 97.2% at the 95% level (2,000 simulated samples, the estimate
+on the edge in 82% of them). The calibration studies
+(``calibration/test_coverage_extra_parameters.py``) check both. The mean and the
+mean residual life of a limited failure population are infinite (a fraction
+never fails), so their bounds are too.
+
+An offset model's region can reach the offset at the first failure, where its
+likelihood is unbounded (a shape below 1 puts infinite density there; see the
+caution on offsets above). The interval on ``gamma`` then runs up to the first
+failure, and the bounds on functions of the model at that level are ``nan``,
+with a warning: the data cannot exclude that degenerate fit, and the extreme of
+a function over the region is not defined. A higher ``alpha_ci``, more
+failures, or ``method='bootstrap'`` gives a bound. A time before the estimated
+offset has survival 1 at the estimate but not over the region, and its band
+reaches below 1 wherever the region holds an offset below that time. The
+:math:`\chi^2_1` critical value needs a regular likelihood, which an offset's
+is for a Weibull shape above 2 (Smith, 1985): with 100 units and a shape of 3,
+the 95% intervals on the scale, the shape and the offset each covered 95% of
+1,000 simulated samples, and the band on ``sf`` 94% to 95%. With a shape of
+1.5 the region reached the corner in 23% of 500 samples (the band was ``nan``
+there; it covered 94% to 97% of the others), and the interval on the offset covered
+91%: there the bootstrap is the better bound.
 
 B-lives and the mean have their own bounds, ``quantile_cb(p)`` and
 ``mean_cb()`` -- the names the non-parametric models use -- with the same

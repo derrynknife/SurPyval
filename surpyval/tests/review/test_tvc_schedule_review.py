@@ -177,9 +177,13 @@ def test_stress_clock_starts_at_zero():
     # #433: the clock is 0 at time 0 whatever the schedule's first edge.
     from surpyval.degradation._clock import StressClock
 
-    for first in (-10.0, 0.0, 5.0):
+    for first in (-10.0, 0.0):
         schedule = StepSchedule.from_changepoints([first, 20.0], [1.0, 2.0])
         clock = StressClock(lambda z: float(z[0]), 1, schedule)
         np.testing.assert_allclose(
             clock.tau(np.array([0.0, 10.0, 30.0])), [0.0, 10.0, 40.0]
         )
+    # #930: one starting after 0 is refused, not held back to 0.
+    schedule = StepSchedule.from_changepoints([5.0, 20.0], [1.0, 2.0])
+    with pytest.raises(ValueError, match="after the time origin"):
+        StressClock(lambda z: float(z[0]), 1, schedule)

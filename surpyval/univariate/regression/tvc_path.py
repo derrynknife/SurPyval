@@ -170,8 +170,13 @@ class CovariatePath:
     over the segments, a ``CovariatePath`` is integrated by adaptive
     quadrature to a relative accuracy of about ``1e-10`` on the cumulative
     hazard (exactly, with no quadrature, for Cox). The path is measured from
-    time ``0``: before its first time the first value applies, after its
-    last the last value.
+    time ``0``, so for a prediction it must start at or before ``0``
+    (:attr:`start`), and on a baseline defined below 0 at or before every
+    time the answer depends on, to ``-inf`` for proportional hazards and
+    odds, where it is integrated below 0 too (#957); after its last time
+    the last value applies. Survival given an age (``given=``) under
+    proportional hazards or odds, additive hazards or Cox depends on the
+    path from that age on only, so it need only start by then (#962).
 
     The path must be *external* -- known in advance and not driven by the
     unit's own failure process (a planned load, a test profile, ambient
@@ -221,6 +226,22 @@ class CovariatePath:
         self._knots = np.asarray(knots, dtype=float)
         self.period = period
         self._kind = kind
+        # Where the path starts: the first point of a path through points
+        # (it gives no value before it); a function, or a pattern that
+        # repeats, has a value at every time.
+        self._start = (
+            float(self._knots[0])
+            if kind == "points" and period is None
+            else -np.inf
+        )
+
+    @property
+    def start(self) -> float:
+        """The time the path starts: its first point (for
+        :meth:`from_points` without a period), else ``-inf``, as a
+        function of time, or a pattern that repeats, has a value at every
+        time. It gives no value before it."""
+        return self._start
 
     @property
     def p(self) -> int:
@@ -241,9 +262,10 @@ class CovariatePath:
 
         Between two points the covariate changes linearly; a time given
         twice is a jump from the first value to the second. Before the
-        first point the first value applies, and after the last point the
-        last value. With ``period`` the pattern repeats: the path at ``t``
-        is the pattern at ``t mod period``, so ``times`` must lie in
+        first point the path has no value (it starts there, :attr:`start`),
+        and after the last point the last value applies. With ``period``
+        the pattern repeats: the path at ``t`` is the pattern at
+        ``t mod period``, so ``times`` must start at ``0`` and lie in
         ``[0, period]`` (a sawtooth or a thermal cycle).
 
         Parameters
@@ -300,10 +322,10 @@ class CovariatePath:
                 "once with the value after"
             )
         period = _as_period(period)
-        if period is not None and (t[0] < 0 or t[-1] > period):
+        if period is not None and (t[0] != 0 or t[-1] > period):
             raise ValueError(
-                "with a period, 'times' describe one repetition and must "
-                "lie in [0, period] = [0, {:g}]".format(period)
+                "with a period, 'times' describe one repetition: they must "
+                "start at 0 and lie in [0, period] = [0, {:g}]".format(period)
             )
         m = t.shape[0]
 
@@ -466,6 +488,11 @@ class CovariatePath:
         u = np.atleast_1d(np.asarray(t, dtype=float)).ravel()
         out = np.full((u.shape[0], self.p), np.nan)
         known = ~np.isnan(u)
+        if np.any(u[known] < self._start):
+            raise ValueError(
+                "The path starts at {:g}: it has no value before it (asked "
+                "at {:g}).".format(self._start, float(np.min(u[known])))
+            )
         if known.any():
             out[known] = self._values(u[known])
         return out
@@ -768,6 +795,26 @@ def warn_missed_target(
     )
 
 
+def mirrored(path: CovariatePath) -> CovariatePath:
+    """
+    ``path`` reflected about 0, for its breakpoints only: those of the
+    reflection in ``(0, t)`` are the path's in ``(-t, 0)``, negated, so
+    that :func:`path_mesh` lays the panels of an integral below 0 (in
+    ``s = -u``) on them (#957). It is not evaluated: the panel terms of an
+    integral below 0 evaluate the path itself on ``[-b, -a]``.
+    """
+    knots = -np.asarray(path._knots, dtype=float)
+    if path.period is not None:
+        knots = np.mod(knots, path.period)
+    return CovariatePath(
+        lambda u, left: np.empty((np.size(u), path.p)),
+        path.p,
+        np.sort(knots),
+        path.period,
+        "callable",
+    )
+
+
 def step_path(schedule: Any) -> CovariatePath:
     """
     The :class:`CovariatePath` of a
@@ -780,6 +827,12 @@ def step_path(schedule: Any) -> CovariatePath:
     """
     starts = np.asarray(schedule.edges[:-1], dtype=float)
     Z = np.asarray(schedule.Z, dtype=float)
+    if starts[0] < 0 and schedule.period is None:
+        # From 0, where the integration starts: the segment in force at 0
+        # starts there (one from -inf, say, #952).
+        keep = np.append(starts[1:] > 0, True)
+        starts, Z = starts[keep].copy(), Z[keep]
+        starts[0] = 0.0
     times = np.repeat(starts, 2)[1:]
     values = np.repeat(Z, 2, axis=0)[:-1]
     period = schedule.period
@@ -814,6 +867,7 @@ def integrate_to_infinity(
     scale: float,
     rtol: float,
     knots: "Callable[[float], npt.NDArray] | None" = None,
+    edges_out: "list | None" = None,
 ) -> "tuple[float, tuple[float, float] | None]":
     r"""
     :math:`\int_{\text{origin}}^\infty f(t)\,dt` for a vectorised ``func``
@@ -830,7 +884,10 @@ def integrate_to_infinity(
 
     Returns the integral and ``None``, or, when ``f`` has not fallen
     away by ``scale * 2**_TAIL_DOUBLINGS`` past ``origin`` (it levels off:
-    a fraction never fails), the integral so far and ``(T, f(T))``.
+    a fraction never fails), the integral so far and ``(T, f(T))``. The
+    final panel edges (from ``origin``) are appended to ``edges_out``,
+    when given, to integrate on again with no refinement
+    (:func:`integrate_on`).
     """
 
     # The outer edges so far. They are passed with every call: an
@@ -871,6 +928,8 @@ def integrate_to_infinity(
         with np.errstate(invalid="ignore", over="ignore"):
             # inf - inf where f has overflowed; caught below.
             res = integrate_panels(terms, edges, rtol)
+        if edges_out is not None:
+            edges_out.append(res["edges"])
         total += float(np.sum(res["value"]))
         end = float(edges[-1])
         seen[0] = np.union1d(seen[0], edges[:-1])
@@ -884,3 +943,26 @@ def integrate_to_infinity(
         if end >= scale * 2.0**_TAIL_DOUBLINGS:
             return total, (origin + end, f_end)
         edges = stretch(end, end * 2.0 ** np.arange(0, _TAIL_STEP + 1))
+
+
+def integrate_on(
+    func: Callable[[npt.NDArray], npt.NDArray],
+    origin: float,
+    edges: npt.NDArray,
+) -> float:
+    """``func`` integrated from ``origin`` on the panels between ``origin +
+    edges``, with no refinement: an integral of
+    :func:`integrate_to_infinity` again on the edges it reached, so that
+    it is smooth in what ``func`` depends on (``cb_tvc``'s delta method,
+    #957)."""
+
+    def terms(a: npt.NDArray, b: npt.NDArray) -> tuple:
+        m = a.shape[0]
+        mid, half = 0.5 * (a + b), 0.5 * (b - a)
+        u = (mid[:, None] + half[:, None] * _NODES[None, :]).ravel()
+        values = np.asarray(func(origin + u), dtype=float).reshape(m, -1)
+        return np.zeros(m), values, np.abs(values), np.zeros(m, dtype=bool)
+
+    with np.errstate(invalid="ignore", over="ignore"):
+        res = integrate_panels(terms, edges, 0.0, max_rounds=0)
+    return float(np.sum(res["value"]))

@@ -52,3 +52,50 @@ def warn_no_covariance() -> None:
         UserWarning,
         stacklevel=caller_stacklevel(),
     )
+
+
+class MaskedCauseWarning(UserWarning):
+    """Failures whose event type was not recorded (masked causes): fits
+    of every failure count them; a fit of one type treats them as
+    ``for_event_type``'s ``masked`` says; competing-risks fits refuse
+    them."""
+
+
+def warn_masked(count: int, which: str) -> None:
+    """Warn, once at the caller, of ``count`` failures with no recorded
+    event type, ``which`` naming them (items or rows)."""
+    import warnings
+
+    have = "has" if count == 1 else "have"
+    warnings.warn(
+        f"{count} failure{'' if count == 1 else 's'} {have} no recorded "
+        f"event type (masked causes): {which}. Fits of every failure count "
+        "them; a fit of one type treats them as for_event_type's masked= "
+        "says (not of that type, by default); competing-risks fits refuse "
+        "them. relabel_event_types({None: 'unknown'}) makes them a type of "
+        "their own.",
+        MaskedCauseWarning,
+        stacklevel=caller_stacklevel(),
+    )
+
+
+def warn_suspension_types(count: int, which: str) -> None:
+    """Warn, once at the caller, that ``count`` suspensions had an event
+    type, which was dropped."""
+    import warnings
+
+    warnings.warn(
+        f"{count} suspension{'' if count == 1 else 's'} (right censored: "
+        f"{which}) had an event type, which was dropped: a suspension has "
+        "not failed, so it has none.",
+        UserWarning,
+        stacklevel=caller_stacklevel(),
+    )
+
+
+def named(values: list, limit: int = 5) -> str:
+    """Up to ``limit`` of ``values``, for a message: "'A', 'B' and 3
+    more"."""
+    shown = ", ".join(repr(v) for v in values[:limit])
+    extra = len(values) - limit
+    return shown + (f" and {extra} more" if extra > 0 else "")

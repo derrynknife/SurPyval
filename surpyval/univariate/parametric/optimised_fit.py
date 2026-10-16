@@ -19,7 +19,12 @@ from surpyval.utils.no_maximum import (
     warn_no_maximum,
     warn_unverified,
 )
-from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.surpyval_data import (
+    SurpyvalData,
+    accepts_surpyval_data,
+    refuses_what_fit_cannot_take,
+)
+from surpyval.utils.units import takes_unit
 
 from ._fit_inputs import FitInputsMixin, normalise_how
 from .fitters import bounds_convert
@@ -242,6 +247,8 @@ class OptimisedFitMixin(FitInputsMixin):
             moments[i] = self._moment(n, *params, offset=offset)
         return moments
 
+    @takes_unit
+    @accepts_surpyval_data
     def fit(
         self,
         x: npt.ArrayLike | None = None,
@@ -569,6 +576,7 @@ class OptimisedFitMixin(FitInputsMixin):
         keep = (np.asarray(non_parametric_model.d) > 0) & np.isfinite(x)
         return self.fit_from_ecdf(x[keep], F[keep])
 
+    @refuses_what_fit_cannot_take
     def fit_from_surpyval_data(
         self,
         surv_data: SurpyvalData,
@@ -778,6 +786,18 @@ turnbull_estimator
             how == "MLE"
             and not fixed
             and self._warn_if_at_limit(surv_data, results, zi, lfp)
+        ):
+            warning = None
+            unverified = False
+            maximum = "no finite maximum"
+        # So do data whose intervals only meet at one time (abutting
+        # intervals), where the likelihood rises along a flat ridge
+        # towards a spike there, which a search can stop on and verify.
+        if (
+            how == "MLE"
+            and not fixed
+            and maximum != "no finite maximum"
+            and self._warn_if_abutting(surv_data, results, offset, zi, lfp)
         ):
             warning = None
             unverified = False

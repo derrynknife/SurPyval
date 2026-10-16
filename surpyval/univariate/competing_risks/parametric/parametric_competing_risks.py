@@ -32,6 +32,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.integrate import quad_vec
 
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -55,6 +56,8 @@ from surpyval.utils.dataframe import frame_column
 from surpyval.utils.no_maximum import combined_maximum
 from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.rng import as_generator
+from surpyval.utils.surpyval_data import accepts_surpyval_data
+from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import unknown_cause_error
 
 
@@ -91,7 +94,10 @@ def _validate(
     return x, c, n, e, t
 
 
-class ParametricCompetingRisks(SerialisableMixin):
+class ParametricCompetingRisks(
+    DiagnoseMixin,
+    SerialisableMixin,
+):
     """
     A parametric competing-risks model: one distribution per cause, combined
     into cumulative-incidence functions. Build it in one step from data with
@@ -507,6 +513,8 @@ class ParametricCompetingRisks(SerialisableMixin):
         return model
 
     @classmethod
+    @takes_unit
+    @accepts_surpyval_data
     def fit(
         cls,
         x: npt.ArrayLike,
@@ -613,6 +621,7 @@ class ParametricCompetingRisks(SerialisableMixin):
 
     @classmethod
     @column_arguments("x", "c", "n", "tl")
+    @takes_unit
     def fit_from_df(
         cls,
         df: Any,

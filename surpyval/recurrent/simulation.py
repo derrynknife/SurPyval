@@ -4,10 +4,12 @@ from typing import TYPE_CHECKING, Any, Callable
 import numpy as np
 from numpy.typing import ArrayLike
 
+from surpyval import plotting
 from surpyval.recurrent.inference import require_data
 from surpyval.recurrent.nonparametric import NonParametricCounting
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.units import label_axes
 
 STALLED_WARNING = (
     "Some sequences produced a near-zero interarrival time (< tol) before "
@@ -343,7 +345,7 @@ class RecurrenceSimulationMixin:
         Returns
         -------
 
-        RecurrentEventData
+        EventHistoryData
             The simulated recurrence data in xicn format.
 
         Raises
@@ -410,7 +412,7 @@ class RecurrenceSimulationMixin:
         Returns
         -------
 
-        RecurrentEventData
+        EventHistoryData
             The simulated recurrence data in xicn format.
         """
         from surpyval.utils.recurrent_utils import handle_xicn
@@ -596,10 +598,14 @@ class RecurrenceSimulationMixin:
             ax = plt.gcf().gca()
 
         x_plot = np.linspace(0, float(self.data.x.max()), 200)
-        ax.step(x, (d / r).cumsum(), color="r", where="post")
-        ax.plot(
-            x_plot,
-            self.mcf(x_plot, items=items, random_state=random_state),
-            color="b",
+        plotting.observed_and_fitted(
+            ax,
+            (x, (d / r).cumsum()),
+            (x_plot, self.mcf(x_plot, items=items, random_state=random_state)),
+            observed_label="Observed MCF",
+            fitted_label="Model MCF",
         )
+        label_axes(ax, getattr(self, "unit", None), "Mean cumulative function")
+        plotting.style_axes(ax)
+        plotting.style_legend(ax)
         return ax

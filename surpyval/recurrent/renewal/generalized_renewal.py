@@ -20,6 +20,10 @@ from surpyval.recurrent.renewal.renewal_model import (
     event_positions,
     rows_by_position,
 )
+from surpyval.utils.event_history_data import (
+    accepts_event_history_data,
+    refuses_unmodelled_data,
+)
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import (
@@ -31,6 +35,7 @@ from surpyval.utils.recurrent_utils import (
     validate_renewal_times,
     validate_restoration,
 )
+from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import option_error
 
 
@@ -684,6 +689,7 @@ class GeneralizedRenewal(RenewalFitMixin):
 
         return negll_func
 
+    @refuses_unmodelled_data
     def fit_from_recurrent_data(
         self,
         data: Any,
@@ -697,7 +703,7 @@ class GeneralizedRenewal(RenewalFitMixin):
         Parameters
         ----------
 
-        data : RecurrentEventData
+        data : EventHistoryData
             Data containing the recurrence details.
             An item with delayed entry (a ``tl``) is taken to be as
             new at entry, with its times counted from there (see
@@ -796,6 +802,8 @@ class GeneralizedRenewal(RenewalFitMixin):
         self._attach_inference(out, neg_ll, [q, *dist_params], res, data)
         return out
 
+    @takes_unit
+    @accepts_event_history_data
     def fit(
         self,
         x: ArrayLike,

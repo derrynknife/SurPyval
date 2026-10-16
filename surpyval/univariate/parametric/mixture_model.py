@@ -48,7 +48,8 @@ from surpyval.utils.removed_names import (
 )
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
-from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
+from surpyval.utils.units import axis_label, takes_unit
 from surpyval.utils.validation import (
     BOUNDS,
     CB_ON,
@@ -149,9 +150,12 @@ class _FitMethod:
             )
 
         # Keep the docstring but show this signature (with ``dist`` and
-        # ``m``), not the instance method's.
+        # ``m``), not the instance method's; and take ``unit=`` as every
+        # fit does (#845).
         del fit.__wrapped__
-        return fit
+        fit.__dict__.pop("__signature__", None)
+        fit.__dict__.pop("_takes_unit", None)
+        return takes_unit(accepts_surpyval_data(fit))
 
 
 class MixtureModel(
@@ -365,6 +369,7 @@ class MixtureModel(
         return out
 
     @classmethod
+    @takes_unit
     def from_params(
         cls,
         dist: Any,
@@ -500,7 +505,9 @@ class MixtureModel(
                     "an unfitted mixture has no weights to keep: give 'w'"
                 )
             w = self.w
-        return type(self).from_params(self.dist, values, w, w_logits=w_logits)
+        return type(self).from_params(
+            self.dist, values, w, w_logits=w_logits, unit=self.unit
+        )
 
     def _checked_weights(
         self, w: npt.ArrayLike | None, w_logits: npt.ArrayLike | None
@@ -1191,6 +1198,8 @@ class MixtureModel(
         self.w = np.ones(shape=(self.m)) / self.m
 
     @_FitMethod
+    @takes_unit
+    @accepts_surpyval_data
     def fit(
         self,
         x: npt.ArrayLike | None = None,
@@ -2604,6 +2613,7 @@ class MixtureModel(
             show_censored=show_censored,
             color=color,
             label=label,
+            xlabel=axis_label(self.unit),
             **kwargs,
         )
 

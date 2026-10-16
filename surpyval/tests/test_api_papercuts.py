@@ -388,9 +388,9 @@ def test_competing_risks_plots_its_cumulative_incidences():
     e = ["a", "b", "a", "b", "a", None, "a", "b"]
     model = CompetingRisks.fit(x, e, c=[0, 0, 0, 0, 0, 1, 0, 0])
     _, ax = plt.subplots()
-    model.plot(ax=ax)
+    model.plot(ax=ax, stacked=True)
     # the top of the stack is the sum of the causes' incidences (the last
-    # cause's layer; the bounds' band is drawn after the stack)
+    # cause's layer; the bounds are lines)
     top = ax.collections[1].get_paths()[0].vertices[:, 1].max()
     assert top == pytest.approx(model.cif(8, "a") + model.cif(8, "b"))
     _, ax = plt.subplots()
@@ -462,11 +462,17 @@ def test_package_has_a_docstring_and_all():
     assert not names & {"np", "Any", "TYPE_CHECKING"}
     assert len(names) == len(surpyval.__all__)
     namespace: dict = {}
-    exec("from surpyval import *", namespace)
-    for name in ("np", "Any", "TYPE_CHECKING"):
-        assert name not in namespace
-    for name in surpyval.__all__:
-        assert namespace[name] is getattr(surpyval, name)
+    with warnings.catch_warnings():
+        # The data-format functions deprecated by date are listed, with a
+        # FutureWarning (tests/utils/test_surpyval_data_api.py)
+        warnings.simplefilter("ignore", FutureWarning)
+        # and the names renamed with a deprecation (RecurrentEventData)
+        warnings.simplefilter("ignore", DeprecationWarning)
+        exec("from surpyval import *", namespace)
+        for name in ("np", "Any", "TYPE_CHECKING"):
+            assert name not in namespace
+        for name in surpyval.__all__:
+            assert namespace[name] is getattr(surpyval, name)
 
 
 @pytest.mark.parametrize(

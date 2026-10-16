@@ -58,11 +58,13 @@ from ..tvc_fit import fit_tvc_df
 
 
 def _validate_full_coverage(
-    x: npt.NDArray, tl: npt.NDArray, ident: npt.NDArray
+    x: npt.NDArray, tl: npt.NDArray, ident: npt.NDArray, real_line: bool
 ) -> None:
     """
     Require each subject's episodes to tile ``(0, T]`` completely: first
-    entry at 0 and no gaps between consecutive episodes.
+    entry at or before 0 (``-inf`` for a subject followed since then) and
+    no gaps between consecutive episodes; on a baseline defined below 0
+    (``real_line``), an exit after 0 too.
 
     The accumulated accelerated age ``psi(T) = sum_k phi_k (b_k - a_k)``
     implements the integral from 0, so uncovered time would silently
@@ -89,6 +91,13 @@ def _validate_full_coverage(
                 "(CoxPH.fit_tvc), which handles delayed entry "
                 "exactly.".format(u, s_tl[0])
             )
+        if real_line and s_x[-1] <= 0:
+            raise ValueError(
+                "subject {} leaves observation at {} <= 0: the accelerated "
+                "failure time model measures accelerated age from 0, so "
+                "its age at an exit before 0 needs the covariate between "
+                "the exit and 0, which is unobserved.".format(u, s_x[-1])
+            )
         if cnt > 1 and np.any(np.abs(s_tl[1:] - s_x[:-1]) > 1e-9):
             raise ValueError(
                 "subject {} has a gap between observation intervals: the "
@@ -106,6 +115,7 @@ def _grouped_episodes(
     n: npt.NDArray,
     tl: npt.NDArray,
     ident: npt.NDArray,
+    real_line: bool = False,
 ) -> dict:
     """
     From the (subject-contiguous, entry-sorted) episode arrays returned by
@@ -122,8 +132,18 @@ def _grouped_episodes(
         ident, return_index=True, return_counts=True
     )
     term = starts + counts - 1
+    # Accelerated age is measured from 0 (#952): each episode's part of it
+    # after 0 to the exit, and, for an entry before 0, before 0 back to the
+    # entry (negative).
+    at_0 = np.clip(0.0, tl, x)
+    # A subject entered at a finite time on a baseline defined below 0 is
+    # conditioned on surviving to it; one followed since -inf, or entered
+    # at or before 0 on a baseline that starts there, is not.
+    entered = real_line & np.isfinite(tl[starts])
     return {
-        "widths": (x - tl).astype(float),
+        "widths": (x - at_0).astype(float),
+        "entry_widths": np.where(np.isfinite(tl), tl - at_0, 0.0),
+        "entered": entered,
         "starts": starts.astype(int),
         "term": term.astype(int),
         "event": (c[term] == 0),
@@ -183,6 +203,13 @@ def _aft_tvc_neg_ll(self: Any, data: Any, *params: float) -> float:
 
     H0 = self.Hf_dist(psi, *dist_params)
     ll = -(tvc["weight"] * H0).sum()
+    entered = tvc["entered"]
+    if entered.any():
+        # Conditioned on surviving to the entry: + H0 at its accelerated
+        # age (0 for an entry at 0, #952).
+        psi_in = _subject_sums(phi_ep * tvc["entry_widths"], tvc["starts"])
+        H_in = self.Hf_dist(psi_in[entered], *dist_params)
+        ll = ll + (tvc["weight"][entered] * H_in).sum()
 
     event = tvc["event"]
     if event.any():
@@ -404,12 +431,13 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         if Z.shape[0] == 1 and x.shape[0] != 1:
             Z = Z.reshape(-1, 1)
         p = Z.shape[1]
-        _validate_full_coverage(x, tl, ident)
+        real_line = float(self.support[0]) < 0
+        _validate_full_coverage(x, tl, ident, real_line)
         # The exit times inside the baseline's support, as for fit (#565)
         check_baseline_support(
             self, SurpyvalData(x, c, n, None, group_and_sort=False)
         )
-        grp = _grouped_episodes(x, c, n, tl, ident)
+        grp = _grouped_episodes(x, c, n, tl, ident, real_line)
         # One coefficient per column, named by its column or ``coef_j``
         # (#614).
         phi_param_map = LogLinearPhi.make_param_map(Z, self.param_map)

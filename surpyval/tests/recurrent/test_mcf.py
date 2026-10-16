@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from surpyval.recurrent import NonParametricCounting
-from surpyval.utils.recurrent_event_data import RecurrentEventData
+from surpyval.utils.event_history_data import EventHistoryData
 
 
 def test_linear_mcf_bounds_rise_from_zero_like_the_mcf():
@@ -37,7 +37,7 @@ def test_mcf_is_defined_at_negative_times_inside_a_negative_tl():
 
 
 def test_recurrent_event_data_to_xrd_keeps_integer_counts():
-    data = RecurrentEventData(
+    data = EventHistoryData(
         np.array([1, 2, 1]), np.array([1, 1, 2]), np.zeros(3), np.ones(3, int)
     )
     _, r, d = data.to_xrd()

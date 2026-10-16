@@ -415,15 +415,35 @@ def check_e_and_x(e: npt.NDArray, x: npt.NDArray) -> None:
         )
 
 
-def check_c_and_e(c: npt.NDArray, e: npt.NDArray) -> None:
-    if any(e_i is not None for e_i in e[c == 1]) or any(
-        e_i is None for e_i in e[c != 1]
-    ):
-        raise ValueError(
-            "A missing event type (None / NaN) is allowed only for a "
-            "censored observation (c = 1), and every censored observation "
-            "must have one."
+def check_c_and_e(c: npt.NDArray, e: npt.NDArray) -> npt.NDArray:
+    """``e`` checked against ``c`` for a competing-risks fit: a censored
+    row's event type is dropped, with a warning (it has not failed); a
+    failure without one, a masked cause, is refused, as these fits need
+    each failure's type (#928). Returns ``e``, with None for every
+    censored row."""
+    from surpyval.utils.warnings import named, warn_suspension_types
+
+    e = np.array(e, dtype=object, copy=True)
+    c = np.asarray(c)
+    typed = np.array([e_i is not None for e_i in e], dtype=bool)
+    suspended = (c == 1) & typed
+    if suspended.any():
+        e[suspended] = None
+        warn_suspension_types(
+            int(suspended.sum()),
+            "rows " + named(np.flatnonzero(suspended).tolist()),
         )
+    masked = (c != 1) & ~typed
+    if masked.any():
+        raise ValueError(
+            f"{int(masked.sum())} failure{'' if masked.sum() == 1 else 's'} "
+            "(c = 0) with no event type (masked causes): a competing-risks "
+            "fit needs each "
+            "failure's type: give them one (on a dataset, "
+            "relabel_event_types({None: 'unknown'}) makes them a type of "
+            "their own), or leave their items out."
+        )
+    return e
 
 
 def validate_cr_df_inputs(
@@ -474,7 +494,7 @@ def validate_cr_inputs(
 
     # Ensure all cases where c is 0, e is not None and
     # where c is 1 e is None
-    check_c_and_e(c, e)
+    e = check_c_and_e(c, e)
 
     # Two baselines
     # TODO: Add fleming-harrington

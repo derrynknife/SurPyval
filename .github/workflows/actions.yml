@@ -2,10 +2,10 @@ name: actions
 
 run-name: SurPyval CI
 
-# One automated run: the full check, on a pull request into `master` (the
-# release). Nothing runs on pull requests into `develop` or on pushes to any
+# One automated run: the full check, on a pull request into `main` (the
+# release). Nothing runs on pull requests into `dev` or on pushes to any
 # branch. The run tests the pull request's merge result, so a failure is
-# found, and fixed on `develop`, before `master` changes; merge the release
+# found, and fixed on `dev`, before `main` changes; merge the release
 # only when it is green. See docs/Contributing.rst for the branching /
 # release flow.
 #
@@ -17,7 +17,7 @@ run-name: SurPyval CI
 # (publish.yml) checks that this run passed.
 on:
   pull_request:
-    branches: [master]
+    branches: [main]
 
 env:
   SRC: surpyval # Source directory to run jobs on
@@ -55,7 +55,7 @@ jobs:
         run: black --check $LINT
 
   # The conformance suite runs with the rest of the tests, on the pull
-  # request into `master`.
+  # request into `main`.
   #
   # It runs every public model, listed once in a registry
   # (surpyval/tests/conformance/registry.py), through one battery of
@@ -94,7 +94,7 @@ jobs:
         run:
           python -m pytest surpyval/tests/conformance -m "not slow"
 
-  # The test suite runs on the pull request into `master` -- the release --
+  # The test suite runs on the pull request into `main` -- the release --
   # and on nothing else (see the top of this file).
   #
   # Each interpreter's run is split into four parts that run at once
@@ -217,6 +217,12 @@ jobs:
             workers: '2'
             args: >-
               'surpyval/tests/calibration/test_coverage_parametric.py::test_likelihood_ratio_coverage'
+          # The likelihood-ratio coverage of offset, LFP and ZI models
+          # runs its repetitions on every core itself, as #617's does.
+          - group: extra-parameters
+            workers: '0'
+            args: >-
+              surpyval/tests/calibration/test_coverage_extra_parameters.py
           - group: long-studies
             workers: '3'
             args: >-
@@ -237,6 +243,7 @@ jobs:
               surpyval/tests/calibration surpyval/tests/scenarios
               --ignore=surpyval/tests/calibration/test_coverage_copula.py
               --ignore=surpyval/tests/calibration/test_refit_registry.py
+              --ignore=surpyval/tests/calibration/test_coverage_extra_parameters.py
               --deselect 'surpyval/tests/calibration/test_coverage_regression.py::test_617_cb_bootstrap_coverage_at_an_extrapolated_use_condition'
               --deselect 'surpyval/tests/calibration/test_coverage_regression.py::test_583_cb_coverage_at_an_extrapolated_use_condition'
               --deselect 'surpyval/tests/calibration/test_coverage_parametric.py::test_likelihood_ratio_coverage'
@@ -302,7 +309,7 @@ jobs:
 
   # The suite as installed from the built wheel, collected (not run) in a
   # clean environment with only pytest beside the package's own
-  # dependencies, on the pull request into `master`. The repository run above
+  # dependencies, on the pull request into `main`. The repository run above
   # sees files the wheel does not carry: 0.23 shipped tests that read
   # reference data and a root-conftest helper left out of it, and the
   # installed suite could not be collected (#661). Collection is what
@@ -333,7 +340,7 @@ jobs:
         working-directory: /tmp
         run: /tmp/clean/bin/python -m pytest --pyargs surpyval --collect-only -q
 
-  # Build the documentation on the pull request into `master`, with the test
+  # Build the documentation on the pull request into `main`, with the test
   # suite.
   #
   # The docs execute every ``.. jupyter-execute::`` cell during the
@@ -341,7 +348,7 @@ jobs:
   # real -- and one that can be broken by a change that touches no
   # documentation file at all. Removing Gamma's probability-plot fitting
   # did exactly that: a cell looping over the fit methods started
-  # raising. Read the Docs builds ``master`` and tags too, but with no
+  # raising. Read the Docs builds ``main`` and tags too, but with no
   # check on the result; this run is what fails visibly.
   #
   # The point is to reproduce the hosted build, so this matches

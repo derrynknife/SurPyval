@@ -6,6 +6,466 @@ Unreleased
 
 **Added**
 
+- Likelihood-ratio bounds for offset, limited-failure-population and
+  zero-inflated models: ``param_cb``, ``cb``, ``quantile_cb``, ``mean_cb``
+  and ``mrl_cb`` with ``method="lr"`` raised ``NotImplementedError``. The
+  profile is now over every fitted parameter, so the bounds include the
+  uncertainty of ``gamma``, ``lfp_p`` and ``f0``, and ``param_cb`` bounds
+  those three as well (``gamma`` had only the bootstrap bound). ``lfp_p``
+  and ``f0`` have a closed edge (1 and 0, the plain model): a side towards
+  it is the edge itself where the profile deviance there is within the
+  critical value, and with the estimate on the edge the other side is
+  walked out in the parameter itself; a two-sided interval then covers a
+  truth on the edge with probability ``1 - alpha_ci / 2`` and the
+  one-sided bound towards it with ``1 - alpha_ci``, asymptotically (Self
+  and Liang, 1987; more in small samples: 98.5% and 97.2% at the 95% level
+  with 100 units). A time before the
+  estimated offset has a band below 1 wherever the region holds an offset
+  below it. Where an offset model's region reaches the first failure with
+  its offset (the likelihood is unbounded there), the bounds on functions
+  at that level are ``nan``, with a warning, and the offset's interval
+  runs up to the first failure. Brute-force checks of the profile deviance
+  at each bound are in ``test_likelihood_ratio_extra_parameters.py``, the
+  coverage studies in ``calibration/test_coverage_extra_parameters.py``,
+  and the Weibull's variants join the conformance sweeps of the
+  likelihood-ratio options (the other families' with the calibration
+  studies).
+- Truncated draws, ``random(size, a=, b=)`` and ``random_data``, from
+  offset, limited-failure-population and zero-inflated models (they raised
+  ``NotImplementedError``): the model's own distribution given the window
+  ``(a, b]``, with the units dead on arrival in it where it holds 0 and
+  the ones that never fail where it has no upper end. A window the model
+  puts no probability in raises a ``ValueError``.
+
+- The data classes read and write DataFrames (#936):
+  ``SurpyvalData.from_dataframe(df, x_col=..., c_col=... | event_col=...,
+  n_col=, xl_col= / xr_col=, tl_col=, tr_col=, i_col=, e_col=, Z_cols=,
+  attribute_cols=, unit=)`` reads a table with one row per item, naming
+  its columns as every DataFrame entry point does, with ``event_col`` for
+  a status column (1 or True where the item failed) and blanks in
+  ``xl_col`` / ``xr_col`` for an end not known;
+  ``EventHistoryData.from_dataframe(df, i_col=, x_col=, ..., end_col=,
+  ends={item: age})`` reads a log with one row per event, each item's end
+  of observation as a ``c = 1`` row, a column or ``ends=`` (which also
+  gives the items that never failed); ``to_dataframe()`` on both gives
+  the rows back. ``SurpyvalData(..., ids=)`` names rows.
+- Dict and JSON forms for every data class (#935): ``to_dict`` /
+  ``from_dict`` and ``to_json`` / ``from_json`` on ``SurpyvalData``,
+  ``EventHistoryData``, ``ItemLifetime`` and ``ItemHistory``, tagged with
+  their ``"class"``; ``from_json`` reads JSON text or a file path, and
+  ``surpyval.from_json`` / ``surpyval.from_dict`` read a dataset or record
+  as they read a model. Step schedules of time-varying covariates, tuple
+  ids and event types, attributes, states and the unit go with them (a
+  ``CovariatePath`` is refused).
+- Attributes on the records (#938): ``attributes={name: value}`` on
+  ``ItemLifetime`` and ``ItemHistory``, what describes an item without
+  being fitted (a site, a batch, an arm: any values), read back by
+  ``item.attribute(name)``, carried through the datasets (``from_items``,
+  ``from_dataframe(attribute_cols=)``, slicing, every reshape, JSON,
+  ``to_dataframe``, the repr and summary) and refused by no fit.
+  ``data.groupby(name)`` splits the data by an attribute or a covariate
+  into ``{level: dataset}``; ``select(where={name: value})`` keeps one
+  group; ``without("attributes")`` drops them.
+- Updating a dataset with new records (#939): ``data.update(records,
+  counts={id: k})`` takes updated records back in, replacing the item
+  with the same id and adding new ones; ``data.drop(ids)`` removes items;
+  ``data.extend_running(age | {id: age} | function of the record)`` moves
+  every item still running on to a later age.
+- Cut-offs per item (#937): ``censor_at`` and ``enter_at`` take
+  ``{id: age}`` (the items left out are kept as they are) or a function of
+  each item's record giving its age, for a study that ends on one date,
+  a different age for each item.
+- Predictions from item records (#940): a record, a list of records or a
+  dataset stands as ``Z`` in a regression model's ``sf``, ``ff``, ``hf``,
+  ``Hf``, ``df``, ``qf`` and ``mean``, its covariates read by name where
+  the model's are named; every lifetime model has
+  ``predict(items, times=, what=, given=, p=)``, a DataFrame indexed by
+  id, one row per item and time, with ``given="age"`` for the predictions
+  given each running item's current age (``nan`` for one that has
+  failed).
+- Units on the data classes (#945): ``unit=`` on the records,
+  ``SurpyvalData``, ``EventHistoryData``, ``from_observations``,
+  ``from_items`` (from its records, which must agree), ``from_histories``,
+  ``from_dataframe`` and ``handle_xicn``, kept through every reshape,
+  slice, ``to_first_events``, ``to_gaps`` and the JSON form, shown in the
+  summary and repr, and given to the model by ``fit(data)``; a ``unit=``
+  at the fit that differs from the data's is refused, as are records in
+  different units.
+- ``SurpyvalData.event_types``, ``n_items`` and ``records()`` (a
+  generator of the records) on both datasets, ``ItemLifetime.has_event_types``
+  (#934); ``without`` takes a list of parts, ``for_event_type`` several
+  types taken as one, ``select(ids=)`` one id (#932).
+- A shared keyword check on the record constructors, ``from_items``,
+  ``from_observations`` and ``from_histories`` (#931): an unknown
+  argument is refused naming the one that was meant (``tl`` ->
+  ``left_truncation=``, ``e`` -> ``event_type=``, ...) or the closest
+  accepted name.
+
+- ``model.diagnose(alpha=0.05, columns=None)`` on every regression model
+  and fitted distribution (#867): the checks its assumptions call for, as a report -- ``table``
+  (one row per check: test, statistic, ``p``, verdict and covariates),
+  ``advice`` (plain-English remedies, each naming the SurPyval feature that
+  applies it), ``plot()`` (matplotlib only then), ``ok``,
+  ``raise_if_failed()`` and ``to_dict()`` / ``Diagnosis.from_dict``. A
+  test fails below ``alpha`` and warns below ``2 * alpha`` or when it
+  cannot be computed; a screen warns and never fails. Each model family
+  lists its checks and advice in ``surpyval.diagnostics``, whose docstring
+  is the guide to adding one; the families not built yet refuse, naming
+  their issue (#869 to #875). See :doc:`Model Diagnostics`.
+- The Cox family of ``diagnose()`` (#868): proportional hazards by R's
+  ``cox.zph`` score test (survival 3.0 and later) on the km and rank
+  scales, with GLOBAL rows, and plots of the scaled Schoenfeld residuals
+  with a lowess trend and bootstrap band; functional form by the score
+  test of a covariate's square, and martingale residual plots; influence
+  (``|dfbeta| / se`` above 1 warns); outliers (deviance residuals beyond
+  the Bonferroni normal cutoff); the Cox-Snell plot; advice to stratify a
+  binary or few-levelled covariate that fails proportional hazards, and a
+  time-varying effect (``fit_tvc``), bins or an AFT model for a continuous
+  one; and the cluster-robust standard errors of a ``fit_tvc`` model.
+  Stratified fits are refused for now. The proportional-hazards rows are
+  ``check_ph()``'s test (see Changed); the functional-form test is
+  ``added_covariate_score_test`` in ``proportional_hazards.diagnostics``,
+  R's ``coxph(..., init = c(coef(fit), 0), iter.max = 0)$score``. Both
+  agree with R to 1e-6.
+- The parametric proportional hazards and accelerated failure time
+  families of ``diagnose()`` (#869), for ``WeibullPH``, ..., ``PH(dist)``
+  and ``WeibullAFT``, ..., ``AFT(dist)`` fitted with ``fit`` /
+  ``fit_from_df``. Every test is a likelihood-ratio test against a larger
+  model, with the fit's own likelihood: for a PH model, a step in each
+  coefficient (and in the baseline) at the median failure time, per
+  covariate and GLOBAL, drawn as the coefficient in each quarter of the
+  failures; a covariate's square; the influence and outlier screens of the
+  Cox family; and the AIC against the other built-in baselines and the AFT
+  model of the same baseline, with the Cox-Snell residuals on exponential
+  paper. For an AFT model, the standardised residuals on the baseline's
+  probability paper with the same AIC screens; one shape for every level of
+  a categorical covariate or formula factor against a shape per level; and
+  a covariate's square. Advice names a time-varying effect (``fit_tvc``),
+  an AFT model or a stratified Cox model, separate fits per level, a
+  formula transform, and the better baseline or kind of model. The
+  statistics agree with R's ``survreg`` (and, for the step test, a Poisson
+  model of the split follow-up) to 1e-6 (``scripts/reference/
+  reference_r_ph_aft.R``). Time-varying fits and custom links are refused
+  for now.
+- The shared-frailty families of ``diagnose()`` (#872), for
+  ``WeibullFrailty``, ..., ``Frailty(dist, family=...)`` and
+  ``CoxFrailty``: the boundary likelihood-ratio test of no frailty
+  against the same model without it refitted to the same rows
+  (``<Dist>PH.fit``, or the Cox partial likelihood against R's
+  I-likelihood), with the 50:50 mixture of chi2(0) and chi2(1)
+  (``surpyval.diagnostics.frailty.zero_variance_test``); for a parametric
+  baseline also the AIC against the other frailty family and the other
+  built-in baselines, and the likelihood-ratio tests, over the marginal
+  likelihood, of a step in each coefficient at the median failure time and
+  of a covariate's square given the frailty; posterior-frailty,
+  martingale-residual and marginal Cox-Snell plots. Advice names the model
+  without the frailty when it is not significant, ``Frailty(dist,
+  family=...)``, a formula transform, and per-level or clustered Cox fits
+  for an effect that changes with time. The statistics agree with R's
+  ``coxph(... + frailty(id))``, lme4's ``glmer`` and ``survreg`` to 1e-6
+  (``scripts/reference/reference_r_frailty_diag.R``). A ``CoxFrailtyModel``
+  keeps no group of each row, so only its frailty variance is tested.
+- The calibration of predicted survival, a ``calibration`` check shared by
+  the Cox, parametric PH and AFT families of ``diagnose()`` (#881): at the
+  quartiles of the failure times, or at ``diagnose(t0=...)``, the smoothed calibration curve of
+  Austin, Harrell and van Klaveren (2020) -- a Cox model of the observed
+  times on a restricted cubic spline of the complementary log-log of the
+  predicted risk, so censored units count as at risk, not as survivors,
+  and delayed entry is respected -- with its ICI (the row's statistic), E50
+  and E90 and a pointwise band, drawn against the diagonal with a
+  histogram of the predicted risks. A screen: it warns when the ICI is
+  above 0.02 and the predictions are outside the band for more than 10% of
+  the units, with advice naming a formula transform, another baseline, the
+  other kind of model or a Cox model. Left- and interval-censored,
+  right-truncated and time-varying fits are refused with a note.
+  ``surpyval.diagnostics.calibration.calibration_curve`` takes the
+  predicted survival of any model, to validate it on other data. The
+  curve, its summaries and band agree with R's ``coxph`` and ``survfit``
+  (``scripts/reference/reference_r_calibration.R``).
+- The proportional odds and additive hazards families of ``diagnose()``
+  (#870), for ``ProportionalOdds``, ``AdditiveHazards`` and the parametric
+  ``PO(...)`` / ``AH(...)`` models: for each covariate, and jointly, the
+  test that its effect is the same in four periods of follow-up (split at
+  the event-time quartiles) -- the likelihood-ratio test of the model
+  refitted, exactly, on the rows split there, or for Lin and Ying's model
+  the Wald test with its sandwich variance, which agrees with R's
+  ``timereg::aalen`` to 1e-8; for a proportional odds model's binary or
+  categorical covariate, whether its groups' log-odds stay parallel.
+  Plots: Kaplan-Meier log-odds by group and coefficients by period
+  (proportional odds), Aalen's cumulative regression coefficients
+  (additive hazards, ``odds_additive.aalen_cumulative_coefficients``,
+  which agrees with ``timereg``). Advice: a proportional hazards or
+  accelerated failure time model with the same baseline (``CoxPH.fit``,
+  ``WeibullPH.fit``, ``WeibullAFT.fit``, ...) for a proportional odds
+  failure; a time-varying effect through ``fit_tvc`` for an additive one.
+  Left- or interval-censored and right-truncated parametric fits are
+  refused for now.
+- The accelerated life family of ``diagnose()`` (#871), for
+  ``AcceleratedLife(dist, life_model)`` fits: a common shape at every
+  stress level, by the likelihood-ratio test of each level fitted alone
+  against one shared shape, with a probability plot of the levels; the
+  life-stress relationship, by the likelihood-ratio (lack-of-fit) test of
+  the life model against a separate life at each level, with a plot of
+  the levels' lives against stress; every built-in life model for the
+  number of stresses refitted to the same data and compared by AIC (a
+  model better by more than 2 warns); and a warning for a stress tested
+  at two levels or fewer. Advice names the better life model, separate
+  fits of the levels, or more stress levels. Both tests agree with R's
+  ``survreg`` to 1e-5. ``diagnose(use_stress=...)`` gives the stress the
+  model is to predict at: the report then warns when it is more than one
+  width of the tested range outside it (on the life model's scale of the
+  stress), and gives each life model's life there. A family's own
+  options are declared in ``Family.options``, reach its checks as
+  ``ctx.options``, and are refused by the other families.
+- The recurrent-event families of ``diagnose()`` (#873), for the Poisson
+  processes (``HPP``, ``CrowAMSAA``, ``Duane``, ``CoxLewis``), the
+  imperfect-repair models (``GeneralizedRenewal``,
+  ``GeneralizedOneRenewal``, ``ARA``, ``ARI``) and the proportional-
+  intensity models: the Laplace, MIL-HDBK-189C and Lewis-Robinson trend
+  tests (tests of a constant-rate model, a model-choice screen for the
+  others); the model's Cramer-von Mises test (``diagnose(n_boot=,
+  random_state=)``, 99 bootstrap refits by default);
+  for the Poisson processes the Pearson dispersion test of the items'
+  counts; for the imperfect-repair models the likelihood-ratio tests of
+  perfect and minimal repair (``repair_test``) as a screen; plots of the
+  mean cumulative function, the transformed event times, the items'
+  counts and the restoration parameter's profile likelihood; and advice
+  between a constant rate, an NHPP, a renewal process and imperfect
+  repair, and towards proportional intensity for items that differ. The
+  Lewis-Robinson test is ``surpyval.diagnostics.recurrent.lewis_robinson``
+  and agrees with R. Models without data, least-squares fits and inexact
+  or right-truncated times are refused.
+- The competing-risks families of ``diagnose()`` (#874), reported by cause
+  (a ``cause`` column, plots titled by cause).
+  ``CompetingRisksProportionalHazards`` (``model="Cox"``) runs the Cox
+  checks on each cause's own Cox model, now kept as ``model.models[cause]``
+  (with ``compute_residuals`` and ``check_ph``), and advises fitting a
+  failing cause on its own with ``strata=`` or ``CoxPH.fit_tvc``, or the
+  Fine-Gray model where incidence is the question. ``FineGray`` and
+  ``model="Fine-Gray"`` test proportional subdistribution hazards (the
+  score test of ``Z * g(t)`` in the weighted partial likelihood, on the
+  cif and rank scales, with GLOBAL rows and scaled-residual plots) and the
+  functional form; both agree with R's ``cox.zph`` on the weighted
+  Fine-Gray data to 1e-6, and are functions, ``fine_gray_zph_test`` and
+  ``fine_gray_added_covariate_test`` in
+  ``competing_risks.regression.fine_gray_diagnostics``. Every report
+  notes that the independence of the causes cannot be tested.
+  ``ParametricCompetingRisks`` still refuses, naming #874 (its checks wait
+  for #875).
+- The univariate-distribution family of ``diagnose()`` (#875), for
+  ``Weibull.fit(...)`` and the other continuous distributions (offset,
+  ``lfp``, ``zi``, fixed parameters, truncation and any ``how``):
+  Anderson-Darling, Kolmogorov-Smirnov and Cramer-von Mises tests of the
+  Kaplan-Meier estimate of the fitted CDF, with parametric bootstrap
+  p-values (each resample drawn from the model, censored as the data were
+  and refitted the same way; ``diagnose(n_boot=200, random_state=None)``),
+  which agree with ``fitdistrplus::gofstat`` on complete data and with the
+  textbook critical values; the probability plot and a P-P plot; and an
+  AIC screen of the alternatives, with advice naming ``fit_best``, a
+  ``MixtureModel``, ``offset=True``, ``lfp=True`` or ``zi=True``.
+  Discrete distributions are refused for now, and event-probability models
+  and ``ExactEventTime`` have no distribution to test. ``diagnose()`` takes
+  ``n_boot`` and ``random_state`` on every model (families that do not
+  resample ignore them).
+- Joint models of a marker and a lifetime (#891). An ``ItemLifetime``
+  takes ``markers={age: value}``, repeated readings of one measurement
+  (vibration, wear, a biomarker), each inside the item's observation
+  (refused otherwise, naming the item); ``update_markers(age, value)``
+  adds one. ``SurpyvalData`` keeps them as ``data.markers`` through
+  ``from_items``/``to_items``, slicing, ``summary()``, its repr, JSON and
+  every reshape (``censor_at`` and ``enter_at`` keep the readings inside
+  the new window, ``without("markers")`` drops them), and every other fit
+  refuses data that holds them, naming ``data.without("markers")``.
+  ``JointPH(Weibull, path_model, varying=...)`` fits the joint model:
+  each item's marker follows a degradation path model (``LinearPath`` by
+  default, which ``WeibullJointPH`` is; ``QuadraticPath``,
+  ``ExponentialPath``, ... or a ``PathModel`` of one's own) with the
+  parameters named in ``varying`` (default all, at most three) varying
+  between items, multivariate normal (each on its own scale, or a positive
+  one on a log scale with ``LinkedPathModel(path, {"b": "log"})``, its
+  names then ``log(b)``, ``sd_log(b)``, ...), and the rest common, plus
+  noise;
+  its hazard is Weibull PH in the path's current value; covariates shift
+  every path parameter's mean and enter the hazard; by maximum likelihood
+  with adaptive Gauss-Hermite quadrature; failures, right censoring and
+  left truncation; a covariate the data cannot determine is aliased.
+  ``fit(data)`` (also arrays with ``markers=[...]``, and ``fit_from_df``
+  with a ``markers_col``) returns a ``JointModel``, its parameters named
+  by the parts (the path's own ``a``, ``b``, ...; ``a_<cov>``; ``sd_a``,
+  ``corr_a_b``; ``sd_noise``; ``alpha``, ``beta``, ``<cov>``;
+  ``marker_effect``), with ``covariance()``, ``standard_errors()``,
+  ``neg_ll()``, ``aic()``, ``bic()``, ``summary()`` and
+  ``to_dict``/``from_dict``; ``marker_reference=`` chooses the marker
+  value at which ``alpha`` is reported (default the mean reading). It
+  predicts for one item given its readings so far: ``sf(x, Z,
+  markers=..., given=...)``, ``ff`` and ``cb`` (delta-method bounds), or
+  ``sf(x, item)`` from an item record, the same prediction; with no
+  readings and no ``given``, a new item's. See :doc:`Joint Models`.
+- The data utilities live on ``SurpyvalData``.
+  ``SurpyvalData.from_observations(observed=..., right_censored=...,
+  left_censored=..., interval_censored=..., left_truncation=...,
+  right_truncation=...)`` reads a list of each kind of observation (any
+  may be left out). Each kind takes truncation bounds of its own,
+  ``observed_left_truncation``, ``right_censored_right_truncation`` and so
+  on: one number for every item of that kind, or one per item in the
+  order of its list. ``left_truncation`` and ``right_truncation`` are one
+  window shared by everything (given with a kind's own bound on the same
+  side, it is refused). Each kind also takes ``<kind>_counts`` (one whole
+  number for every item or one per item; an item counted 0 is left out,
+  as a life table's empty interval) and ``<kind>_covariates`` (one row per
+  item, the same columns for every kind, needed for every kind with items
+  once given for one), which a regression ``fit`` takes as ``Z``.
+  ``SurpyvalData.from_xrd(x, r, d)`` reads the
+  at-risk / deaths form; both validate as the fitters do. ``to_xcnt()``
+  gives the arrays ``x, c, n, t`` (copies) and ``to_observations()`` the
+  lists back, each value once with its kind's counts, bounds and
+  covariates where the data has them, so
+  ``from_observations(**data.to_observations())`` is the same data.
+  ``from_observations`` refuses an infinite single time by name (an
+  interval open at one end is ``[lower, inf]`` in ``interval_censored``),
+  and a pandas list and its per-item values with different indexes, since
+  they are matched by position.
+- A model fitted on item records predicts for an item:
+  ``model.sf_tvc(t, item)`` (and the other ``*_tvc`` methods) reads the
+  item's fixed covariates and its time-varying ones (a ``StepSchedule``
+  or a ``CovariatePath``) and lines them up as the fit did, fixed columns
+  first.
+- Covariates by name: a record's ``covariates`` may be ``{name: value}``
+  (or a pandas Series), its ``covariate_names``; a dataset of such
+  records has ``covariate_names`` (all its items named alike, in any
+  order, or none), as does ``SurpyvalData(..., Z=Z,
+  covariate_names=[...])``, a DataFrame ``Z``, and
+  ``from_observations(..., covariate_names=[...])``. The names go with
+  the data through ``to_items``, slicing, JSON and the
+  summary; ``with_covariates(["age"])`` picks covariates by name; and
+  ``fit(data)`` names the model's coefficients by them (``feature_names``),
+  for the time-varying fit too (the time-varying columns follow as
+  ``time_varying_0``, ...). ``model.sf_tvc(t, item)`` reads a named
+  item's covariates in the model's order.
+- Reshaping a dataset for another analysis, on ``SurpyvalData`` and
+  ``EventHistoryData`` alike (each returns a new dataset, built again from
+  its item records, so it passes the same checks):
+  ``without("covariates", "event_types", "time_varying_covariates",
+  "truncation", "states")`` leaves parts out, so one dataset serves a plain
+  fit as well as a regression; ``with_covariates(columns)`` keeps some
+  covariates; ``for_event_type(t)`` gives the data of one failure mode
+  (another mode's failure becomes right censored at its age, or at the
+  last good inspection; for a history, it is removed and observation runs
+  on to it; lifetimes lose their right truncation, with a warning, since
+  it selects on the first failure of any mode); ``relabel_event_types({old: new})`` renames or merges modes;
+  ``select(ids=..., where=...)`` keeps some items (``where`` is given each
+  item's record); ``censor_at(age)`` stops observation at an age; and
+  ``enter_at(age)`` starts it at one, keeping the items known to have
+  reached it. A history whose failures are counted, or whose state
+  changed, between two inspections either side of the age is cut at the
+  earlier inspection, or entered at the later one. Counts carry through.
+- The data classes, from using them: ``data.item(id)`` gives one item's
+  record (``SurpyvalData`` and ``EventHistoryData``); ids have one name,
+  ``.id`` on a record and ``.ids`` on a dataset (a record's ``.item`` was
+  never released, so is simply renamed); ``len(EventHistoryData)`` is its
+  rows, as for ``SurpyvalData``; ``ItemHistory`` reads its states back by
+  the names that make them (``observed_states``,
+  ``interval_censored_states``, ``left_censored_states``) and
+  ``state_at(age)`` gives the state at an age, or None where it is not
+  known; ``from_items(..., counts={id: count})`` takes counts by id; a date
+  or a duration given for an age says how to convert it; a failure added
+  without a type to a typed history says so in the words of the update;
+  ``summary()`` describes a dataset in a few lines; and the API page
+  lists the records' methods.
+- Updating an ``ItemLifetime`` or ``ItemHistory``: each method returns a
+  new, checked record and leaves the old one as it was. Records are fixed
+  once made (their arrays are read-only and their attributes cannot be
+  set), so a record is always one that passed its checks, and they are
+  hashable by value. Item ids from numpy (``np.int64``, ``np.str_``) are
+  kept as the plain Python value. ``ItemLifetime`` reads its outcome by
+  name, as ``ItemHistory`` does: ``.observed``, ``.right_censored``,
+  ``.left_censored`` and ``.interval_censored`` are its value or None. Both have
+  ``clone(new_id, **changes)``, ``extend(age)`` (seen working to a later
+  age) and ``update_covariates(age, values)`` (a step added to the
+  time-varying covariates). A running ``ItemLifetime`` can ``fail(age,
+  event_type)`` or be ``found_failed(age)`` at an inspection (failed since
+  it was last seen working); an ``ItemHistory`` takes ``add_failure``, a
+  failure after its end of observation moving the end to it.
+- ``SurpyvalData`` carries event types: ``SurpyvalData(x, c, ..., e=...)``
+  (one per row; a suspension has none) and
+  ``from_observations(..., observed_event_types=...,
+  left_censored_event_types=..., interval_censored_event_types=...)``, one
+  type for every item of the kind or one per item; ``to_observations()``
+  gives them back. The competing-risks fitters (``CompetingRisks``,
+  ``ParametricCompetingRisks``, ``CompetingRisksProportionalHazards``,
+  ``FineGray``) take ``fit(data)``, the event types coming from the data;
+  given data without them, they say so. Rows with event types are not
+  grouped, so each keeps its type. A subset (``data[...]``) keeps the
+  event types, item ids and time-varying covariates, and ``to_json`` /
+  ``from_json`` the event types and ids (data with time-varying
+  covariates has no JSON form, and says so; pickle keeps it). A subset of
+  ``EventHistoryData`` keeps its covariates, time-varying covariates and
+  states. ``from_items`` checks ids in linear time (it took a minute for
+  100,000 items).
+- ``fit(data)`` of a regression model fits the step time-varying
+  covariates of ``SurpyvalData.from_items`` data with the model's
+  ``fit_tvc``: each item's life, from the start of its observation to its
+  outcome, is split where its schedule steps, and each row's covariates
+  are the item's static covariates followed by its time-varying ones. The
+  fit is exactly the ``fit_tvc`` of those rows (proportional hazards, Cox,
+  accelerated failure time, ...). Left or interval censored items, right
+  truncation and continuous ``CovariatePath`` covariates (#908) are
+  refused. A fit taking ``tl`` but not ``t`` now gets a ``SurpyvalData``'s
+  left truncation, rather than refusing it.
+- ``ItemLifetime``, one item's lifetime: exactly one outcome
+  (``observed``, ``right_censored``, ``left_censored`` or
+  ``interval_censored``), its observation window (``left_truncation`` /
+  ``right_truncation``), what failed (``event_type``), ``covariates`` and
+  ``time_varying_covariates`` (``{age: values}``, a ``StepSchedule`` or a
+  ``CovariatePath``). ``SurpyvalData.from_items(items, counts=...)`` builds
+  the data, ``counts`` saying how many identical items each stands for (an
+  item is one item); ``to_items()`` gives the items back, so
+  ``from_items(data.to_items(), counts=data.n)`` is the same data. Every
+  check names the item. Event types go to the competing-risks fitters and
+  step time-varying covariates to ``fit_tvc`` (below); a fit that cannot
+  use them refuses them rather than ignoring them.
+- ``ItemHistory``, one repairable item's history: exact failures
+  (``observed``), failures found between two ages
+  (``interval_censored`` with ``interval_censored_counts``), a count of
+  failures before an age (``left_censored`` with
+  ``left_censored_counts``), the end of observation (``right_censored``;
+  left out, observation ends at the last failure), its observation window
+  (``left_truncation`` / ``right_truncation``), what each failure was
+  (``observed_event_types`` and so on, for the cause-specific models),
+  static ``covariates``, ``time_varying_covariates`` (``{age: values}``,
+  a ``StepSchedule`` or a ``CovariatePath``; #905) and its path through
+  states, recorded like its failures (``initial_state``,
+  ``observed_states``, ``interval_censored_states``,
+  ``left_censored_states``; #887). The last two are kept with the data
+  and refused by every fit until a model uses them. Every check names the
+  item and what is wrong.
+  ``EventHistoryData.from_items([...])`` builds the dataset and
+  ``to_items()`` gives the items back; ``from_histories`` builds its items
+  the same way. ``markers`` (#891) are reserved for the joint models.
+- ``EventHistoryData.from_histories`` reads recurrent event data as each
+  item's history, keyed by the item's id: ``observed={item: [ages at its
+  failures]}`` and ``right_censored={item: age at the end of
+  observation}`` (an item left out is taken to have been observed until
+  its last failure), with ``left_truncation`` / ``right_truncation`` per
+  item or shared and ``covariates`` one row per item. ``gaps=True`` reads
+  the times between failures and adds them up within each item.
+  ``to_histories()`` gives the dictionaries back, so
+  ``from_histories(**data.to_histories())`` is the same data. Every
+  recurrent ``fit`` (NHPP, HPP, the renewal models, the MCF, the
+  proportional intensity and cause-specific models) takes a
+  ``EventHistoryData`` as ``x``, by the same rules as ``fit(data)`` for
+  ``SurpyvalData``: other data arguments given with it, and data the fit
+  has no argument for (right truncation for a renewal model, say), are
+  refused.
+- The parametric, non-parametric and regression ``fit`` methods (with
+  ``MixtureModel`` and ``fit_best``) take a ``SurpyvalData`` as ``x``:
+  ``Weibull.fit(data)``. The values, flags, counts, truncation and, for a
+  regression, the covariates ``Z`` all come from the data, so a ``c``,
+  ``n``, ``t``, ``tl``, ``tr``, ``xl``, ``xr`` (or a second ``Z``) given
+  with it is refused rather than one silently winning, and data the fit
+  has no argument for (censoring for a fit of exact times, say) is
+  refused too. ``fit_from_surpyval_data`` stays.
+
 - ``life_models.Arrhenius``, the name engineers look for: the same class as
   ``life_models.Exponential``, which is the Arrhenius model.
 - The plotting ``heuristic=`` is read whatever its case, as ``how=`` is,
@@ -13,7 +473,7 @@ Unreleased
 - The recurrent-event fitters take ``tr`` and ``tl`` one value per unit as
   well as one per row: with ``i`` given, a bound with as many entries as
   there are units, in the sorted order of the unit ids (``np.unique(i)``,
-  the order of ``RecurrentEventData.items``), gives each row its unit's
+  the order of ``EventHistoryData.items``), gives each row its unit's
   value, wherever the unit's rows are in ``x``.
   ``CrowAMSAA.fit(x, i=i, tr=[300, 300, 400])`` for three units used to be
   refused with "'tl' and 'tr' must be the same length as 'x'". The bound is
@@ -22,6 +482,43 @@ Unreleased
   cause-specific models) fits, and stores, exactly the data of the per-row
   form. When there are as many rows as units the bound is read per row, as
   before; any other length is refused, naming both accepted lengths.
+- One plot theme for the package, ``surpyval.plotting``: every model's
+  ``plot`` takes its colours in order from a fixed palette (checked to stay
+  apart under the common colour-vision deficiencies), draws 2-point lines,
+  ringed points and its confidence bounds as a pale band of the curve's
+  colour, with hairline grids, no top or right spine and grey text. An
+  estimate from the data behind a fitted model (the recurrent-event and
+  regression plots) is a grey step under the model's colour; they were a
+  red step and a blue line. ``set_theme(False)`` turns it off,
+  ``style_axes`` styles axes of your own and ``rc_params`` gives the
+  theme as ``matplotlib.rcParams``. A ``color`` given to ``plot`` wins.
+- Probability plots redrawn: the probability axis is labelled as densely
+  as the distribution's scale has room for, the tails included (a Normal
+  plot's points below 10% had no label beside them; a Weibull's 99.9% no
+  room), the time axis at 1, 2 and 5 a decade on a log scale (it was seven
+  log-spaced times rounded to a figure: 200, 300, 400, 600, 900) and at
+  round times on a linear one, with faint minor lines where the green
+  grid of 51 evenly spaced probabilities was. The y axis is "Fraction
+  failed" (it was "CDF"). The confidence bounds are a band (they were
+  dashed lines).
+- ``CompetingRisks.plot`` draws each cause's cumulative incidence as its
+  own curve by default (``stacked=False``); ``stacked=True`` still stacks
+  them, separated by thin white edges, with the all-cause bounds as thin
+  grey lines (a grey band laid over the layers).
+- ``unit=``, the unit of the data, on every ``fit``, ``fit_from_df`` and
+  ``from_params`` (#845): any unit, not only of time (``"hours"``, ``"km"``,
+  ``"cycles"``, ``"pump starts"``). It is a label, kept as ``model.unit``,
+  shown in the model's printout and on the time axis of its plots ("Time
+  (h)", "Distance (km)", "Usage (cycles)"), saved by ``to_dict`` and
+  restored by ``from_dict``, and carried by ``with_params``; nothing is
+  converted or checked. A unit pint knows is stored by its canonical name,
+  so the same unit always reads the same (``"hrs"``, ``"hours"`` and
+  ``"Hours"`` are ``"hour"``; ``"cycles"`` is ``"cycle"``, a count, not
+  pint's angle); anything else is kept as written. pint is a new
+  dependency, imported only when a unit is given. Left out, the unit is
+  ``None`` and a model and its dictionary are as before. It is ``unit``,
+  singular: ``units`` already names the items measured (a degradation
+  model's unit ids).
 - The mean residual life, ``mrl(x)``: the expected remaining life
   :math:`E[T - x \mid T > x]` of a unit that has survived to ``x`` (#825),
   on every distribution (``Weibull.mrl(x, alpha, beta)``), on the fitted
@@ -58,7 +555,452 @@ Unreleased
   to it. The default, ``False``, reports the baseline at ``Z = 0`` as
   before, and a model saved before has its baseline there.
 
+- Event histories as lifetime data (#926):
+  ``EventHistoryData.to_first_events()`` gives each item's time to its
+  first failure (observed, interval or left censored, or right censored
+  at the end of its observation where it has none) and
+  ``EventHistoryData.to_gaps()`` the times between its failures, each
+  repair taken as making it as good as new, with each item's last gap
+  right censored. Both are ``SurpyvalData`` built from item records, so
+  they keep each item's delayed entry, id (``(item, k)`` for a gap),
+  covariates and event types; ``Weibull.fit(data.to_gaps())`` fits them. A
+  lifetime fit given an ``EventHistoryData`` says to use them.
+
+- Event types (#928). A failure whose type was not recorded -- None,
+  NaN, pandas NA or an empty string, on a record, in ``e`` or from a
+  blank cell -- is a masked cause: accepted, and warned of once per
+  dataset (``MaskedCauseWarning``, naming the items or rows), and counted
+  as "not recorded" in the summary. Fits of every failure count masked
+  causes; ``for_event_type(t, masked=...)`` takes them as not of type
+  ``t`` (``"censor"``, the default, with a warning that its rate is then
+  underestimated if some were), as of it (``"count"``), or refuses them
+  (``"refuse"``); competing-risks fits refuse them, saying how to give
+  them a type; ``relabel_event_types({None: "unknown"})`` makes them a
+  type of their own. A first failure found with failures of other types
+  at one inspection is a masked cause of ``to_first_events()``, known to
+  lie between the earliest lower bound and the first age a failure was
+  known by. Failure modes found by different inspections may overlap: an
+  ``ItemHistory`` takes inspection windows of different types that
+  overlap or coincide (a seal and a bearing found at one inspection),
+  and the same window given twice for one type is one count of both;
+  windows of one type still may not overlap. A fit of every failure
+  refuses data whose windows of different types overlap or coincide,
+  pointing to ``without("event_types")`` (which combines the failures
+  found at one inspection) or ``for_event_type``.
+
+- A record's covariate by name: ``item.covariate("site")`` (NaN where
+  not recorded), for ``select(where=lambda item: item.covariate("site")
+  == 1)`` (#929). A covariate not recorded (NaN, or None) is accepted by
+  ``ItemLifetime`` and ``ItemHistory``, as the datasets accept it, and
+  follows the package's missing-value rule: fits of independent items
+  drop the row with one warning, the recurrent fits refuse it, naming the
+  items. ``to_observations()`` gives each kind's ids (``"<kind>_ids"``)
+  and the covariate names, which ``from_observations`` takes back, so
+  ``SurpyvalData.from_observations(**data.to_observations())`` keeps the
+  ids and names it used to lose (and failures of a kind given without
+  event types are masked causes, as elsewhere).
+- ``surpyval.test_planning``: planning reliability tests before they are
+  run (see :doc:`Test Planning with SurPyval`).
+
+  - Demonstration tests, moved here from RePyability's ``demonstration``
+    (#862): ``demonstration_sample_size``, ``demonstrated_reliability``
+    (the Clopper-Pearson bound; with no failures, ``success_run``),
+    ``demonstration_test_multiple`` and ``demonstration_pass_probability``
+    for attribute tests, with extended (Weibayes) tests that trade units
+    for test time; ``mtbf_test_time``, ``demonstrated_mtbf`` and
+    ``mtbf_pass_probability`` for constant-failure-rate tests, time- or
+    failure-terminated; and ``demonstration_plan`` and
+    ``mtbf_demonstration_plan``, the smallest tests that keep both the
+    consumer's and the producer's risk (the fixed-length plans of
+    MIL-HDBK-781), returning a ``DemonstrationPlan``. The behaviour, array
+    broadcasting and tests are RePyability's; the confidence level is
+    ``alpha_ci``, the consumer's risk, as everywhere in SurPyval
+    (RePyability's ``confidence=0.95`` is ``alpha_ci=0.05``), and is
+    keyword only.
+  - Sequential tests (#865): ``sequential_mtbf_test`` and
+    ``sequential_demonstration_test``, Wald's sequential probability ratio
+    test for an MTBF and for a pass/fail reliability, truncated at the
+    fixed-length test with the same risks (``truncate=False`` for Wald's
+    test as it is). Each test has its boundaries, a ``decide`` method, and
+    its operating characteristic and mean test time (or units), computed
+    exactly; its risks as run are ``consumer_risk`` and
+    ``producer_risk``.
+  - Life tests for estimation precision (#863): ``life_test_precision``,
+    ``life_test_sample_size`` and ``life_test_length`` give the precision
+    factor with which a time- or failure-censored test of a Weibull or
+    lognormal lifetime estimates a quantile or the mean, the units it
+    needs, or how long it must run, from the test's expected Fisher
+    information (Meeker and Escobar, ch. 10). A ``LifeTestPlan``'s
+    ``simulate`` checks the large-sample precision by fitting simulated
+    tests.
+  - Accelerated life test plans (#864): ``accelerated_test_plan`` chooses
+    the stresses and the units at each that estimate a quantile at the use
+    stress most precisely, for any single-stress life model of
+    ``surpyval.life_models``: the statistically optimum two-level plan, a
+    compromise plan of three or more equally spaced levels (Meeker and
+    Hahn), or a fixed allocation such as 4:2:1. ``accelerated_test_precision``
+    gives the precision of a test you propose, and the plan's ``simulate``
+    checks it by fitting ``AcceleratedLife`` to simulated tests.
+  - Power and sample size for comparing two groups (#880):
+    ``logrank_events``, ``logrank_sample_size`` and ``logrank_power``, for
+    a log-rank test of a hazard ratio under proportional hazards, by
+    Schoenfeld's formula or, with ``method="freedman"``, Freedman's (as
+    lifelines' ``sample_size_necessary_under_cph`` and
+    ``power_under_cph``).
+  - Power of a comparison of failure rates before and after a change:
+    ``rate_ratio_power``, ``rate_ratio_detectable`` (the smallest change
+    an exposure detects) and ``rate_ratio_exposure`` (the exposure after
+    the change a test needs; ``inf`` when the failures before it are too
+    few for any), for the exact conditional test of
+    ``surpyval.recurrent.intervention_test``. The power is the exact sum
+    over the counts, not a normal approximation.
+- ``surpyval.recurrent.intervention_test``: did an intervention (a design
+  change, a corrective action) change the rate of failures of one
+  repairable system or a fleet, and is the evidence enough to say? It
+  splits each system's record at its own intervention time and gives the
+  ratio of the rates after and before, its confidence interval and the
+  p-value of no change. ``model="hpp"`` (the default) is the exact
+  conditional test of two Poisson rates, with the Clopper-Pearson interval
+  (``method="mid-p"`` for the mid-p versions); with
+  ``baseline="per-system"`` (the default) each system keeps its own rate
+  and the test is the exact stratified test, which pooled systems with
+  different rates cannot fool. ``model="power-law"`` lets the rate trend
+  with age as the Crow-AMSAA power law, multiplied by the ratio after the
+  change, and uses the likelihood ratio and the profile-likelihood
+  interval. The ``InterventionTestResult`` gives a verdict
+  (``"decrease"``, ``"increase"``, ``"no change detected"``,
+  ``"inconclusive"`` or ``"untestable"``), the power the exposure had to
+  detect a target change, the smallest change it could detect, the
+  exposure still needed, and notes saying what to do when the evidence is
+  short; data that cannot answer (no exposure after the change, no
+  failure before it) give an ``"untestable"`` result that says why,
+  rather than an error. The HPP result flags a trend within the periods
+  (the Laplace test), which the power law accounts for. It takes ``T``,
+  the fitters' ``c``, delayed entry ``tl`` or gapped ``windows``, and
+  round-trips through strict JSON (``to_dict`` / ``from_dict``). The
+  calibration studies check its size, power and coverage by simulation.
+  See the new page "Intervention Analysis with SurPyval".
+
+- Partial-effects plots (#876): ``model.plot_partial_effects(covariate,
+  values)`` draws a regression's survival curve (``on="ff"`` or ``"Hf"``
+  for the others) at each of ``values`` of one covariate, the other
+  covariates held at reference values, and returns the axes, each curve
+  labelled ``"covariate = value"``. For the Cox model and the PH, AFT,
+  PO, AH and accelerated life families. A covariate not plotted is held
+  at its count-weighted mean over the fitted rows (the ``center`` of a
+  ``center=True`` fit), or, for a categorical variable of a formula, at
+  its reference level; ``reference={name: value}`` sets any of them. A
+  formula's covariate is a variable of the formula (``"load"`` for
+  ``np.log(load)``, ``"site"`` for ``C(site)``, plotted by its levels),
+  and each row goes through the formula, interactions included; a term is
+  refused, naming its variables, and so is a covariate whose reference
+  the model cannot supply (one entering only transformed or in an
+  interaction, a categorical variable with no level coded as zeros, a
+  model restored without its data, a time-varying-covariate fit), naming
+  ``reference=``. ``plot_bounds=True`` draws the model's ``cb`` as bands
+  at ``alpha_ci`` (the parametric families; the Cox model has no ``cb``
+  and refuses it); ``x=`` sets the times, by default spanning the data.
+  The competing-risks regressions (``CompetingRisksProportionalHazards``
+  and the Fine-Gray model) draw the cumulative incidence of ``event=``,
+  without bands, and need ``reference`` for every numeric covariate,
+  since they do not keep the covariates they were fitted to. See
+  "Partial-effects plots" in :doc:`Regression Modelling with SurPyval`.
+
+**Changed**
+
+- A dataset's ``repr`` is its size and a table of its first rows (ids,
+  times, flags, counts, truncation, event types, covariates and
+  attributes), the same table as HTML in a notebook; ``summary()`` counts
+  items, weighting rows by ``n``, with the heading in one order
+  ("4 items, 3 rows") for both datasets; an ``ItemHistory`` shows on one
+  line where it fits; event types and ids are plain Python values; and
+  ``dir(data)`` leaves out the likelihoods' split arrays (``x_o``,
+  ``mask_i``, ...; still there) and the deprecated names (#934).
+- ``SurpyvalData.from_json`` reads a file path as well as JSON text (it
+  used to parse a path as text); JSON of data with step time-varying
+  covariates is written rather than refused (#935).
+- ``censor_at`` / ``enter_at`` refuse a date, a duration, text, a list or
+  a cut-off at or before 0 where the data's ages are measured from 0,
+  saying what to give; ``select(ids=)`` on data without ids says so
+  rather than using row numbers a selection would renumber; ``select``
+  keeps the data's order; ``with_covariates([])`` says to give a column
+  or use ``without`` (#932).
+- A fit refused a ``SurpyvalData`` names the reshape that fits without
+  what it cannot take and the model that takes it; a record, a list of
+  records, a ``SurpyvalData``, an ``EventHistoryData``, a DataFrame or a
+  dict given as ``x`` is named with the call that builds the data it was
+  meant for; ``Z`` of the wrong length, and a single record to
+  ``from_items``, are named; ``to_histories`` names the dict form that
+  cannot hold event types (#933).
+- ``ItemLifetime`` refuses a right censored age at or after its right
+  truncation (the dataset refused the row), an id that is missing or
+  unhashable, naming the item; the mixed-id message names one id of each
+  kind (#931).
+
+- **CoxPH.check_ph() is the exact score test of R's cox.zph (survival
+  3.0 and later)**, so its statistics and p-values change (#868). It was
+  Grambsch and Therneau's approximation, as lifelines and R before 3.0
+  compute it, which uses the average covariate variance in place of the
+  variance at each event time. The time scales are now R's as well:
+  ``"km"`` is one minus the left-continuous Kaplan-Meier estimate, and
+  ``"rank"`` ranks every observation's time, censored ones too, not the
+  event times only. The new values match R's ``cox.zph`` to 1e-6 on the
+  stored references (``lung``, ``veteran``, and a set with delayed entry
+  and ties, under Efron and Breslow ties). The differences are small in
+  large samples and can matter in small ones and under heavy ties: on the
+  Rossi data (``fin`` and ``age``) the km p-values move from 0.998, 0.016
+  and 0.054 (GLOBAL) to 0.876, 0.014 and 0.048, and on a tied data set of
+  120 rows a statistic from 1.39 to 3.24, as R gives. The signature, the
+  table (and the module function's dict) and the transforms are as they
+  were; ``diagnose()`` reports the same test on the km and rank scales.
+- On a baseline defined below 0 (``Normal``, ``Gumbel``, ``Logistic``) a
+  covariate path must cover every time the answer depends on (#952). The
+  value at 0 was taken to hold back to ``-inf``, and values given before
+  0 were ignored. A schedule may now start at ``-inf``
+  (``StepSchedule.from_changepoints([-np.inf, ...], ...)``, ``{-np.inf:
+  ...}`` on a record), and ``StepSchedule.constant`` does.
+  - Proportional hazards and odds depend on the covariate back to
+    ``-inf``: their schedules and paths must start there (a formula,
+    ``CovariatePath.from_callable``, has a value at every time), unless
+    survival is given an age at or after their start (``given=``).
+  - Accelerated failure time and additive hazards measure the covariate's
+    effect from 0: a path from 0 serves times from 0, and an earlier time
+    needs the covariate from that time on.
+  - Cox needs the covariate before every baseline jump below 0 that a
+    query counts.
+  - ``mean_tvc`` without ``given`` needs the covariate from ``-inf``
+    (for additive hazards, with one value before 0).
+  - A ``CovariatePath`` is integrated below 0 there as well (#957): back
+    to each time asked about before 0 and, for proportional hazards and
+    odds, back to ``-inf``. The integral from ``-inf`` converges because
+    these baselines' hazard dies away below 0; along a path that grows
+    without limit going back in time it may not, and is refused.
+- In ``fit_tvc`` a subject's first row enters at its ``xl``, as any other
+  row does (#952). On a baseline defined below 0, a first ``xl`` of 0 now
+  means the subject entered at 0, and the fit conditions on its surviving
+  to 0, which changes those fits. ``xl = -inf`` is a subject followed
+  since ``-inf``, which gives the old fit. Baselines that start at 0 are
+  unchanged.
+  - A fit from item records reads an item with no ``left_truncation`` as
+    followed since ``-inf`` there, and refuses one whose covariates start
+    later.
+  - Additive hazards refuse a subject followed since ``-inf`` whose
+    covariate changes before 0.
+  - The accelerated failure time fit measures accelerated age from 0,
+    and refuses an exit at or before 0 on such a baseline.
+
+- A covariate schedule must start at or before the point time is
+  measured from (#930). A ``StepSchedule`` or ``CovariatePath`` that
+  started later had its first value taken as the value from the start, a
+  silent assumption: now a prediction (``sf_tvc`` and the other ``*_tvc``
+  methods, the degradation clock) refuses a schedule starting after 0, a
+  record refuses one starting after the start of its observation
+  (``left_truncation``, else 0), as a ``{age: values}`` dict already was,
+  and a fit from item records refuses it too. Give the values from the
+  start, e.g. ``StepSchedule.from_changepoints([0, 5, 8], ...)``. A path
+  through points (``CovariatePath.from_points``) has no value before its
+  first point (``path(t)`` there is refused), and its ``start`` says
+  where it starts (``StepSchedule.start`` too); with a period its points
+  must start at 0, as ``StepSchedule.cyclic``'s do.
+- Records keep the time-varying covariates as given (#930): a
+  ``StepSchedule`` or ``CovariatePath`` shows as itself in the repr, a
+  dict as the dict, and ``clone``, ``update_covariates`` and the dataset
+  reshapes keep it. A record whose schedule started late was accepted,
+  but cloning, updating or reshaping it failed. ``StepSchedule``s compare
+  by their edges, values and period (two equal cyclic schedules were
+  unequal), and a record with one hashes by contents, so equal records
+  hash alike however the schedule was given. A ``StepSchedule``'s repr is
+  the call that builds it, e.g.
+  ``StepSchedule.from_changepoints([0.0, 8.0], [[0.0], [1.0]])`` (one of
+  more than 20 segments in short).
+
+- A dataset's arrays (``SurpyvalData`` and ``EventHistoryData``: ``x``,
+  ``c``, ``n``, ``t``, ``Z``, ``e`` and the arrays split from them) are
+  read-only (#927). Changing one in place (``data.c[2] = 1``) left the
+  split arrays and the summary out of step with it, so two fits of the
+  same data could differ; make a changed dataset with the reshaping
+  methods, or from changed arrays. Arrays given to a dataset are copied
+  where they come in, so changing them afterwards does not change it.
+
+- A True/False ``c`` is refused (#920), by every fitter, ``fit_from_df``
+  and ``SurpyvalData``. ``c`` is the censoring flag (1 = right censored),
+  and a boolean column is far more often an event indicator (True =
+  failed: ``died``, ``churned``), which was read the wrong way round,
+  every failure taken as a suspension and every suspension as a failure,
+  with no warning. The message says how to pass either: an event
+  indicator as ``c=1 - event``, a censoring indicator as 0/1 numbers.
+  Integer and float flags are read as before.
+
+**Deprecated**
+
+- ``EventHistoryData.get_times_to_first_events()`` is
+  ``to_first_events()`` (#926), which returns what it should have: each
+  item's first failure with its delayed entry, id and covariates, one row
+  per item (the old method lost all three and grouped the items). The old
+  name gives the new result, with a ``DeprecationWarning``, until v0.26.
+
+- ``EventHistoryData.items`` (the item ids) is ``EventHistoryData.ids``,
+  as on ``SurpyvalData``; "items" is kept for item records
+  (``from_items``, ``to_items``, ``item(id)``). The old name works, with a
+  ``DeprecationWarning``, until v0.26.
+
+- ``RecurrentEventData`` is renamed ``EventHistoryData`` (and its module
+  ``surpyval.utils.recurrent_event_data`` is
+  ``surpyval.utils.event_history_data``): it holds any item's event
+  history -- recurrent events now, and the changes of state and markers of
+  the multi-state and joint models to come -- not recurrent events only.
+  The old names are the same class, with a ``DeprecationWarning``, until
+  v0.26; ``isinstance`` checks against the old name keep working. The
+  recurrent fitters' ``fit_from_recurrent_data`` keeps its name.
+
+- The top-level data-format functions ``fs_to_xcnt``, ``fsl_to_xcnt``,
+  ``fsli_to_xcnt``, ``fsli_handler``, ``fs_to_xrd``, ``xcn_to_fs``,
+  ``xcnt_handler``, ``xcnt_to_xrd``, ``xrd_handler`` and ``xrd_to_xcnt``
+  (``surpyval.fs_to_xcnt`` and so on), for the ``SurpyvalData`` methods
+  above. Unlike other deprecations, these have a date: deprecated on
+  2026-10-12, they warn (naming the replacement) when used, and the first
+  release on or after 2027-04-12 removes them. The warning is a
+  ``FutureWarning``, which Python shows wherever the name is used (a
+  ``DeprecationWarning`` is hidden outside ``__main__``), and the names
+  stay in ``__all__``, so ``from surpyval import *`` still gets them, with
+  the warning, until then. ``surpyval.utils`` keeps
+  the functions. :doc:`Data Wrangler Examples` maps each to its
+  replacement.
+
 **Fixed**
+
+- Intervals that only meet at one time, such as (1, 3] and (3, 5]
+  ("abutting" intervals), leave the likelihood of a family that can
+  concentrate its mass anywhere with no finite maximum: it rises along a
+  flat ridge towards a spike at that time, split either side. A Normal
+  returned sigma = 0.35 as a verified maximum, within 1e-8 of the limit's
+  log-likelihood. Such a fit now warns "No finite maximum" once and records
+  ``maximum = "no finite maximum"``, as the other such data do (the known
+  gap of Design Principle 12); a truncated fit is held to the spike's
+  likelihood and only warned where it has not beaten it. With an exact
+  failure at that time the likelihood is unbounded, and the fit is refused,
+  as a point mass consistent with every observation already was.
+- The Wald ``param_cb`` on ``lfp_p`` or ``f0`` a hair from 1 let numpy's
+  overflow warning out of the logit back-transform.
+
+- **``fit_from_recurrent_data`` refuses what ``fit(data)`` refuses**
+  (#959). Given an ``EventHistoryData`` holding covariates or event types
+  that the fitter has no argument for, every recurrent fitter's
+  ``fit_from_recurrent_data`` fitted anyway, dropping the covariates or
+  pooling the failure modes into one process, where ``fit(data)``
+  refused. It now refuses with the same message, which names the way to
+  fit without them (``data.without("covariates")``,
+  ``data.without("event_types")`` or ``data.for_event_type(t)``). What a
+  fitter takes is read from its ``fit``, so the two cannot disagree.
+  ``CauseSpecificMCF`` given covariates as well as event types dropped the
+  covariates; ``ProportionalIntensityHPP`` / ``NHPP`` given event types
+  and no covariates failed with a raw ``AttributeError``.
+- ``LinkedPathModel``'s ``path``, ``inv_path`` and ``jacobian`` take an
+  array for each parameter, broadcasting with the ages, as the built-in
+  path models do (they applied the links along the wrong axis, and
+  failed); and it pickles (it held its link functions as lambdas).
+
+- **Survival given an age needs the covariate from that age only** under
+  proportional hazards and odds, additive hazards and Cox (#962). There
+  ``S(x | g)`` depends on the covariate from ``g`` on, the part before it
+  dividing out, as a fit already takes a subject entering late with no
+  covariates before its entry. ``sf_tvc``, ``cb_tvc`` and ``mean_tvc``
+  with ``given=g`` refused a schedule (and, on a baseline starting at 0, a
+  path) that started after 0, or on a baseline defined below 0 after
+  ``-inf``, though it started by ``g``; one starting after ``g`` is refused
+  by name. Accelerated failure time and life still need the covariate from
+  0: the age reached by ``g`` depends on it before ``g`` too.
+- **Right truncation of recurrent (event history) data is right
+  truncation** (#924). A finite ``tr`` given to the recurrent fits,
+  ``handle_xicn`` or an ``ItemHistory`` was read as the end of the item's
+  observation -- the same as an end-of-observation (``c=1``) row at
+  ``tr`` -- so a fit with ``tr`` gave exactly the fit with that row. Right
+  truncation is a selection: the item is in the data because it failed by
+  ``tr`` (a repair or warranty-claim database holds only the units that
+  came back), and ignoring that makes the items look less reliable than
+  they are (in a simulated fleet kept for a failure by 10 hours, a
+  Crow-AMSAA ``alpha`` of 8.1 against a true 15). The parametric intensity
+  models (Crow-AMSAA, Duane, Cox-Lewis, the HPP and the other NHPPs, and
+  the proportional intensity models) now divide each truncated item's
+  likelihood by the chance of at least one failure in its window up to
+  ``tr``, ``1 - exp(-(Lambda(tr) - Lambda(entry)))`` -- and, for an item
+  whose observation ended before ``tr`` with no failure seen (cut by
+  ``censor_at``), multiply it by the chance of a failure after its end
+  but by ``tr``. The end of observation is a ``c=1`` row (or
+  ``right_censored``), else the item's last failure, and may be before or
+  after ``tr``; an item watched to ``tr`` or beyond must have a failure by
+  ``tr``. The non-parametric MCF, the cause-specific models, the renewal
+  (imperfect repair) models and the trend tests and residuals cannot
+  account for the selection, and refuse ``tr``, saying to give a ``c=1``
+  row if the end of observation was meant. **Upgrading:** where ``tr`` was
+  used for the end of observation, give an end-of-observation (``c=1``)
+  row (or ``right_censored``) instead; the fits are then as before. On
+  item records, ``to_first_events()`` keeps the right truncation (an
+  item's first failure came by ``tr``), as does the first gap of
+  ``to_gaps()``; ``enter_at`` and ``for_event_type`` drop it from
+  histories, with a warning, as ``for_event_type`` does for lifetimes.
+  ``EventHistoryData.get_right_truncation_close`` is replaced by
+  ``selection_terms``.
+- ``ItemHistory.state_at`` gave a state after observation ended (with no
+  ``right_censored``, after the last failure), and a change of state after
+  that end was accepted; ``state_at`` is None there and the change is
+  refused, saying to give ``right_censored`` (#924).
+- Covariates (#929): ``with_covariates`` given one covariate twice kept
+  one column by name and two by number; both are refused. A dataset whose
+  covariates had a NaN could not be reshaped -- even
+  ``without("covariates")`` failed on the NaN it was removing -- as its
+  records refused NaN; records accept it now.
+- Event types on rows that have not failed (#928): a suspension given a
+  type in ``SurpyvalData(..., e=...)``, ``from_observations`` or a
+  competing-risks fit was accepted, after which every reshape (even
+  ``without("event_types")``) failed; and a type on an end-of-observation
+  row of ``handle_xicn`` was silently lost by ``to_items``. Both are
+  dropped, with a warning. The competing-risks fits' refusal of a
+  censored row with a type read as the opposite of what it meant. A
+  tuple id or event type (a gap's id from ``to_gaps``, ``("A", 2)``) was
+  split by slicing one row and came back from JSON as a list, after
+  which ``item(id)`` failed; it is kept as one value, and JSON keeps it
+  a tuple.
+- Item records (``ItemLifetime``, ``ItemHistory``) came back from
+  ``pickle`` or ``copy.deepcopy`` with writeable arrays, so a copy could
+  be changed in place, bypassing its checks; they are fixed again when
+  unpickled (#927). A ``StepSchedule`` given as a record's
+  ``time_varying_covariates`` is copied: changing the caller's schedule
+  used to change the record and its hash (a record in a set was then not
+  found).
+- ``EventHistoryData`` (#925): one row, ``data[k]``, kept neither an
+  interval row ``[start, end]`` (it became two times) nor its covariate
+  columns (all but the first were dropped); it is one row, as a slice
+  of one is. The constructor ``EventHistoryData(x, i, c, n, ...)``
+  checked nothing, and took rows of different lengths, censoring codes
+  such as 7 and negative counts (which went on to give negative event
+  counts); it checks its arrays as ``handle_xicn`` does, and takes one
+  ``i``, ``c``, ``n``, ``tl`` or ``tr`` for every row. An index that
+  selects no rows (``data[5:5]``, of ``SurpyvalData`` too) failed on
+  numpy's "zero-size array"; it says it selects no rows. The repr was
+  numpy's text of four of its arrays; it is the size of the data and a
+  table of its first rows (with truncation, event types and covariates
+  where it has them), and the class docstring starts from
+  ``from_items`` and ``from_histories``.
+- A regression model fitted with named covariates read a pandas Series
+  of one item's covariates by position, not by name, giving a wrong
+  prediction with no warning (``sf(t, pd.Series({"age": 50, "arm": 1}))``
+  read ``age`` as ``arm``), and a dict raised a ``TypeError`` (#921). A
+  Series labelled by covariate names, and a dict ``{name: value}`` (or
+  ``{name: values}`` for several items), are read by name, as a DataFrame
+  is; a dict for a model fitted without names is refused, saying why.
+  Fine-Gray and the proportional intensity models read covariates by
+  position even from a DataFrame; they now read a DataFrame, Series or
+  dict by the names they were fitted with, as the other regressions do.
+- ``SurpyvalData.to_xrd()`` returned the arrays it keeps for the next
+  call, so editing the result (``r *= 10``) changed what that data gave
+  from then on; it returns copies, as ``to_xcnt()`` does.
+- A ``SurpyvalData`` given to a function that takes arrays only (the
+  recurrent-event and competing-risks fitters) said "Variable 'x' must be
+  numbers"; it now says the function takes arrays, and that ``to_xcnt()``
+  gives them. A regression ``fit`` given a ``SurpyvalData`` without
+  covariates says the data holds none, not that ``Z`` is a missing
+  positional argument.
 
 - ``fit_best(include=[])`` is refused, naming the fix; it used to try the
   default candidates as if ``include`` had been left out.
@@ -185,6 +1127,11 @@ Unreleased
   in closed form at it), so to rounding where the search agreed to 5e-5.
   Other data (delayed entry, censored counts) is searched from the HPP
   through the end of the MCF, as Cox-Lewis starts, on any time scale.
+- Plots: the recurrent-event plots (MCF, Crow-AMSAA and the other
+  NHPPs, proportional intensity, cause-specific) and the parametric
+  regression's survival plot label their axes, and a single probability
+  plot's time ticks are spaced as two plots' merged ticks were: rounded to
+  a figure, 900 and 1000 printed as "9001000".
 - ``LogLogistic.mean`` with ``beta <= 1`` is infinite: the tail falls as
   ``x**-beta``, so the mean of the positive lifetime is. It was ``nan``.
 - A proportional-hazards model whose cumulative hazard passes exp(709) at
@@ -193,6 +1140,12 @@ Unreleased
   the overflow is the infinite limit the product tends to.
 
 **Performance**
+
+- ``SurpyvalData``'s reshapes (``without``, ``with_covariates``,
+  ``for_event_type``, ``relabel_event_types``, ``select``, ``censor_at``,
+  ``enter_at``) run on its arrays, giving the same data as rebuilding
+  every record: at 50,000 items a reshape takes tens of milliseconds
+  rather than seconds (#932).
 
 - ``qf`` of a limited-failure or zero-inflated model takes one pass fewer
   and no longer evaluates its distribution's quantile at 0 and 1 for the

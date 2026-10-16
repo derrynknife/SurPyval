@@ -18,11 +18,16 @@ from surpyval.univariate.regression._aliasing import (
 )
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
+from surpyval.utils.event_history_data import (
+    accepts_event_history_data,
+    refuses_unmodelled_data,
+)
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
+from surpyval.utils.units import takes_unit
 
 from .proportional_intensity import (
     ProportionalIntensityModel,
@@ -179,12 +184,12 @@ class ProportionalIntensityHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
         n_log_x_interval_sum = (n_interval * np.log(delta_xi)).sum()
         n_i_factorial_sum = gammaln(n_interval + 1).sum()
 
-        # Right window-close: for items with a finite right-truncation time
-        # ``tr`` the integral closes at ``tr``. For the constant-rate HPP the
-        # extension contributes rate * phi * (x_last - tr). Empty for
-        # untruncated data.
-        x_close = s["x_close_last"] - s["x_close_tr"]
-        Z_close = Z[s["close_idx"]]
+        # Right truncation (#924): the windows over which each truncated
+        # item is known to have failed (it is in the data because of it).
+        selection_time = s["sel_to"] - s["sel_from"]
+        Z_sel = Z[s["sel_idx"]]
+        gap_time = s["gap_to"] - s["gap_from"]
+        Z_gap = Z[s["gap_idx"]]
 
         def negll_func(params: np.ndarray) -> float:
             log_rate = params[0]
@@ -201,8 +206,10 @@ class ProportionalIntensityHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
             phi_right = np.exp(np.dot(Z_right, beta_coeffs))
             ll += rate * (x_right * phi_right).sum()
 
-            phi_close = np.exp(np.dot(Z_close, beta_coeffs))
-            ll += rate * (x_close * phi_close).sum()
+            phi_sel = np.exp(np.dot(Z_sel, beta_coeffs))
+            ll -= np.sum(np.log(-np.expm1(-rate * phi_sel * selection_time)))
+            phi_gap = np.exp(np.dot(Z_gap, beta_coeffs))
+            ll += np.sum(np.log(-np.expm1(-rate * phi_gap * gap_time)))
 
             phi_exponent_left = np.dot(Z_left, beta_coeffs)
             ll += (
@@ -227,6 +234,8 @@ class ProportionalIntensityHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
         return negll_func
 
     @dataframe_covariates
+    @takes_unit
+    @accepts_event_history_data
     def fit(
         self,
         x: ArrayLike,
@@ -295,6 +304,7 @@ class ProportionalIntensityHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
         data = handle_xicn(x, i, c, n, t=t, tl=tl, tr=tr, Z=Z)
         return self.fit_from_recurrent_data(data, init=init)
 
+    @refuses_unmodelled_data
     def fit_from_recurrent_data(
         self,
         data: Any,
@@ -303,14 +313,14 @@ class ProportionalIntensityHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
     ) -> Any:
         """
         Fit from a prepared
-        :class:`~surpyval.utils.recurrent_event_data.RecurrentEventData`
+        :class:`~surpyval.utils.event_history_data.EventHistoryData`
         (with covariates attached), as built by ``surpyval.handle_xicn``.
         :meth:`fit` builds one from its arrays and calls this.
 
         Parameters
         ----------
 
-        data : RecurrentEventData
+        data : EventHistoryData
             The recurrent event data, including ``Z``.
         dist : optional
             Accepted for a uniform interface with the NHPP fitter but

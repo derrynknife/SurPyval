@@ -6,12 +6,15 @@ from typing import TYPE_CHECKING, Any, Callable
 import numpy as np
 import numpy.typing as npt
 
+from surpyval import plotting
 from surpyval.distribution import NonParametricDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.deprecation import reordered_arguments
+from surpyval.utils.record_predict import PredictsRecordsMixin
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.units import axis_label
 from surpyval.utils.validation import (
     BOUNDS,
     check_alpha_ci,
@@ -96,7 +99,12 @@ def warn_bounds_past_data(
     )
 
 
-class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
+class NonParametric(
+    BandsMixin,
+    SerialisableMixin,
+    NonParametricDistribution,
+    PredictsRecordsMixin,
+):
     """
     Result of ``.fit()`` method for every non-parametric
     surpyval distribution. This means that each of the
@@ -1783,7 +1791,14 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         )
         ax.set_ylabel("Survival probability")
         if not ax.get_xlabel():
-            ax.set_xlabel("Time")
+            # "Time", or what the model's unit measures (#845)
+            ax.set_xlabel(axis_label(self.unit))
+        # The theme's next colour unless one is given
+        color = plotting.next_color(ax, kwargs.pop("color", None))
+        if color is not None:
+            kwargs["color"] = color
+        if plotting.theme_enabled():
+            kwargs.setdefault("linewidth", plotting.LINE_WIDTH)
         if interp != "step":
             (line,) = ax.plot(d["x_"], d["R"], **kwargs)
         else:
@@ -1793,7 +1808,9 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         if plot_bounds:
             cbs = d["cbs"]
             band_kwargs: dict[str, Any] = {
-                "alpha": 0.3,
+                "alpha": (
+                    plotting.BAND_ALPHA if plotting.theme_enabled() else 0.3
+                ),
                 "color": color,
                 "linewidth": 0,
             }
@@ -1823,6 +1840,7 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
                     color=color,
                 )
 
+        plotting.style_axes(ax)
         return ax
 
     @classmethod

@@ -13,22 +13,37 @@ Data Classes
 ------------
 
 ``SurpyvalData`` holds univariate ``xcnt`` data, split by censoring type;
-every univariate fitter builds one, and ``fit_from_surpyval_data``
-accepts one directly. ``RecurrentEventData`` holds recurrent-event data
-(each row an event of an item); build it with :func:`handle_xicn
+every univariate fitter builds one, and the parametric, non-parametric
+and regression ``fit`` methods accept one in place of the arrays (``Weibull.fit(data)``). Its constructors
+``from_observations`` and ``from_xrd`` read the ``fsli`` and ``xrd``
+layouts, and ``to_xcnt``, ``to_observations`` and ``to_xrd`` write them. ``EventHistoryData`` holds recurrent-event data
+(each row an event of an item); build it from one
+:class:`~surpyval.utils.item_history.ItemHistory` per item
+(``EventHistoryData.from_items``), from dictionaries keyed by item
+(``from_histories``), or from arrays with :func:`handle_xicn
 <surpyval.utils.recurrent_utils.handle_xicn>`.
 
 .. autoclass:: surpyval.utils.surpyval_data.SurpyvalData
    :members:
 
-.. autoclass:: surpyval.utils.recurrent_event_data.RecurrentEventData
+.. autoclass:: surpyval.utils.event_history_data.EventHistoryData
+   :members:
+
+.. autoclass:: surpyval.utils.item_history.ItemHistory
+   :members:
+
+.. autoclass:: surpyval.utils.item_lifetime.ItemLifetime
    :members:
 
 Data Wrangling Utilities
 ------------------------
 
-Validate data in one format and convert it to another. Each of these is
-importable directly from ``surpyval``.
+Validate data in one format and convert it to another. The methods of
+``SurpyvalData`` above are the way to do this; these functions are what
+they use. Their top-level names (``surpyval.fs_to_xcnt`` and so on) are
+deprecated and removed in the first release on or after 2027-04-12 (see
+:doc:`Data Wrangler Examples` for the replacement of each);
+``surpyval.utils`` keeps them.
 
 .. autofunction:: surpyval.utils.xcnt_handler
 

@@ -196,3 +196,38 @@ def simulate_nhpp(
         ids.extend([k] * (m + 1))
         cs.extend([0] * m + [1])
     return np.array(xs), np.array(ids), np.array(cs)
+
+
+def simulate_intervention(
+    rng: np.random.Generator,
+    scale: "float | np.ndarray",
+    shape: float,
+    ratio: float,
+    interventions: "list | np.ndarray",
+    ends: "list | np.ndarray",
+) -> "tuple[np.ndarray, np.ndarray]":
+    """Failure times of power-law systems whose intensity is multiplied by
+    ``ratio`` after an intervention, in ``(x, i)`` form.
+
+    System ``q`` (``i = q``) is observed on ``(0, ends[q]]`` with the
+    cumulative intensity :math:`(t / \\text{scale}_q)^\\text{shape}`
+    before ``interventions[q]`` and ``ratio`` times its increments after
+    it (``shape = 1``: an HPP of rate ``1 / scale``). Given each period's
+    Poisson count, its times are the inverse cumulative intensity of
+    uniforms. Written from the definition, not with the package's
+    simulators.
+    """
+    xs: list = []
+    ids: list = []
+    scales = np.broadcast_to(np.asarray(scale, dtype=float), len(ends))
+    for q, (tau, end) in enumerate(zip(interventions, ends)):
+        cut = min(tau, end)
+        lo, hi = (cut / scales[q]) ** shape, (end / scales[q]) ** shape
+        before = lo * rng.uniform(size=rng.poisson(lo))
+        after = lo + (hi - lo) * rng.uniform(
+            size=rng.poisson(ratio * (hi - lo))
+        )
+        times = scales[q] * np.concatenate([before, after]) ** (1 / shape)
+        xs.extend(np.sort(times))
+        ids.extend([q] * times.size)
+    return np.array(xs), np.array(ids)

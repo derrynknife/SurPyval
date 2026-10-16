@@ -11,7 +11,7 @@ from surpyval.utils.fitter import singleton_fitter
 from .nhpp_fitter import NHPPFitter
 
 if TYPE_CHECKING:
-    from surpyval.utils.recurrent_event_data import RecurrentEventData
+    from surpyval.utils.event_history_data import EventHistoryData
 
     from .growth_projection import GrowthProjection
 
@@ -94,7 +94,7 @@ class CrowAMSAA(NHPPFitter):
 
     def _default_start(
         self,
-        data: "RecurrentEventData",
+        data: "EventHistoryData",
         x_unique: np.ndarray,
         mcf_hat: np.ndarray,
     ) -> np.ndarray:
@@ -111,7 +111,7 @@ class CrowAMSAA(NHPPFitter):
         return self.parameter_initialiser(data.x)
 
     def _closed_form_mle(
-        self, data: "RecurrentEventData"
+        self, data: "EventHistoryData"
     ) -> "np.ndarray | None":
         """The exact MLE (MIL-HDBK-189C, Crow 1974) where every item is
         observed from 0 to an end ``T_q``, closed by a ``c=1`` row, by its
@@ -151,6 +151,8 @@ class CrowAMSAA(NHPPFitter):
         tl = np.asarray(data.tl, dtype=float)
         if np.any(np.isfinite(tl) & (tl != 0)):
             return None
+        if np.isfinite(np.asarray(data.tr, dtype=float)).any():
+            return None  # right truncated: the selection term is searched
         _, ends = data.item_observation_windows()
         ends = np.asarray(ends, dtype=float)
         if not (np.all(np.isfinite(ends)) and np.all(ends > 0)):

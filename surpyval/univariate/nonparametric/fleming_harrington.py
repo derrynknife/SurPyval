@@ -234,7 +234,7 @@ def fleming_harrington(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
 
     This is the low-level function behind :code:`FlemingHarrington.fit()`,
     which builds ``r`` and ``d`` from the data (see
-    :code:`surpyval.xcnt_to_xrd`) and wraps the result in a
+    :code:`SurpyvalData.to_xrd`) and wraps the result in a
     ``NonParametric`` model; use that unless you already have the
     counts.
 

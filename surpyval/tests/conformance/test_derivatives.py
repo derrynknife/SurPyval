@@ -296,7 +296,20 @@ def _mixture(model, label=""):
     return [(label + " (search space)", f, at, _autograd(f), None)]
 
 
+def _joint(case):
+    """The negative log-likelihood the joint fit searches, in its search
+    space, by the adaptive nodes placed at the fit (autograd's
+    derivatives; a common path parameter's second ones are differences of
+    the path's Jacobian)."""
+    from surpyval.univariate.joint.joint_ph import search_space
+
+    model = fitted(case)
+    f, at, _ = search_space(model, **case.data())
+    return [(" (search space)", f, at, _autograd(f), model.neg_ll())]
+
+
 OBJECTIVES = {
+    "surpyval.JointModel": _joint,
     "surpyval.Parametric": lambda case: _parametric(fitted(case)),
     "surpyval.ParametricRegressionModel": lambda case: _regression(
         fitted(case)

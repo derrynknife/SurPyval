@@ -78,6 +78,7 @@ from scipy.linalg import LinAlgError, solveh_banded
 from scipy.special import expit
 from scipy.stats import norm
 
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -107,6 +108,8 @@ from surpyval.utils.shapes import (
     covariate_rows,
     keeps_query_shape,
 )
+from surpyval.utils.surpyval_data import accepts_surpyval_data
+from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
 
 from .._aliasing import (
@@ -512,6 +515,7 @@ class ProportionalOddsModel(
     InformationCriteriaMixin,
     LinearPredictorMixin,
     ConcordanceMixin,
+    DiagnoseMixin,
     SerialisableMixin,
 ):
     """
@@ -1171,6 +1175,8 @@ class ProportionalOdds_(FitterRepr):
     fitter_kind = "semi-parametric proportional odds fitter"
 
     @dataframe_covariates
+    @takes_unit
+    @accepts_surpyval_data
     def fit(
         self,
         x: npt.ArrayLike,
@@ -1332,6 +1338,7 @@ class ProportionalOdds_(FitterRepr):
         return model
 
     @column_arguments("x", "c", "n", "tl")
+    @takes_unit
     def fit_from_df(
         self,
         df: "pd.DataFrame",

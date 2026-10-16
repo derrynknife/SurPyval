@@ -88,28 +88,18 @@ from surpyval.univariate.parametric import (
 # A broadcast-aware derivative rule for ``np.where``, registered on import
 # (autograd's does not unbroadcast; #562).
 from surpyval.utils import autograd_where_compat as _where  # noqa: F401
-from surpyval.utils import (
-    fs_to_xcnt,
-    fs_to_xrd,
-    fsl_to_xcnt,
-    fsli_handler,
-    fsli_to_xcnt,
-    round_sig,
-    xcn_to_fs,
-    xcnt_handler,
-    xcnt_to_xrd,
-    xrd_handler,
-    xrd_to_xcnt,
-)
+from surpyval.utils import round_sig
 
 from .fit_best import fit_best
 from .forecasting import forecast
 
-from surpyval.utils.recurrent_event_data import (  # isort: skip
-    RecurrentEventData,
+from surpyval.utils.event_history_data import (  # isort: skip
+    EventHistoryData,
 )
 
 from surpyval.utils.surpyval_data import SurpyvalData  # isort: skip
+from surpyval.utils.item_history import ItemHistory  # isort: skip
+from surpyval.utils.item_lifetime import ItemLifetime  # isort: skip
 from surpyval.utils.recurrent_utils import handle_xicn  # isort: skip
 
 # Package-level readers for serialised models: `surpyval.from_json` /
@@ -202,6 +192,10 @@ _LAZY = {
             "WeibullPO",
         ),
         "surpyval.univariate.regression",
+    ),
+    **dict.fromkeys(
+        ("JointModel", "JointPH", "WeibullJointPH"),
+        "surpyval.univariate.joint",
     ),
     **dict.fromkeys(
         (
@@ -309,19 +303,28 @@ __all__ = [
     "Uniform",
     "Weibull",
     "weibayes",
-    # Data formats
+    # Data
+    "round_sig",
+    # Deprecated (dated): reached through __getattr__ with a FutureWarning,
+    # listed so that ``from surpyval import *`` still gets them until the
+    # removal date (DATED_DATA_FUNCTIONS).
     "fs_to_xcnt",
     "fs_to_xrd",
     "fsl_to_xcnt",
     "fsli_handler",
     "fsli_to_xcnt",
-    "round_sig",
     "xcn_to_fs",
     "xcnt_handler",
     "xcnt_to_xrd",
     "xrd_handler",
     "xrd_to_xcnt",
+    "EventHistoryData",
+    # Deprecated (v0.25): renamed EventHistoryData, removed in v0.26;
+    # reached through __getattr__ with a DeprecationWarning, and listed so
+    # that ``from surpyval import *`` still gets it until then.
     "RecurrentEventData",
+    "ItemHistory",
+    "ItemLifetime",
     "SurpyvalData",
     "handle_xicn",
     # Model selection, forecasting and serialisation
@@ -332,7 +335,15 @@ __all__ = [
 ] + sorted(_LAZY)
 
 if TYPE_CHECKING:
-    from surpyval import datasets, degradation, life_models, metrics, recurrent
+    from surpyval import (
+        datasets,
+        degradation,
+        life_models,
+        metrics,
+        plotting,
+        recurrent,
+        test_planning,
+    )
     from surpyval.degradation import (
         DegradationAnalysis,
         DestructiveDegradation,
@@ -368,6 +379,11 @@ if TYPE_CHECKING:
         ParametricCompetingRisks,
         gray_test,
     )
+    from surpyval.univariate.joint import (
+        JointModel,
+        JointPH,
+        WeibullJointPH,
+    )
     from surpyval.univariate.regression import *  # noqa: F401,F403
 
 # The subpackages ``import surpyval`` used to import, so that
@@ -380,7 +396,9 @@ _SUBPACKAGES = (
     "degradation",
     "life_models",
     "metrics",
+    "plotting",
     "recurrent",
+    "test_planning",
 )
 
 # The package's removed names (the life models' top-level names, removed
@@ -414,6 +432,10 @@ _ELSEWHERE = {
     ),
 }
 
+#: Top-level names renamed in v0.25 (old -> new), reached through
+#: ``__getattr__`` with a DeprecationWarning until v0.26.
+_RENAMED_TOP_LEVEL = {"RecurrentEventData": "EventHistoryData"}
+
 if not TYPE_CHECKING:  # keep the type checker's view of the module exact
 
     def __getattr__(name: str) -> Any:
@@ -425,6 +447,18 @@ if not TYPE_CHECKING:  # keep the type checker's view of the module exact
             return value
         if name in _SUBPACKAGES:
             return import_module(f"surpyval.{name}")
+        from surpyval.utils.deprecation import (
+            DATED_DATA_FUNCTIONS,
+            dated_data_function,
+        )
+
+        if name in DATED_DATA_FUNCTIONS:
+            return dated_data_function(name)
+        if name in _RENAMED_TOP_LEVEL:
+            from surpyval.utils.deprecation import renamed_name
+
+            new = _RENAMED_TOP_LEVEL[name]
+            return renamed_name("surpyval", name, new, globals()[new])
         if name in _REMOVED_TOP_LEVEL:
             message = _removed_message(
                 f"module 'surpyval' has no attribute {name!r}",

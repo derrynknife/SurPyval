@@ -3,6 +3,8 @@ from typing import Any
 import numpy as np
 from numpy.typing import ArrayLike
 
+from surpyval import plotting
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.recurrent import diagnostics
 from surpyval.recurrent.inference import (
     LikelihoodInferenceMixin,
@@ -18,6 +20,7 @@ from surpyval.serialisation import (
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.units import label_axes
 from surpyval.utils.validation import (
     BOUNDS,
     alpha_ci_error,
@@ -37,7 +40,10 @@ _FITTED_BY = {
 
 
 class ParametricRecurrenceModel(
-    SerialisableMixin, RecurrenceSimulationMixin, LikelihoodInferenceMixin
+    DiagnoseMixin,
+    SerialisableMixin,
+    RecurrenceSimulationMixin,
+    LikelihoodInferenceMixin,
 ):
     """
     A class for holding the parameters, data, and useful methods for a
@@ -754,16 +760,20 @@ class ParametricRecurrenceModel(
 
         x_plot = np.linspace(0, self.data.x.max(), 1000)
 
-        ax.step(x, (d / r).cumsum(), color="r", where="post")
-        ax.plot(x_plot, self.cif(x_plot), color="b")
+        band = None
         if plot_bounds and hasattr(self, "_neg_ll"):
-            cb = self.cif_cb(x_plot, alpha_ci=alpha_ci)
-            ax.fill_between(
-                x_plot,
-                cb[:, 0],
-                cb[:, 1],
-                color="b",
-                alpha=0.2,
-                label=f"{(1 - alpha_ci) * 100:g}% Confidence Band",
-            )
+            band = self.cif_cb(x_plot, alpha_ci=alpha_ci)
+        plotting.observed_and_fitted(
+            ax,
+            (x, (d / r).cumsum()),
+            (x_plot, self.cif(x_plot)),
+            band,
+            observed_label="Observed MCF",
+            fitted_label=getattr(self.dist, "name", "Model"),
+            band_label=f"{(1 - alpha_ci) * 100:g}% confidence band",
+        )
+        label_axes(ax, self.unit, "Mean cumulative function")
+        ax.set_title(f"{getattr(self.dist, 'name', 'Model')} fit")
+        plotting.style_axes(ax)
+        plotting.style_legend(ax)
         return ax

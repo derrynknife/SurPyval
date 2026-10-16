@@ -352,17 +352,16 @@ def test_746_plot_draws_the_cif_bounds():
             band.get_facecolor()[0][:3],
             matplotlib.colors.to_rgb(line.get_color()),
         )
-    # Stacked (the default): one band, on the all-cause failure
-    # probability at the top of the stack, as KaplanMeier's.
+    # Stacked: the bounds of the all-cause failure probability at the
+    # top of the stack, as KaplanMeier's, as two thin step lines.
     _, ax = plt.subplots()
-    model.plot(ax=ax)
-    assert len(ax.collections) == 3
+    model.plot(ax=ax, stacked=True)
+    assert len(ax.collections) == 2
     km = KaplanMeier.from_xrd(model.x, model.r, model.d)
     cb = km.cb(model.x, on="ff")
-    np.testing.assert_allclose(
-        _band_values(ax.collections[-1]),
-        np.unique(np.concatenate([[0.0], *cb.T])),
-    )
+    lower, upper = ax.lines[-2:]
+    np.testing.assert_allclose(lower.get_ydata()[1:], cb[:, 0])
+    np.testing.assert_allclose(upper.get_ydata()[1:], cb[:, 1])
     # A one-sided bound is a dashed step line.
     _, ax = plt.subplots()
     model.plot(stacked=False, ax=ax, bound="upper")
@@ -375,8 +374,8 @@ def test_746_plot_draws_the_cif_bounds():
     model.plot(stacked=False, ax=ax, plot_bounds=False)
     assert len(ax.lines) == 2 and not ax.collections
     _, ax = plt.subplots()
-    model.plot(ax=ax, plot_bounds=False)
-    assert len(ax.collections) == 2
+    model.plot(ax=ax, stacked=True, plot_bounds=False)
+    assert len(ax.collections) == 2 and not ax.lines
     with pytest.raises(ValueError, match="bound"):
         model.plot(ax=ax, bound="both")
     plt.close("all")

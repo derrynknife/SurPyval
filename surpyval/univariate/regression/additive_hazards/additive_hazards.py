@@ -49,6 +49,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import norm
 
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -64,6 +65,8 @@ from surpyval.utils.shapes import (
     covariate_rows,
     keeps_query_shape,
 )
+from surpyval.utils.surpyval_data import accepts_surpyval_data
+from surpyval.utils.units import takes_unit
 
 from .._aliasing import (
     aliased_columns,
@@ -156,6 +159,7 @@ class AdditiveHazardsModel(
     NoLikelihoodMixin,
     LinearPredictorMixin,
     ConcordanceMixin,
+    DiagnoseMixin,
     SerialisableMixin,
 ):
     """
@@ -646,6 +650,8 @@ class AdditiveHazards_(FitterRepr):
     fitter_kind = "semi-parametric additive hazards fitter"
 
     @dataframe_covariates
+    @takes_unit
+    @accepts_surpyval_data
     def fit(
         self,
         x: npt.ArrayLike,
@@ -803,6 +809,7 @@ class AdditiveHazards_(FitterRepr):
         return model
 
     @column_arguments("x", "c", "n")
+    @takes_unit
     def fit_from_df(
         self,
         df: "pd.DataFrame",

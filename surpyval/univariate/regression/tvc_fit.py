@@ -71,6 +71,30 @@ def fit_tvc_df(
     return model
 
 
+def _check_additive_from_zero(
+    ident: npt.NDArray,
+    first: npt.NDArray,
+    counts: npt.NDArray,
+    tl: npt.NDArray,
+    x: npt.NDArray,
+) -> None:
+    """Refuse, for additive hazards on a baseline defined below 0, a
+    subject followed since -inf whose covariate changes before 0: the
+    model measures the covariate's effect from 0, which its rows, each
+    measured from -inf, cannot give (#952)."""
+    early = (counts > 1) & np.isneginf(tl[first]) & (x[first] < 0)
+    if early.any():
+        u = ident[first[np.flatnonzero(early)[0]]]
+        raise ValueError(
+            f"Subject {u!r} is followed since -inf and its covariate "
+            "changes before 0: an additive hazards model on a baseline "
+            "defined below 0 measures the covariate's effect from 0, so a "
+            "subject followed since -inf needs one covariate value across "
+            "0 (a first row ending at or after 0). Give its entry as a "
+            "finite xl to fit the changes before 0."
+        )
+
+
 class TVCFitMixin:
     """Adds ``fit_tvc`` (start-stop and timeline, array and DataFrame) to a
     parametric regression fitter whose cumulative hazard is additive over time
@@ -96,8 +120,8 @@ class TVCFitMixin:
         ``xr``) only on the interval that ends at the subject's event and ``1``
         (right-censored) otherwise -- surpyval's censoring convention. The
         intervals are validated and mapped to left-truncated observations
-        (``t = [xl, inf]``; a subject's first interval starting at ``0`` is
-        not truncated), then fitted with the ordinary parametric MLE, so the
+        (``t = [xl, inf]``), then fitted with the ordinary parametric MLE,
+        so the
         fit is identical to the equivalent non-time-varying data and its
         log-likelihood is that of ``sf_tvc`` / ``hf`` along each subject's
         covariate path. Extra keyword arguments (``init``, ``fixed``,
@@ -107,6 +131,14 @@ class TVCFitMixin:
         and that event must be on its last interval; gaps between its
         intervals (not at risk) and delayed entry (a first ``xl > 0``) are
         allowed.
+
+        A subject's first row enters at its ``xl``, as any other row does
+        (#952). For a baseline that starts at 0, entering at 0 is no
+        truncation. For one defined below 0 (``Normal``, ``Gumbel``,
+        ``Logistic``) a first ``xl`` of 0 means the subject entered at 0,
+        and the fit conditions on its surviving to 0; give ``-inf`` for a
+        subject followed since ``-inf``, its first covariate row holding
+        since then.
 
         Parameters
         ----------
@@ -170,15 +202,19 @@ class TVCFitMixin:
         _, first, counts = np.unique(
             ident, return_index=True, return_counts=True
         )
-        # A subject observed from time 0 is not left-truncated: its first
-        # row enters with no truncation, as the ordinary fit and sf_tvc
-        # treat it. For a baseline on the positive axis the two are the
-        # same, but for one defined below zero (Normal, Gumbel, Logistic)
-        # truncating at 0 would condition every subject on surviving to 0,
-        # and a constant covariate would no longer reproduce ``fit``.
-        origin = np.zeros(tl.shape[0], dtype=bool)
-        origin[first] = tl[first] == 0.0
-        tl = np.where(origin, -np.inf, tl)
+        # Each row enters at its xl: a subject's first row at 0 entered
+        # at 0, as at any other time, and one at -inf is not truncated
+        # (#952). For a baseline that starts at 0 the two are the same
+        # (survival to 0 is certain), so an entry at or before the start
+        # of its support is no truncation there. For one defined below 0
+        # (Normal, Gumbel, Logistic) an entry at 0 conditions on surviving
+        # to 0; followed since -inf, the subject's first covariate holds
+        # since then.
+        support_lo = float(self.support[0])  # type: ignore[attr-defined]
+        if support_lo > -np.inf:
+            tl = np.where(tl <= support_lo, -np.inf, tl)
+        elif getattr(self, "fitter_kind", "") == "additive hazards fitter":
+            _check_additive_from_zero(ident, first, counts, tl, x)
         t = np.column_stack([tl, np.full(tl.shape[0], np.inf)])
         model = self.fit(  # type: ignore[attr-defined]
             x=x, Z=Z_arr, c=c_arr, n=n_arr, t=t, **kwargs
