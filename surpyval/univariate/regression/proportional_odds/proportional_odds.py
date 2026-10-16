@@ -78,6 +78,7 @@ from scipy.linalg import LinAlgError, solveh_banded
 from scipy.special import expit
 from scipy.stats import norm
 
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -514,6 +515,7 @@ class ProportionalOddsModel(
     InformationCriteriaMixin,
     LinearPredictorMixin,
     ConcordanceMixin,
+    DiagnoseMixin,
     SerialisableMixin,
 ):
     """

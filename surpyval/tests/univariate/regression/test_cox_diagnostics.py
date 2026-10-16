@@ -207,20 +207,21 @@ def _ph_test_dataset():
     return np.minimum(x, cut), Z, c
 
 
-def test_check_ph_matches_lifelines_convention():
-    # Grambsch-Therneau per-covariate statistic d (Vu)_j^2 / (Sgc2 V_jj)
-    # with the km transform as 1 - KM(t) (#262). Reference values computed
-    # with lifelines 0.30.3 ``proportional_hazard_test(time_transform="km")``
-    # on this exact dataset.
+def test_check_ph_matches_r_cox_zph():
+    # R's cox.zph (survival 3.5.8), the exact score test, on this exact
+    # dataset: coxph(Surv(x, status) ~ z1 + z2, ties = "efron") and
+    # cox.zph(fit, transform = "km")$table. Until v0.24 check_ph gave
+    # lifelines' approximation (0.178375 and 0.182189 here, #262); the
+    # stored R references are in tests/reference/test_cox_diagnostics.py.
     x, Z, c = _ph_test_dataset()
     model = sp.CoxPH.fit(x=x, Z=Z, c=c)
     res = model.check_ph(transform="km")
-    stats = res["statistic"].iloc[:2].tolist()
-    assert stats[0] == pytest.approx(0.178375, abs=2e-4)
-    assert stats[1] == pytest.approx(0.182189, abs=2e-4)
-    pvals = res["p"].iloc[:2].tolist()
-    assert pvals[0] == pytest.approx(0.672773, abs=2e-4)
-    assert pvals[1] == pytest.approx(0.669498, abs=2e-4)
+    np.testing.assert_allclose(
+        res["statistic"], [0.3200797065, 0.2999399700, 0.4941129502], rtol=1e-6
+    )
+    np.testing.assert_allclose(
+        res["p"], [0.5715597482, 0.5839200566, 0.7810965798], rtol=1e-6
+    )
 
 
 def test_check_ph_is_a_table_like_summary():
@@ -387,16 +388,19 @@ class TestEfronDiagnostics:
                 compute_residuals(m, "score").sum(axis=0)
             ).max() == pytest.approx(0.0, abs=1e-8)
 
-    def test_check_ph_matches_lifelines_under_ties(self):
-        # Reference values from lifelines 0.30.3 on this exact dataset
-        # (km transform; identity and log also agree — lifelines is not
-        # a CI dependency, so the values are pinned).
+    def test_check_ph_matches_r_under_ties(self):
+        # R's cox.zph (survival 3.5.8) on this exact dataset, Efron ties,
+        # km transform: coxph(Surv(x, status) ~ z1 + z2, ties = "efron").
+        # Until v0.24 check_ph gave lifelines' approximation (1.3936 and
+        # 0.0013 here), which under heavy ties is far from the exact test.
         x, c, Z = self._tied_fit()
         m = CoxPH.fit(x=x, Z=Z, c=c, tie_method="efron")
         res = check_ph(m, transform="km")
         stats = [e["statistic"] for e in res["per_covariate"]]
-        assert stats[0] == pytest.approx(1.3936, abs=2e-3)
-        assert stats[1] == pytest.approx(0.0013, abs=2e-3)
+        stats.append(res["global"]["statistic"])
+        np.testing.assert_allclose(
+            stats, [3.2396224025, 0.2969178191, 3.5950641231], rtol=1e-6
+        )
 
     def test_dfbeta_tracks_exact_leave_one_out(self):
         x, c, Z = self._tied_fit()

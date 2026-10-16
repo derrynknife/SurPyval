@@ -994,7 +994,8 @@ not late, say — the single number Cox reports is a time-average that can hide
 the effect entirely.
 
 The standard check is the **Grambsch-Therneau test**, built on the scaled
-Schoenfeld residuals. A fitted model exposes it through
+Schoenfeld residuals, in the exact score-test form R's ``cox.zph`` has used
+since version 3.0. A fitted model exposes it through
 :meth:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel.check_ph`.
 It returns a table, as R's ``cox.zph`` prints it: a 1-d.f. test for each
 covariate and a joint ``GLOBAL`` test on the last row; a *small* ``p``-value is
@@ -1014,14 +1015,18 @@ with :meth:`CoxPH.fit_from_df <surpyval.univariate.regression.proportional_hazar
 Here every ``p``-value is large, so there is no evidence against proportional
 hazards — the Cox coefficients can be read as constant hazard ratios. (With 11
 failures the test has little power, so "no evidence" is not strong evidence of
-proportionality either.) The statistics match R's ``cox.zph`` and lifelines,
-including under Efron ties.
+proportionality either.) The statistics are R's ``cox.zph`` (survival 3.0 and
+later), under Efron and Breslow ties alike. lifelines, and R before 3.0,
+compute Grambsch and Therneau's approximation of the same test, as SurPyval
+did until v0.24; it can differ in small samples. ``model.diagnose()`` runs
+this test on the ``km`` and ``rank`` scales with the other checks of a Cox
+fit, and says what to do about a failure (see :doc:`Model Diagnostics`).
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert (ph['p'] > 0.4).all()
+    assert (ph['p'] > 0.3).all()  # R's cox.zph: smallest 0.309
     assert (tires['Censoring'] == 0).sum() == 11
 
 To see what a violation looks like, simulate a covariate whose effect
@@ -1058,7 +1063,8 @@ the effect falling over time:
 
 The residuals sit high early and low late, straddling the constant fit. The
 ``transform`` argument chooses the function of time the residuals are tested
-against: ``"km"`` (the default, :math:`1 -` Kaplan-Meier) spreads the failures
+against: ``"km"`` (the default, :math:`1 -` the left-continuous Kaplan-Meier
+estimate) spreads the failures
 evenly and is the usual choice; ``"rank"``, ``"identity"`` and ``"log"`` are the
 alternatives from ``cox.zph``. A violation like this one calls for
 stratification (below), a time-varying covariate, or a different family.

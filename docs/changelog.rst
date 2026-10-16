@@ -6,6 +6,172 @@ Unreleased
 
 **Added**
 
+- ``model.diagnose(alpha=0.05, columns=None)`` on every regression model
+  and fitted distribution (#867): the checks its assumptions call for, as a report -- ``table``
+  (one row per check: test, statistic, ``p``, verdict and covariates),
+  ``advice`` (plain-English remedies, each naming the SurPyval feature that
+  applies it), ``plot()`` (matplotlib only then), ``ok``,
+  ``raise_if_failed()`` and ``to_dict()`` / ``Diagnosis.from_dict``. A
+  test fails below ``alpha`` and warns below ``2 * alpha`` or when it
+  cannot be computed; a screen warns and never fails. Each model family
+  lists its checks and advice in ``surpyval.diagnostics``, whose docstring
+  is the guide to adding one; the families not built yet refuse, naming
+  their issue (#869 to #875). See :doc:`Model Diagnostics`.
+- The Cox family of ``diagnose()`` (#868): proportional hazards by R's
+  ``cox.zph`` score test (survival 3.0 and later) on the km and rank
+  scales, with GLOBAL rows, and plots of the scaled Schoenfeld residuals
+  with a lowess trend and bootstrap band; functional form by the score
+  test of a covariate's square, and martingale residual plots; influence
+  (``|dfbeta| / se`` above 1 warns); outliers (deviance residuals beyond
+  the Bonferroni normal cutoff); the Cox-Snell plot; advice to stratify a
+  binary or few-levelled covariate that fails proportional hazards, and a
+  time-varying effect (``fit_tvc``), bins or an AFT model for a continuous
+  one; and the cluster-robust standard errors of a ``fit_tvc`` model.
+  Stratified fits are refused for now. The proportional-hazards rows are
+  ``check_ph()``'s test (see Changed); the functional-form test is
+  ``added_covariate_score_test`` in ``proportional_hazards.diagnostics``,
+  R's ``coxph(..., init = c(coef(fit), 0), iter.max = 0)$score``. Both
+  agree with R to 1e-6.
+- The parametric proportional hazards and accelerated failure time
+  families of ``diagnose()`` (#869), for ``WeibullPH``, ..., ``PH(dist)``
+  and ``WeibullAFT``, ..., ``AFT(dist)`` fitted with ``fit`` /
+  ``fit_from_df``. Every test is a likelihood-ratio test against a larger
+  model, with the fit's own likelihood: for a PH model, a step in each
+  coefficient (and in the baseline) at the median failure time, per
+  covariate and GLOBAL, drawn as the coefficient in each quarter of the
+  failures; a covariate's square; the influence and outlier screens of the
+  Cox family; and the AIC against the other built-in baselines and the AFT
+  model of the same baseline, with the Cox-Snell residuals on exponential
+  paper. For an AFT model, the standardised residuals on the baseline's
+  probability paper with the same AIC screens; one shape for every level of
+  a categorical covariate or formula factor against a shape per level; and
+  a covariate's square. Advice names a time-varying effect (``fit_tvc``),
+  an AFT model or a stratified Cox model, separate fits per level, a
+  formula transform, and the better baseline or kind of model. The
+  statistics agree with R's ``survreg`` (and, for the step test, a Poisson
+  model of the split follow-up) to 1e-6 (``scripts/reference/
+  reference_r_ph_aft.R``). Time-varying fits and custom links are refused
+  for now.
+- The shared-frailty families of ``diagnose()`` (#872), for
+  ``WeibullFrailty``, ..., ``Frailty(dist, family=...)`` and
+  ``CoxFrailty``: the boundary likelihood-ratio test of no frailty
+  against the same model without it refitted to the same rows
+  (``<Dist>PH.fit``, or the Cox partial likelihood against R's
+  I-likelihood), with the 50:50 mixture of chi2(0) and chi2(1)
+  (``surpyval.diagnostics.frailty.zero_variance_test``); for a parametric
+  baseline also the AIC against the other frailty family and the other
+  built-in baselines, and the likelihood-ratio tests, over the marginal
+  likelihood, of a step in each coefficient at the median failure time and
+  of a covariate's square given the frailty; posterior-frailty,
+  martingale-residual and marginal Cox-Snell plots. Advice names the model
+  without the frailty when it is not significant, ``Frailty(dist,
+  family=...)``, a formula transform, and per-level or clustered Cox fits
+  for an effect that changes with time. The statistics agree with R's
+  ``coxph(... + frailty(id))``, lme4's ``glmer`` and ``survreg`` to 1e-6
+  (``scripts/reference/reference_r_frailty_diag.R``). A ``CoxFrailtyModel``
+  keeps no group of each row, so only its frailty variance is tested.
+- The calibration of predicted survival, a ``calibration`` check shared by
+  the Cox, parametric PH and AFT families of ``diagnose()`` (#881): at the
+  quartiles of the failure times, or at ``diagnose(t0=...)``, the smoothed calibration curve of
+  Austin, Harrell and van Klaveren (2020) -- a Cox model of the observed
+  times on a restricted cubic spline of the complementary log-log of the
+  predicted risk, so censored units count as at risk, not as survivors,
+  and delayed entry is respected -- with its ICI (the row's statistic), E50
+  and E90 and a pointwise band, drawn against the diagonal with a
+  histogram of the predicted risks. A screen: it warns when the ICI is
+  above 0.02 and the predictions are outside the band for more than 10% of
+  the units, with advice naming a formula transform, another baseline, the
+  other kind of model or a Cox model. Left- and interval-censored,
+  right-truncated and time-varying fits are refused with a note.
+  ``surpyval.diagnostics.calibration.calibration_curve`` takes the
+  predicted survival of any model, to validate it on other data. The
+  curve, its summaries and band agree with R's ``coxph`` and ``survfit``
+  (``scripts/reference/reference_r_calibration.R``).
+- The proportional odds and additive hazards families of ``diagnose()``
+  (#870), for ``ProportionalOdds``, ``AdditiveHazards`` and the parametric
+  ``PO(...)`` / ``AH(...)`` models: for each covariate, and jointly, the
+  test that its effect is the same in four periods of follow-up (split at
+  the event-time quartiles) -- the likelihood-ratio test of the model
+  refitted, exactly, on the rows split there, or for Lin and Ying's model
+  the Wald test with its sandwich variance, which agrees with R's
+  ``timereg::aalen`` to 1e-8; for a proportional odds model's binary or
+  categorical covariate, whether its groups' log-odds stay parallel.
+  Plots: Kaplan-Meier log-odds by group and coefficients by period
+  (proportional odds), Aalen's cumulative regression coefficients
+  (additive hazards, ``odds_additive.aalen_cumulative_coefficients``,
+  which agrees with ``timereg``). Advice: a proportional hazards or
+  accelerated failure time model with the same baseline (``CoxPH.fit``,
+  ``WeibullPH.fit``, ``WeibullAFT.fit``, ...) for a proportional odds
+  failure; a time-varying effect through ``fit_tvc`` for an additive one.
+  Left- or interval-censored and right-truncated parametric fits are
+  refused for now.
+- The accelerated life family of ``diagnose()`` (#871), for
+  ``AcceleratedLife(dist, life_model)`` fits: a common shape at every
+  stress level, by the likelihood-ratio test of each level fitted alone
+  against one shared shape, with a probability plot of the levels; the
+  life-stress relationship, by the likelihood-ratio (lack-of-fit) test of
+  the life model against a separate life at each level, with a plot of
+  the levels' lives against stress; every built-in life model for the
+  number of stresses refitted to the same data and compared by AIC (a
+  model better by more than 2 warns); and a warning for a stress tested
+  at two levels or fewer. Advice names the better life model, separate
+  fits of the levels, or more stress levels. Both tests agree with R's
+  ``survreg`` to 1e-5. ``diagnose(use_stress=...)`` gives the stress the
+  model is to predict at: the report then warns when it is more than one
+  width of the tested range outside it (on the life model's scale of the
+  stress), and gives each life model's life there. A family's own
+  options are declared in ``Family.options``, reach its checks as
+  ``ctx.options``, and are refused by the other families.
+- The recurrent-event families of ``diagnose()`` (#873), for the Poisson
+  processes (``HPP``, ``CrowAMSAA``, ``Duane``, ``CoxLewis``), the
+  imperfect-repair models (``GeneralizedRenewal``,
+  ``GeneralizedOneRenewal``, ``ARA``, ``ARI``) and the proportional-
+  intensity models: the Laplace, MIL-HDBK-189C and Lewis-Robinson trend
+  tests (tests of a constant-rate model, a model-choice screen for the
+  others); the model's Cramer-von Mises test (``diagnose(n_boot=,
+  random_state=)``, 99 bootstrap refits by default);
+  for the Poisson processes the Pearson dispersion test of the items'
+  counts; for the imperfect-repair models the likelihood-ratio tests of
+  perfect and minimal repair (``repair_test``) as a screen; plots of the
+  mean cumulative function, the transformed event times, the items'
+  counts and the restoration parameter's profile likelihood; and advice
+  between a constant rate, an NHPP, a renewal process and imperfect
+  repair, and towards proportional intensity for items that differ. The
+  Lewis-Robinson test is ``surpyval.diagnostics.recurrent.lewis_robinson``
+  and agrees with R. Models without data, least-squares fits and inexact
+  or right-truncated times are refused.
+- The competing-risks families of ``diagnose()`` (#874), reported by cause
+  (a ``cause`` column, plots titled by cause).
+  ``CompetingRisksProportionalHazards`` (``model="Cox"``) runs the Cox
+  checks on each cause's own Cox model, now kept as ``model.models[cause]``
+  (with ``compute_residuals`` and ``check_ph``), and advises fitting a
+  failing cause on its own with ``strata=`` or ``CoxPH.fit_tvc``, or the
+  Fine-Gray model where incidence is the question. ``FineGray`` and
+  ``model="Fine-Gray"`` test proportional subdistribution hazards (the
+  score test of ``Z * g(t)`` in the weighted partial likelihood, on the
+  cif and rank scales, with GLOBAL rows and scaled-residual plots) and the
+  functional form; both agree with R's ``cox.zph`` on the weighted
+  Fine-Gray data to 1e-6, and are functions, ``fine_gray_zph_test`` and
+  ``fine_gray_added_covariate_test`` in
+  ``competing_risks.regression.fine_gray_diagnostics``. Every report
+  notes that the independence of the causes cannot be tested.
+  ``ParametricCompetingRisks`` still refuses, naming #874 (its checks wait
+  for #875).
+- The univariate-distribution family of ``diagnose()`` (#875), for
+  ``Weibull.fit(...)`` and the other continuous distributions (offset,
+  ``lfp``, ``zi``, fixed parameters, truncation and any ``how``):
+  Anderson-Darling, Kolmogorov-Smirnov and Cramer-von Mises tests of the
+  Kaplan-Meier estimate of the fitted CDF, with parametric bootstrap
+  p-values (each resample drawn from the model, censored as the data were
+  and refitted the same way; ``diagnose(n_boot=200, random_state=None)``),
+  which agree with ``fitdistrplus::gofstat`` on complete data and with the
+  textbook critical values; the probability plot and a P-P plot; and an
+  AIC screen of the alternatives, with advice naming ``fit_best``, a
+  ``MixtureModel``, ``offset=True``, ``lfp=True`` or ``zi=True``.
+  Discrete distributions are refused for now, and event-probability models
+  and ``ExactEventTime`` have no distribution to test. ``diagnose()`` takes
+  ``n_boot`` and ``random_state`` on every model (families that do not
+  resample ignore them).
 - The data utilities live on ``SurpyvalData``.
   ``SurpyvalData.from_observations(observed=..., right_censored=...,
   left_censored=..., interval_censored=..., left_truncation=...,
@@ -355,6 +521,22 @@ Unreleased
 
 **Changed**
 
+- **CoxPH.check_ph() is the exact score test of R's cox.zph (survival
+  3.0 and later)**, so its statistics and p-values change (#868). It was
+  Grambsch and Therneau's approximation, as lifelines and R before 3.0
+  compute it, which uses the average covariate variance in place of the
+  variance at each event time. The time scales are now R's as well:
+  ``"km"`` is one minus the left-continuous Kaplan-Meier estimate, and
+  ``"rank"`` ranks every observation's time, censored ones too, not the
+  event times only. The new values match R's ``cox.zph`` to 1e-6 on the
+  stored references (``lung``, ``veteran``, and a set with delayed entry
+  and ties, under Efron and Breslow ties). The differences are small in
+  large samples and can matter in small ones and under heavy ties: on the
+  Rossi data (``fin`` and ``age``) the km p-values move from 0.998, 0.016
+  and 0.054 (GLOBAL) to 0.876, 0.014 and 0.048, and on a tied data set of
+  120 rows a statistic from 1.39 to 3.24, as R gives. The signature, the
+  table (and the module function's dict) and the transforms are as they
+  were; ``diagnose()`` reports the same test on the km and rank scales.
 - On a baseline defined below 0 (``Normal``, ``Gumbel``, ``Logistic``) a
   covariate path must cover every time the answer depends on (#952). The
   value at 0 was taken to hold back to ``-inf``, and values given before
