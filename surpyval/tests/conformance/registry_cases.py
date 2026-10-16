@@ -14,6 +14,7 @@ import pandas as pd
 
 import surpyval as sp
 from surpyval import degradation as dg
+from surpyval import joint as jm
 from surpyval import multivariate as mv
 from surpyval import recurrent as rc
 from surpyval.beta import ml
@@ -25,6 +26,7 @@ from surpyval.tests.conformance.registry_families import (
     COUNTING_CAUSES,
     COUNTING_REGRESSION,
     REFIT_PROPERTIES,
+    REGRESSION,
     UNI_FUNCTIONS,
     UNIVARIATE,
     Bound,
@@ -45,11 +47,13 @@ from surpyval.tests.conformance.registry_fixtures import (
     X_COP,
     X_CR,
     X_DESTR,
+    X_JOINT,
     X_PATH,
     X_PROC,
     X_REC,
     X_UNI,
     Z_CR,
+    Z_JOINT,
     Z_REC,
     beta_geometric_data,
     binary_data,
@@ -57,6 +61,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     cr_data,
     destructive_data,
     exact_event_data,
+    joint_data,
     lfp_count_data,
     lfp_data,
     mixture_data,
@@ -855,6 +860,98 @@ def _degradation():
 
 
 # ---------------------------------------------------------------------------
+# Joint models of a marker and a failure time (#891)
+# ---------------------------------------------------------------------------
+def _joint_long_frame(d):
+    """The fixture as one row per reading, the layout of
+    ``JointModel.fit_from_df``."""
+    cols = [f"z{k}" for k in range(d["Z"].shape[1])]
+    units = pd.DataFrame(d["Z"], columns=cols)
+    units["i"], units["x"], units["c"] = d["i"], d["x"], d["c"]
+    readings = pd.DataFrame(
+        {
+            "i": d["marker_i"],
+            "marker_x": d["marker_x"],
+            "marker_y": d["marker_y"],
+        }
+    )
+    return readings.merge(units, on="i"), cols
+
+
+def _joint_from_df(d):
+    df, cols = _joint_long_frame(d)
+    return jm.JointModel.fit_from_df(
+        df, x_col="x", c_col="c", i_col="i", Z_cols=cols
+    )
+
+
+def _joint_from_items(d):
+    items = []
+    for u, uid in enumerate(np.asarray(d["i"]).tolist()):
+        rows = np.asarray(d["marker_i"]) == uid
+        failed = d["c"][u] == 0
+        items.append(
+            sp.ItemHistory(
+                uid,
+                observed=d["x"][u] if failed else None,
+                right_censored=None if failed else d["x"][u],
+                covariates=list(np.asarray(d["Z"])[u]),
+                markers=dict(
+                    zip(
+                        np.asarray(d["marker_x"])[rows],
+                        np.asarray(d["marker_y"])[rows],
+                    )
+                ),
+            )
+        )
+    return jm.JointModel.fit_from_items(items)
+
+
+def _joint_from_params(d):
+    m = jm.JointModel.fit(**d)
+    return jm.JointModel.from_params(
+        dict(zip(m.parameter_names, m.params)),
+        marker_centre=m.marker_centre,
+    )
+
+
+def _joint():
+    return [
+        Case(
+            name="JointModel",
+            fitters=("surpyval.joint.JointModel",),
+            model_class="surpyval.joint.JointModel",
+            interface=REGRESSION,
+            data=joint_data,
+            fit=_fit(jm.JointModel),
+            functions=UNI_FUNCTIONS,
+            x=X_JOINT,
+            Z=Z_JOINT,
+            rows=("x", "c", "Z", "i"),
+            times=("x", "marker_x"),
+            covariates="Z",
+            # A unit is its readings and its failure: a missing covariate
+            # is refused, not dropped (principle 3).
+            drops_missing_covariate=False,
+            paths={
+                "fit_from_df": _joint_from_df,
+                "fit_from_items": _joint_from_items,
+                "from_params": _joint_from_params,
+            },
+            draw=lambda m, s: m.random(15, Z=[0.5], random_state=s),
+            explicit_seed=True,
+            coefficients=lambda m: np.asarray(m.params)[2 : 2 + m.n_Z],
+            intercept=True,
+            exclude={
+                "counts": "a unit is its own readings and failure: the "
+                "joint model takes no counts",
+            },
+            slow=REFIT_PROPERTIES,
+        )
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Copulas
 # ---------------------------------------------------------------------------
 _COPULA_FAMILIES = (
@@ -913,6 +1010,7 @@ CASES: list[Case] = (
     + _competing_risks()
     + _recurrent()
     + _degradation()
+    + _joint()
     + _copulas()
 )
 
@@ -1559,6 +1657,9 @@ def _bounds(case):
                 slow=True,
             ),
         )
+    if cls == "JointModel":
+        # Wald bounds from the fit's covariance (#891)
+        return (Bound("cb", on=_ON_SURVIVAL), _PARAM_CB)
     if cls in ("WienerProcessModel", "GammaProcessModel"):
         return (
             # Wald bounds from the fit's covariance (#666)
@@ -1847,7 +1948,7 @@ def _starve(case):
     """How ``case``'s fit is starved (see ``Case.starve``), or ``None``."""
     name, fit = case.name, case.fit
     cls = case.model_class.rsplit(".", 1)[-1]
-    if name in ("Turnbull", "BuckleyJames"):
+    if name in ("Turnbull", "BuckleyJames", "JointModel"):
         return lambda d: fit({**d, "max_iter": 1})
     if name.startswith("WeibullAL"):
         # The life model's first parameter (the first is a fixed

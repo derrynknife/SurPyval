@@ -37,6 +37,7 @@ HISTORY_PARTS = {
         "interval_censored_states",
         "left_censored_states",
     ),
+    "markers": ("markers",),
 }
 
 

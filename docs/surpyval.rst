@@ -37,6 +37,7 @@ truncation; where one does not, its ``fit`` docstring says so.
    surpyval.competing_risks
    surpyval.counting
    surpyval.degradation
+   surpyval.joint
    surpyval.multivariate
    surpyval.beta
    comparison_and_validation

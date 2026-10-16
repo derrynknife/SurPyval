@@ -320,3 +320,81 @@ def copula_data():
 X_COP = np.array(
     [[2.0, 1.0], [5.0, 2.0], [8.0, 3.0], [10.0, 5.0], [14.0, 7.0], [3.0, 6.0]]
 )
+
+
+# ---------------------------------------------------------------------------
+# Joint models of a marker and a failure time (#891)
+# ---------------------------------------------------------------------------
+N_JOINT = 30
+#: The model the joint fixture is drawn from: a straight marker path
+#: ``(1 + b0) + (1 + b1) t`` with ``sd(b0) = sd(b1) = 0.5``, read with noise
+#: 0.3, and the hazard ``1.5 t^0.5 exp(-2.5 + 0.5 z + 1.0 m(t))``.
+JOINT_TRUTH = {"beta": 1.5, "gamma": 0.5, "assoc": 1.0, "sd": 0.5}
+
+
+def _joint_cumhaz(t, b0, b1, z):
+    """The fixture's cumulative hazard at ``t``."""
+    from scipy.integrate import quad
+
+    beta, gamma, assoc = (JOINT_TRUTH[k] for k in ("beta", "gamma", "assoc"))
+
+    def h(s):
+        return (
+            beta
+            * s ** (beta - 1)
+            * np.exp(-2.5 + gamma * z + assoc * (1.0 + b0 + (1.0 + b1) * s))
+        )
+
+    return quad(h, 0.0, t, limit=200)[0]
+
+
+def joint_data():
+    """30 units of the joint model ``JOINT_TRUTH``, one binary hazard
+    covariate, read every 0.2 from age 0 until each fails or is censored
+    at 1.6: random effects at normal quantiles and failures at exponential
+    quantiles, each in its own fixed order, and the noise at normal
+    quantiles in another."""
+    from scipy.optimize import brentq
+    from scipy.stats import norm
+
+    n = N_JOINT
+    q = (np.arange(n) + 0.5) / n
+    order = scramble(n)
+    sd = JOINT_TRUTH["sd"]
+    b0 = sd * norm.ppf(q)[order]
+    b1 = sd * norm.ppf(q)[order[::-1]]
+    e = -np.log1p(-q)[np.roll(order, 7)]
+    z = np.tile([0.0, 1.0], n // 2)
+    end = 1.6
+    x = np.empty(n)
+    c = np.zeros(n, int)
+    for u in range(n):
+        if _joint_cumhaz(end, b0[u], b1[u], z[u]) < e[u]:
+            x[u], c[u] = end, 1
+        else:
+            x[u] = brentq(
+                lambda t: _joint_cumhaz(t, b0[u], b1[u], z[u]) - e[u],
+                1e-9,
+                end,
+                xtol=1e-12,
+            )
+    x = np.round(x, 4)
+    ages = [np.arange(0.0, x[u], 0.2) for u in range(n)]
+    t = np.concatenate(ages)
+    i = np.concatenate([np.full(a.size, u) for u, a in enumerate(ages)])
+    m = 1.0 + b0[i] + (1.0 + b1[i]) * t
+    k = t.size
+    noise = 0.3 * norm.ppf((np.arange(k) + 0.5) / k)[scramble(k)]
+    return {
+        "x": x,
+        "c": c,
+        "Z": z[:, None],
+        "i": np.arange(n),
+        "marker_x": t,
+        "marker_y": np.round(m + noise, 4),
+        "marker_i": i,
+    }
+
+
+X_JOINT = np.array([0.1, 0.3, 0.5, 0.8, 1.0, 1.4, 2.0, 3.0])
+Z_JOINT = np.array([[0.0], [1.0], [0.0], [1.0], [0.5], [1.0], [0.0], [1.0]])

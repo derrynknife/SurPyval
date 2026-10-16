@@ -237,6 +237,7 @@ DIFFERENTIATED = frozenset(
         ".ProportionalIntensityModel",
         "surpyval.multivariate.CopulaModel",
         "surpyval.degradation.DegradationModel",
+        "surpyval.joint.JointModel",
     }
 )
 _NO_DERIVATIVES = "the fit takes no derivatives: "

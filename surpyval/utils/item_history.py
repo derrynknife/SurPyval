@@ -99,8 +99,16 @@ class ItemHistory:
     end of observation (``right_censored``, needed where there are no
     failures) is the age up to which it was seen in its last state. No
     model uses states yet (#887): every fit refuses data that has them.
-    ``markers`` (repeated measurements, #891) are reserved for the joint
-    models.
+
+    markers : dict, optional
+        Repeated measurements of a marker of its condition (a vibration
+        level, a wear reading, a biomarker), ``{age: value}``, or rows of
+        ``[age, value]``: at most one reading at an age, taken at or
+        before the end of observation. The joint models use them
+        (:meth:`JointModel.fit_from_items
+        <surpyval.joint.JointModel.fit_from_items>`, and
+        :meth:`JointModel.predict <surpyval.joint.JointModel.predict>` of
+        one item); the recurrent fits refuse data that has them.
 
     Examples
     --------
@@ -141,6 +149,7 @@ class ItemHistory:
         observed_states: "dict | None" = None,
         interval_censored_states: Any = None,
         left_censored_states: "dict | None" = None,
+        markers: Any = None,
     ) -> None:
         item = item_id(id)
         self.id = item
@@ -244,6 +253,7 @@ class ItemHistory:
             left_censored_states,
             0.0 if self.left_truncation is None else self.left_truncation,
         )
+        self.markers = _markers(item, markers)
         self._check()
         freeze(self)
 
@@ -405,6 +415,15 @@ class ItemHistory:
             first = self._first_change
             if first > start:
                 raise late_covariates(item, first, start)
+        if self.markers and seen_to is not None:
+            late = max(self.markers)
+            if late > seen_to:
+                raise ValueError(
+                    f"Item {item!r} has a marker reading at {late:g}, after "
+                    f"the end of its observation at {seen_to:g}: a reading "
+                    "is taken while the item is watched (move "
+                    "right_censored to the last reading)."
+                )
 
     @property
     def observed_states(self) -> dict:
@@ -748,6 +767,8 @@ class ItemHistory:
         }
         if left:
             out["left_censored_states"] = left
+        if self.markers:
+            out["markers"] = dict(self.markers)
         return out
 
     def __eq__(self, other: object) -> bool:
@@ -829,6 +850,63 @@ def _age(item: Any, name: str, value: Any) -> "float | None":
     if not np.isfinite(age):
         raise ValueError(f"Item {item!r}: '{name}' must be finite.")
     return age
+
+
+def _markers(item: Any, value: Any) -> "dict | None":
+    """The marker readings ``{age: value}`` in order of age (a value a
+    float, or a tuple of floats for several markers read together), or
+    None for none."""
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        pairs = list(value.items())
+    else:
+        rows = np.asarray(value, dtype=object)
+        if rows.ndim != 2 or rows.shape[1] < 2:
+            raise ValueError(
+                f"Item {item!r}: markers must be {{age: value}} or rows of "
+                "[age, value]."
+            )
+        pairs = [
+            (row[0], row[1] if len(row) == 2 else tuple(row[1:]))
+            for row in rows.tolist()
+        ]
+    out: dict = {}
+    width = None
+    for age, reading in pairs:
+        _not_a_date(item, "markers", age)
+        try:
+            a = float(age)
+            v = np.asarray(reading, dtype=float)
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"Item {item!r}: each marker reading is an age and a number "
+                f"(or a row of numbers); got {age!r}: {reading!r}."
+            ) from None
+        if not np.isfinite(a) or a < 0:
+            raise ValueError(
+                f"Item {item!r}: a marker reading's age must be finite and "
+                f"at least 0; got {age!r}."
+            )
+        if v.ndim > 1 or not np.all(np.isfinite(v)):
+            raise ValueError(
+                f"Item {item!r}: the marker reading at {a:g} must be finite "
+                f"numbers (drop a missing reading); got {reading!r}."
+            )
+        if width is None:
+            width = v.size if v.ndim else 0
+        elif (v.size if v.ndim else 0) != width:
+            raise ValueError(
+                f"Item {item!r}: every marker reading must have the same "
+                "number of values."
+            )
+        if a in out:
+            raise ValueError(
+                f"Item {item!r} has two marker readings at age {a:g}: give "
+                "one (their mean, say)."
+            )
+        out[a] = float(v) if v.ndim == 0 else tuple(v.tolist())
+    return {a: out[a] for a in sorted(out)} or None
 
 
 def _intervals(item: Any, value: Any) -> np.ndarray:

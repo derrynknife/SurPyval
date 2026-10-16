@@ -6,6 +6,29 @@ Unreleased
 
 **Added**
 
+- Joint models of a longitudinal marker and a failure time (#891),
+  ``surpyval.joint.JointModel``: a linear mixed model of a marker read
+  repeatedly on each unit (a straight path with a random intercept and
+  slope) and a Weibull proportional hazards model of its failure, linked
+  by the marker's current noise-free value, fitted together by maximum
+  likelihood with the random effects integrated out by adaptive
+  Gauss-Hermite quadrature. Every kind of censoring of the failure and
+  left and right truncation are taken; hazard covariates ``Z`` and path
+  covariates ``path_Z``; ``fit``, ``fit_from_df`` (one row per reading),
+  ``fit_from_items`` and ``from_params``. The fitted model has Wald
+  bounds (``param_cb``, ``cb``), ``aic`` and ``bic``, saves to a dict or
+  JSON, and gives a new unit's ``sf`` (and ``ff``, ``hf``, ``Hf``, ``df``,
+  ``qf``, ``random``, ``simulate``) and, through ``predict``, one unit's
+  *dynamic prediction* (``DynamicPrediction``): its survival given its
+  readings so far and that it is running now, with ``remaining_life``,
+  Wald bounds, its smoothed marker path and draws. See
+  :doc:`Joint Modelling with SurPyval`.
+- ``ItemHistory(..., markers={age: value})``: an item's marker readings,
+  kept by ``EventHistoryData.from_items`` and ``to_items`` and left out by
+  ``data.without("markers")``. The joint model fits them
+  (``JointModel.fit_from_items``) and predicts from one item; every
+  recurrent fit refuses data that has them, saying how to fit without
+  them.
 - The data utilities live on ``SurpyvalData``.
   ``SurpyvalData.from_observations(observed=..., right_censored=...,
   left_censored=..., interval_censored=..., left_truncation=...,

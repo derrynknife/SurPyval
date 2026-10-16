@@ -101,6 +101,10 @@ class EventHistoryData(ReshapeMixin):
     # changes)}``, attached by ``from_items``; no model uses them yet
     # (#887), so every fit refuses data that has them.
     states: dict | None = None
+    # Each item's marker readings, ``{item: {age: value}}``, attached by
+    # ``from_items`` when an ItemHistory has them; the joint models use
+    # them (#891), and every recurrent fit refuses data that has them.
+    markers: dict | None = None
 
     def __init__(
         self,
@@ -962,6 +966,10 @@ class EventHistoryData(ReshapeMixin):
                 history.id: (history.initial_state, history.state_changes)
                 for history in items
             }
+        if any(history.markers for history in items):
+            data.markers = {
+                history.id: dict(history.markers or {}) for history in items
+            }
         return data
 
     def to_histories(self) -> dict:
@@ -999,6 +1007,8 @@ class EventHistoryData(ReshapeMixin):
             problems.append("time-varying covariates")
         if self.states is not None:
             problems.append("states")
+        if self.markers is not None:
+            problems.append("markers")
         if problems:
             raise ValueError(
                 "This data has " + " and ".join(problems) + ", which a "
@@ -1148,6 +1158,9 @@ class EventHistoryData(ReshapeMixin):
             left_censored_event_types=(
                 None if e is None or not (c == -1).any() else e[c == -1][0]
             ),
+            markers=(
+                None if self.markers is None else self.markers.get(key) or None
+            ),
             **state_args,
         )
 
@@ -1161,7 +1174,7 @@ class EventHistoryData(ReshapeMixin):
         """
         A short description of the data: its items and events, and what
         else it holds (counts, truncation, event types, covariates,
-        time-varying covariates, states).
+        time-varying covariates, states, marker readings).
 
         Examples
         --------
@@ -1219,7 +1232,7 @@ class EventHistoryData(ReshapeMixin):
         if self.Z is not None:
             out.Z = np.asarray(self.Z)[index]
             out.covariate_names = self.covariate_names
-        for name in ("time_varying_covariates", "states"):
+        for name in ("time_varying_covariates", "states", "markers"):
             held = getattr(self, name)
             if held is not None:
                 setattr(out, name, {i: held[i] for i in out.ids if i in held})
@@ -1647,6 +1660,14 @@ def _unmodelled(data: Any) -> list:
         )
     if getattr(data, "states", None) is not None:
         out.append(("states (no model uses them yet, #887)", "states"))
+    if getattr(data, "markers", None) is not None:
+        out.append(
+            (
+                "marker readings (fit them with "
+                "surpyval.joint.JointModel.fit_from_items)",
+                "markers",
+            )
+        )
     return out
 
 
@@ -1786,4 +1807,11 @@ def _held(data: Any, rows: "int | None") -> list:
             key=str,
         )
         lines.append("  states: " + ", ".join(map(str, found)))
+    if getattr(data, "markers", None) is not None:
+        readings = sum(len(m) for m in data.markers.values())
+        with_markers = sum(1 for m in data.markers.values() if m)
+        lines.append(
+            f"  marker readings: {readings} on "
+            f"{_plural(with_markers, 'item')}"
+        )
     return lines

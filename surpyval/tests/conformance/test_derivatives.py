@@ -296,6 +296,22 @@ def _mixture(model, label=""):
     return [(label + " (search space)", f, at, _autograd(f), None)]
 
 
+def _joint(model, label=""):
+    # The likelihood with the quadrature nodes at the fit, in the internal
+    # search space, whose autograd gradient and Hessian the fit searches
+    # with and inverts for its covariance.
+    from surpyval.joint._likelihood import fixed_node_neg_ll
+
+    state = model._fit_state
+    prob = state.prepared.prob
+
+    def f(theta):
+        return fixed_node_neg_ll(theta, prob, state.nodes)
+
+    at = np.asarray(state.theta, dtype=float)
+    return [(label + " (fixed nodes)", f, at, _autograd(f), None)]
+
+
 OBJECTIVES = {
     "surpyval.Parametric": lambda case: _parametric(fitted(case)),
     "surpyval.ParametricRegressionModel": lambda case: _regression(
@@ -313,6 +329,7 @@ OBJECTIVES = {
     "surpyval.recurrent.regression.proportional_intensity"
     ".ProportionalIntensityModel": lambda case: _hpp(fitted(case)),
     "surpyval.MixtureModel": lambda case: _mixture(fitted(case)),
+    "surpyval.joint.JointModel": lambda case: _joint(fitted(case)),
 }
 
 

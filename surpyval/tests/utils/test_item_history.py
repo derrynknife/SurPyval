@@ -501,3 +501,71 @@ def test_states_for_every_item_once_given():
 def test_a_path_needs_its_end_of_observation():
     with pytest.raises(ValueError, match="needs the age up to which"):
         ItemHistory("U1", initial_state="a", observed_states={5: "b"})
+
+
+# -- marker readings (#891) ---------------------------------------------------
+def _monitored(**kwargs):
+    fields = {
+        "observed": 2100,
+        "right_censored": 2600,
+        "covariates": [1, 0.2],
+        "markers": {1500: 0.31, 500: 0.12, 1000: 0.19},
+    }
+    fields.update(kwargs)
+    return ItemHistory("P1", **fields)
+
+
+def test_markers_are_kept_in_order_of_age():
+    pump = _monitored()
+    assert list(pump.markers) == [500.0, 1000.0, 1500.0]
+    assert pump.markers[1000.0] == 0.19
+    rows = _monitored(markers=[[1500, 0.31], [500, 0.12], [1000, 0.19]])
+    assert rows == pump
+    assert hash(rows) == hash(pump)
+    assert "markers={500.0: 0.12" in repr(pump)
+    assert pump.clone() == pump
+    assert pump != _monitored(markers={500: 0.12})
+
+
+def test_several_markers_per_reading_are_rows():
+    pump = _monitored(markers={500: [0.12, 3.1], 1000: (0.19, 3.4)})
+    assert pump.markers[500.0] == (0.12, 3.1)
+
+
+@pytest.mark.parametrize(
+    "markers, match",
+    [
+        ({3000: 0.5}, "after the end of its observation"),
+        ({-5: 0.5}, "at least 0"),
+        ({500: np.nan}, "drop a missing reading"),
+        ({500: "high"}, "an age and a number"),
+        ({500: [1.0, 2.0], 600: 1.0}, "same number of values"),
+        ([[500, 0.1], [500.0, 0.2]], "two marker readings at age 500"),
+        ([0.1, 0.2], "\\[age, value\\]"),
+    ],
+)
+def test_markers_are_checked(markers, match):
+    with pytest.raises(ValueError, match=match):
+        _monitored(markers=markers)
+
+
+def test_markers_go_with_the_data_and_back():
+    pump = _monitored()
+    fan = ItemHistory("F1", right_censored=3000, covariates=[0, 0.5])
+    data = EventHistoryData.from_items([pump, fan])
+    assert data.markers == {"P1": pump.markers, "F1": {}}
+    assert data.to_items() == [fan, pump]
+    assert "marker readings: 3 on 1 item" in data.summary()
+    assert data[data.i == "P1"].markers == {"P1": pump.markers}
+    assert data.without("markers").markers is None
+    with pytest.raises(ValueError, match="markers"):
+        data.to_histories()
+
+
+def test_the_recurrent_fits_refuse_markers():
+    data = EventHistoryData.from_items(
+        [_monitored(covariates=None), ItemHistory("F1", observed=[800])]
+    )
+    with pytest.raises(ValueError, match="JointModel.fit_from_items"):
+        rc.CrowAMSAA.fit_from_recurrent_data(data)
+    rc.CrowAMSAA.fit_from_recurrent_data(data.without("markers"))

@@ -196,6 +196,11 @@ silently wrong numbers, not errors.
   repair was.
 - *No failures yet, but a measurable signal drifting toward a threshold* →
   **degradation / RUL**. Predicts life *before* anything fails.
+- *A condition marker read repeatedly (vibration, wear, a biomarker) that
+  raises the risk of failure, with failures seen* → **joint model**
+  (`surpyval.joint.JointModel`): the readings and the failures together,
+  and each unit's remaining life given its own readings. A time-varying
+  Cox on the last reading is biased towards no effect.
 
 **Parametric vs non-parametric vs semi-parametric:**
 
@@ -272,6 +277,7 @@ silently wrong numbers, not errors.
 | **Competing risks** | `surpyval.univariate.competing_risks` | `CompetingRisks` (nonparametric CIF), `ParametricCompetingRisks`, `FineGray` (subdistribution regression), `CompetingRisksProportionalHazards` |
 | **Recurrent events** | `surpyval.recurrent` | `NonParametricCounting` (MCF), NHPP/HPP intensity fits (`CrowAMSAA`, `Duane`, `CoxLewis`, `HPP`), renewal / imperfect repair (`GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA`, `ARI`), proportional-intensity regression, cause-specific MCF/NHPP, trend/GoF diagnostics |
 | **Degradation & RUL** | `surpyval.degradation` | `DegradationAnalysis` (path models via `PATH_MODELS`: linear, exponential, power, ...), stochastic processes `WienerProcess`/`GammaProcess`, `InducedFailureDistribution` (Lu–Meeker), `ProcessRUL` |
+| **Joint models** | `surpyval.joint` | `JointModel` (marker path with random intercept and slope + Weibull PH, current-value link); `predict(...)` gives a `DynamicPrediction` per unit |
 | **Multivariate** | `surpyval.multivariate` | Copulas: `Clayton`, `Frank`, `Gumbel`, `Gaussian`, `Independence` |
 | **Mixtures** | `sp.MixtureModel.fit(x, dist=..., m=...)` | EM mixture of a base family |
 | **Model validation** | `surpyval.metrics` | `brier_score`, `integrated_brier_score`, `auc_td`, `survival_probability` |
@@ -301,6 +307,31 @@ cox.beta                              # about 0.6
 
 Regression predictions take the covariate vector as the second argument:
 `model.sf(x, Z)`, `model.ff(x, Z)`, `model.hf(x, Z)`, etc.
+
+## Joint models: readings and failures together
+
+One row per unit (`x`, `c`, `Z`, `i`) and one per reading (`marker_x`,
+`marker_y`, `marker_i`), or a long DataFrame through `fit_from_df`. A unit's
+dynamic prediction is its survival given its readings and that it is
+running now; its functions take ages (time since new), and
+`remaining_life(p)` is the time from now.
+
+```python
+from surpyval.joint import JointModel
+
+truth = JointModel.from_params(
+    {"alpha": 900.0, "beta": 1.4, "association": 0.9,
+     "path_intercept": 2.8, "path_slope": 0.0045, "sd_intercept": 0.5,
+     "sd_slope": 0.002, "corr": 0.0, "sigma": 0.6},
+    marker_centre=3.5,
+)
+df = truth.simulate(100, 30.0, 730.0, random_state=1)   # one row per reading
+model = JointModel.fit_from_df(df, x_col="x", c_col="c", i_col="i",
+                               marker_x_col="marker_x", marker_y_col="marker_y")
+model.association, model.param_cb("association")   # log HR per marker unit
+pump = model.predict([0, 30, 60, 90], [3.3, 3.8, 4.4, 4.9])  # age now = 90
+pump.sf([120, 180]), pump.remaining_life([0.05, 0.5, 0.95]), pump.cb([180])
+```
 
 ## Serialisation (files & MongoDB)
 

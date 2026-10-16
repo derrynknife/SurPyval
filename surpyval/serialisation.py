@@ -106,6 +106,7 @@ _TAGGED_MODELS: dict[str, str] = {
     "InstantlyOccurs": (
         "surpyval.univariate.parametric.distributions.degenerate"
     ),
+    "JointModel": "surpyval.joint.joint_model",
 }
 
 # ``"parameterization"`` value -> (defining module, class name), for

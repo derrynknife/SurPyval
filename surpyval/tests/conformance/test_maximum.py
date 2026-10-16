@@ -1123,6 +1123,24 @@ def _search_destructive(model, data):
     return [_canonical(neg_ll, params, bounds, float(x.size))]
 
 
+def _search_joint(model, data):
+    """The model's own likelihood (adaptive quadrature, the nodes placed
+    at each point), in the log of each positive parameter, the logit of
+    the correlation and the others as they are; a hazard coefficient in
+    its covariate's units."""
+    names = model.covariance_names
+    supports = dict(zip(model.parameter_names, model._parameter_bounds()))
+    bounds = [supports[n] for n in names]
+    search = _canonical(
+        model.neg_ll_of, model._estimates(), bounds, float(model.data.n)
+    )
+    Z = np.asarray(model.data.Z, dtype=float)
+    coefs = [
+        (names.index(n), j) for j, n in enumerate(model._z_names) if n in names
+    ]
+    return [search.in_covariate_units(coefs, Z) if coefs else search]
+
+
 SEARCHES: dict[str, Callable] = {
     "Parametric": _search_parametric,
     "MixtureModel": _search_mixture,
@@ -1143,6 +1161,7 @@ SEARCHES: dict[str, Callable] = {
     "WienerProcessModel": _search_wiener,
     "GammaProcessModel": _search_gamma_process,
     "DestructiveDegradationModel": _search_destructive,
+    "JointModel": _search_joint,
 }
 
 

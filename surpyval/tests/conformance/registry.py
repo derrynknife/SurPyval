@@ -188,6 +188,7 @@ from surpyval.tests.conformance.registry_fixtures import (  # noqa: F401
     X_CR,
     X_DESTR,
     X_DISC,
+    X_JOINT,
     X_PATH,
     X_PROC,
     X_REC,
@@ -196,6 +197,7 @@ from surpyval.tests.conformance.registry_fixtures import (  # noqa: F401
     X_UNI,
     Z_AH,
     Z_CR,
+    Z_JOINT,
     Z_REC,
     Z_REG,
     Z_STRESS,
@@ -209,6 +211,7 @@ from surpyval.tests.conformance.registry_fixtures import (  # noqa: F401
     discrete_data,
     exact_event_data,
     grouped_reg_data,
+    joint_data,
     lfp_count_data,
     lfp_data,
     mixture_data,
@@ -345,6 +348,9 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.recurrent.TrendTestResult": _RESULT,
     "surpyval.recurrent.GoodnessOfFitResult": _RESULT,
     "surpyval.degradation.RULPrediction": _RESULT,
+    "surpyval.joint.DynamicPrediction": _RESULT
+    + " (a fitted joint model's prediction for one unit, covered by "
+    "tests/joint/test_dynamic_prediction.py)",
     "surpyval.degradation.ProcessRUL": _RESULT,
     # degradation building blocks
     "surpyval.degradation.LinkedPathModel": _COMPONENT

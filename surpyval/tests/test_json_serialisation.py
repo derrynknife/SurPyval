@@ -256,6 +256,13 @@ def _forest():
     return RandomSurvivalForest.fit(x=x, Z=Z, c=c, n_trees=2, max_depth=2)
 
 
+def _joint_model():
+    from surpyval.joint import JointModel
+    from surpyval.tests.conformance.registry_fixtures import joint_data
+
+    return JointModel.fit(**joint_data())
+
+
 def _build(name):
     from surpyval.degradation import GammaProcess, WienerProcess
     from surpyval.recurrent import (
@@ -363,6 +370,7 @@ def _build(name):
             *_process_data(1, monotone=True), threshold=15.0
         ),
         "destructive": _destructive,
+        "joint_model": _joint_model,
         "copula": _copula_with_km_margin,
         "survival_tree": _tree,
         "random_survival_forest": _forest,
@@ -409,6 +417,7 @@ CASES = [
     "wiener_process",
     "gamma_process",
     "destructive",
+    "joint_model",
     "copula",
     "survival_tree",
     "random_survival_forest",

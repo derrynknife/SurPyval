@@ -44,6 +44,16 @@ model object:
      - :class:`~surpyval.degradation.destructive.DestructiveDegradationModel`
      - each unit can be measured only once
 
+**Threshold or hazard?** Every model on this page ends a unit's life when
+its degradation crosses a threshold. When the measurement instead *raises
+the risk* of a failure that can happen at any level -- a pump that fails
+more often the more it vibrates, most failures happening below any
+"alarm" level -- a threshold model cannot describe it, and fitted to such
+data it underpredicts the failures. Model the readings and the failures
+together with a joint model instead (:doc:`Joint Modelling with
+SurPyval`), whose dynamic prediction is each unit's remaining life given
+its readings.
+
 The page covers, in order: the general-path model (fitting, predicting a new
 unit, the population of paths, the induced life, confidence bounds),
 accelerated tests for it in three steps of increasing detail — stress on the

@@ -1234,6 +1234,35 @@ PLANS["DestructiveDegradation"] = Plan(
     grid=_quantile_grid,
 )
 
+
+def _joint(case, truth, n):
+    """New units drawn from the fitted joint model by its own simulator,
+    half of them with the hazard covariate, read every 0.2 until each
+    fails or is censored at 1.6, as the fixture is."""
+
+    def draw(rng):
+        z = np.tile([0.0, 1.0], n // 2)
+        df = truth.simulate(n, 0.2, 1.6, Z=z, random_state=rng)
+        units = df.groupby("i").first()
+        return {
+            "x": units["x"].to_numpy(),
+            "c": units["c"].to_numpy(),
+            "Z": z[:, None],
+            "i": units.index.to_numpy(),
+            "marker_x": df["marker_x"].to_numpy(),
+            "marker_y": df["marker_y"].to_numpy(),
+            "marker_i": df["i"].to_numpy(),
+            # alpha is the baseline at the marker centre: the truth's
+            "marker_centre": truth.marker_centre,
+        }
+
+    return draw
+
+
+PLANS["JointModel"] = Plan(
+    _joint, 200, 40, params=lambda m: np.asarray(m.params)
+)
+
 for _name in (
     "IndependenceCopula",
     "ClaytonCopula",
