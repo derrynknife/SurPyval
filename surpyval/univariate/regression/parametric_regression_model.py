@@ -38,6 +38,7 @@ from ._kinds import (
     PROPORTIONAL_HAZARD,
     PROPORTIONAL_ODDS,
 )
+from ._partial_effects import PartialEffectsMixin
 from ._prediction import ConditionalSurvivalMixin, quantiles_by_inversion
 from ._tvc_evaluation import TVCEvaluationMixin
 from .regression_data import (
@@ -84,6 +85,7 @@ _SERIALISABLE_REG_NAMES = {
 
 class ParametricRegressionModel(
     ConditionalSurvivalMixin,
+    PartialEffectsMixin,
     TVCEvaluationMixin,
     InferenceMixin,
     ConcordanceMixin,
@@ -1833,6 +1835,25 @@ class ParametricRegressionModel(
             k for k, _ in sorted(phi_map.items(), key=lambda kv: kv[1])
         ]
         return dist_names + phi_names
+
+    # -- plot_partial_effects (PartialEffectsMixin) ------------------------
+
+    def _partial_effects_width(self) -> int:
+        return self._n_covariates()
+
+    def _partial_effects_rows(
+        self,
+    ) -> "tuple[npt.NDArray, npt.NDArray] | str":
+        data = getattr(self, "data", None)
+        if data is None or getattr(data, "Z", None) is None:
+            return "the model does not hold the data it was fitted to"
+        return np.asarray(data.Z, dtype=float), np.asarray(data.n, float)
+
+    def _partial_effects_times(self) -> "npt.NDArray | None":
+        data = getattr(self, "data", None)
+        if data is None:
+            return None
+        return np.asarray(data.x, dtype=float).ravel()
 
     def plot(
         self,

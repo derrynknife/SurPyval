@@ -645,7 +645,9 @@ then:
   [[lower, upper, state]]``) and a state already reached at the first look
   (``left_censored_states``).
 
-``markers`` (repeated measurements, #891) are reserved for the joint models.
+``markers`` (repeated measurements, #891) are reserved for joint models of
+histories; a lifetime's record, ``ItemLifetime``, takes them now (see
+:doc:`Joint Models`).
 
 A log held in a DataFrame, one row per failure, is read by
 ``EventHistoryData.from_dataframe``: the item and age columns, the type of

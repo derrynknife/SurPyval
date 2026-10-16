@@ -21,6 +21,7 @@ LIFETIME_PARTS = {
     "event_types": ("event_type",),
     "time_varying_covariates": ("time_varying_covariates",),
     "truncation": ("left_truncation", "right_truncation"),
+    "markers": ("markers",),
     "attributes": ("attributes",),
 }
 HISTORY_PARTS = {
@@ -43,7 +44,35 @@ HISTORY_PARTS = {
 
 
 def _rebuild(record: Any, fields: dict) -> Any:
+    if fields.get("markers"):
+        fields["markers"] = _readings_inside(fields)
     return type(record)(record.id, **fields)
+
+
+_OUTCOMES = (
+    "observed",
+    "right_censored",
+    "left_censored",
+    "interval_censored",
+)
+
+
+def _readings_inside(fields: dict) -> "dict | None":
+    """A lifetime's marker readings that are inside the observation its
+    ``fields`` give: a reshape that moves its window (``censor_at``,
+    ``enter_at``, ``for_event_type``) keeps the readings taken inside the
+    new one, as what was seen there, and drops the rest."""
+    outcome = next(name for name in _OUTCOMES if name in fields)
+    value = fields[outcome]
+    end = float(value[1]) if outcome == "interval_censored" else float(value)
+    start = fields.get("left_truncation")
+    start = 0.0 if start is None else float(start)
+    kept = {
+        age: reading
+        for age, reading in fields["markers"].items()
+        if start <= age <= end
+    }
+    return kept or None
 
 
 def _is_history(record: Any) -> bool:
@@ -638,8 +667,13 @@ class ReshapeMixin(ReadOnlyArrays):
 
     @property
     def _on_arrays(self) -> bool:
-        """Whether the reshapes work on the arrays (lifetime data)."""
-        return self._PARTS is LIFETIME_PARTS
+        """Whether the reshapes work on the arrays: lifetime data without
+        marker readings (which a reshape that moves an item's window
+        trims to the new window, record by record)."""
+        return (
+            self._PARTS is LIFETIME_PARTS
+            and getattr(self, "markers", None) is None
+        )
 
     def _event_types(self) -> set:
         e = getattr(self, "e", None)
@@ -651,10 +685,11 @@ class ReshapeMixin(ReadOnlyArrays):
         """
         The data without some of what it holds, to fit a model that does
         not take it: any of ``"covariates"``, ``"event_types"``,
-        ``"time_varying_covariates"``, ``"truncation"`` (and ``"states"``
-        for event history data), as separate arguments or a list. A plain
-        ``Weibull.fit`` of data built with covariates and failure modes,
-        say, is ``Weibull.fit(data.without("covariates", "event_types"))``.
+        ``"time_varying_covariates"``, ``"truncation"`` (and ``"markers"``
+        for lifetime data, ``"states"`` for event history data), as
+        separate arguments or a list. A plain ``Weibull.fit`` of data built
+        with covariates and failure modes, say, is
+        ``Weibull.fit(data.without("covariates", "event_types"))``.
         """
         if len(parts) == 1 and isinstance(parts[0], (list, tuple, set)):
             parts = tuple(parts[0])
@@ -1182,7 +1217,8 @@ class ReshapeMixin(ReadOnlyArrays):
         after ``age`` is no longer seen. A failure found between
         inspections either side of ``age`` becomes right censored at the
         last good inspection, since it may have come after ``age``; an item
-        that came under observation at or after ``age`` is left out.
+        that came under observation at or after ``age`` is left out. A
+        lifetime keeps the marker readings taken up to its new end.
 
         ``age`` is one age for every item, in the data's time unit;
         ``{id: age}``, a cut-off per item (the items it leaves out are
@@ -1222,7 +1258,8 @@ class ReshapeMixin(ReadOnlyArrays):
         come before it, so its item is left out. ``age`` is one age for
         every item, ``{id: age}``, an entry per item (the items it leaves
         out are kept as they are), or a function of each item's record
-        giving its entry.
+        giving its entry. A lifetime keeps the marker readings taken from
+        ``age`` on.
 
         A history goes on after its failures, so where ``age`` falls
         between two inspections that count failures, or a change of state,

@@ -236,6 +236,40 @@ Unreleased
   and ``ExactEventTime`` have no distribution to test. ``diagnose()`` takes
   ``n_boot`` and ``random_state`` on every model (families that do not
   resample ignore them).
+- Joint models of a marker and a lifetime (#891). An ``ItemLifetime``
+  takes ``markers={age: value}``, repeated readings of one measurement
+  (vibration, wear, a biomarker), each inside the item's observation
+  (refused otherwise, naming the item); ``update_markers(age, value)``
+  adds one. ``SurpyvalData`` keeps them as ``data.markers`` through
+  ``from_items``/``to_items``, slicing, ``summary()``, its repr, JSON and
+  every reshape (``censor_at`` and ``enter_at`` keep the readings inside
+  the new window, ``without("markers")`` drops them), and every other fit
+  refuses data that holds them, naming ``data.without("markers")``.
+  ``JointPH(Weibull, path_model, varying=...)`` fits the joint model:
+  each item's marker follows a degradation path model (``LinearPath`` by
+  default, which ``WeibullJointPH`` is; ``QuadraticPath``,
+  ``ExponentialPath``, ... or a ``PathModel`` of one's own) with the
+  parameters named in ``varying`` (default all, at most three) varying
+  between items, multivariate normal (each on its own scale, or a positive
+  one on a log scale with ``LinkedPathModel(path, {"b": "log"})``, its
+  names then ``log(b)``, ``sd_log(b)``, ...), and the rest common, plus
+  noise;
+  its hazard is Weibull PH in the path's current value; covariates shift
+  every path parameter's mean and enter the hazard; by maximum likelihood
+  with adaptive Gauss-Hermite quadrature; failures, right censoring and
+  left truncation; a covariate the data cannot determine is aliased.
+  ``fit(data)`` (also arrays with ``markers=[...]``, and ``fit_from_df``
+  with a ``markers_col``) returns a ``JointModel``, its parameters named
+  by the parts (the path's own ``a``, ``b``, ...; ``a_<cov>``; ``sd_a``,
+  ``corr_a_b``; ``sd_noise``; ``alpha``, ``beta``, ``<cov>``;
+  ``marker_effect``), with ``covariance()``, ``standard_errors()``,
+  ``neg_ll()``, ``aic()``, ``bic()``, ``summary()`` and
+  ``to_dict``/``from_dict``; ``marker_reference=`` chooses the marker
+  value at which ``alpha`` is reported (default the mean reading). It
+  predicts for one item given its readings so far: ``sf(x, Z,
+  markers=..., given=...)``, ``ff`` and ``cb`` (delta-method bounds), or
+  ``sf(x, item)`` from an item record, the same prediction; with no
+  readings and no ``given``, a new item's. See :doc:`Joint Models`.
 - The data utilities live on ``SurpyvalData``.
   ``SurpyvalData.from_observations(observed=..., right_censored=...,
   left_censored=..., interval_censored=..., left_truncation=...,
@@ -583,6 +617,31 @@ Unreleased
     lifelines' ``sample_size_necessary_under_cph`` and
     ``power_under_cph``).
 
+- Partial-effects plots (#876): ``model.plot_partial_effects(covariate,
+  values)`` draws a regression's survival curve (``on="ff"`` or ``"Hf"``
+  for the others) at each of ``values`` of one covariate, the other
+  covariates held at reference values, and returns the axes, each curve
+  labelled ``"covariate = value"``. For the Cox model and the PH, AFT,
+  PO, AH and accelerated life families. A covariate not plotted is held
+  at its count-weighted mean over the fitted rows (the ``center`` of a
+  ``center=True`` fit), or, for a categorical variable of a formula, at
+  its reference level; ``reference={name: value}`` sets any of them. A
+  formula's covariate is a variable of the formula (``"load"`` for
+  ``np.log(load)``, ``"site"`` for ``C(site)``, plotted by its levels),
+  and each row goes through the formula, interactions included; a term is
+  refused, naming its variables, and so is a covariate whose reference
+  the model cannot supply (one entering only transformed or in an
+  interaction, a categorical variable with no level coded as zeros, a
+  model restored without its data, a time-varying-covariate fit), naming
+  ``reference=``. ``plot_bounds=True`` draws the model's ``cb`` as bands
+  at ``alpha_ci`` (the parametric families; the Cox model has no ``cb``
+  and refuses it); ``x=`` sets the times, by default spanning the data.
+  The competing-risks regressions (``CompetingRisksProportionalHazards``
+  and the Fine-Gray model) draw the cumulative incidence of ``event=``,
+  without bands, and need ``reference`` for every numeric covariate,
+  since they do not keep the covariates they were fitted to. See
+  "Partial-effects plots" in :doc:`Regression Modelling with SurPyval`.
+
 **Changed**
 
 - A dataset's ``repr`` is its size and a table of its first rows (ids,
@@ -758,6 +817,11 @@ Unreleased
   ``CauseSpecificMCF`` given covariates as well as event types dropped the
   covariates; ``ProportionalIntensityHPP`` / ``NHPP`` given event types
   and no covariates failed with a raw ``AttributeError``.
+- ``LinkedPathModel``'s ``path``, ``inv_path`` and ``jacobian`` take an
+  array for each parameter, broadcasting with the ages, as the built-in
+  path models do (they applied the links along the wrong axis, and
+  failed); and it pickles (it held its link functions as lambdas).
+
 - **Survival given an age needs the covariate from that age only** under
   proportional hazards and odds, additive hazards and Cox (#962). There
   ``S(x | g)`` depends on the covariate from ``g`` on, the part before it

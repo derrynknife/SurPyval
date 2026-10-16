@@ -94,6 +94,20 @@ def rebuilt(
         )
     out.ids = ids
     out.attributes = attributes
+    markers = getattr(data, "markers", None)
+    if markers is not None:
+        # Keyed by id, else by row (numbered afresh); a reshape that
+        # moves an item's window goes through the records, which trim
+        # the readings to it
+        if ids is not None:
+            out.markers = {i: markers[i] for i in ids}
+        else:
+            old_rows = (
+                np.flatnonzero(keep) if keep is not None else np.arange(len(x))
+            )
+            out.markers = {
+                new: markers[int(old)] for new, old in enumerate(old_rows)
+            }
     if time_varying is not None:
         if ids is not None:
             out.time_varying_covariates = {i: time_varying[i] for i in ids}

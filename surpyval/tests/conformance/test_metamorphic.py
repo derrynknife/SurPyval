@@ -29,6 +29,7 @@ from surpyval.tests.conformance.checks import (
     expanded,
     permuted,
     rescaled,
+    rescaled_case,
 )
 from surpyval.tests.conformance.leaks import quiet
 from surpyval.tests.conformance.registry import (
@@ -49,7 +50,7 @@ K = 7.3  # an awkward unit change, so it cannot hide in rounding
 def test_change_of_units(case):
     ref = predictions(case, fitted(case))
     model = refit(case, rescaled(case, case.data(), K))
-    got = predictions(case, model, x=case.x * K)
+    got = predictions(rescaled_case(case, K), model, x=case.x * K)
     compare(case, got, ref, scale=K)
 
 

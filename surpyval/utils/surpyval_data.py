@@ -92,11 +92,14 @@ class SurpyvalData(ReshapeMixin):
     """
 
     # Attached by ``from_items``: each row's item id, the event type of
-    # each failure (None for a suspension), and each item's time-varying
-    # covariates (``{item: StepSchedule or CovariatePath}``).
+    # each failure (None for a suspension), each item's time-varying
+    # covariates (``{item: StepSchedule or CovariatePath}``) and each
+    # item's marker readings (``{item: {age: value}}``, ``{}`` for an item
+    # with none; #891).
     ids: "list | None" = None
     e: "np.ndarray | None" = None
     time_varying_covariates: "dict | None" = None
+    markers: "dict | None" = None
     # The name of each column of Z, where they have names: given as
     # ``covariate_names``, the columns of a DataFrame ``Z``, or the items'
     # ``covariates={name: value}``. They name a fitted model's
@@ -941,6 +944,9 @@ class SurpyvalData(ReshapeMixin):
         needed for every failure. The rows stay in the order of the items.
         The data's ``unit`` is the records' (which must agree), or
         ``unit=`` where they have none.
+        Items' marker readings (``markers``, #891) are kept as
+        ``data.markers``, ``{id: {age: value}}`` (``{}`` for an item with
+        none), for the joint models.
 
         Examples
         --------
@@ -1061,6 +1067,8 @@ class SurpyvalData(ReshapeMixin):
             data.time_varying_covariates = {
                 i.id: i.time_varying_covariates for i in items
             }
+        if any(i.markers is not None for i in items):
+            data.markers = {i.id: i.markers or {} for i in items}
         return data
 
     def to_items(self) -> list:
@@ -1176,18 +1184,28 @@ class SurpyvalData(ReshapeMixin):
                 if self.time_varying_covariates is None
                 else self.time_varying_covariates[item]
             ),
+            markers=None if self.markers is None else self.markers[item],
             attributes=(
                 None if self.attributes is None else self.attributes[k]
             ),
             unit=self.unit,
         )
 
+    def _markers_by_row(self) -> "list | None":
+        """Each row's marker readings, ``{age: value}`` (``{}`` for an item
+        with none), in the order of the rows; None where the data has
+        none."""
+        if self.markers is None:
+            return None
+        keys = self.ids if self.ids is not None else range(len(self.x))
+        return [dict(self.markers[key]) for key in keys]
+
     def summary(self) -> str:
         """
         A short description of the data: its items (a row counted ``n``
         is ``n`` items) and rows, their outcomes, and what else it holds
-        (truncation, event types, covariates, time-varying covariates),
-        each counted in items.
+        (truncation, event types, covariates, time-varying covariates,
+        markers, attributes), each counted in items.
 
         Examples
         --------
@@ -1435,6 +1453,11 @@ class SurpyvalData(ReshapeMixin):
             out.time_varying_covariates = {
                 i: self.time_varying_covariates[i] for i in kept
             }
+        by_row = self._markers_by_row()
+        if by_row is not None:
+            # By id, else by the new row numbers
+            keys = out.ids if out.ids is not None else range(len(rows))
+            out.markers = {k: by_row[r] for k, r in zip(keys, rows)}
         return out
 
     def __len__(self) -> int:
@@ -1508,6 +1531,13 @@ class SurpyvalData(ReshapeMixin):
         unit = getattr(self, "unit", None)
         if unit is not None:
             data["unit"] = unit
+        by_row = self._markers_by_row()
+        if by_row is not None:
+            # One list of [age, value] pairs per row (JSON keys are text)
+            data["markers"] = [
+                [[age, value] for age, value in readings.items()]
+                for readings in by_row
+            ]
         # Strict JSON, as for the models: the -inf/inf truncation bounds
         # (and any other non-finite value) are written as null with a
         # "non_finite" record of what each stood for (see
@@ -1585,6 +1615,12 @@ class SurpyvalData(ReshapeMixin):
             }
         if data.get("unit") is not None:
             out.unit = data["unit"]
+        if "markers" in data:
+            keys = out.ids if out.ids is not None else range(len(out.x))
+            out.markers = {
+                key: {float(age): float(value) for age, value in pairs}
+                for key, pairs in zip(keys, data["markers"])
+            }
         return out
 
     def to_json(self, filepath: str | Path | None = None) -> str | None:
@@ -1858,7 +1894,9 @@ def accepts_surpyval_data(method: F) -> F:
     arrays themselves. Data with step time-varying covariates (from
     ``from_items``) is fitted by the model's ``fit_tvc``. A data's
     censoring, counts, truncation, covariates or event types that the fit
-    has no argument for are refused, not dropped."""
+    has no argument for are refused, not dropped; so are its marker
+    readings, which a fit takes only where it has a ``markers`` argument
+    (one ``{age: value}`` per row, the joint models)."""
     signature = inspect.signature(method)
     params = list(signature.parameters)
     names = set(params)
@@ -1871,19 +1909,14 @@ def accepts_surpyval_data(method: F) -> F:
         data = bound.arguments.get("x")
         if not isinstance(data, SurpyvalData):
             return method(*args, **kwargs)
-        given = [
-            name
-            for name in _DATA_ARGUMENTS + ("Z", "e")
-            if bound.arguments.get(name) is not None
-            and not (name == "Z" and data.Z is None)
-            and not (name == "e" and data.e is None)
-        ]
+        given = _given_beside_data(bound.arguments, data)
         if given:
             raise TypeError(
                 "x is a SurpyvalData, which holds the data: leave out "
                 + ", ".join(repr(g) for g in given)
                 + " (or pass arrays rather than a SurpyvalData)."
             )
+        markers = _markers_taken(data, names)
         if data.time_varying_covariates is not None:
             if data.e is not None and "e" not in names:
                 raise ValueError(
@@ -1928,7 +1961,7 @@ def accepts_surpyval_data(method: F) -> F:
                     f"This fit needs {what}, {name}, and the SurpyvalData "
                     f"holds none: build it with {how}."
                 )
-        filled = {"x": data.x}
+        filled: dict[str, Any] = {"x": data.x}
         lost = []
         if "c" in names:
             filled["c"] = data.c
@@ -1964,6 +1997,7 @@ def accepts_surpyval_data(method: F) -> F:
                 lost.append("event types")
         if data.time_varying_covariates is not None:
             lost.append("time-varying covariates")
+        filled.update(markers)
         if lost:
             raise ValueError(lost_message(lost, "e" in names))
         bound.arguments.update(filled)
@@ -2038,6 +2072,38 @@ def lost_message(lost: list, takes_event_types: bool) -> str:
     return message.replace(". a regression", ". A regression")
 
 
+def _given_beside_data(arguments: dict, data: SurpyvalData) -> list:
+    """The data arguments given alongside a SurpyvalData ``x``, which holds
+    them: ``Z``, ``e`` and ``markers`` count only where the data has them
+    (``fit(data, Z=None)`` is fine)."""
+    held = {"Z": data.Z, "e": data.e, "markers": data.markers}
+    return [
+        name
+        for name in _DATA_ARGUMENTS + ("Z", "e", "markers")
+        if arguments.get(name) is not None
+        and not (name in held and held[name] is None)
+    ]
+
+
+def _markers_taken(data: SurpyvalData, names: set) -> dict:
+    """The data's marker readings as a fit's ``markers`` argument (one
+    ``{age: value}`` per row), ``{}`` where it has none; refused for a fit
+    that takes none."""
+    if data.markers is None:
+        return {}
+    if "markers" not in names:
+        raise ValueError(_NO_MARKERS)
+    return {"markers": data._markers_by_row()}
+
+
+# The refusal of marker readings by a fit that does not take them (#891).
+_NO_MARKERS = (
+    "This fit takes no markers, which the SurpyvalData holds; use "
+    'data.without("markers") (the joint models, such as WeibullJointPH, '
+    "fit them)."
+)
+
+
 def _not_taken_yet(data: SurpyvalData) -> list:
     """What a SurpyvalData from ``from_items`` holds that ``fit(data)``
     does not take yet: fitting without it would be another model. (Its
@@ -2059,6 +2125,8 @@ def refuses_what_fit_cannot_take(method: F) -> F:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         data = kwargs.get("surv_data", args[1] if len(args) > 1 else None)
         if isinstance(data, SurpyvalData):
+            if data.markers is not None:
+                raise ValueError(_NO_MARKERS)
             missing = _not_taken_yet(data)
             if missing:
                 raise ValueError(lost_message(missing, False))
@@ -2223,7 +2291,9 @@ def _kind_event_types(name: str, value: Any, k: int) -> np.ndarray:
 
 
 # Arguments a fit takes its data in, or names the fitter itself.
-_NOT_OPTIONS = frozenset(_DATA_ARGUMENTS + ("x", "Z", "e", "self", "cls"))
+_NOT_OPTIONS = frozenset(
+    _DATA_ARGUMENTS + ("x", "Z", "e", "markers", "self", "cls")
+)
 
 
 def _options(

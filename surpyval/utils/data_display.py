@@ -71,6 +71,13 @@ def columns_of(data: Any, shown: int, recurrent: bool) -> dict:
         ]
         for j, name in enumerate(names):
             columns[name] = [time_text(v) for v in Z[:shown, j]]
+    markers = getattr(data, "markers", None)
+    if markers is not None and not recurrent:
+        keys = data.ids if data.ids is not None else range(len(data.x))
+        columns["markers"] = [
+            plural(len(markers.get(key, {})), "reading")
+            for key in list(keys)[:shown]
+        ]
     attributes = getattr(data, "attributes", None)
     if attributes:
         if recurrent:
@@ -207,6 +214,14 @@ def held_lines(data: Any, recurrent: bool) -> list:
         lines.append(
             "  time-varying covariates: "
             + ", ".join(f"{v} {k}" for k, v in sorted(kinds.items()))
+        )
+    markers = getattr(data, "markers", None)
+    if markers is not None:
+        readings = sum(len(m) for m in markers.values())
+        read = sum(1 for m in markers.values() if m)
+        lines.append(
+            f"  markers: {plural(readings, 'reading')} on "
+            f"{plural(read, 'item')}"
         )
     states = getattr(data, "states", None)
     if states is not None:
