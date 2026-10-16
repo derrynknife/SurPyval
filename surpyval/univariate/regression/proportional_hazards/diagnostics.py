@@ -605,3 +605,299 @@ def check_ph(
         "per_covariate": per_cov,
         "transform": transform,
     }
+
+
+# ---------------------------------------------------------------------------
+# Score tests at the fit, for ``diagnose()`` (#868)
+# ---------------------------------------------------------------------------
+# The proportional-hazards test of R's ``survival::cox.zph`` since version
+# 3.0, and the score test of an added covariate (the functional-form check
+# of the Cox family in ``surpyval.diagnostics.cox``). Both need, at each
+# distinct event time, the risk-set variance of the covariates summed over
+# that time's deaths: the time's contribution to the information matrix.
+
+
+def _risk_set_variances(
+    data: dict, beta: np.ndarray, tie_method: str = "breslow"
+) -> tuple:
+    """Per distinct event time ``k``: ``W[k]``, the ``p x p`` contribution
+    of the time's deaths to the observed information -- the n-weighted
+    risk-set variance of ``Z`` times the deaths (Breslow), or its sum over
+    the ``m`` Efron pseudo-risk-sets of a tie. ``W.sum(axis=0)`` is the
+    information of the partial likelihood at ``beta``.
+
+    Returns ``(event_times, W)``, with the risk sets as
+    :func:`_risk_set_means` builds them (delayed entry, count weights).
+    """
+    x, c, n, tl = data["x"], data["c"], data["n"], data["tl"]
+    Z = np.asarray(data["Z"], dtype=float)
+    p = Z.shape[1]
+    w = n * np.exp(Z @ beta)
+    efron = str(tie_method).lower() == "efron"
+    event_times = np.unique(x[c == 0])
+    K = event_times.size
+    ZZ = (Z[:, :, None] * Z[:, None, :]).reshape(Z.shape[0], p * p)
+    exit_k = np.searchsorted(event_times, x, side="right")
+    entry_k = np.searchsorted(event_times, tl, side="right")
+
+    def at_risk(values: np.ndarray) -> np.ndarray:
+        # As in _risk_set_means: those still in (x >= tau) less those
+        # not yet entered (tl >= tau), by suffix sums over the buckets.
+        def suffix(bucket: np.ndarray) -> np.ndarray:
+            out = _bucket_sums(bucket, values, K + 1)
+            return out[::-1].cumsum(axis=0)[::-1][1:]
+
+        return suffix(exit_k) - suffix(entry_k)
+
+    S0 = at_risk(w)
+    S1 = at_risk(w[:, None] * Z)
+    S2 = at_risk(w[:, None] * ZZ).reshape(K, p, p)
+    is_event = c == 0
+    event_k = np.searchsorted(event_times, x[is_event])
+    d = _bucket_sums(event_k, n[is_event], K)
+    mean = S1 / S0[:, None]
+    W = d[:, None, None] * (
+        S2 / S0[:, None, None] - mean[:, :, None] * mean[:, None, :]
+    )
+    if efron:
+        S0D = _bucket_sums(event_k, w[is_event], K)
+        S1D = _bucket_sums(event_k, (w[:, None] * Z)[is_event], K)
+        S2D = _bucket_sums(event_k, (w[:, None] * ZZ)[is_event], K)
+        S2D = S2D.reshape(K, p, p)
+        for k in np.flatnonzero(np.round(d) > 1):
+            m = int(round(d[k]))
+            fracs = np.arange(m) / m
+            s0 = S0[k] - fracs * S0D[k]
+            s1 = S1[k][None, :] - fracs[:, None] * S1D[k][None, :]
+            s2 = S2[k][None, :, :] - fracs[:, None, None] * S2D[k][None]
+            e = s1 / s0[:, None]
+            var = s2 / s0[:, None, None] - e[:, :, None] * e[:, None, :]
+            # Each pseudo-risk-set carries d/m of the deaths (one with
+            # unit counts), as in the Efron information.
+            W[k] = var.sum(axis=0) * (d[k] / m)
+    return event_times, W
+
+
+def _zph_times(data: dict, transform: str) -> np.ndarray:
+    """The transformed time of every row, as R's ``cox.zph`` (survival
+    3.0 and later) computes it: ``"km"`` is ``1 - S(t-)``, the
+    left-continuous Kaplan-Meier estimate from all the data (delayed entry
+    respected); ``"rank"`` the average rank of the row's time among *all*
+    the rows, event and censored, each counted ``n`` times; ``"identity"``
+    and ``"log"`` the time and its log. Only the event rows' values are
+    used, and only up to an additive constant.
+
+    These differ from :func:`_transform_times` (``check_ph``'s), whose
+    ``"km"`` is right-continuous and whose ``"rank"`` ranks the events
+    only, as lifelines does."""
+    from surpyval.utils import xcnt_to_xrd
+
+    x = np.asarray(data["x"], dtype=float)
+    n = np.asarray(data["n"], dtype=float)
+    c = np.asarray(data["c"], dtype=int)
+    if transform == "identity":
+        return x
+    if transform == "log":
+        events = x[c == 0]
+        if np.any(events <= 0):
+            raise ValueError(
+                "The 'log' transform needs positive event times; there is "
+                "an event at time {}. Use transform='km' (the default), "
+                "'rank' or 'identity'.".format(float(np.min(events)))
+            )
+        return np.log(np.where(x > 0, x, np.nan))
+    if transform == "rank":
+        uniq, inv = np.unique(x, return_inverse=True)
+        w_at = np.bincount(inv.ravel(), weights=n, minlength=uniq.size)
+        before = np.concatenate([[0.0], np.cumsum(w_at)[:-1]])
+        return (before + (w_at + 1.0) / 2.0)[inv.ravel()]
+    if transform == "km":
+        tl = np.asarray(data["tl"], dtype=float)
+        t_mat = np.column_stack([tl, np.full(x.shape[0], np.inf)])
+        xk, rk, dk = xcnt_to_xrd(x, c, n, t_mat)
+        with np.errstate(all="ignore"):
+            surv = np.cumprod(1.0 - dk / rk)
+        before = np.searchsorted(xk, x, side="left")  # the times < x
+        return 1.0 - np.concatenate([[1.0], surv])[before]
+    raise option_error("transform", transform, _TRANSFORMS)
+
+
+def _score_statistic(u: np.ndarray, info: np.ndarray) -> float:
+    """``u' info^{-1} u``; nan where ``info`` is singular."""
+    try:
+        return float(u @ np.linalg.solve(info, u))
+    except np.linalg.LinAlgError:
+        return float("nan")
+
+
+def zph_score_test(
+    model: "SemiParametricRegressionModel", transform: str = "km"
+) -> dict:
+    """
+    The proportional-hazards test of R's ``survival::cox.zph`` (version
+    3.0 and later): for each covariate, the score test of adding
+    ``Z_j * g(t)`` to the model, at the fitted coefficients and a zero
+    coefficient for the added term, and a ``GLOBAL`` score test of adding
+    all of them.
+
+    This is the efficient score test, with the full information matrix of
+    the enlarged model. :func:`check_ph` gives the older approximation
+    (Grambsch and Therneau's, used by R's ``cox.zph`` before version 3.0
+    and by lifelines), which puts the average covariate variance in place
+    of the variance at each event time; the two agree closely in large
+    samples. This one matches R's ``cox.zph`` today, and is the one
+    ``diagnose()`` reports.
+
+    Parameters
+    ----------
+    transform : {"km", "rank", "identity", "log"}
+        The function ``g`` of time, as R defines it: ``"km"`` is
+        ``1 - S(t-)`` and ``"rank"`` ranks every row's time, the censored
+        ones too (see :func:`_zph_times`).
+
+    Returns
+    -------
+    dict
+        As :func:`check_ph` returns: ``{"global": {"statistic", "df",
+        "p_value"}, "per_covariate": [...], "transform": transform}``.
+
+    Notes
+    -----
+    Under Efron ties the variances are those of the Efron pseudo-risk
+    sets; under any other tie method (``"breslow"``, ``"exact"``,
+    ``"kalbfleisch-prentice"``) they are Breslow's, as R uses for every
+    method but Efron's. ``g`` is centred on its mean over the events, as R
+    centres it, which matters only where the fit's score is not exactly 0
+    (the exact methods, whose likelihood is not Breslow's).
+
+    Examples
+    --------
+    >>> from surpyval import CoxPH
+    >>> from surpyval.datasets import load_rossi_static
+    >>> from surpyval.univariate.regression.proportional_hazards import (
+    ...     diagnostics,
+    ... )
+    >>> df = load_rossi_static()
+    >>> x, c = df["week"].values, 1 - df["arrest"].values
+    >>> model = CoxPH.fit(x, df[["fin", "age"]].values, c=c)
+    >>> res = diagnostics.zph_score_test(model, "km")
+    >>> round(res["global"]["statistic"], 3)
+    6.095
+    """
+    data = _require_cox(model)
+    check_option("transform", transform, _TRANSFORMS)
+    beta = np.asarray(model.beta, dtype=float)
+    p = beta.size
+    x, c, n = data["x"], data["c"], data["n"]
+    tie_method = getattr(model, "tie_method", "breslow")
+    event_rows = np.flatnonzero(c == 0)
+    w_events = n[event_rows]
+    g = _zph_times(data, transform)[event_rows]
+    g = g - np.average(g, weights=w_events)
+    sch = compute_residuals(model, "schoenfeld")
+    u2 = (w_events[:, None] * g[:, None] * sch).sum(axis=0)
+
+    event_times, W = _risk_set_variances(data, beta, tie_method)
+    # g is a function of time: the same at every death of a time.
+    g_k = np.zeros(event_times.size)
+    g_k[np.searchsorted(event_times, x[event_rows])] = g
+    i11 = W.sum(axis=0)
+    i12 = (g_k[:, None, None] * W).sum(axis=0)
+    i22 = (g_k[:, None, None] ** 2 * W).sum(axis=0)
+    info = np.block([[i11, i12], [i12.T, i22]])
+    zeros = np.zeros(p)
+
+    names = getattr(model, "feature_names", None)
+    per_cov = []
+    for j in range(p):
+        keep = list(range(p)) + [p + j]
+        stat = _score_statistic(
+            np.concatenate([zeros, u2[j : j + 1]]), info[np.ix_(keep, keep)]
+        )
+        entry = {
+            "statistic": stat,
+            "df": 1,
+            "p_value": float(chi2.sf(stat, df=1)),
+        }
+        if names is not None and j < len(names):
+            entry["covariate"] = names[j]
+        per_cov.append(entry)
+    global_stat = _score_statistic(np.concatenate([zeros, u2]), info)
+    return {
+        "global": {
+            "statistic": global_stat,
+            "df": p,
+            "p_value": float(chi2.sf(global_stat, df=p)),
+        },
+        "per_covariate": per_cov,
+        "transform": transform,
+    }
+
+
+def added_covariate_score_test(
+    model: "SemiParametricRegressionModel", extra: "npt.ArrayLike"
+) -> dict:
+    """
+    The score test of adding the columns ``extra`` to a fitted Cox model:
+    the score of their coefficients at 0, with the model's own at the
+    fit, against the information of the enlarged model there -- a
+    chi-squared test on as many degrees of freedom as ``extra`` has
+    columns. It is what R's ``coxph(..., init = c(coef(fit), 0),
+    iter.max = 0)$score`` reports, without a refit.
+
+    ``extra`` has one row per row of the data the model was fitted to, in
+    the order the model keeps them (``model._fit_data``, the input order
+    less any dropped rows). ``diagnose()`` uses it with a covariate's
+    square, a test of the linearity of its effect.
+
+    Returns
+    -------
+    dict
+        ``{"statistic", "df", "p_value"}``; the statistic is nan where the
+        enlarged information is singular (an added column that is a
+        combination of the model's own).
+
+    Examples
+    --------
+    >>> from surpyval import CoxPH
+    >>> from surpyval.datasets import load_rossi_static
+    >>> from surpyval.univariate.regression.proportional_hazards import (
+    ...     diagnostics,
+    ... )
+    >>> df = load_rossi_static()
+    >>> x, c = df["week"].values, 1 - df["arrest"].values
+    >>> model = CoxPH.fit(x, df[["fin", "age"]].values, c=c)
+    >>> res = diagnostics.added_covariate_score_test(model, df["age"] ** 2)
+    >>> round(res["statistic"], 3), res["df"]
+    (3.363, 1)
+    """
+    data = _require_cox(model)
+    Z = np.asarray(data["Z"], dtype=float)
+    extra = np.asarray(extra, dtype=float)
+    if extra.ndim == 1:
+        extra = extra[:, None]
+    if extra.ndim != 2 or extra.shape[0] != Z.shape[0]:
+        raise ValueError(
+            "'extra' must have one row per row the model was fitted to "
+            "({}); got shape {}.".format(Z.shape[0], extra.shape)
+        )
+    # Centred and scaled, which the test does not depend on (a linear
+    # change of a column is absorbed by the model's coefficients and the
+    # column's own), so that the information is well conditioned.
+    weights = np.asarray(data["n"], dtype=float)
+    extra = extra - np.average(extra, axis=0, weights=weights)
+    scale = np.sqrt(np.average(extra**2, axis=0, weights=weights))
+    extra = extra / np.where(scale > 0, scale, 1.0)
+    p, q = Z.shape[1], extra.shape[1]
+    beta = np.concatenate([np.asarray(model.beta, dtype=float), np.zeros(q)])
+    enlarged = dict(data, Z=np.column_stack([Z, extra]))
+    tie_method = getattr(model, "tie_method", "breslow")
+    x, c, n = data["x"], data["c"], data["n"]
+    event_times, Zbar = _risk_set_means(enlarged, beta, tie_method)[:2]
+    event_rows = np.flatnonzero(c == 0)
+    k = np.searchsorted(event_times, x[event_rows])
+    resid = extra[event_rows] - Zbar[k, p:]
+    u = np.concatenate([np.zeros(p), (n[event_rows][:, None] * resid).sum(0)])
+    info = _risk_set_variances(enlarged, beta, tie_method)[1].sum(axis=0)
+    stat = _score_statistic(u, info)
+    return {"statistic": stat, "df": q, "p_value": float(chi2.sf(stat, df=q))}
