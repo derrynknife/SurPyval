@@ -446,6 +446,11 @@ and 7 x 55, over the square root of the summed variances, 9 x 60² / 12 and
 7 x 50² / 12. A fitted model's ``trend_test()`` reads each item's entry from
 the ``tl`` it was fitted with.
 
+A trend test asks whether the rate changes gradually with age. Whether it
+changed at a known time -- a design change or a corrective action -- is
+the question of :func:`~surpyval.recurrent.intervention_test`, worked
+through in :doc:`Intervention Analysis with SurPyval`.
+
 .. jupyter-execute::
     :hide-code:
     :hide-output:

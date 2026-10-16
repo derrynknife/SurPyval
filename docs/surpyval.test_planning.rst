@@ -4,7 +4,7 @@ Test Planning
 Functions that plan reliability tests before they are run: demonstration
 tests (fixed-length and sequential), life tests sized for the precision of
 an estimate, accelerated life tests, and the sample size and power of a
-comparison of two groups. Import them from ``surpyval.test_planning``. Worked
+comparison of two groups, or of a failure rate before and after a change. Import them from ``surpyval.test_planning``. Worked
 examples are in :doc:`Test Planning with SurPyval`.
 
 .. automodule:: surpyval.test_planning
@@ -77,3 +77,15 @@ Comparing two groups
 .. autofunction:: surpyval.test_planning.logrank_sample_size
 
 .. autofunction:: surpyval.test_planning.logrank_power
+
+Comparing two failure rates
+---------------------------
+
+The power of the exact test of a change in a failure rate at an
+intervention, :func:`surpyval.recurrent.intervention_test`.
+
+.. autofunction:: surpyval.test_planning.rate_ratio_power
+
+.. autofunction:: surpyval.test_planning.rate_ratio_detectable
+
+.. autofunction:: surpyval.test_planning.rate_ratio_exposure

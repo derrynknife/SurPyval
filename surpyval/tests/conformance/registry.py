@@ -344,6 +344,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.StepValuedError": "an exception type",
     "surpyval.LogRankResult": _RESULT,
     "surpyval.recurrent.TrendTestResult": _RESULT,
+    "surpyval.recurrent.InterventionTestResult": _RESULT,
     "surpyval.recurrent.GoodnessOfFitResult": _RESULT,
     "surpyval.degradation.RULPrediction": _RESULT,
     "surpyval.degradation.ProcessRUL": _RESULT,
@@ -392,7 +393,7 @@ for _fn in (
     "survival_probability",
 ):
     OUT_OF_SCOPE[f"surpyval.{_fn}"] = _FUNCTION
-for _fn in ("laplace", "mil_hdbk_189c"):
+for _fn in ("laplace", "mil_hdbk_189c", "intervention_test"):
     OUT_OF_SCOPE[f"surpyval.recurrent.{_fn}"] = _FUNCTION
 for _fn in (
     "filliben",
@@ -439,6 +440,9 @@ for _fn in (
     "mtbf_demonstration_plan",
     "mtbf_pass_probability",
     "mtbf_test_time",
+    "rate_ratio_detectable",
+    "rate_ratio_exposure",
+    "rate_ratio_power",
     "sequential_demonstration_test",
     "sequential_mtbf_test",
 ):
