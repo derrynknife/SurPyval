@@ -236,12 +236,12 @@ def refuse_unknown_keywords(
     --------
     >>> from surpyval.utils.record_keywords import refuse_unknown_keywords
     >>> refuse_unknown_keywords(
-    ...     "ItemLifetime", {"tl": 2}, ["left_truncation"], {}
+    ...     "ItemLifetime", {"left_trunc": 2}, ["left_truncation"], {}
     ... )  # doctest: +NORMALIZE_WHITESPACE
     Traceback (most recent call last):
     ...
-    TypeError: ItemLifetime() got an unexpected keyword argument 'tl';
-    did you mean 'left_truncation'?
+    TypeError: ItemLifetime() got an unexpected keyword argument
+    'left_trunc'; did you mean 'left_truncation'?
     """
     if not unknown:
         return

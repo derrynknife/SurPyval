@@ -833,6 +833,12 @@ def _age(item: Any, name: str, value: Any) -> "float | None":
     """One finite age, or None."""
     if value is None:
         return None
+    if type(value) in (float, int):
+        # The common case, without the array machinery (#932)
+        age = float(value)
+        if not np.isfinite(age):
+            raise ValueError(f"Item {item!r}: '{name}' must be finite.")
+        return age
     _not_a_date(item, name, value)
     if np.ndim(value) != 0:
         raise ValueError(f"Item {item!r}: '{name}' must be one age.")
@@ -1170,6 +1176,10 @@ def missing_type(value: Any) -> bool:
     string (a blank cell)."""
     if isinstance(value, str):
         return value.strip() == ""
+    if value is None:
+        return True
+    if type(value) in (int, float):
+        return value != value
     from surpyval.utils.data_formats import is_missing_event
 
     return is_missing_event(value)

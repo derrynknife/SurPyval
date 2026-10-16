@@ -512,10 +512,109 @@ class ReadOnlyArrays:
             object.__setattr__(self, name, read_only(value))
 
 
+def cut_age(method: str, age: Any, data: Any) -> float:
+    """The ``age`` a cut-off (``censor_at``, ``enter_at``) is made at: one
+    finite number, in the data's time unit (#932). A date, a duration, text
+    or a per-item mapping is refused, saying what to give; so is an age at
+    or before 0 where the data's ages are measured from 0 (every time and
+    truncation bound at or above 0), which would leave nothing known of
+    any item."""
+    import datetime
+
+    if isinstance(age, dict):
+        raise ValueError(
+            f"{method} takes one age for every item; a cut-off per item is "
+            f"{method}({{id: age}}) (the items it leaves out are kept as "
+            "they are)."
+        )
+    if isinstance(age, (datetime.timedelta, np.timedelta64)):
+        raise ValueError(
+            f"{method} takes an age (a number, in the data's time unit), "
+            "not a duration: convert it, e.g. duration / "
+            "pd.Timedelta(hours=1) for hours."
+        )
+    if isinstance(age, (datetime.date, np.datetime64)) or type(
+        age
+    ).__name__ in ("Timestamp", "datetime"):
+        raise ValueError(
+            f"{method} takes an age (a number, in the data's time unit), "
+            "not a date: the same date is a different age for each item. "
+            "Convert it to each item's age (date - its start date) and "
+            f"give {method}({{id: age}})."
+        )
+    if isinstance(age, (str, bytes)) or np.ndim(age) != 0:
+        raise ValueError(
+            f"{method} takes one age (a number, in the data's time unit); "
+            f"got {age!r}."
+        )
+    try:
+        value = float(age)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"{method} takes one age (a number, in the data's time unit); "
+            f"got {age!r}."
+        )
+    if not np.isfinite(value):
+        raise ValueError(f"{method} takes a finite age; got {value!r}.")
+    if value <= 0 and _ages_from_zero(data):
+        raise ValueError(
+            f"{method}({value:g}): the data's ages are measured from 0 "
+            "(none is below it), so a cut-off at or before 0 is before any "
+            "item's observation, which would leave nothing. Give an age "
+            "above 0."
+        )
+    return value
+
+
+def _ages_from_zero(data: Any) -> bool:
+    """Whether every time and truncation bound of ``data`` is at or above
+    0: its ages are measured from 0, as a lifetime's are (a baseline
+    defined on the real line may put times below 0)."""
+    x = np.asarray(data.x, dtype=float)
+    tl = np.asarray(data.tl, dtype=float)
+    return bool((x >= 0).all() and (tl[np.isfinite(tl)] >= 0).all())
+
+
+def per_item_ages(method: str, ages: Any, data: Any) -> dict:
+    """``ages`` as ``{id: age}`` for a cut-off per item (#937): every id
+    in the data, every age a finite number."""
+    from surpyval.utils.item_history import item_id
+
+    ids = getattr(data, "ids", None)
+    if ids is None:
+        raise ValueError(
+            f"{method}({{id: age}}) needs item ids, and this data has none "
+            "(its rows are sorted and grouped): build it with from_items, "
+            "ids=, or from_observations(..., <kind>_ids=...)."
+        )
+    have = set(ids)
+    out = {}
+    for key, age in ages.items():
+        key = item_id(key)
+        if key not in have:
+            raise KeyError(f"No item {key!r} in the data.")
+        out[key] = cut_age(method, age, data)
+    return out
+
+
+def id_list(ids: Any, data: Any) -> list:
+    """``ids`` for ``select`` as a list of ids (#932): a str, a number
+    or an id of the data's is one id."""
+    from surpyval.utils.item_history import item_id
+
+    have = getattr(data, "ids", None)
+    if isinstance(ids, (str, bytes)) or np.ndim(ids) == 0:
+        return [item_id(ids)]
+    if isinstance(ids, tuple) and have is not None and ids in set(have):
+        return [ids]
+    return [item_id(i) for i in ids]
+
+
 class ReshapeMixin(ReadOnlyArrays):
     """The reshaping operations of a dataset (``SurpyvalData``,
     ``EventHistoryData``); each returns a new dataset, built again from
-    the reshaped item records."""
+    the reshaped item records, or, for lifetime data, from its arrays
+    (:mod:`surpyval.utils.lifetime_reshape`), which gives the same."""
 
     _PARTS: dict = {}
 
@@ -535,22 +634,33 @@ class ReshapeMixin(ReadOnlyArrays):
             raise ValueError("No items are left.")
         return self._from_records([r for r, _ in kept], [k for _, k in kept])
 
+    @property
+    def _on_arrays(self) -> bool:
+        """Whether the reshapes work on the arrays (lifetime data)."""
+        return self._PARTS is LIFETIME_PARTS
+
     def _event_types(self) -> set:
         e = getattr(self, "e", None)
         if e is None:
             raise ValueError("This data has no event types.")
         return {v for v in e if v is not None}
 
-    def without(self, *parts: str) -> Any:
+    def without(self, *parts: Any) -> Any:
         """
         The data without some of what it holds, to fit a model that does
         not take it: any of ``"covariates"``, ``"event_types"``,
         ``"time_varying_covariates"``, ``"truncation"`` (and ``"states"``
-        for event history data). A plain ``Weibull.fit`` of data built with
-        covariates and failure modes, say, is
-        ``Weibull.fit(data.without("covariates", "event_types"))``.
+        for event history data), as separate arguments or a list. A plain
+        ``Weibull.fit`` of data built with covariates and failure modes,
+        say, is ``Weibull.fit(data.without("covariates", "event_types"))``.
         """
+        if len(parts) == 1 and isinstance(parts[0], (list, tuple, set)):
+            parts = tuple(parts[0])
         check_parts(parts, self._PARTS)
+        if self._on_arrays:
+            from surpyval.utils import lifetime_reshape
+
+            return lifetime_reshape.without(self, parts)
         return self._map(lambda r: without(r, parts))
 
     def with_covariates(self, columns: Any) -> Any:
@@ -563,6 +673,11 @@ class ReshapeMixin(ReadOnlyArrays):
         columns = list(columns)
         if getattr(self, "Z", None) is None:
             raise ValueError("This data has no covariates.")
+        if not columns:
+            raise ValueError(
+                "with_covariates takes the columns to keep: give at least "
+                "one, or use without('covariates') for none."
+            )
         names = getattr(self, "covariate_names", None)
         unknown = [
             c
@@ -576,17 +691,22 @@ class ReshapeMixin(ReadOnlyArrays):
                 f"This data has no covariates {unknown!r}; its covariates "
                 f"are {list(names or [])!r}."
             )
+        if self._on_arrays:
+            from surpyval.utils import lifetime_reshape
+
+            return lifetime_reshape.with_covariates(self, columns)
         return self._map(lambda r: with_covariates(r, columns))
 
     def for_event_type(self, event_type: Any, masked: str = "censor") -> Any:
         """
-        The data of one failure mode, ``event_type``, as for a
-        cause-specific analysis: for a lifetime, a failure of another mode
-        becomes right censored at its age (at the last good inspection,
-        for one found between inspections; one known only to have happened
-        before an age is left out); for a history, the other modes'
-        failures are removed and its observation runs at least to the last
-        of them. The result has no event types.
+        The data of one failure mode, ``event_type`` (or of several taken
+        as one, given as a list or set), as for a cause-specific analysis:
+        for a lifetime, a failure of another mode becomes right censored
+        at its age (at the last good inspection, for one found between
+        inspections; one known only to have happened before an age is
+        left out); for a history, the other modes' failures are removed
+        and its observation runs at least to the last of them. The result
+        has no event types.
 
         Lifetimes lose their right truncation, with a warning: an item is
         in right-truncated data because its first failure, of any mode,
@@ -603,9 +723,19 @@ class ReshapeMixin(ReadOnlyArrays):
         overestimated if some were not); ``"refuse"`` refuses the data.
         """
         types = self._event_types()
-        if event_type not in types:
+        wanted = (
+            set(event_type)
+            if isinstance(event_type, (list, set, frozenset))
+            else {event_type}
+        )
+        if not wanted:
+            raise ValueError("for_event_type takes at least one event type.")
+        missing = [t for t in wanted if t not in types]
+        if missing:
             raise ValueError(
-                f"No failures of type {event_type!r}; the data's types are "
+                "No failures of type "
+                + ", ".join(repr(t) for t in sorted(missing, key=str))
+                + "; the data's types are "
                 + ", ".join(repr(t) for t in sorted(types, key=str))
                 + "."
             )
@@ -614,6 +744,12 @@ class ReshapeMixin(ReadOnlyArrays):
             raise ValueError(
                 f"masked must be one of {options!r}; got {masked!r}."
             )
+        what = (
+            repr(event_type)
+            if len(wanted) == 1
+            else "one of "
+            + ", ".join(repr(t) for t in sorted(wanted, key=str))
+        )
         e, c = getattr(self, "e"), np.asarray(getattr(self, "c"))
         n = np.asarray(getattr(self, "n"))
         unrecorded = int(
@@ -622,7 +758,7 @@ class ReshapeMixin(ReadOnlyArrays):
         if unrecorded and masked == "refuse":
             raise ValueError(
                 f"{_failures(unrecorded)} no recorded event type (masked "
-                f"causes), which may or may not be of type {event_type!r}: "
+                f"causes), which may or may not be of type {what}: "
                 "relabel them (relabel_event_types({None: ...})), leave "
                 "their items out, or choose masked='censor' or 'count'."
             )
@@ -631,7 +767,7 @@ class ReshapeMixin(ReadOnlyArrays):
                 f"{unrecorded} failure{'' if unrecorded == 1 else 's'} of no "
                 "recorded event type (masked causes) "
                 f"{'is' if unrecorded == 1 else 'are'} taken as not of type "
-                f"{event_type!r}: its rate "
+                f"{what}: its rate "
                 "is underestimated if some of them were. masked='count' "
                 "takes them as of this type instead.",
                 MaskedCauseWarning,
@@ -647,6 +783,17 @@ class ReshapeMixin(ReadOnlyArrays):
                 UserWarning,
                 stacklevel=caller_stacklevel(),
             )
+        if self._on_arrays:
+            from surpyval.utils import lifetime_reshape
+
+            return lifetime_reshape.for_event_type(self, wanted, masked)
+        if len(wanted) > 1:
+            # Several modes as one: relabelled to one of them first
+            one = next(iter(wanted))
+            merged = self.relabel_event_types({t: one for t in wanted})
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                return merged._map(lambda r: for_event_type(r, one, masked))
         return self._map(lambda r: for_event_type(r, event_type, masked))
 
     def relabel_event_types(self, mapping: dict) -> Any:
@@ -666,21 +813,71 @@ class ReshapeMixin(ReadOnlyArrays):
                 + ", ".join(repr(t) for t in sorted(types, key=str))
                 + "."
             )
+        if self._on_arrays:
+            from surpyval.utils import lifetime_reshape
+
+            return lifetime_reshape.relabel(self, mapping)
         return self._map(lambda r: relabel(r, mapping))
 
     def select(self, ids: Any = None, where: "Callable | None" = None) -> Any:
         """
-        Some of the items: those with an id in ``ids``, and for which
+        Some of the items: those with an id in ``ids`` (one id, or a list
+        of them; the items stay in the data's order), and for which
         ``where(item)`` is true (``where`` is given each item's record, an
         ``ItemLifetime`` or an ``ItemHistory``):
         ``data.select(where=lambda item: item.covariates[0] == 1)``.
+        Selecting by id needs item ids (``from_items``, ``ids=``).
         """
+        if ids is None and where is None:
+            raise ValueError(
+                "select takes the ids to keep (ids=), a test of each item's "
+                "record (where=), or both."
+            )
+        have = getattr(self, "ids", None)
+        rows: "np.ndarray | None" = None
+        if ids is not None:
+            if have is None:
+                raise ValueError(
+                    "select(ids=...) needs item ids, and this data has none "
+                    "(its rows are sorted and grouped, so their numbers "
+                    "would not be stable): build it with from_items, "
+                    "ids=, or from_observations(..., <kind>_ids=...), or "
+                    "select by where=."
+                )
+            wanted = id_list(ids, self)
+            positions: dict = {}
+            for k, i in enumerate(have):
+                positions.setdefault(i, k)
+            missing = [i for i in wanted if i not in positions]
+            if missing:
+                raise KeyError(
+                    f"No item{'s' if len(missing) > 1 else ''} "
+                    + ", ".join(repr(i) for i in missing)
+                    + " in the data."
+                )
+            wanted_set = set(wanted)
+            rows = np.array(
+                [k for k, i in enumerate(have) if i in wanted_set], dtype=int
+            )
+        if where is None and rows is not None and self._on_arrays:
+            from surpyval.utils import lifetime_reshape
+
+            return lifetime_reshape.select(self, rows)
         records, counts = self._records()
-        kept = select(records, ids, where)
-        if not kept:
+        if rows is not None:
+            kept_rows = set(rows.tolist())
+            pairs = [
+                (r, k)
+                for j, (r, k) in enumerate(zip(records, counts))
+                if j in kept_rows
+            ]
+        else:
+            pairs = list(zip(records, counts))
+        if where is not None:
+            pairs = [(r, k) for r, k in pairs if where(r)]
+        if not pairs:
             raise ValueError("No items are left.")
-        index = {id(r): k for r, k in zip(records, counts)}
-        return self._from_records(kept, [index[id(r)] for r in kept])
+        return self._from_records([r for r, _ in pairs], [k for _, k in pairs])
 
     def censor_at(self, age: Any) -> Any:
         """
@@ -691,13 +888,27 @@ class ReshapeMixin(ReadOnlyArrays):
         last good inspection, since it may have come after ``age``; an item
         that came under observation at or after ``age`` is left out.
 
+        ``age`` is one age for every item, in the data's time unit, or
+        ``{id: age}``, a cut-off per item (the items it leaves out are kept
+        as they are): a study that ends on one date ends at a different
+        age for each item.
+
         A history's failures counted between two inspections, or a change
         of state between two, are known only as a whole: where ``age``
         falls between those inspections, the history is cut at the earlier
         one (and left out where that is before its first look).
         """
-        age = float(age)
-        return self._map(lambda r: censor_at(r, age))
+        if isinstance(age, dict):
+            cuts = per_item_ages("censor_at", age, self)
+            return self._map(
+                lambda r: censor_at(r, cuts[r.id]) if r.id in cuts else r
+            )
+        value = cut_age("censor_at", age, self)
+        if self._on_arrays:
+            from surpyval.utils import lifetime_reshape
+
+            return lifetime_reshape.censor_at(self, value)
+        return self._map(lambda r: censor_at(r, value))
 
     def enter_at(self, age: Any) -> Any:
         """
@@ -706,14 +917,20 @@ class ReshapeMixin(ReadOnlyArrays):
         history, in a known state -- stay in, with ``age`` as the start of
         their observation; a failure found between inspections either side
         of ``age``, or known only to have happened before a look, may have
-        come before it, so its item is left out.
+        come before it, so its item is left out. ``age`` is one age for
+        every item, or ``{id: age}``, an entry per item (the items it
+        leaves out are kept as they are).
 
         A history goes on after its failures, so where ``age`` falls
         between two inspections that count failures, or a change of state,
         or before a first look, its observation starts instead at the later
         inspection, from which it is known again.
         """
-        age = float(age)
+        if isinstance(age, dict):
+            cuts = per_item_ages("enter_at", age, self)
+        else:
+            value = cut_age("enter_at", age, self)
+            cuts = None
         if (
             self._PARTS is not LIFETIME_PARTS
             and np.isfinite(getattr(self, "tr")).any()
@@ -727,4 +944,12 @@ class ReshapeMixin(ReadOnlyArrays):
                 UserWarning,
                 stacklevel=caller_stacklevel(),
             )
-        return self._map(lambda r: enter_at(r, age))
+        if cuts is not None:
+            return self._map(
+                lambda r: enter_at(r, cuts[r.id]) if r.id in cuts else r
+            )
+        if self._on_arrays:
+            from surpyval.utils import lifetime_reshape
+
+            return lifetime_reshape.enter_at(self, value)
+        return self._map(lambda r: enter_at(r, value))

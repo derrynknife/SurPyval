@@ -79,6 +79,7 @@ class SurpyvalData(ReshapeMixin):
         handle: bool = True,
         e: ArrayLike | None = None,
         covariate_names: "list | None" = None,
+        ids: Any = None,
     ) -> None:
         """Initialize a SurpyvalData instance for survival analysis.
 
@@ -128,6 +129,11 @@ class SurpyvalData(ReshapeMixin):
             competing-risks fitters, which take it from the data; a
             suspension (``c == 1``) has none (None). Giving ``e`` turns
             ``group_and_sort`` off, as ``Z`` does.
+        ids : array-like, optional
+            Each row's item id (text or numbers, each once), as
+            ``from_items`` gives them: ``data.item(id)`` and
+            ``select(ids=...)`` then find the rows. Giving ``ids`` turns
+            ``group_and_sort`` off, as ``Z`` does.
         group_and_sort : bool, default=True
             Whether to group and sort the data. Set False when using covariates
             to maintain data order.
@@ -164,7 +170,7 @@ class SurpyvalData(ReshapeMixin):
         >>> data = SurpyvalData(x, t=t)
         """
 
-        if Z is not None or e is not None:
+        if Z is not None or e is not None or ids is not None:
             group_and_sort = False
 
         if handle:
@@ -193,6 +199,12 @@ class SurpyvalData(ReshapeMixin):
             self.covariate_names = _checked_names(covariate_names, self.Z)
         if e is not None:
             self.e = _event_type_array(e, self.c)
+        if ids is not None:
+            from surpyval.utils.item_history import check_item_ids
+
+            listed = _kind_ids("ids", ids, len(self.c))
+            check_item_ids(listed, "row (identical items are its count, n)")
+            self.ids = listed
 
     def add_covariates(self, Z: ArrayLike) -> None:
         """
