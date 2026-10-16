@@ -116,6 +116,21 @@ Unreleased
   notes that the independence of the causes cannot be tested.
   ``ParametricCompetingRisks`` still refuses, naming #874 (its checks wait
   for #875).
+- The univariate-distribution family of ``diagnose()`` (#875), for
+  ``Weibull.fit(...)`` and the other continuous distributions (offset,
+  ``lfp``, ``zi``, fixed parameters, truncation and any ``how``):
+  Anderson-Darling, Kolmogorov-Smirnov and Cramer-von Mises tests of the
+  Kaplan-Meier estimate of the fitted CDF, with parametric bootstrap
+  p-values (each resample drawn from the model, censored as the data were
+  and refitted the same way; ``diagnose(n_boot=200, random_state=None)``),
+  which agree with ``fitdistrplus::gofstat`` on complete data and with the
+  textbook critical values; the probability plot and a P-P plot; and an
+  AIC screen of the alternatives, with advice naming ``fit_best``, a
+  ``MixtureModel``, ``offset=True``, ``lfp=True`` or ``zi=True``.
+  Discrete distributions are refused for now, and event-probability models
+  and ``ExactEventTime`` have no distribution to test. ``diagnose()`` takes
+  ``n_boot`` and ``random_state`` on every model (families that do not
+  resample ignore them).
 - The data utilities live on ``SurpyvalData``.
   ``SurpyvalData.from_observations(observed=..., right_censored=...,
   left_censored=..., interval_censored=..., left_truncation=...,

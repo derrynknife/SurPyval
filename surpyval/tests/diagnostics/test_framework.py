@@ -344,7 +344,6 @@ REG = "surpyval.univariate.regression."
             {},
             874,
         ),
-        ("surpyval.univariate.parametric.Parametric", {}, 875),
         (REG + "BuckleyJamesModel", {}, 867),
     ],
 )

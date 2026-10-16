@@ -28,6 +28,7 @@ FAMILY_MODULES: tuple[str, ...] = (
     "surpyval.diagnostics.accelerated_life",
     "surpyval.diagnostics.recurrent",
     "surpyval.diagnostics.competing_risks",
+    "surpyval.diagnostics.univariate",
 )
 
 
@@ -269,11 +270,6 @@ PENDING: tuple[Pending, ...] = (
     ),
     Pending("frailty models", 872, _instance_of(_REG + "FrailtyModel")),
     Pending("frailty models", 872, _instance_of(_REG + "CoxFrailtyModel")),
-    Pending(
-        "univariate distributions",
-        875,
-        _instance_of("surpyval.univariate.parametric.Parametric"),
-    ),
 )
 
 

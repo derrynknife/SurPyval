@@ -1075,3 +1075,151 @@ residuals are also functions, in
 .. autofunction:: surpyval.univariate.competing_risks.regression.fine_gray_diagnostics.fine_gray_added_covariate_test
 
 .. autofunction:: surpyval.univariate.competing_risks.regression.fine_gray_diagnostics.fine_gray_martingale_residuals
+
+Univariate distributions
+------------------------
+
+A distribution fitted with ``Weibull.fit(...)`` (or any other continuous
+distribution, with an offset, ``lfp``, ``zi``, fixed parameters or
+truncation as fitted, by any ``how``) has ``diagnose()`` too. It asks two
+questions: does the distribution fit the data, and does another model the
+advice can name fit them better?
+
+Eighty units whose failures start only after time 50, fitted with a
+2-parameter Weibull:
+
+.. jupyter-execute::
+
+    import surpyval as surv
+
+    x = 50 + surv.Weibull.random(80, 20, 1.5, random_state=3)
+    model = surv.Weibull.fit(x)
+    d = model.diagnose(random_state=1)
+    d.table[['check', 'alternative', 'test', 'statistic', 'p', 'verdict']]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _gof = d.table[d.table['check'] == 'goodness_of_fit']
+    assert (_gof['verdict'] == 'fail').all(), d
+    _alt = d.table[d.table['check'] == 'alternatives']
+    _best = _alt.loc[_alt['statistic'].idxmax()]
+    assert _best['alternative'] == 'Weibull offset', d
+    assert _best['statistic'] > 10
+
+The three goodness-of-fit tests fail, and three alternatives have an AIC
+more than 2 below the Weibull's; the offset (3-parameter) Weibull most of
+all. The advice names each remedy, and says which fits best:
+
+.. jupyter-execute::
+
+    for advice in d.advice:
+        print('-', advice, '\n')
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert any('Weibull.fit(offset=)' in a.features and 'fits best' in a
+               for a in d.advice)
+
+The P-P plot shows what the tests measure, the Kaplan-Meier estimate of
+the fitted CDF at each time against the uniform; beside it are the
+refits' Anderson-Darling statistics, with the observed one, and the
+probability plot, whose points bend away from the line at the start:
+
+.. jupyter-execute::
+
+    fig = d.plot()
+
+Following the advice, the offset model fits, and nothing the report can
+name beats it:
+
+.. jupyter-execute::
+
+    offset = surv.Weibull.fit(x, offset=True)
+    print(offset.diagnose(n_boot=100, random_state=1))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert offset.diagnose(n_boot=100, random_state=1).ok
+    assert 45 < offset.gamma < 50
+
+The checks
+~~~~~~~~~~
+
+``goodness_of_fit``
+    The Anderson-Darling, Kolmogorov-Smirnov and Cramer-von Mises
+    statistics. Each unit's time is put through the fitted CDF,
+    conditioned on its truncation window,
+    :math:`u = (F(x) - F(t_l)) / (F(t_r) - F(t_l))`, which is uniform when
+    the model is right (and right-censored for a censored unit); the
+    statistics compare the Kaplan-Meier estimate :math:`F_n` of the
+    :math:`u` with the uniform up to the largest :math:`u`:
+    :math:`\sup |F_n(u) - u|`, :math:`N \int (F_n(u) - u)^2 du` and
+    :math:`N \int (F_n(u) - u)^2 / (u (1 - u)) du`. With complete,
+    untruncated data they are the classical statistics, and agree with R's
+    ``fitdistrplus::gofstat`` to 1e-9.
+
+    The parameters are estimated, and the data may be censored, so the
+    textbook tables do not apply: the p-values come from a parametric
+    bootstrap. Each of ``n_boot`` resamples (200 by default) draws a time
+    for every unit from the fitted model within its truncation window,
+    censors it as the data were censored -- a censored unit at its own
+    censoring time, a failed one at a time drawn from the Kaplan-Meier
+    estimate of the censoring distribution beyond its failure, Davison
+    and Hinkley's conditional bootstrap, which reproduces fixed-time and
+    random censoring -- refits the same model (distribution, ``how``,
+    offset, ``lfp``, ``zi``, fixed parameters) and computes its
+    statistics. The p-value is the share of refits at least as extreme,
+    :math:`(1 + k) / (1 + B)`. For complete data from a location-scale
+    family, whose null distribution does not depend on the parameters,
+    the bootstrap reproduces the tables: its 5% points are D'Agostino and
+    Stephens's, within Monte Carlo error, and the test is exact. With
+    censoring it is somewhat conservative in small samples: of 400
+    randomly censored exponential samples of 40, 5-9% had a p-value of at
+    most 0.1 (two runs). Left- and interval-censored
+    data have no such test (a resample would need the inspection times,
+    which the data do not record): those rows warn and say so.
+``probability_plot``
+    A plot only: ``model.plot()``, the failures' plotting positions
+    against the fitted line on the distribution's linearising axes.
+``alternatives``
+    An AIC screen: the best other distribution of ``fit_best``; a mixture
+    of two of the model's distribution (for a model without options, with
+    20 failures or more); the model with an offset; with a limited
+    failure population (when some units are right-censored); and a
+    zero-inflated model (when some units failed at time 0). A row warns
+    when the alternative's AIC is at least 2 below the model's, and never
+    fails; its ``statistic`` is the model's AIC less the alternative's.
+    Each warning is advice naming the fit: ``fit_best(...,
+    return_table=True)``, ``MixtureModel.fit(..., dist=..., m=2)``,
+    ``Weibull.fit(..., offset=True)``, ``lfp=True`` or ``zi=True``. A
+    failed test that no alternative explains is advised a look at the
+    probability plot, more mixture components or a non-parametric
+    estimate (``KaplanMeier.fit``, ``Turnbull.fit``).
+
+Seeds and run time
+~~~~~~~~~~~~~~~~~~
+
+``diagnose(n_boot=..., random_state=...)`` sets the bootstrap's size and
+seed (``None`` draws from numpy's global generator, as everywhere in
+SurPyval); the same seed gives the same report. A refit of a
+2-parameter distribution to 100 units takes a few hundredths of a second,
+so the default 200 refits take a few seconds; an offset, ``lfp`` or
+``zi`` model's refits are slower, and fewer refits (``n_boot=100``) are
+still a valid test, with p-values in steps of 1/101.
+
+``diagnose()`` refuses, saying what to do: a model built with
+``from_params`` or restored without its data, a fit with no finite
+maximum, a discrete distribution (not yet, #875), and the event-probability
+models (``Bernoulli``, ``FixedEventProbability``) and ``ExactEventTime``,
+which have no distribution of times to test. A ``MixtureModel`` is a
+model of its own, without ``diagnose()`` yet.
+
+.. autofunction:: surpyval.diagnostics.univariate.gof_statistics
+
+.. autofunction:: surpyval.diagnostics.univariate.bootstrap
