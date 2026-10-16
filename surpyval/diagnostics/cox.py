@@ -56,8 +56,8 @@ from surpyval.univariate.regression.proportional_hazards.diagnostics import (
     _require_cox,
     _zph_times,
     added_covariate_score_test,
+    check_ph,
     compute_residuals,
-    zph_score_test,
 )
 
 from .registry import AdviceRule, Check, Context, Family, Panel, register
@@ -102,7 +102,7 @@ def _source(name: str) -> str:
 
 def _zph(ctx: Context, transform: str) -> dict:
     return ctx.cached(
-        "zph_" + transform, lambda: zph_score_test(ctx.model, transform)
+        "zph_" + transform, lambda: check_ph(ctx.model, transform)
     )
 
 
@@ -500,10 +500,9 @@ def _clustered(ctx: Context) -> int:
 def _notes(ctx: Context) -> list[str]:
     notes = [
         "Proportional hazards: the score test of R's survival::cox.zph "
-        "(version 3.0 and later) on the km and rank scales of time; a "
-        "covariate fails if it fails on either. model.check_ph() gives the "
-        "older approximation (lifelines; R before 3.0), which can differ "
-        "in small samples.",
+        "(version 3.0 and later), as model.check_ph() computes it, on the "
+        "km and rank scales of time; a covariate fails if it fails on "
+        "either.",
         "Overall fit is a plot only (d.plot('overall_fit')): a Cox model's "
         "Cox-Snell residuals sum to its number of events by construction, "
         "so they have no useful test.",

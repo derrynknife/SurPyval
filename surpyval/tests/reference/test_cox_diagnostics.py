@@ -1,9 +1,10 @@
-"""The Cox model's ``diagnose()`` against stored R ``survival`` results
-(#868).
+"""The Cox model's ``check_ph()`` and ``diagnose()`` against stored R
+``survival`` results (#868).
 
-The proportional-hazards rows are R's ``cox.zph`` (survival 3.0 and
-later: the score test of adding ``Z * g(t)``, per covariate and GLOBAL)
-on the ``km`` and ``rank`` scales of time, under Efron and Breslow ties;
+``check_ph()`` and the proportional-hazards rows of ``diagnose()`` are
+R's ``cox.zph`` (survival 3.0 and later: the score test of adding
+``Z * g(t)``, per covariate and GLOBAL) on the ``km`` and ``rank``
+scales of time, under Efron and Breslow ties;
 the functional-form rows are the score test of adding a covariate's
 square, which R reports as ``coxph(..., init = c(coef(fit), 0),
 iter.max = 0)$score``. Three data sets: R's ``lung`` (a textbook fit
@@ -25,6 +26,7 @@ import surpyval as sp
 from surpyval.univariate.regression.proportional_hazards.diagnostics import (
     _zph_times,
     added_covariate_score_test,
+    check_ph,
     compute_residuals,
     zph_score_test,
 )
@@ -80,11 +82,11 @@ CASES = {
 
 @pytest.mark.parametrize("ref_id", sorted(CASES))
 @pytest.mark.parametrize("transform", ["km", "rank"])
-def test_zph_matches_cox_zph(ref_id, transform):
+def test_check_ph_matches_cox_zph(ref_id, transform):
     model, _, names = CASES[ref_id]()
     ref = values("r_survival", ref_id)
     assert ref["rows"] == names + ["GLOBAL"]
-    res = zph_score_test(model, transform)
+    res = check_ph(model, transform)
     rows = res["per_covariate"] + [res["global"]]
     assert_allclose(
         [r["statistic"] for r in rows], ref[transform + "_chisq"], **DERIVED
@@ -93,6 +95,28 @@ def test_zph_matches_cox_zph(ref_id, transform):
         [r["p_value"] for r in rows], ref[transform + "_p"], **DERIVED
     )
     assert [r["df"] for r in rows] == ref[transform + "_df"].tolist()
+
+
+@pytest.mark.parametrize("ref_id", sorted(CASES))
+@pytest.mark.parametrize("transform", ["km", "rank"])
+def test_the_model_method_and_diagnose_report_the_same_test(ref_id, transform):
+    # One implementation: the model's table, the module function (and its
+    # earlier name) and diagnose()'s rows are the same numbers.
+    model, _, names = CASES[ref_id]()
+    model.feature_names = names
+    ref = values("r_survival", ref_id)
+    table = model.check_ph(transform)
+    assert list(table.index) == names + ["GLOBAL"]
+    assert table["df"].tolist() == ref[transform + "_df"].tolist()
+    assert_allclose(table["statistic"], ref[transform + "_chisq"], **DERIVED)
+    assert_allclose(table["p"], ref[transform + "_p"], **DERIVED)
+    assert zph_score_test is check_ph
+    d = model.diagnose().table
+    ph = d[
+        (d["check"] == "proportional_hazards") & (d["transform"] == transform)
+    ]
+    np.testing.assert_array_equal(ph["statistic"], table["statistic"])
+    np.testing.assert_array_equal(ph["p"], table["p"])
 
 
 @pytest.mark.parametrize("ref_id", sorted(CASES))

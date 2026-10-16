@@ -186,11 +186,11 @@ The checks
     ``GLOBAL`` test on each. A covariate fails if it fails on either
     scale. These are the tests of R's ``survival::cox.zph`` (version 3.0
     and later) and agree with it to the precision of the fit, under
-    Efron and Breslow ties, delayed entry and time-varying covariates.
+    Efron and Breslow ties, delayed entry and time-varying covariates;
     :meth:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel.check_ph`
-    gives the older approximation (Grambsch and Therneau's, as R before
-    version 3.0 and lifelines compute it), whose statistics differ a
-    little in small samples.
+    gives the same test on one scale at a time. (lifelines, and R before
+    version 3.0, compute Grambsch and Therneau's approximation of it,
+    whose statistics differ a little in small samples.)
 ``functional_form``
     For each covariate with three or more distinct values, the score test
     of adding its square: whether it acts linearly on the log hazard (a
@@ -298,6 +298,6 @@ API
 .. automodule:: surpyval.diagnostics.registry
     :members: Family, Check, AdviceRule, Panel, PlotOptions, Context, register, diagnose
 
-.. autofunction:: surpyval.univariate.regression.proportional_hazards.diagnostics.zph_score_test
+.. autofunction:: surpyval.univariate.regression.proportional_hazards.diagnostics.check_ph
 
 .. autofunction:: surpyval.univariate.regression.proportional_hazards.diagnostics.added_covariate_score_test

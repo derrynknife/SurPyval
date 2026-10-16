@@ -11,6 +11,8 @@ References
 - Grambsch & Therneau (1994), "Proportional hazards tests and diagnostics
   based on weighted residuals", Biometrika 81(3).
 - Therneau & Grambsch (2000), *Modeling Survival Data*, ch. 4-6.
+- Therneau, ``survival`` 3.0 (2019): ``cox.zph`` as the score test of the
+  time-dependent term, which :func:`check_ph` computes.
 """
 
 from typing import TYPE_CHECKING
@@ -442,179 +444,14 @@ def robust_summary(
     return out
 
 
-def _transform_times(
-    t: np.ndarray, transform: str, fit_data: "dict | None" = None
-) -> np.ndarray:
-    if transform == "identity":
-        return t.astype(float)
-    if transform == "log":
-        if np.any(t <= 0):
-            raise ValueError(
-                "The 'log' transform needs positive event times; there is "
-                "an event at time {}. Use transform='km' (the default), "
-                "'rank' or 'identity'.".format(float(np.min(t)))
-            )
-        return np.log(t)
-    if transform == "rank":
-        # Average ranks for tied event times, as in R / lifelines; ordinal
-        # argsort ranks split ties arbitrarily and changed the statistic on
-        # tied data (#279). With count weights each event record stands
-        # for ``n`` tied events, so its rank is the average rank of its
-        # copies among all weighted events -- the rank it has in the
-        # expanded data. (Unweighted, this is scipy's average rank.) The
-        # constant offset relative to 0-based ranks cancels in the
-        # centring.
-        w = (
-            np.ones(t.shape[0])
-            if fit_data is None
-            else np.asarray(fit_data["n"], dtype=float)[
-                np.asarray(fit_data["c"]) == 0
-            ]
-        )
-        uniq, inv = np.unique(t, return_inverse=True)
-        w_at = np.bincount(inv.ravel(), weights=w, minlength=uniq.size)
-        before = np.concatenate([[0.0], np.cumsum(w_at)[:-1]])
-        return (before + (w_at + 1.0) / 2.0)[inv.ravel()]
-    if transform == "km":
-        # Scale-free transform (Grambsch-Therneau default): 1 - KM(t) with
-        # the Kaplan-Meier estimate fit on the *full* data, so censoring
-        # weighs in — the previous censoring-blind ECDF of event times
-        # deviated from the R/lifelines convention (#262).
-        if fit_data is not None:
-            from surpyval.utils import xcnt_to_xrd
-
-            x_all = np.asarray(fit_data["x"], dtype=float)
-            c_all = np.asarray(fit_data["c"], dtype=int)
-            n_all = np.asarray(fit_data["n"], dtype=float)
-            tl_all = np.asarray(fit_data.get("tl", None), dtype=float)
-            t_mat = np.column_stack([tl_all, np.full(x_all.shape[0], np.inf)])
-            xk, rk, dk = xcnt_to_xrd(x_all, c_all, n_all, t_mat)
-            with np.errstate(all="ignore"):
-                surv = np.cumprod(1.0 - dk / rk)
-            idx = np.searchsorted(xk, t, side="right") - 1
-            g = np.where(idx >= 0, 1.0 - surv[np.clip(idx, 0, None)], 0.0)
-            return g.astype(float)
-        # Without the fit data fall back to the ECDF of the event times.
-        ranks = np.searchsorted(np.sort(t), t, side="right")
-        return ranks.astype(float) / t.size
-    raise option_error("transform", transform, _TRANSFORMS)
-
-
-def check_ph(
-    model: "SemiParametricRegressionModel", transform: str = "km"
-) -> dict:
-    """
-    Test the proportional-hazards assumption (Grambsch-Therneau).
-
-    Regresses the scaled Schoenfeld residuals on a transform of the event
-    times; a non-zero slope is evidence of a time-varying coefficient, i.e.
-    a violation of proportional hazards.
-
-    Parameters
-    ----------
-    transform : {"km", "rank", "identity", "log"}
-        The function of time to test against. ``"km"`` (the default) is the
-        scale-free choice; ``"rank"`` matches Kaplan-Meier-rank usage.
-
-    Returns
-    -------
-    dict
-        ``{"global": {"statistic", "df", "p_value"},
-           "per_covariate": [{"statistic", "df", "p_value"}, ...],
-           "transform": transform}``. Per-covariate tests are 1-d.f. marginal
-        screens; the global test is the joint ``p``-d.f. test. A small
-        ``p_value`` is evidence *against* proportional hazards. When the model
-        was fit from a DataFrame, per-covariate entries carry the feature name.
-
-    Notes
-    -----
-    Both the global and per-covariate statistics follow the
-    Grambsch-Therneau forms used by R's ``cox.zph`` and lifelines, so the
-    results are directly comparable across packages (#262), including
-    under tied event times for Efron fits (#279). The ``"rank"``
-    transform uses average ranks for ties (R's convention); lifelines'
-    ``"rank"`` is a cumulative event count and differs on tied data.
-    Counts ``n`` are frequency weights, so an event row with ``n = 3`` is
-    ranked as three tied events, exactly as the data written out row by
-    row would be. The ``"log"`` transform needs positive event times.
-    """
-    data = _require_cox(model)
-    check_option("transform", transform, _TRANSFORMS)
-    beta = np.asarray(model.beta, dtype=float)
-    x, c, n = data["x"], data["c"], data["n"]
-
-    sch = compute_residuals(model, "schoenfeld")  # (n_events, p)
-    event_rows = np.flatnonzero(c == 0)
-    t_events = x[event_rows]
-    w_events = n[event_rows]  # count weight per event record
-
-    g = _transform_times(t_events, transform, fit_data=data)
-    g_bar = np.average(g, weights=w_events)
-    gc = g - g_bar
-
-    # u = sum_i n_i (g_i - gbar) s_i ; Sgc2 = sum_i n_i (g_i - gbar)^2
-    u = (w_events[:, None] * gc[:, None] * sch).sum(axis=0)
-    Sgc2 = float((w_events * gc**2).sum())
-    n_events = float(w_events.sum())
-
-    info = _information(model)  # observed information at beta
-    p = beta.size
-
-    if Sgc2 <= 0:
-        # No spread in the transformed times (e.g. a single event time):
-        # the test is undefined.
-        nan_entry = {"statistic": np.nan, "df": 1, "p_value": np.nan}
-        return {
-            "global": {"statistic": np.nan, "df": p, "p_value": np.nan},
-            "per_covariate": [dict(nan_entry) for _ in range(p)],
-            "transform": transform,
-        }
-
-    # Global joint test: T = (d / Sgc2) u' I^{-1} u ~ chi2_p.
-    V = safe_inv(info)
-    global_stat = float((n_events / Sgc2) * (u @ V @ u))
-    global_p = float(chi2.sf(global_stat, df=p))
-
-    # Per-covariate test, Grambsch-Therneau / cox.zph / lifelines form:
-    # T_j = d (V u)_j^2 / (Sgc2 * V_jj) ~ chi2_1, with V = I^{-1}. The
-    # previous d u_j^2 / (Sgc2 * I_jj) form is also a valid chi2_1 screen
-    # but weights cross-covariate information differently, so users
-    # cross-checking against R / lifelines saw different covariates
-    # flagged (#262).
-    Vu = V @ u
-    V_diag = np.diag(V)
-    names = getattr(model, "feature_names", None)
-    per_cov = []
-    for j in range(p):
-        stat_j = float(n_events * Vu[j] ** 2 / (Sgc2 * V_diag[j]))
-        entry = {
-            "statistic": stat_j,
-            "df": 1,
-            "p_value": float(chi2.sf(stat_j, df=1)),
-        }
-        if names is not None and j < len(names):
-            entry["covariate"] = names[j]
-        per_cov.append(entry)
-
-    return {
-        "global": {
-            "statistic": global_stat,
-            "df": p,
-            "p_value": global_p,
-        },
-        "per_covariate": per_cov,
-        "transform": transform,
-    }
-
-
 # ---------------------------------------------------------------------------
-# Score tests at the fit, for ``diagnose()`` (#868)
+# Score tests at the fit
 # ---------------------------------------------------------------------------
-# The proportional-hazards test of R's ``survival::cox.zph`` since version
-# 3.0, and the score test of an added covariate (the functional-form check
-# of the Cox family in ``surpyval.diagnostics.cox``). Both need, at each
-# distinct event time, the risk-set variance of the covariates summed over
-# that time's deaths: the time's contribution to the information matrix.
+# The proportional-hazards test, as R's ``survival::cox.zph`` computes it
+# since version 3.0, and the score test of an added covariate (the
+# functional-form check of ``diagnose()``). Both need, at each distinct
+# event time, the risk-set variance of the covariates summed over that
+# time's deaths: the time's contribution to the information matrix.
 
 
 def _risk_set_variances(
@@ -687,9 +524,8 @@ def _zph_times(data: dict, transform: str) -> np.ndarray:
     and ``"log"`` the time and its log. Only the event rows' values are
     used, and only up to an additive constant.
 
-    These differ from :func:`_transform_times` (``check_ph``'s), whose
-    ``"km"`` is right-continuous and whose ``"rank"`` ranks the events
-    only, as lifelines does."""
+    Until v0.24 ``check_ph`` used a right-continuous ``"km"`` (``1 -
+    S(t)``) and ranked the event times only (lifelines' conventions)."""
     from surpyval.utils import xcnt_to_xrd
 
     x = np.asarray(data["x"], dtype=float)
@@ -730,45 +566,61 @@ def _score_statistic(u: np.ndarray, info: np.ndarray) -> float:
         return float("nan")
 
 
-def zph_score_test(
+def check_ph(
     model: "SemiParametricRegressionModel", transform: str = "km"
 ) -> dict:
     """
-    The proportional-hazards test of R's ``survival::cox.zph`` (version
-    3.0 and later): for each covariate, the score test of adding
-    ``Z_j * g(t)`` to the model, at the fitted coefficients and a zero
-    coefficient for the added term, and a ``GLOBAL`` score test of adding
-    all of them.
+    Test the proportional-hazards assumption (Grambsch-Therneau), as R's
+    ``survival::cox.zph`` does since version 3.0.
 
-    This is the efficient score test, with the full information matrix of
-    the enlarged model. :func:`check_ph` gives the older approximation
-    (Grambsch and Therneau's, used by R's ``cox.zph`` before version 3.0
-    and by lifelines), which puts the average covariate variance in place
-    of the variance at each event time; the two agree closely in large
-    samples. This one matches R's ``cox.zph`` today, and is the one
-    ``diagnose()`` reports.
+    For each covariate, the score test of adding ``Z_j * g(t)`` to the
+    model, at the fitted coefficients and a zero coefficient for the added
+    term: a non-zero coefficient of ``Z_j * g(t)`` is an effect that
+    changes with time, a violation of proportional hazards. The ``GLOBAL``
+    test is the score test of adding all of them. Each is the efficient
+    score test, with the full information matrix of the enlarged model at
+    every event time.
 
     Parameters
     ----------
     transform : {"km", "rank", "identity", "log"}
-        The function ``g`` of time, as R defines it: ``"km"`` is
-        ``1 - S(t-)`` and ``"rank"`` ranks every row's time, the censored
-        ones too (see :func:`_zph_times`).
+        The function ``g`` of time, as R defines it: ``"km"`` (the
+        default, the scale-free choice) is ``1 - S(t-)``, one minus the
+        left-continuous Kaplan-Meier estimate from all the data; ``"rank"``
+        the rank of each row's time among every row, censored ones too;
+        ``"identity"`` the time and ``"log"`` its log (positive event times
+        only). See :func:`_zph_times`.
 
     Returns
     -------
     dict
-        As :func:`check_ph` returns: ``{"global": {"statistic", "df",
-        "p_value"}, "per_covariate": [...], "transform": transform}``.
+        ``{"global": {"statistic", "df", "p_value"},
+           "per_covariate": [{"statistic", "df", "p_value"}, ...],
+           "transform": transform}``. Per-covariate tests have 1 degree of
+        freedom; the global test is the joint ``p``-d.f. test. A small
+        ``p_value`` is evidence *against* proportional hazards. When the
+        model was fit from a DataFrame, per-covariate entries carry the
+        feature name.
 
     Notes
     -----
-    Under Efron ties the variances are those of the Efron pseudo-risk
-    sets; under any other tie method (``"breslow"``, ``"exact"``,
+    The statistics are R's ``cox.zph`` (survival 3.0 and later) to the
+    precision of the fit, under Efron and Breslow ties, delayed entry and
+    time-varying covariates (``surpyval/tests/reference``). Under Efron
+    ties the variances are those of the Efron pseudo-risk sets; under any
+    other tie method (``"breslow"``, ``"exact"``,
     ``"kalbfleisch-prentice"``) they are Breslow's, as R uses for every
     method but Efron's. ``g`` is centred on its mean over the events, as R
     centres it, which matters only where the fit's score is not exactly 0
-    (the exact methods, whose likelihood is not Breslow's).
+    (the exact methods). Counts ``n`` are frequency weights: a row with
+    ``n = 3`` is three tied observations, as in the data written out row by
+    row. Where the transformed event times have no spread (every event at
+    one time) the test is undefined and every statistic is ``nan``.
+
+    Until v0.24 this was the approximation of R before version 3.0 and of
+    lifelines, which puts the average covariate variance in place of the
+    variance at each event time; the two agree closely in large samples
+    and can differ in small ones.
 
     Examples
     --------
@@ -780,7 +632,7 @@ def zph_score_test(
     >>> df = load_rossi_static()
     >>> x, c = df["week"].values, 1 - df["arrest"].values
     >>> model = CoxPH.fit(x, df[["fin", "age"]].values, c=c)
-    >>> res = diagnostics.zph_score_test(model, "km")
+    >>> res = diagnostics.check_ph(model, "km")
     >>> round(res["global"]["statistic"], 3)
     6.095
     """
@@ -794,6 +646,20 @@ def zph_score_test(
     w_events = n[event_rows]
     g = _zph_times(data, transform)[event_rows]
     g = g - np.average(g, weights=w_events)
+    names = getattr(model, "feature_names", None)
+    if not np.any(np.abs(g) > 1e-12 * max(1.0, float(np.abs(g).max()))):
+        # No spread in the transformed times (e.g. a single event time):
+        # the test is undefined.
+        undefined = [{"statistic": np.nan, "df": 1, "p_value": np.nan}]
+        per_cov = [dict(undefined[0]) for _ in range(p)]
+        for j, entry in enumerate(per_cov):
+            if names is not None and j < len(names):
+                entry["covariate"] = names[j]
+        return {
+            "global": {"statistic": np.nan, "df": p, "p_value": np.nan},
+            "per_covariate": per_cov,
+            "transform": transform,
+        }
     sch = compute_residuals(model, "schoenfeld")
     u2 = (w_events[:, None] * g[:, None] * sch).sum(axis=0)
 
@@ -807,7 +673,6 @@ def zph_score_test(
     info = np.block([[i11, i12], [i12.T, i22]])
     zeros = np.zeros(p)
 
-    names = getattr(model, "feature_names", None)
     per_cov = []
     for j in range(p):
         keep = list(range(p)) + [p + j]
@@ -832,6 +697,11 @@ def zph_score_test(
         "per_covariate": per_cov,
         "transform": transform,
     }
+
+
+#: The name ``diagnose()``'s Cox family first used for :func:`check_ph`;
+#: the same function.
+zph_score_test = check_ph
 
 
 def added_covariate_score_test(

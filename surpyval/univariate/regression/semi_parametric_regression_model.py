@@ -818,17 +818,22 @@ class SemiParametricRegressionModel(
         """
         Test the proportional-hazards assumption (Grambsch-Therneau).
 
-        The table R's ``cox.zph`` prints (#514): one row per covariate
-        (named as in :meth:`summary`), each a 1-d.f. test of whether its
-        scaled Schoenfeld residuals trend with time, and a last row
-        ``GLOBAL``, the joint test on all of them. A small ``p`` is
-        evidence against proportional hazards.
+        The table R's ``cox.zph`` prints (#514), with its statistics
+        (survival 3.0 and later): one row per covariate (named as in
+        :meth:`summary`), each the 1-d.f. score test of whether its
+        coefficient changes with time (the trend of its scaled Schoenfeld
+        residuals), and a last row ``GLOBAL``, the joint test on all of
+        them. A small ``p`` is evidence against proportional hazards.
+        :meth:`diagnose` reports the same tests on the ``km`` and ``rank``
+        scales, with the other checks of a Cox fit and what to do about a
+        failure. Until v0.24 this was the approximation of R before
+        version 3.0 and of lifelines, which can differ in small samples.
 
         Parameters
         ----------
         transform : {"km", "rank", "identity", "log"}, optional
-            The function of time to test against; ``"km"`` (the default,
-            as in R) is the scale-free choice. See
+            The function of time to test against, as R defines it;
+            ``"km"`` (the default, as in R) is the scale-free choice. See
             :func:`~surpyval.univariate.regression.proportional_hazards.
             diagnostics.check_ph`.
 
@@ -853,9 +858,9 @@ class SemiParametricRegressionModel(
         >>> model.check_ph().round(4)
                    statistic  df       p
         covariate
-        fin           0.0000   1  0.9983
-        age           5.8491   1  0.0156
-        GLOBAL        5.8570   2  0.0535
+        fin           0.0242   1  0.8764
+        age           6.0906   1  0.0136
+        GLOBAL        6.0949   2  0.0475
         """
         import pandas as pd
 

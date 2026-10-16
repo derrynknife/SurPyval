@@ -236,7 +236,7 @@ def test_a_joint_failure_alone_has_its_own_advice(
             "transform": transform,
         }
 
-    monkeypatch.setattr(cox, "zph_score_test", fake)
+    monkeypatch.setattr(cox, "check_ph", fake)
     d = meets_assumptions.diagnose()
     ph = [a for a in d.advice if a.check == "proportional_hazards"]
     assert len(ph) == 2  # one per transform

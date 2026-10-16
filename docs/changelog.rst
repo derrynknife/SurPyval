@@ -27,11 +27,11 @@ Unreleased
   binary or few-levelled covariate that fails proportional hazards, and a
   time-varying effect (``fit_tvc``), bins or an AFT model for a continuous
   one; and the cluster-robust standard errors of a ``fit_tvc`` model.
-  Stratified fits are refused for now. The tests are also functions,
-  ``zph_score_test`` and ``added_covariate_score_test`` in
-  ``proportional_hazards.diagnostics``; both agree with R to 1e-6.
-  ``check_ph()`` is unchanged: it is the older approximation of
-  ``cox.zph`` (R before 3.0, lifelines).
+  Stratified fits are refused for now. The proportional-hazards rows are
+  ``check_ph()``'s test (see Changed); the functional-form test is
+  ``added_covariate_score_test`` in ``proportional_hazards.diagnostics``,
+  R's ``coxph(..., init = c(coef(fit), 0), iter.max = 0)$score``. Both
+  agree with R to 1e-6.
 - The data utilities live on ``SurpyvalData``.
   ``SurpyvalData.from_observations(observed=..., right_censored=...,
   left_censored=..., interval_censored=..., left_truncation=...,
@@ -333,6 +333,22 @@ Unreleased
 
 **Changed**
 
+- **CoxPH.check_ph() is the exact score test of R's cox.zph (survival
+  3.0 and later)**, so its statistics and p-values change (#868). It was
+  Grambsch and Therneau's approximation, as lifelines and R before 3.0
+  compute it, which uses the average covariate variance in place of the
+  variance at each event time. The time scales are now R's as well:
+  ``"km"`` is one minus the left-continuous Kaplan-Meier estimate, and
+  ``"rank"`` ranks every observation's time, censored ones too, not the
+  event times only. The new values match R's ``cox.zph`` to 1e-6 on the
+  stored references (``lung``, ``veteran``, and a set with delayed entry
+  and ties, under Efron and Breslow ties). The differences are small in
+  large samples and can matter in small ones and under heavy ties: on the
+  Rossi data (``fin`` and ``age``) the km p-values move from 0.998, 0.016
+  and 0.054 (GLOBAL) to 0.876, 0.014 and 0.048, and on a tied data set of
+  120 rows a statistic from 1.39 to 3.24, as R gives. The signature, the
+  table (and the module function's dict) and the transforms are as they
+  were; ``diagnose()`` reports the same test on the km and rank scales.
 - On a baseline defined below 0 (``Normal``, ``Gumbel``, ``Logistic``) a
   covariate path must cover every time the answer depends on (#952). The
   value at 0 was taken to hold back to ``-inf``, and values given before
