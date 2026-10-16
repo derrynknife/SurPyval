@@ -36,7 +36,9 @@ from surpyval.recurrent.diagnostics import item_windows
 @pytest.fixture(autouse=True)
 def fewer_resamples(monkeypatch):
     # 39 bootstrap refits: p-values in steps of 0.025, so a test can still
-    # fail at 0.05, in a fraction of the time of the report's 99.
+    # fail at 0.05, in a fraction of the time of the report's 99. The
+    # tests give diagnose() a seed (random_state=0), so each is the same
+    # every run.
     monkeypatch.setattr(rec, "N_BOOT", 39)
 
 
@@ -190,7 +192,7 @@ def _trend_row(d, test):
 def test_trend_statistics_match_r_on_the_handbook_example():
     x = np.r_[HDBK, 400.0]
     c = np.r_[np.zeros(len(HDBK)), 1]
-    d = HPP.fit(x, c=c).diagnose()
+    d = HPP.fit(x, c=c).diagnose(random_state=0)
     ref = R_REFERENCE["hdbk"]
     assert _trend_row(d, "Laplace")["statistic"] == pytest.approx(
         ref["laplace"], rel=1e-12
@@ -210,7 +212,7 @@ def test_trend_statistics_match_r_on_the_handbook_example():
 
 def test_trend_statistics_match_r_and_the_package_on_six_systems(mettas):
     model = HPP.fit(*mettas)
-    d = model.diagnose()
+    d = model.diagnose(random_state=0)
     ref = R_REFERENCE["mettas"]
     row = _trend_row(d, "Laplace")
     assert row["statistic"] == pytest.approx(ref["laplace"], rel=1e-12)
@@ -273,7 +275,7 @@ def test_lewis_robinson_with_delayed_entry_starts_at_the_first_failure():
 
 def test_repair_rows_are_the_models_repair_test(mettas, no_fit_test):
     model = GeneralizedRenewal.fit(*mettas)
-    d = model.diagnose()
+    d = model.diagnose(random_state=0)
     test = model.repair_test()
     rows = _rows(d, "repair")
     assert list(rows["test"]) == [
@@ -298,15 +300,24 @@ def test_cramer_von_mises_row_is_the_models_test_with_the_reports_seed(
     mettas,
 ):
     model = CrowAMSAA.fit(*mettas)
-    row = _rows(model.diagnose(), "fit").iloc[0]
-    own = model.cramer_von_mises(n_boot=rec.N_BOOT, random_state=rec.SEED)
+    row = _rows(model.diagnose(random_state=3), "fit").iloc[0]
+    own = model.cramer_von_mises(n_boot=rec.N_BOOT, random_state=3)
     assert row["statistic"] == own.statistic and row["p"] == own.p_value
-    assert model.diagnose().to_dict() == model.diagnose().to_dict()
+    assert (
+        model.diagnose(random_state=3).to_dict()
+        == model.diagnose(random_state=3).to_dict()
+    )
+    # n_boot sets the number of refits
+    assert (
+        _rows(model.diagnose(n_boot=19, random_state=3), "fit")
+        .iloc[0]["detail"]
+        .endswith("(19 resamples)")
+    )
 
 
 def test_dispersion_test_by_hand(mettas):
     model = HPP.fit(*mettas)
-    row = _rows(model.diagnose(), "between_items").iloc[0]
+    row = _rows(model.diagnose(random_state=0), "between_items").iloc[0]
     x, i, c = mettas
     rate = (c == 0).sum() / sum(x[i == k].max() for k in np.unique(i))
     observed = np.array([((i == k) & (c == 0)).sum() for k in np.unique(i)])
@@ -332,7 +343,7 @@ def test_dispersion_test_holds_its_size():
 # -- the Poisson processes ----------------------------------------------------
 def test_hpp_on_a_power_law_fails_its_trend_and_is_advised_an_nhpp():
     rng = np.random.default_rng(1)
-    d = HPP.fit(*_power_law(rng, 8, 100.0, 2.0, 25.0)).diagnose()
+    d = HPP.fit(*_power_law(rng, 8, 100.0, 2.0, 25.0)).diagnose(random_state=0)
     assert d.family == "Recurrent events: Poisson process"
     assert d.model == "ParametricRecurrenceModel"
     trend = _rows(d, "trend")
@@ -354,7 +365,7 @@ def test_hpp_on_a_renewal_process_is_advised_a_renewal_process():
     # Lewis-Robinson does not reject a renewal process.
     rng = np.random.default_rng(1)
     x, i, c = _renewal(rng, 8, 100.0, 0.6, 6.0)
-    d = HPP.fit(x, i, c).diagnose()
+    d = HPP.fit(x, i, c).diagnose(random_state=0)
     assert list(_rows(d, "trend")["verdict"]) == ["fail", "fail", "ok"]
     (advice,) = _advice(d, "trend", "")
     assert advice.startswith(
@@ -363,7 +374,7 @@ def test_hpp_on_a_renewal_process_is_advised_a_renewal_process():
     assert advice.features == ("GeneralizedRenewal.fit", "repair_test")
     # Fitted with a power law instead, the trend rows are a screen: the
     # trend is found (ok), the renewal process is not ruled out (warn)
-    d = CrowAMSAA.fit(x, i, c).diagnose()
+    d = CrowAMSAA.fit(x, i, c).diagnose(random_state=0)
     assert list(_rows(d, "trend")["verdict"]) == ["ok", "ok", "warn"]
     (advice,) = _advice(d, "trend", "")
     assert advice.startswith("Lewis-Robinson does not reject a renewal")
@@ -372,7 +383,9 @@ def test_hpp_on_a_renewal_process_is_advised_a_renewal_process():
 @pytest.mark.parametrize("fitter", [CrowAMSAA, Duane, CoxLewis])
 def test_an_nhpp_with_no_trend_is_advised_an_hpp(fitter):
     rng = np.random.default_rng(3)
-    d = _quiet_fit(fitter, *_power_law(rng, 8, 100.0, 1.0, 5.0)).diagnose()
+    d = _quiet_fit(fitter, *_power_law(rng, 8, 100.0, 1.0, 5.0)).diagnose(
+        random_state=0
+    )
     trend = _rows(d, "trend")
     assert list(trend["verdict"]) == ["warn"] * 3
     assert trend["detail"].iloc[0] == (
@@ -387,7 +400,7 @@ def test_an_nhpp_with_no_trend_is_advised_an_hpp(fitter):
 
 def test_a_bathtub_intensity_fails_the_fit_of_a_power_law():
     rng = np.random.default_rng(4)
-    d = CrowAMSAA.fit(*_bathtub(rng, 6, 30.0)).diagnose()
+    d = CrowAMSAA.fit(*_bathtub(rng, 6, 30.0)).diagnose(random_state=0)
     row = _rows(d, "fit").iloc[0]
     assert row["verdict"] == "fail"
     assert row["detail"].startswith("the event times depart")
@@ -401,7 +414,7 @@ def test_items_that_differ_are_advised_proportional_intensity():
     frailty = rng.gamma(2.0, 0.5, 12)
     d = CrowAMSAA.fit(
         *_power_law(rng, 12, 100.0, 1.5, 10.0, frailty=frailty)
-    ).diagnose()
+    ).diagnose(random_state=0)
     row = _rows(d, "between_items").iloc[0]
     assert row["verdict"] == "fail" and row["df"] == 11
     assert row["detail"].startswith("the items' counts vary more")
@@ -413,13 +426,15 @@ def test_items_that_differ_are_advised_proportional_intensity():
         "ProportionalIntensityHPP.fit",
     )
     d = HPP.fit(*_power_law(rng, 12, 100.0, 1.0, 5.0, frailty=frailty))
-    (advice,) = _advice(d.diagnose(), "between_items", "")
+    (advice,) = _advice(d.diagnose(random_state=0), "between_items", "")
     assert "ProportionalIntensityHPP.fit(x, Z, i=..., c=...)" in advice
 
 
 def test_poisson_data_that_meet_the_assumptions_pass():
     rng = np.random.default_rng(13)
-    d = CrowAMSAA.fit(*_power_law(rng, 10, 100.0, 1.8, 15.0)).diagnose()
+    d = CrowAMSAA.fit(*_power_law(rng, 10, 100.0, 1.8, 15.0)).diagnose(
+        random_state=0
+    )
     assert d.ok and not d.advice, d
     assert set(d.table["verdict"]) == {"ok"}
     assert any(n.startswith("Model: Crow-AMSAA") for n in d.notes)
@@ -435,7 +450,7 @@ def kijima_half():
 
 
 def test_imperfect_repair_that_is_neither_end_passes(kijima_half):
-    d = kijima_half.diagnose()
+    d = kijima_half.diagnose(random_state=0)
     assert d.family == "Recurrent events: imperfect repair"
     assert set(d.table["check"]) == {"trend", "fit", "repair"}
     assert d.ok and not d.advice, d
@@ -448,7 +463,7 @@ def test_a_renewal_process_is_advised_the_distribution_of_its_gaps():
     model = _quiet_fit(
         GeneralizedRenewal, *_renewal(rng, 10, 100.0, 2.0, 10.0)
     )
-    d = model.diagnose()
+    d = model.diagnose(random_state=0)
     assert list(_rows(d, "repair")["verdict"]) == ["warn", "ok"]
     (advice,) = _advice(d, "repair", "perfect repair")
     assert "(q = 0, as good as new)" in advice
@@ -471,7 +486,9 @@ def test_a_renewal_process_is_advised_the_distribution_of_its_gaps():
 )
 def test_minimal_repair_is_advised_an_nhpp(fitter, name, no_fit_test):
     rng = np.random.default_rng(10)
-    d = _quiet_fit(fitter, *_power_law(rng, 10, 100.0, 1.8, 15.0)).diagnose()
+    d = _quiet_fit(fitter, *_power_law(rng, 10, 100.0, 1.8, 15.0)).diagnose(
+        random_state=0
+    )
     rows = _rows(d, "repair")
     assert list(rows["verdict"]) == ["ok", "warn"]
     (advice,) = _advice(d, "repair", "minimal repair")
@@ -484,7 +501,7 @@ def test_minimal_repair_is_advised_an_nhpp(fitter, name, no_fit_test):
 def test_ari_minimal_repair_names_its_baseline(baseline, no_fit_test):
     rng = np.random.default_rng(10)
     x, i, c = _power_law(rng, 10, 100.0, 1.8, 15.0)
-    d = _quiet_fit(ARI, x, i, c, baseline=baseline).diagnose()
+    d = _quiet_fit(ARI, x, i, c, baseline=baseline).diagnose(random_state=0)
     rows = _rows(d, "repair")
     assert (
         rows["test"]
@@ -502,7 +519,7 @@ def test_ari_minimal_repair_names_its_baseline(baseline, no_fit_test):
 
 
 def test_g1_has_the_perfect_repair_row_only(mettas, no_fit_test):
-    d = _quiet_fit(GeneralizedOneRenewal, *mettas).diagnose()
+    d = _quiet_fit(GeneralizedOneRenewal, *mettas).diagnose(random_state=0)
     rows = _rows(d, "repair")
     assert list(rows["test"]) == [
         "likelihood-ratio test of perfect repair (q = 0)"
@@ -515,7 +532,7 @@ def test_g1_has_the_perfect_repair_row_only(mettas, no_fit_test):
 def test_a_bathtub_intensity_fails_the_fit_of_a_kijima_model():
     rng = np.random.default_rng(4)
     model = _quiet_fit(GeneralizedRenewal, *_bathtub(rng, 6, 30.0))
-    d = model.diagnose()
+    d = model.diagnose(random_state=0)
     assert _rows(d, "fit")["verdict"].iloc[0] == "fail", d
     (advice,) = _advice(d, "fit", "")
     assert "dist=" in advice and "kijima='ii'" in advice
@@ -538,7 +555,7 @@ def test_an_omitted_covariate_fails_between_items(groups):
     model = _quiet_fit(
         ProportionalIntensityNHPP, x, Z, i=i, c=c, baseline=CrowAMSAA
     )
-    d = model.diagnose()
+    d = model.diagnose(random_state=0)
     assert d.family == "Recurrent events: proportional intensity"
     assert d.columns == ["z"]
     row = _rows(d, "between_items").iloc[0]
@@ -553,9 +570,9 @@ def test_pi_hpp_on_a_power_law_is_advised_an_nhpp_baseline(groups):
     x, i, c = _power_law(
         rng, groups.size, 100.0, 2.0, 20.0, frailty=np.exp(0.8 * groups)
     )
-    d = ProportionalIntensityHPP.fit(
-        x, groups[i][:, None], i=i, c=c
-    ).diagnose()
+    d = ProportionalIntensityHPP.fit(x, groups[i][:, None], i=i, c=c).diagnose(
+        random_state=0
+    )
     assert list(_rows(d, "trend")["verdict"]) == ["fail"] * 3
     (advice,) = _advice(d, "trend", "")
     assert "ProportionalIntensityNHPP.fit(x, Z, ..., baseline=CrowAMSAA)" in (
@@ -575,12 +592,12 @@ def test_pi_nhpp_with_no_trend_is_advised_a_constant_baseline(groups):
     model = ProportionalIntensityNHPP.fit(
         x, groups[i][:, None], i=i, c=c, baseline=CrowAMSAA
     )
-    d = model.diagnose()
+    d = model.diagnose(random_state=0)
     (advice,) = _advice(d, "trend", "")
     assert advice.features == ("ProportionalIntensityHPP.fit", "aic")
     assert d.columns == ["coef_0"]
     # Every check is model-wide: columns= is accepted and has no effect
-    sub = model.diagnose(columns=["coef_0"])
+    sub = model.diagnose(columns=["coef_0"], random_state=0)
     assert sub.to_dict()["table"] == d.to_dict()["table"]
     with pytest.raises(ValueError, match="'columns'"):
         model.diagnose(columns=["nope"])
@@ -588,7 +605,7 @@ def test_pi_nhpp_with_no_trend_is_advised_a_constant_baseline(groups):
 
 # -- what cannot be computed --------------------------------------------------
 def test_too_few_events_warn_with_the_reason():
-    d = HPP.fit([3.0, 8.0], c=[0, 0]).diagnose()
+    d = HPP.fit([3.0, 8.0], c=[0, 0]).diagnose(random_state=0)
     trend = _rows(d, "trend")
     assert trend["p"].isna().all() and (trend["verdict"] == "warn").all()
     assert all(
@@ -598,7 +615,7 @@ def test_too_few_events_warn_with_the_reason():
     assert any("Between items: not tested" in n for n in d.notes)
     assert any("failure-truncated item" in n for n in d.notes)
     # a screen's unavailable test warns too
-    d = CrowAMSAA.fit([3.0, 8.0], c=[0, 0]).diagnose()
+    d = CrowAMSAA.fit([3.0, 8.0], c=[0, 0]).diagnose(random_state=0)
     assert (_rows(d, "trend")["verdict"] == "warn").all()
 
 
@@ -609,7 +626,7 @@ def test_a_failed_cramer_von_mises_warns(monkeypatch, mettas):
         raise ValueError("All bootstrap refits failed; cannot compute it.")
 
     monkeypatch.setattr(model, "cramer_von_mises", broken)
-    row = _rows(model.diagnose(), "fit").iloc[0]
+    row = _rows(model.diagnose(random_state=0), "fit").iloc[0]
     assert np.isnan(row["p"]) and row["verdict"] == "warn"
     assert row["detail"] == (
         "could not be computed: All bootstrap refits failed; cannot "
@@ -620,11 +637,11 @@ def test_a_failed_cramer_von_mises_warns(monkeypatch, mettas):
 def test_too_few_items_for_the_dispersion_test(mettas):
     x, i, c = mettas
     keep = i <= 2
-    d = HPP.fit(x[keep], i[keep], c[keep]).diagnose()
+    d = HPP.fit(x[keep], i[keep], c[keep]).diagnose(random_state=0)
     row = _rows(d, "between_items").iloc[0]
     assert row["df"] == 1 and np.isfinite(row["p"])
     keep = i == 1
-    d = HPP.fit(x[keep], i[keep], c[keep]).diagnose()
+    d = HPP.fit(x[keep], i[keep], c[keep]).diagnose(random_state=0)
     assert _rows(d, "between_items").empty
     assert any("the data have 1" in n for n in d.notes)
 
@@ -637,7 +654,7 @@ def test_no_degrees_of_freedom_left_warns():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         model = ProportionalIntensityHPP.fit(x, Z, i=i, c=c)
-        d = model.diagnose()
+        d = model.diagnose(random_state=0)
     row = _rows(d, "between_items").iloc[0]
     assert np.isnan(row["p"]) and row["verdict"] == "warn"
     assert "no degrees of freedom" in row["detail"]
@@ -653,38 +670,41 @@ def test_a_model_without_data_refuses(mettas):
         sp.from_dict(GeneralizedRenewal.fit(*mettas).to_dict()),
     ):
         with pytest.raises(ValueError, match="needs a model fitted from data"):
-            bare.diagnose()
+            bare.diagnose(random_state=0)
 
 
 def test_a_least_squares_fit_refuses(mettas):
     model = CrowAMSAA.fit(*mettas, how="MSE")
     with pytest.raises(ValueError, match="how='MLE'"):
-        model.diagnose()
+        model.diagnose(random_state=0)
 
 
 def test_a_fit_with_no_finite_maximum_refuses(mettas):
     model = CrowAMSAA.fit(*mettas)
     model.maximum = "no finite maximum"
     with pytest.raises(ValueError, match="finite maximum"):
-        model.diagnose()
+        model.diagnose(random_state=0)
 
 
 def test_inexact_times_and_right_truncation_refuse():
     model = CrowAMSAA.fit([[1, 2], [2, 3], [3, 4], [5, 6]], c=[2, 2, 2, 2])
     with pytest.raises(ValueError, match="exact event times"):
-        model.diagnose()
+        model.diagnose(random_state=0)
     rng = np.random.default_rng(0)
     t = np.sort(rng.uniform(0, 100, 15))
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         model = CrowAMSAA.fit(t, tr=100.0)
     with pytest.raises(ValueError, match="right truncation"):
-        model.diagnose()
+        model.diagnose(random_state=0)
 
 
 # -- the report ---------------------------------------------------------------
 def test_to_dict_round_trips(kijima_half, mettas):
-    for d in (kijima_half.diagnose(), CrowAMSAA.fit(*mettas).diagnose()):
+    for d in (
+        kijima_half.diagnose(random_state=0),
+        CrowAMSAA.fit(*mettas).diagnose(random_state=0),
+    ):
         out = d.to_dict()
         back = Diagnosis.from_dict(
             json.loads(json.dumps(out, allow_nan=False))
@@ -702,17 +722,17 @@ def test_plot_draws_every_check(kijima_half, mettas, no_fit_test):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    d = CrowAMSAA.fit(*mettas).diagnose()
+    d = CrowAMSAA.fit(*mettas).diagnose(random_state=0)
     fig = d.plot()
     titles = [ax.get_title() for ax in fig.axes]
     assert titles[0].startswith("trend: Laplace p = 0.462")
     assert titles[1].startswith("fit (Cramer-von Mises): p = ")
     assert titles[2].startswith("between items: p = ")
     plt.close(fig)
-    fig = kijima_half.diagnose().plot()
+    fig = kijima_half.diagnose(random_state=0).plot()
     assert [ax.get_title() for ax in fig.axes][2] == "repair: profile of q"
     plt.close(fig)
-    fig = kijima_half.diagnose().plot("repair")
+    fig = kijima_half.diagnose(random_state=0).plot("repair")
     (ax,) = fig.axes
     labels = ax.get_legend_handles_labels()[1]
     assert labels == [
@@ -728,6 +748,6 @@ def test_plot_draws_every_check(kijima_half, mettas, no_fit_test):
 
 @pytest.mark.parametrize("fitter", [HPP, CrowAMSAA, Duane, CoxLewis])
 def test_every_intensity_model_is_diagnosed(fitter, mettas):
-    d = _quiet_fit(fitter, *mettas).diagnose()
+    d = _quiet_fit(fitter, *mettas).diagnose(random_state=0)
     assert set(d.table["check"]) == {"trend", "fit", "between_items"}
     assert np.isfinite(_rows(d, "fit")["p"]).all()

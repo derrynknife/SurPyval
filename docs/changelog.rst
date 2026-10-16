@@ -72,7 +72,7 @@ Unreleased
   keeps no group of each row, so only its frailty variance is tested.
 - The calibration of predicted survival, a ``calibration`` check shared by
   the Cox, parametric PH and AFT families of ``diagnose()`` (#881): at the
-  quartiles of the failure times, the smoothed calibration curve of
+  quartiles of the failure times, or at ``diagnose(t0=...)``, the smoothed calibration curve of
   Austin, Harrell and van Klaveren (2020) -- a Cox model of the observed
   times on a restricted cubic spline of the complementary log-log of the
   predicted risk, so censored units count as at risk, not as survivors,
@@ -128,7 +128,8 @@ Unreleased
   ``GeneralizedOneRenewal``, ``ARA``, ``ARI``) and the proportional-
   intensity models: the Laplace, MIL-HDBK-189C and Lewis-Robinson trend
   tests (tests of a constant-rate model, a model-choice screen for the
-  others); the model's Cramer-von Mises test (99 seeded bootstrap refits);
+  others); the model's Cramer-von Mises test (``diagnose(n_boot=,
+  random_state=)``, 99 bootstrap refits by default);
   for the Poisson processes the Pearson dispersion test of the items'
   counts; for the imperfect-repair models the likelihood-ratio tests of
   perfect and minimal repair (``repair_test``) as a screen; plots of the

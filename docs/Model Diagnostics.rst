@@ -886,7 +886,7 @@ faster. A constant rate of failures, an HPP, is the simplest model:
     x, i, c = np.array(x), np.array(i), np.array(c)
 
     hpp = surv.HPP.fit(x, i, c)
-    d = hpp.diagnose()
+    d = hpp.diagnose(random_state=0)
     print(d)
 
 .. jupyter-execute::
@@ -904,7 +904,7 @@ models whose rate changes. The power law, ``CrowAMSAA``, passes:
 .. jupyter-execute::
 
     crow = surv.CrowAMSAA.fit(x, i, c)
-    d = crow.diagnose()
+    d = crow.diagnose(random_state=0)
     d.table[['check', 'test', 'statistic', 'p', 'verdict']]
 
 .. jupyter-execute::
@@ -937,7 +937,7 @@ simpler model.
 
     mz = load_mettas_and_zhao()
     grp = surv.GeneralizedRenewal.fit(mz['x'], mz['i'], mz['c'])
-    d = grp.diagnose()
+    d = grp.diagnose(random_state=0)
     d.table[['check', 'test', 'p', 'verdict']]
 
 .. jupyter-execute::
@@ -981,10 +981,10 @@ The recurrent checks
     ``GeneralizedRenewal.fit``); no trend at all, to a constant rate
     (``HPP.fit``, ``ProportionalIntensityHPP.fit``).
 ``fit``
-    The model's ``cramer_von_mises`` test, with 99 bootstrap refits from
-    a fixed seed, so a report is the same each time it runs;
-    ``model.cramer_von_mises(n_boot=..., random_state=...)`` gives a finer
-    p-value. A failure is advised another intensity, another repair model
+    The model's ``cramer_von_mises`` test, with ``diagnose(n_boot=...)``
+    bootstrap refits (99 by default) drawn with its ``random_state``, the
+    package's one seed rule: give a seed for a report that is the same
+    each time it runs. A failure is advised another intensity, another repair model
     or another baseline, as the model calls for.
 ``between_items``
     (Poisson processes.) The Pearson dispersion test of the items' event
@@ -1336,6 +1336,21 @@ the ``detail`` has E50, E90 and the range of the predictions:
     assert _cal['test'].str.startswith(
         ('ICI at t = 17 ', 'ICI at t = 28 ', 'ICI at t = 42 ')).all()
     assert (_cal['verdict'] == 'ok').all() and (_cal['statistic'] < 0.003).all()
+
+``t0`` gives the times instead, one or several, e.g. the end of the first
+year:
+
+.. jupyter-execute::
+
+    d = cal_cox.diagnose(t0=52)
+    d.table.loc[d.table['check'] == 'calibration', ['test', 'statistic', 'verdict']]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert d.table.loc[d.table['check'] == 'calibration', 'test'].tolist() == [
+        'ICI at t = 52']
 
 The log-normal model of the lung cancer data is not calibrated early: by
 day 135 it predicts more risk than the patients had, 0.06 more on average

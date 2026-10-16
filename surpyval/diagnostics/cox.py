@@ -647,6 +647,7 @@ def _is_cox(model: Any) -> bool:
 COX = register(
     Family(
         name="Cox proportional hazards",
+        options=("t0",),
         issue=868,
         applies=_is_cox,
         validate=_validate,

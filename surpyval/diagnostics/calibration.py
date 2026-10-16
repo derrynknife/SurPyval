@@ -103,13 +103,13 @@ failures from the survivors) warns, and its detail says so.
 
 ``t0`` as an option
 -------------------
-``diagnose()`` has no family options yet, so the times are the quartiles.
-:func:`calibration_check` takes ``times``, a callable of the report's
-:class:`~.registry.Context` that returns ``(name, t0)`` pairs; an option
-such as ``diagnose(calibration={"t0": [52]})`` would be read there
-(``calibration_check(times=...)`` with a callable that returns the
-option's times, or :func:`quartile_times` without it), without changing
-anything else.
+By default the times are the quartiles of the failure times.
+``diagnose(t0=52)``, or ``t0=[26, 52]``, checks the calibration at the
+times given instead (:func:`option_times`), for the families that take
+the check (Cox, parametric proportional hazards and accelerated failure
+time). :func:`calibration_check` takes ``times``, a callable of the
+report's :class:`~.registry.Context` that returns ``(name, t0)`` pairs,
+for a family that chooses its times otherwise.
 """
 
 from __future__ import annotations
@@ -657,6 +657,41 @@ def quartile_times(ctx: Context) -> list[tuple[str, float]]:
     return [(QUANTILE_NAMES[q], lower_quantile(t, w, q)) for q in QUANTILES]
 
 
+def option_times(ctx: Context) -> list[tuple[str | None, float]]:
+    """
+    The times of the check: ``diagnose(t0=...)``'s (one time or several,
+    each unnamed), or :func:`quartile_times` when it is not given. A
+    ``t0`` that is not a finite number, or a list of them, is refused.
+
+    Examples
+    --------
+    >>> from surpyval import CoxPH
+    >>> from surpyval.datasets import load_rossi_static
+    >>> from surpyval.diagnostics.calibration import option_times
+    >>> from surpyval.diagnostics.registry import Context
+    >>> df = load_rossi_static()
+    >>> model = CoxPH.fit(df["week"], df[["fin", "prio"]], c=1 - df["arrest"])
+    >>> ctx = Context(model, 0.05, ["fin", "prio"], [0, 1])
+    >>> ctx.options = {"t0": [26, 52]}
+    >>> option_times(ctx)
+    [(None, 26.0), (None, 52.0)]
+    """
+    t0 = ctx.options.get("t0")
+    if t0 is None:
+        return quartile_times(ctx)
+    try:
+        values = np.atleast_1d(np.asarray(t0, dtype=float))
+    except (TypeError, ValueError):
+        values = np.array([np.nan])
+    if values.ndim != 1 or values.size == 0 or not np.isfinite(values).all():
+        raise ValueError(
+            "t0 is the time, or a list of the times, at which to check the "
+            "calibration: finite numbers, e.g. diagnose(t0=52) or "
+            "diagnose(t0=[26, 52]); got {!r}.".format(t0)
+        )
+    return [(None, float(v)) for v in values]
+
+
 def _note(ctx: Context, text: str) -> None:
     if text not in ctx.notes:
         ctx.notes.append(text)
@@ -756,7 +791,9 @@ def _rows_of(
         out = []
         level = "{:g}%".format(100 * (1 - ctx.alpha))
         for name, t0, curve in _curves(ctx, times):
-            test = "ICI at t = {} ({} of failures)".format(_fmt(t0), name)
+            test = "ICI at t = {}".format(_fmt(t0)) + (
+                "" if name is None else " ({} of failures)".format(name)
+            )
             if isinstance(curve, str):
                 out.append(
                     {
@@ -884,7 +921,8 @@ def calibration_check(
     """
     The ``calibration`` check, for a family's ``checks``: a row and a
     panel for each time of ``times(ctx)`` (``(name, t0)`` pairs; by
-    default :func:`quartile_times`, the quartiles of the failure times).
+    default :func:`option_times`: ``diagnose(t0=...)``'s times, else the
+    quartiles of the failure times).
     See :mod:`surpyval.diagnostics.calibration`.
 
     Examples
@@ -894,7 +932,7 @@ def calibration_check(
     >>> check.name
     'calibration'
     """
-    chosen = quartile_times if times is None else times
+    chosen = option_times if times is None else times
     return Check(
         NAME,
         "The predicted survival agrees with the observed: at each time, "

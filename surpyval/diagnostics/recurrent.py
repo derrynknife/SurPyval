@@ -43,8 +43,9 @@ The checks
     The Cramer-von Mises test of the fitted model, the model's own
     ``cramer_von_mises`` (conditionally uniform transforms of the event
     times; a parametric bootstrap of refits for the p-value), with
-    :data:`N_BOOT` resamples from the seed :data:`SEED`, so that a report
-    is reproducible. Drawn as the P-P plot of the transforms.
+    ``diagnose(n_boot=...)`` resamples (:data:`N_BOOT` by default), drawn
+    with ``diagnose(random_state=...)``. Drawn as the P-P plot of the
+    transforms.
 ``between_items``
     (Poisson processes.) The Pearson dispersion test of the items' event
     counts: under the model each time-truncated item's count is Poisson
@@ -79,12 +80,10 @@ from scipy.stats import chi2, norm
 
 from .registry import AdviceRule, Check, Context, Family, Panel, register
 
-#: The bootstrap resamples behind the Cramer-von Mises p-value: 99, so
-#: that the p-value is a multiple of 0.01. ``model.cramer_von_mises(n_boot=
-#: ...)`` gives a finer one.
+#: The bootstrap resamples behind the Cramer-von Mises p-value when
+#: ``diagnose()`` is not given ``n_boot``: 99, so that the p-value is a
+#: multiple of 0.01.
 N_BOOT = 99
-#: The seed of those resamples: a report is the same each time it is run.
-SEED = 0
 
 _LAPLACE = "Laplace"
 _MIL = "MIL-HDBK-189C"
@@ -437,9 +436,10 @@ def _trend_panels(ctx: Context) -> list[Panel]:
 # Fit
 # ---------------------------------------------------------------------------
 def _cvm(ctx: Context) -> Any:
-    """The model's Cramer-von Mises test with :data:`N_BOOT` resamples
-    from :data:`SEED`, or the reason it could not be run; and the number
-    of bootstrap refits that failed (and were resampled)."""
+    """The model's Cramer-von Mises test with ``diagnose()``'s ``n_boot``
+    resamples (:data:`N_BOOT` by default) drawn with its ``random_state``,
+    or the reason it could not be run; and the number of bootstrap refits
+    that failed (and were resampled)."""
 
     def compute() -> tuple:
         with warnings.catch_warnings(record=True) as caught:
@@ -447,7 +447,8 @@ def _cvm(ctx: Context) -> Any:
             with np.errstate(all="ignore"):
                 try:
                     res = ctx.model.cramer_von_mises(
-                        n_boot=N_BOOT, random_state=SEED
+                        n_boot=N_BOOT if ctx.n_boot is None else ctx.n_boot,
+                        random_state=ctx.random_state,
                     )
                 except (ValueError, RuntimeError) as error:
                     return str(error), caught
@@ -847,9 +848,8 @@ def _notes(ctx: Context) -> list[str]:
         )
     notes.append(
         "Fit: the Cramer-von Mises p-value is a parametric bootstrap of "
-        "{} refits from the seed {}, so the report is reproducible; "
-        "model.cramer_von_mises(n_boot=..., random_state=...) gives a "
-        "finer one.".format(N_BOOT, SEED)
+        "{} refits; diagnose(n_boot=..., random_state=...) sets their "
+        "number and seed.".format(N_BOOT if ctx.n_boot is None else ctx.n_boot)
     )
     if _is_renewal(model):
         notes.append(

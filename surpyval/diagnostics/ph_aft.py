@@ -2220,6 +2220,7 @@ def _names(model: Any) -> list[str]:
 PH_FAMILY = register(
     Family(
         name="Parametric proportional hazards",
+        options=("t0",),
         issue=869,
         applies=_kind_of(_PH),
         validate=_validate,
@@ -2274,6 +2275,7 @@ PH_FAMILY = register(
 AFT_FAMILY = register(
     Family(
         name="Accelerated failure time",
+        options=("t0",),
         issue=869,
         applies=_kind_of(_AFT),
         validate=_validate,

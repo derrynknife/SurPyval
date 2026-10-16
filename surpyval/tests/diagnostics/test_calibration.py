@@ -401,6 +401,39 @@ def test_the_check_is_in_each_family_s_report(rossi, fitter, family):
     )
 
 
+@pytest.mark.parametrize("fitter", [sp.CoxPH, sp.WeibullPH, sp.WeibullAFT])
+def test_t0_chooses_the_times(rossi, fitter):
+    model = _quiet(
+        fitter.fit_from_df,
+        rossi,
+        x_col="week",
+        c_col="censored",
+        Z_cols=["fin", "age", "prio"],
+    )
+    rows = _rows(model.diagnose(t0=[26, 52]))
+    assert rows["test"].tolist() == ["ICI at t = 26", "ICI at t = 52"]
+    one = _rows(model.diagnose(t0=28))
+    default = _rows(model.diagnose())
+    assert one["test"].tolist() == ["ICI at t = 28"]
+    # the same curve as the default's median row
+    assert_allclose(one["statistic"].iloc[0], default["statistic"].iloc[1])
+    for bad in ("soon", [], np.nan, [[26, 52]]):
+        with pytest.raises(ValueError, match="t0"):
+            model.diagnose(t0=bad)
+
+
+def test_t0_is_refused_where_there_is_no_calibration_check(rossi):
+    model = _quiet(
+        sp.ProportionalOdds.fit_from_df,
+        rossi,
+        x_col="week",
+        c_col="censored",
+        Z_cols=["fin", "age", "prio"],
+    )
+    with pytest.raises(ValueError, match="t0"):
+        model.diagnose(t0=52)
+
+
 def test_to_dict_round_trips(rossi):
     model = sp.CoxPH.fit_from_df(
         rossi, x_col="week", c_col="censored", Z_cols=["fin", "age", "prio"]
