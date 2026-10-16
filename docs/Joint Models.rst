@@ -379,6 +379,57 @@ the same curvature ``c``. At most three may vary (the quadrature's grid is
 the joint model, as it does a degradation model: choose it as you would
 there (see :doc:`Degradation Analysis`).
 
+How well it recovers the truth
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A simulation study (run on 2026-10-16 with the script
+``joint_study/study.py`` of #891; this page does not re-run it) fitted 200
+simulated fleets for each of four paths. Each fleet had 300 pumps read
+monthly for up to two years, a Weibull hazard (``alpha`` 800 days, ``beta``
+2 at a marker of 4) and a marker effect of 0.9, and was fitted with
+``marker_reference=4.0``. The paths were:
+
+- the line, ``a`` 3 (sd 0.6) and ``b`` 1/365 (sd 0.5/365), noise 0.7;
+- the exponential ``a exp(b t)``, ``a`` 3 (sd 0.4) and ``b`` 0.0008
+  (sd 0.0003), noise 0.3;
+- the same with ``b`` on a log link, ``log(b)`` normal about log(0.0008)
+  with sd 0.3;
+- the quadratic, ``a`` 3 (sd 0.5), ``b`` 0.5/365 (sd 0.3/365) and ``c``
+  1/365² common to all, noise 0.4.
+
+All 800 fits reached a verified maximum except two of the log-link ones
+(fitted, but unverified). For the marker effect:
+
+- line: bias +0.4% (Monte Carlo se 0.8%), coverage of the 95% interval
+  0.930 (0.018);
+- exponential: +0.9% (0.7%), 0.980 (0.010);
+- log link: +2.0% (0.7%), 0.955 (0.015);
+- quadratic: +0.5% (0.7%), 0.960 (0.014).
+
+Over all 37 parameters of the four models, 36 intervals covered the truth
+between 92% and 98% of the time. The exception was the log-link model's
+``sd_a`` at 0.900 (0.021). The spread of the estimates was 0.86 to 1.14
+times their mean standard error.
+
+Some biases are small but more than two Monte Carlo standard errors from
+0:
+
+- ``beta``: +1.4% (0.6%) for the line and +2.2% (0.9%) for the
+  quadratic. The Weibull shape's maximum likelihood estimate is biased
+  upward in samples this size; a Weibull fitted alone to 300
+  lifetimes censored at 730 days (2000 samples, ``joint_study/beta_bias.py``)
+  is +0.7% (0.1%).
+- the exponential's ``sd_b``: -0.9% (0.3%).
+- the log-link model's ``alpha``, ``marker_effect`` and
+  ``corr_a_log(b)``: +1.3% (0.4%), +2.0% (0.7%) and +0.011 (0.005).
+
+These are small-sample biases of maximum likelihood, not the quadrature.
+Refitting the same fleets with 11 points a dimension instead of 7 moved
+no estimate by more than 0.0104 of its standard error. With four times the
+pumps (100 fleets of 1200), the log-link model's biases fell to +0.4%
+(0.25%), +0.2% (0.5%) and +0.005 (0.0035), and every interval covered the
+truth between 93% and 98% of the time.
+
 Prediction: survival given the readings so far
 ----------------------------------------------
 
