@@ -40,11 +40,14 @@ from surpyval.tests.conformance.registry_families import (
     _trees,
     continuous,
     discrete,
+    regression,
 )
 from surpyval.tests.conformance.registry_fixtures import (
+    JOINT_ITEM,
     X_COP,
     X_CR,
     X_DESTR,
+    X_JOINT,
     X_PATH,
     X_PROC,
     X_REC,
@@ -57,6 +60,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     cr_data,
     destructive_data,
     exact_event_data,
+    joint_data,
     lfp_count_data,
     lfp_data,
     mixture_data,
@@ -903,6 +907,69 @@ def _copulas():
     return out
 
 
+# ---------------------------------------------------------------------------
+# Joint models of a marker and a lifetime (#891)
+# ---------------------------------------------------------------------------
+def _joint_coefficients(model):
+    """A joint model's covariate coefficients: the hazard's, then each path
+    parameter's shifts of its mean (a row each)."""
+    names, params = model.parameter_names, np.asarray(model.params, float)
+    rows = [model.feature_names] + [
+        [f"{a}_{f}" for f in model.feature_names]
+        for a in model.path_model.parameter_names
+    ]
+    return np.array([[params[names.index(n)] for n in row] for row in rows])
+
+
+def _joint():
+    """The joint model, predicting for one item read four times and still
+    running at 400 (``JOINT_ITEM``) through the array form ``sf(x, Z,
+    markers=..., given=...)``: one covariate vector a call."""
+    case = regression(
+        "WeibullJointPH",
+        sp.WeibullJointPH,
+        model_class="surpyval.JointModel",
+        data=joint_data,
+        x=X_JOINT,
+        Z=np.ones((X_JOINT.size, 1)),
+        functions=("sf", "ff"),
+        z_style="single",
+        paths={
+            "fit_from_df": lambda d: sp.WeibullJointPH.fit_from_df(
+                pd.DataFrame(
+                    {
+                        "x": d["x"],
+                        "c": d["c"],
+                        "n": d["n"],
+                        "z0": np.asarray(d["Z"])[:, 0],
+                        "markers": list(d["markers"]),
+                    }
+                ),
+                x_col="x",
+                markers_col="markers",
+                c_col="c",
+                n_col="n",
+                Z_cols=["z0"],
+            )
+        },
+        rows=("x", "Z", "c", "n", "markers"),
+        coefficients=_joint_coefficients,
+        intercept=True,
+        exclude={
+            "row_independence": "one item a call (Z is its covariate "
+            "vector), so there are no rows to mix up",
+        },
+    )
+    return [
+        replace(
+            case,
+            times=("x", "markers"),
+            call_kwargs=dict(JOINT_ITEM),
+            call_times=("markers", "given"),
+        )
+    ]
+
+
 CASES: list[Case] = (
     _univariate()
     + _regression_family()
@@ -914,6 +981,7 @@ CASES: list[Case] = (
     + _recurrent()
     + _degradation()
     + _copulas()
+    + _joint()
 )
 
 # Fits whose optimum moves by more than 1e-4 (relative) when the data are
@@ -1548,6 +1616,8 @@ def _bounds(case):
                 rtol=1e-2,
             ),
         )
+    if cls == "JointModel":
+        return (Bound("cb", on=("sf", "ff"), kwargs=dict(JOINT_ITEM)),)
     if cls == "DestructiveDegradationModel":
         # Every call refits the model n_boot times.
         return (
@@ -1899,6 +1969,8 @@ def _starve(case):
         return lambda d: fit(_noise_free(lambda x: 0.5 * x)(d))
     if cls == "DestructiveDegradationModel":
         return lambda d: fit(_noise_free(lambda x: np.exp(4.0 - 0.02 * x))(d))
+    if cls == "JointModel":
+        return lambda d: fit(_no_event_level(d))
     return None
 
 

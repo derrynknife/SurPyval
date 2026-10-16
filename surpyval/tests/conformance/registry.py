@@ -306,11 +306,6 @@ _FUNCTION = (
 _COMPONENT = (
     "a building block of a registered model rather than a model itself"
 )
-_JOINT = (
-    "a joint model of a marker and a lifetime (#891), whose predictions "
-    "take an item record, sf(x, item), which no interface of the suite "
-    "drives; the principles are checked in tests/univariate/joint"
-)
 
 OUT_OF_SCOPE: dict[str, str] = {
     # abstract bases and mixins
@@ -337,13 +332,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.PH": _FACTORY,
     "surpyval.PO": _FACTORY,
     "surpyval.AH": _FACTORY,
-    # The joint model of a marker and a lifetime (#891): its predictions
-    # take an item record (sf(x, item)), not one of the interfaces the
-    # suite drives, so it has its own checks of the principles in
-    # tests/univariate/joint (shape, bounds, saving, refusals, maximum).
-    "surpyval.JointPH": _FACTORY + " (the joint models, #891)",
-    "surpyval.WeibullJointPH": _JOINT,
-    "surpyval.JointModel": _JOINT,
+    "surpyval.JointPH": _FACTORY,
     # data, schedules and result records
     "surpyval.SurpyvalData": _DATA,
     "surpyval.EventHistoryData": _DATA,
