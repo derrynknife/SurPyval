@@ -249,13 +249,15 @@ favour of this). It is how every change is made:
   class of method. SurPyval supports external covariates: measured ones
   fitted as steps, and known paths evaluated along continuous paths.
   (#172)
-- **Reliability test planning** (sample sizes, demonstration tests) belongs
-  in RePyability, not SurPyval. (#431, moved to RePyability)
 
 ## Done
 
 Ideas from this file that have shipped, newest first.
 
+- **Reliability test planning** (sample sizes, demonstration, sequential
+  and accelerated life tests), unreleased: `surpyval.test_planning`
+  (#862–#865, #965). Once listed here as belonging in RePyability; test
+  planning is statistics, so it belongs in SurPyval.
 - **Continuous time-varying covariates: evaluation** (phases 1 and 2 of
   #172), 0.22: `CovariatePath`, `sf_tvc` / `Hf_tvc` along a path,
   `cb_tvc`, `mean_tvc` and cumulative exposure for accelerated life
