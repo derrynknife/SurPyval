@@ -17,6 +17,7 @@ from scipy.special import ndtri as z
 
 import surpyval as surv
 from surpyval import ParametricDistribution
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     dict_numbers,
@@ -42,6 +43,7 @@ from surpyval.utils.no_maximum import (  # noqa: F401 (re-exported)
     MAXIMUM_STATES,
     restored_maximum,
 )
+from surpyval.utils.record_predict import PredictsRecordsMixin
 from surpyval.utils.removed_names import (
     removed_arguments,
     removed_parameter_note,
@@ -448,8 +450,10 @@ _MAXIMUM_NOTES = {
 class Parametric(
     LikelihoodRatioMixin,
     InformationCriteriaMixin,
+    DiagnoseMixin,
     SerialisableMixin,
     ParametricDistribution,
+    PredictsRecordsMixin,
 ):
     """
     Result of ``.fit()`` or ``.from_params()`` method for every parametric

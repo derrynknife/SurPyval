@@ -139,13 +139,22 @@ def test_json_keeps_event_types_and_ids():
     assert list(SurpyvalData.from_json(plain.to_json()).e) == ["a", "b", None]
 
 
-def test_json_refuses_time_varying_covariates():
+def test_json_keeps_step_schedules_and_refuses_paths():
     data = SurpyvalData.from_items(
         [ItemLifetime("A", observed=5, time_varying_covariates=STEPS)]
     )
-    with pytest.raises(ValueError, match="no JSON form"):
-        data.to_json()
+    again = SurpyvalData.from_json(data.to_json())
+    assert again.time_varying_covariates["A"] == STEPS
+    assert again.to_items() == data.to_items()
     assert pickle.loads(pickle.dumps(data)).time_varying_covariates
+    from surpyval import CovariatePath
+
+    path = CovariatePath.from_points([0.0, 5.0], [[0.0], [1.0]])
+    on_path = SurpyvalData.from_items(
+        [ItemLifetime("A", observed=5, time_varying_covariates=path)]
+    )
+    with pytest.raises(ValueError, match="CovariatePath .* no dict or JSON"):
+        on_path.to_json()
 
 
 # 5. records are fixed once made, and hashable

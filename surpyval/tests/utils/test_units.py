@@ -239,3 +239,102 @@ def test_degradation_keeps_its_units_ids_beside_the_unit():
     assert list(restored.units) == [1, 2, 3, 4]
     assert restored.unit == "hour"
     assert "Unit " in repr(model)
+
+
+# -- #945: units on the data classes, carried to fits -------------------
+
+
+def _hours():
+    return [
+        sp.ItemLifetime(f"P{k}", observed=v, unit="hrs")
+        for k, v in enumerate([3, 5, 8, 11])
+    ] + [sp.ItemLifetime("B", right_censored=9, unit="hours")]
+
+
+def test_issue_945_records_and_datasets_carry_a_unit():
+    item = sp.ItemLifetime("A", observed=5, unit="hrs")
+    assert item.unit == "hour" and "unit='hour'" in repr(item)
+    assert item.clone("B").unit == "hour" and item.extend  # kept by clone
+    assert sp.ItemLifetime.from_dict(item.to_dict()).unit == "hour"
+    data = sp.SurpyvalData.from_items(_hours())
+    assert data.unit == "hour"
+    assert "ages in hour" in repr(data) and "ages in hour" in data.summary()
+    for other in (
+        data.censor_at(6),
+        data.enter_at(1),
+        data.without("truncation"),
+        data.select(ids="B"),
+        data[0:2],
+        sp.SurpyvalData.from_json(data.to_json()),
+        sp.SurpyvalData.from_dict(data.to_dict()),
+    ):
+        assert other.unit == "hour"
+    assert all(i.unit == "hour" for i in data.to_items())
+    assert sp.SurpyvalData([1, 2, 3], unit="km").unit == "kilometer"
+    assert sp.SurpyvalData.from_observations(observed=[1], unit="cycles").unit
+    assert sp.SurpyvalData.from_items(_hours()[:2], unit="hour").unit == "hour"
+    with pytest.raises(ValueError, match="in different units: item 'P0' in"):
+        sp.SurpyvalData.from_items(
+            [_hours()[0], sp.ItemLifetime("B", right_censored=9, unit="days")]
+        )
+    with pytest.raises(ValueError, match="unit='days' was given, but the"):
+        sp.SurpyvalData.from_items(_hours(), unit="days")
+    with pytest.raises(ValueError, match="'unit' is the name of the unit"):
+        sp.ItemLifetime("A", observed=5, unit=3)
+
+
+def test_issue_945_fit_data_takes_the_units_unit():
+    data = sp.SurpyvalData.from_items(_hours())
+    assert sp.Weibull.fit(data).unit == "hour"
+    assert sp.KaplanMeier.fit(data).unit == "hour"
+    assert sp.Weibull.fit(data, unit="hours").unit == "hour"
+    assert sp.Weibull.fit_from_surpyval_data(data).unit == "hour"
+    assert sp.fit_best(data).unit == "hour"
+    with pytest.raises(
+        ValueError, match="ages are in 'hour', but unit='days'"
+    ):
+        sp.Weibull.fit(data, unit="days")
+    with_Z = sp.SurpyvalData(
+        [1, 2, 3, 4, 5, 6], Z=[[1], [0], [1], [0], [1], [0]], unit="km"
+    )
+    assert sp.WeibullPH.fit(with_Z).unit == "kilometer"
+    assert sp.CoxPH.fit(with_Z).unit == "kilometer"
+    assert sp.Weibull.fit(sp.SurpyvalData([1, 2, 3, 4])).unit is None
+
+
+def test_issue_945_histories_carry_a_unit():
+    data = sp.EventHistoryData.from_items(
+        [
+            sp.ItemHistory("M1", [1, 2], right_censored=3, unit="days"),
+            sp.ItemHistory("M2", [1.5], right_censored=3, unit="day"),
+        ]
+    )
+    assert data.unit == "day" and "ages in day" in repr(data)
+    for other in (
+        data.censor_at(2.5),
+        data.select(ids="M1"),
+        data[0:2],
+        data.to_first_events(),
+        data.to_gaps(),
+        sp.EventHistoryData.from_json(data.to_json()),
+    ):
+        assert other.unit == "day"
+    assert data.item("M1").unit == "day"
+    assert sp.recurrent.CrowAMSAA.fit(data).unit == "day"
+    assert sp.recurrent.NonParametricCounting.fit(data).unit == "day"
+    assert sp.handle_xicn([1, 2, 3], unit="h").unit == "hour"
+    assert (
+        sp.EventHistoryData.from_histories(
+            observed={"A": [1]}, right_censored={"A": 2}, unit="km"
+        ).unit
+        == "kilometer"
+    )
+    with pytest.raises(ValueError, match="in different units"):
+        sp.EventHistoryData.from_items(
+            [
+                sp.ItemHistory("M1", [1], right_censored=3, unit="days"),
+                sp.ItemHistory("M2", [1], right_censored=3, unit="hours"),
+            ]
+        )
+    with pytest.raises(ValueError, match="but unit='hours' was given"):
+        sp.recurrent.CrowAMSAA.fit(data, unit="hours")

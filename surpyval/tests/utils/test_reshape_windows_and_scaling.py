@@ -140,7 +140,7 @@ def test_to_items_matches_item_by_item():
 
 def test_summaries_count_in_words():
     one = SurpyvalData.from_items([ItemLifetime("x", observed=5)])
-    assert one.summary().startswith("SurpyvalData: 1 row, 1 item")
+    assert one.summary().startswith("SurpyvalData: 1 item, 1 row")
     history = EventHistoryData.from_items([COUNTED])
     assert history.summary().startswith("EventHistoryData: 1 item, 3 rows")
 

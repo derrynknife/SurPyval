@@ -7,6 +7,7 @@ import datetime
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import surpyval as sp
@@ -508,3 +509,118 @@ def test_to_observations_round_trips_counts_truncation_and_covariates():
     for a, b in zip(again.to_xcnt(), data.to_xcnt()):
         np.testing.assert_array_equal(a, b)
     np.testing.assert_array_equal(again.Z, data.Z)
+
+
+# -- #933: refusals name the fix; wrong containers are named -------------
+
+
+def _typed_with_covariates():
+    return SurpyvalData.from_items(
+        [
+            sp.ItemLifetime("a", observed=5, event_type="seal", covariates=1),
+            sp.ItemLifetime("b", right_censored=9, covariates=2),
+            sp.ItemLifetime("c", observed=7, event_type="wear", covariates=3),
+        ]
+    )
+
+
+def test_issue_933_fit_refusals_name_the_call_to_make():
+    data = _typed_with_covariates()
+    with pytest.raises(ValueError) as err:
+        sp.Weibull.fit(data)
+    message = str(err.value)
+    assert "data.without('covariates', 'event_types')" in message
+    assert "data.for_event_type(t)" in message
+    assert "A regression (WeibullPH, CoxPH, ...)" in message
+    assert "CompetingRisks.fit(data) takes the event types" in message
+    with pytest.raises(ValueError, match="CompetingRisksProportionalHazards"):
+        sp.CompetingRisks.fit(data)
+    with pytest.raises(
+        ValueError, match=r"without\('event_types'\), or data.for_event_type"
+    ):
+        sp.CoxPH.fit(data)
+    with pytest.raises(ValueError, match="without\\('event_types'\\)"):
+        sp.Weibull.fit_from_surpyval_data(data.without("covariates"))
+
+
+@pytest.mark.parametrize(
+    "x, fit, match",
+    [
+        (
+            [sp.ItemLifetime("a", observed=5)],
+            sp.Weibull.fit,
+            r"x is a list of ItemLifetime records.*from_items\(items\)",
+        ),
+        (
+            sp.ItemLifetime("a", observed=5),
+            sp.KaplanMeier.fit,
+            r"x is an ItemLifetime record.*from_items\(\[item, \.\.\.\]\)",
+        ),
+        (
+            [sp.ItemHistory("a", observed=[5], right_censored=9)],
+            sp.Weibull.fit,
+            r"ItemHistory records.*from_items\(items\).to_first_events\(\)",
+        ),
+        (
+            [sp.ItemHistory("a", observed=[5], right_censored=9)],
+            sp.recurrent.CrowAMSAA.fit,
+            r"x is a list of ItemHistory records.*from_items\(items\)",
+        ),
+        (
+            [sp.ItemLifetime("a", observed=5)],
+            sp.recurrent.CrowAMSAA.fit,
+            "which a recurrent fit does not take: a lifetime model fits them",
+        ),
+        (
+            SurpyvalData([1, 2, 3]),
+            sp.recurrent.NonParametricCounting.fit,
+            r"x is a SurpyvalData \(one lifetime per item\), which a",
+        ),
+        (
+            pd.DataFrame({"t": [1, 2, 3], "c": [0, 0, 1]}),
+            sp.Weibull.fit,
+            r"x is a DataFrame: name its columns, fit_from_df\(df, x_col=",
+        ),
+        (
+            pd.DataFrame({"t": [1, 2, 3], "i": [1, 1, 1]}),
+            sp.recurrent.CrowAMSAA.fit,
+            r"EventHistoryData.from_dataframe",
+        ),
+        (
+            {"observed": [1, 2]},
+            sp.Weibull.fit,
+            r"x is a dict: .*from_observations",
+        ),
+        (
+            {"a": [1, 2]},
+            sp.recurrent.CrowAMSAA.fit,
+            r"x is a dict: .*from_histories",
+        ),
+    ],
+)
+def test_issue_933_wrong_containers_say_what_to_give(x, fit, match):
+    with pytest.raises(TypeError, match=match):
+        fit(x)
+
+
+def test_issue_933_a_dataframe_to_the_constructor_is_named():
+    with pytest.raises(TypeError, match="x is a DataFrame"):
+        SurpyvalData(pd.DataFrame({"t": [1, 2, 3]}))
+
+
+def test_issue_933_a_wrong_length_Z_is_named():
+    with pytest.raises(ValueError, match="Z has 2 rows for 3 values of x"):
+        SurpyvalData([1, 2, 3], [0, 0, 1], Z=[[1], [2]])
+    with pytest.raises(ValueError, match="Z has 1 row for 3 values"):
+        SurpyvalData([1, 2, 3], [0, 0, 1], Z=[[1, 2, 3]])
+
+
+def test_issue_933_to_histories_names_the_dict_form():
+    data = sp.EventHistoryData.from_items(
+        [sp.ItemHistory("A", [5], right_censored=12, observed_event_types="x")]
+    )
+    with pytest.raises(
+        ValueError,
+        match="dict form of from_histories cannot hold: use data.to_items",
+    ):
+        data.to_histories()

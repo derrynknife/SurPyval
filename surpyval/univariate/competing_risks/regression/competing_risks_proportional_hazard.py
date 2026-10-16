@@ -17,6 +17,7 @@ import numpy.typing as npt
 from scipy.linalg import block_diag
 from scipy.stats import norm
 
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -38,6 +39,9 @@ from surpyval.univariate.regression._aliasing import (
     covariate_columns,
     dataframe_covariates,
     warn_collected,
+)
+from surpyval.univariate.regression._partial_effects import (
+    CompetingRisksPartialEffectsMixin,
 )
 from surpyval.univariate.regression._summary import (
     coefficient_names,
@@ -94,7 +98,11 @@ def _check_interp(interp: str) -> None:
 
 
 class CompetingRisksProportionalHazards(
-    InformationCriteriaMixin, LinearPredictorMixin, SerialisableMixin
+    CompetingRisksPartialEffectsMixin,
+    InformationCriteriaMixin,
+    LinearPredictorMixin,
+    DiagnoseMixin,
+    SerialisableMixin,
 ):
     """
     Competing-risks proportional-hazards regression.
@@ -155,6 +163,13 @@ class CompetingRisksProportionalHazards(
     #: the means either way.
     center: "npt.NDArray"
     _fg_models: dict
+    #: Each cause's fitted model, by cause label (#874): its ``CoxPH``
+    #: model (with the other causes censored) for ``model="Cox"``, which
+    #: has ``compute_residuals`` and ``check_ph``, or its
+    #: ``FineGrayModel`` for ``model="Fine-Gray"``. ``diagnose()`` checks
+    #: them. ``None`` on a model restored with ``from_dict``, which does
+    #: not store them (only their coefficients and baselines).
+    models: "dict | None" = None
     #: Each cause's coefficients' covariance, in ``event_idx_map`` order
     #: (``None`` for a Cox model restored from a dict saved before they
     #: were stored).
@@ -755,6 +770,19 @@ class CompetingRisksProportionalHazards(
 
         return self._per_covariate_row(x, Z, incidence, 0.0)
 
+    # -- plot_partial_effects (CompetingRisksPartialEffectsMixin) ----------
+
+    def _partial_effects_width(self) -> int:
+        return int(np.atleast_2d(np.asarray(self.betas)).shape[1])
+
+    def _partial_effects_times(self) -> "npt.NDArray | None":
+        return np.asarray(self.x, dtype=float)
+
+    def _partial_effects_curve(
+        self, on: str, x: npt.NDArray, row: npt.NDArray, event: Any
+    ) -> npt.NDArray:
+        return np.asarray(self.cif(x, row, event), dtype=float)
+
     def _per_covariate_row(
         self, x: npt.ArrayLike, Z: npt.ArrayLike, curve: Any, start: float
     ) -> npt.NDArray:
@@ -1006,7 +1034,9 @@ class CompetingRisksProportionalHazards(
             baseline is: ``Z = 0`` unless ``center=True``).
             ``params``, ``parameter_names``, :meth:`covariance`,
             :meth:`standard_errors`, ``p_values`` and :meth:`summary`
-            give the per-cause coefficients' inference. ``phi`` (the
+            give the per-cause coefficients' inference, and ``models``
+            each cause's own fitted model (its ``CoxPH`` model, or its
+            ``FineGrayModel``), which :meth:`diagnose` checks. ``phi`` (the
             multiplier of the sum of the per-cause coefficients) is kept
             for backward compatibility, and ``beta`` (that sum) is
             deprecated: neither is a model quantity.
@@ -1072,6 +1102,7 @@ class CompetingRisksProportionalHazards(
             results = []
             states = []
             covariances: list = []
+            cox_models = {}
             for i, event in enumerate(causes):
                 c_e = np.where(label_mask(e, event), 0, 1)
                 with collect_aliased() as aliased:
@@ -1079,6 +1110,9 @@ class CompetingRisksProportionalHazards(
                         x, Z, c_e, n, tie_method=tie_method, center=center
                     )
                 found += aliased
+                # Kept whole (#874): its residuals and proportional-hazards
+                # test are the cause's diagnostics.
+                cox_models[event] = cox_model
 
                 results.append(cox_model.res)
                 covariances.append(cox_model.covariance())
@@ -1095,6 +1129,7 @@ class CompetingRisksProportionalHazards(
                 # store increments so H0_e = baselines.cumsum stays coherent.
                 H_grid = _step(cox_model.x, cox_model.H0, unique_x, before=0.0)
                 baselines[i, :] = np.diff(H_grid, prepend=0.0)
+            out.models = cox_models
 
         else:
             # Delegate to the IPCW Fine-Gray fitter, one subdistribution model
@@ -1121,6 +1156,7 @@ class CompetingRisksProportionalHazards(
                 H_grid = _step(fg._times, fg._cumhaz, unique_x, before=0.0)
                 baselines[i, :] = np.diff(H_grid, prepend=0.0)
             out._fg_models = fg_models
+            out.models = dict(fg_models)
             # One warning for every cause whose partial likelihood has no
             # finite maximum (#392).
             states = [_warn_if_monotone(fits)]

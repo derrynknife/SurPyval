@@ -52,6 +52,7 @@ from autograd.tracer import getval
 from scipy.optimize import OptimizeResult, minimize
 from scipy.stats import norm
 
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -77,6 +78,9 @@ from surpyval.univariate.regression._fit_skeleton import (
     LOG_MAX,
     baseline_at_origin_error,
     judge_search,
+)
+from surpyval.univariate.regression._partial_effects import (
+    CompetingRisksPartialEffectsMixin,
 )
 from surpyval.univariate.regression._summary import (
     coefficient_names,
@@ -520,6 +524,17 @@ def _fit_cause(
         "runaway_proportion": proportion,
         "maximum": maximum,
         "objective": neg_ll,
+        # The rows the fit used, which diagnose() checks the model on
+        # (#874): the covariates as given (not centred), the events of the
+        # cause of interest and the competing failures.
+        "fit_data": {
+            "x": x,
+            "Z": Z_raw,
+            "c": c,
+            "n": n,
+            "is_event": is_event,
+            "is_competing": is_competing,
+        },
     }
 
 
@@ -840,7 +855,11 @@ def paired_covariate_rows(Z: npt.ArrayLike, n_x: int, p: int) -> npt.NDArray:
 
 
 class FineGrayModel(
-    InformationCriteriaMixin, LinearPredictorMixin, SerialisableMixin
+    CompetingRisksPartialEffectsMixin,
+    InformationCriteriaMixin,
+    LinearPredictorMixin,
+    DiagnoseMixin,
+    SerialisableMixin,
 ):
     """
     A fitted Fine-Gray subdistribution-hazard model for one cause of interest.
@@ -889,6 +908,11 @@ class FineGrayModel(
     #: ``fit_from_df``), which name the coefficients (#614); ``None``
     #: for an array ``Z``, whose coefficients are ``coef_0``, ...
     feature_names: "list[str] | None" = None
+    #: The rows the model was fitted to (``x``, ``Z`` as given, ``c``,
+    #: ``n`` and the masks ``is_event`` and ``is_competing``), on which
+    #: ``diagnose()`` checks it (#874); ``None`` on a model restored with
+    #: ``from_dict``, which does not store them.
+    _fit_data: "dict | None" = None
 
     def __init__(self, fit: dict) -> None:
         self.cause = fit["cause"]
@@ -910,6 +934,7 @@ class FineGrayModel(
         self.res = fit["res"]
         self.maximum = fit.get("maximum", "unknown")
         self._objective = fit.get("objective")
+        self._fit_data = fit.get("fit_data")
 
     _ALIASED_WHY = (
         "a constant column, which the baseline subdistribution hazard "
@@ -1112,6 +1137,22 @@ class FineGrayModel(
         with np.errstate(divide="ignore", over="ignore"):
             H = np.exp(np.log(H0) + (rows - self.center) @ self._coef())
         return -np.expm1(-H)
+
+    # -- plot_partial_effects (CompetingRisksPartialEffectsMixin) ----------
+
+    def _partial_effects_width(self) -> int:
+        return int(np.size(self.beta))
+
+    def _partial_effects_times(self) -> "npt.NDArray | None":
+        return np.asarray(self._times, dtype=float)
+
+    def _partial_effects_curve(
+        self, on: str, x: npt.NDArray, row: npt.NDArray, event: Any
+    ) -> npt.NDArray:
+        # One cause's model: event, where given, must be that cause.
+        if event is not None and event != self.cause:
+            raise unknown_cause_error(event, [self.cause])
+        return np.asarray(self.cif(x, row), dtype=float)
 
     @keeps_query_shape
     def sf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:

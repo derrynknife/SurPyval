@@ -1,5 +1,5 @@
 """EventHistoryData.from_histories / to_histories, and the recurrent
-fitters taking a EventHistoryData as ``x``."""
+fitters taking an EventHistoryData as ``x``."""
 
 import numpy as np
 import pytest

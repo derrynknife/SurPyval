@@ -1196,6 +1196,7 @@ def handle_xicn(
     as_recurrent_data: Literal[True] = True,
     windows: dict | None = None,
     e: npt.ArrayLike | None = None,
+    unit: Any = None,
 ) -> EventHistoryData: ...
 
 
@@ -1213,6 +1214,7 @@ def handle_xicn(
     as_recurrent_data: Literal[False],
     windows: dict | None = None,
     e: npt.ArrayLike | None = None,
+    unit: Any = None,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]: ...
 
 
@@ -1228,6 +1230,7 @@ def handle_xicn(
     as_recurrent_data: bool = True,
     windows: dict | None = None,
     e: npt.ArrayLike | None = None,
+    unit: Any = None,
 ) -> (
     EventHistoryData
     | tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]
@@ -1290,6 +1293,9 @@ def handle_xicn(
         The event type (mark) of each row, for the cause-specific models;
         a missing value marks a row with no cause (such as the censoring
         row).
+    unit : str, optional
+        The unit of the times, kept with the data (``data.unit``) and
+        given to the model by ``fit(data)``.
 
     Returns
     -------
@@ -1304,7 +1310,7 @@ def handle_xicn(
     >>> data.ids
     [1, 2]
     """
-    x = coerce_xcnt_x(x)
+    x = coerce_xcnt_x(x, recurrent=True)
 
     if x.shape[0] == 0:
         raise ValueError("'x' cannot be empty")
@@ -1373,7 +1379,9 @@ def handle_xicn(
     _check_static_covariates(Z_arr, idx, unique_i)
 
     if as_recurrent_data:
-        data = EventHistoryData(x, i, c, n, e=e_arr, tl=tl_arr, tr=tr_arr)
+        data = EventHistoryData(
+            x, i, c, n, e=e_arr, tl=tl_arr, tr=tr_arr, unit=unit
+        )
         data.Z = None if Z_arr is None else np.array(Z_arr)
         # ``window_map`` (synthetic-item id -> (real item, (start, end))) is
         # set only for gapped observation; it stays ``None`` otherwise and is

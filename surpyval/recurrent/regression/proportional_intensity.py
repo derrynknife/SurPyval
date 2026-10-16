@@ -4,6 +4,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 from surpyval import plotting
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.recurrent import diagnostics
 from surpyval.recurrent.inference import (
     LikelihoodInferenceMixin,
@@ -70,7 +71,10 @@ def alias_covariates(Z: ArrayLike, intercept: bool) -> np.ndarray:
 
 
 class ProportionalIntensityModel(
-    SerialisableMixin, RecurrenceSimulationMixin, LikelihoodInferenceMixin
+    DiagnoseMixin,
+    SerialisableMixin,
+    RecurrenceSimulationMixin,
+    LikelihoodInferenceMixin,
 ):
     """
     Model to provide methods and attributes when using a fitted proportional

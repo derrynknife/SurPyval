@@ -7,6 +7,7 @@ import numpy as onp
 import numpy.typing as npt
 from scipy.stats import norm
 
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -17,6 +18,7 @@ from surpyval.utils import is_missing_event
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
+from surpyval.utils.record_predict import PredictsRecordsMixin
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
@@ -25,6 +27,7 @@ from surpyval.utils.shapes import (
 from surpyval.utils.validation import check_alpha_ci, no_covariance_error
 
 from ._concordance import ConcordanceMixin
+from ._partial_effects import PartialEffectsMixin
 from ._prediction import (
     ConditionalSurvivalMixin,
     paired_probabilities,
@@ -48,10 +51,13 @@ if TYPE_CHECKING:
 
 class SemiParametricRegressionModel(
     ConditionalSurvivalMixin,
+    PartialEffectsMixin,
     InformationCriteriaMixin,
     LinearPredictorMixin,
     ConcordanceMixin,
+    DiagnoseMixin,
     SerialisableMixin,
+    PredictsRecordsMixin,
 ):
     """
     The fitted Cox proportional hazards model returned by ``CoxPH.fit``,
@@ -194,6 +200,39 @@ class SemiParametricRegressionModel(
     def __init__(self, kind: str, parameterization: str) -> None:
         self.kind = kind
         self.parameterization = parameterization
+
+    # -- plot_partial_effects (PartialEffectsMixin) ------------------------
+
+    #: The Breslow baseline is a step function, drawn as steps.
+    _PARTIAL_EFFECTS_STEP = True
+
+    def _partial_effects_refusal(self) -> "str | None":
+        if self.is_stratified:
+            return (
+                "A stratified Cox model has a baseline per stratum, and "
+                "plot_partial_effects does not take a stratum: draw each "
+                "stratum's curves with sf(x, Z, stratum=...)."
+            )
+        return None
+
+    def _partial_effects_width(self) -> int:
+        return int(np.size(self.params))
+
+    def _partial_effects_rows(
+        self,
+    ) -> "tuple[npt.NDArray, npt.NDArray] | str":
+        data = getattr(self, "_fit_data", None)
+        if not data:
+            return "the model does not hold the data it was fitted to"
+        return (
+            onp.asarray(data["Z"], dtype=float),
+            onp.asarray(data["n"], dtype=float),
+        )
+
+    def _partial_effects_times(self) -> "npt.NDArray | None":
+        data = getattr(self, "_fit_data", None)
+        fitted = [] if not data else [onp.ravel(data["x"])]
+        return onp.concatenate([onp.ravel(self.x)] + fitted)
 
     # -- model comparison (#604) -------------------------------------------
 
@@ -816,17 +855,22 @@ class SemiParametricRegressionModel(
         """
         Test the proportional-hazards assumption (Grambsch-Therneau).
 
-        The table R's ``cox.zph`` prints (#514): one row per covariate
-        (named as in :meth:`summary`), each a 1-d.f. test of whether its
-        scaled Schoenfeld residuals trend with time, and a last row
-        ``GLOBAL``, the joint test on all of them. A small ``p`` is
-        evidence against proportional hazards.
+        The table R's ``cox.zph`` prints (#514), with its statistics
+        (survival 3.0 and later): one row per covariate (named as in
+        :meth:`summary`), each the 1-d.f. score test of whether its
+        coefficient changes with time (the trend of its scaled Schoenfeld
+        residuals), and a last row ``GLOBAL``, the joint test on all of
+        them. A small ``p`` is evidence against proportional hazards.
+        :meth:`diagnose` reports the same tests on the ``km`` and ``rank``
+        scales, with the other checks of a Cox fit and what to do about a
+        failure. Until v0.24 this was the approximation of R before
+        version 3.0 and of lifelines, which can differ in small samples.
 
         Parameters
         ----------
         transform : {"km", "rank", "identity", "log"}, optional
-            The function of time to test against; ``"km"`` (the default,
-            as in R) is the scale-free choice. See
+            The function of time to test against, as R defines it;
+            ``"km"`` (the default, as in R) is the scale-free choice. See
             :func:`~surpyval.univariate.regression.proportional_hazards.
             diagnostics.check_ph`.
 
@@ -851,9 +895,9 @@ class SemiParametricRegressionModel(
         >>> model.check_ph().round(4)
                    statistic  df       p
         covariate
-        fin           0.0000   1  0.9983
-        age           5.8491   1  0.0156
-        GLOBAL        5.8570   2  0.0535
+        fin           0.0242   1  0.8764
+        age           6.0906   1  0.0136
+        GLOBAL        6.0949   2  0.0475
         """
         import pandas as pd
 

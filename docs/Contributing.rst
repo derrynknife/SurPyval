@@ -333,15 +333,15 @@ Branching and releases
 SurPyval uses a two-tier branch model to keep continuous integration and the
 documentation build from running on every change:
 
-* **master** is the release branch. It is only updated at a version release,
+* **main** is the release branch. It is only updated at a version release,
   and pushing a ``v*`` tag to it publishes the package and rebuilds the hosted
   documentation.
-* **develop** is the long-lived integration branch. Feature work is done on a
-  short-lived branch and opened as a pull request into ``develop``.
-* At release time ``develop`` is merged into ``master`` in a single pull
+* **dev** is the long-lived integration branch. Feature work is done on a
+  short-lived branch and opened as a pull request into ``dev``.
+* At release time ``dev`` is merged into ``main`` in a single pull
   request and the new version is tagged. Either push the tag, or run the
-  publish workflow by hand on ``master`` (``gh workflow run publish.yml
-  --ref master -f version=0.25``): it publishes first, then creates the tag
+  publish workflow by hand on ``main`` (``gh workflow run publish.yml
+  --ref main -f version=0.25``): it publishes first, then creates the tag
   and a GitHub Release itself, so no tag needs pushing. ``-f dry_run=true``
   checks and builds only.
 
@@ -352,8 +352,8 @@ next minor number. A name deprecated in one release is removed in the next
 the version reaches it while the old names are still accepted.
 
 Continuous integration (``.github/workflows/actions.yml``) therefore runs
-once, on the **pull request into master** (the release), and on nothing
-else: not on pull requests into ``develop`` and not on pushes to any branch.
+once, on the **pull request into main** (the release), and on nothing
+else: not on pull requests into ``dev`` and not on pushes to any branch.
 
 .. list-table::
    :header-rows: 1
@@ -361,33 +361,33 @@ else: not on pull requests into ``develop`` and not on pushes to any branch.
 
    * - Event
      - Jobs
-   * - Pull request into ``develop``
+   * - Pull request into ``dev``
      - none
-   * - Pull request into ``master`` (the release)
+   * - Pull request into ``main`` (the release)
      - lint, the conformance suite, the test suite across three
        interpreters (each split into four parts that run at once, with
        the docstring examples; 3.12 measures coverage), the calibration
        studies and scenario cards (on 3.12, in seven groups that run at
        once, chosen by the studies' measured times), the wheel check and
        the documentation build
-   * - Merge into ``master``
+   * - Merge into ``main``
      - none in this repository; Read the Docs rebuilds the hosted
        documentation
    * - Push of a ``v*`` tag
      - ``.github/workflows/publish.yml`` checks that the tagged commit is
-       the merge of a pull request into ``master`` whose full run passed
+       the merge of a pull request into ``main`` whose full run passed
        (every job), and that the tag matches the version in
        ``pyproject.toml``; it then builds the package and publishes it to
        PyPI. It runs no tests of its own. Read the Docs builds the tagged
        documentation
-   * - Publish workflow run by hand on ``master``
+   * - Publish workflow run by hand on ``main``
      - the same checks and publishing, for the version typed in (which
        must have no tag and no PyPI release yet); then it creates the tag
        and a GitHub Release
 
 The full test suite and the documentation build run once per release, on the
 release pull request. That run tests the pull request's merge result, so a
-failure is found before ``master`` changes: fix it on ``develop`` (the
+failure is found before ``main`` changes: fix it on ``dev`` (the
 pull request picks the fix up) and merge the release when the run is green.
 Waiting on the full suite at every step made a release take hours.
 

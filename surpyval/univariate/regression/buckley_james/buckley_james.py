@@ -44,6 +44,7 @@ import numpy.typing as npt
 if TYPE_CHECKING:
     import pandas as pd
 
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -224,6 +225,7 @@ class BuckleyJamesModel(
     NoLikelihoodMixin,
     LinearPredictorMixin,
     ConcordanceMixin,
+    DiagnoseMixin,
     SerialisableMixin,
 ):
     """
