@@ -341,6 +341,37 @@ each item's own:
     z = (exponential.params[-1] - 0.9) / exponential.standard_errors()[-1]
     assert abs(z) < 3
 
+Each parameter is on its own scale by default: the rate ``b`` above is
+normal between items, so a fleet whose rates are near 0 would give some
+items a falling path. A rate that must stay positive can go on a log
+scale with the degradation module's ``LinkedPathModel``: then ``log(b)``
+is normal between items (``b`` log-normal), and the names say so --
+``log(b)``, its spread ``sd_log(b)`` and correlation ``corr_a_log(b)``
+are on the log scale, and a covariate's shift ``log(b)_<cov>`` is a log
+ratio of rates:
+
+.. jupyter-execute::
+
+    from surpyval.degradation import LinkedPathModel
+
+    log_rate = JointPH(Weibull, LinkedPathModel(ExponentialPath, {"b": "log"}))
+    log_rate = log_rate.fit(wear, marker_reference=4.0)
+    log_rate.summary()[["coef", "se(coef)"]].round(5)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert log_rate.maximum == "verified"
+    assert log_rate.parameter_names[:5] == [
+        "a", "log(b)", "sd_a", "sd_log(b)", "corr_a_log(b)"
+    ]
+    z = (log_rate.params[-1] - 0.9) / log_rate.standard_errors()[-1]
+    assert abs(z) < 3
+
+``varying=`` then names ``log(b)``. The two fits describe the same fleet
+with a different spread of rates, and predict alike where the data are.
+
 A path's parameters can be held common: ``JointPH(Weibull, QuadraticPath,
 varying=("a", "b"))`` gives each item its own level and rate, and every item
 the same curvature ``c``. At most three may vary (the quadrature's grid is
@@ -443,7 +474,8 @@ The joint model of v1 (#891) is the standard one. It has:
 
 - one marker, following any degradation path model (a straight line by
   default), with up to three of its parameters varying between items
-  (multivariate normal on their natural scale) and the rest common;
+  (multivariate normal on their natural scale, or on a log scale with a
+  ``LinkedPathModel``) and the rest common;
 - a Weibull proportional hazards survival part in the path's current value
   (``JointPH(Weibull, path_model)``; ``WeibullJointPH`` is the line; other
   baselines are refused);
@@ -453,10 +485,9 @@ The joint model of v1 (#891) is the standard one. It has:
 - predictions for one item given its readings, with Wald (delta method)
   bounds.
 
-Not yet (see #891's roadmap): spline paths; a log scale for a positive
-path parameter's spread (the degradation module's ``links``); the slope or
-the cumulative marker as the link; other survival parts (AFT, splines);
-several markers.
+Not yet (see #891's roadmap): spline paths; the slope or the cumulative
+marker as the link; other survival parts (AFT, splines); several
+markers.
 
 References
 ----------

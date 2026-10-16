@@ -20,7 +20,10 @@ Unreleased
   default, which ``WeibullJointPH`` is; ``QuadraticPath``,
   ``ExponentialPath``, ... or a ``PathModel`` of one's own) with the
   parameters named in ``varying`` (default all, at most three) varying
-  between items, multivariate normal, and the rest common, plus noise;
+  between items, multivariate normal (each on its own scale, or a positive
+  one on a log scale with ``LinkedPathModel(path, {"b": "log"})``, its
+  names then ``log(b)``, ``sd_log(b)``, ...), and the rest common, plus
+  noise;
   its hazard is Weibull PH in the path's current value; covariates shift
   every path parameter's mean and enter the hazard; by maximum likelihood
   with adaptive Gauss-Hermite quadrature; failures, right censoring and
@@ -453,6 +456,11 @@ Unreleased
   replacement.
 
 **Fixed**
+
+- ``LinkedPathModel``'s ``path``, ``inv_path`` and ``jacobian`` take an
+  array for each parameter, broadcasting with the ages, as the built-in
+  path models do (they applied the links along the wrong axis, and
+  failed); and it pickles (it held its link functions as lambdas).
 
 - **Survival given an age needs the covariate from that age only** under
   proportional hazards and odds, additive hazards and Cox (#962). There

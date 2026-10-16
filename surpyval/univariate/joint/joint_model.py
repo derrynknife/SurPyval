@@ -65,7 +65,15 @@ FORMULAS = {
 
 def path_formula(path_model: Any) -> str:
     """The path's formula: its own ``formula`` where it has one, else the
-    built-in one of its name, else its name's parameters."""
+    built-in one of its name, else its name's parameters; a path on
+    links (``LinkedPathModel``) says which parameters are on a log link.
+    """
+    from surpyval.degradation.stress import LinkedPathModel
+
+    if isinstance(path_model, LinkedPathModel):
+        logged = [n for n, link in path_model.links.items() if link == "log"]
+        formula = path_formula(path_model.base)
+        return formula + "".join(f"; {n} on a log link" for n in logged)
     own = getattr(path_model, "formula", None)
     if isinstance(own, str) and own:
         return own
@@ -924,9 +932,11 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         ones, the marker reference, the centres its predictions are
         computed at, the covariance, the fitted negative log-likelihood
         and the counts of the data (not the data). :meth:`from_dict`
-        rebuilds it, and it predicts and bounds as the original. A path
-        model of one's own cannot be rebuilt from a name, and is refused
-        (``NotImplementedError``); the model pickles all the same.
+        rebuilds it, and it predicts and bounds as the original. A built-in
+        path on links (``LinkedPathModel``) is saved as its name and its
+        links. A path model of one's own cannot be rebuilt from a name,
+        and is refused (``NotImplementedError``); the model pickles all
+        the same.
 
         Examples
         --------
@@ -955,12 +965,17 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             PATH_MODELS,
             path_model_key,
         )
+        from surpyval.degradation.stress import LinkedPathModel
 
-        key = path_model_key(self.path_model)
+        path, links = self.path_model, None
+        if isinstance(path, LinkedPathModel):
+            links = dict(path.links)
+            path = path.base
+        key = path_model_key(path)
         # by its class: an unpickled built-in path is a copy of it
-        if type(PATH_MODELS.get(key)) is not type(self.path_model):
+        if type(PATH_MODELS.get(key)) is not type(path):
             raise NotImplementedError(
-                f"The {self.path_model.name!r} path model is not a built-in "
+                f"The {path.name!r} path model is not a built-in "
                 "one, so it cannot be rebuilt from a name: keep the model "
                 "with pickle."
             )
@@ -968,6 +983,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             "model": "JointModel",
             "distribution": self.dist.name,
             "path_model": key,
+            "links": links,
             "varying": list(self.varying),
             "params": np.asarray(self.params, dtype=float).tolist(),
             "parameter_names": list(self.parameter_names),
@@ -1032,6 +1048,16 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         out = cls()
         out.dist = surpyval.Weibull
         out.path_model = PATH_MODELS[key]
+        if model_dict.get("links"):
+            from surpyval.degradation.stress import (
+                LinkedPathModel,
+                validate_links,
+            )
+
+            out.path_model = LinkedPathModel(
+                out.path_model,
+                validate_links(out.path_model, dict(model_dict["links"])),
+            )
         out.varying = list(model_dict["varying"])
         out.params = np.array(model_dict["params"], dtype=float)
         out.parameter_names = list(model_dict["parameter_names"])

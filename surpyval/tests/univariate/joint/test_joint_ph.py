@@ -34,6 +34,7 @@ from surpyval import (
 from surpyval.degradation import (
     ExponentialPath,
     LinearPath,
+    LinkedPathModel,
     PathModel,
     QuadraticPath,
 )
@@ -672,6 +673,93 @@ def test_recovers_an_exponential_path():
     )
     z = (model.params - _path_truth(model, truth)) / model.standard_errors()
     assert np.all(np.abs(z) < 3), dict(zip(model.parameter_names, z))
+
+
+#: The exponential path with its rate on a log link: log(b) normal
+#: between items (b log-normal, so positive), about log(0.0008), sd 0.3.
+LOG_RATE = dict(
+    a=3.0,
+    **{"log(b)": np.log(0.0008)},
+    sd_a=0.4,
+    **{"sd_log(b)": 0.3, "corr_a_log(b)": 0.0},
+    sd_noise=0.3,
+    alpha=800.0,
+    beta=2.0,
+    marker_effect=0.9,
+)
+
+
+def _log_rate_path():
+    return LinkedPathModel(ExponentialPath, {"b": "log"})
+
+
+@functools.lru_cache(maxsize=None)
+def _log_rate_model():
+    data = simulate_path(
+        _log_rate_path(),
+        [3.0, np.log(0.0008)],
+        [0.4, 0.3],
+        0.3,
+        n=300,
+        seed=1,
+    )
+    return JointPH(Weibull, _log_rate_path()).fit(data, marker_reference=4.0)
+
+
+def test_recovers_a_path_with_its_rate_on_a_log_link():
+    model = _log_rate_model()
+    assert model.maximum == "verified"
+    # the path's own names: the log-linked rate, its spread and its
+    # correlation are on the log scale, and named so
+    assert model.parameter_names == list(LOG_RATE)
+    z = (model.params - _path_truth(model, LOG_RATE)) / (
+        model.standard_errors()
+    )
+    assert np.all(np.abs(z) < 3), dict(zip(model.parameter_names, z))
+    assert "a exp(b t); b on a log link" in repr(model)
+    assert "a exp(b t); b on a log link" in str(model.summary().index[0][0])
+
+
+def test_a_path_on_a_log_link_predicts_and_round_trips():
+    model = _log_rate_model()
+    item = ItemLifetime(
+        "P", right_censored=365, markers={0: 3.0, 120: 3.3, 240: 3.7}
+    )
+    x = [425.0, 545.0]
+    ff = model.ff(x, item)
+    assert np.array_equal(ff, model.ff(x, markers=item.markers, given=365))
+    assert np.all((ff > 0) & (ff < 1)) and ff[0] < ff[1]
+    lower, upper = model.cb(x, item, on="ff").T
+    assert np.all((lower < ff) & (ff < upper))
+    new = model.ff([365.0, 730.0])
+    assert np.all((new > 0) & (new < 1))
+    for copy in (
+        pickle.loads(pickle.dumps(model)),
+        JointModel.from_dict(json.loads(json.dumps(model.to_dict()))),
+    ):
+        assert copy.parameter_names == model.parameter_names
+        assert np.allclose(copy.ff(x, item), ff, rtol=1e-12, atol=0)
+        assert np.allclose(
+            copy.cb(x, item), model.cb(x, item), rtol=1e-12, atol=0
+        )
+        assert copy.path_model.links == {"a": "identity", "b": "log"}
+
+
+def test_a_log_linked_rate_shifted_by_a_covariate_is_named_so():
+    import pandas as pd
+
+    data = simulate_path(
+        _log_rate_path(), [3.0, np.log(0.0008)], [0.4, 0.3], 0.3, n=120
+    )
+    markers = [data.markers[i] for i in data.ids]
+    z = np.arange(len(markers)) % 2.0
+    names = (
+        JointPH(Weibull, _log_rate_path(), varying=("a",))
+        .fit(data.x, c=data.c, Z=pd.DataFrame({"z": z}), markers=markers)
+        .parameter_names
+    )
+    assert names[:4] == ["a", "a_z", "log(b)", "log(b)_z"]
+    assert "sd_a" in names and "sd_log(b)" not in names
 
 
 def test_recovers_a_quadratic_path_with_a_common_curvature():
