@@ -193,6 +193,29 @@ tuning:
 - **Brute-force checks** not yet done: the Uniform and NegativeBinomial
   bands, and ExpoWeibull's 99% ``hf`` and mean bounds.
 
+What a 2026-10 look found, for whoever takes this on:
+
+- **The ExpoWeibull's valleys end at known families.** As beta -> inf with
+  mu = k / beta, F(x) = (1 - exp(-(x / alpha)^beta))^mu tends to the power
+  distribution (x / A)^k on (0, A], with A at the largest failure; as
+  alpha -> 0, beta -> 0 and mu -> inf jointly it tends to the Frechet,
+  exp(-(s / x)^k). On the registry's fixture the power limit's deviance is
+  0.27 (inside the 95% region) and the Frechet's 4.22 (inside the 99%).
+  The first valley only approaches its limit with alpha - A = O(1 / beta):
+  at alpha = A exactly the largest failure's density keeps a factor
+  e^-1 / (1 - e^-1), 0.54 of log-likelihood short of the limit at every
+  beta. Coordinates such as (A, k = beta mu, 1 / beta, beta (alpha / A -
+  1)) would make the limit a finite face (1 / beta = 0) that the searches
+  could evaluate, and stop at, instead of creeping towards.
+- **Where the time goes.** One level of the registry's ExpoWeibull bounds
+  (parameters, ``sf`` and ``hf`` at one time, three quantiles, the mean)
+  takes 16 s and 31,000 likelihoods; in the quantiles' 12.6 s, probing
+  the valleys (``probe_edges``) is 7.0 s and finite-difference gradients
+  (``central_gradient``, for SLSQP and the extremality checks) 7.4 s.
+  Exact gradients of psi (autograd through the distribution's functions,
+  as the lean likelihood's gradient already is) would cut the second
+  without touching the precision limit.
+
 ## Competing-risks survival trees and forests
 
 *Status: idea. Size: large (research). Was #194.*

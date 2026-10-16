@@ -6,6 +6,37 @@ Unreleased
 
 **Added**
 
+- Likelihood-ratio bounds for offset, limited-failure-population and
+  zero-inflated models: ``param_cb``, ``cb``, ``quantile_cb``, ``mean_cb``
+  and ``mrl_cb`` with ``method="lr"`` raised ``NotImplementedError``. The
+  profile is now over every fitted parameter, so the bounds include the
+  uncertainty of ``gamma``, ``lfp_p`` and ``f0``, and ``param_cb`` bounds
+  those three as well (``gamma`` had only the bootstrap bound). ``lfp_p``
+  and ``f0`` have a closed edge (1 and 0, the plain model): a side towards
+  it is the edge itself where the profile deviance there is within the
+  critical value, and with the estimate on the edge the other side is
+  walked out in the parameter itself; a two-sided interval then covers a
+  truth on the edge with probability ``1 - alpha_ci / 2`` and the
+  one-sided bound towards it with ``1 - alpha_ci``, asymptotically (Self
+  and Liang, 1987; more in small samples: 98.5% and 97.2% at the 95% level
+  with 100 units). A time before the
+  estimated offset has a band below 1 wherever the region holds an offset
+  below it. Where an offset model's region reaches the first failure with
+  its offset (the likelihood is unbounded there), the bounds on functions
+  at that level are ``nan``, with a warning, and the offset's interval
+  runs up to the first failure. Brute-force checks of the profile deviance
+  at each bound are in ``test_likelihood_ratio_extra_parameters.py``, the
+  coverage studies in ``calibration/test_coverage_extra_parameters.py``,
+  and the Weibull's variants join the conformance sweeps of the
+  likelihood-ratio options (the other families' with the calibration
+  studies).
+- Truncated draws, ``random(size, a=, b=)`` and ``random_data``, from
+  offset, limited-failure-population and zero-inflated models (they raised
+  ``NotImplementedError``): the model's own distribution given the window
+  ``(a, b]``, with the units dead on arrival in it where it holds 0 and
+  the ones that never fail where it has no upper end. A window the model
+  puts no probability in raises a ``ValueError``.
+
 - The data utilities live on ``SurpyvalData``.
   ``SurpyvalData.from_observations(observed=..., right_censored=...,
   left_censored=..., interval_censored=..., left_truncation=...,
@@ -470,6 +501,20 @@ Unreleased
   replacement.
 
 **Fixed**
+
+- Intervals that only meet at one time, such as (1, 3] and (3, 5]
+  ("abutting" intervals), leave the likelihood of a family that can
+  concentrate its mass anywhere with no finite maximum: it rises along a
+  flat ridge towards a spike at that time, split either side. A Normal
+  returned sigma = 0.35 as a verified maximum, within 1e-8 of the limit's
+  log-likelihood. Such a fit now warns "No finite maximum" once and records
+  ``maximum = "no finite maximum"``, as the other such data do (the known
+  gap of Design Principle 12); a truncated fit is held to the spike's
+  likelihood and only warned where it has not beaten it. With an exact
+  failure at that time the likelihood is unbounded, and the fit is refused,
+  as a point mass consistent with every observation already was.
+- The Wald ``param_cb`` on ``lfp_p`` or ``f0`` a hair from 1 let numpy's
+  overflow warning out of the logit back-transform.
 
 - **``fit_from_recurrent_data`` refuses what ``fit(data)`` refuses**
   (#959). Given an ``EventHistoryData`` holding covariates or event types
