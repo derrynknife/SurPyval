@@ -6,6 +6,32 @@ Unreleased
 
 **Added**
 
+- ``model.diagnose(alpha=0.05, columns=None)`` on every regression model
+  and fitted distribution (#867): the checks its assumptions call for, as a report -- ``table``
+  (one row per check: test, statistic, ``p``, verdict and covariates),
+  ``advice`` (plain-English remedies, each naming the SurPyval feature that
+  applies it), ``plot()`` (matplotlib only then), ``ok``,
+  ``raise_if_failed()`` and ``to_dict()`` / ``Diagnosis.from_dict``. A
+  test fails below ``alpha`` and warns below ``2 * alpha`` or when it
+  cannot be computed; a screen warns and never fails. Each model family
+  lists its checks and advice in ``surpyval.diagnostics``, whose docstring
+  is the guide to adding one; the families not built yet refuse, naming
+  their issue (#869 to #875). See :doc:`Model Diagnostics`.
+- The Cox family of ``diagnose()`` (#868): proportional hazards by R's
+  ``cox.zph`` score test (survival 3.0 and later) on the km and rank
+  scales, with GLOBAL rows, and plots of the scaled Schoenfeld residuals
+  with a lowess trend and bootstrap band; functional form by the score
+  test of a covariate's square, and martingale residual plots; influence
+  (``|dfbeta| / se`` above 1 warns); outliers (deviance residuals beyond
+  the Bonferroni normal cutoff); the Cox-Snell plot; advice to stratify a
+  binary or few-levelled covariate that fails proportional hazards, and a
+  time-varying effect (``fit_tvc``), bins or an AFT model for a continuous
+  one; and the cluster-robust standard errors of a ``fit_tvc`` model.
+  Stratified fits are refused for now. The tests are also functions,
+  ``zph_score_test`` and ``added_covariate_score_test`` in
+  ``proportional_hazards.diagnostics``; both agree with R to 1e-6.
+  ``check_ph()`` is unchanged: it is the older approximation of
+  ``cox.zph`` (R before 3.0, lifelines).
 - The data utilities live on ``SurpyvalData``.
   ``SurpyvalData.from_observations(observed=..., right_censored=...,
   left_censored=..., interval_censored=..., left_truncation=...,

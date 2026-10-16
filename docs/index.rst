@@ -281,6 +281,7 @@ Contents:
    Non-Parametric SurPyval Modelling
    Parametric SurPyval Modelling
    Regression Modelling with SurPyval
+   Model Diagnostics
    applications
    Competing Risks SurPyval Modelling
    Recurrent Event Modelling with SurPyval

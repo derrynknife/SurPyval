@@ -1014,8 +1014,11 @@ with :meth:`CoxPH.fit_from_df <surpyval.univariate.regression.proportional_hazar
 Here every ``p``-value is large, so there is no evidence against proportional
 hazards — the Cox coefficients can be read as constant hazard ratios. (With 11
 failures the test has little power, so "no evidence" is not strong evidence of
-proportionality either.) The statistics match R's ``cox.zph`` and lifelines,
-including under Efron ties.
+proportionality either.) The statistics match lifelines and R's ``cox.zph``
+before version 3.0, including under Efron ties; since 3.0 ``cox.zph`` reports
+the exact score test, which ``model.diagnose()`` gives, with the other checks
+of a Cox fit and advice on what to do about a failure (see
+:doc:`Model Diagnostics`).
 
 .. jupyter-execute::
     :hide-code:
