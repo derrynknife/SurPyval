@@ -1520,22 +1520,14 @@ def accepts_surpyval_data(method: F) -> F:
         data = bound.arguments.get("x")
         if not isinstance(data, SurpyvalData):
             return method(*args, **kwargs)
-        given = [
-            name
-            for name in _DATA_ARGUMENTS + ("Z", "e", "markers")
-            if bound.arguments.get(name) is not None
-            and not (name == "Z" and data.Z is None)
-            and not (name == "e" and data.e is None)
-            and not (name == "markers" and data.markers is None)
-        ]
+        given = _given_beside_data(bound.arguments, data)
         if given:
             raise TypeError(
                 "x is a SurpyvalData, which holds the data: leave out "
                 + ", ".join(repr(g) for g in given)
                 + " (or pass arrays rather than a SurpyvalData)."
             )
-        if data.markers is not None and "markers" not in names:
-            raise ValueError(_NO_MARKERS)
+        markers = _markers_taken(data, names)
         if data.time_varying_covariates is not None:
             if data.e is not None and "e" not in names:
                 raise ValueError(
@@ -1613,8 +1605,7 @@ def accepts_surpyval_data(method: F) -> F:
                 lost.append("event types")
         if data.time_varying_covariates is not None:
             lost.append("time-varying covariates")
-        if data.markers is not None:
-            filled["markers"] = data._markers_by_row()
+        filled.update(markers)
         if lost:
             raise ValueError(
                 f"This fit takes no {' or '.join(lost)}, which the "
@@ -1628,6 +1619,30 @@ def accepts_surpyval_data(method: F) -> F:
 
     setattr(wrapper, "_accepts_surpyval_data", True)
     return wrapper  # type: ignore[return-value]
+
+
+def _given_beside_data(arguments: dict, data: SurpyvalData) -> list:
+    """The data arguments given alongside a SurpyvalData ``x``, which holds
+    them: ``Z``, ``e`` and ``markers`` count only where the data has them
+    (``fit(data, Z=None)`` is fine)."""
+    held = {"Z": data.Z, "e": data.e, "markers": data.markers}
+    return [
+        name
+        for name in _DATA_ARGUMENTS + ("Z", "e", "markers")
+        if arguments.get(name) is not None
+        and not (name in held and held[name] is None)
+    ]
+
+
+def _markers_taken(data: SurpyvalData, names: set) -> dict:
+    """The data's marker readings as a fit's ``markers`` argument (one
+    ``{age: value}`` per row), ``{}`` where it has none; refused for a fit
+    that takes none."""
+    if data.markers is None:
+        return {}
+    if "markers" not in names:
+        raise ValueError(_NO_MARKERS)
+    return {"markers": data._markers_by_row()}
 
 
 # The refusal of marker readings by a fit that does not take them (#891).
