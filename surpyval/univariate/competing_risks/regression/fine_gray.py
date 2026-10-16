@@ -79,6 +79,9 @@ from surpyval.univariate.regression._fit_skeleton import (
     baseline_at_origin_error,
     judge_search,
 )
+from surpyval.univariate.regression._partial_effects import (
+    CompetingRisksPartialEffectsMixin,
+)
 from surpyval.univariate.regression._summary import (
     coefficient_names,
     coefficient_table,
@@ -852,6 +855,7 @@ def paired_covariate_rows(Z: npt.ArrayLike, n_x: int, p: int) -> npt.NDArray:
 
 
 class FineGrayModel(
+    CompetingRisksPartialEffectsMixin,
     InformationCriteriaMixin,
     LinearPredictorMixin,
     DiagnoseMixin,
@@ -1133,6 +1137,22 @@ class FineGrayModel(
         with np.errstate(divide="ignore", over="ignore"):
             H = np.exp(np.log(H0) + (rows - self.center) @ self._coef())
         return -np.expm1(-H)
+
+    # -- plot_partial_effects (CompetingRisksPartialEffectsMixin) ----------
+
+    def _partial_effects_width(self) -> int:
+        return int(np.size(self.beta))
+
+    def _partial_effects_times(self) -> "npt.NDArray | None":
+        return np.asarray(self._times, dtype=float)
+
+    def _partial_effects_curve(
+        self, on: str, x: npt.NDArray, row: npt.NDArray, event: Any
+    ) -> npt.NDArray:
+        # One cause's model: event, where given, must be that cause.
+        if event is not None and event != self.cause:
+            raise unknown_cause_error(event, [self.cause])
+        return np.asarray(self.cif(x, row), dtype=float)
 
     @keeps_query_shape
     def sf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:

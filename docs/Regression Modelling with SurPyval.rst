@@ -41,8 +41,8 @@ strata — then its accelerated-time counterpart Buckley-James and the
 additive-hazards model. Third, the *parametric* families — proportional
 hazards, accelerated failure time, proportional odds, their confidence bounds,
 accelerated life testing, time-varying covariates across families and shared
-frailty. Fourth, choosing between fitted models, validating their predictions,
-and saving them. If you already know the question you are asking, the table
+frailty. Fourth, drawing what a fitted model says a covariate does, choosing
+between fitted models, validating their predictions, and saving them. If you already know the question you are asking, the table
 below points straight to the section that answers it.
 
 .. list-table:: Which model, when
@@ -96,6 +96,9 @@ below points straight to the section that answers it.
    * - find structure you cannot specify (thresholds, interactions)
      - ``RandomSurvivalForest`` (beta)
      - `Survival trees and random survival forests (beta)`_
+   * - see what a fitted model says a covariate does to survival
+     - ``model.plot_partial_effects(covariate, values)``
+     - `Partial-effects plots`_
    * - compare, validate or store fitted models
      - ``aic()``, ``surpyval.metrics``, ``to_dict()``
      - `Model Selection`_, `Validating a survival predictor`_,
@@ -3669,6 +3672,199 @@ chi-square one:
 
     assert abs(cox_frailty.theta - 0.40777) < 1e-4
     assert 5.0 < lr < 6.0 and 0.005 < chi2.sf(lr, 1) / 2 < 0.02
+
+
+Partial-effects plots
+---------------------
+
+A coefficient says how a covariate acts on the hazard (or the time scale,
+or the odds); a *partial-effects plot* shows what that does to the
+survival curve. ``model.plot_partial_effects(covariate, values)`` draws the
+model's survival curve once for each of ``values`` of one covariate, with
+the other covariates held at reference values, and returns the matplotlib
+axes. It is there for the Cox model and every parametric family (PH, AFT,
+PO, AH and accelerated life), and, as cumulative incidence, for the
+competing-risks regressions.
+
+Here pumps run at 50%, 75% or full load, at a measured temperature, on three
+sites, and are followed for up to 1500 hours:
+
+.. jupyter-execute::
+
+    import pandas as pd
+
+    rng = np.random.default_rng(876)
+    n = 240
+    pumps = pd.DataFrame({
+        'load': rng.choice([0.5, 0.75, 1.0], n),
+        'temp': rng.normal(40, 5, n).round(1),
+        'site': rng.choice(['north', 'south', 'west'], n),
+    })
+    life = 2000 * np.exp(-1.2 * pumps['load'] - 0.02 * (pumps['temp'] - 40)
+                         + 0.4 * (pumps['site'] == 'west'))
+    pumps['hours'] = surv.Weibull.random(n, 1, 1.8, random_state=3) * life
+    pumps['censored'] = (pumps['hours'] > 1500).astype(int)
+    pumps.loc[pumps['censored'] == 1, 'hours'] = 1500.0
+
+    pump_model = surv.WeibullPH.fit_from_df(
+        pumps, x_col='hours', c_col='censored',
+        formula='load + temp + C(site)', unit='hour',
+    )
+    hours = np.arange(0, 1501, 5)
+    fig, ax = plt.subplots()
+    pump_model.plot_partial_effects('load', [0.5, 0.75, 1.0], x=hours,
+                                    plot_bounds=True, ax=ax)
+    plt.show()
+
+Each curve is the model's own ``sf`` at its row: here ``load`` at the value
+in the legend, ``temp`` at its mean (40.0) and ``site`` at its reference
+level, ``north``. The line data are on the axes:
+
+.. jupyter-execute::
+
+    at = np.isin(hours, [250, 500, 1000])
+    for line in ax.get_lines():
+        print(line.get_label(), line.get_ydata()[at].round(2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _x = ax.get_lines()[0].get_xdata()
+    assert np.array_equal(_x, hours)
+    for _line, _v in zip(ax.get_lines(), [0.5, 0.75, 1.0]):
+        _row = pd.DataFrame({'load': [_v], 'temp': [pumps['temp'].mean()],
+                             'site': ['north']})
+        assert np.array_equal(_line.get_ydata(), pump_model.sf(_x, _row))
+    _row = pd.DataFrame({'load': [0.75], 'temp': [pumps['temp'].mean()],
+                         'site': ['north']})
+    assert np.allclose(pump_model.sf(1000, _row), 0.19, atol=0.005)
+    assert np.allclose(pump_model.cb(1000, _row), [0.12, 0.27], atol=0.005)
+    assert abs(pumps['temp'].mean() - 40.0) < 0.05
+
+At full load about 4% of pumps reach 1000 hours, against 19% at 75% load and
+43% at half load. The bands (``plot_bounds=True``, default off) are the
+model's ``cb``, from the fit's covariance, at ``alpha_ci`` (default 0.05):
+0.12 to 0.27 at 1000 hours for 75% load. ``x=`` gives the times (by default
+200 points from 0 to the last fitted time), ``on="ff"`` or ``on="Hf"`` draws
+the failure probability or the cumulative hazard instead, and ``ax=`` draws
+on axes of your own.
+
+**The reference values.** A covariate not plotted is held at
+
+- the mean of the fitted rows, weighted by their counts, for a numeric
+  covariate (a 0/1 indicator included; for a fit with ``center=True`` this is
+  the model's ``center``);
+- its reference level for a categorical variable of a formula: the level
+  coded as all zeros, the first, or the base of ``contr.treatment(...)``.
+
+``reference=`` sets any of them by name. A formula's categorical variable is
+plotted by its levels:
+
+.. jupyter-execute::
+
+    fig, ax = plt.subplots()
+    pump_model.plot_partial_effects(
+        'site', ['north', 'south', 'west'], reference={'load': 0.75}, ax=ax,
+    )
+    plt.show()
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _x = ax.get_lines()[0].get_xdata()
+    for _line, _s, _v in zip(ax.get_lines(), ['north', 'south', 'west'],
+                             [0.19, 0.24, 0.50]):
+        _row = pd.DataFrame({'load': [0.75], 'temp': [pumps['temp'].mean()],
+                             'site': [_s]})
+        assert np.array_equal(_line.get_ydata(), pump_model.sf(_x, _row))
+        assert abs(float(pump_model.sf(1000, _row)) - _v) < 0.005
+
+At 75% load the western pumps' chance of lasting 1000 hours is 0.50, against
+0.19 in the north and 0.24 in the south. A level the model was not fitted
+with is refused, as it is by ``sf``.
+
+**Transformed terms and interactions** go through the formula. The
+covariate is a *variable* of the formula, and each row is built from the
+variables and expanded by the formula as a prediction is, so ``np.log(load)``,
+a level's column and ``load:temp`` all follow from the ``load`` and ``temp``
+given. A term (``'np.log(load)'``, ``'load:temp'``, ``'C(site)[T.west]'``)
+is refused, naming its variables. What the model cannot supply is refused
+too: it keeps the design matrix, not the variables, so a variable that
+enters only transformed or in an interaction has no mean to hold it at:
+
+.. jupyter-execute::
+    :raises: ValueError
+
+    log_model = surv.WeibullPH.fit_from_df(
+        pumps, x_col='hours', c_col='censored',
+        formula='np.log(load) + temp + load:temp',
+    )
+    log_model.plot_partial_effects('temp', [35, 45])
+
+Given a reference for ``load``, it draws:
+
+.. jupyter-execute::
+
+    fig, ax = plt.subplots()
+    log_model.plot_partial_effects('temp', [35, 45],
+                                   reference={'load': 0.75}, ax=ax)
+    plt.show()
+
+The same goes for a categorical variable with no level coded as all zeros
+(``C(site, contr.sum)``), for a model restored by ``from_dict`` (which holds
+no data, and needs ``x=`` as well), and for a time-varying-covariate fit,
+whose rows are intervals rather than units. A model fitted on arrays names
+its covariates by position: ``model.plot_partial_effects(0, [0.5, 1.0])``,
+labelled ``Z[:, 0] = 0.5`` and so on.
+
+**The Cox model** draws its step curves at every fitted time; it has no
+``cb``, so ``plot_bounds=True`` is refused. A stratified fit is refused too
+(draw each stratum with ``sf(x, Z, stratum=...)``):
+
+.. jupyter-execute::
+
+    from surpyval.datasets import load_rossi_static
+
+    rossi = load_rossi_static()
+    rossi['censored'] = 1 - rossi['arrest']
+    cox = surv.CoxPH.fit_from_df(rossi, x_col='week', c_col='censored',
+                                 Z_cols=['fin', 'age', 'prio'])
+    fig, ax = plt.subplots()
+    cox.plot_partial_effects('prio', [0, 3, 8], ax=ax)
+    plt.show()
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _ends = [round(float(_l.get_ydata()[-1]), 2) for _l in ax.get_lines()]
+    assert _ends == [0.81, 0.76, 0.64], _ends
+
+With financial aid and age at their means, 81% of those with no prior
+convictions are not re-arrested within the year, against 64% of those with
+eight.
+
+**Competing risks.** ``CompetingRisksProportionalHazards`` and the Fine-Gray
+model draw a cause's cumulative incidence, ``event=`` naming the cause (a
+Fine-Gray model's own cause by default). They do not keep the covariates they
+were fitted to, so every other covariate needs a ``reference`` (a formula's
+categorical variable is held at its reference level), and they have no
+``cb``, so no bands:
+
+.. jupyter-execute::
+
+    pumps['mode'] = rng.choice(['seal', 'bearing'], n)
+    pumps.loc[pumps['censored'] == 1, 'mode'] = None
+    cr = surv.CompetingRisksProportionalHazards.fit_from_df(
+        pumps, x_col='hours', e_col='mode', c_col='censored',
+        Z_cols=['load', 'temp'],
+    )
+    fig, ax = plt.subplots()
+    cr.plot_partial_effects('load', [0.5, 1.0], event='seal',
+                            reference={'temp': 40}, ax=ax)
+    plt.show()
 
 
 Model Selection
