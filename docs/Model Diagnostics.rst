@@ -1302,8 +1302,29 @@ quarters of the arrests had happened. The ``statistic`` is the ICI, and
 the ``detail`` has E50, E90 and the range of the predictions:
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
 
-    d = model.diagnose()
+    # The models of the Cox and parametric sections, refitted here: later
+    # sections reuse their names.
+    rossi = load_rossi_static()
+    rossi['censored'] = 1 - rossi['arrest']
+    cal_cox = surv.CoxPH.fit_from_df(
+        rossi, x_col='week', c_col='censored',
+        Z_cols=['fin', 'age', 'race', 'wexp', 'mar', 'paro', 'prio'],
+    )
+    lung = load_lung().dropna(subset=['ph.ecog'])
+    lung['censored'] = 1 - lung['status']
+    cal_lognormal = surv.LogNormalAFT.fit_from_df(
+        lung, x_col='time', c_col='censored', Z_cols=['age', 'sex', 'ph.ecog']
+    )
+    cal_weibull = surv.WeibullAFT.fit_from_df(
+        lung, x_col='time', c_col='censored', Z_cols=['age', 'sex', 'ph.ecog']
+    )
+
+.. jupyter-execute::
+
+    d = cal_cox.diagnose()
     d.table.loc[d.table['check'] == 'calibration',
                 ['test', 'statistic', 'verdict', 'detail']]
 
@@ -1324,7 +1345,7 @@ half the patients:
 
 .. jupyter-execute::
 
-    d = aft.diagnose()
+    d = cal_lognormal.diagnose()
     d.table.loc[d.table['check'] == 'calibration',
                 ['test', 'statistic', 'verdict', 'detail']]
 
@@ -1347,7 +1368,7 @@ half the patients:
     assert 'too extreme' in _cal['detail'].iloc[0]
     assert 'lower than predicted on average (-0.0597)' in _cal['detail'].iloc[0]
     assert 'band for 52% of units' in _cal['detail'].iloc[0]
-    _w = weibull.diagnose()
+    _w = cal_weibull.diagnose()
     _wc = _w.table[_w.table['check'] == 'calibration']
     assert (_wc['verdict'] == 'ok').all()
     assert _wc['statistic'].round(3).tolist() == [0.022, 0.013, 0.015]
