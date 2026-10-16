@@ -304,6 +304,54 @@ Unreleased
   ``SurpyvalData.from_observations(**data.to_observations())`` keeps the
   ids and names it used to lose (and failures of a kind given without
   event types are masked causes, as elsewhere).
+- ``surpyval.test_planning``: planning reliability tests before they are
+  run (see :doc:`Test Planning with SurPyval`).
+
+  - Demonstration tests, moved here from RePyability's ``demonstration``
+    (#862): ``demonstration_sample_size``, ``demonstrated_reliability``
+    (the Clopper-Pearson bound; with no failures, ``success_run``),
+    ``demonstration_test_multiple`` and ``demonstration_pass_probability``
+    for attribute tests, with extended (Weibayes) tests that trade units
+    for test time; ``mtbf_test_time``, ``demonstrated_mtbf`` and
+    ``mtbf_pass_probability`` for constant-failure-rate tests, time- or
+    failure-terminated; and ``demonstration_plan`` and
+    ``mtbf_demonstration_plan``, the smallest tests that keep both the
+    consumer's and the producer's risk (the fixed-length plans of
+    MIL-HDBK-781), returning a ``DemonstrationPlan``. The behaviour, array
+    broadcasting and tests are RePyability's; the confidence level is
+    ``alpha_ci``, the consumer's risk, as everywhere in SurPyval
+    (RePyability's ``confidence=0.95`` is ``alpha_ci=0.05``), and is
+    keyword only.
+  - Sequential tests (#865): ``sequential_mtbf_test`` and
+    ``sequential_demonstration_test``, Wald's sequential probability ratio
+    test for an MTBF and for a pass/fail reliability, truncated at the
+    fixed-length test with the same risks (``truncate=False`` for Wald's
+    test as it is). Each test has its boundaries, a ``decide`` method, and
+    its operating characteristic and mean test time (or units), computed
+    exactly; its risks as run are ``consumer_risk`` and
+    ``producer_risk``.
+  - Life tests for estimation precision (#863): ``life_test_precision``,
+    ``life_test_sample_size`` and ``life_test_length`` give the precision
+    factor with which a time- or failure-censored test of a Weibull or
+    lognormal lifetime estimates a quantile or the mean, the units it
+    needs, or how long it must run, from the test's expected Fisher
+    information (Meeker and Escobar, ch. 10). A ``LifeTestPlan``'s
+    ``simulate`` checks the large-sample precision by fitting simulated
+    tests.
+  - Accelerated life test plans (#864): ``accelerated_test_plan`` chooses
+    the stresses and the units at each that estimate a quantile at the use
+    stress most precisely, for any single-stress life model of
+    ``surpyval.life_models``: the statistically optimum two-level plan, a
+    compromise plan of three or more equally spaced levels (Meeker and
+    Hahn), or a fixed allocation such as 4:2:1. ``accelerated_test_precision``
+    gives the precision of a test you propose, and the plan's ``simulate``
+    checks it by fitting ``AcceleratedLife`` to simulated tests.
+  - Power and sample size for comparing two groups (#880):
+    ``logrank_events``, ``logrank_sample_size`` and ``logrank_power``, for
+    a log-rank test of a hazard ratio under proportional hazards, by
+    Schoenfeld's formula or, with ``method="freedman"``, Freedman's (as
+    lifelines' ``sample_size_necessary_under_cph`` and
+    ``power_under_cph``).
 
 - Partial-effects plots (#876): ``model.plot_partial_effects(covariate,
   values)`` draws a regression's survival curve (``on="ff"`` or ``"Hf"``
