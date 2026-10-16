@@ -960,3 +960,118 @@ parameters or restored with ``from_dict`` (it has no data), a least-squares
 or left-censored rows or right truncation. Every recurrent check is about
 the model as a whole: ``columns=`` is accepted for a proportional-intensity
 model and changes nothing.
+
+Competing risks
+---------------
+
+A competing-risks regression has a ``diagnose()`` for each of its two
+models (#874), reported cause by cause: the table has a ``cause`` column
+(the cause's label, as text) and the plots are titled by cause. The PBC
+trial followed 312 patients with primary biliary cirrhosis until a liver
+transplant, death or the end of follow-up:
+
+.. jupyter-execute::
+
+    from surpyval.datasets import load_pbc2
+
+    pbc = load_pbc2().groupby('id').first()
+    pbc['cause'] = pbc['status'].map({'alive': None, 'transplanted': 'transplant',
+                                      'dead': 'death'})
+    pbc['drug'] = (pbc['drug'] == 'D-penicil').astype(int)
+    pbc['female'] = (pbc['sex'] == 'female').astype(int)
+    pbc['log_bili'] = np.log(pbc['serBilir'])
+    cr_covariates = ['drug', 'age', 'log_bili', 'female']
+    cs = surv.CompetingRisksProportionalHazards.fit_from_df(
+        pbc, x_col='years', e_col='cause', Z_cols=cr_covariates)
+    d = cs.diagnose()
+    print(d)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert d.ok and not d.advice
+    assert set(d.table['cause']) == {'death', 'transplant'}
+    assert any('Tsiatis' in note for note in d.notes)
+
+The cause-specific model (``model="Cox"``, the default) is one Cox model
+per cause with the other causes censored; each is kept, as
+``cs.models[cause]``, and its rows are exactly the Cox checks above on it
+(proportional hazards on the km and rank scales with a GLOBAL row per
+cause, functional form, influence, outliers and the Cox-Snell plot), with
+the same rules. Here both causes pass (age is borderline in the
+functional form of death, a warning). A cause that fails proportional
+hazards is advised to be fitted on its own, ``CoxPH.fit(x, Z,
+c=np.where(e == cause, 0, 1), strata=...)`` for a binary or few-levelled
+covariate, or with a time-varying effect (``CoxPH.fit_tvc``) for a
+continuous one, since ``CompetingRisksProportionalHazards`` takes no
+strata; and, where the question is the incidence of a cause rather than
+its rate, the Fine-Gray model.
+
+The Fine-Gray model (``model="Fine-Gray"``, or ``FineGray.fit`` for one
+cause) assumes proportional *subdistribution* hazards instead, and its
+report tests that: the Grambsch-Therneau score test of adding ``Z * g(t)``
+to the weighted partial likelihood, the censoring weights held as fitted,
+on the ``cif`` scale (``g`` the cause's Aalen-Johansen cumulative incidence
+just before ``t``) and the ``rank`` scale, with GLOBAL rows; and the
+functional form, by the score test of a covariate's square. It is R's
+``cox.zph`` on the weighted counting-process data whose weighted ``coxph``
+fit is the Fine-Gray fit, and agrees with it to 1e-6 (the score tests use
+the model-based information, as ``FineGray``'s standard errors do).
+Influence, outliers and overall fit are not checked for it.
+
+.. jupyter-execute::
+
+    fg = surv.CompetingRisksProportionalHazards.fit_from_df(
+        pbc, x_col='years', e_col='cause', Z_cols=cr_covariates,
+        model='Fine-Gray')
+    d_fg = fg.diagnose()
+    d_fg.table.loc[d_fg.table['verdict'] == 'fail',
+                   ['check', 'cause', 'transform', 'covariates', 'p']]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _failed = d_fg.table[d_fg.table['verdict'] == 'fail']
+    assert ('death', ('log_bili',)) in set(zip(_failed['cause'], _failed['covariates']))
+    assert not d_fg.ok
+
+The same data pass the cause-specific checks and fail the Fine-Gray ones
+for death: bilirubin's effect on the *incidence* of death is not constant
+in time. That is no contradiction. A covariate that raises the hazard of
+one cause and not of another cannot have constant ratios of both the
+cause-specific and the subdistribution hazards, so the two models rarely
+hold exactly together; which to use depends on the question (every
+report notes it), the cause-specific model for aetiology (how a covariate
+changes a cause's rate) and the Fine-Gray model for prediction (how it
+changes a cause's incidence).
+
+.. jupyter-execute::
+
+    for advice in d_fg.advice:
+        print('-', advice, '\n')
+
+.. jupyter-execute::
+
+    fig = d_fg.plot('proportional_hazards', random_state=1)
+
+Every competing-risks report also notes what no check can test: the
+independence of the causes (of their latent failure times) is not
+identifiable from competing-risks data (Tsiatis 1975). The cause-specific
+hazards and the cumulative incidences do not need it; a net survival,
+one cause's with the others removed, does.
+
+A model restored with ``from_dict`` has no data to check and refuses, as
+do one with an aliased coefficient and one whose fit of a cause has no
+finite maximum (the message names the cause). ``ParametricCompetingRisks``
+refuses for now, naming #874: its checks are each cause's goodness of fit,
+which waits for the univariate checks (#875). The Fine-Gray tests and
+residuals are also functions, in
+``surpyval.univariate.competing_risks.regression.fine_gray_diagnostics``:
+
+.. autofunction:: surpyval.univariate.competing_risks.regression.fine_gray_diagnostics.fine_gray_zph_test
+
+.. autofunction:: surpyval.univariate.competing_risks.regression.fine_gray_diagnostics.fine_gray_added_covariate_test
+
+.. autofunction:: surpyval.univariate.competing_risks.regression.fine_gray_diagnostics.fine_gray_martingale_residuals

@@ -340,18 +340,6 @@ REG = "surpyval.univariate.regression."
         (REG + "FrailtyModel", {}, 872),
         (REG + "CoxFrailtyModel", {}, 872),
         (
-            "surpyval.univariate.competing_risks."
-            "CompetingRisksProportionalHazards",
-            {},
-            874,
-        ),
-        (
-            "surpyval.univariate.competing_risks.regression.fine_gray."
-            "FineGrayModel",
-            {},
-            874,
-        ),
-        (
             "surpyval.univariate.competing_risks.ParametricCompetingRisks",
             {},
             874,

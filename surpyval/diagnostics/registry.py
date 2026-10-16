@@ -27,6 +27,7 @@ FAMILY_MODULES: tuple[str, ...] = (
     "surpyval.diagnostics.odds_additive",
     "surpyval.diagnostics.accelerated_life",
     "surpyval.diagnostics.recurrent",
+    "surpyval.diagnostics.competing_risks",
 )
 
 
@@ -259,23 +260,15 @@ _CR = "surpyval.univariate.competing_risks."
 #: have ``diagnose()``, which refuses until the family is registered (a
 #: registered family that applies is found first).
 PENDING: tuple[Pending, ...] = (
-    Pending("frailty models", 872, _instance_of(_REG + "FrailtyModel")),
-    Pending("frailty models", 872, _instance_of(_REG + "CoxFrailtyModel")),
     Pending(
-        "competing-risks models",
-        874,
-        _instance_of(_CR + "CompetingRisksProportionalHazards"),
-    ),
-    Pending(
-        "competing-risks models",
-        874,
-        _instance_of(_CR + "regression.fine_gray.FineGrayModel"),
-    ),
-    Pending(
-        "competing-risks models",
+        "parametric competing-risks models (each cause's goodness of "
+        "fit, which needs the univariate checks of #875, and the "
+        "parametric incidences against the Aalen-Johansen ones)",
         874,
         _instance_of(_CR + "ParametricCompetingRisks"),
     ),
+    Pending("frailty models", 872, _instance_of(_REG + "FrailtyModel")),
+    Pending("frailty models", 872, _instance_of(_REG + "CoxFrailtyModel")),
     Pending(
         "univariate distributions",
         875,

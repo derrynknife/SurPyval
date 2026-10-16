@@ -99,6 +99,23 @@ Unreleased
   Lewis-Robinson test is ``surpyval.diagnostics.recurrent.lewis_robinson``
   and agrees with R. Models without data, least-squares fits and inexact
   or right-truncated times are refused.
+- The competing-risks families of ``diagnose()`` (#874), reported by cause
+  (a ``cause`` column, plots titled by cause).
+  ``CompetingRisksProportionalHazards`` (``model="Cox"``) runs the Cox
+  checks on each cause's own Cox model, now kept as ``model.models[cause]``
+  (with ``compute_residuals`` and ``check_ph``), and advises fitting a
+  failing cause on its own with ``strata=`` or ``CoxPH.fit_tvc``, or the
+  Fine-Gray model where incidence is the question. ``FineGray`` and
+  ``model="Fine-Gray"`` test proportional subdistribution hazards (the
+  score test of ``Z * g(t)`` in the weighted partial likelihood, on the
+  cif and rank scales, with GLOBAL rows and scaled-residual plots) and the
+  functional form; both agree with R's ``cox.zph`` on the weighted
+  Fine-Gray data to 1e-6, and are functions, ``fine_gray_zph_test`` and
+  ``fine_gray_added_covariate_test`` in
+  ``competing_risks.regression.fine_gray_diagnostics``. Every report
+  notes that the independence of the causes cannot be tested.
+  ``ParametricCompetingRisks`` still refuses, naming #874 (its checks wait
+  for #875).
 - The data utilities live on ``SurpyvalData``.
   ``SurpyvalData.from_observations(observed=..., right_censored=...,
   left_censored=..., interval_censored=..., left_truncation=...,
