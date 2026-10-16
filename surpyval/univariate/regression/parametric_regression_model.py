@@ -16,6 +16,7 @@ from surpyval.univariate.information_criteria import (
 from surpyval.utils.covariates import loaded_coefficient_names
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
+from surpyval.utils.record_predict import PredictsRecordsMixin
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
@@ -89,6 +90,7 @@ class ParametricRegressionModel(
     InformationCriteriaMixin,
     DiagnoseMixin,
     SerialisableMixin,
+    PredictsRecordsMixin,
 ):
     """
     The fitted model returned by every parametric regression fitter: the

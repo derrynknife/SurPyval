@@ -293,6 +293,19 @@ the unit carry through:
     print(refreshed.summary())
     print(refreshed.item("P3"), refreshed.item("P5"), sep="\n")
 
+A fitted model predicts for the items from their records: a record (or a
+dataset, or a list of records) stands as ``Z`` in ``sf``, ``ff``, ``hf``,
+``Hf``, ``df``, ``qf`` and ``mean``, its covariates read by name, and
+``predict`` gives a table, one row per item and time, with ``given="age"``
+for the survival of each running item given the age it has reached (an
+item that has failed gets ``nan``):
+
+.. jupyter-execute::
+
+    model = surv.WeibullPH.fit(refreshed.without("event_types"))
+    print(model.sf(2000, refreshed.item("P5")))
+    print(model.predict(refreshed, times=[2000, 2500], given="age").round(3))
+
 Comparing sites, arms or product lines
 --------------------------------------
 
