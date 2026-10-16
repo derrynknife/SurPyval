@@ -223,6 +223,10 @@ def _cause_specific_checks() -> tuple[Check, ...]:
             panels=None if c.panels is None else _per_cause_panels(c),
         )
         for c in _cox.COX.checks
+        # Not calibration (#881): a cause's exp(-H_k(t)) is not the
+        # probability of being free of that cause when others compete, so
+        # its predicted "risk" has no observed counterpart to calibrate.
+        if c.name != "calibration"
     )
 
 

@@ -750,9 +750,9 @@ def _profile_grid(model: Any) -> np.ndarray:
 
 
 def _repair_values(model: Any) -> dict:
-    from surpyval.recurrent.renewal.renewal_model import _REPAIR_VALUES
+    from surpyval.recurrent.renewal.renewal_model import REPAIR_VALUES
 
-    values = _REPAIR_VALUES[model.kind]
+    values = REPAIR_VALUES[model.kind]
     return {"perfect": values["perfect"], "minimal": values["minimal"]}
 
 
@@ -800,7 +800,7 @@ def _repair_panels(ctx: Context) -> list[Panel]:
 # Refusals and notes
 # ---------------------------------------------------------------------------
 def _validate(model: Any) -> None:
-    from surpyval.recurrent.diagnostics import _validate_diagnostic_data
+    from surpyval.recurrent.diagnostics import validate_diagnostic_data
 
     if getattr(model, "data", None) is None:
         raise ValueError(
@@ -823,7 +823,7 @@ def _validate(model: Any) -> None:
             "warned); the tests of its fit and repair have no estimate "
             "to test. Fit a simpler model, or one with more data."
         )
-    _validate_diagnostic_data(model.data, "diagnose()")
+    validate_diagnostic_data(model.data, "diagnose()")
 
 
 def _notes(ctx: Context) -> list[str]:

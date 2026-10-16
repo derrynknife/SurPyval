@@ -33,9 +33,16 @@ its family's documented rule and never fails. ``d.ok`` is True when no
 row failed. Every row is judged at ``alpha`` on its own: with many rows
 some fail by chance even when every assumption holds.
 
-Families built so far: Cox proportional hazards (:mod:`.cox`, #868). The
-other models' ``diagnose()`` refuses with ``NotImplementedError``, naming
-the issue that tracks its family (:data:`.registry.PENDING`).
+Families built: Cox proportional hazards (:mod:`.cox`, #868), parametric
+PH and AFT (:mod:`.ph_aft`, #869), proportional odds and additive hazards
+(:mod:`.odds_additive`, #870), accelerated life (:mod:`.accelerated_life`,
+#871), shared frailty (:mod:`.frailty`, #872), recurrent events
+(:mod:`.recurrent`, #873), competing risks (:mod:`.competing_risks`,
+#874) and univariate distributions (:mod:`.univariate`, #875), with the
+calibration check (:mod:`.calibration`, #881) in the Cox and PH/AFT
+families. A model with none (parametric competing risks, Buckley-James)
+refuses with ``NotImplementedError``, naming the issue that tracks it
+(:data:`.registry.PENDING`).
 
 Adding a family
 ---------------

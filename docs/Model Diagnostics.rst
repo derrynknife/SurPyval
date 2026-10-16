@@ -20,13 +20,15 @@ The name is ``diagnose``, not ``check_assumptions``: besides the
 assumptions it looks at the fit, the functional form and the rows that
 drive the estimates.
 
-Families with diagnostics so far: **Cox proportional hazards**. The other
-models have the method too, and it refuses, naming the issue that tracks
-their checks: parametric proportional hazards and accelerated failure time
-models (#869), proportional odds and additive hazards (#870), accelerated
-life models (#871), frailty (#872), recurrent events (#873), competing
-risks (#874) and the univariate distributions (#875); Buckley-James's
-has no issue of its own yet (#867).
+The families, each with its section below: Cox proportional hazards
+(#868); parametric proportional hazards and accelerated failure time
+models (#869); proportional odds and additive hazards (#870); accelerated
+life models (#871); shared frailty (#872); recurrent events (#873);
+competing risks (#874); and univariate distributions (#875). The Cox and
+parametric proportional hazards and accelerated failure time reports also
+check the calibration of the predicted survival (#881). Two models still
+refuse, naming the issue that tracks their checks: parametric competing
+risks (#874) and Buckley-James (#867).
 
 Verdicts
 --------

@@ -53,6 +53,8 @@ _REPAIR_VALUES: dict[str, dict[str, Any]] = {
         "label": "maximal",
     },
 }
+#: The public name of the repair values (``diagnose()``'s repair checks).
+REPAIR_VALUES = _REPAIR_VALUES
 
 
 @dataclass(frozen=True)

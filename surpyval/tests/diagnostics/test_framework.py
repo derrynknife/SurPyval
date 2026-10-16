@@ -10,6 +10,7 @@ import json
 import subprocess
 import sys
 import textwrap
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -356,8 +357,13 @@ def test_families_not_built_yet_refuse_naming_their_issue(
 
 def test_a_real_fit_of_a_pending_family_refuses(rossi):
     x, c = rossi["week"].values, rossi["censored"].values
-    with pytest.raises(NotImplementedError, match="#875"):
-        sp.Weibull.fit(x, c=c).diagnose()
+    e = np.where(rossi["prio"].values > 2, "a", "b").astype(object)
+    e[c == 1] = None
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = sp.ParametricCompetingRisks.fit(x, e, c=c)
+    with pytest.raises(NotImplementedError, match="#874"):
+        model.diagnose()
 
 
 class _Toy:

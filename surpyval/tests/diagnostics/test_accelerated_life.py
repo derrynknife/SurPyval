@@ -436,8 +436,7 @@ def test_other_regressions_are_not_this_family():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         aft = sp.WeibullAFT.fit(t, S)
-    with pytest.raises(NotImplementedError, match="#869"):
-        aft.diagnose()
+    assert aft.diagnose().family != "Accelerated life"
 
 
 # -- the report -------------------------------------------------------------

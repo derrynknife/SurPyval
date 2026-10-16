@@ -225,11 +225,14 @@ def test_fine_gray_functions_on_a_fine_gray_fit():
 
 
 def test_the_rows_of_a_cause_are_its_own_cox_models(crossing):
-    # The cause-specific rows equal CoxPH.fit(x, Z, c_k).diagnose()'s
+    # The cause-specific rows equal CoxPH.fit(x, Z, c_k).diagnose()'s,
+    # less its calibration rows (no calibration per cause, #881)
     d = crossing.diagnose()
     for cause in ("a", "b"):
         own = crossing.models[cause].diagnose()
         assert own.family == "Cox proportional hazards"
+        own.table = own.table[own.table["check"] != "calibration"]
+        own.table = own.table.reset_index(drop=True)
         ours = d.table[d.table["cause"] == cause].reset_index(drop=True)
         assert len(ours) == len(own.table)
         for col in ("check", "test", "statistic", "p", "verdict"):
