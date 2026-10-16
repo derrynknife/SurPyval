@@ -14,11 +14,11 @@ from surpyval import ItemLifetime, SurpyvalData
 #: Weibull (alpha 800 days, beta 2) at a vibration of 4.0 mm/s, with 0.9
 #: per mm/s.
 TRUTH = {
-    "marker_intercept": 3.0,
-    "marker_slope": 1.0 / 365,
-    "var_intercept": 0.6**2,
-    "var_slope": (0.5 / 365) ** 2,
-    "corr_intercept_slope": 0.2,
+    "a": 3.0,
+    "b": 1.0 / 365,
+    "sd_a": 0.6,
+    "sd_b": 0.5 / 365,
+    "corr_a_b": 0.2,
     "sd_noise": 0.7,
     "alpha": 800.0,
     "beta": 2.0,
@@ -61,8 +61,8 @@ def simulate(
     (left truncated), the fleet drawn until ``n`` reach it."""
     truth = dict(TRUTH if truth is None else truth)
     rng = np.random.default_rng(seed)
-    sd0, sd1 = np.sqrt(truth["var_intercept"]), np.sqrt(truth["var_slope"])
-    r = truth["corr_intercept_slope"]
+    sd0, sd1 = truth["sd_a"], truth["sd_b"]
+    r = truth["corr_a_b"]
     D = np.array([[sd0**2, r * sd0 * sd1], [r * sd0 * sd1, sd1**2]])
     covariate = gamma != 0.0 or delta != 0.0
     items, lines = [], []
@@ -75,8 +75,8 @@ def simulate(
             if covariate
             else 0 * b[:, 0]
         )
-        m0 = truth["marker_intercept"] + b[:, 0] + delta * z
-        m1 = truth["marker_slope"] + b[:, 1]
+        m0 = truth["a"] + b[:, 0] + delta * z
+        m1 = truth["b"] + b[:, 1]
         target = rng.exponential(size=size)
         lo, hi = np.zeros(size), np.full(size, 50 * follow)
         for _ in range(80):
@@ -130,4 +130,58 @@ def simulate(
 def fleet(n=300, seed=0, **kwargs):
     """The fleet as a SurpyvalData."""
     items, _ = simulate(n=n, seed=seed, **kwargs)
+    return SurpyvalData.from_items(items)
+
+
+def simulate_path(
+    path_model,
+    mean,
+    sd,
+    sd_noise,
+    n=300,
+    seed=0,
+    every=30.0,
+    follow=730.0,
+    alpha=800.0,
+    beta=2.0,
+    effect=0.9,
+    centre=CENTRE,
+):
+    """``n`` items whose marker follows ``path_model`` with parameters
+    normal about ``mean`` with standard deviations ``sd`` (0 for a common
+    one, independent), read every ``every`` days with noise ``sd_noise``
+    and followed to ``follow`` days, failing at a Weibull PH hazard in
+    the path's current value (``effect`` per unit, baseline ``alpha``,
+    ``beta`` at the marker ``centre``)."""
+    rng = np.random.default_rng(seed)
+    mean, sd = np.asarray(mean, float), np.asarray(sd, float)
+    grid = np.linspace(0, 20 * follow, 40001)
+    items = []
+    for k in range(n):
+        theta = mean + sd * rng.normal(size=mean.size)
+        with np.errstate(all="ignore"):
+            m = path_model.path(grid, *theta)
+            h = (
+                (beta / alpha)
+                * (grid / alpha) ** (beta - 1)
+                * np.exp(effect * (m - centre))
+            )
+        h = np.where(np.isfinite(h), h, 1e300)
+        H = np.concatenate(
+            [[0], np.cumsum((h[1:] + h[:-1]) / 2 * np.diff(grid))]
+        )
+        life = float(np.interp(rng.exponential(), H, grid))
+        end = min(life, follow)
+        ages = np.arange(0.0, end + 1e-9, every)
+        readings = path_model.path(ages, *theta) + rng.normal(
+            0, sd_noise, ages.size
+        )
+        outcome = "observed" if life <= follow else "right_censored"
+        items.append(
+            ItemLifetime(
+                k,
+                **{outcome: float(end)},
+                markers=dict(zip(ages.tolist(), readings.tolist())),
+            )
+        )
     return SurpyvalData.from_items(items)

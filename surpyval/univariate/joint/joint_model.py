@@ -3,13 +3,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as anp
 import numpy as np
 import numpy.typing as npt
 from autograd import make_jvp
-from autograd.scipy.special import logsumexp
 from scipy.stats import norm
 
 from surpyval.serialisation import (
@@ -34,11 +34,12 @@ from surpyval.utils.validation import (
 from ._likelihood import (
     GH_PREDICT,
     JointArrays,
+    Layout,
+    Model,
+    PathFunction,
     adaptive_nodes,
-    censored_modes,
-    log_cumhaz,
-    log_prior,
-    log_readings,
+    continued_modes,
+    log_integrals,
 )
 
 if TYPE_CHECKING:
@@ -47,135 +48,213 @@ if TYPE_CHECKING:
 #: The functions ``cb`` bounds ('R' and 'F' are 'sf' and 'ff').
 _CB_ON = ("sf", "R", "ff", "F")
 
+#: The formula of each built-in path model, by its name, for the
+#: printout; a path model of one's own may give its ``formula``.
+FORMULAS = {
+    "Linear": "a + b t",
+    "Quadratic": "a + b t + c t^2",
+    "Exponential": "a exp(b t)",
+    "Power": "a t^b",
+    "Logarithmic": "a + b log(t)",
+    "Lloyd-Lipow": "a - b / t",
+    "Gompertz": "a exp(-b exp(-c t))",
+    "Offset Exponential": "a + b exp(c t)",
+    "Michaelis-Menten": "a t / (b + t)",
+}
 
-def parameter_names(names: "list[str]") -> "list[str]":
-    """The names of a joint model's parameters, for covariates ``names``:
-    the marker's line (``marker_intercept``, ``marker_slope`` and a
-    ``marker_<name>`` per covariate), its random effects
-    (``var_intercept``, ``var_slope``, ``corr_intercept_slope``), the
-    noise of a reading (``sd_noise``), the Weibull baseline (``alpha``,
-    ``beta``), the hazard's covariate coefficients (``<name>``) and the
-    marker's effect on the log hazard (``marker_effect``)."""
-    return (
-        ["marker_intercept", "marker_slope"]
-        + [f"marker_{name}" for name in names]
-        + ["var_intercept", "var_slope", "corr_intercept_slope", "sd_noise"]
-        + ["alpha", "beta"]
-        + list(names)
-        + ["marker_effect"]
+
+def path_formula(path_model: Any) -> str:
+    """The path's formula: its own ``formula`` where it has one, else the
+    built-in one of its name, else its name's parameters."""
+    own = getattr(path_model, "formula", None)
+    if isinstance(own, str) and own:
+        return own
+    return FORMULAS.get(
+        path_model.name,
+        "path(t; {})".format(", ".join(path_model.parameter_names)),
     )
 
 
-def internal_theta(params: Any, p: int, scales: tuple) -> dict:
-    """The internal parameters (``_likelihood``'s scale) of the reported
-    ``params``, given the ``scales`` ``(time, marker centre, marker
-    spread, covariate means)``; differentiable by autograd."""
-    s, c, k, zbar = scales
+def parameter_names(
+    path_names: "list[str]", varying: "list[str]", covariates: "list[str]"
+) -> "list[str]":
+    """The names of a joint model's parameters: each path parameter
+    followed by its covariates' shifts of its mean (``a``, ``a_<cov>``,
+    ``b``, ``b_<cov>``, ...); the spread of the varying ones (``sd_a``,
+    ``sd_b``, ..., then ``corr_a_b``, ...); ``sd_noise``; the Weibull
+    ``alpha`` and ``beta``; the hazard's covariate coefficients
+    (``<cov>``); and ``marker_effect``."""
+    out = []
+    for name in path_names:
+        out += [name] + [f"{name}_{cov}" for cov in covariates]
+    out += [f"sd_{name}" for name in varying]
+    out += [
+        f"corr_{a}_{b}"
+        for i, a in enumerate(varying)
+        for b in varying[i + 1 :]
+    ]
+    return out + ["sd_noise", "alpha", "beta", *covariates, "marker_effect"]
+
+
+def reported_params(theta: dict, layout: Layout, refs: tuple) -> Any:
+    """The reported parameters (of the estimated covariates) of the
+    internal ``theta``; ``refs`` is ``(c, zbar, r)``: the marker's centre
+    in the internal hazard, the covariate means, and the marker value
+    at which ``alpha`` is reported. Differentiable by autograd."""
+    c, zbar, r = refs
     zbar = np.asarray(zbar, dtype=float)
-    intercept, slope = params[0], params[1]
-    delta_rep = params[2 : 2 + p]
-    v0, v1, corr, sd = params[2 + p : 6 + p]
-    alpha, beta = params[6 + p], params[7 + p]
-    gamma = params[8 + p : 8 + 2 * p]
-    effect = params[8 + 2 * p]
-    delta = delta_rep / k
-    d00 = v0 / k**2
-    d11 = v1 * s**2 / k**2
-    L00 = anp.sqrt(d00)
-    L10 = corr * anp.sqrt(d11)
-    L11 = anp.sqrt(d11 * (1.0 - corr**2))
+    P, p, q = layout.P, layout.p, layout.q
+    parts = []
+    for j in range(P):
+        shift = theta["Delta"][j]
+        parts.append(anp.reshape(theta["mu"][j] - anp.dot(shift, zbar), (1,)))
+        parts.append(anp.reshape(shift, (p,)))
+    if q:
+        L = theta["L"]
+        D = anp.dot(L, anp.transpose(L))
+        sd = anp.sqrt(anp.stack([D[i, i] for i in range(q)]))
+        parts.append(sd)
+        corr = [
+            D[i, j] / (sd[i] * sd[j])
+            for i in range(q)
+            for j in range(i + 1, q)
+        ]
+        if corr:
+            parts.append(anp.stack(corr))
+    beta, gamma, zeta = theta["beta"], theta["gamma"], theta["zeta"]
+    alpha = theta["alpha"] * anp.exp(
+        (anp.dot(gamma, zbar) - zeta * (r - c)) / beta
+    )
+    parts.append(anp.stack([theta["sigma"], alpha, beta]))
+    parts.append(anp.reshape(gamma, (p,)))
+    parts.append(anp.reshape(zeta, (1,)))
+    return anp.concatenate(parts)
+
+
+def internal_theta(params: Any, layout: Layout, refs: tuple) -> dict:
+    """The internal parameters of the reported ``params`` (of the
+    estimated covariates), the inverse of :func:`reported_params`;
+    differentiable by autograd."""
+    c, zbar, r = refs
+    zbar = np.asarray(zbar, dtype=float)
+    P, p, q = layout.P, layout.p, layout.q
+    i = 0
+    mus, shifts = [], []
+    for _ in range(P):
+        shift = params[i + 1 : i + 1 + p]
+        mus.append(params[i] + anp.dot(shift, zbar))
+        shifts.append(shift)
+        i += 1 + p
+    sd = params[i : i + q]
+    i += q
+    n_corr = q * (q - 1) // 2
+    corr = params[i : i + n_corr]
+    i += n_corr
+    if q:
+        rows = []
+        k = 0
+        upper = {}
+        for a in range(q):
+            for b in range(a + 1, q):
+                upper[(a, b)] = corr[k]
+                k += 1
+        for a in range(q):
+            row = []
+            for b in range(q):
+                if a == b:
+                    row.append(sd[a] ** 2)
+                else:
+                    rho = upper[(min(a, b), max(a, b))]
+                    row.append(rho * sd[a] * sd[b])
+            rows.append(anp.stack(row))
+        L = _cholesky(rows, q)
+    else:
+        L = anp.zeros((0, 0))
+    sigma, alpha_r, beta = params[i], params[i + 1], params[i + 2]
+    gamma = params[i + 3 : i + 3 + p]
+    zeta = params[i + 3 + p]
     return {
-        "b0": (intercept - c) / k + anp.dot(delta, zbar),
-        "b1": slope * s / k,
-        "delta": delta,
-        "L00": L00,
-        "L10": L10,
-        "L11": L11,
-        "sigma": sd / k,
-        "scale": alpha * anp.exp(-anp.dot(gamma, zbar) / beta) / s,
-        "shape": beta,
+        "mu": anp.stack(mus),
+        "Delta": anp.stack(shifts) if p else anp.zeros((P, 0)),
+        "L": L,
+        "sigma": sigma,
+        "alpha": alpha_r
+        * anp.exp(-(anp.dot(gamma, zbar) - zeta * (r - c)) / beta),
+        "beta": beta,
         "gamma": gamma,
-        "assoc": effect * k,
+        "zeta": zeta,
     }
 
 
-def reported_params(theta: dict, scales: tuple) -> Any:
-    """The reported parameters of the internal ``theta`` (the inverse of
-    :func:`internal_theta`); differentiable by autograd."""
-    s, c, k, zbar = scales
-    zbar = np.asarray(zbar, dtype=float)
-    L00, L10, L11 = theta["L00"], theta["L10"], theta["L11"]
-    d00, d01, d11 = L00**2, L00 * L10, L10**2 + L11**2
-    gamma = theta["gamma"]
-    return anp.concatenate(
+def _cholesky(rows: list, q: int) -> Any:
+    """The lower Cholesky factor of the ``q x q`` matrix of ``rows``, by
+    its recurrence (autograd's ``cholesky`` has no forward-mode
+    derivative, which ``cb`` takes)."""
+    L: list = [[0.0] * q for _ in range(q)]
+    for i in range(q):
+        for j in range(i + 1):
+            acc = rows[i][j]
+            for k in range(j):
+                acc = acc - L[i][k] * L[j][k]
+            L[i][j] = anp.sqrt(acc) if i == j else acc / L[j][j]
+    zero = 0.0 * rows[0][0]
+    return anp.stack(
         [
-            anp.stack(
-                [
-                    c + k * (theta["b0"] - anp.dot(theta["delta"], zbar)),
-                    k * theta["b1"] / s,
-                ]
-            ),
-            k * theta["delta"],
-            anp.stack(
-                [
-                    k**2 * d00,
-                    (k / s) ** 2 * d11,
-                    d01 / anp.sqrt(d00 * d11),
-                    k * theta["sigma"],
-                    s
-                    * theta["scale"]
-                    * anp.exp(anp.dot(gamma, zbar) / theta["shape"]),
-                    theta["shape"],
-                ]
-            ),
-            gamma,
-            anp.reshape(theta["assoc"] / k, (1,)),
+            anp.stack([L[i][j] if j <= i else zero for j in range(q)])
+            for i in range(q)
         ]
     )
 
 
+def _finite_number(name: str, value: Any) -> float:
+    try:
+        out = float(value) if np.ndim(value) == 0 else None
+    except (TypeError, ValueError):
+        out = None
+    if out is None or not np.isfinite(out):
+        raise ValueError(f"'{name}' must be one finite number; got {value!r}.")
+    return out
+
+
 class JointModel(InformationCriteriaMixin, SerialisableMixin):
     """
-    A fitted joint model of a marker and a lifetime, returned by
-    :func:`~surpyval.univariate.joint.joint_ph.JointPH` fitters such as
+    A fitted joint model of a marker and a lifetime, returned by the
+    :func:`~surpyval.univariate.joint.joint_ph.JointPH` fitters, such as
     ``WeibullJointPH``.
 
-    Each item's marker is a straight line in age with its own intercept
-    and slope (bivariate normal across items) plus normal noise on each
-    reading; the hazard is Weibull proportional hazards in the line's
-    current, noise-free value and the item's covariates:
+    Each item's marker follows the degradation path model (``LinearPath``
+    for ``WeibullJointPH``; any ``PathModel``) with parameters of its
+    own: those that vary between items (``varying``) are multivariate
+    normal about a mean that the covariates shift, the others are common
+    to all items. Each reading is the path plus normal noise; the hazard
+    is Weibull proportional hazards in the path's current, noise-free
+    value and the covariates:
 
     .. math::
-        m_i(t) = (\\beta_0 + b_{i0}) + (\\beta_1 + b_{i1}) t
-        + \\delta' z_i, \\qquad y_{ij} = m_i(t_{ij}) + \\varepsilon_{ij},
-
-    .. math::
+        y_{ij} = m(t_{ij}; \\theta_i) + \\varepsilon_{ij}, \\qquad
         h_i(t) = \\frac{\\beta}{\\alpha}\\left(\\frac{t}{\\alpha}
         \\right)^{\\beta - 1} \\exp\\left(\\gamma' z_i + \\zeta
-        \\left(m_i(t) - c\\right)\\right),
+        \\left(m(t; \\theta_i) - r\\right)\\right),
 
-    with :math:`b_i \\sim N(0, D)` and
-    :math:`\\varepsilon_{ij} \\sim N(0, \\sigma^2)`. The marker enters the
-    hazard centred at ``marker_center`` (:math:`c`, the mean reading of
-    the data), so ``alpha`` and ``beta`` are the baseline of an item with
-    its marker at :math:`c` and its covariates at 0.
+    so ``alpha`` and ``beta`` are the baseline of an item with its
+    marker at ``marker_reference`` (:math:`r`; the mean reading of the
+    data unless the fit was given one) and its covariates at 0.
 
-    ``params`` holds, in the order of ``parameter_names``: the marker's
-    ``marker_intercept``, ``marker_slope`` and ``marker_<covariate>``
-    (:math:`\\beta_0, \\beta_1, \\delta`); the random effects'
-    ``var_intercept``, ``var_slope`` and ``corr_intercept_slope``; the
-    readings' ``sd_noise`` (:math:`\\sigma`); the Weibull ``alpha`` and
-    ``beta``; the hazard's covariate coefficients (:math:`\\gamma`, named
-    by their covariates); and ``marker_effect`` (:math:`\\zeta`, the
-    change in the log hazard per unit of the marker). ``neg_ll()`` is the
-    negative log-likelihood of the readings and the lifetimes together
-    (so ``aic()`` and ``bic()`` compare joint models of the same data,
-    not a joint model with a survival-only one).
+    ``params`` holds, in the order of ``parameter_names``: each path
+    parameter's mean (by the path model's own names: ``a``, ``b``, ...)
+    followed by its covariates' shifts (``a_<cov>``, ...); the spread of
+    the varying ones between items (``sd_a``, ``sd_b``, ...,
+    ``corr_a_b``, ...); ``sd_noise``; the Weibull ``alpha`` and
+    ``beta``; the hazard's covariate coefficients (``<cov>``); and
+    ``marker_effect`` (:math:`\\zeta`, the change in the log hazard per
+    unit of the marker). An aliased covariate's entries are ``nan``
+    (``aliased``). ``neg_ll()`` is the negative log-likelihood of the
+    readings and the lifetimes together (so ``aic()`` and ``bic()``
+    compare joint models of the same data).
 
-    ``sf(x, item)`` predicts for one item still running: its survival to
-    each age ``x`` given its readings so far and that it was running at
-    its right censored age, over the distribution of its line given
-    those; ``cb`` bounds it.
+    ``sf(x, Z, markers=..., given=...)`` predicts for one item: its
+    covariates ``Z``, its readings so far and the age it was last seen
+    running; ``sf(x, item)`` takes them from an ``ItemLifetime``.
 
     Examples
     --------
@@ -195,25 +274,27 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     ...                      markers=dict(zip(ages, readings)))
     ...     )
     >>> model = WeibullJointPH.fit(SurpyvalData.from_items(items))
-    >>> model.parameter_names[-1]
-    'marker_effect'
-    >>> new = ItemLifetime("new", right_censored=40, markers={0: 2.5, 30: 3.4})
-    >>> model.sf([30, 40, 80], new).shape
+    >>> model.parameter_names[:4]
+    ['a', 'b', 'sd_a', 'sd_b']
+    >>> model.sf([30, 40, 80], markers={0: 2.5, 30: 3.4}, given=40).shape
     (3,)
     """
 
-    #: The baseline distribution (``Weibull``).
+    #: The baseline distribution (``Weibull``) and the marker's path model.
     dist: Any
+    path_model: Any
+    #: The names of the path parameters that vary between items.
+    varying: "list[str]"
     #: The fitted parameters, in the order of ``parameter_names``.
     params: npt.NDArray
-    #: The name of each entry of ``params``.
     parameter_names: "list[str]"
-    #: The covariates' names, which name their coefficients (``coef_0``,
-    #: ... where the data did not name them).
+    #: The covariates' names (``coef_0``, ... where the data did not name
+    #: them), and the columns whose coefficients the data cannot
+    #: determine (``nan`` in ``params``).
     feature_names: "list[str]"
-    #: The marker value at which the hazard's baseline is: the mean
-    #: reading of the data the model was fitted to.
-    marker_center: float
+    aliased: npt.NDArray
+    #: The marker value at which ``alpha`` is reported.
+    marker_reference: float
     #: The number of estimated parameters, the ``k`` of the criteria.
     k: int
     #: What the fit reached (``surpyval.utils.no_maximum``).
@@ -223,9 +304,10 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     n_items: float = 0.0
     n_events: float = 0.0
     n_readings: float = 0.0
-    #: The scales of the internal fit: ``(time, marker centre, marker
-    #: spread, covariate means)``. Predictions are computed there.
-    _scales: tuple
+    #: The marker's centre in the internal hazard (the mean reading) and
+    #: the covariate means: predictions are computed there.
+    _centre: float = 0.0
+    _zbar: npt.NDArray
     _covariance: "npt.NDArray | None" = None
     _neg_ll: float
 
@@ -234,14 +316,40 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     # -- the parts -------------------------------------------------------
 
     @property
-    def _p(self) -> int:
-        return len(self.feature_names)
+    def _kept(self) -> npt.NDArray:
+        """The estimated covariate columns."""
+        p = len(self.feature_names)
+        return np.setdiff1d(np.arange(p), np.asarray(self.aliased, int))
+
+    @property
+    def _layout(self) -> Layout:
+        names = list(self.path_model.parameter_names)
+        return Layout(
+            len(names),
+            len(self._kept),
+            tuple(names.index(v) for v in self.varying),
+        )
+
+    @property
+    def _estimated(self) -> npt.NDArray:
+        """The entries of ``params`` that are estimated (not aliased)."""
+        return ~np.isnan(np.asarray(self.params, dtype=float))
+
+    @property
+    def _refs(self) -> tuple:
+        return (self._centre, self._zbar, self.marker_reference)
+
+    def _theta(self, params: Any = None) -> dict:
+        if params is None:
+            params = np.asarray(self.params, dtype=float)[self._estimated]
+        return internal_theta(params, self._layout, self._refs)
 
     def covariance(self) -> npt.NDArray:
         """The parameters' covariance, in the order of
         ``parameter_names``: the inverse of the observed information (the
         Hessian of the negative log-likelihood, by autograd) at the
-        maximum. Raises a ``ValueError`` where the model has none."""
+        maximum, ``nan`` for an aliased coefficient. Raises a
+        ``ValueError`` where the model has none."""
         if self._covariance is None:
             raise no_covariance_error()
         return np.array(self._covariance)
@@ -259,22 +367,48 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
 
     # -- the table -------------------------------------------------------
 
+    def _parts(self) -> "list[tuple[str, list[int]]]":
+        """``(heading, positions in params)`` of each part."""
+        P = len(self.path_model.parameter_names)
+        p = len(self.feature_names)
+        q = len(self.varying)
+        path = list(range(P * (1 + p)))
+        spread = list(range(P * (1 + p), P * (1 + p) + q + q * (q - 1) // 2))
+        i = spread[-1] + 1 if spread else P * (1 + p)
+        return [
+            (
+                "path: {} ({})".format(
+                    self.path_model.name, path_formula(self.path_model)
+                ),
+                path,
+            ),
+            ("spread between items", spread),
+            ("noise", [i]),
+            (
+                "survival: {} PH, alpha at marker = {:.6g}".format(
+                    self.dist.name, self.marker_reference
+                ),
+                list(range(i + 1, i + 3 + p)),
+            ),
+            ("link: current value", [i + 3 + p]),
+        ]
+
     def summary(self, alpha_ci: float = 0.05) -> "pd.DataFrame":
         """
         The parameter table: each parameter with its standard error, a
         two-sided ``1 - alpha_ci`` Wald interval and, for the
         coefficients, the Wald statistic ``z`` and its p-value. Indexed by
-        ``(part, name)``: the ``"marker"`` part (its line's
-        ``intercept``, ``slope`` and covariate coefficients, the random
-        effects' ``var_intercept``, ``var_slope`` and
-        ``corr_intercept_slope``, and ``sd_noise``) and the
-        ``"survival"`` part (the Weibull ``alpha`` and ``beta``, the
-        covariate coefficients and ``marker_effect``; ``exp(coef)`` is
-        the hazard ratio of one unit of a covariate or of the marker).
-        The intervals of the positive parameters (variances, ``sd_noise``,
-        ``alpha``, ``beta``) are formed on the log scale and that of the
-        correlation on Fisher's ``atanh`` scale, so each stays in its
-        parameter's range.
+        ``(part, name)``, the parts headed by what they are: the path
+        (its model and formula: its parameters' means and their
+        covariates' shifts), the spread between items (``sd_<name>``,
+        ``corr_<name>_<name>``), the noise (``sd_noise``), the survival
+        part (the Weibull ``alpha`` -- the heading says at which marker
+        value -- and ``beta``, and the covariate coefficients) and the
+        link (``marker_effect``). ``exp(coef)`` is the hazard ratio of
+        one unit of a covariate or of the marker. The intervals of the
+        positive parameters (the sds, ``alpha``, ``beta``) are on the log
+        scale and those of the correlations on Fisher's ``atanh`` scale,
+        so each stays in its parameter's range.
 
         Examples
         --------
@@ -294,8 +428,8 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         ...                      markers=dict(zip(ages, y)))
         ...     )
         >>> model = WeibullJointPH.fit(SurpyvalData.from_items(items))
-        >>> model.summary().index[-1]
-        ('survival', 'marker_effect')
+        >>> model.summary().index[0]
+        ('path: Linear (a + b t)', 'a')
         """
         import pandas as pd
 
@@ -309,39 +443,37 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             se = self.standard_errors()
         except ValueError:
             se = np.full(params.shape, np.nan)
-        p = self._p
         names = self.parameter_names
         q = norm.ppf(1 - alpha_ci / 2)
-        positive = {2 + p, 3 + p, 5 + p, 6 + p, 7 + p}
-        hazard = set(range(8 + p, 9 + 2 * p))
-        rows = []
-        for j, name in enumerate(names):
-            row = coefficient_table(
-                [name],
-                [params[j]],
-                [se[j]],
-                alpha_ci,
-                exp=j in hazard,
-            )
-            level = "{:g}%".format(100 * (1 - alpha_ci))
-            with np.errstate(all="ignore"):
-                if j in positive:
-                    half = q * se[j] / params[j]
-                    row["coef lower " + level] = params[j] * np.exp(-half)
-                    row["coef upper " + level] = params[j] * np.exp(half)
-                    row["z"] = row["p"] = np.nan
-                elif j == 4 + p:
-                    half = q * se[j] / (1 - params[j] ** 2)
-                    centre = np.arctanh(params[j])
-                    row["coef lower " + level] = np.tanh(centre - half)
-                    row["coef upper " + level] = np.tanh(centre + half)
-                    row["z"] = row["p"] = np.nan
-            rows.append(row)
+        level = "{:g}%".format(100 * (1 - alpha_ci))
+        parts = self._parts()
+        survival = parts[3][1]
+        hazard = set(survival[2:]) | set(parts[4][1])
+        positive = set(parts[2][1]) | set(survival[:2])
+        n_sd = len(self.varying)
+        positive |= set(parts[1][1][:n_sd])
+        corr = set(parts[1][1][n_sd:])
+        rows, index = [], []
+        for heading, positions in parts:
+            for j in positions:
+                row = coefficient_table(
+                    [names[j]], [params[j]], [se[j]], alpha_ci, exp=j in hazard
+                )
+                with np.errstate(all="ignore"):
+                    if j in positive:
+                        half = q * se[j] / params[j]
+                        row["coef lower " + level] = params[j] * np.exp(-half)
+                        row["coef upper " + level] = params[j] * np.exp(half)
+                        row["z"] = row["p"] = np.nan
+                    elif j in corr:
+                        half = q * se[j] / (1 - params[j] ** 2)
+                        centre = np.arctanh(params[j])
+                        row["coef lower " + level] = np.tanh(centre - half)
+                        row["coef upper " + level] = np.tanh(centre + half)
+                        row["z"] = row["p"] = np.nan
+                rows.append(row)
+                index.append((heading, names[j]))
         table = pd.concat(rows)
-        index = [
-            ("marker", name[len("marker_") :] if j < 2 + p else name)
-            for j, name in enumerate(names[: 6 + p])
-        ] + [("survival", name) for name in names[6 + p :]]
         table.index = pd.MultiIndex.from_tuples(index, names=["part", "name"])
         return table
 
@@ -351,11 +483,11 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         out = (
             "Joint SurPyval Model"
             "\n===================="
-            "\nMarker              : a line per item, random intercept "
-            "and slope, normal noise"
+            f"\nMarker path         : {self.path_model.name}, "
+            f"{path_formula(self.path_model)}; varying between items: "
+            f"{', '.join(self.varying)}"
             f"\nSurvival            : {self.dist.name} proportional hazards "
             "in the marker's current value"
-            f"\nMarker centre       : {self.marker_center:.6g}"
             f"\nData                : {self.n_items:g} items, "
             f"{self.n_events:g} failures, {self.n_readings:g} readings"
             f"\nFit                 : maximum {self.maximum}"
@@ -367,149 +499,251 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             "coef lower 95%": "lower 95%",
             "coef upper 95%": "upper 95%",
         }
-
-        def block(part: str) -> str:
-            rows = table.loc[part].rename(columns=columns)
+        for heading, positions in self._parts():
+            if not positions:
+                continue
+            rows = table.loc[heading].rename(columns=columns)
             rows.index.name = None
-            return format_table(rows, list(columns.values()))
-
-        out += "\nMarker part         : Wald 95% intervals\n" + block("marker")
-        out += "\nSurvival part       : Wald 95% intervals\n" + block(
-            "survival"
-        )
+            out += "\n{}\n{}".format(
+                heading[0].upper() + heading[1:],
+                format_table(rows, list(columns.values())),
+            )
         return out
 
     # -- prediction ------------------------------------------------------
 
-    def _item_arrays(self, item: Any) -> tuple[JointArrays, float]:
-        """``item``'s data on the internal scale, and the age it was last
-        seen running there."""
+    def _question(
+        self, Z: Any, markers: Any, given: Any
+    ) -> "tuple[npt.NDArray, npt.NDArray, npt.NDArray, float]":
+        """The covariates (of every column), readings and age the item
+        was last seen running, from ``Z`` (or an ``ItemLifetime`` there),
+        ``markers`` and ``given``, checked."""
         from surpyval.utils.item_history import covariate_row_in
         from surpyval.utils.item_lifetime import ItemLifetime
 
-        if not isinstance(item, ItemLifetime):
-            raise ValueError(
-                "The item is an ItemLifetime record, the question the "
-                "prediction answers: ItemLifetime(id, right_censored=age, "
-                "markers={age: value, ...}, covariates=...); got "
-                f"{type(item).__name__}."
-            )
-        if item.outcome != "right_censored":
-            raise ValueError(
-                f"Item {item.id!r} is {item.outcome}, not still running: "
-                "a prediction is for an item still running at its "
-                "right_censored age, given its readings so far."
-            )
-        p = self._p
-        if p == 0 and item.covariates is not None:
-            raise ValueError(
-                f"Item {item.id!r} has covariates, and the model was "
-                "fitted without any; leave them out of the item."
-            )
-        if p:
-            if item.covariates is None:
+        p = len(self.feature_names)
+        if isinstance(Z, ItemLifetime):
+            item = Z
+            if markers is not None or given is not None:
+                raise ValueError(
+                    f"Item {item.id!r} holds its readings and the age it "
+                    "was last seen running; leave out markers and given "
+                    "(or give Z, markers and given instead of the item)."
+                )
+            if item.outcome != "right_censored":
+                raise ValueError(
+                    f"Item {item.id!r} is {item.outcome}, not still "
+                    "running: a prediction is for an item still running "
+                    "at its right_censored age, given its readings so far."
+                )
+            if p == 0 and item.covariates is not None:
+                raise ValueError(
+                    f"Item {item.id!r} has covariates, and the model was "
+                    "fitted without any; leave them out of the item."
+                )
+            if p and item.covariates is None:
                 raise ValueError(
                     f"Item {item.id!r} has no covariates; the model was "
                     f"fitted on {self.feature_names!r}."
                 )
-            have = item.covariate_names
-            if have is not None and set(have) != set(self.feature_names):
+            Z = None
+            if p:
+                have = item.covariate_names
+                if have is not None:
+                    if set(have) != set(self.feature_names):
+                        raise ValueError(
+                            f"Item {item.id!r} has covariates "
+                            f"{list(have)!r}; the model was fitted on "
+                            f"{self.feature_names!r}."
+                        )
+                    Z = dict(
+                        zip(
+                            self.feature_names,
+                            covariate_row_in(item, self.feature_names),
+                        )
+                    )
+                else:
+                    Z = np.asarray(item.covariates, dtype=float)
+            markers, given = item.markers, item.value
+        z = self._covariate_row(Z)
+        ages, values = self._readings(markers)
+        if given is None:
+            if ages.size:
                 raise ValueError(
-                    f"Item {item.id!r} has covariates {list(have)!r}; the "
-                    f"model was fitted on {self.feature_names!r}."
+                    "Give 'given', the age the item was last seen running "
+                    "(at or after its last reading, "
+                    f"{ages.max():g}): the readings alone do not say it."
                 )
-            z = np.asarray(
-                covariate_row_in(
-                    item, self.feature_names if have is not None else None
-                ),
-                dtype=float,
-            )
-            if z.size != p:
-                raise ValueError(
-                    f"Item {item.id!r} has {z.size} covariate(s); the "
-                    f"model was fitted on {p}."
-                )
+            given_age = 0.0
         else:
-            z = np.zeros(0)
-        s, c, k, zbar = self._scales
-        readings = item.markers or {}
-        ages = np.array(list(readings), dtype=float) / s
-        values = (np.array(list(readings.values()), dtype=float) - c) / k
-        end = float(item.value) / s
-        arrays = JointArrays.build(
-            [1.0],
-            [end],
-            [0.0],
-            [0.0],
-            (z - np.asarray(zbar, dtype=float)).reshape(1, -1),
-            [ages],
-            [values],
-        )
-        return arrays, end
+            given_age = _finite_number("given", given)
+            if given_age < 0:
+                raise ValueError(
+                    f"'given' is an age, 0 or more; got {given_age:g}."
+                )
+            late = ages[ages > given_age]
+            if late.size:
+                raise ValueError(
+                    f"A reading at age {late.max():g} is after 'given', "
+                    f"{given_age:g}, the age the item was last seen "
+                    f"running: give given={late.max():g} or later."
+                )
+        if ages.size and np.all(np.isfinite(z)):
+            self.path_model.check_data(ages, values)
+        return z, ages, values, given_age
 
-    def _log_sf_function(self, x: npt.NDArray, item: Any) -> Any:
-        """``(f, after)``: ``f(params)``, the log of the item's survival
-        to each age of ``x`` after its right censored age ``u``, given
-        that age and its readings, as a function of the parameters, and
-        the mask of those ages.
+    def _covariate_row(self, Z: Any) -> npt.NDArray:
+        """``Z`` as the row of every covariate column (a named mapping is
+        read by name)."""
+        names = self.feature_names
+        p = len(names)
+        if Z is None:
+            if p:
+                raise ValueError(
+                    f"The model was fitted on covariates {names!r}: give "
+                    "the item's, Z={...} by name or a row of "
+                    f"{p} value(s)."
+                )
+            return np.zeros(0)
+        if (
+            isinstance(Z, Mapping)
+            or hasattr(Z, "index")
+            and hasattr(Z, "to_dict")
+        ):
+            given = dict(Z.items())
+            if set(given) != set(names):
+                raise ValueError(
+                    f"Z names {sorted(given)!r}; the model was fitted on "
+                    f"{names!r}."
+                )
+            return np.array([float(given[n]) for n in names])
+        row = np.asarray(Z, dtype=float)
+        if row.ndim == 2 and row.shape[0] == 1:
+            row = row[0]
+        if p == 0 and row.size == 0:
+            return np.zeros(0)
+        if row.ndim != 1 or row.size != p:
+            raise ValueError(
+                f"Z is one item's covariates, a row of {p} value(s) "
+                f"({names!r}); got shape {np.shape(Z)}."
+                + (
+                    " The model was fitted without covariates: leave Z out."
+                    if p == 0
+                    else ""
+                )
+            )
+        return row
 
-        The survival is ``I(x) / I(u)``, ``I(t) = int p(y | b) S(t | b)
-        phi(b) db``: each integral is that of an item censored at ``t``,
-        by adaptive Gauss-Hermite quadrature on nodes centred at the mode
-        of its own integrand (a grid centred for ``u`` alone misses where
-        ``S(x | b)`` puts its weight far beyond ``u``). The nodes are
-        placed at the fitted parameters and held while differentiating.
-        """
-        arrays, end = self._item_arrays(item)
-        s = self._scales[0]
-        p = self._p
-        after = np.isfinite(x) & (x / s > end)
-        times = np.concatenate([[end], x[after] / s])
-        many = JointArrays(
-            **{
-                name: np.repeat(getattr(arrays, name), times.size, axis=0)
-                for name in ("w T d L Z n_read Sy St Syy Sty Stt".split())
-            }
+    def _readings(self, markers: Any) -> tuple[npt.NDArray, npt.NDArray]:
+        if markers is None:
+            return np.zeros(0), np.zeros(0)
+        if not isinstance(markers, Mapping):
+            raise ValueError(
+                "'markers' are the readings so far, a dict {age: value}."
+            )
+        ages, values = [], []
+        for age, value in markers.items():
+            age = _finite_number("markers' ages", age)
+            if age < 0:
+                raise ValueError(
+                    f"A reading's age is 0 or more; got {age:g} in markers."
+                )
+            ages.append(age)
+            values.append(_finite_number(f"the reading at age {age:g}", value))
+        order = np.argsort(ages, kind="stable")
+        return np.array(ages)[order], np.array(values)[order]
+
+    def _log_sf_function(
+        self, x: npt.NDArray, Z: Any, markers: Any, given: Any
+    ) -> Any:
+        """``(f, after, missing)``: ``f(params)``, the log of the item's
+        survival to each age of ``x`` after ``given`` (``u``), as a
+        function of the estimated parameters; the mask of those ages; and
+        whether the item's covariates are missing (``nan``).
+
+        The survival is ``I(x) / I(u)``, ``I(t) = int p(y | theta) S(t |
+        theta) phi(theta_V) d theta_V``: each integral by adaptive
+        Gauss-Hermite quadrature on nodes centred at the mode of its own
+        integrand, placed at the fitted parameters and held while
+        differentiating."""
+        z, ages, values, u = self._question(Z, markers, given)
+        after = np.isfinite(x) & (x > u)
+        if not np.all(np.isfinite(z)):
+            return None, after, True
+        kept = self._kept
+        zc = (z[kept] - self._zbar).reshape(1, -1)
+        times = np.concatenate([[u], x[after]])
+        M = times.size
+        many = JointArrays.build(
+            np.ones(M),
+            np.maximum(times, 1e-300),
+            np.zeros(M),
+            np.zeros(M),
+            np.repeat(zc, M, axis=0),
+            [ages] * M,
+            [values] * M,
         )
-        theta = internal_theta(np.asarray(self.params), p, self._scales)
-        mode, root = censored_modes(theta, many, times)
-        b, logw = adaptive_nodes(mode, root, GH_PREDICT)
+        model = Model(
+            self._layout, PathFunction(self.path_model), self._centre
+        )
+        theta = self._theta()
+        mode, root = continued_modes(
+            theta, model.layout, model.path, many, times, self._centre
+        )
+        nodes = adaptive_nodes(mode, root, GH_PREDICT[model.layout.q])
+        zero = np.zeros(M)
 
         def f(params: Any) -> Any:
-            th = internal_theta(params, p, self._scales)
-            H = anp.exp(log_cumhaz(th, many, b, times))
-            log_I = logsumexp(
-                logw + log_readings(th, many, b) + log_prior(th, b) - H,
-                axis=1,
+            th = internal_theta(params, model.layout, self._refs)
+            log_I = log_integrals(
+                th, model, many, nodes, times, zero, readings=True
             )
             return log_I[1:] - log_I[0]
 
-        return f, after
+        return f, after, False
 
     @keeps_query_shape
-    def sf(self, x: npt.ArrayLike, item: Any) -> npt.NDArray:
+    def sf(
+        self,
+        x: npt.ArrayLike,
+        Z: Any = None,
+        markers: "dict | None" = None,
+        given: "float | None" = None,
+    ) -> npt.NDArray:
         """
-        The survival of ``item`` to each age ``x``, given its readings
-        and that it was still running at its right censored age:
+        The survival of one item to each age ``x``, given its covariates
+        ``Z``, its readings so far ``markers`` and that it was still
+        running at age ``given``:
 
         .. math::
             P(T > x \\mid T > u, y) =
-            \\frac{\\int S(x \\mid b) p(y \\mid b) \\phi(b) db}
-            {\\int S(u \\mid b) p(y \\mid b) \\phi(b) db},
+            \\frac{\\int S(x \\mid \\theta) p(y \\mid \\theta)
+            \\phi(\\theta) d\\theta}
+            {\\int S(u \\mid \\theta) p(y \\mid \\theta) \\phi(\\theta)
+            d\\theta},
 
-        over its line's random effects ``b``, each integral by adaptive
-        Gauss-Hermite quadrature (15 points a dimension, centred at the
-        mode of its integrand). An age at or before ``u`` gives
-        1; ``nan`` gives ``nan``. The result has the shape of ``x``.
+        over its path's varying parameters, each integral by adaptive
+        Gauss-Hermite quadrature (centred at the mode of its integrand).
+        With no readings and no ``given`` it is a new item's survival,
+        over the population's paths. An age at or before ``given`` gives
+        1; ``nan`` gives ``nan``, and so does a missing covariate. The
+        result has the shape of ``x``.
 
         Parameters
         ----------
         x : array_like
             The ages.
-        item : ItemLifetime
-            The item: still running (``right_censored`` at its age now),
-            with its readings so far (``markers``, if any) and its
-            covariates (as the model was fitted with).
+        Z : dict, array_like or ItemLifetime, optional
+            The item's covariates: ``{name: value}`` or a row in the
+            order of ``feature_names`` (needed where the model has
+            covariates). An ``ItemLifetime`` (still running) stands for
+            all three arguments: its covariates, its ``markers`` and its
+            right censored age as ``given``.
+        markers : dict, optional
+            The readings so far, ``{age: value}``, at or before ``given``.
+        given : float, optional
+            The age the item was last seen running (needed with
+            readings).
 
         Examples
         --------
@@ -529,25 +763,37 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         ...                      markers=dict(zip(ages, y)))
         ...     )
         >>> model = WeibullJointPH.fit(SurpyvalData.from_items(items))
-        >>> item = ItemLifetime("P", right_censored=40, markers={0: 2.0})
-        >>> float(model.sf(40, item))
+        >>> float(model.sf(40, markers={0: 2.0}, given=40))
         1.0
+        >>> item = ItemLifetime("P", right_censored=40, markers={0: 2.0})
+        >>> same = model.sf(60, markers={0: 2.0}, given=40)
+        >>> bool(model.sf(60, item) == same)
+        True
         """
         x = np.asarray(x, dtype=float)
-        f, after = self._log_sf_function(x, item)
+        f, after, missing = self._log_sf_function(x, Z, markers, given)
         out = np.where(np.isnan(x), np.nan, 1.0)
+        if missing:
+            return np.full(x.shape, np.nan)
         if after.any():
             # far beyond the data the survival underflows to 0
             with np.errstate(all="ignore"):
-                out[after] = np.exp(f(np.asarray(self.params, dtype=float)))
+                params = np.asarray(self.params, dtype=float)
+                out[after] = np.exp(f(params[self._estimated]))
         return out
 
     @keeps_query_shape
-    def ff(self, x: npt.ArrayLike, item: Any) -> npt.NDArray:
+    def ff(
+        self,
+        x: npt.ArrayLike,
+        Z: Any = None,
+        markers: "dict | None" = None,
+        given: "float | None" = None,
+    ) -> npt.NDArray:
         """
-        The probability that ``item`` fails by each age ``x``, given its
-        readings and that it was still running at its right censored age:
-        ``1 - sf(x, item)``.
+        The probability that one item fails by each age ``x``, given its
+        covariates, readings and the age it was last seen running (as
+        for :meth:`sf`): ``1 - sf(x, Z, markers, given)``.
 
         Examples
         --------
@@ -567,36 +813,39 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         ...                      markers=dict(zip(ages, y)))
         ...     )
         >>> model = WeibullJointPH.fit(SurpyvalData.from_items(items))
-        >>> item = ItemLifetime("P", right_censored=40, markers={0: 2.0})
-        >>> float(model.ff(20, item))
+        >>> float(model.ff(20, markers={0: 2.0}, given=40))
         0.0
         """
-        return 1.0 - self.sf(x, item)
+        return 1.0 - self.sf(x, Z, markers, given)
 
     @keeps_query_shape
     def cb(
         self,
         x: npt.ArrayLike,
-        item: Any,
+        Z: Any = None,
+        markers: "dict | None" = None,
+        given: "float | None" = None,
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
     ) -> npt.NDArray:
         """
-        Confidence bounds on the item's survival (``on="sf"``, the
+        Confidence bounds on one item's survival (``on="sf"``, the
         default) or failure probability (``on="ff"``) to each age ``x``,
-        from the uncertainty of the parameters: the delta method, with
-        the parameters' covariance, on ``log(-log sf)`` (so the bounds
-        stay in (0, 1)). The adaptive nodes are held at the fitted
-        parameters while differentiating. An age at or before the item's
-        right censored age gives ``[1, 1]`` (``[0, 0]`` on ``ff``).
+        given its covariates, readings and the age it was last seen
+        running (as for :meth:`sf`), from the uncertainty of the
+        parameters: the delta method, with the parameters' covariance, on
+        ``log(-log sf)`` (so the bounds stay in (0, 1)), the adaptive
+        nodes held at the fitted parameters while differentiating. An age
+        at or before ``given`` gives ``[1, 1]`` (``[0, 0]`` on ``ff``).
 
         Parameters
         ----------
         x : array_like
             The ages.
-        item : ItemLifetime
-            The item, as for :meth:`sf`.
+        Z, markers, given : optional
+            The item, as for :meth:`sf` (an ``ItemLifetime`` as ``Z``
+            stands for all three).
         on : str, optional
             ``"sf"`` (or ``"R"``) or ``"ff"`` (or ``"F"``).
         alpha_ci : float, optional
@@ -624,8 +873,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         ...                      markers=dict(zip(ages, y)))
         ...     )
         >>> model = WeibullJointPH.fit(SurpyvalData.from_items(items))
-        >>> item = ItemLifetime("P", right_censored=40, markers={0: 2.0})
-        >>> model.cb([20, 60], item).shape
+        >>> model.cb([20, 60], markers={0: 2.0}, given=40).shape
         (2, 2)
         """
         check_alpha_ci(alpha_ci)
@@ -633,13 +881,20 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         check_option("bound", bound, BOUNDS)
         cov = self.covariance()
         x = np.asarray(x, dtype=float)
-        f, after = self._log_sf_function(x, item)
+        f, after, missing = self._log_sf_function(x, Z, markers, given)
         tail, signs = bound_signs(alpha_ci, bound)
+        if on in ("ff", "F"):
+            # a lower bound on ff is an upper one on sf
+            signs = -signs
         q = norm.ppf(1 - tail)
         out = np.ones(x.shape + (signs.size,))
         out[np.isnan(x)] = np.nan
-        if after.any():
-            params = np.asarray(self.params, dtype=float)
+        if missing:
+            out[:] = np.nan
+        elif after.any():
+            est = self._estimated
+            params = np.asarray(self.params, dtype=float)[est]
+            sub = cov[np.ix_(est, est)]
 
             def log_H(v: Any) -> Any:
                 return anp.log(-f(v))
@@ -650,25 +905,28 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 columns = [jvp(e)[1] for e in np.eye(params.size)]
                 centre = log_H(params)
                 J = np.stack(columns, axis=-1)
-                se = np.sqrt(np.einsum("mi,ij,mj->m", J, cov, J))
+                se = np.sqrt(np.einsum("mi,ij,mj->m", J, sub, J))
                 # an upper bound on log H is a lower bound on sf
                 out[after] = np.exp(
                     -np.exp(centre[:, None] - signs[None, :] * q * se[:, None])
                 )
         if on in ("ff", "F"):
-            out = 1.0 - out[..., ::-1] if signs.size == 2 else 1.0 - out
+            out = 1.0 - out
         return out if bound == "two-sided" else out[..., 0]
 
     # -- saving and loading ----------------------------------------------
 
     def to_dict(self) -> dict:
         """
-        The model as a plain, JSON-serialisable ``dict``: its parameters
-        and their names, the covariates' names, the marker centre and the
-        scales its predictions are computed on, the covariance, the
-        fitted negative log-likelihood and the counts of the data (not
-        the data). :meth:`from_dict` rebuilds it, and it predicts and
-        bounds as the original.
+        The model as a plain, JSON-serialisable ``dict``: its path model
+        (by its built-in name) and which of its parameters vary, its
+        parameters and their names, the covariates' names and the aliased
+        ones, the marker reference, the centres its predictions are
+        computed at, the covariance, the fitted negative log-likelihood
+        and the counts of the data (not the data). :meth:`from_dict`
+        rebuilds it, and it predicts and bounds as the original. A path
+        model of one's own cannot be rebuilt from a name, and is refused
+        (``NotImplementedError``); the model pickles all the same.
 
         Examples
         --------
@@ -693,20 +951,31 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         >>> bool(np.allclose(restored.params, model.params))
         True
         """
-        s, c, k, zbar = self._scales
+        from surpyval.degradation.path_models import (
+            PATH_MODELS,
+            path_model_key,
+        )
+
+        key = path_model_key(self.path_model)
+        # by its class: an unpickled built-in path is a copy of it
+        if type(PATH_MODELS.get(key)) is not type(self.path_model):
+            raise NotImplementedError(
+                f"The {self.path_model.name!r} path model is not a built-in "
+                "one, so it cannot be rebuilt from a name: keep the model "
+                "with pickle."
+            )
         out: dict[str, Any] = {
             "model": "JointModel",
             "distribution": self.dist.name,
+            "path_model": key,
+            "varying": list(self.varying),
             "params": np.asarray(self.params, dtype=float).tolist(),
             "parameter_names": list(self.parameter_names),
             "feature_names": list(self.feature_names),
-            "marker_center": float(self.marker_center),
-            "scales": {
-                "time": float(s),
-                "marker_center": float(c),
-                "marker_spread": float(k),
-                "covariate_means": np.asarray(zbar, dtype=float).tolist(),
-            },
+            "aliased": np.asarray(self.aliased, dtype=int).tolist(),
+            "marker_reference": float(self.marker_reference),
+            "centre": float(self._centre),
+            "covariate_means": np.asarray(self._zbar, dtype=float).tolist(),
             "n_items": float(self.n_items),
             "n_events": float(self.n_events),
             "n_readings": float(self.n_readings),
@@ -746,6 +1015,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         True
         """
         import surpyval
+        from surpyval.degradation.path_models import PATH_MODELS
 
         require_model_tag(model_dict, "JointModel", "a joint model")
         if model_dict["distribution"] != "Weibull":
@@ -753,24 +1023,28 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 "A joint model has a Weibull baseline; the dict names "
                 f"{model_dict['distribution']!r}."
             )
+        key = model_dict["path_model"]
+        if key not in PATH_MODELS:
+            raise ValueError(
+                f"Unknown path model {key!r}; the built-in ones are "
+                f"{sorted(PATH_MODELS)}."
+            )
         out = cls()
         out.dist = surpyval.Weibull
+        out.path_model = PATH_MODELS[key]
+        out.varying = list(model_dict["varying"])
         out.params = np.array(model_dict["params"], dtype=float)
         out.parameter_names = list(model_dict["parameter_names"])
         out.feature_names = list(model_dict["feature_names"])
-        out.marker_center = float(model_dict["marker_center"])
-        scales = model_dict["scales"]
-        out._scales = (
-            float(scales["time"]),
-            float(scales["marker_center"]),
-            float(scales["marker_spread"]),
-            np.array(scales["covariate_means"], dtype=float),
-        )
+        out.aliased = np.array(model_dict.get("aliased", []), dtype=int)
+        out.marker_reference = float(model_dict["marker_reference"])
+        out._centre = float(model_dict["centre"])
+        out._zbar = np.array(model_dict["covariate_means"], dtype=float)
         out.n_items = float(model_dict.get("n_items", 0.0))
         out.n_events = float(model_dict.get("n_events", 0.0))
         out.n_readings = float(model_dict.get("n_readings", 0.0))
         out._neg_ll = float(model_dict["_neg_ll"])
-        out.k = len(out.params)
+        out.k = int(np.sum(~np.isnan(out.params)))
         out.maximum = restored_maximum(model_dict)
         if "covariance" in model_dict:
             out._covariance = np.array(model_dict["covariance"], dtype=float)

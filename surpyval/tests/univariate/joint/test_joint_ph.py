@@ -3,12 +3,14 @@
 The fleet is the issue's: pumps whose vibration is a straight line with
 its own start and rate, read monthly with noise sd 0.7, failing at a
 Weibull PH hazard in the line's current value with 0.9 per mm/s
-(``_fleet.py``). The checks: the fit recovers the truth; with nearly
-noise-free readings it agrees with ``WeibullPH.fit_tvc`` given the true
-lines; its predictions keep the package's rules and agree with an
-independent brute-force integral and, for a constant marker, with a
-plain Weibull PH; and it saves, loads and refuses as the rest of the
-package does.
+(``_fleet.py``); and fleets whose marker follows a nonlinear path
+(exponential, and quadratic with a common curvature). The checks: the
+fit recovers the truth; with nearly noise-free readings it agrees with
+``WeibullPH.fit_tvc`` given the true lines; its predictions keep the
+package's rules, agree with an independent brute-force integral and,
+for a constant marker, with a plain Weibull PH, and the record and array
+forms agree; and it saves, loads and refuses as the rest of the package
+does.
 """
 
 import functools
@@ -29,11 +31,18 @@ from surpyval import (
     WeibullJointPH,
     WeibullPH,
 )
+from surpyval.degradation import (
+    ExponentialPath,
+    LinearPath,
+    PathModel,
+    QuadraticPath,
+)
 from surpyval.tests.univariate.joint._fleet import (
     CENTRE,
     TRUTH,
     fleet,
     simulate,
+    simulate_path,
 )
 
 
@@ -41,7 +50,7 @@ def _truth(model, **extra):
     """The truth in the model's parameterisation: its baseline is at the
     data's mean reading, the truth's at ``CENTRE``."""
     out = dict(TRUTH, **extra)
-    shift = model.marker_center - CENTRE
+    shift = model.marker_reference - CENTRE
     out["alpha"] = TRUTH["alpha"] * np.exp(
         -TRUTH["marker_effect"] * shift / TRUTH["beta"]
     )
@@ -79,19 +88,20 @@ def test_recovers_covariates_in_both_parts_and_late_entry():
     model = WeibullJointPH.fit(data)
     assert model.maximum == "verified"
     assert model.parameter_names == [
-        "marker_intercept",
-        "marker_slope",
-        "marker_z",
-        "var_intercept",
-        "var_slope",
-        "corr_intercept_slope",
+        "a",
+        "a_z",
+        "b",
+        "b_z",
+        "sd_a",
+        "sd_b",
+        "corr_a_b",
         "sd_noise",
         "alpha",
         "beta",
         "z",
         "marker_effect",
     ]
-    truth = _truth(model, z=0.5, marker_z=-0.4)
+    truth = _truth(model, z=0.5, a_z=-0.4, b_z=0.0)
     z = (model.params - truth) / model.standard_errors()
     assert np.all(np.abs(z) < 3), dict(zip(model.parameter_names, z))
 
@@ -124,7 +134,7 @@ def test_noise_free_readings_agree_with_fit_tvc_on_the_true_lines():
     truth = dict(TRUTH, sd_noise=0.01)
     items, lines = simulate(n=150, seed=11, every=10.0, truth=truth)
     joint = WeibullJointPH.fit(SurpyvalData.from_items(items))
-    centre = joint.marker_center
+    centre = joint.marker_reference
     i, xl, xr, c, Z = [], [], [], [], []
     for item, (m0, m1) in zip(items, lines):
         end = item.value
@@ -138,13 +148,17 @@ def test_noise_free_readings_agree_with_fit_tvc_on_the_true_lines():
     tvc = WeibullPH.fit_tvc(
         np.array(i), np.array(xl), np.array(xr), np.array(c), np.array(Z)
     )
-    survival = joint.params[[6, 7, 8]]  # alpha, beta, marker_effect
-    np.testing.assert_allclose(survival, tvc.params, rtol=3e-3)
+    survival = [
+        joint.parameter_names.index(n)
+        for n in ("alpha", "beta", "marker_effect")
+    ]
+    np.testing.assert_allclose(joint.params[survival], tvc.params, rtol=3e-3)
     np.testing.assert_allclose(
-        joint.standard_errors()[[6, 7, 8]], tvc.standard_errors(), rtol=0.02
+        joint.standard_errors()[survival], tvc.standard_errors(), rtol=0.02
     )
     # and the marker's line: noise and lines as simulated
-    assert abs(joint.params[5] / 0.01 - 1) < 0.05
+    noise = joint.parameter_names.index("sd_noise")
+    assert abs(joint.params[noise] / 0.01 - 1) < 0.05
 
 
 # -- prediction --------------------------------------------------------------
@@ -227,7 +241,7 @@ def test_bound_derivatives_agree_with_finite_differences():
 
     model = _small()
     x = np.array([250.0, 400.0, 700.0])
-    f, _ = model._log_sf_function(x, _item())
+    f, _, _ = model._log_sf_function(x, _item(), None, None)
     params = np.array(model.params)
     jvp = make_jvp(lambda v: anp.log(-f(v)))(params)
     for j, e in enumerate(np.eye(params.size)):
@@ -240,20 +254,22 @@ def test_bound_derivatives_agree_with_finite_differences():
 def test_far_beyond_the_data_without_raw_warnings():
     # The survival need not reach 0: a line whose slope may be negative
     # takes the hazard to 0 far out, as the model says. It falls, to a
-    # level, out to 50 times the data's ages.
+    # level, out to ten times the data's ages (beyond, where it has
+    # levelled off, it moves by the quadrature's error, 1e-5 of itself).
     import warnings
 
     model = _small()
     falling = _item(markers={0: 2.0, 90: 1.8, 180: 1.7})
-    x = np.geomspace(201, 4e4, 200)
+    x = np.geomspace(201, 7300, 200)
     with warnings.catch_warnings():
         warnings.simplefilter("error", RuntimeWarning)
         for item in (_item(), falling):
             sf = model.sf(x, item)
             assert np.all((sf >= 0) & (sf <= 1))
             assert np.all(np.diff(sf) <= 1e-12)
+            far = model.sf([4e4, 1e7], item)
+            assert np.all((far >= 0) & (far <= 1))
             model.cb([1e7, 400.0], item)
-            assert 0 <= model.sf(1e7, item) <= 1
     assert model.sf(4e4, falling) > 1e-3
 
 
@@ -271,16 +287,17 @@ def _brute_force_sf(model, item, x):
     and Simpson's rule in time, from the model's parameters alone."""
     names = model.parameter_names
     p = dict(zip(names, model.params))
-    v0, v1, r = p["var_intercept"], p["var_slope"], p["corr_intercept_slope"]
+    v0, v1, r = p["sd_a"] ** 2, p["sd_b"] ** 2, p["corr_a_b"]
     D = np.array([[v0, r * np.sqrt(v0 * v1)], [r * np.sqrt(v0 * v1), v1]])
     Dinv = np.linalg.inv(D)
     g0 = np.linspace(-7, 7, 161) * np.sqrt(v0)
     g1 = np.linspace(-7, 7, 161) * np.sqrt(v1)
     B0, B1 = (a.ravel() for a in np.meshgrid(g0, g1, indexing="ij"))
-    m0 = p["marker_intercept"] + B0
-    m1 = p["marker_slope"] + B1
-    ages = np.array(list(item.markers))
-    ys = np.array(list(item.markers.values()))
+    m0 = p["a"] + B0
+    m1 = p["b"] + B1
+    readings = item.markers or {}
+    ages = np.array(list(readings), dtype=float)
+    ys = np.array(list(readings.values()), dtype=float)
     resid = ys[None, :] - m0[:, None] - m1[:, None] * ages[None, :]
     log_y = -0.5 * np.sum(resid**2, axis=1) / p["sd_noise"] ** 2
     b = np.stack([B0, B1], 1)
@@ -291,7 +308,7 @@ def _brute_force_sf(model, item, x):
         h0 = (p["beta"] / p["alpha"]) * (s / p["alpha"]) ** (p["beta"] - 1)
         h = h0[None, :] * np.exp(
             p["marker_effect"]
-            * (m0[:, None] + m1[:, None] * s[None, :] - model.marker_center)
+            * (m0[:, None] + m1[:, None] * s[None, :] - model.marker_reference)
         )
         w = np.ones(s.size)
         w[1:-1:2], w[2:-1:2] = 4, 2
@@ -333,7 +350,7 @@ def test_a_constant_known_marker_is_a_weibull_ph():
         markers={float(a): level for a in np.arange(0, now + 1, 10)},
     )
     p = dict(zip(model.parameter_names, model.params))
-    hr = np.exp(p["marker_effect"] * (level - model.marker_center))
+    hr = np.exp(p["marker_effect"] * (level - model.marker_reference))
     x = np.array([350.0, 500.0, 800.0])
 
     def S(t):
@@ -346,10 +363,22 @@ def test_prediction_refusals():
     model = _small()
     with pytest.raises(ValueError, match="not still running"):
         model.sf(300, ItemLifetime("x", observed=200))
-    with pytest.raises(ValueError, match="ItemLifetime"):
-        model.sf(300, {0: 3.0})
     with pytest.raises(ValueError, match="fitted without any"):
         model.sf(300, _item(covariates=[1.0]))
+    with pytest.raises(ValueError, match="leave out markers and given"):
+        model.sf(300, _item(), markers={0: 1.0})
+    with pytest.raises(ValueError, match="Give 'given'"):
+        model.sf(300, markers={0: 3.0, 60: 3.1})
+    with pytest.raises(ValueError, match="give given=90 or later"):
+        model.sf(300, markers={0: 3.0, 90: 3.1}, given=60)
+    with pytest.raises(ValueError, match="'given' is an age"):
+        model.sf(300, given=-1.0)
+    with pytest.raises(ValueError, match="one finite number"):
+        model.sf(300, markers={0: np.nan}, given=10)
+    with pytest.raises(ValueError, match="leave Z out"):
+        model.sf(300, [1.0], given=10)
+    with pytest.raises(ValueError, match="a dict"):
+        model.sf(300, markers=[3.0], given=10)
 
 
 def test_prediction_reads_named_covariates_in_the_models_order():
@@ -364,6 +393,20 @@ def test_prediction_reads_named_covariates_in_the_models_order():
         model.sf(400, _item())
     with pytest.raises(ValueError, match="fitted on"):
         model.sf(400, _item(covariates={"w": 1.0}))
+    # the array form: by name, or a row
+    by_name = model.sf(400, {"z": 1.0}, markers=_item().markers, given=200)
+    assert by_name == model.sf(400, item)
+    assert by_name == model.sf(400, [1.0], markers=_item().markers, given=200)
+    with pytest.raises(ValueError, match="covariates \\['z'\\]: give"):
+        model.sf(400)
+    with pytest.raises(ValueError, match="Z names"):
+        model.sf(400, {"w": 1.0})
+    # a missing covariate gives nan, without warnings
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert np.isnan(model.sf([400.0, 500.0], [np.nan])).all()
 
 
 # -- the model ---------------------------------------------------------------
@@ -372,7 +415,7 @@ def test_prediction_reads_named_covariates_in_the_models_order():
 def test_comparison_quantities():
     model = _small()
     k = len(model.params)
-    assert model.k == k
+    assert model.k == k == 9
     assert model.log_likelihood == -model.neg_ll()
     assert model.aic() == pytest.approx(2 * k + 2 * model.neg_ll())
     failures = model.n_events
@@ -411,35 +454,37 @@ def test_neg_ll_is_in_the_datas_units():
         p["marker_effect"] / 10, rel=1e-4
     )
     assert q["alpha"] == pytest.approx(p["alpha"] * 24, rel=1e-4)
-    assert q["marker_slope"] == pytest.approx(
-        p["marker_slope"] * 10 / 24, rel=1e-4
-    )
+    assert q["b"] == pytest.approx(p["b"] * 10 / 24, rel=1e-4)
 
 
 def test_summary_and_repr():
     model = _small()
     table = model.summary()
+    path = "path: Linear (a + b t)"
+    survival = "survival: Weibull PH, alpha at marker = {:.6g}".format(
+        model.marker_reference
+    )
     assert list(table.index) == [
-        ("marker", "intercept"),
-        ("marker", "slope"),
-        ("marker", "var_intercept"),
-        ("marker", "var_slope"),
-        ("marker", "corr_intercept_slope"),
-        ("marker", "sd_noise"),
-        ("survival", "alpha"),
-        ("survival", "beta"),
-        ("survival", "marker_effect"),
+        (path, "a"),
+        (path, "b"),
+        ("spread between items", "sd_a"),
+        ("spread between items", "sd_b"),
+        ("spread between items", "corr_a_b"),
+        ("noise", "sd_noise"),
+        (survival, "alpha"),
+        (survival, "beta"),
+        ("link: current value", "marker_effect"),
     ]
     np.testing.assert_allclose(table["coef"], model.params)
-    effect = table.loc[("survival", "marker_effect")]
+    effect = table.loc[("link: current value", "marker_effect")]
     assert effect["exp(coef)"] == pytest.approx(np.exp(model.params[-1]))
     lower, upper = table["coef lower 95%"], table["coef upper 95%"]
     assert np.all(lower.to_numpy() < model.params)
     assert np.all(model.params < upper.to_numpy())
-    assert lower[("marker", "var_slope")] > 0
-    assert -1 < lower[("marker", "corr_intercept_slope")]
+    assert lower[("spread between items", "sd_b")] > 0
+    assert -1 < lower[("spread between items", "corr_a_b")]
     text = repr(model)
-    assert "Marker part" in text and "Survival part" in text
+    assert "Path: Linear (a + b t)" in text and "Survival: Weibull PH" in text
     assert "marker_effect" in text
 
 
@@ -472,11 +517,24 @@ def test_unit_is_kept():
 
 def test_fitter_repr_and_factory():
     assert repr(WeibullJointPH) == (
-        "WeibullJointPH: joint model fitter (Weibull baseline)"
+        "WeibullJointPH: joint model fitter (Weibull baseline, Linear "
+        "path, a + b t)"
     )
+    # the path defaults to a line
     assert repr(JointPH(Weibull)) == repr(WeibullJointPH)
+    assert repr(JointPH(Weibull, LinearPath)) == repr(WeibullJointPH)
+    assert repr(JointPH(Weibull, QuadraticPath, varying=("b", "a"))) == (
+        "WeibullQuadraticJointPH: joint model fitter (Weibull baseline, "
+        "Quadratic path, a + b t + c t^2, varying: a, b)"
+    )
     with pytest.raises(ValueError, match="Weibull baseline for now"):
         JointPH(LogNormal)
+    with pytest.raises(ValueError, match="degradation path model"):
+        JointPH(Weibull, "linear")
+    with pytest.raises(ValueError, match="at least one, each once"):
+        JointPH(Weibull, LinearPath, varying=("a", "d"))
+    with pytest.raises(ValueError, match="at least one, each once"):
+        JointPH(Weibull, LinearPath, varying=())
 
 
 def test_arrays_give_the_same_fit_as_records():
@@ -496,13 +554,11 @@ def test_a_dataframe_names_the_covariates():
     model = WeibullJointPH.fit(
         data.x, c=data.c, Z=Z, markers=[data.markers[i] for i in data.ids]
     )
-    assert "marker_site" in model.parameter_names
-    assert "site" in model.parameter_names
+    assert {"a_site", "b_site", "site"} <= set(model.parameter_names)
     unnamed = WeibullJointPH.fit(
         data.x, c=data.c, Z=data.Z, markers=[data.markers[i] for i in data.ids]
     )
-    assert "coef_0" in unnamed.parameter_names
-    assert "marker_coef_0" in unnamed.parameter_names
+    assert {"a_coef_0", "b_coef_0", "coef_0"} <= set(unnamed.parameter_names)
 
 
 def _base(k, **changes):
@@ -533,7 +589,7 @@ def test_data_that_cannot_identify_the_model_is_refused():
     with pytest.raises(ValueError, match="at least one failure"):
         WeibullJointPH.fit(SurpyvalData.from_items(running))
     one_line = [_base(0)] + [_base(k, markers={0: 1.0}) for k in range(1, 9)]
-    with pytest.raises(ValueError, match="two or more ages"):
+    with pytest.raises(ValueError, match="2 or more ages"):
         WeibullJointPH.fit(SurpyvalData.from_items(one_line))
     with pytest.raises(ValueError, match="needs the items' marker readings"):
         WeibullJointPH.fit([10.0, 20.0, 30.0])
@@ -556,7 +612,9 @@ def test_time_varying_covariates_are_refused():
         WeibullJointPH.fit(SurpyvalData.from_items(items))
 
 
-@pytest.mark.parametrize("name", ["beta", "effect", "slope", "sd_noise"])
+@pytest.mark.parametrize(
+    "name", ["beta", "a", "sd_noise", "marker_effect", "corr_a_b"]
+)
 def test_a_covariate_named_as_a_parameter_is_refused(name):
     items = [_base(k, covariates={name: float(k % 2)}) for k in range(10)]
     with pytest.raises(ValueError, match="rename them"):
@@ -568,9 +626,254 @@ def test_a_missing_covariate_leaves_its_item_out_with_one_warning():
     Z = np.array(data.Z, dtype=float)
     Z[[3, 7]] = np.nan
     markers = [data.markers[i] for i in data.ids]
-    with pytest.warns(UserWarning, match="2 item\\(s\\) with a missing") as w:
+    with pytest.warns(UserWarning, match="Dropped 2 of 80 rows") as w:
         model = WeibullJointPH.fit(data.x, c=data.c, Z=Z, markers=markers)
-    caught = [m for m in w if "missing" in str(m.message)]
+    caught = [m for m in w if "Dropped" in str(m.message)]
     assert len(caught) == 1
     assert caught[0].filename == __file__  # at the caller's line
     assert model.n_items == 78
+
+
+# -- other paths -------------------------------------------------------------
+
+
+def _path_truth(model, truth):
+    return np.array([truth.get(name, 0.0) for name in model.parameter_names])
+
+
+def test_recovers_an_exponential_path():
+    # a exp(b t): vibration from 3 mm/s growing 0.08% a day, both varying
+    data = simulate_path(
+        ExponentialPath, [3.0, 0.0008], [0.4, 0.0003], 0.3, n=300, seed=3
+    )
+    model = JointPH(Weibull, ExponentialPath).fit(data, marker_reference=4.0)
+    assert model.maximum == "verified"
+    assert model.parameter_names == [
+        "a",
+        "b",
+        "sd_a",
+        "sd_b",
+        "corr_a_b",
+        "sd_noise",
+        "alpha",
+        "beta",
+        "marker_effect",
+    ]
+    truth = dict(
+        a=3.0,
+        b=0.0008,
+        sd_a=0.4,
+        sd_b=0.0003,
+        corr_a_b=0.0,
+        sd_noise=0.3,
+        alpha=800.0,
+        beta=2.0,
+        marker_effect=0.9,
+    )
+    z = (model.params - _path_truth(model, truth)) / model.standard_errors()
+    assert np.all(np.abs(z) < 3), dict(zip(model.parameter_names, z))
+
+
+def test_recovers_a_quadratic_path_with_a_common_curvature():
+    # a + b t + c t^2, the level and rate varying, the curvature common
+    data = simulate_path(
+        QuadraticPath,
+        [3.0, 0.5 / 365, 1.0 / 365**2],
+        [0.5, 0.3 / 365, 0.0],
+        0.4,
+        n=200,
+        seed=2,
+    )
+    fitter = JointPH(Weibull, QuadraticPath, varying=("a", "b"))
+    model = fitter.fit(data, marker_reference=4.0)
+    assert model.maximum == "verified"
+    assert model.parameter_names == [
+        "a",
+        "b",
+        "c",
+        "sd_a",
+        "sd_b",
+        "corr_a_b",
+        "sd_noise",
+        "alpha",
+        "beta",
+        "marker_effect",
+    ]
+    truth = dict(
+        a=3.0,
+        b=0.5 / 365,
+        c=1.0 / 365**2,
+        sd_a=0.5,
+        sd_b=0.3 / 365,
+        corr_a_b=0.0,
+        sd_noise=0.4,
+        alpha=800.0,
+        beta=2.0,
+        marker_effect=0.9,
+    )
+    z = (model.params - _path_truth(model, truth)) / model.standard_errors()
+    assert np.all(np.abs(z) < 3), dict(zip(model.parameter_names, z))
+    # predictions of a nonlinear path agree in both forms
+    item = ItemLifetime("q", right_censored=150, markers={0: 3.1, 150: 3.6})
+    x = np.array([200.0, 300.0])
+    np.testing.assert_array_equal(
+        model.sf(x, item), model.sf(x, markers=item.markers, given=150)
+    )
+    assert np.all(np.diff(model.sf([150, 200, 300, 400], item)) < 0)
+
+
+class SquareRootPath(PathModel):
+    """y = a + b sqrt(t): a path of one's own (module level, to pickle)."""
+
+    name = "Square-root"
+    parameter_names = ["a", "b"]
+
+    def path(self, x, a, b):
+        return a + b * np.sqrt(np.asarray(x, dtype=float))
+
+    def inv_path(self, y, a, b):
+        return ((np.asarray(y, dtype=float) - a) / b) ** 2
+
+    def _initial_guess(self, x, y):
+        return [float(y[0]), 0.1]
+
+
+def test_a_path_model_of_ones_own():
+    # no analytic Jacobian: the base class's (central differences)
+    root = SquareRootPath()
+    items, _ = simulate(n=80, seed=5)
+    data = SurpyvalData.from_items(items)
+    model = JointPH(Weibull, root).fit(data)
+    assert model.maximum == "verified"
+    assert model.summary().index[0] == (
+        "path: Square-root (path(t; a, b))",
+        "a",
+    )
+    item = _item()
+    assert 0 < model.sf(400, item) < 1
+    again = pickle.loads(pickle.dumps(model))
+    assert again.sf(400, item) == model.sf(400, item)
+    with pytest.raises(NotImplementedError, match="not a built-in"):
+        model.to_dict()
+
+
+def test_path_parameter_names_must_not_clash():
+    from surpyval.degradation import PathModel
+
+    class Clash(PathModel):
+        name = "Clash"
+        parameter_names = ["alpha", "b"]
+
+        def path(self, x, a, b):
+            return a + b * np.asarray(x, dtype=float)
+
+        def inv_path(self, y, a, b):
+            return (y - a) / b
+
+    with pytest.raises(ValueError, match="rename them in the path model"):
+        JointPH(Weibull, Clash())
+
+
+# -- the marker reference ----------------------------------------------------
+
+
+def test_the_marker_reference_moves_alpha_only():
+    data = fleet(80, seed=4)
+    default = _small()
+    at_four = WeibullJointPH.fit(data, marker_reference=4.0)
+    assert at_four.marker_reference == 4.0
+    assert default.marker_reference == pytest.approx(
+        np.mean(
+            np.concatenate([list(m.values()) for m in data.markers.values()])
+        )
+    )
+    i = default.parameter_names.index("alpha")
+    others = np.arange(len(default.params)) != i
+    np.testing.assert_allclose(
+        at_four.params[others], default.params[others], rtol=1e-7
+    )
+    p = dict(zip(default.parameter_names, default.params))
+    shift = p["marker_effect"] * (4.0 - default.marker_reference) / p["beta"]
+    assert at_four.params[i] == pytest.approx(
+        default.params[i] * np.exp(-shift), rel=1e-7
+    )
+    assert at_four.neg_ll() == pytest.approx(default.neg_ll(), rel=1e-10)
+    np.testing.assert_allclose(
+        at_four.sf([250.0, 500.0], _item()),
+        default.sf([250.0, 500.0], _item()),
+        rtol=1e-7,
+    )
+    assert "alpha at marker = 4" in at_four.summary().index[6][0]
+    assert JointModel.from_dict(at_four.to_dict()).marker_reference == 4.0
+    with pytest.raises(ValueError, match="one finite number"):
+        WeibullJointPH.fit(data, marker_reference=[4.0])
+
+
+# -- the array form of prediction --------------------------------------------
+
+
+def test_the_item_and_array_forms_are_identical():
+    model = _small()
+    item = _item()
+    x = np.array([[150.0, 250.0], [400.0, 800.0]])
+    args = dict(markers=item.markers, given=item.value)
+    for name in ("sf", "ff", "cb"):
+        f = getattr(model, name)
+        np.testing.assert_array_equal(f(x, item), f(x, **args))
+        np.testing.assert_array_equal(f(x, item), f(x, None, **args))
+    np.testing.assert_array_equal(
+        model.cb(x, item, on="ff", alpha_ci=0.1, bound="lower"),
+        model.cb(x, on="ff", alpha_ci=0.1, bound="lower", **args),
+    )
+
+
+def test_a_new_item_is_the_population_average():
+    model = _small()
+    x = np.array([200.0, 500.0, 900.0])
+    new = model.sf(x)
+    # the brute force with no readings, from age 0
+    blank = ItemLifetime("blank", right_censored=1e-9)
+    np.testing.assert_allclose(
+        new, _brute_force_sf(model, blank, x), rtol=2e-4
+    )
+    # known only to have reached 300: conditional on that
+    later = model.sf([300.0, 500.0, 900.0], given=300)
+    np.testing.assert_allclose(later[1:], new[1:] / model.sf(300.0), rtol=1e-6)
+    assert later[0] == 1.0
+    assert np.all(np.diff(new) < 0)
+
+
+# -- aliasing ----------------------------------------------------------------
+
+
+def test_a_repeated_covariate_is_aliased():
+    import warnings
+
+    data = fleet(120, seed=2, gamma=0.5, delta=-0.4)
+    markers = [data.markers[i] for i in data.ids]
+    Z = np.asarray(data.Z, dtype=float)
+    ref = WeibullJointPH.fit(data.x, c=data.c, Z=Z, markers=markers)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = WeibullJointPH.fit(
+            data.x, c=data.c, Z=np.c_[Z, Z], markers=markers
+        )
+    said = [
+        str(w.message)
+        for w in caught
+        if "cannot be estimated" in str(w.message)
+    ]
+    assert len(said) == 1 and said[0].startswith("Covariate column(s) 1 of Z")
+    np.testing.assert_array_equal(model.aliased, [1])
+    names = model.parameter_names
+    for name in ("a_coef_1", "b_coef_1", "coef_1"):
+        assert np.isnan(model.params[names.index(name)])
+    kept = [names.index(n) for n in ref.parameter_names]
+    np.testing.assert_allclose(model.params[kept], ref.params, rtol=1e-8)
+    assert model.k == ref.k
+    item = _item(covariates=[1.0])
+    np.testing.assert_allclose(
+        model.sf([300.0, 500.0], [1.0, 7.0], markers=item.markers, given=200),
+        ref.sf([300.0, 500.0], item),
+        rtol=1e-8,
+    )

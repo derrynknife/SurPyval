@@ -1,51 +1,53 @@
 """The joint likelihood of a marker and a lifetime, by adaptive
-Gauss-Hermite quadrature over each item's random effects (#891).
+Gauss-Hermite quadrature over each item's path parameters (#891).
 
-Item ``i``'s marker is a straight line in age with its own intercept and
-slope, read with normal noise:
+Item ``i``'s marker follows a degradation path model (``LinearPath``,
+``ExponentialPath``, ... or a ``PathModel`` of one's own) with
+parameters ``theta_i``, read with normal noise:
 
-    m_i(t) = (b0 + u_i0) + (b1 + u_i1) t + delta'z_i,
-    y_ij = m_i(t_ij) + e_ij,  e_ij ~ N(0, sigma^2),  u_i ~ N(0, D),
+    y_ij = path(t_ij; theta_i) + e_ij,  e_ij ~ N(0, sigma^2).
 
-and its hazard is Weibull proportional hazards in the line's current
-value and the covariates,
+The path parameters that vary between items (``varying``) are
+multivariate normal about a mean that the item's covariates shift,
+``theta_iV ~ N(mu_V + Delta_V z_i, D)``; the others are common,
+``theta_iC = mu_C + Delta_C z_i``. The hazard is Weibull proportional
+hazards in the path's current value and the covariates,
 
-    h_i(t) = h0(t) exp(gamma'z_i + a m_i(t)).
+    h_i(t) = h0(t) exp(gamma'z_i + zeta (path(t; theta_i) - c)).
 
-Everything here works on an internal scale on which the problem is well
-conditioned -- ages divided by a time scale, the marker centred and
-divided by its spread, the covariates centred (``joint_ph`` makes the
-scales and maps the parameters back) -- so the marker's centre is 0 here.
+Given ``theta_i`` the readings and the lifetime are independent, so an
+item's likelihood is the integral over its varying parameters
 
-Given ``u_i`` the readings and the lifetime are independent, so an item's
-likelihood is the two-dimensional integral
+    L_i = int p(y_i | theta) h(T_i | theta)^d_i S(T_i | theta)
+          phi(theta_V; mu_V + Delta_V z_i, D) d theta_V,
 
-    L_i = int p(y_i | u) p(T_i, d_i | u) phi(u; 0, D) du,
+evaluated by adaptive Gauss-Hermite quadrature: a product grid
+(7 points a dimension) centred at the mode of the integrand and scaled
+by its curvature there (Gauss-Newton: the path's Jacobian, which is the
+exact curvature for a path linear in its parameters). The nodes are
+placed in the space of the varying parameters themselves and held fixed
+while the parameters are searched, so the path is evaluated at fixed
+nodes (any path model works, and autograd differentiates the rest),
+then placed again at the new parameters until the log-likelihood stops
+moving. A common path parameter is searched through the path: its
+derivatives are the path model's Jacobian (its own analytic one, else
+central differences), and the second derivatives central differences
+of that.
 
-which adaptive Gauss-Hermite quadrature evaluates on a grid of nodes
-centred at the mode of the integrand and scaled by its curvature there.
-The nodes are held fixed while the parameters are searched, so the
-approximation is a smooth function of the parameters, differentiated by
-autograd (the gradient is then the posterior-weighted complete-data
-score), and placed again at the new parameters between searches.
+An item that came under observation at ``L_i > 0`` is in the data
+because it reached ``L_i``: its likelihood is divided by
+``int S(L_i | theta) phi(theta_V) d theta_V`` over the population's
+paths, by adaptive quadrature of its own.
 
-An item that came under observation at ``L_i > 0`` (left truncation) is
-in the data because it reached ``L_i``: its likelihood is divided by the
-probability of that, ``int S(L_i | u) phi(u; 0, D) du``, over the
-population's random effects (the item's own are not yet selected at
-entry). That integrand is bounded and smooth, so plain Gauss-Hermite
-over the prior evaluates it.
+The cumulative hazard along a path is, with ``s = t u`` and ``u = w^4``,
 
-The cumulative hazard ``H(t | u) = int_0^t h(s | u) ds`` is, with
-``s = t v^(1/beta)`` and ``v = w^3``,
+    H(t) = exp(gamma'z) (t / alpha)^beta
+           int_0^1 4 beta w^(4 beta - 1) exp(zeta (path(t w^4) - c)) dw,
 
-    H = exp(gamma'z + a A) (t / alpha)^beta
-        int_0^1 3 w^2 exp(a B t w^(3/beta)) dw,
-
-``A`` and ``B`` the line's intercept and slope: 15-point Gauss-Legendre
-in ``w`` is accurate to about 1e-5 relative even where the hazard grows
-by a factor of e^8 over the life (the substitution takes out the
-singularity of the Weibull hazard at 0).
+by 15-point Gauss-Legendre in ``w``: the nodes do not move with
+``beta``, so the path is evaluated at fixed ages, and the error is
+below 3e-6 relative for shapes 0.5 to 5 with the hazard changing by a
+factor of up to e^8 over ``(0, t]``.
 """
 
 from __future__ import annotations
@@ -56,324 +58,512 @@ from typing import Any
 import autograd.numpy as anp
 import numpy as np
 import numpy.typing as npt
+from autograd.extend import defvjp, primitive
 from autograd.scipy.special import logsumexp
 
-#: Gauss-Hermite points per dimension of the random effects: in the fit
-#: (adaptive; 2-3 fail on sparse data), in a prediction, and for the
-#: probability of reaching the entry age (over the prior, not adaptive).
+#: Gauss-Hermite points a dimension: in the fit (adaptive; 2-3 fail on
+#: sparse data), and in a prediction (by the number of varying path
+#: parameters: 15, 15, then 9 for three).
 GH_FIT = 7
-GH_PREDICT = 15
-GH_ENTRY = 10
+GH_PREDICT = {1: 15, 2: 15, 3: 9}
 #: Gauss-Legendre points of the cumulative hazard.
 GL_POINTS = 15
+#: The most path parameters that may vary: a full grid has 7^q nodes.
+MAX_VARYING = 3
 
 
-def _gh_grid(points: int) -> tuple[npt.NDArray, npt.NDArray]:
-    """The two-dimensional product Gauss-Hermite grid: nodes ``(K, 2)``
-    and log weights ``(K,)`` for ``int exp(-|z|^2) f(z) dz``."""
+def gh_grid(dim: int, points: int) -> tuple[npt.NDArray, npt.NDArray]:
+    """The ``dim``-dimensional product Gauss-Hermite grid: nodes
+    ``(K, dim)`` and log weights ``(K,)`` for ``int exp(-|z|^2) f(z)
+    dz``."""
     x, w = np.polynomial.hermite.hermgauss(points)
-    z = np.array(np.meshgrid(x, x, indexing="ij")).reshape(2, -1).T
-    logw = np.add.outer(np.log(w), np.log(w)).ravel()
+    grids = np.meshgrid(*([x] * dim), indexing="ij")
+    z = np.stack([g.ravel() for g in grids], axis=-1)
+    logw = np.zeros(z.shape[0])
+    for g in np.meshgrid(*([np.log(w)] * dim), indexing="ij"):
+        logw = logw + g.ravel()
     return z, logw
 
 
 def _gl_grid() -> tuple[npt.NDArray, npt.NDArray]:
-    """The Gauss-Legendre nodes ``w`` on [0, 1] and log weights, the
-    weights including the ``3 w^2`` of ``v = w^3``."""
     x, w = np.polynomial.legendre.leggauss(GL_POINTS)
     nodes = (x + 1.0) / 2.0
-    return nodes, np.log(w / 2.0 * 3.0 * nodes**2)
+    return nodes, np.log(w / 2.0 * 4.0)
 
 
-_GL_NODES, _GL_LOGW = _gl_grid()
+#: Gauss-Legendre nodes ``w`` on (0, 1) and the log of their weights
+#: times the 4 of ``u = w^4``; the ages of the nodes are ``t w^4``.
+GL_NODES, GL_LOGW = _gl_grid()
+GL_U = GL_NODES**4
+
+
+# -- the path, twice differentiable by autograd ------------------------------
+
+
+def _numeric_jacobian(path_model: Any, x: npt.NDArray, P: npt.NDArray) -> Any:
+    """``d path / d theta`` at the flat ages ``x`` (M,) and parameters
+    ``P`` (M, p), by central differences of the (broadcasting) path."""
+    cols = []
+    for j in range(P.shape[1]):
+        h = 1e-6 * np.maximum(np.abs(P[:, j]), 1.0)
+        up, down = P.copy(), P.copy()
+        up[:, j] += h
+        down[:, j] -= h
+        cols.append(
+            (path_model.path(x, *up.T) - path_model.path(x, *down.T)) / (2 * h)
+        )
+    return np.stack(cols, axis=-1)
+
+
+def path_jacobian(path_model: Any, x: npt.NDArray, P: npt.NDArray) -> Any:
+    """``d path / d theta`` ``(..., p)`` at ages ``x`` ``(...)`` and
+    parameters ``P`` ``(..., p)``: the path model's own Jacobian where it
+    takes arrays of parameters, else central differences."""
+    shape = np.shape(x)
+    xf = np.asarray(x, dtype=float).ravel()
+    Pf = np.asarray(P, dtype=float).reshape(-1, P.shape[-1])
+    try:
+        with np.errstate(all="ignore"):
+            J = np.asarray(path_model.jacobian(xf, *Pf.T), dtype=float)
+        if J.shape != Pf.shape:
+            raise ValueError
+    except Exception:
+        with np.errstate(all="ignore"):
+            J = _numeric_jacobian(path_model, xf, Pf)
+    return J.reshape(shape + (Pf.shape[1],))
+
+
+class PathFunction:
+    """``path(params, x)`` of a path model for autograd: ``params``
+    ``(..., p)`` and ``x`` ``(...)`` of one shape, its derivatives the
+    path model's Jacobian and, for the second, central differences of
+    that."""
+
+    def __init__(self, path_model: Any) -> None:
+        self.model = path_model
+
+        @primitive
+        def values(params: Any, x: Any) -> Any:
+            with np.errstate(all="ignore"):
+                return np.asarray(
+                    path_model.path(x, *np.moveaxis(params, -1, 0)),
+                    dtype=float,
+                )
+
+        @primitive
+        def jac(params: Any, x: Any) -> Any:
+            return path_jacobian(path_model, x, params)
+
+        def jac_vjp(ans: Any, params: Any, x: Any) -> Any:
+            p = params.shape[-1]
+            h = 1e-5 * np.maximum(np.abs(params), 1.0)
+            second = []
+            for j in range(p):
+                up, down = params.copy(), params.copy()
+                up[..., j] += h[..., j]
+                down[..., j] -= h[..., j]
+                second.append(
+                    (
+                        path_jacobian(path_model, x, up)
+                        - path_jacobian(path_model, x, down)
+                    )
+                    / (2 * h[..., j : j + 1])
+                )
+            S = np.stack(second, axis=-1)  # (..., p, p)
+            return lambda g: np.einsum("...k,...kj->...j", g, S)
+
+        defvjp(
+            values,
+            lambda ans, params, x: lambda g: g[..., None] * jac(params, x),
+        )
+        defvjp(jac, jac_vjp)
+        self.values = values
+        self.jac = jac
+
+    def __call__(self, params: Any, x: Any) -> Any:
+        return self.values(params, x)
+
+
+# -- the parameters ---------------------------------------------------------
 
 
 @dataclass
 class Layout:
-    """Where each part is in the internal parameter vector, for ``p``
-    covariates: the marker's intercept, slope and covariate coefficients,
-    the log-Cholesky factor of ``D`` (log ``L00``, ``L10``, log ``L11``),
-    log ``sigma``, log Weibull ``alpha`` and ``beta``, the hazard's
-    covariate coefficients, and the marker's effect ``a``."""
+    """The internal parameter vector for a path of ``P`` parameters, of
+    which those at ``varying`` vary between items, and ``p`` covariates:
+    the path means ``mu`` (at the covariate means), their covariate
+    shifts ``Delta`` ``(P, p)``, the log-Cholesky factor of ``D`` (log
+    diagonal, then the lower triangle by rows), log ``sigma``, the log
+    Weibull ``alpha`` (at the covariate means and the marker's centre)
+    and ``beta``, the hazard's coefficients ``gamma`` and the marker's
+    effect ``zeta``."""
 
+    P: int
     p: int
+    varying: tuple
+
+    @property
+    def q(self) -> int:
+        return len(self.varying)
+
+    @property
+    def common(self) -> tuple:
+        return tuple(j for j in range(self.P) if j not in self.varying)
 
     @property
     def size(self) -> int:
-        return 9 + 2 * self.p
+        q = self.q
+        return self.P + self.P * self.p + q * (q + 1) // 2 + 4 + self.p + 1
 
     def unpack(self, u: Any) -> dict:
-        p = self.p
-        i = 2 + p
+        P, p, q = self.P, self.p, self.q
+        i = 0
+        mu = u[i : i + P]
+        i += P
+        Delta = anp.reshape(u[i : i + P * p], (P, p))
+        i += P * p
+        diag = anp.exp(u[i : i + q])
+        i += q
+        lower = u[i : i + q * (q - 1) // 2]
+        i += q * (q - 1) // 2
+        rows = []
+        k = 0
+        for r in range(q):
+            row = []
+            for col in range(q):
+                if col < r:
+                    row.append(lower[k])
+                    k += 1
+                elif col == r:
+                    row.append(diag[r])
+                else:
+                    row.append(0.0 * diag[r])
+            rows.append(anp.stack(row))
+        L = anp.stack(rows) if q else anp.zeros((0, 0))
         return {
-            "b0": u[0],
-            "b1": u[1],
-            "delta": u[2:i],
-            "L00": anp.exp(u[i]),
-            "L10": u[i + 1],
-            "L11": anp.exp(u[i + 2]),
-            "sigma": anp.exp(u[i + 3]),
-            "scale": anp.exp(u[i + 4]),
-            "shape": anp.exp(u[i + 5]),
-            "gamma": u[i + 6 : i + 6 + p],
-            "assoc": u[i + 6 + p],
+            "mu": mu,
+            "Delta": Delta,
+            "L": L,
+            "sigma": anp.exp(u[i]),
+            "alpha": anp.exp(u[i + 1]),
+            "beta": anp.exp(u[i + 2]),
+            "gamma": u[i + 3 : i + 3 + p],
+            "zeta": u[i + 3 + p],
         }
 
     def pack(self, theta: dict) -> npt.NDArray:
+        L = np.asarray(theta["L"], dtype=float)
+        q = self.q
+        lower = [L[r, c] for r in range(q) for c in range(r)]
         return np.concatenate(
             [
-                [theta["b0"], theta["b1"]],
-                np.atleast_1d(theta["delta"]),
+                np.asarray(theta["mu"], dtype=float),
+                np.asarray(theta["Delta"], dtype=float).ravel(),
+                np.log(np.diag(L)) if q else np.zeros(0),
+                np.asarray(lower, dtype=float),
                 [
-                    np.log(theta["L00"]),
-                    theta["L10"],
-                    np.log(theta["L11"]),
                     np.log(theta["sigma"]),
-                    np.log(theta["scale"]),
-                    np.log(theta["shape"]),
+                    np.log(theta["alpha"]),
+                    np.log(theta["beta"]),
                 ],
-                np.atleast_1d(theta["gamma"]),
-                [theta["assoc"]],
+                np.atleast_1d(np.asarray(theta["gamma"], dtype=float)),
+                [float(theta["zeta"])],
             ]
-        ).astype(float)
+        )
+
+
+# -- the data --------------------------------------------------------------
 
 
 @dataclass
 class JointArrays:
-    """The items on the internal scale: counts ``w``, the age ``T`` each
-    left observation (its failure or censoring), the event flag ``d``,
-    the entry age ``L`` (0 for an item observed from 0), the covariates
-    ``Z`` ``(N, p)``, and each item's readings as the sums the marker's
-    likelihood needs: their number, and the sums of ``y``, ``t``, ``y^2``,
-    ``t y`` and ``t^2``."""
+    """The items: counts ``w``, the age ``T`` each left observation, the
+    event flag ``d``, the entry age ``L`` (0 for an item observed from
+    0), the centred covariates ``Z`` ``(N, p)``, and the readings padded
+    to ``(N, R)``: ``ages``, ``values`` and their ``mask``."""
 
     w: npt.NDArray
     T: npt.NDArray
     d: npt.NDArray
     L: npt.NDArray
     Z: npt.NDArray
-    n_read: npt.NDArray
-    Sy: npt.NDArray
-    St: npt.NDArray
-    Syy: npt.NDArray
-    Sty: npt.NDArray
-    Stt: npt.NDArray
+    ages: npt.NDArray
+    values: npt.NDArray
+    mask: npt.NDArray
 
     @classmethod
     def build(
-        cls,
-        w: Any,
-        T: Any,
-        d: Any,
-        L: Any,
-        Z: Any,
-        ages: list,
-        values: list,
+        cls, w: Any, T: Any, d: Any, L: Any, Z: Any, ages: list, values: list
     ) -> "JointArrays":
-        def sums(f: Any) -> npt.NDArray:
-            return np.array(
-                [float(np.sum(f(t, y))) for t, y in zip(ages, values)]
-            )
-
+        N = len(ages)
+        R = max([len(a) for a in ages] + [1])
+        A = np.zeros((N, R))
+        V = np.zeros((N, R))
+        M = np.zeros((N, R), dtype=bool)
+        for i, (a, v) in enumerate(zip(ages, values)):
+            A[i, : len(a)] = a
+            V[i, : len(v)] = v
+            M[i, : len(a)] = True
+        # padded ages repeat the first (or 0), so the path is defined there
+        for i in range(N):
+            if len(ages[i]):
+                A[i, len(ages[i]) :] = ages[i][0]
+            else:
+                A[i, :] = max(float(np.asarray(T, dtype=float)[i]), 1e-12)
         return cls(
             w=np.asarray(w, dtype=float),
             T=np.asarray(T, dtype=float),
             d=np.asarray(d, dtype=float),
             L=np.asarray(L, dtype=float),
-            Z=np.asarray(Z, dtype=float).reshape(len(ages), -1),
-            n_read=np.array([float(len(t)) for t in ages]),
-            Sy=sums(lambda t, y: y),
-            St=sums(lambda t, y: t),
-            Syy=sums(lambda t, y: y * y),
-            Sty=sums(lambda t, y: t * y),
-            Stt=sums(lambda t, y: t * t),
+            Z=np.asarray(Z, dtype=float).reshape(N, -1),
+            ages=A,
+            values=V,
+            mask=M,
         )
 
+    def take(self, index: Any) -> "JointArrays":
+        """The items ``index``."""
+        return JointArrays(
+            **{k: getattr(self, k)[index] for k in self.__dataclass_fields__}
+        )
 
-# -- the pieces of an item's log-integrand ----------------------------------
-
-
-def _lines(theta: dict, arrays: JointArrays, b: Any) -> tuple:
-    """The intercept ``A`` and slope ``B`` of each item's line at the
-    random effects ``b`` (``(N, K, 2)`` or ``(N, 2)``)."""
-    fixed = theta["b0"] + anp.dot(arrays.Z, theta["delta"])
-    if anp.ndim(b) == 3:
-        return fixed[:, None] + b[..., 0], theta["b1"] + b[..., 1]
-    return fixed + b[:, 0], theta["b1"] + b[:, 1]
+    @property
+    def n_read(self) -> npt.NDArray:
+        return self.mask.sum(axis=1).astype(float)
 
 
-def _expand(v: Any, b: Any) -> Any:
-    """A per-item array lined up with ``b``'s leading axes."""
-    return v[:, None] if anp.ndim(b) == 3 else v
+# -- the integrand ---------------------------------------------------------
 
 
-def log_readings(theta: dict, arrays: JointArrays, b: Any) -> Any:
-    """``log p(y_i | b)``, each item's readings given its line."""
-    A, B = _lines(theta, arrays, b)
-    a = arrays
-    n, Sy, St = _expand(a.n_read, b), _expand(a.Sy, b), _expand(a.St, b)
-    Syy, Sty, Stt = _expand(a.Syy, b), _expand(a.Sty, b), _expand(a.Stt, b)
-    ss = (
-        Syy
-        - 2 * A * Sy
-        - 2 * B * Sty
-        + n * A * A
-        + 2 * A * B * St
-        + B * B * Stt
+def _path_params(theta: dict, layout: Layout, Z: Any, nodes: Any) -> Any:
+    """Each item's full path parameters at the nodes ``(N, K, q)`` of its
+    varying ones: ``(N, K, P)``, the common ones its mean."""
+    means = theta["mu"][None, :] + anp.dot(Z, anp.transpose(theta["Delta"]))
+    N, K = nodes.shape[0], nodes.shape[1]
+    cols = []
+    for j in range(layout.P):
+        if j in layout.varying:
+            cols.append(nodes[..., layout.varying.index(j)])
+        else:
+            cols.append(anp.broadcast_to(means[:, j : j + 1], (N, K)))
+    return anp.stack(cols, axis=-1)
+
+
+def _at(path: PathFunction, params: Any, ages: npt.NDArray) -> Any:
+    """``path`` at ``ages`` ``(N, A)`` for parameters ``(N, K, P)``:
+    ``(N, K, A)``."""
+    N, K, P = params.shape
+    A = ages.shape[1]
+    full = anp.broadcast_to(params[:, :, None, :], (N, K, A, P))
+    x = np.broadcast_to(ages[:, None, :], (N, K, A))
+    return path(full, x)
+
+
+def log_prior(theta: dict, layout: Layout, Z: Any, nodes: Any) -> Any:
+    """``log phi(theta_V; mu_V + Delta_V z, D)`` at the nodes."""
+    q = layout.q
+    if q == 0:
+        return anp.zeros(nodes.shape[:2])
+    V = list(layout.varying)
+    mean = theta["mu"][V][None, :] + anp.dot(
+        Z, anp.transpose(theta["Delta"][V])
     )
+    diff = nodes - mean[:, None, :]
+    L = theta["L"]
+    # forward substitution: L x = diff
+    xs: list = []
+    for r in range(q):
+        acc = diff[..., r]
+        for c in range(r):
+            acc = acc - L[r, c] * xs[c]
+        xs.append(acc / L[r, r])
+    quad = sum(x_**2 for x_ in xs)
+    log_det = anp.sum(anp.log(anp.stack([L[r, r] for r in range(q)])))
+    return -0.5 * q * np.log(2 * np.pi) - log_det - 0.5 * quad
+
+
+def log_readings(
+    theta: dict, path: PathFunction, params: Any, arrays: JointArrays
+) -> Any:
+    """``log p(y_i | theta)`` at the nodes ``(N, K)``."""
+    m = _at(path, params, arrays.ages)
+    r = arrays.values[:, None, :] - m
+    ss = anp.sum(anp.where(arrays.mask[:, None, :], r**2, 0.0), axis=-1)
     s2 = theta["sigma"] ** 2
+    n = arrays.n_read[:, None]
     return -0.5 * n * anp.log(2 * np.pi * s2) - ss / (2 * s2)
 
 
-def log_cumhaz(theta: dict, arrays: JointArrays, b: Any, t: Any) -> Any:
-    """``log H(t_i | b)``, the cumulative hazard to each item's ``t_i``
-    (``-inf`` where ``t_i`` is 0)."""
-    A, B = _lines(theta, arrays, b)
-    shape, scale, a = theta["shape"], theta["scale"], theta["assoc"]
+def log_cumhaz(
+    theta: dict,
+    path: PathFunction,
+    params: Any,
+    arrays: JointArrays,
+    t: npt.NDArray,
+    centre: float,
+) -> Any:
+    """``log H(t_i | theta)`` at the nodes ``(N, K)`` (``-inf`` where
+    ``t_i`` is 0)."""
     positive = t > 0
-    safe = anp.where(positive, t, 1.0)
+    safe = np.where(positive, t, 1.0)
+    m = _at(path, params, safe[:, None] * GL_U[None, :])
+    beta, zeta = theta["beta"], theta["zeta"]
+    inner = logsumexp(
+        GL_LOGW + (4 * beta - 1) * np.log(GL_NODES) + zeta * (m - centre),
+        axis=-1,
+    )
     lin = anp.dot(arrays.Z, theta["gamma"])
-    # the times of the quadrature nodes: s = t w^(3 / beta), (N, Q)
-    s = safe[:, None] * _GL_NODES[None, :] ** (3.0 / shape)
-    if anp.ndim(b) == 3:
-        inner = logsumexp(_GL_LOGW + a * B[..., None] * s[:, None, :], axis=-1)
-        base = (lin + shape * (anp.log(safe) - anp.log(scale)))[:, None]
-        out = base + a * A + inner
-        return anp.where(positive[:, None], out, -anp.inf)
-    inner = logsumexp(_GL_LOGW + a * B[:, None] * s, axis=-1)
-    out = lin + shape * (anp.log(safe) - anp.log(scale)) + a * A + inner
-    return anp.where(positive, out, -anp.inf)
+    base = lin + beta * (anp.log(safe) - anp.log(theta["alpha"]))
+    out = base[:, None] + anp.log(beta) + inner
+    return anp.where(positive[:, None], out, -anp.inf)
 
 
-def log_lifetime(theta: dict, arrays: JointArrays, b: Any) -> Any:
-    """``log p(T_i, d_i | b)``: the density at a failure, the survival to
-    a censoring, from age 0."""
-    A, B = _lines(theta, arrays, b)
-    shape, scale, a = theta["shape"], theta["scale"], theta["assoc"]
-    T, d = _expand(arrays.T, b), _expand(arrays.d, b)
-    lin = _expand(anp.dot(arrays.Z, theta["gamma"]), b)
-    log_h = (
-        anp.log(shape)
-        - anp.log(scale)
-        + (shape - 1) * (anp.log(T) - anp.log(scale))
+def log_event(
+    theta: dict,
+    path: PathFunction,
+    params: Any,
+    arrays: JointArrays,
+    centre: float,
+) -> Any:
+    """``log h(T_i | theta)`` at the nodes."""
+    m = _at(path, params, arrays.T[:, None])[..., 0]
+    alpha, beta = theta["alpha"], theta["beta"]
+    lin = anp.dot(arrays.Z, theta["gamma"])
+    T = arrays.T
+    base = (
+        anp.log(beta)
+        - anp.log(alpha)
+        + (beta - 1) * (anp.log(T) - anp.log(alpha))
         + lin
-        + a * (A + B * T)
     )
-    return d * log_h - anp.exp(log_cumhaz(theta, arrays, b, arrays.T))
+    return base[:, None] + theta["zeta"] * (m - centre)
 
 
-def log_prior(theta: dict, b: Any) -> Any:
-    """``log phi(b; 0, D)`` with ``D = L L'``."""
-    L00, L10, L11 = theta["L00"], theta["L10"], theta["L11"]
-    x0 = b[..., 0] / L00
-    x1 = (b[..., 1] - L10 * x0) / L11
-    return (
-        -anp.log(2 * np.pi)
-        - anp.log(L00)
-        - anp.log(L11)
-        - 0.5 * (x0**2 + x1**2)
-    )
+# -- where the nodes go -------------------------------------------------------
 
 
-# -- where the nodes go: each item's posterior mode and curvature ----------
+def _mode_objective(
+    theta: dict,
+    layout: Layout,
+    path: PathFunction,
+    arrays: JointArrays,
+    b: npt.NDArray,
+    d: npt.NDArray,
+    t: npt.NDArray,
+    centre: float,
+    readings: bool,
+) -> tuple:
+    """``-log`` of the integrand at the varying parameters ``b`` ``(N,
+    q)``, its gradient and its Gauss-Newton curvature."""
+    params = np.asarray(
+        _path_params(theta, layout, arrays.Z, b[:, None, :]), dtype=float
+    )[:, 0, :]
+    V = list(layout.varying)
+    q = layout.q
+    zeta = float(theta["zeta"])
+    with np.errstate(all="ignore"):
+        f = np.zeros(len(b))
+        g = np.zeros((len(b), q))
+        H = np.zeros((len(b), q, q))
+        if readings:
+            s2 = float(theta["sigma"]) ** 2
+            ages = arrays.ages
+            P = np.broadcast_to(params[:, None, :], ages.shape + (layout.P,))
+            m = path.model.path(ages, *np.moveaxis(P, -1, 0))
+            J = path_jacobian(path.model, ages, np.array(P))[..., V]
+            r = np.where(arrays.mask, arrays.values - m, 0.0)
+            J = np.where(arrays.mask[..., None], J, 0.0)
+            f = f + np.sum(r**2, axis=1) / (2 * s2)
+            g = g - np.einsum("nr,nrj->nj", r, J) / s2
+            H = H + np.einsum("nri,nrj->nij", J, J) / s2
+        # the lifetime: an event flag d at age t, survival to t
+        positive = t > 0
+        safe = np.where(positive, t, 1.0)
+        s_ages = safe[:, None] * GL_U[None, :]
+        P = np.broadcast_to(params[:, None, :], s_ages.shape + (layout.P,))
+        m = path.model.path(s_ages, *np.moveaxis(P, -1, 0))
+        J = path_jacobian(path.model, s_ages, np.array(P))[..., V]
+        beta = float(theta["beta"])
+        lin = arrays.Z @ np.asarray(theta["gamma"], dtype=float)
+        log_lam = (
+            (lin + beta * (np.log(safe) - np.log(float(theta["alpha"]))))[
+                :, None
+            ]
+            + np.log(beta)
+            + GL_LOGW
+            + (4 * beta - 1) * np.log(GL_NODES)
+            + zeta * (m - centre)
+        )
+        lam = np.where(positive[:, None], np.exp(log_lam), 0.0)
+        f = f + lam.sum(axis=1)
+        g = g + zeta * np.einsum("nq,nqj->nj", lam, J)
+        H = H + zeta**2 * np.einsum("nq,nqi,nqj->nij", lam, J, J)
+        if np.any(d > 0):
+            P1 = params[:, None, :]
+            mT = path.model.path(safe[:, None], *np.moveaxis(P1, -1, 0))[:, 0]
+            JT = path_jacobian(path.model, safe[:, None], np.array(P1))[
+                :, 0, V
+            ]
+            f = f - d * zeta * mT
+            g = g - (d * zeta)[:, None] * JT
+        # the prior
+        Lc = np.asarray(theta["L"], dtype=float)
+        Dinv = np.linalg.inv(Lc @ Lc.T)
+        mean = (
+            np.asarray(theta["mu"], dtype=float)[V][None, :]
+            + arrays.Z @ np.asarray(theta["Delta"], dtype=float)[V].T
+        )
+        diff = b - mean
+        f = f + 0.5 * np.einsum("ni,ij,nj->n", diff, Dinv, diff)
+        g = g + diff @ Dinv
+        H = H + Dinv[None]
+    return f, g, H
 
 
-def _numeric(theta: dict) -> dict:
-    """``theta`` with plain floats and arrays (no autograd boxes)."""
+def numeric_theta(theta: dict) -> dict:
+    """``theta`` with plain arrays (no autograd boxes)."""
     return {
         k: np.asarray(getattr(v, "_value", v), dtype=float)
         for k, v in theta.items()
     }
 
 
-def _objective(
+def modes(
     theta: dict,
-    arrays: JointArrays,
-    b: npt.NDArray,
-    d: npt.NDArray,
-    T: npt.NDArray,
-) -> tuple:
-    """``-log`` of the integrand (less constants) at ``b`` ``(N, 2)``,
-    with its gradient and Hessian in ``b``: the readings, the lifetime
-    (an event flag ``d`` at age ``T``) and the prior."""
-    A, B = _lines(theta, arrays, b)
-    a, s2 = float(theta["assoc"]), float(theta["sigma"]) ** 2
-    n, Sy, St = arrays.n_read, arrays.Sy, arrays.St
-    Syy, Sty, Stt = arrays.Syy, arrays.Sty, arrays.Stt
-    ss = (
-        Syy
-        - 2 * A * Sy
-        - 2 * B * Sty
-        + n * A * A
-        + 2 * A * B * St
-        + B * B * Stt
-    )
-    g_read = np.stack([-Sy + n * A + B * St, -Sty + A * St + B * Stt], -1) / s2
-    h_read = (
-        np.stack([np.stack([n, St], -1), np.stack([St, Stt], -1)], -2) / s2
-    )
-    # the cumulative hazard to T, node by node
-    shape, scale = float(theta["shape"]), float(theta["scale"])
-    positive = T > 0
-    safe = np.where(positive, T, 1.0)
-    s = safe[:, None] * _GL_NODES[None, :] ** (3.0 / shape)
-    lin = arrays.Z @ theta["gamma"]
-    with np.errstate(over="ignore", under="ignore"):
-        lam = np.exp(
-            (lin + shape * (np.log(safe) - np.log(scale)) + a * A)[:, None]
-            + _GL_LOGW
-            + a * B[:, None] * s
-        )
-    lam = np.where(positive[:, None], lam, 0.0)
-    H0, H1, H2 = lam.sum(1), (lam * s).sum(1), (lam * s * s).sum(1)
-    g_surv = np.stack([a * H0 - d * a, a * H1 - d * a * T], -1)
-    h_surv = (
-        a * a * np.stack([np.stack([H0, H1], -1), np.stack([H1, H2], -1)], -2)
-    )
-    D = _covariance(theta)
-    Dinv = np.linalg.inv(D)
-    f = (
-        ss / (2 * s2)
-        - d * a * (A + B * T)
-        + H0
-        + 0.5 * np.einsum("ni,ij,nj->n", b, Dinv, b)
-    )
-    grad = g_read + g_surv + b @ Dinv
-    hess = h_read + h_surv + Dinv[None]
-    return f, grad, hess
-
-
-def _covariance(theta: dict) -> npt.NDArray:
-    L = np.array(
-        [
-            [float(theta["L00"]), 0.0],
-            [float(theta["L10"]), float(theta["L11"])],
-        ]
-    )
-    return L @ L.T
-
-
-def posterior_modes(
-    theta: dict,
+    layout: Layout,
+    path: PathFunction,
     arrays: JointArrays,
     d: npt.NDArray,
-    T: npt.NDArray,
+    t: npt.NDArray,
+    centre: float,
+    readings: bool = True,
     start: "npt.NDArray | None" = None,
 ) -> tuple[npt.NDArray, npt.NDArray]:
-    """Each item's mode of ``p(y | b) p(T, d | b) phi(b)`` and the
-    Cholesky factor of the inverse of its curvature there, by damped
-    Newton steps (the integrand is log-concave in ``b``, so they
-    converge from anywhere)."""
-    theta = _numeric(theta)
+    """Each item's mode of the integrand over its varying parameters and
+    the Cholesky factor of the inverse of its (Gauss-Newton) curvature
+    there, by damped Gauss-Newton steps."""
+    theta = numeric_theta(theta)
+    V = list(layout.varying)
     N = len(arrays.w)
-    b = np.zeros((N, 2)) if start is None else np.array(start, dtype=float)
-    f, g, h = _objective(theta, arrays, b, d, T)
-    for _ in range(100):
-        step = -np.linalg.solve(h, g[..., None])[..., 0]
+    if start is None:
+        b = np.asarray(theta["mu"], dtype=float)[V][None, :] + (
+            arrays.Z @ np.asarray(theta["Delta"], dtype=float)[V].T
+        )
+    else:
+        b = np.array(start, dtype=float)
+    f, g, H = _mode_objective(
+        theta, layout, path, arrays, b, d, t, centre, readings
+    )
+    for _ in range(200):
+        with np.errstate(all="ignore"):
+            step = -np.linalg.solve(H, g[..., None])[..., 0]
+        step = np.where(np.isfinite(step), step, 0.0)
         size = np.ones(N)
-        for _ in range(30):
+        for _ in range(40):
             trial = b + size[:, None] * step
-            f_new, g_new, h_new = _objective(theta, arrays, trial, d, T)
+            f_new, g_new, H_new = _mode_objective(
+                theta, layout, path, arrays, trial, d, t, centre, readings
+            )
             worse = ~(f_new <= f + 1e-12 * np.abs(f))
             if not worse.any():
                 break
@@ -382,101 +572,169 @@ def posterior_modes(
         b = np.where(accept[:, None], trial, b)
         f = np.where(accept, f_new, f)
         g = np.where(accept[:, None], g_new, g)
-        h = np.where(accept[:, None, None], h_new, h)
-        if np.all(np.abs(step * size[:, None]) <= 1e-10 * (1 + np.abs(b))):
+        H = np.where(accept[:, None, None], H_new, H)
+        moved = np.abs(step * np.where(accept, size, 0.0)[:, None])
+        if np.all(moved <= 1e-10 * (1 + np.abs(b))):
             break
-    cov = np.linalg.inv(h)
-    # symmetric, and positive definite (the curvature is)
+    with np.errstate(all="ignore"):
+        cov = np.linalg.pinv(H)
     cov = 0.5 * (cov + np.swapaxes(cov, -1, -2))
+    if not np.all(np.isfinite(cov)):
+        raise np.linalg.LinAlgError("the integrand's curvature is not finite")
+    # floored, so the grid has a scale in every direction
+    vals, vecs = np.linalg.eigh(cov)
+    floor = np.maximum(vals.max(axis=-1, keepdims=True), 1e-300) * 1e-12
+    vals = np.maximum(vals, floor)
+    root = np.einsum("nij,nj->nij", vecs, np.sqrt(vals))
+    cov = np.einsum("nij,nkj->nik", root, root)
     return b, np.linalg.cholesky(cov)
 
 
-def censored_modes(
-    theta: dict, arrays: JointArrays, times: npt.NDArray
+def continued_modes(
+    theta: dict,
+    layout: Layout,
+    path: PathFunction,
+    arrays: JointArrays,
+    t: npt.NDArray,
+    centre: float,
 ) -> tuple[npt.NDArray, npt.NDArray]:
-    """:func:`posterior_modes` of items censored at ``times`` (each row of
-    ``arrays`` at its own time), found by continuation: from age 0, the
-    time is at most doubled at each stage and the search started from the
-    last stage's modes. Far beyond the data the integrand's mode is where
-    the hazard stays small, which a search started from the modes of
-    nearer ages reaches; started from the readings alone, the cumulative
-    hazard there overflows."""
-    times = np.asarray(times, dtype=float)
-    smallest = np.min(times[times > 0]) if np.any(times > 0) else 1.0
-    current = np.minimum(times, smallest)
-    mode, root = posterior_modes(theta, arrays, np.zeros(times.size), current)
-    while np.any(current < times):
-        current = np.minimum(times, 2.0 * current)
-        mode, root = posterior_modes(
-            theta, arrays, np.zeros(times.size), current, start=mode
+    """:func:`modes` of items censored at ``t`` (each row at its own age),
+    by continuation in the age: from the smallest age, at most doubled at
+    each stage, each search started from the last stage's modes. Far
+    beyond the data the mode is where the hazard stays small, which a
+    search from the modes of nearer ages reaches; from the readings
+    alone, the cumulative hazard there overflows."""
+    t = np.asarray(t, dtype=float)
+    smallest = np.min(t[t > 0]) if np.any(t > 0) else 1.0
+    current = np.minimum(t, smallest)
+    zero = np.zeros(t.size)
+    b, root = modes(theta, layout, path, arrays, zero, current, centre)
+    while np.any(current < t):
+        current = np.minimum(t, 2.0 * current)
+        b, root = modes(
+            theta, layout, path, arrays, zero, current, centre, start=b
         )
-    return mode, root
+    return b, root
 
 
 def adaptive_nodes(
     mode: npt.NDArray, root: npt.NDArray, points: int
 ) -> tuple[npt.NDArray, npt.NDArray]:
-    """The nodes ``(N, K, 2)`` of each item's adaptive grid and their log
-    weights ``(N, K)``, including the change of variables: ``int f(b) db
-    ~ sum_k exp(logw_k) f(b_k)``."""
-    z, logw = _gh_grid(points)
+    """The nodes ``(N, K, q)`` of each item's adaptive grid and their log
+    weights ``(N, K)``, the change of variables included: ``int f db ~
+    sum_k exp(logw_k) f(b_k)``."""
+    q = mode.shape[1]
+    z, logw = gh_grid(q, points)
     nodes = mode[:, None, :] + np.sqrt(2.0) * np.einsum("nij,kj->nki", root, z)
-    log_det = np.log(2.0) + np.log(root[:, 0, 0]) + np.log(root[:, 1, 1])
+    log_det = q * 0.5 * np.log(2.0) + np.sum(
+        np.log(np.diagonal(root, axis1=1, axis2=2)), axis=1
+    )
     return (
         nodes,
         logw[None, :] + np.sum(z**2, axis=1)[None, :] + log_det[:, None],
     )
 
 
-# -- the likelihood ----------------------------------------------------------
+# -- the likelihood --------------------------------------------------------
 
 
-def log_entry(theta: dict, arrays: JointArrays) -> Any:
-    """``log P(T > L_i)`` over the population's random effects: the
-    probability of reaching the entry age (0 for an item observed from
-    0)."""
-    z, logw = _gh_grid(GH_ENTRY)
-    L00, L10, L11 = theta["L00"], theta["L10"], theta["L11"]
-    b0 = np.sqrt(2.0) * L00 * z[:, 0]
-    b1 = np.sqrt(2.0) * (L10 * z[:, 0] + L11 * z[:, 1])
-    # the same nodes for every item: (1, K, 2)
-    b = anp.stack([b0, b1], axis=-1)[None, :, :]
-    log_H = log_cumhaz(theta, arrays, b, arrays.L)
-    return logsumexp(logw - np.log(np.pi) - anp.exp(log_H), axis=1)
+@dataclass
+class Model:
+    """What the likelihood needs besides the parameters: the layout, the
+    path, and the marker's centre ``c`` in the hazard."""
+
+    layout: Layout
+    path: PathFunction
+    centre: float
 
 
-def item_log_likelihoods(
-    u: Any, layout: Layout, arrays: JointArrays, nodes: tuple
-) -> Any:
-    """Each item's log-likelihood at the parameters ``u``, by the fixed
-    adaptive nodes ``(b, logw)``."""
-    theta = layout.unpack(u)
-    b, logw = nodes
-    log_g = (
-        log_readings(theta, arrays, b)
-        + log_lifetime(theta, arrays, b)
-        + log_prior(theta, b)
-    )
-    out = logsumexp(logw + log_g, axis=1)
-    if np.any(arrays.L > 0):
-        out = out - anp.where(arrays.L > 0, log_entry(theta, arrays), 0.0)
-    return out
-
-
-def neg_ll(u: Any, layout: Layout, arrays: JointArrays, nodes: tuple) -> Any:
-    """The negative log-likelihood (internal scale) at ``u``."""
-    return -anp.sum(arrays.w * item_log_likelihoods(u, layout, arrays, nodes))
-
-
-def place_nodes(
-    u: npt.NDArray,
-    layout: Layout,
+def log_integrals(
+    theta: dict,
+    model: Model,
     arrays: JointArrays,
-    start: "npt.NDArray | None" = None,
-    points: int = GH_FIT,
+    nodes: tuple,
+    t: npt.NDArray,
+    d: npt.NDArray,
+    readings: bool,
+) -> Any:
+    """``log int p(y | theta)^readings h(t | theta)^d S(t | theta)
+    phi(theta_V) d theta_V`` of each item, by the fixed nodes ``(b,
+    logw)``."""
+    b, logw = nodes
+    layout, path, c = model.layout, model.path, model.centre
+    params = _path_params(theta, layout, arrays.Z, b)
+    log_g = log_prior(theta, layout, arrays.Z, b) + logw
+    if readings:
+        log_g = log_g + log_readings(theta, path, params, arrays)
+    H = anp.exp(log_cumhaz(theta, path, params, arrays, t, c))
+    log_g = log_g - H
+    if np.any(d > 0):
+        log_g = log_g + d[:, None] * log_event(theta, path, params, arrays, c)
+    return logsumexp(log_g, axis=1)
+
+
+def place(
+    u: npt.NDArray, model: Model, arrays: JointArrays, starts: tuple
 ) -> tuple:
-    """The adaptive nodes of every item at the parameters ``u``, and the
-    modes (to start the next placement from)."""
-    theta = layout.unpack(np.asarray(u, dtype=float))
-    mode, root = posterior_modes(theta, arrays, arrays.d, arrays.T, start)
-    return adaptive_nodes(mode, root, points), mode
+    """The adaptive nodes of every item at ``u``, for its likelihood and
+    (left truncated items) its probability of reaching its entry age,
+    and the modes to start the next placement from."""
+    theta = model.layout.unpack(np.asarray(u, dtype=float))
+    lik_start, entry_start = starts
+    mode, root = modes(
+        theta,
+        model.layout,
+        model.path,
+        arrays,
+        arrays.d,
+        arrays.T,
+        model.centre,
+        start=lik_start,
+    )
+    nodes = adaptive_nodes(mode, root, GH_FIT)
+    entry = None
+    entered = arrays.L > 0
+    e_mode = None
+    if entered.any():
+        sub = arrays.take(entered)
+        e_mode, e_root = modes(
+            theta,
+            model.layout,
+            model.path,
+            sub,
+            np.zeros(len(sub.w)),
+            sub.L,
+            model.centre,
+            readings=False,
+            start=entry_start,
+        )
+        entry = adaptive_nodes(e_mode, e_root, GH_FIT)
+    return (nodes, entry), (mode, e_mode)
+
+
+def neg_ll(u: Any, model: Model, arrays: JointArrays, placed: tuple) -> Any:
+    """The negative log-likelihood at ``u`` by the fixed nodes."""
+    theta = model.layout.unpack(u)
+    nodes, entry = placed
+    ll = anp.sum(
+        arrays.w
+        * log_integrals(
+            theta, model, arrays, nodes, arrays.T, arrays.d, readings=True
+        )
+    )
+    entered = arrays.L > 0
+    if entry is not None:
+        sub = arrays.take(entered)
+        ll = ll - anp.sum(
+            sub.w
+            * log_integrals(
+                theta,
+                model,
+                sub,
+                entry,
+                sub.L,
+                np.zeros(len(sub.w)),
+                readings=False,
+            )
+        )
+    return -ll
