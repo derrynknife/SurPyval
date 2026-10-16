@@ -817,6 +817,151 @@ class EventHistoryData(ReshapeMixin):
         return cls.from_items(histories)
 
     @classmethod
+    def from_dataframe(
+        cls,
+        df: Any,
+        *,
+        i_col: Any,
+        x_col: Any = None,
+        xl_col: Any = None,
+        xr_col: Any = None,
+        c_col: Any = None,
+        n_col: Any = None,
+        e_col: Any = None,
+        tl_col: Any = None,
+        tr_col: Any = None,
+        end_col: Any = None,
+        ends: Any = None,
+        Z_cols: Any = None,
+        attribute_cols: Any = None,
+        unit: Any = None,
+    ) -> "EventHistoryData":
+        """
+        The data from a log held in a :class:`pandas.DataFrame`, one row
+        per event (a maintenance log: the item and its age at each
+        failure), naming the columns as every DataFrame entry point does
+        (``x_col``, ``i_col``, ..., the ``fit`` argument with ``_col``).
+        Each item's history is built as an
+        :class:`~surpyval.utils.item_history.ItemHistory`, so every check
+        names the item.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            The log.
+        i_col : str
+            The column of item ids.
+        x_col : str, optional
+            Each event's age (the item's own age); or give ``xl_col`` and
+            ``xr_col``.
+        xl_col, xr_col : str, optional
+            The inspections between which a row's failures were counted
+            (equal for an exact event).
+        c_col : str, optional
+            What each row is: 0 an event (the default), 1 the end of the
+            item's observation (one row per item at most), -1 failures
+            before a first look, 2 failures counted between inspections.
+            Left out, a row with equal (or one) ages is an event and one
+            with different ages a count.
+        n_col : str, optional
+            How many failures a counted row holds (c = 2 or -1).
+        e_col : str, optional
+            The type of each failure (a failure mode or cause); a blank
+            cell on an end-of-observation row is nothing, on a failure a
+            type not recorded (a masked cause).
+        tl_col, tr_col : str or number, optional
+            Each item's left truncation (the age it came under
+            observation) and right truncation (the age by which it
+            failed, which is why it is in the data), the same on every
+            row of the item (or one number for every item).
+        end_col : str, optional
+            Each item's age at the end of its observation, on its rows
+            (the same on each, blank cells left out); an alternative to
+            a ``c = 1`` row. Left out, observation ends at the last
+            failure.
+        ends : dict or pandas.Series, optional
+            ``{item: age}``, the end of each item's observation, for the
+            items it names: a way to give the items that never failed,
+            which have no row in the log.
+        Z_cols : list of str, optional
+            The covariate columns (numbers; the same on every row of an
+            item), which name the covariates.
+        attribute_cols : list of str, optional
+            Columns describing the items without being fitted (a site, a
+            product line), the same on every row of an item, kept as
+            each record's ``attributes``.
+        unit : str, optional
+            The unit of the ages (``"hours"``), kept with the data.
+
+        Returns
+        -------
+        EventHistoryData
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> from surpyval import EventHistoryData
+        >>> log = pd.DataFrame({
+        ...     "machine": ["M1", "M1", "M2"],
+        ...     "hours": [420, 1310, 980],
+        ...     "part": ["seal", "bearing", "seal"],
+        ... })
+        >>> data = EventHistoryData.from_dataframe(
+        ...     log, i_col="machine", x_col="hours", e_col="part",
+        ...     ends={"M1": 2600, "M2": 2900, "M3": 3100},
+        ... )
+        >>> data.ids, data.c.tolist()
+        (['M1', 'M2', 'M3'], [0, 0, 1, 0, 1, 1])
+        """
+        from surpyval.utils.data_frames import history_from_frame
+
+        return history_from_frame(
+            cls,
+            df,
+            i_col=i_col,
+            x_col=x_col,
+            xl_col=xl_col,
+            xr_col=xr_col,
+            c_col=c_col,
+            n_col=n_col,
+            e_col=e_col,
+            tl_col=tl_col,
+            tr_col=tr_col,
+            end_col=end_col,
+            ends=ends,
+            Z_cols=Z_cols,
+            attribute_cols=attribute_cols,
+            unit=unit,
+        )
+
+    def to_dataframe(self) -> Any:
+        """
+        The rows as a :class:`pandas.DataFrame`: ``i``, ``x`` (or ``xl``
+        and ``xr`` where any row counts failures between inspections),
+        ``c``, ``n``, ``tl`` and ``tr`` (where any bound is finite),
+        ``e`` (where it has event types), the covariates by name and the
+        attributes. ``EventHistoryData.from_dataframe(data.to_dataframe(),
+        i_col="i", x_col="x", c_col="c", ...)`` is the same data.
+        Observation windows, time-varying covariates and states have no
+        place in it, and are refused.
+
+        Examples
+        --------
+        >>> from surpyval import EventHistoryData
+        >>> data = EventHistoryData.from_histories(
+        ...     observed={"A": [5, 9]}, right_censored={"A": 12}
+        ... )
+        >>> data.to_dataframe()
+           i     x  c  n
+        0  A   5.0  0  1
+        1  A   9.0  0  1
+        2  A  12.0  1  1
+        """
+        from surpyval.utils.data_frames import history_to_frame
+
+        return history_to_frame(self)
+
+    @classmethod
     def from_items(cls, items: Any, **unknown: Any) -> "EventHistoryData":
         """
         The dataset of several items' histories, each an

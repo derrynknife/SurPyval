@@ -202,25 +202,66 @@ coefficients take the names; an item's names may come in any order:
     print(data.covariate_names)
     surv.WeibullPH.fit(data).params
 
-One dataset, several analyses
------------------------------
+From a DataFrame
+----------------
 
-A dataset built with covariates and failure modes is refused by a fit that
-takes neither, rather than fitted as if they were not there. Reshape it for
-the analysis instead; each operation returns a new dataset:
+Most data arrives as a table with one row per item: its id, its age, a
+column saying whether it failed, what failed, and its covariates.
+``SurpyvalData.from_dataframe`` reads it, naming the columns as every
+DataFrame entry point does (``x_col``, ``c_col``, ... the ``fit`` argument
+with ``_col``); a spreadsheet's status column, 1 or True where the item
+failed, is ``event_col`` (the opposite coding of ``c``):
 
 .. jupyter-execute::
 
-    fleet = SurpyvalData.from_items(
-        [
-            ItemLifetime("P1", observed=820, event_type="seal", covariates={"site": 1, "load": 0.8}),
-            ItemLifetime("P2", observed=1450, event_type="bearing", covariates={"site": 0, "load": 0.5}),
-            ItemLifetime("P3", right_censored=2000, covariates={"site": 1, "load": 0.4}),
-            ItemLifetime("P4", observed=1100, event_type="seal", covariates={"site": 0, "load": 0.9}),
-            ItemLifetime("P5", right_censored=1700, covariates={"site": 0, "load": 0.6}),
-        ]
+    fleet_df = pd.DataFrame({
+        "unit":   ["P1", "P2", "P3", "P4", "P5"],
+        "hours":  [820, 1450, 2000, 1100, 1700],
+        "failed": [True, True, False, True, False],
+        "mode":   ["seal", "bearing", None, "seal", None],
+        "site":   [1, 0, 1, 0, 0],
+        "load":   [0.8, 0.5, 0.4, 0.9, 0.6],
+    })
+    fleet = SurpyvalData.from_dataframe(
+        fleet_df, i_col="unit", x_col="hours", event_col="failed",
+        e_col="mode", Z_cols=["site", "load"],
     )
     print(fleet.summary())
+    print(fleet.item("P3"))
+
+A table of the age last seen working and the age first seen failed, with a
+blank where one is not known, is read with ``xl_col`` and ``xr_col`` (a
+blank ``xr_col`` is an item still running, a blank ``xl_col`` one already
+failed at the first look), and ``to_dataframe()`` gives any dataset back as
+a table:
+
+.. jupyter-execute::
+
+    inspections = pd.DataFrame({
+        "last_ok":      [None, 150, 300, 420,  500, 610],
+        "first_failed": [200,  150, 380, None, 500, None],
+    })
+    data = SurpyvalData.from_dataframe(
+        inspections, xl_col="last_ok", xr_col="first_failed"
+    )
+    print(data.to_dataframe())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert fleet.ids == ["P1", "P2", "P3", "P4", "P5"]
+    assert data.c.tolist() == [0, -1, 2, 1, 0, 1], data.c
+
+One dataset, several analyses
+-----------------------------
+
+A dataset built with covariates and failure modes (the ``fleet`` above) is
+refused by a fit that takes neither, rather than fitted as if they were not
+there. Reshape it for the analysis instead; each operation returns a new
+dataset:
+
+.. jupyter-execute::
 
     everything = fleet.without("covariates", "event_types")   # a plain fit
     seals = fleet.for_event_type("seal").without("covariates")  # one mode
@@ -541,6 +582,25 @@ then:
 
 ``markers`` (repeated measurements, #891) are reserved for the joint models.
 
+A log held in a DataFrame, one row per failure, is read by
+``EventHistoryData.from_dataframe``: the item and age columns, the type of
+each failure, and each item's end of observation as a ``c = 1`` row, a
+column (``end_col``) or ``ends={item: age}``, which also names the items
+that never failed and so have no row:
+
+.. jupyter-execute::
+
+    log = pd.DataFrame({
+        "machine": ["M1", "M1", "M1", "M2", "M2"],
+        "hours":   [420, 1310, 2050, 980, 2400],
+        "part":    ["seal", "bearing", "seal", "seal", "bearing"],
+    })
+    data = EventHistoryData.from_dataframe(
+        log, i_col="machine", x_col="hours", e_col="part",
+        ends={"M1": 2600, "M2": 2900, "M3": 3100},
+    )
+    print(data.summary())
+
 If your log records the time *between* failures instead, take a cumulative sum within each item first, for example ``df.groupby("machine")["hours_between"].cumsum()``. Leaving out the end-of-observation rows is a mistake: without them the models cannot know that M3, for example, has run a further 1,380 hours without failing since its failure at 1,720 hours, and would treat it as if it had been scrapped straight after that failure. See :doc:`Recurrent Event Modelling with SurPyval` for the models that use this data.
 
 
@@ -577,6 +637,11 @@ non-parametric estimators' "at risk / deaths" (``xrd``) form too:
        data has them
    * - ``data.to_xrd()``
      - data → ``x, r, d``
+   * - ``SurpyvalData.from_dataframe(df, x_col=..., c_col=... | event_col=...,
+       i_col=..., e_col=..., Z_cols=[...])``
+     - one row per item from a DataFrame (``xl_col`` / ``xr_col`` for last
+       seen working / first seen failed, blanks allowed);
+       ``data.to_dataframe()`` gives it back
    * - ``data.to_json()``, ``SurpyvalData.from_json(...)``
      - save and restore the data, as JSON text or a file (``to_dict`` /
        ``from_dict`` give the dictionary; ``surpyval.from_json`` reads it

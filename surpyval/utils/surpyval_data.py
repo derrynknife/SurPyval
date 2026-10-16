@@ -713,6 +713,160 @@ class SurpyvalData(ReshapeMixin):
         return data
 
     @classmethod
+    def from_dataframe(
+        cls,
+        df: Any,
+        *,
+        x_col: Any = None,
+        xl_col: Any = None,
+        xr_col: Any = None,
+        c_col: Any = None,
+        event_col: Any = None,
+        n_col: Any = None,
+        tl_col: Any = None,
+        tr_col: Any = None,
+        i_col: Any = None,
+        e_col: Any = None,
+        Z_cols: Any = None,
+        attribute_cols: Any = None,
+        unit: Any = None,
+    ) -> "SurpyvalData":
+        """
+        The data from a :class:`pandas.DataFrame` with one row per item
+        (or per group of identical items, counted ``n_col``), naming the
+        columns as every DataFrame entry point does (``x_col``, ``c_col``,
+        ..., the ``fit`` argument with ``_col``). The rows stay in the
+        frame's order where ids, event types or covariates are given.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            One row per item.
+        x_col : str, optional
+            The column of times, one per row; or give ``xl_col`` and
+            ``xr_col``.
+        xl_col, xr_col : str, optional
+            The age the item was last seen working and the age it was
+            first seen failed (``[lower, upper]``): equal for an item
+            observed to fail, different for one found failed between two
+            looks (interval censored); a blank ``xr_col`` is an item that
+            had not failed when last seen (right censored at ``xl_col``),
+            a blank ``xl_col`` one already failed at the first look (left
+            censored at ``xr_col``). The kind of each row is read from
+            its bounds; a ``c_col`` given with them must agree (a row with
+            different bounds is flagged 2).
+        c_col : str, optional
+            The censoring flags, in the ``xcnt`` coding (0 observed, 1
+            right censored, -1 left censored, 2 interval censored).
+        event_col : str, optional
+            A status column, 1 or True where the item failed and 0 or
+            False where it was still running (the opposite coding of
+            ``c``, as spreadsheets and R have it): ``c = 1 - event``.
+        n_col : str, optional
+            How many identical items each row stands for.
+        tl_col, tr_col : str or number, optional
+            The left and right truncation of each row (a column), or one
+            bound for every row (a number).
+        i_col : str, optional
+            The item ids (each once): ``data.item(id)`` and
+            ``select(ids=...)`` then find them.
+        e_col : str, optional
+            The event type of each failure (a failure mode or cause); a
+            blank cell on a suspension is nothing, on a failure a type
+            not recorded (a masked cause, warned of).
+        Z_cols : list of str, optional
+            The covariate columns, which name the covariates
+            (``covariate_names``); numbers (a blank cell is a covariate
+            not recorded). A text column is refused, naming what to do.
+        attribute_cols : list of str, optional
+            Columns describing the items without being fitted (a site, a
+            batch, a product line: any values), kept as each record's
+            ``attributes`` for ``groupby`` and ``select``.
+        unit : str, optional
+            The unit of the times (``"hours"``), kept with the data and
+            taken by ``fit(data)``.
+
+        Returns
+        -------
+        SurpyvalData
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> from surpyval import SurpyvalData
+        >>> df = pd.DataFrame({
+        ...     "unit": ["B7", "B8", "B9"],
+        ...     "hours": [1820, 2400, 1500],
+        ...     "failed": [True, False, True],
+        ...     "mode": ["spall", None, "crack"],
+        ...     "load": [1.0, 0.5, 0.8],
+        ... })
+        >>> data = SurpyvalData.from_dataframe(
+        ...     df, i_col="unit", x_col="hours", event_col="failed",
+        ...     e_col="mode", Z_cols=["load"],
+        ... )
+        >>> data.c, data.ids
+        (array([0, 1, 0]), ['B7', 'B8', 'B9'])
+        >>> data.item("B9").event_type, data.covariate_names
+        ('crack', ['load'])
+
+        Last seen working and first seen failed, with blanks:
+
+        >>> df = pd.DataFrame({
+        ...     "last_ok": [1000, 2400, None],
+        ...     "first_failed": [1500, None, 800],
+        ... })
+        >>> data = SurpyvalData.from_dataframe(
+        ...     df, xl_col="last_ok", xr_col="first_failed"
+        ... )
+        >>> data.c
+        array([-1,  2,  1])
+        """
+        from surpyval.utils.data_frames import lifetime_from_frame
+
+        return lifetime_from_frame(
+            cls,
+            df,
+            x_col=x_col,
+            xl_col=xl_col,
+            xr_col=xr_col,
+            c_col=c_col,
+            event_col=event_col,
+            n_col=n_col,
+            tl_col=tl_col,
+            tr_col=tr_col,
+            i_col=i_col,
+            e_col=e_col,
+            Z_cols=Z_cols,
+            attribute_cols=attribute_cols,
+            unit=unit,
+        )
+
+    def to_dataframe(self) -> Any:
+        """
+        The rows as a :class:`pandas.DataFrame`: ``id`` (where the data
+        has ids), ``x`` (or ``xl`` and ``xr`` where any row is an
+        interval), ``c``, ``n``, ``tl`` and ``tr`` (where any bound is
+        finite), ``e`` (where it has event types), the covariates by
+        name (``Z0``, ``Z1``, ... where unnamed) and the attributes.
+        ``SurpyvalData.from_dataframe(data.to_dataframe(), x_col="x",
+        c_col="c", n_col="n", ...)`` is the same data. Time-varying
+        covariates have no place in it, and are refused.
+
+        Examples
+        --------
+        >>> from surpyval import SurpyvalData
+        >>> SurpyvalData([1, 2, 2, 5], c=[0, 0, 0, 1]).to_dataframe()
+             x  c  n
+        0  1.0  0  1
+        1  2.0  0  2
+        2  5.0  1  1
+        """
+        from surpyval.utils.data_frames import lifetime_to_frame
+
+        return lifetime_to_frame(self)
+
+    @classmethod
     def from_xrd(
         cls, x: ArrayLike, r: ArrayLike, d: ArrayLike
     ) -> "SurpyvalData":
