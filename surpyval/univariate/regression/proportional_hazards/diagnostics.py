@@ -703,6 +703,15 @@ def check_ph(
 #: the same function.
 zph_score_test = check_ph
 
+#: Public names, for ``surpyval.diagnostics.cox``, of what the residuals
+#: and tests here are computed from: the per-observation data a fitted Cox
+#: model keeps, centred as the fit centred it (refusing, with a message
+#: naming the fix, a model it cannot be had from: stratified, restored by
+#: ``from_dict`` or with an aliased coefficient), and every row's time on
+#: the scale ``g`` of :func:`check_ph`'s ``transform``.
+cox_fit_data = _require_cox
+zph_times = _zph_times
+
 
 def added_covariate_score_test(
     model: "SemiParametricRegressionModel", extra: "npt.ArrayLike"

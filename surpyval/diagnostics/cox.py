@@ -53,11 +53,11 @@ import numpy as np
 from scipy.stats import norm
 
 from surpyval.univariate.regression.proportional_hazards.diagnostics import (
-    _require_cox,
-    _zph_times,
     added_covariate_score_test,
     check_ph,
     compute_residuals,
+    cox_fit_data,
+    zph_times,
 )
 
 from .registry import AdviceRule, Check, Context, Family, Panel, register
@@ -128,7 +128,7 @@ def _trend(ctx: Context, j: int) -> float:
     residuals on the km scale of time: the direction its coefficient
     moves in."""
     events = _event_rows(ctx)
-    g = _zph_times(_require_cox(ctx.model), "km")[events]
+    g = zph_times(cox_fit_data(ctx.model), "km")[events]
     scaled = _residuals(ctx, "scaled_schoenfeld")[:, j]
     weights = np.asarray(ctx.model._fit_data["n"], dtype=float)[events]
     return float(np.sign(np.cov(g, scaled, aweights=weights)[0, 1]))
@@ -191,9 +191,9 @@ def _time_axis(ax: Any, g: np.ndarray, t: np.ndarray) -> None:
 def _ph_panels(ctx: Context) -> list[Panel]:
     from .smooth import bootstrap_band, lowess
 
-    data = _require_cox(ctx.model)
+    data = cox_fit_data(ctx.model)
     events = _event_rows(ctx)
-    g = _zph_times(data, "km")[events]
+    g = zph_times(data, "km")[events]
     t = np.asarray(data["x"], dtype=float)[events]
     scaled = _residuals(ctx, "scaled_schoenfeld")
     beta = np.asarray(ctx.model.beta, dtype=float)
@@ -416,7 +416,7 @@ def _influence_panels(ctx: Context) -> list[Panel]:
 
 def _outlier_panels(ctx: Context) -> list[Panel]:
     dev = _residuals(ctx, "deviance")
-    data = _require_cox(ctx.model)
+    data = cox_fit_data(ctx.model)
     eta = np.asarray(data["Z"], dtype=float) @ np.asarray(
         ctx.model.beta, dtype=float
     )
@@ -435,7 +435,7 @@ def _outlier_panels(ctx: Context) -> list[Panel]:
 
 
 def _overall_panels(ctx: Context) -> list[Panel]:
-    data = _require_cox(ctx.model)
+    data = cox_fit_data(ctx.model)
     c = np.asarray(data["c"])
     n = np.asarray(data["n"], dtype=float)
     # Cox-Snell residual: each row's cumulative hazard over its time at
@@ -483,7 +483,7 @@ def _validate(model: Any) -> None:
             "survivors, as the fit warned). Drop or merge the separating "
             "covariate and refit."
         )
-    _require_cox(model)
+    cox_fit_data(model)
 
 
 def _clustered(ctx: Context) -> int:
