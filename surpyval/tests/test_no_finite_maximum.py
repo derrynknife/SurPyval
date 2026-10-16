@@ -340,3 +340,81 @@ def test_a_set_short_of_its_window_edge_still_fits(dist):
     data = dict(_EDGE[1], tl=[0.0, 0.0, 2.5])
     model, _ = _caught(dist.fit, **data)
     assert np.isfinite(model.params).all()
+
+
+# ---------------------------------------------------------------------------
+# Univariate: intervals that only meet at one time (abutting intervals)
+# warn; with an exact failure there they are refused, as a point mass is
+# ---------------------------------------------------------------------------
+_ABUTTING = [
+    # (1, 3] and (3, 5]: a Normal returned sigma = 0.35 as a verified
+    # maximum, a log-likelihood within 1e-8 of the spike's log(1/4)
+    (dict(x=[[1.0, 3.0], [3.0, 5.0]], c=[2, 2]), 0.5),
+    # with counts, and an interval around 3 (probability 1 in the limit)
+    (
+        dict(x=[[1.0, 3.0], [3.0, 5.0], [2.0, 4.0]], c=[2, 2, 2], n=[3, 7, 2]),
+        0.3,
+    ),
+    # a left censored time and an interval starting there
+    (dict(x=[[3.0, 3.0], [3.0, 5.0]], c=[-1, 2]), 0.5),
+]
+_FAMILIES = [sp.Weibull, sp.Normal, sp.LogNormal, sp.Gamma, sp.Gumbel]
+
+
+@pytest.mark.parametrize("dist", _FAMILIES)
+@pytest.mark.parametrize("data, share", _ABUTTING)
+def test_abutting_intervals_warn(dist, data, share):
+    model, caught = _caught(dist.fit, **data)
+    _one_no_maximum(caught, "abut", "flat ridge", f"{share:.3g} of its mass")
+    assert model.maximum == "no finite maximum"
+    # The likelihood is at (or a hair below) the spike's
+    n = np.asarray(data.get("n", [1] * len(data["c"])), float)
+    below = n[[x[1] == 3.0 for x in data["x"]]].sum()
+    above = n[
+        [x[0] == 3.0 and c != -1 for x, c in zip(data["x"], data["c"])]
+    ].sum()
+    limit = below * np.log(below / (below + above)) + above * np.log(
+        above / (below + above)
+    )
+    assert model.log_likelihood <= limit + 1e-6
+
+
+@pytest.mark.parametrize("dist", [sp.Weibull, sp.Normal, sp.LogNormal])
+def test_an_exact_failure_where_intervals_abut_is_refused(dist):
+    # Its density is unbounded in the limit (Normal sigma 5e-324 after
+    # raw numpy warnings, the others "unverified")
+    with pytest.raises(ValueError, match="no maximum"):
+        dist.fit(x=[[1.0, 3.0], [3.0, 5.0], [3.0, 3.0]], c=[2, 2, 0])
+
+
+@pytest.mark.parametrize("dist", [sp.Weibull, sp.Normal, sp.LogNormal])
+def test_abutting_intervals_with_one_more_still_fit_in_silence(dist):
+    # (4, 7] does not reach 3: no time is reached by every interval
+    model, caught = _caught(
+        dist.fit, x=[[1.0, 3.0], [3.0, 5.0], [4.0, 7.0]], c=[2, 2, 2]
+    )
+    _silent(caught)
+    assert model.maximum == "verified"
+
+
+def test_a_one_parameter_family_has_a_maximum_on_abutting_intervals():
+    # The Exponential cannot concentrate its mass: a genuine maximum
+    model, caught = _caught(
+        sp.Exponential.fit, x=[[1.0, 3.0], [3.0, 5.0]], c=[2, 2]
+    )
+    _silent(caught)
+    assert model.maximum == "verified"
+
+
+def test_a_truncated_fit_that_beats_the_spike_is_not_told():
+    # Each interval is observed only inside its own window, which makes
+    # each certain under any distribution: the likelihood is 1 (log 0) at
+    # every point, above the spike's log(1/4), so no ridge to warn of
+    data = dict(
+        x=[[1.0, 3.0], [3.0, 5.0], [0.5, 6.0]],
+        c=[2, 2, 2],
+        tl=[1.0, 3.0, 0.0],
+        tr=[3.0, 5.0, np.inf],
+    )
+    found = sp.Weibull._abutting_limit(sp.SurpyvalData(**data), False)
+    assert found is None or found[3] < 0.0
