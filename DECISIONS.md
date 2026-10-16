@@ -11,6 +11,19 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-10-17
+
+### Joint models: separate covariates, interval data, dynamic prediction (#891)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Separate covariates for the hazard and the path are chosen by name from the one covariate set the records carry: `fit(..., hazard_covariates=[...], path_covariates=[...] or {path parameter: [...]})`, default every covariate in both (as v1). Not a second covariate array (`path_Z`, as the closed #966 had). This revisits v1's "no new words such as `path_covariates`": the capability was asked for, and these two arguments say what they do; the alternative was one mapping, `covariates={"site": "hazard", "load": ["b"]}`. | proposed | An `ItemLifetime` has one `covariates`, so a second array would need a second place on the record; naming the columns keeps `fit(data)`, arrays and `fit_from_df` alike. | open for review |
+| A covariate in neither part is refused; one in only some parts has no parameters elsewhere (no `nan`, no 0 entries): `b_load` without `a_load` or `load`. | proposed | A coefficient that is not estimated is not a parameter. | done |
+| Saved models write `path_covariates` and `hazard_covariates` (`None` where every covariate is in both); a dict without them loads as every covariate in both. | principle 21 | Saved models keep working. | done |
+| Interval and left censoring: `S(l) - S(u)` over the item's paths, the hazard integrated over `(l, u]` directly (not a difference of two cumulative hazards); a left censored item's interval starts at its entry. Right truncation divides by the population's `S(tl) - S(tr)`, as left truncation already divided by `S(tl)`. | proposed | The same conditioning v1 chose for late entry; the direct integral keeps a narrow late interval accurate. | done |
+| One item's dynamic prediction is an object, `JointModel.predict(...)` -> `DynamicPrediction`, beside the array prediction `sf/ff/cb(x, Z, markers=, given=)`, which it uses and which is unchanged. Its `cb` is the model's (Wald on `log(-log sf)`); its `qf` brackets on a grid and refines by Newton steps on `log sf` (derivative `-hf`). | proposed | The object answers the one-asset questions (hazard, remaining life, smoothed marker, draws) without a second implementation. | done |
+| The calibration study's seeds (7300 + r, 7600 + r) and its rules (`check_bias` defaults, coverage slack 0.02) were fixed before its first run. | principle 17 | — | done |
+
 ## 2026-10-16
 
 ### Data classes: usability (#931–#940, #945; tracking #953)
