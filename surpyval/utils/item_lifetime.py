@@ -22,6 +22,7 @@ from surpyval.utils.item_history import (
     frozen_setattr,
     frozen_setstate,
     hashable,
+    item_id,
     late_covariates,
     missing_type,
 )
@@ -153,8 +154,9 @@ class ItemLifetime:
             item, "right_truncation", right_truncation
         )
         # A missing type (None, NaN, pandas NA, "") is None: on a failure,
-        # a type not recorded (a masked cause).
-        event_type = None if missing_type(event_type) else event_type
+        # a type not recorded (a masked cause); a numpy value is kept as
+        # the plain value it holds.
+        event_type = None if missing_type(event_type) else item_id(event_type)
         if event_type is not None and outcome == "right_censored":
             raise ValueError(
                 f"Item {item!r}: a right censored item has not failed, so it "
@@ -180,6 +182,12 @@ class ItemLifetime:
         recorded. ``data.select(where=lambda item: item.covariate("site")
         == 1)`` keeps the items of one site."""
         return covariate_value(self, name)
+
+    @property
+    def has_event_types(self) -> bool:
+        """Whether this item's failure carries an event type (as an
+        ``ItemHistory``'s ``has_event_types``)."""
+        return self.event_type is not None
 
     # The outcome by name, as ItemHistory reads: its value, or None.
     @property

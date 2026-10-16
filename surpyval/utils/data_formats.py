@@ -506,7 +506,106 @@ def refuse_time_values(value: Any, name: str) -> None:
         )
 
 
-def coerce_xcnt_x(x: npt.ArrayLike) -> npt.NDArray:
+def refuse_wrong_container(x: Any, recurrent: bool = False) -> None:
+    """Refuse an ``x`` that is a data class, a record or a list of
+    records, a DataFrame or a dict, naming what to do with it (#933): a
+    recurrent fit (``recurrent``) takes an ``EventHistoryData``, a
+    lifetime fit a ``SurpyvalData``."""
+    from surpyval.utils.event_history_data import EventHistoryData
+    from surpyval.utils.item_history import ItemHistory
+    from surpyval.utils.item_lifetime import ItemLifetime
+    from surpyval.utils.surpyval_data import SurpyvalData
+
+    record = x
+    listed = ""
+    if isinstance(x, (list, tuple)) and x:
+        record = x[0]
+        listed = "a list of "
+    plural = "s" if listed else ""
+    one = listed or "an "
+    if isinstance(record, ItemLifetime):
+        kind = f"x is {one}ItemLifetime record{plural} (one item's lifetime)"
+        if recurrent:
+            raise TypeError(
+                f"{kind}, which a recurrent fit does not take: a lifetime "
+                "model fits them, as SurpyvalData.from_items(items); a "
+                "recurrent model takes each item's history of repeated "
+                "events, EventHistoryData.from_items([ItemHistory(...), "
+                "...])."
+            )
+        raise TypeError(
+            f"{kind}: build the dataset, SurpyvalData.from_items("
+            f"{'items' if listed else '[item, ...]'}), and fit that."
+        )
+    if isinstance(record, ItemHistory):
+        kind = f"x is {one}ItemHistory record{plural} (one item's history)"
+        if recurrent:
+            raise TypeError(
+                f"{kind}: build the dataset, EventHistoryData.from_items("
+                f"{'items' if listed else '[item, ...]'}), and fit that."
+            )
+        raise TypeError(
+            f"{kind} of repeated events, which a lifetime fit does not "
+            "take: fit EventHistoryData.from_items("
+            f"{'items' if listed else '[item, ...]'}).to_first_events() for "
+            "the time to each item's first failure, or .to_gaps() for the "
+            "times between failures; a recurrent model (such as "
+            "surpyval.recurrent.CrowAMSAA) fits the EventHistoryData as it "
+            "is."
+        )
+    if isinstance(x, EventHistoryData):
+        raise TypeError(
+            "x is an EventHistoryData (items' histories of repeated "
+            "events), which a lifetime fit does not take: fit "
+            "x.to_first_events() for the time to each item's first "
+            "failure, or x.to_gaps() for the times between failures "
+            "(each repair as good as new); a recurrent model (such "
+            "as surpyval.recurrent.CrowAMSAA) fits it as it is."
+        )
+    if isinstance(x, SurpyvalData):
+        if recurrent:
+            raise TypeError(
+                "x is a SurpyvalData (one lifetime per item), which a "
+                "recurrent fit does not take: a lifetime model fits it "
+                "(Weibull.fit(data), KaplanMeier.fit(data), ...); a "
+                "recurrent model takes each item's history of repeated "
+                "events, an EventHistoryData "
+                "(EventHistoryData.from_items([ItemHistory(...), ...]))."
+            )
+        raise TypeError(
+            "x is a SurpyvalData, which this function does not "
+            "take: pass arrays (x, c, n, t = data.to_xcnt() gives "
+            "the data's own)."
+        )
+    if type(x).__name__ == "DataFrame":
+        if recurrent:
+            raise TypeError(
+                "x is a DataFrame: name its columns, "
+                "fit_from_df(df, x_col=..., i_col=..., c_col=...), or build "
+                "the data with EventHistoryData.from_dataframe(df, id=..., "
+                "age=..., ...) and fit that."
+            )
+        raise TypeError(
+            "x is a DataFrame: name its columns, fit_from_df(df, x_col=..., "
+            "c_col=...), or build the data with "
+            "SurpyvalData.from_dataframe(df, time=..., event=..., ...) and "
+            "fit that."
+        )
+    if isinstance(x, dict):
+        if recurrent:
+            raise TypeError(
+                "x is a dict: each item's history keyed by its id is "
+                "EventHistoryData.from_histories(observed={id: [ages]}, "
+                "right_censored={id: age}); fit that."
+            )
+        raise TypeError(
+            "x is a dict: the times of each kind are "
+            "SurpyvalData.from_observations(observed=[...], "
+            "right_censored=[...], ...); fit that."
+        )
+
+
+def coerce_xcnt_x(x: npt.ArrayLike, recurrent: bool = False) -> npt.NDArray:
     """
     Coerce the ``x`` variable of xcnt-format data into a float numpy array.
 
@@ -519,6 +618,7 @@ def coerce_xcnt_x(x: npt.ArrayLike) -> npt.NDArray:
     (``xcnt_handler``) and recurrent (``handle_xicn``) handlers.
     Durations and dates are refused (see ``refuse_time_values``).
     """
+    refuse_wrong_container(x, recurrent)
     refuse_time_values(x, "x")
     if isinstance(x, (list, tuple)) and any(
         isinstance(v, (list, tuple, np.ndarray)) and np.ndim(v) > 0 for v in x
@@ -550,24 +650,6 @@ def coerce_xcnt_x(x: npt.ArrayLike) -> npt.NDArray:
         try:
             x = np.atleast_1d(np.array(x, dtype=float))
         except (ValueError, TypeError):
-            from surpyval.utils.event_history_data import EventHistoryData
-            from surpyval.utils.surpyval_data import SurpyvalData
-
-            if isinstance(x, EventHistoryData):
-                raise TypeError(
-                    "x is an EventHistoryData (items' histories of repeated "
-                    "events), which a lifetime fit does not take: fit "
-                    "x.to_first_events() for the time to each item's first "
-                    "failure, or x.to_gaps() for the times between failures "
-                    "(each repair as good as new); a recurrent model (such "
-                    "as surpyval.recurrent.CrowAMSAA) fits it as it is."
-                )
-            if isinstance(x, SurpyvalData):
-                raise TypeError(
-                    "x is a SurpyvalData, which this function does not "
-                    "take: pass arrays (x, c, n, t = data.to_xcnt() gives "
-                    "the data's own)."
-                )
             raise ValueError(
                 "Variable 'x' must be numbers, or [left, right] pairs of"
                 " numbers"

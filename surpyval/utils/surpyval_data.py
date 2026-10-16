@@ -27,23 +27,63 @@ from surpyval.utils.warnings import (
 
 class SurpyvalData(ReshapeMixin):
     """
-    Validated univariate survival data in the ``xcnt`` format, split by
-    type of observation for the likelihoods.
+    Lifetime data: one row per item (or per group of identical items,
+    counted ``n``), each observed exactly, right censored, left censored
+    or interval censored, within its truncation window, with the item's
+    id, event type and covariates where they are given. The parametric,
+    non-parametric and regression ``fit`` methods take one in place of the
+    arrays: ``Weibull.fit(data)``, ``CoxPH.fit(data)``,
+    ``CompetingRisks.fit(data)``.
 
-    Every univariate fitter builds one from its arrays (with
-    :func:`~surpyval.utils.xcnt_handler`); parametric fitters also accept
-    one directly through ``fit_from_surpyval_data``. Besides ``x``, ``c``,
-    ``n`` and ``t`` (and ``tl``/``tr``, the columns of ``t``), it holds
-    the observed (``x_o``, ``n_o``), right censored (``x_r``, ``n_r``),
-    left censored (``x_l``, ``n_l``) and interval (``x_il``, ``x_ir``,
-    ``n_i``) rows separately. A censored row with a finite truncation
-    bound on its censored side is stored as an interval ending at that
-    bound, so the likelihood uses the probability of the part of the
-    window it could have fallen in.
+    Build one from each item's record,
+    :meth:`from_items` (:class:`~surpyval.utils.item_lifetime.ItemLifetime`),
+    from the times of each kind, :meth:`from_observations`, from a
+    DataFrame, :meth:`from_dataframe`, from the ``xrd`` layout,
+    :meth:`from_xrd`, or from the ``xcnt`` arrays (:doc:`/Conventions`)
+    with the constructor, which checks them as every fitter does. The
+    data is read back as records (:meth:`item`, :meth:`to_items`,
+    :meth:`records`), tables (:meth:`to_dataframe`,
+    :meth:`to_observations`, :meth:`to_xcnt`) or JSON (:meth:`to_json`),
+    described by :meth:`summary`, and reshaped for another analysis
+    (:meth:`without`, :meth:`for_event_type`, :meth:`select`,
+    :meth:`censor_at`, ...). ``len(data)`` is its rows; ``n_items`` its
+    items.
+
+    Its arrays are ``x`` (a ``[lower, upper]`` row where any observation
+    is an interval), ``c``, ``n`` and ``t`` (``tl`` and ``tr``, its
+    columns), ``Z`` (the covariates, named by ``covariate_names``), ``e``
+    (the event types) and ``ids``. For the likelihoods it also holds the
+    rows split by kind of observation (``x_o``, ``n_o``; ``x_r``, ``n_r``;
+    ``x_l``, ``n_l``; ``x_il``, ``x_ir``, ``n_i``; and ``Z_o``, ... with
+    covariates): a censored row with a finite truncation bound on its
+    censored side is stored as an interval ending at that bound, so the
+    likelihood uses the probability of the part of the window it could
+    have fallen in. These are left out of ``dir(data)``.
 
     Examples
     --------
-    >>> from surpyval import SurpyvalData
+    >>> from surpyval import ItemLifetime, SurpyvalData, Weibull
+    >>> data = SurpyvalData.from_items([
+    ...     ItemLifetime("B7", observed=1820),
+    ...     ItemLifetime("B8", right_censored=2400),
+    ...     ItemLifetime("B9", interval_censored=[1000, 1500]),
+    ... ], counts=[1, 40, 2])
+    >>> data
+    SurpyvalData: 43 items, 3 rows
+        id                 x  c   n
+      'B7'  [1820.0, 1820.0]  0   1
+      'B8'  [2400.0, 2400.0]  1  40
+      'B9'  [1000.0, 1500.0]  2   2
+    >>> print(data.summary())
+    SurpyvalData: 43 items, 3 rows (with item ids)
+      outcomes: 1 observed, 40 right censored, 2 interval censored
+    >>> data.item("B8")
+    ItemLifetime('B8', right_censored=2400.0)
+    >>> Weibull.fit(data).parameter_names
+    ['alpha', 'beta']
+
+    From the arrays, with a right truncation bound on two rows:
+
     >>> inf = float("inf")
     >>> data = SurpyvalData(x=[1, 2, 3, 4], c=[0, 1, 0, 1], tr=[9, 3, 9, inf])
     >>> data.x_o, data.x_r
@@ -146,6 +186,8 @@ class SurpyvalData(ReshapeMixin):
         Examples
         --------
         Basic usage with uncensored data:
+        >>> import numpy as np
+        >>> from surpyval import SurpyvalData
         >>> x = np.array([1, 2, 3])
         >>> data = SurpyvalData(x)
 
@@ -227,6 +269,13 @@ class SurpyvalData(ReshapeMixin):
         )
         # A copy: the caller's array stays theirs (#927)
         Z_arr: np.ndarray = np.array(Z)
+        if Z_arr.ndim == 0 or Z_arr.shape[0] != len(self.x):
+            raise ValueError(
+                f"Z has {Z_arr.shape[0] if Z_arr.ndim else 1} row"
+                f"{'' if Z_arr.ndim and Z_arr.shape[0] == 1 else 's'} for "
+                f"{len(self.x)} values of x: give one row of covariates "
+                "per value."
+            )
         self.Z = Z_arr
         # The same masks the observation split used, not fresh ``c``
         # comparisons: censored rows with a finite truncation bound are
@@ -934,18 +983,19 @@ class SurpyvalData(ReshapeMixin):
 
     def summary(self) -> str:
         """
-        A short description of the data: its rows, items and outcomes, and
-        what else it holds (truncation, event types, covariates,
-        time-varying covariates).
+        A short description of the data: its items (a row counted ``n``
+        is ``n`` items) and rows, their outcomes, and what else it holds
+        (truncation, event types, covariates, time-varying covariates),
+        each counted in items.
 
         Examples
         --------
         >>> from surpyval import SurpyvalData
         >>> print(SurpyvalData([1, 2, 2, 5], c=[0, 0, 0, 1]).summary())
-        SurpyvalData: 3 rows, 4 items
+        SurpyvalData: 4 items, 3 rows
           outcomes: 3 observed, 1 right censored
         """
-        from surpyval.utils.event_history_data import _held
+        from surpyval.utils.data_display import heading, held_lines
 
         c, n = np.asarray(self.c), np.asarray(self.n)
         names = (
@@ -954,10 +1004,7 @@ class SurpyvalData(ReshapeMixin):
             (-1, "left censored"),
             (2, "interval censored"),
         )
-        head = (
-            f"SurpyvalData: {_plural(len(self.x), 'row')}, "
-            f"{_plural(int(n.sum()), 'item')}"
-        )
+        head = heading(self, recurrent=False)
         if self.ids is not None:
             head += " (with item ids)"
         lines = [
@@ -969,8 +1016,43 @@ class SurpyvalData(ReshapeMixin):
                 if (c == flag).any()
             ),
         ]
-        lines += _held(self, rows=len(self.x))
+        lines += held_lines(self, recurrent=False)
         return "\n".join(lines)
+
+    @property
+    def n_items(self) -> int:
+        """The number of items: the rows weighted by their counts ``n``
+        (``len(data)`` is the number of rows)."""
+        return int(np.asarray(self.n).sum())
+
+    @property
+    def event_types(self) -> list:
+        """The distinct event types of the failures, in order (an empty
+        list where the data has none); a failure whose type was not
+        recorded (None, a masked cause) is not one."""
+        from surpyval.univariate.competing_risks.labels import ordered_labels
+
+        if self.e is None:
+            return []
+        return ordered_labels(self.e)
+
+    def records(self) -> Any:
+        """
+        The rows as :class:`~surpyval.utils.item_lifetime.ItemLifetime`
+        records, one at a time (a generator: :meth:`to_items` builds the
+        list), with the counts ``n`` saying how many identical items each
+        stands for.
+
+        Examples
+        --------
+        >>> from surpyval import SurpyvalData
+        >>> data = SurpyvalData([3, 7], c=[0, 1])
+        >>> [item.outcome for item in data.records()]
+        ['observed', 'right_censored']
+        """
+        prepared = self._prepared()
+        for k in range(len(self.x)):
+            yield self._item_at(k, prepared)
 
     def to_xcnt(self) -> tuple:
         """
@@ -1158,14 +1240,23 @@ class SurpyvalData(ReshapeMixin):
         return zip(self.x, self.c, self.n, self.t)
 
     def __repr__(self) -> str:
-        return (
-            f"SurpyvalData(\n"
-            f"    x={self.x!r},\n"
-            f"    c={self.c!r},\n"
-            f"    n={self.n!r},\n"
-            f"    t={self.t!r}\n"
-            f")"
-        )
+        """Its size and its first rows, as a table: the item id where it
+        has ids, ``x`` (a time, or ``[lower, upper]``), ``c``, ``n``, and
+        the truncation, event types and covariates where it has them;
+        :meth:`summary` describes all of it."""
+        from surpyval.utils.data_display import table_repr
+
+        return table_repr(self, recurrent=False)
+
+    def _repr_html_(self) -> str:
+        from surpyval.utils.data_display import html_repr
+
+        return html_repr(self, recurrent=False)
+
+    def __dir__(self) -> list:
+        from surpyval.utils.data_display import LIFETIME_INTERNALS, public_dir
+
+        return public_dir(self, LIFETIME_INTERNALS)
 
     def to_json(self, filepath: str | Path | None = None) -> str | None:
         """
@@ -1595,10 +1686,7 @@ def accepts_surpyval_data(method: F) -> F:
         if data.time_varying_covariates is not None:
             lost.append("time-varying covariates")
         if lost:
-            raise ValueError(
-                f"This fit takes no {' or '.join(lost)}, which the "
-                "SurpyvalData holds."
-            )
+            raise ValueError(lost_message(lost, "e" in names))
         bound.arguments.update(filled)
         return named_fit(
             lambda: method(*bound.args, **bound.kwargs),
@@ -1609,9 +1697,70 @@ def accepts_surpyval_data(method: F) -> F:
     return wrapper  # type: ignore[return-value]
 
 
+# What a fit cannot take, and the part of ``without`` that leaves it out.
+_WITHOUT_PARTS = {
+    "covariates": "covariates",
+    "event types": "event_types",
+    "time-varying covariates": "time_varying_covariates",
+    "left truncation": "truncation",
+    "right truncation": "truncation",
+}
+
+
+def lost_message(lost: list, takes_event_types: bool) -> str:
+    """The refusal of ``fit(data)`` for data holding what the fit has no
+    argument for, ``lost``, naming the call that fits without it and the
+    model that takes it (#933)."""
+    what = " or ".join(
+        part.split(" (")[0] for part in lost
+    )  # ("... (fit them with fit_tvc for now)" is a note of its own)
+    parts = list(
+        dict.fromkeys(
+            _WITHOUT_PARTS[part.split(" (")[0]]
+            for part in lost
+            if part.split(" (")[0] in _WITHOUT_PARTS
+        )
+    )
+    ways = []
+    if parts:
+        ways.append("data.without(" + ", ".join(repr(p) for p in parts) + ")")
+    if "event_types" in parts:
+        ways.append("data.for_event_type(t) for the failures of one mode")
+    takes = []
+    if "covariates" in parts:
+        takes.append(
+            "a regression (WeibullPH, CoxPH, ...) takes the covariates"
+            if not takes_event_types
+            else "CompetingRisksProportionalHazards or FineGray takes the "
+            "covariates with the event types"
+        )
+    if "event_types" in parts:
+        takes.append(
+            "CompetingRisks.fit(data) takes the event types"
+            + (
+                " (CompetingRisksProportionalHazards with covariates)"
+                if "covariates" in parts
+                else ""
+            )
+        )
+    if "time_varying_covariates" in parts:
+        takes.append(
+            "fit_tvc takes the time-varying covariates (fit(data) calls it "
+            "for a model that has one)"
+        )
+    message = f"This fit takes no {what}, which the SurpyvalData holds."
+    if ways:
+        message += " To fit without them, use " + ", or ".join(ways) + "."
+    if takes:
+        message += " " + "; ".join(takes) + "."
+    return message.replace(". a regression", ". A regression")
+
+
 def _not_taken_yet(data: SurpyvalData) -> list:
     """What a SurpyvalData from ``from_items`` holds that ``fit(data)``
-    does not take yet: fitting without it would be another model."""
+    does not take yet: fitting without it would be another model. (Its
+    covariates are not refused here: the regression fitters fit through
+    this route with the data's ``Z``.)"""
     out = []
     if data.e is not None:
         out.append("event types")
@@ -1630,10 +1779,7 @@ def refuses_what_fit_cannot_take(method: F) -> F:
         if isinstance(data, SurpyvalData):
             missing = _not_taken_yet(data)
             if missing:
-                raise ValueError(
-                    f"This fit takes no {' or '.join(missing)}, which the "
-                    "SurpyvalData holds."
-                )
+                raise ValueError(lost_message(missing, False))
         return method(*args, **kwargs)
 
     return wrapper  # type: ignore[return-value]
@@ -1658,7 +1804,7 @@ def _event_type_array(e: Any, c: np.ndarray, warn: bool = True) -> np.ndarray:
             f"{len(listed)}."
         )
     out[:] = listed
-    out[:] = [None if missing_type(v) else v for v in out]
+    out[:] = [None if missing_type(v) else _plain(v) for v in out]
     c = np.asarray(c)
     typed = np.array([v is not None for v in out], dtype=bool)
     suspended = (c == 1) & typed
@@ -1768,7 +1914,7 @@ def _kind_event_types(name: str, value: Any, k: int) -> np.ndarray:
                 f"({k}, in the order of its list); got {len(listed)}."
             )
         out[:] = listed
-    out[:] = [None if missing_type(v) else v for v in out]
+    out[:] = [None if missing_type(v) else _plain(v) for v in out]
     return out
 
 

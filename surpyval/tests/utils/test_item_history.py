@@ -98,10 +98,19 @@ def test_an_interval_counted_zero_is_left_out():
 
 def test_repr_shows_what_was_given():
     text = repr(ItemHistory("A", observed=[5], right_censored=8))
-    assert (
-        text == "ItemHistory(\n    'A',\n    observed=[5.0],\n"
-        "    right_censored=8.0\n)"
+    assert text == "ItemHistory('A', observed=[5.0], right_censored=8.0)"
+    # One argument per line where one line would not fit (#934), with
+    # plain Python values
+    long = repr(
+        ItemHistory(
+            "A",
+            observed=[5],
+            right_censored=12,
+            observed_event_types=[np.str_("impeller")],
+        )
     )
+    assert long.startswith("ItemHistory(\n    'A',\n    observed=[5.0],\n")
+    assert "observed_event_types=['impeller']" in long
 
 
 @pytest.mark.parametrize(

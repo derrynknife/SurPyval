@@ -135,10 +135,7 @@ each one stands for goes in ``counts``:
     ]
     data = SurpyvalData.from_items(items, counts=[3, 40, 2, 5])
     print(data.n)
-    surv.Weibull.fit(SurpyvalData.from_items(
-        [ItemLifetime(i.id, **{i.outcome: i.value}) for i in items],
-        counts=[3, 40, 2, 5],
-    )).params
+    surv.Weibull.fit(data.without("covariates")).params
 
 Records are updated as items age, each update giving a new, checked record
 (the old one is left as it was), and copied for a new item with ``clone``.
@@ -159,7 +156,10 @@ A record is fixed once made, so it is always one that passed its checks:
 
 Every check names the item, and ``data.to_items()`` gives the items back
 (``SurpyvalData.from_items(data.to_items(), counts=data.n)`` is the same
-data). An item's ``event_type`` goes to the competing-risks fitters
+data). A plain fit of data that holds more than a plain fit takes (covariates,
+event types) is of ``data.without("covariates", "event_types")``, which keeps
+everything else -- B10's late entry here -- rather than of records rebuilt by
+hand. An item's ``event_type`` goes to the competing-risks fitters
 (``CompetingRisks.fit(data)``), and its step ``time_varying_covariates``
 (``{age: values}`` or a ``StepSchedule``) to a regression's ``fit_tvc``:
 ``WeibullPH.fit(data)`` splits each item's life where its covariates step.

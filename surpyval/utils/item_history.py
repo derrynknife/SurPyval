@@ -781,11 +781,20 @@ class ItemHistory:
         return getattr(self, "_tvc_dict", True)
 
     def __repr__(self) -> str:
-        fields = "".join(
-            f",\n    {name}={value!r}"
-            for name, value in self._fields().items()
+        """One line where it fits in 79 columns, else one argument per
+        line."""
+        fields = self._fields()
+        one = (
+            "ItemHistory("
+            + ", ".join(
+                [repr(self.id), *(f"{k}={v!r}" for k, v in fields.items())]
+            )
+            + ")"
         )
-        return f"ItemHistory(\n    {self.id!r}{fields}\n)"
+        if len(one) <= 79:
+            return one
+        lines = "".join(f",\n    {k}={v!r}" for k, v in fields.items())
+        return f"ItemHistory(\n    {self.id!r}{lines}\n)"
 
 
 # -- validation helpers -----------------------------------------------------
@@ -1141,8 +1150,9 @@ def _event_types(
         types = np.empty(k, dtype=object)
         types[:] = listed
     # A missing type (None, NaN, pandas NA, "") is a failure whose type was
-    # not recorded: a masked cause, None.
-    types[:] = [None if missing_type(t) else t for t in types]
+    # not recorded: a masked cause, None. A numpy string or number (from a
+    # DataFrame) is kept as the plain value it holds.
+    types[:] = [None if missing_type(t) else item_id(t) for t in types]
     return types
 
 

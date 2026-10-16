@@ -1304,7 +1304,7 @@ def handle_xicn(
     >>> data.ids
     [1, 2]
     """
-    x = coerce_xcnt_x(x)
+    x = coerce_xcnt_x(x, recurrent=True)
 
     if x.shape[0] == 0:
         raise ValueError("'x' cannot be empty")
