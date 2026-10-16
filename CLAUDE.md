@@ -13,7 +13,6 @@ this summary, and fix them, not this file, when they are wrong.
   the tests that check each one. Review a change against it.
 - `DECISIONS.md`: design decisions and who made them. Check the principles
   before asking the maintainer; record a decision you make here.
-- `ROADMAP.md`: the larger ideas, and what has been decided against.
 - `MODEL_ATLAS.md`: a map for placing a new model; not a plan.
 - `.claude/skills/surpyval/SKILL.md`: how to *use* the package.
 
