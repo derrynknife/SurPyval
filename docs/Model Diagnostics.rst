@@ -43,8 +43,16 @@ Each row of ``d.table`` is a test or a screen, with a verdict:
   outliers) that found something worth a look;
 - **ok**: otherwise.
 
-A screen is not a test and never fails. ``d.ok`` is True when no row
-failed, so warnings do not stop a pipeline. Every row is judged at
+A screen is not a test and never fails. Some screens carry a test's
+p-value but choose between models rather than check an assumption, so a
+rejection is good news for the model fitted: the trend tests of a model
+whose rate changes, the tests of perfect and minimal repair of an
+imperfect-repair model, and the test of no frailty. Such a row is **ok**
+when its test rejects the simpler model and **warns** when it does not
+(the simpler model may do as well); it never fails. The calibration rows,
+the AIC comparisons and the extrapolation screen are screens too.
+``d.ok`` is True when no row failed, so warnings do not stop a
+pipeline. Every row is judged at
 ``alpha`` on its own: with a dozen rows some fail by chance about
 ``alpha`` of the time each, even when every assumption holds, so read a
 lone failure with a p-value near ``alpha`` with that in mind.
@@ -846,10 +854,12 @@ a better alternative alone, to refit with it and compare the two models'
 lives at the use stress; for a use stress far outside the tested range,
 caution (its bounds, the other life models' lives there, testing nearer
 it); and for two levels, to test at three or more.
-SurPyval has no accelerated-test planning tool, so the advice suggests
-simulating a candidate plan with the fitted model's ``random(size, Z=...)``
-and refitting, to see how wide the bounds (``cb``) at the use stress
-would be.
+The advice on the next test names :mod:`surpyval.test_planning`:
+``accelerated_test_plan`` gives the optimum or compromise plan (the stress
+levels and the units at each) for a quantile at the use stress, and
+``accelerated_test_precision`` how precisely a plan of your own would
+estimate it, with the fitted model's life model, parameters and shape as
+the planning values (see :doc:`Test Planning with SurPyval`).
 
 ``diagnose()`` refuses a model restored with ``from_dict`` (it has no
 data) and one whose fit has no finite maximum. Every kind of censoring,

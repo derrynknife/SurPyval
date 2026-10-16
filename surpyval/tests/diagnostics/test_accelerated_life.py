@@ -341,7 +341,10 @@ def test_two_stress_levels_warn_and_are_advised_more():
     row = _row(d, "extrapolation")
     assert row["verdict"] == "warn" and row["statistic"] == 2
     [advice] = [a for a in d.advice if a.check == "extrapolation"]
-    assert advice.features == ("random(Z=)", "cb(Z=)")
+    assert advice.features == (
+        "test_planning.accelerated_test_plan",
+        "test_planning.accelerated_test_precision",
+    )
     assert "three or more levels" in advice
 
 
@@ -510,7 +513,7 @@ def test_a_far_use_stress_warns_and_is_advised_caution():
     )
     assert row["verdict"] == "warn" and d.ok
     [advice] = [a for a in d.advice if a.check == "extrapolation"]
-    assert advice.features == ("cb(Z=)", "random(Z=)")
+    assert advice.features == ("cb(Z=)", "test_planning.accelerated_test_plan")
     assert "far outside the tested range" in advice
 
 
@@ -564,7 +567,7 @@ def test_an_option_the_family_does_not_take_is_refused():
     cox = sp.CoxPH.fit(
         df["week"].values, df[["fin"]].values, c=1 - df["arrest"].values
     )
-    with pytest.raises(ValueError, match="only alpha and columns"):
+    with pytest.raises(ValueError, match="no option 'use_stress'.*'t0'"):
         cox.diagnose(use_stress=20.0)
 
 

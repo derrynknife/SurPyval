@@ -1051,9 +1051,12 @@ def _levels_message(row: dict, ctx: Context) -> str:
         "stress rests on that form alone. Test at three or more levels, "
         "spread over the range the units can take without a new failure "
         "mode, with more units at the lower stresses (nearer the use "
-        "stress). To compare plans, simulate each with the fitted model's "
-        "random(size, Z=<the planned levels>), refit, and see how wide "
-        "the bounds of the life at the use stress are (cb).".format(
+        "stress). surpyval.test_planning.accelerated_test_plan gives the "
+        "optimum or compromise plan (the levels and the units at each) "
+        "for a quantile at the use stress, and accelerated_test_precision "
+        "how precisely a plan of your own would estimate it; the fitted "
+        "model's life model, parameters and shape are the planning "
+        "values.".format(
             name=row["covariates"][0],
             k=int(row["statistic"]),
             s="" if int(row["statistic"]) == 1 else "s",
@@ -1070,9 +1073,9 @@ def _far_message(row: dict, ctx: Context) -> str:
         "compare it with the other plausible life models' (the "
         "life_model_comparison rows give each one's life at the use "
         "stress): where they disagree, the bounds understate the "
-        "uncertainty. If you can, test nearer the use stress; to compare "
-        "plans, simulate each with the fitted model's random(size, "
-        "Z=<the planned levels>) and refit.".format(
+        "uncertainty. If you can, test nearer the use stress: "
+        "surpyval.test_planning.accelerated_test_plan plans a test "
+        "(levels and units) for a quantile at the use stress.".format(
             name=row["covariates"][0],
             use=row["_use"],
             tested=row["_range"],
@@ -1148,7 +1151,10 @@ def _advice() -> tuple[AdviceRule, ...]:
         AdviceRule(
             "extrapolation",
             _levels_message,
-            ("random(Z=)", "cb(Z=)"),
+            (
+                "test_planning.accelerated_test_plan",
+                "test_planning.accelerated_test_precision",
+            ),
             when=lambda row, ctx: row.get("_kind") == "levels",
             on=("warn",),
         )
@@ -1157,7 +1163,7 @@ def _advice() -> tuple[AdviceRule, ...]:
         AdviceRule(
             "extrapolation",
             _far_message,
-            ("cb(Z=)", "random(Z=)"),
+            ("cb(Z=)", "test_planning.accelerated_test_plan"),
             when=lambda row, ctx: row.get("_kind") == "use",
             on=("warn",),
         )
