@@ -342,6 +342,7 @@ if TYPE_CHECKING:
         metrics,
         plotting,
         recurrent,
+        test_planning,
     )
     from surpyval.degradation import (
         DegradationAnalysis,
@@ -397,6 +398,7 @@ _SUBPACKAGES = (
     "metrics",
     "plotting",
     "recurrent",
+    "test_planning",
 )
 
 # The package's removed names (the life models' top-level names, removed
