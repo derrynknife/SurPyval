@@ -539,7 +539,9 @@ then:
   [[lower, upper, state]]``) and a state already reached at the first look
   (``left_censored_states``).
 
-``markers`` (repeated measurements, #891) are reserved for the joint models.
+``markers`` (repeated measurements, #891) are reserved for joint models of
+histories; a lifetime's record, ``ItemLifetime``, takes them now (see
+:doc:`Joint Models`).
 
 If your log records the time *between* failures instead, take a cumulative sum within each item first, for example ``df.groupby("machine")["hours_between"].cumsum()``. Leaving out the end-of-observation rows is a mistake: without them the models cannot know that M3, for example, has run a further 1,380 hours without failing since its failure at 1,720 hours, and would treat it as if it had been scrapped straight after that failure. See :doc:`Recurrent Event Modelling with SurPyval` for the models that use this data.
 
