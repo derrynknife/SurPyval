@@ -1124,7 +1124,19 @@ class Parametric(
           parameter's space (levelling off there, as a NegativeBinomial's
           ``r`` does as the model tends to a Poisson), the bound is that
           edge: 0, 1 or ``inf``. A side whose bound cannot be found is
-          ``nan``, with a warning.
+          ``nan``, with a warning. For an offset, limited-failure or
+          zero-inflated model the profile is over every fitted parameter,
+          ``gamma``, ``lfp_p`` and ``f0`` included, and each of those is
+          bounded too. ``lfp_p`` and ``f0`` have a closed edge (1 and 0,
+          the plain model): a side towards it is the edge itself where the
+          profile deviance there is within the critical value, so a
+          two-sided interval covers a truth on the edge with probability
+          ``1 - alpha_ci / 2`` and the one-sided bound towards it with
+          ``1 - alpha_ci``, asymptotically (Self and Liang, 1987; a
+          little more in small samples). The offset's interval runs up to the
+          first failure where its profile stays below the critical value
+          there (the likelihood is unbounded at that corner for a shape
+          below 1, and the region reaches it).
         - ``"bootstrap"`` -- the parametric bootstrap, as for ``cb``: the
           bias-corrected percentile interval of the parameter over
           ``n_boot`` refits to data simulated from the model. It is the
@@ -1158,9 +1170,9 @@ class Parametric(
             distribution parameter named ``p`` (``Geometric``,
             ``NegativeBinomial``) is that parameter; the proportion,
             ``"p"`` before v0.23, is ``"lfp_p"`` (#608). The offset
-            ``"gamma"`` has only the bootstrap bound: it is a threshold
-            parameter, whose likelihood is not regular, so no standard
-            error is estimated for it.
+            ``"gamma"`` has the likelihood-ratio and bootstrap bounds, not
+            a Wald one: it is a threshold parameter, whose likelihood is
+            not regular, so no standard error is estimated for it.
         alpha_ci : float, optional
             The significance level: 0.05 (the default) gives a 95% bound.
         bound : str, optional
@@ -1252,7 +1264,8 @@ class Parametric(
             # Bounds on the logit keep the result within (0, 1)
             u_hat = np.log(p_hat / (1 - p_hat))
             diff = -bounds * z(alpha) * np.sqrt(var) / (p_hat * (1 - p_hat))
-            return 1 / (1 + np.exp(-(u_hat + diff)))
+            # (expit: a proportion a hair from 1 overflowed numpy's exp)
+            return expit(u_hat + diff)
         else:
             factor = z(alpha) * np.sqrt(var)
             bounds = -bounds * factor
@@ -1288,11 +1301,12 @@ class Parametric(
             # offset model is non-regular (the likelihood's support moves
             # with it), so a Wald variance for it would be misleading.
             raise ValueError(
-                "No Wald or likelihood-ratio bound is available for the "
-                "offset 'gamma': it is a threshold parameter whose "
-                "likelihood is not regular, so no standard error is "
-                "estimated for it. param_cb('gamma', method='bootstrap') "
-                "bounds it by the parametric bootstrap."
+                "No Wald bound is available for the offset 'gamma': it is "
+                "a threshold parameter whose likelihood is not regular, so "
+                "no standard error is estimated for it. "
+                "param_cb('gamma', method='lr') bounds it by its profile "
+                "likelihood, and method='bootstrap' by the parametric "
+                "bootstrap."
             )
         valid = list(self.dist.parameter_names)
         if self.lfp:
@@ -1973,8 +1987,13 @@ class Parametric(
             distribution
         b: float or None
             The right truncated value if sampling from a truncated
-            distribution. Truncated sampling is not available for offset,
-            limited-failure or zero-inflated models.
+            distribution: the draws are the model's given that they fall
+            in the window ``(a, b]``. For an offset, limited-failure or
+            zero-inflated model that is the model's own distribution
+            truncated -- the units dead on arrival (at 0) are in the
+            window where ``a < 0 <= b``, and the units that never fail
+            (``inf``) where ``b`` is ``None`` -- and a window the model
+            puts no probability in raises a ``ValueError``.
         random_state : int or numpy.random.Generator, optional
             Seed or generator for a reproducible draw of its own, which
             neither depends on nor advances numpy's global stream (an int
@@ -2004,16 +2023,9 @@ class Parametric(
         ...                     model.random(3, random_state=1)))
         True
         """
-        if ((a is not None) or (b is not None)) and (
-            (self.lfp_p != 1) or (self.f0 != 0)
-        ):
-            raise NotImplementedError(
-                "Truncated sampling not supported with LFP or ZI models"
-            )
-        elif ((a is not None) or (b is not None)) and self.offset:
-            raise NotImplementedError(
-                "Truncated sampling not supported with offset distributions"
-            )
+        truncated = (a is not None) or (b is not None)
+        if truncated and (self.offset or self.lfp or self.zi):
+            return self._random_truncated(size, a, b, random_state)
 
         if (self.lfp_p == 1) and (self.f0 == 0):
             if (a is None) and (b is None):
@@ -2058,6 +2070,44 @@ class Parametric(
         # (now random_data), and to draw a zero-inflated sample by a
         # binomial count and a shuffle, which qf(u) could not reproduce.
         return np.reshape(self.qf(uniform_draws(size, random_state)), size)
+
+    def _random_truncated(
+        self,
+        size: int | tuple[int, ...],
+        a: float | None,
+        b: float | None,
+        random_state: Any,
+    ) -> npt.NDArray:
+        """Draws from an offset, limited-failure or zero-inflated model
+        truncated to the window ``(a, b]`` (see :meth:`random`): each is
+        ``qf(u)`` for ``u`` uniform between ``ff(a)`` and ``ff(b)``, the
+        model's own distribution function, so the draws are those of the
+        model given that they fall in the window. The window keeps the
+        model's mass in it and only that: the units dead on arrival (at
+        0) where ``a < 0 <= b``, the ones that never fail (``inf``) where
+        ``b`` is ``None``, and nothing below the offset."""
+        lo = -np.inf if a is None else float(a)
+        hi = np.inf if b is None else float(b)
+        if not lo < hi:
+            raise ValueError(
+                f"The truncation window (a, b] = ({lo:g}, {hi:g}] is "
+                "empty: a must be below b."
+            )
+        F_a = 0.0 if a is None else float(self.ff(lo))
+        # With no upper end the window reaches past every failure: the
+        # units that never fail are in it (F(inf) is lfp_p, not 1)
+        F_b = 1.0 if b is None else float(self.ff(hi))
+        if not F_b > F_a:
+            raise ValueError(
+                f"The model puts no probability in the truncation window "
+                f"(a, b] = ({lo:g}, {hi:g}], so it has no draws to give "
+                f"there."
+            )
+        u = uniform_draws(size, random_state)
+        with np.errstate(all="ignore"):
+            # Strictly above F(a): u = 0 would give qf(F(a)), at or below a
+            q = self.qf(F_a + (1.0 - u) * (F_b - F_a))
+        return np.reshape(np.asarray(q, dtype=float), np.shape(u))
 
     def random_data(
         self,
@@ -2413,11 +2463,18 @@ class Parametric(
             The likelihood-ratio band is transformation-invariant and does not
             rely on a quadratic approximation, so it is usually better in small
             samples (Meeker and Escobar recommend it there), but it is computed
-            pointwise and so is slower, needs the original data (a model
+            pointwise and so is slower, and needs the original data (a model
             restored from ``to_dict(with_data=True)`` has it; one saved
-            without it raises), and is not yet available for offset / LFP /
-            ZI models. Where the constrained search cannot find a bound
-            from any start, that bound is ``nan``, with a warning.
+            without it raises). For an offset, limited-failure or
+            zero-inflated model the region is over every fitted parameter,
+            ``gamma``, ``lfp_p`` and ``f0`` included, and the function is
+            the model's own; at a time before the estimated offset the band
+            reaches below 1 wherever the region holds an offset below it.
+            Where an offset model's region reaches the first failure with
+            its offset, where the likelihood is unbounded, the band at that
+            level is ``nan``, with a warning. Where the constrained search
+            cannot find a bound from any start, that bound is ``nan``, with
+            a warning.
             ``"bootstrap"`` is the parametric bootstrap: the model is
             refitted to ``n_boot`` data sets simulated from it (each unit
             censored as it was, within its truncation window), and the
@@ -2550,8 +2607,11 @@ class Parametric(
             the likelihood-ratio bound: the extreme of ``qf(p)`` over the
             parameters' likelihood region, as ``cb(method="lr")`` is for
             a function of time. It is invariant to the parameterisation
-            and better in small samples, slower, and, like ``cb``'s, not
-            available for offset, limited-failure or zero-inflated models.
+            and better in small samples, and slower; like ``cb``'s, it is
+            over every fitted parameter of an offset, limited-failure or
+            zero-inflated model (a quantile at or above ``lfp_p`` is
+            infinite, and one at or below ``f0`` is 0, and so are their
+            bounds where the region reaches them).
             For an offset model the Wald bound holds the offset at its
             estimate, with a warning; ``"bootstrap"`` (the parametric
             bootstrap, as for ``cb``) includes its uncertainty (#645).
@@ -2612,11 +2672,7 @@ class Parametric(
             self._is_lr(method)  # checks the name
             return self._quantile_cb_discrete(probs, alpha_ci, bound, method)
         if self._is_lr(method, bootstrap=True):
-            fns = [
-                lambda theta, p_i=p_i: self.dist.qf(np.array([p_i]), *theta)[0]
-                for p_i in probs
-            ]
-            return self._summary_cb_lr(fns, alpha_ci, bound, "qf")
+            return self._lr_summary("qf", probs, alpha_ci, bound)
         if method.lower() == "bootstrap":
             from . import _bootstrap
 
@@ -2649,8 +2705,10 @@ class Parametric(
             above the support's start (on the mean itself for a
             distribution on the whole line); ``"lr"`` is the
             likelihood-ratio bound, the extreme of the mean over the
-            parameters' likelihood region (not available for offset,
-            limited-failure or zero-inflated models).
+            parameters' likelihood region (with an offset, a limited
+            failure population or zero inflation, over every fitted
+            parameter; a limited failure population's upper bound is
+            ``inf``).
 
         Returns
         -------
@@ -2684,8 +2742,7 @@ class Parametric(
             inf = np.inf
             return np.array([inf, inf]) if bound == "two-sided" else inf
         if self._is_lr(method):
-            fns = [lambda theta: self.dist.mean(*theta)]
-            out = self._summary_cb_lr(fns, alpha_ci, bound, "mean")
+            out = self._lr_summary("mean", [None], alpha_ci, bound)
             return out[0]
         ctx = self._cb_context()
 
@@ -2794,10 +2851,9 @@ class Parametric(
             ``"wald"`` (default) is the delta method on the log of the mean
             residual life, which is positive; ``"lr"`` is the
             likelihood-ratio bound, the extreme of ``mrl(x)`` over the
-            parameters' likelihood region (not available for offset,
-            limited-failure or zero-inflated models), as for
-            :meth:`mean_cb`; ``"bootstrap"`` the parametric bootstrap, as
-            for :meth:`quantile_cb`, which includes an offset's
+            parameters' likelihood region, as for :meth:`mean_cb`;
+            ``"bootstrap"`` the parametric bootstrap, as for
+            :meth:`quantile_cb`, which includes an offset's
             uncertainty (the Wald bound holds it at its estimate, with a
             warning).
         n_boot : int, optional
@@ -2841,14 +2897,8 @@ class Parametric(
                 (_LN_TINY, _LN_MAX),
             )
             if self._is_lr(method, bootstrap=True):
-                fns = [
-                    lambda theta, t_i=t_i: float(
-                        self.dist.mrl(t_i - self.gamma, *theta)
-                    )
-                    for t_i in t[ok]
-                ]
-                found = self._summary_cb_lr(
-                    fns, alpha_ci, bound, "mrl", scale=log_scale
+                found = self._lr_summary(
+                    "mrl", t[ok], alpha_ci, bound, scale=log_scale
                 )
             elif method.lower() == "bootstrap":
                 from . import _bootstrap
@@ -2881,6 +2931,101 @@ class Parametric(
                 )
             out[ok] = np.reshape(found, (int(ok.sum()), -1))
         return out if bound == "two-sided" else out[:, 0]
+
+    def _lr_summary(
+        self,
+        kind: str,
+        args: Any,
+        alpha_ci: float,
+        bound: str,
+        scale: tuple | None = None,
+    ) -> npt.NDArray:
+        """The likelihood-ratio bounds on the quantiles ``qf(args)``, the
+        mean (``args`` ``[None]``) or the mean residual lives
+        ``mrl(args)`` (``kind``), on the ``scale`` of ``_summary_scale``
+        (or the one given), through ``_summary_cb_lr``.
+
+        For an offset, limited-failure or zero-inflated model they are
+        functions of every fitted parameter (``ExtendedLikelihoodRatio``),
+        the model's own: a quantile can then be 0 (below ``f0``) or
+        infinite (above ``lfp_p``), and its bound is that edge where the
+        region reaches it. An offset model's quantile and mean are bounded
+        on their own scale (the offset moves the support's start). The
+        mean and the mean residual life of a limited-failure model are
+        infinite wherever ``lfp_p < 1``, so with ``lfp_p`` estimated (at 1:
+        the callers return ``inf`` below it) their upper bound is
+        infinite, and the lower bound is the least over the region's
+        slice at ``lfp_p = 1``.
+        """
+        self._ensure_surv_data()
+        extended = self._lr_extended()
+        fns: list[Callable[..., Any]]
+        if extended is None:
+            if kind == "qf":
+                fns = [
+                    lambda theta, a=a: self.dist.qf(np.array([a]), *theta)[0]
+                    for a in args
+                ]
+            elif kind == "mean":
+                fns = [lambda theta: self.dist.mean(*theta)]
+            else:
+                fns = [
+                    lambda theta, a=a: float(
+                        self.dist.mrl(a - self.gamma, *theta)
+                    )
+                    for a in args
+                ]
+            return self._summary_cb_lr(fns, alpha_ci, bound, kind, scale)
+
+        def value_of(phi: npt.NDArray, a: Any) -> float:
+            model = extended._at(phi)
+            with np.errstate(all="ignore"):
+                if kind == "qf":
+                    out = model.qf(a)
+                elif kind == "mean":
+                    out = model.mean()
+                else:
+                    out = model.mrl(a)
+            return float(onp.ravel(onp.asarray(out, dtype=float))[0])
+
+        fns = [lambda phi, a=a: value_of(phi, a) for a in args]
+        if scale is None:
+            if self.offset:
+                scale = (
+                    lambda v: v,
+                    lambda u: u,
+                    lambda v: np.ones_like(v),
+                    (-1e300, 1e300),
+                )
+            else:
+                scale = self._summary_scale(zero_floor=bool(self.zi))
+        to_psi, from_psi, slope, ends = scale
+
+        def to_value(u: Any) -> Any:
+            # The end of the scale is the edge of the range: an infinite
+            # quantile (past lfp_p)
+            if np.isfinite(ends[1]) and u >= ends[1]:
+                return np.inf
+            return from_psi(u)
+
+        scale = (to_psi, to_value, slope, ends)
+        if (
+            kind in ("mean", "mrl")
+            and self.lfp
+            and not self._is_fixed_param(self.lfp_name)
+        ):
+            from ._likelihood_ratio_extended import ExtendedLikelihoodRatio
+
+            held = ExtendedLikelihoodRatio(self, held={extended._p_idx})
+            n = len(fns)
+            inf = np.full(n, np.inf)
+            if bound == "upper":
+                return inf
+            found = held._summary_cb_lr(fns, alpha_ci, bound, kind, scale)
+            if bound == "lower":
+                return found
+            return np.column_stack([found[:, 0], inf])
+        return extended._summary_cb_lr(fns, alpha_ci, bound, kind, scale)
 
     @staticmethod
     def _is_lr(method: str, bootstrap: bool = False) -> bool:

@@ -217,6 +217,12 @@ jobs:
             workers: '2'
             args: >-
               'surpyval/tests/calibration/test_coverage_parametric.py::test_likelihood_ratio_coverage'
+          # The likelihood-ratio coverage of offset, LFP and ZI models
+          # runs its repetitions on every core itself, as #617's does.
+          - group: extra-parameters
+            workers: '0'
+            args: >-
+              surpyval/tests/calibration/test_coverage_extra_parameters.py
           - group: long-studies
             workers: '3'
             args: >-
@@ -237,6 +243,7 @@ jobs:
               surpyval/tests/calibration surpyval/tests/scenarios
               --ignore=surpyval/tests/calibration/test_coverage_copula.py
               --ignore=surpyval/tests/calibration/test_refit_registry.py
+              --ignore=surpyval/tests/calibration/test_coverage_extra_parameters.py
               --deselect 'surpyval/tests/calibration/test_coverage_regression.py::test_617_cb_bootstrap_coverage_at_an_extrapolated_use_condition'
               --deselect 'surpyval/tests/calibration/test_coverage_regression.py::test_583_cb_coverage_at_an_extrapolated_use_condition'
               --deselect 'surpyval/tests/calibration/test_coverage_parametric.py::test_likelihood_ratio_coverage'

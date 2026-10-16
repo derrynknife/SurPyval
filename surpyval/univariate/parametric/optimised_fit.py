@@ -790,6 +790,18 @@ turnbull_estimator
             warning = None
             unverified = False
             maximum = "no finite maximum"
+        # So do data whose intervals only meet at one time (abutting
+        # intervals), where the likelihood rises along a flat ridge
+        # towards a spike there, which a search can stop on and verify.
+        if (
+            how == "MLE"
+            and not fixed
+            and maximum != "no finite maximum"
+            and self._warn_if_abutting(surv_data, results, offset, zi, lfp)
+        ):
+            warning = None
+            unverified = False
+            maximum = "no finite maximum"
         # So does an offset fit that ran its offset onto the first
         # failure, whatever the family (#487).
         if (
