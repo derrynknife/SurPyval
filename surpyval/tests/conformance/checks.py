@@ -58,13 +58,39 @@ def compare(case, got, ref, scale=None, rtol=None, atol=None):
         )
 
 
+def _ages_scaled(value, k):
+    """``value`` (an age, ages, readings by age ``{age: value}``, or one
+    of those per row) with its ages multiplied by ``k``."""
+    from collections.abc import Mapping
+
+    if isinstance(value, Mapping):
+        return {age * k: reading for age, reading in value.items()}
+    if np.ndim(value) and len(value) and isinstance(value[0], Mapping):
+        return [_ages_scaled(v, k) for v in value]
+    return np.asarray(value, dtype=float) * k
+
+
 def rescaled(case, data, k):
-    """``data`` with the case's time entries multiplied by ``k``."""
+    """``data`` with the case's time entries multiplied by ``k`` (the ages
+    of an entry of readings by age)."""
     out = dict(data)
     for key in case.times:
         if key in data:
-            out[key] = np.asarray(data[key], dtype=float) * k
+            out[key] = _ages_scaled(data[key], k)
     return out
+
+
+def rescaled_case(case, k):
+    """``case`` with the ages among its prediction keywords
+    (``Case.call_times``) multiplied by ``k``, to query a model fitted in
+    the new unit."""
+    from dataclasses import replace
+
+    kw = dict(case.call_kwargs)
+    for key in case.call_times:
+        if kw.get(key) is not None:
+            kw[key] = _ages_scaled(kw[key], k)
+    return replace(case, call_kwargs=kw)
 
 
 def permuted(case, data, perm=None):

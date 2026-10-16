@@ -28,6 +28,12 @@ Test planning: designing reliability tests before they are run.
 - **Comparing two groups** (#880): the events, units and power of a
   log-rank test of a hazard ratio: :func:`logrank_events`,
   :func:`logrank_sample_size` and :func:`logrank_power`.
+- **Comparing two failure rates**: the power of the exact test of a
+  change in a failure rate at an intervention, the smallest change an
+  exposure can detect, and the exposure needed to detect one:
+  :func:`rate_ratio_power`, :func:`rate_ratio_detectable` and
+  :func:`rate_ratio_exposure` (the test is
+  :func:`surpyval.recurrent.intervention_test`).
 
 Every confidence level is given as ``alpha_ci``, the significance level,
 as everywhere in SurPyval: for a demonstration test it is the consumer's
@@ -74,6 +80,11 @@ from surpyval.test_planning.estimation import (
     life_test_precision,
     life_test_sample_size,
 )
+from surpyval.test_planning.rate_ratio import (
+    rate_ratio_detectable,
+    rate_ratio_exposure,
+    rate_ratio_power,
+)
 from surpyval.test_planning.sequential import (
     SequentialDemonstrationTest,
     SequentialMTBFTest,
@@ -112,4 +123,8 @@ __all__ = [
     "logrank_events",
     "logrank_power",
     "logrank_sample_size",
+    # Comparing two failure rates
+    "rate_ratio_detectable",
+    "rate_ratio_exposure",
+    "rate_ratio_power",
 ]

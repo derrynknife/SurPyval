@@ -135,10 +135,7 @@ each one stands for goes in ``counts``:
     ]
     data = SurpyvalData.from_items(items, counts=[3, 40, 2, 5])
     print(data.n)
-    surv.Weibull.fit(SurpyvalData.from_items(
-        [ItemLifetime(i.id, **{i.outcome: i.value}) for i in items],
-        counts=[3, 40, 2, 5],
-    )).params
+    surv.Weibull.fit(data.without("covariates")).params
 
 Records are updated as items age, each update giving a new, checked record
 (the old one is left as it was), and copied for a new item with ``clone``.
@@ -159,7 +156,10 @@ A record is fixed once made, so it is always one that passed its checks:
 
 Every check names the item, and ``data.to_items()`` gives the items back
 (``SurpyvalData.from_items(data.to_items(), counts=data.n)`` is the same
-data). An item's ``event_type`` goes to the competing-risks fitters
+data). A plain fit of data that holds more than a plain fit takes (covariates,
+event types) is of ``data.without("covariates", "event_types")``, which keeps
+everything else -- B10's late entry here -- rather than of records rebuilt by
+hand. An item's ``event_type`` goes to the competing-risks fitters
 (``CompetingRisks.fit(data)``), and its step ``time_varying_covariates``
 (``{age: values}`` or a ``StepSchedule``) to a regression's ``fit_tvc``:
 ``WeibullPH.fit(data)`` splits each item's life where its covariates step.
@@ -202,25 +202,66 @@ coefficients take the names; an item's names may come in any order:
     print(data.covariate_names)
     surv.WeibullPH.fit(data).params
 
-One dataset, several analyses
------------------------------
+From a DataFrame
+----------------
 
-A dataset built with covariates and failure modes is refused by a fit that
-takes neither, rather than fitted as if they were not there. Reshape it for
-the analysis instead; each operation returns a new dataset:
+Most data arrives as a table with one row per item: its id, its age, a
+column saying whether it failed, what failed, and its covariates.
+``SurpyvalData.from_dataframe`` reads it, naming the columns as every
+DataFrame entry point does (``x_col``, ``c_col``, ... the ``fit`` argument
+with ``_col``); a spreadsheet's status column, 1 or True where the item
+failed, is ``event_col`` (the opposite coding of ``c``):
 
 .. jupyter-execute::
 
-    fleet = SurpyvalData.from_items(
-        [
-            ItemLifetime("P1", observed=820, event_type="seal", covariates={"site": 1, "load": 0.8}),
-            ItemLifetime("P2", observed=1450, event_type="bearing", covariates={"site": 0, "load": 0.5}),
-            ItemLifetime("P3", right_censored=2000, covariates={"site": 1, "load": 0.4}),
-            ItemLifetime("P4", observed=1100, event_type="seal", covariates={"site": 0, "load": 0.9}),
-            ItemLifetime("P5", right_censored=1700, covariates={"site": 0, "load": 0.6}),
-        ]
+    fleet_df = pd.DataFrame({
+        "unit":   ["P1", "P2", "P3", "P4", "P5"],
+        "hours":  [820, 1450, 2000, 1100, 1700],
+        "failed": [True, True, False, True, False],
+        "mode":   ["seal", "bearing", None, "seal", None],
+        "site":   [1, 0, 1, 0, 0],
+        "load":   [0.8, 0.5, 0.4, 0.9, 0.6],
+    })
+    fleet = SurpyvalData.from_dataframe(
+        fleet_df, i_col="unit", x_col="hours", event_col="failed",
+        e_col="mode", Z_cols=["site", "load"],
     )
     print(fleet.summary())
+    print(fleet.item("P3"))
+
+A table of the age last seen working and the age first seen failed, with a
+blank where one is not known, is read with ``xl_col`` and ``xr_col`` (a
+blank ``xr_col`` is an item still running, a blank ``xl_col`` one already
+failed at the first look), and ``to_dataframe()`` gives any dataset back as
+a table:
+
+.. jupyter-execute::
+
+    inspections = pd.DataFrame({
+        "last_ok":      [None, 150, 300, 420,  500, 610],
+        "first_failed": [200,  150, 380, None, 500, None],
+    })
+    data = SurpyvalData.from_dataframe(
+        inspections, xl_col="last_ok", xr_col="first_failed"
+    )
+    print(data.to_dataframe())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert fleet.ids == ["P1", "P2", "P3", "P4", "P5"]
+    assert data.c.tolist() == [0, -1, 2, 1, 0, 1], data.c
+
+One dataset, several analyses
+-----------------------------
+
+A dataset built with covariates and failure modes (the ``fleet`` above) is
+refused by a fit that takes neither, rather than fitted as if they were not
+there. Reshape it for the analysis instead; each operation returns a new
+dataset:
+
+.. jupyter-execute::
 
     everything = fleet.without("covariates", "event_types")   # a plain fit
     seals = fleet.for_event_type("seal").without("covariates")  # one mode
@@ -229,6 +270,71 @@ the analysis instead; each operation returns a new dataset:
     first_1500 = fleet.censor_at(1500)   # as seen at the end of a study
     print(surv.Weibull.fit(everything).params)
     print(seals.summary())
+
+Updating a dataset as items age
+-------------------------------
+
+A fleet's data is refreshed as the months pass: some items fail, the rest
+run on, new ones are installed. The records' update methods (``fail``,
+``found_failed``, ``extend``, ``add_failure``) give the new records, and
+``update`` takes them back into the dataset -- a record whose id is in the
+data replaces that item's, a new id is added -- while ``extend_running``
+moves every item still running on to the age it was last seen, and
+``drop`` removes items. Counts, covariates, event types, attributes and
+the unit carry through:
+
+.. jupyter-execute::
+
+    month_end = {"P1": 900, "P2": 1500, "P3": 2100, "P4": 1200, "P5": 1800}
+    refreshed = fleet.update([
+        fleet.item("P3").fail(2050, "bearing"),           # failed this month
+        ItemLifetime("P6", right_censored=90, covariates={"site": 1, "load": 0.7}),
+    ]).extend_running(lambda item: month_end.get(item.id, 90))
+    print(refreshed.summary())
+    print(refreshed.item("P3"), refreshed.item("P5"), sep="\n")
+
+A fitted model predicts for the items from their records: a record (or a
+dataset, or a list of records) stands as ``Z`` in ``sf``, ``ff``, ``hf``,
+``Hf``, ``df``, ``qf`` and ``mean``, its covariates read by name, and
+``predict`` gives a table, one row per item and time, with ``given="age"``
+for the survival of each running item given the age it has reached (an
+item that has failed gets ``nan``):
+
+.. jupyter-execute::
+
+    model = surv.WeibullPH.fit(refreshed.without("event_types"))
+    print(model.sf(2000, refreshed.item("P5")))
+    print(model.predict(refreshed, times=[2000, 2500], given="age").round(3))
+
+Comparing sites, arms or product lines
+--------------------------------------
+
+What describes an item without being fitted -- its site, its batch, a
+trial's arm -- is an ``attribute`` (any value, text included), given on the
+record (``attributes={"site": "North"}``) or read from the table
+(``attribute_cols=``); a fit never refuses it. ``groupby`` splits the data
+by an attribute (or a covariate) and ``select(where={name: value})`` keeps
+one group, so a fit per group is one line:
+
+.. jupyter-execute::
+
+    trial = SurpyvalData.from_dataframe(
+        pd.DataFrame({
+            "weeks":  [5, 7, 9, 4, 6, 8, 10, 3],
+            "event":  [1, 1, 0, 1, 1, 0, 1, 1],
+            "age":    [50, 60, 70, 55, 65, 45, 75, 40],
+            "arm":    ["drug", "placebo"] * 4,
+            "site":   ["A", "A", "B", "B", "A", "B", "A", "B"],
+        }),
+        x_col="weeks", event_col="event", Z_cols=["age"],
+        attribute_cols=["arm", "site"],
+    )
+    plain = trial.without("covariates")   # the age is for a regression
+    km_by_arm = {arm: surv.KaplanMeier.fit(part) for arm, part in plain.groupby("arm").items()}
+    weibull_by_site = {site: surv.Weibull.fit(part) for site, part in plain.groupby("site").items()}
+    print({arm: km.sf(6).round(3) for arm, km in km_by_arm.items()})
+    print({site: model.params.round(2) for site, model in weibull_by_site.items()})
+    print(trial.select(where={"arm": "drug", "site": "A"}).summary())
 
 Combining every input type in one fit
 -------------------------------------
@@ -539,7 +645,28 @@ then:
   [[lower, upper, state]]``) and a state already reached at the first look
   (``left_censored_states``).
 
-``markers`` (repeated measurements, #891) are reserved for the joint models.
+``markers`` (repeated measurements, #891) are reserved for joint models of
+histories; a lifetime's record, ``ItemLifetime``, takes them now (see
+:doc:`Joint Models`).
+
+A log held in a DataFrame, one row per failure, is read by
+``EventHistoryData.from_dataframe``: the item and age columns, the type of
+each failure, and each item's end of observation as a ``c = 1`` row, a
+column (``end_col``) or ``ends={item: age}``, which also names the items
+that never failed and so have no row:
+
+.. jupyter-execute::
+
+    log = pd.DataFrame({
+        "machine": ["M1", "M1", "M1", "M2", "M2"],
+        "hours":   [420, 1310, 2050, 980, 2400],
+        "part":    ["seal", "bearing", "seal", "seal", "bearing"],
+    })
+    data = EventHistoryData.from_dataframe(
+        log, i_col="machine", x_col="hours", e_col="part",
+        ends={"M1": 2600, "M2": 2900, "M3": 3100},
+    )
+    print(data.summary())
 
 If your log records the time *between* failures instead, take a cumulative sum within each item first, for example ``df.groupby("machine")["hours_between"].cumsum()``. Leaving out the end-of-observation rows is a mistake: without them the models cannot know that M3, for example, has run a further 1,380 hours without failing since its failure at 1,720 hours, and would treat it as if it had been scrapped straight after that failure. See :doc:`Recurrent Event Modelling with SurPyval` for the models that use this data.
 
@@ -577,9 +704,15 @@ non-parametric estimators' "at risk / deaths" (``xrd``) form too:
        data has them
    * - ``data.to_xrd()``
      - data → ``x, r, d``
+   * - ``SurpyvalData.from_dataframe(df, x_col=..., c_col=... | event_col=...,
+       i_col=..., e_col=..., Z_cols=[...])``
+     - one row per item from a DataFrame (``xl_col`` / ``xr_col`` for last
+       seen working / first seen failed, blanks allowed);
+       ``data.to_dataframe()`` gives it back
    * - ``data.to_json()``, ``SurpyvalData.from_json(...)``
-     - save and restore the data (``from_json`` reads a file only when
-       given a ``pathlib.Path``; a string is parsed as JSON text)
+     - save and restore the data, as JSON text or a file (``to_dict`` /
+       ``from_dict`` give the dictionary; ``surpyval.from_json`` reads it
+       too; every data class has them)
    * - ``handle_xicn(x, i, c, n, ...)``
      - validates recurrent event data (``xicnt``) and returns the
        ``EventHistoryData`` object the recurrent models use

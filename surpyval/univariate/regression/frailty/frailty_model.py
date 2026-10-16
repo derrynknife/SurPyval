@@ -32,6 +32,7 @@ import numpy as np
 from scipy.special import ndtri as _z
 from scipy.stats import norm
 
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -93,6 +94,7 @@ class _SharedFrailty(
     ConditionalSurvivalMixin,
     InformationCriteriaMixin,
     ConcordanceMixin,
+    DiagnoseMixin,
     SerialisableMixin,
 ):
     """What the fitted shared-frailty models have in common: the frailty

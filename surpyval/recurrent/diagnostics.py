@@ -56,6 +56,11 @@ def _validate_diagnostic_data(data: Any, what: str) -> None:
         )
 
 
+#: The public name of :func:`_validate_diagnostic_data` (the diagnostics
+#: of ``diagnose()`` refuse the same data).
+validate_diagnostic_data = _validate_diagnostic_data
+
+
 def _per_item_windows(data: Any) -> list:
     """
     Group the data by item and resolve each item's observation window.

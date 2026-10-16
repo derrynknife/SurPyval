@@ -108,9 +108,9 @@ def test_summaries():
         counts=[2, 3],
     ).summary()
     assert text.splitlines() == [
-        "SurpyvalData: 2 rows, 5 items (with item ids)",
+        "SurpyvalData: 5 items, 2 rows (with item ids)",
         "  outcomes: 2 observed, 3 right censored",
-        "  event types: x (1)",
+        "  event types: x (2)",
         "  covariates: 1 column",
     ]
     history = EventHistoryData.from_items(
@@ -125,5 +125,89 @@ def test_summaries():
             )
         ]
     ).summary()
-    assert "truncation: 2 left" in history
+    assert "truncation: 1 left" in history
     assert "states: ok, worn" in history
+
+
+# -- #934: display, counts and the small asymmetries --------------------
+
+
+def test_issue_934_repr_is_the_size_and_the_first_rows():
+    data = SurpyvalData.from_items(
+        [
+            ItemLifetime("a", observed=5, event_type="x", covariates={"z": 1}),
+            ItemLifetime(
+                "b", right_censored=9, covariates={"z": 2}, left_truncation=1
+            ),
+        ],
+        counts=[40, 3],
+    )
+    lines = repr(data).splitlines()
+    assert lines[0] == "SurpyvalData: 43 items, 2 rows"
+    assert lines[1].split() == ["id", "x", "c", "n", "tl", "e", "z"]
+    assert lines[2].split() == ["'a'", "5.0", "0", "40", "-inf", "'x'", "1.0"]
+    assert str(data) == repr(data)
+    html = data._repr_html_()
+    assert html.startswith("<div>") and "<th>id</th>" in html
+    many = SurpyvalData(list(range(1, 30)))
+    assert repr(many).splitlines()[-1].startswith("  ... 19 more rows")
+    history = EventHistoryData.from_items(HISTORIES)
+    assert history._repr_html_().count("<tr>") == 1 + len(history)
+
+
+def test_issue_934_summary_counts_items_not_rows():
+    data = SurpyvalData.from_items(
+        [
+            ItemLifetime("a", observed=5, event_type="x", left_truncation=1),
+            ItemLifetime("b", right_censored=9, right_truncation=20),
+            ItemLifetime("c", observed=7),
+        ],
+        counts=[40, 3, 2],
+    )
+    text = data.summary()
+    assert "SurpyvalData: 45 items, 3 rows" in text
+    assert "truncation: 40 left, 3 right" in text
+    assert "event types: x (40), not recorded (2)" in text
+    history = EventHistoryData.from_items(
+        [
+            ItemHistory(
+                "A",
+                observed=[5, 9, 10],
+                interval_censored=[[12, 14]],
+                interval_censored_counts=3,
+                right_censored=15,
+                left_truncation=1,
+                observed_event_types="seal",
+                interval_censored_event_types="bearing",
+            ),
+            ItemHistory("B", right_censored=4),
+        ]
+    )
+    text = history.summary()
+    assert text.startswith("EventHistoryData: 2 items, 6 rows")
+    assert "truncation: 1 left" in text
+    assert "event types: bearing (3), seal (3)" in text
+
+
+def test_issue_934_tab_completion_shows_the_api_not_the_internals():
+    data = SurpyvalData([1, 2, 3], c=[0, 0, 1], Z=[[1], [2], [3]])
+    names = dir(data)
+    assert "x_o" not in names and "mask_i" not in names and "Z_o" not in names
+    assert "to_items" in names and "x" in names and "Z" in names
+    assert data.x_o.tolist() == [1.0, 2.0]  # still there
+    history = EventHistoryData.from_items(HISTORIES)
+    names = dir(history)
+    assert "split_for_nhpp_likelihood" not in names and "items" not in names
+    assert "to_first_events" in names and "ids" in names
+
+
+def test_issue_934_small_asymmetries():
+    data = SurpyvalData.from_items(LIVES, counts=[2, 5])
+    assert data.event_types == ["spall"]
+    assert SurpyvalData([1, 2]).event_types == []
+    assert LIVES[0].has_event_types and not LIVES[1].has_event_types
+    assert data.n_items == 7 and len(data) == 2
+    assert [item.id for item in data.records()] == ["B7", "B8"]
+    history = EventHistoryData.from_items(HISTORIES)
+    assert history.n_items == 2 and len(history) == 5
+    assert [item.id for item in history.records()] == ["M1", "M2"]

@@ -64,6 +64,7 @@ _TAGGED_MODELS: dict[str, str] = {
         "surpyval.univariate.regression.proportional_odds.proportional_odds"
     ),
     "MixtureModel": "surpyval.univariate.parametric.mixture_model",
+    "JointModel": "surpyval.univariate.joint.joint_model",
     "RoystonParmarModel": ("surpyval.univariate.parametric.royston_parmar"),
     "FineGrayModel": (
         "surpyval.univariate.competing_risks.regression.fine_gray"
@@ -1253,6 +1254,14 @@ def from_dict(model_dict: dict) -> Any:
             f"{type(model_dict).__name__}"
         )
 
+    # Data (a SurpyvalData, an EventHistoryData, a record) is tagged by
+    # its "class", and read by that class (#935).
+    from surpyval.utils.data_json import reader_of
+
+    data_reader = reader_of(model_dict)
+    if data_reader is not None:
+        return data_reader.from_dict(model_dict)
+
     # Before dispatch too: a model class added by a newer SurPyval is
     # unknown here, and "upgrade" is the useful answer for it.
     check_schema(model_dict)
@@ -1277,7 +1286,9 @@ def from_dict(model_dict: dict) -> Any:
     raise ValueError(
         "Not a recognisable serialised SurPyval model"
         + (f" ({described})" if described else "")
-        + ": expected a 'model' class tag or a known 'parameterization'."
+        + ": expected a 'model' class tag or a known 'parameterization' "
+        "(a dataset or record is tagged by its 'class': SurpyvalData, "
+        "EventHistoryData, ItemLifetime or ItemHistory)."
     )
 
 

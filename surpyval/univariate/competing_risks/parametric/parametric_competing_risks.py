@@ -32,6 +32,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.integrate import quad_vec
 
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -93,7 +94,10 @@ def _validate(
     return x, c, n, e, t
 
 
-class ParametricCompetingRisks(SerialisableMixin):
+class ParametricCompetingRisks(
+    DiagnoseMixin,
+    SerialisableMixin,
+):
     """
     A parametric competing-risks model: one distribution per cause, combined
     into cumulative-incidence functions. Build it in one step from data with

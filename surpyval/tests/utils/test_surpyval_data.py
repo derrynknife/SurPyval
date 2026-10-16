@@ -129,13 +129,12 @@ def test_interval_check_same_as_censoring():
 
 
 def test_repr(basic_data):
-    """Test string representation"""
-    repr_str = repr(basic_data)
-    assert "SurpyvalData" in repr_str
-    assert "x=" in repr_str
-    assert "c=" in repr_str
-    assert "n=" in repr_str
-    assert "t=" in repr_str
+    """The repr is the size and a table of the first rows (#934)."""
+    lines = repr(basic_data).splitlines()
+    assert lines[0].startswith("SurpyvalData: ") and "items" in lines[0]
+    assert lines[1].split() == ["x", "c", "n"]
+    assert len(lines) == 2 + len(basic_data)
+    assert str(basic_data) == repr(basic_data)
 
 
 # --- scalar __getitem__ ---
@@ -168,7 +167,7 @@ def test_to_json_returns_string(basic_data):
     assert isinstance(s, str)
     parsed = json.loads(s)
     # "non_finite" records the untruncated (+-inf) bounds written as null.
-    assert set(parsed.keys()) == {"x", "c", "n", "t", "non_finite"}
+    assert set(parsed.keys()) == {"class", "x", "c", "n", "t", "non_finite"}
 
 
 def test_to_json_no_Z_key_when_no_covariates(basic_data):

@@ -383,9 +383,112 @@ Unreleased
     Schoenfeld's formula or, with ``method="freedman"``, Freedman's (as
     lifelines' ``sample_size_necessary_under_cph`` and
     ``power_under_cph``).
+  - Power of a comparison of failure rates before and after a change:
+    ``rate_ratio_power``, ``rate_ratio_detectable`` (the smallest change
+    an exposure detects) and ``rate_ratio_exposure`` (the exposure after
+    the change a test needs; ``inf`` when the failures before it are too
+    few for any), for the exact conditional test of
+    ``surpyval.recurrent.intervention_test``. The power is the exact sum
+    over the counts, not a normal approximation.
+- ``surpyval.recurrent.intervention_test``: did an intervention (a design
+  change, a corrective action) change the rate of failures of one
+  repairable system or a fleet, and is the evidence enough to say? It
+  splits each system's record at its own intervention time and gives the
+  ratio of the rates after and before, its confidence interval and the
+  p-value of no change. ``model="hpp"`` (the default) is the exact
+  conditional test of two Poisson rates, with the Clopper-Pearson interval
+  (``method="mid-p"`` for the mid-p versions); with
+  ``baseline="per-system"`` (the default) each system keeps its own rate
+  and the test is the exact stratified test, which pooled systems with
+  different rates cannot fool. ``model="power-law"`` lets the rate trend
+  with age as the Crow-AMSAA power law, multiplied by the ratio after the
+  change, and uses the likelihood ratio and the profile-likelihood
+  interval. The ``InterventionTestResult`` gives a verdict
+  (``"decrease"``, ``"increase"``, ``"no change detected"``,
+  ``"inconclusive"`` or ``"untestable"``), the power the exposure had to
+  detect a target change, the smallest change it could detect, the
+  exposure still needed, and notes saying what to do when the evidence is
+  short; data that cannot answer (no exposure after the change, no
+  failure before it) give an ``"untestable"`` result that says why,
+  rather than an error. The HPP result flags a trend within the periods
+  (the Laplace test), which the power law accounts for. It takes ``T``,
+  the fitters' ``c``, delayed entry ``tl`` or gapped ``windows``, and
+  round-trips through strict JSON (``to_dict`` / ``from_dict``). The
+  calibration studies check its size, power and coverage by simulation.
+  See the new page "Intervention Analysis with SurPyval".
+
+- Partial-effects plots (#876): ``model.plot_partial_effects(covariate,
+  values)`` draws a regression's survival curve (``on="ff"`` or ``"Hf"``
+  for the others) at each of ``values`` of one covariate, the other
+  covariates held at reference values, and returns the axes, each curve
+  labelled ``"covariate = value"``. For the Cox model and the PH, AFT,
+  PO, AH and accelerated life families. A covariate not plotted is held
+  at its count-weighted mean over the fitted rows (the ``center`` of a
+  ``center=True`` fit), or, for a categorical variable of a formula, at
+  its reference level; ``reference={name: value}`` sets any of them. A
+  formula's covariate is a variable of the formula (``"load"`` for
+  ``np.log(load)``, ``"site"`` for ``C(site)``, plotted by its levels),
+  and each row goes through the formula, interactions included; a term is
+  refused, naming its variables, and so is a covariate whose reference
+  the model cannot supply (one entering only transformed or in an
+  interaction, a categorical variable with no level coded as zeros, a
+  model restored without its data, a time-varying-covariate fit), naming
+  ``reference=``. ``plot_bounds=True`` draws the model's ``cb`` as bands
+  at ``alpha_ci`` (the parametric families; the Cox model has no ``cb``
+  and refuses it); ``x=`` sets the times, by default spanning the data.
+  The competing-risks regressions (``CompetingRisksProportionalHazards``
+  and the Fine-Gray model) draw the cumulative incidence of ``event=``,
+  without bands, and need ``reference`` for every numeric covariate,
+  since they do not keep the covariates they were fitted to. See
+  "Partial-effects plots" in :doc:`Regression Modelling with SurPyval`.
 
 **Changed**
 
+- A dataset's ``repr`` is its size and a table of its first rows (ids,
+  times, flags, counts, truncation, event types, covariates and
+  attributes), the same table as HTML in a notebook; ``summary()`` counts
+  items, weighting rows by ``n``, with the heading in one order
+  ("4 items, 3 rows") for both datasets; an ``ItemHistory`` shows on one
+  line where it fits; event types and ids are plain Python values; and
+  ``dir(data)`` leaves out the likelihoods' split arrays (``x_o``,
+  ``mask_i``, ...; still there) and the deprecated names (#934).
+- ``SurpyvalData.from_json`` reads a file path as well as JSON text (it
+  used to parse a path as text); JSON of data with step time-varying
+  covariates is written rather than refused (#935).
+- ``censor_at`` / ``enter_at`` refuse a date, a duration, text, a list or
+  a cut-off at or before 0 where the data's ages are measured from 0,
+  saying what to give; ``select(ids=)`` on data without ids says so
+  rather than using row numbers a selection would renumber; ``select``
+  keeps the data's order; ``with_covariates([])`` says to give a column
+  or use ``without`` (#932).
+- A fit refused a ``SurpyvalData`` names the reshape that fits without
+  what it cannot take and the model that takes it; a record, a list of
+  records, a ``SurpyvalData``, an ``EventHistoryData``, a DataFrame or a
+  dict given as ``x`` is named with the call that builds the data it was
+  meant for; ``Z`` of the wrong length, and a single record to
+  ``from_items``, are named; ``to_histories`` names the dict form that
+  cannot hold event types (#933).
+- ``ItemLifetime`` refuses a right censored age at or after its right
+  truncation (the dataset refused the row), an id that is missing or
+  unhashable, naming the item; the mixed-id message names one id of each
+  kind (#931).
+
+- **CoxPH.check_ph() is the exact score test of R's cox.zph (survival
+  3.0 and later)**, so its statistics and p-values change (#868). It was
+  Grambsch and Therneau's approximation, as lifelines and R before 3.0
+  compute it, which uses the average covariate variance in place of the
+  variance at each event time. The time scales are now R's as well:
+  ``"km"`` is one minus the left-continuous Kaplan-Meier estimate, and
+  ``"rank"`` ranks every observation's time, censored ones too, not the
+  event times only. The new values match R's ``cox.zph`` to 1e-6 on the
+  stored references (``lung``, ``veteran``, and a set with delayed entry
+  and ties, under Efron and Breslow ties). The differences are small in
+  large samples and can matter in small ones and under heavy ties: on the
+  Rossi data (``fin`` and ``age``) the km p-values move from 0.998, 0.016
+  and 0.054 (GLOBAL) to 0.876, 0.014 and 0.048, and on a tied data set of
+  120 rows a statistic from 1.39 to 3.24, as R gives. The signature, the
+  table (and the module function's dict) and the transforms are as they
+  were; ``diagnose()`` reports the same test on the km and rank scales.
 - On a baseline defined below 0 (``Normal``, ``Gumbel``, ``Logistic``) a
   covariate path must cover every time the answer depends on (#952). The
   value at 0 was taken to hold back to ``-inf``, and values given before
@@ -528,6 +631,11 @@ Unreleased
   ``CauseSpecificMCF`` given covariates as well as event types dropped the
   covariates; ``ProportionalIntensityHPP`` / ``NHPP`` given event types
   and no covariates failed with a raw ``AttributeError``.
+- ``LinkedPathModel``'s ``path``, ``inv_path`` and ``jacobian`` take an
+  array for each parameter, broadcasting with the ages, as the built-in
+  path models do (they applied the links along the wrong axis, and
+  failed); and it pickles (it held its link functions as lambdas).
+
 - **Survival given an age needs the covariate from that age only** under
   proportional hazards and odds, additive hazards and Cox (#962). There
   ``S(x | g)`` depends on the covariate from ``g`` on, the part before it
@@ -768,6 +876,12 @@ Unreleased
   the overflow is the infinite limit the product tends to.
 
 **Performance**
+
+- ``SurpyvalData``'s reshapes (``without``, ``with_covariates``,
+  ``for_event_type``, ``relabel_event_types``, ``select``, ``censor_at``,
+  ``enter_at``) run on its arrays, giving the same data as rebuilding
+  every record: at 50,000 items a reshape takes tens of milliseconds
+  rather than seconds (#932).
 
 - ``qf`` of a limited-failure or zero-inflated model takes one pass fewer
   and no longer evaluates its distribution's quantile at 0 and 1 for the

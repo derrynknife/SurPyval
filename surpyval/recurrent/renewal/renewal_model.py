@@ -9,6 +9,7 @@ from numpy.typing import ArrayLike
 from scipy.optimize import brentq, minimize
 from scipy.stats import chi2
 
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.recurrent.inference import (
     LikelihoodInferenceMixin,
     check_alpha_ci,
@@ -52,6 +53,8 @@ _REPAIR_VALUES: dict[str, dict[str, Any]] = {
         "label": "maximal",
     },
 }
+#: The public name of the repair values (``diagnose()``'s repair checks).
+REPAIR_VALUES = _REPAIR_VALUES
 
 
 @dataclass(frozen=True)
@@ -588,7 +591,10 @@ class UnitStates:
 
 
 class RenewalModel(
-    SerialisableMixin, RecurrenceSimulationMixin, LikelihoodInferenceMixin
+    DiagnoseMixin,
+    SerialisableMixin,
+    RecurrenceSimulationMixin,
+    LikelihoodInferenceMixin,
 ):
     """
     A fitted renewal / imperfect-repair recurrence model.
