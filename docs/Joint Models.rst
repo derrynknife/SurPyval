@@ -383,7 +383,7 @@ How well it recovers the truth
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 A simulation study (run on 2026-10-16 with the script
-``joint_study/study.py`` of #891; this page does not re-run it) fitted 200
+``scripts/studies/joint_recovery/study.py``, whose summaries are beside it; this page does not re-run it) fitted 200
 simulated fleets for each of four paths. Each fleet had 300 pumps read
 monthly for up to two years, a Weibull hazard (``alpha`` 800 days, ``beta``
 2 at a marker of 4) and a marker effect of 0.9, and was fitted with
@@ -417,7 +417,7 @@ Some biases are small but more than two Monte Carlo standard errors from
 - ``beta``: +1.4% (0.6%) for the line and +2.2% (0.9%) for the
   quadratic. The Weibull shape's maximum likelihood estimate is biased
   upward in samples this size; a Weibull fitted alone to 300
-  lifetimes censored at 730 days (2000 samples, ``joint_study/beta_bias.py``)
+  lifetimes censored at 730 days (2000 samples, ``scripts/studies/joint_recovery/beta_bias.py``)
   is +0.7% (0.1%).
 - the exponential's ``sd_b``: -0.9% (0.3%).
 - the log-link model's ``alpha``, ``marker_effect`` and
