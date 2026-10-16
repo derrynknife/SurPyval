@@ -332,8 +332,8 @@ def zero_variance_test(model: Any) -> dict:
     data = getattr(model, "_fit_data", None)
     if data is None:
         raise ValueError(
-            "The test needs the rows the model was fitted to, which a model "
-            "restored with from_dict does not keep; refit it."
+            "The test needs the data (the rows) the model was fitted to, "
+            "which a model restored with from_dict does not keep; refit it."
         )
     out = {
         "df": 1,
@@ -1186,8 +1186,9 @@ def _validate(model: Any) -> None:
     fitter = "CoxFrailty" if cox else frailty_fitter_name(model)
     if getattr(model, "_fit_data", None) is None:
         raise ValueError(
-            "diagnose() needs the rows the model was fitted to, which a "
-            "model restored with from_dict does not keep. Refit it, with "
+            "diagnose() needs the data (the rows) the model was fitted to, "
+            "which a model restored with from_dict does not keep. Refit it, "
+            "with "
             "{}.fit or {}.fit_from_df, and diagnose the fit.".format(
                 fitter, fitter
             )
