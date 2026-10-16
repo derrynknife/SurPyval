@@ -301,3 +301,192 @@ API
 .. autofunction:: surpyval.univariate.regression.proportional_hazards.diagnostics.check_ph
 
 .. autofunction:: surpyval.univariate.regression.proportional_hazards.diagnostics.added_covariate_score_test
+
+Parametric proportional hazards and accelerated failure time
+------------------------------------------------------------
+
+A parametric regression of kind proportional hazards (``WeibullPH``,
+``LogNormalPH``, ..., ``PH(dist)``) or accelerated failure time
+(``WeibullAFT``, ..., ``AFT(dist)``), fitted with ``fit`` or
+``fit_from_df``, has two families of checks: those of its covariates'
+effects (proportional hazards, or one shape for every level) and those of
+its baseline distribution. Every test is a likelihood-ratio test of the
+fitted model against a larger one, with the fit's own likelihood (every
+kind of censoring and truncation it took), so its p-value is exact for
+the model.
+
+The Rossi data again, with a Weibull proportional hazards model:
+
+.. jupyter-execute::
+
+    ph = surv.WeibullPH.fit_from_df(
+        rossi, x_col='week', c_col='censored',
+        Z_cols=['fin', 'age', 'wexp', 'prio'],
+    )
+    d = ph.diagnose()
+    d.table[['check', 'covariates', 'statistic', 'df', 'p', 'verdict']]
+
+.. jupyter-execute::
+
+    for advice in d.advice:
+        print('-', advice, '\n')
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _failed = d.table[d.table['verdict'] == 'fail']
+    assert {c for c in _failed['covariates'] if len(c) == 1} == {('age',)}
+    assert d.advice[0].features == ('WeibullPH.fit_tvc', 'LogNormalAFT.fit')
+
+As for the Cox model, ``age`` breaks proportional hazards: its
+coefficient, fitted in each quarter of the failure times, is near 0 for
+the first half of the arrests and about -0.15 after. The baseline fits:
+no other built-in baseline has a markedly lower AIC, and the Cox-Snell
+residuals lie on the line of the unit exponential.
+
+.. jupyter-execute::
+
+    fig = d.plot(['proportional_hazards', 'baseline_distribution'])
+
+An accelerated failure time model of R's lung cancer data, with a
+log-normal error distribution:
+
+.. jupyter-execute::
+
+    from surpyval.datasets import load_lung
+
+    lung = load_lung().dropna(subset=['ph.ecog'])
+    lung['censored'] = 1 - lung['status']
+    aft = surv.LogNormalAFT.fit_from_df(
+        lung, x_col='time', c_col='censored', Z_cols=['age', 'sex', 'ph.ecog']
+    )
+    d = aft.diagnose()
+    d.table[['check', 'test', 'covariates', 'statistic', 'p', 'verdict']]
+
+.. jupyter-execute::
+
+    for advice in d.advice:
+        print('-', advice, '\n')
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _warned = d.table[d.table['check'] == 'error_distribution']
+    assert (_warned['verdict'] == 'warn').all()
+    assert [a.features for a in d.advice] == [
+        ('WeibullAFT.fit',), ('LogNormalPH.fit',)
+    ]
+
+The log-normal is the wrong error distribution: the early deaths'
+standardised residuals bend away from its line, and the Weibull's AIC is
+29 lower.
+``ph.ecog``'s one patient with a score of 3 is too few to estimate a
+shape for that level, and the row says so. Following the advice:
+
+.. jupyter-execute::
+
+    fig = d.plot('error_distribution')
+
+.. jupyter-execute::
+
+    weibull = surv.WeibullAFT.fit_from_df(
+        lung, x_col='time', c_col='censored', Z_cols=['age', 'sex', 'ph.ecog']
+    )
+    weibull.diagnose().table[['check', 'covariates', 'statistic', 'p', 'verdict']]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _d = weibull.diagnose()
+    assert _d.ok and not _d.advice
+
+The checks of a proportional hazards model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``proportional_hazards``
+    For each covariate, the likelihood-ratio test of a step in its
+    coefficient at the median failure time :math:`\tau`: the model with
+    hazard :math:`h_0(t) \exp(\beta'Z + [t > \tau](g_0 + \gamma Z_j))`
+    against the one with :math:`\gamma = 0` (1 df); and the joint
+    ``GLOBAL`` test of a step in every coefficient (one df per covariate).
+    Both models step the level of the baseline at :math:`\tau` too
+    (:math:`g_0`), so the test does not depend on where a covariate's
+    origin is. Drawn as each covariate's coefficient in each quarter of
+    the failure times, with its Wald interval. For a Weibull or
+    exponential PH model the statistics agree with R's to 1e-6 (a Poisson
+    model of the follow-up split at :math:`\tau`, whose likelihood is the
+    same), with delayed entry too.
+``functional_form``
+    For each covariate with three or more distinct values, the
+    likelihood-ratio test of adding its square (R's ``survreg(... +
+    I(z^2))`` against ``survreg(...)``, to 1e-6), and the martingale
+    residuals against the covariate.
+``influence`` and ``outliers``
+    The screens of the Cox family: the largest one-step ``|dfbeta| / se``
+    of each coefficient (the observed information times each unit's score,
+    R's ``residuals(survreg(...), type = 'dfbeta')``) warns above 1, and
+    a deviance residual beyond the Bonferroni normal cutoff warns.
+``baseline_distribution``
+    Two screens. The AIC of the model against that of each other built-in
+    baseline (``ExponentialPH``, ``NormalPH``, ``WeibullPH``,
+    ``GumbelPH``, ``LogisticPH``, ``LogNormalPH``, ``GammaPH``) refitted
+    to the same data, as ``fit_best`` compares distributions; and against
+    the accelerated failure time model of the same baseline (not for the
+    Weibull and the exponential, whose PH and AFT models are one model).
+    Each warns when the other's AIC is more than 2 lower; the
+    ``statistic`` is the fitted model's AIC less the other's. Drawn as the
+    Cox-Snell residuals on exponential probability paper, and the AIC of
+    each candidate.
+
+The checks of an accelerated failure time model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``error_distribution``
+    The time on the baseline's scale, :math:`e^{\beta'Z} x`, follows the
+    baseline distribution: drawn on its probability paper with the fitted
+    line (for the Weibull and the log-normal, the standardised residuals
+    of R's ``survreg``). The same two AIC screens: the other built-in error
+    distributions (``WeibullAFT``, ``LogNormalAFT``, ...), and the
+    proportional hazards model of the same baseline.
+``common_shape``
+    For each categorical covariate (two to five distinct values, or the
+    dummy columns a formula codes one factor with), the likelihood-ratio
+    test of one shape for every level against a shape per level (the
+    Weibull's ``beta``, the log-normal's ``sigma``, the gamma's
+    ``alpha``; ``L - 1`` df for ``L`` levels), which is R's ``survreg(...
+    + strata(g))`` against ``survreg(...)`` for the Weibull and the
+    log-normal (to 1e-6, with interval censoring too); drawn as each
+    level's standardised residuals on the baseline's paper. The
+    exponential has no shape to test, and a level with fewer than two
+    distinct failure times has too few to estimate one (the test is then
+    not computed, and warns).
+``functional_form``
+    As for the proportional hazards model, of log time.
+
+The advice: a time-varying effect (``fit_tvc``), an AFT model or, for a
+binary or categorical covariate, a stratified Cox model for a covariate
+that breaks proportional hazards; each level fitted on its own, or a Cox
+model stratified on it, for a shape that varies by level; a transform or
+bins in a formula for a covariate that is not linear; the better baseline,
+or the PH or AFT model, that the AIC screens found; and a look at an
+influential or badly predicted row.
+
+What these checks support
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Every kind of censoring, delayed entry and right truncation, counts
+(``n``), ``center=True``, formulas, and any baseline with the
+``exp(beta'Z)`` link (``PH(dist)``, ``AFT(dist)``; the AIC comparison
+then sets the fitted baseline against the built-in ones). The martingale
+and deviance residuals are of the exact and right-censored rows that are
+not right truncated (the report says how many it left out); the tests use
+every row. ``diagnose()`` refuses, saying what to do: a fit to
+time-varying covariates (``fit_tvc``, not yet supported, #869), a
+custom covariate link, a model restored with ``from_dict``, one with an
+aliased coefficient, and one whose fit is not a verified maximum (the
+tests compare it with larger models). The accelerated life models (#871)
+and the proportional odds and additive hazards models (#870) have their
+own families.

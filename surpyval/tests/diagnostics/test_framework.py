@@ -339,16 +339,6 @@ REG = "surpyval.univariate.regression."
     [
         (
             REG + "ParametricRegressionModel",
-            {"kind": "Proportional Hazard"},
-            869,
-        ),
-        (
-            REG + "ParametricRegressionModel",
-            {"kind": "Accelerated Failure Time"},
-            869,
-        ),
-        (
-            REG + "ParametricRegressionModel",
             {"kind": "Proportional Odds"},
             870,
         ),
@@ -403,8 +393,6 @@ def test_families_not_built_yet_refuse_naming_their_issue(
 
 def test_a_real_fit_of_a_pending_family_refuses(rossi):
     x, c = rossi["week"].values, rossi["censored"].values
-    with pytest.raises(NotImplementedError, match="not yet available.*#869"):
-        sp.WeibullAFT.fit(x, rossi[["fin"]].values, c=c).diagnose()
     with pytest.raises(NotImplementedError, match="#875"):
         sp.Weibull.fit(x, c=c).diagnose()
 

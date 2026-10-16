@@ -21,6 +21,7 @@ EXPECTED_SOURCES = {
     "r_npsurv",
     "r_fitdistrplus",
     "r_frailty",
+    "r_ph_aft",
     "py_lifelines",
     "py_sksurv",
 }

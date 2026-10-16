@@ -32,6 +32,26 @@ Unreleased
   ``added_covariate_score_test`` in ``proportional_hazards.diagnostics``,
   R's ``coxph(..., init = c(coef(fit), 0), iter.max = 0)$score``. Both
   agree with R to 1e-6.
+- The parametric proportional hazards and accelerated failure time
+  families of ``diagnose()`` (#869), for ``WeibullPH``, ..., ``PH(dist)``
+  and ``WeibullAFT``, ..., ``AFT(dist)`` fitted with ``fit`` /
+  ``fit_from_df``. Every test is a likelihood-ratio test against a larger
+  model, with the fit's own likelihood: for a PH model, a step in each
+  coefficient (and in the baseline) at the median failure time, per
+  covariate and GLOBAL, drawn as the coefficient in each quarter of the
+  failures; a covariate's square; the influence and outlier screens of the
+  Cox family; and the AIC against the other built-in baselines and the AFT
+  model of the same baseline, with the Cox-Snell residuals on exponential
+  paper. For an AFT model, the standardised residuals on the baseline's
+  probability paper with the same AIC screens; one shape for every level of
+  a categorical covariate or formula factor against a shape per level; and
+  a covariate's square. Advice names a time-varying effect (``fit_tvc``),
+  an AFT model or a stratified Cox model, separate fits per level, a
+  formula transform, and the better baseline or kind of model. The
+  statistics agree with R's ``survreg`` (and, for the step test, a Poisson
+  model of the split follow-up) to 1e-6 (``scripts/reference/
+  reference_r_ph_aft.R``). Time-varying fits and custom links are refused
+  for now.
 - The data utilities live on ``SurpyvalData``.
   ``SurpyvalData.from_observations(observed=..., right_censored=...,
   left_censored=..., interval_censored=..., left_truncation=...,

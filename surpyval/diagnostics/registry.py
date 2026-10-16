@@ -21,7 +21,10 @@ from .report import COLUMNS, VERDICTS, Advice, Diagnosis, make_table, verdict
 
 #: The modules that define and register a family, imported (once) the
 #: first time a model is diagnosed. A new family adds its module here.
-FAMILY_MODULES: tuple[str, ...] = ("surpyval.diagnostics.cox",)
+FAMILY_MODULES: tuple[str, ...] = (
+    "surpyval.diagnostics.cox",
+    "surpyval.diagnostics.ph_aft",
+)
 
 
 class PlotOptions(NamedTuple):
@@ -180,8 +183,8 @@ def register(family: Family) -> Family:
     Examples
     --------
     >>> from surpyval.diagnostics.registry import families
-    >>> [f.name for f in families()]
-    ['Cox proportional hazards']
+    >>> "Cox proportional hazards" in [f.name for f in families()]
+    True
     """
     names = {c.name for c in family.checks}
     if len(names) != len(family.checks):
@@ -253,15 +256,6 @@ _CR = "surpyval.univariate.competing_risks."
 #: have ``diagnose()``, which refuses until the family is registered (a
 #: registered family that applies is found first).
 PENDING: tuple[Pending, ...] = (
-    Pending(
-        "parametric proportional hazards and accelerated failure time "
-        "models",
-        869,
-        _instance_of(
-            _REG + "ParametricRegressionModel",
-            kind=("Proportional Hazard", "Accelerated Failure Time"),
-        ),
-    ),
     Pending(
         "proportional odds and additive hazards models",
         870,
