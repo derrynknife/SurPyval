@@ -70,6 +70,18 @@ Unreleased
   failure; a time-varying effect through ``fit_tvc`` for an additive one.
   Left- or interval-censored and right-truncated parametric fits are
   refused for now.
+- The accelerated life family of ``diagnose()`` (#871), for
+  ``AcceleratedLife(dist, life_model)`` fits: a common shape at every
+  stress level, by the likelihood-ratio test of each level fitted alone
+  against one shared shape, with a probability plot of the levels; the
+  life-stress relationship, by the likelihood-ratio (lack-of-fit) test of
+  the life model against a separate life at each level, with a plot of
+  the levels' lives against stress; every built-in life model for the
+  number of stresses refitted to the same data and compared by AIC (a
+  model better by more than 2 warns); and a warning for a stress tested
+  at two levels or fewer. Advice names the better life model, separate
+  fits of the levels, or more stress levels. Both tests agree with R's
+  ``survreg`` to 1e-5.
 - The data utilities live on ``SurpyvalData``.
   ``SurpyvalData.from_observations(observed=..., right_censored=...,
   left_censored=..., interval_censored=..., left_truncation=...,

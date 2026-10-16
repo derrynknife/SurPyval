@@ -25,6 +25,7 @@ FAMILY_MODULES: tuple[str, ...] = (
     "surpyval.diagnostics.cox",
     "surpyval.diagnostics.ph_aft",
     "surpyval.diagnostics.odds_additive",
+    "surpyval.diagnostics.accelerated_life",
 )
 
 
@@ -257,13 +258,6 @@ _CR = "surpyval.univariate.competing_risks."
 #: have ``diagnose()``, which refuses until the family is registered (a
 #: registered family that applies is found first).
 PENDING: tuple[Pending, ...] = (
-    Pending(
-        "accelerated life (life-stress) models",
-        871,
-        _instance_of(
-            _REG + "ParametricRegressionModel", kind="Accelerated Life"
-        ),
-    ),
     Pending("frailty models", 872, _instance_of(_REG + "FrailtyModel")),
     Pending("frailty models", 872, _instance_of(_REG + "CoxFrailtyModel")),
     Pending(

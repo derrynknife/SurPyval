@@ -643,3 +643,160 @@ refit the model once per covariate and once for the ``GLOBAL`` row, which
 for a parametric additive hazards model can take some seconds.
 
 .. autofunction:: surpyval.diagnostics.odds_additive.aalen_cumulative_coefficients
+
+Accelerated life (life-stress) models
+-------------------------------------
+
+An accelerated life model, ``AcceleratedLife(dist, life_model).fit(x,
+Z)``, assumes two things about how failure times change with stress: the
+distribution keeps **one shape at every stress level** (only its life
+moves), and its life **follows the life model** :math:`L(Z)` (Arrhenius,
+Eyring, the inverse power law, ...) from one level to the next. A test run
+at a few stress levels can check both, because the distribution can also
+be fitted at each level on its own. Neither can be checked at the use
+stress, so the report also looks at what the test can say about the
+extrapolation there.
+
+Nelson's insulating fluid (*Accelerated Testing*, 1990) broke down under
+seven voltages, from 26 to 38 kV; the times are in minutes:
+
+.. jupyter-execute::
+
+    import numpy as np
+    import surpyval as surv
+    from surpyval import life_models
+
+    fluid = {
+        26: [5.79, 1579.52, 2323.70],
+        28: [68.85, 108.29, 110.29, 426.07, 1067.60],
+        30: [7.74, 17.05, 20.46, 21.02, 22.66, 43.40, 47.30, 139.07,
+             144.12, 175.88, 194.90],
+        32: [0.27, 0.40, 0.69, 0.79, 2.75, 3.91, 9.88, 13.95, 15.93, 27.80,
+             53.24, 82.85, 89.29, 100.58, 215.10],
+        34: [0.19, 0.78, 0.96, 1.31, 2.78, 3.16, 4.15, 4.67, 4.85, 6.50,
+             7.35, 8.01, 8.27, 12.06, 31.75, 32.52, 33.91, 36.71, 72.89],
+        36: [0.35, 0.59, 0.96, 0.99, 1.69, 1.97, 2.07, 2.58, 2.71, 2.90,
+             3.67, 3.99, 5.35, 13.77, 25.50],
+        38: [0.09, 0.39, 0.47, 0.73, 0.74, 1.13, 1.40, 2.38],
+    }
+    x = np.concatenate([np.array(v) for v in fluid.values()])
+    kv = np.concatenate([[float(k)] * len(v) for k, v in fluid.items()])
+
+    weibull = surv.AcceleratedLife(surv.Weibull, life_models.Power).fit(x, kv)
+    d = weibull.diagnose()
+    d
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = d.table
+    _shape = _t[_t['check'] == 'common_shape'].iloc[0]
+    _lof = _t[_t['check'] == 'life_stress'].iloc[0]
+    assert d.ok and not d.advice
+    assert (round(_shape['statistic'], 2), _shape['df'], round(_shape['p'], 3)) == (8.79, 6, 0.185)
+    assert (round(_lof['statistic'], 2), _lof['df'], round(_lof['p'], 2)) == (2.34, 5, 0.8)
+    _aic = _t[_t['check'] == 'life_model_comparison'].set_index('life_model')['statistic']
+    assert round(_aic['Power'] - _aic['GeneralLogLinear'], 2) == 0.56
+    assert round(weibull.params[1], 3) == 0.777 and round(weibull.params[3], 1) == -17.7
+
+The Weibull with the inverse power law (Nelson's model: shape 0.777,
+exponent -17.7) passes. The seven shapes do not differ more than chance
+allows (p = 0.185), and the lives at the seven voltages follow the power
+law (p = 0.80). Of the other life models, the exponential law in the
+voltage (``GeneralLogLinear``) has an AIC lower by 0.56 -- no substantial
+difference -- and the linear law fits far worse. These two
+likelihood-ratio tests agree with R's ``survreg`` to 1e-5.
+
+With the LogNormal instead, the shape (``sigma``) is not common to the
+levels:
+
+.. jupyter-execute::
+
+    lognormal = surv.AcceleratedLife(surv.LogNormal, life_models.Power).fit(x, kv)
+    d_ln = lognormal.diagnose()
+    print(d_ln.advice[0])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _shape = d_ln.table[d_ln.table['check'] == 'common_shape'].iloc[0]
+    assert _shape['verdict'] == 'fail' and round(_shape['p'], 3) == 0.010
+    assert d_ln.advice[0].features == ('AcceleratedLife', 'LogNormal.fit')
+
+The plots show what the tests test: a probability plot of every level,
+each with its own fit (solid) and the model's (dashed), whose solid lines
+are parallel when the shape is common; and each level's life against the
+stress, with the life model's curve and the best alternative's:
+
+.. jupyter-execute::
+
+    fig = d.plot()
+
+The checks
+~~~~~~~~~~
+
+A *stress level* is a distinct row of ``Z``. A level enters the two tests
+when it has at least two failures (and, for the shape test, when the
+distribution fitted to it alone reaches a maximum); a note names any left
+out.
+
+``common_shape``
+    The likelihood-ratio test of each level fitted on its own (its own
+    shape and life) against one shape shared by every level, each keeping
+    its own life: :math:`2(\sum_i \ell_i - \ell_0)` on :math:`(k - 1)q`
+    degrees of freedom, for :math:`k` levels and :math:`q` free shape
+    parameters (a parameter the fit held with ``fixed`` stays held). The
+    life model plays no part in it. A distribution with no shape (the
+    Exponential) has no row. With few failures a level (ten or so), the
+    test rejects a common shape somewhat more often than ``alpha``: the
+    maximum likelihood estimate of a shape is biased in small samples, so
+    read a failure near ``alpha`` with that in mind.
+``life_stress``
+    The likelihood-ratio test of the life model against a separate life
+    at each level (with the common shape): :math:`2(\ell_0 - \ell)` on
+    :math:`k - m` degrees of freedom, :math:`m` the life model's free
+    parameters -- the lack-of-fit test of the relationship. With no more
+    levels than parameters (two levels and a two-parameter life model)
+    the model passes through every level's life and there is nothing to
+    test: the row warns and says so.
+``life_model_comparison``
+    A screen: each built-in life model for the model's number of stresses
+    (one stress: ``Power``, ``Exponential`` -- the Arrhenius model --,
+    ``Eyring``, ``InverseEyring``, ``Linear``, ``GeneralLogLinear``; two:
+    ``DualPower``, ``DualExponential``, ``PowerExponential``,
+    ``GeneralLogLinear``), refitted with the same distribution to the same
+    data, with its AIC. A model with an AIC lower than the fitted one's by
+    more than 2 warns. ``InversePower`` and ``InverseExponential`` are
+    ``Power`` and ``Exponential`` under another parametrisation, with the
+    same likelihood, so only one of each pair is compared. A life model
+    is a physical claim as well as a curve: prefer a better AIC only where
+    its physics suits the stress.
+``extrapolation``
+    A screen: for each stress column, the number of levels tested. Two or
+    fewer warn: a two-parameter life model then passes through each
+    level's life, so nothing in the data checks its form, and the life
+    at the use stress rests on the form alone.
+
+With a continuous stress (each unit at its own stress) no level has two
+failures: the two tests cannot be computed, their rows warn and say so,
+and the comparison of life models, which needs no levels, still runs.
+Group the stresses into levels to test them.
+
+The advice: for a shape that differs between levels, to look for a
+different failure mode at the extreme levels and refit without them, and
+to fit each level on its own (``Weibull.fit``, say) to see the shapes; for
+a life model that does not follow the levels, the best alternative by AIC
+(``AcceleratedLife(dist, life_models.<name>)``), or, if none is better, a
+life model of your own (a ``LifeModel`` subclass) or a second stress; for
+a better alternative alone, to refit with it and compare the two models'
+lives at the use stress; and for two levels, to test at three or more.
+SurPyval has no accelerated-test planning tool, so the advice suggests
+simulating a candidate plan with the fitted model's ``random(size, Z=...)``
+and refitting, to see how wide the bounds (``cb``) at the use stress
+would be.
+
+``diagnose()`` refuses a model restored with ``from_dict`` (it has no
+data) and one whose fit has no finite maximum. Every kind of censoring,
+truncation, counts and a ``fixed`` parameter are supported.
