@@ -448,14 +448,20 @@ The assumption is checked with the **Schoenfeld residuals**. At each event time 
     r_k = Z_{(k)} - \bar Z(t_k), \qquad
     \bar Z(t_k) = \frac{\sum_{j \in R_k} n_j e^{\hat\beta' Z_j} Z_j}{\sum_{j \in R_k} n_j e^{\hat\beta' Z_j}},
 
-(for an Efron fit the mean is averaged over the Efron-reduced risk sets of the tie group, so the residuals are consistent with the likelihood that was maximised). Grambsch and Therneau showed that, if the coefficient is really a function of time :math:`\beta_j(t)`, the **scaled** residual :math:`r^*_k = \hat\beta + d\, V r_k` — with :math:`d` the number of failures and :math:`V = \mathcal{I}^{-1}` the coefficient covariance — has expectation approximately :math:`\beta(t_k)`. Plotting :math:`r^*_k` against time is therefore a picture of how the coefficient changes, centred on the fitted constant. For a time transform :math:`g` (``transform=`` in ``check_ph``: ``"km"``, the default, uses :math:`g(t) = 1 - \hat S_{KM}(t)` from a Kaplan-Meier fitted to all the data; ``"rank"`` uses average ranks; ``"identity"`` and ``"log"`` use :math:`t` and :math:`\log t`), let :math:`u = \sum_k (g_k - \bar g)\, r_k` and :math:`s = \sum_k (g_k - \bar g)^2`. Then
+(for an Efron fit the mean is averaged over the Efron-reduced risk sets of the tie group, so the residuals are consistent with the likelihood that was maximised). Grambsch and Therneau showed that, if the coefficient is really a function of time :math:`\beta_j(t)`, the **scaled** residual :math:`r^*_k = \hat\beta + d\, V r_k` — with :math:`d` the number of failures and :math:`V = \mathcal{I}^{-1}` the coefficient covariance — has expectation approximately :math:`\beta(t_k)`. Plotting :math:`r^*_k` against time is therefore a picture of how the coefficient changes, centred on the fitted constant. For a time transform :math:`g` (``transform=`` in ``check_ph``: ``"km"``, the default, uses :math:`g(t) = 1 - \hat S_{KM}(t^-)`, one minus the left-continuous Kaplan-Meier estimate from all the data; ``"rank"`` the average rank of each time among all the observations; ``"identity"`` and ``"log"`` use :math:`t` and :math:`\log t`), the test asks whether the time-dependent term :math:`Z_j\, g(t)` belongs in the model. At the fitted :math:`\hat\beta`, with a zero coefficient for the added term, its score is :math:`U_j = \sum_k (g_k - \bar g)\, r_{kj}`, and with :math:`W_k` the risk-set variance of :math:`Z` summed over the failures at :math:`t_k`, the information of the enlarged model (covariates :math:`Z` and :math:`Z g(t)`) is
 
 .. math::
 
-    T_{\text{global}} = \frac{d}{s}\, u' V u \sim \chi^2_p, \qquad
-    T_j = \frac{d\, (V u)_j^2}{s\, V_{jj}} \sim \chi^2_1,
+    \mathcal{I} = \sum_k \begin{pmatrix} W_k & g_k W_k \\ g_k W_k & g_k^2 W_k \end{pmatrix}.
 
-the global and per-covariate statistics of R's ``cox.zph`` and lifelines, which surpyval reproduces. The ``"km"`` transform is the usual choice: it spreads the failures evenly and is not dominated by a few long times. The per-covariate tests are screens; with several covariates, look at the global test and at the plots.
+The score test :math:`T = (0, U)'\, \mathcal{I}^{-1} (0, U)` of adding every term is :math:`\chi^2_p` (the ``GLOBAL`` row), and the test of adding :math:`Z_j g(t)` alone is :math:`\chi^2_1`: the tests of R's ``cox.zph`` since version 3.0, which surpyval reproduces. Grambsch and Therneau's original form replaces each :math:`W_k` by the average variance, :math:`\mathcal{I}_{11} / d`, which gives, with :math:`u = \sum_k (g_k - \bar g)\, r_k` and :math:`s = \sum_k (g_k - \bar g)^2`,
+
+.. math::
+
+    T_{\text{global}} \approx \frac{d}{s}\, u' V u, \qquad
+    T_j \approx \frac{d\, (V u)_j^2}{s\, V_{jj}};
+
+lifelines and R before version 3.0 compute these, and SurPyval did until v0.24. They agree closely in large samples and can differ in small ones, most under heavy ties. The ``"km"`` transform is the usual choice: it spreads the failures evenly and is not dominated by a few long times. The per-covariate tests are screens; with several covariates, look at the global test and at the plots.
 
 When the test rejects, the usual remedies are to **stratify** on the offending covariate (if it is a nuisance), to let its effect change over time by including an interaction with a function of time as a time-varying covariate, or to move to a family whose effect is not constant in time (AFT, proportional odds).
 

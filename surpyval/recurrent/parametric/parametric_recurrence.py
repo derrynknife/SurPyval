@@ -4,6 +4,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 from surpyval import plotting
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.recurrent import diagnostics
 from surpyval.recurrent.inference import (
     LikelihoodInferenceMixin,
@@ -39,7 +40,10 @@ _FITTED_BY = {
 
 
 class ParametricRecurrenceModel(
-    SerialisableMixin, RecurrenceSimulationMixin, LikelihoodInferenceMixin
+    DiagnoseMixin,
+    SerialisableMixin,
+    RecurrenceSimulationMixin,
+    LikelihoodInferenceMixin,
 ):
     """
     A class for holding the parameters, data, and useful methods for a

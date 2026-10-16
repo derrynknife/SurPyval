@@ -7,6 +7,7 @@ import autograd.numpy as np
 import numpy.typing as npt
 
 from surpyval import plotting
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
@@ -86,6 +87,7 @@ class ParametricRegressionModel(
     InferenceMixin,
     ConcordanceMixin,
     InformationCriteriaMixin,
+    DiagnoseMixin,
     SerialisableMixin,
 ):
     """

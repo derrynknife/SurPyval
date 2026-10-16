@@ -143,6 +143,13 @@ so on.
        Gaussian, independence), with censored and truncated margins.
      - :doc:`Multivariate Analysis` /
        :doc:`Multivariate Modelling with SurPyval`
+   * - Test planning
+     - Planning tests before they are run: reliability and MTBF
+       demonstration tests (fixed-length and sequential), the units and
+       test length to estimate a B-life to a given precision, optimum and
+       compromise accelerated life test plans, and the sample size and
+       power of a log-rank comparison.
+     - :doc:`Test Planning with SurPyval`
 
 Almost every fitted model can be saved to a dictionary or a JSON file and
 restored with ``surv.from_dict`` or ``surv.from_json`` (see :doc:`Conventions`
@@ -281,12 +288,14 @@ Contents:
    Non-Parametric SurPyval Modelling
    Parametric SurPyval Modelling
    Regression Modelling with SurPyval
+   Model Diagnostics
    applications
    Competing Risks SurPyval Modelling
    Recurrent Event Modelling with SurPyval
    Recurrent Event Regression Modelling with SurPyval
    Degradation Modelling with SurPyval
    Multivariate Modelling with SurPyval
+   Test Planning with SurPyval
 
 .. toctree::
    :maxdepth: 2
