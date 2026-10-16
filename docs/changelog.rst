@@ -519,6 +519,31 @@ Unreleased
     lifelines' ``sample_size_necessary_under_cph`` and
     ``power_under_cph``).
 
+- Partial-effects plots (#876): ``model.plot_partial_effects(covariate,
+  values)`` draws a regression's survival curve (``on="ff"`` or ``"Hf"``
+  for the others) at each of ``values`` of one covariate, the other
+  covariates held at reference values, and returns the axes, each curve
+  labelled ``"covariate = value"``. For the Cox model and the PH, AFT,
+  PO, AH and accelerated life families. A covariate not plotted is held
+  at its count-weighted mean over the fitted rows (the ``center`` of a
+  ``center=True`` fit), or, for a categorical variable of a formula, at
+  its reference level; ``reference={name: value}`` sets any of them. A
+  formula's covariate is a variable of the formula (``"load"`` for
+  ``np.log(load)``, ``"site"`` for ``C(site)``, plotted by its levels),
+  and each row goes through the formula, interactions included; a term is
+  refused, naming its variables, and so is a covariate whose reference
+  the model cannot supply (one entering only transformed or in an
+  interaction, a categorical variable with no level coded as zeros, a
+  model restored without its data, a time-varying-covariate fit), naming
+  ``reference=``. ``plot_bounds=True`` draws the model's ``cb`` as bands
+  at ``alpha_ci`` (the parametric families; the Cox model has no ``cb``
+  and refuses it); ``x=`` sets the times, by default spanning the data.
+  The competing-risks regressions (``CompetingRisksProportionalHazards``
+  and the Fine-Gray model) draw the cumulative incidence of ``event=``,
+  without bands, and need ``reference`` for every numeric covariate,
+  since they do not keep the covariates they were fitted to. See
+  "Partial-effects plots" in :doc:`Regression Modelling with SurPyval`.
+
 **Changed**
 
 - **CoxPH.check_ph() is the exact score test of R's cox.zph (survival
