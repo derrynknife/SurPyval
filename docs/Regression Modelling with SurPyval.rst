@@ -4651,3 +4651,6 @@ trees — and all of them restore through ``surpyval.from_dict``:
 
 A restored tree or forest is a predictor only: it keeps no training data and
 cannot be re-fitted.
+
+Proportional hazards, accelerated failure time and accelerated life models also
+run in the browser in `Reliafy <https://reliafy.com/reference/regression>`__.

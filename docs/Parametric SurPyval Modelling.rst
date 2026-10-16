@@ -2673,3 +2673,6 @@ This shows the importance of inference when working with truncated and censored 
     parameter values far from the fit can overflow and produce implausible
     bounds. Take care when using ``cb`` with a custom distribution, and check
     the bounds against the estimate as above.
+
+The same analysis runs in the browser in
+`Reliafy <https://reliafy.com/guides/fit-your-first-model>`__.

@@ -36,6 +36,10 @@ Installation
 
 To work on SurPyval itself, see :doc:`Contributing`.
 
+`Reliafy <https://reliafy.com>`__ is a hosted, browser-based app built on
+SurPyval, for fitting life distributions, regression and recurrent-event
+models to censored data without writing code.
+
 Where to start
 --------------
 
