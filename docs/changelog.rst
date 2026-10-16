@@ -6,6 +6,70 @@ Unreleased
 
 **Added**
 
+- The data classes read and write DataFrames (#936):
+  ``SurpyvalData.from_dataframe(df, x_col=..., c_col=... | event_col=...,
+  n_col=, xl_col= / xr_col=, tl_col=, tr_col=, i_col=, e_col=, Z_cols=,
+  attribute_cols=, unit=)`` reads a table with one row per item, naming
+  its columns as every DataFrame entry point does, with ``event_col`` for
+  a status column (1 or True where the item failed) and blanks in
+  ``xl_col`` / ``xr_col`` for an end not known;
+  ``EventHistoryData.from_dataframe(df, i_col=, x_col=, ..., end_col=,
+  ends={item: age})`` reads a log with one row per event, each item's end
+  of observation as a ``c = 1`` row, a column or ``ends=`` (which also
+  gives the items that never failed); ``to_dataframe()`` on both gives
+  the rows back. ``SurpyvalData(..., ids=)`` names rows.
+- Dict and JSON forms for every data class (#935): ``to_dict`` /
+  ``from_dict`` and ``to_json`` / ``from_json`` on ``SurpyvalData``,
+  ``EventHistoryData``, ``ItemLifetime`` and ``ItemHistory``, tagged with
+  their ``"class"``; ``from_json`` reads JSON text or a file path, and
+  ``surpyval.from_json`` / ``surpyval.from_dict`` read a dataset or record
+  as they read a model. Step schedules of time-varying covariates, tuple
+  ids and event types, attributes, states and the unit go with them (a
+  ``CovariatePath`` is refused).
+- Attributes on the records (#938): ``attributes={name: value}`` on
+  ``ItemLifetime`` and ``ItemHistory``, what describes an item without
+  being fitted (a site, a batch, an arm: any values), read back by
+  ``item.attribute(name)``, carried through the datasets (``from_items``,
+  ``from_dataframe(attribute_cols=)``, slicing, every reshape, JSON,
+  ``to_dataframe``, the repr and summary) and refused by no fit.
+  ``data.groupby(name)`` splits the data by an attribute or a covariate
+  into ``{level: dataset}``; ``select(where={name: value})`` keeps one
+  group; ``without("attributes")`` drops them.
+- Updating a dataset with new records (#939): ``data.update(records,
+  counts={id: k})`` takes updated records back in, replacing the item
+  with the same id and adding new ones; ``data.drop(ids)`` removes items;
+  ``data.extend_running(age | {id: age} | function of the record)`` moves
+  every item still running on to a later age.
+- Cut-offs per item (#937): ``censor_at`` and ``enter_at`` take
+  ``{id: age}`` (the items left out are kept as they are) or a function of
+  each item's record giving its age, for a study that ends on one date,
+  a different age for each item.
+- Predictions from item records (#940): a record, a list of records or a
+  dataset stands as ``Z`` in a regression model's ``sf``, ``ff``, ``hf``,
+  ``Hf``, ``df``, ``qf`` and ``mean``, its covariates read by name where
+  the model's are named; every lifetime model has
+  ``predict(items, times=, what=, given=, p=)``, a DataFrame indexed by
+  id, one row per item and time, with ``given="age"`` for the predictions
+  given each running item's current age (``nan`` for one that has
+  failed).
+- Units on the data classes (#945): ``unit=`` on the records,
+  ``SurpyvalData``, ``EventHistoryData``, ``from_observations``,
+  ``from_items`` (from its records, which must agree), ``from_histories``,
+  ``from_dataframe`` and ``handle_xicn``, kept through every reshape,
+  slice, ``to_first_events``, ``to_gaps`` and the JSON form, shown in the
+  summary and repr, and given to the model by ``fit(data)``; a ``unit=``
+  at the fit that differs from the data's is refused, as are records in
+  different units.
+- ``SurpyvalData.event_types``, ``n_items`` and ``records()`` (a
+  generator of the records) on both datasets, ``ItemLifetime.has_event_types``
+  (#934); ``without`` takes a list of parts, ``for_event_type`` several
+  types taken as one, ``select(ids=)`` one id (#932).
+- A shared keyword check on the record constructors, ``from_items``,
+  ``from_observations`` and ``from_histories`` (#931): an unknown
+  argument is refused naming the one that was meant (``tl`` ->
+  ``left_truncation=``, ``e`` -> ``event_type=``, ...) or the closest
+  accepted name.
+
 - ``model.diagnose(alpha=0.05, columns=None)`` on every regression model
   and fitted distribution (#867): the checks its assumptions call for, as a report -- ``table``
   (one row per check: test, statistic, ``p``, verdict and covariates),
@@ -521,6 +585,35 @@ Unreleased
 
 **Changed**
 
+- A dataset's ``repr`` is its size and a table of its first rows (ids,
+  times, flags, counts, truncation, event types, covariates and
+  attributes), the same table as HTML in a notebook; ``summary()`` counts
+  items, weighting rows by ``n``, with the heading in one order
+  ("4 items, 3 rows") for both datasets; an ``ItemHistory`` shows on one
+  line where it fits; event types and ids are plain Python values; and
+  ``dir(data)`` leaves out the likelihoods' split arrays (``x_o``,
+  ``mask_i``, ...; still there) and the deprecated names (#934).
+- ``SurpyvalData.from_json`` reads a file path as well as JSON text (it
+  used to parse a path as text); JSON of data with step time-varying
+  covariates is written rather than refused (#935).
+- ``censor_at`` / ``enter_at`` refuse a date, a duration, text, a list or
+  a cut-off at or before 0 where the data's ages are measured from 0,
+  saying what to give; ``select(ids=)`` on data without ids says so
+  rather than using row numbers a selection would renumber; ``select``
+  keeps the data's order; ``with_covariates([])`` says to give a column
+  or use ``without`` (#932).
+- A fit refused a ``SurpyvalData`` names the reshape that fits without
+  what it cannot take and the model that takes it; a record, a list of
+  records, a ``SurpyvalData``, an ``EventHistoryData``, a DataFrame or a
+  dict given as ``x`` is named with the call that builds the data it was
+  meant for; ``Z`` of the wrong length, and a single record to
+  ``from_items``, are named; ``to_histories`` names the dict form that
+  cannot hold event types (#933).
+- ``ItemLifetime`` refuses a right censored age at or after its right
+  truncation (the dataset refused the row), an id that is missing or
+  unhashable, naming the item; the mixed-id message names one id of each
+  kind (#931).
+
 - **CoxPH.check_ph() is the exact score test of R's cox.zph (survival
   3.0 and later)**, so its statistics and p-values change (#868). It was
   Grambsch and Therneau's approximation, as lifelines and R before 3.0
@@ -905,6 +998,12 @@ Unreleased
   the overflow is the infinite limit the product tends to.
 
 **Performance**
+
+- ``SurpyvalData``'s reshapes (``without``, ``with_covariates``,
+  ``for_event_type``, ``relabel_event_types``, ``select``, ``censor_at``,
+  ``enter_at``) run on its arrays, giving the same data as rebuilding
+  every record: at 50,000 items a reshape takes tens of milliseconds
+  rather than seconds (#932).
 
 - ``qf`` of a limited-failure or zero-inflated model takes one pass fewer
   and no longer evaluates its distribution's quantile at 0 and 1 for the
