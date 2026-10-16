@@ -64,7 +64,9 @@ class Context:
     check (all of them unless ``diagnose(columns=...)`` chose), and
     ``notes`` a list a check may append to. :meth:`cached` computes a
     quantity once per report (residuals that several checks and the plots
-    share).
+    share). ``n_boot`` and ``random_state`` are ``diagnose()``'s, for a
+    family whose tests resample (``None``: the family's default size, and
+    numpy's global generator).
     """
 
     model: Any
@@ -72,6 +74,8 @@ class Context:
     names: list[str]
     columns: list[int]
     notes: list[str] = field(default_factory=list)
+    n_boot: "int | None" = None
+    random_state: Any = None
     _cache: dict = field(default_factory=dict, repr=False)
 
     def cached(self, key: str, compute: Callable[[], Any]) -> Any:
@@ -368,11 +372,18 @@ def _covariate_names(model: Any) -> list[str]:
 
 
 def diagnose(
-    model: Any, alpha: float = 0.05, columns: "Sequence[str] | None" = None
+    model: Any,
+    alpha: float = 0.05,
+    columns: "Sequence[str] | None" = None,
+    *,
+    n_boot: "int | None" = None,
+    random_state: Any = None,
 ) -> Diagnosis:
     """
     Run the checks of ``model``'s family and report: the engine behind
     every model's ``diagnose()`` (see the method for the arguments).
+    ``n_boot`` and ``random_state`` reach the family's checks on the
+    :class:`Context`; a family whose tests do not resample ignores them.
 
     Examples
     --------
@@ -389,7 +400,14 @@ def diagnose(
     if family.validate is not None:
         family.validate(model)
     names = (family.covariates or _covariate_names)(model)
-    ctx = Context(model, alpha, names, _resolve_columns(columns, names))
+    ctx = Context(
+        model,
+        alpha,
+        names,
+        _resolve_columns(columns, names),
+        n_boot=n_boot,
+        random_state=random_state,
+    )
 
     rows: list[dict] = []
     for check in family.checks:

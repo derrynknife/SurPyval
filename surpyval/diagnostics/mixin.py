@@ -7,7 +7,7 @@ imports nothing heavy and adding a family never touches a model class.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Any, Sequence
 
 if TYPE_CHECKING:  # pragma: no cover
     from .report import Diagnosis
@@ -17,7 +17,12 @@ class DiagnoseMixin:
     """Gives a fitted model :meth:`diagnose`."""
 
     def diagnose(
-        self, alpha: float = 0.05, columns: "Sequence[str] | None" = None
+        self,
+        alpha: float = 0.05,
+        columns: "Sequence[str] | None" = None,
+        *,
+        n_boot: "int | None" = None,
+        random_state: Any = None,
     ) -> "Diagnosis":
         """
         Check the model's assumptions, fit and influential points, and
@@ -48,6 +53,14 @@ class DiagnoseMixin:
             (the DataFrame or formula columns, else ``coef_0``, ...); all
             of them by default. A joint (``GLOBAL``) test still covers
             every covariate.
+        n_boot : int, optional
+            For the families whose tests resample (a univariate
+            distribution's bootstrap goodness-of-fit tests): the number of
+            bootstrap refits; ``None`` is the family's default. Other
+            families ignore it.
+        random_state : optional
+            The seed of those resamples (SurPyval's one seed rule:
+            ``None`` draws from numpy's global generator).
 
         Returns
         -------
@@ -84,4 +97,10 @@ class DiagnoseMixin:
         """
         from .registry import diagnose
 
-        return diagnose(self, alpha=alpha, columns=columns)
+        return diagnose(
+            self,
+            alpha=alpha,
+            columns=columns,
+            n_boot=n_boot,
+            random_state=random_state,
+        )
