@@ -50,7 +50,8 @@ not a likelihood maximisation are excluded with the reason
 """
 
 import warnings
-from typing import Any, Callable, NamedTuple
+from collections.abc import Callable
+from typing import Any, NamedTuple
 
 import autograd.numpy as anp
 import numpy as np
@@ -402,7 +403,7 @@ class Search(NamedTuple):
             f"{self.name} " if self.name else "",
             np.round(x, 6).tolist(),
             np.round(scale * g / self.n_obs, 8).tolist(),
-            "eigenvalues {}".format(np.round(eig / self.n_obs, 8).tolist()),
+            f"eigenvalues {np.round(eig / self.n_obs, 8).tolist()}",
         )
 
 

@@ -58,12 +58,12 @@ def _truth(model, **extra):
     return np.array([out[name] for name in model.parameter_names])
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _model():
     return WeibullJointPH.fit(fleet(300, seed=0))
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _small():
     return WeibullJointPH.fit(fleet(80, seed=4))
 
@@ -693,7 +693,7 @@ def _log_rate_path():
     return LinkedPathModel(ExponentialPath, {"b": "log"})
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _log_rate_model():
     data = simulate_path(
         _log_rate_path(),

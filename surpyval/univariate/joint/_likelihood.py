@@ -294,7 +294,7 @@ class JointArrays:
     @classmethod
     def build(
         cls, w: Any, T: Any, d: Any, L: Any, Z: Any, ages: list, values: list
-    ) -> "JointArrays":
+    ) -> JointArrays:
         N = len(ages)
         R = max([len(a) for a in ages] + [1])
         A = np.zeros((N, R))
@@ -321,7 +321,7 @@ class JointArrays:
             mask=M,
         )
 
-    def take(self, index: Any) -> "JointArrays":
+    def take(self, index: Any) -> JointArrays:
         """The items ``index``."""
         return JointArrays(
             **{k: getattr(self, k)[index] for k in self.__dataclass_fields__}
@@ -537,7 +537,7 @@ def modes(
     t: npt.NDArray,
     centre: float,
     readings: bool = True,
-    start: "npt.NDArray | None" = None,
+    start: npt.NDArray | None = None,
 ) -> tuple[npt.NDArray, npt.NDArray]:
     """Each item's mode of the integrand over its varying parameters and
     the Cholesky factor of the inverse of its (Gauss-Newton) curvature

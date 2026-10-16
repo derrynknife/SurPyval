@@ -127,7 +127,7 @@ class JointPHFitter(FitterRepr):
             else f"{distribution.name}{plain}JointPH"
         )
 
-    def _repr_details(self) -> "list[str]":
+    def _repr_details(self) -> list[str]:
         names = list(self.path_model.parameter_names)
         out = [
             f"{self.dist.name} baseline",
@@ -152,7 +152,7 @@ class JointPHFitter(FitterRepr):
         markers: Any = None,
         tl: npt.ArrayLike | None = None,
         tr: npt.ArrayLike | None = None,
-        marker_reference: "float | None" = None,
+        marker_reference: float | None = None,
     ) -> JointModel:
         """
         Fit the joint model of the marker and the lifetime by maximum
@@ -247,16 +247,16 @@ class JointPHFitter(FitterRepr):
     def fit_from_df(
         self,
         df: Any,
-        x_col: "str | None" = None,
-        markers_col: "str | None" = None,
-        c_col: "str | None" = None,
-        n_col: "str | None" = None,
-        tl_col: "str | None" = None,
-        tr_col: "str | None" = None,
-        xl_col: "str | None" = None,
-        xr_col: "str | None" = None,
-        Z_cols: "str | list[str] | None" = None,
-        marker_reference: "float | None" = None,
+        x_col: str | None = None,
+        markers_col: str | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        tl_col: str | None = None,
+        tr_col: str | None = None,
+        xl_col: str | None = None,
+        xr_col: str | None = None,
+        Z_cols: str | list[str] | None = None,
+        marker_reference: float | None = None,
     ) -> JointModel:
         """
         Fit the joint model to a DataFrame of items, one row each: the
@@ -403,7 +403,7 @@ def _records(
     tr: Any,
     Z: Any,
     markers: Any,
-) -> tuple[list, npt.NDArray, "list[str]"]:
+) -> tuple[list, npt.NDArray, list[str]]:
     """The items as ItemLifetime records (which check each item's
     readings against its observation), their counts, and the covariates'
     names; what the fit cannot take is refused."""
@@ -571,7 +571,7 @@ def _fit(
     records: list,
     counts: npt.NDArray,
     names: list,
-    reference: "float | None",
+    reference: float | None,
 ) -> JointModel:
     """The joint fit of ``records`` (``counts`` of each)."""
     path_model = fitter.path_model

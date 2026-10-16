@@ -84,8 +84,8 @@ def path_formula(path_model: Any) -> str:
 
 
 def parameter_names(
-    path_names: "list[str]", varying: "list[str]", covariates: "list[str]"
-) -> "list[str]":
+    path_names: list[str], varying: list[str], covariates: list[str]
+) -> list[str]:
     """The names of a joint model's parameters: each path parameter
     followed by its covariates' shifts of its mean (``a``, ``a_<cov>``,
     ``b``, ``b_<cov>``, ...); the spread of the varying ones (``sd_a``,
@@ -292,14 +292,14 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     dist: Any
     path_model: Any
     #: The names of the path parameters that vary between items.
-    varying: "list[str]"
+    varying: list[str]
     #: The fitted parameters, in the order of ``parameter_names``.
     params: npt.NDArray
-    parameter_names: "list[str]"
+    parameter_names: list[str]
     #: The covariates' names (``coef_0``, ... where the data did not name
     #: them), and the columns whose coefficients the data cannot
     #: determine (``nan`` in ``params``).
-    feature_names: "list[str]"
+    feature_names: list[str]
     aliased: npt.NDArray
     #: The marker value at which ``alpha`` is reported.
     marker_reference: float
@@ -316,7 +316,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     #: the covariate means: predictions are computed there.
     _centre: float = 0.0
     _zbar: npt.NDArray
-    _covariance: "npt.NDArray | None" = None
+    _covariance: npt.NDArray | None = None
     _neg_ll: float
 
     kind = "Joint (Weibull proportional hazards, current value)"
@@ -375,7 +375,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
 
     # -- the table -------------------------------------------------------
 
-    def _parts(self) -> "list[tuple[str, list[int]]]":
+    def _parts(self) -> list[tuple[str, list[int]]]:
         """``(heading, positions in params)`` of each part."""
         P = len(self.path_model.parameter_names)
         p = len(self.feature_names)
@@ -401,7 +401,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             ("link: current value", [i + 3 + p]),
         ]
 
-    def summary(self, alpha_ci: float = 0.05) -> "pd.DataFrame":
+    def summary(self, alpha_ci: float = 0.05) -> pd.DataFrame:
         """
         The parameter table: each parameter with its standard error, a
         two-sided ``1 - alpha_ci`` Wald interval and, for the
@@ -453,7 +453,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             se = np.full(params.shape, np.nan)
         names = self.parameter_names
         q = norm.ppf(1 - alpha_ci / 2)
-        level = "{:g}%".format(100 * (1 - alpha_ci))
+        level = f"{100 * (1 - alpha_ci):g}%"
         parts = self._parts()
         survival = parts[3][1]
         hazard = set(survival[2:]) | set(parts[4][1])
@@ -522,7 +522,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
 
     def _question(
         self, Z: Any, markers: Any, given: Any
-    ) -> "tuple[npt.NDArray, npt.NDArray, npt.NDArray, float]":
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, float]:
         """The covariates (of every column), readings and age the item
         was last seen running, from ``Z`` (or an ``ItemLifetime`` there),
         ``markers`` and ``given``, checked."""
@@ -715,8 +715,8 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         self,
         x: npt.ArrayLike,
         Z: Any = None,
-        markers: "dict | None" = None,
-        given: "float | None" = None,
+        markers: dict | None = None,
+        given: float | None = None,
     ) -> npt.NDArray:
         """
         The survival of one item to each age ``x``, given its covariates
@@ -795,8 +795,8 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         self,
         x: npt.ArrayLike,
         Z: Any = None,
-        markers: "dict | None" = None,
-        given: "float | None" = None,
+        markers: dict | None = None,
+        given: float | None = None,
     ) -> npt.NDArray:
         """
         The probability that one item fails by each age ``x``, given its
@@ -831,8 +831,8 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         self,
         x: npt.ArrayLike,
         Z: Any = None,
-        markers: "dict | None" = None,
-        given: "float | None" = None,
+        markers: dict | None = None,
+        given: float | None = None,
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
@@ -1003,7 +1003,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "JointModel":
+    def from_dict(cls, model_dict: dict) -> JointModel:
         """
         Rebuild a model from a :meth:`to_dict` dictionary.
 
