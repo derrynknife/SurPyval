@@ -7,6 +7,7 @@ import numpy as onp
 import numpy.typing as npt
 from scipy.stats import norm
 
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -51,6 +52,7 @@ class SemiParametricRegressionModel(
     InformationCriteriaMixin,
     LinearPredictorMixin,
     ConcordanceMixin,
+    DiagnoseMixin,
     SerialisableMixin,
 ):
     """

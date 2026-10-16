@@ -17,6 +17,7 @@ from scipy.special import ndtri as z
 
 import surpyval as surv
 from surpyval import ParametricDistribution
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     dict_numbers,
@@ -448,6 +449,7 @@ _MAXIMUM_NOTES = {
 class Parametric(
     LikelihoodRatioMixin,
     InformationCriteriaMixin,
+    DiagnoseMixin,
     SerialisableMixin,
     ParametricDistribution,
 ):

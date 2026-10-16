@@ -17,6 +17,7 @@ import numpy.typing as npt
 from scipy.linalg import block_diag
 from scipy.stats import norm
 
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -94,7 +95,10 @@ def _check_interp(interp: str) -> None:
 
 
 class CompetingRisksProportionalHazards(
-    InformationCriteriaMixin, LinearPredictorMixin, SerialisableMixin
+    InformationCriteriaMixin,
+    LinearPredictorMixin,
+    DiagnoseMixin,
+    SerialisableMixin,
 ):
     """
     Competing-risks proportional-hazards regression.

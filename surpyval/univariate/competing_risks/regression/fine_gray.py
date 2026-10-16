@@ -52,6 +52,7 @@ from autograd.tracer import getval
 from scipy.optimize import OptimizeResult, minimize
 from scipy.stats import norm
 
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -840,7 +841,10 @@ def paired_covariate_rows(Z: npt.ArrayLike, n_x: int, p: int) -> npt.NDArray:
 
 
 class FineGrayModel(
-    InformationCriteriaMixin, LinearPredictorMixin, SerialisableMixin
+    InformationCriteriaMixin,
+    LinearPredictorMixin,
+    DiagnoseMixin,
+    SerialisableMixin,
 ):
     """
     A fitted Fine-Gray subdistribution-hazard model for one cause of interest.

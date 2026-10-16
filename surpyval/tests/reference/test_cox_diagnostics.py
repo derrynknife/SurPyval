@@ -1,5 +1,5 @@
-"""The Cox score tests behind ``diagnose()`` against stored R
-``survival`` results (#868).
+"""The Cox model's ``diagnose()`` against stored R ``survival`` results
+(#868).
 
 The proportional-hazards rows are R's ``cox.zph`` (survival 3.0 and
 later: the score test of adding ``Z * g(t)``, per covariate and GLOBAL)
@@ -107,6 +107,29 @@ def test_square_score_test_matches_coxph(ref_id):
         assert_allclose(res["statistic"], ref[key], **DERIVED)
 
 
+@pytest.mark.parametrize("ref_id", sorted(CASES))
+def test_diagnose_reports_the_r_values(ref_id):
+    model, Z, names = CASES[ref_id]()
+    model.feature_names = names
+    ref = values("r_survival", ref_id)
+    table = model.diagnose().table
+    for transform in ("km", "rank"):
+        ph = table[
+            (table["check"] == "proportional_hazards")
+            & (table["transform"] == transform)
+        ]
+        assert [
+            c[0] if len(c) == 1 else "GLOBAL" for c in ph["covariates"]
+        ] == (names + ["GLOBAL"])
+        assert_allclose(ph["p"], ref[transform + "_p"], **DERIVED)
+    form = table[table["check"] == "functional_form"].set_index(
+        table.loc[table["check"] == "functional_form", "covariates"].str[0]
+    )
+    for key in (k for k in ref if k.startswith("square_")):
+        name = key[len("square_") :]
+        assert_allclose(form.loc[name, "statistic"], ref[key], **DERIVED)
+
+
 def test_scaled_schoenfeld_and_km_times_match_cox_zph():
     # cox.zph's $y (the scaled Schoenfeld residuals, beta + d V s) and $x
     # (the km-scale times), event by event; R orders the events by time,
@@ -127,3 +150,26 @@ def test_scaled_schoenfeld_and_km_times_match_cox_zph():
         theirs = ref["km_y"][:, j]
         theirs = theirs[np.lexsort((theirs, theirs_t))]
         assert_allclose(mine, theirs, **DERIVED)
+
+
+def test_the_violations_are_found():
+    # What the fixtures were built to show: veteran's Karnofsky score and
+    # the synthetic z1 fail proportional hazards, and z3 its functional
+    # form; the lung fit passes both.
+    model, _, names = _veteran()
+    model.feature_names = names
+    failed = model.diagnose().table.query("verdict == 'fail'")
+    assert ("karno",) in set(failed["covariates"])
+    model, _, names = _violation("efron")
+    model.feature_names = names
+    d = model.diagnose()
+    failed = d.table.query("verdict == 'fail'")
+    ph = failed[failed["check"] == "proportional_hazards"]["covariates"]
+    assert ("z1",) in set(ph) and ("z2",) not in set(ph)
+    form = failed[failed["check"] == "functional_form"]["covariates"]
+    assert set(form) == {("z3",)}
+    model, _, names = _lung("efron")
+    model.feature_names = names
+    table = model.diagnose().table
+    tests = table[table["check"].isin(["proportional_hazards"])]
+    assert (tests["verdict"] != "fail").all()
