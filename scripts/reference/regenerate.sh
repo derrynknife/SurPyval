@@ -17,4 +17,5 @@ Rscript scripts/reference/reference_r_frailty.R
 Rscript scripts/reference/reference_r_competing_diagnostics.R
 Rscript scripts/reference/reference_r_odds_additive.R
 Rscript scripts/reference/reference_r_ph_aft.R
+Rscript scripts/reference/reference_r_calibration.R
 "${1:-python}" scripts/reference/reference_python.py

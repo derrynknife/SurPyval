@@ -470,7 +470,7 @@ class Diagnosis:
         >>> x, c = df["week"].values, 1 - df["arrest"].values
         >>> d = CoxPH.fit(x, df[["fin", "prio"]].values, c=c).diagnose()
         >>> print(d.summary().splitlines()[0])
-        Cox proportional hazards diagnostics at alpha = 0.05: 0 failed, 0 warned, 10 ok
+        Cox proportional hazards diagnostics at alpha = 0.05: 0 failed, 0 warned, 13 ok
         """  # noqa: E501
         counts = {v: int((self.table["verdict"] == v).sum()) for v in VERDICTS}
         lines = [

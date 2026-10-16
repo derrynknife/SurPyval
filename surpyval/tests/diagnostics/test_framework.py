@@ -204,8 +204,8 @@ def test_plot_returns_a_figure(failing):
     fig = d.plot(n_boot=10, random_state=1)
     assert isinstance(fig, Figure)
     # 3 PH, 2 functional form (fin is binary), 3 influence, outliers,
-    # overall fit
-    assert len(fig.axes) == 3 + 2 + 3 + 1 + 1
+    # overall fit, calibration at three times
+    assert len(fig.axes) == 3 + 2 + 3 + 1 + 1 + 3
     plt.close(fig)
     fig = d.plot("overall_fit")
     assert len(fig.axes) == 1

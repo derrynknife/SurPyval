@@ -73,6 +73,7 @@ def test_data_that_meet_the_assumptions_pass(meets_assumptions):
         "functional_form",
         "influence",
         "outliers",
+        "calibration",
     }
     # z is binary: no functional-form row, and a note says why
     assert set(_rows(d, "functional_form")["covariates"]) == {("w",)}
@@ -373,5 +374,7 @@ def test_plot_draws_every_panel(binary_violation):
     assert titles[0].startswith("z: p = ")
     assert "w: functional form" in titles
     assert "overall fit (Cox-Snell)" in titles
-    assert len(titles) == 2 + 1 + 2 + 1 + 1
+    # 2 PH, 1 functional form, 2 influence, outliers, overall fit and
+    # calibration at three times
+    assert len(titles) == 2 + 1 + 2 + 1 + 1 + 3
     plt.close(fig)

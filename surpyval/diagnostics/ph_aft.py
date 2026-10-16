@@ -112,6 +112,7 @@ from surpyval.univariate.regression._fit_skeleton import (
 )
 from surpyval.univariate.regression._likelihood import regression_neg_ll
 
+from .calibration import calibration_advice, calibration_check
 from .cox import CATEGORICAL_LEVELS, INFLUENCE_LIMIT, _fmt, _source
 from .registry import AdviceRule, Check, Context, Family, Panel, register
 
@@ -2257,12 +2258,14 @@ PH_FAMILY = register(
                 rows=_aic_rows_of("PH"),
                 panels=_distribution_panels_of("PH"),
             ),
+            calibration_check(),
         ),
         advice=tuple(rule for name in BASELINES for rule in _ph_rules(name))
         + tuple(_ph_rules(None, same=False))
         + tuple(_ph_rules(None, same=True))
         + (AdviceRule("outliers", _outlier_message, (), on=("warn",)),)
-        + tuple(_aic_rules("PH", "baseline_distribution")),
+        + tuple(_aic_rules("PH", "baseline_distribution"))
+        + calibration_advice("PH", BASELINES, SAME_PH_AFT),
         notes=_ph_notes,
     )
 )
@@ -2297,10 +2300,12 @@ AFT_FAMILY = register(
                 rows=_form_rows_of("log time"),
                 panels=_form_panels,
             ),
+            calibration_check(),
         ),
         advice=tuple(_aic_rules("AFT", "error_distribution"))
         + tuple(_shape_rule(name, param) for name, param in SHAPE.items())
-        + tuple(_aft_form_rule(name) for name in list(BASELINES) + [None]),
+        + tuple(_aft_form_rule(name) for name in list(BASELINES) + [None])
+        + calibration_advice("AFT", BASELINES, SAME_PH_AFT),
         notes=_aft_notes,
     )
 )

@@ -60,6 +60,7 @@ from surpyval.univariate.regression.proportional_hazards.diagnostics import (
     zph_times,
 )
 
+from .calibration import calibration_advice, calibration_check
 from .registry import AdviceRule, Check, Context, Family, Panel, register
 
 #: The time scales of the proportional-hazards test.
@@ -682,6 +683,7 @@ COX = register(
                 "the unit exponential.",
                 panels=_overall_panels,
             ),
+            calibration_check(),
         ),
         advice=(
             AdviceRule(
@@ -731,7 +733,8 @@ COX = register(
                 ("summary(robust=)", "robust_summary"),
                 when=lambda row, ctx: _clustered(ctx) > 0,
             ),
-        ),
+        )
+        + calibration_advice("cox"),
         notes=_notes,
     )
 )

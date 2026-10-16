@@ -183,9 +183,11 @@ def test_the_better_error_distribution_and_ph_model_are_advised(
     d = lung_lognormal_aft
     rows = _rows(d, "error_distribution")
     assert (rows["verdict"] == "warn").all() and len(rows) == 2
+    # and the calibration screen's advice, for the early deaths (#881)
     assert [a.features for a in d.advice] == [
         ("WeibullAFT.fit",),
         ("LogNormalPH.fit",),
+        ("LogNormalPH.fit", "LogNormalAFT.fit_from_df(formula=)", "CoxPH.fit"),
     ]
     assert d.advice[0].startswith("Another error distribution fits")
     # The gap is survreg's: the log-normal's AIC less the Weibull's
@@ -343,6 +345,7 @@ def test_a_ph_model_that_meets_its_assumptions_passes(meets_ph):
         "influence",
         "outliers",
         "baseline_distribution",
+        "calibration",
     }
     assert d.family == "Parametric proportional hazards"
     assert d.model == "ParametricRegressionModel (Proportional Hazard)"
@@ -590,6 +593,7 @@ def test_a_shape_that_varies_by_group_fails_common_shape(shape_violation):
         "error_distribution",
         "common_shape",
         "functional_form",
+        "calibration",
     }
     row = _rows(d, "common_shape").iloc[0]
     assert row["covariates"] == ("g",) and row["verdict"] == "fail"
@@ -842,8 +846,9 @@ def test_plot_draws_every_panel(meets_ph, shape_violation):
     assert "w: functional form" in titles
     assert "Cox-Snell residuals (exponential paper)" in titles
     assert "AIC by model" in titles
-    # 2 PH, 1 functional form, 2 influence, outliers, Cox-Snell, AIC
-    assert len(titles) == 2 + 1 + 2 + 1 + 1 + 1
+    # 2 PH, 1 functional form, 2 influence, outliers, Cox-Snell, AIC,
+    # calibration at three times
+    assert len(titles) == 2 + 1 + 2 + 1 + 1 + 1 + 3
     form = fig.axes[titles.index("w: functional form")]
     assert form.get_xlabel() == "w"
     plt.close(fig)
@@ -851,12 +856,14 @@ def test_plot_draws_every_panel(meets_ph, shape_violation):
     d = _fit(sp.WeibullAFT, shape_violation, ["g", "w"]).diagnose()
     fig = d.plot()
     titles = [ax.get_title() for ax in fig.axes]
-    assert titles == [
+    assert titles[:4] == [
         "standardised residuals (Weibull paper)",
         "AIC by model",
         "g: residuals by level",
         "w: functional form",
     ]
+    assert len(titles) == 4 + 3
+    assert all(t.startswith("calibration at t = ") for t in titles[4:])
     plt.close(fig)
     fig = d.plot("common_shape")
     assert len(fig.axes[0].collections) == 2  # one level each

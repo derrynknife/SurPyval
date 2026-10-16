@@ -12,8 +12,9 @@ returns a :class:`Diagnosis`:
 >>> d = CoxPH.fit(x, df[["fin", "prio"]].values, c=c).diagnose()
 >>> d.ok
 True
->>> sorted(set(d.table["check"]))
-['functional_form', 'influence', 'outliers', 'proportional_hazards']
+>>> sorted(set(d.table["check"]))  # doctest: +NORMALIZE_WHITESPACE
+['calibration', 'functional_form', 'influence', 'outliers',
+ 'proportional_hazards']
 
 ``d.table`` has one row per check (test, statistic, p-value, verdict,
 covariates), ``d.advice`` the remedies, each naming the SurPyval feature

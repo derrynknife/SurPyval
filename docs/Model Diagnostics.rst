@@ -375,7 +375,7 @@ log-normal error distribution:
 
     _warned = d.table[d.table['check'] == 'error_distribution']
     assert (_warned['verdict'] == 'warn').all()
-    assert [a.features for a in d.advice] == [
+    assert [a.features for a in d.advice][:2] == [
         ('WeibullAFT.fit',), ('LogNormalPH.fit',)
     ]
 
@@ -1275,3 +1275,151 @@ model of its own, without ``diagnose()`` yet.
 .. autofunction:: surpyval.diagnostics.univariate.gof_statistics
 
 .. autofunction:: surpyval.diagnostics.univariate.bootstrap
+
+Calibration of predicted survival
+---------------------------------
+
+The Cox, parametric proportional hazards and accelerated failure time
+families share one more check, ``calibration`` (#881): whether the
+survival the model predicts is the survival the units had. At a time
+:math:`t_0`, each unit's predicted risk of failure by then,
+:math:`p = 1 - S(t_0 \mid Z)`, is set against the *observed* risk of the
+units with that prediction, estimated as Austin, Harrell and van Klaveren
+(2020) recommend: a Cox model of the observed times on a restricted cubic
+spline (three knots) of :math:`\log(-\log(1 - p))`. Right-censored units
+are at risk until they are censored, never counted as survivors, and a
+unit that entered late only after its entry. Plotted against the
+prediction, that observed risk is the calibration curve, on the diagonal
+for a calibrated model; its summaries are the mean (``ICI``, the
+integrated calibration index), median (``E50``) and 90th percentile
+(``E90``) of :math:`|\text{observed} - p|` over the units.
+
+The Rossi model of the first section is calibrated at each of the three
+times: the first failure times by which a quarter, a half and three
+quarters of the arrests had happened. The ``statistic`` is the ICI, and
+the ``detail`` has E50, E90 and the range of the predictions:
+
+.. jupyter-execute::
+
+    d = model.diagnose()
+    d.table.loc[d.table['check'] == 'calibration',
+                ['test', 'statistic', 'verdict', 'detail']]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _cal = d.table[d.table['check'] == 'calibration']
+    assert _cal['test'].str.startswith(
+        ('ICI at t = 17 ', 'ICI at t = 28 ', 'ICI at t = 42 ')).all()
+    assert (_cal['verdict'] == 'ok').all() and (_cal['statistic'] < 0.003).all()
+
+The log-normal model of the lung cancer data is not calibrated early: by
+day 135 it predicts more risk than the patients had, 0.06 more on average
+and the more the higher the prediction (the curve is flatter than the
+diagonal), and its predictions are outside the curve's band for about
+half the patients:
+
+.. jupyter-execute::
+
+    d = aft.diagnose()
+    d.table.loc[d.table['check'] == 'calibration',
+                ['test', 'statistic', 'verdict', 'detail']]
+
+.. jupyter-execute::
+
+    print([a for a in d.advice if a.check == 'calibration'][0])
+
+.. jupyter-execute::
+
+    fig = d.plot('calibration')
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _cal = d.table[d.table['check'] == 'calibration']
+    assert _cal['verdict'].tolist() == ['warn', 'ok', 'ok']
+    assert _cal['test'].iloc[0] == 'ICI at t = 135 (25% of failures)'
+    assert abs(_cal['statistic'].iloc[0] - 0.062) < 5e-4
+    assert 'too extreme' in _cal['detail'].iloc[0]
+    assert 'lower than predicted on average (-0.0597)' in _cal['detail'].iloc[0]
+    assert 'band for 52% of units' in _cal['detail'].iloc[0]
+    _w = weibull.diagnose()
+    _wc = _w.table[_w.table['check'] == 'calibration']
+    assert (_wc['verdict'] == 'ok').all()
+    assert _wc['statistic'].round(3).tolist() == [0.022, 0.013, 0.015]
+
+The Weibull model that the AIC screen preferred is calibrated at all
+three times (its ICI is 0.022, 0.013 and 0.015).
+
+The rule
+~~~~~~~~
+
+``calibration`` is a screen and never fails: on the data a model was
+fitted to, a test of calibration has no known null distribution. A row
+warns when the curve is both far from the diagonal and clearly so: the
+ICI is above 0.02 (the predictions are more than two percentage points
+off on average) *and* the predicted risk is outside the curve's pointwise
+``1 - alpha`` band for more than 10% of the units. In simulations (two
+normal covariates, Weibull times, uniform censoring, 200 runs each), a
+correctly specified Cox model warned in 4% of reports at 50 units and in
+none from 300, a Weibull PH model in 12% at 50 units, 7% at 100 and 2% at
+1000; a model with its coefficients halved warned in 79% at 100 units
+and every run from 300, one fitted to data with a 1.5 times longer scale
+in 94% at 100 units, an exponential model of Weibull (shape 2) times in
+99% at 50, and a Cox model missing a quadratic term in 35% at 100 units,
+87% at 300 and every run at 1000.
+
+What it sees on the fitted data is misspecification, not overfitting. A
+Cox model's baseline is estimated from the data and the calibration model
+is itself a proportional hazards model of the predictions, so a Cox
+model's curve bends only where its log hazard is not linear in its linear
+predictor (a covariate with the wrong functional form; an effect that
+changes with time is the ``proportional_hazards`` check's to find). For a
+parametric model the curve also shows a baseline that does not fit. The
+advice names the remedies: a transform or an interaction in a formula; and
+for a parametric model another baseline (the AIC rows), the other kind of
+model (PH or AFT), or a Cox model.
+
+To validate a model on other data, or at a time of your own,
+:func:`~surpyval.diagnostics.calibration.calibration_curve` takes the
+predicted survival of any model and the outcomes. Half the Rossi data,
+predicted at one year by a model of the other half:
+
+.. jupyter-execute::
+
+    from surpyval.diagnostics.calibration import calibration_curve
+
+    train = rossi.sample(frac=0.5, random_state=1)
+    test = rossi.drop(train.index)
+    half = surv.CoxPH.fit_from_df(train, x_col='week', c_col='censored',
+                                  Z_cols=['fin', 'age', 'prio'])
+    survival = half.sf(np.full(len(test), 52.0),
+                       test[['fin', 'age', 'prio']].values)
+    curve = calibration_curve(survival, test['week'], test['censored'],
+                              t0=52.0)
+    round(curve.ici, 3), round(curve.e50, 3), round(curve.e90, 3)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert (round(curve.ici, 3), round(curve.e50, 3),
+            round(curve.e90, 3)) == (0.036, 0.038, 0.051)
+    assert curve.outside == 0
+
+What it supports and refuses
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Exact and right-censored times, delayed entry (``tl``) and counts
+(``n``). The curve, its ICI, E50 and E90 and its band agree with R's
+(``coxph`` on ``rms::rcs`` of the complementary log-log, and ``survfit``),
+the model's predictions included, on the lung data for Cox, Weibull and
+log-normal models and with delayed entry
+(``scripts/reference/reference_r_calibration.R``); Austin et al.'s own
+code (``rms::cph`` and ``survest``) gives the same ICI to 2e-5. The check
+has no rows, and a note says why, for a model fitted to left- or
+interval-censored or right-truncated rows (the calibration model is a Cox
+model), to time-varying covariates (``fit_tvc``), with fewer than 10
+failures, or that predicts the same survival for every unit.

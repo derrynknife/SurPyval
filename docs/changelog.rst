@@ -52,6 +52,23 @@ Unreleased
   model of the split follow-up) to 1e-6 (``scripts/reference/
   reference_r_ph_aft.R``). Time-varying fits and custom links are refused
   for now.
+- The calibration of predicted survival, a ``calibration`` check shared by
+  the Cox, parametric PH and AFT families of ``diagnose()`` (#881): at the
+  quartiles of the failure times, the smoothed calibration curve of
+  Austin, Harrell and van Klaveren (2020) -- a Cox model of the observed
+  times on a restricted cubic spline of the complementary log-log of the
+  predicted risk, so censored units count as at risk, not as survivors,
+  and delayed entry is respected -- with its ICI (the row's statistic), E50
+  and E90 and a pointwise band, drawn against the diagonal with a
+  histogram of the predicted risks. A screen: it warns when the ICI is
+  above 0.02 and the predictions are outside the band for more than 10% of
+  the units, with advice naming a formula transform, another baseline, the
+  other kind of model or a Cox model. Left- and interval-censored,
+  right-truncated and time-varying fits are refused with a note.
+  ``surpyval.diagnostics.calibration.calibration_curve`` takes the
+  predicted survival of any model, to validate it on other data. The
+  curve, its summaries and band agree with R's ``coxph`` and ``survfit``
+  (``scripts/reference/reference_r_calibration.R``).
 - The proportional odds and additive hazards families of ``diagnose()``
   (#870), for ``ProportionalOdds``, ``AdditiveHazards`` and the parametric
   ``PO(...)`` / ``AH(...)`` models: for each covariate, and jointly, the
