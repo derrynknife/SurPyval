@@ -8,6 +8,7 @@ from __future__ import annotations
 import functools
 import inspect
 import warnings
+from pathlib import Path
 from typing import Any, Callable, TypeVar
 
 import numpy as np
@@ -19,8 +20,8 @@ from surpyval.utils.surpyval_data import (
     SurpyvalData,
     _named_row,
     _plain,
-    _plural,
     named_fit,
+    with_data_unit,
 )
 from surpyval.utils.validation import unknown_cause_error
 from surpyval.utils.warnings import (
@@ -101,6 +102,13 @@ class EventHistoryData(ReshapeMixin):
     # changes)}``, attached by ``from_items``; no model uses them yet
     # (#887), so every fit refuses data that has them.
     states: dict | None = None
+    # Each item's attributes (``{name: value}``, what describes the item
+    # without being fitted), in the order of ``ids``, from the records or
+    # ``from_dataframe``; None where the data has none.
+    attributes: "list | None" = None
+    # The unit of the ages (``"hour"``), a label as a model's ``unit`` is;
+    # None where unknown (#945).
+    unit: "str | None" = None
 
     def __init__(
         self,
@@ -111,6 +119,7 @@ class EventHistoryData(ReshapeMixin):
         e: "npt.ArrayLike | None" = None,
         tl: "npt.ArrayLike | None" = None,
         tr: "npt.ArrayLike | None" = None,
+        unit: Any = None,
     ) -> None:
         self.x = np.atleast_1d(x).copy()  # the caller's stays theirs
         # One i, c or n is every row's, as for handle_xicn
@@ -156,6 +165,10 @@ class EventHistoryData(ReshapeMixin):
         self.e = np.atleast_1d(e).copy() if e is not None else None
         self._check_rows()
         self.ids = np.unique(self.i).tolist()
+        if unit is not None:
+            from surpyval.utils.item_history import _unit
+
+            self.unit = _unit("(data)", unit)
 
         if self.x.ndim == 1:
             self.interarrival_times = self.get_interarrival_times()
@@ -257,7 +270,7 @@ class EventHistoryData(ReshapeMixin):
     ) -> tuple[npt.NDArray, npt.NDArray]:
         """
         The ``(entry, exit)`` observation window of each item, aligned with
-        :attr:`items`.
+        :attr:`ids`.
 
         The entry is the item's left-truncation bound ``tl`` (delayed
         entry); with no truncation it is -inf, so the item is at risk from
@@ -287,7 +300,7 @@ class EventHistoryData(ReshapeMixin):
     def item_rows(self) -> tuple[npt.NDArray, npt.NDArray]:
         """
         The first row of each item and the item of each row, as positions
-        in :attr:`items` (which is sorted).
+        in :attr:`ids` (which is sorted).
 
         Returns
         -------
@@ -694,6 +707,8 @@ class EventHistoryData(ReshapeMixin):
         right_truncation: Any = None,
         covariates: "dict | None" = None,
         gaps: bool = False,
+        unit: Any = None,
+        **unknown: Any,
     ) -> "EventHistoryData":
         """
         Recurrent event data from each item's history, keyed by the item's
@@ -730,6 +745,8 @@ class EventHistoryData(ReshapeMixin):
             from the start of observation: ``left_truncation``, else 0) and
             ``right_censored`` as the time from the last failure to the end
             of observation; each item's ages are their running totals.
+        unit : str, optional
+            The unit of the ages, kept with the data.
 
         Returns
         -------
@@ -759,6 +776,19 @@ class EventHistoryData(ReshapeMixin):
         """
         from surpyval.utils.item_history import ItemHistory
 
+        if unknown:
+            from surpyval.utils.record_keywords import (
+                FROM_HISTORIES_ALIASES,
+                accepted_names,
+                refuse_unknown_keywords,
+            )
+
+            refuse_unknown_keywords(
+                "EventHistoryData.from_histories",
+                unknown,
+                accepted_names(EventHistoryData.from_histories),
+                FROM_HISTORIES_ALIASES,
+            )
         observed = _history_dict("observed", observed)
         right_censored = _history_dict("right_censored", right_censored)
         items = list(dict.fromkeys([*observed, *right_censored]))
@@ -800,10 +830,157 @@ class EventHistoryData(ReshapeMixin):
                     covariates=None if rows is None else rows[k],
                 )
             )
-        return cls.from_items(histories)
+        return cls.from_items(histories, unit=unit)
 
     @classmethod
-    def from_items(cls, items: Any) -> "EventHistoryData":
+    def from_dataframe(
+        cls,
+        df: Any,
+        *,
+        i_col: Any,
+        x_col: Any = None,
+        xl_col: Any = None,
+        xr_col: Any = None,
+        c_col: Any = None,
+        n_col: Any = None,
+        e_col: Any = None,
+        tl_col: Any = None,
+        tr_col: Any = None,
+        end_col: Any = None,
+        ends: Any = None,
+        Z_cols: Any = None,
+        attribute_cols: Any = None,
+        unit: Any = None,
+    ) -> "EventHistoryData":
+        """
+        The data from a log held in a :class:`pandas.DataFrame`, one row
+        per event (a maintenance log: the item and its age at each
+        failure), naming the columns as every DataFrame entry point does
+        (``x_col``, ``i_col``, ..., the ``fit`` argument with ``_col``).
+        Each item's history is built as an
+        :class:`~surpyval.utils.item_history.ItemHistory`, so every check
+        names the item.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            The log.
+        i_col : str
+            The column of item ids.
+        x_col : str, optional
+            Each event's age (the item's own age); or give ``xl_col`` and
+            ``xr_col``.
+        xl_col, xr_col : str, optional
+            The inspections between which a row's failures were counted
+            (equal for an exact event).
+        c_col : str, optional
+            What each row is: 0 an event (the default), 1 the end of the
+            item's observation (one row per item at most), -1 failures
+            before a first look, 2 failures counted between inspections.
+            Left out, a row with equal (or one) ages is an event and one
+            with different ages a count.
+        n_col : str, optional
+            How many failures a counted row holds (c = 2 or -1).
+        e_col : str, optional
+            The type of each failure (a failure mode or cause); a blank
+            cell on an end-of-observation row is nothing, on a failure a
+            type not recorded (a masked cause).
+        tl_col, tr_col : str or number, optional
+            Each item's left truncation (the age it came under
+            observation) and right truncation (the age by which it
+            failed, which is why it is in the data), the same on every
+            row of the item (or one number for every item).
+        end_col : str, optional
+            Each item's age at the end of its observation, on its rows
+            (the same on each, blank cells left out); an alternative to
+            a ``c = 1`` row. Left out, observation ends at the last
+            failure.
+        ends : dict or pandas.Series, optional
+            ``{item: age}``, the end of each item's observation, for the
+            items it names: a way to give the items that never failed,
+            which have no row in the log.
+        Z_cols : list of str, optional
+            The covariate columns (numbers; the same on every row of an
+            item), which name the covariates.
+        attribute_cols : list of str, optional
+            Columns describing the items without being fitted (a site, a
+            product line), the same on every row of an item, kept as
+            each record's ``attributes``.
+        unit : str, optional
+            The unit of the ages (``"hours"``), kept with the data.
+
+        Returns
+        -------
+        EventHistoryData
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> from surpyval import EventHistoryData
+        >>> log = pd.DataFrame({
+        ...     "machine": ["M1", "M1", "M2"],
+        ...     "hours": [420, 1310, 980],
+        ...     "part": ["seal", "bearing", "seal"],
+        ... })
+        >>> data = EventHistoryData.from_dataframe(
+        ...     log, i_col="machine", x_col="hours", e_col="part",
+        ...     ends={"M1": 2600, "M2": 2900, "M3": 3100},
+        ... )
+        >>> data.ids, data.c.tolist()
+        (['M1', 'M2', 'M3'], [0, 0, 1, 0, 1, 1])
+        """
+        from surpyval.utils.data_frames import history_from_frame
+
+        return history_from_frame(
+            cls,
+            df,
+            i_col=i_col,
+            x_col=x_col,
+            xl_col=xl_col,
+            xr_col=xr_col,
+            c_col=c_col,
+            n_col=n_col,
+            e_col=e_col,
+            tl_col=tl_col,
+            tr_col=tr_col,
+            end_col=end_col,
+            ends=ends,
+            Z_cols=Z_cols,
+            attribute_cols=attribute_cols,
+            unit=unit,
+        )
+
+    def to_dataframe(self) -> Any:
+        """
+        The rows as a :class:`pandas.DataFrame`: ``i``, ``x`` (or ``xl``
+        and ``xr`` where any row counts failures between inspections),
+        ``c``, ``n``, ``tl`` and ``tr`` (where any bound is finite),
+        ``e`` (where it has event types), the covariates by name and the
+        attributes. ``EventHistoryData.from_dataframe(data.to_dataframe(),
+        i_col="i", x_col="x", c_col="c", ...)`` is the same data.
+        Observation windows, time-varying covariates and states have no
+        place in it, and are refused.
+
+        Examples
+        --------
+        >>> from surpyval import EventHistoryData
+        >>> data = EventHistoryData.from_histories(
+        ...     observed={"A": [5, 9]}, right_censored={"A": 12}
+        ... )
+        >>> data.to_dataframe()
+           i     x  c  n
+        0  A   5.0  0  1
+        1  A   9.0  0  1
+        2  A  12.0  1  1
+        """
+        from surpyval.utils.data_frames import history_to_frame
+
+        return history_to_frame(self)
+
+    @classmethod
+    def from_items(
+        cls, items: Any, unit: Any = None, **unknown: Any
+    ) -> "EventHistoryData":
         """
         The dataset of several items' histories, each an
         :class:`~surpyval.utils.item_history.ItemHistory`: their failures
@@ -824,17 +1001,24 @@ class EventHistoryData(ReshapeMixin):
         (array([0, 0, 1, 2, 1]), array([1, 1, 1, 3, 1]))
         """
         from surpyval.utils.item_history import ItemHistory
+        from surpyval.utils.record_keywords import (
+            FROM_ITEMS_ALIASES,
+            refuse_unknown_keywords,
+        )
         from surpyval.utils.recurrent_utils import handle_xicn
+        from surpyval.utils.surpyval_data import _record_list
 
-        items = list(items)
-        if not items:
-            raise ValueError("Give at least one ItemHistory.")
-        for history in items:
-            if not isinstance(history, ItemHistory):
-                raise TypeError(
-                    "from_items takes ItemHistory objects; got "
-                    f"{type(history).__name__}."
-                )
+        refuse_unknown_keywords(
+            "EventHistoryData.from_items",
+            unknown,
+            ["items", "unit"],
+            {
+                k: v
+                for k, v in FROM_ITEMS_ALIASES.items()
+                if k not in ("n", "count", "weights")
+            },
+        )
+        items = _record_list(items, ItemHistory, "EventHistoryData")
         from surpyval.utils.item_history import (
             check_item_ids,
             covariate_names_of,
@@ -843,6 +1027,9 @@ class EventHistoryData(ReshapeMixin):
 
         ids = [history.id for history in items]
         check_item_ids(ids, "ItemHistory")
+        from surpyval.utils.item_history import units_of
+
+        unit = units_of(items, unit, "items' ages")
         static = _all_or_none(items, "covariates", lambda h: h.covariates)
         names = covariate_names_of(items)
         varying = _all_or_none(
@@ -934,6 +1121,7 @@ class EventHistoryData(ReshapeMixin):
                 # the arrays a fit is given)
                 Z=np.nan_to_num(np.array(Z), nan=0.0) if static else None,
                 e=_object_array(e) if any(typed) else None,
+                unit=unit,
             )
         if static:
             rows = {
@@ -943,6 +1131,9 @@ class EventHistoryData(ReshapeMixin):
             data.Z = np.array([rows[_plain(k)] for k in data.i], dtype=float)
         if static:
             data.covariate_names = names
+        if any(h.attributes is not None for h in items):
+            held = {h.id: h.attributes for h in items}
+            data.attributes = [held[_plain(i)] for i in data.ids]
         if varying:
             data.time_varying_covariates = {
                 history.id: history.time_varying_covariates
@@ -1001,8 +1192,12 @@ class EventHistoryData(ReshapeMixin):
             problems.append("states")
         if problems:
             raise ValueError(
-                "This data has " + " and ".join(problems) + ", which a "
-                "history has no place for: use its arrays (x, i, c, n, ...)."
+                "This data has "
+                + " and ".join(problems)
+                + ", which the {item: ages} dict form of from_histories "
+                "cannot hold: use data.to_items() (one ItemHistory per "
+                "item, which holds everything), or its arrays (x, i, c, n, "
+                "...)."
             )
         observed: dict = {}
         right_censored: dict = {}
@@ -1148,6 +1343,12 @@ class EventHistoryData(ReshapeMixin):
             left_censored_event_types=(
                 None if e is None or not (c == -1).any() else e[c == -1][0]
             ),
+            attributes=(
+                None
+                if self.attributes is None
+                else self.attributes[self.ids.index(key)]
+            ),
+            unit=self.unit,
             **state_args,
         )
 
@@ -1159,9 +1360,10 @@ class EventHistoryData(ReshapeMixin):
 
     def summary(self) -> str:
         """
-        A short description of the data: its items and events, and what
-        else it holds (counts, truncation, event types, covariates,
-        time-varying covariates, states).
+        A short description of the data: its items and rows, its failures
+        (a count of ``n`` in an interval is ``n`` failures), and what else
+        it holds (truncation and covariates, counted in items; event
+        types, counted in failures; time-varying covariates, states).
 
         Examples
         --------
@@ -1175,6 +1377,8 @@ class EventHistoryData(ReshapeMixin):
           events: 3 observed
           ends of observation: 2
         """
+        from surpyval.utils.data_display import heading, held_lines
+
         c, n = np.asarray(self.c), np.asarray(self.n)
         kinds = [
             (f"{int(n[c == 0].sum())} observed", (c == 0).any()),
@@ -1182,8 +1386,7 @@ class EventHistoryData(ReshapeMixin):
             (f"{int(n[c == -1].sum())} before a first look", (c == -1).any()),
         ]
         lines = [
-            f"EventHistoryData: {_plural(len(self.ids), 'item')}, "
-            f"{_plural(len(self.x), 'row')}",
+            heading(self, recurrent=True),
             (
                 "  events: " + ", ".join(k for k, given in kinds if given)
                 if any(given for _, given in kinds)
@@ -1191,8 +1394,37 @@ class EventHistoryData(ReshapeMixin):
             ),
             f"  ends of observation: {int((c == 1).sum())}",
         ]
-        lines += _held(self, rows=None)
+        lines += held_lines(self, recurrent=True)
         return "\n".join(lines)
+
+    @property
+    def n_items(self) -> int:
+        """The number of items (``len(data)`` is the number of rows)."""
+        return len(self.ids)
+
+    def records(self) -> Any:
+        """
+        The items as :class:`~surpyval.utils.item_history.ItemHistory`
+        records, one at a time, in the order of ``ids`` (a generator:
+        :meth:`to_items` builds the list).
+
+        Examples
+        --------
+        >>> from surpyval import EventHistoryData
+        >>> data = EventHistoryData.from_histories(
+        ...     observed={"M1": [420, 1310], "M2": [980]},
+        ...     right_censored={"M1": 2600, "M2": 2900},
+        ... )
+        >>> [len(item.observed) for item in data.records()]
+        [2, 1]
+        """
+        self._no_windows()
+        _, inverse = np.unique(self.i, return_inverse=True)
+        order = np.argsort(inverse, kind="stable")
+        bounds = np.cumsum(np.bincount(inverse))
+        prepared = self._prepared()
+        for key, rows in zip(self.ids, np.split(order, bounds[:-1])):
+            yield self._history_at(key, rows, prepared)
 
     def __getitem__(self, index: Any) -> "EventHistoryData":
         # As row numbers, so one row stays a row: a scalar index used to
@@ -1213,6 +1445,7 @@ class EventHistoryData(ReshapeMixin):
             None if self.e is None else self.e[index],
             tl=self.tl[index],
             tr=self.tr[index],
+            unit=self.unit,
         )
         # Covariates, schedules and states go with the rows they belong
         # to: a fit of a slice must see what a fit of the whole would.
@@ -1223,7 +1456,217 @@ class EventHistoryData(ReshapeMixin):
             held = getattr(self, name)
             if held is not None:
                 setattr(out, name, {i: held[i] for i in out.ids if i in held})
+        if self.attributes is not None:
+            by_item = dict(zip(self.ids, self.attributes))
+            out.attributes = [by_item[i] for i in out.ids]
         return out
+
+    def _covariate_levels(self, column: int) -> list:
+        first, _ = self.item_rows()
+        Z = np.asarray(self.Z, dtype=float)
+        Z = Z[:, None] if Z.ndim == 1 else Z
+        return Z[first, column].tolist()
+
+    def _rows_of_items(self, keep: np.ndarray) -> "EventHistoryData":
+        _, inverse = np.unique(self.i, return_inverse=True)
+        return self[np.flatnonzero(np.asarray(keep)[inverse.reshape(-1)])]
+
+    @property
+    def attribute_names(self) -> list:
+        """The names of the attributes any item has (an empty list where
+        the data has none)."""
+        from surpyval.utils.surpyval_data import _attribute_names
+
+        return _attribute_names(self.attributes)
+
+    def to_dict(self) -> dict:
+        """
+        The data as a dictionary of plain Python values, strict JSON when
+        dumped: its ``"class"``, the ``x``, ``i``, ``c``, ``n``, ``tl``
+        and ``tr`` arrays as lists, and the event types, covariates (with
+        their names), time-varying covariates (step schedules; a
+        ``CovariatePath`` is refused) and states where it has them. Data
+        built with observation windows is refused: keep its arrays and
+        windows, and build it again with ``handle_xicn``. Non-finite
+        values are written as ``null`` and recorded under
+        ``"non_finite"`` (see :doc:`/surpyval.serialisation`).
+        ``surpyval.from_dict`` reads it too.
+
+        Examples
+        --------
+        >>> from surpyval import EventHistoryData
+        >>> data = EventHistoryData.from_histories(
+        ...     observed={"A": [5, 9]}, right_censored={"A": 12}
+        ... )
+        >>> sorted(data.to_dict())
+        ['c', 'class', 'i', 'n', 'non_finite', 'tl', 'tr', 'x']
+        """
+        from surpyval.serialisation import encode_non_finite
+        from surpyval.utils.data_json import label, schedule_dict
+
+        self._no_windows()
+        data: dict = {
+            "class": "EventHistoryData",
+            "x": self.x.tolist(),
+            "i": [label(v) for v in self.i],
+            "c": self.c.tolist(),
+            "n": self.n.tolist(),
+            "tl": self.tl.tolist(),
+            "tr": self.tr.tolist(),
+        }
+        if self.e is not None:
+            data["e"] = [label(v) for v in self.e]
+        if self.Z is not None:
+            data["Z"] = np.asarray(self.Z).tolist()
+        if self.covariate_names is not None:
+            data["covariate_names"] = list(self.covariate_names)
+        if self.attributes is not None:
+            from surpyval.utils.surpyval_data import _attributes_json
+
+            data["attributes"] = _attributes_json(self.attributes)
+        if self.time_varying_covariates is not None:
+            data["time_varying_covariates"] = [
+                schedule_dict(self.time_varying_covariates[item], False)
+                for item in self.ids
+            ]
+        if self.states is not None:
+            data["states"] = [
+                {
+                    "initial_state": label(initial),
+                    "changes": [
+                        [kind, lo, hi, label(st)]
+                        for kind, lo, hi, st in changes
+                    ],
+                }
+                for initial, changes in (
+                    self.states[item] for item in self.ids
+                )
+            ]
+        unit = getattr(self, "unit", None)
+        if unit is not None:
+            data["unit"] = unit
+        return encode_non_finite(data)
+
+    @classmethod
+    def from_dict(cls, data_dict: dict) -> "EventHistoryData":
+        """
+        The data back from its :meth:`to_dict` dictionary.
+
+        Examples
+        --------
+        >>> from surpyval import EventHistoryData
+        >>> data = EventHistoryData.from_histories(
+        ...     observed={"A": [5, 9]}, right_censored={"A": 12}
+        ... )
+        >>> EventHistoryData.from_dict(data.to_dict()).x
+        array([ 5.,  9., 12.])
+        """
+        from surpyval.serialisation import decode_non_finite
+        from surpyval.utils.data_json import label_back, schedule_back
+
+        if not isinstance(data_dict, dict):
+            raise ValueError(
+                "Expected a serialised EventHistoryData dict, got "
+                f"{type(data_dict).__name__}."
+            )
+        tag = data_dict.get("class")
+        if tag is not None and tag != "EventHistoryData":
+            raise ValueError(
+                f"This dictionary was written by {tag}, not "
+                f"EventHistoryData: read it with {tag}.from_dict, or "
+                "surpyval.from_dict."
+            )
+        for key in ("x", "i", "c", "n"):
+            if key not in data_dict:
+                raise ValueError(
+                    f"A serialised EventHistoryData needs {key!r}; this "
+                    "dictionary has no such entry."
+                )
+        data = decode_non_finite(dict(data_dict))
+        i = np.empty(len(data["i"]), dtype=object)
+        i[:] = [label_back(v) for v in data["i"]]
+        if all(isinstance(v, (int, float)) for v in i):
+            i = np.array(i.tolist())
+        elif all(isinstance(v, str) for v in i):
+            i = np.array(i.tolist(), dtype=str)
+        e = None
+        if "e" in data:
+            e = np.empty(len(data["e"]), dtype=object)
+            e[:] = [label_back(v) for v in data["e"]]
+        out = cls(
+            np.array(data["x"], dtype=float),
+            i,
+            np.array(data["c"]),
+            np.array(data["n"]),
+            e,
+            tl=np.array(data["tl"], dtype=float) if "tl" in data else None,
+            tr=np.array(data["tr"], dtype=float) if "tr" in data else None,
+        )
+        if "Z" in data:
+            out.Z = np.array(data["Z"], dtype=float)
+            out.covariate_names = data.get("covariate_names")
+        if "time_varying_covariates" in data:
+            from surpyval.utils.item_history import _time_varying
+
+            out.time_varying_covariates = {
+                item: _time_varying(item, schedule_back(held))[0]
+                for item, held in zip(out.ids, data["time_varying_covariates"])
+            }
+        if "attributes" in data:
+            from surpyval.utils.surpyval_data import _attributes_back
+
+            out.attributes = _attributes_back(data["attributes"])
+        if "states" in data:
+            out.states = {
+                item: (
+                    label_back(entry["initial_state"]),
+                    [
+                        (kind, lo, hi, label_back(st))
+                        for kind, lo, hi, st in entry["changes"]
+                    ],
+                )
+                for item, entry in zip(out.ids, data["states"])
+            }
+        if data.get("unit") is not None:
+            out.unit = data["unit"]
+        return out
+
+    def to_json(self, filepath: "str | Path | None" = None) -> "str | None":
+        """
+        The data as strict JSON text (:meth:`to_dict` dumped), or written
+        to the file ``filepath``.
+
+        Examples
+        --------
+        >>> from surpyval import EventHistoryData
+        >>> data = EventHistoryData.from_histories(
+        ...     observed={"A": [5, 9]}, right_censored={"A": 12}
+        ... )
+        >>> data.to_json().startswith('{"class": "EventHistoryData"')
+        True
+        """
+        from surpyval.utils.data_json import dump
+
+        return dump(self.to_dict(), filepath)
+
+    @classmethod
+    def from_json(cls, source: "str | Path") -> "EventHistoryData":
+        """
+        The data back from JSON text (a string starting with ``{``), or
+        from the file holding it (``surpyval.from_json`` reads it too).
+
+        Examples
+        --------
+        >>> from surpyval import EventHistoryData
+        >>> data = EventHistoryData.from_histories(
+        ...     observed={"A": [5, 9]}, right_censored={"A": 12}
+        ... )
+        >>> EventHistoryData.from_json(data.to_json()).ids
+        ['A']
+        """
+        from surpyval.utils.data_json import load
+
+        return cls.from_dict(load(source))
 
     def __iter__(self) -> Any:
         # A stateless iterator: the old hand-rolled _index version broke
@@ -1235,60 +1678,27 @@ class EventHistoryData(ReshapeMixin):
         or ``[start, end]``), ``c``, ``n``, and the truncation, event types
         and covariates where it has them; :meth:`summary` describes all of
         it."""
-        shown = min(len(self.x), _REPR_ROWS)
-        columns: dict = {
-            "i": [repr(_plain(v)) for v in self.i[:shown]],
-            "x": [_time_text(v) for v in self.x[:shown]],
-            "c": [str(int(v)) for v in self.c[:shown]],
-            "n": [_time_text(v) for v in self.n[:shown]],
-        }
-        if np.isfinite(self.tl).any():
-            columns["tl"] = [_time_text(v) for v in self.tl[:shown]]
-        if np.isfinite(self.tr).any():
-            columns["tr"] = [_time_text(v) for v in self.tr[:shown]]
-        if self.e is not None:
-            columns["e"] = [repr(_plain(v)) for v in self.e[:shown]]
-        if self.Z is not None:
-            Z = np.asarray(self.Z, dtype=float)
-            Z = Z[:, None] if Z.ndim == 1 else Z
-            names = self.covariate_names or [
-                f"Z{j}" for j in range(Z.shape[1])
-            ]
-            for j, name in enumerate(names):
-                columns[name] = [_time_text(v) for v in Z[:shown, j]]
-        widths = {
-            k: max(len(k), *(len(v) for v in vals))
-            for k, vals in columns.items()
-        }
-        lines = [
-            f"EventHistoryData: {_plural(len(self.ids), 'item')}, "
-            f"{_plural(len(self.x), 'row')}",
-            "  " + "  ".join(k.rjust(widths[k]) for k in columns),
-        ]
-        for r in range(shown):
-            lines.append(
-                "  "
-                + "  ".join(columns[k][r].rjust(widths[k]) for k in columns)
-            )
-        if len(self.x) > shown:
-            lines.append(
-                f"  ... {_plural(len(self.x) - shown, 'more row')}; "
-                "summary() describes it all"
-            )
-        return "\n".join(lines)
+        from surpyval.utils.data_display import table_repr
+
+        return table_repr(self, recurrent=True)
+
+    def _repr_html_(self) -> str:
+        from surpyval.utils.data_display import html_repr
+
+        return html_repr(self, recurrent=True)
+
+    def __dir__(self) -> list:
+        from surpyval.utils.data_display import HISTORY_INTERNALS, public_dir
+
+        return public_dir(self, HISTORY_INTERNALS)
 
 
-_REPR_ROWS = 10
+def _held(data: Any, rows: "int | None") -> list:
+    """The summary lines for what a data object holds beyond its times
+    (kept for callers of the old name; see ``data_display.held_lines``)."""
+    from surpyval.utils.data_display import held_lines
 
-
-def _time_text(value: Any) -> str:
-    """A time, count or ``[start, end]`` pair as the repr shows it."""
-    if np.ndim(value):
-        return "[" + ", ".join(_time_text(v) for v in value) + "]"
-    value = _plain(value)
-    if isinstance(value, float) and value.is_integer():
-        return f"{value:.1f}"
-    return str(value)
+    return held_lines(data, recurrent=rows is None)
 
 
 def _history_end(history: Any) -> "float | None":
@@ -1304,9 +1714,13 @@ def _history_end(history: Any) -> "float | None":
 
 def _lifetime_parts(history: Any) -> dict:
     """What a lifetime made from ``history`` keeps of it: its covariates
-    (named, where they are)."""
-    covariates = history._fields().get("covariates")
-    return {} if covariates is None else {"covariates": covariates}
+    (named, where they are), attributes and unit."""
+    fields = history._fields()
+    return {
+        name: fields[name]
+        for name in ("covariates", "attributes", "unit")
+        if name in fields
+    }
 
 
 def _first_event(history: Any) -> Any:
@@ -1589,9 +2003,9 @@ def accepts_event_history_data(method: F) -> F:
         ]
         if given:
             raise TypeError(
-                "x is a EventHistoryData, which holds the data: leave out "
+                "x is an EventHistoryData, which holds the data: leave out "
                 + ", ".join(repr(g) for g in given)
-                + " (or pass arrays rather than a EventHistoryData)."
+                + " (or pass arrays rather than an EventHistoryData)."
             )
         if data.window_map is not None:
             raise ValueError(
@@ -1625,9 +2039,12 @@ def accepts_event_history_data(method: F) -> F:
             filled["e"] = data.e
         _refuse_what_fit_cannot_take(data, names, lost)
         bound.arguments.update(filled)
-        return named_fit(
-            lambda: method(*bound.args, **bound.kwargs),
-            data.covariate_names if "Z" in filled else None,
+        return with_data_unit(
+            named_fit(
+                lambda: method(*bound.args, **bound.kwargs),
+                data.covariate_names if "Z" in filled else None,
+            ),
+            data,
         )
 
     setattr(wrapper, "_accepts_event_history_data", True)
@@ -1714,7 +2131,7 @@ def refuses_unmodelled_data(method: F) -> F:
         if signature is not None:
             _check_needs_covariates(data, signature)
         _refuse_what_fit_cannot_take(data, names)
-        return method(*args, **kwargs)
+        return with_data_unit(method(*args, **kwargs), data)
 
     return wrapper  # type: ignore[return-value]
 
@@ -1736,61 +2153,3 @@ def _state_fields(changes: list) -> dict:
         }
         or None,
     }
-
-
-def _held(data: Any, rows: "int | None") -> list:
-    """The summary lines for what a data object holds beyond its times."""
-    from collections import Counter
-
-    lines = []
-    tl, tr = np.asarray(data.tl), np.asarray(data.tr)
-    if np.isfinite(tl).any() or np.isfinite(tr).any():
-        lines.append(
-            "  truncation: "
-            + ", ".join(
-                f"{int(np.isfinite(b).sum())} {side}"
-                for side, b in (("left", tl), ("right", tr))
-                if np.isfinite(b).any()
-            )
-        )
-    if getattr(data, "e", None) is not None:
-        counts = Counter(v for v in data.e if v is not None)
-        failed = np.asarray(data.c) != 1
-        masked = int(sum(1 for v, f in zip(data.e, failed) if f and v is None))
-        lines.append(
-            "  event types: "
-            + ", ".join(
-                [f"{k} ({v})" for k, v in sorted(counts.items(), key=str)]
-                + ([f"not recorded ({masked})"] if masked else [])
-            )
-        )
-    if getattr(data, "Z", None) is not None:
-        Z = np.asarray(data.Z)
-        width = 1 if Z.ndim == 1 else Z.shape[1]
-        line = f"  covariates: {width} column{'' if width == 1 else 's'}"
-        if getattr(data, "covariate_names", None) is not None:
-            line += " (" + ", ".join(data.covariate_names) + ")"
-        lines.append(line)
-    if getattr(data, "time_varying_covariates", None) is not None:
-        kinds = Counter(
-            type(v).__name__ for v in data.time_varying_covariates.values()
-        )
-        lines.append(
-            "  time-varying covariates: "
-            + ", ".join(f"{v} {k}" for k, v in sorted(kinds.items()))
-        )
-    if getattr(data, "markers", None) is not None:
-        readings = sum(len(m) for m in data.markers.values())
-        read = sum(1 for m in data.markers.values() if m)
-        lines.append(
-            f"  markers: {readings} reading{'' if readings == 1 else 's'} "
-            f"on {read} item{'' if read == 1 else 's'}"
-        )
-    if getattr(data, "states", None) is not None:
-        found = sorted(
-            {st for _, changes in data.states.values() for *_, st in changes}
-            | {initial for initial, _ in data.states.values()},
-            key=str,
-        )
-        lines.append("  states: " + ", ".join(map(str, found)))
-    return lines

@@ -92,6 +92,15 @@ class ItemHistory:
         having changed into it since the start of observation (at most
         one, before every other change).
 
+    attributes : dict, optional
+        ``{name: value}``, what describes the item without being fitted
+        (a site, a product line: any values), for ``data.groupby(name)``
+        and ``data.select(where={name: value})``.
+    unit : str, optional
+        The unit its ages are in (``"hours"``, ``"km"``), a label kept
+        with the record: a dataset takes it from its records, which must
+        agree, and ``fit(data)`` gives it to the model.
+
     Event types, given for some failures, are needed for all of them (the
     end of observation has none). Changes of state are the item's path
     through its states: each into a state other than the one it was in,
@@ -141,8 +150,24 @@ class ItemHistory:
         observed_states: "dict | None" = None,
         interval_censored_states: Any = None,
         left_censored_states: "dict | None" = None,
+        attributes: Any = None,
+        unit: Any = None,
+        **unknown: Any,
     ) -> None:
-        item = item_id(id)
+        if unknown:
+            from surpyval.utils.record_keywords import (
+                HISTORY_ALIASES,
+                accepted_names,
+                refuse_unknown_keywords,
+            )
+
+            refuse_unknown_keywords(
+                "ItemHistory",
+                unknown,
+                accepted_names(ItemHistory.__init__, "self"),
+                HISTORY_ALIASES,
+            )
+        item = checked_id(id)
         self.id = item
         ages = _ages(item, "observed", observed)
         types = _event_types(
@@ -220,6 +245,8 @@ class ItemHistory:
             item, "right_truncation", right_truncation
         )
         self.covariates, self.covariate_names = _covariates(item, covariates)
+        self.attributes = _attributes(item, attributes)
+        self.unit = _unit(item, unit)
         (
             self.time_varying_covariates,
             self._first_change,
@@ -252,6 +279,16 @@ class ItemHistory:
 
     def __setstate__(self, state: dict) -> None:
         frozen_setstate(self, state)
+
+    def attribute(self, name: str) -> Any:
+        """The value of the attribute ``name`` (``attributes={name:
+        value}``, what describes the item without being fitted: a site, a
+        batch); None where the item does not have it.
+        ``data.select(where={"site": "North"})`` keeps the items of one
+        site, and ``data.groupby("site")`` splits the data by it."""
+        if self.attributes is None:
+            return None
+        return self.attributes.get(name)
 
     def covariate(self, name: str) -> float:
         """The value of the covariate ``name`` (where the covariates are
@@ -725,6 +762,10 @@ class ItemHistory:
             out["covariates"] = _covariate_field(
                 self.covariates, self.covariate_names
             )
+        if self.attributes is not None:
+            out["attributes"] = dict(self.attributes)
+        if self.unit is not None:
+            out["unit"] = self.unit
         if self.time_varying_covariates is not None:
             out["time_varying_covariates"] = _schedule_field(
                 self.time_varying_covariates, self._as_dict()
@@ -750,6 +791,60 @@ class ItemHistory:
             out["left_censored_states"] = left
         return out
 
+    def to_dict(self) -> dict:
+        """
+        The record as a dictionary of plain Python values (strict JSON
+        when dumped): its ``"class"``, ``"id"`` and the arguments that
+        rebuild it, as :meth:`from_dict` reads them. A tuple id or event
+        type is written as ``{"tuple": [...]}``; a step schedule of
+        time-varying covariates by its ages and values; a
+        ``CovariatePath`` is refused.
+
+        Examples
+        --------
+        >>> from surpyval import ItemHistory
+        >>> ItemHistory("B7", observed=[1820]).to_dict()
+        {'class': 'ItemHistory', 'id': 'B7', 'observed': [1820.0]}
+        """
+        from surpyval.utils.data_json import record_dict
+
+        return record_dict(self)
+
+    @classmethod
+    def from_dict(cls, record_dict: dict) -> "ItemHistory":
+        """The record back from its :meth:`to_dict` dictionary, checked
+        as one built from its arguments.
+
+        >>> from surpyval import ItemHistory
+        >>> item = ItemHistory("B7", observed=[1820])
+        >>> ItemHistory.from_dict(item.to_dict()) == item
+        True
+        """
+        from surpyval.utils.data_json import record_from_dict
+
+        return record_from_dict(cls, record_dict)
+
+    def to_json(self, filepath: Any = None) -> "str | None":
+        """The record as strict JSON text (:meth:`to_dict` dumped), or
+        written to the file ``filepath``."""
+        from surpyval.utils.data_json import dump
+
+        return dump(self.to_dict(), filepath)
+
+    @classmethod
+    def from_json(cls, source: Any) -> "ItemHistory":
+        """The record back from JSON text (a string starting with ``{``)
+        or the file holding it.
+
+        >>> from surpyval import ItemHistory
+        >>> item = ItemHistory("B7", observed=[1820])
+        >>> ItemHistory.from_json(item.to_json()) == item
+        True
+        """
+        from surpyval.utils.data_json import load
+
+        return cls.from_dict(load(source))
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ItemHistory):
             return NotImplemented
@@ -767,11 +862,20 @@ class ItemHistory:
         return getattr(self, "_tvc_dict", True)
 
     def __repr__(self) -> str:
-        fields = "".join(
-            f",\n    {name}={value!r}"
-            for name, value in self._fields().items()
+        """One line where it fits in 79 columns, else one argument per
+        line."""
+        fields = self._fields()
+        one = (
+            "ItemHistory("
+            + ", ".join(
+                [repr(self.id), *(f"{k}={v!r}" for k, v in fields.items())]
+            )
+            + ")"
         )
-        return f"ItemHistory(\n    {self.id!r}{fields}\n)"
+        if len(one) <= 79:
+            return one
+        lines = "".join(f",\n    {k}={v!r}" for k, v in fields.items())
+        return f"ItemHistory(\n    {self.id!r}{lines}\n)"
 
 
 # -- validation helpers -----------------------------------------------------
@@ -819,6 +923,12 @@ def _age(item: Any, name: str, value: Any) -> "float | None":
     """One finite age, or None."""
     if value is None:
         return None
+    if type(value) in (float, int):
+        # The common case, without the array machinery (#932)
+        age = float(value)
+        if not np.isfinite(age):
+            raise ValueError(f"Item {item!r}: '{name}' must be finite.")
+        return age
     _not_a_date(item, name, value)
     if np.ndim(value) != 0:
         raise ValueError(f"Item {item!r}: '{name}' must be one age.")
@@ -935,6 +1045,89 @@ def _covariates(item: Any, value: Any) -> tuple:
         item, "covariates", [value[k] for k in names], missing=True
     )
     return row, tuple(names)
+
+
+def _attributes(item: Any, value: Any) -> "dict | None":
+    """A record's attributes, ``{name: value}``: names are text, values
+    anything (None for one not known); a pandas Series is read as a
+    dict. Kept as a plain dict, which the record's fields give back."""
+    if value is None:
+        return None
+    if type(value).__name__ == "Series":
+        value = dict(value.items())
+    if not isinstance(value, dict):
+        raise ValueError(
+            f"Item {item!r}: 'attributes' must be a dict {{name: value}}; "
+            f"got {type(value).__name__}."
+        )
+    bad = [k for k in value if not isinstance(k, str) or not k]
+    if bad:
+        raise ValueError(
+            f"Item {item!r}: attribute names must be text; got {bad!r}."
+        )
+    out = {}
+    for k, v in value.items():
+        v = item_id(v)
+        if v is not None and not isinstance(v, str):
+            try:
+                hash(v)
+            except TypeError:
+                raise ValueError(
+                    f"Item {item!r}: attribute {k!r} must be a value the "
+                    f"data can group by (text, a number, a tuple); got "
+                    f"{v!r}."
+                )
+            if isinstance(v, float) and v != v:
+                v = None
+        out[k] = v
+    return out
+
+
+def _unit(item: Any, unit: Any) -> "str | None":
+    """A record's unit, as the models store it (:func:`normalise_unit`):
+    text, or None."""
+    from surpyval.utils.units import normalise_unit
+
+    if unit is None:
+        return None
+    if not isinstance(unit, str) or not unit.strip():
+        raise ValueError(
+            f"Item {item!r}: 'unit' is the name of the unit its ages are "
+            f"in ('hours', 'km', 'cycles'); got {unit!r}."
+        )
+    return normalise_unit(unit)
+
+
+def units_of(records: list, unit: Any, what: str) -> "str | None":
+    """The unit of a dataset built from ``records``: the records' unit,
+    which must agree (refused naming the items and units otherwise), and
+    must agree with ``unit`` where that is given; ``unit`` alone where
+    the records have none; None where neither (#945)."""
+    from surpyval.utils.units import normalise_unit
+
+    given = normalise_unit(unit)
+    found: dict = {}
+    for record in records:
+        if record.unit is not None:
+            found.setdefault(record.unit, record.id)
+    if len(found) > 1:
+        raise ValueError(
+            f"The {what} are in different units: "
+            + ", ".join(
+                f"item {item!r} in {u!r}"
+                for u, item in list(found.items())[:3]
+            )
+            + ". A dataset is in one unit: convert the ages first."
+        )
+    if not found:
+        return given
+    ((held, item),) = found.items()
+    if given is not None and given != held:
+        raise ValueError(
+            f"unit={unit!r} was given, but the {what} are in {held!r} "
+            f"(item {item!r}): a dataset is in one unit."
+        )
+    return held
 
 
 def _covariate_field(row: np.ndarray, names: "tuple | None") -> Any:
@@ -1108,7 +1301,11 @@ def _event_types(
         raise ValueError(
             f"Item {item!r}: '{name}' was given without 'left_censored'."
         )
-    if isinstance(value, (str, bytes)) or np.ndim(value) == 0:
+    # One type for all: text, a tuple (one label, as a gap's id is) or a
+    # scalar; a list may mix text and tuples, which np.ndim cannot take
+    if isinstance(value, (str, bytes, tuple)) or (
+        not isinstance(value, (list, np.ndarray)) and np.ndim(value) == 0
+    ):
         types = np.empty(k, dtype=object)
         types[:] = [value] * k
     else:
@@ -1121,8 +1318,9 @@ def _event_types(
         types = np.empty(k, dtype=object)
         types[:] = listed
     # A missing type (None, NaN, pandas NA, "") is a failure whose type was
-    # not recorded: a masked cause, None.
-    types[:] = [None if missing_type(t) else t for t in types]
+    # not recorded: a masked cause, None. A numpy string or number (from a
+    # DataFrame) is kept as the plain value it holds.
+    types[:] = [None if missing_type(t) else item_id(t) for t in types]
     return types
 
 
@@ -1156,6 +1354,10 @@ def missing_type(value: Any) -> bool:
     string (a blank cell)."""
     if isinstance(value, str):
         return value.strip() == ""
+    if value is None:
+        return True
+    if type(value) in (int, float):
+        return value != value
     from surpyval.utils.data_formats import is_missing_event
 
     return is_missing_event(value)
@@ -1281,24 +1483,57 @@ def item_id(item: Any) -> Any:
     return item.item() if isinstance(item, np.generic) else item
 
 
+def checked_id(item: Any) -> Any:
+    """An item's id (:func:`item_id`), refused where it could not name an
+    item (#931): a missing value (None, NaN, pandas NA, a blank string),
+    which cannot say which item a record is, or an unhashable one (a
+    list, a dict), which no dataset could look up or hash."""
+    item = item_id(item)
+    if missing_type(item):
+        raise ValueError(
+            f"An item needs an id (its name or number); got {item!r}, "
+            "which is missing."
+        )
+    try:
+        hash(item)
+    except TypeError:
+        raise ValueError(
+            f"An item's id must be text, a number or a tuple of them, "
+            f"which a dataset can look up; got {item!r}, "
+            f"{_an(type(item).__name__)}."
+        )
+    return item
+
+
+def _an(word: str) -> str:
+    """'a list', 'an ItemHistory'."""
+    return ("an " if word[:1].lower() in "aeiou" else "a ") + word
+
+
+def _kind_of(item: Any) -> str:
+    return (
+        "text"
+        if isinstance(item, str)
+        else "a number" if isinstance(item, Number) else type(item).__name__
+    )
+
+
 def check_item_ids(ids: list, record: str) -> None:
     """Refuse ids of mixed kinds (text and numbers: '1' and 1 could not be
     told apart) and an id given twice (each item has one record), counting
     once, in linear time."""
     from collections import Counter
 
-    kinds = {
-        (
-            "text"
-            if isinstance(i, str)
-            else "number" if isinstance(i, Number) else type(i).__name__
-        )
-        for i in ids
-    }
-    if len(kinds) > 1:
+    first: dict = {}
+    for i in ids:
+        first.setdefault(_kind_of(i), i)
+    if len(first) > 1:
+        examples = list(first.items())[:2]
         raise ValueError(
             "The item ids must all be of one kind (all text or all "
-            "numbers): mixed, '1' and 1 could not be told apart."
+            "numbers): ids "
+            + " and ".join(f"{i!r} ({kind})" for kind, i in examples)
+            + " are mixed, and '1' and 1 could not be told apart."
         )
     repeated = sorted(repr(i) for i, k in Counter(ids).items() if k > 1)
     if repeated:

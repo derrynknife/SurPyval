@@ -98,10 +98,19 @@ def test_an_interval_counted_zero_is_left_out():
 
 def test_repr_shows_what_was_given():
     text = repr(ItemHistory("A", observed=[5], right_censored=8))
-    assert (
-        text == "ItemHistory(\n    'A',\n    observed=[5.0],\n"
-        "    right_censored=8.0\n)"
+    assert text == "ItemHistory('A', observed=[5.0], right_censored=8.0)"
+    # One argument per line where one line would not fit (#934), with
+    # plain Python values
+    long = repr(
+        ItemHistory(
+            "A",
+            observed=[5],
+            right_censored=12,
+            observed_event_types=[np.str_("impeller")],
+        )
     )
+    assert long.startswith("ItemHistory(\n    'A',\n    observed=[5.0],\n")
+    assert "observed_event_types=['impeller']" in long
 
 
 @pytest.mark.parametrize(
@@ -195,7 +204,7 @@ def test_the_dataset_needs_consistent_items():
         EventHistoryData.from_items(
             [ItemHistory("A", observed=[1]), ItemHistory(2, observed=[2])]
         )
-    with pytest.raises(TypeError, match="ItemHistory objects"):
+    with pytest.raises(TypeError, match="ItemHistory records"):
         EventHistoryData.from_items([{"observed": [1]}])
 
 
@@ -501,3 +510,44 @@ def test_states_for_every_item_once_given():
 def test_a_path_needs_its_end_of_observation():
     with pytest.raises(ValueError, match="needs the age up to which"):
         ItemHistory("U1", initial_state="a", observed_states={5: "b"})
+
+
+# -- #931: keywords and ids ---------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        (
+            {"observed": [1], "event_type": "x"},
+            "'event_type': the type of each failure is observed_event_types=",
+        ),
+        ({"observed": [1], "tl": 2}, "'tl': a record's left truncation"),
+        ({"observed": [1], "end": 5}, "'end': the end of observation is"),
+        ({"observed": [1], "n": 2}, "'n': a count of failures is"),
+        ({"x": [1]}, "'x': the ages at failure are observed="),
+        (
+            {"observed": [1], "right_censoerd": 5},
+            "did you mean 'right_censored'",
+        ),
+    ],
+)
+def test_issue_931_unknown_keywords_name_the_argument_meant(kwargs, match):
+    with pytest.raises(TypeError, match=match):
+        ItemHistory("a", **kwargs)
+    with pytest.raises(TypeError, match=match):
+        ItemHistory("a", observed=[1]).clone(**kwargs)
+
+
+def test_issue_931_from_items_and_from_histories_check_keywords():
+    items = [ItemHistory("a", observed=[5])]
+    with pytest.raises(TypeError, match="'ids': each item's id is its"):
+        EventHistoryData.from_items(items, ids=["a"])
+    with pytest.raises(TypeError, match="'tl': left truncation is"):
+        EventHistoryData.from_histories(observed={"a": [1]}, tl=0.5)
+    with pytest.raises(TypeError, match="'e': event types have no place"):
+        EventHistoryData.from_histories(observed={"a": [1]}, e={"a": ["x"]})
+    with pytest.raises(TypeError, match="did you mean 'right_censored'"):
+        EventHistoryData.from_histories(
+            observed={"a": [1]}, right_censord={"a": 2}
+        )

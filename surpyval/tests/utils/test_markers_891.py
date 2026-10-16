@@ -148,7 +148,8 @@ def test_from_items_keeps_markers_by_item():
 def test_summary_and_repr_count_the_readings():
     data = SurpyvalData.from_items(_items())
     assert "  markers: 8 readings on 3 items" in data.summary()
-    assert "markers=<8 readings on 3 items>" in repr(data)
+    assert "markers" in repr(data).splitlines()[1]  # a column per row
+    assert "3 readings" in repr(data)
     assert "markers" not in repr(data.without("markers"))
 
 

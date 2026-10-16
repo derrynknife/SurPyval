@@ -11,13 +11,16 @@ import numpy as np
 
 from surpyval.utils.item_history import (
     _age,
+    _attributes,
     _covariate_field,
     _covariates,
-    covariate_value,
     _schedule_field,
     _time_varying,
+    _unit,
     _with_step,
+    checked_id,
     comparable,
+    covariate_value,
     freeze,
     frozen_setattr,
     frozen_setstate,
@@ -25,6 +28,11 @@ from surpyval.utils.item_history import (
     item_id,
     late_covariates,
     missing_type,
+)
+from surpyval.utils.record_keywords import (
+    LIFETIME_ALIASES,
+    accepted_names,
+    refuse_unknown_keywords,
 )
 
 __all__ = ["ItemLifetime"]
@@ -92,6 +100,15 @@ class ItemLifetime:
         interval). The joint models (``WeibullJointPH``) fit them with
         the lifetime; every other fit refuses data that has them
         (``data.without("markers")`` leaves them out).
+    attributes : dict, optional
+        ``{name: value}``, what describes the item without being fitted
+        (a site, a batch, a product line: any values), for
+        ``data.groupby(name)`` and ``data.select(where={name: value})``.
+    unit : str, optional
+        The unit its ages are in (``"hours"``, ``"km"``, ``"cycles"``), a
+        label kept with the record (pint's canonical name for a unit it
+        knows): a dataset takes it from its records, which must agree,
+        and ``fit(data)`` gives it to the model.
 
     Examples
     --------
@@ -130,8 +147,18 @@ class ItemLifetime:
         covariates: Any = None,
         time_varying_covariates: Any = None,
         markers: Any = None,
+        attributes: Any = None,
+        unit: Any = None,
+        **unknown: Any,
     ) -> None:
-        item = item_id(id)
+        if unknown:
+            refuse_unknown_keywords(
+                "ItemLifetime",
+                unknown,
+                accepted_names(ItemLifetime.__init__, "self"),
+                LIFETIME_ALIASES,
+            )
+        item = checked_id(id)
         self.id = item
         given = {
             name: value
@@ -159,8 +186,9 @@ class ItemLifetime:
             item, "right_truncation", right_truncation
         )
         # A missing type (None, NaN, pandas NA, "") is None: on a failure,
-        # a type not recorded (a masked cause).
-        event_type = None if missing_type(event_type) else event_type
+        # a type not recorded (a masked cause); a numpy value is kept as
+        # the plain value it holds.
+        event_type = None if missing_type(event_type) else item_id(event_type)
         if event_type is not None and outcome == "right_censored":
             raise ValueError(
                 f"Item {item!r}: a right censored item has not failed, so it "
@@ -168,6 +196,8 @@ class ItemLifetime:
             )
         self.event_type = event_type
         self.covariates, self.covariate_names = _covariates(item, covariates)
+        self.attributes = _attributes(item, attributes)
+        self.unit = _unit(item, unit)
         self.time_varying_covariates, first, self._tvc_dict = _time_varying(
             item, time_varying_covariates
         )
@@ -183,12 +213,28 @@ class ItemLifetime:
     def __setstate__(self, state: dict) -> None:
         frozen_setstate(self, state)
 
+    def attribute(self, name: str) -> Any:
+        """The value of the attribute ``name`` (``attributes={name:
+        value}``, what describes the item without being fitted: a site, a
+        batch); None where the item does not have it.
+        ``data.select(where={"site": "North"})`` keeps the items of one
+        site, and ``data.groupby("site")`` splits the data by it."""
+        if self.attributes is None:
+            return None
+        return self.attributes.get(name)
+
     def covariate(self, name: str) -> float:
         """The value of the covariate ``name`` (where the covariates are
         named, ``covariates={name: value}``): NaN where it was not
         recorded. ``data.select(where=lambda item: item.covariate("site")
         == 1)`` keeps the items of one site."""
         return covariate_value(self, name)
+
+    @property
+    def has_event_types(self) -> bool:
+        """Whether this item's failure carries an event type (as an
+        ``ItemHistory``'s ``has_event_types``)."""
+        return self.event_type is not None
 
     # The outcome by name, as ItemHistory reads: its value, or None.
     @property
@@ -318,6 +364,18 @@ class ItemLifetime:
             raise ValueError(
                 f"Item {item!r}: its {self.outcome} age is after "
                 f"right_truncation ({tr:g})."
+            )
+        if tr is not None and self.outcome == "right_censored" and high >= tr:
+            # The dataset refuses it (xcnt_handler); refused here, naming
+            # the item, so that every record that builds goes into a
+            # dataset (#931).
+            raise ValueError(
+                f"Item {item!r}: right censored at {high:g}, at its "
+                f"right_truncation ({tr:g}). An item right truncated at "
+                f"{tr:g} is in the data because it failed by then, so it "
+                f"cannot have been seen working at {high:g}. If {tr:g} is "
+                "the end of its observation, that is right_censored alone, "
+                "without right_truncation."
             )
         if first_change is not None:
             start = 0.0 if tl is None else tl
@@ -463,6 +521,10 @@ class ItemLifetime:
             out["covariates"] = _covariate_field(
                 self.covariates, self.covariate_names
             )
+        if self.attributes is not None:
+            out["attributes"] = dict(self.attributes)
+        if self.unit is not None:
+            out["unit"] = self.unit
         if self.time_varying_covariates is not None:
             out["time_varying_covariates"] = _schedule_field(
                 self.time_varying_covariates, self._as_dict()
@@ -470,6 +532,60 @@ class ItemLifetime:
         if self.markers is not None:
             out["markers"] = self.markers
         return out
+
+    def to_dict(self) -> dict:
+        """
+        The record as a dictionary of plain Python values (strict JSON
+        when dumped): its ``"class"``, ``"id"`` and the arguments that
+        rebuild it, as :meth:`from_dict` reads them. A tuple id or event
+        type is written as ``{"tuple": [...]}``; a step schedule of
+        time-varying covariates by its ages and values; a
+        ``CovariatePath`` is refused.
+
+        Examples
+        --------
+        >>> from surpyval import ItemLifetime
+        >>> ItemLifetime("B7", observed=1820).to_dict()
+        {'class': 'ItemLifetime', 'id': 'B7', 'observed': 1820.0}
+        """
+        from surpyval.utils.data_json import record_dict
+
+        return record_dict(self)
+
+    @classmethod
+    def from_dict(cls, record_dict: dict) -> "ItemLifetime":
+        """The record back from its :meth:`to_dict` dictionary, checked
+        as one built from its arguments.
+
+        >>> from surpyval import ItemLifetime
+        >>> item = ItemLifetime("B7", observed=1820)
+        >>> ItemLifetime.from_dict(item.to_dict()) == item
+        True
+        """
+        from surpyval.utils.data_json import record_from_dict
+
+        return record_from_dict(cls, record_dict)
+
+    def to_json(self, filepath: Any = None) -> "str | None":
+        """The record as strict JSON text (:meth:`to_dict` dumped), or
+        written to the file ``filepath``."""
+        from surpyval.utils.data_json import dump
+
+        return dump(self.to_dict(), filepath)
+
+    @classmethod
+    def from_json(cls, source: Any) -> "ItemLifetime":
+        """The record back from JSON text (a string starting with ``{``)
+        or the file holding it.
+
+        >>> from surpyval import ItemLifetime
+        >>> item = ItemLifetime("B7", observed=1820)
+        >>> ItemLifetime.from_json(item.to_json()) == item
+        True
+        """
+        from surpyval.utils.data_json import load
+
+        return cls.from_dict(load(source))
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ItemLifetime):

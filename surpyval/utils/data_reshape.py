@@ -22,6 +22,7 @@ LIFETIME_PARTS = {
     "time_varying_covariates": ("time_varying_covariates",),
     "truncation": ("left_truncation", "right_truncation"),
     "markers": ("markers",),
+    "attributes": ("attributes",),
 }
 HISTORY_PARTS = {
     "covariates": ("covariates",),
@@ -38,6 +39,7 @@ HISTORY_PARTS = {
         "interval_censored_states",
         "left_censored_states",
     ),
+    "attributes": ("attributes",),
 }
 
 
@@ -541,10 +543,109 @@ class ReadOnlyArrays:
             object.__setattr__(self, name, read_only(value))
 
 
+def cut_age(method: str, age: Any, data: Any) -> float:
+    """The ``age`` a cut-off (``censor_at``, ``enter_at``) is made at: one
+    finite number, in the data's time unit (#932). A date, a duration, text
+    or a per-item mapping is refused, saying what to give; so is an age at
+    or before 0 where the data's ages are measured from 0 (every time and
+    truncation bound at or above 0), which would leave nothing known of
+    any item."""
+    import datetime
+
+    if isinstance(age, dict):
+        raise ValueError(
+            f"{method} takes one age for every item; a cut-off per item is "
+            f"{method}({{id: age}}) (the items it leaves out are kept as "
+            "they are)."
+        )
+    if isinstance(age, (datetime.timedelta, np.timedelta64)):
+        raise ValueError(
+            f"{method} takes an age (a number, in the data's time unit), "
+            "not a duration: convert it, e.g. duration / "
+            "pd.Timedelta(hours=1) for hours."
+        )
+    if isinstance(age, (datetime.date, np.datetime64)) or type(
+        age
+    ).__name__ in ("Timestamp", "datetime"):
+        raise ValueError(
+            f"{method} takes an age (a number, in the data's time unit), "
+            "not a date: the same date is a different age for each item. "
+            "Convert it to each item's age (date - its start date) and "
+            f"give {method}({{id: age}})."
+        )
+    if isinstance(age, (str, bytes)) or np.ndim(age) != 0:
+        raise ValueError(
+            f"{method} takes one age (a number, in the data's time unit); "
+            f"got {age!r}."
+        )
+    try:
+        value = float(age)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"{method} takes one age (a number, in the data's time unit); "
+            f"got {age!r}."
+        )
+    if not np.isfinite(value):
+        raise ValueError(f"{method} takes a finite age; got {value!r}.")
+    if value <= 0 and _ages_from_zero(data):
+        raise ValueError(
+            f"{method}({value:g}): the data's ages are measured from 0 "
+            "(none is below it), so a cut-off at or before 0 is before any "
+            "item's observation, which would leave nothing. Give an age "
+            "above 0."
+        )
+    return value
+
+
+def _ages_from_zero(data: Any) -> bool:
+    """Whether every time and truncation bound of ``data`` is at or above
+    0: its ages are measured from 0, as a lifetime's are (a baseline
+    defined on the real line may put times below 0)."""
+    x = np.asarray(data.x, dtype=float)
+    tl = np.asarray(data.tl, dtype=float)
+    return bool((x >= 0).all() and (tl[np.isfinite(tl)] >= 0).all())
+
+
+def per_item_ages(method: str, ages: Any, data: Any) -> dict:
+    """``ages`` as ``{id: age}`` for a cut-off per item (#937): every id
+    in the data, every age a finite number."""
+    from surpyval.utils.item_history import item_id
+
+    ids = getattr(data, "ids", None)
+    if ids is None:
+        raise ValueError(
+            f"{method}({{id: age}}) needs item ids, and this data has none "
+            "(its rows are sorted and grouped): build it with from_items, "
+            "ids=, or from_observations(..., <kind>_ids=...)."
+        )
+    have = set(ids)
+    out = {}
+    for key, age in ages.items():
+        key = item_id(key)
+        if key not in have:
+            raise KeyError(f"No item {key!r} in the data.")
+        out[key] = cut_age(method, age, data)
+    return out
+
+
+def id_list(ids: Any, data: Any) -> list:
+    """``ids`` for ``select`` as a list of ids (#932): a str, a number
+    or an id of the data's is one id."""
+    from surpyval.utils.item_history import item_id
+
+    have = getattr(data, "ids", None)
+    if isinstance(ids, (str, bytes)) or np.ndim(ids) == 0:
+        return [item_id(ids)]
+    if isinstance(ids, tuple) and have is not None and ids in set(have):
+        return [ids]
+    return [item_id(i) for i in ids]
+
+
 class ReshapeMixin(ReadOnlyArrays):
     """The reshaping operations of a dataset (``SurpyvalData``,
     ``EventHistoryData``); each returns a new dataset, built again from
-    the reshaped item records."""
+    the reshaped item records, or, for lifetime data, from its arrays
+    (:mod:`surpyval.utils.lifetime_reshape`), which gives the same."""
 
     _PARTS: dict = {}
 
@@ -564,23 +665,39 @@ class ReshapeMixin(ReadOnlyArrays):
             raise ValueError("No items are left.")
         return self._from_records([r for r, _ in kept], [k for _, k in kept])
 
+    @property
+    def _on_arrays(self) -> bool:
+        """Whether the reshapes work on the arrays: lifetime data without
+        marker readings (which a reshape that moves an item's window
+        trims to the new window, record by record)."""
+        return (
+            self._PARTS is LIFETIME_PARTS
+            and getattr(self, "markers", None) is None
+        )
+
     def _event_types(self) -> set:
         e = getattr(self, "e", None)
         if e is None:
             raise ValueError("This data has no event types.")
         return {v for v in e if v is not None}
 
-    def without(self, *parts: str) -> Any:
+    def without(self, *parts: Any) -> Any:
         """
         The data without some of what it holds, to fit a model that does
         not take it: any of ``"covariates"``, ``"event_types"``,
         ``"time_varying_covariates"``, ``"truncation"`` (and ``"markers"``
-        for lifetime data, ``"states"`` for event history data). A plain
-        ``Weibull.fit`` of data built with covariates and failure modes,
-        say, is
+        for lifetime data, ``"states"`` for event history data), as
+        separate arguments or a list. A plain ``Weibull.fit`` of data built
+        with covariates and failure modes, say, is
         ``Weibull.fit(data.without("covariates", "event_types"))``.
         """
+        if len(parts) == 1 and isinstance(parts[0], (list, tuple, set)):
+            parts = tuple(parts[0])
         check_parts(parts, self._PARTS)
+        if self._on_arrays:
+            from surpyval.utils import lifetime_reshape
+
+            return lifetime_reshape.without(self, parts)
         return self._map(lambda r: without(r, parts))
 
     def with_covariates(self, columns: Any) -> Any:
@@ -593,6 +710,11 @@ class ReshapeMixin(ReadOnlyArrays):
         columns = list(columns)
         if getattr(self, "Z", None) is None:
             raise ValueError("This data has no covariates.")
+        if not columns:
+            raise ValueError(
+                "with_covariates takes the columns to keep: give at least "
+                "one, or use without('covariates') for none."
+            )
         names = getattr(self, "covariate_names", None)
         unknown = [
             c
@@ -606,17 +728,22 @@ class ReshapeMixin(ReadOnlyArrays):
                 f"This data has no covariates {unknown!r}; its covariates "
                 f"are {list(names or [])!r}."
             )
+        if self._on_arrays:
+            from surpyval.utils import lifetime_reshape
+
+            return lifetime_reshape.with_covariates(self, columns)
         return self._map(lambda r: with_covariates(r, columns))
 
     def for_event_type(self, event_type: Any, masked: str = "censor") -> Any:
         """
-        The data of one failure mode, ``event_type``, as for a
-        cause-specific analysis: for a lifetime, a failure of another mode
-        becomes right censored at its age (at the last good inspection,
-        for one found between inspections; one known only to have happened
-        before an age is left out); for a history, the other modes'
-        failures are removed and its observation runs at least to the last
-        of them. The result has no event types.
+        The data of one failure mode, ``event_type`` (or of several taken
+        as one, given as a list or set), as for a cause-specific analysis:
+        for a lifetime, a failure of another mode becomes right censored
+        at its age (at the last good inspection, for one found between
+        inspections; one known only to have happened before an age is
+        left out); for a history, the other modes' failures are removed
+        and its observation runs at least to the last of them. The result
+        has no event types.
 
         Lifetimes lose their right truncation, with a warning: an item is
         in right-truncated data because its first failure, of any mode,
@@ -633,9 +760,19 @@ class ReshapeMixin(ReadOnlyArrays):
         overestimated if some were not); ``"refuse"`` refuses the data.
         """
         types = self._event_types()
-        if event_type not in types:
+        wanted = (
+            set(event_type)
+            if isinstance(event_type, (list, set, frozenset))
+            else {event_type}
+        )
+        if not wanted:
+            raise ValueError("for_event_type takes at least one event type.")
+        missing = [t for t in wanted if t not in types]
+        if missing:
             raise ValueError(
-                f"No failures of type {event_type!r}; the data's types are "
+                "No failures of type "
+                + ", ".join(repr(t) for t in sorted(missing, key=str))
+                + "; the data's types are "
                 + ", ".join(repr(t) for t in sorted(types, key=str))
                 + "."
             )
@@ -644,6 +781,12 @@ class ReshapeMixin(ReadOnlyArrays):
             raise ValueError(
                 f"masked must be one of {options!r}; got {masked!r}."
             )
+        what = (
+            repr(event_type)
+            if len(wanted) == 1
+            else "one of "
+            + ", ".join(repr(t) for t in sorted(wanted, key=str))
+        )
         e, c = getattr(self, "e"), np.asarray(getattr(self, "c"))
         n = np.asarray(getattr(self, "n"))
         unrecorded = int(
@@ -652,7 +795,7 @@ class ReshapeMixin(ReadOnlyArrays):
         if unrecorded and masked == "refuse":
             raise ValueError(
                 f"{_failures(unrecorded)} no recorded event type (masked "
-                f"causes), which may or may not be of type {event_type!r}: "
+                f"causes), which may or may not be of type {what}: "
                 "relabel them (relabel_event_types({None: ...})), leave "
                 "their items out, or choose masked='censor' or 'count'."
             )
@@ -661,7 +804,7 @@ class ReshapeMixin(ReadOnlyArrays):
                 f"{unrecorded} failure{'' if unrecorded == 1 else 's'} of no "
                 "recorded event type (masked causes) "
                 f"{'is' if unrecorded == 1 else 'are'} taken as not of type "
-                f"{event_type!r}: its rate "
+                f"{what}: its rate "
                 "is underestimated if some of them were. masked='count' "
                 "takes them as of this type instead.",
                 MaskedCauseWarning,
@@ -677,6 +820,17 @@ class ReshapeMixin(ReadOnlyArrays):
                 UserWarning,
                 stacklevel=caller_stacklevel(),
             )
+        if self._on_arrays:
+            from surpyval.utils import lifetime_reshape
+
+            return lifetime_reshape.for_event_type(self, wanted, masked)
+        if len(wanted) > 1:
+            # Several modes as one: relabelled to one of them first
+            one = next(iter(wanted))
+            merged = self.relabel_event_types({t: one for t in wanted})
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                return merged._map(lambda r: for_event_type(r, one, masked))
         return self._map(lambda r: for_event_type(r, event_type, masked))
 
     def relabel_event_types(self, mapping: dict) -> Any:
@@ -696,21 +850,365 @@ class ReshapeMixin(ReadOnlyArrays):
                 + ", ".join(repr(t) for t in sorted(types, key=str))
                 + "."
             )
+        if self._on_arrays:
+            from surpyval.utils import lifetime_reshape
+
+            return lifetime_reshape.relabel(self, mapping)
         return self._map(lambda r: relabel(r, mapping))
 
-    def select(self, ids: Any = None, where: "Callable | None" = None) -> Any:
+    def _levels(self, name: str, every: bool = True) -> list:
+        """Each item's value of the attribute or covariate ``name``, in
+        the order of the rows (lifetimes) or of ``ids`` (histories);
+        where ``every``, an item without the attribute is refused, else
+        its value is None."""
+        attributes = getattr(self, "attributes", None)
+        names = getattr(self, "covariate_names", None)
+        if attributes is not None and any(
+            a is not None and name in a for a in attributes
+        ):
+            missing = [
+                i
+                for i, a in zip(self._item_keys(), attributes)
+                if a is None or a.get(name) is None
+            ]
+            if missing and every:
+                from surpyval.utils.warnings import named
+
+                raise ValueError(
+                    f"Items {named(missing)} have no attribute {name!r}: "
+                    "give it for every item, or select the items that "
+                    "have it first."
+                )
+            return [None if a is None else a.get(name) for a in attributes]
+        if names is not None and name in names:
+            levels = self._covariate_levels(list(names).index(name))
+            blank = [i for i, v in zip(self._item_keys(), levels) if v != v]
+            if blank and every:
+                from surpyval.utils.warnings import named
+
+                raise ValueError(
+                    f"Items {named(blank)} have no value of the covariate "
+                    f"{name!r} (not recorded): give it for every item, or "
+                    "select the items that have it first."
+                )
+            return [None if v != v else v for v in levels]
+        have = sorted(
+            {k for a in attributes or [] if a is not None for k in a}, key=str
+        )
+        raise ValueError(
+            f"No attribute or covariate {name!r}: the data's attributes are "
+            + (", ".join(repr(k) for k in have) if have else "none")
+            + " and its covariates "
+            + (", ".join(repr(k) for k in names) if names else "none")
+            + " (attributes={name: value} on the records, or "
+            "from_dataframe(..., attribute_cols=[...]))."
+        )
+
+    def _item_keys(self) -> list:
+        """One key per item, for messages: its id, else its row."""
+        ids = getattr(self, "ids", None)
+        if ids is not None:
+            return list(ids)
+        return list(range(len(getattr(self, "x"))))
+
+    def _covariate_levels(self, column: int) -> list:
+        raise NotImplementedError  # pragma: no cover
+
+    def _rows_of_items(self, keep: np.ndarray) -> Any:
+        raise NotImplementedError  # pragma: no cover
+
+    def groupby(self, name: str) -> dict:
         """
-        Some of the items: those with an id in ``ids``, and for which
-        ``where(item)`` is true (``where`` is given each item's record, an
-        ``ItemLifetime`` or an ``ItemHistory``):
-        ``data.select(where=lambda item: item.covariates[0] == 1)``.
+        The data split by the attribute (or covariate) ``name``:
+        ``{level: dataset}``, one dataset per value, in sorted order, for
+        a fit per site, arm or product line:
+        ``{site: Weibull.fit(part) for site, part in data.groupby("site")
+        .items()}``. Every item needs the attribute.
+
+        Examples
+        --------
+        >>> from surpyval import ItemLifetime, SurpyvalData
+        >>> data = SurpyvalData.from_items([
+        ...     ItemLifetime("A", observed=5, attributes={"site": "N"}),
+        ...     ItemLifetime("B", observed=7, attributes={"site": "S"}),
+        ...     ItemLifetime("C", right_censored=9, attributes={"site": "N"}),
+        ... ])
+        >>> {site: part.ids for site, part in data.groupby("site").items()}
+        {'N': ['A', 'C'], 'S': ['B']}
         """
+        levels = self._levels(name)
+        out = {}
+        for level in sorted(set(levels), key=str):
+            keep = np.array([v == level for v in levels], dtype=bool)
+            out[level] = self._rows_of_items(keep)
+        return out
+
+    def select(self, ids: Any = None, where: Any = None) -> Any:
+        """
+        Some of the items: those with an id in ``ids`` (one id, or a list
+        of them; the items stay in the data's order), and for which
+        ``where`` holds: a function of each item's record (an
+        ``ItemLifetime`` or an ``ItemHistory``),
+        ``data.select(where=lambda item: item.covariates[0] == 1)``, or a
+        dict ``{name: value}`` of attributes (or covariates) the item
+        must have, ``data.select(where={"site": "North"})``. Selecting by
+        id needs item ids (``from_items``, ``ids=``).
+        """
+        if isinstance(where, dict):
+            keep = np.ones(len(self._item_keys()), dtype=bool)
+            for name, value in where.items():
+                levels = self._levels(name, every=False)
+                keep &= np.array([v == value for v in levels], dtype=bool)
+            if ids is not None:
+                wanted_ids = set(id_list(ids, self))
+                keep &= np.array(
+                    [k in wanted_ids for k in self._item_keys()], dtype=bool
+                )
+            if not keep.any():
+                raise ValueError("No items are left.")
+            return self._rows_of_items(keep)
+        if ids is None and where is None:
+            raise ValueError(
+                "select takes the ids to keep (ids=), a test of each item's "
+                "record (where=), or both."
+            )
+        have = getattr(self, "ids", None)
+        rows: "np.ndarray | None" = None
+        if ids is not None:
+            if have is None:
+                raise ValueError(
+                    "select(ids=...) needs item ids, and this data has none "
+                    "(its rows are sorted and grouped, so their numbers "
+                    "would not be stable): build it with from_items, "
+                    "ids=, or from_observations(..., <kind>_ids=...), or "
+                    "select by where=."
+                )
+            wanted = id_list(ids, self)
+            positions: dict = {}
+            for k, i in enumerate(have):
+                positions.setdefault(i, k)
+            missing = [i for i in wanted if i not in positions]
+            if missing:
+                raise KeyError(
+                    f"No item{'s' if len(missing) > 1 else ''} "
+                    + ", ".join(repr(i) for i in missing)
+                    + " in the data."
+                )
+            wanted_set = set(wanted)
+            rows = np.array(
+                [k for k, i in enumerate(have) if i in wanted_set], dtype=int
+            )
+        if where is None and rows is not None and self._on_arrays:
+            from surpyval.utils import lifetime_reshape
+
+            return lifetime_reshape.select(self, rows)
         records, counts = self._records()
-        kept = select(records, ids, where)
-        if not kept:
+        if rows is not None:
+            kept_rows = set(rows.tolist())
+            pairs = [
+                (r, k)
+                for j, (r, k) in enumerate(zip(records, counts))
+                if j in kept_rows
+            ]
+        else:
+            pairs = list(zip(records, counts))
+        if where is not None:
+            pairs = [(r, k) for r, k in pairs if where(r)]
+        if not pairs:
             raise ValueError("No items are left.")
-        index = {id(r): k for r, k in zip(records, counts)}
-        return self._from_records(kept, [index[id(r)] for r in kept])
+        return self._from_records([r for r, _ in pairs], [k for _, k in pairs])
+
+    def update(self, records: Any, counts: Any = None) -> Any:
+        """
+        The data with ``records`` (one record, or a list) taken in: a
+        record whose id is in the data replaces that item's record, one
+        with a new id is added at the end. An item's count (``n``, for
+        lifetime data) is kept; ``counts={id: k}`` sets the count of a
+        record given (a new one counts 1 otherwise). Everything else --
+        covariates, event types, attributes, the unit -- must agree with
+        the data's, as in ``from_items``. The monthly refresh of a fleet
+        is ``data.update([data.item("CV-1").fail(ages["CV-1"]), ...])``.
+        Needs item ids (``from_items``, ``ids=``).
+
+        Examples
+        --------
+        >>> from surpyval import ItemLifetime, SurpyvalData
+        >>> data = SurpyvalData.from_items([
+        ...     ItemLifetime("A", right_censored=5),
+        ...     ItemLifetime("B", right_censored=7),
+        ... ], counts=[1, 3])
+        >>> later = data.update([
+        ...     data.item("A").fail(6), ItemLifetime("C", right_censored=2)
+        ... ])
+        >>> later.ids, later.c.tolist(), later.n.tolist()
+        (['A', 'B', 'C'], [0, 1, 1], [1, 3, 1])
+        """
+        from surpyval.utils.item_history import checked_id, item_id
+
+        if getattr(self, "ids", None) is None:
+            raise ValueError(
+                "update needs item ids, and this data has none (its rows "
+                "are sorted and grouped): build it with from_items, ids=, "
+                "or from_dataframe(..., i_col=...)."
+            )
+        kind = self._record_type()
+        if isinstance(records, kind):
+            records = [records]
+        records = list(records)
+        other = next((r for r in records if not isinstance(r, kind)), None)
+        if other is not None:
+            raise TypeError(
+                f"update takes {kind.__name__} records; got "
+                f"{type(other).__name__}."
+            )
+        if isinstance(counts, dict):
+            counts = {checked_id(k): v for k, v in counts.items()}
+        elif counts is not None:
+            raise ValueError(
+                "counts must be {id: count}, the count of each record "
+                "given (one not named counts as before, or 1 when new)."
+            )
+        given = {}
+        for record in records:
+            if record.id in given:
+                raise ValueError(
+                    f"Item {record.id!r} is given twice: one record per item."
+                )
+            given[record.id] = record
+        unknown = [k for k in (counts or {}) if k not in given]
+        if unknown:
+            raise ValueError(
+                "'counts' names items not given: "
+                + ", ".join(repr(k) for k in unknown)
+                + "."
+            )
+        held, held_counts = self._records()
+        out: list = []
+        out_counts: list = []
+        for record, k in zip(held, held_counts):
+            key = item_id(record.id)
+            if key in given:
+                out.append(given.pop(key))
+                out_counts.append((counts or {}).get(key, k))
+            else:
+                out.append(record)
+                out_counts.append(k)
+        for key, record in given.items():
+            out.append(record)
+            out_counts.append((counts or {}).get(key, 1))
+        return self._from_records(out, out_counts)
+
+    def drop(self, ids: Any) -> Any:
+        """
+        The data without the items ``ids`` (one id, or a list); every id
+        must be in the data. Needs item ids.
+
+        Examples
+        --------
+        >>> from surpyval import ItemLifetime, SurpyvalData
+        >>> data = SurpyvalData.from_items([
+        ...     ItemLifetime("A", observed=5), ItemLifetime("B", observed=7)
+        ... ])
+        >>> data.drop("A").ids
+        ['B']
+        """
+        have = getattr(self, "ids", None)
+        if have is None:
+            raise ValueError(
+                "drop needs item ids, and this data has none (its rows are "
+                "sorted and grouped): build it with from_items, ids=, or "
+                "from_dataframe(..., i_col=...); select(where=) keeps the "
+                "items a test picks."
+            )
+        wanted = id_list(ids, self)
+        missing = [i for i in wanted if i not in set(have)]
+        if missing:
+            raise KeyError(
+                f"No item{'s' if len(missing) > 1 else ''} "
+                + ", ".join(repr(i) for i in missing)
+                + " in the data."
+            )
+        dropped = set(wanted)
+        keep = np.array([i not in dropped for i in have], dtype=bool)
+        if not keep.any():
+            raise ValueError("No items are left.")
+        return self._rows_of_items(keep)
+
+    def extend_running(self, age: Any) -> Any:
+        """
+        The data with every item still running seen working to a later
+        ``age``: for lifetime data, each right censored item is extended
+        to ``age`` (:meth:`ItemLifetime.extend
+        <surpyval.utils.item_lifetime.ItemLifetime.extend>`); for event
+        history data, each item's observation runs on to ``age`` (a
+        history has no end but the end of its observation, so every item
+        is taken as running). An item already seen later than ``age`` is
+        left as it is. ``age`` is one age for every item, ``{id: age}``
+        for the items named, or a function of each item's record giving
+        its age.
+
+        Examples
+        --------
+        >>> from surpyval import ItemLifetime, SurpyvalData
+        >>> data = SurpyvalData.from_items([
+        ...     ItemLifetime("A", observed=5),
+        ...     ItemLifetime("B", right_censored=7),
+        ...     ItemLifetime("C", right_censored=12),
+        ... ])
+        >>> data.extend_running(10).x.tolist()
+        [5.0, 10.0, 12.0]
+        """
+        if isinstance(age, dict):
+            ages = per_item_ages("extend_running", age, self)
+
+            def to(record: Any) -> Any:
+                return ages.get(record.id)
+
+        elif callable(age):
+            fn = age
+
+            def to(record: Any) -> Any:
+                return cut_age("extend_running", fn(record), self)
+
+        else:
+            value = cut_age("extend_running", age, self)
+
+            def to(record: Any) -> Any:
+                return value
+
+        def extended(record: Any) -> Any:
+            later = to(record)
+            if later is None:
+                return record
+            if self._on_arrays:
+                if record.outcome != "right_censored":
+                    if record.id in (age if isinstance(age, dict) else ()):
+                        raise ValueError(
+                            f"Item {record.id!r} is {record.outcome}, not "
+                            "still running (right censored), so it cannot "
+                            "be extended."
+                        )
+                    return record
+                return (
+                    record if record.value >= later else record.extend(later)
+                )
+            end = record._end()
+            return (
+                record
+                if end is not None and end >= later
+                else record.extend(later)
+            )
+
+        return self._map(extended)
+
+    def _record_type(self) -> type:
+        if self._on_arrays:
+            from surpyval.utils.item_lifetime import ItemLifetime
+
+            return ItemLifetime
+        from surpyval.utils.item_history import ItemHistory
+
+        return ItemHistory
 
     def censor_at(self, age: Any) -> Any:
         """
@@ -722,13 +1220,33 @@ class ReshapeMixin(ReadOnlyArrays):
         that came under observation at or after ``age`` is left out. A
         lifetime keeps the marker readings taken up to its new end.
 
+        ``age`` is one age for every item, in the data's time unit;
+        ``{id: age}``, a cut-off per item (the items it leaves out are
+        kept as they are); or a function of each item's record giving
+        its cut-off: a study that ends on one date ends at a different
+        age for each item, ``data.censor_at(lambda item: (end -
+        item.attribute("installed")).days)``.
+
         A history's failures counted between two inspections, or a change
         of state between two, are known only as a whole: where ``age``
         falls between those inspections, the history is cut at the earlier
         one (and left out where that is before its first look).
         """
-        age = float(age)
-        return self._map(lambda r: censor_at(r, age))
+        if isinstance(age, dict):
+            cuts = per_item_ages("censor_at", age, self)
+            return self._map(
+                lambda r: censor_at(r, cuts[r.id]) if r.id in cuts else r
+            )
+        if callable(age):
+            return self._map(
+                lambda r: censor_at(r, cut_age("censor_at", age(r), self))
+            )
+        value = cut_age("censor_at", age, self)
+        if self._on_arrays:
+            from surpyval.utils import lifetime_reshape
+
+            return lifetime_reshape.censor_at(self, value)
+        return self._map(lambda r: censor_at(r, value))
 
     def enter_at(self, age: Any) -> Any:
         """
@@ -737,15 +1255,27 @@ class ReshapeMixin(ReadOnlyArrays):
         history, in a known state -- stay in, with ``age`` as the start of
         their observation; a failure found between inspections either side
         of ``age``, or known only to have happened before a look, may have
-        come before it, so its item is left out. A lifetime keeps the
-        marker readings taken from ``age`` on.
+        come before it, so its item is left out. ``age`` is one age for
+        every item, ``{id: age}``, an entry per item (the items it leaves
+        out are kept as they are), or a function of each item's record
+        giving its entry. A lifetime keeps the marker readings taken from
+        ``age`` on.
 
         A history goes on after its failures, so where ``age`` falls
         between two inspections that count failures, or a change of state,
         or before a first look, its observation starts instead at the later
         inspection, from which it is known again.
         """
-        age = float(age)
+        if isinstance(age, dict):
+            cuts = per_item_ages("enter_at", age, self)
+        elif callable(age):
+            cuts = {
+                r.id: cut_age("enter_at", age(r), self)
+                for r in self._records()[0]
+            }
+        else:
+            value = cut_age("enter_at", age, self)
+            cuts = None
         if (
             self._PARTS is not LIFETIME_PARTS
             and np.isfinite(getattr(self, "tr")).any()
@@ -759,4 +1289,12 @@ class ReshapeMixin(ReadOnlyArrays):
                 UserWarning,
                 stacklevel=caller_stacklevel(),
             )
-        return self._map(lambda r: enter_at(r, age))
+        if cuts is not None:
+            return self._map(
+                lambda r: enter_at(r, cuts[r.id]) if r.id in cuts else r
+            )
+        if self._on_arrays:
+            from surpyval.utils import lifetime_reshape
+
+            return lifetime_reshape.enter_at(self, value)
+        return self._map(lambda r: enter_at(r, value))

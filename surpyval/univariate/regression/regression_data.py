@@ -558,6 +558,24 @@ def named_row(
     0  50.0    1
     """
     named = feature_names is not None or model_spec is not None
+    kind = type(Z).__name__
+    if kind in (
+        "ItemLifetime",
+        "ItemHistory",
+        "SurpyvalData",
+        "EventHistoryData",
+    ) or (
+        isinstance(Z, (list, tuple))
+        and Z
+        and type(Z[0]).__name__ in ("ItemLifetime", "ItemHistory")
+    ):
+        # A record, a list of records or a dataset: its covariates, by
+        # name where both it and the model name them (#940)
+        from surpyval.utils.record_predict import covariates_as_Z
+
+        Z = covariates_as_Z(Z, feature_names if named else None)
+        if not hasattr(Z, "columns"):
+            return Z
     if isinstance(Z, dict):
         if not named:
             raise ValueError(

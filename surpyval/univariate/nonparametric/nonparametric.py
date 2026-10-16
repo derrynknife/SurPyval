@@ -11,6 +11,7 @@ from surpyval.distribution import NonParametricDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.deprecation import reordered_arguments
+from surpyval.utils.record_predict import PredictsRecordsMixin
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import axis_label
@@ -98,7 +99,12 @@ def warn_bounds_past_data(
     )
 
 
-class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
+class NonParametric(
+    BandsMixin,
+    SerialisableMixin,
+    NonParametricDistribution,
+    PredictsRecordsMixin,
+):
     """
     Result of ``.fit()`` method for every non-parametric
     surpyval distribution. This means that each of the

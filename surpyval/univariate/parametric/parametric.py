@@ -43,6 +43,7 @@ from surpyval.utils.no_maximum import (  # noqa: F401 (re-exported)
     MAXIMUM_STATES,
     restored_maximum,
 )
+from surpyval.utils.record_predict import PredictsRecordsMixin
 from surpyval.utils.removed_names import (
     removed_arguments,
     removed_parameter_note,
@@ -452,6 +453,7 @@ class Parametric(
     DiagnoseMixin,
     SerialisableMixin,
     ParametricDistribution,
+    PredictsRecordsMixin,
 ):
     """
     Result of ``.fit()`` or ``.from_params()`` method for every parametric

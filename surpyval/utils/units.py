@@ -218,6 +218,16 @@ def takes_unit(method: Callable[..., R]) -> Callable[..., R]:
         canonical = normalise_unit(unit)
         model = method(*args, **kwargs)
         if canonical is not None and model is not None:
+            held = getattr(model, "unit", None)
+            if held is not None and held != canonical:
+                # The data (a SurpyvalData or EventHistoryData with a
+                # unit) gave the model its unit (#945)
+                raise ValueError(
+                    f"The data's ages are in {held!r}, but unit={unit!r} "
+                    "was given to the fit: a model is in the unit of its "
+                    "data (no conversion is made), so leave unit= out, or "
+                    "convert the data."
+                )
             try:
                 setattr(model, "unit", canonical)
             except AttributeError:
