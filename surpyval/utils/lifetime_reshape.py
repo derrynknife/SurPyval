@@ -73,6 +73,9 @@ def rebuilt(
             attributes = [attributes[r] for r in rows]
     if not (c == 2).any():
         x = x[:, 0]
+    if e is not None and all(v is None for v in e):
+        # No typed failure is left: no event types, as from_items gives
+        e = None
     truncated = np.isfinite(tl).any() or np.isfinite(tr).any()
     with warnings.catch_warnings():
         # Warned of when the data was built
@@ -92,8 +95,16 @@ def rebuilt(
     out.ids = ids
     out.attributes = attributes
     if time_varying is not None:
-        kept = ids if ids is not None else list(range(len(x)))
-        out.time_varying_covariates = {i: time_varying[i] for i in kept}
+        if ids is not None:
+            out.time_varying_covariates = {i: time_varying[i] for i in ids}
+        else:
+            # Keyed by row: the rows kept, numbered afresh
+            old_rows = (
+                np.flatnonzero(keep) if keep is not None else np.arange(len(x))
+            )
+            out.time_varying_covariates = {
+                new: time_varying[int(old)] for new, old in enumerate(old_rows)
+            }
     return out
 
 

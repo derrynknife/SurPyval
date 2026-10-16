@@ -79,10 +79,25 @@ def test_last_ok_and_first_failed_with_blanks():
     )
     # Sorted by time, as data without ids is
     assert data.c.tolist() == [0, -1, 2, 1]
-    # Flags given with the bounds must agree with them
-    with pytest.raises(ValueError, match="not interval censored but has"):
+    # Flags given with the bounds must agree with them: a blank bound is
+    # the unknown end of a censored row
+    with pytest.raises(ValueError, match="Row 1: 'c' says 0 but 'first_fail"):
         SurpyvalData.from_dataframe(
             df.assign(c=0), xl_col="last_ok", xr_col="first_failed", c_col="c"
+        )
+    with_flags = SurpyvalData.from_dataframe(
+        df.assign(c=[2, 1, -1, 0]),
+        xl_col="last_ok",
+        xr_col="first_failed",
+        c_col="c",
+    )
+    assert with_flags.c.tolist() == [0, -1, 2, 1]
+    with pytest.raises(ValueError, match="not interval censored but has"):
+        SurpyvalData.from_dataframe(
+            df.assign(c=[0, 1, -1, 0]),
+            xl_col="last_ok",
+            xr_col="first_failed",
+            c_col="c",
         )
     blank = df.assign(last_ok=[1000, None, None, 500])
     with pytest.raises(ValueError, match="Row 1 have both .* blank"):
@@ -259,7 +274,7 @@ def test_a_log_with_end_rows_counts_and_an_end_column():
         (
             LOG.assign(load=[1.0, 2.0, 1.0, 0.5, 0.5]),
             {"x_col": "hours", "Z_cols": ["load"]},
-            "Item 'M1': the covariates differs between its rows",
+            "Item 'M1': the covariates differ between its rows",
         ),
         (
             LOG.assign(c=[0, 1, 1, 0, 0]),
@@ -334,3 +349,67 @@ def test_history_round_trip_through_a_frame():
     )
     with pytest.raises(ValueError, match="states, which a table"):
         with_states.to_dataframe()
+
+
+# -- after review: the array paths, counts on event rows, blanks -----------
+
+
+def test_a_reshape_that_removes_every_typed_failure_drops_the_types():
+    data = SurpyvalData.from_items(
+        [
+            ItemLifetime("A", observed=5, event_type="x"),
+            ItemLifetime("B", right_censored=7),
+            ItemLifetime("C", observed=3),
+            ItemLifetime("D", observed=4),
+        ]
+    )
+    rest = data.select(ids=["B", "C", "D"])
+    assert rest.e is None
+    assert data.censor_at(4).e is None and data.drop("A").e is None
+    sp.KaplanMeier.fit(rest)  # no "takes no event types" refusal
+
+
+def test_a_count_on_an_event_row_is_that_many_failures():
+    log = pd.DataFrame(
+        {"i": ["A", "A"], "x": [5, 9], "c": [0, 1], "n": [3, 1]}
+    )
+    data = EventHistoryData.from_dataframe(
+        log, i_col="i", x_col="x", c_col="c", n_col="n"
+    )
+    assert data.item("A").observed.tolist() == [5.0, 5.0, 5.0]
+    bounds = pd.DataFrame(
+        {"i": ["A", "A"], "lo": [1, 4], "hi": [2, 4], "c": [0, 1]}
+    )
+    with pytest.raises(ValueError, match="row 0 is an event .* bounds differ"):
+        EventHistoryData.from_dataframe(
+            bounds, i_col="i", xl_col="lo", xr_col="hi", c_col="c"
+        )
+    with pytest.raises(ValueError, match="n_col='n' is blank on row 1"):
+        EventHistoryData.from_dataframe(
+            log.assign(n=[3, None]), i_col="i", x_col="x", c_col="c", n_col="n"
+        )
+
+
+def test_blank_per_item_cells_are_left_out():
+    log = pd.DataFrame(
+        {"i": ["A", "A", "B"], "t": [1, 2, 3], "z": [None, 2.0, 3.0]}
+    )
+    data = EventHistoryData.from_dataframe(
+        log, i_col="i", x_col="t", Z_cols=["z"]
+    )
+    assert data.item("A").covariates.tolist() == [2.0]
+    with_end = pd.DataFrame({"i": ["A", "A"], "t": [1, 2], "end": [None, 5.0]})
+    assert (
+        EventHistoryData.from_dataframe(
+            with_end, i_col="i", x_col="t", end_col="end"
+        )
+        .item("A")
+        .right_censored
+        == 5.0
+    )
+    with pytest.raises(ValueError, match="tl_col='tl' is blank on row 1"):
+        SurpyvalData.from_dataframe(
+            pd.DataFrame({"t": [1, 2], "tl": [0, None]}),
+            x_col="t",
+            tl_col="tl",
+        )

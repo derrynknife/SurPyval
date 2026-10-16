@@ -846,7 +846,17 @@ class ReshapeMixin(ReadOnlyArrays):
                 )
             return [None if a is None else a.get(name) for a in attributes]
         if names is not None and name in names:
-            return self._covariate_levels(list(names).index(name))
+            levels = self._covariate_levels(list(names).index(name))
+            blank = [i for i, v in zip(self._item_keys(), levels) if v != v]
+            if blank and every:
+                from surpyval.utils.warnings import named
+
+                raise ValueError(
+                    f"Items {named(blank)} have no value of the covariate "
+                    f"{name!r} (not recorded): give it for every item, or "
+                    "select the items that have it first."
+                )
+            return [None if v != v else v for v in levels]
         have = sorted(
             {k for a in attributes or [] if a is not None for k in a}, key=str
         )

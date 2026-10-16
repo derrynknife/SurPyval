@@ -1502,7 +1502,7 @@ class SurpyvalData(ReshapeMixin):
             data["attributes"] = _attributes_json(self.attributes)
         if self.time_varying_covariates is not None:
             data["time_varying_covariates"] = [
-                schedule_dict(schedule, True)
+                schedule_dict(schedule, False)
                 for schedule in self.time_varying_covariates.values()
             ]
         unit = getattr(self, "unit", None)

@@ -1526,7 +1526,7 @@ class EventHistoryData(ReshapeMixin):
             data["attributes"] = _attributes_json(self.attributes)
         if self.time_varying_covariates is not None:
             data["time_varying_covariates"] = [
-                schedule_dict(self.time_varying_covariates[item], True)
+                schedule_dict(self.time_varying_covariates[item], False)
                 for item in self.ids
             ]
         if self.states is not None:

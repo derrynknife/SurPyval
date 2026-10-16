@@ -107,15 +107,70 @@ def _times(
     return np.column_stack([lower, upper]), True
 
 
-def _bound(df: Any, value: Any, arg: str) -> Any:
-    """A truncation column, or a number for every row, or None."""
+def _bounds_by_flag(
+    x: np.ndarray, c: Any, xl_col: Any, xr_col: Any, flag_col: Any
+) -> np.ndarray:
+    """``[lower, upper]`` rows given with flags: a blank bound on the
+    censored side of a right (1) or left (-1) censored row is that row's
+    known bound (the item last seen working at ``xl_col``, or found
+    failed at ``xr_col``); a blank bound on an observed (0) or interval
+    (2) row is refused naming the row."""
+    c = np.asarray(c, dtype=float)
+    lower, upper = x[:, 0].copy(), x[:, 1].copy()
+    for row, (lo, hi, flag) in enumerate(zip(lower, upper, c)):
+        blank_lo, blank_hi = not np.isfinite(lo), not np.isfinite(hi)
+        if flag == 1 and blank_hi and not blank_lo:
+            upper[row] = lo
+        elif flag == -1 and blank_lo and not blank_hi:
+            lower[row] = hi
+        elif blank_lo or blank_hi:
+            raise ValueError(
+                f"Row {row}: {flag_col!r} says {int(flag)} but "
+                f"{xl_col if blank_lo else xr_col!r} is blank; a blank "
+                "bound is the unknown end of a right censored row "
+                f"({xr_col!r} blank, flag 1) or a left censored one "
+                f"({xl_col!r} blank, flag -1)."
+            )
+    return np.column_stack([lower, upper])
+
+
+def _bound(df: Any, value: Any, arg: str, blanks: bool = False) -> Any:
+    """A truncation column (every cell filled, unless ``blanks`` may be
+    left out), or a number for every row, or None."""
     if value is None:
         return None
     if isinstance(value, str):
-        return frame_column(df, value, arg, time=True).astype(float)
+        column = frame_column(df, value, arg, time=True).astype(float)
+        if np.isnan(column).any() and not blanks:
+            rows = np.flatnonzero(np.isnan(column)).tolist()
+            raise ValueError(
+                f"{arg}={value!r} is blank on row"
+                f"{'s' if len(rows) > 1 else ''} "
+                + ", ".join(str(r) for r in rows[:5])
+                + (" ..." if len(rows) > 5 else "")
+                + ": give every row its bound, -inf or inf for none."
+            )
+        return column
     if np.ndim(value) == 0:
         return float(value)
     raise ValueError(f"{arg} must be a column name or one number.")
+
+
+def _counts(df: Any, n_col: Any) -> Any:
+    """The counts column, every cell filled."""
+    if n_col is None:
+        return None
+    column = frame_column(df, n_col, "n_col")
+    values = np.asarray(column, dtype=float)
+    if np.isnan(values).any():
+        rows = np.flatnonzero(np.isnan(values)).tolist()
+        raise ValueError(
+            f"n_col={n_col!r} is blank on row"
+            f"{'s' if len(rows) > 1 else ''} "
+            + ", ".join(str(r) for r in rows[:5])
+            + ": give every row its count (1 for one item)."
+        )
+    return column
 
 
 def _covariates(
@@ -213,7 +268,9 @@ def lifetime_from_frame(
         raise ValueError("The DataFrame has no rows.")
     x, intervals = _times(df, x_col, xl_col, xr_col)
     c = _flags(df, c_col, event_col)
-    n = None if n_col is None else frame_column(df, n_col, "n_col")
+    if intervals and c is not None:
+        x = _bounds_by_flag(x, c, xl_col, xr_col, c_col or event_col)
+    n = _counts(df, n_col)
     ids = None
     if i_col is not None:
         ids = [_plain(v) for v in frame_column(df, i_col, "i_col")]
@@ -363,17 +420,20 @@ def history_from_frame(
                 "(failures counted between inspections) on every row."
             )
         c = c.astype(int)
-    n = (
-        np.ones(len(df), dtype=int)
-        if n_col is None
-        else frame_column(df, n_col, "n_col")
-    )
+    n = np.ones(len(df), dtype=int) if n_col is None else _counts(df, n_col)
+    if n_col is not None:
+        n = np.asarray(n, dtype=float)
+        if (n < 1).any() or (n % 1).any():
+            raise ValueError(
+                f"n_col={n_col!r} must hold whole numbers, 1 or more."
+            )
+        n = n.astype(int)
     e = _event_types(df, e_col)
     Z, names = _covariates(df, Z_cols, "a proportional intensity model")
     attributes = _attributes(df, attribute_cols)
     tl = _bound(df, tl_col, "tl_col")
     tr = _bound(df, tr_col, "tr_col")
-    end = None if end_col is None else _bound(df, end_col, "end_col")
+    end = _bound(df, end_col, "end_col", blanks=True)
     given_ends = _ends(ends, ids)
     order = list(dict.fromkeys(ids))
     rows_of: dict = {item: [] for item in order}
@@ -430,11 +490,28 @@ def _one_per_item(item: Any, name: str, values: Any, rows: list) -> Any:
     if values is None or np.ndim(values) == 0:
         return values
     held = [values[r] for r in rows]
-    present = [v for v in held if not (isinstance(v, float) and np.isnan(v))]
-    if not present:
+    if isinstance(values, np.ndarray) and values.ndim == 2:
+        # A row of covariates: each column the same on every row of the
+        # item, its blank cells left out
+        block = np.asarray(held, dtype=float)
+        out = np.full(block.shape[1], np.nan)
+        for j in range(block.shape[1]):
+            column = block[:, j]
+            present = np.unique(column[~np.isnan(column)])
+            if len(present) > 1:
+                raise ValueError(
+                    f"Item {item!r}: {name} differ between its rows; they "
+                    "describe the item, so they are the same on every row "
+                    "of the item (a blank cell is left out)."
+                )
+            if len(present):
+                out[j] = present[0]
+        return out
+    filled = [v for v in held if not (isinstance(v, float) and np.isnan(v))]
+    if not filled:
         return None
-    first = present[0]
-    if any(not _same(v, first) for v in present):
+    first = filled[0]
+    if any(not _same(v, first) for v in filled):
         raise ValueError(
             f"Item {item!r}: {name} differs between its rows; it describes "
             "the item, so it is the same on every row of the item (a blank "
@@ -444,10 +521,15 @@ def _one_per_item(item: Any, name: str, values: Any, rows: list) -> Any:
 
 
 def _same(a: Any, b: Any) -> bool:
-    try:
-        return bool(np.all(a == b))
-    except Exception:
+    if isinstance(a, dict) and isinstance(b, dict):
         return a == b
+    try:
+        return bool(np.array_equal(a, b, equal_nan=True))
+    except Exception:
+        try:
+            return bool(np.all(a == b))
+        except Exception:
+            return a == b
 
 
 def _history(
@@ -470,8 +552,18 @@ def _history(
     """One item's ItemHistory from its rows of the log."""
     fields: dict = {}
     exact = [r for r in rows if c[r] == 0]
+    for r in exact:
+        if lower[r] != upper[r]:
+            raise ValueError(
+                f"Item {item!r}: row {r} is an event (c = 0) but its bounds "
+                f"differ ({lower[r]:g}, {upper[r]:g}); failures counted "
+                "between two inspections are c = 2."
+            )
     if exact:
-        fields["observed"] = [float(lower[r]) for r in exact]
+        # A count on an exact row: that many failures at the age
+        fields["observed"] = [
+            float(lower[r]) for r in exact for _ in range(int(n[r]))
+        ]
     counted = [r for r in rows if c[r] == 2]
     if counted:
         fields["interval_censored"] = [

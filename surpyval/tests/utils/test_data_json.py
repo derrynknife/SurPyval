@@ -167,3 +167,45 @@ def test_the_wrong_reader_names_the_right_one():
         sp.from_dict({"x": [1]})
     with pytest.raises(FileNotFoundError, match="No such file"):
         SurpyvalData.from_json("d.json")
+
+
+def test_tuple_attributes_and_schedule_edges_round_trip():
+    item = ItemLifetime("A", observed=5, attributes={"site": ("N", 1)})
+    assert ItemLifetime.from_json(item.to_json()) == item
+    schedule = StepSchedule([0, 5, 10], [[0.0], [1.0]])
+    data = SurpyvalData.from_items(
+        [ItemLifetime("A", observed=5, time_varying_covariates=schedule)]
+    )
+    assert SurpyvalData.from_json(data.to_json()).to_items() == data.to_items()
+    history = EventHistoryData.from_items(
+        [
+            ItemHistory(
+                "A", [1], right_censored=5, time_varying_covariates=schedule
+            )
+        ]
+    )
+    assert (
+        EventHistoryData.from_json(history.to_json()).to_items()
+        == history.to_items()
+    )
+
+
+def test_schedules_of_data_without_ids_follow_their_rows():
+    data = SurpyvalData.from_items(
+        [
+            ItemLifetime(
+                k, observed=v, time_varying_covariates={0: [float(v)]}
+            )
+            for k, v in enumerate([2, 5, 8])
+        ]
+    )
+    as_dict = data.to_dict()
+    as_dict.pop("ids")
+    no_ids = SurpyvalData.from_dict(as_dict)
+    later = no_ids.enter_at(3)
+    assert {
+        k: s.Z.tolist() for k, s in later.time_varying_covariates.items()
+    } == {
+        0: [[5.0]],
+        1: [[8.0]],
+    }

@@ -183,3 +183,26 @@ def test_issue_940_predict_checks_its_arguments(kwargs, match):
         model.predict(NAMED[:1], **kwargs)
     with pytest.raises(TypeError, match="predict takes a SurpyvalData"):
         model.predict([1, 2], times=[1])
+
+
+def test_named_records_need_a_model_with_named_covariates():
+    model = sp.WeibullPH.fit(
+        LIFE, SITE.reshape(-1, 1), (LIFE > 900).astype(int)
+    )
+    with pytest.raises(ValueError, match="given by name, but this model's"):
+        model.sf(
+            100.0, ItemLifetime("I", right_censored=50, covariates={"b": 1.0})
+        )
+    named = sp.WeibullPH.fit(SurpyvalData.from_items(NAMED))
+    with pytest.raises(ValueError, match="'B' have unnamed covariates"):
+        named.predict(
+            [
+                ItemLifetime(
+                    "A",
+                    right_censored=1,
+                    covariates={"site": 1.0, "load": 0.5},
+                ),
+                ItemLifetime("B", right_censored=1, covariates=[0.0, 0.5]),
+            ],
+            times=[3],
+        )

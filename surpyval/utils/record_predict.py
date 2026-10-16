@@ -53,8 +53,9 @@ def records_of(items: Any, what: str) -> list:
 def covariates_as_Z(items: Any, feature_names: "list | None") -> Any:
     """The covariates of ``items`` (a record, a list of records or a
     dataset) as a regression model's ``Z``: one row per record, by name
-    where the model's covariates are named (a DataFrame), else in the
-    records' order. A record without covariates is refused."""
+    where the covariates are named (a DataFrame, which needs a model
+    whose covariates have names, ``feature_names``), else in the records'
+    order. A record without covariates is refused."""
     import pandas as pd
 
     if _is_dataset(items):
@@ -69,7 +70,8 @@ def covariates_as_Z(items: Any, feature_names: "list | None") -> Any:
             first, _ = items.item_rows()
             Z = Z[first]
         names = getattr(items, "covariate_names", None)
-        if names is not None and feature_names is not None:
+        if names is not None:
+            _needs_names(feature_names)
             return pd.DataFrame(Z, columns=list(names))
         return Z
     records = records_of(items, "A prediction from records")
@@ -82,18 +84,40 @@ def covariates_as_Z(items: Any, feature_names: "list | None") -> Any:
             "predicts from (covariates= on the record)."
         )
     named_rows = [r.covariate_names is not None for r in records]
-    if all(named_rows) and feature_names is not None:
+    if any(named_rows):
+        _needs_names(feature_names)
+        unnamed = [
+            r.id for r, is_named in zip(records, named_rows) if not is_named
+        ]
+        if unnamed:
+            from surpyval.utils.warnings import named
+
+            raise ValueError(
+                f"Items {named(unnamed)} have unnamed covariates while the "
+                "others name theirs: name them for every record "
+                "(covariates={name: value}), so each is read by name."
+            )
         return pd.DataFrame(
             [
                 dict(zip(r.covariate_names, r.covariates.tolist()))
                 for r in records
             ]
         )
-    if any(named_rows) and feature_names is None:
-        # Named on the record, unnamed in the model: by position
-        pass
     rows = np.vstack([np.asarray(r.covariates, dtype=float) for r in records])
     return rows[0] if len(records) == 1 and _is_record(items) else rows
+
+
+def _needs_names(feature_names: "list | None") -> None:
+    """Covariates given by name need a model whose covariates have
+    names, as a dict or DataFrame ``Z`` does."""
+    if feature_names is None:
+        raise ValueError(
+            "The covariates are given by name, but this model's covariates "
+            "have no names (it was fitted on arrays): give the values in "
+            "the order they were fitted (covariates=[...]), or fit with "
+            "named covariates (fit_from_df, a DataFrame Z, or data with "
+            "covariate_names)."
+        )
 
 
 def _current_age(record: Any) -> "float | None":

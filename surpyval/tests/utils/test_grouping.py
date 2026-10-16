@@ -153,3 +153,15 @@ def test_histories_group_and_select_too():
             x_col="t",
             attribute_cols=["plant"],
         )
+
+
+def test_groupby_a_covariate_not_recorded_names_the_items():
+    data = SurpyvalData.from_items(
+        [
+            ItemLifetime("A", observed=5, covariates={"z": np.nan}),
+            ItemLifetime("B", observed=6, covariates={"z": 1.0}),
+        ]
+    )
+    with pytest.raises(ValueError, match="Items 'A' have no value of the"):
+        data.groupby("z")
+    assert data.select(where={"z": 1.0}).ids == ["B"]

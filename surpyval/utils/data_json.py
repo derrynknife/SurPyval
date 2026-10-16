@@ -115,6 +115,8 @@ def record_dict(record: Any) -> dict:
             )
         elif name == "covariates":
             out[name] = value  # a list, or {name: value}
+        elif name == "attributes":
+            out[name] = {k: label(v) for k, v in value.items()}
         elif name in ("observed_states", "left_censored_states"):
             out[name] = [[float(age), label(st)] for age, st in value.items()]
         elif name == "interval_censored_states":
@@ -156,6 +158,8 @@ def record_from_dict(cls: Any, record_dict_: dict) -> Any:
                 if isinstance(value, list)
                 else label_back(value)
             )
+        elif name == "attributes":
+            kwargs[name] = {k: label_back(v) for k, v in value.items()}
         elif name in ("observed_states", "left_censored_states"):
             kwargs[name] = {float(age): label_back(st) for age, st in value}
         elif name == "interval_censored_states":
