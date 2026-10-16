@@ -490,3 +490,156 @@ aliased coefficient, and one whose fit is not a verified maximum (the
 tests compare it with larger models). The accelerated life models (#871)
 and the proportional odds and additive hazards models (#870) have their
 own families.
+
+Proportional odds and additive hazards
+--------------------------------------
+
+The proportional odds models (the semi-parametric ``ProportionalOdds``
+and the parametric ``PO(...)`` family: ``WeibullPO``, ``LogNormalPO``,
+...) assume that each covariate multiplies the odds of survival by the
+same factor at every time; the additive hazards models (Lin and Ying's
+semi-parametric ``AdditiveHazards`` and the parametric ``AH(...)``
+family: ``WeibullAH``, ``ExponentialAH``, ...) that each adds the same
+amount to the hazard at every time. Both say that an effect does not
+change with time, and ``diagnose()`` tests that, covariate by covariate.
+On the Rossi data:
+
+.. jupyter-execute::
+
+    po = surv.ProportionalOdds.fit_from_df(
+        rossi, x_col='week', c_col='censored',
+        Z_cols=['fin', 'age', 'wexp', 'prio'],
+    )
+    d = po.diagnose()
+    d.table
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _failed = d.table[d.table['verdict'] == 'fail']
+    assert {c for c in _failed['covariates'] if len(c) == 1} == {('age',)}
+    assert d.family == 'Proportional odds'
+
+The effect of ``age`` changes over the year, as it does in the Cox model.
+The advice names models that do not assume proportional odds:
+
+.. jupyter-execute::
+
+    for advice in d.advice:
+        print('-', advice, '\n')
+
+For a binary or few-levelled covariate the plot is the Kaplan-Meier
+log-odds of failure, :math:`\log(F / S)`, of each group against log time,
+which proportional odds makes parallel curves; for a continuous one it is
+the covariate's coefficient in each period of follow-up, refitted with a
+column per period, against the constant the model fitted:
+
+.. jupyter-execute::
+
+    fig = d.plot()
+
+The additive hazards model of the same data tells the same story:
+
+.. jupyter-execute::
+
+    ah = surv.AdditiveHazards.fit_from_df(
+        rossi, x_col='week', c_col='censored',
+        Z_cols=['fin', 'age', 'wexp', 'prio'],
+    )
+    d = ah.diagnose()
+    d.table[['check', 'test', 'covariates', 'statistic', 'p', 'verdict']]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _failed = d.table[d.table['verdict'] == 'fail']
+    assert {c for c in _failed['covariates'] if len(c) == 1} == {('age',)}
+    assert d.family == 'Additive hazards'
+    assert any('WeibullAH.fit_tvc' in a for a in d.advice)
+
+Its plots are the cumulative regression coefficients of Aalen's
+nonparametric additive model, :math:`B_j(t) = \int_0^t b_j(s)\,ds` in
+:math:`h(t \mid Z) = b_0(t) + b(t)' Z`, with a pointwise band: under the
+fitted model each is the straight line :math:`\beta_j t`, and where one
+bends that effect changes.
+
+.. jupyter-execute::
+
+    fig = d.plot('constant_effects')
+
+The advice for ``age`` is a time-varying effect, one ``age`` column per
+period (as for the Cox model above), through the parametric additive
+models' ``fit_tvc``:
+
+.. jupyter-execute::
+
+    print(d.advice[0])
+
+The checks
+~~~~~~~~~~
+
+``proportional_odds`` (proportional odds models), ``constant_effects`` (additive hazards models)
+    Follow-up is split into four periods at the quartiles of the event
+    times, and :math:`g(t)` is the period a time is in (0 to 3; the notes
+    give the cuts). For each covariate the model is refitted with the
+    added term :math:`\theta\, u(Z)\, g(t)`, where :math:`u(Z)` is the
+    covariate less its mean or, for a covariate with three to five
+    values, the indicator of each level after the first, less its mean;
+    the test is of :math:`\theta = 0`, the same coefficient in every
+    period. For a binary or categorical covariate of a proportional odds
+    model that is whether the log-odds of its groups stay parallel. The
+    ``GLOBAL`` row adds every covariate's term at once.
+
+    The added covariate changes at the cut times, which every one of
+    these estimators fits exactly by splitting each row into one row per
+    period, entering at the period's start, so the refit is the model's
+    own estimator. For the proportional odds models and the parametric
+    additive ones the test is the likelihood-ratio test of the two fits
+    (for ``ProportionalOdds``, of its profile likelihood). For Lin and
+    Ying's model, which has no likelihood, it is the Wald test of
+    :math:`\theta` from the closed-form estimating equations with Lin
+    and Ying's sandwich variance; R's ``timereg::aalen``, with ``const()``
+    terms on the split rows, gives the same statistic. It is the test
+    that ``cox.zph`` makes for a Cox model (there the score test of
+    :math:`Z\, g(t)`, which is a trend test of the Schoenfeld residuals),
+    with the period as the clock: a step clock makes the extended model an
+    exact fit of the family's own estimator, and cuts at the event-time
+    quartiles make the test the same whatever the unit of time.
+
+    :math:`u(Z)` is centred because a proportional odds or parametric
+    additive model cannot absorb a function of time alone into its
+    baseline: centred, the added term leaves an average unit as the model
+    has it. For a parametric model the test also reacts to a baseline
+    distribution that does not fit the data, which shows as an effect that
+    drifts.
+
+A covariate that fails in a proportional odds model is advised a model
+that does not assume proportional odds: ``CoxPH.fit``, ``WeibullAFT.fit``
+or ``LogNormalAFT.fit`` for ``ProportionalOdds``; for a parametric one the
+same baseline as proportional hazards or accelerated failure time
+(``WeibullPH.fit`` or ``WeibullAFT.fit`` for ``WeibullPO``; ``PH(dist)``
+or ``AFT(dist)`` for a baseline with no pre-built fitter). One that fails
+in an additive hazards model is advised a time-varying effect, one column
+per period, through ``WeibullAH.fit_tvc`` (``AdditiveHazards`` has no
+time-varying fit), or the parametric model's own ``fit_tvc``.
+
+What these checks support
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Counts (``n``), delayed entry (``tl``), ``fit_from_df`` and formulas,
+``center=True``, fixed parameters and, for the parametric models,
+time-varying covariates (``fit_tvc``). ``diagnose()`` refuses, saying
+what to do: a model restored with ``from_dict`` (it has no data), one
+with an aliased coefficient, one whose fit has no finite maximum and, for
+now, a parametric model fitted to left- or interval-censored or
+right-truncated data, whose rows cannot be split at the cut times
+(#870). The functional form, influence and outliers are not checked for
+these models yet. A parametric additive hazards fit often ends on the
+boundary of its support (as its fit warns); a refit that does not reach a
+verified maximum is noted, and its test is then approximate. The tests
+refit the model once per covariate and once for the ``GLOBAL`` row, which
+for a parametric additive hazards model can take some seconds.
+
+.. autofunction:: surpyval.diagnostics.odds_additive.aalen_cumulative_coefficients

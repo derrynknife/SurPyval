@@ -52,6 +52,24 @@ Unreleased
   model of the split follow-up) to 1e-6 (``scripts/reference/
   reference_r_ph_aft.R``). Time-varying fits and custom links are refused
   for now.
+- The proportional odds and additive hazards families of ``diagnose()``
+  (#870), for ``ProportionalOdds``, ``AdditiveHazards`` and the parametric
+  ``PO(...)`` / ``AH(...)`` models: for each covariate, and jointly, the
+  test that its effect is the same in four periods of follow-up (split at
+  the event-time quartiles) -- the likelihood-ratio test of the model
+  refitted, exactly, on the rows split there, or for Lin and Ying's model
+  the Wald test with its sandwich variance, which agrees with R's
+  ``timereg::aalen`` to 1e-8; for a proportional odds model's binary or
+  categorical covariate, whether its groups' log-odds stay parallel.
+  Plots: Kaplan-Meier log-odds by group and coefficients by period
+  (proportional odds), Aalen's cumulative regression coefficients
+  (additive hazards, ``odds_additive.aalen_cumulative_coefficients``,
+  which agrees with ``timereg``). Advice: a proportional hazards or
+  accelerated failure time model with the same baseline (``CoxPH.fit``,
+  ``WeibullPH.fit``, ``WeibullAFT.fit``, ...) for a proportional odds
+  failure; a time-varying effect through ``fit_tvc`` for an additive one.
+  Left- or interval-censored and right-truncated parametric fits are
+  refused for now.
 - The data utilities live on ``SurpyvalData``.
   ``SurpyvalData.from_observations(observed=..., right_censored=...,
   left_censored=..., interval_censored=..., left_truncation=...,

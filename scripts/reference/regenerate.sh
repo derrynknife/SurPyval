@@ -14,5 +14,6 @@ cd "$(dirname "$0")/../.."
 python scripts/reference/make_fixtures.py
 Rscript scripts/reference/reference_r.R
 Rscript scripts/reference/reference_r_frailty.R
+Rscript scripts/reference/reference_r_odds_additive.R
 Rscript scripts/reference/reference_r_ph_aft.R
 "${1:-python}" scripts/reference/reference_python.py

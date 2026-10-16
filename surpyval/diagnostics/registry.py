@@ -24,6 +24,7 @@ from .report import COLUMNS, VERDICTS, Advice, Diagnosis, make_table, verdict
 FAMILY_MODULES: tuple[str, ...] = (
     "surpyval.diagnostics.cox",
     "surpyval.diagnostics.ph_aft",
+    "surpyval.diagnostics.odds_additive",
 )
 
 
@@ -256,24 +257,6 @@ _CR = "surpyval.univariate.competing_risks."
 #: have ``diagnose()``, which refuses until the family is registered (a
 #: registered family that applies is found first).
 PENDING: tuple[Pending, ...] = (
-    Pending(
-        "proportional odds and additive hazards models",
-        870,
-        _instance_of(
-            _REG + "ParametricRegressionModel",
-            kind=("Proportional Odds", "Additive Hazard"),
-        ),
-    ),
-    Pending(
-        "proportional odds and additive hazards models",
-        870,
-        _instance_of(_REG + "ProportionalOddsModel"),
-    ),
-    Pending(
-        "proportional odds and additive hazards models",
-        870,
-        _instance_of(_REG + "AdditiveHazardsModel"),
-    ),
     Pending(
         "accelerated life (life-stress) models",
         871,

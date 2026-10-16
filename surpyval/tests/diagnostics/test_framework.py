@@ -337,15 +337,7 @@ REG = "surpyval.univariate.regression."
 @pytest.mark.parametrize(
     "path, attributes, issue",
     [
-        (
-            REG + "ParametricRegressionModel",
-            {"kind": "Proportional Odds"},
-            870,
-        ),
-        (REG + "ParametricRegressionModel", {"kind": "Additive Hazard"}, 870),
         (REG + "ParametricRegressionModel", {"kind": "Accelerated Life"}, 871),
-        (REG + "ProportionalOddsModel", {}, 870),
-        (REG + "AdditiveHazardsModel", {}, 870),
         (REG + "FrailtyModel", {}, 872),
         (REG + "CoxFrailtyModel", {}, 872),
         (
