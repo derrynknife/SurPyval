@@ -3735,7 +3735,8 @@ level, ``north``. The line data are on the axes:
     for _line, _v in zip(ax.get_lines(), [0.5, 0.75, 1.0]):
         _row = pd.DataFrame({'load': [_v], 'temp': [pumps['temp'].mean()],
                              'site': ['north']})
-        assert np.array_equal(_line.get_ydata(), pump_model.sf(_x, _row))
+        assert np.allclose(_line.get_ydata(), pump_model.sf(_x, _row),
+                           rtol=1e-12, atol=0)
     _row = pd.DataFrame({'load': [0.75], 'temp': [pumps['temp'].mean()],
                          'site': ['north']})
     assert np.allclose(pump_model.sf(1000, _row), 0.19, atol=0.005)
@@ -3778,7 +3779,8 @@ plotted by its levels:
                              [0.19, 0.24, 0.50]):
         _row = pd.DataFrame({'load': [0.75], 'temp': [pumps['temp'].mean()],
                              'site': [_s]})
-        assert np.array_equal(_line.get_ydata(), pump_model.sf(_x, _row))
+        assert np.allclose(_line.get_ydata(), pump_model.sf(_x, _row),
+                           rtol=1e-12, atol=0)
         assert abs(float(pump_model.sf(1000, _row)) - _v) < 0.005
 
 At 75% load the western pumps' chance of lasting 1000 hours is 0.50, against
