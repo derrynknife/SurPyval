@@ -34,10 +34,11 @@ def two_fits():
 
 
 def _colours(ax):
-    """The distinct colours of every line and point collection."""
-    lines = {to_rgba(ln.get_color()) for ln in ax.get_lines()}
+    """The distinct colours (RGB: a band is its line's colour, washed) of
+    every line and of every point or band collection."""
+    lines = {to_rgba(ln.get_color())[:3] for ln in ax.get_lines()}
     points = {
-        tuple(c) for coll in ax.collections for c in coll.get_facecolor()
+        tuple(c[:3]) for coll in ax.collections for c in coll.get_facecolor()
     }
     return lines, points
 
@@ -49,24 +50,39 @@ def test_parametric_plot_takes_a_label_for_the_fitted_line(ax, two_fits):
     assert ax.get_legend_handles_labels()[1] == ["North", "South"]
 
 
-def test_one_colour_per_call_from_the_axes_cycle(ax, two_fits):
+def test_one_colour_per_call_from_the_theme(ax, two_fits):
     north, south = two_fits
     north.plot(ax=ax)
     first_lines, first_points = _colours(ax)
-    # the fitted line, the two bounds and the points share one colour
+    # the fitted line, the bounds' band and the points share one colour
     assert len(first_lines) == 1 and first_lines == first_points
-    cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    assert first_lines == {to_rgba(cycle[0])}
+    palette = sp.plotting.PALETTE
+    assert first_lines == {to_rgba(palette[0])[:3]}
     south.plot(ax=ax)
     lines, points = _colours(ax)
-    assert lines == points == {to_rgba(cycle[0]), to_rgba(cycle[1])}
+    expected = {to_rgba(palette[0])[:3], to_rgba(palette[1])[:3]}
+    assert lines == points == expected
+
+
+def test_one_colour_per_call_from_the_axes_cycle_without_theme(ax, two_fits):
+    north, south = two_fits
+    sp.plotting.set_theme(False)
+    try:
+        north.plot(ax=ax)
+        south.plot(ax=ax)
+    finally:
+        sp.plotting.set_theme(True)
+    cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    lines, points = _colours(ax)
+    expected = {to_rgba(cycle[0])[:3], to_rgba(cycle[1])[:3]}
+    assert lines == points == expected
 
 
 def test_color_and_line_keywords_are_used(ax, two_fits):
     north, _ = two_fits
     north.plot(ax=ax, color="red", linewidth=3, linestyle=":")
     lines, points = _colours(ax)
-    assert lines == points == {to_rgba("red")}
+    assert lines == points == {to_rgba("red")[:3]}
     fitted = ax.get_lines()[0]
     assert fitted.get_linewidth() == 3 and fitted.get_linestyle() == ":"
 
@@ -83,7 +99,7 @@ def test_overlay_keeps_both_models_in_view(ax, two_fits):
 def test_a_model_from_parameters_plots_with_a_label_and_colour(ax):
     sp.Weibull.from_params([10, 2]).plot(ax=ax, label="spec", color="k")
     assert ax.get_legend_handles_labels()[1] == ["spec"]
-    assert _colours(ax)[0] == {to_rgba("k")}
+    assert _colours(ax)[0] == {to_rgba("k")[:3]}
 
 
 def test_plot_returns_axes_and_says_so(ax, two_fits):
@@ -101,7 +117,7 @@ def test_mixture_plot_takes_a_label_and_colour(ax):
     model.plot(ax=ax, label="mixture", color="purple")
     assert ax.get_legend_handles_labels()[1] == ["mixture"]
     lines, points = _colours(ax)
-    assert lines == points == {to_rgba("purple")}
+    assert lines == points == {to_rgba("purple")[:3]}
 
 
 # Default axis labels (#514)

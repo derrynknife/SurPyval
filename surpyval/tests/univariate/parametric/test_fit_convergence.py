@@ -14,7 +14,12 @@ from scipy.stats import lognorm
 import surpyval as sp
 import surpyval as surv
 from surpyval.tests._helpers import no_warnings
-from surpyval.tests.conformance.registry import reg_data, stress_data, uni_data
+from surpyval.tests.conformance.registry import (
+    ah_data,
+    reg_data,
+    stress_data,
+    uni_data,
+)
 from surpyval.univariate.parametric.fitters import fallback_minimize
 
 UNVERIFIED = "did not reach a verified maximum"
@@ -220,20 +225,23 @@ def test_an_accelerated_life_fit_from_a_far_start(life_model):
 # ---------------------------------------------------------------------------
 # Additive hazards: TNC's result was never checked
 # ---------------------------------------------------------------------------
-def test_an_additive_hazards_fit_with_no_maximum_says_so():
+def test_an_additive_hazards_fit_with_no_event_level_says_so():
     # A covariate that is 1 on exactly the censored rows: that group has
-    # no events and its coefficient no finite value. LogNormalAH returned
-    # a coefficient of -6.2e8 (sf(2) inf) in silence. It now says the
-    # likelihood has no finite maximum (#392).
+    # no events. LogNormalAH returned a coefficient of -6.2e8 (sf(2) inf)
+    # in silence, then said the likelihood had no finite maximum (#392).
+    # Kept inside its support (#828) the coefficient stops where that
+    # group's H reaches 0, and the fit says it ended on that boundary.
     data = reg_data()
     data["Z"] = np.array(data["Z"], dtype=float)
     data["Z"][:, 0] = np.asarray(data["c"]) == 1
-    with pytest.warns(UserWarning, match="No finite maximum"):
-        sp.LogNormalAH.fit(**data)
+    with pytest.warns(UserWarning, match="ended on the boundary"):
+        model = sp.LogNormalAH.fit(**data)
+    assert np.isfinite(model.params).all()
 
 
 def test_an_additive_hazards_fit_at_its_maximum_is_silent():
-    model = no_warnings(sp.WeibullAH.fit, **reg_data())
+    # (on its own fixture, inside its support: see ah_data)
+    model = no_warnings(sp.WeibullAH.fit, **ah_data())
     assert np.isfinite(model.params).all()
 
 

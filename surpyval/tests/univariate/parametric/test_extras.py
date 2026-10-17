@@ -289,11 +289,81 @@ def test_random_data_records_the_truncation():
     np.testing.assert_array_equal(t, np.tile([5.0, 12.0], (len(x), 1)))
 
 
-def test_truncated_draws_are_still_refused_with_lfp_or_zi():
-    with pytest.raises(NotImplementedError):
-        Weibull.from_params([10, 3], lfp_p=0.8).random(5, a=1.0)
-    with pytest.raises(NotImplementedError):
-        Weibull.from_params([10, 3], f0=0.1).random_data(5, b=20.0)
+# ---------------------------------------------------------------------------
+# Truncated draws from offset, LFP and ZI models (they raised
+# NotImplementedError): the model's distribution given the window (a, b]
+# ---------------------------------------------------------------------------
+_TRUNCATED = {
+    "lfp": Weibull.from_params([10, 3], lfp_p=0.7),
+    "zi": Weibull.from_params([10, 3], f0=0.2),
+    "offset": Weibull.from_params([10, 3], gamma=5.0),
+    "lfp+zi": Weibull.from_params([10, 3], lfp_p=0.8, f0=0.1),
+    "offset+lfp": Weibull.from_params([10, 3], gamma=2.0, lfp_p=0.6),
+}
+_WINDOWS = [(None, 12.0), (6.0, None), (6.0, 14.0), (-1.0, 9.0), (0.0, 9.0)]
+
+
+@pytest.mark.parametrize("a, b", _WINDOWS)
+@pytest.mark.parametrize("kind", sorted(_TRUNCATED))
+def test_truncated_draws_follow_the_truncated_model(kind, a, b):
+    from scipy import stats
+
+    model = _TRUNCATED[kind]
+    lo = -np.inf if a is None else a
+    hi = np.inf if b is None else b
+    F_a = 0.0 if a is None else float(model.ff(lo))
+    F_b = 1.0 if b is None else float(model.ff(hi))
+    x = model.random(20_000, a, b, random_state=7)
+    assert x.shape == (20_000,)
+    assert np.all((x > lo) & (x <= hi))
+    # The atoms: dead on arrival (0) where the window holds 0, never
+    # failing (inf) where it has no upper end
+    zero = model.f0 / (F_b - F_a) if lo < 0 <= hi else 0.0
+    never = (1 - model.lfp_p) / (F_b - F_a) if b is None else 0.0
+    for share, expected in (
+        (np.mean(x == 0), zero),
+        (np.mean(np.isinf(x)), never),
+    ):
+        se = np.sqrt(max(expected * (1 - expected), 1e-12) / x.size)
+        assert abs(share - expected) <= 4 * se + 1e-12
+    # The rest: the model's distribution function between the atoms
+    rest = x[np.isfinite(x) & (x != 0)]
+    lo_mass = (
+        max(F_a, float(model.ff(0.0))) if model.f0 and lo < 0 <= hi else F_a
+    )
+    hi_mass = min(F_b, float(model.lfp_p)) if b is None else F_b
+
+    def cdf(v):
+        return (model.ff(v) - lo_mass) / (hi_mass - lo_mass)
+
+    assert stats.kstest(rest, cdf).pvalue > 1e-3
+
+
+def test_truncated_draws_take_the_seed_rule():
+    model = _TRUNCATED["lfp+zi"]
+    np.random.seed(3)
+    first = model.random(5, a=1.0, b=12.0)
+    np.random.seed(3)
+    np.testing.assert_array_equal(model.random(5, a=1.0, b=12.0), first)
+    np.testing.assert_array_equal(
+        model.random(5, 1.0, 12.0, random_state=4),
+        model.random(5, 1.0, 12.0, random_state=4),
+    )
+    x, c, n, t = model.random_data(40, a=1.0, random_state=1)
+    # The units that never fail are in a window with no upper end:
+    # right censored after the last failure
+    assert np.any(c == 1)
+    np.testing.assert_array_equal(t[:, 0], 1.0)
+
+
+def test_a_truncation_window_with_no_mass_is_refused():
+    with pytest.raises(ValueError, match="no probability"):
+        Weibull.from_params([10, 3], gamma=5.0).random(5, a=1.0, b=4.0)
+    with pytest.raises(ValueError, match="no probability"):
+        # beyond every failure of a limited failure population
+        Weibull.from_params([10, 3], lfp_p=0.5).random(5, a=1e6, b=2e6)
+    with pytest.raises(ValueError, match="a must be below b"):
+        Weibull.from_params([10, 3], f0=0.1).random(5, a=4.0, b=4.0)
 
 
 # ---------------------------------------------------------------------------

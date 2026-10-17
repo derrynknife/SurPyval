@@ -133,8 +133,8 @@ Every model in SurPyval keeps the same rules, so what you learn about one holds 
 Each principle is enforced by tests, most as properties checked against every registered model. The [Design Principles](https://surpyval.readthedocs.io/en/latest/Design%20Principles.html) page lists them in full, with the tests that check each one and the open issues where a model does not yet comply.
 
 # Development
-## Roadmap
-The bigger ideas (distributional regression, multi-state models, multivariate copulas, ...) are in [ROADMAP.md](ROADMAP.md); the issues are for work that can start now.
+## Issues
+Questions, bug reports and suggestions are welcome as GitHub issues.
 
 ## Dependencies
 ```pip install -r requirements_dev.txt```
@@ -157,6 +157,10 @@ coverage html           # Make a html coverage report (really useful), open html
 - If you'd like, run `pre-commit run --all-files` to run the hooks on all files
 - When you go to commit, it will only proceed after all the hooks succeed
 
+
+# Related
+
+[Reliafy](https://reliafy.com) is a hosted, browser-based app built on SurPyval, for fitting life distributions, regression and recurrent-event models to censored data without writing code.
 
 # Contact
 

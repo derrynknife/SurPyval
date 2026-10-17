@@ -188,10 +188,10 @@ def test_po_generic_factory_supports_tvc():
 
 # -- baselines supported below zero ---------------------------------------
 #
-# The path starts at 0, but a Logistic / Normal / Gumbel baseline puts
-# survival probability below 1 at 0. The first segment is held back to the
-# bottom of the support, so a constant path still gives the ordinary sf(x, Z)
-# rather than the conditional S(x | z) / S(0 | z) it gave before.
+# A Logistic / Normal / Gumbel baseline puts survival probability below 1
+# at 0: survival is measured from -inf (#952), so a constant path, held
+# since -inf, gives the ordinary sf(x, Z), not the conditional
+# S(x | z) / S(0 | z).
 
 
 @pytest.mark.parametrize(
@@ -209,7 +209,7 @@ def test_real_line_baseline_switch_is_consistent_with_sf():
     # Before the first change-point the path is one constant segment, so it
     # must match sf there; after it, the telescoped increment is added.
     m = _fit_real_line(PO(Logistic))
-    xl, Z = [0.0, 8.0], [[0.0], [1.0]]
+    xl, Z = [-np.inf, 8.0], [[0.0], [1.0]]
     s_before = m.sf_tvc([6.0], Z, xl=xl)[0]
     np.testing.assert_allclose(
         s_before, float(np.asarray(m.sf([6.0], [[0.0]])).ravel()[0]), 1e-10
@@ -223,9 +223,12 @@ def test_real_line_baseline_switch_is_consistent_with_sf():
 def test_real_line_baseline_negative_times_use_the_first_segment():
     m = _fit_real_line(PO(Logistic))
     x = np.array([-3.0, 0.0, 6.0])
-    got = m.sf_tvc(x, [[0.4], [1.0]], xl=[0.0, 8.0])
+    got = m.sf_tvc(x, [[0.4], [1.0]], xl=[-np.inf, 8.0])
     want = np.asarray(m.sf(x, [[0.4]]), dtype=float).ravel()
     np.testing.assert_allclose(got, want, rtol=1e-10)
+    # A path from 0 leaves the covariate before 0 unsaid (#952).
+    with pytest.raises(ValueError, match="back to -inf"):
+        m.sf_tvc(x, [[0.4], [1.0]], xl=[0.0, 8.0])
 
 
 def test_po_hf_is_finite_where_the_baseline_survival_underflows():

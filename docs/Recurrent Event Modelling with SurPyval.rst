@@ -88,18 +88,26 @@ look worse than it is.
     # "a lower intensity with much less of a trend"
     assert time_truncated.iif(40) < failure_truncated.iif(40)
 
-Two further arguments describe the observation window. ``tl`` gives a
-left-truncation (delayed entry) time — the item was already in service when
-observation began — and ``tr`` a right-truncation time at which observation
-closed, which is equivalent to a ``c=1`` row at that time. Both may be a
-scalar (every item) or one value per row, constant within an item, and every
-event must fall inside the item's window (the intensity models also accept
+Two further arguments describe how the items came to be in the data.
+``tl`` gives a left-truncation (delayed entry) time — the item was already
+in service when observation began — and ``tr`` a right-truncation time: the
+item is in the data *because* it failed by ``tr``, as in a repair or
+warranty-claim database that holds only the units that came back. ``tr`` is
+not the end of observation, which is a ``c=1`` row (or, without one, the
+item's last event). Both may be a
+scalar (every item), one value per row, constant within an item, or one value
+per item in the sorted order of the item ids (``np.unique(i)``; with as many
+rows as items the values are read per row), and every event must come after
+the item's entry (the intensity models also accept
 them together as an ``(N, 2)`` array ``t``). Items observed over several
 disjoint periods use ``windows`` (see `Gapped (multi-window) observation`_).
-The intensity models accept all of these (see `Delayed entry and right
-truncation`_ for a worked example); the non-parametric MCF accepts ``tl``,
-``tr`` and ``windows``; the renewal models accept ``tl``, taking each item
-to be as new at its entry (see `Renewal Modelling in SurPyval`_).
+The intensity models accept all of these, dividing each right-truncated
+item's likelihood by the chance it failed by ``tr`` (see `Delayed entry and
+right truncation`_ for a worked example); the non-parametric MCF accepts
+``tl`` and ``windows``; the renewal models accept ``tl``, taking each item
+to be as new at its entry (see `Renewal Modelling in SurPyval`_). The MCF,
+the renewal and cause-specific models and the trend tests refuse ``tr``:
+they cannot account for the selection.
 
 Event logs usually arrive as a table, one row per event with a column naming
 the unit. Every recurrent fitter's ``fit_from_df`` reads one, given the names
@@ -320,8 +328,8 @@ entry): an item that was already in service before observation began only joins
 the at-risk set once its entry time is passed (it is observed over
 :math:`(t_l, T]`, so an event exactly at its ``tl`` is refused), and events up to
 that entry are estimated over a smaller risk set. Pass the entry time with ``tl``, either as
-a scalar for every item or as one value per row (the same on every row of an
-item):
+a scalar for every item, as one value per row (the same on every row of an
+item) or as one value per item in the sorted order of the item ids:
 
 .. jupyter-execute::
 
@@ -334,18 +342,17 @@ item):
     model = NonParametricCounting.fit(x, i=i, c=c, tl=1.0)
     model.mcf(4)
 
-**Right truncation** works the same way at the other end: a finite ``tr``
-ends an item's observation there, so the item stays at risk up to ``tr``
-exactly as it would with an end-of-observation (``c=1``) row at ``tr``. Here
-item 1 is watched until 5, so it is still at risk at item 2's event at 4
-even though its own last event was at 3:
+An item stays at risk up to the end of its observation, its
+end-of-observation (``c=1``) row. Here item 1 is watched until 5, so it is
+still at risk at item 2's event at 4 even though its own last event was at 3:
 
 .. jupyter-execute::
 
-    x = [2, 3, 3, 4, 6]
-    i = [1, 1, 2, 2, 2]
+    x = [2, 3, 5, 3, 4, 6, 8]
+    i = [1, 1, 1, 2, 2, 2, 2]
+    c = [0, 0, 1, 0, 0, 0, 1]
 
-    model = NonParametricCounting.fit(x, i=i, tr=[5, 5, 8, 8, 8])
+    model = NonParametricCounting.fit(x, i=i, c=c)
     print("x :", model.x)
     print("r :", model.r)
 
@@ -438,6 +445,11 @@ The statistic is the sum of the event times less their null means, 9 x 30
 and 7 x 55, over the square root of the summed variances, 9 x 60² / 12 and
 7 x 50² / 12. A fitted model's ``trend_test()`` reads each item's entry from
 the ``tl`` it was fitted with.
+
+A trend test asks whether the rate changes gradually with age. Whether it
+changed at a known time -- a design change or a corrective action -- is
+the question of :func:`~surpyval.recurrent.intervention_test`, worked
+through in :doc:`Intervention Analysis with SurPyval`.
 
 .. jupyter-execute::
     :hide-code:
@@ -674,21 +686,38 @@ delayed entry through its risk set in the same way:
     _without = NonParametricCounting.fit(x_d, i_d, c_d).mcf(t)
     assert np.all(np.abs(_with - _truth) < np.abs(_without - _truth))
 
-At the other end of the window, ``tr`` closes observation without a
-censoring row: fitting the events with ``tr=52`` gives exactly the
-time-truncated fit from the start of this page, which used a ``c=1`` row at
-52.
+**Right truncation** is a selection: the data hold only the systems that
+failed by ``tr``, as a repair database holds only the units that came in.
+Here 200 systems are simulated, each watched to 50 hours, and only those with
+a failure by 10 hours are kept. Fitted as they are, the kept systems look
+less reliable than the fleet, since the ones that did not fail early are
+missing; with ``tr=10`` each system's likelihood is divided by the chance it
+failed by then, and the estimates come back to the fleet's:
 
 .. jupyter-execute::
 
-    print(CrowAMSAA.fit(events, tr=52.0).params.round(3))
+    fleet = true_model.time_terminated_simulation_data(50, items=200, random_state=7)
+    failed_by_10 = {
+        k for k in np.unique(fleet.i)
+        if ((fleet.i == k) & (fleet.c == 0) & (fleet.x <= 10)).any()
+    }
+    kept = np.isin(fleet.i, list(failed_by_10))
+    x_s, i_s, c_s = fleet.x[kept], fleet.i[kept], fleet.c[kept]
+    print("systems kept      :", len(failed_by_10), "of 200")
+    print("fit with tr=10    :", CrowAMSAA.fit(x_s, i_s, c_s, tr=10.0).params.round(3))
+    print("selection ignored :", CrowAMSAA.fit(x_s, i_s, c_s).params.round(3))
+    print("whole fleet       :", CrowAMSAA.fit(fleet.x, fleet.i, fleet.c).params.round(3))
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert np.allclose(CrowAMSAA.fit(events, tr=52.0).params,
-                       time_truncated.params)
+    _with = CrowAMSAA.fit(x_s, i_s, c_s, tr=10.0).params
+    _without = CrowAMSAA.fit(x_s, i_s, c_s).params
+    assert abs(_with[0] - 8) < abs(_without[0] - 8)
+
+The end of an item's observation is never ``tr``: it is a ``c=1`` row (or
+the item's last event), and ``tr`` may come before or after it.
 
 Interval-counted (grouped) data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1643,7 +1672,7 @@ count from there.
     :hide-output:
 
     _states = ara.unit_states()
-    assert list(_states.index) == list(ara.data.items)
+    assert list(_states.index) == list(ara.data.ids)
     assert np.allclose(ahead.probability[:, 0], 1 - ara.next_failure_sf(5.0))
     assert np.allclose(ahead.expected, ahead.per_unit.sum(axis=0))
     assert np.all(ahead.lower <= ahead.expected)

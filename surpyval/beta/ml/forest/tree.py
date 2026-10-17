@@ -34,6 +34,7 @@ from surpyval.utils.dataframe import RegressionDataFrameMixin
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import check_paired_rows, flatten_query
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import option_error
 
 Random = np.random.Generator | np.random.RandomState
@@ -284,6 +285,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         fit_leaves(self._root)
 
     @classmethod
+    @takes_unit
     def fit(
         cls,
         x: ArrayLike | None = None,

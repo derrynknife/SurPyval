@@ -55,6 +55,17 @@ if TYPE_CHECKING:
     from .accelerated_life.lifemodel import LifeModel
 
 
+def _nan_outside(out: Any, outside: "npt.NDArray | None") -> Any:
+    """``out`` (one bound per point, or two on the last axis) with the
+    points ``outside`` an additive model's support set to nan."""
+    if outside is None:
+        return out
+    out = np.array(out, dtype=float)
+    mask = np.broadcast_to(outside, out.shape[: np.ndim(outside)])
+    out[mask] = np.nan
+    return out
+
+
 class InferenceMixin:
     """The covariance and confidence bounds of a
     :class:`ParametricRegressionModel`, which inherits this mixin.
@@ -118,13 +129,13 @@ class InferenceMixin:
             self, Z: npt.ArrayLike, center: "npt.NDArray | None" = None
         ) -> Any: ...
 
-        def _warn_if_hazard_negative(
+        def _outside_support(
             self,
             x: npt.ArrayLike,
             Z: npt.NDArray,
             valid: Any = True,
             stacklevel: int = 4,
-        ) -> None: ...
+        ) -> "npt.NDArray | None": ...
 
     # -- confidence bounds -------------------------------------------------
 
@@ -573,35 +584,35 @@ class InferenceMixin:
         # Rows and times paired, as for sf (#488, #657).
         rows = covariate_rows(self._prepare_Z(Z), self._n_covariates())
         check_paired_rows(np.size(x), rows.shape[0], grid=False)
-        if method != "wald":
-            if self._is_additive():
-                self._warn_if_hazard_negative(
-                    x,
-                    self._centred(self._prepare_Z(Z)),
-                    np.asarray(x) >= self.distribution.support[0],
-                    stacklevel=4,
-                )
-            if lr:
-                return cb_lr(self, x, Z, on, alpha_ci, bound)
-            return cb_bootstrap(
-                self, x, Z, on, alpha_ci, bound, n_boot, random_state
-            )
-        params, center, cov = self._inference_state()
-        Zp = self._centred(self._prepare_Z(Z), center)
+        # Outside an additive model's support the bound is nan, as the
+        # estimate is (#828); not below the support, where nothing has
+        # happened yet.
+        outside = None
         if self._is_additive():
-            # Not below the support, where nothing has happened yet.
-            self._warn_if_hazard_negative(
+            outside = self._outside_support(
                 x,
                 self._centred(self._prepare_Z(Z)),
                 np.asarray(x) >= self.distribution.support[0],
                 stacklevel=4,
             )
+        if method != "wald":
+            if lr:
+                out = cb_lr(self, x, Z, on, alpha_ci, bound)
+            else:
+                out = cb_bootstrap(
+                    self, x, Z, on, alpha_ci, bound, n_boot, random_state
+                )
+            return _nan_outside(out, outside)
+        params, center, cov = self._inference_state()
+        Zp = self._centred(self._prepare_Z(Z), center)
 
         if on in ("hf", "df"):
             fn = self.model.hf if on == "hf" else self.model.df
             est = np.asarray(fn(x, Zp, *params), dtype=float)
             se = delta_method_se(lambda p: fn(x, Zp, *p), params, cov)
-            return log_transformed_cb(est, se, alpha_ci, bound)
+            return _nan_outside(
+                log_transformed_cb(est, se, alpha_ci, bound), outside
+            )
 
         # Below the support nothing has happened yet: H is 0 there, as
         # for sf (the bound is then the estimate, sf = 1). An additive
@@ -619,15 +630,18 @@ class InferenceMixin:
             S = np.asarray(self.model.sf(x_in, Zp, *p), dtype=float)
             return np.where(below, 1.0, S)
 
-        return self._sf_bounds(
-            H_of,
-            sf_of,
-            params,
-            cov,
-            np.shape(x),
-            on,
-            alpha_ci,
-            bound,
+        return _nan_outside(
+            self._sf_bounds(
+                H_of,
+                sf_of,
+                params,
+                cov,
+                np.shape(x),
+                on,
+                alpha_ci,
+                bound,
+            ),
+            outside,
         )
 
     @keeps_query_shape

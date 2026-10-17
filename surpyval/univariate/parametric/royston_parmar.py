@@ -69,6 +69,8 @@ from surpyval.utils.no_maximum import (
 from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.surpyval_data import accepts_surpyval_data
+from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import (
     BOUNDS,
     check_alpha_ci,
@@ -714,6 +716,8 @@ class RoystonParmar_(FitterRepr, UnivariateDataFrameMixin):
     #: The ``repr`` (#614)
     fitter_kind = "flexible parametric (spline) fitter"
 
+    @takes_unit
+    @accepts_surpyval_data
     def fit(
         self,
         x: Any = None,

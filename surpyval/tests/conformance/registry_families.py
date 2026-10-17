@@ -24,9 +24,11 @@ from surpyval.tests.conformance.registry_fixtures import (
     X_REG,
     X_STRESS,
     X_UNI,
+    Z_AH,
     Z_REG,
     Z_STRESS,
     Z_STRESS2,
+    ah_data,
     discrete_data,
     grouped_reg_data,
     reg_data,
@@ -235,6 +237,7 @@ DIFFERENTIATED = frozenset(
         ".ProportionalIntensityModel",
         "surpyval.multivariate.CopulaModel",
         "surpyval.degradation.DegradationModel",
+        "surpyval.JointModel",
     }
 )
 _NO_DERIVATIVES = "the fit takes no derivatives: "
@@ -357,10 +360,15 @@ class Case:
     event_functions: tuple[str, ...] = ()
     # Keyword arguments every prediction call gets (e.g. ``stratum``).
     call_kwargs: dict = field(default_factory=dict)
+    # The entries of ``call_kwargs`` that are ages, rescaled with the times
+    # by the units property: an age (a joint model's ``given``), or
+    # readings by age (its ``markers``, ``{age: value}``).
+    call_times: tuple[str, ...] = ()
     # Alternate fit paths: name -> function of the fixture dict.
     paths: dict[str, Callable[[dict], Any]] = field(default_factory=dict)
     # Per-row arrays of the fixture (permuted / repeated together) and the
-    # entries that are times (rescaled by the units property).
+    # entries that are times (rescaled by the units property; an entry of
+    # readings by age, ``{age: value}`` per row, has its ages rescaled).
     rows: tuple[str, ...] = ("x", "c", "n")
     times: tuple[str, ...] = ("x",)
     # Row-level covariate matrix key and whether a missing covariate at fit
@@ -793,11 +801,16 @@ def _regression_family():
                 frozenset() if name in FAST_REGRESSIONS else REFIT_PROPERTIES
             )
             exclude = {}
+            data = {}
             if kind == "AH":
                 exclude["bounds"] = (
-                    "documented: nothing keeps h0(x) + beta'Z positive "
-                    "between the observed times, so sf can exceed 1"
+                    "documented: outside the model's support (h0(x) + "
+                    "beta'Z or its integral negative) the predictions are "
+                    "nan (#828)"
                 )
+                # Covariates that add hazard: an ordinary fit inside the
+                # support (see ah_data).
+                data = {"data": ah_data, "Z": Z_AH}
             out.append(
                 regression(
                     name,
@@ -805,6 +818,7 @@ def _regression_family():
                     slow=slow,
                     exclude=exclude,
                     intercept=(_KINDS[kind], base) in ORIGIN_MAPS,
+                    **data,
                 )
             )
     return out

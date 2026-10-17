@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 import numbers
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
 
+from surpyval import plotting
 from surpyval.distribution import NonParametricDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.deprecation import reordered_arguments
+from surpyval.utils.record_predict import PredictsRecordsMixin
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.units import axis_label
 from surpyval.utils.validation import (
     BOUNDS,
     check_alpha_ci,
@@ -38,19 +41,21 @@ _QF_TOL = 1e-9
 # The functions ``cb`` can bound ('R' and 'F' are aliases of 'sf' and 'ff').
 _CB_ON = ("sf", "ff", "Hf", "R", "F")
 
+
 # ``cb`` took ``(x, on, bound, interp, alpha_ci, ...)`` where every other
-# model's takes ``(x, on, alpha_ci, bound, ...)``, so ``km.cb(x, "sf", 0.1)``
-# raised "bound must be ..." where ``model.cb(x, "sf", 0.1)`` meant
-# ``alpha_ci=0.1`` (#666). It takes the common order now; a string third
-# positional argument (a ``bound``) is the old order, read as before with a
-# warning until v0.25.
-_OLD_CB_ORDER = reordered_arguments(
-    ("x", "on", "bound", "interp", "alpha_ci", "bound_type", "dist"),
-    lambda args: len(args) >= 3 and isinstance(args[2], str),
-    "the third positional argument is now alpha_ci, as in every model's "
-    "cb(x, on, alpha_ci, bound, ...). Pass bound by name, e.g. "
-    "cb(x, 'sf', bound='lower').",
-)
+# model's takes ``(x, on, alpha_ci, bound, ...)`` (#666). It takes the
+# common order since v0.24; the old order, read with a warning in v0.24,
+# was removed in v0.25, and a string third positional argument (a
+# ``bound``) says so.
+def _check_cb_order(alpha_ci: Any) -> None:
+    if isinstance(alpha_ci, str):
+        raise TypeError(
+            f"cb() got {alpha_ci!r} as its third positional argument, "
+            "alpha_ci: the old order cb(x, on, bound, ...) was removed in "
+            "v0.25; the order is cb(x, on, alpha_ci, bound, ...), as in "
+            "every model's. Pass bound by name, e.g. "
+            "cb(x, 'sf', bound='lower')."
+        )
 
 
 # The ``interp`` values: the step estimate, and the interpolation kinds
@@ -82,7 +87,7 @@ def warn_bounds_past_data(
 
     from surpyval.utils.warnings import caller_stacklevel
 
-    shown = ", ".join("{:g}".format(float(v)) for v in past[:5])
+    shown = ", ".join(f"{float(v):g}" for v in past[:5])
     warnings.warn(
         "{}: the confidence bounds are NaN at x = {}{}, past the last "
         "observed value {:g}; the estimate says nothing about values "
@@ -96,7 +101,12 @@ def warn_bounds_past_data(
     )
 
 
-class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
+class NonParametric(
+    BandsMixin,
+    SerialisableMixin,
+    NonParametricDistribution,
+    PredictsRecordsMixin,
+):
     """
     Result of ``.fit()`` method for every non-parametric
     surpyval distribution. This means that each of the
@@ -139,13 +149,13 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
     data: dict[str, Any]
     #: The ``(lower, upper)`` interval the estimate is defined on, set by
     #: :meth:`set_support`; ``None`` (the default) when it has not been set.
-    support: "tuple[float, float] | None" = None
+    support: tuple[float, float] | None = None
     # The sample size of ``band`` as ``to_dict`` stored it ("band_n"), for
     # a model restored without its data; see ``_band_sample_size``.
-    _band_n: "float | None" = None
+    _band_n: float | None = None
     # The printout's "Data" line of a model restored without its data
     # (#508).
-    _data_summary: "str | None" = None
+    _data_summary: str | None = None
 
     def __repr__(self) -> str:
         out = (
@@ -185,7 +195,7 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
             data["c"], data.get("n"), t[:, 0], t[:, 1], lower=lower, x=x
         )
 
-    def set_support(self, lower: float, upper: float) -> "NonParametric":
+    def set_support(self, lower: float, upper: float) -> NonParametric:
         r"""
         Give the estimate an explicit support, ``[lower, upper]``.
 
@@ -674,7 +684,6 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         with np.errstate(divide="ignore"):
             return 0.0 - np.log(sf)
 
-    @_OLD_CB_ORDER
     @keeps_query_shape
     def cb(
         self,
@@ -810,6 +819,7 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
 
         """
+        _check_cb_order(alpha_ci)
         check_alpha_ci(alpha_ci)
         # The guard used to test ``on in []`` and so never fired: any other
         # ``on`` (e.g. 'hf') fell through to the survival bounds in
@@ -1251,6 +1261,17 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
             )
         return out
 
+    def _survival_past_data(self, tau: float) -> float | None:
+        """The survival estimate at the largest observed time when ``tau``
+        is past it and the estimate there is above zero, so the area to
+        ``tau`` is not estimable; None when the area is (``tau`` within
+        the data, or the curve already at zero)."""
+        last = float(np.max(self.x))
+        if not tau > last:
+            return None
+        s_last = float(np.ravel(self.sf(last))[-1])
+        return s_last if s_last > 0 else None
+
     def mean(self, tau: float | None = None) -> float:
         r"""
         The (restricted) mean survival time: the area under the
@@ -1269,8 +1290,10 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         tau : scalar, optional
             The horizon up to which the survival function is
             integrated; must be non-negative. Defaults to the largest
-            observed value. If tau is beyond the last observation the
-            survival function is extended at its final value.
+            observed value. A tau beyond the last observation is refused
+            while the survival estimate there is above zero: the area past
+            it is not estimable. Where the estimate has reached zero the
+            area stops growing, and any tau is accepted.
 
         Returns
         -------
@@ -1295,8 +1318,19 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         # A negative horizon used to come back as the (negative) width of
         # [0, tau], i.e. mean(tau=-1) was -1.
         if not tau >= 0:
+            raise ValueError(f"'tau' must be a non-negative number; got {tau}")
+        # Holding the curve at its last value out to tau made the RMST
+        # whatever tau was (mean(tau=1e6) of data running to 120 was in
+        # the tens of thousands), as rmst_diff's two groups did.
+        s_last = self._survival_past_data(tau)
+        if s_last is not None:
+            last = float(np.max(self.x))
             raise ValueError(
-                "'tau' must be a non-negative number; got {}".format(tau)
+                "tau = {:g} is past the largest observed time, {:g}, where "
+                "the survival estimate is still {:.3g}: the RMST beyond it "
+                "is not estimable (holding the curve at its last value "
+                "makes it whatever tau is). Use a tau at or below {:g}, or "
+                "leave tau out for it.".format(tau, last, s_last, last)
             )
 
         xs = self.x[self.x < tau].astype(float)
@@ -1326,7 +1360,8 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
 
         tau : scalar, optional
             The horizon up to which the survival function is
-            integrated. Defaults to the largest observed value.
+            integrated. Defaults to the largest observed value; a tau past
+            it is refused as ``mean`` refuses it.
         alpha_ci : scalar, optional
             The level of significance at which the interval will be
             computed. Defaults to 0.05.
@@ -1401,7 +1436,8 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         ----------
         tau : scalar, optional
             Integration horizon; defaults to the largest observed value. A
-            ``tau`` beyond it holds the curve at its final value.
+            ``tau`` beyond it is refused while the survival estimate there
+            is above zero, as ``mean`` refuses it.
         alpha_ci : scalar, optional
             Significance level for the interval (default 0.05).
 
@@ -1438,6 +1474,67 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
             "upper": mu + z * se,
             "tau": float(tau),
         }
+
+    @keeps_query_shape
+    def mrl(self, x: npt.ArrayLike, tau: float | None = None) -> npt.NDArray:
+        r"""
+        The restricted mean residual life: the expected remaining life up
+        to ``tau`` of a unit that has survived to age ``x``,
+
+        .. math::
+            \mathrm{MRL}_\tau(x) = E[\min(T, \tau) - x \mid T > x]
+            = \frac{1}{\hat S(x)} \int_x^\tau \hat S(u)\, du ,
+
+        the area under the estimated survival curve from ``x`` to ``tau``
+        over the survival to ``x``. ``mrl(0)`` is the restricted mean,
+        :meth:`mean`, when nothing fails at 0, and before 0 it is
+        ``mean(tau) - x``. Where the estimate reaches zero by ``tau`` it is
+        the mean residual life itself; with censoring it is restricted, as
+        the RMST is, since the curve past the data is not estimated.
+
+        Parameters
+        ----------
+
+        x : array like or scalar
+            The ages survived to.
+        tau : scalar, optional
+            The horizon, as for :meth:`mean`: the largest observed time by
+            default, and refused past it while the estimate there is above
+            zero.
+
+        Returns
+        -------
+
+        mrl : scalar or numpy array
+            The restricted mean residual life at each ``x``, shaped as
+            ``x``: ``nan`` where the estimate has fallen to 0 (no unit
+            survives to ``x``) or ``x`` is missing, and otherwise 0 at and
+            after ``tau`` (no time is left before it).
+
+        Examples
+        --------
+        >>> from surpyval import KaplanMeier
+        >>> model = KaplanMeier.fit([1, 2, 3, 4, 5])
+        >>> model.mrl([0, 2, 4.5])
+        array([3. , 2. , 0.5])
+        """
+        t = np.atleast_1d(np.asarray(x, dtype=float))
+        if tau is None:
+            tau = float(np.max(self.x))
+        total = self.mean(tau=tau)
+        out = np.full(t.shape, np.nan)
+        survival = np.atleast_1d(np.asarray(self.sf(t), dtype=float))
+        for i, t_i in enumerate(t):
+            if np.isnan(t_i) or not survival[i] > 0:
+                continue
+            if t_i >= tau:
+                out[i] = 0.0
+            elif t_i < 0:
+                # Nothing has failed before 0: the area from x to 0 is -x.
+                out[i] = total - t_i
+            else:
+                out[i] = (total - self.mean(tau=t_i)) / survival[i]
+        return out
 
     @keeps_query_shape
     def smoothed_hf(
@@ -1515,9 +1612,7 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
                 )
             bandwidth = (x_max - x_min) / 8
         if not bandwidth > 0:
-            raise ValueError(
-                "'bandwidth' must be positive; got {}".format(bandwidth)
-            )
+            raise ValueError(f"'bandwidth' must be positive; got {bandwidth}")
 
         u = (x[:, None] - self.x[None, :]) / bandwidth
         kern = np.where(np.abs(u) <= 1, 0.75 * (1 - u**2), 0.0)
@@ -1694,7 +1789,14 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         )
         ax.set_ylabel("Survival probability")
         if not ax.get_xlabel():
-            ax.set_xlabel("Time")
+            # "Time", or what the model's unit measures (#845)
+            ax.set_xlabel(axis_label(self.unit))
+        # The theme's next colour unless one is given
+        color = plotting.next_color(ax, kwargs.pop("color", None))
+        if color is not None:
+            kwargs["color"] = color
+        if plotting.theme_enabled():
+            kwargs.setdefault("linewidth", plotting.LINE_WIDTH)
         if interp != "step":
             (line,) = ax.plot(d["x_"], d["R"], **kwargs)
         else:
@@ -1704,7 +1806,9 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         if plot_bounds:
             cbs = d["cbs"]
             band_kwargs: dict[str, Any] = {
-                "alpha": 0.3,
+                "alpha": (
+                    plotting.BAND_ALPHA if plotting.theme_enabled() else 0.3
+                ),
                 "color": color,
                 "linewidth": 0,
             }
@@ -1734,12 +1838,13 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
                     color=color,
                 )
 
+        plotting.style_axes(ax)
         return ax
 
     @classmethod
     def fit_from_ecdf(
         cls, x: npt.ArrayLike, R: npt.ArrayLike
-    ) -> "NonParametric":
+    ) -> NonParametric:
         r"""
         Wrap an existing survival curve, given as its values and the
         survival at each, as a non-parametric model, so that ``sf``,
@@ -1908,7 +2013,7 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "NonParametric":
+    def from_dict(cls, model_dict: dict) -> NonParametric:
         r"""
         Reconstruct a fitted non-parametric model from a dictionary
         produced by :meth:`to_dict`. ``surpyval.from_dict`` does the same
@@ -1985,8 +2090,8 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
 
 
 def rmst_diff(
-    model_a: "NonParametric",
-    model_b: "NonParametric",
+    model_a: NonParametric,
+    model_b: NonParametric,
     tau: float | None = None,
     alpha_ci: float = 0.05,
 ) -> dict:
@@ -2006,9 +2111,12 @@ def rmst_diff(
     tau : scalar, optional
         Common horizon. Defaults to the smaller of the two groups' largest
         observed times, so both survival curves are supported by data up to
-        ``tau`` (the standard choice). A larger ``tau`` is accepted without
-        a warning: a curve is then held at its final value beyond its last
-        observation, an extrapolation that is left to the caller to judge.
+        ``tau`` (the standard choice). A ``tau`` past a group's largest
+        observed time is refused while that group's estimate is above zero
+        there: the curve beyond it is not estimated, and holding it at its
+        last value made the RMST, and the difference, what the horizon
+        made them. (A curve that has reached zero is zero beyond, and
+        needs no extrapolation.)
     alpha_ci : scalar, optional
         Significance level for the interval and test (default 0.05).
 
@@ -2025,7 +2133,9 @@ def rmst_diff(
     Raises
     ------
     ValueError
-        If either model has no variance estimate (``fit_from_ecdf``).
+        If either model has no variance estimate (``fit_from_ecdf``), or
+        ``tau`` is past a group's largest observed time while its estimate
+        is above zero there.
 
     Examples
     --------
@@ -2043,6 +2153,22 @@ def rmst_diff(
 
     if tau is None:
         tau = float(min(np.max(model_a.x), np.max(model_b.x)))
+    for name, model in (("model_a", model_a), ("model_b", model_b)):
+        s_last = model._survival_past_data(tau)
+        if s_last is not None:
+            raise ValueError(
+                "tau = {:g} is past {}'s largest observed time, {:g}, where "
+                "its survival estimate is still {:.3g}: the RMST beyond it "
+                "is not estimable (holding the curve at its last value "
+                "makes it whatever tau is). Use a tau at or below {:g}, the "
+                "groups' common follow-up, or leave tau out for it.".format(
+                    tau,
+                    name,
+                    float(np.max(model.x)),
+                    s_last,
+                    float(min(np.max(model_a.x), np.max(model_b.x))),
+                )
+            )
 
     mu_a = model_a.mean(tau=tau)
     mu_b = model_b.mean(tau=tau)

@@ -1301,6 +1301,103 @@ of groups. ``strata`` can be combined with ``c``, ``n`` and any ``weighting``.
     _s = logrank(x, group, strata=site)
     assert _s.p_value > 0.1 and _s.strata == 2 and _s.dof == 1
 
+Plotting groups with the number at risk
+---------------------------------------
+
+``surv.plot_nonparametric`` draws one or more fitted non-parametric models on one axes, with
+the things a survival figure usually carries: the confidence bounds, ticks at the censored
+times, reference lines at the median (or any quantile) with their values, and a
+**number-at-risk table** under the x axis. It takes one model, a list of models, or a dict
+``{label: model}`` for groups, from any estimator (Kaplan-Meier, Nelson-Aalen,
+Fleming-Harrington or Turnbull, truncated or not).
+
+The lung cancer data has 138 men and 90 women. Fit a Kaplan-Meier curve to each and draw them
+with their medians and the full table (at risk, censored so far, events so far):
+
+.. jupyter-execute::
+
+    from surpyval.datasets import load_lung
+
+    lung = load_lung()
+    by_sex = {
+        ('Men' if sex == 1 else 'Women'): surv.KaplanMeier.fit(part['time'], c=1 - part['status'])
+        for sex, part in lung.groupby('sex')
+    }
+    out = surv.plot_nonparametric(by_sex, quantiles=0.5, at_risk_rows='all', xlabel='Days')
+
+In plain terms: a man's median survival in this study is 270 days and a woman's 426. At day 200,
+78 of the 138 men are still being followed and event-free; 54 have died and 6 have left the study
+alive. The columns of the table sit under the x axis's ticks; pass ``at_risk_times`` to choose
+others.
+
+The function returns the figure and axes to customise further, and the numbers it drew:
+
+.. jupyter-execute::
+
+    print(out.quantiles)
+    print(out.times)
+    print(out.counts['Men']['At risk'])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert out.quantiles['Men'][0.5] == 270 and out.quantiles['Women'][0.5] == 426
+    assert out.counts['Men']['At risk'][0] == 138 and out.counts['Women']['At risk'][0] == 90
+    _m = by_sex['Men']
+    _x = np.asarray(out.lines['Men'].get_xdata())
+    assert np.allclose(out.lines['Men'].get_ydata(), _m.sf(_x))
+    plt.close(out.fig)
+
+The other options:
+
+- ``on``: ``'sf'`` (the default), ``'ff'`` (the cumulative incidence), ``'Hf'`` (the cumulative
+  hazard) or ``'hf'`` (the kernel-smoothed hazard rate of ``smoothed_hf``, without bounds);
+- ``ci``: ``'pointwise'`` (the model's ``cb``, the default), ``'band'`` (its simultaneous
+  ``band``, with ``band_method``) or ``False``; ``alpha_ci``, ``bound`` and ``bound_type`` are
+  passed to them, and ``ci_style='lines'`` draws dashed steps instead of a shaded wash;
+- ``show_censors``, ``quantiles``, ``xlim``, ``log_x``;
+- ``labels``, ``colors``, ``xlabel``, ``ylabel``, ``title``, ``legend`` and ``ax`` (draw on your
+  own axes; save with ``bbox_inches='tight'`` so the table is not cut off);
+- ``at_risk`` (``False`` for no table), ``at_risk_times``, ``at_risk_rows`` and ``counts``
+  (``'cumulative'``, as above, or ``'interval'`` for what happened since the previous column).
+
+Here is the cumulative hazard on a log time axis, with the simultaneous equal-precision band:
+
+.. jupyter-execute::
+
+    out = surv.plot_nonparametric(by_sex, on='Hf', ci='band', band_method='nair',
+                                  log_x=True, xlabel='Days')
+
+**What "at risk" means.** A unit is at risk at time :math:`t` if it entered before :math:`t` and
+its event or censoring time is :math:`t` or later: the same risk sets the estimators use. With
+left truncation (late entry) the number at risk can therefore *rise* as units enter. With left or
+interval censoring (a Turnbull fit) an event is only known to lie in an interval
+:math:`(L, U]`, so the table counts what the data show rather than the Turnbull estimate's
+fractional expected counts: **At risk** is the units known to be event-free (:math:`t \le L`),
+**Events** those known to have had the event by :math:`t` (:math:`U \le t`), and **In interval**
+those whose interval spans :math:`t` (their event may or may not have happened yet).
+
+.. jupyter-execute::
+
+    xl = [0, 2, 2, 4, 5, 6, 8, 9, 11, 12]
+    xr = [3, 5, np.inf, 7, 9, np.inf, 12, 14, np.inf, 16]
+    turnbull = surv.Turnbull.fit(xl=xl, xr=xr)
+    out = surv.plot_nonparametric(turnbull, at_risk_rows='all', at_risk_times=[0, 4, 8, 12, 16])
+    print(out.counts['Turnbull'])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _c = out.counts['Turnbull']
+    # by hand from the intervals: (2, 5] spans 4, (5, 9] spans 8, (9, 14] spans 12
+    assert list(_c['At risk']) == [10, 7, 4, 1, 0]
+    assert list(_c['In interval']) == [0, 1, 1, 1, 0]
+    assert list(_c['Events']) == [0, 1, 3, 5, 7]
+    assert all(_c['At risk'] + _c['In interval'] + _c['Events'] + _c['Censored'] == 10)
+    plt.close(out.fig)
+
 Restricted mean survival time
 -----------------------------
 
@@ -1309,7 +1406,7 @@ proportional-hazards assumption holds. When it does not — survival curves that
 cross, treatments that help early but not late — the **restricted mean survival
 time** (RMST) is an assumption-light alternative. It is simply the area under
 the survival curve up to a horizon :math:`\tau`, i.e. the average event-free
-time over the first :math:`\tau` units, and it is always well defined.
+time over the first :math:`\tau` units, and it is well defined for any :math:`\tau` within the data.
 
 Any fitted non-parametric model exposes ``rmst(tau)``, returning the point
 estimate with its standard error and confidence interval:
@@ -1336,8 +1433,9 @@ ordinary mean:
           ' sample mean:', round(control.mean(), 3))
 
 The interval is the normal one, :math:`\widehat{\text{RMST}} \pm z\,\widehat{SE}`. A ``tau`` beyond
-the last observation is allowed but holds the curve at its final value out to ``tau``, which is an
-extrapolation; keep ``tau`` within the data.
+the last observation is refused while the survival estimate there is above zero: the area past the
+data is not estimable, and holding the curve at its final value would make it whatever ``tau`` is.
+Where the estimate has reached zero the area stops growing, and any ``tau`` is accepted.
 
 .. jupyter-execute::
     :hide-code:
@@ -1376,3 +1474,6 @@ right censoring and delayed entry are handled by those fits.
     assert round(diff['difference']) == 4, diff['difference']
     assert np.isclose(diff['ratio'], diff['rmst_a'] / diff['rmst_b'])
     assert np.isclose(diff['difference'], diff['rmst_a'] - diff['rmst_b'])
+
+The Kaplan-Meier, Nelson-Aalen, Fleming-Harrington and Turnbull estimates also
+run in the browser in `Reliafy <https://reliafy.com/reference/nonparametric>`__.

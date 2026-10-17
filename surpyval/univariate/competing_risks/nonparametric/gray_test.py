@@ -326,7 +326,7 @@ def _validate(
             "c must be 0 (a failure) or 1 (right-censored); left and "
             "interval censoring are not supported by Gray's test."
         )
-    check_c_and_e(c_arr, e_arr)
+    e_arr = check_c_and_e(c_arr, e_arr)
     censored = c_arr.astype(int) == 1
 
     if n is None:

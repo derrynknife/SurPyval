@@ -378,6 +378,10 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log1p(-u) / failure_rate
 
+    def _mrl_inside(self, x: Any, failure_rate: float) -> Any:
+        # Memoryless: the mean residual life is the mean at every age.
+        return np.full(np.shape(x), 1.0 / failure_rate)
+
     def mean(self, failure_rate: Boxable) -> Boxable:
         r"""
 

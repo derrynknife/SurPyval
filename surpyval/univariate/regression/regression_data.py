@@ -33,6 +33,7 @@ from surpyval.utils import (
 )
 from surpyval.utils.dataframe import check_columns, frame_column
 from surpyval.utils.removed_names import column_arguments
+from surpyval.utils.units import takes_unit
 
 from ._aliasing import covariate_columns
 
@@ -511,6 +512,7 @@ def prepare_Z(
         (or the formula's expansion); otherwise ``Z`` as a float array, with
         ``None`` read as a missing value (``nan``).
     """
+    Z = named_row(Z, feature_names, model_spec)
     if not isinstance(Z, pd.DataFrame):
         # As floats: a list (or object array) holding ``None`` is then a
         # missing value, predicted as nan, not a TypeError from ``Z @ beta``.
@@ -535,6 +537,79 @@ def prepare_Z(
         "named covariates. Fit the model with 'fit_from_df' (or pass a numpy "
         "array) to predict from a DataFrame."
     )
+
+
+def named_row(
+    Z: Any, feature_names: "list[str] | None", model_spec: Any
+) -> Any:
+    """``Z`` as a DataFrame where it names its covariates (#921): a dict
+    ``{name: value}`` (or ``{name: values}``) and a pandas Series labelled
+    by covariate names are one item's (or several items') covariates, read
+    by name as a DataFrame is; a Series named after a covariate is that
+    column. A dict is refused for a model whose covariates have no names
+    (it used to fail on ``float(dict)``); anything else is returned as it
+    is.
+
+    Examples
+    --------
+    >>> from surpyval.univariate.regression.regression_data import named_row
+    >>> named_row({"age": 50.0, "arm": 1}, ["arm", "age"], None)
+       age  arm
+    0  50.0    1
+    """
+    named = feature_names is not None or model_spec is not None
+    kind = type(Z).__name__
+    if kind in (
+        "ItemLifetime",
+        "ItemHistory",
+        "SurpyvalData",
+        "EventHistoryData",
+    ) or (
+        isinstance(Z, (list, tuple))
+        and Z
+        and type(Z[0]).__name__ in ("ItemLifetime", "ItemHistory")
+    ):
+        # A record, a list of records or a dataset: its covariates, by
+        # name where both it and the model name them (#940)
+        from surpyval.utils.record_predict import covariates_as_Z
+
+        Z = covariates_as_Z(Z, feature_names if named else None)
+        if not hasattr(Z, "columns"):
+            return Z
+    if isinstance(Z, dict):
+        if not named:
+            raise ValueError(
+                "The covariates were given by name, but this model's "
+                "covariates have no names (it was fitted on arrays): give "
+                "the values in the order they were fitted, or fit with "
+                "named covariates (fit_from_df, a DataFrame Z, or data "
+                "with covariate_names)."
+            )
+        several = any(np.ndim(value) > 0 for value in Z.values())
+        return pd.DataFrame(Z) if several else pd.DataFrame([Z])
+    if isinstance(Z, pd.Series) and named:
+        if (
+            Z.name is not None
+            and feature_names is not None
+            and (str(Z.name) in feature_names)
+        ):
+            return Z.to_frame()
+        labels = list(Z.index)
+        if labels and all(isinstance(label, str) for label in labels):
+            return Z.to_frame().T.infer_objects()
+    return Z
+
+
+def named_covariates(Z: Any, feature_names: "list[str] | None") -> Any:
+    """``Z`` for a model that reads covariate rows itself (Fine-Gray, the
+    proportional intensity models): a DataFrame, Series or dict read by
+    the model's ``feature_names`` (#921), as :func:`prepare_Z` reads them;
+    anything else as it is."""
+    if isinstance(Z, dict) or (
+        feature_names is not None and isinstance(Z, (pd.Series, pd.DataFrame))
+    ):
+        return prepare_Z(Z, feature_names, None)
+    return Z
 
 
 def categorical_columns_as_objects(Z: pd.DataFrame, model_spec: Any) -> Any:
@@ -1090,6 +1165,7 @@ class DataFrameRegressionMixin:
     fit: Callable[..., "ParametricRegressionModel"]
 
     @column_arguments("x", "c", "n", "xl", "xr", "tl", "tr")
+    @takes_unit
     def fit_from_df(
         self,
         df: pd.DataFrame,

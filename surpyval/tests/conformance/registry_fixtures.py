@@ -172,6 +172,20 @@ def reg_data():
     return {"x": x, "Z": np.column_stack([z0, z1]), "c": c, "n": n}
 
 
+def ah_data():
+    """The regression fixture with its covariates turned to add hazard,
+    for the additive hazards cases (#828): ``1 - z1`` for ``z1``, so both
+    covariates are non-negative and shorten life. On ``reg_data`` a
+    protective row's ``h0(t) + beta'Z`` is negative near 0, where the
+    baselines' hazards start at 0, and every AH fit but the Exponential's
+    and the Gumbel's ends on the boundary of its support (``H = 0`` at an
+    early observation), with a warning; here each is an ordinary maximum
+    inside it."""
+    d = reg_data()
+    d["Z"] = np.column_stack([d["Z"][:, 0], 1.0 - d["Z"][:, 1]])
+    return d
+
+
 def stress_data(columns=1):
     """Accelerated life data: life falls with stress (1, 2 or 3)."""
     d = reg_data()
@@ -212,6 +226,8 @@ Z_REG = np.array(
         [1.0, -0.2],
     ]
 )
+#: The query rows of ``ah_data``: ``Z_REG`` turned as its covariates are.
+Z_AH = np.column_stack([Z_REG[:, 0], 1.0 - Z_REG[:, 1]])
 X_STRESS = np.array([1.0, 3.0, 6.0, 10.0, 15.0, 22.0])
 Z_STRESS = np.array([[1.0], [1.5], [2.0], [2.5], [3.0], [1.2]])
 Z_STRESS2 = np.array(
@@ -284,6 +300,61 @@ def destructive_data():
     x = np.repeat([10.0, 20.0, 30.0, 40.0], 5)
     y = np.exp(4.0 - 0.02 * x + 0.1 * np.sin(np.arange(20.0)))
     return {"x": x, "y": y}
+
+
+def joint_data():
+    """40 items of a joint model (#891): a straight-line marker read every
+    60 days with a level and rate of each item's own, a 0/1 covariate,
+    and a Weibull PH lifetime in the line's current value, censored at
+    730; some counted twice. Each item's line and lifetime come from
+    quantiles in scrambled orders, its readings' noise from a sine."""
+    from scipy.special import ndtri
+
+    size = 40
+    u = (scramble(size) + 0.5) / size
+    # an order unrelated to u's (a reversed scramble is affine in it)
+    v = np.argsort(np.argsort(np.sin(2.7 * np.arange(size) + 1.0))) + 0.5
+    v = v / size
+    level = 3.0 + 0.6 * ndtri(u)
+    rate = (1.0 + 0.5 * ndtri(v)) / 365
+    z = (np.arange(size) % 2).astype(float)
+    # the lifetime: H(T) = E on a fine grid of ages
+    order = np.argsort(np.argsort(np.sin(1.9 * np.arange(size) + 0.3)))
+    E = -np.log1p(-(order + 0.5) / size)
+    t = np.linspace(0.0, 4000.0, 8001)
+    x, c, markers = [], [], []
+    for k in range(size):
+        h = (
+            (2 / 800)
+            * (t / 800)
+            * np.exp(0.9 * (level[k] + rate[k] * t - 4.0) + 0.4 * z[k])
+        )
+        H = np.r_[0.0, np.cumsum((h[1:] + h[:-1]) / 2 * np.diff(t))]
+        life = float(np.interp(E[k], H, t))
+        end = round(min(life, 730.0), 2)
+        ages = np.arange(0.0, end, 60.0)
+        y = level[k] + rate[k] * ages + 0.5 * np.sin(1.3 * k + 0.7 * ages)
+        x.append(end)
+        c.append(0 if life < 730.0 else 1)
+        markers.append(dict(zip(ages.tolist(), np.round(y, 3).tolist())))
+    n = np.ones(size, int)
+    n[[3, 17, 30]] = 2
+    return {
+        "x": np.array(x),
+        "c": np.array(c),
+        "n": n,
+        "Z": z[:, None],
+        "markers": markers,
+    }
+
+
+#: The joint model's query: an item read four times, still running at
+#: 400 (``JOINT_ITEM``), at ages before and after that.
+X_JOINT = np.array([100.0, 300.0, 450.0, 600.0, 900.0, 1200.0])
+JOINT_ITEM = {
+    "markers": {0.0: 3.1, 120.0: 3.4, 240.0: 3.6, 360.0: 3.9},
+    "given": 400.0,
+}
 
 
 X_PATH = np.array([150.0, 250.0, 320.0, 400.0, 480.0, 600.0])

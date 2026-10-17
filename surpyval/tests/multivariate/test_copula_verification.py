@@ -6,6 +6,7 @@ vinecopulib) are in the #291 report.
 """
 
 import warnings
+from fractions import Fraction
 
 import numpy as np
 import pytest
@@ -214,35 +215,43 @@ _NEAR_ONE = [0.99995, -0.99995, 1 - 1e-8, -(1 - 1e-12)]
 _POINTS = [(0.3, 0.3001), (0.5, 0.5), (0.9, 0.2), (0.02, 0.0201), (0.7, 0.3)]
 
 
+# The references below form 1 - rho^2 and the quadratic forms, where
+# the cancellation is, in exact rational arithmetic on the doubles, so
+# they hold to double precision on every platform. (They were in long
+# double, which is double precision on arm64 and Windows, so there the
+# references, not the copulas, were off by 1e-9.)
+def _exact(value):
+    return Fraction(float(value))
+
+
 def _gaussian_density(u, v, rho):
-    """The bivariate normal density over its margins' in long double, from
-    the textbook form."""
+    """The bivariate normal density over its margins', from the textbook
+    form, the quadratic form exact."""
     from scipy.special import ndtri
 
-    a = np.longdouble(ndtri(u))
-    b = np.longdouble(ndtri(v))
-    r = np.longdouble(rho)
+    a, b, r = _exact(ndtri(u)), _exact(ndtri(v)), _exact(rho)
     d = 1 - r * r
     quad = (r * r * (a * a + b * b) - 2 * r * a * b) / (2 * d)
-    return float(np.exp(-quad) / np.sqrt(d))
+    return float(np.exp(-float(quad)) / np.sqrt(float(d)))
 
 
 def _t_density(u, v, rho, nu):
-    """The bivariate t density over its margins', the quadratic form in
-    long double."""
+    """The bivariate t density over its margins', the quadratic form
+    exact."""
     from scipy.special import gammaln, stdtrit
 
-    x = np.longdouble(stdtrit(nu, u))
-    y = np.longdouble(stdtrit(nu, v))
-    r = np.longdouble(rho)
+    x, y = float(stdtrit(nu, u)), float(stdtrit(nu, v))
+    r = _exact(rho)
     d = 1 - r * r
-    q = (x * x + y * y - 2 * r * x * y) / (nu * d)
+    q = (_exact(x) ** 2 + _exact(y) ** 2 - 2 * r * _exact(x) * _exact(y)) / (
+        _exact(nu) * d
+    )
     log_c = (
         gammaln((nu + 2) / 2)
         + gammaln(nu / 2)
         - 2 * gammaln((nu + 1) / 2)
-        - np.log(np.sqrt(d))
-        - (nu + 2) / 2 * np.log1p(q)
+        - 0.5 * np.log(float(d))
+        - (nu + 2) / 2 * np.log1p(float(q))
         + (nu + 1) / 2 * (np.log1p(x * x / nu) + np.log1p(y * y / nu))
     )
     return float(np.exp(log_c))
@@ -295,10 +304,8 @@ def test_541_gaussian_cdf_and_h_function_near_rho_one(rho):
         v, expected = (0.31, 0.3) if rho > 0 else (0.69, 0.0)
         assert Gaussian.cdf(0.3, v, rho) == pytest.approx(expected, abs=1e-15)
     for u, v in _POINTS:
-        a = np.longdouble(ndtri(u))
-        b = np.longdouble(ndtri(v))
-        r = np.longdouble(rho)
-        z = float((b - r * a) / np.sqrt(1 - r * r))
+        a, b, r = _exact(ndtri(u)), _exact(ndtri(v)), _exact(rho)
+        z = float(b - r * a) / np.sqrt(float(1 - r * r))
         np.testing.assert_allclose(
             Gaussian.du(u, v, rho), ndtr(z), rtol=1e-11, atol=1e-300
         )

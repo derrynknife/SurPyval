@@ -150,7 +150,10 @@ def plotting_positions(
 
     x, c, n, t = xcnt_handler(x, c, n, t)
 
-    check_option("heuristic", heuristic, nonp.PLOTTING_METHODS)
+    heuristic = nonp.canonical_heuristic(heuristic)
+    check_option(
+        "heuristic", heuristic, nonp.PLOTTING_METHODS, "Case does not matter."
+    )
 
     if ((-1 in c) or (2 in c)) & (heuristic != "Turnbull"):
         raise ValueError(

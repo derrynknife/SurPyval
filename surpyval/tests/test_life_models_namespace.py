@@ -33,8 +33,16 @@ def test_every_life_model_is_in_the_namespace():
     assert life_models.Exponential is accelerated_life.ExponentialLifeModel
     assert sp.Exponential is not life_models.Exponential
     assert set(life_models.__all__) == set(MOVED.values()) | {
-        "GeneralLogLinear"
+        "GeneralLogLinear",
+        "Arrhenius",
     }
+
+
+def test_arrhenius_is_the_exponential_life_model():
+    # The name engineers look for: the same class, so a model fitted with
+    # it is the Exponential life model (and saves and loads as one).
+    assert life_models.Arrhenius is life_models.Exponential
+    assert life_models.Arrhenius.name == "Exponential"
 
 
 @pytest.mark.parametrize("old, new", sorted(MOVED.items()))

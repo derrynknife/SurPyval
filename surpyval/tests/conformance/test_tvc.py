@@ -95,6 +95,29 @@ def _evaluable(case, model):
     return False
 
 
+def _real_line(model):
+    # A baseline defined below 0 (Normal, Gumbel, Logistic); not Cox.
+    dist = getattr(model, "distribution", None)
+    return dist is not None and float(dist.support[0]) < 0
+
+
+def _from_minus_inf(model):
+    # Proportional hazards and odds on a real-line baseline depend on the
+    # covariate back to -inf (#952); a CovariatePath, integrated from 0,
+    # serves them only given an age at or after 0.
+    return _real_line(model) and model.kind in (
+        "Proportional Hazard",
+        "Proportional Odds",
+    )
+
+
+def _path_times(case, model):
+    # A CovariatePath is integrated from 0: on a real-line baseline it
+    # serves times from 0 only (#952).
+    x = _times(case)
+    return x[x >= 0] if _real_line(model) else x
+
+
 def _close(got, ref, err_msg=""):
     np.testing.assert_allclose(
         np.asarray(got, float),
@@ -149,15 +172,37 @@ def test_path_is_measured_from_zero(case):
     x = _times(case)
     z, other = _rows(case)
     ref = model.sf(x, z, **kw)
+    if _from_minus_inf(model):
+        # Measured from -inf (#952): a schedule must start there, and
+        # what it is before 0 counts.
+        with pytest.raises(ValueError, match="back to -inf"):
+            model.sf_tvc(x, StepSchedule.from_changepoints([-5.0], [z]), **kw)
+        before = StepSchedule.from_changepoints(
+            [-np.inf, -5.0, 0.0], [z, other, z]
+        )
+        got = model.sf_tvc(x, before, **kw)
+        assert not np.allclose(got, ref, rtol=1e-6), "ignores before 0"
+        return
     paths = {
         "starts below 0": StepSchedule.from_changepoints([-5.0], [z]),
         "differs below 0": StepSchedule.from_changepoints(
             [-5.0, 0.0], [other, z]
         ),
-        "starts after 0": StepSchedule.from_changepoints([3.0], [z]),
     }
     for name, schedule in paths.items():
-        _close(model.sf_tvc(x, schedule, **kw), ref, name)
+        if _real_line(model):
+            # Measured from 0 (AFT, AH, #952): before 0, the covariate
+            # between the time and 0 counts.
+            _close(model.sf_tvc(x[x >= 0], schedule, **kw), ref[x >= 0])
+            below = x < 0
+            expect = model.sf(x[below], z if "starts" in name else other)
+            _close(model.sf_tvc(x[below], schedule, **kw), expect, name)
+        else:
+            _close(model.sf_tvc(x, schedule, **kw), ref, name)
+    # One starting after 0 is refused: nothing says what the covariate
+    # was before it (#930).
+    with pytest.raises(ValueError, match="after the time origin"):
+        model.sf_tvc(x, StepSchedule.from_changepoints([3.0], [z]), **kw)
 
 
 @pytest.mark.parametrize("case", TVC_CASES)
@@ -197,7 +242,11 @@ def test_constant_path_is_the_fixed_covariate(case):
     if not _evaluable(case, model):
         return
     kw = case.call_kwargs
-    x = _times(case)
+    x = _path_times(case, model)
+    if _from_minus_inf(model):
+        with pytest.raises(ValueError, match="back to -inf"):
+            model.sf_tvc(x, _constant_path(_rows(case)[0]), **kw)
+        return
     for z in _rows(case):
         path = _constant_path(z)
         _close(model.sf_tvc(x, path, **kw), model.sf(x, z, **kw), "sf")
@@ -213,6 +262,10 @@ def test_path_keeps_the_query_shape(case):
     z = _rows(case)[1]
     path = _constant_path(z)
     x = np.asarray(case.x, dtype=float)
+    if _from_minus_inf(model):
+        return
+    if _real_line(model):
+        x = x[x >= 0]
     for x0 in (x[len(x) // 2], 0.0):
         got = model.sf_tvc(x0, path, **kw)
         assert np.shape(got) == (), np.shape(got)
@@ -234,18 +287,23 @@ def test_covariate_path_is_measured_from_zero(case):
     if not _evaluable(case, model):
         return
     kw = case.call_kwargs
-    x = _times(case)
+    x = _path_times(case, model)
     z, other = _rows(case)
     ref = model.sf(x, z, **kw)
+    if _from_minus_inf(model):
+        with pytest.raises(ValueError, match="back to -inf"):
+            model.sf_tvc(x, CovariatePath.from_points([-5.0], [z]), **kw)
+        return
     paths = {
         "starts below 0": CovariatePath.from_points([-5.0], [z]),
         "differs below 0": CovariatePath.from_points(
             [-5.0, 0.0, 0.0], [other, other, z]
         ),
-        "starts after 0": CovariatePath.from_points([3.0], [z]),
     }
     for name, path in paths.items():
         _close(model.sf_tvc(x, path, **kw), ref, name)
+    with pytest.raises(ValueError, match="after the time origin"):
+        model.sf_tvc(x, CovariatePath.from_points([3.0], [z]), **kw)
 
 
 @pytest.mark.parametrize("case", TVC_CASES)
@@ -258,6 +316,9 @@ def test_path_given(case):
     z = _rows(case)[1]
     path = _constant_path(z)
     given = float(x[1])
+    if _real_line(model):
+        # From an age at or after 0 (#952).
+        given = max(given, 0.0)
     later = x[x >= given]
     _close(
         model.sf_tvc(later, path, given=given, **kw),
@@ -277,7 +338,7 @@ def _changing_paths(case, x):
     z, other = _rows(case)
     top = float(np.max(x))
     return {
-        "step": StepSchedule.from_changepoints([0.0, top / 4], [z, other]),
+        "step": StepSchedule.from_changepoints([-np.inf, top / 4], [z, other]),
         "ramp": CovariatePath.from_points([0.0, top], [z, other]),
     }
 
@@ -297,12 +358,14 @@ def test_conditional_survival_is_one_up_to_given(case):
     for name, path in _changing_paths(case, x).items():
         got = model.sf_tvc(x, path, given=given, **kw)
         np.testing.assert_array_equal(got[x <= given], 1.0, err_msg=name)
-        ratio = model.sf_tvc(after, path, **kw) / model.sf_tvc(
-            given, path, **kw
-        )
-        np.testing.assert_allclose(
-            got[x > given], ratio, rtol=1e-8, atol=1e-12, err_msg=name
-        )
+        if not (name == "ramp" and _from_minus_inf(model)):
+            # (A path from 0 serves such a model only given an age.)
+            ratio = model.sf_tvc(after, path, **kw) / model.sf_tvc(
+                given, path, **kw
+            )
+            np.testing.assert_allclose(
+                got[x > given], ratio, rtol=1e-8, atol=1e-12, err_msg=name
+            )
         if getattr(model, "kind", None) != "Additive Hazard":
             # The additive hazard can fall below 0, and survival exceed 1,
             # after given too (principle 9's documented exception, #376).
@@ -328,9 +391,15 @@ def test_constant_path_bounds_are_cb(case):
     model = fitted(case)
     if not _has(model, "cb_tvc"):
         return
-    x = _times(case)
     z = _rows(case)[1]
     for Z in (_constant_path(z), StepSchedule.constant(z)):
+        if isinstance(Z, CovariatePath) and _from_minus_inf(model):
+            continue
+        x = (
+            _path_times(case, model)
+            if isinstance(Z, CovariatePath)
+            else (_times(case))
+        )
         for on in ("sf", "ff", "Hf"):
             for bound in ("two-sided", "lower"):
                 got = model.cb_tvc(x, Z, on=on, bound=bound)
@@ -352,7 +421,11 @@ def test_bounds_keep_the_query_shape(case):
     z = _rows(case)[1]
     x = np.asarray(case.x, dtype=float)
     top = float(np.max(x))
-    path = CovariatePath.from_points([0.0, top], [z, _rows(case)[0]])
+    path = (
+        StepSchedule.from_changepoints([-np.inf, top / 2], [z, _rows(case)[0]])
+        if _real_line(model)
+        else CovariatePath.from_points([0.0, top], [z, _rows(case)[0]])
+    )
     assert np.shape(model.cb_tvc(x[1], path)) == (2,)
     assert np.shape(model.cb_tvc(x[1], path, bound="upper")) == ()
     grid = x[: 2 * (len(x) // 2)].reshape(2, -1)
@@ -385,8 +458,14 @@ def test_constant_path_mean_is_the_integral_of_sf(case):
     with warnings.catch_warnings():
         # An additive hazard negative somewhere warns (#376).
         warnings.simplefilter("ignore")
-        mean = model.mean_tvc(_constant_path(z), **kw)
         mean_step = model.mean_tvc(StepSchedule.constant(z), **kw)
+        if _real_line(model):
+            # Before 0 a CovariatePath has nothing to give (#952).
+            with pytest.raises(ValueError, match="back to -inf"):
+                model.mean_tvc(_constant_path(z), **kw)
+            mean = mean_step
+        else:
+            mean = model.mean_tvc(_constant_path(z), **kw)
         given = float(np.median(case.x))
         mrl = model.mean_tvc(_constant_path(z), given=given, **kw)
         ref_mrl = quad(sf, given, np.inf, epsabs=0, epsrel=1e-12, limit=500)[
@@ -395,8 +474,10 @@ def test_constant_path_mean_is_the_integral_of_sf(case):
         if np.isfinite(mean):
             ref = quad(sf, 0, np.inf, epsabs=0, epsrel=1e-12, limit=500)[0]
             if model.distribution.support[0] < 0:
+                # (an additive model's sf is nan before its support starts,
+                # where nothing has failed yet, #828)
                 ref -= quad(
-                    lambda t: 1 - sf(t),
+                    lambda t: 1 - np.nan_to_num(sf(t), nan=1.0),
                     -np.inf,
                     0,
                     epsabs=0,

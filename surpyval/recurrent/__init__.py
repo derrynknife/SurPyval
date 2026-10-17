@@ -1,5 +1,6 @@
 from .competing_risks import CauseSpecificMCF, CauseSpecificNHPP
 from .diagnostics import GoodnessOfFitResult
+from .intervention import InterventionTestResult, intervention_test
 from .nonparametric import NonParametricCounting
 from .parametric import HPP, CountingProcess, CoxLewis, CrowAMSAA, Duane
 from .regression import ProportionalIntensityHPP, ProportionalIntensityNHPP

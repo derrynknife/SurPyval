@@ -25,6 +25,15 @@ from surpyval.tests.conformance.registry import (
     cases_for,
     fitted,
 )
+from surpyval.utils.deprecation import DATED_DATA_FUNCTIONS
+
+
+def sp_renamed():
+    """The top-level names renamed with a deprecation."""
+    import surpyval
+
+    return surpyval._RENAMED_TOP_LEVEL
+
 
 NAMESPACES = (
     "surpyval",
@@ -37,6 +46,7 @@ NAMESPACES = (
     "surpyval.multivariate",
     "surpyval.beta",
     "surpyval.beta.ml",
+    "surpyval.test_planning",
 )
 
 
@@ -53,6 +63,10 @@ def _public(namespace):
     if names is None:
         names = [n for n in dir(module) if not n.startswith("_")]
     for name in names:
+        if namespace == "surpyval" and (
+            name in DATED_DATA_FUNCTIONS or name in sp_renamed()
+        ):
+            continue  # deprecated: a warning on access
         obj = getattr(module, name)
         if inspect.ismodule(obj):
             continue

@@ -13,11 +13,10 @@ import pytest
 from surpyval.tests._helpers import competing_risks_regression_data
 from surpyval.univariate.competing_risks import (
     CompetingRisksProportionalHazards,
+    FineGray,
 )
-from surpyval.univariate.competing_risks import (
-    CompetingRisksProportionalHazards as CRPH,
-)
-from surpyval.univariate.competing_risks import FineGray
+
+CRPH = CompetingRisksProportionalHazards
 
 
 def _exponential_cr_data(N, seed, lam=(0.5, 0.3), beta=None, cens=6.0):
@@ -421,19 +420,20 @@ def test_656_phi_e_takes_the_cause_label():
     model = CRPH.fit(x, Z, e)
     expected = np.exp(Z[:2] @ model.betas[model.event_idx_map["b"]])
     np.testing.assert_allclose(model.phi_e(Z[:2], "b"), expected)
-    # The row index it took before is deprecated, not refused
-    with pytest.warns(DeprecationWarning, match="'b'"):
-        np.testing.assert_allclose(model.phi_e(Z[:2], 1), expected)
+    # The row index it took before v0.24 was removed in v0.25: the
+    # refusal names the cause's label
+    with pytest.raises(ValueError, match="removed in v0.25.*'b'"):
+        model.phi_e(Z[:2], 1)
     with pytest.raises(ValueError, match="Unknown cause 'c'"):
         model.phi_e(Z[:2], "c")
 
 
-def test_656_beta_is_deprecated():
+def test_656_beta_is_removed():
     x, Z, e = _656_data()
     model = CRPH.fit(x, Z, e)
-    with pytest.warns(DeprecationWarning, match="betas"):
-        beta = model.beta
-    np.testing.assert_allclose(beta, model.betas.sum(axis=0))
+    with pytest.raises(AttributeError, match="removed in v0.25; use 'betas'"):
+        model.beta
+    assert not hasattr(model, "beta")
 
 
 def test_656_fine_gray_log_likelihood_is_an_attribute_error():

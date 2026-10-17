@@ -12,11 +12,12 @@ from hypothesis import find, given, settings
 
 import surpyval as sp
 from surpyval.tests.properties import strategies as gen
+from surpyval.utils.data_formats import xcnt_handler
 
 
 @given(data=gen.xcnt())
 def test_xcnt_is_valid(data):
-    sp.xcnt_handler(**data)
+    xcnt_handler(**data)
 
 
 @given(data=gen.xicn())
@@ -28,7 +29,7 @@ def test_xicn_is_valid(data):
 def test_invalid_xcnt_is_refused(case):
     _, data = case
     try:
-        sp.xcnt_handler(**data)
+        xcnt_handler(**data)
     except ValueError:
         return
     # The one defect the handler lets through: the fitters check it.

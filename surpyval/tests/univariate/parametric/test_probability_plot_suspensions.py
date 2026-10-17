@@ -43,8 +43,10 @@ def _close_figures():
 
 def _points(ax):
     """The points scattered onto ``ax`` (the probability plot's only
-    scatter)."""
-    (points,) = ax.collections
+    scatter; the bounds' band is the other collection)."""
+    from matplotlib.collections import PathCollection
+
+    (points,) = [c for c in ax.collections if type(c) is PathCollection]
     return np.asarray(points.get_offsets())
 
 

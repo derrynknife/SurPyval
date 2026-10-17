@@ -19,7 +19,7 @@ Three consequences are used:
   (the construction behind Crow's power-law goodness-of-fit test,
   generalised to any fitted intensity).
 
-The functions take the fitted model's ``RecurrentEventData`` plus its CIF,
+The functions take the fitted model's ``EventHistoryData`` plus its CIF,
 and are exposed as methods on ``ParametricRecurrenceModel``.
 """
 
@@ -37,8 +37,13 @@ def _validate_diagnostic_data(data: Any, what: str) -> None:
     """
     The diagnostics need exact event times: interval-censored (2D ``x`` or
     ``c == 2``) and left-censored (``c == -1``) observations cannot be
-    placed in time, so they are rejected with an explanation.
+    placed in time, so they are rejected with an explanation; so is
+    right-truncated data, a selection the diagnostics do not account for
+    (#924).
     """
+    from surpyval.utils.recurrent_utils import refuse_right_truncation
+
+    refuse_right_truncation(data, what)
     if data.x.ndim != 1:
         raise ValueError(
             "{} requires exact event times; interval-censored data is not "
@@ -49,6 +54,11 @@ def _validate_diagnostic_data(data: Any, what: str) -> None:
             "{} requires exact event times; left- or interval-censored "
             "rows (c = -1 or c = 2) are not supported.".format(what)
         )
+
+
+#: The public name of :func:`_validate_diagnostic_data` (the diagnostics
+#: of ``diagnose()`` refuse the same data).
+validate_diagnostic_data = _validate_diagnostic_data
 
 
 def _per_item_windows(data: Any) -> list:
@@ -73,10 +83,7 @@ def _per_item_windows(data: Any) -> list:
         entry = float(data.tl[mask][0])
         entry = entry if np.isfinite(entry) else 0.0
 
-        tr = float(data.tr[mask][0])
-        if np.isfinite(tr):
-            close, explicit_close = tr, True
-        elif np.any(c == 1):
+        if np.any(c == 1):
             close, explicit_close = float(x[c == 1].max()), True
         elif events.size:
             close, explicit_close = float(events[-1]), False
@@ -439,7 +446,7 @@ def cramer_von_mises(
     parameters having been estimated. Failure-truncated items are approximated
     by a window fixed at their last observed event.
     """
-    from surpyval.utils.recurrent_event_data import RecurrentEventData
+    from surpyval.utils.event_history_data import EventHistoryData
 
     data = model.data
     if not hasattr(model.dist, "inv_cif"):
@@ -463,7 +470,7 @@ def cramer_von_mises(
             tl_b.extend([entry] * (count + 1))
         if (np.asarray(c_b) == 0).sum() < 2:
             raise ValueError("too few simulated events to refit")
-        sim_data = RecurrentEventData(
+        sim_data = EventHistoryData(
             np.asarray(x_b, dtype=float),
             np.asarray(i_b),
             np.asarray(c_b),
@@ -487,7 +494,7 @@ def cramer_von_mises_regression(
     computed under its own covariate-scaled intensity ``Lambda_0 exp(Z'beta)``,
     and the bootstrap refits the full regression model per replicate.
     """
-    from surpyval.utils.recurrent_event_data import RecurrentEventData
+    from surpyval.utils.event_history_data import EventHistoryData
 
     data = model.data
     if not hasattr(model.dist, "inv_cif"):
@@ -524,7 +531,7 @@ def cramer_von_mises_regression(
             Z_b.extend([Z_item] * (count + 1))
         if (np.asarray(c_b) == 0).sum() < 2:
             raise ValueError("too few simulated events to refit")
-        sim_data = RecurrentEventData(
+        sim_data = EventHistoryData(
             np.asarray(x_b, dtype=float),
             np.asarray(i_b),
             np.asarray(c_b),

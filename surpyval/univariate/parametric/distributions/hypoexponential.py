@@ -45,6 +45,8 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     ParametricFitter,
 )
+from surpyval.utils.surpyval_data import accepts_surpyval_data
+from surpyval.utils.units import takes_unit
 
 from ..parametric import Parametric
 
@@ -191,6 +193,7 @@ class Hypoexponential_(ParametricFitter):
             return self
         return Hypoexponential_(self.name, m=m)
 
+    @takes_unit
     def from_params(
         self,
         params: npt.ArrayLike,
@@ -244,6 +247,8 @@ class Hypoexponential_(ParametricFitter):
             self._for_params(rates), rates, gamma, lfp_p, f0
         )
 
+    @takes_unit
+    @accepts_surpyval_data
     def fit(
         self,
         x: npt.ArrayLike,

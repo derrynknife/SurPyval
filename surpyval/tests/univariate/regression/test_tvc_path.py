@@ -225,13 +225,32 @@ JUMPS = CovariatePath.from_points(
     [0, 5, 5, 12, 12], [0.3, 0.3, 1.0, 1.0, -0.2]
 )
 STEPS = StepSchedule.from_changepoints([0, 5, 12], [0.3, 1.0, -0.2])
+# The same, its first value held since -inf.
+STEPS_SINCE = StepSchedule.from_changepoints(
+    [-np.inf, 5, 12], [0.3, 1.0, -0.2]
+)
+
+
+def _real_line(model):
+    return float(model.distribution.support[0]) < 0
+
+
+def _from_minus_inf(model):
+    # PH and PO on a baseline defined below 0 depend on the covariate back
+    # to -inf, which a path from 0 cannot give but given an age (#952).
+    return _real_line(model) and model.kind in (
+        "Proportional Hazard",
+        "Proportional Odds",
+    )
+
 
 FAMILIES = [
     (sp.WeibullPH, [10, 0.5, 0.7]),
     (sp.WeibullAFT, [10, 1.5, 0.4]),
     (sp.WeibullAH, [10, 2, 0.01]),
     (sp.WeibullPO, [10, 2, 0.5]),
-    # baselines defined below 0: the value at 0 is held before it
+    # baselines defined below 0 (#952: a path from 0 serves PH and PO
+    # given an age, AFT and AH from 0)
     (sp.NormalPH, [10, 3, 0.3]),
     (sp.LogisticAFT, [10, 3, 0.3]),
     (sp.GumbelPO, [10, 3, 0.3]),
@@ -255,19 +274,28 @@ FAMILY_IDS = [
 def test_flat_path_is_the_step_schedule(F, params):
     model = _model(F, params)
     tt = np.concatenate([[-3.0, 0.0, 5.0, 12.0], T])
+    steps = STEPS
+    if _real_line(model):
+        # A path is integrated from 0: on a baseline defined below 0 it
+        # serves times from 0 (#952), and the schedule starts at -inf.
+        tt, steps = tt[tt >= 0], STEPS_SINCE
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        np.testing.assert_allclose(
-            model.Hf_tvc(tt, JUMPS),
-            model.Hf_tvc(tt, STEPS),
-            rtol=1e-13,
-            atol=1e-15,
-        )
+        if _from_minus_inf(model):
+            with pytest.raises(ValueError, match="back to -inf"):
+                model.Hf_tvc(tt, JUMPS)
+        else:
+            np.testing.assert_allclose(
+                model.Hf_tvc(tt, JUMPS),
+                model.Hf_tvc(tt, steps),
+                rtol=1e-13,
+                atol=1e-15,
+            )
         # The conditional survival integrates from given on (no
         # subtraction), so it agrees to rounding, not bit for bit.
         np.testing.assert_allclose(
             model.sf_tvc(tt, JUMPS, given=4.0),
-            model.sf_tvc(tt, STEPS, given=4.0),
+            model.sf_tvc(tt, steps, given=4.0),
             rtol=1e-12,
             atol=1e-300,
         )
@@ -348,19 +376,21 @@ def test_given_is_the_ratio_of_survivals(F, params):
         lambda u: 0.5 + 0.5 * np.sin(u / 2), breakpoints=[3.0]
     )
     tt = np.array([4.0, 6.0, 9.0, 15.0])
+    assert np.isnan(model.sf_tvc(tt, path, given=np.nan)).all()
     np.testing.assert_allclose(
         model.sf_tvc(tt, path, given=4.0),
         model.sf_tvc(tt, path) / model.sf_tvc(4.0, path),
         rtol=1e-11,
     )
     # A conditioning age at or before 0 conditions on nothing (for a
-    # baseline that starts at 0) or divides by sf(given).
+    # baseline that starts at 0) or divides by sf(given), the path
+    # integrated below 0 on a baseline defined there (#957): nan for both
+    # where the age is outside an additive model's support (#828).
     np.testing.assert_allclose(
         model.sf_tvc(tt, path, given=-1.0),
         model.sf_tvc(tt, path) / model.sf_tvc(-1.0, path),
         rtol=1e-11,
     )
-    assert np.isnan(model.sf_tvc(tt, path, given=np.nan)).all()
 
 
 def test_given_sums_from_given_without_cancellation():

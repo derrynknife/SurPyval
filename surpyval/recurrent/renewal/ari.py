@@ -21,6 +21,10 @@ from surpyval.recurrent.renewal._derivatives import (
     negated,
 )
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
+from surpyval.utils.event_history_data import (
+    accepts_event_history_data,
+    refuses_unmodelled_data,
+)
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import (
@@ -34,6 +38,7 @@ from surpyval.utils.recurrent_utils import (
     validate_restoration,
 )
 from surpyval.utils.removed_names import column_arguments, removed_arguments
+from surpyval.utils.units import takes_unit
 
 
 def ari_reduction(
@@ -493,6 +498,7 @@ class ARI(RenewalFitMixin):
         return negll_func
 
     @removed_arguments("0.23", dist="'baseline'")
+    @refuses_unmodelled_data
     def fit_from_recurrent_data(
         self,
         data: Any,
@@ -506,7 +512,7 @@ class ARI(RenewalFitMixin):
         Parameters
         ----------
 
-        data : RecurrentEventData
+        data : EventHistoryData
             Data containing the recurrence details.
             An item with delayed entry (a ``tl``) is taken to be as
             new at entry, with its times counted from there (see
@@ -587,6 +593,8 @@ class ARI(RenewalFitMixin):
         return base_params
 
     @removed_arguments("0.23", dist="'baseline'")
+    @takes_unit
+    @accepts_event_history_data
     def fit(
         self,
         x: ArrayLike,
@@ -634,7 +642,10 @@ class ARI(RenewalFitMixin):
         tl : array_like or scalar, optional
             Delayed entry: the time each item's observation began, when
             its failures before then were not recorded (a scalar for every
-            item, or one value per row, the same on every row of an item).
+            item; one value per row, the same on every row of an item; or
+            one value per item, in the sorted order of the item ids,
+            ``np.unique(i)``, read per row when there are as many rows as
+            items).
             The item is taken to be **as new at entry**, as after an
             overhaul: the baseline intensity's clock restarts at ``tl``,
             with no reduction from earlier repairs, so its times count
@@ -672,6 +683,7 @@ class ARI(RenewalFitMixin):
         return self.fit_from_recurrent_data(data, baseline, m, init=init)
 
     @column_arguments("x", "i", "c", "n", "tl", "tr")
+    @takes_unit
     def fit_from_df(
         self,
         df: Any,

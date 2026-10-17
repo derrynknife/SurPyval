@@ -38,11 +38,15 @@ TVC_FITTERS = {
 }
 
 
-def _constant_covariate_split(seed=0, n=300):
+def _constant_covariate_split(seed=0, n=300, adds_hazard=False):
     """Constant-covariate survival data, plus a start-stop split of each
-    subject at an interior time (same covariate on both halves)."""
+    subject at an interior time (same covariate on both halves).
+    ``adds_hazard`` makes the covariate non-negative, for an additive
+    hazards model to fit inside its support."""
     rng = np.random.default_rng(seed)
     Z = rng.normal(size=(n, 1))
+    if adds_hazard:
+        Z = np.abs(Z)
     T = 10.0 * np.exp(-Z[:, 0] * 0.8 / 1.5) * rng.weibull(1.5, n) + 0.2
     c0 = np.zeros(n, dtype=int)
 
@@ -58,7 +62,13 @@ def _constant_covariate_split(seed=0, n=300):
 @pytest.mark.parametrize("name", list(TVC_FITTERS))
 def test_episode_split_is_an_identity(name):
     fitter = TVC_FITTERS[name]
-    (Z, T, c0), (ident, xl, xr, c, Zs) = _constant_covariate_split()
+    # A protective row's additive hazard is negative early on, where the
+    # fit holds every observed point inside the support (#828): the split
+    # points are observed points of the split fit only, so it is the same
+    # model only inside the support.
+    (Z, T, c0), (ident, xl, xr, c, Zs) = _constant_covariate_split(
+        adds_hazard=name.endswith("AH")
+    )
 
     plain = fitter.fit(x=T, Z=Z, c=c0)
     tvc = fitter.fit_tvc(i=ident, xl=xl, xr=xr, c=c, Z=Zs)
@@ -295,13 +305,14 @@ def test_po_fit_tvc_recovers_step_path_parameters(seed):
 
 def _path_neg_ll(model, i, xl, xr, c, Z):
     """-sum of log sf_tvc (and log hf at a failure) along each subject's
-    covariate path, conditioned on survival to its entry time."""
+    covariate path, its first value held since -inf, conditioned on
+    survival to its entry time (any finite one, 0 included, #952)."""
     ll = 0.0
     for k in np.unique(i):
         r = i == k
-        starts = np.r_[0.0, xl[r][1:]]
+        starts = np.r_[-np.inf, xl[r][1:]]
         ll += np.log(model.sf_tvc([xr[r][-1]], Z[r], xl=starts)[0])
-        if xl[r][0] > 0:
+        if xl[r][0] > -np.inf:
             ll -= np.log(model.sf_tvc([xl[r][0]], Z[r], xl=starts)[0])
         if c[r][-1] == 0:
             ll += np.log(model.hf([xr[r][-1]], Z[r][-1:])[0])
@@ -316,13 +327,14 @@ def _path_neg_ll(model, i, xl, xr, c, Z):
 )
 def test_tvc_neg_ll_is_the_path_likelihood(fitter):
     # The episode-split likelihood equals the path likelihood built from
-    # sf_tvc and hf, with delayed entry for a quarter of the subjects. A
-    # baseline defined below zero (Logistic, Normal) used to fail this:
-    # every subject's first interval was truncated at 0, conditioning the
-    # fit on survival to 0, which sf_tvc does not do.
+    # sf_tvc and hf, with delayed entry for a quarter of the subjects, a
+    # quarter followed since -inf, and the rest entering at 0: on a
+    # baseline defined below zero (Logistic, Normal) an entry at 0 is
+    # conditioned on survival to 0, as any other entry is (#952).
     i, xl, xr, c, Z = _po_step_path_data(0, 400)
     first = np.r_[True, i[1:] != i[:-1]]
     xl = np.where(first & (i % 4 == 0) & (xr > 0.5), 0.5, xl)
+    xl = np.where(first & (i % 4 == 1), -np.inf, xl)
     model = fitter.fit_tvc(i, xl, xr, c, Z)
     assert model._neg_ll == pytest.approx(
         _path_neg_ll(model, i, xl, xr, c, Z), rel=1e-10
@@ -338,11 +350,18 @@ def test_constant_covariate_tvc_reproduces_fit(fitter):
     # Splitting constant-covariate subjects into intervals must give the
     # ordinary fit. For LogisticPO the tvc fit used to return alpha 5.215
     # (vs 9.330) and neg-ll 952.57 (vs 1010.69); NormalPH 5.557 vs 9.650.
+    # Followed since -inf (#952: a first row at -inf); a first row at 0
+    # is an entry at 0, the ordinary fit truncated at 0.
     (Z, T, c0), (ident, xl, xr, c, Zs) = _constant_covariate_split()
     plain = fitter.fit(x=T, Z=Z, c=c0)
-    tvc = fitter.fit_tvc(i=ident, xl=xl, xr=xr, c=c, Z=Zs)
+    since = np.where(xl == 0, -np.inf, xl)
+    tvc = fitter.fit_tvc(i=ident, xl=since, xr=xr, c=c, Z=Zs)
     assert np.allclose(plain.params, tvc.params, rtol=1e-4, atol=1e-4)
     assert tvc._neg_ll == pytest.approx(plain._neg_ll, rel=1e-8)
+    entered = fitter.fit(x=T, Z=Z, c=c0, tl=np.zeros_like(T))
+    tvc = fitter.fit_tvc(i=ident, xl=xl, xr=xr, c=c, Z=Zs)
+    assert np.allclose(entered.params, tvc.params, rtol=1e-4, atol=1e-4)
+    assert tvc._neg_ll == pytest.approx(entered._neg_ll, rel=1e-8)
 
 
 def test_po_tvc_timeline_and_df_match_start_stop():

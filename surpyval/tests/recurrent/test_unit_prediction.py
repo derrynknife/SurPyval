@@ -60,7 +60,7 @@ def _fitted(key):
 def _histories(model):
     data = model.data
     out = []
-    for item in data.items:
+    for item in data.ids:
         mask = data.i == item
         x, c = data.x[mask], data.c[mask]
         out.append((np.sort(x[c == 0]), float(x.max())))
@@ -108,7 +108,7 @@ def _state_by_definition(model, failures, now):
 def test_615_unit_states_follow_each_units_history(key):
     model = _fitted(key)
     table = model.unit_states()
-    assert list(table.index) == list(model.data.items)
+    assert list(table.index) == list(model.data.ids)
     for (failures, now), (_, row) in zip(_histories(model), table.iterrows()):
         assert row["time"] == now
         assert row["failures"] == failures.size
@@ -125,7 +125,7 @@ def test_615_next_failure_sf_and_hf_from_the_state(key):
     x = np.array([0.0, 2.0, 7.5])
     sf = model.next_failure_sf(x)
     hf = model.next_failure_hf(x)
-    assert sf.shape == hf.shape == (len(model.data.items), 3)
+    assert sf.shape == hf.shape == (len(model.data.ids), 3)
     for k, (failures, now) in enumerate(_histories(model)):
         first, second = _state_by_definition(model, failures, now)
         if model.kind == "ARI Recurrence":
@@ -145,7 +145,7 @@ def test_615_next_failure_sf_and_hf_from_the_state(key):
         np.testing.assert_allclose(sf[k], expected_sf, rtol=1e-10)
         np.testing.assert_allclose(hf[k], expected_hf, rtol=1e-10)
     # A scalar time gives one value per unit.
-    assert model.next_failure_sf(2.0).shape == (len(model.data.items),)
+    assert model.next_failure_sf(2.0).shape == (len(model.data.ids),)
 
 
 def _future_count(model, failures, now, horizon, rng):
@@ -185,7 +185,7 @@ def test_615_forecast_simulates_each_unit_from_its_state(key):
     model = _fitted(key)
     result = sp.forecast(model, horizon=[5.0, 15.0], random_state=1)
     assert result.simulations == 1000
-    assert list(result.units) == list(model.data.items)
+    assert list(result.units) == list(model.data.ids)
     rng = np.random.default_rng(2)
     reps = 1500
     for k, (failures, now) in enumerate(_histories(model)[:4]):

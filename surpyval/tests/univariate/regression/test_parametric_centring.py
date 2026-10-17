@@ -126,7 +126,18 @@ def test_center_true_leaves_the_model_unchanged(
     x, Z, c = _data()
     ref = centred_references[name]
     s = _shift(offset)
-    model = no_warnings(getattr(sp, name).fit, x, Z + s, c=c, center=True)
+    if name.endswith("AH"):
+        # Centred, the rows below the means are protective and the fit
+        # ends on its support's boundary (#828), which it says; wherever
+        # the means are, it is the same model.
+        with warnings.catch_warnings(record=True) as rec:
+            warnings.simplefilter("always")
+            model = getattr(sp, name).fit(x, Z + s, c=c, center=True)
+        assert [str(w.message)[:40] for w in rec] == [
+            "The additive hazards fit ended on the bo"
+        ]
+    else:
+        model = no_warnings(getattr(sp, name).fit, x, Z + s, c=c, center=True)
     np.testing.assert_allclose(model.center, ref.center + s, rtol=1e-12)
     # The baseline is at the means, so every parameter is the same.
     np.testing.assert_allclose(model.params, ref.params, rtol=1e-4, atol=1e-6)
@@ -521,33 +532,49 @@ def test_time_varying_covariates(name, offset):
             fitter.fit_tvc(i, xl, xr, c, Z + offset)
 
 
-def test_additive_hazards_cb_is_quiet_where_the_hazard_is_negative():
-    # (#465) At Z = [-1.2, 0] the fitted cumulative hazard is negative;
-    # the logit-scale sf bound computed 1 / (1 + exp(-t)) with t hugely
-    # negative, and leaked numpy's "overflow encountered in exp". Only the
-    # deliberate negative-hazard warning (#376) is left.
+# A row outside the fitted model's support at its first two times (H < 0).
+OUTSIDE = [-3.0, 0.0]
+
+
+def _fit_ah():
     x, Z, c = _data()
-    model = sp.WeibullAH.fit(x, Z, c=c)
-    assert np.any(model.Hf(TIMES, [-1.2, 0.0]) < 0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # it ends on its support's boundary
+        return sp.WeibullAH.fit(x, Z, c=c)
+
+
+def test_additive_hazards_cb_is_quiet_where_the_hazard_is_negative():
+    # (#465) Where the fitted cumulative hazard is negative the logit-scale
+    # sf bound computed 1 / (1 + exp(-t)) with t hugely negative, and
+    # leaked numpy's "overflow encountered in exp". Only the deliberate
+    # warning (#376) is left, and the bound is nan there, outside the
+    # model's support (#828).
+    model = _fit_ah()
+    raw = np.ravel(model.model.Hf(TIMES, np.array([OUTSIDE]), *model.params))
+    assert np.any(raw < 0)
     for on in ("sf", "ff", "Hf", "hf"):
         with warnings.catch_warnings(record=True) as rec:
             warnings.simplefilter("always")
-            model.cb(TIMES, [-1.2, 0.0], on=on)
+            out = np.asarray(model.cb(TIMES, OUTSIDE, on=on))
         assert [str(w.message)[:44] for w in rec] == [
-            "The additive hazard h_0(x) + beta'Z is negat"
+            "The additive hazard h_0(x) + beta'Z or its i"
         ], on
+        assert (
+            np.isnan(out[raw < 0]).all() and np.isfinite(out[raw >= 0]).all()
+        )
 
 
-def test_760_additive_hazards_Hf_bound_is_plus_zero_where_H_is_negative():
-    # Where the fitted H is negative the bounds come from the clipped-sf
+def test_760_additive_hazards_Hf_bound_is_plus_zero():
+    # Where the fitted H was negative the bounds came from the clipped-sf
     # logit fallback, whose sf upper bound rounds to 1: the Hf lower bound
-    # was -log(1) = -0.0 (#760), as #746 fixed elsewhere.
-    x, Z, c = _data()
-    model = sp.WeibullAH.fit(x, Z, c=c)
+    # was -log(1) = -0.0 (#760), as #746 fixed elsewhere. Those points are
+    # now nan, outside the support (#828), and no bound is -0.0.
+    model = _fit_ah()
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore")  # the negative-hazard warning
-        assert np.any(model.Hf(TIMES, [-1.2, 0.0]) < 0)
-        two = model.cb(TIMES, [-1.2, 0.0], on="Hf")
-        low = model.cb(TIMES, [-1.2, 0.0], on="Hf", bound="lower")
-    assert np.any(two[:, 0] == 0) and np.any(low == 0)
-    assert not np.any(np.signbit(two)) and not np.any(np.signbit(low))
+        warnings.simplefilter("ignore")  # the outside-the-support warning
+        two = model.cb(TIMES, OUTSIDE, on="Hf")
+        low = model.cb(TIMES, OUTSIDE, on="Hf", bound="lower")
+    for b in (two, low):
+        finite = np.isfinite(b)
+        assert np.any(~finite) and np.any(finite)
+        assert not np.any(np.signbit(b[finite]))

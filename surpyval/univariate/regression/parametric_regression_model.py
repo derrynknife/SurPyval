@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING, Any, Callable, cast
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, cast
 
 import autograd.numpy as np
 import numpy.typing as npt
 
+from surpyval import plotting
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
@@ -14,11 +17,13 @@ from surpyval.univariate.information_criteria import (
 from surpyval.utils.covariates import loaded_coefficient_names
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
+from surpyval.utils.record_predict import PredictsRecordsMixin
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
     keeps_query_shape,
 )
+from surpyval.utils.units import label_axes
 from surpyval.utils.validation import (
     check_alpha_ci,
     warn_outside_unit_interval,
@@ -34,6 +39,7 @@ from ._kinds import (
     PROPORTIONAL_HAZARD,
     PROPORTIONAL_ODDS,
 )
+from ._partial_effects import PartialEffectsMixin
 from ._prediction import ConditionalSurvivalMixin, quantiles_by_inversion
 from ._tvc_evaluation import TVCEvaluationMixin
 from .regression_data import (
@@ -61,7 +67,7 @@ if TYPE_CHECKING:
 # the ``kind`` plus the distribution and coefficients, so the fitter -- and
 # therefore every prediction -- can be rebuilt from the distribution's name.
 # Maps kind -> (public fitter factory name, covariate-link form).
-_SERIALISABLE_KINDS: "dict[str, tuple[str, str]]" = {
+_SERIALISABLE_KINDS: dict[str, tuple[str, str]] = {
     ACCELERATED_FAILURE_TIME: ("AFT", "exp"),
     PROPORTIONAL_HAZARD: ("PH", "exp"),
     PROPORTIONAL_ODDS: ("PO", "exp"),
@@ -80,11 +86,14 @@ _SERIALISABLE_REG_NAMES = {
 
 class ParametricRegressionModel(
     ConditionalSurvivalMixin,
+    PartialEffectsMixin,
     TVCEvaluationMixin,
     InferenceMixin,
     ConcordanceMixin,
     InformationCriteriaMixin,
+    DiagnoseMixin,
     SerialisableMixin,
+    PredictsRecordsMixin,
 ):
     """
     The fitted model returned by every parametric regression fitter: the
@@ -162,7 +171,7 @@ class ParametricRegressionModel(
     #: How the covariates act: a :class:`CovariateLink` (its ``name``,
     #: ``phi_param_map`` and ``phi``), or the life model of an
     #: accelerated life model.
-    reg_model: "CovariateLink | LifeModel"
+    reg_model: CovariateLink | LifeModel
     #: The regression fitter that built the model; its ``sf(x, Z,
     #: *params)`` and the others (and ``neg_ll``) are the model's.
     model: Any
@@ -193,7 +202,7 @@ class ParametricRegressionModel(
     #: unit with ``Z = 0``, the default. A fit with ``center=True`` keeps
     #: its baseline at the ``n``-weighted covariate means (#463), stored
     #: here, and every prediction uses ``Z - center``.
-    center: "npt.NDArray | None" = None
+    center: npt.NDArray | None = None
     #: Covariate metadata of a model fitted from a pandas DataFrame (see
     #: ``DataFrameRegressionMixin.fit_from_df``): the coefficients'
     #: column names, the formula, and the formulaic model spec that
@@ -211,48 +220,48 @@ class ParametricRegressionModel(
     #: (``fit_tvc``, ``fit_tvc_timeline``), one data row per interval.
     is_tvc: bool = False
     #: The number of subjects of a time-varying-covariate fit.
-    n_subjects: "int | None" = None
+    n_subjects: int | None = None
     #: The weighted number of subjects of a time-varying-covariate fit,
     #: the sample size of ``bic`` / ``aic_c`` when none failed.
-    _ic_n_total: "float | None" = None
+    _ic_n_total: float | None = None
     #: Set only on models rebuilt by :meth:`from_dict` that carried a stored
     #: parameter covariance; lets them produce confidence bounds without the
     #: original data. ``None`` on freshly fitted models.
-    _restored_covariance: "npt.NDArray | None" = None
+    _restored_covariance: npt.NDArray | None = None
     #: ``(params, center, covariance)`` of the centred fit behind a model
     #: rebuilt by :meth:`from_dict` from a fit on centred covariates
     #: (``_fit_centring``): its confidence bounds are computed there, as
     #: the original's are, so they are the same to the last bit (#664).
-    _restored_inference: "tuple | None" = None
+    _restored_inference: tuple | None = None
     #: True on models rebuilt by :meth:`from_dict`, which carry no data.
     _restored: bool = False
     #: The printout's "Data" line of a model rebuilt by :meth:`from_dict`
     #: (#508).
-    _data_summary: "str | None" = None
+    _data_summary: str | None = None
     #: ``(params, center, jacobian)`` of the centred fit behind a model
     #: that reports its baseline at 0 (the log-linear families whose
     #: baseline maps exactly between the two, #463): the covariance and
     #: the confidence bounds are computed there, where the parameters are
     #: well conditioned, and carried to ``params`` by the jacobian of the
     #: map.
-    _fit_centring: "tuple | None" = None
+    _fit_centring: tuple | None = None
     #: ``(point, H)``: the exact (autograd) Hessian of the negative
     #: log-likelihood in the free natural parameters at ``point`` (see
     #: ``_covariance_point``), kept by the fit
     #: (``_fit_skeleton.keep_information``) for ``_observed_covariance``.
-    _information: "tuple | None" = None
+    _information: tuple | None = None
     #: ``(point, covariance)`` of the last covariance computed.
-    _covariance_cache: "tuple | None" = None
+    _covariance_cache: tuple | None = None
     #: The likelihood-ratio searches of ``cb`` / ``param_cb`` with
     #: ``method="lr"`` (``_likelihood_ratio.lr_search``), with what they
     #: have found, kept while the parameters and data stay as they are;
     #: not pickled (``__getstate__``).
-    _lr_searches: "list | None" = None
+    _lr_searches: list | None = None
     #: The parametric bootstrap refits of the bounds with
     #: ``method="bootstrap"`` (``_bootstrap.refits``), by ``(n_boot,
     #: random_state)`` for an integer seed, kept while the parameters and
     #: data stay as they are; not pickled (``__getstate__``).
-    _bootstrap_refits: "dict | None" = None
+    _bootstrap_refits: dict | None = None
     # The information criteria's sample size ``_ic_n`` and their caches
     # ``_aic``, ``_bic``, ``_aic_c`` are InformationCriteriaMixin's.
 
@@ -267,7 +276,7 @@ class ParametricRegressionModel(
 
     # -- serialisation -----------------------------------------------------
 
-    def _serialise_link(self) -> "dict[str, Any]":
+    def _serialise_link(self) -> dict[str, Any]:
         """The link-identity head of :meth:`to_dict`.
 
         Encodes just enough to rebuild the covariate link: for the fixed-form
@@ -406,7 +415,7 @@ class ParametricRegressionModel(
             out["data_summary"] = self._data_repr()
         return stamp_schema(out)
 
-    def _serialised_inference(self) -> "dict[str, list] | None":
+    def _serialised_inference(self) -> dict[str, list] | None:
         """The centred fit's ``params``, ``center`` and ``covariance``
         that the confidence bounds are computed from (see
         ``InferenceMixin._inference_state``), for :meth:`to_dict`; ``None``
@@ -435,7 +444,7 @@ class ParametricRegressionModel(
         }
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "ParametricRegressionModel":
+    def from_dict(cls, model_dict: dict) -> ParametricRegressionModel:
         """
         Rebuild a regression model from a :meth:`to_dict` dictionary.
 
@@ -473,7 +482,7 @@ class ParametricRegressionModel(
         # Saved coefficient names -> their names now (#614)
         renamed: dict[str, str] = {}
 
-        reg_model: "CovariateLink | LifeModel"
+        reg_model: CovariateLink | LifeModel
         if kind == ACCELERATED_LIFE:
             # Rebuild the parameter-substitution fitter from the distribution
             # and the built-in life model; the fitter carries the life-model's
@@ -578,9 +587,7 @@ class ParametricRegressionModel(
                     model_dict["reg_model_name"], phi_param_map
                 )
         else:
-            raise ValueError(
-                "Cannot deserialise regression kind {!r}".format(kind)
-            )
+            raise ValueError(f"Cannot deserialise regression kind {kind!r}")
 
         out = cls()
         out.model = fitter
@@ -653,7 +660,7 @@ class ParametricRegressionModel(
         out._ic_n = cls._restored_ic_n(model_dict)
         return out
 
-    def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
+    def _prepare_Z(self, Z: npt.ArrayLike | pd.DataFrame) -> npt.NDArray:
         """
         Convert ``Z`` to a numeric design matrix.
 
@@ -685,7 +692,7 @@ class ParametricRegressionModel(
             return
         n = self._n_covariates()
         if len(names) != n:
-            names = ["Z[:, {}]".format(j) for j in range(n)]
+            names = [f"Z[:, {j}]" for j in range(n)]
         check_covariate_width(Z, names, what)
 
     @property
@@ -750,7 +757,7 @@ class ParametricRegressionModel(
         return self.center is not None and bool(np.any(self.center))
 
     def _centred(
-        self, Z: npt.ArrayLike, center: "npt.NDArray | None" = None
+        self, Z: npt.ArrayLike, center: npt.NDArray | None = None
     ) -> Any:
         """The covariate rows ``Z`` (already prepared) relative to
         ``center`` (default: the model's), where the baseline is."""
@@ -767,7 +774,7 @@ class ParametricRegressionModel(
     }
 
     @property
-    def life_parameter(self) -> "str | None":
+    def life_parameter(self) -> str | None:
         """The distribution parameter an accelerated life model replaces by
         its life model (``None`` for the other families)."""
         if not self._is_accelerated_life():
@@ -778,7 +785,7 @@ class ParametricRegressionModel(
         # How the life parameter follows from the life model, e.g.
         # "L(Z) of the Power life model", for the printed model.
         relation = getattr(self.model, "life_relation", "L(Z)")
-        return "{} of the {} life model".format(relation, self.reg_model.name)
+        return f"{relation} of the {self.reg_model.name} life model"
 
     def _is_linear_predictor(self) -> bool:
         """Whether the covariate parameters are coefficients of a linear
@@ -793,9 +800,9 @@ class ParametricRegressionModel(
             return True
         n_phi = len(self.params) - self.k_dist
         pmap = dict(self.reg_model.phi_param_map or {})
-        return pmap == {"beta_{}".format(i): i for i in range(n_phi)}
+        return pmap == {f"beta_{i}": i for i in range(n_phi)}
 
-    def _coefficient_names(self) -> "list[str]":
+    def _coefficient_names(self) -> list[str]:
         """The names of the coefficients of the columns of ``Z``, in
         column order (#614): the linear predictor's, or an accelerated
         life model's (``GeneralLogLinear``'s); none for another life
@@ -805,7 +812,7 @@ class ParametricRegressionModel(
         columns = getattr(self.reg_model, "coefficient_columns", None)
         return [] if columns is None else list(columns())
 
-    def _exp_meaning(self) -> "str | None":
+    def _exp_meaning(self) -> str | None:
         """What ``exp(coef)`` means, or ``None`` where the link is not
         log-linear (``exp(coef)`` is then not a ratio)."""
         from ._fit_skeleton import LogLinearPhi
@@ -832,7 +839,7 @@ class ParametricRegressionModel(
         se[[i for i, name in enumerate(names) if name in self.fixed]] = np.nan
         return se
 
-    def summary(self, alpha_ci: float = 0.05) -> "pd.DataFrame":
+    def summary(self, alpha_ci: float = 0.05) -> pd.DataFrame:
         """
         The parameter table (#484), in lifelines' layout: the baseline
         distribution's parameters, then the regression coefficients (or,
@@ -903,7 +910,7 @@ class ParametricRegressionModel(
         se = self._summary_se()
         names = self.parameter_names
         k = self.k_dist
-        level = "{:g}%".format(100 * (1 - alpha_ci))
+        level = f"{100 * (1 - alpha_ci):g}%"
         if self._is_linear_predictor():
             part = "coefficients"
             rows = coefficient_table(
@@ -1023,7 +1030,7 @@ class ParametricRegressionModel(
         fixed = {k: v for k, v in self.fixed.items() if k not in placeholder}
         if fixed:
             out += "\nFixed               : {}".format(
-                ", ".join("{} = {:.6g}".format(k, v) for k, v in fixed.items())
+                ", ".join(f"{k} = {v:.6g}" for k, v in fixed.items())
             )
         table = self.summary()
         estimates = {
@@ -1057,7 +1064,7 @@ class ParametricRegressionModel(
         if "coefficients" in parts:
             meaning = self._exp_meaning()
             out += "\nCoefficients        : {}Wald 95% intervals\n".format(
-                "exp(coef) is {}; ".format(meaning) if meaning else ""
+                f"exp(coef) is {meaning}; " if meaning else ""
             ) + coefficient_repr(table.loc["coefficients"])
         return out
 
@@ -1066,19 +1073,19 @@ class ParametricRegressionModel(
         # a linear predictor it ranks the rows as that predictor does, with
         # the sign of a higher risk, at every t* (see ``concordance``).
         t = np.full(x.size, np.nanmedian(x))
-        with warnings.catch_warnings():
-            # An additive model's negative hazard at t* does not change
-            # the ranking.
-            warnings.filterwarnings("ignore", message="The additive hazard")
-            return np.asarray(self.Hf(t, Z), dtype=float)
+        # The model's own values: outside an additive model's support at
+        # t* the ranking is still the linear predictor's.
+        return np.asarray(
+            self._eval(self.model.Hf, t, Z, 0.0, raw=True), dtype=float
+        )
 
-    def _concordance_data(self) -> "tuple | None":
+    def _concordance_data(self) -> tuple | None:
         data = getattr(self, "data", None)
         if data is None or self.is_tvc:
             return None
         return data.x, data.c, data.n, data.Z
 
-    def phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
+    def phi(self, Z: npt.ArrayLike | pd.DataFrame) -> npt.NDArray:
         Z = self._prepare_Z(Z)
         phi = self.reg_model.phi
         if phi is None:
@@ -1097,9 +1104,10 @@ class ParametricRegressionModel(
         self,
         fn: Any,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         below_support: float,
         grid: bool = False,
+        raw: bool = False,
     ) -> npt.NDArray:
         # The shared body of the five distribution functions below: coerce
         # ``x``, resolve DataFrame covariates against the fit-time design,
@@ -1134,66 +1142,57 @@ class ParametricRegressionModel(
             x = np.where(below, inside, x)
         with np.errstate(divide="ignore"):
             out = fn(x, Z, *self._eval_params())
-        if self._is_additive():
-            self._warn_if_hazard_negative(x, Z, ~below, stacklevel=5)
+        if self._is_additive() and not raw:
+            outside = self._outside_support(x, Z, ~below, stacklevel=5)
+            if outside is not None:
+                out = np.where(outside, np.nan, out)
         if np.any(below):
             out = np.where(below, below_support, out)
         if shape is not None:
             out = np.asarray(out, dtype=float).reshape(shape)
         return out
 
-    def _warn_if_hazard_negative(
+    def _outside_support(
         self,
         x: npt.ArrayLike,
         Z: npt.NDArray,
         valid: Any = True,
         stacklevel: int = 4,
-    ) -> None:
-        """Warn (once) when the additive hazard ``h_0(x) + beta'Z`` or its
-        integral is negative at a queried point (#376).
+    ) -> npt.NDArray | None:
+        """The queried points outside an additive model's support, warned
+        of once, or None where there are none (#376, #828).
 
-        Nothing in the additive model keeps the hazard positive: the fit
-        keeps it positive at the observed failures only, so for a
-        protective covariate row, or far from the data, ``h`` can be
-        negative. The cumulative hazard then falls, and the predictions
-        stop being those of a distribution -- ``sf`` above 1, ``ff`` and
-        ``df`` negative. They are returned as the model defines them, with
-        this warning.
+        The additive model is a distribution only where the hazard
+        ``h_0(x) + beta'Z`` and its integral ``H(x | Z)`` are both
+        non-negative. The fit keeps every observed point there, but for a
+        protective covariate row, or far from the data, either can be
+        negative -- ``sf`` above 1, ``ff`` or ``df`` negative -- and on a
+        baseline over the whole real line ``H`` is negative far enough
+        below 0 for any row with ``beta'Z > 0``: the support starts where
+        ``H`` reaches 0. The predictions there are ``nan``.
         """
         with np.errstate(all="ignore"):
             params = self._eval_params()
             h = np.asarray(self.model.hf(x, Z, *params), dtype=float)
             H = np.asarray(self.model.Hf(x, Z, *params), dtype=float)
         valid = np.broadcast_to(valid, h.shape)
-        neg_h = valid & (h < 0)
-        neg_H = valid & (H < 0)
-        if not (neg_h.any() or neg_H.any()):
-            return
-        self._warn_negative_hazard(
-            int((neg_h | neg_H).sum()),
-            h.size,
-            float(np.exp(-np.min(H[valid]))) if neg_H.any() else None,
-            stacklevel + 1,
-        )
+        outside = valid & ((h < 0) | (H < 0))
+        if not outside.any():
+            return None
+        self._warn_negative_hazard(int(outside.sum()), h.size, stacklevel + 1)
+        return outside
 
     def _warn_negative_hazard(
-        self, count: int, size: int, max_sf: "float | None", stacklevel: int
+        self, count: int, size: int, stacklevel: int
     ) -> None:
-        above = (
-            ", so sf exceeds 1 (up to {:.4g}) and ff is negative".format(
-                max_sf
-            )
-            if max_sf is not None
-            else ""
-        )
         warnings.warn(
-            "The additive hazard h_0(x) + beta'Z is negative at {} of the "
-            "{} queried points: the model's cumulative hazard falls there"
-            "{}. The additive model does not keep the hazard positive "
-            "(the fit does so only at the observed failures); these "
-            "values are the model's, not a distribution's. A proportional "
-            "hazards model (e.g. {}PH) keeps the hazard positive by "
-            "construction.".format(count, size, above, self.distribution.name),
+            "The additive hazard h_0(x) + beta'Z or its integral H(x | Z) "
+            "is negative at {} of the {} queried points: they are outside "
+            "the model's support for those covariates, where it is not a "
+            "distribution (sf would exceed 1, or fall and rise again), and "
+            "the values there are nan. The fit keeps every observed point "
+            "inside the support; a proportional hazards model (e.g. {}PH) "
+            "has no such limit.".format(count, size, self.distribution.name),
             RuntimeWarning,
             stacklevel=stacklevel,
         )
@@ -1202,7 +1201,7 @@ class ParametricRegressionModel(
     def sf(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         *,
         grid: bool = False,
     ) -> npt.NDArray:
@@ -1256,7 +1255,7 @@ class ParametricRegressionModel(
     def ff(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         *,
         grid: bool = False,
     ) -> npt.NDArray:
@@ -1311,7 +1310,7 @@ class ParametricRegressionModel(
     def df(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         *,
         grid: bool = False,
     ) -> npt.NDArray:
@@ -1366,7 +1365,7 @@ class ParametricRegressionModel(
     def hf(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         *,
         grid: bool = False,
     ) -> npt.NDArray:
@@ -1422,7 +1421,7 @@ class ParametricRegressionModel(
     def Hf(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         *,
         grid: bool = False,
     ) -> npt.NDArray:
@@ -1479,7 +1478,7 @@ class ParametricRegressionModel(
     def qf(
         self,
         p: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         *,
         grid: bool = False,
     ) -> npt.NDArray:
@@ -1567,17 +1566,20 @@ class ParametricRegressionModel(
             u,
             self.distribution.support,
             start,
+            lambda t, k: self.model.hf(t, rows[k], *params),
         )
         if self._is_additive():
             finite = np.isfinite(out)
-            self._warn_if_hazard_negative(
+            beyond = self._outside_support(
                 np.where(finite, out, 0.0), rows, finite, stacklevel=5
             )
+            if beyond is not None:
+                out = np.where(beyond, np.nan, out)
         if shape is not None:
             out = out.reshape(shape)
         return out
 
-    def mean(self, Z: "npt.ArrayLike | pd.DataFrame") -> Any:
+    def mean(self, Z: npt.ArrayLike | pd.DataFrame) -> Any:
         r"""
         The mean life of a unit with covariates ``Z``,
         :math:`\int_0^\infty S(t \mid Z)\, dt` (#662): an accelerated
@@ -1639,7 +1641,7 @@ class ParametricRegressionModel(
                 out[j] = self.mean_tvc(StepSchedule.constant(rows[j]))
         return out[0] if out.size == 1 else out
 
-    def _wald_tested(self) -> "list[int]":
+    def _wald_tested(self) -> list[int]:
         """The positions in ``params`` that :attr:`p_values` tests against
         0: the coefficients of a linear predictor, or an accelerated life
         model's unbounded life-model parameters."""
@@ -1694,7 +1696,7 @@ class ParametricRegressionModel(
     def random(
         self,
         size: int,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         random_state: Any = None,
     ) -> tuple[npt.NDArray, npt.NDArray]:
         r"""
@@ -1833,12 +1835,31 @@ class ParametricRegressionModel(
         ]
         return dist_names + phi_names
 
+    # -- plot_partial_effects (PartialEffectsMixin) ------------------------
+
+    def _partial_effects_width(self) -> int:
+        return self._n_covariates()
+
+    def _partial_effects_rows(
+        self,
+    ) -> tuple[npt.NDArray, npt.NDArray] | str:
+        data = getattr(self, "data", None)
+        if data is None or getattr(data, "Z", None) is None:
+            return "the model does not hold the data it was fitted to"
+        return np.asarray(data.Z, dtype=float), np.asarray(data.n, float)
+
+    def _partial_effects_times(self) -> npt.NDArray | None:
+        data = getattr(self, "data", None)
+        if data is None:
+            return None
+        return np.asarray(data.x, dtype=float).ravel()
+
     def plot(
         self,
-        ax: "Axes | None" = None,
+        ax: Axes | None = None,
         plot_bounds: bool = True,
         alpha_ci: float = 0.05,
-    ) -> "Axes":
+    ) -> Axes:
         r"""
 
         A method to plot the survival function of the distribution at the mean
@@ -1869,17 +1890,19 @@ class ParametricRegressionModel(
         x_plot = np.linspace(self.data.x.min(), self.data.x.max(), 1000)
 
         Z_mean = np.asarray(self.data.Z).mean(axis=0)
-        ax.step(x, np.exp(-(d / r).cumsum()), color="r", where="post")
-        sf = self.sf(x_plot, Z_mean)
-        ax.plot(x_plot, sf, color="b")
+        band = None
         if plot_bounds:
-            cb = self.cb(x_plot, Z_mean, on="sf", alpha_ci=alpha_ci)
-            ax.fill_between(
-                x_plot,
-                cb[:, 0],
-                cb[:, 1],
-                color="b",
-                alpha=0.2,
-                label=f"{(1 - alpha_ci) * 100:g}% Confidence Band",
-            )
+            band = self.cb(x_plot, Z_mean, on="sf", alpha_ci=alpha_ci)
+        plotting.observed_and_fitted(
+            ax,
+            (x, np.exp(-(d / r).cumsum())),
+            (x_plot, self.sf(x_plot, Z_mean)),
+            band,
+            observed_label="Nelson-Aalen, all units",
+            fitted_label="Model, at the mean covariates",
+            band_label=f"{(1 - alpha_ci) * 100:g}% confidence band",
+        )
+        label_axes(ax, self.unit, "Survival probability")
+        plotting.style_axes(ax)
+        plotting.style_legend(ax)
         return ax

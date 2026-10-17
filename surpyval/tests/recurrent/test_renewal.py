@@ -159,11 +159,11 @@ def test_renewal_event_at_time_zero_is_a_clear_error():
 
 def test_renewal_rejects_negative_times():
     # Without a tl, times count from the start of the item's life.
-    from surpyval import RecurrentEventData
+    from surpyval import EventHistoryData
 
     with pytest.raises(ValueError, match="cannot be negative"):
         GeneralizedRenewal.fit_from_recurrent_data(
-            RecurrentEventData([-1.0, 2.0, 3.0], [1, 1, 1], [0, 0, 1], 1)
+            EventHistoryData([-1.0, 2.0, 3.0], [1, 1, 1], [0, 0, 1], 1)
         )
     # With one they count from the entry, as new there (#615): a negative
     # time after a negative entry is a positive age (with a warning that a
@@ -821,3 +821,47 @@ def test_760_expo_weibull_derivatives_in_the_tail(kind, point, expected):
     # d/dmu of the hazard is below 1e-15 of it: absolute
     np.testing.assert_allclose(got[:4], expected[:4], rtol=1e-12)
     assert got[4] == pytest.approx(expected[4], rel=1e-12, abs=1e-15)
+
+
+def test_795_kijima_ii_run_off_reaches_ara_inf():
+    # Kijima-II is ARA-inf with q = 1 - rho. On one item's ExpoWeibull
+    # run-off (no finite maximum, #777) the Kijima-II search stalled at
+    # q = 0.061 and -43.93, its life then refitted with q held there,
+    # while ARA-inf reached -43.81 at rho = 0.922. Climbing the ridge with
+    # the restoration and the life together takes Kijima-II there too.
+    from surpyval import ExpoWeibull
+
+    rng = np.random.default_rng(5)
+    data = handle_xicn(np.cumsum(rng.weibull(2.0, 30) * 3))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        kijima = GeneralizedRenewal.fit_from_recurrent_data(
+            data, ExpoWeibull, "ii"
+        )
+        ara = ARA.fit_from_recurrent_data(data, ExpoWeibull, np.inf)
+    assert kijima.maximum == ara.maximum == "no finite maximum"
+    assert kijima.log_likelihood >= ara.log_likelihood - 1e-3
+    assert kijima.params[0] == pytest.approx(1 - ara.params[0], abs=2e-3)
+
+
+def test_796_aged_starts_take_the_family_seed():
+    # Where no default start has a finite likelihood, each restoration
+    # start gets its own lifetime (#777). Those were run-off ExpoWeibull
+    # fits, about 0.5 s each; the family's own initial guess (a Weibull's)
+    # has a finite likelihood there and costs nothing (#796).
+    from unittest import mock
+
+    from surpyval import ExpoWeibull
+    from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
+
+    rng = np.random.default_rng(5)
+    data = handle_xicn(np.cumsum(rng.weibull(2.0, 30) * 3))
+    neg_ll = ARA.create_negll_func(data, ExpoWeibull, 1)
+    with mock.patch.object(
+        type(ExpoWeibull), "fit", side_effect=AssertionError("fitted")
+    ):
+        starts = RenewalFitMixin._aged_starts(
+            data, ExpoWeibull, neg_ll, (0.1, 0.5, 0.9, 0.99)
+        )
+    assert len(starts) == 4
+    assert all(np.isfinite(neg_ll(np.array(s))) for s in starts)

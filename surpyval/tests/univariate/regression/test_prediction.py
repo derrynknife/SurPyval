@@ -44,11 +44,46 @@ def test_571_qf_inverts_ff_for_every_family(name):
         warnings.simplefilter("ignore")
         model = getattr(sp, name).fit(x, Z, c=c)
         q = model.qf(P, ZQ)
-        back = model.ff(q, ZQ)
-    # Relative to the smaller tail, where the probability is resolved.
-    tail = np.minimum(P, 1 - P)
-    tol = 1e-7 if name.endswith("AH") else 1e-10
-    np.testing.assert_array_less(np.abs(back - P) / tail, tol)
+        ff, sf = model.ff(q, ZQ), model.sf(q, ZQ)
+    # Relative to the smaller tail, where the probability is resolved: ff
+    # below 1/2, sf above it. Newton's finish (#828) takes every family to
+    # rounding; an additive model's H = H0 + x beta'Z cancels near the
+    # start of its support, so it keeps fewer digits there.
+    upper = P > 0.5
+    err = np.where(upper, np.abs(sf - (1 - P)) / (1 - P), np.abs(ff - P) / P)
+    tol = 1e-8 if name.endswith("AH") else 1e-12
+    np.testing.assert_array_less(err, tol)
+
+
+@pytest.mark.parametrize("name", ["NormalAH", "GumbelAH", "LogisticAH"])
+def test_828_qf_is_exact_near_the_start_of_the_support(name):
+    # The issue's data: the quantiles of a small p are just above where
+    # the support starts (x* < 0 for beta'Z > 0 on these baselines). The
+    # solver's tolerance, relative to |t|, left sf(qf(1 - s)) off by up to
+    # 1.8e-5 of s; Newton's finish on H leaves the cancellation in
+    # H0 + x beta'Z there. That is the limit for any qf (and for ff, which
+    # the check uses): H, about s, is the difference of two terms of size
+    # |H0(q)| (0.02 to 0.06 here), so it is known to a few ulps of |H0(q)|,
+    # 1e-8 of s or so at s = 1e-9. The bound is 16 such ulps: the largest
+    # error is about 5 on arm64 and on x86-64, where it is 1.1e-8 of s
+    # (their vectorised exp and log round differently), and the solver
+    # alone left 1e4 times more.
+    rng = np.random.default_rng(0)
+    x = rng.weibull(1.5, 300) * 100
+    Z = rng.uniform(0, 1, (300, 1))
+    x = x * np.exp(0.5 * Z[:, 0])
+    s = np.logspace(-9, np.log10(0.5), 40)
+    z = np.repeat([[0.5]], s.size, 0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = getattr(sp, name).fit(x, Z=Z)
+        q = model.qf(s, z)
+        low = model.ff(q, z)
+        high = model.sf(model.qf(1 - s, z), z)
+    H0 = model.distribution.Hf(q, *model.params[: model.k_dist])
+    ulps = np.abs(low - s) / (np.finfo(float).eps * np.abs(H0))
+    assert np.max(ulps) < 16
+    assert np.max(np.abs(high - (1 - (1 - s))) / s) < 1e-8
 
 
 def test_571_qf_matches_the_closed_forms():

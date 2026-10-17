@@ -30,7 +30,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OutsideSupportError,
 )
 from surpyval.utils.no_maximum import quiet_maximum_warnings
-from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.validation import check_option
 
 if TYPE_CHECKING:
@@ -197,6 +197,7 @@ def fit_best(
 ) -> tuple[Parametric | MixtureModel | None, pd.DataFrame]: ...
 
 
+@accepts_surpyval_data
 def fit_best(
     x: npt.ArrayLike | None = None,
     c: npt.ArrayLike | None = None,
@@ -295,7 +296,7 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
         ``MixtureModel(Weibull, 2)``, each fitted afresh (the model given
         is left as it was). The only way to try the Uniform or the Beta4
         (which are then set aside, see above) or a mixture. Mutually
-        exclusive with ``exclude``.
+        exclusive with ``exclude``. An empty ``include`` is refused.
     exclude : iterable of str, optional
         Try every candidate except distributions with these names, checked
         in the same way. Mutually exclusive with ``include``.
@@ -379,6 +380,12 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
     ('chosen', 0.0)
     """
     names, mixtures = _split_include(include)
+    if include is not None and not names and not mixtures:
+        raise ValueError(
+            "`include` is empty: name the distributions to try, e.g. "
+            "include=['Weibull', 'Gamma'], or leave it out to try the "
+            "default candidates."
+        )
     include_set = _candidate_names(names, "include")
     exclude_set = _candidate_names(exclude, "exclude")
 

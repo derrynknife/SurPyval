@@ -9,7 +9,9 @@ import autograd.numpy as np
 import numpy.typing as npt
 from scipy.optimize import minimize, minimize_scalar
 
-from surpyval.univariate.nonparametric import plotting_positions
+from surpyval.univariate.nonparametric.plotting_positions import (
+    plotting_positions,
+)
 from surpyval.univariate.parametric.fitters import offset_step
 from surpyval.utils.validation import check_option
 

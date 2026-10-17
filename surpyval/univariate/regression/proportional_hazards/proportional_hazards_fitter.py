@@ -15,7 +15,8 @@ from surpyval.univariate.parametric.parametric_fitter import (
 from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.rng import as_generator
-from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
+from surpyval.utils.units import takes_unit
 
 from .._covariate_link import CovariateLink
 from .._fit_skeleton import (
@@ -316,7 +317,10 @@ class ProportionalHazardsFitter(
                 off = _times_phi(
                     self._phi_off(Z, phi_params, on), np.where(on, 0.0, base)
                 )
-                on_log = np.exp(np.where(on, log_value, 0.0))
+                # Past exp(709) the product is the infinite H it tends to
+                # (sf 0), as on a fit run off along a coefficient (#801).
+                with np.errstate(over="ignore"):
+                    on_log = np.exp(np.where(on, log_value, 0.0))
                 return np.where(on, on_log, off)
         return _times_phi(self.phi(Z, *phi_params), base)
 
@@ -493,6 +497,8 @@ class ProportionalHazardsFitter(
         )
 
     @dataframe_covariates
+    @takes_unit
+    @accepts_surpyval_data
     def fit(
         self,
         x: npt.ArrayLike,

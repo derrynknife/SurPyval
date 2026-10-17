@@ -19,6 +19,7 @@ from typing import Any
 import numpy as np
 from numpy.typing import ArrayLike
 
+from surpyval import plotting
 from surpyval.recurrent.inference import check_alpha_ci
 from surpyval.recurrent.nonparametric.mcf import (
     _MCF_RANGE,
@@ -41,11 +42,16 @@ from surpyval.univariate.nonparametric._support import (
     support_from_dict,
 )
 from surpyval.utils import optional_column
+from surpyval.utils.event_history_data import (
+    accepts_event_history_data,
+    refuses_unmodelled_data,
+)
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
 )
 from surpyval.utils.removed_names import column_arguments
+from surpyval.utils.units import label_axes, takes_unit
 from surpyval.utils.validation import unknown_cause_error
 
 
@@ -263,26 +269,47 @@ class CauseSpecificMCF(SerialisableMixin):
         for cause in self.event_types:
             model = self.models[cause]
             (line,) = ax.step(
-                model.x, model.mcf_hat, where="post", label=str(cause)
+                model.x,
+                model.mcf_hat,
+                where="post",
+                label=str(cause),
+                color=plotting.next_color(ax),
+                linewidth=(
+                    plotting.LINE_WIDTH if plotting.theme_enabled() else None
+                ),
             )
             if plot_bounds and model.var is not None:
                 cb = model.mcf_cb(model.x, alpha_ci=alpha_ci)
-                ax.step(
-                    model.x,
-                    cb,
-                    where="post",
-                    color=line.get_color(),
-                    linestyle="--",
-                    linewidth=0.8,
-                )
-        ax.legend()
+                if plotting.theme_enabled():
+                    ax.fill_between(
+                        model.x,
+                        cb[:, 0],
+                        cb[:, 1],
+                        step="post",
+                        color=line.get_color(),
+                        alpha=plotting.BAND_ALPHA,
+                        linewidth=0,
+                    )
+                else:
+                    ax.step(
+                        model.x,
+                        cb,
+                        where="post",
+                        color=line.get_color(),
+                        linestyle="--",
+                        linewidth=0.8,
+                    )
+        plotting.style_axes(ax)
+        plotting.style_legend(ax, title="Cause")
+        label_axes(ax, getattr(self, "unit", None), "Mean cumulative function")
         return ax
 
     @classmethod
+    @refuses_unmodelled_data
     def fit_from_recurrent_data(cls, data: Any) -> "CauseSpecificMCF":
         if data.e is None:
             raise ValueError(
-                "RecurrentEventData has no event-type marks; pass `e` to "
+                "EventHistoryData has no event-type marks; pass `e` to "
                 "fit a cause-specific MCF."
             )
         reject_unsupported_nonparametric(data, "CauseSpecificMCF")
@@ -296,6 +323,8 @@ class CauseSpecificMCF(SerialisableMixin):
         return out
 
     @classmethod
+    @takes_unit
+    @accepts_event_history_data
     def fit(
         cls,
         x: ArrayLike,
@@ -328,8 +357,10 @@ class CauseSpecificMCF(SerialisableMixin):
             tuple, or a mix of these.
         tl : array like or scalar, optional
             Left-truncation (delayed-entry) time of each item: a scalar for
-            every item, or one value per row (the same on every row of an
-            item). The at-risk set
+            every item, one value per row (the same on every row of an
+            item), or one value per item, in the sorted order of the item
+            ids (``np.unique(i)``; read per row when there are as many rows
+            as items). The at-risk set
             is shared across causes, so a delayed entry shrinks the risk set
             for every cause until the item enters at ``tl``.
         tr : array like or scalar, optional
@@ -354,6 +385,7 @@ class CauseSpecificMCF(SerialisableMixin):
 
     @classmethod
     @column_arguments("x", "i", "c", "n", "tl", "tr")
+    @takes_unit
     def fit_from_df(
         cls,
         df: Any,

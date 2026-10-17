@@ -199,9 +199,17 @@ def test_cramer_von_mises_multi_item_and_cox_lewis():
     lam_max = np.exp(0.3 * T)
     cand = np.sort(rng.uniform(0, T, rng.poisson(lam_max * T)))
     keep = rng.uniform(0, 1, cand.size) < np.exp(0.3 * cand) / lam_max
-    cox = CoxLewis.fit(cand[keep], tl=0.0, tr=T)
+    events = cand[keep]
+    # Time terminated at T: the end of observation is a c=1 row.
+    cox = CoxLewis.fit(
+        np.r_[events, T], c=np.r_[np.zeros(events.size), 1], tl=0.0
+    )
     gof = cox.cramer_von_mises(n_boot=30, random_state=1)
     assert gof.p_value > 0.05
+    # A tr is a selection (#924), which the test cannot account for.
+    selected = CoxLewis.fit(events, tl=0.0, tr=T)
+    with pytest.raises(ValueError, match="does not take right truncation"):
+        selected.cramer_von_mises(n_boot=30, random_state=1)
 
 
 def test_cramer_von_mises_requires_likelihood_fit():

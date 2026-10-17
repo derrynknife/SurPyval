@@ -26,6 +26,7 @@ from typing import Any
 import numpy as np
 from numpy.typing import ArrayLike
 
+from surpyval import plotting
 from surpyval.recurrent.inference import require_data
 from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
 from surpyval.recurrent.parametric.parametric_recurrence import (
@@ -44,9 +45,14 @@ from surpyval.univariate.competing_risks.labels import (
 )
 from surpyval.univariate.information_criteria import corrected_aic
 from surpyval.utils import optional_column
+from surpyval.utils.event_history_data import (
+    accepts_event_history_data,
+    refuses_unmodelled_data,
+)
 from surpyval.utils.no_maximum import combined_maximum
 from surpyval.utils.recurrent_utils import handle_xicn
 from surpyval.utils.removed_names import column_arguments
+from surpyval.utils.units import label_axes, takes_unit
 from surpyval.utils.validation import unknown_cause_error
 
 
@@ -259,16 +265,14 @@ class CauseSpecificNHPP(SerialisableMixin):
         entry = float(data.tl[mask][0])
         x_upper = data.x[mask] if data.x.ndim == 1 else data.x[mask][:, 1]
         c_item = data.c[mask]
-        tr_item = float(data.tr[mask][0])
         if (c_item == 1).any():
             end = float(x_upper[c_item == 1][0])
-        elif tr_item == tr_item and tr_item != float("inf"):
-            end = tr_item
         else:
             end = float(x_upper.max())
         return entry, end
 
     @classmethod
+    @refuses_unmodelled_data
     def fit_from_recurrent_data(
         cls,
         data: Any,
@@ -278,11 +282,11 @@ class CauseSpecificNHPP(SerialisableMixin):
     ) -> "CauseSpecificNHPP":
         """
         Fit the cause-specific intensity model from prepared
-        :class:`RecurrentEventData` carrying event-type marks ``e``.
+        :class:`EventHistoryData` carrying event-type marks ``e``.
 
         Parameters
         ----------
-        data : RecurrentEventData
+        data : EventHistoryData
             Recurrent data with event-type marks (``data.e`` not ``None``).
         dist : counting-process fitter, optional
             The intensity model fitted per cause (``CrowAMSAA`` by default;
@@ -298,7 +302,7 @@ class CauseSpecificNHPP(SerialisableMixin):
         """
         if data.e is None:
             raise ValueError(
-                "RecurrentEventData has no event-type marks; pass `e` to "
+                "EventHistoryData has no event-type marks; pass `e` to "
                 "fit a cause-specific intensity model."
             )
         if data.x.ndim != 1:
@@ -306,6 +310,11 @@ class CauseSpecificNHPP(SerialisableMixin):
                 "Cause-specific intensity models require exact (1D) event "
                 "times."
             )
+        from surpyval.utils.recurrent_utils import refuse_right_truncation
+
+        # Selection on the first failure of any type, which a model of each
+        # type apart cannot account for (#924)
+        refuse_right_truncation(data, "CauseSpecificNHPP")
         unsupported = sorted(set(data.c.tolist()) - {0, 1})
         if unsupported:
             raise ValueError(
@@ -320,7 +329,7 @@ class CauseSpecificNHPP(SerialisableMixin):
         out.dist = dist
 
         # Each item's shared observation window [entry, end].
-        windows = {item: cls._item_window(data, item) for item in data.items}
+        windows = {item: cls._item_window(data, item) for item in data.ids}
 
         out.models = {}
         for cause in out.event_types:
@@ -336,7 +345,7 @@ class CauseSpecificNHPP(SerialisableMixin):
             # One right-censored window-close per item (present for every item,
             # even those with no events of this cause, so the compensator is
             # integrated over the whole window).
-            for item in data.items:
+            for item in data.ids:
                 entry, end = windows[item]
                 cx.append(end)
                 ci.append(item)
@@ -350,6 +359,8 @@ class CauseSpecificNHPP(SerialisableMixin):
         return out
 
     @classmethod
+    @takes_unit
+    @accepts_event_history_data
     def fit(
         cls,
         x: ArrayLike,
@@ -385,8 +396,10 @@ class CauseSpecificNHPP(SerialisableMixin):
             tuple, or a mix of these.
         tl : array like or scalar, optional
             Left-truncation (delayed-entry) time of each item: a scalar for
-            every item, or one value per row (the same on every row of an
-            item).
+            every item, one value per row (the same on every row of an
+            item), or one value per item, in the sorted order of the item
+            ids (``np.unique(i)``; read per row when there are as many rows
+            as items).
         tr : array like or scalar, optional
             Right-truncation time of each item, given like ``tl``. It closes
             the item's window, as a ``c=1`` row does; an item with both
@@ -413,6 +426,7 @@ class CauseSpecificNHPP(SerialisableMixin):
 
     @classmethod
     @column_arguments("x", "i", "c", "n", "tl", "tr")
+    @takes_unit
     def fit_from_df(
         cls,
         df: Any,
@@ -492,6 +506,16 @@ class CauseSpecificNHPP(SerialisableMixin):
             ax = plt.gcf().gca()
         x_plot = np.linspace(0, float(self.data.x.max()), 200)
         for cause in self.event_types:
-            ax.plot(x_plot, self.cif(x_plot, cause), label=str(cause))
-        ax.legend()
+            ax.plot(
+                x_plot,
+                self.cif(x_plot, cause),
+                label=str(cause),
+                color=plotting.next_color(ax),
+                linewidth=(
+                    plotting.LINE_WIDTH if plotting.theme_enabled() else None
+                ),
+            )
+        plotting.style_axes(ax)
+        plotting.style_legend(ax, title="Cause")
+        label_axes(ax, getattr(self, "unit", None), "Mean cumulative function")
         return ax

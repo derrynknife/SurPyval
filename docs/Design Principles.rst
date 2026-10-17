@@ -161,10 +161,14 @@ Estimation
     reference tests compare fits with R, lifelines and scikit-survival;
     ``calibration/test_refit_registry.py`` refits every registered model
     to data drawn from itself (on demand, ``--run-calibration``). Where the likelihood has no
-    finite maximum, univariate MLE refuses and the regression, frailty,
-    Fine-Gray, copula, mixture and degradation fits warn "No finite
-    maximum" (#392); known gap: abutting intervals such as (1, 3] and (3, 5], whose likelihood has a flat
-    ridge. ``conformance/test_aliasing.py`` refits every registered model
+    finite maximum, univariate MLE refuses where the likelihood is
+    unbounded and warns where it rises towards a limit -- data that bound
+    no failure from one side, and intervals that only meet at one time
+    (abutting intervals such as (1, 3] and (3, 5], whose likelihood rises
+    along a flat ridge towards a spike there) -- and the regression,
+    frailty, Fine-Gray, copula, mixture and degradation fits warn "No
+    finite maximum" (#392; ``test_no_finite_maximum.py``).
+    ``conformance/test_aliasing.py`` refits every registered model
     that has coefficients with a repeated covariate column, and with a
     constant one where it has an intercept, and requires the aliasing and
     otherwise the fit without the column; the time-varying fits are
@@ -232,8 +236,10 @@ Uncertainty
 
     *Partly checked* by the calibration studies
     (``surpyval/tests/calibration``, run on demand), which cover the main
-    parametric, non-parametric, Cox, regression, degradation and recurrent
-    bounds and the hypothesis tests, not every model.
+    parametric (the likelihood-ratio bounds of offset, limited-failure and
+    zero-inflated models among them, with ``lfp_p`` on its edge),
+    non-parametric, Cox, regression, degradation and recurrent bounds and
+    the hypothesis tests, not every model.
 
 18. **Intervals behave consistently.** Bounds contain the estimate and stay
     in the valid range; a one-sided bound is the matching end of the

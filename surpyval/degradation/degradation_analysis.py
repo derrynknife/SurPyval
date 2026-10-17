@@ -39,6 +39,7 @@ from surpyval.univariate.regression.parametric_regression_model import (
 from surpyval.utils.dataframe import refuse_column_names
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import psd_project, safe_inv
+from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option, option_error
 from surpyval.utils.warnings import caller_stacklevel
 
@@ -154,6 +155,7 @@ class DegradationAnalysis_(FitterRepr):
     #: The ``repr`` (#614)
     fitter_kind = "degradation fitter"
 
+    @takes_unit
     def fit(
         self,
         x: npt.ArrayLike,
@@ -1174,6 +1176,7 @@ class DegradationAnalysis_(FitterRepr):
         )
         return best_model, scores
 
+    @takes_unit
     def fit_from_df(
         self,
         df: pd.DataFrame,

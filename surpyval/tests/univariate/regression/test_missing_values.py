@@ -37,6 +37,10 @@ def _with_nan(Z: np.ndarray, value: float = np.nan) -> np.ndarray:
 @pytest.mark.parametrize("value", [np.nan, np.inf])
 def test_parametric_fitters_drop_nonfinite_covariate_rows(fitter, value):
     x, Z = weibull_ph_data()
+    if fitter is WeibullAH:
+        # Covariates that add hazard: an additive fit inside its support,
+        # where the optimiser ends at a stationary point (#828).
+        Z = np.abs(Z)
     with pytest.warns(UserWarning, match=DROPPED):
         model = fitter.fit(x=x, Z=_with_nan(Z, value))
     np.testing.assert_allclose(

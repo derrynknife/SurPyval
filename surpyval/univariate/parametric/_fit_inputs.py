@@ -22,6 +22,7 @@ from surpyval.utils.removed_names import removed_parameter_note
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import check_option
 
+from ..nonparametric import canonical_heuristic
 from ..nonparametric import plotting_positions as pp
 from .fitters import offset_step
 from .parametric import Parametric
@@ -361,8 +362,22 @@ class FitInputsMixin:
         if offset or np.isnan(support).any():
             support = np.array([-np.inf, np.inf])
         if lo == hi:
-            inside = lo_closed and support[0] < lo < support[1]
-            return f"({lo:g})" if inside else None
+            if not support[0] < lo < support[1]:
+                return None
+            if lo_closed:
+                return f"({lo:g})"
+            # Sets that only meet at ``lo``, an interval ending or
+            # starting there, and an exact value on it: a spike there,
+            # its mass split either side, gives that value an unbounded
+            # density and the intervals their share (#392). Without an
+            # exact value the likelihood is bounded, and its supremum is
+            # in that limit too (``_warn_if_abutting``).
+            if np.any(c[lower == lo] == 0):
+                return (
+                    f"({lo:g}, an exact failure that every other "
+                    f"observation's set of times reaches)"
+                )
+            return None
         lo, hi = max(lo, support[0]), min(hi, support[1])
         if not lo < hi:
             return None
@@ -429,6 +444,108 @@ class FitInputsMixin:
         )
         return True
 
+    def _abutting_limit(
+        self, surv_data: SurpyvalData, offset: bool
+    ) -> "tuple[float, float, float, float] | None":
+        """``(t, below, above, log_likelihood)`` where every row's set of
+        failure times (``_row_sets``) reaches the one time ``t`` without
+        all of them containing it: some end at ``t``, some start there,
+        and the rest contain it inside them -- intervals that abut, such
+        as (1, 3] and (3, 5]. ``below`` and ``above`` count the units of
+        the rows that end and start at ``t``, and ``log_likelihood`` is
+        that of a spike at ``t`` with ``below / (below + above)`` of its
+        mass just below and the rest just above, the limit a family that
+        concentrates its mass anywhere (``_POINT_MASS_FAMILIES``, and the
+        scale families given an offset) approaches. ``None`` otherwise,
+        and for an exact value at ``t`` (which ``_point_mass_region``
+        refuses: its density there is unbounded).
+
+        Without truncation that limit is the supremum of the likelihood
+        over every distribution (each row ending at ``t`` has probability
+        at most ``F(t)``, each starting there at most ``1 - F(t)``), and
+        no member of the family reaches it: a member puts mass outside
+        every interval, or, where every interval is a censoring time at
+        ``t``, the data hold one informative value, which a fit with more
+        parameters refuses (``_check_degrees_of_freedom``). So the
+        likelihood has no finite maximum, and a fit runs up a ridge
+        towards the spike: a Normal returned sigma = 0.35 with a verified
+        maximum on (1, 3] and (3, 5], a log-likelihood within 1e-8 of the
+        limit's log(1/4).
+        """
+        if self.discrete or self.name not in _POINT_MASS_FAMILIES | (
+            _OFFSET_POINT_MASS_FAMILIES if offset else frozenset()
+        ):
+            return None
+        lower, upper, c = _row_sets(surv_data)
+        if c.size == 0 or np.all(c == 1):
+            return None
+        t, top = float(np.max(lower)), float(np.min(upper))
+        support = np.asarray(self.support, dtype=float)
+        if offset or np.isnan(support).any():
+            support = np.array([-np.inf, np.inf])
+        if t != top or not support[0] < t < support[1]:
+            return None
+        if np.any((c == 0) & (lower == t)):
+            return None
+        n = np.asarray(surv_data.n, dtype=float)
+        below = float(np.sum(n[upper == t]))
+        above = float(np.sum(n[lower == t]))
+        if below <= 0 or above <= 0:
+            return None
+        total = below + above
+        limit = below * np.log(below / total) + above * np.log(above / total)
+        return t, below, above, float(limit)
+
+    def _warn_if_abutting(
+        self,
+        surv_data: SurpyvalData,
+        results: dict,
+        offset: bool,
+        zi: bool,
+        lfp: bool,
+    ) -> bool:
+        """Warn, and return ``True``, when the data's sets of failure
+        times only meet at one time, and the fit has not done better than
+        the spike there (``_abutting_limit``): the likelihood has no
+        finite maximum, but a flat ridge rising towards that limit, where
+        a search can stop with a gradient too small to see.
+
+        With truncation the limit need not be the supremum, so the fit is
+        held to it: one that beat it has found a finite maximum, and says
+        nothing. A limited-failure or zero-inflated fit, whose extra mass
+        changes the limit, is not checked."""
+        if zi or lfp:
+            return False
+        found = self._abutting_limit(surv_data, offset)
+        if found is None:
+            return False
+        t, below, above, limit = found
+        ll = results.get("log_likelihood")
+        if ll is None:
+            ll = -float(results.get("_neg_ll", np.inf))
+        if np.isfinite(ll) and ll > limit + 1e-6 * max(1.0, abs(limit)):
+            return False
+        params = np.atleast_1d(np.asarray(results.get("params", [])))
+        reached = ", ".join(
+            f"{name} = {value:.4g}"
+            for name, value in zip(self.parameter_names, params)
+        )
+        share = below / (below + above)
+        warn_no_maximum(
+            f"every observation's interval ends at {t:g}, starts there or "
+            f"contains it (intervals that abut there), so a distribution "
+            f"ever more concentrated at {t:g}, with {share:.3g} of its "
+            f"mass just below it and the rest just above, explains the "
+            f"data ever better, and the {self.name} likelihood rises along "
+            f"a flat ridge towards that limit",
+            f"The reported {reached}, the standard errors and the bounds "
+            f"are where the search stopped and are meaningless",
+            f"the data only say that the failures happened around {t:g}; "
+            f"a fit needs observations that do not all meet there (an "
+            f"exact failure, or intervals that overlap)",
+        )
+        return True
+
     def _validate_fit_inputs(
         self,
         surv_data: SurpyvalData,
@@ -440,6 +557,7 @@ class FitInputsMixin:
         heuristic: str,
         turnbull_estimator: str,
     ) -> Any:
+        heuristic = canonical_heuristic(heuristic)
         self._check_offset_and_grid(surv_data, offset)
         self._check_method(surv_data, how, offset, lfp, zi, fixed)
         self._check_censoring_for_method(surv_data, how, heuristic)

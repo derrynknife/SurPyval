@@ -6,9 +6,9 @@ The Wald bounds of an offset (3-parameter) fit hold the offset at its
 estimate: the offset is a threshold, whose likelihood is not regular, so
 the fit estimates no standard error for it. Near the offset those bounds
 are far too narrow (a 90% bound on a 3-parameter Weibull's B1 life from
-30 failures covered 40% of the time, #645), and the likelihood-ratio
-bounds are not available for offset fits. The bootstrap includes the
-offset's uncertainty, as it does every other parameter's.
+30 failures covered 40% of the time, #645). The bootstrap includes the
+offset's uncertainty, as it does every other parameter's, and so do the
+likelihood-ratio bounds, which profile it.
 
 The model is resampled, not the data, as for the regressions
 (``univariate.regression._bootstrap``, #617): each resample draws a
@@ -353,6 +353,21 @@ def quantile_cb_bootstrap(
     fits = refits(model, n_boot, random_state)
     fits.warn()
     return _bounds(model, fits, lambda m: m.qf(p), alpha_ci, bound)
+
+
+def mrl_cb_bootstrap(
+    model: Any,
+    x: npt.NDArray,
+    alpha_ci: float,
+    bound: str,
+    n_boot: Any,
+    random_state: Any,
+) -> npt.NDArray:
+    """``mrl_cb(method="bootstrap")``: the bounds of the refits' mean
+    residual lives ``mrl(x)``."""
+    fits = refits(model, n_boot, random_state)
+    fits.warn()
+    return _bounds(model, fits, lambda m: m.mrl(x), alpha_ci, bound)
 
 
 def param_cb_bootstrap(

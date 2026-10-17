@@ -140,9 +140,8 @@ always decrease after each observed event. When doing recurrent event analysis
 an item will remain in the at risk set since it will be healed/repaired and
 returned to service/health to continue with life. In SurPyval an item is in
 the risk set from its entry time (zero, or its left-truncation time) up to and
-including the end of its observation — its right-truncation time ``tr`` if it
-has one, otherwise its last recorded time (its right-censoring time, or its
-last event if it has no censoring row). An item therefore only leaves the risk
+including the end of its observation — its last recorded time (its
+right-censoring time, or its last event if it has no censoring row). An item therefore only leaves the risk
 set when it leaves *observation*, never because it had an event.
 
 The MCF function is the non-parametric estimator of the number of events that
@@ -181,7 +180,7 @@ extrapolate an estimate of the MCF function beyond the last observed event. This
 is because when doing non-parametric analysis we make no assumptions about the
 shape of the curve and cannot therefore extrapolate beyond the last observed event.
 SurPyval returns ``nan`` for times beyond the last observed time (the latest
-event, end-of-observation row or right-truncation time of any item), unless
+event or end-of-observation row of any item), unless
 you give the estimate an explicit support with ``set_support(lower, upper)``,
 which holds the last value up to ``upper`` -- your assumption, not the data's
 (see :doc:`Recurrent Event Modelling with SurPyval`). Two further
@@ -196,12 +195,10 @@ assumptions are worth stating:
   of the curve is noisy. The widening confidence bounds show this.
 
 The non-parametric MCF currently accepts exact event times, right-censored
-end-of-observation rows, left truncation (delayed entry), right truncation
-and gapped observation windows. A right-truncation time ``tr`` ends the
-item's observation window exactly as an end-of-observation row at ``tr``
-would, the same window-close the parametric intensity models integrate to.
-Interval-counted data and left-censored counts are rejected rather than
-silently mishandled; use a parametric intensity model for those.
+end-of-observation rows, left truncation (delayed entry) and gapped
+observation windows. Interval-counted data, left-censored counts and right
+truncation (a selection, see `Truncation and Delayed Entry`_) are rejected
+rather than silently mishandled; use a parametric intensity model for those.
 
 The risk-set counts :math:`d_i` and :math:`r_i` alone only support a simpler,
 per-step variance, which squares each step's deviations on its own and so
@@ -736,8 +733,7 @@ matters how it was decided:
 - **Time-truncated** (time-terminated) data: each item is watched for a fixed
   period and observation ends at :math:`T` whether or not an event happens
   then. In SurPyval you record this with a right-censored row (``c=1``) at
-  :math:`T` as the last row of the item (or with a right-truncation time
-  ``tr``, see below).
+  :math:`T` as the last row of the item.
 - **Failure-truncated** (failure-terminated) data: observation stops at an
   event — for example, a test that runs until the :math:`n`-th failure. Then
   :math:`T = x_n`, and in SurPyval you simply provide the events with no
@@ -866,10 +862,23 @@ already have been in service before monitoring began, or a study may only
 record events after a subject enrols. This is **left truncation** (delayed
 entry): the item is only under observation from an entry time :math:`t_L`, and
 its first observed interval is integrated from :math:`t_L` rather than from
-zero. **Right truncation** closes the observation window at a time :math:`t_R`,
-extending the compensator integral out to :math:`t_R` even if no event or
-censoring row sits exactly there. (Closing the window with ``tr`` and closing
-it with a right-censored row at the same time give the same likelihood.)
+zero. **Right truncation** is a selection: the item is in the data because it
+had at least one event by :math:`t_R`, as a repair or warranty database
+holds only the units that came back. Its likelihood is then conditional on
+that, divided by the chance of at least one event in :math:`(t_L, t_R]`:
+
+.. math::
+
+    L_i = \frac{\prod_j \lambda(t_{ij})\, e^{-(\Lambda(T_i) - \Lambda(t_L))}}
+          {1 - e^{-(\Lambda(t_R) - \Lambda(t_L))}}
+
+with :math:`T_i` the end of its observation, which may be before or after
+:math:`t_R`. If its observation ended at :math:`T_i < t_R` with no event
+seen, the event that put it in the data came after :math:`T_i`, and the
+numerator is multiplied by :math:`1 - e^{-(\Lambda(t_R) - \Lambda(T_i))}`.
+Ignoring the selection makes the items look less reliable than they are,
+since the ones that did not fail by :math:`t_R` are missing. Right
+truncation is not the end of observation, which is a right-censored row.
 
 The intensity (Poisson) models handle delayed entry directly, because the
 likelihood over any interval depends only on the intensity over that interval.
@@ -886,10 +895,10 @@ better than it is. The fitted model's ``data`` hold the times since entry.
 
 The non-parametric MCF handles both through the risk set — an item is only
 counted at risk from its entry time, so early event times are averaged over
-the items actually being watched, and it stays at risk up to its
-right-truncation time, just as it would up to a right-censored row there.
-The trend tests (below) test each item on its own window, from its entry
-time to the end of its observation.
+the items actually being watched, and it stays at risk up to the end of its
+observation. The trend tests (below) test each item on its own window, from
+its entry time to the end of its observation. Neither accounts for right
+truncation, which both refuse.
 
 Model Checking: Residuals, Trend Tests, and Goodness of Fit
 -----------------------------------------------------------

@@ -190,6 +190,13 @@ def _cox_frailty():
     )
 
 
+def _joint():
+    from surpyval import WeibullJointPH
+    from surpyval.tests.univariate.joint._fleet import fleet
+
+    return WeibullJointPH.fit(fleet(40, seed=3))
+
+
 def _destructive():
     from surpyval.degradation import DestructiveDegradation
 
@@ -368,6 +375,7 @@ def _build(name):
         "random_survival_forest": _forest,
         "never_occurs": lambda: NeverOccurs,
         "instantly_occurs": lambda: InstantlyOccurs,
+        "joint": _joint,
     }
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -414,6 +422,7 @@ CASES = [
     "random_survival_forest",
     "never_occurs",
     "instantly_occurs",
+    "joint",
 ]
 
 

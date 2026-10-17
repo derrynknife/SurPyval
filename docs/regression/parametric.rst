@@ -111,6 +111,17 @@ When the data would prefer a negative hazard (a strongly protective
 covariate) it returns the best model on that boundary and warns; it
 raises only if the optimiser cannot end at a positive-hazard point.
 
+The model is a distribution only where the hazard and the cumulative hazard
+are both non-negative: at a covariate row its support starts where
+:math:`H(x \mid Z)` reaches 0. That is below 0 for a row with
+:math:`\beta'Z > 0` on a baseline over the whole real line (Normal, Gumbel,
+Logistic), so such data, negative times and all, are fitted from there; and
+it is after 0 for a protective row on a baseline whose hazard starts at 0. The
+fit keeps every observed point inside the support; a fit that ends against
+that limit (:math:`H = 0` at an observation) warns, as one held at a
+threshold would, and its standard errors are approximate. Predictions outside
+the support are ``nan``, with a warning.
+
 Pre-built instances: ``ExponentialAH``, ``NormalAH``, ``WeibullAH``,
 ``GumbelAH``, ``LogisticAH``, ``LogNormalAH``, ``GammaAH``.
 

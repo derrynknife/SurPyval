@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import autograd.numpy as np
+import numpy as onp
 import numpy.typing as npt
 from numpy import euler_gamma
 from scipy.special import gamma as gamma_func
@@ -15,6 +16,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
+from .._residual_life import upper_gamma_scaled
 from ._stable import (
     log1mexp,
     log_ratio,
@@ -310,6 +312,14 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
         array([1.70919151, 2.06189877, 2.31840554, 2.5362346 , 2.73733292])
         """
         return alpha * (-np.log1p(-u)) ** (1 / beta)
+
+    def _mrl_inside(self, x: Any, alpha: float, beta: float) -> Any:
+        # In closed form (#825): with z = (x / alpha)**beta and a = 1 /
+        # beta, int_x^inf R = (alpha / beta) Gamma(a, z) and R(x) =
+        # exp(-z), so the MRL is (alpha / beta) Gamma(a, z) e^z, finite
+        # where both underflow (upper_gamma_scaled).
+        z = (onp.asarray(x, dtype=float) / alpha) ** beta
+        return (alpha / beta) * upper_gamma_scaled(1.0 / beta, z)
 
     def mean(self, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""

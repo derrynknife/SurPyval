@@ -40,11 +40,14 @@ from surpyval.tests.conformance.registry_families import (
     _trees,
     continuous,
     discrete,
+    regression,
 )
 from surpyval.tests.conformance.registry_fixtures import (
+    JOINT_ITEM,
     X_COP,
     X_CR,
     X_DESTR,
+    X_JOINT,
     X_PATH,
     X_PROC,
     X_REC,
@@ -57,6 +60,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     cr_data,
     destructive_data,
     exact_event_data,
+    joint_data,
     lfp_count_data,
     lfp_data,
     mixture_data,
@@ -903,6 +907,69 @@ def _copulas():
     return out
 
 
+# ---------------------------------------------------------------------------
+# Joint models of a marker and a lifetime (#891)
+# ---------------------------------------------------------------------------
+def _joint_coefficients(model):
+    """A joint model's covariate coefficients: the hazard's, then each path
+    parameter's shifts of its mean (a row each)."""
+    names, params = model.parameter_names, np.asarray(model.params, float)
+    rows = [model.feature_names] + [
+        [f"{a}_{f}" for f in model.feature_names]
+        for a in model.path_model.parameter_names
+    ]
+    return np.array([[params[names.index(n)] for n in row] for row in rows])
+
+
+def _joint():
+    """The joint model, predicting for one item read four times and still
+    running at 400 (``JOINT_ITEM``) through the array form ``sf(x, Z,
+    markers=..., given=...)``: one covariate vector a call."""
+    case = regression(
+        "WeibullJointPH",
+        sp.WeibullJointPH,
+        model_class="surpyval.JointModel",
+        data=joint_data,
+        x=X_JOINT,
+        Z=np.ones((X_JOINT.size, 1)),
+        functions=("sf", "ff"),
+        z_style="single",
+        paths={
+            "fit_from_df": lambda d: sp.WeibullJointPH.fit_from_df(
+                pd.DataFrame(
+                    {
+                        "x": d["x"],
+                        "c": d["c"],
+                        "n": d["n"],
+                        "z0": np.asarray(d["Z"])[:, 0],
+                        "markers": list(d["markers"]),
+                    }
+                ),
+                x_col="x",
+                markers_col="markers",
+                c_col="c",
+                n_col="n",
+                Z_cols=["z0"],
+            )
+        },
+        rows=("x", "Z", "c", "n", "markers"),
+        coefficients=_joint_coefficients,
+        intercept=True,
+        exclude={
+            "row_independence": "one item a call (Z is its covariate "
+            "vector), so there are no rows to mix up",
+        },
+    )
+    return [
+        replace(
+            case,
+            times=("x", "markers"),
+            call_kwargs=dict(JOINT_ITEM),
+            call_times=("markers", "given"),
+        )
+    ]
+
+
 CASES: list[Case] = (
     _univariate()
     + _regression_family()
@@ -914,6 +981,7 @@ CASES: list[Case] = (
     + _recurrent()
     + _degradation()
     + _copulas()
+    + _joint()
 )
 
 # Fits whose optimum moves by more than 1e-4 (relative) when the data are
@@ -1113,7 +1181,20 @@ _LR_X = {
     # tail (13) is where its bands were hardest (the hf nesting in #421).
     "ExpoWeibull": np.array([13.0]),
 }
-_LR_NIGHTLY = {"NegativeBinomial", "ExpoWeibull"}
+# The offset, limited-failure and zero-inflated fits' searches run over
+# their extra parameters too: the Weibull's in every full run, the other
+# families' with the calibration studies. An offset model's times include
+# one before its estimated offset (6 on the Weibull's 6.56),
+# where the survival is 1 at the estimate but not over the region.
+for _family in ("Weibull", "Exponential", "Gamma", "LogNormal"):
+    _LR_X[f"{_family}[offset]"] = np.array([6.0, 9.0, 13.0, 18.0])
+    _LR_X[f"{_family}[lfp]"] = np.array([4.0, 8.0, 13.0])
+    _LR_X[f"{_family}[zi]"] = np.array([4.0, 8.0, 13.0])
+_LR_NIGHTLY = {"NegativeBinomial", "ExpoWeibull"} | {
+    f"{family}[{variant}]"
+    for family in ("Exponential", "Gamma", "LogNormal")
+    for variant in ("offset", "lfp", "zi")
+}
 # The regression models' likelihood-ratio bounds (#583), swept on one
 # case of each kind of covariate link, at two times (with the case's
 # first two covariate rows): a multiplier on the hazard, on the time, on
@@ -1165,15 +1246,23 @@ def _parametric_bounds(case):
                 in_range=case.name != "Beta4",
                 label="mean_cb[wald]",
             ),
+            # The mean residual life at the case's query times (#825)
+            Bound(
+                "mrl_cb",
+                point="mrl",
+                kwargs={"method": "wald"},
+                in_range=case.name != "Beta4",
+                nan_ok=True,
+                label="mrl_cb[wald]",
+            ),
         ]
     # The likelihood-ratio search is swept on the cases in _LR_X only.
     # The ExpoWeibull's and NegativeBinomial's sweeps (searches in
     # multi-parameter valleys, seconds each) took about ten minutes on
     # four cores, so they run with the calibration studies; the
     # other four sweep in every run, and test_likelihood_ratio_edges.py
-    # checks those two families' edges and valleys directly (#421).
-    # (Documented: it is not available for offset, limited-failure or
-    # zero-inflated models.)
+    # checks those two families' edges and valleys directly (#421). The
+    # offset, limited-failure and zero-inflated fits sweep theirs too.
     if case.name not in _LR_X:
         return tuple(out)
     x = _LR_X[case.name]
@@ -1223,6 +1312,28 @@ def _parametric_bounds(case):
                 kwargs={"method": "lr"},
                 query=((),),
                 label="mean_cb[lr]",
+                **lr,
+            )
+        )
+        if case.name in _LR_NIGHTLY and (
+            "[" in case.name or case.name == "ExpoWeibull"
+        ):
+            # (an offset, LFP or ZI variant's mean residual life is an
+            # integral at every point the searches try: 24 minutes for
+            # the offset LogNormal's sweep alone; the Weibull's, in
+            # closed form, sweeps the same path. The ExpoWeibull's is an
+            # integral too, in a three-parameter valley: one two-sided
+            # bound at one time took 414 s on four cores, so its sweep,
+            # dozens of them, ran for hours on the 17 October 2026
+            # release run.)
+            return tuple(out)
+        out.append(
+            Bound(
+                "mrl_cb",
+                point="mrl",
+                kwargs={"method": "lr"},
+                query=tuple(x[:2]),
+                label="mrl_cb[lr]",
                 **lr,
             )
         )
@@ -1529,6 +1640,8 @@ def _bounds(case):
                 rtol=1e-2,
             ),
         )
+    if cls == "JointModel":
+        return (Bound("cb", on=("sf", "ff"), kwargs=dict(JOINT_ITEM)),)
     if cls == "DestructiveDegradationModel":
         # Every call refits the model n_boot times.
         return (
@@ -1880,6 +1993,8 @@ def _starve(case):
         return lambda d: fit(_noise_free(lambda x: 0.5 * x)(d))
     if cls == "DestructiveDegradationModel":
         return lambda d: fit(_noise_free(lambda x: np.exp(4.0 - 0.02 * x))(d))
+    if cls == "JointModel":
+        return lambda d: fit(_no_event_level(d))
     return None
 
 

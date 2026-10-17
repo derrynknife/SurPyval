@@ -130,7 +130,7 @@ def check_params(
     truth = np.asarray(truth, dtype=float)
     fixed = np.isfinite(est).all(axis=0) & (np.ptp(est, axis=0) == 0)
     for k in np.flatnonzero(fixed):
-        print("{} [{}] fixed at {:.6g}".format(label, k, est[0, k]))
+        print(f"{label} [{k}] fixed at {est[0, k]:.6g}")
         assert np.isclose(
             est[0, k], truth[k], rtol=1e-9
         ), "{} [{}]: every refit gave {} against the true {}".format(
@@ -1292,6 +1292,11 @@ EXCLUDED: dict[str, str] = {
     "not be monotone, and the fixture's sf exceeds 1 (1.054 at t = 1 at "
     "the row (0, -0.8)) even where beta'Z >= 0: not a distribution to "
     "draw from",
+    "WeibullJointPH": "a lifetime with marker readings along it, which a "
+    "model draw does not give: its own study, "
+    "calibration/test_coverage_joint.py, simulates fleets with markers and "
+    "checks the parameters' bias and coverage and the dynamic-prediction "
+    "bands",
 }
 
 
@@ -1375,7 +1380,9 @@ def test_additive_hazards_random_below_zero(name):
     GumbelAH's sigma by -4.5 sd (n = 300, 40 refits)."""
     case = CASE_BY_NAME[name]
     model = reg.fitted(case)
-    row = np.array([0.0, -0.8])
+    # (0, -0.8) of the regression fixture, in the additive cases' own
+    # covariates (ah_data: 1 - z1, #828)
+    row = np.array([0.0, 1.8])
     state = np.random.get_state()
     np.random.seed(397)
     try:

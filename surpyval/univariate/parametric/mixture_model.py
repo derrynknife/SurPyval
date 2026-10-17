@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import functools
+import numbers
 import warnings
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as np
 import numpy.typing as npt
 from autograd import grad, hessian, jacobian, value_and_grad
 from autograd.scipy.special import logsumexp as ag_logsumexp
-from scipy.optimize import brentq, minimize
+from scipy.optimize import minimize
 from scipy.special import logsumexp
 from scipy.special import ndtri as z
 
@@ -25,7 +27,6 @@ from surpyval.univariate.information_criteria import (
 from surpyval.univariate.parametric.fitters import OPTIMUM_GTOL
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
-from surpyval.utils.deprecation import MadePrivate
 from surpyval.utils.linalg import (
     bound_signs,
     safe_inv,
@@ -42,12 +43,14 @@ from surpyval.utils.no_maximum import (
 )
 from surpyval.utils.removed_names import (
     MIXTURE_EM_ATTRIBUTES,
+    RemovedName,
     removed_arguments,
     removed_attributes,
 )
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
-from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
+from surpyval.utils.units import axis_label, takes_unit
 from surpyval.utils.validation import (
     BOUNDS,
     CB_ON,
@@ -148,9 +151,12 @@ class _FitMethod:
             )
 
         # Keep the docstring but show this signature (with ``dist`` and
-        # ``m``), not the instance method's.
+        # ``m``), not the instance method's; and take ``unit=`` as every
+        # fit does (#845).
         del fit.__wrapped__
-        return fit
+        fit.__dict__.pop("__signature__", None)
+        fit.__dict__.pop("_takes_unit", None)
+        return takes_unit(accepts_surpyval_data(fit))
 
 
 class MixtureModel(
@@ -177,8 +183,8 @@ class MixtureModel(
         surpyval distribution.
 
     m : int, optional
-        The number of sub-distributions to be used in the mixture model.
-        Defaults to 2.
+        The number of sub-distributions to be used in the mixture model,
+        a whole number of at least 1. Defaults to 2.
 
     Examples
     --------
@@ -205,8 +211,13 @@ class MixtureModel(
     # The EM responsibilities (one row per component, one column per
     # observation) are internal to the fit, as the EM steps are (#605); the
     # public name ``p`` means a distribution's own parameter elsewhere, and
-    # ``lfp_p`` the limited-failure proportion (#626).
-    p = MadePrivate("_resp")
+    # ``lfp_p`` the limited-failure proportion (#626). The public name was
+    # removed in v0.25.
+    p = RemovedName(
+        "the EM responsibilities are internal to fit(); the weights are "
+        "'w'",
+        "0.25",
+    )
 
     @property
     def parameter_names(self) -> list[str]:
@@ -216,8 +227,13 @@ class MixtureModel(
         return list(self.dist.parameter_names)
 
     def __init__(self, dist: Any, m: int = 2) -> None:
-        self.m = m
-        self.dist = dist
+        if isinstance(m, bool) or not isinstance(m, numbers.Integral) or m < 1:
+            raise ValueError(
+                "'m', the number of sub-distributions in the mixture, must "
+                f"be a whole number of at least 1; got {m!r}"
+            )
+        self.m: int = m
+        self.dist: Any = dist
         # These are None until ``fit`` runs and arrays afterwards, so the
         # honest annotation is the union -- and every use is downstream of
         # a fit. Narrowing them to the fitted type would be a lie before
@@ -329,7 +345,7 @@ class MixtureModel(
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "MixtureModel":
+    def from_dict(cls, model_dict: dict) -> MixtureModel:
         """Rebuild a mixture model from a :meth:`to_dict` dictionary.
 
         The restored model evaluates the mixture (``sf``, ``ff``, ``df``,
@@ -357,6 +373,185 @@ class MixtureModel(
                 model_dict["theta_covariance"], dtype=float
             )
         return out
+
+    @classmethod
+    @takes_unit
+    def from_params(
+        cls,
+        dist: Any,
+        params: npt.ArrayLike,
+        w: npt.ArrayLike | None = None,
+        *,
+        w_logits: npt.ArrayLike | None = None,
+    ) -> MixtureModel:
+        """
+        A mixture of ``dist`` built from its components' parameters and
+        weights, ready for ``sf``, ``ff``, ``df``, ``hf``, ``Hf``, ``qf``,
+        ``mean`` and ``random`` (#829).
+
+        Parameters
+        ----------
+        dist : surpyval distribution
+            The components' distribution.
+        params : array like
+            One row of ``dist``'s parameters per component, shape
+            ``(m, k)``: ``params`` as a fitted mixture holds it.
+        w : array like, optional
+            The ``m`` weights: non-negative, summing to 1.
+        w_logits : array like, optional
+            The weights as ``m - 1`` log-ratios to the last one,
+            ``log(w_j / w_{m-1})`` (or ``m`` logits of any origin), the
+            coordinates the covariance is fitted in; in place of ``w``.
+
+        Returns
+        -------
+        MixtureModel
+            A mixture built from parameters: it has no data, covariance or
+            fitted likelihood.
+
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> mm = surv.MixtureModel.from_params(
+        ...     surv.Weibull, [[10, 2], [50, 4]], [0.3, 0.7]
+        ... )
+        >>> mm.sf([5, 40]).round(4)
+        array([0.9336, 0.4647])
+        """
+        rows = np.atleast_2d(np.asarray(params, dtype=float))
+        if rows.ndim != 2 or rows.shape[1] != dist.k:
+            raise ValueError(
+                "'params' must have one row of {} parameters ({}) per "
+                "component; got shape {}".format(
+                    dist.k,
+                    ", ".join(dist.parameter_names),
+                    np.shape(params),
+                )
+            )
+        out = cls(dist=dist, m=rows.shape[0])
+        out.params, out.w = rows, out._checked_weights(w, w_logits)
+        for row in rows:
+            # Each component checked as from_params checks a distribution
+            dist.from_params(row)
+        out.maximum = "unknown"
+        return out
+
+    def with_params(
+        self,
+        params: npt.ArrayLike,
+        w: npt.ArrayLike | None = None,
+        *,
+        w_logits: npt.ArrayLike | None = None,
+    ) -> MixtureModel:
+        """
+        The same mixture -- its ``dist`` and ``m`` -- with other component
+        parameters and weights, as ``Parametric.with_params`` is for one
+        distribution (#829): for drawing a fit's parameters from its
+        covariance and propagating them, say.
+
+        Parameters
+        ----------
+        params : array like
+            The components' parameters: an ``(m, k)`` array as ``params``
+            holds them, or a flat vector in the order of
+            :attr:`covariance_names` -- each component's parameters in
+            turn, then (optionally) the ``m`` weights, as a draw from
+            :meth:`covariance` comes. (A draw there can take a weight
+            below 0, which is refused; drawn as log-ratios, ``w_logits``,
+            the weights are always valid.)
+        w : array like, optional
+            The weights, where ``params`` does not end with them. Without
+            either, the weights are kept.
+        w_logits : array like, optional
+            The weights as log-ratios to the last one (see
+            :meth:`from_params`), in place of ``w``.
+
+        Returns
+        -------
+        MixtureModel
+            A mixture built from parameters (see :meth:`from_params`).
+
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+        >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
+        >>> other = wmm.with_params(wmm.params * [1.1, 1.0], w=[0.5, 0.5])
+        >>> other.w, other.m, other.dist.name
+        (array([0.5, 0.5]), 2, 'Weibull')
+        >>> flat = list(other.params.ravel()) + list(other.w)
+        >>> bool((wmm.with_params(flat).params == other.params).all())
+        True
+        """
+        m, k = self.m, self.dist.k
+        values = np.asarray(params, dtype=float)
+        if values.ndim == 1 and values.size in (m * k, m * k + m):
+            if values.size == m * k + m:
+                if w is not None or w_logits is not None:
+                    raise ValueError(
+                        "'params' ends with the weights (it has {} "
+                        "entries, as covariance_names); give 'w' or "
+                        "'w_logits' only with the {} parameters".format(
+                            values.size, m * k
+                        )
+                    )
+                w = values[m * k :]
+            values = values[: m * k].reshape(m, k)
+        if np.shape(values) != (m, k):
+            raise ValueError(
+                "'params' must be of shape ({m}, {k}), or flat with {mk} "
+                "entries (or {mkw} with the weights, in the order of "
+                "covariance_names); got shape {got}".format(
+                    m=m, k=k, mk=m * k, mkw=m * k + m, got=np.shape(params)
+                )
+            )
+        if w is None and w_logits is None:
+            if self.w is None:
+                raise ValueError(
+                    "an unfitted mixture has no weights to keep: give 'w'"
+                )
+            w = self.w
+        return type(self).from_params(
+            self.dist, values, w, w_logits=w_logits, unit=self.unit
+        )
+
+    def _checked_weights(
+        self, w: npt.ArrayLike | None, w_logits: npt.ArrayLike | None
+    ) -> npt.NDArray:
+        """The ``m`` weights from ``w`` or ``w_logits`` (exactly one),
+        checked: non-negative and summing to 1, to rounding."""
+        m = self.m
+        if (w is None) == (w_logits is None):
+            raise ValueError("give the weights as one of 'w' or 'w_logits'")
+        if w_logits is not None:
+            logits = np.asarray(w_logits, dtype=float).ravel()
+            if logits.size == m - 1:
+                logits = np.append(logits, 0.0)
+            if logits.size != m or not np.all(np.isfinite(logits)):
+                raise ValueError(
+                    "'w_logits' must be {} finite log-ratios to the last "
+                    "weight (or {} logits); got {}".format(
+                        m - 1, m, np.asarray(w_logits).tolist()
+                    )
+                )
+            return np.exp(logits - logsumexp(logits))
+        weights = np.asarray(w, dtype=float).ravel()
+        if (
+            weights.size != m
+            or not np.all(np.isfinite(weights))
+            or np.any(weights < 0)
+            or abs(weights.sum() - 1.0) > 1e-9
+        ):
+            raise ValueError(
+                "'w' must be {} non-negative weights summing to 1; got "
+                "{}".format(m, np.asarray(w).tolist())
+            )
+        # Weights that already sum to 1 to rounding are kept as they are,
+        # so with_params(...) keeps a fitted model's weights bit for bit:
+        # dividing by a sum one ulp off 1 moves each by an ulp.
+        if abs(weights.sum() - 1.0) <= 8 * m * np.finfo(float).eps:
+            return weights.copy()
+        return weights / weights.sum()
 
     def __repr__(self) -> str:
         if self.params is not None:
@@ -651,7 +846,7 @@ class MixtureModel(
                 res = minimize(self._Q, x0, bounds=bounds)
         self.params = res.x.reshape(self.m, self.dist.k)
 
-    def _Q_jac(self) -> "Callable[..., Any] | None":
+    def _Q_jac(self) -> Callable[..., Any] | None:
         """The gradient of :meth:`_Q` by autograd, or ``None`` (finite
         differences) for a distribution autograd cannot differentiate."""
         # Kept for the fit in progress (``fit`` drops it: a closure would
@@ -700,7 +895,7 @@ class MixtureModel(
 
     def _em(
         self, tol: float = 1e-10, max_iter: int = 1000, budget: int = 20
-    ) -> "str | None":
+    ) -> str | None:
         """Fit by EM, polished by direct maximum likelihood (#506).
 
         EM moves linearly, and on a censored mixture it can crawl along a
@@ -774,7 +969,7 @@ class MixtureModel(
         margin = 1e-6 * float(np.sum(self.data.n)) if end[0] else 0.0
         return end[1] < best[1] - margin
 
-    def _failure_split_start(self) -> "tuple[npt.NDArray, Any] | None":
+    def _failure_split_start(self) -> tuple[npt.NDArray, Any] | None:
         """A second EM start (#582): the failures, by count, cut into
         ``m`` consecutive blocks, each component fitted to one block, and
         every survivor (right-censored row) given to the last.
@@ -1014,6 +1209,8 @@ class MixtureModel(
         self.w = np.ones(shape=(self.m)) / self.m
 
     @_FitMethod
+    @takes_unit
+    @accepts_surpyval_data
     def fit(
         self,
         x: npt.ArrayLike | None = None,
@@ -1667,22 +1864,70 @@ class MixtureModel(
         ok = ~outside & ~np.isnan(u)
         q = np.where(ok & (u == 0), lo, q)
         q = np.where(ok & (u == 1), hi, q)
-        discrete = getattr(self.dist, "discrete", False)
-        for i in np.flatnonzero(ok & (u > 0) & (u < 1)):
-            a, b, target = float(lo[i]), float(hi[i]), float(u[i])
-            if discrete:
-                q[i] = self._discrete_quantile(target, a, b)
-            elif a == b:
-                q[i] = a
-            else:
-                q[i] = brentq(
-                    lambda t: float(self.ff(t)) - target,
-                    a,
-                    b,
-                    xtol=1e-14 * max(1.0, abs(a)),
-                    rtol=4 * np.finfo(float).eps,
+        inner = np.flatnonzero(ok & (u > 0) & (u < 1))
+        if getattr(self.dist, "discrete", False):
+            for i in inner:
+                q[i] = self._discrete_quantile(
+                    float(u[i]), float(lo[i]), float(hi[i])
                 )
+        elif inner.size:
+            q[inner] = self._invert_ff(u[inner], lo[inner], hi[inner])
         return q
+
+    def _invert_ff(self, u: Any, a: Any, b: Any) -> Any:
+        """The continuous mixture's quantiles at ``u`` (1-d, in (0, 1)),
+        each in its bracket ``[a, b]`` of the components' quantiles.
+
+        All of them at once: Newton steps with the density, a step that
+        leaves the bracket replaced by bisection (geometric where the
+        bracket is positive, so a wide one closes in relative terms), and
+        the bracket tightened by the sign of each residual (#821). Above
+        ``u = 1/2`` the residual is ``s - sf(t)`` with ``s = 1 - u``, which
+        is exact there (Sterbenz) and keeps every digit of a small
+        survival, where ``ff(t) - u`` would keep only those of 1 - 1e-16
+        (the precision ``sf`` itself gained in #671); below it, ``ff(t) -
+        u``, precise for a small ``u``."""
+        u = np.asarray(u, float)
+        a, b = np.array(a, float), np.array(b, float)
+        upper = u > 0.5
+        s = np.where(upper, 1.0 - u, u)
+        eps = np.finfo(float).eps
+
+        def middle(a: Any, b: Any) -> Any:
+            with np.errstate(all="ignore"):
+                return np.where(a > 0, np.sqrt(a * b), 0.5 * (a + b))
+
+        t = middle(a, b)
+        active = a < b
+        with np.errstate(all="ignore"):
+            for _ in range(200):
+                idx = np.flatnonzero(active)
+                if idx.size == 0:
+                    break
+                ti, up = t[idx], upper[idx]
+                resid = np.empty(idx.size)
+                if up.any():
+                    resid[up] = s[idx][up] - np.asarray(self.sf(ti[up]), float)
+                if (~up).any():
+                    resid[~up] = (
+                        np.asarray(self.ff(ti[~up]), float) - s[idx][~up]
+                    )
+                ai = np.where(resid < 0, ti, a[idx])
+                bi = np.where(resid > 0, ti, b[idx])
+                a[idx], b[idx] = ai, bi
+                step = resid / np.asarray(self.df(ti), float)
+                tn = ti - step
+                bad = ~np.isfinite(tn) | (tn <= ai) | (tn >= bi)
+                tn = np.where(bad, middle(ai, bi), tn)
+                tol = 2 * eps * np.maximum(np.abs(ti), np.finfo(float).tiny)
+                done = (
+                    (resid == 0)
+                    | (np.abs(tn - ti) <= tol)
+                    | (bi - ai <= 2 * eps * np.abs(bi))
+                )
+                t[idx] = np.where(resid == 0, ti, tn)
+                active[idx[done]] = False
+        return t
 
     def _discrete_quantile(self, target: float, a: float, b: float) -> float:
         """The smallest integer ``k`` in ``[a, b]`` with ``ff(k) >=
@@ -1836,7 +2081,7 @@ class MixtureModel(
         return standard_errors_of(self.covariance())
 
     @staticmethod
-    def _check_wald(method: "str | None", bound: str) -> None:
+    def _check_wald(method: str | None, bound: str) -> None:
         """A mixture has Wald bounds only."""
         if method is not None:
             check_option(
@@ -1852,7 +2097,7 @@ class MixtureModel(
         name: str,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
-        method: "str | None" = None,
+        method: str | None = None,
     ) -> npt.NDArray:
         """
         The Wald confidence bound on one component's parameter or weight.
@@ -1900,8 +2145,8 @@ class MixtureModel(
             raise option_error("name", name, names)
         idx = names.index(name)
         n_params = self.m * self.dist.k
-        lower: "float | None"
-        upper: "float | None"
+        lower: float | None
+        upper: float | None
         if idx < n_params:
             p_hat = float(np.ravel(self.params)[idx])
             lower, upper = self.dist.bounds[idx % self.dist.k]
@@ -2300,7 +2545,7 @@ class MixtureModel(
         ax: Any = None,
         show_censored: bool = False,
         color: Any = None,
-        label: "str | None" = None,
+        label: str | None = None,
         **kwargs: Any,
     ) -> Axes:
         """
@@ -2379,6 +2624,7 @@ class MixtureModel(
             show_censored=show_censored,
             color=color,
             label=label,
+            xlabel=axis_label(self.unit),
             **kwargs,
         )
 

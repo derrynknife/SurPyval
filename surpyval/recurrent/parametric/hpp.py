@@ -19,11 +19,16 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
 from surpyval.univariate.parametric.fitters import is_local_minimum
+from surpyval.utils.event_history_data import (
+    EventHistoryData,
+    accepts_event_history_data,
+    refuses_unmodelled_data,
+)
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.pickling import Rebuilt
-from surpyval.utils.recurrent_event_data import RecurrentEventData
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
+from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
 
 
@@ -173,7 +178,7 @@ class HPP(CountingProcess):
         """
         return np.array(cif) / rate
 
-    def create_negll_func(self, data: RecurrentEventData) -> Callable:
+    def create_negll_func(self, data: EventHistoryData) -> Callable:
         # The pieces of the NHPP likelihood (#350): per censoring type, the
         # times and previous times, and the right-truncation window close.
         s = data.split_for_nhpp_likelihood()
@@ -186,10 +191,10 @@ class HPP(CountingProcess):
         len_observed = len(s["x_o"])
         observed_time = (s["x_o_prev"] - s["x_o"]).sum()
         right_censored_time = (s["x_right_prev"] - s["x_right"]).sum()
-        # Right window-close: extend the integral to each item's finite
-        # right-truncation time tr, cif(x_last) - cif(tr) = rate * (x_last
-        # - tr). Empty / zero when no item carries a finite tr.
-        right_truncation_time = (s["x_close_last"] - s["x_close_tr"]).sum()
+        # Right truncation (#924): the windows over which each truncated
+        # item is known to have failed (it is in the data because of it).
+        selection_time = s["sel_to"] - s["sel_from"]
+        gap_time = s["gap_to"] - s["gap_from"]
 
         # A left-censored count covers the item's window from its entry
         # (its first row, so the previous time is the entry: ``tl``, or
@@ -212,7 +217,8 @@ class HPP(CountingProcess):
             rate = anp.exp(log_rate)
             ll = len_observed * log_rate + rate * observed_time
             ll += rate * right_censored_time
-            ll += rate * right_truncation_time
+            ll -= anp.sum(anp.log(-anp.expm1(-rate * selection_time)))
+            ll += anp.sum(anp.log(-anp.expm1(-rate * gap_time)))
             ll += (
                 log_rate * n_left_sum
                 + n_log_x_left_sum
@@ -230,9 +236,10 @@ class HPP(CountingProcess):
 
         return negll_func
 
+    @refuses_unmodelled_data
     def fit_from_recurrent_data(
         self,
-        data: RecurrentEventData,
+        data: EventHistoryData,
         how: str = "MLE",
         init: "ArrayLike | None" = None,
     ) -> Any:
@@ -241,7 +248,7 @@ class HPP(CountingProcess):
 
         Parameters
         ----------
-        data : RecurrentEventData
+        data : EventHistoryData
             The recurrent event data, as built by ``surpyval.handle_xicn``.
             :meth:`fit` builds one from its arrays and calls this.
         how : str, optional
@@ -319,6 +326,8 @@ class HPP(CountingProcess):
 
         return out
 
+    @takes_unit
+    @accepts_event_history_data
     def fit(
         self,
         x: ArrayLike,
@@ -357,8 +366,10 @@ class HPP(CountingProcess):
             (N, 2) array of [left, right] truncation bounds per observation.
         tl : array_like or scalar, optional
             Left truncation (delayed entry) time of each item: a scalar for
-            every item, or one value per row (the same on every row of an
-            item).
+            every item, one value per row (the same on every row of an
+            item), or one value per item, in the sorted order of the item
+            ids (``np.unique(i)``; read per row when there are as many rows
+            as items).
         tr : array_like or scalar, optional
             Right truncation time of each item, given like ``tl``; the
             observation window closes there, as a ``c=1`` row would close it.
@@ -402,6 +413,7 @@ class HPP(CountingProcess):
         )
         return self.fit_from_recurrent_data(data, init=init)
 
+    @takes_unit
     def from_params(self, params: ArrayLike) -> ParametricRecurrenceModel:
         """
         Create an HPP model from a known rate, without fitting.

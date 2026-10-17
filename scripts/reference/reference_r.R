@@ -73,6 +73,12 @@ pc <- fx$prediction_continuous
 pc_d <- as.data.frame(pc$columns)
 pc_d$status <- 1 - pc_d$c
 pc_S <- pc$survival
+vet_d <- fixture("veteran")
+vet_d$smallcell <- as.numeric(vet_d$celltype == 2)
+vet_d$adeno <- as.numeric(vet_d$celltype == 3)
+vet_d$large <- as.numeric(vet_d$celltype == 4)
+pv_d <- fixture("ph_violation")
+pv_d$status <- 1 - pv_d$c
 
 # The classic data sets must be R's own copies.
 stopifnot(
@@ -98,7 +104,17 @@ stopifnot(
     isTRUE(all.equal(heart_d$year, survival::heart$year)),
     isTRUE(all.equal(heart_d$surgery, survival::heart$surgery)),
     isTRUE(all.equal(heart_d$transplant,
-                     as.numeric(as.character(survival::heart$transplant))))
+                     as.numeric(as.character(survival::heart$transplant)))),
+    isTRUE(all.equal(vet_d$time, survival::veteran$time)),
+    isTRUE(all.equal(vet_d$status, survival::veteran$status)),
+    isTRUE(all.equal(vet_d$trt, survival::veteran$trt)),
+    isTRUE(all.equal(vet_d$celltype, as.integer(survival::veteran$celltype))),
+    isTRUE(all.equal(levels(survival::veteran$celltype),
+                     c("squamous", "smallcell", "adeno", "large"))),
+    isTRUE(all.equal(vet_d$karno, survival::veteran$karno)),
+    isTRUE(all.equal(vet_d$diagtime, survival::veteran$diagtime)),
+    isTRUE(all.equal(vet_d$age, survival::veteran$age)),
+    isTRUE(all.equal(vet_d$prior, survival::veteran$prior))
 )
 
 # ---------------------------------------------------------------------------
@@ -542,6 +558,67 @@ record("survival", "po_frailty_ties", "ties", "survival",
              "data = po_ties, ties = 'breslow', control =",
              po_control, ")"),
        po_settings, po_values)
+
+# ---------------------------------------------------------------------------
+# survival: the proportional-hazards test cox.zph and the score test of an
+# added square, for the Cox diagnostics (#868).
+# ---------------------------------------------------------------------------
+# cox.zph (survival 3.0 and later) is the score test of adding Z * g(t),
+# per term and GLOBAL, on the km (1 - S(t-)) and rank scales. Every
+# covariate here is its own term, so the per-term rows are per column.
+# The functional-form check is the score test of adding a covariate's
+# square at the fitted coefficients: coxph started at them with the new
+# coefficient 0 and no iterations reports it as $score.
+zph_values <- function(squares, residuals = FALSE) function(fit) {
+    out <- list()
+    for (tr in c("km", "rank")) {
+        z <- cox.zph(fit, transform = tr)
+        out[[paste0(tr, "_chisq")]] <- unname(z$table[, "chisq"])
+        out[[paste0(tr, "_df")]] <- unname(z$table[, "df"])
+        out[[paste0(tr, "_p")]] <- unname(z$table[, "p"])
+        if (residuals && tr == "km") {
+            # The scaled Schoenfeld residuals and the km-scale times
+            out$km_time <- z$time
+            out$km_x <- z$x
+            out$km_y <- unname(z$y)
+        }
+    }
+    out$rows <- rownames(z$table)
+    for (v in squares) {
+        g <- update(fit, as.formula(sprintf(". ~ . + I(%s^2)", v)),
+                    init = c(coef(fit), 0),
+                    control = coxph.control(iter.max = 0))
+        out[[paste0("square_", v)]] <- unname(g$score)
+    }
+    out
+}
+zph_settings <- function(ties, extra = list()) c(
+    list(ties = ties,
+         transform = paste("km: 1 - S(t-), the left-continuous Kaplan-Meier",
+                           "of all the rows; rank: rank(time) of all the rows"),
+         squares = paste("update(fit, . ~ . + I(v^2), init = c(coef(fit), 0),",
+                         "control = coxph.control(iter.max = 0))$score")),
+    extra
+)
+for (ties in c("breslow", "efron")) {
+    record("survival", paste0("zph_lung_", ties), "lung", "survival",
+           sprintf(paste("coxph(Surv(time, status) ~ age + sex + ph_ecog,",
+                         "data = lung_d, ties = '%s')"), ties),
+           zph_settings(ties, list(missing = "the one row with ph.ecog missing is dropped (na.omit)")),
+           zph_values(c("age", "ph_ecog"), residuals = ties == "efron"))
+    record("survival", paste0("zph_ph_violation_", ties), "ph_violation",
+           "survival",
+           sprintf(paste("coxph(Surv(tl, x, status) ~ z1 + z2 + z3,",
+                         "data = pv_d, ties = '%s')"), ties),
+           zph_settings(ties, list(form = "delayed entry (counting process)")),
+           zph_values(c("z2", "z3")))
+}
+record("survival", "zph_veteran_efron", "veteran", "survival",
+       paste("coxph(Surv(time, status) ~ trt + karno + diagtime + age +",
+             "prior + smallcell + adeno + large, data = vet_d,",
+             "ties = 'efron')"),
+       zph_settings("efron", list(celltype = "dummies smallcell, adeno, large (squamous the reference)")),
+       zph_values(c("karno", "age")))
 
 # ---------------------------------------------------------------------------
 # Write.

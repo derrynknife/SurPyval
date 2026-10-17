@@ -14,7 +14,9 @@ partial likelihood an approximation to the grouped-data likelihood, Efron's
 being the better one, and a small attenuation towards zero is expected.
 """
 
+import os
 import warnings
+from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 import pytest
@@ -222,6 +224,23 @@ def test_583_cb_coverage_at_an_extrapolated_use_condition():
     check_coverage(lr[:, 0], lr[:, 1], truth, 0.90, "#583 use, LR")
 
 
+def _617_bootstrap_bounds(job):
+    # One repetition of the #617 study: refit the drawn data set, then the
+    # BCa bootstrap bound at the use condition, with the repetition's seed.
+    r, (x, c, Z), x_use, z_use = job
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = sp.WeibullAFT.fit(x, Z=_alt_terms(Z), c=c)
+        return model.cb(
+            x_use,
+            _alt_terms(z_use),
+            alpha_ci=0.1,
+            method="bootstrap",
+            n_boot=200,
+            random_state=r,
+        )
+
+
 def test_617_cb_bootstrap_coverage_at_an_extrapolated_use_condition():
     # The parametric bootstrap (BCa) bound of the same quantity on the
     # same test (46 failures on average). A study of 1000 repetitions with
@@ -230,26 +249,18 @@ def test_617_cb_bootstrap_coverage_at_an_extrapolated_use_condition():
     # same refits), the BCa interval's misses balanced (0.048 below, 0.049
     # above) where the percentile interval's were not (0.035 and 0.099).
     # Each repetition here refits 200 resamples: a smaller check of the
-    # same, about 40 minutes on one core.
+    # same, about 40 minutes on one core (54 on a CI runner). The data
+    # sets are drawn in order from the one stream, and each bootstrap has
+    # its own seed, so the repetitions run in parallel, on every core, with
+    # the same numbers as one after another.
     rng = np.random.default_rng(617)
     x_use, z_use = 5 * 8760.0, np.array([[318.15, 400.0]])
     life = _ALT_C * np.exp(_ALT_A / z_use[0, 0]) * z_use[0, 1] ** -3.0
     truth = np.exp(-((x_use / life) ** 2.2))
     reps = 200
-    boot = np.empty((reps, 2))
-    for r in range(reps):
-        x, c, Z = _alt_sample(rng)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            model = sp.WeibullAFT.fit(x, Z=_alt_terms(Z), c=c)
-            boot[r] = model.cb(
-                x_use,
-                _alt_terms(z_use),
-                alpha_ci=0.1,
-                method="bootstrap",
-                n_boot=200,
-                random_state=r,
-            )
+    jobs = [(r, _alt_sample(rng), x_use, z_use) for r in range(reps)]
+    with ProcessPoolExecutor(max_workers=os.cpu_count()) as pool:
+        boot = np.array(list(pool.map(_617_bootstrap_bounds, jobs)))
     check_coverage(
         boot[:, 0], boot[:, 1], truth, 0.90, "#617 use, bootstrap (BCa)"
     )

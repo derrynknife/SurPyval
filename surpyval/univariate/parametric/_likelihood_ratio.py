@@ -338,6 +338,21 @@ def central_gradient(
     return grad
 
 
+def central_jacobian(
+    f: Callable[..., Any], u: npt.NDArray, rel_step: float = 1e-6
+) -> npt.NDArray:
+    """Central-difference Jacobian of the vector function ``f`` at ``u``
+    (one row per entry of ``f``), in steps as ``central_gradient``'s."""
+    cols = []
+    for j in range(len(u)):
+        h = rel_step * max(1.0, abs(u[j]))
+        up, down = np.array(u, dtype=float), np.array(u, dtype=float)
+        up[j] += h
+        down[j] -= h
+        cols.append((np.asarray(f(up)) - np.asarray(f(down))) / (2 * h))
+    return np.column_stack(cols)
+
+
 def _wald_sd(model: Any, coords: list[_LRCoord], free: list[int]) -> Any:
     """The Wald standard errors of the core parameters ``free`` in their
     search coordinates, or ``None`` without a usable covariance.
@@ -516,6 +531,42 @@ class _PsiBoundSearch:
         # The most extreme answer that has checked out on each side
         # (``checks_out``)
         self.checked: dict[float, float] = {}
+        # Where the likelihood itself has a limit inside the parameters'
+        # box -- an additive hazards model's support (#828) -- a vector
+        # function of theta that is >= 0 there; the region is cut off
+        # where it is not (#837).
+        support = getattr(model, "_lr_support", None)
+        self.support: Callable[[npt.NDArray], npt.NDArray] | None = (
+            support() if support is not None else None
+        )
+
+    def support_constraints(
+        self, to_u: Callable[[npt.NDArray], npt.NDArray]
+    ) -> list[dict]:
+        """``support`` as SLSQP's inequality constraints in the
+        coordinates ``z`` of a search (``u = to_u(z)``), or none.
+
+        Without them a search stepped from inside the support to where the
+        likelihood is not defined (an infinite deviance) and stopped where
+        it happened to, so a 99% bound came out inside a 95% one (#837);
+        held to them, it ends on the edge of the support where the region
+        reaches it."""
+        support = self.support
+        if support is None:
+            return []
+
+        def fun(z: npt.NDArray) -> npt.NDArray:
+            with np.errstate(all="ignore"):
+                v = np.asarray(support(self.theta_of(to_u(z))), dtype=float)
+            return np.where(np.isfinite(v), v, -1.0)
+
+        return [
+            {
+                "type": "ineq",
+                "fun": fun,
+                "jac": lambda z: central_jacobian(fun, z, self.fd_step),
+            }
+        ]
 
     # -- the functions of the search coordinates --------------------------
     def theta_of(self, u: npt.NDArray) -> npt.NDArray:
@@ -686,7 +737,12 @@ class _PsiBoundSearch:
                         method="SLSQP",
                         jac=lambda z: central_gradient(nll_z, z),
                         bounds=_scaled_bounds(self.bounds, origin, scale),
-                        constraints=[constraint],
+                        constraints=[
+                            constraint,
+                            *self.support_constraints(
+                                lambda z: origin + scale * z
+                            ),
+                        ],
                         options={"ftol": 1e-10, "maxiter": 60},
                     )
                 except (ValueError, np.linalg.LinAlgError):
@@ -793,7 +849,8 @@ class _PsiBoundSearch:
                         "type": "ineq",
                         "fun": lambda z: c * (level - g(z)),
                         "jac": lambda z: -c * g_jac(z),
-                    }
+                    },
+                    *self.support_constraints(to_u),
                 ],
                 options={"ftol": 1e-10, "maxiter": 100},
             )
@@ -1047,16 +1104,27 @@ class _PsiBoundSearch:
         # against its boundary's minimum, found by brute force).
         end = self.reached[-1][1]
         if self.dev_u(end) > crit:
-            ray = end - u_hat
-            r = brentq(
-                lambda r: self.dev_u(u_hat + r * ray) - crit,
-                0.0,
-                1.0,
-                xtol=1e-14,
-                rtol=1e-14,
-            )
-            quick = self.psi_u(u_hat + r * ray)
-            self.known[-1] = (quick, u_hat + r * ray)
+            if self.support is None:
+                ray = end - u_hat
+                r = brentq(
+                    lambda r: self.dev_u(u_hat + r * ray) - crit,
+                    0.0,
+                    1.0,
+                    xtol=1e-14,
+                    rtol=1e-14,
+                )
+                point: npt.NDArray | None = u_hat + r * ray
+            else:
+                # The support is not convex in the search coordinates:
+                # the line back to the estimate can leave it, where the
+                # deviance jumps to inf, and brentq took that edge for the
+                # region's -- a 99% bound inside the 95% one (#837). The
+                # nearest point of the region instead, or the answer as
+                # ``direct`` allowed it.
+                point = self.back_onto_boundary(end, crit)
+            if point is not None:
+                quick = self.psi_u(point)
+                self.known[-1] = (quick, point)
         far = max(direction * k[0] for k in self.known)
         slack = 1e-9 * max(1.0, abs(top_psi))
         if direction * quick >= max(far, direction * top_psi - slack):
@@ -1456,6 +1524,7 @@ class LikelihoodRatioMixin:
 
         def _resolve_param_name(self, name: str) -> tuple[bool, int]: ...
         def _ensure_surv_data(self) -> None: ...
+        def _no_bounds_error(self) -> ValueError: ...
         def _is_fixed_param(self, name: str) -> bool: ...
         def _user_fixed_idx(self) -> set: ...
         def _summary_scale(self, zero_floor: bool = False) -> tuple: ...
@@ -1469,6 +1538,35 @@ class LikelihoodRatioMixin:
         return {
             k: v for k, v in self.__dict__.items() if not k.startswith("_lr_")
         }
+
+    def _lr_support(self) -> "Callable[[npt.NDArray], npt.NDArray] | None":
+        """A vector function of the core parameters that is ``>= 0`` where
+        the likelihood is defined, for a likelihood with a limit inside
+        the parameters' box (``_PsiBoundSearch.support``); ``None`` for
+        none, as for every univariate model."""
+        return None
+
+    def _lr_extended(self) -> Any:
+        """The searches over every fitted parameter of an offset,
+        limited-failure or zero-inflated model
+        (``ExtendedLikelihoodRatio``), kept; ``None`` for a model with
+        none of the three, whose searches are its own."""
+        if not (self.offset or self.lfp or self.zi):
+            return None
+        from ._likelihood_ratio_extended import ExtendedLikelihoodRatio
+
+        key = (
+            np.asarray(self.params, dtype=float).tobytes(),
+            float(self.gamma),
+            float(self.lfp_p),
+            float(self.f0),
+            id(self.surv_data),
+        )
+        kept = self.__dict__.get("_lr_extended_search")
+        if kept is None or kept[0] != key:
+            kept = (key, ExtendedLikelihoodRatio(self))
+            self.__dict__["_lr_extended_search"] = kept
+        return kept[1]
 
     def _lr_neg_ll(self, theta: npt.NDArray) -> float:
         """The negative log-likelihood at core parameters ``theta``, as
@@ -1712,10 +1810,10 @@ class LikelihoodRatioMixin:
         of 49 and 42 where they are 3.9 and 0.29 (#421).
 
         ``nan`` if every search fails; ``inf`` where the likelihood is 0
-        from every start. ``gamma``, ``f0`` and ``p`` are held at their
-        fitted values -- likelihood-ratio bounds for offset / LFP / ZI models
-        are not yet supported, so the public entry point rejects them before
-        this is reached.
+        from every start. ``theta`` is the vector the searches move: the
+        core parameters of a plain model, and every fitted parameter of an
+        offset, limited-failure or zero-inflated one
+        (``ExtendedLikelihoodRatio``).
         """
         theta = np.array(self.params, dtype=float)
         theta[idx] = value
@@ -1834,27 +1932,26 @@ class LikelihoodRatioMixin:
         observation) reached first is the bound.
         """
         if self.method != "MLE":
-            raise ValueError("Only MLE has confidence bounds")
+            raise self._no_bounds_error()
         self._ensure_surv_data()
-        if self.offset or self.lfp or self.zi:
-            raise NotImplementedError(
-                "Likelihood-ratio bounds are not yet available for offset, "
-                "limited-failure-population or zero-inflated models; use "
-                "method='wald'."
-            )
-        is_core, idx = self._resolve_param_name(name)
-        if not is_core:
-            raise NotImplementedError(
-                "Likelihood-ratio bounds on 'p' / 'f0' are not yet "
-                "available; use method='wald'."
-            )
+        extended = self._lr_extended()
+        if extended is not None and name in self.param_map:
+            # Every parameter of an offset, limited-failure or
+            # zero-inflated model, the extra ones among them, by its
+            # position in ``param_map``
+            idx = self.param_map[name]
+        else:
+            # (a name the model does not have raises here, naming those
+            # it has)
+            _, idx = self._resolve_param_name(name)
+        searches = self if extended is None else extended
 
         check_option("bound", bound, BOUNDS)
         if self._is_fixed_param(name):
             # A parameter fixed at fit time is known, not estimated: the
             # degenerate interval at its value, as the Wald method gives
             # (its variance is zero).
-            value = float(self.params[idx])
+            value = float(searches.params[idx])
             if bound == "two-sided":
                 return np.array([value, value])
             return np.array([value])
@@ -1864,7 +1961,7 @@ class LikelihoodRatioMixin:
             crit = z(1.0 - alpha_ci) ** 2
 
         def solve_side(direction: Any) -> Any:
-            value = self._lr_param_side(idx, crit, direction)
+            value = searches._lr_param_side(idx, crit, direction)
             if np.isnan(value):
                 # Never fall back on the last candidate or the estimate:
                 # an unfound bound is reported as such.
@@ -1930,8 +2027,10 @@ class LikelihoodRatioMixin:
         coord = coords[idx]
         w_hat = float(np.clip(coord.to_u(theta_hat), *coord.ends))
         # The first step: the standard error in the search coordinate.
-        with np.errstate(all="ignore"):
-            step = se / coord.slope(theta_hat)
+        slope = coord.slope(theta_hat)
+        # (0 for an estimate on the edge of its space: an offset fit run
+        # onto the first failure)
+        step = se / slope if slope != 0 else np.nan
         if not (np.isfinite(step) and step > 0):
             step = 1.0
 
@@ -1957,8 +2056,22 @@ class LikelihoodRatioMixin:
         else:
             value = np.nan
         cache[key] = value
-        # The points the walk solved inside the region, for the band's
-        # searches to start from (see ``_cb_lr``).
+        self._lr_keep_points(idx, key, coord, path, crit, nll_hat)
+        return value
+
+    def _lr_keep_points(
+        self,
+        idx: int,
+        key: tuple,
+        coord: _LRCoord,
+        path: _LRPath,
+        crit: float,
+        nll_hat: float,
+    ) -> None:
+        """Keep the points the walk on parameter ``idx`` solved inside the
+        region (``path``, under the side's ``key``), for the band's
+        searches to start from (see ``_cb_lr``)."""
+        coords, _ = self._lr_coords()
         user_fixed = self._user_fixed_idx()
         free = [
             j
@@ -1973,7 +2086,6 @@ class LikelihoodRatioMixin:
                 theta[free] = [coords[j].from_u(v) for j, v in zip(free, u_i)]
                 points.append(theta)
         self.__dict__.setdefault("_lr_points", {})[key] = points
-        return value
 
     def _summary_cb_lr(
         self,
@@ -1981,18 +2093,18 @@ class LikelihoodRatioMixin:
         alpha_ci: float,
         bound: str,
         what: str,
+        scale: tuple | None = None,
     ) -> npt.NDArray:
         """Likelihood-ratio bounds on the functions ``fns`` of the core
         parameters (a quantile, the mean): the extreme of each over the
         parameters' likelihood region, searched as ``_cb_lr`` searches for
-        a function of time, on the scale of ``_summary_scale``."""
+        a function of time, on the scale of ``_summary_scale`` (or the
+        ``scale`` given, in its form: the log for the mean residual
+        life)."""
         self._ensure_surv_data()
-        if self.offset or self.lfp or self.zi:
-            raise NotImplementedError(
-                "Likelihood-ratio confidence bounds are not yet available "
-                "for offset, limited-failure-population or zero-inflated "
-                "models; use method='wald'."
-            )
+        extended = self._lr_extended()
+        if extended is not None:
+            return extended._summary_cb_lr(fns, alpha_ci, bound, what, scale)
         if bound == "two-sided":
             crit = z(1.0 - alpha_ci / 2.0) ** 2
         else:
@@ -2023,7 +2135,9 @@ class LikelihoodRatioMixin:
             if band is not None:
                 return band
 
-        to_psi_, to_value, _, ends = self._summary_scale()
+        to_psi_, to_value, _, ends = (
+            self._summary_scale() if scale is None else scale
+        )
 
         def to_psi(v: Any) -> float:
             return float(to_psi_(v))
@@ -2077,18 +2191,12 @@ class LikelihoodRatioMixin:
         to the edge of the likelihood region.
         """
         check_option("on", on, CB_ON)
+        name = {"R": "sf", "F": "ff"}.get(on, on)
+        f = self._lr_function(name)
 
         def g(t: Any, theta: npt.NDArray) -> Any:
             xt = np.atleast_1d(t) - self.gamma
-            if on in ("sf", "R"):
-                return self.dist.sf(xt, *theta)[0]
-            if on in ("ff", "F"):
-                return self.dist.ff(xt, *theta)[0]
-            if on == "Hf":
-                return self.dist.Hf(xt, *theta)[0]
-            if on == "hf":
-                return self.dist.hf(xt, *theta)[0]
-            return self.dist.df(xt, *theta)[0]
+            return f(xt, *theta)[0]
 
         return g
 
@@ -2149,12 +2257,9 @@ class LikelihoodRatioMixin:
         not be nested (#421).
         """
         self._ensure_surv_data()
-        if self.offset or self.lfp or self.zi:
-            raise NotImplementedError(
-                "Likelihood-ratio confidence bounds are not yet available "
-                "for offset, limited-failure-population or zero-inflated "
-                "models; use method='wald'."
-            )
+        extended = self._lr_extended()
+        if extended is not None:
+            return extended._cb_lr(t, on, alpha_ci, bound)
         check_option("bound", bound, BOUNDS)
         check_option("on", on, CB_ON)
 
@@ -2286,9 +2391,8 @@ class LikelihoodRatioMixin:
         times it is found on the scale of ``log Hf`` instead: the same
         extreme over the same region (the band is invariant to the scale),
         where it can be represented."""
-        H_hat = onp.asarray(
-            self.dist.Hf(t - self.gamma, *self.params), dtype=float
-        )
+        Hf = self._lr_function("Hf")
+        H_hat = onp.asarray(Hf(t - self.gamma, *self.params), dtype=float)
         edge = -_LN_TINY * (1 - 1e-6)
         reached = onp.zeros(t.shape, dtype=bool)
         for end in (lower, upper):
@@ -2302,7 +2406,6 @@ class LikelihoodRatioMixin:
         # Hf's lower and upper ends.
         want_hi = bool(onp.any(~onp.isnan(lower[idx])))
         want_lo = bool(onp.any(~onp.isnan(upper[idx])))
-        Hf = self._lr_function("Hf")
 
         def psi_of(time: Any, theta: npt.NDArray) -> float:
             return float(
@@ -2561,6 +2664,9 @@ class LikelihoodRatioMixin:
             w, dev = w_next, dev_next
         return out
 
+    #: The search for a function's bounds (``_cb_lr_psi_bounds``).
+    _psi_search_class: Any = _PsiBoundSearch
+
     #: Rays along which ``_lr_trace`` finds a two-parameter region's
     #: boundary, at angles evenly spaced in the Wald metric.
     _LR_TRACE_RAYS = 64
@@ -2744,7 +2850,7 @@ class LikelihoodRatioMixin:
         ``_PsiBoundSearch`` for the search. The sides (-1 lower, 1
         upper) whose search did not converge are added to
         ``unsettled``."""
-        search = _PsiBoundSearch(self, psi_of, free, crit, ends, box)
+        search = self._psi_search_class(self, psi_of, free, crit, ends, box)
         if hints is not None:
             search.hints = dict(hints)
         out = search.run(want_lower, want_upper, seeds, trace)
@@ -2768,21 +2874,23 @@ class LikelihoodRatioMixin:
         sweep but 0.0652 queried alone (#421). ``None`` (the general
         search is used instead) where the interval cannot be found.
         """
-        name = self.dist.parameter_names[j]
         # A one-sided bound at alpha is an end of the two-sided region at
         # 2 alpha: the same chi-squared critical value.
         level = alpha_ci if bound == "two-sided" else 2.0 * alpha_ci
         if not 0 < level < 1:
             return None
+        crit = z(1.0 - level / 2.0) ** 2
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            ends = self._param_cb_lr(name, level, "two-sided")
+            ends = np.array(
+                [self._lr_param_side(j, crit, d) for d in (-1.0, 1.0)]
+            )
         if not np.all(np.isfinite(ends)):
             return None
         lo, hi = (float(e) for e in ends)
         # The likelihood at a support edge (p = 0 or 1) is typically nan,
         # so g is evaluated just inside it, as the search is.
-        lo_b, hi_b = self.dist.bounds[j]
+        lo_b, hi_b = self._lr_declared_bounds()[j]
         lo = 1e-10 if lo_b == 0 and lo == 0 else lo
         hi = hi - 1e-10 if hi_b == 1 and hi == 1 else hi
         theta = np.array(self.params, dtype=float)

@@ -72,6 +72,7 @@ from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.removed_names import RemovedNames
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import (
     BOUNDS,
     check_alpha_ci,
@@ -1770,6 +1771,7 @@ class WienerProcess(RemovedNames):
     :class:`WienerProcessModel`)."""
 
     @classmethod
+    @takes_unit
     def fit(
         cls,
         x: npt.ArrayLike,
@@ -1824,7 +1826,9 @@ class WienerProcess(RemovedNames):
             with every unit read at time zero, the mean of those readings.
             Pass it when it is known: a healthy baseline, or ``0.0`` for a
             life measured from zero as before v0.23. It must be below
-            ``threshold``.
+            ``threshold``. The estimate can be below zero (readings that
+            start low, or a drift that overshoots the first readings); pass
+            ``y0=0.0`` for paths known to start at zero.
 
         Returns
         -------
@@ -1947,6 +1951,7 @@ class WienerProcess(RemovedNames):
         return model
 
     @classmethod
+    @takes_unit
     def fit_from_df(
         cls,
         df: pd.DataFrame,
@@ -2182,6 +2187,7 @@ class GammaProcess(RemovedNames):
     :class:`GammaProcessModel`)."""
 
     @classmethod
+    @takes_unit
     def fit(
         cls,
         x: npt.ArrayLike,
@@ -2307,7 +2313,9 @@ class GammaProcess(RemovedNames):
             stress), averaged over the units -- with every unit read at
             time zero, the mean of those readings. Pass it when it is
             known: a healthy baseline, or ``0.0`` for a life measured from
-            zero as before v0.23. It must be below ``threshold``.
+            zero as before v0.23. It must be below ``threshold``. The
+            estimate can be below zero (readings that start low); pass
+            ``y0=0.0`` for paths known to start at zero.
 
         Returns
         -------
@@ -2546,6 +2554,7 @@ class GammaProcess(RemovedNames):
         return model
 
     @classmethod
+    @takes_unit
     def fit_from_df(
         cls,
         df: pd.DataFrame,

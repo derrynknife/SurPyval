@@ -50,7 +50,8 @@ not a likelihood maximisation are excluded with the reason
 """
 
 import warnings
-from typing import Any, Callable, NamedTuple
+from collections.abc import Callable
+from typing import Any, NamedTuple
 
 import autograd.numpy as anp
 import numpy as np
@@ -85,6 +86,11 @@ OWN_WORDS = {
     "MLE Failed": "the univariate search returned its start",
     # The parametric additive hazards fit held by the positivity barrier
     "ended on the positivity boundary": "the additive hazards barrier",
+    # ... or ended on the boundary of its support, H = 0 at an observation
+    # (#828)
+    "ended on the boundary of the model's support": (
+        "the additive hazards support"
+    ),
     # An accelerated life fit with fewer stress levels than parameters
     "is not identifiable": "a ridge of accelerated life parameters",
 }
@@ -397,7 +403,7 @@ class Search(NamedTuple):
             f"{self.name} " if self.name else "",
             np.round(x, 6).tolist(),
             np.round(scale * g / self.n_obs, 8).tolist(),
-            "eigenvalues {}".format(np.round(eig / self.n_obs, 8).tolist()),
+            f"eigenvalues {np.round(eig / self.n_obs, 8).tolist()}",
         )
 
 
@@ -1118,7 +1124,26 @@ def _search_destructive(model, data):
     return [_canonical(neg_ll, params, bounds, float(x.size))]
 
 
+def _search_joint(model, data):
+    """The likelihood the joint fit searches, by the adaptive nodes placed
+    at the model's parameters, in its search space (the logs of the
+    positive parameters, the log-Cholesky factor of the spread)."""
+    if data is None:
+        return None
+    from surpyval.univariate.joint.joint_ph import search_space
+
+    f, u, n = search_space(model, **data)
+    # a coefficient in its covariate's units: the path means' shifts, then
+    # the hazard's (search order)
+    layout = model._layout
+    shifts = [(at, col) for at, _, col in layout.shift_positions()]
+    hazard = layout.hazard_positions()
+    Z = np.asarray(data["Z"], dtype=float)[:, model._kept]
+    return [Search(f, u, n).in_covariate_units(shifts + hazard, Z)]
+
+
 SEARCHES: dict[str, Callable] = {
+    "JointModel": _search_joint,
     "Parametric": _search_parametric,
     "MixtureModel": _search_mixture,
     "RoystonParmarModel": _search_royston_parmar,

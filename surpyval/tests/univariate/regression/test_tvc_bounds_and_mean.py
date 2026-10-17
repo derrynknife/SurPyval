@@ -275,15 +275,16 @@ def test_cb_below_the_support_is_the_estimate():
 
 def test_mean_tvc_additive_hazard_turning_negative():
     # h = h0 + beta z with h0 -> 0 (a Weibull shape below 1) and beta z < 0:
-    # H falls without limit, survival rises above 1, and the mean is
-    # infinite. Two warnings, both pointing here -- the negative hazard
-    # (#376) and the infinite mean -- and no raw numpy overflow.
+    # H falls without limit and survival would rise above 1 -- outside the
+    # model's support, where it is not a distribution and has no mean
+    # (#828; it returned inf). One warning, pointing here (#376), and no
+    # raw numpy overflow.
     model = _model(sp.WeibullAH, [10.0, 0.5, 0.1])
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         mean = model.mean_tvc(StepSchedule.constant([-1.0]))
-    assert mean == np.inf
+    assert np.isnan(mean)
     messages = [str(w.message) for w in caught]
-    assert len(caught) == 2, messages
-    assert all(w.filename == __file__ for w in caught), messages
-    assert "negative" in messages[0] and "not fallen to 0" in messages[1]
+    assert len(caught) == 1, messages
+    assert caught[0].filename == __file__, messages
+    assert "negative" in messages[0] and "nan" in messages[0]

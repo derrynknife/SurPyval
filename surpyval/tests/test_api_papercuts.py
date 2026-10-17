@@ -271,7 +271,16 @@ def test_signatures_show_arraylike_not_its_expansion():
 
 def test_unknown_heuristic_lists_the_heuristics():
     with pytest.raises(ValueError, match="Nelson-Aalen.*Turnbull|Median"):
-        sp.Weibull.fit(X, how="MPP", heuristic="median")
+        sp.Weibull.fit(X, how="MPP", heuristic="medium")
+
+
+def test_heuristic_is_read_whatever_its_case():
+    # As how= is (0.24 review): 'blom' is Blom's, and Benard's
+    # approximation is often spelled "Bernard".
+    for given, name in (("blom", "Blom"), ("BERNARD", "Benard")):
+        model = sp.Weibull.fit(X, how="MPP", heuristic=given)
+        expected = sp.Weibull.fit(X, how="MPP", heuristic=name)
+        assert np.allclose(model.params, expected.params)
 
 
 # -- the trend tests take the fitters' c -------------------------------------
@@ -379,9 +388,9 @@ def test_competing_risks_plots_its_cumulative_incidences():
     e = ["a", "b", "a", "b", "a", None, "a", "b"]
     model = CompetingRisks.fit(x, e, c=[0, 0, 0, 0, 0, 1, 0, 0])
     _, ax = plt.subplots()
-    model.plot(ax=ax)
+    model.plot(ax=ax, stacked=True)
     # the top of the stack is the sum of the causes' incidences (the last
-    # cause's layer; the bounds' band is drawn after the stack)
+    # cause's layer; the bounds are lines)
     top = ax.collections[1].get_paths()[0].vertices[:, 1].max()
     assert top == pytest.approx(model.cif(8, "a") + model.cif(8, "b"))
     _, ax = plt.subplots()
@@ -453,11 +462,17 @@ def test_package_has_a_docstring_and_all():
     assert not names & {"np", "Any", "TYPE_CHECKING"}
     assert len(names) == len(surpyval.__all__)
     namespace: dict = {}
-    exec("from surpyval import *", namespace)
-    for name in ("np", "Any", "TYPE_CHECKING"):
-        assert name not in namespace
-    for name in surpyval.__all__:
-        assert namespace[name] is getattr(surpyval, name)
+    with warnings.catch_warnings():
+        # The data-format functions deprecated by date are listed, with a
+        # FutureWarning (tests/utils/test_surpyval_data_api.py)
+        warnings.simplefilter("ignore", FutureWarning)
+        # and the names renamed with a deprecation (RecurrentEventData)
+        warnings.simplefilter("ignore", DeprecationWarning)
+        exec("from surpyval import *", namespace)
+        for name in ("np", "Any", "TYPE_CHECKING"):
+            assert name not in namespace
+        for name in surpyval.__all__:
+            assert namespace[name] is getattr(surpyval, name)
 
 
 @pytest.mark.parametrize(
@@ -486,3 +501,20 @@ def test_distribution_class_docstrings_have_formula_and_example(name):
     assert "Examples" in doc and ">>> " in doc
     for parameter in fitter.parameter_names:
         assert f"``{parameter}``" in doc
+
+
+# -- MixtureModel refuses an m that is not a whole number of at least 1 --
+
+
+@pytest.mark.parametrize("m", [0, -1, 2.5, True])
+def test_mixture_model_refuses_a_bad_m(m):
+    with pytest.raises(ValueError, match="whole number of at least 1"):
+        sp.MixtureModel.fit(X, dist=sp.Weibull, m=m)
+
+
+# -- from_json says a string that is not JSON was read as a file path ----
+
+
+def test_from_json_says_a_non_json_string_is_read_as_a_path():
+    with pytest.raises(FileNotFoundError, match="as a file path"):
+        sp.from_json("not json")

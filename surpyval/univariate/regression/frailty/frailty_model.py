@@ -32,6 +32,7 @@ import numpy as np
 from scipy.special import ndtri as _z
 from scipy.stats import norm
 
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -93,6 +94,7 @@ class _SharedFrailty(
     ConditionalSurvivalMixin,
     InformationCriteriaMixin,
     ConcordanceMixin,
+    DiagnoseMixin,
     SerialisableMixin,
 ):
     """What the fitted shared-frailty models have in common: the frailty
@@ -171,6 +173,12 @@ class _SharedFrailty(
                 "This model was fit with covariates; 'Z' is required."
             )
         Zp = self._covariate_rows(Z)
+        # Relative to the covariates the baseline is kept at, where a
+        # model keeps it elsewhere than Z = 0 (CoxFrailty's center=True,
+        # #794).
+        center = getattr(self, "center", None)
+        if center is not None and np.size(center):
+            Zp = Zp - np.asarray(center, dtype=float)
         # An aliased coefficient (nan, #476) is predicted with as 0.
         eta = np.exp(Zp @ np.where(np.isnan(self.beta), 0.0, self.beta))
         return eta[0] if eta.shape[0] == 1 else eta

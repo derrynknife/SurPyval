@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from surpyval import RecurrentEventData
+from surpyval import EventHistoryData
 from surpyval.recurrent import NonParametricCounting
 from surpyval.recurrent.competing_risks import CauseSpecificMCF
 
@@ -18,7 +18,7 @@ def _example_data():
 
 def test_recurrent_event_data_marks_backward_compatible():
     # No marks -> e is None, event_types empty, behaviour unchanged.
-    data = RecurrentEventData(
+    data = EventHistoryData(
         np.array([1, 2, 3, 1, 2, 3]),
         np.array([1, 1, 1, 2, 2, 2]),
         np.array([0, 0, 1, 0, 0, 1]),
@@ -32,7 +32,7 @@ def test_recurrent_event_data_marks_backward_compatible():
 
 def test_recurrent_event_data_with_marks():
     x, i, c, e = _example_data()
-    data = RecurrentEventData(x, i, c, np.ones_like(x), e)
+    data = EventHistoryData(x, i, c, np.ones_like(x), e)
     assert data.event_types == ["a", "b"]
     # slicing keeps marks aligned
     assert list(data[0:2].e) == ["a", "b"]
@@ -40,7 +40,7 @@ def test_recurrent_event_data_with_marks():
 
 def test_cause_specific_xrd_shares_risk_set():
     x, i, c, e = _example_data()
-    data = RecurrentEventData(x, i, c, np.ones_like(x), e)
+    data = EventHistoryData(x, i, c, np.ones_like(x), e)
 
     _, r_all, _ = data.to_xrd()
     xa, ra, da = data.to_cause_specific_xrd("a")
@@ -122,10 +122,12 @@ def test_cause_specific_mcf_plot_draws_bounds_on_request():
     assert len(ax.lines) == 2
     _, ax = plt.subplots()
     model.plot(ax=ax, alpha_ci=0.2)
-    # an MCF plus a [lower, upper] pair per cause
-    assert len(ax.lines) == 6
-    upper = model.models["a"].mcf_cb(model.models["a"].x, alpha_ci=0.2)
-    np.testing.assert_allclose(ax.lines[2].get_ydata(), upper[:, 1])
+    # an MCF per cause, each with its bounds as a band of its colour
+    assert len(ax.lines) == 2 and len(ax.collections) == 2
+    cb = model.models["a"].mcf_cb(model.models["a"].x, alpha_ci=0.2)
+    band = ax.collections[0].get_paths()[0].vertices[:, 1]
+    assert np.isclose(band.max(), cb[:, 1].max())
+    assert np.isclose(band.min(), cb[:, 0].min())
     plt.close("all")
 
 

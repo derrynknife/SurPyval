@@ -95,8 +95,8 @@ class StepValuedError(ValueError):
 
     Quantized, the same growth is accepted:
 
-    >>> StepSchedule.from_expression("2 * floor(t / 5)", 20)
-    StepSchedule(step, 5 segment(s), p=1)
+    >>> StepSchedule.from_expression("2 * floor(t / 5)", 10)
+    StepSchedule.from_changepoints([0.0, 5.0, 10.0], [[0.0], [2.0], [4.0]])
     """
 
 
@@ -440,18 +440,21 @@ class StepSchedule:
             raise ValueError("a schedule needs at least one segment")
         if not np.all(np.diff(edges) > 0):
             raise ValueError("edges must be strictly increasing")
-        if not np.isfinite(edges[:-1]).all():
-            raise ValueError("every edge except the last must be finite")
+        if not np.isfinite(edges[1:-1]).all() or np.isnan(edges[0]):
+            raise ValueError(
+                "every edge except the first and last must be finite (the "
+                "first may be -inf: a value held since -inf)"
+            )
         if not np.isfinite(Z).all():
             raise ValueError("Z must contain only finite values")
         if period is not None:
             period = float(period)
             if not (period > 0):
                 raise ValueError("period must be positive")
-            if not np.isfinite(edges[-1]):
+            if not np.isfinite(edges[[0, -1]]).all():
                 raise ValueError(
-                    "a cyclic schedule needs a finite final edge (the pattern "
-                    "length); use cyclic() to build one"
+                    "a cyclic schedule needs finite first and last edges "
+                    "(the pattern); use cyclic() to build one"
                 )
             if edges[-1] - edges[0] > period + 1e-12:
                 raise ValueError("the pattern spans longer than one period")
@@ -464,16 +467,22 @@ class StepSchedule:
         """Number of covariates (columns of ``Z``)."""
         return self.Z.shape[1]
 
+    @property
+    def start(self) -> float:
+        """The time the schedule starts, its first edge (``-inf`` for one
+        held since ``-inf``): it gives no value before it."""
+        return float(self.edges[0])
+
     # -- structural constructors ------------------------------------------
 
     @classmethod
     def constant(cls, Z: npt.ArrayLike) -> "StepSchedule":
         """
-        A constant covariate ``Z`` over all time. Evaluating a model on it is
-        identical to ``model.sf(x, Z)``.
+        A constant covariate ``Z`` over all time, from ``-inf`` (#952).
+        Evaluating a model on it is identical to ``model.sf(x, Z)``.
         """
         Z = np.asarray(Z, dtype=float).reshape(1, -1)
-        return cls(np.array([0.0, np.inf]), Z)
+        return cls(np.array([-np.inf, np.inf]), Z)
 
     @classmethod
     def from_changepoints(
@@ -485,9 +494,17 @@ class StepSchedule:
         ``values[i]`` is the covariate row in effect from ``times[i]`` until
         the next change-point; the last value is held to the horizon.
         ``times`` must be strictly increasing; ``times[0]`` is the path's
-        start (usually ``0``). A model evaluates the path from time ``0``:
-        a path starting later has its first value held back to ``0``, and
-        the part of a path before ``0`` is ignored.
+        start, :attr:`start`, and may be ``-inf`` (the first value held
+        since ``-inf``). A path must cover every time a model's answer
+        depends on, and one starting later is refused, as nothing says
+        what the covariate was before it: from ``0`` for a baseline that
+        starts at ``0`` (the part before ``0`` is ignored); from ``-inf``
+        for a proportional hazards or proportional odds model on a
+        baseline over the whole real line (``Normal``, ``Gumbel``,
+        ``Logistic``), and from ``0``, and any earlier time asked about,
+        for accelerated failure time and additive hazards, which measure
+        the covariate's effect from ``0`` (#952). On a record it must start
+        at or before the start of the item's observation.
 
         Parameters
         ----------
@@ -627,10 +644,13 @@ class StepSchedule:
 
         Examples
         --------
-        >>> StepSchedule.from_expression("0.9 if t % 24 < 8 else 0.3", 96)
-        StepSchedule(step, 9 segment(s), p=1)
-        >>> StepSchedule.from_expression("0.3 * 2 ** floor(t / 1000)", 5000)
-        StepSchedule(step, 6 segment(s), p=1)
+        >>> duty = StepSchedule.from_expression(
+        ...     "0.9 if t % 24 < 8 else 0.3", 96
+        ... )
+        >>> duty.edges[:4], duty.Z[:4].ravel()
+        (array([ 0.,  8., 24., 32.]), array([0.9, 0.3, 0.9, 0.3]))
+        >>> StepSchedule.from_expression("0.3 * 2 ** floor(t / 1000)", 1000)
+        StepSchedule.from_changepoints([0.0, 1000.0], [[0.3], [0.6]])
         """
         exprs = [expr] if isinstance(expr, str) else list(expr)
         if len(exprs) == 0:
@@ -732,11 +752,67 @@ class StepSchedule:
         ends = np.minimum(ends, t_max)
         return starts, ends, Z
 
-    def __repr__(self) -> str:
-        kind = "cyclic" if self.period is not None else "step"
-        return "StepSchedule({}, {} segment(s), p={})".format(
-            kind, self.Z.shape[0], self.p
+    def __eq__(self, other: object) -> bool:
+        """Two schedules are equal when they have the same edges, values
+        and period (#930)."""
+        if not isinstance(other, StepSchedule):
+            return NotImplemented
+        return (
+            self.period == other.period
+            and np.array_equal(self.edges, other.edges)
+            and np.array_equal(self.Z, other.Z)
         )
+
+    # Equal by contents, which can change: not hashable (a record hashes
+    # its own, fixed, copy by contents).
+    __hash__ = None  # type: ignore[assignment]
+
+    #: A schedule of more segments than this shows in short.
+    _REPR_SEGMENTS = 20
+
+    def __repr__(self) -> str:
+        """The call that builds the schedule (#930); a long schedule in
+        short."""
+        edges, Z = [_number(e) for e in self.edges], self.Z.tolist()
+        n = self.Z.shape[0]
+        if n > self._REPR_SEGMENTS:
+            kind = "cyclic" if self.period is not None else "step"
+            return "StepSchedule({}, {} segments, p={})".format(
+                kind, n, self.p
+            )
+        if self.period is not None:
+            if edges[0] == 0 and edges[-1] == self.period:
+                return "StepSchedule.cyclic({}, {}, period={!r})".format(
+                    edges[:-1], Z, self.period
+                )
+            return "StepSchedule({}, {}, period={!r})".format(
+                edges, Z, self.period
+            )
+        if np.isfinite(self.edges[-1]):
+            return "StepSchedule.from_intervals({}, {}, {})".format(
+                _listed(edges[:-1]), _listed(edges[1:]), Z
+            )
+        if n == 1 and np.isneginf(self.edges[0]):
+            return "StepSchedule.constant({})".format(Z[0])
+        return "StepSchedule.from_changepoints({}, {})".format(
+            _listed(edges[:-1]), Z
+        )
+
+
+class _Inf(float):
+    """``-inf`` that shows as code that makes it."""
+
+    def __repr__(self) -> str:
+        return "-np.inf"
+
+
+def _number(edge: float) -> float:
+    # -inf in a repr as -np.inf, which pastes back.
+    return _Inf(edge) if np.isneginf(edge) else float(edge)
+
+
+def _listed(values: list) -> str:
+    return "[" + ", ".join(repr(v) for v in values) + "]"
 
 
 # -- shared helpers for the model ``sf_tvc`` / ``Hf_tvc`` methods ----------
@@ -770,25 +846,141 @@ def as_step_schedule(
     return StepSchedule.from_changepoints(xl, Z)
 
 
-def as_covariate_path(Z: Any, xl: "npt.ArrayLike | None" = None) -> Any:
+def as_covariate_path(
+    Z: Any,
+    xl: "npt.ArrayLike | None" = None,
+    names: "list | None" = None,
+    given: "float | None" = None,
+) -> Any:
     """
     Coerce a model ``sf_tvc`` covariate argument into a :class:`StepSchedule`
     or a :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`.
 
     A ``CovariatePath`` is passed through (then ``xl`` must be ``None``);
-    anything else is as for :func:`as_step_schedule`. The type decides the
-    method: a schedule is summed exactly, a path is integrated.
+    an item record (:class:`~surpyval.utils.item_lifetime.ItemLifetime` or
+    :class:`~surpyval.utils.item_history.ItemHistory`) gives its own
+    covariates, the fixed ones followed by the time-varying ones, as a
+    model fitted on such items takes them (named covariates in the order
+    of the model's ``names``, its ``feature_names``, where both have
+    names); anything else is as for
+    :func:`as_step_schedule`. The type decides the method: a schedule is
+    summed exactly, a path is integrated.
+
+    It must start at or before the time origin (:func:`check_from_origin`),
+    or, with ``given``, at or before that age (:func:`from_given`).
     """
     from .tvc_path import CovariatePath
 
+    if given is None:
+
+        def check(path: Any, item: Any = None) -> Any:
+            return check_from_origin(path, item)
+
+    else:
+
+        def check(path: Any, item: Any = None) -> Any:
+            return from_given(path, float(given), item)
+
+    if _is_item(Z):
+        if xl is not None:
+            raise ValueError(
+                "xl must not be given when Z is an item: the item gives its "
+                "own covariates over time"
+            )
+        return check(item_covariate_path(Z, names), Z.id)
     if isinstance(Z, CovariatePath):
         if xl is not None:
             raise ValueError(
                 "xl must not be given when Z is a CovariatePath (it gives "
                 "the segment start times of the array form only)"
             )
-        return Z
-    return as_step_schedule(Z, xl)
+        return check(Z)
+    return check(as_step_schedule(Z, xl))
+
+
+def from_given(path: Any, given: float, item: Any = None) -> Any:
+    """
+    ``path`` for survival given the age ``given`` under a model whose
+    hazard at a time depends only on the covariate then (proportional
+    hazards and odds, additive hazards, Cox): that survival depends on the
+    covariate from ``given`` on only, as the earlier part divides out, so
+    a path starting at or before ``given`` is enough (#962). It is
+    returned held back to ``-inf`` at its first value, which changes no
+    answer given that age, and one starting after it is refused. ``item``
+    is as for :func:`check_from_origin`.
+    """
+    start = path.start
+    if start > given:
+        who = (
+            "The covariates"
+            if item is None
+            else f"Item {item!r}: its time-varying covariates"
+        )
+        raise ValueError(
+            f"{who} start at {start:g}, after the age given ({given:g}): "
+            "survival given that age depends on the covariate from then "
+            f"on. Give their values from {given:g} or earlier."
+        )
+    return held_back(path)
+
+
+def held_back(path: Any) -> Any:
+    """
+    ``path`` (a :class:`StepSchedule` or a
+    :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`) with
+    its first value held back to ``-inf``; unchanged from its start on. A
+    repeating one is returned as it is.
+    """
+    from .tvc_path import CovariatePath
+
+    start = path.start
+    if start == -np.inf or path.period is not None:
+        return path
+    if isinstance(path, StepSchedule):
+        edges = np.asarray(path.edges, dtype=float).copy()
+        edges[0] = -np.inf
+        return StepSchedule(edges, path.Z)
+    first = path._values(np.array([start]), left=False)[0]
+
+    def evaluate(u: npt.NDArray, left: bool) -> npt.NDArray:
+        u = np.asarray(u, dtype=float)
+        before = u < start
+        out = np.asarray(
+            path._values(np.maximum(u, start), left), dtype=float
+        ).copy()
+        out[before] = first
+        return out
+
+    return CovariatePath(evaluate, path.p, path._knots, None, "callable")
+
+
+def check_from_origin(path: Any, item: Any = None) -> Any:
+    """
+    ``path`` (a :class:`StepSchedule` or a
+    :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`),
+    refused if it starts after the time origin, ``0``: a prediction is
+    measured from ``0``, and nothing says what the covariate was before
+    the path starts (#930; it used to be taken as the path's first value).
+    ``item`` is the id of the item it is the covariates of.
+    """
+    start = path.start
+    if start <= 0:
+        return path
+    who = (
+        "The covariates"
+        if item is None
+        else f"Item {item!r}: its time-varying covariates"
+    )
+    example = (
+        f"StepSchedule.from_changepoints([0, {start:g}, ...], ...)"
+        if isinstance(path, StepSchedule)
+        else f"CovariatePath.from_points([0, {start:g}, ...], ...)"
+    )
+    raise ValueError(
+        f"{who} start at {start:g}, after the time origin (0): a "
+        "prediction is measured from 0, so it needs the covariates from 0 "
+        f"on. Give their values from 0, e.g. {example}."
+    )
 
 
 def segments_from_origin(
@@ -800,23 +992,125 @@ def segments_from_origin(
     is the unconditional survival. Returns ``(starts, ends, Z)`` with
     ``starts[0] == 0``.
 
-    The path is clipped to start at ``0``: a schedule starting after ``0``
-    has its first value held back to ``0``, and the part of a schedule
-    before ``0`` is dropped, the segment in force at ``0`` then starting
-    there. For ``t_max <= 0`` the result is that one segment, ``[0, 0]``.
+    The schedule must start at or before ``0`` (:func:`check_from_origin`);
+    the part of it before ``0`` is dropped, the segment in force at ``0``
+    then starting there. For ``t_max <= 0`` the result is that one
+    segment, ``[0, 0]``.
+    """
+    check_from_origin(schedule)
+    return segments_from(schedule, 0.0, t_max)
+
+
+def segments_from(
+    schedule: StepSchedule, lo: float, t_max: float
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    """
+    Materialise ``schedule`` on ``[lo, t_max]`` (``lo`` may be ``-inf``),
+    the schedule starting at or before ``lo``: the part of it before
+    ``lo`` is dropped, the segment in force at ``lo`` then starting there.
+    For ``t_max <= lo`` the result is that one segment, ``[lo, lo]``.
     """
     t_max = float(t_max)
-    end = max(t_max, 0.0)
-    if schedule.edges[0] >= end:
-        # The path starts at or after the horizon: only its first value
-        # (held back to 0) is ever in force.
-        return np.array([0.0]), np.array([end]), schedule.Z[:1].copy()
-    # Any positive horizon shows the value in force at 0.
-    starts, ends, Z = schedule.segments(end if end > 0 else 1.0)
-    # Drop what ends at or before 0 and start the rest at 0.
-    keep = ends > 0
+    end = max(t_max, lo)
+    # Any horizon past lo shows the value in force at lo.
+    starts, ends, Z = schedule.segments(end if end > lo else lo + 1.0)
+    # Drop what ends at or before lo and start the rest at lo.
+    keep = ends > lo
     starts, ends, Z = starts[keep].copy(), ends[keep], Z[keep]
-    starts[0] = 0.0
-    if end == 0:
-        return starts[:1], np.array([0.0]), Z[:1]
+    starts[0] = lo
+    if end == lo:
+        return starts[:1], np.array([lo]), Z[:1]
     return starts, ends, Z
+
+
+def _in_model_order(item: Any, names: "list | None") -> Any:
+    """``item``'s fixed covariates, in the order of the model's ``names``
+    where both are named (the fixed columns come first in a model's
+    names)."""
+    have = getattr(item, "covariate_names", None)
+    if item.covariates is None or have is None or names is None:
+        return item.covariates
+    wanted = list(names)[: len(have)]
+    if set(wanted) != set(have):
+        raise ValueError(
+            f"Item {item.id!r} has covariates {list(have)!r}; the model was "
+            f"fitted on {wanted!r}."
+        )
+    from surpyval.utils.item_history import covariate_row_in
+
+    return covariate_row_in(item, wanted)
+
+
+def _is_item(Z: Any) -> bool:
+    from surpyval.utils.item_history import ItemHistory
+    from surpyval.utils.item_lifetime import ItemLifetime
+
+    return isinstance(Z, (ItemLifetime, ItemHistory))
+
+
+def item_covariate_path(item: Any, names: "list | None" = None) -> Any:
+    """
+    An item record's covariates over time, in the column order of a model
+    fitted on such items (``fit(SurpyvalData.from_items(...))``): its fixed
+    covariates, then its time-varying ones. A constant
+    :class:`StepSchedule` for fixed covariates alone; the item's schedule
+    with the fixed columns added for a ``StepSchedule``; and for a
+    ``CovariatePath``, a path with the fixed columns in front. Where the
+    item's covariates are named and ``names`` (a model's
+    ``feature_names``) are given, its fixed covariates are put in the
+    order of ``names``, whatever order the item has them in.
+
+    Examples
+    --------
+    >>> from surpyval import ItemLifetime, StepSchedule
+    >>> from surpyval.univariate.regression.tvc_schedule import (
+    ...     item_covariate_path,
+    ... )
+    >>> stress = StepSchedule.from_changepoints([0, 400], [[0.0], [1.0]])
+    >>> item = ItemLifetime(
+    ...     "P7", right_censored=900, covariates=[2.0],
+    ...     time_varying_covariates=stress,
+    ... )
+    >>> item_covariate_path(item).Z
+    array([[2., 0.],
+           [2., 1.]])
+    """
+    from .tvc_path import CovariatePath
+
+    fixed = _in_model_order(item, names)
+    varying = item.time_varying_covariates
+    if fixed is None and varying is None:
+        raise ValueError(
+            f"Item {item.id!r} has no covariates to predict with."
+        )
+    if varying is None:
+        return StepSchedule.constant(fixed)
+    if fixed is None:
+        return varying
+    fixed = np.asarray(fixed, dtype=float)
+    if isinstance(varying, StepSchedule):
+        return StepSchedule(
+            varying.edges,
+            np.hstack([np.tile(fixed, (len(varying.Z), 1)), varying.Z]),
+            varying.period,
+        )
+    if isinstance(varying, CovariatePath):
+
+        def combined(t: npt.NDArray) -> npt.NDArray:
+            values = varying(np.atleast_1d(t))
+            return np.hstack([np.tile(fixed, (len(values), 1)), values])
+
+        knots = getattr(varying, "_knots", None)
+        path = CovariatePath.from_callable(
+            combined,
+            p=len(fixed) + varying.p,
+            breakpoints=None if knots is None or len(knots) == 0 else knots,
+            period=varying.period,
+        )
+        # It starts where the item's path does.
+        path._start = varying.start
+        return path
+    raise TypeError(
+        f"Item {item.id!r}'s time-varying covariates are a "
+        f"{type(varying).__name__}, not a StepSchedule or a CovariatePath."
+    )

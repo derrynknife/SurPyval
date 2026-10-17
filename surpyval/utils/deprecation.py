@@ -4,9 +4,9 @@ Renamed names: accept the old name for one release, with a warning.
 When a public name changes so that the same thing has the same name
 everywhere (Design Principles, principle 21), the old one keeps working
 until :data:`REMOVED_IN`, with a ``DeprecationWarning`` that names the new
-one and points at the caller's line: a name renamed in v0.24 is removed in
-v0.25. This module holds the shapes such a rename takes (each with the
-v0.23 rename it was written for, removed in v0.24):
+one and points at the caller's line: a name renamed in v0.25 is removed in
+v0.26. This module holds the shapes such a rename takes (each with the
+rename it was written for):
 
 - :func:`renamed_arguments`, an argument of a function or method;
 - :func:`reordered_arguments`, the order of a method's arguments;
@@ -20,18 +20,31 @@ v0.23 rename it was written for, removed in v0.24):
 - :class:`RenamedToMethod`, an attribute whose value a method of another
   name now gives (``Parametric.cov_matrix`` -> ``covariance()``);
 - :class:`MadePrivate`, the public name of an internal method or attribute
-  (``MixtureModel.EM`` -> ``MixtureModel._em_iteration``).
+  (``MixtureModel.EM`` -> ``MixtureModel._em_iteration``);
+- :func:`renamed_name`, a class or other name in a module's namespace
+  (``RecurrentEventData`` -> ``EventHistoryData``, v0.25).
 
-A name deprecated in v0.25 is accepted until :data:`REMOVED_IN_NEXT`.
+A name deprecated in v0.26 is accepted until :data:`REMOVED_IN_NEXT`.
+
+The top-level data-format functions (``surpyval.fs_to_xcnt`` and the
+rest), whose work :class:`~surpyval.SurpyvalData` now does, are deprecated
+by date instead (:data:`DATED_DATA_FUNCTIONS`): accepted, with a warning,
+until the first release on or after :data:`DATA_FUNCTIONS_REMOVED_AFTER`.
 """
 
+import datetime
 import functools
 import warnings
-from typing import Any, Callable, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 import numpy as np
 
 __all__ = [
+    "DATA_FUNCTIONS_DEPRECATED_ON",
+    "DATA_FUNCTIONS_REMOVED_AFTER",
+    "DATED_DATA_FUNCTIONS",
+    "dated_data_function",
     "REMOVED_IN",
     "REMOVED_IN_NEXT",
     "ArrayMethod",
@@ -42,15 +55,76 @@ __all__ = [
     "RenamedAttribute",
     "RenamedToMethod",
     "renamed_arguments",
+    "renamed_name",
     "reordered_arguments",
 ]
 
-#: The release in which the names deprecated in v0.24 stop being
-#: accepted.
-REMOVED_IN = "0.25"
+#: The release in which the names deprecated in v0.25 stop being
+#: accepted. (Those deprecated in v0.24 were removed in v0.25.)
+REMOVED_IN = "0.26"
 
-#: The release in which the names deprecated in v0.25 stop being accepted.
-REMOVED_IN_NEXT = "0.26"
+#: The release in which the names deprecated in v0.26 stop being accepted.
+REMOVED_IN_NEXT = "0.27"
+
+#: The day the top-level data-format functions were deprecated.
+DATA_FUNCTIONS_DEPRECATED_ON = datetime.date(2026, 10, 12)
+
+#: Six months on: the first release on or after it removes them.
+DATA_FUNCTIONS_REMOVED_AFTER = datetime.date(2027, 4, 12)
+
+#: Each deprecated top-level data function, with what replaces it.
+DATED_DATA_FUNCTIONS: dict[str, str] = {
+    "fs_to_xcnt": (
+        "SurpyvalData.from_observations(observed=f, right_censored=s)"
+        ".to_xcnt()"
+    ),
+    "fsl_to_xcnt": (
+        "SurpyvalData.from_observations(observed=f, right_censored=s, "
+        "left_censored=l).to_xcnt()"
+    ),
+    "fsli_to_xcnt": (
+        "SurpyvalData.from_observations(observed=f, right_censored=s, "
+        "left_censored=l, interval_censored=i).to_xcnt()"
+    ),
+    "fsli_handler": (
+        "SurpyvalData.from_observations(observed=f, right_censored=s, "
+        "left_censored=l, interval_censored=i), which validates them"
+    ),
+    "fs_to_xrd": (
+        "SurpyvalData.from_observations(observed=f, right_censored=s)"
+        ".to_xrd()"
+    ),
+    "xcn_to_fs": "SurpyvalData(x, c, n).to_observations()",
+    "xcnt_handler": "SurpyvalData(x, c, n, t, ...).to_xcnt()",
+    "xcnt_to_xrd": "SurpyvalData(x, c, n, t).to_xrd()",
+    "xrd_handler": "SurpyvalData.from_xrd(x, r, d), which validates them",
+    "xrd_to_xcnt": "SurpyvalData.from_xrd(x, r, d).to_xcnt()",
+}
+
+
+def dated_data_function(name: str) -> Any:
+    """``surpyval.<name>``, one of :data:`DATED_DATA_FUNCTIONS`, with a
+    FutureWarning that gives the dates and the replacement. A
+    FutureWarning, not a DeprecationWarning: Python shows it wherever the
+    name is used, while a DeprecationWarning is hidden outside
+    ``__main__``, and these are removed on a date, not at a release. Called
+    by the package ``__getattr__``, so the warning points at the code
+    that used the name. The release-based scan of
+    ``test_removed_arguments`` leaves these alone: the date decides when
+    they go (``test_dated_removal_is_not_overdue``)."""
+    from importlib import import_module
+
+    warnings.warn(
+        f"surpyval.{name} is deprecated since "
+        f"{DATA_FUNCTIONS_DEPRECATED_ON.isoformat()} and will be removed in "
+        "the first release on or after "
+        f"{DATA_FUNCTIONS_REMOVED_AFTER.isoformat()}; use "
+        f"{DATED_DATA_FUNCTIONS[name]}.",
+        FutureWarning,
+        stacklevel=3,
+    )
+    return getattr(import_module("surpyval.utils.data_formats"), name)
+
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -64,6 +138,26 @@ def _message(
     )
 
 
+def renamed_name(
+    where: str,
+    old: str,
+    new: str,
+    value: Any,
+    removed_in: str = REMOVED_IN,
+) -> Any:
+    """``value``, reached by its old name ``old`` in the namespace ``where``
+    (a module's ``__getattr__``), with a DeprecationWarning naming ``new``
+    and pointing at the line that used the old name. ``value`` is the
+    renamed object itself, so ``isinstance`` checks against the old name
+    keep working until it is removed."""
+    warnings.warn(
+        _message(where, old, new, removed_in),
+        DeprecationWarning,
+        stacklevel=3,
+    )
+    return value
+
+
 def renamed_arguments(
     removed_in: str = REMOVED_IN, **renames: str
 ) -> Callable[[F], F]:
@@ -74,8 +168,8 @@ def renamed_arguments(
     ----------
     removed_in : str, optional
         The release in which the old names stop being accepted:
-        :data:`REMOVED_IN` (the default) for the names renamed in v0.24,
-        :data:`REMOVED_IN_NEXT` for those renamed in v0.25.
+        :data:`REMOVED_IN` (the default) for the names renamed in v0.25,
+        :data:`REMOVED_IN_NEXT` for those renamed in v0.26.
     **renames : str
         ``old="new"``, one per renamed argument.
 
@@ -104,7 +198,7 @@ def renamed_arguments(
     ...     describe(names=["a"])
     ['a']
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    describe: 'names' is deprecated and will be removed in v0.25;
+    describe: 'names' is deprecated and will be removed in v0.26;
     use 'labels'.
     """
 
@@ -182,7 +276,7 @@ def reordered_arguments(
     (1.0, 0.1, 'lower')
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
     Model.cb: the old order of its arguments, cb(x, bound, alpha_ci), is
-    deprecated and will be removed in v0.25; pass bound by name.
+    deprecated and will be removed in v0.26; pass bound by name.
     """
 
     def decorate(func: F) -> F:
@@ -223,7 +317,7 @@ class RenamedAttribute:
     Declare it on the class under the old name,
     ``loglik = RenamedAttribute("log_likelihood")``. It works on
     instances and on the class itself (for a singleton fitter, or a class
-    attribute). A name deprecated in v0.25 passes
+    attribute). A name deprecated in v0.26 passes
     ``removed_in=REMOVED_IN_NEXT``.
 
     Examples
@@ -238,7 +332,7 @@ class RenamedAttribute:
     ...     Model().loglik
     -12.5
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    Model.loglik is deprecated and will be removed in v0.25;
+    Model.loglik is deprecated and will be removed in v0.26;
     use 'log_likelihood'.
     """
 
@@ -300,7 +394,7 @@ class CallableFloat(float):
     -12.5
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
     Model.log_likelihood is now a property: 'log_likelihood()' is
-    deprecated and will be removed in v0.25; use 'log_likelihood'.
+    deprecated and will be removed in v0.26; use 'log_likelihood'.
     """
 
     _where: str
@@ -364,7 +458,7 @@ class MethodFloat(float):
     11.25
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
     Model.aic is now a method: 'aic' without the call is deprecated and
-    will be removed in v0.25; use 'aic()'.
+    will be removed in v0.26; use 'aic()'.
     """
 
     _where: str
@@ -495,7 +589,7 @@ class MethodArray(np.ndarray):
     array([1., 1.])
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
     Model.covariance is now a method: 'covariance' without the call is
-    deprecated and will be removed in v0.25; use 'covariance()'.
+    deprecated and will be removed in v0.26; use 'covariance()'.
     """
 
     _where: str
@@ -560,7 +654,7 @@ class _Unavailable:
         return False
 
     def __repr__(self) -> str:
-        return "<{}: not available>".format(self._where)
+        return f"<{self._where}: not available>"
 
 
 class ArrayMethod:
@@ -588,14 +682,14 @@ class ArrayMethod:
     def __get__(self, obj: Any, owner: "type | None" = None) -> Any:
         if obj is None:
             return self
-        where = "{}.{}".format(type(obj).__name__, self.name)
+        where = f"{type(obj).__name__}.{self.name}"
         value = getattr(obj, self.stored, None)
         if value is None:
             return _Unavailable(where, self.error)
         return MethodArray(value, where)
 
     def __set__(self, obj: Any, value: Any) -> None:
-        _method_warning("{}.{}".format(type(obj).__name__, self.name), 2)
+        _method_warning(f"{type(obj).__name__}.{self.name}", 2)
         setattr(obj, self.stored, value)
 
 
@@ -626,7 +720,7 @@ class RenamedToMethod:
     ...     Model().cov
     [[1.0]]
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    Model.cov is deprecated and will be removed in v0.25; use
+    Model.cov is deprecated and will be removed in v0.26; use
     'covariance()'.
     """
 
@@ -683,7 +777,7 @@ class MadePrivate(RenamedAttribute):
     1
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
     Model.step is internal to the fit; its public name is deprecated and
-    will be removed in v0.25.
+    will be removed in v0.26.
     """
 
     def __init__(self, private: str) -> None:

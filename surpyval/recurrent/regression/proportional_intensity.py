@@ -3,6 +3,8 @@ from typing import Any
 import numpy as np
 from numpy.typing import ArrayLike
 
+from surpyval import plotting
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.recurrent import diagnostics
 from surpyval.recurrent.inference import (
     LikelihoodInferenceMixin,
@@ -20,10 +22,12 @@ from surpyval.univariate.regression._aliasing import (
     constant_columns,
     warn_aliased,
 )
+from surpyval.univariate.regression.regression_data import named_covariates
 from surpyval.utils.covariates import coefficient_names
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.units import label_axes
 from surpyval.utils.validation import option_error
 
 
@@ -67,7 +71,10 @@ def alias_covariates(Z: ArrayLike, intercept: bool) -> np.ndarray:
 
 
 class ProportionalIntensityModel(
-    SerialisableMixin, RecurrenceSimulationMixin, LikelihoodInferenceMixin
+    DiagnoseMixin,
+    SerialisableMixin,
+    RecurrenceSimulationMixin,
+    LikelihoodInferenceMixin,
 ):
     """
     Model to provide methods and attributes when using a fitted proportional
@@ -251,6 +258,7 @@ class ProportionalIntensityModel(
         Z : array_like
             The covariates for the item.
         """
+        Z = named_covariates(Z, self.feature_names)
         return self.dist.cif(x, *self.params) * np.exp(Z @ self._coef())
 
     @keeps_query_shape
@@ -269,9 +277,11 @@ class ProportionalIntensityModel(
         Z : array_like
             The covariates for the item.
         """
+        Z = named_covariates(Z, self.feature_names)
         return self.dist.iif(x, *self.params) * np.exp(Z @ self._coef())
 
     def inv_cif(self, x: ArrayLike, Z: ArrayLike) -> np.ndarray:
+        Z = named_covariates(Z, self.feature_names)
         if hasattr(self.dist, "inv_cif"):
             return self.dist.inv_cif(
                 x / np.exp(self._coef() @ Z), *self.params
@@ -522,7 +532,7 @@ class ProportionalIntensityModel(
         check_alpha_ci(alpha_ci)
         self._check_fitted()
         x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.asarray(Z, dtype=float)
+        Z = np.asarray(named_covariates(Z, self.feature_names), dtype=float)
         n_dist_params = len(self.params)
         baseline = getattr(self.dist, function)
 
@@ -588,18 +598,21 @@ class ProportionalIntensityModel(
         x_plot = np.linspace(0, self.data.x.max(), 1000)
         Z_0 = self.data.Z.mean(axis=0)
 
-        ax.step(x, (d / r).cumsum(), color="r", where="post")
-        ax.plot(x_plot, self.cif(x_plot, Z_0), color="b")
+        band = None
         if plot_bounds and hasattr(self, "_neg_ll"):
-            cb = self.cif_cb(x_plot, Z_0, alpha_ci=alpha_ci)
-            ax.fill_between(
-                x_plot,
-                cb[:, 0],
-                cb[:, 1],
-                color="b",
-                alpha=0.2,
-                label=f"{(1 - alpha_ci) * 100:g}% Confidence Band",
-            )
+            band = self.cif_cb(x_plot, Z_0, alpha_ci=alpha_ci)
+        plotting.observed_and_fitted(
+            ax,
+            (x, (d / r).cumsum()),
+            (x_plot, self.cif(x_plot, Z_0)),
+            band,
+            observed_label="Observed MCF",
+            fitted_label="Model, at the mean covariates",
+            band_label=f"{(1 - alpha_ci) * 100:g}% confidence band",
+        )
+        label_axes(ax, self.unit, "Mean cumulative function")
+        plotting.style_axes(ax)
+        plotting.style_legend(ax)
         return ax
 
     def _parameter_names(self) -> list:
@@ -632,7 +645,11 @@ class ProportionalIntensityModel(
         ``max_events`` and then failed on the NaN event times.
         """
         try:
-            Z_arr = np.atleast_1d(np.asarray(Z, dtype=float))
+            Z_arr = np.atleast_1d(
+                np.asarray(
+                    named_covariates(Z, self.feature_names), dtype=float
+                )
+            )
         except (TypeError, ValueError):
             raise ValueError(
                 "Z must be one unit's covariate vector of numbers; got "
@@ -768,7 +785,7 @@ class ProportionalIntensityModel(
         """
         Simulate count-terminated recurrence data and return the raw events.
         Like :meth:`count_terminated_simulation` but yields the simulated
-        ``RecurrentEventData`` rather than the fitted MCF.
+        ``EventHistoryData`` rather than the fitted MCF.
         """
         self._sim_Z = self._unit_covariates(Z)
         return super().count_terminated_simulation_data(
@@ -789,7 +806,7 @@ class ProportionalIntensityModel(
         """
         Simulate time-terminated recurrence data and return the raw events.
         Like :meth:`time_terminated_simulation` but yields the simulated
-        ``RecurrentEventData`` rather than the fitted MCF.
+        ``EventHistoryData`` rather than the fitted MCF.
         """
         self._sim_Z = self._unit_covariates(Z)
         return super().time_terminated_simulation_data(

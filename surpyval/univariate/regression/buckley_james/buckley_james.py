@@ -44,6 +44,7 @@ import numpy.typing as npt
 if TYPE_CHECKING:
     import pandas as pd
 
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -58,6 +59,8 @@ from surpyval.utils.linalg import percentile_bounds
 from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import covariate_rows, keeps_query_shape
+from surpyval.utils.surpyval_data import accepts_surpyval_data
+from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_alpha_ci
 
 from .._aliasing import (
@@ -222,6 +225,7 @@ class BuckleyJamesModel(
     NoLikelihoodMixin,
     LinearPredictorMixin,
     ConcordanceMixin,
+    DiagnoseMixin,
     SerialisableMixin,
 ):
     """
@@ -688,6 +692,8 @@ class BuckleyJames_(FitterRepr):
     fitter_kind = "semi-parametric accelerated failure time fitter"
 
     @dataframe_covariates
+    @takes_unit
+    @accepts_surpyval_data
     def fit(
         self,
         x: npt.ArrayLike,
@@ -823,6 +829,7 @@ class BuckleyJames_(FitterRepr):
         )
 
     @column_arguments("x", "c", "n")
+    @takes_unit
     def fit_from_df(
         self,
         df: Any,

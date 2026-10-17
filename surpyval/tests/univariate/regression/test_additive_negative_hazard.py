@@ -1,11 +1,12 @@
-"""A parametric additive hazards model queried where its hazard is
-negative (#376).
+"""A parametric additive hazards model queried outside its support
+(#376, #828).
 
-``h(x | Z) = h_0(x) + beta'Z`` has nothing keeping it positive: the fit
-keeps it positive at the observed failures only. For a protective
-covariate row the cumulative hazard falls, ``sf`` exceeds 1 and ``ff`` and
-``df`` go negative. The predictions stay the model's, and every
-prediction method now says so with one warning per call.
+``h(x | Z) = h_0(x) + beta'Z`` is a distribution only where it and its
+integral are non-negative: the fit keeps every observed point there, but
+for a protective covariate row early on the cumulative hazard falls below
+0, where ``sf`` would exceed 1 and ``ff`` and ``df`` go negative. Those
+predictions are nan, and every prediction method says so with one warning
+per call.
 """
 
 import warnings
@@ -16,7 +17,8 @@ import pytest
 import surpyval as sp
 from surpyval.univariate.regression import StepSchedule
 
-NEGATIVE = [-1.2, 0.0]  # a row with a negative hazard at early times
+# A row outside the support at the first two times (H < 0 there).
+NEGATIVE = [-3.0, 0.0]
 POSITIVE = [0.5, 1.0]
 TIMES = np.array([0.5, 2.0, 5.0, 10.0, 20.0, 100.0])
 
@@ -48,7 +50,7 @@ def _record(fn, *args, **kwargs):
 
 
 @pytest.mark.parametrize("name", ["sf", "ff", "df", "hf", "Hf"])
-def test_one_warning_per_call_where_the_hazard_is_negative(model, name):
+def test_one_warning_per_call_outside_the_support(model, name):
     out, rec = _record(getattr(model, name), TIMES, NEGATIVE)
     assert len(rec) == 1
     w = rec[0]
@@ -56,22 +58,25 @@ def test_one_warning_per_call_where_the_hazard_is_negative(model, name):
     assert w.filename == __file__  # points at the caller
     msg = str(w.message)
     assert "negative at 2 of the 6 queried points" in msg
-    assert "sf exceeds 1 (up to 1.011)" in msg
+    assert "the values there are nan" in msg
     assert "WeibullPH" in msg
-    # The values are the model's own, unchanged.
-    if name == "Hf":
-        assert np.any(np.asarray(out) < 0)
+    out = np.asarray(out)
+    assert np.isnan(out[:2]).all() and np.isfinite(out[2:]).all()
 
 
-def test_the_values_are_returned_as_the_model_defines_them(model):
+def test_inside_the_support_the_values_are_the_models(model):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         sf = model.sf(TIMES, NEGATIVE)
         Hf = model.Hf(TIMES, NEGATIVE)
         ff = model.ff(TIMES, NEGATIVE)
+    raw = np.ravel(model.model.Hf(TIMES, np.array([NEGATIVE]), *model.params))
+    # (the model's raw H is negative where the values are nan)
+    assert (raw[:2] < 0).all()
+    np.testing.assert_allclose(Hf[2:], raw[2:])
     np.testing.assert_allclose(sf, np.exp(-Hf))
     np.testing.assert_allclose(ff, 1 - sf)
-    assert sf[0] > 1 and ff[0] < 0
+    assert np.all(sf[2:] <= 1) and np.all(ff[2:] >= 0)
 
 
 @pytest.mark.parametrize("name", ["sf", "ff", "df", "hf", "Hf"])
@@ -90,15 +95,18 @@ def test_below_the_support_does_not_count(model):
 
 
 @pytest.mark.parametrize("on", ["sf", "ff", "Hf", "hf", "df"])
-def test_cb_warns_once(model, on):
-    _, rec = _record(model.cb, TIMES, NEGATIVE, on=on)
+def test_cb_warns_once_and_is_nan_outside(model, on):
+    out, rec = _record(model.cb, TIMES, NEGATIVE, on=on)
     assert len(rec) == 1 and rec[0].filename == __file__
+    out = np.asarray(out)
+    assert np.isnan(out[:2]).all() and np.isfinite(out[2:]).all()
 
 
 def test_time_varying_paths_warn_once(model):
-    # The covariate turns protective at t = 5, so the hazard is negative
-    # after it and the cumulative hazard falls.
-    path = StepSchedule.from_changepoints([0, 5], [[0.0, 0.0], [-3.0, 0.0]])
+    # The covariate turns strongly protective at t = 5, so the hazard is
+    # negative after it and the cumulative hazard falls: outside the
+    # support from there on.
+    path = StepSchedule.from_changepoints([0, 5], [[0.0, 0.0], [-5.0, 0.0]])
     for fn, kwargs in (
         (model.Hf_tvc, {}),
         (model.sf_tvc, {}),
@@ -107,7 +115,9 @@ def test_time_varying_paths_warn_once(model):
         out, rec = _record(fn, TIMES, path, **kwargs)
         assert len(rec) == 1, fn.__name__
         assert rec[0].filename == __file__
-        assert "negative at 2 of the 6" in str(rec[0].message)
+        assert "negative at 3 of the 6" in str(rec[0].message)
+        out = np.asarray(out)
+        assert np.isnan(out[3:]).all() and np.isfinite(out[:3]).all()
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         model.sf_tvc(

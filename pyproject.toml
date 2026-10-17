@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "surpyval"
-version = "0.24"
+version = "0.25"
 description = "A python package for survival analysis"
 readme = "README.md"
 license = {text = "MIT"}
@@ -29,6 +29,8 @@ dependencies = [
     "formulaic>=1.2",
     "numdifftools>=0.9.42",
     "joblib",
+    # The units= label (#845), imported only when a unit is given
+    "pint>=0.24",
 ]
 
 [project.optional-dependencies]
@@ -75,6 +77,7 @@ where = ["."]
 "*" = ["datasets/*.csv", "py.typed"]
 # The reference results the installed test suite reads (#661)
 "surpyval.tests.reference" = ["data/*.json"]
+"surpyval.tests.diagnostics" = ["data/*.json"]
 
 # pytest
 [tool.pytest.ini_options]

@@ -43,7 +43,7 @@ When you call ``fit()``, SurPyval validates the arrays, converts them to numpy, 
     data = surv.SurpyvalData(x=[1, 2, 3, [4, 5], 2], c=[0, 1, 0, 2, 1], tl=0)
     print(data)
 
-Notice three things. The two right censored values at 2 have been merged into one row with ``n = 2``. Because one row is an interval, ``x`` is stored as two columns, with the lower and upper values equal for the rows that are not intervals (with no interval row, ``x`` is stored as one column). And the scalar ``tl=0`` has been expanded to a ``[tl, tr]`` row for every observation, with no right truncation (``inf``). Parametric fitters accept a ``SurpyvalData`` object directly through ``fit_from_surpyval_data``, and ``SurpyvalData.to_json`` / ``SurpyvalData.from_json`` save and restore the data itself. ``to_json()`` returns JSON text, or writes a file when given a path; ``from_json`` parses a string as JSON *text*, so to read a file pass a ``pathlib.Path``: ``SurpyvalData.from_json(Path("data.json"))``.
+Notice three things. The two right censored values at 2 have been merged into one row with ``n = 2``. Because one row is an interval, ``x`` is stored as two columns, with the lower and upper values equal for the rows that are not intervals (with no interval row, ``x`` is stored as one column). And the scalar ``tl=0`` has been expanded to a ``[tl, tr]`` row for every observation, with no right truncation (``inf``; the table shows a truncation column only where some bound is finite, and ``data.t`` holds both). The printout is the first rows; ``data.summary()`` describes the whole. The parametric, non-parametric and regression ``fit`` methods accept a ``SurpyvalData`` object in place of the arrays (``Weibull.fit(data)``; ``fit_from_surpyval_data`` does the same), its constructors ``SurpyvalData.from_observations`` and ``SurpyvalData.from_xrd`` read the other layouts (see :doc:`Data Wrangler Examples`), and ``SurpyvalData.to_json`` / ``SurpyvalData.from_json`` save and restore the data itself (``to_dict`` / ``from_dict`` give the dictionary; ``EventHistoryData``, ``ItemLifetime`` and ``ItemHistory`` have the same four). ``to_json()`` returns JSON text, or writes a file when given a path; ``from_json`` reads JSON text (a string starting with ``{``) or the path of a file, and ``surpyval.from_json`` / ``surpyval.from_dict`` read a dataset or record as they read a model, by its ``"class"`` tag.
 
 .. jupyter-execute::
     :hide-code:
@@ -61,16 +61,16 @@ The non-parametric estimators (Kaplan-Meier, Nelson-Aalen and Fleming-Harrington
 
 .. jupyter-execute::
 
-    x, r, d = surv.xcnt_to_xrd(x=[1, 2, 3, 4, 5], c=[0, 1, 1, 0, 0])
+    x, r, d = surv.SurpyvalData(x=[1, 2, 3, 4, 5], c=[0, 1, 1, 0, 0]).to_xrd()
     print("x:", x)
     print("r:", r)
     print("d:", d)
 
 Converting between the two formats loses information in both directions, so the conversions have restrictions:
 
-- ``xcnt_to_xrd`` needs data that is observed or right censored (``c`` of 0 or 1) and not right truncated. Left censored and interval censored data have no single time at which to count a death, so they need the Turnbull estimator instead.
-- ``xrd_to_xcnt`` recovers the individual observed and right censored values from ``r`` and ``d``. It cannot recover left truncation: if the risk set ever *grows* between two times (items entering late), the per-item entry times are lost, and the function raises an error rather than returning a different study.
-- xrd data given directly (to ``xrd_to_xcnt``, or to ``KaplanMeier.from_xrd`` and the other non-parametric ``from_xrd`` methods) must list each time once, as ``xcnt_to_xrd`` returns it. Each ``(x, r, d)`` row stands on its own, so rows given out of order are sorted by time (keeping their ``r`` and ``d``); a time listed twice is an error, since there is no single risk set to use for it.
+- ``SurpyvalData.to_xrd`` is exact for data that is observed or right censored (``c`` of 0 or 1) and not right truncated. Left censored and interval censored data have no single time at which to count a death, so for those it fits the Turnbull estimator and returns its (possibly fractional) numbers at risk and deaths.
+- ``SurpyvalData.from_xrd`` recovers the individual observed and right censored values from ``r`` and ``d``. It cannot recover left truncation: if the risk set ever *grows* between two times (items entering late), the per-item entry times are lost, and it raises an error rather than returning a different study.
+- xrd data given directly (to ``SurpyvalData.from_xrd``, or to ``KaplanMeier.from_xrd`` and the other non-parametric ``from_xrd`` methods) must list each time once, as ``to_xrd`` returns it. Each ``(x, r, d)`` row stands on its own, so rows given out of order are sorted by time (keeping their ``r`` and ``d``); a time listed twice is an error, since there is no single risk set to use for it.
 
 The xicnt format
 ~~~~~~~~~~~~~~~~
@@ -433,6 +433,79 @@ The combined model shows the other conventions. Its mean lifetime is infinite, s
     assert m.extras == {"lfp_p": 0.3, "f0": 0.1}
     _expected = surv.Weibull.from_params([20, 2], lfp_p=0.3, f0=0.1).ff(15)
     assert m.with_params([20, 2]).ff(15) == _expected
+
+Units
+~~~~~
+
+Every ``fit``, ``fit_from_df`` and ``from_params`` takes an optional
+``unit=``: the unit the data were measured in, of any kind -- ``"hours"``,
+``"km"``, ``"cycles"``, ``"pump starts"``. It is a label. The model keeps it
+as ``model.unit``, shows it in its printout and on its plots, and saves it
+with ``to_dict``; nothing is converted or checked. A unit `pint
+<https://pint.readthedocs.io>`_ knows is stored by its canonical name, so
+the same unit always reads the same (``"hrs"``, ``"hours"`` and ``"Hours"``
+are all ``"hour"``, and ``"cycles"`` is ``"cycle"``, a count); anything else
+is kept as written. Left out, it is ``None``: unknown, as before.
+
+.. jupyter-execute::
+
+    model = surv.Weibull.from_params([1000, 2], unit="hrs")
+    print(model.unit)
+    print(model)
+
+A plot names its time axis by what the unit measures: "Time (h)",
+"Distance (km)", or "Usage (cycles)" for a count or any other unit. A label
+already on the axes is kept. Tools that combine models (RePyability, say)
+can convert between units with pint from the stored names.
+
+The data classes carry the unit too: ``ItemLifetime(..., unit="hours")``,
+``SurpyvalData(..., unit=)``, ``from_items`` (from its records, which must
+agree), ``from_observations``, ``from_histories``, ``from_dataframe`` and
+``handle_xicn`` all take it, every reshape, slice, ``to_first_events``,
+``to_gaps`` and the JSON form keep it, the summary and printout show it,
+and ``fit(data)`` gives it to the model, so it is given once:
+``Weibull.fit(SurpyvalData.from_items(items_in_hours)).unit == "hour"``. A
+``unit=`` at the fit that differs from the data's is refused, as are
+records in different units in one dataset; nothing is converted.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert model.unit == "hour"
+    assert surv.from_dict(model.to_dict()).unit == "hour"
+
+Plots
+~~~~~
+
+Every model's ``plot`` draws in one theme, ``surpyval.plotting``: a fixed
+palette taken in order on each axes (the first model blue, the next orange,
+...), checked to stay distinguishable under the common colour-vision
+deficiencies; 2-point lines and ringed points; confidence bounds as a pale
+band of the curve's colour; hairline grids; no top or right spine; greys for
+text. Where a plot shows an estimate from the data behind a fitted model
+(the recurrent-event and regression plots), the data's step is grey and the
+model is in colour. A ``color`` (or any line keyword) passed to ``plot`` is
+used as given.
+
+On a probability plot the probability axis is labelled as densely as the
+distribution's scale has room for, the tails included (1%, 99%, 99.9%,
+...), and the time axis at 1, 2 and 5 a decade on log scales and at round
+times on linear ones. Several models drawn on one axes widen it to cover
+them all.
+
+.. jupyter-execute::
+
+    import numpy as np
+    x = surv.Weibull.random(30, 1000, 2.2, random_state=1)
+    ax = surv.Weibull.fit(x[:15], unit="hours").plot(label="Supplier A")
+    surv.Weibull.fit(x[15:] * 1.8, unit="hours").plot(ax=ax, label="Supplier B")
+    surv.plotting.style_legend(ax);
+
+``surpyval.plotting.set_theme(False)`` turns the theme off (matplotlib's
+colours, and axes left as they are); ``surpyval.plotting.style_axes(ax)``
+gives axes of your own its look, and ``surpyval.plotting.rc_params()`` the
+whole theme as ``matplotlib.rcParams``.
 
 Saving and Loading Models
 ~~~~~~~~~~~~~~~~~~~~~~~~~

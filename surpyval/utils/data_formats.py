@@ -22,9 +22,7 @@ import numpy.typing as npt
 from surpyval.utils.warnings import caller_stacklevel
 
 
-def validate_float_array(
-    arr: "npt.ArrayLike | None", name: str
-) -> npt.NDArray:
+def validate_float_array(arr: npt.ArrayLike | None, name: str) -> npt.NDArray:
     """Convert input to float array with better error handling."""
     if arr is None:
         return np.array([], dtype=np.float64)
@@ -160,16 +158,23 @@ def xcnt_sort(
 
 
 def fsli_handler(
-    f: "npt.ArrayLike | None" = None,
-    s: "npt.ArrayLike | None" = None,
-    l: "npt.ArrayLike | None" = None,
-    i: "npt.ArrayLike | None" = None,
+    f: npt.ArrayLike | None = None,
+    s: npt.ArrayLike | None = None,
+    l: npt.ArrayLike | None = None,
+    i: npt.ArrayLike | None = None,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Validate data in the ``fsli`` format: separate lists of failures,
     suspensions (right censored), left censored values and intervals.
     Any combination may be given, but at least one must hold data. Each
     is returned as a float array.
+
+    .. deprecated:: 0.25
+       ``surpyval.fsli_handler`` is deprecated (2026-10-12), and is removed
+       in the first release on or after 2027-04-12. Use
+       ``SurpyvalData.from_observations(...)`` with ``observed=f``,
+       ``right_censored=s``, ``left_censored=l`` and ``interval_censored=i``
+       (it validates the data too).
 
     Parameters
     ----------
@@ -209,7 +214,7 @@ def fsli_handler(
     Examples
     --------
 
-    >>> from surpyval import fsli_handler
+    >>> from surpyval.utils.data_formats import fsli_handler
     >>> f = [1, 2, 3, 4, 5, 6]
     >>> s = [1, 2, 3]
     >>> l = [4, 5, 6]
@@ -295,12 +300,12 @@ def xrd_handler(
     ``r`` is at least one, no ``d`` is negative and no ``d`` exceeds its
     ``r``.
 
-    xrd data lists each distinct time once, with the number at risk and
-    the number of deaths *at that time*. Each ``(x, r, d)`` row is
-    therefore self-contained, so rows given out of order are sorted by
-    ``x`` (carrying their ``r`` and ``d`` with them) rather than refused.
-    A repeated time is refused: there is no unambiguous way to merge two
-    rows that each claim to be the risk set at that time.
+    .. deprecated:: 0.25
+       ``surpyval.xrd_handler`` is deprecated (2026-10-12), and is removed
+       in the first release on or after 2027-04-12. Use (it validates the
+       data too)::
+
+           SurpyvalData.from_xrd(x, r, d)
 
     Does not check that ``r`` decreases, as it can grow when there is
     left truncation (late entry).
@@ -333,7 +338,7 @@ def xrd_handler(
     Examples
     --------
 
-    >>> from surpyval import xrd_handler
+    >>> from surpyval.utils.data_formats import xrd_handler
     >>> x = [1, 2, 3, 4, 5]
     >>> r = [5, 4, 3, 2, 1]
     >>> d = [1, 1, 1, 1, 1]
@@ -406,7 +411,7 @@ def xrd_handler(
     return x, r, d
 
 
-def _time_kind(value: Any) -> "str | None":
+def _time_kind(value: Any) -> str | None:
     """``"m"`` if ``value`` holds durations (``timedelta64``, pandas
     ``Timedelta``, ``datetime.timedelta``), ``"M"`` if it holds dates or
     times (``datetime64``, pandas ``Timestamp``, ``datetime``), else
@@ -496,7 +501,106 @@ def refuse_time_values(value: Any, name: str) -> None:
         )
 
 
-def coerce_xcnt_x(x: npt.ArrayLike) -> npt.NDArray:
+def refuse_wrong_container(x: Any, recurrent: bool = False) -> None:
+    """Refuse an ``x`` that is a data class, a record or a list of
+    records, a DataFrame or a dict, naming what to do with it (#933): a
+    recurrent fit (``recurrent``) takes an ``EventHistoryData``, a
+    lifetime fit a ``SurpyvalData``."""
+    from surpyval.utils.event_history_data import EventHistoryData
+    from surpyval.utils.item_history import ItemHistory
+    from surpyval.utils.item_lifetime import ItemLifetime
+    from surpyval.utils.surpyval_data import SurpyvalData
+
+    record = x
+    listed = ""
+    if isinstance(x, (list, tuple)) and x:
+        record = x[0]
+        listed = "a list of "
+    plural = "s" if listed else ""
+    one = listed or "an "
+    if isinstance(record, ItemLifetime):
+        kind = f"x is {one}ItemLifetime record{plural} (one item's lifetime)"
+        if recurrent:
+            raise TypeError(
+                f"{kind}, which a recurrent fit does not take: a lifetime "
+                "model fits them, as SurpyvalData.from_items(items); a "
+                "recurrent model takes each item's history of repeated "
+                "events, EventHistoryData.from_items([ItemHistory(...), "
+                "...])."
+            )
+        raise TypeError(
+            f"{kind}: build the dataset, SurpyvalData.from_items("
+            f"{'items' if listed else '[item, ...]'}), and fit that."
+        )
+    if isinstance(record, ItemHistory):
+        kind = f"x is {one}ItemHistory record{plural} (one item's history)"
+        if recurrent:
+            raise TypeError(
+                f"{kind}: build the dataset, EventHistoryData.from_items("
+                f"{'items' if listed else '[item, ...]'}), and fit that."
+            )
+        raise TypeError(
+            f"{kind} of repeated events, which a lifetime fit does not "
+            "take: fit EventHistoryData.from_items("
+            f"{'items' if listed else '[item, ...]'}).to_first_events() for "
+            "the time to each item's first failure, or .to_gaps() for the "
+            "times between failures; a recurrent model (such as "
+            "surpyval.recurrent.CrowAMSAA) fits the EventHistoryData as it "
+            "is."
+        )
+    if isinstance(x, EventHistoryData):
+        raise TypeError(
+            "x is an EventHistoryData (items' histories of repeated "
+            "events), which a lifetime fit does not take: fit "
+            "x.to_first_events() for the time to each item's first "
+            "failure, or x.to_gaps() for the times between failures "
+            "(each repair as good as new); a recurrent model (such "
+            "as surpyval.recurrent.CrowAMSAA) fits it as it is."
+        )
+    if isinstance(x, SurpyvalData):
+        if recurrent:
+            raise TypeError(
+                "x is a SurpyvalData (one lifetime per item), which a "
+                "recurrent fit does not take: a lifetime model fits it "
+                "(Weibull.fit(data), KaplanMeier.fit(data), ...); a "
+                "recurrent model takes each item's history of repeated "
+                "events, an EventHistoryData "
+                "(EventHistoryData.from_items([ItemHistory(...), ...]))."
+            )
+        raise TypeError(
+            "x is a SurpyvalData, which this function does not "
+            "take: pass arrays (x, c, n, t = data.to_xcnt() gives "
+            "the data's own)."
+        )
+    if type(x).__name__ == "DataFrame":
+        if recurrent:
+            raise TypeError(
+                "x is a DataFrame: name its columns, "
+                "fit_from_df(df, x_col=..., i_col=..., c_col=...), or build "
+                "the data with EventHistoryData.from_dataframe(df, id=..., "
+                "age=..., ...) and fit that."
+            )
+        raise TypeError(
+            "x is a DataFrame: name its columns, fit_from_df(df, x_col=..., "
+            "c_col=...), or build the data with "
+            "SurpyvalData.from_dataframe(df, time=..., event=..., ...) and "
+            "fit that."
+        )
+    if isinstance(x, dict):
+        if recurrent:
+            raise TypeError(
+                "x is a dict: each item's history keyed by its id is "
+                "EventHistoryData.from_histories(observed={id: [ages]}, "
+                "right_censored={id: age}); fit that."
+            )
+        raise TypeError(
+            "x is a dict: the times of each kind are "
+            "SurpyvalData.from_observations(observed=[...], "
+            "right_censored=[...], ...); fit that."
+        )
+
+
+def coerce_xcnt_x(x: npt.ArrayLike, recurrent: bool = False) -> npt.NDArray:
     """
     Coerce the ``x`` variable of xcnt-format data into a float numpy array.
 
@@ -509,6 +613,7 @@ def coerce_xcnt_x(x: npt.ArrayLike) -> npt.NDArray:
     (``xcnt_handler``) and recurrent (``handle_xicn``) handlers.
     Durations and dates are refused (see ``refuse_time_values``).
     """
+    refuse_wrong_container(x, recurrent)
     refuse_time_values(x, "x")
     if isinstance(x, (list, tuple)) and any(
         isinstance(v, (list, tuple, np.ndarray)) and np.ndim(v) > 0 for v in x
@@ -570,9 +675,9 @@ def coerce_xcnt_x(x: npt.ArrayLike) -> npt.NDArray:
 
 
 def format_truncation(
-    t: "npt.ArrayLike | None",
-    tl: "npt.ArrayLike | Number | None",
-    tr: "npt.ArrayLike | Number | None",
+    t: npt.ArrayLike | None,
+    tl: npt.ArrayLike | Number | None,
+    tr: npt.ArrayLike | Number | None,
     n_rows: int,
 ) -> npt.NDArray:
     """
@@ -638,7 +743,7 @@ def format_truncation(
 
 
 def _truncation_bound(
-    bound: "npt.ArrayLike | Number | None",
+    bound: npt.ArrayLike | Number | None,
     name: str,
     default: float,
     n_rows: int,
@@ -723,19 +828,25 @@ def _check_truncation_bounds(
 
 
 def xcnt_handler(
-    x: "npt.ArrayLike | None" = None,
-    c: "npt.ArrayLike | None" = None,
-    n: "npt.ArrayLike | None" = None,
-    t: "npt.ArrayLike | None" = None,
-    xl: "npt.ArrayLike | None" = None,
-    xr: "npt.ArrayLike | None" = None,
-    tl: "npt.ArrayLike | Number | None" = None,
-    tr: "npt.ArrayLike | Number | None" = None,
+    x: npt.ArrayLike | None = None,
+    c: npt.ArrayLike | None = None,
+    n: npt.ArrayLike | None = None,
+    t: npt.ArrayLike | None = None,
+    xl: npt.ArrayLike | None = None,
+    xr: npt.ArrayLike | None = None,
+    tl: npt.ArrayLike | Number | None = None,
+    tr: npt.ArrayLike | Number | None = None,
     group_and_sort: bool = True,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Main handler that ensures any input to a surpyval fitter meets the
     requirements to be used in one of the parametric or nonparametric fitters.
+
+    .. deprecated:: 0.25
+       ``surpyval.xcnt_handler`` is deprecated (2026-10-12), and is removed
+       in the first release on or after 2027-04-12. Use::
+
+           SurpyvalData(x, c, n, t, ...).to_xcnt()
 
     It converts the inputs to numpy arrays and checks them: ``x`` is not
     empty and has no NaN (a scalar is one observation); ``c`` holds only
@@ -818,7 +929,7 @@ def xcnt_handler(
     Examples
     --------
 
-    >>> from surpyval import xcnt_handler
+    >>> from surpyval.utils.data_formats import xcnt_handler
     >>> x = [1, 2, 3, 4, 5]
     >>> c = [0, 0, 1, 1, 1]
     >>> n = [1, 1, 1, 1, 1]
@@ -926,9 +1037,9 @@ def _numeric_list_as_array(value: Any) -> Any:
 
 
 def _xcnt_x(
-    x: "npt.ArrayLike | None",
-    xl: "npt.ArrayLike | None",
-    xr: "npt.ArrayLike | None",
+    x: npt.ArrayLike | None,
+    xl: npt.ArrayLike | None,
+    xr: npt.ArrayLike | None,
 ) -> npt.NDArray:
     """``x`` as a checked, non-empty array, built from ``xl``/``xr``."""
     if (x is None) and (xl is None) and (xr is None):
@@ -1015,7 +1126,48 @@ def _has_missing(values: Any) -> bool:
     )
 
 
-def _xcnt_censoring(c: "npt.ArrayLike | None", x: npt.NDArray) -> npt.NDArray:
+def refuse_boolean_censoring(c: Any) -> None:
+    """Refuse a True/False censoring flag ``c`` (#920).
+
+    ``c`` is a censoring flag (1 = right censored), and a boolean column
+    is far more often an *event* indicator (True = failed: ``died``,
+    ``churned``), which read as ``c`` swaps every failure for a
+    suspension, silently. A boolean ``c`` is refused rather than guessed
+    at; 0/1 numbers are taken as they are.
+
+    Examples
+    --------
+    >>> from surpyval.utils.data_formats import refuse_boolean_censoring
+    >>> refuse_boolean_censoring([0, 1, 0])
+    >>> refuse_boolean_censoring([True, False])  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+    ...
+    ValueError: 'c' is the censoring flag ...
+    """
+    if c is None:
+        return
+    values = np.asarray(
+        c, dtype=object if isinstance(c, (list, tuple)) else None
+    )
+    if values.dtype == object:
+        flat = values.ravel()
+        boolean = flat.size > 0 and all(
+            isinstance(v, (bool, np.bool_)) for v in flat
+        )
+    else:
+        boolean = values.dtype == bool
+    if boolean:
+        raise ValueError(
+            "'c' is the censoring flag (0 = observed, 1 = right censored, "
+            "-1 = left censored, 2 = interval censored), and a True/False "
+            "'c' could mean either way round. For an event indicator (True "
+            "= failed) pass c=1 - event (with numpy, (~event).astype(int)); "
+            "for a censoring indicator (True = censored) pass it as 0/1 "
+            "numbers, c=censored.astype(int)."
+        )
+
+
+def _xcnt_censoring(c: npt.ArrayLike | None, x: npt.NDArray) -> npt.NDArray:
     """The censoring flags, checked against ``x``, or the default.
 
     The default is observed (0), and interval censored (2) for the rows
@@ -1027,6 +1179,7 @@ def _xcnt_censoring(c: "npt.ArrayLike | None", x: npt.NDArray) -> npt.NDArray:
             default[x[:, 0] != x[:, 1]] = 2
         return default
 
+    refuse_boolean_censoring(c)
     c_arr = np.atleast_1d(np.array(c))
     # Said as it is said of ``x``: a missing flag used to be reported as
     # an invalid censoring value (#576).
@@ -1046,12 +1199,14 @@ def _xcnt_censoring(c: "npt.ArrayLike | None", x: npt.NDArray) -> npt.NDArray:
     elif np.any((c_arr != 0) & (c_arr != 1) & (c_arr != -1)):
         raise ValueError(
             "Censoring value must only be one of -1, 0, 1 for single"
-            + " dimension input"
+            + " dimension input (0 failure, 1 right-censored, -1"
+            + " left-censored). For interval censoring use c=2 with x"
+            + " given as [left, right] pairs."
         )
     return c_arr
 
 
-def _xcnt_counts(n: "npt.ArrayLike | None", x: npt.NDArray) -> npt.NDArray:
+def _xcnt_counts(n: npt.ArrayLike | None, x: npt.NDArray) -> npt.NDArray:
     """The counts as positive whole numbers, or one per row."""
     if n is None:
         # Do check here for groupby and binning
@@ -1121,13 +1276,19 @@ def _one_sided_rows(
 
 def xcn_to_fs(
     x: npt.ArrayLike,
-    c: "npt.ArrayLike | None" = None,
-    n: "npt.ArrayLike | None" = None,
+    c: npt.ArrayLike | None = None,
+    n: npt.ArrayLike | None = None,
 ) -> tuple[npt.NDArray, npt.NDArray]:
     """
     Convert observed and right-censored ``xcn`` data to the ``fs`` format:
     one array of failure times and one of suspension (right-censored)
     times, each time repeated by its count.
+
+    .. deprecated:: 0.25
+       ``surpyval.xcn_to_fs`` is deprecated (2026-10-12), and is removed
+       in the first release on or after 2027-04-12. Use::
+
+           SurpyvalData(x, c, n).to_observations()
 
     Parameters
     ----------
@@ -1159,13 +1320,14 @@ def xcn_to_fs(
 
     Examples
     --------
-    >>> from surpyval import xcn_to_fs
+    >>> from surpyval.utils.data_formats import xcn_to_fs
     >>> xcn_to_fs([1, 2, 5], [0, 1, 0], [2, 1, 1])
     (array([1, 1, 5]), array([2]))
     """
     # Validated because the conversion is silent otherwise: a count of
     # 1.7 would be truncated to one item, a length mismatch would surface
     # as an IndexError, and a two-column x would crash inside np.repeat.
+    refuse_boolean_censoring(c)
     x = np.atleast_1d(np.array(x))
     if x.ndim == 2 and x.shape[1] == 2:
         interval = x[:, 0] != x[:, 1]
@@ -1254,9 +1416,9 @@ def _entered_before(
 
 def xcnt_to_xrd(
     x: npt.ArrayLike,
-    c: "npt.ArrayLike | None" = None,
-    n: "npt.ArrayLike | None" = None,
-    t: "npt.ArrayLike | None" = None,
+    c: npt.ArrayLike | None = None,
+    n: npt.ArrayLike | None = None,
+    t: npt.ArrayLike | None = None,
     **kwargs: Any,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     """
@@ -1266,6 +1428,12 @@ def xcnt_to_xrd(
     censored rows without right truncation can be converted; left
     truncation is allowed and sets when each item enters the risk set,
     under the (entry, exit] convention.
+
+    .. deprecated:: 0.25
+       ``surpyval.xcnt_to_xrd`` is deprecated (2026-10-12), and is removed
+       in the first release on or after 2027-04-12. Use::
+
+           SurpyvalData(x, c, n, t).to_xrd()
 
     Parameters
     ----------
@@ -1382,6 +1550,12 @@ def xrd_to_xcnt(
     distinct; rows out of order are sorted first. The result has no
     truncation and no left or interval censoring.
 
+    .. deprecated:: 0.25
+       ``surpyval.xrd_to_xcnt`` is deprecated (2026-10-12), and is removed
+       in the first release on or after 2027-04-12. Use::
+
+           SurpyvalData.from_xrd(x, r, d).to_xcnt()
+
     Note: left truncation cannot be recovered from the xrd format because
     the at-risk count `r` collapses per-subject truncation times into a
     single scalar. Use xcnt format directly when left truncation is present.
@@ -1452,8 +1626,9 @@ def xrd_to_xcnt(
     if (np.diff(r_arr) + d_arr[:-1] > 0).any():
         raise ValueError(
             "The risk set increases between observation times (late entry /"
-            " left truncation); truncation cannot be represented in xcnt"
-            " output, so this data cannot be converted with xrd_to_xcnt."
+            " left truncation), and the xrd format has no record of when each"
+            " item entered, so this data cannot be read from it: give it as"
+            " SurpyvalData(x, c, n, tl=...) instead."
         )
 
     x = np.asarray(x)
@@ -1470,10 +1645,10 @@ def xrd_to_xcnt(
 
 
 def fsli_to_xcnt(
-    f: "npt.ArrayLike | None" = None,
-    s: "npt.ArrayLike | None" = None,
-    l: "npt.ArrayLike | None" = None,
-    i: "npt.ArrayLike | None" = None,
+    f: npt.ArrayLike | None = None,
+    s: npt.ArrayLike | None = None,
+    l: npt.ArrayLike | None = None,
+    i: npt.ArrayLike | None = None,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Converts the fsli format to the xcnt format, so that the data can be
@@ -1481,6 +1656,13 @@ def fsli_to_xcnt(
     are validated with :func:`fsli_handler`. Repeated values are counted
     in ``n``. When there are intervals, ``x`` is returned with two
     columns, the other rows repeating their value.
+
+    .. deprecated:: 0.25
+       ``surpyval.fsli_to_xcnt`` is deprecated (2026-10-12), and is removed
+       in the first release on or after 2027-04-12. Use
+       ``SurpyvalData.from_observations(...)`` with ``observed=f``,
+       ``right_censored=s``, ``left_censored=l`` and ``interval_censored=i``,
+       then ``.to_xcnt()``.
 
     Parameters
     ----------
@@ -1510,7 +1692,7 @@ def fsli_to_xcnt(
     Examples
     --------
 
-    >>> from surpyval import fsli_to_xcnt
+    >>> from surpyval.utils.data_formats import fsli_to_xcnt
     >>> f = [1, 4, 5]
     >>> s = [2, 3]
     >>> l = []
@@ -1551,14 +1733,20 @@ def fsli_to_xcnt(
 
 
 def fsl_to_xcnt(
-    f: "npt.ArrayLike | None" = None,
-    s: "npt.ArrayLike | None" = None,
-    l: "npt.ArrayLike | None" = None,
+    f: npt.ArrayLike | None = None,
+    s: npt.ArrayLike | None = None,
+    l: npt.ArrayLike | None = None,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Convert failure (``f``), suspension (right-censored, ``s``) and
     left-censored (``l``) times to the ``xcnt`` format, counting repeated
     times.
+
+    .. deprecated:: 0.25
+       ``surpyval.fsl_to_xcnt`` is deprecated (2026-10-12), and is removed
+       in the first release on or after 2027-04-12. Use
+       ``SurpyvalData.from_observations(...)`` with ``observed=f``,
+       ``right_censored=s`` and ``left_censored=l``, then ``.to_xcnt()``.
 
     Parameters
     ----------
@@ -1577,7 +1765,7 @@ def fsl_to_xcnt(
 
     Examples
     --------
-    >>> from surpyval import fsl_to_xcnt
+    >>> from surpyval.utils.data_formats import fsl_to_xcnt
     >>> x, c, n, t = fsl_to_xcnt([4, 6], [8], [2])
     >>> x, c, n
     (array([2, 4, 6, 8]), array([-1,  0,  0,  1]), array([1, 1, 1, 1]))
@@ -1615,11 +1803,17 @@ def fsl_to_xcnt(
 
 
 def fs_to_xcnt(
-    f: "npt.ArrayLike | None" = None, s: "npt.ArrayLike | None" = None
+    f: npt.ArrayLike | None = None, s: npt.ArrayLike | None = None
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Convert failure (``f``) and suspension (right-censored, ``s``) times to
     the ``xcnt`` format, counting repeated times; see :func:`fsl_to_xcnt`.
+
+    .. deprecated:: 0.25
+       ``surpyval.fs_to_xcnt`` is deprecated (2026-10-12), and is removed
+       in the first release on or after 2027-04-12. Use
+       ``SurpyvalData.from_observations(...)`` with ``observed=f`` and
+       ``right_censored=s``, then ``.to_xcnt()``.
 
     Parameters
     ----------
@@ -1636,7 +1830,7 @@ def fs_to_xcnt(
 
     Examples
     --------
-    >>> from surpyval import fs_to_xcnt
+    >>> from surpyval.utils.data_formats import fs_to_xcnt
     >>> x, c, n, t = fs_to_xcnt([1, 3, 3, 7], [5, 9])
     >>> x
     array([1., 3., 5., 7., 9.])
@@ -1696,7 +1890,7 @@ def missing_events(values: npt.NDArray) -> npt.NDArray:
 
 
 def resolve_cr_censoring(
-    e: npt.ArrayLike, c: "npt.ArrayLike | None"
+    e: npt.ArrayLike, c: npt.ArrayLike | None
 ) -> tuple[npt.NDArray, npt.NDArray]:
     """Canonicalise a competing-risks event vector and its censoring flag.
 
@@ -1718,6 +1912,7 @@ def resolve_cr_censoring(
     to convert the data; passing ``c`` says which rows are censored and
     silences it.
     """
+    refuse_boolean_censoring(c)
     if isinstance(e, (list, tuple)):
         # One element per row, whatever it is: ``np.asarray`` would split a
         # tuple cause label (``("a", 1)``) into a column of its own.
@@ -1768,6 +1963,12 @@ def fs_to_xrd(
     """
     Converts the fs format to the xrd format.
 
+    .. deprecated:: 0.25
+       ``surpyval.fs_to_xrd`` is deprecated (2026-10-12), and is removed
+       in the first release on or after 2027-04-12. Use
+       ``SurpyvalData.from_observations(...)`` with ``observed=f`` and
+       ``right_censored=s``, then ``.to_xrd()``.
+
     Parameters
     ----------
     f: array
@@ -1789,7 +1990,7 @@ def fs_to_xrd(
     Examples
     --------
 
-    >>> from surpyval import fs_to_xrd
+    >>> from surpyval.utils.data_formats import fs_to_xrd
     >>> f = [1, 4, 5]
     >>> s = [2, 3]
     >>> x, r, d = fs_to_xrd(f, s)

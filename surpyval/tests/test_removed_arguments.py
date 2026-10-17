@@ -1,7 +1,7 @@
 """
 The names v0.21 deprecated are gone in v0.22 (#422), those v0.22
-deprecated are gone in v0.23, and those v0.23 deprecated are gone in v0.24
-(principle 21).
+deprecated are gone in v0.23, those v0.23 deprecated are gone in v0.24,
+and those v0.24 deprecated are gone in v0.25 (principle 21).
 
 An old argument name is now an unknown argument, so the call raises
 Python's own ``TypeError``; an old attribute is gone (``AttributeError``);
@@ -396,13 +396,11 @@ def test_proportional_intensity_nhpp_takes_baseline():
     Z = np.array(IR, float)[:, None]
     new = ProportionalIntensityNHPP.fit(XR, Z, i=IR, c=CR, baseline=CrowAMSAA)
     assert new.dist is CrowAMSAA
-    with pytest.warns(DeprecationWarning, match="use 'baseline'"):
-        old = ProportionalIntensityNHPP.fit(XR, Z, i=IR, c=CR, dist=CrowAMSAA)
-    np.testing.assert_array_equal(old.params, new.params)
-    with pytest.raises(ValueError, match="pass 'baseline' only"):
-        ProportionalIntensityNHPP.fit(
-            XR, Z, i=IR, c=CR, baseline=CrowAMSAA, dist=CrowAMSAA
-        )
+    # dist=, deprecated in v0.24, was removed in v0.25
+    with pytest.raises(
+        TypeError, match="'dist': it was removed in v0.25; use 'baseline'"
+    ):
+        ProportionalIntensityNHPP.fit(XR, Z, i=IR, c=CR, dist=CrowAMSAA)
 
 
 def test_experimental_alias_is_gone():
@@ -435,7 +433,20 @@ _SHIM_NAMES = frozenset(
         "MethodArray",
         "RenamedToMethod",
         "MadePrivate",
+        "renamed_name",
         "DeprecationWarning",
+    }
+)
+
+# The deprecation helpers removed by date rather than by release (the
+# top-level data-format functions): test_dated_removal_is_not_overdue
+# (tests/utils/test_surpyval_data_api.py) fails when they are due.
+_DATED_NAMES = frozenset(
+    {
+        "DATA_FUNCTIONS_DEPRECATED_ON",
+        "DATA_FUNCTIONS_REMOVED_AFTER",
+        "DATED_DATA_FUNCTIONS",
+        "dated_data_function",
     }
 )
 
@@ -501,7 +512,7 @@ def test_the_scan_sees_every_kind_of_shim():
     # Every helper of surpyval.utils.deprecation is a shim the scan sees,
     # however it is used, or the test below would pass with one left
     # behind.
-    assert set(deprecation.__all__) <= _SHIM_NAMES
+    assert set(deprecation.__all__) <= _SHIM_NAMES | _DATED_NAMES
     for name in sorted(_SHIM_NAMES):
         assert _deprecation_shims(f"x = {name}\n") == [1], name
         assert _deprecation_shims(f"x = deprecation.{name}\n") == [1], name

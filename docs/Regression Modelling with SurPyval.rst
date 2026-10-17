@@ -41,8 +41,8 @@ strata — then its accelerated-time counterpart Buckley-James and the
 additive-hazards model. Third, the *parametric* families — proportional
 hazards, accelerated failure time, proportional odds, their confidence bounds,
 accelerated life testing, time-varying covariates across families and shared
-frailty. Fourth, choosing between fitted models, validating their predictions,
-and saving them. If you already know the question you are asking, the table
+frailty. Fourth, drawing what a fitted model says a covariate does, choosing
+between fitted models, validating their predictions, and saving them. If you already know the question you are asking, the table
 below points straight to the section that answers it.
 
 .. list-table:: Which model, when
@@ -96,6 +96,9 @@ below points straight to the section that answers it.
    * - find structure you cannot specify (thresholds, interactions)
      - ``RandomSurvivalForest`` (beta)
      - `Survival trees and random survival forests (beta)`_
+   * - see what a fitted model says a covariate does to survival
+     - ``model.plot_partial_effects(covariate, values)``
+     - `Partial-effects plots`_
    * - compare, validate or store fitted models
      - ``aic()``, ``surpyval.metrics``, ``to_dict()``
      - `Model Selection`_, `Validating a survival predictor`_,
@@ -994,7 +997,8 @@ not late, say — the single number Cox reports is a time-average that can hide
 the effect entirely.
 
 The standard check is the **Grambsch-Therneau test**, built on the scaled
-Schoenfeld residuals. A fitted model exposes it through
+Schoenfeld residuals, in the exact score-test form R's ``cox.zph`` has used
+since version 3.0. A fitted model exposes it through
 :meth:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel.check_ph`.
 It returns a table, as R's ``cox.zph`` prints it: a 1-d.f. test for each
 covariate and a joint ``GLOBAL`` test on the last row; a *small* ``p``-value is
@@ -1014,14 +1018,18 @@ with :meth:`CoxPH.fit_from_df <surpyval.univariate.regression.proportional_hazar
 Here every ``p``-value is large, so there is no evidence against proportional
 hazards — the Cox coefficients can be read as constant hazard ratios. (With 11
 failures the test has little power, so "no evidence" is not strong evidence of
-proportionality either.) The statistics match R's ``cox.zph`` and lifelines,
-including under Efron ties.
+proportionality either.) The statistics are R's ``cox.zph`` (survival 3.0 and
+later), under Efron and Breslow ties alike. lifelines, and R before 3.0,
+compute Grambsch and Therneau's approximation of the same test, as SurPyval
+did until v0.24; it can differ in small samples. ``model.diagnose()`` runs
+this test on the ``km`` and ``rank`` scales with the other checks of a Cox
+fit, and says what to do about a failure (see :doc:`Model Diagnostics`).
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert (ph['p'] > 0.4).all()
+    assert (ph['p'] > 0.3).all()  # R's cox.zph: smallest 0.309
     assert (tires['Censoring'] == 0).sum() == 11
 
 To see what a violation looks like, simulate a covariate whose effect
@@ -1058,7 +1066,8 @@ the effect falling over time:
 
 The residuals sit high early and low late, straddling the constant fit. The
 ``transform`` argument chooses the function of time the residuals are tested
-against: ``"km"`` (the default, :math:`1 -` Kaplan-Meier) spreads the failures
+against: ``"km"`` (the default, :math:`1 -` the left-continuous Kaplan-Meier
+estimate) spreads the failures
 evenly and is the usual choice; ``"rank"``, ``"identity"`` and ``"log"`` are the
 alternatives from ``cox.zph``. A violation like this one calls for
 stratification (below), a time-varying covariate, or a different family.
@@ -1682,6 +1691,16 @@ For distributions not in the pre-built list:
 
     model = AFT(Gamma).fit(x=x, Z=Z, c=c)
     model
+
+On a baseline defined below 0 (``Normal``, ``Gumbel``, ``Logistic``) the
+rescaling is about 0, :math:`S(x \mid Z) = S_0(\phi(Z)\, x)`, so where 0 is
+matters: put it at a real origin, such as the start of service. Moving 0
+changes the fit, as it would for a Weibull. A model in which the covariates
+shift the distribution's location, :math:`\mu = a + bV`, is an accelerated
+life model, ``AcceleratedLife(Normal, life_models.Linear)``, and does not
+depend on where 0 is; R's ``survreg`` calls it a gaussian (or logistic) AFT.
+Additive hazards on these baselines likewise counts the covariate's effect
+from 0.
 
 We can visualise the "time shift" interpretation by plotting survival curves.
 The entire curve moves left (shorter life) or right (longer life) on the time
@@ -2507,7 +2526,8 @@ is about 1 as well.
 
 Because the accelerated age is integrated from time zero, the AFT fit needs each
 subject's whole covariate history: every subject's first interval must start
-at 0 and its intervals must be contiguous. Delayed entry or a gap would mean
+at or before 0 (at ``-inf`` for one followed since then, on a baseline defined
+below 0) and its intervals must be contiguous. Delayed entry or a gap would mean
 ageing at an unknown rate over the unobserved stretch, so instead of guessing,
 the fit refuses and points to Cox, which handles both exactly:
 
@@ -2583,10 +2603,15 @@ time (``AFT``) — exposes the same ``sf_tvc(x, Z, xl=None, given=None)`` (plus
 the matching ``Hf_tvc``). Pass either ``(xl, Z)`` arrays or a
 :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`, and
 ``given=`` for conditional survival :math:`S(x \mid \text{survived to } g)`.
-The path is measured from time 0: a schedule that starts later has its first
-value held back to 0, and the part of a schedule before 0 is ignored (the value
-in force at 0 applies from there), so a constant path gives ``sf(x, Z)``
-wherever it starts. Any time is a valid query, 0 and below included.
+A path must cover every time the answer depends on, and one that starts later
+is refused: from 0 on a baseline that starts at 0, from :math:`-\infty` for PH
+and PO on one defined below 0 (``Normal``, ``Gumbel``, ``Logistic``), and,
+given an age, from that age for PH, PO, AH and Cox (see `How far back the
+covariates must go`_). A ``CovariatePath`` is integrated below 0 as
+far as needed, to :math:`-\infty` for PH and PO, where the baseline's hazard
+dies away; a formula (``CovariatePath.from_callable``) has a value at every
+time, while a path through points starts at its first point. Any time is a
+valid query, 0 and below included.
 Proportional hazards, additive hazards and proportional odds accumulate a
 cumulative hazard over the segments: in each of them the hazard at time
 :math:`t` depends only on :math:`t` and the covariate at :math:`t`, so
@@ -2597,15 +2622,230 @@ constant-covariate cumulative hazard is
 instead accumulates an *accelerated age*
 :math:`\psi(x) = \sum e^{\beta'z}\,(b - a)` and evaluates the baseline once at
 :math:`\psi`. A single constant segment gives ``sf(x, Z)`` in every family,
-including baselines defined below zero (``Normal``, ``Gumbel``, ``Logistic``),
-for which the value in force at time 0 is taken to hold before it as well.
-``fit_tvc`` treats a subject observed from time 0 the same way (its first
-interval is not left-truncated), so for PH, AH and PO a constant covariate
-split into intervals reproduces the ordinary ``fit``.
+including baselines defined below zero (``Normal``, ``Gumbel``, ``Logistic``).
+In ``fit_tvc`` a subject's first interval enters at its ``xl``, as any other
+does: on such a baseline, a first ``xl`` of 0 means the subject entered at 0
+(the fit conditions on its surviving to 0), and ``-inf`` that it is followed
+since then, its first covariate row holding since then. Split into intervals
+from ``-inf``, a constant covariate reproduces the ordinary ``fit``.
 An accelerated life model whose life parameter scales time (Weibull,
 Exponential, Gamma, LogNormal) accumulates an age like AFT, at the rate
 :math:`1 / L(V)` (see :ref:`tvc-bounds-mean`); one whose life parameter is a
 location (Normal, Gumbel, Logistic) raises ``NotImplementedError``.
+
+.. _tvc-coverage:
+
+How far back the covariates must go
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``sf_tvc(x, Z)`` is the chance of surviving to ``x`` while the covariate
+follows ``Z``. To work it out, a model adds up the risk over time, from where
+its time starts to ``x``, and in every stretch it needs to know what the
+covariate was. So the covariates must cover every time the answer depends on.
+One that starts later is refused rather than guessed: nothing says what the
+covariate was before it starts (before 0.25 its first value was taken to hold
+back to the start, which gave a number with no warning). How far back that is
+depends on the baseline and on the family, and this section goes through each
+case. The examples use one data set, fitted by several families.
+
+.. jupyter-execute::
+
+    import warnings
+    from surpyval import (CoxPH, NormalAFT, NormalAH, NormalPH, StepSchedule,
+                          WeibullAFT, WeibullPH)
+
+    rng = np.random.default_rng(1)
+    cov_Z = rng.binomial(1, 0.5, (300, 1)).astype(float)
+    cov_x = rng.normal(3, 2, 300) - 0.8 * cov_Z[:, 0]
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        cov_wph = WeibullPH.fit(np.abs(cov_x) + 0.1, cov_Z)
+        cov_waft = WeibullAFT.fit(np.abs(cov_x) + 0.1, cov_Z)
+        cov_nph = NormalPH.fit(cov_x, cov_Z)
+        cov_naft = NormalAFT.fit(cov_x, cov_Z)
+
+**A baseline that starts at 0.** A Weibull's time starts at 0, so survival to
+10 needs the covariate from 0 to 10. A schedule that starts at 3 leaves 0 to 3
+unknown, and is refused:
+
+.. jupyter-execute::
+
+    print(cov_wph.sf_tvc(10, StepSchedule.from_changepoints([0, 5], [[0], [1]])))
+    try:
+        cov_wph.sf_tvc(10, StepSchedule.from_changepoints([3, 5], [[0], [1]]))
+    except ValueError as err:
+        print(str(err).split(': ')[0])
+
+**A baseline defined below 0, proportional hazards and odds.** A Normal,
+Gumbel or Logistic distribution has no starting point: its time runs from
+:math:`-\infty`, and some units have failed by 0. Risk is added up from there,
+so survival at any time depends on the covariate back to :math:`-\infty`. Two
+schedules that agree from 0 on, and differ only before it, give different
+answers:
+
+.. jupyter-execute::
+
+    for before in (0, 1):
+        sched = StepSchedule.from_changepoints([-np.inf, 0, 2],
+                                               [[before], [0], [1]])
+        print(before, cov_nph.sf_tvc(4, sched))
+
+So a schedule from 0 is refused, and one starts from :math:`-\infty` by
+giving ``-np.inf`` as its first change-point: the first value then holds for
+all time before the next one. ``StepSchedule.constant`` starts there, and
+gives the ordinary ``sf``:
+
+.. jupyter-execute::
+
+    try:
+        cov_nph.sf_tvc(4, StepSchedule.from_changepoints([0, 2], [[0], [1]]))
+    except ValueError as err:
+        print(str(err).split(': ')[0])
+    print(cov_nph.sf_tvc(4, StepSchedule.from_changepoints([-np.inf, 2],
+                                                           [[0], [1]])))
+    print(cov_nph.sf_tvc(4, StepSchedule.constant([1])), cov_nph.sf(4, [1]))
+
+**Accelerated failure time: a clock started at 0.** In an AFT model the
+covariate sets how fast a unit ages, :math:`S(x \mid Z) = S_0(\phi(Z)\, x)`:
+the baseline is read at the unit's age, and its age is time times speed.
+Every unit's age is 0 at time 0, whatever its covariate, so ``sf`` at 0 is the
+same for every covariate value (under PH it is not):
+
+.. jupyter-execute::
+
+    for t in (-1, 0, 4):
+        print(t, cov_naft.sf(t, [0]), cov_naft.sf(t, [1]),
+              '  PH:', cov_nph.sf(t, [0]), cov_nph.sf(t, [1]))
+
+With a changing covariate the age at :math:`x` is
+:math:`\psi(x) = \int_0^x \phi(Z(u))\,du`, the distance the clock has run
+since 0.
+
+- *A time after 0* depends on the covariate from 0 to it. Nothing before 0
+  matters: the baseline at the age reached already covers the chance of
+  failing before it. So a schedule from 0 is enough, on any baseline.
+- *A time before 0*, such as :math:`-1`, is measured backwards from the 0
+  mark: the clock runs back from 0 to :math:`-1` at the speed the covariate
+  sets, so the age at :math:`-1` is :math:`-\int_{-1}^{0} \phi(Z(u))\,du`. It
+  depends on the covariate from :math:`-1` to 0, and nothing earlier.
+
+.. jupyter-execute::
+
+    from_0 = StepSchedule.from_changepoints([0, 2], [[0], [1]])
+    print(cov_naft.sf_tvc(4, from_0))
+    for before in (0, 1):
+        sched = StepSchedule.from_changepoints([-np.inf, -1, 2],
+                                               [[before], [0], [1]])
+        print(before, cov_naft.sf_tvc([-1, 4], sched))
+    try:
+        cov_naft.sf_tvc(-1, from_0)
+    except ValueError as err:
+        print(str(err).split(': ')[0])
+
+The covariate before :math:`-1` changes nothing, and the schedule from 0 is
+refused only for the time before 0. One consequence follows from the
+arithmetic: before 0 a unit that ages faster runs its clock back further, to
+an age where fewer have failed, so it shows the *higher* survival at
+:math:`-1` (above, ``sf(-1)`` is larger for ``z = 1``) though it fails sooner
+after 0. Additive hazards is anchored at 0 in the same way (the covariate's
+added hazard is counted from 0), and needs the covariate over the same
+stretch.
+
+**Where 0 is.** Because AFT rescales time about 0, on a Normal, Gumbel or
+Logistic baseline the fit depends on where 0 is, as a Weibull's does; PH and
+PO do not. Fitting the same data with 0 moved by 30 (decibels referred to a
+watt, dBW, and to a milliwatt, dBm, say) only moves PH's :math:`\mu` by 30,
+but gives a different AFT fit:
+
+.. jupyter-execute::
+
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        for name, family in [('NormalPH', NormalPH), ('NormalAFT', NormalAFT)]:
+            a, b = family.fit(cov_x, cov_Z), family.fit(cov_x + 30, cov_Z)
+            print(name, a.sf(4, [1]), b.sf(34, [1]))
+
+So put 0 at a real origin, such as the start of service, for AFT or additive
+hazards on these baselines. For a quantity whose 0 is only a reference point
+(decibels, a temperature in °C, a log-scale measurement) use PH or PO, or a
+model in which the covariate shifts the distribution's location,
+``AcceleratedLife(Normal, life_models.Linear)``, which is an accelerated life
+model and not an AFT (see `Accelerated Failure Time (AFT)`_).
+
+**Survival given an age.** ``sf_tvc(x, Z, given=g)`` is
+:math:`S(x \mid g) = S(x) / S(g)`. The covariate before :math:`g` changes the
+chance of reaching :math:`g`, but under proportional hazards and odds,
+additive hazards and Cox it divides out: the hazard at each moment depends
+only on the covariate then, so :math:`S(x \mid g) =
+\exp\{-\int_g^x h(u \mid Z(u))\,du\}`, which needs the covariate from
+:math:`g` on only. Under AFT it does not divide out: the age reached by
+:math:`g` depends on how fast the clock ran before it. Two schedules that
+differ only before 1:
+
+.. jupyter-execute::
+
+    from surpyval import CovariatePath, ItemLifetime
+
+    for name, model in [('WeibullPH', cov_wph), ('NormalPH', cov_nph),
+                        ('WeibullAFT', cov_waft), ('NormalAFT', cov_naft)]:
+        lo = 0 if name.startswith('Weibull') else -np.inf
+        print(name, [float(model.sf_tvc(4, StepSchedule.from_changepoints(
+            [lo, 1, 2], [[before], [0], [1]]), given=1))
+            for before in (0, 1)])
+
+So under PH, PO, AH and Cox, given an age, the covariates need only start by
+then, whatever the baseline, and one that starts after it is refused; under
+AFT they are needed from 0 as before. This is the prediction counterpart of a
+fit: ``fit_tvc``, and a record with ``left_truncation``, take a unit that
+entered late with no covariates before its entry, and such a unit can be
+asked about given its entry:
+
+.. jupyter-execute::
+
+    late = StepSchedule.from_changepoints([1, 2], [[0], [1]])
+    print(cov_nph.sf_tvc(4, late, given=1))
+    try:
+        cov_nph.sf_tvc(4, late, given=0.5)
+    except ValueError as err:
+        print(str(err).split(': ')[0])
+    unit = ItemLifetime('a', observed=10, left_truncation=6,
+                        time_varying_covariates={5: [0.0], 8: [1.0]})
+    print(cov_wph.sf_tvc([7, 9], unit, given=6))
+
+**In short**, the covariates must start at or before:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 33 33
+
+   * - Family
+     - Baseline starting at 0
+     - Baseline defined below 0
+   * - PH, PO
+     - 0
+     - :math:`-\infty`
+   * - AFT
+     - 0
+     - 0, or the earliest time asked about if before 0
+   * - Accelerated life
+     - 0
+     - not available (the life parameter is a location)
+   * - AH
+     - 0
+     - 0, or the earliest time asked about if before 0
+   * - Cox
+     - 0
+     - before every baseline jump counted
+   * - PH, PO, AH, Cox, given an age :math:`g`
+     - :math:`g`
+     - :math:`g`
+   * - AFT and accelerated life, given an age :math:`g`
+     - 0
+     - 0, or :math:`g` if before 0 (AFT)
+
+A ``CovariatePath`` follows the same rules: a formula
+(``CovariatePath.from_callable``) has a value at every time, so it covers
+any stretch, and a path through points starts at its first point.
 
 Describing the covariate path
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -3434,6 +3674,201 @@ chi-square one:
     assert 5.0 < lr < 6.0 and 0.005 < chi2.sf(lr, 1) / 2 < 0.02
 
 
+Partial-effects plots
+---------------------
+
+A coefficient says how a covariate acts on the hazard (or the time scale,
+or the odds); a *partial-effects plot* shows what that does to the
+survival curve. ``model.plot_partial_effects(covariate, values)`` draws the
+model's survival curve once for each of ``values`` of one covariate, with
+the other covariates held at reference values, and returns the matplotlib
+axes. It is there for the Cox model and every parametric family (PH, AFT,
+PO, AH and accelerated life), and, as cumulative incidence, for the
+competing-risks regressions.
+
+Here pumps run at 50%, 75% or full load, at a measured temperature, on three
+sites, and are followed for up to 1500 hours:
+
+.. jupyter-execute::
+
+    import pandas as pd
+
+    rng = np.random.default_rng(876)
+    n = 240
+    pumps = pd.DataFrame({
+        'load': rng.choice([0.5, 0.75, 1.0], n),
+        'temp': rng.normal(40, 5, n).round(1),
+        'site': rng.choice(['north', 'south', 'west'], n),
+    })
+    life = 2000 * np.exp(-1.2 * pumps['load'] - 0.02 * (pumps['temp'] - 40)
+                         + 0.4 * (pumps['site'] == 'west'))
+    pumps['hours'] = surv.Weibull.random(n, 1, 1.8, random_state=3) * life
+    pumps['censored'] = (pumps['hours'] > 1500).astype(int)
+    pumps.loc[pumps['censored'] == 1, 'hours'] = 1500.0
+
+    pump_model = surv.WeibullPH.fit_from_df(
+        pumps, x_col='hours', c_col='censored',
+        formula='load + temp + C(site)', unit='hour',
+    )
+    hours = np.arange(0, 1501, 5)
+    fig, ax = plt.subplots()
+    pump_model.plot_partial_effects('load', [0.5, 0.75, 1.0], x=hours,
+                                    plot_bounds=True, ax=ax)
+    plt.show()
+
+Each curve is the model's own ``sf`` at its row: here ``load`` at the value
+in the legend, ``temp`` at its mean (40.0) and ``site`` at its reference
+level, ``north``. The line data are on the axes:
+
+.. jupyter-execute::
+
+    at = np.isin(hours, [250, 500, 1000])
+    for line in ax.get_lines():
+        print(line.get_label(), line.get_ydata()[at].round(2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _x = ax.get_lines()[0].get_xdata()
+    assert np.array_equal(_x, hours)
+    for _line, _v in zip(ax.get_lines(), [0.5, 0.75, 1.0]):
+        _row = pd.DataFrame({'load': [_v], 'temp': [pumps['temp'].mean()],
+                             'site': ['north']})
+        assert np.allclose(_line.get_ydata(), pump_model.sf(_x, _row),
+                           rtol=1e-12, atol=0)
+    _row = pd.DataFrame({'load': [0.75], 'temp': [pumps['temp'].mean()],
+                         'site': ['north']})
+    assert np.allclose(pump_model.sf(1000, _row), 0.19, atol=0.005)
+    assert np.allclose(pump_model.cb(1000, _row), [0.12, 0.27], atol=0.005)
+    assert abs(pumps['temp'].mean() - 40.0) < 0.05
+
+At full load about 4% of pumps reach 1000 hours, against 19% at 75% load and
+43% at half load. The bands (``plot_bounds=True``, default off) are the
+model's ``cb``, from the fit's covariance, at ``alpha_ci`` (default 0.05):
+0.12 to 0.27 at 1000 hours for 75% load. ``x=`` gives the times (by default
+200 points from 0 to the last fitted time), ``on="ff"`` or ``on="Hf"`` draws
+the failure probability or the cumulative hazard instead, and ``ax=`` draws
+on axes of your own.
+
+**The reference values.** A covariate not plotted is held at
+
+- the mean of the fitted rows, weighted by their counts, for a numeric
+  covariate (a 0/1 indicator included; for a fit with ``center=True`` this is
+  the model's ``center``);
+- its reference level for a categorical variable of a formula: the level
+  coded as all zeros, the first, or the base of ``contr.treatment(...)``.
+
+``reference=`` sets any of them by name. A formula's categorical variable is
+plotted by its levels:
+
+.. jupyter-execute::
+
+    fig, ax = plt.subplots()
+    pump_model.plot_partial_effects(
+        'site', ['north', 'south', 'west'], reference={'load': 0.75}, ax=ax,
+    )
+    plt.show()
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _x = ax.get_lines()[0].get_xdata()
+    for _line, _s, _v in zip(ax.get_lines(), ['north', 'south', 'west'],
+                             [0.19, 0.24, 0.50]):
+        _row = pd.DataFrame({'load': [0.75], 'temp': [pumps['temp'].mean()],
+                             'site': [_s]})
+        assert np.allclose(_line.get_ydata(), pump_model.sf(_x, _row),
+                           rtol=1e-12, atol=0)
+        assert abs(float(pump_model.sf(1000, _row)) - _v) < 0.005
+
+At 75% load the western pumps' chance of lasting 1000 hours is 0.50, against
+0.19 in the north and 0.24 in the south. A level the model was not fitted
+with is refused, as it is by ``sf``.
+
+**Transformed terms and interactions** go through the formula. The
+covariate is a *variable* of the formula, and each row is built from the
+variables and expanded by the formula as a prediction is, so ``np.log(load)``,
+a level's column and ``load:temp`` all follow from the ``load`` and ``temp``
+given. A term (``'np.log(load)'``, ``'load:temp'``, ``'C(site)[T.west]'``)
+is refused, naming its variables. What the model cannot supply is refused
+too: it keeps the design matrix, not the variables, so a variable that
+enters only transformed or in an interaction has no mean to hold it at:
+
+.. jupyter-execute::
+    :raises: ValueError
+
+    log_model = surv.WeibullPH.fit_from_df(
+        pumps, x_col='hours', c_col='censored',
+        formula='np.log(load) + temp + load:temp',
+    )
+    log_model.plot_partial_effects('temp', [35, 45])
+
+Given a reference for ``load``, it draws:
+
+.. jupyter-execute::
+
+    fig, ax = plt.subplots()
+    log_model.plot_partial_effects('temp', [35, 45],
+                                   reference={'load': 0.75}, ax=ax)
+    plt.show()
+
+The same goes for a categorical variable with no level coded as all zeros
+(``C(site, contr.sum)``), for a model restored by ``from_dict`` (which holds
+no data, and needs ``x=`` as well), and for a time-varying-covariate fit,
+whose rows are intervals rather than units. A model fitted on arrays names
+its covariates by position: ``model.plot_partial_effects(0, [0.5, 1.0])``,
+labelled ``Z[:, 0] = 0.5`` and so on.
+
+**The Cox model** draws its step curves at every fitted time; it has no
+``cb``, so ``plot_bounds=True`` is refused. A stratified fit is refused too
+(draw each stratum with ``sf(x, Z, stratum=...)``):
+
+.. jupyter-execute::
+
+    from surpyval.datasets import load_rossi_static
+
+    rossi = load_rossi_static()
+    rossi['censored'] = 1 - rossi['arrest']
+    cox = surv.CoxPH.fit_from_df(rossi, x_col='week', c_col='censored',
+                                 Z_cols=['fin', 'age', 'prio'])
+    fig, ax = plt.subplots()
+    cox.plot_partial_effects('prio', [0, 3, 8], ax=ax)
+    plt.show()
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _ends = [round(float(_l.get_ydata()[-1]), 2) for _l in ax.get_lines()]
+    assert _ends == [0.81, 0.76, 0.64], _ends
+
+With financial aid and age at their means, 81% of those with no prior
+convictions are not re-arrested within the year, against 64% of those with
+eight.
+
+**Competing risks.** ``CompetingRisksProportionalHazards`` and the Fine-Gray
+model draw a cause's cumulative incidence, ``event=`` naming the cause (a
+Fine-Gray model's own cause by default). They do not keep the covariates they
+were fitted to, so every other covariate needs a ``reference`` (a formula's
+categorical variable is held at its reference level), and they have no
+``cb``, so no bands:
+
+.. jupyter-execute::
+
+    pumps['mode'] = rng.choice(['seal', 'bearing'], n)
+    pumps.loc[pumps['censored'] == 1, 'mode'] = None
+    cr = surv.CompetingRisksProportionalHazards.fit_from_df(
+        pumps, x_col='hours', e_col='mode', c_col='censored',
+        Z_cols=['load', 'temp'],
+    )
+    fig, ax = plt.subplots()
+    cr.plot_partial_effects('load', [0.5, 1.0], event='seal',
+                            reference={'temp': 40}, ax=ax)
+    plt.show()
+
+
 Model Selection
 ---------------
 
@@ -4218,3 +4653,6 @@ trees — and all of them restore through ``surpyval.from_dict``:
 
 A restored tree or forest is a predictor only: it keeps no training data and
 cannot be re-fitted.
+
+Proportional hazards, accelerated failure time and accelerated life models also
+run in the browser in `Reliafy <https://reliafy.com/reference/regression>`__.

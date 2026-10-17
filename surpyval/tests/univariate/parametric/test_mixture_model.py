@@ -417,13 +417,13 @@ def test_605_em_steps_are_internal(old):
 
 def test_626_responsibilities_are_internal():
     # ``p`` held the EM responsibilities, a meaning ``p`` has nowhere
-    # else; its public name warns until v0.25 and the fit does not use it.
+    # else; its public name was removed in v0.25.
     x = surv.Weibull.random(100, 10, 2, random_state=0)
     model = no_warnings(sp.MixtureModel.fit, x, dist=surv.Weibull, m=2)
-    with pytest.warns(DeprecationWarning, match="internal to the fit") as rec:
-        resp = model.p
-    assert rec[0].filename == __file__
-    assert resp is model._resp and resp.shape == (2, len(model.data.x))
+    with pytest.raises(AttributeError, match="removed in v0.25"):
+        model.p
+    resp = model._resp
+    assert resp.shape == (2, len(model.data.x))
     np.testing.assert_allclose(resp.sum(axis=0), 1.0)
 
 
@@ -508,6 +508,21 @@ def test_qf_inverts_ff():
     assert np.allclose(mm.ff(mm.qf(p)), p, atol=1e-10)
     assert mm.qf([[0.1], [0.5]]).shape == (2, 1)
     assert mm.qf(0.0) == 0.0 and mm.qf(1.0) == np.inf
+
+
+@pytest.mark.parametrize("dist", [sp.Weibull, sp.LogNormal])
+def test_qf_keeps_full_precision_in_both_tails(dist):
+    # #821: the quantile was the root of ff(t) = u, so above u = 1/2 it
+    # kept only the digits of 1 - 1e-16 (a relative error of 1e-4 in the
+    # survival at 1e-12). Measured against 1 - u, which is exact there.
+    rng = np.random.default_rng(0)
+    x = np.r_[rng.weibull(2, 200) * 100, rng.weibull(4, 200) * 300]
+    mm = sp.MixtureModel.fit(x, dist=dist, m=2)
+    small = np.logspace(-12, np.log10(0.5), 60)
+    u = 1 - small
+    assert np.allclose(mm.sf(mm.qf(u)), 1 - u, rtol=1e-12, atol=0)
+    assert np.allclose(mm.ff(mm.qf(small)), small, rtol=1e-12, atol=0)
+    assert np.all(np.diff(mm.qf(np.linspace(0.001, 0.999, 500))) > 0)
 
 
 def test_qf_outside_unit_interval_is_nan_with_one_warning():
@@ -620,3 +635,60 @@ def test_covariance_survives_to_dict_and_refit():
     before = mm.standard_errors()
     mm.fit(np.arange(1.0, 30.0))
     assert not np.allclose(mm.standard_errors(), before)
+
+
+# -- with_params / from_params (#829) ---------------------------------------
+
+
+def test_from_params_builds_a_mixture_to_evaluate():
+    mm = sp.MixtureModel.from_params(
+        sp.Weibull, [[10, 2], [50, 4]], [0.3, 0.7]
+    )
+    x = np.array([5.0, 40.0])
+    want = 0.3 * sp.Weibull.sf(x, 10, 2) + 0.7 * sp.Weibull.sf(x, 50, 4)
+    np.testing.assert_allclose(mm.sf(x), want, rtol=1e-14)
+    np.testing.assert_allclose(mm.ff(mm.qf([0.1, 0.9])), [0.1, 0.9])
+    assert mm.m == 2 and mm.data is None
+
+
+def test_with_params_keeps_dist_and_m_and_reads_the_covariance_order():
+    mm = _fitted_model()
+    flat = np.r_[mm.params.ravel(), mm.w]
+    assert len(flat) == len(mm.covariance_names)
+    same = mm.with_params(flat)
+    np.testing.assert_array_equal(same.params, mm.params)
+    np.testing.assert_array_equal(same.w, mm.w)
+    np.testing.assert_allclose(same.sf([20.0, 60.0]), mm.sf([20.0, 60.0]))
+    assert same.dist is mm.dist and same.m == mm.m
+    # The parameters alone keep the weights; an (m, k) array as well.
+    np.testing.assert_array_equal(mm.with_params(mm.params.ravel()).w, mm.w)
+    moved = mm.with_params(mm.params * 1.1, w=[0.5, 0.5])
+    np.testing.assert_allclose(moved.params, mm.params * 1.1)
+    np.testing.assert_array_equal(moved.w, [0.5, 0.5])
+
+
+def test_with_params_takes_the_weights_as_log_ratios():
+    mm = _fitted_model()
+    logits = np.log(mm.w[:-1]) - np.log(mm.w[-1])
+    np.testing.assert_allclose(
+        mm.with_params(mm.params, w_logits=logits).w, mm.w, rtol=1e-12
+    )
+
+
+@pytest.mark.parametrize(
+    "args, kwargs, match",
+    [
+        (([[1.0, 2.0]],), {}, "must be of shape"),
+        (([[10.0, 2.0], [50.0, 4.0]],), {"w": [0.6, 0.6]}, "summing to 1"),
+        (([[10.0, 2.0], [50.0, 4.0]],), {"w": [1.2, -0.2]}, "non-negative"),
+        (([[-1.0, 2.0], [50.0, 4.0]],), {}, "bounds"),
+        (
+            ([10.0, 2.0, 50.0, 4.0, 0.5, 0.5],),
+            {"w": [0.5, 0.5]},
+            "ends with the weights",
+        ),
+    ],
+)
+def test_with_params_refuses_what_is_not_a_mixture(args, kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        _fitted_model().with_params(*args, **kwargs)

@@ -196,6 +196,16 @@ silently wrong numbers, not errors.
   repair was.
 - *No failures yet, but a measurable signal drifting toward a threshold* →
   **degradation / RUL**. Predicts life *before* anything fails.
+- *A signal read repeatedly (vibration, wear, a biomarker) and failures that it
+  drives* → a **joint model** (`sp.WeibullJointPH`, `sp.JointPH(sp.Weibull,
+  path_model)`), the readings on each `ItemLifetime` as `markers={age: value}`.
+  Carrying the last reading forward as a time-varying covariate biases its
+  effect toward 0. Each covariate can act on the hazard, the signal's path or
+  both (`hazard_covariates=`, `path_covariates=`); failures may be exact, found
+  at an inspection (left or interval censored) or truncated.
+  `model.predict(item)` gives one asset's survival, hazard and remaining life
+  given its readings so far, with Wald bands, its smoothed and projected
+  signal, and draws.
 
 **Parametric vs non-parametric vs semi-parametric:**
 
@@ -264,6 +274,7 @@ silently wrong numbers, not errors.
 |---|---|---|
 | **Parametric distributions** | `sp.<Name>` | Weibull, Exponential, Gamma, LogNormal, Normal, Gumbel, Logistic, LogLogistic, ExpoWeibull, Rayleigh, Beta, Beta4, Uniform, and discrete (Bernoulli, Poisson, Binomial, Geometric, NegativeBinomial, DiscreteWeibull, ...) |
 | **Non-parametric** | `sp.<Name>` | KaplanMeier, NelsonAalen, FlemingHarrington, **Turnbull** (NPMLE for the full data model incl. interval + truncation) |
+| **Non-parametric plot** | `sp.plot_nonparametric` | One or more fitted non-parametric models (a list, or `{label: model}` for groups) on one axes: `sf`/`ff`/`Hf`, `cb` or `band`, censor ticks, `quantiles=0.5` median lines and a number-at-risk table (`at_risk_rows="all"`); returns `fig`, `ax`, `counts`, `quantiles`. The table alone, no matplotlib: `sp.at_risk_table(models, times=, rows=, counts=)` |
 | **Tests** | `sp.logrank`, `sp.gray_test`, `surpyval.recurrent.laplace` / `mil_hdbk_189c` | k-sample (weighted, stratified) log-rank; Gray's test for cumulative incidences; recurrent trend tests |
 | **Regression (parametric)** | `sp.<Dist><Kind>` or `sp.AFT/PH/PO/AH(dist)` | AFT, PH (proportional hazards), PO (proportional odds), AH (additive hazards). E.g. `sp.WeibullPH`, `sp.LogNormalAFT`. Fit with `(x, Z, c, n, t)`; predict `sf(x, Z)`; `params` named by `parameter_names`. |
 | **Semi-parametric** | `sp.CoxPH` | Cox proportional hazards (Efron ties by default, with the matching Efron baseline); also `CoxPH.fit_tvc` / `fit_tvc_from_df` for time-varying covariates. `sp.BuckleyJames` (AFT), `sp.AdditiveHazards` (Lin–Ying), `sp.ProportionalOdds` (NPMLE; positive `beta` = longer life, as in `PO`). |
@@ -272,6 +283,7 @@ silently wrong numbers, not errors.
 | **Competing risks** | `surpyval.univariate.competing_risks` | `CompetingRisks` (nonparametric CIF), `ParametricCompetingRisks`, `FineGray` (subdistribution regression), `CompetingRisksProportionalHazards` |
 | **Recurrent events** | `surpyval.recurrent` | `NonParametricCounting` (MCF), NHPP/HPP intensity fits (`CrowAMSAA`, `Duane`, `CoxLewis`, `HPP`), renewal / imperfect repair (`GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA`, `ARI`), proportional-intensity regression, cause-specific MCF/NHPP, trend/GoF diagnostics |
 | **Degradation & RUL** | `surpyval.degradation` | `DegradationAnalysis` (path models via `PATH_MODELS`: linear, exponential, power, ...), stochastic processes `WienerProcess`/`GammaProcess`, `InducedFailureDistribution` (Lu–Meeker), `ProcessRUL` |
+| **Joint models** | `sp.WeibullJointPH`, `sp.JointPH` | A marker read repeatedly plus a lifetime: a degradation path (any `PathModel`) with random effects, Weibull PH in its current value; covariates per part (`hazard_covariates`, `path_covariates`); all censoring and truncation; `sf/ff/cb(x, Z, markers=, given=)` and `predict(...)` (dynamic prediction: `hf`, `remaining_life`, `marker`, `random`) |
 | **Multivariate** | `surpyval.multivariate` | Copulas: `Clayton`, `Frank`, `Gumbel`, `Gaussian`, `Independence` |
 | **Mixtures** | `sp.MixtureModel.fit(x, dist=..., m=...)` | EM mixture of a base family |
 | **Model validation** | `surpyval.metrics` | `brier_score`, `integrated_brier_score`, `auc_td`, `survival_probability` |

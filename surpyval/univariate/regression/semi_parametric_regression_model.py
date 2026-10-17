@@ -7,6 +7,7 @@ import numpy as onp
 import numpy.typing as npt
 from scipy.stats import norm
 
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -17,6 +18,7 @@ from surpyval.utils import is_missing_event
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
+from surpyval.utils.record_predict import PredictsRecordsMixin
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
@@ -25,6 +27,7 @@ from surpyval.utils.shapes import (
 from surpyval.utils.validation import check_alpha_ci, no_covariance_error
 
 from ._concordance import ConcordanceMixin
+from ._partial_effects import PartialEffectsMixin
 from ._prediction import (
     ConditionalSurvivalMixin,
     paired_probabilities,
@@ -48,10 +51,13 @@ if TYPE_CHECKING:
 
 class SemiParametricRegressionModel(
     ConditionalSurvivalMixin,
+    PartialEffectsMixin,
     InformationCriteriaMixin,
     LinearPredictorMixin,
     ConcordanceMixin,
+    DiagnoseMixin,
     SerialisableMixin,
+    PredictsRecordsMixin,
 ):
     """
     The fitted Cox proportional hazards model returned by ``CoxPH.fit``,
@@ -194,6 +200,39 @@ class SemiParametricRegressionModel(
     def __init__(self, kind: str, parameterization: str) -> None:
         self.kind = kind
         self.parameterization = parameterization
+
+    # -- plot_partial_effects (PartialEffectsMixin) ------------------------
+
+    #: The Breslow baseline is a step function, drawn as steps.
+    _PARTIAL_EFFECTS_STEP = True
+
+    def _partial_effects_refusal(self) -> "str | None":
+        if self.is_stratified:
+            return (
+                "A stratified Cox model has a baseline per stratum, and "
+                "plot_partial_effects does not take a stratum: draw each "
+                "stratum's curves with sf(x, Z, stratum=...)."
+            )
+        return None
+
+    def _partial_effects_width(self) -> int:
+        return int(np.size(self.params))
+
+    def _partial_effects_rows(
+        self,
+    ) -> "tuple[npt.NDArray, npt.NDArray] | str":
+        data = getattr(self, "_fit_data", None)
+        if not data:
+            return "the model does not hold the data it was fitted to"
+        return (
+            onp.asarray(data["Z"], dtype=float),
+            onp.asarray(data["n"], dtype=float),
+        )
+
+    def _partial_effects_times(self) -> "npt.NDArray | None":
+        data = getattr(self, "_fit_data", None)
+        fitted = [] if not data else [onp.ravel(data["x"])]
+        return onp.concatenate([onp.ravel(self.x)] + fitted)
 
     # -- model comparison (#604) -------------------------------------------
 
@@ -816,17 +855,22 @@ class SemiParametricRegressionModel(
         """
         Test the proportional-hazards assumption (Grambsch-Therneau).
 
-        The table R's ``cox.zph`` prints (#514): one row per covariate
-        (named as in :meth:`summary`), each a 1-d.f. test of whether its
-        scaled Schoenfeld residuals trend with time, and a last row
-        ``GLOBAL``, the joint test on all of them. A small ``p`` is
-        evidence against proportional hazards.
+        The table R's ``cox.zph`` prints (#514), with its statistics
+        (survival 3.0 and later): one row per covariate (named as in
+        :meth:`summary`), each the 1-d.f. score test of whether its
+        coefficient changes with time (the trend of its scaled Schoenfeld
+        residuals), and a last row ``GLOBAL``, the joint test on all of
+        them. A small ``p`` is evidence against proportional hazards.
+        :meth:`diagnose` reports the same tests on the ``km`` and ``rank``
+        scales, with the other checks of a Cox fit and what to do about a
+        failure. Until v0.24 this was the approximation of R before
+        version 3.0 and of lifelines, which can differ in small samples.
 
         Parameters
         ----------
         transform : {"km", "rank", "identity", "log"}, optional
-            The function of time to test against; ``"km"`` (the default,
-            as in R) is the scale-free choice. See
+            The function of time to test against, as R defines it;
+            ``"km"`` (the default, as in R) is the scale-free choice. See
             :func:`~surpyval.univariate.regression.proportional_hazards.
             diagnostics.check_ph`.
 
@@ -851,9 +895,9 @@ class SemiParametricRegressionModel(
         >>> model.check_ph().round(4)
                    statistic  df       p
         covariate
-        fin           0.0000   1  0.9983
-        age           5.8491   1  0.0156
-        GLOBAL        5.8570   2  0.0535
+        fin           0.0242   1  0.8764
+        age           6.0906   1  0.0136
+        GLOBAL        6.0949   2  0.0475
         """
         import pandas as pd
 
@@ -1095,8 +1139,9 @@ class SemiParametricRegressionModel(
         continuously varying path this is still exact, with no quadrature:
         only the covariate just before each jump time counts (the value
         before a jump in the path, as for ``(start, stop]`` rows). The path
-        is measured from time zero (a path starting after zero has its first
-        value held back to zero; the part before zero is ignored), and any
+        is measured from time zero (a path starting after zero is refused,
+        as is one starting at or after a baseline jump before zero that a
+        query counts, #952), and any
         time is a valid query: ``H`` is ``0`` up to the first baseline jump.
 
         Parameters
@@ -1145,9 +1190,11 @@ class SemiParametricRegressionModel(
         ``CovariatePath`` given one (summed from ``given`` on)."""
         base_t, base_h0, _ = self._baseline_arrays(stratum)
         from .tvc_path import CovariatePath
-        from .tvc_schedule import as_covariate_path, segments_from_origin
+        from .tvc_schedule import as_covariate_path, segments_from
 
-        schedule = as_covariate_path(Z, xl)
+        schedule = as_covariate_path(
+            Z, xl, getattr(self, "feature_names", None)
+        )
         n_cov = np.asarray(self.beta).shape[0]
         if schedule.p != n_cov:
             raise ValueError(
@@ -1167,12 +1214,15 @@ class SemiParametricRegressionModel(
             # Nothing to evaluate: a missing time is nan (the schedule
             # cannot be materialised to a nan horizon).
             return np.full(xq.shape, np.nan)
+        t_max = float(np.nanmax(xq))
+        _check_jumps_covered(schedule.start, base_t, t_max, given)
         if isinstance(schedule, CovariatePath):
             return self._tvc_cumhaz_path(xq, schedule, base_t, base_h0, given)
-        # A horizon at or below 0 materialises the segment in force at 0
-        # (H is 0 there, before the first baseline jump).
-        t_max = float(np.nanmax(xq))
-        starts, _, Zseg = segments_from_origin(schedule, t_max)
+        # From the schedule's own start (at or before 0, and before every
+        # baseline jump that counts, #952). A horizon at or below 0
+        # materialises the segment in force at 0.
+        lo = min(schedule.start, 0.0)
+        starts, _, Zseg = segments_from(schedule, lo, max(t_max, 0.0))
         return self._tvc_cumhaz(xq, starts, Zseg, base_t, base_h0)
 
     def _tvc_cumhaz_path(
@@ -1190,16 +1240,20 @@ class SemiParametricRegressionModel(
             H(t) = \sum_{u_j \le t} h_0(u_j)\, e^{\beta' (Z(u_j-) - c)},
 
         exact, with the path's value just before each jump time (its value
-        at 0 for a jump at or before 0, where the path is held back to).
+        at its start for a jump there).
         With ``given`` the jumps in ``(given, t]`` are summed (negated for
         ``t < given``).
         """
         from .tvc_path import sum_between
 
-        Z_at = np.asarray(path._values(np.maximum(base_t, 0.0)), dtype=float)
-        at0 = base_t <= 0
-        if at0.any():
-            Z_at[at0] = path._values(np.zeros(1), left=False)[0]
+        # The value just before each jump; for a jump at or before the
+        # path's start, which no query counts (_check_jumps_covered) unless
+        # it is the start itself, the value there.
+        start = path.start
+        Z_at = np.asarray(path._values(np.maximum(base_t, start)), dtype=float)
+        early = base_t <= start
+        if early.any():
+            Z_at[early] = path._values(np.array([start]), left=False)[0]
         weight = self._times_risk(base_h0, self._log_risk(Z_at))
         # The jumps between baseline times: panel i is (t_{i-1}, t_i], so
         # a time's cumulative sum is that of the last baseline time at or
@@ -1262,8 +1316,9 @@ class SemiParametricRegressionModel(
             ``S(x | given) = exp(-(H(x) - H(given)))`` for ``x > given``,
             and 1 for ``x <= given`` (survival to those times is certain).
             Along a ``CovariatePath`` the baseline jumps after ``given``
-            are summed, so nothing is subtracted. A ``nan`` ``given`` gives
-            ``nan``.
+            are summed, so nothing is subtracted. This depends on the
+            covariate from ``given`` on only, so ``Z`` need only start by
+            then (#962). A ``nan`` ``given`` gives ``nan``.
         stratum : optional
             For a stratified fit, the stratum whose baseline hazard to use
             (required there, as for :meth:`sf`).
@@ -1289,6 +1344,12 @@ class SemiParametricRegressionModel(
         from .tvc_path import CovariatePath
 
         g = None if given is None else float(given)
+        if g is not None and not np.isnan(g):
+            # Given an age, the covariates need only start by then (#962).
+            from .tvc_schedule import as_covariate_path
+
+            names = getattr(self, "feature_names", None)
+            Z, xl = as_covariate_path(Z, xl, names, given=g), None
         if isinstance(Z, CovariatePath) and g is not None and not np.isnan(g):
             # Summed from given on.
             H = self._hf_tvc(x, Z, xl, stratum, given=g)
@@ -1307,3 +1368,23 @@ class SemiParametricRegressionModel(
             xq = np.atleast_1d(np.asarray(x, dtype=float))
             H = np.where(xq <= g, 0.0, H)
         return np.exp(-H)
+
+
+def _check_jumps_covered(
+    start: float, base_t: npt.NDArray, t_max: float, given: "float | None"
+) -> None:
+    """Refuse a covariate path that starts at or after a baseline jump
+    before 0 that a query counts (the jumps up to the largest query time,
+    after ``given``): the hazard there needs the covariate just before the
+    jump (#952). A jump at the start itself, 0, takes the value there."""
+    counted = base_t <= t_max
+    if given is not None and not np.isnan(given):
+        counted &= base_t > given
+    early = base_t[counted & (base_t <= start) & (base_t < 0)]
+    if early.size:
+        raise ValueError(
+            f"The covariates start at {start:g}, but the baseline has a "
+            f"jump at {float(early[0]):g}, before it: the hazard there "
+            "needs the covariate just before that time. Give their values "
+            f"from before {float(early[0]):g} (from -np.inf, say)."
+        )

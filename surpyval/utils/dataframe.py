@@ -36,6 +36,7 @@ from surpyval.utils.removed_names import (
     column_arguments,
     removed_message,
 )
+from surpyval.utils.units import takes_unit
 
 
 class fitter_method:
@@ -220,6 +221,7 @@ class UnivariateDataFrameMixin:
     """
 
     @fitter_method
+    @takes_unit
     def fit_from_df(
         self,
         df: pd.DataFrame,
@@ -381,6 +383,7 @@ class RecurrentDataFrameMixin:
 
     @fitter_method
     @column_arguments("x", "i", "c", "n")
+    @takes_unit
     def fit_from_df(
         self,
         df: pd.DataFrame,
@@ -510,6 +513,7 @@ class RecurrentRegressionDataFrameMixin:
 
     @fitter_method
     @column_arguments("x", "i", "c", "n")
+    @takes_unit
     def fit_from_df(
         self,
         df: pd.DataFrame,
@@ -603,6 +607,7 @@ class RegressionDataFrameMixin:
 
     @fitter_method
     @column_arguments("x", "c", "n", "xl", "xr", "tl", "tr")
+    @takes_unit
     def fit_from_df(
         self,
         df: pd.DataFrame,

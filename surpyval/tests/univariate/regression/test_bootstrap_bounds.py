@@ -406,3 +406,10 @@ def test_617_a_model_with_no_finite_maximum_says_its_bounds_mean_nothing():
         model.cb(5.0, [1.0], method="bootstrap", n_boot=10, random_state=0)
     msgs = [str(w.message) for w in caught]
     assert len(msgs) == 1 and "not a confidence bound" in msgs[0], msgs
+
+
+def test_one_bootstrap_refit_is_refused():
+    # One refit has no spread: its BCa bounds came back NaN in silence.
+    model = sp.Weibull.fit([1.0, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    with pytest.raises(ValueError, match="at least 2"):
+        model.cb([5.0], method="bootstrap", n_boot=1, random_state=0)

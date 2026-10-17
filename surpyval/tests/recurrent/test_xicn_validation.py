@@ -153,7 +153,7 @@ def test_nan_truncation_rejected():
 
 
 def test_negative_time_untruncated_rejected():
-    with pytest.raises(ValueError, match="outside its observation window"):
+    with pytest.raises(ValueError, match="before its observation began"):
         handle_xicn(np.array([-1.0, 2.0]), np.array([1, 1]))
 
 
@@ -166,9 +166,32 @@ def test_negative_time_with_negative_left_truncation_accepted():
     assert np.allclose(np.sort(data.x), [-1.0, 2.0])
 
 
-def test_event_after_right_truncation_rejected():
-    with pytest.raises(ValueError, match="outside its observation window"):
-        handle_xicn(np.array([1.0, 9.0]), np.array([1, 1]), tl=0.0, tr=5.0)
+def test_event_after_right_truncation_accepted():
+    # tr is not the end of observation (#924): the item is in the data
+    # because it failed by tr, and may be watched, and fail, after it.
+    data = handle_xicn(np.array([1.0, 9.0]), np.array([1, 1]), tl=0.0, tr=5.0)
+    assert data.x.tolist() == [1.0, 9.0]
+    assert np.isfinite(HPP.fit([1.0, 9.0], tl=0.0, tr=5.0).params[0])
+
+
+def test_watched_past_tr_without_failure_by_tr_rejected():
+    # Watched to tr or beyond, the failure by tr that put the item in the
+    # data would have been seen: an item with none is refused.
+    match = "no failure known at or before tr"
+    with pytest.raises(ValueError, match=match):
+        handle_xicn(np.array([7.0, 9.0]), np.array([1, 1]), tr=5.0)
+    with pytest.raises(ValueError, match=match):
+        handle_xicn([8.0], [1], c=[1], tr=5.0)
+    with pytest.raises(ValueError, match=match):
+        handle_xicn([5.0], [1], c=[1], tr=5.0)
+    # A failure at tr itself is by tr.
+    data = handle_xicn([5.0, 8.0], [1, 1], c=[0, 1], tr=5.0)
+    assert data.c.tolist() == [0, 1]
+
+
+def test_left_truncation_at_or_beyond_right_truncation_rejected():
+    with pytest.raises(ValueError, match="at or beyond its right"):
+        handle_xicn([6.0], [1], tl=5.0, tr=5.0)
 
 
 # --- covariates -----------------------------------------------------------
@@ -201,21 +224,28 @@ def test_valid_data_passes():
 # ---------------------------------------------------------------------------
 
 
-def test_censoring_row_before_finite_tr_is_rejected():
+def test_censoring_row_before_finite_tr_is_accepted():
+    # The end of observation (a c=1 row) and the right truncation (the age
+    # by which the item failed, #924) are different things: a c=1 row
+    # before tr is fine, even for an item with no failure seen (it failed
+    # after its observation ended, by tr).
     kwargs = dict(
         x=[1, 2, 3, 4],
         i=[1, 1, 1, 2],
         c=[0, 0, 1, 1],
-        e=["a", "b", None, None],
         tr=[10, 10, 10, 10],
-        dist=HPP,
     )
-    with pytest.raises(ValueError, match="before its right truncation"):
-        CauseSpecificNHPP.fit(**kwargs)
-    with pytest.raises(ValueError, match="before its right truncation"):
+    data = handle_xicn(**kwargs)
+    assert data.c.tolist() == [0, 0, 1, 1]
+    assert np.isfinite(HPP.fit(**kwargs).params[0])
+    # The models that cannot account for the selection refuse tr
+    match = "does not take right truncation"
+    with pytest.raises(ValueError, match=match):
+        CauseSpecificNHPP.fit(e=["a", "b", None, None], dist=HPP, **kwargs)
+    with pytest.raises(ValueError, match=match):
         NonParametricCounting.fit([1, 2, 3], c=[0, 0, 1], tr=10)
-    # a c=1 row at tr is the same close, and is fine
-    NonParametricCounting.fit([1, 2, 10], c=[0, 0, 1], tr=10)
+    with pytest.raises(ValueError, match=match):
+        NonParametricCounting.fit([1, 2, 10], c=[0, 0, 1], tr=10)
 
 
 def test_tied_censoring_row_and_event_do_not_depend_on_order():

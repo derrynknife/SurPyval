@@ -371,3 +371,34 @@ def test_647_a_level_above_one_half_warns_once_at_the_caller():
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         model.cb([2.0], alpha_ci=0.5)
+
+
+def test_fit_best_refuses_an_empty_include():
+    # An empty include used to try the default candidates, as if it had
+    # been left out.
+    with pytest.raises(ValueError, match="`include` is empty"):
+        sp.fit_best([1.0, 2, 3, 4, 5, 6, 7, 8], include=[])
+
+
+def test_printout_says_when_the_fit_is_not_a_verified_maximum():
+    # The printout of a fit whose maximum is unverified, or not finite,
+    # used to read as an ordinary fit; the warning raised by fit is easy
+    # to miss or filter.
+    model = sp.Weibull.fit([1.0, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    assert model.maximum == "verified"
+    assert "Maximum" not in repr(model)
+    model.maximum = "unverified"
+    assert "Maximum             : unverified" in repr(model)
+    model.maximum = "no finite maximum"
+    assert "Maximum             : none finite" in repr(model)
+
+
+def test_censoring_flag_refusal_names_interval_censoring():
+    with pytest.raises(ValueError, match="interval censoring use c=2"):
+        sp.Weibull.fit([1.0, 2, 3], c=[0, 5, 0])
+
+
+def test_alpha_ci_as_text_is_refused_asking_for_a_number():
+    model = sp.Weibull.fit([1.0, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    with pytest.raises(ValueError, match="expected a number"):
+        model.cb([5.0], alpha_ci="0.05")
