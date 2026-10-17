@@ -42,6 +42,16 @@ every combination of censoring and truncation.
    univariate/fleming_harrington
    univariate/turnbull
 
+Plotting
+--------
+
+Several estimates on one figure, with the number at risk under it.
+
+.. toctree::
+   :maxdepth: 1
+
+   univariate/plot_nonparametric
+
 Other Non-Parametric Functions
 ------------------------------
 

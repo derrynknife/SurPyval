@@ -1,11 +1,31 @@
 Changelog
-=========
-
+==
 Unreleased
 ----------
 
 **Added**
 
+- ``surpyval.plot_nonparametric``: one figure of one or more
+  non-parametric estimates (Kaplan-Meier, Nelson-Aalen,
+  Fleming-Harrington or Turnbull, truncated or not; one model, a list or
+  a dict ``{label: model}`` for groups) with a number-at-risk table under
+  the x axis. It draws ``sf``, ``ff``, ``Hf`` or the smoothed hazard
+  rate, with the model's pointwise ``cb`` or simultaneous ``band``
+  (shaded or as dashed steps), censoring ticks, median or other quantile
+  lines with their values, a time range and a log time axis, and returns
+  the figure, axes, curves, quantiles and counts (``NonParametricPlot``).
+  The table's rows are "At risk", "Censored" and "Events" (cumulative,
+  as lifelines' ``add_at_risk_counts``, or per interval), counted with
+  the estimators' risk sets, so the number at risk rises with late
+  entry. For left or interval censored data the rows count what the
+  data show (known event-free, known to have had the event) and an "In
+  interval" row counts the units whose interval spans the time, rather
+  than the Turnbull estimate's fractional expected counts.
+- ``surpyval.at_risk_table(models, times=None, rows=("At risk",),
+  counts="cumulative")``: the same table as data, ``{"times", "rows",
+  "counts": {label: {row: array}}}``, without drawing (it loads no
+  plotting library), for a report or a table of one's own.
+=======
 - Joint models (#891): separate covariates for the hazard and the path.
   ``WeibullJointPH.fit(..., hazard_covariates=[...],
   path_covariates=[...] or {path parameter: [...]})`` (and ``fit_from_df``)
