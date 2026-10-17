@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import warnings
 from collections import namedtuple
+from collections.abc import Callable
 from copy import copy, deepcopy
 from math import comb
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as np
 import numpy as onp
@@ -527,21 +528,21 @@ class Parametric(
     support: tuple[float, float]
     hess_inv: npt.NDArray
     #: The covariance of every estimated parameter, ``covariance()``.
-    _covariance: "npt.NDArray | None" = None
-    surv_data: "SurpyvalData"
+    _covariance: npt.NDArray | None = None
+    surv_data: SurpyvalData
     fitting_info: dict[str, Any]
     optimizer: str
     maximum: str
     tl: Any
     # The printout's "Data" line of a model restored without its
     # data (#508)
-    _data_summary: "str | None" = None
+    _data_summary: str | None = None
     # ``(events, trials)`` of a Bernoulli, FixedEventProbability or
     # Binomial fit: what its bounds on ``p`` are computed from (#580).
-    _event_counts: "tuple[float, float] | None" = None
+    _event_counts: tuple[float, float] | None = None
     # The trials of each row of a Binomial fitted to rows of different
     # sizes (#608), which leave it no single ``n``.
-    _n_trials: "npt.NDArray | None" = None
+    _n_trials: npt.NDArray | None = None
     tr: Any
     lfp_name: str
     _neg_ll: float
@@ -609,7 +610,7 @@ class Parametric(
         self.param_map = param_map
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "Parametric":
+    def from_dict(cls, model_dict: dict) -> Parametric:
         """
         Rebuild a model from the dictionary written by :meth:`to_dict`.
 
@@ -936,11 +937,11 @@ class Parametric(
 
     #: The ``alpha_ci`` of a model built by ``weibayes``, whose scale is
     #: itself a lower confidence bound; None for any other model.
-    _weibayes_alpha_ci: "float | None" = None
+    _weibayes_alpha_ci: float | None = None
 
     #: The bootstrap refits drawn for ``method="bootstrap"``
     #: (``_bootstrap.refits``), by ``(n_boot, random_state)``; not pickled.
-    _bootstrap_refits: "dict | None" = None
+    _bootstrap_refits: dict | None = None
 
     def __getstate__(self) -> dict:
         # The bootstrap refits are a cache, rebuilt on demand (#645), as
@@ -955,7 +956,7 @@ class Parametric(
             state["lfp_p"] = state.pop("p")
         self.__dict__.update(state)
 
-    def with_params(self, params: npt.ArrayLike) -> "Parametric":
+    def with_params(self, params: npt.ArrayLike) -> Parametric:
         """
         The same model with other distribution parameters.
 
@@ -1796,8 +1797,10 @@ class Parametric(
             # on 1e6 values; they are given 0.5 instead, in one pass.
             if at_zero is not None and never is not None:
                 onp.putmask(base, at_zero | never, 0.5)
-            elif at_zero is not None or never is not None:
-                onp.putmask(base, at_zero if never is None else never, 0.5)
+            elif at_zero is not None:
+                onp.putmask(base, at_zero, 0.5)
+            elif never is not None:
+                onp.putmask(base, never, 0.5)
         with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
             q = formula(self.dist, base, *self.params)
         if self.gamma == 0:
@@ -3900,11 +3903,11 @@ class Parametric(
         heuristic: str = "Nelson-Aalen",
         plot_bounds: bool = True,
         alpha_ci: float = 0.05,
-        ax: "Axes | None" = None,
+        ax: Axes | None = None,
         show_censored: bool = False,
         method: str = "wald",
         color: Any = None,
-        label: "str | None" = None,
+        label: str | None = None,
         **kwargs: Any,
     ) -> Axes:
         """

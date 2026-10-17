@@ -3,7 +3,8 @@ from __future__ import annotations
 import functools
 import numbers
 import warnings
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as np
 import numpy.typing as npt
@@ -226,8 +227,8 @@ class MixtureModel(
                 "'m', the number of sub-distributions in the mixture, must "
                 f"be a whole number of at least 1; got {m!r}"
             )
-        self.m = m
-        self.dist = dist
+        self.m: int = m
+        self.dist: Any = dist
         # These are None until ``fit`` runs and arrays afterwards, so the
         # honest annotation is the union -- and every use is downstream of
         # a fit. Narrowing them to the fitted type would be a lie before
@@ -339,7 +340,7 @@ class MixtureModel(
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "MixtureModel":
+    def from_dict(cls, model_dict: dict) -> MixtureModel:
         """Rebuild a mixture model from a :meth:`to_dict` dictionary.
 
         The restored model evaluates the mixture (``sf``, ``ff``, ``df``,
@@ -377,7 +378,7 @@ class MixtureModel(
         w: npt.ArrayLike | None = None,
         *,
         w_logits: npt.ArrayLike | None = None,
-    ) -> "MixtureModel":
+    ) -> MixtureModel:
         """
         A mixture of ``dist`` built from its components' parameters and
         weights, ready for ``sf``, ``ff``, ``df``, ``hf``, ``Hf``, ``qf``,
@@ -436,7 +437,7 @@ class MixtureModel(
         w: npt.ArrayLike | None = None,
         *,
         w_logits: npt.ArrayLike | None = None,
-    ) -> "MixtureModel":
+    ) -> MixtureModel:
         """
         The same mixture -- its ``dist`` and ``m`` -- with other component
         parameters and weights, as ``Parametric.with_params`` is for one
@@ -835,7 +836,7 @@ class MixtureModel(
                 res = minimize(self._Q, x0, bounds=bounds)
         self.params = res.x.reshape(self.m, self.dist.k)
 
-    def _Q_jac(self) -> "Callable[..., Any] | None":
+    def _Q_jac(self) -> Callable[..., Any] | None:
         """The gradient of :meth:`_Q` by autograd, or ``None`` (finite
         differences) for a distribution autograd cannot differentiate."""
         # Kept for the fit in progress (``fit`` drops it: a closure would
@@ -884,7 +885,7 @@ class MixtureModel(
 
     def _em(
         self, tol: float = 1e-10, max_iter: int = 1000, budget: int = 20
-    ) -> "str | None":
+    ) -> str | None:
         """Fit by EM, polished by direct maximum likelihood (#506).
 
         EM moves linearly, and on a censored mixture it can crawl along a
@@ -958,7 +959,7 @@ class MixtureModel(
         margin = 1e-6 * float(np.sum(self.data.n)) if end[0] else 0.0
         return end[1] < best[1] - margin
 
-    def _failure_split_start(self) -> "tuple[npt.NDArray, Any] | None":
+    def _failure_split_start(self) -> tuple[npt.NDArray, Any] | None:
         """A second EM start (#582): the failures, by count, cut into
         ``m`` consecutive blocks, each component fitted to one block, and
         every survivor (right-censored row) given to the last.
@@ -2070,7 +2071,7 @@ class MixtureModel(
         return standard_errors_of(self.covariance())
 
     @staticmethod
-    def _check_wald(method: "str | None", bound: str) -> None:
+    def _check_wald(method: str | None, bound: str) -> None:
         """A mixture has Wald bounds only."""
         if method is not None:
             check_option(
@@ -2086,7 +2087,7 @@ class MixtureModel(
         name: str,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
-        method: "str | None" = None,
+        method: str | None = None,
     ) -> npt.NDArray:
         """
         The Wald confidence bound on one component's parameter or weight.
@@ -2134,8 +2135,8 @@ class MixtureModel(
             raise option_error("name", name, names)
         idx = names.index(name)
         n_params = self.m * self.dist.k
-        lower: "float | None"
-        upper: "float | None"
+        lower: float | None
+        upper: float | None
         if idx < n_params:
             p_hat = float(np.ravel(self.params)[idx])
             lower, upper = self.dist.bounds[idx % self.dist.k]
@@ -2534,7 +2535,7 @@ class MixtureModel(
         ax: Any = None,
         show_censored: bool = False,
         color: Any = None,
-        label: "str | None" = None,
+        label: str | None = None,
         **kwargs: Any,
     ) -> Axes:
         """

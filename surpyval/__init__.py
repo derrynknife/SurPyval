@@ -82,8 +82,8 @@ from surpyval.univariate.parametric import (
     RoystonParmarModel,
     Uniform,
     Weibull,
-    weibayes,
 )
+from surpyval.univariate.parametric.weibayes import weibayes
 
 # A broadcast-aware derivative rule for ``np.where``, registered on import
 # (autograd's does not unbroadcast; #562).
@@ -471,7 +471,7 @@ if not TYPE_CHECKING:  # keep the type checker's view of the module exact
             )
         else:
             raise AttributeError(
-                "module 'surpyval' has no attribute {!r}".format(name),
+                f"module 'surpyval' has no attribute {name!r}",
                 name=name,
             )
         # ``from surpyval import Power`` would turn an AttributeError into

@@ -3,9 +3,10 @@ from __future__ import annotations
 import functools
 import inspect
 import warnings
+from collections.abc import Callable
 from numbers import Number
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -96,22 +97,22 @@ class SurpyvalData(ReshapeMixin):
     # covariates (``{item: StepSchedule or CovariatePath}``) and each
     # item's marker readings (``{item: {age: value}}``, ``{}`` for an item
     # with none; #891).
-    ids: "list | None" = None
-    e: "np.ndarray | None" = None
-    time_varying_covariates: "dict | None" = None
-    markers: "dict | None" = None
+    ids: list | None = None
+    e: np.ndarray | None = None
+    time_varying_covariates: dict | None = None
+    markers: dict | None = None
     # The name of each column of Z, where they have names: given as
     # ``covariate_names``, the columns of a DataFrame ``Z``, or the items'
     # ``covariates={name: value}``. They name a fitted model's
     # coefficients.
-    covariate_names: "list | None" = None
+    covariate_names: list | None = None
     # Each row's attributes (``{name: value}``, what describes the item
     # without being fitted), from the records or ``from_dataframe``; None
     # where the data has none, and None for a row without any.
-    attributes: "list | None" = None
+    attributes: list | None = None
     # The unit of the times (``"hour"``), a label as a model's ``unit``
     # is; None where unknown (#945).
-    unit: "str | None" = None
+    unit: str | None = None
 
     def __init__(
         self,
@@ -127,7 +128,7 @@ class SurpyvalData(ReshapeMixin):
         group_and_sort: bool = True,
         handle: bool = True,
         e: ArrayLike | None = None,
-        covariate_names: "list | None" = None,
+        covariate_names: list | None = None,
         ids: Any = None,
         unit: Any = None,
     ) -> None:
@@ -281,7 +282,9 @@ class SurpyvalData(ReshapeMixin):
             The covariate array.
         """
         self.covariate_names = (
-            _checked_names([str(c) for c in Z.columns], np.asarray(Z))
+            _checked_names(
+                [str(c) for c in getattr(Z, "columns")], np.asarray(Z)
+            )
             if type(Z).__name__ == "DataFrame"
             else None
         )
@@ -436,14 +439,14 @@ class SurpyvalData(ReshapeMixin):
         observed_event_types: Any = None,
         left_censored_event_types: Any = None,
         interval_censored_event_types: Any = None,
-        covariate_names: "list | None" = None,
+        covariate_names: list | None = None,
         observed_ids: Any = None,
         right_censored_ids: Any = None,
         left_censored_ids: Any = None,
         interval_censored_ids: Any = None,
         unit: Any = None,
         **unknown: Any,
-    ) -> "SurpyvalData":
+    ) -> SurpyvalData:
         """
         The data from a list of each kind of observation: the times at
         which a failure was observed, the times right censored at (the
@@ -613,7 +616,10 @@ class SurpyvalData(ReshapeMixin):
             "left_censored": left_censored_ids,
             "interval_censored": interval_censored_ids,
         }
-        shared = {"left": left_truncation, "right": right_truncation}
+        shared: dict[str, Any] = {
+            "left": left_truncation,
+            "right": right_truncation,
+        }
         if all(times is None for times in lists.values()):
             raise ValueError(
                 "Give at least one of observed, right_censored, "
@@ -753,7 +759,7 @@ class SurpyvalData(ReshapeMixin):
         Z_cols: Any = None,
         attribute_cols: Any = None,
         unit: Any = None,
-    ) -> "SurpyvalData":
+    ) -> SurpyvalData:
         """
         The data from a :class:`pandas.DataFrame` with one row per item
         (or per group of identical items, counted ``n_col``), naming the
@@ -892,7 +898,7 @@ class SurpyvalData(ReshapeMixin):
     @classmethod
     def from_xrd(
         cls, x: ArrayLike, r: ArrayLike, d: ArrayLike
-    ) -> "SurpyvalData":
+    ) -> SurpyvalData:
         """
         The data from the ``xrd`` format: the distinct times ``x``, the
         number at risk ``r`` and the number failing ``d`` at each. Each
@@ -931,7 +937,7 @@ class SurpyvalData(ReshapeMixin):
     @classmethod
     def from_items(
         cls, items: Any, counts: Any = None, unit: Any = None, **unknown: Any
-    ) -> "SurpyvalData":
+    ) -> SurpyvalData:
         """
         The data of several items' lifetimes, each an
         :class:`~surpyval.utils.item_lifetime.ItemLifetime`, with ``counts``
@@ -1093,7 +1099,7 @@ class SurpyvalData(ReshapeMixin):
     def _records(self) -> tuple[list, list]:
         return self.to_items(), list(np.asarray(self.n))
 
-    def _from_records(self, records: list, counts: list) -> "SurpyvalData":
+    def _from_records(self, records: list, counts: list) -> SurpyvalData:
         out = SurpyvalData.from_items(records, counts=counts)
         if self.ids is None:
             out.ids = None  # its items were row numbers, not ids
@@ -1104,7 +1110,7 @@ class SurpyvalData(ReshapeMixin):
         Z = Z[:, None] if Z.ndim == 1 else Z
         return Z[:, column].tolist()
 
-    def _rows_of_items(self, keep: np.ndarray) -> "SurpyvalData":
+    def _rows_of_items(self, keep: np.ndarray) -> SurpyvalData:
         from surpyval.utils.lifetime_reshape import rebuilt
 
         return rebuilt(self, keep)
@@ -1191,7 +1197,7 @@ class SurpyvalData(ReshapeMixin):
             unit=self.unit,
         )
 
-    def _markers_by_row(self) -> "list | None":
+    def _markers_by_row(self) -> list | None:
         """Each row's marker readings, ``{age: value}`` (``{}`` for an item
         with none), in the order of the rows; None where the data has
         none."""
@@ -1330,7 +1336,7 @@ class SurpyvalData(ReshapeMixin):
             if np.isfinite(self.t[:, column]).any()
         ]
         lists: dict[str, np.ndarray] = {}
-        extra: dict[str, np.ndarray] = {}
+        extra: dict[str, Any] = {}
         for kind, flag in _OBSERVATION_KINDS:
             mask = self.c == flag
             lists[kind] = (x[mask] if flag == 2 else x[mask, 0]).astype(float)
@@ -1406,7 +1412,7 @@ class SurpyvalData(ReshapeMixin):
         x = self.x[mask] if self.x.ndim == 1 else self.x[mask, 0]
         return x, self.n[mask]
 
-    def __getitem__(self, index: Any) -> "SurpyvalData":
+    def __getitem__(self, index: Any) -> SurpyvalData:
         if np.atleast_1d(np.arange(len(self.x))[index]).size == 0:
             # It used to fail on numpy's "zero-size array to reduction
             # operation minimum" (#925).
@@ -1546,7 +1552,7 @@ class SurpyvalData(ReshapeMixin):
         return encode_non_finite(data)
 
     @classmethod
-    def from_dict(cls, data_dict: dict) -> "SurpyvalData":
+    def from_dict(cls, data_dict: dict) -> SurpyvalData:
         """
         The data back from its :meth:`to_dict` dictionary. The data is
         not re-validated.
@@ -1650,7 +1656,7 @@ class SurpyvalData(ReshapeMixin):
         return dump(self.to_dict(), filepath)
 
     @classmethod
-    def from_json(cls, source: str | Path) -> "SurpyvalData":
+    def from_json(cls, source: str | Path) -> SurpyvalData:
         """
         The data back from JSON text, or from the file holding it
         (``surpyval.from_json`` reads it too).
@@ -2421,7 +2427,7 @@ def _fit_tvc_from_data(
     )
 
 
-def named_fit(fit: Callable, names: "list | None") -> Any:
+def named_fit(fit: Callable, names: list | None) -> Any:
     """``fit()``, with ``names`` (where given) naming the columns of its
     covariates, as a DataFrame's columns do: the coefficients take them,
     and the model keeps them as its ``feature_names``."""
@@ -2439,7 +2445,7 @@ def named_fit(fit: Callable, names: "list | None") -> Any:
     return model
 
 
-def _tvc_names(data: SurpyvalData) -> "list | None":
+def _tvc_names(data: SurpyvalData) -> list | None:
     """The names of the columns ``fit_tvc`` is given: the named fixed
     covariates, then ``time_varying_0``, ``time_varying_1``, ... for the
     time-varying ones."""
@@ -2473,7 +2479,7 @@ def _checked_names(names: Any, Z: Any) -> list:
     return names
 
 
-def _named_row(Z: "np.ndarray | None", k: int, names: "list | None") -> Any:
+def _named_row(Z: np.ndarray | None, k: int, names: list | None) -> Any:
     """Row ``k`` of ``Z`` as a record's covariates: ``{name: value}``
     where the columns are named."""
     if Z is None:
@@ -2502,7 +2508,7 @@ def _plain(value: Any) -> Any:
     return value.item() if isinstance(value, np.generic) else value
 
 
-def _attribute_names(attributes: "list | None") -> list:
+def _attribute_names(attributes: list | None) -> list:
     """The names of the attributes any record of a dataset has."""
     if not attributes:
         return []
