@@ -84,8 +84,8 @@ from surpyval.univariate.parametric import (
     RoystonParmarModel,
     Uniform,
     Weibull,
-    weibayes,
 )
+from surpyval.univariate.parametric.weibayes import weibayes
 
 # A broadcast-aware derivative rule for ``np.where``, registered on import
 # (autograd's does not unbroadcast; #562).

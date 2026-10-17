@@ -58,12 +58,12 @@ def _truth(model, **extra):
     return np.array([out[name] for name in model.parameter_names])
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _model():
     return WeibullJointPH.fit(fleet(300, seed=0))
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _small():
     return WeibullJointPH.fit(fleet(80, seed=4))
 
@@ -570,22 +570,9 @@ def _base(k, **changes):
     ).clone(**changes)
 
 
-@pytest.mark.parametrize(
-    "changes, match",
-    [
-        (dict(interval_censored=[50, 90]), "left or interval censored"),
-        (dict(left_censored=90), "left or interval censored"),
-        (dict(right_truncation=500.0), "right truncated"),
-    ],
-)
-def test_what_v1_cannot_fit_is_refused(changes, match):
-    items = [_base(k) for k in range(10)]
-    items[3] = items[3].clone(**changes)
-    with pytest.raises(ValueError, match=match):
-        WeibullJointPH.fit(SurpyvalData.from_items(items))
-
-
 def test_data_that_cannot_identify_the_model_is_refused():
+    # (interval and left censored items, found failed, are failures:
+    # test_joint_extensions.py fits them)
     running = [_base(k, right_censored=100.0 + k) for k in range(10)]
     with pytest.raises(ValueError, match="at least one failure"):
         WeibullJointPH.fit(SurpyvalData.from_items(running))
@@ -693,7 +680,7 @@ def _log_rate_path():
     return LinkedPathModel(ExponentialPath, {"b": "log"})
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _log_rate_model():
     data = simulate_path(
         _log_rate_path(),

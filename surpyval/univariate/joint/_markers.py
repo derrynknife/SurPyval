@@ -38,6 +38,7 @@ from ._likelihood import (
     _path_params,
     log_cumhaz,
     log_event,
+    log_fails_between,
     modes,
     path_jacobian,
 )
@@ -91,15 +92,22 @@ def marker_start(
     path_model = model.path.model
     items, fits, jacs, sigma2 = per_item_fits(path_model, ages, values)
     p = Z.shape[1]
-    X = np.column_stack([np.ones(len(items)), Z[items]])
     weights = np.sqrt(w[items])
-    coef, *_ = np.linalg.lstsq(
-        X * weights[:, None], fits * weights[:, None], rcond=None
-    )
-    mu = coef[0]
-    Delta = coef[1:].T.reshape(layout.P, p)
+    # each path parameter regressed on the covariates that shift it
+    mu = np.zeros(layout.P)
+    Delta = np.zeros((layout.P, p))
+    fitted = np.zeros_like(fits)
+    for j in range(layout.P):
+        cols = np.flatnonzero(layout.shifts[j])
+        X = np.column_stack([np.ones(len(items)), Z[items][:, cols]])
+        coef, *_ = np.linalg.lstsq(
+            X * weights[:, None], fits[:, j] * weights, rcond=None
+        )
+        mu[j] = coef[0]
+        Delta[j, cols] = coef[1:]
+        fitted[:, j] = X @ coef
     V = list(layout.varying)
-    resid = (fits - X @ coef)[:, V]
+    resid = (fits - fitted)[:, V]
     spread = np.atleast_2d(np.cov(resid.T, aweights=w[items]))
     sampling = []
     for J in jacs:
@@ -132,14 +140,26 @@ def survival_start(model: Model, arrays: JointArrays, theta: dict) -> dict:
 
     layout = model.layout
     p = layout.p
+    # the hazard's estimated coefficients
+    k = layout.n_hazard
+    interval = np.isfinite(arrays.U)
+    left = interval & (arrays.T <= 0)
+    x = np.column_stack(
+        [
+            np.where(left, arrays.U, arrays.T),
+            np.where(interval, arrays.U, arrays.T),
+        ]
+    )
+    c = np.where(arrays.d > 0, 0, np.where(left, -1, np.where(interval, 2, 1)))
     with warnings.catch_warnings(), np.errstate(all="ignore"):
         warnings.simplefilter("ignore")
         try:
             plain = Weibull.fit(
-                arrays.T,
-                c=(1 - arrays.d).astype(int),
+                x,
+                c=c,
                 n=arrays.w,
                 tl=arrays.L,
+                tr=arrays.Rt,
             )
             alpha, beta = (float(v) for v in plain.params)
         except Exception:
@@ -162,11 +182,12 @@ def survival_start(model: Model, arrays: JointArrays, theta: dict) -> dict:
         _path_params(trial, layout, arrays.Z, b[:, None, :]), dtype=float
     )
     entered = arrays.L > 0
+    late = np.isfinite(arrays.Rt)
 
     def objective(v: Any) -> Any:
         th = dict(trial)
         th["alpha"], th["beta"] = anp.exp(v[0]), anp.exp(v[1])
-        th["gamma"], th["zeta"] = v[2 : 2 + p], v[2 + p]
+        th["gamma"], th["zeta"] = layout._gamma(v[2 : 2 + k]), v[2 + k]
         H_T = anp.exp(
             log_cumhaz(th, model.path, params, arrays, arrays.T, model.centre)
         )[:, 0]
@@ -175,6 +196,19 @@ def survival_start(model: Model, arrays: JointArrays, theta: dict) -> dict:
             * log_event(th, model.path, params, arrays, model.centre)[:, 0]
             - H_T
         )
+        if interval.any():
+            ll = (
+                ll
+                + log_fails_between(
+                    th,
+                    model.path,
+                    params,
+                    arrays,
+                    arrays.T,
+                    arrays.U,
+                    model.centre,
+                )[:, 0]
+            )
         if entered.any():
             H_L = anp.exp(
                 log_cumhaz(
@@ -182,9 +216,22 @@ def survival_start(model: Model, arrays: JointArrays, theta: dict) -> dict:
                 )
             )[:, 0]
             ll = ll + anp.where(entered, H_L, 0.0)
+        if late.any():
+            ll = (
+                ll
+                - log_fails_between(
+                    th,
+                    model.path,
+                    params,
+                    arrays,
+                    arrays.L,
+                    arrays.Rt,
+                    model.centre,
+                )[:, 0]
+            )
         return -anp.sum(arrays.w * ll) / anp.sum(arrays.w)
 
-    v0 = np.concatenate([[np.log(alpha), np.log(beta)], np.zeros(p + 1)])
+    v0 = np.concatenate([[np.log(alpha), np.log(beta)], np.zeros(k + 1)])
     with warnings.catch_warnings(), np.errstate(all="ignore"):
         warnings.simplefilter("ignore")
         result = minimize(
@@ -193,5 +240,7 @@ def survival_start(model: Model, arrays: JointArrays, theta: dict) -> dict:
     v = result.x if np.all(np.isfinite(result.x)) else v0
     out = dict(trial)
     out["alpha"], out["beta"] = float(np.exp(v[0])), float(np.exp(v[1]))
-    out["gamma"], out["zeta"] = np.array(v[2 : 2 + p]), float(v[2 + p])
+    gamma = np.zeros(p)
+    gamma[layout.hazard] = v[2 : 2 + k]
+    out["gamma"], out["zeta"] = gamma, float(v[2 + k])
     return out
