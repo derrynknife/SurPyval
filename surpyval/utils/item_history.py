@@ -5,7 +5,7 @@ them is a dataset (:meth:`EventHistoryData.from_items
 from __future__ import annotations
 
 from numbers import Number
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -147,9 +147,9 @@ class ItemHistory:
         interval_censored_event_types: Any = None,
         left_censored_event_types: Any = None,
         initial_state: Any = None,
-        observed_states: "dict | None" = None,
+        observed_states: dict | None = None,
         interval_censored_states: Any = None,
-        left_censored_states: "dict | None" = None,
+        left_censored_states: dict | None = None,
         attributes: Any = None,
         unit: Any = None,
         **unknown: Any,
@@ -503,7 +503,7 @@ class ItemHistory:
                 break
         return state
 
-    def _last_failure(self) -> "float | None":
+    def _last_failure(self) -> float | None:
         """The age of its last failure (the upper end of a count), or
         None."""
         ages = [*self.observed, *self.interval_censored[:, 1]]
@@ -511,7 +511,7 @@ class ItemHistory:
             ages.append(self.left_censored)
         return float(max(ages)) if ages else None
 
-    def _end(self) -> "float | None":
+    def _end(self) -> float | None:
         """Where its observation ends: right_censored, else its last
         failure (#924)."""
         if self.right_censored is not None:
@@ -636,7 +636,7 @@ class ItemHistory:
 
     # -- updates (each returns a new, checked ItemHistory) ----------------
 
-    def clone(self, id: Any = None, **changes: Any) -> "ItemHistory":
+    def clone(self, id: Any = None, **changes: Any) -> ItemHistory:
         """
         A copy of this history, under the id ``id`` (else the same id),
         with any of its arguments replaced by ``changes``.
@@ -656,7 +656,7 @@ class ItemHistory:
         fields.update(changes)
         return ItemHistory(self.id if id is None else id, **fields)
 
-    def extend(self, age: Any) -> "ItemHistory":
+    def extend(self, age: Any) -> ItemHistory:
         """This history, seen working up to ``age``: its end of
         observation moved later (at or after its last event).
 
@@ -685,7 +685,7 @@ class ItemHistory:
             fields["right_censored"] = age
         return fields
 
-    def add_failure(self, age: Any, event_type: Any = None) -> "ItemHistory":
+    def add_failure(self, age: Any, event_type: Any = None) -> ItemHistory:
         """This history with another failure at ``age``, of ``event_type``
         (where its failures have types; left out, its type was not recorded:
         a masked cause).
@@ -712,7 +712,7 @@ class ItemHistory:
             ]
         return ItemHistory(self.id, **self._after_event(fields, age))
 
-    def update_covariates(self, age: Any, values: Any) -> "ItemHistory":
+    def update_covariates(self, age: Any, values: Any) -> ItemHistory:
         """This history with its time-varying covariates taking ``values``
         from ``age`` on (a step added to its schedule; a first schedule
         starts at ``age``, which must then be at or before the start of
@@ -811,7 +811,7 @@ class ItemHistory:
         return record_dict(self)
 
     @classmethod
-    def from_dict(cls, record_dict: dict) -> "ItemHistory":
+    def from_dict(cls, record_dict: dict) -> ItemHistory:
         """The record back from its :meth:`to_dict` dictionary, checked
         as one built from its arguments.
 
@@ -824,7 +824,7 @@ class ItemHistory:
 
         return record_from_dict(cls, record_dict)
 
-    def to_json(self, filepath: Any = None) -> "str | None":
+    def to_json(self, filepath: Any = None) -> str | None:
         """The record as strict JSON text (:meth:`to_dict` dumped), or
         written to the file ``filepath``."""
         from surpyval.utils.data_json import dump
@@ -832,7 +832,7 @@ class ItemHistory:
         return dump(self.to_dict(), filepath)
 
     @classmethod
-    def from_json(cls, source: Any) -> "ItemHistory":
+    def from_json(cls, source: Any) -> ItemHistory:
         """The record back from JSON text (a string starting with ``{``)
         or the file holding it.
 
@@ -919,7 +919,7 @@ def _ages(item: Any, name: str, value: Any) -> np.ndarray:
     return arr
 
 
-def _age(item: Any, name: str, value: Any) -> "float | None":
+def _age(item: Any, name: str, value: Any) -> float | None:
     """One finite age, or None."""
     if value is None:
         return None
@@ -1000,7 +1000,7 @@ def _counts(
 
 def _covariate_row(
     item: Any, name: str, value: Any, missing: bool = False
-) -> "np.ndarray | None":
+) -> np.ndarray | None:
     """A 1-D row of covariates, or None: finite numbers, or, where
     ``missing``, NaN (or None) for a value not recorded (#929)."""
     if value is None:
@@ -1047,7 +1047,7 @@ def _covariates(item: Any, value: Any) -> tuple:
     return row, tuple(names)
 
 
-def _attributes(item: Any, value: Any) -> "dict | None":
+def _attributes(item: Any, value: Any) -> dict | None:
     """A record's attributes, ``{name: value}``: names are text, values
     anything (None for one not known); a pandas Series is read as a
     dict. Kept as a plain dict, which the record's fields give back."""
@@ -1083,7 +1083,7 @@ def _attributes(item: Any, value: Any) -> "dict | None":
     return out
 
 
-def _unit(item: Any, unit: Any) -> "str | None":
+def _unit(item: Any, unit: Any) -> str | None:
     """A record's unit, as the models store it (:func:`normalise_unit`):
     text, or None."""
     from surpyval.utils.units import normalise_unit
@@ -1098,7 +1098,7 @@ def _unit(item: Any, unit: Any) -> "str | None":
     return normalise_unit(unit)
 
 
-def units_of(records: list, unit: Any, what: str) -> "str | None":
+def units_of(records: list, unit: Any, what: str) -> str | None:
     """The unit of a dataset built from ``records``: the records' unit,
     which must agree (refused naming the items and units otherwise), and
     must agree with ``unit`` where that is given; ``unit`` alone where
@@ -1130,7 +1130,7 @@ def units_of(records: list, unit: Any, what: str) -> "str | None":
     return held
 
 
-def _covariate_field(row: np.ndarray, names: "tuple | None") -> Any:
+def _covariate_field(row: np.ndarray, names: tuple | None) -> Any:
     """A record's covariates as given back: ``{name: value}`` where they
     are named, else the row as a list."""
     # A missing value as None, so the record equals (and hashes as) itself
@@ -1159,7 +1159,7 @@ def covariate_value(record: Any, name: str) -> float:
     return float(record.covariates[names.index(name)])
 
 
-def covariate_names_of(items: list) -> "list | None":
+def covariate_names_of(items: list) -> list | None:
     """The covariate names of a dataset's records: None where none are
     named; the first record's names where all are named with the same
     names (in any order); refused otherwise."""
@@ -1186,7 +1186,7 @@ def covariate_names_of(items: list) -> "list | None":
     return list(first.covariate_names)
 
 
-def covariate_row_in(item: Any, names: "list | None") -> np.ndarray:
+def covariate_row_in(item: Any, names: list | None) -> np.ndarray:
     """``item``'s covariates in the order of ``names`` (as they are, where
     ``names`` is None)."""
     if names is None or item.covariate_names is None:
@@ -1195,7 +1195,7 @@ def covariate_row_in(item: Any, names: "list | None") -> np.ndarray:
     return item.covariates[[where[name] for name in names]]
 
 
-def _time_varying(item: Any, value: Any) -> tuple[Any, "float | None", bool]:
+def _time_varying(item: Any, value: Any) -> tuple[Any, float | None, bool]:
     """The time-varying covariates as a StepSchedule or CovariatePath,
     the age they start at (checked against the start of observation;
     None where they have a value at every age), and whether they were
@@ -1248,7 +1248,9 @@ def _time_varying(item: Any, value: Any) -> tuple[Any, "float | None", bool]:
         )
     order = np.argsort(ages)
     schedule = StepSchedule.from_changepoints(
-        ages[order], np.vstack(rows)[order]
+        # Every row is an array: None comes only with missing=True.
+        ages[order],
+        np.vstack(cast("list[np.ndarray]", rows))[order],
     )
     return schedule, float(ages.min()), True
 
@@ -1292,7 +1294,7 @@ def _schedule_field(schedule: Any, as_dict: bool) -> Any:
 
 def _event_types(
     item: Any, name: str, value: Any, k: int, kind: str
-) -> "np.ndarray | None":
+) -> np.ndarray | None:
     """``k`` event types as an object array: one for all, or one each;
     None where not given."""
     if value is None:
@@ -1325,7 +1327,7 @@ def _event_types(
 
 
 def _merged_inspections(
-    intervals: np.ndarray, counts: np.ndarray, types: "np.ndarray | None"
+    intervals: np.ndarray, counts: np.ndarray, types: np.ndarray | None
 ) -> tuple:
     """One count per inspection window and type: the same window given
     twice for one type (two seals found at one inspection) is one count of
@@ -1374,9 +1376,9 @@ def _state_label(item: Any, name: str, state: Any) -> Any:
 
 def _state_changes(
     item: Any,
-    observed: "dict | None",
+    observed: dict | None,
     intervals: Any,
-    left: "dict | None",
+    left: dict | None,
     start: float,
 ) -> list:
     """The changes of state as ``(kind, lower, upper, state)``, sorted by

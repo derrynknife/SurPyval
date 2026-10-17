@@ -91,7 +91,7 @@ class DiscreteParametricFitter(ParametricFitter):
     array([0.4303])
     """
 
-    discrete = True
+    discrete: bool = True
     fitter_kind = "discrete parametric fitter"
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:

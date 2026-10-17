@@ -115,8 +115,9 @@ for a family that chooses its times otherwise.
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Callable, Sequence
+from typing import Any
 
 import numpy as np
 from scipy.stats import norm
@@ -569,11 +570,11 @@ def _is_cox(model: Any) -> bool:
     return isinstance(model, SemiParametricRegressionModel)
 
 
-def _outcome(ctx: Context) -> "_Outcome | str":
+def _outcome(ctx: Context) -> _Outcome | str:
     """The model's fitted rows, or the reason the check cannot be made on
     them."""
 
-    def compute() -> "_Outcome | str":
+    def compute() -> _Outcome | str:
         m = ctx.model
         if _is_cox(m):
             if getattr(m, "is_tvc", False):
@@ -657,7 +658,7 @@ def quartile_times(ctx: Context) -> list[tuple[str, float]]:
     return [(QUANTILE_NAMES[q], lower_quantile(t, w, q)) for q in QUANTILES]
 
 
-def option_times(ctx: Context) -> list[tuple[str | None, float]]:
+def option_times(ctx: Context) -> Sequence[tuple[str | None, float]]:
     """
     The times of the check: ``diagnose(t0=...)``'s (one time or several,
     each unnamed), or :func:`quartile_times` when it is not given. A
@@ -698,8 +699,9 @@ def _note(ctx: Context, text: str) -> None:
 
 
 def _curves(
-    ctx: Context, times: Callable[[Context], Sequence[tuple[str, float]]]
-) -> list[tuple[str, float, "CalibrationCurve | str"]]:
+    ctx: Context,
+    times: Callable[[Context], Sequence[tuple[str | None, float]]],
+) -> list[tuple[str | None, float, CalibrationCurve | str]]:
     """``(name, t0, curve)`` at each time, ``curve`` the reason when it
     could not be computed; ``[]``, with a note, when the check cannot be
     made."""
@@ -707,7 +709,7 @@ def _curves(
     def compute() -> list:
         data = _outcome(ctx)
         if isinstance(data, str):
-            _note(ctx, "Calibration is not checked: {}.".format(data))
+            _note(ctx, f"Calibration is not checked: {data}.")
             return []
         failures = float(data.n[data.c == 0].sum())
         if failures < MIN_FAILURES:
@@ -737,7 +739,7 @@ def _curves(
                 )
                 return []
             try:
-                curve: "CalibrationCurve | str" = calibration_curve(
+                curve: CalibrationCurve | str = calibration_curve(
                     S,
                     data.x,
                     data.c,
@@ -755,7 +757,7 @@ def _curves(
 
 
 def _fmt(value: float) -> str:
-    return "{:.3g}".format(value)
+    return f"{value:.3g}"
 
 
 def _direction(curve: CalibrationCurve) -> str:
@@ -785,14 +787,14 @@ def _direction(curve: CalibrationCurve) -> str:
 
 
 def _rows_of(
-    times: Callable[[Context], Sequence[tuple[str, float]]],
+    times: Callable[[Context], Sequence[tuple[str | None, float]]],
 ) -> Callable[[Context], list[dict]]:
     def rows(ctx: Context) -> list[dict]:
         out = []
-        level = "{:g}%".format(100 * (1 - ctx.alpha))
+        level = f"{100 * (1 - ctx.alpha):g}%"
         for name, t0, curve in _curves(ctx, times):
-            test = "ICI at t = {}".format(_fmt(t0)) + (
-                "" if name is None else " ({} of failures)".format(name)
+            test = f"ICI at t = {_fmt(t0)}" + (
+                "" if name is None else f" ({name} of failures)"
             )
             if isinstance(curve, str):
                 out.append(
@@ -837,7 +839,7 @@ def _rows_of(
 
 
 def _panels_of(
-    times: Callable[[Context], Sequence[tuple[str, float]]],
+    times: Callable[[Context], Sequence[tuple[str | None, float]]],
 ) -> Callable[[Context], list[Panel]]:
     def panels(ctx: Context) -> list[Panel]:
         out = []
@@ -887,13 +889,13 @@ def _panels_of(
                     color=PALETTE[0],
                     alpha=BAND_ALPHA,
                     linewidth=0,
-                    label="{:g}% band".format(100 * (1 - curve.alpha)),
+                    label=f"{100 * (1 - curve.alpha):g}% band",
                 )
                 ax.plot(grid, observed, color=PALETTE[0], label="observed")
                 ax.set_xlim(0, top)
                 ax.set_ylim(0, top)
-                ax.set_xlabel("predicted P(fail by t = {})".format(_fmt(t0)))
-                ax.set_ylabel("observed P(fail by t = {})".format(_fmt(t0)))
+                ax.set_xlabel(f"predicted P(fail by t = {_fmt(t0)})")
+                ax.set_ylabel(f"observed P(fail by t = {_fmt(t0)})")
 
             out.append(
                 Panel(
@@ -916,7 +918,7 @@ NAME = "calibration"
 
 
 def calibration_check(
-    times: "Callable[[Context], Sequence[tuple[str, float]]] | None" = None,
+    times: Callable[[Context], Sequence[tuple[str, float]]] | None = None,
 ) -> Check:
     """
     The ``calibration`` check, for a family's ``checks``: a row and a
@@ -1020,7 +1022,7 @@ def _cox_rules() -> tuple[AdviceRule, ...]:
 
 
 def _baseline_is(
-    name: "str | None", baselines: Sequence[str]
+    name: str | None, baselines: Sequence[str]
 ) -> Callable[[Context], bool]:
     """Whether the model's baseline is the built-in ``name`` (``None``:
     one not among ``baselines``)."""
@@ -1049,8 +1051,8 @@ def _parametric_rules(
     rules = []
     for name in list(baselines) + [None]:
         if name is None:
-            own = "{}(dist)".format(kind)
-            other = "{}(dist)".format(other_kind)
+            own = f"{kind}(dist)"
+            other = f"{other_kind}(dist)"
             features: tuple[str, ...] = (kind, other_kind, "CoxPH.fit")
         else:
             own = name + kind
@@ -1122,6 +1124,4 @@ def calibration_advice(
         return _cox_rules()
     if family in ("PH", "AFT"):
         return _parametric_rules(family, baselines, same)
-    raise ValueError(
-        "'family' must be 'cox', 'PH' or 'AFT'; got {!r}.".format(family)
-    )
+    raise ValueError(f"'family' must be 'cox', 'PH' or 'AFT'; got {family!r}.")

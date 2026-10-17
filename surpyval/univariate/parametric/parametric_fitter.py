@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import functools
 import types
+from collections.abc import Callable
 from math import comb
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as np
 import numpy as onp
@@ -177,7 +178,7 @@ def _untraced_plain(fn: Callable[..., Any]) -> Callable[..., Any]:
     plain: list[Callable[..., Any]] = []
 
     @functools.wraps(fn)
-    def dispatch(self: "ParametricFitter", x: Any, *params: Any) -> Any:
+    def dispatch(self: ParametricFitter, x: Any, *params: Any) -> Any:
         if isinstance(x, ArrayBox) or any(
             isinstance(p, ArrayBox) for p in params
         ):
@@ -206,7 +207,7 @@ def _support_guarded(
     """
 
     @functools.wraps(fn)
-    def guarded(self: "ParametricFitter", x: Any, *params: Any) -> Any:
+    def guarded(self: ParametricFitter, x: Any, *params: Any) -> Any:
         # A boxed x is autograd differentiating with respect to it
         # (CustomDistribution's hf and df); the outer call is guarded.
         if self.discrete or isinstance(x, ArrayBox):
@@ -301,11 +302,11 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
     inside = getattr(fn, "_inside", None)
 
     @functools.wraps(fn)
-    def wrapped(self: "ParametricFitter", x: Any, *params: Any) -> Any:
+    def wrapped(self: ParametricFitter, x: Any, *params: Any) -> Any:
         with np.errstate(over="ignore", divide="ignore"):
             return evaluate(self, x, *params)
 
-    def evaluate(self: "ParametricFitter", x: Any, *params: Any) -> Any:
+    def evaluate(self: ParametricFitter, x: Any, *params: Any) -> Any:
         x = _as_array(x)
         params = tuple(_as_array(p) for p in params)
         if isinstance(x, ArrayBox):
@@ -456,7 +457,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
     # Whether the distribution's mass sits on integers rather than a
     # continuum. ``DiscreteParametricFitter`` overrides this; fit-method
     # validation and callers branch on the trait.
-    discrete = False
+    discrete: bool = False
 
     #: The ``repr``: ``Weibull: parametric fitter`` (#614).
     fitter_kind = "parametric fitter"
@@ -542,20 +543,22 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         y_ticks: list[float] | None = None,
     ) -> None:
         self.name: str = name
-        self.k = k
-        self.bounds = bounds
-        self.support = support
-        self.parameter_names = parameter_names
-        self.param_map = param_map
+        self.k: int = k
+        self.bounds: tuple[
+            tuple[int | float | None, int | float | None], ...
+        ] = bounds
+        self.support: tuple[int | float, int | float] = support
+        self.parameter_names: list[str] = parameter_names
+        self.param_map: dict[str, int] = param_map
         self.plot_x_scale = plot_x_scale
         self.y_ticks = DEFAULT_Y_TICKS if y_ticks is None else y_ticks
-        self.supports_mpp = True
+        self.supports_mpp: bool = True
         # For distributions whose support is data-dependent (declared as
         # NaN, e.g. the 4-parameter Beta), these give the indices of the
         # parameters that supply the left and right support bounds once
         # the model is fitted. The default ``(0, 1)`` matches the legacy
         # behaviour used by ``Uniform``.
-        self.support_param_index = (0, 1)
+        self.support_param_index: tuple[int, int] = (0, 1)
 
     def random(
         self,
@@ -1165,7 +1168,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
 
         model.support = np.array([left, right])
 
-    def _for_params(self, params: Any) -> "ParametricFitter":
+    def _for_params(self, params: Any) -> ParametricFitter:
         """The fitter instance that models ``params``.
 
         ``self`` for every distribution with a fixed number of

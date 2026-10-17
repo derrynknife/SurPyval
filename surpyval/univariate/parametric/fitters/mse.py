@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ..parametric import Parametric
@@ -7,7 +8,10 @@ import autograd.numpy as np
 import numpy.typing as npt
 from autograd import hessian, jacobian
 
-from surpyval.univariate.nonparametric import fleming_harrington, turnbull
+from surpyval.univariate.nonparametric.fleming_harrington import (
+    fleming_harrington,
+)
+from surpyval.univariate.nonparametric.turnbull import turnbull
 from surpyval.utils import xcnt_to_xrd
 
 from . import fallback_minimize, search_floor
