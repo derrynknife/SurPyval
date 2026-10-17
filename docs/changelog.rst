@@ -33,6 +33,13 @@ Unreleased
   ``remaining_life(p)``, the smoothed and projected noise-free marker
   (``marker``, ``marker_interval``) and draws (``random``). The array
   prediction ``sf(x, Z, markers=, given=)`` is unchanged.
+  ``DynamicPrediction.to_dict(x=None, alpha_ci=0.05)`` gives it as
+  strict JSON for a report or chart: the readings as ``[age, value]``
+  pairs, ``sf``, ``ff`` and ``hf`` on a grid of ages (by default from the
+  age now to about the 0.99 quantile) with the two-sided bounds on
+  ``sf``, the remaining life's 0.1, 0.5 and 0.9 quantiles, and the
+  marker's path with its interval; an infinite or missing value is
+  ``None``.
 - A calibration study of the joint model
   (``tests/calibration/test_coverage_joint.py``, ``--run-calibration``):
   200 fleets of 200 items with a hazard-only and a path-only covariate,

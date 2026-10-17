@@ -29,6 +29,10 @@ _GRID = np.logspace(-6.0, 3.0, 91)
 _STEPS = 30
 _QF_TOL = 1e-10
 _QF_FLOOR = 1e-14
+#: The quantiles the default grid of ``to_dict`` ends at, the first one
+#: finite, and the remaining-life quantiles it reports.
+_GRID_ENDS = (0.99, 0.9)
+_REMAINING_P = (0.1, 0.5, 0.9)
 
 
 class DynamicPrediction:
@@ -349,6 +353,135 @@ class DynamicPrediction:
         """
         rng = as_generator(random_state)
         return np.asarray(self.qf(rng.uniform(size=int(size))), dtype=float)
+
+    # -- serialisation -----------------------------------------------------
+
+    def _default_grid(self, size: int) -> npt.NDArray:
+        """Ages from ``age`` to about the 0.99 quantile (the 0.9 one, or
+        ten scales on, where the survival stops falling short of it)."""
+        end = np.nan
+        for p in _GRID_ENDS:
+            q = float(self.qf(p))
+            if np.isfinite(q) and q > self.age:
+                end = q
+                break
+        if not np.isfinite(end):
+            alpha = float(
+                self.model.params[self.model.parameter_names.index("alpha")]
+            )
+            end = self.age + 10.0 * alpha
+        return np.linspace(self.age, end, size)
+
+    def to_dict(
+        self, x: npt.ArrayLike | None = None, alpha_ci: float = 0.05
+    ) -> dict:
+        """
+        The prediction as a dict of native Python values, strict JSON, for
+        a report or a chart: an infinite or missing number is ``None``,
+        and recorded under ``"non_finite"`` (as every SurPyval
+        ``to_dict`` does).
+
+        Parameters
+        ----------
+        x : array_like, optional
+            The ages to evaluate the functions at. The default is 101
+            ages from ``age`` to about the 0.99 quantile.
+        alpha_ci : float, optional
+            The total tail probability of the two-sided bounds on ``sf``
+            and of the marker's interval. Default 0.05.
+
+        Returns
+        -------
+        dict
+            ``age``; ``covariates``, ``{name: value}``; ``markers``, the
+            readings as ``[age, value]`` pairs; ``alpha_ci``; ``x``, the
+            ages; ``sf``, ``ff`` and ``hf`` at them; ``sf_lower`` and
+            ``sf_upper``, the Wald bounds of :meth:`cb` (``None`` where
+            the model has no covariance); ``remaining_life``, ``{"p":
+            [0.1, 0.5, 0.9], "life": [...]}``; and ``marker``, the item's
+            path from its first reading (or ``age``) to the last age,
+            ``{"x", "mean", "lower", "upper"}``.
+
+        Examples
+        --------
+        >>> import json
+        >>> import numpy as np
+        >>> from surpyval import ItemLifetime, SurpyvalData, WeibullJointPH
+        >>> rng = np.random.default_rng(3)
+        >>> items = []
+        >>> for k in range(60):
+        ...     start, rate = rng.normal(2.0, 0.4), rng.normal(0.02, 0.005)
+        ...     life = 100 * rng.weibull(2.0) * np.exp(-0.9 * (start - 2))
+        ...     end = min(life, 120.0)
+        ...     ages = np.arange(0.0, end, 10.0)
+        ...     y = start + rate * ages + rng.normal(0, 0.2, ages.size)
+        ...     outcome = "observed" if life < 120 else "right_censored"
+        ...     items.append(
+        ...         ItemLifetime(k, **{outcome: end},
+        ...                      markers=dict(zip(ages, y)))
+        ...     )
+        >>> model = WeibullJointPH.fit(SurpyvalData.from_items(items))
+        >>> pred = model.predict(markers={0: 2.1, 20: 2.5, 40: 3.0}, given=40)
+        >>> d = pred.to_dict()
+        >>> d["age"], d["markers"][-1], len(d["x"])
+        (40.0, [40.0, 3.0], 101)
+        >>> isinstance(json.dumps(d, allow_nan=False), str)
+        True
+        """
+        from surpyval.serialisation import encode_non_finite
+
+        check_alpha_ci(alpha_ci)
+        if x is None:
+            grid = self._default_grid(101)
+        else:
+            grid = np.atleast_1d(np.asarray(x, dtype=float)).ravel()
+        sf_lower: Any = None
+        sf_upper: Any = None
+        if not self._missing:
+            try:
+                band = np.asarray(
+                    self.cb(grid, on="sf", alpha_ci=alpha_ci), dtype=float
+                )
+            except (ValueError, NotImplementedError, np.linalg.LinAlgError):
+                band = None
+            if band is not None and np.isfinite(band).any():
+                sf_lower, sf_upper = band[:, 0], band[:, 1]
+        start = min([self.age, *self._ages.tolist()])
+        finite = grid[np.isfinite(grid)]
+        stop = float(finite.max()) if finite.size else self.age
+        path = np.linspace(start, max(stop, start), 101)
+        interval = self.marker_interval(path, alpha_ci=alpha_ci)
+        p = np.array(_REMAINING_P)
+        names = list(getattr(self.model, "feature_names", None) or [])
+        z = np.atleast_1d(np.asarray(self.covariates, dtype=float)).ravel()
+        if len(names) == z.size:
+            covariates: Any = dict(zip(names, z.tolist()))
+        else:
+            covariates = z.tolist()
+        out: dict = {
+            "result": type(self).__name__,
+            "age": self.age,
+            "covariates": covariates,
+            "markers": [[float(a), float(v)] for a, v in self.markers.items()],
+            "alpha_ci": float(alpha_ci),
+            "x": grid,
+            "sf": np.asarray(self.sf(grid), dtype=float),
+            "ff": np.asarray(self.ff(grid), dtype=float),
+            "hf": np.asarray(self.hf(grid), dtype=float),
+            "sf_lower": sf_lower,
+            "sf_upper": sf_upper,
+            "remaining_life": {
+                "p": p,
+                "life": np.asarray(self.remaining_life(p), dtype=float),
+            },
+            "marker": {
+                "x": path,
+                "mean": np.asarray(self.marker(path), dtype=float),
+                "lower": interval[:, 0],
+                "upper": interval[:, 1],
+            },
+        }
+        return encode_non_finite(out)
 
     def __repr__(self) -> str:
         median = float(self.remaining_life(0.5))

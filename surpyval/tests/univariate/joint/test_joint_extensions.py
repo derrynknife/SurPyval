@@ -624,3 +624,77 @@ def test_readings_move_the_dynamic_prediction():
     assert hot.remaining_life() < cool.remaining_life()
     assert hot.hf(300) > cool.hf(300)
     assert hot.marker(400) > cool.marker(400)
+
+
+# -- to_dict ----------------------------------------------------------------
+
+
+def test_dynamic_prediction_to_dict_is_strict_json_of_its_methods():
+    import json
+
+    pred = _pred()
+    d = pred.to_dict()
+    text = json.dumps(d, allow_nan=False)
+    assert json.loads(text) == d
+    assert d["result"] == "DynamicPrediction"
+    assert d["age"] == 200.0 and d["alpha_ci"] == 0.05
+    assert d["markers"] == [[float(a), v] for a, v in ITEM["markers"].items()]
+    assert d["covariates"] == {}  # the fleet has no covariates
+    x = np.array(d["x"])
+    # the default grid: from the age now to the 0.99 quantile
+    assert x.size == 101 and x[0] == 200.0
+    np.testing.assert_allclose(x[-1], pred.qf(0.99))
+    np.testing.assert_allclose(d["sf"], pred.sf(x))
+    np.testing.assert_allclose(d["ff"], pred.ff(x))
+    np.testing.assert_allclose(d["hf"], pred.hf(x))
+    assert np.all(np.diff(d["sf"]) <= 0)
+    band = pred.cb(x)
+    np.testing.assert_allclose(d["sf_lower"], band[:, 0])
+    np.testing.assert_allclose(d["sf_upper"], band[:, 1])
+    assert d["remaining_life"]["p"] == [0.1, 0.5, 0.9]
+    np.testing.assert_allclose(
+        d["remaining_life"]["life"], pred.remaining_life([0.1, 0.5, 0.9])
+    )
+    path = np.array(d["marker"]["x"])
+    # the path runs from the first reading to the last age
+    assert path[0] == 0.0 and path[-1] == x[-1]
+    np.testing.assert_allclose(d["marker"]["mean"], pred.marker(path))
+    interval = pred.marker_interval(path)
+    np.testing.assert_allclose(d["marker"]["lower"], interval[:, 0])
+    np.testing.assert_allclose(d["marker"]["upper"], interval[:, 1])
+
+
+def test_dynamic_prediction_to_dict_takes_ages_and_alpha():
+    import json
+
+    pred = _pred()
+    d = pred.to_dict([150.0, 300.0, np.inf, np.nan], alpha_ci=0.2)
+    json.dumps(d, allow_nan=False)
+    assert d["x"][:2] == [150.0, 300.0] and d["alpha_ci"] == 0.2
+    # infinite and missing ages are None, recorded as such
+    assert d["x"][2] is None and d["x"][3] is None
+    assert "/x/2" in d["non_finite"]["inf"]
+    assert "/x/3" in d["non_finite"]["nan"]
+    assert d["sf"][0] == 1.0 and d["sf"][3] is None
+    narrow = np.array(d["sf_upper"][:2]) - np.array(d["sf_lower"][:2])
+    wide = pred.cb([150.0, 300.0])
+    assert np.all(narrow <= wide[:, 1] - wide[:, 0] + 1e-12)
+    with pytest.raises(ValueError, match="alpha_ci"):
+        pred.to_dict(alpha_ci=1.5)
+
+
+def test_dynamic_prediction_to_dict_with_covariates_and_one_missing():
+    import json
+
+    model = _split()
+    pred = model.predict({"site": 1.0, "load": 0.0}, **ITEM)
+    d = pred.to_dict()
+    json.dumps(d, allow_nan=False)
+    assert d["covariates"] == {"site": 1.0, "load": 0.0}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        unknown = model.predict({"site": np.nan, "load": 1.0}, **ITEM)
+        d = unknown.to_dict([300.0, 400.0])
+    json.dumps(d, allow_nan=False)
+    assert d["covariates"]["site"] is None
+    assert d["sf"] == [None, None] and d["sf_lower"] is None
