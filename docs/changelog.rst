@@ -1,7 +1,50 @@
 Changelog
-==
-Unreleased
-----------
+=========
+
+v0.25 (17 October 2026)
+-----------------------
+
+**Highlights.**
+
+- **Joint models with covariates and dynamic prediction.** Joint models
+  of a marker and a lifetime (``WeibullJointPH``), with covariates in
+  the hazard, in the marker's path or both (``hazard_covariates``,
+  ``path_covariates``), left and interval censored items and truncation,
+  and ``JointModel.predict``: one item's ``DynamicPrediction`` given its
+  readings so far (survival, hazard, remaining life, the smoothed
+  marker, bounds and draws, and ``to_dict()`` for reports), with a
+  calibration study of its intervals.
+- **Test planning**, ``surpyval.test_planning``: demonstration tests
+  (attribute and constant failure rate, with both risks), sequential
+  tests, the precision of life tests, accelerated life test plans, the
+  log-rank test's events and power, and the power of a rate comparison;
+  every result writes itself with ``to_dict()``.
+- **The intervention test**, ``surpyval.recurrent.intervention_test``:
+  whether an intervention changed a failure rate, with the exposure
+  needed to detect a change.
+- **Every bound**: likelihood-ratio bounds for the offset,
+  limited-failure-population and zero-inflated models, and the gaps that
+  remain refused with what to use instead.
+- **Non-parametric plotting**: ``plot_nonparametric`` draws one or more
+  estimates with their bounds, censoring ticks, quantile lines and a
+  number-at-risk table, and ``at_risk_table`` gives that table as data.
+- Regression diagnostics (``model.diagnose()``) for every regression
+  family, item records (``ItemLifetime``, ``ItemHistory``) and the data
+  classes' DataFrame, dict and JSON forms, units on the data, and the
+  mean residual life.
+
+**Upgrading from 0.24.** On 0.24, run your code or tests with
+``python -W error::DeprecationWarning`` first to find the calls to update.
+
+- The names 0.24 deprecated now raise (see *Removed*):
+  ``CompetingRisksProportionalHazards.beta`` and ``phi_e`` by row index,
+  ``NonParametric.cb``'s old argument order, ``MixtureModel.p`` and
+  ``ProportionalIntensityNHPP.fit(dist=)``.
+- Deprecated, still working with a warning (see *Deprecated*):
+  ``RecurrentEventData`` is ``EventHistoryData`` (until v0.26), and the
+  top-level data-format converters (``fs_to_xcnt`` and the rest) are
+  ``SurpyvalData`` methods (until the first release on or after 12 April
+  2027).
 
 **Added**
 
