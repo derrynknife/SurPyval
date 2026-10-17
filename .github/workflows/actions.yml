@@ -205,9 +205,11 @@ jobs:
   # "refit" by its file; move it out if it is long.
   calibration:
     runs-on: ubuntu-latest
-    # Every group is timed at under half an hour; one that hangs fails
-    # here rather than holding the release for GitHub's six hours.
-    timeout-minutes: 45
+    # Every group took under 40 minutes on the 17 October 2026 runs (the
+    # longest, #617's bootstrap, 24 to 36; the runners' speed varies by
+    # about two); one that hangs fails here rather than holding the
+    # release for GitHub's six hours.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -265,13 +267,28 @@ jobs:
               --deselect 'surpyval/tests/calibration/test_coverage_degradation.py::test_two_stage_band_coverage'
           # Tests outside surpyval/tests/calibration that carry the
           # calibration mark: the likelihood-ratio sweeps of the slow
-          # conformance families (Bound.nightly in the registry). 242
-          # tests, 10.4 minutes on four workers on an M-series Mac (17
-          # October 2026); the ExpoWeibull's mrl_cb sweep, 414 s a bound,
-          # is left out of it (see registry_cases.py).
-          - group: conformance-sweeps
+          # conformance families (Bound.nightly in the registry), 242
+          # tests. On four workers they took 9.5 minutes on an M-series
+          # Mac but were 59% done after 43 minutes here (17 October
+          # 2026), so they run in three groups of about equal time by
+          # the local per-case totals (core-seconds): the offset
+          # LogNormal 703, the ExpoWeibull 691, and the rest 788 (the
+          # NegativeBinomial 360). The ExpoWeibull's mrl_cb sweep, 414 s
+          # a bound, is left out of it (see registry_cases.py).
+          - group: sweeps-lognormal-offset
             workers: auto
-            args: surpyval/tests/conformance -m calibration
+            args: >-
+              surpyval/tests/conformance -m calibration
+              -k 'LogNormal and offset'
+          - group: sweeps-expoweibull
+            workers: auto
+            args: >-
+              surpyval/tests/conformance -m calibration -k ExpoWeibull
+          - group: sweeps-rest
+            workers: auto
+            args: >-
+              surpyval/tests/conformance -m calibration
+              -k 'not ExpoWeibull and not (LogNormal and offset)'
     steps:
       - uses: actions/checkout@v4
 
