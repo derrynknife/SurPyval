@@ -205,6 +205,9 @@ jobs:
   # "refit" by its file; move it out if it is long.
   calibration:
     runs-on: ubuntu-latest
+    # Every group is timed at under half an hour; one that hangs fails
+    # here rather than holding the release for GitHub's six hours.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -218,11 +221,23 @@ jobs:
             args: >-
               'surpyval/tests/calibration/test_coverage_parametric.py::test_likelihood_ratio_coverage'
           # The likelihood-ratio coverage of offset, LFP and ZI models
-          # runs its repetitions on every core itself, as #617's does.
-          - group: extra-parameters
+          # runs its repetitions on every core itself, as #617's does. Its
+          # four studies took 52 minutes in one group on the 17 October
+          # 2026 release run (offset 1284 s, on the edge 903, lfp 651, zi
+          # 321), so each long one has a group of its own.
+          - group: extra-parameters-offset
             workers: '0'
             args: >-
-              surpyval/tests/calibration/test_coverage_extra_parameters.py
+              'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_likelihood_ratio_coverage[offset]'
+          - group: extra-parameters-edge
+            workers: '0'
+            args: >-
+              'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_likelihood_ratio_coverage_on_the_edge'
+          - group: extra-parameters-lfp-zi
+            workers: '0'
+            args: >-
+              'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_likelihood_ratio_coverage[lfp]'
+              'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_likelihood_ratio_coverage[zi]'
           - group: long-studies
             workers: '3'
             args: >-
@@ -250,7 +265,10 @@ jobs:
               --deselect 'surpyval/tests/calibration/test_coverage_degradation.py::test_two_stage_band_coverage'
           # Tests outside surpyval/tests/calibration that carry the
           # calibration mark: the likelihood-ratio sweeps of the slow
-          # conformance families (Bound.nightly in the registry).
+          # conformance families (Bound.nightly in the registry). 242
+          # tests, 10.4 minutes on four workers on an M-series Mac (17
+          # October 2026); the ExpoWeibull's mrl_cb sweep, 414 s a bound,
+          # is left out of it (see registry_cases.py).
           - group: conformance-sweeps
             workers: auto
             args: surpyval/tests/conformance -m calibration

@@ -1315,11 +1315,17 @@ def _parametric_bounds(case):
                 **lr,
             )
         )
-        if case.name in _LR_NIGHTLY and "[" in case.name:
+        if case.name in _LR_NIGHTLY and (
+            "[" in case.name or case.name == "ExpoWeibull"
+        ):
             # (an offset, LFP or ZI variant's mean residual life is an
             # integral at every point the searches try: 24 minutes for
             # the offset LogNormal's sweep alone; the Weibull's, in
-            # closed form, sweeps the same path)
+            # closed form, sweeps the same path. The ExpoWeibull's is an
+            # integral too, in a three-parameter valley: one two-sided
+            # bound at one time took 414 s on four cores, so its sweep,
+            # dozens of them, ran for hours on the 17 October 2026
+            # release run.)
             return tuple(out)
         out.append(
             Bound(
