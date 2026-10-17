@@ -9,3 +9,7 @@ in :doc:`../Non-Parametric SurPyval Modelling`.
 .. autofunction:: surpyval.plot_nonparametric
 
 .. autoclass:: surpyval.NonParametricPlot
+
+The table's counts without the plot (no plotting library is loaded):
+
+.. autofunction:: surpyval.at_risk_table

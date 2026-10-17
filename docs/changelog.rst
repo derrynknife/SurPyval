@@ -21,6 +21,10 @@ Unreleased
   data show (known event-free, known to have had the event) and an "In
   interval" row counts the units whose interval spans the time, rather
   than the Turnbull estimate's fractional expected counts.
+- ``surpyval.at_risk_table(models, times=None, rows=("At risk",),
+  counts="cumulative")``: the same table as data, ``{"times", "rows",
+  "counts": {label: {row: array}}}``, without drawing (it loads no
+  plotting library), for a report or a table of one's own.
 =======
 - Joint models (#891): separate covariates for the hazard and the path.
   ``WeibullJointPH.fit(..., hazard_covariates=[...],

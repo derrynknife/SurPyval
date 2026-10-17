@@ -386,6 +386,7 @@ for _fn in (
     "from_json",
     "logrank",
     "plot_nonparametric",
+    "at_risk_table",
     "rmst_diff",
     "success_run",
     "weibayes",
