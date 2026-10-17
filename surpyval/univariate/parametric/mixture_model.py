@@ -546,6 +546,11 @@ class MixtureModel(
                 "'w' must be {} non-negative weights summing to 1; got "
                 "{}".format(m, np.asarray(w).tolist())
             )
+        # Weights that already sum to 1 to rounding are kept as they are,
+        # so with_params(...) keeps a fitted model's weights bit for bit:
+        # dividing by a sum one ulp off 1 moves each by an ulp.
+        if abs(weights.sum() - 1.0) <= 8 * m * np.finfo(float).eps:
+            return weights.copy()
         return weights / weights.sum()
 
     def __repr__(self) -> str:
