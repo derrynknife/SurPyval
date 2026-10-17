@@ -41,8 +41,10 @@ from surpyval.univariate.nonparametric import (
     LogRankResult,
     NelsonAalen,
     NonParametric,
+    NonParametricPlot,
     Turnbull,
     logrank,
+    plot_nonparametric,
     rmst_diff,
     success_run,
 )
@@ -262,8 +264,10 @@ __all__ = [
     "LogRankResult",
     "NelsonAalen",
     "NonParametric",
+    "NonParametricPlot",
     "Turnbull",
     "logrank",
+    "plot_nonparametric",
     "rmst_diff",
     "success_run",
     # Parametric
@@ -471,7 +475,7 @@ if not TYPE_CHECKING:  # keep the type checker's view of the module exact
             )
         else:
             raise AttributeError(
-                "module 'surpyval' has no attribute {!r}".format(name),
+                f"module 'surpyval' has no attribute {name!r}",
                 name=name,
             )
         # ``from surpyval import Power`` would turn an AttributeError into
