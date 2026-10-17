@@ -51,10 +51,10 @@ run the tests for what it touches (`-k` on the conformance suite), its
 doctests and lint; `scripts/check_all_pythons.py` covers numerical changes
 on every interpreter.
 
-Known failures on `dev` (checked 2026-10-17): four `test_541_*` tests
-near rho = +/-1 in `surpyval/tests/multivariate/test_copula_verification.py`
-(`elliptical_density_near_rho_one` and `gaussian_cdf_and_h_function_near_rho_one`,
-each at 0.99999999 and -0.999999999999). They are not caused by your change.
+A test's reference values must not depend on the platform: `np.longdouble`
+is double precision on arm64 (Apple silicon) and Windows, so a reference
+computed in it holds to 1e-16 only on x86-64 Linux. Use exact arithmetic
+(`fractions.Fraction`) or a closed form instead.
 
 ## Rules that are easy to miss
 
