@@ -19,6 +19,7 @@ that test's time (or units) is reached. The risks of the test as run are
 computed exactly, not taken from Wald's approximations.
 """
 
+import itertools
 from collections.abc import Callable
 
 import numpy as np
@@ -32,6 +33,7 @@ from surpyval.test_planning._checks import (
     check_positive,
     check_probability,
 )
+from surpyval.test_planning._serialise import result_dict
 from surpyval.test_planning.demonstration import (
     demonstration_plan,
     mtbf_demonstration_plan,
@@ -286,6 +288,63 @@ class SequentialMTBFTest:
         accepted += mass.sum()  # truncated: accepted at max_time
         return float(accepted), float(mean_time)
 
+    def to_dict(self, failures: int | None = None) -> dict:
+        """
+        The test as a dict of native Python values, strict JSON, with its
+        boundaries tabulated for a chart or a test procedure.
+
+        Parameters
+        ----------
+        failures : int, optional
+            The last failure count in the table. Defaults to the failure
+            at which a truncated test rejects, or 10.
+
+        Returns
+        -------
+        dict
+            ``mtbf``, ``good_mtbf``, ``boundary_risks``, ``max_time``,
+            ``max_failures``, ``consumer_risk`` and ``producer_risk``;
+            ``boundaries``, ``{"failures": [0, 1, ...], "accept_time":
+            [...], "reject_time": [...]}`` from :meth:`accept_time` and
+            :meth:`reject_time`; under ``"result":
+            "SequentialMTBFTest"``. An infinite or missing number (the
+            reject time of a truncated test's last failure) is ``None``,
+            recorded under ``"non_finite"``.
+
+        Examples
+        --------
+        >>> import json
+        >>> from surpyval.test_planning import sequential_mtbf_test
+        >>> test = sequential_mtbf_test(100.0, 200.0, alpha_ci=0.1,
+        ...                             producer_risk=0.1)
+        >>> d = test.to_dict(failures=3)
+        >>> d["boundaries"]["failures"]
+        [0, 1, 2, 3]
+        >>> [round(t, 1) for t in d["boundaries"]["accept_time"]]
+        [439.4, 578.1, 716.7, 855.3]
+        >>> isinstance(json.dumps(d, allow_nan=False), str)
+        True
+        """
+        last = _table_end(failures, self.max_failures, 10, "failures")
+        counts = list(range(last + 1))
+        return result_dict(
+            self,
+            {
+                "mtbf": self.mtbf,
+                "good_mtbf": self.good_mtbf,
+                "boundary_risks": self.boundary_risks,
+                "max_time": self.max_time,
+                "max_failures": self.max_failures,
+                "consumer_risk": self.consumer_risk,
+                "producer_risk": self.producer_risk,
+                "boundaries": {
+                    "failures": counts,
+                    "accept_time": [self.accept_time(r) for r in counts],
+                    "reject_time": [self.reject_time(r) for r in counts],
+                },
+            },
+        )
+
     def __repr__(self) -> str:
         header = "Sequential MTBF Test"
         lines = [
@@ -522,6 +581,72 @@ class SequentialDemonstrationTest:
                 mass[: accept + 1] = 0.0
         return float(accepted), float(units)
 
+    def to_dict(self, units: int | None = None) -> dict:
+        """
+        The test as a dict of native Python values, strict JSON, with its
+        boundaries tabulated for a chart or a test procedure.
+
+        Parameters
+        ----------
+        units : int, optional
+            The last number of units in the table. Defaults to the units
+            after which a truncated test accepts, or twice the units it
+            takes to accept with no failures.
+
+        Returns
+        -------
+        dict
+            ``reliability``, ``good_reliability``, ``boundary_risks``,
+            ``max_units``, ``max_failures``, ``consumer_risk`` and
+            ``producer_risk``; ``boundaries``, ``{"units": [0, 1, ...],
+            "accept_failures": [...], "reject_failures": [...]}`` from
+            :meth:`accept_failures` (-1 where it cannot accept yet) and
+            :meth:`reject_failures`; under ``"result":
+            "SequentialDemonstrationTest"``.
+
+        Examples
+        --------
+        >>> import json
+        >>> from surpyval.test_planning import sequential_demonstration_test
+        >>> test = sequential_demonstration_test(0.9, 0.97, alpha_ci=0.1,
+        ...                                      producer_risk=0.1)
+        >>> d = test.to_dict(units=40)
+        >>> table = d["boundaries"]
+        >>> table["units"][-1], table["reject_failures"][30]
+        (40, 4)
+        >>> isinstance(json.dumps(d, allow_nan=False), str)
+        True
+        """
+        default = self.max_units
+        if default is None:
+            first = next(
+                n for n in itertools.count() if self.accept_failures(n) >= 0
+            )
+            default = max(2 * first, 10)
+        last = _table_end(units, default, default, "units")
+        counts = list(range(last + 1))
+        return result_dict(
+            self,
+            {
+                "reliability": self.reliability,
+                "good_reliability": self.good_reliability,
+                "boundary_risks": self.boundary_risks,
+                "max_units": self.max_units,
+                "max_failures": self.max_failures,
+                "consumer_risk": self.consumer_risk,
+                "producer_risk": self.producer_risk,
+                "boundaries": {
+                    "units": counts,
+                    "accept_failures": [
+                        self.accept_failures(n) for n in counts
+                    ],
+                    "reject_failures": [
+                        self.reject_failures(n) for n in counts
+                    ],
+                },
+            },
+        )
+
     def __repr__(self) -> str:
         header = "Sequential Demonstration Test"
         lines = [
@@ -747,3 +872,13 @@ def sequential_demonstration_test(
         max_units,
         max_failures,
     )
+
+
+def _table_end(
+    given: int | None, truncated: int | None, default: int, name: str
+) -> int:
+    """The last row of a boundary table: ``given``, else the
+    truncation, else ``default``."""
+    if given is None:
+        return int(truncated if truncated is not None else default)
+    return check_count(given, name, minimum=0)

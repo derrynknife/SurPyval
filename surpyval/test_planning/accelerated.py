@@ -36,6 +36,7 @@ from surpyval.test_planning._checks import (
     check_positive,
     check_probability,
 )
+from surpyval.test_planning._serialise import dataclass_dict
 from surpyval.test_planning.estimation import (
     SimulatedPrecision,
     _simulated,
@@ -113,6 +114,30 @@ class AcceleratedTestPlan:
     standard_error: float
     precision: float
     alpha_ci: float
+
+    def to_dict(self) -> dict:
+        """The plan as a dict of native Python values, strict JSON: every
+        attribute (the tuples as lists, ``life_params`` as a dict), under
+        ``"result": "AcceleratedTestPlan"``. An infinite or missing number
+        is ``None``, recorded under ``"non_finite"``.
+
+        Examples
+        --------
+        >>> import json
+        >>> import surpyval
+        >>> from surpyval import life_models
+        >>> from surpyval.test_planning import accelerated_test_precision
+        >>> plan = accelerated_test_precision(
+        ...     surpyval.Weibull, life_models.Power, {"a": 1e6, "n": -2.0},
+        ...     2.0, use_stress=10.0, stresses=(40.0, 60.0),
+        ...     units=(30, 20), censor_time=1000.0)
+        >>> d = plan.to_dict()
+        >>> d["stresses"], d["units"], d["life_params"]
+        ([40.0, 60.0], [30, 20], {'a': 1000000.0, 'n': -2.0})
+        >>> isinstance(json.dumps(d, allow_nan=False), str)
+        True
+        """
+        return dataclass_dict(self)
 
     def simulate(
         self, n_sim: int = 200, *, random_state: Any = None

@@ -6,6 +6,15 @@ Unreleased
 
 **Added**
 
+- ``to_dict()`` on every test planning result (``DemonstrationPlan``,
+  ``LifeTestPlan``, ``SimulatedPrecision``, ``AcceleratedTestPlan``,
+  ``SequentialMTBFTest`` and ``SequentialDemonstrationTest``): native
+  Python values, strict JSON, with tuples and arrays as lists and an
+  infinite or missing number as ``None`` under the package's
+  ``"non_finite"`` record. The sequential tests also tabulate their
+  boundaries (accept and reject times by failure count, or accepted and
+  rejecting failures by number of units), for a chart or a test
+  procedure.
 - Joint models (#891): separate covariates for the hazard and the path.
   ``WeibullJointPH.fit(..., hazard_covariates=[...],
   path_covariates=[...] or {path parameter: [...]})`` (and ``fit_from_df``)
