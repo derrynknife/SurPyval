@@ -6,14 +6,14 @@ import pytest
 
 import surpyval
 from surpyval import EventHistoryData
-from surpyval.utils.deprecation import REMOVED_IN_NEXT
+from surpyval.utils.deprecation import REMOVED_IN
 
 
 def test_the_old_top_level_name_warns_and_is_the_same_class():
     with pytest.warns(DeprecationWarning, match="EventHistoryData") as caught:
         old = surpyval.RecurrentEventData
     assert old is EventHistoryData
-    assert f"v{REMOVED_IN_NEXT}" in str(caught[0].message)
+    assert f"v{REMOVED_IN}" in str(caught[0].message)
     assert caught[0].filename == __file__
     data = surpyval.handle_xicn([1, 2, 3], i=[1, 1, 1])
     assert isinstance(data, old)

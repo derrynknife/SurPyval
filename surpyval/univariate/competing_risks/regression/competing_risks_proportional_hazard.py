@@ -9,7 +9,6 @@ Copyright 2022 Cartiga LLC
 
 from __future__ import annotations
 
-import warnings
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -59,7 +58,6 @@ from surpyval.utils import (
     is_missing_event,
     validate_fine_gray_inputs,
 )
-from surpyval.utils.deprecation import REMOVED_IN
 from surpyval.utils.ipcw import step_at as _step
 from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import (
@@ -67,7 +65,7 @@ from surpyval.utils.no_maximum import (
     maximum_entry,
     restored_maximum,
 )
-from surpyval.utils.removed_names import column_arguments
+from surpyval.utils.removed_names import RemovedName, column_arguments
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
@@ -147,21 +145,21 @@ class CompetingRisksProportionalHazards(
     # Populated by ``fit``; declared for the type checker. ``model`` is
     # ``"Cox"`` or ``"Fine-Gray"``, the ``model`` argument of ``fit``.
     model: str
-    x: "npt.NDArray"
+    x: npt.NDArray
     #: Each cause's optimiser result, in ``event_idx_map`` order (``None``
     #: for a model restored from a dict: the optimiser objects are not
     #: serialised).
-    results: "list | None"
-    betas: "npt.NDArray"
+    results: list | None
+    betas: npt.NDArray
     event_idx_map: dict
     n_event_types: int
-    h0_e: "npt.NDArray"
-    H0_e: "npt.NDArray"
+    h0_e: npt.NDArray
+    H0_e: npt.NDArray
     #: The covariate point the baselines ``h0_e`` are at, and ``phi_e``
     #: relative to: zeros (``Z = 0``) by default, the covariate means for a
     #: fit with ``center=True`` (#459, #463). The per-cause fits centre on
     #: the means either way.
-    center: "npt.NDArray"
+    center: npt.NDArray
     _fg_models: dict
     #: Each cause's fitted model, by cause label (#874): its ``CoxPH``
     #: model (with the other causes censored) for ``model="Cox"``, which
@@ -169,19 +167,19 @@ class CompetingRisksProportionalHazards(
     #: ``FineGrayModel`` for ``model="Fine-Gray"``. ``diagnose()`` checks
     #: them. ``None`` on a model restored with ``from_dict``, which does
     #: not store them (only their coefficients and baselines).
-    models: "dict | None" = None
+    models: dict | None = None
     #: Each cause's coefficients' covariance, in ``event_idx_map`` order
     #: (``None`` for a Cox model restored from a dict saved before they
     #: were stored).
-    _covariances: "list | None" = None
+    _covariances: list | None = None
     #: What the fit reached, one of ``MAXIMUM_STATES``
     #: (``surpyval.utils.no_maximum``): the worst of the causes' fits, as
     #: their warnings say; ``"unknown"`` for a model restored from a dict
     #: saved without it.
     maximum: str = "unknown"
     # Covariate metadata, set by ``fit_from_df``; ``None`` after ``fit``.
-    feature_names: "list | None" = None
-    formula: "str | None" = None
+    feature_names: list | None = None
+    formula: str | None = None
     _model_spec: Any = None
 
     # -- serialisation -----------------------------------------------------
@@ -255,9 +253,7 @@ class CompetingRisksProportionalHazards(
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(
-        cls, model_dict: dict
-    ) -> "CompetingRisksProportionalHazards":
+    def from_dict(cls, model_dict: dict) -> CompetingRisksProportionalHazards:
         """Rebuild a competing-risks proportional-hazards model from a
         :meth:`to_dict` dictionary."""
         require_model_tag(
@@ -407,7 +403,7 @@ class CompetingRisksProportionalHazards(
         with np.errstate(divide="ignore", invalid="ignore"):
             return 2 * norm.sf(np.abs(self.params / self.standard_errors()))
 
-    def summary(self, alpha_ci: float = 0.05) -> "pd.DataFrame":
+    def summary(self, alpha_ci: float = 0.05) -> pd.DataFrame:
         """
         The coefficient table, as ``CoxPH.summary``: one row per cause and
         covariate (named by ``parameter_names``), with the coefficient,
@@ -510,25 +506,13 @@ class CompetingRisksProportionalHazards(
         self.h0_e = baselines
         self.H0_e = baselines.cumsum(axis=1)
 
-    @property
-    def beta(self) -> npt.NDArray:
-        """The sum of the causes' coefficients, ``betas.sum(axis=0)``.
-
-        .. deprecated:: 0.24
-           It is not a quantity of the model (no prediction uses it) and
-           reads like a coefficient; it is removed in v0.25. The
-           coefficients are ``betas`` (one row per cause) or ``params``
-           (flattened, named by ``parameter_names``).
-        """
-        warnings.warn(
-            "CompetingRisksProportionalHazards.beta is deprecated and will "
-            f"be removed in v{REMOVED_IN}: it is the sum of the causes' "
-            "coefficients, not a quantity of the model. Use 'betas' (one "
-            "row per cause) or 'params' (named by 'parameter_names').",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._beta_sum()
+    # The sum of the causes' coefficients, deprecated in v0.24: not a
+    # quantity of the model, and it read like a coefficient.
+    beta = RemovedName(
+        "use 'betas' (one row per cause) or 'params' (named by "
+        "'parameter_names')",
+        "0.25",
+    )
 
     def _beta_sum(self) -> npt.NDArray:
         return np.asarray(self.betas, dtype=float).sum(axis=0)
@@ -542,16 +526,13 @@ class CompetingRisksProportionalHazards(
             and not isinstance(event, bool)
             and 0 <= event < self.n_event_types
         ):
-            # The row index ``phi_e`` took before v0.24
+            # The row index ``phi_e`` took before v0.24, removed in v0.25
             cause = list(self.event_idx_map)[int(event)]
-            warnings.warn(
-                "phi_e: passing the row index {} of betas is deprecated "
-                "and will be removed in v{}; pass the cause's label, {!r}, "
-                "as for cif.".format(int(event), REMOVED_IN, cause),
-                DeprecationWarning,
-                stacklevel=3,
+            raise ValueError(
+                "phi_e: {} is not a cause's label; passing the row index "
+                "of betas was removed in v0.25. Pass the cause's label, "
+                "{!r}, as for cif.".format(int(event), cause)
             )
-            return int(event)
         raise unknown_cause_error(event, self.event_idx_map)
 
     # ``phi_e`` and ``phi`` are methods, not lambdas set by ``_finish``,
@@ -775,7 +756,7 @@ class CompetingRisksProportionalHazards(
     def _partial_effects_width(self) -> int:
         return int(np.atleast_2d(np.asarray(self.betas)).shape[1])
 
-    def _partial_effects_times(self) -> "npt.NDArray | None":
+    def _partial_effects_times(self) -> npt.NDArray | None:
         return np.asarray(self.x, dtype=float)
 
     def _partial_effects_curve(
@@ -853,14 +834,14 @@ class CompetingRisksProportionalHazards(
         df: Any,
         x_col: str,
         e_col: str,
-        Z_cols: "str | list[str] | None" = None,
-        c_col: "str | None" = None,
-        n_col: "str | None" = None,
-        formula: "str | None" = None,
+        Z_cols: str | list[str] | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        formula: str | None = None,
         model: str = "Cox",
         tie_method: str = "efron",
         center: bool = False,
-    ) -> "CompetingRisksProportionalHazards":
+    ) -> CompetingRisksProportionalHazards:
         """
         Fit a competing-risks proportional-hazards model from a pandas
         DataFrame.
@@ -973,12 +954,12 @@ class CompetingRisksProportionalHazards(
         x: npt.ArrayLike,
         Z: npt.ArrayLike,
         e: npt.ArrayLike,
-        c: "npt.ArrayLike | None" = None,
-        n: "npt.ArrayLike | None" = None,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
         model: str = "Cox",
         tie_method: str = "efron",
         center: bool = False,
-    ) -> "CompetingRisksProportionalHazards":
+    ) -> CompetingRisksProportionalHazards:
         r"""
         Fit the competing-risks proportional-hazards model.
 

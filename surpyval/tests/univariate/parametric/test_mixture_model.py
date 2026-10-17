@@ -417,13 +417,13 @@ def test_605_em_steps_are_internal(old):
 
 def test_626_responsibilities_are_internal():
     # ``p`` held the EM responsibilities, a meaning ``p`` has nowhere
-    # else; its public name warns until v0.25 and the fit does not use it.
+    # else; its public name was removed in v0.25.
     x = surv.Weibull.random(100, 10, 2, random_state=0)
     model = no_warnings(sp.MixtureModel.fit, x, dist=surv.Weibull, m=2)
-    with pytest.warns(DeprecationWarning, match="internal to the fit") as rec:
-        resp = model.p
-    assert rec[0].filename == __file__
-    assert resp is model._resp and resp.shape == (2, len(model.data.x))
+    with pytest.raises(AttributeError, match="removed in v0.25"):
+        model.p
+    resp = model._resp
+    assert resp.shape == (2, len(model.data.x))
     np.testing.assert_allclose(resp.sum(axis=0), 1.0)
 
 

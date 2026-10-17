@@ -27,7 +27,6 @@ from surpyval.univariate.information_criteria import (
 from surpyval.univariate.parametric.fitters import OPTIMUM_GTOL
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
-from surpyval.utils.deprecation import MadePrivate
 from surpyval.utils.linalg import (
     bound_signs,
     safe_inv,
@@ -44,6 +43,7 @@ from surpyval.utils.no_maximum import (
 )
 from surpyval.utils.removed_names import (
     MIXTURE_EM_ATTRIBUTES,
+    RemovedName,
     removed_arguments,
     removed_attributes,
 )
@@ -211,8 +211,13 @@ class MixtureModel(
     # The EM responsibilities (one row per component, one column per
     # observation) are internal to the fit, as the EM steps are (#605); the
     # public name ``p`` means a distribution's own parameter elsewhere, and
-    # ``lfp_p`` the limited-failure proportion (#626).
-    p = MadePrivate("_resp")
+    # ``lfp_p`` the limited-failure proportion (#626). The public name was
+    # removed in v0.25.
+    p = RemovedName(
+        "the EM responsibilities are internal to fit(); the weights are "
+        "'w'",
+        "0.25",
+    )
 
     @property
     def parameter_names(self) -> list[str]:

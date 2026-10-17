@@ -342,15 +342,12 @@ def test_666_cb_takes_alpha_ci_third_as_every_model_does():
         model.cb([10.0], "sf", 0.1, "lower"),
         model.cb([10.0], alpha_ci=0.1, bound="lower"),
     )
-    # the old order still reads as before, with a warning
-    with pytest.warns(DeprecationWarning, match="old order"):
-        old = model.cb([10.0], "sf", "lower", "step", 0.1)
-    np.testing.assert_array_equal(
-        old, model.cb([10.0], alpha_ci=0.1, bound="lower")
-    )
-    with pytest.warns(DeprecationWarning):
-        with pytest.raises(TypeError, match="multiple values"):
-            model.cb([10.0], "sf", "lower", bound="upper")
+    # the old order (x, on, bound, ...) was removed in v0.25: a bound
+    # third says so
+    with pytest.raises(TypeError, match="old order.*removed in v0.25"):
+        model.cb([10.0], "sf", "lower", "step", 0.1)
+    with pytest.raises(TypeError, match="bound='lower'"):
+        model.cb([10.0], "sf", "lower")
 
 
 @pytest.mark.parametrize(
