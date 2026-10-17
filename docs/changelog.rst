@@ -5,6 +5,15 @@ Unreleased
 
 **Added**
 
+- ``to_dict()`` on every test planning result (``DemonstrationPlan``,
+  ``LifeTestPlan``, ``SimulatedPrecision``, ``AcceleratedTestPlan``,
+  ``SequentialMTBFTest`` and ``SequentialDemonstrationTest``): native
+  Python values, strict JSON, with tuples and arrays as lists and an
+  infinite or missing number as ``None`` under the package's
+  ``"non_finite"`` record. The sequential tests also tabulate their
+  boundaries (accept and reject times by failure count, or accepted and
+  rejecting failures by number of units), for a chart or a test
+  procedure.
 - ``surpyval.plot_nonparametric``: one figure of one or more
   non-parametric estimates (Kaplan-Meier, Nelson-Aalen,
   Fleming-Harrington or Turnbull, truncated or not; one model, a list or
@@ -25,7 +34,6 @@ Unreleased
   counts="cumulative")``: the same table as data, ``{"times", "rows",
   "counts": {label: {row: array}}}``, without drawing (it loads no
   plotting library), for a report or a table of one's own.
-=======
 - Joint models (#891): separate covariates for the hazard and the path.
   ``WeibullJointPH.fit(..., hazard_covariates=[...],
   path_covariates=[...] or {path parameter: [...]})`` (and ``fit_from_df``)

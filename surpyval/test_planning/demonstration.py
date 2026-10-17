@@ -19,6 +19,7 @@ from surpyval.test_planning._checks import (
     check_probability,
     elementwise,
 )
+from surpyval.test_planning._serialise import dataclass_dict
 from surpyval.utils.validation import check_alpha_ci
 
 
@@ -72,6 +73,25 @@ class DemonstrationPlan:
     failures: int
     consumer_risk: float
     producer_risk: float
+
+    def to_dict(self) -> dict:
+        """The plan as a dict of native Python values, strict JSON:
+        ``n``, ``test_multiple``, ``test_time``, ``failures``,
+        ``consumer_risk`` and ``producer_risk``, under ``"result":
+        "DemonstrationPlan"``. An infinite or missing number is ``None``,
+        recorded under ``"non_finite"``.
+
+        Examples
+        --------
+        >>> import json
+        >>> from surpyval.test_planning import demonstration_plan
+        >>> d = demonstration_plan(0.9, 0.95, alpha_ci=0.1).to_dict()
+        >>> d["n"], d["failures"], d["test_time"]
+        (128, 8, None)
+        >>> isinstance(json.dumps(d, allow_nan=False), str)
+        True
+        """
+        return dataclass_dict(self)
 
     def __repr__(self) -> str:
         header = "Demonstration Plan"

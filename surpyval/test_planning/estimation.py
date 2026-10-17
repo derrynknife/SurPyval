@@ -30,6 +30,7 @@ from surpyval.test_planning._checks import (
     check_positive,
     check_probability,
 )
+from surpyval.test_planning._serialise import dataclass_dict
 from surpyval.utils.rng import as_generator
 from surpyval.utils.validation import check_alpha_ci, check_option
 
@@ -72,6 +73,25 @@ class SimulatedPrecision:
     within: float
     n_sim: int
     unusable: int
+
+    def to_dict(self) -> dict:
+        """The simulation's result as a dict of native Python values,
+        strict JSON: ``precision``, ``within``, ``n_sim`` and
+        ``unusable``, under ``"result": "SimulatedPrecision"``. An
+        infinite or missing number is ``None``, recorded under
+        ``"non_finite"``.
+
+        Examples
+        --------
+        >>> import surpyval
+        >>> from surpyval.test_planning import life_test_precision
+        >>> plan = life_test_precision(surpyval.LogNormal, (6.0, 0.5), 20,
+        ...                            quantity="mean")
+        >>> d = plan.simulate(50, random_state=2).to_dict()
+        >>> sorted(d)
+        ['n_sim', 'precision', 'result', 'unusable', 'within']
+        """
+        return dataclass_dict(self)
 
     def __repr__(self) -> str:
         header = "Simulated Precision"
@@ -150,6 +170,27 @@ class LifeTestPlan:
     standard_error: float
     precision: float
     alpha_ci: float
+
+    def to_dict(self) -> dict:
+        """The plan as a dict of native Python values, strict JSON:
+        every attribute (``params`` as a list), under ``"result":
+        "LifeTestPlan"``. An infinite or missing number is ``None``,
+        recorded under ``"non_finite"``.
+
+        Examples
+        --------
+        >>> import json
+        >>> import surpyval
+        >>> from surpyval.test_planning import life_test_precision
+        >>> plan = life_test_precision(surpyval.Weibull, (1000.0, 2.0), 20,
+        ...                            censor_time=800.0)
+        >>> d = plan.to_dict()
+        >>> d["distribution"], d["params"], d["n"], d["failures"]
+        ('Weibull', [1000.0, 2.0], 20, None)
+        >>> isinstance(json.dumps(d, allow_nan=False), str)
+        True
+        """
+        return dataclass_dict(self)
 
     def simulate(
         self, n_sim: int = 500, *, random_state: Any = None
