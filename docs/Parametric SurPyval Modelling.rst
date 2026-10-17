@@ -2310,7 +2310,7 @@ explained in :doc:`Parametric Estimation`.
         assert _hi - _b > _b - _lo, (_lo, _hi)
 
 Likelihood-ratio bounds with an offset, a limited failure population or zero inflation
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The likelihood-ratio bounds of an offset, limited-failure-population or
 zero-inflated model profile the extra parameters with the others: the region is

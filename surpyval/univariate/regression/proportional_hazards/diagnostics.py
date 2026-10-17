@@ -594,9 +594,9 @@ def check_ph(
     Returns
     -------
     dict
-        ``{"global": {"statistic", "df", "p_value"},
-           "per_covariate": [{"statistic", "df", "p_value"}, ...],
-           "transform": transform}``. Per-covariate tests have 1 degree of
+        ``"global"``, ``{"statistic", "df", "p_value"}``;
+        ``"per_covariate"``, a list of such dicts; and ``"transform"``,
+        the ``transform`` used. Per-covariate tests have 1 degree of
         freedom; the global test is the joint ``p``-d.f. test. A small
         ``p_value`` is evidence *against* proportional hazards. When the
         model was fit from a DataFrame, per-covariate entries carry the

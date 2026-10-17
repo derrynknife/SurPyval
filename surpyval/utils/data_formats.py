@@ -22,9 +22,7 @@ import numpy.typing as npt
 from surpyval.utils.warnings import caller_stacklevel
 
 
-def validate_float_array(
-    arr: "npt.ArrayLike | None", name: str
-) -> npt.NDArray:
+def validate_float_array(arr: npt.ArrayLike | None, name: str) -> npt.NDArray:
     """Convert input to float array with better error handling."""
     if arr is None:
         return np.array([], dtype=np.float64)
@@ -160,10 +158,10 @@ def xcnt_sort(
 
 
 def fsli_handler(
-    f: "npt.ArrayLike | None" = None,
-    s: "npt.ArrayLike | None" = None,
-    l: "npt.ArrayLike | None" = None,
-    i: "npt.ArrayLike | None" = None,
+    f: npt.ArrayLike | None = None,
+    s: npt.ArrayLike | None = None,
+    l: npt.ArrayLike | None = None,
+    i: npt.ArrayLike | None = None,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Validate data in the ``fsli`` format: separate lists of failures,
@@ -173,13 +171,10 @@ def fsli_handler(
 
     .. deprecated:: 0.25
        ``surpyval.fsli_handler`` is deprecated (2026-10-12), and is removed
-       in the first release on or after 2027-04-12. Use (it validates the
-       data too)::
-
-           SurpyvalData.from_observations(
-               observed=f, right_censored=s, left_censored=l,
-               interval_censored=i,
-           )
+       in the first release on or after 2027-04-12. Use
+       ``SurpyvalData.from_observations(...)`` with ``observed=f``,
+       ``right_censored=s``, ``left_censored=l`` and ``interval_censored=i``
+       (it validates the data too).
 
     Parameters
     ----------
@@ -416,7 +411,7 @@ def xrd_handler(
     return x, r, d
 
 
-def _time_kind(value: Any) -> "str | None":
+def _time_kind(value: Any) -> str | None:
     """``"m"`` if ``value`` holds durations (``timedelta64``, pandas
     ``Timedelta``, ``datetime.timedelta``), ``"M"`` if it holds dates or
     times (``datetime64``, pandas ``Timestamp``, ``datetime``), else
@@ -680,9 +675,9 @@ def coerce_xcnt_x(x: npt.ArrayLike, recurrent: bool = False) -> npt.NDArray:
 
 
 def format_truncation(
-    t: "npt.ArrayLike | None",
-    tl: "npt.ArrayLike | Number | None",
-    tr: "npt.ArrayLike | Number | None",
+    t: npt.ArrayLike | None,
+    tl: npt.ArrayLike | Number | None,
+    tr: npt.ArrayLike | Number | None,
     n_rows: int,
 ) -> npt.NDArray:
     """
@@ -748,7 +743,7 @@ def format_truncation(
 
 
 def _truncation_bound(
-    bound: "npt.ArrayLike | Number | None",
+    bound: npt.ArrayLike | Number | None,
     name: str,
     default: float,
     n_rows: int,
@@ -833,14 +828,14 @@ def _check_truncation_bounds(
 
 
 def xcnt_handler(
-    x: "npt.ArrayLike | None" = None,
-    c: "npt.ArrayLike | None" = None,
-    n: "npt.ArrayLike | None" = None,
-    t: "npt.ArrayLike | None" = None,
-    xl: "npt.ArrayLike | None" = None,
-    xr: "npt.ArrayLike | None" = None,
-    tl: "npt.ArrayLike | Number | None" = None,
-    tr: "npt.ArrayLike | Number | None" = None,
+    x: npt.ArrayLike | None = None,
+    c: npt.ArrayLike | None = None,
+    n: npt.ArrayLike | None = None,
+    t: npt.ArrayLike | None = None,
+    xl: npt.ArrayLike | None = None,
+    xr: npt.ArrayLike | None = None,
+    tl: npt.ArrayLike | Number | None = None,
+    tr: npt.ArrayLike | Number | None = None,
     group_and_sort: bool = True,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """
@@ -1042,9 +1037,9 @@ def _numeric_list_as_array(value: Any) -> Any:
 
 
 def _xcnt_x(
-    x: "npt.ArrayLike | None",
-    xl: "npt.ArrayLike | None",
-    xr: "npt.ArrayLike | None",
+    x: npt.ArrayLike | None,
+    xl: npt.ArrayLike | None,
+    xr: npt.ArrayLike | None,
 ) -> npt.NDArray:
     """``x`` as a checked, non-empty array, built from ``xl``/``xr``."""
     if (x is None) and (xl is None) and (xr is None):
@@ -1172,7 +1167,7 @@ def refuse_boolean_censoring(c: Any) -> None:
         )
 
 
-def _xcnt_censoring(c: "npt.ArrayLike | None", x: npt.NDArray) -> npt.NDArray:
+def _xcnt_censoring(c: npt.ArrayLike | None, x: npt.NDArray) -> npt.NDArray:
     """The censoring flags, checked against ``x``, or the default.
 
     The default is observed (0), and interval censored (2) for the rows
@@ -1211,7 +1206,7 @@ def _xcnt_censoring(c: "npt.ArrayLike | None", x: npt.NDArray) -> npt.NDArray:
     return c_arr
 
 
-def _xcnt_counts(n: "npt.ArrayLike | None", x: npt.NDArray) -> npt.NDArray:
+def _xcnt_counts(n: npt.ArrayLike | None, x: npt.NDArray) -> npt.NDArray:
     """The counts as positive whole numbers, or one per row."""
     if n is None:
         # Do check here for groupby and binning
@@ -1281,8 +1276,8 @@ def _one_sided_rows(
 
 def xcn_to_fs(
     x: npt.ArrayLike,
-    c: "npt.ArrayLike | None" = None,
-    n: "npt.ArrayLike | None" = None,
+    c: npt.ArrayLike | None = None,
+    n: npt.ArrayLike | None = None,
 ) -> tuple[npt.NDArray, npt.NDArray]:
     """
     Convert observed and right-censored ``xcn`` data to the ``fs`` format:
@@ -1421,9 +1416,9 @@ def _entered_before(
 
 def xcnt_to_xrd(
     x: npt.ArrayLike,
-    c: "npt.ArrayLike | None" = None,
-    n: "npt.ArrayLike | None" = None,
-    t: "npt.ArrayLike | None" = None,
+    c: npt.ArrayLike | None = None,
+    n: npt.ArrayLike | None = None,
+    t: npt.ArrayLike | None = None,
     **kwargs: Any,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     """
@@ -1650,10 +1645,10 @@ def xrd_to_xcnt(
 
 
 def fsli_to_xcnt(
-    f: "npt.ArrayLike | None" = None,
-    s: "npt.ArrayLike | None" = None,
-    l: "npt.ArrayLike | None" = None,
-    i: "npt.ArrayLike | None" = None,
+    f: npt.ArrayLike | None = None,
+    s: npt.ArrayLike | None = None,
+    l: npt.ArrayLike | None = None,
+    i: npt.ArrayLike | None = None,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Converts the fsli format to the xcnt format, so that the data can be
@@ -1664,12 +1659,10 @@ def fsli_to_xcnt(
 
     .. deprecated:: 0.25
        ``surpyval.fsli_to_xcnt`` is deprecated (2026-10-12), and is removed
-       in the first release on or after 2027-04-12. Use::
-
-           SurpyvalData.from_observations(
-               observed=f, right_censored=s, left_censored=l,
-               interval_censored=i,
-           ).to_xcnt()
+       in the first release on or after 2027-04-12. Use
+       ``SurpyvalData.from_observations(...)`` with ``observed=f``,
+       ``right_censored=s``, ``left_censored=l`` and ``interval_censored=i``,
+       then ``.to_xcnt()``.
 
     Parameters
     ----------
@@ -1740,9 +1733,9 @@ def fsli_to_xcnt(
 
 
 def fsl_to_xcnt(
-    f: "npt.ArrayLike | None" = None,
-    s: "npt.ArrayLike | None" = None,
-    l: "npt.ArrayLike | None" = None,
+    f: npt.ArrayLike | None = None,
+    s: npt.ArrayLike | None = None,
+    l: npt.ArrayLike | None = None,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Convert failure (``f``), suspension (right-censored, ``s``) and
@@ -1751,11 +1744,9 @@ def fsl_to_xcnt(
 
     .. deprecated:: 0.25
        ``surpyval.fsl_to_xcnt`` is deprecated (2026-10-12), and is removed
-       in the first release on or after 2027-04-12. Use::
-
-           SurpyvalData.from_observations(
-               observed=f, right_censored=s, left_censored=l,
-           ).to_xcnt()
+       in the first release on or after 2027-04-12. Use
+       ``SurpyvalData.from_observations(...)`` with ``observed=f``,
+       ``right_censored=s`` and ``left_censored=l``, then ``.to_xcnt()``.
 
     Parameters
     ----------
@@ -1812,7 +1803,7 @@ def fsl_to_xcnt(
 
 
 def fs_to_xcnt(
-    f: "npt.ArrayLike | None" = None, s: "npt.ArrayLike | None" = None
+    f: npt.ArrayLike | None = None, s: npt.ArrayLike | None = None
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Convert failure (``f``) and suspension (right-censored, ``s``) times to
@@ -1820,11 +1811,9 @@ def fs_to_xcnt(
 
     .. deprecated:: 0.25
        ``surpyval.fs_to_xcnt`` is deprecated (2026-10-12), and is removed
-       in the first release on or after 2027-04-12. Use::
-
-           SurpyvalData.from_observations(
-               observed=f, right_censored=s,
-           ).to_xcnt()
+       in the first release on or after 2027-04-12. Use
+       ``SurpyvalData.from_observations(...)`` with ``observed=f`` and
+       ``right_censored=s``, then ``.to_xcnt()``.
 
     Parameters
     ----------
@@ -1901,7 +1890,7 @@ def missing_events(values: npt.NDArray) -> npt.NDArray:
 
 
 def resolve_cr_censoring(
-    e: npt.ArrayLike, c: "npt.ArrayLike | None"
+    e: npt.ArrayLike, c: npt.ArrayLike | None
 ) -> tuple[npt.NDArray, npt.NDArray]:
     """Canonicalise a competing-risks event vector and its censoring flag.
 
@@ -1976,11 +1965,9 @@ def fs_to_xrd(
 
     .. deprecated:: 0.25
        ``surpyval.fs_to_xrd`` is deprecated (2026-10-12), and is removed
-       in the first release on or after 2027-04-12. Use::
-
-           SurpyvalData.from_observations(
-               observed=f, right_censored=s,
-           ).to_xrd()
+       in the first release on or after 2027-04-12. Use
+       ``SurpyvalData.from_observations(...)`` with ``observed=f`` and
+       ``right_censored=s``, then ``.to_xrd()``.
 
     Parameters
     ----------

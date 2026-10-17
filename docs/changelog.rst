@@ -874,6 +874,7 @@ v0.25 (17 October 2026)
   0 were ignored. A schedule may now start at ``-inf``
   (``StepSchedule.from_changepoints([-np.inf, ...], ...)``, ``{-np.inf:
   ...}`` on a record), and ``StepSchedule.constant`` does.
+
   - Proportional hazards and odds depend on the covariate back to
     ``-inf``: their schedules and paths must start there (a formula,
     ``CovariatePath.from_callable``, has a value at every time), unless
@@ -890,12 +891,14 @@ v0.25 (17 October 2026)
     odds, back to ``-inf``. The integral from ``-inf`` converges because
     these baselines' hazard dies away below 0; along a path that grows
     without limit going back in time it may not, and is refused.
+
 - In ``fit_tvc`` a subject's first row enters at its ``xl``, as any other
   row does (#952). On a baseline defined below 0, a first ``xl`` of 0 now
   means the subject entered at 0, and the fit conditions on its surviving
   to 0, which changes those fits. ``xl = -inf`` is a subject followed
   since ``-inf``, which gives the old fit. Baselines that start at 0 are
   unchanged.
+
   - A fit from item records reads an item with no ``left_truncation`` as
     followed since ``-inf`` there, and refuses one whose covariates start
     later.

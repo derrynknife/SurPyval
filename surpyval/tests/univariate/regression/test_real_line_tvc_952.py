@@ -12,8 +12,8 @@ import pytest
 
 import surpyval as sp
 from surpyval import (
-    CoxPH,
     CovariatePath,
+    CoxPH,
     ItemLifetime,
     StepSchedule,
     SurpyvalData,
