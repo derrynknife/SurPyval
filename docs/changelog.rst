@@ -1,7 +1,50 @@
 Changelog
-==
-Unreleased
-----------
+=========
+
+v0.25 (17 October 2026)
+-----------------------
+
+**Highlights.**
+
+- **Joint models with covariates and dynamic prediction.** Joint models
+  of a marker and a lifetime (``WeibullJointPH``), with covariates in
+  the hazard, in the marker's path or both (``hazard_covariates``,
+  ``path_covariates``), left and interval censored items and truncation,
+  and ``JointModel.predict``: one item's ``DynamicPrediction`` given its
+  readings so far (survival, hazard, remaining life, the smoothed
+  marker, bounds and draws, and ``to_dict()`` for reports), with a
+  calibration study of its intervals.
+- **Test planning**, ``surpyval.test_planning``: demonstration tests
+  (attribute and constant failure rate, with both risks), sequential
+  tests, the precision of life tests, accelerated life test plans, the
+  log-rank test's events and power, and the power of a rate comparison;
+  every result writes itself with ``to_dict()``.
+- **The intervention test**, ``surpyval.recurrent.intervention_test``:
+  whether an intervention changed a failure rate, with the exposure
+  needed to detect a change.
+- **Every bound**: likelihood-ratio bounds for the offset,
+  limited-failure-population and zero-inflated models, and the gaps that
+  remain refused with what to use instead.
+- **Non-parametric plotting**: ``plot_nonparametric`` draws one or more
+  estimates with their bounds, censoring ticks, quantile lines and a
+  number-at-risk table, and ``at_risk_table`` gives that table as data.
+- Regression diagnostics (``model.diagnose()``) for every regression
+  family, item records (``ItemLifetime``, ``ItemHistory``) and the data
+  classes' DataFrame, dict and JSON forms, units on the data, and the
+  mean residual life.
+
+**Upgrading from 0.24.** On 0.24, run your code or tests with
+``python -W error::DeprecationWarning`` first to find the calls to update.
+
+- The names 0.24 deprecated now raise (see *Removed*):
+  ``CompetingRisksProportionalHazards.beta`` and ``phi_e`` by row index,
+  ``NonParametric.cb``'s old argument order, ``MixtureModel.p`` and
+  ``ProportionalIntensityNHPP.fit(dist=)``.
+- Deprecated, still working with a warning (see *Deprecated*):
+  ``RecurrentEventData`` is ``EventHistoryData`` (until v0.26), and the
+  top-level data-format converters (``fs_to_xcnt`` and the rest) are
+  ``SurpyvalData`` methods (until the first release on or after 12 April
+  2027).
 
 **Added**
 
@@ -831,6 +874,7 @@ Unreleased
   0 were ignored. A schedule may now start at ``-inf``
   (``StepSchedule.from_changepoints([-np.inf, ...], ...)``, ``{-np.inf:
   ...}`` on a record), and ``StepSchedule.constant`` does.
+
   - Proportional hazards and odds depend on the covariate back to
     ``-inf``: their schedules and paths must start there (a formula,
     ``CovariatePath.from_callable``, has a value at every time), unless
@@ -847,12 +891,14 @@ Unreleased
     odds, back to ``-inf``. The integral from ``-inf`` converges because
     these baselines' hazard dies away below 0; along a path that grows
     without limit going back in time it may not, and is refused.
+
 - In ``fit_tvc`` a subject's first row enters at its ``xl``, as any other
   row does (#952). On a baseline defined below 0, a first ``xl`` of 0 now
   means the subject entered at 0, and the fit conditions on its surviving
   to 0, which changes those fits. ``xl = -inf`` is a subject followed
   since ``-inf``, which gives the old fit. Baselines that start at 0 are
   unchanged.
+
   - A fit from item records reads an item with no ``left_truncation`` as
     followed since ``-inf`` there, and refuses one whose covariates start
     later.

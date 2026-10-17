@@ -13,13 +13,10 @@ import pytest
 from surpyval.tests._helpers import competing_risks_regression_data
 from surpyval.univariate.competing_risks import (
     CompetingRisksProportionalHazards,
-)
-from surpyval.univariate.competing_risks import (
-    CompetingRisksProportionalHazards as CRPH,
-)
-from surpyval.univariate.competing_risks import (
     FineGray,
 )
+
+CRPH = CompetingRisksProportionalHazards
 
 
 def _exponential_cr_data(N, seed, lam=(0.5, 0.3), beta=None, cens=6.0):

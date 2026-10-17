@@ -7,7 +7,7 @@ an estimate, accelerated life tests, and the sample size and power of a
 comparison of two groups, or of a failure rate before and after a change. Import them from ``surpyval.test_planning``. Worked
 examples are in :doc:`Test Planning with SurPyval`.
 
-.. automodule:: surpyval.test_planning
+.. py:module:: surpyval.test_planning
 
 Demonstration tests
 -------------------
@@ -55,7 +55,7 @@ Estimation precision
 .. autofunction:: surpyval.test_planning.life_test_length
 
 .. autoclass:: surpyval.test_planning.LifeTestPlan
-   :members: simulate
+   :members: simulate, to_dict
 
 .. autoclass:: surpyval.test_planning.SimulatedPrecision
 
@@ -67,7 +67,7 @@ Accelerated life tests
 .. autofunction:: surpyval.test_planning.accelerated_test_precision
 
 .. autoclass:: surpyval.test_planning.AcceleratedTestPlan
-   :members: simulate
+   :members: simulate, to_dict
 
 Comparing two groups
 --------------------
