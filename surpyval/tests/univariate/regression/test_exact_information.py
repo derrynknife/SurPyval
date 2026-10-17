@@ -50,13 +50,17 @@ FAMILIES = [
 #: the step still agrees to 1.3e-5, and the exact values move by 1e-6.
 #: The additive hazards cases on their own fixture (``ah_data``, #828) are
 #: the same: 3.6e-4 at most at the default step (WeibullAH), 1.8e-5 at
-#: most at ten times it.
+#: most at ten times it. NormalAH's is 6.2e-5 at the default step on
+#: arm64 and 1.05e-4 on x86-64 (the exact values agree to 1e-12; the
+#: numerical ones move with the platform's rounding), and 6.7e-7 at ten
+#: times the step.
 OLD_ROUNDING = {
     "ExponentialPO": 2e-3,
     "ExponentialAH": 2e-4,
     "WeibullAH": 5e-4,
     "GammaAH": 2e-4,
     "LogisticAH": 2e-4,
+    "NormalAH": 2e-4,
 }
 
 

@@ -62,6 +62,7 @@ the run dies on "unrecognized arguments".
 """
 
 import doctest
+import sys
 import zlib
 
 import pytest
@@ -177,6 +178,17 @@ def pytest_collection_modifyitems(config, items):
     if drop:
         config.hook.pytest_deselected(items=drop)
         items[:] = keep
+
+
+def pytest_runtest_setup(item):
+    """Each doctest starts with no figure open: an example that draws on
+    ``plt.gca()`` would otherwise draw on an earlier example's axes (its
+    labels and lines), and the doctests run one after another in one
+    process."""
+    if isinstance(item, pytest.DoctestItem) and "matplotlib.pyplot" in (
+        sys.modules
+    ):
+        sys.modules["matplotlib.pyplot"].close("all")
 
 
 # ``surpyval/utils/score.py`` raises on import, to say where its function

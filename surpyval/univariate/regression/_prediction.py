@@ -19,7 +19,8 @@ does, as the non-parametric estimates' ``qf``.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -136,7 +137,7 @@ class ConditionalSurvivalMixin:
 
 def paired_probabilities(
     p: npt.ArrayLike, rows: npt.NDArray, grid: bool = False
-) -> "tuple[npt.NDArray, npt.NDArray, tuple[int, int] | None]":
+) -> tuple[npt.NDArray, npt.NDArray, tuple[int, int] | None]:
     """The probabilities ``p`` (flat) and covariate ``rows`` of a
     regression model's ``qf(p, Z)``, one problem each: paired as ``sf``
     pairs times with rows (one row for every ``p``, or one ``p`` for
@@ -159,7 +160,7 @@ def paired_probabilities(
     return u, rows, shape
 
 
-def unique_rows(rows: npt.NDArray) -> "tuple[npt.NDArray, npt.NDArray]":
+def unique_rows(rows: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
     """The distinct covariate rows and, for each row, which it is: the
     curves of a step model are evaluated once per distinct row."""
     rows = np.asarray(rows, dtype=float)
@@ -209,7 +210,7 @@ def quantiles_by_inversion(
     p: npt.NDArray,
     support: tuple[float, float],
     start: npt.NDArray,
-    hf: "Callable[[npt.NDArray, npt.NDArray], npt.NDArray] | None" = None,
+    hf: Callable[[npt.NDArray, npt.NDArray], npt.NDArray] | None = None,
 ) -> npt.NDArray:
     """The times at which ``Hf(t, k)``, the cumulative hazard of problem
     ``k``, reaches ``-log(1 - p[k])``, for every ``k`` at once.
@@ -292,8 +293,17 @@ def _newton_finish(
     """Newton's steps on ``gap`` (the cumulative hazard less its target)
     from the bracketed answers ``t`` of the problems ``k[sel]``, with the
     hazard ``hf`` its derivative; a step is kept only where it stays in
-    ``[lo, hi]`` and makes ``|gap|`` smaller."""
+    ``[lo, hi]`` and makes ``|gap|`` smaller.
+
+    The bracket is widened by ``1e-10`` of ``|t|`` on each side: the
+    cumulative hazard is computed in batches, and a vectorised ``exp`` or
+    ``log`` may round the same time differently in a batch of another
+    size, so the sign the bracket was found with can flip within a few
+    ulps of its ends. An answer at an end of the bracket would then have
+    no step that stays in it."""
     t = t.copy()
+    slack = 1e-10 * np.abs(t)
+    lo, hi = lo - slack, hi + slack
     with np.errstate(all="ignore"):
         g = gap(t, sel)
         for _ in range(steps):

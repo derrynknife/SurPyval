@@ -61,7 +61,13 @@ def test_828_qf_is_exact_near_the_start_of_the_support(name):
     # the support starts (x* < 0 for beta'Z > 0 on these baselines). The
     # solver's tolerance, relative to |t|, left sf(qf(1 - s)) off by up to
     # 1.8e-5 of s; Newton's finish on H leaves the cancellation in
-    # H0 + x beta'Z there, below 1e-8 of it.
+    # H0 + x beta'Z there. That is the limit for any qf (and for ff, which
+    # the check uses): H, about s, is the difference of two terms of size
+    # |H0(q)| (0.02 to 0.06 here), so it is known to a few ulps of |H0(q)|,
+    # 1e-8 of s or so at s = 1e-9. The bound is 16 such ulps: the largest
+    # error is about 5 on arm64 and on x86-64, where it is 1.1e-8 of s
+    # (their vectorised exp and log round differently), and the solver
+    # alone left 1e4 times more.
     rng = np.random.default_rng(0)
     x = rng.weibull(1.5, 300) * 100
     Z = rng.uniform(0, 1, (300, 1))
@@ -71,9 +77,12 @@ def test_828_qf_is_exact_near_the_start_of_the_support(name):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         model = getattr(sp, name).fit(x, Z=Z)
-        low = model.ff(model.qf(s, z), z)
+        q = model.qf(s, z)
+        low = model.ff(q, z)
         high = model.sf(model.qf(1 - s, z), z)
-    assert np.max(np.abs(low - s) / s) < 1e-8
+    H0 = model.distribution.Hf(q, *model.params[: model.k_dist])
+    ulps = np.abs(low - s) / (np.finfo(float).eps * np.abs(H0))
+    assert np.max(ulps) < 16
     assert np.max(np.abs(high - (1 - (1 - s))) / s) < 1e-8
 
 
