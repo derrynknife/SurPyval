@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -19,7 +20,6 @@ from surpyval.univariate.regression._aliasing import (
 )
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
@@ -29,6 +29,7 @@ from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
+from surpyval.utils.removed_names import removed_arguments
 from surpyval.utils.units import takes_unit
 
 from .proportional_intensity import (
@@ -49,7 +50,7 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
 
     with the baseline any NHPP model -- ``Duane`` (the default),
     ``CrowAMSAA`` or ``CoxLewis`` -- chosen with ``baseline``, as for
-    ``ARI`` (``dist``, its name before v0.24, warns until v0.25).
+    ``ARI`` (``dist``, its name before v0.24, was removed in v0.25).
 
     ``ProportionalIntensityNHPP`` is an instance of this class. Its
     ``fit`` returns a
@@ -102,7 +103,7 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
     #: The ``repr`` (#614)
     fitter_kind = "proportional intensity fitter"
 
-    def _repr_details(self) -> "list[str]":
+    def _repr_details(self) -> list[str]:
         return ["NHPP baseline"]
 
     def create_negll_func(self, data: Any, dist: Any) -> Callable:
@@ -172,13 +173,13 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
                 return fallback
         return start
 
-    @renamed_arguments(dist="baseline")
+    @removed_arguments("0.25", dist="'baseline'")
     @refuses_unmodelled_data
     def fit_from_recurrent_data(
         self,
         data: Any,
         baseline: Any = Duane,
-        init: "ArrayLike | None" = None,
+        init: ArrayLike | None = None,
     ) -> Any:
         """
         Fit from a prepared
@@ -340,7 +341,7 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
 
         return out
 
-    @renamed_arguments(dist="baseline")
+    @removed_arguments("0.25", dist="'baseline'")
     @dataframe_covariates
     @takes_unit
     @accepts_event_history_data
@@ -348,14 +349,14 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
         self,
         x: ArrayLike,
         Z: ArrayLike,
-        i: "ArrayLike | None" = None,
-        c: "ArrayLike | None" = None,
-        n: "ArrayLike | None" = None,
-        t: "ArrayLike | None" = None,
-        tl: "ArrayLike | None" = None,
-        tr: "ArrayLike | None" = None,
+        i: ArrayLike | None = None,
+        c: ArrayLike | None = None,
+        n: ArrayLike | None = None,
+        t: ArrayLike | None = None,
+        tl: ArrayLike | None = None,
+        tr: ArrayLike | None = None,
         baseline: Any = Duane,
-        init: "ArrayLike | None" = None,
+        init: ArrayLike | None = None,
     ) -> Any:
         """
         Fit the model using the provided data and initial parameters.
@@ -404,7 +405,7 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
             ``CrowAMSAA`` or ``CoxLewis`` from ``surpyval.recurrent``. With
             ``HPP`` the model is the same as ``ProportionalIntensityHPP``.
             Named as ``ARI``'s baseline is (#653); its name before v0.24,
-            ``dist``, warns until v0.25.
+            ``dist``, was removed in v0.25.
         init : array_like, optional
             Initial parameter estimates: the baseline parameters followed by
             the covariate coefficients.

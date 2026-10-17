@@ -1,6 +1,5 @@
 Changelog
-=========
-
+==
 Unreleased
 ----------
 
@@ -15,6 +14,26 @@ Unreleased
   boundaries (accept and reject times by failure count, or accepted and
   rejecting failures by number of units), for a chart or a test
   procedure.
+- ``surpyval.plot_nonparametric``: one figure of one or more
+  non-parametric estimates (Kaplan-Meier, Nelson-Aalen,
+  Fleming-Harrington or Turnbull, truncated or not; one model, a list or
+  a dict ``{label: model}`` for groups) with a number-at-risk table under
+  the x axis. It draws ``sf``, ``ff``, ``Hf`` or the smoothed hazard
+  rate, with the model's pointwise ``cb`` or simultaneous ``band``
+  (shaded or as dashed steps), censoring ticks, median or other quantile
+  lines with their values, a time range and a log time axis, and returns
+  the figure, axes, curves, quantiles and counts (``NonParametricPlot``).
+  The table's rows are "At risk", "Censored" and "Events" (cumulative,
+  as lifelines' ``add_at_risk_counts``, or per interval), counted with
+  the estimators' risk sets, so the number at risk rises with late
+  entry. For left or interval censored data the rows count what the
+  data show (known event-free, known to have had the event) and an "In
+  interval" row counts the units whose interval spans the time, rather
+  than the Turnbull estimate's fractional expected counts.
+- ``surpyval.at_risk_table(models, times=None, rows=("At risk",),
+  counts="cumulative")``: the same table as data, ``{"times", "rows",
+  "counts": {label: {row: array}}}``, without drawing (it loads no
+  plotting library), for a report or a table of one's own.
 - Joint models (#891): separate covariates for the hazard and the path.
   ``WeibullJointPH.fit(..., hazard_covariates=[...],
   path_covariates=[...] or {path parameter: [...]})`` (and ``fit_from_df``)
@@ -919,6 +938,27 @@ Unreleased
   the warning, until then. ``surpyval.utils`` keeps
   the functions. :doc:`Data Wrangler Examples` maps each to its
   replacement.
+
+**Removed**
+
+The names 0.24 deprecated are gone; each now raises the error Python
+would, naming its replacement. Run your code under 0.24 with
+``python -W error::DeprecationWarning`` first to find the calls to
+update.
+
+- ``CompetingRisksProportionalHazards.beta``, the sum of the causes'
+  coefficients: use ``betas`` (one row per cause) or ``params`` (named by
+  ``parameter_names``). ``phi_e`` refuses a row index of ``betas``, naming
+  the cause's label to pass, as ``cif`` takes it.
+- ``NonParametric.cb``'s old argument order ``cb(x, on, bound, ...)``: the
+  order is ``cb(x, on, alpha_ci, bound, ...)``, as every model's; a
+  ``bound`` given third raises a ``TypeError`` that says so.
+- ``MixtureModel.p``, the EM responsibilities: internal to the fit; the
+  weights are ``w``.
+- ``ProportionalIntensityNHPP.fit(dist=)``: use ``baseline=``.
+- Development: ``REMOVED_IN`` is ``"0.26"`` (the names deprecated in
+  0.25: ``RecurrentEventData`` and ``EventHistoryData``'s ``items`` and
+  ``get_times_to_first_events``) and ``REMOVED_IN_NEXT`` ``"0.27"``.
 
 **Fixed**
 

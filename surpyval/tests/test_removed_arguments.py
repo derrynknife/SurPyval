@@ -1,7 +1,7 @@
 """
 The names v0.21 deprecated are gone in v0.22 (#422), those v0.22
-deprecated are gone in v0.23, and those v0.23 deprecated are gone in v0.24
-(principle 21).
+deprecated are gone in v0.23, those v0.23 deprecated are gone in v0.24,
+and those v0.24 deprecated are gone in v0.25 (principle 21).
 
 An old argument name is now an unknown argument, so the call raises
 Python's own ``TypeError``; an old attribute is gone (``AttributeError``);
@@ -396,13 +396,11 @@ def test_proportional_intensity_nhpp_takes_baseline():
     Z = np.array(IR, float)[:, None]
     new = ProportionalIntensityNHPP.fit(XR, Z, i=IR, c=CR, baseline=CrowAMSAA)
     assert new.dist is CrowAMSAA
-    with pytest.warns(DeprecationWarning, match="use 'baseline'"):
-        old = ProportionalIntensityNHPP.fit(XR, Z, i=IR, c=CR, dist=CrowAMSAA)
-    np.testing.assert_array_equal(old.params, new.params)
-    with pytest.raises(ValueError, match="pass 'baseline' only"):
-        ProportionalIntensityNHPP.fit(
-            XR, Z, i=IR, c=CR, baseline=CrowAMSAA, dist=CrowAMSAA
-        )
+    # dist=, deprecated in v0.24, was removed in v0.25
+    with pytest.raises(
+        TypeError, match="'dist': it was removed in v0.25; use 'baseline'"
+    ):
+        ProportionalIntensityNHPP.fit(XR, Z, i=IR, c=CR, dist=CrowAMSAA)
 
 
 def test_experimental_alias_is_gone():

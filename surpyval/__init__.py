@@ -41,8 +41,11 @@ from surpyval.univariate.nonparametric import (
     LogRankResult,
     NelsonAalen,
     NonParametric,
+    NonParametricPlot,
     Turnbull,
     logrank,
+    plot_nonparametric,
+    at_risk_table,
     rmst_diff,
     success_run,
 )
@@ -262,8 +265,11 @@ __all__ = [
     "LogRankResult",
     "NelsonAalen",
     "NonParametric",
+    "NonParametricPlot",
     "Turnbull",
     "logrank",
+    "plot_nonparametric",
+    "at_risk_table",
     "rmst_diff",
     "success_run",
     # Parametric

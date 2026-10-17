@@ -8,14 +8,15 @@ from __future__ import annotations
 import functools
 import inspect
 import warnings
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 import numpy as np
 import numpy.typing as npt
 
 from surpyval.utils.data_reshape import HISTORY_PARTS, ReshapeMixin
-from surpyval.utils.deprecation import REMOVED_IN_NEXT, RenamedAttribute
+from surpyval.utils.deprecation import RenamedAttribute
 from surpyval.utils.surpyval_data import (
     SurpyvalData,
     _named_row,
@@ -97,7 +98,7 @@ class EventHistoryData(ReshapeMixin):
     covariate_names: list | None = None
     # The item ids were ``items`` before v0.25 (``from_items`` and
     # ``to_items`` are about item records): accepted until v0.26.
-    items = RenamedAttribute("ids", removed_in=REMOVED_IN_NEXT)
+    items = RenamedAttribute("ids")
     # Each item's path through its states, ``{item: (initial_state,
     # changes)}``, attached by ``from_items``; no model uses them yet
     # (#887), so every fit refuses data that has them.
@@ -105,10 +106,10 @@ class EventHistoryData(ReshapeMixin):
     # Each item's attributes (``{name: value}``, what describes the item
     # without being fitted), in the order of ``ids``, from the records or
     # ``from_dataframe``; None where the data has none.
-    attributes: "list | None" = None
+    attributes: list | None = None
     # The unit of the ages (``"hour"``), a label as a model's ``unit`` is;
     # None where unknown (#945).
-    unit: "str | None" = None
+    unit: str | None = None
 
     def __init__(
         self,
@@ -116,9 +117,9 @@ class EventHistoryData(ReshapeMixin):
         i: npt.ArrayLike,
         c: npt.ArrayLike,
         n: npt.ArrayLike,
-        e: "npt.ArrayLike | None" = None,
-        tl: "npt.ArrayLike | None" = None,
-        tr: "npt.ArrayLike | None" = None,
+        e: npt.ArrayLike | None = None,
+        tl: npt.ArrayLike | None = None,
+        tr: npt.ArrayLike | None = None,
         unit: Any = None,
     ) -> None:
         self.x = np.atleast_1d(x).copy()  # the caller's stays theirs
@@ -599,11 +600,9 @@ class EventHistoryData(ReshapeMixin):
 
     # Until v0.25 the times to the first events came back with neither
     # the items' delayed entry, ids nor covariates (#926).
-    get_times_to_first_events = RenamedAttribute(
-        "to_first_events", removed_in=REMOVED_IN_NEXT
-    )
+    get_times_to_first_events = RenamedAttribute("to_first_events")
 
-    def to_first_events(self) -> "SurpyvalData":
+    def to_first_events(self) -> SurpyvalData:
         """
         Each item's time to its first failure, as lifetime data, one
         :class:`~surpyval.utils.item_lifetime.ItemLifetime` per item: its
@@ -651,7 +650,7 @@ class EventHistoryData(ReshapeMixin):
             warnings.simplefilter("ignore", MaskedCauseWarning)
             return SurpyvalData.from_items(firsts)
 
-    def to_gaps(self) -> "SurpyvalData":
+    def to_gaps(self) -> SurpyvalData:
         """
         The times between each item's failures, as lifetime data, each
         repair taken to make the item as good as new (a renewal process):
@@ -690,7 +689,7 @@ class EventHistoryData(ReshapeMixin):
             gaps += _gaps(history)
         return SurpyvalData.from_items(gaps)
 
-    def _first_event_times(self) -> "SurpyvalData":
+    def _first_event_times(self) -> SurpyvalData:
         """Each item's first row, grouped (the renewal fits' start)."""
         x_ttff = np.array([self.x[self.i == item][0] for item in self.ids])
         c_ttff = np.array([self.c[self.i == item][0] for item in self.ids])
@@ -700,16 +699,16 @@ class EventHistoryData(ReshapeMixin):
     @classmethod
     def from_histories(
         cls,
-        observed: "dict | None" = None,
-        right_censored: "dict | None" = None,
+        observed: dict | None = None,
+        right_censored: dict | None = None,
         *,
         left_truncation: Any = None,
         right_truncation: Any = None,
-        covariates: "dict | None" = None,
+        covariates: dict | None = None,
         gaps: bool = False,
         unit: Any = None,
         **unknown: Any,
-    ) -> "EventHistoryData":
+    ) -> EventHistoryData:
         """
         Recurrent event data from each item's history, keyed by the item's
         id: the ages at which it failed, ``observed``, and the age at which
@@ -851,7 +850,7 @@ class EventHistoryData(ReshapeMixin):
         Z_cols: Any = None,
         attribute_cols: Any = None,
         unit: Any = None,
-    ) -> "EventHistoryData":
+    ) -> EventHistoryData:
         """
         The data from a log held in a :class:`pandas.DataFrame`, one row
         per event (a maintenance log: the item and its age at each
@@ -980,7 +979,7 @@ class EventHistoryData(ReshapeMixin):
     @classmethod
     def from_items(
         cls, items: Any, unit: Any = None, **unknown: Any
-    ) -> "EventHistoryData":
+    ) -> EventHistoryData:
         """
         The dataset of several items' histories, each an
         :class:`~surpyval.utils.item_history.ItemHistory`: their failures
@@ -1255,7 +1254,7 @@ class EventHistoryData(ReshapeMixin):
         records = self.to_items()
         return records, [1] * len(records)
 
-    def _from_records(self, records: list, counts: list) -> "EventHistoryData":
+    def _from_records(self, records: list, counts: list) -> EventHistoryData:
         return EventHistoryData.from_items(records)
 
     def item(self, id: Any) -> Any:
@@ -1426,7 +1425,7 @@ class EventHistoryData(ReshapeMixin):
         for key, rows in zip(self.ids, np.split(order, bounds[:-1])):
             yield self._history_at(key, rows, prepared)
 
-    def __getitem__(self, index: Any) -> "EventHistoryData":
+    def __getitem__(self, index: Any) -> EventHistoryData:
         # As row numbers, so one row stays a row: a scalar index used to
         # turn an interval row [l, r] into two times and drop covariate
         # columns (#925).
@@ -1467,7 +1466,7 @@ class EventHistoryData(ReshapeMixin):
         Z = Z[:, None] if Z.ndim == 1 else Z
         return Z[first, column].tolist()
 
-    def _rows_of_items(self, keep: np.ndarray) -> "EventHistoryData":
+    def _rows_of_items(self, keep: np.ndarray) -> EventHistoryData:
         _, inverse = np.unique(self.i, return_inverse=True)
         return self[np.flatnonzero(np.asarray(keep)[inverse.reshape(-1)])]
 
@@ -1548,7 +1547,7 @@ class EventHistoryData(ReshapeMixin):
         return encode_non_finite(data)
 
     @classmethod
-    def from_dict(cls, data_dict: dict) -> "EventHistoryData":
+    def from_dict(cls, data_dict: dict) -> EventHistoryData:
         """
         The data back from its :meth:`to_dict` dictionary.
 
@@ -1631,7 +1630,7 @@ class EventHistoryData(ReshapeMixin):
             out.unit = data["unit"]
         return out
 
-    def to_json(self, filepath: "str | Path | None" = None) -> "str | None":
+    def to_json(self, filepath: str | Path | None = None) -> str | None:
         """
         The data as strict JSON text (:meth:`to_dict` dumped), or written
         to the file ``filepath``.
@@ -1650,7 +1649,7 @@ class EventHistoryData(ReshapeMixin):
         return dump(self.to_dict(), filepath)
 
     @classmethod
-    def from_json(cls, source: "str | Path") -> "EventHistoryData":
+    def from_json(cls, source: str | Path) -> EventHistoryData:
         """
         The data back from JSON text (a string starting with ``{``), or
         from the file holding it (``surpyval.from_json`` reads it too).
@@ -1693,7 +1692,7 @@ class EventHistoryData(ReshapeMixin):
         return public_dir(self, HISTORY_INTERNALS)
 
 
-def _held(data: Any, rows: "int | None") -> list:
+def _held(data: Any, rows: int | None) -> list:
     """The summary lines for what a data object holds beyond its times
     (kept for callers of the old name; see ``data_display.held_lines``)."""
     from surpyval.utils.data_display import held_lines
@@ -1701,7 +1700,7 @@ def _held(data: Any, rows: "int | None") -> list:
     return held_lines(data, recurrent=rows is None)
 
 
-def _history_end(history: Any) -> "float | None":
+def _history_end(history: Any) -> float | None:
     """Where ``history``'s observation ends: its ``right_censored``, else
     its ``right_truncation``, else its last failure."""
     if history.right_censored is not None:
@@ -2084,7 +2083,7 @@ def _check_needs_covariates(data: Any, signature: inspect.Signature) -> None:
 
 
 def _refuse_what_fit_cannot_take(
-    data: Any, names: "set[str]", lost: "list | None" = None
+    data: Any, names: set[str], lost: list | None = None
 ) -> None:
     """Refuse ``data`` that holds what a fit taking the arguments
     ``names`` cannot use -- covariates without a ``Z``, event types
