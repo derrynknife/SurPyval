@@ -185,3 +185,96 @@ def simulate_path(
             )
         )
     return SurpyvalData.from_items(items)
+
+
+def simulate_split(
+    n=300,
+    seed=0,
+    every=30.0,
+    follow=730.0,
+    gamma=0.5,
+    delta_b=0.6 / 365,
+    inspect=None,
+    truth=None,
+    centre=CENTRE,
+):
+    """``(items, lines, z)``: ``n`` pumps as :func:`simulate`'s, with two
+    0/1 covariates, each for half the fleet independently: ``site``
+    enters the hazard only (by ``gamma``), ``load`` the line's rate only
+    (by ``delta_b`` a day), so a pump under load wears faster but is at
+    no more risk at a given vibration. With ``inspect``, a failure is
+    found only at the next inspection (every ``inspect`` days): interval
+    censored between the last two, left censored if before the first;
+    readings stop at the last inspection before it.
+
+    The lines and lifetimes are drawn as :func:`simulate` draws them
+    (bisection of the cumulative hazard), with the generator's draws in
+    a fixed order."""
+    truth = dict(TRUTH if truth is None else truth)
+    rng = np.random.default_rng(seed)
+    sd0, sd1 = truth["sd_a"], truth["sd_b"]
+    r = truth["corr_a_b"]
+    D = np.array([[sd0**2, r * sd0 * sd1], [r * sd0 * sd1, sd1**2]])
+    b = rng.multivariate_normal([0.0, 0.0], D, size=n)
+    site = rng.integers(0, 2, n).astype(float)
+    load = rng.integers(0, 2, n).astype(float)
+    m0 = truth["a"] + b[:, 0]
+    m1 = truth["b"] + b[:, 1] + delta_b * load
+    target = rng.exponential(size=n)
+    lo, hi = np.zeros(n), np.full(n, 50 * follow)
+    for _ in range(80):
+        mid = (lo + hi) / 2
+        H = _cumhaz(
+            mid,
+            m0,
+            m1,
+            truth["alpha"],
+            truth["beta"],
+            truth["marker_effect"],
+            centre,
+            gamma * site,
+        )
+        below = H < target
+        lo, hi = np.where(below, mid, lo), np.where(below, hi, mid)
+    life = (lo + hi) / 2
+    noise = rng.normal(0, truth["sd_noise"], (n, int(follow // every) + 2))
+    items = []
+    for k in range(n):
+        covariates = {"site": site[k], "load": load[k]}
+        if inspect is None:
+            end = min(life[k], follow)
+            outcome = {
+                ("observed" if life[k] <= follow else "right_censored"): float(
+                    end
+                )
+            }
+            last = end
+        else:
+            stops = np.arange(inspect, follow + 1e-9, inspect)
+            found = stops[stops >= life[k]]
+            if not found.size:
+                # running at the last inspection
+                outcome = {"right_censored": float(stops[-1])}
+                last = float(stops[-1])
+            elif found[0] == stops[0]:
+                outcome = {"left_censored": float(stops[0])}
+                last = 0.0
+            else:
+                outcome = {
+                    "interval_censored": [
+                        float(found[0] - inspect),
+                        float(found[0]),
+                    ]
+                }
+                last = float(found[0] - inspect)
+        ages = np.arange(0.0, last + 1e-9, every)
+        readings = m0[k] + m1[k] * ages + noise[k, : ages.size]
+        items.append(
+            ItemLifetime(
+                k,
+                **outcome,
+                covariates=covariates,
+                markers=dict(zip(ages.tolist(), readings.tolist())),
+            )
+        )
+    return items, np.column_stack([m0, m1]), np.column_stack([site, load])

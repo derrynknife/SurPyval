@@ -59,7 +59,10 @@ follows the path model :math:`m(t; \theta)` (``path(t, *theta)``; for
 the parameters that vary between items (:math:`V`, all of them by default)
 multivariate normal about means the covariates shift, the others
 (:math:`C`) common to every item, and :math:`\varepsilon_{ij} \sim N(0,
-\sigma^2)`. The hazard is
+\sigma^2)`. By default every covariate shifts every path parameter's mean
+and enters the hazard; a fit can put each covariate in one part or both
+(:math:`\Delta` and :math:`\gamma` are then 0 where a covariate is left
+out: see `Covariates in each part`_). The hazard is
 
 .. math::
 
@@ -102,10 +105,20 @@ survival fit with each item's predicted path plugged in -- a two-stage
 estimate, which is biased, and only a start. The covariance is the inverse
 of the Hessian of the negative log-likelihood, by autograd.
 
-An item that came under observation at age :math:`L_i > 0`
-(``left_truncation``) is in the data because it reached :math:`L_i`: its
-likelihood is divided by the probability of that, :math:`\int S(L_i \mid
-\theta) \phi(\theta_V)\, d\theta_V`, over the population's paths.
+An item found failed at an inspection is known only to have failed between
+two ages, :math:`l_i < T_i \le u_i` (``interval_censored``; ``left_censored``
+is the interval from its entry, or 0): :math:`h_i(T_i)^{d_i} S_i(T_i)` is
+then :math:`S_i(l_i \mid \theta) - S_i(u_i \mid \theta)`, the hazard
+integrated over the interval directly (so a narrow interval late in life
+loses no precision). An item that came under observation at age
+:math:`L_i > 0` (``left_truncation``) is in the data because it reached
+:math:`L_i`, and one right truncated at :math:`R_i` (``right_truncation``)
+because it failed by then: its likelihood is divided by the probability
+of that, :math:`\int (S(L_i \mid \theta) - S(R_i \mid \theta))
+\phi(\theta_V)\, d\theta_V`, over the population's paths. The
+likelihood of every kind of item agrees with an independent dense-grid
+integral over the random effects to within 1e-5 an item
+(``tests/univariate/joint/test_joint_extensions.py``).
 
 The data: readings on the item records
 --------------------------------------
@@ -265,18 +278,149 @@ such fleets: the last reading carried forward was biased by -39%, its 95%
 intervals covering the truth 0.3% of the time; the joint model by +1%,
 covering it 96% of the time.
 
-Covariates and late entry
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Covariates in each part
+~~~~~~~~~~~~~~~~~~~~~~~
 
-A record's ``covariates`` enter both parts: each path parameter's mean
-(``a_<name>``, ``b_<name>``: a shift of the level, of the rate) and the
-hazard (``<name>``, a log hazard ratio at a given marker). Named covariates
-(``covariates={"site": 1}``) name the parameters; a covariate the data
-cannot determine (constant, or a combination of others) is aliased, its
-coefficients ``nan``, with one warning. Items that came under observation
-late -- a fleet whose records start when monitoring was installed -- are
-``left_truncation``-ed, and the fit accounts for having seen only the ones
-that reached that age.
+A record's ``covariates`` enter both parts by default: each path
+parameter's mean (``a_<name>``, ``b_<name>``: a shift of the level, of the
+rate) and the hazard (``<name>``, a log hazard ratio at a given marker).
+Named covariates (``covariates={"site": 1}``) name the parameters; a
+covariate the data cannot determine (constant, or a combination of others)
+is aliased, its coefficients ``nan``, with one warning.
+
+A condition often acts on one part only. A heavy load can make a pump's
+vibration rise faster without making it any more likely to fail *at a
+given vibration*: it acts through the marker, on the path. A different
+site -- another maintenance crew, another duty -- can change the risk at a
+given vibration without changing how vibration rises: it acts on the
+hazard. ``hazard_covariates=[...]`` names the covariates in the hazard and
+``path_covariates=`` those that shift the path, a list (every path
+parameter) or ``{path parameter: [...]}`` (here only the rate ``b``); each
+defaults to every covariate, ``[]`` is none, and a covariate must be in at
+least one. Putting a covariate where it does not act wastes the data on
+coefficients that are 0, and putting it only where it does not act biases
+the others. A fleet with ``site`` acting on the hazard only and ``load``
+on the rate only:
+
+.. jupyter-execute::
+
+    gen = np.random.default_rng(11)
+
+
+    def monitored(k):
+        site, load = gen.integers(0, 2, 2)
+        start = gen.normal(3.0, 0.6)
+        rate = (gen.normal(1.0, 0.5) + 0.6 * load) / 365  # load: faster rise
+        t = np.linspace(0, 3000, 30001)
+        h = (2 / 800) * (t / 800) * np.exp(
+            0.5 * site + 0.9 * (start + rate * t - 4.0)  # site: more risk
+        )
+        H = np.concatenate([[0], np.cumsum((h[1:] + h[:-1]) / 2 * np.diff(t))])
+        life = np.interp(gen.exponential(), H, t)
+        end = min(life, 730.0)
+        ages = np.arange(0.0, end, 30.0)
+        readings = start + rate * ages + gen.normal(0, 0.7, ages.size)
+        outcome = "observed" if life <= 730 else "right_censored"
+        return ItemLifetime(
+            f"M{k}",
+            **{outcome: round(end, 1)},
+            covariates={"site": float(site), "load": float(load)},
+            markers=dict(zip(ages, readings.round(2))),
+        ), life
+
+
+    monitored_fleet = [monitored(k) for k in range(300)]
+    duty = SurpyvalData.from_items([item for item, _ in monitored_fleet])
+    split = WeibullJointPH.fit(
+        duty,
+        hazard_covariates=["site"],
+        path_covariates={"b": ["load"]},
+        marker_reference=4.0,
+    )
+    split.summary()[["coef", "se(coef)"]].round(5)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert split.maximum == "verified"
+    assert split.parameter_names == [
+        "a", "b", "b_load", "sd_a", "sd_b", "corr_a_b", "sd_noise",
+        "alpha", "beta", "site", "marker_effect",
+    ]
+    est = dict(zip(split.parameter_names, split.params))
+    se = dict(zip(split.parameter_names, split.standard_errors()))
+    for name, truth in [("site", 0.5), ("b_load", 0.6 / 365),
+                        ("marker_effect", 0.9)]:
+        assert abs(est[name] - truth) < 3 * se[name], name
+
+``b_load`` is the extra rise a day under load (0.6/365 = 0.0016 simulated)
+and ``site`` the log hazard ratio of the second site at a given vibration
+(0.5); there is no ``a_load``, ``b_site``, ``a_site`` or ``load``. Every
+covariate is still needed to predict (``Z`` names them all), and the model
+saves which part each is in. A model fitted, or saved, before the parts
+existed has every covariate in both.
+
+Late entry
+~~~~~~~~~~
+
+Items that came under observation late -- a fleet whose records start when
+monitoring was installed -- are ``left_truncation``-ed, and the fit
+accounts for having seen only the ones that reached that age; items in
+the data only because they failed by an age (a recall of failed units, say)
+are ``right_truncation``-ed, likewise.
+
+Found failed at an inspection
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Where a failure is only found at the next inspection, the item failed
+between its last two inspections: an ``interval_censored`` record
+``[last seen running, found failed]``, or ``left_censored`` if it was found
+failed at the first. The same pumps, inspected (and read) every 90 days:
+
+.. jupyter-execute::
+
+    def inspected(item, life, every=90.0):
+        stops = np.arange(every, 730.0 + 1e-9, every)
+        found = stops[stops >= life]
+        if not found.size:
+            return item.clone(right_censored=stops[-1], markers={
+                a: v for a, v in item.markers.items() if a <= stops[-1]
+            })
+        last = found[0] - every
+        readings = {a: v for a, v in item.markers.items() if a <= last}
+        if last <= 0:
+            return item.clone(left_censored=found[0], markers=readings)
+        return item.clone(interval_censored=[last, found[0]], markers=readings)
+
+
+    found = SurpyvalData.from_items([inspected(*pair) for pair in monitored_fleet])
+    print((found.c == 2).sum(), "interval and", (found.c == -1).sum(), "left censored")
+    from_inspections = WeibullJointPH.fit(
+        found,
+        hazard_covariates=["site"],
+        path_covariates={"b": ["load"]},
+        marker_reference=4.0,
+    )
+    from_inspections.summary()[["coef", "se(coef)"]].round(5)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert from_inspections.maximum == "verified"
+    est = dict(zip(from_inspections.parameter_names, from_inspections.params))
+    se = dict(
+        zip(from_inspections.parameter_names, from_inspections.standard_errors())
+    )
+    for name, truth in [("site", 0.5), ("b_load", 0.6 / 365),
+                        ("marker_effect", 0.9)]:
+        assert abs(est[name] - truth) < 3 * se[name], name
+
+The estimates are close to the exact data's, the standard errors of the
+survival part a little wider: the inspections lose when, within 90 days,
+each pump failed. With arrays, an interval is a ``[lower, upper]`` row of
+``x`` with ``c = 2`` (and ``fit_from_df`` takes ``xl_col`` and ``xr_col``).
 
 The marker reference
 ~~~~~~~~~~~~~~~~~~~~
@@ -505,6 +649,53 @@ the model says (a reason to read predictions far beyond the data with care;
 past about ten times the data's ages the levelled-off value moves by the
 quadrature's error, about 1e-5 of itself).
 
+One item's dynamic prediction
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``model.predict(item)`` (or ``predict(Z, markers=..., given=...)``) holds one
+item's prediction as an object, for the questions asked of one asset: its
+survival, failure probability and hazard from now on given its readings
+(``sf``, ``ff``, ``hf``, ``df``, ``Hf``), its remaining life
+(``remaining_life(p)``, the life left that it outlives with probability
+``1 - p``, and ``qf`` the age), a Wald band from the parameters'
+uncertainty (``cb``, the same as ``model.cb``), its marker smoothed through
+the readings and projected beyond them (``marker`` and ``marker_interval``,
+the noise-free path's mean and interval given the readings and that it
+reached its age now), and draws of its failure age (``random``). Its
+``sf``, ``ff`` and ``cb`` are the model's for the same item; the hazard is
+the item's at that age given its readings and that it reached it.
+
+.. jupyter-execute::
+
+    now = model.predict(rising)
+    print(now)
+    print("life left, 10/50/90%:", now.remaining_life([0.1, 0.5, 0.9]).round(0))
+    print("hazard a day at 425 and 545:", now.hf([425, 545]).round(5))
+    print("vibration at 365 and 545:", now.marker([365, 545]).round(2))
+    print(now.marker_interval(545).round(2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert now.sf(545) == model.sf(545, rising)
+    assert np.allclose(now.ff(now.qf([0.1, 0.5, 0.9])), [0.1, 0.5, 0.9])
+    assert now.remaining_life(0.5) < model.predict(quiet).remaining_life(0.5)
+
+The 90% range of its life left is wide -- a prediction of one pump's life,
+not a confidence interval -- and the band of :meth:`cb` adds the
+uncertainty of the fitted parameters to the survival. A calibration study
+(``tests/calibration/test_coverage_joint.py``, 200 simulated fleets of 200
+pumps with the covariates of `Covariates in each part`_, with exact failure
+times and with 90-day inspections) found the 95% band of a held-out pump's
+conditional survival 60, 180 and 365 days ahead covering the true
+conditional survival 93.0%, 89.5% and 93.0% of the time (exact times) and
+93.5%, 94.5% and 94.0% (inspections); each parameter's 95% interval
+covered its truth 93.0% to 96.5% of the time (exact) and 91.5% to 97.5%
+(inspections), the standard errors 0.91 to 1.09 times the estimates'
+spread. The Wald band can run a little narrow for this sample size, most
+at 180 days ahead with exact times.
+
 Saving and loading
 ------------------
 
@@ -530,11 +721,15 @@ The joint model of v1 (#891) is the standard one. It has:
 - a Weibull proportional hazards survival part in the path's current value
   (``JointPH(Weibull, path_model)``; ``WeibullJointPH`` is the line; other
   baselines are refused);
-- covariates in both parts (every path parameter's mean, and the hazard);
-- failures and right censoring, with left truncation; left or interval
-  censored items and right truncation are refused;
+- covariates in both parts (every path parameter's mean, and the hazard)
+  by default, or each in the parts named by ``hazard_covariates`` and
+  ``path_covariates``;
+- failures, right, left and interval censoring, with left and right
+  truncation;
 - predictions for one item given its readings, with Wald (delta method)
-  bounds.
+  bounds, as arrays (``sf``, ``ff``, ``cb``) or as one item's dynamic
+  prediction (``predict``: the hazard, remaining life, the smoothed and
+  projected marker, and draws).
 
 Not yet (see #891's roadmap): spline paths; the slope or the cumulative
 marker as the link; other survival parts (AFT, splines); several
@@ -563,4 +758,7 @@ fitter class below; import everything from ``surpyval`` (or
    :members: fit, fit_from_df
 
 .. autoclass:: surpyval.univariate.joint.joint_model.JointModel
-   :members: sf, ff, cb, summary, covariance, standard_errors, to_dict, from_dict
+   :members: sf, ff, cb, predict, summary, covariance, standard_errors, to_dict, from_dict
+
+.. autoclass:: surpyval.univariate.joint.dynamic.DynamicPrediction
+   :members: sf, ff, hf, df, Hf, qf, remaining_life, cb, marker, marker_interval, random

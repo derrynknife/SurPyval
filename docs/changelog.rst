@@ -6,6 +6,50 @@ Unreleased
 
 **Added**
 
+- Joint models (#891): separate covariates for the hazard and the path.
+  ``WeibullJointPH.fit(..., hazard_covariates=[...],
+  path_covariates=[...] or {path parameter: [...]})`` (and ``fit_from_df``)
+  puts each covariate in the hazard (``<cov>``), the path parameters'
+  means (``a_<cov>``, ``b_<cov>``, ...) or both: a condition can change how
+  fast the marker rises without changing the risk at a given reading, or
+  the reverse. The default is every covariate in both, as before; a
+  covariate in neither part, or a name that is not a covariate, is refused.
+  The model keeps ``path_covariates`` and ``hazard_covariates`` (``None``
+  where every covariate is in both) and saves them; a model saved before
+  loads as every covariate in both.
+- Joint models: left and interval censored items (found failed at an
+  inspection) and right truncation, which were refused. An interval's
+  likelihood is ``S(l) - S(u)`` over the item's paths, the hazard
+  integrated over the interval directly; a truncated item's is divided by
+  the population's probability of ``(S(tl) - S(tr))``. Arrays take
+  ``[lower, upper]`` rows of ``x`` (``c = 2``, the default where the ends
+  differ), ``fit_from_df`` ``xl_col``/``xr_col`` and ``tr_col``. Every kind
+  of item's likelihood agrees with a dense-grid integral to within 1e-5
+  an item.
+- ``JointModel.predict(item)`` (or ``predict(Z, markers=, given=)``):
+  one item's ``DynamicPrediction`` given its readings so far and that it
+  is still running -- the conditional ``sf``, ``ff`` and ``cb`` (the
+  model's own), ``hf``, ``df``, ``Hf`` (with ``cb(on="Hf")``), ``qf`` and
+  ``remaining_life(p)``, the smoothed and projected noise-free marker
+  (``marker``, ``marker_interval``) and draws (``random``). The array
+  prediction ``sf(x, Z, markers=, given=)`` is unchanged.
+  ``DynamicPrediction.to_dict(x=None, alpha_ci=0.05)`` gives it as
+  strict JSON for a report or chart: the readings as ``[age, value]``
+  pairs, ``sf``, ``ff`` and ``hf`` on a grid of ages (by default from the
+  age now to about the 0.99 quantile) with the two-sided bounds on
+  ``sf``, the remaining life's 0.1, 0.5 and 0.9 quantiles, and the
+  marker's path with its interval; an infinite or missing value is
+  ``None``.
+- A calibration study of the joint model
+  (``tests/calibration/test_coverage_joint.py``, ``--run-calibration``):
+  200 fleets of 200 items with a hazard-only and a path-only covariate,
+  with exact failure times and with 90-day inspections. Each parameter's
+  95% interval covered the truth 93.0-96.5% (exact) and 91.5-97.5%
+  (inspections) of the time, standardised biases were within 0.21 sd and
+  standard errors 0.91-1.09 of the estimates' spread; a held-out item's
+  95% dynamic-prediction band covered its true conditional survival
+  93.0%, 89.5% and 93.0% (exact) and 93.5%, 94.5% and 94.0% (inspections)
+  at 60, 180 and 365 days ahead.
 - Likelihood-ratio bounds for offset, limited-failure-population and
   zero-inflated models: ``param_cb``, ``cb``, ``quantile_cb``, ``mean_cb``
   and ``mrl_cb`` with ``method="lr"`` raised ``NotImplementedError``. The

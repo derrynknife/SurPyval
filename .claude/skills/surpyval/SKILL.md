@@ -196,6 +196,16 @@ silently wrong numbers, not errors.
   repair was.
 - *No failures yet, but a measurable signal drifting toward a threshold* →
   **degradation / RUL**. Predicts life *before* anything fails.
+- *A signal read repeatedly (vibration, wear, a biomarker) and failures that it
+  drives* → a **joint model** (`sp.WeibullJointPH`, `sp.JointPH(sp.Weibull,
+  path_model)`), the readings on each `ItemLifetime` as `markers={age: value}`.
+  Carrying the last reading forward as a time-varying covariate biases its
+  effect toward 0. Each covariate can act on the hazard, the signal's path or
+  both (`hazard_covariates=`, `path_covariates=`); failures may be exact, found
+  at an inspection (left or interval censored) or truncated.
+  `model.predict(item)` gives one asset's survival, hazard and remaining life
+  given its readings so far, with Wald bands, its smoothed and projected
+  signal, and draws.
 
 **Parametric vs non-parametric vs semi-parametric:**
 
@@ -272,6 +282,7 @@ silently wrong numbers, not errors.
 | **Competing risks** | `surpyval.univariate.competing_risks` | `CompetingRisks` (nonparametric CIF), `ParametricCompetingRisks`, `FineGray` (subdistribution regression), `CompetingRisksProportionalHazards` |
 | **Recurrent events** | `surpyval.recurrent` | `NonParametricCounting` (MCF), NHPP/HPP intensity fits (`CrowAMSAA`, `Duane`, `CoxLewis`, `HPP`), renewal / imperfect repair (`GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA`, `ARI`), proportional-intensity regression, cause-specific MCF/NHPP, trend/GoF diagnostics |
 | **Degradation & RUL** | `surpyval.degradation` | `DegradationAnalysis` (path models via `PATH_MODELS`: linear, exponential, power, ...), stochastic processes `WienerProcess`/`GammaProcess`, `InducedFailureDistribution` (Lu–Meeker), `ProcessRUL` |
+| **Joint models** | `sp.WeibullJointPH`, `sp.JointPH` | A marker read repeatedly plus a lifetime: a degradation path (any `PathModel`) with random effects, Weibull PH in its current value; covariates per part (`hazard_covariates`, `path_covariates`); all censoring and truncation; `sf/ff/cb(x, Z, markers=, given=)` and `predict(...)` (dynamic prediction: `hf`, `remaining_life`, `marker`, `random`) |
 | **Multivariate** | `surpyval.multivariate` | Copulas: `Clayton`, `Frank`, `Gumbel`, `Gaussian`, `Independence` |
 | **Mixtures** | `sp.MixtureModel.fit(x, dist=..., m=...)` | EM mixture of a base family |
 | **Model validation** | `surpyval.metrics` | `brier_score`, `integrated_brier_score`, `auc_td`, `survival_probability` |

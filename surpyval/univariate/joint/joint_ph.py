@@ -36,6 +36,7 @@ from ._likelihood import (
 from ._markers import marker_start, survival_start
 from .joint_model import (
     JointModel,
+    covariate_parts,
     parameter_names,
     path_formula,
     reported_params,
@@ -127,7 +128,7 @@ class JointPHFitter(FitterRepr):
             else f"{distribution.name}{plain}JointPH"
         )
 
-    def _repr_details(self) -> "list[str]":
+    def _repr_details(self) -> list[str]:
         names = list(self.path_model.parameter_names)
         out = [
             f"{self.dist.name} baseline",
@@ -152,7 +153,9 @@ class JointPHFitter(FitterRepr):
         markers: Any = None,
         tl: npt.ArrayLike | None = None,
         tr: npt.ArrayLike | None = None,
-        marker_reference: "float | None" = None,
+        marker_reference: float | None = None,
+        path_covariates: Any = None,
+        hazard_covariates: Any = None,
     ) -> JointModel:
         """
         Fit the joint model of the marker and the lifetime by maximum
@@ -175,13 +178,23 @@ class JointPHFitter(FitterRepr):
         The data are usually a :class:`~surpyval.SurpyvalData` of
         :class:`~surpyval.ItemLifetime` records with ``markers``:
         ``WeibullJointPH.fit(SurpyvalData.from_items(items))``. Items may
-        be failed (``observed``) or still running (``right_censored``),
-        and may have come under observation late (``left_truncation``:
-        the likelihood is then that of an item that reached that age,
-        over the population's paths). Left and interval censoring and
-        right truncation are refused. A covariate the data cannot
-        determine (a constant, or a combination of others) is aliased:
-        its coefficients are ``nan``, with one warning.
+        be failed (``observed``), still running (``right_censored``),
+        found failed at an inspection (``left_censored``: failed by that
+        age) or between two (``interval_censored``), and may have come
+        under observation late (``left_truncation``) or be in the data
+        only because they failed by an age (``right_truncation``): the
+        likelihood is then that of an item that reached its entry age and
+        failed by its right truncation, over the population's paths. A
+        covariate the data cannot determine (a constant, or a combination
+        of others) is aliased: its coefficients are ``nan``, with one
+        warning.
+
+        Every covariate shifts every path parameter's mean and enters the
+        hazard, unless ``path_covariates`` or ``hazard_covariates`` say
+        otherwise: a condition may change how fast the marker rises
+        without changing the risk at a given reading (path only), or the
+        risk at a given reading without changing the marker (hazard
+        only).
 
         Parameters
         ----------
@@ -189,11 +202,12 @@ class JointPHFitter(FitterRepr):
             The data, or each item's age at failure or censoring.
         c, n, t, tl, tr : array_like, optional
             As for every fit, with arrays: the censoring flag (0 failed, 1
-            still running), the counts, and the truncation.
+            still running, -1 failed by ``x``, 2 failed in ``x``'s
+            ``[lower, upper]`` row), the counts, and the truncation.
         Z : array_like, optional
             Each item's covariates, a row each (a DataFrame's columns name
-            them). They shift every path parameter's mean and enter the
-            hazard.
+            them). By default they shift every path parameter's mean and
+            enter the hazard.
         markers : list of dict
             With arrays: each item's readings, ``{age: value}`` (``{}``
             for none).
@@ -201,6 +215,15 @@ class JointPHFitter(FitterRepr):
             The marker value at which ``alpha`` is reported (the
             baseline's item has its marker there). Default the mean
             reading. It changes ``alpha`` only.
+        path_covariates : list of str or dict, optional
+            The covariates that shift the path parameters' means
+            (``a_<cov>``, ``b_<cov>``, ...): a list (each path parameter),
+            or ``{path parameter: [covariate, ...]}`` (one left out is not
+            shifted). Default every covariate; ``[]`` for none.
+        hazard_covariates : list of str, optional
+            The covariates in the hazard (``<cov>``). Default every
+            covariate; ``[]`` for none. Each covariate must be in one part
+            or both. Unnamed covariates are ``coef_0``, ``coef_1``, ...
 
         Returns
         -------
@@ -241,32 +264,42 @@ class JointPHFitter(FitterRepr):
                     f"{marker_reference!r}."
                 )
         records, counts, names = _records(x, c, n, t, tl, tr, Z, markers)
-        return _fit(self, records, counts, names, reference)
+        parts = covariate_parts(
+            list(self.path_model.parameter_names),
+            names,
+            path_covariates,
+            hazard_covariates,
+        )
+        return _fit(self, records, counts, names, reference, parts)
 
     @takes_unit
     def fit_from_df(
         self,
         df: Any,
-        x_col: "str | None" = None,
-        markers_col: "str | None" = None,
-        c_col: "str | None" = None,
-        n_col: "str | None" = None,
-        tl_col: "str | None" = None,
-        tr_col: "str | None" = None,
-        xl_col: "str | None" = None,
-        xr_col: "str | None" = None,
-        Z_cols: "str | list[str] | None" = None,
-        marker_reference: "float | None" = None,
+        x_col: str | None = None,
+        markers_col: str | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        tl_col: str | None = None,
+        tr_col: str | None = None,
+        xl_col: str | None = None,
+        xr_col: str | None = None,
+        Z_cols: str | list[str] | None = None,
+        marker_reference: float | None = None,
+        path_covariates: Any = None,
+        hazard_covariates: Any = None,
     ) -> JointModel:
         """
         Fit the joint model to a DataFrame of items, one row each: the
         age it failed or was censored (``x_col``), its readings
         (``markers_col``, a column holding each item's ``{age: value}``),
-        and optionally its censoring flag, count, entry age and
-        covariates (``c_col``, ``n_col``, ``tl_col``, ``Z_cols``, which
-        name the model's covariates). As :meth:`fit` otherwise: it refuses
-        what the fit does (intervals, ``xl_col`` and ``xr_col``, and right
-        truncation, ``tr_col``, with the fit's messages).
+        and optionally its censoring flag, count, truncation and
+        covariates (``c_col``, ``n_col``, ``tl_col``, ``tr_col``,
+        ``Z_cols``, which name the model's covariates). An item found
+        failed between two ages has them in ``xl_col`` and ``xr_col`` (in
+        place of ``x_col``; ``c_col`` 2 for those rows). As :meth:`fit`
+        otherwise, ``path_covariates`` and ``hazard_covariates`` naming
+        which of ``Z_cols`` enter which part.
 
         Examples
         --------
@@ -342,6 +375,8 @@ class JointPHFitter(FitterRepr):
                 Z=Z,
                 markers=list(df[markers_col]),
                 marker_reference=marker_reference,
+                path_covariates=path_covariates,
+                hazard_covariates=hazard_covariates,
             )
 
 
@@ -403,29 +438,41 @@ def _records(
     tr: Any,
     Z: Any,
     markers: Any,
-) -> tuple[list, npt.NDArray, "list[str]"]:
+) -> tuple[list, npt.NDArray, list[str]]:
     """The items as ItemLifetime records (which check each item's
     readings against its observation), their counts, and the covariates'
     names; what the fit cannot take is refused."""
     from surpyval.utils.item_lifetime import ItemLifetime
 
     x = np.asarray(x, dtype=float)
+    if x.ndim not in (1, 2) or (x.ndim == 2 and x.shape[1] != 2):
+        raise ValueError(
+            "'x' is each item's age at failure or censoring, or a [lower, "
+            "upper] row each (interval censored items); got shape "
+            f"{x.shape}."
+        )
     rows = len(x)
-    c = np.zeros(rows, dtype=int) if c is None else np.asarray(c)
+    if c is None:
+        # [lower, upper] rows: an interval where they differ
+        c = (
+            np.where(x[:, 0] == x[:, 1], 0, 2)
+            if x.ndim == 2
+            else np.zeros(rows, dtype=int)
+        )
+    c = np.asarray(c)
     if c.shape != (rows,):
         raise ValueError(f"'c' must hold one flag per item ({rows}).")
     unknown = set(np.unique(c).tolist()) - {0, 1, -1, 2}
     if unknown:
         raise ValueError(
-            "'c' must be 0 (failed) or 1 (still running); got "
-            f"{sorted(unknown)}."
+            "'c' must be 0 (failed), 1 (still running), -1 (failed by "
+            f"x) or 2 (failed in x's interval); got {sorted(unknown)}."
         )
-    if np.isin(c, (-1, 2)).any() or x.ndim != 1:
+    if x.ndim == 1 and np.any(c == 2):
         raise ValueError(
-            "The joint model fits items that failed at a known age "
-            "(observed) or are still running (right censored); this data "
-            "has left or interval censored items, which it does not fit "
-            "yet (#891)."
+            "An interval censored item (c = 2) needs its [lower, upper]: "
+            "give x as one [lower, upper] row per item (the same age twice "
+            "for the others)."
         )
     if markers is None:
         raise ValueError(
@@ -461,11 +508,6 @@ def _records(
         if tr is None
         else np.broadcast_to(np.asarray(tr, dtype=float), (rows,))
     )
-    if np.isfinite(tr).any():
-        raise ValueError(
-            "The joint model does not fit right truncated items yet "
-            "(#891); this data has some."
-        )
     names = fit_columns()
     if Z is not None:
         Z = np.asarray(Z, dtype=float)
@@ -482,16 +524,31 @@ def _records(
         missing = np.zeros(rows, dtype=bool)
         names = []
     names = [str(name) for name in names]
-    outcome = {0: "observed", 1: "right_censored"}
+    outcome = {
+        0: "observed",
+        1: "right_censored",
+        -1: "left_censored",
+        2: "interval_censored",
+    }
     records, counts = [], []
     for k in range(rows):
         if missing[k]:
             continue
+        flag = int(c[k])
+        if flag == 2:
+            value: Any = [float(x[k, 0]), float(x[k, 1])]
+        elif x.ndim == 1:
+            value = float(x[k])
+        else:
+            value = float(x[k, 1] if flag == -1 else x[k, 0])
         records.append(
             ItemLifetime(
                 k,
-                **{outcome[int(c[k])]: float(x[k])},
+                **{outcome[flag]: value},
                 left_truncation=(float(tl[k]) if np.isfinite(tl[k]) else None),
+                right_truncation=(
+                    float(tr[k]) if np.isfinite(tr[k]) else None
+                ),
                 covariates=None if Z is None else Z[k],
                 markers=markers[k] or None,
             )
@@ -502,20 +559,45 @@ def _records(
     return records, np.array(counts, dtype=float), names
 
 
+def _lifetimes(records: list) -> tuple:
+    """``(T, d, U, L, Rt)`` of the records: the age each left observation
+    (the lower end of an interval: a left censored item's entry age, else
+    0), the event flag, the upper end of an interval (``inf`` for
+    none), the entry age (0 for none) and the right truncation (``inf``
+    for none)."""
+    T, d, U, L, Rt = [], [], [], [], []
+    for r in records:
+        entry = 0.0 if r.left_truncation is None else r.left_truncation
+        if r.outcome == "interval_censored":
+            T.append(float(r.value[0]))
+            U.append(float(r.value[1]))
+        elif r.outcome == "left_censored":
+            # failed by its age, having reached its entry
+            T.append(entry)
+            U.append(float(r.value))
+        else:
+            T.append(float(r.value))
+            U.append(np.inf)
+        d.append(r.outcome == "observed")
+        L.append(entry)
+        Rt.append(np.inf if r.right_truncation is None else r.right_truncation)
+    return (
+        np.array(T, dtype=float),
+        np.array(d, dtype=float),
+        np.array(U, dtype=float),
+        np.array(L, dtype=float),
+        np.array(Rt, dtype=float),
+    )
+
+
 def _arrays(
     fitter: JointPHFitter, records: list, counts: Any, p: int
 ) -> tuple:
     """The items' arrays (covariates as given), their readings, and the
     checks of what the model needs."""
-    T = np.array([r.value for r in records], dtype=float)
-    d = np.array([r.outcome == "observed" for r in records], dtype=float)
-    L = np.array(
-        [
-            0.0 if r.left_truncation is None else r.left_truncation
-            for r in records
-        ]
-    )
-    if np.any(L < 0) or np.any(T <= 0):
+    T, d, U, L, Rt = _lifetimes(records)
+    point = ~np.isfinite(U)
+    if np.any(L < 0) or np.any(T[point] <= 0) or np.any(U[~point] <= 0):
         raise ValueError(
             "The joint model's ages start at 0 (a Weibull baseline): every "
             "item fails or is censored after 0 and comes under observation "
@@ -536,10 +618,11 @@ def _arrays(
     for r, a, v in zip(records, ages, values):
         if len(a):
             fitter.path_model.check_data(a, v)
-    if not d.any():
+    if not (d.any() or np.isfinite(U).any()):
         raise ValueError(
-            "The joint model needs at least one failure (observed): every "
-            "item is still running."
+            "The joint model needs at least one failure (observed, or "
+            "found failed: left or interval censored): every item is still "
+            "running."
         )
     P = len(fitter.path_model.parameter_names)
     q = len(fitter.varying)
@@ -551,7 +634,7 @@ def _arrays(
             f"{q + 2} items, to see how their paths differ; {fitted} "
             "item(s) have them."
         )
-    return T, d, L, Z, ages, values
+    return T, d, L, Z, ages, values, U, Rt
 
 
 def _aliased(Z: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
@@ -571,13 +654,19 @@ def _fit(
     records: list,
     counts: npt.NDArray,
     names: list,
-    reference: "float | None",
+    reference: float | None,
+    parts: tuple,
 ) -> JointModel:
-    """The joint fit of ``records`` (``counts`` of each)."""
+    """The joint fit of ``records`` (``counts`` of each); ``parts`` is
+    ``(shifts, hazard)``, which covariates enter which part
+    (:func:`~surpyval.univariate.joint.joint_model.covariate_parts`)."""
     path_model = fitter.path_model
     path_names = list(path_model.parameter_names)
+    shifts, hazard = parts
     p_all = len(names)
-    every = parameter_names(path_names, list(fitter.varying), names)
+    every = parameter_names(
+        path_names, list(fitter.varying), names, shifts, hazard
+    )
     clash = sorted({a for a in names if every.count(a) > 1})
     clash += sorted(
         {a for a in names for b in path_names if every.count(f"{b}_{a}") > 1}
@@ -588,7 +677,9 @@ def _fit(
             f"Covariates named {clash!r} would share a parameter's name in "
             "the joint model; rename them."
         )
-    T, d, L, Z_all, ages, values = _arrays(fitter, records, counts, p_all)
+    T, d, L, Z_all, ages, values, U, Rt = _arrays(
+        fitter, records, counts, p_all
+    )
     aliased = _aliased(Z_all, counts)
     if aliased.size:
         warn_aliased(
@@ -606,11 +697,19 @@ def _fit(
     zbar = np.average(Z, axis=0, weights=counts) if p else np.zeros(0)
     reference = centre if reference is None else reference
     refs = (centre, zbar, reference)
-    arrays = JointArrays.build(counts, T, d, L, Z - zbar, ages, values)
+    arrays = JointArrays.build(
+        counts, T, d, L, Z - zbar, ages, values, U=U, Rt=Rt
+    )
+    kept_names = [names[j] for j in kept]
     layout = Layout(
         len(path_names),
         p,
         tuple(path_names.index(v) for v in fitter.varying),
+        np.array(
+            [[cov in shifts[n] for cov in kept_names] for n in path_names],
+            dtype=bool,
+        ).reshape(len(path_names), p),
+        np.array([cov in hazard for cov in kept_names], dtype=bool),
     )
     model = Model(layout, PathFunction(path_model), centre)
     # Starting values: each item's path alone, their spread, then the
@@ -725,9 +824,15 @@ def _fit(
     else:
         warn_no_covariance()
     # every parameter, nan for an aliased covariate's
-    full_names = parameter_names(path_names, list(fitter.varying), names)
+    full_names = parameter_names(
+        path_names, list(fitter.varying), names, shifts, hazard
+    )
     kept_names = parameter_names(
-        path_names, list(fitter.varying), [names[j] for j in kept]
+        path_names,
+        list(fitter.varying),
+        kept_names,
+        {n: [c for c in shifts[n] if c in kept_names] for n in path_names},
+        [c for c in hazard if c in kept_names],
     )
     where = [full_names.index(name) for name in kept_names]
     params = np.full(len(full_names), np.nan)
@@ -739,6 +844,14 @@ def _fit(
     out.params = params
     out.feature_names = list(names)
     out.aliased = aliased
+    every_one = all(shifts[n] == list(names) for n in path_names) and list(
+        hazard
+    ) == list(names)
+    # saved as None where every covariate is in both parts (as before)
+    out.path_covariates = (
+        None if every_one else {n: list(shifts[n]) for n in path_names}
+    )
+    out.hazard_covariates = None if every_one else list(hazard)
     out.parameter_names = full_names
     out.marker_reference = float(reference)
     out._centre = centre
@@ -751,7 +864,7 @@ def _fit(
     out.k = len(estimated)
     out.maximum = "verified" if verified else "unverified"
     out.n_items = total
-    out.n_events = float(np.sum(d * counts))
+    out.n_events = float(np.sum(np.maximum(d, np.isfinite(U)) * counts))
     out.n_readings = float(np.sum([len(a) * w for a, w in zip(ages, counts)]))
     return out
 
@@ -791,9 +904,11 @@ def search_space(model: JointModel, **data: Any) -> tuple:
         data["markers"],
     )
     names = list(model.feature_names)
-    T, d, L, Z_all, ages, values = _arrays(fitter, records, counts, len(names))
+    T, d, L, Z_all, ages, values, U, Rt = _arrays(
+        fitter, records, counts, len(names)
+    )
     Z = Z_all[:, model._kept] - model._zbar
-    arrays = JointArrays.build(counts, T, d, L, Z, ages, values)
+    arrays = JointArrays.build(counts, T, d, L, Z, ages, values, U=U, Rt=Rt)
     layout = model._layout
     lik = Model(layout, PathFunction(model.path_model), model._centre)
     theta = model._theta()
