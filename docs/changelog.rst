@@ -931,6 +931,27 @@ Unreleased
   the functions. :doc:`Data Wrangler Examples` maps each to its
   replacement.
 
+**Removed**
+
+The names 0.24 deprecated are gone; each now raises the error Python
+would, naming its replacement. Run your code under 0.24 with
+``python -W error::DeprecationWarning`` first to find the calls to
+update.
+
+- ``CompetingRisksProportionalHazards.beta``, the sum of the causes'
+  coefficients: use ``betas`` (one row per cause) or ``params`` (named by
+  ``parameter_names``). ``phi_e`` refuses a row index of ``betas``, naming
+  the cause's label to pass, as ``cif`` takes it.
+- ``NonParametric.cb``'s old argument order ``cb(x, on, bound, ...)``: the
+  order is ``cb(x, on, alpha_ci, bound, ...)``, as every model's; a
+  ``bound`` given third raises a ``TypeError`` that says so.
+- ``MixtureModel.p``, the EM responsibilities: internal to the fit; the
+  weights are ``w``.
+- ``ProportionalIntensityNHPP.fit(dist=)``: use ``baseline=``.
+- Development: ``REMOVED_IN`` is ``"0.26"`` (the names deprecated in
+  0.25: ``RecurrentEventData`` and ``EventHistoryData``'s ``items`` and
+  ``get_times_to_first_events``) and ``REMOVED_IN_NEXT`` ``"0.27"``.
+
 **Fixed**
 
 - Intervals that only meet at one time, such as (1, 3] and (3, 5]

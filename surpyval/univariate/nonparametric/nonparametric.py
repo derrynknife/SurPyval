@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import numbers
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
@@ -10,7 +11,6 @@ from surpyval import plotting
 from surpyval.distribution import NonParametricDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.deprecation import reordered_arguments
 from surpyval.utils.record_predict import PredictsRecordsMixin
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
@@ -41,19 +41,21 @@ _QF_TOL = 1e-9
 # The functions ``cb`` can bound ('R' and 'F' are aliases of 'sf' and 'ff').
 _CB_ON = ("sf", "ff", "Hf", "R", "F")
 
+
 # ``cb`` took ``(x, on, bound, interp, alpha_ci, ...)`` where every other
-# model's takes ``(x, on, alpha_ci, bound, ...)``, so ``km.cb(x, "sf", 0.1)``
-# raised "bound must be ..." where ``model.cb(x, "sf", 0.1)`` meant
-# ``alpha_ci=0.1`` (#666). It takes the common order now; a string third
-# positional argument (a ``bound``) is the old order, read as before with a
-# warning until v0.25.
-_OLD_CB_ORDER = reordered_arguments(
-    ("x", "on", "bound", "interp", "alpha_ci", "bound_type", "dist"),
-    lambda args: len(args) >= 3 and isinstance(args[2], str),
-    "the third positional argument is now alpha_ci, as in every model's "
-    "cb(x, on, alpha_ci, bound, ...). Pass bound by name, e.g. "
-    "cb(x, 'sf', bound='lower').",
-)
+# model's takes ``(x, on, alpha_ci, bound, ...)`` (#666). It takes the
+# common order since v0.24; the old order, read with a warning in v0.24,
+# was removed in v0.25, and a string third positional argument (a
+# ``bound``) says so.
+def _check_cb_order(alpha_ci: Any) -> None:
+    if isinstance(alpha_ci, str):
+        raise TypeError(
+            f"cb() got {alpha_ci!r} as its third positional argument, "
+            "alpha_ci: the old order cb(x, on, bound, ...) was removed in "
+            "v0.25; the order is cb(x, on, alpha_ci, bound, ...), as in "
+            "every model's. Pass bound by name, e.g. "
+            "cb(x, 'sf', bound='lower')."
+        )
 
 
 # The ``interp`` values: the step estimate, and the interpolation kinds
@@ -85,7 +87,7 @@ def warn_bounds_past_data(
 
     from surpyval.utils.warnings import caller_stacklevel
 
-    shown = ", ".join("{:g}".format(float(v)) for v in past[:5])
+    shown = ", ".join(f"{float(v):g}" for v in past[:5])
     warnings.warn(
         "{}: the confidence bounds are NaN at x = {}{}, past the last "
         "observed value {:g}; the estimate says nothing about values "
@@ -147,13 +149,13 @@ class NonParametric(
     data: dict[str, Any]
     #: The ``(lower, upper)`` interval the estimate is defined on, set by
     #: :meth:`set_support`; ``None`` (the default) when it has not been set.
-    support: "tuple[float, float] | None" = None
+    support: tuple[float, float] | None = None
     # The sample size of ``band`` as ``to_dict`` stored it ("band_n"), for
     # a model restored without its data; see ``_band_sample_size``.
-    _band_n: "float | None" = None
+    _band_n: float | None = None
     # The printout's "Data" line of a model restored without its data
     # (#508).
-    _data_summary: "str | None" = None
+    _data_summary: str | None = None
 
     def __repr__(self) -> str:
         out = (
@@ -193,7 +195,7 @@ class NonParametric(
             data["c"], data.get("n"), t[:, 0], t[:, 1], lower=lower, x=x
         )
 
-    def set_support(self, lower: float, upper: float) -> "NonParametric":
+    def set_support(self, lower: float, upper: float) -> NonParametric:
         r"""
         Give the estimate an explicit support, ``[lower, upper]``.
 
@@ -682,7 +684,6 @@ class NonParametric(
         with np.errstate(divide="ignore"):
             return 0.0 - np.log(sf)
 
-    @_OLD_CB_ORDER
     @keeps_query_shape
     def cb(
         self,
@@ -818,6 +819,7 @@ class NonParametric(
         http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
 
         """
+        _check_cb_order(alpha_ci)
         check_alpha_ci(alpha_ci)
         # The guard used to test ``on in []`` and so never fired: any other
         # ``on`` (e.g. 'hf') fell through to the survival bounds in
@@ -1316,9 +1318,7 @@ class NonParametric(
         # A negative horizon used to come back as the (negative) width of
         # [0, tau], i.e. mean(tau=-1) was -1.
         if not tau >= 0:
-            raise ValueError(
-                "'tau' must be a non-negative number; got {}".format(tau)
-            )
+            raise ValueError(f"'tau' must be a non-negative number; got {tau}")
         # Holding the curve at its last value out to tau made the RMST
         # whatever tau was (mean(tau=1e6) of data running to 120 was in
         # the tens of thousands), as rmst_diff's two groups did.
@@ -1612,9 +1612,7 @@ class NonParametric(
                 )
             bandwidth = (x_max - x_min) / 8
         if not bandwidth > 0:
-            raise ValueError(
-                "'bandwidth' must be positive; got {}".format(bandwidth)
-            )
+            raise ValueError(f"'bandwidth' must be positive; got {bandwidth}")
 
         u = (x[:, None] - self.x[None, :]) / bandwidth
         kern = np.where(np.abs(u) <= 1, 0.75 * (1 - u**2), 0.0)
@@ -1846,7 +1844,7 @@ class NonParametric(
     @classmethod
     def fit_from_ecdf(
         cls, x: npt.ArrayLike, R: npt.ArrayLike
-    ) -> "NonParametric":
+    ) -> NonParametric:
         r"""
         Wrap an existing survival curve, given as its values and the
         survival at each, as a non-parametric model, so that ``sf``,
@@ -2015,7 +2013,7 @@ class NonParametric(
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "NonParametric":
+    def from_dict(cls, model_dict: dict) -> NonParametric:
         r"""
         Reconstruct a fitted non-parametric model from a dictionary
         produced by :meth:`to_dict`. ``surpyval.from_dict`` does the same
@@ -2092,8 +2090,8 @@ class NonParametric(
 
 
 def rmst_diff(
-    model_a: "NonParametric",
-    model_b: "NonParametric",
+    model_a: NonParametric,
+    model_b: NonParametric,
     tau: float | None = None,
     alpha_ci: float = 0.05,
 ) -> dict:
