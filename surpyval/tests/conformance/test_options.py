@@ -71,6 +71,10 @@ NOT_SWEPT = {
     "concluded at (#481), not an interval's",
     "repair_test": "a hypothesis test: alpha_ci is the level its "
     "conclusion about the repair is drawn at, not an interval's",
+    "cumulative_coefficients_cb": "Wald intervals on Aalen's cumulative "
+    "regression functions, B +/- z se, not on a function of time at a "
+    "covariate row; checked against timereg's variance in "
+    "regression/test_aalen_additive.py",
     "cb_tvc": "needs a covariate path; checked against cb along a constant "
     "path, for every bound and on=, in conformance/test_tvc.py (#172)",
 }

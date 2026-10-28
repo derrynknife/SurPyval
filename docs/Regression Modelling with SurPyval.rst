@@ -1435,6 +1435,110 @@ optimiser, and prefer a proportional-hazards model when effects are strongly
 protective.
 
 
+Non-Parametric — Aalen's Additive Hazards
+-----------------------------------------
+
+The Lin & Ying model holds each covariate's added hazard constant over
+time. Aalen's additive model lets it change freely:
+
+.. math::
+
+    h(x \mid Z) = b_0(x) + b_1(x) Z_1 + \dots + b_p(x) Z_p
+
+Nothing is assumed about the shape of any :math:`b_j`. What the data
+estimate well are the *cumulative* effects
+:math:`B_j(x) = \int_0^x b_j(s)\,ds`, by a least-squares fit of the
+events on the covariates of the units at risk at each event time. Read a
+plot of :math:`B_j` by its slope: a straight line through 0 is a constant
+effect (what Lin & Ying assume), a line that flattens is an effect that
+fades, and the slope at a time is the covariate's added hazard then.
+
+On the Rossi recidivism data (432 released prisoners followed for a year;
+``week`` of arrest, financial aid ``fin``, ``age`` and prior convictions
+``prio``):
+
+.. jupyter-execute::
+
+    from surpyval import AalenAdditive
+    from surpyval.datasets import load_rossi_static
+
+    rossi = load_rossi_static()
+    rossi["censored"] = 1 - rossi["arrest"]
+    aalen = AalenAdditive.fit_from_df(
+        rossi, x_col="week", c_col="censored", Z_cols=["fin", "age", "prio"]
+    )
+    aalen.summary()[["coef", "se(coef)", "coef lower 95%", "coef upper 95%", "p"]]
+
+``summary()`` gives the cumulative effects at the last event time (week
+52; ``at=`` chooses another): by then each prior conviction has added
+about 0.04 to the cumulative hazard of arrest, and each year of age has
+taken about 0.015 from it.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = aalen.summary()
+    assert round(_t.loc["prio", "coef"], 2) == 0.04, _t
+    assert round(_t.loc["age", "coef"], 3) == -0.015, _t
+
+.. jupyter-execute::
+
+    axes = aalen.plot(terms=["fin", "age", "prio"])
+
+The band is pointwise 95%. ``prio``'s line rises steadily, while
+``age``'s stays near 0 for the first six months (-0.001 by week 26) and
+falls only after (to -0.015 by week 52): older prisoners were arrested
+less often, but mainly in the second half of the year.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _B = aalen.cumulative_coefficients([26, 52])["age"]
+    assert round(_B[26], 3) == -0.001 and round(_B[52], 3) == -0.015, _B
+
+``constant_effects_test()`` asks the question formally, by how far each
+:math:`B_j` strays from the straight line to its last value, with the
+distribution of that distance under a constant effect simulated by
+resampling (it takes a seed):
+
+.. jupyter-execute::
+
+    aalen.constant_effects_test(random_state=1).round(4)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _c = aalen.constant_effects_test(random_state=1)
+    assert _c.loc["age", "KS p"] < 0.01, _c
+    assert _c.loc["prio", "KS p"] > 0.5, _c
+
+A constant effect is rejected for ``age`` (p below 0.01) and not for
+``prio`` (p above 0.5). The resampled null is a large-sample result, and
+with a few hundred units it rejects a truly constant effect somewhat more
+often than the level says, so treat a p-value near 0.05 as borderline.
+
+A unit's survival is :math:`\exp(-H)` with
+:math:`H(x \mid Z) = B_0(x) + B(x)'Z`, with Wald bounds:
+
+.. jupyter-execute::
+
+    unit = [0, 25, 3]  # no aid, aged 25, three prior convictions
+    print(aalen.sf([13, 26, 52], unit).round(3))
+    print(aalen.cb([13, 26, 52], unit).round(3))
+
+Nothing keeps an additive hazard positive, so as for ``AdditiveHazards``
+the model predicts with the running maximum of :math:`H` from time 0, and
+``sf`` never rises. The hazard rate ``hf`` uses the kernel-smoothed
+:math:`b_j(t)` (``smoothed_coefficients``, with a ``bandwidth``), and
+``coef_penalty`` adds a ridge penalty on the covariates' increments,
+which keeps the fit going where few units remain at risk at the price of
+shrinking the effects. :math:`B(t)` and its variance agree with R's
+``timereg::aalen`` (with ``robust = 0``).
+
+
 Parametric Proportional Hazards (PH)
 --------------------------------------
 
