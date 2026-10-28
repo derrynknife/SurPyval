@@ -387,6 +387,7 @@ for _fn in (
     "logrank",
     "plot_nonparametric",
     "at_risk_table",
+    "life_table",
     "rmst_diff",
     "success_run",
     "weibayes",
