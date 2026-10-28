@@ -1,6 +1,19 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+**Added**
+
+- ``surpyval.plot_coefficients``: a forest plot of one or more fitted
+  regression models, each coefficient with its Wald interval from the
+  model's ``summary()``, on the coefficient's scale or as a ratio
+  (``exp(coef)``: hazard ratios, acceleration factors, odds ratios) on a
+  log axis, with several models side by side. It returns a
+  ``CoefficientPlot`` holding the axes and the values drawn. Additive
+  models have no ratio scale, and ``on='exp'`` is refused for them.
+
 v0.25 (17 October 2026)
 -----------------------
 

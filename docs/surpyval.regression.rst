@@ -50,3 +50,13 @@ For data arriving in groups that share an unobserved effect.
     :maxdepth: 1
 
     regression/frailty
+
+Plotting
+--------
+
+The coefficients of one or more models, with their intervals.
+
+.. toctree::
+    :maxdepth: 1
+
+    regression/plot_coefficients
