@@ -8,7 +8,12 @@ from .fleming_harrington import (
     fleming_harrington_variance,
 )
 from .kaplan_meier import KaplanMeier, greenwood_variance, kaplan_meier
-from .logrank import LogRankResult, logrank
+from .logrank import (
+    LogRankResult,
+    PairwiseLogRankResult,
+    logrank,
+    pairwise_logrank,
+)
 from .nelson_aalen import NelsonAalen, nelson_aalen, nelson_aalen_variance
 from .nonparametric import NonParametric, rmst_diff
 from .at_risk import at_risk_table
@@ -16,6 +21,7 @@ from .plot_estimates import NonParametricPlot, plot_nonparametric
 from .plotting_positions import plotting_positions
 from .rank_adjust import rank_adjust
 from .success_run import success_run
+from .survival_difference import sf_diff
 from .turnbull import Turnbull, turnbull
 
 FIT_FUNCS: dict[str, Callable[..., Any]] = {
