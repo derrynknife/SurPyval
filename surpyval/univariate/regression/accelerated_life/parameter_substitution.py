@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import copy
 import warnings
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import autograd.numpy as np
 import numpy.typing as npt
@@ -70,8 +71,8 @@ def _search(
     fun: Callable[[npt.NDArray], Any],
     x0: npt.NDArray,
     n_obs: float,
-    floor: "float | npt.ArrayLike" = 1.0,
-    one_sided: "tuple[int, ...]" = (),
+    floor: float | npt.ArrayLike = 1.0,
+    one_sided: tuple[int, ...] = (),
 ) -> tuple[OptimizeResult, bool]:
     """Minimise ``fun`` from ``x0`` with Nelder-Mead then TNC, as the fit
     always searched, and whether the answer is verifiably a minimum (see
@@ -127,7 +128,7 @@ def _coefficient_units(
     fitter: Any,
     fixed: dict,
     phi_param_map: dict,
-    Z: "npt.ArrayLike | None",
+    Z: npt.ArrayLike | None,
 ) -> npt.NDArray:
     """The search's ``floor``: each free life-model parameter that is a
     column's coefficient (``LifeModel.coefficient_columns``) in its
@@ -164,7 +165,7 @@ class ParameterSubstitutionFitter(
     fitter_kind = "accelerated life fitter"
     name_suffix = "AL"
 
-    def _repr_details(self) -> "list[str]":
+    def _repr_details(self) -> list[str]:
         return [*super()._repr_details(), self.life_model.name + " life model"]
 
     def __init__(
@@ -216,7 +217,7 @@ class ParameterSubstitutionFitter(
 
     def _with_life_model(
         self, life_model: LifeModel
-    ) -> "ParameterSubstitutionFitter":
+    ) -> ParameterSubstitutionFitter:
         """This fitter with ``life_model`` in place of its own (the
         resolved form of a life model with a parameter per stress
         column, see ``LifeModel.resolve``)."""
