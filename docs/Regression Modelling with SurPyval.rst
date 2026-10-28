@@ -529,7 +529,8 @@ p-value, one row per covariate (named by the columns for a model fitted with
 ``summary(robust=True)`` uses the cluster-robust standard errors of
 `Cluster-robust standard errors`_ instead. The parametric models'
 ``summary()`` has the same columns, with the baseline distribution's
-parameters in rows of their own, above the coefficients.
+parameters in rows of their own, above the coefficients, and takes
+``robust=True`` and ``cluster=`` too (`Robust standard errors`_).
 
 .. jupyter-execute::
 
@@ -2025,6 +2026,51 @@ data, as at an accelerated life test's use condition (`Accelerated Life
 .. jupyter-execute::
 
     m_cb.param_cb('coef_0', method='lr')   # the profile-likelihood interval
+
+Robust standard errors
+~~~~~~~~~~~~~~~~~~~~~~
+
+The model-based standard errors assume the model is right and the rows are
+independent. ``robust_standard_errors()`` (and ``robust_covariance()`` for
+the matrix) gives the **sandwich** ones instead, which stay valid when the
+baseline distribution is the wrong shape and, given a ``cluster`` label per
+row, when rows in a cluster are correlated: several units from one batch,
+repeated tests on one rig. They are the model-based covariance wrapped
+around the spread of the scores (one per unit, or one per cluster), the
+HC0 form of R's ``sandwich`` package and lifelines' ``robust=True``; the
+estimates do not change. ``summary(robust=True, cluster=...)`` gives the
+table on them. Here twenty batches of six items share a batch effect the
+model does not have:
+
+.. jupyter-execute::
+
+    from surpyval import WeibullAFT
+
+    rng = np.random.default_rng(3)
+    batch = np.repeat(np.arange(20), 6)
+    shared = rng.gamma(4.0, 0.25, 20)[batch]       # one effect per batch
+    Z_b = rng.normal(size=(120, 1))
+    x_b = 12 * rng.weibull(1.8, 120) * np.exp(-0.4 * Z_b[:, 0]) / shared
+    m_b = WeibullAFT.fit(x_b, Z_b)
+
+    print('model-based:', m_b.standard_errors().round(3))
+    print('robust     :', m_b.robust_standard_errors().round(3))
+    print('by batch   :', m_b.robust_standard_errors(cluster=batch).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _se = m_b.standard_errors()
+    _batch_se = m_b.robust_standard_errors(cluster=batch)
+    assert _batch_se[0] > _se[0], (_se, _batch_se)
+
+The batch effect makes the scale's standard error larger once the rows of
+a batch are counted together. Only the standard errors change: ``cb``,
+``param_cb`` and ``p_values`` stay on the model-based covariance, and a
+fit with time-varying covariates (``fit_tvc``), whose likelihood is over
+each unit's history rather than over independent rows, refuses and points
+to the bootstrap and likelihood-ratio bounds.
 
 The other families quantify uncertainty their own way: Cox through the
 information matrix (``p_values``, and ``jac`` as shown earlier) and the robust

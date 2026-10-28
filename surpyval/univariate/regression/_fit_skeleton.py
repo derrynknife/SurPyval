@@ -64,6 +64,7 @@ from ._kinds import (
     PROPORTIONAL_HAZARD,
     PROPORTIONAL_ODDS,
 )
+from ._robust import note_source_rows
 from .parametric_regression_model import ParametricRegressionModel
 
 
@@ -867,11 +868,13 @@ def prepare_regression_fit(
     Z_in = Z if hasattr(Z, "ndim") else np.asarray(Z)
     if getattr(Z_in, "ndim", 2) == 1:
         Z = np.asarray(Z_in).reshape(-1, 1)
+    rows_given, Z_given = len(data), Z
     data, Z = drop_nonfinite_covariates(data, Z)
     order = canonical_order(data, Z)
     if np.any(order != np.arange(order.size)):
         data, Z = data[order], Z[order]
     data.add_covariates(Z)
+    note_source_rows(data, rows_given, Z_given, order)
     # After the rows with a missing covariate are dropped (principle 3)
     check_baseline_support(fitter, data)
 

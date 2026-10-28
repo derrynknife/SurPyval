@@ -62,6 +62,7 @@ from .._fit_skeleton import (
     uniform_draws,
 )
 from .._likelihood import regression_neg_ll
+from .._robust import note_source_rows
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin, truncation_window
 from .lifemodel import LifeModel
@@ -659,6 +660,7 @@ class ParameterSubstitutionFitter(
                 return self._with_life_model(life_model).fit(
                     x, Z_arr, c=c, n=n, t=t, init=init, fixed=fixed
                 )
+        rows_given, Z_given = len(data), Z_arr
         data, Z_arr = drop_nonfinite_covariates(data, Z_arr)
         self._check_stresses(Z_arr)
         # The rows in one order (every column sorted), as for the other
@@ -670,6 +672,7 @@ class ParameterSubstitutionFitter(
         if np.any(order != np.arange(order.size)):
             data, Z_arr = data[order], Z_arr[order]
         data.add_covariates(Z_arr)
+        note_source_rows(data, rows_given, Z_given, order)
         check_baseline_support(self, data)
         # The per-stress fallback start uses each row's time (the midpoint
         # of an interval row).

@@ -1,6 +1,22 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+**Added.**
+
+- Robust (sandwich) standard errors for the parametric regressions
+  (proportional hazards, AFT, proportional odds, additive hazards and
+  accelerated life): ``robust_covariance(cluster=None)`` and
+  ``robust_standard_errors(cluster=None)``, and
+  ``summary(robust=True, cluster=...)``, as the Cox model already had.
+  With ``cluster`` the scores are summed by cluster, so correlated rows
+  within a cluster are allowed; counts are frequency weights, as in the
+  fit. Checked against lifelines' ``robust=True`` and R's ``survreg``
+  with ``cluster()`` on the Rossi data. A
+  ``fit_tvc`` model refuses them.
+
 v0.25 (17 October 2026)
 -----------------------
 
