@@ -11,6 +11,19 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-10-29
+
+### Penalised regression
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A new method, `fit_penalised(..., penalizer, l1_ratio, standardise)`, on `CoxPH` and the PH, AFT and PO fitters, rather than new arguments to `fit`. | proposed | `fit` keeps its signature; a penalised fit is a different estimator with different inference. | proposed |
+| `penalizer` and `l1_ratio` are lifelines' names (glmnet's `lambda`, `alpha`), with glmnet's objective (mean negative log-likelihood plus the penalty); `N` is the sum of the counts. | principle 5, 16 | The established references; counts equal repetition. | proposed |
+| `standardise=True` by default, dividing by the count-weighted sd with divisor `N` (glmnet's; lifelines uses `N - 1`); coefficients reported in the covariates' units. | principle 6, 16 | The penalty should not depend on units. | proposed |
+| No covariance, standard errors, bounds or p-values for a penalised model: each raises, saying why and what to do; `summary()` shows `nan`. | every-bound rule, principle 17 | Penalised Wald intervals do not have their stated coverage. | proposed |
+| `aic`/`bic` count the effective degrees of freedom `tr[H (H + P)^-1]` over the parameters not at 0 (Gray 1992). | proposed | The lasso's count of non-zero coefficients, and the usual ridge df. | proposed |
+| Not built yet: a coefficient path over `penalizer` and its choice by cross-validated likelihood. | proposed | Left for a later change. | open |
+
 ## 2026-10-17
 
 ### Joint models: separate covariates, interval data, dynamic prediction (#891)

@@ -1,6 +1,21 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+**Added.**
+
+- Penalised regression: ``fit_penalised(..., penalizer, l1_ratio,
+  standardise)`` on ``CoxPH`` and on the parametric proportional hazards,
+  AFT and proportional odds fitters, for ridge, lasso and elastic-net
+  penalties (one penalty, or one per covariate). The objective is glmnet's
+  and lifelines'; the L1 part is minimised exactly (coefficients set to 0
+  are exactly 0), and the Cox fit matches glmnet to six digits. A
+  penalised model has no covariance, standard errors, bounds or p-values:
+  those calls say why. Its ``aic`` and ``bic`` count its effective number
+  of parameters (``model.penalty.effective_df``).
+
 v0.25 (17 October 2026)
 -----------------------
 

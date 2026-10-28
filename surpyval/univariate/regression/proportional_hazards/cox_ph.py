@@ -1034,6 +1034,115 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
 
         return model
 
+    @dataframe_covariates
+    @takes_unit
+    @accepts_surpyval_data
+    def fit_penalised(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        tl: npt.ArrayLike | None = None,
+        penalizer: float | npt.ArrayLike = 0.1,
+        l1_ratio: float = 0.0,
+        standardise: bool = True,
+        tie_method: str = "efron",
+        center: bool = False,
+        tol: float = 1e-10,
+    ) -> SemiParametricRegressionModel:
+        """
+        Fit the Cox model with a ridge, lasso or elastic-net penalty on the
+        coefficients: for many covariates, or correlated ones, where the
+        unpenalised fit is unstable or does not exist.
+
+        The fit minimises the negative partial log-likelihood divided by
+        the number of units ``N`` (the sum of ``n``) plus
+
+        .. math::
+            \\sum_j \\lambda_j \\left( \\frac{1 - a}{2} \\beta_j^2
+            + a |\\beta_j| \\right),
+
+        with :math:`\\lambda_j` the ``penalizer`` and :math:`a` the
+        ``l1_ratio``: glmnet's objective for the Cox model (Simon et al.
+        2011) and lifelines' ``CoxPHFitter(penalizer, l1_ratio)``. A lasso
+        or elastic-net penalty sets some coefficients exactly to 0. The
+        L1 part is minimised exactly, not smoothed: each coefficient is
+        the difference of two non-negative parts (L-BFGS-B), then polished
+        by Newton steps on those not at 0, with the optimality conditions
+        of those at 0 checked; ``model.maximum`` is ``"verified"`` when
+        they hold.
+
+        A penalised model predicts like any Cox model (``sf``, ``hf``,
+        ...), but has no standard errors, covariance, p-values or
+        confidence bounds: the estimates are biased towards 0 by design,
+        and intervals from the penalised curvature would not have their
+        stated coverage. Those calls raise an error saying so (its
+        ``summary()`` has them as ``nan``). For inference, refit the
+        unpenalised model on covariates chosen before seeing the data.
+
+        Parameters
+        ----------
+        x, Z, c, n, tl : array_like
+            As for :meth:`fit` (observed and right-censored rows, with
+            delayed entry ``tl``).
+        penalizer : float or array_like, optional
+            :math:`\\lambda`: one value, or one per column of ``Z`` (0
+            leaves that coefficient unpenalised). Default 0.1.
+        l1_ratio : float, optional
+            :math:`a`, from 0 (ridge, the default) to 1 (lasso).
+        standardise : bool, optional
+            ``True`` (the default, as glmnet and lifelines) penalises the
+            coefficients of the covariates divided by their standard
+            deviations (count-weighted, divisor ``N``), so the penalty
+            does not depend on their units; the coefficients are reported
+            on the covariates' own scale either way. ``False`` penalises
+            the coefficients as they are.
+        tie_method : str, optional
+            As for :meth:`fit`. Default ``"efron"`` (glmnet's default is
+            Breslow's).
+        center : bool, optional
+            As for :meth:`fit`.
+        tol : float, optional
+            The optimality tolerance on the gradient of the objective.
+
+        Returns
+        -------
+        SemiParametricRegressionModel
+            The fitted model, with ``penalty`` recording the
+            ``penalizer`` (per column), ``l1_ratio``, ``standardise`` and
+            the columns' ``scale``.
+
+        Examples
+        --------
+        >>> from surpyval import CoxPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> Z = df[["fin", "age", "race", "wexp", "mar", "paro", "prio"]]
+        >>> lasso = CoxPH.fit_penalised(
+        ...     x, Z.values, c=c, penalizer=0.05, l1_ratio=1.0
+        ... )
+        >>> lasso.params.round(4)
+        array([ 0.    , -0.0235,  0.    , -0.0442,  0.    ,  0.    ,  0.0451])
+        """
+        from .cox_penalised import fit_cox_penalised
+
+        return fit_cox_penalised(
+            self,
+            x,
+            Z,
+            c,
+            n,
+            tl,
+            penalizer,
+            l1_ratio,
+            standardise,
+            tie_method,
+            center,
+            tol,
+        )
+
     @column_arguments("x", "c", "n", "tl")
     @takes_unit
     def fit_from_df(

@@ -3869,6 +3869,83 @@ categorical variable is held at its reference level), and they have no
     plt.show()
 
 
+Penalised regression: ridge, lasso and elastic net
+--------------------------------------------------
+
+With many covariates, or correlated ones, the maximum likelihood
+coefficients can be unstable or not exist at all. A penalty on their size
+steadies them: ``fit_penalised`` on ``CoxPH`` and on the parametric
+proportional hazards, AFT and proportional odds fitters minimises the
+negative log-likelihood (the partial likelihood for Cox) divided by the
+number of units, plus
+
+.. math::
+
+    \lambda \sum_j \left( \frac{1 - a}{2} \beta_j^2 + a |\beta_j| \right),
+
+where ``penalizer`` is :math:`\lambda` (one value, or one per covariate;
+0 leaves a coefficient alone) and ``l1_ratio`` is :math:`a`: 0 is the ridge
+penalty, which shrinks every coefficient towards 0, and 1 the lasso, which
+sets some exactly to 0 and so selects covariates; in between is the elastic
+net. This is the objective of R's glmnet and of lifelines, and the Cox fit
+agrees with glmnet to six digits. By default the covariates are divided by
+their standard deviations before the penalty is applied, so it does not
+depend on their units; the coefficients are reported in the covariates' own
+units. A baseline distribution's parameters are never penalised.
+
+.. jupyter-execute::
+
+    from surpyval import CoxPH
+    from surpyval.datasets import load_rossi_static
+
+    rossi = load_rossi_static()
+    rossi['censored'] = 1 - rossi['arrest']
+    cols = ['fin', 'age', 'race', 'wexp', 'mar', 'paro', 'prio']
+    full = CoxPH.fit(rossi['week'], rossi[cols], c=rossi['censored'])
+    ridge = CoxPH.fit_penalised(rossi['week'], rossi[cols],
+                                c=rossi['censored'], penalizer=0.05)
+    lasso = CoxPH.fit_penalised(rossi['week'], rossi[cols],
+                                c=rossi['censored'], penalizer=0.05,
+                                l1_ratio=1.0)
+    pd.DataFrame({'unpenalised': full.params, 'ridge': ridge.params,
+                  'lasso': lasso.params}, index=cols).round(4)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _kept = [c for c, b in zip(cols, lasso.params) if b != 0]
+    assert _kept == ['age', 'wexp', 'prio'], _kept
+    assert np.all(np.abs(ridge.params) <= np.abs(full.params) + 0.05)
+
+The ridge fit shrinks every coefficient; at this penalty the lasso keeps
+three covariates (age, work experience and prior convictions) and sets the
+rest to 0.
+
+A penalised model predicts like any other (``sf``, ``hf``, ``qf``, ...), but
+it has **no standard errors, confidence bounds or p-values**: the estimates
+are biased towards 0 on purpose, and intervals built from the curvature of
+the penalised objective would not cover the truth as often as they claim
+(after the lasso's selection no simple interval does). Those calls raise an
+error that says so, and ``summary()`` shows them as ``nan``. To make
+inferences, choose the covariates first and fit the unpenalised model.
+For ``aic`` and ``bic`` a penalised fit counts its *effective* number of
+parameters, ``model.penalty.effective_df`` (the number of non-zero
+coefficients for the lasso, fewer than the coefficients for a ridge
+penalty):
+
+.. jupyter-execute::
+
+    print(round(ridge.penalty.effective_df, 2), lasso.penalty.effective_df)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert lasso.penalty.effective_df == 3, lasso.penalty
+    assert 5 < ridge.penalty.effective_df < 7, ridge.penalty
+
+
 Model Selection
 ---------------
 
