@@ -267,7 +267,7 @@ class ProportionalOddsFitter(
         )
 
 
-def PO(distribution: Any) -> "ProportionalOddsFitter":
+def PO(distribution: Any) -> ProportionalOddsFitter:
     """
     Create a Proportional Odds fitter for the given distribution.
 

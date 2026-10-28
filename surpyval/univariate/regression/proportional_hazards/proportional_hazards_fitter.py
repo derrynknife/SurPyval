@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import autograd.numpy as np
 import numpy as onp
@@ -85,7 +86,7 @@ def _stand_in(x: Any, rows: Any) -> Any:
 
 def _small_on_log_scale(
     base: Boxable, log_base: Callable, x: Numeric
-) -> "tuple[Any, Boxable] | None":
+) -> tuple[Any, Boxable] | None:
     """``(rows, log_values)``: the rows where the baseline (cumulative)
     hazard ``base`` at ``x`` is below ``_SMALL_BASELINE`` (0 included,
     where it underflowed) and its log, ``log_base(x)``, is finite, with
@@ -190,9 +191,9 @@ class ProportionalHazardsFitter(
         dist: Any,
         phi: Callable,
         phi_name: str,
-        phi_bounds: "Callable[[npt.NDArray], tuple] | tuple",
-        phi_param_map: "Callable[[npt.NDArray], dict] | dict",
-        phi_init: "Callable[[npt.NDArray], npt.NDArray] | None" = None,
+        phi_bounds: Callable[[npt.NDArray], tuple] | tuple,
+        phi_param_map: Callable[[npt.NDArray], dict] | dict,
+        phi_init: Callable[[npt.NDArray], npt.NDArray] | None = None,
     ) -> None:
         # Compare names and kinds rather than the signature's string
         # form so an annotated phi (e.g. ``LogLinearPhi.phi``) passes.
@@ -462,7 +463,7 @@ class ProportionalHazardsFitter(
         return regression_neg_ll(self, data, *params)
 
     @staticmethod
-    def create(distribution: Any) -> "ProportionalHazardsFitter":
+    def create(distribution: Any) -> ProportionalHazardsFitter:
         """
         Create a Proportional Hazards fitter for the given distribution using
         exp(beta'Z) as the hazard multiplier.
@@ -485,7 +486,7 @@ class ProportionalHazardsFitter(
     @classmethod
     def create_general_log_linear_fitter(
         cls, name: str, distribution: Any
-    ) -> "ProportionalHazardsFitter":
+    ) -> ProportionalHazardsFitter:
         return cls(
             name,
             distribution,

@@ -185,7 +185,7 @@ class AFTTVCFitter(AFTFitter):
     neg_ll = _aft_tvc_neg_ll  # type: ignore[assignment]
 
 
-def AFT(distribution: Any) -> "AFTFitter":
+def AFT(distribution: Any) -> AFTFitter:
     """
     Create an Accelerated Failure Time fitter for the given distribution.
 
