@@ -264,3 +264,72 @@ def test_on_given_axes(cox):
     fig, ax = plt.subplots()
     out = sp.plot_coefficients(cox, ax=ax)
     assert out.ax is ax and out.fig is fig
+
+
+def _small():
+    """120 Weibull lifetimes on two normal covariates, about a fifth
+    right-censored (fixed seed)."""
+    np.random.seed(7)
+    rng = np.random.default_rng(7)
+    Z = rng.normal(size=(120, 2))
+    x = sp.Weibull.random(120, 10, 2) * np.exp(-0.5 * Z[:, 0])
+    c = (rng.uniform(size=120) < 0.2).astype(int)
+    return x, Z, c
+
+
+def test_penalised_model_has_estimates_and_no_intervals():
+    """audit R-E: a penalised fit has no intervals; it is drawn as its
+    estimates with nan bounds, and without a single warning (principle
+    22: nothing went wrong)."""
+    import warnings
+
+    x, Z, c = _small()
+    model = sp.CoxPH.fit_penalised(x, Z, c=c, penalizer=0.1)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        out = sp.plot_coefficients(model)
+    assert isinstance(out, sp.CoefficientPlot)
+    assert out.on == "exp"
+    table = out.values["CoxPH"]
+    assert list(table.index) == ["coef_0", "coef_1"]
+    assert_allclose(table["estimate"], np.exp(model.params), rtol=1e-12)
+    assert table["lower"].isna().all() and table["upper"].isna().all()
+
+
+def test_spline_baseline_rows_left_out():
+    """audit R-O: a Royston-Parmar fit shows its covariates' coefficients,
+    not the spline's ``gamma_*`` baseline parameters; on the hazard
+    scale they are hazard ratios, drawn as such by default."""
+    x, Z, c = _small()
+    model = sp.RoystonParmarPH.fit(x, Z, c=c)
+    assert model.parameter_names[:3] == ["gamma_0", "gamma_1", "gamma_2"]
+    out = sp.plot_coefficients(model)
+    assert out.covariates == ["coef_0", "coef_1"]
+    assert out.on == "exp"
+    assert out.ax.get_xlabel() == "Hazard ratio, exp(coef)"
+    est, _, _, _ = _drawn(out, "RoystonParmarPH")
+    assert_allclose(est, np.exp(model.params[-2:]), rtol=1e-12)
+
+
+def test_distributional_rows_are_each_parameters_coefficients():
+    """audit R-O: a distributional fit shows one row per
+    ``<parameter>_<column>`` coefficient and no baseline rows. Its
+    coefficients move a parameter, not the hazard or time, so its
+    summary has no ``exp(coef)`` and the default scale is ``'coef'``
+    (the rule: ``'exp'`` only when every model has a ratio scale)."""
+    x, Z, c = _small()
+    model = sp.WeibullDistributional.fit(x, Z, c=c)
+    out = sp.plot_coefficients(model)
+    assert out.covariates == [
+        "alpha_coef_0",
+        "alpha_coef_1",
+        "beta_coef_0",
+        "beta_coef_1",
+    ]
+    assert out.on == "coef"
+    assert out.ax.get_xlabel() == "Coefficient"
+    est, lo, hi, _ = _drawn(out, "DistributionalRegressionModel")
+    assert_allclose(est, model.params[2:], rtol=1e-12)
+    assert np.all(lo < est) and np.all(est < hi)
+    with pytest.raises(ValueError, match="on='exp'"):
+        sp.plot_coefficients(model, on="exp")

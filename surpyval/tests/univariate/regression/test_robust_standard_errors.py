@@ -387,3 +387,75 @@ def test_lognormal_with_counts_and_left_censoring():
     ll = row_log_likelihood(model.model, model.data, *model.params)
     np.testing.assert_allclose(model.data.n @ ll, -model.neg_ll(), rtol=1e-12)
     assert np.all(np.isfinite(model.robust_standard_errors()))
+
+
+def _sandwich_by_hand(row_ll, theta):
+    """HC0 by numdifftools: ``H^-1 (sum_i s_i s_i') H^-1`` with ``H`` the
+    Hessian of the summed log-likelihood and ``s_i`` each row's score."""
+    import numdifftools as nd  # type: ignore[import-untyped]
+
+    H = nd.Hessian(lambda th: np.sum(row_ll(th)))(theta)
+    S = nd.Jacobian(row_ll)(theta)
+    bread = np.linalg.inv(-H)
+    return bread @ (S.T @ S) @ bread
+
+
+def _small():
+    np.random.seed(7)
+    rng = np.random.default_rng(7)
+    Z = rng.normal(size=(120, 2))
+    x = sp.Weibull.random(120, 10, 2) * np.exp(-0.5 * Z[:, 0])
+    c = (rng.uniform(size=120) < 0.2).astype(int)
+    return x, Z, c
+
+
+def test_spline_baseline_sandwich_by_hand():
+    """audit R-N: a Royston-Parmar fit's robust covariance is the HC0
+    sandwich of its rows' log-likelihoods (the family's log density and
+    log survival at each row), by numdifftools."""
+    x, Z, c = _small()
+    model = sp.RoystonParmarPH.fit(x, Z, c=c)
+    family = model.model
+
+    def row_ll(th):
+        return np.where(
+            c == 0, family.log_df(x, Z, *th), family.log_sf(x, Z, *th)
+        )
+
+    theta = np.asarray(model.params, dtype=float)
+    assert np.sum(row_ll(theta)) == pytest.approx(-model.neg_ll(), rel=1e-12)
+    np.testing.assert_allclose(
+        model.robust_covariance(), _sandwich_by_hand(row_ll, theta), rtol=1e-3
+    )
+
+
+def test_distributional_sandwich_by_hand():
+    """audit R-N: a Weibull distributional fit's robust covariance is the
+    HC0 sandwich of the Weibull log density and log survival at each
+    row's own ``alpha`` and ``beta`` (log links on both), by
+    numdifftools."""
+    x, Z, c = _small()
+    model = sp.WeibullDistributional.fit(x, Z, c=c)
+    assert model.parameter_names == [
+        "alpha",
+        "beta",
+        "alpha_coef_0",
+        "alpha_coef_1",
+        "beta_coef_0",
+        "beta_coef_1",
+    ]
+
+    def row_ll(th):
+        alpha = th[0] * np.exp(Z @ th[2:4])
+        beta = th[1] * np.exp(Z @ th[4:6])
+        return np.where(
+            c == 0,
+            Weibull.log_df(x, alpha, beta),
+            Weibull.log_sf(x, alpha, beta),
+        )
+
+    theta = np.asarray(model.params, dtype=float)
+    assert np.sum(row_ll(theta)) == pytest.approx(-model.neg_ll(), rel=1e-12)
+    np.testing.assert_allclose(
+        model.robust_covariance(), _sandwich_by_hand(row_ll, theta), rtol=1e-3
+    )

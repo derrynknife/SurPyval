@@ -246,3 +246,79 @@ def test_knots_given_and_refusals():
     with pytest.raises(ValueError, match="distinct event times"):
         RoystonParmarRegression(df=6).fit([1.0, 2.0, 3.0], [[0], [1], [0]])
     assert RoystonParmarPO.scale == "odds"
+
+
+def _small():
+    """120 Weibull lifetimes on two normal covariates, about a fifth
+    right-censored (fixed seed)."""
+    np.random.seed(7)
+    rng = np.random.default_rng(7)
+    Z = rng.normal(size=(120, 2))
+    x = sp.Weibull.random(120, 10, 2) * np.exp(-0.5 * Z[:, 0])
+    c = (rng.uniform(size=120) < 0.2).astype(int)
+    return x, Z, c
+
+
+KNOTS = np.log([3.0, 8.0, 15.0])
+SHUFFLED = np.log([8.0, 3.0, 15.0])
+
+
+def test_knot_order_does_not_change_the_fit():
+    """audit R-M: knots given out of order describe the same model: the
+    same likelihood and covariate coefficients, and the same curves."""
+    x, Z, c = _small()
+    ordered = RoystonParmarRegression(knots=KNOTS).fit(x, Z, c=c)
+    shuffled = RoystonParmarRegression(knots=SHUFFLED).fit(x, Z, c=c)
+    assert ordered.maximum == shuffled.maximum == "verified"
+    np.testing.assert_allclose(shuffled.neg_ll(), ordered.neg_ll(), rtol=1e-9)
+    np.testing.assert_allclose(
+        shuffled.params[-2:], ordered.params[-2:], rtol=1e-4
+    )
+    t = np.array([1.0, 3.0, 6.0, 20.0])
+    np.testing.assert_allclose(
+        shuffled.sf(t, Z[:4]), ordered.sf(t, Z[:4]), rtol=1e-5
+    )
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "RoystonParmarRegression(knots=log([8, 3, 15])) keeps the knots in "
+        "the order given (model.model.dist.knots and "
+        "to_dict()['spline_baseline']['knots'] are [log 8, log 3, log 15]), "
+        "so the spline basis is a different one: the likelihood and curves "
+        "agree, but gamma_2 is 0.0483 against -0.1237 with the knots "
+        "sorted. Neither sorted nor refused."
+    ),
+)
+def test_knots_are_stored_sorted():
+    """audit R-M: knots given out of order are stored sorted, so the
+    spline parameters are those of the sorted knots."""
+    x, Z, c = _small()
+    ordered = RoystonParmarRegression(knots=KNOTS).fit(x, Z, c=c)
+    shuffled = RoystonParmarRegression(knots=SHUFFLED).fit(x, Z, c=c)
+    np.testing.assert_allclose(shuffled.model.dist.knots, KNOTS)
+    np.testing.assert_allclose(
+        shuffled.to_dict()["spline_baseline"]["knots"], KNOTS
+    )
+    np.testing.assert_allclose(shuffled.params, ordered.params, rtol=1e-4)
+
+
+def test_given_knots_take_precedence_over_df():
+    """audit R-M: the docstring says ``knots`` are used "instead of the
+    quantiles of the event times" and promises no refusal when ``df`` is
+    given too: the knots set the spline, three knots three ``gamma_*``
+    parameters, whatever ``df`` says."""
+    x, Z, c = _small()
+    plain = RoystonParmarRegression(knots=KNOTS).fit(x, Z, c=c)
+    for df in (2, 5):
+        model = RoystonParmarRegression(df=df, knots=KNOTS).fit(x, Z, c=c)
+        assert model.parameter_names == [
+            "gamma_0",
+            "gamma_1",
+            "gamma_2",
+            "coef_0",
+            "coef_1",
+        ]
+        np.testing.assert_allclose(model.model.dist.knots, KNOTS)
+        np.testing.assert_array_equal(model.params, plain.params)

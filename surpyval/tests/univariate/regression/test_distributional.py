@@ -595,3 +595,33 @@ def test_a_centred_spline_basis_needs_no_aliasing():
         WeibullDistributional.fit_from_df(
             df, x_col="x", formulas={"beta": "cr(load, df=3)"}
         )
+
+
+def test_held_intercept_with_covariates_on_it():
+    """audit R-F: a held shape intercept with a covariate on the shape:
+    the held value stays, the covariate moves the shape through the log
+    link from it, the covariance has a zero row and column for the held
+    parameter, and the shape's bounds at each row are finite."""
+    np.random.seed(7)
+    rng = np.random.default_rng(7)
+    Z = rng.normal(size=(120, 2))
+    x = sp.Weibull.random(120, 10, 2) * np.exp(-0.5 * Z[:, 0])
+    c = (rng.uniform(size=120) < 0.2).astype(int)
+    model = WeibullDistributional.fit(
+        x, Z, c=c, covariates={"beta": [0]}, fixed={"beta": 2.0}
+    )
+    assert model.parameter_names == ["alpha", "beta", "beta_coef_0"]
+    assert model.params[1] == 2.0
+    np.testing.assert_allclose(
+        model.parameters_at(Z)[:, 1],
+        2.0 * np.exp(model.params[2] * Z[:, 0]),
+        rtol=1e-12,
+    )
+    cov = model.covariance()
+    np.testing.assert_array_equal(cov[1], 0.0)
+    np.testing.assert_array_equal(cov[:, 1], 0.0)
+    assert np.all(np.diag(cov)[[0, 2]] > 0)
+    band = model.parameter_cb("beta", Z[:3])
+    point = model.parameters_at(Z[:3])[:, 1]
+    assert np.all(np.isfinite(band))
+    assert np.all(band[:, 0] < point) and np.all(point < band[:, 1])
