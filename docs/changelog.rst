@@ -105,6 +105,14 @@ v0.26 (unreleased)
   scale special case (with the signs of the coefficients reversed), and
   the fits agree with R's ``flexsurvreg(anc = ...)`` on the Rossi data.
   See the new *Distributional Regression* page.
+- ``DistributionalRegressionModel.parameter_cb(name, Z, method=...)``:
+  Wald, likelihood-ratio and bootstrap bounds on a parameter at each
+  covariate row, on its link's scale; and ``plot_parameter(name,
+  covariate)``, a parameter against one covariate with its band. The
+  distributional fits are checked against R's ``gamlss`` with
+  ``gamlss.cens`` (every censoring together) and ``flexsurvreg`` (left
+  truncation), and a calibration study checks the coverage of their
+  bounds.
 
 **Documentation.**
 

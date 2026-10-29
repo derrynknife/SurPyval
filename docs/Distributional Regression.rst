@@ -85,8 +85,16 @@ shape at each load is one call away:
     model.parameters_at(loads).round(2)
 
 At 1 kN the shape is 1.25, close to random failures; at 4 kN it is 2.8,
-clear wear-out. The likelihood-ratio test of "the shape does not depend
-on load" compares the two fits (the AFT is the distributional model with
+clear wear-out. ``parameter_cb`` bounds a parameter at each row, and
+``plot_parameter`` draws it against one covariate with its band:
+
+.. jupyter-execute::
+
+    print(model.parameter_cb("beta", loads).round(2))
+    ax = model.plot_parameter("beta", "load")
+
+The likelihood-ratio test of "the shape does not depend on load"
+compares the two fits (the AFT is the distributional model with
 ``beta_load = 0``), and the AIC agrees:
 
 .. jupyter-execute::
@@ -128,6 +136,8 @@ start early.
                        atol=0.05)
     assert np.allclose(model.quantile_cb(0.1, loads)[3], [237.1, 347.3],
                        atol=0.05)
+    _b = model.parameter_cb("beta", loads)
+    assert np.all(_b[:, 0] < model.parameters_at(loads).iloc[:, 1])
 
 Choosing each parameter's covariates
 ------------------------------------
@@ -239,8 +249,10 @@ tests check each of these gives the same fit.
 **Inference.** Wald bounds come from the exact observed information;
 ``method="lr"`` gives likelihood-ratio bounds and ``method="bootstrap"``
 parametric bootstrap bounds, for the parameters (``param_cb``), the
-functions (``cb``) and the quantiles (``quantile_cb``), as for the other
-regressions. ``parameters_at(Z)`` gives each row's parameters and
+functions (``cb``), the quantiles (``quantile_cb``) and each row's
+parameters (``parameter_cb``, computed on the link's scale, so a shape's
+bound stays above 0). A calibration study (in the test suite) checks
+their coverage. ``parameters_at(Z)`` gives each row's parameters and
 ``distribution_at(row)`` the univariate distribution of one unit, with
 every univariate function.
 
@@ -256,13 +268,31 @@ Smooth terms
 ------------
 
 A spline basis of fixed size in the formula, ``bs(load, df=3)`` or
-``cr(load, df=3)``, lets a parameter follow a smooth curve in a
-covariate rather than a straight line. The basis is fixed before the
-fit, so the fit and its bounds are ordinary maximum likelihood; compare
-a few sizes by AIC. ``cr()`` without ``constraints="center"`` includes
-the intercept's direction, so one of its columns is aliased (the fit
-says so); ``bs()`` does not. Penalised splines, whose flexibility is
+``cr(load, df=3, constraints="center")``, lets a parameter follow a
+smooth curve in a covariate rather than a straight line. The basis is
+fixed before the fit, so the fit and its bounds are ordinary maximum
+likelihood; compare a few sizes by AIC:
+
+.. jupyter-execute::
+
+    curved = surv.WeibullDistributional.fit_from_df(
+        bearings, x_col="hours", c_col="censored",
+        formulas={"alpha": "load", "beta": "bs(load, df=3)"},
+    )
+    print(f"AIC: straight line {model.aic():.1f}, spline {curved.aic():.1f}")
+
+Here the straight line on the log scale is enough (the simulation used
+one), and the AIC says so. ``cr()`` without ``constraints="center"``
+includes the intercept's direction, so one of its columns is aliased (the
+fit says so); ``bs()`` does not. A fitted spline predicts, saves and
+loads through its formula. Penalised splines, whose flexibility is
 chosen from the data, are not available yet.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert curved.aic() > model.aic()
 
 Limits
 ------
@@ -281,6 +311,11 @@ Limits
   the next. Use an AFT or PH model for a covariate path.
 - More parameters need more data: covariates on the shape typically
   need several failures at each covariate level.
+
+The fits are checked against R's ``flexsurvreg(anc = ...)`` (with left
+truncation) and ``gamlss`` with ``gamlss.cens`` (observed, right, left
+and interval censored data together) for the Weibull, Gamma, LogNormal,
+Normal, Logistic and largest-extreme Gumbel.
 
 References: Rigby and Stasinopoulos (2005), *Generalized additive models
 for location, scale and shape*, Applied Statistics 54(3); Jackson

@@ -270,6 +270,259 @@ class DistributionalRegressionModel(ParametricRegressionModel):
             )
         return self.distribution.from_params(list(values[0]))
 
+    def _link_value(self, name: str, rows: npt.NDArray, params: Any) -> Any:
+        """Parameter ``name`` at each row, on its link's scale."""
+        from . import _links
+
+        k = list(self.distribution.parameter_names).index(name)
+        value = self.model._dist_params_at(rows, params)[k]
+        return _links.link(self.links[k], value)
+
+    def parameter_cb(
+        self,
+        name: str,
+        Z: npt.ArrayLike | pd.DataFrame,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
+    ) -> npt.NDArray:
+        """
+        Confidence bounds on the distribution's parameter ``name`` at each
+        covariate row of ``Z``: a row per row, ``[lower, upper]`` for a
+        two-sided bound. Computed on the parameter's link scale, so they
+        stay inside its range (a shape's above 0).
+
+        ``method="wald"`` (the default) is the delta method from the
+        observed information; ``"lr"`` the extremes of the parameter over
+        the likelihood-ratio region, ``2 [l_hat - l] <= chi2_1``, as
+        :meth:`cb` with ``method="lr"`` takes them; ``"bootstrap"`` the
+        BCa interval from ``n_boot`` parametric bootstrap refits
+        (``random_state`` seeds them).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import WeibullDistributional
+        >>> rng = np.random.default_rng(3)
+        >>> load = rng.uniform(0, 1, 300)
+        >>> x = 10 * np.exp(-0.5 * load) * rng.weibull(1.2 * np.exp(load))
+        >>> model = WeibullDistributional.fit(x, load)
+        >>> model.parameter_cb("beta", [[0.0], [1.0]]).round(2)
+        array([[1.15, 1.67],
+               [2.36, 3.39]])
+        """
+        from surpyval.utils.validation import check_alpha_ci, check_option
+
+        from . import _links
+
+        check_alpha_ci(alpha_ci)
+        check_option("bound", bound, ("two-sided", "lower", "upper"))
+        check_option("method", method, ("wald", "lr", "bootstrap"))
+        names = list(self.distribution.parameter_names)
+        if name not in names:
+            raise ValueError(
+                "Unknown parameter {!r}; the {} distribution's parameters "
+                "are {}.".format(name, self.distribution.name, names)
+            )
+        link = self.links[names.index(name)]
+        if method == "wald":
+            eta = self._parameter_wald(name, Z, alpha_ci, bound)
+        elif method == "lr":
+            eta = self._parameter_lr(name, Z, alpha_ci, bound)
+        else:
+            eta = self._parameter_bootstrap(
+                name, Z, alpha_ci, bound, n_boot, random_state
+            )
+        with np.errstate(over="ignore"):
+            out = np.asarray(_links.inverse(link, eta), dtype=float)
+        return out if bound == "two-sided" else out.reshape(-1)
+
+    def _parameter_wald(
+        self, name: str, Z: Any, alpha_ci: float, bound: str
+    ) -> npt.NDArray:
+        from autograd import jacobian
+        from scipy.stats import norm
+
+        self._check_inference()
+        rows = self._rows(Z)
+        p = np.asarray(self._eval_params(), dtype=float)
+        eta = np.asarray(self._link_value(name, rows, p), dtype=float)
+        eta = eta * np.ones(rows.shape[0])
+        with np.errstate(all="ignore"):
+            J = np.asarray(
+                jacobian(lambda v: self._link_value(name, rows, v))(p),
+                dtype=float,
+            ).reshape(rows.shape[0], -1)
+        cov = np.nan_to_num(np.asarray(self.covariance(), dtype=float))
+        se = np.sqrt(np.einsum("ij,jk,ik->i", J, cov, J))
+        if bound == "two-sided":
+            z = norm.ppf(1 - alpha_ci / 2)
+            return np.column_stack([eta - z * se, eta + z * se])
+        z = norm.ppf(1 - alpha_ci)
+        return eta - z * se if bound == "lower" else eta + z * se
+
+    def _parameter_lr(
+        self, name: str, Z: Any, alpha_ci: float, bound: str
+    ) -> npt.NDArray:
+        from .._likelihood_ratio import critical_value, lr_search
+
+        search = lr_search(self, reported=False)
+        rows = np.asarray(
+            self._centred(
+                covariate_rows(self._prepare_Z(Z), self._n_covariates()),
+                search.center,
+            ),
+            dtype=float,
+        )
+        want = (
+            bound in ("two-sided", "lower"),
+            bound in ("two-sided", "upper"),
+        )
+
+        def psi_of(i: int, theta: npt.NDArray) -> float:
+            value = self._link_value(name, rows[i : i + 1], theta)
+            return float(np.ravel(np.asarray(value, dtype=float))[0])
+
+        big = float(np.finfo(float).max)
+        lower, upper, failed, _ = search._side_by_side(
+            psi_of,
+            np.arange(rows.shape[0], dtype=float),
+            lambda i: (name, rows[i].tobytes()),
+            "parameter " + name,
+            critical_value(alpha_ci, bound),
+            (-big, big),
+            lambda v: v,
+            want,
+            falling=False,
+        )
+        if failed:
+            warnings.warn(
+                "The likelihood-ratio bound on {} could not be found at {} "
+                "of the {} rows (nan there); method='wald' gives a bound in "
+                "its place.".format(name, len(failed), rows.shape[0]),
+                RuntimeWarning,
+                stacklevel=3,
+            )
+        if bound == "two-sided":
+            return np.column_stack([lower, upper])
+        return np.asarray(lower if bound == "lower" else upper)
+
+    def _parameter_bootstrap(
+        self,
+        name: str,
+        Z: Any,
+        alpha_ci: float,
+        bound: str,
+        n_boot: int,
+        random_state: Any,
+    ) -> npt.NDArray:
+        from .._bootstrap import function_bounds, refits
+
+        fits = refits(self, n_boot, random_state)
+        fits.warn()
+        given = covariate_rows(self._prepare_Z(Z), self._n_covariates())
+
+        def value(params: Any, center: Any = None) -> Any:
+            rows = self._centred(given, center)
+            out = self._link_value(name, np.asarray(rows, float), params)
+            return out * np.ones(given.shape[0])
+
+        return function_bounds(self, fits, value, None, alpha_ci, bound)
+
+    def plot_parameter(
+        self,
+        name: str,
+        covariate: str | int,
+        ax: Any = None,
+        plot_bounds: bool = True,
+        alpha_ci: float = 0.05,
+        values: npt.ArrayLike | None = None,
+    ) -> Any:
+        """
+        Plot the distribution's parameter ``name`` against one covariate
+        (a column name, or its number), the other covariates at their
+        means, with its Wald confidence band (:meth:`parameter_cb`).
+        ``values`` are the covariate's values to draw at, by default its
+        fitted range. It needs the fitted data unless ``values`` is given.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import WeibullDistributional
+        >>> rng = np.random.default_rng(3)
+        >>> load = rng.uniform(0, 1, 300)
+        >>> x = 10 * np.exp(-0.5 * load) * rng.weibull(1.2 * np.exp(load))
+        >>> model = WeibullDistributional.fit(x, load)
+        >>> ax = model.plot_parameter("beta", 0)
+        """
+        from surpyval import plotting
+        from surpyval.utils.validation import check_alpha_ci
+
+        check_alpha_ci(alpha_ci)
+        names = self.feature_names
+        if isinstance(covariate, str):
+            if names is None or covariate not in names:
+                raise ValueError(
+                    "No covariate {!r}: the model's covariates are {}. Give "
+                    "a column number for a model fitted to an "
+                    "array.".format(
+                        covariate,
+                        names if names is not None else "unnamed",
+                    )
+                )
+            j = names.index(covariate)
+            label = covariate
+        else:
+            j = int(covariate)
+            if not 0 <= j < self._n_covariates():
+                raise ValueError(
+                    "covariate {} is out of range: the model has {} "
+                    "covariate(s).".format(j, self._n_covariates())
+                )
+            label = names[j] if names is not None else f"Z[:, {j}]"
+        data = getattr(self, "data", None)
+        if data is not None:
+            Zd = np.asarray(data.Z, dtype=float)
+            n = np.asarray(data.n, dtype=float)
+            mean = n @ Zd / n.sum()
+        elif values is None:
+            raise ValueError(
+                "plot_parameter needs the fitted data for the covariates' "
+                "range and means, which a restored model does not keep: "
+                "pass values=."
+            )
+        else:
+            mean = np.zeros(self._n_covariates())
+        if values is None:
+            grid = np.linspace(Zd[:, j].min(), Zd[:, j].max(), 101)
+        else:
+            grid = np.asarray(values, dtype=float).reshape(-1)
+        rows = np.tile(mean, (grid.size, 1))
+        rows[:, j] = grid
+        k = list(self.distribution.parameter_names).index(name)
+        est = self.parameters_at(rows)[:, k]
+        if ax is None:
+            import matplotlib.pyplot as plt
+
+            ax = plt.gca()
+        if plot_bounds:
+            band = self.parameter_cb(name, rows, alpha_ci=alpha_ci)
+            ax.fill_between(
+                grid,
+                band[:, 0],
+                band[:, 1],
+                alpha=0.2,
+                label=f"{(1 - alpha_ci) * 100:g}% confidence band",
+            )
+        ax.plot(grid, est, label=f"{name}, other covariates at their means")
+        ax.set_xlabel(label)
+        ax.set_ylabel(name)
+        plotting.style_axes(ax)
+        plotting.style_legend(ax)
+        return ax
+
     @keeps_query_shape
     def qf(
         self,
