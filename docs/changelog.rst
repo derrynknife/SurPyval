@@ -100,20 +100,6 @@ bounds do not take weights yet. Nothing changes without ``w``; a decimal
   fit. Checked against lifelines' ``robust=True`` and R's ``survreg``
   with ``cluster()`` on the Rossi data. A
   ``fit_tvc`` model refuses them.
-- ``surpyval.pymc``: helpers for survival analysis in PyMC, for people
-  who already use it. ``censored_likelihood(dist, data, **params)`` adds
-  SurPyval's exact likelihood of censored and truncated data (failures,
-  right, left and interval censoring, left and right truncation, counts)
-  to the open PyMC model, for the Weibull, Exponential, LogNormal, Gamma,
-  LogLogistic, Normal, Gumbel, Logistic and Rayleigh distributions, with
-  parameters that may be PyMC variables, expressions (per row, for
-  covariates) or numbers; ``log_likelihood`` gives the same term as a
-  pytensor expression. ``prior_from_model`` turns a fitted model's
-  estimates and covariance into a joint prior, with a ``weight``, and
-  ``prior_from_spec`` builds priors from a plain description. PyMC is not
-  a dependency, not even an optional one: ``import surpyval`` does not
-  import it, and the helpers ask you to install it when it is absent. See
-  :doc:`PyMC with SurPyval`.
 - Distributional regression, ``Distributional(dist)`` and the prebuilt
   ``WeibullDistributional``, ``LogNormalDistributional``,
   ``GammaDistributional`` and others: the covariates move every
@@ -173,6 +159,23 @@ bounds do not take weights yet. Nothing changes without ``w``; a decimal
   normal approximation. ``surpyval.bayes.log_likelihood_fn`` is the exact
   censored and truncated likelihood at many parameter points at once, for
   other samplers. ``fit`` and every existing model are unchanged.
+- ``surpyval.pymc``: helpers for survival analysis in PyMC, for people
+  who already use it. ``censored_likelihood(dist, data, **params)`` adds
+  SurPyval's exact likelihood of censored and truncated data (failures,
+  right, left and interval censoring, left and right truncation, counts)
+  to the open PyMC model, for the Weibull, Exponential, LogNormal, Gamma,
+  LogLogistic, Normal, Gumbel, Logistic and Rayleigh distributions, with
+  parameters that may be PyMC variables, expressions (per row, for
+  covariates) or numbers; ``log_likelihood`` gives the same term as a
+  pytensor expression. ``prior_from_model`` turns a fitted model's
+  estimates and covariance into a joint prior, with a ``weight``, and
+  ``prior_from_spec`` builds priors from a plain description;
+  ``to_surpyval(trace, dist, alpha="log_alpha[1]", transform={"alpha":
+  "exp"}, ...)`` turns posterior draws back into a ``BayesianParametric``
+  with its functions, credible intervals and plots. PyMC is not
+  a dependency, not even an optional one: ``import surpyval`` does not
+  import it, and the helpers ask you to install it when it is absent. See
+  :doc:`PyMC with SurPyval`.
 
 **Documentation.**
 

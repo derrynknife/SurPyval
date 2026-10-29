@@ -31,7 +31,9 @@ The helpers are:
 - :func:`~surpyval.pymc.prior_from_model`: a prior from a SurPyval fit
   (last year's data, another fleet), keeping its uncertainty;
 - :func:`~surpyval.pymc.prior_from_spec`: priors from a plain description
-  that can be stored as JSON.
+  that can be stored as JSON;
+- :func:`~surpyval.pymc.to_surpyval`: the posterior draws back into a
+  SurPyval model, with its functions, credible intervals and plots.
 
 They support the Weibull, Exponential, LogNormal, Gamma, LogLogistic,
 Normal, Gumbel, Logistic and Rayleigh distributions
@@ -104,6 +106,31 @@ the Weibull quantile at 0.1:
 With PyMC 6.3 this gives a median B10 of about 5,900 hours, with a 90%
 credible interval of about 3,300 to 11,600 hours: wide, as six records of
 a new design should leave it, with the shape borrowed from the old fleet.
+
+To use the posterior as a SurPyval model, turn the trace back into one with
+:func:`~surpyval.pymc.to_surpyval`, naming the variable that holds each
+parameter (with an index for an element of a vector) and how to get from
+it to the parameter:
+
+.. code:: python
+
+    from surpyval.pymc import to_surpyval
+
+    new_design = to_surpyval(trace, sp.Weibull,
+                             alpha="log_alpha[1]", transform={"alpha": "exp"},
+                             beta="beta", data=(x_new, c_new))
+    new_design.quantile_cri(0.10)   # the B10's credible interval
+    new_design.sf(10_000)           # the chance a new pump survives 10,000 h
+    new_design.plot()               # its data, the curve and its band
+
+The result is a :class:`~surpyval.bayes.BayesianParametric`, the same
+model ``fit_bayes`` returns: its ``sf``, ``ff``, ``qf`` and ``mean`` are
+those of a new unit with the uncertainty in the parameters averaged in,
+and ``cri``, ``quantile_cri``, ``mean_cri`` and ``param_cri`` give
+credible intervals. A parameter left out is the variable of its own name;
+a transform is ``"exp"``, ``"log"``, ``"inverse"`` or a function of the
+draws. Draws outside a parameter's bounds (a log scale passed without
+``transform={"alpha": "exp"}``) are refused.
 
 The data can be a :class:`~surpyval.SurpyvalData` (from arrays,
 ``from_items``, ``from_dataframe`` ...) or the arrays themselves, in any of
@@ -236,3 +263,5 @@ API
 .. autofunction:: surpyval.pymc.prior_from_model
 
 .. autofunction:: surpyval.pymc.prior_from_spec
+
+.. autofunction:: surpyval.pymc.to_surpyval
