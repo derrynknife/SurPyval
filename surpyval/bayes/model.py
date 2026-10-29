@@ -1066,6 +1066,15 @@ class BayesianParametric(SerialisableMixin):
         the posterior mean of each variance plus the variance of the
         means), with the offset and the zero-inflation mass at 0 counted;
         infinite where the mean is (a limited failure population)."""
+        lomax = self._lomax()
+        if lomax is not None:
+            # The Exponential-Gamma predictive is a Lomax of shape a and
+            # scale b: its variance is b^2 a / ((a - 1)^2 (a - 2)), infinite
+            # for a <= 2 (and its mean for a <= 1)
+            a, b = lomax
+            if a <= 2:
+                return float("inf")
+            return float(b**2 * a / ((a - 1) ** 2 * (a - 2)))
         closed = self._closed_predictive()
         if closed is not None:
             # Exact, as mean() is: Normal(m, sqrt(sigma^2 + s^2)), or the

@@ -272,6 +272,13 @@ all optional. What can look different:
   infinite knot, and a repeated one are refused with a ``ValueError``
   naming ``knots`` (they raised an ``IndexError`` or failed in the
   optimiser). Sorted knots give the same fit as before.
+- ``AcceleratedLife(...).fit`` with left truncation at the lower end of the
+  baseline's support (``tl=0`` for a Weibull) stopped short of its
+  maximum, with a gradient of about ``2e-4`` left: the exact Hessian
+  there is ``nan``, so the final Newton steps could not run. The fit now
+  finishes with Newton steps on a difference Hessian, so such fits move
+  by about ``1e-5`` (relative) in the parameters to the maximum. Fits
+  that already reached it are unchanged.
 
 Where weights met other features of this release:
 
