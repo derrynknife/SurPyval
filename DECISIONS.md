@@ -13,6 +13,23 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-10-29
 
+### Bayesian fitting: offsets, zero inflation, power priors and data checks
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| With an offset or zero inflation, each posterior point's base `sf` and `df` are held to the base distribution's support in the Bayesian layer itself (`sf` 1 and `df` 0 below the point's offset; the zero-inflation rule for `x < 0` kept), in one shared step used by the predictive functions and `quantity_at("R")`. The plain path is untouched. | principle 1 | As `Parametric` clamps (#256). The shipped distributions already return 1 and 0 below their support, so this was latent there; the Bayesian layer no longer depends on it (a base that gives NaN, as a bare formula does, made `sf` 0 below the offset and `qf` loop forever). | done |
+| `qf`'s root bracket stops at the predictive support's lower edge (the smallest offset plus the support edge, or 0 with zero inflation), is widened at most 200 times, and returns NaN with a warning that says why where it cannot be bracketed or the function is NaN. | principle 22 | A search with no end is never the right answer; NaN with a reason is. | done |
+| `quantity_at(("q", p))` is 0 for `p <= f0` in a zero-inflated fit, as `Parametric.qf` (the mass sits at 0, not at the offset). NaN stays for `p` beyond the limited-failure proportion. | principle 1 | `quantile_cri` and `compare_to` turned the NaN into an infinite life. | done |
+| `var()` takes the offset and zero-inflated forms: the posterior mean of each point's variance, `(1 - f0) var(Y) + f0 (1 - f0) (gamma + E[Y])^2`, plus the variance of the points' means. Infinite where the mean is (a limited failure population). `moment(n)` still takes the plain form only, and its refusal now points to `mean()` and `var()`. | proposed | `mean()` already took these forms; a variance is computable in closed form, so computing it beats refusing. Checked against integrating the predictive survival function. | done |
+| `model.prior_check()` keeps the offset, with the fitted data setting its range; a flat offset is then refused as any flat parameter is. `prior.check(..., offset=True)` without data still refuses. | principle 2 | It raised or silently checked a model without the offset. | done |
+| The checks on flat priors (no failures; every parameter flat needs a verified maximum) judge the new data together with the old data of every power prior (`prior.from_data`, an exact `as_prior()`), at full weight. A power-prior fit whose own data give no maximum-likelihood start starts from the maximum of the pooled data. | proposed | The old data determine the parameters as much as new data would; a zero-failure demonstration on top of earlier failures is the main use. Weight below 1 tempers the evidence but does not take it away. | done |
+| An explicit `prior.flat()` counts as flat for the "every parameter flat" check and in the grid's message (`BoundPriors.improper_names`). | principle 12 | Writing the default out should not switch off its safeguard. | done |
+| Bernoulli `fit_bayes` makes `Bernoulli.fit`'s checks: outcomes 0 or 1, no censoring, no truncation, no offset, `lfp` or `zi`. | principle 2 | Other values were dropped and censoring ignored silently. | done |
+| `fit_bayes`, `update` and `prior.from_data` share one intake (`bayes_data`) that refuses weights (as #1008), covariates, event types, time-varying covariates and marker readings with `fit(data)`'s message; `update`'s `_combine` refuses them too and keeps the data's unit (refusing two different units). | principle 2 | Refused, not dropped, as `accepts_surpyval_data` does. | done |
+| An exact `as_prior()` carries the parameters the earlier fit held with `fixed=` as `prior.fixed(v)`. The normal-summary `as_prior(param=..., widen=...)` returns a joint normal on the free parameters only, as before: give the fixed values with `fixed=` in the new fit. | proposed | The old data's likelihood was taken at those values. The summary form returns a joint prior, not a set of priors, so it cannot carry them without changing its type. | done |
+| The prior interval used by the prior-data conflict warning is sorted, so an offset's (whose scale runs down from its upper bound) is not read backwards. | principle 22 | It warned of a conflict with every offset prior. | done |
+| No changelog entry for these: Bayesian fitting is unreleased (v0.26); the feature's changelog line now lists what it refuses. | proposed | Fixes to an unreleased feature are not changes to released behaviour. | done |
+
 ### Penalised regression
 
 | Decision | By | Reason | Status |
