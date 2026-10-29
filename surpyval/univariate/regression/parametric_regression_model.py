@@ -300,6 +300,14 @@ class ParametricRegressionModel(
                 str(k): int(v) for k, v in phi_param_map.items()
             },
         }
+        knots = getattr(self.distribution, "knots", None)
+        if knots is not None and self.distribution.name == "RoystonParmar":
+            # A spline baseline (RoystonParmarRegression) is rebuilt from
+            # its knots and scale, not found by name.
+            base["spline_baseline"] = {
+                "knots": np.asarray(knots, dtype=float).tolist(),
+                "scale": str(getattr(self.distribution, "scale")),
+            }
 
         if self._is_accelerated_life():
             from surpyval.univariate.regression.accelerated_life import (
@@ -473,6 +481,13 @@ class ParametricRegressionModel(
             )
         kind = model_dict["kind"]
         dist = getattr(surpyval, model_dict["distribution"], None)
+        spline = model_dict.get("spline_baseline")
+        if spline is not None:
+            from .royston_parmar_regression import SplineBaseline
+
+            dist = SplineBaseline(
+                np.array(spline["knots"], dtype=float), str(spline["scale"])
+            )
         if not isinstance(dist, ParametricFitter):
             raise ValueError(
                 "Unknown distribution {!r}".format(model_dict["distribution"])
@@ -1698,6 +1713,48 @@ class ParametricRegressionModel(
             for j in np.flatnonzero(known):
                 out[j] = self.mean_tvc(StepSchedule.constant(rows[j]))
         return out[0] if out.size == 1 else out
+
+    def likelihood_ratio_test(self) -> dict:
+        """
+        The global likelihood-ratio test of the model: do the covariates,
+        taken together, explain anything? The null model is the baseline
+        distribution fitted to the same data (every coefficient 0, where
+        no covariate has an effect); twice the gain in the log-likelihood
+        is chi-squared on the number of estimated coefficients when none
+        has an effect. It is the "Chisq" line of R's ``survreg`` printout.
+
+        Available for the proportional hazards, accelerated failure time,
+        proportional odds and additive hazards families with their
+        built-in links; an accelerated life model is refused, since its
+        life model has no "no effect" value in general.
+
+        Returns
+        -------
+        dict
+            ``{"statistic", "df", "p_value", "log_likelihood",
+            "log_likelihood_null"}``.
+
+        Raises
+        ------
+        ValueError
+            For an accelerated life model or a custom link, a model
+            restored with ``from_dict`` (it does not carry the data), or
+            one with no estimated coefficient.
+
+        Examples
+        --------
+        >>> from surpyval import WeibullAFT
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> Z = df[["fin", "age", "race", "wexp", "mar", "paro", "prio"]]
+        >>> model = WeibullAFT.fit(df["week"], Z.values, c=1 - df["arrest"])
+        >>> res = model.likelihood_ratio_test()
+        >>> round(res["statistic"], 2), res["df"]
+        (33.42, 7)
+        """
+        from ._global_test import parametric_likelihood_ratio_test
+
+        return parametric_likelihood_ratio_test(self)
 
     def _wald_tested(self) -> list[int]:
         """The positions in ``params`` that :attr:`p_values` tests against

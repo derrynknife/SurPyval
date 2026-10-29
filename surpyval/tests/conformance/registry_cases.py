@@ -970,6 +970,27 @@ def _joint():
     ]
 
 
+# ---------------------------------------------------------------------------
+# Royston-Parmar (spline baseline) regression: PH and PO on the spline
+# ---------------------------------------------------------------------------
+def _spline_regression():
+    out = []
+    for name, extra in (
+        ("RoystonParmarPH", ("surpyval.RoystonParmarRegression",)),
+        ("RoystonParmarPO", ()),
+    ):
+        out.append(
+            regression(
+                name,
+                getattr(sp, name),
+                fitters=(f"surpyval.{name}",) + extra,
+                intercept=True,
+                slow=frozenset() if name.endswith("PH") else REFIT_PROPERTIES,
+            )
+        )
+    return out
+
+
 CASES: list[Case] = (
     _univariate()
     + _regression_family()
@@ -982,6 +1003,7 @@ CASES: list[Case] = (
     + _degradation()
     + _copulas()
     + _joint()
+    + _spline_regression()
 )
 
 # Fits whose optimum moves by more than 1e-4 (relative) when the data are
@@ -1576,6 +1598,8 @@ def _bounds(case):
         return (_PARAM_CB, lr)
     if cls == "CoxFrailtyModel":
         return (_PARAM_CB,)
+    if cls == "AalenAdditiveModel":
+        return (Bound("cb", on=_ON_SURVIVAL),)
     if cls == "BuckleyJamesModel":
         return (
             Bound(
@@ -2009,6 +2033,7 @@ _NO_STARVE: dict[str, str] = {
     "FixedEventProbability": _CLOSED_FORM,
     "ExactEventTime": _CLOSED_FORM,
     "AdditiveHazards": _CLOSED_FORM + " (Lin-Ying: a linear system)",
+    "AalenAdditive": _CLOSED_FORM + " (least squares at each event time)",
     "KaplanMeier": _EXACT,
     "NelsonAalen": _EXACT,
     "FlemingHarrington": _EXACT,

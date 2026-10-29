@@ -205,3 +205,140 @@ def test_576_logrank_checks_entry_times():
     # An entry at or after the exit is refused as everywhere else
     with pytest.raises(ValueError, match="left truncated"):
         sp.logrank([1, 2, 3, 4], [0, 0, 1, 1], tl=[0, 2, 0, 0])
+
+
+# -- Peto-Peto weights and the t0 cut-off ------------------------------------
+
+# The AML maintenance data (R's survival::aml): group 1 maintained.
+_AML_X = np.array(
+    [9, 13, 13, 18, 23, 28, 31, 34, 45, 48, 161]
+    + [5, 5, 8, 8, 12, 16, 23, 27, 30, 33, 43, 45],
+    float,
+)
+_AML_C = np.array(
+    [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1] + [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0]
+)
+_AML_Z = np.array([1] * 11 + [2] * 12)
+
+
+def _two_group_by_hand(x, c, Z, weight):
+    """The two-sample weighted log-rank statistic written out from Klein
+    and Moeschberger (2003), eq. 7.3.3-7.3.4, with ``weight(r, d, S_peto)``
+    at each distinct event time; an oracle independent of logrank."""
+    times = np.unique(x[c == 0])
+    num, var, s_peto = 0.0, 0.0, 1.0
+    for t in times:
+        r = float(np.sum(x >= t))
+        r1 = float(np.sum((x >= t) & (Z == Z.min())))
+        d = float(np.sum((x == t) & (c == 0)))
+        d1 = float(np.sum((x == t) & (c == 0) & (Z == Z.min())))
+        s_peto *= 1 - d / (r + 1)
+        w = weight(r, d, s_peto)
+        num += w * (d1 - d * r1 / r)
+        if r > 1:
+            var += w**2 * d * (r1 / r) * (1 - r1 / r) * (r - d) / (r - 1)
+    return num**2 / var
+
+
+def test_peto_peto_matches_lifelines_on_aml():
+    # lifelines 0.30.3: logrank_test(..., weightings="peto") on the AML
+    # data gives 2.7080350199857874, p = 0.099843906985543.
+    res = sp.logrank(_AML_X, _AML_Z, c=_AML_C, weighting="peto-peto")
+    np.testing.assert_allclose(res.statistic, 2.7080350199857874, rtol=1e-10)
+    np.testing.assert_allclose(res.p_value, 0.099843906985543, rtol=1e-10)
+    assert res.weighting == "peto-peto"
+
+
+@pytest.mark.parametrize(
+    "weighting, weight",
+    [
+        ("peto-peto", lambda r, d, s: s),
+        ("modified-peto-peto", lambda r, d, s: s * r / (r + 1)),
+    ],
+)
+def test_peto_weights_match_the_formula_by_hand(weighting, weight):
+    expected = _two_group_by_hand(_AML_X, _AML_C, _AML_Z, weight)
+    res = sp.logrank(_AML_X, _AML_Z, c=_AML_C, weighting=weighting)
+    np.testing.assert_allclose(res.statistic, expected, rtol=1e-12)
+
+
+def test_peto_peto_on_lung_three_groups_matches_lifelines():
+    # lifelines 0.30.3, multivariate_logrank_test(weightings="peto") on
+    # the lung data by ECOG score 0, 1, 2: 20.26560446072507 on 2 df.
+    df = sp.datasets.load_lung().dropna(subset=["ph.ecog"])
+    df = df[df["ph.ecog"] < 3]
+    res = sp.logrank(
+        df["time"], df["ph.ecog"], c=1 - df["status"], weighting="peto-peto"
+    )
+    np.testing.assert_allclose(res.statistic, 20.26560446072507, rtol=1e-9)
+    assert res.dof == 2
+
+
+@pytest.mark.parametrize(
+    "t0, statistic, p_value",
+    # lifelines 0.30.3, logrank_test(..., t_0=t0) on the AML data.
+    [
+        (30, 2.1301545637467254, 0.14442619197316434),
+        (23, 0.7934106317369176, 0.3730708137573371),
+    ],
+)
+def test_t0_matches_lifelines_on_aml(t0, statistic, p_value):
+    res = sp.logrank(_AML_X, _AML_Z, c=_AML_C, t0=t0)
+    np.testing.assert_allclose(res.statistic, statistic, rtol=1e-10)
+    np.testing.assert_allclose(res.p_value, p_value, rtol=1e-10)
+
+
+def test_t0_with_peto_peto_matches_lifelines():
+    # lifelines 0.30.3: weightings="peto", t_0=30: 2.2437492037616167.
+    res = sp.logrank(_AML_X, _AML_Z, c=_AML_C, weighting="peto-peto", t0=30)
+    np.testing.assert_allclose(res.statistic, 2.2437492037616167, rtol=1e-10)
+
+
+def test_t0_is_censoring_at_t0_by_hand():
+    # An event exactly at t0 stays an event; later ones are censored.
+    x = np.minimum(_AML_X, 23.0)
+    c = np.where(_AML_X > 23, 1, _AML_C)
+    by_hand = sp.logrank(x, _AML_Z, c=c)
+    res = sp.logrank(_AML_X, _AML_Z, c=_AML_C, t0=23)
+    assert res.statistic == by_hand.statistic
+    # Past the last time it changes nothing.
+    whole = sp.logrank(_AML_X, _AML_Z, c=_AML_C)
+    late = sp.logrank(_AML_X, _AML_Z, c=_AML_C, t0=1000)
+    assert late.statistic == whole.statistic
+
+
+def test_t0_drops_the_rows_that_enter_after_it():
+    tl = np.zeros(_AML_X.size)
+    tl[[10, 21]] = [40, 35]  # enter after the window
+    res = sp.logrank(_AML_X, _AML_Z, c=_AML_C, tl=tl, t0=30)
+    keep = tl < 30
+    by_hand = sp.logrank(
+        _AML_X[keep], _AML_Z[keep], c=_AML_C[keep], tl=tl[keep], t0=30
+    )
+    assert res.statistic == by_hand.statistic
+
+
+def test_t0_with_strata_and_counts():
+    strata = np.arange(_AML_X.size) % 2
+    res = sp.logrank(_AML_X, _AML_Z, c=_AML_C, strata=strata, t0=30)
+    x = np.minimum(_AML_X, 30.0)
+    c = np.where(_AML_X > 30, 1, _AML_C)
+    by_hand = sp.logrank(x, _AML_Z, c=c, strata=strata)
+    assert res.statistic == by_hand.statistic
+    assert res.strata == 2
+
+
+@pytest.mark.parametrize("t0", ["soon", np.nan, None])
+def test_t0_must_be_a_number(t0):
+    if t0 is None:
+        sp.logrank(_AML_X, _AML_Z, c=_AML_C, t0=t0)  # the default
+        return
+    with pytest.raises(ValueError, match="'t0'"):
+        sp.logrank(_AML_X, _AML_Z, c=_AML_C, t0=t0)
+
+
+def test_t0_does_not_hide_interval_censoring():
+    c = _AML_C.copy()
+    c[0] = -1
+    with pytest.raises(ValueError, match="right censored"):
+        sp.logrank(_AML_X, _AML_Z, c=c, t0=30)

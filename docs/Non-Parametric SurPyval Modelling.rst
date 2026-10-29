@@ -1301,6 +1301,62 @@ of groups. ``strata`` can be combined with ``c``, ``n`` and any ``weighting``.
     _s = logrank(x, group, strata=site)
     assert _s.p_value > 0.1 and _s.strata == 2 and _s.dof == 1
 
+Peto-Peto weights and a fixed window
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Two more weightings are ``'peto-peto'``, Peto and Peto's estimate of the pooled survival at each
+event time (it emphasises early differences, as Gehan's does, but depends less on the censoring
+pattern), and ``'modified-peto-peto'``. ``t0`` compares the groups up to a time only: events after
+it count as units still running at ``t0``. Use it when the question is about a fixed follow-up
+window, chosen before looking at the data. On the control and treatment groups of the first
+example:
+
+.. jupyter-execute::
+
+    x2 = np.concatenate([control, treatment])
+    group2 = np.repeat(['control', 'treatment'], 200)
+    print('log-rank    : p = %.3g' % logrank(x2, group2).p_value)
+    print('Peto-Peto   : p = %.3g' % logrank(x2, group2, weighting='peto-peto').p_value)
+    print('up to t = 5 : p = %.3g' % logrank(x2, group2, t0=5).p_value)
+
+Up to time 5 there are fewer events, so the evidence from that window alone is weaker.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert logrank(x2, group2, t0=5).p_value > logrank(x2, group2).p_value
+
+Which groups differ? Pairwise tests
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+With three or more groups the log-rank test says whether *any* group differs, not which.
+``pairwise_logrank`` tests every pair on its own two groups' data and gives the results in one
+table. Running several tests raises the chance that one of them rejects by luck, so the table also
+has the p-values adjusted for the number of pairs (``p_adjusted``; Holm's method by default,
+``adjust='bonferroni'``, ``'bh'`` for Benjamini-Hochberg or ``'none'``). Compare the adjusted
+values with your significance level. Here, three groups of which only the third is different:
+
+.. jupyter-execute::
+
+    from surpyval import pairwise_logrank
+
+    np.random.seed(3)
+    x3 = np.concatenate([np.random.weibull(1.5, 60) * s for s in (10, 10, 5)])
+    group3 = np.repeat(['A', 'B', 'C'], 60)
+    pairs = pairwise_logrank(x3, group3)
+    print(pairs.table.round(4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = pairs.table.set_index(['group_a', 'group_b'])['p_adjusted']
+    assert _t[('A', 'B')] > 0.05 and _t[('A', 'C')] < 0.05 and _t[('B', 'C')] < 0.05, _t
+
+A and B are not told apart; C differs from each. ``pairwise_logrank`` takes every argument of
+``logrank`` (``c``, ``n``, ``weighting``, ``strata``, ``tl``, ``t0``).
+
 Plotting groups with the number at risk
 ---------------------------------------
 
@@ -1398,6 +1454,51 @@ those whose interval spans :math:`t` (their event may or may not have happened y
     assert all(_c['At risk'] + _c['In interval'] + _c['Events'] + _c['Censored'] == 10)
     plt.close(out.fig)
 
+Life tables
+-----------
+
+A **life table** (the actuarial, or Cutler-Ederer, method) groups the times into intervals and
+counts, in each, how many units were at risk at its start, how many were censored (withdrew) and
+how many had the event. From those counts it estimates the chance of the event in each interval,
+the survival at the start of each, and the density and hazard rate there, each with a standard
+error. It is the classical summary for grouped data and for reports that give survival by year
+or by age band. ``surv.life_table`` builds one from the times, the censoring flags, the counts
+and the entry times (``tl``), or from a ``SurpyvalData`` or a fitted non-parametric model.
+
+The lung cancer data in 180-day intervals:
+
+.. jupyter-execute::
+
+    lung_table = surv.life_table(lung['time'], 1 - lung['status'],
+                                 intervals=np.arange(0, 1081, 180))
+    print(lung_table[['start', 'end', 'at_risk_start', 'censored', 'events', 'at_risk',
+                      'q', 'surv', 'se_surv', 'hazard']].round(4))
+
+In plain terms: of the 228 patients, 62 died in the first 180 days, so about 72% (``surv``, with
+a standard error of 3%) were alive at the start of the second interval; of the 142.5 effectively
+at risk in that interval, 39% died in it. ``at_risk`` is the number at risk at the start less half
+of those censored in the interval: the method assumes a unit that withdraws was at risk for half
+of it. That is also why the actuarial survival differs a little from the Kaplan-Meier estimate at
+the same time (72.4% against 72.2% at day 180).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = lung_table
+    assert _t['at_risk_start'][0] == 228 and _t['events'][0] == 62
+    assert round(_t['surv'][1], 3) == 0.724 and round(_t['se_surv'][1], 2) == 0.03
+    assert _t['at_risk'][1] == 142.5 and round(_t['q'][1], 2) == 0.39
+    assert round(float(surv.KaplanMeier.fit(lung['time'], c=1 - lung['status']).sf(180)), 3) == 0.722
+
+The intervals are ``[start, end)``. ``intervals`` takes the boundaries (a last boundary of
+``inf``, or data beyond the last one, gives an open last interval, which has no density or
+hazard), or a number of equal intervals (the last open), and defaults to the Freedman-Diaconis
+width. Late entrants are counted in the ``entered`` column of the interval they enter and, like
+withdrawals, as half at risk there. Data already grouped is given as one row per interval and
+outcome, at its start, with the count in ``n``. Left or interval censored data cannot be counted
+into intervals; estimate it with ``Turnbull`` instead.
+
 Restricted mean survival time
 -----------------------------
 
@@ -1474,6 +1575,29 @@ right censoring and delayed entry are handled by those fits.
     assert round(diff['difference']) == 4, diff['difference']
     assert np.isclose(diff['ratio'], diff['rmst_a'] / diff['rmst_b'])
     assert np.isclose(diff['difference'], diff['rmst_a'] - diff['rmst_b'])
+
+To compare the two groups' survival at one time instead -- "is the chance of lasting 10 time
+units different?" -- use ``surpyval.sf_diff``. It compares the two estimates at that time, with
+each one's variance (Greenwood's for the Kaplan-Meier), on the log(-log) scale by default, which
+Klein et al. (2007) found holds its stated error rate better in small samples than the plain
+difference (``transform='linear'``; ``'log'``, ``'arcsine-sqrt'`` and ``'logit'`` are the others):
+
+.. jupyter-execute::
+
+    from surpyval import sf_diff
+
+    at_10 = sf_diff(treatment_model, control_model, 10)
+    print('S_a(10) = %.3f, S_b(10) = %.3f, p = %.3g'
+          % (at_10['sf_a'], at_10['sf_b'], at_10['p_value']))
+    print('difference %.3f (%.3f to %.3f)'
+          % (at_10['difference'], at_10['lower'], at_10['upper']))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert at_10['lower'] < at_10['difference'] < at_10['upper']
+    assert np.isclose(at_10['difference'], at_10['sf_a'] - at_10['sf_b'])
 
 The Kaplan-Meier, Nelson-Aalen, Fleming-Harrington and Turnbull estimates also
 run in the browser in `Reliafy <https://reliafy.com/reference/nonparametric>`__.
