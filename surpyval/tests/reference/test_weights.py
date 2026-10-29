@@ -1,11 +1,11 @@
-"""Fits with sampling weights ``w`` against R ``survival`` and
+"""Fits with sampling weights ``w`` against R ``survival``, ``survey`` and
 lifelines.
 
 The data are ``_helpers.weighted_reference_data()`` (forty rows with
 weights from 0.34 to 2.96, ties among the events, late entry on a third of
 the rows). The values were computed once and are stored here:
 
-- R 4.5.3 and ``survival`` 3.8.12:
+- R 4.5.3, ``survival`` 3.8.12 and ``survey`` 4.5:
   ``survfit(Surv(x, d) ~ 1, weights = w, robust = TRUE, stype, ctype)``
   (``stype = 1, ctype = 1`` Kaplan-Meier, ``2, 1`` Nelson-Aalen, ``2, 2``
   Fleming-Harrington) at ``times = c(1, 2.2, 3.7, 6.1, 8.3)``, with
@@ -14,9 +14,15 @@ the rows). The values were computed once and are stored here:
   for ``stype = 2, ctype = 1`` is not on that scale);
   ``survfit(Surv(tl, x, d) ~ 1, ..., id = id)`` for the late entries;
   ``survreg(Surv(x, d) ~ 1, weights = w, robust = TRUE, dist = ...)`` and
-  ``~ z1 + z2`` (``coef``, ``log(scale)``, ``sqrt(diag(vcov))``).
-- lifelines 0.30.3 for the point estimates (``KaplanMeierFitter`` and
-  ``WeibullFitter`` with weights). Its robust standard
+  ``~ z1 + z2`` (``coef``, ``log(scale)``, ``sqrt(diag(vcov))``);
+  ``coxph(Surv(x, d) ~ z1 + z2, weights = w, robust = TRUE, ties = ...)``,
+  with ``Surv(tl, x, d)`` and ``id = id``, and with ``+ cluster(cl)``
+  (``cl = (id - 1) %/% 4``); ``svycoxph`` on ``svydesign(ids = ~1,
+  weights = ~w)``, whose standard errors are R ``survival``'s times
+  ``sqrt(n / (n - 1))``, the survey package's finite-sample factor, which
+  SurPyval (as ``survival``) does not apply.
+- lifelines 0.30.3 for the point estimates (``KaplanMeierFitter``,
+  ``WeibullFitter`` and ``CoxPHFitter`` with weights). Its robust standard
   errors with weights follow other conventions and are not compared.
 
 R's ``print(survfit(...))`` gives ``se(rmean)`` from the classical
@@ -27,8 +33,9 @@ infinitesimal jackknife instead.
 Tolerances: the non-parametric estimates and their variances are closed
 forms, equal to rounding (``rtol=1e-10``). The fits are optimisations; the
 coefficients agree to the optimisers' tolerance (``atol=2e-5`` for
-``survreg``, whose convergence criterion is on the log-likelihood), and
-the standard errors, smooth functions of them, to ``rtol=2e-4``.
+``survreg``, whose convergence criterion is on the log-likelihood,
+``1e-7`` for Cox), and the standard errors, smooth functions of them,
+to ``rtol=2e-4`` and ``1e-6``.
 """
 
 import numpy as np
@@ -91,6 +98,25 @@ R_AFT = (
     [0.227220553503763, 0.306052636226662, 0.137563313236780,
      0.161286464480136],
 )  # fmt: skip
+R_COX = {
+    "efron": (
+        [1.06791948026886, 1.01251989144677],
+        [0.472898791484031, 0.239872432814770],
+        -125.646463108494,
+    ),
+    "breslow": (
+        [1.07811152152835, 1.01076581411262],
+        [0.470415731017950, 0.236148382983504],
+        -125.985886210508,
+    ),
+}
+R_COX_TRUNCATED = (
+    [1.08336516101190, 1.01671555418292],
+    [0.480453994661017, 0.241024675928827],
+)
+R_COX_CLUSTER_SE = [0.678374922893751, 0.138051802381629]
+SURVEY_COX_SE = [0.478923222782169, 0.242928255789650]
+
 LIFELINES_KM = [
     0.9231611893583727,
     0.7765258215962443,
@@ -99,6 +125,7 @@ LIFELINES_KM = [
     0.26714390881271705,
 ]
 LIFELINES_WEIBULL = (6.794503165274475, 1.2110931520967734)
+LIFELINES_COX = [1.0679194758604589, 1.012519884427659]
 
 
 @pytest.fixture(scope="module")
@@ -210,3 +237,44 @@ def test_weibull_aft_robust(data):
     ref_coef, ref_se = R_AFT
     assert_allclose(coef, ref_coef, rtol=0, atol=2e-5)
     assert_allclose(se, ref_se, rtol=2e-4)
+
+
+@pytest.mark.parametrize("ties", list(R_COX))
+def test_coxph_robust(data, ties):
+    model = sp.CoxPH.fit(
+        data["x"], data["Z"], c=data["c"], w=data["w"], tie_method=ties
+    )
+    coef, se, loglik = R_COX[ties]
+    assert_allclose(model.params, coef, rtol=0, atol=1e-7)
+    assert_allclose(model.standard_errors(), se, rtol=1e-6)
+    assert_allclose(model.log_likelihood, loglik, rtol=0, atol=1e-7)
+    if ties != "efron":
+        return
+    # survey's svycoxph (Efron's ties): the same, times sqrt(n / (n - 1))
+    n = len(data["x"])
+    assert_allclose(
+        model.standard_errors() * np.sqrt(n / (n - 1)),
+        SURVEY_COX_SE,
+        rtol=1e-6,
+    )
+
+
+def test_coxph_robust_late_entry(data):
+    model = sp.CoxPH.fit(
+        data["x"], data["Z"], c=data["c"], tl=data["tl"], w=data["w"]
+    )
+    coef, se = R_COX_TRUNCATED
+    assert_allclose(model.params, coef, rtol=0, atol=1e-7)
+    assert_allclose(model.standard_errors(), se, rtol=1e-6)
+
+
+def test_coxph_cluster(data):
+    model = sp.CoxPH.fit(data["x"], data["Z"], c=data["c"], w=data["w"])
+    cluster = np.arange(len(data["x"])) // 4
+    se = np.sqrt(np.diag(model.robust_covariance(cluster)))
+    assert_allclose(se, R_COX_CLUSTER_SE, rtol=1e-6)
+
+
+def test_coxph_matches_lifelines(data):
+    model = sp.CoxPH.fit(data["x"], data["Z"], c=data["c"], w=data["w"])
+    assert_allclose(model.params, LIFELINES_COX, rtol=0, atol=1e-6)

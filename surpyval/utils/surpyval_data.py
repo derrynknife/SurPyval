@@ -2187,8 +2187,8 @@ def lost_message(lost: list, takes_event_types: bool) -> str:
     if "weights" in lost:
         takes.append(
             "weights w are taken by KaplanMeier, NelsonAalen, "
-            "FlemingHarrington, the parametric distributions (MLE) and the "
-            "parametric regressions"
+            "FlemingHarrington, the parametric distributions (MLE), the "
+            "parametric regressions and CoxPH"
         )
     if "time_varying_covariates" in parts:
         takes.append(

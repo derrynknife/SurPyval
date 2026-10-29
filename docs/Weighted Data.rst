@@ -4,7 +4,7 @@ Weighted Data
 Some data come with a number on each row that says how much that row
 *counts*: a **weight**. SurPyval takes it as ``w``, beside the counts ``n``,
 in the Kaplan-Meier, Nelson-Aalen and Fleming-Harrington estimators, the
-parametric distributions and the parametric regressions.
+parametric distributions, the parametric regressions and Cox regression.
 This page says what weights are, when to use ``w`` rather than ``n``, why a
 weighted fit's intervals are computed differently, and what a weighted fit
 will not do.
@@ -145,13 +145,17 @@ intervals:
     assert abs(model.params[0] - 10) < 1 and abs(model.params[1] - 1.5) < 0.2
     assert surv.Weibull.fit(x, c).params[0] > 11
 
-A Kaplan-Meier curve takes ``w`` the same way:
+A Kaplan-Meier curve and a Cox model take ``w`` the same way:
 
 .. jupyter-execute::
 
     km = surv.KaplanMeier.fit(x, c, w=w)
     print(km.sf([5, 10, 15]))
     print(km.cb([5, 10, 15]))
+
+    z = rng.integers(0, 2, kept.sum())
+    cox = surv.CoxPH.fit(x, z, c=c, w=w)
+    print(cox.params, cox.standard_errors())
 
 ``SurpyvalData`` holds the weights too (``SurpyvalData(x, c, n, w=w)``,
 ``SurpyvalData.from_dataframe(df, ..., w_col="weight")``), and
@@ -176,9 +180,10 @@ saying what to use instead:
   Fleming-Harrington positions.
 - **Methods other than maximum likelihood** (``how="MPP"``, ``"MOM"``,
   ``"MSE"``, ``"MPS"``).
-- **Turnbull** and the fitters that do not take ``w`` (Cox for now,
-  competing risks, recurrent events, degradation, mixtures, ...), which
-  refuse weighted data.
+- **Turnbull**, the Cox model's residuals, ``check_ph``, strata and exact
+  ties, and the fitters that do not take ``w`` (competing risks, recurrent
+  events, degradation, mixtures, ...), which refuse weighted data. These
+  may come later.
 - **Reshaping weighted data** with ``censor_at``, ``select`` and the other
   record-based methods: index the rows, ``data[rows]``, which keeps the
   weights, or build a new ``SurpyvalData`` from the arrays.
@@ -191,8 +196,9 @@ Two cautions:
   intervals slightly too wide. This is what R and lifelines do too.
 - **Complex survey designs.** With ``w`` alone, units are independent draws
   with unequal weights. Strata, clusters of units sampled together and
-  finite-population corrections are out of scope; R's ``survey`` package
-  handles full designs.
+  finite-population corrections are out of scope; for a Cox model,
+  ``robust_covariance(cluster)`` gives the variance for units sampled in
+  clusters, and R's ``survey`` package handles full designs.
 
 The formulas
 ------------
@@ -230,19 +236,31 @@ as R's ``survreg(..., weights = w, robust = TRUE)`` computes it, and every
 Wald bound follows from it by the delta method. ``covariance()`` (and a
 parametric model's ``hess_inv``) hold it.
 
+The Cox model maximises the weighted partial likelihood, with Efron's tie
+correction taking the :math:`m` tied deaths at their mean weight (R's
+``coxph`` convention), and its covariance is the Lin-Wei sandwich
+:math:`\sum_i n_i w_i^2 D_i^\top D_i`, :math:`D_i` the dfbeta of unit
+:math:`i` (R's ``coxph(..., weights = w, robust = TRUE)``); within clusters
+the weighted dfbetas are summed first. R's ``survey::svycoxph`` gives the
+same coefficients and standard errors larger by
+:math:`\sqrt{n / (n - 1)}`, a finite-sample factor SurPyval, as R's
+``survival``, does not apply.
+
 Translating from lifelines and R
 --------------------------------
 
 - lifelines ``KaplanMeierFitter().fit(T, E, weights=w)`` is
-  ``KaplanMeier.fit(T, 1 - E, w=w)``; ``WeibullFitter().fit(T, E,
-  weights=w)`` is ``Weibull.fit(T, 1 - E, w=w)``.
+  ``KaplanMeier.fit(T, 1 - E, w=w)``; ``CoxPHFitter().fit(df, "T", "E",
+  weights_col="w", robust=True)`` is ``CoxPH.fit_from_df`` without
+  ``w_col`` for now: ``CoxPH.fit(T, Z, c=1 - E, w=w)``.
 - R ``survfit(Surv(T, E) ~ 1, weights = w, robust = TRUE)`` is
   ``KaplanMeier.fit(T, 1 - E, w=w)``; ``survreg(Surv(T, E) ~ z, weights =
   w, robust = TRUE)`` is ``WeibullAFT.fit(T, z, c=1 - E, w=w)`` (on
-  SurPyval's parameterisation).
+  SurPyval's parameterisation); ``coxph(Surv(T, E) ~ z, weights = w, robust
+  = TRUE)`` is ``CoxPH.fit(T, z, c=1 - E, w=w)``.
 
 The reference tests (``surpyval/tests/reference/test_weights.py``) compare
-these with R ``survival`` and with lifelines, and the
+these with R ``survival`` and ``survey`` and with lifelines, and the
 calibration study (``surpyval/tests/calibration/test_coverage_weights.py``)
 checks the intervals' coverage under informative sampling, at any scale of
 the weights, and with estimated treatment weights.

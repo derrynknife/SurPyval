@@ -136,6 +136,16 @@ WEIGHTED = [
     _regression("WeibullAFT"),
     _regression("LogNormalAFT"),
     _regression("WeibullPO"),
+    WeightedCase(
+        "CoxPH",
+        lambda x, c, n, w, Z, tl: sp.CoxPH.fit(x, Z, c=c, n=n, w=w, tl=tl),
+        lambda m: np.asarray(m.params, dtype=float),
+        refused={
+            "compute_residuals": lambda m: m.compute_residuals(),
+            "check_ph": lambda m: m.check_ph(),
+        },
+        covariates=True,
+    ),
 ]
 IDS = [case.name for case in WEIGHTED]
 
