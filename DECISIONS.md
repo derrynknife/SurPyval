@@ -11,6 +11,18 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-10-29
+
+### Spline-baseline (Royston-Parmar) regression
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Built as the `PH` and `PO` families on a spline baseline distribution with fixed knots (`SplineBaseline`), not a new model class. | principle 14, 21 | The model then has every bound, `summary`, `fit_from_df`, formulas and saving as the other parametric regressions, by the same code. | proposed |
+| `RoystonParmarRegression(df=3, scale="hazard", knots=None)` configures the fitter (its `fit` and `fit_from_df` keep the regression signature); `RoystonParmarPH` and `RoystonParmarPO` are the `df=3` instances. `RoystonParmar.fit` is unchanged. | principle 21 | `fit_from_df` cannot take model options. | proposed |
+| Knots as the univariate fit places them (quantiles of the log event times), then held: bounds, bootstrap and likelihood-ratio searches are conditional on them, as in flexsurv. | principle 16 | — | proposed |
+| On the odds scale the coefficients multiply the survival odds, as every SurPyval `PO`: flexsurv's odds-scale coefficients have the opposite sign. | principle 21 | One meaning of a PO coefficient in the package. | proposed |
+| `scale="normal"` with covariates is refused, naming `LogNormalAFT` and the univariate fit. | proposed | Its covariate shift is neither PH nor PO; a probit-shift family would be new. | open |
+
 ## 2026-10-17
 
 ### Joint models: separate covariates, interval data, dynamic prediction (#891)

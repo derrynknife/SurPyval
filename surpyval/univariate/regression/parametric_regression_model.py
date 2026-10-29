@@ -299,6 +299,14 @@ class ParametricRegressionModel(
                 str(k): int(v) for k, v in phi_param_map.items()
             },
         }
+        knots = getattr(self.distribution, "knots", None)
+        if knots is not None and self.distribution.name == "RoystonParmar":
+            # A spline baseline (RoystonParmarRegression) is rebuilt from
+            # its knots and scale, not found by name.
+            base["spline_baseline"] = {
+                "knots": np.asarray(knots, dtype=float).tolist(),
+                "scale": str(getattr(self.distribution, "scale")),
+            }
 
         if self._is_accelerated_life():
             from surpyval.univariate.regression.accelerated_life import (
@@ -472,6 +480,13 @@ class ParametricRegressionModel(
             )
         kind = model_dict["kind"]
         dist = getattr(surpyval, model_dict["distribution"], None)
+        spline = model_dict.get("spline_baseline")
+        if spline is not None:
+            from .royston_parmar_regression import SplineBaseline
+
+            dist = SplineBaseline(
+                np.array(spline["knots"], dtype=float), str(spline["scale"])
+            )
         if not isinstance(dist, ParametricFitter):
             raise ValueError(
                 "Unknown distribution {!r}".format(model_dict["distribution"])

@@ -378,6 +378,17 @@ ORIGIN_MAPS: "dict[tuple[str, str], tuple[tuple[int, ...], Callable]]" = {
     (ACCELERATED_FAILURE_TIME, "Logistic"): ((0, 1), _both_scale_up),
     (ACCELERATED_FAILURE_TIME, "Gumbel"): ((0, 1), _both_scale_up),
     (ACCELERATED_FAILURE_TIME, "GumbelLEV"): ((0, 1), _both_scale_up),
+    # The spline baselines (RoystonParmarRegression): a constant in the
+    # linear predictor is a shift of the spline's intercept, down for
+    # log H and up for the logit of F (PO multiplies the survival odds).
+    (PROPORTIONAL_HAZARD, "RoystonParmar"): (
+        (0,),
+        lambda p, s: [p[0] - s, *p[1:]],
+    ),
+    (PROPORTIONAL_ODDS, "RoystonParmar"): (
+        (0,),
+        lambda p, s: [p[0] + s, *p[1:]],
+    ),
     (PROPORTIONAL_ODDS, "LogLogistic"): (
         (0,),
         lambda p, s: [p[0] * np.exp(-s / p[1]), p[1]],

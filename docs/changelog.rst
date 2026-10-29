@@ -1,6 +1,21 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+**Added.**
+
+- Royston-Parmar (spline baseline) regression: ``RoystonParmarPH``
+  (log cumulative hazard a restricted cubic spline in log time plus
+  ``beta'Z``), ``RoystonParmarPO`` (the spline on the log odds, the
+  survival odds multiplied by ``exp(beta'Z)``) and
+  ``RoystonParmarRegression(df, scale, knots)``. They are the ``PH`` and
+  ``PO`` families on a spline baseline, so every censoring kind,
+  truncation, every bound, ``fit_from_df`` and saving work as for
+  ``WeibullPH``. Checked against R's ``flexsurvspline``. The normal scale
+  is refused with covariates (its shift is neither PH nor PO).
+
 v0.25 (17 October 2026)
 -----------------------
 
