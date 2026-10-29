@@ -23,6 +23,9 @@ v0.26 (unreleased)
   smooth spline baseline with proportional hazards or odds.
 - **Robust standard errors** for the parametric regressions, with
   clusters.
+- **Penalised regression**, ``fit_penalised``: ridge, lasso and elastic
+  net on Cox and the parametric PH, AFT and PO models, for many or
+  correlated covariates.
 - **Comparing groups**: pairwise log-rank tests with adjusted p-values,
   a test of two survival curves at one time, Peto-Peto weightings and the
   global likelihood-ratio test of a regression.
@@ -153,6 +156,23 @@ all optional. What can look different:
   within a cluster are allowed; counts are frequency weights, as in the
   fit. Checked against lifelines' ``robust=True`` and R's ``survreg``
   with ``cluster()`` on the Rossi data. A ``fit_tvc`` model refuses them.
+- Penalised regression: ``fit_penalised(..., penalizer, l1_ratio,
+  standardise)`` on ``CoxPH`` and on the parametric proportional hazards,
+  AFT and proportional odds fitters, for ridge, lasso and elastic-net
+  penalties (one penalty, or one per covariate). The objective is glmnet's
+  and lifelines': the negative log-likelihood over the number of units
+  plus the penalty, on standardised covariates by default; the baseline
+  is never penalised. The L1 part is minimised exactly, so coefficients
+  set to 0 are exactly 0. The Cox fit takes ``strata`` and delayed entry
+  ``tl`` (start-stop rows), and matches glmnet to six digits, stratified
+  (``stratifySurv``) and start-stop (``Surv(start, stop, event)``)
+  included; the parametric fits take every censoring and truncation,
+  checked by their optimality conditions. A penalised model has no
+  covariance, standard errors, bounds, p-values, robust standard errors
+  or likelihood-ratio test: those calls say why. Its ``aic``, ``bic`` and
+  ``aic_c`` count its effective number of parameters
+  (``model.penalty.effective_df``). Weights ``w`` and right truncation in
+  the Cox fit are refused, saying what to use instead.
 - Distributional regression, ``Distributional(dist)`` and the prebuilt
   ``WeibullDistributional``, ``ExponentialDistributional``,
   ``GammaDistributional``, ``LogNormalDistributional``,
@@ -245,8 +265,8 @@ all optional. What can look different:
 - New sections: life tables, Peto-Peto weights, pairwise tests and the
   fixed-time test in Non-Parametric SurPyval Modelling; Aalen's additive
   hazards, spline regression, robust standard errors, the global
-  likelihood-ratio test and forest plots in Regression Modelling with
-  SurPyval.
+  likelihood-ratio test, forest plots and penalised regression in
+  Regression Modelling with SurPyval.
 - Recipes for four distributions written as a ``CustomDistribution``,
   each checked against ``scipy.stats``: the generalised gamma (with the
   Weibull and gamma as nested cases, a likelihood-ratio choice among

@@ -4248,6 +4248,45 @@ penalty):
     assert lasso.penalty.effective_df == 3, lasso.penalty
     assert 5 < ridge.penalty.effective_df < 7, ridge.penalty
 
+The same refusal covers the robust (sandwich) standard errors
+(``robust_covariance``, ``robust_standard_errors``, ``summary(robust=True)``)
+and the global ``likelihood_ratio_test``: a penalised estimate does not
+maximise the likelihood, so neither its sandwich nor twice its gain in
+log-likelihood has the distribution those calls rely on.
+
+**Strata and truncation.** ``CoxPH.fit_penalised`` takes ``strata``, as
+``CoxPH.fit`` does: a baseline hazard per stratum and one set of
+coefficients (glmnet's ``stratifySurv``). The number of units ``N`` and the
+standardisation are over all the rows, not within each stratum. It takes
+delayed entry ``tl``, so start-stop rows ``(start, stop]`` are fitted with
+``tl=start``; then ``N`` is the number of *rows* (weighted by ``n``), not of
+subjects, as in glmnet, so a subject split into ten rows counts ten times in
+the penalty's scale. Like ``CoxPH.fit``, it refuses truncation on the right,
+for which the partial likelihood has no term: the parametric penalised fits
+take every kind of censoring and truncation (left, right or both).
+
+.. jupyter-execute::
+
+    strat_cols = ['fin', 'age', 'race', 'mar', 'paro', 'prio']
+    stratified = CoxPH.fit_penalised(rossi['week'], rossi[strat_cols],
+                                     c=rossi['censored'],
+                                     strata=rossi['wexp'], penalizer=0.05,
+                                     l1_ratio=0.5)
+    stratified.params.round(4)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert stratified.is_stratified
+    assert np.sum(stratified.params == 0) == 2, stratified.params
+
+The coefficients of these models are log hazard, odds or time ratios, which
+have no unit, so the penalty does not depend on the unit of time.
+``fit_penalised`` does not take sampling weights ``w`` yet: the penalty's
+scale and the standardisation would both have to be weighted, and it
+refuses them rather than ignore them.
+
 
 Model Selection
 ---------------
