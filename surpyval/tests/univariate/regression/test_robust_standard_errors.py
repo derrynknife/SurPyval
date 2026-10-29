@@ -459,3 +459,86 @@ def test_distributional_sandwich_by_hand():
     np.testing.assert_allclose(
         model.robust_covariance(), _sandwich_by_hand(row_ll, theta), rtol=1e-3
     )
+
+
+def _left_censored_data():
+    """test_lognormal_with_counts_and_left_censoring's data: exact rows,
+    left-censored below 3, right-censored above 15, counts 1 or 2."""
+    rng = np.random.default_rng(11)
+    Z = rng.normal(size=(60, 1))
+    t = np.exp(2 + 0.5 * Z[:, 0] + 0.6 * rng.normal(size=60))
+    c = np.where(t > 15, 1, np.where(t < 3, -1, 0))
+    x = np.clip(t, 3, 15)
+    n = rng.integers(1, 3, 60)
+    return x, Z, c, n
+
+
+@pytest.mark.parametrize("fitter", [LogNormalAFT, WeibullPH])
+@pytest.mark.parametrize(
+    "window", [{"tl": 0.5, "tr": 40.0}, {"tr": 40.0}], ids=["both", "right"]
+)
+def test_row_likelihood_with_right_truncation(fitter, window):
+    """audit R-W: the per-row likelihood behind the sandwich with a finite
+    upper truncation, a window with both ends or right truncation alone,
+    sums to the fit's log-likelihood, and the robust standard errors are
+    finite. With right truncation alone the left-censored rows stay
+    left-censored (the ``mask_l`` term runs); with a lower end too they
+    become intervals from it, so the test asserts which it is."""
+    from surpyval.univariate.regression._robust import row_log_likelihood
+
+    x, Z, c, n = _left_censored_data()
+    assert np.sum(c == -1) > 0
+    model = fitter.fit(x, Z, c=c, n=n, **window)
+    assert model.maximum == "verified"
+    data = model.data
+    assert data.truncated_mask.any()
+    assert np.all(np.isfinite(data.x_tr))
+    if "tl" in window:
+        assert not data.mask_l.any() and data.mask_i.any()
+        assert np.all(np.isfinite(data.x_tl))
+    else:
+        assert data.mask_l.any()
+        assert not np.isfinite(data.x_tl).any()
+    ll = row_log_likelihood(model.model, data, *model.params)
+    np.testing.assert_allclose(data.n @ ll, -model.neg_ll(), rtol=1e-12)
+    assert np.all(np.isfinite(model.robust_standard_errors()))
+
+
+def test_truncated_lognormal_sandwich_by_hand():
+    """audit R-W: the robust covariance of a LogNormal AFT fit truncated
+    to (0.5, 40) with left and right censoring and counts is the HC0
+    sandwich of a likelihood written out here (counts as frequency
+    weights), by numdifftools. Under the window a left-censored row is
+    ``F(x) - F(0.5)`` and a right-censored one ``F(40) - F(x)``, each over
+    ``F(40) - F(0.5)``; AFT multiplies time by ``exp(b z)``."""
+    import numdifftools as nd
+
+    x, Z, c, n = _left_censored_data()
+    lo, hi = 0.5, 40.0
+    model = LogNormalAFT.fit(x, Z, c=c, n=n, tl=lo, tr=hi)
+    assert model.parameter_names == ["mu", "sigma", "coef_0"]
+
+    def row_ll(th):
+        mu, sigma, b = th[0], th[1], th[2:]
+        phi = np.exp(Z @ b)
+        F = sp.LogNormal.ff
+        exact = np.log(phi) + sp.LogNormal.log_df(x * phi, mu, sigma)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ll = np.select(
+                [c == 0, c == 1, c == -1],
+                [
+                    exact,
+                    np.log(F(hi * phi, mu, sigma) - F(x * phi, mu, sigma)),
+                    np.log(F(x * phi, mu, sigma) - F(lo * phi, mu, sigma)),
+                ],
+            )
+        window = F(hi * phi, mu, sigma) - F(lo * phi, mu, sigma)
+        return ll - np.log(window)
+
+    theta = np.asarray(model.params, dtype=float)
+    assert n @ row_ll(theta) == pytest.approx(-model.neg_ll(), rel=1e-12)
+    H = nd.Hessian(lambda th: n @ row_ll(th))(theta)
+    S = nd.Jacobian(row_ll)(theta)
+    bread = np.linalg.inv(-H)
+    by_hand = bread @ (S.T @ (n[:, None] * S)) @ bread
+    np.testing.assert_allclose(model.robust_covariance(), by_hand, rtol=1e-3)
