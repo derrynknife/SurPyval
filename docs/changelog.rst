@@ -1,11 +1,61 @@
 Changelog
 =========
 
-Unreleased
-----------
+v0.26 (unreleased)
+------------------
 
 **Added.**
 
+- ``surpyval.life_table(x, c=None, n=None, tl=None, intervals=None)``: the
+  actuarial (Cutler-Ederer) life table of right censored data, with or
+  without late entry, as a DataFrame with one row per interval ``[start,
+  end)``: the numbers entering, at risk at the start, censored and with
+  the event, the effective number at risk, the conditional probabilities
+  of the event and of surviving, and the survival, density and hazard
+  with their standard errors (Klein and Moeschberger, section 5.4, as R's
+  ``KMsurv::lifetab``). It takes arrays, a ``SurpyvalData`` or a fitted
+  non-parametric model; left and interval censored data and right
+  truncation are refused, pointing to ``Turnbull``.
+- ``surpyval.plot_coefficients``: a forest plot of one or more fitted
+  regression models, each coefficient with its Wald interval from the
+  model's ``summary()``, on the coefficient's scale or as a ratio
+  (``exp(coef)``: hazard ratios, acceleration factors, odds ratios) on a
+  log axis, with several models side by side. It returns a
+  ``CoefficientPlot`` holding the axes and the values drawn. Additive
+  models have no ratio scale, and ``on='exp'`` is refused for them.
+- ``pairwise_logrank``: the log-rank test of every pair of groups in one
+  table, with the p-values adjusted for the number of pairs (Holm by
+  default; Bonferroni, Benjamini-Hochberg or none), taking every argument
+  of ``logrank``; ``adjust_p_values`` gives the adjustment on its own.
+- ``sf_diff``: the test of two groups' survival at one time (Klein et al.,
+  2007), on the log(-log), log, linear, arcsine-square-root or logit
+  scale, with the difference and its interval.
+- ``logrank`` takes ``weighting="peto-peto"`` and
+  ``"modified-peto-peto"``, and ``t0`` to compare the groups up to a time
+  only.
+- ``likelihood_ratio_test()`` on Cox and parametric regression models:
+  the global test of all the covariates against the model without them
+  (R's "Likelihood ratio test" line of ``summary(coxph)``, and the
+  ``survreg`` chi-squared).
+- ``CoxPH.fit_tvc(..., strata=)`` and ``fit_tvc_from_df(...,
+  strata_col=)``: stratified Cox fits of start-stop data.
+- ``NonParametric.cs(x, given)``: conditional survival from a
+  non-parametric estimate, as the parametric models' ``cs``.
+- ``surpyval.AalenAdditive``: Aalen's non-parametric additive hazards
+  model, ``h(t | Z) = b_0(t) + b(t)'Z`` with each effect free to change
+  over time. The fitted ``AalenAdditiveModel`` gives the cumulative
+  effects ``B(t)`` (``cumulative_coefficients``) with pointwise Wald
+  bounds (``cumulative_coefficients_cb``), the kernel-smoothed effects
+  ``b(t)`` with a bandwidth (``smoothed_coefficients``), a unit's
+  ``sf``, ``ff``, ``Hf``, ``hf``, ``df``, ``qf``, ``cs`` and Wald
+  ``cb``, ``summary(at=)``, ``plot()``, ``concordance()``, a resampling
+  test that each effect is constant in time
+  (``constant_effects_test``), an optional ridge penalty
+  (``coef_penalty``), delayed entry (``tl``), formulas and
+  ``fit_from_df``, and saving. ``B`` and its variance agree with R's
+  ``timereg::aalen`` to rounding; the survival predictions agree with
+  lifelines' ``AalenAdditiveFitter`` wherever the estimated cumulative
+  hazard does not fall.
 - Royston-Parmar (spline baseline) regression: ``RoystonParmarPH``
   (log cumulative hazard a restricted cubic spline in log time plus
   ``beta'Z``), ``RoystonParmarPO`` (the spline on the log odds, the
@@ -15,6 +65,17 @@ Unreleased
   truncation, every bound, ``fit_from_df`` and saving work as for
   ``WeibullPH``. Checked against R's ``flexsurvspline``. The normal scale
   is refused with covariates (its shift is neither PH nor PO).
+
+**Documentation.**
+
+- Recipes for four distributions written as a ``CustomDistribution``,
+  each checked against ``scipy.stats``: the generalised gamma (with the
+  Weibull and gamma as nested cases, a likelihood-ratio choice among
+  them, and an AFT regression), the Gompertz with proportional hazards,
+  the generalised F (Kalbfleisch and Prentice's original form) and the
+  inverse Gaussian (in logs, so that it neither overflows nor loses
+  digits in its tail). See "Recipes: more distributions from their
+  cumulative hazard" in Parametric SurPyval Modelling.
 
 v0.25 (17 October 2026)
 -----------------------

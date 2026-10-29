@@ -27,6 +27,8 @@ from .accelerated_life import (
 )
 from .additive_hazards import (
     AH,
+    AalenAdditive,
+    AalenAdditiveModel,
     AdditiveHazards,
     AdditiveHazardsFitter,
     AdditiveHazardsModel,
@@ -52,6 +54,7 @@ from .frailty import (
     WeibullFrailty,
 )
 from .parametric_regression_model import ParametricRegressionModel
+from .plot_coefficients import CoefficientPlot, plot_coefficients
 from .proportional_hazards import (
     PH,
     CoxPH,
@@ -87,6 +90,9 @@ from .tvc_path import CovariatePath
 from .tvc_schedule import StepSchedule, StepValuedError
 
 __all__ = [
+    # The forest (coefficient) plot of any regression model
+    "plot_coefficients",
+    "CoefficientPlot",
     # Result classes that hold to_dict / from_dict / to_json / from_json
     "ParametricRegressionModel",
     "SemiParametricRegressionModel",
@@ -109,8 +115,11 @@ __all__ = [
     # Buckley-James semi-parametric AFT
     "BuckleyJames",
     "BuckleyJamesModel",
-    # Additive hazards — semi-parametric (Lin-Ying) and parametric
+    # Additive hazards — non-parametric (Aalen), semi-parametric
+    # (Lin-Ying) and parametric
     "AH",
+    "AalenAdditive",
+    "AalenAdditiveModel",
     "AdditiveHazards",
     "AdditiveHazardsFitter",
     "AdditiveHazardsModel",

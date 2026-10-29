@@ -54,6 +54,9 @@ _TAGGED_MODELS: dict[str, str] = {
     ),
     "FrailtyModel": ("surpyval.univariate.regression.frailty.frailty_model"),
     "CoxFrailtyModel": ("surpyval.univariate.regression.frailty.cox_frailty"),
+    "AalenAdditiveModel": (
+        "surpyval.univariate.regression.additive_hazards.aalen_additive"
+    ),
     "AdditiveHazardsModel": (
         "surpyval.univariate.regression.additive_hazards.additive_hazards"
     ),
