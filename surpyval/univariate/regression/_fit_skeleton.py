@@ -13,8 +13,8 @@ separate: its life-model parameter juggling does not fit this shape.
 import copy
 import functools
 import warnings
-from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, Callable, NamedTuple
+from collections.abc import Callable, Iterable
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import autograd.numpy as np
 import numpy.typing as npt
@@ -123,7 +123,7 @@ def per_column_map(pmap: dict, p: int) -> bool:
     ``phi_param_map`` the way coefficients were named before v0.23,
     ``beta_j`` for column ``j`` of ``p``: a custom link that names them so
     is treated, as it was, as one coefficient per column."""
-    return pmap == {"beta_{}".format(j): j for j in range(p)}
+    return pmap == {f"beta_{j}": j for j in range(p)}
 
 
 def split_log_linear(
@@ -449,15 +449,13 @@ def _named(i: int, names: "tuple[str, ...]") -> str:
     ``names``: a coefficient after them, by its number."""
     if i < len(names):
         return names[i]
-    return "coefficient {}".format(i - len(names))
+    return f"coefficient {i - len(names)}"
 
 
 def _plain(values: npt.ArrayLike) -> str:
     """Values for a message, plainly (no numpy repr): ``[1.5, 2e+04]``."""
     return "[{}]".format(
-        ", ".join(
-            "{:.4g}".format(float(v)) for v in np.ravel(np.asarray(values))
-        )
+        ", ".join(f"{float(v):.4g}" for v in np.ravel(np.asarray(values)))
     )
 
 
@@ -465,7 +463,7 @@ def _pairs(names: "tuple[str, ...]", values: npt.ArrayLike) -> str:
     """``alpha = 2, beta = 1.5``: named values for a message."""
     flat = np.ravel(np.asarray(values, dtype=float))
     return ", ".join(
-        "{} = {:.4g}".format(name, float(v)) for name, v in zip(names, flat)
+        f"{name} = {float(v):.4g}" for name, v in zip(names, flat)
     )
 
 
@@ -659,9 +657,7 @@ class Centring:
         if not self.maps_back:
             return params_c, self.center, None
         k = self.k_dist
-        names = tuple(names) or tuple(
-            "parameter {}".format(i) for i in range(k)
-        )
+        names = tuple(names) or tuple(f"parameter {i}" for i in range(k))
         reason = ""
         with np.errstate(all="ignore"):
             params_0 = np.asarray(self.to_origin(params_c), dtype=float)
