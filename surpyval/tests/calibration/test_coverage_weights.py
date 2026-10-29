@@ -10,7 +10,9 @@ DECISIONS.md, 2026-10-29):
   each kept unit has the weight 1 / (its probability). The unweighted fits
   are biased towards long lives; the weighted ones are not. Checked: the
   coverage of the robust 95% and 90% intervals of the Kaplan-Meier,
-  Nelson-Aalen and Fleming-Harrington ``sf`` at the population quartiles.
+  Nelson-Aalen and Fleming-Harrington ``sf`` at the population quartiles,
+  of the Weibull ``alpha`` and ``beta`` (``param_cb``), the Weibull ``sf``
+  at the quartiles and its median (``quantile_cb``).
 - **Weight scale.** The same samples with every weight multiplied by 0.1
   and by 10 give the same intervals (to 1e-8), so the same coverage: the
   property the classical variances lack (a "95%" Greenwood interval
@@ -65,6 +67,7 @@ def informative():
     out = {}
     names = ("KaplanMeier", "NelsonAalen", "FlemingHarrington")
     keys = [f"{nm}{a}" for nm in names for a in (95, 90)]
+    keys += ["alpha", "beta", "alpha90", "beta90", "wsf", "wsf90", "median"]
     for key in keys:
         out[key] = ([], [])
     out["scale_same"] = []
@@ -79,12 +82,32 @@ def informative():
                     b = model.cb(QUARTILES, alpha_ci=alpha_ci)
                     out[f"{nm}{a}"][0].append(b[:, 0])
                     out[f"{nm}{a}"][1].append(b[:, 1])
+            wb = sp.Weibull.fit(x, c, w=w)
+            for name in ("alpha", "beta"):
+                for a, alpha_ci in (("", 0.05), ("90", 0.10)):
+                    b = wb.param_cb(name, alpha_ci=alpha_ci)
+                    out[name + a][0].append(b[0])
+                    out[name + a][1].append(b[1])
+            for a, alpha_ci in (("", 0.05), ("90", 0.10)):
+                b = wb.cb(QUARTILES, alpha_ci=alpha_ci)
+                out["wsf" + a][0].append(b[:, 0])
+                out["wsf" + a][1].append(b[:, 1])
+            q = wb.quantile_cb(0.5)
+            out["median"][0].append(q[0])
+            out["median"][1].append(q[1])
             # The weight scale: the same intervals at w / 10 and 10 w
             km = sp.KaplanMeier.fit(x, c, w=w).cb(QUARTILES)
             same = True
             for s in (0.1, 10.0):
                 km_s = sp.KaplanMeier.fit(x, c, w=w * s).cb(QUARTILES)
+                wb_s = sp.Weibull.fit(x, c, w=w * s)
                 same &= np.allclose(km_s, km, rtol=1e-8, atol=0)
+                same &= np.allclose(
+                    wb_s.cb(QUARTILES),
+                    wb.cb(QUARTILES),
+                    rtol=1e-6,
+                    atol=0,
+                )
             out["scale_same"].append(same)
             out["unweighted_alpha"].append(sp.Weibull.fit(x, c).params[0])
     return out
@@ -102,6 +125,42 @@ def test_nonparametric_coverage(informative, name, level):
         TRUE.sf(QUARTILES),
         level / 100,
         f"weighted {name} cb(sf) {level}%",
+        slack=SLACK,
+    )
+
+
+@pytest.mark.parametrize("level", [95, 90])
+def test_weibull_coverage(informative, level):
+    suffix = "" if level == 95 else "90"
+    for k, name in enumerate(("alpha", "beta")):
+        lo, hi = informative[name + suffix]
+        check_coverage(
+            np.array(lo),
+            np.array(hi),
+            TRUE.params[k],
+            level / 100,
+            f"weighted Weibull param_cb({name!r}) {level}%",
+            slack=SLACK,
+        )
+    lo, hi = informative["wsf" + suffix]
+    check_coverage(
+        np.array(lo),
+        np.array(hi),
+        TRUE.sf(QUARTILES),
+        level / 100,
+        f"weighted Weibull cb(sf) {level}%",
+        slack=SLACK,
+    )
+
+
+def test_weibull_median_coverage(informative):
+    lo, hi = informative["median"]
+    check_coverage(
+        np.array(lo),
+        np.array(hi),
+        MEDIAN,
+        0.95,
+        "weighted Weibull quantile_cb(0.5)",
         slack=SLACK,
     )
 

@@ -856,6 +856,7 @@ def prepare_regression_fit(
     phi_init: "Callable[[npt.NDArray], npt.NDArray] | None" = None,
     kind: "str | None" = None,
     center: bool = False,
+    w: "npt.ArrayLike | float | None" = None,
 ) -> tuple[SurpyvalData, tuple]:
     """Common head of every parametric-regression ``fit``.
 
@@ -873,7 +874,7 @@ def prepare_regression_fit(
     moved to the centre, and ``centring`` (else ``None``) keeps the data as
     given for :func:`assemble_regression_model`.
     """
-    data = SurpyvalData(x, c, n, t, group_and_sort=False)
+    data = SurpyvalData(x, c, n, t, group_and_sort=False, w=w)
     # A one-dimensional Z is a single covariate (one value per row), as
     # the Cox, accelerated-life and other fitters already read it.
     Z_in = Z if hasattr(Z, "ndim") else np.asarray(Z)
@@ -1189,6 +1190,22 @@ def assemble_regression_model(
     # costs the model nothing in AIC/BIC.
     model.k = len(bounds) - len(fixed)
     model.data = data
+    if data.w is not None:
+        from surpyval.utils.weights import (
+            effective_sample_size,
+            warn_if_few_effective,
+        )
+
+        model.weighted = True
+        model.effective_n = effective_sample_size(data.n, data.w)
+        warn_if_few_effective(data.n, data.w)
+        # The search used the weights scaled to sum to the units
+        # (``likelihood_weights``); the value is reported with the weights
+        # as given, as R's ``survreg`` reports it.
+        n_arr = np.asarray(data.n, dtype=float)
+        model._neg_ll = model._neg_ll * float(
+            np.sum(n_arr * data.w) / n_arr.sum()
+        )
     return model
 
 
@@ -2305,6 +2322,7 @@ def fit_log_linear(
     ),
     phi_init: "Callable[[npt.NDArray], npt.NDArray] | None" = None,
     log_linear: bool = True,
+    w: "npt.ArrayLike | float | None" = None,
 ) -> ParametricRegressionModel:
     """The whole ``fit`` of the PH, AFT and PO families (#238, #302).
 
@@ -2332,6 +2350,7 @@ def fit_log_linear(
         phi_init,
         kind=kind if log_linear else None,
         center=center,
+        w=w,
     )
     (
         init_t,

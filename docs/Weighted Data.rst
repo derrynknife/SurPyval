@@ -3,7 +3,8 @@ Weighted Data
 
 Some data come with a number on each row that says how much that row
 *counts*: a **weight**. SurPyval takes it as ``w``, beside the counts ``n``,
-in the Kaplan-Meier, Nelson-Aalen and Fleming-Harrington estimators.
+in the Kaplan-Meier, Nelson-Aalen and Fleming-Harrington estimators, the
+parametric distributions and the parametric regressions.
 This page says what weights are, when to use ``w`` rather than ``n``, why a
 weighted fit's intervals are computed differently, and what a weighted fit
 will not do.
@@ -73,7 +74,8 @@ The estimate itself is easy: each unit's contribution is multiplied by its
 weight (to the numbers at risk and of failures, or to the likelihood).
 
 The uncertainty is not. The classical formulas -- Greenwood's for a
-Kaplan-Meier curve, Aalen's for a Nelson-Aalen one -- assume that the information in the data grows with the number of units, and
+Kaplan-Meier curve, the inverse of the information for a fitted Weibull --
+assume that the information in the data grows with the number of units, and
 with weights they would take the *total of the weights* for that number.
 Multiply every weight by 10 and they would claim ten times the information
 from the same data. The honest amount of information depends on how uneven
@@ -86,8 +88,8 @@ fit prints it, and warns when it is below 20.
 So every weighted fit uses a **robust** variance, one that is valid
 whatever the weights' scale, and there is no option of the classical one.
 The intervals are then built from it exactly as before (log(-log) bounds
-for a survival curve), so ``cb``, ``quantile_cb``, ``rmst`` and the rest
-work as usual.
+for a survival curve, Wald bounds on each parameter's scale), so ``cb``,
+``param_cb``, ``quantile_cb`` and the rest work as usual.
 
 A worked example
 ----------------
@@ -113,36 +115,43 @@ probability of being kept:
     c = (censor < t)[kept].astype(int)
     w = 1 / keep_probability[kept]
 
-    print(surv.KaplanMeier.fit(x, c).sf([5, 10, 15]))  # too long-lived
-    km = surv.KaplanMeier.fit(x, c, w=w)
-    print(km.sf([5, 10, 15]))                          # close to the truth
-    print(truth.sf([5, 10, 15]))
-    print(km)
+    print(surv.Weibull.fit(x, c).params)          # biased: too long-lived
+    model = surv.Weibull.fit(x, c, w=w)
+    print(model.params)                           # close to (10, 1.5)
+    print(model)
 
-The weighted estimate recovers the population's survival, and its bounds
-use the robust variance:
-
-.. jupyter-execute::
-
-    print(km.cb([5, 10, 15]))
-    print(km.quantile_cb(0.5))
-
-The same weights scaled by any constant give the same estimate and the
-same intervals:
+The weighted fit recovers the population's Weibull, and its bounds use the
+robust covariance:
 
 .. jupyter-execute::
 
-    scaled = surv.KaplanMeier.fit(x, c, w=10 * w)
-    print(np.allclose(scaled.cb([5, 10, 15]), km.cb([5, 10, 15])))
+    print(model.param_cb("alpha"))
+    print(model.cb([5, 10, 15]))
+    print(model.covariance())
+
+The same weights scaled by any constant give the same model and the same
+intervals:
+
+.. jupyter-execute::
+
+    scaled = surv.Weibull.fit(x, c, w=10 * w)
+    print(np.allclose(scaled.cb([5, 10, 15]), model.cb([5, 10, 15])))
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert np.allclose(scaled.cb([5, 10, 15]), km.cb([5, 10, 15]), rtol=1e-12)
-    assert np.all(np.abs(km.sf([5, 10, 15]) - truth.sf([5, 10, 15])) < 0.05)
-    _plain = surv.KaplanMeier.fit(x, c).sf([5, 10, 15])
-    assert np.all(_plain > truth.sf([5, 10, 15]))
+    assert np.allclose(scaled.cb([5, 10, 15]), model.cb([5, 10, 15]), rtol=1e-6)
+    assert abs(model.params[0] - 10) < 1 and abs(model.params[1] - 1.5) < 0.2
+    assert surv.Weibull.fit(x, c).params[0] > 11
+
+A Kaplan-Meier curve takes ``w`` the same way:
+
+.. jupyter-execute::
+
+    km = surv.KaplanMeier.fit(x, c, w=w)
+    print(km.sf([5, 10, 15]))
+    print(km.cb([5, 10, 15]))
 
 ``SurpyvalData`` holds the weights too (``SurpyvalData(x, c, n, w=w)``,
 ``SurpyvalData.from_dataframe(df, ..., w_col="weight")``), and
@@ -154,11 +163,22 @@ What a weighted fit will not do
 Some bounds and methods are wrong with weights, and refuse with a message
 saying what to use instead:
 
+- **Likelihood-ratio and parametric bootstrap bounds** (``method="lr"``,
+  ``method="bootstrap"``): the likelihood-ratio statistic of a weighted
+  likelihood is not chi-squared, and the bootstrap simulates data without
+  the sampling design. Use the Wald bounds (the default).
+- **AIC, BIC, AICc and** ``fit_best``: a weighted fit maximises a
+  *pseudo*-likelihood, which does not compare models.
 - **Simultaneous bands and** ``bootstrap_cb`` of a non-parametric estimate:
   use ``cb``.
-- **Turnbull** and the fitters that do not take ``w`` (the parametric
-  and regression fitters for now, competing risks, recurrent events,
-  degradation, mixtures, ...), which refuse weighted data.
+- **Rank-based plotting positions** (Blom, median ranks, ...): a weighted
+  model's probability plot uses the weighted Kaplan-Meier, Nelson-Aalen or
+  Fleming-Harrington positions.
+- **Methods other than maximum likelihood** (``how="MPP"``, ``"MOM"``,
+  ``"MSE"``, ``"MPS"``).
+- **Turnbull** and the fitters that do not take ``w`` (Cox for now,
+  competing risks, recurrent events, degradation, mixtures, ...), which
+  refuse weighted data.
 - **Reshaping weighted data** with ``censor_at``, ``select`` and the other
   record-based methods: index the rows, ``data[rows]``, which keeps the
   weights, or build a new ``SurpyvalData`` from the arrays.
@@ -197,13 +217,29 @@ the deaths' mean weight, :math:`\sum_{l < m_k} a_k / (r_k - l a_k)`,
 :math:`a_k = d_k / m_k`, as R's ``ctype = 2`` does. The restricted mean's
 variance is the same jackknife of the area under the curve.
 
+A parametric or regression fit maximises the pseudo-likelihood
+:math:`\sum_i n_i w_i \ell_i(\theta)`. With :math:`H` the Hessian of its
+negative and :math:`s_i` the score of one unit of row :math:`i`, the robust
+covariance is the sandwich (Huber, 1967; Binder, 1983)
+
+.. math::
+
+    V = H^{-1} \Big( \sum_i n_i w_i^2 s_i s_i^\top \Big) H^{-1},
+
+as R's ``survreg(..., weights = w, robust = TRUE)`` computes it, and every
+Wald bound follows from it by the delta method. ``covariance()`` (and a
+parametric model's ``hess_inv``) hold it.
+
 Translating from lifelines and R
 --------------------------------
 
 - lifelines ``KaplanMeierFitter().fit(T, E, weights=w)`` is
-  ``KaplanMeier.fit(T, 1 - E, w=w)``.
+  ``KaplanMeier.fit(T, 1 - E, w=w)``; ``WeibullFitter().fit(T, E,
+  weights=w)`` is ``Weibull.fit(T, 1 - E, w=w)``.
 - R ``survfit(Surv(T, E) ~ 1, weights = w, robust = TRUE)`` is
-  ``KaplanMeier.fit(T, 1 - E, w=w)``.
+  ``KaplanMeier.fit(T, 1 - E, w=w)``; ``survreg(Surv(T, E) ~ z, weights =
+  w, robust = TRUE)`` is ``WeibullAFT.fit(T, z, c=1 - E, w=w)`` (on
+  SurPyval's parameterisation).
 
 The reference tests (``surpyval/tests/reference/test_weights.py``) compare
 these with R ``survival`` and with lifelines, and the

@@ -557,6 +557,7 @@ class ParameterSubstitutionFitter(
         fixed: dict[str, float] | None = None,
         tl: npt.ArrayLike | None = None,
         tr: npt.ArrayLike | None = None,
+        w: npt.ArrayLike | float | None = None,
     ) -> ParametricRegressionModel:
         """
         Fit the accelerated life model by maximum likelihood.
@@ -603,6 +604,15 @@ class ParameterSubstitutionFitter(
             Parameters to hold fixed, by name (a distribution parameter or
             a life-model parameter such as ``"n"``).
 
+        w : array_like or float, optional
+            Sampling, propensity or censoring weights, one positive number
+            per row (beside its count ``n``). The fit maximises the weighted
+            (pseudo) likelihood and ``covariance()``, behind every Wald
+            bound, is the robust (sandwich) covariance, as R's
+            ``survreg(..., weights = w, robust = TRUE)``; the
+            likelihood-ratio and bootstrap bounds and the information
+            criteria refuse (see :doc:`/Weighted Data`).
+
         Returns
         -------
 
@@ -633,7 +643,7 @@ class ParameterSubstitutionFitter(
         # an array: the documented ragged form ``[10, [11, 13], ...]`` is
         # not a rectangular array, and ``np.asarray(x)`` on it raised a raw
         # numpy error.
-        data = SurpyvalData(x=x, c=c, n=n, t=t, group_and_sort=False)
+        data = SurpyvalData(x=x, c=c, n=n, t=t, group_and_sort=False, w=w)
         # A 1-D stress vector (one stress variable) becomes a single column
         # so the per-stress masking in the initialiser works (#261). As
         # floats, so a ``None`` is a missing value, dropped with the rest.

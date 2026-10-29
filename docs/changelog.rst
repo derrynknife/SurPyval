@@ -7,19 +7,26 @@ v0.26 (unreleased)
 **Sampling, propensity and censoring weights.** A new argument, ``w``,
 beside the counts ``n``: how many units of the population each unit stands
 for (a sampling weight), or how much it is weighted to undo a bias (an
-inverse probability of treatment or censoring weight). ``KaplanMeier``,
-``NelsonAalen`` and ``FlemingHarrington`` take it, as do
-``SurpyvalData(..., w=...)``, ``from_dataframe(..., w_col=...)`` and
-``fit_from_df(..., w_col=...)``. A weighted fit gives the weighted
-estimate with a robust (infinitesimal jackknife) variance, the only one it
-offers, as R's ``survfit(..., weights = w, robust = TRUE)`` (checked
-against it); multiplying the weights by a constant changes nothing.
-``band`` and ``bootstrap_cb`` refuse, and so do ``Turnbull`` and the
-fitters without ``w``. Printouts give the effective sample size, and a fit
-warns when it is below 20. Weighted models and data save as schema 3,
-which older versions refuse. See :doc:`Weighted Data`. Nothing changes
-without ``w``; a decimal ``n`` is still refused, and the message now
-points to ``w``.
+inverse probability of treatment or censoring weight). It is taken by
+``KaplanMeier``, ``NelsonAalen``, ``FlemingHarrington``, the parametric
+distributions (maximum likelihood), the parametric regressions (PH, AFT,
+PO, additive hazards, accelerated life), by
+``SurpyvalData(..., w=...)`` and ``from_dataframe(..., w_col=...)``, and by
+``fit_from_df(..., w_col=...)``. A weighted fit gives the
+weighted estimate with a robust variance, the only one it offers: the
+infinitesimal jackknife for the non-parametric estimates (R's
+``survfit(..., robust = TRUE)``), the sandwich for the parametric and
+regression fits (``survreg(..., robust = TRUE)``), both checked against
+R. Multiplying the weights by a
+constant changes nothing. The bounds weights make invalid refuse, saying
+what to use instead: likelihood-ratio and bootstrap bounds, ``band`` and
+``bootstrap_cb``, rank-based plotting positions, methods other than MLE,
+``aic``, ``bic``, ``aic_c`` and ``fit_best``. Printouts give the effective
+sample size, and a fit warns when it is below 20. Weighted models and data
+save as schema 3, which older versions refuse. See :doc:`Weighted Data`.
+Turnbull, Cox, competing risks and the log-rank tests do not take
+weights yet. Nothing changes without ``w``; a decimal
+``n`` is still refused, and the message now points to ``w``.
 
 **Added.**
 

@@ -75,10 +75,67 @@ def _np(fitter):
     )
 
 
+def _parametric(dist):
+    return WeightedCase(
+        dist,
+        lambda x, c, n, w, Z, tl: getattr(sp, dist).fit(x, c, n, w=w, tl=tl),
+        lambda m: np.asarray(m.params, dtype=float),
+        offered={
+            "cb(sf)": lambda m: m.cb(QUERY, on="sf"),
+            "cb(Hf)": lambda m: m.cb(QUERY, on="Hf"),
+            "param_cb": lambda m: m.param_cb(m.dist.parameter_names[0]),
+            "quantile_cb": lambda m: m.quantile_cb(0.3),
+        },
+        refused={
+            "cb(lr)": lambda m: m.cb(QUERY, method="lr"),
+            "cb(bootstrap)": lambda m: m.cb(
+                QUERY, method="bootstrap", random_state=1
+            ),
+            "param_cb(lr)": lambda m: m.param_cb(
+                m.dist.parameter_names[0], method="lr"
+            ),
+            "plot(Blom)": lambda m: m.get_plot_data(heuristic="Blom"),
+        },
+    )
+
+
+def _regression(fitter):
+    return WeightedCase(
+        fitter,
+        lambda x, c, n, w, Z, tl: getattr(sp, fitter).fit(
+            x, Z, c=c, n=n, w=w, tl=tl
+        ),
+        lambda m: np.asarray(m.params, dtype=float),
+        offered={
+            "cb(sf)": lambda m: m.cb(QUERY, np.zeros((3, 2)), on="sf"),
+            "param_cb": lambda m: m.param_cb(m.parameter_names[-1]),
+        },
+        refused={
+            "param_cb(lr)": lambda m: m.param_cb(
+                m.parameter_names[-1], method="lr"
+            ),
+            "cb(bootstrap)": lambda m: m.cb(
+                QUERY, np.zeros((3, 2)), method="bootstrap", random_state=1
+            ),
+        },
+        covariates=True,
+        rtol=5e-3,
+    )
+
+
 WEIGHTED = [
     _np("KaplanMeier"),
     _np("NelsonAalen"),
     _np("FlemingHarrington"),
+    _parametric("Weibull"),
+    _parametric("LogNormal"),
+    _parametric("Exponential"),
+    _parametric("Gamma"),
+    _parametric("LogLogistic"),
+    _regression("WeibullPH"),
+    _regression("WeibullAFT"),
+    _regression("LogNormalAFT"),
+    _regression("WeibullPO"),
 ]
 IDS = [case.name for case in WEIGHTED]
 
@@ -224,8 +281,10 @@ def test_refused_by_the_fitters_that_take_no_w(data):
     for fitter in (sp.Turnbull, sp.MixtureModel(sp.Weibull, 2)):
         with pytest.raises(ValueError, match="weights|w"):
             fitter.fit(weighted)
-    with pytest.raises(ValueError, match="takes no weights"):
-        sp.Weibull.fit(weighted)
+    with pytest.raises(WeightedRefusal, match="fit_best"):
+        sp.fit_best(weighted)
+    with pytest.raises(WeightedRefusal, match="how='MPP'"):
+        sp.Weibull.fit(data["x"], data["c"], w=data["w"], how="MPP")
 
 
 #: Fitters that take ``w`` only to refuse it (a later stage), with why.

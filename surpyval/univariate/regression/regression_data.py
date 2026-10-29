@@ -14,7 +14,8 @@ from __future__ import annotations
 import inspect
 import re
 import warnings
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
@@ -51,7 +52,7 @@ def _aliased_columns(model: Any) -> npt.NDArray:
 
 
 def check_covariate_width(
-    Z: Any, names: "list[str]", what: str = "covariate"
+    Z: Any, names: list[str], what: str = "covariate"
 ) -> None:
     """Refuse prepared covariates ``Z`` whose number of columns is not the
     model's (#657): ``names`` are the model's covariates, in order. A
@@ -244,7 +245,7 @@ class LinearPredictorMixin:
             return np.zeros(np.asarray(self.beta, dtype=float).shape[0])
         return np.asarray(self.center, dtype=float)
 
-    def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
+    def _prepare_Z(self, Z: npt.ArrayLike | pd.DataFrame) -> npt.NDArray:
         """
         Convert ``Z`` to a numeric design matrix: a DataFrame is read by
         the covariate names (or expanded by the formula) recorded by
@@ -263,7 +264,7 @@ class LinearPredictorMixin:
         of the multiplier of the baseline."""
         return (Z - self._center()) @ self._coef()
 
-    def _log_phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
+    def _log_phi(self, Z: npt.ArrayLike | pd.DataFrame) -> npt.NDArray:
         """``beta'(Z - center)`` for covariates ``Z`` as the predictions
         take them (:meth:`_prepare_Z`; a scalar for a one-covariate
         model), the log of the model's ``phi``."""
@@ -318,14 +319,14 @@ def check_finite_event_times(x: npt.ArrayLike, c: npt.ArrayLike) -> None:
 
 
 def semi_parametric_inputs(
-    x: "npt.ArrayLike | None",
-    Z: "npt.ArrayLike | None",
-    c: "npt.ArrayLike | None",
-    n: "npt.ArrayLike | None",
-    tl: "npt.ArrayLike | None" = None,
+    x: npt.ArrayLike | None,
+    Z: npt.ArrayLike | None,
+    c: npt.ArrayLike | None,
+    n: npt.ArrayLike | None,
+    tl: npt.ArrayLike | None = None,
     *,
-    censoring: "str | None",
-    truncation: "str | None" = None,
+    censoring: str | None,
+    truncation: str | None = None,
     rows: tuple = (),
 ) -> tuple:
     """The input checks the semi-parametric fitters share (Cox, the
@@ -483,7 +484,7 @@ def design_matrix_from_df(
 
 
 def prepare_Z(
-    Z: "npt.ArrayLike | pd.DataFrame",
+    Z: npt.ArrayLike | pd.DataFrame,
     feature_names: list[str] | None = None,
     model_spec: Any = None,
 ) -> npt.NDArray:
@@ -529,7 +530,7 @@ def prepare_Z(
     if feature_names is not None:
         unknown = [c for c in feature_names if c not in Z.columns]
         if len(unknown) > 0:
-            raise ValueError("{} not in dataframe columns".format(unknown))
+            raise ValueError(f"{unknown} not in dataframe columns")
         return Z[feature_names].values.astype(float)
 
     raise ValueError(
@@ -539,9 +540,7 @@ def prepare_Z(
     )
 
 
-def named_row(
-    Z: Any, feature_names: "list[str] | None", model_spec: Any
-) -> Any:
+def named_row(Z: Any, feature_names: list[str] | None, model_spec: Any) -> Any:
     """``Z`` as a DataFrame where it names its covariates (#921): a dict
     ``{name: value}`` (or ``{name: values}``) and a pandas Series labelled
     by covariate names are one item's (or several items') covariates, read
@@ -600,7 +599,7 @@ def named_row(
     return Z
 
 
-def named_covariates(Z: Any, feature_names: "list[str] | None") -> Any:
+def named_covariates(Z: Any, feature_names: list[str] | None) -> Any:
     """``Z`` for a model that reads covariate rows itself (Fine-Gray, the
     proportional intensity models): a DataFrame, Series or dict read by
     the model's ``feature_names`` (#921), as :func:`prepare_Z` reads them;
@@ -1162,7 +1161,7 @@ class DataFrameRegressionMixin:
     """
 
     # Provided by the host fitter class this mixin is combined with.
-    fit: Callable[..., "ParametricRegressionModel"]
+    fit: Callable[..., ParametricRegressionModel]
 
     @column_arguments("x", "c", "n", "xl", "xr", "tl", "tr")
     @takes_unit
@@ -1181,7 +1180,8 @@ class DataFrameRegressionMixin:
         init: npt.ArrayLike | None = None,
         fixed: dict[str, float] | None = None,
         center: bool = False,
-    ) -> "ParametricRegressionModel":
+        w_col: str | None = None,
+    ) -> ParametricRegressionModel:
         """
         Fit the regression model using a pandas DataFrame as the input.
 
@@ -1225,6 +1225,9 @@ class DataFrameRegressionMixin:
             Report the baseline at the covariate means (stored as
             ``model.center``) instead of at ``Z = 0``; see ``fit``. Not
             available for an accelerated life model.
+        w_col : str, optional
+            The column name of the sampling, propensity or censoring
+            weights, passed to ``fit`` as ``w``.
 
         Returns
         -------
@@ -1294,6 +1297,9 @@ class DataFrameRegressionMixin:
                     "not a linear predictor with an origin to move."
                 )
             extra["center"] = True
+        if w_col is not None:
+            check_columns(df, w_col=w_col)
+            extra["w"] = df[w_col].values
         with covariate_columns(feature_names, Z, model_spec):
             model = self.fit(
                 x, Z, c=c, n=n, t=t, init=init, fixed=fixed, **extra

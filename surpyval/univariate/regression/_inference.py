@@ -159,6 +159,18 @@ class InferenceMixin:
                 "data; from_params models carry no likelihood."
             )
 
+    def _refuse_weighted_method(self, method: str) -> None:
+        """Refuse the likelihood-ratio and bootstrap bounds of a fit with
+        weights ``w``, which weights make invalid."""
+        if not getattr(self, "weighted", False):
+            return
+        from surpyval.utils.weights import refuse_bootstrap, refuse_lr
+
+        if method == "lr":
+            raise refuse_lr()
+        if method == "bootstrap":
+            raise refuse_bootstrap()
+
     def covariance(self) -> npt.NDArray:
         """
         Approximate covariance matrix of the fitted parameters, ordered to
@@ -263,8 +275,46 @@ class InferenceMixin:
             warn_no_covariance()
             return np.full((n, n), np.nan)
         cov[np.ix_(free, free)] = cov_free
+        data = getattr(self, "data", None)
+        if getattr(data, "w", None) is not None:
+            cov = self._robust_covariance(p_hat, center, free, cov)
         self._covariance_cache = (point, cov.copy())
         return cov
+
+    def _robust_covariance(
+        self,
+        p_hat: npt.NDArray,
+        center: npt.NDArray | None,
+        free: list,
+        cov: npt.NDArray,
+    ) -> npt.NDArray:
+        """The robust (sandwich) covariance of a fit with weights ``w``:
+        ``cov`` (the inverse of the weighted information) on either side
+        of the meat ``sum n w^2 s s'`` of the rows' scores in the free
+        parameters (``surpyval.utils.weights``)."""
+        from surpyval.utils.weights import row_scores, sandwich
+
+        data = self.data
+        if center is not None and np.any(center):
+            from ._fit_skeleton import centred_copy
+
+            data = centred_copy(data, center)
+        model = self.model
+        p_hat = np.asarray(p_hat, dtype=float)
+
+        def loglik(d: Any, th: Any) -> Any:
+            full = [p_hat[i] for i in range(len(p_hat))]
+            for k, i in enumerate(free):
+                full[i] = th[k]
+            return -model.neg_ll(d, *full)
+
+        scores = row_scores(loglik, data, p_hat[free])
+        bread = cov[np.ix_(free, free)]
+        out = np.zeros_like(cov)
+        weights = data.likelihood_weights
+        assert weights is not None
+        out[np.ix_(free, free)] = sandwich(bread, scores, data.n, weights)
+        return out
 
     def _covariance_point(
         self, p_hat: npt.ArrayLike, center: npt.ArrayLike | None
@@ -500,6 +550,7 @@ class InferenceMixin:
         from ._likelihood_ratio import param_cb_lr
 
         method = bound_method(method)
+        self._refuse_weighted_method(method)
         lr = method == "lr"
         self._check_inference()
         names = self.parameter_names
@@ -653,6 +704,7 @@ class InferenceMixin:
         from ._likelihood_ratio import cb_lr
 
         method = bound_method(method)
+        self._refuse_weighted_method(method)
         lr = method == "lr"
         self._check_inference()
         check_option("on", on, CB_ON)
@@ -800,6 +852,7 @@ class InferenceMixin:
         from ._bootstrap import bound_method
 
         method = bound_method(method)
+        self._refuse_weighted_method(method)
         self._check_inference()
         check_option("bound", bound, BOUNDS)
         probs = np.atleast_1d(np.asarray(p, dtype=float)).reshape(-1)
