@@ -131,6 +131,22 @@ Pre-built instances: ``ExponentialAH``, ``NormalAH``, ``WeibullAH``,
     :members: fit, fit_from_df, fit_tvc, fit_tvc_from_df, fit_tvc_timeline, fit_tvc_timeline_from_df, Hf, hf, sf, ff, df
 
 
+Spline baseline (Royston-Parmar)
+--------------------------------
+
+The PH and PO families on a restricted cubic spline baseline in log time,
+in place of a named distribution: :math:`\log H(t \mid Z) = s(\log t;
+\gamma) + \beta' Z` on the hazard scale. ``df=1`` on the hazard scale is
+the Weibull PH model. Worked examples are in
+:doc:`../Regression Modelling with SurPyval`.
+
+Pre-built instances, each with three degrees of freedom: ``RoystonParmarPH``
+(proportional hazards) and ``RoystonParmarPO`` (proportional odds).
+
+.. autoclass:: surpyval.univariate.regression.royston_parmar_regression.RoystonParmarRegression
+    :members: fit, fit_from_df
+
+
 Accelerated Life (AL)
 ----------------------
 

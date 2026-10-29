@@ -546,6 +546,26 @@ parameters in rows of their own, above the coefficients, and takes
     assert np.allclose(model.summary()['se(coef)'], se)
     assert np.allclose(model.summary()['p'], model.p_values)
 
+The table tests each covariate on its own. ``likelihood_ratio_test()`` asks whether the covariates,
+taken together, explain anything: twice the gain in log-likelihood over the model with no
+covariates, compared with a chi-squared distribution with one degree of freedom per coefficient
+(the "Likelihood ratio test" line of R's ``summary(coxph)``). The parametric proportional hazards,
+AFT, proportional odds and additive hazards models have it too, against their baseline
+distribution fitted alone (the chi-squared of R's ``survreg``):
+
+.. jupyter-execute::
+
+    model.likelihood_ratio_test()
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _lrt = model.likelihood_ratio_test()
+    assert _lrt['df'] == len(model.beta)
+    assert np.isclose(_lrt['statistic'],
+                      2 * (_lrt['log_likelihood'] - _lrt['log_likelihood_null']))
+
 .. jupyter-execute::
 
     Z_mean = Z.mean().values
@@ -1242,6 +1262,9 @@ they are not available on a stratified model; the coefficients and their
 model-based ``p``-values are. A stratified model can also not be serialised.
 Along a covariate path, ``sf_tvc``, ``Hf_tvc`` and ``predict_tvc`` take the
 same ``stratum`` argument.
+Start-stop (time-varying covariate) data stratify the same way:
+``CoxPH.fit_tvc(..., strata=...)`` takes a label per row, and
+``CoxPH.fit_tvc_from_df(..., strata_col=...)`` a column.
 
 
 Semi-Parametric — Buckley-James (AFT)
@@ -1865,20 +1888,20 @@ is the Weibull proportional hazards model. The fits agree with R's
     rossi = load_rossi_static()
     rossi['censored'] = 1 - rossi['arrest']
     rp_fits = {
-        df: RoystonParmarRegression(df=df).fit_from_df(
+        k: RoystonParmarRegression(df=k).fit_from_df(
             rossi, x_col='week', c_col='censored',
             Z_cols=['fin', 'age', 'prio'])
-        for df in (1, 2, 3)
+        for k in (1, 2, 3)
     }
-    for df, m in rp_fits.items():
-        print(df, 'df: AIC', round(m.aic(), 2),
+    for k, m in rp_fits.items():
+        print(k, 'df: AIC', round(m.aic(), 2),
               ' hazard ratios', np.exp(m.params[-3:]).round(3))
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    _aic = {df: m.aic() for df, m in rp_fits.items()}
+    _aic = {k: m.aic() for k, m in rp_fits.items()}
     assert min(_aic, key=_aic.get) == 1, _aic
 
 Here the extra knots do not earn their place: the Weibull (``df=1``) has

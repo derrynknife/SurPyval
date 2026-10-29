@@ -103,9 +103,12 @@ the Weibull quantile at 0.1:
     b10 = alpha_new * (-np.log(0.9)) ** (1 / beta_draws)
     np.percentile(b10, [5, 50, 95])   # a 90% credible interval and median
 
-With PyMC 6.3 this gives a median B10 of about 5,900 hours, with a 90%
-credible interval of about 3,300 to 11,600 hours: wide, as six records of
-a new design should leave it, with the shape borrowed from the old fleet.
+In one run with PyMC 6.3 this gave a median B10 of about 5,900 hours,
+with a 90% credible interval of about 3,300 to 11,600 hours: wide, as six
+records of a new design should leave it, with the shape borrowed from the
+old fleet. (These numbers are illustrative: PyMC is not installed when
+the documentation is built, so the code on this page is not run, and
+another sampler version or seed gives slightly different draws.)
 
 To use the posterior as a SurPyval model, turn the trace back into one with
 :func:`~surpyval.pymc.to_surpyval`, naming the variable that holds each
