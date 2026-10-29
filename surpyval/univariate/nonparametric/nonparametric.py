@@ -156,6 +156,13 @@ class NonParametric(
     # The printout's "Data" line of a model restored without its data
     # (#508).
     _data_summary: str | None = None
+    #: Whether the estimate was fitted with weights ``w``: its variance
+    #: (``greenwood``) is then the robust (infinitesimal jackknife) one,
+    #: and ``band`` and ``bootstrap_cb`` refuse.
+    weighted: bool = False
+    #: The effective sample size of the weights, ``(sum n w)^2 / sum n
+    #: w^2``, of a weighted fit; None otherwise.
+    effective_n: float | None = None
 
     def __repr__(self) -> str:
         out = (
@@ -172,6 +179,11 @@ class NonParametric(
         data_line = self._data_repr()
         if data_line:
             out += "\nData             : " + data_line
+        if self.weighted:
+            out += (
+                "\nWeights          : effective sample size "
+                f"{self.effective_n:.4g}; robust variance"
+            )
 
         return out
 
@@ -1401,6 +1413,8 @@ class NonParametric(
                 + "with 'fit_from_ecdf' since the at risk and death "
                 + "counts are unknown."
             )
+        if self.weighted:
+            return self._weighted_rmst_variance(tau)
         # Area under the survival curve from each observation to tau
         xs = self.x.astype(float)
         upper_t = np.minimum(np.hstack([xs[1:], [np.inf]]), tau)
@@ -1413,6 +1427,28 @@ class NonParametric(
         with np.errstate(all="ignore"):
             terms = np.where(A > 0, A**2 * v, 0.0)
         return float(np.sum(terms))
+
+    def _weighted_rmst_variance(self, tau: float) -> float:
+        """The robust variance of the restricted mean of a weighted fit,
+        from each unit's influence on it (``_weighted``); it needs the
+        data the model was fitted to."""
+        from surpyval.univariate.nonparametric._weighted import (
+            WeightedLadder,
+        )
+
+        data = getattr(self, "data", None) or {}
+        if data.get("w") is None:
+            raise ValueError(
+                "The robust variance of the restricted mean of a weighted "
+                "fit needs the data it was fitted to, which this restored "
+                "model does not hold: save it with to_dict(with_data=True), "
+                "or refit it."
+            )
+        ladder = WeightedLadder(
+            data["x"], data["c"], data["n"], data["t"], data["w"]
+        )
+        R = np.exp(np.cumsum(ladder.log_sf_increments(self.model)))
+        return ladder.area_variance(self.model, R, tau)
 
     def rmst(self, tau: float | None = None, alpha_ci: float = 0.05) -> dict:
         r"""
@@ -1474,6 +1510,65 @@ class NonParametric(
             "upper": mu + z * se,
             "tau": float(tau),
         }
+
+    def cs(
+        self, x: npt.ArrayLike, given: npt.ArrayLike, interp: str = "step"
+    ) -> npt.NDArray:
+        r"""
+        The conditional survival: the estimated probability that a unit
+        that has survived to ``given`` survives a further ``x``,
+
+        .. math::
+            \hat S(x \mid given) = \frac{\hat S(x + given)}{\hat S(given)},
+
+        as the parametric models' ``cs``. It is the estimate read from the
+        units still at risk after ``given``: for the Kaplan-Meier, the
+        product of the factors :math:`1 - d_i / r_i` over the failures in
+        :math:`(given, given + x]`.
+
+        Parameters
+        ----------
+        x : array like or scalar
+            The further durations.
+        given : array like or scalar
+            The age (or ages) already survived; broadcast against ``x``.
+        interp : ('step', 'linear', 'cubic'), optional
+            As for :meth:`sf`. Defaults to 'step'.
+
+        Returns
+        -------
+        cs : scalar or numpy array
+            The conditional survival, shaped as ``x`` and ``given``
+            broadcast together: ``nan`` where the estimate at ``given`` is
+            0 (no unit is known to survive that long), and where
+            ``given + x`` is past the data (as :meth:`sf` is there).
+
+        Examples
+        --------
+        >>> from surpyval import KaplanMeier
+        >>> model = KaplanMeier.fit([1, 2, 3, 4, 5, 6, 7, 8])
+        >>> model.cs([0, 1, 2], 4)
+        array([1.  , 0.75, 0.5 ])
+
+        The median remaining life of a unit aged 4, the further time by
+        which half the units still running at 4 have failed:
+
+        >>> float(model.qf(1 - 0.5 * model.sf(4))) - 4
+        2.0
+        """
+        _check_interp(interp)
+        x_arr = np.asarray(x, dtype=float)
+        g_arr = np.asarray(given, dtype=float)
+        x_b, g_b = np.broadcast_arrays(x_arr, g_arr)
+        scalar = x_b.ndim == 0
+        flat_x = np.atleast_1d(x_b).ravel()
+        flat_g = np.atleast_1d(g_b).ravel()
+        num = np.asarray(self.sf(flat_x + flat_g, interp=interp), dtype=float)
+        den = np.asarray(self.sf(flat_g, interp=interp), dtype=float)
+        with np.errstate(all="ignore"):
+            out = np.where(den > 0, num / den, np.nan)
+        out = out.reshape(np.shape(x_b))
+        return out[()] if scalar else out
 
     @keeps_query_shape
     def mrl(self, x: npt.ArrayLike, tau: float | None = None) -> npt.NDArray:
@@ -2004,7 +2099,14 @@ class NonParametric(
                 data_dict[ch] = (
                     None if value is None else np.asarray(value).tolist()
                 )
+            if self.data.get("w") is not None:
+                data_dict["w"] = np.asarray(self.data["w"]).tolist()
             out["data"] = data_dict
+        if self.weighted:
+            # Schema 3: a reader without weights would take the robust
+            # variance for Greenwood's and offer the bands.
+            out["weighted"] = True
+            out["effective_n"] = self.effective_n
         # The printout's "Data" line (#508), so a model restored without
         # its data prints the same.
         if self._data_repr():
@@ -2061,7 +2163,7 @@ class NonParametric(
         if "data" in model_dict or "estimator" in model_dict:
             data: dict[str, Any] = {}
             raw = model_dict.get("data", {})
-            for ch in ["x", "c", "n", "t"]:
+            for ch in ["x", "c", "n", "t", "w"]:
                 value = raw.get(ch, None)
                 if value is not None:
                     data[ch] = np.asarray(value)
@@ -2081,6 +2183,9 @@ class NonParametric(
                 )
             out._band_n = float(band_n)
         out._data_summary = model_dict.get("data_summary")
+        if model_dict.get("weighted") is True:
+            out.weighted = True
+            out.effective_n = model_dict.get("effective_n")
 
         support = support_from_dict(model_dict)
         if support is not None:

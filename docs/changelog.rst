@@ -4,8 +4,140 @@ Changelog
 v0.26 (unreleased)
 ------------------
 
+**Sampling, propensity and censoring weights.** A new argument, ``w``,
+beside the counts ``n``: how many units of the population each unit stands
+for (a sampling weight), or how much it is weighted to undo a bias (an
+inverse probability of treatment or censoring weight). It is taken by
+``KaplanMeier``, ``NelsonAalen``, ``FlemingHarrington``, the parametric
+distributions (maximum likelihood), the parametric regressions (PH, AFT,
+PO, additive hazards, accelerated life) and ``CoxPH``, by
+``SurpyvalData(..., w=...)`` and ``from_dataframe(..., w_col=...)``, and by
+``fit_from_df(..., w_col=...)`` (not yet Cox's). A weighted fit gives the
+weighted estimate with a robust variance, the only one it offers: the
+infinitesimal jackknife for the non-parametric estimates (R's
+``survfit(..., robust = TRUE)``), the sandwich for the parametric and
+regression fits (``survreg(..., robust = TRUE)``) and the Lin-Wei sandwich
+for Cox (``coxph(..., robust = TRUE)``, with ``robust_covariance(cluster)``
+for clusters), all checked against R. Multiplying the weights by a
+constant changes nothing. The bounds weights make invalid refuse, saying
+what to use instead: likelihood-ratio and bootstrap bounds, ``band`` and
+``bootstrap_cb``, rank-based plotting positions, methods other than MLE,
+``aic``, ``bic``, ``aic_c`` and ``fit_best``. Printouts give the effective
+sample size, and a fit warns when it is below 20. Weighted models and data
+save as schema 3, which older versions refuse. See :doc:`Weighted Data`.
+Turnbull, competing risks, the log-rank tests and the Cox baseline's
+bounds do not take weights yet. Nothing changes without ``w``; a decimal
+``n`` is still refused, and the message now points to ``w``.
+
 **Added.**
 
+- ``surpyval.life_table(x, c=None, n=None, tl=None, intervals=None)``: the
+  actuarial (Cutler-Ederer) life table of right censored data, with or
+  without late entry, as a DataFrame with one row per interval ``[start,
+  end)``: the numbers entering, at risk at the start, censored and with
+  the event, the effective number at risk, the conditional probabilities
+  of the event and of surviving, and the survival, density and hazard
+  with their standard errors (Klein and Moeschberger, section 5.4, as R's
+  ``KMsurv::lifetab``). It takes arrays, a ``SurpyvalData`` or a fitted
+  non-parametric model; left and interval censored data and right
+  truncation are refused, pointing to ``Turnbull``.
+- ``surpyval.plot_coefficients``: a forest plot of one or more fitted
+  regression models, each coefficient with its Wald interval from the
+  model's ``summary()``, on the coefficient's scale or as a ratio
+  (``exp(coef)``: hazard ratios, acceleration factors, odds ratios) on a
+  log axis, with several models side by side. It returns a
+  ``CoefficientPlot`` holding the axes and the values drawn. Additive
+  models have no ratio scale, and ``on='exp'`` is refused for them.
+- ``pairwise_logrank``: the log-rank test of every pair of groups in one
+  table, with the p-values adjusted for the number of pairs (Holm by
+  default; Bonferroni, Benjamini-Hochberg or none), taking every argument
+  of ``logrank``; ``adjust_p_values`` gives the adjustment on its own.
+- ``sf_diff``: the test of two groups' survival at one time (Klein et al.,
+  2007), on the log(-log), log, linear, arcsine-square-root or logit
+  scale, with the difference and its interval.
+- ``logrank`` takes ``weighting="peto-peto"`` and
+  ``"modified-peto-peto"``, and ``t0`` to compare the groups up to a time
+  only.
+- ``likelihood_ratio_test()`` on Cox and parametric regression models:
+  the global test of all the covariates against the model without them
+  (R's "Likelihood ratio test" line of ``summary(coxph)``, and the
+  ``survreg`` chi-squared).
+- ``CoxPH.fit_tvc(..., strata=)`` and ``fit_tvc_from_df(...,
+  strata_col=)``: stratified Cox fits of start-stop data.
+- ``NonParametric.cs(x, given)``: conditional survival from a
+  non-parametric estimate, as the parametric models' ``cs``.
+- ``surpyval.AalenAdditive``: Aalen's non-parametric additive hazards
+  model, ``h(t | Z) = b_0(t) + b(t)'Z`` with each effect free to change
+  over time. The fitted ``AalenAdditiveModel`` gives the cumulative
+  effects ``B(t)`` (``cumulative_coefficients``) with pointwise Wald
+  bounds (``cumulative_coefficients_cb``), the kernel-smoothed effects
+  ``b(t)`` with a bandwidth (``smoothed_coefficients``), a unit's
+  ``sf``, ``ff``, ``Hf``, ``hf``, ``df``, ``qf``, ``cs`` and Wald
+  ``cb``, ``summary(at=)``, ``plot()``, ``concordance()``, a resampling
+  test that each effect is constant in time
+  (``constant_effects_test``), an optional ridge penalty
+  (``coef_penalty``), delayed entry (``tl``), formulas and
+  ``fit_from_df``, and saving. ``B`` and its variance agree with R's
+  ``timereg::aalen`` to rounding; the survival predictions agree with
+  lifelines' ``AalenAdditiveFitter`` wherever the estimated cumulative
+  hazard does not fall.
+- Royston-Parmar (spline baseline) regression: ``RoystonParmarPH``
+  (log cumulative hazard a restricted cubic spline in log time plus
+  ``beta'Z``), ``RoystonParmarPO`` (the spline on the log odds, the
+  survival odds multiplied by ``exp(beta'Z)``) and
+  ``RoystonParmarRegression(df, scale, knots)``. They are the ``PH`` and
+  ``PO`` families on a spline baseline, so every censoring kind,
+  truncation, every bound, ``fit_from_df`` and saving work as for
+  ``WeibullPH``. Checked against R's ``flexsurvspline``. The normal scale
+  is refused with covariates (its shift is neither PH nor PO).
+- Robust (sandwich) standard errors for the parametric regressions
+  (proportional hazards, AFT, proportional odds, additive hazards and
+  accelerated life): ``robust_covariance(cluster=None)`` and
+  ``robust_standard_errors(cluster=None)``, and
+  ``summary(robust=True, cluster=...)``, as the Cox model already had.
+  With ``cluster`` the scores are summed by cluster, so correlated rows
+  within a cluster are allowed; counts are frequency weights, as in the
+  fit. Checked against lifelines' ``robust=True`` and R's ``survreg``
+  with ``cluster()`` on the Rossi data. A
+  ``fit_tvc`` model refuses them.
+- ``surpyval.pymc``: helpers for survival analysis in PyMC, for people
+  who already use it. ``censored_likelihood(dist, data, **params)`` adds
+  SurPyval's exact likelihood of censored and truncated data (failures,
+  right, left and interval censoring, left and right truncation, counts)
+  to the open PyMC model, for the Weibull, Exponential, LogNormal, Gamma,
+  LogLogistic, Normal, Gumbel, Logistic and Rayleigh distributions, with
+  parameters that may be PyMC variables, expressions (per row, for
+  covariates) or numbers; ``log_likelihood`` gives the same term as a
+  pytensor expression. ``prior_from_model`` turns a fitted model's
+  estimates and covariance into a joint prior, with a ``weight``, and
+  ``prior_from_spec`` builds priors from a plain description. PyMC is not
+  a dependency, not even an optional one: ``import surpyval`` does not
+  import it, and the helpers ask you to install it when it is absent. See
+  :doc:`PyMC with SurPyval`.
+- Distributional regression, ``Distributional(dist)`` and the prebuilt
+  ``WeibullDistributional``, ``LogNormalDistributional``,
+  ``GammaDistributional`` and others: the covariates move every
+  parameter of the distribution, each through its own link (log for a
+  positive parameter, identity for a location), so a Weibull's shape can
+  depend on load as well as its scale. Each parameter chooses its
+  covariates (``covariates={"beta": ["load"]}``, or
+  ``formulas={"alpha": "load + temp", "beta": "load"}`` in
+  ``fit_from_df``; with none named every covariate is on every
+  parameter). Every censoring, truncation and count of the data model;
+  Wald, likelihood-ratio and bootstrap bounds; closed-form ``qf`` and
+  ``mean`` at each row; ``parameters_at(Z)`` and ``distribution_at(row)``;
+  saving, loading and pickling. The AFT models are its covariates-on-the-
+  scale special case (with the signs of the coefficients reversed), and
+  the fits agree with R's ``flexsurvreg(anc = ...)`` on the Rossi data.
+  See the new *Distributional Regression* page.
+- ``DistributionalRegressionModel.parameter_cb(name, Z, method=...)``:
+  Wald, likelihood-ratio and bootstrap bounds on a parameter at each
+  covariate row, on its link's scale; and ``plot_parameter(name,
+  covariate)``, a parameter against one covariate with its band. The
+  distributional fits are checked against R's ``gamlss`` with
+  ``gamlss.cens`` (every censoring together) and ``flexsurvreg`` (left
+  truncation), and a calibration study checks the coverage of their
+  bounds.
 - **Bayesian fitting**, ``Distribution.fit_bayes`` (and
   ``fit_bayes_from_df``, and ``fit_bayes(data)`` for a ``SurpyvalData``):
   say what is already believed and combine it with the data, with every
@@ -41,6 +173,17 @@ v0.26 (unreleased)
   normal approximation. ``surpyval.bayes.log_likelihood_fn`` is the exact
   censored and truncated likelihood at many parameter points at once, for
   other samplers. ``fit`` and every existing model are unchanged.
+
+**Documentation.**
+
+- Recipes for four distributions written as a ``CustomDistribution``,
+  each checked against ``scipy.stats``: the generalised gamma (with the
+  Weibull and gamma as nested cases, a likelihood-ratio choice among
+  them, and an AFT regression), the Gompertz with proportional hazards,
+  the generalised F (Kalbfleisch and Prentice's original form) and the
+  inverse Gaussian (in logs, so that it neither overflows nor loses
+  digits in its tail). See "Recipes: more distributions from their
+  cumulative hazard" in Parametric SurPyval Modelling.
 
 v0.25 (17 October 2026)
 -----------------------

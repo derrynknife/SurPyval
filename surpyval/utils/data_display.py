@@ -54,6 +54,8 @@ def columns_of(data: Any, shown: int, recurrent: bool) -> dict:
     columns["x"] = [time_text(v) for v in x[:shown]]
     columns["c"] = [str(int(v)) for v in data.c[:shown]]
     columns["n"] = [time_text(v) for v in data.n[:shown]]
+    if getattr(data, "w", None) is not None:
+        columns["w"] = [time_text(v) for v in data.w[:shown]]
     tl, tr = np.asarray(data.tl, dtype=float), np.asarray(data.tr, dtype=float)
     if np.isfinite(tl).any():
         columns["tl"] = [time_text(v) for v in tl[:shown]]

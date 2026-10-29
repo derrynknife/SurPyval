@@ -158,7 +158,7 @@ class AdditiveHazardsFitter(
 
     # -- covariate-aware distribution functions (x, Z, *params) -----------
 
-    def _beta_Z(self, Z: Numeric, beta: "tuple[Boxable, ...]") -> Boxable:
+    def _beta_Z(self, Z: Numeric, beta: tuple[Boxable, ...]) -> Boxable:
         return np.dot(Z, np.array(beta))
 
     def hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
@@ -210,7 +210,7 @@ class AdditiveHazardsFitter(
         return value
 
     @staticmethod
-    def _observed_points(data: SurpyvalData) -> "list[tuple]":
+    def _observed_points(data: SurpyvalData) -> list[tuple]:
         """The points of ``data`` that must be inside the support, as
         ``(x, Z, observed)``: the times and interval bounds (where the
         hazard must also be non-negative), and the finite truncation
@@ -506,7 +506,7 @@ class AdditiveHazardsFitter(
         true_neg_ll: Any,
         init: npt.ArrayLike,
         n_obs: float,
-        floor: "float | npt.ArrayLike" = 1.0,
+        floor: float | npt.ArrayLike = 1.0,
     ) -> tuple[Any, bool]:
         """A search on the likelihood's exact gradient first, as the AFT
         and PO fits do (#499), and whether its answer is a verified
@@ -578,7 +578,7 @@ class AdditiveHazardsFitter(
     # -- factory ----------------------------------------------------------
 
     @staticmethod
-    def create(distribution: Any) -> "AdditiveHazardsFitter":
+    def create(distribution: Any) -> AdditiveHazardsFitter:
         """
         Create a parametric additive hazards fitter for the given
         distribution.
@@ -613,6 +613,7 @@ class AdditiveHazardsFitter(
         center: bool = False,
         tl: npt.ArrayLike | None = None,
         tr: npt.ArrayLike | None = None,
+        w: npt.ArrayLike | float | None = None,
     ) -> ParametricRegressionModel:
         """
         Fit the parametric additive hazards model by maximum likelihood.
@@ -652,6 +653,15 @@ class AdditiveHazardsFitter(
             bound moves), so, unlike the log-linear families, the additive
             model is never centred by default.
 
+        w : array_like or float, optional
+            Sampling, propensity or censoring weights, one positive number
+            per row (beside its count ``n``). The fit maximises the weighted
+            (pseudo) likelihood and ``covariance()``, behind every Wald
+            bound, is the robust (sandwich) covariance, as R's
+            ``survreg(..., weights = w, robust = TRUE)``; the
+            likelihood-ratio and bootstrap bounds and the information
+            criteria refuse (see :doc:`/Weighted Data`).
+
         Returns
         -------
 
@@ -686,6 +696,7 @@ class AdditiveHazardsFitter(
             LogLinearPhi.phi_bounds,
             LogLinearPhi.make_param_map,
             center=center,
+            w=w,
         )
         # Centred only with center=True (no ``kind``): the additive term
         # beta'Z does not reparameterise away from its origin, as the

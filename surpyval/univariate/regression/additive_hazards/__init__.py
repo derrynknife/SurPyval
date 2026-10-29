@@ -10,6 +10,7 @@ from surpyval.univariate.parametric import (
     Weibull,
 )
 
+from .aalen_additive import AalenAdditive, AalenAdditiveModel
 from .additive_hazards import AdditiveHazards, AdditiveHazardsModel
 from .additive_hazards_fitter import AdditiveHazardsFitter
 
@@ -59,6 +60,8 @@ GammaAH = _create(Gamma)
 
 __all__ = [
     "AH",
+    "AalenAdditive",
+    "AalenAdditiveModel",
     "AdditiveHazards",
     "AdditiveHazardsFitter",
     "AdditiveHazardsModel",

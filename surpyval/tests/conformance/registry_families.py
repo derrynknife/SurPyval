@@ -200,9 +200,11 @@ PROPERTIES: dict[str, str] = {
 DECLARED_ATTRIBUTES = frozenset(
     {
         "surpyval.ParametricRegressionModel",
+        "surpyval.DistributionalRegressionModel",
         "surpyval.SemiParametricRegressionModel",
         "surpyval.ProportionalOddsModel",
         "surpyval.AdditiveHazardsModel",
+        "surpyval.AalenAdditiveModel",
         "surpyval.BuckleyJamesModel",
         "surpyval.univariate.competing_risks.regression.fine_gray"
         ".FineGrayModel",
@@ -226,6 +228,7 @@ DIFFERENTIATED = frozenset(
         "surpyval.Parametric",
         "surpyval.MixtureModel",
         "surpyval.ParametricRegressionModel",
+        "surpyval.DistributionalRegressionModel",
         "surpyval.FrailtyModel",
         "surpyval.SemiParametricRegressionModel",
         "surpyval.univariate.competing_risks.regression.fine_gray"
@@ -267,6 +270,9 @@ NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
     ),
     "surpyval.BuckleyJamesModel": (
         "the Buckley-James estimating equations, by iterated least squares"
+    ),
+    "surpyval.AalenAdditiveModel": (
+        "Aalen's estimator, a least-squares fit at each event time"
     ),
     "surpyval.beta.ml.SurvivalTree": "a tree of greedy splits",
     "surpyval.beta.ml.RandomSurvivalForest": "an ensemble of trees",
@@ -1084,7 +1090,39 @@ def _semi_parametric():
         coefficients=_beta,
         intercept=True,
     )
-    return [cox, strat, cox_frailty, ah, bj, po]
+    aalen = regression(
+        "AalenAdditive",
+        sp.AalenAdditive,
+        model_class="surpyval.AalenAdditiveModel",
+        paths={
+            "fit_from_df": lambda d: sp.AalenAdditive.fit_from_df(
+                pd.DataFrame(
+                    {"x": d["x"], "c": d["c"], "n": d["n"]}
+                    | {"z0": d["Z"][:, 0], "z1": d["Z"][:, 1]}
+                ),
+                x_col="x",
+                Z_cols=["z0", "z1"],
+                c_col="c",
+                n_col="n",
+            ),
+            "formula": lambda d: sp.AalenAdditive.fit_from_df(
+                pd.DataFrame(
+                    {"x": d["x"], "c": d["c"], "n": d["n"]}
+                    | {"z0": d["Z"][:, 0], "z1": d["Z"][:, 1]}
+                ),
+                x_col="x",
+                formula="z0 + z1",
+                c_col="c",
+                n_col="n",
+            ),
+        },
+        exclude={"df_hf_sf": step},
+        rtol=1e-6,
+        # The cumulative effects at every event time.
+        coefficients=lambda m: m.B[:, 1:],
+        intercept=True,
+    )
+    return [cox, strat, cox_frailty, ah, bj, po, aalen]
 
 
 _NO_COEFFICIENTS = (

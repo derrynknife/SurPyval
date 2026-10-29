@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import warnings
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from functools import partial
-from typing import TYPE_CHECKING, Any, Callable, Literal, overload
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -176,6 +176,7 @@ def fit_best(
     xl: npt.ArrayLike | None = None,
     xr: npt.ArrayLike | None = None,
     return_table: Literal[False] = ...,
+    w: npt.ArrayLike | float | None = None,
 ) -> Parametric | MixtureModel | None: ...
 
 
@@ -194,6 +195,7 @@ def fit_best(
     xr: npt.ArrayLike | None = None,
     *,
     return_table: Literal[True],
+    w: npt.ArrayLike | float | None = None,
 ) -> tuple[Parametric | MixtureModel | None, pd.DataFrame]: ...
 
 
@@ -211,6 +213,7 @@ def fit_best(
     xl: npt.ArrayLike | None = None,
     xr: npt.ArrayLike | None = None,
     return_table: bool = False,
+    w: npt.ArrayLike | float | None = None,
 ) -> (
     Parametric
     | MixtureModel
@@ -310,6 +313,11 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
         If True, return ``(model, table)``: the model as below and a
         :class:`pandas.DataFrame` ranking every candidate tried (#666).
         Default False, which returns the model alone.
+    w : array_like or scalar, optional
+        Refused: a fit with sampling weights maximises a pseudo-likelihood,
+        whose AIC and BIC do not compare models (see
+        :doc:`/Weighted Data`). Choose the distribution on other grounds
+        and fit it with ``w``.
 
     Returns
     -------
@@ -379,6 +387,10 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
     >>> table.loc[0, "status"], float(table.loc[0, "delta"])
     ('chosen', 0.0)
     """
+    if w is not None:
+        from surpyval.utils.weights import refuse_information_criterion
+
+        raise refuse_information_criterion("fit_best")
     names, mixtures = _split_include(include)
     if include is not None and not names and not mixtures:
         raise ValueError(
@@ -485,8 +497,10 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
             errors.append(failure)
             rows.append((name, np.nan, None, "failed", _reason(failure)))
             continue
-        for w in caught:
-            warnings.warn_explicit(w.message, w.category, w.filename, w.lineno)
+        for kept in caught:
+            warnings.warn_explicit(
+                kept.message, kept.category, kept.filename, kept.lineno
+            )
         n_fitted += 1
         labels[id(temp_model)] = name
         maximum = temp_model.maximum
