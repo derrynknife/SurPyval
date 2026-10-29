@@ -108,6 +108,88 @@ def _validate_data(
         dist._check_inside_support(data, every_row=True, zero_inflated=zi)
 
 
+def bayes_data(what: str, x: Any = None, **arrays: Any) -> SurpyvalData:
+    """The data of a Bayesian fit (``fit_bayes``, ``update``,
+    ``prior.from_data``) as a ``SurpyvalData``: built from the arrays, or
+    ``x`` itself where it is one. What the Bayesian fit has no place for
+    (weights, covariates, event types, time-varying covariates, marker
+    readings) is refused, not dropped, as ``Weibull.fit(data)`` refuses
+    it."""
+    from surpyval.utils.surpyval_data import lost_message
+    from surpyval.utils.weights import (
+        BAYES_INSTEAD,
+        BAYES_WHY,
+        refuse_weighted_data,
+    )
+
+    if isinstance(x, SurpyvalData):
+        given = [k for k, v in arrays.items() if v is not None]
+        if given:
+            raise ValueError(
+                f"With a SurpyvalData as the data, leave out "
+                f"{', '.join(given)}: the data object holds them."
+            )
+        data = x
+    else:
+        data = SurpyvalData(x=x, **arrays)
+    refuse_weighted_data(data, what, BAYES_WHY, BAYES_INSTEAD)
+    lost = []
+    if getattr(data, "Z", None) is not None:
+        lost.append("covariates")
+    if getattr(data, "e", None) is not None:
+        lost.append("event types")
+    if getattr(data, "time_varying_covariates", None) is not None:
+        lost.append("time-varying covariates")
+    if lost:
+        raise ValueError(f"{what}: {lost_message(lost, False)}")
+    if getattr(data, "markers", None) is not None:
+        raise ValueError(
+            f"{what}: this fit takes no markers, which the SurpyvalData "
+            'holds; use data.without("markers") (the joint models, such as '
+            "WeibullJointPH, fit them)."
+        )
+    return data
+
+
+def _validate_outcomes(
+    dist: Any, data: SurpyvalData, offset: bool, lfp: bool, zi: bool
+) -> None:
+    """The checks ``Bernoulli.fit`` makes: every outcome a 0 or a 1, seen
+    as it was (no censoring, no truncation), and none of the offset,
+    limited-failure or zero-inflated forms."""
+    forms = [k for k, v in (("offset", offset), ("lfp", lfp), ("zi", zi)) if v]
+    if forms:
+        raise ValueError(
+            f"A {dist.name} has no {', '.join(forms)} form: leave out "
+            f"{', '.join(f'{k}=True' for k in forms)}."
+        )
+    x = np.asarray(data.x, dtype=float)
+    c = np.asarray(data.c)
+    if x.ndim == 2 or np.any(c != 0):
+        k = int(np.sum(c != 0))
+        raise ValueError(
+            f"A {dist.name} fit takes outcomes that were seen (0 or 1); "
+            f"{k} row{'s' if k != 1 else ''} of the data "
+            f"{'are' if k != 1 else 'is'} censored (c other than 0). Give "
+            "each outcome as seen, with c left out."
+        )
+    t = np.asarray(data.t, dtype=float)
+    if np.any(np.isfinite(t)):
+        raise ValueError(
+            f"A {dist.name} fit takes no truncation (t, tl or tr): an "
+            "outcome is a 0 or a 1, with no range of times to truncate. "
+            "Leave t, tl and tr out."
+        )
+    if not np.isin(x, (0, 1)).all():
+        bad = np.unique(x[~np.isin(x, (0, 1))])
+        shown = ", ".join(f"{v:g}" for v in bad[:5])
+        raise ValueError(
+            f"'x' must be either 0 or 1 for a {dist.name}; the data hold "
+            f"{shown}{', ...' if bad.size > 5 else ''}. Code each outcome "
+            "as 1 (the event) or 0."
+        )
+
+
 def _fallback_start(
     dist: Any, data: SurpyvalData, bound: BoundPriors
 ) -> npt.NDArray | None:
@@ -257,24 +339,9 @@ def fit(
     from surpyval.utils.units import normalise_unit
 
     _check_dist(dist, method)
-    if isinstance(x, SurpyvalData):
-        others = dict(c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)
-        given = [k for k, v in others.items() if v is not None]
-        if given:
-            raise ValueError(
-                f"With a SurpyvalData as the data, leave out "
-                f"{', '.join(given)}: the data object holds them."
-            )
-        data = x
-    else:
-        data = SurpyvalData(x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)
-    from surpyval.utils.weights import (
-        BAYES_INSTEAD,
-        BAYES_WHY,
-        refuse_weighted_data,
+    data = bayes_data(
+        "fit_bayes", x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr
     )
-
-    refuse_weighted_data(data, "fit_bayes", BAYES_WHY, BAYES_INSTEAD)
     canonical = normalise_unit(unit)
     held = getattr(data, "unit", None)
     if canonical is not None and held is not None and held != canonical:
@@ -284,7 +351,9 @@ def fit(
         )
     spec = PriorSpec.parse(priors)
     started = time.perf_counter()
-    if not dist.discrete:
+    if dist.discrete:
+        _validate_outcomes(dist, data, offset, lfp, zi)
+    else:
         _validate_data(dist, data, offset, zi)
     bound = build_bound(dist, data, spec, offset, lfp, zi, fixed)
     if bound.d == 0:
@@ -339,8 +408,9 @@ def _posterior(
             "likelihood)."
         )
 
-    if data is not None and bound.has_flat:
-        _check_flat(dist, data, bound)
+    pooled = None if data is None else _pooled(data, bound)
+    if pooled is not None and bound.has_flat:
+        _check_flat(dist, pooled, bound)
     ll = None if data is None else LogLikelihood(dist, data, offset, lfp, zi)
 
     def log_post(phi: npt.NDArray) -> npt.NDArray:
@@ -359,6 +429,16 @@ def _posterior(
             theta = _theta_of(mle, bound.names)
             theta = np.atleast_2d(theta)
             phi0 = bound.to_phi(theta)[0]
+            if np.all(np.isfinite(phi0)):
+                starts.append(phi0)
+    if mle is None and pooled is not None and pooled is not data:
+        # A power prior's old data locate the parameters where the new
+        # data alone do not (no failures, or too few for a maximum).
+        pooled_mle = _mle_start(dist, pooled, offset, lfp, zi, bound.fixed)
+        if pooled_mle is not None:
+            phi0 = bound.to_phi(
+                np.atleast_2d(_theta_of(pooled_mle, bound.names))
+            )[0]
             if np.all(np.isfinite(phi0)):
                 starts.append(phi0)
     centre = bound.centre()
@@ -384,7 +464,7 @@ def _posterior(
                 cov,
                 check_summary(dist, bound),
                 points=points,
-                flat_names=bound.flat_names,
+                flat_names=bound.improper_names,
             )
         else:
             result = laplace_grid(mode, cov, points)
@@ -395,19 +475,37 @@ def _posterior(
     )
 
 
+def _pooled(data: SurpyvalData, bound: BoundPriors) -> SurpyvalData:
+    """The data with the old data of every power prior (``prior.from_data``,
+    an exact ``as_prior()``): what the likelihood and the priors know
+    together, for the checks on flat priors and for a starting point.
+    (``data`` itself where there is no power prior.)"""
+    from surpyval.bayes.model import _combine
+    from surpyval.bayes.prior import PowerPrior
+
+    out = data
+    for j in bound.spec.joint:
+        if isinstance(j, PowerPrior):
+            out = _combine(out, j.data)
+    return out
+
+
 def _check_flat(dist: Any, data: SurpyvalData, bound: BoundPriors) -> None:
-    """A flat prior is allowed only where the data alone determine the
+    """A flat prior is allowed only where the data determine the
     parameter (principle 12): refuse where there is no failure
-    information at all, and, where every parameter is flat, where the
-    maximum-likelihood fit is not a verified maximum."""
-    flat = ", ".join(bound.flat_names) or "the parameters with flat priors"
+    information at all, and, where every parameter is flat (left out or
+    ``prior.flat()``), where the maximum-likelihood fit is not a verified
+    maximum. ``data`` includes a power prior's old data, which inform the
+    parameters as the new data do."""
+    improper = bound.improper_names
+    flat = ", ".join(improper) or "the parameters with flat priors"
     if not _has_failure_information(data):
         raise ValueError(
             f"With no failures, the data do not determine {flat}; give it "
             "a prior (for example prior.around(value, between=(low, "
             "high)))."
         )
-    if bound.flat_names and set(bound.flat_names) == set(bound.free_names):
+    if improper and set(improper) == set(bound.free_names):
         mle = _mle_start(
             dist, data, bound.offset, bound.lfp, bound.zi, bound.fixed
         )
@@ -420,9 +518,16 @@ def _check_flat(dist: Any, data: SurpyvalData, bound: BoundPriors) -> None:
             )
 
 
-def prior_model(dist: Any, priors: Any = None, **options: Any) -> Any:
+def prior_model(
+    dist: Any,
+    priors: Any = None,
+    *,
+    _bounds_data: SurpyvalData | None = None,
+    **options: Any,
+) -> Any:
     """The prior alone as a Bayesian model (no data), for
-    ``prior.check``."""
+    ``prior.check``. ``_bounds_data`` is a fitted model's data, which set
+    the offset's range (``model.prior_check()``)."""
     offset = options.pop("offset", False)
     lfp = options.pop("lfp", False)
     zi = options.pop("zi", False)
@@ -434,12 +539,14 @@ def prior_model(dist: Any, priors: Any = None, **options: Any) -> Any:
             "lfp, zi, fixed and points."
         )
     _check_dist(dist, "grid")
-    if offset:
+    if offset and _bounds_data is None:
         raise ValueError(
             "An offset's range depends on the data, so its prior is checked "
             "with the data: fit, then call model.prior_check()."
         )
-    empty = SurpyvalData(x=[1.0], c=[1])
+    empty = (
+        SurpyvalData(x=[1.0], c=[1]) if _bounds_data is None else _bounds_data
+    )
     bound = build_bound(dist, empty, priors, offset, lfp, zi, fixed)
     if not bound.proper:
         flat = ", ".join(bound.flat_names) or "a parameter"

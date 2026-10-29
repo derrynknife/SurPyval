@@ -223,7 +223,9 @@ all optional. What can look different:
   model's), ``plot``, ``plot_posterior``, a summary in plain words,
   ``to_dict`` / ``from_dict`` and pickling.
   ``BayesianParametric.from_draws`` makes one from another sampler's
-  draws. ``fit_bayes`` refuses weighted data.
+  draws. ``fit_bayes``, ``update`` and ``prior.from_data`` refuse
+  weighted data, and data holding covariates, event types, time-varying
+  covariates or marker readings, as ``fit(data)`` does.
 - The posterior of one to three free parameters is computed on a
   self-checking grid (deterministic: no seed), or in closed form for an
   Exponential with a Gamma prior, a Normal's mean with its spread known
