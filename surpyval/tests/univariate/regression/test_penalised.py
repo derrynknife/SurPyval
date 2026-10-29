@@ -709,3 +709,282 @@ def test_time_unit_does_not_change_the_coefficients():
         np.testing.assert_allclose(
             weeks.params[-7:], days.params[-7:], rtol=1e-6, atol=1e-9
         )
+
+
+def _small():
+    """120 Weibull lifetimes on two normal covariates, the first with a
+    real effect, about a fifth right-censored (fixed seed)."""
+    np.random.seed(7)
+    rng = np.random.default_rng(7)
+    Z = rng.normal(size=(120, 2))
+    x = sp.Weibull.random(120, 10, 2) * np.exp(-0.5 * Z[:, 0])
+    c = (rng.uniform(size=120) < 0.2).astype(int)
+    return x, Z, c
+
+
+@pytest.mark.parametrize(
+    "tie_method", ["efron", "breslow", "exact", "kalbfleisch-prentice"]
+)
+def test_zero_penalty_keeps_the_tie_method(tie_method):
+    """audit R-C: with tied event times, a zero penalty is the unpenalised
+    fit under the same tie method (Efron the default of both)."""
+    x, Z, c = _small()
+    x = np.round(x, 1)
+    assert np.unique(x[c == 0]).size < np.sum(c == 0)  # there are ties
+    pen = CoxPH.fit_penalised(x, Z, c=c, penalizer=0.0, tie_method=tie_method)
+    fit = CoxPH.fit(x, Z, c=c, tie_method=tie_method)
+    np.testing.assert_allclose(pen.params, fit.params, rtol=1e-5)
+    if tie_method == "efron":
+        default = CoxPH.fit_penalised(x, Z, c=c, penalizer=0.0)
+        np.testing.assert_array_equal(default.params, pen.params)
+    # The tie methods give different answers on these data.
+    if tie_method == "breslow":
+        efron = CoxPH.fit(x, Z, c=c)
+        assert not np.allclose(pen.params, efron.params, rtol=1e-5)
+
+
+def test_unknown_tie_method_is_refused_by_name():
+    """audit R-C: an unknown ``tie_method`` raises, naming it."""
+    x, Z, c = _small()
+    with pytest.raises(ValueError, match="'tie_method'.*'nope'"):
+        CoxPH.fit_penalised(x, Z, c=c, tie_method="nope")
+
+
+def _mixed_censoring_data():
+    """Exact, right-, left- and interval-censored rows (no interval starts
+    at 0), with counts 1, 2, 3 in turn."""
+    rng = np.random.default_rng(5)
+    N = 200
+    Z = rng.normal(size=(N, 6))
+    t = 10 * rng.weibull(1.5, N) * np.exp(-0.6 * Z[:, 0] + 0.3 * Z[:, 1])
+    k = np.arange(N) % 5
+    c = np.where(t > 15, 1, np.where(k == 1, -1, np.where(k == 2, 2, 0)))
+    xl = np.where(
+        c == 1,
+        15.0,
+        np.where(c == -1, 1.3 * t, np.where(c == 2, 0.7 * t, t)),
+    )
+    xr = np.where(c == 2, 1.4 * t, xl)
+    n = 1 + np.arange(N) % 3
+    return xl, xr, Z, c, n
+
+
+def _weibull_aft_neg_ll_censored(theta, xl, xr, c, n, Z):
+    """The Weibull AFT negative log-likelihood with every censoring kind
+    and counts, written out with numpy."""
+    alpha, beta, b = theta[0], theta[1], theta[2:]
+    phi = np.exp(Z @ b)
+
+    def sf(t):
+        return np.exp(-((phi * t / alpha) ** beta))
+
+    u = phi * xl / alpha
+    with np.errstate(divide="ignore", invalid="ignore"):
+        log_df = np.log(beta / alpha * phi) + (beta - 1) * np.log(u) - u**beta
+        ll = np.select(
+            [c == 0, c == 1, c == -1, c == 2],
+            [log_df, -(u**beta), np.log1p(-sf(xl)), np.log(sf(xl) - sf(xr))],
+        )
+    return -np.sum(n * ll)
+
+
+@pytest.mark.parametrize("l1_ratio", [0.5, 1.0])
+def test_parametric_optimality_conditions_every_censoring_and_counts(
+    l1_ratio,
+):
+    """audit R-D: the optimality conditions of
+    test_parametric_optimality_conditions hold for a fit with exact,
+    right-, left- and interval-censored rows and counts ``n``, on a
+    likelihood written out here (``N`` is the sum of the counts); and the
+    counts give the fit on the rows repeated."""
+    xl, xr, Z, c, n = _mixed_censoring_data()
+    X = np.column_stack([xl, xr])
+    lam = 0.04
+    model = WeibullAFT.fit_penalised(
+        X, Z, c=c, n=n, penalizer=lam, l1_ratio=l1_ratio, standardise=False
+    )
+    assert model.maximum == "verified"
+    theta = np.asarray(model.params, dtype=float)
+
+    def f(th):
+        return _weibull_aft_neg_ll_censored(th, xl, xr, c, n, Z)
+
+    assert f(theta) == pytest.approx(model.neg_ll(), rel=1e-10)
+    N = n.sum()
+    h = 1e-6 * np.maximum(np.abs(theta), 1.0)
+    g = np.array(
+        [
+            (f(theta + h[j] * e) - f(theta - h[j] * e)) / (2 * h[j] * N)
+            for j, e in enumerate(np.eye(theta.size))
+        ]
+    )
+    b = theta[2:]
+    g[2:] += lam * (1 - l1_ratio) * b
+    np.testing.assert_allclose(g[:2], 0, atol=1e-6)
+    l1 = lam * l1_ratio
+    nonzero = b != 0
+    np.testing.assert_allclose(
+        g[2:][nonzero], -l1 * np.sign(b[nonzero]), atol=1e-6
+    )
+    assert np.all(np.abs(g[2:][~nonzero]) <= l1 + 1e-6)
+    assert b[0] > 0 and b[1] < 0
+    rep = np.repeat(np.arange(n.size), n)
+    expanded = WeibullAFT.fit_penalised(
+        X[rep],
+        Z[rep],
+        c=c[rep],
+        penalizer=lam,
+        l1_ratio=l1_ratio,
+        standardise=False,
+    )
+    np.testing.assert_allclose(
+        model.params, expanded.params, rtol=1e-6, atol=1e-9
+    )
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=np.linalg.LinAlgError,
+    reason=(
+        "An interval-censored row starting at 0 (c=2, x=[0, r]) makes "
+        "WeibullAFT.fit_penalised raise numpy LinAlgError 'Eigenvalues did "
+        "not converge' from eigvalsh of the Hessian in "
+        "_penalised.solve_penalised, for l1_ratio 0, 0.5 and 1, with or "
+        "without standardise or counts; WeibullAFT.fit takes the same "
+        "data. Reproduce: this test's data with one interval [0, 1]."
+    ),
+)
+def test_interval_from_zero_is_taken_by_the_penalised_fit():
+    """audit R-D: an interval that starts at 0 (a row known only to have
+    failed by ``r``) is a valid row; the penalised fit takes it as the
+    unpenalised fit does."""
+    xl, xr, Z, c, n = _mixed_censoring_data()
+    first = np.flatnonzero(c == 2)[0]
+    xl, xr = xl.copy(), xr.copy()
+    xl[first], xr[first] = 0.0, 1.0
+    X = np.column_stack([xl, xr])
+    WeibullAFT.fit(X, Z, c=c)  # the unpenalised fit takes it
+    model = WeibullAFT.fit_penalised(
+        X, Z, c=c, penalizer=0.04, l1_ratio=1.0, standardise=False
+    )
+    assert model.maximum == "verified"
+
+
+def test_summary_of_a_penalised_fit_has_estimates_without_inference():
+    """audit R-E: ``summary()`` of a penalised Cox and parametric fit
+    shows the estimates, with nan standard errors, bounds and p-values."""
+    x, Z, c = _small()
+    for fitter in (CoxPH, WeibullAFT):
+        model = fitter.fit_penalised(x, Z, c=c, penalizer=0.1)
+        table = model.summary()
+        if table.index.nlevels > 1:
+            table = table.loc["coefficients"]
+        np.testing.assert_array_equal(table["coef"], model.params[-2:])
+        np.testing.assert_allclose(
+            table["exp(coef)"], np.exp(model.params[-2:])
+        )
+        assert np.all(np.isfinite(table["coef"]))
+        for column in table.columns:
+            if column.startswith(("se(", "z", "p")) or " lower " in column:
+                assert table[column].isna().all(), column
+            if " upper " in column:
+                assert table[column].isna().all(), column
+
+
+def _refusal(call):
+    with pytest.raises(ValueError) as info:
+        call()
+    return str(info.value)
+
+
+@pytest.mark.parametrize("fitter", [CoxPH, WeibullAFT])
+def test_penalised_round_trip_keeps_the_penalty_and_refusals(fitter):
+    """audit R-U: strict JSON ``to_dict``/``from_dict`` and pickle keep the
+    penalty, the information criteria and the predictions exactly, and the
+    restored model refuses inference with the same messages."""
+    import json
+    import pickle
+
+    x, Z, c = _small()
+    model = fitter.fit_penalised(x, Z, c=c, penalizer=0.1, l1_ratio=0.5)
+    text = json.dumps(model.to_dict(), allow_nan=False)
+    restored = [
+        sp.from_dict(json.loads(text)),
+        pickle.loads(pickle.dumps(model)),
+    ]
+    refusals = {
+        "covariance": lambda m: m.covariance(),
+        "robust_covariance": lambda m: m.robust_covariance(),
+        "likelihood_ratio_test": lambda m: m.likelihood_ratio_test(),
+    }
+    if fitter is not CoxPH:  # a Cox model has no cb at all
+        refusals["cb"] = lambda m: m.cb([3.0], Z[:1])
+    messages = {k: _refusal(lambda: f(model)) for k, f in refusals.items()}
+    assert "fitted with a penalty" in messages["covariance"]
+    assert "penalised fit" in messages["likelihood_ratio_test"]
+    for back in restored:
+        np.testing.assert_array_equal(
+            back.penalty.penalizer, model.penalty.penalizer
+        )
+        assert back.penalty.l1_ratio == model.penalty.l1_ratio == 0.5
+        assert back.penalty.effective_df == model.penalty.effective_df
+        assert back.aic() == model.aic()
+        np.testing.assert_array_equal(
+            back.sf([3.0, 6.0], Z[:2]), model.sf([3.0, 6.0], Z[:2])
+        )
+        for key, call in refusals.items():
+            assert _refusal(lambda: call(back)) == messages[key], key
+
+
+def test_zero_and_huge_per_coefficient_penalties():
+    """audit R-V: a coefficient with penalty 0 is not shrunk and one with a
+    huge lasso penalty is exactly 0, so the other is the unpenalised fit
+    on its own column (the objective in it is the unpenalised
+    likelihood)."""
+    x, Z, c = _small()
+    cox = CoxPH.fit_penalised(x, Z, c=c, penalizer=[0.0, 50.0], l1_ratio=1.0)
+    assert cox.params[1] == 0
+    np.testing.assert_allclose(
+        cox.params[0], CoxPH.fit(x, Z[:, :1], c=c).params[0], rtol=1e-5
+    )
+    weibull = WeibullPH.fit_penalised(
+        x, Z, c=c, penalizer=[0.0, 50.0], l1_ratio=1.0
+    )
+    assert weibull.params[3] == 0
+    np.testing.assert_allclose(
+        weibull.params[:3],
+        WeibullPH.fit(x, Z[:, :1], c=c).params,
+        rtol=1e-4,
+    )
+
+
+def test_stratified_counts_equal_repetition_and_with_entry():
+    """audit R-P: a stratified penalised Cox fit with counts ``n`` is the
+    fit on the rows repeated; with strata and delayed entry together it
+    runs to a verified answer with a finite effective df (no reference
+    computes both together)."""
+    x, Z, c = _small()
+    strata = np.arange(x.size) % 2
+    n = 1 + np.arange(x.size) % 3
+    rep = np.repeat(np.arange(x.size), n)
+    counted = CoxPH.fit_penalised(
+        x, Z, c=c, n=n, strata=strata, penalizer=0.05, l1_ratio=0.5
+    )
+    expanded = CoxPH.fit_penalised(
+        x[rep],
+        Z[rep],
+        c=c[rep],
+        strata=strata[rep],
+        penalizer=0.05,
+        l1_ratio=0.5,
+    )
+    np.testing.assert_allclose(
+        counted.params, expanded.params, rtol=1e-6, atol=1e-9
+    )
+    tl = np.where(np.arange(x.size) % 4 == 0, 0.3 * x, 0.0)
+    model = CoxPH.fit_penalised(
+        x, Z, c=c, strata=strata, tl=tl, penalizer=0.05
+    )
+    assert model.maximum == "verified"
+    assert np.isfinite(model.penalty.effective_df)
+    assert 0 < model.penalty.effective_df < 2

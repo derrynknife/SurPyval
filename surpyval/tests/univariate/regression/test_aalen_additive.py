@@ -402,3 +402,104 @@ def test_prediction_refusals():
         model.smoothed_coefficients([10], bandwidth=0)
     with pytest.raises(ValueError, match="n_sim"):
         model.constant_effects_test(n_sim=0)
+
+
+# -- audit gaps: counts, a full round trip, argument checks ----------------
+def _small():
+    """120 Weibull lifetimes on two normal covariates, about a fifth
+    right-censored (fixed seed)."""
+    np.random.seed(7)
+    rng = np.random.default_rng(7)
+    Z = rng.normal(size=(120, 2))
+    x = sp.Weibull.random(120, 10, 2) * np.exp(-0.5 * Z[:, 0])
+    c = (rng.uniform(size=120) < 0.2).astype(int)
+    return x, Z, c
+
+
+def test_counts_give_the_variance_of_the_rows_repeated():
+    """audit R-I: counts are repetition for the variance too: the bounds
+    on ``B`` (both ends) and on the survival are the fit's on the rows
+    written twice."""
+    x, Z, c = _small()
+    counted = sp.AalenAdditive.fit(x, Z, c=c, n=np.full(x.size, 2))
+    twice = sp.AalenAdditive.fit(np.r_[x, x], np.r_[Z, Z], c=np.r_[c, c])
+    band = counted.cumulative_coefficients_cb()
+    assert band.shape[-1] == 2
+    assert_allclose(band, twice.cumulative_coefficients_cb(), rtol=1e-10)
+    assert_allclose(
+        counted.cb([3.0, 6.0], Z[:2]),
+        twice.cb([3.0, 6.0], Z[:2]),
+        rtol=1e-10,
+    )
+    # The counts are not ignored: one copy of the rows is wider.
+    once = sp.AalenAdditive.fit(x, Z, c=c).cumulative_coefficients_cb()
+    width = np.diff(band, axis=-1)
+    assert np.all(np.diff(once, axis=-1)[-1] > width[-1])
+
+
+def test_round_trip_of_a_fit_with_every_option():
+    """audit R-L: a fit with delayed entry, a penalty and an aliased
+    column, saved to strict JSON and pickled, keeps ``aliased``, ``B``
+    and every prediction exactly; restored from a dict it refuses the
+    constant-effects test, which needs the data."""
+    import pickle
+
+    x, Z, c = _small()
+    Za = np.c_[Z, Z[:, 0]]
+    with pytest.warns(UserWarning, match="cannot be estimated"):
+        model = sp.AalenAdditive.fit(x, Za, c=c, tl=0.1, coef_penalty=0.5)
+    assert_array_equal(model.aliased, [2])
+    rows = Za[:2]
+    text = json.dumps(model.to_dict(), allow_nan=False)
+    from_dict = sp.from_dict(json.loads(text))
+    for back in (from_dict, pickle.loads(pickle.dumps(model))):
+        assert_array_equal(back.aliased, model.aliased)
+        assert_array_equal(back.B, model.B)  # nan in the aliased column
+        assert_array_equal(
+            back.sf([3.0, 6.0], rows), model.sf([3.0, 6.0], rows)
+        )
+        assert_array_equal(
+            back.cumulative_coefficients_cb(),
+            model.cumulative_coefficients_cb(),
+        )
+        pd.testing.assert_frame_equal(
+            back.summary(at=5.0), model.summary(at=5.0)
+        )
+        assert_array_equal(
+            back.qf([0.1, 0.5], rows), model.qf([0.1, 0.5], rows)
+        )
+    with pytest.raises(ValueError, match="refit it"):
+        from_dict.constant_effects_test()
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "smoothed_coefficients([5.0], bandwidth='x') raises numpy's raw "
+        "ValueError 'could not convert string to float: 'x'', which does "
+        "not name the argument (principle 2)."
+    ),
+)
+def test_a_bandwidth_that_is_not_a_number_is_refused_by_name():
+    """audit R-K: a non-numeric ``bandwidth`` is refused, naming it."""
+    x, Z, c = _small()
+    model = sp.AalenAdditive.fit(x, Z, c=c)
+    with pytest.raises(ValueError, match="bandwidth"):
+        model.smoothed_coefficients([5.0], bandwidth="x")
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "summary(at=-1.0) silently returns a table of effects at a "
+        "negative time (every coefficient 0 with se 0) instead of refusing "
+        "a time before the origin."
+    ),
+)
+def test_a_negative_summary_time_is_refused_by_name():
+    """audit R-K: ``summary(at=...)`` before time 0 is refused, naming
+    ``at``."""
+    x, Z, c = _small()
+    model = sp.AalenAdditive.fit(x, Z, c=c)
+    with pytest.raises(ValueError, match=r"\bat\b"):
+        model.summary(at=-1.0)
