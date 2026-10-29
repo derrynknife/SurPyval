@@ -116,6 +116,47 @@ def test_unknown_method():
         sp.Weibull.fit_bayes(X, C, priors=SHAPE, method="pymc")
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "fit_bayes does not validate points: points=1 and points=0 raise "
+        "'zero-size array to reduction operation maximum which has no "
+        "identity', points=-3 raises numpy's 'Number of samples, -3, must "
+        "be non-negative.' and points='many' raises \"invalid literal for "
+        "int() with base 10: 'many'\" (bayes/engines/grid.py, "
+        "m0 = int(points)); none names the points argument."
+    ),
+)
+@pytest.mark.parametrize("bad", [1, 0, -3, "many"])
+def test_bad_points_is_refused_naming_points(bad):
+    """audit B17: an unusable ``points`` raises a ValueError that names
+    the argument (principle 2)."""
+    x = sp.Weibull.random(30, 100, 2, random_state=5)
+    with pytest.raises(ValueError, match="points"):
+        sp.Weibull.fit_bayes(x, priors=SHAPE, points=bad)
+
+
+def test_two_priors_for_one_parameter_are_refused():
+    """audit B18: a list of priors naming one parameter twice."""
+    with pytest.raises(ValueError, match="Two priors"):
+        sp.Weibull.fit_bayes(
+            X, C, priors=[SHAPE, {"beta": sp.prior.uniform(1, 4)}]
+        )
+
+
+def test_a_prior_keyed_by_a_non_string_is_refused():
+    """audit B18: the keys of a priors dict are parameter names."""
+    with pytest.raises(ValueError, match="parameter names"):
+        sp.Weibull.fit_bayes(X, C, priors={1: sp.prior.flat()})
+
+
+def test_a_bare_number_as_priors_is_refused():
+    """audit B18: priors that are neither a dict, a joint prior nor a
+    list of them."""
+    with pytest.raises(ValueError, match="priors must be"):
+        sp.Weibull.fit_bayes(X, C, priors=3.0)
+
+
 def test_data_disagreeing_with_the_prior_warns():
     x = sp.Weibull.random(200, 100, 6, random_state=2)
     with pytest.warns(UserWarning, match="disagree with the prior on beta"):
@@ -177,6 +218,30 @@ def test_credible_intervals_contain_the_median_and_nest(seals):
     np.testing.assert_allclose(
         seals.cri(t, on="Hf"), -np.log(seals.cri(t)[:, ::-1])
     )
+
+
+@pytest.mark.parametrize("on", ["hf", "df"])
+def test_hazard_and_density_intervals_are_consistent(seals, on):
+    """audit B11: ``cri`` on the hazard and the density (outside the
+    conformance interval sweep): a one-sided bound at level a is that end
+    of the two-sided interval at 2a (all of a in one tail), a narrower
+    level nests inside a wider one, the median lies between the ends,
+    and every value is finite and non-negative."""
+    x = [1000.0, 3000.0, 5000.0]
+    both = seals.cri(x, on=on)
+    narrow = seals.cri(x, on=on, alpha_ci=0.10)
+    np.testing.assert_array_equal(
+        seals.cri(x, on=on, alpha_ci=0.05, bound="lower"), narrow[..., 0]
+    )
+    np.testing.assert_array_equal(
+        seals.cri(x, on=on, alpha_ci=0.05, bound="upper"), narrow[..., 1]
+    )
+    assert np.all(narrow[..., 0] >= both[..., 0])
+    assert np.all(narrow[..., 1] <= both[..., 1])
+    mid = seals.cri(x, on=on, point=True)
+    assert np.all(both[..., 0] <= mid) and np.all(mid <= both[..., 1])
+    for v in (both, narrow, mid):
+        assert np.all(np.isfinite(v)) and np.all(v >= 0)
 
 
 def test_predictive_b10_is_not_the_median_b10(seals):
@@ -356,6 +421,31 @@ def test_entry_points_agree(seals):
         sp.Weibull.fit_bayes(data, c=C)
 
 
+def test_from_df_with_interval_columns_and_a_scalar_truncation():
+    """audit B6: ``fit_bayes_from_df`` with ``xl_col``/``xr_col`` and a
+    scalar ``tl_col`` is the same fit as ``fit_bayes`` on the arrays;
+    ``x_col`` with ``xl_col`` and a ``tl_col`` that is neither a label
+    nor a scalar are refused."""
+    df = pd.DataFrame(
+        {"lo": [1.0, 2, 3, 4, 5], "hi": [2.0, 3, 4, 5, 6], "c": [2] * 5}
+    )
+    by_df = sp.Weibull.fit_bayes_from_df(
+        df, xl_col="lo", xr_col="hi", c_col="c", tl_col=0.5, priors=SHAPE
+    )
+    direct = sp.Weibull.fit_bayes(
+        xl=df.lo, xr=df.hi, c=df.c, tl=0.5, priors=SHAPE
+    )
+    np.testing.assert_array_equal(by_df.params, direct.params)
+    with pytest.raises(ValueError, match="x_col"):
+        sp.Weibull.fit_bayes_from_df(
+            df, x_col="lo", xl_col="lo", xr_col="hi", priors=SHAPE
+        )
+    with pytest.raises(ValueError, match="tl_col"):
+        sp.Weibull.fit_bayes_from_df(
+            df, xl_col="lo", xr_col="hi", tl_col=[0.5] * 5, priors=SHAPE
+        )
+
+
 def test_deterministic(seals):
     again = sp.Weibull.fit_bayes(X, C, priors=SHAPE)
     np.testing.assert_array_equal(
@@ -517,6 +607,65 @@ def test_compare_to(seals):
         seals.compare_to(mle, on="sf")
 
 
+@pytest.fixture(scope="module")
+def halves():
+    """Two Weibull fits on the two halves of one sample of 30."""
+    xs = sp.Weibull.random(30, 100, 2, random_state=5)
+    a = sp.Weibull.fit_bayes(xs[:15], priors=SHAPE)
+    b = sp.Weibull.fit_bayes(xs[15:], priors=SHAPE)
+    return xs, a, b
+
+
+def test_compare_to_an_independent_copy_of_itself_is_even(halves):
+    """audit B7 (a): a posterior against an independent copy of itself
+    is greater with probability one half."""
+    _, a, _ = halves
+    assert a.compare_to(a, on="qf", p=0.1).probability == pytest.approx(
+        0.5, abs=1e-9
+    )
+
+
+@pytest.mark.parametrize("t", [50.0, 100.0, 150.0])
+def test_compare_to_on_ff_is_the_complement_of_on_sf(halves, t):
+    """audit B7 (b): failure probability is 1 - reliability, so the
+    probability that it is greater is the complement."""
+    _, a, b = halves
+    on_ff = a.compare_to(b, on="ff", x=t).probability
+    on_sf = a.compare_to(b, on="sf", x=t).probability
+    assert on_ff == pytest.approx(1 - on_sf, abs=1e-9)
+
+
+@pytest.mark.parametrize("on", ["mean", "beta"])
+def test_compare_to_a_maximum_likelihood_fit_on_mean_and_a_parameter(
+    halves, on
+):
+    """audit B7 (c): against a maximum-likelihood fit, on the mean and on
+    a parameter, the probability is strictly inside (0, 1) and the
+    assumption names the delta method."""
+    xs, a, _ = halves
+    mle = sp.Weibull.fit(xs[:15])
+    r = a.compare_to(mle, on=on)
+    assert 0 < r.probability < 1
+    assert "delta-method" in r.assumption
+
+
+def test_compare_to_a_much_lower_maximum_likelihood_shape(halves):
+    """audit B7 (c): the posterior's beta (median about 1.7) against a
+    maximum-likelihood fit to data with shape 0.7 (estimate about 0.6):
+    this beta is the greater with probability above one half."""
+    _, a, _ = halves
+    low = sp.Weibull.fit(sp.Weibull.random(30, 100, 0.7, random_state=5))
+    assert a.params[1] > 2 * low.params[1]
+    assert a.compare_to(low, on="beta").probability > 0.5
+
+
+def test_compare_to_refuses_an_unknown_quantity(halves):
+    """audit B7 (d): an unknown ``on`` is refused, listing the choices."""
+    _, a, b = halves
+    with pytest.raises(ValueError, match="on must be"):
+        a.compare_to(b, on="median_life")
+
+
 # ---------------------------------------------------------------------------
 # Saving, draws from elsewhere, plots
 # ---------------------------------------------------------------------------
@@ -544,6 +693,64 @@ def test_round_trips(seals, which):
         np.testing.assert_allclose(
             back.posterior.density(pt), model.posterior.density(pt)
         )
+
+
+@pytest.fixture(scope="module")
+def earlier():
+    """A sample of 30, and a Bayesian and a maximum-likelihood fit to its
+    first half, for priors that come from earlier work."""
+    xs = sp.Weibull.random(30, 100, 2, random_state=5)
+    old = sp.Weibull.fit_bayes(xs[:15], priors=SHAPE)
+    return xs, old, sp.Weibull.fit(xs[:15])
+
+
+PRIOR_KINDS = {
+    "around": lambda xs, old, mle: SHAPE,
+    "distribution": lambda xs, old, mle: {
+        "beta": sp.Gamma.from_params([4, 2]),
+        "alpha": sp.LogNormal.from_params([np.log(100), 0.5]),
+    },
+    "uniform": lambda xs, old, mle: {"beta": sp.prior.uniform(1, 4)},
+    "fixed": lambda xs, old, mle: {"beta": sp.prior.fixed(2.0)},
+    "from_params": lambda xs, old, mle: sp.prior.from_params(
+        sp.Weibull, [100, 2], within=0.3
+    ),
+    "on_quantities": lambda xs, old, mle: sp.prior.on_quantities(
+        sp.Weibull,
+        B10=sp.prior.between(20, 60),
+        beta=sp.prior.around(2, between=(1.5, 3)),
+    ),
+    "from_model": lambda xs, old, mle: sp.prior.from_model(mle, weight=0.5),
+    "from_model_param": lambda xs, old, mle: {
+        "beta": sp.prior.from_model(mle, param="beta", widen=2)
+    },
+    "power": lambda xs, old, mle: [
+        sp.prior.from_data(xs[:15], weight=0.5),
+        SHAPE,
+    ],
+    "as_prior_exact": lambda xs, old, mle: old.as_prior(),
+}
+
+
+@pytest.mark.parametrize("kind", list(PRIOR_KINDS))
+def test_round_trips_for_every_prior_kind(earlier, kind):
+    """audit B12: a fit with each kind of prior survives JSON and pickle,
+    and the restored priors drive a refit (``update``) exactly as the
+    originals do (regression protection for ``prior_from_dict``)."""
+    xs, old, mle = earlier
+    model = sp.Weibull.fit_bayes(
+        xs[15:], priors=PRIOR_KINDS[kind](xs, old, mle)
+    )
+    q = [50.0, 120.0]
+    d = json.loads(json.dumps(model.to_dict(), allow_nan=False))
+    again = sp.from_dict(d)
+    np.testing.assert_array_equal(again.cri(q), model.cri(q))
+    assert again.priors.to_dict() == model.priors.to_dict()
+    back = pickle.loads(pickle.dumps(model))
+    np.testing.assert_array_equal(back.cri(q), model.cri(q))
+    np.testing.assert_allclose(
+        again.update([90.0]).params, model.update([90.0]).params, rtol=1e-6
+    )
 
 
 def test_from_draws():
@@ -587,6 +794,107 @@ def test_from_draws():
         BayesianParametric.from_draws(
             sp.Weibull, np.c_[draws, draws[:, 0]], ["alpha", "beta", "k"]
         )
+
+
+def _draws(seed=1, k=4000):
+    rng = np.random.default_rng(seed)
+    return np.c_[
+        rng.lognormal(np.log(100), 0.1, k),
+        rng.lognormal(np.log(2), 0.1, k),
+    ]
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "from_draws checks only that draws are finite, not that they are "
+        "inside each parameter's bounds: with rng = "
+        "np.random.default_rng(5), draws = np.c_[rng.normal(100, 30, 500), "
+        "rng.normal(2, 1.5, 500)] (some alpha and beta <= 0), "
+        "from_draws(sp.Weibull, draws, ['alpha', 'beta']) returns a model "
+        "with sf(50.0) == 0.679... and no error (principle 2; "
+        "surpyval.pymc.to_surpyval refuses such draws)."
+    ),
+)
+def test_from_draws_refuses_draws_outside_the_bounds():
+    """audit B2: draws of alpha or beta at or below 0 are refused with a
+    ValueError naming the parameter."""
+    rng = np.random.default_rng(5)
+    draws = np.c_[rng.normal(100, 30, 500), rng.normal(2, 1.5, 500)]
+    assert np.any(draws <= 0)
+    with pytest.raises(ValueError, match="alpha"):
+        BayesianParametric.from_draws(sp.Weibull, draws, ["alpha", "beta"])
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "from_draws accepts an lfp_p column outside (0, 1): draws of "
+        "alpha and beta from lognormals (default_rng(5)) beside "
+        "rng.normal(0.8, 0.3, 500) for lfp_p (134 values above 1, one "
+        "below 0) give a model with sf(50.0) == 0.817 and no error."
+    ),
+)
+def test_from_draws_refuses_a_proportion_outside_0_and_1():
+    """audit B2: draws of ``lfp_p`` outside (0, 1) are refused with a
+    ValueError naming it."""
+    rng = np.random.default_rng(5)
+    draws = np.c_[
+        rng.lognormal(np.log(100), 0.1, 500),
+        rng.lognormal(np.log(2), 0.1, 500),
+        rng.normal(0.8, 0.3, 500),
+    ]
+    assert np.any((draws[:, 2] <= 0) | (draws[:, 2] >= 1))
+    with pytest.raises(ValueError, match="lfp_p"):
+        BayesianParametric.from_draws(
+            sp.Weibull, draws, ["alpha", "beta", "lfp_p"]
+        )
+
+
+def test_update_of_a_draws_model_without_data():
+    """audit B9: a model from draws with no data has nothing to add to;
+    ``replace=True`` refits the new data with the priors given to
+    ``from_draws``, the same as ``fit_bayes`` on that data."""
+    bare = BayesianParametric.from_draws(
+        sp.Weibull, _draws(), ["alpha", "beta"]
+    )
+    with pytest.raises(ValueError, match="replace=True"):
+        bare.update([50.0, 80.0])
+    with_priors = BayesianParametric.from_draws(
+        sp.Weibull, _draws(), ["alpha", "beta"], priors=SHAPE
+    )
+    refit = with_priors.update([50.0, 80.0], replace=True)
+    assert refit.method == "grid"
+    direct = sp.Weibull.fit_bayes([50.0, 80.0], priors=SHAPE)
+    np.testing.assert_allclose(refit.params, direct.params, rtol=1e-6)
+
+
+def test_summaries_of_a_draws_model_and_a_conjugate_fit():
+    """audit B16: ``summary()`` and ``repr()`` of a model from draws with
+    no data and of a conjugate fit are non-empty text; ``prior_check()``
+    of a draws model with proper priors is a PriorCheck, and with none
+    given it refuses (a flat prior says nothing to check)."""
+    from surpyval.bayes.model import PriorCheck
+
+    bare = BayesianParametric.from_draws(
+        sp.Weibull, _draws(), ["alpha", "beta"]
+    )
+    conjugate = sp.Exponential.fit_bayes([100.0, 250, 400], priors=RATE)
+    assert conjugate.method == "conjugate"
+    for model in (bare, conjugate):
+        assert isinstance(model.summary(), str) and model.summary()
+        assert repr(model)
+    proper = BayesianParametric.from_draws(
+        sp.Weibull,
+        _draws(),
+        ["alpha", "beta"],
+        priors={**SHAPE, "alpha": sp.prior.around(100, between=(60, 160))},
+    )
+    check = proper.prior_check()
+    assert isinstance(check, PriorCheck)
+    assert repr(check)
+    with pytest.raises(ValueError, match="proper prior"):
+        bare.prior_check()
 
 
 def test_plots(seals):
