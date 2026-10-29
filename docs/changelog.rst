@@ -65,6 +65,16 @@ v0.26 (unreleased)
   truncation, every bound, ``fit_from_df`` and saving work as for
   ``WeibullPH``. Checked against R's ``flexsurvspline``. The normal scale
   is refused with covariates (its shift is neither PH nor PO).
+- Robust (sandwich) standard errors for the parametric regressions
+  (proportional hazards, AFT, proportional odds, additive hazards and
+  accelerated life): ``robust_covariance(cluster=None)`` and
+  ``robust_standard_errors(cluster=None)``, and
+  ``summary(robust=True, cluster=...)``, as the Cox model already had.
+  With ``cluster`` the scores are summed by cluster, so correlated rows
+  within a cluster are allowed; counts are frequency weights, as in the
+  fit. Checked against lifelines' ``robust=True`` and R's ``survreg``
+  with ``cluster()`` on the Rossi data. A
+  ``fit_tvc`` model refuses them.
 
 **Documentation.**
 

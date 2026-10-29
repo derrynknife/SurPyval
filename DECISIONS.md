@@ -53,6 +53,15 @@ Design decisions made while working on the open issues, with the reason for each
 | On the odds scale the coefficients multiply the survival odds, as every SurPyval `PO`: flexsurv's odds-scale coefficients have the opposite sign. | principle 21 | One meaning of a PO coefficient in the package. | proposed |
 | `scale="normal"` with covariates is refused, naming `LogNormalAFT` and the univariate fit. | proposed | Its covariate shift is neither PH nor PO; a probit-shift family would be new. | open |
 
+### Robust standard errors on the parametric regressions
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The names are the Cox model's: `robust_covariance(cluster=None)`, `robust_standard_errors(cluster=None)` and `summary(robust=True, cluster=...)`; not a `robust=` argument to `fit` (lifelines' form). | principle 21 | The same option has the same name everywhere, and the fit is the same either way. | proposed |
+| HC0, no small-sample factor; counts are frequency weights (a row with `n = 3` is three units, each its own cluster without `cluster`, three members of its cluster with it). | principle 5, 16 | R's `sandwich` and lifelines use HC0; counts must equal repetition, as `CoxPH.robust_covariance` already reads them. | proposed |
+| `cluster` is one label per row given to the fit, in that order; rows dropped for a missing covariate are matched and left out (the fit records which given row each fitted row is). | principle 3 | A label belongs to its row; the fit sorts and drops rows. | proposed |
+| Only the standard errors and the summary change; `cb`, `param_cb` and `p_values` keep the model-based covariance. A `fit_tvc` model refuses (its likelihood is over histories, not rows), naming the bootstrap and likelihood-ratio bounds. | principle 24 | Simple by default; the robust form is an option beside it. | proposed |
+
 ## 2026-10-17
 
 ### Joint models: separate covariates, interval data, dynamic prediction (#891)
