@@ -970,6 +970,27 @@ def _joint():
     ]
 
 
+# ---------------------------------------------------------------------------
+# Royston-Parmar (spline baseline) regression: PH and PO on the spline
+# ---------------------------------------------------------------------------
+def _spline_regression():
+    out = []
+    for name, extra in (
+        ("RoystonParmarPH", ("surpyval.RoystonParmarRegression",)),
+        ("RoystonParmarPO", ()),
+    ):
+        out.append(
+            regression(
+                name,
+                getattr(sp, name),
+                fitters=(f"surpyval.{name}",) + extra,
+                intercept=True,
+                slow=frozenset() if name.endswith("PH") else REFIT_PROPERTIES,
+            )
+        )
+    return out
+
+
 CASES: list[Case] = (
     _univariate()
     + _regression_family()
@@ -982,6 +1003,7 @@ CASES: list[Case] = (
     + _degradation()
     + _copulas()
     + _joint()
+    + _spline_regression()
 )
 
 # Fits whose optimum moves by more than 1e-4 (relative) when the data are

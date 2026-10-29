@@ -1832,6 +1832,65 @@ are parallel. Neither family lets two curves cross. (For these Weibull fits the
 two descriptions coincide, as shown above.)
 
 
+Flexible parametric (spline) regression
+---------------------------------------
+
+A Weibull baseline draws a straight line for the log cumulative hazard
+against log time; a Royston-Parmar baseline draws a restricted cubic
+spline, which follows a hazard that rises, falls or bends while staying
+smooth and parametric. ``RoystonParmarPH`` adds covariates as proportional
+hazards,
+
+.. math::
+
+    \log H(t \mid Z) = s(\log t; \gamma) + \beta' Z,
+
+so :math:`e^{\beta}` are hazard ratios, as in a Cox model, but with a
+smooth baseline that can be extrapolated, handles every kind of censoring
+and truncation, and gives every bound. ``RoystonParmarPO`` puts the spline
+on the log odds of failure and multiplies the survival odds by
+:math:`e^{\beta' Z}`, as every proportional odds model here.
+``RoystonParmarRegression(df=..., scale=..., knots=...)`` sets the spline's
+degrees of freedom (``df - 1`` internal knots, at quantiles of the log
+event times; three by default) or its knots. ``df=1`` on the hazard scale
+is the Weibull proportional hazards model. The fits agree with R's
+``flexsurvspline`` to its printed digits.
+
+.. jupyter-execute::
+
+    from surpyval import RoystonParmarRegression
+    from surpyval.datasets import load_rossi_static
+
+    rossi = load_rossi_static()
+    rossi['censored'] = 1 - rossi['arrest']
+    rp_fits = {
+        df: RoystonParmarRegression(df=df).fit_from_df(
+            rossi, x_col='week', c_col='censored',
+            Z_cols=['fin', 'age', 'prio'])
+        for df in (1, 2, 3)
+    }
+    for df, m in rp_fits.items():
+        print(df, 'df: AIC', round(m.aic(), 2),
+              ' hazard ratios', np.exp(m.params[-3:]).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _aic = {df: m.aic() for df, m in rp_fits.items()}
+    assert min(_aic, key=_aic.get) == 1, _aic
+
+Here the extra knots do not earn their place: the Weibull (``df=1``) has
+the lowest AIC, and the hazard ratios barely move. The model is a
+``ParametricRegressionModel`` on the ``PH`` (or ``PO``) family, so its
+``summary``, ``cb`` and ``param_cb`` (Wald, likelihood-ratio and
+bootstrap), ``fit_from_df`` with a formula, and saving all work as for
+``WeibullPH``; the bounds hold the knots where the fit placed them. A
+shift on the normal (probit) scale is neither proportional hazards nor
+proportional odds, so ``scale="normal"`` is refused with covariates
+(``RoystonParmar`` fits it without them, ``LogNormalAFT`` with them).
+
+
 Proportional Odds (PO)
 -----------------------
 

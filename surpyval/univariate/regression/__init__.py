@@ -80,6 +80,11 @@ from .proportional_odds import (
     ProportionalOddsModel,
     WeibullPO,
 )
+from .royston_parmar_regression import (
+    RoystonParmarPH,
+    RoystonParmarPO,
+    RoystonParmarRegression,
+)
 from .semi_parametric_regression_model import SemiParametricRegressionModel
 from .tvc_path import CovariatePath
 from .tvc_schedule import StepSchedule, StepValuedError
@@ -161,6 +166,10 @@ __all__ = [
     "PH",
     "ProportionalHazardsFitter",
     "WeibullPH",
+    # Royston-Parmar (spline baseline) regression
+    "RoystonParmarPH",
+    "RoystonParmarPO",
+    "RoystonParmarRegression",
     # PO — semi-parametric (NPMLE) and parametric
     "ExponentialPO",
     "GammaPO",

@@ -1078,6 +1078,15 @@ for _kind in ("PH", "AFT", "PO", "AH"):
                 else ""
             ),
         )
+for _name in ("RoystonParmarPH", "RoystonParmarPO"):
+    PLANS[_name] = Plan(
+        _regression(own_random=False),
+        _REG_N,
+        _REG_REPS,
+        params=lambda m: np.asarray(m.params, dtype=float)[-2:],
+        note="each refit places its own knots, so its spline coefficients "
+        "are of a different basis: the covariate coefficients only",
+    )
 for _lm in reg.LIFE_MODELS + reg.DUAL_LIFE_MODELS + ("GeneralLogLinear",):
     PLANS[f"WeibullAL[{_lm}]"] = Plan(
         _regression(own_random=True),
