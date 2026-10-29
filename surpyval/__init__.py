@@ -227,6 +227,9 @@ _LAZY = {
         ("JointModel", "JointPH", "WeibullJointPH"),
         "surpyval.univariate.joint",
     ),
+    # The priors of a Bayesian fit (``Weibull.fit_bayes``): the module
+    # ``surpyval.bayes.prior`` (``surpyval.prior.around(...)``).
+    "prior": "surpyval.bayes",
     **dict.fromkeys(
         (
             "CompetingRisks",
@@ -373,6 +376,7 @@ __all__ = [
 
 if TYPE_CHECKING:
     from surpyval import (
+        bayes,
         datasets,
         degradation,
         life_models,
@@ -381,6 +385,7 @@ if TYPE_CHECKING:
         recurrent,
         test_planning,
     )
+    from surpyval.bayes import prior
     from surpyval.degradation import (
         DegradationAnalysis,
         DestructiveDegradation,
@@ -442,6 +447,7 @@ if TYPE_CHECKING:
 # docs call as ``surpyval.datasets.load_...()`` (#653). Each is imported on
 # first use.
 _SUBPACKAGES = (
+    "bayes",
     "datasets",
     "degradation",
     "life_models",

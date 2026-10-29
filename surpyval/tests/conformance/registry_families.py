@@ -293,6 +293,10 @@ NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
     "surpyval.degradation.InducedFailureDistribution": (
         "a Monte Carlo of a fitted degradation model"
     ),
+    "surpyval.bayes.BayesianParametric": (
+        "a posterior, not a maximum: the grid's check of its own accuracy "
+        "takes the place of a verified maximum"
+    ),
 }
 
 # Properties that refit the model (the slow ones).

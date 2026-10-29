@@ -468,3 +468,40 @@ for _fn in (
 OUT_OF_SCOPE["surpyval.univariate.nonparametric.canonical_heuristic"] = (
     _FUNCTION + " (reads a plotting-position heuristic's name)"
 )
+
+# The Bayesian fits' building blocks: the likelihood, the posterior and the
+# priors (the model, BayesianParametric, is registered).
+_PRIOR = (
+    "a prior, an input of the registered Bayesian fit (checked in "
+    "surpyval/tests/bayes/test_fit_bayes.py), not a model"
+)
+OUT_OF_SCOPE["surpyval.bayes.log_likelihood_fn"] = (
+    _FUNCTION + " (the likelihood the Bayesian fit uses; checked against "
+    "the fitters' own in surpyval/tests/bayes/test_likelihood.py)"
+)
+OUT_OF_SCOPE["surpyval.bayes.LogLikelihood"] = _COMPONENT
+OUT_OF_SCOPE["surpyval.bayes.Posterior"] = _COMPONENT
+for _name in (
+    "Prior",
+    "JointPrior",
+    "NormalOnScale",
+    "DistributionPrior",
+    "Flat",
+    "Fixed",
+    "MultivariateNormal",
+    "PowerPrior",
+    "OnQuantities",
+    "PriorSpec",
+    "around",
+    "between",
+    "uniform",
+    "flat",
+    "fixed",
+    "from_distribution",
+    "from_model",
+    "from_data",
+    "from_params",
+    "on_quantities",
+    "check",
+):
+    OUT_OF_SCOPE[f"surpyval.bayes.prior.{_name}"] = _PRIOR

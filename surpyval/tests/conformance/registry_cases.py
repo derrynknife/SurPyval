@@ -1040,6 +1040,123 @@ def _distributional():
     return out
 
 
+# ---------------------------------------------------------------------------
+# Bayesian fits (surpyval.bayes)
+# ---------------------------------------------------------------------------
+def _bayes_weibull(d):
+    """The grid engine: a prior on the shape (unitless) and none (flat on
+    the log scale) on the scale, so a change of time unit leaves it as it
+    is."""
+    return sp.Weibull.fit_bayes(
+        d["x"],
+        d.get("c"),
+        d.get("n"),
+        priors={"beta": sp.prior.around(2, between=(1.2, 4))},
+    )
+
+
+def _bayes_exponential(d):
+    """The closed form: a Gamma prior on the rate whose second parameter
+    is a time (``prior_time``, rescaled with the data)."""
+    return sp.Exponential.fit_bayes(
+        d["x"],
+        d.get("c"),
+        d.get("n"),
+        priors={
+            "failure_rate": sp.Gamma.from_params(
+                [2.0, float(np.asarray(d["prior_time"]))]
+            )
+        },
+    )
+
+
+def _bayes_paths(fit, fitter, priors):
+    def from_df(d):
+        df = pd.DataFrame({"x": d["x"], "c": d["c"], "n": d["n"]})
+        return fitter.fit_bayes_from_df(
+            df, x_col="x", c_col="c", n_col="n", priors=priors(d)
+        )
+
+    def from_data(d):
+        return fitter.fit_bayes(
+            sp.SurpyvalData(x=d["x"], c=d.get("c"), n=d.get("n")),
+            priors=priors(d),
+        )
+
+    # (fit_from_df: the DataFrame path, fit_bayes_from_df)
+    return {"fit_from_df": from_df, "fit_bayes(data)": from_data}
+
+
+# A credible interval's own point is the posterior median (cri(x,
+# point=True)); the estimate the sweeps compare with is the model's
+# function, the posterior predictive, which is the posterior mean for sf,
+# ff and df but not for hf: far past the data the predictive hazard falls
+# below the hazards of most parameter values (the units that survive are
+# those with low hazards), so containment does not hold for it, as it
+# should not. cri(on="hf") is checked against its median in
+# tests/bayes/test_fit_bayes.py. Not Wald intervals: they close onto the
+# median, not the predictive (test_fit_bayes.py checks that).
+_BAYES_BOUNDS = (
+    Bound("cri", on=("sf", "ff", "Hf", "df"), wald=False),
+    Bound("quantile_cri", point="qf", wald=False),
+    Bound("param_cri", kind="param", wald=False),
+    Bound("mean_cri", kind="summary", query=((),), wald=False),
+)
+_BAYES_EXCLUDE = {
+    "convergence": "not an optimiser: the grid checks its own accuracy and "
+    "refuses when it cannot reach it (tests/bayes/test_fit_bayes.py::"
+    "test_starved_grid_refuses); a closed form has nothing to starve",
+}
+
+
+def _bayes():
+    def weibull_priors(d):
+        return {"beta": sp.prior.around(2, between=(1.2, 4))}
+
+    def exponential_priors(d):
+        return {
+            "failure_rate": sp.Gamma.from_params(
+                [2.0, float(np.asarray(d["prior_time"]))]
+            )
+        }
+
+    def exponential_data():
+        return {**uni_data(), "prior_time": 20.0}
+
+    common = dict(
+        model_class="surpyval.bayes.BayesianParametric",
+        interface=UNIVARIATE,
+        functions=UNI_FUNCTIONS + ("qf",),
+        x=X_UNI,
+        draw=lambda m, s: m.random(15, random_state=s),
+        explicit_seed=True,
+        exclude=dict(_BAYES_EXCLUDE),
+    )
+    return [
+        Case(
+            name="Weibull[bayes]",
+            fitters=("surpyval.bayes.BayesianParametric",),
+            data=uni_data,
+            fit=_bayes_weibull,
+            paths=_bayes_paths(_bayes_weibull, sp.Weibull, weibull_priors),
+            rtol=1e-6,
+            **common,
+        ),
+        Case(
+            name="Exponential[bayes]",
+            fitters=(),
+            data=exponential_data,
+            fit=_bayes_exponential,
+            paths=_bayes_paths(
+                _bayes_exponential, sp.Exponential, exponential_priors
+            ),
+            times=("x", "prior_time"),
+            rtol=1e-9,
+            **common,
+        ),
+    ]
+
+
 CASES: list[Case] = (
     _univariate()
     + _regression_family()
@@ -1054,6 +1171,7 @@ CASES: list[Case] = (
     + _joint()
     + _spline_regression()
     + _distributional()
+    + _bayes()
 )
 
 # Fits whose optimum moves by more than 1e-4 (relative) when the data are
@@ -1581,6 +1699,14 @@ _DISTRIBUTIONAL_PARAMETERS = {
 def _bounds(case):
     """The uncertainty methods of ``case``'s model (see :class:`Bound`)."""
     cls = case.model_class.rsplit(".", 1)[-1]
+    # Models whose bounds are a fixed set, whatever the case
+    fixed = {
+        "BayesianParametric": _BAYES_BOUNDS,
+        "RoystonParmarModel": (Bound("cb", on=_ON_SURVIVAL),),
+        "AalenAdditiveModel": (Bound("cb", on=_ON_SURVIVAL),),
+    }
+    if cls in fixed:
+        return fixed[cls]
     if cls == "Parametric":
         if case.name in _NO_COVARIANCE:
             return ()
@@ -1602,8 +1728,6 @@ def _bounds(case):
         return _nonparametric_bounds(case)
     if cls == "CompetingRisks":
         return _competing_risks_bounds()
-    if cls == "RoystonParmarModel":
-        return (Bound("cb", on=_ON_SURVIVAL),)
     if cls == "MixtureModel":
         # Wald bounds only (#651)
         return (
@@ -1697,8 +1821,6 @@ def _bounds(case):
         return (_PARAM_CB, lr)
     if cls == "CoxFrailtyModel":
         return (_PARAM_CB,)
-    if cls == "AalenAdditiveModel":
-        return (Bound("cb", on=_ON_SURVIVAL),)
     if cls == "BuckleyJamesModel":
         return (
             Bound(
@@ -1957,6 +2079,7 @@ _FAST_BOUNDS += ("HPP", "CrowAMSAA", "ProportionalIntensityHPP")
 _FAST_BOUNDS += ("GeneralizedRenewal", "NonParametricCounting")
 _FAST_BOUNDS += ("CauseSpecificMCF", "DegradationAnalysis[linear]")
 _FAST_BOUNDS += ("WienerProcess", "ClaytonCopula")
+_FAST_BOUNDS += ("Weibull[bayes]", "Exponential[bayes]")
 
 
 def _with_options(case):

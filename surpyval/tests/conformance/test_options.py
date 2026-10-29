@@ -76,6 +76,8 @@ NOT_SWEPT = {
     "regression functions, B +/- z se, not on a function of time at a "
     "covariate row; checked against timereg's variance in "
     "regression/test_aalen_additive.py",
+    "compare": "a table of a Bayesian fit's prior, posterior (param_cri, "
+    "swept) and maximum-likelihood (param_cb, swept) intervals",
     "cb_tvc": "needs a covariate path; checked against cb along a constant "
     "path, for every bound and on=, in conformance/test_tvc.py (#172)",
 }
