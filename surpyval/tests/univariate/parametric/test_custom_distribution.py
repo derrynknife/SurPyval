@@ -2,13 +2,18 @@
 it refuses, and its round trip through the registry.
 """
 
+import functools
+
 import numpy as np
 import pytest
 from autograd import numpy as anp
+from autograd.scipy.stats import norm as anorm
+from scipy import stats
 from scipy.stats import gompertz
 
 import surpyval as surv
 from surpyval.tests._helpers import no_warnings
+from surpyval.utils.autograd_gamma_compat import betainccln, gammainccln
 
 
 def _gompertz() -> surv.CustomDistribution:
@@ -246,3 +251,183 @@ def test_596_qf_of_a_tiny_probability_does_not_raise():
     # bracket now closes on the smallest x where the hazard is positive.
     q = _gompertz().qf(np.array([1e-300, 1e-30]), 1e-3, 0.5)
     assert np.all((q > 0) & (q < 1e-15))
+
+
+# ---------------------------------------------------------------------------
+# The recipes in the documentation ("Recipes: more distributions from their
+# cumulative hazard", Parametric SurPyval Modelling): each checked against
+# scipy.stats (gengamma, f, invgauss), the reference. Each is built once,
+# as constructing a second under the same name warns that it replaces it.
+# ---------------------------------------------------------------------------
+
+
+@functools.cache
+def _gen_gamma() -> surv.CustomDistribution:
+    def Hf(x, alpha, beta, kappa):
+        return -gammainccln(kappa, (x / alpha) ** beta)
+
+    return surv.CustomDistribution(
+        "RecipeGenGamma",
+        Hf,
+        ["alpha", "beta", "kappa"],
+        ((0, None), (0, None), (0, None)),
+        (0, np.inf),
+    )
+
+
+@functools.cache
+def _gen_f() -> surv.CustomDistribution:
+    def Hf(x, alpha, beta, m1, m2):
+        w = (x / alpha) ** beta
+        return -betainccln(m1, m2, m1 * w / (m1 * w + m2))
+
+    return surv.CustomDistribution(
+        "RecipeGenF",
+        Hf,
+        ["alpha", "beta", "m1", "m2"],
+        ((0, None),) * 4,
+        (0, np.inf),
+    )
+
+
+@functools.cache
+def _inv_gauss() -> surv.CustomDistribution:
+    def Hf(x, mu, lam):
+        r = anp.sqrt(lam / x)
+        log_a = anorm.logcdf(-r * (x / mu - 1))
+        log_b = 2 * lam / mu + anorm.logcdf(-r * (x / mu + 1))
+        return -(log_a + anp.log1p(-anp.exp(log_b - log_a)))
+
+    return surv.CustomDistribution(
+        "RecipeInvGauss",
+        Hf,
+        ["mu", "lam"],
+        ((0, None), (0, None)),
+        (0, np.inf),
+    )
+
+
+T_RECIPE = np.array([0.05, 0.5, 2.0, 5.0, 12.0])
+
+
+@pytest.mark.parametrize("kappa, beta", [(2.0, 1.5), (0.5, 3.0), (6.0, 0.7)])
+def test_recipe_generalised_gamma_matches_scipy(kappa, beta):
+    GG = _gen_gamma()
+    ref = stats.gengamma(kappa, beta, scale=3.0)
+    np.testing.assert_allclose(
+        GG.sf(T_RECIPE, 3.0, beta, kappa), ref.sf(T_RECIPE), rtol=1e-11
+    )
+    np.testing.assert_allclose(
+        GG.hf(T_RECIPE, 3.0, beta, kappa),
+        ref.pdf(T_RECIPE) / ref.sf(T_RECIPE),
+        rtol=1e-9,
+    )
+
+
+def test_recipe_generalised_gamma_nests_weibull_and_gamma():
+    GG = _gen_gamma()
+    rng = np.random.default_rng(7)
+    x = stats.weibull_min(2.0, scale=10.0).rvs(300, random_state=rng)
+    c = (x > 15).astype(int)
+    x = np.minimum(x, 15.0)
+    as_weibull = no_warnings(GG.fit, x, c=c, fixed={"kappa": 1})
+    as_gamma = no_warnings(GG.fit, x, c=c, fixed={"beta": 1})
+    free = no_warnings(GG.fit, x, c=c)
+    weibull = surv.Weibull.fit(x, c=c)
+    np.testing.assert_allclose(
+        as_weibull.params[:2], weibull.params, rtol=1e-5
+    )
+    assert as_weibull.neg_ll() == pytest.approx(weibull.neg_ll(), rel=1e-9)
+    assert as_gamma.neg_ll() == pytest.approx(
+        surv.Gamma.fit(x, c=c).neg_ll(), rel=1e-9
+    )
+    # The free fit is at least as good as each nested one
+    assert free.neg_ll() <= as_weibull.neg_ll() + 1e-8
+    assert free.neg_ll() <= as_gamma.neg_ll() + 1e-8
+
+
+def test_recipe_generalised_gamma_takes_covariates():
+    GG = _gen_gamma()
+    rng = np.random.default_rng(11)
+    Z = rng.binomial(1, 0.5, 200).astype(float)
+    x = stats.gengamma(2.0, 1.5, scale=3.0 * np.exp(0.5 * Z)).rvs(
+        random_state=rng
+    )
+    model = surv.AFT(GG).fit(x, Z)
+    assert abs(model.params[-1] + 0.5) < 2 * model.standard_errors()[-1]
+
+
+@pytest.mark.parametrize(
+    "m1, m2, beta", [(2.0, 3.0, 1.5), (0.5, 4.0, 0.7), (7.0, 0.8, 2.0)]
+)
+def test_recipe_generalised_f_matches_scipy_f(m1, m2, beta):
+    # (T / alpha) ** beta ~ F(2 m1, 2 m2)
+    GF = _gen_f()
+    w = (T_RECIPE / 3.0) ** beta
+    dw = beta / 3.0 * (T_RECIPE / 3.0) ** (beta - 1)
+    ref = stats.f(2 * m1, 2 * m2)
+    np.testing.assert_allclose(
+        GF.sf(T_RECIPE, 3.0, beta, m1, m2), ref.sf(w), rtol=1e-11
+    )
+    np.testing.assert_allclose(
+        GF.df(T_RECIPE, 3.0, beta, m1, m2), ref.pdf(w) * dw, rtol=1e-9
+    )
+
+
+def test_recipe_generalised_f_special_and_limiting_cases():
+    GF, GG = _gen_f(), _gen_gamma()
+    np.testing.assert_allclose(
+        GF.sf(T_RECIPE, 3.0, 1.5, 1.0, 1.0),
+        surv.LogLogistic.sf(T_RECIPE, 3.0, 1.5),
+        rtol=1e-12,
+    )
+    # m2 -> inf: the generalised gamma, with the scale alpha m1^(-1/beta)
+    np.testing.assert_allclose(
+        GF.sf(T_RECIPE, 3.0, 1.5, 2.0, 1e7),
+        GG.sf(T_RECIPE, 3.0 * 2.0 ** (-1 / 1.5), 1.5, 2.0),
+        rtol=1e-4,
+    )
+
+
+def test_recipe_generalised_f_fits_with_its_shapes_fixed():
+    # With m1 and m2 free, this sample's likelihood keeps rising as m1
+    # grows (the fit warns "No finite maximum" after about three minutes):
+    # four parameters are weakly identified by 300 lifetimes. With the
+    # degrees of freedom fixed, the scale and shape are recovered.
+    GF = _gen_f()
+    rng = np.random.default_rng(5)
+    x = 3.0 * stats.f(4.0, 6.0).rvs(300, random_state=rng) ** (1 / 1.5)
+    model = no_warnings(GF.fit, x, fixed={"m1": 2.0, "m2": 3.0})
+    se = model.standard_errors()[:2]
+    assert np.all(np.abs(model.params[:2] - [3.0, 1.5]) < 3 * se)
+
+
+@pytest.mark.parametrize(
+    "mu, lam, t",
+    [
+        (2.0, 3.0, [0.05, 0.5, 2.0, 10.0, 60.0]),
+        # a long tail, far out
+        (10.0, 0.5, [0.1, 10.0, 1e3]),
+        # 2 lam / mu = 1000: exp(2 lam / mu) alone overflows
+        (1.0, 500.0, [0.9, 1.0, 1.1]),
+    ],
+)
+def test_recipe_inverse_gaussian_matches_scipy(mu, lam, t):
+    IG = _inv_gauss()
+    t = np.asarray(t)
+    ref = stats.invgauss(mu / lam, scale=lam)
+    np.testing.assert_allclose(IG.sf(t, mu, lam), ref.sf(t), rtol=1e-9)
+    np.testing.assert_allclose(
+        IG.hf(t, mu, lam), ref.pdf(t) / ref.sf(t), rtol=1e-8
+    )
+
+
+def test_recipe_inverse_gaussian_fits_censored_data():
+    IG = _inv_gauss()
+    rng = np.random.default_rng(2)
+    x = stats.invgauss(2.0 / 3.0, scale=3.0).rvs(200, random_state=rng)
+    c = (x > 5).astype(int)
+    model = no_warnings(IG.fit, np.minimum(x, 5.0), c=c)
+    assert np.all(
+        np.abs(model.params - [2.0, 3.0]) < 2 * model.standard_errors()
+    )
