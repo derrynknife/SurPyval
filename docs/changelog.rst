@@ -17,6 +17,17 @@ v0.26 (unreleased)
   non-parametric model; left and interval censored data and right
   truncation are refused, pointing to ``Turnbull``.
 
+**Documentation.**
+
+- Recipes for four distributions written as a ``CustomDistribution``,
+  each checked against ``scipy.stats``: the generalised gamma (with the
+  Weibull and gamma as nested cases, a likelihood-ratio choice among
+  them, and an AFT regression), the Gompertz with proportional hazards,
+  the generalised F (Kalbfleisch and Prentice's original form) and the
+  inverse Gaussian (in logs, so that it neither overflows nor loses
+  digits in its tail). See "Recipes: more distributions from their
+  cumulative hazard" in Parametric SurPyval Modelling.
+
 v0.25 (17 October 2026)
 -----------------------
 
