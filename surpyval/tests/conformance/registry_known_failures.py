@@ -130,4 +130,4 @@ KNOWN_INCONSISTENCIES: dict[str, str] = {}
 
 def _with_issue(prop: str, reason: str) -> str:
     issue = KNOWN_FAILURE_ISSUES.get(prop)
-    return "{}: {}".format(issue, reason) if issue else reason
+    return f"{issue}: {reason}" if issue else reason
