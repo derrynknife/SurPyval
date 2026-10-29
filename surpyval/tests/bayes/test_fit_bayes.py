@@ -609,3 +609,28 @@ def test_plots(seals):
     ax = sp.prior.check(sp.Weibull, belief).plot()
     assert len(ax.get_lines()) == 50
     plt.close("all")
+
+
+def test_a_curved_posterior_is_held():
+    # Late entry (all 20 units seen from 59.4) and a wide prior: the
+    # curvature at the peak understates the posterior's spread, and the
+    # grid, laid along that curvature, widened past 60 of its standard
+    # deviations and refused; it is now laid again along the spread it
+    # has found (the calibration study's replicates 18, 84 and 94).
+    rng = np.random.default_rng(8118)
+    theta = np.exp(rng.normal([np.log(100.0), np.log(1.5)], [1.0, 0.5]))
+    tl = sp.Weibull.qf(0.2, *theta)
+    x = sp.Weibull.qf(rng.uniform(0.2, 1.0, 20), *theta)
+    model = sp.Weibull.fit_bayes(
+        x,
+        tl=tl,
+        priors={
+            "alpha": sp.prior.NormalOnScale(
+                loc=np.log(100.0), scale=1.0, kind="log"
+            ),
+            "beta": sp.prior.NormalOnScale(
+                loc=np.log(1.5), scale=0.5, kind="log"
+            ),
+        },
+    )
+    assert model.diagnostics["integration_error"] <= 1e-3
