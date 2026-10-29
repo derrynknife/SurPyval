@@ -58,9 +58,13 @@ Inputs
    property tests.
 
 5. **Counts equal repetition.** ``n = k`` gives the same answer as ``k``
-   identical rows.
+   identical rows. Weights ``w`` are not counts: multiplying every weight
+   by a constant changes nothing, estimates or intervals, and a weighted
+   fit's variance is the robust one (:doc:`Weighted Data`); with weights,
+   ``n = k`` still equals ``k`` identical rows of the same weight.
 
-   *Checked* by ``conformance/test_metamorphic.py``.
+   *Checked* by ``conformance/test_metamorphic.py``, and for weights by
+   ``conformance/test_weights.py``, for every fitter that takes ``w``.
 
 6. **Units don't matter.** Rescaling time rescales the answer and nothing
    else. Nor does a covariate's origin: with ``center=True`` every

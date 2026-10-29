@@ -274,6 +274,7 @@ Contents:
    Design Principles
    Handy References - Aide-mémoire
    Data Wrangler Examples
+   Weighted Data
 
 .. toctree::
    :maxdepth: 2

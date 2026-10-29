@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from numbers import Number
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -74,6 +75,7 @@ class NonParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         tol: float = 1e-10,
         max_iter: int = 1000,
         turnbull_algorithm: str = "auto",
+        w: npt.ArrayLike | Number | None = None,
     ) -> NonParametric:
         r"""
 
@@ -219,6 +221,16 @@ class NonParametricFitter(FitterRepr, UnivariateDataFrameMixin):
             ``turnbull_estimator``), which differs slightly from iterating
             the EM with it.
 
+        w : array like or scalar, optional
+            Sampling, propensity or censoring weights, one positive number
+            per row (beside its count ``n``): how many units of the
+            population each unit stands for. The estimate is then the
+            weighted one, and its variance (behind ``cb``,
+            ``quantile_cb``, ``rmst`` and ``mean_cb``) the robust,
+            infinitesimal-jackknife variance (R's ``survfit(...,
+            weights = w, robust = TRUE)``); ``band`` and ``bootstrap_cb``
+            refuse, and so does ``Turnbull`` (see :doc:`/Weighted Data`).
+
         Returns
         -------
 
@@ -270,6 +282,10 @@ class NonParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         Estimator        : Kaplan-Meier
         Data             : 6 units: 6 events at 5 unique times
         """
+        if w is not None:
+            return self._fit_weighted(
+                x, c, n, t, xl, xr, tl, tr, w, set_lower_limit
+            )
         if self.how == "Turnbull":
             # Imported here as this module is imported by the package
             # __init__ before ``turnbull`` is.
@@ -389,6 +405,96 @@ class NonParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         return self._create_non_p_model(
             x, r, d, estimator=estimator, data=data
         )
+
+    def _fit_weighted(
+        self,
+        x: Any,
+        c: Any,
+        n: Any,
+        t: Any,
+        xl: Any,
+        xr: Any,
+        tl: Any,
+        tr: Any,
+        w: Any,
+        set_lower_limit: float | None,
+    ) -> NonParametric:
+        """``fit`` with weights ``w``: the weighted estimate and its robust
+        (infinitesimal jackknife) variance (``_weighted``)."""
+        from surpyval.univariate.nonparametric._weighted import (
+            WeightedLadder,
+        )
+        from surpyval.utils.surpyval_data import SurpyvalData
+        from surpyval.utils.weights import (
+            effective_sample_size,
+            refuse_weighted,
+            warn_if_few_effective,
+        )
+
+        if self.how == "Turnbull":
+            raise refuse_weighted(
+                "Turnbull",
+                "its EM and variance for weighted data are not built yet",
+                "For right censored and left truncated data use "
+                "KaplanMeier, NelsonAalen or FlemingHarrington, which take "
+                "w; for interval censored data fit a parametric model with "
+                "w (Weibull.fit(..., w=w)).",
+            )
+        data = SurpyvalData(
+            x=x, c=c, n=n, t=t, xl=xl, xr=xr, tl=tl, tr=tr, w=w
+        )
+        x, c, n, t = data.x, data.c, data.n, data.t
+        assert data.w is not None
+        exact_x = x[c == 0] if x.ndim == 1 else x[c == 0].ravel()
+        if not np.isfinite(exact_x).all():
+            raise ValueError(
+                "Exactly observed values (c=0) must be finite; an item that "
+                "had not failed by the end of observation is right censored "
+                "(c=1)."
+            )
+        unsupported = []
+        if (c == -1).any():
+            unsupported.append("left (c=-1)")
+        if (c == 2).any():
+            unsupported.append("interval (c=2)")
+        if np.isfinite(np.asarray(t, dtype=float)[:, 1]).any():
+            unsupported.append("right-truncated (tr)")
+        if unsupported:
+            raise ValueError(
+                "{} can't handle {} data; with weights fit a parametric "
+                "model, which takes w (Weibull.fit(..., w=w)).".format(
+                    self.how, " or ".join(unsupported)
+                )
+            )
+        warn_if_few_effective(n, data.w)
+        ladder = WeightedLadder(x, c, n, t, data.w)
+        estimator = self.how
+        R = np.exp(np.cumsum(ladder.log_sf_increments(estimator)))
+        var = ladder.log_sf_variance(estimator)
+        xs, r, d = ladder.x, ladder.r, ladder.d
+        if set_lower_limit is not None:
+            if not set_lower_limit < xs[0]:
+                raise ValueError(
+                    "'set_lower_limit' must be below the smallest value in "
+                    "the data ({}); got {}.".format(xs[0], set_lower_limit)
+                )
+            xs = np.hstack([[set_lower_limit], xs])
+            r = np.hstack([[r[0]], r])
+            d = np.hstack([[0.0], d])
+            R = np.hstack([[1.0], R])
+            var = np.hstack([[0.0], var])
+        out = NonParametric()
+        out.data = {"x": x, "c": c, "n": n, "t": t, "w": data.w}
+        out.x, out.r, out.d = xs, r, d
+        out.R = R
+        out.model = self.how
+        out.F = 1 - out.R
+        with np.errstate(all="ignore"):
+            out.H = 0.0 - np.log(out.R)
+        out.greenwood = var
+        out.weighted = True
+        out.effective_n = effective_sample_size(n, data.w)
+        return out
 
     def from_xrd(
         self, x: npt.ArrayLike, r: npt.ArrayLike, d: npt.ArrayLike

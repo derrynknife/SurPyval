@@ -162,7 +162,19 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # fitted with ``center=True``, with a nonzero covariate ``"center"`` (new
 # in schema 2, #459, #463; a schema-1 reader would ignore it and take the
 # baseline, which is that of a unit at the centre, for the baseline at 0).
-SCHEMA_VERSION = 2
+#
+# Schema 3 is a model fitted with sampling weights ``w`` (``"weighted":
+# true``, or data with ``"w"``): a schema-2 reader would drop the weights
+# and give the model's bounds the classical meaning, so it is refused
+# there. Every other document keeps the schema it had.
+SCHEMA_VERSION = 3
+
+# The schema of a document that needs more than schema 1 but is not
+# weighted.
+_SCHEMA_NON_FINITE = 2
+
+# The schema of a weighted model or data.
+_SCHEMA_WEIGHTED = 3
 
 # The oldest version whose readers restore a document with neither of
 # those exactly as this SurPyval does.
@@ -192,9 +204,7 @@ def require_model_tag(model_dict: dict, tag: str, human: str) -> None:
     """
     if model_dict.get("model") != tag:
         article = "an" if tag[0] in "AEIOU" else "a"
-        raise ValueError(
-            "Must create {} from {} {} dict".format(human, article, tag)
-        )
+        raise ValueError(f"Must create {human} from {article} {tag} dict")
 
 
 def _pointer_token(key: Any) -> str:
@@ -653,9 +663,13 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
     """
     stamped_versions: list = []
     dicts = _nested_dicts(model_dict, stamped_versions if stamped else None)
+    if _SCHEMA_WEIGHTED in stamped_versions or any(
+        _is_weighted(d) for d in dicts
+    ):
+        return _SCHEMA_WEIGHTED
     return (
-        SCHEMA_VERSION
-        if SCHEMA_VERSION in stamped_versions
+        _SCHEMA_NON_FINITE
+        if _SCHEMA_NON_FINITE in stamped_versions
         or any(
             _has_non_finite(d)
             or _formula_without_levels(d)
@@ -664,6 +678,14 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
             for d in dicts
         )
         else _SCHEMA_WITHOUT_NON_FINITE
+    )
+
+
+def _is_weighted(d: dict) -> bool:
+    """Whether ``d`` is a model fitted with weights, or data holding
+    them."""
+    return d.get("weighted") is True or (
+        d.get("class") == "SurpyvalData" and d.get("w") is not None
     )
 
 
@@ -1180,7 +1202,7 @@ def read_json(fp: str | os.PathLike) -> Any:
     if isinstance(fp, str) and fp.lstrip().startswith("{"):
         return json.loads(fp)
     try:
-        with open(fp, "r") as f:
+        with open(fp) as f:
             return json.load(f)
     except FileNotFoundError:
         # A string is read as JSON text only when it starts with ``{``;
