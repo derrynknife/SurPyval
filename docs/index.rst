@@ -295,6 +295,7 @@ Contents:
 
    Non-Parametric SurPyval Modelling
    Parametric SurPyval Modelling
+   Bayesian Fitting with SurPyval
    Regression Modelling with SurPyval
    Model Diagnostics
    applications
