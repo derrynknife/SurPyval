@@ -62,6 +62,15 @@ Design decisions made while working on the open issues, with the reason for each
 | `cluster` is one label per row given to the fit, in that order; rows dropped for a missing covariate are matched and left out (the fit records which given row each fitted row is). | principle 3 | A label belongs to its row; the fit sorts and drops rows. | proposed |
 | Only the standard errors and the summary change; `cb`, `param_cb` and `p_values` keep the model-based covariance. A `fit_tvc` model refuses (its likelihood is over histories, not rows), naming the bootstrap and likelihood-ratio bounds. | principle 24 | Simple by default; the robust form is an option beside it. | proposed |
 
+### PyMC helpers (`surpyval.pymc`)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| PyMC is never a dependency of SurPyval, not even an optional extra in `pyproject.toml`, and not a test dependency. `surpyval.pymc` holds helpers for people who already use PyMC; each imports `pymc` / `pytensor` inside the function and, where they are absent, raises an `ImportError` saying to install pymc. `import surpyval` (and `import surpyval.pymc`) never imports them (tested). Their tests skip where pytensor or PyMC is not importable. | maintainer | SurPyval stays light and its own Bayesian fitting uses its own engines; the helpers serve PyMC users without tying the package to PyMC's release cycle. | done |
+| The likelihood is a `pm.Potential` built from per-family pytensor log density, log survival and log CDF in SurPyval's parameterisation and stable forms, not `pm.Censored`. Supported: Weibull, Exponential, LogNormal, Gamma, LogLogistic, Normal, Gumbel, Logistic, Rayleigh; any other is refused with the list. | proposed | `pm.Censored` covers right and left censoring only; one term covers intervals, truncation on both sides and counts, and equals `_log_likelihood` to 1e-10 (tested per family, row type and truncation). | done |
+| The data go through `SurpyvalData` (built with `group_and_sort=False` from arrays) and the distribution's support check, so refusals are `fit`'s, word for word. A parameter is a scalar or one value per row in the data's row order; other shapes are refused, and a length unknown before the graph runs is checked by an assertion in it. | proposed | Per-row values are how covariates enter, and they must line up with the rows as the user gave them. | done |
+| `prior_from_model(model, name=, weight=)` is a multivariate normal on the log of each positive parameter (a real-line one as is), the fit's covariance carried there by the delta method and divided by `weight` in (0, 1]; models with an offset, a limited-failure proportion or zero inflation are refused. `prior_from_spec` takes each prior as a SurPyval distribution, `(family, *params)` or `{"dist", "params"}`, always in SurPyval's parameter order. | proposed | The same scale as the fit's Wald bounds; SurPyval's order avoids PyMC's swapped Weibull names. | done |
+
 ## 2026-10-17
 
 ### Joint models: separate covariates, interval data, dynamic prediction (#891)
