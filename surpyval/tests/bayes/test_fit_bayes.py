@@ -804,6 +804,52 @@ def _draws(seed=1, k=4000):
     ]
 
 
+def test_from_draws_refuses_malformed_draws_and_weights():
+    """audit B21: ``from_draws`` refuses a column count that differs from
+    the names, a missing or unknown parameter column, a non-finite draw,
+    and weights of the wrong length or sign."""
+    d = _draws(k=400)
+    with pytest.raises(ValueError, match="columns"):
+        BayesianParametric.from_draws(
+            sp.Weibull, np.c_[d, d[:, 0]], ["alpha", "beta"]
+        )
+    # (a name in place of beta is first a missing beta ...)
+    with pytest.raises(ValueError, match="missing beta"):
+        BayesianParametric.from_draws(sp.Weibull, d, ["alpha", "nu"])
+    # (... and beside it, an unknown column)
+    with pytest.raises(ValueError, match="nu"):
+        BayesianParametric.from_draws(
+            sp.Weibull, np.c_[d, d[:, 0]], ["alpha", "beta", "nu"]
+        )
+    bad = d.copy()
+    bad[3, 1] = np.nan
+    with pytest.raises(ValueError, match="finite"):
+        BayesianParametric.from_draws(sp.Weibull, bad, ["alpha", "beta"])
+    for w in (np.ones(3), -np.ones(400)):
+        with pytest.raises(ValueError, match="weights"):
+            BayesianParametric.from_draws(
+                sp.Weibull, d, ["alpha", "beta"], weights=w
+            )
+
+
+def test_from_draws_takes_data_as_a_tuple_or_an_array():
+    """audit B21: ``data=(x, c)`` and a bare array of times both become
+    the model's SurpyvalData."""
+    x = np.array([50.0, 80.0, 120.0])
+    c = np.array([0, 0, 1])
+    by_tuple = BayesianParametric.from_draws(
+        sp.Weibull, _draws(k=400), ["alpha", "beta"], data=(x, c)
+    )
+    assert isinstance(by_tuple.data, sp.SurpyvalData)
+    np.testing.assert_array_equal(by_tuple.data.x, x)
+    np.testing.assert_array_equal(by_tuple.data.c, c)
+    by_array = BayesianParametric.from_draws(
+        sp.Weibull, _draws(k=400), ["alpha", "beta"], data=x
+    )
+    assert isinstance(by_array.data, sp.SurpyvalData)
+    np.testing.assert_array_equal(by_array.data.x, x)
+
+
 @pytest.mark.xfail(
     strict=True,
     reason=(

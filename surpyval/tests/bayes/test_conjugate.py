@@ -224,3 +224,61 @@ def test_grid_matches_fixed_shape_weibull_gamma():
     np.testing.assert_allclose(
         model.sf(t), ((b + T) / (b + T + t**beta)) ** (a + 3), rtol=1e-4
     )
+
+
+def test_lomax_predictive_mean_is_infinite_when_the_shape_is_at_most_1():
+    """audit B25: the Exponential-Gamma predictive is a Lomax with mean
+    ``b / (a - 1)``, infinite where the posterior shape ``a`` is at most
+    1 (a Gamma(0.5, 100) prior and no failures: a = 0.5, b = 700)."""
+    model = sp.Exponential.fit_bayes(
+        [100.0, 200.0, 300.0],
+        c=[1, 1, 1],
+        priors={"failure_rate": sp.Gamma.from_params([0.5, 100.0])},
+    )
+    assert model.method == "conjugate"
+    assert model.posterior.exact["params"] == [0.5, 700.0]
+    assert model.mean() == np.inf
+
+
+def _normal_normal():
+    model = sp.Normal.fit_bayes(
+        Y,
+        priors={
+            "mu": sp.Normal.from_params([M0, S0]),
+            "sigma": sp.prior.fixed(SIGMA),
+        },
+    )
+    n = Fraction(len(Y))
+    prec = 1 / Fraction(S0) ** 2 + n / Fraction(SIGMA) ** 2
+    mean = (
+        Fraction(M0) / Fraction(S0) ** 2
+        + sum(Fraction(y) for y in Y) / Fraction(SIGMA) ** 2
+    ) / prec
+    return model, mean, 1 / prec
+
+
+def test_normal_normal_predictive_mean_is_the_posterior_mean():
+    """audit B25: the Normal-normal predictive is Normal with the
+    posterior mean of mu as its mean."""
+    model, mean, _ = _normal_normal()
+    assert model.mean() == pytest.approx(float(mean), rel=1e-14)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "var() of the Normal-normal (sigma known) fit is not the closed "
+        "predictive's sigma**2 + s**2: mean() uses the closed predictive, "
+        "but var() takes moment(2) - mean()**2 from the conjugate "
+        "posterior's 4000 quantile nodes, which drop the tails. On this "
+        "module's Y with mu ~ Normal(3, 2) and sigma = 0.8 it gives "
+        "0.7438620 against the exact 0.7438961 (relative -4.6e-5)."
+    ),
+)
+def test_normal_normal_predictive_variance_is_exact():
+    """audit B25: the predictive variance is ``sigma**2 + s**2``, with
+    ``s**2`` the posterior variance of mu (exact, as ``mean()`` is)."""
+    model, _, post_var = _normal_normal()
+    assert model.var() == pytest.approx(
+        float(Fraction(SIGMA) ** 2 + post_var), rel=1e-12
+    )
