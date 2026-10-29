@@ -1520,7 +1520,7 @@ class BayesianParametric(SerialisableMixin):
     def compare_to(
         self,
         other: Any,
-        on: str = "qf",
+        on: str = "sf",
         p: float = 0.10,
         x: float | None = None,
     ) -> Comparison2:
@@ -1539,8 +1539,9 @@ class BayesianParametric(SerialisableMixin):
             with its delta-method standard error: the large-sample
             posterior under a flat prior).
         on : str, optional
-            ``"qf"`` (a quantile, with ``p``; the default, B10), ``"sf"``
-            or ``"ff"`` (at ``x``), ``"mean"``, or a parameter name.
+            ``"sf"`` (the default) or ``"ff"`` at ``x``; ``"qf"``, a
+            quantile, with ``p`` (``on="qf", p=0.10`` for the B10 life);
+            ``"mean"``; or a parameter name.
         p : float, optional
             The quantile's probability. Defaults to 0.10.
         x : float, optional
@@ -1557,11 +1558,14 @@ class BayesianParametric(SerialisableMixin):
         >>> prior = {"failure_rate": sp.Gamma.from_params([2.0, 500.0])}
         >>> new = sp.Exponential.fit_bayes([300, 450, 800], priors=prior)
         >>> old = sp.Exponential.fit_bayes([100, 250, 400], priors=prior)
-        >>> round(new.compare_to(old).probability, 2)
+        >>> round(new.compare_to(old, on="qf", p=0.10).probability, 2)
         0.78
         """
         if on in ("sf", "ff") and x is None:
-            raise ValueError(f"on={on!r} needs the time x=.")
+            raise ValueError(
+                f"on={on!r} needs the time x=; for a B-life use on='qf' "
+                "with p= (p=0.10 for B10)."
+            )
         a, wa, label = self._quantity_draws(on, p, x)
         a = np.where(np.isnan(a), np.inf, a)
         if isinstance(other, BayesianParametric):

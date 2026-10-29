@@ -47,6 +47,7 @@ from surpyval import (
     WeibullFrailty,
     WeibullPH,
 )
+from surpyval.bayes import prior as sp_prior
 from surpyval.life_models import Power
 from surpyval.serialisation import (
     _PARAMETERIZATIONS,
@@ -376,6 +377,11 @@ def _build(name):
         "never_occurs": lambda: NeverOccurs,
         "instantly_occurs": lambda: InstantlyOccurs,
         "joint": _joint,
+        "bayesian": lambda: Weibull.fit_bayes(
+            [2100.0, 3400, 4050, 5000, 5500, 6000],
+            c=[0, 0, 0, 1, 1, 1],
+            priors={"beta": sp_prior.around(2, between=(1.5, 3))},
+        ),
     }
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -423,6 +429,7 @@ CASES = [
     "never_occurs",
     "instantly_occurs",
     "joint",
+    "bayesian",
 ]
 
 

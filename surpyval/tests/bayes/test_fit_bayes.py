@@ -504,6 +504,7 @@ def test_compare_to(seals):
     old = sp.Exponential.fit_bayes([100.0, 250, 400], priors=RATE)
     p = new.compare_to(old, on="qf", p=0.1)
     q = old.compare_to(new, on="qf", p=0.1)
+    assert new.compare_to(old, x=500).probability > 0.5
     assert p.probability + q.probability == pytest.approx(1.0, abs=1e-9)
     assert p.probability > 0.5
     assert "independent" in repr(p)
