@@ -181,9 +181,11 @@ saying what to use instead:
 - **Methods other than maximum likelihood** (``how="MPP"``, ``"MOM"``,
   ``"MSE"``, ``"MPS"``).
 - **Turnbull**, the Cox model's residuals, ``check_ph``, strata and exact
-  ties, and the fitters that do not take ``w`` (competing risks, recurrent
-  events, degradation, mixtures, ...), which refuse weighted data. These
-  may come later.
+  ties. These may come later.
+- **The fitters that do not take** ``w``: competing risks, the log-rank
+  tests, recurrent events, degradation, mixtures, the Bayesian fit
+  (``fit_bayes``), distributional regression, Aalen's additive model, the
+  Royston-Parmar regression and the life table, among others.
 - **Reshaping weighted data** with ``censor_at``, ``select`` and the other
   record-based methods: index the rows, ``data[rows]``, which keeps the
   weights, or build a new ``SurpyvalData`` from the arrays.

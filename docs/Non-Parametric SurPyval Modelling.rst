@@ -1499,6 +1499,30 @@ withdrawals, as half at risk there. Data already grouped is given as one row per
 outcome, at its start, with the count in ``n``. Left or interval censored data cannot be counted
 into intervals; estimate it with ``Turnbull`` instead.
 
+Conditional survival
+--------------------
+
+A unit that has already lasted a while has a different outlook from a new one. ``cs(x, given)``
+is the estimated chance that a unit that has survived to ``given`` survives a further ``x``:
+:math:`\hat S(given + x) / \hat S(given)`, the estimate read from the units still at risk after
+``given``, as the parametric models' ``cs``. For the lung cancer patients, the chance of living
+another 180 days, for a new patient and for one who has already lived a year:
+
+.. jupyter-execute::
+
+    lung_km = surv.KaplanMeier.fit(lung['time'], c=1 - lung['status'])
+    print(lung_km.cs(180, [0, 365]).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _cs = lung_km.cs(180, [0, 365])
+    assert np.isclose(_cs[0], lung_km.sf(180))
+    assert np.isclose(_cs[1], lung_km.sf(545) / lung_km.sf(365))
+
+It is ``nan`` where the estimate at ``given`` is 0 and where ``given + x`` is past the data.
+
 Restricted mean survival time
 -----------------------------
 
