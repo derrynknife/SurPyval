@@ -154,8 +154,29 @@ class Posterior:
 
     def expectation(self, values: npt.NDArray) -> npt.NDArray:
         """The posterior mean of a function's values at the points
-        (``(N, ...)``)."""
-        return np.tensordot(self.weights, values, axes=(0, 0))
+        (``(N, ...)``).
+
+        Each value's sum runs in the same order whatever its place among
+        the others (a contiguous row per value, summed alone), so a
+        function evaluated at reordered query points gives the same
+        numbers reordered, to the last bit. A matrix product
+        (``weights @ values``) does not: BLAS blocks the columns, and a
+        column's summation order depends on where it falls.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.bayes.posterior import Posterior
+        >>> post = Posterior(["a"], ["a"], np.zeros((3, 1)),
+        ...                  np.array([0.2, 0.3, 0.5]), "grid")
+        >>> post.expectation(np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]))
+        array([3.6, 4.6])
+        """
+        v = np.asarray(values, dtype=float)
+        w = self.weights
+        rows = (v.reshape(len(w), -1) * w[:, None]).T
+        out = np.ascontiguousarray(rows).sum(axis=1)
+        return out.reshape(v.shape[1:])
 
     # -- draws --------------------------------------------------------------
     def draws(self, k: int = 4000, random_state: Any = None) -> npt.NDArray:

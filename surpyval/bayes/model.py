@@ -655,8 +655,12 @@ class BayesianParametric(SerialisableMixin):
         return None
 
     def _expect(self, fname: str, x: npt.NDArray) -> npt.NDArray:
-        w = self.posterior.weights
-        return self._chunks(fname, x, lambda v: w @ np.nan_to_num(v, nan=0))
+        # (not ``weights @ v``: a matrix product's summation order depends
+        # on a query point's place in x, Posterior.expectation's does not)
+        post = self.posterior
+        return self._chunks(
+            fname, x, lambda v: post.expectation(np.nan_to_num(v, nan=0))
+        )
 
     def _predict(self, fname: str, x: Any) -> npt.NDArray:
         x = np.asarray(x, dtype=float)
