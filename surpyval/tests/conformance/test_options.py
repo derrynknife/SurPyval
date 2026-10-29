@@ -71,6 +71,8 @@ NOT_SWEPT = {
     "concluded at (#481), not an interval's",
     "repair_test": "a hypothesis test: alpha_ci is the level its "
     "conclusion about the repair is drawn at, not an interval's",
+    "compare": "a table of a Bayesian fit's prior, posterior (param_cri, "
+    "swept) and maximum-likelihood (param_cb, swept) intervals",
     "cb_tvc": "needs a covariate path; checked against cb along a constant "
     "path, for every bound and on=, in conformance/test_tvc.py (#172)",
 }

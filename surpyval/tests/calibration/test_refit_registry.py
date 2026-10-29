@@ -1281,6 +1281,10 @@ _ML = (
     "recover"
 )
 EXCLUDED: dict[str, str] = {
+    "Weibull[bayes]": "a posterior, whose calibration is the "
+    "simulation-based calibration study (calibration/test_sbc_bayes.py)",
+    "Exponential[bayes]": "a posterior, whose calibration is the "
+    "simulation-based calibration study (calibration/test_sbc_bayes.py)",
     "Hypoexponential": _NO_DATA,
     "NeverOccurs": _NO_DATA,
     "InstantlyOccurs": _NO_DATA,

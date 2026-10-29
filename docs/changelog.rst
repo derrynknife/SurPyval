@@ -1,6 +1,47 @@
 Changelog
 =========
 
+v0.26 (unreleased)
+------------------
+
+**Added.**
+
+- **Bayesian fitting**, ``Distribution.fit_bayes`` (and
+  ``fit_bayes_from_df``, and ``fit_bayes(data)`` for a ``SurpyvalData``):
+  say what is already believed and combine it with the data, with every
+  kind of censoring and truncation ``fit`` takes. Priors are in
+  ``surpyval.prior``: on a parameter (any SurPyval distribution, or
+  ``around(2, between=(1.5, 3))``, ``between``, ``uniform``, ``flat``,
+  ``fixed``), on the quantities people know (``on_quantities(Weibull,
+  B10=..., beta=..., R_at={...})``), from an earlier fit
+  (``from_model(model, param=, weight=, widen=)``), from earlier data (a
+  power prior, ``from_data(x, c, weight=)``) or from published numbers
+  (``from_params(dist, params, within=0.2)``); ``prior.check(dist,
+  priors)`` shows what a prior says before any data. The result,
+  ``surpyval.bayes.BayesianParametric``, is used like any model: its
+  ``sf``, ``ff``, ``df``, ``hf``, ``Hf``, ``qf``, ``mean`` and ``random``
+  are those of a new unit's life with the uncertainty in the parameters
+  averaged in (the posterior predictive), and its credible intervals are
+  ``cri`` (on ``sf``, ``ff``, ``Hf``, ``hf``, ``df``), ``quantile_cri``,
+  ``mean_cri`` and ``param_cri`` (``cb`` refuses and points to them). It
+  also has ``posterior`` (``draws``, ``to_dataframe``, ``density``,
+  ``marginal``), ``draw_models``, ``at_params``, ``log_evidence``,
+  ``diagnostics``, ``update`` (exact: the same as fitting everything at
+  once; ``replace=True`` for records that supersede the old ones),
+  ``compare`` (prior, maximum likelihood and posterior side by side),
+  ``compare_to`` (the probability that a quantity exceeds another
+  model's), ``plot``, ``plot_posterior``, a summary in plain words,
+  ``to_dict`` / ``from_dict`` and pickling.
+  ``BayesianParametric.from_draws`` makes one from another sampler's
+  draws.
+- The posterior of one to three free parameters is computed on a
+  self-checking grid (deterministic: no seed), or in closed form for an
+  Exponential with a Gamma prior, a Normal's mean with its spread known
+  and a Bernoulli with a Beta prior; ``method="laplace"`` is a labelled
+  normal approximation. ``surpyval.bayes.log_likelihood_fn`` is the exact
+  censored and truncated likelihood at many parameter points at once, for
+  other samplers. ``fit`` and every existing model are unchanged.
+
 v0.25 (17 October 2026)
 -----------------------
 
