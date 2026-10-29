@@ -306,6 +306,7 @@ Contents:
    Degradation Modelling with SurPyval
    Multivariate Modelling with SurPyval
    Test Planning with SurPyval
+   PyMC with SurPyval
 
 .. toctree::
    :maxdepth: 2

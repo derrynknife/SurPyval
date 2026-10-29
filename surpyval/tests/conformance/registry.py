@@ -344,9 +344,17 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.CovariatePath": _DATA,
     "surpyval.StepValuedError": "an exception type",
     "surpyval.LogRankResult": _RESULT,
+    "surpyval.PairwiseLogRankResult": _RESULT,
     "surpyval.NonParametricPlot": (
         "what plot_nonparametric drew (a figure and its counts), not a model"
     ),
+    "surpyval.CoefficientPlot": (
+        "what plot_coefficients drew (a figure and its values), not a model"
+    ),
+    "surpyval.univariate.regression.CoefficientPlot": (
+        "what plot_coefficients drew (a figure and its values), not a model"
+    ),
+    "surpyval.univariate.regression.plot_coefficients": _FUNCTION,
     "surpyval.recurrent.TrendTestResult": _RESULT,
     "surpyval.recurrent.InterventionTestResult": _RESULT,
     "surpyval.recurrent.GoodnessOfFitResult": _RESULT,
@@ -386,9 +394,13 @@ for _fn in (
     "from_dict",
     "from_json",
     "logrank",
+    "pairwise_logrank",
     "plot_nonparametric",
     "at_risk_table",
+    "plot_coefficients",
+    "life_table",
     "rmst_diff",
+    "sf_diff",
     "success_run",
     "weibayes",
     "gray_test",

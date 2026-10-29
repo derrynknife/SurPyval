@@ -1137,6 +1137,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         tie_method: str = "efron",
         tol: float = 1e-10,
         center: bool = False,
+        strata: npt.ArrayLike | None = None,
     ) -> SemiParametricRegressionModel:
         """
         Fit a Cox model with time-varying covariates in start-stop format.
@@ -1167,6 +1168,13 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         center : bool, optional
             Report the baseline at the covariate means of the interval rows
             (``model.center``) instead of at ``Z = 0``; see :meth:`fit`.
+        strata : array_like, optional
+            The stratum label of each interval row, for a stratified fit:
+            a baseline hazard per stratum and shared coefficients, as
+            :meth:`fit` with ``strata``. The label is per row, so a subject
+            may move between strata (R's ``coxph`` with ``strata()`` on
+            counting-process data). Predict with ``sf_tvc(...,
+            stratum=)``.
 
         Returns
         -------
@@ -1200,6 +1208,29 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         array([1.    , 0.6513, 0.3171])
         """
         x, c, n_arr, tl, Z_arr, ident = handle_tvc(i, xl, xr, c, Z, n)
+        # The permutation from the caller's row order to the internal
+        # (subject, entry) order that ``handle_tvc`` sorts the rows into.
+        row_order = np.lexsort((np.asarray(xl, dtype=float), np.asarray(i)))
+        strata_arr = None
+        if strata is not None:
+            strata_arr = np.asarray(strata)
+            if strata_arr.ndim != 1 or len(strata_arr) != len(row_order):
+                raise ValueError(
+                    "'strata' must have a label for each interval row; got "
+                    "{} labels for {} rows".format(
+                        np.size(strata_arr), len(row_order)
+                    )
+                )
+            import pandas as pd
+
+            if pd.isna(strata_arr).any():
+                # Dropping the rows would cut a subject's path short.
+                raise ValueError(
+                    "'strata' has {} missing (NaN or None) labels; give "
+                    "every interval row a stratum, or drop the subjects "
+                    "with a missing one".format(int(pd.isna(strata_arr).sum()))
+                )
+            strata_arr = strata_arr[row_order]
         model = self.fit(
             x=x,
             Z=Z_arr,
@@ -1209,6 +1240,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             tie_method=tie_method,
             tol=tol,
             center=center,
+            strata=strata_arr,
         )
         model.is_tvc = True
         # Subject ids per *internal* (sorted) row, and the permutation from
@@ -1216,9 +1248,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         # cluster-robust SEs align with the internal order, so user-supplied
         # per-row labels must be permuted the same way (#259).
         model.tvc_subject_ids = ident
-        model.tvc_row_order = np.lexsort(
-            (np.asarray(xl, dtype=float), np.asarray(i))
-        )
+        model.tvc_row_order = row_order
         return model
 
     def fit_tvc_from_df(
@@ -1233,6 +1263,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         tie_method: str = "efron",
         center: bool = False,
         formula: str | None = None,
+        strata_col: str | None = None,
     ) -> SemiParametricRegressionModel:
         """
         Fit a time-varying-covariate Cox model from a start-stop DataFrame.
@@ -1242,12 +1273,16 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         ``tie_method`` and ``center`` are as for :meth:`fit`. Instead of
         ``Z_cols``, ``formula`` (as in :meth:`fit_from_df`) gives the
         covariates as a ``formulaic`` formula, which codes categorical
-        (e.g. ``"yes"`` / ``"no"``) columns.
+        (e.g. ``"yes"`` / ``"no"``) columns. ``strata_col`` names the
+        column of each row's stratum, for a stratified fit.
         """
+        columns = {"i": i_col, "xl": xl_col, "xr": xr_col, "c": c_col}
+        if strata_col is not None:
+            columns["strata"] = strata_col
         return fit_tvc_df(
             self.fit_tvc,
             df,
-            {"i": i_col, "xl": xl_col, "xr": xr_col, "c": c_col},
+            columns,
             Z_cols,
             formula,
             n_col,

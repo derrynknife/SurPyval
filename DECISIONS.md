@@ -13,6 +13,64 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-10-29
 
+### Life tables: `life_table`
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A function, `surpyval.life_table(x, c, n, tl, intervals)`, returning a DataFrame, not a fitted model class. | proposed | A life table is a tabulation with estimates beside it, as `at_risk_table` is; Kaplan-Meier is the model for the same data. | done |
+| Intervals are `[start, end)`: an event or censoring on a boundary counts in the interval it starts; data beyond the last boundary goes in an open last interval, which has no density or hazard (as `KMsurv::lifetab`'s last interval). | proposed | Klein and Moeschberger's convention, and grouped data given at each interval's start falls in that interval. | done |
+| A late entrant is counted in `entered` in the interval it enters and as half at risk there, as a withdrawal is; entry exactly on a boundary is at risk from that interval's start. | proposed | The actuarial assumption applied to entries; with no late entry the table is the classical one. | done |
+| Left and interval censoring and right truncation are refused, pointing to `Turnbull`. | principle 2 | Their events are not known to fall in one interval. | done |
+
+### Group comparisons and the global test
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `pairwise_logrank` tests each pair on its own two groups' rows (as R's `survminer::pairwise_survdiff`), with `adjust="holm"` by default (R's `p.adjust` default); `"bonferroni"`, `"bh"` and `"none"` too. A pair with nothing to compare (dof 0) keeps p = 1 and is not counted as a test. | proposed | Holm controls the family-wise error and never rejects less than Bonferroni. | done |
+| The fixed-time test is `sf_diff(model_a, model_b, x, transform="log-log")`, a dict like `rmst_diff`'s. The variance is the step function's at the last observed time at or before `x`, not interpolated between observed times. | proposed | The estimate is a step; an interpolated variance does not belong to it. | done |
+| The Peto-Peto weight includes the current event time, prod(1 - d/(r+1)) (Klein and Moeschberger section 7.3); `t0` censors events after `t0` at `t0` and drops rows entering at or after it. | proposed | — | done |
+| `likelihood_ratio_test()` returns a dict (`statistic`, `df`, `p_value`, both log-likelihoods). For parametric regression it is available for the built-in links of PH, AFT, PO and AH (whose coefficients at 0 leave the baseline), and refused for accelerated life and custom links. | proposed | A life model has no general "no effect" value. | done |
+| `fit_tvc(strata=)` takes a label per row, so a subject may change stratum; missing labels are refused rather than dropped. | proposed | Dropping a row would cut a subject's path short. | done |
+
+### Aalen's additive hazards model (`AalenAdditive`)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A model object, `AalenAdditive.fit(x, Z, c, n, tl, coef_penalty)` -> `AalenAdditiveModel`, beside the Lin-Ying `AdditiveHazards`; the diagnostics function `aalen_cumulative_coefficients` is unchanged and the unpenalised fit equals it bit for bit. | proposed | The estimator was already validated against `timereg::aalen`; the model adds prediction, bounds, tests and saving around it. | done |
+| Predictions use the running maximum of `H = B_0(t) + B(t)'Z` from 0, floored at 0, as the Lin-Ying model does (#376); R's `timereg` and lifelines return the raw estimate, which is the same wherever it does not fall. | principle (valid values) | `sf` must stay in [0, 1] and never rise. | done |
+| `coef_penalty` is a ridge penalty on the covariates only, scaled by each covariate's variance; the baseline is not penalised. lifelines' `coef_penalizer` also penalises its intercept, so the two differ. | proposed | A penalty that does not depend on the covariates' units keeps the covariate-scale invariance; shrinking the baseline hazard towards 0 has no meaning. | done |
+| `cb` is Wald only, on `log H` with the optional-variation covariance of `B`; `method` other than `"wald"` is refused saying why (no likelihood; no bootstrap implemented). | principle (every bound) | The documented gap. | done |
+| `constant_effects_test` is timereg's Kolmogorov-Smirnov and Cramér-von Mises test of time-invariant effects, its null simulated by resampling (`n_sim`, `random_state`); its own seeded study found it anti-conservative at n = 300 (size 0.08 in the study, 0.13-0.16 in a separate check; 0.05 at n = 1000), pinned as a strict xfail in `calibration/test_coverage_aalen.py` and stated in the docstring. | proposed | Reported as found, not tuned. A fix (a time range short of the last event, or a small-sample correction) is for the maintainer. | open |
+| Left out: lifelines' `smoothing_penalizer`, and the refit-registry study for the case (its fixture's fit is not an additive model to draw from); the model has its own calibration study. | proposed | — | done |
+
+### Spline-baseline (Royston-Parmar) regression
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Built as the `PH` and `PO` families on a spline baseline distribution with fixed knots (`SplineBaseline`), not a new model class. | principle 14, 21 | The model then has every bound, `summary`, `fit_from_df`, formulas and saving as the other parametric regressions, by the same code. | proposed |
+| `RoystonParmarRegression(df=3, scale="hazard", knots=None)` configures the fitter (its `fit` and `fit_from_df` keep the regression signature); `RoystonParmarPH` and `RoystonParmarPO` are the `df=3` instances. `RoystonParmar.fit` is unchanged. | principle 21 | `fit_from_df` cannot take model options. | proposed |
+| Knots as the univariate fit places them (quantiles of the log event times), then held: bounds, bootstrap and likelihood-ratio searches are conditional on them, as in flexsurv. | principle 16 | — | proposed |
+| On the odds scale the coefficients multiply the survival odds, as every SurPyval `PO`: flexsurv's odds-scale coefficients have the opposite sign. | principle 21 | One meaning of a PO coefficient in the package. | proposed |
+| `scale="normal"` with covariates is refused, naming `LogNormalAFT` and the univariate fit. | proposed | Its covariate shift is neither PH nor PO; a probit-shift family would be new. | open |
+
+### Robust standard errors on the parametric regressions
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The names are the Cox model's: `robust_covariance(cluster=None)`, `robust_standard_errors(cluster=None)` and `summary(robust=True, cluster=...)`; not a `robust=` argument to `fit` (lifelines' form). | principle 21 | The same option has the same name everywhere, and the fit is the same either way. | proposed |
+| HC0, no small-sample factor; counts are frequency weights (a row with `n = 3` is three units, each its own cluster without `cluster`, three members of its cluster with it). | principle 5, 16 | R's `sandwich` and lifelines use HC0; counts must equal repetition, as `CoxPH.robust_covariance` already reads them. | proposed |
+| `cluster` is one label per row given to the fit, in that order; rows dropped for a missing covariate are matched and left out (the fit records which given row each fitted row is). | principle 3 | A label belongs to its row; the fit sorts and drops rows. | proposed |
+| Only the standard errors and the summary change; `cb`, `param_cb` and `p_values` keep the model-based covariance. A `fit_tvc` model refuses (its likelihood is over histories, not rows), naming the bootstrap and likelihood-ratio bounds. | principle 24 | Simple by default; the robust form is an option beside it. | proposed |
+
+### PyMC helpers (`surpyval.pymc`)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| PyMC is never a dependency of SurPyval, not even an optional extra in `pyproject.toml`, and not a test dependency. `surpyval.pymc` holds helpers for people who already use PyMC; each imports `pymc` / `pytensor` inside the function and, where they are absent, raises an `ImportError` saying to install pymc. `import surpyval` (and `import surpyval.pymc`) never imports them (tested). Their tests skip where pytensor or PyMC is not importable. | maintainer | SurPyval stays light and its own Bayesian fitting uses its own engines; the helpers serve PyMC users without tying the package to PyMC's release cycle. | done |
+| The likelihood is a `pm.Potential` built from per-family pytensor log density, log survival and log CDF in SurPyval's parameterisation and stable forms, not `pm.Censored`. Supported: Weibull, Exponential, LogNormal, Gamma, LogLogistic, Normal, Gumbel, Logistic, Rayleigh; any other is refused with the list. | proposed | `pm.Censored` covers right and left censoring only; one term covers intervals, truncation on both sides and counts, and equals `_log_likelihood` to 1e-10 (tested per family, row type and truncation). | done |
+| The data go through `SurpyvalData` (built with `group_and_sort=False` from arrays) and the distribution's support check, so refusals are `fit`'s, word for word. A parameter is a scalar or one value per row in the data's row order; other shapes are refused, and a length unknown before the graph runs is checked by an assertion in it. | proposed | Per-row values are how covariates enter, and they must line up with the rows as the user gave them. | done |
+| `prior_from_model(model, name=, weight=)` is a multivariate normal on the log of each positive parameter (a real-line one as is), the fit's covariance carried there by the delta method and divided by `weight` in (0, 1]; models with an offset, a limited-failure proportion or zero inflation are refused. `prior_from_spec` takes each prior as a SurPyval distribution, `(family, *params)` or `{"dist", "params"}`, always in SurPyval's parameter order. | proposed | The same scale as the fit's Wald bounds; SurPyval's order avoids PyMC's swapped Weibull names. | done |
+
 ### Distributional regression: covariates on every parameter
 
 | Decision | By | Reason | Status |

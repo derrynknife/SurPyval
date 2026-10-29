@@ -13,8 +13,8 @@ separate: its life-model parameter juggling does not fit this shape.
 import copy
 import functools
 import warnings
-from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, Callable, NamedTuple
+from collections.abc import Callable, Iterable
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import autograd.numpy as np
 import numpy.typing as npt
@@ -64,6 +64,7 @@ from ._kinds import (
     PROPORTIONAL_HAZARD,
     PROPORTIONAL_ODDS,
 )
+from ._robust import note_source_rows
 from .parametric_regression_model import ParametricRegressionModel
 
 
@@ -123,7 +124,7 @@ def per_column_map(pmap: dict, p: int) -> bool:
     ``phi_param_map`` the way coefficients were named before v0.23,
     ``beta_j`` for column ``j`` of ``p``: a custom link that names them so
     is treated, as it was, as one coefficient per column."""
-    return pmap == {"beta_{}".format(j): j for j in range(p)}
+    return pmap == {f"beta_{j}": j for j in range(p)}
 
 
 def split_log_linear(
@@ -378,6 +379,17 @@ ORIGIN_MAPS: "dict[tuple[str, str], tuple[tuple[int, ...], Callable]]" = {
     (ACCELERATED_FAILURE_TIME, "Logistic"): ((0, 1), _both_scale_up),
     (ACCELERATED_FAILURE_TIME, "Gumbel"): ((0, 1), _both_scale_up),
     (ACCELERATED_FAILURE_TIME, "GumbelLEV"): ((0, 1), _both_scale_up),
+    # The spline baselines (RoystonParmarRegression): a constant in the
+    # linear predictor is a shift of the spline's intercept, down for
+    # log H and up for the logit of F (PO multiplies the survival odds).
+    (PROPORTIONAL_HAZARD, "RoystonParmar"): (
+        (0,),
+        lambda p, s: [p[0] - s, *p[1:]],
+    ),
+    (PROPORTIONAL_ODDS, "RoystonParmar"): (
+        (0,),
+        lambda p, s: [p[0] + s, *p[1:]],
+    ),
     (PROPORTIONAL_ODDS, "LogLogistic"): (
         (0,),
         lambda p, s: [p[0] * np.exp(-s / p[1]), p[1]],
@@ -449,15 +461,13 @@ def _named(i: int, names: "tuple[str, ...]") -> str:
     ``names``: a coefficient after them, by its number."""
     if i < len(names):
         return names[i]
-    return "coefficient {}".format(i - len(names))
+    return f"coefficient {i - len(names)}"
 
 
 def _plain(values: npt.ArrayLike) -> str:
     """Values for a message, plainly (no numpy repr): ``[1.5, 2e+04]``."""
     return "[{}]".format(
-        ", ".join(
-            "{:.4g}".format(float(v)) for v in np.ravel(np.asarray(values))
-        )
+        ", ".join(f"{float(v):.4g}" for v in np.ravel(np.asarray(values)))
     )
 
 
@@ -465,7 +475,7 @@ def _pairs(names: "tuple[str, ...]", values: npt.ArrayLike) -> str:
     """``alpha = 2, beta = 1.5``: named values for a message."""
     flat = np.ravel(np.asarray(values, dtype=float))
     return ", ".join(
-        "{} = {:.4g}".format(name, float(v)) for name, v in zip(names, flat)
+        f"{name} = {float(v):.4g}" for name, v in zip(names, flat)
     )
 
 
@@ -659,9 +669,7 @@ class Centring:
         if not self.maps_back:
             return params_c, self.center, None
         k = self.k_dist
-        names = tuple(names) or tuple(
-            "parameter {}".format(i) for i in range(k)
-        )
+        names = tuple(names) or tuple(f"parameter {i}" for i in range(k))
         reason = ""
         with np.errstate(all="ignore"):
             params_0 = np.asarray(self.to_origin(params_c), dtype=float)
@@ -871,11 +879,13 @@ def prepare_regression_fit(
     Z_in = Z if hasattr(Z, "ndim") else np.asarray(Z)
     if getattr(Z_in, "ndim", 2) == 1:
         Z = np.asarray(Z_in).reshape(-1, 1)
+    rows_given, Z_given = len(data), Z
     data, Z = drop_nonfinite_covariates(data, Z)
     order = canonical_order(data, Z)
     if np.any(order != np.arange(order.size)):
         data, Z = data[order], Z[order]
     data.add_covariates(Z)
+    note_source_rows(data, rows_given, Z_given, order)
     # After the rows with a missing covariate are dropped (principle 3)
     check_baseline_support(fitter, data)
 
