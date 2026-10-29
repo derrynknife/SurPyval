@@ -81,6 +81,7 @@ from surpyval.tests.conformance.registry_cases import (  # noqa: F401
     _START_IS_MAXIMUM,
     _U_LARGE,
     CASES,
+    DISTRIBUTIONAL_BASELINES,
     FAR,
     GOMPERTZ,
     N_LARGE,

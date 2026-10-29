@@ -103,7 +103,7 @@ def test_data_frame_columns_are_named_with_col(fitter, method):
         ).parameters.items()
         if p.kind not in (p.VAR_KEYWORD, p.VAR_POSITIONAL)
         and not name.endswith(("_col", "_cols"))
-        and name not in {"df", "formula"} | fit_options
+        and name not in {"df", "formula", "formulas"} | fit_options
     ]
     assert not bad, f"{method} names columns without _col: {bad}"
 

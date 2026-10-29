@@ -1078,6 +1078,14 @@ for _kind in ("PH", "AFT", "PO", "AH"):
                 else ""
             ),
         )
+for _base in reg.DISTRIBUTIONAL_BASELINES:
+    # The model's own random: each row's distribution's quantile function
+    PLANS[_base + "Distributional"] = Plan(
+        _regression(own_random=True),
+        _REG_N,
+        _REG_REPS,
+        params=lambda m: np.asarray(m.params, dtype=float),
+    )
 for _lm in reg.LIFE_MODELS + reg.DUAL_LIFE_MODELS + ("GeneralLogLinear",):
     PLANS[f"WeibullAL[{_lm}]"] = Plan(
         _regression(own_random=True),

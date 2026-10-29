@@ -200,6 +200,7 @@ PROPERTIES: dict[str, str] = {
 DECLARED_ATTRIBUTES = frozenset(
     {
         "surpyval.ParametricRegressionModel",
+        "surpyval.DistributionalRegressionModel",
         "surpyval.SemiParametricRegressionModel",
         "surpyval.ProportionalOddsModel",
         "surpyval.AdditiveHazardsModel",
@@ -226,6 +227,7 @@ DIFFERENTIATED = frozenset(
         "surpyval.Parametric",
         "surpyval.MixtureModel",
         "surpyval.ParametricRegressionModel",
+        "surpyval.DistributionalRegressionModel",
         "surpyval.FrailtyModel",
         "surpyval.SemiParametricRegressionModel",
         "surpyval.univariate.competing_risks.regression.fine_gray"
@@ -546,7 +548,7 @@ def predictions(case, model, x=None, Z=None):
     return out
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _fitted(name):
     # The finished registry (known failures applied), which imports
     # this module: looked up when called, not at import.

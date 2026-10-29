@@ -1,6 +1,28 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+**Added.**
+
+- Distributional regression, ``Distributional(dist)`` and the prebuilt
+  ``WeibullDistributional``, ``LogNormalDistributional``,
+  ``GammaDistributional`` and others: the covariates move every
+  parameter of the distribution, each through its own link (log for a
+  positive parameter, identity for a location), so a Weibull's shape can
+  depend on load as well as its scale. Each parameter chooses its
+  covariates (``covariates={"beta": ["load"]}``, or
+  ``formulas={"alpha": "load + temp", "beta": "load"}`` in
+  ``fit_from_df``; with none named every covariate is on every
+  parameter). Every censoring, truncation and count of the data model;
+  Wald, likelihood-ratio and bootstrap bounds; closed-form ``qf`` and
+  ``mean`` at each row; ``parameters_at(Z)`` and ``distribution_at(row)``;
+  saving, loading and pickling. The AFT models are its covariates-on-the-
+  scale special case (with the signs of the coefficients reversed), and
+  the fits agree with R's ``flexsurvreg(anc = ...)`` on the Rossi data.
+  See the new *Distributional Regression* page.
+
 v0.25 (17 October 2026)
 -----------------------
 
