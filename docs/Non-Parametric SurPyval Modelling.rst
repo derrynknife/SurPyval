@@ -1398,6 +1398,51 @@ those whose interval spans :math:`t` (their event may or may not have happened y
     assert all(_c['At risk'] + _c['In interval'] + _c['Events'] + _c['Censored'] == 10)
     plt.close(out.fig)
 
+Life tables
+-----------
+
+A **life table** (the actuarial, or Cutler-Ederer, method) groups the times into intervals and
+counts, in each, how many units were at risk at its start, how many were censored (withdrew) and
+how many had the event. From those counts it estimates the chance of the event in each interval,
+the survival at the start of each, and the density and hazard rate there, each with a standard
+error. It is the classical summary for grouped data and for reports that give survival by year
+or by age band. ``surv.life_table`` builds one from the times, the censoring flags, the counts
+and the entry times (``tl``), or from a ``SurpyvalData`` or a fitted non-parametric model.
+
+The lung cancer data in 180-day intervals:
+
+.. jupyter-execute::
+
+    lung_table = surv.life_table(lung['time'], 1 - lung['status'],
+                                 intervals=np.arange(0, 1081, 180))
+    print(lung_table[['start', 'end', 'at_risk_start', 'censored', 'events', 'at_risk',
+                      'q', 'surv', 'se_surv', 'hazard']].round(4))
+
+In plain terms: of the 228 patients, 62 died in the first 180 days, so about 72% (``surv``, with
+a standard error of 3%) were alive at the start of the second interval; of the 142.5 effectively
+at risk in that interval, 39% died in it. ``at_risk`` is the number at risk at the start less half
+of those censored in the interval: the method assumes a unit that withdraws was at risk for half
+of it. That is also why the actuarial survival differs a little from the Kaplan-Meier estimate at
+the same time (72.4% against 72.2% at day 180).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = lung_table
+    assert _t['at_risk_start'][0] == 228 and _t['events'][0] == 62
+    assert round(_t['surv'][1], 3) == 0.724 and round(_t['se_surv'][1], 2) == 0.03
+    assert _t['at_risk'][1] == 142.5 and round(_t['q'][1], 2) == 0.39
+    assert round(float(surv.KaplanMeier.fit(lung['time'], c=1 - lung['status']).sf(180)), 3) == 0.722
+
+The intervals are ``[start, end)``. ``intervals`` takes the boundaries (a last boundary of
+``inf``, or data beyond the last one, gives an open last interval, which has no density or
+hazard), or a number of equal intervals (the last open), and defaults to the Freedman-Diaconis
+width. Late entrants are counted in the ``entered`` column of the interval they enter and, like
+withdrawals, as half at risk there. Data already grouped is given as one row per interval and
+outcome, at its start, with the count in ``n``. Left or interval censored data cannot be counted
+into intervals; estimate it with ``Turnbull`` instead.
+
 Restricted mean survival time
 -----------------------------
 

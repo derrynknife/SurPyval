@@ -395,6 +395,7 @@ for _fn in (
     "plot_nonparametric",
     "at_risk_table",
     "plot_coefficients",
+    "life_table",
     "rmst_diff",
     "success_run",
     "weibayes",
