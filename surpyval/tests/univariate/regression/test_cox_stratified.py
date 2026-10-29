@@ -183,3 +183,111 @@ def test_stratified_predict_tvc_requires_and_uses_stratum():
     assert not np.isclose(
         ms.sf([3.0], [0.0], stratum=0), ms.sf([3.0], [0.0], stratum=1)
     )
+
+
+# -- strata on the time-varying (start-stop) fit -----------------------------
+
+
+def _rossi_tv():
+    import pandas as pd
+
+    path = sp.datasets.__file__.replace("__init__.py", "rossi_tv.csv")
+    tv = pd.read_csv(path)
+    Z = np.column_stack(
+        [
+            (tv["employed"] == "yes").astype(float),
+            (tv["fin"] == "yes").astype(float),
+            tv["age"].astype(float),
+            tv["prio"].astype(float),
+        ]
+    )
+    return (
+        tv["id"].to_numpy(),
+        tv["start"].to_numpy(float),
+        tv["stop"].to_numpy(float),
+        1 - tv["event"].to_numpy(),
+        Z,
+        (tv["wexp"] == "yes").astype(int).to_numpy(),
+    )
+
+
+def test_fit_tvc_strata_matches_lifelines_on_rossi():
+    # lifelines 0.30.3, CoxTimeVaryingFitter(strata=["wexp"]) on the
+    # employment start-stop data (employed, fin, age, prio): these
+    # coefficients and log partial likelihood -564.4335958743795; its
+    # log_likelihood_ratio_test() is 56.67904876355351 on 4 df.
+    i, xl, xr, c, Z, wexp = _rossi_tv()
+    # In a shuffled row order, which the strata must follow.
+    order = np.random.default_rng(1).permutation(i.size)
+    model = CoxPH.fit_tvc(
+        i[order],
+        xl[order],
+        xr[order],
+        c[order],
+        Z[order],
+        strata=wexp[order],
+    )
+    np.testing.assert_allclose(
+        model.params,
+        [
+            -1.3383205729508818,
+            -0.33605623143948243,
+            -0.04860157569671816,
+            0.07979069881488002,
+        ],
+        rtol=1e-6,
+    )
+    np.testing.assert_allclose(
+        model.log_likelihood, -564.4335958743795, rtol=1e-10
+    )
+    res = model.likelihood_ratio_test()
+    np.testing.assert_allclose(res["statistic"], 56.67904876355351, rtol=1e-8)
+    assert model.is_stratified and model.is_tvc
+    assert sorted(model.strata_labels) == [0, 1]
+
+
+def test_fit_tvc_strata_is_fit_with_strata_and_entry_times():
+    i, xl, xr, c, Z, wexp = _rossi_tv()
+    keep = i <= 120  # a quick subset
+    i, xl, xr, c, Z, wexp = (a[keep] for a in (i, xl, xr, c, Z, wexp))
+    tvc = CoxPH.fit_tvc(i, xl, xr, c, Z, strata=wexp)
+    direct = CoxPH.fit(xr, Z, c=c, tl=xl, strata=wexp)
+    np.testing.assert_allclose(tvc.params, direct.params, rtol=1e-10)
+    path = sp.StepSchedule.constant([1.0, 0.0, 25.0, 3.0])
+    np.testing.assert_allclose(
+        tvc.sf_tvc([10.0, 30.0], path, stratum=1),
+        direct.sf([10.0, 30.0], [1.0, 0.0, 25.0, 3.0], stratum=1),
+        rtol=1e-10,
+    )
+
+
+def test_fit_tvc_from_df_takes_a_strata_column():
+    import pandas as pd
+
+    i, xl, xr, c, Z, wexp = _rossi_tv()
+    keep = i <= 120
+    df = pd.DataFrame(
+        {
+            "id": i[keep],
+            "start": xl[keep],
+            "stop": xr[keep],
+            "c": c[keep],
+            "emp": Z[keep, 0],
+            "w": wexp[keep],
+        }
+    )
+    by_df = CoxPH.fit_tvc_from_df(
+        df, "id", "start", "stop", "c", Z_cols=["emp"], strata_col="w"
+    )
+    by_arrays = CoxPH.fit_tvc(
+        i[keep], xl[keep], xr[keep], c[keep], Z[keep, :1], strata=wexp[keep]
+    )
+    np.testing.assert_allclose(by_df.params, by_arrays.params, rtol=1e-12)
+
+
+def test_fit_tvc_strata_refusals():
+    i, xl, xr, c, Z = [0, 0, 1], [0, 2, 0], [2, 5, 3], [1, 0, 0], [0, 1, 0]
+    with pytest.raises(ValueError, match="'strata'"):
+        CoxPH.fit_tvc(i, xl, xr, c, Z, strata=[0, 1])
+    with pytest.raises(ValueError, match="missing"):
+        CoxPH.fit_tvc(i, xl, xr, c, Z, strata=["a", None, "b"])

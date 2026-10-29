@@ -23,6 +23,24 @@ v0.26 (unreleased)
   log axis, with several models side by side. It returns a
   ``CoefficientPlot`` holding the axes and the values drawn. Additive
   models have no ratio scale, and ``on='exp'`` is refused for them.
+- ``pairwise_logrank``: the log-rank test of every pair of groups in one
+  table, with the p-values adjusted for the number of pairs (Holm by
+  default; Bonferroni, Benjamini-Hochberg or none), taking every argument
+  of ``logrank``; ``adjust_p_values`` gives the adjustment on its own.
+- ``sf_diff``: the test of two groups' survival at one time (Klein et al.,
+  2007), on the log(-log), log, linear, arcsine-square-root or logit
+  scale, with the difference and its interval.
+- ``logrank`` takes ``weighting="peto-peto"`` and
+  ``"modified-peto-peto"``, and ``t0`` to compare the groups up to a time
+  only.
+- ``likelihood_ratio_test()`` on Cox and parametric regression models:
+  the global test of all the covariates against the model without them
+  (R's "Likelihood ratio test" line of ``summary(coxph)``, and the
+  ``survreg`` chi-squared).
+- ``CoxPH.fit_tvc(..., strata=)`` and ``fit_tvc_from_df(...,
+  strata_col=)``: stratified Cox fits of start-stop data.
+- ``NonParametric.cs(x, given)``: conditional survival from a
+  non-parametric estimate, as the parametric models' ``cs``.
 
 **Documentation.**
 

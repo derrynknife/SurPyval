@@ -268,6 +268,48 @@ class SemiParametricRegressionModel(
             raise ValueError("Must have been fit with data")
         return float(self._neg_ll)
 
+    def likelihood_ratio_test(self) -> dict:
+        """
+        The global likelihood-ratio test of the model: do the covariates,
+        taken together, explain anything? It compares the fit with the
+        model in which every coefficient is 0 (no covariate has an
+        effect): twice the gain in the log partial likelihood is
+        chi-squared on as many degrees of freedom as there are estimated
+        coefficients when none has an effect. It is the "Likelihood ratio
+        test" line of R's ``summary(coxph)``. A stratified fit is
+        compared with the stratified model without covariates, and a
+        time-varying-covariate fit with the same start-stop rows.
+
+        Returns
+        -------
+        dict
+            ``{"statistic", "df", "p_value", "log_likelihood",
+            "log_likelihood_null"}``.
+
+        Raises
+        ------
+        ValueError
+            For a model restored with ``from_dict`` (it does not carry the
+            data), or one with no estimated coefficient.
+
+        Examples
+        --------
+        The Rossi recidivism data, with all seven covariates (R's
+        ``coxph`` gives 33.27 on 7 df, p = 2.4e-05):
+
+        >>> from surpyval import CoxPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> Z = df[["fin", "age", "race", "wexp", "mar", "paro", "prio"]]
+        >>> model = CoxPH.fit(df["week"], Z.values, c=1 - df["arrest"])
+        >>> res = model.likelihood_ratio_test()
+        >>> round(res["statistic"], 2), res["df"], round(res["p_value"], 7)
+        (33.27, 7, 2.36e-05)
+        """
+        from ._global_test import cox_likelihood_ratio_test
+
+        return cox_likelihood_ratio_test(self)
+
     def _ic_k(self) -> int:
         # The estimated coefficients: an aliased one (nan) is not, as R's
         # logLik(coxph) counts sum(!is.na(coef)).

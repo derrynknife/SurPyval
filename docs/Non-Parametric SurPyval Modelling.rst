@@ -1301,6 +1301,62 @@ of groups. ``strata`` can be combined with ``c``, ``n`` and any ``weighting``.
     _s = logrank(x, group, strata=site)
     assert _s.p_value > 0.1 and _s.strata == 2 and _s.dof == 1
 
+Peto-Peto weights and a fixed window
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Two more weightings are ``'peto-peto'``, Peto and Peto's estimate of the pooled survival at each
+event time (it emphasises early differences, as Gehan's does, but depends less on the censoring
+pattern), and ``'modified-peto-peto'``. ``t0`` compares the groups up to a time only: events after
+it count as units still running at ``t0``. Use it when the question is about a fixed follow-up
+window, chosen before looking at the data. On the control and treatment groups of the first
+example:
+
+.. jupyter-execute::
+
+    x2 = np.concatenate([control, treatment])
+    group2 = np.repeat(['control', 'treatment'], 200)
+    print('log-rank    : p = %.3g' % logrank(x2, group2).p_value)
+    print('Peto-Peto   : p = %.3g' % logrank(x2, group2, weighting='peto-peto').p_value)
+    print('up to t = 5 : p = %.3g' % logrank(x2, group2, t0=5).p_value)
+
+Up to time 5 there are fewer events, so the evidence from that window alone is weaker.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert logrank(x2, group2, t0=5).p_value > logrank(x2, group2).p_value
+
+Which groups differ? Pairwise tests
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+With three or more groups the log-rank test says whether *any* group differs, not which.
+``pairwise_logrank`` tests every pair on its own two groups' data and gives the results in one
+table. Running several tests raises the chance that one of them rejects by luck, so the table also
+has the p-values adjusted for the number of pairs (``p_adjusted``; Holm's method by default,
+``adjust='bonferroni'``, ``'bh'`` for Benjamini-Hochberg or ``'none'``). Compare the adjusted
+values with your significance level. Here, three groups of which only the third is different:
+
+.. jupyter-execute::
+
+    from surpyval import pairwise_logrank
+
+    np.random.seed(3)
+    x3 = np.concatenate([np.random.weibull(1.5, 60) * s for s in (10, 10, 5)])
+    group3 = np.repeat(['A', 'B', 'C'], 60)
+    pairs = pairwise_logrank(x3, group3)
+    print(pairs.table.round(4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = pairs.table.set_index(['group_a', 'group_b'])['p_adjusted']
+    assert _t[('A', 'B')] > 0.05 and _t[('A', 'C')] < 0.05 and _t[('B', 'C')] < 0.05, _t
+
+A and B are not told apart; C differs from each. ``pairwise_logrank`` takes every argument of
+``logrank`` (``c``, ``n``, ``weighting``, ``strata``, ``tl``, ``t0``).
+
 Plotting groups with the number at risk
 ---------------------------------------
 
@@ -1519,6 +1575,29 @@ right censoring and delayed entry are handled by those fits.
     assert round(diff['difference']) == 4, diff['difference']
     assert np.isclose(diff['ratio'], diff['rmst_a'] / diff['rmst_b'])
     assert np.isclose(diff['difference'], diff['rmst_a'] - diff['rmst_b'])
+
+To compare the two groups' survival at one time instead -- "is the chance of lasting 10 time
+units different?" -- use ``surpyval.sf_diff``. It compares the two estimates at that time, with
+each one's variance (Greenwood's for the Kaplan-Meier), on the log(-log) scale by default, which
+Klein et al. (2007) found holds its stated error rate better in small samples than the plain
+difference (``transform='linear'``; ``'log'``, ``'arcsine-sqrt'`` and ``'logit'`` are the others):
+
+.. jupyter-execute::
+
+    from surpyval import sf_diff
+
+    at_10 = sf_diff(treatment_model, control_model, 10)
+    print('S_a(10) = %.3f, S_b(10) = %.3f, p = %.3g'
+          % (at_10['sf_a'], at_10['sf_b'], at_10['p_value']))
+    print('difference %.3f (%.3f to %.3f)'
+          % (at_10['difference'], at_10['lower'], at_10['upper']))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert at_10['lower'] < at_10['difference'] < at_10['upper']
+    assert np.isclose(at_10['difference'], at_10['sf_a'] - at_10['sf_b'])
 
 The Kaplan-Meier, Nelson-Aalen, Fleming-Harrington and Turnbull estimates also
 run in the browser in `Reliafy <https://reliafy.com/reference/nonparametric>`__.
