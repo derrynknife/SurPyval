@@ -27,6 +27,8 @@ from .accelerated_life import (
 )
 from .additive_hazards import (
     AH,
+    AalenAdditive,
+    AalenAdditiveModel,
     AdditiveHazards,
     AdditiveHazardsFitter,
     AdditiveHazardsModel,
@@ -108,8 +110,11 @@ __all__ = [
     # Buckley-James semi-parametric AFT
     "BuckleyJames",
     "BuckleyJamesModel",
-    # Additive hazards — semi-parametric (Lin-Ying) and parametric
+    # Additive hazards — non-parametric (Aalen), semi-parametric
+    # (Lin-Ying) and parametric
     "AH",
+    "AalenAdditive",
+    "AalenAdditiveModel",
     "AdditiveHazards",
     "AdditiveHazardsFitter",
     "AdditiveHazardsModel",

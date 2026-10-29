@@ -1576,6 +1576,8 @@ def _bounds(case):
         return (_PARAM_CB, lr)
     if cls == "CoxFrailtyModel":
         return (_PARAM_CB,)
+    if cls == "AalenAdditiveModel":
+        return (Bound("cb", on=_ON_SURVIVAL),)
     if cls == "BuckleyJamesModel":
         return (
             Bound(
@@ -2009,6 +2011,7 @@ _NO_STARVE: dict[str, str] = {
     "FixedEventProbability": _CLOSED_FORM,
     "ExactEventTime": _CLOSED_FORM,
     "AdditiveHazards": _CLOSED_FORM + " (Lin-Ying: a linear system)",
+    "AalenAdditive": _CLOSED_FORM + " (least squares at each event time)",
     "KaplanMeier": _EXACT,
     "NelsonAalen": _EXACT,
     "FlemingHarrington": _EXACT,

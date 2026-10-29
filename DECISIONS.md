@@ -32,6 +32,17 @@ Design decisions made while working on the open issues, with the reason for each
 | `likelihood_ratio_test()` returns a dict (`statistic`, `df`, `p_value`, both log-likelihoods). For parametric regression it is available for the built-in links of PH, AFT, PO and AH (whose coefficients at 0 leave the baseline), and refused for accelerated life and custom links. | proposed | A life model has no general "no effect" value. | done |
 | `fit_tvc(strata=)` takes a label per row, so a subject may change stratum; missing labels are refused rather than dropped. | proposed | Dropping a row would cut a subject's path short. | done |
 
+### Aalen's additive hazards model (`AalenAdditive`)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A model object, `AalenAdditive.fit(x, Z, c, n, tl, coef_penalty)` -> `AalenAdditiveModel`, beside the Lin-Ying `AdditiveHazards`; the diagnostics function `aalen_cumulative_coefficients` is unchanged and the unpenalised fit equals it bit for bit. | proposed | The estimator was already validated against `timereg::aalen`; the model adds prediction, bounds, tests and saving around it. | done |
+| Predictions use the running maximum of `H = B_0(t) + B(t)'Z` from 0, floored at 0, as the Lin-Ying model does (#376); R's `timereg` and lifelines return the raw estimate, which is the same wherever it does not fall. | principle (valid values) | `sf` must stay in [0, 1] and never rise. | done |
+| `coef_penalty` is a ridge penalty on the covariates only, scaled by each covariate's variance; the baseline is not penalised. lifelines' `coef_penalizer` also penalises its intercept, so the two differ. | proposed | A penalty that does not depend on the covariates' units keeps the covariate-scale invariance; shrinking the baseline hazard towards 0 has no meaning. | done |
+| `cb` is Wald only, on `log H` with the optional-variation covariance of `B`; `method` other than `"wald"` is refused saying why (no likelihood; no bootstrap implemented). | principle (every bound) | The documented gap. | done |
+| `constant_effects_test` is timereg's Kolmogorov-Smirnov and Cramér-von Mises test of time-invariant effects, its null simulated by resampling (`n_sim`, `random_state`); its own seeded study found it anti-conservative at n = 300 (size 0.08 in the study, 0.13-0.16 in a separate check; 0.05 at n = 1000), pinned as a strict xfail in `calibration/test_coverage_aalen.py` and stated in the docstring. | proposed | Reported as found, not tuned. A fix (a time range short of the last event, or a small-sample correction) is for the maintainer. | open |
+| Left out: lifelines' `smoothing_penalizer`, and the refit-registry study for the case (its fixture's fit is not an additive model to draw from); the model has its own calibration study. | proposed | — | done |
+
 ## 2026-10-17
 
 ### Joint models: separate covariates, interval data, dynamic prediction (#891)

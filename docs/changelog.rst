@@ -41,6 +41,21 @@ v0.26 (unreleased)
   strata_col=)``: stratified Cox fits of start-stop data.
 - ``NonParametric.cs(x, given)``: conditional survival from a
   non-parametric estimate, as the parametric models' ``cs``.
+- ``surpyval.AalenAdditive``: Aalen's non-parametric additive hazards
+  model, ``h(t | Z) = b_0(t) + b(t)'Z`` with each effect free to change
+  over time. The fitted ``AalenAdditiveModel`` gives the cumulative
+  effects ``B(t)`` (``cumulative_coefficients``) with pointwise Wald
+  bounds (``cumulative_coefficients_cb``), the kernel-smoothed effects
+  ``b(t)`` with a bandwidth (``smoothed_coefficients``), a unit's
+  ``sf``, ``ff``, ``Hf``, ``hf``, ``df``, ``qf``, ``cs`` and Wald
+  ``cb``, ``summary(at=)``, ``plot()``, ``concordance()``, a resampling
+  test that each effect is constant in time
+  (``constant_effects_test``), an optional ridge penalty
+  (``coef_penalty``), delayed entry (``tl``), formulas and
+  ``fit_from_df``, and saving. ``B`` and its variance agree with R's
+  ``timereg::aalen`` to rounding; the survival predictions agree with
+  lifelines' ``AalenAdditiveFitter`` wherever the estimated cumulative
+  hazard does not fall.
 
 **Documentation.**
 
