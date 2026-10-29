@@ -37,9 +37,10 @@ all optional. What can look different:
 - Weighted models save as schema 3 (``to_dict``, ``to_json``), which
   0.25 and earlier refuse to read rather than read them without their
   weights. Unweighted models save as before. A weighted
-  ``SurpyvalData``'s dictionary holds its ``w`` but carries no schema
-  number, as no ``SurpyvalData`` dictionary does, so 0.25 would read it
-  and drop the weights: read weighted data with 0.26.
+  ``SurpyvalData``'s dictionary is stamped schema 3 too (an unweighted
+  one still has no schema number), and 0.26 refuses a newer schema; but
+  0.25 reads a data dictionary without looking at its schema, so it would
+  drop the weights: read weighted data with 0.26.
 - On a weighted fit, ``covariance()`` (and a parametric model's
   ``hess_inv``) hold the robust sandwich covariance, and every Wald bound
   is built from it; there is no classical covariance to fall back on.
@@ -202,7 +203,7 @@ all optional. What can look different:
   model's), ``plot``, ``plot_posterior``, a summary in plain words,
   ``to_dict`` / ``from_dict`` and pickling.
   ``BayesianParametric.from_draws`` makes one from another sampler's
-  draws. ``fit_bayes`` does not take weights.
+  draws. ``fit_bayes`` refuses weighted data.
 - The posterior of one to three free parameters is computed on a
   self-checking grid (deterministic: no seed), or in closed form for an
   Exponential with a Gamma prior, a Normal's mean with its spread known
@@ -235,6 +236,37 @@ all optional. What can look different:
   are public: ``_rcs_basis``, ``_rcs_deriv``, ``_place_knots`` and
   ``_SCALES`` are now ``rcs_basis``, ``rcs_deriv``, ``place_knots`` and
   ``SCALES`` (the old private names are gone). Nothing else changes.
+
+**Fixed**
+
+Where weights met other features of this release:
+
+- A weighted parametric regression's ``robust_covariance()``,
+  ``robust_standard_errors()`` and ``summary(robust=True)`` put a second
+  sandwich around the weighted one and left the weights out. They now
+  give the weighted robust covariance, equal to ``covariance()`` without
+  ``cluster`` and, with ``cluster``, summing each cluster's weighted
+  scores (R's ``survreg(..., weights = w, robust = TRUE)`` with
+  ``cluster()``).
+- A weighted Cox model's ``summary(robust=True)`` and ``robust_summary()``
+  failed with an ``AttributeError``; they now give the weighted Lin-Wei
+  standard errors, with ``cluster`` too (R's ``coxph(..., weights = w,
+  robust = TRUE)``).
+- ``likelihood_ratio_test()`` refuses weighted fits: its statistic changed
+  with the scale of the weights (Cox), or its null model was fitted
+  without them (the parametric regressions, which gave 0). Use the Wald
+  tests of ``summary()``. A fit whose log-likelihood is below that of the
+  model without covariates is now refused too, rather than given a
+  statistic of 0.
+- ``life_table``, ``fit_bayes``, ``update``, ``prior.from_data``,
+  ``log_likelihood_fn``, ``BayesianParametric.from_draws`` and the PyMC
+  helpers refuse weighted data, which they used to drop or read as
+  counts.
+- Weighted ``SurpyvalData.to_dict()`` is stamped schema 3, as weighted
+  models are, and ``SurpyvalData.from_dict`` refuses a newer schema.
+  Unweighted data dictionaries are unchanged. (v0.25 reads data
+  dictionaries without checking their schema, so it still drops the
+  weights of one.)
 
 **Documentation**
 

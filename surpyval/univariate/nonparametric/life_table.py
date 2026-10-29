@@ -71,7 +71,9 @@ def life_table(
         The times of the events or censorings; or a
         :class:`~surpyval.SurpyvalData` holding the data, or a fitted
         non-parametric model (``KaplanMeier.fit(...)``), whose data is
-        used. ``c``, ``n`` and ``tl`` are then left out.
+        used. ``c``, ``n`` and ``tl`` are then left out. Data or a model
+        with weights ``w`` is refused (a weighted life table is not built
+        yet; ``KaplanMeier.fit`` takes the weights).
     c : array like, optional
         The censoring flags: 0 an event, 1 right censored. Left (-1) and
         interval (2) censored data have no life table of counts; estimate
@@ -208,6 +210,20 @@ def _data(
         raise TypeError(
             "x holds the data ({}); leave out 'c', 'n' and 'tl', or pass "
             "arrays.".format(type(x).__name__)
+        )
+    if held:
+        from surpyval.utils.weights import refuse_weighted_data
+
+        refuse_weighted_data(
+            x,
+            "life_table",
+            "it counts the units entering, failing and withdrawn in each "
+            "interval, and its standard errors treat those counts as units "
+            "seen; a weighted life table is not built yet",
+            "Estimate the survival with KaplanMeier.fit(data), which takes "
+            "the weights and gives robust intervals, or pass the arrays "
+            "without the weights (life_table(x, c, n, tl)) for the table "
+            "of the units themselves.",
         )
     if isinstance(x, NonParametric):
         d = getattr(x, "data", None)

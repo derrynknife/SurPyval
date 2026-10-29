@@ -268,6 +268,13 @@ def fit(
         data = x
     else:
         data = SurpyvalData(x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)
+    from surpyval.utils.weights import (
+        BAYES_INSTEAD,
+        BAYES_WHY,
+        refuse_weighted_data,
+    )
+
+    refuse_weighted_data(data, "fit_bayes", BAYES_WHY, BAYES_INSTEAD)
     canonical = normalise_unit(unit)
     held = getattr(data, "unit", None)
     if canonical is not None and held is not None and held != canonical:

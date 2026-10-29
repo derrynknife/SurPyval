@@ -199,6 +199,34 @@ def refuse_robust(model: ParametricRegressionModel) -> None:
         )
 
 
+def _weighted_robust_covariance(
+    model: ParametricRegressionModel,
+    p_hat: npt.NDArray,
+    center: npt.NDArray | None,
+    free: list,
+    cov: npt.NDArray,
+    cluster: npt.ArrayLike | None,
+) -> npt.NDArray:
+    """The robust covariance of a fit with weights ``w``, in the
+    parameterisation of ``p_hat`` (before any centring map). ``cov``, the
+    model-based covariance of a weighted fit, is already the robust
+    sandwich with each unit its own cluster, so it is the answer without
+    ``cluster``. With ``cluster`` the sandwich is taken again from the
+    inverse of the weighted information, with each cluster's sum of its
+    rows' weighted scores ``n w s`` in the meat (R's ``survreg(...,
+    weights = w, robust = TRUE)`` with ``cluster()``)."""
+    if cluster is None:
+        return cov
+    labels = _cluster_labels(model, cluster)
+    _, group = np.unique(labels, return_inverse=True)
+    bread_free = model._inverse_information(p_hat, center, free)
+    if bread_free is None:
+        return np.full(cov.shape, np.nan)
+    bread = np.zeros(cov.shape)
+    bread[np.ix_(free, free)] = bread_free
+    return model._robust_covariance(p_hat, center, free, bread, group)
+
+
 def robust_covariance(
     model: ParametricRegressionModel,
     cluster: npt.ArrayLike | None = None,
@@ -221,18 +249,23 @@ def robust_covariance(
     names = model.parameter_names
     held = model._held()
     free = [i for i, nm in enumerate(names) if nm not in held]
-    step = model._hessian_step(p_hat)[free]
-    scores = row_scores(model, data, p_hat, free, step)
-    n = np.asarray(data.n, dtype=float)
-    if cluster is None:
-        meat = (n[:, None] * scores).T @ scores
+    if getattr(model.data, "w", None) is not None:
+        out = _weighted_robust_covariance(
+            model, p_hat, center, free, cov, cluster
+        )
     else:
-        labels = _cluster_labels(model, cluster)
-        _, group = np.unique(labels, return_inverse=True)
-        sums = np.zeros((group.max() + 1, scores.shape[1]))
-        np.add.at(sums, group, n[:, None] * scores)
-        meat = sums.T @ sums
-    out = cov @ meat @ cov
+        step = model._hessian_step(p_hat)[free]
+        scores = row_scores(model, data, p_hat, free, step)
+        n = np.asarray(data.n, dtype=float)
+        if cluster is None:
+            meat = (n[:, None] * scores).T @ scores
+        else:
+            labels = _cluster_labels(model, cluster)
+            _, group = np.unique(labels, return_inverse=True)
+            sums = np.zeros((group.max() + 1, scores.shape[1]))
+            np.add.at(sums, group, n[:, None] * scores)
+            meat = sums.T @ sums
+        out = cov @ meat @ cov
     if model._fit_centring is not None:
         J = model._fit_centring[2]
         out = J @ out @ J.T

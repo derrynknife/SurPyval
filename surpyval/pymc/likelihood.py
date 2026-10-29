@@ -49,6 +49,16 @@ def as_surpyval_data(
                 f"leave out {', '.join(repr(g) for g in given)} (or pass "
                 "the arrays and no SurpyvalData)."
             )
+        from surpyval.utils.weights import BAYES_WHY, refuse_weighted_data
+
+        refuse_weighted_data(
+            data,
+            what,
+            BAYES_WHY,
+            "Fit by maximum likelihood with the weights (Weibull.fit(data)), "
+            "whose robust covariance gives valid Wald intervals, or pass "
+            "the data without its weights (data.x, data.c, data.n, data.t).",
+        )
         return data
     if data is not None:
         if hasattr(data, "to_xcnt") or hasattr(data, "x_i"):

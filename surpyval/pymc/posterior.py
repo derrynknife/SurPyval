@@ -139,8 +139,14 @@ def to_surpyval(
     array([100.,   2.])
     """
     from surpyval.bayes import BayesianParametric
+    from surpyval.utils.weights import (
+        BAYES_INSTEAD,
+        BAYES_WHY,
+        refuse_weighted_data,
+    )
 
     what = "to_surpyval"
+    refuse_weighted_data(data, what, BAYES_WHY, BAYES_INSTEAD)
     names = list(getattr(dist, "parameter_names", []))
     if not names or not hasattr(dist, "name"):
         raise TypeError(
