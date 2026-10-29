@@ -99,6 +99,9 @@ below points straight to the section that answers it.
    * - see what a fitted model says a covariate does to survival
      - ``model.plot_partial_effects(covariate, values)``
      - `Partial-effects plots`_
+   * - draw the coefficients and their intervals (a forest plot)
+     - ``surpyval.plot_coefficients(models)``
+     - `Forest plots`_
    * - compare, validate or store fitted models
      - ``aic()``, ``surpyval.metrics``, ``to_dict()``
      - `Model Selection`_, `Validating a survival predictor`_,
@@ -3867,6 +3870,74 @@ categorical variable is held at its reference level), and they have no
     cr.plot_partial_effects('load', [0.5, 1.0], event='seal',
                             reference={'temp': 40}, ax=ax)
     plt.show()
+
+
+Forest plots
+------------
+
+A *forest plot* draws a model's coefficient table: each covariate's
+estimate as a point with its confidence interval as a line, and a reference
+line where the covariate has no effect. ``surv.plot_coefficients(models)``
+draws one from each model's ``summary()``, so it works for every regression
+model with a coefficient table (Cox, the parametric families, the additive
+hazards, proportional odds, Buckley-James, frailty and Fine-Gray models).
+It returns the figure and axes and the values it drew.
+
+Where the link is log-linear, the plot is on the ratio scale ``exp(coef)``
+by default -- the hazard ratio for Cox and proportional hazards, the
+acceleration factor for AFT, the odds ratio for proportional odds -- on a
+log axis with the reference line at 1. Here is the Cox model of the
+recidivism data from the section above:
+
+.. jupyter-execute::
+
+    out = surv.plot_coefficients(cox, title='Re-arrest, Cox model')
+    plt.show()
+    out.values['CoxPH'].round(3)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _v = out.values['CoxPH'].round(3)
+    assert _v.loc['prio'].tolist() == [1.102, 1.044, 1.162], _v
+    assert _v.loc['fin', 'upper'] > 1 > _v.loc['age', 'upper'], _v
+    assert _v.loc['age', 'estimate'] == 0.935, _v
+
+Each prior conviction raises the hazard of re-arrest by about 10% (95%
+interval 4% to 16%), and each year of age lowers it by about 6.5%. The
+interval for financial aid just crosses 1: the data are consistent with no
+effect at the 5% level.
+
+Several models are drawn side by side at each covariate, given as a list or
+as ``{label: model}``. A Weibull proportional hazards model agrees closely
+with the Cox model here:
+
+.. jupyter-execute::
+
+    weibull_ph = surv.WeibullPH.fit_from_df(
+        rossi, x_col='week', c_col='censored', Z_cols=['fin', 'age', 'prio']
+    )
+    out = surv.plot_coefficients({'Cox': cox, 'Weibull PH': weibull_ph})
+    plt.show()
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _d = (out.values['Cox'] - out.values['Weibull PH']).abs().to_numpy()
+    assert _d.max() < 0.005, _d
+
+``on='coef'`` draws the coefficients themselves, with the reference line at
+0. An additive model (``AdditiveHazards``, the ``AH`` family) has only this
+scale: its coefficients are differences in the hazard, not ratios, so
+``on='exp'`` is refused for it. ``covariates=`` picks the rows to draw,
+``sort='estimate'`` orders them by the first model's estimate, and
+``alpha_ci`` sets the intervals' level.
+
+The table itself is a pandas DataFrame, so for a report it can be written as
+LaTeX or HTML with ``summary().to_latex()`` or ``summary().to_html()``
+(``to_markdown()`` needs the optional ``tabulate`` package).
 
 
 Model Selection
