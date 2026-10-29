@@ -24,10 +24,40 @@ what to use instead: likelihood-ratio and bootstrap bounds, ``band`` and
 ``bootstrap_cb``, rank-based plotting positions, methods other than MLE,
 ``aic``, ``bic``, ``aic_c`` and ``fit_best``. Printouts give the effective
 sample size, and a fit warns when it is below 20. Weighted models and data
-save as schema 3, which older versions refuse. See :doc:`Weighted Data`.
+save as schema 3, which older versions refuse (v0.25 reads a data
+dictionary without looking at its schema). See :doc:`Weighted Data`.
 Turnbull, competing risks, the log-rank tests and the Cox baseline's
 bounds do not take weights yet. Nothing changes without ``w``; a decimal
 ``n`` is still refused, and the message now points to ``w``.
+
+**Fixed (weights).** Where weights met other features of this release:
+
+- A weighted parametric regression's ``robust_covariance()``,
+  ``robust_standard_errors()`` and ``summary(robust=True)`` put a second
+  sandwich around the weighted one and left the weights out. They now
+  give the weighted robust covariance, equal to ``covariance()`` without
+  ``cluster`` and, with ``cluster``, summing each cluster's weighted
+  scores (R's ``survreg(..., weights = w, robust = TRUE)`` with
+  ``cluster()``).
+- A weighted Cox model's ``summary(robust=True)`` and ``robust_summary()``
+  failed with an ``AttributeError``; they now give the weighted Lin-Wei
+  standard errors, with ``cluster`` too (R's ``coxph(..., weights = w,
+  robust = TRUE)``).
+- ``likelihood_ratio_test()`` refuses weighted fits: its statistic changed
+  with the scale of the weights (Cox), or its null model was fitted
+  without them (the parametric regressions, which gave 0). Use the Wald
+  tests of ``summary()``. A fit whose log-likelihood is below that of the
+  model without covariates is now refused too, rather than given a
+  statistic of 0.
+- ``life_table``, ``fit_bayes``, ``update``, ``prior.from_data``,
+  ``log_likelihood_fn``, ``BayesianParametric.from_draws`` and the PyMC
+  helpers refuse weighted data, which they used to drop or read as
+  counts.
+- Weighted ``SurpyvalData.to_dict()`` is stamped schema 3, as weighted
+  models are, and ``SurpyvalData.from_dict`` refuses a newer schema.
+  Unweighted data dictionaries are unchanged. (v0.25 reads data
+  dictionaries without checking their schema, so it still drops the
+  weights of one.)
 
 **Added.**
 

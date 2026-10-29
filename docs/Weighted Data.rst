@@ -157,6 +157,10 @@ A Kaplan-Meier curve and a Cox model take ``w`` the same way:
     cox = surv.CoxPH.fit(x, z, c=c, w=w)
     print(cox.params, cox.standard_errors())
 
+The at-risk table of ``plot_nonparametric`` and ``at_risk_table`` counts
+the units themselves, not their weights. ``sf_diff`` and ``rmst_diff`` of
+weighted estimates use their robust variances.
+
 ``SurpyvalData`` holds the weights too (``SurpyvalData(x, c, n, w=w)``,
 ``SurpyvalData.from_dataframe(df, ..., w_col="weight")``), and
 ``fit_from_df`` takes ``w_col``.
@@ -173,6 +177,19 @@ saying what to use instead:
   the sampling design. Use the Wald bounds (the default).
 - **AIC, BIC, AICc and** ``fit_best``: a weighted fit maximises a
   *pseudo*-likelihood, which does not compare models.
+- ``likelihood_ratio_test()`` of a regression or Cox model: the ratio of
+  weighted pseudo-likelihoods is not chi-squared (it grows with the scale
+  of the weights). Use the Wald tests of ``summary()``, which are on the
+  robust covariance.
+- ``life_table`` of weighted data or a weighted estimate: use
+  ``KaplanMeier.fit(data)``, or the arrays without the weights for the
+  table of the units themselves.
+- **Bayesian fits**: ``fit_bayes``, ``update``, ``prior.from_data``,
+  ``log_likelihood_fn``, ``BayesianParametric.from_draws`` and the PyMC
+  helpers (``log_likelihood``, ``censored_likelihood``, ``to_surpyval``)
+  refuse weighted data, since a posterior from the weighted likelihood
+  would treat the weights as units seen. Fit by maximum likelihood with
+  the weights instead.
 - **Simultaneous bands and** ``bootstrap_cb`` of a non-parametric estimate:
   use ``cb``.
 - **Rank-based plotting positions** (Blom, median ranks, ...): a weighted
@@ -196,9 +213,10 @@ Two cautions:
   intervals slightly too wide. This is what R and lifelines do too.
 - **Complex survey designs.** With ``w`` alone, units are independent draws
   with unequal weights. Strata, clusters of units sampled together and
-  finite-population corrections are out of scope; for a Cox model,
-  ``robust_covariance(cluster)`` gives the variance for units sampled in
-  clusters, and R's ``survey`` package handles full designs.
+  finite-population corrections are out of scope; for a Cox model or a
+  parametric regression, ``robust_covariance(cluster)`` (and
+  ``summary(robust=True, cluster=...)``) gives the variance for units
+  sampled in clusters, and R's ``survey`` package handles full designs.
 
 The formulas
 ------------
@@ -234,7 +252,10 @@ covariance is the sandwich (Huber, 1967; Binder, 1983)
 
 as R's ``survreg(..., weights = w, robust = TRUE)`` computes it, and every
 Wald bound follows from it by the delta method. ``covariance()`` (and a
-parametric model's ``hess_inv``) hold it.
+parametric model's ``hess_inv``) hold it, and so a regression's
+``robust_covariance()`` and ``summary(robust=True)`` are the same; with
+``cluster`` the meat sums each cluster's :math:`n_i w_i s_i` first, as
+``survreg`` with ``cluster()`` does.
 
 The Cox model maximises the weighted partial likelihood, with Efron's tie
 correction taking the :math:`m` tied deaths at their mean weight (R's

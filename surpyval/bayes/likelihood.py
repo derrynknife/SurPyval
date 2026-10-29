@@ -340,4 +340,11 @@ def log_likelihood_fn(
         data = x
     else:
         data = SurpyvalData(x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)
+    from surpyval.utils.weights import (
+        BAYES_INSTEAD,
+        BAYES_WHY,
+        refuse_weighted_data,
+    )
+
+    refuse_weighted_data(data, "log_likelihood_fn", BAYES_WHY, BAYES_INSTEAD)
     return LogLikelihood(dist, data, offset=offset, lfp=lfp, zi=zi)

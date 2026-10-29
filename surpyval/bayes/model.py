@@ -405,6 +405,13 @@ class BayesianParametric(SerialisableMixin):
                 if isinstance(data, tuple)
                 else (SurpyvalData(x=data))
             )
+        from surpyval.utils.weights import (
+            BAYES_INSTEAD,
+            BAYES_WHY,
+            refuse_weighted_data,
+        )
+
+        refuse_weighted_data(data, "from_draws", BAYES_WHY, BAYES_INSTEAD)
         return cls(
             dist,
             post,
@@ -1294,6 +1301,13 @@ class BayesianParametric(SerialisableMixin):
             new = x
         else:
             new = SurpyvalData(x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)
+        from surpyval.utils.weights import (
+            BAYES_INSTEAD,
+            BAYES_WHY,
+            refuse_weighted_data,
+        )
+
+        refuse_weighted_data(new, "update", BAYES_WHY, BAYES_INSTEAD)
         if self.data is None and not replace:
             raise ValueError(
                 "This model has no data to add to (it was built from "

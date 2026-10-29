@@ -12,7 +12,11 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 import surpyval
-from surpyval.serialisation import decode_non_finite, encode_non_finite
+from surpyval.serialisation import (
+    check_schema,
+    decode_non_finite,
+    encode_non_finite,
+)
 from surpyval.utils import xcnt_handler
 from surpyval.utils.data_reshape import LIFETIME_PARTS, ReshapeMixin
 from surpyval.utils.item_history import missing_type
@@ -1605,7 +1609,9 @@ class SurpyvalData(ReshapeMixin):
         value) are written as ``null`` and recorded under
         ``"non_finite"``, which :meth:`from_dict` reads back (see
         :doc:`/surpyval.serialisation`). ``surpyval.from_dict`` reads it
-        too.
+        too. Data with weights ``w`` is stamped ``"schema": 3``, as a
+        weighted model is, so that a reader without weights refuses it
+        rather than drop them; unweighted data has no ``"schema"``.
 
         Examples
         --------
@@ -1654,7 +1660,15 @@ class SurpyvalData(ReshapeMixin):
         # "non_finite" record of what each stood for (see
         # surpyval.serialisation.encode_non_finite), not as the
         # ``Infinity`` literals strict parsers reject.
-        return encode_non_finite(data)
+        out = encode_non_finite(data)
+        if self.w is not None:
+            # Schema 3, as a weighted model's dict: a reader that checks
+            # the schema and has no weights refuses it rather than drop
+            # them. Unweighted data keeps its unstamped layout.
+            from surpyval.serialisation import required_schema
+
+            out["schema"] = required_schema(out)
+        return out
 
     @classmethod
     def from_dict(cls, data_dict: dict) -> SurpyvalData:
@@ -1689,6 +1703,10 @@ class SurpyvalData(ReshapeMixin):
                     f"A serialised SurpyvalData needs {key!r}; this "
                     "dictionary has no such entry."
                 )
+        # A newer layout is refused, asking for an upgrade. Weights are
+        # read wherever they are, whatever the schema: a weighted dict
+        # written before it was stamped (no "schema") keeps them.
+        check_schema(data_dict)
         # Files written before the strict-JSON convention hold the
         # ``Infinity`` literals, which json.loads still reads.
         data = decode_non_finite(dict(data_dict))
