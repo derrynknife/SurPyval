@@ -1,4 +1,5 @@
-"""Fits with sampling weights ``w`` against R ``survival`` and lifelines.
+"""Fits with sampling weights ``w`` against R ``survival`` and
+lifelines.
 
 The data are ``_helpers.weighted_reference_data()`` (forty rows with
 weights from 0.34 to 2.96, ties among the events, late entry on a third of
@@ -11,17 +12,23 @@ the rows). The values were computed once and are stored here:
   ``std.err / surv`` (the standard error of ``log S``) and, for
   Nelson-Aalen, ``std.chaz`` (of the cumulative hazard; R's ``std.err``
   for ``stype = 2, ctype = 1`` is not on that scale);
-  ``survfit(Surv(tl, x, d) ~ 1, ..., id = id)`` for the late entries.
-- lifelines 0.30.3 for the point estimate (``KaplanMeierFitter`` with
-  weights).
+  ``survfit(Surv(tl, x, d) ~ 1, ..., id = id)`` for the late entries;
+  ``survreg(Surv(x, d) ~ 1, weights = w, robust = TRUE, dist = ...)`` and
+  ``~ z1 + z2`` (``coef``, ``log(scale)``, ``sqrt(diag(vcov))``).
+- lifelines 0.30.3 for the point estimates (``KaplanMeierFitter`` and
+  ``WeibullFitter`` with weights). Its robust standard
+  errors with weights follow other conventions and are not compared.
 
 R's ``print(survfit(...))`` gives ``se(rmean)`` from the classical
 formula even with ``robust = TRUE``, so the robust variance of the
 restricted mean is checked against an independent numerical
 infinitesimal jackknife instead.
 
-Tolerances: the estimates and their variances are closed forms, equal to
-rounding (``rtol=1e-10``).
+Tolerances: the non-parametric estimates and their variances are closed
+forms, equal to rounding (``rtol=1e-10``). The fits are optimisations; the
+coefficients agree to the optimisers' tolerance (``atol=2e-5`` for
+``survreg``, whose convergence criterion is on the log-likelihood), and
+the standard errors, smooth functions of them, to ``rtol=2e-4``.
 """
 
 import numpy as np
@@ -62,6 +69,28 @@ R_SURVFIT_TRUNCATED = (
      0.2059623153393602, 0.3476031445164834],
 )  # fmt: skip
 
+# survreg: (coef, log(scale)) and their robust standard errors
+R_SURVREG = {
+    "Weibull": (
+        [1.916120039703859, -0.191526394484084],
+        [0.193783473870293, 0.152523715519059],
+    ),
+    "LogNormal": (
+        [1.565354321790535, 0.137748009886272],
+        [0.207456687313002, 0.214686817699261],
+    ),
+    "LogLogistic": (
+        [1.539003522486248, -0.482600282812611],
+        [0.197381295182942, 0.187186096923434],
+    ),
+    "Exponential": ([1.96080680925178], [0.20832261991811]),
+}
+R_AFT = (
+    [2.157448137754637, -0.656109818799668, -0.660322621484025,
+     -0.477022092803571],
+    [0.227220553503763, 0.306052636226662, 0.137563313236780,
+     0.161286464480136],
+)  # fmt: skip
 LIFELINES_KM = [
     0.9231611893583727,
     0.7765258215962443,
@@ -69,6 +98,7 @@ LIFELINES_KM = [
     0.44198494228483776,
     0.26714390881271705,
 ]
+LIFELINES_WEIBULL = (6.794503165274475, 1.2110931520967734)
 
 
 @pytest.fixture(scope="module")
@@ -129,3 +159,54 @@ def test_rmst_robust_variance_is_the_jackknife(data):
     )
     assert_allclose(res["rmst"], 4.104576926253483, rtol=1e-12)
     assert_allclose(res["se"], np.sqrt(np.sum(w**2 * U**2)), rtol=1e-5)
+
+
+def _survreg_scale(name, model):
+    """SurPyval's parameters and covariance on survreg's scale:
+    ``(log scale-parameter or mu, log sigma)``."""
+    p = np.asarray(model.params, dtype=float)
+    cov = model.covariance()
+    if name == "LogNormal":
+        coef = np.array([p[0], np.log(p[1])])
+        J = np.diag([1.0, 1.0 / p[1]])
+    elif name == "Exponential":
+        coef = np.array([-np.log(p[0])])
+        J = np.array([[-1.0 / p[0]]])
+    else:  # Weibull (alpha, beta), LogLogistic (alpha, beta)
+        coef = np.array([np.log(p[0]), -np.log(p[1])])
+        J = np.diag([1.0 / p[0], -1.0 / p[1]])
+    return coef, np.sqrt(np.diag(J @ cov @ J.T))
+
+
+@pytest.mark.parametrize("name", list(R_SURVREG))
+def test_survreg_robust(data, name):
+    model = getattr(sp, name).fit(data["x"], data["c"], w=data["w"])
+    coef, se = _survreg_scale(name, model)
+    ref_coef, ref_se = R_SURVREG[name]
+    assert_allclose(coef, ref_coef, rtol=0, atol=2e-5)
+    assert_allclose(se, ref_se, rtol=2e-4)
+    # The Wald bounds of the parameters use it: param_cb and
+    # standard_errors agree with covariance()
+    assert_allclose(
+        model.standard_errors(), np.sqrt(np.diag(model.covariance()))
+    )
+
+
+def test_weibull_matches_lifelines(data):
+    model = sp.Weibull.fit(data["x"], data["c"], w=data["w"])
+    assert_allclose(model.params, LIFELINES_WEIBULL, rtol=2e-5)
+
+
+def test_weibull_aft_robust(data):
+    model = sp.WeibullAFT.fit(data["x"], data["Z"], c=data["c"], w=data["w"])
+    alpha, beta, b1, b2 = model.params
+    cov = model.covariance()
+    # survreg: log T = mu - (coef' Z) ..., SurPyval's AFT coefficients are
+    # minus R's; the intercept is log alpha and log(scale) = -log beta.
+    coef = [np.log(alpha), -b1, -b2, -np.log(beta)]
+    J = np.zeros((4, 4))
+    J[0, 0], J[1, 2], J[2, 3], J[3, 1] = 1 / alpha, -1, -1, -1 / beta
+    se = np.sqrt(np.diag(J @ cov @ J.T))
+    ref_coef, ref_se = R_AFT
+    assert_allclose(coef, ref_coef, rtol=0, atol=2e-5)
+    assert_allclose(se, ref_se, rtol=2e-4)

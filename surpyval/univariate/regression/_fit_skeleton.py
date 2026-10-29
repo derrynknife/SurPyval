@@ -13,8 +13,8 @@ separate: its life-model parameter juggling does not fit this shape.
 import copy
 import functools
 import warnings
-from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, Callable, NamedTuple
+from collections.abc import Callable, Iterable
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import autograd.numpy as np
 import numpy.typing as npt
@@ -123,7 +123,7 @@ def per_column_map(pmap: dict, p: int) -> bool:
     ``phi_param_map`` the way coefficients were named before v0.23,
     ``beta_j`` for column ``j`` of ``p``: a custom link that names them so
     is treated, as it was, as one coefficient per column."""
-    return pmap == {"beta_{}".format(j): j for j in range(p)}
+    return pmap == {f"beta_{j}": j for j in range(p)}
 
 
 def split_log_linear(
@@ -449,15 +449,13 @@ def _named(i: int, names: "tuple[str, ...]") -> str:
     ``names``: a coefficient after them, by its number."""
     if i < len(names):
         return names[i]
-    return "coefficient {}".format(i - len(names))
+    return f"coefficient {i - len(names)}"
 
 
 def _plain(values: npt.ArrayLike) -> str:
     """Values for a message, plainly (no numpy repr): ``[1.5, 2e+04]``."""
     return "[{}]".format(
-        ", ".join(
-            "{:.4g}".format(float(v)) for v in np.ravel(np.asarray(values))
-        )
+        ", ".join(f"{float(v):.4g}" for v in np.ravel(np.asarray(values)))
     )
 
 
@@ -465,7 +463,7 @@ def _pairs(names: "tuple[str, ...]", values: npt.ArrayLike) -> str:
     """``alpha = 2, beta = 1.5``: named values for a message."""
     flat = np.ravel(np.asarray(values, dtype=float))
     return ", ".join(
-        "{} = {:.4g}".format(name, float(v)) for name, v in zip(names, flat)
+        f"{name} = {float(v):.4g}" for name, v in zip(names, flat)
     )
 
 
@@ -659,9 +657,7 @@ class Centring:
         if not self.maps_back:
             return params_c, self.center, None
         k = self.k_dist
-        names = tuple(names) or tuple(
-            "parameter {}".format(i) for i in range(k)
-        )
+        names = tuple(names) or tuple(f"parameter {i}" for i in range(k))
         reason = ""
         with np.errstate(all="ignore"):
             params_0 = np.asarray(self.to_origin(params_c), dtype=float)
@@ -848,6 +844,7 @@ def prepare_regression_fit(
     phi_init: "Callable[[npt.NDArray], npt.NDArray] | None" = None,
     kind: "str | None" = None,
     center: bool = False,
+    w: "npt.ArrayLike | float | None" = None,
 ) -> tuple[SurpyvalData, tuple]:
     """Common head of every parametric-regression ``fit``.
 
@@ -865,7 +862,7 @@ def prepare_regression_fit(
     moved to the centre, and ``centring`` (else ``None``) keeps the data as
     given for :func:`assemble_regression_model`.
     """
-    data = SurpyvalData(x, c, n, t, group_and_sort=False)
+    data = SurpyvalData(x, c, n, t, group_and_sort=False, w=w)
     # A one-dimensional Z is a single covariate (one value per row), as
     # the Cox, accelerated-life and other fitters already read it.
     Z_in = Z if hasattr(Z, "ndim") else np.asarray(Z)
@@ -1179,6 +1176,22 @@ def assemble_regression_model(
     # costs the model nothing in AIC/BIC.
     model.k = len(bounds) - len(fixed)
     model.data = data
+    if data.w is not None:
+        from surpyval.utils.weights import (
+            effective_sample_size,
+            warn_if_few_effective,
+        )
+
+        model.weighted = True
+        model.effective_n = effective_sample_size(data.n, data.w)
+        warn_if_few_effective(data.n, data.w)
+        # The search used the weights scaled to sum to the units
+        # (``likelihood_weights``); the value is reported with the weights
+        # as given, as R's ``survreg`` reports it.
+        n_arr = np.asarray(data.n, dtype=float)
+        model._neg_ll = model._neg_ll * float(
+            np.sum(n_arr * data.w) / n_arr.sum()
+        )
     return model
 
 
@@ -2295,6 +2308,7 @@ def fit_log_linear(
     ),
     phi_init: "Callable[[npt.NDArray], npt.NDArray] | None" = None,
     log_linear: bool = True,
+    w: "npt.ArrayLike | float | None" = None,
 ) -> ParametricRegressionModel:
     """The whole ``fit`` of the PH, AFT and PO families (#238, #302).
 
@@ -2322,6 +2336,7 @@ def fit_log_linear(
         phi_init,
         kind=kind if log_linear else None,
         center=center,
+        w=w,
     )
     (
         init_t,

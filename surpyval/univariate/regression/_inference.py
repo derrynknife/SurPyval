@@ -55,7 +55,7 @@ if TYPE_CHECKING:
     from .accelerated_life.lifemodel import LifeModel
 
 
-def _nan_outside(out: Any, outside: "npt.NDArray | None") -> Any:
+def _nan_outside(out: Any, outside: npt.NDArray | None) -> Any:
     """``out`` (one bound per point, or two on the last axis) with the
     points ``outside`` an additive model's support set to nan."""
     if outside is None:
@@ -84,19 +84,19 @@ class InferenceMixin:
         kind: str
         fixed: dict[str, float]
         distribution: ParametricFitter
-        reg_model: "CovariateLink | LifeModel"
+        reg_model: CovariateLink | LifeModel
         model: Any
         data: SurpyvalData
         res: Any
-        center: "npt.NDArray | None"
-        _fit_centring: "tuple | None"
-        _information: "tuple | None"
-        _covariance_cache: "tuple | None"
-        _restored_covariance: "npt.NDArray | None"
-        _restored_inference: "tuple | None"
+        center: npt.NDArray | None
+        _fit_centring: tuple | None
+        _information: tuple | None
+        _covariance_cache: tuple | None
+        _restored_covariance: npt.NDArray | None
+        _restored_inference: tuple | None
         _restored: bool
-        _lr_searches: "list | None"
-        _bootstrap_refits: "dict | None"
+        _lr_searches: list | None
+        _bootstrap_refits: dict | None
         is_tvc: bool
 
         @property
@@ -105,7 +105,7 @@ class InferenceMixin:
         @property
         def aliased(self) -> npt.NDArray: ...
         @property
-        def life_parameter(self) -> "str | None": ...
+        def life_parameter(self) -> str | None: ...
         def _eval_params(self) -> npt.NDArray: ...
         def _held(self) -> set: ...
         def _n_covariates(self) -> int: ...
@@ -113,7 +113,7 @@ class InferenceMixin:
         def qf(
             self,
             p: npt.ArrayLike,
-            Z: "npt.ArrayLike | pd.DataFrame",
+            Z: npt.ArrayLike | pd.DataFrame,
             *,
             grid: bool = False,
         ) -> npt.NDArray: ...
@@ -122,11 +122,11 @@ class InferenceMixin:
         def _life_relation(self) -> str: ...
 
         def _prepare_Z(
-            self, Z: "npt.ArrayLike | pd.DataFrame"
+            self, Z: npt.ArrayLike | pd.DataFrame
         ) -> npt.NDArray: ...
 
         def _centred(
-            self, Z: npt.ArrayLike, center: "npt.NDArray | None" = None
+            self, Z: npt.ArrayLike, center: npt.NDArray | None = None
         ) -> Any: ...
 
         def _outside_support(
@@ -135,7 +135,7 @@ class InferenceMixin:
             Z: npt.NDArray,
             valid: Any = True,
             stacklevel: int = 4,
-        ) -> "npt.NDArray | None": ...
+        ) -> npt.NDArray | None: ...
 
     # -- confidence bounds -------------------------------------------------
 
@@ -158,6 +158,18 @@ class InferenceMixin:
                 "Confidence bounds are only available for models fit from "
                 "data; from_params models carry no likelihood."
             )
+
+    def _refuse_weighted_method(self, method: str) -> None:
+        """Refuse the likelihood-ratio and bootstrap bounds of a fit with
+        weights ``w``, which weights make invalid."""
+        if not getattr(self, "weighted", False):
+            return
+        from surpyval.utils.weights import refuse_bootstrap, refuse_lr
+
+        if method == "lr":
+            raise refuse_lr()
+        if method == "bootstrap":
+            raise refuse_bootstrap()
 
     def covariance(self) -> npt.NDArray:
         """
@@ -198,7 +210,7 @@ class InferenceMixin:
 
     def _inference_state(
         self,
-    ) -> "tuple[npt.NDArray, npt.NDArray | None, npt.NDArray]":
+    ) -> tuple[npt.NDArray, npt.NDArray | None, npt.NDArray]:
         """``(params, center, covariance)`` of the parameterisation the
         confidence bounds are computed in: that of the centred fit behind
         a model that reports its baseline at 0 (#463), where the
@@ -224,7 +236,7 @@ class InferenceMixin:
         return p_hat, center, self._observed_covariance(p_hat, center)
 
     def _observed_covariance(
-        self, p_hat: npt.NDArray, center: "npt.NDArray | None"
+        self, p_hat: npt.NDArray, center: npt.NDArray | None
     ) -> npt.NDArray:
         """The inverse of the Hessian of the negative log-likelihood at
         ``p_hat``, the baseline at ``center``: the exact one the fit kept
@@ -263,11 +275,49 @@ class InferenceMixin:
             warn_no_covariance()
             return np.full((n, n), np.nan)
         cov[np.ix_(free, free)] = cov_free
+        data = getattr(self, "data", None)
+        if getattr(data, "w", None) is not None:
+            cov = self._robust_covariance(p_hat, center, free, cov)
         self._covariance_cache = (point, cov.copy())
         return cov
 
+    def _robust_covariance(
+        self,
+        p_hat: npt.NDArray,
+        center: npt.NDArray | None,
+        free: list,
+        cov: npt.NDArray,
+    ) -> npt.NDArray:
+        """The robust (sandwich) covariance of a fit with weights ``w``:
+        ``cov`` (the inverse of the weighted information) on either side
+        of the meat ``sum n w^2 s s'`` of the rows' scores in the free
+        parameters (``surpyval.utils.weights``)."""
+        from surpyval.utils.weights import row_scores, sandwich
+
+        data = self.data
+        if center is not None and np.any(center):
+            from ._fit_skeleton import centred_copy
+
+            data = centred_copy(data, center)
+        model = self.model
+        p_hat = np.asarray(p_hat, dtype=float)
+
+        def loglik(d: Any, th: Any) -> Any:
+            full = [p_hat[i] for i in range(len(p_hat))]
+            for k, i in enumerate(free):
+                full[i] = th[k]
+            return -model.neg_ll(d, *full)
+
+        scores = row_scores(loglik, data, p_hat[free])
+        bread = cov[np.ix_(free, free)]
+        out = np.zeros_like(cov)
+        weights = data.likelihood_weights
+        assert weights is not None
+        out[np.ix_(free, free)] = sandwich(bread, scores, data.n, weights)
+        return out
+
     def _covariance_point(
-        self, p_hat: npt.ArrayLike, center: "npt.ArrayLike | None"
+        self, p_hat: npt.ArrayLike, center: npt.ArrayLike | None
     ) -> tuple:
         """What the covariance at ``p_hat``, the baseline at ``center``,
         is a function of: those two (copied, and a centre of zeros read as
@@ -286,7 +336,7 @@ class InferenceMixin:
     def _numerical_information(
         self,
         p_hat: npt.NDArray,
-        center: "npt.NDArray | None",
+        center: npt.NDArray | None,
         free: list,
         step: npt.NDArray,
     ) -> npt.NDArray:
@@ -420,6 +470,7 @@ class InferenceMixin:
         from ._likelihood_ratio import param_cb_lr
 
         method = bound_method(method)
+        self._refuse_weighted_method(method)
         lr = method == "lr"
         self._check_inference()
         names = self.parameter_names
@@ -463,7 +514,7 @@ class InferenceMixin:
     def cb(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
@@ -573,6 +624,7 @@ class InferenceMixin:
         from ._likelihood_ratio import cb_lr
 
         method = bound_method(method)
+        self._refuse_weighted_method(method)
         lr = method == "lr"
         self._check_inference()
         check_option("on", on, CB_ON)
@@ -648,7 +700,7 @@ class InferenceMixin:
     def quantile_cb(
         self,
         p: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         method: str = "wald",
@@ -720,6 +772,7 @@ class InferenceMixin:
         from ._bootstrap import bound_method
 
         method = bound_method(method)
+        self._refuse_weighted_method(method)
         self._check_inference()
         check_option("bound", bound, BOUNDS)
         probs = np.atleast_1d(np.asarray(p, dtype=float)).reshape(-1)

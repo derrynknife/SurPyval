@@ -1,4 +1,5 @@
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy.typing as npt
 
@@ -49,6 +50,45 @@ def adjust_heuristic(
     return heuristic
 
 
+_WEIGHTED_HEURISTICS = ("Kaplan-Meier", "Nelson-Aalen", "Fleming-Harrington")
+
+
+def _weighted_positions(
+    x: npt.NDArray,
+    c: Any,
+    n: npt.NDArray,
+    t: npt.NDArray,
+    w: npt.NDArray,
+    heuristic: str,
+) -> tuple:
+    """The plotting positions of weighted data: ``1 - S`` of its weighted
+    Kaplan-Meier, Nelson-Aalen or Fleming-Harrington estimate; the
+    rank-based heuristics have no weighted form and are refused."""
+    from surpyval.univariate.nonparametric._weighted import WeightedLadder
+    from surpyval.utils.weights import refuse_weighted
+
+    if heuristic not in _WEIGHTED_HEURISTICS:
+        raise refuse_weighted(
+            f"The {heuristic!r} plotting positions",
+            "they are built from the ranks of units counted, which "
+            "weights do not give",
+            "Use heuristic='Kaplan-Meier', 'Nelson-Aalen' (the default) or "
+            "'Fleming-Harrington', which are weighted.",
+        )
+    c_arr = np.zeros(len(x), dtype=int) if c is None else np.asarray(c)
+    if np.isin(c_arr, (-1, 2)).any() or np.isfinite(np.asarray(t)[:, 1]).any():
+        raise refuse_weighted(
+            "A probability plot of left or interval censored or right "
+            "truncated data",
+            "its weighted Turnbull positions are not built yet",
+            "Compare the fitted model's sf with a weighted estimate of "
+            "right censored data, or plot the model alone.",
+        )
+    ladder = WeightedLadder(x, c_arr, n, t, w)
+    R = np.exp(np.cumsum(ladder.log_sf_increments(heuristic)))
+    return ladder.x, ladder.r, ladder.d, 1 - R
+
+
 def probability_plot_data(
     dist: Any,
     ff: Callable[..., Any],
@@ -60,6 +100,7 @@ def probability_plot_data(
     gamma: float = 0.0,
     params: npt.NDArray | None = None,
     cb_func: Callable[..., Any] | None = None,
+    w: npt.NDArray | None = None,
 ) -> Any:
     """
     Compute everything needed to draw a probability plot of the data
@@ -83,13 +124,16 @@ def probability_plot_data(
     failures either. ``x_censored`` holds the suspension times, for a
     plot that wants to mark them.
     """
-    x_, r, d, F = plotting_positions(
-        x=x,
-        c=c,
-        n=n,
-        t=t,
-        heuristic=heuristic,
-    )
+    if w is None:
+        x_, r, d, F = plotting_positions(
+            x=x,
+            c=c,
+            n=n,
+            t=t,
+            heuristic=heuristic,
+        )
+    else:
+        x_, r, d, F = _weighted_positions(x, c, n, t, w, heuristic)
 
     mask = np.isfinite(x_)
     x_ = x_[mask] - gamma

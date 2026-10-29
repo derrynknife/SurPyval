@@ -262,6 +262,12 @@ class ParametricRegressionModel(
     #: random_state)`` for an integer seed, kept while the parameters and
     #: data stay as they are; not pickled (``__getstate__``).
     _bootstrap_refits: dict | None = None
+    #: Whether the model was fitted with weights ``w``: its covariance is
+    #: the robust (sandwich) one, and the likelihood-ratio and bootstrap
+    #: bounds and the information criteria refuse.
+    weighted: bool = False
+    #: The effective sample size of the weights of a weighted fit.
+    effective_n: float | None = None
     # The information criteria's sample size ``_ic_n`` and their caches
     # ``_aic``, ``_bic``, ``_aic_c`` are InformationCriteriaMixin's.
 
@@ -413,6 +419,11 @@ class ParametricRegressionModel(
         # the same; the data themselves are not stored.
         if self._data_repr():
             out["data_summary"] = self._data_repr()
+        if self.weighted:
+            # Schema 3: a reader without weights would offer the
+            # likelihood-ratio bounds and the information criteria.
+            out["weighted"] = True
+            out["effective_n"] = self.effective_n
         return stamp_schema(out)
 
     def _serialised_inference(self) -> dict[str, list] | None:
@@ -612,6 +623,9 @@ class ParametricRegressionModel(
         out.k = len(params) - len(out.fixed)
         out._restored = True
         out._data_summary = model_dict.get("data_summary")
+        if model_dict.get("weighted") is True:
+            out.weighted = True
+            out.effective_n = model_dict.get("effective_n")
         out.gamma = float(model_dict.get("gamma", 0.0))
         out.lfp_p = float(model_dict.get("p", 1.0))
         out.f0 = float(model_dict.get("f0", 0.0))
@@ -1010,6 +1024,11 @@ class ParametricRegressionModel(
         data_line = self._data_repr()
         if data_line:
             out += "\nData                : " + data_line
+        if self.weighted:
+            out += (
+                "\nWeights             : effective sample size "
+                f"{self.effective_n:.4g}; robust covariance"
+            )
         if self._has_center():
             # A fit with center=True (#463): say where the baseline
             # parameters are.

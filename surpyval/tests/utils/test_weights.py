@@ -113,9 +113,9 @@ def test_frames_carry_the_weights():
     data = sp.SurpyvalData.from_dataframe(df, x_col="t", w_col="w")
     assert_array_equal(data.w, [0.5, 2.0, 1.5])
     assert data.to_dataframe().columns.tolist() == ["x", "c", "n", "w"]
-    a = sp.KaplanMeier.fit_from_df(df, x_col="t", w_col="w")
-    b = sp.KaplanMeier.fit([1, 2, 3], w=[0.5, 2.0, 1.5])
-    assert_allclose(a.sf([1.5, 2.5]), b.sf([1.5, 2.5]))
+    a = sp.Weibull.fit_from_df(df, x_col="t", w_col="w")
+    b = sp.Weibull.fit([1, 2, 3], w=[0.5, 2.0, 1.5])
+    assert_allclose(a.params, b.params)
     with pytest.raises(ValueError, match="takes no `w`"):
         sp.Bernoulli.fit_from_df(df, x_col="t", w_col="w")
 
@@ -133,12 +133,12 @@ def test_fit_of_weighted_data_passes_the_weights():
     data = sp.SurpyvalData(x, c, w=w)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        for fitter in (sp.KaplanMeier, sp.NelsonAalen):
+        for fitter in (sp.KaplanMeier, sp.Weibull):
             a, b = fitter.fit(data), fitter.fit(x, c, w=w)
             assert a.weighted
             assert_allclose(a.sf([2.5, 4.5]), b.sf([2.5, 4.5]))
     with pytest.raises(TypeError, match="leave out 'w'"):
-        sp.KaplanMeier.fit(data, w=w)
+        sp.Weibull.fit(data, w=w)
     with pytest.raises(ValueError, match="takes no weights"):
         sp.MixtureModel(sp.Weibull, 2).fit(data)
 

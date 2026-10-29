@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import copy
 import warnings
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import autograd.numpy as np
 import numpy.typing as npt
@@ -70,8 +71,8 @@ def _search(
     fun: Callable[[npt.NDArray], Any],
     x0: npt.NDArray,
     n_obs: float,
-    floor: "float | npt.ArrayLike" = 1.0,
-    one_sided: "tuple[int, ...]" = (),
+    floor: float | npt.ArrayLike = 1.0,
+    one_sided: tuple[int, ...] = (),
 ) -> tuple[OptimizeResult, bool]:
     """Minimise ``fun`` from ``x0`` with Nelder-Mead then TNC, as the fit
     always searched, and whether the answer is verifiably a minimum (see
@@ -127,7 +128,7 @@ def _coefficient_units(
     fitter: Any,
     fixed: dict,
     phi_param_map: dict,
-    Z: "npt.ArrayLike | None",
+    Z: npt.ArrayLike | None,
 ) -> npt.NDArray:
     """The search's ``floor``: each free life-model parameter that is a
     column's coefficient (``LifeModel.coefficient_columns``) in its
@@ -164,7 +165,7 @@ class ParameterSubstitutionFitter(
     fitter_kind = "accelerated life fitter"
     name_suffix = "AL"
 
-    def _repr_details(self) -> "list[str]":
+    def _repr_details(self) -> list[str]:
         return [*super()._repr_details(), self.life_model.name + " life model"]
 
     def __init__(
@@ -216,7 +217,7 @@ class ParameterSubstitutionFitter(
 
     def _with_life_model(
         self, life_model: LifeModel
-    ) -> "ParameterSubstitutionFitter":
+    ) -> ParameterSubstitutionFitter:
         """This fitter with ``life_model`` in place of its own (the
         resolved form of a life model with a parameter per stress
         column, see ``LifeModel.resolve``)."""
@@ -555,6 +556,7 @@ class ParameterSubstitutionFitter(
         fixed: dict[str, float] | None = None,
         tl: npt.ArrayLike | None = None,
         tr: npt.ArrayLike | None = None,
+        w: npt.ArrayLike | float | None = None,
     ) -> ParametricRegressionModel:
         """
         Fit the accelerated life model by maximum likelihood.
@@ -601,6 +603,15 @@ class ParameterSubstitutionFitter(
             Parameters to hold fixed, by name (a distribution parameter or
             a life-model parameter such as ``"n"``).
 
+        w : array_like or float, optional
+            Sampling, propensity or censoring weights, one positive number
+            per row (beside its count ``n``). The fit maximises the weighted
+            (pseudo) likelihood and ``covariance()``, behind every Wald
+            bound, is the robust (sandwich) covariance, as R's
+            ``survreg(..., weights = w, robust = TRUE)``; the
+            likelihood-ratio and bootstrap bounds and the information
+            criteria refuse (see :doc:`/Weighted Data`).
+
         Returns
         -------
 
@@ -631,7 +642,7 @@ class ParameterSubstitutionFitter(
         # an array: the documented ragged form ``[10, [11, 13], ...]`` is
         # not a rectangular array, and ``np.asarray(x)`` on it raised a raw
         # numpy error.
-        data = SurpyvalData(x=x, c=c, n=n, t=t, group_and_sort=False)
+        data = SurpyvalData(x=x, c=c, n=n, t=t, group_and_sort=False, w=w)
         # A 1-D stress vector (one stress variable) becomes a single column
         # so the per-stress masking in the initialiser works (#261). As
         # floats, so a ``None`` is a missing value, dropped with the rest.
