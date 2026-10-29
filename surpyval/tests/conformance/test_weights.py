@@ -52,6 +52,9 @@ class WeightedCase:
     #: the same maximum: a regression's covariance is a numerical Hessian
     #: where the exact one was not kept, good to about 1e-3.
     rtol: float = 1e-4
+    #: test name -> reason: a property this case is known to fail (a
+    #: suspected bug, kept as a strict xfail until it is fixed)
+    xfail: dict = field(default_factory=dict)
 
 
 def _np(fitter):
@@ -75,10 +78,16 @@ def _np(fitter):
     )
 
 
-def _parametric(dist):
+def _parametric(dist, no_tl=False, discrete=False):
+    def fit(x, c, n, w, Z, tl):
+        if discrete:
+            # Whole numbers: the times rounded up, the entries down
+            x, tl = np.ceil(x), np.floor(tl)
+        return getattr(sp, dist).fit(x, c, n, w=w, tl=None if no_tl else tl)
+
     return WeightedCase(
         dist,
-        lambda x, c, n, w, Z, tl: getattr(sp, dist).fit(x, c, n, w=w, tl=tl),
+        fit,
         lambda m: np.asarray(m.params, dtype=float),
         offered={
             "cb(sf)": lambda m: m.cb(QUERY, on="sf"),
@@ -99,11 +108,11 @@ def _parametric(dist):
     )
 
 
-def _regression(fitter):
+def _regression(fitter, no_tl=False):
     return WeightedCase(
         fitter,
         lambda x, c, n, w, Z, tl: getattr(sp, fitter).fit(
-            x, Z, c=c, n=n, w=w, tl=tl
+            x, Z, c=c, n=n, w=w, tl=None if no_tl else tl
         ),
         lambda m: np.asarray(m.params, dtype=float),
         offered={
@@ -136,6 +145,120 @@ WEIGHTED = [
     _regression("WeibullAFT"),
     _regression("LogNormalAFT"),
     _regression("WeibullPO"),
+    # audit W-A: the shapes of distribution the five above do not cover.
+    # The Normal and Gumbel fits are given no left truncation: with the
+    # fixture's late entries their (weighted or not) maximum runs off to
+    # mu -> -inf (the truncated Normal's exponential limit; the Gumbel's
+    # search does not converge), so there is no estimate to compare.
+    _parametric("Normal", no_tl=True),
+    _parametric("Gumbel", no_tl=True),
+    _parametric("Rayleigh"),  # one parameter
+    # Discrete: whole-number data (the times rounded up, the entries down)
+    _parametric("Poisson", discrete=True),
+    # audit W-A: additive hazards (principle 9). Its fit to the fixture's
+    # late entries sits on the boundary beta = 1, where the covariance is
+    # NaN (weighted or not), so it is fitted without the truncation; there
+    # cb(sf) at Z = 0 is finite, and is offered.
+    _regression("WeibullAH", no_tl=True),
+    # audit W-A: an accelerated-life model (a Weibull life at a power-law
+    # stress); the stress is 1 + the first covariate, so positive.
+    WeightedCase(
+        "AcceleratedLife[Weibull,Power]",
+        lambda x, c, n, w, Z, tl: sp.AcceleratedLife(
+            sp.Weibull, sp.life_models.Power
+        ).fit(x, 1 + Z[:, 0], c=c, n=n, w=w, tl=tl),
+        lambda m: np.asarray(m.params, dtype=float),
+        offered={
+            "cb(sf)": lambda m: m.cb(QUERY, 1.5, on="sf"),
+            "param_cb": lambda m: m.param_cb(m.parameter_names[-1]),
+        },
+        refused={
+            "param_cb(lr)": lambda m: m.param_cb(
+                m.parameter_names[-1], method="lr"
+            ),
+            "cb(bootstrap)": lambda m: m.cb(
+                QUERY, 1.5, method="bootstrap", random_state=1
+            ),
+        },
+        covariates=True,
+        rtol=5e-3,
+        xfail={
+            name: (
+                "AcceleratedLife's fit stops after one TNC iteration on "
+                "'|f_n-f_(n-1)| ~= 0' with a gradient of about 2e-4 left, "
+                "so fits that reach the same maximum (w = 1 against no w; "
+                "counted against repeated rows) differ by 1e-5 to 4e-5 "
+                "relative in a and n. Reproduce: AcceleratedLife(Weibull, "
+                "Power).fit(x, 1 + Z[:, 0], c=c, tl=tl) against the same "
+                "with w=np.ones(40) on weighted_reference_data(): n is "
+                "-1.355954 against -1.355935."
+            )
+            for name in ("unit_weights", "counts", "integer_weights")
+        },
+    ),
+    # audit W-B: the forms of the parametric fit with their own branches
+    # in the sandwich (``make_robust``): a limited failure population, zero
+    # inflation, an offset and held parameters.
+    WeightedCase(
+        "Weibull[lfp]",
+        lambda x, c, n, w, Z, tl: sp.Weibull.fit(
+            np.minimum(x, 8.0),
+            np.where(x > 8.0, 1, c),
+            n,
+            w=w,
+            tl=tl,
+            lfp=True,
+        ),
+        lambda m: np.array([*m.params, m.lfp_p], dtype=float),
+        offered={
+            "cb(sf)": lambda m: m.cb(QUERY, on="sf"),
+            "param_cb": lambda m: m.param_cb("alpha"),
+            "quantile_cb": lambda m: m.quantile_cb(0.3),
+        },
+    ),
+    # The exact zeros are the failures at or before 1.0 (four rows), chosen
+    # by value so that reordering the rows moves them too. No left
+    # truncation: a zero cannot be observed after an entry time (not even
+    # one of 0), as ``SurpyvalData`` requires.
+    WeightedCase(
+        "Weibull[zi]",
+        lambda x, c, n, w, Z, tl: sp.Weibull.fit(
+            np.where(x <= 1.0, 0.0, x), c, n, w=w, zi=True
+        ),
+        lambda m: np.array([*m.params, m.f0], dtype=float),
+        offered={
+            "cb(sf)": lambda m: m.cb(QUERY, on="sf"),
+            "param_cb": lambda m: m.param_cb("alpha"),
+            "quantile_cb": lambda m: m.quantile_cb(0.3),
+        },
+    ),
+    # The data and the entry times shifted by 3: the bounds are asked
+    # above the offset, where the survival is not 1.
+    WeightedCase(
+        "Weibull[offset]",
+        lambda x, c, n, w, Z, tl: sp.Weibull.fit(
+            x + 3, c, n, w=w, tl=tl + 3, offset=True
+        ),
+        lambda m: np.array([*m.params, m.gamma], dtype=float),
+        # (each bound warns that it holds gamma at its estimate)
+        offered={
+            "cb(sf)": lambda m: quietly(m.cb, QUERY + 3, on="sf"),
+            "param_cb": lambda m: quietly(m.param_cb, "alpha"),
+            "quantile_cb": lambda m: quietly(m.quantile_cb, 0.3),
+        },
+    ),
+    WeightedCase(
+        "Weibull[fixed]",
+        lambda x, c, n, w, Z, tl: sp.Weibull.fit(
+            x, c, n, w=w, tl=tl, fixed={"beta": 2.0}
+        ),
+        lambda m: np.asarray(m.params, dtype=float),
+        offered={
+            "cb(sf)": lambda m: m.cb(QUERY, on="sf"),
+            "param_cb": lambda m: m.param_cb("alpha"),
+            "quantile_cb": lambda m: m.quantile_cb(0.3),
+        },
+    ),
     WeightedCase(
         "CoxPH",
         lambda x, c, n, w, Z, tl: sp.CoxPH.fit(x, Z, c=c, n=n, w=w, tl=tl),
@@ -148,6 +271,23 @@ WEIGHTED = [
     ),
 ]
 IDS = [case.name for case in WEIGHTED]
+
+
+def _cases(test):
+    """``WEIGHTED`` as parameters of ``test``, each case known to fail it
+    marked a strict xfail with its reason."""
+    return [
+        pytest.param(
+            case,
+            id=case.name,
+            marks=(
+                [pytest.mark.xfail(strict=True, reason=case.xfail[test])]
+                if test in case.xfail
+                else []
+            ),
+        )
+        for case in WEIGHTED
+    ]
 
 
 @pytest.fixture(scope="module")
@@ -170,7 +310,7 @@ def _bounds(case, model):
     }
 
 
-@pytest.mark.parametrize("case", WEIGHTED, ids=IDS)
+@pytest.mark.parametrize("case", _cases("unit_weights"))
 def test_unit_weights_give_the_unweighted_estimates(case, data):
     ones = np.ones(len(data["x"]))
     weighted = _fit(case, data, ones)
@@ -184,7 +324,7 @@ def test_unit_weights_give_the_unweighted_estimates(case, data):
 
 
 @pytest.mark.parametrize("scale", [0.1, 10.0])
-@pytest.mark.parametrize("case", WEIGHTED, ids=IDS)
+@pytest.mark.parametrize("case", _cases("scale"))
 def test_weight_scale_changes_nothing(case, data, scale):
     base = _fit(case, data, data["w"])
     scaled = _fit(case, data, data["w"] * scale)
@@ -205,7 +345,7 @@ def test_weight_scale_changes_nothing(case, data, scale):
         )
 
 
-@pytest.mark.parametrize("case", WEIGHTED, ids=IDS)
+@pytest.mark.parametrize("case", _cases("order"))
 def test_row_order_does_not_matter(case, data):
     base = _fit(case, data, data["w"])
     order = np.random.default_rng(3).permutation(len(data["x"]))
@@ -219,7 +359,7 @@ def test_row_order_does_not_matter(case, data):
         )
 
 
-@pytest.mark.parametrize("case", WEIGHTED, ids=IDS)
+@pytest.mark.parametrize("case", _cases("counts"))
 def test_counts_still_equal_repetition(case, data):
     # The first five rows counted twice, against those rows written twice
     k = len(data["x"])
@@ -244,7 +384,80 @@ def test_counts_still_equal_repetition(case, data):
         assert_allclose(_bounds(case, counted)[key], value, rtol=case.rtol)
 
 
-@pytest.mark.parametrize("case", WEIGHTED, ids=IDS)
+def _value(attr):
+    """An attribute that is a number on some models and a method on
+    others."""
+    return attr() if callable(attr) else attr
+
+
+def _breslow_cox(x, c, n, w, Z, tl):
+    return sp.CoxPH.fit(x, Z, c=c, n=n, w=w, tl=tl, tie_method="breslow")
+
+
+#: The cases whose fit with whole-number weights is not expected to equal
+#: the counted fit, with why.
+NOT_COUNTED = {
+    "FlemingHarrington": (
+        "by design: each of the m tied deaths is taken at the deaths' mean "
+        "weight, m the units from the counts (R's ctype = 2; docs/Weighted "
+        "Data.rst), so a death of weight 2 is one death, not two tied ones"
+    ),
+    "WeibullAH": (
+        "the fit ends on the boundary of the model's support (it warns), "
+        "not at a maximum, with or without weights"
+    ),
+    "Weibull[offset]": (
+        "with these weights (or these counts) the likelihood has no finite "
+        "maximum: gamma runs onto the smallest observation with beta < 1, "
+        "and the fit warns 'No finite maximum'"
+    ),
+}
+
+
+@pytest.mark.parametrize("case", _cases("integer_weights"))
+def test_integer_weights_give_the_counted_estimates(case, data):
+    """audit W-J: whole-number weights give the point estimates of the
+    same rows counted that many times (``n = w``, no ``w``): a check of the
+    weighted likelihoods and baselines that ``w = 1`` cannot make. Only
+    the estimates agree; the intervals differ by design (robust against
+    classical). A Cox fit is compared under Breslow's ties, since under
+    Efron's R's weighted convention differs from repeated rows (DECISIONS.md
+    "Ties in a weighted Cox fit"), and its baseline is compared too.
+
+    The log-likelihood (reported with the weights as given) must equal the
+    counted one to 1e-9; the estimates are compared to 1e-5, the tolerance
+    of the other properties between fits that reach the same maximum: the
+    optimisers stop within about 3e-6 of it (the Exponential, LogNormalAFT
+    and Weibull[lfp] estimates differ by 1e-6 to 3e-6 while their
+    log-likelihoods agree to 1e-12)."""
+    if case.name in NOT_COUNTED:
+        pytest.skip(NOT_COUNTED[case.name])
+    k = len(data["x"])
+    w = np.where(np.arange(k) % 2 == 0, 2, 1)
+    fit = _breslow_cox if case.name == "CoxPH" else case.fit
+    args = (data["x"], data["c"])
+    weighted = quietly(
+        fit, *args, None, w.astype(float), data["Z"], data["tl"]
+    )
+    counted = quietly(fit, *args, w, None, data["Z"], data["tl"])
+    assert weighted.weighted and not getattr(counted, "weighted", False)
+    assert_allclose(
+        case.estimates(weighted), case.estimates(counted), rtol=1e-5, atol=1e-9
+    )
+    if hasattr(counted, "log_likelihood"):
+        assert_allclose(
+            _value(weighted.log_likelihood),
+            _value(counted.log_likelihood),
+            rtol=1e-9,
+        )
+    if case.name == "CoxPH":
+        zero = np.zeros((3, 2))
+        assert_allclose(
+            weighted.sf(QUERY, zero), counted.sf(QUERY, zero), rtol=1e-6
+        )
+
+
+@pytest.mark.parametrize("case", _cases("bounds"))
 def test_offered_bounds_are_finite_and_refused_ones_refuse(case, data):
     model = _fit(case, data, data["w"])
     for key, value in _bounds(case, model).items():
@@ -263,7 +476,7 @@ def test_offered_bounds_are_finite_and_refused_ones_refuse(case, data):
             getattr(model, criterion)()
 
 
-@pytest.mark.parametrize("case", WEIGHTED, ids=IDS)
+@pytest.mark.parametrize("case", _cases("round_trip"))
 def test_round_trip_keeps_the_robust_bounds(case, data):
     model = _fit(case, data, data["w"])
     d = model.to_dict()
