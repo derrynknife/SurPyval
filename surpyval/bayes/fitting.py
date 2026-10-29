@@ -115,7 +115,7 @@ def bayes_data(what: str, x: Any = None, **arrays: Any) -> SurpyvalData:
     (weights, covariates, event types, time-varying covariates, marker
     readings) is refused, not dropped, as ``Weibull.fit(data)`` refuses
     it."""
-    from surpyval.utils.surpyval_data import _NO_MARKERS, lost_message
+    from surpyval.utils.surpyval_data import lost_message
     from surpyval.utils.weights import (
         BAYES_INSTEAD,
         BAYES_WHY,
@@ -143,7 +143,11 @@ def bayes_data(what: str, x: Any = None, **arrays: Any) -> SurpyvalData:
     if lost:
         raise ValueError(f"{what}: {lost_message(lost, False)}")
     if getattr(data, "markers", None) is not None:
-        raise ValueError(f"{what}: {_NO_MARKERS}")
+        raise ValueError(
+            f"{what}: this fit takes no markers, which the SurpyvalData "
+            'holds; use data.without("markers") (the joint models, such as '
+            "WeibullJointPH, fit them)."
+        )
     return data
 
 
