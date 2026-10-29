@@ -10,7 +10,8 @@ these."""
 from __future__ import annotations
 
 import warnings
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 
@@ -57,7 +58,7 @@ _OUTCOMES = (
 )
 
 
-def _readings_inside(fields: dict) -> "dict | None":
+def _readings_inside(fields: dict) -> dict | None:
     """A lifetime's marker readings that are inside the observation its
     ``fields`` give: a reshape that moves its window (``censor_at``,
     ``enter_at``, ``for_event_type``) keeps the readings taken inside the
@@ -494,7 +495,7 @@ def _history_enter_at(history: Any, age: float) -> Any:
     return _rebuild(history, fields)
 
 
-def select(records: list, ids: Any, where: "Callable | None") -> list:
+def select(records: list, ids: Any, where: Callable | None) -> list:
     """The records with an id in ``ids`` (all, where None) for which
     ``where(record)`` is true (all, where None)."""
     from surpyval.utils.item_history import item_id
@@ -670,9 +671,12 @@ class ReshapeMixin(ReadOnlyArrays):
         """Whether the reshapes work on the arrays: lifetime data without
         marker readings (which a reshape that moves an item's window
         trims to the new window, record by record)."""
+        # Weighted data takes the record route, which refuses it: the
+        # array reshapes would drop its weights.
         return (
             self._PARTS is LIFETIME_PARTS
             and getattr(self, "markers", None) is None
+            and getattr(self, "w", None) is None
         )
 
     def _event_types(self) -> set:
@@ -973,7 +977,7 @@ class ReshapeMixin(ReadOnlyArrays):
                 "record (where=), or both."
             )
         have = getattr(self, "ids", None)
-        rows: "np.ndarray | None" = None
+        rows: np.ndarray | None = None
         if ids is not None:
             if have is None:
                 raise ValueError(

@@ -281,7 +281,7 @@ def test_schema_version_is_the_oldest_that_reads_the_document():
     # a schema-1 reader would misread, so the document is schema 2
     d = KaplanMeier.fit([3.0, 4.0, 5.0, 6.0, 7.0]).to_dict()
     assert "non_finite" in d
-    assert d["schema"] == SCHEMA_VERSION == 2
+    assert d["schema"] == 2 <= SCHEMA_VERSION
     # a nested record makes the enclosing document schema 2 as well
     from surpyval.multivariate import Clayton
 

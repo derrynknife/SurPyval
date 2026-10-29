@@ -4,6 +4,23 @@ Changelog
 v0.26 (unreleased)
 ------------------
 
+**Sampling, propensity and censoring weights.** A new argument, ``w``,
+beside the counts ``n``: how many units of the population each unit stands
+for (a sampling weight), or how much it is weighted to undo a bias (an
+inverse probability of treatment or censoring weight). ``KaplanMeier``,
+``NelsonAalen`` and ``FlemingHarrington`` take it, as do
+``SurpyvalData(..., w=...)``, ``from_dataframe(..., w_col=...)`` and
+``fit_from_df(..., w_col=...)``. A weighted fit gives the weighted
+estimate with a robust (infinitesimal jackknife) variance, the only one it
+offers, as R's ``survfit(..., weights = w, robust = TRUE)`` (checked
+against it); multiplying the weights by a constant changes nothing.
+``band`` and ``bootstrap_cb`` refuse, and so do ``Turnbull`` and the
+fitters without ``w``. Printouts give the effective sample size, and a fit
+warns when it is below 20. Weighted models and data save as schema 3,
+which older versions refuse. See :doc:`Weighted Data`. Nothing changes
+without ``w``; a decimal ``n`` is still refused, and the message now
+points to ``w``.
+
 **Added.**
 
 - ``surpyval.life_table(x, c=None, n=None, tl=None, intervals=None)``: the
