@@ -181,3 +181,91 @@ def test_a_weighted_plot_draws_without_warnings():
         ax = model.plot()
     assert ax is not None
     plt.close("all")
+
+
+def test_a_weighted_regression_robust_covariance_is_its_covariance():
+    """audit W-S: a weighted fit's covariance is already the sandwich, so
+    ``robust_covariance()`` without ``cluster`` is ``covariance()`` itself,
+    ``robust_standard_errors()`` is ``standard_errors()``, and
+    ``summary(robust=True)`` has the ``se(coef)`` of ``summary()``."""
+    data = weighted_reference_data()
+    model = quietly(
+        sp.WeibullAFT.fit,
+        data["x"],
+        data["Z"],
+        c=data["c"],
+        w=data["w"],
+        tl=data["tl"],
+    )
+    assert_array_equal(model.robust_covariance(), model.covariance())
+    assert_array_equal(model.robust_standard_errors(), model.standard_errors())
+    assert_array_equal(
+        model.summary(robust=True)["se(coef)"], model.summary()["se(coef)"]
+    )
+
+
+def test_a_weighted_cox_robust_covariance_is_its_covariance():
+    """audit W-S: the same for a weighted Cox fit. Its docstring does not
+    say so; DECISIONS.md ("A weighted regression's robust_covariance
+    (cluster) is the weighted sandwich: covariance() without cluster")
+    does. Cox's is recomputed from the dfbetas, so it is compared to
+    rounding, not bit for bit."""
+    data = weighted_reference_data()
+    model = quietly(
+        sp.CoxPH.fit,
+        data["x"],
+        data["Z"],
+        c=data["c"],
+        w=data["w"],
+        tl=data["tl"],
+    )
+    assert_allclose(model.robust_covariance(), model.covariance(), rtol=1e-12)
+    assert_allclose(
+        model.summary(robust=True)["se(coef)"],
+        model.summary()["se(coef)"],
+        rtol=1e-12,
+    )
+
+
+def _separated():
+    """30 rows where a binary covariate separates the events from the
+    survivors: every z = 1 row fails, every z = 0 row is censored, so the
+    partial likelihood keeps increasing in z's coefficient."""
+    rng = np.random.default_rng(20261030)
+    z = np.r_[np.ones(15), np.zeros(15)]
+    Z = np.column_stack([z, rng.normal(size=30)])
+    x = np.round(rng.uniform(1, 10, 30), 2)
+    c = np.where(z == 1, 0, 1)
+    w = rng.uniform(0.5, 2, 30)
+    return x, Z, c, w
+
+
+def test_an_unweighted_cox_fit_with_no_maximum_warns():
+    """audit W-R (the reference for the test below): the unweighted fit
+    of separated data warns and does not call its maximum verified."""
+    x, Z, c, _ = _separated()
+    with pytest.warns(UserWarning, match="No finite maximum"):
+        model = sp.CoxPH.fit(x, Z, c=c)
+    assert model.maximum != "verified"
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "A weighted Cox fit of separated data is silent: no warning, and "
+        "maximum == 'verified' with coef_0 = 40.6 (the unweighted fit warns "
+        "'No finite maximum' and reports maximum = 'no finite maximum'). "
+        "Reproduce: _separated() here, sp.CoxPH.fit(x, Z, c=c, w=w)."
+    ),
+)
+def test_a_weighted_cox_fit_with_no_maximum_warns():
+    """audit W-R (principle 13, failure is never silent): a weighted Cox
+    fit whose partial likelihood has no finite maximum warns, and does not
+    call its maximum verified."""
+    x, Z, c, w = _separated()
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        model = sp.CoxPH.fit(x, Z, c=c, w=w)
+    messages = [str(r.message).lower() for r in record]
+    assert any("maximum" in m or "converge" in m for m in messages), messages
+    assert model.maximum != "verified"
