@@ -250,8 +250,11 @@ proportion) or one of the helpers:
   any other scale;
 - ``prior.flat()``: no opinion, flat on the log scale for a positive
   parameter. It is the default for a parameter given no prior, and it is
-  allowed only where the data alone determine the parameter: with no
-  failures, a flat prior on the scale is refused, with what to do instead;
+  allowed only where the data determine the parameter (old data given as
+  a prior with ``prior.from_data`` or ``as_prior()`` count with the new):
+  with no failures, a flat prior on the scale is refused, with what to do
+  instead, and so is a fit in which every parameter is flat where the
+  maximum-likelihood fit has no verified maximum;
 - ``prior.fixed(v)``: the value is known, as ``fixed=`` in ``fit``.
 
 A prior that puts mass where the parameter cannot be (a Normal on a

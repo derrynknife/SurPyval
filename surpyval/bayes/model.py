@@ -23,6 +23,7 @@ from surpyval.bayes.likelihood import LogLikelihood, model_parameter_names
 from surpyval.bayes.posterior import Posterior
 from surpyval.bayes.prior import (
     DistributionPrior,
+    Fixed,
     Flat,
     MultivariateNormal,
     NormalOnScale,
@@ -30,6 +31,7 @@ from surpyval.bayes.prior import (
     PriorSpec,
     _fmt,
     quantity_at,
+    shifted,
 )
 from surpyval.bayes.transforms import Transform
 from surpyval.serialisation import (
@@ -45,6 +47,10 @@ from surpyval.utils.validation import (
 )
 
 _SIDES = ("two-sided", "lower", "upper")
+#: The most times qf's root bracket is widened before it gives up (each
+#: step doubles the widening, so 200 reach 2**200 times the posterior's
+#: spread of the quantile).
+_BRACKET_STEPS = 200
 _ON = {
     "sf": "sf",
     "R": "sf",
@@ -597,9 +603,11 @@ class BayesianParametric(SerialisableMixin):
         plain = not (self.offset or self.lfp or self.zi)
         with np.errstate(all="ignore"):
             if fname in ("sf", "ff", "Hf"):
-                s = d.sf(xg, *dp)
-                if not plain:
-                    s = 1 - p + (p - f0) * s
+                if plain:
+                    s = d.sf(xg, *dp)
+                else:
+                    # (each point's sf is 1 below its own offset)
+                    s = 1 - p + (p - f0) * shifted(d, "sf", xg, dp)
                     if self.zi:
                         s = np.where(x[None, :] < 0, 1.0, s)
                 if fname == "sf":
@@ -608,14 +616,20 @@ class BayesianParametric(SerialisableMixin):
                     return 1 - s
                 return -np.log(s)
             if fname in ("df", "hf"):
-                f = d.df(xg, *dp)
-                if not plain:
-                    f = (p - f0) * f
+                if plain:
+                    f = d.df(xg, *dp)
+                else:
+                    f = (p - f0) * shifted(d, "df", xg, dp)
+                    if self.zi:
+                        f = np.where(x[None, :] < 0, 0.0, f)
                 if fname == "df":
                     return f
-                s = d.sf(xg, *dp)
-                if not plain:
-                    s = 1 - p + (p - f0) * s
+                if plain:
+                    s = d.sf(xg, *dp)
+                else:
+                    s = 1 - p + (p - f0) * shifted(d, "sf", xg, dp)
+                    if self.zi:
+                        s = np.where(x[None, :] < 0, 1.0, s)
                 return f / s
         raise ValueError(fname)
 
@@ -827,17 +841,64 @@ class BayesianParametric(SerialisableMixin):
             return float("nan")
         a, b = float(comp.min()), float(comp.max())
         f = lambda t: float(self._predict("ff", np.array([t]))[0]) - u  # noqa
+        # Below the predictive support's lower edge nothing has failed, so
+        # the bracket stops there: the edge is every point's support edge
+        # plus its offset, or 0 for the zero-inflation mass.
+        edge = lo_edge
+        if self.offset:
+            edge = lo_edge + float(np.min(th["gamma"]))
+        if self.zi:
+            edge = min(edge, 0.0)
+        a = max(a, edge)
         span = max(b - a, abs(b), 1e-12)
-        while f(a) > 0:
-            a -= span
+        fa = f(a)
+        for _ in range(_BRACKET_STEPS):
+            if not fa > 0 or a <= edge:
+                break
+            a = max(a - span, edge)
             span *= 2
+            fa = f(a)
+        if np.isnan(fa):
+            return self._qf_failed(u, "nan")
+        if fa > 0 and a > edge or not np.isfinite(a):
+            return self._qf_failed(u, "below")
+        if fa > 0:
+            # the predictive failure function is above u from its lower
+            # edge on (the zero-inflation mass at 0): the quantile is there
+            return a
         span = max(b - a, abs(b), 1e-12)
-        while f(b) < 0:
+        fb = f(b)
+        for _ in range(_BRACKET_STEPS):
+            if not fb < 0:
+                break
             b += span
             span *= 2
+            fb = f(b)
+        if np.isnan(fb):
+            return self._qf_failed(u, "nan")
+        if fb < 0 or not np.isfinite(b):
+            return self._qf_failed(u, "above")
         if a == b:
             return a
         return float(optimize.brentq(f, a, b, xtol=1e-14, rtol=1e-13))
+
+    def _qf_failed(self, u: float, why: str) -> float:
+        """NaN, with a warning that says why, where the predictive quantile
+        could not be bracketed."""
+        reason = {
+            "below": "the predictive failure function did not fall below "
+            "it on the way down to the support's lower edge",
+            "above": "the predictive failure function did not reach it",
+            "nan": "the predictive failure function is undefined (NaN) "
+            "near it",
+        }[why]
+        warnings.warn(
+            f"qf({u:g}) is NaN: {reason}. Check the fit (summary(), "
+            "diagnostics) or quote the posterior B-life from "
+            "quantile_cri.",
+            stacklevel=4,
+        )
+        return float("nan")
 
     def cs(self, x: npt.ArrayLike, given: npt.ArrayLike) -> npt.NDArray:
         """The chance a new unit that has survived to ``given`` survives a
@@ -970,18 +1031,41 @@ class BayesianParametric(SerialisableMixin):
         if self.offset or self.lfp or self.zi:
             raise ValueError(
                 "moment() takes the plain distribution; this model has an "
-                "offset, limited failure population or zero inflation."
+                "offset, limited failure population or zero inflation. Use "
+                "mean() and var(), which take those forms."
             )
         return float(self.posterior.weights @ self._component_moment(n))
 
     def var(self) -> float:
         """The variance of a new unit's life (the predictive variance:
         the posterior mean of each variance plus the variance of the
-        means)."""
+        means), with the offset and the zero-inflation mass at 0 counted;
+        infinite where the mean is (a limited failure population)."""
         m1 = self.mean()
         if not np.isfinite(m1):
             return float("inf")
-        return float(self.moment(2) - m1**2)
+        if not (self.offset or self.lfp or self.zi):
+            return float(self.moment(2) - m1**2)
+        # Each point's life is B (gamma + Y): B is 1 but for the mass f0
+        # at 0, Y the base distribution. Its variance is
+        # (1 - f0) var(Y) + f0 (1 - f0) (gamma + E[Y])^2 and its mean
+        # (1 - f0) (gamma + E[Y]) (lfp_p is 1 at every point here, or the
+        # mean above was infinite).
+        th = self._theta()
+        N = len(self.posterior.weights)
+        gamma = th.get("gamma", np.zeros(N))
+        f0 = th.get("f0", np.zeros(N))
+        ey = self._component_moment(1)
+        with np.errstate(all="ignore"):
+            vy = self._component_moment(2) - ey**2
+            means = (1 - f0) * (gamma + ey)
+            v = (1 - f0) * vy + f0 * (1 - f0) * (gamma + ey) ** 2
+        w = self.posterior.weights
+        ok = np.isfinite(v) & np.isfinite(means)
+        if float(w[~ok].sum()) > 1e-12:
+            return float("inf")
+        w = w[ok] / w[ok].sum()
+        return float(w @ v[ok] + w @ (means[ok] - m1) ** 2)
 
     def mrl(self, x: npt.ArrayLike) -> npt.NDArray:
         """The mean residual life of a new unit at ``x``: the expected
@@ -1299,19 +1383,12 @@ class BayesianParametric(SerialisableMixin):
         >>> bool(abs(both.mean() - once.mean()) < 1e-9)
         True
         """
+        from surpyval.bayes.fitting import bayes_data
         from surpyval.bayes.fitting import fit as fit_bayes
 
-        if isinstance(x, SurpyvalData):
-            new = x
-        else:
-            new = SurpyvalData(x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)
-        from surpyval.utils.weights import (
-            BAYES_INSTEAD,
-            BAYES_WHY,
-            refuse_weighted_data,
+        new = bayes_data(
+            "update", x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr
         )
-
-        refuse_weighted_data(new, "update", BAYES_WHY, BAYES_INSTEAD)
         if self.data is None and not replace:
             raise ValueError(
                 "This model has no data to add to (it was built from "
@@ -1374,6 +1451,11 @@ class BayesianParametric(SerialisableMixin):
             raise ValueError(f"weight must be in (0, 1]; got {weight}.")
         if self.data is not None and param is None and widen == 1:
             spec = PriorSpec(self.priors.single, self.priors.joint)
+            # the parameters the fit held with fixed= stay held: the old
+            # data's likelihood was taken at those values
+            for k, v in self.fixed.items():
+                if k not in spec.single:
+                    spec.single[k] = Fixed(v)
             spec.joint = spec.joint + [
                 PowerPrior(
                     self.data,
@@ -1631,6 +1713,8 @@ class BayesianParametric(SerialisableMixin):
         return prior_model(
             self.dist,
             self.priors,
+            _bounds_data=self.data,
+            offset=self.offset,
             lfp=self.lfp,
             zi=self.zi,
             fixed={
@@ -1857,7 +1941,20 @@ def _jsonable(v: Any) -> Any:
 
 
 def _combine(a: SurpyvalData, b: SurpyvalData) -> SurpyvalData:
-    """The rows of two datasets together."""
+    """The rows of two datasets together. Only ``x``, ``c``, ``n`` and
+    ``t`` (and the unit) are carried, so data holding anything more
+    (weights, covariates, event types, ...) is refused here rather than
+    dropped."""
+    from surpyval.bayes.fitting import bayes_data
+
+    for d in (a, b):
+        bayes_data("Combining data for a Bayesian fit", d)
+    ua, ub = getattr(a, "unit", None), getattr(b, "unit", None)
+    if ua is not None and ub is not None and ua != ub:
+        raise ValueError(
+            f"The old data's ages are in {ua!r} and the new data's in "
+            f"{ub!r}: convert one so both are in the same unit."
+        )
 
     def two(d: SurpyvalData) -> npt.NDArray:
         x = np.asarray(d.x, dtype=float)
@@ -1869,7 +1966,7 @@ def _combine(a: SurpyvalData, b: SurpyvalData) -> SurpyvalData:
     t = np.vstack([a.t, b.t])
     if np.all(x[:, 0] == x[:, 1]):
         x = x[:, 0]
-    return SurpyvalData(x=x, c=c, n=n, t=t)
+    return SurpyvalData(x=x, c=c, n=n, t=t, unit=ua if ua is not None else ub)
 
 
 def _prior_interval(
@@ -1881,7 +1978,11 @@ def _prior_interval(
     if isinstance(p, NormalOnScale):
         m, s = p._resolved(t)
         z = stats.norm.ppf(1 - alpha / 2)
-        return (float(t.to_theta(m - z * s)), float(t.to_theta(m + z * s)))
+        # (sorted: an offset's scale runs downwards from its upper bound)
+        a, b = sorted(
+            (float(t.to_theta(m - z * s)), float(t.to_theta(m + z * s)))
+        )
+        return (a, b)
     if isinstance(p, DistributionPrior):
         q = np.asarray(p.model.qf([alpha / 2, 1 - alpha / 2]), dtype=float)
         return (float(q[0]), float(q[1]))
@@ -1890,10 +1991,10 @@ def _prior_interval(
             i = j.names.index(name)  # type: ignore[union-attr]
             m, s = j.mean[i], np.sqrt(j.cov[i, i])
             z = stats.norm.ppf(1 - alpha / 2)
-            return (
-                float(t.to_theta(m - z * s)),
-                float(t.to_theta(m + z * s)),
+            a, b = sorted(
+                (float(t.to_theta(m - z * s)), float(t.to_theta(m + z * s)))
             )
+            return (a, b)
     return None
 
 

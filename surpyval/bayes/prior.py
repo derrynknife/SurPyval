@@ -781,13 +781,34 @@ def quantity_at(dist: Any, spec: tuple, theta: dict[str, Any]) -> Any:
         with np.errstate(invalid="ignore", divide="ignore"):
             inside = (u >= 0) & (u <= 1)
             q = gamma + dist.qf(np.clip(u, 0, 1), *dp)
-        return np.where(inside, q, np.nan)
+        q = np.where(inside, q, np.nan)
+        if "f0" in theta:
+            # The zero-inflation mass f0 sits at 0 (not at the offset), so
+            # a quantile at or below it is 0, as Parametric.qf has it.
+            q = np.where((f0 > 0) & (0 <= spec[1]) & (spec[1] <= f0), 0.0, q)
+        return q
     if kind == "R":
-        x = spec[1] - gamma
-        return 1 - lfp + (lfp - f0) * dist.sf(x, *dp)
+        r = 1 - lfp + (lfp - f0) * shifted(dist, "sf", spec[1] - gamma, dp)
+        if "f0" in theta:
+            # Before 0 nothing has failed, the mass at 0 included.
+            r = np.where(np.asarray(spec[1]) < 0, 1.0, r)
+        return r
     if kind == "mean":
         return gamma + lfp * _vector_mean(dist, dp)
     raise ValueError(f"Unknown quantity {spec!r}.")
+
+
+def shifted(dist: Any, fname: str, xg: Any, dp: list) -> Any:
+    """The base distribution's ``sf`` or ``df`` at ``xg``, the query less
+    the offset, held to its support: below the support's lower edge the
+    distribution has not started, so ``sf`` is 1 and ``df`` 0 there (as
+    ``Parametric`` clamps them, #256), not the base function evaluated
+    outside its support (NaN for most, more than 1 for an
+    Exponential)."""
+    with np.errstate(all="ignore"):
+        v = getattr(dist, fname)(xg, *dp)
+    s0 = getattr(dist, "support", (-np.inf, np.inf))[0]
+    return np.where(np.asarray(xg) < s0, 1.0 if fname == "sf" else 0.0, v)
 
 
 def _vector_mean(dist: Any, dp: list) -> Any:
@@ -1144,19 +1165,11 @@ def from_data(
     >>> model.method
     'grid'
     """
-    from surpyval.utils.surpyval_data import SurpyvalData
+    from surpyval.bayes.fitting import bayes_data
 
-    if isinstance(x, SurpyvalData):
-        data = x
-    else:
-        data = SurpyvalData(x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)
-    from surpyval.utils.weights import (
-        BAYES_INSTEAD,
-        BAYES_WHY,
-        refuse_weighted_data,
+    data = bayes_data(
+        "prior.from_data", x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr
     )
-
-    refuse_weighted_data(data, "prior.from_data", BAYES_WHY, BAYES_INSTEAD)
     return PowerPrior(data, weight=weight, dist=dist)
 
 
@@ -1528,6 +1541,14 @@ class BoundPriors:
                     raise ValueError(f"Two priors given for {k}.")
                 covered[k] = j.describe()
         self.flat_names = [n for n in self.free_names if n not in covered]
+        #: Every free parameter with an improper prior: left out (flat)
+        #: or given ``prior.flat()``.
+        self.improper_names = [
+            n
+            for n in self.free_names
+            if n in self.flat_names
+            or (n in spec.single and not spec.single[n].proper)
+        ]
         self.descriptions = covered
         self._bind()
 
