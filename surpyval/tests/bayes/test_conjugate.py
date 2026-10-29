@@ -264,17 +264,6 @@ def test_normal_normal_predictive_mean_is_the_posterior_mean():
     assert model.mean() == pytest.approx(float(mean), rel=1e-14)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "var() of the Normal-normal (sigma known) fit is not the closed "
-        "predictive's sigma**2 + s**2: mean() uses the closed predictive, "
-        "but var() takes moment(2) - mean()**2 from the conjugate "
-        "posterior's 4000 quantile nodes, which drop the tails. On this "
-        "module's Y with mu ~ Normal(3, 2) and sigma = 0.8 it gives "
-        "0.7438620 against the exact 0.7438961 (relative -4.6e-5)."
-    ),
-)
 def test_normal_normal_predictive_variance_is_exact():
     """audit B25: the predictive variance is ``sigma**2 + s**2``, with
     ``s**2`` the posterior variance of mu (exact, as ``mean()`` is)."""

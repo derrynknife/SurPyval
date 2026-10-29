@@ -82,6 +82,14 @@ def _shape_bound(values: npt.NDArray, bound: str) -> npt.NDArray:
     return values[..., 0]
 
 
+def _bound_text(lo: float | None, hi: float | None) -> str:
+    """``(0, inf)``: a parameter's open bounds, for a message."""
+    return "{}, {}".format(
+        "-inf" if lo is None else f"{lo:g}",
+        "inf" if hi is None else f"{hi:g}",
+    )
+
+
 class BayesianParametric(SerialisableMixin):
     """
     A Bayesian fit of a parametric distribution: the posterior of its
@@ -399,6 +407,23 @@ class BayesianParametric(SerialisableMixin):
         if offset:
             bounds_all = [(None, None)] + bounds_all
         bounds_all += [(0, 1)] * (int(lfp) + int(zi))
+        outside = []
+        for j, (n, (lo, hi)) in enumerate(zip(order, bounds_all)):
+            below = 0 if lo is None else int(np.sum(D[:, j] <= lo))
+            above = 0 if hi is None else int(np.sum(D[:, j] >= hi))
+            if below or above:
+                outside.append(
+                    f"{below + above} of the {D.shape[0]} draws of {n} "
+                    f"(bounds {_bound_text(lo, hi)})"
+                )
+        if outside:
+            raise ValueError(
+                "Some draws are outside their parameter's bounds, where "
+                f"{dist.name} is not defined: {'; '.join(outside)}. Give "
+                "the draws on each parameter's own scale (exponentiate a "
+                "column sampled on the log scale; take the inverse logit "
+                "of one on the logit scale), or drop the draws outside."
+            )
         ts = [
             Transform.for_bounds(b)
             for n, b in zip(order, bounds_all)
@@ -1041,6 +1066,11 @@ class BayesianParametric(SerialisableMixin):
         the posterior mean of each variance plus the variance of the
         means), with the offset and the zero-inflation mass at 0 counted;
         infinite where the mean is (a limited failure population)."""
+        closed = self._closed_predictive()
+        if closed is not None:
+            # Exact, as mean() is: Normal(m, sqrt(sigma^2 + s^2)), or the
+            # Bernoulli at the posterior mean of p
+            return float(closed.var())
         m1 = self.mean()
         if not np.isfinite(m1):
             return float("inf")
@@ -2183,6 +2213,9 @@ def _summary(model: BayesianParametric, alpha_ci: float) -> str:
     unit = f" {model.unit}" if model.unit else ""
     lines = []
     head = f"{model.dist.name}: Bayesian fit"
+    # Draws made elsewhere (from_draws): the priors are what was said, if
+    # anything, not a flat prior SurPyval chose
+    draws = getattr(model, "method", None) == "draws"
     if model.data is not None:
         n = np.asarray(model.data.n)
         c = np.asarray(model.data.c)
@@ -2196,6 +2229,8 @@ def _summary(model: BayesianParametric, alpha_ci: float) -> str:
         head += f", {words})"
         if np.isfinite(np.asarray(model.data.t)).any():
             head += ", truncated"
+    elif draws:
+        head = f"{model.dist.name}: Bayesian model from draws given"
     else:
         head += " of the prior alone (no data)"
     lines.append(head)
@@ -2218,6 +2253,8 @@ def _summary(model: BayesianParametric, alpha_ci: float) -> str:
                 text = d
             else:
                 text = f"{name} {d}"
+        elif name in flat and draws:
+            text = f"{name}: from the draws given (no prior recorded)"
         elif name in flat:
             t = tmap.get(name)
             scale = t.scale_name if t is not None else "its own scale"

@@ -842,18 +842,6 @@ def test_parametric_optimality_conditions_every_censoring_and_counts(
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=np.linalg.LinAlgError,
-    reason=(
-        "An interval-censored row starting at 0 (c=2, x=[0, r]) makes "
-        "WeibullAFT.fit_penalised raise numpy LinAlgError 'Eigenvalues did "
-        "not converge' from eigvalsh of the Hessian in "
-        "_penalised.solve_penalised, for l1_ratio 0, 0.5 and 1, with or "
-        "without standardise or counts; WeibullAFT.fit takes the same "
-        "data. Reproduce: this test's data with one interval [0, 1]."
-    ),
-)
 def test_interval_from_zero_is_taken_by_the_penalised_fit():
     """audit R-D: an interval that starts at 0 (a row known only to have
     failed by ``r``) is a valid row; the penalised fit takes it as the
@@ -864,10 +852,28 @@ def test_interval_from_zero_is_taken_by_the_penalised_fit():
     xl[first], xr[first] = 0.0, 1.0
     X = np.column_stack([xl, xr])
     WeibullAFT.fit(X, Z, c=c)  # the unpenalised fit takes it
-    model = WeibullAFT.fit_penalised(
-        X, Z, c=c, penalizer=0.04, l1_ratio=1.0, standardise=False
-    )
-    assert model.maximum == "verified"
+    # The same row written as left-censored at r: F(r) - F(0) is F(r)
+    left = X.copy()
+    left[first, 0] = 1.0
+    c_left = c.copy()
+    c_left[first] = -1
+    for l1_ratio in (0.0, 0.5, 1.0):
+        model = WeibullAFT.fit_penalised(
+            X, Z, c=c, penalizer=0.04, l1_ratio=l1_ratio, standardise=False
+        )
+        assert model.maximum == "verified"
+        same = WeibullAFT.fit_penalised(
+            left,
+            Z,
+            c=c_left,
+            penalizer=0.04,
+            l1_ratio=l1_ratio,
+            standardise=False,
+        )
+        # Two runs of the solver on the rows in different orders: the
+        # same maximum, each to the solver's tolerance
+        np.testing.assert_allclose(model.neg_ll(), same.neg_ll(), rtol=1e-9)
+        np.testing.assert_allclose(model.params, same.params, atol=1e-6)
 
 
 def test_summary_of_a_penalised_fit_has_estimates_without_inference():

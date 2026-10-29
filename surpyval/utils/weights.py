@@ -23,11 +23,14 @@ from __future__ import annotations
 
 import copy
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Any
 
 import numpy as np
 import numpy.typing as npt
+
+from surpyval.utils.warnings import caller_stacklevel
 
 #: Below this effective sample size a weighted fit warns that its robust
 #: variance may be poor.
@@ -93,8 +96,25 @@ def warn_if_few_effective(n: npt.ArrayLike, w: npt.ArrayLike) -> None:
             "it, can be poor. Check whether a few units carry most of the "
             "weight.",
             UserWarning,
-            stacklevel=3,
+            stacklevel=caller_stacklevel(),
         )
+
+
+#: The start of :func:`warn_if_few_effective`'s message, for
+#: :func:`few_effective_said_later`.
+FEW_EFFECTIVE = "The weights leave an effective sample size"
+
+
+@contextmanager
+def few_effective_said_later() -> Iterator[None]:
+    """Silence :func:`warn_if_few_effective` inside a step whose fit
+    warns of it itself afterwards (a regression's start from the
+    baseline's weighted fit), so that it is said once (principle 22)."""
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore", message=FEW_EFFECTIVE, category=UserWarning
+        )
+        yield
 
 
 class WeightedRefusal(ValueError):

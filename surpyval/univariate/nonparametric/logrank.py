@@ -260,7 +260,9 @@ def logrank(
         number of events (as R's ``survdiff``): a group that is never at
         risk at an event time carries no information and is left out. If
         fewer than two groups have expected events there is nothing to
-        compare, and the statistic is 0 with ``dof`` 0 and a p-value of 1.
+        compare (one group, or no event at all: every row censored, or
+        none at risk after ``t0``), and the statistic is 0 with ``dof`` 0
+        and a p-value of 1.
     c : array like, optional
         Array of censoring flags. 0 is observed and 1 is right
         censored. Left or interval censored data cannot be used with
@@ -600,7 +602,9 @@ def _logrank(
     informative = E > 0
     z_r = z[informative][:-1]
     V_r = V[np.ix_(informative, informative)][:-1, :-1]
-    dof = int(informative.sum()) - 1
+    # At least 0: with no event at all no group is informative, and that
+    # is "nothing to compare" (dof 0), as with one informative group.
+    dof = max(int(informative.sum()) - 1, 0)
     if dof < 1:
         # No event anywhere, or every risk set holds one group only:
         # there is nothing to compare. R reports a zero statistic; the

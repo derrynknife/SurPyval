@@ -307,7 +307,13 @@ def solve_penalised(
         g[split] += l1_split * np.sign(theta[split])
         active = _active(theta, split, k)
         H = smooth_hess(theta)[np.ix_(active, active)]
-        pd = bool(np.all(np.linalg.eigvalsh(H) > 0)) if active.size else True
+        # A Hessian that is not finite cannot show a maximum (and
+        # eigvalsh raises on it)
+        pd = (
+            bool(np.all(np.isfinite(H)) and np.all(np.linalg.eigvalsh(H) > 0))
+            if active.size
+            else True
+        )
     scale = max(1.0, abs(total(theta)))
     stationary = (
         bool(np.max(np.abs(g[active])) <= 1e3 * tol * scale)

@@ -47,6 +47,7 @@ from surpyval.univariate.parametric.royston_parmar import (
     SCALES,
     RoystonParmar,
     RoystonParmarModel,
+    check_knots,
     place_knots,
     rcs_basis,
     rcs_deriv,
@@ -266,7 +267,9 @@ class RoystonParmarRegression(FitterRepr, DataFrameRegressionMixin):
         How the covariates act. Default ``"hazard"``.
     knots : array_like, optional
         Explicit knots in *log* time, the boundary knots included,
-        instead of the quantiles of the event times.
+        instead of the quantiles of the event times. They are sorted (the
+        spline coefficients follow the sorted knots, as for
+        ``RoystonParmar.fit``) and must be finite and distinct.
 
     Examples
     --------
@@ -304,7 +307,7 @@ class RoystonParmarRegression(FitterRepr, DataFrameRegressionMixin):
             )
         self.df = int(df)
         self.scale = scale
-        self.knots = None if knots is None else np.asarray(knots, float)
+        self.knots = None if knots is None else check_knots(knots)
         self.name = "RoystonParmar{}".format(
             "PH" if scale == "hazard" else "PO"
         )

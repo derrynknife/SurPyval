@@ -249,15 +249,6 @@ def test_an_unweighted_cox_fit_with_no_maximum_warns():
     assert model.maximum != "verified"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "A weighted Cox fit of separated data is silent: no warning, and "
-        "maximum == 'verified' with coef_0 = 40.6 (the unweighted fit warns "
-        "'No finite maximum' and reports maximum = 'no finite maximum'). "
-        "Reproduce: _separated() here, sp.CoxPH.fit(x, Z, c=c, w=w)."
-    ),
-)
 def test_a_weighted_cox_fit_with_no_maximum_warns():
     """audit W-R (principle 13, failure is never silent): a weighted Cox
     fit whose partial likelihood has no finite maximum warns, and does not
@@ -269,3 +260,7 @@ def test_a_weighted_cox_fit_with_no_maximum_warns():
     messages = [str(r.message).lower() for r in record]
     assert any("maximum" in m or "converge" in m for m in messages), messages
     assert model.maximum != "verified"
+    # As the unweighted fit: the verdict, and no standard error for the
+    # runaway coefficient
+    assert model.maximum == "no finite maximum"
+    assert np.isnan(model._se[0]) and np.isfinite(model._se[1])

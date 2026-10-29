@@ -146,33 +146,16 @@ def test_refusals_say_what_to_do(rossi):
 # -- gaps found by the 0.26 test audit ---------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AttributeError,
-    reason=(
-        "likelihood_ratio_test on a Royston-Parmar regression fits the "
-        "null with model.distribution.fit, which the spline baseline "
-        "(SplineBaseline) does not have: RoystonParmarPH.fit(x, Z, c=c)"
-        ".likelihood_ratio_test() raises AttributeError: 'SplineBaseline' "
-        "object has no attribute 'fit' (as does RoystonParmarPO)"
-    ),
-)
 @pytest.mark.parametrize("fitter", [sp.RoystonParmarPH, sp.RoystonParmarPO])
 def test_royston_parmar_lrt_null_is_the_spline_fit_on_its_knots(rossi, fitter):
     """Audit C1. The Royston-Parmar regressions are documented to work as
     WeibullPH does, so the global test compares against the model with no
     covariates: the univariate spline fit on the same knots and scale (the
     model nested in the regression; the default knots of the univariate
-    fit are placed differently, so only these give a nested null). If the
-    test is refused instead, the refusal must be a ValueError that says
-    what to do (principle 2)."""
+    fit are placed differently, so only these give a nested null)."""
     x, c, df = rossi
     model = fitter.fit(x, df[["fin", "prio"]].to_numpy(float), c=c)
-    try:
-        res = model.likelihood_ratio_test()
-    except ValueError as err:
-        assert "log_likelihood" in str(err) or "instead" in str(err)
-        return
+    res = model.likelihood_ratio_test()
     base = model.distribution
     null = sp.RoystonParmar.fit(x, c=c, knots=base.knots, scale=base.scale)
     assert res["df"] == 2
@@ -234,15 +217,6 @@ def test_parametric_null_takes_interval_censoring_and_entry_times():
     assert res["df"] == 1
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "the refusal of likelihood_ratio_test on a distributional "
-        "regression (WeibullDistributional) calls it a model with a "
-        "custom covariate link, which it is not"
-    ),
-)
 def test_distributional_refusal_names_the_distributional_model(rossi):
     """Audit C4. A distributional regression puts covariates on more than
     one parameter, so the test against the baseline fit is refused; the
@@ -258,3 +232,17 @@ def test_distributional_refusal_names_the_distributional_model(rossi):
     assert "distributional" in message.lower()
     assert "custom covariate link" not in message
     assert "log_likelihood" in message
+
+
+def test_royston_parmar_lrt_with_a_fixed_spline_coefficient_is_refused(rossi):
+    """The univariate spline fit cannot hold a spline coefficient fixed,
+    so the nested null cannot be fitted: refused, saying what to do."""
+    x, c, df = rossi
+    Z = df[["fin", "prio"]].to_numpy(float)
+    free = sp.RoystonParmarPH.fit(x, Z, c=c)
+    model = sp.RoystonParmarPH.fit(
+        x, Z, c=c, fixed={"gamma_1": float(free.params[1])}
+    )
+    with pytest.raises(ValueError, match="held fixed") as err:
+        model.likelihood_ratio_test()
+    assert "log_likelihood" in str(err.value)

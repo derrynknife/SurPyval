@@ -160,22 +160,6 @@ _FITTERS = {
     "WeibullPH": lambda x, c, Z, w: sp.WeibullPH.fit(x, Z, c=c, w=w),
     "CoxPH": lambda x, c, Z, w: sp.CoxPH.fit(x, Z, c=c, w=w),
 }
-_TWICE = (
-    "WeibullPH warns twice: once from optimised_fit.py and again from "
-    "_fit_skeleton.py. Reproduce: sp.WeibullPH.fit([1, 2, 3, 4, 5, 6], Z, "
-    "c=[0, 0, 1, 0, 0, 1], w=[1, 1, 1, 1, 1, 40]) records two 'effective "
-    "sample size of 1.26' warnings."
-)
-_STACKLEVEL = (
-    "warn_if_few_effective's stacklevel=3 points inside the library, not "
-    "at the caller: the warning's filename is {} for {}."
-)
-_WHERE = {
-    "KaplanMeier": "nonparametric_fitter.py",
-    "Weibull": "optimised_fit.py",
-    "WeibullPH": "optimised_fit.py",
-    "CoxPH": "cox_ph.py",
-}
 
 
 def _effective_warnings(name, x, c, Z, w):
@@ -185,20 +169,7 @@ def _effective_warnings(name, x, c, Z, w):
     return [r for r in record if "effective sample size" in str(r.message)]
 
 
-@pytest.mark.parametrize(
-    "name",
-    [
-        pytest.param(
-            name,
-            marks=(
-                [pytest.mark.xfail(strict=True, reason=_TWICE)]
-                if name == "WeibullPH"
-                else []
-            ),
-        )
-        for name in _FITTERS
-    ],
-)
+@pytest.mark.parametrize("name", list(_FITTERS))
 def test_few_effective_units_warn_exactly_once(name):
     """audit W-G: a fit whose weights leave few effective units (here
     1.26 of 6) warns exactly once (principle 22)."""
@@ -209,21 +180,7 @@ def test_few_effective_units_warn_exactly_once(name):
     assert "1.26" in str(found[0].message)
 
 
-@pytest.mark.parametrize(
-    "name",
-    [
-        pytest.param(
-            name,
-            marks=[
-                pytest.mark.xfail(
-                    strict=True,
-                    reason=_STACKLEVEL.format(_WHERE[name], name),
-                )
-            ],
-        )
-        for name in _FITTERS
-    ],
-)
+@pytest.mark.parametrize("name", list(_FITTERS))
 def test_few_effective_units_warning_points_at_the_caller(name):
     """audit W-G: the few-effective-units warning is attributed to the
     line that called ``fit`` (its stacklevel), not to library code."""

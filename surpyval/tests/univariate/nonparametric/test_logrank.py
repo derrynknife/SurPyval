@@ -380,16 +380,6 @@ def test_t0_drops_a_row_entering_exactly_at_t0():
     assert res.statistic == rest.statistic
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "with no event time left to compare (every row censored, or "
-        "every row entering at or after t0) logrank reports dof = -1, "
-        "where every other case with nothing to compare reports dof = 0: "
-        "logrank([1, 2, 3, 4], [0, 0, 1, 1], c=[1, 1, 1, 1]).dof == -1"
-    ),
-)
 @pytest.mark.parametrize(
     "kwargs",
     [

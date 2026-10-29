@@ -116,18 +116,7 @@ def test_unknown_method():
         sp.Weibull.fit_bayes(X, C, priors=SHAPE, method="pymc")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "fit_bayes does not validate points: points=1 and points=0 raise "
-        "'zero-size array to reduction operation maximum which has no "
-        "identity', points=-3 raises numpy's 'Number of samples, -3, must "
-        "be non-negative.' and points='many' raises \"invalid literal for "
-        "int() with base 10: 'many'\" (bayes/engines/grid.py, "
-        "m0 = int(points)); none names the points argument."
-    ),
-)
-@pytest.mark.parametrize("bad", [1, 0, -3, "many"])
+@pytest.mark.parametrize("bad", [1, 0, -3, "many", 2.5, True])
 def test_bad_points_is_refused_naming_points(bad):
     """audit B17: an unusable ``points`` raises a ValueError that names
     the argument (principle 2)."""
@@ -850,37 +839,20 @@ def test_from_draws_takes_data_as_a_tuple_or_an_array():
     np.testing.assert_array_equal(by_array.data.x, x)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "from_draws checks only that draws are finite, not that they are "
-        "inside each parameter's bounds: with rng = "
-        "np.random.default_rng(5), draws = np.c_[rng.normal(100, 30, 500), "
-        "rng.normal(2, 1.5, 500)] (some alpha and beta <= 0), "
-        "from_draws(sp.Weibull, draws, ['alpha', 'beta']) returns a model "
-        "with sf(50.0) == 0.679... and no error (principle 2; "
-        "surpyval.pymc.to_surpyval refuses such draws)."
-    ),
-)
 def test_from_draws_refuses_draws_outside_the_bounds():
     """audit B2: draws of alpha or beta at or below 0 are refused with a
-    ValueError naming the parameter."""
+    ValueError naming the parameter and counting the draws. With these
+    draws only beta has some (49 of 500); alpha's are all above 0."""
     rng = np.random.default_rng(5)
     draws = np.c_[rng.normal(100, 30, 500), rng.normal(2, 1.5, 500)]
-    assert np.any(draws <= 0)
-    with pytest.raises(ValueError, match="alpha"):
+    assert not np.any(draws[:, 0] <= 0) and np.any(draws[:, 1] <= 0)
+    with pytest.raises(ValueError, match="49 of the 500 draws of beta"):
+        BayesianParametric.from_draws(sp.Weibull, draws, ["alpha", "beta"])
+    draws[0, 0] = -1.0
+    with pytest.raises(ValueError, match="1 of the 500 draws of alpha"):
         BayesianParametric.from_draws(sp.Weibull, draws, ["alpha", "beta"])
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "from_draws accepts an lfp_p column outside (0, 1): draws of "
-        "alpha and beta from lognormals (default_rng(5)) beside "
-        "rng.normal(0.8, 0.3, 500) for lfp_p (134 values above 1, one "
-        "below 0) give a model with sf(50.0) == 0.817 and no error."
-    ),
-)
 def test_from_draws_refuses_a_proportion_outside_0_and_1():
     """audit B2: draws of ``lfp_p`` outside (0, 1) are refused with a
     ValueError naming it."""
@@ -993,3 +965,16 @@ def test_a_curved_posterior_is_held():
         },
     )
     assert model.diagnostics["integration_error"] <= 1e-3
+
+
+def test_a_draws_model_says_it_is_from_draws_not_the_prior_alone():
+    """audit B16: the printout of a model from draws made elsewhere says
+    so, rather than calling it a fit of the prior alone on flat priors."""
+    model = BayesianParametric.from_draws(
+        sp.Weibull, _draws(k=400), ["alpha", "beta"]
+    )
+    text = repr(model)
+    assert "from draws given" in text
+    assert "prior alone" not in text
+    assert "data alone identify" not in text
+    assert "alpha: from the draws given (no prior recorded)" in text

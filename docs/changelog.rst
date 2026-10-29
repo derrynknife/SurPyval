@@ -261,6 +261,18 @@ all optional. What can look different:
 
 **Fixed**
 
+- ``logrank`` reported ``dof == -1`` where no event was left to compare
+  (every row censored, or none at risk after ``t0``). It is now 0, with a
+  statistic of 0 and a p-value of 1, as for the other cases with nothing
+  to compare, and as documented.
+- ``RoystonParmar.fit(knots=...)`` used knots in the order given, so knots
+  out of order gave a different spline basis and spline parameters
+  (``gamma_j``) that could not be compared with those of the same knots
+  sorted. The knots are now sorted. Fewer than two knots, a missing or
+  infinite knot, and a repeated one are refused with a ``ValueError``
+  naming ``knots`` (they raised an ``IndexError`` or failed in the
+  optimiser). Sorted knots give the same fit as before.
+
 Where weights met other features of this release:
 
 - A weighted parametric regression's ``robust_covariance()``,

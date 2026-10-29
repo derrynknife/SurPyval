@@ -11,6 +11,22 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-10-30
+
+### Fixes behind the 0.26 test audit's strict xfails
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `logrank` with nothing left to compare (no event at all) returns the documented no-test result, statistic 0 on `dof` 0 with p-value 1, rather than refusing. | principle 1 | It is the result the docstring already promises and every other "nothing to compare" case gives; a refusal would break callers (`pairwise_logrank`) that skip pairs with `dof` 0. | done |
+| Knots given to `RoystonParmar.fit` and `RoystonParmarRegression` are sorted on entry; fewer than two, non-finite and repeated knots are refused. A saved model's knots are read back as stored (not re-sorted), so its coefficients keep their basis. | principle 2 | Knots in another order are the same spline only once sorted; the spline coefficients then mean the same thing whatever order a user typed. | done |
+| A weighted Cox fit runs the unweighted fit's data test for a run-off (`runoff_direction`) where the Newton search did not converge, went far, or its information collapsed, and then says "No finite maximum" once (not also "did not converge") and sets `maximum = "no finite maximum"`, with `nan` standard errors for the runaway columns. | principle 13 | Positive weights change neither the risk sets nor who fails in them, so whether a direction runs off is the same as unweighted. | done |
+| The penalised parametric fit writes an interval starting at the lower end of the baseline's support (`[0, r]`) as the left-censored row it is, for its objective only (the model keeps the data as given); a non-finite Hessian makes the maximum unverified rather than raising. | proposed | The likelihood is identical, and its Hessian at `F(0)` of a Weibull is `0 * log(0)**2`, nan. | done |
+| A Royston-Parmar regression's `likelihood_ratio_test()` nests it in the univariate spline fit on the regression's own knots and scale; with a spline coefficient held by `fixed` it is refused (the univariate fit cannot hold one). | principle 2 | The default univariate knots are placed differently, so only the regression's give a nested null. | done |
+| `fit_bayes(points=...)` takes a whole number of at least 2 (an integral float too); anything else, `bool` included, is refused naming `points`. | principle 2 | A grid needs two points a parameter to have a cell. | done |
+| `BayesianParametric.from_draws` refuses draws at or outside a parameter's open bounds (as the PyMC helper does, whose own message, run first, still asks whether a transform is missing), counting them per parameter. | principle 2 | The model was built where the distribution is not defined. | done |
+
+---
+
 ## 2026-10-29
 
 ### Bayesian fitting: offsets, zero inflation, power priors and data checks
