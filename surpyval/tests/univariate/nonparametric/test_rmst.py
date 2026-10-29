@@ -111,3 +111,41 @@ def test_single_group_rmst_refuses_a_tau_past_the_data():
     # A curve that reaches zero adds no area past the data.
     complete = sp.KaplanMeier.fit([1, 2, 3, 4, 5])
     assert complete.mean(tau=100) == pytest.approx(complete.mean())
+
+
+# -- gaps found by the 0.26 test audit ---------------------------------------
+
+
+@pytest.mark.filterwarnings("ignore:The weights leave an effective sample")
+@pytest.mark.parametrize("tau", [None, 40.0])
+def test_weighted_rmst_diff_does_not_change_with_the_weight_scale(tau):
+    """Audit C2. rmst_diff of weighted fits uses their robust variances,
+    which, like the estimates, are the same when every weight is
+    multiplied by 10 (AML data, R's survival::aml, fixed weights)."""
+    x = np.array(
+        [9, 13, 13, 18, 23, 28, 31, 34, 45, 48, 161]
+        + [5, 5, 8, 8, 12, 16, 23, 27, 30, 33, 43, 45],
+        float,
+    )
+    c = np.array(
+        [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1]
+        + [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0]
+    )
+    w = 1 + (np.arange(x.size) % 3) / 2
+
+    def fits(scale):
+        return (
+            sp.KaplanMeier.fit(x[:11], c=c[:11], w=scale * w[:11]),
+            sp.KaplanMeier.fit(x[11:], c=c[11:], w=scale * w[11:]),
+        )
+
+    res = sp.rmst_diff(*fits(1.0), tau=tau)
+    res10 = sp.rmst_diff(*fits(10.0), tau=tau)
+    for key in ("difference", "se", "lower", "upper", "p_value", "tau"):
+        np.testing.assert_allclose(res10[key], res[key], rtol=1e-8)
+    plain = sp.rmst_diff(
+        sp.KaplanMeier.fit(x[:11], c=c[:11]),
+        sp.KaplanMeier.fit(x[11:], c=c[11:]),
+        tau=tau,
+    )
+    assert not np.isclose(res["se"], plain["se"], rtol=1e-6)

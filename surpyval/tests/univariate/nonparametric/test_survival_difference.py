@@ -127,3 +127,44 @@ def test_refusals_say_what_to_do(aml):
     ecdf = sp.NonParametric.fit_from_ecdf([1, 2, 3], [0.9, 0.5, 0.2])
     with pytest.raises(ValueError, match="no variance"):
         sp.sf_diff(ecdf, b, 2)
+
+
+# -- gaps found by the 0.26 test audit ---------------------------------------
+
+
+def _weighted_aml(scale):
+    """The two AML groups fitted with fixed sampling weights times
+    ``scale``."""
+    x, c = np.asarray(X, float), np.asarray(C)
+    w_a = scale * (1 + (np.arange(11) % 3) / 2)
+    w_b = scale * (1 + (np.arange(12) % 3) / 2)
+    a = sp.KaplanMeier.fit(x[:11], c=c[:11], w=w_a)
+    b = sp.KaplanMeier.fit(x[11:], c=c[11:], w=w_b)
+    return a, b
+
+
+@pytest.mark.filterwarnings("ignore:The weights leave an effective sample")
+def test_weighted_fits_use_the_robust_variance_whatever_the_weight_scale():
+    """Audit C2. With weights, sf_diff uses each weighted fit's robust
+    variance of log S (its ``greenwood``), which, like the estimate, does
+    not change when every weight is multiplied by 10."""
+    a, b = _weighted_aml(1.0)
+    res = sp.sf_diff(a, b, 23)
+    res10 = sp.sf_diff(*_weighted_aml(10.0), 23)
+    for key in ("statistic", "p_value", "difference", "se", "lower", "upper"):
+        np.testing.assert_allclose(res10[key], res[key], rtol=1e-10)
+    i_a = np.searchsorted(a.x, 23, side="right") - 1
+    i_b = np.searchsorted(b.x, 23, side="right") - 1
+    s_a, s_b = a.R[i_a], b.R[i_b]
+    v_a, v_b = a.greenwood[i_a], b.greenwood[i_b]
+    np.testing.assert_allclose(
+        res["se"], np.sqrt(v_a * s_a**2 + v_b * s_b**2), rtol=1e-12
+    )
+    np.testing.assert_allclose(res["difference"], s_a - s_b, rtol=1e-12)
+    # The weights change the test: it is not the unweighted one.
+    plain = sp.sf_diff(
+        sp.KaplanMeier.fit(X[:11], c=C[:11]),
+        sp.KaplanMeier.fit(X[11:], c=C[11:]),
+        23,
+    )
+    assert not np.isclose(res["statistic"], plain["statistic"], rtol=1e-6)

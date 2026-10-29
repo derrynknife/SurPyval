@@ -225,6 +225,14 @@ def _two_group_by_hand(x, c, Z, weight):
     """The two-sample weighted log-rank statistic written out from Klein
     and Moeschberger (2003), eq. 7.3.3-7.3.4, with ``weight(r, d, S_peto)``
     at each distinct event time; an oracle independent of logrank."""
+    num, var = _two_group_parts(x, c, Z, weight)
+    return num**2 / var
+
+
+def _two_group_parts(x, c, Z, weight):
+    """The numerator (weighted observed less expected) and variance of
+    :func:`_two_group_by_hand`, with the Peto survival formed from these
+    rows alone."""
     times = np.unique(x[c == 0])
     num, var, s_peto = 0.0, 0.0, 1.0
     for t in times:
@@ -237,7 +245,7 @@ def _two_group_by_hand(x, c, Z, weight):
         num += w * (d1 - d * r1 / r)
         if r > 1:
             var += w**2 * d * (r1 / r) * (1 - r1 / r) * (r - d) / (r - 1)
-    return num**2 / var
+    return num, var
 
 
 def test_peto_peto_matches_lifelines_on_aml():
@@ -342,3 +350,92 @@ def test_t0_does_not_hide_interval_censoring():
     c[0] = -1
     with pytest.raises(ValueError, match="right censored"):
         sp.logrank(_AML_X, _AML_Z, c=c, t0=30)
+
+
+# -- gaps found by the 0.26 test audit ---------------------------------------
+
+
+def test_scalar_entry_time_with_t0_is_the_same_entry_for_every_row():
+    """Audit C10. A scalar ``tl`` is the entry time of every row, also
+    when the comparison is cut at ``t0``."""
+    tl = np.full(_AML_X.size, 0.5)
+    scalar = sp.logrank(_AML_X, _AML_Z, c=_AML_C, tl=0.5, t0=30)
+    array = sp.logrank(_AML_X, _AML_Z, c=_AML_C, tl=tl, t0=30)
+    assert scalar.statistic == array.statistic
+    assert scalar.p_value == array.p_value
+    assert scalar.dof == array.dof
+
+
+def test_t0_drops_a_row_entering_exactly_at_t0():
+    """Audit C10. A row with ``tl >= t0`` is never at risk before ``t0``
+    and is dropped; at the boundary ``tl == t0`` too. The others keep
+    the scalar entry time."""
+    tl = np.full(_AML_X.size, 0.5)
+    tl[10] = 30.0  # x = 161, enters exactly at t0
+    res = sp.logrank(_AML_X, _AML_Z, c=_AML_C, tl=tl, t0=30)
+    keep = np.arange(_AML_X.size) != 10
+    rest = sp.logrank(
+        _AML_X[keep], _AML_Z[keep], c=_AML_C[keep], tl=0.5, t0=30
+    )
+    assert res.statistic == rest.statistic
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "with no event time left to compare (every row censored, or "
+        "every row entering at or after t0) logrank reports dof = -1, "
+        "where every other case with nothing to compare reports dof = 0: "
+        "logrank([1, 2, 3, 4], [0, 0, 1, 1], c=[1, 1, 1, 1]).dof == -1"
+    ),
+)
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"x": [1, 2, 3, 4], "Z": [0, 0, 1, 1], "c": [1, 1, 1, 1]},
+        {"x": _AML_X, "Z": _AML_Z, "c": _AML_C, "tl": 30, "t0": 30},
+    ],
+)
+def test_nothing_left_to_compare_has_zero_degrees_of_freedom(kwargs):
+    """Found while closing audit C10. As
+    ``test_logrank_without_informative_groups``: with no event to compare,
+    the statistic is 0 on 0 degrees of freedom and the p-value 1."""
+    res = sp.logrank(**kwargs)
+    assert (res.statistic, res.dof, res.p_value) == (0.0, 0, 1.0)
+
+
+def test_peto_peto_with_counts_is_the_rows_repeated():
+    """Audit C11 (a). Peto-Peto weights from counts ``n`` are those of the
+    rows repeated ``n`` times: the Peto survival counts each unit."""
+    n = 1 + np.arange(_AML_X.size) % 3
+    counted = sp.logrank(_AML_X, _AML_Z, c=_AML_C, n=n, weighting="peto-peto")
+    repeated = sp.logrank(
+        np.repeat(_AML_X, n),
+        np.repeat(_AML_Z, n),
+        c=np.repeat(_AML_C, n),
+        weighting="peto-peto",
+    )
+    assert counted.statistic == repeated.statistic
+    assert counted.p_value == repeated.p_value
+
+
+def test_stratified_peto_peto_resets_the_peto_survival_per_stratum():
+    """Audit C11 (b). The stratified Peto-Peto statistic is (sum of the
+    strata's numerators)^2 / (sum of their variances), with each stratum's
+    weights the Peto survival of that stratum's rows alone (Klein and
+    Moeschberger 2003, section 7.5), worked by hand."""
+    strata = np.arange(_AML_X.size) % 2
+    num, var = 0.0, 0.0
+    for s in (0, 1):
+        rows = strata == s
+        num_s, var_s = _two_group_parts(
+            _AML_X[rows], _AML_C[rows], _AML_Z[rows], lambda r, d, S: S
+        )
+        num += num_s
+        var += var_s
+    res = sp.logrank(
+        _AML_X, _AML_Z, c=_AML_C, strata=strata, weighting="peto-peto"
+    )
+    np.testing.assert_allclose(res.statistic, num**2 / var, rtol=1e-12)
+    assert res.strata == 2

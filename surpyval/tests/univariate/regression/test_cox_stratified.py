@@ -291,3 +291,37 @@ def test_fit_tvc_strata_refusals():
         CoxPH.fit_tvc(i, xl, xr, c, Z, strata=[0, 1])
     with pytest.raises(ValueError, match="missing"):
         CoxPH.fit_tvc(i, xl, xr, c, Z, strata=["a", None, "b"])
+
+
+def test_fit_tvc_strata_survives_pickle_and_refuses_to_dict():
+    """Audit C12. A stratified ``fit_tvc`` model pickles with its strata
+    labels, each stratum's baseline and its ``sf_tvc`` unchanged. Its
+    ``to_dict`` is refused (each stratum carries its own baseline, which
+    the dictionary form does not hold yet), so it is not round-tripped
+    through ``from_dict``."""
+    import pickle
+
+    i, xl, xr, c, Z, wexp = _rossi_tv()
+    keep = i <= 120  # the quick subset of the test above
+    i, xl, xr, c, Z, wexp = (a[keep] for a in (i, xl, xr, c, Z, wexp))
+    model = CoxPH.fit_tvc(i, xl, xr, c, Z, strata=wexp)
+    restored = pickle.loads(pickle.dumps(model))
+    assert list(restored.strata_labels) == list(model.strata_labels)
+    assert restored.strata_baselines.keys() == model.strata_baselines.keys()
+    for k, baseline in model.strata_baselines.items():
+        assert restored.strata_baselines[k].keys() == baseline.keys()
+        for name, value in baseline.items():
+            np.testing.assert_allclose(
+                np.asarray(restored.strata_baselines[k][name], float),
+                np.asarray(value, float),
+                rtol=1e-12,
+            )
+    path = sp.StepSchedule.constant([1.0, 0.0, 25.0, 3.0])
+    for k in model.strata_labels:
+        np.testing.assert_allclose(
+            restored.sf_tvc([10.0, 30.0], path, stratum=k),
+            model.sf_tvc([10.0, 30.0], path, stratum=k),
+            rtol=1e-12,
+        )
+    with pytest.raises(NotImplementedError, match="stratified"):
+        model.to_dict()
