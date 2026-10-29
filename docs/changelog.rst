@@ -10,22 +10,23 @@ for (a sampling weight), or how much it is weighted to undo a bias (an
 inverse probability of treatment or censoring weight). It is taken by
 ``KaplanMeier``, ``NelsonAalen``, ``FlemingHarrington``, the parametric
 distributions (maximum likelihood), the parametric regressions (PH, AFT,
-PO, additive hazards, accelerated life), by
+PO, additive hazards, accelerated life) and ``CoxPH``, by
 ``SurpyvalData(..., w=...)`` and ``from_dataframe(..., w_col=...)``, and by
-``fit_from_df(..., w_col=...)``. A weighted fit gives the
+``fit_from_df(..., w_col=...)`` (not yet Cox's). A weighted fit gives the
 weighted estimate with a robust variance, the only one it offers: the
 infinitesimal jackknife for the non-parametric estimates (R's
 ``survfit(..., robust = TRUE)``), the sandwich for the parametric and
-regression fits (``survreg(..., robust = TRUE)``), both checked against
-R. Multiplying the weights by a
+regression fits (``survreg(..., robust = TRUE)``) and the Lin-Wei sandwich
+for Cox (``coxph(..., robust = TRUE)``, with ``robust_covariance(cluster)``
+for clusters), all checked against R. Multiplying the weights by a
 constant changes nothing. The bounds weights make invalid refuse, saying
 what to use instead: likelihood-ratio and bootstrap bounds, ``band`` and
 ``bootstrap_cb``, rank-based plotting positions, methods other than MLE,
 ``aic``, ``bic``, ``aic_c`` and ``fit_best``. Printouts give the effective
 sample size, and a fit warns when it is below 20. Weighted models and data
 save as schema 3, which older versions refuse. See :doc:`Weighted Data`.
-Turnbull, Cox, competing risks and the log-rank tests do not take
-weights yet. Nothing changes without ``w``; a decimal
+Turnbull, competing risks, the log-rank tests and the Cox baseline's
+bounds do not take weights yet. Nothing changes without ``w``; a decimal
 ``n`` is still refused, and the message now points to ``w``.
 
 v0.25 (17 October 2026)

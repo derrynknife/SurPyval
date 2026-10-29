@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as np
 import numpy as onp
@@ -128,10 +129,10 @@ class SemiParametricRegressionModel(
     #: default, the ``n``-weighted column means of the fitted rows for a
     #: fit with ``center=True`` (#459, #463). The fit centres on the means
     #: either way. ``None`` (a model built by hand) is read as zeros.
-    center: "npt.NDArray | None" = None
+    center: npt.NDArray | None = None
     #: The covariate means the fit centred on, which the residuals and
     #: diagnostics centre on too; not saved (they need the fitted data).
-    _fit_center: "npt.NDArray | None" = None
+    _fit_center: npt.NDArray | None = None
     #: What the fit reached, one of ``MAXIMUM_STATES``
     #: (``surpyval.utils.no_maximum``): ``"verified"`` (a zero score and a
     #: positive-definite information), ``"unverified"`` or ``"no finite
@@ -161,10 +162,10 @@ class SemiParametricRegressionModel(
     #: The coefficients' covariance, ``covariance()``: the inverse of the
     #: observed information (#613; ``None`` for a model saved before it
     #: was stored).
-    _covariance: "npt.NDArray | None" = None
+    _covariance: npt.NDArray | None = None
     #: The coefficients' standard errors, ``standard_errors()`` (``None``
     #: for a model saved before they were stored).
-    _se: "npt.NDArray | None" = None
+    _se: npt.NDArray | None = None
     #: The fit's score/Hessian closure, ``jac(beta) -> (score,
     #: information)``, and the negative partial log-likelihood as a
     #: function of the coefficients, ``neg_ll_of(beta)`` (``None`` for a
@@ -172,7 +173,16 @@ class SemiParametricRegressionModel(
     jac: Callable
     hess: Callable
     res: Any
-    neg_ll_of: "Callable | None" = None
+    neg_ll_of: Callable | None = None
+    #: Whether the model was fitted with weights ``w``: its covariance is
+    #: the robust (Lin-Wei) one, and the information criteria, the
+    #: residuals and ``check_ph`` refuse.
+    weighted: bool = False
+    #: The effective sample size of the weights of a weighted fit.
+    effective_n: float | None = None
+    #: The weighted partial likelihood of a weighted fit
+    #: (``proportional_hazards._weighted_cox.WeightedCox``).
+    _weighted_cox: Any = None
     tie_method: str
     baseline_method: str
     #: Per-observation training data (``x``/``c``/``n``/``Z``/``tl``) retained
@@ -180,12 +190,12 @@ class SemiParametricRegressionModel(
     _fit_data: dict
     #: The printout's "Data" line of a model restored by ``from_dict``
     #: (#508), which does not hold its data.
-    _data_summary: "str | None" = None
+    _data_summary: str | None = None
     #: For a TVC (start-stop) fit: subject id per *internal* (sorted) row,
     #: and the permutation from the caller's row order to the internal order
     #: (#259 — used to align user-supplied cluster labels).
-    tvc_subject_ids: "npt.NDArray | None" = None
-    tvc_row_order: "npt.NDArray | None" = None
+    tvc_subject_ids: npt.NDArray | None = None
+    tvc_row_order: npt.NDArray | None = None
 
     #: The model (``"Cox"``) and ``"Semi-Parametric"``, which the
     #: printout shows and ``to_dict`` stores.
@@ -206,7 +216,7 @@ class SemiParametricRegressionModel(
     #: The Breslow baseline is a step function, drawn as steps.
     _PARTIAL_EFFECTS_STEP = True
 
-    def _partial_effects_refusal(self) -> "str | None":
+    def _partial_effects_refusal(self) -> str | None:
         if self.is_stratified:
             return (
                 "A stratified Cox model has a baseline per stratum, and "
@@ -220,7 +230,7 @@ class SemiParametricRegressionModel(
 
     def _partial_effects_rows(
         self,
-    ) -> "tuple[npt.NDArray, npt.NDArray] | str":
+    ) -> tuple[npt.NDArray, npt.NDArray] | str:
         data = getattr(self, "_fit_data", None)
         if not data:
             return "the model does not hold the data it was fitted to"
@@ -229,7 +239,7 @@ class SemiParametricRegressionModel(
             onp.asarray(data["n"], dtype=float),
         )
 
-    def _partial_effects_times(self) -> "npt.NDArray | None":
+    def _partial_effects_times(self) -> npt.NDArray | None:
         data = getattr(self, "_fit_data", None)
         fitted = [] if not data else [onp.ravel(data["x"])]
         return onp.concatenate([onp.ravel(self.x)] + fitted)
@@ -278,7 +288,7 @@ class SemiParametricRegressionModel(
         # which the baseline counts at each time (R's ``nevent``).
         return float(onp.sum(self.d))
 
-    def phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
+    def phi(self, Z: npt.ArrayLike | pd.DataFrame) -> npt.NDArray:
         """
         The hazard multiplier :math:`e^{\\beta' (Z - \\text{center})}` for
         covariates ``Z``: the hazard ratio of ``Z`` against a unit at
@@ -307,7 +317,7 @@ class SemiParametricRegressionModel(
         Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
         return self._log_risk(Z_arr.reshape(x.size, -1))
 
-    def _concordance_data(self) -> "tuple | None":
+    def _concordance_data(self) -> tuple | None:
         data = getattr(self, "_fit_data", None)
         if data is None or self.is_tvc:
             return None
@@ -361,7 +371,12 @@ class SemiParametricRegressionModel(
 
         tie_method = getattr(self, "tie_method", None)
         if tie_method is not None:
-            out += "\nTie method          : {}".format(tie_method)
+            out += f"\nTie method          : {tie_method}"
+        if self.weighted:
+            out += (
+                "\nWeights             : effective sample size "
+                f"{self.effective_n:.4g}; robust covariance"
+            )
         out += (
             "\nCoefficients        : exp(coef) is the hazard ratio; Wald "
             "95% intervals\n"
@@ -372,8 +387,8 @@ class SemiParametricRegressionModel(
         self,
         alpha_ci: float = 0.05,
         robust: bool = False,
-        cluster: "npt.ArrayLike | None" = None,
-    ) -> "pd.DataFrame":
+        cluster: npt.ArrayLike | None = None,
+    ) -> pd.DataFrame:
         """
         The coefficient table, as R's ``summary(coxph)`` and lifelines'
         ``summary`` give it (#484): one row per covariate (named by
@@ -510,11 +525,16 @@ class SemiParametricRegressionModel(
         # the same; the data themselves are not stored.
         if self._data_repr():
             out["data_summary"] = self._data_repr()
+        if self.weighted:
+            # Schema 3: a reader without weights would offer the
+            # information criteria.
+            out["weighted"] = True
+            out["effective_n"] = self.effective_n
         serialise_covariate_meta(self, out)
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "SemiParametricRegressionModel":
+    def from_dict(cls, model_dict: dict) -> SemiParametricRegressionModel:
         """
         Rebuild a Cox model from a :meth:`to_dict` dictionary.
 
@@ -546,6 +566,9 @@ class SemiParametricRegressionModel(
         out.baseline_method = model_dict["baseline_method"]
         out.is_tvc = bool(model_dict.get("is_tvc", False))
         out._data_summary = model_dict.get("data_summary")
+        if model_dict.get("weighted") is True:
+            out.weighted = True
+            out.effective_n = model_dict.get("effective_n")
         # A bare null (no "non_finite" record) is how schema-1 dicts wrote
         # a row without delayed entry; it still reads as -inf.
         out.tl = (
@@ -585,7 +608,7 @@ class SemiParametricRegressionModel(
 
     def _baseline_arrays(
         self, stratum: Any
-    ) -> "tuple[npt.NDArray, npt.NDArray, npt.NDArray]":
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         """Baseline ``(x, h0, H0)`` arrays, selecting a stratum if needed."""
         if self.is_stratified:
             if self._missing_stratum(stratum):
@@ -638,7 +661,7 @@ class SemiParametricRegressionModel(
         values: npt.NDArray,
         bx: npt.NDArray,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         grid: bool,
     ) -> npt.NDArray:
         """The baseline step function ``values`` at ``x`` times ``phi(Z)``:
@@ -659,7 +682,7 @@ class SemiParametricRegressionModel(
     def hf(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         stratum: Any = None,
         *,
         grid: bool = False,
@@ -685,7 +708,7 @@ class SemiParametricRegressionModel(
     def Hf(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         stratum: Any = None,
         *,
         grid: bool = False,
@@ -709,7 +732,7 @@ class SemiParametricRegressionModel(
     def sf(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         stratum: Any = None,
         *,
         grid: bool = False,
@@ -745,7 +768,7 @@ class SemiParametricRegressionModel(
     def ff(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         stratum: Any = None,
         *,
         grid: bool = False,
@@ -760,7 +783,7 @@ class SemiParametricRegressionModel(
     def df(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         stratum: Any = None,
         *,
         grid: bool = False,
@@ -785,7 +808,7 @@ class SemiParametricRegressionModel(
     def qf(
         self,
         p: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         stratum: Any = None,
         *,
         grid: bool = False,
@@ -849,9 +872,23 @@ class SemiParametricRegressionModel(
         """
         from .proportional_hazards.diagnostics import compute_residuals
 
+        self._refuse_weighted("compute_residuals")
         return compute_residuals(self, kind)
 
-    def check_ph(self, transform: str = "km") -> "pd.DataFrame":
+    def _refuse_weighted(self, what: str) -> None:
+        """Refuse ``what``, which takes the data as counted units, for a
+        fit with weights ``w``."""
+        if self.weighted:
+            from surpyval.utils.weights import refuse_weighted
+
+            raise refuse_weighted(
+                what,
+                "its residuals and tests treat the rows as counted units",
+                "Use covariance(), the coefficients' robust covariance, or "
+                "robust_covariance(cluster) for clustered units.",
+            )
+
+    def check_ph(self, transform: str = "km") -> pd.DataFrame:
         """
         Test the proportional-hazards assumption (Grambsch-Therneau).
 
@@ -899,6 +936,7 @@ class SemiParametricRegressionModel(
         age           6.0906   1  0.0136
         GLOBAL        6.0949   2  0.0475
         """
+        self._refuse_weighted("check_ph")
         import pandas as pd
 
         from .proportional_hazards.diagnostics import check_ph
@@ -970,7 +1008,7 @@ class SemiParametricRegressionModel(
         return standard_errors_of(self.covariance())
 
     def robust_covariance(
-        self, cluster: "npt.ArrayLike | None" = None
+        self, cluster: npt.ArrayLike | None = None
     ) -> npt.NDArray:
         """
         Cluster-robust ("sandwich") covariance of the coefficients.
@@ -980,11 +1018,28 @@ class SemiParametricRegressionModel(
         :func:`~surpyval.univariate.regression.proportional_hazards.
         diagnostics.robust_covariance`.
         """
+        lik = getattr(self, "_weighted_cox", None)
+        if self.weighted and lik is not None:
+            from .proportional_hazards._weighted_cox import (
+                robust_covariance as weighted_robust,
+            )
+
+            beta = onp.asarray(self.params, dtype=float)
+            bread = onp.linalg.inv(lik.derivatives(beta)[2])
+            return weighted_robust(lik, beta, bread, cluster)
+        if self.weighted:
+            if cluster is None:
+                return self.covariance()
+            raise ValueError(
+                "The cluster-robust covariance of a weighted Cox fit needs "
+                "the data it was fitted to, which a restored model does "
+                "not hold: refit it."
+            )
         from .proportional_hazards.diagnostics import robust_covariance
 
         return robust_covariance(self, cluster)
 
-    def robust_summary(self, cluster: "npt.ArrayLike | None" = None) -> dict:
+    def robust_summary(self, cluster: npt.ArrayLike | None = None) -> dict:
         """
         Cluster-robust standard errors, z-scores and p-values for the
         coefficients. See :func:`~surpyval.univariate.regression.
@@ -999,9 +1054,9 @@ class SemiParametricRegressionModel(
         xl: npt.ArrayLike,
         xr: npt.ArrayLike,
         Z: npt.ArrayLike,
-        times: "npt.ArrayLike | None" = None,
+        times: npt.ArrayLike | None = None,
         stratum: Any = None,
-    ) -> "tuple[npt.NDArray, npt.NDArray, npt.NDArray]":
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         r"""
         Survival for a subject whose covariates vary over time.
 
@@ -1119,8 +1174,8 @@ class SemiParametricRegressionModel(
     def Hf_tvc(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | Any",
-        xl: "npt.ArrayLike | None" = None,
+        Z: npt.ArrayLike | Any,
+        xl: npt.ArrayLike | None = None,
         stratum: Any = None,
     ) -> npt.NDArray:
         r"""
@@ -1182,9 +1237,9 @@ class SemiParametricRegressionModel(
         self,
         x: npt.ArrayLike,
         Z: Any,
-        xl: "npt.ArrayLike | None",
+        xl: npt.ArrayLike | None,
         stratum: Any,
-        given: "float | None" = None,
+        given: float | None = None,
     ) -> npt.NDArray:
         """:meth:`Hf_tvc`, less its value at ``given`` for a
         ``CovariatePath`` given one (summed from ``given`` on)."""
@@ -1231,7 +1286,7 @@ class SemiParametricRegressionModel(
         path: Any,
         base_t: npt.NDArray,
         base_h0: npt.NDArray,
-        given: "float | None" = None,
+        given: float | None = None,
     ) -> npt.NDArray:
         r"""
         :meth:`_tvc_cumhaz` along a continuously varying ``path`` (#172):
@@ -1279,9 +1334,9 @@ class SemiParametricRegressionModel(
     def sf_tvc(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | Any",
-        xl: "npt.ArrayLike | None" = None,
-        given: "float | None" = None,
+        Z: npt.ArrayLike | Any,
+        xl: npt.ArrayLike | None = None,
+        given: float | None = None,
         stratum: Any = None,
     ) -> npt.NDArray:
         r"""
@@ -1371,7 +1426,7 @@ class SemiParametricRegressionModel(
 
 
 def _check_jumps_covered(
-    start: float, base_t: npt.NDArray, t_max: float, given: "float | None"
+    start: float, base_t: npt.NDArray, t_max: float, given: float | None
 ) -> None:
     """Refuse a covariate path that starts at or after a baseline jump
     before 0 that a query counts (the jumps up to the largest query time,

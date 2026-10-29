@@ -12,7 +12,9 @@ DECISIONS.md, 2026-10-29):
   coverage of the robust 95% and 90% intervals of the Kaplan-Meier,
   Nelson-Aalen and Fleming-Harrington ``sf`` at the population quartiles,
   of the Weibull ``alpha`` and ``beta`` (``param_cb``), the Weibull ``sf``
-  at the quartiles and its median (``quantile_cb``).
+  at the quartiles and its median (``quantile_cb``); and, for a Cox
+  model, the coverage of its coefficient (a population with a 0/1
+  covariate, hazard ratio 2, the same sampling rule).
 - **Weight scale.** The same samples with every weight multiplied by 0.1
   and by 10 give the same intervals (to 1e-8), so the same coverage: the
   property the classical variances lack (a "95%" Greenwood interval
@@ -176,6 +178,36 @@ def test_unweighted_fit_is_biased(informative):
     mean_alpha = float(np.mean(informative["unweighted_alpha"]))
     print(f"unweighted Weibull alpha: mean {mean_alpha:.3f} (truth 10)")
     assert mean_alpha > 11.0
+
+
+def _cox_sample(rng, beta):
+    z = rng.integers(0, 2, N_POP)
+    t = TRUE.qf(rng.uniform(size=N_POP)) * np.exp(-beta * z / 1.5)
+    cens = rng.uniform(0, C_MAX, N_POP)
+    prob = np.where(t > MEDIAN, 0.8, 0.2)
+    keep = rng.uniform(size=N_POP) < prob
+    x = np.minimum(t, cens)[keep]
+    c = (cens < t).astype(int)[keep]
+    return x, z[keep].reshape(-1, 1), c, 1 / prob[keep]
+
+
+@pytest.mark.parametrize("level", [95, 90])
+def test_cox_coefficient_coverage(level):
+    beta = np.log(2.0)
+    rng = np.random.default_rng(26103)
+    reps = 500
+    lo, hi = np.empty(reps), np.empty(reps)
+    z = {95: 1.959963984540054, 90: 1.6448536269514722}[level]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for r in range(reps):
+            x, Z, c, w = _cox_sample(rng, beta)
+            model = sp.CoxPH.fit(x, Z, c=c, w=w)
+            b, se = model.params[0], model.standard_errors()[0]
+            lo[r], hi[r] = b - z * se, b + z * se
+    check_coverage(
+        lo, hi, beta, level / 100, f"weighted CoxPH beta {level}%", SLACK
+    )
 
 
 def _logistic_probability(X, a, iters=25):

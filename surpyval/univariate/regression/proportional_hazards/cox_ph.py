@@ -8,8 +8,9 @@
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 from copy import copy
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
@@ -95,7 +96,7 @@ def _baseline_method(tie_method: str) -> str:
     return "efron" if str(tie_method).lower() == "efron" else "breslow"
 
 
-def _sub(a: "npt.ArrayLike | None", mask: npt.NDArray) -> "npt.NDArray | None":
+def _sub(a: npt.ArrayLike | None, mask: npt.NDArray) -> npt.NDArray | None:
     """Index ``a`` by ``mask``, passing ``None`` through unchanged."""
     if a is None:
         return None
@@ -107,7 +108,7 @@ def _cox_aliased(
     Z: npt.NDArray,
     n: npt.NDArray,
     n_events: float,
-    strata: "npt.NDArray | None" = None,
+    strata: npt.NDArray | None = None,
 ) -> npt.NDArray:
     """The columns whose coefficients the partial likelihood cannot
     determine (#409, #476), to be aliased (see
@@ -155,8 +156,8 @@ def _solve_beta_and_p_values(
     Z: npt.NDArray,
     n: npt.NDArray,
     n_events: float,
-    strata: "npt.NDArray | None" = None,
-    risk_sets: "tuple | None" = None,
+    strata: npt.NDArray | None = None,
+    risk_sets: tuple | None = None,
 ) -> tuple[Any, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """Maximise the partial likelihood by Newton-Raphson
     (:func:`newton_raphson`; the score's root-finder, then BFGS, if that
@@ -252,7 +253,7 @@ def _solve_beta_and_p_values(
                     res = fallback
 
             hessian_matrix = jac(res.x)[1]
-    runoff: "Callable | None" = None
+    runoff: Callable | None = None
     far = False
     if risk_sets is not None:
         x, c, tl, tie_method = risk_sets
@@ -262,7 +263,7 @@ def _solve_beta_and_p_values(
         # A hazard ratio of e^20 between a unit and the average one
         far = not np.all(np.abs(eta) <= FAR)
 
-        def runoff_of_data() -> "tuple[npt.NDArray, bool] | None":
+        def runoff_of_data() -> tuple[npt.NDArray, bool] | None:
             return runoff_direction(x, Zk, c, n, tl, strata, tie_method)
 
         runoff = runoff_of_data
@@ -341,9 +342,9 @@ def _maximum_reached(
     info_at_start: npt.NDArray,
     kept: npt.NDArray,
     n_events: float,
-    runoff: "Callable | None" = None,
+    runoff: Callable | None = None,
     suspect: bool = False,
-    floor: "float | npt.NDArray" = 1.0,
+    floor: float | npt.NDArray = 1.0,
 ) -> str:
     """What the partial-likelihood search reached (see
     :func:`_solve_beta_and_p_values`), with its one warning: no finite
@@ -405,7 +406,7 @@ def _maximum_reached(
         return "verified"
     warn_unverified(
         "The partial-likelihood search",
-        None if res.success else "it reported: {}".format(res.message),
+        None if res.success else f"it reported: {res.message}",
     )
     return "unverified"
 
@@ -413,7 +414,7 @@ def _maximum_reached(
 def _warn_if_monotone(
     info: npt.NDArray,
     info_at_start: npt.NDArray,
-    columns: "npt.NDArray | None" = None,
+    columns: npt.NDArray | None = None,
 ) -> bool:
     """Warn when the partial likelihood has no finite maximum.
 
@@ -448,9 +449,7 @@ def _diverged_columns(
     return np.flatnonzero((d0 > 0) & ~(np.nan_to_num(d, nan=0.0) > 1e-8 * d0))
 
 
-def warn_monotone(
-    which: str, proportion: "npt.ArrayLike | None" = None
-) -> None:
+def warn_monotone(which: str, proportion: npt.ArrayLike | None = None) -> None:
     """Warn that the partial likelihood has no finite maximum in the
     coefficients ``which`` names (``"[0]"``, or ``"[0] (cause 'a')"``);
     shared with the Fine-Gray fit, a weighted partial likelihood (#392).
@@ -469,9 +468,7 @@ def warn_monotone(
             "estimate is infinite (that combination of the covariates "
             "separates the events from the survivors)".format(
                 which,
-                " : ".join(
-                    "{:.3g}".format(float(v)) for v in np.ravel(proportion)
-                ),
+                " : ".join(f"{float(v):.3g}" for v in np.ravel(proportion)),
             )
         )
     warn_no_maximum(
@@ -534,7 +531,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         c: npt.NDArray,
         n: npt.NDArray,
         Z: npt.NDArray,
-        tl: "npt.NDArray | None" = None,
+        tl: npt.NDArray | None = None,
         tie_method: str = "breslow",
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
         # Baseline hazard increments at each distinct time -- the hazard of
@@ -653,6 +650,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         tol: float = 1e-10,
         strata: npt.ArrayLike | None = None,
         center: bool = False,
+        w: npt.ArrayLike | float | None = None,
     ) -> SemiParametricRegressionModel:
         """
         Fits Cox Proportional Hazards model to the provided data.
@@ -725,6 +723,17 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             coefficients and predictions are the same; the default refuses,
             with a ``ValueError``, covariates so far from 0 that the
             baseline there over- or underflows.
+        w: array-like or float, optional
+            Sampling, propensity or censoring weights, one positive number
+            per row (beside its count ``n``). The fit maximises the
+            weighted partial likelihood (ties as R's ``coxph`` takes them
+            with weights: each of the tied deaths at their mean weight),
+            and ``covariance()`` is the robust (Lin-Wei sandwich)
+            covariance, as R's ``coxph(..., weights = w, robust =
+            TRUE)``; ``robust_covariance(cluster)`` sums it within
+            clusters. ``tie_method`` ``'efron'`` or ``'breslow'``, no
+            ``strata``; the information criteria, the residuals and
+            ``check_ph`` refuse (see :doc:`/Weighted Data`).
 
         Returns
         -------
@@ -765,6 +774,19 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         array([0.9326, 0.7963])
         """
         func_generator = self._resolve_func_generator(tie_method)
+
+        if w is not None:
+            from ._weighted_cox import fit_weighted_cox
+
+            if strata is not None:
+                from surpyval.utils.weights import refuse_weighted
+
+                raise refuse_weighted(
+                    "A stratified Cox fit",
+                    "its weighted form is not built yet",
+                    "Fit each stratum with w, or put the stratum in Z.",
+                )
+            return fit_weighted_cox(x, Z, c, n, tl, w, tie_method, tol, center)
 
         if strata is not None:
             return self._fit_stratified(
@@ -854,9 +876,9 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         self,
         x: npt.ArrayLike,
         Z: npt.ArrayLike,
-        c: "npt.ArrayLike | None",
-        n: "npt.ArrayLike | None",
-        tl: "npt.ArrayLike | None",
+        c: npt.ArrayLike | None,
+        n: npt.ArrayLike | None,
+        tl: npt.ArrayLike | None,
         tie_method: str,
         tol: float,
         strata: npt.ArrayLike,
@@ -1041,7 +1063,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
     @takes_unit
     def fit_from_df(
         self,
-        df: "pd.DataFrame",
+        df: pd.DataFrame,
         x_col: str,
         Z_cols: str | list[str] | None = None,
         c_col: str | None = None,
@@ -1223,7 +1245,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
 
     def fit_tvc_from_df(
         self,
-        df: "pd.DataFrame",
+        df: pd.DataFrame,
         i_col: str,
         xl_col: str,
         xr_col: str,
@@ -1325,7 +1347,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
 
     def fit_tvc_timeline_from_df(
         self,
-        df: "pd.DataFrame",
+        df: pd.DataFrame,
         i_col: str,
         x_col: str,
         Z_cols: str | list[str] | None,
