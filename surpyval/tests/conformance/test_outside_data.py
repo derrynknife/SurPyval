@@ -52,6 +52,7 @@ RULES = {
     "CoxPH[strata]": "hold",
     "CoxFrailty": "hold",
     "AdditiveHazards": "hold",
+    "AalenAdditive": "hold",
     "ProportionalOdds": "hold",
     "BuckleyJames": "hold",
     "SurvivalTree[non-parametric]": "hold",
@@ -77,6 +78,8 @@ WITHOUT_SET_SUPPORT = {
     "CoxPH[strata]": _SEMI,
     "CoxFrailty": _SEMI,
     "AdditiveHazards": _SEMI,
+    "AalenAdditive": "non-parametric regression: the explicit support is "
+    "for the univariate non-parametric estimates only",
     "ProportionalOdds": _SEMI,
     "BuckleyJames": _SEMI,
     "CompetingRisksProportionalHazards[Cox]": _SEMI,

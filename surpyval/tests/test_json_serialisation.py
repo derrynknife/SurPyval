@@ -28,6 +28,7 @@ import pytest
 
 import surpyval
 from surpyval import (
+    AalenAdditive,
     AcceleratedLife,
     AdditiveHazards,
     BuckleyJames,
@@ -306,12 +307,18 @@ def _build(name):
             [[1, 2], [3, np.inf], [5, 6], [4, 8], [7, 9], [2, 10]]
         ),
         "parametric_regression": lambda: WeibullPH.fit(*_semipar_data()[:2]),
+        "distributional_regression": lambda: (
+            surpyval.WeibullDistributional.fit(*_semipar_data()[:2])
+        ),
         "accelerated_life": _accelerated_life,
         "cox": lambda: CoxPH.fit(*_semipar_data(1)[:2]),
         "cox_delayed_entry": _cox_delayed_entry,
         "frailty": _frailty,
         "cox_frailty": _cox_frailty,
         "additive_hazards": lambda: AdditiveHazards.fit(*_semipar_data(2)[:2]),
+        "aalen_additive": lambda: AalenAdditive.fit(
+            *_semipar_data(5)[:2], c=_semipar_data(5)[2]
+        ),
         "buckley_james": lambda: BuckleyJames.fit(*_semipar_data(3)[:2]),
         "proportional_odds": lambda: ProportionalOdds.fit(*_semipar_data(4)),
         "mixture": _mixture,
@@ -392,12 +399,14 @@ CASES = [
     "nelson_aalen_truncated",
     "turnbull",
     "parametric_regression",
+    "distributional_regression",
     "accelerated_life",
     "cox",
     "cox_delayed_entry",
     "frailty",
     "cox_frailty",
     "additive_hazards",
+    "aalen_additive",
     "buckley_james",
     "proportional_odds",
     "mixture",

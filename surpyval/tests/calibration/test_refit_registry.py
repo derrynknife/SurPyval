@@ -1078,6 +1078,23 @@ for _kind in ("PH", "AFT", "PO", "AH"):
                 else ""
             ),
         )
+for _name in ("RoystonParmarPH", "RoystonParmarPO"):
+    PLANS[_name] = Plan(
+        _regression(own_random=False),
+        _REG_N,
+        _REG_REPS,
+        params=lambda m: np.asarray(m.params, dtype=float)[-2:],
+        note="each refit places its own knots, so its spline coefficients "
+        "are of a different basis: the covariate coefficients only",
+    )
+for _base in reg.DISTRIBUTIONAL_BASELINES:
+    # The model's own random: each row's distribution's quantile function
+    PLANS[_base + "Distributional"] = Plan(
+        _regression(own_random=True),
+        _REG_N,
+        _REG_REPS,
+        params=lambda m: np.asarray(m.params, dtype=float),
+    )
 for _lm in reg.LIFE_MODELS + reg.DUAL_LIFE_MODELS + ("GeneralLogLinear",):
     PLANS[f"WeibullAL[{_lm}]"] = Plan(
         _regression(own_random=True),
@@ -1292,6 +1309,12 @@ EXCLUDED: dict[str, str] = {
     "not be monotone, and the fixture's sf exceeds 1 (1.054 at t = 1 at "
     "the row (0, -0.8)) even where beta'Z >= 0: not a distribution to "
     "draw from",
+    "AalenAdditive": "the fixture's fit (30 rows, 20 event times) has a "
+    "cumulative hazard that falls at 3 to 8 of its steps for every row, so "
+    "the curve drawn from (its running maximum) is not an additive model "
+    "in Z and refits of it are biased (0.061 at worst over 40 refits of "
+    "300): its own study, calibration/test_coverage_aalen.py, simulates "
+    "from a true additive model",
     "WeibullJointPH": "a lifetime with marker readings along it, which a "
     "model draw does not give: its own study, "
     "calibration/test_coverage_joint.py, simulates fleets with markers and "
