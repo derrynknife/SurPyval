@@ -192,9 +192,7 @@ def require_model_tag(model_dict: dict, tag: str, human: str) -> None:
     """
     if model_dict.get("model") != tag:
         article = "an" if tag[0] in "AEIOU" else "a"
-        raise ValueError(
-            "Must create {} from {} {} dict".format(human, article, tag)
-        )
+        raise ValueError(f"Must create {human} from {article} {tag} dict")
 
 
 def _pointer_token(key: Any) -> str:
@@ -1180,7 +1178,7 @@ def read_json(fp: str | os.PathLike) -> Any:
     if isinstance(fp, str) and fp.lstrip().startswith("{"):
         return json.loads(fp)
     try:
-        with open(fp, "r") as f:
+        with open(fp) as f:
             return json.load(f)
     except FileNotFoundError:
         # A string is read as JSON text only when it starts with ``{``;
