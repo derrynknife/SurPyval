@@ -177,6 +177,15 @@ class SemiParametricRegressionModel(
     hess: Callable
     res: Any
     neg_ll_of: Callable | None = None
+    #: Whether the model was fitted with weights ``w``: its covariance is
+    #: the robust (Lin-Wei) one, and the information criteria, the
+    #: residuals and ``check_ph`` refuse.
+    weighted: bool = False
+    #: The effective sample size of the weights of a weighted fit.
+    effective_n: float | None = None
+    #: The weighted partial likelihood of a weighted fit
+    #: (``proportional_hazards._weighted_cox.WeightedCox``).
+    _weighted_cox: Any = None
     tie_method: str
     baseline_method: str
     #: Per-observation training data (``x``/``c``/``n``/``Z``/``tl``) retained
@@ -275,6 +284,48 @@ class SemiParametricRegressionModel(
         if getattr(self, "_neg_ll", None) is None:
             raise ValueError("Must have been fit with data")
         return float(self._neg_ll)
+
+    def likelihood_ratio_test(self) -> dict:
+        """
+        The global likelihood-ratio test of the model: do the covariates,
+        taken together, explain anything? It compares the fit with the
+        model in which every coefficient is 0 (no covariate has an
+        effect): twice the gain in the log partial likelihood is
+        chi-squared on as many degrees of freedom as there are estimated
+        coefficients when none has an effect. It is the "Likelihood ratio
+        test" line of R's ``summary(coxph)``. A stratified fit is
+        compared with the stratified model without covariates, and a
+        time-varying-covariate fit with the same start-stop rows.
+
+        Returns
+        -------
+        dict
+            ``{"statistic", "df", "p_value", "log_likelihood",
+            "log_likelihood_null"}``.
+
+        Raises
+        ------
+        ValueError
+            For a model restored with ``from_dict`` (it does not carry the
+            data), or one with no estimated coefficient.
+
+        Examples
+        --------
+        The Rossi recidivism data, with all seven covariates (R's
+        ``coxph`` gives 33.27 on 7 df, p = 2.4e-05):
+
+        >>> from surpyval import CoxPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> Z = df[["fin", "age", "race", "wexp", "mar", "paro", "prio"]]
+        >>> model = CoxPH.fit(df["week"], Z.values, c=1 - df["arrest"])
+        >>> res = model.likelihood_ratio_test()
+        >>> round(res["statistic"], 2), res["df"], round(res["p_value"], 7)
+        (33.27, 7, 2.36e-05)
+        """
+        from ._global_test import cox_likelihood_ratio_test
+
+        return cox_likelihood_ratio_test(self)
 
     def _ic_k(self) -> float:
         # A penalised fit counts its effective number of parameters.
@@ -375,6 +426,11 @@ class SemiParametricRegressionModel(
             out += f"\nTie method          : {tie_method}"
         if self.penalty is not None:
             out += "\nPenalty             : " + penalty_line(self.penalty)
+        if self.weighted:
+            out += (
+                "\nWeights             : effective sample size "
+                f"{self.effective_n:.4g}; robust covariance"
+            )
         out += (
             "\nCoefficients        : exp(coef) is the hazard ratio; Wald "
             "95% intervals\n"
@@ -525,6 +581,11 @@ class SemiParametricRegressionModel(
         # the same; the data themselves are not stored.
         if self._data_repr():
             out["data_summary"] = self._data_repr()
+        if self.weighted:
+            # Schema 3: a reader without weights would offer the
+            # information criteria.
+            out["weighted"] = True
+            out["effective_n"] = self.effective_n
         serialise_covariate_meta(self, out)
         return stamp_schema(out)
 
@@ -561,6 +622,9 @@ class SemiParametricRegressionModel(
         out.baseline_method = model_dict["baseline_method"]
         out.is_tvc = bool(model_dict.get("is_tvc", False))
         out._data_summary = model_dict.get("data_summary")
+        if model_dict.get("weighted") is True:
+            out.weighted = True
+            out.effective_n = model_dict.get("effective_n")
         # A bare null (no "non_finite" record) is how schema-1 dicts wrote
         # a row without delayed entry; it still reads as -inf.
         out.tl = (
@@ -868,7 +932,21 @@ class SemiParametricRegressionModel(
         """
         from .proportional_hazards.diagnostics import compute_residuals
 
+        self._refuse_weighted("compute_residuals")
         return compute_residuals(self, kind)
+
+    def _refuse_weighted(self, what: str) -> None:
+        """Refuse ``what``, which takes the data as counted units, for a
+        fit with weights ``w``."""
+        if self.weighted:
+            from surpyval.utils.weights import refuse_weighted
+
+            raise refuse_weighted(
+                what,
+                "its residuals and tests treat the rows as counted units",
+                "Use covariance(), the coefficients' robust covariance, or "
+                "robust_covariance(cluster) for clustered units.",
+            )
 
     def check_ph(self, transform: str = "km") -> pd.DataFrame:
         """
@@ -918,6 +996,7 @@ class SemiParametricRegressionModel(
         age           6.0906   1  0.0136
         GLOBAL        6.0949   2  0.0475
         """
+        self._refuse_weighted("check_ph")
         import pandas as pd
 
         from .proportional_hazards.diagnostics import check_ph
@@ -1001,6 +1080,23 @@ class SemiParametricRegressionModel(
         :func:`~surpyval.univariate.regression.proportional_hazards.
         diagnostics.robust_covariance`.
         """
+        lik = getattr(self, "_weighted_cox", None)
+        if self.weighted and lik is not None:
+            from .proportional_hazards._weighted_cox import (
+                robust_covariance as weighted_robust,
+            )
+
+            beta = onp.asarray(self.params, dtype=float)
+            bread = onp.linalg.inv(lik.derivatives(beta)[2])
+            return weighted_robust(lik, beta, bread, cluster)
+        if self.weighted:
+            if cluster is None:
+                return self.covariance()
+            raise ValueError(
+                "The cluster-robust covariance of a weighted Cox fit needs "
+                "the data it was fitted to, which a restored model does "
+                "not hold: refit it."
+            )
         from .proportional_hazards.diagnostics import robust_covariance
 
         self._refuse_if_penalised()

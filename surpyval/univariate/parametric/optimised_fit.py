@@ -40,8 +40,8 @@ from .parametric import Parametric
 
 def _search_units(
     init: npt.NDArray,
-    bounds: "tuple[tuple[float | None, float | None], ...]",
-    fixed_idx: "list[int] | tuple[int, ...]" = (),
+    bounds: tuple[tuple[float | None, float | None], ...],
+    fixed_idx: list[int] | tuple[int, ...] = (),
 ) -> list[float]:
     """Per-parameter ``units`` for ``bounds_convert``.
 
@@ -269,6 +269,7 @@ class OptimisedFitMixin(FitInputsMixin):
         rr: str = "y",
         on_d_is_0: bool = False,
         turnbull_estimator: str = "Fleming-Harrington",
+        w: npt.ArrayLike | Number | None = None,
     ) -> Parametric:
         """
 
@@ -387,6 +388,16 @@ class OptimisedFitMixin(FitInputsMixin):
             Turnbull estimates of r and d: ``'Fleming-Harrington'`` (the
             default), ``'Nelson-Aalen'`` or ``'Kaplan-Meier'``.
 
+        w : array like or scalar, optional
+            Sampling, propensity or censoring weights, one positive number
+            per row (beside its count ``n``): how many units of the
+            population each unit stands for. The fit maximises the
+            weighted (pseudo) likelihood, and ``covariance()`` -- and with
+            it every Wald bound -- is the robust (sandwich) covariance, as
+            R's ``survreg(..., weights = w, robust = TRUE)``. MLE only;
+            the likelihood-ratio and bootstrap bounds, ``aic``, ``bic``
+            and ``aic_c`` refuse (see :doc:`/Weighted Data`).
+
         Returns
         -------
 
@@ -447,7 +458,7 @@ class OptimisedFitMixin(FitInputsMixin):
         """
 
         surv_data = SurpyvalData(
-            x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr
+            x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr, w=w
         )
         return self.fit_from_surpyval_data(
             surv_data,
@@ -625,6 +636,10 @@ turnbull_estimator
         array([6.022, 1.351])
         """
         how = normalise_how(how)
+        if surv_data.weighted:
+            from ._weighted import check_weighted_fit
+
+            check_weighted_fit(surv_data, how)
         x, c, n, t = surv_data.x, surv_data.c, surv_data.n, surv_data.t
         # Clamp the truncation values to the (possibly finite) support edges
         tl, tr = self._clamp_truncation_to_support(t, offset)
@@ -643,6 +658,8 @@ turnbull_estimator
 
         # Passed checks
         data = {"x": x, "c": c, "n": n, "t": t}
+        if surv_data.w is not None:
+            data["w"] = surv_data.w
 
         model = Parametric(self, how, data, offset, lfp, zi)
         model.surv_data = surv_data
@@ -898,12 +915,16 @@ turnbull_estimator
                 setattr(model, k, v)
 
         self._set_support(model, offset)
+        if surv_data.weighted:
+            from ._weighted import make_robust
+
+            make_robust(model)
 
         return model
 
     @staticmethod
     def _with_fixed(
-        starts: list, model: Parametric, fixed: "dict | None"
+        starts: list, model: Parametric, fixed: dict | None
     ) -> list:
         """The alternative ``starts`` (full vectors) with each fixed
         parameter at its fixed value, for a fit with ``fixed``
@@ -966,7 +987,7 @@ turnbull_estimator
 
     def _at_unbounded_edge(
         self, surv_data: SurpyvalData, values: dict
-    ) -> "list[str]":
+    ) -> list[str]:
         """The names of the parameters that, at ``values`` (each
         parameter's value, by name), sit on an edge where the likelihood
         is unbounded nearby, for a maximum-likelihood search to stop at
@@ -979,7 +1000,7 @@ turnbull_estimator
     @staticmethod
     def _first_failure_gap(
         surv_data: SurpyvalData,
-    ) -> "tuple[float, float] | None":
+    ) -> tuple[float, float] | None:
         """``(x1, close)``: the smallest exact observation, and how close
         to it an offset is on it (``sqrt(eps)`` of the data's spread, half
         the digits; see ``_warn_if_offset_at_limit``); ``None`` for data
@@ -997,7 +1018,7 @@ turnbull_estimator
 
     def _offset_corner(
         self, surv_data: SurpyvalData, gamma: float, core: npt.NDArray
-    ) -> "str | None":
+    ) -> str | None:
         """Whether an offset ``gamma`` (with the distribution's parameters
         ``core``) has run onto the smallest exact observation, where the
         density at its origin is not finite and positive: ``"infinite"``
@@ -1026,7 +1047,7 @@ turnbull_estimator
     def _warn_runaway(
         self,
         surv_data: SurpyvalData,
-        runaway: "list[str]",
+        runaway: list[str],
         results: dict,
         offset: bool = False,
         by_limit: bool = False,
@@ -1065,7 +1086,7 @@ turnbull_estimator
         )
 
     def _runaway_advice(
-        self, runaway: "list[str]", values: dict, offset: bool = False
+        self, runaway: list[str], values: dict, offset: bool = False
     ) -> str:
         """What to do instead of a fit whose parameters ``runaway`` run
         off (their ``values`` where the search stopped; ``offset`` whether
@@ -1088,7 +1109,7 @@ turnbull_estimator
             "the data: compare their fits (surpyval.fit_best)"
         )
 
-    def _offset_limit_family(self) -> "Any":
+    def _offset_limit_family(self) -> Any:
         """The family this distribution tends to as its offset runs to
         -inf, with its shape making up for it (``None`` by default): a
         fit whose offset runs that way is running off towards it where
@@ -1206,7 +1227,7 @@ turnbull_estimator
         lfp: bool,
         zi: bool,
         fixed: dict[str, float] | None,
-    ) -> "dict | None":
+    ) -> dict | None:
         """An exact analytic MLE, or ``None`` to use the optimiser.
 
         Two conditions have to hold, and they live in different places
@@ -1227,6 +1248,9 @@ turnbull_estimator
         if how != "MLE":
             return None
         if offset or lfp or zi or fixed:
+            return None
+        # A closed form reads the counts of the data, not its weights
+        if getattr(surv_data, "w", None) is not None:
             return None
 
         solver = getattr(self, "_closed_form_mle", None)

@@ -165,6 +165,18 @@ class InferenceMixin:
                 "data; from_params models carry no likelihood."
             )
 
+    def _refuse_weighted_method(self, method: str) -> None:
+        """Refuse the likelihood-ratio and bootstrap bounds of a fit with
+        weights ``w``, which weights make invalid."""
+        if not getattr(self, "weighted", False):
+            return
+        from surpyval.utils.weights import refuse_bootstrap, refuse_lr
+
+        if method == "lr":
+            raise refuse_lr()
+        if method == "bootstrap":
+            raise refuse_bootstrap()
+
     def covariance(self) -> npt.NDArray:
         """
         Approximate covariance matrix of the fitted parameters, ordered to
@@ -269,8 +281,46 @@ class InferenceMixin:
             warn_no_covariance()
             return np.full((n, n), np.nan)
         cov[np.ix_(free, free)] = cov_free
+        data = getattr(self, "data", None)
+        if getattr(data, "w", None) is not None:
+            cov = self._robust_covariance(p_hat, center, free, cov)
         self._covariance_cache = (point, cov.copy())
         return cov
+
+    def _robust_covariance(
+        self,
+        p_hat: npt.NDArray,
+        center: npt.NDArray | None,
+        free: list,
+        cov: npt.NDArray,
+    ) -> npt.NDArray:
+        """The robust (sandwich) covariance of a fit with weights ``w``:
+        ``cov`` (the inverse of the weighted information) on either side
+        of the meat ``sum n w^2 s s'`` of the rows' scores in the free
+        parameters (``surpyval.utils.weights``)."""
+        from surpyval.utils.weights import row_scores, sandwich
+
+        data = self.data
+        if center is not None and np.any(center):
+            from ._fit_skeleton import centred_copy
+
+            data = centred_copy(data, center)
+        model = self.model
+        p_hat = np.asarray(p_hat, dtype=float)
+
+        def loglik(d: Any, th: Any) -> Any:
+            full = [p_hat[i] for i in range(len(p_hat))]
+            for k, i in enumerate(free):
+                full[i] = th[k]
+            return -model.neg_ll(d, *full)
+
+        scores = row_scores(loglik, data, p_hat[free])
+        bread = cov[np.ix_(free, free)]
+        out = np.zeros_like(cov)
+        weights = data.likelihood_weights
+        assert weights is not None
+        out[np.ix_(free, free)] = sandwich(bread, scores, data.n, weights)
+        return out
 
     def _covariance_point(
         self, p_hat: npt.ArrayLike, center: npt.ArrayLike | None
@@ -363,6 +413,86 @@ class InferenceMixin:
         with np.errstate(invalid="ignore"):
             return np.sqrt(np.diag(self.covariance()))
 
+    def robust_covariance(
+        self, cluster: npt.ArrayLike | None = None
+    ) -> npt.NDArray:
+        """
+        Robust ("sandwich") covariance of the fitted parameters, ordered
+        to match :attr:`parameter_names`:
+        :math:`A^{-1} B A^{-1}`, the model-based covariance
+        :math:`A^{-1}` (:meth:`covariance`) around the sum :math:`B` of
+        the outer products of the scores, one per unit or, with
+        ``cluster``, one per cluster (Huber 1967; White 1982; Liang and
+        Zeger 1986). It stays a valid covariance when the baseline
+        distribution is not the right shape, and with ``cluster``, when
+        the rows within a cluster are correlated (repeated measures on
+        one item, items from one batch). It is the HC0 form, with no
+        small-sample factor, as R's ``sandwich::sandwich`` and lifelines'
+        ``robust=True`` give it.
+
+        Counts ``n`` are frequency weights: without ``cluster`` a row with
+        ``n = 3`` is three independent units, and with it the three share
+        the row's label. A fixed parameter's row and column are 0, and an
+        aliased coefficient's ``nan``, as in :meth:`covariance`.
+
+        Only the standard errors change: the estimates are the maximum
+        likelihood ones, and :meth:`cb`, :meth:`param_cb` and
+        :attr:`p_values` keep the model-based covariance. Use
+        :meth:`summary` with ``robust=True`` for the coefficient table on
+        these standard errors.
+
+        Parameters
+        ----------
+        cluster : array_like, optional
+            A cluster label for each row given to the fit, in that order
+            (for ``fit_from_df``, one per row of the DataFrame, such as
+            ``df["id"]``); rows dropped for a missing covariate are matched
+            and left out. ``None`` (the default) makes every unit its own
+            cluster.
+
+        Returns
+        -------
+        numpy.ndarray
+            The ``(k, k)`` covariance, ``k = len(params)``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullAFT
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullAFT.fit(x, Z)
+        >>> model.robust_standard_errors().round(3)
+        array([0.756, 0.133, 0.107])
+        """
+        from ._robust import robust_covariance
+
+        return robust_covariance(self, cluster)  # type: ignore[arg-type]
+
+    def robust_standard_errors(
+        self, cluster: npt.ArrayLike | None = None
+    ) -> npt.NDArray:
+        """
+        Robust standard errors of the fitted parameters: the square roots
+        of the diagonal of :meth:`robust_covariance` (which describes
+        ``cluster``), ordered to match :attr:`parameter_names`.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullAFT
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullAFT.fit(x, Z)
+        >>> batch = np.arange(100) // 10  # ten batches of ten
+        >>> model.robust_standard_errors(cluster=batch).round(3)
+        array([0.794, 0.105, 0.114])
+        """
+        with np.errstate(invalid="ignore"):
+            return np.sqrt(np.diag(self.robust_covariance(cluster)))
+
     def param_cb(
         self,
         name: str,
@@ -426,6 +556,7 @@ class InferenceMixin:
         from ._likelihood_ratio import param_cb_lr
 
         method = bound_method(method)
+        self._refuse_weighted_method(method)
         lr = method == "lr"
         self._check_inference()
         names = self.parameter_names
@@ -579,6 +710,7 @@ class InferenceMixin:
         from ._likelihood_ratio import cb_lr
 
         method = bound_method(method)
+        self._refuse_weighted_method(method)
         lr = method == "lr"
         self._check_inference()
         check_option("on", on, CB_ON)
@@ -726,6 +858,7 @@ class InferenceMixin:
         from ._bootstrap import bound_method
 
         method = bound_method(method)
+        self._refuse_weighted_method(method)
         self._check_inference()
         check_option("bound", bound, BOUNDS)
         probs = np.atleast_1d(np.asarray(p, dtype=float)).reshape(-1)

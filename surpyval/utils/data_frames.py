@@ -26,7 +26,7 @@ from surpyval.utils.dataframe import (
 )
 
 
-def _flags(df: Any, c_col: Any, event_col: Any) -> "np.ndarray | None":
+def _flags(df: Any, c_col: Any, event_col: Any) -> np.ndarray | None:
     """The censoring flags: ``c_col`` as they are, or ``event_col`` (1 or
     True where the item failed, 0 or False where it was still running)
     turned round."""
@@ -175,7 +175,7 @@ def _counts(df: Any, n_col: Any) -> Any:
 
 def _covariates(
     df: Any, Z_cols: Any, purpose: str
-) -> tuple["np.ndarray | None", "list | None"]:
+) -> tuple[np.ndarray | None, list | None]:
     """The covariate columns as a float matrix and their names."""
     if Z_cols is None:
         return None, None
@@ -206,7 +206,7 @@ def _covariates(
     return Z, [str(n) for n in names]
 
 
-def _attributes(df: Any, attribute_cols: Any) -> "list | None":
+def _attributes(df: Any, attribute_cols: Any) -> list | None:
     """Each row's attributes, ``{name: value}``, from the columns."""
     if attribute_cols is None:
         return None
@@ -230,7 +230,7 @@ def _plain(value: Any) -> Any:
     return value.item() if isinstance(value, np.generic) else value
 
 
-def _event_types(df: Any, e_col: Any) -> "np.ndarray | None":
+def _event_types(df: Any, e_col: Any) -> np.ndarray | None:
     """The event type of each row, a blank cell None."""
     if e_col is None:
         return None
@@ -257,6 +257,7 @@ def lifetime_from_frame(
     Z_cols: Any = None,
     attribute_cols: Any = None,
     unit: Any = None,
+    w_col: Any = None,
 ) -> Any:
     """A ``SurpyvalData`` from a DataFrame with one row per item (or per
     group of identical items, counted ``n_col``); see
@@ -271,6 +272,7 @@ def lifetime_from_frame(
     if intervals and c is not None:
         x = _bounds_by_flag(x, c, xl_col, xr_col, c_col or event_col)
     n = _counts(df, n_col)
+    w = None if w_col is None else frame_column(df, w_col, "w_col")
     ids = None
     if i_col is not None:
         ids = [_plain(v) for v in frame_column(df, i_col, "i_col")]
@@ -285,6 +287,7 @@ def lifetime_from_frame(
         e=_event_types(df, e_col),
         covariate_names=names,
         ids=ids,
+        w=w,
     )
     attributes = _attributes(df, attribute_cols)
     if attributes is not None:
@@ -321,6 +324,8 @@ def lifetime_to_frame(data: Any) -> Any:
         columns["x"] = x
     columns["c"] = np.asarray(data.c)
     columns["n"] = np.asarray(data.n)
+    if getattr(data, "w", None) is not None:
+        columns["w"] = np.asarray(data.w)
     tl, tr = np.asarray(data.tl, dtype=float), np.asarray(data.tr, dtype=float)
     if np.isfinite(tl).any():
         columns["tl"] = tl

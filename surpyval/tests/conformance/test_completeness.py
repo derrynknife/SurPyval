@@ -47,6 +47,8 @@ NAMESPACES = (
     "surpyval.beta",
     "surpyval.beta.ml",
     "surpyval.test_planning",
+    "surpyval.bayes",
+    "surpyval.bayes.prior",
 )
 
 

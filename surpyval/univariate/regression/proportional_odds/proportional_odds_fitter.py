@@ -196,6 +196,7 @@ class ProportionalOddsFitter(
         center: bool = False,
         tl: npt.ArrayLike | None = None,
         tr: npt.ArrayLike | None = None,
+        w: npt.ArrayLike | float | None = None,
     ) -> ParametricRegressionModel:
         """
         Fit the proportional odds model by maximum likelihood.
@@ -237,6 +238,15 @@ class ProportionalOddsFitter(
             ``Z = 0`` cannot be represented or fitted, which the default
             fit refuses with a ``ValueError`` saying so.
 
+        w : array_like or float, optional
+            Sampling, propensity or censoring weights, one positive number
+            per row (beside its count ``n``). The fit maximises the weighted
+            (pseudo) likelihood and ``covariance()``, behind every Wald
+            bound, is the robust (sandwich) covariance, as R's
+            ``survreg(..., weights = w, robust = TRUE)``; the
+            likelihood-ratio and bootstrap bounds and the information
+            criteria refuse (see :doc:`/Weighted Data`).
+
         Returns
         -------
 
@@ -266,6 +276,7 @@ class ProportionalOddsFitter(
             init,
             fixed,
             center,
+            w=w,
             kind=PROPORTIONAL_ODDS,
             optimiser=optimise_nm_tnc,
             reg_model=lambda pmap: LogLinearPhi(LogLinearPhi.NAME_EXP, pmap),

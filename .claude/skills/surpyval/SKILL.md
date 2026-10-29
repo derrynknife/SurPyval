@@ -1,6 +1,6 @@
 ---
 name: surpyval
-description: Use this skill for any survival, reliability, or time-to-event analysis with the SurPyval Python package (`import surpyval`). Covers fitting parametric distributions (Weibull, LogNormal, Exponential, ...), non-parametric estimators (Kaplan-Meier, Nelson-Aalen, Turnbull), regression (AFT, proportional hazards, Cox, additive hazards, Buckley-James, proportional odds), competing risks, recurrent events (NHPP/HPP, renewal/imperfect-repair, MCF), degradation/RUL, multivariate copulas, and model serialisation. Trigger whenever the user works with censored, truncated, or interval data, mentions `surpyval`/`Weibull.fit`, reliability/failure-time/hazard/survival curves, or the xcnt data model.
+description: Use this skill for any survival, reliability, or time-to-event analysis with the SurPyval Python package (`import surpyval`). Covers fitting parametric distributions (Weibull, LogNormal, Exponential, ...), Bayesian fits with priors, non-parametric estimators (Kaplan-Meier, Nelson-Aalen, Turnbull) and life tables, regression (AFT, proportional hazards, Cox, additive hazards incl. Aalen, Buckley-James, proportional odds, Royston-Parmar, distributional), sampling weights, competing risks, recurrent events (NHPP/HPP, renewal/imperfect-repair, MCF), degradation/RUL, multivariate copulas, and model serialisation. Trigger whenever the user works with censored, truncated, or interval data, mentions `surpyval`/`Weibull.fit`, reliability/failure-time/hazard/survival curves, or the xcnt data model.
 ---
 
 # SurPyval
@@ -10,9 +10,9 @@ estimator accepts arbitrary combinations of observed, censored, and truncated
 data** through one consistent input convention (the "xcnt" data model). Fit a
 model, then call `sf`/`ff`/`hf`/`Hf`/`df`/`qf` on it.
 
-This skill describes SurPyval 0.24. Check the installed version with
-`surpyval.__version__`; a note marked **0.22**, **0.23** or **0.24** says the
-release whose behaviour it describes, which earlier versions do not share.
+This skill describes SurPyval 0.26. Check the installed version with
+`surpyval.__version__`; a note marked **0.22** to **0.26** says the release
+whose behaviour it describes, which earlier versions do not share.
 Import as `import surpyval` (commonly `import surpyval as sp`). Every code
 block below runs as written (`surpyval/tests/test_skill.py` executes them).
 
@@ -66,7 +66,11 @@ Every fitter's `fit()` takes the same optional arrays. Only `x` is usually neede
   - `1` = **right censored** (event after `x`)
   - `-1` = **left censored** (event before `x`)
   - `2` = **interval censored** (`x` entry is `[left, right]`)
-- **`n`** — integer count/weight at each `x` (repeat-observation shorthand).
+- **`n`** — integer count at each `x` (repeat-observation shorthand: `n=3` is
+  three identical units). A decimal `n` is refused.
+- **`w`** (**0.26**) — a weight per row: how many population units each unit
+  stands for (sampling, propensity or censoring weights), any positive number.
+  Use `w`, not `n`, for weights even when they are whole numbers.
 - **`t`** — truncation, a two-column `[tl, tr]`; or pass **`tl`**/**`tr`** (left/right
   truncation) separately. Use `np.inf`/`-np.inf` for one-sided truncation.
 
@@ -275,7 +279,7 @@ silently wrong numbers, not errors.
 | **Parametric distributions** | `sp.<Name>` | Weibull, Exponential, Gamma, LogNormal, Normal, Gumbel, Logistic, LogLogistic, ExpoWeibull, Rayleigh, Beta, Beta4, Uniform, and discrete (Bernoulli, Poisson, Binomial, Geometric, NegativeBinomial, DiscreteWeibull, ...) |
 | **Non-parametric** | `sp.<Name>` | KaplanMeier, NelsonAalen, FlemingHarrington, **Turnbull** (NPMLE for the full data model incl. interval + truncation) |
 | **Non-parametric plot** | `sp.plot_nonparametric` | One or more fitted non-parametric models (a list, or `{label: model}` for groups) on one axes: `sf`/`ff`/`Hf`, `cb` or `band`, censor ticks, `quantiles=0.5` median lines and a number-at-risk table (`at_risk_rows="all"`); returns `fig`, `ax`, `counts`, `quantiles`. The table alone, no matplotlib: `sp.at_risk_table(models, times=, rows=, counts=)` |
-| **Tests** | `sp.logrank`, `sp.gray_test`, `surpyval.recurrent.laplace` / `mil_hdbk_189c` | k-sample (weighted, stratified) log-rank; Gray's test for cumulative incidences; recurrent trend tests |
+| **Tests** | `sp.logrank`, `sp.pairwise_logrank`, `sp.sf_diff`, `model.likelihood_ratio_test()`, `sp.gray_test`, `surpyval.recurrent.laplace` / `mil_hdbk_189c` | k-sample (weighted, stratified) log-rank; Gray's test for cumulative incidences; recurrent trend tests |
 | **Regression (parametric)** | `sp.<Dist><Kind>` or `sp.AFT/PH/PO/AH(dist)` | AFT, PH (proportional hazards), PO (proportional odds), AH (additive hazards). E.g. `sp.WeibullPH`, `sp.LogNormalAFT`. Fit with `(x, Z, c, n, t)`; predict `sf(x, Z)`; `params` named by `parameter_names`. |
 | **Semi-parametric** | `sp.CoxPH` | Cox proportional hazards (Efron ties by default, with the matching Efron baseline); also `CoxPH.fit_tvc` / `fit_tvc_from_df` for time-varying covariates. `sp.BuckleyJames` (AFT), `sp.AdditiveHazards` (Lin–Ying), `sp.ProportionalOdds` (NPMLE; positive `beta` = longer life, as in `PO`). |
 | **Time-varying covariates** | `sp.StepSchedule`, `sp.CovariatePath` | Evaluate a fitted regression along a covariate path with `sf_tvc` / `Hf_tvc`; `CovariatePath.from_points` / `from_callable` (**0.22**) for ramps and cycles |
@@ -313,6 +317,77 @@ cox.beta                              # about 0.6
 
 Regression predictions take the covariate vector as the second argument:
 `model.sf(x, Z)`, `model.ff(x, Z)`, `model.hf(x, Z)`, etc.
+
+## New in 0.26
+
+```python
+import numpy as np, pandas as pd, surpyval as sp
+rng = np.random.default_rng(1)
+x = sp.Weibull.random(80, 10, 2, random_state=1)
+c = (rng.uniform(size=80) < 0.2).astype(int)
+Z = rng.normal(size=(80, 1))
+
+# Weights w: weighted estimate, robust (sandwich / jackknife) variance only
+w = rng.uniform(0.5, 3, 80)
+wm = sp.Weibull.fit(x, c, w=w)        # covariance() is the robust sandwich
+wm.effective_n                        # printed too; a fit warns below 20
+sp.KaplanMeier.fit(x, c, w=w).cb(5)   # also NelsonAalen, the regressions, CoxPH
+
+# Bayesian fit: priors in sp.prior, credible intervals via cri, not cb
+b = sp.Weibull.fit_bayes(x, c, priors={"beta": sp.prior.around(2, between=(1.5, 3))})
+b.param_cri("beta"); b.cri(5); b.quantile_cri(0.1)   # on="sf" by default for cri
+
+# Distributional regression: covariates on every parameter (shape too)
+df = pd.DataFrame({"t": x, "c": c, "load": Z[:, 0]})
+dm = sp.WeibullDistributional.fit_from_df(df, x_col="t", c_col="c", Z_cols=["load"])
+dm.parameters_at(pd.DataFrame({"load": [0.0, 1.0]}))   # alpha, beta at each row
+
+# Robust SEs, the global LR test, a forest plot
+ph = sp.WeibullPH.fit(x, Z, c)
+ph.robust_standard_errors(); ph.summary(robust=True)  # cluster= for groups
+ph.likelihood_ratio_test()["p_value"]
+sp.plot_coefficients(ph)              # hazard ratios on a log axis
+
+# Group comparisons and life tables
+g = np.repeat(["A", "B", "C", "D"], 20)
+sp.pairwise_logrank(x, g, c).table    # Holm-adjusted p_adjusted
+sp.logrank(x, g, c, weighting="peto-peto", t0=12)
+ka = sp.KaplanMeier.fit(x[:40], c[:40]); kb = sp.KaplanMeier.fit(x[40:], c[40:])
+sp.sf_diff(ka, kb, 8)["p_value"]      # survival at one time, log(-log) scale
+ka.cs(2, 6)                           # conditional survival from an estimate
+sp.life_table(x, c, intervals=4)      # actuarial (Cutler-Ederer) table
+```
+
+- **Weights:** `SurpyvalData(..., w=)`, `from_dataframe(..., w_col=)` and
+  `fit_from_df(..., w_col=)` (not Cox's yet). Scaling `w` changes nothing.
+  Refused with weights: `method="lr"`/`"bootstrap"` bounds, `band`,
+  `bootstrap_cb`, `how` other than MLE, `aic`/`bic`/`aic_c`, `fit_best`,
+  `Turnbull`, and for Cox strata, exact ties, residuals and `check_ph`.
+  Weighted models save as schema 3, which older versions refuse.
+- **Bayesian:** priors `sp.prior.around`, `between`, `uniform`, `flat`,
+  `fixed`, `on_quantities(sp.Weibull, B10=..., beta=...)`,
+  `from_model(fit, weight=0.5)`, `from_data(x, c, weight=)`,
+  `from_params(dist, params, within=0.2)`; check one with
+  `sp.prior.check(dist, priors)`. The model's `sf`/`qf`/`mean` are the
+  posterior predictive (a new unit's life); `quantile_cri(p, point=True)`
+  is the posterior median of the quantile. `update(x, c)` adds data exactly.
+  Deterministic grid (1 to 3 free parameters), no seed.
+- **Aalen** (`sp.AalenAdditive.fit(x, Z, c)`): effects that change over time;
+  read `cumulative_coefficients()` / `plot()` by slope; test with
+  `constant_effects_test(random_state=)`.
+- **Royston-Parmar regression:** `sp.RoystonParmarPH`, `sp.RoystonParmarPO`,
+  `sp.RoystonParmarRegression(df=, scale=, knots=)`; `df=1` hazard scale is
+  Weibull PH. A `ParametricRegressionModel`, so every bound works.
+- **Distributional:** `covariates={"beta": ["load"]}` or
+  `formulas={"alpha": ..., "beta": ...}` per parameter; `parameter_cb`,
+  `plot_parameter`; log link for positive parameters.
+- **Robust SEs** change only the SEs (and that summary table); `cb`,
+  `param_cb`, `p_values` stay model-based. `fit_tvc` models refuse.
+- **PyMC** (`surpyval.pymc`, PyMC not a dependency): inside `with pm.Model():`
+  `censored_likelihood(sp.Weibull, x=x, c=c, alpha=..., beta=...)` adds the
+  exact censored/truncated likelihood; `prior_from_model`, `prior_from_spec`;
+  `to_surpyval(trace, sp.Weibull, alpha="log_alpha[1]",
+  transform={"alpha": "exp"}, beta="beta")` gives a `BayesianParametric`.
 
 ## Serialisation (files & MongoDB)
 

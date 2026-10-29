@@ -11,7 +11,8 @@ refitted resamples).
 from __future__ import annotations
 
 import functools
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
@@ -210,7 +211,7 @@ class BandsMixin:
         model: str
         greenwood: npt.NDArray
         data: dict[str, Any]
-        _band_n: "float | None"
+        _band_n: float | None
 
         def _bounds_within_support(
             self,
@@ -284,7 +285,7 @@ class BandsMixin:
         method: str = "hall-wellner",
         bound_type: str = "arcsine",
         alpha_ci: float = 0.05,
-        x_range: "tuple[float, float] | None" = None,
+        x_range: tuple[float, float] | None = None,
     ) -> npt.NDArray:
         r"""
         Simultaneous confidence band of the survival function.
@@ -414,6 +415,17 @@ class BandsMixin:
         Klein, J. P. and Moeschberger, M. L. (2003), "Survival
         Analysis", 2nd ed., Section 4.4.
         """
+        if getattr(self, "weighted", False):
+            from surpyval.utils.weights import refuse_weighted
+
+            raise refuse_weighted(
+                "A simultaneous band",
+                "the Hall-Wellner and equal precision bands take their "
+                "critical values from the process of a sample of units "
+                "counted, which weights do not give",
+                "Use the pointwise bounds of cb(), which use the robust "
+                "variance of the weighted estimate.",
+            )
         check_alpha_ci(alpha_ci)
         check_option("method", method, ("hall-wellner", "nair"))
         check_option("bound_type", bound_type, ("arcsine", "exp", "normal"))
@@ -620,6 +632,15 @@ class BandsMixin:
                [0.19739583, 0.875     ],
                [0.        , 0.75      ]])
         """
+        if getattr(self, "weighted", False):
+            from surpyval.utils.weights import refuse_weighted
+
+            raise refuse_weighted(
+                "bootstrap_cb",
+                "a weighted bootstrap of the estimate is not built yet",
+                "Use cb(), whose bounds use the robust variance of the "
+                "weighted estimate.",
+            )
         check_alpha_ci(alpha_ci)
         if getattr(self, "data", None) is None or "x" not in self.data:
             raise ValueError(
@@ -640,11 +661,11 @@ class BandsMixin:
             n_boot, (int, np.integer)
         ):
             raise ValueError(
-                "'n_boot' must be a positive integer; got {!r}".format(n_boot)
+                f"'n_boot' must be a positive integer; got {n_boot!r}"
             )
         if n_boot < 1:
             raise ValueError(
-                "'n_boot' must be a positive integer; got {}".format(n_boot)
+                f"'n_boot' must be a positive integer; got {n_boot}"
             )
         # Imported here as the package imports this module on init.
         from surpyval.univariate import nonparametric as nonp

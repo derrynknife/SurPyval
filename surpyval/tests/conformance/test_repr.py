@@ -30,6 +30,10 @@ FACTORIES = {
         "WeibullPowerAL",
     ),
     "surpyval.Frailty": (lambda: sp.Frailty(sp.Weibull), "WeibullFrailty"),
+    "surpyval.Distributional": (
+        lambda: sp.Distributional(sp.Weibull),
+        "WeibullDistributional",
+    ),
     "surpyval.Discretize": (
         lambda: sp.Discretize(sp.Weibull),
         "Discretize(Weibull)",

@@ -346,9 +346,9 @@ def test_595_qf_solves_every_probability_at_once(scale, monkeypatch):
     x = Weibull.random(200, 10, 1.7, random_state=1)
     model = RoystonParmar.fit(x, df=3, scale=scale)
     calls = []
-    basis = module._rcs_basis
+    basis = module.rcs_basis
     monkeypatch.setattr(
-        module, "_rcs_basis", lambda *a: calls.append(1) or basis(*a)
+        module, "rcs_basis", lambda *a: calls.append(1) or basis(*a)
     )
     draws = model.random(2000, random_state=3)
     assert len(calls) < 100

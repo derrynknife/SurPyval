@@ -232,6 +232,7 @@ class UnivariateDataFrameMixin:
         xr_col: str | None = None,
         tl_col: str | float | None = None,
         tr_col: str | float | None = None,
+        w_col: str | None = None,
         **fit_options: Any,
     ) -> Any:
         r"""
@@ -283,6 +284,10 @@ class UnivariateDataFrameMixin:
             a number, every row is right truncated at that value. If not
             provided, x is not right truncated.
 
+        w_col : string, optional
+            column name for the sampling, propensity or censoring weights,
+            passed to :meth:`fit` as ``w`` (for the fitters that take it).
+
         fit_options : dict, optional
             Every other option of :meth:`fit` (``how``, ``offset``,
             ``fixed``, ``dist``, ...), passed to it unchanged.
@@ -328,7 +333,9 @@ class UnivariateDataFrameMixin:
         array([0.5861, 0.2571])
         """
         df = require_frame(df)
-        refuse_column_names(fit_options, "x", "c", "n", "xl", "xr", "tl", "tr")
+        refuse_column_names(
+            fit_options, "x", "c", "n", "xl", "xr", "tl", "tr", "w"
+        )
         if (x_col is not None) and (
             (xl_col is not None) or (xr_col is not None)
         ):
@@ -358,6 +365,9 @@ class UnivariateDataFrameMixin:
             arrays["c"] = frame_column(df, c_col, "c_col")
         if n_col is not None:
             arrays["n"] = frame_column(df, n_col, "n_col")
+        if w_col is not None:
+            arrays["w"] = frame_column(df, w_col, "w_col")
+            names["w"] = "w_col"
         if tl_col is not None or tr_col is not None:
             rows = len(df)
             arrays["t"] = np.column_stack(
