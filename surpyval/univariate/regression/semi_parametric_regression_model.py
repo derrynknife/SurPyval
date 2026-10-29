@@ -1080,6 +1080,7 @@ class SemiParametricRegressionModel(
         :func:`~surpyval.univariate.regression.proportional_hazards.
         diagnostics.robust_covariance`.
         """
+        self._refuse_if_penalised()
         lik = getattr(self, "_weighted_cox", None)
         if self.weighted and lik is not None:
             from .proportional_hazards._weighted_cox import (
@@ -1099,7 +1100,6 @@ class SemiParametricRegressionModel(
             )
         from .proportional_hazards.diagnostics import robust_covariance
 
-        self._refuse_if_penalised()
         return robust_covariance(self, cluster)
 
     def _refuse_if_penalised(self) -> None:

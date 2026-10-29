@@ -23,13 +23,32 @@ and the ridge fit is checked against lifelines 0.30.3's
 lifelines' lasso smooths the L1 term, so it is not used for ``l1_ratio >
 0``. The parametric fits are checked against the optimality conditions of
 a likelihood written out here with numpy.
+
+The stratified and start-stop (delayed entry) Cox references are glmnet
+5.0 (R 4.5.3, survival 3.8.12) on the same path and threshold: the
+stratified fit on the Rossi data stratified by ``wexp``,
+
+.. code-block:: r
+
+    cols <- c("fin", "age", "race", "mar", "paro", "prio")
+    y <- stratifySurv(Surv(rossi$week, rossi$arrest), rossi$wexp)
+
+and the start-stop fit on the Rossi person-week rows
+(``load_rossi_time_varying``), whose ``N`` is the number of rows,
+
+.. code-block:: r
+
+    X <- cbind(fin = tv$fin == "yes", age = tv$age, prio = tv$prio,
+               employed = tv$employed == "yes")
+    y <- Surv(tv$start, tv$stop, tv$event)
 """
 
 import numpy as np
 import pytest
 
 import surpyval as sp
-from surpyval import CoxPH, WeibullAFT, WeibullPH
+from surpyval import CoxPH, WeibullAFT, WeibullPH, WeibullPO
+from surpyval.datasets import load_rossi_time_varying
 from surpyval.tests._helpers import rossi_with_censoring
 
 COLS = ["fin", "age", "race", "wexp", "mar", "paro", "prio"]
@@ -327,4 +346,349 @@ def test_from_a_dataframe():
             c=df["censored"].to_numpy(),
             penalizer=0.05,
         ).params,
+    )
+
+
+STRATA_COLS = ["fin", "age", "race", "mar", "paro", "prio"]
+# glmnet 5.0 with stratifySurv(..., wexp): (ties, lambda, alpha) -> the
+# coefficients of STRATA_COLS
+GLMNET_STRATA = {
+    ("breslow", 0.05, 0.0): [
+        -0.3185775381,
+        -0.04285477551,
+        0.23866585,
+        -0.3625120598,
+        -0.06467838826,
+        0.0771738552,
+    ],
+    ("efron", 0.05, 0.5): [
+        -0.1583552863,
+        -0.02745214871,
+        0,
+        -0.07356925996,
+        0,
+        0.05434588815,
+    ],
+    ("efron", 0.02, 1.0): [
+        -0.2114012855,
+        -0.03622957166,
+        0.04036774389,
+        -0.1504041,
+        0,
+        0.06599474893,
+    ],
+    ("breslow", 0.02, 1.0): [
+        -0.2109381591,
+        -0.03605078685,
+        0.03849294725,
+        -0.1483179771,
+        0,
+        0.06566015655,
+    ],
+}
+# glmnet 5.0 with Surv(start, stop, event) on the person-week rows:
+# (ties, lambda, alpha) -> the coefficients of fin, age, prio, employed
+GLMNET_START_STOP = {
+    ("breslow", 0.001, 0.0): [
+        -0.2856937991,
+        -0.0408473614,
+        0.07698696698,
+        -1.069066555,
+    ],
+    ("efron", 0.001, 0.5): [
+        -0.1521832308,
+        -0.02851530175,
+        0.06146276745,
+        -0.9995899881,
+    ],
+    ("efron", 0.0005, 1.0): [
+        -0.1629145004,
+        -0.03062204964,
+        0.06393156014,
+        -1.117395676,
+    ],
+    ("breslow", 0.0005, 1.0): [
+        -0.1622162333,
+        -0.03046667939,
+        0.06359260361,
+        -1.114059698,
+    ],
+}
+
+
+def _rossi_strata():
+    df = rossi_with_censoring()
+    Z = df[STRATA_COLS].to_numpy(dtype=float)
+    return df["week"].to_numpy(float), df["censored"].to_numpy(), Z, df["wexp"]
+
+
+def _rossi_start_stop():
+    tv = load_rossi_time_varying()
+    Z = np.column_stack(
+        [tv["fin"] == "yes", tv["age"], tv["prio"], tv["employed"] == "yes"]
+    ).astype(float)
+    return (
+        tv["start"].to_numpy(float),
+        tv["stop"].to_numpy(float),
+        1 - tv["event"].to_numpy(),
+        Z,
+    )
+
+
+@pytest.mark.parametrize("setting", sorted(GLMNET_STRATA))
+def test_stratified_cox_matches_glmnet(setting):
+    ties, lam, alpha = setting
+    x, c, Z, wexp = _rossi_strata()
+    model = CoxPH.fit_penalised(
+        x,
+        Z,
+        c=c,
+        strata=wexp,
+        penalizer=lam,
+        l1_ratio=alpha,
+        tie_method=ties,
+    )
+    assert model.maximum == "verified"
+    assert model.is_stratified and model.strata_labels == [0, 1]
+    ref = np.asarray(GLMNET_STRATA[setting])
+    np.testing.assert_array_equal(model.params == 0, ref == 0)
+    np.testing.assert_allclose(model.params, ref, rtol=1e-6, atol=1e-10)
+
+
+def test_stratified_zero_penalty_is_the_stratified_fit():
+    x, c, Z, wexp = _rossi_strata()
+    pen = CoxPH.fit_penalised(x, Z, c=c, strata=wexp, penalizer=0.0)
+    fit = CoxPH.fit(x, Z, c=c, strata=wexp)
+    np.testing.assert_allclose(pen.params, fit.params, rtol=1e-7)
+    # The same baseline in each stratum, and the same predictions.
+    for s in (0, 1):
+        np.testing.assert_allclose(
+            pen.sf([10.0, 30.0, 50.0], Z[:3], stratum=s),
+            fit.sf([10.0, 30.0, 50.0], Z[:3], stratum=s),
+            rtol=1e-7,
+        )
+    assert pen.neg_ll() == pytest.approx(fit.neg_ll(), rel=1e-12)
+
+
+def test_stratified_penalty_scale_is_over_every_stratum():
+    # N is the units over all the strata, and the covariates are
+    # standardised over all the rows, not within each stratum.
+    x, c, Z, wexp = _rossi_strata()
+    model = CoxPH.fit_penalised(x, Z, c=c, strata=wexp, penalizer=0.05)
+    np.testing.assert_allclose(model.penalty.scale, Z.std(0))
+    hand = CoxPH.fit_penalised(
+        x, Z / Z.std(0), c=c, strata=wexp, penalizer=0.05, standardise=False
+    )
+    np.testing.assert_allclose(model.params, hand.params / Z.std(0))
+
+
+@pytest.mark.parametrize("setting", sorted(GLMNET_START_STOP))
+def test_start_stop_cox_matches_glmnet(setting):
+    # Delayed entry: each row enters the risk sets at its start.
+    ties, lam, alpha = setting
+    start, stop, c, Z = _rossi_start_stop()
+    model = CoxPH.fit_penalised(
+        stop,
+        Z,
+        c=c,
+        tl=start,
+        penalizer=lam,
+        l1_ratio=alpha,
+        tie_method=ties,
+    )
+    assert model.maximum == "verified"
+    ref = np.asarray(GLMNET_START_STOP[setting])
+    np.testing.assert_array_equal(model.params == 0, ref == 0)
+    np.testing.assert_allclose(model.params, ref, rtol=1e-6, atol=1e-10)
+
+
+def test_cox_truncation_as_t_or_data():
+    # t (and data holding the truncation) with no upper bound is tl.
+    x, c, Z = _rossi()
+    tl = np.where(np.arange(x.size) % 3 == 0, 0.5 * x, -np.inf)
+    by_tl = CoxPH.fit_penalised(x, Z, c=c, tl=tl, penalizer=0.05)
+    t = np.column_stack([tl, np.full(x.size, np.inf)])
+    by_t = CoxPH.fit_penalised(x, Z, c=c, t=t, penalizer=0.05)
+    data = sp.SurpyvalData(x=x, c=c, tl=tl, Z=Z)
+    by_data = CoxPH.fit_penalised(data, penalizer=0.05)
+    np.testing.assert_array_equal(by_t.params, by_tl.params)
+    np.testing.assert_array_equal(by_data.params, by_tl.params)
+    assert not np.allclose(
+        by_tl.params, CoxPH.fit_penalised(x, Z, c=c, penalizer=0.05).params
+    )
+
+
+def test_cox_refuses_right_truncation():
+    x, c, Z = _rossi()
+    tr = x + 10.0
+    match = "parametric penalised fit"
+    with pytest.raises(ValueError, match=match):
+        CoxPH.fit_penalised(x, Z, c=c, tr=tr)
+    with pytest.raises(ValueError, match=match):
+        CoxPH.fit_penalised(x, Z, c=c, t=np.column_stack([0 * x, tr]))
+    with pytest.raises(ValueError, match=match):
+        CoxPH.fit_penalised(sp.SurpyvalData(x=x, c=c, tr=tr, Z=Z))
+    with pytest.raises(ValueError, match="once"):
+        CoxPH.fit_penalised(
+            x, Z, c=c, tl=0 * x, t=np.column_stack([0 * x, tr])
+        )
+
+
+def _weibull_aft_neg_ll_truncated(theta, x, c, Z, tl, tr):
+    alpha, beta, b = theta[0], theta[1], theta[2:]
+    phi = np.exp(Z @ b)
+
+    def sf(t):
+        with np.errstate(invalid="ignore"):
+            u = np.where(np.isfinite(t), phi * np.maximum(t, 0) / alpha, 0)
+        out = np.exp(-(u**beta))
+        return np.where(np.isposinf(t), 0.0, out)
+
+    u = phi * x / alpha
+    log_df = np.log(beta / alpha * phi) + (beta - 1) * np.log(u) - u**beta
+    log_obs = np.where(c == 0, log_df, np.log(sf(x) - sf(tr)))
+    return -np.sum(log_obs - np.log(sf(tl) - sf(tr)))
+
+
+def _truncated_data():
+    rng = np.random.default_rng(3)
+    Z = rng.normal(size=(300, 4))
+    t = 10 * rng.weibull(1.5, 300) * np.exp(-0.5 * Z[:, 0] + 0.3 * Z[:, 1])
+    tl = rng.uniform(0, 3, 300)
+    tr = tl + rng.uniform(8, 30, 300)
+    keep = (t > tl) & (t < tr)
+    x, Z, tl, tr = t[keep], Z[keep], tl[keep], tr[keep]
+    c = (x > 12).astype(int)
+    return np.minimum(x, 12.0), Z, c, tl, tr
+
+
+TRUNCATIONS = ["left", "right", "both"]
+
+
+def _truncation_kwargs(which, tl, tr):
+    return {
+        "left": {"tl": tl},
+        "right": {"tr": tr},
+        "both": {"tl": tl, "tr": tr},
+    }[which]
+
+
+@pytest.mark.parametrize("which", TRUNCATIONS)
+@pytest.mark.parametrize("l1_ratio", [0.0, 0.5, 1.0])
+def test_parametric_truncated_optimality_conditions(which, l1_ratio):
+    # The optimality conditions, as in test_parametric_optimality_conditions,
+    # of a truncated likelihood written out here.
+    x, Z, c, tl, tr = _truncated_data()
+    kwargs = _truncation_kwargs(which, tl, tr)
+    lo = kwargs.get("tl", np.full(x.size, -np.inf))
+    hi = kwargs.get("tr", np.full(x.size, np.inf))
+    lam = 0.04
+    model = WeibullAFT.fit_penalised(
+        x,
+        Z,
+        c=c,
+        penalizer=lam,
+        l1_ratio=l1_ratio,
+        standardise=False,
+        **kwargs,
+    )
+    assert model.maximum == "verified"
+    theta = np.asarray(model.params, dtype=float)
+    N = x.size
+
+    def f(th):
+        return _weibull_aft_neg_ll_truncated(th, x, c, Z, lo, hi)
+
+    assert f(theta) == pytest.approx(model.neg_ll(), rel=1e-10)
+    h = 1e-6 * np.maximum(np.abs(theta), 1.0)
+    g = np.array(
+        [
+            (f(theta + h[j] * e) - f(theta - h[j] * e)) / (2 * h[j] * N)
+            for j, e in enumerate(np.eye(theta.size))
+        ]
+    )
+    b = theta[2:]
+    g[2:] += lam * (1 - l1_ratio) * b
+    np.testing.assert_allclose(g[:2], 0, atol=1e-6)
+    l1 = lam * l1_ratio
+    nonzero = b != 0
+    np.testing.assert_allclose(
+        g[2:][nonzero], -l1 * np.sign(b[nonzero]), atol=1e-6
+    )
+    assert np.all(np.abs(g[2:][~nonzero]) <= l1 + 1e-6)
+
+
+@pytest.mark.parametrize("which", TRUNCATIONS)
+@pytest.mark.parametrize("fitter", [WeibullPH, WeibullAFT, WeibullPO])
+def test_tiny_penalty_is_the_truncated_fit(fitter, which):
+    # A negligible penalty reproduces the ordinary truncated maximum
+    # likelihood fit: the same likelihood, and coefficients the same to a
+    # small fraction of their standard errors (the ordinary fit stops at
+    # its own tolerance, a little short of where the penalised solve does).
+    x, Z, c, tl, tr = _truncated_data()
+    kwargs = _truncation_kwargs(which, tl, tr)
+    fit = fitter.fit(x, Z, c=c, **kwargs)
+    pen = fitter.fit_penalised(x, Z, c=c, penalizer=1e-8, **kwargs)
+    assert pen.maximum == "verified"
+    assert pen.neg_ll() == pytest.approx(fit.neg_ll(), rel=1e-10)
+    assert pen.neg_ll() <= fit.neg_ll() + 1e-9
+    se = fit.standard_errors()
+    assert np.all(np.abs(pen.params - fit.params) <= 1e-2 * se)
+
+
+def test_refuses_weights():
+    x, c, Z = _rossi()
+    w = np.linspace(0.5, 2.0, x.size)
+    data = sp.SurpyvalData(x=x, c=c, Z=Z, w=w)
+    for fitter in (CoxPH, WeibullPH):
+        with pytest.raises(ValueError, match="does not take weights"):
+            fitter.fit_penalised(x, Z, c=c, w=w)
+        with pytest.raises(ValueError, match="does not take weights"):
+            fitter.fit_penalised(data)
+
+
+def test_refuses_robust_errors_and_tests():
+    x, c, Z = _rossi()
+    cox = CoxPH.fit_penalised(x, Z, c=c, penalizer=0.05)
+    stratified = CoxPH.fit_penalised(
+        x, Z[:, 1:], c=c, strata=Z[:, 0], penalizer=0.05
+    )
+    weibull = WeibullPH.fit_penalised(x, Z, c=c, penalizer=0.05)
+    for model in (cox, stratified):
+        with pytest.raises(ValueError, match="fitted with a penalty"):
+            model.robust_covariance()
+        with pytest.raises(ValueError, match="fitted with a penalty"):
+            model.robust_covariance(cluster=np.arange(x.size) // 2)
+        with pytest.raises(ValueError, match="fitted with a penalty"):
+            model.summary(robust=True)
+    with pytest.raises(ValueError, match="penalised fit"):
+        weibull.robust_covariance()
+    with pytest.raises(ValueError, match="penalised fit"):
+        weibull.robust_standard_errors(cluster=np.arange(x.size) // 2)
+    with pytest.raises(ValueError, match="penalised fit"):
+        weibull.summary(robust=True)
+    for model in (cox, stratified, weibull):
+        with pytest.raises(ValueError, match="not available for a penalised"):
+            model.likelihood_ratio_test()
+
+
+@pytest.mark.parametrize("kind", ["cox", "stratified", "weibull"])
+def test_information_criteria_count_the_effective_df(kind):
+    x, c, Z = _rossi()
+    if kind == "cox":
+        model = CoxPH.fit_penalised(x, Z, c=c, penalizer=0.05)
+    elif kind == "stratified":
+        model = CoxPH.fit_penalised(
+            x, Z[:, 1:], c=c, strata=Z[:, 0], penalizer=0.05
+        )
+    else:
+        model = WeibullPH.fit_penalised(x, Z, c=c, penalizer=0.05)
+    k = model.penalty.effective_df
+    n_events = float(np.sum(c == 0))
+    nll = model.neg_ll()
+    assert 0 < k < len(model.params)
+    assert model.aic() == pytest.approx(2 * k + 2 * nll)
+    assert model.bic() == pytest.approx(k * np.log(n_events) + 2 * nll)
+    assert model.aic_c() == pytest.approx(
+        2 * k + 2 * nll + 2 * k * (k + 1) / (n_events - k - 1)
     )

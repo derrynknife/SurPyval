@@ -161,6 +161,7 @@ class PenalisedFitMixin:
         tl: npt.ArrayLike | None = None,
         tr: npt.ArrayLike | None = None,
         tol: float = 1e-10,
+        w: npt.ArrayLike | float | None = None,
     ) -> ParametricRegressionModel:
         """
         Fit the model with a ridge, lasso or elastic-net penalty on the
@@ -183,7 +184,9 @@ class PenalisedFitMixin:
         optimality conditions of those at 0 checked), not smoothed.
         ``model.maximum`` is ``"verified"`` when those conditions hold.
 
-        Every kind of censoring and truncation of :meth:`fit` is taken.
+        Every kind of censoring and truncation of :meth:`fit` is taken:
+        left, right and interval censoring, and truncation on the left,
+        the right or both. ``N`` counts the rows, weighted by ``n``.
         The model predicts as any fitted model does, but has no
         covariance, standard errors, confidence bounds or p-values:
         penalised estimates are biased towards 0 by design, and
@@ -208,6 +211,9 @@ class PenalisedFitMixin:
             on the covariates' own scale either way.
         tol : float, optional
             The optimality tolerance on the gradient of the objective.
+        w : array_like, optional
+            Not taken yet: weights are refused, with a ``ValueError``. Fit
+            the unpenalised model with ``w`` (:meth:`fit`).
 
         Returns
         -------
@@ -227,8 +233,10 @@ class PenalisedFitMixin:
         >>> model.params[2:].round(3)
         array([ 0.446, -0.035, -0.007,  0.   ,  0.   ])
         """
+        from ._penalised import refuse_weights
         from .regression_data import truncation_window
 
+        refuse_weights(w)
         t = truncation_window(x, t, tl, tr)
         return fit_parametric_penalised(
             self,

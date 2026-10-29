@@ -39,6 +39,9 @@ def cox_likelihood_ratio_test(model: SemiParametricRegressionModel) -> dict:
     """The global test of a fitted Cox model: twice the gain in the log
     partial likelihood over all the coefficients at 0, on as many degrees
     of freedom as there are estimated coefficients."""
+    from ._penalised import refuse_lr_test
+
+    refuse_lr_test(model)
     neg_ll_of = getattr(model, "neg_ll_of", None)
     if neg_ll_of is None or getattr(model, "_neg_ll", None) is None:
         raise ValueError(
@@ -59,8 +62,10 @@ def parametric_likelihood_ratio_test(
     baseline distribution fitted to the same data (every coefficient at 0,
     where each built-in link leaves the baseline unchanged) is the null
     model."""
+    from ._penalised import refuse_lr_test
     from .parametric_regression_model import _SERIALISABLE_REG_NAMES
 
+    refuse_lr_test(model)
     if not model._is_linear_predictor() or (
         model.reg_model.name not in _SERIALISABLE_REG_NAMES
     ):

@@ -127,6 +127,32 @@ def no_inference_error(penalty: Penalty) -> ValueError:
     return ValueError(NO_INFERENCE.format(shown, penalty.l1_ratio))
 
 
+def refuse_weights(w: Any) -> None:
+    """Refuse weights ``w`` in a penalised fit (not built yet)."""
+    if w is not None:
+        raise ValueError(
+            "fit_penalised does not take weights (w) yet: the penalty's "
+            "scale (the objective is divided by the number of units) and "
+            "the covariates' standardisation would both have to be "
+            "weighted. Fit the unpenalised model with w (fit), or give "
+            "repeated rows as counts n."
+        )
+
+
+def refuse_lr_test(model: Any) -> None:
+    """Refuse the likelihood-ratio test of a penalised ``model``."""
+    penalty = getattr(model, "penalty", None)
+    if penalty is not None:
+        raise ValueError(
+            "likelihood_ratio_test is not available for a penalised fit: "
+            "the penalised estimates do not maximise the likelihood, so "
+            "twice the gain in log-likelihood over the null model is not "
+            "chi-squared (and after the lasso's selection no simple test "
+            "holds). Refit the unpenalised model (fit) on covariates "
+            "chosen before seeing the data, and test that."
+        )
+
+
 def check_penalty(
     penalizer: Any, l1_ratio: Any, standardise: Any, p: int
 ) -> tuple[npt.NDArray, float]:
