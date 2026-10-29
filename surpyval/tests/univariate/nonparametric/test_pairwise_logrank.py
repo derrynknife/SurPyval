@@ -173,3 +173,46 @@ def test_result_repr_and_strict_json():
         (0, 2),
         (1, 2),
     ]
+
+
+# -- gaps found by the 0.26 test audit ---------------------------------------
+
+
+def _three_groups():
+    rng = np.random.default_rng(8)
+    x = 1.0 + np.round(rng.exponential(10, 45), 1)
+    Z = np.repeat([0, 1, 2], 15)
+    c = (rng.random(45) < 0.25).astype(int)
+    n = 1 + np.arange(45) % 3
+    return x, Z, c, n
+
+
+def test_pairwise_with_counts_is_the_rows_repeated():
+    """Audit C8. Counts ``n`` are split with the rows of each pair, so the
+    table is the one of the rows repeated ``n`` times, and each row is
+    ``logrank`` on that pair with its counts."""
+    x, Z, c, n = _three_groups()
+    counted = sp.pairwise_logrank(x, Z, c=c, n=n)
+    repeated = sp.pairwise_logrank(
+        np.repeat(x, n), np.repeat(Z, n), c=np.repeat(c, n)
+    )
+    assert counted.table.equals(repeated.table)
+    for row in counted.table.itertuples():
+        mask = (Z == row.group_a) | (Z == row.group_b)
+        alone = sp.logrank(x[mask], Z[mask], c=c[mask], n=n[mask])
+        assert row.statistic == alone.statistic
+        assert row.p_value == alone.p_value
+
+
+def test_pairwise_scalar_entry_time_is_every_rows_entry():
+    """Audit C8. A scalar ``tl`` is passed to each pair whole. An entry
+    time common to every row and before every exit changes no risk set,
+    so the table is also the one without ``tl``."""
+    x, Z, c, _ = _three_groups()
+    scalar = sp.pairwise_logrank(x, Z, c=c, tl=0.5)
+    array = sp.pairwise_logrank(x, Z, c=c, tl=np.full(x.size, 0.5))
+    assert scalar.table.equals(array.table)
+    without = sp.pairwise_logrank(x, Z, c=c)
+    np.testing.assert_allclose(
+        scalar.table.statistic, without.table.statistic, rtol=1e-12
+    )

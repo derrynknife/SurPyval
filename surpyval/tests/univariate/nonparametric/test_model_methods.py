@@ -507,3 +507,32 @@ def test_cs_is_nan_where_nothing_survives_to_given():
     assert np.isnan(out[1])
     with pytest.raises(ValueError, match="interp"):
         model.cs(1, 1, interp="spline")
+
+
+def test_cs_linear_is_the_ratio_of_linear_survivals():
+    """Audit C13. With ``interp="linear"`` the conditional survival is the
+    ratio of the interpolated survivals, at ages between the data's
+    times."""
+    x = [1, 2, 2, 3, 5, 6, 8, 9, 11, 12]
+    c = [0, 0, 1, 0, 0, 1, 0, 0, 0, 1]
+    model = surpyval.KaplanMeier.fit(x, c=c)
+    given = np.array([1.5, 2.5, 7.0])
+    further = np.array([1.5, 3.0, 4.0])
+    out = model.cs(further, given, interp="linear")
+    expected = model.sf(further + given, interp="linear") / model.sf(
+        given, interp="linear"
+    )
+    assert np.all(np.isfinite(out))
+    np.testing.assert_allclose(out, expected, rtol=1e-14)
+
+
+def test_cs_is_nan_past_the_data_without_a_support():
+    """Audit C13. Without ``set_support`` the interpolated estimate is not
+    defined past the largest time (12, censored), so neither is the
+    conditional survival to there; within the data it is defined."""
+    x = [1, 2, 2, 3, 5, 6, 8, 9, 11, 12]
+    c = [0, 0, 1, 0, 0, 1, 0, 0, 0, 1]
+    model = surpyval.KaplanMeier.fit(x, c=c)
+    out = model.cs([1.0, 20.0], 8.0, interp="linear")
+    assert np.isfinite(out[0])
+    assert np.isnan(out[1])

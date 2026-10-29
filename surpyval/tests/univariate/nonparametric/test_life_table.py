@@ -243,3 +243,56 @@ def test_no_warning_in_ordinary_use():
 def test_default_intervals_count_every_unit(x):
     table = sp.life_table(x)
     assert table["events"].sum() == len(x)
+
+
+# -- gaps found by the 0.26 test audit ---------------------------------------
+
+
+def test_a_model_restored_without_its_data_is_refused():
+    """Audit C5. A Kaplan-Meier restored from its dictionary holds the
+    curve but not the rows, so there is nothing to count; the refusal
+    says to pass the times and flags."""
+    km = sp.KaplanMeier.fit(X, c=C)
+    d = km.to_dict()
+    d.pop("data", None)
+    with pytest.raises(ValueError, match="does not hold its data"):
+        sp.life_table(sp.from_dict(d))
+
+
+def test_a_bool_number_of_intervals_is_refused():
+    """Audit C6. ``True`` is not a number of intervals."""
+    with pytest.raises(ValueError, match="intervals"):
+        sp.life_table([1, 2, 3, 4], intervals=True)
+
+
+def test_negative_times_start_the_table_at_the_smallest_time():
+    """Audit C6."""
+    table = sp.life_table([-2, -1, 0.5, 1], intervals=2)
+    assert table["start"][0] == -2
+    assert table["events"].sum() == 4
+
+
+def test_a_largest_time_on_the_last_boundary_gets_an_open_interval():
+    """Audit C6. The unit failing at 4 is counted in an open last
+    interval [4, inf)."""
+    table = sp.life_table([1, 2, 3, 4], intervals=[0, 2, 4])
+    assert len(table) == 3
+    assert table["end"].iloc[-1] == np.inf
+    assert table["events"].sum() == 4
+
+
+def test_an_interval_with_nobody_at_risk_has_nan_rates():
+    """Audit C6. Nobody is at risk in [5, 10), so its conditional
+    probabilities, density and hazard are not defined."""
+    table = sp.life_table([1, 2, 3, 4], intervals=[0, 5, 10])
+    row = table.iloc[1]
+    assert row["at_risk_start"] == 0
+    for column in ("q", "p", "pdf", "hazard"):
+        assert np.isnan(row[column]), column
+
+
+def test_all_equal_times_count_every_unit():
+    """Audit C6."""
+    table = sp.life_table([3, 3, 3, 3], [0, 0, 1, 1])
+    assert table["events"].sum() == 2
+    assert table["censored"].sum() == 2
