@@ -51,7 +51,10 @@ v0.26 (unreleased)
   covariates) or numbers; ``log_likelihood`` gives the same term as a
   pytensor expression. ``prior_from_model`` turns a fitted model's
   estimates and covariance into a joint prior, with a ``weight``, and
-  ``prior_from_spec`` builds priors from a plain description. PyMC is not
+  ``prior_from_spec`` builds priors from a plain description;
+  ``to_surpyval(trace, dist, alpha="log_alpha[1]", transform={"alpha":
+  "exp"}, ...)`` turns posterior draws back into a ``BayesianParametric``
+  with its functions, credible intervals and plots. PyMC is not
   a dependency, not even an optional one: ``import surpyval`` does not
   import it, and the helpers ask you to install it when it is absent. See
   :doc:`PyMC with SurPyval`.
