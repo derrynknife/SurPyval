@@ -182,12 +182,28 @@ class WeightedCox:
         resid[died] += Z[died] - zbar[self.event_index[died]]
         return resid
 
+    def columns(self, kept: npt.NDArray) -> WeightedCox:
+        """The same rows with only the covariate columns ``kept``."""
+        tie_method = "efron" if self.efron else "breslow"
+        return WeightedCox(
+            self.x,
+            self.c,
+            self.n,
+            self.w,
+            self.tl,
+            self.Z[:, kept],
+            tie_method,
+        )
+
     def baseline(
         self, beta: npt.NDArray
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
-        """``(times, at risk, deaths, hazard increments)`` of the baseline
-        of a unit at ``Z = 0`` (the rows' ``Z`` as given): Breslow's, or
-        Efron's increments ``sum_k wbar / (S0 - (k/m) D0)``."""
+        """``(times, risk weights, deaths, hazard increments)`` of the
+        baseline of a unit at ``Z = 0`` (the rows' ``Z`` as given):
+        Breslow's increments ``d / S0``, or Efron's ``sum_k wbar / (S0 -
+        (k/m) D0)``, with the weighted deaths ``d`` and the risk weights
+        ``S0``, the sums of ``n w exp(beta'Z)`` over the risk sets (the
+        ``r`` of the unweighted fit, which is ``n exp(beta'Z)``)."""
         r = self.omega * np.exp(self.Z @ beta)
         S0 = self._risk_sums(r)
         D0 = self._death_sums(r)
@@ -195,8 +211,7 @@ class WeightedCox:
         for j in range(self.times.size):
             f = self._ladders(j)
             h0[j] = np.sum(self.wbar[j] / (S0[j] - f * D0[j]))
-        at_risk = self._risk_sums(self.omega)
-        return self.times, at_risk, self.d_w, h0
+        return self.times, S0, self.d_w, h0
 
 
 def newton(
@@ -269,10 +284,18 @@ def fit_weighted_cox(
         warn_if_few_effective,
     )
 
+    from .._aliasing import expand, warn_aliased
     from ..semi_parametric_regression_model import (
         SemiParametricRegressionModel,
     )
-    from .cox_ph import _require_an_event, validate_coxph
+    from .cox_likelihood import baseline_at_origin
+    from .cox_ph import (
+        ALIASED_HOW,
+        _baseline_method,
+        _cox_aliased,
+        _require_an_event,
+        validate_coxph,
+    )
 
     if tie_method not in ("efron", "breslow"):
         raise refuse_weighted(
@@ -305,17 +328,37 @@ def fit_weighted_cox(
     omega = n * w_arr
     mean = (omega[:, None] * Z).sum(axis=0) / omega.sum()
     Zc = Z - mean
+    p = Z.shape[1]
     lik = WeightedCox(x, c, n, w_arr, tl, Zc, tie_method)
-    beta, converged, iters = newton(lik, Z.shape[1], tol)
-    ll, score, info = lik.derivatives(beta)
-    try:
-        bread = np.linalg.inv(info)
-    except np.linalg.LinAlgError:
-        raise ValueError(
-            "The weighted partial likelihood's information is singular: a "
-            "covariate column is constant or a combination of the others. "
-            "Drop it and fit again."
-        ) from None
+    # Columns the weighted partial likelihood cannot determine (constant,
+    # or a combination of the others) are aliased as the unweighted fit
+    # aliases them (nan, as R's NA), judged on the weighted information
+    # at 0 with the weighted counts n w.
+    info_at_start = lik.derivatives(np.zeros(p))[2]
+    aliased = _cox_aliased(
+        info_at_start, Z, omega, float(omega[np.asarray(c) == 0].sum())
+    )
+    kept = np.setdiff1d(np.arange(p), aliased)
+    full = lik
+    if aliased.size:
+        warn_aliased(aliased, ALIASED_HOW)
+        lik = lik.columns(kept)
+    if kept.size:
+        beta_k, converged, iters = newton(lik, kept.size, tol)
+        ll, score, info = lik.derivatives(beta_k)
+        try:
+            bread = np.linalg.inv(info)
+        except np.linalg.LinAlgError:
+            raise ValueError(
+                "The weighted partial likelihood's information is singular: "
+                "a covariate column is constant or a combination of the "
+                "others. Drop it and fit again."
+            ) from None
+    else:
+        # Nothing estimated: every column aliased
+        beta_k, converged, iters = np.zeros(0), True, 0
+        ll = lik.derivatives(np.zeros(0))[0]
+        bread = np.zeros((0, 0))
     if not converged:
         import warnings
 
@@ -327,12 +370,20 @@ def fit_weighted_cox(
             UserWarning,
             stacklevel=3,
         )
-    cov = robust_covariance(lik, beta, bread)
-    se = np.sqrt(np.diag(cov))
+    cov_k = robust_covariance(lik, beta_k, bread)
     from scipy.stats import norm
 
     with np.errstate(all="ignore"):
-        p_values = 2 * norm.sf(np.abs(beta / se))
+        p_k = 2 * norm.sf(np.abs(beta_k / np.sqrt(np.diag(cov_k))))
+    # The coefficients the predictions use: 0 at an aliased column
+    beta_used = np.zeros(p)
+    beta_used[kept] = beta_k
+    beta = beta_used.copy()
+    beta[aliased] = np.nan
+    cov = np.full((p, p), np.nan)
+    cov[np.ix_(kept, kept)] = cov_k
+    se = np.sqrt(np.diag(cov))
+    p_values = expand(p_k, kept, p)
 
     model = SemiParametricRegressionModel("Cox", "Semi-Parametric")
     model._neg_ll = -ll
@@ -340,9 +391,7 @@ def fit_weighted_cox(
     model._se = se
     model._covariance = cov
     model.tie_method = tie_method
-    model.baseline_method = (
-        "fleming-harrington" if tie_method == "efron" else "breslow"
-    )
+    model.baseline_method = _baseline_method(tie_method)
     model.maximum = "verified" if converged else "unverified"
     model.beta = beta.copy()
     model.params = beta.copy()
@@ -354,16 +403,19 @@ def fit_weighted_cox(
         "tl": np.asarray(tl, dtype=float),
         "w": w_arr,
     }
-    model._weighted_cox = lik
-    model.neg_ll_of = lik.neg_ll
+    # The likelihood of every column (``neg_ll_of`` takes all the
+    # coefficients) and the columns estimated, for robust_covariance().
+    model._weighted_cox = full
+    model._weighted_kept = kept
+    model.neg_ll_of = full.neg_ll
     model._ic_n = float(np.sum(n[np.asarray(c) == 0]))
-    times, r, d, h0 = lik.baseline(beta)
+    times, r, d, h0 = lik.baseline(beta_k)
     if center:
         model.center = mean
     else:
-        # From the centre to Z = 0: h0(0) = h0(centre) exp(-beta' centre)
-        shift = float(np.exp(-beta @ mean))
-        h0 = h0 * shift
+        # From the centre to Z = 0, as the unweighted fit: refused where
+        # the move over- or underflows (covariates far from 0).
+        r, h0 = baseline_at_origin(beta_used, mean, Z, r, h0)
         model.center = np.zeros_like(mean)
     model._fit_center = mean
     model.x = times

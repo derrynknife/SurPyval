@@ -13,6 +13,16 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-10-29
 
+### Weighted Cox review fixes
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The weighted refusal of residuals, `check_ph` and the diagnostics sits in `proportional_hazards.diagnostics._require_cox` (`cox_fit_data`), the entry point every path shares: the model's methods, the module's functions and `diagnose()`. | principle 13, 22 | They take the rows as counted units; refused in one place, no path can skip it. | done |
+| A weighted Cox fit moves its baseline to `Z = 0` with `baseline_at_origin`, as the unweighted fit, refusing a move that over- or underflows. Its `r` becomes the risk weight `sum n w exp(beta'Z)` over each risk set (the unweighted `r` is `sum n exp(beta'Z)`; Breslow's increment is `d / r` for both), moved with the baseline; it was the weighted number at risk, which is not moved by a change of origin. `r` is stored, not used by any prediction. | proposed | One meaning of `r` for every Cox fit; moving the number at risk by `exp(beta'centre)` would be wrong. | done |
+| Aliasing in a weighted Cox fit uses `_cox_aliased` on the weighted information at 0, with the weighted counts `n w` for the columns' spread and the weighted events for its scale; the aliased columns are nan in `params`, `covariance()`, `robust_covariance()` and the summaries, and 0 in the predictions, as unweighted. | proposed | The same rule as the unweighted fit, on the information the weighted fit maximises (R's `coxph` gives NA either way). | done |
+| A weighted Efron fit saves `baseline_method = "efron"` (`cox_ph._baseline_method`). No compatibility read for `"fleming-harrington"`: weights are new in v0.26, unreleased, so no saved model has it, and the label is not used in any calculation. | proposed | — | done |
+| Royston-Parmar predictions sum the spline per query point with `utils.linalg.fixed_order_dot` (each row reduced alone), in the univariate model and the regressions' spline baseline, which the fits share. | principle 4 | A BLAS matrix-vector product sums a row differently depending on its place, so a permuted query changed results in the last bit on Linux x86-64 (as #1018 for the Bayesian predictive). The other models' predictions passed the same check at query lengths up to 64 on Linux. | done |
+
 ### Penalised regression
 
 | Decision | By | Reason | Status |

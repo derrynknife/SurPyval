@@ -54,6 +54,22 @@ def _require_cox(model: "SemiParametricRegressionModel") -> dict:
             "Residuals and the proportional-hazards test are implemented for "
             "Cox proportional-hazards models fit with CoxPH.fit / fit_from_df."
         )
+    if getattr(model, "weighted", False):
+        # Every residual, test and diagnostic here takes the rows as
+        # counted units; on a fit with weights w they would describe the
+        # unweighted data, with no sign of it. Refused here, where every
+        # path (the model's methods, these functions, diagnose()) passes.
+        from surpyval.utils.weights import refuse_weighted
+
+        raise refuse_weighted(
+            "The residuals, the proportional-hazards test and the "
+            "diagnostics of a Cox fit",
+            "they treat the rows as counted units",
+            "Use summary() and covariance(), the weighted fit's robust "
+            "(sandwich) covariance, or model.robust_covariance(cluster) "
+            "for clustered units. check_ph() and diagnose() of the fit "
+            "without w check the unweighted data's model, a guide only.",
+        )
     if not hasattr(model, "_fit_data"):
         # A Cox model rebuilt by from_dict keeps its coefficients and
         # baseline, not the per-observation data; it used to be told it

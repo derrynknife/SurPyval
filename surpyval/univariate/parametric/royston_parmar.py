@@ -57,6 +57,7 @@ from surpyval.univariate.parametric.fitters import is_local_minimum
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import (
+    fixed_order_dot,
     numerical_gradient,
     numerical_hessian,
     standard_errors_of,
@@ -241,15 +242,16 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
 
     # -- linear predictor --------------------------------------------------
 
+    # The spline at the query times, each time's sum in a fixed order
+    # (``fixed_order_dot``), so permuting the query permutes the result
+    # to the last bit.
     def _eta(self, t: np.ndarray) -> np.ndarray:
-        return rcs_basis(np.log(np.asarray(t, dtype=float)), self.knots) @ (
-            self.params
-        )
+        B = rcs_basis(np.log(np.asarray(t, dtype=float)), self.knots)
+        return fixed_order_dot(B, self.params)
 
     def _eta_deriv(self, t: np.ndarray) -> np.ndarray:
-        return rcs_deriv(np.log(np.asarray(t, dtype=float)), self.knots) @ (
-            self.params
-        )
+        B = rcs_deriv(np.log(np.asarray(t, dtype=float)), self.knots)
+        return fixed_order_dot(B, self.params)
 
     # -- distribution functions -------------------------------------------
 
@@ -383,7 +385,7 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
         if inside.size:
 
             def gap(lx: npt.NDArray, sel: npt.NDArray) -> npt.NDArray:
-                eta = rcs_basis(lx, self.knots) @ self.params
+                eta = fixed_order_dot(rcs_basis(lx, self.knots), self.params)
                 return eta - target[inside[sel]]
 
             # Absolute in log time: relative in time.
@@ -469,7 +471,7 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
         inside = np.isfinite(x) & (x > 0.0)
         edge = np.where(np.isposinf(x), 0.0, np.where(np.isnan(x), x, 1.0))
         B = rcs_basis(np.log(np.where(inside, x, 1.0)), self.knots)
-        eta = B @ self.params
+        eta = fixed_order_dot(B, self.params)
         var = np.einsum("ij,jk,ik->i", B, cov, B)
         se = np.sqrt(np.maximum(var, 0.0))
 

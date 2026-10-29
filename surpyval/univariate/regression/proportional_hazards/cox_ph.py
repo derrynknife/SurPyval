@@ -90,6 +90,18 @@ nonparametric_dists = {
 }
 
 
+#: Why a Cox fit aliases a column, for its warning (shared with the
+#: weighted fit).
+ALIASED_HOW = (
+    "the partial likelihood does not depend on them, as they do "
+    "not vary within the risk sets at the event times beyond a "
+    "combination of the other columns (a constant column -- a Cox "
+    "model has no intercept --, one constant within each stratum, "
+    "or a linear combination of the others, as the columns of "
+    "every level of a factor are)"
+)
+
+
 def _baseline_method(tie_method: str) -> str:
     """The baseline-hazard estimator that goes with a tie method: Efron's
     tie correction for an Efron fit, Breslow's otherwise."""
@@ -185,15 +197,7 @@ def _solve_beta_and_p_values(
     aliased = _cox_aliased(info_at_start, Z, n, n_events, strata)
     kept = np.setdiff1d(np.arange(p), aliased)
     if aliased.size:
-        warn_aliased(
-            aliased,
-            "the partial likelihood does not depend on them, as they do "
-            "not vary within the risk sets at the event times beyond a "
-            "combination of the other columns (a constant column -- a Cox "
-            "model has no intercept --, one constant within each stratum, "
-            "or a linear combination of the others, as the columns of "
-            "every level of a factor are)",
-        )
+        warn_aliased(aliased, ALIASED_HOW)
         full_neg_ll, full_jac = neg_ll, jac
 
         def embed(b: npt.NDArray) -> npt.NDArray:
