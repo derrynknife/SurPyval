@@ -1,6 +1,18 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+**Added.**
+
+- Covariates on a baseline's other parameters: ``Ancillary(fitter,
+  parameters)`` makes an AFT fitter whose covariates also move, for
+  example, the Weibull's shape (``beta * exp(d'Z)``) or the log-normal's
+  ``sigma`` (lifelines' ``ancillary=``, flexsurv's ``anc``). The model has
+  every bound, ``summary`` with tests of the ancillary coefficients,
+  ``fit_from_df`` and saving. Checked against R's ``flexsurvreg``.
+
 v0.25 (17 October 2026)
 -----------------------
 

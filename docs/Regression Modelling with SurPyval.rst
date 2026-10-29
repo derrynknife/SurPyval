@@ -1725,6 +1725,53 @@ are parallel. Neither family lets two curves cross. (For these Weibull fits the
 two descriptions coincide, as shown above.)
 
 
+Covariates on the shape: ancillary parameters
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In an AFT model the covariates stretch time and nothing else, so every
+unit's hazard has the same shape. ``Ancillary(WeibullAFT, "beta")`` lets
+them move the Weibull's shape as well, row by row,
+:math:`\beta(Z) = \beta\, e^{d' Z}` (lifelines' ``ancillary=``, flexsurv's
+``anc``). A positive parameter moves on the log scale, an unbounded one
+(a location) additively, and the coefficients are named
+``<parameter>_<column>``. The fits agree with R's ``flexsurvreg(...,
+anc = list(shape = ~ ...))``. On the Rossi data the shape falls with age:
+
+.. jupyter-execute::
+
+    from surpyval import Ancillary, WeibullAFT
+    from surpyval.datasets import load_rossi_static
+
+    rossi = load_rossi_static()
+    rossi['censored'] = 1 - rossi['arrest']
+    plain = WeibullAFT.fit_from_df(rossi, x_col='week', c_col='censored',
+                                   Z_cols=['fin', 'age', 'prio'])
+    shape_by_z = Ancillary(WeibullAFT, 'beta').fit_from_df(
+        rossi, x_col='week', c_col='censored', Z_cols=['fin', 'age', 'prio'])
+    print('AIC', round(plain.aic(), 1), 'against', round(shape_by_z.aic(), 1))
+    shape_by_z.summary().loc['coefficients'][['coef', 'se(coef)', 'p']].round(3)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert shape_by_z.aic() < plain.aic(), (plain.aic(), shape_by_z.aic())
+    _p = shape_by_z.summary().loc[('coefficients', 'beta_age'), 'p']
+    assert _p < 0.01, _p
+    # The shape at fin = 0, prio = 0: above 1 at 20, below 1 at 40.
+    _b = shape_by_z.params[1] * np.exp(np.array([20, 40]) * shape_by_z.params[6])
+    assert _b[0] > 1 > _b[1], _b
+
+The model with the shape depending on the covariates has the lower AIC,
+and ``beta_age`` is clearly not 0: for men without financial aid or prior
+convictions the shape is above 1 at age 20 (a hazard that rises over the
+year) and below 1 at 40 (one that falls). Hold an ancillary coefficient at 0
+with ``fixed`` (``fixed={'beta_fin': 0.0}``) to leave a column out of the
+shape. A parameter the AFT's covariates already move (the Weibull's scale
+``alpha``) would not be identified, and is refused, as are proportional
+hazards and odds families, whose baseline scale and shape interact.
+
+
 Proportional Odds (PO)
 -----------------------
 

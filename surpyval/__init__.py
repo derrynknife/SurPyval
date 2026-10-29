@@ -135,6 +135,8 @@ _LAZY = {
         (
             "AFT",
             "AFTFitter",
+            "Ancillary",
+            "AncillaryFitter",
             "AH",
             "AcceleratedLife",
             "AdditiveHazards",

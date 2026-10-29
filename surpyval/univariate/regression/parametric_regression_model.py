@@ -321,6 +321,12 @@ class ParametricRegressionModel(
                 base["n_stresses"] = int(cast(int, life_model.n_stresses))
             return base
 
+        ancillary = getattr(self.model, "ancillary", None)
+        if ancillary is not None and self.kind in _SERIALISABLE_KINDS:
+            # Rebuilt as Ancillary(family, parameters).
+            base["ancillary"] = list(ancillary)
+            base["reg_model_name"] = reg_name
+            return base
         if self.kind not in _SERIALISABLE_KINDS:
             raise NotImplementedError(
                 "Serialisation is implemented for the fixed-form regression "
@@ -564,7 +570,13 @@ class ParametricRegressionModel(
             phi_param_map = {
                 renamed.get(k, k): v for k, v in phi_param_map.items()
             }
-            if phi_kind == "exp":
+            if model_dict.get("ancillary") is not None:
+                from .ancillary import AncillaryFitter
+
+                ancillary = AncillaryFitter(fitter, model_dict["ancillary"])
+                reg_model = ancillary.link(phi_param_map)
+                fitter = cast(Any, ancillary)
+            elif phi_kind == "exp":
                 # The log-linear multiplier exp(beta'Z), the link the
                 # fitter builds (#664): AFT and PO carry a LogLinearPhi,
                 # PH a CovariateLink with its phi. Imported here because
@@ -738,6 +750,11 @@ class ParametricRegressionModel(
         n_stresses = getattr(self.reg_model, "n_stresses", None)
         if self._is_accelerated_life() and isinstance(n_stresses, int):
             return n_stresses
+        ancillary = getattr(self.model, "ancillary", None)
+        if ancillary is not None:
+            # A coefficient per column for the linear predictor and for
+            # each ancillary parameter (Ancillary).
+            return (len(self.params) - self.k_dist) // (1 + len(ancillary))
         return len(self.params) - self.k_dist
 
     def _is_accelerated_life(self) -> bool:
@@ -797,6 +814,10 @@ class ParametricRegressionModel(
         if self._is_accelerated_life():
             return False
         if self.reg_model.name in _SERIALISABLE_REG_NAMES:
+            return True
+        if getattr(self.model, "ancillary", None) is not None:
+            # The linear predictor's and the ancillary parameters'
+            # coefficients: each multiplies a column (Ancillary).
             return True
         n_phi = len(self.params) - self.k_dist
         pmap = dict(self.reg_model.phi_param_map or {})

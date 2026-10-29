@@ -116,6 +116,16 @@ class TVCEvaluationMixin:
 
     def _check_tvc_evaluable(self) -> None:
         """Refuse a family with no form along a covariate path."""
+        if getattr(self.model, "ancillary", None) is not None:
+            raise NotImplementedError(
+                "A model with covariates on {} (Ancillary) has no form "
+                "along a changing covariate: an AFT carries an accumulated "
+                "age from one covariate value to the next, which needs the "
+                "same baseline shape at every value, and here the shape "
+                "changes with them. Evaluate it at fixed covariates (sf, "
+                "cb, ...), or use the plain AFT model for a covariate "
+                "path.".format(", ".join(self.model.ancillary))
+            )
         if self.kind not in self._TVC_EVALUABLE_KINDS:
             raise NotImplementedError(
                 "time-varying-covariate evaluation is defined for the "

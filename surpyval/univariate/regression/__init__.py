@@ -38,6 +38,7 @@ from .additive_hazards import (
     NormalAH,
     WeibullAH,
 )
+from .ancillary import Ancillary, AncillaryFitter
 from .buckley_james import BuckleyJames, BuckleyJamesModel
 from .frailty import (
     CoxFrailty,
@@ -131,6 +132,9 @@ __all__ = [
     "ParameterSubstitutionFitter",
     "Power",
     "PowerExponential",
+    # Covariates on the baseline's other parameters
+    "Ancillary",
+    "AncillaryFitter",
     # AFT
     "AFT",
     "AFTFitter",

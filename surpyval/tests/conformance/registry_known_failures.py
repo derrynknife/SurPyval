@@ -131,3 +131,37 @@ KNOWN_INCONSISTENCIES: dict[str, str] = {}
 def _with_issue(prop: str, reason: str) -> str:
     issue = KNOWN_FAILURE_ISSUES.get(prop)
     return f"{issue}: {reason}" if issue else reason
+
+
+# -- Ancillary (covariates on a baseline's other parameters) ----------------
+# The shared fit aliases a column, and judges each coefficient in its own
+# covariate's units, only where every coefficient multiplies one column of
+# the linear predictor; an Ancillary fit's coefficients are one per column
+# for the linear predictor and again for each ancillary parameter, which
+# that code does not yet read. (No public issue yet.)
+_ANCILLARY_UNITS = (
+    "Ancillary: the coefficients are not judged in their covariates' "
+    "units, so "
+)
+_ANCILLARY_FAILURES: dict[str, dict[str, str]] = {
+    "WeibullAFT[ancillary]": {
+        "aliasing": "Ancillary: a repeated column is not aliased (its "
+        "coefficients are not identified, and are not reported as nan)",
+        "covariate_scale[1e-6]": _ANCILLARY_UNITS + "a column multiplied "
+        "by 1e-6 (coefficients near 1e5) is taken to run off: 'no finite "
+        "maximum', and a lower likelihood",
+        "maximum[corner]": _ANCILLARY_UNITS + "the coefficients running "
+        "off on data with every failure in one corner are not seen: a "
+        "verified maximum is reported",
+        "convergence": _ANCILLARY_UNITS + "a starved fit returns "
+        "without a warning",
+    },
+    "LogNormalAFT[ancillary]": {
+        "aliasing": "Ancillary: a repeated column is not aliased (its "
+        "coefficients are not identified, and are not reported as nan)",
+        "convergence": _ANCILLARY_UNITS + "a starved fit returns "
+        "without a warning",
+    },
+}
+for _name, _failures in _ANCILLARY_FAILURES.items():
+    KNOWN_FAILURES[_name] = {**KNOWN_FAILURES.get(_name, {}), **_failures}

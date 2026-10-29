@@ -11,6 +11,19 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-10-29
+
+### Covariates on ancillary parameters
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `Ancillary(fitter, parameters)`, a fitter wrapping an AFT family, rather than an `ancillary=` argument to `fit`. | proposed | `fit` keeps its signature; the model is a different family. | proposed |
+| Every column of `Z` enters the linear predictor and each ancillary parameter; `fixed` at 0 leaves a column out (no second covariate array). | principle 21 | One covariate set per fit, as the joint models' decision; flexsurv's `anc` formulas are a subset of columns. | proposed |
+| A positive parameter moves as `p * exp(d'Z)`, an unbounded one as `p + d'Z`; coefficients named `<parameter>_<column>`. | principle 16 | flexsurv's links. | proposed |
+| AFT only: PH and PO are refused. A parameter the AFT's covariates already move (the scale) is refused. | proposed | Under PH the baseline's scale and shape interact (`H = e^(b'Z) alpha^(-beta(Z)) x^beta(Z)`), not the parameterisation R or lifelines use; the scale would not be identified. | open |
+| Evaluation along a covariate path (`sf_tvc` and the rest) is refused with `NotImplementedError`. | proposed | An AFT carries an accumulated age between covariate values, which needs the same shape at every value. | done |
+| Known gaps, strict xfails in the conformance registry: a repeated column is not aliased, and the coefficients are not judged in their covariates' units (a column scaled by 1e-6, the no-finite-maximum verdict, a starved fit's warning). The shared fit does both only for a link with one coefficient per column. | proposed | Fixing it changes the shared fit's internals; left for a separate change. | open |
+
 ## 2026-10-17
 
 ### Joint models: separate covariates, interval data, dynamic prediction (#891)

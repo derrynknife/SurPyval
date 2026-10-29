@@ -970,6 +970,25 @@ def _joint():
     ]
 
 
+# ---------------------------------------------------------------------------
+# Covariates on a baseline's other parameters (Ancillary)
+# ---------------------------------------------------------------------------
+def _ancillary():
+    return [
+        regression(
+            "WeibullAFT[ancillary]",
+            sp.Ancillary(sp.WeibullAFT, "beta"),
+            fitters=("surpyval.Ancillary", "surpyval.AncillaryFitter"),
+        ),
+        regression(
+            "LogNormalAFT[ancillary]",
+            sp.Ancillary(sp.LogNormalAFT, "sigma"),
+            fitters=(),
+            slow=REFIT_PROPERTIES,
+        ),
+    ]
+
+
 CASES: list[Case] = (
     _univariate()
     + _regression_family()
@@ -982,6 +1001,7 @@ CASES: list[Case] = (
     + _degradation()
     + _copulas()
     + _joint()
+    + _ancillary()
 )
 
 # Fits whose optimum moves by more than 1e-4 (relative) when the data are
