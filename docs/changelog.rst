@@ -1,6 +1,26 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+**New.**
+
+- ``surpyval.pymc``: helpers for survival analysis in PyMC, for people
+  who already use it. ``censored_likelihood(dist, data, **params)`` adds
+  SurPyval's exact likelihood of censored and truncated data (failures,
+  right, left and interval censoring, left and right truncation, counts)
+  to the open PyMC model, for the Weibull, Exponential, LogNormal, Gamma,
+  LogLogistic, Normal, Gumbel, Logistic and Rayleigh distributions, with
+  parameters that may be PyMC variables, expressions (per row, for
+  covariates) or numbers; ``log_likelihood`` gives the same term as a
+  pytensor expression. ``prior_from_model`` turns a fitted model's
+  estimates and covariance into a joint prior, with a ``weight``, and
+  ``prior_from_spec`` builds priors from a plain description. PyMC is not
+  a dependency, not even an optional one: ``import surpyval`` does not
+  import it, and the helpers ask you to install it when it is absent. See
+  :doc:`PyMC with SurPyval`.
+
 v0.25 (17 October 2026)
 -----------------------
 
