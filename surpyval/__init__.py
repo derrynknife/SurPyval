@@ -208,6 +208,22 @@ _LAZY = {
         "surpyval.univariate.regression",
     ),
     **dict.fromkeys(
+        (
+            "Distributional",
+            "DistributionalFitter",
+            "DistributionalRegressionModel",
+            "ExponentialDistributional",
+            "GammaDistributional",
+            "GumbelDistributional",
+            "LogLogisticDistributional",
+            "LogNormalDistributional",
+            "LogisticDistributional",
+            "NormalDistributional",
+            "WeibullDistributional",
+        ),
+        "surpyval.univariate.regression.distributional",
+    ),
+    **dict.fromkeys(
         ("JointModel", "JointPH", "WeibullJointPH"),
         "surpyval.univariate.joint",
     ),
@@ -406,6 +422,19 @@ if TYPE_CHECKING:
         WeibullJointPH,
     )
     from surpyval.univariate.regression import *  # noqa: F401,F403
+    from surpyval.univariate.regression.distributional import (
+        Distributional,
+        DistributionalFitter,
+        DistributionalRegressionModel,
+        ExponentialDistributional,
+        GammaDistributional,
+        GumbelDistributional,
+        LogisticDistributional,
+        LogLogisticDistributional,
+        LogNormalDistributional,
+        NormalDistributional,
+        WeibullDistributional,
+    )
 
 # The subpackages ``import surpyval`` used to import, so that
 # ``surpyval.recurrent.laplace`` works without an import of its own, and

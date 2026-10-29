@@ -314,6 +314,9 @@ OBJECTIVES = {
     "surpyval.ParametricRegressionModel": lambda case: _regression(
         fitted(case)
     ),
+    "surpyval.DistributionalRegressionModel": lambda case: _regression(
+        fitted(case)
+    ),
     "surpyval.FrailtyModel": _spied,
     "surpyval.univariate.competing_risks.regression.fine_gray"
     ".FineGrayModel": _spied,

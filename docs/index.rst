@@ -296,6 +296,7 @@ Contents:
    Non-Parametric SurPyval Modelling
    Parametric SurPyval Modelling
    Regression Modelling with SurPyval
+   Distributional Regression
    Model Diagnostics
    applications
    Competing Risks SurPyval Modelling

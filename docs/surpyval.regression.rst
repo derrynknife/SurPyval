@@ -42,6 +42,18 @@ AFT, AH and PO families can be evaluated along.
 
     regression/parametric
 
+Covariates on Every Parameter
+-----------------------------
+
+Distributional regression: each parameter of the distribution (the scale
+and the shape, say) has its own linear predictor and link. See
+:doc:`Distributional Regression` for the guide.
+
+.. toctree::
+    :maxdepth: 1
+
+    regression/distributional
+
 Correlated Observations
 -----------------------
 

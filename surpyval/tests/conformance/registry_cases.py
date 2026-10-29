@@ -18,6 +18,7 @@ from surpyval import multivariate as mv
 from surpyval import recurrent as rc
 from surpyval.beta import ml
 from surpyval.tests.conformance.registry_families import (
+    BASELINES,
     BIVARIATE,
     CAUSES,
     CAUSES_REGRESSION,
@@ -991,6 +992,54 @@ def _spline_regression():
     return out
 
 
+# ---------------------------------------------------------------------------
+# Distributional regression: covariates on every parameter
+# ---------------------------------------------------------------------------
+def _distributional_coefficients(model):
+    """A distributional regression's coefficients, a row per parameter
+    (every covariate is on every parameter in the fixtures)."""
+    params = np.asarray(model.params, dtype=float)
+    rows, start = [], model.k_dist
+    for cols in model.covariate_positions:
+        rows.append(params[start : start + len(cols)])
+        start += len(cols)
+    return np.array(rows)
+
+
+DISTRIBUTIONAL_BASELINES = BASELINES + ("LogLogistic",)
+FAST_DISTRIBUTIONAL = ("WeibullDistributional", "LogNormalDistributional")
+
+
+def _distributional():
+    out = []
+    for base in DISTRIBUTIONAL_BASELINES:
+        name = base + "Distributional"
+        out.append(
+            regression(
+                name,
+                getattr(sp, name),
+                model_class="surpyval.DistributionalRegressionModel",
+                fitters=(f"surpyval.{name}",)
+                + (
+                    (
+                        "surpyval.Distributional",
+                        "surpyval.DistributionalFitter",
+                    )
+                    if base == "Weibull"
+                    else ()
+                ),
+                slow=(
+                    frozenset()
+                    if name in FAST_DISTRIBUTIONAL
+                    else REFIT_PROPERTIES
+                ),
+                coefficients=_distributional_coefficients,
+                intercept=True,
+            )
+        )
+    return out
+
+
 CASES: list[Case] = (
     _univariate()
     + _regression_family()
@@ -1004,6 +1053,7 @@ CASES: list[Case] = (
     + _copulas()
     + _joint()
     + _spline_regression()
+    + _distributional()
 )
 
 # Fits whose optimum moves by more than 1e-4 (relative) when the data are
@@ -1228,6 +1278,8 @@ _REGRESSION_LR_X = {
     "WeibullPO": (2.0, 8.0),
     "WeibullAH": (2.0, 8.0),
     "WeibullAL[PowerExponential]": (3.0, 10.0),
+    "WeibullDistributional": (2.0, 8.0),
+    "LogNormalDistributional": (2.0, 8.0),
 }
 
 
@@ -1522,7 +1574,7 @@ def _bounds(case):
             # estimate +- 3e-5 of it.
             Bound("quantile_cb", point="qf", rtol=1e-3),
         )
-    if cls == "ParametricRegressionModel":
+    if cls in ("ParametricRegressionModel", "DistributionalRegressionModel"):
         wald = (
             Bound("cb", on=_ON_ALL),
             _PARAM_CB,
@@ -1971,7 +2023,11 @@ def _starve(case):
         # The life model's first parameter (the first is a fixed
         # placeholder, the second the Weibull shape).
         return _far_start(case, lambda m: _scaled_start(m.params, 2))
-    if cls in ("ParametricRegressionModel", "FrailtyModel"):
+    if cls in (
+        "ParametricRegressionModel",
+        "DistributionalRegressionModel",
+        "FrailtyModel",
+    ):
         return lambda d: fit(_no_event_level(d))
     if cls in (
         "SemiParametricRegressionModel",

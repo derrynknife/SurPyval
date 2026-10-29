@@ -307,6 +307,9 @@ def _build(name):
             [[1, 2], [3, np.inf], [5, 6], [4, 8], [7, 9], [2, 10]]
         ),
         "parametric_regression": lambda: WeibullPH.fit(*_semipar_data()[:2]),
+        "distributional_regression": lambda: (
+            surpyval.WeibullDistributional.fit(*_semipar_data()[:2])
+        ),
         "accelerated_life": _accelerated_life,
         "cox": lambda: CoxPH.fit(*_semipar_data(1)[:2]),
         "cox_delayed_entry": _cox_delayed_entry,
@@ -396,6 +399,7 @@ CASES = [
     "nelson_aalen_truncated",
     "turnbull",
     "parametric_regression",
+    "distributional_regression",
     "accelerated_life",
     "cox",
     "cox_delayed_entry",
