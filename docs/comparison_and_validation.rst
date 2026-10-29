@@ -24,6 +24,20 @@ distributions across groups, and the result it returns:
 .. autoclass:: surpyval.univariate.nonparametric.logrank.LogRankResult
    :no-members:
 
+The log-rank tests of every pair of groups, with the p-values adjusted for
+the number of pairs, and the adjustment on its own:
+
+.. autofunction:: surpyval.univariate.nonparametric.logrank.pairwise_logrank
+
+.. autoclass:: surpyval.univariate.nonparametric.logrank.PairwiseLogRankResult
+   :members: to_dict
+
+.. autofunction:: surpyval.univariate.nonparametric.logrank.adjust_p_values
+
+The test of two groups' survival at one time:
+
+.. autofunction:: surpyval.univariate.nonparametric.survival_difference.sf_diff
+
 Gray's test for comparing cumulative incidence functions across groups under
 competing risks:
 

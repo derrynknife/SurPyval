@@ -13,6 +13,25 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-10-29
 
+### Life tables: `life_table`
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A function, `surpyval.life_table(x, c, n, tl, intervals)`, returning a DataFrame, not a fitted model class. | proposed | A life table is a tabulation with estimates beside it, as `at_risk_table` is; Kaplan-Meier is the model for the same data. | done |
+| Intervals are `[start, end)`: an event or censoring on a boundary counts in the interval it starts; data beyond the last boundary goes in an open last interval, which has no density or hazard (as `KMsurv::lifetab`'s last interval). | proposed | Klein and Moeschberger's convention, and grouped data given at each interval's start falls in that interval. | done |
+| A late entrant is counted in `entered` in the interval it enters and as half at risk there, as a withdrawal is; entry exactly on a boundary is at risk from that interval's start. | proposed | The actuarial assumption applied to entries; with no late entry the table is the classical one. | done |
+| Left and interval censoring and right truncation are refused, pointing to `Turnbull`. | principle 2 | Their events are not known to fall in one interval. | done |
+
+### Group comparisons and the global test
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `pairwise_logrank` tests each pair on its own two groups' rows (as R's `survminer::pairwise_survdiff`), with `adjust="holm"` by default (R's `p.adjust` default); `"bonferroni"`, `"bh"` and `"none"` too. A pair with nothing to compare (dof 0) keeps p = 1 and is not counted as a test. | proposed | Holm controls the family-wise error and never rejects less than Bonferroni. | done |
+| The fixed-time test is `sf_diff(model_a, model_b, x, transform="log-log")`, a dict like `rmst_diff`'s. The variance is the step function's at the last observed time at or before `x`, not interpolated between observed times. | proposed | The estimate is a step; an interpolated variance does not belong to it. | done |
+| The Peto-Peto weight includes the current event time, prod(1 - d/(r+1)) (Klein and Moeschberger section 7.3); `t0` censors events after `t0` at `t0` and drops rows entering at or after it. | proposed | — | done |
+| `likelihood_ratio_test()` returns a dict (`statistic`, `df`, `p_value`, both log-likelihoods). For parametric regression it is available for the built-in links of PH, AFT, PO and AH (whose coefficients at 0 leave the baseline), and refused for accelerated life and custom links. | proposed | A life model has no general "no effect" value. | done |
+| `fit_tvc(strata=)` takes a label per row, so a subject may change stratum; missing labels are refused rather than dropped. | proposed | Dropping a row would cut a subject's path short. | done |
+
 ### Aalen's additive hazards model (`AalenAdditive`)
 
 | Decision | By | Reason | Status |
