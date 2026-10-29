@@ -2676,3 +2676,316 @@ This shows the importance of inference when working with truncated and censored 
 
 The same analysis runs in the browser in
 `Reliafy <https://reliafy.com/guides/fit-your-first-model>`__.
+
+Recipes: more distributions from their cumulative hazard
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Several distributions that are popular in survival analysis are not built
+into SurPyval, but each is a few lines as a ``CustomDistribution``: the
+generalised gamma, the Gompertz (above), the generalised F and the inverse
+Gaussian. Each recipe below is checked against ``scipy.stats`` when the
+documentation is built. Write the cumulative hazard with autograd's numpy
+(and autograd's ``scipy``), so that the hazard, the density and the
+confidence bounds can be differentiated from it.
+
+The incomplete gamma and beta functions that the generalised gamma and the
+generalised F need cannot be differentiated in their shape parameters by
+autograd itself. SurPyval's own versions can, and they return the logarithm
+of the upper tail, which is the cumulative hazard up to its sign:
+``gammainccln(a, x)`` is :math:`\ln Q(a, x)`, the log of the regularised
+upper incomplete gamma function, and ``betainccln(a, b, x)`` is
+:math:`\ln\{1 - I_x(a, b)\}`, the log of the upper tail of the regularised
+incomplete beta function. Both are in ``surpyval.utils.autograd_gamma_compat``.
+
+**The generalised gamma.** In Stacy's parameterisation a lifetime :math:`T`
+with scale :math:`\alpha` and shapes :math:`\beta` and :math:`\kappa` has
+:math:`(T/\alpha)^\beta` gamma distributed with shape :math:`\kappa`, so
+
+.. math::
+
+    R(t) = Q\left(\kappa, (t/\alpha)^\beta\right), \qquad
+    H(t) = -\ln Q\left(\kappa, (t/\alpha)^\beta\right).
+
+It contains the Weibull (:math:`\kappa = 1`), the gamma (:math:`\beta = 1`)
+and the exponential (both), and the lognormal is its limit as
+:math:`\kappa \to \infty`. That makes it a natural way to choose among them.
+
+.. jupyter-execute::
+
+    from scipy import stats
+    from surpyval.utils.autograd_gamma_compat import gammainccln
+
+    def gg_Hf(x, alpha, beta, kappa):
+        return -gammainccln(kappa, (x / alpha) ** beta)
+
+    GenGamma = surv.CustomDistribution(
+        'GenGamma', gg_Hf, ['alpha', 'beta', 'kappa'],
+        ((0, None), (0, None), (0, None)), (0, np.inf))
+
+    # scipy's gengamma(a, c, scale) is Stacy's (kappa, beta, alpha)
+    t = np.array([0.5, 2.0, 5.0, 12.0])
+    print(GenGamma.sf(t, 3.0, 1.5, 2.0))
+    print(stats.gengamma(2.0, 1.5, scale=3.0).sf(t))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _ref = stats.gengamma(2.0, 1.5, scale=3.0)
+    assert np.allclose(GenGamma.sf(t, 3.0, 1.5, 2.0), _ref.sf(t), rtol=1e-12)
+    assert np.allclose(GenGamma.df(t, 3.0, 1.5, 2.0), _ref.pdf(t), rtol=1e-10)
+
+Here are 300 units drawn from a Weibull with :math:`\alpha = 10` and
+:math:`\beta = 2`, with the test stopped at 15. Fixing :math:`\kappa = 1`
+gives exactly the Weibull fit, and fixing :math:`\beta = 1` gives the gamma
+fit:
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(7)
+    t_gg = stats.weibull_min(2.0, scale=10.0).rvs(300, random_state=rng)
+    c_gg = (t_gg > 15).astype(int)
+    t_gg = np.minimum(t_gg, 15.0)
+
+    gg = GenGamma.fit(t_gg, c=c_gg)
+    weibull = surv.Weibull.fit(t_gg, c=c_gg)
+    gamma = surv.Gamma.fit(t_gg, c=c_gg)
+    lognormal = surv.LogNormal.fit(t_gg, c=c_gg)
+
+    print(GenGamma.fit(t_gg, c=c_gg, fixed={'kappa': 1}).params, weibull.params)
+    print(GenGamma.fit(t_gg, c=c_gg, fixed={'beta': 1}).neg_ll(), gamma.neg_ll())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _w = GenGamma.fit(t_gg, c=c_gg, fixed={'kappa': 1})
+    assert np.allclose(_w.params[:2], weibull.params, rtol=1e-5), _w.params
+    assert np.isclose(_w.neg_ll(), weibull.neg_ll(), rtol=1e-9)
+    _g = GenGamma.fit(t_gg, c=c_gg, fixed={'beta': 1})
+    assert np.isclose(_g.neg_ll(), gamma.neg_ll(), rtol=1e-9)
+
+The Weibull and the gamma are each the generalised gamma with one parameter
+fixed, so twice the difference in log-likelihood is a likelihood-ratio
+statistic, with one degree of freedom, for that restriction:
+
+.. jupyter-execute::
+
+    for name, nested in [('Weibull', weibull), ('Gamma', gamma)]:
+        lr = 2 * (nested.neg_ll() - gg.neg_ll())
+        print(f"{name}: LR = {lr:.2f}, p = {stats.chi2(1).sf(lr):.3f}")
+    print({m.dist.name: round(m.aic(), 1)
+           for m in (gg, weibull, gamma, lognormal)})
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _p = {n: stats.chi2(1).sf(2 * (m.neg_ll() - gg.neg_ll()))
+          for n, m in [('Weibull', weibull), ('Gamma', gamma)]}
+    assert _p['Weibull'] > 0.05 and _p['Gamma'] < 0.01, _p
+    _aic = {m.dist.name: m.aic() for m in (gg, weibull, gamma, lognormal)}
+    assert min(_aic, key=_aic.get) == 'Weibull', _aic
+
+The data do not reject the Weibull (p above 0.05), but they reject the gamma
+(p below 0.01), and the Weibull has the lowest AIC of the four. The
+lognormal is not nested at a finite :math:`\kappa`, so it is compared by AIC
+only.
+
+The generalised gamma takes covariates as any distribution does, for
+example as an accelerated failure time model, :math:`R(t \mid Z) =
+R_0(e^{\beta' Z} t)`. Here a binary covariate multiplies the scale by
+:math:`e^{0.5}`:
+
+.. jupyter-execute::
+
+    Z = rng.binomial(1, 0.5, 200).astype(float)
+    t_aft = stats.gengamma(2.0, 1.5, scale=3.0 * np.exp(0.5 * Z)).rvs(
+        random_state=rng)
+    gg_aft = surv.AFT(GenGamma).fit(t_aft, Z)
+    gg_aft.summary()[['coef', 'se(coef)', 'p']]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _coef = gg_aft.params[-1]
+    assert abs(_coef + 0.5) < 2 * gg_aft.standard_errors()[-1], _coef
+
+The covariate multiplies the scale by :math:`e^{0.5}` in the simulation, so
+the AFT coefficient, which accelerates time, is close to :math:`-0.5`: within
+two standard errors of it. ``surv.PH(GenGamma)``, ``surv.PO(GenGamma)`` and
+``surv.AH(GenGamma)`` fit in the same way (see
+:doc:`Regression Modelling with SurPyval`). Covariates on the shape
+parameters are not available through these families.
+
+**The Gompertz.** The Gompertz distribution is the example at the start of
+this section. Its hazard :math:`\nu b\, e^{b x}` takes covariates
+proportionally:
+
+.. jupyter-execute::
+
+    u = rng.uniform(size=300)
+    Z_g = rng.binomial(1, 0.5, 300).astype(float)
+    # H(t | Z) = nu e^{0.7 Z} (e^{b t} - 1) with nu = 0.2, b = 1.5
+    t_ph = np.log(1 - np.log(u) / (0.2 * np.exp(0.7 * Z_g))) / 1.5
+    gompertz_ph = surv.PH(Gompertz).fit(t_ph, Z_g)
+    print(gompertz_ph.params)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _se = gompertz_ph.standard_errors()
+    assert np.all(np.abs(gompertz_ph.params - [0.2, 1.5, 0.7]) < 2 * _se), (
+        gompertz_ph.params, _se)
+
+The baseline :math:`\nu` and :math:`b` and the log hazard ratio are each
+within two standard errors of the 0.2, 1.5 and 0.7 used to simulate the
+data.
+
+**The generalised F.** Kalbfleisch and Prentice's original form takes
+:math:`(T/\alpha)^\beta` to have an F distribution with :math:`2 m_1` and
+:math:`2 m_2` degrees of freedom. Since an F variable :math:`W` has
+:math:`m_1 W / (m_1 W + m_2)` beta distributed with shapes :math:`m_1` and
+:math:`m_2`,
+
+.. math::
+
+    R(t) = 1 - I_{u}(m_1, m_2), \qquad
+    u = \frac{m_1 w}{m_1 w + m_2}, \quad w = (t/\alpha)^\beta.
+
+It contains the log-logistic (:math:`m_1 = m_2 = 1`), and the generalised
+gamma as the limit :math:`m_2 \to \infty` (with the scale
+:math:`\alpha m_1^{-1/\beta}`).
+
+.. jupyter-execute::
+
+    from surpyval.utils.autograd_gamma_compat import betainccln
+
+    def gf_Hf(x, alpha, beta, m1, m2):
+        w = (x / alpha) ** beta
+        return -betainccln(m1, m2, m1 * w / (m1 * w + m2))
+
+    GenF = surv.CustomDistribution(
+        'GenF', gf_Hf, ['alpha', 'beta', 'm1', 'm2'],
+        ((0, None),) * 4, (0, np.inf))
+
+    print(GenF.sf(t, 3.0, 1.5, 2.0, 3.0))
+    print(stats.f(4.0, 6.0).sf((t / 3.0) ** 1.5))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _w = (t / 3.0) ** 1.5
+    assert np.allclose(GenF.sf(t, 3.0, 1.5, 2.0, 3.0),
+                       stats.f(4.0, 6.0).sf(_w), rtol=1e-12)
+    _dw = 1.5 / 3.0 * (t / 3.0) ** 0.5
+    assert np.allclose(GenF.df(t, 3.0, 1.5, 2.0, 3.0),
+                       stats.f(4.0, 6.0).pdf(_w) * _dw, rtol=1e-10)
+    assert np.allclose(GenF.sf(t, 3.0, 1.5, 1.0, 1.0),
+                       surv.LogLogistic.sf(t, 3.0, 1.5), rtol=1e-12)
+    assert np.allclose(GenF.sf(t, 3.0, 1.5, 2.0, 1e7),
+                       GenGamma.sf(t, 3.0 * 2.0 ** (-1 / 1.5), 1.5, 2.0),
+                       rtol=1e-4, atol=0)
+
+It fits like the others, but four parameters ask a lot of the data: here 300
+uncensored lifetimes drawn with :math:`m_1 = 2` and :math:`m_2 = 3` leave
+the two degrees of freedom uncertain, and the standard errors say so.
+
+.. jupyter-execute::
+
+    t_gf = 3.0 * stats.f(4.0, 6.0).rvs(300, random_state=rng) ** (1 / 1.5)
+    gf = GenF.fit(t_gf)
+    print(gf.params)
+    print(gf.standard_errors())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _se = gf.standard_errors()
+    assert np.all(np.abs(gf.params - [3.0, 1.5, 2.0, 3.0]) < 2.5 * _se), (
+        gf.params, _se)
+    assert np.all(_se[2:] / gf.params[2:] > 0.25), _se
+
+Each estimate is within two and a half standard errors of the values
+simulated, and the standard errors of :math:`m_1` and :math:`m_2` are more
+than a quarter of their estimates. On another sample of the same size the
+search can run off towards a limit of the family, :math:`m_1` or
+:math:`m_2` growing without bound, and SurPyval then warns that the
+likelihood has no finite maximum (see :doc:`Parametric Estimation`). Compare
+the generalised F with its special cases by likelihood ratio, as for the
+generalised gamma, before relying on it, or fix the degrees of freedom with
+``fixed``.
+
+**The inverse Gaussian** with mean :math:`\mu` and shape :math:`\lambda`
+has the survival function
+
+.. math::
+
+    R(t) = \Phi(-a) - e^{2\lambda/\mu}\, \Phi(-b), \qquad
+    a = \sqrt{\lambda/t}\,(t/\mu - 1), \quad
+    b = \sqrt{\lambda/t}\,(t/\mu + 1).
+
+Written as it stands, :math:`e^{2\lambda/\mu}` overflows and the difference
+loses its digits in the upper tail, so the recipe works in logs:
+:math:`\ln R = \ln\Phi(-a) + \ln\left(1 - e^{2\lambda/\mu + \ln\Phi(-b) -
+\ln\Phi(-a)}\right)`, with ``norm.logcdf`` from autograd's ``scipy``.
+
+.. jupyter-execute::
+
+    from autograd.scipy.stats import norm
+
+    def ig_Hf(x, mu, lam):
+        r = np.sqrt(lam / x)
+        log_a = norm.logcdf(-r * (x / mu - 1))
+        log_b = 2 * lam / mu + norm.logcdf(-r * (x / mu + 1))
+        return -(log_a + np.log1p(-np.exp(log_b - log_a)))
+
+    InvGauss = surv.CustomDistribution(
+        'InvGauss', ig_Hf, ['mu', 'lam'], ((0, None), (0, None)),
+        (0, np.inf))
+
+    # scipy's invgauss(mu / lam, scale=lam)
+    t_ig = np.array([0.05, 0.5, 2.0, 10.0, 60.0])
+    print(InvGauss.sf(t_ig, 2.0, 3.0))
+    print(stats.invgauss(2.0 / 3.0, scale=3.0).sf(t_ig))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _ref = stats.invgauss(2.0 / 3.0, scale=3.0)
+    assert np.allclose(InvGauss.sf(t_ig, 2.0, 3.0), _ref.sf(t_ig), rtol=1e-12)
+    assert np.allclose(InvGauss.hf(t_ig, 2.0, 3.0),
+                       _ref.pdf(t_ig) / _ref.sf(t_ig), rtol=1e-10)
+    # A long tail (mu / lam = 20), far out
+    assert np.allclose(InvGauss.sf(np.array([1e3]), 10.0, 0.5),
+                       stats.invgauss(20.0, scale=0.5).sf(1e3), rtol=1e-9)
+    # 2 lam / mu = 1000, where exp(2 lam / mu) alone overflows
+    _t = np.array([0.9, 1.0, 1.1])
+    assert np.allclose(InvGauss.sf(_t, 1.0, 500.0),
+                       stats.invgauss(1 / 500, scale=500.0).sf(_t),
+                       rtol=1e-9)
+
+The survival agrees with scipy's to twelve digits, out to a survival of
+about :math:`10^{-12}` at :math:`t = 60`. It fits with any censoring:
+
+.. jupyter-execute::
+
+    t_ig = stats.invgauss(2.0 / 3.0, scale=3.0).rvs(200, random_state=rng)
+    c_ig = (t_ig > 5).astype(int)
+    ig = InvGauss.fit(np.minimum(t_ig, 5.0), c=c_ig)
+    print(ig.params, ig.standard_errors())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(np.abs(ig.params - [2.0, 3.0]) < 2 * ig.standard_errors())
+    assert _ref.sf(60.0) < 1e-11, _ref.sf(60.0)
+
+The estimates are within two standard errors of the :math:`\mu = 2` and
+:math:`\lambda = 3` simulated.

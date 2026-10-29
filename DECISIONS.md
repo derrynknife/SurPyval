@@ -13,6 +13,15 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-10-29
 
+### Life tables: `life_table`
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A function, `surpyval.life_table(x, c, n, tl, intervals)`, returning a DataFrame, not a fitted model class. | proposed | A life table is a tabulation with estimates beside it, as `at_risk_table` is; Kaplan-Meier is the model for the same data. | done |
+| Intervals are `[start, end)`: an event or censoring on a boundary counts in the interval it starts; data beyond the last boundary goes in an open last interval, which has no density or hazard (as `KMsurv::lifetab`'s last interval). | proposed | Klein and Moeschberger's convention, and grouped data given at each interval's start falls in that interval. | done |
+| A late entrant is counted in `entered` in the interval it enters and as half at risk there, as a withdrawal is; entry exactly on a boundary is at risk from that interval's start. | proposed | The actuarial assumption applied to entries; with no late entry the table is the classical one. | done |
+| Left and interval censoring and right truncation are refused, pointing to `Turnbull`. | principle 2 | Their events are not known to fall in one interval. | done |
+
 ### Group comparisons and the global test
 
 | Decision | By | Reason | Status |
