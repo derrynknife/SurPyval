@@ -131,6 +131,35 @@ BOOT_WHY = (
 )
 
 
+def refuse_weighted_data(data: Any, what: str, why: str, instead: str) -> None:
+    """Refuse weighted ``data`` (a ``SurpyvalData`` with weights ``w``,
+    or a model fitted with them) in ``what``, which does not take weights
+    yet and would otherwise drop them or read them as counts: why, and
+    what to use instead."""
+    if getattr(data, "w", None) is None and not getattr(
+        data, "weighted", False
+    ):
+        return
+    raise WeightedRefusal(
+        f"{what} does not take weights (w), which this "
+        f"{type(data).__name__} holds: {why}. {instead}"
+    )
+
+
+#: Why a Bayesian fit refuses weighted data, and what to use instead.
+BAYES_WHY = (
+    "a posterior from the likelihood with each row raised to its weight "
+    "treats the weights as units seen, so its credible intervals would "
+    "depend on how the weights are scaled, and weighted Bayesian fitting "
+    "is not built yet"
+)
+BAYES_INSTEAD = (
+    "Fit by maximum likelihood with the weights (Weibull.fit(data)), "
+    "whose robust covariance gives valid Wald intervals, or fit the data "
+    "without its weights (SurpyvalData(data.x, data.c, data.n, data.t))."
+)
+
+
 def refuse_lr(what: str = "A likelihood-ratio bound") -> WeightedRefusal:
     return refuse_weighted(what, LR_WHY, USE_WALD)
 

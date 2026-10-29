@@ -66,7 +66,8 @@ def at_risk_table(
         {row: numpy array}}}``, one count per time. The counts are the
         same as those of ``plot_nonparametric`` (see its Notes for the
         definitions, including those for left and interval censored
-        data).
+        data). For an estimate with weights ``w`` they count the units
+        themselves, not their weights.
 
     Examples
     --------

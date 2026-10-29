@@ -260,24 +260,8 @@ class InferenceMixin:
         cov = np.zeros((n, n))
         if not free:
             return cov
-        step = self._hessian_step(p_hat)[free]
-        info = self._information
-        if info is not None and _same_point(info[0], point):
-            H = info[1]
-        else:
-            H = self._numerical_information(p_hat, center, free, step)
-        bad = not np.all(np.isfinite(H))
-        if not bad:
-            # Invert in step-scaled coordinates: with a parameter many
-            # orders of magnitude from the others the raw information
-            # matrix is too ill-conditioned to invert directly.
-            try:
-                cov_free = np.linalg.inv(H * np.outer(step, step)) * np.outer(
-                    step, step
-                )
-            except np.linalg.LinAlgError:
-                bad = True
-        if bad:
+        cov_free = self._inverse_information(p_hat, center, free)
+        if cov_free is None:
             warn_no_covariance()
             return np.full((n, n), np.nan)
         cov[np.ix_(free, free)] = cov_free
@@ -287,17 +271,48 @@ class InferenceMixin:
         self._covariance_cache = (point, cov.copy())
         return cov
 
+    def _inverse_information(
+        self, p_hat: npt.NDArray, center: npt.NDArray | None, free: list
+    ) -> npt.NDArray | None:
+        """The inverse of the Hessian of the negative log-likelihood (the
+        weighted one, for a fit with weights) in the ``free`` parameters
+        at ``p_hat``, the baseline at ``center``: the exact Hessian the
+        fit kept (``_information``) if it was computed at that point, else
+        a numerical one. None where it is not finite or not invertible."""
+        point = self._covariance_point(p_hat, center)
+        step = self._hessian_step(p_hat)[free]
+        info = self._information
+        if info is not None and _same_point(info[0], point):
+            H = info[1]
+        else:
+            H = self._numerical_information(p_hat, center, free, step)
+        if not np.all(np.isfinite(H)):
+            return None
+        # Invert in step-scaled coordinates: with a parameter many orders
+        # of magnitude from the others the raw information matrix is too
+        # ill-conditioned to invert directly.
+        try:
+            return np.linalg.inv(H * np.outer(step, step)) * np.outer(
+                step, step
+            )
+        except np.linalg.LinAlgError:
+            return None
+
     def _robust_covariance(
         self,
         p_hat: npt.NDArray,
         center: npt.NDArray | None,
         free: list,
         cov: npt.NDArray,
+        group: npt.NDArray | None = None,
     ) -> npt.NDArray:
         """The robust (sandwich) covariance of a fit with weights ``w``:
         ``cov`` (the inverse of the weighted information) on either side
         of the meat ``sum n w^2 s s'`` of the rows' scores in the free
-        parameters (``surpyval.utils.weights``)."""
+        parameters (``surpyval.utils.weights``). With ``group``, each row's
+        cluster (an integer from 0, one per row of the data), the meat is
+        ``sum_g u_g u_g'`` instead, ``u_g`` the sum of ``n w s`` over
+        cluster ``g``'s rows."""
         from surpyval.utils.weights import row_scores, sandwich
 
         data = self.data
@@ -319,7 +334,16 @@ class InferenceMixin:
         out = np.zeros_like(cov)
         weights = data.likelihood_weights
         assert weights is not None
-        out[np.ix_(free, free)] = sandwich(bread, scores, data.n, weights)
+        if group is None:
+            out[np.ix_(free, free)] = sandwich(bread, scores, data.n, weights)
+            return out
+        import numpy as onp
+
+        omega = onp.asarray(data.n, dtype=float) * weights
+        sums = onp.zeros((int(group.max()) + 1, scores.shape[1]))
+        onp.add.at(sums, group, omega[:, None] * scores)
+        clustered = bread @ (sums.T @ sums) @ bread
+        out[np.ix_(free, free)] = 0.5 * (clustered + clustered.T)
         return out
 
     def _covariance_point(
@@ -434,6 +458,12 @@ class InferenceMixin:
         ``n = 3`` is three independent units, and with it the three share
         the row's label. A fixed parameter's row and column are 0, and an
         aliased coefficient's ``nan``, as in :meth:`covariance`.
+
+        For a fit with weights ``w``, :meth:`covariance` already is the
+        robust (sandwich) covariance, and this is the same matrix without
+        ``cluster``; with it, the weighted scores ``n w s`` are summed
+        within each cluster (R's ``survreg(..., weights = w, robust =
+        TRUE)`` with ``cluster()``).
 
         Only the standard errors change: the estimates are the maximum
         likelihood ones, and :meth:`cb`, :meth:`param_cb` and

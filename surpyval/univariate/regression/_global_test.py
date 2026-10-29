@@ -14,6 +14,25 @@ if TYPE_CHECKING:
     )
 
 
+def refuse_weighted_test(model: Any) -> None:
+    """Refuse the likelihood-ratio test of a fit with weights ``w``: the
+    statistic of a weighted pseudo-likelihood is not chi-squared (it
+    grows with the scale of the weights), so its p-value means nothing."""
+    if not getattr(model, "weighted", False):
+        return
+    from surpyval.utils.weights import LR_WHY, refuse_weighted
+
+    raise refuse_weighted(
+        "likelihood_ratio_test",
+        LR_WHY + " (it changes with the scale of the weights)",
+        "Use Wald tests on the robust covariance instead: the p values of "
+        "summary() (or p_values) test each coefficient, and "
+        "b' V^-1 b, with b the coefficients and V their block of "
+        "covariance(), is chi-squared on len(b) degrees of freedom for "
+        "them together.",
+    )
+
+
 def _result(ll: float, ll_null: float, df: int) -> dict:
     from scipy.stats import chi2
 
@@ -23,9 +42,20 @@ def _result(ll: float, ll_null: float, df: int) -> dict:
             "fixed or aliased), so there is nothing to test against the "
             "model without covariates."
         )
+    gain = ll - ll_null
+    if gain < -1e-6 * max(1.0, abs(ll)):
+        # The null model is inside the fitted one, so a fit at its
+        # maximum is never worse; a clearly worse one did not reach it.
+        raise ValueError(
+            "likelihood_ratio_test: the model without covariates has a "
+            f"higher log-likelihood ({ll_null:.6g}) than the fitted model "
+            f"({ll:.6g}), so the fit did not reach its maximum and the "
+            "test would be meaningless. Refit from other starting values "
+            "(init=) and check the fit's convergence."
+        )
     # The fit maximises over a larger set than the null model, so the
     # statistic is not negative; a tiny negative value is round-off.
-    statistic = max(2.0 * (ll - ll_null), 0.0)
+    statistic = max(2.0 * gain, 0.0)
     return {
         "statistic": float(statistic),
         "df": int(df),
@@ -42,6 +72,7 @@ def cox_likelihood_ratio_test(model: SemiParametricRegressionModel) -> dict:
     from ._penalised import refuse_lr_test
 
     refuse_lr_test(model)
+    refuse_weighted_test(model)
     neg_ll_of = getattr(model, "neg_ll_of", None)
     if neg_ll_of is None or getattr(model, "_neg_ll", None) is None:
         raise ValueError(
@@ -66,6 +97,7 @@ def parametric_likelihood_ratio_test(
     from .parametric_regression_model import _SERIALISABLE_REG_NAMES
 
     refuse_lr_test(model)
+    refuse_weighted_test(model)
     if not model._is_linear_predictor() or (
         model.reg_model.name not in _SERIALISABLE_REG_NAMES
     ):

@@ -17,7 +17,10 @@ the rows). The values were computed once and are stored here:
   ``~ z1 + z2`` (``coef``, ``log(scale)``, ``sqrt(diag(vcov))``);
   ``coxph(Surv(x, d) ~ z1 + z2, weights = w, robust = TRUE, ties = ...)``,
   with ``Surv(tl, x, d)`` and ``id = id``, and with ``+ cluster(cl)``
-  (``cl = (id - 1) %/% 4``); ``svycoxph`` on ``svydesign(ids = ~1,
+  (``cl = (id - 1) %/% 4``), and ``survreg(Surv(x, d) ~ z1 + z2 +
+  cluster(cl), weights = w, robust = TRUE, dist = ...)`` (R 4.4.2,
+  ``survival`` 3.8.3; its unclustered values equal 3.8.12's above);
+  ``svycoxph`` on ``svydesign(ids = ~1,
   weights = ~w)``, whose standard errors are R ``survival``'s times
   ``sqrt(n / (n - 1))``, the survey package's finite-sample factor, which
   SurPyval (as ``survival``) does not apply.
@@ -115,6 +118,16 @@ R_COX_TRUNCATED = (
     [0.480453994661017, 0.241024675928827],
 )
 R_COX_CLUSTER_SE = [0.678374922893751, 0.138051802381629]
+# survreg(... + cluster(cl), weights = w, robust = TRUE): the standard
+# errors of (Intercept), z1, z2 and Log(scale)
+R_AFT_CLUSTER_SE = {
+    "Weibull": [0.251976433689535, 0.432836073664428, 0.125109406853725,
+                0.131727088477561],
+    "LogNormal": [0.288480976099690, 0.475653620203211, 0.115085366985270,
+                  0.237485354537948],
+}  # fmt: skip
+R_LOGNORMAL_AFT_SE = [0.279629845800538, 0.404547454386976,
+                      0.132959957833004, 0.244599283596568]  # fmt: skip
 SURVEY_COX_SE = [0.478923222782169, 0.242928255789650]
 
 LIFELINES_KM = [
@@ -278,3 +291,66 @@ def test_coxph_cluster(data):
 def test_coxph_matches_lifelines(data):
     model = sp.CoxPH.fit(data["x"], data["Z"], c=data["c"], w=data["w"])
     assert_allclose(model.params, LIFELINES_COX, rtol=0, atol=1e-6)
+
+
+def _aft_se_on_survreg_scale(name, model, cov):
+    """The standard errors of ``cov`` (of ``model.params``) on survreg's
+    scale: (Intercept), z1, z2, Log(scale)."""
+    p = np.asarray(model.params, dtype=float)
+    J = np.zeros((4, 4))
+    if name == "Weibull":  # alpha, beta, b1, b2
+        J[0, 0], J[3, 1] = 1 / p[0], -1 / p[1]
+    else:  # LogNormal: mu, sigma, b1, b2
+        J[0, 0], J[3, 1] = 1.0, 1 / p[1]
+    # SurPyval's AFT coefficients are minus R's
+    J[1, 2], J[2, 3] = -1, -1
+    return np.sqrt(np.diag(J @ cov @ J.T))
+
+
+@pytest.mark.parametrize("name", list(R_AFT_CLUSTER_SE))
+def test_aft_robust_covariance_of_weighted_fit(data, name):
+    # robust_covariance() of a weighted fit is the weighted sandwich, the
+    # same as covariance(); with cluster= the weighted scores are summed
+    # within each cluster (R's survreg with weights and cluster()). It
+    # used to wrap the sandwich in a second one and drop the weights.
+    model = getattr(sp, name + "AFT").fit(
+        data["x"], data["Z"], c=data["c"], w=data["w"]
+    )
+    assert_allclose(model.robust_covariance(), model.covariance(), rtol=0)
+    ref = R_AFT[1] if name == "Weibull" else R_LOGNORMAL_AFT_SE
+    se = _aft_se_on_survreg_scale(name, model, model.robust_covariance())
+    assert_allclose(se, ref, rtol=2e-4)
+    cluster = np.arange(len(data["x"])) // 4
+    se = _aft_se_on_survreg_scale(
+        name, model, model.robust_covariance(cluster)
+    )
+    assert_allclose(se, R_AFT_CLUSTER_SE[name], rtol=2e-4)
+    table = model.summary(robust=True, cluster=cluster)
+    assert_allclose(
+        table["se(coef)"].to_numpy(),
+        model.robust_standard_errors(cluster),
+        rtol=1e-12,
+    )
+    # Each row its own cluster is no clustering at all
+    assert_allclose(
+        model.robust_covariance(np.arange(len(data["x"]))),
+        model.covariance(),
+        rtol=1e-10,
+        atol=1e-14,
+    )
+
+
+def test_coxph_robust_summary_of_weighted_fit(data):
+    # summary(robust=True) of a weighted Cox fit used to fail on a
+    # missing attribute ('jac'): its robust standard errors are the
+    # weighted Lin-Wei ones, R's coxph(..., weights = w, robust = TRUE),
+    # and with cluster= R's + cluster(cl).
+    model = sp.CoxPH.fit(data["x"], data["Z"], c=data["c"], w=data["w"])
+    table = model.summary(robust=True)
+    assert_allclose(table["se(coef)"].to_numpy(), R_COX["efron"][1], rtol=1e-6)
+    cluster = np.arange(len(data["x"])) // 4
+    table = model.summary(robust=True, cluster=cluster)
+    assert_allclose(table["se(coef)"].to_numpy(), R_COX_CLUSTER_SE, rtol=1e-6)
+    assert_allclose(
+        model.robust_summary(cluster)["se"], R_COX_CLUSTER_SE, rtol=1e-6
+    )

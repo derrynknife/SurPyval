@@ -432,7 +432,9 @@ def robust_summary(
     from scipy.stats import norm
 
     beta = np.asarray(model.beta, dtype=float)
-    cov = robust_covariance(model, cluster)
+    # The model's own method: a weighted fit's is the weighted Lin-Wei
+    # sandwich (``_weighted_cox``), which the residuals here do not give.
+    cov = model.robust_covariance(cluster)
     se = np.sqrt(np.diag(cov))
     with np.errstate(invalid="ignore", divide="ignore"):
         z = beta / se

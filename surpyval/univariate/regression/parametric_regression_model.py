@@ -1772,7 +1772,10 @@ class ParametricRegressionModel(
         ValueError
             For an accelerated life model or a custom link, a model
             restored with ``from_dict`` (it does not carry the data), or
-            one with no estimated coefficient.
+            one with no estimated coefficient. For a fit with weights
+            ``w`` (a ``WeightedRefusal``): the ratio of a weighted
+            pseudo-likelihood is not chi-squared; use the Wald tests of
+            :meth:`summary`, on the robust covariance.
 
         Examples
         --------

@@ -1150,6 +1150,13 @@ def from_data(
         data = x
     else:
         data = SurpyvalData(x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)
+    from surpyval.utils.weights import (
+        BAYES_INSTEAD,
+        BAYES_WHY,
+        refuse_weighted_data,
+    )
+
+    refuse_weighted_data(data, "prior.from_data", BAYES_WHY, BAYES_INSTEAD)
     return PowerPrior(data, weight=weight, dist=dist)
 
 

@@ -307,7 +307,11 @@ class SemiParametricRegressionModel(
         ------
         ValueError
             For a model restored with ``from_dict`` (it does not carry the
-            data), or one with no estimated coefficient.
+            data), or one with no estimated coefficient. For a fit with
+            weights ``w`` (a ``WeightedRefusal``): the ratio of a weighted
+            partial pseudo-likelihood is not chi-squared, and changes with
+            the scale of the weights; use the Wald tests of
+            :meth:`summary`, on the robust covariance.
 
         Examples
         --------
