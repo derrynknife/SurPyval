@@ -55,6 +55,9 @@ class WeightedCase:
     #: test name -> reason: a property this case is known to fail (a
     #: suspected bug, kept as a strict xfail until it is fixed)
     xfail: dict = field(default_factory=dict)
+    #: False where the outcome of a known failure depends on the numpy /
+    #: scipy build, so that either outcome passes
+    xfail_strict: bool = True
 
 
 def _np(fitter):
@@ -182,6 +185,9 @@ WEIGHTED = [
         },
         covariates=True,
         rtol=5e-3,
+        # Non-strict: where the optimiser stops depends on the numpy /
+        # scipy build (docs/Contributing.rst, NON_STRICT).
+        xfail_strict=False,
         xfail={
             name: (
                 "AcceleratedLife's fit stops after one TNC iteration on "
@@ -275,13 +281,18 @@ IDS = [case.name for case in WEIGHTED]
 
 def _cases(test):
     """``WEIGHTED`` as parameters of ``test``, each case known to fail it
-    marked a strict xfail with its reason."""
+    marked an xfail (strict unless the case says otherwise) with its
+    reason."""
     return [
         pytest.param(
             case,
             id=case.name,
             marks=(
-                [pytest.mark.xfail(strict=True, reason=case.xfail[test])]
+                [
+                    pytest.mark.xfail(
+                        strict=case.xfail_strict, reason=case.xfail[test]
+                    )
+                ]
                 if test in case.xfail
                 else []
             ),
