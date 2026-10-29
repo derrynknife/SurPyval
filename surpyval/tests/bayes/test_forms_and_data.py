@@ -287,6 +287,61 @@ def test_var_of_a_limited_failure_population_is_infinite():
         assert m.var() == np.inf
 
 
+@pytest.mark.parametrize("which", ["offset_fit", "zi_fit"])
+def test_moment_refuses_the_offset_and_zero_inflated_forms(request, which):
+    """audit B8: ``moment(n)`` takes the plain form only, and its refusal
+    points to ``mean()`` and ``var()`` (DECISIONS.md, 2026-10-29)."""
+    fit = request.getfixturevalue(which)
+    with pytest.raises(ValueError, match="var"):
+        fit.moment(2)
+
+
+def test_moment_of_a_plain_fit_gives_the_mean_and_variance():
+    """audit B8: on a plain fit the first raw moment is the mean and the
+    second less the first squared is the variance."""
+    m = sp.Weibull.fit_bayes(
+        X_OFF - 300, priors={"beta": prior.between(1.5, 3)}
+    )
+    assert m.moment(1) == pytest.approx(m.mean())
+    assert m.moment(2) - m.moment(1) ** 2 == pytest.approx(m.var(), rel=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# random() of the limited-failure and zero-inflated predictive
+# ---------------------------------------------------------------------------
+SHAPE = {"beta": prior.around(2, between=(1.5, 3))}
+
+
+def test_random_of_a_limited_failure_fit_never_fails_at_its_share():
+    """audit B15: the share of a limited-failure predictive's draws that
+    never fail (``inf``) is about ``1 - lfp_p`` (seen 0.111 against
+    0.093)."""
+    xs = sp.Weibull.random(30, 100, 2, random_state=5)
+    m = sp.Weibull.fit_bayes(
+        np.minimum(xs, 150),
+        (xs > 150).astype(int),
+        lfp=True,
+        priors={**SHAPE, "lfp_p": prior.between(0.5, 0.95)},
+    )
+    r = m.random(4000, random_state=1)
+    assert np.mean(np.isinf(r)) == pytest.approx(
+        1 - m.extras["lfp_p"], abs=0.05
+    )
+
+
+def test_random_of_a_zero_inflated_fit_is_zero_at_its_share():
+    """audit B15: the share of a zero-inflated predictive's draws that
+    are exactly 0 is about ``f0`` (seen 0.201 against 0.193)."""
+    xs = sp.Weibull.random(30, 100, 2, random_state=5)
+    rng = np.random.default_rng(5)
+    xz = np.where(rng.uniform(size=30) < 0.2, 0.0, xs)
+    m = sp.Weibull.fit_bayes(
+        xz, zi=True, priors={**SHAPE, "f0": prior.between(0.05, 0.5)}
+    )
+    r = m.random(4000, random_state=1)
+    assert np.mean(r == 0) == pytest.approx(m.extras["f0"], abs=0.05)
+
+
 # ---------------------------------------------------------------------------
 # A power prior's information counts for the checks on flat priors
 # ---------------------------------------------------------------------------
@@ -490,3 +545,79 @@ def test_an_offset_prior_the_data_agree_with_raises_no_conflict():
         warnings.simplefilter("error")
         m = sp.Weibull.fit_bayes(X_OFF, offset=True, priors=OFF_PRIORS)
     assert 200 < m.posterior.quantile("gamma", 0.5) < 500
+
+
+# ---------------------------------------------------------------------------
+# The extra parameters carried into extras and draw_models
+# ---------------------------------------------------------------------------
+@pytest.fixture(scope="module")
+def lfp_fit():
+    xs = sp.Weibull.random(30, 100, 2, random_state=5)
+    return sp.Weibull.fit_bayes(
+        np.minimum(xs, 150),
+        (xs > 150).astype(int),
+        lfp=True,
+        priors={**SHAPE, "lfp_p": prior.between(0.5, 0.95)},
+    )
+
+
+@pytest.mark.parametrize(
+    "which, name",
+    [("offset_fit", "gamma"), ("zi_fit", "f0"), ("lfp_fit", "lfp_p")],
+)
+def test_extras_and_draw_models_carry_the_extra_parameter(
+    request, which, name
+):
+    """audit B22: ``extras`` holds the offset, zero-inflation or
+    limited-failure parameter as a float, and each model from
+    ``draw_models`` carries that parameter's value from its draw, with a
+    finite reliability."""
+    m = request.getfixturevalue(which)
+    assert list(m.extras) == [name]
+    assert isinstance(m.extras[name], float)
+    models = m.draw_models(5, random_state=1)
+    draws = m.posterior.draws(5, random_state=1)
+    col = m.posterior.parameter_names.index(name)
+    for model, row in zip(models, draws):
+        assert type(model).__name__ == "Parametric"
+        assert getattr(model, name) == row[col]
+        assert np.all(np.isfinite(model.sf([100.0, 800.0])))
+
+
+# ---------------------------------------------------------------------------
+# ff of the offset and zero-inflated predictive
+# ---------------------------------------------------------------------------
+def _ff_agrees_with_sf(m, x):
+    np.testing.assert_allclose(m.ff(x), 1 - m.sf(x), rtol=0, atol=1e-12)
+    np.testing.assert_allclose(
+        m.cri(x, on="ff"),
+        1 - m.cri(x, on="sf")[..., ::-1],
+        rtol=0,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(m.Hf(x), -np.log(m.sf(x)), rtol=1e-12)
+
+
+def test_ff_of_the_offset_predictive(offset_fit):
+    """audit B23: with an offset, ``ff`` is ``1 - sf`` below, just above
+    and inside the offsets (its interval too, ends swapped), ``Hf`` is
+    ``-log sf``, and ``ff`` is 0 below every posterior point's offset."""
+    m = offset_fit
+    g = m.posterior.points[:, m.posterior.parameter_names.index("gamma")]
+    x = np.array([g.min() - 1.0, g.max() + 1.0, 800.0])
+    _ff_agrees_with_sf(m, x)
+    # (0 to the rounding of the posterior's weighted sum)
+    assert m.ff(x[0]) == pytest.approx(0.0, abs=1e-12)
+    assert 0 < m.ff(x[1]) < m.ff(x[2]) < 1
+
+
+def test_ff_of_the_zero_inflated_predictive(zi_fit):
+    """audit B23: with zero inflation, ``ff`` is ``1 - sf`` (its interval
+    too), ``Hf`` is ``-log sf``, ``ff`` is 0 before 0, and the mass at 0
+    belongs to ``ff``: ``ff(0)`` is the posterior mean of ``f0``."""
+    m = zi_fit
+    x = np.array([-1.0, 0.0, 1e-3, 300.0])
+    _ff_agrees_with_sf(m, x)
+    f0 = m.posterior.points[:, m.posterior.parameter_names.index("f0")]
+    assert m.ff(-1.0) == pytest.approx(0.0, abs=1e-12)
+    assert m.ff(0.0) == pytest.approx(m.posterior.weights @ f0, rel=1e-9)
