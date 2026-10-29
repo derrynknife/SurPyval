@@ -28,6 +28,7 @@ import pytest
 
 import surpyval
 from surpyval import (
+    AalenAdditive,
     AcceleratedLife,
     AdditiveHazards,
     BuckleyJames,
@@ -312,6 +313,9 @@ def _build(name):
         "frailty": _frailty,
         "cox_frailty": _cox_frailty,
         "additive_hazards": lambda: AdditiveHazards.fit(*_semipar_data(2)[:2]),
+        "aalen_additive": lambda: AalenAdditive.fit(
+            *_semipar_data(5)[:2], c=_semipar_data(5)[2]
+        ),
         "buckley_james": lambda: BuckleyJames.fit(*_semipar_data(3)[:2]),
         "proportional_odds": lambda: ProportionalOdds.fit(*_semipar_data(4)),
         "mixture": _mixture,
@@ -398,6 +402,7 @@ CASES = [
     "frailty",
     "cox_frailty",
     "additive_hazards",
+    "aalen_additive",
     "buckley_james",
     "proportional_odds",
     "mixture",
