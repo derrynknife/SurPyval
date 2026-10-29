@@ -692,3 +692,20 @@ def test_information_criteria_count_the_effective_df(kind):
     assert model.aic_c() == pytest.approx(
         2 * k + 2 * nll + 2 * k * (k + 1) / (n_events - k - 1)
     )
+
+
+def test_time_unit_does_not_change_the_coefficients():
+    # Principle 6: the coefficients are log ratios, so a penalty on them
+    # does not depend on the unit of time (weeks or days here).
+    x, c, Z = _rossi()
+    for fitter in (CoxPH, WeibullPH, WeibullAFT):
+        weeks = fitter.fit_penalised(x, Z, c=c, penalizer=0.03, l1_ratio=0.5)
+        days = fitter.fit_penalised(
+            7 * x, Z, c=c, penalizer=0.03, l1_ratio=0.5
+        )
+        np.testing.assert_array_equal(
+            weeks.params[-7:] == 0, days.params[-7:] == 0
+        )
+        np.testing.assert_allclose(
+            weeks.params[-7:], days.params[-7:], rtol=1e-6, atol=1e-9
+        )
