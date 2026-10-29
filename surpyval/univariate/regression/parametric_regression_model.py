@@ -236,6 +236,10 @@ class ParametricRegressionModel(
     _restored_inference: tuple | None = None
     #: True on models rebuilt by :meth:`from_dict`, which carry no data.
     _restored: bool = False
+    #: What a penalised fit (``fit_penalised``) penalised; ``None`` for a
+    #: maximum likelihood fit. A penalised model has no covariance,
+    #: standard errors, confidence bounds or tests.
+    penalty: Any = None
     #: The printout's "Data" line of a model rebuilt by :meth:`from_dict`
     #: (#508).
     _data_summary: str | None = None
@@ -419,6 +423,8 @@ class ParametricRegressionModel(
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = float(self._neg_ll)
         out.update(maximum_entry(self.maximum))
+        if self.penalty is not None:
+            out["penalty"] = self.penalty.to_dict()
         # The sample size of bic() and aic_c(), which the restored model,
         # having no data, could not otherwise compute.
         ic_n = self._ic_sample_size_or_none()
@@ -685,6 +691,10 @@ class ParametricRegressionModel(
         if "_neg_ll" in model_dict:
             out._neg_ll = float(model_dict["_neg_ll"])
         out.maximum = restored_maximum(model_dict)
+        if "penalty" in model_dict:
+            from ._penalised import Penalty
+
+            out.penalty = Penalty.from_dict(model_dict["penalty"])
         # Dicts written before "ic_n" existed carry no sample size, and
         # bic() / aic_c() then say they need the data.
         out._ic_n = cls._restored_ic_n(model_dict)
@@ -1124,6 +1134,10 @@ class ParametricRegressionModel(
             out += "\nFixed               : {}".format(
                 ", ".join(f"{k} = {v:.6g}" for k, v in fixed.items())
             )
+        if self.penalty is not None:
+            from ._penalised import penalty_line
+
+            out += "\nPenalty             : " + penalty_line(self.penalty)
         table = self.summary()
         estimates = {
             "coef": "estimate",
@@ -1987,6 +2001,12 @@ class ParametricRegressionModel(
         if data is None or getattr(data, "Z", None) is None:
             return "the model does not hold the data it was fitted to"
         return np.asarray(data.Z, dtype=float), np.asarray(data.n, float)
+
+    def _ic_k(self) -> float:
+        # A penalised fit counts its effective number of parameters.
+        if self.penalty is not None:
+            return float(self.penalty.effective_df)
+        return self.k
 
     def _partial_effects_times(self) -> npt.NDArray | None:
         data = getattr(self, "data", None)

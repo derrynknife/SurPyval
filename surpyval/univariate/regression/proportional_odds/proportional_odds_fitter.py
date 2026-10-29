@@ -23,6 +23,7 @@ from .._fit_skeleton import (
 )
 from .._kinds import PROPORTIONAL_ODDS
 from .._likelihood import regression_neg_ll
+from .._penalised_fit import PenalisedFitMixin
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin, truncation_window
 from ..tvc_fit import TVCFitMixin
@@ -31,7 +32,10 @@ _TINY = float(np.finfo(float).tiny)
 
 
 class ProportionalOddsFitter(
-    MirroredDistributionAttrs, TVCFitMixin, DataFrameRegressionMixin
+    MirroredDistributionAttrs,
+    TVCFitMixin,
+    DataFrameRegressionMixin,
+    PenalisedFitMixin,
 ):
     """
     Proportional Odds model fitter using :math:`\\phi = e^{\\beta' Z}` as
@@ -61,6 +65,7 @@ class ProportionalOddsFitter(
 
     #: The ``repr`` (#614)
     fitter_kind = "proportional odds fitter"
+    _penalised_kind = PROPORTIONAL_ODDS
     name_suffix = "PO"
 
     def __init__(self, distribution: Any) -> None:

@@ -29,6 +29,7 @@ from surpyval.utils.validation import check_alpha_ci, no_covariance_error
 
 from ._concordance import ConcordanceMixin
 from ._partial_effects import PartialEffectsMixin
+from ._penalised import penalty_line
 from ._prediction import (
     ConditionalSurvivalMixin,
     paired_probabilities,
@@ -48,6 +49,8 @@ from .regression_data import (
 
 if TYPE_CHECKING:
     import pandas as pd
+
+    from ._penalised import Penalty
 
 
 class SemiParametricRegressionModel(
@@ -196,6 +199,10 @@ class SemiParametricRegressionModel(
     #: (#259 — used to align user-supplied cluster labels).
     tvc_subject_ids: npt.NDArray | None = None
     tvc_row_order: npt.NDArray | None = None
+    #: What a penalised fit (``CoxPH.fit_penalised``) penalised; ``None``
+    #: for a maximum partial likelihood fit. A penalised model has no
+    #: covariance, standard errors or tests.
+    penalty: Penalty | None = None
 
     #: The model (``"Cox"``) and ``"Semi-Parametric"``, which the
     #: printout shows and ``to_dict`` stores.
@@ -324,7 +331,10 @@ class SemiParametricRegressionModel(
 
         return cox_likelihood_ratio_test(self)
 
-    def _ic_k(self) -> int:
+    def _ic_k(self) -> float:
+        # A penalised fit counts its effective number of parameters.
+        if self.penalty is not None:
+            return float(self.penalty.effective_df)
         # The estimated coefficients: an aliased one (nan) is not, as R's
         # logLik(coxph) counts sum(!is.na(coef)).
         return int(onp.isfinite(onp.asarray(self.params, float)).sum())
@@ -418,6 +428,8 @@ class SemiParametricRegressionModel(
         tie_method = getattr(self, "tie_method", None)
         if tie_method is not None:
             out += f"\nTie method          : {tie_method}"
+        if self.penalty is not None:
+            out += "\nPenalty             : " + penalty_line(self.penalty)
         if self.weighted:
             out += (
                 "\nWeights             : effective sample size "
@@ -567,6 +579,8 @@ class SemiParametricRegressionModel(
         if ic_n is not None:
             out["ic_n"] = ic_n
         out.update(maximum_entry(self.maximum))
+        if self.penalty is not None:
+            out["penalty"] = self.penalty.to_dict()
         # The printout's "Data" line (#508), so the restored model prints
         # the same; the data themselves are not stored.
         if self._data_repr():
@@ -639,6 +653,10 @@ class SemiParametricRegressionModel(
                 break
         out._ic_n = cls._restored_ic_n(model_dict)
         out.maximum = restored_maximum(model_dict)
+        if "penalty" in model_dict:
+            from ._penalised import Penalty
+
+            out.penalty = Penalty.from_dict(model_dict["penalty"])
         restore_covariate_meta(out, model_dict)
         return out
 
@@ -1022,6 +1040,7 @@ class SemiParametricRegressionModel(
         array([[ 0.036044, -0.000149],
                [-0.000149,  0.000436]])
         """
+        self._refuse_if_penalised()
         if self._covariance is None:
             raise no_covariance_error(
                 "it was saved before the covariance was stored; "
@@ -1046,6 +1065,7 @@ class SemiParametricRegressionModel(
         >>> model.standard_errors().round(4)
         array([0.1899, 0.0209])
         """
+        self._refuse_if_penalised()
         if self._covariance is not None:
             return standard_errors_of(self._covariance)
         if self._se is not None:
@@ -1064,6 +1084,7 @@ class SemiParametricRegressionModel(
         :func:`~surpyval.univariate.regression.proportional_hazards.
         diagnostics.robust_covariance`.
         """
+        self._refuse_if_penalised()
         lik = getattr(self, "_weighted_cox", None)
         if self.weighted and lik is not None:
             from .proportional_hazards._weighted_cox import (
@@ -1085,6 +1106,14 @@ class SemiParametricRegressionModel(
 
         return robust_covariance(self, cluster)
 
+    def _refuse_if_penalised(self) -> None:
+        """Raise for a penalised model, which has no covariance, standard
+        errors or tests (:mod:`.._penalised`)."""
+        if self.penalty is not None:
+            from ._penalised import no_inference_error
+
+            raise no_inference_error(self.penalty)
+
     def robust_summary(self, cluster: npt.ArrayLike | None = None) -> dict:
         """
         Cluster-robust standard errors, z-scores and p-values for the
@@ -1093,6 +1122,7 @@ class SemiParametricRegressionModel(
         """
         from .proportional_hazards.diagnostics import robust_summary
 
+        self._refuse_if_penalised()
         return robust_summary(self, cluster)
 
     def predict_tvc(

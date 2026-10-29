@@ -153,11 +153,11 @@ class InformationCriteriaMixin:
         value: Any = model_dict.get("ic_n")
         return None if value is None else float(value)
 
-    def _ic_k(self) -> int:
+    def _ic_k(self) -> float:
         # The parameter count used in the aic and bic penalties.
         return self.k
 
-    def _ic_k_aic_c(self) -> int:
+    def _ic_k_aic_c(self) -> float:
         # The parameter count used in the aic_c correction term; the same
         # as the aic penalty it corrects unless a host overrides it.
         return self._ic_k()

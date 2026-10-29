@@ -13,6 +13,23 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-10-29
 
+### Penalised regression
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A new method, `fit_penalised(..., penalizer, l1_ratio, standardise)`, on `CoxPH` and the PH, AFT and PO fitters, rather than new arguments to `fit`. | proposed | `fit` keeps its signature; a penalised fit is a different estimator with different inference. | proposed |
+| `penalizer` and `l1_ratio` are lifelines' names (glmnet's `lambda`, `alpha`), with glmnet's objective (mean negative log-likelihood plus the penalty); `N` is the sum of the counts. | principle 5, 16 | The established references; counts equal repetition. | proposed |
+| `standardise=True` by default, dividing by the count-weighted sd with divisor `N` (glmnet's; lifelines uses `N - 1`); coefficients reported in the covariates' units. | principle 6, 16 | The penalty should not depend on units. | proposed |
+| No covariance, standard errors, bounds or p-values for a penalised model: each raises, saying why and what to do; `summary()` shows `nan`. | every-bound rule, principle 17 | Penalised Wald intervals do not have their stated coverage. | proposed |
+| `aic`/`bic` count the effective degrees of freedom `tr[H (H + P)^-1]` over the parameters not at 0 (Gray 1992). | proposed | The lasso's count of non-zero coefficients, and the usual ridge df. | proposed |
+| `CoxPH.fit_penalised(..., strata=)`: the stratified partial likelihood, one set of coefficients and a baseline per stratum; `N` is the units over every stratum and the covariates are centred and standardised over all the rows. | proposed | glmnet's `stratifySurv`, which it matches to 1e-6; the penalty's scale should not change with how the units are split into strata. | done |
+| Start-stop (delayed entry) rows in penalised Cox: `N` is the number of rows weighted by `n`, not of subjects, and the standardisation is over rows. | proposed | glmnet's convention for `Surv(start, stop, event)`, the reference it is checked against; documented, since a subject with many rows weighs more in the penalty's scale. | done |
+| Penalised Cox refuses right truncation (`tr`, or a `t` with a finite upper bound), naming the parametric penalised fits, which take left, right and both. A `t` with no upper bound is read as `tl`. | principle 2 | The partial likelihood has no term for right truncation, as for `CoxPH.fit`. | done |
+| Weights `w` are refused by `fit_penalised` (Cox and parametric), with a message, for now. Follow-up: support them with `N` the sum of `w * n` and `w`-weighted standardisation (so rescaling the weights changes nothing), checked against glmnet's Cox `weights`; the information criteria stay refused for weighted fits, as elsewhere. | proposed | Clean support needs the weighted likelihoods' own paths (the weighted Cox partial likelihood and its ties), a reference check and a decision on what the effective df means under weights; refusing is better than a penalty whose scale silently depends on how the weights are normalised. | open |
+| A penalised model refuses the robust (sandwich) covariance and standard errors, `summary(robust=True)` and `likelihood_ratio_test`, each saying why and to refit unpenalised. | every-bound rule, principle 17 | The sandwich of a biased estimate is not its covariance, and the likelihood-ratio statistic of a penalised fit is not chi-squared. | done |
+| The penalty does not depend on the time unit for the models given `fit_penalised` (Cox, PH, AFT, PO): their coefficients are log ratios. An additive hazards model's coefficients are rates (1/time), so a penalty there would; that is to be settled if it is given one. | proposed | Recorded so that extending it does not miss it. | done |
+| Not built yet: a coefficient path over `penalizer` and a way to choose it. | proposed | Left for a later change. | open |
+
 ### Life tables: `life_table`
 
 | Decision | By | Reason | Status |

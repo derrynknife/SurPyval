@@ -492,6 +492,122 @@ def _require_an_event(c: npt.NDArray, n: npt.NDArray) -> None:
         )
 
 
+def _stratified_rows(
+    x: npt.ArrayLike,
+    Z: npt.ArrayLike,
+    c: npt.ArrayLike | None,
+    n: npt.ArrayLike | None,
+    tl: npt.ArrayLike | None,
+    tie_method: str,
+    strata: npt.ArrayLike,
+) -> tuple[npt.NDArray, list]:
+    """The strata of a stratified Cox fit, ``labels``, and each stratum's
+    validated rows, ``(label, x, c, n, tl, Z)``: rows with a missing
+    covariate or stratum label dropped (with a warning), shared by
+    :meth:`CoxPH_._fit_stratified` and the penalised fit."""
+    labels_arr, missing = strata_labels(strata)
+    if len(labels_arr) != len(np.atleast_1d(x)):
+        raise ValueError("'strata' must have a label for each observation")
+    # The per-observation arrays, subset together as rows are dropped.
+    obs: list[Any] = [x, c, n, Z, tl]
+    if Z is not None:
+        # Checked before the per-stratum split, whose boolean mask
+        # would otherwise raise a bare IndexError on a Z of the wrong
+        # length.
+        check_covariate_rows(np.asarray(Z), len(labels_arr))
+        # Rows with a missing covariate are dropped here, once, rather
+        # than by each stratum's validation (one warning per stratum,
+        # each counting only that stratum's rows).
+        keep = finite_covariate_mask(np.asarray(Z, dtype=float))
+        if not keep.all():
+            obs = [_sub(a, keep) for a in obs]
+            labels_arr, missing = labels_arr[keep], missing[keep]
+    if missing.any():
+        # An observation without a stratum has no baseline to belong
+        # to; it is dropped, as a row with a missing covariate is.
+        if missing.all():
+            raise ValueError(
+                "Every stratum label is missing; there is nothing to fit."
+            )
+        warnings.warn(
+            "Dropped {} of {} rows with a missing stratum label.".format(
+                int(missing.sum()), missing.shape[0]
+            ),
+            UserWarning,
+            stacklevel=_caller_stacklevel(),
+        )
+        obs = [_sub(a, ~missing) for a in obs]
+        labels_arr = labels_arr[~missing]
+    x_o, c_o, n_o, Z_o, tl_o = obs
+
+    labels = np.unique(labels_arr)
+    validated = []
+    for s in labels:
+        mask = labels_arr == s
+        xs, cs, ns_, tls, Zs = validate_coxph(
+            _sub(x_o, mask),
+            _sub(c_o, mask),
+            _sub(n_o, mask),
+            _sub(Z_o, mask),
+            _sub(tl_o, mask),
+            tie_method,
+        )
+        validated.append((s, xs, cs, ns_, tls, Zs))
+
+    if not validated:
+        raise ValueError("no observations to fit")
+    _require_an_event(
+        np.concatenate([v[2] for v in validated]),
+        np.concatenate([v[3] for v in validated]),
+    )
+    return labels, validated
+
+
+def _stratified_baselines(
+    fitter: CoxPH_,
+    model: SemiParametricRegressionModel,
+    beta: npt.NDArray,
+    mean: npt.NDArray,
+    validated: list,
+    per_stratum: list,
+    labels: npt.NDArray,
+    tie_method: str,
+    center: bool,
+) -> None:
+    """Set each stratum's baseline on a stratified Cox ``model`` with
+    coefficients ``beta`` (see :meth:`CoxPH_._fit_stratified`)."""
+    # A separate baseline per stratum, each that of a unit at the
+    # centre, moved to Z = 0 by default. Prediction selects the
+    # stratum's baseline via the ``stratum`` argument to ``hf``/``Hf``.
+    Z_all = np.vstack([v[5] for v in validated])
+    baselines: dict[Any, dict[str, npt.NDArray]] = {}
+    for s, _, (xs, cs, ns_, Zs, tls) in per_stratum:
+        bx, br, bd, bh0 = fitter.baseline(
+            beta, xs, cs, ns_, Zs, tls, tie_method
+        )
+        if not center:
+            br, bh0 = baseline_at_origin(beta, mean, Z_all, br, bh0)
+        baselines[s] = {
+            "x": bx,
+            "r": br,
+            "d": bd,
+            "h0": bh0,
+            "H0": bh0.cumsum(),
+        }
+    model.strata_baselines = baselines
+
+    # Expose the first stratum's baseline as the default so generic
+    # attribute access (e.g. ``model.x``) still works; correct prediction
+    # must pass an explicit ``stratum``.
+    first = baselines[labels[0]]
+    model.x = first["x"]
+    model.r = first["r"]
+    model.d = first["d"]
+    model.h0 = first["h0"]
+    model.H0 = first["H0"]
+    model.tl = None
+
+
 class CoxPH_(FitterRepr, CoxLikelihoodMixin):
     """
     The Cox proportional hazards model: a baseline hazard left entirely
@@ -892,60 +1008,8 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         so the score equations are solved once for the shared coefficients.
         A separate baseline hazard is then estimated within each stratum.
         """
-        labels_arr, missing = strata_labels(strata)
-        if len(labels_arr) != len(np.atleast_1d(x)):
-            raise ValueError("'strata' must have a label for each observation")
-        # The per-observation arrays, subset together as rows are dropped.
-        obs: list[Any] = [x, c, n, Z, tl]
-        if Z is not None:
-            # Checked before the per-stratum split, whose boolean mask
-            # would otherwise raise a bare IndexError on a Z of the wrong
-            # length.
-            check_covariate_rows(np.asarray(Z), len(labels_arr))
-            # Rows with a missing covariate are dropped here, once, rather
-            # than by each stratum's validation (one warning per stratum,
-            # each counting only that stratum's rows).
-            keep = finite_covariate_mask(np.asarray(Z, dtype=float))
-            if not keep.all():
-                obs = [_sub(a, keep) for a in obs]
-                labels_arr, missing = labels_arr[keep], missing[keep]
-        if missing.any():
-            # An observation without a stratum has no baseline to belong
-            # to; it is dropped, as a row with a missing covariate is.
-            if missing.all():
-                raise ValueError(
-                    "Every stratum label is missing; there is nothing to fit."
-                )
-            warnings.warn(
-                "Dropped {} of {} rows with a missing stratum label.".format(
-                    int(missing.sum()), missing.shape[0]
-                ),
-                UserWarning,
-                stacklevel=_caller_stacklevel(),
-            )
-            obs = [_sub(a, ~missing) for a in obs]
-            labels_arr = labels_arr[~missing]
-        x_o, c_o, n_o, Z_o, tl_o = obs
-
-        labels = np.unique(labels_arr)
-        validated = []
-        for s in labels:
-            mask = labels_arr == s
-            xs, cs, ns_, tls, Zs = validate_coxph(
-                _sub(x_o, mask),
-                _sub(c_o, mask),
-                _sub(n_o, mask),
-                _sub(Z_o, mask),
-                _sub(tl_o, mask),
-                tie_method,
-            )
-            validated.append((s, xs, cs, ns_, tls, Zs))
-
-        if not validated:
-            raise ValueError("no observations to fit")
-        _require_an_event(
-            np.concatenate([v[2] for v in validated]),
-            np.concatenate([v[3] for v in validated]),
+        labels, validated = _stratified_rows(
+            x, Z, c, n, tl, tie_method, strata
         )
         n_params = validated[0][5].shape[1]
         # One centre for every stratum, the mean over all the rows (as R's
@@ -1026,38 +1090,156 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         model.is_stratified = True
         model.strata_labels = list(labels)
 
-        # A separate baseline per stratum, each that of a unit at the
-        # centre, moved to Z = 0 by default. Prediction selects the
-        # stratum's baseline via the ``stratum`` argument to ``hf``/``Hf``.
-        Z_all = np.vstack([v[5] for v in validated])
-        baselines: dict[Any, dict[str, npt.NDArray]] = {}
-        for s, _, (xs, cs, ns_, Zs, tls) in per_stratum:
-            bx, br, bd, bh0 = self.baseline(
-                res.x, xs, cs, ns_, Zs, tls, tie_method
-            )
-            if not center:
-                br, bh0 = baseline_at_origin(res.x, mean, Z_all, br, bh0)
-            baselines[s] = {
-                "x": bx,
-                "r": br,
-                "d": bd,
-                "h0": bh0,
-                "H0": bh0.cumsum(),
-            }
-        model.strata_baselines = baselines
-
-        # Expose the first stratum's baseline as the default so generic
-        # attribute access (e.g. ``model.x``) still works; correct prediction
-        # must pass an explicit ``stratum``.
-        first = baselines[labels[0]]
-        model.x = first["x"]
-        model.r = first["r"]
-        model.d = first["d"]
-        model.h0 = first["h0"]
-        model.H0 = first["H0"]
-        model.tl = None
+        _stratified_baselines(
+            self,
+            model,
+            res.x,
+            mean,
+            validated,
+            per_stratum,
+            labels,
+            tie_method,
+            center,
+        )
 
         return model
+
+    @dataframe_covariates
+    @takes_unit
+    @accepts_surpyval_data
+    def fit_penalised(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        tl: npt.ArrayLike | None = None,
+        penalizer: float | npt.ArrayLike = 0.1,
+        l1_ratio: float = 0.0,
+        standardise: bool = True,
+        tie_method: str = "efron",
+        center: bool = False,
+        tol: float = 1e-10,
+        strata: npt.ArrayLike | None = None,
+        w: npt.ArrayLike | float | None = None,
+        tr: npt.ArrayLike | None = None,
+        t: npt.ArrayLike | None = None,
+    ) -> SemiParametricRegressionModel:
+        """
+        Fit the Cox model with a ridge, lasso or elastic-net penalty on the
+        coefficients: for many covariates, or correlated ones, where the
+        unpenalised fit is unstable or does not exist.
+
+        The fit minimises the negative partial log-likelihood divided by
+        the number of units ``N`` (the sum of ``n``) plus
+
+        .. math::
+            \\sum_j \\lambda_j \\left( \\frac{1 - a}{2} \\beta_j^2
+            + a |\\beta_j| \\right),
+
+        with :math:`\\lambda_j` the ``penalizer`` and :math:`a` the
+        ``l1_ratio``: glmnet's objective for the Cox model (Simon et al.
+        2011) and lifelines' ``CoxPHFitter(penalizer, l1_ratio)``. A lasso
+        or elastic-net penalty sets some coefficients exactly to 0. The
+        L1 part is minimised exactly, not smoothed: each coefficient is
+        the difference of two non-negative parts (L-BFGS-B), then polished
+        by Newton steps on those not at 0, with the optimality conditions
+        of those at 0 checked; ``model.maximum`` is ``"verified"`` when
+        they hold.
+
+        A penalised model predicts like any Cox model (``sf``, ``hf``,
+        ...), but has no standard errors, covariance, p-values or
+        confidence bounds: the estimates are biased towards 0 by design,
+        and intervals from the penalised curvature would not have their
+        stated coverage. Those calls raise an error saying so (its
+        ``summary()`` has them as ``nan``). For inference, refit the
+        unpenalised model on covariates chosen before seeing the data.
+
+        Parameters
+        ----------
+        x, Z, c, n, tl : array_like
+            As for :meth:`fit` (observed and right-censored rows, with
+            delayed entry ``tl``: a unit enters the risk sets at its
+            ``tl``, as for start-stop rows ``Surv(start, stop, event)``).
+            ``N`` counts rows, weighted by ``n``: for start-stop data,
+            where one subject has several rows, it is the number of rows,
+            as glmnet's, not of subjects.
+        penalizer : float or array_like, optional
+            :math:`\\lambda`: one value, or one per column of ``Z`` (0
+            leaves that coefficient unpenalised). Default 0.1.
+        l1_ratio : float, optional
+            :math:`a`, from 0 (ridge, the default) to 1 (lasso).
+        standardise : bool, optional
+            ``True`` (the default, as glmnet and lifelines) penalises the
+            coefficients of the covariates divided by their standard
+            deviations (count-weighted, divisor ``N``), so the penalty
+            does not depend on their units; the coefficients are reported
+            on the covariates' own scale either way. ``False`` penalises
+            the coefficients as they are.
+        tie_method : str, optional
+            As for :meth:`fit`. Default ``"efron"`` (glmnet's default is
+            Breslow's).
+        center : bool, optional
+            As for :meth:`fit`.
+        tol : float, optional
+            The optimality tolerance on the gradient of the objective.
+        strata : array_like, optional
+            As for :meth:`fit`: a stratum label per row, a baseline hazard
+            per stratum and one set of coefficients (glmnet's
+            ``stratifySurv``). ``N`` is the number of units over all the
+            strata, and the covariates are standardised over all the
+            rows, not within each stratum.
+        w : array_like, optional
+            Not taken yet: weights are refused, with a ``ValueError``. Fit
+            the unpenalised model with ``w`` (:meth:`fit`).
+        tr, t : array_like, optional
+            Refused when they truncate on the right (a finite upper
+            bound): the partial likelihood has no term for right
+            truncation, as for :meth:`fit`. The parametric penalised fits
+            (``WeibullPH.fit_penalised`` and the other PH, AFT and PO
+            families) take it. A ``t`` with no upper bounds gives the left
+            truncation ``tl``.
+
+        Returns
+        -------
+        SemiParametricRegressionModel
+            The fitted model, with ``penalty`` recording the
+            ``penalizer`` (per column), ``l1_ratio``, ``standardise`` and
+            the columns' ``scale``.
+
+        Examples
+        --------
+        >>> from surpyval import CoxPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> Z = df[["fin", "age", "race", "wexp", "mar", "paro", "prio"]]
+        >>> lasso = CoxPH.fit_penalised(
+        ...     x, Z.values, c=c, penalizer=0.05, l1_ratio=1.0
+        ... )
+        >>> lasso.params.round(4)
+        array([ 0.    , -0.0235,  0.    , -0.0442,  0.    ,  0.    ,  0.0451])
+        """
+        from .cox_penalised import fit_cox_penalised
+
+        return fit_cox_penalised(
+            self,
+            x,
+            Z,
+            c,
+            n,
+            tl,
+            penalizer,
+            l1_ratio,
+            standardise,
+            tie_method,
+            center,
+            tol,
+            strata,
+            w,
+            tr,
+            t,
+        )
 
     @column_arguments("x", "c", "n", "tl")
     @takes_unit

@@ -22,6 +22,7 @@ from .._fit_skeleton import (
 )
 from .._kinds import ACCELERATED_FAILURE_TIME
 from .._likelihood import regression_neg_ll
+from .._penalised_fit import PenalisedFitMixin
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin, truncation_window
 from .aft_tvc_fit import AFTTVCFitMixin, _aft_tvc_neg_ll
@@ -31,6 +32,7 @@ class AFTFitter(
     HazardIdentitiesMixin,
     AFTTVCFitMixin,
     DataFrameRegressionMixin,
+    PenalisedFitMixin,
 ):
     """
     Accelerated Failure Time fitter using :math:`e^{\\beta' Z}` as the
@@ -52,6 +54,7 @@ class AFTFitter(
     #: The ``repr`` (#614)
     fitter_kind = "accelerated failure time fitter"
     name_suffix = "AFT"
+    _penalised_kind = ACCELERATED_FAILURE_TIME
 
     def __init__(self, distribution: Any) -> None:
         mirror_distribution(self, distribution)

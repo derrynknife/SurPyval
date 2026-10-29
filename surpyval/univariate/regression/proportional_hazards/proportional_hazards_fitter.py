@@ -31,6 +31,7 @@ from .._fit_skeleton import (
 )
 from .._kinds import PROPORTIONAL_HAZARD
 from .._likelihood import regression_neg_ll
+from .._penalised_fit import PenalisedFitMixin
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin, truncation_window
 from ..tvc_fit import TVCFitMixin
@@ -111,6 +112,7 @@ class ProportionalHazardsFitter(
     HazardIdentitiesMixin,
     TVCFitMixin,
     DataFrameRegressionMixin,
+    PenalisedFitMixin,
 ):
     """
     Parametric proportional hazards fitter: a parametric baseline hazard
@@ -183,6 +185,7 @@ class ProportionalHazardsFitter(
 
     #: The ``repr`` (#614)
     fitter_kind = "proportional hazards fitter"
+    _penalised_kind = PROPORTIONAL_HAZARD
     name_suffix = "PH"
 
     def __init__(
@@ -617,6 +620,18 @@ class ProportionalHazardsFitter(
             # Z = 0 (#463); a custom phi is centred only with center=True.
             log_linear=self.phi is LogLinearPhi.phi,
         )
+
+    def _penalised_link(self) -> CovariateLink:
+        # The penalty is on the coefficients of exp(beta'Z); a custom phi's
+        # parameters need not be coefficients at all.
+        if self.phi is not LogLinearPhi.phi:
+            raise ValueError(
+                "fit_penalised needs the log-linear covariate function "
+                "exp(beta'Z); this fitter has a custom phi, whose "
+                "parameters are not one coefficient per covariate. Use "
+                "PH(distribution) for a penalised fit."
+            )
+        return CovariateLink(self.phi_name, {}, self.phi)
 
     def _reg_model(self, pmap: dict[str, int]) -> CovariateLink:
         # Keep this fitter's possibly-custom phi (and its historical
