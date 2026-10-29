@@ -289,6 +289,36 @@ Where weights met other features of this release:
   Unweighted data dictionaries are unchanged. (v0.25 reads data
   dictionaries without checking their schema, so it still drops the
   weights of one.)
+- A weighted Cox model's ``diagnose()`` and the functions of
+  ``proportional_hazards.diagnostics`` (``check_ph``,
+  ``compute_residuals``, ``added_covariate_score_test``,
+  ``robust_covariance``) diagnosed it as if its rows were unweighted
+  units. They now refuse, as its ``check_ph()`` and
+  ``compute_residuals()`` methods did, pointing to the robust
+  covariance.
+- A weighted Cox fit with covariates far from 0 (calendar years, say)
+  stored a baseline hazard of 0 at ``Z = 0``, so ``sf`` was 1 at every
+  time, with no warning. It is now refused, pointing to ``center=True``,
+  as the unweighted fit is. The weighted model's ``r`` is now the risk
+  weight at each event time (the sum of ``n w exp(beta'Z)``, as the
+  unweighted ``r`` is), moved to ``Z = 0`` with the baseline; it was the
+  weighted number at risk.
+- A weighted Cox fit with a constant or collinear covariate column
+  refused, or, where the information was singular only to rounding,
+  gave nonsense coefficients. The column is now aliased (``nan``, with
+  a warning, as R's ``NA``), as in the unweighted fit.
+- A weighted Cox fit with Efron's ties saves ``baseline_method``
+  ``"efron"``, as the unweighted fit does (it was
+  ``"fleming-harrington"``, for the same estimator).
+- Royston-Parmar predictions (``RoystonParmar``, ``RoystonParmarPH`` and
+  ``RoystonParmarPO``: ``sf``, ``ff``, ``df``, ``hf``, ``Hf``, ``qf`` and
+  the ``cb`` band) could differ in the last bit when the query was
+  reordered, on Linux x86-64: the spline was a matrix product, whose
+  summation order depends on a row's place. Each point's sum now runs in
+  a fixed order. Predictions of the univariate model change at most in
+  the last bits. The regressions' fits evaluate the same spline, so their
+  coefficients move by about ``1e-14`` (relative) and their Wald bounds,
+  from a numerical Hessian, by up to ``1e-9``.
 
 **Documentation**
 

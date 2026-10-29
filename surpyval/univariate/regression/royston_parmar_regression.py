@@ -52,6 +52,7 @@ from surpyval.univariate.parametric.royston_parmar import (
     rcs_deriv,
 )
 from surpyval.utils.fitter_repr import FitterRepr
+from surpyval.utils.linalg import fixed_order_dot
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
@@ -105,8 +106,10 @@ class SplineBaseline(ParametricFitter):
         x = np.asarray(x, dtype=float)
         lx = np.log(x.reshape(-1))
         g = anp.array(list(gamma))
-        eta = anp.dot(rcs_basis(lx, self.knots), g)
-        slope = anp.dot(rcs_deriv(lx, self.knots), g)
+        # Each time's sum in a fixed order (``fixed_order_dot``), so that
+        # permuting the query permutes the result to the last bit.
+        eta = fixed_order_dot(rcs_basis(lx, self.knots), g)
+        slope = fixed_order_dot(rcs_deriv(lx, self.knots), g)
         return anp.reshape(eta, x.shape), anp.reshape(slope, x.shape)
 
     def Hf(self, x: Numeric, *gamma: Boxable) -> Boxable:

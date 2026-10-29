@@ -186,6 +186,8 @@ class SemiParametricRegressionModel(
     #: The weighted partial likelihood of a weighted fit
     #: (``proportional_hazards._weighted_cox.WeightedCox``).
     _weighted_cox: Any = None
+    #: The columns of ``Z`` a weighted fit estimated (the others aliased).
+    _weighted_kept: npt.NDArray | None = None
     tie_method: str
     baseline_method: str
     #: Per-observation training data (``x``/``c``/``n``/``Z``/``tl``) retained
@@ -1092,8 +1094,20 @@ class SemiParametricRegressionModel(
             )
 
             beta = onp.asarray(self.params, dtype=float)
-            bread = onp.linalg.inv(lik.derivatives(beta)[2])
-            return weighted_robust(lik, beta, bread, cluster)
+            p = beta.shape[0]
+            kept = getattr(self, "_weighted_kept", None)
+            kept = onp.arange(p) if kept is None else kept
+            # An aliased coefficient (nan) is not estimated: the sandwich
+            # is of the others, with nan rows and columns at it.
+            sub = lik if kept.size == p else lik.columns(kept)
+            out = onp.full((p, p), onp.nan)
+            if kept.size:
+                b = beta[kept]
+                bread = onp.linalg.inv(sub.derivatives(b)[2])
+                out[onp.ix_(kept, kept)] = weighted_robust(
+                    sub, b, bread, cluster
+                )
+            return out
         if self.weighted:
             if cluster is None:
                 return self.covariance()
