@@ -16,6 +16,7 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.utils.covariates import loaded_coefficient_names
 from surpyval.utils.data_summary import data_summary
+from surpyval.utils.linalg import wald_bound_on_support
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.record_predict import PredictsRecordsMixin
 from surpyval.utils.shapes import (
@@ -262,6 +263,12 @@ class ParametricRegressionModel(
     #: random_state)`` for an integer seed, kept while the parameters and
     #: data stay as they are; not pickled (``__getstate__``).
     _bootstrap_refits: dict | None = None
+    #: Whether the model was fitted with weights ``w``: its covariance is
+    #: the robust (sandwich) one, and the likelihood-ratio and bootstrap
+    #: bounds and the information criteria refuse.
+    weighted: bool = False
+    #: The effective sample size of the weights of a weighted fit.
+    effective_n: float | None = None
     # The information criteria's sample size ``_ic_n`` and their caches
     # ``_aic``, ``_bic``, ``_aic_c`` are InformationCriteriaMixin's.
 
@@ -299,6 +306,14 @@ class ParametricRegressionModel(
                 str(k): int(v) for k, v in phi_param_map.items()
             },
         }
+        knots = getattr(self.distribution, "knots", None)
+        if knots is not None and self.distribution.name == "RoystonParmar":
+            # A spline baseline (RoystonParmarRegression) is rebuilt from
+            # its knots and scale, not found by name.
+            base["spline_baseline"] = {
+                "knots": np.asarray(knots, dtype=float).tolist(),
+                "scale": str(getattr(self.distribution, "scale")),
+            }
 
         if self._is_accelerated_life():
             from surpyval.univariate.regression.accelerated_life import (
@@ -413,6 +428,11 @@ class ParametricRegressionModel(
         # the same; the data themselves are not stored.
         if self._data_repr():
             out["data_summary"] = self._data_repr()
+        if self.weighted:
+            # Schema 3: a reader without weights would offer the
+            # likelihood-ratio bounds and the information criteria.
+            out["weighted"] = True
+            out["effective_n"] = self.effective_n
         return stamp_schema(out)
 
     def _serialised_inference(self) -> dict[str, list] | None:
@@ -472,6 +492,13 @@ class ParametricRegressionModel(
             )
         kind = model_dict["kind"]
         dist = getattr(surpyval, model_dict["distribution"], None)
+        spline = model_dict.get("spline_baseline")
+        if spline is not None:
+            from .royston_parmar_regression import SplineBaseline
+
+            dist = SplineBaseline(
+                np.array(spline["knots"], dtype=float), str(spline["scale"])
+            )
         if not isinstance(dist, ParametricFitter):
             raise ValueError(
                 "Unknown distribution {!r}".format(model_dict["distribution"])
@@ -612,6 +639,9 @@ class ParametricRegressionModel(
         out.k = len(params) - len(out.fixed)
         out._restored = True
         out._data_summary = model_dict.get("data_summary")
+        if model_dict.get("weighted") is True:
+            out.weighted = True
+            out.effective_n = model_dict.get("effective_n")
         out.gamma = float(model_dict.get("gamma", 0.0))
         out.lfp_p = float(model_dict.get("p", 1.0))
         out.f0 = float(model_dict.get("f0", 0.0))
@@ -839,7 +869,12 @@ class ParametricRegressionModel(
         se[[i for i, name in enumerate(names) if name in self.fixed]] = np.nan
         return se
 
-    def summary(self, alpha_ci: float = 0.05) -> pd.DataFrame:
+    def summary(
+        self,
+        alpha_ci: float = 0.05,
+        robust: bool = False,
+        cluster: npt.ArrayLike | None = None,
+    ) -> pd.DataFrame:
         """
         The parameter table (#484), in lifelines' layout: the baseline
         distribution's parameters, then the regression coefficients (or,
@@ -873,6 +908,15 @@ class ParametricRegressionModel(
         ----------
         alpha_ci : float, optional
             The intervals' total tail probability. Default 0.05.
+        robust : bool, optional
+            ``True`` gives the table on the robust (sandwich) standard
+            errors of :meth:`robust_standard_errors` instead of the
+            model-based ones: ``se(coef)``, the Wald intervals (on the
+            same scales as :meth:`param_cb`'s), ``z`` and ``p``. The
+            estimates are the same. Default ``False``.
+        cluster : array_like, optional
+            With ``robust=True``, a cluster label for each row given to
+            the fit (as for :meth:`robust_covariance`).
 
         Returns
         -------
@@ -902,12 +946,21 @@ class ParametricRegressionModel(
                      age    -0.0713    0.0209  0.0006
         """
         check_alpha_ci(alpha_ci)
+        if cluster is not None and not robust:
+            raise ValueError(
+                "`cluster` is used only with robust=True: pass "
+                "summary(robust=True, cluster=...) for standard errors "
+                "clustered by it."
+            )
         import pandas as pd
 
         from ._summary import coefficient_table
 
         params = np.asarray(self.params, dtype=float)
-        se = self._summary_se()
+        if robust:
+            se = self._robust_summary_se(cluster)
+        else:
+            se = self._summary_se()
         names = self.parameter_names
         k = self.k_dist
         level = f"{100 * (1 - alpha_ci):g}%"
@@ -931,7 +984,7 @@ class ParametricRegressionModel(
         # An accelerated life model's unbounded life-model parameters (a
         # power, an activation energy, a coefficient) have a Wald test of
         # 0, no stress effect (#662).
-        p_values = self.p_values
+        p_values = self._p_values_from(se)
         others = []
         for i in kept:
             bounds = np.full(2, np.nan)
@@ -939,9 +992,9 @@ class ParametricRegressionModel(
                 try:
                     with warnings.catch_warnings(), np.errstate(all="ignore"):
                         warnings.simplefilter("ignore")
-                        bounds = np.asarray(
-                            self.param_cb(names[i], alpha_ci), dtype=float
-                        ).ravel()
+                        bounds = self._summary_bounds(
+                            i, se[i], alpha_ci, robust
+                        )
                 except (ValueError, ArithmeticError):
                     pass
             row = {
@@ -965,6 +1018,40 @@ class ParametricRegressionModel(
             index += [(part, name) for name in rows.index]
         table.index = pd.MultiIndex.from_tuples(index, names=["part", "name"])
         return table
+
+    def _robust_summary_se(self, cluster: npt.ArrayLike | None) -> npt.NDArray:
+        """The robust standard errors for ``summary(robust=True)``, with
+        :meth:`_summary_se`'s ``nan`` for a fixed parameter. A model that
+        cannot give them is refused (``robust_covariance`` says why)."""
+        se = np.array(self.robust_standard_errors(cluster), dtype=float)
+        names = self.parameter_names
+        se[[i for i, name in enumerate(names) if name in self.fixed]] = np.nan
+        return se
+
+    def _summary_bounds(
+        self, i: int, se: float, alpha_ci: float, robust: bool
+    ) -> npt.NDArray:
+        """The two-sided interval of ``params[i]`` for the summary:
+        :meth:`param_cb`'s, or with ``robust`` the same Wald interval on
+        the robust standard error ``se``."""
+        names = self.parameter_names
+        if not robust:
+            return np.asarray(
+                self.param_cb(names[i], alpha_ci), dtype=float
+            ).ravel()
+        lower, upper = self._parameter_bounds()[i]
+        return np.asarray(
+            wald_bound_on_support(
+                float(self.params[i]),
+                float(se) ** 2,
+                lower,
+                upper,
+                alpha_ci,
+                "two-sided",
+                name=names[i],
+            ),
+            dtype=float,
+        ).ravel()
 
     def _data_repr(self) -> str:
         """The data the model was fitted to, in one line, for the printout
@@ -1010,6 +1097,11 @@ class ParametricRegressionModel(
         data_line = self._data_repr()
         if data_line:
             out += "\nData                : " + data_line
+        if self.weighted:
+            out += (
+                "\nWeights             : effective sample size "
+                f"{self.effective_n:.4g}; robust covariance"
+            )
         if self._has_center():
             # A fit with center=True (#463): say where the baseline
             # parameters are.
@@ -1641,6 +1733,48 @@ class ParametricRegressionModel(
                 out[j] = self.mean_tvc(StepSchedule.constant(rows[j]))
         return out[0] if out.size == 1 else out
 
+    def likelihood_ratio_test(self) -> dict:
+        """
+        The global likelihood-ratio test of the model: do the covariates,
+        taken together, explain anything? The null model is the baseline
+        distribution fitted to the same data (every coefficient 0, where
+        no covariate has an effect); twice the gain in the log-likelihood
+        is chi-squared on the number of estimated coefficients when none
+        has an effect. It is the "Chisq" line of R's ``survreg`` printout.
+
+        Available for the proportional hazards, accelerated failure time,
+        proportional odds and additive hazards families with their
+        built-in links; an accelerated life model is refused, since its
+        life model has no "no effect" value in general.
+
+        Returns
+        -------
+        dict
+            ``{"statistic", "df", "p_value", "log_likelihood",
+            "log_likelihood_null"}``.
+
+        Raises
+        ------
+        ValueError
+            For an accelerated life model or a custom link, a model
+            restored with ``from_dict`` (it does not carry the data), or
+            one with no estimated coefficient.
+
+        Examples
+        --------
+        >>> from surpyval import WeibullAFT
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> Z = df[["fin", "age", "race", "wexp", "mar", "paro", "prio"]]
+        >>> model = WeibullAFT.fit(df["week"], Z.values, c=1 - df["arrest"])
+        >>> res = model.likelihood_ratio_test()
+        >>> round(res["statistic"], 2), res["df"]
+        (33.42, 7)
+        """
+        from ._global_test import parametric_likelihood_ratio_test
+
+        return parametric_likelihood_ratio_test(self)
+
     def _wald_tested(self) -> list[int]:
         """The positions in ``params`` that :attr:`p_values` tests against
         0: the coefficients of a linear predictor, or an accelerated life
@@ -1681,13 +1815,16 @@ class ParametricRegressionModel(
         >>> model.p_values.round(4)
         array([   nan,    nan, 0.0001])
         """
+        return self._p_values_from(self._summary_se())
+
+    def _p_values_from(self, se: npt.NDArray) -> npt.NDArray:
+        """:attr:`p_values` on the standard errors ``se``."""
         params = np.asarray(self.params, dtype=float)
         out = np.full(params.shape, np.nan)
         tested = self._wald_tested()
         if tested:
             from scipy.stats import norm
 
-            se = self._summary_se()
             with np.errstate(all="ignore"):
                 z = params[tested] / se[tested]
                 out[tested] = 2 * norm.sf(np.abs(z))

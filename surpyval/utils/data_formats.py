@@ -157,6 +157,36 @@ def xcnt_sort(
     return x[idx], c[idx], n[idx], t[idx]
 
 
+def group_sort_weighted(
+    x: npt.NDArray,
+    c: npt.NDArray,
+    n: npt.NDArray,
+    t: npt.NDArray,
+    w: npt.NDArray,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+    """Merge rows identical in ``(x, c, t, w)``, summing their counts, and
+    sort them as :func:`xcnt_sort` does, carrying the weights ``w``.
+
+    Rows with different weights stay apart: the robust variance of a
+    weighted fit needs each unit's own weight (its meat is
+    ``sum n w^2 s s'``). The grouping key is sorted in full, so the result
+    does not depend on the order the rows came in."""
+    x_columns = x.reshape(-1, 1) if x.ndim == 1 else x
+    columns = [x_columns[:, j] for j in range(x_columns.shape[1])]
+    columns += [c, t[:, 0], t[:, 1], w]
+    order = np.lexsort(columns[::-1])
+    keys = np.column_stack(columns)[order]
+    new = np.concatenate([[True], (keys[1:] != keys[:-1]).any(axis=1)])
+    group = np.cumsum(new) - 1
+    first = order[new]
+    totals = np.bincount(group, weights=n[order]).astype(n.dtype)
+    xg, cg, tg, wg = x[first], c[first], t[first], w[first]
+    t_key = tg.min(axis=1)
+    x_key = xg if xg.ndim == 1 else xg.mean(axis=1)
+    idx = np.lexsort((c[first], t_key, x_key))
+    return xg[idx], cg[idx], totals[idx], tg[idx], wg[idx]
+
+
 def fsli_handler(
     f: npt.ArrayLike | None = None,
     s: npt.ArrayLike | None = None,
@@ -1230,7 +1260,11 @@ def _xcnt_counts(n: npt.ArrayLike | None, x: npt.NDArray) -> npt.NDArray:
     # isfinite as well: floor(inf) == inf, so an infinite count would pass
     # the whole-number test and become garbage in the integer cast.
     if not (np.isfinite(n_arr) & np.equal(n_arr, np.floor(n_arr))).all():
-        raise ValueError("Count array 'n' must contain integer values")
+        raise ValueError(
+            "Count array 'n' must contain integer values. If these are "
+            "sampling, propensity or censoring weights, pass them as 'w' "
+            "(and leave 'n' for counts of identical units)."
+        )
     if not (n_arr > 0).all():
         raise ValueError("count array can't be 0 or less")
     return n_arr

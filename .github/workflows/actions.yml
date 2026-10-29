@@ -254,10 +254,17 @@ jobs:
             args: >-
               surpyval/tests/calibration/test_refit_registry.py
               --deselect 'surpyval/tests/calibration/test_refit_registry.py::test_refit[Beta4]'
+          # The Bayesian fits' simulation-based calibration: eleven
+          # scenarios of 500 fits each (about half an hour on six busy
+          # cores locally), so a group of its own.
+          - group: bayes-sbc
+            workers: auto
+            args: surpyval/tests/calibration/test_sbc_bayes.py
           - group: rest
             workers: auto
             args: >-
               surpyval/tests/calibration surpyval/tests/scenarios
+              --ignore surpyval/tests/calibration/test_sbc_bayes.py
               --ignore=surpyval/tests/calibration/test_coverage_copula.py
               --ignore=surpyval/tests/calibration/test_refit_registry.py
               --ignore=surpyval/tests/calibration/test_coverage_extra_parameters.py

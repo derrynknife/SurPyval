@@ -50,6 +50,9 @@ MAX_HALF_WIDTH = 60.0
 #: The face density, relative to the peak, below which the grid holds
 #: the posterior.
 EDGE = 1e-8
+#: The half-width (standard deviations of the peak's curvature) past
+#: which the grid is laid again along the spread it has found.
+REPLACE_AT = 15.0
 #: The grid is even in ``u``, and a point's distance from the peak in
 #: standard deviations is ``z = STRETCH * sinh(u / STRETCH)``: about
 #: ``u`` within a few standard deviations, growing exponentially beyond,
@@ -418,9 +421,12 @@ def run_grid(
     m = np.full(d, m0)
     target = (hi[0] - lo[0]) / (m0 - 1)
 
+    centre = np.asarray(mode, dtype=float).copy()
+    replaced = False
+
     def evaluate(shift: bool) -> tuple:
         u, step = _lattice(lo, hi, m, shift)
-        phi = mode + _z_of(u) @ L.T
+        phi = centre + _z_of(u) @ L.T
         with np.errstate(all="ignore"):
             lp = np.asarray(log_post(phi), dtype=float)
         lp = np.where(np.isfinite(lp), lp, -np.inf)
@@ -447,6 +453,26 @@ def run_grid(
         if not grow:
             break
         widened += 1
+        if not replaced and max(np.max(-lo), np.max(hi)) > _u_of(REPLACE_AT):
+            # The curvature at the peak understates the posterior's
+            # spread (a long or curved ridge): lay the grid again along
+            # the spread the grid has found so far, once.
+            replaced = True
+            lw = lp + _log_dz(u)
+            w = np.exp(lw - logsumexp(lw))
+            mean = w @ phi
+            spread = (phi - mean).T @ ((phi - mean) * w[:, None])
+            spread = 0.5 * (spread + spread.T)
+            if np.all(np.isfinite(spread)) and np.all(
+                np.linalg.eigvalsh(spread) > 0
+            ):
+                centre = mean
+                L = np.linalg.cholesky(spread)
+                log_det_l = float(np.sum(np.log(np.diag(L))))
+                lo = np.full(d, -_u_of(START_HALF_WIDTH))
+                hi = np.full(d, _u_of(START_HALF_WIDTH))
+                m = np.full(d, m0)
+                continue
         if max(np.max(-lo), np.max(hi)) > u_max:
             raise GridError(_improper_message(flat_names))
         # each dimension keeps its cells' size as it widens

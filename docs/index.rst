@@ -274,6 +274,7 @@ Contents:
    Design Principles
    Handy References - Aide-mémoire
    Data Wrangler Examples
+   Weighted Data
 
 .. toctree::
    :maxdepth: 2
@@ -295,7 +296,9 @@ Contents:
 
    Non-Parametric SurPyval Modelling
    Parametric SurPyval Modelling
+   Bayesian Fitting with SurPyval
    Regression Modelling with SurPyval
+   Distributional Regression
    Model Diagnostics
    applications
    Competing Risks SurPyval Modelling

@@ -504,6 +504,7 @@ def test_compare_to(seals):
     old = sp.Exponential.fit_bayes([100.0, 250, 400], priors=RATE)
     p = new.compare_to(old, on="qf", p=0.1)
     q = old.compare_to(new, on="qf", p=0.1)
+    assert new.compare_to(old, x=500).probability > 0.5
     assert p.probability + q.probability == pytest.approx(1.0, abs=1e-9)
     assert p.probability > 0.5
     assert "independent" in repr(p)
@@ -597,6 +598,10 @@ def test_plots(seals):
     ax = seals.plot()
     labels = [line.get_label() for line in ax.get_lines()]
     assert "maximum likelihood" in labels
+    # drawn in probabilities, which the axes' scale transforms
+    line = ax.get_lines()[labels.index("maximum likelihood")]
+    y = np.asarray(line.get_ydata(), dtype=float)
+    assert np.all((y[~np.isnan(y)] > 0) & (y[~np.isnan(y)] < 1))
     plt.close("all")
     fig = seals.plot_posterior()
     assert len(fig.axes) == 3
@@ -609,3 +614,28 @@ def test_plots(seals):
     ax = sp.prior.check(sp.Weibull, belief).plot()
     assert len(ax.get_lines()) == 50
     plt.close("all")
+
+
+def test_a_curved_posterior_is_held():
+    # Late entry (all 20 units seen from 59.4) and a wide prior: the
+    # curvature at the peak understates the posterior's spread, and the
+    # grid, laid along that curvature, widened past 60 of its standard
+    # deviations and refused; it is now laid again along the spread it
+    # has found (the calibration study's replicates 18, 84 and 94).
+    rng = np.random.default_rng(8118)
+    theta = np.exp(rng.normal([np.log(100.0), np.log(1.5)], [1.0, 0.5]))
+    tl = sp.Weibull.qf(0.2, *theta)
+    x = sp.Weibull.qf(rng.uniform(0.2, 1.0, 20), *theta)
+    model = sp.Weibull.fit_bayes(
+        x,
+        tl=tl,
+        priors={
+            "alpha": sp.prior.NormalOnScale(
+                loc=np.log(100.0), scale=1.0, kind="log"
+            ),
+            "beta": sp.prior.NormalOnScale(
+                loc=np.log(1.5), scale=0.5, kind="log"
+            ),
+        },
+    )
+    assert model.diagnostics["integration_error"] <= 1e-3

@@ -36,17 +36,32 @@ _MOVING_SUPPORT = ("Uniform", "Beta4")
 def _parameter_bounds(
     dist: Any, data: SurpyvalData, offset: bool, lfp: bool, zi: bool
 ) -> list[tuple]:
-    from surpyval.univariate.parametric.parametric import _offset_upper
-
     bounds = list(dist.bounds)
     if offset:
-        upper = _offset_upper({"x": data.x, "c": data.c}, zi)
+        upper = _offset_upper(data, zi)
         bounds = [(None, upper)] + bounds
     if lfp:
         bounds.append((0, 1))
     if zi:
         bounds.append((0, 1))
     return bounds
+
+
+def _offset_upper(data: SurpyvalData, zi: bool) -> float:
+    """The largest offset the data allow: the smallest value that locates
+    a failure (an exact failure, a left-censoring time or an interval's
+    upper end), as for ``fit(..., offset=True)``; with zero inflation,
+    exact zeros and left-censoring times belong to the mass at 0."""
+    x = np.asarray(data.x, dtype=float)
+    c = np.asarray(data.c)
+    upper = x[:, -1] if x.ndim == 2 else x
+    constrains = c != 1
+    if zi:
+        constrains &= ~((c == 0) & (upper == 0)) & (c != -1)
+    if np.any(constrains):
+        return float(np.min(upper[constrains]))
+    everything = x[x != 0] if zi else x
+    return float(np.min(everything))
 
 
 def _check_dist(dist: Any, method: str) -> None:
@@ -444,11 +459,19 @@ def fit_from_df(
     """``fit_bayes`` on the columns of a DataFrame, named as
     ``fit_from_df`` names them."""
     from surpyval.utils.dataframe import (
-        _truncation,
         frame_column,
         refuse_column_names,
         require_frame,
     )
+
+    def _truncation(df: Any, value: Any, arg: str) -> npt.NDArray:
+        if isinstance(value, str):
+            return np.asarray(
+                frame_column(df, value, arg, time=True), dtype=float
+            )
+        if np.isscalar(value):
+            return np.full(len(df), value, dtype=float)
+        raise ValueError(f"`{arg}` must be a scalar or a column label string")
 
     df = require_frame(df)
     refuse_column_names(options, "x", "c", "n", "xl", "xr", "tl", "tr")
