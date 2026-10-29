@@ -23,6 +23,7 @@ the data, and only the covariate effect is parameterised.
 
     regression/cox_ph
     regression/additive_hazards
+    regression/aalen_additive
     regression/proportional_odds
     regression/buckley_james
 
@@ -50,3 +51,13 @@ For data arriving in groups that share an unobserved effect.
     :maxdepth: 1
 
     regression/frailty
+
+Plotting
+--------
+
+The coefficients of one or more models, with their intervals.
+
+.. toctree::
+    :maxdepth: 1
+
+    regression/plot_coefficients

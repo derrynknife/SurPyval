@@ -55,7 +55,7 @@ if TYPE_CHECKING:
     from .accelerated_life.lifemodel import LifeModel
 
 
-def _nan_outside(out: Any, outside: "npt.NDArray | None") -> Any:
+def _nan_outside(out: Any, outside: npt.NDArray | None) -> Any:
     """``out`` (one bound per point, or two on the last axis) with the
     points ``outside`` an additive model's support set to nan."""
     if outside is None:
@@ -84,19 +84,19 @@ class InferenceMixin:
         kind: str
         fixed: dict[str, float]
         distribution: ParametricFitter
-        reg_model: "CovariateLink | LifeModel"
+        reg_model: CovariateLink | LifeModel
         model: Any
         data: SurpyvalData
         res: Any
-        center: "npt.NDArray | None"
-        _fit_centring: "tuple | None"
-        _information: "tuple | None"
-        _covariance_cache: "tuple | None"
-        _restored_covariance: "npt.NDArray | None"
-        _restored_inference: "tuple | None"
+        center: npt.NDArray | None
+        _fit_centring: tuple | None
+        _information: tuple | None
+        _covariance_cache: tuple | None
+        _restored_covariance: npt.NDArray | None
+        _restored_inference: tuple | None
         _restored: bool
-        _lr_searches: "list | None"
-        _bootstrap_refits: "dict | None"
+        _lr_searches: list | None
+        _bootstrap_refits: dict | None
         is_tvc: bool
 
         @property
@@ -105,7 +105,7 @@ class InferenceMixin:
         @property
         def aliased(self) -> npt.NDArray: ...
         @property
-        def life_parameter(self) -> "str | None": ...
+        def life_parameter(self) -> str | None: ...
         def _eval_params(self) -> npt.NDArray: ...
         def _held(self) -> set: ...
         def _n_covariates(self) -> int: ...
@@ -113,7 +113,7 @@ class InferenceMixin:
         def qf(
             self,
             p: npt.ArrayLike,
-            Z: "npt.ArrayLike | pd.DataFrame",
+            Z: npt.ArrayLike | pd.DataFrame,
             *,
             grid: bool = False,
         ) -> npt.NDArray: ...
@@ -122,11 +122,11 @@ class InferenceMixin:
         def _life_relation(self) -> str: ...
 
         def _prepare_Z(
-            self, Z: "npt.ArrayLike | pd.DataFrame"
+            self, Z: npt.ArrayLike | pd.DataFrame
         ) -> npt.NDArray: ...
 
         def _centred(
-            self, Z: npt.ArrayLike, center: "npt.NDArray | None" = None
+            self, Z: npt.ArrayLike, center: npt.NDArray | None = None
         ) -> Any: ...
 
         def _outside_support(
@@ -135,7 +135,7 @@ class InferenceMixin:
             Z: npt.NDArray,
             valid: Any = True,
             stacklevel: int = 4,
-        ) -> "npt.NDArray | None": ...
+        ) -> npt.NDArray | None: ...
 
     # -- confidence bounds -------------------------------------------------
 
@@ -198,7 +198,7 @@ class InferenceMixin:
 
     def _inference_state(
         self,
-    ) -> "tuple[npt.NDArray, npt.NDArray | None, npt.NDArray]":
+    ) -> tuple[npt.NDArray, npt.NDArray | None, npt.NDArray]:
         """``(params, center, covariance)`` of the parameterisation the
         confidence bounds are computed in: that of the centred fit behind
         a model that reports its baseline at 0 (#463), where the
@@ -224,7 +224,7 @@ class InferenceMixin:
         return p_hat, center, self._observed_covariance(p_hat, center)
 
     def _observed_covariance(
-        self, p_hat: npt.NDArray, center: "npt.NDArray | None"
+        self, p_hat: npt.NDArray, center: npt.NDArray | None
     ) -> npt.NDArray:
         """The inverse of the Hessian of the negative log-likelihood at
         ``p_hat``, the baseline at ``center``: the exact one the fit kept
@@ -267,7 +267,7 @@ class InferenceMixin:
         return cov
 
     def _covariance_point(
-        self, p_hat: npt.ArrayLike, center: "npt.ArrayLike | None"
+        self, p_hat: npt.ArrayLike, center: npt.ArrayLike | None
     ) -> tuple:
         """What the covariance at ``p_hat``, the baseline at ``center``,
         is a function of: those two (copied, and a centre of zeros read as
@@ -286,7 +286,7 @@ class InferenceMixin:
     def _numerical_information(
         self,
         p_hat: npt.NDArray,
-        center: "npt.NDArray | None",
+        center: npt.NDArray | None,
         free: list,
         step: npt.NDArray,
     ) -> npt.NDArray:
@@ -356,6 +356,86 @@ class InferenceMixin:
         """
         with np.errstate(invalid="ignore"):
             return np.sqrt(np.diag(self.covariance()))
+
+    def robust_covariance(
+        self, cluster: npt.ArrayLike | None = None
+    ) -> npt.NDArray:
+        """
+        Robust ("sandwich") covariance of the fitted parameters, ordered
+        to match :attr:`parameter_names`:
+        :math:`A^{-1} B A^{-1}`, the model-based covariance
+        :math:`A^{-1}` (:meth:`covariance`) around the sum :math:`B` of
+        the outer products of the scores, one per unit or, with
+        ``cluster``, one per cluster (Huber 1967; White 1982; Liang and
+        Zeger 1986). It stays a valid covariance when the baseline
+        distribution is not the right shape, and with ``cluster``, when
+        the rows within a cluster are correlated (repeated measures on
+        one item, items from one batch). It is the HC0 form, with no
+        small-sample factor, as R's ``sandwich::sandwich`` and lifelines'
+        ``robust=True`` give it.
+
+        Counts ``n`` are frequency weights: without ``cluster`` a row with
+        ``n = 3`` is three independent units, and with it the three share
+        the row's label. A fixed parameter's row and column are 0, and an
+        aliased coefficient's ``nan``, as in :meth:`covariance`.
+
+        Only the standard errors change: the estimates are the maximum
+        likelihood ones, and :meth:`cb`, :meth:`param_cb` and
+        :attr:`p_values` keep the model-based covariance. Use
+        :meth:`summary` with ``robust=True`` for the coefficient table on
+        these standard errors.
+
+        Parameters
+        ----------
+        cluster : array_like, optional
+            A cluster label for each row given to the fit, in that order
+            (for ``fit_from_df``, one per row of the DataFrame, such as
+            ``df["id"]``); rows dropped for a missing covariate are matched
+            and left out. ``None`` (the default) makes every unit its own
+            cluster.
+
+        Returns
+        -------
+        numpy.ndarray
+            The ``(k, k)`` covariance, ``k = len(params)``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullAFT
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullAFT.fit(x, Z)
+        >>> model.robust_standard_errors().round(3)
+        array([0.756, 0.133, 0.107])
+        """
+        from ._robust import robust_covariance
+
+        return robust_covariance(self, cluster)  # type: ignore[arg-type]
+
+    def robust_standard_errors(
+        self, cluster: npt.ArrayLike | None = None
+    ) -> npt.NDArray:
+        """
+        Robust standard errors of the fitted parameters: the square roots
+        of the diagonal of :meth:`robust_covariance` (which describes
+        ``cluster``), ordered to match :attr:`parameter_names`.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullAFT
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullAFT.fit(x, Z)
+        >>> batch = np.arange(100) // 10  # ten batches of ten
+        >>> model.robust_standard_errors(cluster=batch).round(3)
+        array([0.794, 0.105, 0.114])
+        """
+        with np.errstate(invalid="ignore"):
+            return np.sqrt(np.diag(self.robust_covariance(cluster)))
 
     def param_cb(
         self,
@@ -463,7 +543,7 @@ class InferenceMixin:
     def cb(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
@@ -648,7 +728,7 @@ class InferenceMixin:
     def quantile_cb(
         self,
         p: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         method: str = "wald",
