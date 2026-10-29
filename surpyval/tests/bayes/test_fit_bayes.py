@@ -597,6 +597,10 @@ def test_plots(seals):
     ax = seals.plot()
     labels = [line.get_label() for line in ax.get_lines()]
     assert "maximum likelihood" in labels
+    # drawn in probabilities, which the axes' scale transforms
+    line = ax.get_lines()[labels.index("maximum likelihood")]
+    y = np.asarray(line.get_ydata(), dtype=float)
+    assert np.all((y[~np.isnan(y)] > 0) & (y[~np.isnan(y)] < 1))
     plt.close("all")
     fig = seals.plot_posterior()
     assert len(fig.axes) == 3

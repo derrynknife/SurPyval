@@ -80,12 +80,14 @@ def probability_plot(
     )
     mle = model.mle if plot_mle else None
     if mle is not None and "x_model" in d:
+        # probabilities: the axes' scale transforms them
         with warnings.catch_warnings(), np.errstate(all="ignore"):
             warnings.simplefilter("ignore")
-            y = dist.mpp_y_transform(mle.ff(d["x_model"]), *params)
+            F = np.asarray(mle.ff(d["x_model"] + model.gamma), dtype=float)
+        F = np.where((F > 1e-12) & (F < 1 - 1e-12), F, np.nan)
         ax.plot(
             d["x_model"],
-            y,
+            F,
             linestyle="--",
             color="0.4",
             linewidth=1,
