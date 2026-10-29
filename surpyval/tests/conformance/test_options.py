@@ -61,6 +61,7 @@ SIDES = ("two-sided", "lower", "upper")
 NOT_SWEPT = {
     "plot": "draws the bounds of a swept method",
     "plot_partial_effects": "draws the bounds of cb, a swept method (#876)",
+    "plot_parameter": "draws the bounds of parameter_cb, a swept method",
     "get_plot_data": "collects the bounds of a swept method for plot",
     "R_cb": "the survival bounds behind cb in [upper, lower] order "
     "(documented); cb(on='sf') is the method to call",
@@ -247,6 +248,8 @@ def _call(case, spec, model, side, alpha, fname, event, k):
             rows.append(out.rul_interval)
         elif isinstance(out, dict):  # rmst
             rows.append((out["lower"], out["upper"]))
+        elif spec.method == "parameter_cb":  # one covariate row a call
+            rows.append(np.asarray(out, float)[0])
         else:
             rows.append(out)
     return np.asarray(rows, float)
@@ -285,6 +288,10 @@ def _estimate(case, spec, fname, event):
             out.append(getattr(model, spec.method)(*args, **spec.kwargs).rul)
         elif spec.method == "rmst":
             out.append(model.rmst(*args)["rmst"])
+        elif spec.method == "parameter_cb":
+            name, row = args
+            k = list(model.distribution.parameter_names).index(name)
+            out.append(model.parameters_at(row)[0, k])
         else:
             out.append(model.mean())
     return np.asarray(out, float)

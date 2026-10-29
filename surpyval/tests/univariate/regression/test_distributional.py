@@ -506,3 +506,92 @@ def test_spline_terms_save_and_predict():
     # More flexible than the straight line it contains
     line = WeibullDistributional.fit_from_df(df, x_col="x", Z_cols=["load"])
     assert model.neg_ll() <= line.neg_ll() + 1e-8
+
+
+# -- each row's parameter: bounds and plot ----------------------------------
+
+
+def test_parameter_bounds_at_rows():
+    x, load = _load_data()
+    model = WeibullDistributional.fit(x, load)
+    Z = np.array([[0.0], [0.5], [1.0]])
+    est = model.parameters_at(Z)[:, 1]
+    for method in ("wald", "lr"):
+        band = model.parameter_cb("beta", Z, method=method)
+        assert band.shape == (3, 2)
+        assert np.all((band[:, 0] < est) & (est < band[:, 1]))
+        # At Z = 0 it is the bound on the parameter itself
+        np.testing.assert_allclose(
+            band[0], model.param_cb("beta", method=method), rtol=1e-6
+        )
+    lower = model.parameter_cb("beta", Z, bound="lower")
+    assert lower.shape == (3,) and np.all(lower < est)
+    boot = model.parameter_cb(
+        "beta", Z, method="bootstrap", n_boot=40, random_state=2
+    )
+    assert np.all((boot[:, 0] < est) & (est < boot[:, 1]))
+    # A higher confidence gives a wider band
+    wide = model.parameter_cb("beta", Z, alpha_ci=0.01)
+    assert np.all(wide[:, 0] < model.parameter_cb("beta", Z)[:, 0])
+    with pytest.raises(ValueError, match="Unknown parameter"):
+        model.parameter_cb("shape", Z)
+
+
+def test_plot_parameter():
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    x, load = _load_data()
+    df = pd.DataFrame({"x": x, "load": load})
+    model = WeibullDistributional.fit_from_df(df, x_col="x", Z_cols=["load"])
+    fig, ax = plt.subplots()
+    model.plot_parameter("beta", "load", ax=ax)
+    line = ax.get_lines()[-1]
+    np.testing.assert_allclose(
+        line.get_ydata(),
+        model.parameters_at(line.get_xdata().reshape(-1, 1))[:, 1],
+    )
+    plt.close(fig)
+    with pytest.raises(ValueError, match="No covariate"):
+        model.plot_parameter("beta", "temp")
+    restored = sp.from_dict(model.to_dict())
+    with pytest.raises(ValueError, match="values="):
+        restored.plot_parameter("beta", 0)
+
+
+# -- the other distributions --------------------------------------------------
+
+
+def test_three_parameters_and_proportions():
+    rng = np.random.default_rng(12)
+    z = rng.binomial(1, 0.5, 400).astype(float)
+    x = sp.ExpoWeibull.random(400, 10, 1.5, 2.0, random_state=rng)
+    x = x * np.exp(-0.4 * z)
+    model = Distributional(sp.ExpoWeibull).fit(x, z, covariates={"alpha": [0]})
+    assert model.maximum == "verified"
+    assert model.parameter_names == ["alpha", "beta", "mu", "alpha_coef_0"]
+    np.testing.assert_allclose(model.params[3], -0.4, atol=0.15)
+    # A Beta on (0, 1), its first shape moved by z
+    p = rng.beta(2.0 * np.exp(0.5 * z), 3.0)
+    beta = Distributional(sp.Beta).fit(p, z, covariates={"alpha": [0]})
+    assert beta.maximum == "verified"
+    np.testing.assert_allclose(beta.params[2], 0.5, atol=0.25)
+
+
+def test_a_centred_spline_basis_needs_no_aliasing():
+    x, load = _load_data()
+    df = pd.DataFrame({"x": x, "load": load})
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = WeibullDistributional.fit_from_df(
+            df,
+            x_col="x",
+            formulas={"beta": "cr(load, df=3, constraints='center')"},
+        )
+    assert not model.aliased.size
+    with pytest.warns(UserWarning, match="cannot be estimated"):
+        WeibullDistributional.fit_from_df(
+            df, x_col="x", formulas={"beta": "cr(load, df=3)"}
+        )
