@@ -44,12 +44,12 @@ from surpyval.univariate.parametric.parametric_fitter import (
     ParametricFitter,
 )
 from surpyval.univariate.parametric.royston_parmar import (
-    _SCALES,
+    SCALES,
     RoystonParmar,
     RoystonParmarModel,
-    _place_knots,
-    _rcs_basis,
-    _rcs_deriv,
+    place_knots,
+    rcs_basis,
+    rcs_deriv,
 )
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
@@ -105,8 +105,8 @@ class SplineBaseline(ParametricFitter):
         x = np.asarray(x, dtype=float)
         lx = np.log(x.reshape(-1))
         g = anp.array(list(gamma))
-        eta = anp.dot(_rcs_basis(lx, self.knots), g)
-        slope = anp.dot(_rcs_deriv(lx, self.knots), g)
+        eta = anp.dot(rcs_basis(lx, self.knots), g)
+        slope = anp.dot(rcs_deriv(lx, self.knots), g)
         return anp.reshape(eta, x.shape), anp.reshape(slope, x.shape)
 
     def Hf(self, x: Numeric, *gamma: Boxable) -> Boxable:
@@ -223,7 +223,7 @@ def regression_knots(
             "event times to place its knots; the data have {}. Reduce "
             "`df` or pass `knots`.".format(df, n_internal + 2, distinct)
         )
-    knots = _place_knots(event, n_internal)
+    knots = place_knots(event, n_internal)
     if np.unique(knots).size != knots.size:
         raise ValueError(
             "The knots placed at quantiles of the event times coincide "
@@ -294,7 +294,7 @@ class RoystonParmarRegression(FitterRepr, DataFrameRegressionMixin):
                 "LogNormalAFT for a log-normal model with covariates, or "
                 "RoystonParmar.fit(..., scale='normal') without them."
             )
-        check_option("scale", scale, _SCALES)
+        check_option("scale", scale, SCALES)
         if int(df) != df or df < 1:
             raise ValueError(
                 f"`df` must be a whole number at least 1; got {df!r}."
