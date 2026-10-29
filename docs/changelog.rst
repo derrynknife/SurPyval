@@ -1,8 +1,21 @@
 Changelog
 =========
 
-Unreleased
-----------
+v0.26 (unreleased)
+------------------
+
+**Added.**
+
+- ``surpyval.life_table(x, c=None, n=None, tl=None, intervals=None)``: the
+  actuarial (Cutler-Ederer) life table of right censored data, with or
+  without late entry, as a DataFrame with one row per interval ``[start,
+  end)``: the numbers entering, at risk at the start, censored and with
+  the event, the effective number at risk, the conditional probabilities
+  of the event and of surviving, and the survival, density and hazard
+  with their standard errors (Klein and Moeschberger, section 5.4, as R's
+  ``KMsurv::lifetab``). It takes arrays, a ``SurpyvalData`` or a fitted
+  non-parametric model; left and interval censored data and right
+  truncation are refused, pointing to ``Turnbull``.
 
 **Documentation.**
 

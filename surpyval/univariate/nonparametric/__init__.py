@@ -12,6 +12,7 @@ from .logrank import LogRankResult, logrank
 from .nelson_aalen import NelsonAalen, nelson_aalen, nelson_aalen_variance
 from .nonparametric import NonParametric, rmst_diff
 from .at_risk import at_risk_table
+from .life_table import life_table
 from .plot_estimates import NonParametricPlot, plot_nonparametric
 from .plotting_positions import plotting_positions
 from .rank_adjust import rank_adjust
