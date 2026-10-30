@@ -24,11 +24,11 @@ this summary, and fix them, not this file, when they are wrong.
   workflow run on `main`
   (`gh workflow run publish.yml --ref main -f version=X.Y`), which
   publishes, tags and creates the GitHub Release.
-- CI runs on every pull request into `dev` (everything but the
-  calibration studies) and into `main` (everything). Push and let CI test
-  the change; run tests locally only when the maintainer asks for it (cap
-  xdist at `-n 4` when you do, so parallel work on one machine doesn't
-  starve itself). Read a red CI run, fix, push again.
+- CI runs only on the pull request from `dev` into `main` (the release),
+  and a newer push to `dev` cancels its out-of-date run. Pull requests into
+  `dev` get no checks. Run tests locally only when the maintainer asks for
+  it (cap xdist at `-n 4` when you do, so parallel work on one machine
+  doesn't starve itself). Read a red release run, fix on `dev`, push again.
 
 ## Running things
 
