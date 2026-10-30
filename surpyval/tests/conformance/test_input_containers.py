@@ -223,58 +223,27 @@ def test_list_inputs(case):
 # ---------------------------------------------------------------------------
 # The query
 # ---------------------------------------------------------------------------
-# A float32 query is computed in single precision by the parametric
+# A float32 query was computed in single precision by the parametric
 # distributions on the plain path (no offset): ``_query_array`` in
-# univariate/parametric/parametric.py keeps the query's dtype, and under
-# NumPy 2's promotion rules the distribution's arithmetic with Python
-# floats stays in float32. The result is float64, but it differs from the
-# float64 query of the same numbers by about 1e-8 to 1e-7 (relative):
-#
-#     >>> import numpy as np, surpyval as sp
-#     >>> m = sp.LogNormal.from_params([1, 0.5])
-#     >>> q = np.array([0.7, 1.3, 2.9], dtype=np.float32)
-#     >>> m.sf(q) - m.sf(q.astype(float))  # not zero: about 6e-8 relative
-#
-# An offset model subtracts its float64 offset first and is exact.
-_FLOAT32_QUERY = (
-    "a float32 query is computed in single precision (the result differs "
-    "from the float64 query of the same numbers by ~1e-8 to 1e-7 "
-    "relative): Parametric's _query_array keeps the dtype"
-)
-_FLOAT32_QUERY_CASES = frozenset(
-    {
-        "Gamma",
-        "Gamma[lfp]",
-        "Gamma[zi]",
-        "LogNormal",
-        "LogNormal[lfp]",
-        "LogNormal[zi]",
-        "LogLogistic",
-        "ExpoWeibull",
-        "Poisson",
-        "NegativeBinomial",
-        "DiscreteWeibull",
-    }
-)
+# univariate/parametric/parametric.py kept the query's dtype, and under
+# NumPy 2's promotion rules the arithmetic with Python floats stayed in
+# float32 (Gamma, LogNormal, LogLogistic, ExpoWeibull, Poisson,
+# NegativeBinomial and DiscreteWeibull, with their lfp and zi forms,
+# differed from the float64 query by about 1e-8 relative). It now
+# converts a float32 query to float64 first.
 
 
 def _query_params():
-    out = []
-    for ps in cases_for("query_order"):
-        marks = list(ps.marks)
-        if ps.id in _FLOAT32_QUERY_CASES:
-            marks.append(pytest.mark.xfail(strict=True, reason=_FLOAT32_QUERY))
-        out.append(pytest.param(*ps.values, id=ps.id, marks=marks))
-    return out
+    return [
+        pytest.param(*ps.values, id=ps.id, marks=ps.marks)
+        for ps in cases_for("query_order")
+    ]
 
 
 @pytest.mark.parametrize("case", _query_params())
 def test_query_containers(case):
     """A float32 query gives exactly what the same numbers in float64
-    give, and a list query what the array gives.
-
-    Strict xfail for the parametric distributions in
-    ``_FLOAT32_QUERY_CASES``; reproduction above that set."""
+    give, and a list query what the array gives."""
     model = fitted(case)
     for fname, event in calls(case):
         x = np.asarray(query(case, fname))

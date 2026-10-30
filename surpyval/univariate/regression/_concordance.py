@@ -25,14 +25,14 @@ class ConcordanceMixin:
         ``x`` are the times being scored, one per row."""
         raise NotImplementedError  # pragma: no cover - every host has it
 
-    def _concordance_data(self) -> "tuple | None":
+    def _concordance_data(self) -> tuple | None:
         """The training ``(x, c, n, Z)``, or ``None`` if not kept."""
         return None
 
     def concordance(
         self,
-        x: "npt.ArrayLike | None" = None,
-        c: "npt.ArrayLike | None" = None,
+        x: npt.ArrayLike | None = None,
+        c: npt.ArrayLike | None = None,
         Z: Any = None,
         tie_tol: float = 1e-8,
         ties: str = "therneau",
@@ -126,6 +126,10 @@ class ConcordanceMixin:
             x_arr = np.asarray(x, dtype=float).ravel()
             c_arr = np.asarray(c).ravel()
             risk = self._concordance_risk(x_arr, Z)
+            if np.isnan(risk).any():
+                # A missing covariate leaves a subject's score, and so the
+                # index, undefined (as the forests' concordance).
+                return float("nan")
             return concordance_index(x_arr, c_arr, risk, tie_tol, ties)
         data = self._concordance_data()
         if data is None:

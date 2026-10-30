@@ -118,16 +118,12 @@ def test_weibull_scale_1e_minus_200():
     assert m.maximum == "verified"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="WeibullPH at scale 1e200 gives the 'not verified' warning twice",
-)
 def test_weibull_ph_unverified_warned_once():
-    """Observed at e3412770: ``WeibullPH.fit(x * 1e200, Z, c)`` warns "The
-    maximum-likelihood search did not reach a verified maximum" twice,
-    from ``optimised_fit.py`` and from ``_fit_skeleton.py``. Expected:
-    once (Design Principle 22: a thing is warned once).
-    """
+    """``WeibullPH.fit(x * 1e200, Z, c)`` warns "The maximum-likelihood
+    search did not reach a verified maximum" once (Design Principle 22).
+    At e3412770 it warned twice: the baseline's fit for the start values
+    (``optimised_fit.py``) said it too, as well as the regression's own
+    search (``_fit_skeleton.py``)."""
     x, c, Z = _data()
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")

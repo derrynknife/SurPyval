@@ -279,6 +279,12 @@ def _query_array(x: Any) -> Any:
             raise ValueError(
                 f"x must be numbers (or strings of numbers); got {x!r}."
             ) from None
+    if out.dtype.kind == "f" and out.dtype.itemsize < 8:
+        # A float32 (or float16) query is evaluated in double precision,
+        # as the same numbers in float64 are; NumPy would otherwise keep
+        # the arithmetic in single precision. Integer queries are kept as
+        # they are, for the discrete distributions.
+        return out.astype(float)
     return out
 
 
@@ -1618,7 +1624,7 @@ class Parametric(
         0 given survival to it; ``Hf`` jumps there by ``-log(1 - f0)``.
         """
         refuse_time_values(x, "x")
-        x = np.asarray(x)
+        x = _query_array(x)
         if (self.lfp_p == 1) and (self.f0 == 0):
             xg = x - self.gamma  # type: ignore[operator]
             s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
@@ -1699,7 +1705,7 @@ class Parametric(
         array([1.0536e-01, 1.0000e+06])
         """
         refuse_time_values(x, "x")
-        x = np.asarray(x)
+        x = _query_array(x)
 
         if (self.lfp_p == 1) and (self.f0 == 0):
             xg = x - self.gamma  # type: ignore[operator]

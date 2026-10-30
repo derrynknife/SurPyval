@@ -279,6 +279,41 @@ all optional. What can look different:
   finishes with Newton steps on a difference Hessian, so such fits move
   by about ``1e-5`` (relative) in the parameters to the maximum. Fits
   that already reached it are unchanged.
+- A row of a two-column ``x`` flagged interval censored (``c = 2``) with
+  equal ends, ``[t, t]``, was refused by ``fit`` (and ``Turnbull.fit``)
+  with a message about "only one failure time", while ``fit_from_df``
+  took the same row as an exact time, as its documentation says. Both
+  now take it as the exact time ``t``. A reversed interval (left end
+  above the right) is still refused, and the message now counts and
+  names the rows and says to give the lower end first.
+- ``concordance_index`` counted an infinite risk score as tied with
+  every finite one (the relative tie tolerance became infinite), so
+  ``[4, inf, 2, 1]`` scored 0.9167 where the pairwise definition gives
+  5/6. Equal infinities are tied, and an infinity is tied with nothing
+  else. A missing (NaN) risk score, which gave a silent ``nan``, is now
+  refused with a ``ValueError`` naming ``risk``; a missing time still
+  gives ``nan``, as does a model's ``concordance(x, c, Z)`` with a
+  missing covariate.
+- ``brier_score`` and ``integrated_brier_score`` accepted survival
+  probabilities outside [0, 1] and returned scores; they are refused.
+- A float32 query to a parametric model's ``sf``, ``ff``, ``df``,
+  ``hf`` or ``Hf`` was computed in single precision for several
+  distributions (Gamma, LogNormal, LogLogistic, ExpoWeibull, Poisson,
+  NegativeBinomial, DiscreteWeibull, and their limited-failure and
+  zero-inflated forms), differing from the same numbers in float64 by
+  about ``1e-8`` (relative). It is now converted to float64 first.
+  Integer queries are unchanged.
+- A Cox fit whose likelihood has no finite maximum (a covariate
+  combination separating the events) warned so and then, with
+  ``center=False`` (the default), could raise a ``ValueError`` from the
+  move of its baseline to ``Z = 0``, which the runaway coefficients make
+  overflow. It now returns, as with ``center=True``: the baseline is
+  kept at the covariate means (``model.center``), with one warning
+  saying so. A fit that has a maximum is refused as before where the
+  move fails.
+- A parametric regression whose search did not reach a verified maximum
+  warned twice; the baseline's fit for the start values no longer says
+  it too.
 
 Where weights met other features of this release:
 
@@ -299,6 +334,12 @@ Where weights met other features of this release:
   tests of ``summary()``. A fit whose log-likelihood is below that of the
   model without covariates is now refused too, rather than given a
   statistic of 0.
+- ``w=`` given to a fitter that takes no weights (the distributional
+  and Royston-Parmar regressions, ``AalenAdditive``, the frailty,
+  competing-risks, recurrence and degradation models and the others)
+  raised Python's ``TypeError`` for an unexpected keyword; it is now a
+  ``ValueError`` naming the fitter and ``w``, saying which models take
+  weights. So is ``w_col=`` given to a ``fit_from_df`` without it.
 - ``life_table``, ``fit_bayes``, ``update``, ``prior.from_data``,
   ``log_likelihood_fn``, ``BayesianParametric.from_draws`` and the PyMC
   helpers refuse weighted data, which they used to drop or read as

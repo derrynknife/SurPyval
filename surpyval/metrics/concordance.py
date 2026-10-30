@@ -30,10 +30,13 @@ _REL_TOL = 1e-9
 
 
 def _close(a: npt.NDArray, b: npt.NDArray, tol: float) -> npt.NDArray:
-    """``math.isclose(a, b, abs_tol=tol)``, elementwise."""
+    """``math.isclose(a, b, abs_tol=tol)``, elementwise: equal infinities
+    are close, and an infinity is close to nothing else (its relative
+    bound would be infinite)."""
     with np.errstate(invalid="ignore"):
         bound = np.maximum(_REL_TOL * np.maximum(np.abs(a), np.abs(b)), tol)
-        return (a == b) | (np.abs(a - b) <= bound)
+        finite = np.isfinite(a) & np.isfinite(b)
+        return (a == b) | (finite & (np.abs(a - b) <= bound))
 
 
 def _close_ranks(u: npt.NDArray, tol: float) -> tuple[npt.NDArray, ...]:
@@ -138,14 +141,15 @@ def concordance_index(
     Returns
     -------
     float
-        The concordance index; ``nan`` if a time or a score is missing.
+        The concordance index; ``nan`` if a time is missing.
 
     Raises
     ------
     ValueError
-        If the arrays differ in length, a flag is not 0 or 1, ``ties`` is
-        not one of the conventions, or no pair is usable (every event is
-        tied with, or later than, every other subject's time).
+        If the arrays differ in length, a score is missing (NaN), a flag
+        is not 0 or 1, ``ties`` is not one of the conventions, or no pair
+        is usable (every event is tied with, or later than, every other
+        subject's time).
 
     Notes
     -----
@@ -198,7 +202,15 @@ def concordance_index(
             "'x', 'c' and 'risk' must have the same length: got "
             f"{x_arr.size}, {c_arr.size} and {s.size}"
         )
-    if np.isnan(x_arr).any() or np.isnan(s).any():
+    if np.isnan(s).any():
+        raise ValueError(
+            "'risk' has {} missing (NaN) score(s) of {}: the concordance "
+            "index ranks every subject, so drop those subjects (from 'x' "
+            "and 'c' too) or predict their scores first".format(
+                int(np.isnan(s).sum()), s.size
+            )
+        )
+    if np.isnan(x_arr).any():
         return float("nan")
     if not np.isin(c_arr, (0, 1)).all():
         raise ValueError(

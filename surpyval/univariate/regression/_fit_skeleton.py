@@ -911,10 +911,13 @@ def prepare_regression_fit(
         data = centred_copy(data, centring.center)
 
     def default_init() -> npt.NDArray:
+        from surpyval.utils.no_maximum import quiet_maximum_warnings
         from surpyval.utils.weights import few_effective_said_later
 
-        # The regression warns of few effective units itself, once
-        with few_effective_said_later():
+        # The regression warns of few effective units itself, once, and
+        # says what its own search reached: the start's fit does not
+        # (principle 22).
+        with few_effective_said_later(), quiet_maximum_warnings():
             ps = fitter.dist.fit_from_surpyval_data(data).params
         if callable(phi_init):
             init_phi = phi_init(Z_data)

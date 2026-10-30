@@ -549,3 +549,49 @@ def test_every_fitter_taking_w_is_registered():
     assert (
         not unregistered
     ), f"These fitters take w but are not registered: {unregistered}"
+
+
+def _fitters_without(argument, method="fit"):
+    """The public fitters whose ``method`` takes no ``argument`` (nor
+    other keywords, which a ``fit_from_df`` passes on to ``fit``)."""
+    out = []
+    for name in sorted(dir(sp)):
+        obj = getattr(sp, name)
+        fit = getattr(obj, method, None)
+        if inspect.ismodule(obj) or not callable(fit):
+            continue
+        try:
+            params = inspect.signature(fit).parameters
+        except (TypeError, ValueError):
+            continue
+        keywords = any(p.kind is p.VAR_KEYWORD for p in params.values())
+        if argument not in params and not keywords:
+            out.append(pytest.param(name, id=name))
+    return out
+
+
+@pytest.mark.parametrize("name", _fitters_without("w"))
+def test_fit_without_weights_refuses_w(name):
+    """A fitter that takes no weights refuses ``w=`` with a ValueError
+    naming ``w``, the fitter and the models that take weights (principle
+    2), not Python's TypeError for an unexpected keyword."""
+    with pytest.raises(WeightedRefusal) as caught:
+        getattr(sp, name).fit([1.0, 2.0, 3.0], w=[1.0, 2.0, 1.0])
+    message = str(caught.value)
+    assert ".fit does not take weights (w) yet" in message
+    assert "WeibullPH" in message and "CoxPH" in message
+
+
+@pytest.mark.parametrize("name", _fitters_without("w_col", "fit_from_df"))
+def test_fit_from_df_without_weights_refuses_w_col(name):
+    import pandas as pd
+
+    df = pd.DataFrame({"x": [1.0, 2.0, 3.0], "w": [1.0, 2.0, 1.0]})
+    with pytest.raises(WeightedRefusal, match=r"\(w_col\)"):
+        getattr(sp, name).fit_from_df(df, x_col="x", w_col="w")
+
+
+def test_refusal_names_the_public_fitter():
+    for name in ["WeibullDistributional", "RoystonParmarPH", "CoxFrailty"]:
+        with pytest.raises(WeightedRefusal, match=rf"^{name}\.fit "):
+            getattr(sp, name).fit([1.0, 2.0], w=[1.0, 1.0])

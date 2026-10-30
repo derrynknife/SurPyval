@@ -696,10 +696,19 @@ def coerce_xcnt_x(x: npt.ArrayLike, recurrent: bool = False) -> npt.NDArray:
                 "Dimension 1 must be equal to 2, try transposing data, or do"
                 " you have a 1d array in a 2d array?"
             )
-        if not (x[:, 0] <= x[:, 1]).all():
+        reversed_rows = np.flatnonzero(~(x[:, 0] <= x[:, 1]))
+        if reversed_rows.size:
+            shown = reversed_rows[:5]
             raise ValueError(
-                "All left intervals must be less than or equal to right"
-                " intervals"
+                "All left intervals must be less than or equal to right "
+                "intervals: {} row(s) of 'x' have the left end above the "
+                "right (rows {}{}: {}). Give each interval as [left, right], "
+                "lower end first; an exact time t is [t, t].".format(
+                    reversed_rows.size,
+                    shown.tolist(),
+                    ", ..." if reversed_rows.size > 5 else "",
+                    x[shown].tolist(),
+                )
             )
     return x
 
@@ -1109,13 +1118,17 @@ def _xcnt_x(
     return x
 
 
-def _check_interval_flags(c: npt.NDArray, x: npt.NDArray) -> None:
-    """The flags of a two-column ``x``: 2 exactly on the interval rows."""
-    if np.any(c[x[:, 0] == x[:, 1]] == 2):
-        raise ValueError(
-            "Censor flag indicates interval censored but only has one"
-            + " failure time"
-        )
+def _check_interval_flags(c: npt.NDArray, x: npt.NDArray) -> npt.NDArray:
+    """The flags of a two-column ``x``: 2 exactly on the interval rows.
+
+    A row flagged 2 whose ends are equal, ``[t, t]``, is an interval of
+    zero width: the exact time ``t``, flagged 0 in the flags returned (as
+    ``fit_from_df`` reads ``xl == xr``, and as the default flags have it).
+    """
+    c = np.array(c)
+    zero_width = (c == 2) & (x[:, 0] == x[:, 1])
+    if zero_width.any():
+        c[zero_width] = 0
 
     if np.any(c[x[:, 0] != x[:, 1]] != 2):
         mask1 = x[:, 0] != x[:, 1]
@@ -1129,14 +1142,9 @@ def _check_interval_flags(c: npt.NDArray, x: npt.NDArray) -> None:
             + f"{c[m]}"
         )
 
-    if np.any((c == 2) & (x[:, 0] == x[:, 1])):
-        raise ValueError(
-            "Censor flag provided, but case where interval flagged as"
-            + " non interval censoring"
-        )
-
     if np.any((c != 0) & (c != 1) & (c != -1) & (c != 2)):
         raise ValueError("Censoring value must only be one of -1, 0, 1, or 2")
+    return c
 
 
 def _has_missing(values: Any) -> bool:
@@ -1225,7 +1233,7 @@ def _xcnt_censoring(c: npt.ArrayLike | None, x: npt.NDArray) -> npt.NDArray:
         raise ValueError("'c' must be the same length as 'x'")
 
     if x.ndim == 2:
-        _check_interval_flags(c_arr, x)
+        c_arr = _check_interval_flags(c_arr, x)
     elif np.any((c_arr != 0) & (c_arr != 1) & (c_arr != -1)):
         raise ValueError(
             "Censoring value must only be one of -1, 0, 1 for single"

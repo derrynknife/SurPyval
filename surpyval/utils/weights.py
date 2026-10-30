@@ -166,6 +166,58 @@ def refuse_weighted_data(data: Any, what: str, why: str, instead: str) -> None:
     )
 
 
+#: The fitters that take weights ``w``, for the refusals that name them.
+TAKES_WEIGHTS = (
+    "KaplanMeier, NelsonAalen, FlemingHarrington, the parametric "
+    "distributions (Weibull.fit and the others, by maximum likelihood), "
+    "the parametric regressions (WeibullPH, WeibullAFT, ...) and CoxPH"
+)
+
+
+def refuse_unsupported_weights(
+    owner: Any, qualname: str = "fit", argument: str = "w"
+) -> WeightedRefusal:
+    """The refusal of ``w=`` by the ``fit`` of ``owner`` (a fitter, or
+    its class), which takes no weights: a ``ValueError`` naming ``w``, the
+    fitter, and the fitters that take weights, in place of Python's
+    ``TypeError`` for an unexpected keyword (principle 2). ``qualname``,
+    the method's, names the fitter where ``owner`` is not one (the first
+    argument of a fit called on its class), and ``argument`` is the one
+    refused (``w``, or ``w_col`` of a ``fit_from_df``).
+
+    Examples
+    --------
+    >>> from surpyval import AalenAdditive
+    >>> try:
+    ...     AalenAdditive.fit([1, 2, 3], [[0], [1], [0]], w=[1, 2, 1])
+    ... except ValueError as error:
+    ...     print(str(error)[:51])
+    AalenAdditive.fit does not take weights (w) yet: we
+    """
+    if hasattr(owner, "fit"):
+        cls = owner if isinstance(owner, type) else type(owner)
+        name = cls.__name__.rstrip("_")
+    else:
+        owner = None
+        name = (qualname.rsplit(".", 1)[0] or "This model").rstrip("_")
+    if name.endswith(("Fitter", "Regression")):
+        # A class behind several public fitters (WeibullDistributional,
+        # RoystonParmarPH, ...): the instance's own name says which.
+        given = getattr(owner, "name", None)
+        if isinstance(given, str) and given.isidentifier():
+            name = given
+        else:
+            name = name.removesuffix("Fitter")
+    method = qualname.rsplit(".", 1)[-1]
+    return WeightedRefusal(
+        f"{name}.{method} does not take weights ({argument}) yet: weighted "
+        f"fitting is not built for this model. Fit it without "
+        f"{argument} (identical units can be given as counts, n), or, for "
+        f"weighted data, use one of the models that take w: "
+        f"{TAKES_WEIGHTS}."
+    )
+
+
 #: Why a Bayesian fit refuses weighted data, and what to use instead.
 BAYES_WHY = (
     "a posterior from the likelihood with each row raised to its weight "

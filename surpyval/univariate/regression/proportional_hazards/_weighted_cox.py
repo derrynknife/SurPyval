@@ -288,7 +288,7 @@ def fit_weighted_cox(
     from ..semi_parametric_regression_model import (
         SemiParametricRegressionModel,
     )
-    from .cox_likelihood import baseline_at_origin
+    from .cox_likelihood import baselines_at_origin
     from .cox_ph import (
         ALIASED_HOW,
         _baseline_method,
@@ -457,13 +457,15 @@ def fit_weighted_cox(
     model.neg_ll_of = full.neg_ll
     model._ic_n = float(np.sum(n[np.asarray(c) == 0]))
     times, r, d, h0 = lik.baseline(beta_k)
-    if center:
-        model.center = mean
-    else:
+    moved = False
+    if not center:
         # From the centre to Z = 0, as the unweighted fit: refused where
-        # the move over- or underflows (covariates far from 0).
-        r, h0 = baseline_at_origin(beta_used, mean, Z, r, h0)
-        model.center = np.zeros_like(mean)
+        # the move over- or underflows (covariates far from 0), or, with
+        # no finite maximum, kept at the centre with a warning.
+        [(r, h0)], moved = baselines_at_origin(
+            beta_used, mean, Z, [(r, h0)], model.maximum
+        )
+    model.center = np.zeros_like(mean) if moved else mean
     model._fit_center = mean
     model.x = times
     model.r = r

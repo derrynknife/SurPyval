@@ -13,6 +13,16 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-10-30
 
+### Fixes behind the second bug hunt's strict xfails
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A row of a two-column `x` flagged interval censored (`c = 2`) whose ends are equal, `[t, t]`, is the exact (observed) time `t` on every path: `fit`, `fit_from_df` and the non-parametric fits read it as `c = 0`. A genuinely reversed interval (`xl > xr`) is still refused, and the refusal now counts the rows, names them and says to give each interval lower end first. | maintainer | `fit_from_df` already promised it ("If xl[i] == xr[i] assumes observed"), and the default flags of a two-column `x` already read such a row as exact; refusing it on one path only, with a message about "one failure time", was the inconsistency. An interval of zero width carries exactly the information of an exact time. | done |
+| `w=` given to the `fit` of a fitter that takes no weights (the distributional, Aalen, Royston-Parmar, frailty, competing-risks, recurrence, degradation and other fitters), or `w_col=` to a `fit_from_df` that has no `w_col`, raises a `ValueError` (`WeightedRefusal`) naming the fitter and `w`, saying weighted fitting is not built for it yet and which models take weights, instead of Python's `TypeError`. It is raised by `takes_unit`, the one wrapper every public `fit` has. | maintainer | Principle 2: invalid input raises a `ValueError` naming the argument and the fix. Weighted data passed as a `SurpyvalData` was already refused this way. | done |
+| A Cox fit with no finite maximum whose baseline cannot be moved to `Z = 0` (the runaway coefficients make `exp(beta'Z)` over- or underflow on the rows as given) keeps the baseline at the covariate means (`model.center`), as `center=True` does, with one warning saying so, instead of raising after the "No finite maximum" warning. A fit with a maximum whose move fails is still refused, pointing to `center=True`. Unweighted, stratified (every stratum kept, or every one moved) and weighted fits alike. | principle 13 | Whether a separated fit returned or raised depended on how far its search ran before the move. The model at the means is the same model, so its predictions are those of `center=True`, which the warning about the runaway estimate already qualifies. | done |
+| `concordance_index` refuses a missing (NaN) risk score, naming `risk`; a model's `concordance(x, c, Z)` with a missing covariate still gives NaN (NaN in, NaN out, as the forests' `concordance`). A NaN time still gives NaN. Equal infinite scores are tied; an infinite score is tied with no finite one. | principle 2 | A silent NaN index hid the missing score; the tie test's relative tolerance was infinite at an infinite score, which counted it as tied with every finite one. | done |
+| `brier_score` (and so `integrated_brier_score`) refuses survival probabilities outside [0, 1], counting them. | principle 2 | A survival probability outside [0, 1] is a hazard or a mistake, and its score is meaningless. | done |
+
 ### Fixes behind the 0.26 test audit's strict xfails
 
 | Decision | By | Reason | Status |
