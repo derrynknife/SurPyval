@@ -3,11 +3,10 @@
 A row of a two-column ``x`` with ``xl == xr`` is an exact time:
 ``fit_from_df`` says so ("If xl[i] == xr[i] assumes observed",
 ``surpyval/utils/dataframe.py``), and the array path accepts such a row
-with ``c = 0``. With ``c = 2`` the array path refuses it instead, in
-``surpyval/utils/data_formats.py::_check_interval_flags``, with a message
-about "only one failure time" that does not tell the user which row or
-what to do. The strict xfails pin that disagreement; the passing tests
-pin the behaviour both paths already share.
+with ``c = 0``. With ``c = 2`` the array path refused it (at e3412770,
+in ``surpyval/utils/data_formats.py::_check_interval_flags``, with a
+message about "only one failure time"); it now reads it as exact too,
+so both paths agree.
 """
 
 import numpy as np
@@ -32,21 +31,10 @@ def _row_3_exact(X):
     return X.copy(), c2
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "a c=2 row with xl == xr is refused by fit() with a message about "
-        "'one failure time' but accepted as observed by fit_from_df()"
-    ),
-)
 def test_zero_width_interval_row_weibull_fit():
-    """Observed at e3412770: ``Weibull.fit(X, c=np.full(30, 2))`` raises
-    ``ValueError: Censor flag indicates interval censored but only has
-    one failure time`` (``data_formats._check_interval_flags``).
-    Expected: the row is taken as exact, as ``fit_from_df`` does, giving
-    the fit with row 3 flagged ``c = 0`` (or, if both paths should refuse,
-    a message naming the row and the fix).
-    """
+    """``Weibull.fit(X, c=np.full(30, 2))`` with a zero-width row takes
+    it as exact, as ``fit_from_df`` does: the fit with row 3 flagged
+    ``c = 0``. It raised "only has one failure time" at e3412770."""
     X = _data()
     m = Weibull.fit(X, c=np.full(30, 2))
     X2, c2 = _row_3_exact(X)
@@ -65,18 +53,9 @@ def test_zero_width_interval_row_fit_from_df_is_exact():
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "a c=2 row with xl == xr is refused by Turnbull.fit() with a "
-        "message about 'one failure time' instead of being taken as exact"
-    ),
-)
 def test_zero_width_interval_row_turnbull_fit():
-    """Observed at e3412770: ``Turnbull.fit(X, c=np.full(30, 2))`` raises
-    the same ``ValueError`` as ``Weibull.fit``. Expected: the estimate
-    with row 3 flagged exact.
-    """
+    """``Turnbull.fit(X, c=np.full(30, 2))``: the estimate with row 3
+    flagged exact (it raised as ``Weibull.fit`` did at e3412770)."""
     X = _data()
     m = Turnbull.fit(X, c=np.full(30, 2))
     X2, c2 = _row_3_exact(X)
@@ -94,3 +73,22 @@ def test_all_interval_rows_agree_between_paths():
     df = pd.DataFrame({"xl": X[:, 0], "xr": X[:, 1]})
     b = Weibull.fit_from_df(df, xl_col="xl", xr_col="xr")
     np.testing.assert_allclose(a.params, b.params, rtol=1e-10)
+
+
+def test_zero_width_interval_row_fit_from_df_with_flags():
+    # A c column of 2 on every row, the zero-width one included: exact,
+    # as without the column.
+    X = _data()
+    df = pd.DataFrame({"xl": X[:, 0], "xr": X[:, 1], "c": 2})
+    m = Weibull.fit_from_df(df, xl_col="xl", xr_col="xr", c_col="c")
+    X2, c2 = _row_3_exact(X)
+    np.testing.assert_allclose(
+        m.params, Weibull.fit(X2, c=c2).params, rtol=1e-10
+    )
+
+
+def test_reversed_interval_names_the_row():
+    X = _data()
+    X[[4, 7]] = X[[4, 7]][:, ::-1]
+    with pytest.raises(ValueError, match=r"2 row\(s\) .*\(rows \[4, 7\]"):
+        Weibull.fit(X, c=np.full(30, 2))

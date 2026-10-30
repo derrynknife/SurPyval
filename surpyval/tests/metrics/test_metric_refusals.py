@@ -3,9 +3,8 @@
 The values are closed forms where one exists (a perfect, reversed or
 fully tied ranking; a Brier score where every unit failed before the
 time) and otherwise counts of concordant pairs worked by hand, which
-agree with the values observed at commit e3412770. The strict xfails
-pin inputs that should be refused, naming the argument (Design
-Principle 2; the Conventions' missing-value rule), and are not.
+agree with the values observed at commit e3412770. The refusal tests
+pin inputs that are refused, naming the argument (Design Principle 2).
 """
 
 import numpy as np
@@ -30,26 +29,16 @@ def _brier_data():
     return xx, np.zeros(30), S, times
 
 
-@pytest.mark.xfail(
-    strict=True, reason="a NaN risk score gives a silent nan concordance"
-)
 def test_concordance_refuses_nan_risk():
-    """Observed at e3412770: ``concordance_index([1, 2, 3, 4], [0] * 4,
-    [4, nan, 2, 1])`` returns nan. Expected: a ``ValueError`` naming
-    ``risk``.
-    """
+    """``concordance_index([1, 2, 3, 4], [0] * 4, [4, nan, 2, 1])``
+    returned nan at e3412770; it is refused, naming ``risk``."""
     with pytest.raises(ValueError, match="risk"):
         concordance_index(X4, C4, [4.0, np.nan, 2.0, 1.0])
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="brier_score accepts survival probabilities outside [0, 1]",
-)
 def test_brier_refuses_probabilities_outside_unit_interval():
-    """Observed at e3412770: ``brier_score(x, c, S * 2, times)`` returns
-    scores. Expected: a ``ValueError`` naming ``survival``.
-    """
+    """``brier_score(x, c, S * 2, times)`` returned scores at e3412770;
+    it is refused, naming ``survival``."""
     xx, c, S, times = _brier_data()
     with pytest.raises(ValueError, match="survival"):
         brier_score(xx, c, S * 2, times)
@@ -68,19 +57,17 @@ def test_brier_refuses_probabilities_outside_unit_interval():
         (X4, C4, [4.0, 3.0, 2.0, 2.0 + 1e-9], 0.9166666666666666),
         # Outside tie_tol: one discordant pair, 5 / 6.
         (X4, C4, [4.0, 3.0, 2.0, 2.0 + 1e-7], 0.8333333333333334),
+        # Equal infinities are tied: the first pair counts 0.5, 5.5 / 6.
+        (X4, C4, [np.inf, np.inf, 2.0, 1.0], 0.9166666666666666),
+        (X4, C4, [4.0, 3.0, -np.inf, -np.inf], 0.9166666666666666),
+        # An infinity is not tied with the largest finite score: 6 / 6.
+        (X4, C4, [np.inf, 1.7e308, 2.0, 1.0], 1.0),
     ],
 )
 def test_concordance_values(x, c, risk, expected):
     assert concordance_index(x, c, risk) == pytest.approx(expected, abs=1e-15)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "an infinite risk score is taken as tied with its finite "
-        "neighbour (the relative tie bound is inf)"
-    ),
-)
 @pytest.mark.parametrize(
     "risk, expected",
     [
@@ -93,13 +80,14 @@ def test_concordance_values(x, c, risk, expected):
     ids=["inf", "-inf"],
 )
 def test_concordance_infinite_risk(risk, expected):
-    """Observed at e3412770: 0.9166666666666666 for ``[4, inf, 2, 1]`` and
+    """At e3412770: 0.9166666666666666 for ``[4, inf, 2, 1]`` and
     0.8333333333333334 for ``[4, -inf, 2, 1]``; the O(n^2) definition
     (``pairwise`` in ``test_concordance.py``) and a finite 1e300 in place
     of inf give 5 / 6 and 4 / 6. In ``surpyval/metrics/concordance.py``,
     ``_close`` bounds ``|a - b|`` by ``1e-9 * max(|a|, |b|)``, which is
-    inf when either score is infinite, so an infinite score counts as
-    tied with finite scores; ``math.isclose``, which it mirrors, does not.
+    inf when either score is infinite, so an infinite score counted as
+    tied with finite scores; ``math.isclose``, which it mirrors, does not,
+    and now neither does ``_close``.
     """
     assert concordance_index(X4, C4, risk) == pytest.approx(
         expected, abs=1e-15
@@ -151,7 +139,33 @@ def test_integrated_brier_unsorted_times():
     assert sorted_call == pytest.approx(0.15903805225743808, rel=1e-9)
 
 
+@pytest.mark.parametrize("bad", [-0.1, 1.5])
+def test_brier_refusal_counts_the_values(bad):
+    xx, c, S, times = _brier_data()
+    S = S.copy()
+    S[4, 1] = bad
+    with pytest.raises(ValueError, match="1 of its 90 values are outside"):
+        brier_score(xx, c, S, times)
+    with pytest.raises(ValueError, match="survival"):
+        integrated_brier_score(xx, c, S, times)
+
+
 def test_brier_refuses_wrong_shape():
     xx, c, S, times = _brier_data()
     with pytest.raises(ValueError, match="survival"):
         brier_score(xx, c, S[:, :2], times)
+
+
+def test_model_concordance_with_a_missing_covariate_is_nan():
+    # A model's concordance on new data with a missing covariate keeps the
+    # prediction rule (NaN in, NaN out) rather than the refusal of a NaN
+    # score passed to concordance_index directly.
+    from surpyval import CoxPH
+
+    rng = np.random.default_rng(3)
+    Z = rng.normal(size=(20, 1))
+    x = rng.weibull(1.5, 20) * np.exp(-0.5 * Z[:, 0])
+    model = CoxPH.fit(x, Z)
+    Z_new = Z.copy()
+    Z_new[2, 0] = np.nan
+    assert np.isnan(model.concordance(x, np.zeros(20), Z_new))

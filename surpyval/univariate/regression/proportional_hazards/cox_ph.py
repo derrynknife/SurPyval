@@ -65,6 +65,7 @@ from .cox_likelihood import (  # noqa: F401
     _combine_generators,
     at_risk_beta_Z,
     baseline_at_origin,
+    baselines_at_origin,
     combined_generators,
     cox_at_risk_mask,
     efron_jac,
@@ -584,13 +585,22 @@ def _stratified_baselines(
     # centre, moved to Z = 0 by default. Prediction selects the
     # stratum's baseline via the ``stratum`` argument to ``hf``/``Hf``.
     Z_all = np.vstack([v[5] for v in validated])
-    baselines: dict[Any, dict[str, npt.NDArray]] = {}
-    for s, _, (xs, cs, ns_, Zs, tls) in per_stratum:
-        bx, br, bd, bh0 = fitter.baseline(
-            beta, xs, cs, ns_, Zs, tls, tie_method
+    fitted = [
+        (s, fitter.baseline(beta, xs, cs, ns_, Zs, tls, tie_method))
+        for s, _, (xs, cs, ns_, Zs, tls) in per_stratum
+    ]
+    pairs = [(br, bh0) for _, (_, br, _, bh0) in fitted]
+    moved = False
+    if not center:
+        # Every stratum moved to Z = 0, or (a fit with no finite maximum
+        # that cannot be moved) every one kept at the centre, with a
+        # warning.
+        pairs, moved = baselines_at_origin(
+            beta, mean, Z_all, pairs, model.maximum
         )
-        if not center:
-            br, bh0 = baseline_at_origin(beta, mean, Z_all, br, bh0)
+    model.center = np.zeros_like(mean) if moved else mean
+    baselines: dict[Any, dict[str, npt.NDArray]] = {}
+    for (s, (bx, _, bd, _)), (br, bh0) in zip(fitted, pairs):
         baselines[s] = {
             "x": bx,
             "r": br,
@@ -976,11 +986,14 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
 
         # The baseline of a unit at the centre, moved to Z = 0 by default.
         x, r, d, h0 = self.baseline(res.x, x, c, n, Zc, tl, tie_method)
-        if center:
-            model.center = mean
-        else:
-            r, h0 = baseline_at_origin(res.x, mean, Z, r, h0)
-            model.center = np.zeros_like(mean)
+        moved = False
+        if not center:
+            # Kept at the centre, with a warning, where a fit with no
+            # finite maximum cannot be moved to Z = 0.
+            [(r, h0)], moved = baselines_at_origin(
+                res.x, mean, Z, [(r, h0)], res.maximum
+            )
+        model.center = np.zeros_like(mean) if moved else mean
         # Where the fit centred, for the residuals and diagnostics.
         model._fit_center = mean
         model.x = x
@@ -1090,7 +1103,6 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             model.beta = np.array(res.x, dtype=float)
             model.beta[aliased] = np.nan
             model.params = model.beta.copy()
-        model.center = mean if center else np.zeros_like(mean)
         model.is_stratified = True
         model.strata_labels = list(labels)
 

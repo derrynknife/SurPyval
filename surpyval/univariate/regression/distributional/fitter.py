@@ -34,6 +34,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
 )
 from surpyval.utils.covariates import coefficient_floor
+from surpyval.utils.linalg import fixed_order_dot
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 
@@ -351,7 +352,10 @@ class DistributionalFitter(
                 continue
             coefs = np.array(list(params[start : start + m]))
             start += m
-            shift = np.dot(Z_arr[:, cols], coefs)
+            # Each row's sum in a fixed order (``fixed_order_dot``), so
+            # that permuting the rows permutes the result exactly: a BLAS
+            # product sums a row by where it sits (on Linux x86-64).
+            shift = fixed_order_dot(Z_arr[:, cols], coefs)
             out.append(_links.move(name, base, shift))
         return out
 

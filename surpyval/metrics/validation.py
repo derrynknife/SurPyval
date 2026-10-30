@@ -68,14 +68,12 @@ __all__ = [
 
 def _outcomes(
     x: npt.ArrayLike, c: npt.ArrayLike, xname: str, cname: str
-) -> "tuple[npt.NDArray, npt.NDArray]":
+) -> tuple[npt.NDArray, npt.NDArray]:
     """Validate observed times and right-censoring flags of equal length."""
     x_arr = _as_1d(x, xname)
     c_arr = _as_1d(c, cname)
     if c_arr.shape != x_arr.shape:
-        raise ValueError(
-            "'{}' and '{}' must have the same length".format(xname, cname)
-        )
+        raise ValueError(f"'{xname}' and '{cname}' must have the same length")
     if not np.isin(c_arr, (0, 1)).all():
         # A left-censored row (-1) would otherwise be scored as a known
         # survivor past its time; only right censoring is supported.
@@ -89,9 +87,9 @@ def _outcomes(
 def _ipcw(
     x: npt.NDArray,
     c: npt.NDArray,
-    x_train: "npt.ArrayLike | None",
-    c_train: "npt.ArrayLike | None",
-) -> "tuple[npt.NDArray, npt.NDArray, npt.NDArray]":
+    x_train: npt.ArrayLike | None,
+    c_train: npt.ArrayLike | None,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     """Events-first censoring survival and the event weights ``1/G(x_i-)``.
 
     Returns the censoring estimate's times and values (for ``G(t)`` at the
@@ -201,9 +199,9 @@ def brier_score(
     c: npt.ArrayLike,
     survival: npt.ArrayLike,
     times: npt.ArrayLike,
-    x_train: "npt.ArrayLike | None" = None,
-    c_train: "npt.ArrayLike | None" = None,
-) -> "tuple[npt.NDArray, npt.NDArray]":
+    x_train: npt.ArrayLike | None = None,
+    c_train: npt.ArrayLike | None = None,
+) -> tuple[npt.NDArray, npt.NDArray]:
     r"""Time-dependent Brier score (Graf et al. 1999).
 
     At each horizon ``t`` the Brier score is the IPCW-weighted mean squared
@@ -269,6 +267,20 @@ def brier_score(
                 (x.size, times.size)
             )
         )
+    with np.errstate(invalid="ignore"):
+        outside = (survival < 0) | (survival > 1)
+    if outside.any():
+        raise ValueError(
+            "'survival' must hold survival probabilities, in [0, 1]: {} of "
+            "its {} values are outside (from {:.4g} to {:.4g}). Pass "
+            "S(t | Z), e.g. from survival_probability, not a hazard or a "
+            "cumulative hazard".format(
+                int(outside.sum()),
+                survival.size,
+                float(np.nanmin(survival)),
+                float(np.nanmax(survival)),
+            )
+        )
     uniq, g, w_case = _ipcw(x, c, x_train, c_train)
 
     n = x.size
@@ -296,8 +308,8 @@ def integrated_brier_score(
     c: npt.ArrayLike,
     survival: npt.ArrayLike,
     times: npt.ArrayLike,
-    x_train: "npt.ArrayLike | None" = None,
-    c_train: "npt.ArrayLike | None" = None,
+    x_train: npt.ArrayLike | None = None,
+    c_train: npt.ArrayLike | None = None,
 ) -> float:
     """Integrated Brier score: the Brier score averaged over ``times``.
 
@@ -353,9 +365,9 @@ def auc_td(
     c: npt.ArrayLike,
     risk: npt.ArrayLike,
     times: npt.ArrayLike,
-    x_train: "npt.ArrayLike | None" = None,
-    c_train: "npt.ArrayLike | None" = None,
-) -> "tuple[npt.NDArray, npt.NDArray]":
+    x_train: npt.ArrayLike | None = None,
+    c_train: npt.ArrayLike | None = None,
+) -> tuple[npt.NDArray, npt.NDArray]:
     r"""Uno's cumulative/dynamic time-dependent AUC (2007).
 
     At each horizon ``t`` a *case* is a subject with the event by ``t``
