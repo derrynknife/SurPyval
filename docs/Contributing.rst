@@ -359,8 +359,9 @@ once, on the **pull request from dev into main** (the release), and on
 nothing else: not on pull requests into ``dev`` and not on pushes to any
 branch. It tests the pull request's merge result, and each new push to
 ``dev`` cancels the release pull request's out-of-date run, so only the
-latest ``dev`` is tested. The commands under "Running things" above run the
-checks locally when the maintainer asks for them.
+latest ``dev`` is tested. Before pushing a change, run the tests for what it
+touches with the commands under "Running things" above; the full suite runs
+in that release run (or locally when the maintainer asks for it).
 
 .. list-table::
    :header-rows: 1
