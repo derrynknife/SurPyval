@@ -82,7 +82,7 @@ below points straight to the section that answers it.
        ``mean_tvc`` for the parametric families
      - `Time-Varying Covariates`_, `Time-varying covariates across families`_
    * - check that a hazard ratio really is constant
-     - ``model.check_ph()``
+     - ``model.diagnose()``
      - `Checking the proportional-hazards assumption`_
    * - get honest standard errors for grouped or repeated data
      - ``model.robust_summary(cluster=...)``
@@ -1022,11 +1022,13 @@ the effect entirely.
 
 The standard check is the **Grambsch-Therneau test**, built on the scaled
 Schoenfeld residuals, in the exact score-test form R's ``cox.zph`` has used
-since version 3.0. A fitted model exposes it through
-:meth:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel.check_ph`.
-It returns a table, as R's ``cox.zph`` prints it: a 1-d.f. test for each
-covariate and a joint ``GLOBAL`` test on the last row; a *small* ``p``-value is
-evidence *against* proportional hazards. We fit the tires model
+since version 3.0. A fitted model runs it, with the other checks of a Cox fit,
+in ``model.diagnose()``, whose
+``tables['proportional_hazards']`` is the test as R's ``cox.zph`` prints it: a
+1-d.f. test for each covariate and a joint ``GLOBAL`` test on the last row; a
+*small* ``p``-value is evidence *against* proportional hazards. (Until v0.26
+this table came from ``model.check_ph()``, which is deprecated and is removed
+in v0.28.) We fit the tires model
 with :meth:`CoxPH.fit_from_df <surpyval.univariate.regression.proportional_hazards.cox_ph.CoxPH_.fit_from_df>` so the report carries the covariate names:
 
 .. jupyter-execute::
@@ -1036,7 +1038,8 @@ with :meth:`CoxPH.fit_from_df <surpyval.univariate.regression.proportional_hazar
     model = CoxPH.fit_from_df(tires, x_col='Survival', Z_cols=cols,
                               c_col='Censoring')
 
-    ph = model.check_ph()
+    d = model.diagnose()
+    ph = d.tables['proportional_hazards']
     ph.round(3)
 
 Here every ``p``-value is large, so there is no evidence against proportional
@@ -1045,9 +1048,10 @@ failures the test has little power, so "no evidence" is not strong evidence of
 proportionality either.) The statistics are R's ``cox.zph`` (survival 3.0 and
 later), under Efron and Breslow ties alike. lifelines, and R before 3.0,
 compute Grambsch and Therneau's approximation of the same test, as SurPyval
-did until v0.24; it can differ in small samples. ``model.diagnose()`` runs
-this test on the ``km`` and ``rank`` scales with the other checks of a Cox
-fit, and says what to do about a failure (see :doc:`Model Diagnostics`).
+did until v0.24; it can differ in small samples. The rows of ``d.table`` judge
+the test on the ``km`` and ``rank`` scales, with the other checks of a Cox fit,
+and ``d.advice`` says what to do about a failure (see :doc:`Model
+Diagnostics`).
 
 .. jupyter-execute::
     :hide-code:
@@ -1077,8 +1081,9 @@ the effect falling over time:
     m_rev = CoxPH.fit_from_df(rev, x_col='x', Z_cols='z', c_col='c')
     print('averaged beta :', m_rev.beta.round(3))
     for transform in ['km', 'rank', 'identity', 'log']:
-        p = m_rev.check_ph(transform=transform).loc['GLOBAL', 'p']
-        print(f'check_ph(transform={transform!r:10s}) p = {p:.1e}')
+        ph = m_rev.diagnose(transform=transform).tables['proportional_hazards']
+        p = ph.loc['GLOBAL', 'p']
+        print(f'diagnose(transform={transform!r:10s}) GLOBAL p = {p:.1e}')
 
     scaled = m_rev.compute_residuals('scaled_schoenfeld')[:, 0]
     event_times = rev['x'][rev['c'] == 0].to_numpy()   # same order as residuals
@@ -1089,7 +1094,7 @@ the effect falling over time:
     plt.show()
 
 The residuals sit high early and low late, straddling the constant fit. The
-``transform`` argument chooses the function of time the residuals are tested
+``transform`` argument of ``diagnose()`` chooses the function of time the residuals are tested
 against: ``"km"`` (the default, :math:`1 -` the left-continuous Kaplan-Meier
 estimate) spreads the failures
 evenly and is the usual choice; ``"rank"``, ``"identity"`` and ``"log"`` are the
@@ -1104,7 +1109,8 @@ stratification (below), a time-varying covariate, or a different family.
     _late = scaled[event_times >= 0.5].mean()
     assert _early > m_rev.beta[0] > _late, (_early, _late)
     for _tr in ['km', 'rank', 'identity', 'log']:
-        assert m_rev.check_ph(transform=_tr).loc['GLOBAL', 'p'] < 1e-10
+        _ph = m_rev.diagnose(transform=_tr).tables['proportional_hazards']
+        assert _ph.loc['GLOBAL', 'p'] < 1e-10
 
 The residuals underlying the test (and several others) are available directly
 through
@@ -5052,7 +5058,7 @@ survival), so the reloaded model predicts identically:
 
 Cox's time-varying-covariate prediction (``predict_tvc``), the additive model's
 covariance, and Buckley-James's ``bootstrap_ci`` (which keeps a copy of the fit
-data) all survive the round-trip. The residual diagnostics, ``check_ph`` and
+data) all survive the round-trip. The residual diagnostics, ``diagnose()`` and
 the robust variance need the training data and are not available on a restored
 Cox model, and a stratified Cox model cannot be serialised at all. Be aware that
 a serialised Buckley-James model contains its training data.

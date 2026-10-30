@@ -349,11 +349,19 @@ Versions have two parts, ``MAJOR.MINOR`` (``0.22``, tagged ``v0.22``), since
 0.22; earlier releases had three. Every release, fixes only or not, takes the
 next minor number. A name deprecated in one release is removed in the next
 (``REMOVED_IN`` in ``surpyval/utils/deprecation.py``), and a test fails once
-the version reaches it while the old names are still accepted.
+the version reaches it while the old names are still accepted. A
+deprecation the maintainer gives longer is listed with its release in
+``SCHEDULED_REMOVALS`` (``check_ph``, removed in v0.28) and warns through
+``scheduled_removal``; its own test fails once that release is reached.
 
-Continuous integration (``.github/workflows/actions.yml``) therefore runs
-once, on the **pull request into main** (the release), and on nothing
-else: not on pull requests into ``dev`` and not on pushes to any branch.
+Continuous integration (``.github/workflows/actions.yml``) runs on every
+**pull request into dev** and on the **pull request into main** (the
+release), each time on the pull request's merge result. A pull request into
+``dev`` gets every job except the calibration studies, which run only on
+the release. Nothing runs on pushes to any branch. Push a feature branch, open its pull
+request into ``dev`` and let continuous integration test it; the commands
+under "Running things" above are there for running checks locally when you
+want to.
 
 .. list-table::
    :header-rows: 1
@@ -362,7 +370,10 @@ else: not on pull requests into ``dev`` and not on pushes to any branch.
    * - Event
      - Jobs
    * - Pull request into ``dev``
-     - none
+     - lint, the conformance suite, the test suite across three
+       interpreters (as for the release, below), the PyMC helpers, the
+       wheel check and the documentation build; not the calibration
+       studies
    * - Pull request into ``main`` (the release)
      - lint, the conformance suite, the test suite across three
        interpreters (each split into four parts that run at once, with

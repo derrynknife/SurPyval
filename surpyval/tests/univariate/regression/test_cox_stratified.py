@@ -122,7 +122,7 @@ def test_stratum_argument_rejected_on_unstratified_model():
 def test_diagnostics_not_available_for_stratified():
     x, Z, c, strat = _confounded(6)
     m = sp.CoxPH.fit(x=x, Z=Z, c=c, strata=strat)
-    for method in ("compute_residuals", "check_ph", "robust_summary"):
+    for method in ("compute_residuals", "diagnose", "robust_summary"):
         with pytest.raises(NotImplementedError):
             getattr(m, method)()
     with pytest.raises(NotImplementedError):

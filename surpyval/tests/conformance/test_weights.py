@@ -255,7 +255,7 @@ WEIGHTED = [
         lambda m: np.asarray(m.params, dtype=float),
         refused={
             "compute_residuals": lambda m: m.compute_residuals(),
-            "check_ph": lambda m: m.check_ph(),
+            "diagnose": lambda m: m.diagnose(),
         },
         covariates=True,
     ),

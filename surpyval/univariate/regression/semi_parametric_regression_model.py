@@ -84,7 +84,7 @@ class SemiParametricRegressionModel(
     the covariates as a second argument, ``sf(x, Z)`` (and a ``stratum``
     for a stratified fit); ``sf_tvc`` / ``Hf_tvc`` follow a time-varying
     covariate path. The model also provides residuals, the
-    proportional-hazards test (``check_ph``), cluster-robust standard
+    proportional-hazards test (in ``diagnose()``), cluster-robust standard
     errors and serialisation.
 
     Examples
@@ -179,7 +179,7 @@ class SemiParametricRegressionModel(
     neg_ll_of: Callable | None = None
     #: Whether the model was fitted with weights ``w``: its covariance is
     #: the robust (Lin-Wei) one, and the information criteria, the
-    #: residuals and ``check_ph`` refuse.
+    #: residuals and the proportional-hazards test (diagnose()) refuse.
     weighted: bool = False
     #: The effective sample size of the weights of a weighted fit.
     effective_n: float | None = None
@@ -958,68 +958,40 @@ class SemiParametricRegressionModel(
         """
         Test the proportional-hazards assumption (Grambsch-Therneau).
 
-        The table R's ``cox.zph`` prints (#514), with its statistics
-        (survival 3.0 and later): one row per covariate (named as in
-        :meth:`summary`), each the 1-d.f. score test of whether its
-        coefficient changes with time (the trend of its scaled Schoenfeld
-        residuals), and a last row ``GLOBAL``, the joint test on all of
-        them. A small ``p`` is evidence against proportional hazards.
-        :meth:`diagnose` reports the same tests on the ``km`` and ``rank``
-        scales, with the other checks of a Cox fit and what to do about a
-        failure. Until v0.24 this was the approximation of R before
-        version 3.0 and of lifelines, which can differ in small samples.
+        .. deprecated:: 0.26
+            ``check_ph`` is removed in v0.28. Use
+            :meth:`diagnose`, which runs the same test, with the same
+            ``transform`` (default ``"km"``): its
+            ``tables["proportional_hazards"]`` is exactly this table, and
+            its ``proportional_hazards`` rows judge it, with advice.
+
+        The table R's ``cox.zph`` prints (survival 3.0 and later): one row
+        per covariate and a last row ``GLOBAL``, with columns
+        ``statistic``, ``df`` and ``p``; the transform is in
+        ``attrs["transform"]``. A penalised fit refuses, as
+        :meth:`diagnose` does.
 
         Parameters
         ----------
         transform : {"km", "rank", "identity", "log"}, optional
-            The function of time to test against, as R defines it;
-            ``"km"`` (the default, as in R) is the scale-free choice. See
-            :func:`~surpyval.univariate.regression.proportional_hazards.
-            diagnostics.check_ph`.
+            The function of time to test against, as R defines it.
 
         Returns
         -------
         pandas.DataFrame
-            Columns ``statistic`` (chi-squared), ``df`` and ``p``; the
-            transform is in ``attrs["transform"]``. Before v0.22 this was
-            a dict, which :func:`~surpyval.univariate.regression.
-            proportional_hazards.diagnostics.check_ph` (the same test as a
-            function of the model) still returns.
-
-        Examples
-        --------
-        >>> from surpyval import CoxPH
-        >>> from surpyval.datasets import load_rossi_static
-        >>> df = load_rossi_static()
-        >>> df["censored"] = 1 - df["arrest"]  # arrest is 1 for an arrest
-        >>> model = CoxPH.fit_from_df(
-        ...     df, x_col="week", c_col="censored", Z_cols=["fin", "age"]
-        ... )
-        >>> model.check_ph().round(4)
-                   statistic  df       p
-        covariate
-        fin           0.0242   1  0.8764
-        age           6.0906   1  0.0136
-        GLOBAL        6.0949   2  0.0475
+            As ``model.diagnose(transform=transform).tables[
+            "proportional_hazards"]``.
         """
-        self._refuse_weighted("check_ph")
-        import pandas as pd
+        from surpyval.utils.deprecation import scheduled_removal
 
-        from .proportional_hazards.diagnostics import check_ph
-
-        res = check_ph(self, transform)
-        rows = res["per_covariate"] + [res["global"]]
-        names = coefficient_names(self, len(res["per_covariate"]))
-        table = pd.DataFrame(
-            {
-                "statistic": [r["statistic"] for r in rows],
-                "df": [int(r["df"]) for r in rows],
-                "p": [r["p_value"] for r in rows],
-            },
-            index=pd.Index(list(names) + ["GLOBAL"], name="covariate"),
+        from .proportional_hazards.diagnostics import (
+            CHECK_PH_ADVICE,
+            zph_table,
         )
-        table.attrs["transform"] = res["transform"]
-        return table
+
+        scheduled_removal("check_ph", CHECK_PH_ADVICE)
+        self._refuse_weighted("check_ph")
+        return zph_table(self, transform)
 
     def covariance(self) -> npt.NDArray:
         """

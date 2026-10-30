@@ -26,7 +26,7 @@ from surpyval.tests._helpers import (  # noqa: E402
 )
 from surpyval.univariate import nonparametric as nonp  # noqa: E402
 from surpyval.univariate.regression.proportional_hazards.diagnostics import (  # noqa: E402, E501
-    check_ph,
+    zph_score_test,
 )
 
 
@@ -431,7 +431,7 @@ class TestNonParametricScalars:
         cb = np.asarray(km.cb([5.0], on="sf"), dtype=float)
         assert np.all(np.isfinite(cb))
 
-    def test_check_ph_no_spurious_truncation_warning(self):
+    def test_ph_test_no_spurious_truncation_warning(self):
         import warnings as _w
 
         np.random.seed(7)
@@ -440,7 +440,7 @@ class TestNonParametricScalars:
         m = CoxPH.fit(x=x, Z=Z, tl=np.zeros(60))
         with _w.catch_warnings():
             _w.simplefilter("error")
-            check_ph(m)
+            zph_score_test(m)
 
 
 @pytest.mark.parametrize(

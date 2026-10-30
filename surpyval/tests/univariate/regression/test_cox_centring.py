@@ -28,6 +28,9 @@ from surpyval.univariate.competing_risks import (
     CompetingRisksProportionalHazards,
 )
 from surpyval.univariate.regression import StepSchedule
+from surpyval.univariate.regression.proportional_hazards.diagnostics import (  # noqa: E501
+    zph_table,
+)
 
 OFFSETS = [0.0, 300.0, 2000.0, 1e5]
 # Offsets at which the baseline at Z = 0 is representable (beta'center of
@@ -182,8 +185,8 @@ def test_delayed_entry_and_residuals(offset, center):
             model.robust_covariance(), ref.robust_covariance(), rtol=1e-6
         )
         np.testing.assert_allclose(
-            model.check_ph().loc["GLOBAL", "statistic"],
-            ref.check_ph().loc["GLOBAL", "statistic"],
+            zph_table(model).loc["GLOBAL", "statistic"],
+            zph_table(ref).loc["GLOBAL", "statistic"],
             rtol=1e-6,
         )
 

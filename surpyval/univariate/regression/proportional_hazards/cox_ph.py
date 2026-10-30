@@ -863,7 +863,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             TRUE)``; ``robust_covariance(cluster)`` sums it within
             clusters. ``tie_method`` ``'efron'`` or ``'breslow'``, no
             ``strata``; the information criteria, the residuals and
-            ``check_ph`` refuse (see :doc:`/Weighted Data`).
+            ``diagnose()`` refuse (see :doc:`/Weighted Data`).
 
         Returns
         -------

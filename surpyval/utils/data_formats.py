@@ -1549,7 +1549,7 @@ def _handled_xcnt_to_xrd(
     # No warning for a shared entry time: validation guarantees tl < x for
     # every observation, so a common entry time never alters the (entry,
     # exit] risk sets -- a warning here would fire on perfectly ordinary
-    # inputs like tl=0 everywhere, e.g. from check_ph on a model fit with
+    # inputs like tl=0 everywhere, e.g. from the PH test on a model fit with
     # a constant entry column (#282).
 
     if ((c != 1) & (c != 0)).any():

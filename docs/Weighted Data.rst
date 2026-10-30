@@ -197,8 +197,8 @@ saying what to use instead:
   Fleming-Harrington positions.
 - **Methods other than maximum likelihood** (``how="MPP"``, ``"MOM"``,
   ``"MSE"``, ``"MPS"``).
-- **Turnbull**, the Cox model's residuals, ``check_ph``, strata and exact
-  ties. These may come later.
+- **Turnbull**, the Cox model's residuals and ``diagnose()``, strata and
+  exact ties. These may come later.
 - **The fitters that do not take** ``w``: competing risks, the log-rank
   tests, recurrent events, degradation, mixtures, distributional
   regression, Aalen's additive model and the Royston-Parmar regression,

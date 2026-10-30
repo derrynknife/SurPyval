@@ -37,6 +37,9 @@ from surpyval.univariate.regression import (
 )
 from surpyval.univariate.regression._fit_skeleton import finite_start
 from surpyval.univariate.regression.accelerated_failure_time import aft_fitter
+from surpyval.univariate.regression.proportional_hazards.diagnostics import (  # noqa: E501
+    zph_table,
+)
 from surpyval.univariate.regression.proportional_odds import (
     proportional_odds_fitter,
 )
@@ -416,7 +419,7 @@ def test_quiet_functions_outside_the_support():
     c = (x > 12).astype(int)
     cox = CoxPH.fit(x, Z, c=c)
     with pytest.raises(ValueError, match="positive event times"):
-        CoxPH.fit(np.r_[0.0, x[1:]], Z, c=c).check_ph("log")
+        CoxPH.fit(np.r_[0.0, x[1:]], Z, c=c).diagnose(transform="log")
     bj = BuckleyJames.fit(x, Z, c=c)
     model = WeibullPH.fit(x=x, Z=Z)
     lognormal = LogNormalPH.fit(x=x, Z=Z)
@@ -428,7 +431,8 @@ def test_quiet_functions_outside_the_support():
             np.testing.assert_allclose(m.ff([-1.0], [0.0]), [0.0])
             np.testing.assert_allclose(m.Hf([-1.0], [0.0]), [0.0])
             np.testing.assert_allclose(m.df([-1.0], [0.0]), [0.0])
-        assert np.isfinite(cox.check_ph("rank").loc["GLOBAL", "statistic"])
+        ph = zph_table(cox, "rank")
+        assert np.isfinite(ph.loc["GLOBAL", "statistic"])
 
 
 # -- times outside the baseline's support (#565) ----------------------------

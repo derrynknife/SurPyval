@@ -14,8 +14,9 @@ import pytest
 import surpyval as sp
 from surpyval import CoxPH
 from surpyval.univariate.regression.proportional_hazards.diagnostics import (
-    check_ph,
     compute_residuals,
+    zph_score_test,
+    zph_table,
 )
 
 
@@ -115,7 +116,7 @@ def test_residuals_respect_left_truncation():
 
 def test_ph_test_does_not_reject_true_ph():
     x, Z, c = _ph_data(seed=7)
-    ph = sp.CoxPH.fit(x=x, Z=Z, c=c).check_ph()
+    ph = zph_table(sp.CoxPH.fit(x=x, Z=Z, c=c))
     assert ph.loc["GLOBAL", "df"] == Z.shape[1]
     assert ph.loc["GLOBAL", "p"] > 0.05
     assert len(ph) == Z.shape[1] + 1
@@ -133,7 +134,7 @@ def test_ph_test_detects_violation():
         rng.exponential(5, n),
     )
     c = np.zeros(n)
-    ph = sp.CoxPH.fit(x=x, Z=Z, c=c).check_ph()
+    ph = zph_table(sp.CoxPH.fit(x=x, Z=Z, c=c))
     assert ph.loc["GLOBAL", "p"] < 0.01
 
 
@@ -143,7 +144,7 @@ def test_ph_test_is_calibrated_under_null():
     # small, which would indicate a mis-scaled statistic).
     def one(seed):
         x, Z, c = _ph_data(seed=1000 + seed, n=150, censor=0.2)
-        return sp.CoxPH.fit(x=x, Z=Z, c=c).check_ph().loc["GLOBAL", "p"]
+        return zph_table(sp.CoxPH.fit(x=x, Z=Z, c=c)).loc["GLOBAL", "p"]
 
     pvals = np.array([one(s) for s in range(80)])
     assert 0.0 <= pvals.min() and pvals.max() <= 1.0
@@ -154,7 +155,7 @@ def test_ph_test_is_calibrated_under_null():
 @pytest.mark.parametrize("transform", ["km", "rank", "identity", "log"])
 def test_ph_test_transforms_run(transform):
     x, Z, c = _ph_data(seed=9)
-    ph = sp.CoxPH.fit(x=x, Z=Z, c=c).check_ph(transform=transform)
+    ph = zph_table(sp.CoxPH.fit(x=x, Z=Z, c=c), transform)
     assert ph.attrs["transform"] == transform
     assert np.isfinite(ph.loc["GLOBAL", "statistic"])
 
@@ -173,7 +174,7 @@ def test_unknown_transform_raises():
     x, Z, c = _ph_data(seed=11)
     m = sp.CoxPH.fit(x=x, Z=Z, c=c)
     with pytest.raises(ValueError, match="transform"):
-        m.check_ph(transform="bogus")
+        m.diagnose(transform="bogus")
 
 
 def test_per_covariate_names_from_dataframe():
@@ -189,7 +190,7 @@ def test_per_covariate_names_from_dataframe():
         }
     )
     m = sp.CoxPH.fit_from_df(df, x_col="time", Z_cols=["temp", "volt"])
-    ph = m.check_ph()
+    ph = m.diagnose().tables["proportional_hazards"]
     assert list(ph.index) == ["temp", "volt", "GLOBAL"]
 
 
@@ -207,7 +208,7 @@ def _ph_test_dataset():
     return np.minimum(x, cut), Z, c
 
 
-def test_check_ph_matches_r_cox_zph():
+def test_ph_test_matches_r_cox_zph():
     # R's cox.zph (survival 3.5.8), the exact score test, on this exact
     # dataset: coxph(Surv(x, status) ~ z1 + z2, ties = "efron") and
     # cox.zph(fit, transform = "km")$table. Until v0.24 check_ph gave
@@ -215,7 +216,7 @@ def test_check_ph_matches_r_cox_zph():
     # stored R references are in tests/reference/test_cox_diagnostics.py.
     x, Z, c = _ph_test_dataset()
     model = sp.CoxPH.fit(x=x, Z=Z, c=c)
-    res = model.check_ph(transform="km")
+    res = model.diagnose(transform="km").tables["proportional_hazards"]
     np.testing.assert_allclose(
         res["statistic"], [0.3200797065, 0.2999399700, 0.4941129502], rtol=1e-6
     )
@@ -224,27 +225,23 @@ def test_check_ph_matches_r_cox_zph():
     )
 
 
-def test_check_ph_is_a_table_like_summary():
-    # #514: check_ph returned a nested dict while summary() is a table;
-    # it is now R's cox.zph table: a row per covariate and a GLOBAL row,
-    # with the statistic, its degrees of freedom and the p-value. The
-    # dict is still what the diagnostics function returns.
+def test_ph_table_is_a_table_like_summary():
+    # #514: the test was a nested dict while summary() is a table; it is
+    # R's cox.zph table: a row per covariate and a GLOBAL row, with the
+    # statistic, its degrees of freedom and the p-value. The dict is
+    # still what the diagnostics function returns.
     import pandas as pd
-
-    from surpyval.univariate.regression.proportional_hazards.diagnostics import (  # noqa: E501
-        check_ph,
-    )
 
     x, Z, c = _ph_test_dataset()
     model = sp.CoxPH.fit(x=x, Z=Z, c=c)
-    table = model.check_ph()
+    table = model.diagnose().tables["proportional_hazards"]
     assert isinstance(table, pd.DataFrame)
     assert list(table.columns) == ["statistic", "df", "p"]
     assert list(table.index) == ["coef_0", "coef_1", "GLOBAL"]
     assert table.index.name == "covariate"
     assert table["df"].tolist() == [1, 1, 2]
     assert table.attrs["transform"] == "km"
-    res = check_ph(model)
+    res = zph_score_test(model)
     assert table.loc["GLOBAL", "statistic"] == res["global"]["statistic"]
     assert table.loc["GLOBAL", "p"] == res["global"]["p_value"]
     assert table["p"].iloc[:2].tolist() == [
@@ -351,12 +348,12 @@ def test_residuals_do_not_loop_over_event_times(monkeypatch):
     model = sp.CoxPH.fit(x=x, Z=Z, c=c)
     for kind in ("martingale", "schoenfeld", "score", "dfbeta"):
         model.compute_residuals(kind)
-    model.check_ph()
+    zph_table(model)
     assert calls == []
 
 
 # ---------------------------------------------------------------------------
-# #279: Efron tie corrections in the Cox residuals, ``check_ph``
+# #279: Efron tie corrections in the Cox residuals, the PH test
 # and the robust standard errors.
 # ---------------------------------------------------------------------------
 
@@ -388,14 +385,14 @@ class TestEfronDiagnostics:
                 compute_residuals(m, "score").sum(axis=0)
             ).max() == pytest.approx(0.0, abs=1e-8)
 
-    def test_check_ph_matches_r_under_ties(self):
+    def test_ph_test_matches_r_under_ties(self):
         # R's cox.zph (survival 3.5.8) on this exact dataset, Efron ties,
         # km transform: coxph(Surv(x, status) ~ z1 + z2, ties = "efron").
         # Until v0.24 check_ph gave lifelines' approximation (1.3936 and
         # 0.0013 here), which under heavy ties is far from the exact test.
         x, c, Z = self._tied_fit()
         m = CoxPH.fit(x=x, Z=Z, c=c, tie_method="efron")
-        res = check_ph(m, transform="km")
+        res = zph_score_test(m, transform="km")
         stats = [e["statistic"] for e in res["per_covariate"]]
         stats.append(res["global"]["statistic"])
         np.testing.assert_allclose(
