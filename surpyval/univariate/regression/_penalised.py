@@ -364,6 +364,29 @@ def _kkt_violation(
     return float(np.max(np.maximum(np.abs(g[zero]) - l1[zero], 0.0)))
 
 
+def _stationarity(
+    theta: npt.NDArray,
+    smooth_grad: Callable,
+    split: npt.NDArray,
+    l1: npt.NDArray,
+) -> float:
+    """How far ``theta`` is from a minimum of the penalised objective:
+    the largest entry of its smallest subgradient (the gradient of the
+    free entries, that plus the L1 weight times the sign for a penalised
+    entry not at 0, and the excess of the gradient over the L1 weight for
+    one at 0). 0 exactly at the minimum."""
+    g = np.array(smooth_grad(theta), dtype=float)
+    if split.size:
+        b = theta[split]
+        gs = g[split]
+        g[split] = np.where(
+            b != 0.0,
+            gs + l1 * np.sign(b),
+            np.maximum(np.abs(gs) - l1, 0.0),
+        )
+    return float(np.max(np.abs(g))) if g.size else 0.0
+
+
 def _polish(
     theta: npt.NDArray,
     total: Callable,
@@ -376,9 +399,19 @@ def _polish(
     """Newton steps on the entries not at 0, each L1 term linear in its
     sign there; a step that takes an entry across 0 stops at 0, and an
     entry at 0 that breaks optimality is freed with the sign its gradient
-    gives it. Never returns a point worse than it was given."""
+    gives it. Never returns a point worse than it was given.
+
+    Near the minimum a Newton step changes the objective by less than its
+    rounding error (a step of 1e-8 moves it by about 1e-16), so the value
+    alone cannot rank the last steps: a step that leaves the value within
+    its rounding (``slack``, 1e-15 relative to the value's size) of the
+    best one is kept when it brings the point closer to stationary
+    (:func:`_stationarity`), and only a real increase in the value counts
+    as worse."""
     k = theta.size
     best, best_f = theta.copy(), total(theta)
+    slack = 1e-15 * max(1.0, abs(best_f)) if np.isfinite(best_f) else 1e-15
+    best_s = _stationarity(theta, smooth_grad, split, l1)
     pos = {int(j): i for i, j in enumerate(split)}
     sign = np.zeros(k)
     sign[split] = np.sign(theta[split])
@@ -415,7 +448,7 @@ def _polish(
             new[hit] = 0.0
             sign[hit] = 0.0
         f_new = total(new)
-        while not (np.isfinite(f_new) and f_new <= best_f + 1e-15):
+        while not (np.isfinite(f_new) and f_new <= best_f + slack):
             t /= 2
             if t < 1e-10:
                 break
@@ -425,11 +458,12 @@ def _polish(
                 sign[hit] = np.sign(theta[hit])
                 hit = -1
             f_new = total(new)
-        if not (np.isfinite(f_new) and f_new <= best_f + 1e-15):
+        if not (np.isfinite(f_new) and f_new <= best_f + slack):
             break
         theta = new
-        if f_new <= best_f:
-            best, best_f = theta.copy(), f_new
+        s_new = _stationarity(theta, smooth_grad, split, l1)
+        if f_new < best_f - slack or s_new <= best_s:
+            best, best_f, best_s = theta.copy(), min(f_new, best_f), s_new
         small = np.max(np.abs(t * step)) <= tol * max(
             1.0, float(np.max(np.abs(theta)))
         )
