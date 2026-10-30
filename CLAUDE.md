@@ -26,9 +26,10 @@ this summary, and fix them, not this file, when they are wrong.
   publishes, tags and creates the GitHub Release.
 - CI runs only on the pull request from `dev` into `main` (the release),
   and a newer push to `dev` cancels its out-of-date run. Pull requests into
-  `dev` get no checks. Run tests locally only when the maintainer asks for
-  it (cap xdist at `-n 4` when you do, so parallel work on one machine
-  doesn't starve itself). Read a red release run, fix on `dev`, push again.
+  `dev` get no checks. Locally, run the tests for what you changed (the
+  touched modules' tests, their doctests, the matching `-k` conformance
+  cases); run the full suite only when the maintainer asks (cap xdist at
+  `-n 4` when you do). Read a red release run, fix on `dev`, push again.
 
 ## Running things
 
