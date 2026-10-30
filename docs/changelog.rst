@@ -379,6 +379,12 @@ Where weights met other features of this release:
   the last bits. The regressions' fits evaluate the same spline, so their
   coefficients move by about ``1e-14`` (relative) and their Wald bounds,
   from a numerical Hessian, by up to ``1e-9``.
+- Distributional regression predictions (``WeibullDistributional`` and
+  the others) could differ in the last bit when the query rows were
+  reordered, on Linux x86-64, for the same reason: each parameter's
+  linear predictor was a matrix product. Each row's sum now runs in a
+  fixed order. The fits evaluate the same product, so their
+  coefficients may move in the last bits.
 
 **Documentation**
 
