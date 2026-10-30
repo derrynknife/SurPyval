@@ -482,6 +482,20 @@ def test_stratified_penalty_scale_is_over_every_stratum():
     np.testing.assert_allclose(model.params, hand.params / Z.std(0))
 
 
+def test_penalised_cox_polish_reaches_a_stationary_point():
+    # The last Newton step changes the objective by less than its
+    # rounding, so the polish must judge it by the gradient: the answer
+    # is stationary to rounding, not to where L-BFGS-B stopped.
+    x, c, Z, wexp = _rossi_strata()
+    model = CoxPH.fit_penalised(
+        x, Z / Z.std(0), c=c, strata=wexp, penalizer=0.05, standardise=False
+    )
+    N = float(x.size)
+    beta = model.params
+    grad = np.atleast_1d(model.jac(beta)[0]) / N + 0.05 * beta
+    assert np.max(np.abs(grad)) < 1e-13
+
+
 @pytest.mark.parametrize("setting", sorted(GLMNET_START_STOP))
 def test_start_stop_cox_matches_glmnet(setting):
     # Delayed entry: each row enters the risk sets at its start.
