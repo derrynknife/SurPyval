@@ -26,6 +26,12 @@ rename it was written for):
 
 A name deprecated in v0.26 is accepted until :data:`REMOVED_IN_NEXT`.
 
+A few deprecations are given a longer window, chosen by the maintainer:
+they are listed, each with the release that removes it, in
+:data:`SCHEDULED_REMOVALS`, and warn through :func:`scheduled_removal`
+(``CoxPH.check_ph``, deprecated in v0.26 and removed in v0.28, whose test
+``model.diagnose()`` now runs).
+
 The top-level data-format functions (``surpyval.fs_to_xcnt`` and the
 rest), whose work :class:`~surpyval.SurpyvalData` now does, are deprecated
 by date instead (:data:`DATED_DATA_FUNCTIONS`): accepted, with a warning,
@@ -47,6 +53,8 @@ __all__ = [
     "dated_data_function",
     "REMOVED_IN",
     "REMOVED_IN_NEXT",
+    "SCHEDULED_REMOVALS",
+    "scheduled_removal",
     "ArrayMethod",
     "CallableFloat",
     "MethodArray",
@@ -65,6 +73,14 @@ REMOVED_IN = "0.26"
 
 #: The release in which the names deprecated in v0.26 stop being accepted.
 REMOVED_IN_NEXT = "0.27"
+
+#: The deprecations with a longer window than one release, by name, each
+#: with the release that removes it. ``test_removed_arguments`` fails once
+#: the package's version reaches an entry still listed here.
+SCHEDULED_REMOVALS: dict[str, str] = {
+    # Deprecated in v0.26: diagnose() runs the same test (DECISIONS.md).
+    "check_ph": "0.28",
+}
 
 #: The day the top-level data-format functions were deprecated.
 DATA_FUNCTIONS_DEPRECATED_ON = datetime.date(2026, 10, 12)
@@ -124,6 +140,28 @@ def dated_data_function(name: str) -> Any:
         stacklevel=3,
     )
     return getattr(import_module("surpyval.utils.data_formats"), name)
+
+
+def scheduled_removal(name: str, advice: str, stacklevel: int = 3) -> None:
+    """Warn, with a DeprecationWarning pointing at the caller's caller,
+    that ``name`` (one of :data:`SCHEDULED_REMOVALS`) is deprecated and
+    will be removed in its release; ``advice`` says what to use instead.
+
+    Examples
+    --------
+    >>> import warnings
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     scheduled_removal("check_ph", "use model.diagnose()", 2)
+    >>> print(caught[0].message)
+    check_ph is deprecated and will be removed in v0.28; use model.diagnose()
+    """
+    warnings.warn(
+        f"{name} is deprecated and will be removed in "
+        f"v{SCHEDULED_REMOVALS[name]}; {advice}",
+        DeprecationWarning,
+        stacklevel=stacklevel,
+    )
 
 
 F = TypeVar("F", bound=Callable[..., Any])

@@ -12,6 +12,12 @@ The checks
     whether each covariate's coefficient changes with time, on the
     Kaplan-Meier (``km``) and the ``rank`` scale of time, and the joint
     ``GLOBAL`` test on each; a covariate fails if it fails on either scale.
+    ``diagnose(transform=...)`` (``"km"``, ``"rank"``, ``"identity"`` or
+    ``"log"``; ``"km"`` by default) also tests on that scale when it is
+    ``"identity"`` or ``"log"``, and gives the test on it as R prints it,
+    one row per covariate and ``GLOBAL``, in
+    ``d.tables["proportional_hazards"]`` (what ``check_ph`` returned until
+    it was deprecated in v0.26).
     Drawn as the scaled Schoenfeld residuals against time (on the km
     scale), with a lowess trend and its bootstrap band: a flat trend at
     the fitted coefficient is proportional hazards.
@@ -53,18 +59,25 @@ import numpy as np
 from scipy.stats import norm
 
 from surpyval.univariate.regression.proportional_hazards.diagnostics import (
+    ZPH_TRANSFORMS,
     added_covariate_score_test,
-    check_ph,
     compute_residuals,
     cox_fit_data,
+    refuse_penalised,
+    zph_score_test,
+    zph_table,
     zph_times,
 )
+from surpyval.utils.validation import check_option
 
 from .calibration import calibration_advice, calibration_check
 from .registry import AdviceRule, Check, Context, Family, Panel, register
 
 #: The time scales of the proportional-hazards test.
 TRANSFORMS = ("km", "rank")
+#: The scale of ``d.tables["proportional_hazards"]`` when ``diagnose()``
+#: is given no ``transform`` (``check_ph``'s default, as R's).
+DEFAULT_TRANSFORM = "km"
 #: The most distinct values a covariate has and still counts as
 #: categorical (one with two is binary); more is continuous.
 CATEGORICAL_LEVELS = 5
@@ -103,8 +116,34 @@ def _source(name: str) -> str:
 
 def _zph(ctx: Context, transform: str) -> dict:
     return ctx.cached(
-        "zph_" + transform, lambda: check_ph(ctx.model, transform)
+        "zph_" + transform, lambda: zph_score_test(ctx.model, transform)
     )
+
+
+def _transform(ctx: Context) -> str:
+    """The ``transform`` given to ``diagnose()`` (``"km"`` if none)."""
+    transform = ctx.options.get("transform", DEFAULT_TRANSFORM)
+    check_option("transform", transform, ZPH_TRANSFORMS)
+    return transform
+
+
+def _transforms(ctx: Context) -> tuple[str, ...]:
+    """The scales the table's rows test on: km and rank, and the
+    ``transform`` given to ``diagnose()`` if it is neither."""
+    transform = _transform(ctx)
+    return TRANSFORMS + (() if transform in TRANSFORMS else (transform,))
+
+
+def _scales(ctx: Context) -> str:
+    """The scales the rows test on, in words (``"km and rank"``)."""
+    names = _transforms(ctx)
+    return ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def _ph_table(ctx: Context) -> Any:
+    """The test on ``diagnose()``'s ``transform`` as R's ``cox.zph``
+    prints it (``d.tables["proportional_hazards"]``)."""
+    return zph_table(ctx.model, _transform(ctx))
 
 
 def _residuals(ctx: Context, kind: str) -> np.ndarray:
@@ -118,7 +157,7 @@ def _event_rows(ctx: Context) -> np.ndarray:
 
 
 def _fmt(value: float) -> str:
-    return "{:.3g}".format(value)
+    return f"{value:.3g}"
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +176,7 @@ def _trend(ctx: Context, j: int) -> float:
 
 def _ph_rows(ctx: Context) -> list[dict]:
     rows = []
-    for transform in TRANSFORMS:
+    for transform in _transforms(ctx):
         res = _zph(ctx, transform)
         for j, name in ctx.checked:
             entry = res["per_covariate"][j]
@@ -185,7 +224,7 @@ def _time_axis(ax: Any, g: np.ndarray, t: np.ndarray) -> None:
     ticks = np.linspace(g[0], g[-1], 5)
     labels = np.interp(ticks, g, t)
     ax.set_xticks(ticks)
-    ax.set_xticklabels(["{:.3g}".format(v) for v in labels])
+    ax.set_xticklabels([f"{v:.3g}" for v in labels])
     ax.set_xlabel("time (Kaplan-Meier scale)")
 
 
@@ -229,7 +268,7 @@ def _ph_panels(ctx: Context) -> list[Panel]:
                     color=PALETTE[0],
                     alpha=BAND_ALPHA,
                     linewidth=0,
-                    label="bootstrap {:g}%".format(100 * (1 - options.alpha)),
+                    label=f"bootstrap {100 * (1 - options.alpha):g}%",
                 )
             ax.axhline(beta[j], color=PALETTE[1], ls="--", label="fitted")
             _time_axis(ax, g, t)
@@ -304,7 +343,7 @@ def _form_panels(ctx: Context) -> list[Panel]:
             ax.set_xlabel(name)
             ax.set_ylabel("martingale residual")
 
-        panels.append(Panel("{}: functional form".format(name), draw))
+        panels.append(Panel(f"{name}: functional form", draw))
     return panels
 
 
@@ -371,11 +410,7 @@ def _outlier_rows(ctx: Context) -> list[dict]:
     flagged = np.flatnonzero(dev > cutoff)
     if flagged.size:
         shown = ", ".join(str(int(i)) for i in flagged[:10])
-        more = (
-            ""
-            if flagged.size <= 10
-            else " and {} more".format(flagged.size - 10)
-        )
+        more = "" if flagged.size <= 10 else f" and {flagged.size - 10} more"
         detail = "row{} {}{} above {}".format(
             "" if flagged.size == 1 else "s", shown, more, _fmt(cutoff)
         )
@@ -411,7 +446,7 @@ def _influence_panels(ctx: Context) -> list[Panel]:
             ax.set_xlabel("row")
             ax.set_ylabel("dfbeta / se")
 
-        panels.append(Panel("{}: influence".format(name), draw))
+        panels.append(Panel(f"{name}: influence", draw))
     return panels
 
 
@@ -468,6 +503,9 @@ def _overall_panels(ctx: Context) -> list[Panel]:
 # Refusals and notes
 # ---------------------------------------------------------------------------
 def _validate(model: Any) -> None:
+    # A penalised fit has no p-values; the message is the one its
+    # covariance and bounds give.
+    refuse_penalised(model)
     if getattr(model, "is_stratified", False):
         raise NotImplementedError(
             "diagnose() is not yet available for a stratified Cox model: "
@@ -501,9 +539,11 @@ def _clustered(ctx: Context) -> int:
 def _notes(ctx: Context) -> list[str]:
     notes = [
         "Proportional hazards: the score test of R's survival::cox.zph "
-        "(version 3.0 and later), as model.check_ph() computes it, on the "
-        "km and rank scales of time; a covariate fails if it fails on "
-        "either.",
+        "(version 3.0 and later) on the {} scales of time; a covariate "
+        "fails if it fails on any. d.tables['proportional_hazards'] is the "
+        "test on the {} scale as cox.zph prints it.".format(
+            _scales(ctx), _transform(ctx)
+        ),
         "Overall fit is a plot only (d.plot('overall_fit')): a Cox model's "
         "Cox-Snell residuals sum to its number of events by construction, "
         "so they have no useful test.",
@@ -612,7 +652,7 @@ def _outlier_message(row: dict, ctx: Context) -> str:
     rows = row["_rows"]
     shown = ", ".join(str(i) for i in rows[:10])
     if len(rows) > 10:
-        shown += " and {} more".format(len(rows) - 10)
+        shown += f" and {len(rows) - 10} more"
     return (
         "The model predicts row{s} {shown} poorly (|deviance residual| "
         "above {cut}). Check {them} for recording errors; "
@@ -647,7 +687,7 @@ def _is_cox(model: Any) -> bool:
 COX = register(
     Family(
         name="Cox proportional hazards",
-        options=("t0",),
+        options=("t0", "transform"),
         issue=868,
         applies=_is_cox,
         validate=_validate,
@@ -659,6 +699,7 @@ COX = register(
                 "does not change with time.",
                 rows=_ph_rows,
                 panels=_ph_panels,
+                table=_ph_table,
             ),
             Check(
                 "functional_form",

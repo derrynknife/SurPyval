@@ -438,6 +438,11 @@ _SHIM_NAMES = frozenset(
     }
 )
 
+# The deprecations given a longer window, each with its own release
+# (SCHEDULED_REMOVALS): test_scheduled_removals_are_not_overdue fails
+# when one is due.
+_SCHEDULED_NAMES = frozenset({"SCHEDULED_REMOVALS", "scheduled_removal"})
+
 # The deprecation helpers removed by date rather than by release (the
 # top-level data-format functions): test_dated_removal_is_not_overdue
 # (tests/utils/test_surpyval_data_api.py) fails when they are due.
@@ -512,7 +517,10 @@ def test_the_scan_sees_every_kind_of_shim():
     # Every helper of surpyval.utils.deprecation is a shim the scan sees,
     # however it is used, or the test below would pass with one left
     # behind.
-    assert set(deprecation.__all__) <= _SHIM_NAMES | _DATED_NAMES
+    assert (
+        set(deprecation.__all__)
+        <= _SHIM_NAMES | _DATED_NAMES | _SCHEDULED_NAMES
+    )
     for name in sorted(_SHIM_NAMES):
         assert _deprecation_shims(f"x = {name}\n") == [1], name
         assert _deprecation_shims(f"x = deprecation.{name}\n") == [1], name
@@ -530,6 +538,48 @@ def test_deprecated_names_are_removed_by_removed_in():
         "but deprecated names are still accepted. Remove each shim (and its "
         "tests and documentation), or move REMOVED_IN on for a deprecation "
         "meant to last longer:\n" + "\n".join(shims)
+    )
+
+
+def _scheduled_uses(name):
+    """``path:line`` of every ``scheduled_removal(<name>, ...)`` call in
+    the package."""
+    package = Path(sp.__file__).parent
+    found = []
+    for path in sorted(package.rglob("*.py")):
+        relative = path.relative_to(package).as_posix()
+        if relative.startswith("tests/"):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and getattr(node.func, "id", None) == "scheduled_removal"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and node.args[0].value == name
+            ):
+                found.append(f"surpyval/{relative}:{node.lineno}")
+    return found
+
+
+def test_every_scheduled_removal_is_used():
+    # A listed name is warned about somewhere; the scan finds it.
+    for name in deprecation.SCHEDULED_REMOVALS:
+        assert _scheduled_uses(name), name
+
+
+def test_scheduled_removals_are_not_overdue():
+    due = {
+        name: release
+        for name, release in deprecation.SCHEDULED_REMOVALS.items()
+        if _release(sp.__version__) >= _release(release)
+    }
+    assert not due, (
+        f"surpyval {sp.__version__} has reached the release that removes "
+        f"{sorted(due)} (SCHEDULED_REMOVALS). Remove each (and its "
+        "tests and documentation), and its entry:\n"
+        + "\n".join(u for name in due for u in _scheduled_uses(name))
     )
 
 

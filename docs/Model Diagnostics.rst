@@ -13,12 +13,16 @@ holds, what does not, and what to do about it.
     d.advice         # plain-English remedies, each naming the SurPyval feature
     d.plot()         # the visual checks (matplotlib is imported only here)
     d.ok             # True if nothing failed
+    d.tables         # a check's own table, by check name (Cox: R's cox.zph table)
     d.raise_if_failed()   # for pipelines
     d.to_dict()      # machine-readable, strict JSON
 
 The name is ``diagnose``, not ``check_assumptions``: besides the
 assumptions it looks at the fit, the functional form and the rows that
-drive the estimates.
+drive the estimates. It is the one way to check a model's assumptions:
+the Cox model's ``check_ph()``, deprecated in v0.26 and removed in v0.28,
+is now ``diagnose()``'s proportional-hazards test (see `The
+proportional-hazards table`_).
 
 The families, each with its section below: Cox proportional hazards
 (#868); parametric proportional hazards and accelerated failure time
@@ -110,6 +114,38 @@ which SurPyval features it names:
 
     d.advice[0].check, d.advice[0].covariates, d.advice[0].features
 
+The proportional-hazards table
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``d.tables['proportional_hazards']`` is the proportional-hazards test as
+R's ``cox.zph`` prints it: a 1-d.f. test per covariate (every covariate,
+whatever ``columns`` chose), named as ``summary()`` names it, and the
+joint ``GLOBAL`` test on the last row, with columns ``statistic``, ``df``
+and ``p``. It is on the scale of time ``diagnose(transform=...)`` names:
+``"km"`` (the default, one minus the left-continuous Kaplan-Meier
+estimate), ``"rank"``, ``"identity"`` or ``"log"``, as R defines them; the
+table's ``attrs['transform']`` says which. The table's rows judge the
+test on ``km`` and ``rank`` either way, and on the ``transform`` too when
+it is ``"identity"`` or ``"log"``.
+
+.. jupyter-execute::
+
+    model.diagnose(transform='rank').tables['proportional_hazards'].round(4)
+
+This is the table ``model.check_ph(transform)`` returned, number for
+number; ``check_ph`` is deprecated (it warns) and is removed in v0.28.
+For a cause-specific competing-risks model the table has one block per
+cause, indexed by ``(cause, covariate)``. The table is kept by
+``d.to_dict()`` and ``Diagnosis.from_dict``.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = model.diagnose(transform='rank').tables['proportional_hazards']
+    assert list(_t.index) == covariates + ['GLOBAL']
+    assert _t.attrs['transform'] == 'rank'
+
 The plots show what the tests test. The scaled Schoenfeld residuals of a
 covariate estimate its coefficient at each failure time, so under
 proportional hazards they scatter around a flat line at the fitted
@@ -197,8 +233,11 @@ The checks
     scale. These are the tests of R's ``survival::cox.zph`` (version 3.0
     and later) and agree with it to the precision of the fit, under
     Efron and Breslow ties, delayed entry and time-varying covariates;
-    :meth:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel.check_ph`
-    gives the same test on one scale at a time. (lifelines, and R before
+    ``d.tables['proportional_hazards']`` is the test on one scale, the
+    ``transform`` given to ``diagnose()``, as ``cox.zph`` prints it, and
+    with ``transform='identity'`` or ``'log'`` the rows test on that
+    scale too. A penalised fit (``CoxPH.fit_penalised``) refuses: it has
+    no p-values. (lifelines, and R before
     version 3.0, compute Grambsch and Therneau's approximation of it,
     whose statistics differ a little in small samples.)
 ``functional_form``
@@ -307,6 +346,10 @@ API
 
 .. automodule:: surpyval.diagnostics.registry
     :members: Family, Check, AdviceRule, Panel, PlotOptions, Context, register, diagnose
+
+.. autofunction:: surpyval.univariate.regression.proportional_hazards.diagnostics.zph_score_test
+
+.. autofunction:: surpyval.univariate.regression.proportional_hazards.diagnostics.zph_table
 
 .. autofunction:: surpyval.univariate.regression.proportional_hazards.diagnostics.check_ph
 

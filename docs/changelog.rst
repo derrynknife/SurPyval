@@ -60,6 +60,9 @@ all optional. What can look different:
   ``DistributionalFitter``, ``DistributionalRegressionModel``, the
   ``<Dist>Distributional`` fitters, ``prior`` and ``bayes``; and the
   subpackage ``surpyval.pymc`` (imported only when asked for).
+- ``check_ph()`` on a Cox model warns that it is deprecated (see
+  Deprecated); it returns what it did. ``model.diagnose(transform=...)``
+  gives the same table.
 
 **Added**
 
@@ -252,6 +255,16 @@ all optional. What can look different:
   a dependency, not even an optional one: ``import surpyval`` does not
   import it, and the helpers ask you to install it when it is absent.
 
+- ``diagnose()`` of a Cox model (and of a cause-specific competing-risks
+  model) takes ``transform``, ``"km"`` (the default), ``"rank"``,
+  ``"identity"`` or ``"log"``, and its report has ``tables``, a check's
+  own table by name: ``d.tables["proportional_hazards"]`` is the
+  Grambsch-Therneau test as R's ``cox.zph`` prints it on that scale, one
+  row per covariate and ``GLOBAL``, the same numbers ``check_ph()`` gave
+  (by cause for a competing-risks model). With ``"identity"`` or ``"log"``
+  the report's rows test on that scale too, beside ``km`` and ``rank``.
+  ``to_dict()`` keeps the tables.
+
 **Changed**
 
 - The spline helpers of ``surpyval.univariate.parametric.royston_parmar``
@@ -339,8 +352,28 @@ Where weights met other features of this release:
   coefficients move by about ``1e-14`` (relative) and their Wald bounds,
   from a numerical Hessian, by up to ``1e-9``.
 
+**Deprecated**
+
+- ``check_ph()``, the Cox model's method and the function
+  ``proportional_hazards.diagnostics.check_ph``, is deprecated and will
+  be removed in v0.28: ``diagnose()`` is the one way to check a model's
+  assumptions, and runs the same proportional-hazards test, with the same
+  ``transform``. Replace ``model.check_ph(transform)`` with
+  ``model.diagnose(transform=transform).tables["proportional_hazards"]``
+  (the same table, number for number), or read the verdicts from
+  ``d.table`` and the remedies from ``d.advice``. Until then it warns
+  (``DeprecationWarning``) and returns what it did. On a penalised fit
+  (``fit_penalised``) it now refuses, as ``diagnose()`` does: a penalised
+  model has no p-values. The function behind both,
+  ``zph_score_test``, and ``compute_residuals`` and
+  ``added_covariate_score_test`` stay.
+
 **Documentation**
 
+- :doc:`Model Diagnostics`, Regression Modelling with SurPyval, Weighted
+  Data and the regression analysis notes use ``diagnose()`` in place of
+  ``check_ph()``; Model Diagnostics has a section on the
+  proportional-hazards table.
 - New pages: :doc:`Weighted Data`, :doc:`Bayesian Fitting with SurPyval`,
   :doc:`Distributional Regression` and :doc:`PyMC with SurPyval`, and API
   pages for Bayesian fitting, Aalen's model, distributional regression,

@@ -145,7 +145,7 @@ def _restored(label: str) -> ValueError:
 
 def _relabel(error: Exception, cause: Any) -> Exception:
     """``error`` again, its message about cause ``cause``."""
-    return type(error)("Cause {}: {}".format(_cause_name(cause), error))
+    return type(error)(f"Cause {_cause_name(cause)}: {error}")
 
 
 # ===========================================================================
@@ -157,7 +157,16 @@ def _cause_contexts(ctx: Context) -> list[tuple[Any, Context]]:
 
     def build() -> list[tuple[Any, Context]]:
         return [
-            (cause, Context(model, ctx.alpha, ctx.names, ctx.columns))
+            (
+                cause,
+                Context(
+                    model,
+                    ctx.alpha,
+                    ctx.names,
+                    ctx.columns,
+                    options=ctx.options,
+                ),
+            )
             for cause, model in ctx.model.models.items()
         ]
 
@@ -202,13 +211,38 @@ def _per_cause_panels(check: Check) -> Any:
             for panel in check.panels(sub):
                 out.append(
                     Panel(
-                        "cause {}: {}".format(_label(cause), panel.title),
+                        f"cause {_label(cause)}: {panel.title}",
                         panel.draw,
                     )
                 )
         return out
 
     return panels
+
+
+def _per_cause_table(check: Check) -> Any:
+    """The table of the Cox check ``check`` for every cause, one block
+    per cause, indexed by ``(cause, covariate)``: ``.loc[cause]`` is the
+    table of that cause's model."""
+
+    def table(ctx: Context) -> Any:
+        import pandas as pd
+
+        assert check.table is not None
+        blocks = [
+            (_label(cause), check.table(sub))
+            for cause, sub in _cause_contexts(ctx)
+        ]
+        out = pd.concat(
+            [b for _, b in blocks],
+            keys=[label for label, _ in blocks],
+            names=["cause"],
+        )
+        if blocks:
+            out.attrs = dict(blocks[0][1].attrs)
+        return out
+
+    return table
 
 
 def _cause_specific_checks() -> tuple[Check, ...]:
@@ -221,6 +255,7 @@ def _cause_specific_checks() -> tuple[Check, ...]:
             + c.assumption[1:],
             rows=None if c.rows is None else _per_cause_rows(c),
             panels=None if c.panels is None else _per_cause_panels(c),
+            table=None if c.table is None else _per_cause_table(c),
         )
         for c in _cox.COX.checks
         # Not calibration (#881): a cause's exp(-H_k(t)) is not the
@@ -267,7 +302,7 @@ def _cs_stratify(row: dict, ctx: Context) -> str:
             name=name,
             var=var,
             cause=_cause_name(cause),
-            alone=_fit_alone(cause, "strata=<the {} column>".format(var)),
+            alone=_fit_alone(cause, f"strata=<the {var} column>"),
         )
     )
 
@@ -321,7 +356,7 @@ def _cs_global(row: dict, ctx: Context) -> str:
 
 def _any_cause_fails_ph(row: Any, ctx: Context) -> bool:
     for _, sub in _cause_contexts(ctx):
-        for transform in _cox.TRANSFORMS:
+        for transform in _cox._transforms(sub):
             res = _cox._zph(sub, transform)
             if _cs_failed(sub, transform):
                 return True
@@ -378,7 +413,7 @@ def _cs_outliers(row: dict, ctx: Context) -> str:
     rows = row["_rows"]
     shown = ", ".join(str(i) for i in rows[:10])
     if len(rows) > 10:
-        shown += " and {} more".format(len(rows) - 10)
+        shown += f" and {len(rows) - 10} more"
     cause = _cause_name(row["_cause"])
     return (
         "The model of cause {cause} predicts row{s} {shown} poorly "
@@ -401,9 +436,13 @@ def _cs_notes(ctx: Context) -> list[str]:
         "proportional hazards diagnostics) on that cause's own CoxPH fit, "
         "with the other causes censored: model.models[cause]. "
         "Proportional hazards is the score test of R's survival::cox.zph "
-        "on coxph(Surv(time, status == cause) ~ ...), on the km and rank "
-        "scales; a covariate fails for a cause if it fails on either. "
-        "With several causes there are more rows, and so more that fail "
+        "on coxph(Surv(time, status == cause) ~ ...), on the {} scales; "
+        "a covariate fails for a cause if it fails on any; "
+        "d.tables['proportional_hazards'] is the test on the {} scale as "
+        "cox.zph prints it, by cause. ".format(
+            _cox._scales(ctx), _cox._transform(ctx)
+        )
+        + "With several causes there are more rows, and so more that fail "
         "by chance at alpha.",
         _CHOICE_NOTE,
         "Overall fit is a plot only (d.plot('overall_fit')): a Cox "
@@ -440,6 +479,7 @@ CAUSE_SPECIFIC = register(
         validate=_validate_cause_specific,
         covariates=_crph_names,
         columns=("cause", "transform"),
+        options=("transform",),
         checks=_cause_specific_checks(),
         advice=(
             AdviceRule(
@@ -519,7 +559,7 @@ def _fg_zph_cached(ctx: Context, cause: Any, transform: str) -> dict:
         fd = dict(_fg_causes(ctx))[cause]
         return fine_gray_zph_test(fd, transform)
 
-    return ctx.cached("fg_zph_{}_{!r}".format(transform, cause), compute)
+    return ctx.cached(f"fg_zph_{transform}_{cause!r}", compute)
 
 
 def _fg_kind(fd: FineGrayData, j: int) -> str:
@@ -702,7 +742,7 @@ def _fg_form_panels(ctx: Context) -> list[Panel]:
     panels = []
     for cause, fd in _fg_causes(ctx):
         martingale = ctx.cached(
-            "fg_martingale_{!r}".format(cause),
+            f"fg_martingale_{cause!r}",
             lambda: fine_gray_martingale_residuals(fd),
         )
         for j, name in ctx.checked:

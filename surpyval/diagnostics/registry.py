@@ -14,8 +14,9 @@ nothing here knows any one family. The guide to adding one is
 from __future__ import annotations
 
 import importlib
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Callable, NamedTuple, Sequence
+from typing import Any, NamedTuple
 
 from .report import COLUMNS, VERDICTS, Advice, Diagnosis, make_table, verdict
 
@@ -78,7 +79,7 @@ class Context:
     names: list[str]
     columns: list[int]
     notes: list[str] = field(default_factory=list)
-    n_boot: "int | None" = None
+    n_boot: int | None = None
     random_state: Any = None
     options: dict = field(default_factory=dict)
     _cache: dict = field(default_factory=dict, repr=False)
@@ -111,13 +112,18 @@ class Check:
     ``p``, one with a ``verdict`` keeps it (a screen that is not a test).
     ``panels(ctx)`` returns the check's :class:`Panel` list, or is
     ``None`` for a check with nothing to draw. A check with ``rows=None``
-    is drawn only (it has no row in the table).
+    is drawn only (it has no row in the table). ``table(ctx)``, for a
+    check whose test has a table of its own (the Cox family's
+    proportional-hazards test, as R's ``cox.zph`` prints it), returns that
+    table as a ``pandas.DataFrame``; the report gives it as
+    ``Diagnosis.tables[name]``.
     """
 
     name: str
     assumption: str
-    rows: "Callable[[Context], list[dict]] | None" = None
-    panels: "Callable[[Context], list[Panel]] | None" = None
+    rows: Callable[[Context], list[dict]] | None = None
+    panels: Callable[[Context], list[Panel]] | None = None
+    table: Callable[[Context], Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -138,7 +144,7 @@ class AdviceRule:
     rows call for it.
     """
 
-    check: "str | None"
+    check: str | None
     message: Callable[[Any, Context], str]
     features: tuple[str, ...]
     when: Callable[[Any, Context], bool] = lambda row, ctx: True
@@ -172,9 +178,9 @@ class Family:
     applies: Callable[[Any], bool]
     checks: tuple[Check, ...]
     advice: tuple[AdviceRule, ...] = ()
-    validate: "Callable[[Any], None] | None" = None
-    covariates: "Callable[[Any], list[str]] | None" = None
-    notes: "Callable[[Context], list[str]] | None" = None
+    validate: Callable[[Any], None] | None = None
+    covariates: Callable[[Any], list[str]] | None = None
+    notes: Callable[[Context], list[str]] | None = None
     columns: tuple[str, ...] = ()
     options: tuple[str, ...] = ()
 
@@ -291,7 +297,7 @@ def model_label(model: Any) -> str:
     label = type(model).__name__
     kind = getattr(model, "kind", None)
     if label == "ParametricRegressionModel" and isinstance(kind, str):
-        return "{} ({})".format(label, kind)
+        return f"{label} ({kind})"
     if label == "SemiParametricRegressionModel":
         return "CoxPH"
     return label
@@ -381,9 +387,9 @@ def _covariate_names(model: Any) -> list[str]:
 def diagnose(
     model: Any,
     alpha: float = 0.05,
-    columns: "Sequence[str] | None" = None,
+    columns: Sequence[str] | None = None,
     *,
-    n_boot: "int | None" = None,
+    n_boot: int | None = None,
     random_state: Any = None,
     **options: Any,
 ) -> Diagnosis:
@@ -477,6 +483,11 @@ def diagnose(
                 )
             )
 
+    tables = {
+        check.name: check.table(ctx)
+        for check in family.checks
+        if check.table is not None
+    }
     notes = list(family.notes(ctx)) if family.notes is not None else []
     notes.extend(n for n in ctx.notes if n not in notes)
     return Diagnosis(
@@ -489,13 +500,14 @@ def diagnose(
         [names[j] for j in ctx.columns],
         context=ctx,
         family_spec=family,
+        tables=tables,
     )
 
 
 def plot_report(
     family: Family,
     ctx: Context,
-    which: "str | Sequence[str] | None",
+    which: str | Sequence[str] | None,
     n_boot: int = 200,
     random_state: Any = None,
 ) -> Any:
@@ -505,7 +517,7 @@ def plot_report(
     drawable = [c.name for c in family.checks if c.panels is not None]
     if not drawable:
         raise ValueError(
-            "The {} diagnostics have no plots to draw.".format(family.name)
+            f"The {family.name} diagnostics have no plots to draw."
         )
     if which is None:
         chosen = drawable
