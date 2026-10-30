@@ -129,6 +129,40 @@ def place_knots(x_events: np.ndarray, n_internal: int) -> np.ndarray:
     return np.quantile(lx, qs)
 
 
+def check_knots(knots: Any) -> np.ndarray:
+    """Knots given by the user (log time, the boundary knots included),
+    sorted: the spline basis takes its boundary knots from the ends and
+    its parameters follow the knots in order, so knots in another order
+    describe the same spline only once sorted. Refuses fewer than two,
+    a missing or infinite knot, and a repeated one."""
+    try:
+        k = np.asarray(knots, dtype=float).reshape(-1)
+    except (TypeError, ValueError):
+        raise ValueError(
+            "`knots` must be numbers (log times, the boundary knots "
+            "included); got {!r}.".format(knots)
+        ) from None
+    if k.size < 2:
+        raise ValueError(
+            "`knots` needs at least the two boundary knots (in log time); "
+            "got {}. Pass more knots, or leave `knots` out and set "
+            "`df`.".format(k.size)
+        )
+    if not np.all(np.isfinite(k)):
+        raise ValueError(
+            "`knots` must be finite log times; got {}. Knots are on the "
+            "log scale: pass np.log of the times (each above 0).".format(
+                k.tolist()
+            )
+        )
+    if np.unique(k).size != k.size:
+        raise ValueError(
+            "`knots` must be distinct; got {} (log time). Remove the "
+            "repeated knot.".format(k.tolist())
+        )
+    return np.sort(k)
+
+
 def _scale_terms(eta: np.ndarray, scale: str) -> tuple[Any, ...]:
     """``(log S, log(-dS/deta))`` at linear predictor ``eta`` for a scale."""
     from scipy.stats import norm
@@ -767,7 +801,9 @@ class RoystonParmar_(FitterRepr, UnivariateDataFrameMixin):
             The link scale (proportional hazards, proportional odds, probit).
         knots : array_like, optional
             Explicit knot locations *on the log-time scale* (including the two
-            boundary knots), overriding the quantile-based default.
+            boundary knots), overriding the quantile-based default. They
+            are sorted (the spline parameters follow the sorted knots) and
+            must be finite and distinct.
         """
         check_option("scale", scale, SCALES)
 
@@ -827,7 +863,7 @@ class RoystonParmar_(FitterRepr, UnivariateDataFrameMixin):
                 )
             knots = place_knots(event_times, n_internal)
         else:
-            knots = np.asarray(knots, dtype=float)
+            knots = check_knots(knots)
         if np.unique(knots).size != len(knots):
             raise ValueError(
                 "Royston-Parmar knots must be distinct; quantile placement "

@@ -12,8 +12,8 @@ run-name: SurPyval CI
 # Every job below runs in that one run: lint, the conformance suite, the
 # test suite on three interpreters (each split into four parts that run at
 # once) with the docstring examples, the calibration studies and scenario
-# cards (in groups that run at once), the wheel check and the documentation
-# build. Publishing a release
+# cards (in groups that run at once), the PyMC helpers with PyMC installed,
+# the wheel check and the documentation build. Publishing a release
 # (publish.yml) checks that this run passed.
 on:
   pull_request:
@@ -313,6 +313,42 @@ jobs:
         run: >-
           python -m pytest -rP --durations=10 -n ${{ matrix.workers }}
           --run-calibration --run-scenarios ${{ matrix.args }}
+
+  # The PyMC helpers (surpyval.pymc) with PyMC installed. PyMC is not a
+  # dependency of SurPyval, nor an extra, nor in requirements_dev.txt, so
+  # in every other job their tests and doctests skip (importorskip). This
+  # job installs it here only, checks the import before the tests (so a
+  # failed install fails the job rather than leaving every test skipped)
+  # and runs the helpers' tests and doctests (about 25 seconds on an
+  # M-series Mac on 30 October 2026, with PyMC 5.x compiling its graphs on
+  # first use; 15 of the tests skip by design, for families without a
+  # support edge at 0). The timeout makes a sampler that hangs fail here.
+  pymc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set-up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_dev.txt
+
+      - name: Install PyMC (this job only)
+        run: |
+          pip install pymc
+          python -c "import pymc, pytensor, arviz; print('pymc', pymc.__version__)"
+
+      - name: pytest (PyMC helpers)
+        run: python -m pytest -rs surpyval/tests/pymc
+
+      - name: doctests (PyMC helpers)
+        run: python -m pytest -rs --doctest-modules surpyval/pymc
 
   # The 3.12 parts' coverage, combined into one report.
   coverage:

@@ -368,6 +368,26 @@ def fit(
     return model
 
 
+def _check_points(points: Any) -> int | None:
+    """``points`` as a whole number of at least 2 (a grid needs two points
+    a parameter to have a cell), or ``None``; refuses anything else,
+    naming it."""
+    if points is None:
+        return None
+    ok = not isinstance(points, (bool, np.bool_)) and isinstance(
+        points, (int, float, np.integer, np.floating)
+    )
+    if ok:
+        ok = bool(np.isfinite(points)) and float(points) == int(points)
+    if not ok or int(points) < 2:
+        raise ValueError(
+            f"points must be a whole number of at least 2 (the grid's "
+            f"starting points per parameter); got {points!r}. Leave it out "
+            "for the default."
+        )
+    return int(points)
+
+
 def _posterior(
     dist: Any,
     data: SurpyvalData | None,
@@ -377,6 +397,7 @@ def _posterior(
 ) -> Any:
     from surpyval.bayes.model import BayesianParametric
 
+    points = _check_points(points)
     offset, lfp, zi = bound.offset, bound.lfp, bound.zi
     case = None
     if data is not None and method in ("auto", "conjugate"):

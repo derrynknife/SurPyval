@@ -57,22 +57,14 @@ def test_constructor_refuses_naming_the_argument(case):
         make()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "prior.around(5, between=(1, 3)) is accepted: the stated centre "
-        "5 lies outside the interval it is said almost surely to lie in, "
-        "and the prior built ('about 5 (90% between 1 and 3)') has its "
-        "median at sqrt(3) on a positive parameter. The docstring promises "
-        "only that the summary says what was built where the median is "
-        "not m; a centre outside the interval is a contradiction that "
-        "principle 2 would refuse."
-    ),
-)
 def test_around_refuses_a_centre_outside_its_interval():
-    """audit B24: a centre outside ``between`` is refused, naming it."""
-    with pytest.raises(ValueError, match="between"):
-        prior.around(5, between=(1, 3))
+    """audit B24: a centre outside ``between`` is refused, naming the
+    arguments and what to do; one inside is taken."""
+    for m in (5, 0.5, 1, 3):
+        with pytest.raises(ValueError, match="between") as err:
+            prior.around(m, between=(1, 3))
+        assert "`m`" in str(err.value) and "Widen" in str(err.value)
+    assert prior.around(2, between=(1, 3)).said.startswith("about 2")
 
 
 def test_a_distribution_leaving_the_range_is_refused_until_truncated():

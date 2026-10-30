@@ -185,22 +185,6 @@ WEIGHTED = [
         },
         covariates=True,
         rtol=5e-3,
-        # Non-strict: where the optimiser stops depends on the numpy /
-        # scipy build (docs/Contributing.rst, NON_STRICT).
-        xfail_strict=False,
-        xfail={
-            name: (
-                "AcceleratedLife's fit stops after one TNC iteration on "
-                "'|f_n-f_(n-1)| ~= 0' with a gradient of about 2e-4 left, "
-                "so fits that reach the same maximum (w = 1 against no w; "
-                "counted against repeated rows) differ by 1e-5 to 4e-5 "
-                "relative in a and n. Reproduce: AcceleratedLife(Weibull, "
-                "Power).fit(x, 1 + Z[:, 0], c=c, tl=tl) against the same "
-                "with w=np.ones(40) on weighted_reference_data(): n is "
-                "-1.355954 against -1.355935."
-            )
-            for name in ("unit_weights", "counts", "integer_weights")
-        },
     ),
     # audit W-B: the forms of the parametric fit with their own branches
     # in the sandwich (``make_robust``): a limited failure population, zero

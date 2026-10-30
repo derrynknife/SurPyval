@@ -240,6 +240,39 @@ def test_lomax_predictive_mean_is_infinite_when_the_shape_is_at_most_1():
     assert model.mean() == np.inf
 
 
+def test_lomax_predictive_variance_is_the_closed_form():
+    """The Exponential-Gamma predictive is a Lomax of shape ``a`` and
+    scale ``b`` (the posterior's): its variance is ``b**2 a / ((a - 1)**2
+    (a - 2))``, checked in exact arithmetic, and against integrating the
+    predictive survival function (``E[T^2] = 2 int t S(t) dt``)."""
+    model = sp.Exponential.fit_bayes(X, C, tl=TL, priors=RATE)
+    a, b = _posterior_exact()
+    exact = b**2 * a / ((a - 1) ** 2 * (a - 2))
+    assert model.var() == pytest.approx(float(exact), rel=1e-14)
+    af, bf = float(a), float(b)
+    second, _ = integrate.quad(
+        lambda t: 2 * t * (bf / (bf + t)) ** af, 0, np.inf, epsabs=0
+    )
+    assert model.var() == pytest.approx(second - model.mean() ** 2, rel=1e-8)
+
+
+def test_lomax_predictive_variance_is_infinite_when_the_shape_is_at_most_2():
+    """With a posterior shape in (1, 2] the Lomax mean is finite and its
+    variance infinite (a Gamma(0.5, 100) prior and one failure: a = 1.5);
+    at most 1 both are."""
+    prior_ = {"failure_rate": sp.Gamma.from_params([0.5, 100.0])}
+    one = sp.Exponential.fit_bayes(
+        [100.0, 200.0, 300.0], c=[0, 1, 1], priors=prior_
+    )
+    assert one.posterior.exact["params"] == [1.5, 700.0]
+    assert one.mean() == pytest.approx(700.0 / 0.5, rel=1e-14)
+    assert one.var() == np.inf
+    none = sp.Exponential.fit_bayes(
+        [100.0, 200.0, 300.0], c=[1, 1, 1], priors=prior_
+    )
+    assert none.mean() == np.inf and none.var() == np.inf
+
+
 def _normal_normal():
     model = sp.Normal.fit_bayes(
         Y,
@@ -264,17 +297,6 @@ def test_normal_normal_predictive_mean_is_the_posterior_mean():
     assert model.mean() == pytest.approx(float(mean), rel=1e-14)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "var() of the Normal-normal (sigma known) fit is not the closed "
-        "predictive's sigma**2 + s**2: mean() uses the closed predictive, "
-        "but var() takes moment(2) - mean()**2 from the conjugate "
-        "posterior's 4000 quantile nodes, which drop the tails. On this "
-        "module's Y with mu ~ Normal(3, 2) and sigma = 0.8 it gives "
-        "0.7438620 against the exact 0.7438961 (relative -4.6e-5)."
-    ),
-)
 def test_normal_normal_predictive_variance_is_exact():
     """audit B25: the predictive variance is ``sigma**2 + s**2``, with
     ``s**2`` the posterior variance of mu (exact, as ``mean()`` is)."""

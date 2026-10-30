@@ -850,7 +850,8 @@ def around(
     Parameters
     ----------
     m : float
-        The value believed most likely, as said.
+        The value believed most likely, as said. It must lie inside
+        ``between``, or the call is refused.
     between : (float, float)
         The interval the value almost surely lies in.
     mass : float, optional
@@ -869,13 +870,26 @@ def around(
     2.121
     """
     a, b = between
-    return NormalOnScale(
+    built = NormalOnScale(
         a,
         b,
         mass,
         said=f"about {_fmt(m)} ({mass:.0%} between {_fmt(a)} and {_fmt(b)})",
         stated=m,
     )
+    try:
+        inside = bool(float(a) < float(m) < float(b))
+    except (TypeError, ValueError):
+        raise ValueError(f"`m` must be a number; got {m!r}.") from None
+    if not inside:
+        raise ValueError(
+            f"prior.around(m={_fmt(m)}, between=({_fmt(a)}, {_fmt(b)})): "
+            "the value believed most likely, `m`, is outside the interval "
+            "`between` it is said almost surely to lie in. Widen "
+            "`between` to take in `m`, correct `m`, or use "
+            "prior.between(a, b) for a belief centred on the interval."
+        )
+    return built
 
 
 def between(a: float, b: float, mass: float = 0.9) -> NormalOnScale:

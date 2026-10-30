@@ -911,7 +911,11 @@ def prepare_regression_fit(
         data = centred_copy(data, centring.center)
 
     def default_init() -> npt.NDArray:
-        ps = fitter.dist.fit_from_surpyval_data(data).params
+        from surpyval.utils.weights import few_effective_said_later
+
+        # The regression warns of few effective units itself, once
+        with few_effective_said_later():
+            ps = fitter.dist.fit_from_surpyval_data(data).params
         if callable(phi_init):
             init_phi = phi_init(Z_data)
         else:

@@ -101,13 +101,23 @@ def parametric_likelihood_ratio_test(
     if not model._is_linear_predictor() or (
         model.reg_model.name not in _SERIALISABLE_REG_NAMES
     ):
-        what = (
-            "an accelerated life model, whose life-model parameters are "
-            "not coefficients that are 0 without an effect"
-            if model._is_accelerated_life()
-            else "a model with a custom covariate link, which need not "
-            "leave the baseline unchanged at coefficients of 0"
-        )
+        from ._kinds import DISTRIBUTIONAL
+
+        if model._is_accelerated_life():
+            what = (
+                "an accelerated life model, whose life-model parameters "
+                "are not coefficients that are 0 without an effect"
+            )
+        elif getattr(model, "kind", None) == DISTRIBUTIONAL:
+            what = (
+                "a distributional regression, whose covariates act on "
+                "more than one parameter of the distribution"
+            )
+        else:
+            what = (
+                "a model with a custom covariate link, which need not "
+                "leave the baseline unchanged at coefficients of 0"
+            )
         raise ValueError(
             "likelihood_ratio_test is not available for {}. Fit the "
             "model without covariates yourself (the distribution's own "
@@ -124,9 +134,37 @@ def parametric_likelihood_ratio_test(
     }
     data = model.data
     kwargs: dict[str, Any] = {} if not fixed else {"fixed": fixed}
-    null = dist.fit(  # type: ignore[attr-defined]
-        x=data.x, c=data.c, n=data.n, t=data.t, **kwargs
-    )
+    from .royston_parmar_regression import SplineBaseline
+
+    if isinstance(dist, SplineBaseline):
+        # A Royston-Parmar regression: the null is the univariate spline
+        # on the regression's own knots and scale, the model nested in it
+        # (the univariate fit's default knots are placed differently).
+        from surpyval.univariate.parametric.royston_parmar import (
+            RoystonParmar,
+        )
+
+        if fixed:
+            raise ValueError(
+                "likelihood_ratio_test is not available for a "
+                "Royston-Parmar regression with spline coefficients held "
+                "fixed ({}): the univariate spline fit cannot hold them. "
+                "Fit without `fixed`, or compare log_likelihood by hand: "
+                "twice the difference is chi-squared on the difference in "
+                "the number of parameters.".format(sorted(fixed))
+            )
+        null = RoystonParmar.fit(
+            x=data.x,
+            c=data.c,
+            n=data.n,
+            t=data.t,
+            knots=dist.knots,
+            scale=dist.scale,
+        )
+    else:
+        null = dist.fit(  # type: ignore[attr-defined]
+            x=data.x, c=data.c, n=data.n, t=data.t, **kwargs
+        )
     k_null = len(model.distribution_param_map) - len(fixed)
     return _result(
         -float(model.neg_ll()), -float(null.neg_ll()), model.k - k_null

@@ -293,8 +293,15 @@ def fit_weighted_cox(
         ALIASED_HOW,
         _baseline_method,
         _cox_aliased,
+        _diverged_columns,
         _require_an_event,
         validate_coxph,
+        warn_monotone,
+    )
+    from .cox_separation import (
+        FAR,
+        information_collapsed,
+        runoff_direction,
     )
 
     if tie_method not in ("efron", "breslow"):
@@ -343,23 +350,56 @@ def fit_weighted_cox(
     if aliased.size:
         warn_aliased(aliased, ALIASED_HOW)
         lik = lik.columns(kept)
+    # The columns running off to infinity, where the partial likelihood
+    # has no finite maximum (empty where it has one)
+    off = np.zeros(0, dtype=int)
     if kept.size:
         beta_k, converged, iters = newton(lik, kept.size, tol)
         ll, score, info = lik.derivatives(beta_k)
+        # The search can stop on a step that is short in standard errors
+        # while the coefficients run off, as the information collapses
+        # with them: the data then say whether the likelihood has a
+        # finite maximum, as for the unweighted fit (the weights, all
+        # positive, change neither the risk sets nor who fails in them,
+        # so not whether a direction runs off either).
+        with np.errstate(over="ignore", invalid="ignore"):
+            far = not np.all(np.abs(lik.Z @ beta_k) <= FAR)
+        info_kept = info_at_start[np.ix_(kept, kept)]
+        if (
+            not converged
+            or far
+            or information_collapsed(info, info_kept)
+            or _diverged_columns(info, info_kept).size
+        ):
+            found = runoff_direction(x, Z[:, kept], c, n, tl, None, tie_method)
+            if found is not None:
+                direction, alone = found
+                off = np.flatnonzero(direction)
+                which = str(kept[off].tolist())
+                if alone:
+                    warn_monotone(which)
+                else:
+                    warn_monotone(which, direction[off])
         try:
             bread = np.linalg.inv(info)
         except np.linalg.LinAlgError:
-            raise ValueError(
-                "The weighted partial likelihood's information is singular: "
-                "a covariate column is constant or a combination of the "
-                "others. Drop it and fit again."
-            ) from None
+            if not off.size:
+                raise ValueError(
+                    "The weighted partial likelihood's information is "
+                    "singular: a covariate column is constant or a "
+                    "combination of the others. Drop it and fit again."
+                ) from None
+            bread = np.linalg.pinv(info)
     else:
         # Nothing estimated: every column aliased
         beta_k, converged, iters = np.zeros(0), True, 0
         ll = lik.derivatives(np.zeros(0))[0]
         bread = np.zeros((0, 0))
-    if not converged:
+    if off.size:
+        # Said by the warning above; and a runaway coefficient has no
+        # standard error (as the unweighted fit's)
+        converged = False
+    elif not converged:
         import warnings
 
         warnings.warn(
@@ -371,6 +411,9 @@ def fit_weighted_cox(
             stacklevel=3,
         )
     cov_k = robust_covariance(lik, beta_k, bread)
+    if off.size:
+        cov_k[off, :] = np.nan
+        cov_k[:, off] = np.nan
     from scipy.stats import norm
 
     with np.errstate(all="ignore"):
@@ -392,7 +435,11 @@ def fit_weighted_cox(
     model._covariance = cov
     model.tie_method = tie_method
     model.baseline_method = _baseline_method(tie_method)
-    model.maximum = "verified" if converged else "unverified"
+    model.maximum = (
+        "no finite maximum"
+        if off.size
+        else ("verified" if converged else "unverified")
+    )
     model.beta = beta.copy()
     model.params = beta.copy()
     model._fit_data = {

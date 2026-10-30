@@ -280,17 +280,6 @@ def test_knot_order_does_not_change_the_fit():
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "RoystonParmarRegression(knots=log([8, 3, 15])) keeps the knots in "
-        "the order given (model.model.dist.knots and "
-        "to_dict()['spline_baseline']['knots'] are [log 8, log 3, log 15]), "
-        "so the spline basis is a different one: the likelihood and curves "
-        "agree, but gamma_2 is 0.0483 against -0.1237 with the knots "
-        "sorted. Neither sorted nor refused."
-    ),
-)
 def test_knots_are_stored_sorted():
     """audit R-M: knots given out of order are stored sorted, so the
     spline parameters are those of the sorted knots."""
@@ -302,6 +291,35 @@ def test_knots_are_stored_sorted():
         shuffled.to_dict()["spline_baseline"]["knots"], KNOTS
     )
     np.testing.assert_allclose(shuffled.params, ordered.params, rtol=1e-4)
+
+
+def test_univariate_knots_are_sorted_too():
+    """The univariate fit takes knots out of order as the regression does:
+    sorted, so its spline parameters are those of the sorted knots."""
+    x, _, c = _small()
+    ordered = sp.RoystonParmar.fit(x, c=c, knots=KNOTS)
+    shuffled = sp.RoystonParmar.fit(x, c=c, knots=SHUFFLED)
+    np.testing.assert_allclose(shuffled.knots, KNOTS)
+    np.testing.assert_allclose(shuffled.params, ordered.params, rtol=1e-6)
+
+
+@pytest.mark.parametrize(
+    "knots, match",
+    [
+        (np.log([3.0]), "at least the two boundary knots"),
+        ([np.nan, 1.0, 2.0], "finite log times"),
+        ([1.0, 1.0, 2.0], "distinct"),
+        (["a", "b"], "must be numbers"),
+    ],
+)
+def test_bad_knots_are_refused_with_what_to_do(knots, match):
+    """Knots that cannot make a spline are refused, naming ``knots``, by
+    the regression and the univariate fit alike."""
+    x, _, c = _small()
+    with pytest.raises(ValueError, match=match):
+        RoystonParmarRegression(knots=knots)
+    with pytest.raises(ValueError, match=match):
+        sp.RoystonParmar.fit(x, c=c, knots=knots)
 
 
 def test_given_knots_take_precedence_over_df():

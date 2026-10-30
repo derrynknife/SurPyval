@@ -472,14 +472,6 @@ def test_round_trip_of_a_fit_with_every_option():
         from_dict.constant_effects_test()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "smoothed_coefficients([5.0], bandwidth='x') raises numpy's raw "
-        "ValueError 'could not convert string to float: 'x'', which does "
-        "not name the argument (principle 2)."
-    ),
-)
 def test_a_bandwidth_that_is_not_a_number_is_refused_by_name():
     """audit R-K: a non-numeric ``bandwidth`` is refused, naming it."""
     x, Z, c = _small()
@@ -488,14 +480,6 @@ def test_a_bandwidth_that_is_not_a_number_is_refused_by_name():
         model.smoothed_coefficients([5.0], bandwidth="x")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "summary(at=-1.0) silently returns a table of effects at a "
-        "negative time (every coefficient 0 with se 0) instead of refusing "
-        "a time before the origin."
-    ),
-)
 def test_a_negative_summary_time_is_refused_by_name():
     """audit R-K: ``summary(at=...)`` before time 0 is refused, naming
     ``at``."""

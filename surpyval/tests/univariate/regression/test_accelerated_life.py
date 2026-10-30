@@ -665,3 +665,39 @@ def test_760_the_fit_ends_at_its_maximum(seed):
     derivatives = search_derivatives(model.fun, at)
     gain = newton_gain(at, derivatives, list(range(at.size)))
     assert gain <= 1e-11 * max(1.0, abs(model.res.fun))
+
+
+# -- the polish where autograd's Hessian is nan (audit W-X1) -----------------
+
+
+def _late_entries(seed):
+    """60 Weibull lifetimes at a power-law stress (1 to 3), a third with a
+    late entry and the rest entering at 0 (``tl = 0``, the support's lower
+    end, where the Hessian of ``log_sf`` is nan), censored at 12."""
+    rng = np.random.default_rng(seed)
+    stress = rng.uniform(1.0, 3.0, 60)
+    life = 10.0 * stress**-1.2 * rng.weibull(1.8, 60)
+    tl = np.where(rng.uniform(size=60) < 1 / 3, 0.2, 0.0)
+    life = np.maximum(life, tl + 0.05)
+    c = (life > 12.0).astype(int)
+    return np.minimum(life, 12.0), stress, c, tl
+
+
+@pytest.mark.parametrize("seed", [1, 2, 3])
+def test_fits_with_entries_at_zero_reach_one_maximum(seed):
+    """audit W-X1: with rows entering at 0 the search stopped short (a
+    gradient of about 2e-4 left), so fits that should reach the same
+    maximum differed by 1e-5. The polish takes each to it: unit weights
+    against none, and counts against repeated rows, agree to 1e-7."""
+    import surpyval as sp
+
+    x, s, c, tl = _late_entries(seed)
+    fitter = sp.AcceleratedLife(sp.Weibull, sp.life_models.Power)
+    plain = fitter.fit(x, s, c=c, tl=tl)
+    unit = fitter.fit(x, s, c=c, tl=tl, w=np.ones(x.size))
+    assert plain.maximum == unit.maximum == "verified"
+    np.testing.assert_allclose(unit.params, plain.params, rtol=1e-7)
+    rows = np.repeat(np.arange(x.size), 2)
+    repeated = fitter.fit(x[rows], s[rows], c=c[rows], tl=tl[rows])
+    counted = fitter.fit(x, s, c=c, tl=tl, n=np.full(x.size, 2))
+    np.testing.assert_allclose(counted.params, repeated.params, rtol=1e-7)

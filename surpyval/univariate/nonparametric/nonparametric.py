@@ -1540,8 +1540,10 @@ class NonParametric(
         cs : scalar or numpy array
             The conditional survival, shaped as ``x`` and ``given``
             broadcast together: ``nan`` where the estimate at ``given`` is
-            0 (no unit is known to survive that long), and where
-            ``given + x`` is past the data (as :meth:`sf` is there).
+            0 (no unit is known to survive that long). Past the data, as
+            :meth:`sf` there: with ``interp='step'`` (the default) the
+            estimate holds its last value, and with ``'linear'`` or
+            ``'cubic'`` it is ``nan`` where ``given + x`` is past the data.
 
         Examples
         --------

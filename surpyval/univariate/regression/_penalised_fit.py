@@ -71,7 +71,7 @@ def fit_parametric_penalised(
     pen, a = check_penalty(penalizer, l1_ratio, standardise, p)
     w = np.asarray(data.n, dtype=float)
     scale = covariate_scale(Z_arr, w, standardise)
-    scaled = copy.copy(data)
+    scaled = _intervals_from_the_support(fitter, data)
     scaled.add_covariates(Z_arr / scale)
     N = float(w.sum())
 
@@ -131,6 +131,27 @@ def fit_parametric_penalised(
     if not res.verified:
         warn_unverified("The penalised fit")
     return model
+
+
+def _intervals_from_the_support(fitter: Any, data: SurpyvalData) -> Any:
+    """A copy of ``data`` for the penalised objective, with each interval
+    that starts at (or below) the lower end of the baseline's support
+    written as the left-censored row it is: ``F(xr) - F(lower)`` is
+    ``F(xr)``. The likelihood is the same, but its second derivatives at
+    ``F(0)`` of a Weibull are ``0 * log(0)**2``, nan, and the solver's
+    Newton steps and its check of the maximum need the Hessian."""
+    lower = float(fitter.dist.support[0])
+    c = np.asarray(data.c)
+    x = np.asarray(data.x, dtype=float)
+    from_lower = np.zeros(c.shape, dtype=bool)
+    if np.isfinite(lower) and x.ndim == 2:
+        from_lower = (c == 2) & (x[:, 0] <= lower)
+    if not from_lower.any():
+        return copy.copy(data)
+    x = x.copy()
+    x[from_lower, 0] = x[from_lower, 1]
+    c = np.where(from_lower, -1, c)
+    return SurpyvalData(x, c, data.n, data.t, group_and_sort=False)
 
 
 class PenalisedFitMixin:

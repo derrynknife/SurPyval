@@ -537,7 +537,10 @@ class AalenAdditiveModel(
         if bandwidth is None:
             bandwidth = _default_bandwidth(self.x)
         else:
-            bw = float(bandwidth)
+            try:
+                bw = float(bandwidth)
+            except (TypeError, ValueError):
+                bw = float("nan")
             if not (np.isfinite(bw) and bw > 0):
                 raise ValueError(
                     "'bandwidth' must be a positive number of time units; "
@@ -792,9 +795,15 @@ class AalenAdditiveModel(
         _check_alpha(alpha_ci)
         if at is None:
             at = float(self.x[-1]) if self.x.size else 0.0
-        t = np.atleast_1d(np.asarray(at, dtype=float))
-        if t.size != 1 or not np.isfinite(t[0]):
-            raise ValueError(f"'at' must be one finite time; got {at!r}.")
+        try:
+            t = np.atleast_1d(np.asarray(at, dtype=float))
+        except (TypeError, ValueError):
+            t = np.array([np.nan])
+        if t.size != 1 or not np.isfinite(t[0]) or t[0] < 0:
+            raise ValueError(
+                "'at' must be one finite time at or after 0 (the time "
+                f"origin); got {at!r}."
+            )
         return coefficient_table(
             self.term_names,
             self._B_at(t)[0],
