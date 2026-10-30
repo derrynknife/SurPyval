@@ -17,13 +17,14 @@ changelog:
   (``cs(X=)``, ``ARI.fit(dist=)``, ``from_params(p=)``, ...), and
   :func:`column_arguments`, a ``fit_from_df`` column given by the ``fit``
   argument's name (``x=`` for ``x_col=``);
-- :data:`REMOVED_TOP_LEVEL`, the package's own old names (the life models
-  and the numeric constants, read by ``surpyval.__getattr__``), with
-  :func:`from_import` so that ``from surpyval import Power`` keeps the
-  message;
+- :data:`REMOVED_TOP_LEVEL`, the package's own old names (the life
+  models, the numeric constants and ``RecurrentEventData``, read by
+  ``surpyval.__getattr__``), with :func:`from_import` so that
+  ``from surpyval import Power`` keeps the message;
 - :func:`removed_parameter_note`, a parameter's old name in ``fixed`` and
   ``param_cb`` (``p`` for ``lfp_p``, ``beta_j`` for a coefficient);
-- ``surpyval.utils.score``, a module that raises on import.
+- ``surpyval.utils.score`` and ``surpyval.utils.recurrent_event_data``,
+  modules that raise on import.
 
 An entry is dropped once the old name has been gone for a release or two.
 """
@@ -34,7 +35,8 @@ import dis
 import functools
 import re
 import sys
-from typing import Any, Callable, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 __all__ = [
     "MIXTURE_EM_ATTRIBUTES",
@@ -107,6 +109,11 @@ REMOVED_TOP_LEVEL: dict[str, tuple[str, str]] = {
     "NUM": ("use numpy.float64", "0.24"),
     "TINIEST": ("use numpy.finfo(float).tiny", "0.24"),
     "EPS": ("use numpy.sqrt(numpy.finfo(float).eps)", "0.24"),
+    "RecurrentEventData": (
+        "it is surpyval.EventHistoryData (from surpyval import "
+        "EventHistoryData)",
+        "0.26",
+    ),
 }
 
 

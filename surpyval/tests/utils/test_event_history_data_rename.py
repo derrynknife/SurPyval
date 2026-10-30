@@ -1,47 +1,71 @@
-"""RecurrentEventData is now EventHistoryData (v0.25): the old name, at
-the top level and in its old module, is the same class, with a
-DeprecationWarning, until v0.26."""
+"""RecurrentEventData was renamed EventHistoryData in v0.25 and the old
+name removed in v0.26: at the top level and in its old module, it raises
+the error Python would, naming the new one. So do EventHistoryData's
+``items`` and ``get_times_to_first_events``, deprecated with it."""
+
+import importlib
+import sys
+import warnings
 
 import pytest
 
 import surpyval
 from surpyval import EventHistoryData
-from surpyval.utils.deprecation import REMOVED_IN
 
 
-def test_the_old_top_level_name_warns_and_is_the_same_class():
-    with pytest.warns(DeprecationWarning, match="EventHistoryData") as caught:
-        old = surpyval.RecurrentEventData
-    assert old is EventHistoryData
-    assert f"v{REMOVED_IN}" in str(caught[0].message)
-    assert caught[0].filename == __file__
-    data = surpyval.handle_xicn([1, 2, 3], i=[1, 1, 1])
-    assert isinstance(data, old)
+def test_the_old_top_level_name_names_the_new_one():
+    with pytest.raises(
+        AttributeError,
+        match="'RecurrentEventData': it was removed in v0.26; it is "
+        "surpyval.EventHistoryData",
+    ):
+        surpyval.RecurrentEventData
+    assert not hasattr(surpyval, "RecurrentEventData")
+    assert "RecurrentEventData" not in surpyval.__all__
 
 
-def test_the_old_module_path_warns_and_forwards():
-    with pytest.warns(DeprecationWarning, match="EventHistoryData"):
-        from surpyval.utils.recurrent_event_data import RecurrentEventData
-    assert RecurrentEventData is EventHistoryData
-    from surpyval.utils import recurrent_event_data
-
-    assert (
-        recurrent_event_data.accepts_event_history_data
-        is surpyval.utils.event_history_data.accepts_event_history_data
-    )
+def test_from_import_of_the_old_name_names_the_new_one():
+    with pytest.raises(
+        ImportError,
+        match="cannot import name 'RecurrentEventData': it was removed in "
+        "v0.26",
+    ):
+        from surpyval import RecurrentEventData  # noqa: F401
 
 
-def test_star_import_still_gets_the_old_name():
+def test_the_old_module_names_the_new_class():
+    sys.modules.pop("surpyval.utils.recurrent_event_data", None)
+    with pytest.raises(ImportError, match="surpyval.EventHistoryData"):
+        importlib.import_module("surpyval.utils.recurrent_event_data")
+
+
+def test_star_import_no_longer_gets_the_old_name():
     namespace: dict = {}
-    # and FutureWarnings for the data functions deprecated by date
-    with pytest.warns((DeprecationWarning, FutureWarning)):
+    with warnings.catch_warnings():
+        # the data functions deprecated by date warn on a star import
+        warnings.simplefilter("ignore", FutureWarning)
+        warnings.simplefilter("error", DeprecationWarning)
         exec("from surpyval import *", namespace)
-    assert namespace["RecurrentEventData"] is EventHistoryData
+    assert "RecurrentEventData" not in namespace
+    assert namespace["EventHistoryData"] is EventHistoryData
+
+
+@pytest.mark.parametrize(
+    "old, new",
+    [("items", "'ids'"), ("get_times_to_first_events", "'to_first_events()'")],
+)
+def test_the_old_attributes_name_their_replacements(old, new):
+    data = surpyval.handle_xicn([1, 2, 3], i=[1, 1, 2])
+    with pytest.raises(AttributeError) as caught:
+        getattr(data, old)
+    message = str(caught.value)
+    assert f"has no attribute '{old}'" in message
+    assert "removed in v0.26" in message and new in message
+    assert old not in dir(data)
+    assert not hasattr(EventHistoryData, old)
 
 
 def test_the_new_name_does_not_warn():
-    import warnings
-
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         assert surpyval.EventHistoryData is EventHistoryData

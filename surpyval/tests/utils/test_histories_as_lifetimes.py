@@ -2,8 +2,6 @@
 and the times between failures, as SurpyvalData that keep each item's
 delayed entry, id, covariates and event types."""
 
-import warnings
-
 import numpy as np
 import pytest
 
@@ -134,16 +132,10 @@ def test_a_gap_of_zero_is_refused():
         twice.to_gaps()
 
 
-def test_the_old_name_warns_and_gives_the_new_result():
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        old = PUMPS.get_times_to_first_events()
-    assert any(
-        issubclass(w.category, DeprecationWarning)
-        and "to_first_events" in str(w.message)
-        for w in caught
-    )
-    assert old.ids == ["A", "B", "C"]
+def test_the_old_name_names_the_new_one():
+    # get_times_to_first_events, deprecated in v0.25, was removed in v0.26
+    with pytest.raises(AttributeError, match="use 'to_first_events\\(\\)'"):
+        PUMPS.get_times_to_first_events()
 
 
 def test_a_lifetime_fit_points_to_them():

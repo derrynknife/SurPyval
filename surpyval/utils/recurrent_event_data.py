@@ -1,27 +1,14 @@
-"""Deprecated: ``RecurrentEventData`` is now
-:class:`~surpyval.utils.event_history_data.EventHistoryData`, in
-``surpyval.utils.event_history_data`` (v0.25): it holds any item's event
-history (recurrent events, changes of state, ...), not recurrent events
-only. The old name and this module are removed in v0.26."""
+"""Removed in v0.26: ``RecurrentEventData`` is
+:class:`~surpyval.utils.event_history_data.EventHistoryData` (renamed in
+v0.25), in ``surpyval.utils.event_history_data``.
 
-from typing import Any
+Importing this module raises an ``ImportError`` that says so, rather than
+Python's bare "No module named 'surpyval.utils.recurrent_event_data'".
+"""
 
-
-def __getattr__(name: str) -> Any:
-    from surpyval.utils import event_history_data
-    from surpyval.utils.deprecation import renamed_name
-
-    if name == "RecurrentEventData":
-        return renamed_name(
-            "surpyval.utils.recurrent_event_data",
-            "RecurrentEventData",
-            "surpyval.utils.event_history_data.EventHistoryData",
-            event_history_data.EventHistoryData,
-        )
-    try:
-        return getattr(event_history_data, name)
-    except AttributeError:
-        raise AttributeError(
-            f"module 'surpyval.utils.recurrent_event_data' has no attribute "
-            f"{name!r}"
-        ) from None
+raise ImportError(
+    "surpyval.utils.recurrent_event_data was removed in v0.26; its "
+    "RecurrentEventData is surpyval.EventHistoryData "
+    "(from surpyval import EventHistoryData).",
+    name=__name__,
+)
