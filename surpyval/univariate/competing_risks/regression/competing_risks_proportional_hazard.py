@@ -163,7 +163,7 @@ class CompetingRisksProportionalHazards(
     _fg_models: dict
     #: Each cause's fitted model, by cause label (#874): its ``CoxPH``
     #: model (with the other causes censored) for ``model="Cox"``, which
-    #: has ``compute_residuals`` and ``check_ph``, or its
+    #: has ``compute_residuals`` and ``diagnose()``, or its
     #: ``FineGrayModel`` for ``model="Fine-Gray"``. ``diagnose()`` checks
     #: them. ``None`` on a model restored with ``from_dict``, which does
     #: not store them (only their coefficients and baselines).

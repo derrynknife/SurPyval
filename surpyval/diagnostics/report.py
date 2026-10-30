@@ -10,7 +10,10 @@ in.
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Any, Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING, Any
+
+import numpy as np
 
 if TYPE_CHECKING:  # pragma: no cover
     import pandas as pd
@@ -38,7 +41,7 @@ COLUMNS = (
 SCHEMA = 1
 
 
-def verdict(p: "float | None", alpha: float) -> str:
+def verdict(p: float | None, alpha: float) -> str:
     """The verdict of a test with p-value ``p`` at level ``alpha``, the
     one rule every family's tests share:
 
@@ -87,17 +90,17 @@ class Advice(str):
     (('sex',), ('CoxPH.fit(strata=)',))
     """
 
-    check: "str | None"
-    covariates: "tuple[str, ...]"
-    features: "tuple[str, ...]"
+    check: str | None
+    covariates: tuple[str, ...]
+    features: tuple[str, ...]
 
     def __new__(
         cls,
         message: str,
-        check: "str | None" = None,
+        check: str | None = None,
         covariates: Iterable[str] = (),
         features: Iterable[str] = (),
-    ) -> "Advice":
+    ) -> Advice:
         out = super().__new__(cls, message)
         out.check = check
         out.covariates = tuple(covariates)
@@ -131,7 +134,7 @@ class DiagnosticsFailed(Exception):
     True
     """
 
-    def __init__(self, message: str, diagnosis: "Diagnosis") -> None:
+    def __init__(self, message: str, diagnosis: Diagnosis) -> None:
         super().__init__(message)
         self.diagnosis = diagnosis
 
@@ -192,6 +195,16 @@ class Diagnosis:
         The model family whose checks ran.
     model : str
         The kind of model diagnosed.
+    tables : dict of str to pandas.DataFrame
+        The tables of the checks that have one, by check name. A Cox
+        model's ``tables["proportional_hazards"]`` is the
+        Grambsch-Therneau test as R's ``cox.zph`` prints it, on the
+        ``transform`` given to ``diagnose()`` (``"km"`` by default): one
+        row per covariate (all of them, whatever ``columns``) and
+        ``GLOBAL``, with ``statistic``, ``df`` and ``p``, the transform in
+        ``attrs["transform"]``. A cause-specific competing-risks model's
+        has one block per cause, indexed by ``(cause, covariate)``. Empty
+        for a family whose checks have no table.
 
     Examples
     --------
@@ -214,17 +227,19 @@ class Diagnosis:
 
     def __init__(
         self,
-        table: "pd.DataFrame",
+        table: pd.DataFrame,
         advice: Sequence[Advice],
         notes: Sequence[str],
         alpha: float,
         family: str,
         model: str,
         columns: Sequence[str] = (),
-        context: "Context | None" = None,
-        family_spec: "Family | None" = None,
+        context: Context | None = None,
+        family_spec: Family | None = None,
+        tables: dict[str, pd.DataFrame] | None = None,
     ) -> None:
         self.table = table
+        self.tables = dict(tables or {})
         self.advice = list(advice)
         self.notes = list(notes)
         self.alpha = float(alpha)
@@ -252,7 +267,7 @@ class Diagnosis:
         """
         return not bool((self.table["verdict"] == "fail").any())
 
-    def raise_if_failed(self) -> "Diagnosis":
+    def raise_if_failed(self) -> Diagnosis:
         """Raise :class:`DiagnosticsFailed` if any check failed, naming
         each failed check and the advice; otherwise return the report, so
         a pipeline can write ``model.diagnose().raise_if_failed()``.
@@ -286,7 +301,7 @@ class Diagnosis:
         covariates = _format_cell(tuple(row["covariates"])) or "the model"
         test = row["test"]
         extra = [
-            "{} {}".format(k, row[k])
+            f"{k} {row[k]}"
             for k in self.table.columns
             if k not in COLUMNS and isinstance(row[k], str) and row[k]
         ]
@@ -345,10 +360,14 @@ class Diagnosis:
             "table": rows,
             "advice": [a.to_dict() for a in self.advice],
             "notes": list(self.notes),
+            "tables": {
+                name: _table_to_dict(table)
+                for name, table in self.tables.items()
+            },
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Diagnosis":
+    def from_dict(cls, data: dict) -> Diagnosis:
         """The report :meth:`to_dict` wrote. It has the table, advice and
         notes but not the fitted model, so it cannot :meth:`plot`.
 
@@ -395,12 +414,16 @@ class Diagnosis:
             data.get("family", ""),
             data.get("model", ""),
             data.get("columns", ()),
+            tables={
+                name: _table_from_dict(table)
+                for name, table in data.get("tables", {}).items()
+            },
         )
 
     # -- plots --------------------------------------------------------------
     def plot(
         self,
-        which: "str | Sequence[str] | None" = None,
+        which: str | Sequence[str] | None = None,
         *,
         n_boot: int = 200,
         random_state: Any = None,
@@ -504,6 +527,60 @@ class Diagnosis:
 
     def __repr__(self) -> str:
         return self.summary()
+
+
+def _json_value(value: Any) -> Any:
+    """A table cell for JSON: text and whole numbers as they are, other
+    numbers as :func:`_json_number`."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    if isinstance(value, (int, np.integer)):
+        return int(value)
+    return _json_number(value)
+
+
+def _table_to_dict(table: pd.DataFrame) -> dict:
+    """A check's own table (``Diagnosis.tables``) as strict-JSON-safe
+    data: its index (each entry a list, one item per level), columns,
+    rows, column types and ``attrs``."""
+    return {
+        "index_names": [
+            None if n is None else str(n) for n in table.index.names
+        ],
+        "index": [
+            [_json_value(v) for v in (i if isinstance(i, tuple) else (i,))]
+            for i in table.index
+        ],
+        "columns": [str(c) for c in table.columns],
+        "dtypes": [str(t) for t in table.dtypes],
+        "data": [
+            [_json_value(v) for v in row]
+            for row in table.itertuples(index=False, name=None)
+        ],
+        "attrs": dict(table.attrs),
+    }
+
+
+def _table_from_dict(data: dict) -> pd.DataFrame:
+    """The table :func:`_table_to_dict` wrote."""
+    import pandas as pd
+
+    names = data["index_names"]
+    if len(names) == 1:
+        index = pd.Index([i[0] for i in data["index"]], name=names[0])
+    else:
+        index = pd.MultiIndex.from_tuples(
+            [tuple(i) for i in data["index"]], names=names
+        )
+    rows = [
+        [float("nan") if v is None else v for v in row] for row in data["data"]
+    ]
+    table = pd.DataFrame(rows, index=index, columns=data["columns"])
+    table = table.astype(dict(zip(data["columns"], data["dtypes"])))
+    table.attrs.update(data.get("attrs", {}))
+    return table
 
 
 def make_table(rows: Sequence[dict], extra: Sequence[str] = ()) -> Any:

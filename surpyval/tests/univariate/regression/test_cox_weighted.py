@@ -56,6 +56,7 @@ def test_likelihood_ratio_test_refuses(model):
         lambda m: m.diagnose(),
         lambda m: registry_diagnose(m),
         lambda m: diagnostics.check_ph(m),
+        lambda m: diagnostics.zph_score_test(m),
         lambda m: diagnostics.compute_residuals(m, "martingale"),
         lambda m: diagnostics.compute_residuals(m, "dfbeta"),
         lambda m: diagnostics.added_covariate_score_test(m, np.ones(40)),
@@ -68,6 +69,7 @@ def test_likelihood_ratio_test_refuses(model):
         "diagnose",
         "registry.diagnose",
         "check_ph",
+        "zph_score_test",
         "martingale",
         "dfbeta",
         "added_covariate",
@@ -77,6 +79,7 @@ def test_likelihood_ratio_test_refuses(model):
         "method.check_ph",
     ],
 )
+@pytest.mark.filterwarnings("ignore:check_ph is deprecated:DeprecationWarning")
 def test_diagnostics_refuse_a_weighted_fit(model, call):
     # diagnose() and the module's functions used to diagnose the weighted
     # fit as if its rows were unweighted units (the residuals of the

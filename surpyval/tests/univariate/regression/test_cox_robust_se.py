@@ -12,6 +12,9 @@ import pytest
 import surpyval as sp
 from surpyval import CoxPH
 from surpyval.tests._helpers import counted_regression_data
+from surpyval.univariate.regression.proportional_hazards.diagnostics import (  # noqa: E501
+    zph_table,
+)
 
 
 def _cox(seed=0, n=300):
@@ -105,7 +108,7 @@ def test_cox_robust_se_and_rank_test_equal_expanded_data():
     )
     for transform in ("rank", "km", "identity"):
         np.testing.assert_allclose(
-            a.check_ph(transform).loc["GLOBAL", "statistic"],
-            b.check_ph(transform).loc["GLOBAL", "statistic"],
+            zph_table(a, transform).loc["GLOBAL", "statistic"],
+            zph_table(b, transform).loc["GLOBAL", "statistic"],
             rtol=1e-8,
         )

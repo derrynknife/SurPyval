@@ -313,6 +313,10 @@ model.sf(5.0, np.array([0.5]))        # survival at t=5 for covariate vector Z=[
 # Cox when you don't want to assume a baseline shape:
 cox = sp.CoxPH.fit(x=x, Z=Z)
 cox.beta                              # about 0.6
+# Check its assumptions: diagnose() is the one API (check_ph is deprecated)
+d = cox.diagnose()                    # transform="km" by default, as cox.zph
+d.table                               # rows: test, p, verdict; d.advice remedies
+d.tables["proportional_hazards"]      # cox.zph table: per covariate + GLOBAL
 ```
 
 Regression predictions take the covariate vector as the second argument:
@@ -362,7 +366,7 @@ sp.life_table(x, c, intervals=4)      # actuarial (Cutler-Ederer) table
   `fit_from_df(..., w_col=)` (not Cox's yet). Scaling `w` changes nothing.
   Refused with weights: `method="lr"`/`"bootstrap"` bounds, `band`,
   `bootstrap_cb`, `how` other than MLE, `aic`/`bic`/`aic_c`, `fit_best`,
-  `Turnbull`, and for Cox strata, exact ties, residuals and `check_ph`.
+  `Turnbull`, and for Cox strata, exact ties, residuals and `diagnose()`.
   Weighted models save as schema 3, which older versions refuse.
 - **Bayesian:** priors `sp.prior.around`, `between`, `uniform`, `flat`,
   `fixed`, `on_quantities(sp.Weibull, B10=..., beta=...)`,

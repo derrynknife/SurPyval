@@ -118,7 +118,7 @@ def test_a_continuous_violation_is_advised_a_time_varying_effect():
     assert ("w",) in set(
         _rows(d, "proportional_hazards", "fail")["covariates"]
     )
-    (advice,) = [a for a in d.advice if a.check == "proportional_hazards"]
+    (advice,) = (a for a in d.advice if a.check == "proportional_hazards")
     assert "CoxPH.fit_tvc" in advice and "pandas.cut" in advice
     assert "WeibullAFT.fit" in advice and "LogNormalAFT.fit" in advice
     assert "Stratify on" not in advice
@@ -158,7 +158,7 @@ def test_a_non_linear_effect_fails_functional_form():
     assert (
         form["detail"].iloc[0] == "its effect on the log hazard is not linear"
     )
-    (advice,) = [a for a in d.advice if a.check == "functional_form"]
+    (advice,) = (a for a in d.advice if a.check == "functional_form")
     assert 'formula="np.log(u) + ..."' in advice and "pandas.cut" in advice
     assert advice.features == ("CoxPH.fit_from_df(formula=)",)
     # ... and the fix the advice names is a formula the fit takes
@@ -177,7 +177,7 @@ def test_an_influential_row_warns():
     assert row["verdict"] == "warn" and row["statistic"] > INFLUENCE_LIMIT
     assert pd.isna(row["p"])
     assert row["detail"].startswith("row 0 moves the coefficient")
-    (advice,) = [a for a in d.advice if a.check == "influence"]
+    (advice,) = (a for a in d.advice if a.check == "influence")
     assert advice.startswith("Row 0 has a large influence")
     # A screen warns, never fails (the row also breaks the tests' rows)
     assert "fail" not in set(_rows(d, "influence")["verdict"])
@@ -197,7 +197,7 @@ def test_an_outlier_warns_with_the_bonferroni_cutoff():
     cutoff = norm.isf(0.05 / (2 * n))
     assert row["verdict"] == "warn" and row["statistic"] > cutoff
     assert row["detail"].startswith("row 0")
-    assert "{:.3g}".format(cutoff) in row["detail"]
+    assert f"{cutoff:.3g}" in row["detail"]
     assert any(a.check == "outliers" and "row 0" in a for a in d.advice)
 
 
@@ -211,7 +211,7 @@ def test_clustered_rows_are_offered_robust_standard_errors():
         warnings.simplefilter("ignore")
         model = sp.CoxPH.fit_tvc(i, xl, xr, c, Z)
     d = model.diagnose()
-    (advice,) = [a for a in d.advice if a.check is None]
+    (advice,) = (a for a in d.advice if a.check is None)
     assert "5 subjects have more than one row" in advice
     assert "summary(robust=True)" in advice
     assert advice.features == ("summary(robust=)", "robust_summary")
@@ -237,7 +237,7 @@ def test_a_joint_failure_alone_has_its_own_advice(
             "transform": transform,
         }
 
-    monkeypatch.setattr(cox, "check_ph", fake)
+    monkeypatch.setattr(cox, "zph_score_test", fake)
     d = meets_assumptions.diagnose()
     ph = [a for a in d.advice if a.check == "proportional_hazards"]
     assert len(ph) == 2  # one per transform
