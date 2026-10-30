@@ -22,6 +22,7 @@ the per-row scores of a likelihood and the sandwich itself.
 from __future__ import annotations
 
 import copy
+import inspect
 import warnings
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -209,6 +210,18 @@ def refuse_unsupported_weights(
         else:
             name = name.removesuffix("Fitter")
     method = qualname.rsplit(".", 1)[-1]
+    fit = getattr(owner, "fit", None)
+    if method != "fit" and fit is not None:
+        try:
+            fit_takes_w = "w" in inspect.signature(fit).parameters
+        except (TypeError, ValueError):
+            fit_takes_w = False
+        if fit_takes_w:
+            return WeightedRefusal(
+                f"{name}.{method} does not take weights ({argument}) yet, "
+                f"but {name}.fit does: pass the columns as arrays, "
+                f"{name}.fit(..., w=df[{argument}])."
+            )
     return WeightedRefusal(
         f"{name}.{method} does not take weights ({argument}) yet: weighted "
         f"fitting is not built for this model. Fit it without "

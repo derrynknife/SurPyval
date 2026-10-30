@@ -595,3 +595,11 @@ def test_refusal_names_the_public_fitter():
     for name in ["WeibullDistributional", "RoystonParmarPH", "CoxFrailty"]:
         with pytest.raises(WeightedRefusal, match=rf"^{name}\.fit "):
             getattr(sp, name).fit([1.0, 2.0], w=[1.0, 1.0])
+
+
+def test_cox_fit_from_df_points_to_fit_for_weights():
+    import pandas as pd
+
+    df = pd.DataFrame({"x": [1.0, 2.0, 3.0], "z": [0.0, 1.0, 0.5]})
+    with pytest.raises(WeightedRefusal, match=r"CoxPH\.fit does: pass"):
+        sp.CoxPH.fit_from_df(df, x_col="x", Z_cols=["z"], w_col="w")
