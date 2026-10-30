@@ -23,7 +23,7 @@ hold the rest. ``help(surpyval.Weibull)`` and the other classes document
 each model, with examples.
 """
 
-__version__ = "0.25"
+__version__ = "0.26"
 
 # First: autograd's special functions without scipy.stats (#470)
 from surpyval import _autograd_special  # noqa: F401  # isort: skip
@@ -359,10 +359,6 @@ __all__ = [
     "xrd_handler",
     "xrd_to_xcnt",
     "EventHistoryData",
-    # Deprecated (v0.25): renamed EventHistoryData, removed in v0.26;
-    # reached through __getattr__ with a DeprecationWarning, and listed so
-    # that ``from surpyval import *`` still gets it until then.
-    "RecurrentEventData",
     "ItemHistory",
     "ItemLifetime",
     "SurpyvalData",
@@ -458,7 +454,8 @@ _SUBPACKAGES = (
 )
 
 # The package's removed names (the life models' top-level names, removed
-# in v0.23, and the numeric constants, removed in v0.24) say what replaced
+# in v0.23, the numeric constants, removed in v0.24, and
+# RecurrentEventData, removed in v0.26) say what replaced
 # them: ``surpyval.utils.removed_names.REMOVED_TOP_LEVEL`` (#653).
 _MOVED_TO_LIFE_MODELS = tuple(
     name
@@ -488,10 +485,6 @@ _ELSEWHERE = {
     ),
 }
 
-#: Top-level names renamed in v0.25 (old -> new), reached through
-#: ``__getattr__`` with a DeprecationWarning until v0.26.
-_RENAMED_TOP_LEVEL = {"RecurrentEventData": "EventHistoryData"}
-
 if not TYPE_CHECKING:  # keep the type checker's view of the module exact
 
     def __getattr__(name: str) -> Any:
@@ -510,11 +503,6 @@ if not TYPE_CHECKING:  # keep the type checker's view of the module exact
 
         if name in DATED_DATA_FUNCTIONS:
             return dated_data_function(name)
-        if name in _RENAMED_TOP_LEVEL:
-            from surpyval.utils.deprecation import renamed_name
-
-            new = _RENAMED_TOP_LEVEL[name]
-            return renamed_name("surpyval", name, new, globals()[new])
         if name in _REMOVED_TOP_LEVEL:
             message = _removed_message(
                 f"module 'surpyval' has no attribute {name!r}",

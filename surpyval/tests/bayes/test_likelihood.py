@@ -24,8 +24,7 @@ CONTINUOUS = sorted(
     {
         getattr(sp, name).name
         for name in sp.__all__
-        if name not in sp._RENAMED_TOP_LEVEL
-        and isinstance(getattr(sp, name, None), ParametricFitter)
+        if isinstance(getattr(sp, name, None), ParametricFitter)
         and not getattr(sp, name).discrete
         and getattr(sp, name).name not in NOT_USED
         and type(getattr(sp, name)).__name__ != "CustomDistribution"

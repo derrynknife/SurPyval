@@ -1,8 +1,8 @@
 Changelog
 =========
 
-v0.26 (unreleased)
-------------------
+v0.26 (31 October 2026)
+-----------------------
 
 **Highlights.**
 
@@ -32,8 +32,14 @@ v0.26 (unreleased)
 - **Life tables**, a **forest plot** of regression coefficients, and
   helpers for **PyMC** users (:doc:`PyMC with SurPyval`).
 
-**Upgrading from 0.25.** Nothing is removed, and the new arguments are
-all optional. What can look different:
+**Upgrading from 0.25.** On 0.25, run your code or tests with
+``python -W error::DeprecationWarning`` first to find the calls to update.
+The new arguments are all optional. What can look different:
+
+- The names 0.25 deprecated now raise (see *Removed*):
+  ``RecurrentEventData`` (use ``EventHistoryData``), and
+  ``EventHistoryData``'s ``items`` (use ``ids``) and
+  ``get_times_to_first_events()`` (use ``to_first_events()``).
 
 - A decimal ``n`` is still refused, and the message now says to pass
   weights as ``w``.
@@ -271,6 +277,25 @@ all optional. What can look different:
   are public: ``_rcs_basis``, ``_rcs_deriv``, ``_place_knots`` and
   ``_SCALES`` are now ``rcs_basis``, ``rcs_deriv``, ``place_knots`` and
   ``SCALES`` (the old private names are gone). Nothing else changes.
+
+**Removed**
+
+The names 0.25 deprecated are gone; each now raises the error Python
+would, naming its replacement.
+
+- ``RecurrentEventData``, renamed ``EventHistoryData`` in 0.25:
+  ``surpyval.RecurrentEventData`` raises an ``AttributeError`` (an
+  ``ImportError`` from ``from surpyval import RecurrentEventData``) and
+  importing ``surpyval.utils.recurrent_event_data`` an ``ImportError``,
+  each naming ``surpyval.EventHistoryData``. ``from surpyval import *``
+  no longer brings the old name.
+- ``EventHistoryData.items``: use ``ids``.
+- ``EventHistoryData.get_times_to_first_events()``: use
+  ``to_first_events()``, which keeps each item's delayed entry, id and
+  covariates.
+- Development: ``REMOVED_IN`` is ``"0.27"`` (for the names deprecated in
+  0.26; none is, as ``check_ph`` has its own window to 0.28 in
+  ``SCHEDULED_REMOVALS``) and ``REMOVED_IN_NEXT`` ``"0.28"``.
 
 **Fixed**
 

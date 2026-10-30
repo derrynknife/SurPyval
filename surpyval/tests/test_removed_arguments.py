@@ -1,7 +1,9 @@
 """
 The names v0.21 deprecated are gone in v0.22 (#422), those v0.22
 deprecated are gone in v0.23, those v0.23 deprecated are gone in v0.24,
-and those v0.24 deprecated are gone in v0.25 (principle 21).
+those v0.24 deprecated are gone in v0.25, and those v0.25 deprecated are
+gone in v0.26 (principle 21; RecurrentEventData and its attributes,
+tests/utils/test_event_history_data_rename.py).
 
 An old argument name is now an unknown argument, so the call raises
 Python's own ``TypeError``; an old attribute is gone (``AttributeError``);

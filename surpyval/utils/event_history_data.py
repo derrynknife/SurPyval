@@ -16,7 +16,7 @@ import numpy as np
 import numpy.typing as npt
 
 from surpyval.utils.data_reshape import HISTORY_PARTS, ReshapeMixin
-from surpyval.utils.deprecation import RenamedAttribute
+from surpyval.utils.removed_names import RemovedName
 from surpyval.utils.surpyval_data import (
     SurpyvalData,
     _named_row,
@@ -39,8 +39,8 @@ class EventHistoryData(ReshapeMixin):
     events that can happen more than once (recurrent failures and
     repairs), their types, each item's observation window and covariates,
     and its changes of state. The recurrent event models fit it; it was
-    called ``RecurrentEventData`` before v0.25, a name still accepted, with
-    a DeprecationWarning, until v0.26.
+    called ``RecurrentEventData`` before v0.25 (the old name was removed in
+    v0.26).
 
     Build one from each item's record with :meth:`from_items`
     (:class:`~surpyval.utils.item_history.ItemHistory`), from each item's
@@ -97,8 +97,9 @@ class EventHistoryData(ReshapeMixin):
     # value}; they name a fitted model's coefficients.
     covariate_names: list | None = None
     # The item ids were ``items`` before v0.25 (``from_items`` and
-    # ``to_items`` are about item records): accepted until v0.26.
-    items = RenamedAttribute("ids")
+    # ``to_items`` are about item records); the old name was removed in
+    # v0.26.
+    items = RemovedName("use 'ids'", "0.26")
     # Each item's path through its states, ``{item: (initial_state,
     # changes)}``, attached by ``from_items``; no model uses them yet
     # (#887), so every fit refuses data that has them.
@@ -599,8 +600,9 @@ class EventHistoryData(ReshapeMixin):
         return self.x[mask], self.c[mask], self.n[mask]
 
     # Until v0.25 the times to the first events came back with neither
-    # the items' delayed entry, ids nor covariates (#926).
-    get_times_to_first_events = RenamedAttribute("to_first_events")
+    # the items' delayed entry, ids nor covariates (#926); the old name
+    # was removed in v0.26.
+    get_times_to_first_events = RemovedName("use 'to_first_events()'", "0.26")
 
     def to_first_events(self) -> SurpyvalData:
         """

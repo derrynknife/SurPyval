@@ -39,8 +39,9 @@ def test_one_name_for_ids():
     data = EventHistoryData.from_items(HISTORIES)
     assert data.ids == ["M1", "M2"]
     assert SurpyvalData.from_items(LIVES).ids == ["B7", "B8"]
-    with pytest.warns(DeprecationWarning, match="EventHistoryData.items"):
-        assert data.items == ["M1", "M2"]
+    # The old name, items, was removed in v0.26
+    with pytest.raises(AttributeError, match="use 'ids'"):
+        data.items
     assert len(data) == 5 and len(data.ids) == 2
 
 
