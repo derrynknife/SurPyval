@@ -2,12 +2,12 @@ name: actions
 
 run-name: SurPyval CI
 
-# One automated run: the full check, on a pull request into `main` (the
-# release). Nothing runs on pull requests into `dev` or on pushes to any
-# branch. The run tests the pull request's merge result, so a failure is
-# found, and fixed on `dev`, before `main` changes; merge the release
-# only when it is green. See docs/Contributing.rst for the branching /
-# release flow.
+# Runs on every pull request into `dev` and into `main`, testing the pull
+# request's merge result. A pull request into `dev` gets every job except
+# the calibration studies, which take the longest and run only on the
+# pull request into `main` (the release); merge the release only when its
+# full run is green. Nothing runs on pushes. See docs/Contributing.rst for
+# the branching / release flow.
 #
 # Every job below runs in that one run: lint, the conformance suite, the
 # test suite on three interpreters (each split into four parts that run at
@@ -17,7 +17,7 @@ run-name: SurPyval CI
 # (publish.yml) checks that this run passed.
 on:
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 env:
   SRC: surpyval # Source directory to run jobs on
@@ -204,6 +204,8 @@ jobs:
   # calibration study lands in the "rest" group, or in "copula" or
   # "refit" by its file; move it out if it is long.
   calibration:
+    # The release only: the studies take the longest and change rarely.
+    if: github.base_ref == 'main'
     runs-on: ubuntu-latest
     # Every group took under 40 minutes on the 17 October 2026 runs (the
     # longest, #617's bootstrap, 24 to 36; the runners' speed varies by
