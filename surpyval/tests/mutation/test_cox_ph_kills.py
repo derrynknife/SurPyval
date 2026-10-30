@@ -44,3 +44,33 @@ def test_entry_at_an_event_time(tie_method):
     np.testing.assert_allclose(
         m.h0, [1 / 6, 1 / 3, 1 / 18, 0.0, 1 / 8], rtol=1e-9, atol=1e-15
     )
+
+
+def _weighted_cox():
+    from surpyval.univariate.regression.proportional_hazards._weighted_cox import (  # noqa: E501
+        WeightedCox,
+    )
+
+    rng = np.random.default_rng(5)
+    Z = rng.normal(size=(40, 2))
+    x = rng.weibull(1.5, 40) * np.exp(-0.5 * Z[:, 0])
+    c = (rng.random(40) < 0.2).astype(int)
+    w = rng.uniform(0.5, 2.0, 40)
+    return WeightedCox(x, c, np.ones(40), w, np.full(40, -np.inf), Z, "efron")
+
+
+def test_weighted_newton_says_when_it_stops_short():
+    """Kills, in ``_weighted_cox.py::newton``, ``return beta, False,
+    max_iter`` made ``True``: a search stopped by its iteration limit
+    would be reported as converged, and the fit as a verified maximum,
+    with no warning. One Newton step from 0 does not reach a step shorter
+    than 1e-12 standard errors; the full search does."""
+    from surpyval.univariate.regression.proportional_hazards._weighted_cox import (  # noqa: E501
+        newton,
+    )
+
+    lik = _weighted_cox()
+    beta, converged, iters = newton(lik, 2, 1e-12, max_iter=1)
+    assert (converged, iters) == (False, 1)
+    beta, converged, iters = newton(lik, 2, 1e-9)
+    assert converged and 1 < iters < 100
