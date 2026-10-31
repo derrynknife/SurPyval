@@ -12,7 +12,11 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 import surpyval
-from surpyval.serialisation import decode_non_finite, encode_non_finite
+from surpyval.serialisation import (
+    check_schema,
+    decode_non_finite,
+    encode_non_finite,
+)
 from surpyval.utils import xcnt_handler
 from surpyval.utils.data_reshape import LIFETIME_PARTS, ReshapeMixin
 from surpyval.utils.item_history import missing_type
@@ -113,6 +117,9 @@ class SurpyvalData(ReshapeMixin):
     # The unit of the times (``"hour"``), a label as a model's ``unit``
     # is; None where unknown (#945).
     unit: str | None = None
+    # Each row's sampling, propensity or censoring weight (any positive
+    # number), beside its count ``n``; None where the data is unweighted.
+    w: np.ndarray | None = None
 
     def __init__(
         self,
@@ -131,6 +138,7 @@ class SurpyvalData(ReshapeMixin):
         covariate_names: list | None = None,
         ids: Any = None,
         unit: Any = None,
+        w: ArrayLike | Number | None = None,
     ) -> None:
         """Initialize a SurpyvalData instance for survival analysis.
 
@@ -189,6 +197,15 @@ class SurpyvalData(ReshapeMixin):
             The unit of the times (``"hours"``, ``"km"``), a label kept
             with the data as a model keeps its ``unit``; ``fit(data)``
             gives it to the model.
+        w : array-like or scalar, optional
+            Sampling, propensity or censoring weights: how many units of
+            the population each unit of a row stands for (any positive
+            finite number), beside its count ``n`` of identical units. A
+            fit of weighted data gives the weighted estimate with a
+            robust (sandwich) variance, and refuses the bounds weights
+            make invalid (see :doc:`/Weighted Data`). Rows are grouped
+            only where their weights are equal too. Without ``w`` the
+            data is unweighted (``data.w`` is None).
         group_and_sort : bool, default=True
             Whether to group and sort the data. Set False when using covariates
             to maintain data order.
@@ -230,10 +247,26 @@ class SurpyvalData(ReshapeMixin):
         if Z is not None or e is not None or ids is not None:
             group_and_sort = False
 
-        if handle:
+        w_arr: np.ndarray | None = None
+        if w is not None and handle:
+            from surpyval.utils.data_formats import group_sort_weighted
+            from surpyval.utils.weights import check_weights
+
+            # Checked against the rows as given (before any grouping),
+            # then grouped by weight as well.
+            x, c, n, t = xcnt_handler(
+                x, c, n, t, xl, xr, tl, tr, group_and_sort=False
+            )
+            w_arr = check_weights(w, len(c))
+            if group_and_sort:
+                x, c, n, t, w_arr = group_sort_weighted(x, c, n, t, w_arr)
+        elif w is not None:
+            w_arr = np.asarray(w, dtype=float)
+        elif handle:
             x, c, n, t = xcnt_handler(
                 x, c, n, t, xl, xr, tl, tr, group_and_sort=group_and_sort
             )
+        self.w = w_arr
 
         x_arr: np.ndarray = np.asarray(x)
         c_arr: np.ndarray = np.asarray(c)
@@ -380,7 +413,7 @@ class SurpyvalData(ReshapeMixin):
             )
             self.x_il = lo[self.mask_i]
             self.x_ir = hi[self.mask_i]
-            self.n_i = self.n[self.mask_i]
+            self.n_i = self._likelihood_counts()[self.mask_i]
         else:
             self.x_il = np.array([], dtype=float)
             self.x_ir = np.array([], dtype=float)
@@ -390,7 +423,7 @@ class SurpyvalData(ReshapeMixin):
         self.x_tl, self.x_tr, self.n_t = (
             self.t[self.truncated_mask, 0],
             self.t[self.truncated_mask, 1],
-            self.n[self.truncated_mask],
+            self._likelihood_counts()[self.truncated_mask],
         )
 
         # The truncation correction depends only on the observation
@@ -759,6 +792,7 @@ class SurpyvalData(ReshapeMixin):
         Z_cols: Any = None,
         attribute_cols: Any = None,
         unit: Any = None,
+        w_col: Any = None,
     ) -> SurpyvalData:
         """
         The data from a :class:`pandas.DataFrame` with one row per item
@@ -869,6 +903,7 @@ class SurpyvalData(ReshapeMixin):
             Z_cols=Z_cols,
             attribute_cols=attribute_cols,
             unit=unit,
+            w_col=w_col,
         )
 
     def to_dataframe(self) -> Any:
@@ -1091,13 +1126,27 @@ class SurpyvalData(ReshapeMixin):
         >>> SurpyvalData([3, 7], c=[0, 1]).to_items()
         [ItemLifetime(0, observed=3.0), ItemLifetime(1, right_censored=7.0)]
         """
+        self._refuse_records("make records of")
         prepared = self._prepared()
         return [self._item_at(k, prepared) for k in range(len(self.x))]
 
     _PARTS = LIFETIME_PARTS
 
     def _records(self) -> tuple[list, list]:
+        self._refuse_records("reshape")
         return self.to_items(), list(np.asarray(self.n))
+
+    def _refuse_records(self, what: str) -> None:
+        """Refuse to make records of weighted data, which have no place
+        for a weight."""
+        if self.w is not None:
+            raise ValueError(
+                f"Cannot {what} weighted data yet: its records "
+                "(ItemLifetime) have no place for a weight w. Reshape the "
+                "arrays (data.x, data.c, data.n, data.t, data.w) and build "
+                "a new SurpyvalData(..., w=...), or index rows with "
+                "data[rows], which keeps the weights."
+            )
 
     def _from_records(self, records: list, counts: list) -> SurpyvalData:
         out = SurpyvalData.from_items(records, counts=counts)
@@ -1157,6 +1206,7 @@ class SurpyvalData(ReshapeMixin):
 
     def _prepared(self) -> tuple:
         """The arrays every row's record reads, made once for all rows."""
+        self._refuse_records("make records of")
         x = self.x if self.x.ndim == 2 else np.column_stack([self.x] * 2)
         Z = None
         if self.Z is not None:
@@ -1242,6 +1292,14 @@ class SurpyvalData(ReshapeMixin):
             ),
         ]
         lines += held_lines(self, recurrent=False)
+        if self.w is not None:
+            from surpyval.utils.weights import effective_sample_size
+
+            lines.append(
+                f"  weights: {self.w.min():.4g} to {self.w.max():.4g}, "
+                "effective sample size "
+                f"{effective_sample_size(self.n, self.w):.4g}"
+            )
         return "\n".join(lines)
 
     @property
@@ -1275,6 +1333,7 @@ class SurpyvalData(ReshapeMixin):
         >>> [item.outcome for item in data.records()]
         ['observed', 'right_censored']
         """
+        self._refuse_records("make records of")
         prepared = self._prepared()
         for k in range(len(self.x)):
             yield self._item_at(k, prepared)
@@ -1387,6 +1446,8 @@ class SurpyvalData(ReshapeMixin):
         # argument (#282).
         if not hasattr(self, "_xrd_cache"):
             self._xrd_cache: dict = {}
+        if estimator not in self._xrd_cache and self.w is not None:
+            self._xrd_cache[estimator] = self._weighted_xrd()
         if estimator not in self._xrd_cache:
             if (
                 np.isfinite(self.t[:, 1]).any()
@@ -1406,11 +1467,56 @@ class SurpyvalData(ReshapeMixin):
         # what the next call returns.
         return tuple(np.copy(part) for part in self._xrd_cache[estimator])
 
+    def _weighted_xrd(self) -> tuple:
+        """``to_xrd`` of weighted data: the weighted numbers at risk and of
+        deaths at each distinct time."""
+        if np.isfinite(self.t[:, 1]).any() or (2 in self.c) or (-1 in self.c):
+            raise ValueError(
+                "to_xrd of weighted data needs right censored, left "
+                "truncated data: the weighted Turnbull estimate of left or "
+                "interval censored or right truncated data is not built "
+                "yet."
+            )
+        from surpyval.univariate.nonparametric._weighted import (
+            WeightedLadder,
+        )
+
+        assert self.w is not None
+        ladder = WeightedLadder(self.x, self.c, self.n, self.t, self.w)
+        return ladder.x, ladder.r, ladder.d
+
     def _split_by_mask(
         self, mask: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
         x = self.x[mask] if self.x.ndim == 1 else self.x[mask, 0]
-        return x, self.n[mask]
+        return x, self._likelihood_counts()[mask]
+
+    def _likelihood_counts(self) -> np.ndarray:
+        """The multiplier of each row's term in a likelihood: its count
+        ``n``, times its weight where the data is weighted (the weights
+        scaled to sum to the units, :attr:`likelihood_weights`)."""
+        w = self.likelihood_weights
+        if w is None:
+            return self.n
+        return self.n * w
+
+    @property
+    def likelihood_weights(self) -> np.ndarray | None:
+        """The weights ``w`` scaled to sum (over the units, ``n``) to the
+        number of units, the weights a weighted likelihood uses: a fit
+        then searches the same function whatever the scale of ``w``, so
+        its answer does not depend on that scale even to the optimiser's
+        tolerance. None where the data is unweighted."""
+        w = getattr(self, "w", None)
+        if w is None:
+            return None
+        n = np.asarray(self.n, dtype=float)
+        return w * (n.sum() / np.sum(n * w))
+
+    @property
+    def weighted(self) -> bool:
+        """Whether the data carries weights ``w``."""
+        return getattr(self, "w", None) is not None
 
     def __getitem__(self, index: Any) -> SurpyvalData:
         if np.atleast_1d(np.arange(len(self.x))[index]).size == 0:
@@ -1433,6 +1539,7 @@ class SurpyvalData(ReshapeMixin):
             np.atleast_1d(self.n[index]),
             np.atleast_2d(self.t[index]),
             handle=False,
+            w=None if self.w is None else np.atleast_1d(self.w[index]),
         )
         # Carry the covariates through (slicing used to silently return
         # Z=None, losing alignment, #282).
@@ -1502,7 +1609,9 @@ class SurpyvalData(ReshapeMixin):
         value) are written as ``null`` and recorded under
         ``"non_finite"``, which :meth:`from_dict` reads back (see
         :doc:`/surpyval.serialisation`). ``surpyval.from_dict`` reads it
-        too.
+        too. Data with weights ``w`` is stamped ``"schema": 3``, as a
+        weighted model is, so that a reader without weights refuses it
+        rather than drop them; unweighted data has no ``"schema"``.
 
         Examples
         --------
@@ -1519,6 +1628,8 @@ class SurpyvalData(ReshapeMixin):
             "n": self.n.tolist(),
             "t": self.t.tolist(),
         }
+        if self.w is not None:
+            data["w"] = self.w.tolist()
         if self.Z is not None:
             data["Z"] = self.Z.tolist()
         if self.covariate_names is not None:
@@ -1549,7 +1660,15 @@ class SurpyvalData(ReshapeMixin):
         # "non_finite" record of what each stood for (see
         # surpyval.serialisation.encode_non_finite), not as the
         # ``Infinity`` literals strict parsers reject.
-        return encode_non_finite(data)
+        out = encode_non_finite(data)
+        if self.w is not None:
+            # Schema 3, as a weighted model's dict: a reader that checks
+            # the schema and has no weights refuses it rather than drop
+            # them. Unweighted data keeps its unstamped layout.
+            from surpyval.serialisation import required_schema
+
+            out["schema"] = required_schema(out)
+        return out
 
     @classmethod
     def from_dict(cls, data_dict: dict) -> SurpyvalData:
@@ -1584,6 +1703,10 @@ class SurpyvalData(ReshapeMixin):
                     f"A serialised SurpyvalData needs {key!r}; this "
                     "dictionary has no such entry."
                 )
+        # A newer layout is refused, asking for an upgrade. Weights are
+        # read wherever they are, whatever the schema: a weighted dict
+        # written before it was stamped (no "schema") keeps them.
+        check_schema(data_dict)
         # Files written before the strict-JSON convention hold the
         # ``Infinity`` literals, which json.loads still reads.
         data = decode_non_finite(dict(data_dict))
@@ -1602,6 +1725,7 @@ class SurpyvalData(ReshapeMixin):
             Z=Z,
             handle=False,
             covariate_names=data.get("covariate_names"),
+            w=None if data.get("w") is None else np.array(data["w"]),
         )
         if "e" in data:
             out.e = _event_type_array(
@@ -1886,7 +2010,7 @@ def _truncation_bounds(
 
 
 # The arguments a fit takes its data in, besides ``x``.
-_DATA_ARGUMENTS = ("c", "n", "t", "tl", "tr", "xl", "xr")
+_DATA_ARGUMENTS = ("c", "n", "t", "tl", "tr", "xl", "xr", "w")
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -1973,10 +2097,7 @@ def accepts_surpyval_data(method: F) -> F:
             filled["c"] = data.c
         elif np.any(data.c != 0):
             lost.append("censoring")
-        if "n" in names:
-            filled["n"] = data.n
-        elif np.any(data.n != 1):
-            lost.append("counts")
+        lost += _fill_counts(data, names, filled)
         left = bool(np.isfinite(data.tl).any())
         right = bool(np.isfinite(data.tr).any())
         if "t" in names:
@@ -2017,6 +2138,22 @@ def accepts_surpyval_data(method: F) -> F:
 
     setattr(wrapper, "_accepts_surpyval_data", True)
     return wrapper  # type: ignore[return-value]
+
+
+def _fill_counts(data: SurpyvalData, names: set, filled: dict) -> list:
+    """Fill a fit's ``n`` and ``w`` from ``data``; what it cannot take
+    (counts other than 1, weights) is returned."""
+    lost = []
+    if "n" in names:
+        filled["n"] = data.n
+    elif np.any(data.n != 1):
+        lost.append("counts")
+    if data.w is not None:
+        if "w" in names:
+            filled["w"] = data.w
+        else:
+            lost.append("weights")
+    return lost
 
 
 # What a fit cannot take, and the part of ``without`` that leaves it out.
@@ -2064,6 +2201,12 @@ def lost_message(lost: list, takes_event_types: bool) -> str:
                 if "covariates" in parts
                 else ""
             )
+        )
+    if "weights" in lost:
+        takes.append(
+            "weights w are taken by KaplanMeier, NelsonAalen, "
+            "FlemingHarrington, the parametric distributions (MLE), the "
+            "parametric regressions and CoxPH"
         )
     if "time_varying_covariates" in parts:
         takes.append(
@@ -2134,12 +2277,23 @@ def refuses_what_fit_cannot_take(method: F) -> F:
             if data.markers is not None:
                 raise ValueError(_NO_MARKERS)
             missing = _not_taken_yet(data)
+            if data.w is not None and not _takes_weights(args[0]):
+                missing.append("weights")
             if missing:
                 raise ValueError(lost_message(missing, False))
             return with_data_unit(method(*args, **kwargs), data)
         return method(*args, **kwargs)
 
     return wrapper  # type: ignore[return-value]
+
+
+def _takes_weights(fitter: Any) -> bool:
+    """Whether ``fitter``'s ``fit`` takes weights ``w``."""
+    fit = getattr(fitter, "fit", None)
+    try:
+        return "w" in inspect.signature(fit).parameters  # type: ignore
+    except (TypeError, ValueError):
+        return False
 
 
 def with_data_unit(model: Any, data: Any) -> Any:

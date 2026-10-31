@@ -313,7 +313,11 @@ def _log_linear(case):
     return (
         case.interface == REGRESSION
         and case.data is reg_data
-        and case.model_class == "surpyval.ParametricRegressionModel"
+        and case.model_class
+        in (
+            "surpyval.ParametricRegressionModel",
+            "surpyval.DistributionalRegressionModel",
+        )
         and not case.name.endswith("AH")
     )
 
@@ -668,7 +672,12 @@ def _coefficients(model, names, free):
     """``(position, column)`` of each coefficient of a column of ``Z``
     (the model's ``_coefficient_names``, in column order) among the
     parameters ``names`` at the positions ``free``."""
-    column = {name: j for j, name in enumerate(model._coefficient_names())}
+    columns = getattr(model, "_coefficient_columns", None)
+    if columns is not None:
+        # A coefficient per column per parameter (distributional)
+        column = columns()
+    else:
+        column = {name: j for j, name in enumerate(model._coefficient_names())}
     return [
         (k, column[names[i]]) for k, i in enumerate(free) if names[i] in column
     ]
@@ -1148,6 +1157,7 @@ SEARCHES: dict[str, Callable] = {
     "MixtureModel": _search_mixture,
     "RoystonParmarModel": _search_royston_parmar,
     "ParametricRegressionModel": _search_regression,
+    "DistributionalRegressionModel": _search_regression,
     "FrailtyModel": _search_frailty,
     "CoxFrailtyModel": _search_cox_frailty,
     "SemiParametricRegressionModel": _search_cox,

@@ -31,13 +31,12 @@ seconds a replicate); the studies run in a group of their own in CI.
 
 import os
 import warnings
-from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 import pytest
 
 import surpyval as sp
-from surpyval.tests.calibration._montecarlo import check_coverage
+from surpyval.tests.calibration._montecarlo import check_coverage, process_pool
 
 N = 100
 REPS = 300
@@ -104,7 +103,7 @@ def _study(name):
     seed, truth, probs = STUDIES[name]
     rng = np.random.default_rng(seed)
     jobs = [(name, *_sample(name, rng)) for _ in range(REPS)]
-    with ProcessPoolExecutor(max_workers=os.cpu_count()) as pool:
+    with process_pool(max_workers=os.cpu_count()) as pool:
         out = list(pool.map(_replicate, jobs))
     params = np.array([o[0] for o in out])
     band = np.array([o[1] for o in out])

@@ -279,6 +279,12 @@ def _query_array(x: Any) -> Any:
             raise ValueError(
                 f"x must be numbers (or strings of numbers); got {x!r}."
             ) from None
+    if out.dtype.kind == "f" and out.dtype.itemsize < 8:
+        # A float32 (or float16) query is evaluated in double precision,
+        # as the same numbers in float64 are; NumPy would otherwise keep
+        # the arithmetic in single precision. Integer queries are kept as
+        # they are, for the discrete distributions.
+        return out.astype(float)
     return out
 
 
@@ -529,6 +535,12 @@ class Parametric(
     hess_inv: npt.NDArray
     #: The covariance of every estimated parameter, ``covariance()``.
     _covariance: npt.NDArray | None = None
+    #: Whether the model was fitted with weights ``w``: its covariance is
+    #: then the robust (sandwich) one, and the likelihood-ratio and
+    #: bootstrap bounds and the information criteria refuse.
+    weighted: bool = False
+    #: The effective sample size of the weights of a weighted fit.
+    effective_n: float | None = None
     surv_data: SurpyvalData
     fitting_info: dict[str, Any]
     optimizer: str
@@ -690,6 +702,9 @@ class Parametric(
 
         if "_neg_ll" in model_dict:
             out._neg_ll = model_dict["_neg_ll"]
+        if model_dict.get("weighted") is True:
+            out.weighted = True
+            out.effective_n = model_dict.get("effective_n")
 
         # The sample size of bic() and aic_c(), so they work -- and agree
         # with the fitted model -- without the data. Dicts written before
@@ -783,6 +798,8 @@ class Parametric(
                         data_dict[ch] = []
                     else:
                         data_dict[ch] = self.data[ch].tolist()
+                if self.data.get("w") is not None:
+                    data_dict["w"] = np.asarray(self.data["w"]).tolist()
                 out["data"] = data_dict
 
         out["params"] = np.array(self.params).tolist()
@@ -814,6 +831,11 @@ class Parametric(
             out["covariance"] = np.asarray(self._covariance).tolist()
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = to_native(self._neg_ll)
+        if self.weighted:
+            # Schema 3: a reader without weights would offer the
+            # likelihood-ratio bounds and the information criteria.
+            out["weighted"] = True
+            out["effective_n"] = self.effective_n
         # Informational: a reader that predates it ignores it and restores
         # the same model, so it needs no newer schema.
         out["maximum"] = self.maximum
@@ -1023,6 +1045,11 @@ class Parametric(
 
             if self.zi:
                 out += f"\nZero-Inflation (f0) : {self.f0}"
+            if self.weighted:
+                out += (
+                    "\nWeights             : effective sample size "
+                    f"{self.effective_n:.4g}; robust covariance"
+                )
 
             out = out + "\nParameters          :\n" + param_string
 
@@ -1137,7 +1164,11 @@ class Parametric(
           little more in small samples). The offset's interval runs up to the
           first failure where its profile stays below the critical value
           there (the likelihood is unbounded at that corner for a shape
-          below 1, and the region reaches it).
+          below 1, and the region reaches it). The region then holds
+          every point with a shape below 1, so a side of another
+          parameter towards values that have such points (a Gamma
+          ``alpha`` below 1; either side of its ``beta``) is the edge of
+          that parameter's space.
         - ``"bootstrap"`` -- the parametric bootstrap, as for ``cb``: the
           bias-corrected percentile interval of the parameter over
           ``n_boot`` refits to data simulated from the model. It is the
@@ -1210,6 +1241,7 @@ class Parametric(
             return probability_cb(self, name, alpha_ci, bound, method)
         if method is None:
             method = "wald"
+        self._refuse_weighted_method(method)
         if self._is_lr(method, bootstrap=True):
             return self._param_cb_lr(name, alpha_ci, bound)
         if method.lower() == "bootstrap":
@@ -1596,7 +1628,7 @@ class Parametric(
         0 given survival to it; ``Hf`` jumps there by ``-log(1 - f0)``.
         """
         refuse_time_values(x, "x")
-        x = np.asarray(x)
+        x = _query_array(x)
         if (self.lfp_p == 1) and (self.f0 == 0):
             xg = x - self.gamma  # type: ignore[operator]
             s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
@@ -1677,7 +1709,7 @@ class Parametric(
         array([1.0536e-01, 1.0000e+06])
         """
         refuse_time_values(x, "x")
-        x = np.asarray(x)
+        x = _query_array(x)
 
         if (self.lfp_p == 1) and (self.f0 == 0):
             xg = x - self.gamma  # type: ignore[operator]
@@ -2529,6 +2561,7 @@ class Parametric(
             # Nothing to bound (the Jacobian of no values fails).
             return np.empty((0, 2) if bound == "two-sided" else (0,))
 
+        self._refuse_weighted_method(method)
         if self._is_lr(method, bootstrap=True):
             return self._cb_lr(t, on, alpha_ci, bound)
         if method.lower() == "bootstrap":
@@ -2672,8 +2705,10 @@ class Parametric(
                 )
             return out
         if self.dist.discrete:
+            self._refuse_weighted_method(method)
             self._is_lr(method)  # checks the name
             return self._quantile_cb_discrete(probs, alpha_ci, bound, method)
+        self._refuse_weighted_method(method)
         if self._is_lr(method, bootstrap=True):
             return self._lr_summary("qf", probs, alpha_ci, bound)
         if method.lower() == "bootstrap":
@@ -2744,6 +2779,7 @@ class Parametric(
             # A fraction 1 - p never fails: E[T] is infinite (#404).
             inf = np.inf
             return np.array([inf, inf]) if bound == "two-sided" else inf
+        self._refuse_weighted_method(method)
         if self._is_lr(method):
             out = self._lr_summary("mean", [None], alpha_ci, bound)
             return out[0]
@@ -2899,6 +2935,7 @@ class Parametric(
                 lambda v: 1.0 / v,
                 (_LN_TINY, _LN_MAX),
             )
+            self._refuse_weighted_method(method)
             if self._is_lr(method, bootstrap=True):
                 found = self._lr_summary(
                     "mrl", t[ok], alpha_ci, bound, scale=log_scale
@@ -3029,6 +3066,20 @@ class Parametric(
                 return found
             return np.column_stack([found[:, 0], inf])
         return extended._summary_cb_lr(fns, alpha_ci, bound, kind, scale)
+
+    def _refuse_weighted_method(self, method: Any) -> None:
+        """Refuse, for a fit with weights ``w``, the likelihood-ratio and
+        bootstrap bounds, which weights make invalid; Wald bounds use the
+        robust covariance."""
+        if not self.weighted or not isinstance(method, str):
+            return
+        from surpyval.utils.weights import refuse_bootstrap, refuse_lr
+
+        m = method.lower()
+        if m in ("lr", "likelihood", "likelihood-ratio", "profile"):
+            raise refuse_lr()
+        if m == "bootstrap":
+            raise refuse_bootstrap()
 
     @staticmethod
     def _is_lr(method: str, bootstrap: bool = False) -> bool:
@@ -3247,6 +3298,7 @@ class Parametric(
         """
         start = float(getattr(self.dist, "support", (0, np.inf))[0])
         start = 0.0 if not np.isfinite(start) else start
+        self._refuse_weighted_method(method)
         lr = self._is_lr(method)
         ctx = None if lr else self._cb_context()
 
@@ -3896,6 +3948,7 @@ class Parametric(
             gamma=self.gamma,
             params=self.params,
             cb_func=cb_func,
+            w=self.data.get("w"),
         )
 
     def plot(

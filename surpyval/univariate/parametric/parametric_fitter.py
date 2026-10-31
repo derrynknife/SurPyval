@@ -1330,6 +1330,141 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         self._check_params(params)
         return model
 
+    def fit_bayes(
+        self,
+        x: Any = None,
+        c: Any = None,
+        n: Any = None,
+        t: Any = None,
+        *,
+        priors: Any = None,
+        offset: bool = False,
+        zi: bool = False,
+        lfp: bool = False,
+        tl: Any = None,
+        tr: Any = None,
+        xl: Any = None,
+        xr: Any = None,
+        fixed: dict[str, float] | None = None,
+        method: str = "auto",
+        points: int | None = None,
+        unit: Any = None,
+    ) -> Any:
+        """
+        Fit the distribution by Bayes' rule: the prior times the
+        likelihood of the data, which is the likelihood ``fit`` uses for
+        every kind of censoring and truncation.
+
+        Returns a :class:`~surpyval.bayes.BayesianParametric`, used like
+        any model: its ``sf``, ``qf``, ``mean`` and ``random`` are those of
+        a new unit's life with the uncertainty in the parameters averaged
+        in (the posterior predictive), and ``cri``, ``quantile_cri``,
+        ``mean_cri`` and ``param_cri`` give credible intervals. ``fit`` is
+        unchanged; all the work is in :mod:`surpyval.bayes`.
+
+        Parameters
+        ----------
+        x, c, n, t, tl, tr, xl, xr
+            The data, as for ``fit``; ``x`` may be a ``SurpyvalData``.
+        priors : dict or prior, optional
+            ``{parameter name: prior}`` (``surpyval.prior.around``,
+            ``between``, ``uniform``, ``flat``, ``fixed`` or any SurPyval
+            distribution), a joint prior (``prior.on_quantities``,
+            ``prior.from_model``, ``prior.from_data``), or a list of
+            these. A parameter given none is flat on its unconstrained
+            scale (the log scale for a positive parameter), allowed only
+            where the data alone determine it.
+        offset, zi, lfp, fixed
+            As for ``fit``; ``gamma``, ``f0`` and ``lfp_p`` then need a
+            prior or are flat.
+        method : {'auto', 'grid', 'conjugate', 'laplace'}, optional
+            ``'auto'`` (the default) uses the closed form where one
+            applies, else the self-checking grid (1 to 3 free
+            parameters); ``'laplace'`` a normal approximation, labelled
+            approximate.
+        points : int, optional
+            The grid's starting points per parameter.
+        unit : str, optional
+            The unit of the times, as for ``fit``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import surpyval as sp
+        >>> x = np.r_[2100, 3400, 4050, np.linspace(1500, 6000, 37)]
+        >>> c = np.r_[0, 0, 0, np.ones(37)]
+        >>> model = sp.Weibull.fit_bayes(
+        ...     x, c, priors={"beta": sp.prior.around(2, between=(1.5, 3))})
+        >>> model.params.round(2)
+        array([1.441299e+04, 2.090000e+00])
+        """
+        from surpyval.bayes.fitting import fit as _fit
+
+        return _fit(
+            self,
+            x,
+            c,
+            n,
+            t,
+            priors=priors,
+            offset=offset,
+            zi=zi,
+            lfp=lfp,
+            tl=tl,
+            tr=tr,
+            xl=xl,
+            xr=xr,
+            fixed=fixed,
+            method=method,
+            points=points,
+            unit=unit,
+        )
+
+    def fit_bayes_from_df(
+        self,
+        df: Any,
+        x_col: str | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        xl_col: str | None = None,
+        xr_col: str | None = None,
+        tl_col: Any = None,
+        tr_col: Any = None,
+        **fit_options: Any,
+    ) -> Any:
+        """
+        :meth:`fit_bayes` on the columns of a ``pandas.DataFrame``, named
+        as ``fit_from_df`` names them (``x_col``, ``c_col``, ``n_col``,
+        ``xl_col``, ``xr_col``, ``tl_col``, ``tr_col``); every other
+        option goes to :meth:`fit_bayes`.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> import surpyval as sp
+        >>> df = pd.DataFrame({"hours": [100.0, 250, 400],
+        ...                    "running": [0, 0, 1]})
+        >>> model = sp.Exponential.fit_bayes_from_df(
+        ...     df, x_col="hours", c_col="running",
+        ...     priors={"failure_rate": sp.Gamma.from_params([2.0, 500.0])})
+        >>> model.method
+        'conjugate'
+        """
+        from surpyval.bayes.fitting import fit_from_df as _fit_from_df
+
+        return _fit_from_df(
+            self,
+            df,
+            x_col=x_col,
+            c_col=c_col,
+            n_col=n_col,
+            xl_col=xl_col,
+            xr_col=xr_col,
+            tl_col=tl_col,
+            tr_col=tr_col,
+            **fit_options,
+        )
+
     def _check_params(self, params: Any) -> None:
         """Raise for a parameter vector that is within every parameter's
         own bounds but still not a distribution (``a < b`` for the

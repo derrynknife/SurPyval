@@ -82,7 +82,7 @@ below points straight to the section that answers it.
        ``mean_tvc`` for the parametric families
      - `Time-Varying Covariates`_, `Time-varying covariates across families`_
    * - check that a hazard ratio really is constant
-     - ``model.check_ph()``
+     - ``model.diagnose()``
      - `Checking the proportional-hazards assumption`_
    * - get honest standard errors for grouped or repeated data
      - ``model.robust_summary(cluster=...)``
@@ -99,6 +99,9 @@ below points straight to the section that answers it.
    * - see what a fitted model says a covariate does to survival
      - ``model.plot_partial_effects(covariate, values)``
      - `Partial-effects plots`_
+   * - draw the coefficients and their intervals (a forest plot)
+     - ``surpyval.plot_coefficients(models)``
+     - `Forest plots`_
    * - compare, validate or store fitted models
      - ``aic()``, ``surpyval.metrics``, ``to_dict()``
      - `Model Selection`_, `Validating a survival predictor`_,
@@ -529,7 +532,8 @@ p-value, one row per covariate (named by the columns for a model fitted with
 ``summary(robust=True)`` uses the cluster-robust standard errors of
 `Cluster-robust standard errors`_ instead. The parametric models'
 ``summary()`` has the same columns, with the baseline distribution's
-parameters in rows of their own, above the coefficients.
+parameters in rows of their own, above the coefficients, and takes
+``robust=True`` and ``cluster=`` too (`Robust standard errors`_).
 
 .. jupyter-execute::
 
@@ -541,6 +545,26 @@ parameters in rows of their own, above the coefficients.
 
     assert np.allclose(model.summary()['se(coef)'], se)
     assert np.allclose(model.summary()['p'], model.p_values)
+
+The table tests each covariate on its own. ``likelihood_ratio_test()`` asks whether the covariates,
+taken together, explain anything: twice the gain in log-likelihood over the model with no
+covariates, compared with a chi-squared distribution with one degree of freedom per coefficient
+(the "Likelihood ratio test" line of R's ``summary(coxph)``). The parametric proportional hazards,
+AFT, proportional odds and additive hazards models have it too, against their baseline
+distribution fitted alone (the chi-squared of R's ``survreg``):
+
+.. jupyter-execute::
+
+    model.likelihood_ratio_test()
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _lrt = model.likelihood_ratio_test()
+    assert _lrt['df'] == len(model.beta)
+    assert np.isclose(_lrt['statistic'],
+                      2 * (_lrt['log_likelihood'] - _lrt['log_likelihood_null']))
 
 .. jupyter-execute::
 
@@ -998,11 +1022,13 @@ the effect entirely.
 
 The standard check is the **Grambsch-Therneau test**, built on the scaled
 Schoenfeld residuals, in the exact score-test form R's ``cox.zph`` has used
-since version 3.0. A fitted model exposes it through
-:meth:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel.check_ph`.
-It returns a table, as R's ``cox.zph`` prints it: a 1-d.f. test for each
-covariate and a joint ``GLOBAL`` test on the last row; a *small* ``p``-value is
-evidence *against* proportional hazards. We fit the tires model
+since version 3.0. A fitted model runs it, with the other checks of a Cox fit,
+in ``model.diagnose()``, whose
+``tables['proportional_hazards']`` is the test as R's ``cox.zph`` prints it: a
+1-d.f. test for each covariate and a joint ``GLOBAL`` test on the last row; a
+*small* ``p``-value is evidence *against* proportional hazards. (Until v0.26
+this table came from ``model.check_ph()``, which is deprecated and is removed
+in v0.28.) We fit the tires model
 with :meth:`CoxPH.fit_from_df <surpyval.univariate.regression.proportional_hazards.cox_ph.CoxPH_.fit_from_df>` so the report carries the covariate names:
 
 .. jupyter-execute::
@@ -1012,7 +1038,8 @@ with :meth:`CoxPH.fit_from_df <surpyval.univariate.regression.proportional_hazar
     model = CoxPH.fit_from_df(tires, x_col='Survival', Z_cols=cols,
                               c_col='Censoring')
 
-    ph = model.check_ph()
+    d = model.diagnose()
+    ph = d.tables['proportional_hazards']
     ph.round(3)
 
 Here every ``p``-value is large, so there is no evidence against proportional
@@ -1021,9 +1048,10 @@ failures the test has little power, so "no evidence" is not strong evidence of
 proportionality either.) The statistics are R's ``cox.zph`` (survival 3.0 and
 later), under Efron and Breslow ties alike. lifelines, and R before 3.0,
 compute Grambsch and Therneau's approximation of the same test, as SurPyval
-did until v0.24; it can differ in small samples. ``model.diagnose()`` runs
-this test on the ``km`` and ``rank`` scales with the other checks of a Cox
-fit, and says what to do about a failure (see :doc:`Model Diagnostics`).
+did until v0.24; it can differ in small samples. The rows of ``d.table`` judge
+the test on the ``km`` and ``rank`` scales, with the other checks of a Cox fit,
+and ``d.advice`` says what to do about a failure (see :doc:`Model
+Diagnostics`).
 
 .. jupyter-execute::
     :hide-code:
@@ -1053,8 +1081,9 @@ the effect falling over time:
     m_rev = CoxPH.fit_from_df(rev, x_col='x', Z_cols='z', c_col='c')
     print('averaged beta :', m_rev.beta.round(3))
     for transform in ['km', 'rank', 'identity', 'log']:
-        p = m_rev.check_ph(transform=transform).loc['GLOBAL', 'p']
-        print(f'check_ph(transform={transform!r:10s}) p = {p:.1e}')
+        ph = m_rev.diagnose(transform=transform).tables['proportional_hazards']
+        p = ph.loc['GLOBAL', 'p']
+        print(f'diagnose(transform={transform!r:10s}) GLOBAL p = {p:.1e}')
 
     scaled = m_rev.compute_residuals('scaled_schoenfeld')[:, 0]
     event_times = rev['x'][rev['c'] == 0].to_numpy()   # same order as residuals
@@ -1065,7 +1094,7 @@ the effect falling over time:
     plt.show()
 
 The residuals sit high early and low late, straddling the constant fit. The
-``transform`` argument chooses the function of time the residuals are tested
+``transform`` argument of ``diagnose()`` chooses the function of time the residuals are tested
 against: ``"km"`` (the default, :math:`1 -` the left-continuous Kaplan-Meier
 estimate) spreads the failures
 evenly and is the usual choice; ``"rank"``, ``"identity"`` and ``"log"`` are the
@@ -1080,7 +1109,8 @@ stratification (below), a time-varying covariate, or a different family.
     _late = scaled[event_times >= 0.5].mean()
     assert _early > m_rev.beta[0] > _late, (_early, _late)
     for _tr in ['km', 'rank', 'identity', 'log']:
-        assert m_rev.check_ph(transform=_tr).loc['GLOBAL', 'p'] < 1e-10
+        _ph = m_rev.diagnose(transform=_tr).tables['proportional_hazards']
+        assert _ph.loc['GLOBAL', 'p'] < 1e-10
 
 The residuals underlying the test (and several others) are available directly
 through
@@ -1238,6 +1268,9 @@ they are not available on a stratified model; the coefficients and their
 model-based ``p``-values are. A stratified model can also not be serialised.
 Along a covariate path, ``sf_tvc``, ``Hf_tvc`` and ``predict_tvc`` take the
 same ``stratum`` argument.
+Start-stop (time-varying covariate) data stratify the same way:
+``CoxPH.fit_tvc(..., strata=...)`` takes a label per row, and
+``CoxPH.fit_tvc_from_df(..., strata_col=...)`` a column.
 
 
 Semi-Parametric — Buckley-James (AFT)
@@ -1433,6 +1466,110 @@ that it has done so; it raises only if the optimiser cannot end at a
 positive-hazard point. Treat that warning as a verdict on the model, not the
 optimiser, and prefer a proportional-hazards model when effects are strongly
 protective.
+
+
+Non-Parametric — Aalen's Additive Hazards
+-----------------------------------------
+
+The Lin & Ying model holds each covariate's added hazard constant over
+time. Aalen's additive model lets it change freely:
+
+.. math::
+
+    h(x \mid Z) = b_0(x) + b_1(x) Z_1 + \dots + b_p(x) Z_p
+
+Nothing is assumed about the shape of any :math:`b_j`. What the data
+estimate well are the *cumulative* effects
+:math:`B_j(x) = \int_0^x b_j(s)\,ds`, by a least-squares fit of the
+events on the covariates of the units at risk at each event time. Read a
+plot of :math:`B_j` by its slope: a straight line through 0 is a constant
+effect (what Lin & Ying assume), a line that flattens is an effect that
+fades, and the slope at a time is the covariate's added hazard then.
+
+On the Rossi recidivism data (432 released prisoners followed for a year;
+``week`` of arrest, financial aid ``fin``, ``age`` and prior convictions
+``prio``):
+
+.. jupyter-execute::
+
+    from surpyval import AalenAdditive
+    from surpyval.datasets import load_rossi_static
+
+    rossi = load_rossi_static()
+    rossi["censored"] = 1 - rossi["arrest"]
+    aalen = AalenAdditive.fit_from_df(
+        rossi, x_col="week", c_col="censored", Z_cols=["fin", "age", "prio"]
+    )
+    aalen.summary()[["coef", "se(coef)", "coef lower 95%", "coef upper 95%", "p"]]
+
+``summary()`` gives the cumulative effects at the last event time (week
+52; ``at=`` chooses another): by then each prior conviction has added
+about 0.04 to the cumulative hazard of arrest, and each year of age has
+taken about 0.015 from it.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = aalen.summary()
+    assert round(_t.loc["prio", "coef"], 2) == 0.04, _t
+    assert round(_t.loc["age", "coef"], 3) == -0.015, _t
+
+.. jupyter-execute::
+
+    axes = aalen.plot(terms=["fin", "age", "prio"])
+
+The band is pointwise 95%. ``prio``'s line rises steadily, while
+``age``'s stays near 0 for the first six months (-0.001 by week 26) and
+falls only after (to -0.015 by week 52): older prisoners were arrested
+less often, but mainly in the second half of the year.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _B = aalen.cumulative_coefficients([26, 52])["age"]
+    assert round(_B[26], 3) == -0.001 and round(_B[52], 3) == -0.015, _B
+
+``constant_effects_test()`` asks the question formally, by how far each
+:math:`B_j` strays from the straight line to its last value, with the
+distribution of that distance under a constant effect simulated by
+resampling (it takes a seed):
+
+.. jupyter-execute::
+
+    aalen.constant_effects_test(random_state=1).round(4)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _c = aalen.constant_effects_test(random_state=1)
+    assert _c.loc["age", "KS p"] < 0.01, _c
+    assert _c.loc["prio", "KS p"] > 0.5, _c
+
+A constant effect is rejected for ``age`` (p below 0.01) and not for
+``prio`` (p above 0.5). The resampled null is a large-sample result, and
+with a few hundred units it rejects a truly constant effect somewhat more
+often than the level says, so treat a p-value near 0.05 as borderline.
+
+A unit's survival is :math:`\exp(-H)` with
+:math:`H(x \mid Z) = B_0(x) + B(x)'Z`, with Wald bounds:
+
+.. jupyter-execute::
+
+    unit = [0, 25, 3]  # no aid, aged 25, three prior convictions
+    print(aalen.sf([13, 26, 52], unit).round(3))
+    print(aalen.cb([13, 26, 52], unit).round(3))
+
+Nothing keeps an additive hazard positive, so as for ``AdditiveHazards``
+the model predicts with the running maximum of :math:`H` from time 0, and
+``sf`` never rises. The hazard rate ``hf`` uses the kernel-smoothed
+:math:`b_j(t)` (``smoothed_coefficients``, with a ``bandwidth``), and
+``coef_penalty`` adds a ridge penalty on the covariates' increments,
+which keeps the fit going where few units remain at risk at the price of
+shrinking the effects. :math:`B(t)` and its variance agree with R's
+``timereg::aalen`` (with ``robust = 0``).
 
 
 Parametric Proportional Hazards (PH)
@@ -1723,6 +1860,65 @@ powers of one another, :math:`S(x \mid Z) = S_0(x)^{\phi(Z)}`; under AFT they
 are the same curve shifted along the log-time axis, so on a log-time plot they
 are parallel. Neither family lets two curves cross. (For these Weibull fits the
 two descriptions coincide, as shown above.)
+
+
+Flexible parametric (spline) regression
+---------------------------------------
+
+A Weibull baseline draws a straight line for the log cumulative hazard
+against log time; a Royston-Parmar baseline draws a restricted cubic
+spline, which follows a hazard that rises, falls or bends while staying
+smooth and parametric. ``RoystonParmarPH`` adds covariates as proportional
+hazards,
+
+.. math::
+
+    \log H(t \mid Z) = s(\log t; \gamma) + \beta' Z,
+
+so :math:`e^{\beta}` are hazard ratios, as in a Cox model, but with a
+smooth baseline that can be extrapolated, handles every kind of censoring
+and truncation, and gives every bound. ``RoystonParmarPO`` puts the spline
+on the log odds of failure and multiplies the survival odds by
+:math:`e^{\beta' Z}`, as every proportional odds model here.
+``RoystonParmarRegression(df=..., scale=..., knots=...)`` sets the spline's
+degrees of freedom (``df - 1`` internal knots, at quantiles of the log
+event times; three by default) or its knots. ``df=1`` on the hazard scale
+is the Weibull proportional hazards model. The fits agree with R's
+``flexsurvspline`` to its printed digits.
+
+.. jupyter-execute::
+
+    from surpyval import RoystonParmarRegression
+    from surpyval.datasets import load_rossi_static
+
+    rossi = load_rossi_static()
+    rossi['censored'] = 1 - rossi['arrest']
+    rp_fits = {
+        k: RoystonParmarRegression(df=k).fit_from_df(
+            rossi, x_col='week', c_col='censored',
+            Z_cols=['fin', 'age', 'prio'])
+        for k in (1, 2, 3)
+    }
+    for k, m in rp_fits.items():
+        print(k, 'df: AIC', round(m.aic(), 2),
+              ' hazard ratios', np.exp(m.params[-3:]).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _aic = {k: m.aic() for k, m in rp_fits.items()}
+    assert min(_aic, key=_aic.get) == 1, _aic
+
+Here the extra knots do not earn their place: the Weibull (``df=1``) has
+the lowest AIC, and the hazard ratios barely move. The model is a
+``ParametricRegressionModel`` on the ``PH`` (or ``PO``) family, so its
+``summary``, ``cb`` and ``param_cb`` (Wald, likelihood-ratio and
+bootstrap), ``fit_from_df`` with a formula, and saving all work as for
+``WeibullPH``; the bounds hold the knots where the fit placed them. A
+shift on the normal (probit) scale is neither proportional hazards nor
+proportional odds, so ``scale="normal"`` is refused with covariates
+(``RoystonParmar`` fits it without them, ``LogNormalAFT`` with them).
 
 
 Proportional Odds (PO)
@@ -2025,6 +2221,51 @@ data, as at an accelerated life test's use condition (`Accelerated Life
 .. jupyter-execute::
 
     m_cb.param_cb('coef_0', method='lr')   # the profile-likelihood interval
+
+Robust standard errors
+~~~~~~~~~~~~~~~~~~~~~~
+
+The model-based standard errors assume the model is right and the rows are
+independent. ``robust_standard_errors()`` (and ``robust_covariance()`` for
+the matrix) gives the **sandwich** ones instead, which stay valid when the
+baseline distribution is the wrong shape and, given a ``cluster`` label per
+row, when rows in a cluster are correlated: several units from one batch,
+repeated tests on one rig. They are the model-based covariance wrapped
+around the spread of the scores (one per unit, or one per cluster), the
+HC0 form of R's ``sandwich`` package and lifelines' ``robust=True``; the
+estimates do not change. ``summary(robust=True, cluster=...)`` gives the
+table on them. Here twenty batches of six items share a batch effect the
+model does not have:
+
+.. jupyter-execute::
+
+    from surpyval import WeibullAFT
+
+    rng = np.random.default_rng(3)
+    batch = np.repeat(np.arange(20), 6)
+    shared = rng.gamma(4.0, 0.25, 20)[batch]       # one effect per batch
+    Z_b = rng.normal(size=(120, 1))
+    x_b = 12 * rng.weibull(1.8, 120) * np.exp(-0.4 * Z_b[:, 0]) / shared
+    m_b = WeibullAFT.fit(x_b, Z_b)
+
+    print('model-based:', m_b.standard_errors().round(3))
+    print('robust     :', m_b.robust_standard_errors().round(3))
+    print('by batch   :', m_b.robust_standard_errors(cluster=batch).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _se = m_b.standard_errors()
+    _batch_se = m_b.robust_standard_errors(cluster=batch)
+    assert _batch_se[0] > _se[0], (_se, _batch_se)
+
+The batch effect makes the scale's standard error larger once the rows of
+a batch are counted together. Only the standard errors change: ``cb``,
+``param_cb`` and ``p_values`` stay on the model-based covariance, and a
+fit with time-varying covariates (``fit_tvc``), whose likelihood is over
+each unit's history rather than over independent rows, refuses and points
+to the bootstrap and likelihood-ratio bounds.
 
 The other families quantify uncertainty their own way: Cox through the
 information matrix (``p_values``, and ``jac`` as shown earlier) and the robust
@@ -3869,6 +4110,190 @@ categorical variable is held at its reference level), and they have no
     plt.show()
 
 
+Forest plots
+------------
+
+A *forest plot* draws a model's coefficient table: each covariate's
+estimate as a point with its confidence interval as a line, and a reference
+line where the covariate has no effect. ``surv.plot_coefficients(models)``
+draws one from each model's ``summary()``, so it works for every regression
+model with a coefficient table (Cox, the parametric families, the additive
+hazards, proportional odds, Buckley-James, frailty and Fine-Gray models).
+It returns the figure and axes and the values it drew.
+
+Where the link is log-linear, the plot is on the ratio scale ``exp(coef)``
+by default -- the hazard ratio for Cox and proportional hazards, the
+acceleration factor for AFT, the odds ratio for proportional odds -- on a
+log axis with the reference line at 1. Here is the Cox model of the
+recidivism data from the section above:
+
+.. jupyter-execute::
+
+    out = surv.plot_coefficients(cox, title='Re-arrest, Cox model')
+    plt.show()
+    out.values['CoxPH'].round(3)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _v = out.values['CoxPH'].round(3)
+    assert _v.loc['prio'].tolist() == [1.102, 1.044, 1.162], _v
+    assert _v.loc['fin', 'upper'] > 1 > _v.loc['age', 'upper'], _v
+    assert _v.loc['age', 'estimate'] == 0.935, _v
+
+Each prior conviction raises the hazard of re-arrest by about 10% (95%
+interval 4% to 16%), and each year of age lowers it by about 6.5%. The
+interval for financial aid just crosses 1: the data are consistent with no
+effect at the 5% level.
+
+Several models are drawn side by side at each covariate, given as a list or
+as ``{label: model}``. A Weibull proportional hazards model agrees closely
+with the Cox model here:
+
+.. jupyter-execute::
+
+    weibull_ph = surv.WeibullPH.fit_from_df(
+        rossi, x_col='week', c_col='censored', Z_cols=['fin', 'age', 'prio']
+    )
+    out = surv.plot_coefficients({'Cox': cox, 'Weibull PH': weibull_ph})
+    plt.show()
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _d = (out.values['Cox'] - out.values['Weibull PH']).abs().to_numpy()
+    assert _d.max() < 0.005, _d
+
+``on='coef'`` draws the coefficients themselves, with the reference line at
+0. An additive model (``AdditiveHazards``, the ``AH`` family) has only this
+scale: its coefficients are differences in the hazard, not ratios, so
+``on='exp'`` is refused for it. ``covariates=`` picks the rows to draw,
+``sort='estimate'`` orders them by the first model's estimate, and
+``alpha_ci`` sets the intervals' level.
+
+The table itself is a pandas DataFrame, so for a report it can be written as
+LaTeX or HTML with ``summary().to_latex()`` or ``summary().to_html()``
+(``to_markdown()`` needs the optional ``tabulate`` package).
+
+
+Penalised regression: ridge, lasso and elastic net
+--------------------------------------------------
+
+With many covariates, or correlated ones, the maximum likelihood
+coefficients can be unstable or not exist at all. A penalty on their size
+steadies them: ``fit_penalised`` on ``CoxPH`` and on the parametric
+proportional hazards, AFT and proportional odds fitters minimises the
+negative log-likelihood (the partial likelihood for Cox) divided by the
+number of units, plus
+
+.. math::
+
+    \lambda \sum_j \left( \frac{1 - a}{2} \beta_j^2 + a |\beta_j| \right),
+
+where ``penalizer`` is :math:`\lambda` (one value, or one per covariate;
+0 leaves a coefficient alone) and ``l1_ratio`` is :math:`a`: 0 is the ridge
+penalty, which shrinks every coefficient towards 0, and 1 the lasso, which
+sets some exactly to 0 and so selects covariates; in between is the elastic
+net. This is the objective of R's glmnet and of lifelines, and the Cox fit
+agrees with glmnet to six digits. By default the covariates are divided by
+their standard deviations before the penalty is applied, so it does not
+depend on their units; the coefficients are reported in the covariates' own
+units. A baseline distribution's parameters are never penalised.
+
+.. jupyter-execute::
+
+    from surpyval import CoxPH
+    from surpyval.datasets import load_rossi_static
+
+    rossi = load_rossi_static()
+    rossi['censored'] = 1 - rossi['arrest']
+    cols = ['fin', 'age', 'race', 'wexp', 'mar', 'paro', 'prio']
+    full = CoxPH.fit(rossi['week'], rossi[cols], c=rossi['censored'])
+    ridge = CoxPH.fit_penalised(rossi['week'], rossi[cols],
+                                c=rossi['censored'], penalizer=0.05)
+    lasso = CoxPH.fit_penalised(rossi['week'], rossi[cols],
+                                c=rossi['censored'], penalizer=0.05,
+                                l1_ratio=1.0)
+    pd.DataFrame({'unpenalised': full.params, 'ridge': ridge.params,
+                  'lasso': lasso.params}, index=cols).round(4)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _kept = [c for c, b in zip(cols, lasso.params) if b != 0]
+    assert _kept == ['age', 'wexp', 'prio'], _kept
+    assert np.all(np.abs(ridge.params) <= np.abs(full.params) + 0.05)
+
+The ridge fit shrinks every coefficient; at this penalty the lasso keeps
+three covariates (age, work experience and prior convictions) and sets the
+rest to 0.
+
+A penalised model predicts like any other (``sf``, ``hf``, ``qf``, ...), but
+it has **no standard errors, confidence bounds or p-values**: the estimates
+are biased towards 0 on purpose, and intervals built from the curvature of
+the penalised objective would not cover the truth as often as they claim
+(after the lasso's selection no simple interval does). Those calls raise an
+error that says so, and ``summary()`` shows them as ``nan``. To make
+inferences, choose the covariates first and fit the unpenalised model.
+For ``aic`` and ``bic`` a penalised fit counts its *effective* number of
+parameters, ``model.penalty.effective_df`` (the number of non-zero
+coefficients for the lasso, fewer than the coefficients for a ridge
+penalty):
+
+.. jupyter-execute::
+
+    print(round(ridge.penalty.effective_df, 2), lasso.penalty.effective_df)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert lasso.penalty.effective_df == 3, lasso.penalty
+    assert 5 < ridge.penalty.effective_df < 7, ridge.penalty
+
+The same refusal covers the robust (sandwich) standard errors
+(``robust_covariance``, ``robust_standard_errors``, ``summary(robust=True)``)
+and the global ``likelihood_ratio_test``: a penalised estimate does not
+maximise the likelihood, so neither its sandwich nor twice its gain in
+log-likelihood has the distribution those calls rely on.
+
+**Strata and truncation.** ``CoxPH.fit_penalised`` takes ``strata``, as
+``CoxPH.fit`` does: a baseline hazard per stratum and one set of
+coefficients (glmnet's ``stratifySurv``). The number of units ``N`` and the
+standardisation are over all the rows, not within each stratum. It takes
+delayed entry ``tl``, so start-stop rows ``(start, stop]`` are fitted with
+``tl=start``; then ``N`` is the number of *rows* (weighted by ``n``), not of
+subjects, as in glmnet, so a subject split into ten rows counts ten times in
+the penalty's scale. Like ``CoxPH.fit``, it refuses truncation on the right,
+for which the partial likelihood has no term: the parametric penalised fits
+take every kind of censoring and truncation (left, right or both).
+
+.. jupyter-execute::
+
+    strat_cols = ['fin', 'age', 'race', 'mar', 'paro', 'prio']
+    stratified = CoxPH.fit_penalised(rossi['week'], rossi[strat_cols],
+                                     c=rossi['censored'],
+                                     strata=rossi['wexp'], penalizer=0.05,
+                                     l1_ratio=0.5)
+    stratified.params.round(4)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert stratified.is_stratified
+    assert np.sum(stratified.params == 0) == 2, stratified.params
+
+The coefficients of these models are log hazard, odds or time ratios, which
+have no unit, so the penalty does not depend on the unit of time.
+``fit_penalised`` does not take sampling weights ``w`` yet: the penalty's
+scale and the standardisation would both have to be weighted, and it
+refuses them rather than ignore them.
+
+
 Model Selection
 ---------------
 
@@ -4633,7 +5058,7 @@ survival), so the reloaded model predicts identically:
 
 Cox's time-varying-covariate prediction (``predict_tvc``), the additive model's
 covariance, and Buckley-James's ``bootstrap_ci`` (which keeps a copy of the fit
-data) all survive the round-trip. The residual diagnostics, ``check_ph`` and
+data) all survive the round-trip. The residual diagnostics, ``diagnose()`` and
 the robust variance need the training data and are not available on a restored
 Cox model, and a stratified Cox model cannot be serialised at all. Be aware that
 a serialised Buckley-James model contains its training data.

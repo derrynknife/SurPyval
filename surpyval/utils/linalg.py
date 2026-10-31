@@ -19,7 +19,8 @@ fitted numbers anywhere.
 """
 
 import warnings
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -44,6 +45,33 @@ def safe_inv(m: npt.NDArray) -> npt.NDArray:
         return out
     except np.linalg.LinAlgError:
         return np.linalg.pinv(m)
+
+
+def fixed_order_dot(B: Any, g: Any) -> Any:
+    """
+    ``B @ g`` for a design matrix ``B`` (one row per query point) and a
+    coefficient vector ``g``, each row's sum taken in the same order (the
+    row alone, along its columns: left to right for fewer than eight)
+    wherever the row sits in ``B`` and however many rows there are. A
+    matrix-vector product does not guarantee that: BLAS blocks the rows,
+    and a row in a remainder block is summed differently (with fused
+    multiply-adds, or not), so permuting the query points could change a
+    result in its last bit (on Linux x86-64). Works on autograd boxes
+    too.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.utils.linalg import fixed_order_dot
+    >>> B = np.array([[1.0, 2.0], [3.0, 4.0]])
+    >>> fixed_order_dot(B, np.array([1.0, 0.5]))
+    array([2., 5.])
+    """
+    if B.shape[1] == 0:
+        return np.zeros(B.shape[0])
+    # A contiguous row per point, reduced alone (numpy's sum along the
+    # last axis); one product and one sum, cheap under autograd too.
+    return (np.ascontiguousarray(B) * g).sum(axis=1)
 
 
 def standard_errors_of(covariance: npt.ArrayLike) -> npt.NDArray:

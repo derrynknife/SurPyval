@@ -23,7 +23,7 @@ hold the rest. ``help(surpyval.Weibull)`` and the other classes document
 each model, with examples.
 """
 
-__version__ = "0.25"
+__version__ = "0.26"
 
 # First: autograd's special functions without scipy.stats (#470)
 from surpyval import _autograd_special  # noqa: F401  # isort: skip
@@ -42,11 +42,15 @@ from surpyval.univariate.nonparametric import (
     NelsonAalen,
     NonParametric,
     NonParametricPlot,
+    PairwiseLogRankResult,
     Turnbull,
-    logrank,
-    plot_nonparametric,
     at_risk_table,
+    life_table,
+    logrank,
+    pairwise_logrank,
+    plot_nonparametric,
     rmst_diff,
+    sf_diff,
     success_run,
 )
 from surpyval.univariate.parametric import (
@@ -136,12 +140,15 @@ _LAZY = {
             "AFT",
             "AFTFitter",
             "AH",
+            "AalenAdditive",
+            "AalenAdditiveModel",
             "AcceleratedLife",
             "AdditiveHazards",
             "AdditiveHazardsFitter",
             "AdditiveHazardsModel",
             "BuckleyJames",
             "BuckleyJamesModel",
+            "CoefficientPlot",
             "CovariatePath",
             "CoxFrailty",
             "CoxFrailtyFitter",
@@ -185,6 +192,9 @@ _LAZY = {
             "ProportionalOdds",
             "ProportionalOddsFitter",
             "ProportionalOddsModel",
+            "RoystonParmarPH",
+            "RoystonParmarPO",
+            "RoystonParmarRegression",
             "SemiParametricRegressionModel",
             "StepSchedule",
             "StepValuedError",
@@ -193,13 +203,33 @@ _LAZY = {
             "WeibullFrailty",
             "WeibullPH",
             "WeibullPO",
+            "plot_coefficients",
         ),
         "surpyval.univariate.regression",
+    ),
+    **dict.fromkeys(
+        (
+            "Distributional",
+            "DistributionalFitter",
+            "DistributionalRegressionModel",
+            "ExponentialDistributional",
+            "GammaDistributional",
+            "GumbelDistributional",
+            "LogLogisticDistributional",
+            "LogNormalDistributional",
+            "LogisticDistributional",
+            "NormalDistributional",
+            "WeibullDistributional",
+        ),
+        "surpyval.univariate.regression.distributional",
     ),
     **dict.fromkeys(
         ("JointModel", "JointPH", "WeibullJointPH"),
         "surpyval.univariate.joint",
     ),
+    # The priors of a Bayesian fit (``Weibull.fit_bayes``): the module
+    # ``surpyval.bayes.prior`` (``surpyval.prior.around(...)``).
+    "prior": "surpyval.bayes",
     **dict.fromkeys(
         (
             "CompetingRisks",
@@ -266,11 +296,15 @@ __all__ = [
     "NelsonAalen",
     "NonParametric",
     "NonParametricPlot",
+    "PairwiseLogRankResult",
     "Turnbull",
     "logrank",
+    "pairwise_logrank",
     "plot_nonparametric",
     "at_risk_table",
+    "life_table",
     "rmst_diff",
+    "sf_diff",
     "success_run",
     # Parametric
     "Bernoulli",
@@ -325,10 +359,6 @@ __all__ = [
     "xrd_handler",
     "xrd_to_xcnt",
     "EventHistoryData",
-    # Deprecated (v0.25): renamed EventHistoryData, removed in v0.26;
-    # reached through __getattr__ with a DeprecationWarning, and listed so
-    # that ``from surpyval import *`` still gets it until then.
-    "RecurrentEventData",
     "ItemHistory",
     "ItemLifetime",
     "SurpyvalData",
@@ -342,6 +372,7 @@ __all__ = [
 
 if TYPE_CHECKING:
     from surpyval import (
+        bayes,
         datasets,
         degradation,
         life_models,
@@ -350,6 +381,7 @@ if TYPE_CHECKING:
         recurrent,
         test_planning,
     )
+    from surpyval.bayes import prior
     from surpyval.degradation import (
         DegradationAnalysis,
         DestructiveDegradation,
@@ -391,6 +423,19 @@ if TYPE_CHECKING:
         WeibullJointPH,
     )
     from surpyval.univariate.regression import *  # noqa: F401,F403
+    from surpyval.univariate.regression.distributional import (
+        Distributional,
+        DistributionalFitter,
+        DistributionalRegressionModel,
+        ExponentialDistributional,
+        GammaDistributional,
+        GumbelDistributional,
+        LogisticDistributional,
+        LogLogisticDistributional,
+        LogNormalDistributional,
+        NormalDistributional,
+        WeibullDistributional,
+    )
 
 # The subpackages ``import surpyval`` used to import, so that
 # ``surpyval.recurrent.laplace`` works without an import of its own, and
@@ -398,6 +443,7 @@ if TYPE_CHECKING:
 # docs call as ``surpyval.datasets.load_...()`` (#653). Each is imported on
 # first use.
 _SUBPACKAGES = (
+    "bayes",
     "datasets",
     "degradation",
     "life_models",
@@ -408,7 +454,8 @@ _SUBPACKAGES = (
 )
 
 # The package's removed names (the life models' top-level names, removed
-# in v0.23, and the numeric constants, removed in v0.24) say what replaced
+# in v0.23, the numeric constants, removed in v0.24, and
+# RecurrentEventData, removed in v0.26) say what replaced
 # them: ``surpyval.utils.removed_names.REMOVED_TOP_LEVEL`` (#653).
 _MOVED_TO_LIFE_MODELS = tuple(
     name
@@ -438,10 +485,6 @@ _ELSEWHERE = {
     ),
 }
 
-#: Top-level names renamed in v0.25 (old -> new), reached through
-#: ``__getattr__`` with a DeprecationWarning until v0.26.
-_RENAMED_TOP_LEVEL = {"RecurrentEventData": "EventHistoryData"}
-
 if not TYPE_CHECKING:  # keep the type checker's view of the module exact
 
     def __getattr__(name: str) -> Any:
@@ -460,11 +503,6 @@ if not TYPE_CHECKING:  # keep the type checker's view of the module exact
 
         if name in DATED_DATA_FUNCTIONS:
             return dated_data_function(name)
-        if name in _RENAMED_TOP_LEVEL:
-            from surpyval.utils.deprecation import renamed_name
-
-            new = _RENAMED_TOP_LEVEL[name]
-            return renamed_name("surpyval", name, new, globals()[new])
         if name in _REMOVED_TOP_LEVEL:
             message = _removed_message(
                 f"module 'surpyval' has no attribute {name!r}",

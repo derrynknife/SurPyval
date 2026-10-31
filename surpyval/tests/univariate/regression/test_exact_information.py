@@ -53,7 +53,9 @@ FAMILIES = [
 #: most at ten times it. NormalAH's is 6.2e-5 at the default step on
 #: arm64 and 1.05e-4 on x86-64 (the exact values agree to 1e-12; the
 #: numerical ones move with the platform's rounding), and 6.7e-7 at ten
-#: times the step.
+#: times the step. The spline baselines (RoystonParmarPH, RoystonParmarPO)
+#: are 2.7e-4 and 1.3e-4 at the default step, and 7.5e-7 and 2.3e-6 at
+#: ten times it.
 OLD_ROUNDING = {
     "ExponentialPO": 2e-3,
     "ExponentialAH": 2e-4,
@@ -61,6 +63,8 @@ OLD_ROUNDING = {
     "GammaAH": 2e-4,
     "LogisticAH": 2e-4,
     "NormalAH": 2e-4,
+    "RoystonParmarPH": 5e-4,
+    "RoystonParmarPO": 5e-4,
 }
 
 

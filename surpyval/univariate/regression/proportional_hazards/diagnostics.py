@@ -12,7 +12,8 @@ References
   based on weighted residuals", Biometrika 81(3).
 - Therneau & Grambsch (2000), *Modeling Survival Data*, ch. 4-6.
 - Therneau, ``survival`` 3.0 (2019): ``cox.zph`` as the score test of the
-  time-dependent term, which :func:`check_ph` computes.
+  time-dependent term, which :func:`zph_score_test` computes (and
+  ``model.diagnose()`` reports).
 """
 
 from typing import TYPE_CHECKING
@@ -25,6 +26,8 @@ from surpyval.utils.linalg import safe_inv
 from surpyval.utils.validation import check_option, option_error
 
 if TYPE_CHECKING:  # pragma: no cover
+    import pandas as pd
+
     from ..semi_parametric_regression_model import (
         SemiParametricRegressionModel,
     )
@@ -53,6 +56,22 @@ def _require_cox(model: "SemiParametricRegressionModel") -> dict:
         raise NotImplementedError(
             "Residuals and the proportional-hazards test are implemented for "
             "Cox proportional-hazards models fit with CoxPH.fit / fit_from_df."
+        )
+    if getattr(model, "weighted", False):
+        # Every residual, test and diagnostic here takes the rows as
+        # counted units; on a fit with weights w they would describe the
+        # unweighted data, with no sign of it. Refused here, where every
+        # path (the model's methods, these functions, diagnose()) passes.
+        from surpyval.utils.weights import refuse_weighted
+
+        raise refuse_weighted(
+            "The residuals, the proportional-hazards test and the "
+            "diagnostics of a Cox fit",
+            "they treat the rows as counted units",
+            "Use summary() and covariance(), the weighted fit's robust "
+            "(sandwich) covariance, or model.robust_covariance(cluster) "
+            "for clustered units. diagnose() of the fit without w checks "
+            "the unweighted data's model, a guide only.",
         )
     if not hasattr(model, "_fit_data"):
         # A Cox model rebuilt by from_dict keeps its coefficients and
@@ -113,7 +132,8 @@ def _risk_set_means(
     every returned quantity is the corresponding step aggregate; with
     Breslow (or no ties) each event time is a single step and the classic
     forms are recovered. Using Breslow forms for an Efron fit made the
-    residuals, ``check_ph`` and the robust covariance disagree with R /
+    residuals, the proportional-hazards test and the robust covariance
+    disagree with R /
     lifelines under heavy ties (#279).
 
     Returns ``(event_times, Zbar, S0, d, A, B, A_own, B_own)`` where per
@@ -222,7 +242,7 @@ def compute_residuals(
     Notes
     -----
     - **Schoenfeld** (``Z_i - E[Z | risk set]`` at each event) check the
-      proportional-hazards assumption; see :func:`check_ph`.
+      proportional-hazards assumption; see :func:`zph_score_test`.
     - **Martingale** = observed minus expected events; used for functional
       form. **Deviance** is a symmetrised martingale for outlier/influence
       screening.
@@ -432,7 +452,9 @@ def robust_summary(
     from scipy.stats import norm
 
     beta = np.asarray(model.beta, dtype=float)
-    cov = robust_covariance(model, cluster)
+    # The model's own method: a weighted fit's is the weighted Lin-Wei
+    # sandwich (``_weighted_cox``), which the residuals here do not give.
+    cov = model.robust_covariance(cluster)
     se = np.sqrt(np.diag(cov))
     with np.errstate(invalid="ignore", divide="ignore"):
         z = beta / se
@@ -524,7 +546,7 @@ def _zph_times(data: dict, transform: str) -> np.ndarray:
     and ``"log"`` the time and its log. Only the event rows' values are
     used, and only up to an additive constant.
 
-    Until v0.24 ``check_ph`` used a right-continuous ``"km"`` (``1 -
+    Until v0.24 the test used a right-continuous ``"km"`` (``1 -
     S(t)``) and ranked the event times only (lifelines' conventions)."""
     from surpyval.utils import xcnt_to_xrd
 
@@ -566,12 +588,33 @@ def _score_statistic(u: np.ndarray, info: np.ndarray) -> float:
         return float("nan")
 
 
-def check_ph(
+#: What :func:`check_ph` says until it is removed.
+CHECK_PH_ADVICE = (
+    "use model.diagnose(), which runs the same proportional-hazards test "
+    "(transform=...)"
+)
+
+
+def refuse_penalised(model: "SemiParametricRegressionModel") -> None:
+    """Refuse the proportional-hazards test of a penalised fit, as
+    ``diagnose()`` does: a penalised model gives no p-values."""
+    penalty = getattr(model, "penalty", None)
+    if penalty is not None:
+        from .._penalised import no_inference_error
+
+        raise no_inference_error(penalty)
+
+
+def zph_score_test(
     model: "SemiParametricRegressionModel", transform: str = "km"
 ) -> dict:
     """
     Test the proportional-hazards assumption (Grambsch-Therneau), as R's
     ``survival::cox.zph`` does since version 3.0.
+
+    The test ``model.diagnose()`` reports (its ``proportional_hazards``
+    rows, and the table ``d.tables["proportional_hazards"]``); this is the
+    function it is computed by, for code that needs the raw numbers.
 
     For each covariate, the score test of adding ``Z_j * g(t)`` to the
     model, at the fitted coefficients and a zero coefficient for the added
@@ -632,10 +675,11 @@ def check_ph(
     >>> df = load_rossi_static()
     >>> x, c = df["week"].values, 1 - df["arrest"].values
     >>> model = CoxPH.fit(x, df[["fin", "age"]].values, c=c)
-    >>> res = diagnostics.check_ph(model, "km")
+    >>> res = diagnostics.zph_score_test(model, "km")
     >>> round(res["global"]["statistic"], 3)
     6.095
     """
+    refuse_penalised(model)
     data = _require_cox(model)
     check_option("transform", transform, _TRANSFORMS)
     beta = np.asarray(model.beta, dtype=float)
@@ -699,18 +743,85 @@ def check_ph(
     }
 
 
-#: The name ``diagnose()``'s Cox family first used for :func:`check_ph`;
-#: the same function.
-zph_score_test = check_ph
+def zph_table(
+    model: "SemiParametricRegressionModel", transform: str = "km"
+) -> "pd.DataFrame":
+    """
+    :func:`zph_score_test` as the table R's ``cox.zph`` prints: one row
+    per covariate (named as ``summary()`` names it) and a last row
+    ``GLOBAL``, with columns ``statistic``, ``df`` and ``p``; the
+    transform is in ``attrs["transform"]``. ``diagnose()`` gives it as
+    ``d.tables["proportional_hazards"]``.
+
+    Examples
+    --------
+    >>> from surpyval import CoxPH
+    >>> from surpyval.datasets import load_rossi_static
+    >>> from surpyval.univariate.regression.proportional_hazards import (
+    ...     diagnostics,
+    ... )
+    >>> df = load_rossi_static()
+    >>> x, c = df["week"].values, 1 - df["arrest"].values
+    >>> model = CoxPH.fit(x, df[["fin", "age"]].values, c=c)
+    >>> diagnostics.zph_table(model).round(4)
+               statistic  df       p
+    covariate
+    coef_0        0.0242   1  0.8764
+    coef_1        6.0906   1  0.0136
+    GLOBAL        6.0949   2  0.0475
+    """
+    import pandas as pd
+
+    from .._summary import coefficient_names
+
+    res = zph_score_test(model, transform)
+    rows = res["per_covariate"] + [res["global"]]
+    names = coefficient_names(model, len(res["per_covariate"]))
+    table = pd.DataFrame(
+        {
+            "statistic": [r["statistic"] for r in rows],
+            "df": [int(r["df"]) for r in rows],
+            "p": [r["p_value"] for r in rows],
+        },
+        index=pd.Index(list(names) + ["GLOBAL"], name="covariate"),
+    )
+    table.attrs["transform"] = res["transform"]
+    return table
+
+
+def check_ph(
+    model: "SemiParametricRegressionModel", transform: str = "km"
+) -> dict:
+    """
+    Deprecated: :func:`zph_score_test`, which ``model.diagnose()``
+    reports. ``check_ph`` is removed in v0.28.
+
+    .. deprecated:: 0.26
+        Use ``model.diagnose(transform=...)``: its
+        ``tables["proportional_hazards"]`` is this test as a table, and
+        its ``proportional_hazards`` rows judge it.
+
+    Returns
+    -------
+    dict
+        As :func:`zph_score_test`.
+    """
+    from surpyval.utils.deprecation import scheduled_removal
+
+    scheduled_removal("check_ph", CHECK_PH_ADVICE)
+    return zph_score_test(model, transform)
+
 
 #: Public names, for ``surpyval.diagnostics.cox``, of what the residuals
 #: and tests here are computed from: the per-observation data a fitted Cox
 #: model keeps, centred as the fit centred it (refusing, with a message
 #: naming the fix, a model it cannot be had from: stratified, restored by
 #: ``from_dict`` or with an aliased coefficient), and every row's time on
-#: the scale ``g`` of :func:`check_ph`'s ``transform``.
+#: the scale ``g`` of :func:`zph_score_test`'s ``transform``.
 cox_fit_data = _require_cox
 zph_times = _zph_times
+#: The scales of time :func:`zph_score_test` takes (its ``transform``).
+ZPH_TRANSFORMS = _TRANSFORMS
 
 
 def added_covariate_score_test(

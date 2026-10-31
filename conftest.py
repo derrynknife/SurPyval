@@ -193,4 +193,9 @@ def pytest_runtest_setup(item):
 
 # ``surpyval/utils/score.py`` raises on import, to say where its function
 # went (#653): the ``--doctest-modules`` run must not import it.
-collect_ignore = ["surpyval/utils/score.py"]
+collect_ignore = [
+    "surpyval/utils/score.py",
+    # Kept only to raise an ImportError naming its replacement (removed in
+    # v0.26), so importing it for the doctest run fails by design.
+    "surpyval/utils/recurrent_event_data.py",
+]

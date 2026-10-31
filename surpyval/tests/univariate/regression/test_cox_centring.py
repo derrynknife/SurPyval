@@ -28,6 +28,9 @@ from surpyval.univariate.competing_risks import (
     CompetingRisksProportionalHazards,
 )
 from surpyval.univariate.regression import StepSchedule
+from surpyval.univariate.regression.proportional_hazards.diagnostics import (  # noqa: E501
+    zph_table,
+)
 
 OFFSETS = [0.0, 300.0, 2000.0, 1e5]
 # Offsets at which the baseline at Z = 0 is representable (beta'center of
@@ -182,8 +185,8 @@ def test_delayed_entry_and_residuals(offset, center):
             model.robust_covariance(), ref.robust_covariance(), rtol=1e-6
         )
         np.testing.assert_allclose(
-            model.check_ph().loc["GLOBAL", "statistic"],
-            ref.check_ph().loc["GLOBAL", "statistic"],
+            zph_table(model).loc["GLOBAL", "statistic"],
+            zph_table(ref).loc["GLOBAL", "statistic"],
             rtol=1e-6,
         )
 
@@ -348,12 +351,27 @@ def test_refusal_says_the_rows_overflow_not_the_move():
     # Covariates already centred on 0, whose coefficient runs off to
     # beta'Z of 850: the move to Z = 0 is by exp(0), and the refusal said
     # that it over- or underflowed. It is exp(beta'Z) on the rows (#777).
+    # The fit has no finite maximum, so it now keeps its baseline at the
+    # means, with a warning, rather than raising; the move's refusal is
+    # checked on the fitted baseline directly.
+    from surpyval.univariate.regression.proportional_hazards.cox_likelihood import (  # noqa: E501
+        baseline_at_origin,
+    )
+
     z = np.linspace(-30.0, 30.0, 61)[::-1, None]
     x = np.arange(1.0, 62.0)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        with pytest.raises(ValueError) as info:
-            CoxPH.fit(x, z)
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        model = CoxPH.fit(x, z)
+    assert model.maximum == "no finite maximum"
+    kept = [
+        str(w.message)
+        for w in record
+        if str(w.message).startswith("The baseline is kept at the covariate")
+    ]
+    assert len(kept) == 1
+    with pytest.raises(ValueError) as info:
+        baseline_at_origin(model.params, model.center, z, model.r, model.h0)
     message = str(info.value)
     assert "exp(beta'Z) on the covariates as given over- or underflows" in (
         message

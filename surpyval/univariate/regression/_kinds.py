@@ -20,3 +20,6 @@ ADDITIVE_HAZARD = "Additive Hazard"
 #: A life model gives a distribution's life parameter at each stress
 #: (``AcceleratedLife``).
 ACCELERATED_LIFE = "Accelerated Life"
+#: Every parameter of the distribution has its own linear predictor and
+#: link (``Distributional``).
+DISTRIBUTIONAL = "Distributional"

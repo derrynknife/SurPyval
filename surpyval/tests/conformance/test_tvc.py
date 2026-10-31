@@ -86,6 +86,12 @@ _SCALE_LIFE = ("Weibull", "Exponential", "Gamma", "LogNormal")
 
 def _evaluable(case, model):
     """Whether the model evaluates a step path; if not, check it refuses."""
+    if getattr(model, "kind", None) == "Distributional":
+        # The shape moves with the covariates: no accumulated age along
+        # a path, so the path functions refuse.
+        with pytest.raises(NotImplementedError):
+            model.sf_tvc([1.0], StepSchedule.constant(np.zeros(model._width)))
+        return False
     if getattr(model, "kind", None) != "Accelerated Life":
         return True
     if model.distribution.name in _SCALE_LIFE:

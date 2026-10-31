@@ -8,4 +8,5 @@ mypy
 coverage
 pytest-cov
 pytest-xdist
+pytest-timeout
 pre-commit

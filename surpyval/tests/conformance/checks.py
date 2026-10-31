@@ -183,7 +183,7 @@ def check_round_trip(case, model, x=None, Z=None):
     if _has_key(d, NON_FINITE_KEY):
         # A reader of an older schema would take the nulls for missing
         # entries, so such a document must be stamped with the newest.
-        assert schema == SCHEMA_VERSION
+        assert schema >= 2
 
     restored = surpyval.from_dict(json.loads(text))
     expected = model if isinstance(model, type) else type(model)

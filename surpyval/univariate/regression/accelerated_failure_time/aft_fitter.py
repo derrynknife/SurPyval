@@ -22,6 +22,7 @@ from .._fit_skeleton import (
 )
 from .._kinds import ACCELERATED_FAILURE_TIME
 from .._likelihood import regression_neg_ll
+from .._penalised_fit import PenalisedFitMixin
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin, truncation_window
 from .aft_tvc_fit import AFTTVCFitMixin, _aft_tvc_neg_ll
@@ -31,6 +32,7 @@ class AFTFitter(
     HazardIdentitiesMixin,
     AFTTVCFitMixin,
     DataFrameRegressionMixin,
+    PenalisedFitMixin,
 ):
     """
     Accelerated Failure Time fitter using :math:`e^{\\beta' Z}` as the
@@ -52,6 +54,7 @@ class AFTFitter(
     #: The ``repr`` (#614)
     fitter_kind = "accelerated failure time fitter"
     name_suffix = "AFT"
+    _penalised_kind = ACCELERATED_FAILURE_TIME
 
     def __init__(self, distribution: Any) -> None:
         mirror_distribution(self, distribution)
@@ -98,6 +101,7 @@ class AFTFitter(
         center: bool = False,
         tl: npt.ArrayLike | None = None,
         tr: npt.ArrayLike | None = None,
+        w: npt.ArrayLike | float | None = None,
     ) -> ParametricRegressionModel:
         """
         Fit the accelerated failure time model by maximum likelihood.
@@ -139,6 +143,15 @@ class AFTFitter(
             ``Z = 0`` cannot be represented or fitted, which the default
             fit refuses with a ``ValueError`` saying so.
 
+        w : array_like or float, optional
+            Sampling, propensity or censoring weights, one positive number
+            per row (beside its count ``n``). The fit maximises the weighted
+            (pseudo) likelihood and ``covariance()``, behind every Wald
+            bound, is the robust (sandwich) covariance, as R's
+            ``survreg(..., weights = w, robust = TRUE)``; the
+            likelihood-ratio and bootstrap bounds and the information
+            criteria refuse (see :doc:`/Weighted Data`).
+
         Returns
         -------
 
@@ -168,6 +181,7 @@ class AFTFitter(
             init,
             fixed,
             center,
+            w=w,
             kind=ACCELERATED_FAILURE_TIME,
             optimiser=optimise_nm_tnc,
             reg_model=lambda pmap: LogLinearPhi(LogLinearPhi.NAME_EXP, pmap),
@@ -185,7 +199,7 @@ class AFTTVCFitter(AFTFitter):
     neg_ll = _aft_tvc_neg_ll  # type: ignore[assignment]
 
 
-def AFT(distribution: Any) -> "AFTFitter":
+def AFT(distribution: Any) -> AFTFitter:
     """
     Create an Accelerated Failure Time fitter for the given distribution.
 

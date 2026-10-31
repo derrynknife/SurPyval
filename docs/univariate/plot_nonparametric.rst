@@ -13,3 +13,7 @@ in :doc:`../Non-Parametric SurPyval Modelling`.
 The table's counts without the plot (no plotting library is loaded):
 
 .. autofunction:: surpyval.at_risk_table
+
+The actuarial life table of the data, by interval:
+
+.. autofunction:: surpyval.life_table

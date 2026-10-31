@@ -20,7 +20,9 @@ fit uses the solver, the baseline move and the labels too.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+import warnings
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -29,7 +31,9 @@ from scipy.optimize import OptimizeResult
 
 from surpyval.univariate.parametric.fitters.runaway import LOG_MAX
 from surpyval.utils import is_missing_event
+from surpyval.utils.no_maximum import maximum_warnings_quiet
 from surpyval.utils.validation import check_option
+from surpyval.utils.warnings import caller_stacklevel
 
 from .._fit_skeleton import baseline_at_origin_error
 
@@ -299,9 +303,7 @@ class _RiskSetRows:
         total = np.concatenate([[0.0], total])
         return total[self.exit + 1] - total[self.entered]
 
-    def over_risk_set_kept(
-        self, per_time: npt.NDArray
-    ) -> "npt.NDArray | None":
+    def over_risk_set_kept(self, per_time: npt.NDArray) -> npt.NDArray | None:
         """:meth:`over_risk_set` of a ``per_time`` of no negative values,
         or ``None`` where, with delayed entry, the sum over a row's times
         at risk is the difference of two cumulative sums of which less than
@@ -456,7 +458,7 @@ class _CoxRiskSets:
             return R
         return R - not_yet_entered(self.pos, self.gb_tl.sum(self.n * w)[1])
 
-    def direct(self, beta_z: npt.NDArray) -> "tuple | None":
+    def direct(self, beta_z: npt.NDArray) -> tuple | None:
         """``exp(beta_z)`` as a column, and the at-risk sums of ``n`` times
         it per unique time (less the mass not yet entered), where they can
         be summed directly; ``None`` where the linear predictor is beyond
@@ -505,7 +507,7 @@ class _CoxRiskSets:
         return log_R, log_D
 
     def log_score_information(
-        self, beta_z: npt.NDArray, ties: "_EfronTies | None"
+        self, beta_z: npt.NDArray, ties: _EfronTies | None
     ) -> tuple[npt.NDArray, npt.NDArray]:
         """The score and information of the Efron (``ties``) or Breslow
         (``None``) partial likelihood with every risk set's sums scaled by
@@ -624,7 +626,7 @@ def sums_directly(eta: npt.NDArray) -> bool:
     return bool(np.all(np.abs(eta) <= _DIRECT_ETA))
 
 
-def _group_logsumexp(gb: "_GroupBy", log_w: npt.NDArray) -> npt.NDArray:
+def _group_logsumexp(gb: _GroupBy, log_w: npt.NDArray) -> npt.NDArray:
     """Per group of ``gb``, the log of the sum of ``exp(log_w)`` over its
     rows (``-inf`` where every term is 0)."""
     top = np.full(gb._n, -np.inf)
@@ -643,7 +645,7 @@ def _suffix_logsumexp(log_v: npt.NDArray) -> npt.NDArray:
 
 
 def _log_at_risk(
-    rows: "_RiskSetRows", log_w: npt.NDArray, times: npt.NDArray, m: int
+    rows: _RiskSetRows, log_w: npt.NDArray, times: npt.NDArray, m: int
 ) -> npt.NDArray:
     """The log of the sum of ``exp(log_w)`` over the rows at risk at each
     of the unique ``times`` (indices, of ``m``), summed over the risk set
@@ -686,7 +688,7 @@ def _cox_information(
     s_u2: npt.NDArray,
     ZR: npt.NDArray,
     efron: tuple[npt.NDArray, ...] | None = None,
-) -> "npt.NDArray | None":
+) -> npt.NDArray | None:
     """The observed information (Hessian of the negative partial
     log-likelihood) of a Breslow or Efron fit, without a ``p x p`` array
     per event time (#516).
@@ -746,7 +748,7 @@ def _information_of(
     q: npt.NDArray,
     s_u2: npt.NDArray,
     ZR: npt.NDArray,
-    tied: "tuple[npt.NDArray, ...] | None" = None,
+    tied: tuple[npt.NDArray, ...] | None = None,
 ) -> npt.NDArray:
     """:func:`_cox_information` from the rows' weights ``q``, with Efron's
     terms at the tied times ``tied = (s_cu2, s_c2u2, ZR, ZD)``."""
@@ -801,7 +803,7 @@ class CoxInformation:
         n: npt.NDArray,
         eta: npt.NDArray,
         tie_method: str,
-        tl: "npt.NDArray | None" = None,
+        tl: npt.NDArray | None = None,
     ) -> None:
         x = np.asarray(x, dtype=float)
         if tl is None:
@@ -1018,7 +1020,7 @@ def _sort_by_event_time(
 
 
 def at_risk_beta_Z(
-    arr: npt.NDArray, n: npt.NDArray, gb_x: "_GroupBy"
+    arr: npt.NDArray, n: npt.NDArray, gb_x: _GroupBy
 ) -> npt.NDArray:
     R = gb_x.sum(n * arr)[1]
     # Get the reverse cumulative sum
@@ -1353,7 +1355,7 @@ def newton_raphson(
     tol: float,
     score: npt.NDArray,
     hess: npt.NDArray,
-) -> "OptimizeResult | None":
+) -> OptimizeResult | None:
     """Newton-Raphson with step-halving on the negative partial
     log-likelihood, the standard Cox algorithm (R's ``coxph``, lifelines):
     a handful of information matrices where ``root(hybr)`` built one for
@@ -1466,8 +1468,8 @@ def baseline_at_origin(
     r: npt.NDArray,
     h0: npt.NDArray,
     what: str = "baseline hazard",
-    hint: "str | None" = None,
-) -> "tuple[npt.NDArray, npt.NDArray]":
+    hint: str | None = None,
+) -> tuple[npt.NDArray, npt.NDArray]:
     """The risk weights ``r`` and baseline increments ``h0`` fitted at the
     covariate ``center`` moved to ``Z = 0`` (#463), as R's
     ``basehaz(fit, centered = FALSE)``: ``h0 * exp(-beta'center)`` and
@@ -1516,6 +1518,56 @@ def baseline_at_origin(
             **({} if hint is None else {"hint": hint}),
         )
     return r_0, h0_0
+
+
+#: The warning of a fit with no finite maximum whose baseline stays at the
+#: covariate means because it cannot be moved to ``Z = 0``.
+KEPT_AT_CENTER = (
+    "The baseline is kept at the covariate means (model.center = {}), as "
+    "with center=True, not moved to Z = 0: with no finite maximum the "
+    "coefficients ran off, and exp(beta'Z) over- or underflows on the "
+    "covariates as given, so a baseline at Z = 0 cannot be represented. "
+    "Predictions are those of the runaway estimate (see the 'No finite "
+    "maximum' warning); for a baseline at Z = 0, remove or coarsen the "
+    "separating covariates, or use a penalised fit."
+)
+
+
+def baselines_at_origin(
+    beta: npt.NDArray,
+    center: npt.NDArray,
+    Z: npt.NDArray,
+    baselines: list[tuple[npt.NDArray, npt.NDArray]],
+    maximum: str,
+) -> tuple[list[tuple[npt.NDArray, npt.NDArray]], bool]:
+    """Each ``(r, h0)`` of ``baselines`` moved to ``Z = 0`` by
+    :func:`baseline_at_origin`, and ``True``; or, for a fit with no finite
+    maximum whose move cannot be represented, the baselines as given (at
+    ``center``), and ``False``, with one warning saying so.
+
+    A fit with no finite maximum has coefficients that ran off, so
+    ``exp(beta'Z)`` can overflow on the rows as given; refusing it then
+    would turn the warning a separated fit gives into an error, and only
+    for ``center=False``. It is kept where it was fitted, as
+    ``center=True`` keeps it. A fit with a maximum is refused as before.
+    """
+    try:
+        moved = [
+            baseline_at_origin(beta, center, Z, r, h0) for r, h0 in baselines
+        ]
+    except ValueError:
+        if maximum != "no finite maximum":
+            raise
+        if not maximum_warnings_quiet():
+            warnings.warn(
+                KEPT_AT_CENTER.format(
+                    "[" + ", ".join(f"{v:.4g}" for v in np.ravel(center)) + "]"
+                ),
+                UserWarning,
+                stacklevel=caller_stacklevel(),
+            )
+        return list(baselines), False
+    return moved, True
 
 
 def cox_at_risk_mask(

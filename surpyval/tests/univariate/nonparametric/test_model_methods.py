@@ -26,7 +26,7 @@ from surpyval.tests._helpers import (  # noqa: E402
 )
 from surpyval.univariate import nonparametric as nonp  # noqa: E402
 from surpyval.univariate.regression.proportional_hazards.diagnostics import (  # noqa: E402, E501
-    check_ph,
+    zph_score_test,
 )
 
 
@@ -431,7 +431,7 @@ class TestNonParametricScalars:
         cb = np.asarray(km.cb([5.0], on="sf"), dtype=float)
         assert np.all(np.isfinite(cb))
 
-    def test_check_ph_no_spurious_truncation_warning(self):
+    def test_ph_test_no_spurious_truncation_warning(self):
         import warnings as _w
 
         np.random.seed(7)
@@ -440,7 +440,7 @@ class TestNonParametricScalars:
         m = CoxPH.fit(x=x, Z=Z, tl=np.zeros(60))
         with _w.catch_warnings():
             _w.simplefilter("error")
-            check_ph(m)
+            zph_score_test(m)
 
 
 @pytest.mark.parametrize(
@@ -464,3 +464,75 @@ def test_746_Hf_bounds_before_the_first_failure_are_plus_zero(bound):
     model = sp.KaplanMeier.fit([1.0, 2, 3, 4, 5], c=[1, 0, 0, 0, 0])
     b = model.cb([0.5, 1.0, 1.5], on="Hf", bound=bound)
     assert np.all(b == 0) and not np.any(np.signbit(b))
+
+
+# -- conditional survival, cs -------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "fitter", [surpyval.KaplanMeier, surpyval.NelsonAalen, surpyval.Turnbull]
+)
+def test_cs_is_the_ratio_of_survivals(fitter):
+    x = [1, 2, 2, 3, 5, 6, 8, 9, 11, 12]
+    c = [0, 0, 1, 0, 0, 1, 0, 0, 0, 1]
+    model = fitter.fit(x, c=c)
+    given = np.array([0.0, 2.0, 5.5])
+    further = np.array([[0.0], [1.0], [3.0]])
+    out = model.cs(further, given)
+    assert out.shape == (3, 3)
+    expected = model.sf(further + given) / model.sf(given)
+    np.testing.assert_allclose(out, expected, rtol=1e-14)
+    assert np.all(out[0] == 1.0)
+
+
+def test_cs_kaplan_meier_is_the_product_over_the_later_failures():
+    # Klein and Moeschberger (2003), section 4.6: the conditional
+    # Kaplan-Meier from a given age is the product of 1 - d/r over the
+    # failures after it, the estimate of the units still at risk then.
+    x = np.array([1, 2, 2, 3, 5, 6, 8, 9, 11, 12], float)
+    c = np.array([0, 0, 1, 0, 0, 1, 0, 0, 0, 1])
+    model = surpyval.KaplanMeier.fit(x, c=c)
+    given, further = 2.5, 6.0
+    product = 1.0
+    for t in np.unique(x[(c == 0) & (x > given) & (x <= given + further)]):
+        product *= 1 - np.sum((x == t) & (c == 0)) / np.sum(x >= t)
+    assert model.cs(further, given) == pytest.approx(product, rel=1e-14)
+    assert np.ndim(model.cs(further, given)) == 0
+
+
+def test_cs_is_nan_where_nothing_survives_to_given():
+    model = surpyval.KaplanMeier.fit([1.0, 2.0, 3.0])
+    out = model.cs([0.5, 1.0], [1.5, 3.0])
+    assert out[0] == pytest.approx(0.5)
+    assert np.isnan(out[1])
+    with pytest.raises(ValueError, match="interp"):
+        model.cs(1, 1, interp="spline")
+
+
+def test_cs_linear_is_the_ratio_of_linear_survivals():
+    """Audit C13. With ``interp="linear"`` the conditional survival is the
+    ratio of the interpolated survivals, at ages between the data's
+    times."""
+    x = [1, 2, 2, 3, 5, 6, 8, 9, 11, 12]
+    c = [0, 0, 1, 0, 0, 1, 0, 0, 0, 1]
+    model = surpyval.KaplanMeier.fit(x, c=c)
+    given = np.array([1.5, 2.5, 7.0])
+    further = np.array([1.5, 3.0, 4.0])
+    out = model.cs(further, given, interp="linear")
+    expected = model.sf(further + given, interp="linear") / model.sf(
+        given, interp="linear"
+    )
+    assert np.all(np.isfinite(out))
+    np.testing.assert_allclose(out, expected, rtol=1e-14)
+
+
+def test_cs_is_nan_past_the_data_without_a_support():
+    """Audit C13. Without ``set_support`` the interpolated estimate is not
+    defined past the largest time (12, censored), so neither is the
+    conditional survival to there; within the data it is defined."""
+    x = [1, 2, 2, 3, 5, 6, 8, 9, 11, 12]
+    c = [0, 0, 1, 0, 0, 1, 0, 0, 0, 1]
+    model = surpyval.KaplanMeier.fit(x, c=c)
+    out = model.cs([1.0, 20.0], 8.0, interp="linear")
+    assert np.isfinite(out[0])
+    assert np.isnan(out[1])

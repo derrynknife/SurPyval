@@ -81,7 +81,7 @@ Worked classifications:
 |-------|-----|-----------|--------|--------|------------|------|------------|
 | Weibull, Exponential, … | univariate | single_event | single | terminal | none | continuous | parametric |
 | KaplanMeier, NelsonAalen, FlemingHarrington, Turnbull | univariate | single_event | single | terminal | none | continuous | nonparametric |
-| WeibullPH/AFT/PO/AH (every distribution), AcceleratedLife, RoystonParmar | univariate | single_event | single | terminal | with | continuous | parametric |
+| WeibullPH/AFT/PO/AH (every distribution), AcceleratedLife, RoystonParmar, Distributional (covariates on every parameter) | univariate | single_event | single | terminal | with | continuous | parametric |
 | CoxPH, ProportionalOdds, AdditiveHazards, BuckleyJames | univariate | single_event | single | terminal | with | continuous | semiparametric |
 | Survival trees and forests (`surpyval.beta.ml`) | univariate | single_event | single | terminal | with | continuous | nonparametric |
 | ParametricCompetingRisks | univariate | single_event | competing | terminal | none | continuous | parametric |
@@ -149,18 +149,25 @@ Cells of the axes with nothing built yet, each filed as an issue:
 | Multi-state models (illness-death, progressive) | `multi_state` | #808 |
 | Copulas for more than two lifetimes | multivariate, more than two series | #809 |
 | Shared frailty and correlated series for repairable systems | multivariate / recurrent | #810 |
-| Bayesian inference (a scope decision first) | the deferred inference axis | #811 |
+| Bayesian inference beyond the univariate parametric distributions (regression, pooling) | the inference axis | — |
 
 Not gaps, by choice: discrete time with covariates is logistic or binomial
 regression, out of scope for the package; and discrete time without
 covariates has no separate non-parametric estimator (for single trials it is
 the observed proportion).
 
-## Deferred orthogonal axes (out of scope for now)
+## The inference axis
 
-- **Inference paradigm** — frequentist vs Bayesian. The entire library is
-  frequentist (MLE/MPS/MOM/MSE/MPP); Bayesian survival would be a genuine new
-  top-level axis (#811).
+- **Inference paradigm** — frequentist or Bayesian. Every model is fitted
+  by a frequentist estimator (MLE/MPS/MOM/MSE/MPP); the univariate
+  parametric distributions are also fitted by Bayes' rule
+  (`Distribution.fit_bayes`, `surpyval.bayes`): one to three free
+  parameters, any censoring and truncation, the offset, limited-failure
+  and zero-inflated forms, priors on the parameters or on quantities such
+  as a B-life. Bayesian regression, fleet pooling (hierarchical models)
+  and the other families are not built yet; they need a sampler.
+
+## Deferred orthogonal axes (out of scope for now)
 - **Effect type** — fixed vs random effects (frailty). Frailty is both the
   *clustered* kind of `multivariate` data and a random-effect modality of the
   covariate axis; the single-event frailty regressions above exist, and

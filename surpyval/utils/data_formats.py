@@ -157,6 +157,36 @@ def xcnt_sort(
     return x[idx], c[idx], n[idx], t[idx]
 
 
+def group_sort_weighted(
+    x: npt.NDArray,
+    c: npt.NDArray,
+    n: npt.NDArray,
+    t: npt.NDArray,
+    w: npt.NDArray,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+    """Merge rows identical in ``(x, c, t, w)``, summing their counts, and
+    sort them as :func:`xcnt_sort` does, carrying the weights ``w``.
+
+    Rows with different weights stay apart: the robust variance of a
+    weighted fit needs each unit's own weight (its meat is
+    ``sum n w^2 s s'``). The grouping key is sorted in full, so the result
+    does not depend on the order the rows came in."""
+    x_columns = x.reshape(-1, 1) if x.ndim == 1 else x
+    columns = [x_columns[:, j] for j in range(x_columns.shape[1])]
+    columns += [c, t[:, 0], t[:, 1], w]
+    order = np.lexsort(columns[::-1])
+    keys = np.column_stack(columns)[order]
+    new = np.concatenate([[True], (keys[1:] != keys[:-1]).any(axis=1)])
+    group = np.cumsum(new) - 1
+    first = order[new]
+    totals = np.bincount(group, weights=n[order]).astype(n.dtype)
+    xg, cg, tg, wg = x[first], c[first], t[first], w[first]
+    t_key = tg.min(axis=1)
+    x_key = xg if xg.ndim == 1 else xg.mean(axis=1)
+    idx = np.lexsort((c[first], t_key, x_key))
+    return xg[idx], cg[idx], totals[idx], tg[idx], wg[idx]
+
+
 def fsli_handler(
     f: npt.ArrayLike | None = None,
     s: npt.ArrayLike | None = None,
@@ -666,10 +696,19 @@ def coerce_xcnt_x(x: npt.ArrayLike, recurrent: bool = False) -> npt.NDArray:
                 "Dimension 1 must be equal to 2, try transposing data, or do"
                 " you have a 1d array in a 2d array?"
             )
-        if not (x[:, 0] <= x[:, 1]).all():
+        reversed_rows = np.flatnonzero(~(x[:, 0] <= x[:, 1]))
+        if reversed_rows.size:
+            shown = reversed_rows[:5]
             raise ValueError(
-                "All left intervals must be less than or equal to right"
-                " intervals"
+                "All left intervals must be less than or equal to right "
+                "intervals: {} row(s) of 'x' have the left end above the "
+                "right (rows {}{}: {}). Give each interval as [left, right], "
+                "lower end first; an exact time t is [t, t].".format(
+                    reversed_rows.size,
+                    shown.tolist(),
+                    ", ..." if reversed_rows.size > 5 else "",
+                    x[shown].tolist(),
+                )
             )
     return x
 
@@ -1079,13 +1118,17 @@ def _xcnt_x(
     return x
 
 
-def _check_interval_flags(c: npt.NDArray, x: npt.NDArray) -> None:
-    """The flags of a two-column ``x``: 2 exactly on the interval rows."""
-    if np.any(c[x[:, 0] == x[:, 1]] == 2):
-        raise ValueError(
-            "Censor flag indicates interval censored but only has one"
-            + " failure time"
-        )
+def _check_interval_flags(c: npt.NDArray, x: npt.NDArray) -> npt.NDArray:
+    """The flags of a two-column ``x``: 2 exactly on the interval rows.
+
+    A row flagged 2 whose ends are equal, ``[t, t]``, is an interval of
+    zero width: the exact time ``t``, flagged 0 in the flags returned (as
+    ``fit_from_df`` reads ``xl == xr``, and as the default flags have it).
+    """
+    c = np.array(c)
+    zero_width = (c == 2) & (x[:, 0] == x[:, 1])
+    if zero_width.any():
+        c[zero_width] = 0
 
     if np.any(c[x[:, 0] != x[:, 1]] != 2):
         mask1 = x[:, 0] != x[:, 1]
@@ -1099,14 +1142,9 @@ def _check_interval_flags(c: npt.NDArray, x: npt.NDArray) -> None:
             + f"{c[m]}"
         )
 
-    if np.any((c == 2) & (x[:, 0] == x[:, 1])):
-        raise ValueError(
-            "Censor flag provided, but case where interval flagged as"
-            + " non interval censoring"
-        )
-
     if np.any((c != 0) & (c != 1) & (c != -1) & (c != 2)):
         raise ValueError("Censoring value must only be one of -1, 0, 1, or 2")
+    return c
 
 
 def _has_missing(values: Any) -> bool:
@@ -1195,7 +1233,7 @@ def _xcnt_censoring(c: npt.ArrayLike | None, x: npt.NDArray) -> npt.NDArray:
         raise ValueError("'c' must be the same length as 'x'")
 
     if x.ndim == 2:
-        _check_interval_flags(c_arr, x)
+        c_arr = _check_interval_flags(c_arr, x)
     elif np.any((c_arr != 0) & (c_arr != 1) & (c_arr != -1)):
         raise ValueError(
             "Censoring value must only be one of -1, 0, 1 for single"
@@ -1230,7 +1268,11 @@ def _xcnt_counts(n: npt.ArrayLike | None, x: npt.NDArray) -> npt.NDArray:
     # isfinite as well: floor(inf) == inf, so an infinite count would pass
     # the whole-number test and become garbage in the integer cast.
     if not (np.isfinite(n_arr) & np.equal(n_arr, np.floor(n_arr))).all():
-        raise ValueError("Count array 'n' must contain integer values")
+        raise ValueError(
+            "Count array 'n' must contain integer values. If these are "
+            "sampling, propensity or censoring weights, pass them as 'w' "
+            "(and leave 'n' for counts of identical units)."
+        )
     if not (n_arr > 0).all():
         raise ValueError("count array can't be 0 or less")
     return n_arr
@@ -1507,7 +1549,7 @@ def _handled_xcnt_to_xrd(
     # No warning for a shared entry time: validation guarantees tl < x for
     # every observation, so a common entry time never alters the (entry,
     # exit] risk sets -- a warning here would fire on perfectly ordinary
-    # inputs like tl=0 everywhere, e.g. from check_ph on a model fit with
+    # inputs like tl=0 everywhere, e.g. from the PH test on a model fit with
     # a constant entry column (#282).
 
     if ((c != 1) & (c != 0)).any():

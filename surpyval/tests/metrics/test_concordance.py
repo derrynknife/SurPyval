@@ -178,7 +178,8 @@ def test_lifelines_and_r_agree():
 
 def test_missing_values_and_errors():
     assert np.isnan(concordance_index([1.0, np.nan, 3], [0, 0, 0], [3, 2, 1]))
-    assert np.isnan(concordance_index([1.0, 2, 3], [0, 0, 0], [3, np.nan, 1]))
+    with pytest.raises(ValueError, match="'risk' has 1 missing"):
+        concordance_index([1.0, 2, 3], [0, 0, 0], [3, np.nan, 1])
     with pytest.raises(ValueError, match="'c' must be 0"):
         concordance_index([1.0, 2, 3], [0, -1, 0], [3, 2, 1])
     with pytest.raises(ValueError, match="same length"):

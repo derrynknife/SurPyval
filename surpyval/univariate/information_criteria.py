@@ -153,11 +153,11 @@ class InformationCriteriaMixin:
         value: Any = model_dict.get("ic_n")
         return None if value is None else float(value)
 
-    def _ic_k(self) -> int:
+    def _ic_k(self) -> float:
         # The parameter count used in the aic and bic penalties.
         return self.k
 
-    def _ic_k_aic_c(self) -> int:
+    def _ic_k_aic_c(self) -> float:
         # The parameter count used in the aic_c correction term; the same
         # as the aic penalty it corrects unless a host overrides it.
         return self._ic_k()
@@ -211,6 +211,14 @@ class InformationCriteriaMixin:
         for name in ("_aic", "_aic_c", "_bic"):
             self.__dict__.pop(name, None)
 
+    def _refuse_weighted_ic(self, name: str) -> None:
+        """Refuse an information criterion of a fit with weights ``w``,
+        whose (pseudo) likelihood is not that of the data."""
+        if getattr(self, "weighted", False):
+            from surpyval.utils.weights import refuse_information_criterion
+
+            raise refuse_information_criterion(name)
+
     def bic(self) -> float:
         r"""
 
@@ -252,6 +260,7 @@ class InformationCriteriaMixin:
         :math:`d` this way (see "Information criteria" in the Parametric
         Estimation guide).
         """
+        self._refuse_weighted_ic("bic()")
         if hasattr(self, "_bic"):
             return self._bic
         n_penalty = self._ic_sample_size()
@@ -281,6 +290,7 @@ class InformationCriteriaMixin:
         >>> model.aic()
         529.0537128478127
         """
+        self._refuse_weighted_ic("aic()")
         if hasattr(self, "_aic"):
             return self._aic
         self._aic = 2 * self._ic_k() + 2 * self.neg_ll()
@@ -321,6 +331,7 @@ class InformationCriteriaMixin:
         :math:`N = k + 1`, and a value *below* ``aic()`` for smaller
         :math:`N`, which would have won a comparison).
         """
+        self._refuse_weighted_ic("aic_c()")
         if hasattr(self, "_aic_c"):
             return self._aic_c
         self._aic_c = corrected_aic(

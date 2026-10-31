@@ -21,7 +21,8 @@ from __future__ import annotations
 
 import functools
 import inspect
-from typing import Any, Callable, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 __all__ = [
     "normalise_unit",
@@ -213,8 +214,24 @@ def takes_unit(method: Callable[..., R]) -> Callable[..., R]:
     if "unit" in signature.parameters:
         return method
 
+    # Every public ``fit`` has this wrapper, so it is also where a ``w``
+    # given to a fit that takes no weights is refused, with a ValueError
+    # saying what to use (principle 2), not Python's TypeError.
+    weight_arg = {"fit": "w", "fit_from_df": "w_col"}.get(method.__name__)
+    if weight_arg in signature.parameters or any(
+        p.kind is inspect.Parameter.VAR_KEYWORD
+        for p in signature.parameters.values()
+    ):
+        weight_arg = None
+
     @functools.wraps(method)
     def wrapper(*args: Any, unit: Any = None, **kwargs: Any) -> R:
+        if weight_arg is not None and weight_arg in kwargs:
+            from surpyval.utils.weights import refuse_unsupported_weights
+
+            raise refuse_unsupported_weights(
+                args[0] if args else None, method.__qualname__, weight_arg
+            )
         canonical = normalise_unit(unit)
         model = method(*args, **kwargs)
         if canonical is not None and model is not None:

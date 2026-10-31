@@ -466,8 +466,6 @@ def test_package_has_a_docstring_and_all():
         # The data-format functions deprecated by date are listed, with a
         # FutureWarning (tests/utils/test_surpyval_data_api.py)
         warnings.simplefilter("ignore", FutureWarning)
-        # and the names renamed with a deprecation (RecurrentEventData)
-        warnings.simplefilter("ignore", DeprecationWarning)
         exec("from surpyval import *", namespace)
         for name in ("np", "Any", "TYPE_CHECKING"):
             assert name not in namespace

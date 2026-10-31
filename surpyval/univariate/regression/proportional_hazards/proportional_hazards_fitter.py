@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import autograd.numpy as np
 import numpy as onp
@@ -30,6 +31,7 @@ from .._fit_skeleton import (
 )
 from .._kinds import PROPORTIONAL_HAZARD
 from .._likelihood import regression_neg_ll
+from .._penalised_fit import PenalisedFitMixin
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin, truncation_window
 from ..tvc_fit import TVCFitMixin
@@ -85,7 +87,7 @@ def _stand_in(x: Any, rows: Any) -> Any:
 
 def _small_on_log_scale(
     base: Boxable, log_base: Callable, x: Numeric
-) -> "tuple[Any, Boxable] | None":
+) -> tuple[Any, Boxable] | None:
     """``(rows, log_values)``: the rows where the baseline (cumulative)
     hazard ``base`` at ``x`` is below ``_SMALL_BASELINE`` (0 included,
     where it underflowed) and its log, ``log_base(x)``, is finite, with
@@ -110,6 +112,7 @@ class ProportionalHazardsFitter(
     HazardIdentitiesMixin,
     TVCFitMixin,
     DataFrameRegressionMixin,
+    PenalisedFitMixin,
 ):
     """
     Parametric proportional hazards fitter: a parametric baseline hazard
@@ -182,6 +185,7 @@ class ProportionalHazardsFitter(
 
     #: The ``repr`` (#614)
     fitter_kind = "proportional hazards fitter"
+    _penalised_kind = PROPORTIONAL_HAZARD
     name_suffix = "PH"
 
     def __init__(
@@ -190,9 +194,9 @@ class ProportionalHazardsFitter(
         dist: Any,
         phi: Callable,
         phi_name: str,
-        phi_bounds: "Callable[[npt.NDArray], tuple] | tuple",
-        phi_param_map: "Callable[[npt.NDArray], dict] | dict",
-        phi_init: "Callable[[npt.NDArray], npt.NDArray] | None" = None,
+        phi_bounds: Callable[[npt.NDArray], tuple] | tuple,
+        phi_param_map: Callable[[npt.NDArray], dict] | dict,
+        phi_init: Callable[[npt.NDArray], npt.NDArray] | None = None,
     ) -> None:
         # Compare names and kinds rather than the signature's string
         # form so an annotated phi (e.g. ``LogLinearPhi.phi``) passes.
@@ -462,7 +466,7 @@ class ProportionalHazardsFitter(
         return regression_neg_ll(self, data, *params)
 
     @staticmethod
-    def create(distribution: Any) -> "ProportionalHazardsFitter":
+    def create(distribution: Any) -> ProportionalHazardsFitter:
         """
         Create a Proportional Hazards fitter for the given distribution using
         exp(beta'Z) as the hazard multiplier.
@@ -485,7 +489,7 @@ class ProportionalHazardsFitter(
     @classmethod
     def create_general_log_linear_fitter(
         cls, name: str, distribution: Any
-    ) -> "ProportionalHazardsFitter":
+    ) -> ProportionalHazardsFitter:
         return cls(
             name,
             distribution,
@@ -511,6 +515,7 @@ class ProportionalHazardsFitter(
         center: bool = False,
         tl: npt.ArrayLike | None = None,
         tr: npt.ArrayLike | None = None,
+        w: npt.ArrayLike | float | None = None,
     ) -> ParametricRegressionModel:
         """
         Fit the proportional hazards model to the data.
@@ -551,6 +556,15 @@ class ProportionalHazardsFitter(
             covariates far from 0 (a year, a date), where the baseline at
             ``Z = 0`` cannot be represented or fitted, which the default
             fit refuses with a ``ValueError`` saying so.
+
+        w : array_like or float, optional
+            Sampling, propensity or censoring weights, one positive number
+            per row (beside its count ``n``). The fit maximises the weighted
+            (pseudo) likelihood and ``covariance()``, behind every Wald
+            bound, is the robust (sandwich) covariance, as R's
+            ``survreg(..., weights = w, robust = TRUE)``; the
+            likelihood-ratio and bootstrap bounds and the information
+            criteria refuse (see :doc:`/Weighted Data`).
 
         Returns
         -------
@@ -595,6 +609,7 @@ class ProportionalHazardsFitter(
             init,
             fixed,
             center,
+            w=w,
             kind=PROPORTIONAL_HAZARD,
             optimiser=optimise_ph,
             reg_model=self._reg_model,
@@ -605,6 +620,18 @@ class ProportionalHazardsFitter(
             # Z = 0 (#463); a custom phi is centred only with center=True.
             log_linear=self.phi is LogLinearPhi.phi,
         )
+
+    def _penalised_link(self) -> CovariateLink:
+        # The penalty is on the coefficients of exp(beta'Z); a custom phi's
+        # parameters need not be coefficients at all.
+        if self.phi is not LogLinearPhi.phi:
+            raise ValueError(
+                "fit_penalised needs the log-linear covariate function "
+                "exp(beta'Z); this fitter has a custom phi, whose "
+                "parameters are not one coefficient per covariate. Use "
+                "PH(distribution) for a penalised fit."
+            )
+        return CovariateLink(self.phi_name, {}, self.phi)
 
     def _reg_model(self, pmap: dict[str, int]) -> CovariateLink:
         # Keep this fitter's possibly-custom phi (and its historical

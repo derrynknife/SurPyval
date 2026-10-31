@@ -33,6 +33,7 @@ truncation; where one does not, its ``fit`` docstring says so.
 
    surpyval.nonparametric
    surpyval.parametric
+   surpyval.bayes
    surpyval.regression
    surpyval.competing_risks
    surpyval.counting

@@ -57,6 +57,7 @@ from surpyval.univariate.parametric.fitters import is_local_minimum
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import (
+    fixed_order_dot,
     numerical_gradient,
     numerical_hessian,
     standard_errors_of,
@@ -83,10 +84,10 @@ from surpyval.utils.validation import (
 if TYPE_CHECKING:
     import pandas as pd
 
-_SCALES = ("hazard", "odds", "normal")
+SCALES = ("hazard", "odds", "normal")
 
 
-def _rcs_basis(x: np.ndarray, knots: np.ndarray) -> np.ndarray:
+def rcs_basis(x: np.ndarray, knots: np.ndarray) -> np.ndarray:
     """Restricted-cubic-spline design matrix (Durrleman-Simon) at ``x``.
 
     Columns are ``[1, x, v_1(x), ..., v_m(x)]`` for the ``m`` internal knots.
@@ -105,7 +106,7 @@ def _rcs_basis(x: np.ndarray, knots: np.ndarray) -> np.ndarray:
     return np.column_stack(cols)
 
 
-def _rcs_deriv(x: np.ndarray, knots: np.ndarray) -> np.ndarray:
+def rcs_deriv(x: np.ndarray, knots: np.ndarray) -> np.ndarray:
     """Derivative of the RCS basis with respect to ``x``."""
     x = np.asarray(x, dtype=float)
     kmin, kmax = knots[0], knots[-1]
@@ -121,11 +122,45 @@ def _rcs_deriv(x: np.ndarray, knots: np.ndarray) -> np.ndarray:
     return np.column_stack(cols)
 
 
-def _place_knots(x_events: np.ndarray, n_internal: int) -> np.ndarray:
+def place_knots(x_events: np.ndarray, n_internal: int) -> np.ndarray:
     """Boundary + internal knots at quantiles of the event log-times."""
     lx = np.log(np.asarray(x_events, dtype=float))
     qs = np.linspace(0.0, 1.0, n_internal + 2)
     return np.quantile(lx, qs)
+
+
+def check_knots(knots: Any) -> np.ndarray:
+    """Knots given by the user (log time, the boundary knots included),
+    sorted: the spline basis takes its boundary knots from the ends and
+    its parameters follow the knots in order, so knots in another order
+    describe the same spline only once sorted. Refuses fewer than two,
+    a missing or infinite knot, and a repeated one."""
+    try:
+        k = np.asarray(knots, dtype=float).reshape(-1)
+    except (TypeError, ValueError):
+        raise ValueError(
+            "`knots` must be numbers (log times, the boundary knots "
+            "included); got {!r}.".format(knots)
+        ) from None
+    if k.size < 2:
+        raise ValueError(
+            "`knots` needs at least the two boundary knots (in log time); "
+            "got {}. Pass more knots, or leave `knots` out and set "
+            "`df`.".format(k.size)
+        )
+    if not np.all(np.isfinite(k)):
+        raise ValueError(
+            "`knots` must be finite log times; got {}. Knots are on the "
+            "log scale: pass np.log of the times (each above 0).".format(
+                k.tolist()
+            )
+        )
+    if np.unique(k).size != k.size:
+        raise ValueError(
+            "`knots` must be distinct; got {} (log time). Remove the "
+            "repeated knot.".format(k.tolist())
+        )
+    return np.sort(k)
 
 
 def _scale_terms(eta: np.ndarray, scale: str) -> tuple[Any, ...]:
@@ -141,7 +176,7 @@ def _scale_terms(eta: np.ndarray, scale: str) -> tuple[Any, ...]:
         return log_S, log_S + log_1mS
     if scale == "normal":
         return norm.logsf(eta), norm.logpdf(eta)
-    raise option_error("scale", scale, _SCALES)
+    raise option_error("scale", scale, SCALES)
 
 
 def _sf_from_eta(eta: np.ndarray, scale: str) -> np.ndarray:
@@ -177,7 +212,7 @@ def _sf_at(
     out = np.empty(times.shape, dtype=float)
     pos = np.isfinite(times) & (times > 0.0)
     if np.any(pos):
-        eta = _rcs_basis(np.log(times[pos]), knots) @ gamma
+        eta = rcs_basis(np.log(times[pos]), knots) @ gamma
         out[pos] = _sf_from_eta(eta, scale)
     out[~pos] = np.where(np.isposinf(times[~pos]), 0.0, 1.0)
     return out
@@ -237,19 +272,20 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
         """The names of ``params``, entry by entry: the spline
         coefficients ``gamma_0``, ``gamma_1``, ..., as the summary prints
         them."""
-        return ["gamma_{}".format(i) for i in range(len(self.params))]
+        return [f"gamma_{i}" for i in range(len(self.params))]
 
     # -- linear predictor --------------------------------------------------
 
+    # The spline at the query times, each time's sum in a fixed order
+    # (``fixed_order_dot``), so permuting the query permutes the result
+    # to the last bit.
     def _eta(self, t: np.ndarray) -> np.ndarray:
-        return _rcs_basis(np.log(np.asarray(t, dtype=float)), self.knots) @ (
-            self.params
-        )
+        B = rcs_basis(np.log(np.asarray(t, dtype=float)), self.knots)
+        return fixed_order_dot(B, self.params)
 
     def _eta_deriv(self, t: np.ndarray) -> np.ndarray:
-        return _rcs_deriv(np.log(np.asarray(t, dtype=float)), self.knots) @ (
-            self.params
-        )
+        B = rcs_deriv(np.log(np.asarray(t, dtype=float)), self.knots)
+        return fixed_order_dot(B, self.params)
 
     # -- distribution functions -------------------------------------------
 
@@ -311,7 +347,7 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
         defined."""
         last = self.knots[-1:]
         with np.errstate(all="ignore"):
-            s = float((_rcs_deriv(last, self.knots) @ self.params)[0])
+            s = float((rcs_deriv(last, self.knots) @ self.params)[0])
             if not s >= 0.0:
                 return np.nan
             if self.scale != "hazard" or s < 1.0:
@@ -319,7 +355,7 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
             if s > 1.0:
                 return np.inf
             # s = 1: exp(eta(x) - log x), the same at every x past the knot
-            eta = float((_rcs_basis(last, self.knots) @ self.params)[0])
+            eta = float((rcs_basis(last, self.knots) @ self.params)[0])
             return float(np.exp(eta - last[0]))
 
     @keeps_query_shape
@@ -369,8 +405,8 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
         the knots they are solved together, by ``solve_bracketed``."""
         k_lo, k_hi = self.knots[0], self.knots[-1]
         ends = np.array([k_lo, k_hi])
-        e_lo, e_hi = _rcs_basis(ends, self.knots) @ self.params
-        s_lo, s_hi = _rcs_deriv(ends, self.knots) @ self.params
+        e_lo, e_hi = rcs_basis(ends, self.knots) @ self.params
+        s_lo, s_hi = rcs_deriv(ends, self.knots) @ self.params
         out = np.full(target.shape, np.nan)
         below = target <= e_lo
         above = ~below & (target >= e_hi)
@@ -383,7 +419,7 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
         if inside.size:
 
             def gap(lx: npt.NDArray, sel: npt.NDArray) -> npt.NDArray:
-                eta = _rcs_basis(lx, self.knots) @ self.params
+                eta = fixed_order_dot(rcs_basis(lx, self.knots), self.params)
                 return eta - target[inside[sel]]
 
             # Absolute in log time: relative in time.
@@ -468,8 +504,8 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
         # infinity), as sf gives. It was nan (#760).
         inside = np.isfinite(x) & (x > 0.0)
         edge = np.where(np.isposinf(x), 0.0, np.where(np.isnan(x), x, 1.0))
-        B = _rcs_basis(np.log(np.where(inside, x, 1.0)), self.knots)
-        eta = B @ self.params
+        B = rcs_basis(np.log(np.where(inside, x, 1.0)), self.knots)
+        eta = fixed_order_dot(B, self.params)
         var = np.einsum("ij,jk,ik->i", B, cov, B)
         se = np.sqrt(np.maximum(var, 0.0))
 
@@ -571,7 +607,7 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
         se = np.full(params.shape, np.nan)
         if self._covariance is not None:
             se = self.standard_errors()
-        names = ["gamma_{}".format(i) for i in range(params.size)]
+        names = [f"gamma_{i}" for i in range(params.size)]
         table = coefficient_table(names, params, se, alpha_ci, exp=False)
         table.index.name = "name"
         return table
@@ -765,9 +801,11 @@ class RoystonParmar_(FitterRepr, UnivariateDataFrameMixin):
             The link scale (proportional hazards, proportional odds, probit).
         knots : array_like, optional
             Explicit knot locations *on the log-time scale* (including the two
-            boundary knots), overriding the quantile-based default.
+            boundary knots), overriding the quantile-based default. They
+            are sorted (the spline parameters follow the sorted knots) and
+            must be finite and distinct.
         """
-        check_option("scale", scale, _SCALES)
+        check_option("scale", scale, SCALES)
 
         from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -823,9 +861,9 @@ class RoystonParmar_(FitterRepr, UnivariateDataFrameMixin):
                     "Reduce df (df=1 fits a two-parameter model with no "
                     "internal knots) or pass explicit knots."
                 )
-            knots = _place_knots(event_times, n_internal)
+            knots = place_knots(event_times, n_internal)
         else:
-            knots = np.asarray(knots, dtype=float)
+            knots = check_knots(knots)
         if np.unique(knots).size != len(knots):
             raise ValueError(
                 "Royston-Parmar knots must be distinct; quantile placement "
@@ -836,12 +874,12 @@ class RoystonParmar_(FitterRepr, UnivariateDataFrameMixin):
         n_params = len(knots)  # [1, x] + (len(knots) - 2) internal terms
 
         lx_o = np.log(x_o) if x_o.size else x_o
-        B_o = _rcs_basis(lx_o, knots) if x_o.size else None
-        Bd_o = _rcs_deriv(lx_o, knots) if x_o.size else None
-        B_r = _rcs_basis(np.log(x_r), knots) if x_r.size else None
-        B_l = _rcs_basis(np.log(x_l), knots) if x_l.size else None
-        B_il = _rcs_basis(np.log(x_il), knots) if x_il.size else None
-        B_ir = _rcs_basis(np.log(x_ir), knots) if x_ir.size else None
+        B_o = rcs_basis(lx_o, knots) if x_o.size else None
+        Bd_o = rcs_deriv(lx_o, knots) if x_o.size else None
+        B_r = rcs_basis(np.log(x_r), knots) if x_r.size else None
+        B_l = rcs_basis(np.log(x_l), knots) if x_l.size else None
+        B_il = rcs_basis(np.log(x_il), knots) if x_il.size else None
+        B_ir = rcs_basis(np.log(x_ir), knots) if x_ir.size else None
 
         neg_ll = _SplineNegLL(
             scale,
