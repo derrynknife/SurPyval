@@ -266,11 +266,23 @@ jobs:
           - group: bayes-sbc
             workers: auto
             args: surpyval/tests/calibration/test_sbc_bayes.py
+          # The joint-model and distributional-regression studies, out of
+          # "rest", which took 56 of its 60 minutes on a slow runner on 31
+          # October 2026: there the two joint studies took 2,324 s (the
+          # "inspections" one 1,583 s) and the distributional bootstrap
+          # 911 s, the three longest in the group.
+          - group: joint-distributional
+            workers: auto
+            args: >-
+              surpyval/tests/calibration/test_coverage_joint.py
+              surpyval/tests/calibration/test_coverage_distributional.py
           - group: rest
             workers: auto
             args: >-
               surpyval/tests/calibration surpyval/tests/scenarios
               --ignore surpyval/tests/calibration/test_sbc_bayes.py
+              --ignore=surpyval/tests/calibration/test_coverage_joint.py
+              --ignore=surpyval/tests/calibration/test_coverage_distributional.py
               --ignore=surpyval/tests/calibration/test_coverage_copula.py
               --ignore=surpyval/tests/calibration/test_refit_registry.py
               --ignore=surpyval/tests/calibration/test_coverage_extra_parameters.py
