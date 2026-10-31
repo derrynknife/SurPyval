@@ -1164,7 +1164,11 @@ class Parametric(
           little more in small samples). The offset's interval runs up to the
           first failure where its profile stays below the critical value
           there (the likelihood is unbounded at that corner for a shape
-          below 1, and the region reaches it).
+          below 1, and the region reaches it). The region then holds
+          every point with a shape below 1, so a side of another
+          parameter towards values that have such points (a Gamma
+          ``alpha`` below 1; either side of its ``beta``) is the edge of
+          that parameter's space.
         - ``"bootstrap"`` -- the parametric bootstrap, as for ``cb``: the
           bias-corrected percentile interval of the parameter over
           ``n_boot`` refits to data simulated from the model. It is the

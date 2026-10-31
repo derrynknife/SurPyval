@@ -30,8 +30,9 @@ Two things differ from a plain model's searches:
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 from copy import copy
-from typing import Any, Callable
+from typing import Any
 
 import autograd.numpy as np
 import numpy as onp
@@ -142,7 +143,7 @@ class ExtendedLikelihoodRatio(LikelihoodRatioMixin):
     lfp_p = 1.0
     _psi_search_class = _OffsetStartSearch
 
-    def __init__(self, model: Any, held: "set[int] | None" = None) -> None:
+    def __init__(self, model: Any, held: set[int] | None = None) -> None:
         self.model = model
         self.dist = model.dist
         self.surv_data = model.surv_data
@@ -327,6 +328,9 @@ class ExtendedLikelihoodRatio(LikelihoodRatioMixin):
         is walked out in the parameter itself (``_lr_side_from_edge``)."""
         edge = self._closed_edges.get(idx)
         if edge is None:
+            if self._corner_side(idx, crit, direction):
+                coords, _ = self._lr_coords()
+                return float(coords[idx].edge(direction))
             return super()._lr_param_side(idx, crit, direction)
         key = self._lr_key(idx, crit, direction)
         cache = self.__dict__.setdefault("_lr_sides", {})
@@ -458,6 +462,78 @@ class ExtendedLikelihoodRatio(LikelihoodRatioMixin):
             reached.add(float(crit))
             return True
         return False
+
+    def _infinite_at_origin(self, core: npt.NDArray) -> bool:
+        """Whether the base density at its origin is infinite at the core
+        parameters ``core`` (a Weibull, Gamma or LogLogistic shape below
+        1): with the offset on the first failure the likelihood there is
+        unbounded."""
+        with np.errstate(all="ignore"):
+            origin = onp.ravel(
+                onp.asarray(self.dist.df(onp.array([0.0]), *core), float)
+            )[0]
+        return bool(onp.isposinf(origin))
+
+    def _corner_side(self, idx: int, crit: float, direction: Any) -> bool:
+        """Whether the side ``direction`` of the interval on the core
+        parameter ``idx`` is the edge of its space because the region at
+        ``crit`` reaches the offset's corner (``_lr_corner``).
+
+        There the region holds every core point whose base density at its
+        origin is infinite, with the offset a hair below the first
+        failure: the likelihood is unbounded at each, so no such point is
+        excluded at any level, and those points are joined to one another
+        through the corner. Where values of ``idx`` towards its edge have
+        such points (a Gamma ``alpha`` below 1 and every ``beta``, with the
+        shape below 1), the side is that edge. The profile walk cannot find
+        it: the searches' likelihood above the fit's maximum is refused
+        (``_lr_neg_ll``), and the minimum they report near the corner is
+        whichever wall they stop at, which changed with the last bits of
+        the arithmetic (a 95% bound of 0.081 on a Gamma ``alpha`` whose 80%
+        bound was 0, on Linux x86-64 only)."""
+        if idx not in self._core_idx:
+            return False
+        if not self._lr_corner(crit):
+            return False
+        coords, _ = self._lr_coords()
+        k = self._core_idx.index(idx)
+        core_hat = onp.asarray(self.params[self._core_idx], dtype=float)
+        others = [
+            (i, j)
+            for i, j in enumerate(self._core_idx)
+            if j != idx and j not in self._held
+        ]
+        coord = coords[idx]
+        lo_u, hi_u = coord.ends
+        w_hat = float(
+            onp.clip(coord.to_u(float(self.params[idx])), lo_u, hi_u)
+        )
+        grid = onp.linspace(-20.0, 20.0, 81)
+
+        def has_corner_point(value: float) -> bool:
+            core = core_hat.copy()
+            core[k] = value
+            if self._infinite_at_origin(core):
+                return True
+            for i, j in others:
+                u_j = coords[j].to_u(float(self.params[j]))
+                lo_j, hi_j = coords[j].ends
+                for u in onp.clip(u_j + grid, lo_j, hi_j):
+                    trial = core.copy()
+                    trial[i] = coords[j].from_u(float(u))
+                    if self._infinite_at_origin(trial):
+                        return True
+            return False
+
+        # Values ever nearer the edge (10, 20 and 40 units of the search
+        # coordinate out from the estimate) must each have a corner point.
+        steps = (10.0, 20.0, 40.0)
+        with np.errstate(all="ignore"):
+            for s in steps:
+                u = float(onp.clip(w_hat + direction * s, lo_u, hi_u))
+                if not has_corner_point(coord.from_u(u)):
+                    return False
+        return True
 
     def _warn_corner(self, what: str) -> None:
         warnings.warn(
