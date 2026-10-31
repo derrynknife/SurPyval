@@ -25,13 +25,12 @@ Monte Carlo error in each replication's ends.
 
 import os
 import warnings
-from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 
 import surpyval as sp
 from surpyval.tests._helpers import random_right_censoring
-from surpyval.tests.calibration._montecarlo import check_coverage
+from surpyval.tests.calibration._montecarlo import check_coverage, process_pool
 
 N = 200
 ALPHA = (10.0, -0.5, 0.3)
@@ -101,7 +100,7 @@ def _boot(r):
 
 
 def _map(fn, reps):
-    with ProcessPoolExecutor(max_workers=min(os.cpu_count() or 1, 8)) as pool:
+    with process_pool(max_workers=min(os.cpu_count() or 1, 8)) as pool:
         return list(pool.map(fn, range(reps)))
 
 

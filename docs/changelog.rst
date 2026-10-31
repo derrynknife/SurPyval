@@ -299,6 +299,16 @@ would, naming its replacement.
 
 **Fixed**
 
+- The likelihood-ratio ``param_cb`` of an offset model whose region
+  reaches the corner where the likelihood is unbounded (the offset on the
+  first failure, with a Weibull, Gamma or LogLogistic shape below 1)
+  could give a finite side where the region runs to the edge, and one
+  that depended on the platform's arithmetic: a Gamma ``alpha`` with a
+  95% lower bound of 0.081 and an 80% one of 0, on Linux x86-64 only.
+  Every point with a shape below 1 and the offset a hair below the first
+  failure is in the region there, so a side towards values that have such
+  points (a Gamma ``alpha`` below 1, either side of its ``beta``, a
+  Weibull ``alpha``) is now the edge of the parameter's space.
 - ``logrank`` reported ``dof == -1`` where no event was left to compare
   (every row censored, or none at risk after ``t0``). It is now 0, with a
   statistic of 0 and a p-value of 1, as for the other cases with nothing

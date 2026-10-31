@@ -310,7 +310,7 @@ def test_lfp_mean_is_infinite_and_its_lower_bound_is_on_the_edge():
 # ---------------------------------------------------------------------------
 # The offset's corner, where the likelihood is unbounded
 # ---------------------------------------------------------------------------
-def _small_offset():
+def _small_offset_data():
     # Twelve values: at 95% the region reaches the offset at the first
     # failure, where a shape below 1 makes the likelihood infinite
     x = np.array(
@@ -331,6 +331,11 @@ def _small_offset():
     )
     c = np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0])
     n = np.array([1, 1, 2, 1, 1, 1, 1, 3, 1, 1, 1, 1])
+    return x, c, n
+
+
+def _small_offset():
+    x, c, n = _small_offset_data()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return sp.Weibull.fit(x, c=c, n=n, offset=True)
@@ -349,6 +354,46 @@ def test_a_region_reaching_the_unbounded_corner_gives_nan_and_says_so():
     assert model.param_cb("gamma", method="lr")[1] == pytest.approx(7.411)
     # At 80% the region stops short of it, and the band is found
     assert np.isfinite(model.cb([9.0, 13.0], alpha_ci=0.2, method="lr")).all()
+
+
+def _small_gamma_offset():
+    x, c, n = _small_offset_data()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return sp.Gamma.fit(x, c=c, n=n, offset=True)
+
+
+@pytest.mark.parametrize("alpha_ci", [0.01, 0.05, 0.2])
+def test_a_side_with_unbounded_likelihood_points_is_the_edge(alpha_ci):
+    # The region reaches the corner at each level, and holds every point
+    # with a shape below 1 and the offset a hair below the first failure,
+    # where the likelihood is unbounded: a Gamma alpha below 1, and any
+    # beta. The profile walk stopped at whichever wall the refused
+    # likelihood above the maximum left it, which changed with the last
+    # bits of the arithmetic (a 95% alpha bound of 0.081 and an 80% one of
+    # 0 on Linux x86-64).
+    model = _small_gamma_offset()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        alpha = model.param_cb("alpha", alpha_ci=alpha_ci, method="lr")
+        beta = model.param_cb("beta", alpha_ci=alpha_ci, method="lr")
+    assert alpha[0] == 0.0
+    assert alpha[1] > model.params[0]
+    assert list(beta) == [0.0, np.inf]
+
+
+def test_a_side_without_unbounded_likelihood_points_is_searched():
+    # A Weibull shape above 1 has a density of 0 at the offset: its upper
+    # side is walked to the critical value, while its lower side and both
+    # sides of the scale (a shape below 1 at any scale) are the edges.
+    model = _small_offset()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        beta = model.param_cb("beta", method="lr")
+        alpha = model.param_cb("alpha", method="lr")
+    assert beta[0] == 0.0
+    assert model.params[1] < beta[1] < np.inf
+    assert list(alpha) == [0.0, np.inf]
 
 
 def test_an_exponential_offset_on_the_first_failure_is_a_genuine_maximum():

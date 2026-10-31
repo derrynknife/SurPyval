@@ -16,7 +16,6 @@ being the better one, and a small attenuation towards zero is expected.
 
 import os
 import warnings
-from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 import pytest
@@ -24,7 +23,11 @@ from scipy.stats import norm
 
 import surpyval as sp
 from surpyval.tests._helpers import random_right_censoring
-from surpyval.tests.calibration._montecarlo import check_bias, check_coverage
+from surpyval.tests.calibration._montecarlo import (
+    check_bias,
+    check_coverage,
+    process_pool,
+)
 
 N = 200
 Z_CRIT = norm.ppf(0.975)
@@ -57,7 +60,7 @@ def test_cox_coefficient_coverage(tied):
         rse = np.sqrt(np.diag(model.robust_covariance()))
         lo[r], hi[r] = b - Z_CRIT * se, b + Z_CRIT * se
         rlo[r], rhi[r] = b - Z_CRIT * rse, b + Z_CRIT * rse
-    print("tied rows: {:.0%}".format(ties))
+    print(f"tied rows: {ties:.0%}")
     slack = 0.02 if tied else 0.01
     label = "CoxPH ({})".format("efron, ties" if tied else "breslow")
     check_coverage(lo, hi, beta, 0.95, label + " model-based", slack=slack)
@@ -259,7 +262,7 @@ def test_617_cb_bootstrap_coverage_at_an_extrapolated_use_condition():
     truth = np.exp(-((x_use / life) ** 2.2))
     reps = 200
     jobs = [(r, _alt_sample(rng), x_use, z_use) for r in range(reps)]
-    with ProcessPoolExecutor(max_workers=os.cpu_count()) as pool:
+    with process_pool(max_workers=os.cpu_count()) as pool:
         boot = np.array(list(pool.map(_617_bootstrap_bounds, jobs)))
     check_coverage(
         boot[:, 0], boot[:, 1], truth, 0.90, "#617 use, bootstrap (BCa)"
