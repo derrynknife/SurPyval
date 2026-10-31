@@ -315,9 +315,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements_dev.txt
 
+      # A per-test limit (pytest-timeout) under the job's: a study that
+      # hangs or runs far over fails with its name and every thread's
+      # stack, where the job's limit only cancelled the run part way
+      # (the "rest" group at 53% on 30 October 2026). 45 minutes is over
+      # the longest study's time (#617's bootstrap, 24 to 36), so it stops
+      # no sound study; a hang that starts later is still stopped by the
+      # job's limit.
       - name: pytest (${{ matrix.group }})
         run: >-
           python -m pytest -rP --durations=10 -n ${{ matrix.workers }}
+          --timeout=2700 --timeout-method=thread
           --run-calibration --run-scenarios ${{ matrix.args }}
 
   # The PyMC helpers (surpyval.pymc) with PyMC installed. PyMC is not a

@@ -34,11 +34,36 @@ for passing tests), so a run's log records how close every study is.
 """
 
 import math
-from typing import Callable
+import multiprocessing
+from collections.abc import Callable
+from concurrent.futures import ProcessPoolExecutor
+from multiprocessing.context import BaseContext
 
 import numpy as np
 
 Z_TOL = 3.0
+
+
+def process_pool(max_workers: "int | None" = None) -> ProcessPoolExecutor:
+    """A process pool for a study's replicates, whose workers start fresh
+    (``forkserver``) where the platform's default would fork them.
+
+    Forking copies a process that is multi-threaded by then (the BLAS
+    threads, and pytest-xdist's own under ``-n``), which Python warns may
+    deadlock the child. On GitHub's Linux runners it made
+    ``test_coverage_distributional`` about twice as slow as with fresh
+    workers (its bootstrap study 1467 s against 687 s on 30 October 2026),
+    and the calibration "rest" group ran past its 60-minute limit. macOS
+    and Windows start fresh workers already (``spawn``), and keep it.
+    Each replicate is computed from its own job, so the results are the
+    same either way.
+    """
+    context: BaseContext
+    if multiprocessing.get_start_method() == "fork":
+        context = multiprocessing.get_context("forkserver")
+    else:
+        context = multiprocessing.get_context()
+    return ProcessPoolExecutor(max_workers=max_workers, mp_context=context)
 
 
 def rate_se(p: float, reps: int) -> float:
@@ -99,8 +124,7 @@ def check_coverage(
     cov = np.atleast_1d(hit.mean(axis=0))
     tol = Z_TOL * rate_se(nominal, reps) + slack
     lines = [
-        _report("{} [{}]".format(label, k), c, nominal, tol)
-        for k, c in enumerate(cov)
+        _report(f"{label} [{k}]", c, nominal, tol) for k, c in enumerate(cov)
     ]
     print("\n".join(lines))
     bad = [line for line, c in zip(lines, cov) if abs(c - nominal) > tol]
@@ -147,9 +171,7 @@ def check_bias(
     tol = Z_TOL / math.sqrt(reps) + slack
     bad = []
     for k in range(est.shape[1]):
-        line = _report(
-            "{} standardised bias [{}]".format(label, k), z_bias[k], 0.0, tol
-        )
+        line = _report(f"{label} standardised bias [{k}]", z_bias[k], 0.0, tol)
         print(line)
         if abs(z_bias[k]) > tol:
             bad.append(line)
@@ -161,9 +183,7 @@ def check_bias(
         ratio = np.sqrt(np.nanmean(se**2, axis=0)) / sd
         tol_se = Z_TOL / math.sqrt(2.0 * reps) + se_slack
         for k in range(est.shape[1]):
-            line = _report(
-                "{} se / sd [{}]".format(label, k), ratio[k], 1.0, tol_se
-            )
+            line = _report(f"{label} se / sd [{k}]", ratio[k], 1.0, tol_se)
             print(line)
             if abs(ratio[k] - 1.0) > tol_se:
                 bad.append(line)
