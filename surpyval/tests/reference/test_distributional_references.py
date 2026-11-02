@@ -572,115 +572,55 @@ def test_left_truncation_matches_flexsurv_gamma():
 
 # -- the likelihood-ratio tests --------------------------------------------
 #
-# The fitted model's log-likelihood is gamlss's and flexsurv's (above). R
-# has not been run for the null models yet: the R script prints them
-# (``gamlss(y ~ z1 + z2, sigma.formula = ~ 1)`` and ``gamlss(y ~ 1,
-# sigma.formula = ~ 1)``, and the flexsurv fits without ``anc``), but no R
-# values are written here. Until they are, each null is checked against
-# its own maximisation, written out with scipy.stats.weibull_min and
-# scipy.optimize, independent of SurPyval's likelihood and search.
+# The fitted model's log-likelihood is gamlss's and flexsurv's (above). The
+# null models are R's too: ``gamlss(y ~ 1, sigma.formula = ~ 1)`` (every
+# coefficient at 0), ``gamlss(y ~ z1 + z2, sigma.formula = ~ 1)`` (the
+# shape's coefficient at 0) and the same two fits in flexsurv without
+# ``anc``. Printed by scripts/reference/reference_r_distributional.R
+# (R 4.6.2, gamlss 5.5.5, gamlss.cens 5.0.7, flexsurv 2.3.2).
+
+GAMLSS_WEIBULL_NULL = -142.7428355194
+GAMLSS_WEIBULL_BETA_NULL = -134.7672711689
+FLEXSURV_WEIBULL_NULL = -105.6082665438
+FLEXSURV_WEIBULL_BETA_NULL = -100.3461226943
 
 
-def _weibull_ll(x, c, Z_scale, Z_shape, theta, tl=None):
-    """The Weibull log-likelihood with log(scale) = a0 + Z_scale a and
-    log(shape) = b0 + Z_shape b, theta = (a0, a..., b0, b...)."""
-    from scipy.stats import weibull_min
-
-    ka = 1 + Z_scale.shape[1]
-    a, b = theta[:ka], theta[ka:]
-    scale = np.exp(a[0] + Z_scale @ a[1:])
-    shape = np.exp(b[0] + Z_shape @ b[1:])
-    d = weibull_min(shape, scale=scale)
-    lo, hi = (x[:, 0], x[:, 1]) if x.ndim == 2 else (x, x)
-    out = np.where(
-        c == 0,
-        d.logpdf(lo),
-        np.where(
-            c == 1,
-            d.logsf(lo),
-            np.where(
-                c == -1,
-                d.logcdf(hi),
-                np.log(np.clip(d.cdf(hi) - d.cdf(lo), 1e-300, None)),
-            ),
-        ),
-    )
-    if tl is not None:
-        out = out - d.logsf(tl)
-    return float(np.sum(out))
-
-
-def _maximised(x, c, Z_scale, Z_shape, tl=None):
-    from scipy.optimize import minimize
-
-    lo = x[:, 0] if x.ndim == 2 else x
-    start = np.zeros(2 + Z_scale.shape[1] + Z_shape.shape[1])
-    start[0] = np.log(np.mean(lo))
-
-    def neg(theta):
-        return -_weibull_ll(x, c, Z_scale, Z_shape, theta, tl)
-
-    best = None
-    for method in ("Nelder-Mead", "BFGS"):
-        res = minimize(
-            neg,
-            start if best is None else best.x,
-            method=method,
-            options=(
-                {"maxiter": 20000, "xatol": 1e-10, "fatol": 1e-12}
-                if method == "Nelder-Mead"
-                else {"gtol": 1e-9}
-            ),
-        )
-        if best is None or res.fun <= best.fun:
-            best = res
-    return -float(best.fun)
-
-
-def test_lr_tests_every_censoring_full_matches_gamlss_nulls_by_hand():
+def test_lr_tests_every_censoring_match_gamlss_nulls():
     x, c, Z = _censored()
     model = sp.WeibullDistributional.fit(
         x, Z, c=c, covariates={"alpha": [0, 1], "beta": [0]}
     )
-    none = np.zeros((Z.shape[0], 0))
     global_test = model.likelihood_ratio_test()
     np.testing.assert_allclose(
         global_test["log_likelihood"], GAMLSS["Weibull"][0], atol=1e-8
     )
     np.testing.assert_allclose(
-        global_test["log_likelihood_null"],
-        _maximised(x, c, none, none),
-        atol=1e-6,
+        global_test["log_likelihood_null"], GAMLSS_WEIBULL_NULL, atol=1e-6
     )
     assert global_test["df"] == 3
     shape_test = model.likelihood_ratio_test(parameter="beta")
     np.testing.assert_allclose(
-        shape_test["log_likelihood_null"],
-        _maximised(x, c, Z, none),
-        atol=1e-6,
+        shape_test["log_likelihood_null"], GAMLSS_WEIBULL_BETA_NULL, atol=1e-6
     )
     assert shape_test["df"] == 1
 
 
-def test_lr_tests_left_truncation_full_matches_flexsurv_nulls_by_hand():
+def test_lr_tests_left_truncation_match_flexsurv_nulls():
     x, c, Z, tl = _truncated()
     model = sp.WeibullDistributional.fit(
         x, Z, c=c, tl=tl, covariates={"alpha": [0, 1], "beta": [0]}
     )
-    none = np.zeros((Z.shape[0], 0))
     global_test = model.likelihood_ratio_test()
     np.testing.assert_allclose(
         global_test["log_likelihood"], FLEXSURV_WEIBULL[0], atol=1e-8
     )
     np.testing.assert_allclose(
-        global_test["log_likelihood_null"],
-        _maximised(x, c, none, none, tl),
-        atol=1e-6,
+        global_test["log_likelihood_null"], FLEXSURV_WEIBULL_NULL, atol=1e-6
     )
     shape_test = model.likelihood_ratio_test(parameter="beta")
     np.testing.assert_allclose(
         shape_test["log_likelihood_null"],
-        _maximised(x, c, Z, none, tl),
+        FLEXSURV_WEIBULL_BETA_NULL,
         atol=1e-6,
     )
     assert (global_test["df"], shape_test["df"]) == (3, 1)
