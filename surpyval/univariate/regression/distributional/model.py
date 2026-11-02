@@ -193,6 +193,179 @@ class DistributionalRegressionModel(ParametricRegressionModel):
     def _wald_tested(self) -> list[int]:
         return list(range(self.k_dist, len(self.params)))
 
+    # -- the likelihood-ratio tests ----------------------------------------
+
+    def likelihood_ratio_test(self, parameter: str | None = None) -> dict:
+        """
+        The likelihood-ratio test of the covariates' effect: twice the gain
+        in log-likelihood over a null model, chi-squared on the number of
+        coefficients the null model holds at 0.
+
+        With no ``parameter``, the global test: do the covariates, on all
+        the parameters together, explain anything? The null model is the
+        distribution fitted alone to the same data (every coefficient on
+        every parameter 0), on one degree of freedom per estimated
+        coefficient.
+
+        With ``parameter`` (one of the distribution's parameter names,
+        ``"beta"`` for a Weibull's shape), the test of that parameter's
+        covariates alone: does the shape depend on the load? The null model
+        holds that parameter's coefficients at 0 and refits everything else
+        as in the fitted model (the other parameters keep their
+        covariates), on one degree of freedom per estimated coefficient of
+        that parameter.
+
+        Aliased coefficients (:attr:`aliased`) and coefficients held at 0
+        with ``fixed`` are not counted.
+
+        Parameters
+        ----------
+        parameter : str, optional
+            The parameter whose covariates to test; ``None`` (the default)
+            tests every parameter's together.
+
+        Returns
+        -------
+        dict
+            ``{"statistic", "df", "p_value", "log_likelihood",
+            "log_likelihood_null"}``.
+
+        Raises
+        ------
+        ValueError
+            For an unknown ``parameter`` or one with no estimated
+            coefficient; a tested coefficient held at a value other than 0
+            with ``fixed`` (the null model is then not inside the fitted
+            one); or a model restored with ``from_dict`` (it does not carry
+            the data). For a fit with weights ``w`` or a penalised fit, as
+            for every regression.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import WeibullDistributional
+        >>> rng = np.random.default_rng(3)
+        >>> load = rng.uniform(0, 1, 300)
+        >>> x = 10 * np.exp(-0.5 * load) * rng.weibull(1.2 * np.exp(load))
+        >>> model = WeibullDistributional.fit(x, load)
+        >>> res = model.likelihood_ratio_test()
+        >>> res["df"], bool(res["p_value"] < 0.001)
+        (2, True)
+        >>> model.likelihood_ratio_test(parameter="beta")["df"]
+        1
+        """
+        from .._global_test import _result, refuse_weighted_test
+        from .._penalised import refuse_lr_test
+
+        refuse_lr_test(self)
+        refuse_weighted_test(self)
+        names = list(self.distribution.parameter_names)
+        if parameter is not None and parameter not in names:
+            raise ValueError(
+                "Unknown parameter {!r}; the {} distribution's parameters "
+                "are {}. Give one of them, or parameter=None for the test "
+                "of every parameter's covariates together.".format(
+                    parameter, self.distribution.name, names
+                )
+            )
+        self._require_data("likelihood_ratio_test")
+        coef_names = self._coefficient_names()
+        # Each coefficient's parameter, in the order of coef_names
+        owner = [
+            name
+            for name, cols in zip(names, self.covariate_positions)
+            for _ in range(np.asarray(cols).size)
+        ]
+        tested = [
+            j
+            for j in range(len(coef_names))
+            if parameter is None or owner[j] == parameter
+        ]
+        nonzero = sorted(
+            coef_names[j]
+            for j in tested
+            if coef_names[j] in self.fixed and self.fixed[coef_names[j]] != 0
+        )
+        if nonzero:
+            raise ValueError(
+                "likelihood_ratio_test: the coefficient(s) {} are held at a "
+                "value other than 0 (fixed=), so the null model, with them "
+                "at 0, is not inside the fitted model and the test does not "
+                "hold. Refit with them free (or held at 0), or compare "
+                "log_likelihood with a fit of your own null model: twice "
+                "the difference is chi-squared on the difference in the "
+                "number of parameters.".format(nonzero)
+            )
+        aliased = set(self._aliased_coefficients.tolist())
+        free = [
+            j
+            for j in tested
+            if j not in aliased and coef_names[j] not in self.fixed
+        ]
+        if parameter is not None and not free:
+            raise ValueError(
+                "likelihood_ratio_test: the parameter {!r} has no estimated "
+                "covariate coefficient (none, or each fixed or aliased), so "
+                "there is nothing to test. Name a parameter with covariates "
+                "(the model's coefficients are {}), or parameter=None for "
+                "the global test.".format(parameter, coef_names)
+            )
+        ll = -float(self.neg_ll())
+        data = self.data
+        if parameter is None:
+            fixed = {k: v for k, v in self.fixed.items() if k in names}
+            kwargs: dict[str, Any] = {} if not fixed else {"fixed": fixed}
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                null = self.distribution.fit(  # type: ignore[attr-defined]
+                    x=data.x, c=data.c, n=data.n, t=data.t, **kwargs
+                )
+            return _result(ll, -float(null.neg_ll()), len(free))
+        return _result(ll, self._null_ll(parameter, tested), len(free))
+
+    def _null_ll(self, parameter: str, tested: list[int]) -> float:
+        """The log-likelihood of the fit to the same data with the
+        coefficients ``tested`` (those of ``parameter``) held at 0 and
+        the rest as the model has them, started from the model's own
+        estimates."""
+        coef_names = self._coefficient_names()
+        fixed = dict(self.fixed)
+        fixed.update({coef_names[j]: 0.0 for j in tested})
+        init = np.array(self._eval_params(), dtype=float)
+        init[[self.k_dist + j for j in tested]] = 0.0
+        names = list(self.distribution.parameter_names)
+        covariates = {
+            name: np.asarray(cols, dtype=int).tolist()
+            for name, cols in zip(names, self.covariate_positions)
+        }
+        data = self.data
+        with warnings.catch_warnings():
+            # The fit's own warnings (aliased columns, say) were given
+            # when the model was fitted.
+            warnings.simplefilter("ignore")
+            null = self.model.fit(
+                data.x,
+                np.asarray(data.Z, dtype=float),
+                c=data.c,
+                n=data.n,
+                t=data.t,
+                init=init,
+                fixed=fixed,
+                center=self._has_center(),
+                covariates=covariates,
+                links=dict(zip(names, self.links)),
+            )
+        if null.maximum not in ("verified", "unknown"):
+            raise ValueError(
+                "likelihood_ratio_test: the fit without the covariates on "
+                "{!r} did not reach a verified maximum ({}), so the test "
+                "would not hold. Compare log_likelihood with a fit of that "
+                "model of your own, checking its convergence.".format(
+                    parameter, null.maximum
+                )
+            )
+        return -float(null.neg_ll())
+
     def phi(self, Z: Any) -> npt.NDArray:
         """Not defined: a distributional regression has no single
         covariate multiplier. :meth:`parameters_at` gives each row's

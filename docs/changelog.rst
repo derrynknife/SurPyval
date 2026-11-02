@@ -1,6 +1,22 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+**Added.**
+
+- ``likelihood_ratio_test()`` on a distributional regression
+  (``WeibullDistributional`` and the others), which 0.26 refused. With no
+  argument it is the global test: twice the gain in log-likelihood over
+  the distribution fitted alone, on one degree of freedom per estimated
+  coefficient over every parameter.
+  ``likelihood_ratio_test(parameter="beta")`` tests one parameter's
+  covariates (does the shape depend on the load?), against the fit with that parameter's coefficients at 0 and
+  the others refitted. Aliased coefficients and those held at 0 are not
+  counted; a coefficient held at another value is refused, saying what to
+  do. The result is the dictionary the other regressions' tests return.
+
 v0.26 (31 October 2026)
 -----------------------
 
