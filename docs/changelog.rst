@@ -1,11 +1,18 @@
 Changelog
-=========
-
+==
 Unreleased
 ----------
 
 **Fixed.**
 
+- ``CoxPH.fit(..., w=w)`` on data whose partial likelihood has no finite
+  maximum (a covariate that separates the events from the survivors) no
+  longer lets numpy's overflow and invalid-value warnings through beside
+  its own "No finite maximum" warning: the weighted likelihood, its score
+  residuals and baseline now take ``exp(eta)`` relative to the largest
+  ``eta``, which cannot overflow. Fits with a finite maximum are unchanged
+  to rounding.
+=======
 - ``AalenAdditiveModel.constant_effects_test`` rejected effects that are
   constant far more often than its level with a few hundred units (about
   21% at the 5% level with 300 units, 44% with 100). Its resampled null
