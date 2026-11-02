@@ -1549,9 +1549,10 @@ resampling (it takes a seed):
     assert _c.loc["prio", "KS p"] > 0.5, _c
 
 A constant effect is rejected for ``age`` (p below 0.01) and not for
-``prio`` (p above 0.5). The resampled null is a large-sample result, and
-with a few hundred units it rejects a truly constant effect somewhat more
-often than the level says, so treat a p-value near 0.05 as borderline.
+``prio`` (p above 0.5). The resampled null is a large-sample result: with
+a few hundred units the test holds its level, and with about a hundred it
+rejects a constant effect less often than the level says (it is
+conservative).
 
 A unit's survival is :math:`\exp(-H)` with
 :math:`H(x \mid Z) = B_0(x) + B(x)'Z`, with Wald bounds:
