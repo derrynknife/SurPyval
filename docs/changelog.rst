@@ -18,6 +18,26 @@ Unreleased
   profile converging below the critical value (``inf`` for that
   ``alpha``), and otherwise it is ``nan`` with a warning that the profile
   was too flat to follow, saying how far it was followed.
+- ``CoxPH.fit(..., w=w)`` on data whose partial likelihood has no finite
+  maximum (a covariate that separates the events from the survivors) no
+  longer lets numpy's overflow and invalid-value warnings through beside
+  its own "No finite maximum" warning: the weighted likelihood, its score
+  residuals and baseline now take ``exp(eta)`` relative to the largest
+  ``eta``, which cannot overflow. Fits with a finite maximum are unchanged
+  to rounding.
+- ``AalenAdditiveModel.constant_effects_test`` rejected effects that are
+  constant far more often than its level with a few hundred units (about
+  21% at the 5% level with 300 units, 44% with 100). Its resampled null
+  multiplied the least-squares residuals, which nearly vanish where few
+  units are at risk; it now multiplies the events, so its spread is the
+  optional variation of ``B``. The test now holds its level from about
+  300 units and is conservative with 100. The statistics are unchanged;
+  p-values change.
+- ``AalenAdditive.fit`` no longer reports noise for ``B`` and its
+  variance at a last event time where too few units are at risk to
+  separate the covariates: the sums over the risk set left rounding error
+  that made the singular step look estimable. The estimate now stops
+  before that step, as it was meant to.
 
 v0.26 (31 October 2026)
 -----------------------
