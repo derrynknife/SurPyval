@@ -161,12 +161,14 @@ def _risk_set_sums(
     entered before it (``tl < t``) and not yet out (``x >= t``)."""
 
     def summed(keys: npt.NDArray) -> npt.NDArray:
-        # the sum of the values over the rows with key >= each time
+        # The sum of the values over the rows with key >= each time, as
+        # sums from the last row back: a difference of running totals
+        # would leave rounding noise where few rows remain, and that
+        # noise made a singular X'YX (one unit at risk) look invertible.
         order = np.argsort(keys)
-        total = np.concatenate(
-            [np.zeros((1,) + values.shape[1:]), np.cumsum(values[order], 0)]
-        )
-        return total[-1] - total[np.searchsorted(keys[order], times, "left")]
+        tail = np.cumsum(values[order][::-1], 0)[::-1]
+        tail = np.concatenate([tail, np.zeros((1,) + values.shape[1:])])
+        return tail[np.searchsorted(keys[order], times, "left")]
 
     return summed(x) - summed(tl)
 
@@ -828,19 +830,25 @@ class AalenAdditiveModel(
 
         (Kolmogorov-Smirnov) and its integrated square (Cramér-von Mises,
         summed over the event times). Their null distributions are
-        simulated by multiplying each unit's martingale residual process
-        by a standard normal draw (Martinussen and Scheike 2006, section
-        5.3): ``n_sim`` draws, each a pass over the event times, so the
-        cost grows with units times event times times ``n_sim``. The
-        p-value is the share of draws at least as large as the observed
-        statistic; p-values from different seeds differ by about
-        ``sqrt(p (1 - p) / n_sim)``.
+        simulated by multiplying each event's contribution to the
+        increments of ``B`` by a standard normal draw (the multiplier
+        method of Martinussen and Scheike 2006, section 5.3, on the
+        counting processes): ``n_sim`` draws, each a pass over the event
+        times, so the cost grows with units times event times times
+        ``n_sim``. Each draw's variance is the optional variation
+        :attr:`B_var`. The p-value is the share of draws at least as large
+        as the observed statistic; p-values from different seeds differ by
+        about ``sqrt(p (1 - p) / n_sim)``.
 
-        The resampled null is a large-sample approximation, and it is too
-        narrow with a few hundred units: in simulations of 300 units the
-        test rejected a truly constant effect 8% to 16% of the time at the
-        5% level, and 5% with 1000 units. With a few hundred units, read a
-        p-value near the level as borderline, and look at :meth:`plot`.
+        The draws multiply the events (``dN``) rather than the martingale
+        residuals (``dN - Y X dB``): the residuals are those of a
+        least-squares fit, and where few units are at risk (near the last
+        event time, which anchors the statistic) they are close to 0 and
+        the null is far too narrow. In simulations with a constant effect
+        the residual draws rejected 44% of the time at the 5% level with
+        100 units, 21% with 300 and 8% with 1000. These draws reject at
+        about the level with 300 units or more, and less often than the
+        level (0.5% to 3.5%) with 100: the test is conservative there.
 
         Parameters
         ----------
@@ -890,16 +898,21 @@ class AalenAdditiveModel(
 
     def _resampled(self, n_sim: int, rng: np.random.Generator) -> npt.NDArray:
         """``n_sim`` draws of the resampled process ``W(t)`` at the event
-        times: each unit's martingale residual process, mapped as the
-        increments of ``B`` are, times a standard normal draw (a row of
-        ``n`` units carries ``sqrt(n)`` times one)."""
+        times: each unit's events, mapped as the increments of ``B`` are
+        (``(X'YX + P)^{-1} X_i dN_i``), times a standard normal draw (a
+        row of ``n`` units carries ``sqrt(n)`` times one), so that each
+        draw's variance is the optional variation ``B_var``.
+
+        Not the martingale residuals ``dN_i - Y_i X_i dB``: they are the
+        residuals of the least-squares fit at each event time, which
+        nearly vanish where the risk set is small, and the draws then
+        understate the variance there (most of all at the last event
+        time, which anchors the statistics), so that the test rejected a
+        constant effect far too often with a few hundred units."""
         x, c, n, tl, Z = self._fit_data  # type: ignore[misc]
         X = np.column_stack([np.ones(x.size), Z])
         kept = np.r_[0, 1 + np.setdiff1d(np.arange(Z.shape[1]), self.aliased)]
         X = X[:, kept]
-        dB = np.diff(
-            np.concatenate([np.zeros((1, kept.size)), self.B[:, kept]]), axis=0
-        )
         # The inverses of the fit, recomputed with its penalty.
         penalty = self._penalty_vector(Z)[kept]
         _, _, _, inverses = _estimate(x, c, n, tl, X, penalty)
@@ -908,10 +921,8 @@ class AalenAdditiveModel(
         running = np.zeros((n_sim, kept.size))
         event = c == 0
         for k, t in enumerate(self.x):
-            at_risk = (tl < t) & (x >= t)
             dN = (event & (x == t)).astype(float)
-            r = dN - at_risk * (X @ dB[k])
-            running = running + ((G * r[None, :]) @ X) @ inverses[k].T
+            running = running + ((G * dN[None, :]) @ X) @ inverses[k].T
             W[:, k, kept] = running
         return W
 

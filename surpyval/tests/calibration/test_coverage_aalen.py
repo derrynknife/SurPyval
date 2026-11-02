@@ -41,14 +41,14 @@ REPS = 500
 TEST_REPS = 200
 TIMES = np.array([2.0, 6.0, 10.0])
 XFAIL = (
-    "constant_effects_test at n = 300: the size here is 0.080 (inside the "
-    "rule), but the power against z2's effect stopping at 4 is 0.145, "
-    "short of the 0.5 set before the run; in a separate check (seed 1, 100 "
-    "replicates of 200 draws) the size was 0.13 to 0.16 at n = 300 and "
-    "0.05 at n = 1000, where the power against an effect of 0.4 was 0.91. "
-    "The resampled null is right for large samples and too narrow for "
-    "moderate ones, most likely from the few units at risk near the last "
-    "event time, where B(tau) anchors the statistic"
+    "constant_effects_test at n = 300: the size is inside the rule (0.020), "
+    "but the power against z2's effect of 0.1 stopping at 4 is 0.070, "
+    "short of the 0.5 set before the run. An effect that small is hard to "
+    "see with 300 units; with 1000 units the power against an effect of "
+    "0.5 stopping at 4 is high (test_aalen_additive.py). Before the "
+    "resampling multiplied the events rather than the martingale "
+    "residuals, the size here was 0.080 and the power 0.145, both "
+    "inflated by a null that was too narrow"
 )
 
 

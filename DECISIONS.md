@@ -113,7 +113,7 @@ Design decisions made while working on the open issues, with the reason for each
 | Predictions use the running maximum of `H = B_0(t) + B(t)'Z` from 0, floored at 0, as the Lin-Ying model does (#376); R's `timereg` and lifelines return the raw estimate, which is the same wherever it does not fall. | principle (valid values) | `sf` must stay in [0, 1] and never rise. | done |
 | `coef_penalty` is a ridge penalty on the covariates only, scaled by each covariate's variance; the baseline is not penalised. lifelines' `coef_penalizer` also penalises its intercept, so the two differ. | proposed | A penalty that does not depend on the covariates' units keeps the covariate-scale invariance; shrinking the baseline hazard towards 0 has no meaning. | done |
 | `cb` is Wald only, on `log H` with the optional-variation covariance of `B`; `method` other than `"wald"` is refused saying why (no likelihood; no bootstrap implemented). | principle (every bound) | The documented gap. | done |
-| `constant_effects_test` is timereg's Kolmogorov-Smirnov and Cramér-von Mises test of time-invariant effects, its null simulated by resampling (`n_sim`, `random_state`); its own seeded study found it anti-conservative at n = 300 (size 0.08 in the study, 0.13-0.16 in a separate check; 0.05 at n = 1000), pinned as a strict xfail in `calibration/test_coverage_aalen.py` and stated in the docstring. | proposed | Reported as found, not tuned. A fix (a time range short of the last event, or a small-sample correction) is for the maintainer. | open |
+| `constant_effects_test` is timereg's Kolmogorov-Smirnov and Cramér-von Mises test of time-invariant effects, its null simulated by resampling (`n_sim`, `random_state`); its own seeded study found it anti-conservative at n = 300 (size 0.08 in the study, 0.13-0.16 in a separate check; 0.05 at n = 1000), pinned as a strict xfail in `calibration/test_coverage_aalen.py` and stated in the docstring. | proposed | Reported as found, not tuned. A fix (a time range short of the last event, or a small-sample correction) is for the maintainer. | superseded (2026-11-03) |
 | Left out: lifelines' `smoothing_penalizer`, and the refit-registry study for the case (its fixture's fit is not an additive model to draw from); the model has its own calibration study. | proposed | — | done |
 
 ### Spline-baseline (Royston-Parmar) regression
@@ -217,6 +217,15 @@ Design decisions made while working on the open issues, with the reason for each
 | `to_surpyval(trace, dist, transform=, data=, priors=, **param_map)` returns `BayesianParametric.from_draws(...)`, not a class of its own. A parameter maps to a trace variable by name with integer indices (`"log_alpha[1]"`); unmapped parameters use the variable of their own name; `transform` is `"exp"`, `"log"`, `"inverse"` or a function. It reads an InferenceData/DataTree (`posterior`) or a MultiTrace, joins the chains, and refuses non-finite draws and draws outside a parameter's bounds (naming the likely missing transform). | proposed | One Bayesian model class in the package; the reference string is what a PyMC user already writes for a vector element. | done |
 
 ---
+
+## 2026-11-03
+
+### Aalen: the size of `constant_effects_test`
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The resampled null multiplies each event's contribution to the increments of `B`, `(X'YX)^{-1} X_i dN_i`, by a standard normal draw, not each unit's martingale residual `dN_i - Y_i X_i dB`. Each draw's variance is then the optional variation `B_var`. | proposed | The residuals of the least-squares fit nearly vanish where few units are at risk, so the draws understated the variance at the last event time, which anchors the statistics: the test rejected constant effects 44% of the time at n = 100, 21% at n = 300 and 8% at n = 1000. With the events it rejects at about 5% from n = 300 and is conservative (0.5% to 3.5%) at n = 100. The statistics themselves are unchanged. | done |
+| The risk-set sums `X'YX` are summed from the last row back, not as a difference of running totals. | proposed | The difference left rounding noise where one unit was at risk, so a singular `X'YX` passed the rank check and the last steps of `B` and `B_var` were noise (a negative variance). | done |
 
 ## 2026-10-17
 
