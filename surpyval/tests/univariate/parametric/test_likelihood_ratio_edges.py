@@ -477,6 +477,42 @@ def test_walk_finds_a_crossing_however_slowly_the_profile_rises(deviance):
     assert deviance(w) == pytest.approx(CRIT_95, abs=1e-8)
 
 
+def _noisy_beyond(smooth, w_noise):
+    """``smooth`` up to ``w_noise``, and beyond it the profile searches'
+    noise: up to 3 above it, changing in the ninth digit of ``w``. The
+    noise is a fixed function of ``w`` (exact in floating point), so the
+    tests do not depend on any platform's rounding."""
+
+    def deviance(w):
+        if w <= w_noise:
+            return smooth(w)
+        return smooth(w) + 3.0 * ((w * 1e9) % 1.0)
+
+    return deviance
+
+
+def test_walk_into_noise_on_a_converged_profile_is_the_edge():
+    # A Gamma offset's profile in log(alpha) tends to the Normal's
+    # deviance, 0.854, as 1 / alpha; past alpha of about 1e8 the searches
+    # could not solve it, and a crossing of 1.64 was found in the noise,
+    # wherever the platform put it (2e11, 7e11, 1.6e12 or infinity).
+    deviance = _noisy_beyond(lambda w: 0.854 * (1 - np.exp(-w)), 9.0)
+    assert _walk(deviance, CRIT_80) == ("edge", 709.78)
+    # Below the limit, the crossing is in the smooth part and found
+    status, w = _walk(deviance, 0.5)
+    assert status == "root"
+    assert deviance(w) == pytest.approx(0.5, abs=1e-8)
+
+
+def test_walk_into_noise_on_a_rising_profile_is_unresolved():
+    # Still rising where the noise starts (as log(w), without a limit):
+    # neither a bound nor the edge can be told, and the walk says so.
+    deviance = _noisy_beyond(lambda w: 0.4 * np.log1p(w), 20.0)
+    status, w = _walk(deviance, CRIT_95)
+    assert status == "unresolved"
+    assert np.isfinite(w)
+
+
 # ---------------------------------------------------------------------------
 # #421: likelihood-ratio bands.
 # ---------------------------------------------------------------------------

@@ -220,6 +220,13 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-03
 
+### Likelihood-ratio bounds on flat profiles
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `_lr_walk` checks each root, and each levelling off, a hair either side (`_LR_HAIR` 1e-6, `_LR_RESOLVED` 1e-3 of deviance beyond the slope). In noise it reads the walked points again for a deviance converging geometrically (each rise at most half the one before over four points, the rest of the rise short of the critical value), which gives the edge; otherwise the side is `nan`, with a warning naming how far the profile was followed. | proposed | A Gamma offset model's 80% `alpha` bound was 2e11, 7e11, 1.6e12 or infinity by platform: a crossing in the profile searches' noise. An honest edge or "not found" is the same everywhere; a number from noise is not. | done |
+| The geometric reading is used only once a walk has run into noise; the walk's ordinary levelling-off test is unchanged. | proposed | Using it everywhere stopped the NegativeBinomial `r` walks earlier and doubled the slices probed (`test_609`); slowing the steps on a concave profile moved ExpoWeibull valley bounds (`test_601`). | done |
+| An offset's upper side whose walk runs into noise within the corner gap of the first failure is the first failure, as when the walk reaches it. | proposed | Near the corner the searches stop at a wall; the interval ends at the first failure (`_lr_corner`). | done |
 ### Aalen: the size of `constant_effects_test`
 
 | Decision | By | Reason | Status |
