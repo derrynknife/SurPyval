@@ -331,7 +331,8 @@ class ExtendedLikelihoodRatio(LikelihoodRatioMixin):
             if self._corner_side(idx, crit, direction):
                 coords, _ = self._lr_coords()
                 return float(coords[idx].edge(direction))
-            return super()._lr_param_side(idx, crit, direction)
+            value = super()._lr_param_side(idx, crit, direction)
+            return self._offset_to_corner(idx, crit, direction, value)
         key = self._lr_key(idx, crit, direction)
         cache = self.__dict__.setdefault("_lr_sides", {})
         if key in cache:
@@ -348,6 +349,30 @@ class ExtendedLikelihoodRatio(LikelihoodRatioMixin):
             cache[key] = value
             return value
         return super()._lr_param_side(idx, crit, direction)
+
+    def _offset_to_corner(
+        self, idx: int, crit: float, direction: Any, value: float
+    ) -> float:
+        """The offset's upper side where its walk ran into noise a hair
+        below the first failure: the first failure. Near the corner the
+        searches stop at whichever wall the refused likelihood leaves
+        them (``_corner_side``), and the deviance there is noise
+        (``_lr_walk``'s *Resolution*); the walk had got within the corner
+        gap of ``_lr_corner`` before it, which is where the offset's
+        interval ends."""
+        if not (onp.isnan(value) and idx == self._gamma_idx and direction > 0):
+            return value
+        hi = self._bounds[idx][1]
+        key = self._lr_key(idx, crit, direction)
+        unresolved = self.__dict__.get("_lr_unresolved", {})
+        beyond = unresolved.get(key)
+        if hi is None or beyond is None:
+            return value
+        if float(hi) - beyond > 1e-6 * (float(hi) - float(self.params[idx])):
+            return value
+        del unresolved[key]
+        self.__dict__["_lr_sides"][key] = float(hi)
+        return float(hi)
 
     def _lr_side_from_edge(
         self, idx: int, crit: float, direction: Any, key: tuple

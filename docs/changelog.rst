@@ -1,6 +1,24 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+**Fixed.**
+
+- Likelihood-ratio bounds on a profile that flattens out towards a limit
+  (a Gamma with an offset tends to the Normal as its shape grows) no
+  longer depend on the platform. Far out along such a profile its
+  deviance cannot be solved precisely, and the walk found a crossing of
+  the critical value in that noise: a Gamma offset model's 80% upper
+  bound on ``alpha`` was about 2e11, 7e11, 1.6e12 or infinity depending
+  on the machine. A crossing or a levelling off is now checked a hair
+  either side; where the deviance there is noise, the bound is the edge
+  of the parameter's space if the points before the noise show the
+  profile converging below the critical value (``inf`` for that
+  ``alpha``), and otherwise it is ``nan`` with a warning that the profile
+  was too flat to follow, saying how far it was followed.
+
 v0.26 (31 October 2026)
 -----------------------
 
