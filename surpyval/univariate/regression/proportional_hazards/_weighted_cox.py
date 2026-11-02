@@ -93,13 +93,46 @@ class WeightedCox:
             return np.zeros(max(m, 1))
         return np.arange(m) / m
 
+    def _shifted_risks(
+        self, beta: npt.NDArray
+    ) -> tuple[npt.NDArray, npt.NDArray, float]:
+        """``(eta, exp(eta - shift), shift)`` at ``beta``, ``shift`` the
+        largest finite ``eta`` (0 without one).
+
+        Every sum over a risk set or its deaths is taken of ``exp(eta -
+        shift)``, which cannot overflow: the score and information are
+        ratios of such sums, in which the shift cancels, and the
+        log-likelihood adds it back. ``exp(eta)`` itself overflowed where
+        the coefficients run off to infinity (a covariate that separates
+        the events from the survivors), and numpy's overflow and invalid
+        value warnings reached the caller beside the fit's own "No finite
+        maximum" warning."""
+        with np.errstate(invalid="ignore", over="ignore"):
+            eta = self.Z @ beta
+        finite = eta[np.isfinite(eta)]
+        shift = float(finite.max()) if finite.size else 0.0
+        with np.errstate(invalid="ignore", over="ignore", under="ignore"):
+            risk = np.exp(eta - shift)
+        return eta, risk, shift
+
     def derivatives(
         self, beta: npt.NDArray
     ) -> tuple[float, npt.NDArray, npt.NDArray]:
-        """``(log-likelihood, score, information)`` at ``beta``."""
+        """``(log-likelihood, score, information)`` at ``beta``.
+
+        A risk set whose ``exp(eta - shift)`` all underflow (the
+        coefficients far out, along a direction with no finite maximum)
+        has a log-likelihood of ``-inf`` here, which the search's step
+        halving refuses, rather than a numpy warning."""
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            return self._derivatives(beta)
+
+    def _derivatives(
+        self, beta: npt.NDArray
+    ) -> tuple[float, npt.NDArray, npt.NDArray]:
         Z = self.Z
-        eta = Z @ beta
-        r = self.omega * np.exp(eta)
+        eta, risk, shift = self._shifted_risks(beta)
+        r = self.omega * risk
         S0 = self._risk_sums(r)
         S1 = self._risk_sums(r[:, None] * Z)
         S2 = self._risk_sums(r[:, None, None] * Z[:, :, None] * Z[:, None, :])
@@ -117,7 +150,7 @@ class WeightedCox:
             num = S1[j][None, :] - f[:, None] * D1[j][None, :]
             sq = S2[j][None] - f[:, None, None] * D2[j][None]
             wbar = self.wbar[j]
-            ll -= wbar * float(np.sum(np.log(den)))
+            ll -= wbar * (float(np.sum(np.log(den))) + f.size * shift)
             score -= wbar * (num / den[:, None]).sum(axis=0)
             mean = num / den[:, None]
             info += wbar * (
@@ -133,10 +166,15 @@ class WeightedCox:
     def score_residuals(self, beta: npt.NDArray) -> npt.NDArray:
         """Each row's score residual for one unit of it, ``L_i``: its
         derivative of the partial likelihood's score in its weight (R's
-        ``residuals(fit, type = "score")``)."""
+        ``residuals(fit, type = "score")``). Taken with ``exp(eta -
+        shift)`` (``_shifted_risks``): each term is a risk times a sum of
+        hazard increments, in which the shift cancels."""
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            return self._score_residuals(beta)
+
+    def _score_residuals(self, beta: npt.NDArray) -> npt.NDArray:
         Z = self.Z
-        eta = Z @ beta
-        risk = np.exp(eta)
+        _, risk, _ = self._shifted_risks(beta)
         r = self.omega * risk
         S0 = self._risk_sums(r)
         S1 = self._risk_sums(r[:, None] * Z)
@@ -204,14 +242,19 @@ class WeightedCox:
         (k/m) D0)``, with the weighted deaths ``d`` and the risk weights
         ``S0``, the sums of ``n w exp(beta'Z)`` over the risk sets (the
         ``r`` of the unweighted fit, which is ``n exp(beta'Z)``)."""
-        r = self.omega * np.exp(self.Z @ beta)
+        _, risk, shift = self._shifted_risks(beta)
+        r = self.omega * risk
         S0 = self._risk_sums(r)
         D0 = self._death_sums(r)
         h0 = np.zeros(self.times.size)
-        for j in range(self.times.size):
-            f = self._ladders(j)
-            h0[j] = np.sum(self.wbar[j] / (S0[j] - f * D0[j]))
-        return self.times, S0, self.d_w, h0
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            for j in range(self.times.size):
+                f = self._ladders(j)
+                h0[j] = np.sum(self.wbar[j] / (S0[j] - f * D0[j]))
+            # Back on the scale of exp(eta): where the coefficients run
+            # off these are 0 or inf, as they are.
+            scale = np.exp(shift)
+            return self.times, S0 * scale, self.d_w, h0 / scale
 
 
 def newton(

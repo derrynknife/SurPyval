@@ -1,6 +1,19 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+**Fixed.**
+
+- ``CoxPH.fit(..., w=w)`` on data whose partial likelihood has no finite
+  maximum (a covariate that separates the events from the survivors) no
+  longer lets numpy's overflow and invalid-value warnings through beside
+  its own "No finite maximum" warning: the weighted likelihood, its score
+  residuals and baseline now take ``exp(eta)`` relative to the largest
+  ``eta``, which cannot overflow. Fits with a finite maximum are unchanged
+  to rounding.
+
 v0.26 (31 October 2026)
 -----------------------
 
