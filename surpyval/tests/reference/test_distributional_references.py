@@ -38,6 +38,15 @@ units:
 
 flexsurv's gamma has ``rate`` as its location (SurPyval's Gamma ``beta``)
 and ``shape`` (``alpha``) as the ancillary parameter.
+
+**The sign.** gamlss's and flexsurv's coefficients take the link's sign:
+a positive coefficient raises its parameter, ``g(theta(z)) = g(theta) +
+b'z``, so on a scale or a location it means a *longer* life. SurPyval's
+take its own sign (that of its AFT models), ``g(theta(z)) = g(theta) +
+s b'z`` with ``s = -1`` for a parameter whose increase lengthens life (a
+scale, a location, a Gamma's shape) and ``s = +1`` otherwise
+(``model.coefficient_signs``). Each of our coefficients is multiplied by
+its parameter's ``s`` before it is compared with R's.
 """
 
 import numpy as np
@@ -525,9 +534,13 @@ def test_every_censoring_matches_gamlss(dist):
     ll, mu, sigma = GAMLSS[dist]
     np.testing.assert_allclose(-model.neg_ll(), ll, atol=1e-8)
     p = np.asarray(model.params, dtype=float)
+    s1, s2 = model.coefficient_signs.values()
     intercept = np.log(p[0]) if model.links[0] == "log" else p[0]
-    np.testing.assert_allclose([intercept, p[2], p[3]], mu, rtol=1e-4)
-    np.testing.assert_allclose([np.log(p[1]), p[4]], sigma, rtol=1e-4)
+    # R's sign: each of our coefficients times its parameter's sign
+    np.testing.assert_allclose(
+        [intercept, s1 * p[2], s1 * p[3]], mu, rtol=1e-4
+    )
+    np.testing.assert_allclose([np.log(p[1]), s2 * p[4]], sigma, rtol=1e-4)
 
 
 def _truncated():
@@ -549,7 +562,9 @@ def test_left_truncation_matches_flexsurv_weibull():
     ll, est, se = FLEXSURV_WEIBULL
     np.testing.assert_allclose(-model.neg_ll(), ll, atol=1e-8)
     p = np.asarray(model.params, dtype=float)
-    ours = [np.log(p[1]), np.log(p[0]), p[2], p[3], p[4]]
+    # R's sign: the scale's coefficients (s = -1) negated
+    assert model.coefficient_signs == {"alpha": -1.0, "beta": 1.0}
+    ours = [np.log(p[1]), np.log(p[0]), -p[2], -p[3], p[4]]
     np.testing.assert_allclose(ours, est, rtol=1e-4)
     s = model.standard_errors()
     ours_se = [s[1] / p[1], s[0] / p[0], s[2], s[3], s[4]]
@@ -565,8 +580,11 @@ def test_left_truncation_matches_flexsurv_gamma():
     ll, est = FLEXSURV_GAMMA
     np.testing.assert_allclose(-model.neg_ll(), ll, atol=1e-8)
     p = np.asarray(model.params, dtype=float)
-    # alpha (shape), beta (rate), alpha_z1, beta_z1, beta_z2
-    ours = [np.log(p[0]), np.log(p[1]), p[3], p[4], p[2]]
+    # alpha (shape), beta (rate), alpha_z1, beta_z1, beta_z2; R's sign:
+    # the shape's coefficient (s = -1, a larger Gamma shape is a longer
+    # life) negated, the rate's (s = +1) as it is
+    assert model.coefficient_signs == {"alpha": -1.0, "beta": 1.0}
+    ours = [np.log(p[0]), np.log(p[1]), p[3], p[4], -p[2]]
     np.testing.assert_allclose(ours, est, rtol=1e-4)
 
 

@@ -197,6 +197,24 @@ its :math:`\phi` multiplies the odds of *survival*, so a positive β makes
 failure *slower*. Expect a PO fit to report coefficients of the opposite sign to
 a PH fit on the same data.
 
+.. list-table:: What a positive coefficient means
+   :header-rows: 1
+   :widths: 40 60
+
+   * - Model
+     - A positive coefficient
+   * - PH (``WeibullPH``, ``CoxPH``, ``RoystonParmarPH``, ...) and AFT
+       (``WeibullAFT``, ``BuckleyJames``, ...)
+     - a shorter life (a higher hazard, or faster ageing)
+   * - PO (``PO(dist)``, ``ProportionalOdds``, ``RoystonParmarPO``)
+     - higher survival odds: a longer life
+   * - Distributional regression (``WeibullDistributional``, ...)
+     - on a scale or a location, a shorter life, as AFT; on each
+       parameter as ``model.coefficient_signs`` says
+
+PO differs because it models the odds of *surviving*: a positive
+coefficient multiplies those odds, so it lengthens life.
+
 SurPyval supports all of these families, each available as pre-built instances
 for every standard distribution and as factory functions for custom
 combinations, together with semi-parametric versions that leave the baseline
@@ -1920,11 +1938,20 @@ smooth baseline that can be extrapolated, handles every kind of censoring
 and truncation, and gives every bound. ``RoystonParmarPO`` puts the spline
 on the log odds of failure and multiplies the survival odds by
 :math:`e^{\beta' Z}`, as every proportional odds model here.
+The coefficients have the sign of the model they belong to: on the hazard
+scale that of ``PH`` (a positive coefficient raises the hazard, a shorter
+life), on the odds scale that of every SurPyval ``PO`` model (a positive
+coefficient raises the survival odds, a longer life). R's
+``flexsurvspline`` agrees on the hazard scale; on the odds scale its
+coefficients add to the log odds of failure, so they are SurPyval's with
+the sign changed.
 ``RoystonParmarRegression(df=..., scale=..., knots=...)`` sets the spline's
 degrees of freedom (``df - 1`` internal knots, at quantiles of the log
 event times; three by default) or its knots. ``df=1`` on the hazard scale
-is the Weibull proportional hazards model. The fits agree with R's
-``flexsurvspline`` to its printed digits.
+is the Weibull proportional hazards model, and on the odds scale the
+log-logistic proportional odds model, ``PO(LogLogistic)``, with the same
+coefficients. The fits agree with R's ``flexsurvspline`` to its printed
+digits.
 
 .. jupyter-execute::
 
@@ -4412,8 +4439,9 @@ take every kind of censoring and truncation (left, right or both).
   one per covariate column (that column on every parameter), or one per
   parameter, ``penalizer={"alpha": 0.02, "beta": 0.2}`` (a parameter not
   named is not penalised). The intercepts are not penalised. With
-  covariates on a Weibull's scale alone it is ``WeibullAFT.fit_penalised``
-  with the coefficients' signs changed.
+  covariates on a Weibull's scale alone it is ``WeibullAFT.fit_penalised``,
+  coefficient for coefficient: the scale's coefficients take the AFT sign
+  (``model.coefficient_signs``), a positive one a shorter life.
 
 .. jupyter-execute::
 

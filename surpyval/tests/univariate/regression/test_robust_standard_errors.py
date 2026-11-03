@@ -446,7 +446,9 @@ def test_distributional_sandwich_by_hand():
     ]
 
     def row_ll(th):
-        alpha = th[0] * np.exp(Z @ th[2:4])
+        # The scale with SurPyval's sign (alpha e^(-b'z)), the shape with
+        # the link's
+        alpha = th[0] * np.exp(-(Z @ th[2:4]))
         beta = th[1] * np.exp(Z @ th[4:6])
         return np.where(
             c == 0,

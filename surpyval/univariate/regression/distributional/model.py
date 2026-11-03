@@ -36,17 +36,35 @@ class DistributionalRegressionModel(ParametricRegressionModel):
     parameter of the distribution has its own linear predictor and link,
 
     .. math::
-        g_k\\bigl(\\theta_k(z)\\bigr) = g_k(\\theta_k) + x_k(z)' b_k,
+        g_k\\bigl(\\theta_k(z)\\bigr) = g_k(\\theta_k) + s_k\\, x_k(z)' b_k,
 
     so each row of covariates has its own distribution, here the
     distribution's functions at that row's parameters.
 
     ``params`` are the distribution's parameters at ``Z = 0`` (at
     ``center`` for a fit with ``center=True``), then each parameter's
-    coefficients on its link scale, named ``<parameter>_<column>``:
-    ``beta_load = 0.2`` with a log link multiplies the shape by
-    ``e^0.2`` per unit of load. ``covariate_positions`` holds each
-    parameter's columns of ``Z`` and ``links`` its link.
+    coefficients on its link scale, named ``<parameter>_<column>``, with
+    SurPyval's sign ``s_k`` (``coefficient_signs``), that of the AFT
+    models: a positive coefficient means a shorter life.
+
+    * A scale (a Weibull's ``alpha``): ``alpha(z) = alpha e^{-b'z}``, the
+      AFT model's coefficient; ``alpha_load = 0.5`` divides the scale by
+      ``e^0.5`` per unit of load.
+    * A rate (an Exponential's ``failure_rate``, a Gamma's ``beta``):
+      ``lambda(z) = lambda e^{b'z}``, again the AFT model's.
+    * A location (``mu`` of a LogNormal, Normal, Gumbel or Logistic):
+      ``mu(z) = mu - b'z`` (``mu e^{-b'z}`` with a log link).
+    * A shape that orders lives (a Gamma's ``alpha``, an ExpoWeibull's
+      ``mu``, a Beta's ``alpha``): ``e^{-b'z}``, a positive coefficient
+      lowering it and so shortening lives (a Beta's ``beta``, which
+      shortens lives as it rises, takes ``e^{b'z}``).
+    * A shape or spread that moves some quantiles earlier and others later
+      (a Weibull's ``beta``, ``sigma``): the link's own sign,
+      ``beta(z) = beta e^{b'z}``; ``beta_load = 0.2`` multiplies the shape
+      by ``e^0.2`` per unit of load.
+
+    ``covariate_positions`` holds each parameter's columns of ``Z`` and
+    ``links`` its link.
 
     Examples
     --------
@@ -67,6 +85,12 @@ class DistributionalRegressionModel(ParametricRegressionModel):
     #: Each parameter's columns of ``Z``, one integer array per
     #: parameter.
     covariate_positions: tuple
+    #: The sign of each parameter's coefficients (``-1`` or ``+1``, in
+    #: the distribution's parameter order), as the model was fitted:
+    #: ``g_k(theta_k(z)) = g_k(theta_k) + s_k x_k' b_k``. A model saved by
+    #: v0.26, which had no sign (every ``s_k`` +1), is converted to these
+    #: on loading.
+    _coefficient_signs: tuple[float, ...] = ()
     #: The numbers of the coefficients the data could not determine.
     _aliased_coefficients: npt.NDArray
     #: The number of columns of ``Z``.
@@ -81,17 +105,21 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         lines[0], lines[1] = title, "=" * len(title)
         names = self.feature_names
         terms = []
-        for name, link, cols in zip(
+        signs = self._coefficient_signs or (1.0,) * len(self.links)
+        for name, link, cols, sign in zip(
             self.distribution.parameter_names,
             self.links,
             self.covariate_positions,
+            signs,
         ):
             shown = [
                 names[j] if names is not None and j < len(names) else f"Z{j}"
                 for j in np.asarray(cols, dtype=int).tolist()
             ]
             g = name if link == "identity" else f"{link}({name})"
-            terms.append("{} ~ {}".format(g, " + ".join(["1", *shown])))
+            # SurPyval's sign: a scale's coefficients enter negated
+            op = " - " if sign < 0 else " + "
+            terms.append("{} ~ {}".format(g, op.join(["1", *shown])))
         at = next(
             (i for i, line in enumerate(lines) if line.startswith("Fitted")),
             len(lines) - 1,
@@ -101,7 +129,94 @@ class DistributionalRegressionModel(ParametricRegressionModel):
             line for line in lines if not line.startswith("Regression Model")
         )
 
+    def __setstate__(self, state: dict) -> None:
+        self.__dict__.update(state)
+        if "_coefficient_signs" not in state:
+            # Pickled by v0.26, before the sign convention: every
+            # coefficient had the link's sign.
+            self._convert_signs((1.0,) * int(self.k_dist))
+
     # -- the coefficients ------------------------------------------------
+
+    @property
+    def coefficient_signs(self) -> dict[str, float]:
+        """The sign ``s_k`` of each parameter's coefficients, by
+        parameter: ``g_k(theta_k(z)) = g_k(theta_k) + s_k x_k' b_k``. It is
+        -1 for a parameter whose increase makes lives longer (a scale, a
+        location), so that a positive coefficient means a shorter life,
+        as in SurPyval's AFT models, and +1 otherwise.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import WeibullDistributional
+        >>> rng = np.random.default_rng(3)
+        >>> load = rng.uniform(0, 1, 300)
+        >>> x = 10 * np.exp(-0.5 * load) * rng.weibull(1.2 * np.exp(load))
+        >>> WeibullDistributional.fit(x, load).coefficient_signs
+        {'alpha': -1.0, 'beta': 1.0}
+        """
+        names = list(self.distribution.parameter_names)
+        return {
+            name: float(s) for name, s in zip(names, self._coefficient_signs)
+        }
+
+    def _convert_signs(self, old: Any) -> None:
+        """Rewrite a model whose coefficients were saved with the signs
+        ``old`` (one per parameter; v0.26 saved every one +1) in the
+        current convention, ``self.model.signs``: each coefficient,
+        its fixed value, and the rows and columns of every stored
+        covariance and Hessian are multiplied by ``old_k * new_k``. The
+        predictions are unchanged."""
+        new = tuple(float(v) for v in self.model.signs)
+        old = tuple(float(v) for v in old)
+        K = int(self.k_dist)
+        if len(old) != K or any(v not in (-1.0, 1.0) for v in old):
+            raise ValueError(
+                "The model dict's 'coefficient_signs' must hold -1 or 1 for "
+                "each of the distribution's {} parameters; got {}.".format(
+                    K, list(old)
+                )
+            )
+        self._coefficient_signs = new
+        m = np.ones(len(self.params))
+        j = K
+        for k, cols in enumerate(self.covariate_positions):
+            size = np.asarray(cols).size
+            m[j : j + size] = old[k] * new[k]
+            j += size
+        if np.all(m == 1.0):
+            return
+        D = np.outer(m, m)
+        self.params = np.asarray(self.params, dtype=float) * m
+        self.dist_params = np.array(self.params[:K])
+        self.phi_params = np.array(self.params[K:])
+        names = self.parameter_names
+        self.fixed = {
+            key: float(v) * m[names.index(key)]
+            for key, v in self.fixed.items()
+        }
+        if self._restored_covariance is not None:
+            self._restored_covariance = self._restored_covariance * D
+        if self._restored_inference is not None:
+            p, at, cov = self._restored_inference
+            self._restored_inference = (p * m, at, cov * D)
+        if self._fit_centring is not None:
+            p, at, J = self._fit_centring
+            self._fit_centring = (np.asarray(p) * m, at, np.asarray(J) * D)
+        held = self._held()
+        free = np.array(
+            [i for i, nm in enumerate(names) if nm not in held], dtype=int
+        )
+        if self._information is not None:
+            point, H = self._information
+            point = (np.asarray(point[0]) * m, *point[1:])
+            mf = m[free]
+            self._information = (point, np.asarray(H) * np.outer(mf, mf))
+        if self._covariance_cache is not None:
+            point, cov = self._covariance_cache
+            point = (np.asarray(point[0]) * m, *point[1:])
+            self._covariance_cache = (point, np.asarray(cov) * D)
 
     @property
     def aliased(self) -> npt.NDArray:
@@ -815,6 +930,7 @@ class DistributionalRegressionModel(ParametricRegressionModel):
             "kind": self.kind,
             "distribution": self.distribution.name,
             "links": list(self.links),
+            "coefficient_signs": [float(v) for v in self._coefficient_signs],
             "covariate_positions": [
                 np.asarray(c, dtype=int).tolist()
                 for c in self.covariate_positions
@@ -978,4 +1094,9 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         out.maximum = restored_maximum(model_dict)
         out._restore_penalty(model_dict)
         out._ic_n = cls._restored_ic_n(model_dict)
+        # A dict without signs was written by v0.26, whose coefficients
+        # all had the link's sign: converted, it predicts as it did.
+        out._convert_signs(
+            model_dict.get("coefficient_signs", (1.0,) * k_dist)
+        )
         return out

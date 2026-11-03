@@ -505,8 +505,9 @@ def _distributional_data():
 
 @pytest.mark.parametrize("l1_ratio", [0.0, 0.5, 1.0])
 def test_distributional_on_the_scale_is_weibull_aft(l1_ratio):
-    # Covariates on log(alpha) alone: WeibullAFT, the signs changed
-    # (alpha * exp(b'Z) against S0(t exp(b'Z))). Both minimise the same
+    # Covariates on log(alpha) alone: WeibullAFT, coefficient for
+    # coefficient (the scale's coefficients take the AFT sign,
+    # alpha * exp(-b'Z), as S0(t exp(b'Z))). Both minimise the same
     # penalised objective, so they agree to the solvers' tolerance.
     from surpyval import WeibullAFT, WeibullDistributional
 
@@ -526,10 +527,37 @@ def test_distributional_on_the_scale_is_weibull_aft(l1_ratio):
     np.testing.assert_allclose(model.params[:2], aft.params[:2], rtol=1e-7)
     np.testing.assert_array_equal(model.params[2:] == 0, aft.params[2:] == 0)
     np.testing.assert_allclose(
-        model.params[2:], -aft.params[2:], rtol=1e-6, atol=1e-9
+        model.params[2:], aft.params[2:], rtol=1e-6, atol=1e-9
     )
     assert model.penalty.effective_df == pytest.approx(
         aft.penalty.effective_df, rel=1e-6
+    )
+
+
+def test_distributional_penalised_saves_with_its_signs():
+    # A penalised distributional fit carries SurPyval's signs (the scale's
+    # coefficients the AFT sign), so it saves as schema 4 and restores to
+    # the same predictions.
+    import json
+
+    from surpyval import WeibullDistributional
+    from surpyval.serialisation import required_schema
+
+    x, Z, c = _distributional_data()
+    model = WeibullDistributional.fit_penalised(
+        x, Z, c=c, penalizer=0.05, covariates={"alpha": [0, 1, 2]}
+    )
+    assert model.coefficient_signs["alpha"] == -1.0
+    # The data have shorter lives at larger Z[:, 0].
+    assert model.params[2] > 0
+    saved = model.to_dict()
+    assert required_schema(saved) == 4
+    restored = sp.from_dict(json.loads(json.dumps(saved)))
+    assert restored.coefficient_signs == model.coefficient_signs
+    np.testing.assert_array_equal(restored.params, model.params)
+    np.testing.assert_array_equal(
+        restored.sf([5.0, 10.0, 20.0], Z[:3]),
+        model.sf([5.0, 10.0, 20.0], Z[:3]),
     )
 
 

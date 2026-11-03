@@ -73,9 +73,12 @@ no parameter named, every covariate goes on every parameter):
     )
     model
 
-Read the coefficients through their links. ``alpha_load = -0.40``: each
-kN multiplies the scale by :math:`e^{-0.40} = 0.67`. ``beta_load =
-0.27``: each kN multiplies the shape by :math:`e^{0.27} = 1.31`, and its
+Read the coefficients through their links, with SurPyval's sign (that of
+its AFT models: a positive coefficient means a shorter life).
+``alpha_load = 0.40``: each kN divides the scale by :math:`e^{0.40} =
+1.49`, the same coefficient the AFT model reports. ``beta_load = 0.27``:
+each kN multiplies the shape by :math:`e^{0.27} = 1.31` (a shape has no
+direction of its own, so its coefficient keeps the link's sign), and its
 interval is well clear of 0. So the shape does change with load. The
 shape at each load is one call away:
 
@@ -126,7 +129,7 @@ start early.
     :hide-output:
 
     _p = model.params
-    assert np.allclose(_p[2:], [-0.3978, 0.2695], atol=5e-5)
+    assert np.allclose(_p[2:], [0.3978, 0.2695], atol=5e-5)
     assert np.allclose(model.parameters_at(loads).iloc[:, 1],
                        [1.254, 1.642, 2.151, 2.816], atol=5e-4)
     assert abs(lr - 22.34) < 0.01 and chi2.sf(lr, 1) < 1e-5
@@ -179,18 +182,19 @@ each parameter has a linear predictor and a link :math:`g_k`:
 
 .. math::
 
-    g_k\bigl(\theta_k(z)\bigr) = g_k(\theta_k) + x_k(z)' b_k,
+    g_k\bigl(\theta_k(z)\bigr) = g_k(\theta_k) + s_k\, x_k(z)' b_k,
     \qquad k = 1, \dots, K,
 
-where :math:`\theta_k` is the parameter at :math:`z = 0` and
-:math:`x_k(z)` the parameter's columns. A unit with covariates :math:`z`
+where :math:`\theta_k` is the parameter at :math:`z = 0`,
+:math:`x_k(z)` the parameter's columns and :math:`s_k = \pm 1` its sign
+(below). A unit with covariates :math:`z`
 has the distribution's own functions at its parameters, so for a Weibull
 
 .. math::
 
     S(t \mid z) = \exp\left[-\left(\frac{t}{\alpha(z)}\right)^{\beta(z)}\right],
     \qquad
-    \alpha(z) = \alpha\, e^{x_\alpha(z)' b_\alpha},
+    \alpha(z) = \alpha\, e^{-x_\alpha(z)' b_\alpha},
     \quad
     \beta(z) = \beta\, e^{x_\beta(z)' b_\beta}.
 
@@ -211,13 +215,66 @@ defined.
 **Parameters.** ``params`` are the distribution's parameters at
 :math:`z = 0` (at the covariate means with ``center=True``), then each
 parameter's coefficients on its link's scale, named
-``<parameter>_<column>``. A coefficient's sign is that of its link: a
-positive ``alpha_load`` means a longer life.
+``<parameter>_<column>``.
+
+**The sign.** The coefficients follow SurPyval's sign convention, that of
+its AFT and PH models: **a positive coefficient means a shorter life**.
+Each parameter's sign :math:`s_k` (``model.coefficient_signs``) says how
+its coefficients enter, one rule for each kind of parameter:
+
+- A **scale** (a Weibull's, log-logistic's or ExpoWeibull's ``alpha``, a
+  Rayleigh's ``sigma``): :math:`s = -1`, so :math:`\alpha(z) = \alpha
+  e^{-b'z}` and a positive coefficient shrinks the scale, exactly as the
+  AFT model's coefficient does.
+- A **rate** (an Exponential's ``failure_rate``, a Gamma's ``beta``):
+  :math:`s = +1`, so :math:`\lambda(z) = \lambda e^{b'z}` and a positive
+  coefficient raises the rate, again the AFT model's coefficient.
+- A **location** (``mu`` of a LogNormal, Normal, Gumbel, GumbelLEV or
+  Logistic): :math:`s = -1`, so :math:`\mu(z) = \mu - b'z` (or
+  :math:`\mu e^{-b'z}` with a log link) and a positive coefficient moves
+  failures earlier; for the LogNormal it is the AFT model's coefficient.
+- A **shape that orders lives**, one whose increase makes every quantile
+  later (a Gamma's shape ``alpha``, an ExpoWeibull's ``mu``, a Beta's
+  ``alpha``): :math:`s = -1`, so a positive coefficient lowers it and
+  shortens lives; a Beta's ``beta``, whose increase makes values earlier,
+  has :math:`s = +1`.
+- A **shape or spread with no direction** (a Weibull's or log-logistic's
+  shape ``beta``, every ``sigma`` of a location-scale distribution): it
+  makes some quantiles earlier and others later, so "shorter life" does
+  not say which way it should go. It keeps the link's sign, :math:`s =
+  +1`: a positive coefficient raises the shape or the spread.
+
+Beside the other regressions:
+
+.. list-table:: What a positive coefficient means
+   :header-rows: 1
+   :widths: 40 60
+
+   * - Model
+     - A positive coefficient
+   * - PH (``WeibullPH``, ``CoxPH``, ``RoystonParmarPH``, ...) and AFT
+       (``WeibullAFT``, ``BuckleyJames``, ...)
+     - a shorter life (a higher hazard, or faster ageing)
+   * - PO (``PO(dist)``, ``ProportionalOdds``, ``RoystonParmarPO``)
+     - higher survival odds: a longer life
+   * - Distributional regression (``WeibullDistributional``, ...)
+     - on a scale or a location, a shorter life, as AFT; on each
+       parameter as ``model.coefficient_signs`` says
+
+PO differs because it models the odds of *surviving*: a positive
+coefficient multiplies those odds, so it lengthens life.
+
+R's ``gamlss`` and ``flexsurvreg`` (and lifelines and ``survreg``) give
+every coefficient the link's sign, :math:`s = +1`, so their coefficients
+on a scale or a location are SurPyval's with the sign changed, and their
+coefficients on a shape or spread are SurPyval's as they are. SurPyval
+0.26 did the same; see the changelog for 0.27. A model saved by 0.26
+(``to_dict`` or ``pickle``) is converted on loading and predicts as it
+did.
 
 **The AFT model is a special case.** Covariates on the scale alone give
-an AFT model, with the coefficients' signs reversed (SurPyval's AFT
-writes :math:`H_0(e^{b'z} x)`, where a positive coefficient shortens
-life):
+an AFT model (SurPyval's AFT writes :math:`H_0(e^{b'z} x)`, where a
+positive coefficient shortens life), with the same coefficients:
 
 .. list-table::
    :header-rows: 1
@@ -227,22 +284,22 @@ life):
      - Coefficients
    * - ``WeibullAFT``
      - ``Weibull``, covariates on ``alpha``
-     - ``alpha_z = -b_z``
+     - ``alpha_z = b_z``
    * - ``ExponentialAFT``
      - ``Exponential``, on ``failure_rate``
      - ``failure_rate_z = b_z``
    * - ``LogNormalAFT``
      - ``LogNormal``, on ``mu``
-     - ``mu_z = -b_z``
+     - ``mu_z = b_z``
    * - ``AFT(LogLogistic)``
      - ``LogLogistic``, on ``alpha``
-     - ``alpha_z = -b_z``
+     - ``alpha_z = b_z``
    * - ``GammaAFT``
      - ``Gamma``, on its rate ``beta``
      - ``beta_z = b_z``
 
 A Weibull PH model with covariates is also one, covariates on ``alpha``
-with ``b_PH = -beta * alpha_z``; and the accelerated life models with a
+with ``b_PH = beta * alpha_z``; and the accelerated life models with a
 log-linear life (``Power``: ``alpha`` on ``np.log(V)``) are too. The
 tests check each of these gives the same fit.
 

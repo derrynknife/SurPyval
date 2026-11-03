@@ -17,10 +17,15 @@ data:
                                     prio = c(3, 0)),
             t = c(10, 52), type = "survival", ci = FALSE)
 
-``k`` internal knots is ``df = k + 1``. On the odds scale flexsurv's
-covariates add to the log odds of failure, SurPyval's multiply the
-survival odds (as every ``PO`` model), so the coefficients have the
-opposite sign.
+``k`` internal knots is ``df = k + 1``.
+
+**The sign.** On the hazard scale flexsurv's and SurPyval's coefficients
+agree: both add to the log cumulative hazard, so a positive one is a
+shorter life (SurPyval's ``PH`` sign). On the odds scale flexsurv's add to
+the log odds of *failure* (a positive one is a shorter life), while
+SurPyval's multiply the survival odds, as every SurPyval ``PO`` model's do
+(a positive one is a longer life), so ours are flexsurv's negated, and the
+comparison below negates them.
 """
 
 import pickle
@@ -175,6 +180,24 @@ def test_one_degree_of_freedom_is_the_weibull():
     np.testing.assert_allclose(
         spline.sf(x, NEW[[0, 1, 1]]), weibull.sf(x, NEW[[0, 1, 1]]), rtol=1e-5
     )
+
+
+def test_one_degree_of_freedom_on_the_odds_scale_is_the_loglogistic_po():
+    # df = 1 on the odds scale: logit F = gamma_0 + gamma_1 log t - b'Z,
+    # the log-logistic proportional odds model, with the same coefficients
+    # and sign as every SurPyval PO model (a positive one multiplies the
+    # survival odds).
+    df = rossi_with_censoring()
+    spline = RoystonParmarRegression(df=1, scale="odds").fit_from_df(
+        df, x_col="week", c_col="censored", Z_cols=COLS
+    )
+    po = sp.PO(sp.LogLogistic).fit_from_df(
+        df, x_col="week", c_col="censored", Z_cols=COLS
+    )
+    np.testing.assert_allclose(spline.neg_ll(), po.neg_ll(), rtol=1e-9)
+    np.testing.assert_allclose(spline.params[2:], po.params[2:], rtol=1e-4)
+    # fin (financial aid) raises the survival odds: positive in both
+    assert spline.params[2] > 0 and po.params[2] > 0
 
 
 def test_every_censoring_kind_and_truncation():
