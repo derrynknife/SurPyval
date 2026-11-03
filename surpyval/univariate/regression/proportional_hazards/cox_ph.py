@@ -1484,30 +1484,9 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         >>> model.sf_tvc([1, 3, 5], path).round(4)
         array([1.    , 0.6513, 0.3171])
         """
-        x, c, n_arr, tl, Z_arr, ident = handle_tvc(i, xl, xr, c, Z, n)
-        # The permutation from the caller's row order to the internal
-        # (subject, entry) order that ``handle_tvc`` sorts the rows into.
-        row_order = np.lexsort((np.asarray(xl, dtype=float), np.asarray(i)))
-        strata_arr = None
-        if strata is not None:
-            strata_arr = np.asarray(strata)
-            if strata_arr.ndim != 1 or len(strata_arr) != len(row_order):
-                raise ValueError(
-                    "'strata' must have a label for each interval row; got "
-                    "{} labels for {} rows".format(
-                        np.size(strata_arr), len(row_order)
-                    )
-                )
-            import pandas as pd
-
-            if pd.isna(strata_arr).any():
-                # Dropping the rows would cut a subject's path short.
-                raise ValueError(
-                    "'strata' has {} missing (NaN or None) labels; give "
-                    "every interval row a stratum, or drop the subjects "
-                    "with a missing one".format(int(pd.isna(strata_arr).sum()))
-                )
-            strata_arr = strata_arr[row_order]
+        x, c, n_arr, tl, Z_arr, ident, row_order, strata_arr = _tvc_rows(
+            i, xl, xr, c, Z, n, strata
+        )
         if w is not None:
             from surpyval.utils.weights import check_weights
 
@@ -1669,6 +1648,139 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             center=center,
         )
 
+    def fit_tvc_penalised(
+        self,
+        i: npt.ArrayLike,
+        xl: npt.ArrayLike,
+        xr: npt.ArrayLike,
+        c: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        n: npt.ArrayLike | None = None,
+        penalizer: float | npt.ArrayLike = 0.1,
+        l1_ratio: float = 0.0,
+        standardise: bool = True,
+        tie_method: str = "efron",
+        tol: float = 1e-10,
+        center: bool = False,
+        strata: npt.ArrayLike | None = None,
+        w: npt.ArrayLike | float | None = None,
+    ) -> SemiParametricRegressionModel:
+        """
+        Fit a Cox model with time-varying covariates in start-stop format
+        (as :meth:`fit_tvc`) with a ridge, lasso or elastic-net penalty on
+        the coefficients (as :meth:`fit_penalised`).
+
+        The rows are validated and fitted as delayed-entry rows, as
+        :meth:`fit_tvc` fits them, and the penalised objective is
+        :meth:`fit_penalised`'s, with ``N`` the number of interval rows
+        (weighted by ``n``) and the covariates standardised over the rows:
+        glmnet's ``family = "cox"`` on ``Surv(start, stop, event)``. The
+        model has no covariance, standard errors, bounds or tests (see
+        :meth:`fit_penalised`).
+
+        Parameters
+        ----------
+        i, xl, xr, c, Z, n, strata : array_like
+            As for :meth:`fit_tvc`.
+        penalizer, l1_ratio, standardise, tol, w
+            As for :meth:`fit_penalised` (weights ``w`` are refused).
+        tie_method, center
+            As for :meth:`fit_tvc`.
+
+        Returns
+        -------
+        SemiParametricRegressionModel
+            The fitted model, with ``is_tvc`` and ``penalty`` set.
+
+        Examples
+        --------
+        >>> from surpyval import CoxPH
+        >>> i  = [0, 0, 1, 2, 2, 3, 4, 4, 5, 6]
+        >>> xl = [0, 2, 0, 0, 1, 0, 0, 3, 0, 0]
+        >>> xr = [2, 5, 3, 1, 4, 6, 3, 7, 2, 8]
+        >>> c  = [1, 0, 0, 1, 0, 1, 1, 0, 0, 1]
+        >>> Z  = [0, 1, 0, 0, 1, 0, 0, 1, 1, 0]
+        >>> model = CoxPH.fit_tvc_penalised(i, xl, xr, c, Z, penalizer=0.1)
+        >>> model.beta.round(4)
+        array([1.324])
+        """
+        from .._penalised import refuse_weights
+
+        refuse_weights(w)
+        x, c_, n_arr, tl, Z_arr, ident, row_order, strata_arr = _tvc_rows(
+            i, xl, xr, c, Z, n, strata
+        )
+        model = self.fit_penalised(
+            x,
+            Z_arr,
+            c=c_,
+            n=n_arr,
+            tl=tl,
+            penalizer=penalizer,
+            l1_ratio=l1_ratio,
+            standardise=standardise,
+            tie_method=tie_method,
+            center=center,
+            tol=tol,
+            strata=strata_arr,
+        )
+        model.is_tvc = True
+        model.tvc_subject_ids = ident
+        model.tvc_row_order = row_order
+        return model
+
+    def fit_tvc_timeline_penalised(
+        self,
+        i: npt.ArrayLike,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: npt.ArrayLike,
+        n: npt.ArrayLike | None = None,
+        penalizer: float | npt.ArrayLike = 0.1,
+        l1_ratio: float = 0.0,
+        standardise: bool = True,
+        tie_method: str = "efron",
+        tol: float = 1e-10,
+        center: bool = False,
+        w: npt.ArrayLike | float | None = None,
+    ) -> SemiParametricRegressionModel:
+        """
+        :meth:`fit_tvc_timeline` with a ridge, lasso or elastic-net
+        penalty: the timeline is expanded to start-stop rows and fitted
+        by :meth:`fit_tvc_penalised`, so it gives the same fit as the
+        equivalent start-stop data.
+
+        Parameters
+        ----------
+        i, x, Z, c, n : array_like
+            As for :meth:`fit_tvc_timeline`.
+        penalizer, l1_ratio, standardise, tie_method, tol, center, w
+            As for :meth:`fit_tvc_penalised`.
+
+        Returns
+        -------
+        SemiParametricRegressionModel
+            The fitted model, with ``is_tvc`` and ``penalty`` set.
+        """
+        from .._penalised import refuse_weights
+
+        refuse_weights(w)
+        i_ss, xl, xr, c_ss, Z_ss, n_ss = handle_tvc_timeline(i, x, Z, c, n)
+        return self.fit_tvc_penalised(
+            i_ss,
+            xl,
+            xr,
+            c_ss,
+            Z_ss,
+            n=n_ss,
+            penalizer=penalizer,
+            l1_ratio=l1_ratio,
+            standardise=standardise,
+            tie_method=tie_method,
+            tol=tol,
+            center=center,
+        )
+
     def fit_tvc_timeline_from_df(
         self,
         df: pd.DataFrame,
@@ -1704,3 +1816,42 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
 
 
 CoxPH = CoxPH_()
+
+
+def _tvc_rows(
+    i: npt.ArrayLike,
+    xl: npt.ArrayLike,
+    xr: npt.ArrayLike,
+    c: npt.ArrayLike,
+    Z: npt.ArrayLike,
+    n: npt.ArrayLike | None,
+    strata: npt.ArrayLike | None,
+) -> tuple:
+    """The start-stop rows of :meth:`CoxPH_.fit_tvc` as delayed-entry
+    rows: ``(x, c, n, tl, Z, ident, row_order, strata)``, the strata (if
+    any) in the internal row order."""
+    x, c, n_arr, tl, Z_arr, ident = handle_tvc(i, xl, xr, c, Z, n)
+    # The permutation from the caller's row order to the internal
+    # (subject, entry) order that ``handle_tvc`` sorts the rows into.
+    row_order = np.lexsort((np.asarray(xl, dtype=float), np.asarray(i)))
+    strata_arr = None
+    if strata is not None:
+        strata_arr = np.asarray(strata)
+        if strata_arr.ndim != 1 or len(strata_arr) != len(row_order):
+            raise ValueError(
+                "'strata' must have a label for each interval row; got "
+                "{} labels for {} rows".format(
+                    np.size(strata_arr), len(row_order)
+                )
+            )
+        import pandas as pd
+
+        if pd.isna(strata_arr).any():
+            # Dropping the rows would cut a subject's path short.
+            raise ValueError(
+                "'strata' has {} missing (NaN or None) labels; give "
+                "every interval row a stratum, or drop the subjects "
+                "with a missing one".format(int(pd.isna(strata_arr).sum()))
+            )
+        strata_arr = strata_arr[row_order]
+    return x, c, n_arr, tl, Z_arr, ident, row_order, strata_arr
