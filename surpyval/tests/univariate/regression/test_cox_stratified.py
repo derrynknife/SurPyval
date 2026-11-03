@@ -125,8 +125,27 @@ def test_diagnostics_not_available_for_stratified():
     for method in ("compute_residuals", "diagnose", "robust_summary"):
         with pytest.raises(NotImplementedError):
             getattr(m, method)()
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(NotImplementedError, match="pickle"):
         m.to_dict()
+
+
+def test_a_stratified_model_refuses_to_dict_saying_how_to_save_it():
+    import pickle
+
+    x, Z, c, strat = _confounded(6)
+    m = sp.CoxPH.fit(x=x, Z=Z, c=c, strata=strat)
+    with pytest.raises(NotImplementedError) as info:
+        m.to_dict()
+    message = str(info.value)
+    assert "pickle.dump(model, f)" in message
+    assert "CoxPH.fit(..., strata=...)" in message
+    # and the advice holds: pickle keeps every stratum's baseline
+    again = pickle.loads(pickle.dumps(m))
+    for k in m.strata_labels:
+        np.testing.assert_array_equal(
+            again.sf([1.0, 2.0], Z[:2], stratum=k),
+            m.sf([1.0, 2.0], Z[:2], stratum=k),
+        )
 
 
 def test_fit_from_df_strata_col():

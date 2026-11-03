@@ -46,6 +46,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import norm
 
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -231,6 +232,7 @@ def _default_bandwidth(times: npt.NDArray) -> float:
 
 
 class AalenAdditiveModel(
+    DiagnoseMixin,
     ConditionalSurvivalMixin,
     NoLikelihoodMixin,
     ConcordanceMixin,
