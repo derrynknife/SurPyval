@@ -1191,7 +1191,15 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             deviations (count-weighted, divisor ``N``), so the penalty
             does not depend on their units; the coefficients are reported
             on the covariates' own scale either way. ``False`` penalises
-            the coefficients as they are.
+            the coefficients as they are. The divisor is glmnet's ``N``,
+            not lifelines' ``N - 1``, because the objective is glmnet's
+            (the mean negative partial log-likelihood plus the penalty);
+            lifelines' standard deviations are larger by
+            :math:`\\sqrt{N / (N - 1)}` (0.5% at ``N = 100``, 5% at ``N =
+            10``), so its penalty is that much stronger. To reproduce a
+            lifelines fit, pass ``Z / Z.std(axis=0, ddof=1)`` with
+            ``standardise=False`` and divide the coefficients by the same
+            standard deviations.
         tie_method : str, optional
             As for :meth:`fit`. Default ``"efron"`` (glmnet's default is
             Breslow's).

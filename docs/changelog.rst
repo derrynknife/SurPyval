@@ -37,6 +37,11 @@ Unreleased
   coefficients along it agree with glmnet's), with each fit's effective
   degrees of freedom, AIC and BIC; ``best("bic")`` or ``best("aic")``
   chooses the penalty, ``table()`` lists the path and ``plot()`` draws it.
+- The penalised regression guide and the ``fit_penalised`` docstrings
+  now say that ``standardise=True`` divides by standard deviations with
+  divisor ``N`` (glmnet's), not ``N - 1`` (lifelines'), why, how large the
+  difference is (a factor of :math:`\sqrt{N / (N - 1)}`), and how to
+  reproduce a lifelines fit. No change in behaviour.
 **Fixed.**
 
 - Likelihood-ratio bounds on a profile that flattens out towards a limit
