@@ -87,9 +87,7 @@ def fine_gray_data(model: Any) -> FineGrayData:
         raise ValueError(
             "The diagnostics are not available for a Fine-Gray model with "
             "aliased coefficients (column(s) {} of Z, whose coefficients "
-            "are nan, #476). Refit without those columns.".format(
-                aliased.tolist()
-            )
+            "are nan). Refit without those columns.".format(aliased.tolist())
         )
     x = np.asarray(data["x"], dtype=float)
     n = np.asarray(data["n"], dtype=float)

@@ -30,9 +30,12 @@ models (#869); proportional odds and additive hazards (#870); accelerated
 life models (#871); shared frailty (#872); recurrent events (#873);
 competing risks (#874); and univariate distributions (#875). The Cox and
 parametric proportional hazards and accelerated failure time reports also
-check the calibration of the predicted survival (#881). Two models still
-refuse, naming the issue that tracks their checks: parametric competing
-risks (#874) and Buckley-James (#867).
+check the calibration of the predicted survival (#881). A few models have
+no checks yet, and their ``diagnose()`` refuses, saying what to check the
+model with meanwhile: parametric competing risks (each cause's model has
+``diagnose()``), Buckley-James and distributional regressions (diagnose a
+PH or AFT fit of the same data), Aalen's additive hazards model
+(``constant_effects_test()``) and Bayesian fits (``model.mle.diagnose()``).
 
 Verdicts
 --------

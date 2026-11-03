@@ -11,6 +11,17 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-03
+
+### Refusals that named issue numbers
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| No error or warning message names an issue number, an issue URL or "tracked in"; each says what to do instead. `surpyval/tests/test_no_issue_numbers_in_messages.py` checks every string in the library's code that is not a docstring. Docstrings and comments keep their references. | principle 2, 22 | The issues named were closed, so the message pointed to a page that did not say what to do. | done |
+| `registry.Pending` carries `instead` (what to check the model with meanwhile) in place of its issue number. Aalen additive, Bayesian, distributional and Buckley-James models have `PENDING` entries; any other model without a family gets a general refusal pointing to a nonparametric comparison and the models that have `diagnose()`. `AalenAdditiveModel` and `BayesianParametric` inherit `DiagnoseMixin`, so `diagnose()` refuses rather than being missing. | principle 2 | One refusal path for every model without checks. | done |
+| `fit_bayes(w=)` and `fit_bayes_from_df(w_col=)` are explicit keyword arguments that refuse a value with a `WeightedRefusal` (`ValueError`), as `takes_unit` does for the fitters without weights; the message points to the weighted `fit` only where the distribution's `fit` takes `w`. | principle 2 | `fit_bayes` is not wrapped by `takes_unit`, so `w=` was Python's `TypeError`. | done |
+| A stratified Cox model's `to_dict()` stays a `NotImplementedError`, now saying to save it with `pickle` (checked to keep every stratum's baseline) or to refit with `strata=`. | proposed | Serialising the per-stratum baselines is a format change, out of scope for a message fix. | done |
+
 ## 2026-10-30
 
 ### Fixes behind the second bug hunt's strict xfails
