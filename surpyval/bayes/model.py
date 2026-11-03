@@ -34,6 +34,7 @@ from surpyval.bayes.prior import (
     shifted,
 )
 from surpyval.bayes.transforms import Transform
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -90,7 +91,7 @@ def _bound_text(lo: float | None, hi: float | None) -> str:
     )
 
 
-class BayesianParametric(SerialisableMixin):
+class BayesianParametric(DiagnoseMixin, SerialisableMixin):
     """
     A Bayesian fit of a parametric distribution: the posterior of its
     parameters, and the posterior predictive distribution of a new unit's

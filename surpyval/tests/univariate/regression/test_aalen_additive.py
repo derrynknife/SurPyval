@@ -549,3 +549,33 @@ def test_a_negative_summary_time_is_refused_by_name():
     model = sp.AalenAdditive.fit(x, Z, c=c)
     with pytest.raises(ValueError, match=r"\bat\b"):
         model.summary(at=-1.0)
+
+
+@pytest.mark.parametrize("z", [[0, 25, 3], [1, 44, 0]])
+def test_285_random_follows_sf(z):
+    # The second row's raw estimate falls at times: the draws follow the
+    # running maximum the model predicts with.
+    from surpyval.tests._helpers import KS_BAND_20000, ks_distance
+
+    model = _rossi_model()
+    draws, rows = model.random(20_000, [z], random_state=285)
+    assert_array_equal(rows, np.repeat([z], 20_000, axis=0))
+    assert np.isin(draws[np.isfinite(draws)], model.x).all()
+    d = ks_distance(draws, lambda t: model.ff(t, z))
+    assert d <= KS_BAND_20000, (d, KS_BAND_20000)
+    end = float(model.sf(model.x[-1], z))
+    share = np.mean(np.isinf(draws))
+    assert abs(share - end) < 4 * np.sqrt(end * (1 - end) / 20_000)
+
+
+def test_285_random_missing_covariate_and_seeds():
+    model = _rossi_model()
+    assert np.isnan(
+        model.random(3, [[np.nan, 25, 3]], random_state=1)[0]
+    ).all()
+    a = model.random(5, [[0, 25, 3]], random_state=2)[0]
+    assert_array_equal(a, model.random(5, [[0, 25, 3]], random_state=2)[0])
+    np.random.seed(9)
+    g = model.random(5, [[0, 25, 3]])[0]
+    np.random.seed(9)
+    assert_array_equal(g, model.random(5, [[0, 25, 3]])[0])

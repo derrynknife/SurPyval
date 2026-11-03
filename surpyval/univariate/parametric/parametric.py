@@ -453,6 +453,14 @@ _MAXIMUM_NOTES = {
     ),
 }
 
+# A fitted limited-failure proportion this close to 1 is at its bound: the
+# printout says so, and what to do (principle 22).
+_LFP_BOUND_TOL = 1e-5
+_LFP_AT_BOUND_NOTE = (
+    "lfp_p is at its bound of 1: the data show no sign of units that "
+    "never fail; fit without lfp=True"
+)
+
 
 class Parametric(
     LikelihoodRatioMixin,
@@ -1043,6 +1051,8 @@ class Parametric(
             if self.lfp:
                 label = "Max Proportion (lfp_p)"
                 out += f"\n{label:<20}: {self.lfp_p}"
+                if self._lfp_at_bound():
+                    out += f"\n{'Note':<20}: {_LFP_AT_BOUND_NOTE}"
 
             if self.zi:
                 out += f"\nZero-Inflation (f0) : {self.f0}"
@@ -1057,6 +1067,16 @@ class Parametric(
             return out
         else:
             return "Unable to fit values"
+
+    def _lfp_at_bound(self) -> bool:
+        """Whether a fitted limited-failure proportion is at its upper
+        bound of 1 (within ``_LFP_BOUND_TOL``): the plain model, with
+        every unit failing eventually, fits as well. The search stops just
+        short of the bound, so the test is not ``== 1``. False for a model
+        built from parameters."""
+        if not self.lfp or self.method == "given parameters":
+            return False
+        return bool(1 - float(self.lfp_p) < _LFP_BOUND_TOL)
 
     def _data_repr(self) -> str:
         """The data the model was fitted to, in one line, for the printout

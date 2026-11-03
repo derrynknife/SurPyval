@@ -186,9 +186,37 @@ Since nothing is simulated, left- and interval-censored data are
 resampled as they are. Limited-failure, zero-inflated and discrete fits
 and time-varying covariate fits have no bootstrap, weighted or not.
 
+Comparing weighted groups
+-------------------------
+
+``logrank`` and ``pairwise_logrank`` take ``w``. The numerator compares
+the weighted observed and expected events in each group; the variance is
+the design-based one, the sum of the units' squared weighted score
+residuals, so the test is R's robust score test,
+``coxph(Surv(x, d) ~ group, weights = w, robust = TRUE, ties =
+"breslow")$rscore``. Every weighting, ``strata``, ``tl`` and ``t0`` take
+weights, and the result does not depend on their scale. A weighted test
+answers the population question the weights describe; an unweighted test
+of weighted data answers a question about the sample, and a test that
+weighted the counts without this variance would be too confident.
+
+.. jupyter-execute::
+
+    group = (rng.uniform(size=kept.sum()) < 0.5).astype(int)
+    print(surv.logrank(x, group, c=c, w=w))
+
 ``SurpyvalData`` holds the weights too (``SurpyvalData(x, c, n, w=w)``,
 ``SurpyvalData.from_dataframe(df, ..., w_col="weight")``), and
-``fit_from_df`` takes ``w_col``.
+``fit_from_df`` takes ``w_col`` (Cox's too: a row dropped for a missing
+covariate drops its weight with it).
+
+A Cox model with time-varying covariates takes weights as well,
+``CoxPH.fit_tvc(i, xl, xr, c, Z, w=w)`` (and ``fit_tvc_from_df(...,
+w_col=)``), one weight per interval row: give each of a subject's rows
+the subject's weight. Its robust covariance clusters the rows by subject,
+as R's ``coxph(Surv(start, stop, event) ~ z, weights = w, robust = TRUE,
+id = id)``, so splitting a subject's follow-up into episodes on which
+nothing changes gives the same fit and the same standard errors.
 
 What a weighted fit will not do
 -------------------------------
@@ -223,8 +251,7 @@ saying what to use instead:
   ``"MSE"``, ``"MPS"``).
 - **Turnbull**, the Cox model's residuals and ``diagnose()``, strata and
   exact ties. These may come later.
-- **The fitters that do not take** ``w``: competing risks, the log-rank
-  tests, recurrent events, degradation, mixtures, distributional
+- **The fitters that do not take** ``w``: competing risks, recurrent events, degradation, mixtures, distributional
   regression, Aalen's additive model and the Royston-Parmar regression,
   among others, which refuse weighted data (the Bayesian fits and the
   life table are above).
@@ -299,8 +326,8 @@ Translating from lifelines and R
 
 - lifelines ``KaplanMeierFitter().fit(T, E, weights=w)`` is
   ``KaplanMeier.fit(T, 1 - E, w=w)``; ``CoxPHFitter().fit(df, "T", "E",
-  weights_col="w", robust=True)`` is ``CoxPH.fit_from_df`` without
-  ``w_col`` for now: ``CoxPH.fit(T, Z, c=1 - E, w=w)``.
+  weights_col="w", robust=True)`` is ``CoxPH.fit_from_df(df, "T", Z_cols,
+  c_col=..., w_col="w")``, with the flag column holding ``1 - E``.
 - R ``survfit(Surv(T, E) ~ 1, weights = w, robust = TRUE)`` is
   ``KaplanMeier.fit(T, 1 - E, w=w)``; ``survreg(Surv(T, E) ~ z, weights =
   w, robust = TRUE)`` is ``WeibullAFT.fit(T, z, c=1 - E, w=w)`` (on
