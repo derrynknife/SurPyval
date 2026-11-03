@@ -956,7 +956,10 @@ def _joint():
         rows=("x", "Z", "c", "n", "markers"),
         coefficients=_joint_coefficients,
         intercept=True,
+        draw=None,
         exclude={
+            "random_sf": "an item's draws depend on its readings: "
+            "JointModel.predict(...).random(size) draws for one item",
             "row_independence": "one item a call (Z is its covariate "
             "vector), so there are no rows to mix up",
         },

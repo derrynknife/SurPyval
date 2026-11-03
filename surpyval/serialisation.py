@@ -173,8 +173,17 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # Schema 3 is a model fitted with sampling weights ``w`` (``"weighted":
 # true``, or data with ``"w"``): a schema-2 reader would drop the weights
 # and give the model's bounds the classical meaning, so it is refused
-# there. Every other document keeps the schema it had.
-SCHEMA_VERSION = 3
+# there.
+#
+# Schema 4 is the layout of v0.27, which a v0.26 reader (schema 3) refuses.
+# It is needed by a stratified Cox model (a ``"strata"`` list of
+# baselines): a schema-3 reader would read the first stratum's baseline,
+# which the dict also holds at the top level, as the model's. And by a
+# distributional regression model whose coefficients carry SurPyval's sign
+# convention (``"coefficient_signs"``): a v0.26 reader would read a scale's
+# coefficients with the opposite sign and predict the opposite effect.
+# Every other document keeps the schema it had.
+SCHEMA_VERSION = 4
 
 # The schema of a document that needs more than schema 1 but is not
 # weighted.
@@ -182,6 +191,11 @@ _SCHEMA_NON_FINITE = 2
 
 # The schema of a weighted model or data.
 _SCHEMA_WEIGHTED = 3
+
+# The schema of a stratified Cox model, and of a model whose coefficients
+# carry their signs: both are v0.27's schema 4.
+_SCHEMA_STRATIFIED = 4
+_SCHEMA_SIGNED = 4
 
 # The oldest version whose readers restore a document with neither of
 # those exactly as this SurPyval does.
@@ -670,6 +684,14 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
     """
     stamped_versions: list = []
     dicts = _nested_dicts(model_dict, stamped_versions if stamped else None)
+    if _SCHEMA_STRATIFIED in stamped_versions or any(
+        _is_stratified(d) for d in dicts
+    ):
+        return _SCHEMA_STRATIFIED
+    if _SCHEMA_SIGNED in stamped_versions or any(
+        "coefficient_signs" in d for d in dicts
+    ):
+        return _SCHEMA_SIGNED
     if _SCHEMA_WEIGHTED in stamped_versions or any(
         _is_weighted(d) for d in dicts
     ):
@@ -685,6 +707,15 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
             for d in dicts
         )
         else _SCHEMA_WITHOUT_NON_FINITE
+    )
+
+
+def _is_stratified(d: dict) -> bool:
+    """Whether ``d`` is a stratified Cox model (its baselines under
+    ``"strata"``)."""
+    return (
+        d.get("model") == "SemiParametricRegressionModel"
+        and d.get("strata") is not None
     )
 
 

@@ -14,9 +14,16 @@ data, ``flexsurvreg(..., anc = list(...))``, which fits the same model:
 
 flexsurv's Weibull is ``S = exp(-(t / scale)^shape)`` with ``log(scale)``
 and ``log(shape)`` linear in the covariates: SurPyval's ``alpha`` and
-``beta`` with their default log links and the same signs. Its ``res.t``
-holds ``log(shape)`` and ``log(scale)`` for the intercepts. Its log-normal
-is ``meanlog`` linear and ``log(sdlog)`` linear: ``mu`` and ``sigma``.
+``beta`` with their default log links. Its ``res.t`` holds ``log(shape)``
+and ``log(scale)`` for the intercepts. Its log-normal is ``meanlog``
+linear and ``log(sdlog)`` linear: ``mu`` and ``sigma``.
+
+The sign: flexsurv's coefficients take the link's sign (a positive scale
+or ``meanlog`` coefficient means a longer life); SurPyval's take its own,
+the AFT models' (a positive scale or location coefficient means a shorter
+life, ``model.coefficient_signs``). So flexsurv's scale and ``meanlog``
+coefficients are ours negated; its shape and ``sdlog`` coefficients are
+ours as they are.
 """
 
 import pickle
@@ -112,7 +119,8 @@ def test_weibull_matches_flexsurv():
         -model.neg_ll(), FLEXSURV_WEIBULL["ll"], atol=1e-6
     )
     p = np.asarray(model.params, dtype=float)
-    ours = np.r_[np.log(p[1]), np.log(p[0]), p[2:]]
+    # R's sign: the scale's coefficients negated, the shape's as they are
+    ours = np.r_[np.log(p[1]), np.log(p[0]), -p[2:5], p[5:]]
     np.testing.assert_allclose(ours, FLEXSURV_WEIBULL["est"], rtol=1e-4)
     se = model.standard_errors()
     ours_se = np.r_[se[1] / p[1], se[0] / p[0], se[2:]]
@@ -125,7 +133,8 @@ def test_lognormal_is_flexsurvs_model():
     model = _rossi(sp.LogNormalDistributional)
     assert model.maximum == "verified"
     e = FLEXSURV_LNORM["est"]
-    at_flexsurv = [e[0], np.exp(e[1]), *e[2:]]
+    # Ours from R's: the meanlog coefficients negated
+    at_flexsurv = [e[0], np.exp(e[1]), *(-np.asarray(e[2:5])), *e[5:]]
     np.testing.assert_allclose(
         -model.model.neg_ll(model.data, *at_flexsurv),
         FLEXSURV_LNORM["ll"],
@@ -173,18 +182,19 @@ def test_formulas_choose_each_parameters_terms():
 
 
 @pytest.mark.parametrize(
-    "dist, aft, parameter, sign",
+    "dist, aft, parameter",
     [
-        ("Weibull", "WeibullAFT", "alpha", -1.0),
-        ("Exponential", "ExponentialAFT", "failure_rate", 1.0),
-        ("LogNormal", "LogNormalAFT", "mu", -1.0),
-        ("LogLogistic", None, "alpha", -1.0),
-        ("Gamma", "GammaAFT", "beta", 1.0),
+        ("Weibull", "WeibullAFT", "alpha"),
+        ("Exponential", "ExponentialAFT", "failure_rate"),
+        ("LogNormal", "LogNormalAFT", "mu"),
+        ("LogLogistic", None, "alpha"),
+        ("Gamma", "GammaAFT", "beta"),
+        ("Rayleigh", None, "sigma"),
     ],
 )
-def test_covariates_on_the_scale_alone_are_the_aft_model(
-    dist, aft, parameter, sign
-):
+def test_covariates_on_the_scale_alone_are_the_aft_model(dist, aft, parameter):
+    # One sign convention: the AFT model's coefficients, coefficient for
+    # coefficient, with the same sign (a positive one shortens life).
     df = rossi_with_censoring()
     Z = df[["fin", "age"]].to_numpy(float)
     x, c = df["week"].to_numpy(float), df["censored"].to_numpy()
@@ -198,9 +208,9 @@ def test_covariates_on_the_scale_alone_are_the_aft_model(
     np.testing.assert_allclose(model.neg_ll(), plain.neg_ll(), rtol=1e-9)
     k = model.k_dist
     np.testing.assert_allclose(model.params[:k], plain.params[:k], rtol=1e-5)
-    np.testing.assert_allclose(
-        model.params[k:], sign * plain.params[k:], rtol=1e-5
-    )
+    np.testing.assert_allclose(model.params[k:], plain.params[k:], rtol=1e-5)
+    # Financial aid lengthens the time to arrest: a negative coefficient
+    assert model.params[k] < 0 and plain.params[k] < 0
     np.testing.assert_allclose(
         model.standard_errors(), plain.standard_errors(), rtol=1e-4
     )
@@ -209,7 +219,8 @@ def test_covariates_on_the_scale_alone_are_the_aft_model(
 
 
 def test_weibull_ph_is_covariates_on_the_scale():
-    # H = (x / alpha)^beta e^(b z) = (x / (alpha e^(-b z / beta)))^beta
+    # H = (x / alpha)^beta e^(b z) = (x / (alpha e^(-b z / beta)))^beta,
+    # and the scale's coefficient enters as alpha e^(-alpha_z z)
     df = rossi_with_censoring()
     x, c = df["week"].to_numpy(float), df["censored"].to_numpy()
     z = df["fin"].to_numpy(float)
@@ -217,7 +228,7 @@ def test_weibull_ph_is_covariates_on_the_scale():
     model = WeibullDistributional.fit(x, z, c=c, covariates={"alpha": [0]})
     np.testing.assert_allclose(model.neg_ll(), ph.neg_ll(), rtol=1e-9)
     alpha, beta, alpha_z = model.params
-    np.testing.assert_allclose(-beta * alpha_z, ph.params[2], rtol=1e-5)
+    np.testing.assert_allclose(beta * alpha_z, ph.params[2], rtol=1e-5)
 
 
 def test_power_life_model_is_covariates_on_log_stress():
@@ -246,7 +257,8 @@ def test_exponential_is_the_weibull_with_its_shape_fixed_at_1():
     # Two searches (the Weibull's at Z = 0, its shape held there), each to
     # its own tolerance
     np.testing.assert_allclose(1 / weibull.params[0], expo.params[0], 1e-5)
-    np.testing.assert_allclose(weibull.params[2], -expo.params[1], 1e-5)
+    # alpha e^(-b z) is the rate e^(b z) / alpha: the same coefficient
+    np.testing.assert_allclose(weibull.params[2], expo.params[1], 1e-5)
 
 
 # -- the likelihood on every kind of data ------------------------------------
@@ -422,7 +434,8 @@ def test_a_log_link_on_a_location():
         x, z, covariates={"mu": [0]}, links={"mu": "log"}
     )
     assert model.links == ("log", "log")
-    np.testing.assert_allclose(model.params[2], 0.3, atol=0.05)
+    # mu = mu_0 e^(-b z): a later mean has a negative coefficient
+    np.testing.assert_allclose(model.params[2], -0.3, atol=0.05)
 
 
 # -- predictions, bounds and saving -----------------------------------------
@@ -434,7 +447,8 @@ def test_predictions():
     Z = np.array([[0.1], [0.9]])
     alpha, beta = model.parameters_at(Z).T
     a0, b0, a1, b1 = model.params
-    np.testing.assert_allclose(alpha, a0 * np.exp(a1 * Z[:, 0]))
+    # The scale with SurPyval's sign, the shape with the link's
+    np.testing.assert_allclose(alpha, a0 * np.exp(-a1 * Z[:, 0]))
     np.testing.assert_allclose(beta, b0 * np.exp(b1 * Z[:, 0]))
     t = np.array([3.0, 8.0])
     np.testing.assert_allclose(
@@ -572,12 +586,14 @@ def test_three_parameters_and_proportions():
     model = Distributional(sp.ExpoWeibull).fit(x, z, covariates={"alpha": [0]})
     assert model.maximum == "verified"
     assert model.parameter_names == ["alpha", "beta", "mu", "alpha_coef_0"]
-    np.testing.assert_allclose(model.params[3], -0.4, atol=0.15)
-    # A Beta on (0, 1), its first shape moved by z
+    # The scale divided by e^0.4: a shorter life, a positive coefficient
+    np.testing.assert_allclose(model.params[3], 0.4, atol=0.15)
+    # A Beta on (0, 1), its first shape moved by z: a larger first shape
+    # is a later value, so its coefficient has the negative sign
     p = rng.beta(2.0 * np.exp(0.5 * z), 3.0)
     beta = Distributional(sp.Beta).fit(p, z, covariates={"alpha": [0]})
     assert beta.maximum == "verified"
-    np.testing.assert_allclose(beta.params[2], 0.5, atol=0.25)
+    np.testing.assert_allclose(beta.params[2], -0.5, atol=0.25)
 
 
 def test_a_centred_spline_basis_needs_no_aliasing():

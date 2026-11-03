@@ -35,6 +35,17 @@ itself when the shape is below 2: the offset's estimate is biased up
 (it is at most the first failure), and no interval of the refits makes
 up for that -- the percentile interval covered B1 45% and the basic
 (reflected) interval 75% but ``sf`` above the offset 56%.
+
+A fit with sampling weights ``w`` is resampled by cases instead: the
+model knows nothing of the sampling design the weights describe, so
+simulating from it would not reproduce the variability of the estimate.
+Each resample draws the units i.i.d. with replacement, each with its own
+weight, time, censoring and truncation, and refits the weighted model;
+the bounds are the same bias-corrected percentile intervals of those
+refits. Nothing is simulated, so left- and interval-censored data are
+resampled as they are. The resamples are drawn by position alone, so a
+seed gives the same resamples, and the same bounds, at any scale of the
+weights.
 """
 
 from __future__ import annotations
@@ -279,6 +290,39 @@ class _UnivariateDesign(ResampleDesign):
         self._censoring_distribution()
 
 
+class _CaseDesign:
+    """What a case resample of a weighted model's data draws from: every
+    unit (a row with ``n = k`` is ``k`` units) with its time, censoring,
+    truncation and weight."""
+
+    def __init__(self, model: Any) -> None:
+        check_resamplable(model)
+        data = model.data
+        n = np.asarray(data["n"], dtype=int)
+        units = np.repeat(np.arange(n.size), n)
+        x = np.asarray(data["x"], dtype=float)
+        self.x = x[units]
+        self.c = np.asarray(data["c"])[units]
+        t = np.asarray(data["t"], dtype=float).reshape(-1, 2)[units]
+        self.tl, self.tr = t[:, 0], t[:, 1]
+        self.truncated = bool(
+            np.any(np.isfinite(self.tl)) or np.any(np.isfinite(self.tr))
+        )
+        # The weights scaled to sum to the units, as the fit uses them, so
+        # that the refits do not depend on the scale of ``w``.
+        w = np.asarray(data["w"], dtype=float)
+        self.w = (w * (n.sum() / np.sum(n * w)))[units]
+
+    def resample(self, rng: np.random.Generator) -> dict:
+        """The arguments of one refit: the units drawn with replacement."""
+        k = rng.integers(0, self.x.shape[0], size=self.x.shape[0])
+        out: dict[str, Any] = {"x": self.x[k], "c": self.c[k], "w": self.w[k]}
+        if self.truncated:
+            out["tl"] = self.tl[k]
+            out["tr"] = self.tr[k]
+        return out
+
+
 def _point(model: Any) -> tuple:
     """``(gamma, *params)``, then ``lfp_p`` and ``f0`` where the model has
     them (the order of ``model.param_map`` after the offset)."""
@@ -365,7 +409,19 @@ def refits(model: Any, n_boot: Any, random_state: Any) -> Refits:
     parameters are as they are (``random_state=None`` or a ``Generator``
     draws afresh each time, from that stream)."""
     n_boot = check_n_boot(n_boot)
-    design = _UnivariateDesign(model)
+    weighted = getattr(model, "weighted", False)
+    if weighted and (model.lfp or model.zi):
+        from surpyval.utils.weights import USE_WALD, refuse_weighted
+
+        # The BCa interval of these models needs the jackknife and the
+        # edge checks of the weighted units, which are not built.
+        raise refuse_weighted(
+            "A bootstrap bound of a limited-failure or zero-inflated model",
+            "its interval (BCa) needs a jackknife of the weighted units, "
+            "which is not built",
+            USE_WALD,
+        )
+    design: Any = _CaseDesign(model) if weighted else _UnivariateDesign(model)
     point = _point(model)
     key = None
     if isinstance(random_state, (int, np.integer)) and not isinstance(
@@ -422,13 +478,15 @@ def _refit_options(model: Any) -> tuple:
 
 def _draw(
     model: Any,
-    design: _UnivariateDesign,
+    design: Any,
     point: tuple,
     n_boot: int,
     rng: np.random.Generator,
 ) -> Refits:
-    """``n_boot`` resamples simulated from ``model`` with ``design`` and
-    refitted (see the module docstring)."""
+    """``n_boot`` resamples simulated from ``model`` with ``design`` (or,
+    for a weighted fit, drawn from its units) and refitted (see the
+    module docstring)."""
+    cases = isinstance(design, _CaseDesign)
     with np.errstate(all="ignore"):
         F_lo = np.where(
             np.isfinite(design.tl), model.ff(np.nan_to_num(design.tl)), 0.0
@@ -444,18 +502,23 @@ def _draw(
     end = float(np.max(design.x)) if design.x.size else np.inf
     models, values = [], []
     counts = {"no finite maximum": 0, "unverified": 0, "failed": 0}
+    kwargs: dict[str, Any]
     for _ in range(n_boot):
-        u = rng.uniform(size=design.x.size)
-        with np.errstate(all="ignore"):
-            T = np.asarray(model.qf(F_lo + u * (F_hi - F_lo)), dtype=float)
-        C = design.censoring(rng)
-        C = np.where(np.isinf(T) & np.isinf(C), end, C)
-        censored = T > C
-        x = np.where(censored, C, T)
-        kwargs: dict[str, Any] = {"c": censored.astype(int)}
-        if design.truncated:
-            kwargs["tl"] = design.tl
-            kwargs["tr"] = design.tr
+        if cases:
+            kwargs = design.resample(rng)
+            x = kwargs.pop("x")
+        else:
+            u = rng.uniform(size=design.x.size)
+            with np.errstate(all="ignore"):
+                T = np.asarray(model.qf(F_lo + u * (F_hi - F_lo)), dtype=float)
+            C = design.censoring(rng)
+            C = np.where(np.isinf(T) & np.isinf(C), end, C)
+            censored = T > C
+            x = np.where(censored, C, T)
+            kwargs = {"c": censored.astype(int)}
+            if design.truncated:
+                kwargs["tl"] = design.tl
+                kwargs["tr"] = design.tr
         try:
             with warnings.catch_warnings(), quiet_maximum_warnings():
                 warnings.simplefilter("ignore")
@@ -477,14 +540,24 @@ def _draw(
             counts[refit.maximum] += 1
         models.append(refit)
         values.append(
-            _at_edges(refit, _point(refit), x, censored.astype(int), kwargs)
+            _at_edges(
+                refit, _point(refit), x, np.asarray(kwargs["c"], int), kwargs
+            )
         )
-    original = {"tl": design.tl, "tr": design.tr} if design.truncated else {}
+    if cases:
+        # A weighted model has no lfp_p or f0 (its bootstrap is refused),
+        # so nothing to put on an edge.
+        estimate = point
+    else:
+        original = (
+            {"tl": design.tl, "tr": design.tr} if design.truncated else {}
+        )
+        estimate = _at_edges(
+            model, point, design.x, (~design.failed).astype(int), original
+        )
     return Refits(
         point=point,
-        estimate=_at_edges(
-            model, point, design.x, (~design.failed).astype(int), original
-        ),
+        estimate=estimate,
         n_boot=n_boot,
         models=models,
         values=np.array(values).reshape(len(values), len(point)),

@@ -22,12 +22,7 @@ from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 
 from ._covariate_link import CovariateLink
-from ._penalised import (
-    Penalty,
-    check_penalty,
-    covariate_scale,
-    solve_penalised,
-)
+from ._penalised import PenalisedObjective, penalised_fit
 from .parametric_regression_model import ParametricRegressionModel
 
 
@@ -68,42 +63,54 @@ def fit_parametric_penalised(
     check_baseline_support(fitter, data)
 
     p = Z_arr.shape[1]
-    pen, a = check_penalty(penalizer, l1_ratio, standardise, p)
     w = np.asarray(data.n, dtype=float)
-    scale = covariate_scale(Z_arr, w, standardise)
-    scaled = _intervals_from_the_support(fitter, data)
-    scaled.add_covariates(Z_arr / scale)
-    N = float(w.sum())
-
-    pmap = coefficient_map(Z_arr, fitter.param_map)
     k = fitter.k_dist
     bounds = (*fitter.bounds, *(((None, None),) * p))
-    param_map = {**fitter.param_map, **{nm: j + k for nm, j in pmap.items()}}
-    transform, inv_trans, const, _, _ = bounds_convert(
-        data.x, bounds, None, param_map
-    )
-    with np.errstate(all="ignore"):
-        baseline = fitter.dist.fit_from_surpyval_data(data).params
-    init = np.array([*baseline, *np.zeros(p)], dtype=float)
-    init_t = np.asarray(transform(init), dtype=float)
+    built: dict[str, Any] = {}
 
-    def objective(theta: Any) -> Any:
-        return fitter.neg_ll(scaled, *inv_trans(const(theta))) / N
+    def build(scale: npt.NDArray, N: float) -> PenalisedObjective:
+        # The likelihood of the covariates divided by their scale, over N.
+        scaled = _intervals_from_the_support(fitter, data)
+        scaled.add_covariates(Z_arr / scale)
+        pmap = built["pmap"] = coefficient_map(Z_arr, fitter.param_map)
+        param_map = {
+            **fitter.param_map,
+            **{nm: j + k for nm, j in pmap.items()},
+        }
+        transform, inv_trans, const, _, _ = bounds_convert(
+            data.x, bounds, None, param_map
+        )
+        built["inv_trans"], built["const"] = inv_trans, const
+        with np.errstate(all="ignore"):
+            baseline = fitter.dist.fit_from_surpyval_data(data).params
+        init = np.array([*baseline, *np.zeros(p)], dtype=float)
+        init_t = np.asarray(transform(init), dtype=float)
 
-    gradient = ag_grad(objective)
-    curvature = ag_hessian(objective)
-    l1, l2 = Penalty(pen, a, bool(standardise), scale).weights()
-    with np.errstate(all="ignore"):
-        res = solve_penalised(
+        def objective(theta: Any) -> Any:
+            return fitter.neg_ll(scaled, *inv_trans(const(theta))) / N
+
+        gradient = ag_grad(objective)
+        curvature = ag_hessian(objective)
+        return PenalisedObjective(
             lambda th: float(objective(anp.asarray(th))),
             lambda th: np.asarray(gradient(anp.asarray(th)), dtype=float),
             lambda th: np.asarray(curvature(anp.asarray(th)), dtype=float),
             init_t,
-            np.arange(k, k + p),
-            l1,
-            l2,
-            tol=tol,
         )
+
+    fit = penalised_fit(
+        build,
+        Z_arr,
+        w,
+        np.arange(k, k + p),
+        penalizer,
+        l1_ratio,
+        standardise,
+        tol,
+    )
+    res, scale = fit.result, fit.penalty.scale
+    inv_trans, const = built["inv_trans"], built["const"]
+    pmap = built["pmap"]
     params = np.array(inv_trans(const(res.x)), dtype=float)
     params[k:] = params[k:] / scale
     with np.errstate(all="ignore"):
@@ -126,7 +133,7 @@ def fit_parametric_penalised(
         {},
         neg_ll=neg_ll,
     )
-    model.penalty = Penalty(pen, a, bool(standardise), scale, res.effective_df)
+    model.penalty = fit.penalty
     model.maximum = "verified" if res.verified else "unverified"
     if not res.verified:
         warn_unverified("The penalised fit")
@@ -229,7 +236,14 @@ class PenalisedFitMixin:
             covariates divided by their standard deviations
             (count-weighted, divisor ``N``, as glmnet), so the penalty
             does not depend on their units; the coefficients are reported
-            on the covariates' own scale either way.
+            on the covariates' own scale either way. The divisor is
+            ``N``, not ``N - 1`` (lifelines'), because the objective is
+            glmnet's, the mean negative log-likelihood plus the penalty;
+            lifelines' standard deviations are larger by
+            :math:`\\sqrt{N / (N - 1)}` (0.5% at ``N = 100``, 5% at ``N =
+            10``), so its penalty is that much stronger. To reproduce a
+            lifelines fit, divide the covariates by their ``ddof=1``
+            standard deviations yourself and pass ``standardise=False``.
         tol : float, optional
             The optimality tolerance on the gradient of the objective.
         w : array_like, optional

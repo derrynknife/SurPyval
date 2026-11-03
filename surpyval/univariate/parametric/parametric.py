@@ -453,6 +453,14 @@ _MAXIMUM_NOTES = {
     ),
 }
 
+# A fitted limited-failure proportion this close to 1 is at its bound: the
+# printout says so, and what to do (principle 22).
+_LFP_BOUND_TOL = 1e-5
+_LFP_AT_BOUND_NOTE = (
+    "lfp_p is at its bound of 1: the data show no sign of units that "
+    "never fail; fit without lfp=True"
+)
+
 
 class Parametric(
     LikelihoodRatioMixin,
@@ -496,6 +504,18 @@ class Parametric(
 
         :func:`~surpyval.fit_best.fit_best` ranks a candidate by its criterion
         only when this is ``"verified"``, unless nothing else fitted.
+    hess_inv : ndarray
+        The inverse Hessian of the negative log-likelihood at the fitted
+        parameters, the distribution's parameters' block (the curvature
+        of the likelihood, not a variance in general). For a fit with
+        weights ``w`` it is that of the weighted log-likelihood with the
+        weights as given (R's ``naive.var``), which is not the variance
+        of the estimate: the bounds use the robust covariance,
+        :meth:`covariance`. Without weights the two are the same matrix.
+        Use :meth:`covariance` (or :meth:`standard_errors`) for a
+        variance. Not set on a model built with ``from_params``, or on a
+        weighted model saved by v0.26, which stored the robust covariance
+        in its place.
 
     Examples
     --------
@@ -532,12 +552,16 @@ class Parametric(
     lfp_p: float
     f0: float
     support: tuple[float, float]
+    # The inverse Hessian of the (weighted) negative log-likelihood, the
+    # distribution's block (documented under Attributes above). Never the
+    # robust covariance: bounds use ``covariance()``.
     hess_inv: npt.NDArray
     #: The covariance of every estimated parameter, ``covariance()``.
     _covariance: npt.NDArray | None = None
     #: Whether the model was fitted with weights ``w``: its covariance is
-    #: then the robust (sandwich) one, and the likelihood-ratio and
-    #: bootstrap bounds and the information criteria refuse.
+    #: then the robust (sandwich) one, its bootstrap bounds the case
+    #: bootstrap, and the likelihood-ratio bounds and the information
+    #: criteria refuse.
     weighted: bool = False
     #: The effective sample size of the weights of a weighted fit.
     effective_n: float | None = None
@@ -691,8 +715,18 @@ class Parametric(
 
         # Numbers, a k x k matrix: a hand-edited dict's strings or ragged
         # rows are named here, not in a numpy error later (#663).
-        if "hess_inv" in model_dict:
+        if "inverse_hessian" in model_dict:
+            # A weighted model saved since v0.27: its "hess_inv" entry is
+            # the robust block, for older readers (below).
+            out.hess_inv = dict_numbers(model_dict, "inverse_hessian", True)
+        elif (
+            "hess_inv" in model_dict and model_dict.get("weighted") is not True
+        ):
             out.hess_inv = dict_numbers(model_dict, "hess_inv", True)
+        # A weighted model saved by v0.26 stored the robust covariance as
+        # "hess_inv" and not the inverse Hessian, which cannot be rebuilt
+        # without the data: it has no hess_inv. Its bounds use its
+        # "covariance", as they did.
 
         # "cov_matrix" is the key of a dict written before v0.23.
         for key in ("covariance", "cov_matrix"):
@@ -825,7 +859,17 @@ class Parametric(
             out["gamma"] = 0.0
 
         if getattr(self, "hess_inv", None) is not None:
-            out["hess_inv"] = self.hess_inv.tolist()
+            if self.weighted and self._covariance is not None:
+                # The inverse Hessian under its own key; "hess_inv" holds
+                # the robust block, as v0.26 wrote it, so that a v0.26
+                # reader, whose param_cb reads "hess_inv", keeps the
+                # robust bounds.
+                out["inverse_hessian"] = np.asarray(self.hess_inv).tolist()
+                n_core = len(self.params)
+                robust = np.asarray(self._covariance)[:n_core, :n_core]
+                out["hess_inv"] = robust.tolist()
+            else:
+                out["hess_inv"] = self.hess_inv.tolist()
         if self._covariance is not None:
             # The key every model's dict stores it under (#605).
             out["covariance"] = np.asarray(self._covariance).tolist()
@@ -1042,6 +1086,8 @@ class Parametric(
             if self.lfp:
                 label = "Max Proportion (lfp_p)"
                 out += f"\n{label:<20}: {self.lfp_p}"
+                if self._lfp_at_bound():
+                    out += f"\n{'Note':<20}: {_LFP_AT_BOUND_NOTE}"
 
             if self.zi:
                 out += f"\nZero-Inflation (f0) : {self.f0}"
@@ -1056,6 +1102,16 @@ class Parametric(
             return out
         else:
             return "Unable to fit values"
+
+    def _lfp_at_bound(self) -> bool:
+        """Whether a fitted limited-failure proportion is at its upper
+        bound of 1 (within ``_LFP_BOUND_TOL``): the plain model, with
+        every unit failing eventually, fits as well. The search stops just
+        short of the bound, so the test is not ``== 1``. False for a model
+        built from parameters."""
+        if not self.lfp or self.method == "given parameters":
+            return False
+        return bool(1 - float(self.lfp_p) < _LFP_BOUND_TOL)
 
     def _data_repr(self) -> str:
         """The data the model was fitted to, in one line, for the printout
@@ -1082,6 +1138,9 @@ class Parametric(
         the model has them (a held parameter has a zero row and column). The
         inverse of the observed information at the maximum, carried to
         the parameters through their transforms; what Wald bounds use.
+        For a fit with weights ``w`` it is the robust (sandwich)
+        covariance, while ``hess_inv`` stays the inverse Hessian. Use
+        this, not ``hess_inv``, wherever a variance is wanted.
 
         Raises a ``ValueError`` where the model has none: one built with
         ``from_params``, one whose information was singular, or a
@@ -1099,6 +1158,28 @@ class Parametric(
         if self._covariance is None:
             raise self._no_covariance_error()
         return self._covariance
+
+    def _core_covariance(self) -> npt.NDArray:
+        """The covariance of the distribution's parameters, the block of
+        :meth:`covariance` that every Wald bound, band and plot uses: the
+        robust one for a fit with weights. A model restored from a dict
+        that stored only ``hess_inv`` (no ``"covariance"``) and was not
+        weighted uses it, as it is then the same matrix. Raises the
+        error of :meth:`covariance` where there is none."""
+        cov = self._covariance
+        if cov is not None:
+            n_core = len(self.params)
+            return np.asarray(cov)[:n_core, :n_core]
+        hess_inv = getattr(self, "hess_inv", None)
+        if hess_inv is None or self.weighted:
+            raise self._no_covariance_error()
+        return hess_inv
+
+    def _has_core_covariance(self) -> bool:
+        """Whether :meth:`_core_covariance` has a covariance to give."""
+        return self._covariance is not None or (
+            getattr(self, "hess_inv", None) is not None and not self.weighted
+        )
 
     def standard_errors(self) -> npt.NDArray:
         """
@@ -1247,7 +1328,7 @@ class Parametric(
             return probability_cb(self, name, alpha_ci, bound, method)
         if method is None:
             method = "wald"
-        self._refuse_weighted_method(method)
+        self._refuse_weighted_method(method, bootstrap=True)
         if self._is_lr(method, bootstrap=True):
             return self._param_cb_lr(name, alpha_ci, bound)
         if method.lower() == "bootstrap":
@@ -1270,10 +1351,7 @@ class Parametric(
             param_bounds: tuple[float | None, float | None] = (0, 1)
         else:
             p_hat = self.params[idx]
-            hess_inv = getattr(self, "hess_inv", None)
-            if hess_inv is None:
-                raise self._no_covariance_error()
-            var = hess_inv[idx, idx]
+            var = self._core_covariance()[idx, idx]
             param_bounds = self.dist.bounds[idx]
 
         check_option("bound", bound, BOUNDS)
@@ -2570,7 +2648,7 @@ class Parametric(
             # Nothing to bound (the Jacobian of no values fails).
             return np.empty((0, 2) if bound == "two-sided" else (0,))
 
-        self._refuse_weighted_method(method)
+        self._refuse_weighted_method(method, bootstrap=True)
         if self._is_lr(method, bootstrap=True):
             return self._cb_lr(t, on, alpha_ci, bound)
         if method.lower() == "bootstrap":
@@ -2717,7 +2795,7 @@ class Parametric(
             self._refuse_weighted_method(method)
             self._is_lr(method)  # checks the name
             return self._quantile_cb_discrete(probs, alpha_ci, bound, method)
-        self._refuse_weighted_method(method)
+        self._refuse_weighted_method(method, bootstrap=True)
         if self._is_lr(method, bootstrap=True):
             return self._lr_summary("qf", probs, alpha_ci, bound)
         if method.lower() == "bootstrap":
@@ -2944,7 +3022,7 @@ class Parametric(
                 lambda v: 1.0 / v,
                 (_LN_TINY, _LN_MAX),
             )
-            self._refuse_weighted_method(method)
+            self._refuse_weighted_method(method, bootstrap=True)
             if self._is_lr(method, bootstrap=True):
                 found = self._lr_summary(
                     "mrl", t[ok], alpha_ci, bound, scale=log_scale
@@ -3076,10 +3154,13 @@ class Parametric(
             return np.column_stack([found[:, 0], inf])
         return extended._summary_cb_lr(fns, alpha_ci, bound, kind, scale)
 
-    def _refuse_weighted_method(self, method: Any) -> None:
-        """Refuse, for a fit with weights ``w``, the likelihood-ratio and
-        bootstrap bounds, which weights make invalid; Wald bounds use the
-        robust covariance."""
+    def _refuse_weighted_method(
+        self, method: Any, bootstrap: bool = False
+    ) -> None:
+        """Refuse, for a fit with weights ``w``, the likelihood-ratio
+        bound, which weights make invalid, and the bootstrap where the
+        caller has no case bootstrap (``bootstrap=False``); Wald bounds use
+        the robust covariance."""
         if not self.weighted or not isinstance(method, str):
             return
         from surpyval.utils.weights import refuse_bootstrap, refuse_lr
@@ -3087,7 +3168,7 @@ class Parametric(
         m = method.lower()
         if m in ("lr", "likelihood", "likelihood-ratio", "profile"):
             raise refuse_lr()
-        if m == "bootstrap":
+        if m == "bootstrap" and not bootstrap:
             raise refuse_bootstrap()
 
     @staticmethod
@@ -3423,11 +3504,8 @@ class Parametric(
 
         cov = self._covariance
         if cov is None:
-            hess_inv = getattr(self, "hess_inv", None)
-            if hess_inv is None:
-                raise self._no_covariance_error()
             cov = np.zeros((len(phi_hat), len(phi_hat)))
-            cov[:n_core, :n_core] = np.copy(hess_inv)
+            cov[:n_core, :n_core] = np.copy(self._core_covariance())
 
         return _CBContext(phi_hat=phi_hat, cov=cov, n_core=n_core)
 
@@ -3925,11 +4003,7 @@ class Parametric(
         check_alpha_ci(alpha_ci)
         self._require_data("get_plot_data()")
         cb_func: Callable[[Any], Any] | None
-        if (
-            hasattr(self, "hess_inv")
-            and (self.method == "MLE")
-            and (self.hess_inv is not None)
-        ):
+        if self.method == "MLE" and self._has_core_covariance():
 
             def _cb_func(x_model: npt.NDArray) -> Any:
                 # (the plot's band is drawn as the bound is, and an offset

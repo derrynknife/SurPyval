@@ -1241,7 +1241,7 @@ has no ``param_cb``.
     model = surv.Weibull.fit(x)
 
     beta = model.params[1]
-    se = np.sqrt(model.hess_inv[1, 1])
+    se = np.sqrt(model.covariance()[1, 1])
     z = 1.959964                      # the 97.5% normal quantile
     print("by hand   :", beta * np.exp(np.array([-z, z]) * se / beta))
     print("param_cb  :", model.param_cb('beta'))

@@ -319,8 +319,12 @@ def fit_weighted_cox(
     tie_method: str,
     tol: float,
     center: bool,
+    cluster: Any = None,
 ) -> Any:
-    """``CoxPH.fit(..., w=w)``: the weighted fit and its model."""
+    """``CoxPH.fit(..., w=w)``: the weighted fit and its model. With
+    ``cluster``, one label per row as given (a time-varying fit's
+    subjects), the covariance sums the weighted dfbetas within each
+    cluster, and ``robust_covariance()`` does so by default."""
     from surpyval.utils.weights import (
         effective_sample_size,
         refuse_weighted,
@@ -364,13 +368,18 @@ def fit_weighted_cox(
             f"Z has {Z_rows.shape[0]} rows for {w_arr.shape[0]} values of "
             "x: give one row of covariates per value."
         )
-    # The weights travel as a last column of Z, so that the rows the
-    # validation drops (a missing covariate, with its warning) or
-    # reorders take their weights with them.
+    # The weights travel as a last column of Z, and the rows' places
+    # before it, so that the rows the validation drops (a missing
+    # covariate, with its warning) or reorders take their weights (and
+    # their cluster labels) with them.
+    places = np.arange(w_arr.shape[0], dtype=float)
     x, c, n, tl, Z_aug = validate_coxph(
-        x, c, n, np.column_stack([Z_rows, w_arr]), tl, tie_method
+        x, c, n, np.column_stack([Z_rows, places, w_arr]), tl, tie_method
     )
-    Z, w_arr = Z_aug[:, :-1], Z_aug[:, -1]
+    Z, w_arr = Z_aug[:, :-2], Z_aug[:, -1]
+    labels = None
+    if cluster is not None:
+        labels = np.asarray(cluster)[Z_aug[:, -2].astype(int)]
     _require_an_event(c, n)
     n = np.asarray(n, dtype=float)
     warn_if_few_effective(n, w_arr)
@@ -453,7 +462,7 @@ def fit_weighted_cox(
             UserWarning,
             stacklevel=3,
         )
-    cov_k = robust_covariance(lik, beta_k, bread)
+    cov_k = robust_covariance(lik, beta_k, bread, labels)
     if off.size:
         cov_k[off, :] = np.nan
         cov_k[:, off] = np.nan
@@ -497,6 +506,7 @@ def fit_weighted_cox(
     # coefficients) and the columns estimated, for robust_covariance().
     model._weighted_cox = full
     model._weighted_kept = kept
+    model._weighted_cluster = labels
     model.neg_ll_of = full.neg_ll
     model._ic_n = float(np.sum(n[np.asarray(c) == 0]))
     times, r, d, h0 = lik.baseline(beta_k)

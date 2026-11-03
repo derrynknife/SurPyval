@@ -381,12 +381,23 @@ sp.life_table(x, c, intervals=4)      # actuarial (Cutler-Ederer) table
   `constant_effects_test(random_state=)`.
 - **Royston-Parmar regression:** `sp.RoystonParmarPH`, `sp.RoystonParmarPO`,
   `sp.RoystonParmarRegression(df=, scale=, knots=)`; `df=1` hazard scale is
-  Weibull PH. A `ParametricRegressionModel`, so every bound works.
+  Weibull PH, `df=1` odds scale is `PO(LogLogistic)`. Hazard-scale signs as
+  PH; odds-scale signs as every `PO` (positive = longer life; flexsurv's
+  odds coefficients are ours negated). A `ParametricRegressionModel`, so
+  every bound works.
 - **Distributional:** `covariates={"beta": ["load"]}` or
   `formulas={"alpha": ..., "beta": ...}` per parameter; `parameter_cb`,
-  `plot_parameter`; log link for positive parameters.
-- **Robust SEs** change only the SEs (and that summary table); `cb`,
-  `param_cb`, `p_values` stay model-based. `fit_tvc` models refuse.
+  `plot_parameter`; log link for positive parameters. Signs as AFT (since
+  0.27): a positive scale/location coefficient = shorter life
+  (`alpha(z) = alpha e^{-b'z}`, the AFT coefficient); shape/sigma
+  coefficients keep the link's sign; `model.coefficient_signs`. gamlss and
+  flexsurv scale coefficients are ours negated.
+- **Robust SEs** are all or none (since 0.27): `summary(robust=True)`,
+  `cb(..., robust=True)`, `quantile_cb(..., robust=True)`,
+  `param_cb(..., robust=True)` and `robust_p_values()` (each with
+  `cluster=`) use the sandwich; without `robust=True` all stay
+  model-based. LR/bootstrap bounds, restored models and `fit_tvc` refuse
+  `robust=True`.
 - **PyMC** (`surpyval.pymc`, PyMC not a dependency): inside `with pm.Model():`
   `censored_likelihood(sp.Weibull, x=x, c=c, alpha=..., beta=...)` adds the
   exact censored/truncated likelihood; `prior_from_model`, `prior_from_spec`;
