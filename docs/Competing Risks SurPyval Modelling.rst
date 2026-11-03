@@ -196,6 +196,26 @@ data with every cause treated as a failure -- exactly, not approximately:
 
     assert np.allclose(total, all_cause_km.ff(t), rtol=0, atol=1e-12)
 
+The model's own all-cause ``ff`` is a different estimate unless you ask for
+this one. ``sf``, ``ff`` and ``Hf`` use the estimator given by ``how``, and
+the default is Nelson-Aalen, ``ff = 1 - exp(-H)``. That is never above the
+sum of the CIFs, and is below it from the first event on; the gap is small
+while few units have failed and grows as the risk sets shrink. Fit with ``how="Kaplan-Meier"`` when ``ff`` should match
+the CIFs:
+
+.. jupyter-execute::
+
+    km_fit = CompetingRisks.fit(x, e, how="Kaplan-Meier")
+    print("ff, Nelson-Aalen :", np.round(model.ff(t), 4))
+    print("ff, Kaplan-Meier :", np.round(km_fit.ff(t), 4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(km_fit.ff(t), total, rtol=0, atol=1e-12)
+    assert np.all(model.ff(t) <= total + 1e-12)
+
 Now compare the CIF of wear-out with the naive "1 - Kaplan-Meier with shocks
 censored" curve, and with the truth. For this simulation the true CIF of wear
 is :math:`\int_0^t f_{\text{wear}}(u)\, S_{\text{shock}}(u)\, du`:

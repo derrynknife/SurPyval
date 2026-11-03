@@ -1,5 +1,6 @@
 import warnings
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 
@@ -189,7 +190,7 @@ class LikelihoodInferenceMixin:
            property.
         """
         self._check_fitted()
-        k = int(self._estimated().sum())
+        k = self._ic_k()
         return float(2.0 * k - 2.0 * self.log_likelihood)
 
     def bic(self) -> float:
@@ -208,7 +209,7 @@ class LikelihoodInferenceMixin:
            property.
         """
         self._check_fitted()
-        k = int(self._estimated().sum())
+        k = self._ic_k()
         return float(k * np.log(self._n_obs) - 2.0 * self.log_likelihood)
 
     def aic_c(self) -> float:
@@ -219,8 +220,13 @@ class LikelihoodInferenceMixin:
         other model (#605).
         """
         self._check_fitted()
-        k = int(self._estimated().sum())
+        k = self._ic_k()
         return corrected_aic(self.aic(), k, self._n_obs)
+
+    def _ic_k(self) -> float:
+        """The parameter count of ``aic``, ``bic`` and ``aic_c``: the
+        estimated parameters."""
+        return int(self._estimated().sum())
 
     def covariance(self) -> np.ndarray:
         """
@@ -374,7 +380,7 @@ class LikelihoodInferenceMixin:
             # A boundary is reported in the table (nan), not warned.
             warnings.simplefilter("ignore")
             cov = self.covariance()
-        level = "{:g}%".format(100 * (1 - alpha_ci))
+        level = f"{100 * (1 - alpha_ci):g}%"
         rows = []
         for k, (value, (lo, hi)) in enumerate(
             zip(np.asarray(self._mle, dtype=float), self._parameter_bounds())

@@ -41,6 +41,7 @@ from ._kinds import (
     PROPORTIONAL_ODDS,
 )
 from ._partial_effects import PartialEffectsMixin
+from ._penalised import PenalisedModelMixin
 from ._prediction import ConditionalSurvivalMixin, quantiles_by_inversion
 from ._tvc_evaluation import TVCEvaluationMixin
 from .regression_data import (
@@ -86,6 +87,7 @@ _SERIALISABLE_REG_NAMES = {
 
 
 class ParametricRegressionModel(
+    PenalisedModelMixin,
     ConditionalSurvivalMixin,
     PartialEffectsMixin,
     TVCEvaluationMixin,
@@ -236,10 +238,6 @@ class ParametricRegressionModel(
     _restored_inference: tuple | None = None
     #: True on models rebuilt by :meth:`from_dict`, which carry no data.
     _restored: bool = False
-    #: What a penalised fit (``fit_penalised``) penalised; ``None`` for a
-    #: maximum likelihood fit. A penalised model has no covariance,
-    #: standard errors, confidence bounds or tests.
-    penalty: Any = None
     #: The printout's "Data" line of a model rebuilt by :meth:`from_dict`
     #: (#508).
     _data_summary: str | None = None
@@ -423,8 +421,7 @@ class ParametricRegressionModel(
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = float(self._neg_ll)
         out.update(maximum_entry(self.maximum))
-        if self.penalty is not None:
-            out["penalty"] = self.penalty.to_dict()
+        out.update(self._penalty_entry())
         # The sample size of bic() and aic_c(), which the restored model,
         # having no data, could not otherwise compute.
         ic_n = self._ic_sample_size_or_none()
@@ -691,10 +688,7 @@ class ParametricRegressionModel(
         if "_neg_ll" in model_dict:
             out._neg_ll = float(model_dict["_neg_ll"])
         out.maximum = restored_maximum(model_dict)
-        if "penalty" in model_dict:
-            from ._penalised import Penalty
-
-            out.penalty = Penalty.from_dict(model_dict["penalty"])
+        out._restore_penalty(model_dict)
         # Dicts written before "ic_n" existed carry no sample size, and
         # bic() / aic_c() then say they need the data.
         out._ic_n = cls._restored_ic_n(model_dict)
@@ -921,9 +915,11 @@ class ParametricRegressionModel(
         robust : bool, optional
             ``True`` gives the table on the robust (sandwich) standard
             errors of :meth:`robust_standard_errors` instead of the
-            model-based ones: ``se(coef)``, the Wald intervals (on the
-            same scales as :meth:`param_cb`'s), ``z`` and ``p``. The
-            estimates are the same. Default ``False``.
+            model-based ones: ``se(coef)``, the Wald intervals (those of
+            ``param_cb(..., robust=True)``), ``z`` and ``p`` (those of
+            :meth:`robust_p_values`). The estimates are the same. Pass
+            ``robust=True`` to ``cb``, ``quantile_cb`` and ``param_cb`` too
+            for bounds on the same covariance. Default ``False``.
         cluster : array_like, optional
             With ``robust=True``, a cluster label for each row given to
             the fit (as for :meth:`robust_covariance`).
@@ -1134,10 +1130,7 @@ class ParametricRegressionModel(
             out += "\nFixed               : {}".format(
                 ", ".join(f"{k} = {v:.6g}" for k, v in fixed.items())
             )
-        if self.penalty is not None:
-            from ._penalised import penalty_line
-
-            out += "\nPenalty             : " + penalty_line(self.penalty)
+        out += self._penalty_printout()
         table = self.summary()
         estimates = {
             "coef": "estimate",
@@ -1834,6 +1827,36 @@ class ParametricRegressionModel(
         """
         return self._p_values_from(self._summary_se())
 
+    def robust_p_values(
+        self, cluster: npt.ArrayLike | None = None
+    ) -> npt.NDArray:
+        r"""
+        Wald p-values on the robust (sandwich) standard errors,
+        :meth:`robust_standard_errors`: :attr:`p_values` with them in place
+        of the model-based ones, the ``p`` column of
+        ``summary(robust=True, cluster=cluster)``. Use it with ``cb``,
+        ``quantile_cb`` and ``param_cb`` given ``robust=True``, so that
+        every number about a coefficient rests on one covariance.
+
+        Parameters
+        ----------
+        cluster : array_like, optional
+            A cluster label for each row given to the fit (as for
+            :meth:`robust_covariance`).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> bool(np.isnan(model.robust_p_values()[:2]).all())
+        True
+        """
+        return self._p_values_from(self._robust_summary_se(cluster))
+
     def _p_values_from(self, se: npt.NDArray) -> npt.NDArray:
         """:attr:`p_values` on the standard errors ``se``."""
         params = np.asarray(self.params, dtype=float)
@@ -2004,8 +2027,9 @@ class ParametricRegressionModel(
 
     def _ic_k(self) -> float:
         # A penalised fit counts its effective number of parameters.
-        if self.penalty is not None:
-            return float(self.penalty.effective_df)
+        penalised_k = self._penalised_ic_k()
+        if penalised_k is not None:
+            return penalised_k
         return self.k
 
     def _partial_effects_times(self) -> npt.NDArray | None:

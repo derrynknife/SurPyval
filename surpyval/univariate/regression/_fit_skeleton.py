@@ -17,6 +17,7 @@ from collections.abc import Callable, Iterable
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 import autograd.numpy as np
+import numpy as onp
 import numpy.typing as npt
 from autograd import elementwise_grad, jacobian
 from autograd.differential_operators import make_vjp
@@ -47,6 +48,7 @@ from surpyval.utils.covariates import (
 )
 from surpyval.utils.fitter_repr import FitterRepr, baseline_name
 from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
+from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.removed_names import removed_parameter_note
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -165,6 +167,88 @@ def _objective(
 ) -> Boxable:
     """``make_objective``'s objective at ``params``."""
     return fitter.neg_ll(data, *inv_trans(const(params)))
+
+
+class BaselineInversionMixin:
+    """The time at which a fitter's parametric baseline (``self.dist``)
+    reaches a cumulative hazard: the step every inverse-transform sampler
+    of the log-linear families (PH, AFT, PO) ends with."""
+
+    dist: Any
+
+    def _invert_cumulative_hazard(
+        self, h: npt.NDArray, dist_params: npt.NDArray
+    ) -> npt.NDArray:
+        """
+        The times at which the baseline cumulative hazard reaches ``h``.
+
+        ``S(x|Z) = S0(x)^phi``, so a draw ``U`` of the survival is reached
+        where ``H0(x) = -log(U) / phi``. Through the quantile function that
+        is ``qf(1 - exp(-h))``; for a very small hazard multiplier ``h`` is
+        so large that ``1 - exp(-h)`` rounds to 1 and ``qf`` returns
+        ``inf``, although the time is finite. Those draws are solved on
+        ``log H0(x) = log h`` directly, all at once (#585: a ``brentq``
+        per draw took 2.4 s for 2000 draws), to ``rtol=1e-12``. A draw
+        whose time is beyond the largest float (the bracket doubles to
+        ``inf``) is ``inf``, as ``qf`` gives; the search raised there.
+        """
+        h = np.asarray(h, dtype=float)
+        with onp.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            out = np.asarray(
+                self.dist.qf(-np.expm1(-h), *dist_params), dtype=float
+            )
+        lost = np.flatnonzero(~np.isfinite(out) & np.isfinite(h))
+        if lost.size:
+            out = out.copy()
+            out[lost] = self._solve_log_cumulative_hazard(
+                onp.log(h[lost]), dist_params
+            )
+        return out
+
+    def _solve_log_cumulative_hazard(
+        self, target: npt.NDArray, dist_params: npt.NDArray
+    ) -> npt.NDArray:
+        """The times at which ``log H0(x)`` reaches each ``target``: each
+        upper bracket doubles from the baseline median (or 1) until it is
+        reached, the lower end half of it; then all are solved together."""
+
+        def gap(t: npt.NDArray, sel: Any) -> npt.NDArray:
+            with onp.errstate(all="ignore"):
+                H = onp.asarray(self.dist.Hf(t, *dist_params), dtype=float)
+                return onp.log(H) - target[sel]
+
+        start = float(self.dist.qf(0.5, *dist_params))
+        upper = onp.full(target.shape, max(start, 1.0))
+        reached = onp.zeros(target.shape, dtype=bool)
+        active = onp.arange(target.size)
+        for _ in range(2000):
+            if not active.size:
+                break
+            hit = gap(upper[active], active) >= 0
+            reached[active[hit]] = True
+            active = active[~hit]
+            with onp.errstate(over="ignore"):
+                upper[active] *= 2.0
+            active = active[onp.isfinite(upper[active])]
+        out = onp.full(target.shape, onp.inf)
+        k = onp.flatnonzero(reached)
+        hi = upper[k]
+        lo = onp.where(hi > start, hi / 2.0, 0.0)
+        g_lo, g_hi = gap(lo, k), gap(hi, k)
+        out[k] = onp.where(g_lo == 0, lo, hi)
+        open_ = (g_lo < 0) & (g_hi > 0)
+        if open_.any():
+            sel = k[open_]
+            out[sel] = solve_bracketed(
+                lambda t, s: gap(t, sel[s]),
+                lo[open_],
+                hi[open_],
+                g_lo[open_],
+                g_hi[open_],
+                xtol=1e-300,
+                rtol=1e-12,
+            )
+        return out
 
 
 class MirroredDistributionAttrs(FitterRepr):
@@ -759,6 +843,30 @@ def uniform_draws(size: int, random_state: Any = None) -> npt.NDArray:
     if random_state is None:
         return np.random.uniform(0, 1, size)
     return as_generator(random_state).uniform(0, 1, size)
+
+
+def draws_by_row(
+    size: int,
+    Z: npt.ArrayLike,
+    random_state: Any,
+    invert: Callable[[npt.NDArray, npt.NDArray], npt.NDArray],
+) -> "tuple[npt.NDArray, npt.NDArray]":
+    """``size`` inverse-transform draws at each covariate row of ``Z``:
+    ``invert(U, row)`` turns uniform draws ``U`` (each the survival
+    probability the draw is to have) into times. Returns the draws and the
+    row each was drawn at, row by row, as every regression ``random``
+    does. One stream serves every row, so an int seed does not restart
+    and give each row the same uniforms."""
+    Z_arr = np.atleast_2d(np.asarray(Z, dtype=float))
+    rng = None if random_state is None else as_generator(random_state)
+    x = []
+    Z_out = []
+    for row in Z_arr:
+        x.append(np.asarray(invert(uniform_draws(size, rng), row), float))
+        Z_out.append(np.tile(row, (size, 1)))
+    if not x:
+        return np.zeros(0), np.zeros((0, Z_arr.shape[1]))
+    return np.concatenate(x), np.vstack(Z_out)
 
 
 class FixedWithAliased(dict):

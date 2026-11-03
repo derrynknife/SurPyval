@@ -710,7 +710,9 @@ def test_param_cb_at_the_edge_of_an_interval_support():
 def test_parametric_param_cb_with_a_negative_variance_warns():
     np.random.seed(8)
     model = surv.Weibull.fit(surv.Weibull.random(30, 10, 3))
-    model.hess_inv = np.array([[-1.0, 0.0], [0.0, 0.1]])
+    # param_cb reads covariance(), not hess_inv (which is only the
+    # inverse Hessian): break the covariance by hand
+    model._covariance = np.array([[-1.0, 0.0], [0.0, 0.1]])
     with pytest.warns(RuntimeWarning, match="'alpha' is undefined") as rec:
         cb = model.param_cb("alpha")
     assert np.all(np.isnan(cb)) and len(rec) == 1

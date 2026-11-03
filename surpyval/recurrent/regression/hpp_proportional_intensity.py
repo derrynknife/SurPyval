@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import functools
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import autograd.numpy as np
 import numpy as onp
@@ -103,7 +104,7 @@ class ProportionalIntensityHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
     def _repr_name(self) -> str:
         return "ProportionalIntensityHPP"
 
-    def _repr_details(self) -> "list[str]":
+    def _repr_details(self) -> list[str]:
         return ["HPP baseline"]
 
     # Display name of the (constant) baseline hazard rate model, used by
@@ -240,13 +241,13 @@ class ProportionalIntensityHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
         self,
         x: ArrayLike,
         Z: ArrayLike,
-        i: "ArrayLike | None" = None,
-        c: "ArrayLike | None" = None,
-        n: "ArrayLike | None" = None,
-        t: "ArrayLike | None" = None,
-        tl: "ArrayLike | None" = None,
-        tr: "ArrayLike | None" = None,
-        init: "ArrayLike | None" = None,
+        i: ArrayLike | None = None,
+        c: ArrayLike | None = None,
+        n: ArrayLike | None = None,
+        t: ArrayLike | None = None,
+        tl: ArrayLike | None = None,
+        tr: ArrayLike | None = None,
+        init: ArrayLike | None = None,
     ) -> Any:
         """
         Fit the model using the provided data and initial parameters (if given)
@@ -304,12 +305,181 @@ class ProportionalIntensityHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
         data = handle_xicn(x, i, c, n, t=t, tl=tl, tr=tr, Z=Z)
         return self.fit_from_recurrent_data(data, init=init)
 
+    @dataframe_covariates
+    @takes_unit
+    @accepts_event_history_data
+    def fit_penalised(
+        self,
+        x: ArrayLike,
+        Z: ArrayLike,
+        i: ArrayLike | None = None,
+        c: ArrayLike | None = None,
+        n: ArrayLike | None = None,
+        t: ArrayLike | None = None,
+        tl: ArrayLike | None = None,
+        tr: ArrayLike | None = None,
+        penalizer: float | ArrayLike = 0.1,
+        l1_ratio: float = 0.0,
+        standardise: bool = True,
+        tol: float = 1e-10,
+        w: ArrayLike | float | None = None,
+    ) -> Any:
+        """
+        Fit with a ridge, lasso or elastic-net penalty on the covariate
+        coefficients (the base rate is not penalised).
+
+        The fit minimises the negative log-likelihood of :meth:`fit`
+        divided by ``N``, the number of items, plus
+
+        .. math::
+            \\sum_j \\lambda_j \\left( \\frac{1 - a}{2} b_j^2
+            + a |b_j| \\right)
+
+        on the coefficients of the covariates divided by their standard
+        deviations over the items (``standardise=True``, divisor ``N``):
+        glmnet's ``family = "poisson"`` fit of each item's number of
+        events with the log of its follow-up as offset, which is the same
+        likelihood for exactly observed events. Every kind of censoring
+        and truncation of :meth:`fit` is taken. The model has no
+        covariance, standard errors, bounds or goodness-of-fit bootstrap
+        (they raise an error that says why); its ``aic`` and ``bic``
+        count the effective degrees of freedom.
+
+        Parameters
+        ----------
+        x, Z, i, c, n, t, tl, tr : array_like
+            As for :meth:`fit`.
+        penalizer : float or array_like, optional
+            One value, or one per column of ``Z`` (0 leaves a coefficient
+            unpenalised). Default 0.1.
+        l1_ratio : float, optional
+            From 0 (ridge, the default) to 1 (lasso).
+        standardise : bool, optional
+            Penalise the coefficients of the standardised covariates
+            (default ``True``); the coefficients are reported on the
+            covariates' own scale either way.
+        tol : float, optional
+            The optimality tolerance on the gradient of the objective.
+        w : array_like, optional
+            Not taken yet: weights are refused.
+
+        Returns
+        -------
+        ProportionalIntensityModel
+            The fitted model, with ``penalty`` set.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.recurrent import ProportionalIntensityHPP
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> Z = df[["fin", "age", "prio"]].values
+        >>> model = ProportionalIntensityHPP.fit_penalised(
+        ...     df["week"].values, Z, i=np.arange(len(df)),
+        ...     c=1 - df["arrest"].values, penalizer=0.02, l1_ratio=1,
+        ... )
+        >>> model.coeffs.round(4)
+        array([-0.1885, -0.0462,  0.0734])
+        """
+        from surpyval.univariate.regression._penalised import refuse_weights
+
+        refuse_weights(w)
+        data = handle_xicn(x, i, c, n, t=t, tl=tl, tr=tr, Z=Z)
+        return self._fit_penalised_from_recurrent_data(
+            data, penalizer, l1_ratio, standardise, tol
+        )
+
+    @refuses_unmodelled_data
+    def _fit_penalised_from_recurrent_data(
+        self,
+        data: Any,
+        penalizer: Any,
+        l1_ratio: Any,
+        standardise: Any,
+        tol: float,
+    ) -> Any:
+        """:meth:`fit_penalised` from a prepared ``EventHistoryData``."""
+        import copy
+
+        from autograd import grad as ag_grad
+        from autograd import hessian as ag_hessian
+
+        from surpyval.univariate.regression._penalised import (
+            PenalisedObjective,
+            penalised_fit,
+        )
+
+        validate_nhpp_data(data, self)
+        Z_rows = onp.asarray(data.Z, dtype=float)
+        # The covariates describe the items: standardised over the items,
+        # and N is the number of items.
+        _, first = onp.unique(data.i, return_index=True)
+        Z_items = Z_rows[first]
+        p = Z_rows.shape[1]
+
+        def build(scale: onp.ndarray, N: float) -> PenalisedObjective:
+            scaled = copy.copy(data)
+            scaled.Z = Z_rows / scale
+            neg_ll = self.create_negll_func(scaled)
+
+            def objective(theta: Any) -> Any:
+                return neg_ll(theta) / N
+
+            gradient = ag_grad(objective)
+            curvature = ag_hessian(objective)
+            return PenalisedObjective(
+                lambda th: float(objective(np.asarray(th))),
+                lambda th: onp.asarray(gradient(np.asarray(th)), dtype=float),
+                lambda th: onp.asarray(curvature(np.asarray(th)), dtype=float),
+                onp.asarray(self._default_start(data), dtype=float),
+            )
+
+        fit = penalised_fit(
+            build,
+            Z_items,
+            onp.ones(Z_items.shape[0]),
+            onp.arange(1, 1 + p),
+            penalizer,
+            l1_ratio,
+            standardise,
+            tol,
+        )
+        res = fit.result
+        out = ProportionalIntensityModel()
+        out.data = data
+        out.feature_names = fit_columns()
+        out._rate_names = ["lambda"]
+        out.bounds = ((0, None),)
+        out.support = (-np.inf, np.inf)
+        out.maximum = "verified" if res.verified else "unverified"
+        if not res.verified:
+            warn_unverified("The penalised proportional intensity fit")
+        out.res = res
+        out.penalty = fit.penalty
+        out.params = onp.atleast_1d(onp.exp(res.x[0]))
+        out.coeffs = onp.asarray(fit.coefficients, dtype=float)
+        out.name = "Homogeneous Poisson Process"
+        out.kind = "HPP"
+        out.parameterization = "Parametric"
+        neg_ll = self.create_negll_func(data)
+        out._neg_ll = functools.partial(
+            _in_rate_space,
+            Rebuilt(self.create_negll_func, (data,), built=neg_ll),
+        )
+        out._mle = onp.concatenate([out.params, out.coeffs])
+        out._n_obs = bic_sample_size(data)
+        out.dist = self
+        out._fitter = self
+        out._fitter_dist = None
+        return out
+
     @refuses_unmodelled_data
     def fit_from_recurrent_data(
         self,
         data: Any,
         dist: Any = None,
-        init: "ArrayLike | None" = None,
+        init: ArrayLike | None = None,
     ) -> Any:
         """
         Fit from a prepared

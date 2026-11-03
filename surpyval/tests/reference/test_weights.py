@@ -354,3 +354,128 @@ def test_coxph_robust_summary_of_weighted_fit(data):
     assert_allclose(
         model.robust_summary(cluster)["se"], R_COX_CLUSTER_SE, rtol=1e-6
     )
+
+
+# survreg(Surv(x, d) ~ 1, weights = w, robust = TRUE, dist = ...): the
+# square roots of the diagonal of ``naive.var``, the inverse Hessian of
+# the weighted log-likelihood (with the weights as given), on survreg's
+# scale (R 4.6.2, survival 3.8.12).
+R_SURVREG_NAIVE_SE = {
+    "Weibull": [0.133746698013079, 0.132597679788907],
+    "LogNormal": [0.161171132799090, 0.120215406198856],
+    "LogLogistic": [0.142254899019476, 0.135595613723975],
+    "Exponential": [0.159414430369081],
+}
+
+# SurPyval 0.26's bounds on the weighted fits, whose ``hess_inv`` held the
+# robust covariance: param_cb of each parameter, cb at 2, 5 and 8,
+# quantile_cb(0.1) and mean_cb().
+V026_WEIGHTED_BOUNDS = {
+    "Weibull": dict(
+        param_cb=[[4.647415062036453, 9.933642319980377],
+                  [0.8981539418993779, 1.6330803458670047]],
+        cb=[[0.686008649206206, 0.8718070188363984],
+            [0.3459949752794354, 0.6387339802890533],
+            [0.13809395319114495, 0.47226938012620034]],
+        quantile_cb=[0.6156086968527006, 1.8241934326183613],
+        mean_cb=[4.2159158370194385, 9.64398582529258],
+    ),
+    "LogNormal": dict(
+        param_cb=[[1.1587467983892026, 1.97196240789849],
+                  [0.7534969992643635, 1.7480952184241658]],
+        cb=[[0.6433246766443574, 0.8754586480314682],
+            [0.34521472845661333, 0.6260657421087849],
+            [0.18403703130471916, 0.5016836800014941]],
+        quantile_cb=[0.5910899244937168, 2.0438948725636603],
+        mean_cb=[4.208855421561086, 20.301666340773412],
+    ),
+}  # fmt: skip
+
+# A weighted Weibull fit to these data saved by SurPyval 0.26: its
+# "hess_inv" is the robust covariance.
+V026_WEIGHTED_DICT = {
+    "parameterization": "parametric", "distribution": "Weibull",
+    "how": "MLE", "param_names": ["alpha", "beta"],
+    "params": [6.794538905529906, 1.2110976633116133],
+    "lfp": False, "p": 1.0, "zi": False, "f0": 0.0, "offset": False,
+    "gamma": 0.0,
+    "hess_inv": [[1.7336126462853145, -0.09095765031994801],
+                 [-0.09095765031994801, 0.03412187150774266]],
+    "covariance": [[1.7336126462853145, -0.09095765031994801],
+                   [-0.09095765031994801, 0.03412187150774266]],
+    "_neg_ll": 115.55693707673387, "weighted": True,
+    "effective_n": 33.366591977720795, "maximum": "verified",
+    "data_summary": "40 units: 24 events at 21 unique times, 16 right "
+    "censored",
+    "ic_n": 24.0, "schema": 3,
+}  # fmt: skip
+
+
+def _on_survreg_scale(name, model, cov):
+    """``cov`` (of SurPyval's parameters) on survreg's scale, as
+    ``_survreg_scale`` takes ``covariance()`` there: standard errors."""
+    p = np.asarray(model.params, dtype=float)
+    if name == "LogNormal":
+        J = np.diag([1.0, 1.0 / p[1]])
+    elif name == "Exponential":
+        J = np.array([[-1.0 / p[0]]])
+    else:
+        J = np.diag([1.0 / p[0], -1.0 / p[1]])
+    return np.sqrt(np.diag(J @ np.asarray(cov) @ J.T))
+
+
+@pytest.mark.parametrize("name", list(R_SURVREG_NAIVE_SE))
+def test_hess_inv_of_a_weighted_fit_is_the_inverse_hessian(data, name):
+    # hess_inv is survreg's naive.var, the inverse Hessian; covariance()
+    # is its var, the robust sandwich; they differ.
+    model = getattr(sp, name).fit(data["x"], data["c"], w=data["w"])
+    se = _on_survreg_scale(name, model, model.hess_inv)
+    assert_allclose(se, R_SURVREG_NAIVE_SE[name], rtol=2e-4)
+    _, robust_se = _survreg_scale(name, model)
+    assert_allclose(robust_se, R_SURVREG[name][1], rtol=2e-4)
+    assert not np.allclose(model.hess_inv, model.covariance())
+
+
+@pytest.mark.parametrize("name", list(V026_WEIGHTED_BOUNDS))
+def test_weighted_bounds_are_unchanged(data, name):
+    # The bounds use covariance(), the robust one, as they did when
+    # hess_inv held it (0.26's values).
+    model = getattr(sp, name).fit(data["x"], data["c"], w=data["w"])
+    ref = V026_WEIGHTED_BOUNDS[name]
+    tol = dict(rtol=1e-9)
+    names = model.dist.parameter_names
+    assert_allclose([model.param_cb(p) for p in names], ref["param_cb"], **tol)
+    assert_allclose(model.cb([2.0, 5.0, 8.0]), ref["cb"], **tol)
+    assert_allclose(model.quantile_cb(0.1), ref["quantile_cb"], **tol)
+    assert_allclose(model.mean_cb(), ref["mean_cb"], **tol)
+    # The plot's band is the cb's on the robust covariance
+    plot = model.get_plot_data()
+    assert len(plot["cbs"])
+    assert_allclose(plot["cbs"], model.cb(plot["x_model"], on="ff"), **tol)
+    # Saved and loaded, the bounds and hess_inv are kept
+    restored = sp.from_dict(model.to_dict())
+    assert_allclose(restored.hess_inv, model.hess_inv, rtol=1e-15)
+    assert_allclose(restored.covariance(), model.covariance(), rtol=1e-15)
+    assert_allclose(restored.cb([2.0, 5.0, 8.0]), ref["cb"], **tol)
+
+
+def test_a_weighted_dict_saved_by_v026_keeps_its_bounds(data):
+    model = sp.from_dict(V026_WEIGHTED_DICT)
+    fresh = sp.Weibull.fit(data["x"], data["c"], w=data["w"])
+    ref = V026_WEIGHTED_BOUNDS["Weibull"]
+    assert_allclose(model.cb([2.0, 5.0, 8.0]), ref["cb"], rtol=1e-9)
+    assert_allclose(
+        [model.param_cb(p) for p in ("alpha", "beta")],
+        ref["param_cb"],
+        rtol=1e-9,
+    )
+    # Its "hess_inv" was the robust covariance, and the inverse Hessian
+    # cannot be rebuilt without the data, so it has none
+    assert getattr(model, "hess_inv", None) is None
+    assert_allclose(model.covariance(), fresh.covariance(), rtol=1e-6)
+    # A dict saved now keeps the robust block under "hess_inv", for a
+    # 0.26 reader, and the inverse Hessian under its own key
+    d = fresh.to_dict()
+    n = len(fresh.params)
+    assert_allclose(d["hess_inv"], fresh.covariance()[:n, :n])
+    assert_allclose(d["inverse_hessian"], fresh.hess_inv)

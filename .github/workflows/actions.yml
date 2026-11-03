@@ -15,6 +15,13 @@ run-name: SurPyval CI
 # cards (in groups that run at once), the PyMC helpers with PyMC installed,
 # the wheel check and the documentation build. Publishing a release
 # (publish.yml) checks that this run passed.
+#
+# Every job has a time limit (``timeout-minutes``) of about twice its time
+# on the 0.26 release run (31 October 2026), so a job that hangs fails
+# with its name rather than holding the release for GitHub's six hours.
+# The test suite, the conformance suite and the calibration studies also
+# have a per-test limit (pytest-timeout), so a test that hangs fails with
+# its own name and every thread's stack before its job's limit is reached.
 on:
   pull_request:
     branches: [main]
@@ -35,6 +42,8 @@ env:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    # Under 3 minutes on the 0.26 release run.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -83,6 +92,8 @@ jobs:
   # is fixed, as a reminder to remove its entry.
   conformance:
     runs-on: ubuntu-latest
+    # 8 minutes on the 0.26 release run, installation included.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -96,17 +107,27 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements_dev.txt
 
+      # A per-test limit: no conformance test takes more than seconds, so
+      # ten minutes stops only a test that hangs, naming it.
       - name: pytest (conformance)
-        run:
+        run: >-
           python -m pytest surpyval/tests/conformance -m "not slow"
+          --timeout=600 --timeout-method=thread
 
   # The test suite runs on the pull request into `main` -- the release --
   # and on nothing else (see the top of this file).
   #
   # Each interpreter's run is split into four parts that run at once
-  # (``--shard K/4``, in the root conftest.py: a test belongs to the part
-  # its id hashes to), so the suite takes about a quarter of the time it
-  # takes in one job. The parts together run every test.
+  # (``--shard K/4``, in the root conftest.py), so the suite takes about a
+  # quarter of the time it takes in one job. The parts together run every
+  # test. With the recorded test times in .github/test_durations.json the
+  # parts are balanced by time; without that file a test belongs to the
+  # part its id hashes to, which left the parts uneven (on the 0.26
+  # release run part 3 took 25 minutes on 3.11 and 3.12, the other parts
+  # 12 to 23). Each part records its tests' times; the ``coverage`` job
+  # merges them into the ``test-durations`` artifact, which is committed
+  # as .github/test_durations.json to refresh the balance (see
+  # docs/Contributing.rst).
   #
   # 3.12 also measures coverage, which the ``coverage`` job combines
   # across its four parts. The doctests run in part 1 of each interpreter.
@@ -114,6 +135,9 @@ jobs:
   # job below.
   surpyval_ci:
     runs-on: ubuntu-latest
+    # The slowest part took 27 minutes on the 0.26 release run, with the
+    # doctests (part 1) and installation; runners vary by about two.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -147,6 +171,13 @@ jobs:
         # Coverage uses the ``sysmon`` core (3.12's ``sys.monitoring``),
         # which costs far less than the C tracer; it measures lines only,
         # which is all the coverage here measures (no ``branch``).
+        #
+        # A per-test limit of 20 minutes: a test that hangs fails with its
+        # name and every thread's stack, well inside the job's limit. The
+        # longest tests take a few minutes on these runners (the end of
+        # the slowest part on the 0.26 release run waited about six
+        # minutes on its last tests), so the limit stops no sound test;
+        # ``--durations=20`` lists the slowest in the log, to check it by.
         env:
           COVERAGE_CORE: sysmon
           COVERAGE_FILE: .coverage.${{ matrix.shard }}
@@ -156,6 +187,17 @@ jobs:
         run: >-
           python -m pytest -n auto --run-ml
           --shard=${{ matrix.shard }}/4 $ONLY_312
+          --shard-durations=.github/test_durations.json
+          --store-durations=test-durations-${{ matrix.python-version }}-${{ matrix.shard }}.json
+          --timeout=1200 --timeout-method=thread --durations=20
+
+      - name: Upload the test times
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-durations-${{ matrix.python-version }}-${{ matrix.shard }}
+          path: test-durations-${{ matrix.python-version }}-${{ matrix.shard }}.json
+          if-no-files-found: ignore
 
       - name: Upload coverage data
         if: matrix.python-version == '3.12'
@@ -211,10 +253,15 @@ jobs:
   # "refit" by its file; move it out if it is long.
   calibration:
     runs-on: ubuntu-latest
-    # Every group took under 40 minutes on the 17 October 2026 runs (the
-    # longest, #617's bootstrap, 24 to 36; the runners' speed varies by
-    # about two); one that hangs fails here rather than holding the
-    # release for GitHub's six hours.
+    # Every group took under 32 minutes on the 0.26 release run (31
+    # October 2026), installation included: rest 31, extra-parameters-
+    # offset 29, -lfp-zi 26, sweeps-lognormal-offset 22, -edge 22,
+    # sweeps-expoweibull 20, 617-bootstrap 18, sweeps-rest 16,
+    # joint-distributional 9, bayes-sbc 7, refit 7, likelihood-ratio 6,
+    # long-studies 5, copula 4. The runners' speed varies by about two
+    # (#617's bootstrap took 24 to 36 on the 17 October runs), so 60
+    # minutes is about twice the longest; one that hangs fails here
+    # rather than holding the release for GitHub's six hours.
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -246,6 +293,12 @@ jobs:
             args: >-
               'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_likelihood_ratio_coverage[lfp]'
               'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_likelihood_ratio_coverage[zi]'
+          # The bootstrap coverage of LFP and ZI models (#286): four
+          # studies of 200 replicates of 200 refits, every core.
+          - group: extra-parameters-bootstrap
+            workers: '0'
+            args: >-
+              'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_bootstrap_coverage'
           - group: long-studies
             workers: '3'
             args: >-
@@ -380,6 +433,8 @@ jobs:
   coverage:
     needs: surpyval_ci
     runs-on: ubuntu-latest
+    # About a minute on the 0.26 release run.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -411,6 +466,27 @@ jobs:
           name: coverage-html-report
           path: htmlcov/
 
+      # Every part's test times, on every interpreter, merged into one
+      # file to commit as .github/test_durations.json (see the
+      # ``surpyval_ci`` job).
+      - name: Download the test times
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-durations-*
+          path: durations
+          merge-multiple: true
+
+      - name: Merge the test times
+        run: >-
+          python scripts/merge_test_durations.py test_durations.json
+          durations/*.json
+
+      - name: Upload the merged test times
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-durations
+          path: test_durations.json
+
   # The suite as installed from the built wheel, collected (not run) in a
   # clean environment with only pytest beside the package's own
   # dependencies, on the pull request into `main`. The repository run above
@@ -420,6 +496,8 @@ jobs:
   # breaks that way, and takes about a minute.
   wheel:
     runs-on: ubuntu-latest
+    # About a minute and a half on the 0.26 release run.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -460,6 +538,8 @@ jobs:
   # the package installed with its own ``docs`` extra.
   docs:
     runs-on: ubuntu-latest
+    # 7 minutes on the 0.26 release run, installation included.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 

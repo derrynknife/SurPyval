@@ -14,8 +14,10 @@ from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 
 from .._fit_skeleton import (
+    BaselineInversionMixin,
     LogLinearPhi,
     MirroredDistributionAttrs,
+    draws_by_row,
     fit_log_linear,
     mirror_distribution,
     optimise_nm_tnc,
@@ -33,6 +35,7 @@ _TINY = float(np.finfo(float).tiny)
 
 class ProportionalOddsFitter(
     MirroredDistributionAttrs,
+    BaselineInversionMixin,
     TVCFitMixin,
     DataFrameRegressionMixin,
     PenalisedFitMixin,
@@ -180,6 +183,51 @@ class ProportionalOddsFitter(
 
     def neg_ll(self, data: SurpyvalData, *params: Boxable) -> Boxable:
         return regression_neg_ll(self, data, *params)
+
+    def random(
+        self,
+        size: int,
+        Z: npt.ArrayLike,
+        *params: float,
+        random_state: Any = None,
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """
+        Draw ``size`` samples for each covariate row of ``Z``.
+
+        The odds of surviving are ``phi`` times the baseline's, so a draw
+        ``U`` of the survival is reached where the baseline's survival is
+        ``S0 = U / (U + phi (1 - U))``, at the baseline cumulative hazard
+        ``log(1 + phi (1 - U) / U)``, which the baseline inverts. Returns
+        the draws and a 2-D array of the covariate row each was drawn at,
+        row by row, as the proportional hazards ``random``.
+        ``random_state`` seeds the draw: ``None`` (the default) draws from
+        numpy's global generator, so ``np.random.seed`` reproduces it; an
+        int or a ``numpy.random.Generator`` gives a stream of its own.
+
+        Examples
+        --------
+        With ``Z = 1`` and ``beta = 0.5`` the odds of surviving to the
+        baseline's median are ``e^0.5`` to 1, so ``sf`` there is
+        ``e^0.5 / (1 + e^0.5)``, about 0.622, and so is the share of the
+        draws beyond it:
+
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPO
+        >>> x, Z = WeibullPO.random(20000, [[1.0]], 10.0, 2.0, 0.5,
+        ...                         random_state=1)
+        >>> float(np.mean(x > Weibull.qf(0.5, 10.0, 2.0)).round(3))
+        0.625
+        """
+        dist_params = np.array(params[: self.k_dist], dtype=float)
+        coefs = params[self.k_dist :]
+
+        def invert(U: npt.NDArray, row: npt.NDArray) -> npt.NDArray:
+            phi = self._phi(row, *coefs)
+            with np.errstate(over="ignore", divide="ignore"):
+                h0 = np.log1p(phi * (1.0 - U) / U)
+            return self._invert_cumulative_hazard(h0, dist_params)
+
+        return draws_by_row(size, Z, random_state, invert)
 
     @dataframe_covariates
     @takes_unit

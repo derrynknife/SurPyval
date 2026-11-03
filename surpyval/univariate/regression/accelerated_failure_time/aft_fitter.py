@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 import numpy.typing as npt
 
 from surpyval.univariate.parametric.parametric_fitter import (
@@ -13,8 +14,10 @@ from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 
 from .._fit_skeleton import (
+    BaselineInversionMixin,
     HazardIdentitiesMixin,
     LogLinearPhi,
+    draws_by_row,
     fit_log_linear,
     mirror_distribution,
     optimise_nm_tnc,
@@ -29,6 +32,7 @@ from .aft_tvc_fit import AFTTVCFitMixin, _aft_tvc_neg_ll
 
 
 class AFTFitter(
+    BaselineInversionMixin,
     HazardIdentitiesMixin,
     AFTTVCFitMixin,
     DataFrameRegressionMixin,
@@ -85,6 +89,50 @@ class AFTFitter(
 
     def neg_ll(self, data: SurpyvalData, *params: Boxable) -> Boxable:
         return regression_neg_ll(self, data, *params)
+
+    def random(
+        self,
+        size: int,
+        Z: npt.ArrayLike,
+        *params: float,
+        random_state: Any = None,
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """
+        Draw ``size`` samples for each covariate row of ``Z``.
+
+        ``S(x | Z) = S0(phi x)``, so a draw ``U`` of the survival is
+        reached at ``x = q / phi``, where ``q`` is the baseline's time with
+        survival ``U`` (on a baseline over the whole real line, ``q`` and
+        so the draw can be below 0). Returns the draws and a 2-D array of
+        the covariate row each was drawn at, row by row, as the
+        proportional hazards ``random``. ``random_state`` seeds the draw:
+        ``None`` (the default) draws from numpy's global generator, so
+        ``np.random.seed`` reproduces it; an int or a
+        ``numpy.random.Generator`` gives a stream of its own.
+
+        Examples
+        --------
+        A unit with ``Z = 1`` and ``beta = 0.5`` ages ``e^0.5`` times as
+        fast, so its median life is the baseline's divided by ``e^0.5``:
+
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullAFT
+        >>> x, Z = WeibullAFT.random(20000, [[1.0]], 10.0, 2.0, 0.5,
+        ...                          random_state=1)
+        >>> float(np.median(x).round(2))
+        5.06
+        >>> float((Weibull.qf(0.5, 10.0, 2.0) / np.exp(0.5)).round(2))
+        5.05
+        """
+        dist_params = np.array(params[: self.k_dist], dtype=float)
+        coefs = params[self.k_dist :]
+
+        def invert(U: npt.NDArray, row: npt.NDArray) -> npt.NDArray:
+            phi = self._phi(row, *coefs)
+            q = self._invert_cumulative_hazard(-np.log(U), dist_params)
+            return q / phi
+
+        return draws_by_row(size, Z, random_state, invert)
 
     @dataframe_covariates
     @takes_unit
