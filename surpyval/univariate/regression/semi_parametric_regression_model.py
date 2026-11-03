@@ -383,6 +383,133 @@ class SemiParametricRegressionModel(
             return None
         return data["x"], data["c"], data["n"], data["Z"]
 
+    def concordance(
+        self,
+        x: npt.ArrayLike | None = None,
+        c: npt.ArrayLike | None = None,
+        Z: Any = None,
+        tie_tol: float = 1e-8,
+        ties: str = "therneau",
+        strata: npt.ArrayLike | None = None,
+    ) -> float:
+        """Harrell's concordance index (C) of the model's risk scores,
+        the linear predictor :math:`\beta'Z`; see
+        :meth:`ConcordanceMixin.concordance
+        <surpyval.univariate.regression._concordance.ConcordanceMixin.concordance>`
+        for the arguments and the treatment of ties.
+
+        For a stratified fit the pairs are formed within each stratum
+        only, and pooled: C is the concordant pairs of every stratum over
+        their usable pairs, as R's ``concordance`` of a stratified
+        ``coxph`` gives it (each stratum has its own baseline, so a risk
+        score ranks subjects only within its stratum). With no arguments
+        it scores the data the model was fitted to; to score other data
+        pass ``strata``, a stratum label per row, with ``x``, ``c`` and
+        ``Z``. ``strata`` is for a stratified model only.
+
+        Examples
+        --------
+        >>> import surpyval as sp
+        >>> from surpyval.datasets import load_lung
+        >>> lung = load_lung().dropna(subset=["ph.ecog"])
+        >>> lung["censored"] = 1 - lung["status"]
+        >>> model = sp.CoxPH.fit_from_df(
+        ...     lung, x_col="time", c_col="censored",
+        ...     Z_cols=["age", "ph.ecog"], strata_col="sex",
+        ... )
+        >>> round(model.concordance(), 4)
+        0.6058
+        """
+        if not self.is_stratified:
+            if strata is not None:
+                raise ValueError(
+                    "'strata' is for a stratified Cox model (fitted with "
+                    "strata=); this model has one baseline, so leave "
+                    "'strata' out."
+                )
+            return super().concordance(x, c, Z, tie_tol, ties)
+        return self._stratified_concordance(x, c, Z, tie_tol, ties, strata)
+
+    def _stratified_concordance(
+        self,
+        x: npt.ArrayLike | None,
+        c: npt.ArrayLike | None,
+        Z: Any,
+        tie_tol: float,
+        ties: str,
+        strata: npt.ArrayLike | None,
+    ) -> float:
+        """The pooled within-stratum concordance (see :meth:`concordance`)."""
+        from surpyval.metrics.concordance import concordance_counts
+
+        given = [v is not None for v in (x, c, Z, strata)]
+        if any(given) and not all(given):
+            raise ValueError(
+                "Pass x, c, Z and strata together to score new data with "
+                "a stratified Cox model, or none of them to score the data "
+                "it was fitted to."
+            )
+        if all(given):
+            x_arr = onp.asarray(x, dtype=float).ravel()
+            c_arr = onp.asarray(c).ravel()
+            Z_arr = onp.asarray(self._prepare_Z(Z), dtype=float).reshape(
+                x_arr.size, -1
+            )
+            labels = onp.asarray(strata, dtype=object).ravel()
+            if labels.size != x_arr.size:
+                raise ValueError(
+                    "'strata' must have a label for each row: got {} "
+                    "labels for {} rows".format(labels.size, x_arr.size)
+                )
+            unknown = [
+                s for s in set(labels) if s not in self.strata_baselines
+            ]
+            if unknown:
+                raise ValueError(
+                    "unknown stratum {!r}; known strata are {}".format(
+                        unknown[0], self.strata_labels
+                    )
+                )
+            n_arr = onp.ones(x_arr.size)
+            groups = [labels == s for s in self.strata_labels]
+        else:
+            data = getattr(self, "_fit_data", None)
+            if data is None or self.is_tvc or "strata" not in data:
+                raise ValueError(
+                    "This stratified Cox model does not keep the data it "
+                    "was fitted to (it was restored with from_dict, fitted "
+                    "with time-varying covariates or penalised); pass x, "
+                    "c, Z and strata to score data."
+                )
+            x_arr = onp.asarray(data["x"], dtype=float)
+            c_arr = onp.asarray(data["c"])
+            Z_arr = onp.asarray(data["Z"], dtype=float)
+            n_arr = onp.asarray(data["n"], dtype=float)
+            codes = onp.asarray(data["strata"])
+            groups = [codes == k for k in range(len(self.strata_labels))]
+        risk = onp.asarray(self._log_risk(Z_arr), dtype=float)
+        if onp.isnan(risk).any():
+            return float("nan")
+        concordant = usable = 0.0
+        for rows in groups:
+            if not rows.any():
+                continue
+            take = onp.repeat(onp.flatnonzero(rows), n_arr[rows].astype(int))
+            counts = concordance_counts(
+                x_arr[take], c_arr[take], risk[take], tie_tol, ties
+            )
+            if counts is None:
+                return float("nan")
+            concordant += counts[0]
+            usable += counts[1]
+        if usable == 0:
+            raise ValueError(
+                "No usable pairs within any stratum: the concordance index "
+                "needs, in some stratum, an event that is earlier than "
+                "another subject's time, or at the time of a censored one."
+            )
+        return float(concordant / usable)
+
     def _data_repr(self) -> str:
         """The data the model was fitted to, in one line, for the printout
         (#508): units weighted by ``n``, by kind of censoring and left
@@ -530,20 +657,18 @@ class SemiParametricRegressionModel(
         ``res``) are not stored; the fitted ``neg_ll()`` and the sample
         size of ``bic()`` (``"ic_n"``) are.
 
+        A stratified fit stores each stratum's baseline under
+        ``"strata"``, a list of ``{"label", "x", "r", "d", "h0", "H0"}`` in
+        the order of ``strata_labels`` (a label as JSON keeps it: a numpy
+        value as the plain value it holds). Such a dict is schema 4, which
+        an older reader refuses rather than reading the first stratum's
+        baseline as the model's. Its rows are not stored, so the restored
+        model predicts but has no residuals or ``diagnose()``.
+
         See Also
         --------
         from_dict, to_json, from_json
         """
-        if self.is_stratified:
-            raise NotImplementedError(
-                "Saving a stratified Cox model with to_dict / to_json is "
-                "not supported yet: each stratum carries its own baseline "
-                "hazard, which the saved form has no place for. Save the "
-                "model with pickle (pickle.dump(model, f)), which keeps "
-                "every stratum, to load with the same version of "
-                "SurPyval; or keep the data and refit with "
-                "CoxPH.fit(..., strata=...)."
-            )
         out: dict[str, Any] = {
             "model": "SemiParametricRegressionModel",
             "kind": self.kind,
@@ -559,6 +684,21 @@ class SemiParametricRegressionModel(
             "baseline_method": self.baseline_method,
             "is_tvc": bool(self.is_tvc),
         }
+        if self.is_stratified:
+            from surpyval.utils.data_json import label
+
+            out["strata"] = [
+                {
+                    "label": label(s),
+                    **{
+                        key: np.asarray(
+                            self.strata_baselines[s][key], dtype=float
+                        ).tolist()
+                        for key in ("x", "r", "d", "h0", "H0")
+                    },
+                }
+                for s in self.strata_labels
+            ]
         if np.any(self._center()):
             # A baseline at the covariate means (center=True, #459): stored,
             # which makes the dict schema 2, as a schema-1 reader would read
@@ -630,6 +770,20 @@ class SemiParametricRegressionModel(
         out.d = onp.array(model_dict["d"], dtype=float)
         out.h0 = onp.array(model_dict["h0"], dtype=float)
         out.H0 = onp.array(model_dict["H0"], dtype=float)
+        if model_dict.get("strata") is not None:
+            from surpyval.utils.data_json import label_back
+
+            out.is_stratified = True
+            out.strata_labels = [
+                label_back(e["label"]) for e in model_dict["strata"]
+            ]
+            out.strata_baselines = {
+                label_back(e["label"]): {
+                    key: onp.array(e[key], dtype=float)
+                    for key in ("x", "r", "d", "h0", "H0")
+                }
+                for e in model_dict["strata"]
+            }
         # phi is fully determined by beta and center (the ``phi`` method).
         out.tie_method = model_dict["tie_method"]
         out.baseline_method = model_dict["baseline_method"]

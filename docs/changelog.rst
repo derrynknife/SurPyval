@@ -6,6 +6,21 @@ Unreleased
 
 **Added.**
 
+- A stratified Cox model (``CoxPH.fit(..., strata=)`` and
+  ``fit_tvc(..., strata=)``) now has what an unstratified one has, where
+  each was refused before: ``compute_residuals`` (martingale, deviance,
+  score, dfbeta, Schoenfeld and scaled Schoenfeld, each within its
+  stratum's risk sets), the proportional-hazards test, ``diagnose()``
+  (its calibration curve predicting each row from its own stratum), the
+  robust (sandwich) standard errors, ``to_dict`` / ``to_json`` (one
+  baseline per stratum; such a file is schema 4, which an older SurPyval
+  refuses rather than reading the first stratum's baseline as the
+  model's), and ``concordance()``, which pools the pairs within each
+  stratum as R's ``concordance`` does and takes ``strata=`` to score new
+  data. All agree with R's ``survival`` (``residuals``, ``cox.zph``,
+  ``coxph(robust = TRUE)``, ``concordance``) to 1e-6 on the ``lung`` data
+  stratified by sex and the start-stop ``heart`` data stratified by
+  surgery (``scripts/reference/reference_r_stratified_cox.R``).
 - ``random(size, Z, random_state=)`` on the accelerated failure time
   models (``WeibullAFT``, ``LogNormalAFT`` and the others) and the
   parametric proportional odds models (``WeibullPO``, ...), which raised
@@ -45,8 +60,6 @@ Unreleased
   Python's ``TypeError``; they now raise a ``ValueError`` naming the
   method and the argument, why, and what to use instead (the weighted
   maximum-likelihood ``fit``, or counts ``n``).
-- ``to_dict()`` / ``to_json()`` of a stratified Cox model says how to save
-  it instead: with ``pickle``, which keeps every stratum, or by refitting.
 - The printout of a limited-failure fit whose ``lfp_p`` lands at its bound
   of 1 (within 1e-5) now says so and what to do: the data show no sign of
   units that never fail, so fit without ``lfp=True``.

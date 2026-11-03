@@ -1027,11 +1027,7 @@ def _semi_parametric():
         rows=("x", "Z", "c", "n", "strata"),
         labels=("strata",),
         paths={},
-        exclude={
-            "df_hf_sf": step,
-            "serialise": "a stratified Cox model cannot be saved (documented"
-            " in Conventions, 'Saving and Loading Models')",
-        },
+        exclude={"df_hf_sf": step},
         rtol=1e-6,
         coefficients=_beta,
         intercept=True,

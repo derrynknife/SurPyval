@@ -13,6 +13,15 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-03
 
+### Stratified Cox: residuals, `diagnose()`, robust errors, concordance and saving
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Every residual is computed within its stratum's risk sets; the scaled Schoenfeld residuals and dfbeta use the whole fit's covariance and number of events; the proportional-hazards test sums the information over the strata, with the km scale of time from all the rows. | principle 16 | What R's `residuals.coxph` and `cox.zph` do; checked against them to 1e-6. | done |
+| `concordance()` of a stratified fit pools the concordant and usable pairs of each stratum, and takes `strata=` with `x`, `c`, `Z` for new data (refused on an unstratified model). The pair counts come from a new `metrics.concordance.concordance_counts`, which `concordance_index` now divides. | principle 16 | R's `concordance` of a stratified `coxph`. | done |
+| A stratified Cox dict stores a `"strata"` list of baselines and is schema 4; the top-level baseline is still the first stratum's. | principle 20 | A schema-3 reader would otherwise read the first stratum's baseline as the model's, silently. | done |
+| A stratified fit keeps its rows (`_fit_data`, in the order given, with each row's stratum) as an unstratified one does; a penalised stratified fit still keeps none, and its residuals say so. | proposed | The penalised fit is out of this change's scope. | done |
+
 ### `random()` for the AFT, PO, Cox and Aalen models
 
 | Decision | By | Reason | Status |
@@ -28,7 +37,7 @@ Design decisions made while working on the open issues, with the reason for each
 | No error or warning message names an issue number, an issue URL or "tracked in"; each says what to do instead. `surpyval/tests/test_no_issue_numbers_in_messages.py` checks every string in the library's code that is not a docstring. Docstrings and comments keep their references. | principle 2, 22 | The issues named were closed, so the message pointed to a page that did not say what to do. | done |
 | `registry.Pending` carries `instead` (what to check the model with meanwhile) in place of its issue number. Aalen additive, Bayesian, distributional and Buckley-James models have `PENDING` entries; any other model without a family gets a general refusal pointing to a nonparametric comparison and the models that have `diagnose()`. `AalenAdditiveModel` and `BayesianParametric` inherit `DiagnoseMixin`, so `diagnose()` refuses rather than being missing. | principle 2 | One refusal path for every model without checks. | done |
 | `fit_bayes(w=)` and `fit_bayes_from_df(w_col=)` are explicit keyword arguments that refuse a value with a `WeightedRefusal` (`ValueError`), as `takes_unit` does for the fitters without weights; the message points to the weighted `fit` only where the distribution's `fit` takes `w`. | principle 2 | `fit_bayes` is not wrapped by `takes_unit`, so `w=` was Python's `TypeError`. | done |
-| A stratified Cox model's `to_dict()` stays a `NotImplementedError`, now saying to save it with `pickle` (checked to keep every stratum's baseline) or to refit with `strata=`. | proposed | Serialising the per-stratum baselines is a format change, out of scope for a message fix. | done |
+| A stratified Cox model's `to_dict()` stays a `NotImplementedError`, now saying to save it with `pickle` (checked to keep every stratum's baseline) or to refit with `strata=`. | proposed | Serialising the per-stratum baselines is a format change, out of scope for a message fix. | superseded: stratified Cox models now save, as schema 4 (see "Stratified Cox: residuals, `diagnose()`, robust errors, concordance and saving") |
 
 ### A limited-failure proportion fitted at its bound
 

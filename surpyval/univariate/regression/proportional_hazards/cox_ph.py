@@ -505,16 +505,20 @@ def _stratified_rows(
     tl: npt.ArrayLike | None,
     tie_method: str,
     strata: npt.ArrayLike,
+    rows: list | None = None,
 ) -> tuple[npt.NDArray, list]:
     """The strata of a stratified Cox fit, ``labels``, and each stratum's
     validated rows, ``(label, x, c, n, tl, Z)``: rows with a missing
     covariate or stratum label dropped (with a warning), shared by
-    :meth:`CoxPH_._fit_stratified` and the penalised fit."""
+    :meth:`CoxPH_._fit_stratified` and the penalised fit. Given a list
+    ``rows``, each stratum's positions among the rows given are appended
+    to it, in the order of ``validated``."""
     labels_arr, missing = strata_labels(strata)
     if len(labels_arr) != len(np.atleast_1d(x)):
         raise ValueError("'strata' must have a label for each observation")
-    # The per-observation arrays, subset together as rows are dropped.
-    obs: list[Any] = [x, c, n, Z, tl]
+    # The per-observation arrays, subset together as rows are dropped,
+    # with each row's position among those given.
+    obs: list[Any] = [x, c, n, Z, tl, np.arange(len(labels_arr))]
     if Z is not None:
         # Checked before the per-stratum split, whose boolean mask
         # would otherwise raise a bare IndexError on a Z of the wrong
@@ -543,12 +547,14 @@ def _stratified_rows(
         )
         obs = [_sub(a, ~missing) for a in obs]
         labels_arr = labels_arr[~missing]
-    x_o, c_o, n_o, Z_o, tl_o = obs
+    x_o, c_o, n_o, Z_o, tl_o, at_o = obs
 
     labels = np.unique(labels_arr)
     validated = []
     for s in labels:
         mask = labels_arr == s
+        if rows is not None:
+            rows.append(at_o[mask])
         xs, cs, ns_, tls, Zs = validate_coxph(
             _sub(x_o, mask),
             _sub(c_o, mask),
@@ -566,6 +572,31 @@ def _stratified_rows(
         np.concatenate([v[3] for v in validated]),
     )
     return labels, validated
+
+
+def _stratified_fit_data(validated: list, positions: list) -> dict:
+    """A stratified fit's rows as one ``_fit_data`` dict, in the order the
+    rows were given: ``x``, ``c``, ``n``, ``Z`` (as given, not centred),
+    ``tl`` and ``strata``, each row's stratum as its position among the
+    fit's ``strata_labels``."""
+    order = np.argsort(np.concatenate(positions), kind="stable")
+    codes = np.concatenate(
+        [np.full(len(v[1]), k) for k, v in enumerate(validated)]
+    )
+
+    def stacked(j: int, dtype: Any) -> npt.NDArray:
+        parts = [np.asarray(v[j], dtype=dtype) for v in validated]
+        out = np.vstack(parts) if parts[0].ndim == 2 else np.concatenate(parts)
+        return out[order]
+
+    return {
+        "x": stacked(1, float),
+        "c": stacked(2, int),
+        "n": stacked(3, float),
+        "Z": stacked(5, float),
+        "tl": stacked(4, float),
+        "strata": codes[order],
+    }
 
 
 def _stratified_baselines(
@@ -1025,8 +1056,9 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         so the score equations are solved once for the shared coefficients.
         A separate baseline hazard is then estimated within each stratum.
         """
+        positions: list = []
         labels, validated = _stratified_rows(
-            x, Z, c, n, tl, tie_method, strata
+            x, Z, c, n, tl, tie_method, strata, rows=positions
         )
         n_params = validated[0][5].shape[1]
         # One centre for every stratum, the mean over all the rows (as R's
@@ -1105,6 +1137,12 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             model.params = model.beta.copy()
         model.is_stratified = True
         model.strata_labels = list(labels)
+        # The rows kept, in the order given (as an unstratified fit keeps
+        # them), each with its stratum's position in ``strata_labels``:
+        # the residuals and diagnostics work within each stratum's risk
+        # sets from these.
+        model._fit_data = _stratified_fit_data(validated, positions)
+        model._fit_center = mean
 
         _stratified_baselines(
             self,

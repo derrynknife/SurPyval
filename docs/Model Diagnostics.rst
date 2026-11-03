@@ -221,8 +221,8 @@ says so, offering standard errors that allow for it:
     [a for a in tv.diagnose().advice if a.check is None]
 
 For ``wexp``, stratify: ``CoxPH.fit_from_df(..., strata_col='wexp')``
-gives each level its own baseline hazard. (``diagnose()`` does not yet
-handle a stratified fit; it says so.)
+gives each level its own baseline hazard, and ``diagnose()`` checks the
+stratified fit as well.
 
 The checks
 ~~~~~~~~~~
@@ -293,7 +293,7 @@ Every tie method (Efron's and Breslow's exactly; with ``"exact"`` and
 ``"kalbfleisch-prentice"`` the residuals use Breslow's risk sets, as R's
 ``cox.zph`` does, and the report notes it), delayed entry (``tl``), counts
 (``n``) and time-varying covariates (``fit_tvc``). ``diagnose()`` refuses,
-saying what to do: a stratified fit (not yet supported), a model restored
+saying what to do: a model restored
 with ``from_dict`` (it has no data to check), one with an aliased
 coefficient and one whose fit has no finite maximum.
 
