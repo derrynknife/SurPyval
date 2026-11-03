@@ -75,6 +75,7 @@ from .._fit_skeleton import (
 )
 from .._kinds import DISTRIBUTIONAL
 from .._likelihood import regression_neg_ll
+from .._robust import note_source_rows
 from ..regression_data import (
     DataFrameRegressionMixin,
     design_matrix_from_df,
@@ -542,11 +543,14 @@ class DistributionalFitter(
         Z_in = Z if hasattr(Z, "ndim") else np.asarray(Z)
         if getattr(Z_in, "ndim", 2) == 1:
             Z = np.asarray(Z_in).reshape(-1, 1)
+        rows_given, Z_given = len(data), Z
         data, Z = drop_nonfinite_covariates(data, Z)
         order = canonical_order(data, Z)
         if np.any(order != np.arange(order.size)):
             data, Z = data[order], Z[order]
         data.add_covariates(Z)
+        # So robust_covariance(cluster=...) matches each label to its row
+        note_source_rows(data, rows_given, Z_given, order)
         check_baseline_support(self, data)
 
         Z_data = np.asarray(data.Z, dtype=float)
