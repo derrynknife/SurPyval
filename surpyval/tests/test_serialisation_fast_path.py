@@ -404,6 +404,9 @@ def _old_required_schema(model_dict):
         return any(d.get(k) is not None for k in ("support", "band_n"))
 
     tests = (lambda d: NON_FINITE_KEY in d, formula, support, center)
+    # Schema 4 (v0.27): a distributional model with its coefficient signs
+    if walk(model_dict, lambda d: "coefficient_signs" in d):
+        return 4
     return 2 if any(walk(model_dict, t) for t in tests) else 1
 
 

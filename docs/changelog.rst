@@ -16,6 +16,63 @@ Unreleased
   the others refitted. Aliased coefficients and those held at 0 are not
   counted; a coefficient held at another value is refused, saying what to
   do. The result is the dictionary the other regressions' tests return.
+
+**Changed.**
+
+- **The sign of a distributional regression's coefficients is reversed
+  on scale and location parameters** (``WeibullDistributional`` and every
+  ``Distributional(dist)``). In 0.26 every coefficient took its link's
+  sign, as R's ``gamlss`` and ``flexsurvreg`` do, so a positive
+  coefficient on a Weibull's scale meant a *longer* life: the opposite of
+  SurPyval's AFT and PH models. Now each coefficient follows SurPyval's
+  sign, that of the AFT models: **a positive coefficient means a shorter
+  life**. The fitted model, its predictions and its bounds are the same;
+  only the reported coefficients of the parameters below change sign,
+  and with them their bounds, ``fixed=`` and ``init=`` values and
+  formulas you write with them.
+
+  - A scale (``alpha`` of a Weibull, log-logistic or ExpoWeibull,
+    ``sigma`` of a Rayleigh), a location (``mu`` of a LogNormal, Normal,
+    Gumbel, GumbelLEV or Logistic) and a shape whose increase makes
+    every life longer (a Gamma's ``alpha``, an ExpoWeibull's ``mu``, a
+    Beta's ``alpha``): the sign is reversed, ``alpha(z) = alpha
+    e^{-b'z}``, ``mu(z) = mu - b'z``. Covariates on the scale alone now
+    give exactly the AFT model's coefficients, sign included.
+  - A rate (an Exponential's ``failure_rate``, a Gamma's ``beta``) and a
+    Beta's ``beta`` (both shorten lives as they rise), and a shape or
+    spread with no direction of its own (a Weibull's ``beta``, every
+    ``sigma`` of a location-scale distribution): unchanged.
+
+  ``model.coefficient_signs`` gives each parameter's sign. Before and
+  after, on the bearings of :doc:`Distributional Regression`, whose scale
+  falls with load:
+
+  .. code-block:: python
+
+      model = surv.WeibullDistributional.fit_from_df(
+          bearings, x_col="hours", c_col="censored", Z_cols=["load"]
+      )
+      model.params[2:]   # alpha_load, beta_load
+      # 0.26: [-0.3978, 0.2695]  (alpha(z) = alpha e^{+b z})
+      # 0.27: [ 0.3978, 0.2695]  (alpha(z) = alpha e^{-b z}, as WeibullAFT)
+      model.qf(0.1, loads)  # the same in both: [350.0, 359.3, 333.6, 287.0]
+
+  A model saved by 0.26 (``to_dict``, ``to_json`` or ``pickle``) is
+  converted when it is loaded: its coefficients, covariance and fixed
+  values take the new sign and it predicts exactly as it did. A model
+  saved now carries its signs (``"coefficient_signs"``) and is stamped
+  schema 4, which 0.26 refuses with a request to upgrade rather than
+  reading the coefficients with the old sign. R's ``gamlss`` and
+  ``flexsurvreg`` coefficients on a scale or a location are SurPyval's
+  with the sign changed.
+
+  Royston-Parmar regression is unchanged: on the hazard scale its
+  coefficients already had the ``PH`` sign (a positive one shortens
+  life), and on the odds scale the sign of every SurPyval ``PO`` model (a
+  positive one multiplies the survival odds, so lengthens life; flexsurv's
+  odds-scale coefficients are these negated). ``df=1`` on the odds scale
+  is now checked to give ``PO(LogLogistic)``'s coefficients.
+
 **Fixed.**
 
 - Likelihood-ratio bounds on a profile that flattens out towards a limit

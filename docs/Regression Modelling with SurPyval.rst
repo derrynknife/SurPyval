@@ -1883,11 +1883,20 @@ smooth baseline that can be extrapolated, handles every kind of censoring
 and truncation, and gives every bound. ``RoystonParmarPO`` puts the spline
 on the log odds of failure and multiplies the survival odds by
 :math:`e^{\beta' Z}`, as every proportional odds model here.
+The coefficients have the sign of the model they belong to: on the hazard
+scale that of ``PH`` (a positive coefficient raises the hazard, a shorter
+life), on the odds scale that of every SurPyval ``PO`` model (a positive
+coefficient raises the survival odds, a longer life). R's
+``flexsurvspline`` agrees on the hazard scale; on the odds scale its
+coefficients add to the log odds of failure, so they are SurPyval's with
+the sign changed.
 ``RoystonParmarRegression(df=..., scale=..., knots=...)`` sets the spline's
 degrees of freedom (``df - 1`` internal knots, at quantiles of the log
 event times; three by default) or its knots. ``df=1`` on the hazard scale
-is the Weibull proportional hazards model. The fits agree with R's
-``flexsurvspline`` to its printed digits.
+is the Weibull proportional hazards model, and on the odds scale the
+log-logistic proportional odds model, ``PO(LogLogistic)``, with the same
+coefficients. The fits agree with R's ``flexsurvspline`` to its printed
+digits.
 
 .. jupyter-execute::
 

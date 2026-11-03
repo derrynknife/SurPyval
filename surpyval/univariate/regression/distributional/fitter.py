@@ -4,10 +4,18 @@
 own linear predictor and link,
 
 .. math::
-    g_k\\bigl(\\theta_k(z)\\bigr) = \\eta_k(z) = b_{k0} + x_k(z)' b_k,
+    g_k\\bigl(\\theta_k(z)\\bigr) = \\eta_k(z) = b_{k0} + s_k\\, x_k(z)' b_k,
 
 so the covariates can move the scale *and* the shape (or the location and
-the spread) of the life distribution. The likelihood is the regressions'
+the spread) of the life distribution. The sign ``s_k`` is SurPyval's
+convention, that of its AFT models: a positive coefficient makes lives
+shorter. It is -1 for a parameter whose increase makes every quantile
+later (a scale, a location; the AFT model is the case with covariates on
+the scale only, coefficient for coefficient) and +1 for one whose
+increase makes every quantile earlier (a rate); a shape or spread that
+moves some quantiles each way (a Weibull's shape, a ``sigma``) has no
+direction of its own and keeps the link's sign, +1, so a positive
+coefficient raises it. The likelihood is the regressions'
 own (``regression_neg_ll``): every censoring, truncation and count of
 SurPyval's data model, each row with its own parameters.
 
@@ -149,7 +157,9 @@ class DistributionalFitter(
     The parameters are the distribution's at the reference row (``Z =
     0``, or the covariate means with ``center=True``), on their natural
     scale, then each parameter's coefficients on its link scale, named
-    ``<parameter>_<column>``.
+    ``<parameter>_<column>``, with SurPyval's sign (:attr:`signs`): a
+    positive coefficient on a scale or location means a shorter life,
+    as in the AFT models.
     """
 
     fitter_kind = "distributional regression fitter"
@@ -194,6 +204,18 @@ class DistributionalFitter(
         }
 
     # -- the specification ------------------------------------------------
+
+    @property
+    def signs(self) -> tuple[float, ...]:
+        """The sign ``s_k`` of each parameter's coefficients,
+        ``g_k(theta_k(z)) = g_k(theta_k) + s_k x_k' b_k``: -1 for a
+        parameter whose increase makes lives longer (a scale, a location),
+        so that a positive coefficient always means a shorter life, as in
+        SurPyval's AFT models; +1 otherwise (a rate, or a shape or spread
+        with no direction of its own). See :func:`._links.sign`."""
+        return tuple(
+            _links.sign(self.dist.name, name) for name in self.parameter_names
+        )
 
     def _resolve_links(
         self, links: Mapping[str, str] | None
@@ -344,6 +366,7 @@ class DistributionalFitter(
         k = self.k_dist
         out = []
         start = k
+        signs = self.signs
         for i, (cols, name) in enumerate(zip(positions, self.links)):
             base = params[i]
             m = cols.size
@@ -356,7 +379,7 @@ class DistributionalFitter(
             # that permuting the rows permutes the result exactly: a BLAS
             # product sums a row by where it sits (on Linux x86-64).
             shift = fixed_order_dot(Z_arr[:, cols], coefs)
-            out.append(_links.move(name, base, shift))
+            out.append(_links.move(name, base, signs[i] * shift))
         return out
 
     def _call(self, fn: str, x: Numeric, Z: Numeric, params: tuple) -> Any:
@@ -558,7 +581,7 @@ class DistributionalFitter(
         data_c = centred_copy(data, center_vec) if moves else data
 
         space = _SearchSpace(
-            all_names, held, K, link_names, positions, center_vec
+            all_names, held, K, link_names, positions, center_vec, bound.signs
         )
         free, positions_free = space.free, space.positions_free
 
@@ -837,8 +860,10 @@ class _SearchSpace:
         links: tuple[str, ...],
         positions: tuple[npt.NDArray, ...],
         center: npt.NDArray,
+        signs: tuple[float, ...],
     ) -> None:
         self.n = len(names)
+        self.signs = signs
         self.k_dist = k_dist
         self.links = links
         self.positions = positions
@@ -892,7 +917,7 @@ class _SearchSpace:
             cols = self.positions[k]
             if cols.size:
                 coefs = nat[start : start + cols.size]
-                s = np.dot(coefs, self.center[cols])
+                s = self.signs[k] * np.dot(coefs, self.center[cols])
                 entries[k] = _links.move(self.links[k], nat[k], sign * s)
                 start += cols.size
         return np.array(entries)
@@ -937,6 +962,7 @@ def _assemble(
     model.k = K + len(coef_names) - len(held)
     model.data = data
     model.links = bound.links
+    model._coefficient_signs = bound.signs
     model.covariate_positions = bound._require_positions()
     model._aliased_coefficients = np.array(sorted(aliased), dtype=int)
     model._width = int(np.shape(data.Z)[1])

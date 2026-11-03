@@ -173,8 +173,14 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # Schema 3 is a model fitted with sampling weights ``w`` (``"weighted":
 # true``, or data with ``"w"``): a schema-2 reader would drop the weights
 # and give the model's bounds the classical meaning, so it is refused
-# there. Every other document keeps the schema it had.
-SCHEMA_VERSION = 3
+# there.
+#
+# Schema 4 is a distributional regression model whose coefficients carry
+# SurPyval's sign convention (``"coefficient_signs"``, v0.27): a v0.26
+# reader would read a scale's coefficients with the opposite sign and
+# predict the opposite effect, so it is refused there. Every other
+# document keeps the schema it had.
+SCHEMA_VERSION = 4
 
 # The schema of a document that needs more than schema 1 but is not
 # weighted.
@@ -182,6 +188,9 @@ _SCHEMA_NON_FINITE = 2
 
 # The schema of a weighted model or data.
 _SCHEMA_WEIGHTED = 3
+
+# The schema of a model whose coefficients carry their signs.
+_SCHEMA_SIGNED = 4
 
 # The oldest version whose readers restore a document with neither of
 # those exactly as this SurPyval does.
@@ -670,6 +679,10 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
     """
     stamped_versions: list = []
     dicts = _nested_dicts(model_dict, stamped_versions if stamped else None)
+    if _SCHEMA_SIGNED in stamped_versions or any(
+        "coefficient_signs" in d for d in dicts
+    ):
+        return _SCHEMA_SIGNED
     if _SCHEMA_WEIGHTED in stamped_versions or any(
         _is_weighted(d) for d in dicts
     ):
