@@ -37,6 +37,16 @@ Unreleased
   coefficients along it agree with glmnet's), with each fit's effective
   degrees of freedom, AIC and BIC; ``best("bic")`` or ``best("aic")``
   chooses the penalty, ``table()`` lists the path and ``plot()`` draws it.
+**Deprecated.**
+
+- ``AalenAdditive.fit(..., coef_penalty=)`` (and ``fit_from_df``) is now
+  ``penalizer=``, the name every other penalised fit uses; the model's
+  ``coef_penalty`` attribute is now ``penalizer`` and its saved dict's key
+  ``"penalizer"`` (a dict saved with ``"coef_penalty"`` still loads). The
+  old names still work, with a ``DeprecationWarning``, until v0.28. The
+  penalty itself is unchanged: a ridge on the covariates only, scaled by
+  each covariate's variance.
+
 **Fixed.**
 
 - Likelihood-ratio bounds on a profile that flattens out towards a limit

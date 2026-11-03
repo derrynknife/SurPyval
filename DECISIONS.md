@@ -241,6 +241,12 @@ Design decisions made while working on the open issues, with the reason for each
 | The distributional fit is checked against `WeibullAFT.fit_penalised` (covariates on the scale alone) and against its own optimality conditions, not against gamlss's `ri()`. | proposed | `ri()` chooses its own penalty scale and smoothing, so its fit is not this objective at a given penalty. | done |
 | glmnet references for the new fits use a convergence threshold of 1e-30 (the older references 1e-20): at 1e-20 glmnet stops 1e-7 short on one lasso coefficient of the PBC transplant cause, where its own gradient is not yet 0. | proposed | The reference must be glmnet's answer at convergence; the test's tolerance (1e-6) was not changed. | done |
 
+### `AalenAdditive`: `coef_penalty` is now `penalizer`
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Rename `AalenAdditive`'s `coef_penalty` (argument, model attribute and dict key) to `penalizer`, the old names accepted with a `DeprecationWarning` until v0.28 (`REMOVED_IN_NEXT`). The maths is unchanged. | maintainer | One name for a penalty across the package (principle 21). | done |
+
 ### The penalty path and choosing the penalty by AIC or BIC
 
 | Decision | By | Reason | Status |
