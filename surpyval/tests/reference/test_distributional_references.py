@@ -723,7 +723,8 @@ def test_pet_film_matches_the_published_fits():
         "beta_coef_0",
     ]
     p, se = np.asarray(b.params, dtype=float), b.standard_errors()
-    ours = [np.log(p[0]), p[2], np.log(p[1]), p[3]]
+    s = b.coefficient_signs["alpha"]  # the paper's sign is the link's
+    ours = [np.log(p[0]), s * p[2], np.log(p[1]), p[3]]
     ours_se = [se[0] / p[0], se[2], se[1] / p[1], se[3]]
     np.testing.assert_array_equal(_printed(ours), PET_MODEL_B[0])
     np.testing.assert_array_equal(_printed(ours_se), PET_MODEL_B[1])
@@ -732,8 +733,9 @@ def test_pet_film_matches_the_published_fits():
     a = _pet([])
     assert a.maximum == "verified"
     p, se = np.asarray(a.params, dtype=float), a.standard_errors()
+    s = a.coefficient_signs["alpha"]  # the paper's sign is the link's
     np.testing.assert_array_equal(
-        _printed([np.log(p[0]), p[2], np.log(p[1])]), PET_MODEL_A[0]
+        _printed([np.log(p[0]), s * p[2], np.log(p[1])]), PET_MODEL_A[0]
     )
     np.testing.assert_array_equal(
         _printed([se[0] / p[0], se[2], se[1] / p[1]]), PET_MODEL_A[1]
@@ -760,7 +762,8 @@ def test_pet_film_matches_flexsurv():
     np.testing.assert_allclose(-b.neg_ll(), FLEXSURV_PET_LL["B"], atol=1e-8)
     np.testing.assert_allclose(-a.neg_ll(), FLEXSURV_PET_LL["A"], atol=1e-8)
     p, se = np.asarray(b.params, dtype=float), b.standard_errors()
-    ours = [np.log(p[1]), np.log(p[0]), p[2], p[3]]
+    s = b.coefficient_signs["alpha"]  # flexsurv's sign is the link's
+    ours = [np.log(p[1]), np.log(p[0]), s * p[2], p[3]]
     ours_se = [se[1] / p[1], se[0] / p[0], se[2], se[3]]
     np.testing.assert_allclose(ours, FLEXSURV_PET_B[0], rtol=1e-6)
     np.testing.assert_allclose(ours_se, FLEXSURV_PET_B[1], rtol=1e-5)
