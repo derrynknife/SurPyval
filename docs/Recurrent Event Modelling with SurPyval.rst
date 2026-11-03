@@ -1152,9 +1152,24 @@ would reach if every BD mode were found and fixed. With modes fixed during
 the test (``bc=``) the system grew while it was tested, and the
 demonstrated intensity is the Crow-AMSAA one at the end of the test (Crow's
 extended model), from the bias-corrected shape :math:`(N - 1)/N \cdot
-\hat\beta`, as in MIL-HDBK-00189A's test-fix-find-test example. The test must be time-terminated (every system run to the
-same ``T``, given as its ``c=1`` row); several systems are taken to have run
-side by side, and the intensities and MTBFs are those of one system.
+\hat\beta`, as in MIL-HDBK-00189A's test-fix-find-test example. The test must be
+time-terminated (every system run to the same ``T``, given as its ``c=1``
+row); several systems are taken to have run side by side, and the
+intensities and MTBFs are those of one system.
+
+The handbooks do not agree on one detail. MIL-HDBK-00189A bias-corrects
+both shapes it uses, the Crow-AMSAA shape of the whole test (by
+:math:`(N - 1)/N`) and the shape of the BD modes' first occurrences (by
+:math:`(K - 1)/K`); that is the default here, and it demonstrates an MTBF of
+7.85 and projects 11.29 on the handbook's 56-failure example. MIL-HDBK-189C
+prints the same example with the plain maximum-likelihood shapes (0.9268 and
+0.7970), which demonstrates 7.71 and projects 10.82 (10.83 before the
+handbook rounds its terms). Pass ``bias_corrected=False`` to reproduce it.
+Nothing else changes, and the result records which was used
+(``projection.bias_corrected``). The handbook's own test-find-test example
+gives both, 14.81 plain and 15.13 corrected, and recommends the corrected
+one. Only exact failure times are taken, so the rule 189C gives for grouped
+data (always the plain shape) does not arise.
 
 .. jupyter-execute::
     :hide-code:

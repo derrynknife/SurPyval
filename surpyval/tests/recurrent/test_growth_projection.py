@@ -209,14 +209,19 @@ HDBK_FEF = [0.67, 0.72, 0.77, 0.77, 0.87, 0.92, 0.5, 0.85, 0.89, 0.74, 0.7]
 HDBK_FEF += [0.63, 0.64, 0.72, 0.69, 0.46]
 
 
-def _handbook_example(fefs):
+def _handbook_inputs(fefs):
     rows = [row.split() for row in HDBK.split(",")]
     x = [float(t) for t, _ in rows] + [400.0]
     modes = [m for _, m in rows] + [None]
     c = [0] * len(rows) + [1]
     fef = {f"BD{j + 1}": d for j, d in enumerate(fefs)}
     bc = [f"BC{j}" for j in range(17, 29)]
-    return CrowAMSAA.projection(x, modes, fef, c=c, bc=bc)
+    return x, modes, fef, c, bc
+
+
+def _handbook_example(fefs, **kwargs):
+    x, modes, fef, c, bc = _handbook_inputs(fefs)
+    return CrowAMSAA.projection(x, modes, fef, c=c, bc=bc, **kwargs)
 
 
 def test_730_handbook_test_fix_find_test_example():
@@ -265,3 +270,122 @@ def test_730_bc_modes_need_two_failures():
         CrowAMSAA.projection(
             [15.0, 400.0], ["a1", None], {}, c=[0, 1], bc=["a1"]
         )
+
+
+def test_bias_corrected_defaults_to_true_and_is_recorded():
+    default = _handbook_example(HDBK_FEF)
+    explicit = _handbook_example(HDBK_FEF, bias_corrected=True)
+    assert default.bias_corrected is True
+    assert explicit.projected_intensity == default.projected_intensity
+    assert "uncorrected" not in repr(default)
+
+
+def test_189c_crow_extended_example_uses_the_plain_shapes():
+    # MIL-HDBK-189C section 6.3.3.8, the same 56 failures (TABLE XV): the
+    # shapes are the maximum-likelihood ones, 0.9268 and 0.7970, so
+    # lambda_CA = 0.1298 (MTBF 7.71), h(T) = 16 * 0.7970 / 400 = 0.0319,
+    # lambda_EM = 0.1298 - 0.0800 + 0.0196 + 0.0230 = 0.0924 and a
+    # projected MTBF of 10.82. The handbook adds the four rounded terms;
+    # unrounded they sum to 0.09230, an MTBF of 10.83.
+    result = _handbook_example(HDBK_FEF, bias_corrected=False)
+    assert result.bias_corrected is False
+    assert float(result.model.params[1]) == pytest.approx(0.9268, abs=1e-4)
+    assert result.demonstrated_intensity == pytest.approx(0.1298, abs=1e-4)
+    assert result.demonstrated_mtbf == pytest.approx(7.71, abs=5e-3)
+    assert result.beta == pytest.approx(0.7970, abs=1e-4)
+    assert result.new_mode_intensity == pytest.approx(0.0319, abs=1e-4)
+    assert result.mean_fef * result.new_mode_intensity == pytest.approx(
+        0.0230, abs=1e-4
+    )
+    assert result.projected_intensity == pytest.approx(0.0924, abs=2e-4)
+    assert result.projected_mtbf == pytest.approx(10.83, abs=5e-3)
+    assert result.projected_mtbf == pytest.approx(10.82, abs=0.02)
+    assert "uncorrected" in repr(result)
+
+
+def test_189c_conventions_differ_only_in_the_shapes():
+    plain = _handbook_example(HDBK_FEF, bias_corrected=False)
+    corrected = _handbook_example(HDBK_FEF)
+    # Same table, same factors, same failure counts.
+    assert plain.failures == corrected.failures
+    assert plain.mean_fef == corrected.mean_fef
+    assert plain.modes.equals(corrected.modes)
+    # beta_bar = (K - 1) / K beta_hat and (N - 1) / N beta_hat.
+    assert corrected.beta == pytest.approx(15 / 16 * plain.beta)
+    assert corrected.demonstrated_intensity == pytest.approx(
+        55 / 56 * plain.demonstrated_intensity
+    )
+    assert plain.projected_mtbf < corrected.projected_mtbf
+
+
+# MIL-HDBK-189C section 6.3.2.8 (TABLE XIV): the ACPM example. 42
+# failures to T = 400, 10 of them A modes (their times are not printed and
+# not needed: there are no BC modes) and 32 of 16 BD modes.
+ACPM = {
+    1: ([15.04, 254.99], 0.67),
+    2: ([25.26, 120.89, 366.27], 0.72),
+    3: ([47.46, 350.2], 0.77),
+    4: ([53.96, 315.42], 0.77),
+    5: ([56.42, 72.09, 339.97], 0.87),
+    6: ([99.57, 274.71], 0.92),
+    7: ([100.31], 0.50),
+    8: ([111.99, 263.47, 373.03], 0.85),
+    9: ([125.48, 164.66, 303.98], 0.89),
+    10: ([133.43, 177.38, 324.95, 364.63], 0.74),
+    11: ([192.66], 0.70),
+    12: ([249.15, 324.47], 0.63),
+    13: ([285.01], 0.64),
+    14: ([379.43], 0.72),
+    15: ([388.97], 0.69),
+    16: ([395.25], 0.46),
+}
+
+
+def _acpm_example(bias_corrected):
+    x, modes = [], []
+    for j, (times, _) in ACPM.items():
+        x += times
+        modes += [f"B{j}"] * len(times)
+    x += [10.0 * (k + 1) + 0.5 for k in range(10)] + [400.0]
+    modes += [f"A{k}" for k in range(10)] + [None]
+    c = [0] * 42 + [1]
+    fef = {f"B{j}": d for j, (_, d) in ACPM.items()}
+    return CrowAMSAA.projection(
+        x, modes, fef, c=c, bias_corrected=bias_corrected
+    )
+
+
+def test_189c_acpm_example_both_conventions():
+    # Growth potential 0.04455 (MTBF 22.45); the projection is 0.06754
+    # (MTBF 14.81) with the plain shape 0.7970 and 0.06611 (MTBF 15.13,
+    # "nearly unbiased") with (M - 1) / M of it, 0.7472, which the handbook
+    # recommends.
+    plain = _acpm_example(False)
+    corrected = _acpm_example(True)
+    for result in (plain, corrected):
+        assert result.failures == {"A": 10, "BC": 0, "BD": 32}
+        assert result.growth_potential_intensity == pytest.approx(
+            0.04455, abs=1e-5
+        )
+        assert result.growth_potential_mtbf == pytest.approx(22.45, abs=5e-3)
+    assert plain.beta == pytest.approx(0.7970, abs=1e-4)
+    assert plain.projected_intensity == pytest.approx(0.06754, abs=2e-5)
+    assert plain.projected_mtbf == pytest.approx(14.81, abs=5e-3)
+    assert corrected.beta == pytest.approx(0.7472, abs=1e-4)
+    assert corrected.projected_intensity == pytest.approx(0.06611, abs=2e-5)
+    assert corrected.projected_mtbf == pytest.approx(15.13, abs=5e-3)
+
+
+def test_plain_shape_of_one_bd_mode_is_defined():
+    # The bias-corrected shape needs a second mode (h(T) = 0 for one); the
+    # plain one, 1 / ln(T / t), does not.
+    x = [100.0, 150.0, 400.0]
+    modes = ["b1", "b1", None]
+    c = [0, 0, 1]
+    corrected = CrowAMSAA.projection(x, modes, {"b1": 0.5}, c=c)
+    plain = CrowAMSAA.projection(
+        x, modes, {"b1": 0.5}, c=c, bias_corrected=False
+    )
+    assert corrected.new_mode_intensity == 0.0
+    assert plain.beta == pytest.approx(1 / np.log(4))
+    assert plain.new_mode_intensity == pytest.approx(plain.beta / 400)

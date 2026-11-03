@@ -6,6 +6,15 @@ Unreleased
 
 **Added.**
 
+- ``CrowAMSAA.projection(..., bias_corrected=True)``: ``False`` uses the
+  plain maximum-likelihood shapes in the demonstrated intensity and in the
+  rate of new BD modes, as the worked example of MIL-HDBK-189C (section
+  6.3.3.8) does (demonstrated MTBF 7.71, projected 10.82 on its 56-failure
+  data), where MIL-HDBK-00189A and the default use the bias-corrected shapes
+  (7.85 and 11.29). The default and its numbers are unchanged;
+  ``GrowthProjection.bias_corrected`` records the choice. Both examples and
+  the handbook's test-find-test example (14.81 and 15.13) are pinned by
+  tests.
 - Documented, and pinned by tests, how counts ``n`` and weights ``w``
   compare with writing the rows out as copies in ``logrank`` (every
   weighting, Fleming-Harrington included) and ``pairwise_logrank``: counts

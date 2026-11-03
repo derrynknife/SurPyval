@@ -13,6 +13,14 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-04
+
+### Crow Extended projection: bias-corrected or plain shapes
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `CrowAMSAA.projection` keeps the bias-corrected shapes by default ((N - 1) / N for the demonstrated intensity, (K - 1) / K for the rate of new BD modes) and takes `bias_corrected=False` for the plain maximum-likelihood shapes. | proposed | MIL-HDBK-00189A's example uses the corrected shapes (demonstrated 7.84708, projected 11.29418); MIL-HDBK-189C's worked example (section 6.3.3.8) uses the plain ones (7.71, 10.82), while its test-find-test example (section 6.3.2.8) gives both and recommends the corrected one. Keeping the default moves no numbers; the option lets a user reproduce either handbook. Grouped data is not taken (exact times only), so 189C's rule of always using the plain shape for it does not arise. | done |
+
 ## 2026-11-03
 
 ### Bootstrap bounds for limited-failure and zero-inflated models
