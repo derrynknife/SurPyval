@@ -220,6 +220,14 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-03
 
+### Robust all or none
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| When robust is asked for, every uncertainty uses the robust covariance: `cb`, `quantile_cb` and `param_cb` take `robust=` and `cluster=` as `summary` does, and `robust_p_values(cluster)` gives the p-values (a method beside `robust_standard_errors`, since `p_values` is a property and keeps its meaning). This reverses the 2026-10-29 row "Only the standard errors and the summary change". | maintainer (2026-11-03) | One coefficient must not show two uncertainties. | done |
+| What has no robust form refuses rather than mixing: `robust=True` with the likelihood-ratio or bootstrap bounds (no covariance in them), `cluster` without `robust=True`, and (already) restored, penalised and `fit_tvc` models. The default stays model-based. | principle 2, 24 | Simple by default (principle 24); a refusal says what to do (principle 2). | done |
+| The robust Wald bounds are computed in the same parameterisation as the model-based ones (the centred fit's, behind a baseline reported at 0), with the sandwich in place of the inverse information (`_robust.robust_inference_state`). Cox's `summary(robust=True)` already built its whole table from the robust standard errors, and Cox has no coefficient `cb` or `param_cb`, so it is unchanged. The distributional model's `parameter_cb` takes no `robust` yet. | proposed | The delta method gives the same bound either way, and the centred one is better conditioned (#463). | done |
+
 ### Likelihood-ratio bounds on flat profiles
 
 | Decision | By | Reason | Status |

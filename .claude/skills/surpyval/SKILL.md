@@ -385,8 +385,12 @@ sp.life_table(x, c, intervals=4)      # actuarial (Cutler-Ederer) table
 - **Distributional:** `covariates={"beta": ["load"]}` or
   `formulas={"alpha": ..., "beta": ...}` per parameter; `parameter_cb`,
   `plot_parameter`; log link for positive parameters.
-- **Robust SEs** change only the SEs (and that summary table); `cb`,
-  `param_cb`, `p_values` stay model-based. `fit_tvc` models refuse.
+- **Robust SEs** are all or none (since 0.27): `summary(robust=True)`,
+  `cb(..., robust=True)`, `quantile_cb(..., robust=True)`,
+  `param_cb(..., robust=True)` and `robust_p_values()` (each with
+  `cluster=`) use the sandwich; without `robust=True` all stay
+  model-based. LR/bootstrap bounds, restored models and `fit_tvc` refuse
+  `robust=True`.
 - **PyMC** (`surpyval.pymc`, PyMC not a dependency): inside `with pm.Model():`
   `censored_likelihood(sp.Weibull, x=x, c=c, alpha=..., beta=...)` adds the
   exact censored/truncated likelihood; `prior_from_model`, `prior_from_spec`;

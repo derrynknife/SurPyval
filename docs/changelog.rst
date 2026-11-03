@@ -16,6 +16,28 @@ Unreleased
   the others refitted. Aliased coefficients and those held at 0 are not
   counted; a coefficient held at another value is refused, saying what to
   do. The result is the dictionary the other regressions' tests return.
+- ``robust_p_values(cluster=None)`` on the parametric regressions: the
+  Wald p-values on the robust standard errors, the ``p`` column of
+  ``summary(robust=True)``.
+
+**Changed.**
+
+- **Robust is all or none on the parametric regressions.** In 0.26
+  ``summary(robust=True)`` showed robust (sandwich) standard errors while
+  ``cb``, ``param_cb`` and ``p_values`` kept the model-based covariance,
+  so one coefficient could show two uncertainties. Now ``cb``,
+  ``quantile_cb`` and ``param_cb`` take ``robust=True`` and ``cluster``,
+  as ``summary`` does, and ``robust_p_values()`` gives the p-values, all
+  on the robust covariance: ``param_cb(name, robust=True)`` is the
+  interval in ``summary(robust=True)``, and ``robust_p_values()`` its
+  ``p``. What has no robust form refuses with a message rather than mix:
+  ``robust=True`` with ``method="lr"`` or ``"bootstrap"`` (they use no
+  covariance), ``cluster`` without ``robust=True``, and, as before, a
+  model restored from a dict (no data for the sandwich), a penalised fit
+  and a ``fit_tvc`` model. Without ``robust=True`` nothing changes: every
+  bound and ``p_values`` stay model-based (with weights ``w`` that
+  covariance is already the robust one).
+
 **Fixed.**
 
 - Likelihood-ratio bounds on a profile that flattens out towards a limit

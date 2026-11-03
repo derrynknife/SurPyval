@@ -921,9 +921,11 @@ class ParametricRegressionModel(
         robust : bool, optional
             ``True`` gives the table on the robust (sandwich) standard
             errors of :meth:`robust_standard_errors` instead of the
-            model-based ones: ``se(coef)``, the Wald intervals (on the
-            same scales as :meth:`param_cb`'s), ``z`` and ``p``. The
-            estimates are the same. Default ``False``.
+            model-based ones: ``se(coef)``, the Wald intervals (those of
+            ``param_cb(..., robust=True)``), ``z`` and ``p`` (those of
+            :meth:`robust_p_values`). The estimates are the same. Pass
+            ``robust=True`` to ``cb``, ``quantile_cb`` and ``param_cb`` too
+            for bounds on the same covariance. Default ``False``.
         cluster : array_like, optional
             With ``robust=True``, a cluster label for each row given to
             the fit (as for :meth:`robust_covariance`).
@@ -1833,6 +1835,36 @@ class ParametricRegressionModel(
         array([   nan,    nan, 0.0001])
         """
         return self._p_values_from(self._summary_se())
+
+    def robust_p_values(
+        self, cluster: npt.ArrayLike | None = None
+    ) -> npt.NDArray:
+        r"""
+        Wald p-values on the robust (sandwich) standard errors,
+        :meth:`robust_standard_errors`: :attr:`p_values` with them in place
+        of the model-based ones, the ``p`` column of
+        ``summary(robust=True, cluster=cluster)``. Use it with ``cb``,
+        ``quantile_cb`` and ``param_cb`` given ``robust=True``, so that
+        every number about a coefficient rests on one covariance.
+
+        Parameters
+        ----------
+        cluster : array_like, optional
+            A cluster label for each row given to the fit (as for
+            :meth:`robust_covariance`).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> bool(np.isnan(model.robust_p_values()[:2]).all())
+        True
+        """
+        return self._p_values_from(self._robust_summary_se(cluster))
 
     def _p_values_from(self, se: npt.NDArray) -> npt.NDArray:
         """:attr:`p_values` on the standard errors ``se``."""

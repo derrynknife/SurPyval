@@ -2264,11 +2264,38 @@ model does not have:
     assert _batch_se[0] > _se[0], (_se, _batch_se)
 
 The batch effect makes the scale's standard error larger once the rows of
-a batch are counted together. Only the standard errors change: ``cb``,
-``param_cb`` and ``p_values`` stay on the model-based covariance, and a
-fit with time-varying covariates (``fit_tvc``), whose likelihood is over
-each unit's history rather than over independent rows, refuses and points
-to the bootstrap and likelihood-ratio bounds.
+a batch are counted together. Robust is all or none: give
+``robust=True`` (and the same ``cluster``) to ``cb``, ``quantile_cb`` and
+``param_cb``, and read ``robust_p_values()``, and every interval and
+p-value rests on the robust covariance, the numbers
+``summary(robust=True)`` shows; without it they all stay on the
+model-based one. What has no robust form refuses rather than mixing the
+two: the likelihood-ratio and bootstrap bounds (``method='lr'`` or
+``'bootstrap'``), which use no covariance, a model restored from a dict,
+which keeps no data for the sandwich, and a fit with time-varying
+covariates (``fit_tvc``), whose likelihood is over each unit's history
+rather than over independent rows (it points to the bootstrap and
+likelihood-ratio bounds).
+
+.. jupyter-execute::
+
+    print('robust interval on coef_0:',
+          m_b.param_cb('coef_0', robust=True, cluster=batch).round(3))
+    print('robust p-value           :',
+          f"{m_b.robust_p_values(cluster=batch)[-1]:.2g}")
+    print('robust band at 10        :',
+          m_b.cb(10.0, [0.0], robust=True, cluster=batch).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = m_b.summary(robust=True, cluster=batch)
+    assert np.allclose(
+        _t.iloc[-1][['coef lower 95%', 'coef upper 95%']].astype(float),
+        m_b.param_cb('coef_0', robust=True, cluster=batch))
+    assert np.isclose(_t['p'].iloc[-1],
+                      m_b.robust_p_values(cluster=batch)[-1])
 
 The other families quantify uncertainty their own way: Cox through the
 information matrix (``p_values``, and ``jac`` as shown earlier) and the robust
