@@ -74,7 +74,7 @@ class JointPHFitter(FitterRepr):
         if distribution is not Weibull:
             name = getattr(distribution, "name", type(distribution).__name__)
             raise ValueError(
-                "The joint models have a Weibull baseline for now (#891): "
+                "The joint models have a Weibull baseline for now: "
                 f"JointPH(Weibull, path_model), or WeibullJointPH; got {name}."
             )
         if not isinstance(path_model, PathModel):

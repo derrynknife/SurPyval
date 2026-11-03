@@ -1265,9 +1265,33 @@ as a missing covariate does:
 
     assert list(stratified.strata_labels) == [0, 1, 2]
 
-The residual diagnostics and robust errors above assume a single baseline, so
-they are not available on a stratified model; the coefficients and their
-model-based ``p``-values are. A stratified model can also not be serialised.
+The residual diagnostics, the proportional-hazards test, ``diagnose()`` and
+the robust standard errors above work on a stratified model too, each within
+its own stratum's risk sets, as R's ``residuals``, ``cox.zph`` and
+``coxph(..., robust = TRUE)`` compute them for a fit with ``strata()``; the
+scaled Schoenfeld residuals and dfbeta use the covariance and number of events
+of the whole fit. ``concordance()`` forms pairs within each stratum only and
+pools them, as R's ``concordance`` does (a risk score ranks subjects only
+within its stratum); to score new data pass ``strata=`` with ``x``, ``c`` and
+``Z``. A stratified model is saved with ``to_dict`` / ``to_json`` with one
+baseline per stratum (schema 4: an older SurPyval refuses it rather than read
+one stratum's baseline as the model's); like every restored Cox model it
+predicts but keeps no rows for the residuals:
+
+.. jupyter-execute::
+
+    print(stratified.diagnose().table[["check", "covariates", "p", "verdict"]].head(3))
+    print("concordance within strata:", round(stratified.concordance(), 3))
+    restored = surv.from_json(stratified.to_json())
+    print(restored.sf(x=1.0, Z=[[0.0]], stratum=0))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(restored.sf(x=[0.5, 1.0], Z=[[0.0]], stratum=2),
+                       stratified.sf(x=[0.5, 1.0], Z=[[0.0]], stratum=2))
+
 Along a covariate path, ``sf_tvc``, ``Hf_tvc`` and ``predict_tvc`` take the
 same ``stratum`` argument.
 Start-stop (time-varying covariate) data stratify the same way:
@@ -1569,9 +1593,11 @@ Nothing keeps an additive hazard positive, so as for ``AdditiveHazards``
 the model predicts with the running maximum of :math:`H` from time 0, and
 ``sf`` never rises. The hazard rate ``hf`` uses the kernel-smoothed
 :math:`b_j(t)` (``smoothed_coefficients``, with a ``bandwidth``), and
-``coef_penalty`` adds a ridge penalty on the covariates' increments,
-which keeps the fit going where few units remain at risk at the price of
-shrinking the effects. :math:`B(t)` and its variance agree with R's
+``penalizer`` adds a ridge penalty on the covariates' increments (each
+scaled by the covariate's variance; the baseline is not penalised), which
+keeps the fit going where few units remain at risk at the price of
+shrinking the effects. It was ``coef_penalty`` before v0.27; the old name
+still works, with a ``DeprecationWarning``, until v0.28. :math:`B(t)` and its variance agree with R's
 ``timereg::aalen`` (with ``robust = 0``).
 
 
@@ -1682,11 +1708,22 @@ recovers the same parameters as the exact times:
 it is the acceleration factor, for PO the odds multiplier, for accelerated
 life the modelled life; an additive model has none). ``random(size, Z)``
 draws lifetimes from the fitted model — useful for simulation studies and for
-checking a fit against its own simulated data. It exists for the PH, parametric
-AH and accelerated-life families (not AFT or PO). A PH or parametric AH model
-returns ``size`` draws for each covariate row, in the order given, together
-with the matching covariate rows; an accelerated life model does the same for
-each *distinct* stress, in sorted order. As everywhere in SurPyval,
+checking a fit against its own simulated data. It exists for every
+parametric family (PH, AFT, PO, parametric AH, accelerated life,
+Royston-Parmar and distributional) and for the Cox and Aalen models. Each
+draw is exact inverse-transform sampling: a uniform ``U`` becomes the time at
+which the row's survival falls to ``U`` (for AFT the baseline's time divided
+by the acceleration factor; for PO the time at which the baseline's odds,
+multiplied by ``phi``, are ``U / (1 - U)``). A regression model returns
+``size`` draws for each covariate row, in the order given, together with the
+matching covariate rows; an accelerated life model does the same for each
+*distinct* stress, in sorted order. The Cox and Aalen models draw from their
+step survival curves, so every draw is one of the event times, and a draw
+beyond the last time the curve is estimated at is ``inf`` (the unit outlives
+the data), as often as ``sf`` at that time says; a stratified Cox model takes
+``stratum=``. The frailty models, the Lin-Ying additive model, Buckley-James
+and the semi-parametric proportional odds model have no ``random`` yet. As
+everywhere in SurPyval,
 ``random_state`` seeds the draw (``None``, the default, draws from numpy's
 global generator, so ``np.random.seed`` reproduces it):
 
@@ -4232,6 +4269,30 @@ their standard deviations before the penalty is applied, so it does not
 depend on their units; the coefficients are reported in the covariates' own
 units. A baseline distribution's parameters are never penalised.
 
+**The standard deviation's divisor.** ``standardise=True`` divides each
+covariate by its standard deviation with divisor :math:`N`, the number of
+units (weighted by ``n``), as glmnet does, not :math:`N - 1`, as lifelines
+does. The objective is glmnet's, the *mean* negative log-likelihood plus
+the penalty, and glmnet's standardisation goes with it, so the Cox fits
+agree with glmnet's to six digits. The two differ by a factor of
+:math:`\sqrt{N / (N - 1)}` in each standard deviation: lifelines'
+standardised coefficients are that much larger, so the same ``penalizer``
+shrinks a little harder there (about 0.5% at :math:`N = 100`, 5% at
+:math:`N = 10`; it does not matter for large data). To compare with
+lifelines' ``CoxPHFitter(penalizer=...)``, standardise the covariates
+yourself with ``ddof=1`` and turn the package's standardisation off:
+
+.. code-block:: python
+
+    sd = rossi[cols].std(ddof=1)  # pandas' default divisor is N - 1
+    ridge_ll = CoxPH.fit_penalised(rossi['week'], rossi[cols] / sd,
+                                   c=rossi['censored'], penalizer=0.05,
+                                   standardise=False)
+    ridge_ll.params / sd.values   # in the covariates' own units
+
+(For ``l1_ratio > 0`` lifelines smooths the absolute value, so its lasso
+is close to, but not exactly, the lasso.)
+
 .. jupyter-execute::
 
     from surpyval import CoxPH
@@ -4294,10 +4355,12 @@ log-likelihood has the distribution those calls rely on.
 ``CoxPH.fit`` does: a baseline hazard per stratum and one set of
 coefficients (glmnet's ``stratifySurv``). The number of units ``N`` and the
 standardisation are over all the rows, not within each stratum. It takes
-delayed entry ``tl``, so start-stop rows ``(start, stop]`` are fitted with
-``tl=start``; then ``N`` is the number of *rows* (weighted by ``n``), not of
-subjects, as in glmnet, so a subject split into ten rows counts ten times in
-the penalty's scale. Like ``CoxPH.fit``, it refuses truncation on the right,
+delayed entry ``tl``, so start-stop rows ``(start, stop]`` can be fitted
+with ``tl=start``; with no subject ids, ``N`` is then the number of *rows*
+(weighted by ``n``), as in glmnet, so a subject split into ten rows counts
+ten times in the penalty's scale, and the same ``penalizer`` shrinks less
+the more rows the follow-up is split into. For start-stop data use
+``CoxPH.fit_tvc_penalised(i, start, stop, c, Z)``, which counts subjects. Like ``CoxPH.fit``, it refuses truncation on the right,
 for which the partial likelihood has no term: the parametric penalised fits
 take every kind of censoring and truncation (left, right or both).
 
@@ -4316,6 +4379,97 @@ take every kind of censoring and truncation (left, right or both).
 
     assert stratified.is_stratified
     assert np.sum(stratified.params == 0) == 2, stratified.params
+
+**More models.** The same objective, standardisation and refusals apply to
+
+- ``RoystonParmarPH.fit_penalised`` and ``RoystonParmarPO.fit_penalised``
+  (and any ``RoystonParmarRegression``): the knots are placed as for
+  ``fit``, then the PH or PO family on the spline baseline is fitted with
+  the penalty; the spline coefficients are not penalised.
+- ``CoxPH.fit_tvc_penalised`` and ``CoxPH.fit_tvc_timeline_penalised``: the
+  start-stop or timeline data of ``fit_tvc`` and ``fit_tvc_timeline``, with
+  ``N`` the number of *subjects* and the covariates standardised over the
+  subjects, each subject's covariate averaged over its follow-up (each row
+  weighted by its length). Splitting a subject's follow-up into more rows
+  changes neither the partial likelihood nor these, so it does not change
+  the fit.
+- ``CompetingRisksProportionalHazards.fit_penalised``: the cause-specific
+  Cox model, one penalised Cox fit per cause with the other causes
+  censored, each with the same ``penalizer`` and ``l1_ratio`` (glmnet
+  fitted cause by cause). Its ``penalty.effective_df`` is the sum over the
+  causes, and ``models`` holds each cause's penalised Cox model. The
+  Fine-Gray model has no penalised fit.
+- ``ProportionalIntensityHPP.fit_penalised``: the recurrent-event model
+  with a constant baseline rate, ``N`` the number of items and the
+  covariates standardised over the items; for exact event times it is
+  glmnet's Poisson regression of each item's events with the log of its
+  follow-up as offset. The base rate is not penalised. The model has no
+  covariance, bounds (``cif_cb``, ``iif_cb``, ``param_cb``) or
+  ``cramer_von_mises`` bootstrap. The models with a non-homogeneous
+  baseline (``ProportionalIntensityNHPP``) have no penalised fit yet.
+- ``WeibullDistributional.fit_penalised`` and the other distributional
+  regressions: covariates on every parameter, with ``penalizer`` one value,
+  one per covariate column (that column on every parameter), or one per
+  parameter, ``penalizer={"alpha": 0.02, "beta": 0.2}`` (a parameter not
+  named is not penalised). The intercepts are not penalised. With
+  covariates on a Weibull's scale alone it is ``WeibullAFT.fit_penalised``
+  with the coefficients' signs changed.
+
+.. jupyter-execute::
+
+    from surpyval import WeibullDistributional
+
+    shape_too = WeibullDistributional.fit_penalised(
+        rossi['week'], rossi[['fin', 'age', 'prio']], c=rossi['censored'],
+        penalizer={'alpha': 0.01, 'beta': 0.1}, l1_ratio=1.0)
+    pd.Series(shape_too.params, index=shape_too.parameter_names).round(4)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert shape_too.maximum == 'verified', shape_too.maximum
+    assert np.all(shape_too.params[5:] == 0), shape_too.params
+
+**Choosing the penalty: the path and AIC or BIC.** ``penalty_path`` fits
+any of these over a path of penalties and records each fit's coefficients,
+effective degrees of freedom, log-likelihood, AIC and BIC. By default the
+path is glmnet's: 20 penalties evenly spaced on the log scale from the
+smallest penalty that sets every coefficient to 0 (to six digits) down to
+0.001 times it. The criteria count each fit's effective degrees of freedom,
+so they weigh the gain in fit against how far the penalty lets the
+coefficients move; ``best("bic")`` (or ``"aic"``) is the fit with the
+smallest. BIC charges more for each coefficient, so it keeps fewer.
+
+.. jupyter-execute::
+
+    from surpyval import penalty_path
+
+    path = penalty_path(CoxPH.fit_penalised, rossi['week'], rossi[cols],
+                        c=rossi['censored'], l1_ratio=1.0, n_penalties=10)
+    path.table().round(4)
+
+.. jupyter-execute::
+
+    chosen = path.best('bic')
+    print(round(path.best_penalizer('bic'), 4))
+    pd.Series(chosen.params, index=cols).round(4)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert path.best_penalizer('bic') >= path.best_penalizer('aic')
+    assert np.all(path.coefficients[0] == 0)
+
+``path.plot()`` draws each coefficient against the penalty, with the
+penalties AIC and BIC choose marked. The arguments after the fit are the
+fit's own (the data, ``tie_method``, ``strata``, ...); ``penalizers=`` gives
+the penalties instead of the default path, and ``penalty_factor=`` one
+factor per column (0 leaves a column unpenalised), as glmnet's
+``penalty.factor``. The chosen model is a penalised model like any other:
+no standard errors or bounds (choosing the penalty from the same data is
+one more reason for that). Cross-validation is not offered.
 
 The coefficients of these models are log hazard, odds or time ratios, which
 have no unit, so the penalty does not depend on the unit of time.
@@ -5090,7 +5244,7 @@ Cox's time-varying-covariate prediction (``predict_tvc``), the additive model's
 covariance, and Buckley-James's ``bootstrap_ci`` (which keeps a copy of the fit
 data) all survive the round-trip. The residual diagnostics, ``diagnose()`` and
 the robust variance need the training data and are not available on a restored
-Cox model, and a stratified Cox model cannot be serialised at all. Be aware that
+Cox model (a stratified one included). Be aware that
 a serialised Buckley-James model contains its training data.
 
 The frailty model, survival trees and random survival forests serialise too —

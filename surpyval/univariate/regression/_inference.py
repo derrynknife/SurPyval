@@ -140,12 +140,10 @@ class InferenceMixin:
     # -- confidence bounds -------------------------------------------------
 
     def _check_inference(self) -> None:
-        penalty = getattr(self, "penalty", None)
-        if penalty is not None:
-            # A penalised fit has no covariance or bounds (_penalised).
-            from ._penalised import no_inference_error
+        # A penalised fit has no covariance or bounds (_penalised).
+        from ._penalised import refuse_if_penalised
 
-            raise no_inference_error(penalty)
+        refuse_if_penalised(self)
         # A model deserialised with a stored covariance can produce bounds
         # without the original data.
         if self._restored_covariance is not None:
@@ -166,16 +164,15 @@ class InferenceMixin:
             )
 
     def _refuse_weighted_method(self, method: str) -> None:
-        """Refuse the likelihood-ratio and bootstrap bounds of a fit with
-        weights ``w``, which weights make invalid."""
+        """Refuse the likelihood-ratio bounds of a fit with weights ``w``,
+        which weights make invalid. The bootstrap of a weighted fit is the
+        case bootstrap (``_bootstrap.CaseDesign``)."""
         if not getattr(self, "weighted", False):
             return
-        from surpyval.utils.weights import refuse_bootstrap, refuse_lr
+        from surpyval.utils.weights import refuse_lr
 
         if method == "lr":
             raise refuse_lr()
-        if method == "bootstrap":
-            raise refuse_bootstrap()
 
     def covariance(self) -> npt.NDArray:
         """

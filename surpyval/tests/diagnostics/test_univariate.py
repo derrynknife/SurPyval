@@ -479,7 +479,7 @@ def test_no_finite_maximum_is_refused():
         (
             lambda: sp.Geometric.fit([1, 2, 3, 4, 2, 1]),
             NotImplementedError,
-            "#875",
+            r"not built yet\. Compare discrete models with model\.aic\(\)",
         ),
     ],
 )

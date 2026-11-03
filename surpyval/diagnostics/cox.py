@@ -506,14 +506,6 @@ def _validate(model: Any) -> None:
     # A penalised fit has no p-values; the message is the one its
     # covariance and bounds give.
     refuse_penalised(model)
-    if getattr(model, "is_stratified", False):
-        raise NotImplementedError(
-            "diagnose() is not yet available for a stratified Cox model: "
-            "the residuals its checks use (compute_residuals) do not "
-            "handle strata yet; tracked in #868. Diagnose the model "
-            "fitted without strata= to see which covariates break "
-            "proportional hazards."
-        )
     if getattr(model, "maximum", None) == "no finite maximum":
         raise ValueError(
             "diagnose() needs a fit with a finite maximum, and this one "
@@ -548,6 +540,14 @@ def _notes(ctx: Context) -> list[str]:
         "Cox-Snell residuals sum to its number of events by construction, "
         "so they have no useful test.",
     ]
+    if getattr(ctx.model, "is_stratified", False):
+        notes.append(
+            "The model is stratified ({} strata): every residual and test "
+            "is within each stratum's risk sets, as R's residuals and "
+            "cox.zph compute them for a fit with strata(), and the "
+            "calibration curve predicts each row from its own stratum's "
+            "baseline.".format(len(ctx.model.strata_labels))
+        )
     tie_method = str(getattr(ctx.model, "tie_method", "efron")).lower()
     if tie_method not in ("efron", "breslow"):
         notes.append(

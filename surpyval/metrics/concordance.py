@@ -193,6 +193,44 @@ def concordance_index(
     >>> concordance_index(x, c, risk, ties="harrell")
     0.75
     """
+    counts = concordance_counts(x, c, risk, tie_tol, ties)
+    if counts is None:
+        return float("nan")
+    concordant, usable = counts
+    if usable == 0:
+        raise ValueError(
+            "No usable pairs: the concordance index needs an event that "
+            "is earlier than another subject's time, or at the time of a "
+            "censored one"
+            + (
+                " or of another event"
+                if ties == "harrell"
+                else " (two events at one time are not a pair under "
+                "ties='therneau')"
+            )
+        )
+    return float(concordant / usable)
+
+
+def concordance_counts(
+    x: npt.ArrayLike,
+    c: npt.ArrayLike,
+    risk: npt.ArrayLike,
+    tie_tol: float = 1e-8,
+    ties: str = "therneau",
+) -> tuple[float, float] | None:
+    """The concordant (a tied score counting half) and usable pairs that
+    :func:`concordance_index` divides, ``None`` if a time is missing:
+    for pooling the pairs of several groups, as a stratified model's
+    concordance pools its strata's (R's ``concordance`` of a stratified
+    ``coxph``). The arguments are :func:`concordance_index`'s.
+
+    Examples
+    --------
+    >>> from surpyval.metrics.concordance import concordance_counts
+    >>> concordance_counts([1.0, 2.0, 3.0], [0, 0, 1], [0.9, 0.5, 0.7])
+    (2.0, 3.0)
+    """
     check_option("ties", ties, TIES)
     x_arr = _as_1d(x, "x")
     c_arr = _as_1d(c, "c")
@@ -211,7 +249,7 @@ def concordance_index(
             )
         )
     if np.isnan(x_arr).any():
-        return float("nan")
+        return None
     if not np.isin(c_arr, (0, 1)).all():
         raise ValueError(
             "'c' must be 0 (event) or 1 (right censored); the concordance "
@@ -275,17 +313,4 @@ def concordance_index(
     concordant += np.sum(lower - start) + 0.5 * np.sum(upper - lower)
     n_cens = np.bincount(group[cens], minlength=times.size)
     usable += float(np.sum(n_events * n_cens))
-
-    if usable == 0:
-        raise ValueError(
-            "No usable pairs: the concordance index needs an event that "
-            "is earlier than another subject's time, or at the time of a "
-            "censored one"
-            + (
-                " or of another event"
-                if ties == "harrell"
-                else " (two events at one time are not a pair under "
-                "ties='therneau')"
-            )
-        )
-    return float(concordant / usable)
+    return float(concordant), usable
