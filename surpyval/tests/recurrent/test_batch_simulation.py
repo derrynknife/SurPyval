@@ -7,7 +7,7 @@ closed forms for Weibull lifetimes and Crow-AMSAA intensities, and a
 scalar root find for ARI.
 """
 
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 import pytest

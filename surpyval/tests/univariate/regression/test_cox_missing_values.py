@@ -111,7 +111,7 @@ def test_cox_predict_tvc_refuses_missing_path(bad):
     }
     args[bad] = np.array(args[bad], dtype=float)
     args[bad].flat[1] = np.nan
-    with pytest.raises(ValueError, match="'{}'".format(bad)):
+    with pytest.raises(ValueError, match=f"'{bad}'"):
         model.predict_tvc(args["xl"], args["xr"], args["Z"], times=[3.0])
 
 

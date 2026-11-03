@@ -220,9 +220,9 @@ class DestructiveDegradationModel(InformationCriteriaMixin, SerialisableMixin):
         beta: npt.NDArray,
         sigma: float,
         threshold: float,
-        data: "dict | None",
+        data: dict | None,
         neg_ll: float,
-        transform_scores: "dict | None" = None,
+        transform_scores: dict | None = None,
     ) -> None:
         self.distribution = distribution
         self.transform = transform  # name
@@ -431,7 +431,7 @@ class DestructiveDegradationModel(InformationCriteriaMixin, SerialisableMixin):
         return total
 
     def random(
-        self, size: int, random_state: "int | None" = None
+        self, size: int, random_state: int | None = None
     ) -> npt.NDArray:
         """
         Draw lifetimes from the induced lifetime distribution (#666), by
@@ -501,7 +501,7 @@ class DestructiveDegradationModel(InformationCriteriaMixin, SerialisableMixin):
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         n_boot: int = 200,
-        random_state: "int | None" = None,
+        random_state: int | None = None,
     ) -> npt.NDArray:
         """
         Bootstrap confidence bounds on the induced lifetime function ``on``.
@@ -612,7 +612,7 @@ class DestructiveDegradationModel(InformationCriteriaMixin, SerialisableMixin):
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, d: dict) -> "DestructiveDegradationModel":
+    def from_dict(cls, d: dict) -> DestructiveDegradationModel:
         """
         Rebuild a model from a :meth:`to_dict` dictionary.
 
@@ -747,9 +747,9 @@ class DestructiveDegradation_(FitterRepr):
         df: Any,
         x_col: str = "x",
         y_col: str = "y",
-        c_col: "str | None" = None,
+        c_col: str | None = None,
         **fit_kwargs: Any,
-    ) -> "DestructiveDegradationModel":
+    ) -> DestructiveDegradationModel:
         """
         Fit a destructive degradation model from the columns of a
         :class:`pandas.DataFrame`, with the argument names of
@@ -809,11 +809,11 @@ class DestructiveDegradation_(FitterRepr):
         x: npt.ArrayLike,
         y: npt.ArrayLike,
         threshold: float,
-        c: "npt.ArrayLike | None" = None,
+        c: npt.ArrayLike | None = None,
         distribution: Any = LogNormal,
         transform: str = "linear",
         direction: str = "auto",
-    ) -> "DestructiveDegradationModel":
+    ) -> DestructiveDegradationModel:
         r"""
         Fit a destructive degradation model.
 

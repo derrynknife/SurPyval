@@ -54,7 +54,7 @@ def _warn_negative_entry(
 
     first, _ = data.item_rows()
     negative = [
-        "{} (tl={})".format(item_label(data.i[k]), number_text(entry[k]))
+        f"{item_label(data.i[k])} (tl={number_text(entry[k])})"
         for k in first
         if entry[k] < 0
     ]
@@ -181,14 +181,14 @@ def validate_memory(m: object) -> None:
         return
     if not (isinstance(m, (int, np.integer)) and m >= 1):
         raise ValueError(
-            "m must be a positive integer or numpy.inf; got {!r}".format(m)
+            f"m must be a positive integer or numpy.inf; got {m!r}"
         )
 
 
 def validate_restoration(
     value: object,
     name: str,
-    bounds: "tuple[float | None, float | None]",
+    bounds: tuple[float | None, float | None],
     open_lower: bool = False,
 ) -> None:
     """
@@ -202,9 +202,7 @@ def validate_restoration(
     try:
         v = float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
-        raise ValueError(
-            "{} must be a number; got {!r}".format(name, value)
-        ) from None
+        raise ValueError(f"{name} must be a number; got {value!r}") from None
     lower, upper = bounds
     low_ok = lower is None or (v > lower if open_lower else v >= lower)
     high_ok = upper is None or v <= upper
@@ -542,7 +540,7 @@ def _expand_windows(
         wins = [tuple(w) for w in windows[ii]]
         if len(wins) == 0:
             raise ValueError(
-                "item {} has no observation windows".format(item_label(ii))
+                f"item {item_label(ii)} has no observation windows"
             )
         for w in wins:
             if len(w) != 2:
@@ -763,9 +761,7 @@ def _xicn_covariates(
     if isinstance(Z, dict):
         missing = [ii for ii in np.unique(i).tolist() if ii not in Z]
         if missing:
-            raise ValueError(
-                "Z has no covariates for item(s) {}".format(missing)
-            )
+            raise ValueError(f"Z has no covariates for item(s) {missing}")
         # a scalar value is a single covariate, held as a 1-element row
         return np.array(
             [np.atleast_1d(np.asarray(Z[ii], dtype=float)) for ii in i]
@@ -877,7 +873,7 @@ def _first_row_text(
     """'item <label> has <x>' for the first row in ``mask``."""
     k = int(np.flatnonzero(mask)[0])
     xk = (
-        "[{}, {}]".format(number_text(x[k, 0]), number_text(x[k, 1]))
+        f"[{number_text(x[k, 0])}, {number_text(x[k, 1])}]"
         if x.ndim == 2
         else number_text(x[k])
     )
@@ -1004,8 +1000,8 @@ def _check_interval_overlaps(
     x: npt.NDArray,
     idx: npt.NDArray,
     unique_i: npt.NDArray,
-    c: "npt.NDArray | None" = None,
-    e: "npt.NDArray | None" = None,
+    c: npt.NDArray | None = None,
+    e: npt.NDArray | None = None,
 ) -> None:
     """An item's rows of one event type do not overlap (2-D ``x`` only):
     a type's counts are of its own inspections, which follow one another.

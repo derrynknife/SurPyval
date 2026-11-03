@@ -197,7 +197,7 @@ def warn_no_maximum(what: str, consequence: str, advice: str) -> None:
     if _QUIET.get():
         return
     warnings.warn(
-        "No finite maximum: {}. {}; {}.".format(what, consequence, advice),
+        f"No finite maximum: {what}. {consequence}; {advice}.",
         UserWarning,
         stacklevel=caller_stacklevel(),
     )
@@ -248,7 +248,7 @@ def warn_unverified(
     """
     if _QUIET.get():
         return
-    stalled = "stalled ({})".format(reason) if reason else "stalled"
+    stalled = f"stalled ({reason})" if reason else "stalled"
     warnings.warn(
         "{} did not reach a verified maximum of the likelihood (a point "
         "where the gradient is zero and the log-likelihood curves down in "

@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 # (#470).
 
 
-def optional_column(df: DataFrame, name: "str | None") -> "npt.NDArray | None":
+def optional_column(df: DataFrame, name: str | None) -> npt.NDArray | None:
     """The named DataFrame column as an array, or ``None`` when no
     column is named -- for ``fit_from_df`` methods whose optional
     arguments (censoring, counts, truncation, ...) may not be given."""
@@ -134,7 +134,7 @@ def formula_model_matrix(source: Any, df: Any, **kwargs: Any) -> Any:
     return model_matrix, spec
 
 
-def numeric_columns(df: Any, cols: "list[str]") -> npt.NDArray:
+def numeric_columns(df: Any, cols: list[str]) -> npt.NDArray:
     """``df[cols]`` as a float array. A column that is not numeric (a
     ``"yes"`` / ``"no"`` column, say) raises a ``ValueError`` that names
     it and points to ``formula=``, which codes categorical columns; it
@@ -164,8 +164,8 @@ LARGE_RANGE = 100.0
 
 def coefficient_floor(
     n_search: int,
-    coefs: "list[tuple[int, int]]",
-    Z: "npt.ArrayLike | None",
+    coefs: list[tuple[int, int]],
+    Z: npt.ArrayLike | None,
 ) -> npt.NDArray:
     """Per-component ``floor`` of a regression search vector of
     ``n_search`` components, for ``preconditioned_bfgs`` and
@@ -232,9 +232,9 @@ def coefficient_floor(
 
 def coefficient_names(
     n: int,
-    columns: "Sequence[Any] | None" = None,
-    taken: "Iterable[str]" = (),
-) -> "list[str]":
+    columns: Sequence[Any] | None = None,
+    taken: Iterable[str] = (),
+) -> list[str]:
     """The names of a regression model's ``n`` covariate coefficients
     (#614): each covariate's column name where the fit has them (a
     formula, ``fit_from_df`` or a DataFrame ``Z``), else ``coef_0``,
@@ -259,7 +259,7 @@ def coefficient_names(
     ['age', 'alpha.1', 'age.1']
     """
     if columns is None or len(columns) != n:
-        base = ["coef_{}".format(j) for j in range(n)]
+        base = [f"coef_{j}" for j in range(n)]
     else:
         base = [str(column) for column in columns]
     used = set(taken)
@@ -268,18 +268,18 @@ def coefficient_names(
         unique, k = name, 0
         while unique in used:
             k += 1
-            unique = "{}.{}".format(name, k)
+            unique = f"{name}.{k}"
         used.add(unique)
         out.append(unique)
     return out
 
 
 def loaded_coefficient_names(
-    names: "Sequence[str]",
+    names: Sequence[str],
     first: int,
     count: int,
-    columns: "Sequence[Any] | None",
-) -> "list[str]":
+    columns: Sequence[Any] | None,
+) -> list[str]:
     """``names``, a saved model's parameter names, whose ``count``
     coefficients start at ``first``, with the coefficients renamed as
     :func:`coefficient_names` names them (``columns``, the model's
@@ -297,7 +297,7 @@ def loaded_coefficient_names(
     """
     names = list(names)
     coefs = names[first : first + count]
-    if coefs != ["beta_{}".format(j) for j in range(count)] or not count:
+    if coefs != [f"beta_{j}" for j in range(count)] or not count:
         return names
     others = names[:first] + names[first + count :]
     new = coefficient_names(count, columns, others)

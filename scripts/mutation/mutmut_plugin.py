@@ -74,7 +74,7 @@ def pytest_configure(config):
             leaks.KNOWN_LEAKS
         )
 
-    is_known._unmangled = True  # type: ignore[attr-defined]
+    is_known._unmangled = True
     leaks.is_known = is_known
 
 

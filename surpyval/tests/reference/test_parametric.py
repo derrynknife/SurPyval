@@ -102,7 +102,7 @@ def _survreg_to_surpyval(dist, coef, scale):
 @pytest.mark.parametrize("dist", sorted(AFT_FITTERS))
 def test_aft_matches_survreg(dist, data):
     x, c, Z = _data(data)
-    ref = values("r_survival", "survreg_{}_{}".format(data, dist))
+    ref = values("r_survival", f"survreg_{data}_{dist}")
     model = AFT_FITTERS[dist].fit(x, Z, c=c)
     expected = _survreg_to_surpyval(dist, ref["coef"], ref["scale"])
     assert_allclose(model.params, expected, rtol=5e-4)
@@ -125,7 +125,7 @@ def test_weibull_ph_is_survreg_reparameterised(dist, fitter, data):
     # survreg's fit is also the PH fit: the hazard ratio coefficients are
     # -b / scale and the likelihood is the same.
     x, c, Z = _data(data)
-    ref = values("r_survival", "survreg_{}_{}".format(data, dist))
+    ref = values("r_survival", f"survreg_{data}_{dist}")
     model = fitter.fit(x, Z, c=c)
     k = Z.shape[1]
     coef = np.atleast_1d(ref["coef"])
@@ -137,7 +137,7 @@ def test_weibull_ph_is_survreg_reparameterised(dist, fitter, data):
 @pytest.mark.parametrize("dist", sorted(DISTRIBUTIONS))
 def test_distribution_matches_intercept_only_survreg(dist, data):
     x, c, _ = _data(data)
-    ref = values("r_survival", "survreg_{}_null_{}".format(data, dist))
+    ref = values("r_survival", f"survreg_{data}_null_{dist}")
     model = DISTRIBUTIONS[dist].fit(x=x, c=c)
     expected = _survreg_to_surpyval(dist, ref["coef"], ref["scale"])
     assert_allclose(model.params, expected, rtol=5e-4)
@@ -185,7 +185,7 @@ def _lifelines_to_surpyval(dist, params):
 @pytest.mark.parametrize("dist", sorted(DISTRIBUTIONS))
 def test_left_truncated_distribution_matches_lifelines(dist):
     d = fixture("left_truncation")
-    ref = values("py_lifelines", "{}_left_truncation".format(dist))
+    ref = values("py_lifelines", f"{dist}_left_truncation")
     model = DISTRIBUTIONS[dist].fit(x=d["x"], c=d["c"], tl=d["tl"])
     _check_mle(
         model, _lifelines_to_surpyval(dist, ref["params"]), ref["loglik"]
@@ -195,7 +195,7 @@ def test_left_truncated_distribution_matches_lifelines(dist):
 @pytest.mark.parametrize("dist", sorted(DISTRIBUTIONS))
 def test_interval_censored_distribution_matches_lifelines(dist):
     x, c, _ = _interval_xc()
-    ref = values("py_lifelines", "{}_interval".format(dist))
+    ref = values("py_lifelines", f"{dist}_interval")
     model = DISTRIBUTIONS[dist].fit(x=x, c=c)
     _check_mle(
         model, _lifelines_to_surpyval(dist, ref["params"]), ref["loglik"]

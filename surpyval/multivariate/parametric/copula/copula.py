@@ -27,7 +27,8 @@ from __future__ import annotations
 
 import functools
 import warnings
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import autograd.numpy as np
 import numpy as onp
@@ -149,7 +150,7 @@ def _domain_checked(method: Callable[..., Any]) -> Callable[..., Any]:
     gave -1.0, a Clayton ``kendall_tau(-0.5)`` -0.333 (#664)."""
 
     @functools.wraps(method)
-    def checked(self: "Copula", *params: Any, **kwargs: Any) -> Any:
+    def checked(self: Copula, *params: Any, **kwargs: Any) -> Any:
         self._check_domain(params, kwargs, method.__name__)
         return method(self, *params, **kwargs)
 
@@ -417,7 +418,7 @@ class Copula(RemovedNames):
         self,
         size: int,
         params: Any,
-        random_state: "int | None" = None,
+        random_state: int | None = None,
     ) -> tuple[npt.NDArray, npt.NDArray]:
         """Draw ``(u, v)`` pairs by conditional inversion of the h-function.
 
@@ -695,13 +696,13 @@ class Copula(RemovedNames):
     def fit_from_df(
         self,
         df: Any,
-        x_cols: "list[str]",
-        c_cols: "list[str] | None" = None,
-        n_col: "str | None" = None,
-        xl_cols: "list[str] | None" = None,
-        xr_cols: "list[str] | None" = None,
-        tl_cols: "list[str] | None" = None,
-        tr_cols: "list[str] | None" = None,
+        x_cols: list[str],
+        c_cols: list[str] | None = None,
+        n_col: str | None = None,
+        xl_cols: list[str] | None = None,
+        xr_cols: list[str] | None = None,
+        tl_cols: list[str] | None = None,
+        tr_cols: list[str] | None = None,
         **fit_options: Any,
     ) -> Any:
         """Fit the copula and its margins to the columns of a
@@ -793,14 +794,14 @@ class Copula(RemovedNames):
     def fit(
         self,
         x: npt.ArrayLike,
-        c: "npt.ArrayLike | None" = None,
-        n: "npt.ArrayLike | None" = None,
-        t: "npt.ArrayLike | None" = None,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        t: npt.ArrayLike | None = None,
         margins: Any = None,
         how: str = "IFM",
-        xl: "npt.ArrayLike | None" = None,
-        xr: "npt.ArrayLike | None" = None,
-        init: "npt.ArrayLike | None" = None,
+        xl: npt.ArrayLike | None = None,
+        xr: npt.ArrayLike | None = None,
+        init: npt.ArrayLike | None = None,
         rotation: int = 0,
     ) -> Any:
         """Fit the copula and its margins to multivariate survival data.
@@ -953,7 +954,7 @@ class Copula(RemovedNames):
             self._warn_if_at_independence(data, theta)
         else:
             maximum = "unverified"
-            warn_unverified("The {} copula fit".format(self.name))
+            warn_unverified(f"The {self.name} copula fit")
         if how == "IFM":
             # The two-stage estimate is a maximum where each stage is: the
             # margins fitted here say what theirs reached (and warned).
@@ -1097,7 +1098,7 @@ class Copula(RemovedNames):
     #: new copulas (the asymmetric Archimedean ones).
     rotatable: bool = False
 
-    def rotated(self, rotation: int) -> "Copula":
+    def rotated(self, rotation: int) -> Copula:
         """The family rotated by ``rotation`` degrees (0, 90, 180 or 270),
         in R's ``VineCopula`` convention; see the ``rotation`` option of
         :meth:`fit`, which uses it. ``rotated(0)`` is the family itself.
@@ -1199,7 +1200,7 @@ class Copula(RemovedNames):
         self,
         margin_models: list,
         data: Any,
-        init: "npt.NDArray | None" = None,
+        init: npt.NDArray | None = None,
     ) -> npt.NDArray:
         """The copula's parameters for the fitted margins (the second
         stage of IFM); see :meth:`_search_theta`."""
@@ -1209,7 +1210,7 @@ class Copula(RemovedNames):
         self,
         margin_models: list,
         data: Any,
-        init: "npt.NDArray | None" = None,
+        init: npt.NDArray | None = None,
     ) -> tuple[npt.NDArray, bool]:
         """``(theta, verified)``: the copula's parameters for the fitted
         margins, by Nelder-Mead in the unbounded space, and whether they
@@ -1276,7 +1277,7 @@ class Copula(RemovedNames):
         margins: Any,
         margin_models: list,
         data: Any,
-        init: "npt.NDArray | None" = None,
+        init: npt.NDArray | None = None,
     ) -> tuple:
         # Start from the IFM solution, then refine copula + margin params
         # jointly. Each margin is rebuilt from its parameter vector at every
@@ -1645,7 +1646,7 @@ class RotatedCopula(Copula):
         self,
         size: int,
         params: Any,
-        random_state: "int | None" = None,
+        random_state: int | None = None,
     ) -> tuple[npt.NDArray, npt.NDArray]:
         u, v = self.base.sample_uv(size, params, random_state)
         f0, f1 = self._flips()

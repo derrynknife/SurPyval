@@ -156,7 +156,7 @@ class CauseSpecificNHPP(SerialisableMixin):
         the sum of the causes'."""
         return -self.neg_ll()
 
-    def _ic_terms(self) -> "tuple[int, float]":
+    def _ic_terms(self) -> tuple[int, float]:
         # The parameters estimated over every cause, and the number of
         # events of any cause (the sum of the causes' own counts).
         k_total, n_total = 0, 0.0
@@ -227,7 +227,7 @@ class CauseSpecificNHPP(SerialisableMixin):
         )
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "CauseSpecificNHPP":
+    def from_dict(cls, model_dict: dict) -> CauseSpecificNHPP:
         """
         Rebuild a cause-specific NHPP from a :meth:`to_dict` dictionary.
 
@@ -278,8 +278,8 @@ class CauseSpecificNHPP(SerialisableMixin):
         data: Any,
         dist: Any = CrowAMSAA,
         how: str = "MLE",
-        init: "ArrayLike | None" = None,
-    ) -> "CauseSpecificNHPP":
+        init: ArrayLike | None = None,
+    ) -> CauseSpecificNHPP:
         """
         Fit the cause-specific intensity model from prepared
         :class:`EventHistoryData` carrying event-type marks ``e``.
@@ -364,16 +364,16 @@ class CauseSpecificNHPP(SerialisableMixin):
     def fit(
         cls,
         x: ArrayLike,
-        i: "ArrayLike | None" = None,
-        c: "ArrayLike | None" = None,
-        n: "ArrayLike | None" = None,
-        e: "ArrayLike | None" = None,
-        tl: "ArrayLike | None" = None,
-        tr: "ArrayLike | None" = None,
+        i: ArrayLike | None = None,
+        c: ArrayLike | None = None,
+        n: ArrayLike | None = None,
+        e: ArrayLike | None = None,
+        tl: ArrayLike | None = None,
+        tr: ArrayLike | None = None,
         dist: Any = CrowAMSAA,
         how: str = "MLE",
-        init: "ArrayLike | None" = None,
-    ) -> "CauseSpecificNHPP":
+        init: ArrayLike | None = None,
+    ) -> CauseSpecificNHPP:
         """
         Fit a cause-specific intensity model.
 
@@ -432,15 +432,15 @@ class CauseSpecificNHPP(SerialisableMixin):
         df: Any,
         x_col: str,
         e_col: str,
-        i_col: "str | None" = None,
-        c_col: "str | None" = None,
-        n_col: "str | None" = None,
-        tl_col: "str | None" = None,
-        tr_col: "str | None" = None,
+        i_col: str | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        tl_col: str | None = None,
+        tr_col: str | None = None,
         dist: Any = CrowAMSAA,
         how: str = "MLE",
-        init: "ArrayLike | None" = None,
-    ) -> "CauseSpecificNHPP":
+        init: ArrayLike | None = None,
+    ) -> CauseSpecificNHPP:
         """
         Fit a cause-specific intensity model from a :class:`pandas.DataFrame`,
         naming the columns to read. See :meth:`fit` for the meaning of each.
@@ -489,7 +489,7 @@ class CauseSpecificNHPP(SerialisableMixin):
         events of any type, which (the causes being independent thinnings of
         the overall process) is the sum of the cause-specific intensities.
         """
-        total: "np.ndarray | None" = None
+        total: np.ndarray | None = None
         for cause in self.event_types:
             contribution = self.models[cause].cif(x)
             total = contribution if total is None else total + contribution

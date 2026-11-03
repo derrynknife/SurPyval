@@ -150,7 +150,7 @@ class GrowthProjection:
                 len(self.modes),
                 "" if len(self.modes) == 1 else "s",
             ),
-            "Mean FEF            : {:.4g}".format(self.mean_fef),
+            f"Mean FEF            : {self.mean_fef:.4g}",
             "New BD modes        : beta = {:.4g}, h(T) = {:.4g}".format(
                 self.beta, self.new_mode_intensity
             ),
@@ -169,9 +169,7 @@ class GrowthProjection:
                 self.growth_potential_mtbf,
             ),
         ):
-            lines.append(
-                "{:<20}: {:>12.4g} {:>12.4g}".format(label, rate, mtbf)
-            )
+            lines.append(f"{label:<20}: {rate:>12.4g} {mtbf:>12.4g}")
         return "\n".join(lines)
 
 

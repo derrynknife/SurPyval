@@ -29,12 +29,12 @@ def _columns(data: Any) -> np.ndarray:
 
 def rebuilt(
     data: Any,
-    keep: "np.ndarray | None" = None,
+    keep: np.ndarray | None = None,
     *,
-    x: "np.ndarray | None" = None,
-    c: "np.ndarray | None" = None,
-    tl: "np.ndarray | None" = None,
-    tr: "np.ndarray | None" = None,
+    x: np.ndarray | None = None,
+    c: np.ndarray | None = None,
+    tl: np.ndarray | None = None,
+    tr: np.ndarray | None = None,
     Z: Any = "same",
     e: Any = "same",
     names: Any = "same",

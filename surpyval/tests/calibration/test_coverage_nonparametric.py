@@ -113,7 +113,7 @@ def test_band_coverage(method):
         hits.sum(),
         reps,
         0.95,
-        "KaplanMeier band({}) coverage".format(method),
+        f"KaplanMeier band({method}) coverage",
         slack=0.015,
     )
 
@@ -181,13 +181,13 @@ def test_band_critical_value(a_l, a_u, standardized):
     line = "critical value {:.5f} on [{}, {}] ({}): P(inside) {:.5f}".format(
         crit, a_l, a_u, "nair" if standardized else "hall-wellner", p
     )
-    print(line + " (target 0.95, tolerance +/- {:.5f})".format(tol))
+    print(line + f" (target 0.95, tolerance +/- {tol:.5f})")
     assert abs(p - 0.95) <= tol, line
     # The design sees the old error: a value 1.5% low is outside tolerance.
     p_low = _inside_probability(
         0.985 * crit, a_l, a_u, standardized, n_paths, rng
     )
-    print("  at 0.985 x critical value: P(inside) {:.5f}".format(p_low))
+    print(f"  at 0.985 x critical value: P(inside) {p_low:.5f}")
     assert p_low < 0.95 - tol
 
 
@@ -223,5 +223,5 @@ def test_competing_risks_cif_coverage(alpha_ci):
         ).astype(object)
         b = CompetingRisks.fit(x, e).cb(t_eval, "wear", alpha_ci=alpha_ci)
         lo[r], hi[r] = b[:, 0], b[:, 1]
-    label = "CompetingRisks cb(cif) at {:.0%}".format(1 - alpha_ci)
+    label = f"CompetingRisks cb(cif) at {1 - alpha_ci:.0%}"
     check_coverage(lo, hi, truth, 1 - alpha_ci, label)

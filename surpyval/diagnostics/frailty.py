@@ -105,8 +105,9 @@ from __future__ import annotations
 
 import re
 import warnings
+from collections.abc import Callable
 from types import SimpleNamespace
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 from scipy.stats import chi2
@@ -136,7 +137,7 @@ _COX = "Cox shared frailty"
 # Small helpers
 # ---------------------------------------------------------------------------
 def _fmt(value: float) -> str:
-    return "{:.3g}".format(value)
+    return f"{value:.3g}"
 
 
 def _source(name: str) -> str:
@@ -207,7 +208,7 @@ def _dist_name(model: Any) -> str:
     return str(model.dist.name)
 
 
-def frailty_fitter_name(model: Any, family: "str | None" = None) -> str:
+def frailty_fitter_name(model: Any, family: str | None = None) -> str:
     """How the advice names the fitter of a parametric frailty model with
     ``model``'s baseline and frailty ``family`` (``model``'s own by
     default): ``WeibullFrailty`` for a built-in gamma one, else
@@ -226,7 +227,7 @@ def frailty_fitter_name(model: Any, family: "str | None" = None) -> str:
     name = _dist_name(model)
     if family == "gamma" and name in BUILT_IN_FRAILTY:
         return name + "Frailty"
-    return "Frailty({}, family={!r})".format(name, family)
+    return f"Frailty({name}, family={family!r})"
 
 
 def null_fitter_name(model: Any) -> str:
@@ -252,7 +253,7 @@ def null_fitter_name(model: Any) -> str:
         return name
     if name in BASELINES:
         return name + "PH"
-    return "PH({})".format(name)
+    return f"PH({name})"
 
 
 # ---------------------------------------------------------------------------
@@ -449,7 +450,7 @@ def _variance_panels(ctx: Context) -> list[Panel]:
         ax.set_xlabel("group (sorted)")
         ax.set_ylabel("posterior frailty")
 
-    return [Panel("frailties: theta = {}".format(_fmt(ctx.model.theta)), draw)]
+    return [Panel(f"frailties: theta = {_fmt(ctx.model.theta)}", draw)]
 
 
 # ---------------------------------------------------------------------------
@@ -522,9 +523,9 @@ class _Marginal:
         self,
         model: Any,
         data: SimpleNamespace,
-        always: "np.ndarray | None" = None,
-        tau: "float | None" = None,
-        steps: "np.ndarray | None" = None,
+        always: np.ndarray | None = None,
+        tau: float | None = None,
+        steps: np.ndarray | None = None,
     ) -> None:
         self.dist = model.dist
         self.family = model.family
@@ -682,7 +683,7 @@ def _maximise(f: _Marginal, start: np.ndarray) -> _Fit:
             return _Fit(theta=start, value=float("nan"), ok=False)
         u, value, ok = newton(u, value)
         if not ok:
-            bounds: "list[tuple[float | None, None]]" = [(None, None)] * u.size
+            bounds: list[tuple[float | None, None]] = [(None, None)] * u.size
             bounds[j_theta] = (0.0, None)
             try:
                 res = minimize(
@@ -730,7 +731,7 @@ def _null_fit(ctx: Context) -> _Fit:
     return ctx.cached("null_fit", compute)
 
 
-def _lr(ctx: Context, f: _Marginal, null: "_Fit | None" = None) -> dict:
+def _lr(ctx: Context, f: _Marginal, null: _Fit | None = None) -> dict:
     """The likelihood-ratio test of a null model against the larger model
     ``f``: by default the fitted model, with every extra coefficient of
     ``f`` 0; else ``null``, a maximum of ``f``'s first parameters (the
@@ -812,7 +813,7 @@ def _step_test(ctx: Context, J: list[int]) -> dict:
             }
         return _lr(ctx, f, null)
 
-    return ctx.cached("step_{}".format(J), compute)
+    return ctx.cached(f"step_{J}", compute)
 
 
 def _ph_rows(ctx: Context) -> list[dict]:
@@ -896,7 +897,7 @@ def _form_rows(ctx: Context) -> list[dict]:
             f = _Marginal(ctx.model, d, always=(square / spread)[:, None])
             return _lr(ctx, f)
 
-        res = ctx.cached("square_{}".format(j), compute)
+        res = ctx.cached(f"square_{j}", compute)
         p = res["p"]
         if not np.isfinite(p):
             detail = "the test could not be computed: " + res["reason"]
@@ -950,7 +951,7 @@ def _form_panels(ctx: Context) -> list[Panel]:
             ax.set_xlabel(name)
             ax.set_ylabel("martingale residual, given the frailty")
 
-        panels.append(Panel("{}: functional form".format(name), draw))
+        panels.append(Panel(f"{name}: functional form", draw))
     return panels
 
 
@@ -986,7 +987,7 @@ def _refit(ctx: Context, dist: Any, family: str) -> dict:
         return {
             "aic": aic,
             "status": "set aside",
-            "reason": "not a verified maximum ({})".format(fitted.maximum),
+            "reason": f"not a verified maximum ({fitted.maximum})",
         }
     return {"aic": aic, "status": "ranked", "reason": ""}
 
@@ -1006,7 +1007,7 @@ def _family_rows(ctx: Context) -> list[dict]:
     if res["status"] != "ranked":
         return [
             {
-                "test": "AIC against the {} frailty".format(other),
+                "test": f"AIC against the {other} frailty",
                 "covariates": (),
                 "statistic": float("nan"),
                 "verdict": "warn",
@@ -1027,7 +1028,7 @@ def _family_rows(ctx: Context) -> list[dict]:
         )
     return [
         {
-            "test": "AIC against the {} frailty".format(other),
+            "test": f"AIC against the {other} frailty",
             "covariates": (),
             "statistic": delta,
             "verdict": "warn" if delta > AIC_MARGIN else "ok",
@@ -1139,9 +1140,7 @@ def _baseline_panels(ctx: Context) -> list[Panel]:
         ax.axvline(AIC_MARGIN, color=INK["secondary"], ls="--", lw=0.8)
         ax.set_xlabel("AIC - lowest AIC")
 
-    return [
-        Panel("AIC by baseline ({} frailty)".format(ctx.model.family), draw)
-    ]
+    return [Panel(f"AIC by baseline ({ctx.model.family} frailty)", draw)]
 
 
 # ---------------------------------------------------------------------------
@@ -1310,7 +1309,7 @@ def _drop_message(row: dict, ctx: Context) -> str:
             "CoxPH.fit_from_df)".format(model.tie_method)
         )
     elif not np.size(model.beta):
-        how = "{}.fit(x, c, n)".format(name)
+        how = f"{name}.fit(x, c, n)"
     else:
         how = "{}.fit(x, Z, c, n) (from a DataFrame, {}.fit_from_df)".format(
             name, name

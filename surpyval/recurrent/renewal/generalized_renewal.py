@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import autograd.numpy as anp
 import numpy as np
@@ -255,7 +256,7 @@ class VirtualAgeLikelihood:
 
     def value_and_grad(
         self, terms: Any, params: Any, age: np.ndarray, age_slope: np.ndarray
-    ) -> "tuple[float, float, np.ndarray] | None":
+    ) -> tuple[float, float, np.ndarray] | None:
         """The likelihood with its derivatives in a restoration parameter
         and in ``params``, in one pass of plain numpy, for the search
         (#728): ``(ll, d ll / d r, d ll / d params)`` where the ages
@@ -588,7 +589,7 @@ class GeneralizedRenewal(RenewalFitMixin):
 
     def _make_model(
         self, underlying_model: Any, q: float, kijima_type: str
-    ) -> "RenewalModel":
+    ) -> RenewalModel:
         out = RenewalModel(
             underlying_model,
             q,
@@ -695,8 +696,8 @@ class GeneralizedRenewal(RenewalFitMixin):
         data: Any,
         dist: Any = Weibull,
         kijima: str = "i",
-        init: "ArrayLike | None" = None,
-    ) -> "RenewalModel":
+        init: ArrayLike | None = None,
+    ) -> RenewalModel:
         """
         Fit the generalized renewal model from recurrent data.
 
@@ -807,14 +808,14 @@ class GeneralizedRenewal(RenewalFitMixin):
     def fit(
         self,
         x: ArrayLike,
-        i: "ArrayLike | None" = None,
-        c: "ArrayLike | None" = None,
-        n: "ArrayLike | None" = None,
+        i: ArrayLike | None = None,
+        c: ArrayLike | None = None,
+        n: ArrayLike | None = None,
         dist: Any = Weibull,
         kijima: str = "i",
-        init: "ArrayLike | None" = None,
-        tl: "ArrayLike | None" = None,
-    ) -> "RenewalModel":
+        init: ArrayLike | None = None,
+        tl: ArrayLike | None = None,
+    ) -> RenewalModel:
         """
         Fit the generalized renewal model.
 
@@ -911,7 +912,7 @@ class GeneralizedRenewal(RenewalFitMixin):
         q: float,
         kijima: str = "i",
         dist: Any = Weibull,
-    ) -> "RenewalModel":
+    ) -> RenewalModel:
         """
         Fit the generalized renewal model from given parameters.
 

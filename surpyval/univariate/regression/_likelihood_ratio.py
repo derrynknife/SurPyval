@@ -14,7 +14,8 @@ of a function evaluated at the covariates asked for (#583). ``cb_lr`` and
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING, Any, Callable, cast
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, cast
 
 import autograd.numpy as np
 import numpy.typing as npt
@@ -45,7 +46,7 @@ _FLOAT_MAX = float(np.finfo(float).max)
 LR_NAMES = ("lr", "likelihood", "likelihood-ratio", "profile")
 
 
-def is_lr(method: "str | None") -> bool:
+def is_lr(method: str | None) -> bool:
     """Whether ``method`` asks for the likelihood-ratio bounds: ``"lr"``
     or one of its aliases; ``"wald"`` is the other option (and ``None``,
     the default, means it, #655), and anything else is refused."""
@@ -104,8 +105,8 @@ class LikelihoodRegion(LikelihoodRatioMixin):
         params: npt.ArrayLike,
         names: list[str],
         bounds: list[tuple[Any, Any]],
-        held: "set[int]",
-        cov: "npt.NDArray | None",
+        held: set[int],
+        cov: npt.NDArray | None,
         point: Any = None,
     ) -> None:
         self.neg_ll = neg_ll
@@ -317,7 +318,7 @@ class LikelihoodRegion(LikelihoodRatioMixin):
         for w, key in zip(want, keys):
             out.append(cache[key] if w else (np.nan, False))
         if any(unsure for _, unsure in out):
-            warn_unsettled("on '{}'".format(self.names[idx]))
+            warn_unsettled(f"on '{self.names[idx]}'")
         return out[0][0], out[1][0]
 
 
@@ -339,10 +340,10 @@ class RegressionLikelihoodRatio(LikelihoodRegion):
 
     def __init__(
         self,
-        model: "ParametricRegressionModel",
+        model: ParametricRegressionModel,
         params: npt.NDArray,
-        center: "npt.NDArray | None",
-        cov: "npt.NDArray | None",
+        center: npt.NDArray | None,
+        cov: npt.NDArray | None,
         point: tuple,
     ) -> None:
         from ._fit_skeleton import centred_copy
@@ -371,7 +372,7 @@ class RegressionLikelihoodRatio(LikelihoodRegion):
     def _regression_neg_ll(self, theta: npt.NDArray) -> float:
         return float(self.fitted.model.neg_ll(self.surv_data, *theta))
 
-    def _lr_support(self) -> "Callable[[npt.NDArray], npt.NDArray] | None":
+    def _lr_support(self) -> Callable[[npt.NDArray], npt.NDArray] | None:
         """An additive hazards model's support at the observed points
         (#828): ``H`` at every one, and ``h`` at the times and bounds,
         each as a share of the baseline's (so the constraints are of a
@@ -483,7 +484,7 @@ class RegressionLikelihoodRatio(LikelihoodRegion):
             return to_psi(float(H[i]))
 
         self._path_calls += 1
-        kind = "path-{}".format(self._path_calls)
+        kind = f"path-{self._path_calls}"
         try:
             return self._side_by_side(
                 psi_of,

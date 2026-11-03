@@ -1,5 +1,6 @@
 import functools
-from typing import TYPE_CHECKING, Callable, Iterable
+from collections.abc import Callable, Iterable
+from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import ArrayLike

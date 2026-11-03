@@ -190,7 +190,7 @@ class Forecast:
         if self.per_unit is not None:
             head += "; every failure counted"
         if self.simulations is not None:
-            head += " ({} simulated futures per unit)".format(self.simulations)
+            head += f" ({self.simulations} simulated futures per unit)"
         columns = [
             ("horizon", self.horizon),
             ("expected", self.expected),
@@ -201,8 +201,7 @@ class Forecast:
             ("period upper", self.period_upper),
         ]
         cells = [
-            [name] + ["{:.4g}".format(v) for v in values]
-            for name, values in columns
+            [name] + [f"{v:.4g}" for v in values] for name, values in columns
         ]
         widths = [max(len(c) for c in col) for col in cells]
         rows = [
@@ -674,7 +673,7 @@ def _renewal_forecast(
         )
     items = 1000 if items is None else int(items)
     if items < 2:
-        raise ValueError("items must be at least 2; got {}".format(items))
+        raise ValueError(f"items must be at least 2; got {items}")
     states = model._states(None if age is None else _ages(age))
     k = states.now.size
     end_limit = _limits(limit, k)

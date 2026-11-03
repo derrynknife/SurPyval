@@ -63,10 +63,10 @@ from surpyval.utils.validation import unknown_cause_error
 
 def _validate(
     x: npt.ArrayLike,
-    c: "npt.ArrayLike | None",
-    n: "npt.ArrayLike | None",
+    c: npt.ArrayLike | None,
+    n: npt.ArrayLike | None,
     e: npt.ArrayLike,
-    tl: "npt.ArrayLike | float | None" = None,
+    tl: npt.ArrayLike | float | None = None,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """Wrangle ``x``/``c``/``n``/``tl`` and check the event labels: ``e``
     is the per-observation cause. A missing event (``None`` / ``NaN``)
@@ -129,7 +129,7 @@ class ParametricCompetingRisks(
         )
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "ParametricCompetingRisks":
+    def from_dict(cls, model_dict: dict) -> ParametricCompetingRisks:
         """Rebuild a parametric competing-risks model from a dict."""
         require_model_tag(
             model_dict,
@@ -146,7 +146,7 @@ class ParametricCompetingRisks(
 
     def __repr__(self) -> str:
         dists = ", ".join(
-            "{}: {}".format(k, self.models[k].dist.name) for k in self.causes
+            f"{k}: {self.models[k].dist.name}" for k in self.causes
         )
         return (
             "Parametric Competing Risks SurPyval Model\n"
@@ -201,9 +201,7 @@ class ParametricCompetingRisks(
         with np.errstate(divide="ignore", invalid="ignore"):
             return self.models[event].df(x) * others
 
-    def cif(
-        self, x: npt.ArrayLike, event: Any = None
-    ) -> "npt.NDArray | float":
+    def cif(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray | float:
         """
         Cumulative incidence function. ``event=k`` returns
         :math:`\\int_0^t f_k^{\\mathrm{sub}}(u)\\,du`, the probability of
@@ -308,7 +306,7 @@ class ParametricCompetingRisks(
         return self.cif(np.inf, event)
 
     def random(
-        self, size: int, random_state: "int | None" = None
+        self, size: int, random_state: int | None = None
     ) -> npt.NDArray:
         """
         Draw ``size`` samples of ``(time, cause)`` from the model, using the
@@ -427,7 +425,7 @@ class ParametricCompetingRisks(
         the sum of the causes' (#605)."""
         return -self.neg_ll()
 
-    def _ic_terms(self) -> "tuple[int, float]":
+    def _ic_terms(self) -> tuple[int, float]:
         # The parameters estimated over every cause, and the sample size of
         # the whole data (see bic).
         k_total, n_total = 0, 0.0
@@ -446,7 +444,7 @@ class ParametricCompetingRisks(
     # -- construction -----------------------------------------------------
 
     @classmethod
-    def from_fitted(cls, models: dict) -> "ParametricCompetingRisks":
+    def from_fitted(cls, models: dict) -> ParametricCompetingRisks:
         """
         Assemble a competing-risks model from already-fitted single-cause
         models -- one per cause -- instead of fitting them here.
@@ -519,12 +517,12 @@ class ParametricCompetingRisks(
         cls,
         x: npt.ArrayLike,
         e: npt.ArrayLike,
-        c: "npt.ArrayLike | None" = None,
-        n: "npt.ArrayLike | None" = None,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
         dist: Any = Weibull,
         how: str = "MLE",
-        tl: "npt.ArrayLike | float | None" = None,
-    ) -> "ParametricCompetingRisks":
+        tl: npt.ArrayLike | float | None = None,
+    ) -> ParametricCompetingRisks:
         """
         Fit a parametric distribution to each cause's cause-specific hazard.
 
@@ -627,12 +625,12 @@ class ParametricCompetingRisks(
         df: Any,
         x_col: str,
         e_col: str,
-        c_col: "str | None" = None,
-        n_col: "str | None" = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
         dist: Any = Weibull,
         how: str = "MLE",
-        tl_col: "str | float | None" = None,
-    ) -> "ParametricCompetingRisks":
+        tl_col: str | float | None = None,
+    ) -> ParametricCompetingRisks:
         """
         Fit from the columns of a :class:`pandas.DataFrame`; see :meth:`fit`.
 

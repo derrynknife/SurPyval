@@ -180,7 +180,7 @@ def observed_and_fitted(
     *,
     observed_label: str = "Observed",
     fitted_label: str = "Model",
-    band_label: "str | None" = None,
+    band_label: str | None = None,
 ) -> Any:
     """Draw an estimate from the data, ``observed`` (times and values, a
     step), behind a model's curve, ``fitted`` (times and values), with the

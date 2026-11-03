@@ -602,7 +602,7 @@ class _SharedFrailty(
                 se = np.asarray(
                     _standard_error(np.diag(self._covariance)), dtype=float
                 )
-        level = "{:g}%".format(100 * (1 - alpha_ci))
+        level = f"{100 * (1 - alpha_ci):g}%"
         columns = list(coefficient_table([], [], [], alpha_ci).columns)
 
         def others(indices: "list[int]") -> pd.DataFrame:

@@ -175,10 +175,10 @@ def main() -> int:
 
     print("\n" + "=" * 60)
     failed = False
-    for version, name, status, elapsed in results:
-        if status != "ok":
+    for version, name, outcome, elapsed in results:
+        if outcome != "ok":
             failed = True
-        print(f"{version:6s} {name:28s} {status:12s} {elapsed:6.1f}s")
+        print(f"{version:6s} {name:28s} {outcome:12s} {elapsed:6.1f}s")
     print("=" * 60)
 
     if failed:

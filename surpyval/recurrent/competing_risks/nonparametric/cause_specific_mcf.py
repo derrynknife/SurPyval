@@ -112,14 +112,14 @@ class CauseSpecificMCF(SerialisableMixin):
     data: Any
     event_types: list
     models: dict
-    x: "np.ndarray"
-    r: "np.ndarray"
+    x: np.ndarray
+    r: np.ndarray
     #: The ``(lower, upper)`` interval the MCFs are defined on, set by
     #: :meth:`set_support`; ``None`` (the default) when it has not been set.
-    support: "tuple[float, float] | None" = None
+    support: tuple[float, float] | None = None
 
     def __repr__(self) -> str:
-        return "Cause-specific MCF with causes: {}".format(self.event_types)
+        return f"Cause-specific MCF with causes: {self.event_types}"
 
     # -- serialisation -----------------------------------------------------
 
@@ -145,7 +145,7 @@ class CauseSpecificMCF(SerialisableMixin):
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "CauseSpecificMCF":
+    def from_dict(cls, model_dict: dict) -> CauseSpecificMCF:
         """
         Rebuild a cause-specific MCF from a :meth:`to_dict` dictionary.
 
@@ -170,7 +170,7 @@ class CauseSpecificMCF(SerialisableMixin):
             out.set_support(*support)
         return out
 
-    def set_support(self, lower: float, upper: float) -> "CauseSpecificMCF":
+    def set_support(self, lower: float, upper: float) -> CauseSpecificMCF:
         """
         Give every cause's MCF the explicit support ``[lower, upper]``.
 
@@ -306,7 +306,7 @@ class CauseSpecificMCF(SerialisableMixin):
 
     @classmethod
     @refuses_unmodelled_data
-    def fit_from_recurrent_data(cls, data: Any) -> "CauseSpecificMCF":
+    def fit_from_recurrent_data(cls, data: Any) -> CauseSpecificMCF:
         if data.e is None:
             raise ValueError(
                 "EventHistoryData has no event-type marks; pass `e` to "
@@ -328,13 +328,13 @@ class CauseSpecificMCF(SerialisableMixin):
     def fit(
         cls,
         x: ArrayLike,
-        i: "ArrayLike | None" = None,
-        c: "ArrayLike | None" = None,
-        n: "ArrayLike | None" = None,
-        e: "ArrayLike | None" = None,
-        tl: "ArrayLike | None" = None,
-        tr: "ArrayLike | None" = None,
-    ) -> "CauseSpecificMCF":
+        i: ArrayLike | None = None,
+        c: ArrayLike | None = None,
+        n: ArrayLike | None = None,
+        e: ArrayLike | None = None,
+        tl: ArrayLike | None = None,
+        tr: ArrayLike | None = None,
+    ) -> CauseSpecificMCF:
         """
         Fit a cause-specific MCF.
 
@@ -391,12 +391,12 @@ class CauseSpecificMCF(SerialisableMixin):
         df: Any,
         x_col: str,
         e_col: str,
-        i_col: "str | None" = None,
-        c_col: "str | None" = None,
-        n_col: "str | None" = None,
-        tl_col: "str | None" = None,
-        tr_col: "str | None" = None,
-    ) -> "CauseSpecificMCF":
+        i_col: str | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        tl_col: str | None = None,
+        tr_col: str | None = None,
+    ) -> CauseSpecificMCF:
         """
         Fit a cause-specific MCF from a :class:`pandas.DataFrame`, naming the
         columns to read.

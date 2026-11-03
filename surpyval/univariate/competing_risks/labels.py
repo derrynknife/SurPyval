@@ -9,7 +9,8 @@ split into a column of the event array by ``np.asarray`` or compared
 element by element with ``e == label``. They live here once.
 """
 
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt

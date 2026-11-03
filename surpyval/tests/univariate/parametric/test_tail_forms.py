@@ -127,7 +127,7 @@ EDGE_CASES = [
 @pytest.mark.parametrize(
     "name, params, log_df, log_ff",
     EDGE_CASES,
-    ids=["{}{}".format(c[0], c[1]) for c in EDGE_CASES],
+    ids=[f"{c[0]}{c[1]}" for c in EDGE_CASES],
 )
 def test_log_functions_at_zero(name, params, log_df, log_ff):
     dist = getattr(sp, name)
@@ -196,7 +196,7 @@ def test_gradients_match_central_differences(name, params, xs):
                 fd,
                 rtol=1e-5,
                 atol=1e-6,
-                err_msg="{} {}".format(fn, k),
+                err_msg=f"{fn} {k}",
             )
 
 

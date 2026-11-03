@@ -1,5 +1,6 @@
 import warnings
-from typing import Any, Callable, NamedTuple
+from collections.abc import Callable
+from typing import Any, NamedTuple
 
 import numpy as np
 import numpy.typing as npt
@@ -707,7 +708,7 @@ def _warn_fit(
     (#327), not a cut-off on ``exploitable_mass``: the verdict needs no
     constant, and it also catches fits that only *look* settled.
     """
-    where = " (at t = {:.4g})".format(at) if np.isfinite(at) else ""
+    where = f" (at t = {at:.4g})" if np.isfinite(at) else ""
     if degenerate:
         warnings.warn(
             "The Turnbull EM reached a degenerate, non-identifiable fixed "

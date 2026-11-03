@@ -134,7 +134,7 @@ def lifelines_references(fixtures):
     for dist, (Fitter, names, param) in UNIVARIATE.items():
         fitter = Fitter()
         fitter.fit(lt["x"], event_observed=1 - lt["c"], entry=lt["tl"])
-        refs["{}_left_truncation".format(dist)] = _entry(
+        refs[f"{dist}_left_truncation"] = _entry(
             "left_truncation",
             "lifelines",
             version,
@@ -150,11 +150,11 @@ def lifelines_references(fixtures):
         )
         fitter = Fitter()
         fitter.fit_interval_censoring(lower, upper)
-        refs["{}_interval".format(dist)] = _entry(
+        refs[f"{dist}_interval"] = _entry(
             "interval",
             "lifelines",
             version,
-            "{}().fit_interval_censoring(left, right)".format(Fitter.__name__),
+            f"{Fitter.__name__}().fit_interval_censoring(left, right)",
             {
                 "parameterisation": param,
                 "intervals": "left == right exact, right = inf right "
@@ -234,7 +234,7 @@ def sksurv_references(fixtures):
     for method in ["breslow", "efron"]:
         model = CoxPHSurvivalAnalysis(ties=method, tol=1e-12, n_iter=200)
         model.fit(ties[["z1", "z2"]].to_numpy(), y)
-        refs["cox_ties_{}".format(method)] = _entry(
+        refs[f"cox_ties_{method}"] = _entry(
             "ties",
             "scikit-survival",
             version,

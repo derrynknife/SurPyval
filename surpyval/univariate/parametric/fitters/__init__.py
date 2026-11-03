@@ -1,5 +1,6 @@
 import warnings
-from typing import Any, Callable, Sequence
+from typing import Any
+from collections.abc import Callable, Sequence
 
 import autograd.numpy as np
 import numpy.typing as npt

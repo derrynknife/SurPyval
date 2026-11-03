@@ -673,7 +673,7 @@ class CoxLewisDerivatives:
         return search_units(t)
 
 
-def lifetime_derivatives(dist: Any) -> "Any | None":
+def lifetime_derivatives(dist: Any) -> Any | None:
     """The hand-written derivatives of the lifetime ``dist``, or ``None``
     where there are none (exactly the package's own Weibull, LogNormal,
     Gamma, LogLogistic, Exponential, Rayleigh, ExpoWeibull, Normal, Gumbel
@@ -695,7 +695,7 @@ def lifetime_derivatives(dist: Any) -> "Any | None":
     return None
 
 
-def intensity_derivatives(baseline: Any) -> "Any | None":
+def intensity_derivatives(baseline: Any) -> Any | None:
     """The hand-written derivatives of the baseline intensity
     ``baseline``, or ``None`` where there are none."""
     if type(baseline) is type(CrowAMSAA):
@@ -709,7 +709,7 @@ def intensity_derivatives(baseline: Any) -> "Any | None":
     return None
 
 
-def negated(found: "tuple | None", neg_ll: Any, params: np.ndarray) -> tuple:
+def negated(found: tuple | None, neg_ll: Any, params: np.ndarray) -> tuple:
     """``(neg_ll(params), its gradient)`` from a likelihood's hand-written
     ``found = (ll, d ll / d restoration, d ll / d params)``; where that is
     ``None`` (a point outside the hand-written terms' domain), from

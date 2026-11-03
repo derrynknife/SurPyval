@@ -1,6 +1,7 @@
 import re
 import warnings
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 from autograd.tracer import getval
@@ -453,13 +454,13 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
         detail = said[len("No finite maximum: ") :].rstrip(".")
         what, _, advice = detail.partition(". " + consequence + "; ")
         if not advice:
-            what = "the {} fitted to them has no finite maximum".format(life)
+            what = f"the {life} fitted to them has no finite maximum"
             advice = "compare a fit with another life"
         # The life's values, where its own search stopped, as reported
         for p, v in zip(model.model.dist.parameter_names, model.model.params):
             what = re.sub(
-                r"\b{} \([^)]*\)".format(re.escape(p)),
-                "{} ({:.4g})".format(p, float(v)),
+                rf"\b{re.escape(p)} \([^)]*\)",
+                f"{p} ({float(v):.4g})",
                 what,
             )
         name = model._restoration_param_name
@@ -742,7 +743,7 @@ class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
             maximum = "verified" if verified else "unverified"
         model.maximum = maximum
         if maximum == "unverified":
-            warn_unverified("The {} fit".format(model.kind))
+            warn_unverified(f"The {model.kind} fit")
         elif maximum == "no finite maximum":
             self._warn_run_off(model, res.get("run_off") or "")
         return model

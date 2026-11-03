@@ -45,11 +45,11 @@ if TYPE_CHECKING:
 
 def fit_tvc_df(
     fit: Any,
-    df: "pd.DataFrame",
+    df: pd.DataFrame,
     columns: dict[str, str],
-    Z_cols: "str | list[str] | None",
-    formula: "str | None",
-    n_col: "str | None",
+    Z_cols: str | list[str] | None,
+    formula: str | None,
+    n_col: str | None,
     **kwargs: Any,
 ) -> Any:
     """The body of every time-varying ``*_from_df`` fit (PH, AH, PO, AFT
@@ -111,7 +111,7 @@ class TVCFitMixin:
         Z: npt.ArrayLike,
         n: npt.ArrayLike | None = None,
         **kwargs: Any,
-    ) -> "ParametricRegressionModel":
+    ) -> ParametricRegressionModel:
         """
         Fit the model to time-varying covariates in start-stop format.
 
@@ -237,7 +237,7 @@ class TVCFitMixin:
         c: npt.ArrayLike,
         n: npt.ArrayLike | None = None,
         **kwargs: Any,
-    ) -> "ParametricRegressionModel":
+    ) -> ParametricRegressionModel:
         """
         Fit the model from a covariate *timeline* (the ``xicnt``-style input).
 
@@ -279,7 +279,7 @@ class TVCFitMixin:
 
     def fit_tvc_from_df(
         self,
-        df: "pd.DataFrame",
+        df: pd.DataFrame,
         i_col: str,
         xl_col: str,
         xr_col: str,
@@ -288,7 +288,7 @@ class TVCFitMixin:
         n_col: str | None = None,
         formula: str | None = None,
         **kwargs: Any,
-    ) -> "ParametricRegressionModel":
+    ) -> ParametricRegressionModel:
         """Fit start-stop time-varying-covariate data from a DataFrame.
 
         ``i_col``, ``xl_col``, ``xr_col``, ``c_col`` and ``n_col`` name the
@@ -332,7 +332,7 @@ class TVCFitMixin:
 
     def fit_tvc_timeline_from_df(
         self,
-        df: "pd.DataFrame",
+        df: pd.DataFrame,
         i_col: str,
         x_col: str,
         Z_cols: str | list[str] | None,
@@ -340,7 +340,7 @@ class TVCFitMixin:
         n_col: str | None = None,
         formula: str | None = None,
         **kwargs: Any,
-    ) -> "ParametricRegressionModel":
+    ) -> ParametricRegressionModel:
         """Fit a covariate timeline from a DataFrame.
 
         ``i_col``, ``x_col``, ``c_col`` and ``n_col`` name the columns

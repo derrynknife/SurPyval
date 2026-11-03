@@ -16,7 +16,8 @@ univariate fit adds its own conditions (``_Judge.keep`` in ``mle.py``).
 """
 
 import warnings
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import autograd.numpy as np
 import numpy.typing as npt

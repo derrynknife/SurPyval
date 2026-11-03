@@ -28,7 +28,8 @@ population model is on the link scale, the random effect of a
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -129,7 +130,7 @@ class LinkedPathModel(PathModel):
         }
         self.name = base.name
         self.parameter_names = [
-            "log({})".format(name) if link == "log" else name
+            f"log({name})" if link == "log" else name
             for name, link in self.links.items()
         ]
         self.linear_in_parameters = base.linear_in_parameters and all(
@@ -260,5 +261,5 @@ def fixed_effect_names(
     for linked_name, name in zip(linked_parameter_names, parameter_names):
         names.append(linked_name)
         if name in links:
-            names.extend("{}:Z{}".format(linked_name, j) for j in range(n_cov))
+            names.extend(f"{linked_name}:Z{j}" for j in range(n_cov))
     return names

@@ -11,7 +11,8 @@ printed model shows its
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 
 class CovariateLink:
@@ -39,13 +40,13 @@ class CovariateLink:
     phi_param_map: dict[str, int]
     #: The multiplier ``phi(Z, *coefficients)``; ``None`` for an additive
     #: link, which has none.
-    phi: "Callable[..., Any] | None" = None
+    phi: Callable[..., Any] | None = None
 
     def __init__(
         self,
         name: str,
         phi_param_map: dict[str, int],
-        phi: "Callable[..., Any] | None" = None,
+        phi: Callable[..., Any] | None = None,
     ) -> None:
         self.name = name
         self.phi_param_map = phi_param_map

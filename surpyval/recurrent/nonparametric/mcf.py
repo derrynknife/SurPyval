@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import numpy as np
 import numpy.typing as npt
@@ -125,7 +126,7 @@ class NonParametricCounting(
     d: npt.NDArray
     mcf_hat: npt.NDArray
     #: ``None`` on simulated models, which carry no variance.
-    var: "npt.NDArray | None"
+    var: npt.NDArray | None
     data: EventHistoryData
     #: Where observation begins: the MCF is 0 from here to the first event
     #: and undefined (NaN) before it. That is time 0 unless an item enters
@@ -133,7 +134,7 @@ class NonParametricCounting(
     origin: float = 0.0
     #: The ``(lower, upper)`` interval the MCF is defined on, set by
     #: :meth:`set_support`; ``None`` (the default) when it has not been set.
-    support: "tuple[float, float] | None" = None
+    support: tuple[float, float] | None = None
 
     # -- serialisation -----------------------------------------------------
 
@@ -173,7 +174,7 @@ class NonParametricCounting(
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "NonParametricCounting":
+    def from_dict(cls, model_dict: dict) -> NonParametricCounting:
         """
         Rebuild an MCF estimate from a :meth:`to_dict` dictionary.
 
@@ -200,9 +201,7 @@ class NonParametricCounting(
             out.set_support(*support)
         return out
 
-    def set_support(
-        self, lower: float, upper: float
-    ) -> "NonParametricCounting":
+    def set_support(self, lower: float, upper: float) -> NonParametricCounting:
         """
         Give the MCF an explicit support, ``[lower, upper]``.
 
@@ -512,9 +511,9 @@ class NonParametricCounting(
         *,
         alpha_ci: float = 0.05,
         plot_bounds: bool = True,
-        ax: "Axes | None" = None,
+        ax: Axes | None = None,
         start: float = 0.0,
-    ) -> "Axes":
+    ) -> Axes:
         """
         Plot the MCF as a step function, with its confidence bounds.
         The arguments are keyword only.
@@ -587,7 +586,7 @@ class NonParametricCounting(
     @classmethod
     def from_xrd(
         cls, x: npt.ArrayLike, r: npt.ArrayLike, d: npt.ArrayLike
-    ) -> "NonParametricCounting":
+    ) -> NonParametricCounting:
         """Build the Nelson-Aalen MCF from an ``(x, r, d)`` triple; the
         single home of the estimator.
 
@@ -638,7 +637,7 @@ class NonParametricCounting(
     @refuses_unmodelled_data
     def fit_from_recurrent_data(
         self, data: EventHistoryData
-    ) -> "NonParametricCounting":
+    ) -> NonParametricCounting:
         """
         Fit the MCF from a prepared
         :class:`~surpyval.utils.event_history_data.EventHistoryData`,
@@ -655,9 +654,7 @@ class NonParametricCounting(
         out.var = _lawless_nadeau_var(data, out.x, out.r, out.d)
         return out
 
-    def _point_estimate(
-        self, data: EventHistoryData
-    ) -> "NonParametricCounting":
+    def _point_estimate(self, data: EventHistoryData) -> NonParametricCounting:
         """:meth:`fit_from_recurrent_data` without the Lawless-Nadeau
         variance, which costs about (items x distinct times) and which the
         simulations, returning only the MCF, discard."""
@@ -678,7 +675,7 @@ class NonParametricCounting(
         tl: npt.ArrayLike | float | None = None,
         tr: npt.ArrayLike | float | None = None,
         windows: dict | None = None,
-    ) -> "NonParametricCounting":
+    ) -> NonParametricCounting:
         """
         Fit a nonparametric (Nelson-Aalen) MCF.
 
@@ -765,7 +762,7 @@ def _lawless_nadeau_var(
     x: npt.NDArray,
     r: npt.NDArray,
     d: npt.NDArray,
-    counted: "npt.NDArray | None" = None,
+    counted: npt.NDArray | None = None,
 ) -> npt.NDArray:
     """The Lawless-Nadeau robust variance of the Nelson-Aalen MCF.
 

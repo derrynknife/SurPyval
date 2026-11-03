@@ -502,7 +502,7 @@ def test_the_use_stress_is_measured_on_the_life_model_s_scale():
     # The comparison gives each life model's life at the use stress
     own = _row(near, "life_model_comparison", "Power")
     life = float(np.ravel(model.phi(np.array([[20.0]])))[0])
-    assert own["detail"].endswith("life at the use stress {:.3g}".format(life))
+    assert own["detail"].endswith(f"life at the use stress {life:.3g}")
 
 
 def test_a_far_use_stress_warns_and_is_advised_caution():

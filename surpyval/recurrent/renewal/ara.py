@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import autograd.numpy as anp
 import numpy as np
@@ -45,7 +46,7 @@ from surpyval.utils.units import takes_unit
 
 
 def ara_virtual_ages(
-    arrival_times: np.ndarray, rho: float, m: "int | float"
+    arrival_times: np.ndarray, rho: float, m: int | float
 ) -> np.ndarray:
     """
     Effective (virtual) age at the start of each interarrival for the
@@ -104,7 +105,7 @@ class ARAVirtualAges:
     """
 
     def __init__(
-        self, arrival_times: np.ndarray, item: np.ndarray, m: "int | float"
+        self, arrival_times: np.ndarray, item: np.ndarray, m: int | float
     ) -> None:
         self.T = np.asarray(arrival_times, dtype=float)
         by_position = rows_by_position(event_positions(item))
@@ -259,8 +260,8 @@ class ARA(RenewalFitMixin):
         return step
 
     def _make_model(
-        self, underlying_model: Any, rho: float, m: "int | float"
-    ) -> "RenewalModel":
+        self, underlying_model: Any, rho: float, m: int | float
+    ) -> RenewalModel:
         out = RenewalModel(
             underlying_model,
             rho,
@@ -299,7 +300,7 @@ class ARA(RenewalFitMixin):
         )
 
     def create_negll_func(
-        self, data: Any, dist: Any, m: "int | float"
+        self, data: Any, dist: Any, m: int | float
     ) -> Callable:
         virtual_ages_at = ARAVirtualAges(data.x, data.i, m)
         interarrival = data.get_interarrival_times()
@@ -337,9 +338,9 @@ class ARA(RenewalFitMixin):
         self,
         data: Any,
         dist: Any = Weibull,
-        m: "int | float" = 1,
-        init: "ArrayLike | None" = None,
-    ) -> "RenewalModel":
+        m: int | float = 1,
+        init: ArrayLike | None = None,
+    ) -> RenewalModel:
         """
         Fit the ARA model from recurrent data.
 
@@ -405,14 +406,14 @@ class ARA(RenewalFitMixin):
     def fit(
         self,
         x: ArrayLike,
-        i: "ArrayLike | None" = None,
-        c: "ArrayLike | None" = None,
-        n: "ArrayLike | None" = None,
+        i: ArrayLike | None = None,
+        c: ArrayLike | None = None,
+        n: ArrayLike | None = None,
         dist: Any = Weibull,
-        m: "int | float" = 1,
-        init: "ArrayLike | None" = None,
-        tl: "ArrayLike | None" = None,
-    ) -> "RenewalModel":
+        m: int | float = 1,
+        init: ArrayLike | None = None,
+        tl: ArrayLike | None = None,
+    ) -> RenewalModel:
         """
         Fit the ARA model.
 
@@ -488,9 +489,9 @@ class ARA(RenewalFitMixin):
         self,
         params: ArrayLike,
         rho: float,
-        m: "int | float" = 1,
+        m: int | float = 1,
         dist: Any = Weibull,
-    ) -> "RenewalModel":
+    ) -> RenewalModel:
         """
         Build an ARA model from given parameters.
 

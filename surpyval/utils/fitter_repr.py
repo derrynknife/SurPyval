@@ -67,7 +67,7 @@ class FitterRepr(RemovedNames):
     def __repr__(self) -> str:
         details = self._repr_details()
         tail = " ({})".format(", ".join(details)) if details else ""
-        return "{}: {}{}".format(self._repr_name(), self.fitter_kind, tail)
+        return f"{self._repr_name()}: {self.fitter_kind}{tail}"
 
 
 def baseline_name(fitter: Any) -> "list[str]":

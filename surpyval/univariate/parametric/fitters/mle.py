@@ -1,5 +1,6 @@
 import warnings
-from typing import TYPE_CHECKING, Any, Callable, NamedTuple
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 if TYPE_CHECKING:
     from ..parametric import Parametric

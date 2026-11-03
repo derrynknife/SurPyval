@@ -1,5 +1,6 @@
 import warnings
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ..parametric import Parametric
@@ -339,11 +340,7 @@ class _RunsOff:
             )
         )
         running = " and ".join(
-            (
-                "{} ({:.4g})".format(name, float(values[name]))
-                if name in values
-                else name
-            )
+            (f"{name} ({float(values[name]):.4g})" if name in values else name)
             for name in names
         )
         what = "runs" if len(names) == 1 else "run"

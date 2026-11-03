@@ -53,7 +53,7 @@ def _check(case, extra):
     found = [text for _, text in caught if "cannot be estimated" in text]
     assert len(found) == 1, found
     assert found[0].startswith(
-        "Covariate column(s) {} of Z cannot be estimated".format(p)
+        f"Covariate column(s) {p} of Z cannot be estimated"
     ), found[0]
 
     coef = np.atleast_2d(np.asarray(case.coefficients(model), dtype=float))

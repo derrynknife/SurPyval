@@ -158,9 +158,9 @@ def test_cox_stratified(ties):
     assert_allclose(model.params, ref["coef"], **COEF)
     assert_allclose(_se(model), ref["se"], **DERIVED)
     for sex in (1, 2):
-        t = ref["baseline_time_sex{}".format(sex)]
+        t = ref[f"baseline_time_sex{sex}"]
         assert_allclose(
             model.Hf(t, np.zeros(2), stratum=float(sex)),
-            ref["baseline_cumhaz_sex{}".format(sex)],
+            ref[f"baseline_cumhaz_sex{sex}"],
             **DERIVED,
         )

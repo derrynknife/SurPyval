@@ -55,8 +55,8 @@ def gray_test(
     e: npt.ArrayLike,
     group: npt.ArrayLike,
     event: Any,
-    c: "npt.ArrayLike | None" = None,
-    n: "npt.ArrayLike | None" = None,
+    c: npt.ArrayLike | None = None,
+    n: npt.ArrayLike | None = None,
     rho: float = 0.0,
 ) -> GrayTestResult:
     """
@@ -287,8 +287,8 @@ def _validate(
     e: npt.ArrayLike,
     group: npt.ArrayLike,
     cause: Any,
-    c: "npt.ArrayLike | None",
-    n: "npt.ArrayLike | None",
+    c: npt.ArrayLike | None,
+    n: npt.ArrayLike | None,
     rho: float,
 ) -> tuple[
     npt.NDArray,

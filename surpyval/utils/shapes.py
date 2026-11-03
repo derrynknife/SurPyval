@@ -22,7 +22,8 @@ argument is the query.
 
 import functools
 import inspect
-from typing import Any, Callable, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 import numpy as np
 import numpy.typing as npt

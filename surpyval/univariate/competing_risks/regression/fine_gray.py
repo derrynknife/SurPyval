@@ -41,7 +41,8 @@ the left limits equal :math:`G(t)` and :math:`G(x_i)`.
 from __future__ import annotations
 
 import functools
-from typing import TYPE_CHECKING, Any, Callable, NamedTuple
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import numpy as np
 import numpy.typing as npt
@@ -549,7 +550,7 @@ def _runoff_of_cause(
     n_events: float,
     floor: npt.NDArray,
     data: tuple,
-) -> tuple[npt.NDArray, str, "npt.NDArray | None"]:
+) -> tuple[npt.NDArray, str, npt.NDArray | None]:
     """The positions of the coefficients that run off, the fit's
     ``maximum`` and, where they run off together and none alone, their
     proportion: the exact test CoxPH makes (#728, #746), on the
@@ -783,7 +784,7 @@ def _warn_if_monotone(fits: list) -> str:
                         ""
                         if proportion is None
                         else ", together in the proportion "
-                        + " : ".join("{:.3g}".format(v) for v in proportion)
+                        + " : ".join(f"{v:.3g}" for v in proportion)
                     ),
                 )
                 for cause, coefs, proportion in runaway
@@ -793,7 +794,7 @@ def _warn_if_monotone(fits: list) -> str:
     if unverified:
         warn_unverified(
             "The Fine-Gray fit"
-            + ("" if len(fits) == 1 else " of cause(s) {}".format(unverified))
+            + ("" if len(fits) == 1 else f" of cause(s) {unverified}")
         )
     return combined_maximum(f["maximum"] for f in fits)
 
@@ -903,16 +904,16 @@ class FineGrayModel(
     #: The negative weighted partial log-likelihood the fit maximised, of
     #: the coefficients it did not alias, on the centred covariates (less
     #: its value at 0); ``None`` on a restored model (not saved).
-    _objective: "Callable | None"
+    _objective: Callable | None
     #: The covariates' column names (a DataFrame ``Z`` or
     #: ``fit_from_df``), which name the coefficients (#614); ``None``
     #: for an array ``Z``, whose coefficients are ``coef_0``, ...
-    feature_names: "list[str] | None" = None
+    feature_names: list[str] | None = None
     #: The rows the model was fitted to (``x``, ``Z`` as given, ``c``,
     #: ``n`` and the masks ``is_event`` and ``is_competing``), on which
     #: ``diagnose()`` checks it (#874); ``None`` on a model restored with
     #: ``from_dict``, which does not store them.
-    _fit_data: "dict | None" = None
+    _fit_data: dict | None = None
 
     def __init__(self, fit: dict) -> None:
         self.cause = fit["cause"]
@@ -966,7 +967,7 @@ class FineGrayModel(
         ``coef_1``, ... for an array ``Z`` (#614), as for ``CoxPH``."""
         return coefficient_names(self, np.size(self.beta))
 
-    def summary(self, alpha_ci: float = 0.05) -> "pd.DataFrame":
+    def summary(self, alpha_ci: float = 0.05) -> pd.DataFrame:
         """
         The coefficient table, as ``CoxPH.summary``: one row per covariate
         (named by ``parameter_names``), with the coefficient, the
@@ -1050,7 +1051,7 @@ class FineGrayModel(
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "FineGrayModel":
+    def from_dict(cls, model_dict: dict) -> FineGrayModel:
         """Rebuild a Fine-Gray model from a :meth:`to_dict` dictionary."""
         require_model_tag(model_dict, "FineGrayModel", "a Fine-Gray model")
         beta = np.array(model_dict["beta"], dtype=float)
@@ -1143,7 +1144,7 @@ class FineGrayModel(
     def _partial_effects_width(self) -> int:
         return int(np.size(self.beta))
 
-    def _partial_effects_times(self) -> "npt.NDArray | None":
+    def _partial_effects_times(self) -> npt.NDArray | None:
         return np.asarray(self._times, dtype=float)
 
     def _partial_effects_curve(
@@ -1206,9 +1207,9 @@ class FineGray_(FitterRepr):
         df: Any,
         x_col: str,
         e_col: str,
-        Z_cols: "str | list[str]",
-        c_col: "str | None" = None,
-        n_col: "str | None" = None,
+        Z_cols: str | list[str],
+        c_col: str | None = None,
+        n_col: str | None = None,
         **fit_options: Any,
     ) -> FineGrayModel:
         """
@@ -1291,8 +1292,8 @@ class FineGray_(FitterRepr):
         x: npt.ArrayLike,
         Z: npt.ArrayLike,
         e: npt.ArrayLike,
-        c: "npt.ArrayLike | None" = None,
-        n: "npt.ArrayLike | None" = None,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
         event: Any = None,
         center: bool = False,
     ) -> FineGrayModel:
