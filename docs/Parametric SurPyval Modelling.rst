@@ -248,15 +248,19 @@ that converged (see :doc:`Parametric Estimation`), whether a maximum
 likelihood fit reached a verified maximum (``maximum``: ``'verified'``,
 ``'unverified'`` or ``'no finite maximum'``, the last two with a warning; see
 :class:`~surpyval.univariate.parametric.parametric.Parametric`), the support,
-and, for a maximum likelihood fit, the parameter covariance ``hess_inv`` whose
-diagonal holds the squared standard errors:
+and, for a maximum likelihood fit, the parameter covariance ``covariance()``
+whose diagonal holds the squared standard errors (``standard_errors()``).
+``hess_inv`` is the inverse Hessian of the negative log-likelihood; without
+weights it is the same matrix, but with weights ``w`` the covariance is the
+robust one and ``hess_inv`` is not a variance (see :doc:`Weighted Data`), so
+use ``covariance()`` for a variance:
 
 .. jupyter-execute::
 
     print("fitted by :", model.method, "using", model.optimizer)
     print("maximum   :", model.maximum)
     print("support   :", model.support)
-    print("std errors:", np.sqrt(np.diag(model.hess_inv)))
+    print("std errors:", model.standard_errors())
 
 The distributions can also be used directly, without a model, by passing
 the parameters after ``x``. This is handy for a quick calculation:

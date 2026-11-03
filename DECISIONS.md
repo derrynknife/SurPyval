@@ -288,6 +288,14 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-03
 
+### `hess_inv` is the inverse Hessian
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `hess_inv` is always the inverse Hessian of the (weighted) negative log-likelihood; with weights it is that of the weights as given (R's `survreg` `naive.var`, checked to 2e-4), not the robust covariance. The robust covariance is `covariance()`. This reverses the 2026-10-29 weights row "With weights, `hess_inv` ... holds the robust covariance". | maintainer (2026-11-03) | One meaning per attribute (principle 21). | done |
+| Every variance inside SurPyval comes from `covariance()` (`Parametric._core_covariance`): `param_cb`, the Wald `cb` family, the probability plot's band and the summaries. A model restored from an old dict with `hess_inv` and no `"covariance"` uses `hess_inv` there only when it is not weighted (then they are the same matrix). The likelihood-ratio searches keep reading `hess_inv`: they want the likelihood's curvature to scale their steps, and weighted fits refuse them. | proposed | Weighted fits keep their bounds (tested against 0.26's values); unweighted ones are bit-identical. | done |
+| A weighted model's dict writes the inverse Hessian as `"inverse_hessian"` and keeps the robust block under `"hess_inv"`, so a 0.26 reader (whose `param_cb` reads `"hess_inv"`) keeps robust bounds, with no new schema. A weighted dict saved by 0.26 (no `"inverse_hessian"`) loads with no `hess_inv`, its `"hess_inv"` being the robust covariance; its bounds use its `"covariance"` as before. | proposed | A schema bump would refuse in 0.26 a document 0.26 can read correctly this way; an attribute that cannot be known is left unset rather than filled with the wrong matrix. | done |
+
 ### Penalised regression: one shared helper and model mixin
 
 | Decision | By | Reason | Status |
