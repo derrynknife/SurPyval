@@ -28,11 +28,13 @@ from surpyval.utils.shapes import (
 from surpyval.utils.validation import check_alpha_ci, no_covariance_error
 
 from ._concordance import ConcordanceMixin
+from ._fit_skeleton import draws_by_row
 from ._partial_effects import PartialEffectsMixin
 from ._penalised import penalty_line
 from ._prediction import (
     ConditionalSurvivalMixin,
     paired_probabilities,
+    step_draws,
     step_quantiles,
     unique_rows,
 )
@@ -926,6 +928,69 @@ class SemiParametricRegressionModel(
         F = np.atleast_2d(self.ff(bx, uniq, stratum, grid=True))
         out = step_quantiles(F[which], bx, u)
         return out if shape is None else out.reshape(shape)
+
+    def random(
+        self,
+        size: int,
+        Z: npt.ArrayLike | pd.DataFrame,
+        random_state: Any = None,
+        *,
+        stratum: Any = None,
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """
+        Draw ``size`` lifetimes for each covariate row of ``Z`` from the
+        fitted model, by inverse transform on its step survival curve: a
+        draw ``U`` of the survival is the first baseline event time at
+        which the row's cumulative hazard ``H0(x) exp(beta'Z)`` reaches
+        ``-log(U)``.
+
+        The estimated curve stops at the last baseline time, where it is
+        above 0 when the data end censored; a draw beyond it is ``inf``
+        (the unit outlives the data), as often as ``sf`` at the last
+        time says. Censor the draws at a time of your choosing to use
+        them as data. ``stratum=`` selects the baseline of a stratified
+        fit (a keyword, so the arguments line up with the other
+        regressions' ``random(size, Z, random_state)``); a missing
+        covariate or stratum label gives ``nan`` draws.
+        ``random_state`` seeds the draw: ``None`` (the default) draws from
+        numpy's global generator, so ``np.random.seed`` reproduces it; an
+        int or a ``numpy.random.Generator`` gives a stream of its own.
+
+        Returns the draws and a 2-D array of the covariate row each was
+        drawn at, row by row, as the parametric regressions' ``random``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import CoxPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = CoxPH.fit(x, df[["fin", "prio"]].values, c=c)
+        >>> draws, rows = model.random(5, [[0, 10]], random_state=1)
+        >>> draws
+        array([49.,  8., inf,  8., inf])
+
+        About half of such men are not arrested within the year (week
+        52, the last time observed), and about half of the draws are
+        beyond it:
+
+        >>> model.sf(52, [0, 10]).round(3)
+        np.float64(0.475)
+        >>> draws, _ = model.random(10000, [[0, 10]], random_state=1)
+        >>> float(np.isinf(draws).mean())
+        0.4715
+        """
+        bx, _, _ = self._baseline_arrays(stratum)
+        rows = covariate_rows(
+            self._prepare_Z(Z), np.asarray(self.beta).shape[0]
+        )
+
+        def invert(U: npt.NDArray, row: npt.NDArray) -> npt.NDArray:
+            H = np.atleast_2d(self.Hf(bx, row[None, :], stratum, grid=True))
+            return step_draws(H[0], bx, U)
+
+        return draws_by_row(size, rows, random_state, invert)
 
     def compute_residuals(self, kind: str = "martingale") -> npt.NDArray:
         """

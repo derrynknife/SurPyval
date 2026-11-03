@@ -6,6 +6,18 @@ Unreleased
 
 **Added.**
 
+- ``random(size, Z, random_state=)`` on the accelerated failure time
+  models (``WeibullAFT``, ``LogNormalAFT`` and the others) and the
+  parametric proportional odds models (``WeibullPO``, ...), which raised
+  ``NotImplementedError``, and on the Cox model (``CoxPH``, with
+  ``stratum=`` for a stratified fit) and the Aalen additive model, which
+  had none. Each draw is an exact inverse-transform draw at its covariate
+  row. The Cox and Aalen models draw from their step survival curves: a
+  draw is an event time, or ``inf`` beyond the last time the curve is
+  estimated at, as often as ``sf`` there says. A new conformance property
+  checks, for every regression with ``random``, that 20,000 draws at one
+  row are within the 0.1% Kolmogorov-Smirnov band of its ``sf``, and the
+  seed properties now cover the regressions.
 - ``likelihood_ratio_test()`` on a distributional regression
   (``WeibullDistributional`` and the others), which 0.26 refused. With no
   argument it is the global test: twice the gain in log-likelihood over

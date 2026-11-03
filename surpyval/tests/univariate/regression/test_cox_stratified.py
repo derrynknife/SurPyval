@@ -325,3 +325,22 @@ def test_fit_tvc_strata_survives_pickle_and_refuses_to_dict():
         )
     with pytest.raises(NotImplementedError, match="stratified"):
         model.to_dict()
+
+
+def test_285_stratified_random_draws_from_the_stratum():
+    from surpyval.tests._helpers import KS_BAND_20000, ks_distance
+
+    x, Z, c, strat = _confounded(3)
+    model = sp.CoxPH.fit(x=x, Z=Z, c=c, strata=strat)
+    for s in model.strata_labels:
+        draws, _ = model.random(20_000, [[0.5]], random_state=1, stratum=s)
+        assert np.isin(
+            draws[np.isfinite(draws)], model.strata_baselines[s]["x"]
+        ).all()
+        d = ks_distance(draws, lambda t: model.ff(t, [[0.5]], s))
+        assert d <= KS_BAND_20000, (s, d)
+    with pytest.raises(ValueError, match="stratum"):
+        model.random(3, [[0.5]])
+    with pytest.raises(ValueError, match="unknown stratum"):
+        model.random(3, [[0.5]], stratum="nope")
+    assert np.isnan(model.random(2, [[0.5]], stratum=np.nan)[0]).all()

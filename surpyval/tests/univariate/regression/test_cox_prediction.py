@@ -193,3 +193,43 @@ def test_parametric_ph_risk_score_overflow_keeps_the_baseline_0_and_inf():
     np.testing.assert_array_equal(H, [0.0, np.inf, np.inf])
     np.testing.assert_array_equal(h, [0.0, np.inf, np.inf])
     np.testing.assert_array_equal(sf, [1.0, 0.0, 0.0])
+
+
+# ---------------------------------------------------------------------------
+# ``random`` draws from the step survival curve (#285).
+# ---------------------------------------------------------------------------
+
+
+def _rossi_cox():
+    from surpyval.datasets import load_rossi_static
+
+    df = load_rossi_static()
+    x, c = df["week"].values, 1 - df["arrest"].values
+    return CoxPH.fit(x, df[["fin", "prio"]].values, c=c)
+
+
+def test_285_cox_random_follows_sf():
+    from surpyval.tests._helpers import KS_BAND_20000, ks_distance
+
+    model = _rossi_cox()
+    row = np.array([[1.0, 3.0]])
+    draws, rows = model.random(20_000, row, random_state=285)
+    np.testing.assert_array_equal(rows, np.repeat(row, 20_000, axis=0))
+    finite = draws[np.isfinite(draws)]
+    # Every finite draw is a baseline event time.
+    assert np.isin(finite, model.x).all()
+    d = ks_distance(draws, lambda t: model.ff(t, row))
+    assert d <= KS_BAND_20000, (d, KS_BAND_20000)
+    # The draws beyond the data (inf) are as many as sf at the end says.
+    end = model.sf(model.x[-1], row)
+    share = np.mean(np.isinf(draws))
+    assert abs(share - end) < 4 * np.sqrt(end * (1 - end) / 20_000)
+
+
+def test_285_cox_random_missing_covariate_and_seed():
+    model = _rossi_cox()
+    x, _ = model.random(3, [[np.nan, 1.0]], random_state=1)
+    assert np.isnan(x).all()
+    a, _ = model.random(4, [[0, 1], [1, 5]], random_state=3)
+    b, _ = model.random(4, [[0, 1], [1, 5]], random_state=3)
+    np.testing.assert_array_equal(a, b)

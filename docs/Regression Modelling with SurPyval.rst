@@ -1682,11 +1682,22 @@ recovers the same parameters as the exact times:
 it is the acceleration factor, for PO the odds multiplier, for accelerated
 life the modelled life; an additive model has none). ``random(size, Z)``
 draws lifetimes from the fitted model — useful for simulation studies and for
-checking a fit against its own simulated data. It exists for the PH, parametric
-AH and accelerated-life families (not AFT or PO). A PH or parametric AH model
-returns ``size`` draws for each covariate row, in the order given, together
-with the matching covariate rows; an accelerated life model does the same for
-each *distinct* stress, in sorted order. As everywhere in SurPyval,
+checking a fit against its own simulated data. It exists for every
+parametric family (PH, AFT, PO, parametric AH, accelerated life,
+Royston-Parmar and distributional) and for the Cox and Aalen models. Each
+draw is exact inverse-transform sampling: a uniform ``U`` becomes the time at
+which the row's survival falls to ``U`` (for AFT the baseline's time divided
+by the acceleration factor; for PO the time at which the baseline's odds,
+multiplied by ``phi``, are ``U / (1 - U)``). A regression model returns
+``size`` draws for each covariate row, in the order given, together with the
+matching covariate rows; an accelerated life model does the same for each
+*distinct* stress, in sorted order. The Cox and Aalen models draw from their
+step survival curves, so every draw is one of the event times, and a draw
+beyond the last time the curve is estimated at is ``inf`` (the unit outlives
+the data), as often as ``sf`` at that time says; a stratified Cox model takes
+``stratum=``. The frailty models, the Lin-Ying additive model, Buckley-James
+and the semi-parametric proportional odds model have no ``random`` yet. As
+everywhere in SurPyval,
 ``random_state`` seeds the draw (``None``, the default, draws from numpy's
 global generator, so ``np.random.seed`` reproduces it):
 
