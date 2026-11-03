@@ -188,6 +188,9 @@ class SemiParametricRegressionModel(
     _weighted_cox: Any = None
     #: The columns of ``Z`` a weighted fit estimated (the others aliased).
     _weighted_kept: npt.NDArray | None = None
+    #: The cluster of each row of a weighted fit's likelihood (a weighted
+    #: time-varying fit's subjects), the default of robust_covariance().
+    _weighted_cluster: npt.NDArray | None = None
     tie_method: str
     baseline_method: str
     #: Per-observation training data (``x``/``c``/``n``/``Z``/``tl``) retained
@@ -1072,6 +1075,8 @@ class SemiParametricRegressionModel(
             # An aliased coefficient (nan) is not estimated: the sandwich
             # is of the others, with nan rows and columns at it.
             sub = lik if kept.size == p else lik.columns(kept)
+            if cluster is None:
+                cluster = self._weighted_cluster
             out = onp.full((p, p), onp.nan)
             if kept.size:
                 b = beta[kept]

@@ -6,6 +6,14 @@ Unreleased
 
 **Added.**
 
+- ``CoxPH.fit_from_df`` takes ``w_col`` (lifelines' ``weights_col``),
+  which 0.26 refused: the same fit as ``CoxPH.fit(..., w=)``, with the
+  weights of rows dropped for a missing covariate dropped with them.
+- ``CoxPH.fit_tvc`` takes weights ``w`` (one per interval row) and
+  ``fit_tvc_from_df`` takes ``w_col``: the weighted partial likelihood of
+  start-stop data, with the robust covariance clustered by subject (R's
+  ``coxph(Surv(start, stop, event) ~ ..., weights = w, robust = TRUE, id =
+  id)``). Not with ``strata`` yet.
 - ``likelihood_ratio_test()`` on a distributional regression
   (``WeibullDistributional`` and the others), which 0.26 refused. With no
   argument it is the global test: twice the gain in log-likelihood over

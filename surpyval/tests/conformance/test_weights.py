@@ -597,9 +597,20 @@ def test_refusal_names_the_public_fitter():
             getattr(sp, name).fit([1.0, 2.0], w=[1.0, 1.0])
 
 
-def test_cox_fit_from_df_points_to_fit_for_weights():
+def test_cox_fit_from_df_takes_w_col(data):
     import pandas as pd
 
-    df = pd.DataFrame({"x": [1.0, 2.0, 3.0], "z": [0.0, 1.0, 0.5]})
-    with pytest.raises(WeightedRefusal, match=r"CoxPH\.fit does: pass"):
-        sp.CoxPH.fit_from_df(df, x_col="x", Z_cols=["z"], w_col="w")
+    df = pd.DataFrame(
+        {
+            "x": data["x"],
+            "c": data["c"],
+            "w": data["w"],
+            "z1": data["Z"][:, 0],
+            "z2": data["Z"][:, 1],
+        }
+    )
+    from_df = sp.CoxPH.fit_from_df(df, "x", ["z1", "z2"], c_col="c", w_col="w")
+    arrays = sp.CoxPH.fit(data["x"], data["Z"], c=data["c"], w=data["w"])
+    assert from_df.weighted
+    assert_allclose(from_df.params, arrays.params, rtol=0, atol=0)
+    assert_allclose(from_df.covariance(), arrays.covariance(), rtol=0, atol=0)

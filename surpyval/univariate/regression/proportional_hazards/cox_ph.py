@@ -1271,6 +1271,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         strata_col: str | None = None,
         tl_col: str | None = None,
         center: bool = False,
+        w_col: str | None = None,
     ) -> SemiParametricRegressionModel:
         """
         Fits a Cox PH model using a pandas dataframe as the input.
@@ -1309,6 +1310,12 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         center: bool, optional
             Report the baseline at the covariate means (``model.center``)
             instead of at ``Z = 0``; see :meth:`fit`.
+        w_col: str, optional
+            The column name of the sampling, propensity or censoring
+            weights, passed to :meth:`fit` as ``w`` (lifelines'
+            ``weights_col``). A row dropped for a missing covariate drops
+            its weight with it, so the fit is ``fit(..., w=)`` of the rows
+            kept.
 
         Returns
         -------
@@ -1316,18 +1323,19 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         model: SemiParametricRegressionModel
             The fitted model.
         """
-        x, c, n, tl, strata, Z, form, feature_names, model_spec = (
-            validate_coxph_df_inputs(
-                df,
-                x_col,
-                c_col,
-                n_col,
-                Z_cols,
-                formula,
-                tl_col=tl_col,
-                strata_col=strata_col,
-            )
+        arrays = validate_coxph_df_inputs(
+            df,
+            x_col,
+            c_col,
+            n_col,
+            Z_cols,
+            formula,
+            tl_col=tl_col,
+            strata_col=strata_col,
+            w_col=w_col,
         )
+        x, c, n, tl, strata, Z, form, feature_names, model_spec = arrays[:9]
+        w = arrays[9] if w_col is not None else None
 
         with covariate_columns(feature_names, Z, model_spec):
             model = self.fit(
@@ -1339,6 +1347,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
                 tie_method=tie_method,
                 strata=strata,
                 center=center,
+                w=w,
             )
         model.formula = form
         model.feature_names = feature_names
@@ -1358,6 +1367,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         tol: float = 1e-10,
         center: bool = False,
         strata: npt.ArrayLike | None = None,
+        w: npt.ArrayLike | float | None = None,
     ) -> SemiParametricRegressionModel:
         """
         Fit a Cox model with time-varying covariates in start-stop format.
@@ -1395,6 +1405,15 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             may move between strata (R's ``coxph`` with ``strata()`` on
             counting-process data). Predict with ``sf_tvc(...,
             stratum=)``.
+        w : array_like or scalar, optional
+            Sampling, propensity or censoring weights, one per interval
+            row (or one for every row), as :meth:`fit` takes them: give
+            each of a subject's rows the subject's weight (a weight may
+            also change between a subject's rows, as a time-varying
+            inverse-probability-of-censoring weight does). The covariance
+            is the robust one clustered by subject, R's ``coxph(Surv(start,
+            stop, event) ~ ..., weights = w, robust = TRUE, id = id)``.
+            Not with ``strata`` yet.
 
         Returns
         -------
@@ -1451,6 +1470,36 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
                     "with a missing one".format(int(pd.isna(strata_arr).sum()))
                 )
             strata_arr = strata_arr[row_order]
+        if w is not None:
+            from surpyval.utils.weights import check_weights
+
+            if strata_arr is not None:
+                from surpyval.utils.weights import refuse_weighted
+
+                raise refuse_weighted(
+                    "A stratified Cox fit",
+                    "its weighted form is not built yet",
+                    "Fit each stratum with w, or put the stratum in Z.",
+                )
+            from ._weighted_cox import fit_weighted_cox
+
+            w_rows = check_weights(w, len(row_order))[row_order]
+            model = fit_weighted_cox(
+                x,
+                Z_arr,
+                c,
+                n_arr,
+                tl,
+                w_rows,
+                tie_method,
+                tol,
+                center,
+                cluster=ident,
+            )
+            model.is_tvc = True
+            model.tvc_subject_ids = ident
+            model.tvc_row_order = row_order
+            return model
         model = self.fit(
             x=x,
             Z=Z_arr,
@@ -1484,6 +1533,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         center: bool = False,
         formula: str | None = None,
         strata_col: str | None = None,
+        w_col: str | None = None,
     ) -> SemiParametricRegressionModel:
         """
         Fit a time-varying-covariate Cox model from a start-stop DataFrame.
@@ -1494,11 +1544,14 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         ``Z_cols``, ``formula`` (as in :meth:`fit_from_df`) gives the
         covariates as a ``formulaic`` formula, which codes categorical
         (e.g. ``"yes"`` / ``"no"``) columns. ``strata_col`` names the
-        column of each row's stratum, for a stratified fit.
+        column of each row's stratum, for a stratified fit, and ``w_col``
+        that of each row's weight (``w`` of :meth:`fit_tvc`).
         """
         columns = {"i": i_col, "xl": xl_col, "xr": xr_col, "c": c_col}
         if strata_col is not None:
             columns["strata"] = strata_col
+        if w_col is not None:
+            columns["w"] = w_col
         return fit_tvc_df(
             self.fit_tvc,
             df,
