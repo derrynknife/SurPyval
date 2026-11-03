@@ -124,7 +124,7 @@ def _package(c, fn):
             try:
                 out.append(float(call(np.array([v]))[0]))
             except Exception as e:  # noqa: BLE001 - reported per point
-                out.append("raised {}".format(type(e).__name__))
+                out.append(f"raised {type(e).__name__}")
         return out
 
 

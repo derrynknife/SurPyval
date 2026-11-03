@@ -135,7 +135,7 @@ class SingleProbabilityMixin:
         :func:`probability_bounds`."""
         if name != "p":
             raise ValueError(
-                "Unknown parameter {!r}; expected one of ['p']".format(name)
+                f"Unknown parameter {name!r}; expected one of ['p']"
             )
         return probability_bounds(
             *event_counts(model), alpha_ci, bound, method, name

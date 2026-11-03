@@ -84,14 +84,14 @@ class IndependenceCopula(Copula):
     def fit(
         self,
         x: npt.ArrayLike,
-        c: "npt.ArrayLike | None" = None,
-        n: "npt.ArrayLike | None" = None,
-        t: "npt.ArrayLike | None" = None,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        t: npt.ArrayLike | None = None,
         margins: Any = None,
         how: str = "IFM",
-        xl: "npt.ArrayLike | None" = None,
-        xr: "npt.ArrayLike | None" = None,
-        init: "npt.ArrayLike | None" = None,
+        xl: npt.ArrayLike | None = None,
+        xr: npt.ArrayLike | None = None,
+        init: npt.ArrayLike | None = None,
         rotation: int = 0,
     ) -> Any:
         """
@@ -117,7 +117,7 @@ class IndependenceCopula(Copula):
         self,
         margin_models: list,
         data: Any,
-        init: "npt.NDArray | None" = None,
+        init: npt.NDArray | None = None,
     ) -> npt.NDArray:
         return onp.asarray([], dtype=float)
 
@@ -126,7 +126,7 @@ class IndependenceCopula(Copula):
         margins: Any,
         margin_models: list,
         data: Any,
-        init: "npt.NDArray | None" = None,
+        init: npt.NDArray | None = None,
     ) -> tuple:
         return onp.asarray([], dtype=float), margin_models
 
@@ -449,7 +449,7 @@ class FrankCopula(Copula):
         self,
         size: Any,
         params: Any,
-        random_state: "int | None" = None,
+        random_state: int | None = None,
     ) -> tuple[npt.NDArray, npt.NDArray]:
         """Draw ``(u, v)`` pairs, inverting the h-function in closed form:
         given ``u`` and a uniform ``w``,

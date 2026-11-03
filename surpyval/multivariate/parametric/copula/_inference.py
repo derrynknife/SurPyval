@@ -42,7 +42,8 @@ and column are ``nan``, and the rest are conditional on it.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as onp
 import numpy.typing as npt
@@ -134,7 +135,7 @@ class ParameterLayout:
                 step[i] = _H * gap
         return step
 
-    def build(self, vector: npt.NDArray) -> "tuple[npt.NDArray, list] | None":
+    def build(self, vector: npt.NDArray) -> tuple[npt.NDArray, list] | None:
         """``(copula parameters, margins)`` at the full parameter
         ``vector``, or ``None`` where a margin's parameters are outside
         its space."""
@@ -298,7 +299,7 @@ def _inverse_hessian(
     free: npt.NDArray,
     step: npt.NDArray,
     weights: npt.NDArray,
-) -> "npt.NDArray | None":
+) -> npt.NDArray | None:
     """The inverse of the joint likelihood's Hessian in the ``free``
     entries, or ``None`` where it is not finite or not invertible."""
     f = _neg_ll_in(
@@ -308,7 +309,7 @@ def _inverse_hessian(
     return _scaled_inverse(H, step[free])
 
 
-def _scaled_inverse(H: npt.NDArray, step: npt.NDArray) -> "npt.NDArray | None":
+def _scaled_inverse(H: npt.NDArray, step: npt.NDArray) -> npt.NDArray | None:
     """``H^-1``, inverted in step-scaled coordinates (a parameter orders of
     magnitude from another leaves ``H`` too ill-conditioned to invert
     directly), or ``None``."""
@@ -345,7 +346,7 @@ def _godambe(
     free: npt.NDArray,
     step: npt.NDArray,
     weights: npt.NDArray,
-) -> "npt.NDArray | None":
+) -> npt.NDArray | None:
     """The Godambe covariance ``H^-1 J H^-T`` of the two-stage (IFM)
     estimate in the ``free`` entries (see the module docstring), or
     ``None`` where it cannot be formed."""
@@ -397,7 +398,7 @@ def _godambe(
 
 def godambe_parts(
     layout: ParameterLayout, data: Any
-) -> "tuple[npt.NDArray, npt.NDArray]":
+) -> tuple[npt.NDArray, npt.NDArray]:
     """``(naive, godambe)`` covariances of the copula's free parameters
     under IFM: the copula stage's inverse Hessian with the margins held
     (what treating them as known gives) and the Godambe covariance. For

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import autograd.numpy as anp
 import numpy as np
@@ -143,7 +144,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
 
         return step
 
-    def _make_model(self, underlying_model: Any, q: float) -> "RenewalModel":
+    def _make_model(self, underlying_model: Any, q: float) -> RenewalModel:
         return RenewalModel(
             underlying_model,
             q,
@@ -301,8 +302,8 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         self,
         data: Any,
         dist: Any = Weibull,
-        init: "ArrayLike | None" = None,
-    ) -> "RenewalModel":
+        init: ArrayLike | None = None,
+    ) -> RenewalModel:
         """
         Fit the generalized renewal model from recurrent data.
 
@@ -455,13 +456,13 @@ class GeneralizedOneRenewal(RenewalFitMixin):
     def fit(
         self,
         x: ArrayLike,
-        i: "ArrayLike | None" = None,
-        c: "ArrayLike | None" = None,
-        n: "ArrayLike | None" = None,
+        i: ArrayLike | None = None,
+        c: ArrayLike | None = None,
+        n: ArrayLike | None = None,
         dist: Any = Weibull,
-        init: "ArrayLike | None" = None,
-        tl: "ArrayLike | None" = None,
-    ) -> "RenewalModel":
+        init: ArrayLike | None = None,
+        tl: ArrayLike | None = None,
+    ) -> RenewalModel:
         """
         Fit the generalized renewal model.
 
@@ -540,7 +541,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
 
     def fit_from_parameters(
         self, params: ArrayLike, q: float, dist: Any = Weibull
-    ) -> "RenewalModel":
+    ) -> RenewalModel:
         """
         Fit the generalized renewal model from given parameters.
 

@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import math
 import warnings
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 from scipy.optimize import minimize
@@ -230,7 +231,7 @@ class SimplexSearch:
 
 def renewal_search(
     neg_ll: Callable, bounds: list, n_obs: float, inv_trans: Callable
-) -> "GradientSearch | SimplexSearch":
+) -> GradientSearch | SimplexSearch:
     """The search for the likelihood ``neg_ll`` of parameters with the
     natural ``bounds``, in the space ``inv_trans`` maps to them
     (``bounds_convert``'s): ``GradientSearch`` where ``neg_ll`` has a

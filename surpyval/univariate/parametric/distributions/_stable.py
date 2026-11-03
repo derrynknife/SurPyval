@@ -14,7 +14,8 @@ gradients of the branch not taken can be NaN: the fits differentiate
 these functions.
 """
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import autograd.numpy as np
 

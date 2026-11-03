@@ -29,8 +29,9 @@ likelihood on a fresh optimiser.
 """
 
 import warnings
+from collections.abc import Callable
 from types import SimpleNamespace
-from typing import Any, Callable
+from typing import Any
 
 import autograd.numpy as anp
 import numpy as np

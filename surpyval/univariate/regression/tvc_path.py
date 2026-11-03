@@ -41,7 +41,8 @@ are fitted as steps with ``fit_tvc``.
 from __future__ import annotations
 
 import math
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -115,7 +116,7 @@ def _as_rows(values: Any, name: str) -> npt.NDArray:
     try:
         arr = np.asarray(values, dtype=float)
     except (TypeError, ValueError) as exc:
-        raise ValueError("'{}' must be numeric: {}".format(name, exc)) from exc
+        raise ValueError(f"'{name}' must be numeric: {exc}") from exc
     if arr.ndim == 1:
         arr = arr.reshape(-1, 1)
     if arr.ndim != 2:
@@ -131,19 +132,17 @@ def _as_rows(values: Any, name: str) -> npt.NDArray:
     return arr
 
 
-def _as_period(period: "float | None") -> "float | None":
+def _as_period(period: float | None) -> float | None:
     if period is None:
         return None
     try:
         value = float(period)
     except (TypeError, ValueError) as exc:
         raise ValueError(
-            "'period' must be a positive number, got {!r}".format(period)
+            f"'period' must be a positive number, got {period!r}"
         ) from exc
     if not (np.isfinite(value) and value > 0):
-        raise ValueError(
-            "'period' must be a positive number, got {!r}".format(period)
-        )
+        raise ValueError(f"'period' must be a positive number, got {period!r}")
     return value
 
 
@@ -217,7 +216,7 @@ class CovariatePath:
         evaluate: Callable[[npt.NDArray, bool], npt.NDArray],
         p: int,
         knots: npt.NDArray,
-        period: "float | None",
+        period: float | None,
         kind: str,
     ) -> None:
         # Private: build a path with from_points or from_callable.
@@ -255,8 +254,8 @@ class CovariatePath:
         cls,
         times: npt.ArrayLike,
         values: npt.ArrayLike,
-        period: "float | None" = None,
-    ) -> "CovariatePath":
+        period: float | None = None,
+    ) -> CovariatePath:
         """
         A piecewise-linear path through ``(time, value)`` points.
 
@@ -297,7 +296,7 @@ class CovariatePath:
         t = np.atleast_1d(np.asarray(times, dtype=float))
         if t.ndim != 1:
             raise ValueError(
-                "'times' must be one-dimensional; got shape {}".format(t.shape)
+                f"'times' must be one-dimensional; got shape {t.shape}"
             )
         if t.size == 0:
             raise ValueError("'times' must hold at least one point")
@@ -356,9 +355,9 @@ class CovariatePath:
         cls,
         func: Callable[[npt.NDArray], Any],
         p: int = 1,
-        breakpoints: "npt.ArrayLike | None" = None,
-        period: "float | None" = None,
-    ) -> "CovariatePath":
+        breakpoints: npt.ArrayLike | None = None,
+        period: float | None = None,
+    ) -> CovariatePath:
         """
         A path given by a vectorised function of time.
 
@@ -407,13 +406,9 @@ class CovariatePath:
                 "{!r}".format(type(func).__name__)
             )
         if isinstance(p, bool) or not isinstance(p, (int, np.integer)):
-            raise ValueError(
-                "'p' must be a positive integer, got {!r}".format(p)
-            )
+            raise ValueError(f"'p' must be a positive integer, got {p!r}")
         if p < 1:
-            raise ValueError(
-                "'p' must be a positive integer, got {!r}".format(p)
-            )
+            raise ValueError(f"'p' must be a positive integer, got {p!r}")
         p = int(p)
         period = _as_period(period)
         if breakpoints is None:
@@ -536,11 +531,7 @@ class CovariatePath:
             self._knots.size,
             "knot" if self._kind == "points" else "breakpoint",
         )
-        period = (
-            ", period={:g}".format(self.period)
-            if self.period is not None
-            else ""
-        )
+        period = f", period={self.period:g}" if self.period is not None else ""
         return "CovariatePath({}, {}, p={}{})".format(
             self._kind, count, self.p, period
         )
@@ -556,7 +547,7 @@ class CovariatePath:
 
 def _evaluate_panels(
     panel_terms: Callable, a: npt.NDArray, b: npt.NDArray
-) -> "tuple[npt.NDArray, ...]":
+) -> tuple[npt.NDArray, ...]:
     exact, g, scale, flag = panel_terms(a, b)
     half = 0.5 * (b - a)
     with np.errstate(invalid="ignore", over="ignore"):
@@ -579,7 +570,7 @@ def _evaluate_panels(
 def path_mesh(
     path: CovariatePath,
     points: npt.NDArray,
-    scale: "float | None" = None,
+    scale: float | None = None,
 ) -> npt.NDArray:
     """
     The starting panel edges for integrating ``path`` up to the largest of
@@ -612,7 +603,7 @@ def path_mesh(
                 count,
                 _PANEL_CAP,
                 (
-                    " (the path repeats every {:g})".format(path.period)
+                    f" (the path repeats every {path.period:g})"
                     if path.period is not None
                     else ""
                 ),
@@ -640,8 +631,8 @@ def integrate_panels(
     panel_terms: Callable,
     edges: npt.NDArray,
     rtol: float,
-    max_rounds: "int | None" = None,
-) -> "dict[str, Any]":
+    max_rounds: int | None = None,
+) -> dict[str, Any]:
     """
     Integrate over the panels between ``edges``, refining until the error
     estimate accumulated from 0 is within ``rtol`` of the integral at every
@@ -735,12 +726,12 @@ def sum_between(
 
 
 def missed_target(
-    res: "dict[str, Any]",
+    res: dict[str, Any],
     origin: float,
     reach: npt.NDArray,
     rtol: float,
     missing: npt.NDArray,
-) -> "tuple[int, int, float, str] | None":
+) -> tuple[int, int, float, str] | None:
     """
     ``(missed, total, worst, limit)``: how many of the (non-missing) query
     times, whose values sum the panels from ``origin`` to ``reach``, have
@@ -777,9 +768,9 @@ def warn_missed_target(
     import warnings
 
     stopped = (
-        "{} rounds of refinement".format(_MAX_ROUNDS)
+        f"{_MAX_ROUNDS} rounds of refinement"
         if limit == "rounds"
-        else "reaching the limit of {:,} panels".format(_PANEL_CAP)
+        else f"reaching the limit of {_PANEL_CAP:,} panels"
     )
     warnings.warn(
         "The quadrature along the CovariatePath missed its {:.0e} "
@@ -866,9 +857,9 @@ def integrate_to_infinity(
     origin: float,
     scale: float,
     rtol: float,
-    knots: "Callable[[float], npt.NDArray] | None" = None,
-    edges_out: "list | None" = None,
-) -> "tuple[float, tuple[float, float] | None]":
+    knots: Callable[[float], npt.NDArray] | None = None,
+    edges_out: list | None = None,
+) -> tuple[float, tuple[float, float] | None]:
     r"""
     :math:`\int_{\text{origin}}^\infty f(t)\,dt` for a vectorised ``func``
     that falls to 0 (a survival function), by

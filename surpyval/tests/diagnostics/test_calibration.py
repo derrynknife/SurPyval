@@ -286,8 +286,8 @@ def test_interval_and_left_censoring_are_refused_with_a_note():
     for fitter in (sp.WeibullPH, sp.LogNormalAFT):
         d = _quiet(fitter.fit, x, z[:, None], c=c).diagnose()
         assert _rows(d).empty
-        (note,) = [n for n in d.notes if n.startswith("Calibration is not")]
-        assert "{} left- or interval-censored rows".format(n) in note
+        (note,) = (n for n in d.notes if n.startswith("Calibration is not"))
+        assert f"{n} left- or interval-censored rows" in note
         assert "exact and right-censored" in note
 
 
@@ -323,8 +323,7 @@ def test_too_few_failures_are_refused_with_a_note():
     d = _quiet(sp.CoxPH.fit, t, z[:, None], c=c).diagnose()
     assert _rows(d).empty
     assert any(
-        "8 failures" in n
-        and "at least {}".format(calibration.MIN_FAILURES) in n
+        "8 failures" in n and f"at least {calibration.MIN_FAILURES}" in n
         for n in d.notes
     )
 
@@ -444,7 +443,7 @@ def test_to_dict_round_trips(rossi):
     back = Diagnosis.from_dict(json.loads(text))
     assert back.to_dict() == out
     pd.testing.assert_frame_equal(_rows(back), _rows(d))
-    (row,) = [r for r in out["table"] if r["test"].startswith("ICI at t = 28")]
+    (row,) = (r for r in out["table"] if r["test"].startswith("ICI at t = 28"))
     assert row["check"] == "calibration" and row["covariates"] == []
     assert row["df"] is None and row["p"] is None
     assert_allclose(row["statistic"], _curves(d)[1][2].ici)
@@ -533,7 +532,7 @@ def test_a_wrong_baseline_warns_and_is_advised():
     assert "outside the curve's 95% band" in warned["detail"]
     # several rows warn, and the advice is given once, naming each time
     assert (rows["verdict"] == "warn").sum() >= 2
-    (advice,) = [a for a in d.advice if a.check == "calibration"]
+    (advice,) = (a for a in d.advice if a.check == "calibration")
     assert advice.count("at t = ") == (rows["verdict"] == "warn").sum()
     assert advice.features == (
         "LogNormalAFT.fit",
@@ -548,7 +547,7 @@ def test_a_missing_quadratic_term_warns_a_cox_model():
     x, Z, c = _data(np.random.default_rng(10), 1000, quad=0.5)
     d = sp.CoxPH.fit(x, Z, c=c).diagnose()
     assert (_rows(d)["verdict"] == "warn").any()
-    (advice,) = [a for a in d.advice if a.check == "calibration"]
+    (advice,) = (a for a in d.advice if a.check == "calibration")
     assert advice.features == ("CoxPH.fit_from_df(formula=)",)
     assert "functional_form rows" in advice
 
@@ -559,7 +558,7 @@ def test_the_lung_log_normal_model_warns_early():
     detail = _rows(d)["detail"].iloc[0]
     assert "the observed risk is lower than predicted" in detail
     assert "too extreme" in detail
-    (advice,) = [a for a in d.advice if a.check == "calibration"]
+    (advice,) = (a for a in d.advice if a.check == "calibration")
     assert advice.startswith("The predicted survival at t = 135 is off")
     assert advice.features == (
         "LogNormalPH.fit",

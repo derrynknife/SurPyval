@@ -10,7 +10,8 @@ Kaplan-Meier node in a seeded RePyability RBD gave a different answer on
 every run while every parametric node was reproducible.
 """
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import pytest

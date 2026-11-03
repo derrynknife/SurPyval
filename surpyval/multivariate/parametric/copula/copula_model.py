@@ -93,7 +93,7 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         margins: Any,
         data: Any = None,
         how: str = "given",
-        k: "int | None" = None,
+        k: int | None = None,
     ) -> None:
         self.copula = copula
         self.params = onp.atleast_1d(onp.asarray(params, dtype=float))
@@ -104,8 +104,8 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         # The fitted negative log-likelihood and BIC's sample size, computed
         # on first use from ``data`` (or restored by ``from_dict``, which has
         # no data).
-        self._neg_ll: "float | None" = None
-        self._n_obs: "float | None" = None
+        self._neg_ll: float | None = None
+        self._n_obs: float | None = None
         # What the fit reached, one of ``MAXIMUM_STATES``
         # (``surpyval.utils.no_maximum``), as its warnings say: set by the
         # fit; "not applicable" for a model built from its parameters,
@@ -118,7 +118,7 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         # The covariance of every parameter, copula's and margins' (see
         # ``covariance``): computed on first use, or restored by
         # ``from_dict``.
-        self._covariance: "npt.NDArray | None" = None
+        self._covariance: npt.NDArray | None = None
 
     @property
     def parameter_names(self) -> list[str]:
@@ -200,8 +200,8 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
     # -- sampling ---------------------------------------------------------
     def random(
         self,
-        size: "int | tuple[int, ...]",
-        random_state: "int | None" = None,
+        size: int | tuple[int, ...],
+        random_state: int | None = None,
     ) -> npt.NDArray:
         """Draw correlated samples: an array of shape ``(size, 2)`` for an
         integer ``size``, one row per draw, or ``(*size, 2)`` for a tuple
@@ -676,7 +676,7 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         params: Any,
         margins: list,
         complement: bool = False,
-    ) -> "tuple[npt.NDArray, npt.NDArray | None]":
+    ) -> tuple[npt.NDArray, npt.NDArray | None]:
         """``(value, complement)`` of the joint ``sf`` or ``ff`` at the
         points ``x`` for the copula ``params`` and ``margins``. The
         complement (``None`` unless asked for) is from the margins, ``u +
@@ -734,7 +734,7 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
             out["covariance"] = covariance.tolist()
         return stamp_schema(out)
 
-    def _saved_covariance(self) -> "npt.NDArray | None":
+    def _saved_covariance(self) -> npt.NDArray | None:
         """The covariance :meth:`to_dict` stores: the model's, where it
         has one (computed now if need be), else ``None``."""
         try:
@@ -743,7 +743,7 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
             return None
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "CopulaModel":
+    def from_dict(cls, model_dict: dict) -> CopulaModel:
         """Rebuild a copula model from a :meth:`to_dict` dictionary."""
         import surpyval
 

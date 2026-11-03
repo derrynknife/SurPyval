@@ -32,7 +32,8 @@ np.float64(-804.6084420137539)
 np.float64(13.919927969080108)
 """
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import autograd.numpy as np
 import numpy as onp

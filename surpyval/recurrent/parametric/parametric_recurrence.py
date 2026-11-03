@@ -139,7 +139,7 @@ class ParametricRecurrenceModel(
     def __repr__(self) -> str:
         param_string = "\n".join(
             [
-                "{:>10}".format(name) + ": " + str(p)
+                f"{name:>10}" + ": " + str(p)
                 for p, name in zip(self.params, self.dist.parameter_names)
             ]
         )
@@ -243,9 +243,7 @@ class ParametricRecurrenceModel(
         if hasattr(self.dist, "inv_cif"):
             return self.dist.inv_cif(x, *self.params)
         else:
-            raise ValueError(
-                "Inverse cif undefined for {}".format(self.dist.name)
-            )
+            raise ValueError(f"Inverse cif undefined for {self.dist.name}")
 
     def residuals(self, kind: str = "cumulative_hazard") -> np.ndarray:
         """

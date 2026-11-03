@@ -2,7 +2,8 @@
 ratio of gamma functions without cancellation, and an exact quantile from
 accurate log tails."""
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import autograd.numpy as np
 import numpy.typing as npt

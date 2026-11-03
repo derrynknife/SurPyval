@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as anp
 import numpy as np
@@ -42,8 +43,8 @@ from surpyval.utils.units import takes_unit
 
 
 def ari_reduction(
-    failure_intensities: np.ndarray, rho: float, m: "int | float"
-) -> "np.ndarray | float":
+    failure_intensities: np.ndarray, rho: float, m: int | float
+) -> np.ndarray | float:
     """
     Intensity reduction ``R_n`` in force just after the most recent failure for
     the Arithmetic Reduction of Intensity model with memory ``m`` (Doyen &
@@ -71,7 +72,7 @@ def _reduction_sequence(
     failure_intensities: np.ndarray,
     position: int,
     rho: float,
-    m: "int | float",
+    m: int | float,
 ) -> np.ndarray:
     """``R_n`` after every failure at once, for failures from many items.
 
@@ -104,7 +105,7 @@ class _Reductions:
     of that linear map of ``lam``: what autograd's derivatives in ``lam``
     and ``rho`` are made of."""
 
-    def __init__(self, position: Any, m: "int | float") -> None:
+    def __init__(self, position: Any, m: int | float) -> None:
         self.pos = np.asarray(position)
         longest = int(self.pos.max()) + 1 if self.pos.size else 0
         self.span = longest if np.isinf(m) else min(int(m), longest)
@@ -333,8 +334,8 @@ class ARI(RenewalFitMixin):
         baseline: Any,
         baseline_params: ArrayLike,
         rho: float,
-        m: "int | float",
-    ) -> "RenewalModel":
+        m: int | float,
+    ) -> RenewalModel:
         from surpyval.recurrent.renewal.renewal_model import RenewalModel
 
         model = baseline.from_params(np.asarray(baseline_params).tolist())
@@ -380,7 +381,7 @@ class ARI(RenewalFitMixin):
         )
 
     def create_negll_func(
-        self, data: Any, baseline: Any, m: "int | float"
+        self, data: Any, baseline: Any, m: int | float
     ) -> Callable:
         """The negative log-likelihood of ``[rho, *baseline_params]`` on
         ``data``, for the baseline intensity model ``baseline`` and memory
@@ -503,9 +504,9 @@ class ARI(RenewalFitMixin):
         self,
         data: Any,
         baseline: Any = CrowAMSAA,
-        m: "int | float" = 1,
-        init: "ArrayLike | None" = None,
-    ) -> "RenewalModel":
+        m: int | float = 1,
+        init: ArrayLike | None = None,
+    ) -> RenewalModel:
         """
         Fit the ARI model from recurrent data.
 
@@ -598,14 +599,14 @@ class ARI(RenewalFitMixin):
     def fit(
         self,
         x: ArrayLike,
-        i: "ArrayLike | None" = None,
-        c: "ArrayLike | None" = None,
-        n: "ArrayLike | None" = None,
+        i: ArrayLike | None = None,
+        c: ArrayLike | None = None,
+        n: ArrayLike | None = None,
         baseline: Any = CrowAMSAA,
-        m: "int | float" = 1,
-        init: "ArrayLike | None" = None,
-        tl: "ArrayLike | None" = None,
-    ) -> "RenewalModel":
+        m: int | float = 1,
+        init: ArrayLike | None = None,
+        tl: ArrayLike | None = None,
+    ) -> RenewalModel:
         """
         Fit the ARI model.
 
@@ -688,13 +689,13 @@ class ARI(RenewalFitMixin):
         self,
         df: Any,
         x_col: str,
-        i_col: "str | None" = None,
-        c_col: "str | None" = None,
-        n_col: "str | None" = None,
-        tl_col: "str | None" = None,
-        tr_col: "str | None" = None,
+        i_col: str | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        tl_col: str | None = None,
+        tr_col: str | None = None,
         **fit_options: Any,
-    ) -> "RenewalModel":
+    ) -> RenewalModel:
         """
         Fit to an event log held in the columns of a
         :class:`pandas.DataFrame`.
@@ -763,9 +764,9 @@ class ARI(RenewalFitMixin):
         self,
         baseline_params: ArrayLike,
         rho: float,
-        m: "int | float" = 1,
+        m: int | float = 1,
         baseline: Any = CrowAMSAA,
-    ) -> "RenewalModel":
+    ) -> RenewalModel:
         """
         Build an ARI model from given parameters.
 

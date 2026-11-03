@@ -90,7 +90,7 @@ def _params(model):
     for name in ("params", "beta", "coefficients"):
         value = getattr(model, name, None)
         if value is not None:
-            return "{} {}".format(name, np.round(np.asarray(value), 4))
+            return f"{name} {np.round(np.asarray(value), 4)}"
     return type(model).__name__
 
 

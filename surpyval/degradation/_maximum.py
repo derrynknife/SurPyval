@@ -11,7 +11,8 @@ numerical=True)``), polishing an answer that fails with BFGS and warning
 reached as its ``maximum``.
 """
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt

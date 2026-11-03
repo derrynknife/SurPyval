@@ -79,6 +79,6 @@ def test_proportional_intensity_accepts_counting_process():
     try:
         ProportionalIntensityNHPP.fit_from_recurrent_data(data, baseline=Duane)
     except TypeError as e:  # pragma: no cover - guard must not trigger
-        pytest.fail("valid CountingProcess was rejected: {}".format(e))
+        pytest.fail(f"valid CountingProcess was rejected: {e}")
     except Exception:
         pass

@@ -79,7 +79,8 @@ from __future__ import annotations
 
 import math
 import warnings
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 from scipy.stats import chi2
@@ -130,7 +131,7 @@ SHAPED = ("Weibull", "Normal", "Gumbel", "Logistic", "LogNormal", "Gamma")
 # What the checks share
 # ---------------------------------------------------------------------------
 def _fmt(value: float) -> str:
-    return "{:.3g}".format(value)
+    return f"{value:.3g}"
 
 
 def _level_text(level: np.ndarray) -> str:
@@ -280,7 +281,7 @@ def _common(ctx: Context, levels: np.ndarray) -> Any:
 
 
 def _refit(
-    ctx: Context, life_model: Any, rows: "np.ndarray | None" = None
+    ctx: Context, life_model: Any, rows: np.ndarray | None = None
 ) -> Any:
     """The model's distribution with ``life_model`` refitted to the
     model's data (or the rows ``rows`` of it), the distribution's fixed
@@ -338,11 +339,11 @@ def _too_few_levels(ctx: Context, kept: int) -> str:
     )
 
 
-def _use_stress(ctx: Context) -> "np.ndarray | None":
+def _use_stress(ctx: Context) -> np.ndarray | None:
     """The ``use_stress`` option as one row of ``Z``, or ``None``; a
     value the life model cannot take is refused."""
 
-    def compute() -> "np.ndarray | None":
+    def compute() -> np.ndarray | None:
         given = ctx.options.get("use_stress")
         if given is None:
             return None
@@ -466,12 +467,12 @@ def _use_rows(ctx: Context) -> list[dict]:
     return rows
 
 
-def _life_at_use(fit: Any, use: "np.ndarray | None") -> str:
+def _life_at_use(fit: Any, use: np.ndarray | None) -> str:
     if use is None:
         return ""
     with np.errstate(all="ignore"):
         life = float(np.asarray(fit.phi(use), dtype=float).ravel()[0])
-    return "; life at the use stress {}".format(_fmt(life))
+    return f"; life at the use stress {_fmt(life)}"
 
 
 # ---------------------------------------------------------------------------
@@ -710,7 +711,7 @@ def _comparison(ctx: Context) -> list[dict]:
     return ctx.cached("comparison", compute)
 
 
-def _best_alternative(ctx: Context) -> "dict | None":
+def _best_alternative(ctx: Context) -> dict | None:
     """The candidate with the lowest AIC, if lower than the model's."""
     found = _comparison(ctx)
     if len(found) < 2 or found[1]["aic"] >= found[0]["aic"]:
@@ -844,16 +845,14 @@ def _life_panels(ctx: Context) -> list[Panel]:
             ax.xaxis.set_minor_formatter(NullFormatter())
             ax.yaxis.set_minor_formatter(NullFormatter())
             ax.set_xlabel("life at each level (common shape)")
-            ax.set_ylabel(
-                "life from the {} model".format(model.reg_model.name)
-            )
+            ax.set_ylabel(f"life from the {model.reg_model.name} model")
             return
         ax.legend(fontsize="small")
 
     p = _lof(ctx).get("p", float("nan"))
-    title = "life-stress ({})".format(model.reg_model.name)
+    title = f"life-stress ({model.reg_model.name})"
     if p is not None and np.isfinite(p):
-        title += ": p = {}".format(_fmt(p))
+        title += f": p = {_fmt(p)}"
     return [Panel(title, draw)]
 
 
@@ -938,7 +937,7 @@ def _covariates(model: Any) -> list[str]:
         return [n for n, _ in sorted(columns.items(), key=lambda kv: kv[1])]
     if p == 1:
         return ["stress"]
-    return ["stress_{}".format(j) for j in range(p)]
+    return [f"stress_{j}" for j in range(p)]
 
 
 def _notes(ctx: Context) -> list[str]:

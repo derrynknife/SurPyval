@@ -46,7 +46,7 @@ def _points(ax):
     scatter; the bounds' band is the other collection)."""
     from matplotlib.collections import PathCollection
 
-    (points,) = [c for c in ax.collections if type(c) is PathCollection]
+    (points,) = (c for c in ax.collections if type(c) is PathCollection)
     return np.asarray(points.get_offsets())
 
 

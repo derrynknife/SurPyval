@@ -40,7 +40,8 @@ from __future__ import annotations
 import ast
 import math
 import operator
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -51,10 +52,10 @@ __all__ = ["StepSchedule", "StepValuedError"]
 # Functions that turn a continuous input into a piecewise-constant output. Once
 # ``t`` passes through one of these, later arithmetic keeps the result stepped
 # (any pure function of a step function is still a step function).
-_QUANTIZERS: "set[str]" = {"floor", "ceil", "round", "trunc"}
+_QUANTIZERS: set[str] = {"floor", "ceil", "round", "trunc"}
 
 # Names an expression may reference besides the free variable ``t``.
-_CONSTANTS: "dict[str, float]" = {
+_CONSTANTS: dict[str, float] = {
     "pi": math.pi,
     "e": math.e,
     "tau": math.tau,
@@ -63,7 +64,7 @@ _CONSTANTS: "dict[str, float]" = {
 
 # Callables an expression may use. Kept to quantizers plus a few pure helpers
 # that cannot smuggle in continuous variation on their own.
-_FUNCTIONS: "dict[str, Callable]" = {
+_FUNCTIONS: dict[str, Callable] = {
     "floor": math.floor,
     "ceil": math.ceil,
     "round": round,
@@ -157,20 +158,20 @@ def _varies_continuously(node: ast.AST) -> bool:
     return True
 
 
-def _whole(value: "float | bool") -> "float | int":
+def _whole(value: float | bool) -> float | int:
     """``value`` as an ``int`` when it is a whole number, else unchanged."""
     if isinstance(value, float) and value.is_integer():
         return int(value)
     return value
 
 
-_UNARY_OPS: "dict[type, Callable[[Any], Any]]" = {
+_UNARY_OPS: dict[type, Callable[[Any], Any]] = {
     ast.UAdd: operator.pos,
     ast.USub: operator.neg,
     ast.Not: operator.not_,
 }
 
-_BINARY_OPS: "dict[type, Callable[[Any, Any], Any]]" = {
+_BINARY_OPS: dict[type, Callable[[Any, Any], Any]] = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
     ast.Mult: operator.mul,
@@ -180,7 +181,7 @@ _BINARY_OPS: "dict[type, Callable[[Any, Any], Any]]" = {
     ast.Pow: operator.pow,
 }
 
-_COMPARISONS: "dict[type, Callable[[Any, Any], Any]]" = {
+_COMPARISONS: dict[type, Callable[[Any, Any], Any]] = {
     ast.Lt: operator.lt,
     ast.LtE: operator.le,
     ast.Gt: operator.gt,
@@ -213,7 +214,7 @@ def _eval_name(node: ast.Name, t: float) -> float:
     )
 
 
-def _eval_unary(node: ast.UnaryOp, t: float) -> "float | bool":
+def _eval_unary(node: ast.UnaryOp, t: float) -> float | bool:
     val = _safe_eval(node.operand, t)
     op = _UNARY_OPS.get(type(node.op))
     if op is None:
@@ -221,7 +222,7 @@ def _eval_unary(node: ast.UnaryOp, t: float) -> "float | bool":
     return op(val)
 
 
-def _eval_binary(node: ast.BinOp, t: float) -> "float | bool":
+def _eval_binary(node: ast.BinOp, t: float) -> float | bool:
     left = _safe_eval(node.left, t)
     right = _safe_eval(node.right, t)
     op = _BINARY_OPS.get(type(node.op))
@@ -230,7 +231,7 @@ def _eval_binary(node: ast.BinOp, t: float) -> "float | bool":
     return op(left, right)
 
 
-def _eval_bool_op(node: ast.BoolOp, t: float) -> "float | bool":
+def _eval_bool_op(node: ast.BoolOp, t: float) -> float | bool:
     """``and`` / ``or``, short-circuiting as Python does.
 
     ``and`` returns the first falsy operand, ``or`` the first truthy one,
@@ -245,7 +246,7 @@ def _eval_bool_op(node: ast.BoolOp, t: float) -> "float | bool":
     return _safe_eval(node.values[-1], t)
 
 
-def _eval_compare(node: ast.Compare, t: float) -> "float | bool":
+def _eval_compare(node: ast.Compare, t: float) -> float | bool:
     """A (possibly chained) comparison; every comparator is evaluated."""
     left = _safe_eval(node.left, t)
     result = True
@@ -260,9 +261,7 @@ def _eval_compare(node: ast.Compare, t: float) -> "float | bool":
     return result
 
 
-def _call_arguments(
-    node: ast.Call, fname: str, t: float
-) -> "tuple[list, dict]":
+def _call_arguments(node: ast.Call, fname: str, t: float) -> tuple[list, dict]:
     """The evaluated positional and keyword arguments of a call."""
     args = [_safe_eval(a, t) for a in node.args]
     kwargs = {}
@@ -310,7 +309,7 @@ def _eval_call(node: ast.Call, t: float) -> float:
         ) from exc
 
 
-def _safe_eval(node: ast.AST, t: float) -> "float | bool":
+def _safe_eval(node: ast.AST, t: float) -> float | bool:
     """
     Evaluate a validated expression AST at a single time ``t``.
 
@@ -421,7 +420,7 @@ class StepSchedule:
         self,
         edges: npt.ArrayLike,
         Z: npt.ArrayLike,
-        period: "float | None" = None,
+        period: float | None = None,
     ) -> None:
         edges = np.asarray(edges, dtype=float)
         Z = np.asarray(Z, dtype=float)
@@ -476,7 +475,7 @@ class StepSchedule:
     # -- structural constructors ------------------------------------------
 
     @classmethod
-    def constant(cls, Z: npt.ArrayLike) -> "StepSchedule":
+    def constant(cls, Z: npt.ArrayLike) -> StepSchedule:
         """
         A constant covariate ``Z`` over all time, from ``-inf`` (#952).
         Evaluating a model on it is identical to ``model.sf(x, Z)``.
@@ -487,7 +486,7 @@ class StepSchedule:
     @classmethod
     def from_changepoints(
         cls, times: npt.ArrayLike, values: npt.ArrayLike
-    ) -> "StepSchedule":
+    ) -> StepSchedule:
         """
         Build a schedule from ``(time, value)`` change-points.
 
@@ -529,7 +528,7 @@ class StepSchedule:
     @classmethod
     def from_intervals(
         cls, xl: npt.ArrayLike, xr: npt.ArrayLike, Z: npt.ArrayLike
-    ) -> "StepSchedule":
+    ) -> StepSchedule:
         """
         Build a schedule from explicit ``(xl, xr]`` interval rows -- the same
         layout ``fit_tvc`` consumes.
@@ -566,7 +565,7 @@ class StepSchedule:
         pattern_times: npt.ArrayLike,
         pattern_values: npt.ArrayLike,
         period: float,
-    ) -> "StepSchedule":
+    ) -> StepSchedule:
         """
         A within-period covariate pattern repeated indefinitely.
 
@@ -606,11 +605,11 @@ class StepSchedule:
     @classmethod
     def from_expression(
         cls,
-        expr: "str | list[str]",
+        expr: str | list[str],
         horizon: float,
         resolution: float = 1.0,
         t0: float = 0.0,
-    ) -> "StepSchedule":
+    ) -> StepSchedule:
         r"""
         Build a schedule from a step-valued expression string (or list of
         strings) in the free variable ``t``.
@@ -793,7 +792,7 @@ class StepSchedule:
                 _listed(edges[:-1]), _listed(edges[1:]), Z
             )
         if n == 1 and np.isneginf(self.edges[0]):
-            return "StepSchedule.constant({})".format(Z[0])
+            return f"StepSchedule.constant({Z[0]})"
         return "StepSchedule.from_changepoints({}, {})".format(
             _listed(edges[:-1]), Z
         )
@@ -824,7 +823,7 @@ def _listed(values: list) -> str:
 
 
 def as_step_schedule(
-    Z: "StepSchedule | npt.ArrayLike", xl: "npt.ArrayLike | None" = None
+    Z: StepSchedule | npt.ArrayLike, xl: npt.ArrayLike | None = None
 ) -> StepSchedule:
     """
     Coerce a model ``sf_tvc`` covariate argument into a :class:`StepSchedule`.
@@ -848,9 +847,9 @@ def as_step_schedule(
 
 def as_covariate_path(
     Z: Any,
-    xl: "npt.ArrayLike | None" = None,
-    names: "list | None" = None,
-    given: "float | None" = None,
+    xl: npt.ArrayLike | None = None,
+    names: list | None = None,
+    given: float | None = None,
 ) -> Any:
     """
     Coerce a model ``sf_tvc`` covariate argument into a :class:`StepSchedule`
@@ -1023,7 +1022,7 @@ def segments_from(
     return starts, ends, Z
 
 
-def _in_model_order(item: Any, names: "list | None") -> Any:
+def _in_model_order(item: Any, names: list | None) -> Any:
     """``item``'s fixed covariates, in the order of the model's ``names``
     where both are named (the fixed columns come first in a model's
     names)."""
@@ -1048,7 +1047,7 @@ def _is_item(Z: Any) -> bool:
     return isinstance(Z, (ItemLifetime, ItemHistory))
 
 
-def item_covariate_path(item: Any, names: "list | None" = None) -> Any:
+def item_covariate_path(item: Any, names: list | None = None) -> Any:
     """
     An item record's covariates over time, in the column order of a model
     fitted on such items (``fit(SurpyvalData.from_items(...))``): its fixed

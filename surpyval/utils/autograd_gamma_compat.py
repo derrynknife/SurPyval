@@ -30,7 +30,8 @@ Replaces the abandoned autograd-gamma package. VJP approach:
   those analytic first ones.
 """
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import autograd.numpy as anp
 import numpy as np

@@ -165,7 +165,7 @@ def test_570_a_skipped_candidate_is_named_with_a_short_reason(monkeypatch):
     monkeypatch.setattr(sp.Gamma, "fit_from_surpyval_data", refuse)
     model, messages = _fit_best(WEIBULL_50, include=["Weibull", "Gamma"])
     assert model.dist.name == "Weibull"
-    (skipped,) = [m for m in messages if m.startswith("fit_best skipped")]
+    (skipped,) = (m for m in messages if m.startswith("fit_best skipped"))
     assert "Gamma (ValueError: Gamma cannot be fitted here.)" in skipped
     assert "\n" not in skipped and len(skipped) < 200
 

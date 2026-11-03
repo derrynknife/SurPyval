@@ -256,8 +256,8 @@ class BuckleyJamesModel(
     array([0.9444, 0.8113])
     """
 
-    feature_names: "list[str] | None" = None
-    formula: "str | None" = None
+    feature_names: list[str] | None = None
+    formula: str | None = None
     _model_spec: Any = None
     #: Covariates of the wrong width are refused by name (#657).
     _CHECKS_WIDTH = True
@@ -281,7 +281,7 @@ class BuckleyJamesModel(
     maximum: str = "not applicable"
     #: The fitted ``(Y, delta, Z, w)``, for ``bootstrap_ci`` and
     #: ``concordance``; ``None`` when not kept.
-    _data: "tuple | None"
+    _data: tuple | None
 
     @property
     def parameter_names(self) -> list[str]:
@@ -298,7 +298,7 @@ class BuckleyJamesModel(
         resid_surv: npt.NDArray,
         n_iter: int,
         converged: bool,
-        data: "tuple | None",
+        data: tuple | None,
     ) -> None:
         self.beta = np.asarray(beta, dtype=float)
         self.params = self.beta
@@ -323,7 +323,7 @@ class BuckleyJamesModel(
         Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
         return -(Z_arr.reshape(x.size, -1) @ self._coef())
 
-    def _concordance_data(self) -> "tuple | None":
+    def _concordance_data(self) -> tuple | None:
         if self._data is None:
             return None
         Y, delta, Z, w = self._data
@@ -384,7 +384,7 @@ class BuckleyJamesModel(
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "BuckleyJamesModel":
+    def from_dict(cls, model_dict: dict) -> BuckleyJamesModel:
         """
         Rebuild a Buckley-James model from a :meth:`to_dict` dictionary.
 
@@ -521,9 +521,9 @@ class BuckleyJamesModel(
     def summary(
         self,
         alpha_ci: float = 0.05,
-        n_boot: "int | None" = None,
+        n_boot: int | None = None,
         random_state: Any = None,
-    ) -> "pd.DataFrame":
+    ) -> pd.DataFrame:
         """
         The coefficient table (#662), in the layout of ``CoxPH``'s
         :meth:`summary`: each coefficient (in the accelerated-failure
@@ -570,7 +570,7 @@ class BuckleyJamesModel(
         )
         if n_boot is not None:
             bounds = self.bootstrap_ci(alpha_ci, n_boot, random_state)
-            level = "{:g}%".format(100 * (1 - alpha_ci))
+            level = f"{100 * (1 - alpha_ci):g}%"
             lower, upper = bounds[:, 0], bounds[:, 1]
             table["coef lower " + level] = lower
             table["coef upper " + level] = upper
@@ -698,8 +698,8 @@ class BuckleyJames_(FitterRepr):
         self,
         x: npt.ArrayLike,
         Z: npt.ArrayLike,
-        c: "npt.ArrayLike | None" = None,
-        n: "npt.ArrayLike | None" = None,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
         tol: float = 1e-5,
         max_iter: int = 100,
     ) -> BuckleyJamesModel:
@@ -834,10 +834,10 @@ class BuckleyJames_(FitterRepr):
         self,
         df: Any,
         x_col: str,
-        Z_cols: "str | list[str] | None" = None,
-        c_col: "str | None" = None,
-        n_col: "str | None" = None,
-        formula: "str | None" = None,
+        Z_cols: str | list[str] | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        formula: str | None = None,
         tol: float = 1e-5,
         max_iter: int = 100,
     ) -> BuckleyJamesModel:

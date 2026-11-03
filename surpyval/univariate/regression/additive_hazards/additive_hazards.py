@@ -218,11 +218,11 @@ class AdditiveHazardsModel(
     #: ``beta'Zbar(t)`` on each interval ``(x[j-1], x[j]]`` of the grid (the
     #: last value is held beyond it). ``None`` on a model restored from a
     #: dict written before it was stored; ``Hf`` then reads ``H0`` as a step.
-    drift: "npt.NDArray | None" = None
+    drift: npt.NDArray | None = None
     _A: npt.NDArray
     _b: npt.NDArray
     #: The rows fitted ``(x, c, n, Z)``, for ``concordance``; not saved.
-    _fit_data: "tuple | None" = None
+    _fit_data: tuple | None = None
     #: Lin and Ying's estimator solves its estimating equations, a linear
     #: system, rather than maximising a likelihood: ``"not applicable"``
     #: (one of ``MAXIMUM_STATES``, ``surpyval.utils.no_maximum``).
@@ -240,7 +240,7 @@ class AdditiveHazardsModel(
         Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
         return Z_arr.reshape(x.size, -1) @ self._coef()
 
-    def _concordance_data(self) -> "tuple | None":
+    def _concordance_data(self) -> tuple | None:
         return getattr(self, "_fit_data", None)
 
     _ALIASED_WHY = (
@@ -253,7 +253,7 @@ class AdditiveHazardsModel(
         "there is no likelihood to maximise"
     )
 
-    def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
+    def _prepare_Z(self, Z: npt.ArrayLike | pd.DataFrame) -> npt.NDArray:
         # One row per prediction, as the model's functions index it: a
         # 1-D Z of a one-covariate model is one value per row (#657), as
         # for the other models (it was read as one row of that width).
@@ -271,7 +271,7 @@ class AdditiveHazardsModel(
             + "\nParameters          :\n"
         )
         for name, p in zip(self.parameter_names, self.beta):
-            out += "   {}  :  {}\n".format(name, p)
+            out += f"   {name}  :  {p}\n"
         return out
 
     # -- serialisation -----------------------------------------------------
@@ -312,7 +312,7 @@ class AdditiveHazardsModel(
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "AdditiveHazardsModel":
+    def from_dict(cls, model_dict: dict) -> AdditiveHazardsModel:
         """
         Rebuild a Lin-Ying additive-hazards model from a :meth:`to_dict`
         dictionary.
@@ -349,7 +349,7 @@ class AdditiveHazardsModel(
         return idx
 
     def _h0_rate(
-        self, x: npt.NDArray, bandwidth: "float | None" = None
+        self, x: npt.NDArray, bandwidth: float | None = None
     ) -> npt.NDArray:
         # Kernel-smoothed (Ramlau-Hansen) baseline hazard *rate* from the
         # increments of the corrected baseline cumulative hazard H0 (the
@@ -390,7 +390,7 @@ class AdditiveHazardsModel(
         return H0
 
     def _cumulative_hazard(
-        self, x: npt.NDArray, Z: "npt.ArrayLike | pd.DataFrame"
+        self, x: npt.NDArray, Z: npt.ArrayLike | pd.DataFrame
     ) -> tuple[npt.NDArray, npt.NDArray]:
         """``(H*, H)`` at the times ``x``: the Lin-Ying estimate
         ``H(x | Z) = H0(x) + x beta'Z`` and its running maximum from time
@@ -434,8 +434,8 @@ class AdditiveHazardsModel(
     def hf(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
-        bandwidth: "float | None" = None,
+        Z: npt.ArrayLike | pd.DataFrame,
+        bandwidth: float | None = None,
     ) -> npt.NDArray:
         """
         Hazard rate ``h0(t) + beta'Z`` with a kernel-smoothed baseline,
@@ -463,7 +463,7 @@ class AdditiveHazardsModel(
 
     @keeps_query_shape
     def Hf(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self, x: npt.ArrayLike, Z: npt.ArrayLike | pd.DataFrame
     ) -> npt.NDArray:
         """
         Cumulative hazard at ``x`` for covariates ``Z`` (one row, or one
@@ -497,7 +497,7 @@ class AdditiveHazardsModel(
 
     @keeps_query_shape
     def sf(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self, x: npt.ArrayLike, Z: npt.ArrayLike | pd.DataFrame
     ) -> npt.NDArray:
         """Survival ``exp(-Hf(x, Z))``, in ``[0, 1]`` and non-increasing
         (see :meth:`Hf`)."""
@@ -505,21 +505,21 @@ class AdditiveHazardsModel(
 
     @keeps_query_shape
     def ff(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self, x: npt.ArrayLike, Z: npt.ArrayLike | pd.DataFrame
     ) -> npt.NDArray:
         """Failure probability ``1 - sf(x, Z)``."""
         return -np.expm1(-self.Hf(x, Z))
 
     @keeps_query_shape
     def df(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self, x: npt.ArrayLike, Z: npt.ArrayLike | pd.DataFrame
     ) -> npt.NDArray:
         """Density ``hf(x, Z) * sf(x, Z)``, with the smoothed hazard."""
         return self.hf(x, Z) * self.sf(x, Z)
 
     @keeps_query_shape
     def qf(
-        self, p: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self, p: npt.ArrayLike, Z: npt.ArrayLike | pd.DataFrame
     ) -> npt.NDArray:
         """
         The quantile function: the first time at which the predicted
@@ -573,7 +573,7 @@ class AdditiveHazardsModel(
             out = np.where(near, self.x[idx], out)
         return out
 
-    def summary(self, alpha_ci: float = 0.05) -> "pd.DataFrame":
+    def summary(self, alpha_ci: float = 0.05) -> pd.DataFrame:
         """
         The coefficient table (#662), in the layout of ``CoxPH``'s
         :meth:`summary`: each coefficient (an excess hazard per unit of
@@ -812,7 +812,7 @@ class AdditiveHazards_(FitterRepr):
     @takes_unit
     def fit_from_df(
         self,
-        df: "pd.DataFrame",
+        df: pd.DataFrame,
         x_col: str,
         Z_cols: str | list[str] | None = None,
         c_col: str | None = None,

@@ -39,7 +39,8 @@ acceleration factor is the Arrhenius relationship.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -109,7 +110,7 @@ def _increments(
 
 def _increments_and_stress(
     x: npt.ArrayLike, y: npt.ArrayLike, i: npt.ArrayLike, Z: Any
-) -> tuple[npt.NDArray, npt.NDArray, "npt.NDArray | None"]:
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray | None]:
     """
     :func:`_increments`, plus the stress in force over each increment.
 
@@ -172,7 +173,7 @@ def _starting_level(
     y: npt.ArrayLike,
     i: npt.ArrayLike,
     rate: float,
-    af: "Callable[[npt.NDArray], npt.NDArray] | None" = None,
+    af: Callable[[npt.NDArray], npt.NDArray] | None = None,
     Z: Any = None,
 ) -> float:
     """
@@ -197,13 +198,13 @@ def _starting_level(
 
 
 def _fitted_y0(
-    y0: "float | None",
+    y0: float | None,
     x: npt.ArrayLike,
     y: npt.ArrayLike,
     i: npt.ArrayLike,
     rate: float,
-    gamma: "npt.NDArray | None" = None,
-    z_ref: "npt.NDArray | None" = None,
+    gamma: npt.NDArray | None = None,
+    z_ref: npt.NDArray | None = None,
     Z: Any = None,
 ) -> float:
     """The fitted model's ``y0``: as given, or estimated from the readings
@@ -255,7 +256,7 @@ def _fit_from_df(
     x_col: str,
     y_col: str,
     i_col: str,
-    Z_cols: "str | list[str] | None",
+    Z_cols: str | list[str] | None,
     fit_kwargs: dict,
 ) -> Any:
     """The shared body of the process fitters' ``fit_from_df``: fit from
@@ -276,7 +277,7 @@ def _fit_from_df(
 
 
 def _minimise(
-    fun: Callable, x0: npt.NDArray, jac: "str | None" = None
+    fun: Callable, x0: npt.NDArray, jac: str | None = None
 ) -> OptimizeResult:
     """BFGS, falling back to (and polishing with) Nelder-Mead; the result
     (its ``x`` and ``fun``) for :func:`verified_search` to check.
@@ -307,8 +308,8 @@ def _covariance_of(
     neg_ll: Callable[[npt.NDArray], float],
     v_hat: npt.ArrayLike,
     jac: npt.ArrayLike,
-    step: "npt.NDArray | None" = None,
-) -> "npt.NDArray | None":
+    step: npt.NDArray | None = None,
+) -> npt.NDArray | None:
     """
     The covariance of a process model's parameters (#666): the inverse of
     the observed information, the numerical Hessian of ``neg_ll`` in the
@@ -333,7 +334,7 @@ def _covariance_of(
 
 
 def _wiener_neg_ll(
-    dt: npt.NDArray, dy: npt.NDArray, s: "npt.NDArray | None"
+    dt: npt.NDArray, dy: npt.NDArray, s: npt.NDArray | None
 ) -> Callable[[npt.NDArray], float]:
     """The Wiener process's negative log-likelihood of ``v = [mu, log
     sigma, g]`` (``g`` the scaled stress coefficients, none without
@@ -359,7 +360,7 @@ def _gamma_neg_ll(
     dy: npt.NDArray,
     zero: npt.NDArray,
     resolution: float,
-    s: "npt.NDArray | None",
+    s: npt.NDArray | None,
 ) -> Callable[[npt.NDArray], float]:
     """The gamma process's negative log-likelihood of ``v = [log alpha,
     log beta, g]`` (``g`` the scaled stress coefficients, none without
@@ -394,10 +395,10 @@ def _gamma_covariance(
     neg_ll: Callable[[npt.NDArray], float],
     alpha: float,
     beta: float,
-    g: "npt.NDArray | None" = None,
-    scale: "npt.NDArray | None" = None,
-    step: "npt.NDArray | None" = None,
-) -> "npt.NDArray | None":
+    g: npt.NDArray | None = None,
+    scale: npt.NDArray | None = None,
+    step: npt.NDArray | None = None,
+) -> npt.NDArray | None:
     """The covariance of a fitted gamma process's ``(alpha, beta,
     gamma)`` from ``neg_ll`` of ``v = [log alpha, log beta, g]``
     (:func:`_covariance_of`); ``gamma = g / scale``."""
@@ -492,7 +493,7 @@ def _quantised_log_likelihood(
     i: npt.ArrayLike,
     gauge: float,
     m: int,
-    start: "float | None",
+    start: float | None,
 ) -> Callable[[npt.NDArray, float], float]:
     """
     The log-likelihood of gauge-rounded gamma-process readings, as a
@@ -659,12 +660,12 @@ class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
     y0: float
     #: Stress coefficients and the reference stress, for a model fitted
     #: with ``Z``; both ``None`` otherwise.
-    gamma: "npt.NDArray | None"
-    stress_ref: "npt.NDArray | None"
+    gamma: npt.NDArray | None
+    stress_ref: npt.NDArray | None
     #: The covariate columns of a model fitted with ``fit_from_df``, by
     #: which a DataFrame ``Z`` is read; ``None`` for a model fitted from
     #: arrays.
-    Z_cols: "list[str] | None" = None
+    Z_cols: list[str] | None = None
     #: What the maximum-likelihood fit reached, one of ``MAXIMUM_STATES``
     #: (``surpyval.utils.no_maximum``), as its warnings say: set by the
     #: fit; "not applicable" for a model built from its parameters,
@@ -720,7 +721,7 @@ class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
             )
         return value
 
-    def _distance(self, y0: "float | None" = None) -> float:
+    def _distance(self, y0: float | None = None) -> float:
         """The distance to the threshold from ``y0`` (the model's own
         starting level when ``None``)."""
         start = self.y0 if y0 is None else self._checked_y0(y0)
@@ -819,7 +820,7 @@ class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
         refit = type(self).__name__.replace("Model", "") + ".fit_from_df"
         return covariates_by_name(Z, self.Z_cols, refit)
 
-    def _clock(self, Z: Any) -> "StressClock | None":
+    def _clock(self, Z: Any) -> StressClock | None:
         """The clock for stress ``Z``, validating the argument."""
         if not self.is_accelerated:
             if Z is not None:
@@ -862,19 +863,19 @@ class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
         )
 
     def _y0_repr(self) -> str:
-        return "Start level (y0)    : {:.6g}\n".format(self.y0)
+        return f"Start level (y0)    : {self.y0:.6g}\n"
 
     def _mean_label(self) -> str:
         mean = self._mean0(self._distance())
         if self.is_accelerated:
-            return "Mean life (ref.)    : {:.6g}".format(mean)
-        return "Mean time to failure: {:.6g}".format(mean)
+            return f"Mean life (ref.)    : {mean:.6g}"
+        return f"Mean time to failure: {mean:.6g}"
 
     # -- inference (#666) ---------------------------------------------------
 
     #: The covariance of the fitted parameters (see :meth:`covariance`),
     #: set by the fit; ``None`` for a model built from its parameters.
-    _covariance: "npt.NDArray | None" = None
+    _covariance: npt.NDArray | None = None
 
     @property
     def covariance_names(self) -> list[str]:
@@ -907,9 +908,7 @@ class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
             values += list(self.gamma)
         return np.asarray(values, dtype=float)
 
-    def _with_estimates(
-        self, values: npt.NDArray
-    ) -> "FirstPassageProcessModel":
+    def _with_estimates(self, values: npt.NDArray) -> FirstPassageProcessModel:
         """A copy of this model with the parameters ``values`` (in the
         order of :attr:`covariance_names`), for the delta method."""
         k = len(self.parameter_names)
@@ -1032,7 +1031,7 @@ class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         *,
-        y0: "float | None" = None,
+        y0: float | None = None,
     ) -> npt.NDArray:
         """
         Wald confidence bounds on the first-passage ``sf``, ``ff`` or
@@ -1212,13 +1211,13 @@ class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "FirstPassageProcessModel":
+    def from_dict(cls, model_dict: dict) -> FirstPassageProcessModel:
         """Rebuild a fitted process model from a :meth:`to_dict` dict (one
         saved before ``y0`` was stored starts at 0, as its model did)."""
         require_model_tag(
             model_dict,
             cls._model_tag,
-            "a {} model".format(cls._human_name),
+            f"a {cls._human_name} model",
         )
         model = cls(
             *(model_dict[name] for name in cls.parameter_names),
@@ -1241,7 +1240,7 @@ class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
 
     @keeps_query_shape
     def ff(
-        self, x: npt.ArrayLike, Z: Any = None, *, y0: "float | None" = None
+        self, x: npt.ArrayLike, Z: Any = None, *, y0: float | None = None
     ) -> npt.NDArray:
         """
         Failure (CDF) of the first-passage time to the threshold.
@@ -1265,7 +1264,7 @@ class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
 
     @keeps_query_shape
     def sf(
-        self, x: npt.ArrayLike, Z: Any = None, *, y0: "float | None" = None
+        self, x: npt.ArrayLike, Z: Any = None, *, y0: float | None = None
     ) -> npt.NDArray:
         """Survival function of the first-passage time."""
         clock = self._clock(Z)
@@ -1277,7 +1276,7 @@ class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
 
     @keeps_query_shape
     def df(
-        self, x: npt.ArrayLike, Z: Any = None, *, y0: "float | None" = None
+        self, x: npt.ArrayLike, Z: Any = None, *, y0: float | None = None
     ) -> npt.NDArray:
         """
         Density of the first-passage time. Under a stress path it is the
@@ -1298,7 +1297,7 @@ class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
 
     @keeps_query_shape
     def hf(
-        self, x: npt.ArrayLike, Z: Any = None, *, y0: "float | None" = None
+        self, x: npt.ArrayLike, Z: Any = None, *, y0: float | None = None
     ) -> npt.NDArray:
         """Hazard function of the first-passage time."""
         clock = self._clock(Z)
@@ -1326,7 +1325,7 @@ class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
 
     @keeps_query_shape
     def Hf(
-        self, x: npt.ArrayLike, Z: Any = None, *, y0: "float | None" = None
+        self, x: npt.ArrayLike, Z: Any = None, *, y0: float | None = None
     ) -> npt.NDArray:
         """Cumulative hazard of the first-passage time."""
         clock = self._clock(Z)
@@ -1342,7 +1341,7 @@ class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
 
     @keeps_query_shape
     def qf(
-        self, p: npt.ArrayLike, Z: Any = None, *, y0: "float | None" = None
+        self, p: npt.ArrayLike, Z: Any = None, *, y0: float | None = None
     ) -> npt.NDArray:
         """Quantile (inverse CDF) of the first-passage time (``nan`` for a
         missing probability or stress, and ``nan`` with a warning for a
@@ -1357,7 +1356,7 @@ class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
             out = clock.inverse(out)
         return out
 
-    def mean(self, Z: Any = None, *, y0: "float | None" = None) -> float:
+    def mean(self, Z: Any = None, *, y0: float | None = None) -> float:
         """
         Mean time to failure. At a constant stress it is the
         reference-stress mean divided by the acceleration factor; under a
@@ -1403,9 +1402,9 @@ class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
         self,
         size: int,
         Z: Any = None,
-        random_state: "int | None" = None,
+        random_state: int | None = None,
         *,
-        y0: "float | None" = None,
+        y0: float | None = None,
     ) -> npt.NDArray:
         """
         Draw first-passage (failure) times from the fitted model.
@@ -1780,8 +1779,8 @@ class WienerProcess(RemovedNames):
         threshold: float,
         Z: npt.ArrayLike | None = None,
         stress_ref: npt.ArrayLike | None = None,
-        y0: "float | None" = None,
-    ) -> "WienerProcessModel":
+        y0: float | None = None,
+    ) -> WienerProcessModel:
         """
         Fit a Wiener-process degradation model by maximum likelihood.
 
@@ -1958,9 +1957,9 @@ class WienerProcess(RemovedNames):
         x_col: str = "x",
         y_col: str = "y",
         i_col: str = "i",
-        Z_cols: "str | list[str] | None" = None,
+        Z_cols: str | list[str] | None = None,
         **fit_kwargs: Any,
-    ) -> "WienerProcessModel":
+    ) -> WienerProcessModel:
         """
         Fit a Wiener-process degradation model from the columns of a DataFrame.
 
@@ -2196,13 +2195,13 @@ class GammaProcess(RemovedNames):
         threshold: float,
         Z: npt.ArrayLike | None = None,
         stress_ref: npt.ArrayLike | None = None,
-        resolution: "float | None" = None,
-        gauge: "float | None" = None,
+        resolution: float | None = None,
+        gauge: float | None = None,
         rounding: str = "nearest",
         exact_start: bool = False,
         gauge_method: str = "exact",
-        y0: "float | None" = None,
-    ) -> "GammaProcessModel":
+        y0: float | None = None,
+    ) -> GammaProcessModel:
         """
         Fit a Gamma-process degradation model by maximum likelihood.
 
@@ -2441,9 +2440,9 @@ class GammaProcess(RemovedNames):
         data: tuple,
         threshold: float,
         stress_ref: Any,
-        resolution: "float | None",
-        y0: "float | None",
-    ) -> "GammaProcessModel":
+        resolution: float | None,
+        y0: float | None,
+    ) -> GammaProcessModel:
         """:meth:`fit` with a stress ``Z`` (and no gauge): ``alpha`` and
         the stress coefficients by maximum likelihood, ``beta`` profiled
         out, or all three jointly when zero increments are censored."""
@@ -2527,14 +2526,14 @@ class GammaProcess(RemovedNames):
         alpha: float,
         beta: float,
         threshold: float,
-        y0: "float | None",
+        y0: float | None,
         data: tuple,
         maximum: str,
-        gamma: "npt.NDArray | None" = None,
-        z_ref: "npt.NDArray | None" = None,
-        covariance: "npt.NDArray | None" = None,
-        fit_stats: "tuple[float, int] | None" = None,
-    ) -> "GammaProcessModel":
+        gamma: npt.NDArray | None = None,
+        z_ref: npt.NDArray | None = None,
+        covariance: npt.NDArray | None = None,
+        fit_stats: tuple[float, int] | None = None,
+    ) -> GammaProcessModel:
         """The fitted model, its ``y0`` as given or estimated from the
         ``data`` ``(x, y, i, Z)`` at the mean rate ``alpha / beta``, the
         ``maximum`` the fit reached, the parameter ``covariance`` and the
@@ -2561,9 +2560,9 @@ class GammaProcess(RemovedNames):
         x_col: str = "x",
         y_col: str = "y",
         i_col: str = "i",
-        Z_cols: "str | list[str] | None" = None,
+        Z_cols: str | list[str] | None = None,
         **fit_kwargs: Any,
-    ) -> "GammaProcessModel":
+    ) -> GammaProcessModel:
         """
         Fit a Gamma-process degradation model from the columns of a DataFrame.
 
@@ -2594,7 +2593,7 @@ class GammaProcess(RemovedNames):
 
     @staticmethod
     def _zero_increments(
-        dy: npt.NDArray, resolution: "float | None"
+        dy: npt.NDArray, resolution: float | None
     ) -> tuple[npt.NDArray, float]:
         """The zero increments (changes below the measurement resolution)
         and the resolution they are censored at."""
@@ -2621,7 +2620,7 @@ class GammaProcess(RemovedNames):
         dy: npt.NDArray,
         zero: npt.NDArray,
         resolution: float,
-        s: "npt.NDArray | None",
+        s: npt.NDArray | None,
         verify: bool = True,
     ) -> tuple[float, float, npt.NDArray, str]:
         """
@@ -2686,13 +2685,13 @@ class GammaProcess(RemovedNames):
         threshold: float,
         Z: Any,
         stress_ref: Any,
-        resolution: "float | None",
+        resolution: float | None,
         gauge: float,
         rounding: str,
         exact_start: bool,
         gauge_method: str,
-        y0: "float | None" = None,
-    ) -> "GammaProcessModel":
+        y0: float | None = None,
+    ) -> GammaProcessModel:
         """
         Maximum likelihood for readings rounded to a gauge of step
         ``gauge``: the probability that each unit's true path passes
@@ -2728,7 +2727,7 @@ class GammaProcess(RemovedNames):
             )
         check_option("rounding", rounding, ("nearest", "floor"))
         check_option("gauge_method", gauge_method, ("exact", "independent"))
-        s: "npt.NDArray | None" = None
+        s: npt.NDArray | None = None
         if Z is None:
             if stress_ref is not None:
                 raise ValueError("stress_ref is only meaningful with Z")

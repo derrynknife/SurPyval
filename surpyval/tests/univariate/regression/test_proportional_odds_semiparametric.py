@@ -256,8 +256,8 @@ def test_baseline_far_from_the_covariates_is_refused():
     # odds at Z = 0 are exp(beta'center) times those at the means.
     s = float(model.beta @ model.center)
     message = str(err.value)
-    assert "beta'center = {:.4g}".format(s) in message
-    assert "is exp({:.4g}) times".format(s) in message
+    assert f"beta'center = {s:.4g}" in message
+    assert f"is exp({s:.4g}) times" in message
 
 
 @pytest.mark.parametrize("flag", [-1, 2])

@@ -68,8 +68,9 @@ from __future__ import annotations
 
 import math
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass, field, fields
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -339,7 +340,7 @@ class InterventionTestResult:
         return encode_non_finite(out)
 
     @classmethod
-    def from_dict(cls, result_dict: dict) -> "InterventionTestResult":
+    def from_dict(cls, result_dict: dict) -> InterventionTestResult:
         """The result :meth:`to_dict` wrote.
 
         Examples
@@ -409,8 +410,8 @@ class InterventionTestResult:
                 self.power, self.target_ratio, self.power_required
             )
         )
-        lines.append("Detectable ratio : {:.4g}".format(self.detectable_ratio))
-        lines.append("Verdict          : {}".format(self.verdict))
+        lines.append(f"Detectable ratio : {self.detectable_ratio:.4g}")
+        lines.append(f"Verdict          : {self.verdict}")
         for note in self.notes:
             lines.append("  - " + note)
         return "\n".join(lines)
@@ -490,9 +491,7 @@ def _windows_from_dict(windows: Any, labels: list) -> dict:
                 "with start < end".format(item_label(q))
             )
         if np.any(array[1:, 0] < array[:-1, 1]):
-            raise ValueError(
-                "the windows of system {} overlap".format(item_label(q))
-            )
+            raise ValueError(f"the windows of system {item_label(q)} overlap")
         resolved[q] = [(float(s), float(e)) for s, e in array]
     return resolved
 
@@ -631,7 +630,7 @@ def _systems(
                     item_label(q),
                     ", ".join(number_text(t) for t in outside),
                     ", ".join(
-                        "({}, {}]".format(number_text(s), number_text(e))
+                        f"({number_text(s)}, {number_text(e)}]"
                         for s, e in spans[q]
                     ),
                 )
@@ -1212,25 +1211,25 @@ def _evidence(
 def _share(probability: float) -> str:
     if probability < 0.01:
         return "less than 1%"
-    return "{:.0%}".format(probability)
+    return f"{probability:.0%}"
 
 
 def _amount(value: float) -> str:
     """An exposure for a note: whole numbers from 100 up, else four
     significant figures."""
     if abs(value) >= 100:
-        return "{:,.0f}".format(value)
-    return "{:.4g}".format(value)
+        return f"{value:,.0f}"
+    return f"{value:.4g}"
 
 
 def _percent(ratio: float) -> str:
-    return "{:.0f}%".format(100 * abs(1 - ratio))
+    return f"{100 * abs(1 - ratio):.0f}%"
 
 
 def _notes(result: InterventionTestResult, dropped: int, hpp: bool) -> list:
     """What the result means, and what to do next."""
     notes = []
-    level = "{:g}%".format(100 * (1 - result.alpha_ci))
+    level = f"{100 * (1 - result.alpha_ci):g}%"
     lo, hi = result.ratio_cb
     if result.verdict == "decrease":
         notes.append(
@@ -1576,7 +1575,7 @@ def intervention_test(
         and 0 < power < 1
     ):
         raise ValueError(
-            "'power' must be strictly between 0 and 1; got {!r}".format(power)
+            f"'power' must be strictly between 0 and 1; got {power!r}"
         )
     systems = _systems(x, i, T, c, tl, windows, intervention)
     if not hpp:

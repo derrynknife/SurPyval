@@ -419,9 +419,9 @@ def _safe_schur(lik: _POLikelihood, der: dict) -> npt.NDArray:
 def _validate(
     x: npt.ArrayLike,
     Z: npt.ArrayLike,
-    c: "npt.ArrayLike | None",
-    n: "npt.ArrayLike | None",
-    tl: "npt.ArrayLike | None",
+    c: npt.ArrayLike | None,
+    n: npt.ArrayLike | None,
+    tl: npt.ArrayLike | None,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     x_arr, c_arr, n_arr, tl_arr, Z_arr = semi_parametric_inputs(
         x,
@@ -578,7 +578,7 @@ class ProportionalOddsModel(
     G0: npt.NDArray
     #: The covariate values the baseline is at: zeros by default, the
     #: ``n``-weighted covariate means for a fit with ``center=True``.
-    center: "npt.NDArray | None" = None
+    center: npt.NDArray | None = None
     #: Newton iterations of the profile likelihood.
     n_iter: int = 0
     #: What the fit reached, one of ``MAXIMUM_STATES``
@@ -587,9 +587,9 @@ class ProportionalOddsModel(
     maximum: str = "unknown"
     #: The rows fitted, ``{"x", "c", "n", "Z", "tl"}``, for
     #: ``concordance`` and the printout; not saved.
-    _fit_data: "dict | None" = None
+    _fit_data: dict | None = None
     #: The printout's data line of a restored model.
-    _data_summary: "str | None" = None
+    _data_summary: str | None = None
     #: The likelihood-ratio searches of ``param_cb(method="lr")`` over the
     #: profile likelihood, with what they have found, while the
     #: coefficients stay as they are; not pickled (``__getstate__``).
@@ -616,7 +616,7 @@ class ProportionalOddsModel(
         "combination of the others"
     )
 
-    def phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
+    def phi(self, Z: npt.ArrayLike | pd.DataFrame) -> npt.NDArray:
         """
         The survival odds multiplier :math:`e^{\\beta' (Z -
         \\text{center})}` of covariates ``Z`` (one row, or one per
@@ -642,7 +642,7 @@ class ProportionalOddsModel(
         Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
         return -self._log_phi(Z_arr.reshape(x.size, -1))
 
-    def _concordance_data(self) -> "tuple | None":
+    def _concordance_data(self) -> tuple | None:
         data = self._fit_data
         if data is None:
             return None
@@ -651,7 +651,7 @@ class ProportionalOddsModel(
     # -- the baseline at the query times -------------------------------
 
     def _parts(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame", grid: bool
+        self, x: npt.ArrayLike, Z: npt.ArrayLike | pd.DataFrame, grid: bool
     ) -> tuple:
         """``(log g, log G, log G_prev, eta)`` broadcast for the query:
         the log jump at the last baseline time at or before ``x``, the
@@ -685,7 +685,7 @@ class ProportionalOddsModel(
     def Hf(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         *,
         grid: bool = False,
     ) -> npt.NDArray:
@@ -705,7 +705,7 @@ class ProportionalOddsModel(
     def sf(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         *,
         grid: bool = False,
     ) -> npt.NDArray:
@@ -733,7 +733,7 @@ class ProportionalOddsModel(
     def ff(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         *,
         grid: bool = False,
     ) -> npt.NDArray:
@@ -747,7 +747,7 @@ class ProportionalOddsModel(
     def hf(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         *,
         grid: bool = False,
     ) -> npt.NDArray:
@@ -766,7 +766,7 @@ class ProportionalOddsModel(
     def df(
         self,
         x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         *,
         grid: bool = False,
     ) -> npt.NDArray:
@@ -791,7 +791,7 @@ class ProportionalOddsModel(
     def qf(
         self,
         p: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
+        Z: npt.ArrayLike | pd.DataFrame,
         *,
         grid: bool = False,
     ) -> npt.NDArray:
@@ -993,12 +993,12 @@ class ProportionalOddsModel(
         state.pop("_lr_search", None)
         return state
 
-    def _parameter_bounds(self) -> "list[tuple[None, None]]":
+    def _parameter_bounds(self) -> list[tuple[None, None]]:
         """The support of each parameter: the coefficients are
         unbounded, so their bounds are on the natural scale."""
         return [(None, None)] * len(self.params)
 
-    def summary(self, alpha_ci: float = 0.05) -> "pd.DataFrame":
+    def summary(self, alpha_ci: float = 0.05) -> pd.DataFrame:
         """
         The coefficient table: one row per covariate (named by
         ``feature_names`` for a model fitted with ``fit_from_df``), with
@@ -1110,7 +1110,7 @@ class ProportionalOddsModel(
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "ProportionalOddsModel":
+    def from_dict(cls, model_dict: dict) -> ProportionalOddsModel:
         """
         Rebuild a model from a :meth:`to_dict` dictionary.
 
@@ -1341,7 +1341,7 @@ class ProportionalOdds_(FitterRepr):
     @takes_unit
     def fit_from_df(
         self,
-        df: "pd.DataFrame",
+        df: pd.DataFrame,
         x_col: str,
         Z_cols: str | list[str] | None = None,
         c_col: str | None = None,

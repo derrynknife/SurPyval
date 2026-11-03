@@ -171,7 +171,7 @@ def record_from_dict(cls: Any, record_dict_: dict) -> Any:
     return cls(item, **kwargs)
 
 
-def dump(data_dict: dict, filepath: "str | os.PathLike | None") -> Any:
+def dump(data_dict: dict, filepath: str | os.PathLike | None) -> Any:
     """``data_dict`` as strict JSON text, or written to ``filepath``."""
     if filepath:
         Path(filepath).write_text(

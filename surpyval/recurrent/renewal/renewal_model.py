@@ -1,7 +1,8 @@
 import textwrap
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -155,17 +156,17 @@ class RepairTestResult:
         lines = [
             title,
             "=" * len(title),
-            "Model               : {}".format(self.kind),
+            f"Model               : {self.kind}",
             "Estimate            : {} = {:.4g}".format(
                 self.parameter, self.estimate
             ),
-            "Log-likelihood      : {:.6g}".format(self.log_likelihood),
+            f"Log-likelihood      : {self.log_likelihood:.6g}",
             "Tests               :",
         ]
         rows = []
         tests = [t for t in (self.perfect, self.minimal) if t is not None]
         for test in tests:
-            value = "{} = {:g}".format(test.parameter, test.value)
+            value = f"{test.parameter} = {test.value:g}"
             if not test.available:
                 rows.append([test.hypothesis, value, "nan", "nan", "nan", ""])
                 continue
@@ -173,9 +174,9 @@ class RepairTestResult:
                 [
                     test.hypothesis,
                     value,
-                    "{:.6g}".format(test.log_likelihood),
-                    "{:.4g}".format(test.statistic),
-                    "{:.4g}".format(test.p_value),
+                    f"{test.log_likelihood:.6g}",
+                    f"{test.statistic:.4g}",
+                    f"{test.p_value:.4g}",
                     "yes" if test.boundary else "no",
                 ]
             )
@@ -237,7 +238,7 @@ def _repair_conclusion(
         return "not available: " + perfect.message
     if unavailable:
         # One test only: say what it says, and that the other is missing.
-        (done,) = [t for t in (perfect, minimal) if t.available]
+        (done,) = (t for t in (perfect, minimal) if t.available)
         verdict = "rejected" if done.rejected(alpha_ci) else "not rejected"
         return "{} {} ({} test not available)".format(
             done.hypothesis, verdict, unavailable[0].hypothesis
@@ -259,7 +260,7 @@ def _repair_conclusion(
         )
     low, high = sorted((perfect.value, minimal.value))
     if low < estimate < high:
-        where = "between {} and minimal repair".format(label)
+        where = f"between {label} and minimal repair"
     elif (estimate - minimal.value) * (minimal.value - perfect.value) > 0:
         where = "worse than minimal repair"
     else:
@@ -788,7 +789,7 @@ class RenewalModel(
             "ARI": recurrent.ARI,
         }
         if family not in fitters:
-            raise ValueError("Unknown renewal family {!r}".format(family))
+            raise ValueError(f"Unknown renewal family {family!r}")
         out = cls._rebuild(fitters[family], family, model_dict)
         # A reloaded fit still says it was fitted by MLE (it carries no
         # likelihood, as a reloaded parametric model does not).
@@ -1318,7 +1319,7 @@ class RenewalModel(
         lines = [
             title,
             "=" * len(title),
-            "{:<20}: {}".format(self._dist_label, self.model.dist.name),
+            f"{self._dist_label:<20}: {self.model.dist.name}",
             "Fitted by           : "
             + (
                 "MLE"
@@ -1330,13 +1331,11 @@ class RenewalModel(
             lines.append(f"Kijima Type         : {self.kijima_type}")
         if getattr(self, "m", None) is not None:
             lines.append(f"Memory (m)          : {self.m}")
-        lines.append(
-            "{:<20}: {}".format(self._restoration_label, self.restoration)
-        )
+        lines.append(f"{self._restoration_label:<20}: {self.restoration}")
         if not hasattr(self, "_neg_ll"):
             # Built from parameters (or restored): no standard errors.
             param_string = "\n".join(
-                "{:>10}".format(name) + ": " + str(p)
+                f"{name:>10}" + ": " + str(p)
                 for p, name in zip(
                     self.model.params, self.model.dist.parameter_names
                 )
@@ -1401,7 +1400,7 @@ class RenewalModel(
             # The boundary is reported in the table (nan), not warned.
             warnings.simplefilter("ignore")
             cov = self.covariance()
-        level = "{:g}%".format(100 * (1 - alpha_ci))
+        level = f"{100 * (1 - alpha_ci):g}%"
         rows = []
         for k, (value, (lo, hi)) in enumerate(
             zip(self._mle, self._parameter_bounds())

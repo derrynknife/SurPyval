@@ -67,8 +67,8 @@ def _study(name, method, reps):
             if method == "wald":
                 q_lo[r], q_hi[r] = model.quantile_cb(0.1)
                 m_lo[r], m_hi[r] = model.mean_cb()
-    print("{} ({}): {:.0%} censored".format(name, method, censored))
-    label = "{} {}".format(name, method)
+    print(f"{name} ({method}): {censored:.0%} censored")
+    label = f"{name} {method}"
     check_coverage(p_lo, p_hi, np.asarray(params), 0.95, label + " param_cb")
     check_coverage(s_lo, s_hi, sf_true, 0.95, label + " cb(sf)")
     check_coverage(

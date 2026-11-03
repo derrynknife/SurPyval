@@ -171,4 +171,4 @@ def test_the_allowlist_only_shrinks() -> None:
     stale = sorted(ALLOWED - _private_imports())
     assert (
         not stale
-    ), "These imports are gone; remove them from ALLOWED: {}".format(stale)
+    ), f"These imports are gone; remove them from ALLOWED: {stale}"

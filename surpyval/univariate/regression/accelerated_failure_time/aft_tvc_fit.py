@@ -38,7 +38,8 @@ information (#555), not a finite-difference Hessian of
 from __future__ import annotations
 
 import functools
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import autograd.numpy as np
 import numpy
@@ -255,8 +256,8 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         xr: npt.ArrayLike,
         c: npt.ArrayLike,
         Z: npt.ArrayLike,
-        n: "npt.ArrayLike | None" = None,
-        fixed: "dict[str, float] | None" = None,
+        n: npt.ArrayLike | None = None,
+        fixed: dict[str, float] | None = None,
         center: bool = False,
     ) -> ParametricRegressionModel:
         """
@@ -303,8 +304,8 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         x: npt.ArrayLike,
         Z: npt.ArrayLike,
         c: npt.ArrayLike,
-        n: "npt.ArrayLike | None" = None,
-        fixed: "dict[str, float] | None" = None,
+        n: npt.ArrayLike | None = None,
+        fixed: dict[str, float] | None = None,
         center: bool = False,
     ) -> ParametricRegressionModel:
         """
@@ -327,11 +328,11 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         xl_col: str,
         xr_col: str,
         c_col: str,
-        Z_cols: "str | list[str] | None" = None,
-        n_col: "str | None" = None,
-        fixed: "dict[str, float] | None" = None,
+        Z_cols: str | list[str] | None = None,
+        n_col: str | None = None,
+        fixed: dict[str, float] | None = None,
         center: bool = False,
-        formula: "str | None" = None,
+        formula: str | None = None,
     ) -> ParametricRegressionModel:
         """
         ``fit_tvc`` from a start-stop ``DataFrame``. The covariates are
@@ -358,12 +359,12 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         df: Any,
         i_col: str,
         x_col: str,
-        Z_cols: "str | list[str] | None",
+        Z_cols: str | list[str] | None,
         c_col: str,
-        n_col: "str | None" = None,
-        fixed: "dict[str, float] | None" = None,
+        n_col: str | None = None,
+        fixed: dict[str, float] | None = None,
         center: bool = False,
-        formula: "str | None" = None,
+        formula: str | None = None,
     ) -> ParametricRegressionModel:
         """
         :meth:`fit_tvc_timeline` from a covariate-timeline ``DataFrame``,
@@ -422,7 +423,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         Z: npt.NDArray,
         ident: npt.NDArray,
         AFTTVCFitter: Any,
-        fixed: "dict[str, float] | None",
+        fixed: dict[str, float] | None,
         center: bool = False,
     ) -> ParametricRegressionModel:
         if fixed is None:
@@ -515,7 +516,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             group_and_sort=False,
         )
         edata.add_covariates(Z)
-        raw_neg_ll: "Callable | None" = None
+        raw_neg_ll: Callable | None = None
         if centring is not None:
             # The baseline moved to Z = 0 when that is representable, as
             # for the ordinary fit; the likelihood of the data as given is

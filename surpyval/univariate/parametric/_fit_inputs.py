@@ -446,7 +446,7 @@ class FitInputsMixin:
 
     def _abutting_limit(
         self, surv_data: SurpyvalData, offset: bool
-    ) -> "tuple[float, float, float, float] | None":
+    ) -> tuple[float, float, float, float] | None:
         """``(t, below, above, log_likelihood)`` where every row's set of
         failure times (``_row_sets``) reaches the one time ``t`` without
         all of them containing it: some end at ``t``, some start there,
@@ -1031,7 +1031,7 @@ class FitInputsMixin:
         return init
 
     def _offset_seed(
-        self, data: SurpyvalData, gamma: "float | None" = None
+        self, data: SurpyvalData, gamma: float | None = None
     ) -> npt.NDArray:
         """A start for an offset fit: the offset ``gamma`` (by default the
         fitter's starting offset, ``_offset_start``), then the
@@ -1064,7 +1064,7 @@ class FitInputsMixin:
 
     def _alternative_base_starts(
         self, data: SurpyvalData, offset: bool
-    ) -> "list[npt.NDArray]":
+    ) -> list[npt.NDArray]:
         """
         Further starting points for the distribution's own parameters
         (leading with the offset when ``offset``), tried in addition to the
@@ -1079,7 +1079,7 @@ class FitInputsMixin:
         zi: bool,
         lfp: bool,
         heuristic: str,
-    ) -> "list[npt.NDArray]":
+    ) -> list[npt.NDArray]:
         """
         Complete alternative starting vectors for a maximum-likelihood fit:
         the distribution's own alternatives, with the default's ``p`` /
@@ -1103,7 +1103,7 @@ class FitInputsMixin:
 
     def _lfp_failures_start(
         self, surv_data: SurpyvalData, offset: bool
-    ) -> "npt.NDArray | None":
+    ) -> npt.NDArray | None:
         """
         A limited-failure-population starting point from the failures
         alone: the distribution's own initialiser on the observed failures
@@ -1184,7 +1184,7 @@ class FitInputsMixin:
                 "Unknown parameter(s) {} in `fixed`{}; this model's "
                 "parameters are {}{}.".format(
                     unknown,
-                    " ({})".format(hint) if hint else "",
+                    f" ({hint})" if hint else "",
                     names,
                     "".join(
                         removed_parameter_note(k, [*names, model.lfp_name])

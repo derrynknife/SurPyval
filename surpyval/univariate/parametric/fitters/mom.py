@@ -1,6 +1,7 @@
 import warnings
+from collections.abc import Callable
 from math import comb
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ..parametric import Parametric

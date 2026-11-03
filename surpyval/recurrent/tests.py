@@ -148,13 +148,13 @@ class TrendTestResult:
             self.test,
             "=" * len(self.test),
             "Null hypothesis  : no trend (homogeneous Poisson process)",
-            "Alternative      : {a}".format(a=self.alternative),
-            "Statistic        : {s:.6g}".format(s=self.statistic),
+            f"Alternative      : {self.alternative}",
+            f"Statistic        : {self.statistic:.6g}",
         ]
         if self.dof is not None:
-            lines.append("DoF              : {d}".format(d=self.dof))
-        lines.append("p-value          : {p:.6g}".format(p=self.p_value))
-        lines.append("Direction        : {d}".format(d=self.direction))
+            lines.append(f"DoF              : {self.dof}")
+        lines.append(f"p-value          : {self.p_value:.6g}")
+        lines.append(f"Direction        : {self.direction}")
         if self.trend == "none":
             conclusion = "no trend detected (p >= {a:g})".format(
                 a=self.alpha_ci
@@ -163,7 +163,7 @@ class TrendTestResult:
             conclusion = "{t} (p < {a:g})".format(
                 t=self.trend, a=self.alpha_ci
             )
-        lines.append("Trend            : {c}".format(c=conclusion))
+        lines.append(f"Trend            : {conclusion}")
         return "\n".join(lines)
 
 

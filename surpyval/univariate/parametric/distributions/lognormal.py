@@ -475,7 +475,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         mu, sigma = norm_mod.params
         return mu, sigma
 
-    def _mom_offset(self, x: npt.NDArray) -> "npt.NDArray | None":
+    def _mom_offset(self, x: npt.NDArray) -> npt.NDArray | None:
         r"""The offset LogNormal matching the sample's mean, variance and
         third central moment exactly, as ``(gamma, mu, sigma)``; ``None``
         where no such model exists and the optimiser has to find the

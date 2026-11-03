@@ -20,7 +20,7 @@ DATA = Path(__file__).parent / "data"
 
 @lru_cache(maxsize=None)
 def _load(name):
-    with open(DATA / "{}.json".format(name)) as f:
+    with open(DATA / f"{name}.json") as f:
         return json.load(f)
 
 

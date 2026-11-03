@@ -73,7 +73,7 @@ def _relabelled(name, labels):
     return replace(case, events=events), data
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _fit(name, labels):
     case, data = _relabelled(name, labels)
     with quiet():

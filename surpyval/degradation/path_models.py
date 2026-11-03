@@ -128,7 +128,7 @@ class PathModel(ABC, RemovedNames):
 
     def _initial_guess(
         self, x: npt.NDArray, y: npt.NDArray
-    ) -> "npt.ArrayLike | list":
+    ) -> npt.ArrayLike | list:
         """One starting parameter vector, or a list of candidates."""
         raise NotImplementedError
 
@@ -165,7 +165,7 @@ class PathModel(ABC, RemovedNames):
         best_params, best_rss = self._least_squares(x, y, guesses)
         if best_params is None:
             raise ValueError(
-                "Could not fit the {} path model to the data".format(self.name)
+                f"Could not fit the {self.name} path model to the data"
             )
         return best_params
 
@@ -175,8 +175,8 @@ class PathModel(ABC, RemovedNames):
         y: npt.NDArray,
         guesses: npt.NDArray,
         path: Any = None,
-        stopped: "list | None" = None,
-    ) -> "tuple[npt.NDArray | None, float]":
+        stopped: list | None = None,
+    ) -> tuple[npt.NDArray | None, float]:
         """``(params, rss)``: the best least-squares fit of ``path`` (the
         model's own by default) from each of ``guesses``, ``(None, inf)``
         where none converges. A search ``path`` stops (by raising
@@ -199,7 +199,7 @@ class PathModel(ABC, RemovedNames):
         return best_params, best_rss
 
     def __repr__(self) -> str:
-        return "{} Degradation Path Model".format(self.name)
+        return f"{self.name} Degradation Path Model"
 
 
 class LinearPath_(PathModel):
@@ -262,7 +262,7 @@ class ExponentialPath_(PathModel):
 
     def _initial_guess(
         self, x: npt.NDArray, y: npt.NDArray
-    ) -> "npt.ArrayLike | list":
+    ) -> npt.ArrayLike | list:
         intercept, slope = _ols(x, np.log(y))
         return np.exp(intercept), slope
 
@@ -304,7 +304,7 @@ class PowerPath_(PathModel):
 
     def _initial_guess(
         self, x: npt.NDArray, y: npt.NDArray
-    ) -> "npt.ArrayLike | list":
+    ) -> npt.ArrayLike | list:
         intercept, slope = _ols(np.log(x), np.log(y))
         return np.exp(intercept), slope
 
@@ -473,7 +473,7 @@ class GompertzPath_(PathModel):
 
     def _initial_guess(
         self, x: npt.NDArray, y: npt.NDArray
-    ) -> "npt.ArrayLike | list":
+    ) -> npt.ArrayLike | list:
         # slightly above the largest measurement as the asymptote, then
         # -ln(y/a) decays exponentially: linearise on its logarithm
         a0 = 1.05 * y.max()
@@ -512,7 +512,7 @@ class OffsetExponentialPath_(PathModel):
 
     def _initial_guess(
         self, x: npt.NDArray, y: npt.NDArray
-    ) -> "npt.ArrayLike | list":
+    ) -> npt.ArrayLike | list:
         # for an offset outside the observed range, y - a0 has one
         # sign, so its magnitude linearises on a log scale; try an
         # offset on each side and keep the better fit
@@ -586,7 +586,7 @@ class OffsetExponentialPath_(PathModel):
                 params, rss = more, more_rss
         if params is None:
             raise ValueError(
-                "Could not fit the {} path model to the data".format(self.name)
+                f"Could not fit the {self.name} path model to the data"
             )
         return params
 
@@ -673,7 +673,7 @@ class MichaelisMentenPath_(PathModel):
 
     def _initial_guess(
         self, x: npt.NDArray, y: npt.NDArray
-    ) -> "npt.ArrayLike | list":
+    ) -> npt.ArrayLike | list:
         # Lineweaver-Burk linearisation: 1/y = 1/a + (b/a) / x
         intercept, slope = _ols(1.0 / x, 1.0 / y)
         if intercept > 0:
@@ -727,7 +727,7 @@ def path_model_key(path_model: PathModel) -> str:
     return path_model.name
 
 
-def get_path_model(path: "str | PathModel") -> PathModel:
+def get_path_model(path: str | PathModel) -> PathModel:
     """
     Resolve ``path`` to a :class:`PathModel` instance.
 

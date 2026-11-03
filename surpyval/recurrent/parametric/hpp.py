@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import functools
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 from autograd import hessian, jacobian
@@ -241,7 +242,7 @@ class HPP(CountingProcess):
         self,
         data: EventHistoryData,
         how: str = "MLE",
-        init: "ArrayLike | None" = None,
+        init: ArrayLike | None = None,
     ) -> Any:
         """
         Fits the HPP model to recurrent data and returns the fitted model.
@@ -331,14 +332,14 @@ class HPP(CountingProcess):
     def fit(
         self,
         x: ArrayLike,
-        i: "ArrayLike | None" = None,
-        c: "ArrayLike | None" = None,
-        n: "ArrayLike | None" = None,
-        t: "ArrayLike | None" = None,
-        tl: "ArrayLike | None" = None,
-        tr: "ArrayLike | None" = None,
-        init: "ArrayLike | None" = None,
-        windows: "dict | None" = None,
+        i: ArrayLike | None = None,
+        c: ArrayLike | None = None,
+        n: ArrayLike | None = None,
+        t: ArrayLike | None = None,
+        tl: ArrayLike | None = None,
+        tr: ArrayLike | None = None,
+        init: ArrayLike | None = None,
+        windows: dict | None = None,
     ) -> Any:
         """
         Fits the HPP model to the provided data and returns the fitted model.

@@ -25,7 +25,8 @@ parameters whose second derivatives overflow (a WeibullPO's alpha at
 verified is walked.
 """
 
-from typing import Any, Callable, NamedTuple
+from collections.abc import Callable
+from typing import Any, NamedTuple
 
 import autograd.numpy as np
 import numpy.typing as npt

@@ -27,7 +27,7 @@ _REPR_COLUMNS = {
 
 
 def _level(alpha_ci: float) -> str:
-    return "{:g}%".format(100 * (1 - alpha_ci))
+    return f"{100 * (1 - alpha_ci):g}%"
 
 
 def coefficient_table(
@@ -74,9 +74,7 @@ def format_table(table: pd.DataFrame, columns: "list[str]") -> str:
     """``table``'s ``columns`` as text, four significant figures, each line
     indented; a column that is all ``nan`` is left out."""
     shown = table[[c for c in columns if not table[c].isna().all()]]
-    text = shown.to_string(
-        float_format=lambda v: "{:.4g}".format(v), na_rep="nan"
-    )
+    text = shown.to_string(float_format=lambda v: f"{v:.4g}", na_rep="nan")
     return "\n".join("    " + line for line in text.splitlines())
 
 

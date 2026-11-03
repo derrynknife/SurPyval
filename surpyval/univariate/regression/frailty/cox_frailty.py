@@ -38,7 +38,8 @@ the baseline at its nonparametric maximum, up to a constant; at
 """
 
 import warnings
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt

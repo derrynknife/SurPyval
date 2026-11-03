@@ -50,7 +50,7 @@ def records_of(items: Any, what: str) -> list:
     )
 
 
-def covariates_as_Z(items: Any, feature_names: "list | None") -> Any:
+def covariates_as_Z(items: Any, feature_names: list | None) -> Any:
     """The covariates of ``items`` (a record, a list of records or a
     dataset) as a regression model's ``Z``: one row per record, by name
     where the covariates are named (a DataFrame, which needs a model
@@ -107,7 +107,7 @@ def covariates_as_Z(items: Any, feature_names: "list | None") -> Any:
     return rows[0] if len(records) == 1 and _is_record(items) else rows
 
 
-def _needs_names(feature_names: "list | None") -> None:
+def _needs_names(feature_names: list | None) -> None:
     """Covariates given by name need a model whose covariates have
     names, as a dict or DataFrame ``Z`` does."""
     if feature_names is None:
@@ -120,7 +120,7 @@ def _needs_names(feature_names: "list | None") -> None:
         )
 
 
-def _current_age(record: Any) -> "float | None":
+def _current_age(record: Any) -> float | None:
     """The age a still-running item was last seen at: a right censored
     lifetime's age, or a history's end of observation; None for an item
     that has failed (a lifetime observed, left or interval censored)."""
@@ -237,7 +237,7 @@ def _conditional(
     name: str,
     times: np.ndarray,
     k: int,
-    age: "float | None",
+    age: float | None,
     failed: bool,
     call: Any,
 ) -> np.ndarray:

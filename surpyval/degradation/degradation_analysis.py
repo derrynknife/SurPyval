@@ -162,13 +162,13 @@ class DegradationAnalysis_(FitterRepr):
         y: npt.ArrayLike,
         i: npt.ArrayLike,
         threshold: float,
-        path: "str | PathModel" = "linear",
+        path: str | PathModel = "linear",
         distribution: Any = Weibull,
         how: str = "MLE",
         population_method: str = "moments",
         Z: npt.ArrayLike | None = None,
-        links: "dict[str, str] | None" = None,
-        acceleration: "str | None" = None,
+        links: dict[str, str] | None = None,
+        acceleration: str | None = None,
         stress_ref: npt.ArrayLike | None = None,
     ) -> DegradationModel:
         """
@@ -329,7 +329,7 @@ class DegradationAnalysis_(FitterRepr):
             if Z is None or acceleration == "clock"
             else self._handle_Z(Z, i_arr, units)
         )
-        linked: "LinkedPathModel | None" = None
+        linked: LinkedPathModel | None = None
         if links is not None:
             if Z_units is None:
                 raise ValueError(
@@ -462,7 +462,7 @@ class DegradationAnalysis_(FitterRepr):
         threshold: float,
         population_method: str,
         i_arr: npt.NDArray,
-        acceleration: "str | None",
+        acceleration: str | None,
         stress_ref: Any,
     ) -> float:
         """Check ``fit``'s scalar options; the threshold as a float."""
@@ -502,8 +502,8 @@ class DegradationAnalysis_(FitterRepr):
         units: npt.NDArray,
         path_model: PathModel,
         threshold: float,
-        linked: "LinkedPathModel | None",
-        kept: "dict | None",
+        linked: LinkedPathModel | None,
+        kept: dict | None,
     ) -> _UnitFits:
         """Fit the path model to each unit, and each path's crossing.
 
@@ -598,7 +598,7 @@ class DegradationAnalysis_(FitterRepr):
         population: _Population,
         path_model: PathModel,
         y_arr: npt.NDArray,
-        clock_population: "tuple | None",
+        clock_population: tuple | None,
         diagnostics: dict,
     ) -> tuple[npt.NDArray, npt.NDArray, float]:
         """``(mean, cov, measurement_var)`` of the population by REML.
@@ -746,8 +746,8 @@ class DegradationAnalysis_(FitterRepr):
         how: str,
         pseudo_failure_times: npt.NDArray,
         c: npt.NDArray,
-        Z_units: "npt.NDArray | None",
-        refit: "dict | None",
+        Z_units: npt.NDArray | None,
+        refit: dict | None,
     ) -> Any:
         """The life model fitted to the pseudo failure times.
 
@@ -780,7 +780,7 @@ class DegradationAnalysis_(FitterRepr):
         events: npt.NDArray,
         threshold: float,
         y_arr: npt.NDArray,
-        x_by_unit: "list[npt.NDArray]",
+        x_by_unit: list[npt.NDArray],
         units: npt.NDArray,
     ) -> npt.NDArray:
         """
@@ -873,7 +873,7 @@ class DegradationAnalysis_(FitterRepr):
         path_model: PathModel,
         population_method: str,
     ) -> tuple[
-        npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, "tuple | None"
+        npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, tuple | None
     ]:
         """
         Estimate the accelerated clock of ``acceleration="clock"``.
@@ -1021,7 +1021,7 @@ class DegradationAnalysis_(FitterRepr):
         link_estimation_covs: list,
         measurement_var: float,
         population_method: str,
-        diagnostics: "dict | None" = None,
+        diagnostics: dict | None = None,
     ) -> tuple[npt.NDArray, npt.NDArray, float]:
         """
         Estimate the stress-conditional population of link-scale path
@@ -1096,7 +1096,7 @@ class DegradationAnalysis_(FitterRepr):
         y_arr: npt.NDArray,
         i_arr: npt.NDArray,
         units: npt.NDArray,
-    ) -> "tuple[PathModel, dict[str, float]]":
+    ) -> tuple[PathModel, dict[str, float]]:
         """
         Select the registered path model with the smallest AICc over
         all units' measurements.
@@ -1112,7 +1112,7 @@ class DegradationAnalysis_(FitterRepr):
         """
         n_total = len(x_arr)
         rss_floor = n_total * np.finfo(float).eps * float(np.mean(y_arr**2))
-        scores: "dict[str, float]" = {}
+        scores: dict[str, float] = {}
         for candidate in PATH_MODELS.values():
             n_params = len(candidate.parameter_names)
             k = n_params * len(units) + 1
@@ -1183,7 +1183,7 @@ class DegradationAnalysis_(FitterRepr):
         x_col: str = "x",
         y_col: str = "y",
         i_col: str = "i",
-        Z_cols: "str | list[str] | None" = None,
+        Z_cols: str | list[str] | None = None,
         **fit_kwargs: Any,
     ) -> DegradationModel:
         """

@@ -24,7 +24,8 @@ and are exposed as methods on ``ParametricRecurrenceModel``.
 """
 
 import warnings
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -220,7 +221,7 @@ class GoodnessOfFitResult:
                 title,
                 "=" * len(title),
                 "Null hypothesis  : events follow the fitted intensity",
-                "Statistic        : {s:.6g}".format(s=self.statistic),
+                f"Statistic        : {self.statistic:.6g}",
                 "p-value          : {p:.6g} ({n} bootstrap samples)".format(
                     p=self.p_value, n=self.n_boot
                 ),

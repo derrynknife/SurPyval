@@ -2,7 +2,7 @@ import inspect
 import itertools
 import types
 import warnings
-from typing import Callable
+from collections.abc import Callable
 
 import autograd.numpy as np
 import numpy as onp

@@ -214,8 +214,8 @@ def _handbook_example(fefs):
     x = [float(t) for t, _ in rows] + [400.0]
     modes = [m for _, m in rows] + [None]
     c = [0] * len(rows) + [1]
-    fef = {"BD{}".format(j + 1): d for j, d in enumerate(fefs)}
-    bc = ["BC{}".format(j) for j in range(17, 29)]
+    fef = {f"BD{j + 1}": d for j, d in enumerate(fefs)}
+    bc = [f"BC{j}" for j in range(17, 29)]
     return CrowAMSAA.projection(x, modes, fef, c=c, bc=bc)
 
 

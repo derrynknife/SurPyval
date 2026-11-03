@@ -108,11 +108,11 @@ COX_PH_METHODS = ["breslow", "efron", "exact", "kalbfleisch-prentice", "kp"]
 
 
 def validate_coxph(
-    x: "npt.ArrayLike | None",
-    c: "npt.ArrayLike | None",
-    n: "npt.ArrayLike | None",
-    Z: "npt.ArrayLike | None",
-    tl: "npt.ArrayLike | None",
+    x: npt.ArrayLike | None,
+    c: npt.ArrayLike | None,
+    n: npt.ArrayLike | None,
+    Z: npt.ArrayLike | None,
+    tl: npt.ArrayLike | None,
     method: str,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     check_option("tie_method", method, COX_PH_METHODS)
@@ -165,8 +165,8 @@ def validate_fine_gray_inputs(
     x: npt.ArrayLike,
     Z: npt.ArrayLike,
     e: npt.ArrayLike,
-    c: "npt.ArrayLike | None",
-    n: "npt.ArrayLike | None",
+    c: npt.ArrayLike | None,
+    n: npt.ArrayLike | None,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     # A missing event (None / NaN) marks a censored observation; if c is not
     # given it is derived from the events.

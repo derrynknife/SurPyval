@@ -125,7 +125,7 @@ def test_578_crow_demonstrated_mtbf_bounds(design):
             hits,
             reps,
             0.9,
-            "Crow {}-terminated {} bound".format(design, label),
+            f"Crow {design}-terminated {label} bound",
             side=side,
         )
 
@@ -176,7 +176,7 @@ def test_intervention_hpp_interval(method):
         ).ratio_cb
         hits += lo <= 0.5 <= hi
     coverage = _exact_interval_coverage(method, 0.5, 0.2, 50.0, 50.0)
-    print("{} analytic coverage {:.4f}".format(method, coverage))
+    print(f"{method} analytic coverage {coverage:.4f}")
     if method == "exact":
         assert coverage >= 0.95
     else:

@@ -64,7 +64,7 @@ def test_cause_specific_ph_test_size():
             hits,
             REPS,
             ALPHA,
-            "cause-specific {} {} {} size".format(cause, transform, name),
+            f"cause-specific {cause} {transform} {name} size",
         )
 
 
@@ -95,6 +95,4 @@ def test_fine_gray_ph_test_size(transform):
         p.append(res["global"]["p_value"])
         rejected += np.asarray(p) <= ALPHA
     for name, hits in zip(["z", "w", "GLOBAL"], rejected):
-        check_rate(
-            hits, REPS, ALPHA, "Fine-Gray {} {} size".format(transform, name)
-        )
+        check_rate(hits, REPS, ALPHA, f"Fine-Gray {transform} {name} size")
