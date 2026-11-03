@@ -16,6 +16,27 @@ Unreleased
   the others refitted. Aliased coefficients and those held at 0 are not
   counted; a coefficient held at another value is refused, saying what to
   do. The result is the dictionary the other regressions' tests return.
+
+**Changed.**
+
+- **``hess_inv`` is always the inverse Hessian.** In 0.26 a parametric
+  model fitted with weights ``w`` (``Weibull.fit(x, c, w=w)`` and the
+  others) held the robust (sandwich) covariance in ``hess_inv``. Now
+  ``hess_inv`` is the inverse Hessian of the weighted log-likelihood with
+  the weights as given (R's ``survreg(..., robust = TRUE)$naive.var``),
+  as its name says, and the robust covariance is ``covariance()`` (and
+  ``standard_errors()``), as it already was. Every bound, band, plot and
+  summary inside SurPyval reads ``covariance()``, so a weighted fit's
+  bounds are unchanged; unweighted fits are unchanged (the two matrices
+  are the same there). If you read ``hess_inv`` for a variance, read
+  ``covariance()`` instead: on a weighted fit ``hess_inv`` is now the
+  smaller, model-based matrix, which is not the variance of the estimate.
+  A weighted model's dictionary keeps the robust block under
+  ``"hess_inv"`` (so 0.26 still reads robust bounds from it) and the
+  inverse Hessian under ``"inverse_hessian"``; a weighted model saved by
+  0.26 loads with its robust bounds and no ``hess_inv`` (it did not save
+  the inverse Hessian).
+
 **Fixed.**
 
 - Likelihood-ratio bounds on a profile that flattens out towards a limit

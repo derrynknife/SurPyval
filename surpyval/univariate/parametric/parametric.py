@@ -496,6 +496,18 @@ class Parametric(
 
         :func:`~surpyval.fit_best.fit_best` ranks a candidate by its criterion
         only when this is ``"verified"``, unless nothing else fitted.
+    hess_inv : ndarray
+        The inverse Hessian of the negative log-likelihood at the fitted
+        parameters, the distribution's parameters' block (the curvature
+        of the likelihood, not a variance in general). For a fit with
+        weights ``w`` it is that of the weighted log-likelihood with the
+        weights as given (R's ``naive.var``), which is not the variance
+        of the estimate: the bounds use the robust covariance,
+        :meth:`covariance`. Without weights the two are the same matrix.
+        Use :meth:`covariance` (or :meth:`standard_errors`) for a
+        variance. Not set on a model built with ``from_params``, or on a
+        weighted model saved by v0.26, which stored the robust covariance
+        in its place.
 
     Examples
     --------
@@ -532,6 +544,9 @@ class Parametric(
     lfp_p: float
     f0: float
     support: tuple[float, float]
+    #: The inverse Hessian of the (weighted) negative log-likelihood, the
+    #: distribution's block; see the class docstring. Never the robust
+    #: covariance: bounds use ``covariance()``.
     hess_inv: npt.NDArray
     #: The covariance of every estimated parameter, ``covariance()``.
     _covariance: npt.NDArray | None = None
@@ -691,8 +706,18 @@ class Parametric(
 
         # Numbers, a k x k matrix: a hand-edited dict's strings or ragged
         # rows are named here, not in a numpy error later (#663).
-        if "hess_inv" in model_dict:
+        if "inverse_hessian" in model_dict:
+            # A weighted model saved since v0.27: its "hess_inv" entry is
+            # the robust block, for older readers (below).
+            out.hess_inv = dict_numbers(model_dict, "inverse_hessian", True)
+        elif (
+            "hess_inv" in model_dict and model_dict.get("weighted") is not True
+        ):
             out.hess_inv = dict_numbers(model_dict, "hess_inv", True)
+        # A weighted model saved by v0.26 stored the robust covariance as
+        # "hess_inv" and not the inverse Hessian, which cannot be rebuilt
+        # without the data: it has no hess_inv. Its bounds use its
+        # "covariance", as they did.
 
         # "cov_matrix" is the key of a dict written before v0.23.
         for key in ("covariance", "cov_matrix"):
@@ -825,7 +850,17 @@ class Parametric(
             out["gamma"] = 0.0
 
         if getattr(self, "hess_inv", None) is not None:
-            out["hess_inv"] = self.hess_inv.tolist()
+            if self.weighted and self._covariance is not None:
+                # The inverse Hessian under its own key; "hess_inv" holds
+                # the robust block, as v0.26 wrote it, so that a v0.26
+                # reader, whose param_cb reads "hess_inv", keeps the
+                # robust bounds.
+                out["inverse_hessian"] = np.asarray(self.hess_inv).tolist()
+                n_core = len(self.params)
+                robust = np.asarray(self._covariance)[:n_core, :n_core]
+                out["hess_inv"] = robust.tolist()
+            else:
+                out["hess_inv"] = self.hess_inv.tolist()
         if self._covariance is not None:
             # The key every model's dict stores it under (#605).
             out["covariance"] = np.asarray(self._covariance).tolist()
@@ -1082,6 +1117,9 @@ class Parametric(
         the model has them (a held parameter has a zero row and column). The
         inverse of the observed information at the maximum, carried to
         the parameters through their transforms; what Wald bounds use.
+        For a fit with weights ``w`` it is the robust (sandwich)
+        covariance, while ``hess_inv`` stays the inverse Hessian. Use
+        this, not ``hess_inv``, wherever a variance is wanted.
 
         Raises a ``ValueError`` where the model has none: one built with
         ``from_params``, one whose information was singular, or a
@@ -1099,6 +1137,28 @@ class Parametric(
         if self._covariance is None:
             raise self._no_covariance_error()
         return self._covariance
+
+    def _core_covariance(self) -> npt.NDArray:
+        """The covariance of the distribution's parameters, the block of
+        :meth:`covariance` that every Wald bound, band and plot uses: the
+        robust one for a fit with weights. A model restored from a dict
+        that stored only ``hess_inv`` (no ``"covariance"``) and was not
+        weighted uses it, as it is then the same matrix. Raises the
+        error of :meth:`covariance` where there is none."""
+        cov = self._covariance
+        if cov is not None:
+            n_core = len(self.params)
+            return np.asarray(cov)[:n_core, :n_core]
+        hess_inv = getattr(self, "hess_inv", None)
+        if hess_inv is None or self.weighted:
+            raise self._no_covariance_error()
+        return hess_inv
+
+    def _has_core_covariance(self) -> bool:
+        """Whether :meth:`_core_covariance` has a covariance to give."""
+        return self._covariance is not None or (
+            getattr(self, "hess_inv", None) is not None and not self.weighted
+        )
 
     def standard_errors(self) -> npt.NDArray:
         """
@@ -1264,10 +1324,7 @@ class Parametric(
             param_bounds: tuple[float | None, float | None] = (0, 1)
         else:
             p_hat = self.params[idx]
-            hess_inv = getattr(self, "hess_inv", None)
-            if hess_inv is None:
-                raise self._no_covariance_error()
-            var = hess_inv[idx, idx]
+            var = self._core_covariance()[idx, idx]
             param_bounds = self.dist.bounds[idx]
 
         check_option("bound", bound, BOUNDS)
@@ -3414,11 +3471,8 @@ class Parametric(
 
         cov = self._covariance
         if cov is None:
-            hess_inv = getattr(self, "hess_inv", None)
-            if hess_inv is None:
-                raise self._no_covariance_error()
             cov = np.zeros((len(phi_hat), len(phi_hat)))
-            cov[:n_core, :n_core] = np.copy(hess_inv)
+            cov[:n_core, :n_core] = np.copy(self._core_covariance())
 
         return _CBContext(phi_hat=phi_hat, cov=cov, n_core=n_core)
 
@@ -3916,11 +3970,7 @@ class Parametric(
         check_alpha_ci(alpha_ci)
         self._require_data("get_plot_data()")
         cb_func: Callable[[Any], Any] | None
-        if (
-            hasattr(self, "hess_inv")
-            and (self.method == "MLE")
-            and (self.hess_inv is not None)
-        ):
+        if self.method == "MLE" and self._has_core_covariance():
 
             def _cb_func(x_model: npt.NDArray) -> Any:
                 # (the plot's band is drawn as the bound is, and an offset

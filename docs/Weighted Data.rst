@@ -254,9 +254,13 @@ covariance is the sandwich (Huber, 1967; Binder, 1983)
     V = H^{-1} \Big( \sum_i n_i w_i^2 s_i s_i^\top \Big) H^{-1},
 
 as R's ``survreg(..., weights = w, robust = TRUE)`` computes it, and every
-Wald bound follows from it by the delta method. ``covariance()`` (and a
-parametric model's ``hess_inv``) hold it, and so a regression's
-``robust_covariance()`` and ``summary(robust=True)`` are the same; with
+Wald bound follows from it by the delta method. ``covariance()`` holds it,
+and so a regression's ``robust_covariance()`` and ``summary(robust=True)``
+are the same. A parametric model's ``hess_inv`` is :math:`H^{-1}` itself,
+the inverse Hessian of the weighted log-likelihood with the weights as given
+(R's ``naive.var``): it is not the variance of the estimate, and nothing in
+SurPyval uses it for one, so read ``covariance()`` or ``standard_errors()``
+for a variance; with
 ``cluster`` the meat sums each cluster's :math:`n_i w_i s_i` first, as
 ``survreg`` with ``cluster()`` does.
 
