@@ -236,7 +236,14 @@ class PenalisedFitMixin:
             covariates divided by their standard deviations
             (count-weighted, divisor ``N``, as glmnet), so the penalty
             does not depend on their units; the coefficients are reported
-            on the covariates' own scale either way.
+            on the covariates' own scale either way. The divisor is
+            ``N``, not ``N - 1`` (lifelines'), because the objective is
+            glmnet's, the mean negative log-likelihood plus the penalty;
+            lifelines' standard deviations are larger by
+            :math:`\\sqrt{N / (N - 1)}` (0.5% at ``N = 100``, 5% at ``N =
+            10``), so its penalty is that much stronger. To reproduce a
+            lifelines fit, divide the covariates by their ``ddof=1``
+            standard deviations yourself and pass ``standardise=False``.
         tol : float, optional
             The optimality tolerance on the gradient of the objective.
         w : array_like, optional

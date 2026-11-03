@@ -4242,6 +4242,30 @@ their standard deviations before the penalty is applied, so it does not
 depend on their units; the coefficients are reported in the covariates' own
 units. A baseline distribution's parameters are never penalised.
 
+**The standard deviation's divisor.** ``standardise=True`` divides each
+covariate by its standard deviation with divisor :math:`N`, the number of
+units (weighted by ``n``), as glmnet does, not :math:`N - 1`, as lifelines
+does. The objective is glmnet's, the *mean* negative log-likelihood plus
+the penalty, and glmnet's standardisation goes with it, so the Cox fits
+agree with glmnet's to six digits. The two differ by a factor of
+:math:`\sqrt{N / (N - 1)}` in each standard deviation: lifelines'
+standardised coefficients are that much larger, so the same ``penalizer``
+shrinks a little harder there (about 0.5% at :math:`N = 100`, 5% at
+:math:`N = 10`; it does not matter for large data). To compare with
+lifelines' ``CoxPHFitter(penalizer=...)``, standardise the covariates
+yourself with ``ddof=1`` and turn the package's standardisation off:
+
+.. code-block:: python
+
+    sd = rossi[cols].std(ddof=1)  # pandas' default divisor is N - 1
+    ridge_ll = CoxPH.fit_penalised(rossi['week'], rossi[cols] / sd,
+                                   c=rossi['censored'], penalizer=0.05,
+                                   standardise=False)
+    ridge_ll.params / sd.values   # in the covariates' own units
+
+(For ``l1_ratio > 0`` lifelines smooths the absolute value, so its lasso
+is close to, but not exactly, the lasso.)
+
 .. jupyter-execute::
 
     from surpyval import CoxPH
