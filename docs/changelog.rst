@@ -14,7 +14,9 @@ Unreleased
   unit drawn as never failing is censored at the last time in the data
   where its drawn censoring time is beyond it; and a refit that puts
   ``lfp_p`` or ``f0`` on its edge counts there, so an interval can reach
-  the edge. The conformance bound sweeps include them, and a calibration
+  the edge. The intervals are BCa, with the jackknife's acceleration (the
+  model refitted without each unit in turn); the plain and offset models'
+  bootstrap intervals are unchanged. The conformance bound sweeps include them, and a calibration
   study checks their coverage.
 - ``likelihood_ratio_test()`` on a distributional regression
   (``WeibullDistributional`` and the others), which 0.26 refused. With no

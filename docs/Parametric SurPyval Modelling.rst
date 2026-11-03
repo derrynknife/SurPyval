@@ -2364,11 +2364,13 @@ never fails), so their bounds are too.
 ``lfp_p`` and ``f0`` included: each refit is of the same model, to data
 drawn from the fit, and a refit whose ``lfp_p`` (``f0``) the data put on its
 edge counts at 1 (0). Where the estimate is on the edge the refits mostly
-are too, so the interval on ``lfp_p`` closes up to 1. On 200 simulated
-samples of 100 units each (``calibration/test_coverage_extra_parameters.py``)
-its 95% intervals covered 89% to 97% of the time and its 90% ones 83% to
-92%: somewhat short at 90%, where the likelihood-ratio bounds are the
-better choice.
+are too, so the interval on ``lfp_p`` closes up to 1. The intervals are BCa:
+the bias-corrected percentiles of the refits, moved by an acceleration from
+the jackknife (the model refitted without each unit in turn). On 200
+simulated samples of 100 units each
+(``calibration/test_coverage_extra_parameters.py``) its 95% intervals
+covered 90% to 96.5% of the time and its 90% ones 83.5% to 92.5%, a little
+short at 90% for a zero-inflated model and for ``lfp_p`` near its edge.
 
 An offset model's region can reach the offset at the first failure, where its
 likelihood is unbounded (a shape below 1 puts infinite density there; see the

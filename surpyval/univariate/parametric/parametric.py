@@ -1179,7 +1179,9 @@ class Parametric(
           refits are fitted the same way (``lfp=``, ``zi=``), so ``lfp_p``
           and ``f0`` have bootstrap bounds too; a refit that puts either
           on its edge (1, 0) counts there, so the interval reaches the
-          edge when enough refits do.
+          edge when enough refits do. Their intervals are BCa: the
+          bias-corrected percentiles moved by an acceleration from the
+          jackknife (the model refitted without each unit in turn).
 
         The probability ``p`` of a ``Bernoulli``,
         ``FixedEventProbability`` or ``Binomial`` fit is bounded from its

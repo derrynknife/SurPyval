@@ -21,7 +21,11 @@ fixed parameters as fitted. The bounds are the bias-corrected percentile
 intervals of the refits (Efron 1987): the percentiles of the refits
 moved by the share of them below the estimate. The BCa acceleration the
 regressions add needs the covariance of every parameter, and an offset
-fit's leaves the offset out.
+fit's leaves the offset out. A limited-failure or zero-inflated model's
+intervals are BCa (#286), with the jackknife's acceleration: the model
+refitted without each unit in turn (a row of count ``n`` is ``n`` units),
+which needs no covariance and so holds with ``lfp_p`` or ``f0`` on its
+edge.
 
 On #645's design (a 3-parameter Weibull of shape 1.5, 30 failures) the
 90% bound on the B1 life covered 63-64% over two runs of 100 samples,
@@ -56,6 +60,115 @@ from surpyval.utils.warnings import caller_stacklevel
 
 
 @dataclass
+class Jackknife:
+    """The leave-one-unit-out refits of a model, for the acceleration of
+    its BCa intervals: one per distinct row of the data (a row of count
+    ``n`` stands for ``n`` units, each of whose removal is the same refit,
+    so it is weighted ``n``)."""
+
+    models: list
+    #: Each refit's :func:`_point`, an edge read as for the bootstrap.
+    values: npt.NDArray
+    #: The number of units each refit stands for.
+    weights: npt.NDArray
+
+
+def jackknife_acceleration(
+    values: npt.NDArray, weights: npt.NDArray
+) -> npt.NDArray:
+    """Efron's (1987) jackknife acceleration of each column of ``values``
+    (one leave-one-out estimate per row, each standing for ``weights``
+    units): ``sum w d^3 / (6 (sum w d^2)^1.5)`` with ``d`` the mean of the
+    estimates less each. 0 (the bias-corrected percentile interval) for a
+    column with no spread (every estimate on an edge) or a value that is
+    not finite.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.univariate.parametric._bootstrap import (
+    ...     jackknife_acceleration,
+    ... )
+    >>> v = np.array([[1.0], [2.0], [6.0]])
+    >>> jackknife_acceleration(v, np.ones(3)).round(4)
+    array([-0.0573])
+    """
+    values = np.asarray(values, dtype=float)
+    w = np.asarray(weights, dtype=float)[:, None]
+    if values.shape[0] < 3:
+        return np.zeros(values.shape[1:])
+    with np.errstate(all="ignore"):
+        d = np.sum(w * values, axis=0) / np.sum(w) - values
+        m2 = np.sum(w * d**2, axis=0)
+        a = np.sum(w * d**3, axis=0) / (6.0 * m2**1.5)
+    return np.where(np.isfinite(a), a, 0.0)
+
+
+def jackknife(model: Any, fits: Refits) -> Jackknife:
+    """The leave-one-unit-out refits of a limited-failure or zero-inflated
+    ``model`` (kept on ``fits``): the data less one unit of each distinct
+    row in turn, refitted with the model's own options from its
+    estimate; a refit that raises is left out."""
+    if fits.jack is not None:
+        return fits.jack
+    data = model.data
+    x = np.asarray(data["x"], dtype=float)
+    if x.ndim == 2:
+        x = x[:, 0]
+    c = np.asarray(data["c"], dtype=int)
+    n = np.asarray(data["n"], dtype=float)
+    t = np.asarray(data["t"], dtype=float).reshape(-1, 2)
+    truncated = bool(np.isfinite(t).any())
+    fixed, init = _refit_options(model)
+    models, values, weights = [], [], []
+    for i in range(x.size):
+        n_i = n.copy()
+        n_i[i] -= 1
+        keep = n_i > 0
+        kwargs: dict[str, Any] = {"c": c[keep], "n": n_i[keep]}
+        if truncated:
+            kwargs["tl"] = t[keep, 0]
+            kwargs["tr"] = t[keep, 1]
+        try:
+            with warnings.catch_warnings(), quiet_maximum_warnings():
+                warnings.simplefilter("ignore")
+                refit = model.dist.fit(
+                    x[keep],
+                    offset=model.offset,
+                    lfp=model.lfp,
+                    zi=model.zi,
+                    fixed=fixed,
+                    init=init,
+                    **kwargs,
+                )
+        except REFIT_ERRORS:
+            continue
+        units = np.repeat(np.arange(keep.sum()), n_i[keep].astype(int))
+        edge_kwargs = (
+            {"tl": t[keep, 0][units], "tr": t[keep, 1][units]}
+            if truncated
+            else {}
+        )
+        models.append(refit)
+        values.append(
+            _at_edges(
+                refit,
+                _point(refit),
+                x[keep][units],
+                c[keep][units],
+                edge_kwargs,
+            )
+        )
+        weights.append(n[i])
+    fits.jack = Jackknife(
+        models=models,
+        values=np.array(values, dtype=float).reshape(len(values), -1),
+        weights=np.array(weights, dtype=float),
+    )
+    return fits.jack
+
+
+@dataclass
 class Refits:
     """The refits of one bootstrap of a model: each refit's offset and
     parameters, and how many of the ``n_boot`` refits reached no
@@ -77,6 +190,9 @@ class Refits:
     #: ``point`` with an ``lfp_p`` or ``f0`` the data put on its edge
     #: there, as the refits' ``values`` are (:func:`_at_edges`).
     estimate: tuple = ()
+    #: A limited-failure or zero-inflated model's jackknife, for the BCa
+    #: acceleration (:func:`jackknife`): built on first use.
+    jack: Jackknife | None = None
 
     def warn(self) -> None:
         """One warning: that the model itself has no finite maximum, or
@@ -278,26 +394,13 @@ def _fixed(model: Any) -> dict:
     }
 
 
-def _draw(
-    model: Any,
-    design: _UnivariateDesign,
-    point: tuple,
-    n_boot: int,
-    rng: np.random.Generator,
-) -> Refits:
-    """``n_boot`` resamples simulated from ``model`` with ``design`` and
-    refitted (see the module docstring)."""
-    with np.errstate(all="ignore"):
-        F_lo = np.where(
-            np.isfinite(design.tl), model.ff(np.nan_to_num(design.tl)), 0.0
-        )
-        F_hi = np.where(
-            np.isfinite(design.tr), model.ff(np.nan_to_num(design.tr)), 1.0
-        )
+def _refit_options(model: Any) -> tuple:
+    """``(fixed, init)`` of a refit of ``model``: its user-fixed
+    parameters, and a start at its estimate in the fit's own order (the
+    offset, the parameters, then ``lfp_p`` and ``f0``, each of those kept
+    inside (0, 1) as the fit's default start is: on the edge the
+    optimiser's transform of it is infinite)."""
     fixed = _fixed(model) or None
-    # The fit's own order: the offset, the parameters, then lfp_p and f0,
-    # each of those kept inside (0, 1) as the fit's default start is (on
-    # the edge, the optimiser's transform of it is infinite).
     extras = list(_point(model)[1 + len(model.params) :])
     init = np.array(
         ([model.gamma] if model.offset else [])
@@ -314,6 +417,26 @@ def _draw(
             if name not in fixed
         ]
         init = init[free]
+    return fixed, init
+
+
+def _draw(
+    model: Any,
+    design: _UnivariateDesign,
+    point: tuple,
+    n_boot: int,
+    rng: np.random.Generator,
+) -> Refits:
+    """``n_boot`` resamples simulated from ``model`` with ``design`` and
+    refitted (see the module docstring)."""
+    with np.errstate(all="ignore"):
+        F_lo = np.where(
+            np.isfinite(design.tl), model.ff(np.nan_to_num(design.tl)), 0.0
+        )
+        F_hi = np.where(
+            np.isfinite(design.tr), model.ff(np.nan_to_num(design.tr)), 1.0
+        )
+    fixed, init = _refit_options(model)
     # A unit a limited-failure model draws as never failing (``inf``) is
     # followed no longer than any unit was: where the censoring
     # distribution leaves it uncensored (past the last censoring time),
@@ -372,6 +495,13 @@ def _draw(
     )
 
 
+def _accelerated(model: Any) -> bool:
+    """Whether ``model``'s bootstrap intervals are BCa (a limited-failure
+    or zero-inflated model's, #286) rather than bias-corrected
+    percentile intervals (the plain and offset models', unchanged)."""
+    return bool(model.lfp or model.zi)
+
+
 def _bounds(
     model: Any,
     fits: Refits,
@@ -381,17 +511,26 @@ def _bounds(
 ) -> npt.NDArray:
     """The bias-corrected percentile bounds on ``value(m)``, a function
     of a model with one value per query point, over the refits about its
-    value at ``model``."""
+    value at ``model``; for a limited-failure or zero-inflated model the
+    BCa bounds, with the jackknife's acceleration (:func:`_accelerated`)."""
     est = np.asarray(value(model), dtype=float)
     shape = est.shape
     draws = np.empty((len(fits.models),) + shape)
     with np.errstate(all="ignore"):
         for i, refit in enumerate(fits.models):
             draws[i] = np.reshape(np.asarray(value(refit), dtype=float), shape)
+    a = np.zeros(est.size)
+    if _accelerated(model):
+        jack = jackknife(model, fits)
+        jv = np.empty((len(jack.models), est.size))
+        with np.errstate(all="ignore"):
+            for i, refit in enumerate(jack.models):
+                jv[i] = np.asarray(value(refit), dtype=float).reshape(-1)
+        a = jackknife_acceleration(jv, jack.weights)
     cb = bca_bounds(
         draws.reshape(len(draws), -1),
         est.reshape(-1),
-        np.zeros(est.size),
+        a,
         alpha_ci,
         bound,
     )
@@ -493,7 +632,9 @@ def param_cb_bootstrap(
     fits = refits(model, n_boot, random_state)
     fits.warn()
     est = np.array([fits.estimate[idx]])
-    cb = bca_bounds(
-        fits.values[:, idx][:, None], est, np.zeros(1), alpha_ci, bound
-    )
+    a = np.zeros(1)
+    if _accelerated(model):
+        jack = jackknife(model, fits)
+        a = jackknife_acceleration(jack.values[:, idx][:, None], jack.weights)
+    cb = bca_bounds(fits.values[:, idx][:, None], est, a, alpha_ci, bound)
     return np.atleast_1d(cb[0])

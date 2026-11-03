@@ -257,3 +257,41 @@ def test_286_unknown_parameters_name_the_extra_ones():
     m = _fit(W, *_lfp_data(1), lfp=True)
     with pytest.raises(ValueError, match="'lfp_p'"):
         m.param_cb("f0", method="bootstrap", n_boot=5)
+
+
+def test_286_lfp_and_zi_bounds_are_bca_with_the_jackknife_acceleration():
+    from surpyval.univariate.parametric import _bootstrap as boot
+    from surpyval.univariate.regression._bootstrap import bca_bounds
+
+    m = _fit(W, *_lfp_data(1), lfp=True)
+    q = _boot(m.quantile_cb, [0.1], random_state=5)
+    fits = m._bootstrap_refits[(40, 5)]
+    jack = fits.jack
+    # One leave-one-out refit per distinct row, weighted by its count.
+    assert len(jack.models) == np.asarray(m.data["x"]).shape[0]
+    jv = np.array([[j.qf(0.1)] for j in jack.models])
+    a = boot.jackknife_acceleration(jv, jack.weights)
+    assert a[0] != 0
+    draws = np.array([[r.qf(0.1)] for r in fits.models])
+    expected = bca_bounds(draws, np.array([m.qf(0.1)]), a, 0.05, "two-sided")
+    np.testing.assert_allclose(q, expected)
+
+
+def test_286_counts_weight_the_jackknife_as_repeated_rows():
+    from surpyval.univariate.parametric import _bootstrap as boot
+
+    v = np.array([[1.0], [2.0], [6.0]])
+    np.testing.assert_allclose(
+        boot.jackknife_acceleration(v, np.array([2.0, 1.0, 1.0])),
+        boot.jackknife_acceleration(
+            np.array([[1.0], [1.0], [2.0], [6.0]]), np.ones(4)
+        ),
+    )
+
+
+def test_286_plain_and_offset_bounds_stay_percentile(offset_model):
+    from surpyval.univariate.parametric import _bootstrap as boot
+
+    _boot(offset_model.quantile_cb, [0.1], random_state=11)
+    assert offset_model._bootstrap_refits[(40, 11)].jack is None
+    assert not boot._accelerated(offset_model)
