@@ -379,6 +379,42 @@ importance weights, where one unit stands for others that were not seen.
 The test ``surpyval/tests/univariate/regression/test_weighted_cox_ties.py``
 checks these numbers against SurPyval's fits and R's ``coxph``.
 
+Weights and counts in the log-rank test
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The log-rank test does **not** have the tie problem of the Cox model above.
+Its weighted observed-minus-expected numerator treats a tied death of
+weight 3 and three tied copies the same, for every weighting (log-rank,
+Fleming-Harrington, Gehan, Tarone-Ware, Peto-Peto): there is no
+shrinking risk set. What differs is how sure the test says it is.
+
+- **Counts** ``n`` give exactly the answer of writing each row out ``n``
+  times, statistic, degrees of freedom and p-value alike (checked to
+  rounding, ``1e-10``, with no ties, heavy ties and late entry,
+  ``pairwise_logrank`` too). The classical (hypergeometric) variance treats
+  them as that many units seen, which is right for counts.
+- **Weights** ``w`` give the same numerator but a larger variance, so a
+  smaller statistic and a larger p-value than the copies. The variance is
+  the robust one, which counts the *units*, not the weights: ten copies of
+  a unit are ten independent pieces of evidence, but one unit with weight
+  10 is still one. Roughly, the statistic is the copies' times the
+  effective sample size over the total weight,
+  :math:`(\sum w)^2 / \sum w^2 \,/\, \sum w`, so it is lower the more
+  uneven the weights (about a third of the copies' statistic for weights
+  spread evenly over 1 to 4). Multiplying the weights by a constant changes
+  nothing, as it should.
+
+Use ``n`` for repeated identical units and ``w`` for sampling or inverse
+probability weights, where a unit stands for others that were not seen:
+treating those as copies would claim evidence nobody collected. Two smaller
+differences: a test with all weights equal to 1 is the robust test, which
+differs a little from the classical test without ``w`` (more with tied
+times, as the classical variance has a tie correction the robust one has
+not), and Gehan's, Tarone-Ware's and Peto-Peto's weights use the numbers at
+risk scaled to a mean weight of 1 per unit, so they too do not match the
+copies. Gray's test for competing risks takes counts ``n`` only, and they
+equal copies.
+
 Translating from lifelines and R
 --------------------------------
 
