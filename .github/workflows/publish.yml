@@ -52,6 +52,9 @@ jobs:
   build:
     name: Build distribution
     runs-on: ubuntu-latest
+    # Each job takes a minute or two; a limit makes one that hangs (a
+    # stalled upload, say) fail rather than run for GitHub's six hours.
+    timeout-minutes: 15
     permissions:
       contents: read
       checks: read
@@ -162,6 +165,7 @@ jobs:
     needs: build
     if: github.event_name == 'push' || !inputs.dry_run
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment:
       name: pypi
       url: https://pypi.org/p/surpyval
@@ -184,6 +188,7 @@ jobs:
     # failed publish leaves no tag.
     if: github.event_name == 'workflow_dispatch' && !inputs.dry_run && needs.publish.result == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
