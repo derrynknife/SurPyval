@@ -288,6 +288,15 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-03
 
+### Penalised regression: one shared helper and model mixin
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Every `fit_penalised` goes through `_penalised.penalised_fit(objective, Z, weights, coef_index, penalizer, l1_ratio, standardise, tol)`, where `objective(scale, N)` builds the model's own likelihood on the covariates divided by `scale` (over `N`), rather than a helper that rescales the coefficients of a likelihood on the raw covariates. | proposed | Each model divides its covariates where its data are built (a Cox fit centres them first); taking the builder keeps the existing fits bit-exact and lets each model keep its own data preparation. | done |
+| The fit helper takes the rows' `weights` (today the counts `n`), so sampling weights can be passed in later without a new signature. | proposed | — | done |
+| A model that gives no Hessian is solved with one by central finite differences of its gradient; the solver's result says `hessian="finite differences"`. | proposed | The Newton polish, the check of the minimum and the effective degrees of freedom all need second derivatives. | done |
+| The model side is `PenalisedModelMixin` (the `penalty`, the refusals, the effective df of `aic`/`bic`, the `to_dict` entry and the printout line), on both regression model classes. | proposed | — | done |
+
 ### Likelihood-ratio bounds on flat profiles
 
 | Decision | By | Reason | Status |

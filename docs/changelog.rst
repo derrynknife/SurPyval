@@ -127,6 +127,17 @@ Unreleased
   that made the singular step look estimable. The estimate now stops
   before that step, as it was meant to.
 
+**Internal.**
+
+- The penalised fits (``fit_penalised`` on ``CoxPH`` and on the
+  parametric PH, AFT and PO families) now go through one shared fit
+  helper and one model mixin, so further models can take a penalty
+  without a copy of the checks, the standardisation, the refusals of
+  inference, the information criteria's effective degrees of freedom,
+  saving and the printout. Every penalised result, warning and refusal
+  is unchanged to the last bit. The solver now also takes a model with
+  no Hessian, using finite differences of its gradient, and says so.
+
 v0.26 (31 October 2026)
 -----------------------
 

@@ -668,11 +668,9 @@ CHECK_PH_ADVICE = (
 def refuse_penalised(model: "SemiParametricRegressionModel") -> None:
     """Refuse the proportional-hazards test of a penalised fit, as
     ``diagnose()`` does: a penalised model gives no p-values."""
-    penalty = getattr(model, "penalty", None)
-    if penalty is not None:
-        from .._penalised import no_inference_error
+    from .._penalised import refuse_if_penalised
 
-        raise no_inference_error(penalty)
+    refuse_if_penalised(model)
 
 
 def zph_score_test(

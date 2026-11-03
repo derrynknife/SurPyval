@@ -209,19 +209,48 @@ class PenalisedResult(NamedTuple):
     """The solver's answer: ``x`` the parameters (in the solver's space),
     ``fun`` the penalised objective there, ``verified`` whether the
     optimality conditions hold, and ``violation`` the largest breach of
-    them (0 where none), and ``effective_df`` (see :class:`Penalty`)."""
+    them (0 where none), ``effective_df`` (see :class:`Penalty`) and
+    ``hessian``, where the second derivatives came from: ``"exact"`` (the
+    model's own) or ``"finite differences"`` (of its gradient, for a
+    model that gives none)."""
 
     x: npt.NDArray
     fun: float
     verified: bool
     violation: float
     effective_df: float
+    hessian: str = "exact"
+
+
+def finite_difference_hessian(
+    grad: Callable[[npt.NDArray], npt.NDArray],
+) -> Callable[[npt.NDArray], npt.NDArray]:
+    """The Hessian of a function with gradient ``grad`` by central
+    differences of the gradient (step ``1e-5`` relative to each entry,
+    about the cube root of the machine epsilon), symmetrised."""
+
+    def hess(theta: npt.NDArray) -> npt.NDArray:
+        theta = np.asarray(theta, dtype=float)
+        k = theta.size
+        H = np.empty((k, k))
+        for j in range(k):
+            h = 1e-5 * max(1.0, abs(float(theta[j])))
+            up, down = theta.copy(), theta.copy()
+            up[j] += h
+            down[j] -= h
+            H[:, j] = (
+                np.asarray(grad(up), dtype=float)
+                - np.asarray(grad(down), dtype=float)
+            ) / (up[j] - down[j])
+        return 0.5 * (H + H.T)
+
+    return hess
 
 
 def solve_penalised(
     fun: Callable[[npt.NDArray], float],
     grad: Callable[[npt.NDArray], npt.NDArray],
-    hess: Callable[[npt.NDArray], npt.NDArray],
+    hess: Callable[[npt.NDArray], npt.NDArray] | None,
     start: npt.NDArray,
     penalised: npt.NDArray,
     l1: npt.NDArray,
@@ -233,8 +262,15 @@ def solve_penalised(
     ``fun`` (with its gradient and Hessian) is the smooth part, already
     divided by ``N``; ``b = theta[penalised]`` are the penalised entries,
     each with its ``l1`` and ``l2`` weight; the others are free. ``tol``
-    is the optimality tolerance on the gradient.
+    is the optimality tolerance on the gradient. ``hess`` ``None`` takes
+    the Hessian (for the Newton polish, the check of the minimum and the
+    effective degrees of freedom) by finite differences of ``grad``, and
+    the result says so (``hessian``).
     """
+    hessian = "exact"
+    if hess is None:
+        hess = finite_difference_hessian(grad)
+        hessian = "finite differences"
     start = np.asarray(start, dtype=float)
     pen = np.asarray(penalised, dtype=int)
     split = pen[l1 > 0]  # the entries written as u - v
@@ -336,7 +372,122 @@ def solve_penalised(
             )
         except np.linalg.LinAlgError:
             df = float("nan")
-    return PenalisedResult(theta, total(theta), verified, violation, df)
+    return PenalisedResult(
+        theta, total(theta), verified, violation, df, hessian
+    )
+
+
+class PenalisedObjective(NamedTuple):
+    """A model's smooth objective for :func:`penalised_fit`, in the
+    solver's parameters with the covariates divided by their scale:
+    ``fun`` (the negative log-likelihood over ``N``), its gradient
+    ``grad``, its Hessian ``hess`` (``None`` for finite differences of
+    ``grad``) and the ``start`` of the search."""
+
+    fun: Callable[[npt.NDArray], float]
+    grad: Callable[[npt.NDArray], npt.NDArray]
+    hess: Callable[[npt.NDArray], npt.NDArray] | None
+    start: npt.NDArray
+
+
+class PenalisedFit(NamedTuple):
+    """What :func:`penalised_fit` found: the solver's ``result``, the
+    ``coefficients`` on the covariates' own scale, the :class:`Penalty`
+    and ``N``, the number of units the objective was divided by."""
+
+    result: PenalisedResult
+    coefficients: npt.NDArray
+    penalty: Penalty
+    N: float
+
+
+def penalised_fit(
+    objective: Callable[[npt.NDArray, float], PenalisedObjective],
+    Z: npt.NDArray,
+    weights: npt.NDArray,
+    coef_index: npt.ArrayLike,
+    penalizer: Any,
+    l1_ratio: Any,
+    standardise: Any,
+    tol: float,
+) -> PenalisedFit:
+    """The penalised fit every model's ``fit_penalised`` goes through.
+
+    It checks the ``penalizer``, ``l1_ratio`` and ``standardise``, takes
+    the scale of each column of ``Z`` (:func:`covariate_scale`, weighted
+    by ``weights``, the rows' counts) and ``N``, the sum of the
+    ``weights``; builds the model's smooth objective with
+    ``objective(scale, N)`` (on the covariates divided by ``scale``,
+    divided by ``N``); minimises it with the penalty on the entries
+    ``coef_index`` (one per column of ``Z``) by :func:`solve_penalised`;
+    and maps those coefficients back to the covariates' own scale,
+    ``b = b_std / scale``.
+    """
+    Z = np.asarray(Z, dtype=float)
+    p = Z.shape[1]
+    pen, a = check_penalty(penalizer, l1_ratio, standardise, p)
+    scale = covariate_scale(Z, weights, standardise)
+    N = float(np.sum(weights))
+    obj = objective(scale, N)
+    l1, l2 = Penalty(pen, a, bool(standardise), scale).weights()
+    index = np.asarray(coef_index, dtype=int)
+    with np.errstate(all="ignore"):
+        res = solve_penalised(
+            obj.fun, obj.grad, obj.hess, obj.start, index, l1, l2, tol=tol
+        )
+    penalty = Penalty(pen, a, bool(standardise), scale, res.effective_df)
+    return PenalisedFit(res, res.x[index] / scale, penalty, N)
+
+
+def refuse_if_penalised(model: Any) -> None:
+    """Raise the refusal of a penalised ``model``'s covariance, bounds or
+    tests (:func:`no_inference_error`); nothing for an unpenalised one."""
+    penalty = getattr(model, "penalty", None)
+    if penalty is not None:
+        raise no_inference_error(penalty)
+
+
+class PenalisedModelMixin:
+    """What a fitted model keeps of a penalised fit (``fit_penalised``):
+    the ``penalty`` (``None`` for a maximum likelihood fit), the refusal
+    of the covariance, standard errors, bounds and tests, the effective
+    degrees of freedom its information criteria count, the penalty's
+    entry in ``to_dict`` and its line in the printout."""
+
+    #: What a penalised fit penalised; ``None`` for a maximum likelihood
+    #: fit. A penalised model has no covariance, standard errors,
+    #: confidence bounds or tests.
+    penalty: Penalty | None = None
+
+    def _refuse_if_penalised(self) -> None:
+        """Raise for a penalised model, which has no covariance, standard
+        errors or tests."""
+        refuse_if_penalised(self)
+
+    def _penalised_ic_k(self) -> float | None:
+        """The parameter count of ``aic`` and ``bic`` of a penalised fit
+        (its effective degrees of freedom), or ``None`` for an
+        unpenalised one."""
+        if self.penalty is None:
+            return None
+        return float(self.penalty.effective_df)
+
+    def _penalty_entry(self) -> dict:
+        """``{"penalty": ...}`` for ``to_dict``; empty if unpenalised."""
+        if self.penalty is None:
+            return {}
+        return {"penalty": self.penalty.to_dict()}
+
+    def _restore_penalty(self, model_dict: dict) -> None:
+        """Set the ``penalty`` of a model restored from ``model_dict``."""
+        if "penalty" in model_dict:
+            self.penalty = Penalty.from_dict(model_dict["penalty"])
+
+    def _penalty_printout(self) -> str:
+        """The printout's penalty line (with its newline), or ``""``."""
+        if self.penalty is None:
+            return ""
+        return "\nPenalty             : " + penalty_line(self.penalty)
 
 
 def _active(theta: npt.NDArray, split: npt.NDArray, k: int) -> npt.NDArray:
