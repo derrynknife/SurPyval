@@ -119,14 +119,13 @@ def test_stratum_argument_rejected_on_unstratified_model():
         m.sf(1.0, np.array([[0.0]]), stratum=0)
 
 
-def test_diagnostics_not_available_for_stratified():
+def test_287_diagnostics_are_available_for_stratified():
+    # They were refused before #287.
     x, Z, c, strat = _confounded(6)
     m = sp.CoxPH.fit(x=x, Z=Z, c=c, strata=strat)
-    for method in ("compute_residuals", "diagnose", "robust_summary"):
-        with pytest.raises(NotImplementedError):
-            getattr(m, method)()
-    with pytest.raises(NotImplementedError):
-        m.to_dict()
+    assert m.compute_residuals().shape == x.shape
+    assert m.robust_summary()["se"].shape == (1,)
+    assert m.to_dict()["strata"]
 
 
 def test_fit_from_df_strata_col():
@@ -293,12 +292,10 @@ def test_fit_tvc_strata_refusals():
         CoxPH.fit_tvc(i, xl, xr, c, Z, strata=["a", None, "b"])
 
 
-def test_fit_tvc_strata_survives_pickle_and_refuses_to_dict():
+def test_fit_tvc_strata_survives_pickle_and_to_dict():
     """Audit C12. A stratified ``fit_tvc`` model pickles with its strata
-    labels, each stratum's baseline and its ``sf_tvc`` unchanged. Its
-    ``to_dict`` is refused (each stratum carries its own baseline, which
-    the dictionary form does not hold yet), so it is not round-tripped
-    through ``from_dict``."""
+    labels, each stratum's baseline and its ``sf_tvc`` unchanged, and
+    round-trips through ``to_dict`` / ``from_dict`` (#287)."""
     import pickle
 
     i, xl, xr, c, Z, wexp = _rossi_tv()
@@ -323,5 +320,120 @@ def test_fit_tvc_strata_survives_pickle_and_refuses_to_dict():
             model.sf_tvc([10.0, 30.0], path, stratum=k),
             rtol=1e-12,
         )
-    with pytest.raises(NotImplementedError, match="stratified"):
-        model.to_dict()
+    loaded = sp.from_dict(model.to_dict())
+    for k in model.strata_labels:
+        np.testing.assert_array_equal(
+            loaded.sf_tvc([10.0, 30.0], path, stratum=k),
+            model.sf_tvc([10.0, 30.0], path, stratum=k),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Residuals, diagnose(), robust errors, concordance and saving (#287); the
+# values against R are in tests/reference/test_stratified_cox.py.
+# ---------------------------------------------------------------------------
+
+
+def _two_strata():
+    """R's lung data (165 deaths), stratified by sex."""
+    from surpyval.datasets import load_lung
+
+    d = load_lung().dropna(subset=["ph.ecog"])
+    x, c = d["time"].values.astype(float), 1 - d["status"].values
+    Z, strat = d[["age"]].values.astype(float), d["sex"].values
+    return sp.CoxPH.fit(x=x, Z=Z, c=c, strata=strat), x, Z, c, strat
+
+
+def test_287_residuals_are_each_strata_own_fit():
+    # Within a stratum, the risk sets are the stratum's alone: its rows'
+    # martingale and score residuals are those of an unstratified fit to
+    # them, at the shared coefficients.
+    from surpyval.univariate.regression.proportional_hazards import (
+        diagnostics,
+    )
+
+    m, x, Z, c, strat = _two_strata()
+    mart = m.compute_residuals("martingale")
+    score = diagnostics.compute_residuals(m, "score")
+    for k, s in enumerate(m.strata_labels):
+        rows = strat == s
+        sub = {"x": x[rows], "c": c[rows], "n": np.ones(rows.sum())}
+        sub.update(Z=Z[rows] - m._fit_center, tl=np.full(rows.sum(), -np.inf))
+        expected = diagnostics._stratum_residuals(
+            sub, np.asarray(m.beta), m.tie_method, "martingale"
+        )
+        np.testing.assert_allclose(mart[rows], expected)
+    # Martingale residuals sum to 0 in each stratum, and the score
+    # residuals over every row to the score at the fit, 0.
+    for s in m.strata_labels:
+        assert abs(mart[strat == s].sum()) < 1e-8
+    np.testing.assert_allclose(score.sum(axis=0), 0, atol=1e-6)
+
+
+def test_287_diagnose_runs_on_a_stratified_fit(monkeypatch):
+    import matplotlib
+
+    matplotlib.use("Agg")
+    m = _two_strata()[0]
+    d = m.diagnose(random_state=1)
+    assert {"proportional_hazards", "influence", "calibration"} <= set(
+        d.table["check"]
+    )
+    assert any("stratified" in note for note in d.notes)
+    d.plot()
+
+
+def test_287_robust_errors_and_summary():
+    m = _two_strata()[0]
+    out = m.robust_summary()
+    assert out["se"].shape == (1,) and np.all(out["se"] > 0)
+
+
+def test_287_concordance_within_strata_and_on_new_data():
+    m, x, Z, c, strat = _two_strata()
+    own = m.concordance()
+    assert own == pytest.approx(m.concordance(x, c, Z, strata=strat))
+    with pytest.raises(ValueError, match="together"):
+        m.concordance(x, c, Z)
+    with pytest.raises(ValueError, match="unknown stratum"):
+        m.concordance(x, c, Z, strata=np.full(x.size, 99))
+    plain = sp.CoxPH.fit(x=x, Z=Z, c=c)
+    with pytest.raises(ValueError, match="strata"):
+        plain.concordance(x, c, Z, strata=strat)
+
+
+def test_287_save_and_load_keep_every_stratum():
+    import json
+
+    m = _two_strata()[0]
+    d = m.to_dict()
+    assert d["schema"] == 4
+    r = sp.from_dict(json.loads(json.dumps(d)))
+    t = np.array([50.0, 200.0, 800.0])
+    assert r.is_stratified and r.strata_labels == m.strata_labels
+    for s in m.strata_labels:
+        np.testing.assert_array_equal(
+            r.sf(t, [[60.0]], stratum=s), m.sf(t, [[60.0]], stratum=s)
+        )
+    with pytest.raises(ValueError, match="does not keep"):
+        r.compute_residuals()
+
+
+def test_287_string_labels_round_trip():
+    x, Z, c, strat = _confounded(9)
+    labels = np.array(["a", "b", "c"])[strat]
+    m = sp.CoxPH.fit(x=x, Z=Z, c=c, strata=labels)
+    r = sp.from_json(m.to_json())
+    np.testing.assert_array_equal(
+        r.Hf([1.0, 3.0], [[0.0]], stratum="b"),
+        m.Hf([1.0, 3.0], [[0.0]], stratum="b"),
+    )
+
+
+def test_287_an_older_reader_refuses_a_stratified_dict():
+    from surpyval.serialisation import required_schema
+
+    d = _two_strata()[0].to_dict()
+    assert required_schema(d) == 4
+    d.pop("strata")
+    assert required_schema(d) < 4

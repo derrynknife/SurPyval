@@ -11,6 +11,17 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-03
+
+### Stratified Cox: residuals, `diagnose()`, robust errors, concordance and saving
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Every residual is computed within its stratum's risk sets; the scaled Schoenfeld residuals and dfbeta use the whole fit's covariance and number of events; the proportional-hazards test sums the information over the strata, with the km scale of time from all the rows. | principle 16 | What R's `residuals.coxph` and `cox.zph` do; checked against them to 1e-6. | done |
+| `concordance()` of a stratified fit pools the concordant and usable pairs of each stratum, and takes `strata=` with `x`, `c`, `Z` for new data (refused on an unstratified model). The pair counts come from a new `metrics.concordance.concordance_counts`, which `concordance_index` now divides. | principle 16 | R's `concordance` of a stratified `coxph`. | done |
+| A stratified Cox dict stores a `"strata"` list of baselines and is schema 4; the top-level baseline is still the first stratum's. | principle 20 | A schema-3 reader would otherwise read the first stratum's baseline as the model's, silently. | done |
+| A stratified fit keeps its rows (`_fit_data`, in the order given, with each row's stratum) as an unstratified one does; a penalised stratified fit still keeps none, and its residuals say so. | proposed | The penalised fit is out of this change's scope. | done |
+
 ## 2026-10-30
 
 ### Fixes behind the second bug hunt's strict xfails

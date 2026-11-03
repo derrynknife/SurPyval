@@ -6,6 +6,21 @@ Unreleased
 
 **Added.**
 
+- A stratified Cox model (``CoxPH.fit(..., strata=)`` and
+  ``fit_tvc(..., strata=)``) now has what an unstratified one has, where
+  each was refused before: ``compute_residuals`` (martingale, deviance,
+  score, dfbeta, Schoenfeld and scaled Schoenfeld, each within its
+  stratum's risk sets), the proportional-hazards test, ``diagnose()``
+  (its calibration curve predicting each row from its own stratum), the
+  robust (sandwich) standard errors, ``to_dict`` / ``to_json`` (one
+  baseline per stratum; such a file is schema 4, which an older SurPyval
+  refuses rather than reading the first stratum's baseline as the
+  model's), and ``concordance()``, which pools the pairs within each
+  stratum as R's ``concordance`` does and takes ``strata=`` to score new
+  data. All agree with R's ``survival`` (``residuals``, ``cox.zph``,
+  ``coxph(robust = TRUE)``, ``concordance``) to 1e-6 on the ``lung`` data
+  stratified by sex and the start-stop ``heart`` data stratified by
+  surgery (``scripts/reference/reference_r_stratified_cox.R``).
 - ``likelihood_ratio_test()`` on a distributional regression
   (``WeibullDistributional`` and the others), which 0.26 refused. With no
   argument it is the global test: twice the gain in log-likelihood over
