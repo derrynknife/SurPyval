@@ -8,7 +8,7 @@ Four groups are skipped unless asked for, because all are expensive and
 none guards a regression that the default run would miss quickly:
 
 ``ml``
-    The beta-stage survival tree and forest tests. They fit hundreds of
+    The survival tree and forest tests (``surpyval.ml``). They fit hundreds of
     small Weibulls per test and take 97 of the suite's ~180 seconds --
     over half the runtime for 85 of its 2000-odd tests.
 

@@ -28,8 +28,8 @@ import numpy as np
 import pytest
 
 from surpyval import Exponential, Weibull
-from surpyval.beta.ml.forest import RandomSurvivalForest, SurvivalTree
-from surpyval.beta.ml.forest.deviance_split import (
+from surpyval.ml.forest import RandomSurvivalForest, SurvivalTree
+from surpyval.ml.forest.deviance_split import (
     _LOG_BETA_BOUNDS,
     _exp_max_ll,
     _exp_theta0,
@@ -138,7 +138,7 @@ def test_exponential_mle_matches_exponential_fit(case):
     ll = _exp_max_ll(data, (theta0 - 15.0, theta0 + 15.0))
     lam_surpyval = float(Exponential.fit_from_surpyval_data(data).params[0])
     # the attained likelihood is at least surpyval's (same likelihood)
-    from surpyval.beta.ml.forest.deviance_split import (
+    from surpyval.ml.forest.deviance_split import (
         _exp_neg_ll,
         _exp_neg_ll_parts,
     )
@@ -509,7 +509,7 @@ def test_543_non_parametric_tree_on_mixed_interval_data():
 def test_543_point_node_split_as_if_given_alone():
     # A node of exact / right-censored rows taken from interval data is
     # split and leafed exactly as the same rows given with 1-D times.
-    from surpyval.beta.ml.forest.node import build_tree, tree_lines
+    from surpyval.ml.forest.node import build_tree, tree_lines
 
     X, Z, c = _mixed_543()
     data = SurpyvalData(X, c, group_and_sort=False)

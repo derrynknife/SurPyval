@@ -16,8 +16,8 @@ handling censoring by inverse-probability-of-censoring weighting (IPCW):
 All three are model-agnostic: they take a matrix of predicted survival
 probabilities. :func:`survival_probability` builds that matrix from a fitted
 model whose ``sf(x, Z)`` pairs ``x`` with the rows of ``Z`` (the parametric
-regression families, ``CoxPH``, ``AdditiveHazards`` and the ``beta.ml``
-forest).
+regression families, ``CoxPH``, ``AdditiveHazards`` and the
+``surpyval.ml`` forest).
 
 The censoring survival ``G`` behind the weights is the reverse Kaplan-Meier
 with the *events-first* convention at ties
@@ -125,7 +125,7 @@ def survival_probability(
     model : object
         Any fitted model exposing ``sf(x, Z)`` where ``x`` is paired
         element-wise with the rows of ``Z`` (the parametric regression
-        families, ``CoxPH``, ``AdditiveHazards``, the ``beta.ml``
+        families, ``CoxPH``, ``AdditiveHazards``, the ``surpyval.ml``
         ``SurvivalTree`` and ``RandomSurvivalForest``), or returning an
         ``(n_samples, n_times)`` grid. Models whose ``sf`` takes a single
         covariate vector (``BuckleyJames``) are not supported: build their

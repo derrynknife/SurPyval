@@ -161,8 +161,8 @@ so on.
 Almost every fitted model can be saved to a dictionary or a JSON file and
 restored with ``surv.from_dict`` or ``surv.from_json`` (see :doc:`Conventions`
 for what a restored model keeps, and the few models that cannot be saved). A
-survival tree and a random survival forest are available as beta-stage
-models in ``surpyval.beta.ml`` (see :doc:`surpyval.beta`).
+survival tree and a random survival forest are in ``surpyval.ml`` (see
+:doc:`surpyval.ml`).
 
 Estimating a single distribution
 --------------------------------

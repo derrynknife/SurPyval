@@ -31,18 +31,18 @@ import warnings
 import numpy as np
 import pytest
 
-from surpyval.beta.ml.forest import RandomSurvivalForest, SurvivalTree
-from surpyval.beta.ml.forest.conditional_inference import (
+from surpyval.ml.forest import RandomSurvivalForest, SurvivalTree
+from surpyval.ml.forest.conditional_inference import (
     max_statistic,
     nonparametric_scores,
 )
-from surpyval.beta.ml.forest.log_rank_split import (
+from surpyval.ml.forest.log_rank_split import (
     at_risk_on_grid,
     deaths_on_grid,
     log_rank_split,
 )
-from surpyval.beta.ml.forest.node import TerminalNode
-from surpyval.beta.ml.forest.turnbull_score_split import (
+from surpyval.ml.forest.node import TerminalNode
+from surpyval.ml.forest.turnbull_score_split import (
     _interval_scores,
     log_rank_scores,
     pooled_cumulative_hazard,

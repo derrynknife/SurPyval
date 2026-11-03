@@ -13,8 +13,8 @@ import numpy as np
 import pytest
 
 import surpyval as sp
-from surpyval.beta.ml import RandomSurvivalForest, SurvivalTree
-from surpyval.beta.ml.forest.deviance_split import (
+from surpyval.ml import RandomSurvivalForest, SurvivalTree
+from surpyval.ml.forest.deviance_split import (
     deviance_split,
     split_gain_threshold,
 )

@@ -93,6 +93,7 @@ def test_lazy_names_are_the_packages_names() -> None:
         "degradation",
         "life_models",
         "metrics",
+        "ml",
         "recurrent",
         "test_planning",
     ):

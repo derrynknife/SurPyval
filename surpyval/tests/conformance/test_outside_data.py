@@ -86,7 +86,7 @@ WITHOUT_SET_SUPPORT = {
     "CompetingRisksProportionalHazards[Fine-Gray]": _SEMI,
     "FineGray": _SEMI,
     "SurvivalTree[non-parametric]": "a tree of Kaplan-Meier leaves "
-    "(surpyval.beta), not a single estimate; not given set_support yet",
+    "(surpyval.ml), not a single estimate; not given set_support yet",
 }
 
 

@@ -35,12 +35,12 @@ truncation; where one does not, its ``fit`` docstring says so.
    surpyval.parametric
    surpyval.bayes
    surpyval.regression
+   surpyval.ml
    surpyval.competing_risks
    surpyval.counting
    surpyval.degradation
    surpyval.multivariate
    surpyval.test_planning
-   surpyval.beta
    comparison_and_validation
    surpyval.serialisation
    surpyval.utilities

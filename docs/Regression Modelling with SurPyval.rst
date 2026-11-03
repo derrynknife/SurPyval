@@ -250,9 +250,9 @@ unspecified, a frailty version for grouped data, and tree-based predictors:
      - PH with a random multiplier shared within a group
      - ``WeibullFrailty``, …, ``Frailty(dist)``, and the semi-parametric
        ``CoxFrailty``
-   * - Survival trees and forests (beta)
+   * - Survival trees and forests
      - No link: recursive splits on the covariates
-     - ``SurvivalTree``, ``RandomSurvivalForest`` in ``surpyval.beta.ml``
+     - ``SurvivalTree``, ``RandomSurvivalForest`` in ``surpyval.ml``
 
 Data, covariates and predictions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -4613,7 +4613,7 @@ metrics live in :mod:`surpyval.metrics.validation` (importable from
 ``surpyval.metrics``). They take a matrix of predicted survival probabilities,
 so they work for any model; ``survival_probability`` builds that matrix from
 the parametric families, ``CoxPH``, ``AdditiveHazards`` and the
-``surpyval.beta.ml`` tree and forest (see :doc:`comparison_and_validation`).
+``surpyval.ml`` tree and forest (see :doc:`comparison_and_validation`).
 For a model
 whose ``sf`` takes one covariate vector at a time (``BuckleyJames``), stack
 ``model.sf(times, Z[i])`` row by row. A DataFrame of covariates is passed to
@@ -4750,9 +4750,8 @@ When you do not know how the covariates act — thresholds, interactions, effect
 that only appear in combination — a tree-based predictor can find the structure
 itself. ``SurvivalTree`` recursively splits the data on one covariate at a time
 and fits a survival model in each leaf; ``RandomSurvivalForest`` averages many
-trees grown on bootstrap resamples. Both live in ``surpyval.beta.ml``: they
-are tested and usable, but their interface may still change (see
-:doc:`surpyval.beta`). The theory is in the :doc:`regression analysis` page.
+trees grown on bootstrap resamples. Both live in ``surpyval.ml`` (see
+:doc:`surpyval.ml`). The theory is in the :doc:`regression analysis` page.
 
 The simulated data below have a risk that depends on an *interaction*: units
 fail faster only when :math:`z_0 > 0.5` **and** :math:`z_1 < 0.5`; the third
@@ -4770,7 +4769,7 @@ truncation, at a much higher computational cost:
 
 .. jupyter-execute::
 
-    from surpyval.beta.ml import SurvivalTree, RandomSurvivalForest
+    from surpyval.ml import SurvivalTree, RandomSurvivalForest
 
     def make_tree_data(seed, n=300):
         r = np.random.default_rng(seed)

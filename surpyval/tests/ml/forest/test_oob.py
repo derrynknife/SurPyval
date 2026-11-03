@@ -25,8 +25,8 @@ import pytest
 
 import surpyval
 from surpyval import NelsonAalen
-from surpyval.beta.ml.forest import RandomSurvivalForest
-from surpyval.beta.ml.forest.oob import _LeafCurve
+from surpyval.ml.forest import RandomSurvivalForest
+from surpyval.ml.forest.oob import _LeafCurve
 
 # A small forest leaves a few rows in every tree's sample, which the
 # out-of-bag methods leave out with a warning (tested below).

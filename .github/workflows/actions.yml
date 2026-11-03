@@ -164,8 +164,8 @@ jobs:
         # subprocesses. Invoked as ``python -m`` so the plugins resolve
         # against the interpreter the dependencies were installed into.
         #
-        # ``--run-ml`` opts the beta survival tree and forest tests back
-        # in. They are skipped by default because they are about half of
+        # ``--run-ml`` opts the survival tree and forest tests back in.
+        # They are skipped by default because they are about half of
         # a local run, but a release still tests them.
         #
         # Coverage uses the ``sysmon`` core (3.12's ``sys.monitoring``),

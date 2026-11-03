@@ -179,7 +179,7 @@ right fitter. Their `params` is the repair parameter (`q` or
 `rho`) followed by the distribution's parameters, named by `parameter_names`.
 
 (Sub-namespaces like `surpyval.recurrent`, `surpyval.degradation`,
-`surpyval.multivariate`, `surpyval.beta.ml` are **not** auto-imported by
+`surpyval.multivariate`, `surpyval.ml` are **not** auto-imported by
 `import surpyval` — import them explicitly. `sp.CrowAMSAA` raises an
 `AttributeError` that names the subpackage.)
 
@@ -291,11 +291,12 @@ silently wrong numbers, not errors.
 | **Multivariate** | `surpyval.multivariate` | Copulas: `Clayton`, `Frank`, `Gumbel`, `Gaussian`, `Independence` |
 | **Mixtures** | `sp.MixtureModel.fit(x, dist=..., m=...)` | EM mixture of a base family |
 | **Model validation** | `surpyval.metrics` | `brier_score`, `integrated_brier_score`, `auc_td`, `survival_probability` |
-| **ML (beta, pre-stable)** | `surpyval.beta.ml` | `SurvivalTree`, `RandomSurvivalForest` (full data model; coupled `kind="weibull"/"exponential"/"non-parametric"`) |
+| **Trees and forests** | `surpyval.ml` | `SurvivalTree`, `RandomSurvivalForest` (full data model; coupled `kind="weibull"/"exponential"/"non-parametric"`) |
 
-> Pre-stable tier: `surpyval.beta` = complete but interface not yet frozen.
-> (`surpyval.alpha` is currently empty: the old system models were removed in
-> v0.17.0, and the `surpyval.experimental` alias in v0.22.0.)
+> `surpyval.beta.ml` is the old name of `surpyval.ml` (promoted in v0.27):
+> it still imports, with a `FutureWarning`, until the first release on or
+> after 12 April 2027. (`surpyval.alpha` is gone: the old system models were
+> removed in v0.17.0, and the `surpyval.experimental` alias in v0.22.0.)
 
 ## Regression example
 

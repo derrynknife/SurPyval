@@ -16,9 +16,9 @@ import pytest
 
 import surpyval
 from surpyval import Weibull
-from surpyval.beta.ml.forest.forest import RandomSurvivalForest
-from surpyval.beta.ml.forest.node import TerminalNode, node_from_dict
-from surpyval.beta.ml.forest.tree import SurvivalTree
+from surpyval.ml.forest.forest import RandomSurvivalForest
+from surpyval.ml.forest.node import TerminalNode, node_from_dict
+from surpyval.ml.forest.tree import SurvivalTree
 from surpyval.serialisation import required_schema
 from surpyval.univariate.parametric import NeverOccurs
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -178,8 +178,8 @@ def test_549_each_document_is_stamped_once(monkeypatch):
     # the forest's take it as it is rather than walking it again (three
     # walks of every leaf, 7 s of saving a 20-tree forest of 10,000 rows),
     # for the same document.
-    import surpyval.beta.ml.forest.forest as forest_module
-    import surpyval.beta.ml.forest.tree as tree_module
+    import surpyval.ml.forest.forest as forest_module
+    import surpyval.ml.forest.tree as tree_module
     import surpyval.serialisation as ser
 
     x, Z, c = _data(1, n=150)

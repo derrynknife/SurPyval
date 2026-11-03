@@ -18,7 +18,7 @@ from surpyval.tests._suite import OPT_IN
 # whole collection with an ImportError (paths relative to this file).
 _OPTIONAL = {
     "hypothesis": ["properties"],
-    "sksurv": ["beta/ml/forest/test_tree.py"],
+    "sksurv": ["ml/forest/test_tree.py"],
     "bson": ["test_mongodb_serialisation.py"],
 }
 

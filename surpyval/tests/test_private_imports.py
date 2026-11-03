@@ -25,7 +25,7 @@ PACKAGE = Path(surpyval.__file__).resolve().parent
 ALLOWED: frozenset[tuple[str, str, str]] = frozenset(
     {
         (
-            "surpyval.beta.ml.forest.log_rank_split",
+            "surpyval.ml.forest.log_rank_split",
             "surpyval.utils.data_formats",
             "_entered_before",
         ),

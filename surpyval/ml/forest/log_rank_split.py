@@ -4,7 +4,7 @@ from math import sqrt
 import numpy as np
 from numpy.typing import NDArray
 
-from surpyval.beta.ml.forest.deviance_split import (
+from surpyval.ml.forest.deviance_split import (
     needs_full_likelihood_split,
 )
 from surpyval.utils.data_formats import _entered_before
@@ -139,8 +139,8 @@ def log_rank_split(
     ValueError
         If ``data`` has left or interval censoring or right truncation,
         which have no risk sets: such data is split by
-        :func:`~surpyval.beta.ml.forest.turnbull_score_split.turnbull_score_split`
-        or :func:`~surpyval.beta.ml.forest.deviance_split.deviance_split`.
+        :func:`~surpyval.ml.forest.turnbull_score_split.turnbull_score_split`
+        or :func:`~surpyval.ml.forest.deviance_split.deviance_split`.
     """
     # The tree routes such data to another split; called directly, the
     # risk sets below would come from a Turnbull fit whose grid is not

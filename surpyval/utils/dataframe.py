@@ -691,7 +691,7 @@ class RegressionDataFrameMixin:
         --------
         >>> import numpy as np
         >>> import pandas as pd
-        >>> from surpyval.beta.ml import SurvivalTree
+        >>> from surpyval.ml import SurvivalTree
         >>> rng = np.random.default_rng(0)
         >>> df = pd.DataFrame({"z": rng.uniform(0, 1, 60)})
         >>> df["x"] = rng.weibull(2, 60) * np.where(df["z"] > 0.5, 5, 20)

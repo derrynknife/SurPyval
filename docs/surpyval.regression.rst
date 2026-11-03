@@ -9,7 +9,7 @@ The univariate regression models are importable directly from
 ``surpyval``. For the theory see :doc:`regression analysis`; for a
 narrative introduction with worked examples, see
 :doc:`Regression Modelling with SurPyval`. Tree-based models are under
-:doc:`surpyval.beta`, and regression for recurrent events under
+:doc:`surpyval.ml`, and regression for recurrent events under
 :doc:`surpyval.counting`.
 
 Semi-Parametric Models

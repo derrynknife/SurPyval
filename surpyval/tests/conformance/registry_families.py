@@ -17,7 +17,7 @@ import pandas as pd
 import pytest
 
 import surpyval as sp
-from surpyval.beta import ml
+from surpyval import ml
 from surpyval.tests.conformance.leaks import quiet
 from surpyval.tests.conformance.registry_fixtures import (
     X_DISC,
@@ -279,8 +279,8 @@ NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
     "surpyval.AalenAdditiveModel": (
         "Aalen's estimator, a least-squares fit at each event time"
     ),
-    "surpyval.beta.ml.SurvivalTree": "a tree of greedy splits",
-    "surpyval.beta.ml.RandomSurvivalForest": "an ensemble of trees",
+    "surpyval.ml.SurvivalTree": "a tree of greedy splits",
+    "surpyval.ml.RandomSurvivalForest": "an ensemble of trees",
     "surpyval.univariate.competing_risks.CompetingRisks": (
         "a non-parametric (Aalen-Johansen) estimate"
     ),
@@ -1174,9 +1174,9 @@ def _trees():
         return Case(
             name=f"SurvivalTree[{kind}]",
             fitters=(
-                ("surpyval.beta.ml.SurvivalTree",) if kind == "weibull" else ()
+                ("surpyval.ml.SurvivalTree",) if kind == "weibull" else ()
             ),
-            model_class="surpyval.beta.ml.SurvivalTree",
+            model_class="surpyval.ml.SurvivalTree",
             interface=REGRESSION,
             data=reg_data,
             # A tree draws the features it considers at each split
@@ -1208,8 +1208,8 @@ def _trees():
 
     forest = Case(
         name="RandomSurvivalForest",
-        fitters=("surpyval.beta.ml.RandomSurvivalForest",),
-        model_class="surpyval.beta.ml.RandomSurvivalForest",
+        fitters=("surpyval.ml.RandomSurvivalForest",),
+        model_class="surpyval.ml.RandomSurvivalForest",
         interface=REGRESSION,
         data=reg_data,
         # With random_state=None the forest bootstraps from the global

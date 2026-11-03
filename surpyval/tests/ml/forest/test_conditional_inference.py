@@ -33,8 +33,8 @@ from scipy import stats
 from scipy.integrate import quad
 from scipy.special import owens_t
 
-from surpyval.beta.ml.forest import RandomSurvivalForest, SurvivalTree
-from surpyval.beta.ml.forest.conditional_inference import (
+from surpyval.ml.forest import RandomSurvivalForest, SurvivalTree
+from surpyval.ml.forest.conditional_inference import (
     _MAX_TEST_CUTS,
     _pooled_mle,
     ctree_select,
@@ -45,12 +45,12 @@ from surpyval.beta.ml.forest.conditional_inference import (
     nonparametric_scores,
     parametric_scores,
 )
-from surpyval.beta.ml.forest.log_rank_split import (
+from surpyval.ml.forest.log_rank_split import (
     at_risk_on_grid,
     deaths_on_grid,
 )
-from surpyval.beta.ml.forest.node import IntermediateNode, TerminalNode
-from surpyval.beta.ml.forest.turnbull_score_split import (
+from surpyval.ml.forest.node import IntermediateNode, TerminalNode
+from surpyval.ml.forest.turnbull_score_split import (
     log_rank_scores,
     turnbull_score,
 )

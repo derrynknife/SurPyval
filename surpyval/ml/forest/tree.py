@@ -6,9 +6,9 @@ import numpy as np
 import pandas as pd
 from numpy.typing import ArrayLike, NDArray
 
-from surpyval.beta.ml.forest.conditional_inference import parse_selection
-from surpyval.beta.ml.forest.deviance_split import parse_min_split_gain
-from surpyval.beta.ml.forest.node import (
+from surpyval.ml.forest.conditional_inference import parse_selection
+from surpyval.ml.forest.deviance_split import parse_min_split_gain
+from surpyval.ml.forest.node import (
     IntermediateNode,
     Node,
     build_tree,
@@ -219,7 +219,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
       features tested, is below ``alpha_split``; its cut is then chosen by
       the kind's criterion. This removes the preference for features with
       many values and stops the tree where the data show no effect. See
-      :mod:`~surpyval.beta.ml.forest.conditional_inference`.
+      :mod:`~surpyval.ml.forest.conditional_inference`.
 
     Predictions take one value per covariate the tree was grown on, in
     its column order (or a DataFrame with its columns); another number
@@ -406,7 +406,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         finds it:
 
         >>> import numpy as np
-        >>> from surpyval.beta.ml import SurvivalTree
+        >>> from surpyval.ml import SurvivalTree
         >>> rng = np.random.default_rng(0)
         >>> Z = rng.uniform(0, 1, (200, 2))
         >>> x = rng.weibull(2.0, 200) * np.where(Z[:, 0] > 0.5, 5.0, 10.0)
@@ -517,7 +517,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             like ``x`` (a scalar for a scalar ``x``). Paired, the shape of
             ``x`` (or ``(n_rows,)`` for a single time). On the grid, shape
             ``(n_rows,) + x.shape``, row ``i`` the values for ``Z[i]``, as
-            for :class:`~surpyval.beta.ml.forest.forest.RandomSurvivalForest`.
+            for :class:`~surpyval.ml.forest.forest.RandomSurvivalForest`.
             A covariate vector with a missing (NaN) value gives NaN, and
             leaves the other rows unaffected.
         """

@@ -12,10 +12,10 @@
 import numpy as np
 import pytest
 
-from surpyval.beta.ml.forest.conditional_inference import ctree_select
-from surpyval.beta.ml.forest.deviance_split import deviance_split
-from surpyval.beta.ml.forest.log_rank_split import log_rank_split
-from surpyval.beta.ml.forest.turnbull_score_split import (
+from surpyval.ml.forest.conditional_inference import ctree_select
+from surpyval.ml.forest.deviance_split import deviance_split
+from surpyval.ml.forest.log_rank_split import log_rank_split
+from surpyval.ml.forest.turnbull_score_split import (
     turnbull_score_split,
 )
 from surpyval.utils.surpyval_data import SurpyvalData

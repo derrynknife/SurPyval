@@ -49,7 +49,7 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
-from surpyval.beta.ml.forest.node import Node, route_to_leaves
+from surpyval.ml.forest.node import Node, route_to_leaves
 from surpyval.univariate.nonparametric.nonparametric import NonParametric
 from surpyval.utils.surpyval_data import SurpyvalData
 
