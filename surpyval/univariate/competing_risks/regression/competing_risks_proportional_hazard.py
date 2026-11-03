@@ -480,6 +480,10 @@ class CompetingRisksProportionalHazards(
         )
         return out + coefficient_repr(table) + "\n"
 
+    def _penalised_coefficients(self) -> tuple[list, npt.NDArray]:
+        # Every cause's coefficients (the penalty is per column, shared).
+        return list(self.parameter_names), np.asarray(self.params, float)
+
     def _ic_k(self) -> float:
         # A penalised fit counts its effective number of parameters, the
         # sum over the causes.

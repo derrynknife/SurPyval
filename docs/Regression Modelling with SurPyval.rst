@@ -4337,6 +4337,46 @@ take every kind of censoring and truncation (left, right or both).
     assert shape_too.maximum == 'verified', shape_too.maximum
     assert np.all(shape_too.params[5:] == 0), shape_too.params
 
+**Choosing the penalty: the path and AIC or BIC.** ``penalty_path`` fits
+any of these over a path of penalties and records each fit's coefficients,
+effective degrees of freedom, log-likelihood, AIC and BIC. By default the
+path is glmnet's: 20 penalties evenly spaced on the log scale from the
+smallest penalty that sets every coefficient to 0 (to six digits) down to
+0.001 times it. The criteria count each fit's effective degrees of freedom,
+so they weigh the gain in fit against how far the penalty lets the
+coefficients move; ``best("bic")`` (or ``"aic"``) is the fit with the
+smallest. BIC charges more for each coefficient, so it keeps fewer.
+
+.. jupyter-execute::
+
+    from surpyval import penalty_path
+
+    path = penalty_path(CoxPH.fit_penalised, rossi['week'], rossi[cols],
+                        c=rossi['censored'], l1_ratio=1.0, n_penalties=10)
+    path.table().round(4)
+
+.. jupyter-execute::
+
+    chosen = path.best('bic')
+    print(round(path.best_penalizer('bic'), 4))
+    pd.Series(chosen.params, index=cols).round(4)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert path.best_penalizer('bic') >= path.best_penalizer('aic')
+    assert np.all(path.coefficients[0] == 0)
+
+``path.plot()`` draws each coefficient against the penalty, with the
+penalties AIC and BIC choose marked. The arguments after the fit are the
+fit's own (the data, ``tie_method``, ``strata``, ...); ``penalizers=`` gives
+the penalties instead of the default path, and ``penalty_factor=`` one
+factor per column (0 leaves a column unpenalised), as glmnet's
+``penalty.factor``. The chosen model is a penalised model like any other:
+no standard errors or bounds (choosing the penalty from the same data is
+one more reason for that). Cross-validation is not offered.
+
 The coefficients of these models are log hazard, odds or time ratios, which
 have no unit, so the penalty does not depend on the unit of time.
 ``fit_penalised`` does not take sampling weights ``w`` yet: the penalty's
