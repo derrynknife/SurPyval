@@ -25,6 +25,7 @@ EXPECTED_SOURCES = {
     "r_competing_diagnostics",
     "r_ph_aft",
     "r_calibration",
+    "r_stratified_cox",
     "py_lifelines",
     "py_sksurv",
 }
@@ -32,9 +33,7 @@ EXPECTED_SOURCES = {
 
 def _strict_load(path):
     def refuse(token):
-        raise ValueError(
-            "non-strict JSON constant {} in {}".format(token, path)
-        )
+        raise ValueError(f"non-strict JSON constant {token} in {path}")
 
     with open(path) as f:
         return json.load(f, parse_constant=refuse)
@@ -46,7 +45,7 @@ def test_every_reference_file_is_present():
 
 @pytest.mark.parametrize("source", sorted(EXPECTED_SOURCES))
 def test_reference_file_is_strict_json_with_provenance(source):
-    content = _strict_load(DATA / "{}.json".format(source))
+    content = _strict_load(DATA / f"{source}.json")
     fixtures = _strict_load(DATA / "fixtures.json")
     assert content["generator"].startswith("scripts/reference/")
     assert content["references"]

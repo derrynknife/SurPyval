@@ -100,8 +100,9 @@ from __future__ import annotations
 
 import re
 import warnings
+from collections.abc import Callable
 from types import SimpleNamespace
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 from scipy.stats import chi2, norm
@@ -421,7 +422,7 @@ def _lr_test(
     free_null: Any,
     free_alt: Any,
     bounds: list,
-    null: "_Fit | None" = None,
+    null: _Fit | None = None,
 ) -> dict:
     """The likelihood-ratio test of the model with the parameters
     ``free_null`` free (the extra ones held at ``start``, 0) against the
@@ -461,7 +462,7 @@ def _lr_test(
     }
 
 
-def _in_layout(null: _Fit, extra: int, at: "int | None" = None) -> _Fit:
+def _in_layout(null: _Fit, extra: int, at: int | None = None) -> _Fit:
     """The maximum ``null`` with ``extra`` zeros inserted at position
     ``at`` of its parameters (at the end by default): the same maximum
     in the parameters of a larger model."""
@@ -652,7 +653,7 @@ def _fitter_name(b: SimpleNamespace, kind: str) -> str:
     baseline that has no fitter of its own."""
     if b.name in BASELINES:
         return b.name + kind
-    return "{}({})".format(kind, b.name)
+    return f"{kind}({b.name})"
 
 
 def _interval_rows(b: SimpleNamespace) -> np.ndarray:
@@ -747,7 +748,7 @@ def _step_test(ctx: Context, J: list) -> dict:
             f, start, null, alt, bounds, null=_in_layout(shared, len(J))
         )
 
-    return ctx.cached("step_{}".format(J), compute)
+    return ctx.cached(f"step_{J}", compute)
 
 
 def _step_null(ctx: Context) -> _Fit:
@@ -867,7 +868,7 @@ def _window_estimates(ctx: Context, j: int) -> tuple:
             ses[w] = float(np.sqrt(a @ cov @ a))
         return values, ses
 
-    return ctx.cached("windows_{}".format(j), compute)
+    return ctx.cached(f"windows_{j}", compute)
 
 
 def _ph_panels(ctx: Context) -> list[Panel]:
@@ -914,12 +915,12 @@ def _ph_panels(ctx: Context) -> list[Panel]:
             )
             edges = np.concatenate([[t.min()], cuts, [t.max()]])
             ax.set_xticks(np.arange(edges.size))
-            ax.set_xticklabels(["{:.3g}".format(v) for v in edges])
+            ax.set_xticklabels([f"{v:.3g}" for v in edges])
             ax.set_xlabel("time (windows of equal failures)")
             ax.set_ylabel("coefficient")
 
         panels.append(
-            Panel("{}: p = {} (step)".format(name, _fmt(p_values[name])), draw)
+            Panel(f"{name}: p = {_fmt(p_values[name])} (step)", draw)
         )
     return panels
 
@@ -943,7 +944,7 @@ def _square_test(ctx: Context, j: int) -> dict:
         shared = _in_layout(_fitted_null(ctx), 1)
         return _lr_test(f, start, null, alt, bounds, null=shared)
 
-    return ctx.cached("square_{}".format(j), compute)
+    return ctx.cached(f"square_{j}", compute)
 
 
 def _form_rows_of(scale: str) -> Callable[[Context], list[dict]]:
@@ -968,7 +969,7 @@ def _form_rows_of(scale: str) -> Callable[[Context], list[dict]]:
             if not np.isfinite(p):
                 detail = "the test could not be computed: " + res["reason"]
             elif p < 2 * ctx.alpha:
-                detail = "its effect on {} is not linear".format(scale)
+                detail = f"its effect on {scale} is not linear"
             else:
                 detail = "no evidence against a linear effect"
             rows.append(
@@ -1006,7 +1007,7 @@ def _form_panels(ctx: Context) -> list[Panel]:
             ax.set_ylabel("martingale residual")
 
         if rows.any():
-            panels.append(Panel("{}: functional form".format(name), draw))
+            panels.append(Panel(f"{name}: functional form", draw))
     return panels
 
 
@@ -1114,7 +1115,7 @@ def _influence_panels(ctx: Context) -> list[Panel]:
             ax.set_xlabel("row")
             ax.set_ylabel("dfbeta / se")
 
-        panels.append(Panel("{}: influence".format(name), draw))
+        panels.append(Panel(f"{name}: influence", draw))
     return panels
 
 
@@ -1150,11 +1151,7 @@ def _outlier_rows(ctx: Context) -> list[dict]:
     flagged = np.flatnonzero(rows & (absolute > cutoff))
     if flagged.size:
         shown = ", ".join(str(int(i)) for i in flagged[:10])
-        more = (
-            ""
-            if flagged.size <= 10
-            else " and {} more".format(flagged.size - 10)
-        )
+        more = "" if flagged.size <= 10 else f" and {flagged.size - 10} more"
         detail = "row{} {}{} of model.data above {}".format(
             "" if flagged.size == 1 else "s", shown, more, _fmt(cutoff)
         )
@@ -1233,7 +1230,7 @@ def _refit(ctx: Context, fitter: Any) -> tuple[float, str, str]:
         return (
             aic,
             "set aside",
-            "not a verified maximum ({})".format(fitted.maximum),
+            f"not a verified maximum ({fitted.maximum})",
         )
     return aic, "ranked", ""
 
@@ -1346,7 +1343,7 @@ def _aic_rows_of(kind: str) -> Callable[[Context], list[dict]]:
                 )
             rows.append(
                 {
-                    "test": "AIC against the other {}".format(word),
+                    "test": f"AIC against the other {word}",
                     "covariates": (),
                     "statistic": delta,
                     "verdict": "warn" if delta > AIC_MARGIN else "ok",
@@ -1524,7 +1521,7 @@ def _paper(kind: str, b: SimpleNamespace) -> tuple:
 
 
 def _draw_probability(
-    ax: Any, ctx: Context, kind: str, groups: "list | None" = None
+    ax: Any, ctx: Context, kind: str, groups: list | None = None
 ) -> None:
     from surpyval.plotting import INK, PALETTE
 
@@ -1566,7 +1563,7 @@ def _draw_probability(
     transformed = np.asarray(dist.mpp_x_transform(np.array([2.0])))
     log_x = not np.allclose(transformed, 2.0)
     ax.set_xlabel(("log " if log_x else "") + label)
-    ax.set_ylabel("{} probability scale".format(dist.name))
+    ax.set_ylabel(f"{dist.name} probability scale")
     if groups[0][0]:
         ax.legend(fontsize="small")
 
@@ -1577,7 +1574,7 @@ def _distribution_panels_of(kind: str) -> Callable[[Context], list[Panel]]:
         title = (
             "Cox-Snell residuals (exponential paper)"
             if kind == "PH"
-            else "standardised residuals ({} paper)".format(b.name)
+            else f"standardised residuals ({b.name} paper)"
         )
         panels = [
             Panel(title, lambda ax, options: _draw_probability(ax, ctx, kind))
@@ -1635,7 +1632,7 @@ def _factors(ctx: Context) -> list[dict]:
             present = np.unique(code)
             labels = [
                 (
-                    "{} reference".format(var)
+                    f"{var} reference"
                     if k == 0
                     else "{}={}".format(
                         var, _level_name(ctx.names[cols[k - 1]])
@@ -1659,9 +1656,7 @@ def _factors(ctx: Context) -> list[dict]:
                 {
                     "name": ctx.names[j],
                     "columns": (ctx.names[j],),
-                    "labels": [
-                        "{}={:g}".format(ctx.names[j], v) for v in values
-                    ],
+                    "labels": [f"{ctx.names[j]}={v:g}" for v in values],
                     "level": np.asarray(level).reshape(-1),
                 }
             )
@@ -1750,7 +1745,7 @@ def _shape_rows(ctx: Context) -> list[dict]:
             delta = np.concatenate([[0.0], theta[b.params.size :]])
             shapes = theta[s] * np.exp(delta)
             by_level = ", ".join(
-                "{} ({})".format(_fmt(v), label)
+                f"{_fmt(v)} ({label})"
                 for v, label in zip(shapes, factor["labels"])
             )
             if p < 2 * ctx.alpha:
@@ -1804,7 +1799,7 @@ def _validate(model: Any) -> None:
         raise NotImplementedError(
             "diagnose() is not yet available for a parametric regression "
             "fitted to time-varying covariates (fit_tvc, fit_tvc_timeline): "
-            "its checks need one row per unit; tracked in #869. Diagnose "
+            "its checks need one row per unit. Diagnose "
             "the model fitted with fit (or fit_from_df) to each unit's "
             "covariates at the start."
         )
@@ -1823,7 +1818,8 @@ def _validate(model: Any) -> None:
             "diagnose() is not yet available for a parametric regression "
             "with the covariate link {!r}: its checks are for the "
             "exp(beta'Z) link of WeibullPH, PH(dist), WeibullAFT and "
-            "AFT(dist); tracked in #869.".format(link)
+            "AFT(dist). Refit with one of those to diagnose the "
+            "model.".format(link)
         )
     if model.maximum == "no finite maximum":
         raise ValueError(
@@ -1847,8 +1843,8 @@ def _validate(model: Any) -> None:
     if np.size(aliased):
         raise ValueError(
             "diagnose() is not available for a model with aliased "
-            "coefficients (column(s) {} of Z, whose coefficients are nan, "
-            "#476). Refit without those columns.".format(
+            "coefficients (column(s) {} of Z, whose coefficients are "
+            "nan). Refit without those columns.".format(
                 np.asarray(aliased).tolist()
             )
         )
@@ -1906,7 +1902,7 @@ def _aft_notes(ctx: Context) -> list[str]:
 # Advice
 # ---------------------------------------------------------------------------
 def _dist_is(
-    name: "str | None", same: "bool | None" = None
+    name: str | None, same: bool | None = None
 ) -> Callable[[Context], bool]:
     """Whether the model's baseline is the built-in ``name`` (``None``:
     one that is not built in, and, if ``same`` is given, one whose PH and
@@ -1923,7 +1919,7 @@ def _dist_is(
     return test
 
 
-def _aft_instead(name: "str | None") -> str:
+def _aft_instead(name: str | None) -> str:
     """The AFT model the PH advice names: the same baseline's, except for
     the Weibull and the exponential, whose AFT model is their PH model."""
     if name in SAME_PH_AFT:
@@ -1942,7 +1938,7 @@ def _advised(ctx: Context) -> dict:
     return {"own": _fitter_name(b, "PH"), "aft": aft}
 
 
-def _ph_rules(name: "str | None", same: bool = False) -> list[AdviceRule]:
+def _ph_rules(name: str | None, same: bool = False) -> list[AdviceRule]:
     """The PH family's advice for a model with the baseline ``name``
     (``None``: one not built in, whose PH and AFT models are the same
     model if ``same``)."""
@@ -2062,7 +2058,7 @@ def _outlier_message(row: dict, ctx: Context) -> str:
     rows = row["_rows"]
     shown = ", ".join(str(i) for i in rows[:10])
     if len(rows) > 10:
-        shown += " and {} more".format(len(rows) - 10)
+        shown += f" and {len(rows) - 10} more"
     return (
         "The model predicts row{s} {shown} of model.data (the fitted rows, "
         "sorted) poorly (|deviance residual| above {cut}). Check {them} "
@@ -2100,7 +2096,7 @@ def _better_baseline_rule(kind: str, check: str, name: str) -> AdviceRule:
     )
 
 
-def _other_kind_rule(kind: str, check: str, name: "str | None") -> AdviceRule:
+def _other_kind_rule(kind: str, check: str, name: str | None) -> AdviceRule:
     """Fit the other kind of model (PH for an AFT model, AFT for a PH
     one) with the baseline ``name`` (``None``: one not built in), when
     the AIC screen found it markedly better."""
@@ -2181,7 +2177,7 @@ def _shape_rule(name: str, param: str) -> AdviceRule:
     )
 
 
-def _aft_form_rule(name: "str | None") -> AdviceRule:
+def _aft_form_rule(name: str | None) -> AdviceRule:
     """Transform a covariate that does not act linearly on log time."""
     on_dist = _dist_is(name)
     feature = (

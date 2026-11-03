@@ -1265,9 +1265,33 @@ as a missing covariate does:
 
     assert list(stratified.strata_labels) == [0, 1, 2]
 
-The residual diagnostics and robust errors above assume a single baseline, so
-they are not available on a stratified model; the coefficients and their
-model-based ``p``-values are. A stratified model can also not be serialised.
+The residual diagnostics, the proportional-hazards test, ``diagnose()`` and
+the robust standard errors above work on a stratified model too, each within
+its own stratum's risk sets, as R's ``residuals``, ``cox.zph`` and
+``coxph(..., robust = TRUE)`` compute them for a fit with ``strata()``; the
+scaled Schoenfeld residuals and dfbeta use the covariance and number of events
+of the whole fit. ``concordance()`` forms pairs within each stratum only and
+pools them, as R's ``concordance`` does (a risk score ranks subjects only
+within its stratum); to score new data pass ``strata=`` with ``x``, ``c`` and
+``Z``. A stratified model is saved with ``to_dict`` / ``to_json`` with one
+baseline per stratum (schema 4: an older SurPyval refuses it rather than read
+one stratum's baseline as the model's); like every restored Cox model it
+predicts but keeps no rows for the residuals:
+
+.. jupyter-execute::
+
+    print(stratified.diagnose().table[["check", "covariates", "p", "verdict"]].head(3))
+    print("concordance within strata:", round(stratified.concordance(), 3))
+    restored = surv.from_json(stratified.to_json())
+    print(restored.sf(x=1.0, Z=[[0.0]], stratum=0))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(restored.sf(x=[0.5, 1.0], Z=[[0.0]], stratum=2),
+                       stratified.sf(x=[0.5, 1.0], Z=[[0.0]], stratum=2))
+
 Along a covariate path, ``sf_tvc``, ``Hf_tvc`` and ``predict_tvc`` take the
 same ``stratum`` argument.
 Start-stop (time-varying covariate) data stratify the same way:
@@ -1682,11 +1706,22 @@ recovers the same parameters as the exact times:
 it is the acceleration factor, for PO the odds multiplier, for accelerated
 life the modelled life; an additive model has none). ``random(size, Z)``
 draws lifetimes from the fitted model — useful for simulation studies and for
-checking a fit against its own simulated data. It exists for the PH, parametric
-AH and accelerated-life families (not AFT or PO). A PH or parametric AH model
-returns ``size`` draws for each covariate row, in the order given, together
-with the matching covariate rows; an accelerated life model does the same for
-each *distinct* stress, in sorted order. As everywhere in SurPyval,
+checking a fit against its own simulated data. It exists for every
+parametric family (PH, AFT, PO, parametric AH, accelerated life,
+Royston-Parmar and distributional) and for the Cox and Aalen models. Each
+draw is exact inverse-transform sampling: a uniform ``U`` becomes the time at
+which the row's survival falls to ``U`` (for AFT the baseline's time divided
+by the acceleration factor; for PO the time at which the baseline's odds,
+multiplied by ``phi``, are ``U / (1 - U)``). A regression model returns
+``size`` draws for each covariate row, in the order given, together with the
+matching covariate rows; an accelerated life model does the same for each
+*distinct* stress, in sorted order. The Cox and Aalen models draw from their
+step survival curves, so every draw is one of the event times, and a draw
+beyond the last time the curve is estimated at is ``inf`` (the unit outlives
+the data), as often as ``sf`` at that time says; a stratified Cox model takes
+``stratum=``. The frailty models, the Lin-Ying additive model, Buckley-James
+and the semi-parametric proportional odds model have no ``random`` yet. As
+everywhere in SurPyval,
 ``random_state`` seeds the draw (``None``, the default, draws from numpy's
 global generator, so ``np.random.seed`` reproduces it):
 
@@ -5150,7 +5185,7 @@ Cox's time-varying-covariate prediction (``predict_tvc``), the additive model's
 covariance, and Buckley-James's ``bootstrap_ci`` (which keeps a copy of the fit
 data) all survive the round-trip. The residual diagnostics, ``diagnose()`` and
 the robust variance need the training data and are not available on a restored
-Cox model, and a stratified Cox model cannot be serialised at all. Be aware that
+Cox model (a stratified one included). Be aware that
 a serialised Buckley-James model contains its training data.
 
 The frailty model, survival trees and random survival forests serialise too —

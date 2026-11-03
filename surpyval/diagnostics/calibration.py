@@ -570,6 +570,29 @@ def _is_cox(model: Any) -> bool:
     return isinstance(model, SemiParametricRegressionModel)
 
 
+def _cox_sf(
+    model: Any, data: dict
+) -> Callable[[np.ndarray, np.ndarray], np.ndarray]:
+    """A Cox model's ``sf(t, Z)`` at its fitted rows: for a stratified fit
+    each row's from its own stratum's baseline (``data["strata"]``, the
+    rows in the order they are given here)."""
+    codes = data.get("strata")
+    if not getattr(model, "is_stratified", False) or codes is None:
+        return lambda t, Z: model.sf(t, Z)
+    codes = np.asarray(codes)
+
+    def sf(t: np.ndarray, Z: np.ndarray) -> np.ndarray:
+        t = np.asarray(t, dtype=float)
+        out = np.empty(t.shape)
+        for k, label in enumerate(model.strata_labels):
+            rows = codes == k
+            if rows.any():
+                out[rows] = model.sf(t[rows], Z[rows], label)
+        return out
+
+    return sf
+
+
 def _outcome(ctx: Context) -> _Outcome | str:
     """The model's fitted rows, or the reason the check cannot be made on
     them."""
@@ -596,7 +619,7 @@ def _outcome(ctx: Context) -> _Outcome | str:
                     else np.asarray(tl, dtype=float)
                 ),
                 Z=np.asarray(data["Z"], dtype=float),
-                sf=lambda t, Z: m.sf(t, Z),
+                sf=_cox_sf(m, data),
             )
         data = m.data
         c = np.asarray(data.c)

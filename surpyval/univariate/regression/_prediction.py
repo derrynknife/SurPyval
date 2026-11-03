@@ -205,6 +205,38 @@ def step_quantiles(
     return np.where(np.isnan(p), np.nan, out)
 
 
+def step_draws(
+    H: npt.NDArray, times: npt.NDArray, U: npt.NDArray
+) -> npt.NDArray:
+    """Inverse-transform draws from a step cumulative hazard: for each
+    uniform ``U`` (the survival probability the draw is to have), the
+    first of ``times`` at which the non-decreasing ``H`` (the predicted
+    cumulative hazard at those times) reaches ``-log(U)``. Where it never
+    does -- the curve ends above ``U``, as right censoring leaves it --
+    the draw is ``inf``: the unit outlives the data. A ``nan`` in ``H``
+    (a missing covariate or stratum) gives ``nan`` draws.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.univariate.regression._prediction import step_draws
+    >>> H = np.array([0.1, 0.1, 0.5])
+    >>> step_draws(H, np.array([1.0, 2.0, 3.0]), np.array([0.95, 0.7, 0.5]))
+    array([ 1.,  3., inf])
+    """
+    H = np.asarray(H, dtype=float)
+    times = np.asarray(times, dtype=float)
+    U = np.asarray(U, dtype=float)
+    if np.isnan(H).any():
+        return np.full(U.shape, np.nan)
+    target = -np.log(U)
+    idx = np.searchsorted(H, target, side="left")
+    out = np.full(U.shape, np.inf)
+    inside = idx < times.size
+    out[inside] = times[idx[inside]]
+    return out
+
+
 def quantiles_by_inversion(
     Hf: Callable[[npt.NDArray, npt.NDArray], npt.NDArray],
     p: npt.NDArray,
