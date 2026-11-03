@@ -6,6 +6,14 @@ Unreleased
 
 **Added.**
 
+- Bootstrap bounds for weighted fits: ``method="bootstrap"`` on ``cb``,
+  ``param_cb`` and ``quantile_cb`` (and ``mrl_cb`` of a distribution) of a
+  parametric distribution or a parametric regression (PH, AFT, PO,
+  additive hazards, accelerated life) fitted with sampling weights ``w``,
+  which 0.26 refused, is the case bootstrap: the units are resampled with
+  their weights and the weighted model refitted. A seed gives the same
+  bounds at any scale of the weights. Likelihood-ratio bounds still refuse
+  weighted fits.
 - ``CoxPH.fit_from_df`` takes ``w_col`` (lifelines' ``weights_col``),
   which 0.26 refused: the same fit as ``CoxPH.fit(..., w=)``, with the
   weights of rows dropped for a missing covariate dropped with them.
