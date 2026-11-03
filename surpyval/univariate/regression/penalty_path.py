@@ -58,17 +58,17 @@ class PenaltyPath:
 
     Examples
     --------
-    >>> from surpyval import WeibullAFT, penalty_path
+    >>> from surpyval import CoxPH, penalty_path
     >>> from surpyval.datasets import load_rossi_static
     >>> df = load_rossi_static()
     >>> path = penalty_path(
-    ...     WeibullAFT.fit_penalised, df["week"], df[["fin", "age", "prio"]],
+    ...     CoxPH.fit_penalised, df["week"], df[["fin", "age", "prio"]],
     ...     c=1 - df["arrest"], l1_ratio=1, n_penalties=5,
     ... )
     >>> len(path), path.coefficients.shape
     (5, (5, 3))
-    >>> round(path.best("bic").penalty.effective_df, 6)  # 2 + 3 coefs
-    5.0
+    >>> path.best("bic").penalty.effective_df
+    3.0
     """
 
     def __init__(
