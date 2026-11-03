@@ -197,6 +197,24 @@ its :math:`\phi` multiplies the odds of *survival*, so a positive β makes
 failure *slower*. Expect a PO fit to report coefficients of the opposite sign to
 a PH fit on the same data.
 
+.. list-table:: What a positive coefficient means
+   :header-rows: 1
+   :widths: 40 60
+
+   * - Model
+     - A positive coefficient
+   * - PH (``WeibullPH``, ``CoxPH``, ``RoystonParmarPH``, ...) and AFT
+       (``WeibullAFT``, ``BuckleyJames``, ...)
+     - a shorter life (a higher hazard, or faster ageing)
+   * - PO (``PO(dist)``, ``ProportionalOdds``, ``RoystonParmarPO``)
+     - higher survival odds: a longer life
+   * - Distributional regression (``WeibullDistributional``, ...)
+     - on a scale or a location, a shorter life, as AFT; on each
+       parameter as ``model.coefficient_signs`` says
+
+PO differs because it models the odds of *surviving*: a positive
+coefficient multiplies those odds, so it lengthens life.
+
 SurPyval supports all of these families, each available as pre-built instances
 for every standard distribution and as factory functions for custom
 combinations, together with semi-parametric versions that leave the baseline

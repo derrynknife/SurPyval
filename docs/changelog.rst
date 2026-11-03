@@ -66,7 +66,9 @@ Unreleased
   ``flexsurvreg`` coefficients on a scale or a location are SurPyval's
   with the sign changed.
 
-  Royston-Parmar regression is unchanged: on the hazard scale its
+  Only the distributional model changes: no proportional odds model and
+  no Royston-Parmar model changes sign. Royston-Parmar regression is
+  unchanged: on the hazard scale its
   coefficients already had the ``PH`` sign (a positive one shortens
   life), and on the odds scale the sign of every SurPyval ``PO`` model (a
   positive one multiplies the survival odds, so lengthens life; flexsurv's

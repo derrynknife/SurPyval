@@ -244,6 +244,26 @@ its coefficients enter, one rule for each kind of parameter:
   not say which way it should go. It keeps the link's sign, :math:`s =
   +1`: a positive coefficient raises the shape or the spread.
 
+Beside the other regressions:
+
+.. list-table:: What a positive coefficient means
+   :header-rows: 1
+   :widths: 40 60
+
+   * - Model
+     - A positive coefficient
+   * - PH (``WeibullPH``, ``CoxPH``, ``RoystonParmarPH``, ...) and AFT
+       (``WeibullAFT``, ``BuckleyJames``, ...)
+     - a shorter life (a higher hazard, or faster ageing)
+   * - PO (``PO(dist)``, ``ProportionalOdds``, ``RoystonParmarPO``)
+     - higher survival odds: a longer life
+   * - Distributional regression (``WeibullDistributional``, ...)
+     - on a scale or a location, a shorter life, as AFT; on each
+       parameter as ``model.coefficient_signs`` says
+
+PO differs because it models the odds of *surviving*: a positive
+coefficient multiplies those odds, so it lengthens life.
+
 R's ``gamlss`` and ``flexsurvreg`` (and lifelines and ``survreg``) give
 every coefficient the link's sign, :math:`s = +1`, so their coefficients
 on a scale or a location are SurPyval's with the sign changed, and their
