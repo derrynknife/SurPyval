@@ -11,6 +11,14 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-03
+
+### A limited-failure proportion fitted at its bound
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The printout of a fitted limited-failure model notes `lfp_p` at its bound of 1 when `1 - lfp_p < 1e-5`, not only when it equals 1, and says to fit without `lfp=True`. A model built with `from_params` gets no note. | principle 22 | The search stops just short of the bound (1 - lfp_p was between 1e-10 and 1e-6 on every such fit tried), so `== 1` would almost never fire. | done |
+
 ## 2026-10-30
 
 ### Fixes behind the second bug hunt's strict xfails

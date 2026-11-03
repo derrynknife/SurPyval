@@ -16,6 +16,16 @@ Unreleased
   the others refitted. Aliased coefficients and those held at 0 are not
   counted; a coefficient held at another value is refused, saying what to
   do. The result is the dictionary the other regressions' tests return.
+- The printout of a limited-failure fit whose ``lfp_p`` lands at its bound
+  of 1 (within 1e-5) now says so and what to do: the data show no sign of
+  units that never fail, so fit without ``lfp=True``.
+- Documented two results that surprised readers: a competing-risks
+  model's all-cause ``ff`` follows ``how`` (Nelson-Aalen by default) and
+  so is below the sum of the cumulative incidences unless fitted with
+  ``how="Kaplan-Meier"``; and ``NonParametric.cs`` with the default step
+  estimate holds its last value past the data, while the interpolated
+  forms give ``nan`` there.
+
 **Fixed.**
 
 - Likelihood-ratio bounds on a profile that flattens out towards a limit
