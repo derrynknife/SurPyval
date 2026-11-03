@@ -544,9 +544,9 @@ class Parametric(
     lfp_p: float
     f0: float
     support: tuple[float, float]
-    #: The inverse Hessian of the (weighted) negative log-likelihood, the
-    #: distribution's block; see the class docstring. Never the robust
-    #: covariance: bounds use ``covariance()``.
+    # The inverse Hessian of the (weighted) negative log-likelihood, the
+    # distribution's block (documented under Attributes above). Never the
+    # robust covariance: bounds use ``covariance()``.
     hess_inv: npt.NDArray
     #: The covariance of every estimated parameter, ``covariance()``.
     _covariance: npt.NDArray | None = None
