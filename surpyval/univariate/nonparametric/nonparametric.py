@@ -1552,6 +1552,19 @@ class NonParametric(
         >>> model.cs([0, 1, 2], 4)
         array([1.  , 0.75, 0.5 ])
 
+        Past the last observation the step estimate holds its last value
+        (here the last two units are censored, at 7 and 8), so surviving a
+        further 20 is as likely as surviving a further 1; the interpolated
+        forms give ``nan`` there:
+
+        >>> censored = KaplanMeier.fit(
+        ...     [1, 2, 3, 4, 5, 6, 7, 8], c=[0, 0, 0, 0, 0, 0, 1, 1]
+        ... )
+        >>> censored.cs([1, 20], 5)
+        array([0.66666667, 0.66666667])
+        >>> float(censored.cs(20, 5, interp="linear"))
+        nan
+
         The median remaining life of a unit aged 4, the further time by
         which half the units still running at 4 have failed:
 

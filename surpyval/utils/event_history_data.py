@@ -2059,12 +2059,12 @@ def _unmodelled(data: Any) -> list:
     if getattr(data, "time_varying_covariates", None) is not None:
         out.append(
             (
-                "time-varying covariates (no model uses them yet, #905)",
+                "time-varying covariates (no model uses them yet)",
                 "time_varying_covariates",
             )
         )
     if getattr(data, "states", None) is not None:
-        out.append(("states (no model uses them yet, #887)", "states"))
+        out.append(("states (no model uses them yet)", "states"))
     return out
 
 

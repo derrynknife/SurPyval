@@ -94,8 +94,12 @@ def fit_cox_penalised(
     w: Any = None,
     tr: npt.ArrayLike | None = None,
     t: npt.ArrayLike | None = None,
+    units: tuple[npt.NDArray, npt.NDArray] | None = None,
 ) -> SemiParametricRegressionModel:
-    """:meth:`CoxPH_.fit_penalised`."""
+    """:meth:`CoxPH_.fit_penalised`. ``units``, ``(Z, n)`` with one row
+    per unit (subject), gives the penalty's ``N`` and the covariates'
+    standardisation where the rows are not the units (start-stop rows of
+    :meth:`CoxPH_.fit_tvc_penalised`); ``None`` takes them over the rows."""
     refuse_weights(w)
     tl = _left_truncation(x, tl, tr, t)
     func_generator = fitter._resolve_func_generator(tie_method)
@@ -115,6 +119,7 @@ def fit_cox_penalised(
             tie_method,
             center,
             tol,
+            units,
         )
     x, c, n, tl, Z = validate_coxph(x, c, n, Z, tl, tie_method)
     from .cox_ph import _require_an_event
@@ -122,10 +127,11 @@ def fit_cox_penalised(
     _require_an_event(c, n)
     mean = covariate_center(Z, n)
     Zc = Z - mean
+    Z_units, n_units = (Z, n) if units is None else units
     res, beta, penalty = _solve(
         lambda scale: func_generator(x, Zc / scale, c, n, tl),
-        Z,
-        n,
+        Z_units,
+        n_units,
         penalizer,
         l1_ratio,
         standardise,
@@ -239,6 +245,7 @@ def _fit_stratified_penalised(
     tie_method: str,
     center: bool,
     tol: float,
+    units: tuple[npt.NDArray, npt.NDArray] | None = None,
 ) -> SemiParametricRegressionModel:
     """The penalised stratified Cox fit: the partial likelihood summed
     over the strata, one set of coefficients, a baseline per stratum
@@ -258,8 +265,9 @@ def _fit_stratified_penalised(
         ]
         return combined_generators(func_generator, scaled)
 
+    Z_units, n_units = (Z_all, n_all) if units is None else units
     res, beta, penalty = _solve(
-        generators, Z_all, n_all, penalizer, l1_ratio, standardise, tol
+        generators, Z_units, n_units, penalizer, l1_ratio, standardise, tol
     )
 
     per_stratum = []

@@ -28,9 +28,6 @@ from surpyval.datasets import (
     load_rossi_time_varying,
 )
 from surpyval.recurrent import ProportionalIntensityHPP
-from surpyval.tests.univariate.regression.test_penalised import (
-    GLMNET_START_STOP,
-)
 from surpyval.univariate.competing_risks import (
     CompetingRisksProportionalHazards,
 )
@@ -246,17 +243,104 @@ def _rossi_tv():
     )
 
 
-@pytest.mark.parametrize("setting", sorted(GLMNET_START_STOP))
-def test_fit_tvc_penalised_matches_glmnet(setting):
+# glmnet 5.2 on the person-week rows rescaled to count subjects
+# (scripts/reference/reference_r_penalised_tvc_subjects.R):
+# (ties, lambda, alpha) -> the coefficients of fin, age, prio, employed
+GLMNET_TVC_SUBJECTS = {
+    ("breslow", 0.001, 0.0): [
+        -0.3285477459,
+        -0.04929938819,
+        0.08301669789,
+        -1.341019321,
+    ],
+    ("efron", 0.001, 0.5): [
+        -0.326216856,
+        -0.04913964529,
+        0.08307545084,
+        -1.342877787,
+    ],
+}
+
+
+@pytest.mark.parametrize("setting", sorted(GLMNET_TVC_SUBJECTS))
+def test_fit_tvc_penalised_counts_subjects_as_glmnet_rescaled(setting):
     ties, lam, alpha = setting
     i, start, stop, c, Z = _rossi_tv()
     model = CoxPH.fit_tvc_penalised(
         i, start, stop, c, Z, penalizer=lam, l1_ratio=alpha, tie_method=ties
     )
     assert model.is_tvc and model.maximum == "verified"
-    ref = np.asarray(GLMNET_START_STOP[setting])
+    ref = np.asarray(GLMNET_TVC_SUBJECTS[setting])
     np.testing.assert_array_equal(model.params == 0, ref == 0)
     np.testing.assert_allclose(model.params, ref, rtol=1e-6, atol=1e-10)
+
+
+def _split_rows(i, start, stop, c, Z, pieces):
+    """Each row ``(start, stop]`` split into ``pieces`` rows of equal
+    length with the same covariates, the event (if any) on the last."""
+    rows = []
+    for ii, s0, s1, cc, z in zip(i, start, stop, c, Z):
+        cuts = np.linspace(s0, s1, pieces + 1)
+        for k in range(pieces):
+            last = k == pieces - 1
+            rows.append((ii, cuts[k], cuts[k + 1], cc if last else 1, z))
+    i2, a, b, c2, Z2 = zip(*rows)
+    return (
+        np.array(i2),
+        np.array(a),
+        np.array(b),
+        np.array(c2),
+        np.array(Z2, dtype=float),
+    )
+
+
+def _small_tvc():
+    rng = np.random.default_rng(11)
+    rows = []
+    for subject in range(60):
+        z0, load = rng.binomial(1, 0.5), rng.normal()
+        change = rng.uniform(1, 4)
+        end = rng.uniform(2, 8)
+        event = int(rng.uniform() < 0.7)
+        if end > change:
+            rows.append((subject, 0.0, change, 1, [z0, load]))
+            rows.append((subject, change, end, 1 - event, [1 - z0, load]))
+        else:
+            rows.append((subject, 0.0, end, 1 - event, [z0, load]))
+    i, a, b, c, Z = zip(*rows)
+    return (
+        np.array(i),
+        np.array(a),
+        np.array(b),
+        np.array(c),
+        np.array(Z, dtype=float),
+    )
+
+
+@pytest.mark.parametrize("l1_ratio", [0.0, 1.0])
+def test_fit_tvc_penalised_does_not_depend_on_how_rows_are_split(l1_ratio):
+    # The partial likelihood is the same however a subject's follow-up is
+    # split into rows, and so are N (the subjects) and the scale (each
+    # subject's time-averaged covariates): the same fit.
+    data = _small_tvc()
+    split = _split_rows(*data, pieces=3)
+    kw = dict(penalizer=0.05, l1_ratio=l1_ratio, tie_method="breslow")
+    whole = CoxPH.fit_tvc_penalised(*data, **kw)
+    parts = CoxPH.fit_tvc_penalised(*split, **kw)
+    np.testing.assert_allclose(parts.params, whole.params, rtol=1e-8)
+    assert parts.penalty.scale == pytest.approx(whole.penalty.scale)
+
+
+def test_counting_rows_made_the_fit_depend_on_the_split():
+    # The rule before: N and the scale over the rows (fit_penalised with
+    # tl, which has no ids, still counts rows, as glmnet). Splitting
+    # every row into three changes that fit.
+    i, start, stop, c, Z = _small_tvc()
+    _, s2, e2, c2, Z2 = _split_rows(i, start, stop, c, Z, pieces=3)
+    kw = dict(penalizer=0.05, tie_method="breslow")
+    rows = CoxPH.fit_penalised(stop, Z, c=c, tl=start, **kw)
+    rows_split = CoxPH.fit_penalised(e2, Z2, c=c2, tl=s2, **kw)
+    assert np.max(np.abs(rows_split.params - rows.params)) > 1e-2
 
 
 def test_fit_tvc_timeline_penalised_is_the_start_stop_fit():
