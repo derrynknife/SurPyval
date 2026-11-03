@@ -107,7 +107,7 @@ class CompetingRisks(SerialisableMixin):
     how: str = "Nelson-Aalen"
     #: The ``(lower, upper)`` interval the estimate is defined on, set by
     #: :meth:`set_support`; ``None`` (the default) when it has not been set.
-    support: "tuple[float, float] | None" = None
+    support: tuple[float, float] | None = None
 
     # -- serialisation -----------------------------------------------------
 
@@ -152,7 +152,7 @@ class CompetingRisks(SerialisableMixin):
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict: dict) -> "CompetingRisks":
+    def from_dict(cls, model_dict: dict) -> CompetingRisks:
         """Rebuild a nonparametric competing-risks model from a dict."""
         require_model_tag(
             model_dict, "CompetingRisks", "a competing-risks model"
@@ -179,7 +179,7 @@ class CompetingRisks(SerialisableMixin):
         """.format(events=list(self.event_idx_map.keys()))
         return textwrap.dedent(out)
 
-    def set_support(self, lower: float, upper: float) -> "CompetingRisks":
+    def set_support(self, lower: float, upper: float) -> CompetingRisks:
         """
         Give the estimate an explicit support, ``[lower, upper]``.
 
@@ -340,6 +340,25 @@ class CompetingRisks(SerialisableMixin):
         cause with the others removed (treated as censoring). For the
         probability of failing *from* a cause while the others still act,
         use :meth:`cif`.
+
+        The all-cause ``ff`` is by the estimator the model was fitted with
+        (``how``). The cumulative incidences always use the Kaplan-Meier
+        survival, so they add up to ``ff`` only for a model fitted with
+        ``how="Kaplan-Meier"``; with the default, Nelson-Aalen,
+        ``ff = 1 - exp(-H)`` is below their sum from the first event on.
+
+        Examples
+        --------
+        >>> from surpyval import CompetingRisks
+        >>> x, e = [5, 5, 8], ["A", "B", None]
+        >>> model = CompetingRisks.fit(x, e)
+        >>> float(model.ff(5).round(4))
+        0.4866
+        >>> float((model.cif(5, "A") + model.cif(5, "B")).round(4))
+        0.6667
+        >>> km = CompetingRisks.fit(x, e, how="Kaplan-Meier")
+        >>> float(km.ff(5).round(4))
+        0.6667
         """
         return 1 - self.sf(x, event=event)
 
@@ -764,10 +783,10 @@ class CompetingRisks(SerialisableMixin):
         df: Any,
         x_col: str,
         e_col: str,
-        c_col: "str | None" = None,
-        n_col: "str | None" = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
         how: str = "Nelson-Aalen",
-    ) -> "CompetingRisks":
+    ) -> CompetingRisks:
         """
         Fit from the columns of a :class:`pandas.DataFrame`.
 
@@ -806,10 +825,10 @@ class CompetingRisks(SerialisableMixin):
         cls,
         x: npt.ArrayLike,
         e: npt.ArrayLike,
-        c: "npt.ArrayLike | None" = None,
-        n: "npt.ArrayLike | None" = None,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
         how: str = "Nelson-Aalen",
-    ) -> "CompetingRisks":
+    ) -> CompetingRisks:
         """
         Fit the non-parametric competing-risks model.
 
@@ -834,7 +853,8 @@ class CompetingRisks(SerialisableMixin):
             report: ``"Nelson-Aalen"`` (the default, ``exp(-H)``) or
             ``"Kaplan-Meier"``. The cumulative incidence always uses the
             Kaplan-Meier survival, so the CIFs add up to the Kaplan-Meier
-            failure probability either way.
+            failure probability either way: to the model's ``ff`` with
+            ``"Kaplan-Meier"``, but not with the default (see :meth:`ff`).
 
         Returns
         -------

@@ -6,6 +6,55 @@ Unreleased
 
 **Added.**
 
+- Bootstrap bounds for weighted fits: ``method="bootstrap"`` on ``cb``,
+  ``param_cb`` and ``quantile_cb`` (and ``mrl_cb`` of a distribution) of a
+  parametric distribution or a parametric regression (PH, AFT, PO,
+  additive hazards, accelerated life) fitted with sampling weights ``w``,
+  which 0.26 refused, is the case bootstrap: the units are resampled with
+  their weights and the weighted model refitted. A seed gives the same
+  bounds at any scale of the weights. Likelihood-ratio bounds still refuse
+  weighted fits.
+- ``CoxPH.fit_from_df`` takes ``w_col`` (lifelines' ``weights_col``),
+  which 0.26 refused: the same fit as ``CoxPH.fit(..., w=)``, with the
+  weights of rows dropped for a missing covariate dropped with them.
+- ``CoxPH.fit_tvc`` takes weights ``w`` (one per interval row) and
+  ``fit_tvc_from_df`` takes ``w_col``: the weighted partial likelihood of
+  start-stop data, with the robust covariance clustered by subject (R's
+  ``coxph(Surv(start, stop, event) ~ ..., weights = w, robust = TRUE, id =
+  id)``). Not with ``strata`` yet.
+- ``logrank`` and ``pairwise_logrank`` take sampling weights ``w``
+  (0.26 gave Python's ``TypeError``): weighted numbers at risk and of
+  events, with the design-based variance, R's robust score test
+  ``coxph(..., weights = w, robust = TRUE, ties = "breslow")$rscore``. Every
+  weighting, ``strata``, ``tl`` and ``t0`` take weights; the result reports
+  ``weighted`` and does not depend on the scale of ``w``.
+- A stratified Cox model (``CoxPH.fit(..., strata=)`` and
+  ``fit_tvc(..., strata=)``) now has what an unstratified one has, where
+  each was refused before: ``compute_residuals`` (martingale, deviance,
+  score, dfbeta, Schoenfeld and scaled Schoenfeld, each within its
+  stratum's risk sets), the proportional-hazards test, ``diagnose()``
+  (its calibration curve predicting each row from its own stratum), the
+  robust (sandwich) standard errors, ``to_dict`` / ``to_json`` (one
+  baseline per stratum; such a file is schema 4, which an older SurPyval
+  refuses rather than reading the first stratum's baseline as the
+  model's), and ``concordance()``, which pools the pairs within each
+  stratum as R's ``concordance`` does and takes ``strata=`` to score new
+  data. All agree with R's ``survival`` (``residuals``, ``cox.zph``,
+  ``coxph(robust = TRUE)``, ``concordance``) to 1e-6 on the ``lung`` data
+  stratified by sex and the start-stop ``heart`` data stratified by
+  surgery (``scripts/reference/reference_r_stratified_cox.R``).
+- ``random(size, Z, random_state=)`` on the accelerated failure time
+  models (``WeibullAFT``, ``LogNormalAFT`` and the others) and the
+  parametric proportional odds models (``WeibullPO``, ...), which raised
+  ``NotImplementedError``, and on the Cox model (``CoxPH``, with
+  ``stratum=`` for a stratified fit) and the Aalen additive model, which
+  had none. Each draw is an exact inverse-transform draw at its covariate
+  row. The Cox and Aalen models draw from their step survival curves: a
+  draw is an event time, or ``inf`` beyond the last time the curve is
+  estimated at, as often as ``sf`` there says. A new conformance property
+  checks, for every regression with ``random``, that 20,000 draws at one
+  row are within the 0.1% Kolmogorov-Smirnov band of its ``sf``, and the
+  seed properties now cover the regressions.
 - ``likelihood_ratio_test()`` on a distributional regression
   (``WeibullDistributional`` and the others), which 0.26 refused. With no
   argument it is the global test: twice the gain in log-likelihood over
@@ -31,6 +80,33 @@ Unreleased
   ``bic``. The Cox, cause-specific and HPP fits agree with R's glmnet to
   six digits; the distributional fit on a Weibull's scale alone is
   ``WeibullAFT.fit_penalised`` with the signs changed.
+
+**Changed.**
+
+- Refusals no longer send users to issue numbers: the ``diagnose()``
+  refusals of models whose checks are not built yet, and a few other
+  messages, said "tracked in #NNN" (issues that are now closed). Each now
+  says what to use instead: a parametric competing-risks model points to
+  each cause's ``models[cause].diagnose()``, Buckley-James and
+  distributional regressions to a PH or AFT fit's ``diagnose()``, and so
+  on.
+- ``diagnose()`` on an ``AalenAdditiveModel`` or a ``BayesianParametric``
+  was an ``AttributeError``; it now refuses with ``NotImplementedError``,
+  pointing to ``constant_effects_test()`` and ``model.mle.diagnose()``.
+- ``fit_bayes(..., w=...)`` and ``fit_bayes_from_df(..., w_col=...)`` were
+  Python's ``TypeError``; they now raise a ``ValueError`` naming the
+  method and the argument, why, and what to use instead (the weighted
+  maximum-likelihood ``fit``, or counts ``n``).
+- The printout of a limited-failure fit whose ``lfp_p`` lands at its bound
+  of 1 (within 1e-5) now says so and what to do: the data show no sign of
+  units that never fail, so fit without ``lfp=True``.
+- Documented two results that surprised readers: a competing-risks
+  model's all-cause ``ff`` follows ``how`` (Nelson-Aalen by default) and
+  so is below the sum of the cumulative incidences unless fitted with
+  ``how="Kaplan-Meier"``; and ``NonParametric.cs`` with the default step
+  estimate holds its last value past the data, while the interpolated
+  forms give ``nan`` there.
+
 **Fixed.**
 
 - Likelihood-ratio bounds on a profile that flattens out towards a limit

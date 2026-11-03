@@ -30,6 +30,12 @@ DECISIONS.md, 2026-10-29):
   conservative: the check is one-sided (coverage at least nominal less
   the tolerance) and the coverage is reported.
 
+- **The case bootstrap** (DECISIONS.md, 2026-11-03). The informative
+  sampling design (seed 26104, 200 replicates of 200 refits each): the
+  coverage of the 90% case-bootstrap intervals (``method="bootstrap"``)
+  of the Weibull ``alpha`` and ``beta`` and of its ``sf`` at the
+  population quartiles.
+
 Tolerance: ``Z_TOL`` Monte Carlo standard errors plus a slack of 0.02 (the
 weighted fits' intervals are asymptotic in the effective sample size,
 about 350 here).
@@ -263,3 +269,47 @@ def test_iptw_coverage():
             slack=SLACK,
             side="lower",
         )
+
+
+#: The case-bootstrap study: replicates and refits, fixed before its first
+#: run.
+BOOT_REPS = 200
+N_BOOT = 200
+
+
+def test_case_bootstrap_coverage():
+    rng = np.random.default_rng(26104)
+    sf_lo, sf_hi = np.empty((BOOT_REPS, 3)), np.empty((BOOT_REPS, 3))
+    params = np.empty((BOOT_REPS, 2, 2))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for r in range(BOOT_REPS):
+            x, c, w = _informative_sample(rng)
+            wb = sp.Weibull.fit(x, c, w=w)
+            boot = dict(
+                method="bootstrap",
+                n_boot=N_BOOT,
+                random_state=int(rng.integers(2**31)),
+                alpha_ci=0.10,
+            )
+            b = wb.cb(QUARTILES, **boot)
+            sf_lo[r], sf_hi[r] = b[:, 0], b[:, 1]
+            for k, name in enumerate(("alpha", "beta")):
+                params[r, k] = wb.param_cb(name, **boot)
+    for k, name in enumerate(("alpha", "beta")):
+        check_coverage(
+            params[:, k, 0],
+            params[:, k, 1],
+            TRUE.params[k],
+            0.90,
+            f"weighted Weibull param_cb({name!r}, bootstrap) 90%",
+            slack=SLACK,
+        )
+    check_coverage(
+        sf_lo,
+        sf_hi,
+        TRUE.sf(QUARTILES),
+        0.90,
+        "weighted Weibull cb(sf, bootstrap) 90%",
+        slack=SLACK,
+    )

@@ -453,6 +453,14 @@ _MAXIMUM_NOTES = {
     ),
 }
 
+# A fitted limited-failure proportion this close to 1 is at its bound: the
+# printout says so, and what to do (principle 22).
+_LFP_BOUND_TOL = 1e-5
+_LFP_AT_BOUND_NOTE = (
+    "lfp_p is at its bound of 1: the data show no sign of units that "
+    "never fail; fit without lfp=True"
+)
+
 
 class Parametric(
     LikelihoodRatioMixin,
@@ -536,8 +544,9 @@ class Parametric(
     #: The covariance of every estimated parameter, ``covariance()``.
     _covariance: npt.NDArray | None = None
     #: Whether the model was fitted with weights ``w``: its covariance is
-    #: then the robust (sandwich) one, and the likelihood-ratio and
-    #: bootstrap bounds and the information criteria refuse.
+    #: then the robust (sandwich) one, its bootstrap bounds the case
+    #: bootstrap, and the likelihood-ratio bounds and the information
+    #: criteria refuse.
     weighted: bool = False
     #: The effective sample size of the weights of a weighted fit.
     effective_n: float | None = None
@@ -1042,6 +1051,8 @@ class Parametric(
             if self.lfp:
                 label = "Max Proportion (lfp_p)"
                 out += f"\n{label:<20}: {self.lfp_p}"
+                if self._lfp_at_bound():
+                    out += f"\n{'Note':<20}: {_LFP_AT_BOUND_NOTE}"
 
             if self.zi:
                 out += f"\nZero-Inflation (f0) : {self.f0}"
@@ -1056,6 +1067,16 @@ class Parametric(
             return out
         else:
             return "Unable to fit values"
+
+    def _lfp_at_bound(self) -> bool:
+        """Whether a fitted limited-failure proportion is at its upper
+        bound of 1 (within ``_LFP_BOUND_TOL``): the plain model, with
+        every unit failing eventually, fits as well. The search stops just
+        short of the bound, so the test is not ``== 1``. False for a model
+        built from parameters."""
+        if not self.lfp or self.method == "given parameters":
+            return False
+        return bool(1 - float(self.lfp_p) < _LFP_BOUND_TOL)
 
     def _data_repr(self) -> str:
         """The data the model was fitted to, in one line, for the printout
@@ -1241,7 +1262,7 @@ class Parametric(
             return probability_cb(self, name, alpha_ci, bound, method)
         if method is None:
             method = "wald"
-        self._refuse_weighted_method(method)
+        self._refuse_weighted_method(method, bootstrap=True)
         if self._is_lr(method, bootstrap=True):
             return self._param_cb_lr(name, alpha_ci, bound)
         if method.lower() == "bootstrap":
@@ -2561,7 +2582,7 @@ class Parametric(
             # Nothing to bound (the Jacobian of no values fails).
             return np.empty((0, 2) if bound == "two-sided" else (0,))
 
-        self._refuse_weighted_method(method)
+        self._refuse_weighted_method(method, bootstrap=True)
         if self._is_lr(method, bootstrap=True):
             return self._cb_lr(t, on, alpha_ci, bound)
         if method.lower() == "bootstrap":
@@ -2708,7 +2729,7 @@ class Parametric(
             self._refuse_weighted_method(method)
             self._is_lr(method)  # checks the name
             return self._quantile_cb_discrete(probs, alpha_ci, bound, method)
-        self._refuse_weighted_method(method)
+        self._refuse_weighted_method(method, bootstrap=True)
         if self._is_lr(method, bootstrap=True):
             return self._lr_summary("qf", probs, alpha_ci, bound)
         if method.lower() == "bootstrap":
@@ -2935,7 +2956,7 @@ class Parametric(
                 lambda v: 1.0 / v,
                 (_LN_TINY, _LN_MAX),
             )
-            self._refuse_weighted_method(method)
+            self._refuse_weighted_method(method, bootstrap=True)
             if self._is_lr(method, bootstrap=True):
                 found = self._lr_summary(
                     "mrl", t[ok], alpha_ci, bound, scale=log_scale
@@ -3067,10 +3088,13 @@ class Parametric(
             return np.column_stack([found[:, 0], inf])
         return extended._summary_cb_lr(fns, alpha_ci, bound, kind, scale)
 
-    def _refuse_weighted_method(self, method: Any) -> None:
-        """Refuse, for a fit with weights ``w``, the likelihood-ratio and
-        bootstrap bounds, which weights make invalid; Wald bounds use the
-        robust covariance."""
+    def _refuse_weighted_method(
+        self, method: Any, bootstrap: bool = False
+    ) -> None:
+        """Refuse, for a fit with weights ``w``, the likelihood-ratio
+        bound, which weights make invalid, and the bootstrap where the
+        caller has no case bootstrap (``bootstrap=False``); Wald bounds use
+        the robust covariance."""
         if not self.weighted or not isinstance(method, str):
             return
         from surpyval.utils.weights import refuse_bootstrap, refuse_lr
@@ -3078,7 +3102,7 @@ class Parametric(
         m = method.lower()
         if m in ("lr", "likelihood", "likelihood-ratio", "profile"):
             raise refuse_lr()
-        if m == "bootstrap":
+        if m == "bootstrap" and not bootstrap:
             raise refuse_bootstrap()
 
     @staticmethod
