@@ -510,7 +510,7 @@ def _validate(model: Any) -> None:
         raise NotImplementedError(
             "diagnose() is not yet available for a stratified Cox model: "
             "the residuals its checks use (compute_residuals) do not "
-            "handle strata yet; tracked in #868. Diagnose the model "
+            "handle strata yet. Diagnose the model "
             "fitted without strata= to see which covariates break "
             "proportional hazards."
         )

@@ -534,8 +534,13 @@ class SemiParametricRegressionModel(
         """
         if self.is_stratified:
             raise NotImplementedError(
-                "Serialisation of stratified Cox models is not supported "
-                "(each stratum carries its own baseline hazard)."
+                "Saving a stratified Cox model with to_dict / to_json is "
+                "not supported yet: each stratum carries its own baseline "
+                "hazard, which the saved form has no place for. Save the "
+                "model with pickle (pickle.dump(model, f)), which keeps "
+                "every stratum, to load with the same version of "
+                "SurPyval; or keep the data and refit with "
+                "CoxPH.fit(..., strata=...)."
             )
         out: dict[str, Any] = {
             "model": "SemiParametricRegressionModel",
