@@ -16,6 +16,15 @@ Unreleased
   the others refitted. Aliased coefficients and those held at 0 are not
   counted; a coefficient held at another value is refused, saying what to
   do. The result is the dictionary the other regressions' tests return.
+- :doc:`Weighted Data` says which robust formula the standard errors use
+  (HC0, with no small-sample factor; R's ``survey`` package multiplies by
+  ``sqrt(n / (n - 1))``, 0.5% at 100 units and 5% at 10), that counts
+  ``n`` are frequency weights, and, with a worked example, why a weighted
+  Cox model with tied failure times gives a different answer under
+  Efron's ties for one subject of weight 3 than for three identical
+  copies (use ``n`` for repeated identical units, ``w`` for survey and
+  importance weights). No numbers change.
+
 **Fixed.**
 
 - Likelihood-ratio bounds on a profile that flattens out towards a limit
