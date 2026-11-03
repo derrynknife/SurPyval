@@ -13,6 +13,74 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-03
+
+### Weights: the case bootstrap
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `method="bootstrap"` on a weighted parametric fit (`cb`, `param_cb`, `quantile_cb`, `mrl_cb`) or a weighted parametric regression (`cb`, `param_cb`, `quantile_cb`; PH, AFT, PO, AH, accelerated life) is the case bootstrap: the units are drawn i.i.d. with replacement, each with its weight, covariates, time, censoring and truncation, and the weighted model is refitted. The univariate bounds are the bias-corrected percentile intervals of the refits and the regressions' the BCa intervals, as unweighted. | proposed | The parametric bootstrap simulates from the model and knows nothing of the design the weights describe; resampling the units does. Likelihood-ratio bounds stay refused. | done |
+| The regressions' BCa acceleration with weights is the skewness of `g' A^-1 S*`, `A^-1` the inverse weighted information (the bread), not the robust covariance. | proposed | The linearisation of the weighted estimate is `A^-1` times the weighted score; the robust covariance is the variance of that, not its direction. | done |
+| The resamples are drawn by position, and the refits use the weights scaled to sum to the units, so a seed gives the same bounds at any scale of `w` (to the optimiser's tolerance: the conformance check uses each case's own tolerance). | proposed | The weight-scale property every weighted bound keeps. | done |
+| The case bootstrap resamples left- and interval-censored data as they are (it simulates nothing); limited-failure, zero-inflated and discrete fits still refuse it, as unweighted; time-varying fits too. No fit takes a cluster label (only `robust_covariance(cluster)` does), so clusters are not resampled. `bootstrap_cb` and `band` of the non-parametric estimates still refuse weights. | proposed | — | done (gaps recorded) |
+| The calibration study of the case bootstrap (informative sampling, seed 26104, 200 replicates of 200 refits, 90% intervals of the Weibull `alpha`, `beta` and `sf` at the quartiles, the study's `Z_TOL` plus slack 0.02) was fixed before its first run. | principle 17 | — | done |
+
+### Weights: Cox from a DataFrame and with time-varying covariates
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `CoxPH.fit_from_df(w_col=)`: the weights go through the one mask of the rows with every covariate, so the fit equals `fit(..., w=)` of the rows kept, bit for bit. `validate_coxph_df_inputs` returns the weights as a tenth element only when `w_col` is given, so its tuple is unchanged for other callers. | proposed | This closes the gap recorded on 2026-10-29 ("its frame handling drops rows before `fit` sees them"). | done |
+| `CoxPH.fit_tvc(w=)` takes one weight per interval row (a weight may change between a subject's rows, as a time-varying censoring weight does; R allows it too). The covariance is the weighted sandwich clustered by subject, and `robust_covariance()` of the model clusters by subject by default; `cluster=` still overrides. Refused with `strata` (the weighted stratified fit is not built). | proposed | R's `coxph(..., id = id, robust = TRUE)`; with the subject as the cluster, splitting follow-up into episodes changes nothing (checked). | done |
+| Robust bounds on a weighted Cox model's predicted survival are not built here: `CoxPH` models have no `cb` (no survival bounds at all, weighted or not), so this needs the unweighted bound (and its conformance declarations) first. | proposed | Bigger than one weighted extra; it is a new bound for the model. | gap |
+
+### Weights: the log-rank tests
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `logrank(..., w=)` and `pairwise_logrank(..., w=)`: the weighted numerator with the design-based variance `sum_i n_i w_i^2 s_i s_i'`, `s_i` each unit's score residual at `beta = 0` (Breslow's ties), which is R's `coxph(..., weights = w, robust = TRUE, ties = "breslow")$rscore`; checked against it to 1e-10. The robust variance is used whenever `w` is given, `w = 1` included. | principle 16 | R's robust score test is the reference; a hypergeometric variance with weighted counts depends on the scale of the weights. | done |
+| The test weights (Gehan's `r`, Tarone-Ware's `sqrt(r)`, Peto-Peto's `r + 1`, the Fleming-Harrington Kaplan-Meier) use the weighted numbers with the weights scaled to a mean of 1 per unit over the whole data (all strata at once), and are treated as fixed in the variance. | proposed | The `+ 1` of Peto-Peto is one unit, so the weights must be on the units' scale for the test not to depend on the scale of `w`; one scale for every stratum keeps the strata's relative weights. R has no weighted Peto-Peto or Fleming-Harrington test to compare with. | done |
+
+### Stratified Cox: residuals, `diagnose()`, robust errors, concordance and saving
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Every residual is computed within its stratum's risk sets; the scaled Schoenfeld residuals and dfbeta use the whole fit's covariance and number of events; the proportional-hazards test sums the information over the strata, with the km scale of time from all the rows. | principle 16 | What R's `residuals.coxph` and `cox.zph` do; checked against them to 1e-6. | done |
+| `concordance()` of a stratified fit pools the concordant and usable pairs of each stratum, and takes `strata=` with `x`, `c`, `Z` for new data (refused on an unstratified model). The pair counts come from a new `metrics.concordance.concordance_counts`, which `concordance_index` now divides. | principle 16 | R's `concordance` of a stratified `coxph`. | done |
+| A stratified Cox dict stores a `"strata"` list of baselines and is schema 4; the top-level baseline is still the first stratum's. | principle 20 | A schema-3 reader would otherwise read the first stratum's baseline as the model's, silently. | done |
+| A stratified fit keeps its rows (`_fit_data`, in the order given, with each row's stratum) as an unstratified one does; a penalised stratified fit still keeps none, and its residuals say so. | proposed | The penalised fit is out of this change's scope. | done |
+
+### `random()` for the AFT, PO, Cox and Aalen models
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A Cox or Aalen draw beyond the last time the step curve is estimated at is `inf`, without a warning; the docstring says so and how often (`sf` at that time). | proposed | It is what the model says (the curve stops above 0 when the data end censored), as a limited-failure model's `random` gives `inf`; a warning in every simulation loop would be noise. The user censors the draws where they choose. | done |
+| The Cox model's `random(size, Z, random_state=None, *, stratum=None)`: `stratum` is keyword-only, unlike `sf(x, Z, stratum)`. | principle 21 | `random_state` keeps its place as the third argument of every regression's `random`. | done |
+| The frailty models, the Lin-Ying additive model, Buckley-James, the semi-parametric proportional odds model, the joint model (which draws through `predict(...).random`) and the trees exclude the new `random_sf` conformance property with the reason. | proposed | Out of the scope of this change; each is a documented gap. | done |
+
+### Refusals that named issue numbers
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| No error or warning message names an issue number, an issue URL or "tracked in"; each says what to do instead. `surpyval/tests/test_no_issue_numbers_in_messages.py` checks every string in the library's code that is not a docstring. Docstrings and comments keep their references. | principle 2, 22 | The issues named were closed, so the message pointed to a page that did not say what to do. | done |
+| `registry.Pending` carries `instead` (what to check the model with meanwhile) in place of its issue number. Aalen additive, Bayesian, distributional and Buckley-James models have `PENDING` entries; any other model without a family gets a general refusal pointing to a nonparametric comparison and the models that have `diagnose()`. `AalenAdditiveModel` and `BayesianParametric` inherit `DiagnoseMixin`, so `diagnose()` refuses rather than being missing. | principle 2 | One refusal path for every model without checks. | done |
+| `fit_bayes(w=)` and `fit_bayes_from_df(w_col=)` are explicit keyword arguments that refuse a value with a `WeightedRefusal` (`ValueError`), as `takes_unit` does for the fitters without weights; the message points to the weighted `fit` only where the distribution's `fit` takes `w`. | principle 2 | `fit_bayes` is not wrapped by `takes_unit`, so `w=` was Python's `TypeError`. | done |
+| A stratified Cox model's `to_dict()` stays a `NotImplementedError`, now saying to save it with `pickle` (checked to keep every stratum's baseline) or to refit with `strata=`. | proposed | Serialising the per-stratum baselines is a format change, out of scope for a message fix. | superseded: stratified Cox models now save, as schema 4 (see "Stratified Cox: residuals, `diagnose()`, robust errors, concordance and saving") |
+
+### A limited-failure proportion fitted at its bound
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The printout of a fitted limited-failure model notes `lfp_p` at its bound of 1 when `1 - lfp_p < 1e-5`, not only when it equals 1, and says to fit without `lfp=True`. A model built with `from_params` gets no note. | principle 22 | The search stops just short of the bound (1 - lfp_p was between 1e-10 and 1e-6 on every such fit tried), so `== 1` would almost never fire. | done |
+
+### CI time limits and balanced test parts
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Every job in `actions.yml` and `publish.yml` has `timeout-minutes` of about twice its time on the 0.26 release run (lint, coverage, wheel and the publish jobs 10-15, conformance and docs 20, the suite's parts and calibration 60, pymc 30 as before). | proposed | A hang fails with the job's name; generous because CI runs only on the release pull request, where a limit too tight blocks a release. | done |
+| Per-test limits (pytest-timeout, thread method): 20 minutes in the suite's parts, 10 in the conformance suite, 45 in calibration as before. | proposed | The longest suite tests take a few minutes on the runners; the per-test durations of each part are now printed (`--durations=20`) and recorded, so the limit can be tightened from data. | done |
+| The parts are balanced by recorded test times with the existing `--shard` option (`--shard-durations`, longest first into the least-loaded part; a test with no recorded time counts as the median), not with the `pytest-split` plugin. Each release run records the times (`--store-durations`) and the `coverage` job merges them into an artifact to commit as `.github/test_durations.json`; with no file the hash split stays. | proposed | No new dependency, and the hash split stays as the fallback. No times file is committed yet: one needs a full run's times, which the next release run produces. | open |
+| actionlint is not added to the lint job yet. | proposed | It was not run over the workflows locally; with shellcheck on the runner it could report findings in the existing `run:` scripts and turn the release run red. Run it once over both workflows, fix what it finds, then add it. | open |
+
 ## 2026-10-30
 
 ### Fixes behind the second bug hunt's strict xfails
@@ -223,6 +291,74 @@ The rows of 2026-10-29 and 2026-10-30 that were still proposed were reviewed by 
 | Changed, each in its own change: the sign of the distributional regression's coefficients and of Royston-Parmar's odds scale (one sign convention, SurPyval's); `hess_inv` with weights (always the inverse Hessian); robust standard errors (all or none); penalised Cox on start-stop data (counts subjects, not rows); Aalen's `coef_penalty` (renamed `penalizer`, the old name deprecated for one release). | maintainer | — | changed |
 | Closed as won't-do for now: a normal-scale Royston-Parmar model with covariates (`LogNormalAFT` covers it, and the refusal message stays). | maintainer | — | closed |
 | The other proposed rows stay proposed. Rows settled by a principle or by the maintainer whose status still said "proposed" now say "done" (they shipped in 0.26); the PyMC section, written twice, is kept once (the copy with `to_surpyval`); reasons that said 0.26 was unreleased now say it has shipped. | proposed (housekeeping) | — | done |
+
+### One sign convention: distributional regression and Royston-Parmar
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Every model added in 0.26 takes SurPyval's own coefficient sign, that of the AFT and PH models (a positive coefficient means a shorter life), defined as the existing models define it; not the references' sign. This reverses the 2026-10-29 row "Coefficients have the sign of the link". | maintainer (2026-11-03) | One meaning of a coefficient's sign across the package (principle 21) outweighs matching gamlss and flexsurv (principle 16); the reference tests flip the sign where they compare with R. | done |
+| In a distributional regression each parameter's coefficients enter as `g(theta(z)) = g(theta) + s b'z`, `s` from the parameter's effect on life (`_links.EFFECT`, checked against each distribution's quantile function): `s = -1` where raising the parameter makes every quantile later (a scale, a location, a Gamma's or ExpoWeibull's ordering shape, a Beta's `alpha`), `s = +1` where it makes every quantile earlier (a rate, a Beta's `beta`), and `s = +1` (the link's sign) for a shape or spread whose quantiles cross (a Weibull's `beta`, every `sigma`). Covariates on the scale alone give the AFT model's coefficients, sign included. | proposed | "A positive coefficient shortens life" is defined only where a parameter orders lives; where it does not, the link's sign is the plain reading (a positive coefficient raises the shape) and is 0.26's, so those coefficients do not move. | done |
+| A distributional model saved by 0.26 (`to_dict`/`to_json`, and `pickle`) is converted on loading: each coefficient, its fixed value, and the rows and columns of every stored covariance, centred-fit state and Hessian are multiplied by the old sign times the new, so it predicts as it did (tested on dicts and pickles written by 0.26 from PyPI). A dict now stores `"coefficient_signs"` and is stamped schema 4, which 0.26 refuses. | principle 20, 21 | A sign flip cannot keep the old form working for a release with a deprecation (principle 21): the same number cannot mean both. Saved models are the part that can be kept exact, and an older reader must refuse rather than read the new sign as the old. | done |
+| Royston-Parmar regression is unchanged: its hazard scale is `PH` on the spline baseline (a positive coefficient shortens life, as flexsurv's) and its odds scale `PO` on it, with every SurPyval `PO` model's sign (a positive coefficient multiplies the survival odds and lengthens life; flexsurv's is the opposite). The 2026-10-29 odds-scale row therefore stands as it was, and `df = 1` on the odds scale is now tested to equal `PO(LogLogistic)`. | maintainer (2026-11-03) | The existing `PO` models are the definition the rule points to; making Royston-Parmar's odds coefficients "positive = shorter" would give `PO(SplineBaseline)` a different sign from `PO(Weibull)`. The maintainer decided (2026-11-03) to leave PO as it is: no PO model changes sign. PO keeps its meaning (a positive coefficient raises the survival odds, a longer life) and PH and AFT keep theirs (a positive coefficient, a shorter life); the docs show the rules side by side. The first instruction assumed every existing model read a positive coefficient as a shorter life; that was found to be wrong for PO. | done |
+
+### Robust all or none
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| When robust is asked for, every uncertainty uses the robust covariance: `cb`, `quantile_cb` and `param_cb` take `robust=` and `cluster=` as `summary` does, and `robust_p_values(cluster)` gives the p-values (a method beside `robust_standard_errors`, since `p_values` is a property and keeps its meaning). This reverses the 2026-10-29 row "Only the standard errors and the summary change". | maintainer (2026-11-03) | One coefficient must not show two uncertainties. | done |
+| What has no robust form refuses rather than mixing: `robust=True` with the likelihood-ratio or bootstrap bounds (no covariance in them), `cluster` without `robust=True`, and (already) restored, penalised and `fit_tvc` models. The default stays model-based. | principle 2, 24 | Simple by default (principle 24); a refusal says what to do (principle 2). | done |
+| The robust Wald bounds are computed in the same parameterisation as the model-based ones (the centred fit's, behind a baseline reported at 0), with the sandwich in place of the inverse information (`_robust.robust_inference_state`). Cox's `summary(robust=True)` already built its whole table from the robust standard errors, and Cox has no coefficient `cb` or `param_cb`, so it is unchanged. The distributional model's `parameter_cb` takes no `robust` yet. | proposed | The delta method gives the same bound either way, and the centred one is better conditioned (#463). | done |
+
+### `hess_inv` is the inverse Hessian
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `hess_inv` is always the inverse Hessian of the (weighted) negative log-likelihood; with weights it is that of the weights as given (R's `survreg` `naive.var`, checked to 2e-4), not the robust covariance. The robust covariance is `covariance()`. This reverses the 2026-10-29 weights row "With weights, `hess_inv` ... holds the robust covariance". | maintainer (2026-11-03) | One meaning per attribute (principle 21). | done |
+| Every variance inside SurPyval comes from `covariance()` (`Parametric._core_covariance`): `param_cb`, the Wald `cb` family, the probability plot's band and the summaries. A model restored from an old dict with `hess_inv` and no `"covariance"` uses `hess_inv` there only when it is not weighted (then they are the same matrix). The likelihood-ratio searches keep reading `hess_inv`: they want the likelihood's curvature to scale their steps, and weighted fits refuse them. | proposed | Weighted fits keep their bounds (tested against 0.26's values); unweighted ones are bit-identical. | done |
+| A weighted model's dict writes the inverse Hessian as `"inverse_hessian"` and keeps the robust block under `"hess_inv"`, so a 0.26 reader (whose `param_cb` reads `"hess_inv"`) keeps robust bounds, with no new schema. A weighted dict saved by 0.26 (no `"inverse_hessian"`) loads with no `hess_inv`, its `"hess_inv"` being the robust covariance; its bounds use its `"covariance"` as before. | proposed | A schema bump would refuse in 0.26 a document 0.26 can read correctly this way; an attribute that cannot be known is left unset rather than filled with the wrong matrix. | done |
+
+### Penalised regression: one shared helper and model mixin
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Every `fit_penalised` goes through `_penalised.penalised_fit(objective, Z, weights, coef_index, penalizer, l1_ratio, standardise, tol)`, where `objective(scale, N)` builds the model's own likelihood on the covariates divided by `scale` (over `N`), rather than a helper that rescales the coefficients of a likelihood on the raw covariates. | proposed | Each model divides its covariates where its data are built (a Cox fit centres them first); taking the builder keeps the existing fits bit-exact and lets each model keep its own data preparation. | done |
+| The fit helper takes the rows' `weights` (today the counts `n`), so sampling weights can be passed in later without a new signature. | proposed | — | done |
+| A model that gives no Hessian is solved with one by central finite differences of its gradient; the solver's result says `hessian="finite differences"`. | proposed | The Newton polish, the check of the minimum and the effective degrees of freedom all need second derivatives. | done |
+| The model side is `PenalisedModelMixin` (the `penalty`, the refusals, the effective df of `aic`/`bic`, the `to_dict` entry and the printout line), on both regression model classes. | proposed | — | done |
+
+### Penalised fits on more models
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The Cox model with time-varying covariates takes a penalty through new methods, `CoxPH.fit_tvc_penalised` and `CoxPH.fit_tvc_timeline_penalised`, rather than penalty arguments on `fit_tvc`. | proposed | The same split as `fit` / `fit_penalised`: a penalised model has a different contract (no inference), so the method name says which one the caller gets. | done |
+| The cause-specific competing-risks Cox model's penalty is one `penalizer` and `l1_ratio` for every cause; `penalty.effective_df` is the causes' sum (each cause's own is on `models[cause].penalty`). The Fine-Gray model has no penalised fit. | proposed | The causes share the rows and so the scale; one penalty per cause can follow if asked. | done |
+| `ProportionalIntensityHPP.fit_penalised` divides by `N`, the number of items, and standardises the covariates over the items (each item once, whatever its number of rows). | proposed | The covariates describe the items; for exact events this is glmnet's Poisson fit with one row per item and offset log(follow-up). | done |
+| `ProportionalIntensityNHPP` has no penalised fit yet. | proposed | Its likelihood is written in plain numpy (as are Duane's and Crow-AMSAA's intensities), so it has no exact gradient; the penalised solver needs the gradient to its optimality tolerance, which finite differences do not reach. The likelihood needs moving to autograd first. | open |
+| A distributional `fit_penalised` takes `penalizer` as one value, one per covariate column (that column on every parameter) or a dict per parameter (`{"beta": 0.5}`, one value or one per that parameter's columns); a parameter the dict does not name is not penalised. The intercepts are never penalised, and the fit is not centred (as the other penalised fits). | proposed | One penalty per parameter's coefficients was asked for; the column forms match the other fitters. | done |
+| The distributional fit is checked against `WeibullAFT.fit_penalised` (covariates on the scale alone) and against its own optimality conditions, not against gamlss's `ri()`. | proposed | `ri()` chooses its own penalty scale and smoothing, so its fit is not this objective at a given penalty. | done |
+| glmnet references for the new fits use a convergence threshold of 1e-30 (the older references 1e-20): at 1e-20 glmnet stops 1e-7 short on one lasso coefficient of the PBC transplant cause, where its own gradient is not yet 0. | proposed | The reference must be glmnet's answer at convergence; the test's tolerance (1e-6) was not changed. | done |
+
+### `AalenAdditive`: `coef_penalty` is now `penalizer`
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Rename `AalenAdditive`'s `coef_penalty` (argument, model attribute and dict key) to `penalizer`, the old names accepted with a `DeprecationWarning` until v0.28 (`REMOVED_IN_NEXT`). The maths is unchanged. | maintainer | One name for a penalty across the package (principle 21). | done |
+
+### Penalised Cox on start-stop data counts subjects
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `CoxPH.fit_tvc_penalised` (and the timeline form) divides by `N`, the number of subjects (distinct ids, each weighted by the `n` of its last row), and standardises over the subjects, not the rows. This replaces the rows rule 0.26 documented for start-stop data (glmnet's). | maintainer | The partial likelihood does not change when a subject's follow-up is split into more rows, so the penalty's scale should not either. | done |
+| A subject's covariate for the standardisation is its time-weighted average over its follow-up: each row's covariates weighted by `xr - xl`. | proposed | Splitting a row into several with the same covariates leaves it unchanged (so the fit does not depend on the split), and it reflects every value the subject had, not only its first. | done |
+| `CoxPH.fit_penalised` with `tl` (no ids) still counts rows, unchanged, and still matches glmnet's start-stop fit; the new fit is checked against glmnet with the objective rescaled to subjects (`standardize = FALSE` on `X / s`, `lambda * N_subjects / N_rows`). | proposed | Data without ids cannot be grouped into subjects. | done |
+
+### The penalty path and choosing the penalty by AIC or BIC
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| One function, `penalty_path(fit_penalised, *args, **kwargs)`, for every model's penalised fit, rather than a `fit_penalised_path` method on each fitter. | proposed | Every penalised fit takes `penalizer` and `l1_ratio`, so one function covers them all and the path cannot drift between models. | done |
+| The default path is glmnet's: from the smallest penalty that sets every penalised coefficient to 0, found by doubling and bisection to six digits (for a ridge path the one for `l1_ratio=0.001`, as glmnet), down to `min_ratio` (0.001) times it, `n_penalties` (20) on the log scale. Every fit starts afresh (no warm starts), so each is exactly `fit_penalised` at its penalty. | proposed | The same path as the reference implementation; fresh starts cost time but keep each point reproducible on its own. | done |
+| The penalty is chosen by AIC or BIC with the effective degrees of freedom; ties go to the larger penalty. Cross-validation is not offered. | proposed | The information criteria are statistics of the fit and already defined for every penalised model; cross-validation is a resampling workflow outside the package's scope. | done |
 
 ### Likelihood-ratio bounds on flat profiles
 

@@ -6,6 +6,55 @@ Unreleased
 
 **Added.**
 
+- Bootstrap bounds for weighted fits: ``method="bootstrap"`` on ``cb``,
+  ``param_cb`` and ``quantile_cb`` (and ``mrl_cb`` of a distribution) of a
+  parametric distribution or a parametric regression (PH, AFT, PO,
+  additive hazards, accelerated life) fitted with sampling weights ``w``,
+  which 0.26 refused, is the case bootstrap: the units are resampled with
+  their weights and the weighted model refitted. A seed gives the same
+  bounds at any scale of the weights. Likelihood-ratio bounds still refuse
+  weighted fits.
+- ``CoxPH.fit_from_df`` takes ``w_col`` (lifelines' ``weights_col``),
+  which 0.26 refused: the same fit as ``CoxPH.fit(..., w=)``, with the
+  weights of rows dropped for a missing covariate dropped with them.
+- ``CoxPH.fit_tvc`` takes weights ``w`` (one per interval row) and
+  ``fit_tvc_from_df`` takes ``w_col``: the weighted partial likelihood of
+  start-stop data, with the robust covariance clustered by subject (R's
+  ``coxph(Surv(start, stop, event) ~ ..., weights = w, robust = TRUE, id =
+  id)``). Not with ``strata`` yet.
+- ``logrank`` and ``pairwise_logrank`` take sampling weights ``w``
+  (0.26 gave Python's ``TypeError``): weighted numbers at risk and of
+  events, with the design-based variance, R's robust score test
+  ``coxph(..., weights = w, robust = TRUE, ties = "breslow")$rscore``. Every
+  weighting, ``strata``, ``tl`` and ``t0`` take weights; the result reports
+  ``weighted`` and does not depend on the scale of ``w``.
+- A stratified Cox model (``CoxPH.fit(..., strata=)`` and
+  ``fit_tvc(..., strata=)``) now has what an unstratified one has, where
+  each was refused before: ``compute_residuals`` (martingale, deviance,
+  score, dfbeta, Schoenfeld and scaled Schoenfeld, each within its
+  stratum's risk sets), the proportional-hazards test, ``diagnose()``
+  (its calibration curve predicting each row from its own stratum), the
+  robust (sandwich) standard errors, ``to_dict`` / ``to_json`` (one
+  baseline per stratum; such a file is schema 4, which an older SurPyval
+  refuses rather than reading the first stratum's baseline as the
+  model's), and ``concordance()``, which pools the pairs within each
+  stratum as R's ``concordance`` does and takes ``strata=`` to score new
+  data. All agree with R's ``survival`` (``residuals``, ``cox.zph``,
+  ``coxph(robust = TRUE)``, ``concordance``) to 1e-6 on the ``lung`` data
+  stratified by sex and the start-stop ``heart`` data stratified by
+  surgery (``scripts/reference/reference_r_stratified_cox.R``).
+- ``random(size, Z, random_state=)`` on the accelerated failure time
+  models (``WeibullAFT``, ``LogNormalAFT`` and the others) and the
+  parametric proportional odds models (``WeibullPO``, ...), which raised
+  ``NotImplementedError``, and on the Cox model (``CoxPH``, with
+  ``stratum=`` for a stratified fit) and the Aalen additive model, which
+  had none. Each draw is an exact inverse-transform draw at its covariate
+  row. The Cox and Aalen models draw from their step survival curves: a
+  draw is an event time, or ``inf`` beyond the last time the curve is
+  estimated at, as often as ``sf`` there says. A new conformance property
+  checks, for every regression with ``random``, that 20,000 draws at one
+  row are within the 0.1% Kolmogorov-Smirnov band of its ``sf``, and the
+  seed properties now cover the regressions.
 - ``likelihood_ratio_test()`` on a distributional regression
   (``WeibullDistributional`` and the others), which 0.26 refused. With no
   argument it is the global test: twice the gain in log-likelihood over
@@ -24,6 +73,179 @@ Unreleased
   Efron's ties for one subject of weight 3 than for three identical
   copies (use ``n`` for repeated identical units, ``w`` for survey and
   importance weights). No numbers change.
+
+**Changed.**
+
+- **The sign of a distributional regression's coefficients is reversed
+  on scale and location parameters** (``WeibullDistributional`` and every
+  ``Distributional(dist)``). In 0.26 every coefficient took its link's
+  sign, as R's ``gamlss`` and ``flexsurvreg`` do, so a positive
+  coefficient on a Weibull's scale meant a *longer* life: the opposite of
+  SurPyval's AFT and PH models. Now each coefficient follows SurPyval's
+  sign, that of the AFT models: **a positive coefficient means a shorter
+  life**. The fitted model, its predictions and its bounds are the same;
+  only the reported coefficients of the parameters below change sign,
+  and with them their bounds, ``fixed=`` and ``init=`` values and
+  formulas you write with them.
+
+  - A scale (``alpha`` of a Weibull, log-logistic or ExpoWeibull,
+    ``sigma`` of a Rayleigh), a location (``mu`` of a LogNormal, Normal,
+    Gumbel, GumbelLEV or Logistic) and a shape whose increase makes
+    every life longer (a Gamma's ``alpha``, an ExpoWeibull's ``mu``, a
+    Beta's ``alpha``): the sign is reversed, ``alpha(z) = alpha
+    e^{-b'z}``, ``mu(z) = mu - b'z``. Covariates on the scale alone now
+    give exactly the AFT model's coefficients, sign included.
+  - A rate (an Exponential's ``failure_rate``, a Gamma's ``beta``) and a
+    Beta's ``beta`` (both shorten lives as they rise), and a shape or
+    spread with no direction of its own (a Weibull's ``beta``, every
+    ``sigma`` of a location-scale distribution): unchanged.
+
+  ``model.coefficient_signs`` gives each parameter's sign. Before and
+  after, on the bearings of :doc:`Distributional Regression`, whose scale
+  falls with load:
+
+  .. code-block:: python
+
+      model = surv.WeibullDistributional.fit_from_df(
+          bearings, x_col="hours", c_col="censored", Z_cols=["load"]
+      )
+      model.params[2:]   # alpha_load, beta_load
+      # 0.26: [-0.3978, 0.2695]  (alpha(z) = alpha e^{+b z})
+      # 0.27: [ 0.3978, 0.2695]  (alpha(z) = alpha e^{-b z}, as WeibullAFT)
+      model.qf(0.1, loads)  # the same in both: [350.0, 359.3, 333.6, 287.0]
+
+  A model saved by 0.26 (``to_dict``, ``to_json`` or ``pickle``) is
+  converted when it is loaded: its coefficients, covariance and fixed
+  values take the new sign and it predicts exactly as it did. A model
+  saved now carries its signs (``"coefficient_signs"``) and is stamped
+  schema 4, which 0.26 refuses with a request to upgrade rather than
+  reading the coefficients with the old sign. R's ``gamlss`` and
+  ``flexsurvreg`` coefficients on a scale or a location are SurPyval's
+  with the sign changed.
+
+  Only the distributional model changes: no proportional odds model and
+  no Royston-Parmar model changes sign. Royston-Parmar regression is
+  unchanged: on the hazard scale its
+  coefficients already had the ``PH`` sign (a positive one shortens
+  life), and on the odds scale the sign of every SurPyval ``PO`` model (a
+  positive one multiplies the survival odds, so lengthens life; flexsurv's
+  odds-scale coefficients are these negated). ``df=1`` on the odds scale
+  is now checked to give ``PO(LogLogistic)``'s coefficients.
+- ``robust_p_values(cluster=None)`` on the parametric regressions: the
+  Wald p-values on the robust standard errors, the ``p`` column of
+  ``summary(robust=True)``.
+
+**Changed.**
+
+- **Robust is all or none on the parametric regressions.** In 0.26
+  ``summary(robust=True)`` showed robust (sandwich) standard errors while
+  ``cb``, ``param_cb`` and ``p_values`` kept the model-based covariance,
+  so one coefficient could show two uncertainties. Now ``cb``,
+  ``quantile_cb`` and ``param_cb`` take ``robust=True`` and ``cluster``,
+  as ``summary`` does, and ``robust_p_values()`` gives the p-values, all
+  on the robust covariance: ``param_cb(name, robust=True)`` is the
+  interval in ``summary(robust=True)``, and ``robust_p_values()`` its
+  ``p``. What has no robust form refuses with a message rather than mix:
+  ``robust=True`` with ``method="lr"`` or ``"bootstrap"`` (they use no
+  covariance), ``cluster`` without ``robust=True``, and, as before, a
+  model restored from a dict (no data for the sandwich), a penalised fit
+  and a ``fit_tvc`` model. Without ``robust=True`` nothing changes: every
+  bound and ``p_values`` stay model-based (with weights ``w`` that
+  covariance is already the robust one).
+
+**Changed.**
+
+- **``hess_inv`` is always the inverse Hessian.** In 0.26 a parametric
+  model fitted with weights ``w`` (``Weibull.fit(x, c, w=w)`` and the
+  others) held the robust (sandwich) covariance in ``hess_inv``. Now
+  ``hess_inv`` is the inverse Hessian of the weighted log-likelihood with
+  the weights as given (R's ``survreg(..., robust = TRUE)$naive.var``),
+  as its name says, and the robust covariance is ``covariance()`` (and
+  ``standard_errors()``), as it already was. Every bound, band, plot and
+  summary inside SurPyval reads ``covariance()``, so a weighted fit's
+  bounds are unchanged; unweighted fits are unchanged (the two matrices
+  are the same there). If you read ``hess_inv`` for a variance, read
+  ``covariance()`` instead: on a weighted fit ``hess_inv`` is now the
+  smaller, model-based matrix, which is not the variance of the estimate.
+  A weighted model's dictionary keeps the robust block under
+  ``"hess_inv"`` (so 0.26 still reads robust bounds from it) and the
+  inverse Hessian under ``"inverse_hessian"``; a weighted model saved by
+  0.26 loads with its robust bounds and no ``hess_inv`` (it did not save
+  the inverse Hessian).
+- **Penalised fits on more models**: ridge, lasso and elastic net
+  (``fit_penalised(..., penalizer, l1_ratio, standardise)``) on
+  ``RoystonParmarPH`` / ``RoystonParmarPO`` (the PH or PO family on the
+  spline baseline), on the Cox model with time-varying covariates
+  (``CoxPH.fit_tvc_penalised`` and ``CoxPH.fit_tvc_timeline_penalised``), on
+  the cause-specific competing-risks Cox model
+  (``CompetingRisksProportionalHazards.fit_penalised``, one penalised Cox
+  fit per cause), on ``ProportionalIntensityHPP`` and on the distributional
+  regressions (``WeibullDistributional.fit_penalised`` and the others,
+  with a penalty per parameter's coefficients). Each has the refusals of
+  ``CoxPH.fit_penalised`` (no covariance, bounds or tests; weights
+  refused) and counts its effective degrees of freedom in ``aic`` and
+  ``bic``. The Cox, cause-specific and HPP fits agree with R's glmnet to
+  six digits; the distributional fit on a Weibull's scale alone is
+  ``WeibullAFT.fit_penalised``, coefficient for coefficient.
+- ``penalty_path(fit_penalised, *data, l1_ratio=..., n_penalties=20,
+  min_ratio=1e-3)``: the coefficient path of any penalised fit, over
+  glmnet's default path of penalties (its largest penalty and the
+  coefficients along it agree with glmnet's), with each fit's effective
+  degrees of freedom, AIC and BIC; ``best("bic")`` or ``best("aic")``
+  chooses the penalty, ``table()`` lists the path and ``plot()`` draws it.
+- The penalised regression guide and the ``fit_penalised`` docstrings
+  now say that ``standardise=True`` divides by standard deviations with
+  divisor ``N`` (glmnet's), not ``N - 1`` (lifelines'), why, how large the
+  difference is (a factor of :math:`\sqrt{N / (N - 1)}`), and how to
+  reproduce a lifelines fit. No change in behaviour.
+
+**Deprecated.**
+
+- ``AalenAdditive.fit(..., coef_penalty=)`` (and ``fit_from_df``) is now
+  ``penalizer=``, the name every other penalised fit uses; the model's
+  ``coef_penalty`` attribute is now ``penalizer`` and its saved dict's key
+  ``"penalizer"`` (a dict saved with ``"coef_penalty"`` still loads). The
+  old names still work, with a ``DeprecationWarning``, until v0.28. The
+  penalty itself is unchanged: a ridge on the covariates only, scaled by
+  each covariate's variance.
+
+**Changed.**
+
+- Penalised Cox on start-stop data counts subjects, not rows:
+  ``CoxPH.fit_tvc_penalised`` and ``fit_tvc_timeline_penalised`` divide
+  the partial likelihood by the number of subjects and standardise the
+  covariates over the subjects (each subject's covariate averaged over its
+  follow-up), so splitting the same follow-up into more rows no longer
+  changes how hard a ``penalizer`` shrinks. In 0.26 the way to fit
+  start-stop rows was ``CoxPH.fit_penalised(stop, Z, tl=start)``, which
+  counts rows (as glmnet); with no ids it still does, unchanged, and the
+  guide now points start-stop data to ``fit_tvc_penalised``.
+
+**Changed.**
+
+- Refusals no longer send users to issue numbers: the ``diagnose()``
+  refusals of models whose checks are not built yet, and a few other
+  messages, said "tracked in #NNN" (issues that are now closed). Each now
+  says what to use instead: a parametric competing-risks model points to
+  each cause's ``models[cause].diagnose()``, Buckley-James and
+  distributional regressions to a PH or AFT fit's ``diagnose()``, and so
+  on.
+- ``diagnose()`` on an ``AalenAdditiveModel`` or a ``BayesianParametric``
+  was an ``AttributeError``; it now refuses with ``NotImplementedError``,
+  pointing to ``constant_effects_test()`` and ``model.mle.diagnose()``.
+- ``fit_bayes(..., w=...)`` and ``fit_bayes_from_df(..., w_col=...)`` were
+  Python's ``TypeError``; they now raise a ``ValueError`` naming the
+  method and the argument, why, and what to use instead (the weighted
+  maximum-likelihood ``fit``, or counts ``n``).
+- The printout of a limited-failure fit whose ``lfp_p`` lands at its bound
+  of 1 (within 1e-5) now says so and what to do: the data show no sign of
+  units that never fail, so fit without ``lfp=True``.
+- Documented two results that surprised readers: a competing-risks
+  model's all-cause ``ff`` follows ``how`` (Nelson-Aalen by default) and
+  so is below the sum of the cumulative incidences unless fitted with
+  ``how="Kaplan-Meier"``; and ``NonParametric.cs`` with the default step
+  estimate holds its last value past the data, while the interpolated
+  forms give ``nan`` there.
 
 **Fixed.**
 
@@ -59,6 +281,17 @@ Unreleased
   separate the covariates: the sums over the risk set left rounding error
   that made the singular step look estimable. The estimate now stops
   before that step, as it was meant to.
+
+**Internal.**
+
+- The penalised fits (``fit_penalised`` on ``CoxPH`` and on the
+  parametric PH, AFT and PO families) now go through one shared fit
+  helper and one model mixin, so further models can take a penalty
+  without a copy of the checks, the standardisation, the refusals of
+  inference, the information criteria's effective degrees of freedom,
+  saving and the printout. Every penalised result, warning and refusal
+  is unchanged to the last bit. The solver now also takes a model with
+  no Hessian, using finite differences of its gradient, and says so.
 
 v0.26 (31 October 2026)
 -----------------------

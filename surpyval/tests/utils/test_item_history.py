@@ -253,11 +253,17 @@ def test_time_varying_covariates_are_kept_and_refused_by_every_fit():
     assert schedule.edges.tolist() == [0, 6, np.inf]
     assert schedule.Z.tolist() == [[1.0], [2.0]]
     assert data.to_items() == items
-    with pytest.raises(ValueError, match="#905"):
+    with pytest.raises(
+        ValueError, match=r"time-varying covariates \(no model uses them yet\)"
+    ):
         rc.CrowAMSAA.fit(data)
-    with pytest.raises(ValueError, match="#905"):
+    with pytest.raises(
+        ValueError, match=r"time-varying covariates \(no model uses them yet\)"
+    ):
         rc.CrowAMSAA.fit_from_recurrent_data(data)
-    with pytest.raises(ValueError, match="#905"):
+    with pytest.raises(
+        ValueError, match=r"time-varying covariates \(no model uses them yet\)"
+    ):
         rc.NonParametricCounting.fit_from_recurrent_data(data)
 
 
@@ -382,7 +388,9 @@ def test_time_varying_covariates_take_schedules_and_paths():
     assert held.Z.tolist() == steps.Z.tolist()
     assert isinstance(data.time_varying_covariates["C"], StepSchedule)
     assert data.to_items() == items
-    with pytest.raises(ValueError, match="#905"):
+    with pytest.raises(
+        ValueError, match=r"time-varying covariates \(no model uses them yet\)"
+    ):
         rc.CrowAMSAA.fit(data)
 
 
@@ -437,7 +445,10 @@ def test_states_are_changes_with_censoring_and_round_trip():
     ]
     assert data.to_items() == items
     for fit in (rc.CrowAMSAA.fit, rc.CrowAMSAA.fit_from_recurrent_data):
-        with pytest.raises(ValueError, match="#887"):
+        with pytest.raises(
+            ValueError,
+            match=r"states \(no model uses them yet\).*without\('states'\)",
+        ):
             fit(data)
     with pytest.raises(ValueError, match="states"):
         data.to_histories()

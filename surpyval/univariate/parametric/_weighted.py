@@ -6,8 +6,11 @@ covariance of the estimate: it treats each weight as that many units
 seen. The robust covariance is ``H^-1 (sum_i n_i w_i^2 s_i s_i') H^-1``,
 ``s_i`` the score of one unit of row ``i`` (Huber, 1967; Binder, 1983),
 as R's ``survreg(..., weights = w, robust = TRUE)`` computes it. It is
-carried to every Wald bound (``cb``, ``param_cb``, ``quantile_cb``, ...)
-by the delta method as the classical covariance is.
+``covariance()``, and is carried to every Wald bound (``cb``,
+``param_cb``, ``quantile_cb``, ...) by the delta method as the classical
+covariance is. ``hess_inv`` stays what its name says, the inverse Hessian
+of the weighted log-likelihood (R's ``naive.var``), which is not a
+variance of the estimate.
 """
 
 from __future__ import annotations
@@ -42,10 +45,11 @@ def check_weighted_fit(surv_data: Any, how: str) -> None:
 
 def make_robust(model: Any) -> None:
     """Give a parametric ``model`` fitted to weighted data its robust
-    covariance: ``covariance()`` (and ``hess_inv``, its block of the
-    distribution's parameters) become the sandwich, so that every Wald
-    bound uses it. The offset ``gamma`` is held at its estimate, as for
-    the classical covariance."""
+    covariance: ``covariance()`` becomes the sandwich, which every Wald
+    bound uses. ``hess_inv`` is the inverse Hessian of the weighted
+    log-likelihood with the weights as given (its value is reported with
+    them, below), the distribution's block: R's ``naive.var``. The offset
+    ``gamma`` is held at its estimate, as for the classical covariance."""
     data = model.surv_data
     model.weighted = True
     model.effective_n = effective_sample_size(data.n, data.w)
@@ -80,4 +84,7 @@ def make_robust(model: Any) -> None:
     weights = data.likelihood_weights
     robust = sandwich(np.asarray(cov, dtype=float), scores, data.n, weights)
     model._covariance = robust
-    model.hess_inv = robust[:n_core, :n_core].copy()
+    # The fit's Hessian is of the weights scaled to sum to the units; with
+    # the weights as given it is ``scale`` times that.
+    classical = np.asarray(cov, dtype=float)[:n_core, :n_core] / scale
+    model.hess_inv = classical.copy()

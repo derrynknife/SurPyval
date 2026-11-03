@@ -4,8 +4,17 @@ Each parameter of the distribution has a linear predictor ``eta`` and a
 link ``g`` with ``g(theta) = eta``. A model keeps each parameter's value
 at the reference row (``Z = 0``, or the covariate means) on its natural
 scale and moves it there by the row's linear predictor,
-``theta(z) = g^-1(g(theta_0) + b'z)``, which each link computes in the
-form that stays accurate (``theta_0 * exp(b'z)`` for the log link).
+``theta(z) = g^-1(g(theta_0) + s b'z)``, which each link computes in the
+form that stays accurate (``theta_0 * exp(s b'z)`` for the log link).
+
+The sign ``s`` of each parameter (:func:`sign`) is SurPyval's sign
+convention, the one its AFT and PH models have: a positive coefficient
+makes lives shorter. A parameter whose increase makes every quantile
+later (a scale, a location, a Gamma's or an ExpoWeibull's shape that
+orders lives) has ``s = -1``; one whose increase makes every quantile
+earlier (a rate) has ``s = +1``; a parameter that makes some quantiles
+earlier and others later (a Weibull's shape, a spread ``sigma``) has no
+direction of its own, and keeps the link's sign, ``s = +1``.
 """
 
 from __future__ import annotations
@@ -17,6 +26,41 @@ import autograd.numpy as np
 #: The links by name, each with the parameter ranges it maps onto the
 #: whole line (its inverse stays inside them).
 LINKS = ("identity", "log")
+
+#: The parameters whose increase makes every quantile of the life later
+#: (``"longer"``) or earlier (``"shorter"``), by distribution. A
+#: parameter not listed moves some quantiles each way (the quantiles of
+#: two values cross), so it has no direction. Checked against each
+#: distribution's quantile function in the tests.
+EFFECT: dict[str, dict[str, str]] = {
+    "Exponential": {"failure_rate": "shorter"},
+    "Rayleigh": {"sigma": "longer"},
+    "Weibull": {"alpha": "longer"},
+    "Gamma": {"alpha": "longer", "beta": "shorter"},
+    "LogNormal": {"mu": "longer"},
+    "LogLogistic": {"alpha": "longer"},
+    "Normal": {"mu": "longer"},
+    "Gumbel": {"mu": "longer"},
+    "GumbelLEV": {"mu": "longer"},
+    "Logistic": {"mu": "longer"},
+    "Beta": {"alpha": "longer", "beta": "shorter"},
+    "ExpoWeibull": {"alpha": "longer", "mu": "longer"},
+}
+
+
+def sign(distribution: str, parameter: str) -> float:
+    """The sign ``s`` with which the coefficients of ``parameter`` enter
+    its linear predictor, ``g(theta(z)) = g(theta_0) + s b'z``: -1 where
+    raising the parameter makes lives longer, so that a positive
+    coefficient makes them shorter (SurPyval's AFT sign), else +1.
+
+    >>> sign("Weibull", "alpha"), sign("Weibull", "beta")
+    (-1.0, 1.0)
+    >>> sign("Exponential", "failure_rate")
+    1.0
+    """
+    effect = EFFECT.get(distribution, {}).get(parameter)
+    return -1.0 if effect == "longer" else 1.0
 
 
 def default_link(bounds: tuple) -> str:
