@@ -24,13 +24,27 @@ estimate of the censoring distribution given that it exceeds ``x``
 (beyond the last censoring time, never). A test stopped at a common
 time (Type I) therefore censors every unit at that time, and data with
 no censoring stay uncensored.
+
+A fit with sampling weights ``w`` is resampled by cases instead: the
+model knows nothing of the sampling design the weights describe, so
+simulating from it would not reproduce the variability of the estimate.
+Each resample draws the units i.i.d. with replacement, each with its own
+covariates, time, censoring, truncation and weight, and refits the
+weighted model. The BCa acceleration is then that of the weighted
+estimating equations: the skewness of ``g' A^-1 S*``, ``S*`` each
+resample's weighted score at the estimate and ``A^-1`` the inverse of
+the weighted information (the bread of the sandwich), not the robust
+covariance. Nothing is simulated, so left- and interval-censored data
+are resampled as they are, and the resamples are drawn by position
+alone, so a seed gives the same bounds at any scale of the weights.
 """
 
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 import autograd.numpy as np
 import numpy.typing as npt
@@ -58,7 +72,7 @@ REFIT_ERRORS = (
 )
 
 
-def bound_method(method: "str | None") -> str:
+def bound_method(method: str | None) -> str:
     """The bound ``method`` asks for: ``"wald"``, ``"lr"`` (or one of
     its aliases) or ``"bootstrap"``; anything else is refused. Case does
     not matter, and ``None`` is the default, ``"wald"``, as for the
@@ -176,7 +190,11 @@ def refits(model: Any, n_boot: Any, random_state: Any) -> Refits:
     from ._inference import _same_point
 
     n_boot = check_n_boot(n_boot)
-    design = ResampleDesign(model)
+    design: Any = (
+        CaseDesign(model)
+        if getattr(model, "weighted", False)
+        else ResampleDesign(model)
+    )
     point = model._covariance_point(model._eval_params(), model.center)
     key = None
     if isinstance(random_state, (int, np.integer)) and not isinstance(
@@ -195,25 +213,58 @@ def refits(model: Any, n_boot: Any, random_state: Any) -> Refits:
     return out
 
 
+def _refuse_unresamplable(model: Any) -> None:
+    """Refuse a model whose data a resample cannot be drawn from."""
+    if getattr(model, "data", None) is None or model._restored:
+        raise ValueError(
+            "Bootstrap bounds need the data the model was fitted to, "
+            "which a model restored from a dict does not keep; use "
+            "method='wald'."
+        )
+    if model.is_tvc:
+        raise ValueError(
+            "Bootstrap bounds are not available for a model fitted to "
+            "time-varying covariates: a resample would need each "
+            "subject's covariate path, which the fit does not keep. "
+            "Use method='wald' or method='lr'."
+        )
+
+
+class CaseDesign:
+    """What a case resample of a weighted model's data draws from: every
+    unit (a row with ``n = k`` is ``k`` units) with its covariates, time,
+    censoring, truncation and weight."""
+
+    def __init__(self, model: Any) -> None:
+        _refuse_unresamplable(model)
+        data = model.data
+        n = np.asarray(data.n, dtype=int)
+        units = np.repeat(np.arange(n.size), n)
+        self.x = np.asarray(data.x, dtype=float)[units]
+        self.c = np.asarray(data.c)[units]
+        self.Z = np.asarray(data.Z, dtype=float)[units]
+        self.t = np.asarray(data.t, dtype=float)[units]
+        self.truncated = bool(np.any(np.isfinite(self.t)))
+        # The weights scaled to sum to the units, as the fit uses them, so
+        # that the refits do not depend on the scale of ``w``.
+        w = np.asarray(data.w, dtype=float)
+        self.w = (w * (n.sum() / np.sum(n * w)))[units]
+
+    def resample(self, rng: np.random.Generator) -> tuple:
+        """One resample, ``(x, Z, c, t, w)``: the units drawn with
+        replacement."""
+        k = rng.integers(0, self.c.size, size=self.c.size)
+        t = self.t[k] if self.truncated else None
+        return self.x[k], self.Z[k], self.c[k], t, self.w[k]
+
+
 class ResampleDesign:
     """What a resample of ``model``'s data keeps: each unit's covariates,
     truncation window and censoring (a row with ``n = k`` is ``k``
     units)."""
 
     def __init__(self, model: Any) -> None:
-        if getattr(model, "data", None) is None or model._restored:
-            raise ValueError(
-                "Bootstrap bounds need the data the model was fitted to, "
-                "which a model restored from a dict does not keep; use "
-                "method='wald'."
-            )
-        if model.is_tvc:
-            raise ValueError(
-                "Bootstrap bounds are not available for a model fitted to "
-                "time-varying covariates: a resample would need each "
-                "subject's covariate path, which the fit does not keep. "
-                "Use method='wald' or method='lr'."
-            )
+        _refuse_unresamplable(model)
         data = model.data
         c = np.asarray(data.c)
         if np.any((c != 0) & (c != 1)):
@@ -278,17 +329,22 @@ class ResampleDesign:
 
 def _draw(
     model: Any,
-    design: ResampleDesign,
+    design: Any,
     point: tuple,
     n_boot: int,
     rng: np.random.Generator,
 ) -> Refits:
-    """``n_boot`` resamples simulated from ``model`` with ``design`` and
-    refitted (see the module docstring)."""
+    """``n_boot`` resamples simulated from ``model`` with ``design`` (or,
+    for a weighted fit, drawn from its units) and refitted (see the
+    module docstring)."""
     p_hat = np.asarray(model._eval_params(), dtype=float)
-    H = _cumulative_hazard(model, p_hat, model.center)
-    H_lo = H(np.where(np.isfinite(design.tl), design.tl, -np.inf), design.Z)
-    H_hi = H(np.where(np.isfinite(design.tr), design.tr, np.inf), design.Z)
+    cases = isinstance(design, CaseDesign)
+    if not cases:
+        H = _cumulative_hazard(model, p_hat, model.center)
+        H_lo = H(
+            np.where(np.isfinite(design.tl), design.tl, -np.inf), design.Z
+        )
+        H_hi = H(np.where(np.isfinite(design.tr), design.tr, np.inf), design.Z)
     kwargs: dict[str, Any] = {
         "fixed": {
             k: v for k, v in model.fixed.items() if k != model.life_parameter
@@ -305,15 +361,22 @@ def _draw(
     params, centers, scores = [], [], []
     counts = {"no finite maximum": 0, "unverified": 0, "failed": 0}
     for _ in range(n_boot):
-        x, c, t = _simulate(model, design, p_hat, H_lo, H_hi, rng)
+        if cases:
+            x, Z, c, t, w = design.resample(rng)
+            weights: dict[str, Any] = {"w": w}
+        else:
+            x, c, t = _simulate(model, design, p_hat, H_lo, H_hi, rng)
+            Z, weights = design.Z, {}
+            t = t if design.truncated else None
         try:
             with warnings.catch_warnings(), quiet_maximum_warnings():
                 warnings.simplefilter("ignore")
                 refit = model.model.fit(
                     x,
-                    design.Z,
+                    Z,
                     c=c,
-                    t=t if design.truncated else None,
+                    t=t,
+                    **weights,
                     **kwargs,
                 )
         except REFIT_ERRORS:
@@ -556,7 +619,7 @@ def function_bounds(
     model: Any,
     fits: Refits,
     value: Callable[..., npt.NDArray],
-    on: "str | None",
+    on: str | None,
     alpha_ci: float,
     bound: str,
 ) -> npt.NDArray:
@@ -629,7 +692,10 @@ def acceleration(model: Any, fits: Refits, grad: npt.NDArray) -> npt.NDArray:
     skewness is not finite."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        cov = np.array(model.covariance(), dtype=float)
+        if getattr(model, "weighted", False):
+            cov = _bread(model)
+        else:
+            cov = np.array(model.covariance(), dtype=float)
     held = model._held()
     out = [i for i, nm in enumerate(model.parameter_names) if nm in held]
     cov[out, :] = 0.0
@@ -643,6 +709,30 @@ def acceleration(model: Any, fits: Refits, grad: npt.NDArray) -> npt.NDArray:
         m2 = np.mean(L**2, axis=0)
         a = np.mean(L**3, axis=0) / (6.0 * m2**1.5)
     return np.where(np.isfinite(a), a, 0.0)
+
+
+def _bread(model: Any) -> npt.NDArray:
+    """The inverse of the weighted information of a weighted ``model``
+    (the bread of its sandwich), in the parameterisation of
+    ``covariance()``; ``nan`` where it is not finite."""
+    p_hat, center, _ = model._inference_state()
+    names = model.parameter_names
+    held = model._held()
+    free = [i for i, nm in enumerate(names) if nm not in held]
+    out = np.zeros((len(names), len(names)))
+    if not free:
+        return out
+    inv = model._inverse_information(np.asarray(p_hat), center, free)
+    if inv is None:
+        return np.full(out.shape, np.nan)
+    out[np.ix_(free, free)] = inv
+    if model._fit_centring is not None:
+        J = model._fit_centring[2]
+        out = J @ out @ J.T
+    if model.aliased.size:
+        out[model.k_dist + model.aliased, :] = np.nan
+        out[:, model.k_dist + model.aliased] = np.nan
+    return out
 
 
 def bca_bounds(

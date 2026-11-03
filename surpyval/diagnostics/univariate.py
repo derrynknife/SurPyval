@@ -139,7 +139,7 @@ NAMED = (
 
 
 def _fmt(value: float) -> str:
-    return "{:.3g}".format(value)
+    return f"{value:.3g}"
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +156,7 @@ def _ad_antiderivative(u: np.ndarray, v: np.ndarray) -> np.ndarray:
 
 
 def gof_statistics(
-    u: np.ndarray, failed: np.ndarray, counts: "np.ndarray | None" = None
+    u: np.ndarray, failed: np.ndarray, counts: np.ndarray | None = None
 ) -> dict:
     """
     The Anderson-Darling (``AD``), Kolmogorov-Smirnov (``KS``) and
@@ -391,7 +391,7 @@ def bootstrap(model: Any, n_boot: int, random_state: Any = None) -> dict:
     }
 
 
-def _boot(ctx: Context) -> "dict | None":
+def _boot(ctx: Context) -> dict | None:
     """The bootstrap of the report, or None for data it cannot
     simulate."""
     if not _simulable(ctx.model):
@@ -553,7 +553,7 @@ def _probability_panels(ctx: Context) -> list[Panel]:
             warnings.simplefilter("ignore")
             ctx.model.plot(ax=ax)
 
-    return [Panel("{} probability plot".format(_label(ctx.model)), draw)]
+    return [Panel(f"{_label(ctx.model)} probability plot", draw)]
 
 
 # ---------------------------------------------------------------------------
@@ -667,7 +667,7 @@ def _alternatives(ctx: Context) -> list[dict]:
                 {
                     "kind": "mixture",
                     "test": "AIC: mixture of two",
-                    "label": "MixtureModel({}, 2)".format(model.dist.name),
+                    "label": f"MixtureModel({model.dist.name}, 2)",
                     "dist": model.dist.name,
                     "aic": float(mix.aic()),
                 }
@@ -685,7 +685,7 @@ def _alternatives(ctx: Context) -> list[dict]:
                 {
                     "kind": "offset",
                     "test": "AIC: offset (3-parameter)",
-                    "label": "{} offset".format(model.dist.name),
+                    "label": f"{model.dist.name} offset",
                     "dist": model.dist.name,
                     "aic": float(alt.aic()),
                 }
@@ -697,7 +697,7 @@ def _alternatives(ctx: Context) -> list[dict]:
                 {
                     "kind": "lfp",
                     "test": "AIC: limited failure population",
-                    "label": "{} lfp".format(model.dist.name),
+                    "label": f"{model.dist.name} lfp",
                     "dist": model.dist.name,
                     "aic": float(alt.aic()),
                 }
@@ -719,7 +719,7 @@ def _alternatives(ctx: Context) -> list[dict]:
                 {
                     "kind": "zi",
                     "test": "AIC: zero-inflated",
-                    "label": "{} zi".format(best_zi.dist.name),
+                    "label": f"{best_zi.dist.name} zi",
                     "dist": best_zi.dist.name,
                     "aic": float(best_zi.aic()),
                 }
@@ -780,14 +780,16 @@ def _validate(model: Any) -> None:
         raise NotImplementedError(
             "diagnose() is not yet available for a discrete distribution "
             "({}): the goodness-of-fit tests of a discrete model (on its "
-            "counts) are tracked in #875. Compare discrete models with "
+            "counts) are not built yet. Compare discrete models with "
             "model.aic() meanwhile.".format(name)
         )
     if not isinstance(dist, OptimisedFitMixin):
         raise NotImplementedError(
             "diagnose() is not yet available for a {} model: its "
             "bootstrap needs the refit of the shared optimiser, which the "
-            "{} fitter does not have; tracked in #875.".format(name, name)
+            "{} fitter does not have. Compare it with other "
+            "distributions fitted to the same data with model.aic(), or "
+            "plot it beside KaplanMeier fitted to them.".format(name, name)
         )
     if getattr(model, "data", None) is None:
         raise ValueError(

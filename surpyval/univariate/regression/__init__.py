@@ -54,6 +54,7 @@ from .frailty import (
     WeibullFrailty,
 )
 from .parametric_regression_model import ParametricRegressionModel
+from .penalty_path import PenaltyPath, penalty_path
 from .plot_coefficients import CoefficientPlot, plot_coefficients
 from .proportional_hazards import (
     PH,
@@ -93,6 +94,9 @@ __all__ = [
     # The forest (coefficient) plot of any regression model
     "plot_coefficients",
     "CoefficientPlot",
+    # The coefficient path of a penalised fit, and the penalty by AIC/BIC
+    "penalty_path",
+    "PenaltyPath",
     # Result classes that hold to_dict / from_dict / to_json / from_json
     "ParametricRegressionModel",
     "SemiParametricRegressionModel",

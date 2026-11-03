@@ -353,7 +353,11 @@ def test_every_uncertainty_method_is_swept(case):
         if name.startswith("_") or name in NOT_SWEPT or name in declared:
             continue
         try:
-            params = inspect.signature(getattr(model, name)).parameters
+            with warnings.catch_warnings():
+                # A deprecated attribute's old name warns when read; it
+                # is not a method to sweep.
+                warnings.simplefilter("ignore", DeprecationWarning)
+                params = inspect.signature(getattr(model, name)).parameters
         except (TypeError, ValueError, AttributeError):
             continue
         if any(p in params for p in _LEVEL_NAMES + ("bound",)):

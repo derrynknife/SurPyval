@@ -42,6 +42,7 @@ from surpyval.univariate.regression._aliasing import (
 from surpyval.univariate.regression._partial_effects import (
     CompetingRisksPartialEffectsMixin,
 )
+from surpyval.univariate.regression._penalised import PenalisedModelMixin
 from surpyval.univariate.regression._summary import (
     coefficient_names,
     coefficient_repr,
@@ -96,6 +97,7 @@ def _check_interp(interp: str) -> None:
 
 
 class CompetingRisksProportionalHazards(
+    PenalisedModelMixin,
     CompetingRisksPartialEffectsMixin,
     InformationCriteriaMixin,
     LinearPredictorMixin,
@@ -249,6 +251,7 @@ class CompetingRisksProportionalHazards(
                 self._fg_models[event].to_dict()
                 for event in self.event_idx_map
             ]
+        out.update(self._penalty_entry())
         serialise_covariate_meta(self, out)
         return stamp_schema(out)
 
@@ -300,6 +303,7 @@ class CompetingRisksProportionalHazards(
         if "_neg_ll" in model_dict:
             model._neg_ll = float(model_dict["_neg_ll"])
         model._ic_n = cls._restored_ic_n(model_dict)
+        model._restore_penalty(model_dict)
         restore_covariate_meta(model, model_dict)
         return model
 
@@ -382,8 +386,10 @@ class CompetingRisksProportionalHazards(
         column are ``nan``.
 
         Raises a ``ValueError`` for a ``model="Cox"`` model restored from a
-        dict saved before the covariances were stored.
+        dict saved before the covariances were stored, and for a penalised
+        fit (:meth:`fit_penalised`), which has none.
         """
+        self._refuse_if_penalised()
         if self._covariances is None:
             raise no_covariance_error(
                 "it was saved before the causes' covariances were stored; "
@@ -432,11 +438,14 @@ class CompetingRisksProportionalHazards(
         b: coef_0  0.1377    0.2811  0.6242
         """
         check_alpha_ci(alpha_ci)
+        # A penalised fit has estimates and no inference: nan columns.
+        se = (
+            np.full(self.params.size, np.nan)
+            if self.penalty is not None
+            else self.standard_errors()
+        )
         return coefficient_table(
-            self.parameter_names,
-            self.params,
-            self.standard_errors(),
-            alpha_ci,
+            self.parameter_names, self.params, se, alpha_ci
         )
 
     def __repr__(self) -> str:
@@ -458,18 +467,29 @@ class CompetingRisksProportionalHazards(
                     np.array2string(np.asarray(self.center), separator=", ")
                 )
             )
+        out += self._penalty_printout()
         try:
             table = self.summary()
         except ValueError:
             return out
         ratio = "hazard" if self.model == "Cox" else "subdistribution hazard"
-        out += (
-            f"\nCoefficients        : exp(coef) is the {ratio} ratio; Wald "
-            "95% intervals\n"
+        out += f"\nCoefficients        : exp(coef) is the {ratio} ratio; " + (
+            "no intervals\n"
+            if self.penalty is not None
+            else "Wald 95% intervals\n"
         )
         return out + coefficient_repr(table) + "\n"
 
-    def _ic_k(self) -> int:
+    def _penalised_coefficients(self) -> tuple[list, npt.NDArray]:
+        # Every cause's coefficients (the penalty is per column, shared).
+        return list(self.parameter_names), np.asarray(self.params, float)
+
+    def _ic_k(self) -> float:
+        # A penalised fit counts its effective number of parameters, the
+        # sum over the causes.
+        penalised_k = self._penalised_ic_k()
+        if penalised_k is not None:
+            return penalised_k
         # Every cause's estimated coefficients (an aliased one, nan, is
         # not).
         return int(np.isfinite(np.asarray(self.betas, dtype=float)).sum())
@@ -944,6 +964,146 @@ class CompetingRisksProportionalHazards(
         fitted.feature_names = feature_names
         fitted._model_spec = model_spec
         return fitted
+
+    @classmethod
+    @dataframe_covariates
+    @takes_unit
+    @accepts_surpyval_data
+    def fit_penalised(
+        cls,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        e: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        penalizer: float | npt.ArrayLike = 0.1,
+        l1_ratio: float = 0.0,
+        standardise: bool = True,
+        tie_method: str = "efron",
+        center: bool = False,
+        tol: float = 1e-10,
+        w: npt.ArrayLike | float | None = None,
+    ) -> CompetingRisksProportionalHazards:
+        """
+        Fit the cause-specific proportional-hazards model (``model="Cox"``
+        of :meth:`fit`) with a ridge, lasso or elastic-net penalty: each
+        cause's Cox model, the other causes censored, is fitted by
+        ``CoxPH.fit_penalised`` with the same ``penalizer`` and
+        ``l1_ratio``, as glmnet's ``family = "cox"`` fitted cause by cause.
+
+        Each cause's objective is its negative partial log-likelihood over
+        ``N`` (every row's count, as each cause's fit takes every row)
+        plus the penalty on the coefficients of the covariates divided by
+        their standard deviations (``standardise=True``). The model has
+        no covariance, standard errors, bounds or p-values (they raise an
+        error that says why; ``summary()`` shows them as ``nan``), and its
+        ``aic`` and ``bic`` count the causes' effective degrees of freedom.
+        The Fine-Gray model has no penalised fit.
+
+        Parameters
+        ----------
+        x, Z, e, c, n : array_like
+            As for :meth:`fit`.
+        penalizer : float or array_like, optional
+            One value, or one per column of ``Z``, for every cause.
+            Default 0.1.
+        l1_ratio, standardise, tol, w
+            As for ``CoxPH.fit_penalised`` (weights ``w`` are refused).
+        tie_method, center
+            As for :meth:`fit`.
+
+        Returns
+        -------
+        CompetingRisksProportionalHazards
+            The fitted model, with ``penalty`` (its ``effective_df`` the
+            sum over the causes); ``models`` holds each cause's penalised
+            ``CoxPH`` model.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.univariate.competing_risks import (
+        ...     CompetingRisksProportionalHazards,
+        ... )
+        >>> rng = np.random.default_rng(0)
+        >>> Z = rng.normal(size=(300, 4))
+        >>> t_a = rng.exponential(1 / (0.1 * np.exp(0.7 * Z[:, 0])))
+        >>> t_b = rng.exponential(1 / 0.05, 300)
+        >>> x = np.minimum(t_a, t_b).round(3)
+        >>> e = np.where(t_a < t_b, "a", "b")
+        >>> model = CompetingRisksProportionalHazards.fit_penalised(
+        ...     x, Z, e, penalizer=0.05, l1_ratio=1
+        ... )
+        >>> model.betas.round(3)
+        array([[0.646, 0.   , 0.   , 0.   ],
+               [0.   , 0.   , 0.   , 0.   ]])
+        """
+        from surpyval.univariate.regression._penalised import (
+            Penalty,
+            refuse_weights,
+        )
+
+        refuse_weights(w)
+        x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
+        causes = ordered_labels(e)
+        if not causes:
+            raise ValueError("No observed events: every row is censored.")
+        unique_x = np.unique(x)
+        betas = np.zeros((len(causes), Z.shape[1]))
+        baselines = np.zeros((len(causes), len(unique_x)))
+        at = np.zeros(Z.shape[1])
+        out = cls()
+        out.n_event_types = len(causes)
+        out.event_idx_map = {state: i for i, state in enumerate(causes)}
+        out.model = "Cox"
+        neg_ll = 0.0
+        results, states, cox_models, dfs = [], [], {}, []
+        penalty = None
+        for i, event in enumerate(causes):
+            c_e = np.where(label_mask(e, event), 0, 1)
+            cox_model = CoxPH.fit_penalised(
+                x,
+                Z,
+                c=c_e,
+                n=n,
+                penalizer=penalizer,
+                l1_ratio=l1_ratio,
+                standardise=standardise,
+                tie_method=tie_method,
+                center=center,
+                tol=tol,
+            )
+            cox_models[event] = cox_model
+            results.append(cox_model.res)
+            states.append(cox_model.maximum)
+            neg_ll += cox_model.neg_ll()
+            betas[i, :] = cox_model.beta
+            at = np.asarray(cox_model.center, dtype=float)
+            H_grid = _step(cox_model.x, cox_model.H0, unique_x, before=0.0)
+            baselines[i, :] = np.diff(H_grid, prepend=0.0)
+            cause_penalty = cox_model.penalty
+            assert cause_penalty is not None
+            penalty = cause_penalty
+            dfs.append(float(cause_penalty.effective_df))
+        assert penalty is not None
+        # Every cause penalises the same columns of the same rows, so they
+        # share the penalty and the scale; the effective df is summed.
+        out.penalty = Penalty(
+            penalty.penalizer,
+            penalty.l1_ratio,
+            penalty.standardise,
+            penalty.scale,
+            float(np.sum(dfs)),
+        )
+        out.models = cox_models
+        out._neg_ll = neg_ll
+        out._ic_n = ic_sample_size(c, n)
+        out.maximum = combined_maximum(states)
+        out.results = results
+        out._covariances = None
+        out._finish(betas, baselines, at)
+        out.x = unique_x
+        return out
 
     @classmethod
     @dataframe_covariates

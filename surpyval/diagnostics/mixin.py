@@ -7,7 +7,8 @@ imports nothing heavy and adding a family never touches a model class.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Sequence
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover
     from .report import Diagnosis
@@ -19,12 +20,12 @@ class DiagnoseMixin:
     def diagnose(
         self,
         alpha: float = 0.05,
-        columns: "Sequence[str] | None" = None,
+        columns: Sequence[str] | None = None,
         *,
-        n_boot: "int | None" = None,
+        n_boot: int | None = None,
         random_state: Any = None,
         **options: Any,
-    ) -> "Diagnosis":
+    ) -> Diagnosis:
         """
         Check the model's assumptions, fit and influential points, and
         say what to do about any that fail.
@@ -79,7 +80,7 @@ class DiagnoseMixin:
         ------
         NotImplementedError
             For a model whose family's diagnostics are not built yet,
-            naming the issue that tracks them, and for an option of the
+            saying what to check it with meanwhile, and for an option of the
             model the checks do not support yet (a stratified Cox fit).
         ValueError
             For a model the checks cannot be run on (one restored with
