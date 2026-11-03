@@ -6,6 +6,11 @@ Unreleased
 
 **Added.**
 
+- Documented, and pinned by tests, how counts ``n`` and weights ``w``
+  compare with writing the rows out as copies in ``logrank`` (every
+  weighting, Fleming-Harrington included) and ``pairwise_logrank``: counts
+  match the copies to rounding, weights give the same numerator but the
+  robust variance, so a smaller statistic. No numerical change.
 - Reference checks: the actuarial life table against ``KMsurv::lifetab``
   column by column; the survival of a weighted Cox model against R's
   ``survfit(coxph(..., weights = w))``, with Efron's and Breslow's ties
