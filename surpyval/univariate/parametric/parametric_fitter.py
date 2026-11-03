@@ -1349,6 +1349,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         method: str = "auto",
         points: int | None = None,
         unit: Any = None,
+        w: Any = None,
     ) -> Any:
         """
         Fit the distribution by Bayes' rule: the prior times the
@@ -1386,6 +1387,10 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
             The grid's starting points per parameter.
         unit : str, optional
             The unit of the times, as for ``fit``.
+        w : None
+            Weights are not taken: a ``w`` is refused with a
+            ``ValueError`` that says what to use instead (``fit`` with
+            ``w``, or counts ``n`` for identical units).
 
         Examples
         --------
@@ -1398,6 +1403,8 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         >>> model.params.round(2)
         array([1.441299e+04, 2.090000e+00])
         """
+        if w is not None:
+            raise self._bayes_weights_refusal("fit_bayes", "w")
         from surpyval.bayes.fitting import fit as _fit
 
         return _fit(
@@ -1430,6 +1437,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         xr_col: str | None = None,
         tl_col: Any = None,
         tr_col: Any = None,
+        w_col: Any = None,
         **fit_options: Any,
     ) -> Any:
         """
@@ -1450,6 +1458,8 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         >>> model.method
         'conjugate'
         """
+        if w_col is not None:
+            raise self._bayes_weights_refusal("fit_bayes_from_df", "w_col")
         from surpyval.bayes.fitting import fit_from_df as _fit_from_df
 
         return _fit_from_df(
@@ -1463,6 +1473,35 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
             tl_col=tl_col,
             tr_col=tr_col,
             **fit_options,
+        )
+
+    def _bayes_weights_refusal(self, method: str, argument: str) -> Any:
+        """The refusal of weights given to a Bayesian fit: a
+        ``ValueError`` naming the method and the argument, why, and what
+        to use instead (principle 2), in place of Python's ``TypeError``
+        for an unexpected keyword."""
+        import inspect
+
+        from surpyval.utils.weights import BAYES_WHY, WeightedRefusal
+
+        name = self.name
+        without = (
+            f"call {method} without {argument} (identical units can be "
+            "given as counts, n)"
+        )
+        fit = getattr(self, "fit", None)
+        if fit is not None and "w" in inspect.signature(fit).parameters:
+            instead = (
+                "Fit by maximum likelihood with the weights, "
+                f"{name}.fit(x, c, w=w) or {name}.fit_from_df(df, ..., "
+                "w_col=...), whose robust covariance gives valid Wald "
+                f"intervals, or {without}."
+            )
+        else:
+            instead = f"{name}.fit takes no weights either: {without}."
+        return WeightedRefusal(
+            f"{name}.{method} does not take weights ({argument}): "
+            f"{BAYES_WHY}. {instead}"
         )
 
     def _check_params(self, params: Any) -> None:

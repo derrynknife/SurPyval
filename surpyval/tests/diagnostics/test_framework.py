@@ -7,6 +7,7 @@ Cox fits; ``test_cox.py`` covers the family's own checks.
 import importlib
 import inspect
 import json
+import re
 import subprocess
 import sys
 import textwrap
@@ -336,23 +337,70 @@ REG = "surpyval.univariate.regression."
 
 
 @pytest.mark.parametrize(
-    "path, attributes, issue",
+    "path, attributes, instead",
     [
         (
             "surpyval.univariate.competing_risks.ParametricCompetingRisks",
             {},
-            874,
+            r"models\[cause\]\.diagnose\(\)",
         ),
-        (REG + "BuckleyJamesModel", {}, 867),
+        (REG + "BuckleyJamesModel", {}, "diagnose\\(\\) on an AFT fit"),
+        (
+            REG + "additive_hazards.aalen_additive.AalenAdditiveModel",
+            {},
+            r"constant_effects_test\(\).*AdditiveHazards",
+        ),
+        (
+            "surpyval.bayes.model.BayesianParametric",
+            {},
+            r"model\.mle\.diagnose\(\).*prior_check\(\)",
+        ),
+        (
+            REG + "distributional.model.DistributionalRegressionModel",
+            {"kind": "Distributional"},
+            r"likelihood_ratio_test\(parameter=",
+        ),
     ],
 )
-def test_families_not_built_yet_refuse_naming_their_issue(
-    path, attributes, issue
+def test_families_not_built_yet_refuse_saying_what_to_use(
+    path, attributes, instead
 ):
     model = _bare(path, **attributes)
     assert isinstance(model, DiagnoseMixin)
-    with pytest.raises(NotImplementedError, match="#{}".format(issue)):
+    with pytest.raises(NotImplementedError, match="not built yet") as info:
         model.diagnose()
+    assert re.search(instead, str(info.value))
+    assert "#" not in str(info.value)
+
+
+def test_a_model_with_no_family_refuses_saying_what_to_use(monkeypatch):
+    # Neither a family nor a PENDING entry: the general refusal.
+    monkeypatch.setattr(registry, "PENDING", ())
+    model = _bare(REG + "BuckleyJamesModel")
+    with pytest.raises(NotImplementedError) as info:
+        model.diagnose()
+    message = str(info.value)
+    assert "not yet available for BuckleyJamesModel" in message
+    assert "KaplanMeier" in message and "CoxPH" in message
+    assert "#" not in message
+
+
+def test_real_aalen_and_bayesian_fits_refuse_saying_what_to_use():
+    # These models had no diagnose() at all (an AttributeError).
+    x = np.array([1.0, 2, 3, 4, 5, 6, 7, 8])
+    z = np.array([0.0, 1, 0, 1, 0, 1, 0, 1])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        aalen = sp.AalenAdditive.fit(x, z[:, None])
+        bayes = sp.Weibull.fit_bayes(
+            x, priors={"beta": sp.prior.around(2, between=(1, 4))}
+        )
+    with pytest.raises(NotImplementedError, match="constant_effects_test"):
+        aalen.diagnose()
+    with pytest.raises(NotImplementedError, match=r"model\.mle\.diagnose\(\)"):
+        bayes.diagnose()
+    # and what they point to works
+    assert isinstance(bayes.mle.diagnose(n_boot=19, random_state=0), Diagnosis)
 
 
 def test_a_real_fit_of_a_pending_family_refuses(rossi):
@@ -362,7 +410,7 @@ def test_a_real_fit_of_a_pending_family_refuses(rossi):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         model = sp.ParametricCompetingRisks.fit(x, e, c=c)
-    with pytest.raises(NotImplementedError, match="#874"):
+    with pytest.raises(NotImplementedError, match="are not built yet"):
         model.diagnose()
 
 

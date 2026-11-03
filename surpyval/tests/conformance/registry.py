@@ -355,6 +355,16 @@ OUT_OF_SCOPE: dict[str, str] = {
         "what plot_coefficients drew (a figure and its values), not a model"
     ),
     "surpyval.univariate.regression.plot_coefficients": _FUNCTION,
+    "surpyval.univariate.regression.penalty_path": _FUNCTION,
+    "surpyval.penalty_path": _FUNCTION,
+    "surpyval.PenaltyPath": (
+        "what penalty_path fitted (one penalised model per penalty), not a "
+        "model"
+    ),
+    "surpyval.univariate.regression.PenaltyPath": (
+        "what penalty_path fitted (one penalised model per penalty), not a "
+        "model"
+    ),
     "surpyval.recurrent.TrendTestResult": _RESULT,
     "surpyval.recurrent.InterventionTestResult": _RESULT,
     "surpyval.recurrent.GoodnessOfFitResult": _RESULT,

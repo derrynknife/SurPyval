@@ -615,6 +615,7 @@ class DistributionalRegressionModel(ParametricRegressionModel):
                 "are {}.".format(name, self.distribution.name, names)
             )
         link = self.links[names.index(name)]
+        self._refuse_if_penalised()
         if method == "wald":
             eta = self._parameter_wald(name, Z, alpha_ci, bound)
         elif method == "lr":
@@ -949,7 +950,10 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         if self._has_center():
             out["center"] = np.asarray(self.center, dtype=float).tolist()
         serialise_covariate_meta(self, out)
-        if hasattr(self, "data") and getattr(self, "res", None) is not None:
+        if self.penalty is not None:
+            # A penalised fit has no covariance.
+            cov = None
+        elif hasattr(self, "data") and getattr(self, "res", None) is not None:
             try:
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
@@ -968,6 +972,7 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = float(self._neg_ll)
         out.update(maximum_entry(self.maximum))
+        out.update(self._penalty_entry())
         ic_n = self._ic_sample_size_or_none()
         if ic_n is not None:
             out["ic_n"] = ic_n
@@ -1087,6 +1092,7 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         if "_neg_ll" in model_dict:
             out._neg_ll = float(model_dict["_neg_ll"])
         out.maximum = restored_maximum(model_dict)
+        out._restore_penalty(model_dict)
         out._ic_n = cls._restored_ic_n(model_dict)
         # A dict without signs was written by v0.26, whose coefficients
         # all had the link's sign: converted, it predicts as it did.

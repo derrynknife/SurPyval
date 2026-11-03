@@ -22,6 +22,7 @@ from surpyval.univariate.regression._aliasing import (
     constant_columns,
     warn_aliased,
 )
+from surpyval.univariate.regression._penalised import PenalisedModelMixin
 from surpyval.univariate.regression.regression_data import named_covariates
 from surpyval.utils.covariates import coefficient_names
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
@@ -71,6 +72,7 @@ def alias_covariates(Z: ArrayLike, intercept: bool) -> np.ndarray:
 
 
 class ProportionalIntensityModel(
+    PenalisedModelMixin,
     DiagnoseMixin,
     SerialisableMixin,
     RecurrenceSimulationMixin,
@@ -153,11 +155,13 @@ class ProportionalIntensityModel(
 
         out = out + "Base Rate Parameters:\n"
         for i, p in zip(self._rate_names, self.params):
-            out += "    {i}  :  {p}\n".format(i=i, p=p)
+            out += f"    {i}  :  {p}\n"
 
         out = out + "\nCovariate Coefficients:\n"
         for name, p in zip(self._coefficient_names(), self.coeffs):
-            out += "   {}  :  {}\n".format(name, p)
+            out += f"   {name}  :  {p}\n"
+        if self.penalty is not None:
+            out += self._penalty_printout().lstrip("\n") + "\n"
         return out
 
     # -- serialisation -----------------------------------------------------
@@ -190,6 +194,7 @@ class ProportionalIntensityModel(
         if self.feature_names is not None:
             # The coefficients' names (#614)
             out["feature_names"] = list(self.feature_names)
+        out.update(self._penalty_entry())
         return stamp_schema(out)
 
     @classmethod
@@ -225,7 +230,46 @@ class ProportionalIntensityModel(
         names = model_dict.get("feature_names")
         out.feature_names = None if names is None else list(names)
         out.maximum = restored_maximum(model_dict)
+        out._restore_penalty(model_dict)
         return out
+
+    def _penalised_coefficients(self) -> tuple[list, np.ndarray]:
+        # The covariate coefficients (the base rate is not penalised).
+        return list(self._coefficient_names()), np.asarray(self.coeffs, float)
+
+    def _ic_k(self) -> float:
+        # A penalised fit counts its effective number of parameters.
+        penalised_k = self._penalised_ic_k()
+        if penalised_k is not None:
+            return penalised_k
+        return super()._ic_k()
+
+    def covariance(self) -> np.ndarray:
+        """The parameters' covariance (see the likelihood-inference
+        mixin); a penalised fit (``fit_penalised``) has none, and raises
+        an error that says why."""
+        self._refuse_if_penalised()
+        return super().covariance()
+
+    def summary(self, alpha_ci: float = 0.05) -> Any:
+        """The fitted parameters with their standard errors and Wald
+        intervals (see the likelihood-inference mixin); for a penalised
+        fit the estimates with ``nan`` for the rest."""
+        if self.penalty is None:
+            return super().summary(alpha_ci)
+        import pandas as pd
+
+        check_alpha_ci(alpha_ci)
+        level = f"{100 * (1 - alpha_ci):g}%"
+        return pd.DataFrame(
+            {
+                "estimate": np.asarray(self._mle, dtype=float),
+                "se": np.nan,
+                f"lower {level}": np.nan,
+                f"upper {level}": np.nan,
+            },
+            index=self.parameter_names,
+        )
 
     @property
     def aliased(self) -> np.ndarray:
@@ -287,9 +331,7 @@ class ProportionalIntensityModel(
                 x / np.exp(self._coef() @ Z), *self.params
             )
         else:
-            raise ValueError(
-                "Inverse cif undefined for {}".format(self.dist.name)
-            )
+            raise ValueError(f"Inverse cif undefined for {self.dist.name}")
 
     def _item_cif_map(self) -> dict:
         # Each item's cumulative intensity is the baseline scaled by its own
@@ -427,6 +469,14 @@ class ProportionalIntensityModel(
             The observed statistic and its bootstrap p-value.
         """
         self._check_has_data("cramer_von_mises")
+        if self.penalty is not None:
+            raise ValueError(
+                "cramer_von_mises is not available for a penalised fit: "
+                "its bootstrap refits the model to each simulated data "
+                "set, and the penalised estimates' bias would be counted "
+                "as lack of fit. Check the fit of the unpenalised model "
+                "(fit) on the covariates you keep."
+            )
         return diagnostics.cramer_von_mises_regression(
             self, n_boot=n_boot, random_state=random_state
         )

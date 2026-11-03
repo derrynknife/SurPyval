@@ -403,6 +403,16 @@ def _old_required_schema(model_dict):
     def support(d):
         return any(d.get(k) is not None for k in ("support", "band_n"))
 
+    def stratified(d):
+        # Schema 4 (a stratified Cox model's per-stratum baselines) came
+        # after the walk was rewritten; the old walks had no such rule.
+        return (
+            d.get("model") == "SemiParametricRegressionModel"
+            and d.get("strata") is not None
+        )
+
+    if walk(model_dict, stratified):
+        return 4
     tests = (lambda d: NON_FINITE_KEY in d, formula, support, center)
     # Schema 4 (v0.27): a distributional model with its coefficient signs
     if walk(model_dict, lambda d: "coefficient_signs" in d):

@@ -161,9 +161,62 @@ The at-risk table of ``plot_nonparametric`` and ``at_risk_table`` counts
 the units themselves, not their weights. ``sf_diff`` and ``rmst_diff`` of
 weighted estimates use their robust variances.
 
+Bootstrap bounds of a weighted fit
+----------------------------------
+
+``method="bootstrap"`` on ``cb``, ``param_cb`` and ``quantile_cb`` (and
+``mrl_cb`` of a distribution) of a weighted parametric fit or a weighted
+parametric regression is the *case* bootstrap: each resample draws the
+units with replacement, each keeping its own weight, covariates, time,
+censoring and entry time, and refits the weighted model. The bounds are
+the percentiles of the refits, corrected for bias as for unweighted data
+(and, for the regressions, for skewness: the BCa interval). They do not
+lean on the normal approximation the Wald bounds make, so they are the
+ones to compare with when the sample is small or the weights are uneven.
+The parametric bootstrap of unweighted data simulates from the fitted
+model, which knows nothing of how the units were sampled; resampling the
+units does. A seed gives the same bounds at any scale of the weights.
+
+.. jupyter-execute::
+
+    print(model.param_cb("beta"))
+    print(model.param_cb("beta", method="bootstrap", n_boot=200, random_state=1))
+
+Since nothing is simulated, left- and interval-censored data are
+resampled as they are. Limited-failure, zero-inflated and discrete fits
+and time-varying covariate fits have no bootstrap, weighted or not.
+
+Comparing weighted groups
+-------------------------
+
+``logrank`` and ``pairwise_logrank`` take ``w``. The numerator compares
+the weighted observed and expected events in each group; the variance is
+the design-based one, the sum of the units' squared weighted score
+residuals, so the test is R's robust score test,
+``coxph(Surv(x, d) ~ group, weights = w, robust = TRUE, ties =
+"breslow")$rscore``. Every weighting, ``strata``, ``tl`` and ``t0`` take
+weights, and the result does not depend on their scale. A weighted test
+answers the population question the weights describe; an unweighted test
+of weighted data answers a question about the sample, and a test that
+weighted the counts without this variance would be too confident.
+
+.. jupyter-execute::
+
+    group = (rng.uniform(size=kept.sum()) < 0.5).astype(int)
+    print(surv.logrank(x, group, c=c, w=w))
+
 ``SurpyvalData`` holds the weights too (``SurpyvalData(x, c, n, w=w)``,
 ``SurpyvalData.from_dataframe(df, ..., w_col="weight")``), and
-``fit_from_df`` takes ``w_col``.
+``fit_from_df`` takes ``w_col`` (Cox's too: a row dropped for a missing
+covariate drops its weight with it).
+
+A Cox model with time-varying covariates takes weights as well,
+``CoxPH.fit_tvc(i, xl, xr, c, Z, w=w)`` (and ``fit_tvc_from_df(...,
+w_col=)``), one weight per interval row: give each of a subject's rows
+the subject's weight. Its robust covariance clusters the rows by subject,
+as R's ``coxph(Surv(start, stop, event) ~ z, weights = w, robust = TRUE,
+id = id)``, so splitting a subject's follow-up into episodes on which
+nothing changes gives the same fit and the same standard errors.
 
 What a weighted fit will not do
 -------------------------------
@@ -171,10 +224,9 @@ What a weighted fit will not do
 Some bounds and methods are wrong with weights, and refuse with a message
 saying what to use instead:
 
-- **Likelihood-ratio and parametric bootstrap bounds** (``method="lr"``,
-  ``method="bootstrap"``): the likelihood-ratio statistic of a weighted
-  likelihood is not chi-squared, and the bootstrap simulates data without
-  the sampling design. Use the Wald bounds (the default).
+- **Likelihood-ratio bounds** (``method="lr"``): the likelihood-ratio
+  statistic of a weighted likelihood is not chi-squared. Use the Wald
+  bounds (the default) or the case bootstrap (``method="bootstrap"``).
 - **AIC, BIC, AICc and** ``fit_best``: a weighted fit maximises a
   *pseudo*-likelihood, which does not compare models.
 - ``likelihood_ratio_test()`` of a regression or Cox model: the ratio of
@@ -199,8 +251,7 @@ saying what to use instead:
   ``"MSE"``, ``"MPS"``).
 - **Turnbull**, the Cox model's residuals and ``diagnose()``, strata and
   exact ties. These may come later.
-- **The fitters that do not take** ``w``: competing risks, the log-rank
-  tests, recurrent events, degradation, mixtures, distributional
+- **The fitters that do not take** ``w``: competing risks, recurrent events, degradation, mixtures, distributional
   regression, Aalen's additive model and the Royston-Parmar regression,
   among others, which refuse weighted data (the Bayesian fits and the
   life table are above).
@@ -254,9 +305,13 @@ covariance is the sandwich (Huber, 1967; Binder, 1983)
     V = H^{-1} \Big( \sum_i n_i w_i^2 s_i s_i^\top \Big) H^{-1},
 
 as R's ``survreg(..., weights = w, robust = TRUE)`` computes it, and every
-Wald bound follows from it by the delta method. ``covariance()`` (and a
-parametric model's ``hess_inv``) hold it, and so a regression's
-``robust_covariance()`` and ``summary(robust=True)`` are the same; with
+Wald bound follows from it by the delta method. ``covariance()`` holds it,
+and so a regression's ``robust_covariance()`` and ``summary(robust=True)``
+are the same. A parametric model's ``hess_inv`` is :math:`H^{-1}` itself,
+the inverse Hessian of the weighted log-likelihood with the weights as given
+(R's ``naive.var``): it is not the variance of the estimate, and nothing in
+SurPyval uses it for one, so read ``covariance()`` or ``standard_errors()``
+for a variance; with
 ``cluster`` the meat sums each cluster's :math:`n_i w_i s_i` first, as
 ``survreg`` with ``cluster()`` does.
 
@@ -275,8 +330,8 @@ Translating from lifelines and R
 
 - lifelines ``KaplanMeierFitter().fit(T, E, weights=w)`` is
   ``KaplanMeier.fit(T, 1 - E, w=w)``; ``CoxPHFitter().fit(df, "T", "E",
-  weights_col="w", robust=True)`` is ``CoxPH.fit_from_df`` without
-  ``w_col`` for now: ``CoxPH.fit(T, Z, c=1 - E, w=w)``.
+  weights_col="w", robust=True)`` is ``CoxPH.fit_from_df(df, "T", Z_cols,
+  c_col=..., w_col="w")``, with the flag column holding ``1 - E``.
 - R ``survfit(Surv(T, E) ~ 1, weights = w, robust = TRUE)`` is
   ``KaplanMeier.fit(T, 1 - E, w=w)``; ``survreg(Surv(T, E) ~ z, weights =
   w, robust = TRUE)`` is ``WeibullAFT.fit(T, z, c=1 - E, w=w)`` (on

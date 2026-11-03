@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 
 
 _ALIASED_DOC = """The columns of ``Z`` whose coefficients the data cannot
-determine (#476): {why}. Their ``beta`` is ``nan`` (R's ``NA``){also}, and
+determine: {why}. Their ``beta`` is ``nan`` (R's ``NA``){also}, and
 predictions take it as 0."""
 
 

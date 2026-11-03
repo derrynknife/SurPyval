@@ -17,7 +17,10 @@ one that is not. Each is checked for:
    bound raises a ``WeightedRefusal`` naming what to use instead;
 6. the information criteria refuse;
 7. ``to_dict`` / ``from_dict`` (stamped schema 3) and ``pickle`` keep
-   the robust intervals and the refusals.
+   the robust intervals and the refusals;
+8. the case-bootstrap bounds (``bootstrap``) are finite, and the same
+   (to the optimisers' tolerance) with every weight multiplied by 7.3
+   for the same seed.
 """
 
 import inspect
@@ -36,6 +39,10 @@ from surpyval.tests._helpers import quietly, weighted_reference_data
 from surpyval.utils.weights import WeightedRefusal
 
 QUERY = np.array([1.5, 3.0, 6.0])
+#: The case bootstrap of the weighted fits: few refits, so the check is
+#: of the mechanics (finite bounds, the weight scale), not of coverage
+#: (calibration/test_coverage_weights.py).
+BOOT = {"method": "bootstrap", "n_boot": 8, "random_state": 1}
 
 
 @dataclass
@@ -47,6 +54,10 @@ class WeightedCase:
     estimates: Callable[[Any], np.ndarray]
     offered: dict = field(default_factory=dict)
     refused: dict = field(default_factory=dict)
+    #: The case-bootstrap bounds offered (a few refits, seeded), checked
+    #: apart from ``offered``: a resample depends on the rows' order and
+    #: counts, but not on the scale of the weights.
+    bootstrap: dict = field(default_factory=dict)
     covariates: bool = False
     #: The tolerance of the bounds and covariance between fits that reach
     #: the same maximum: a regression's covariance is a numerical Hessian
@@ -100,14 +111,23 @@ def _parametric(dist, no_tl=False, discrete=False):
         },
         refused={
             "cb(lr)": lambda m: m.cb(QUERY, method="lr"),
-            "cb(bootstrap)": lambda m: m.cb(
-                QUERY, method="bootstrap", random_state=1
-            ),
             "param_cb(lr)": lambda m: m.param_cb(
                 m.dist.parameter_names[0], method="lr"
             ),
             "plot(Blom)": lambda m: m.get_plot_data(heuristic="Blom"),
         },
+        # (a discrete distribution has no bootstrap, weighted or not)
+        bootstrap=(
+            {}
+            if discrete
+            else {
+                "cb(bootstrap)": lambda m: m.cb(QUERY, **BOOT),
+                "param_cb(bootstrap)": lambda m: m.param_cb(
+                    m.dist.parameter_names[0], **BOOT
+                ),
+                "quantile_cb(bootstrap)": lambda m: m.quantile_cb(0.3, **BOOT),
+            }
+        ),
     )
 
 
@@ -126,8 +146,14 @@ def _regression(fitter, no_tl=False):
             "param_cb(lr)": lambda m: m.param_cb(
                 m.parameter_names[-1], method="lr"
             ),
-            "cb(bootstrap)": lambda m: m.cb(
-                QUERY, np.zeros((3, 2)), method="bootstrap", random_state=1
+        },
+        bootstrap={
+            "cb(bootstrap)": lambda m: m.cb(QUERY, np.zeros((3, 2)), **BOOT),
+            "param_cb(bootstrap)": lambda m: m.param_cb(
+                m.parameter_names[-1], **BOOT
+            ),
+            "quantile_cb(bootstrap)": lambda m: m.quantile_cb(
+                0.3, np.zeros(2), **BOOT
             ),
         },
         covariates=True,
@@ -179,8 +205,10 @@ WEIGHTED = [
             "param_cb(lr)": lambda m: m.param_cb(
                 m.parameter_names[-1], method="lr"
             ),
-            "cb(bootstrap)": lambda m: m.cb(
-                QUERY, 1.5, method="bootstrap", random_state=1
+        },
+        bootstrap={
+            "param_cb(bootstrap)": lambda m: m.param_cb(
+                m.parameter_names[-1], **BOOT
             ),
         },
         covariates=True,
@@ -471,6 +499,26 @@ def test_offered_bounds_are_finite_and_refused_ones_refuse(case, data):
             getattr(model, criterion)()
 
 
+@pytest.mark.parametrize(
+    "case", [c for c in _cases("bootstrap") if c.values[0].bootstrap]
+)
+def test_case_bootstrap_bounds_are_finite_and_scale_free(case, data):
+    base = _fit(case, data, data["w"])
+    scaled = _fit(case, data, data["w"] * 7.3)
+    for key, call in case.bootstrap.items():
+        value = np.asarray(quietly(call, base), dtype=float)
+        assert np.isfinite(value).all(), key
+        assert_allclose(
+            np.asarray(quietly(call, scaled), dtype=float),
+            value,
+            # The same resamples; each refit reaches its maximum to the
+            # optimiser's tolerance, as the fit itself (the scale test).
+            rtol=case.rtol,
+            atol=1e-8,
+            err_msg=key,
+        )
+
+
 @pytest.mark.parametrize("case", _cases("round_trip"))
 def test_round_trip_keeps_the_robust_bounds(case, data):
     model = _fit(case, data, data["w"])
@@ -597,9 +645,20 @@ def test_refusal_names_the_public_fitter():
             getattr(sp, name).fit([1.0, 2.0], w=[1.0, 1.0])
 
 
-def test_cox_fit_from_df_points_to_fit_for_weights():
+def test_cox_fit_from_df_takes_w_col(data):
     import pandas as pd
 
-    df = pd.DataFrame({"x": [1.0, 2.0, 3.0], "z": [0.0, 1.0, 0.5]})
-    with pytest.raises(WeightedRefusal, match=r"CoxPH\.fit does: pass"):
-        sp.CoxPH.fit_from_df(df, x_col="x", Z_cols=["z"], w_col="w")
+    df = pd.DataFrame(
+        {
+            "x": data["x"],
+            "c": data["c"],
+            "w": data["w"],
+            "z1": data["Z"][:, 0],
+            "z2": data["Z"][:, 1],
+        }
+    )
+    from_df = sp.CoxPH.fit_from_df(df, "x", ["z1", "z2"], c_col="c", w_col="w")
+    arrays = sp.CoxPH.fit(data["x"], data["Z"], c=data["c"], w=data["w"])
+    assert from_df.weighted
+    assert_allclose(from_df.params, arrays.params, rtol=0, atol=0)
+    assert_allclose(from_df.covariance(), arrays.covariance(), rtol=0, atol=0)

@@ -140,12 +140,10 @@ class InferenceMixin:
     # -- confidence bounds -------------------------------------------------
 
     def _check_inference(self) -> None:
-        penalty = getattr(self, "penalty", None)
-        if penalty is not None:
-            # A penalised fit has no covariance or bounds (_penalised).
-            from ._penalised import no_inference_error
+        # A penalised fit has no covariance or bounds (_penalised).
+        from ._penalised import refuse_if_penalised
 
-            raise no_inference_error(penalty)
+        refuse_if_penalised(self)
         # A model deserialised with a stored covariance can produce bounds
         # without the original data.
         if self._restored_covariance is not None:
@@ -166,16 +164,15 @@ class InferenceMixin:
             )
 
     def _refuse_weighted_method(self, method: str) -> None:
-        """Refuse the likelihood-ratio and bootstrap bounds of a fit with
-        weights ``w``, which weights make invalid."""
+        """Refuse the likelihood-ratio bounds of a fit with weights ``w``,
+        which weights make invalid. The bootstrap of a weighted fit is the
+        case bootstrap (``_bootstrap.CaseDesign``)."""
         if not getattr(self, "weighted", False):
             return
-        from surpyval.utils.weights import refuse_bootstrap, refuse_lr
+        from surpyval.utils.weights import refuse_lr
 
         if method == "lr":
             raise refuse_lr()
-        if method == "bootstrap":
-            raise refuse_bootstrap()
 
     def covariance(self) -> npt.NDArray:
         """
@@ -465,11 +462,15 @@ class InferenceMixin:
         within each cluster (R's ``survreg(..., weights = w, robust =
         TRUE)`` with ``cluster()``).
 
-        Only the standard errors change: the estimates are the maximum
-        likelihood ones, and :meth:`cb`, :meth:`param_cb` and
-        :attr:`p_values` keep the model-based covariance. Use
-        :meth:`summary` with ``robust=True`` for the coefficient table on
-        these standard errors.
+        The estimates are the maximum likelihood ones; only their
+        uncertainty changes. Ask for it everywhere at once:
+        :meth:`summary`, :meth:`cb`, :meth:`quantile_cb` and
+        :meth:`param_cb` take ``robust=True`` (and ``cluster``), and
+        :meth:`robust_p_values` gives the p-values, so that one
+        coefficient never shows two uncertainties. Without
+        ``robust=True`` they all keep the model-based covariance. The
+        likelihood-ratio and bootstrap bounds use no covariance, and
+        refuse ``robust=True``.
 
         Parameters
         ----------
@@ -523,6 +524,21 @@ class InferenceMixin:
         with np.errstate(invalid="ignore"):
             return np.sqrt(np.diag(self.robust_covariance(cluster)))
 
+    def _wald_state(
+        self, robust: bool, cluster: npt.ArrayLike | None, method: str
+    ) -> tuple[npt.NDArray, npt.NDArray | None, npt.NDArray]:
+        """``_inference_state()``, the parameterisation and covariance of
+        the Wald bounds; with ``robust`` the robust (sandwich) covariance
+        in place of the model-based one (clustered by ``cluster``). A
+        ``cluster`` without ``robust``, or ``robust`` with a method that
+        uses no covariance, is refused."""
+        check_robust_request(robust, cluster, method)
+        if not robust:
+            return self._inference_state()
+        from ._robust import robust_inference_state
+
+        return robust_inference_state(self, cluster)  # type: ignore[arg-type]
+
     def param_cb(
         self,
         name: str,
@@ -531,6 +547,8 @@ class InferenceMixin:
         method: str = "wald",
         n_boot: int = 200,
         random_state: Any = None,
+        robust: bool = False,
+        cluster: npt.ArrayLike | None = None,
     ) -> npt.NDArray:
         """
         Confidence bound(s) on a single fitted parameter.
@@ -580,12 +598,20 @@ class InferenceMixin:
         random_state : None, int or numpy.random.Generator, optional
             The seed of the bootstrap (``method='bootstrap'`` only), as for
             :meth:`cb`.
+        robust : bool, optional
+            ``True`` gives the Wald bound on the robust (sandwich)
+            covariance, :meth:`robust_covariance`, as ``summary(robust=True)``
+            reports it; ``method`` must be ``"wald"``. Default ``False``.
+        cluster : array_like, optional
+            With ``robust=True``, a cluster label for each row given to
+            the fit (as for :meth:`robust_covariance`).
         """
         check_alpha_ci(alpha_ci)
         from ._bootstrap import bound_method, param_cb_bootstrap
         from ._likelihood_ratio import param_cb_lr
 
         method = bound_method(method)
+        check_robust_request(robust, cluster, method)
         self._refuse_weighted_method(method)
         lr = method == "lr"
         self._check_inference()
@@ -615,7 +641,10 @@ class InferenceMixin:
                 self, idx, alpha_ci, bound, n_boot, random_state
             )
         p_hat = float(self.params[idx])
-        var = float(self.covariance()[idx, idx])
+        if robust:
+            var = float(self.robust_covariance(cluster)[idx, idx])
+        else:
+            var = float(self.covariance()[idx, idx])
 
         # Distribution parameters carry the distribution's support bounds,
         # and an accelerated life model's parameters its life model's (a
@@ -637,6 +666,8 @@ class InferenceMixin:
         method: str = "wald",
         n_boot: int = 200,
         random_state: Any = None,
+        robust: bool = False,
+        cluster: npt.ArrayLike | None = None,
     ) -> npt.NDArray:
         r"""
         Confidence bounds on a predicted function at covariate vector ``Z``.
@@ -729,6 +760,14 @@ class InferenceMixin:
             gives a stream of its own. With an int the refits are kept on
             the model, and every ``cb``, ``param_cb``, ``quantile_cb``
             and ``cb_tvc`` with the same ``n_boot`` and seed reuses them.
+        robust : bool, optional
+            ``True`` propagates the robust (sandwich) covariance,
+            :meth:`robust_covariance`, instead of the model-based one, as
+            ``summary(robust=True)`` does; ``method`` must be ``"wald"``.
+            Default ``False``.
+        cluster : array_like, optional
+            With ``robust=True``, a cluster label for each row given to
+            the fit (as for :meth:`robust_covariance`).
 
         Returns
         -------
@@ -740,6 +779,7 @@ class InferenceMixin:
         from ._likelihood_ratio import cb_lr
 
         method = bound_method(method)
+        check_robust_request(robust, cluster, method)
         self._refuse_weighted_method(method)
         lr = method == "lr"
         self._check_inference()
@@ -771,7 +811,7 @@ class InferenceMixin:
                     self, x, Z, on, alpha_ci, bound, n_boot, random_state
                 )
             return _nan_outside(out, outside)
-        params, center, cov = self._inference_state()
+        params, center, cov = self._wald_state(robust, cluster, method)
         Zp = self._centred(self._prepare_Z(Z), center)
 
         if on in ("hf", "df"):
@@ -822,6 +862,8 @@ class InferenceMixin:
         method: str = "wald",
         n_boot: int = 200,
         random_state: Any = None,
+        robust: bool = False,
+        cluster: npt.ArrayLike | None = None,
     ) -> npt.NDArray:
         r"""
         Confidence bounds on the quantile ``qf(p, Z)``: the B-life at
@@ -865,6 +907,12 @@ class InferenceMixin:
         random_state : None, int or numpy.random.Generator, optional
             The seed of the bootstrap (``method='bootstrap'`` only), as for
             :meth:`cb`.
+        robust : bool, optional
+            ``True`` uses the robust (sandwich) covariance, as :meth:`cb`
+            does with it; ``method`` must be ``"wald"``. Default ``False``.
+        cluster : array_like, optional
+            With ``robust=True``, a cluster label for each row given to
+            the fit (as for :meth:`robust_covariance`).
 
         Returns
         -------
@@ -888,6 +936,7 @@ class InferenceMixin:
         from ._bootstrap import bound_method
 
         method = bound_method(method)
+        check_robust_request(robust, cluster, method)
         self._refuse_weighted_method(method)
         self._check_inference()
         check_option("bound", bound, BOUNDS)
@@ -916,10 +965,20 @@ class InferenceMixin:
                     method,
                     n_boot,
                     random_state,
+                    robust,
+                    cluster,
                 )
             return out
         return self._quantile_cb_rows(
-            probs, rows, alpha_ci, bound, method, n_boot, random_state
+            probs,
+            rows,
+            alpha_ci,
+            bound,
+            method,
+            n_boot,
+            random_state,
+            robust,
+            cluster,
         )
 
     def _quantile_cb_rows(
@@ -931,6 +990,8 @@ class InferenceMixin:
         method: str,
         n_boot: int,
         random_state: Any,
+        robust: bool = False,
+        cluster: npt.ArrayLike | None = None,
     ) -> npt.NDArray:
         """The bounds of :meth:`quantile_cb` at the probabilities
         ``probs``, all in (0, 1), paired with the covariate ``rows`` (one
@@ -947,7 +1008,7 @@ class InferenceMixin:
                 self, probs, rows, alpha_ci, bound, n_boot, random_state
             )
 
-        params, center, cov = self._inference_state()
+        params, center, cov = self._wald_state(robust, cluster, method)
         Zc = self._centred(rows, center)
         with np.errstate(all="ignore"):
             se_H = delta_method_se(
@@ -1034,6 +1095,26 @@ class InferenceMixin:
             sign = flip if bound == "lower" else -flip
             fallback = end(sign, alpha_ci)
         return np.where(negative, fallback, cb)
+
+
+def check_robust_request(
+    robust: bool, cluster: npt.ArrayLike | None, method: str
+) -> None:
+    """Refuse a request that would mix the robust and the model-based
+    uncertainty: ``cluster`` without ``robust=True``, and ``robust=True``
+    with a bound that uses no covariance (likelihood ratio, bootstrap)."""
+    if cluster is not None and not robust:
+        raise ValueError(
+            "`cluster` is used only with robust=True: pass robust=True, "
+            "cluster=... for bounds on the standard errors clustered by it."
+        )
+    if robust and method != "wald":
+        raise ValueError(
+            "robust=True gives Wald bounds on the robust (sandwich) "
+            "covariance; method={!r} uses no covariance, so it has no "
+            "robust form. Use method='wald' with robust=True, or "
+            "method={!r} without it.".format(method, method)
+        )
 
 
 def _same_point(a: tuple, b: tuple) -> bool:
