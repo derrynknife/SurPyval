@@ -2512,7 +2512,7 @@ def _fit_tvc_from_data(
             raise ValueError(
                 f"Item {item!r}'s time-varying covariates are a continuous "
                 "CovariatePath; fitting on continuous paths is not provided "
-                "yet (#908). Give the path as a StepSchedule to fit it."
+                "yet. Give the path as a StepSchedule to fit it."
             )
         if np.isfinite(data.tl[k]):
             start = float(data.tl[k])

@@ -161,6 +161,25 @@ The at-risk table of ``plot_nonparametric`` and ``at_risk_table`` counts
 the units themselves, not their weights. ``sf_diff`` and ``rmst_diff`` of
 weighted estimates use their robust variances.
 
+Comparing weighted groups
+-------------------------
+
+``logrank`` and ``pairwise_logrank`` take ``w``. The numerator compares
+the weighted observed and expected events in each group; the variance is
+the design-based one, the sum of the units' squared weighted score
+residuals, so the test is R's robust score test,
+``coxph(Surv(x, d) ~ group, weights = w, robust = TRUE, ties =
+"breslow")$rscore``. Every weighting, ``strata``, ``tl`` and ``t0`` take
+weights, and the result does not depend on their scale. A weighted test
+answers the population question the weights describe; an unweighted test
+of weighted data answers a question about the sample, and a test that
+weighted the counts without this variance would be too confident.
+
+.. jupyter-execute::
+
+    group = (rng.uniform(size=kept.sum()) < 0.5).astype(int)
+    print(surv.logrank(x, group, c=c, w=w))
+
 ``SurpyvalData`` holds the weights too (``SurpyvalData(x, c, n, w=w)``,
 ``SurpyvalData.from_dataframe(df, ..., w_col="weight")``), and
 ``fit_from_df`` takes ``w_col`` (Cox's too: a row dropped for a missing
@@ -208,8 +227,7 @@ saying what to use instead:
   ``"MSE"``, ``"MPS"``).
 - **Turnbull**, the Cox model's residuals and ``diagnose()``, strata and
   exact ties. These may come later.
-- **The fitters that do not take** ``w``: competing risks, the log-rank
-  tests, recurrent events, degradation, mixtures, distributional
+- **The fitters that do not take** ``w``: competing risks, recurrent events, degradation, mixtures, distributional
   regression, Aalen's additive model and the Royston-Parmar regression,
   among others, which refuse weighted data (the Bayesian fits and the
   life table are above).
