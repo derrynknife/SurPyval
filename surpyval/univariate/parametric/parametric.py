@@ -536,8 +536,9 @@ class Parametric(
     #: The covariance of every estimated parameter, ``covariance()``.
     _covariance: npt.NDArray | None = None
     #: Whether the model was fitted with weights ``w``: its covariance is
-    #: then the robust (sandwich) one, and the likelihood-ratio and
-    #: bootstrap bounds and the information criteria refuse.
+    #: then the robust (sandwich) one, its bootstrap bounds the case
+    #: bootstrap, and the likelihood-ratio bounds and the information
+    #: criteria refuse.
     weighted: bool = False
     #: The effective sample size of the weights of a weighted fit.
     effective_n: float | None = None
@@ -1241,7 +1242,7 @@ class Parametric(
             return probability_cb(self, name, alpha_ci, bound, method)
         if method is None:
             method = "wald"
-        self._refuse_weighted_method(method)
+        self._refuse_weighted_method(method, bootstrap=True)
         if self._is_lr(method, bootstrap=True):
             return self._param_cb_lr(name, alpha_ci, bound)
         if method.lower() == "bootstrap":
@@ -2561,7 +2562,7 @@ class Parametric(
             # Nothing to bound (the Jacobian of no values fails).
             return np.empty((0, 2) if bound == "two-sided" else (0,))
 
-        self._refuse_weighted_method(method)
+        self._refuse_weighted_method(method, bootstrap=True)
         if self._is_lr(method, bootstrap=True):
             return self._cb_lr(t, on, alpha_ci, bound)
         if method.lower() == "bootstrap":
@@ -2708,7 +2709,7 @@ class Parametric(
             self._refuse_weighted_method(method)
             self._is_lr(method)  # checks the name
             return self._quantile_cb_discrete(probs, alpha_ci, bound, method)
-        self._refuse_weighted_method(method)
+        self._refuse_weighted_method(method, bootstrap=True)
         if self._is_lr(method, bootstrap=True):
             return self._lr_summary("qf", probs, alpha_ci, bound)
         if method.lower() == "bootstrap":
@@ -2935,7 +2936,7 @@ class Parametric(
                 lambda v: 1.0 / v,
                 (_LN_TINY, _LN_MAX),
             )
-            self._refuse_weighted_method(method)
+            self._refuse_weighted_method(method, bootstrap=True)
             if self._is_lr(method, bootstrap=True):
                 found = self._lr_summary(
                     "mrl", t[ok], alpha_ci, bound, scale=log_scale
@@ -3067,10 +3068,13 @@ class Parametric(
             return np.column_stack([found[:, 0], inf])
         return extended._summary_cb_lr(fns, alpha_ci, bound, kind, scale)
 
-    def _refuse_weighted_method(self, method: Any) -> None:
-        """Refuse, for a fit with weights ``w``, the likelihood-ratio and
-        bootstrap bounds, which weights make invalid; Wald bounds use the
-        robust covariance."""
+    def _refuse_weighted_method(
+        self, method: Any, bootstrap: bool = False
+    ) -> None:
+        """Refuse, for a fit with weights ``w``, the likelihood-ratio
+        bound, which weights make invalid, and the bootstrap where the
+        caller has no case bootstrap (``bootstrap=False``); Wald bounds use
+        the robust covariance."""
         if not self.weighted or not isinstance(method, str):
             return
         from surpyval.utils.weights import refuse_bootstrap, refuse_lr
@@ -3078,7 +3082,7 @@ class Parametric(
         m = method.lower()
         if m in ("lr", "likelihood", "likelihood-ratio", "profile"):
             raise refuse_lr()
-        if m == "bootstrap":
+        if m == "bootstrap" and not bootstrap:
             raise refuse_bootstrap()
 
     @staticmethod

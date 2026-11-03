@@ -6,6 +6,14 @@ Unreleased
 
 **Added.**
 
+- Bootstrap bounds for weighted fits: ``method="bootstrap"`` on ``cb``,
+  ``param_cb`` and ``quantile_cb`` (and ``mrl_cb`` of a distribution) of a
+  parametric distribution or a parametric regression (PH, AFT, PO,
+  additive hazards, accelerated life) fitted with sampling weights ``w``,
+  which 0.26 refused, is the case bootstrap: the units are resampled with
+  their weights and the weighted model refitted. A seed gives the same
+  bounds at any scale of the weights. Likelihood-ratio bounds still refuse
+  weighted fits.
 - ``likelihood_ratio_test()`` on a distributional regression
   (``WeibullDistributional`` and the others), which 0.26 refused. With no
   argument it is the global test: twice the gain in log-likelihood over

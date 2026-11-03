@@ -11,6 +11,18 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-03
+
+### Weights: the case bootstrap
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `method="bootstrap"` on a weighted parametric fit (`cb`, `param_cb`, `quantile_cb`, `mrl_cb`) or a weighted parametric regression (`cb`, `param_cb`, `quantile_cb`; PH, AFT, PO, AH, accelerated life) is the case bootstrap: the units are drawn i.i.d. with replacement, each with its weight, covariates, time, censoring and truncation, and the weighted model is refitted. The univariate bounds are the bias-corrected percentile intervals of the refits and the regressions' the BCa intervals, as unweighted. | proposed | The parametric bootstrap simulates from the model and knows nothing of the design the weights describe; resampling the units does. Likelihood-ratio bounds stay refused. | done |
+| The regressions' BCa acceleration with weights is the skewness of `g' A^-1 S*`, `A^-1` the inverse weighted information (the bread), not the robust covariance. | proposed | The linearisation of the weighted estimate is `A^-1` times the weighted score; the robust covariance is the variance of that, not its direction. | done |
+| The resamples are drawn by position, and the refits use the weights scaled to sum to the units, so a seed gives the same bounds at any scale of `w` (to the optimiser's tolerance: the conformance check uses each case's own tolerance). | proposed | The weight-scale property every weighted bound keeps. | done |
+| The case bootstrap resamples left- and interval-censored data as they are (it simulates nothing); limited-failure, zero-inflated and discrete fits still refuse it, as unweighted; time-varying fits too. No fit takes a cluster label (only `robust_covariance(cluster)` does), so clusters are not resampled. `bootstrap_cb` and `band` of the non-parametric estimates still refuse weights. | proposed | — | done (gaps recorded) |
+| The calibration study of the case bootstrap (informative sampling, seed 26104, 200 replicates of 200 refits, 90% intervals of the Weibull `alpha`, `beta` and `sf` at the quartiles, the study's `Z_TOL` plus slack 0.02) was fixed before its first run. | principle 17 | — | done |
+
 ## 2026-10-30
 
 ### Fixes behind the second bug hunt's strict xfails

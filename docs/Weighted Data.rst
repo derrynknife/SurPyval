@@ -161,6 +161,31 @@ The at-risk table of ``plot_nonparametric`` and ``at_risk_table`` counts
 the units themselves, not their weights. ``sf_diff`` and ``rmst_diff`` of
 weighted estimates use their robust variances.
 
+Bootstrap bounds of a weighted fit
+----------------------------------
+
+``method="bootstrap"`` on ``cb``, ``param_cb`` and ``quantile_cb`` (and
+``mrl_cb`` of a distribution) of a weighted parametric fit or a weighted
+parametric regression is the *case* bootstrap: each resample draws the
+units with replacement, each keeping its own weight, covariates, time,
+censoring and entry time, and refits the weighted model. The bounds are
+the percentiles of the refits, corrected for bias as for unweighted data
+(and, for the regressions, for skewness: the BCa interval). They do not
+lean on the normal approximation the Wald bounds make, so they are the
+ones to compare with when the sample is small or the weights are uneven.
+The parametric bootstrap of unweighted data simulates from the fitted
+model, which knows nothing of how the units were sampled; resampling the
+units does. A seed gives the same bounds at any scale of the weights.
+
+.. jupyter-execute::
+
+    print(model.param_cb("beta"))
+    print(model.param_cb("beta", method="bootstrap", n_boot=200, random_state=1))
+
+Since nothing is simulated, left- and interval-censored data are
+resampled as they are. Limited-failure, zero-inflated and discrete fits
+and time-varying covariate fits have no bootstrap, weighted or not.
+
 ``SurpyvalData`` holds the weights too (``SurpyvalData(x, c, n, w=w)``,
 ``SurpyvalData.from_dataframe(df, ..., w_col="weight")``), and
 ``fit_from_df`` takes ``w_col``.
@@ -171,10 +196,9 @@ What a weighted fit will not do
 Some bounds and methods are wrong with weights, and refuse with a message
 saying what to use instead:
 
-- **Likelihood-ratio and parametric bootstrap bounds** (``method="lr"``,
-  ``method="bootstrap"``): the likelihood-ratio statistic of a weighted
-  likelihood is not chi-squared, and the bootstrap simulates data without
-  the sampling design. Use the Wald bounds (the default).
+- **Likelihood-ratio bounds** (``method="lr"``): the likelihood-ratio
+  statistic of a weighted likelihood is not chi-squared. Use the Wald
+  bounds (the default) or the case bootstrap (``method="bootstrap"``).
 - **AIC, BIC, AICc and** ``fit_best``: a weighted fit maximises a
   *pseudo*-likelihood, which does not compare models.
 - ``likelihood_ratio_test()`` of a regression or Cox model: the ratio of
