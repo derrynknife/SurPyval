@@ -37,6 +37,18 @@ Unreleased
   coefficients along it agree with glmnet's), with each fit's effective
   degrees of freedom, AIC and BIC; ``best("bic")`` or ``best("aic")``
   chooses the penalty, ``table()`` lists the path and ``plot()`` draws it.
+**Changed.**
+
+- Penalised Cox on start-stop data counts subjects, not rows:
+  ``CoxPH.fit_tvc_penalised`` and ``fit_tvc_timeline_penalised`` divide
+  the partial likelihood by the number of subjects and standardise the
+  covariates over the subjects (each subject's covariate averaged over its
+  follow-up), so splitting the same follow-up into more rows no longer
+  changes how hard a ``penalizer`` shrinks. In 0.26 the way to fit
+  start-stop rows was ``CoxPH.fit_penalised(stop, Z, tl=start)``, which
+  counts rows (as glmnet); with no ids it still does, unchanged, and the
+  guide now points start-stop data to ``fit_tvc_penalised``.
+
 **Fixed.**
 
 - Likelihood-ratio bounds on a profile that flattens out towards a limit
