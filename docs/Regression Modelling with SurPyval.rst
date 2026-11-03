@@ -2299,8 +2299,11 @@ baseline distribution is the wrong shape and, given a ``cluster`` label per
 row, when rows in a cluster are correlated: several units from one batch,
 repeated tests on one rig. They are the model-based covariance wrapped
 around the spread of the scores (one per unit, or one per cluster), the
-HC0 form of R's ``sandwich`` package and lifelines' ``robust=True``; the
-estimates do not change. ``summary(robust=True, cluster=...)`` gives the
+HC0 form of R's ``sandwich`` package and lifelines' ``robust=True``, with
+no small-sample factor (R's ``survey`` package multiplies by
+:math:`\sqrt{n/(n-1)}`: about 0.5% larger at 100 units, 5% at 10; see
+:doc:`Weighted Data`), and counts ``n`` read as frequency weights (a row
+with ``n = 3`` is three units); the estimates do not change. ``summary(robust=True, cluster=...)`` gives the
 table on them. Here twenty batches of six items share a batch effect the
 model does not have:
 

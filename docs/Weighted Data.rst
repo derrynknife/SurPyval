@@ -325,6 +325,58 @@ same coefficients and standard errors larger by
 :math:`\sqrt{n / (n - 1)}`, a finite-sample factor SurPyval, as R's
 ``survival``, does not apply.
 
+The robust formula: HC0, with counts as frequency weights
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Every robust (sandwich) standard error in SurPyval, with weights or from
+``robust_covariance()`` and ``summary(robust=True)`` without them, is the
+plain sandwich above, known as **HC0**: no small-sample correction is
+applied. R's ``survival`` (``survreg`` and ``coxph`` with ``robust =
+TRUE``), R's ``sandwich`` package by default and lifelines give the same.
+R's ``survey`` package multiplies each standard error by
+:math:`\sqrt{n / (n - 1)}`, :math:`n` the number of units (or of clusters
+with ``cluster``). The difference is small unless the sample is: about
+0.5% at :math:`n = 100` (:math:`\sqrt{100/99} = 1.005`) and about 5% at
+:math:`n = 10` (:math:`\sqrt{10/9} = 1.054`). To match ``survey``, multiply
+SurPyval's standard errors by that factor.
+
+The counts ``n`` are **frequency weights**: a row with ``n = 3`` is three
+units, in the sandwich as in the fit. Without ``cluster`` each of the three
+is a unit (a group) of its own; with ``cluster`` the three are members of
+the row's cluster. Either way the result is that of the data written out
+one row per unit, so counting does not change a robust standard error.
+
+Weights and counts with tied failure times (Cox, Efron)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In a weighted Cox model with tied failure times, Efron's method gives a
+different answer for one subject with weight 3 than for three identical
+copies of that subject (or one row with ``n = 3``). The copies are three
+deaths tied at one time, and Efron's correction shrinks the risk set as
+each tied death is processed; a single weighted death is one death, and
+there is nothing to shrink. R's ``coxph`` does the same (SurPyval follows
+it).
+
+A worked example: two subjects, A and B, at equal risk; A dies, B is still
+at risk. Each death adds a term :math:`\log(\text{its risk} /
+\text{the risk set's total})` to the partial log-likelihood, here with
+every risk 1.
+
+- **A with weight 3** (one row, ``w = 3``): one death of weight 3 against
+  a risk set of weight :math:`3 + 1 = 4`, so the death term is
+  :math:`-3 \log 4 = -4.16`.
+- **Three tied copies of A** (three rows, or ``n = 3``): three deaths, the
+  risk set 4, then 3, then 2 as Efron processes them, so the term is
+  :math:`-\log 4 - \log 3 - \log 2 = -3.18`.
+- **With Breslow's ties** (``tie_method="breslow"``) both are
+  :math:`-3 \log 4`: Breslow does not shrink the risk set within a tie.
+
+So use the counts ``n`` for repeated identical units (several pumps that
+failed at the same inspection) and the weights ``w`` for survey and
+importance weights, where one unit stands for others that were not seen.
+The test ``surpyval/tests/univariate/regression/test_weighted_cox_ties.py``
+checks these numbers against SurPyval's fits and R's ``coxph``.
+
 Translating from lifelines and R
 --------------------------------
 
