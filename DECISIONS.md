@@ -11,6 +11,17 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-03
+
+### Bootstrap bounds for limited-failure and zero-inflated models
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The bootstrap of a limited-failure or zero-inflated model is the one the plain and offset models already have: the parametric (model) bootstrap with the conditional censoring of Davison & Hinkley and bias-corrected percentile intervals, refitted with the same `offset`, `lfp`, `zi` and `fixed`; not a case (row) resampling with BCa intervals. | principle 15, 24 | One bootstrap for every univariate model, so the methods agree and the plain models' bounds do not move. | done |
+| A unit drawn as never failing (`inf`) whose drawn censoring time is also `inf` (a failed unit past the last censoring time) is censored at the last time in the data. | proposed | No unit was followed longer than that; a finite failure keeps its exact time, as before, so the plain models' draws are unchanged. | done |
+| A refit's `lfp_p` or `f0` counts as on its edge (1, 0) where moving it there, the other parameters held, costs less than 1e-3 in deviance (the threshold the likelihood-ratio bounds use for an estimate on the edge); the model's own estimate is read the same way. Refits on the edge are kept, never dropped. | proposed | The fit stops a hair short of an edge (`lfp_p` at 1 - 1e-7), so without this an interval could never reach the edge and would miss a truth on it. | done |
+| Calibration study (`test_coverage_extra_parameters.py::test_bootstrap_coverage`): n = 100 units, 200 replicates, `n_boot = 200`, data seeds 311 (Weibull lfp, `lfp_p` 0.6), 312 (Weibull, `lfp_p` 1, fitted with `lfp=True`), 313 (Weibull zi, `f0` 0.1), 314 (LogNormal lfp, `lfp_p` 0.6); the bootstrap's seed at replicate `r` is `1000 * seed + r`; two-sided 90% and 95% bounds on every parameter, on `sf` and on `qf` at three true quantiles; the usual rule (`check_coverage`, slack 0.01); on the edge the target for `lfp_p` is `1 - alpha_ci / 2`, as for the likelihood-ratio study. Fixed before the first run. | principle 17 | — | first run (3 November 2026, 33 minutes on ten busy cores): `lfp`, `lfp_edge` and `zi` pass; `lognormal_lfp` fails one check, the 90% `quantile_cb` at p = 0.1, 0.825 against the rule's lower limit 0.826. The 90% intervals run short in every study (0.83-0.89 where 0.90 is the target, e.g. `zi` `cb` 0.83); the 95% ones are 0.89-0.97. Open: for the maintainer (seeds and tolerances unchanged). |
+
 ## 2026-10-30
 
 ### Fixes behind the second bug hunt's strict xfails

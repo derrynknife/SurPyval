@@ -6,6 +6,16 @@ Unreleased
 
 **Added.**
 
+- Bootstrap bounds (``method="bootstrap"`` on ``cb``, ``quantile_cb`` and
+  ``param_cb``) for limited-failure and zero-inflated models, with or
+  without an offset, which refused before; ``param_cb`` bounds ``lfp_p``
+  and ``f0`` too. The refits are of the same model (``lfp=``, ``zi=``,
+  ``offset=``, ``fixed=``), drawn from it as the plain models' are; a
+  unit drawn as never failing is censored at the last time in the data
+  where its drawn censoring time is beyond it; and a refit that puts
+  ``lfp_p`` or ``f0`` on its edge counts there, so an interval can reach
+  the edge. The conformance bound sweeps include them, and a calibration
+  study checks their coverage.
 - ``likelihood_ratio_test()`` on a distributional regression
   (``WeibullDistributional`` and the others), which 0.26 refused. With no
   argument it is the global test: twice the gain in log-likelihood over

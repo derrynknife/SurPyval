@@ -36,8 +36,9 @@ up for that -- the percentile interval covered B1 45% and the basic
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -65,13 +66,17 @@ class Refits:
     n_boot: int
     #: The kept refits, as models (``from_params`` at their estimates).
     models: list
-    #: ``(n_kept, 1 + len(params))``: each kept refit's offset (0 without
-    #: one) and parameters.
+    #: ``(n_kept, 1 + len(params) + extras)``: each kept refit's offset (0
+    #: without one), parameters, and ``lfp_p`` and ``f0`` where the model
+    #: has them.
     values: npt.NDArray
     no_maximum: int
     unverified: int
     failed: int
     model_maximum: str = "verified"
+    #: ``point`` with an ``lfp_p`` or ``f0`` the data put on its edge
+    #: there, as the refits' ``values`` are (:func:`_at_edges`).
+    estimate: tuple = ()
 
     def warn(self) -> None:
         """One warning: that the model itself has no finite maximum, or
@@ -119,11 +124,6 @@ def check_resamplable(model: Any) -> None:
             "saved without its data (save it with to_dict(with_data=True) "
             "to keep them). Use method='wald'."
         )
-    if model.lfp or model.zi:
-        raise ValueError(
-            "Bootstrap bounds are not available for a limited-failure or "
-            "zero-inflated model yet; use method='wald'."
-        )
     if getattr(model.dist, "discrete", False):
         raise ValueError(
             "Bootstrap bounds are for continuous distributions; for a "
@@ -164,7 +164,83 @@ class _UnivariateDesign(ResampleDesign):
 
 
 def _point(model: Any) -> tuple:
-    return (float(model.gamma), *(float(p) for p in model.params))
+    """``(gamma, *params)``, then ``lfp_p`` and ``f0`` where the model has
+    them (the order of ``model.param_map`` after the offset)."""
+    out = [float(model.gamma), *(float(p) for p in model.params)]
+    if model.lfp:
+        out.append(float(model.lfp_p))
+    if model.zi:
+        out.append(float(model.f0))
+    return tuple(out)
+
+
+#: A refit's ``lfp_p`` or ``f0`` is on its closed edge (1, 0) where moving
+#: it there, the other parameters held, costs less than this in deviance:
+#: the fit stops a hair short of an edge (``lfp_p`` at 1 - 1e-7), and the
+#: refits on the edge must count there for an interval to reach it. The
+#: likelihood-ratio bounds use the same threshold for an estimate on the
+#: edge.
+EDGE_DEVIANCE = 1e-3
+
+
+def _log_likelihood(
+    m: Any, x: npt.NDArray, c: npt.NDArray, tl: Any, tr: Any
+) -> float:
+    """The log-likelihood of exact (``c = 0``) and right-censored data
+    under ``m``, each unit in its truncation window ``(tl, tr]`` (or
+    none); the density of a failure at 0 under a zero-inflated model is
+    its mass there, as the fit takes it."""
+    with np.errstate(all="ignore"):
+        ll = np.where(c == 0, np.log(m.df(x)), np.log(m.sf(x)))
+        if tl is not None:
+            lo = np.where(np.isfinite(tl), m.ff(np.nan_to_num(tl)), 0.0)
+            hi = np.where(np.isfinite(tr), m.ff(np.nan_to_num(tr)), 1.0)
+            ll = ll - np.log(hi - lo)
+    return float(np.sum(ll))
+
+
+def _at_edges(
+    refit: Any, point: tuple, x: npt.NDArray, c: npt.NDArray, kwargs: dict
+) -> tuple:
+    """``point`` (a refit's :func:`_point`) with its ``lfp_p`` at 1 and
+    its ``f0`` at 0 where the data put them there (``EDGE_DEVIANCE``)."""
+    out = list(point)
+    k = 1 + len(refit.params)
+    edges = []
+    if refit.lfp:
+        edges.append((k, "lfp_p", 1.0))
+        k += 1
+    if refit.zi:
+        edges.append((k, "f0", 0.0))
+    if not edges:
+        return point
+    tl, tr = kwargs.get("tl"), kwargs.get("tr")
+    ll_hat = _log_likelihood(refit, x, c, tl, tr)
+    for idx, name, edge in edges:
+        if out[idx] == edge:
+            continue
+        extras = dict(refit.extras)
+        extras[name] = edge
+        try:
+            at_edge = refit.dist.from_params(list(refit.params), **extras)
+        except ValueError:
+            continue
+        ll_edge = _log_likelihood(at_edge, x, c, tl, tr)
+        if 2.0 * (ll_hat - ll_edge) < EDGE_DEVIANCE:
+            out[idx] = edge
+    return tuple(out)
+
+
+def _point_index(model: Any, name: str) -> int:
+    """The position of the parameter ``name`` in :func:`_point`."""
+    if name == "gamma":
+        return 0
+    if name in model.dist.param_map:
+        return 1 + model.dist.param_map[name]
+    k = 1 + len(model.params)
+    if name == "lfp_p":
+        return k
+    return k + int(bool(model.lfp))
 
 
 def refits(model: Any, n_boot: Any, random_state: Any) -> Refits:
@@ -195,15 +271,11 @@ def _fixed(model: Any) -> dict:
     """The parameters the user fixed at fit time, by name, at their
     values."""
     names = {i: name for name, i in model.param_map.items()}
-    out = {}
-    for i in sorted(model._user_fixed_idx()):
-        name = names[i]
-        out[name] = (
-            float(model.gamma)
-            if name == "gamma"
-            else float(model.params[model.dist.param_map[name]])
-        )
-    return out
+    point = _point(model)
+    return {
+        names[i]: point[_point_index(model, names[i])]
+        for i in sorted(model._user_fixed_idx())
+    }
 
 
 def _draw(
@@ -223,8 +295,14 @@ def _draw(
             np.isfinite(design.tr), model.ff(np.nan_to_num(design.tr)), 1.0
         )
     fixed = _fixed(model) or None
+    # The fit's own order: the offset, the parameters, then lfp_p and f0,
+    # each of those kept inside (0, 1) as the fit's default start is (on
+    # the edge, the optimiser's transform of it is infinite).
+    extras = list(_point(model)[1 + len(model.params) :])
     init = np.array(
-        ([model.gamma] if model.offset else []) + list(model.params),
+        ([model.gamma] if model.offset else [])
+        + list(model.params)
+        + [float(np.clip(v, 1e-3, 0.999)) for v in extras],
         dtype=float,
     )
     if fixed:
@@ -236,6 +314,11 @@ def _draw(
             if name not in fixed
         ]
         init = init[free]
+    # A unit a limited-failure model draws as never failing (``inf``) is
+    # followed no longer than any unit was: where the censoring
+    # distribution leaves it uncensored (past the last censoring time),
+    # it is censored at the last time in the data.
+    end = float(np.max(design.x)) if design.x.size else np.inf
     models, values = [], []
     counts = {"no finite maximum": 0, "unverified": 0, "failed": 0}
     for _ in range(n_boot):
@@ -243,6 +326,7 @@ def _draw(
         with np.errstate(all="ignore"):
             T = np.asarray(model.qf(F_lo + u * (F_hi - F_lo)), dtype=float)
         C = design.censoring(rng)
+        C = np.where(np.isinf(T) & np.isinf(C), end, C)
         censored = T > C
         x = np.where(censored, C, T)
         kwargs: dict[str, Any] = {"c": censored.astype(int)}
@@ -255,6 +339,8 @@ def _draw(
                 refit = model.dist.fit(
                     x,
                     offset=model.offset,
+                    lfp=model.lfp,
+                    zi=model.zi,
                     fixed=fixed,
                     # From the estimate: each resample's maximum is within
                     # sampling error of it
@@ -267,9 +353,15 @@ def _draw(
         if refit.maximum in counts:
             counts[refit.maximum] += 1
         models.append(refit)
-        values.append(_point(refit))
+        values.append(
+            _at_edges(refit, _point(refit), x, censored.astype(int), kwargs)
+        )
+    original = {"tl": design.tl, "tr": design.tr} if design.truncated else {}
     return Refits(
         point=point,
+        estimate=_at_edges(
+            model, point, design.x, (~design.failed).astype(int), original
+        ),
         n_boot=n_boot,
         models=models,
         values=np.array(values).reshape(len(values), len(point)),
@@ -379,27 +471,28 @@ def param_cb_bootstrap(
     random_state: Any,
 ) -> npt.NDArray:
     """``param_cb(method="bootstrap")``: the bounds of the refits'
-    parameter ``name`` -- the offset ``gamma`` among them. A parameter
+    parameter ``name`` -- the offset ``gamma``, a limited-failure model's
+    ``lfp_p`` and a zero-inflated one's ``f0`` among them. A parameter
     fixed at fit time is known: its interval is its value."""
-    if name == "gamma":
-        if not model.offset:
-            raise ValueError("'gamma' is only estimated for offset models")
-        idx = 0
-    elif name in model.dist.param_map:
-        idx = 1 + model.dist.param_map[name]
-    else:
-        valid = (["gamma"] if model.offset else []) + list(
-            model.dist.parameter_names
-        )
+    valid = (
+        (["gamma"] if model.offset else [])
+        + list(model.dist.parameter_names)
+        + (["lfp_p"] if model.lfp else [])
+        + (["f0"] if model.zi else [])
+    )
+    if name == "gamma" and not model.offset:
+        raise ValueError("'gamma' is only estimated for offset models")
+    if name not in valid:
         raise ValueError(
             f"Unknown parameter {name!r}; expected one of {valid}"
         )
+    idx = _point_index(model, name)
     if model._is_fixed_param(name):
         value = _point(model)[idx]
         return np.array([value, value] if bound == "two-sided" else [value])
     fits = refits(model, n_boot, random_state)
     fits.warn()
-    est = np.array([_point(model)[idx]])
+    est = np.array([fits.estimate[idx]])
     cb = bca_bounds(
         fits.values[:, idx][:, None], est, np.zeros(1), alpha_ci, bound
     )

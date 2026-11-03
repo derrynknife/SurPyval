@@ -246,6 +246,12 @@ jobs:
             args: >-
               'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_likelihood_ratio_coverage[lfp]'
               'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_likelihood_ratio_coverage[zi]'
+          # The bootstrap coverage of LFP and ZI models (#286): four
+          # studies of 200 replicates of 200 refits, every core.
+          - group: extra-parameters-bootstrap
+            workers: '0'
+            args: >-
+              'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_bootstrap_coverage'
           - group: long-studies
             workers: '3'
             args: >-
