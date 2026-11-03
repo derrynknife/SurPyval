@@ -55,8 +55,8 @@ Some details differ between families:
   hand-edited dictionary is missing, and refuses the parameters of a
   univariate parametric model that fall outside the distribution's
   bounds, each with a ``ValueError``.
-- These cannot be saved and raise an error from ``to_dict``: a
-  stratified Cox model, an accelerated-life model with a user-defined
+- These cannot be saved and raise an error from ``to_dict``: an
+  accelerated-life model with a user-defined
   life model, and a copula of a custom family. A regression fitted with
   a formula is saved with its levels and fitted transform statistics
   (``C(...)``, ``scale()``, ``poly()``, splines); a formula whose state

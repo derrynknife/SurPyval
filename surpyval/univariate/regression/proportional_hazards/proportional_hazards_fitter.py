@@ -14,13 +14,13 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
-from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 
 from .._covariate_link import CovariateLink
 from .._fit_skeleton import (
+    BaselineInversionMixin,
     HazardIdentitiesMixin,
     LogLinearPhi,
     MirroredDistributionAttrs,
@@ -109,6 +109,7 @@ def _small_on_log_scale(
 
 class ProportionalHazardsFitter(
     MirroredDistributionAttrs,
+    BaselineInversionMixin,
     HazardIdentitiesMixin,
     TVCFitMixin,
     DataFrameRegressionMixin,
@@ -387,80 +388,6 @@ class ProportionalHazardsFitter(
             )
             Z_out.append(np.tile(row, (size, 1)))
         return np.concatenate(x), np.vstack(Z_out)
-
-    def _invert_cumulative_hazard(
-        self, h: npt.NDArray, dist_params: npt.NDArray
-    ) -> npt.NDArray:
-        """
-        The times at which the baseline cumulative hazard reaches ``h``.
-
-        ``S(x|Z) = S0(x)^phi``, so a draw ``U`` of the survival is reached
-        where ``H0(x) = -log(U) / phi``. Through the quantile function that
-        is ``qf(1 - exp(-h))``; for a very small hazard multiplier ``h`` is
-        so large that ``1 - exp(-h)`` rounds to 1 and ``qf`` returns
-        ``inf``, although the time is finite. Those draws are solved on
-        ``log H0(x) = log h`` directly, all at once (#585: a ``brentq``
-        per draw took 2.4 s for 2000 draws), to ``rtol=1e-12``. A draw
-        whose time is beyond the largest float (the bracket doubles to
-        ``inf``) is ``inf``, as ``qf`` gives; the search raised there.
-        """
-        h = np.asarray(h, dtype=float)
-        with onp.errstate(divide="ignore", over="ignore", invalid="ignore"):
-            out = np.asarray(
-                self.dist.qf(-np.expm1(-h), *dist_params), dtype=float
-            )
-        lost = np.flatnonzero(~np.isfinite(out) & np.isfinite(h))
-        if lost.size:
-            out = out.copy()
-            out[lost] = self._solve_log_cumulative_hazard(
-                onp.log(h[lost]), dist_params
-            )
-        return out
-
-    def _solve_log_cumulative_hazard(
-        self, target: npt.NDArray, dist_params: npt.NDArray
-    ) -> npt.NDArray:
-        """The times at which ``log H0(x)`` reaches each ``target``: each
-        upper bracket doubles from the baseline median (or 1) until it is
-        reached, the lower end half of it; then all are solved together."""
-
-        def gap(t: npt.NDArray, sel: Any) -> npt.NDArray:
-            with onp.errstate(all="ignore"):
-                H = onp.asarray(self.dist.Hf(t, *dist_params), dtype=float)
-                return onp.log(H) - target[sel]
-
-        start = float(self.dist.qf(0.5, *dist_params))
-        upper = onp.full(target.shape, max(start, 1.0))
-        reached = onp.zeros(target.shape, dtype=bool)
-        active = onp.arange(target.size)
-        for _ in range(2000):
-            if not active.size:
-                break
-            hit = gap(upper[active], active) >= 0
-            reached[active[hit]] = True
-            active = active[~hit]
-            with onp.errstate(over="ignore"):
-                upper[active] *= 2.0
-            active = active[onp.isfinite(upper[active])]
-        out = onp.full(target.shape, onp.inf)
-        k = onp.flatnonzero(reached)
-        hi = upper[k]
-        lo = onp.where(hi > start, hi / 2.0, 0.0)
-        g_lo, g_hi = gap(lo, k), gap(hi, k)
-        out[k] = onp.where(g_lo == 0, lo, hi)
-        open_ = (g_lo < 0) & (g_hi > 0)
-        if open_.any():
-            sel = k[open_]
-            out[sel] = solve_bracketed(
-                lambda t, s: gap(t, sel[s]),
-                lo[open_],
-                hi[open_],
-                g_lo[open_],
-                g_hi[open_],
-                xtol=1e-300,
-                rtol=1e-12,
-            )
-        return out
 
     def neg_ll(self, data: SurpyvalData, *params: Boxable) -> Boxable:
         return regression_neg_ll(self, data, *params)

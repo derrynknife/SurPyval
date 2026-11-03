@@ -46,12 +46,6 @@ _TRANSFORMS = ("km", "rank", "identity", "log")
 
 
 def _require_cox(model: "SemiParametricRegressionModel") -> dict:
-    if getattr(model, "is_stratified", False):
-        raise NotImplementedError(
-            "Residuals, the proportional-hazards test and robust standard "
-            "errors are not available for stratified Cox models (each stratum "
-            "has its own baseline hazard)."
-        )
     if getattr(model, "kind", None) != "Cox":
         raise NotImplementedError(
             "Residuals and the proportional-hazards test are implemented for "
@@ -77,6 +71,15 @@ def _require_cox(model: "SemiParametricRegressionModel") -> dict:
         # A Cox model rebuilt by from_dict keeps its coefficients and
         # baseline, not the per-observation data; it used to be told it
         # was not "fit with CoxPH.fit".
+        if getattr(model, "is_stratified", False):
+            raise ValueError(
+                "Residuals, the proportional-hazards test and robust "
+                "standard errors need the rows the model was fitted to, "
+                "which this stratified model does not keep (it was "
+                "restored with from_dict / from_json, or fitted with "
+                "fit_penalised). Call them on a model fitted with "
+                "CoxPH.fit(..., strata=) or fit_tvc(..., strata=)."
+            )
         raise ValueError(
             "Residuals, the proportional-hazards test and robust standard "
             "errors need the per-observation data the model was fitted to, "
@@ -89,7 +92,7 @@ def _require_cox(model: "SemiParametricRegressionModel") -> dict:
             "Residuals, the proportional-hazards test and robust standard "
             "errors are not available for a model with aliased "
             "coefficients (column(s) {} of Z, whose coefficients are "
-            "nan, #476). Refit without those columns.".format(aliased.tolist())
+            "nan). Refit without those columns.".format(aliased.tolist())
         )
     data = model._fit_data
     # The covariates centred as the fit centred them (#459), whichever
@@ -216,6 +219,122 @@ def _information(model: "SemiParametricRegressionModel") -> np.ndarray:
     return np.atleast_2d(hess)
 
 
+def _strata_rows(data: dict) -> list:
+    """The rows of each stratum of a stratified fit's data (its
+    ``"strata"``, each row's stratum by position), or of the one group of
+    an unstratified fit's: every risk set is within one of them."""
+    codes = data.get("strata")
+    if codes is None:
+        return [np.arange(np.asarray(data["x"]).shape[0])]
+    codes = np.asarray(codes)
+    return [np.flatnonzero(codes == k) for k in np.unique(codes)]
+
+
+def _subset(data: dict, rows: np.ndarray) -> dict:
+    """The rows ``rows`` of a fit's data, without the strata."""
+    return {
+        key: np.asarray(value)[rows]
+        for key, value in data.items()
+        if key != "strata"
+    }
+
+
+def _stratum_residuals(
+    data: dict, beta: np.ndarray, tie_method: str, kind: str
+) -> np.ndarray:
+    """The ``"martingale"``, ``"schoenfeld"`` or ``"score"`` residuals of
+    the rows of one stratum (or of an unstratified fit), within its risk
+    sets."""
+    x, c, n, Z, tl = (
+        data["x"],
+        data["c"],
+        data["n"],
+        data["Z"],
+        data["tl"],
+    )
+    event_times, Zbar, S0, d, A, B, A_own, B_own = _risk_set_means(
+        data, beta, tie_method
+    )
+
+    if kind == "martingale":
+        # Expected events from the tie-method-consistent baseline
+        # increments (A); a tied death accrues only its own partial step
+        # (A_own) at its event time under Efron (#279). With Breslow (or
+        # no ties) A_own == A and this equals H0(x) - H0(tl).
+        delta = (c == 0).astype(float)
+        Lam = np.concatenate([[0.0], np.cumsum(A)])
+
+        def _Lam_at(t: np.ndarray) -> np.ndarray:
+            return Lam[np.searchsorted(event_times, t, side="right")]
+
+        cum_haz = _Lam_at(x) - _Lam_at(tl)
+        event_rows = np.flatnonzero(c == 0)
+        own_idx = np.searchsorted(event_times, x[event_rows])
+        cum_haz[event_rows] += A_own[own_idx] - A[own_idx]
+        cum_haz = np.exp(Z @ beta) * cum_haz
+        return delta - cum_haz
+
+    if kind == "schoenfeld":
+        # One residual per event observation: covariate minus the
+        # (tie-averaged) risk-set mean at its event time.
+        event_rows = np.flatnonzero(c == 0)
+        zbar_idx = np.searchsorted(event_times, x[event_rows])
+        return Z[event_rows] - Zbar[zbar_idx]
+
+    # Score residuals. The score residual for observation i is
+    #   delta_i (Z_i - Zbar(x_i))
+    #     - exp(beta'Z_i) * sum_{k in window} (Z_i * A_k - B_k)
+    # where A_k / B_k are the per-event step aggregates from
+    # _risk_set_means, and a tied death's own event time contributes its
+    # partial (A_own, B_own) instead (#279). Breslow reduces to the
+    # classic (Z_i - Zbar_k) d_k / S0_k form.
+    w = np.exp(Z @ beta)
+    score = np.zeros_like(Z, dtype=float)
+    # First term (only for events).
+    event_rows = np.flatnonzero(c == 0)
+    zbar_idx = np.searchsorted(event_times, x[event_rows])
+    score[event_rows] += Z[event_rows] - Zbar[zbar_idx]
+    # Second term: subtract the expected score accrued while at risk, over
+    # the event times in each row's window (tl, x]: differences of the
+    # cumulative A and B (a loop over the rows was O(n K)).
+    lo = np.searchsorted(event_times, tl, side="right")
+    hi = np.searchsorted(event_times, x, side="right")
+    in_window = hi > lo
+    cum_A = np.concatenate([[0.0], np.cumsum(A)])
+    cum_B = np.concatenate([np.zeros((1, B.shape[1])), np.cumsum(B, axis=0)])
+    A_sum = np.where(in_window, cum_A[hi] - cum_A[lo], 0.0)
+    B_sum = np.where(in_window[:, None], cum_B[hi] - cum_B[lo], 0.0)
+    # A tied death accrues only its own partial step at its event time.
+    own = in_window[event_rows]
+    rows_own, k_own = event_rows[own], zbar_idx[own]
+    A_sum[rows_own] += A_own[k_own] - A[k_own]
+    B_sum[rows_own] += B_own[k_own] - B[k_own]
+    score -= w[:, None] * (Z * A_sum[:, None] - B_sum)
+    return score * n[:, None]
+
+
+def _pooled_residuals(
+    data: dict, beta: np.ndarray, tie_method: str, kind: str
+) -> np.ndarray:
+    """:func:`_stratum_residuals` of every stratum, each row's (or each
+    event row's, for ``"schoenfeld"``) in the order of the rows."""
+    if data.get("strata") is None:
+        return _stratum_residuals(data, beta, tie_method, kind)
+    c = np.asarray(data["c"])
+    events = np.flatnonzero(c == 0)
+    size = events.size if kind == "schoenfeld" else c.size
+    shape = (size,) if kind == "martingale" else (size, beta.size)
+    out = np.zeros(shape)
+    for rows in _strata_rows(data):
+        sub = _subset(data, rows)
+        res = _stratum_residuals(sub, beta, tie_method, kind)
+        if kind == "schoenfeld":
+            out[np.searchsorted(events, rows[sub["c"] == 0])] = res
+        else:
+            out[rows] = res
+    return out
+
+
 def compute_residuals(
     model: "SemiParametricRegressionModel", kind: str = "martingale"
 ) -> np.ndarray:
@@ -250,6 +369,11 @@ def compute_residuals(
       **dfbeta** (score residual times the covariance) approximates each
       observation's influence on the coefficients and underlies the
       cluster-robust variance.
+    - For a **stratified** fit (``strata=``) each residual is computed
+      within its own stratum's risk sets and baseline, as R's
+      ``residuals.coxph`` does; the scaled Schoenfeld residuals and
+      dfbeta use the coefficients' covariance and number of events of
+      the whole fit.
     """
     if not (isinstance(kind, str) and kind.lower() in _RESIDUAL_KINDS):
         raise option_error(
@@ -258,95 +382,41 @@ def compute_residuals(
     kind = kind.lower()
     data = _require_cox(model)
     beta = np.asarray(model.beta, dtype=float)
-    x, c, n, Z, tl = (
-        data["x"],
-        data["c"],
-        data["n"],
-        data["Z"],
-        data["tl"],
-    )
     tie_method = getattr(model, "tie_method", "breslow")
+    base = {
+        "martingale": "martingale",
+        "deviance": "martingale",
+        "schoenfeld": "schoenfeld",
+        "scaled_schoenfeld": "schoenfeld",
+    }.get(kind, "score")
+    res = _pooled_residuals(data, beta, tie_method, base)
 
-    event_times, Zbar, S0, d, A, B, A_own, B_own = _risk_set_means(
-        data, beta, tie_method
-    )
-
-    if kind in ("martingale", "deviance"):
-        # Expected events from the tie-method-consistent baseline
-        # increments (A); a tied death accrues only its own partial step
-        # (A_own) at its event time under Efron (#279). With Breslow (or
-        # no ties) A_own == A and this equals H0(x) - H0(tl).
-        delta = (c == 0).astype(float)
-        Lam = np.concatenate([[0.0], np.cumsum(A)])
-
-        def _Lam_at(t: np.ndarray) -> np.ndarray:
-            return Lam[np.searchsorted(event_times, t, side="right")]
-
-        cum_haz = _Lam_at(x) - _Lam_at(tl)
-        event_rows = np.flatnonzero(c == 0)
-        own_idx = np.searchsorted(event_times, x[event_rows])
-        cum_haz[event_rows] += A_own[own_idx] - A[own_idx]
-        cum_haz = np.exp(Z @ beta) * cum_haz
-        martingale = delta - cum_haz
-        if kind == "martingale":
-            return martingale
+    if kind == "martingale":
+        return res
+    if kind == "deviance":
         # Deviance residual: a symmetrising transform of the martingale.
+        martingale = res
+        delta = (np.asarray(data["c"]) == 0).astype(float)
+        cum_haz = delta - martingale
         with np.errstate(invalid="ignore", divide="ignore"):
             inner = martingale + delta * np.log(delta - martingale)
             dev = np.sign(martingale) * np.sqrt(-2.0 * inner)
         # delta - martingale == cum_haz; for a censored obs with 0 hazard the
         # log term vanishes (delta == 0), so guard the 0*log(0) case.
-        dev = np.where(delta == 0, -np.sqrt(2.0 * cum_haz), dev)
-        return dev
-
-    if kind in ("schoenfeld", "scaled_schoenfeld"):
-        # One residual per event observation: covariate minus the
-        # (tie-averaged) risk-set mean at its event time.
-        event_rows = np.flatnonzero(c == 0)
-        zbar_idx = np.searchsorted(event_times, x[event_rows])
-        sch = Z[event_rows] - Zbar[zbar_idx]
-        if kind == "schoenfeld":
-            return sch
+        return np.where(delta == 0, -np.sqrt(2.0 * cum_haz), dev)
+    if kind == "schoenfeld":
+        return res
+    if kind == "scaled_schoenfeld":
         # Scaled Schoenfeld (Grambsch-Therneau): beta + d * V * s, where V is
         # the coefficient covariance and d the number of events. Centring on
         # beta makes the plot read directly as beta(t).
-        n_events = int(d.sum())
+        c, n = np.asarray(data["c"]), np.asarray(data["n"], dtype=float)
+        n_events = int(n[c == 0].sum())
         V = safe_inv(_information(model))
-        return beta + n_events * (sch @ V)
-
-    # Score / dfbeta residuals. The score residual for observation i is
-    #   delta_i (Z_i - Zbar(x_i))
-    #     - exp(beta'Z_i) * sum_{k in window} (Z_i * A_k - B_k)
-    # where A_k / B_k are the per-event step aggregates from
-    # _risk_set_means, and a tied death's own event time contributes its
-    # partial (A_own, B_own) instead (#279). Breslow reduces to the
-    # classic (Z_i - Zbar_k) d_k / S0_k form.
-    w = np.exp(Z @ beta)
-    score = np.zeros_like(Z, dtype=float)
-    # First term (only for events).
-    event_rows = np.flatnonzero(c == 0)
-    zbar_idx = np.searchsorted(event_times, x[event_rows])
-    score[event_rows] += Z[event_rows] - Zbar[zbar_idx]
-    # Second term: subtract the expected score accrued while at risk, over
-    # the event times in each row's window (tl, x]: differences of the
-    # cumulative A and B (a loop over the rows was O(n K)).
-    lo = np.searchsorted(event_times, tl, side="right")
-    hi = np.searchsorted(event_times, x, side="right")
-    in_window = hi > lo
-    cum_A = np.concatenate([[0.0], np.cumsum(A)])
-    cum_B = np.concatenate([np.zeros((1, B.shape[1])), np.cumsum(B, axis=0)])
-    A_sum = np.where(in_window, cum_A[hi] - cum_A[lo], 0.0)
-    B_sum = np.where(in_window[:, None], cum_B[hi] - cum_B[lo], 0.0)
-    # A tied death accrues only its own partial step at its event time.
-    own = in_window[event_rows]
-    rows_own, k_own = event_rows[own], zbar_idx[own]
-    A_sum[rows_own] += A_own[k_own] - A[k_own]
-    B_sum[rows_own] += B_own[k_own] - B[k_own]
-    score -= w[:, None] * (Z * A_sum[:, None] - B_sum)
-    score = score * n[:, None]
+        return beta + n_events * (res @ V)
     if kind == "score":
-        return score
-    return score @ safe_inv(_information(model))  # dfbeta
+        return res
+    return res @ safe_inv(_information(model))  # dfbeta
 
 
 def robust_covariance(
@@ -705,13 +775,25 @@ def zph_score_test(
     sch = compute_residuals(model, "schoenfeld")
     u2 = (w_events[:, None] * g[:, None] * sch).sum(axis=0)
 
-    event_times, W = _risk_set_variances(data, beta, tie_method)
-    # g is a function of time: the same at every death of a time.
-    g_k = np.zeros(event_times.size)
-    g_k[np.searchsorted(event_times, x[event_rows])] = g
-    i11 = W.sum(axis=0)
-    i12 = (g_k[:, None, None] * W).sum(axis=0)
-    i22 = (g_k[:, None, None] ** 2 * W).sum(axis=0)
+    # The information, summed over the strata's risk sets (one group
+    # without strata). g is a function of time: the same at every death
+    # of a time in a stratum.
+    g_rows = np.zeros(x.shape[0])
+    g_rows[event_rows] = g
+    i11 = np.zeros((p, p))
+    i12 = np.zeros((p, p))
+    i22 = np.zeros((p, p))
+    for rows in _strata_rows(data):
+        sub = _subset(data, rows)
+        event_times, W = _risk_set_variances(sub, beta, tie_method)
+        events_s = np.flatnonzero(sub["c"] == 0)
+        g_k = np.zeros(event_times.size)
+        g_k[np.searchsorted(event_times, sub["x"][events_s])] = g_rows[
+            rows[events_s]
+        ]
+        i11 += W.sum(axis=0)
+        i12 += (g_k[:, None, None] * W).sum(axis=0)
+        i22 += (g_k[:, None, None] ** 2 * W).sum(axis=0)
     info = np.block([[i11, i12], [i12.T, i22]])
     zeros = np.zeros(p)
 
@@ -880,12 +962,18 @@ def added_covariate_score_test(
     beta = np.concatenate([np.asarray(model.beta, dtype=float), np.zeros(q)])
     enlarged = dict(data, Z=np.column_stack([Z, extra]))
     tie_method = getattr(model, "tie_method", "breslow")
-    x, c, n = data["x"], data["c"], data["n"]
-    event_times, Zbar = _risk_set_means(enlarged, beta, tie_method)[:2]
-    event_rows = np.flatnonzero(c == 0)
-    k = np.searchsorted(event_times, x[event_rows])
-    resid = extra[event_rows] - Zbar[k, p:]
-    u = np.concatenate([np.zeros(p), (n[event_rows][:, None] * resid).sum(0)])
-    info = _risk_set_variances(enlarged, beta, tie_method)[1].sum(axis=0)
+    # The score and information, summed over the strata's risk sets.
+    u_extra = np.zeros(q)
+    info = np.zeros((p + q, p + q))
+    for rows in _strata_rows(enlarged):
+        sub = _subset(enlarged, rows)
+        x, c, n = sub["x"], sub["c"], sub["n"]
+        event_times, Zbar = _risk_set_means(sub, beta, tie_method)[:2]
+        event_rows = np.flatnonzero(c == 0)
+        k = np.searchsorted(event_times, x[event_rows])
+        resid = sub["Z"][event_rows, p:] - Zbar[k, p:]
+        u_extra += (n[event_rows][:, None] * resid).sum(0)
+        info += _risk_set_variances(sub, beta, tie_method)[1].sum(axis=0)
+    u = np.concatenate([np.zeros(p), u_extra])
     stat = _score_statistic(u, info)
     return {"statistic": stat, "df": q, "p_value": float(chi2.sf(stat, df=q))}

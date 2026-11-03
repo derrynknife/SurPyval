@@ -164,16 +164,15 @@ class InferenceMixin:
             )
 
     def _refuse_weighted_method(self, method: str) -> None:
-        """Refuse the likelihood-ratio and bootstrap bounds of a fit with
-        weights ``w``, which weights make invalid."""
+        """Refuse the likelihood-ratio bounds of a fit with weights ``w``,
+        which weights make invalid. The bootstrap of a weighted fit is the
+        case bootstrap (``_bootstrap.CaseDesign``)."""
         if not getattr(self, "weighted", False):
             return
-        from surpyval.utils.weights import refuse_bootstrap, refuse_lr
+        from surpyval.utils.weights import refuse_lr
 
         if method == "lr":
             raise refuse_lr()
-        if method == "bootstrap":
-            raise refuse_bootstrap()
 
     def covariance(self) -> npt.NDArray:
         """

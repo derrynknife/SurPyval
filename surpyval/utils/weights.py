@@ -148,7 +148,9 @@ LR_WHY = (
 )
 BOOT_WHY = (
     "the parametric bootstrap simulates data from the model without the "
-    "sampling design the weights describe"
+    "sampling design the weights describe, and the case bootstrap (which "
+    "resamples the units with their weights) is built only for cb, "
+    "param_cb, quantile_cb and mrl_cb"
 )
 
 
