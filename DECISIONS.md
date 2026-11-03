@@ -11,6 +11,17 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-03
+
+### CI time limits and balanced test parts
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Every job in `actions.yml` and `publish.yml` has `timeout-minutes` of about twice its time on the 0.26 release run (lint, coverage, wheel and the publish jobs 10-15, conformance and docs 20, the suite's parts and calibration 60, pymc 30 as before). | proposed | A hang fails with the job's name; generous because CI runs only on the release pull request, where a limit too tight blocks a release. | done |
+| Per-test limits (pytest-timeout, thread method): 20 minutes in the suite's parts, 10 in the conformance suite, 45 in calibration as before. | proposed | The longest suite tests take a few minutes on the runners; the per-test durations of each part are now printed (`--durations=20`) and recorded, so the limit can be tightened from data. | done |
+| The parts are balanced by recorded test times with the existing `--shard` option (`--shard-durations`, longest first into the least-loaded part; a test with no recorded time counts as the median), not with the `pytest-split` plugin. Each release run records the times (`--store-durations`) and the `coverage` job merges them into an artifact to commit as `.github/test_durations.json`; with no file the hash split stays. | proposed | No new dependency, and the hash split stays as the fallback. No times file is committed yet: one needs a full run's times, which the next release run produces. | open |
+| actionlint is not added to the lint job yet. | proposed | It was not run over the workflows locally; with shellcheck on the runner it could report findings in the existing `run:` scripts and turn the release run red. Run it once over both workflows, fix what it finds, then add it. | open |
+
 ## 2026-10-30
 
 ### Fixes behind the second bug hunt's strict xfails

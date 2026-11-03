@@ -399,6 +399,24 @@ failure is found before ``main`` changes: fix it on ``dev`` (the
 pull request picks the fix up) and merge the release when the run is green.
 Waiting on the full suite at every step made a release take hours.
 
+Every job in both workflows has a time limit (``timeout-minutes``, about
+twice its usual time), and the test suite, the conformance suite and the
+calibration studies have a per-test limit too (pytest-timeout), so a test
+that hangs fails with its name and stack instead of holding the release.
+The suite's four parts per interpreter are balanced by recorded test times
+when ``.github/test_durations.json`` exists, and split by a hash of the
+test id otherwise. Each release run records the times: download its
+``test-durations`` artifact (from the ``coverage`` job) and commit it as
+``.github/test_durations.json`` to refresh the balance. A test added since
+counts as the median time, so the file only needs refreshing when the
+parts drift apart. Locally:
+
+.. code-block:: bash
+
+    python -m pytest -n auto --shard=2/4 \
+        --shard-durations=.github/test_durations.json \
+        --store-durations=times.json
+
 Every change is tested locally by the tests for what it changed, before it is
 pushed:
 

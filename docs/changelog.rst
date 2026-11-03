@@ -16,6 +16,7 @@ Unreleased
   the others refitted. Aliased coefficients and those held at 0 are not
   counted; a coefficient held at another value is refused, saying what to
   do. The result is the dictionary the other regressions' tests return.
+
 **Fixed.**
 
 - Likelihood-ratio bounds on a profile that flattens out towards a limit
