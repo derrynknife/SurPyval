@@ -229,6 +229,18 @@ Design decisions made while working on the open issues, with the reason for each
 | A model that gives no Hessian is solved with one by central finite differences of its gradient; the solver's result says `hessian="finite differences"`. | proposed | The Newton polish, the check of the minimum and the effective degrees of freedom all need second derivatives. | done |
 | The model side is `PenalisedModelMixin` (the `penalty`, the refusals, the effective df of `aic`/`bic`, the `to_dict` entry and the printout line), on both regression model classes. | proposed | — | done |
 
+### Penalised fits on more models
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The Cox model with time-varying covariates takes a penalty through new methods, `CoxPH.fit_tvc_penalised` and `CoxPH.fit_tvc_timeline_penalised`, rather than penalty arguments on `fit_tvc`. | proposed | The same split as `fit` / `fit_penalised`: a penalised model has a different contract (no inference), so the method name says which one the caller gets. | done |
+| The cause-specific competing-risks Cox model's penalty is one `penalizer` and `l1_ratio` for every cause; `penalty.effective_df` is the causes' sum (each cause's own is on `models[cause].penalty`). The Fine-Gray model has no penalised fit. | proposed | The causes share the rows and so the scale; one penalty per cause can follow if asked. | done |
+| `ProportionalIntensityHPP.fit_penalised` divides by `N`, the number of items, and standardises the covariates over the items (each item once, whatever its number of rows). | proposed | The covariates describe the items; for exact events this is glmnet's Poisson fit with one row per item and offset log(follow-up). | done |
+| `ProportionalIntensityNHPP` has no penalised fit yet. | proposed | Its likelihood is written in plain numpy (as are Duane's and Crow-AMSAA's intensities), so it has no exact gradient; the penalised solver needs the gradient to its optimality tolerance, which finite differences do not reach. The likelihood needs moving to autograd first. | open |
+| A distributional `fit_penalised` takes `penalizer` as one value, one per covariate column (that column on every parameter) or a dict per parameter (`{"beta": 0.5}`, one value or one per that parameter's columns); a parameter the dict does not name is not penalised. The intercepts are never penalised, and the fit is not centred (as the other penalised fits). | proposed | One penalty per parameter's coefficients was asked for; the column forms match the other fitters. | done |
+| The distributional fit is checked against `WeibullAFT.fit_penalised` (covariates on the scale alone) and against its own optimality conditions, not against gamlss's `ri()`. | proposed | `ri()` chooses its own penalty scale and smoothing, so its fit is not this objective at a given penalty. | done |
+| glmnet references for the new fits use a convergence threshold of 1e-30 (the older references 1e-20): at 1e-20 glmnet stops 1e-7 short on one lasso coefficient of the PBC transplant cause, where its own gradient is not yet 0. | proposed | The reference must be glmnet's answer at convergence; the test's tolerance (1e-6) was not changed. | done |
+
 ### Likelihood-ratio bounds on flat profiles
 
 | Decision | By | Reason | Status |
