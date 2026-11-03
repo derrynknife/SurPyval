@@ -185,7 +185,7 @@ def test_ridge_penalty_is_the_closed_form():
     x, c = df["week"].to_numpy(float), df["censored"].to_numpy()
     Z = df[["fin", "age", "prio"]].to_numpy(float)
     lam = 50.0
-    model = sp.AalenAdditive.fit(x, Z, c=c, coef_penalty=lam)
+    model = sp.AalenAdditive.fit(x, Z, c=c, penalizer=lam)
     # By hand: at each event time (X'X + P)^{-1} X'dN over the risk set,
     # P = lam * diag(0, var(Z_j)).
     X = np.c_[np.ones(x.size), Z]
@@ -197,7 +197,7 @@ def test_ridge_penalty_is_the_closed_form():
         A = X[risk].T @ X[risk] + P
         B = B + np.linalg.solve(A, X.T @ dN)
         assert_allclose(model.B[k], B, rtol=1e-10, atol=1e-14)
-    assert model.coef_penalty == lam
+    assert model.penalizer == lam
     # Shrinks every covariate's effect, not the baseline's sign.
     plain = _rossi_model()
     assert np.all(np.abs(model.B[-1, 1:]) < np.abs(plain.B[-1, 1:]))
@@ -205,14 +205,14 @@ def test_ridge_penalty_is_the_closed_form():
 
 def test_penalty_does_not_depend_on_units():
     df = _rossi()
-    a = _rossi_model(coef_penalty=10.0)
+    a = _rossi_model(penalizer=10.0)
     df["age"] = df["age"] / 10
     b = sp.AalenAdditive.fit_from_df(
         df,
         x_col="week",
         c_col="censored",
         Z_cols=["fin", "age", "prio"],
-        coef_penalty=10.0,
+        penalizer=10.0,
     )
     assert_allclose(b.B[:, 2], a.B[:, 2] * 10, rtol=1e-9)
     assert_allclose(b.sf([20, 40], [0, 2.5, 3]), a.sf([20, 40], [0, 25, 3]))
@@ -442,7 +442,7 @@ def test_saved_model_keeps_predictions_and_refuses_the_test():
         ({"x": [-1, 2, 3, 4]}, "non-negative"),
         ({"tl": [0, 3, 0, 0]}, "strictly less than"),
         ({"c": [1, 1, 1, 1]}, "at least one event"),
-        ({"coef_penalty": -1}, "coef_penalty"),
+        ({"penalizer": -1}, "penalizer"),
     ],
 )
 def test_refusals_say_what_to_do(kwargs, match):
@@ -509,7 +509,7 @@ def test_round_trip_of_a_fit_with_every_option():
     x, Z, c = _small()
     Za = np.c_[Z, Z[:, 0]]
     with pytest.warns(UserWarning, match="cannot be estimated"):
-        model = sp.AalenAdditive.fit(x, Za, c=c, tl=0.1, coef_penalty=0.5)
+        model = sp.AalenAdditive.fit(x, Za, c=c, tl=0.1, penalizer=0.5)
     assert_array_equal(model.aliased, [2])
     rows = Za[:2]
     text = json.dumps(model.to_dict(), allow_nan=False)
@@ -549,6 +549,32 @@ def test_a_negative_summary_time_is_refused_by_name():
     model = sp.AalenAdditive.fit(x, Z, c=c)
     with pytest.raises(ValueError, match=r"\bat\b"):
         model.summary(at=-1.0)
+
+
+def test_coef_penalty_is_the_old_name_of_penalizer():
+    # Renamed in v0.27 so the package has one name for a penalty; the old
+    # argument and attribute warn and give the same fit until v0.28.
+    import json
+
+    df = _rossi()
+    x, c = df["week"].to_numpy(float), df["censored"].to_numpy()
+    Z = df[["fin", "age", "prio"]].to_numpy(float)
+    new = sp.AalenAdditive.fit(x, Z, c=c, penalizer=2.0)
+    with pytest.warns(DeprecationWarning, match="'penalizer'"):
+        old = sp.AalenAdditive.fit(x, Z, c=c, coef_penalty=2.0)
+    np.testing.assert_array_equal(old.B, new.B)
+    np.testing.assert_array_equal(old.B_var, new.B_var)
+    with pytest.warns(DeprecationWarning, match="'penalizer'"):
+        assert new.coef_penalty == 2.0
+    with pytest.raises(ValueError):
+        sp.AalenAdditive.fit(x, Z, c=c, penalizer=1.0, coef_penalty=1.0)
+    # A dict saved before the rename still loads.
+    saved = new.to_dict()
+    assert saved["penalizer"] == 2.0
+    saved["coef_penalty"] = saved.pop("penalizer")
+    restored = sp.from_dict(json.loads(json.dumps(saved)))
+    assert restored.penalizer == 2.0
+    assert "Penalizer (ridge)" in repr(new)
 
 
 @pytest.mark.parametrize("z", [[0, 25, 3], [1, 44, 0]])

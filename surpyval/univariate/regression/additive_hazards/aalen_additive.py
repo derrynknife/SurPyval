@@ -54,6 +54,11 @@ from surpyval.serialisation import (
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils.dataframe import check_columns
+from surpyval.utils.deprecation import (
+    REMOVED_IN_NEXT,
+    RenamedAttribute,
+    renamed_arguments,
+)
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.rng import as_generator
@@ -141,15 +146,15 @@ def _validate(
     return x_arr, c_arr, n_arr, tl_arr, Z_arr
 
 
-def _check_penalty(coef_penalty: Any) -> float:
+def _check_penalty(penalizer: Any) -> float:
     try:
-        value = float(coef_penalty)
+        value = float(penalizer)
     except (TypeError, ValueError):
         value = np.nan
     if not (np.isfinite(value) and value >= 0):
         raise ValueError(
-            "'coef_penalty' must be a finite number at or above 0 (0, "
-            "the default, is no penalty); got {!r}.".format(coef_penalty)
+            "'penalizer' must be a finite number at or above 0 (0, "
+            "the default, is no penalty); got {!r}.".format(penalizer)
         )
     return value
 
@@ -292,7 +297,9 @@ class AalenAdditiveModel(
     #: p)``, for the bounds on a unit's prediction.
     _B_cov: npt.NDArray
     #: The ridge penalty the fit took (0 for none).
-    coef_penalty: float = 0.0
+    penalizer: float = 0.0
+    #: The name of ``penalizer`` before v0.27.
+    coef_penalty = RenamedAttribute("penalizer", REMOVED_IN_NEXT)
     #: The aliased covariate columns (#476).
     _aliased: npt.NDArray
     #: The rows fitted ``(x, c, n, tl, Z)``, for ``concordance`` and the
@@ -363,8 +370,8 @@ class AalenAdditiveModel(
             + "\nKind                : Aalen"
             + "\nParameterization    : Non-Parametric"
         )
-        if self.coef_penalty:
-            out += f"\nCoefficient penalty : {self.coef_penalty:g}"
+        if self.penalizer:
+            out += f"\nPenalizer (ridge)   : {self.penalizer:g}"
         if self.x.size:
             out += f"\nCumulative effects at t = {self.x[-1]:g}:\n"
             for name, b in zip(self.term_names, self.B[-1]):
@@ -979,11 +986,11 @@ class AalenAdditiveModel(
         return W
 
     def _penalty_vector(self, Z: npt.NDArray) -> npt.NDArray:
-        """The ridge penalty on each term: ``coef_penalty`` times each
+        """The ridge penalty on each term: ``penalizer`` times each
         covariate's variance (so the penalty does not depend on its
         units), none on the baseline."""
         x, c, n, tl, _ = self._fit_data  # type: ignore[misc]
-        return _penalties(Z, n, self.coef_penalty)
+        return _penalties(Z, n, self.penalizer)
 
     def plot(
         self,
@@ -1109,7 +1116,7 @@ class AalenAdditiveModel(
             "B_var": np.asarray(self.B_var, dtype=float).tolist(),
             "B_cov": np.asarray(self._B_cov, dtype=float).tolist(),
             "n_terms": int(self.B.shape[1]),
-            "coef_penalty": float(self.coef_penalty),
+            "penalizer": float(self.penalizer),
             "aliased": self.aliased.tolist(),
         }
         serialise_covariate_meta(self, out)
@@ -1136,7 +1143,10 @@ class AalenAdditiveModel(
         out._B_cov = np.array(model_dict["B_cov"], dtype=float).reshape(
             k, q, q
         )
-        out.coef_penalty = float(model_dict["coef_penalty"])
+        # "coef_penalty" is the key of a dict written before v0.27.
+        out.penalizer = float(
+            model_dict.get("penalizer", model_dict.get("coef_penalty", 0.0))
+        )
         out._aliased = np.array(model_dict["aliased"], dtype=int)
         restore_covariate_meta(out, model_dict)
         return out
@@ -1192,16 +1202,16 @@ def _invariance_statistics(
 
 
 def _penalties(
-    Z: npt.NDArray, n: npt.NDArray, coef_penalty: float
+    Z: npt.NDArray, n: npt.NDArray, penalizer: float
 ) -> npt.NDArray:
-    """``coef_penalty`` times each covariate's variance (over the units,
+    """``penalizer`` times each covariate's variance (over the units,
     with ``n - 1`` degrees of freedom), and 0 for the baseline."""
     total = float(n.sum())
-    if coef_penalty == 0 or Z.shape[1] == 0:
+    if penalizer == 0 or Z.shape[1] == 0:
         return np.zeros(Z.shape[1] + 1)
     mean = (n @ Z) / total
     var = (n @ (Z - mean) ** 2) / max(total - 1.0, 1.0)
-    return np.concatenate([[0.0], coef_penalty * var])
+    return np.concatenate([[0.0], penalizer * var])
 
 
 def _aliased(Z: npt.NDArray, n: npt.NDArray) -> npt.NDArray:
@@ -1235,6 +1245,7 @@ class AalenAdditive_(FitterRepr):
 
     fitter_kind = "non-parametric (Aalen) additive hazards fitter"
 
+    @renamed_arguments(REMOVED_IN_NEXT, coef_penalty="penalizer")
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
@@ -1245,7 +1256,7 @@ class AalenAdditive_(FitterRepr):
         c: npt.ArrayLike | None = None,
         n: npt.ArrayLike | None = None,
         tl: npt.ArrayLike | None = None,
-        coef_penalty: float = 0.0,
+        penalizer: float = 0.0,
     ) -> AalenAdditiveModel:
         """
         Fit Aalen's additive hazards model.
@@ -1271,7 +1282,7 @@ class AalenAdditive_(FitterRepr):
         tl : array like, optional
             Each row's entry time (left truncation): it is at risk on
             ``(tl, x]``. Defaults to 0.
-        coef_penalty : float, optional
+        penalizer : float, optional
             A ridge penalty on the covariates' increments,
             ``dB = (X'YX + P)^{-1} X'dN`` with ``P`` the penalty times
             each covariate's variance (so the penalty does not depend on
@@ -1279,7 +1290,9 @@ class AalenAdditive_(FitterRepr):
             the fit going where few units are at risk, at the price of
             shrinking the effects towards 0. Default 0, no penalty.
             lifelines' ``coef_penalizer`` is the same on standardised
-            covariates, but penalises its intercept too.
+            covariates, but penalises its intercept too. Named
+            ``coef_penalty`` before v0.27 (accepted, with a
+            ``DeprecationWarning``, until v0.28).
 
         Returns
         -------
@@ -1305,7 +1318,7 @@ class AalenAdditive_(FitterRepr):
         The truth is ``B_0(t) = 0.1 t`` and ``B_1(t) = 0.05 t``.
         """
         x, c, n, tl, Z = _validate(x, Z, c, n, tl)
-        penalty_value = _check_penalty(coef_penalty)
+        penalty_value = _check_penalty(penalizer)
         tl = np.where(np.isfinite(tl), tl, 0.0)
         p = Z.shape[1]
         aliased = _aliased(Z, n)
@@ -1331,11 +1344,12 @@ class AalenAdditive_(FitterRepr):
         model.B = B
         model.B_var = np.diagonal(C, axis1=1, axis2=2).copy()
         model._B_cov = C
-        model.coef_penalty = penalty_value
+        model.penalizer = penalty_value
         model._aliased = aliased
         model._fit_data = (x, c, n, tl, Z)
         return model
 
+    @renamed_arguments(REMOVED_IN_NEXT, coef_penalty="penalizer")
     @column_arguments("x", "c", "n", "tl")
     @takes_unit
     def fit_from_df(
@@ -1347,7 +1361,7 @@ class AalenAdditive_(FitterRepr):
         n_col: str | None = None,
         formula: str | None = None,
         tl_col: str | None = None,
-        coef_penalty: float = 0.0,
+        penalizer: float = 0.0,
     ) -> AalenAdditiveModel:
         """
         Fit Aalen's additive hazards model from a pandas DataFrame,
@@ -1365,7 +1379,7 @@ class AalenAdditive_(FitterRepr):
         n = None if n_col is None else df[n_col].values
         tl = None if tl_col is None else df[tl_col].values
         with covariate_columns(feature_names, Z, model_spec):
-            model = self.fit(x, Z, c=c, n=n, tl=tl, coef_penalty=coef_penalty)
+            model = self.fit(x, Z, c=c, n=n, tl=tl, penalizer=penalizer)
         model.feature_names = feature_names
         model.formula = formula
         model._model_spec = model_spec

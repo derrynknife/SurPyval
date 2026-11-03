@@ -1593,9 +1593,11 @@ Nothing keeps an additive hazard positive, so as for ``AdditiveHazards``
 the model predicts with the running maximum of :math:`H` from time 0, and
 ``sf`` never rises. The hazard rate ``hf`` uses the kernel-smoothed
 :math:`b_j(t)` (``smoothed_coefficients``, with a ``bandwidth``), and
-``coef_penalty`` adds a ridge penalty on the covariates' increments,
-which keeps the fit going where few units remain at risk at the price of
-shrinking the effects. :math:`B(t)` and its variance agree with R's
+``penalizer`` adds a ridge penalty on the covariates' increments (each
+scaled by the covariate's variance; the baseline is not penalised), which
+keeps the fit going where few units remain at risk at the price of
+shrinking the effects. It was ``coef_penalty`` before v0.27; the old name
+still works, with a ``DeprecationWarning``, until v0.28. :math:`B(t)` and its variance agree with R's
 ``timereg::aalen`` (with ``robust = 0``).
 
 
