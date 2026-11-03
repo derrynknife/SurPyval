@@ -13,6 +13,14 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-03
 
+### `random()` for the AFT, PO, Cox and Aalen models
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A Cox or Aalen draw beyond the last time the step curve is estimated at is `inf`, without a warning; the docstring says so and how often (`sf` at that time). | proposed | It is what the model says (the curve stops above 0 when the data end censored), as a limited-failure model's `random` gives `inf`; a warning in every simulation loop would be noise. The user censors the draws where they choose. | done |
+| The Cox model's `random(size, Z, random_state=None, *, stratum=None)`: `stratum` is keyword-only, unlike `sf(x, Z, stratum)`. | principle 21 | `random_state` keeps its place as the third argument of every regression's `random`. | done |
+| The frailty models, the Lin-Ying additive model, Buckley-James, the semi-parametric proportional odds model, the joint model (which draws through `predict(...).random`) and the trees exclude the new `random_sf` conformance property with the reason. | proposed | Out of the scope of this change; each is a documented gap. | done |
+
 ### Refusals that named issue numbers
 
 | Decision | By | Reason | Status |
