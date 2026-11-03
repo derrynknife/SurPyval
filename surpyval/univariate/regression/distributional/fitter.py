@@ -26,6 +26,7 @@ from collections.abc import Mapping
 from typing import Any, cast
 
 import autograd.numpy as np
+import numpy as onp
 import numpy.typing as npt
 from autograd import jacobian
 
@@ -675,6 +676,199 @@ class DistributionalFitter(
                 )
         return model
 
+    @dataframe_covariates
+    @takes_unit
+    @accepts_surpyval_data
+    def fit_penalised(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        t: npt.ArrayLike | None = None,
+        penalizer: Any = 0.1,
+        l1_ratio: float = 0.0,
+        standardise: bool = True,
+        tl: npt.ArrayLike | None = None,
+        tr: npt.ArrayLike | None = None,
+        tol: float = 1e-10,
+        w: npt.ArrayLike | float | None = None,
+        covariates: Mapping[str, Any] | None = None,
+        links: Mapping[str, str] | None = None,
+    ) -> Any:
+        """
+        Fit with a ridge, lasso or elastic-net penalty on the covariate
+        coefficients of every parameter (the intercepts, the
+        distribution's parameters at ``Z = 0``, are not penalised).
+
+        The objective is ``WeibullPH.fit_penalised``'s: the negative
+        log-likelihood over ``N`` (the sum of ``n``) plus
+        :math:`\\sum_j \\lambda_j ((1 - a) b_j^2 / 2 + a |b_j|)` over the
+        coefficients of the covariates divided by their standard
+        deviations (``standardise=True``). With covariates on the scale
+        alone and its log link, a Weibull's fit is ``WeibullAFT``'s
+        penalised fit with the coefficients' signs changed. The model has
+        no covariance, standard errors, bounds or tests (they raise an
+        error that says why).
+
+        Parameters
+        ----------
+        x, Z, c, n, t, tl, tr, covariates, links
+            As for :meth:`fit`.
+        penalizer : float, array_like or dict, optional
+            One value for every coefficient; one per column of ``Z`` (that
+            column's coefficient on every parameter); or one per
+            parameter, a dict ``{"beta": 0.5}`` whose values are one value
+            or one per column that parameter takes. A parameter the dict
+            does not name is not penalised. Default 0.1.
+        l1_ratio : float, optional
+            From 0 (ridge, the default) to 1 (lasso).
+        standardise : bool, optional
+            Penalise the coefficients of the standardised covariates
+            (default ``True``).
+        tol : float, optional
+            The optimality tolerance on the gradient of the objective.
+        w : array_like, optional
+            Not taken yet: weights are refused.
+
+        Returns
+        -------
+        DistributionalRegressionModel
+            The fitted model, with ``penalty`` holding one entry per
+            coefficient, in the order of the coefficients in ``params``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import WeibullDistributional
+        >>> rng = np.random.default_rng(3)
+        >>> Z = rng.normal(size=(300, 3))
+        >>> x = 10 * np.exp(-0.5 * Z[:, 0]) * rng.weibull(1.5, 300)
+        >>> model = WeibullDistributional.fit_penalised(
+        ...     x, Z, penalizer={"alpha": 0.02, "beta": 0.2}, l1_ratio=1
+        ... )
+        >>> model.params[2:].round(3)
+        array([-0.496,  0.014, -0.009,  0.   ,  0.   ,  0.   ])
+        """
+        from .._penalised import (
+            PenalisedObjective,
+            penalised_fit,
+            refuse_weights,
+        )
+
+        refuse_weights(w)
+        if covariates is None:
+            covariates = self._covariates
+        fitter_links = self._links_given if links is None else links
+        link_names = self._resolve_links(fitter_links)
+        t = truncation_window(x, t, tl, tr)
+        data = SurpyvalData(x, c, n, t, group_and_sort=False)
+        Z_in = Z if hasattr(Z, "ndim") else np.asarray(Z)
+        if getattr(Z_in, "ndim", 2) == 1:
+            Z = np.asarray(Z_in).reshape(-1, 1)
+        data, Z = drop_nonfinite_covariates(data, Z)
+        order = canonical_order(data, Z)
+        if np.any(order != np.arange(order.size)):
+            data, Z = data[order], Z[order]
+        data.add_covariates(Z)
+        check_baseline_support(self, data)
+
+        Z_data = np.asarray(data.Z, dtype=float)
+        p = Z_data.shape[1]
+        names = fit_columns()
+        positions = self._resolve_covariates(covariates, p, names)
+        bound = self._bound(positions, p, link_names)
+        coef_names = bound._coefficient_names(names)
+        K = self.k_dist
+        all_names = [*self.parameter_names, *coef_names]
+        column_of = np.concatenate(
+            [np.zeros(0, int), *[np.asarray(c, int) for c in positions]]
+        )
+        if column_of.size == 0:
+            raise ValueError(
+                "fit_penalised needs at least one coefficient: no "
+                "parameter takes a covariate (`covariates`). Fit the "
+                "distribution alone, or give a parameter its columns."
+            )
+        pen = _coefficient_penalizer(
+            penalizer, positions, self.parameter_names, p
+        )
+        # One column per coefficient (its covariate), so each coefficient
+        # is standardised by its own column's spread.
+        Z_coef = Z_data[:, column_of]
+        space = _SearchSpace(
+            all_names, {}, K, link_names, positions, np.zeros(p)
+        )
+        w_rows = np.asarray(data.n, dtype=float)
+
+        def build(scale: npt.NDArray, N: float) -> PenalisedObjective:
+            col_scale = np.ones(p)
+            col_scale[column_of] = scale
+            from .._penalised_fit import _intervals_from_the_support
+
+            scaled = _intervals_from_the_support(self, data)
+            scaled.add_covariates(Z_data / col_scale)
+
+            def objective(tv: Any) -> Any:
+                return bound.neg_ll(scaled, *space.to_natural(tv)) / N
+
+            from autograd import grad as ag_grad
+            from autograd import hessian as ag_hessian
+
+            gradient = ag_grad(objective)
+            curvature = ag_hessian(objective)
+            with np.errstate(all="ignore"):
+                base = self.dist.fit_from_surpyval_data(data).params
+            return PenalisedObjective(
+                lambda tv: float(objective(np.asarray(tv))),
+                lambda tv: onp.asarray(gradient(np.asarray(tv)), dtype=float),
+                lambda tv: onp.asarray(curvature(np.asarray(tv)), dtype=float),
+                onp.asarray(space.start(base), dtype=float),
+            )
+
+        fit = penalised_fit(
+            build,
+            Z_coef,
+            w_rows,
+            onp.arange(K, K + column_of.size),
+            pen,
+            l1_ratio,
+            standardise,
+            tol,
+        )
+        res = fit.result
+        with np.errstate(all="ignore"):
+            params = onp.asarray(space.to_natural(res.x), dtype=float)
+        params[K:] = fit.coefficients
+        with np.errstate(all="ignore"):
+            neg_ll = float(bound.neg_ll(data, *params))
+        if not onp.isfinite(neg_ll):
+            raise ValueError(
+                "The penalised fit did not reach a finite likelihood; check "
+                "the data, or use a larger `penalizer`."
+            )
+        from scipy.optimize import OptimizeResult
+
+        model = _assemble(
+            bound,
+            params,
+            OptimizeResult(x=res.x, fun=neg_ll, success=res.verified),
+            {},
+            {},
+            coef_names,
+            [],
+            data,
+            np.zeros(p),
+            None,
+        )
+        model.penalty = fit.penalty
+        model.maximum = "verified" if res.verified else "unverified"
+        if not res.verified:
+            from surpyval.utils.no_maximum import warn_unverified
+
+            warn_unverified("The penalised fit")
+        return model
+
     def fit_from_df(
         self,
         df: Any,
@@ -941,6 +1135,54 @@ def _assemble(
     model._aliased_coefficients = np.array(sorted(aliased), dtype=int)
     model._width = int(np.shape(data.Z)[1])
     return model
+
+
+def _coefficient_penalizer(
+    penalizer: Any,
+    positions: tuple[npt.NDArray, ...],
+    parameter_names: list[str],
+    p: int,
+) -> npt.NDArray:
+    """The ``penalizer`` of a distributional ``fit_penalised`` as one
+    value per coefficient, in the order of the coefficients: a single
+    value, one per column of ``Z`` (that column on every parameter), or
+    a dict of one value (or one per its columns) per parameter."""
+    if isinstance(penalizer, Mapping):
+        unknown = sorted(set(penalizer) - set(parameter_names))
+        if unknown:
+            raise ValueError(
+                "`penalizer` names {}, which {} not among the "
+                "distribution's parameters {}.".format(
+                    unknown,
+                    "is" if len(unknown) == 1 else "are",
+                    list(parameter_names),
+                )
+            )
+        parts = []
+        for name, cols in zip(parameter_names, positions):
+            value = onp.asarray(penalizer.get(name, 0.0), dtype=float)
+            if value.ndim == 0:
+                value = onp.full(cols.size, float(value))
+            if value.shape != (cols.size,):
+                raise ValueError(
+                    "`penalizer[{!r}]` must be one value or one per column "
+                    "{} takes ({}); got shape {}.".format(
+                        name, name, cols.size, value.shape
+                    )
+                )
+            parts.append(value)
+        return onp.concatenate(parts)
+    value = onp.asarray(penalizer, dtype=float)
+    if value.ndim == 0:
+        return onp.full(sum(c.size for c in positions), float(value))
+    if value.shape != (p,):
+        raise ValueError(
+            "`penalizer` must be one value, one per covariate column "
+            "({}), or a dict of one per parameter; got shape {}.".format(
+                p, value.shape
+            )
+        )
+    return onp.concatenate([value[onp.asarray(c, int)] for c in positions])
 
 
 def _rebuild_fitter(dist: Any, state: dict) -> DistributionalFitter:

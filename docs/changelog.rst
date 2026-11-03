@@ -16,6 +16,21 @@ Unreleased
   the others refitted. Aliased coefficients and those held at 0 are not
   counted; a coefficient held at another value is refused, saying what to
   do. The result is the dictionary the other regressions' tests return.
+- **Penalised fits on more models**: ridge, lasso and elastic net
+  (``fit_penalised(..., penalizer, l1_ratio, standardise)``) on
+  ``RoystonParmarPH`` / ``RoystonParmarPO`` (the PH or PO family on the
+  spline baseline), on the Cox model with time-varying covariates
+  (``CoxPH.fit_tvc_penalised`` and ``CoxPH.fit_tvc_timeline_penalised``), on
+  the cause-specific competing-risks Cox model
+  (``CompetingRisksProportionalHazards.fit_penalised``, one penalised Cox
+  fit per cause), on ``ProportionalIntensityHPP`` and on the distributional
+  regressions (``WeibullDistributional.fit_penalised`` and the others,
+  with a penalty per parameter's coefficients). Each has the refusals of
+  ``CoxPH.fit_penalised`` (no covariance, bounds or tests; weights
+  refused) and counts its effective degrees of freedom in ``aic`` and
+  ``bic``. The Cox, cause-specific and HPP fits agree with R's glmnet to
+  six digits; the distributional fit on a Weibull's scale alone is
+  ``WeibullAFT.fit_penalised`` with the signs changed.
 **Fixed.**
 
 - Likelihood-ratio bounds on a profile that flattens out towards a limit

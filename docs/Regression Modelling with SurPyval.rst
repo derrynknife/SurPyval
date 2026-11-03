@@ -4290,6 +4290,53 @@ take every kind of censoring and truncation (left, right or both).
     assert stratified.is_stratified
     assert np.sum(stratified.params == 0) == 2, stratified.params
 
+**More models.** The same objective, standardisation and refusals apply to
+
+- ``RoystonParmarPH.fit_penalised`` and ``RoystonParmarPO.fit_penalised``
+  (and any ``RoystonParmarRegression``): the knots are placed as for
+  ``fit``, then the PH or PO family on the spline baseline is fitted with
+  the penalty; the spline coefficients are not penalised.
+- ``CoxPH.fit_tvc_penalised`` and ``CoxPH.fit_tvc_timeline_penalised``: the
+  start-stop or timeline data of ``fit_tvc`` and ``fit_tvc_timeline``, with
+  ``N`` the number of interval rows (glmnet's start-stop Cox fit).
+- ``CompetingRisksProportionalHazards.fit_penalised``: the cause-specific
+  Cox model, one penalised Cox fit per cause with the other causes
+  censored, each with the same ``penalizer`` and ``l1_ratio`` (glmnet
+  fitted cause by cause). Its ``penalty.effective_df`` is the sum over the
+  causes, and ``models`` holds each cause's penalised Cox model. The
+  Fine-Gray model has no penalised fit.
+- ``ProportionalIntensityHPP.fit_penalised``: the recurrent-event model
+  with a constant baseline rate, ``N`` the number of items and the
+  covariates standardised over the items; for exact event times it is
+  glmnet's Poisson regression of each item's events with the log of its
+  follow-up as offset. The base rate is not penalised. The model has no
+  covariance, bounds (``cif_cb``, ``iif_cb``, ``param_cb``) or
+  ``cramer_von_mises`` bootstrap. The models with a non-homogeneous
+  baseline (``ProportionalIntensityNHPP``) have no penalised fit yet.
+- ``WeibullDistributional.fit_penalised`` and the other distributional
+  regressions: covariates on every parameter, with ``penalizer`` one value,
+  one per covariate column (that column on every parameter), or one per
+  parameter, ``penalizer={"alpha": 0.02, "beta": 0.2}`` (a parameter not
+  named is not penalised). The intercepts are not penalised. With
+  covariates on a Weibull's scale alone it is ``WeibullAFT.fit_penalised``
+  with the coefficients' signs changed.
+
+.. jupyter-execute::
+
+    from surpyval import WeibullDistributional
+
+    shape_too = WeibullDistributional.fit_penalised(
+        rossi['week'], rossi[['fin', 'age', 'prio']], c=rossi['censored'],
+        penalizer={'alpha': 0.01, 'beta': 0.1}, l1_ratio=1.0)
+    pd.Series(shape_too.params, index=shape_too.parameter_names).round(4)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert shape_too.maximum == 'verified', shape_too.maximum
+    assert np.all(shape_too.params[5:] == 0), shape_too.params
+
 The coefficients of these models are log hazard, odds or time ratios, which
 have no unit, so the penalty does not depend on the unit of time.
 ``fit_penalised`` does not take sampling weights ``w`` yet: the penalty's
