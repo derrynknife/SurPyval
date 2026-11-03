@@ -137,6 +137,19 @@ module = [
     'surpyval.tests.*',
     'conftest',
     'scripts.*',
+    # The hooks (and ``mypy scripts``) check each script as a top-level
+    # module, so the dotted ``scripts.*`` pattern above never matches
+    # them; their bare names are listed too.
+    'check_all_pythons',
+    'merge_test_durations',
+    'mutmut_plugin',
+    'recheck',
+    'summarise',
+    'snapshot',
+    'make_fixtures',
+    'reference_python',
+    'tails_mpmath',
+    'study',
 ]
 disallow_untyped_defs = false
 
@@ -152,6 +165,10 @@ module = [
     'sklearn.*',
     'sksurv.*',
     'joblib.*',
+    # Used only by the reference-value scripts, not installed with the
+    # development requirements.
+    'mpmath',
+    'lifelines',
 ]
 ignore_missing_imports = true
 
