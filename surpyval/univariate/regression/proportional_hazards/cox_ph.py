@@ -1672,11 +1672,19 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
 
         The rows are validated and fitted as delayed-entry rows, as
         :meth:`fit_tvc` fits them, and the penalised objective is
-        :meth:`fit_penalised`'s, with ``N`` the number of interval rows
-        (weighted by ``n``) and the covariates standardised over the rows:
-        glmnet's ``family = "cox"`` on ``Surv(start, stop, event)``. The
-        model has no covariance, standard errors, bounds or tests (see
-        :meth:`fit_penalised`).
+        :meth:`fit_penalised`'s, with ``N`` the number of *subjects* (the
+        distinct ``i``, each weighted by the ``n`` of its last row), not of
+        rows, and the covariates standardised over the subjects: each
+        subject's covariate is its average over its follow-up, each row
+        weighted by its length ``xr - xl``. Splitting a subject's
+        follow-up into more rows (monthly rows for a covariate that
+        changes) leaves the partial likelihood unchanged, and so, with
+        ``N`` and the scale per subject, it leaves the fit unchanged too.
+        (glmnet's ``family = "cox"`` on ``Surv(start, stop, event)``, and
+        :meth:`fit_penalised` with ``tl=start``, which has no ids, count
+        the rows instead, so a penalty there shrinks harder the more rows
+        a subject is split into.) The model has no covariance, standard
+        errors, bounds or tests (see :meth:`fit_penalised`).
 
         Parameters
         ----------
@@ -1702,27 +1710,30 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         >>> Z  = [0, 1, 0, 0, 1, 0, 0, 1, 1, 0]
         >>> model = CoxPH.fit_tvc_penalised(i, xl, xr, c, Z, penalizer=0.1)
         >>> model.beta.round(4)
-        array([1.324])
+        array([1.5068])
         """
         from .._penalised import refuse_weights
+        from .cox_penalised import fit_cox_penalised
 
         refuse_weights(w)
         x, c_, n_arr, tl, Z_arr, ident, row_order, strata_arr = _tvc_rows(
             i, xl, xr, c, Z, n, strata
         )
-        model = self.fit_penalised(
+        model = fit_cox_penalised(
+            self,
             x,
             Z_arr,
-            c=c_,
-            n=n_arr,
-            tl=tl,
-            penalizer=penalizer,
-            l1_ratio=l1_ratio,
-            standardise=standardise,
-            tie_method=tie_method,
-            center=center,
-            tol=tol,
+            c_,
+            n_arr,
+            tl,
+            penalizer,
+            l1_ratio,
+            standardise,
+            tie_method,
+            center,
+            tol,
             strata=strata_arr,
+            units=_subject_covariates(x, tl, Z_arr, n_arr, ident),
         )
         model.is_tvc = True
         model.tvc_subject_ids = ident
@@ -1855,3 +1866,37 @@ def _tvc_rows(
             )
         strata_arr = strata_arr[row_order]
     return x, c, n_arr, tl, Z_arr, ident, row_order, strata_arr
+
+
+def _subject_covariates(
+    x: npt.NDArray,
+    tl: npt.NDArray,
+    Z: npt.NDArray,
+    n: npt.NDArray,
+    ident: npt.NDArray,
+) -> tuple[npt.NDArray, npt.NDArray]:
+    """One covariate row and one count per subject of start-stop rows
+    ``(tl, x]``, for a penalised fit's ``N`` and standardisation: each
+    subject's covariates averaged over its follow-up, weighted by the
+    length of each row (so splitting a row into several with the same
+    covariates leaves it unchanged), and the count ``n`` of its last
+    row."""
+    ident = np.asarray(ident)
+    Z = np.asarray(Z, dtype=float)
+    length = np.asarray(x, dtype=float) - np.asarray(tl, dtype=float)
+    labels, inverse = np.unique(ident, return_inverse=True)
+    k = labels.size
+    total = np.bincount(inverse, weights=length, minlength=k)
+    Z_units = (
+        np.column_stack(
+            [
+                np.bincount(inverse, weights=length * Z[:, j], minlength=k)
+                for j in range(Z.shape[1])
+            ]
+        ).reshape(k, Z.shape[1])
+        / total[:, None]
+    )
+    last = np.zeros(k, dtype=int)
+    order = np.lexsort((np.asarray(x, dtype=float), inverse))
+    last[inverse[order]] = order
+    return Z_units, np.asarray(n, dtype=float)[last]

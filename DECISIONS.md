@@ -309,6 +309,14 @@ Design decisions made while working on the open issues, with the reason for each
 | The distributional fit is checked against `WeibullAFT.fit_penalised` (covariates on the scale alone) and against its own optimality conditions, not against gamlss's `ri()`. | proposed | `ri()` chooses its own penalty scale and smoothing, so its fit is not this objective at a given penalty. | done |
 | glmnet references for the new fits use a convergence threshold of 1e-30 (the older references 1e-20): at 1e-20 glmnet stops 1e-7 short on one lasso coefficient of the PBC transplant cause, where its own gradient is not yet 0. | proposed | The reference must be glmnet's answer at convergence; the test's tolerance (1e-6) was not changed. | done |
 
+### Penalised Cox on start-stop data counts subjects
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `CoxPH.fit_tvc_penalised` (and the timeline form) divides by `N`, the number of subjects (distinct ids, each weighted by the `n` of its last row), and standardises over the subjects, not the rows. This replaces the rows rule 0.26 documented for start-stop data (glmnet's). | maintainer | The partial likelihood does not change when a subject's follow-up is split into more rows, so the penalty's scale should not either. | done |
+| A subject's covariate for the standardisation is its time-weighted average over its follow-up: each row's covariates weighted by `xr - xl`. | proposed | Splitting a row into several with the same covariates leaves it unchanged (so the fit does not depend on the split), and it reflects every value the subject had, not only its first. | done |
+| `CoxPH.fit_penalised` with `tl` (no ids) still counts rows, unchanged, and still matches glmnet's start-stop fit; the new fit is checked against glmnet with the objective rescaled to subjects (`standardize = FALSE` on `X / s`, `lambda * N_subjects / N_rows`). | proposed | Data without ids cannot be grouped into subjects. | done |
+
 ### The penalty path and choosing the penalty by AIC or BIC
 
 | Decision | By | Reason | Status |

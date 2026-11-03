@@ -4302,10 +4302,12 @@ log-likelihood has the distribution those calls rely on.
 ``CoxPH.fit`` does: a baseline hazard per stratum and one set of
 coefficients (glmnet's ``stratifySurv``). The number of units ``N`` and the
 standardisation are over all the rows, not within each stratum. It takes
-delayed entry ``tl``, so start-stop rows ``(start, stop]`` are fitted with
-``tl=start``; then ``N`` is the number of *rows* (weighted by ``n``), not of
-subjects, as in glmnet, so a subject split into ten rows counts ten times in
-the penalty's scale. Like ``CoxPH.fit``, it refuses truncation on the right,
+delayed entry ``tl``, so start-stop rows ``(start, stop]`` can be fitted
+with ``tl=start``; with no subject ids, ``N`` is then the number of *rows*
+(weighted by ``n``), as in glmnet, so a subject split into ten rows counts
+ten times in the penalty's scale, and the same ``penalizer`` shrinks less
+the more rows the follow-up is split into. For start-stop data use
+``CoxPH.fit_tvc_penalised(i, start, stop, c, Z)``, which counts subjects. Like ``CoxPH.fit``, it refuses truncation on the right,
 for which the partial likelihood has no term: the parametric penalised fits
 take every kind of censoring and truncation (left, right or both).
 
@@ -4333,7 +4335,11 @@ take every kind of censoring and truncation (left, right or both).
   the penalty; the spline coefficients are not penalised.
 - ``CoxPH.fit_tvc_penalised`` and ``CoxPH.fit_tvc_timeline_penalised``: the
   start-stop or timeline data of ``fit_tvc`` and ``fit_tvc_timeline``, with
-  ``N`` the number of interval rows (glmnet's start-stop Cox fit).
+  ``N`` the number of *subjects* and the covariates standardised over the
+  subjects, each subject's covariate averaged over its follow-up (each row
+  weighted by its length). Splitting a subject's follow-up into more rows
+  changes neither the partial likelihood nor these, so it does not change
+  the fit.
 - ``CompetingRisksProportionalHazards.fit_penalised``: the cause-specific
   Cox model, one penalised Cox fit per cause with the other causes
   censored, each with the same ``penalizer`` and ``l1_ratio`` (glmnet
