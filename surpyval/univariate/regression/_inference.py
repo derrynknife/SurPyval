@@ -140,12 +140,10 @@ class InferenceMixin:
     # -- confidence bounds -------------------------------------------------
 
     def _check_inference(self) -> None:
-        penalty = getattr(self, "penalty", None)
-        if penalty is not None:
-            # A penalised fit has no covariance or bounds (_penalised).
-            from ._penalised import no_inference_error
+        # A penalised fit has no covariance or bounds (_penalised).
+        from ._penalised import refuse_if_penalised
 
-            raise no_inference_error(penalty)
+        refuse_if_penalised(self)
         # A model deserialised with a stored covariance can produce bounds
         # without the original data.
         if self._restored_covariance is not None:

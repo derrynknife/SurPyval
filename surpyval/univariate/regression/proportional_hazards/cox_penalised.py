@@ -18,11 +18,10 @@ from surpyval.utils.pickling import Rebuilt
 
 from .._fit_skeleton import covariate_center
 from .._penalised import (
+    PenalisedObjective,
     Penalty,
-    check_penalty,
-    covariate_scale,
+    penalised_fit,
     refuse_weights,
-    solve_penalised,
 )
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
 from .cox_likelihood import baseline_at_origin, combined_generators
@@ -121,15 +120,16 @@ def fit_cox_penalised(
     from .cox_ph import _require_an_event
 
     _require_an_event(c, n)
-    p = Z.shape[1]
-    pen, a = check_penalty(penalizer, l1_ratio, standardise, p)
     mean = covariate_center(Z, n)
-    scale = covariate_scale(Z, n, standardise)
     Zc = Z - mean
-    N = float(np.sum(n))
-    neg_ll_s, jac_s = func_generator(x, Zc / scale, c, n, tl)
     res, beta, penalty = _solve(
-        neg_ll_s, jac_s, N, pen, a, standardise, scale, tol
+        lambda scale: func_generator(x, Zc / scale, c, n, tl),
+        Z,
+        n,
+        penalizer,
+        l1_ratio,
+        standardise,
+        tol,
     )
 
     likelihood_args = (x, Zc, c, n, tl)
@@ -165,38 +165,37 @@ def fit_cox_penalised(
 
 
 def _solve(
-    neg_ll_s: Callable,
-    jac_s: Callable,
-    N: float,
-    pen: npt.NDArray,
-    a: float,
-    standardise: bool,
-    scale: npt.NDArray,
+    generators: Callable[[npt.NDArray], tuple[Callable, Callable]],
+    Z: npt.NDArray,
+    n: npt.NDArray,
+    penalizer: Any,
+    l1_ratio: Any,
+    standardise: Any,
     tol: float,
 ) -> tuple[Any, npt.NDArray, Penalty]:
-    """Minimise the penalised objective of the partial likelihood of the
-    standardised covariates, ``neg_ll_s`` (with ``jac_s``), over ``N``
-    units: the solver's result, the coefficients on the covariates' own
-    scale and the :class:`Penalty`."""
-    p = pen.size
-    cached = _Cached(jac_s)
-    l1, l2 = Penalty(pen, a, bool(standardise), scale).weights()
-    with np.errstate(all="ignore"):
-        res = solve_penalised(
+    """Minimise the penalised objective of the partial likelihood
+    ``generators(scale)`` (the negative log-likelihood and its ``jac``)
+    of the covariates ``Z`` (counts ``n``) divided by ``scale``, through
+    the shared :func:`penalised_fit`: the solver's result, the
+    coefficients on the covariates' own scale and the :class:`Penalty`."""
+
+    def build(scale: npt.NDArray, N: float) -> PenalisedObjective:
+        neg_ll_s, jac_s = generators(scale)
+        cached = _Cached(jac_s)
+        return PenalisedObjective(
             lambda b: float(neg_ll_s(b)) / N,
             lambda b: np.atleast_1d(cached(b)[0]) / N,
             lambda b: np.atleast_2d(cached(b)[1]) / N,
-            np.zeros(p),
-            np.arange(p),
-            l1,
-            l2,
-            tol=tol,
+            np.zeros(Z.shape[1]),
         )
-    beta = res.x / scale
-    if not res.verified:
+
+    p = Z.shape[1]
+    fit = penalised_fit(
+        build, Z, n, np.arange(p), penalizer, l1_ratio, standardise, tol
+    )
+    if not fit.result.verified:
         warn_unverified("The penalised Cox fit")
-    penalty = Penalty(pen, a, bool(standardise), scale, res.effective_df)
-    return res, beta, penalty
+    return fit.result, fit.coefficients, fit.penalty
 
 
 def _penalised_model(
@@ -250,18 +249,17 @@ def _fit_stratified_penalised(
     labels, validated = _stratified_rows(x, Z, c, n, tl, tie_method, strata)
     Z_all = np.vstack([v[5] for v in validated])
     n_all = np.concatenate([v[3] for v in validated])
-    p = Z_all.shape[1]
-    pen, a = check_penalty(penalizer, l1_ratio, standardise, p)
     mean = covariate_center(Z_all, n_all)
-    scale = covariate_scale(Z_all, n_all, standardise)
-    N = float(np.sum(n_all))
-    scaled = [
-        (xs, (Zs - mean) / scale, cs, ns_, tls)
-        for _, xs, cs, ns_, tls, Zs in validated
-    ]
-    neg_ll_s, jac_s = combined_generators(func_generator, scaled)
+
+    def generators(scale: npt.NDArray) -> tuple[Callable, Callable]:
+        scaled = [
+            (xs, (Zs - mean) / scale, cs, ns_, tls)
+            for _, xs, cs, ns_, tls, Zs in validated
+        ]
+        return combined_generators(func_generator, scaled)
+
     res, beta, penalty = _solve(
-        neg_ll_s, jac_s, N, pen, a, standardise, scale, tol
+        generators, Z_all, n_all, penalizer, l1_ratio, standardise, tol
     )
 
     per_stratum = []
