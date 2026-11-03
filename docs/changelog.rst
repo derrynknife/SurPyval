@@ -6,6 +6,12 @@ Unreleased
 
 **Added.**
 
+- ``logrank`` and ``pairwise_logrank`` take sampling weights ``w``
+  (0.26 gave Python's ``TypeError``): weighted numbers at risk and of
+  events, with the design-based variance, R's robust score test
+  ``coxph(..., weights = w, robust = TRUE, ties = "breslow")$rscore``. Every
+  weighting, ``strata``, ``tl`` and ``t0`` take weights; the result reports
+  ``weighted`` and does not depend on the scale of ``w``.
 - ``likelihood_ratio_test()`` on a distributional regression
   (``WeibullDistributional`` and the others), which 0.26 refused. With no
   argument it is the global test: twice the gain in log-likelihood over

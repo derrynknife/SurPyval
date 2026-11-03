@@ -11,6 +11,15 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-03
+
+### Weights: the log-rank tests
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `logrank(..., w=)` and `pairwise_logrank(..., w=)`: the weighted numerator with the design-based variance `sum_i n_i w_i^2 s_i s_i'`, `s_i` each unit's score residual at `beta = 0` (Breslow's ties), which is R's `coxph(..., weights = w, robust = TRUE, ties = "breslow")$rscore`; checked against it to 1e-10. The robust variance is used whenever `w` is given, `w = 1` included. | principle 16 | R's robust score test is the reference; a hypergeometric variance with weighted counts depends on the scale of the weights. | done |
+| The test weights (Gehan's `r`, Tarone-Ware's `sqrt(r)`, Peto-Peto's `r + 1`, the Fleming-Harrington Kaplan-Meier) use the weighted numbers with the weights scaled to a mean of 1 per unit over the whole data (all strata at once), and are treated as fixed in the variance. | proposed | The `+ 1` of Peto-Peto is one unit, so the weights must be on the units' scale for the test not to depend on the scale of `w`; one scale for every stratum keeps the strata's relative weights. R has no weighted Peto-Peto or Fleming-Harrington test to compare with. | done |
+
 ## 2026-10-30
 
 ### Fixes behind the second bug hunt's strict xfails
