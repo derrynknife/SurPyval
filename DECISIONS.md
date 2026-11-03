@@ -13,6 +13,14 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-03
 
+### Weights: Cox from a DataFrame and with time-varying covariates
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `CoxPH.fit_from_df(w_col=)`: the weights go through the one mask of the rows with every covariate, so the fit equals `fit(..., w=)` of the rows kept, bit for bit. `validate_coxph_df_inputs` returns the weights as a tenth element only when `w_col` is given, so its tuple is unchanged for other callers. | proposed | This closes the gap recorded on 2026-10-29 ("its frame handling drops rows before `fit` sees them"). | done |
+| `CoxPH.fit_tvc(w=)` takes one weight per interval row (a weight may change between a subject's rows, as a time-varying censoring weight does; R allows it too). The covariance is the weighted sandwich clustered by subject, and `robust_covariance()` of the model clusters by subject by default; `cluster=` still overrides. Refused with `strata` (the weighted stratified fit is not built). | proposed | R's `coxph(..., id = id, robust = TRUE)`; with the subject as the cluster, splitting follow-up into episodes changes nothing (checked). | done |
+| Robust bounds on a weighted Cox model's predicted survival are not built here: `CoxPH` models have no `cb` (no survival bounds at all, weighted or not), so this needs the unweighted bound (and its conformance declarations) first. | proposed | Bigger than one weighted extra; it is a new bound for the model. | gap |
+
 ### Weights: the log-rank tests
 
 | Decision | By | Reason | Status |

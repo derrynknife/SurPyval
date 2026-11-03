@@ -6,6 +6,14 @@ Unreleased
 
 **Added.**
 
+- ``CoxPH.fit_from_df`` takes ``w_col`` (lifelines' ``weights_col``),
+  which 0.26 refused: the same fit as ``CoxPH.fit(..., w=)``, with the
+  weights of rows dropped for a missing covariate dropped with them.
+- ``CoxPH.fit_tvc`` takes weights ``w`` (one per interval row) and
+  ``fit_tvc_from_df`` takes ``w_col``: the weighted partial likelihood of
+  start-stop data, with the robust covariance clustered by subject (R's
+  ``coxph(Surv(start, stop, event) ~ ..., weights = w, robust = TRUE, id =
+  id)``). Not with ``strata`` yet.
 - ``logrank`` and ``pairwise_logrank`` take sampling weights ``w``
   (0.26 gave Python's ``TypeError``): weighted numbers at risk and of
   events, with the design-based variance, R's robust score test
