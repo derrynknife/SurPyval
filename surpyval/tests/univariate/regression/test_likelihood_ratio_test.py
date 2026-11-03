@@ -217,21 +217,157 @@ def test_parametric_null_takes_interval_censoring_and_entry_times():
     assert res["df"] == 1
 
 
-def test_distributional_refusal_names_the_distributional_model(rossi):
-    """Audit C4. A distributional regression puts covariates on more than
-    one parameter, so the test against the baseline fit is refused; the
-    refusal should say that it is a distributional model and what to
-    compare instead, not that it has a custom link."""
+def test_distributional_global_null_is_the_distribution_fit(rossi):
+    """A distributional regression's global test: the null model is the
+    distribution fitted alone to the same data, on one degree of freedom
+    per coefficient over every parameter (two columns on two parameters:
+    4)."""
+    from scipy.stats import chi2
+
     x, c, df = rossi
     model = sp.WeibullDistributional.fit(
         x, df[["fin", "prio"]].to_numpy(float), c=c
     )
-    with pytest.raises(ValueError) as err:
+    res = model.likelihood_ratio_test()
+    base = sp.Weibull.fit(x, c=c)
+    np.testing.assert_allclose(
+        res["log_likelihood_null"], base.log_likelihood, rtol=1e-9
+    )
+    assert res["df"] == 4
+    assert res["log_likelihood"] == -model.neg_ll()
+    np.testing.assert_allclose(
+        res["statistic"],
+        2 * (res["log_likelihood"] - res["log_likelihood_null"]),
+        rtol=1e-12,
+    )
+    np.testing.assert_allclose(
+        res["p_value"], chi2.sf(res["statistic"], 4), rtol=1e-12
+    )
+    assert set(res) == set(
+        sp.WeibullPH.fit(x, df[["fin"]], c=c).likelihood_ratio_test()
+    )
+
+
+def _shape_on_load():
+    # The doctest's data: load moves the scale and the shape. Seed fixed.
+    rng = np.random.default_rng(3)
+    load = rng.uniform(0, 1, 300)
+    x = 10 * np.exp(-0.5 * load) * rng.weibull(1.2 * np.exp(load))
+    return x, load
+
+
+def test_distributional_per_parameter_null_refits_the_others():
+    """``parameter="beta"`` holds the shape's coefficient at 0 and refits
+    the rest: the null is the fit with load on the scale only."""
+    x, load = _shape_on_load()
+    model = sp.WeibullDistributional.fit(x, load)
+    res = model.likelihood_ratio_test(parameter="beta")
+    scale_only = sp.WeibullDistributional.fit(
+        x, load, covariates={"alpha": [0]}
+    )
+    np.testing.assert_allclose(
+        res["log_likelihood_null"], -scale_only.neg_ll(), rtol=1e-9
+    )
+    assert res["df"] == 1
+    # The shape does depend on load here (its log rises by 1 per unit).
+    assert res["p_value"] < 1e-3
+    shape_only = sp.WeibullDistributional.fit(
+        x, load, covariates={"beta": [0]}
+    )
+    res_alpha = model.likelihood_ratio_test(parameter="alpha")
+    np.testing.assert_allclose(
+        res_alpha["log_likelihood_null"], -shape_only.neg_ll(), rtol=1e-9
+    )
+    assert model.likelihood_ratio_test()["p_value"] < 1e-6
+
+
+def test_distributional_per_parameter_with_center():
+    """A fit at the covariate means (``center=True``) gives the same
+    test: the same model, parameterised from another origin."""
+    x, load = _shape_on_load()
+    plain = sp.WeibullDistributional.fit(x, load)
+    centred = sp.WeibullDistributional.fit(x, load, center=True)
+    for parameter in (None, "alpha", "beta"):
+        a = plain.likelihood_ratio_test(parameter=parameter)
+        b = centred.likelihood_ratio_test(parameter=parameter)
+        np.testing.assert_allclose(a["statistic"], b["statistic"], rtol=1e-6)
+        assert a["df"] == b["df"]
+
+
+def test_distributional_covariate_that_does_nothing():
+    """Every time appears once in each group, so the groups' fits are the
+    same, every coefficient is 0 and the statistic is 0 (p = 1)."""
+    x = sp.Weibull.random(40, 10, 2, random_state=7)
+    x = np.r_[x, x]
+    z = np.r_[np.zeros(40), np.ones(40)]
+    model = sp.WeibullDistributional.fit(x, z)
+    for parameter in (None, "alpha", "beta"):
+        res = model.likelihood_ratio_test(parameter=parameter)
+        assert res["statistic"] < 1e-6
+        assert res["p_value"] > 0.999
+
+
+def test_distributional_aliased_and_fixed_coefficients_are_not_counted():
+    """A column that is twice another is aliased on each parameter, so it
+    is not counted, and the test is that of the fit without it; a
+    coefficient held at 0 is not counted either."""
+    x = sp.Weibull.random(40, 10, 2, random_state=7)
+    x = np.r_[x, x * np.exp(0.3)]
+    z = np.r_[np.zeros(40), np.ones(40)]
+    with pytest.warns(UserWarning, match="cannot be estimated"):
+        model = sp.WeibullDistributional.fit(x, np.c_[z, 2 * z])
+    assert model._aliased_coefficients.size == 2
+    one = sp.WeibullDistributional.fit(x, z)
+    for parameter in (None, "alpha", "beta"):
+        a = model.likelihood_ratio_test(parameter=parameter)
+        b = one.likelihood_ratio_test(parameter=parameter)
+        assert a["df"] == b["df"] == (2 if parameter is None else 1)
+        np.testing.assert_allclose(a["statistic"], b["statistic"], atol=1e-6)
+    held = sp.WeibullDistributional.fit(x, z, fixed={"beta_coef_0": 0.0})
+    res = held.likelihood_ratio_test()
+    assert res["df"] == 1
+    with pytest.raises(ValueError, match="nothing to test"):
+        held.likelihood_ratio_test(parameter="beta")
+
+
+def test_distributional_refusals_say_what_to_do():
+    x, load = _shape_on_load()
+    model = sp.WeibullDistributional.fit(x, load)
+    with pytest.raises(ValueError, match="Unknown parameter 'shape'"):
+        model.likelihood_ratio_test(parameter="shape")
+    intercept_only = sp.WeibullDistributional.fit(
+        x, load, covariates={"alpha": [0]}
+    )
+    with pytest.raises(ValueError, match="nothing to test"):
+        intercept_only.likelihood_ratio_test(parameter="beta")
+    nonzero = sp.WeibullDistributional.fit(x, load, fixed={"beta_coef_0": 0.5})
+    with pytest.raises(ValueError, match="other than 0") as err:
+        nonzero.likelihood_ratio_test()
+    assert "log_likelihood" in str(err.value)
+    with pytest.raises(ValueError, match="other than 0"):
+        nonzero.likelihood_ratio_test(parameter="beta")
+    # The other parameter's test holds: its null keeps beta_coef_0 at 0.5.
+    assert nonzero.likelihood_ratio_test(parameter="alpha")["df"] == 1
+    restored = sp.from_dict(model.to_dict())
+    with pytest.raises(ValueError, match="refit"):
+        restored.likelihood_ratio_test()
+
+
+def test_distributional_weighted_and_penalised_are_refused_as_elsewhere():
+    """A distributional fit takes neither weights nor a penalty yet; the
+    test still goes through the same refusals as every regression, so a
+    weighted or penalised model would be refused the same way."""
+    from surpyval.utils.weights import WeightedRefusal
+
+    x, load = _shape_on_load()
+    model = sp.WeibullDistributional.fit(x, load)
+    model.weighted = True
+    with pytest.raises(WeightedRefusal):
         model.likelihood_ratio_test()
-    message = str(err.value)
-    assert "distributional" in message.lower()
-    assert "custom covariate link" not in message
-    assert "log_likelihood" in message
+    model.weighted = False
+    model.penalty = object()
+    with pytest.raises(ValueError, match="penalised"):
+        model.likelihood_ratio_test(parameter="beta")
 
 
 def test_royston_parmar_lrt_with_a_fixed_spline_coefficient_is_refused(rossi):

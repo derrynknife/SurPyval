@@ -7,7 +7,7 @@
 #
 #     Rscript scripts/reference/reference_r_distributional.R
 #
-# Run with R 4.4.3, gamlss 5.5.5, gamlss.cens 5.0.7 and flexsurv 2.3.2.
+# Run with R 4.6.2, gamlss 5.5.5, gamlss.cens 5.0.7 and flexsurv 2.3.2.
 suppressMessages({library(gamlss); library(gamlss.cens); library(flexsurv); library(survival)})
 L <- c(
   8.0, 2.39, 4.32, 1.37, NA, 3.02, 10.2, 1.15, 7.2, 2.0, 4.0, 5.2, 6.25,
@@ -83,5 +83,20 @@ cat("FSW se", sprintf("%.10f", sqrt(diag(fw$cov))), "\n")
 fg <- flexsurvreg(Surv(tl, time, event) ~ z1 + z2, anc = list(shape = ~ z1), data = dd,
                   dist = "gamma", control = list(reltol = 1e-14, maxit = 10000))
 cat("FSG ll", sprintf("%.10f", fg$loglik), "\n"); cat("FSG est", sprintf("%.10f", fg$res.t[, "est"]), "\n")
+# The null models of likelihood_ratio_test() (Weibull): every coefficient
+# at 0 (the global test), and the shape's coefficient at 0 with the scale's
+# covariates kept (parameter = "beta"); the test holds the values it prints.
+gen.cens("WEI", type = "interval")
+w0 <- gamlss(y ~ 1, sigma.formula = ~ 1, data = dz, family = WEIic(), control = ctl)
+wb <- gamlss(y ~ z1 + z2, sigma.formula = ~ 1, data = dz, family = WEIic(), control = ctl,
+             method = mixed(20, 200))
+cat("WEI null ll", sprintf("%.10f", logLik(w0)), "\n")
+cat("WEI beta-null ll", sprintf("%.10f", logLik(wb)), "\n")
+fw0 <- flexsurvreg(Surv(tl, time, event) ~ 1, data = dd, dist = "weibull",
+                   control = list(reltol = 1e-14, maxit = 10000))
+fwb <- flexsurvreg(Surv(tl, time, event) ~ z1 + z2, data = dd, dist = "weibull",
+                   control = list(reltol = 1e-14, maxit = 10000))
+cat("FSW null ll", sprintf("%.10f", fw0$loglik), "\n")
+cat("FSW beta-null ll", sprintf("%.10f", fwb$loglik), "\n")
 cat("rows", nrow(dd), "\n")
 cat(R.version.string, "gamlss", as.character(packageVersion("gamlss")), "gamlss.cens", as.character(packageVersion("gamlss.cens")), "flexsurv", as.character(packageVersion("flexsurv")), "\n")

@@ -568,3 +568,59 @@ def test_left_truncation_matches_flexsurv_gamma():
     # alpha (shape), beta (rate), alpha_z1, beta_z1, beta_z2
     ours = [np.log(p[0]), np.log(p[1]), p[3], p[4], p[2]]
     np.testing.assert_allclose(ours, est, rtol=1e-4)
+
+
+# -- the likelihood-ratio tests --------------------------------------------
+#
+# The fitted model's log-likelihood is gamlss's and flexsurv's (above). The
+# null models are R's too: ``gamlss(y ~ 1, sigma.formula = ~ 1)`` (every
+# coefficient at 0), ``gamlss(y ~ z1 + z2, sigma.formula = ~ 1)`` (the
+# shape's coefficient at 0) and the same two fits in flexsurv without
+# ``anc``. Printed by scripts/reference/reference_r_distributional.R
+# (R 4.6.2, gamlss 5.5.5, gamlss.cens 5.0.7, flexsurv 2.3.2).
+
+GAMLSS_WEIBULL_NULL = -142.7428355194
+GAMLSS_WEIBULL_BETA_NULL = -134.7672711689
+FLEXSURV_WEIBULL_NULL = -105.6082665438
+FLEXSURV_WEIBULL_BETA_NULL = -100.3461226943
+
+
+def test_lr_tests_every_censoring_match_gamlss_nulls():
+    x, c, Z = _censored()
+    model = sp.WeibullDistributional.fit(
+        x, Z, c=c, covariates={"alpha": [0, 1], "beta": [0]}
+    )
+    global_test = model.likelihood_ratio_test()
+    np.testing.assert_allclose(
+        global_test["log_likelihood"], GAMLSS["Weibull"][0], atol=1e-8
+    )
+    np.testing.assert_allclose(
+        global_test["log_likelihood_null"], GAMLSS_WEIBULL_NULL, atol=1e-6
+    )
+    assert global_test["df"] == 3
+    shape_test = model.likelihood_ratio_test(parameter="beta")
+    np.testing.assert_allclose(
+        shape_test["log_likelihood_null"], GAMLSS_WEIBULL_BETA_NULL, atol=1e-6
+    )
+    assert shape_test["df"] == 1
+
+
+def test_lr_tests_left_truncation_match_flexsurv_nulls():
+    x, c, Z, tl = _truncated()
+    model = sp.WeibullDistributional.fit(
+        x, Z, c=c, tl=tl, covariates={"alpha": [0, 1], "beta": [0]}
+    )
+    global_test = model.likelihood_ratio_test()
+    np.testing.assert_allclose(
+        global_test["log_likelihood"], FLEXSURV_WEIBULL[0], atol=1e-8
+    )
+    np.testing.assert_allclose(
+        global_test["log_likelihood_null"], FLEXSURV_WEIBULL_NULL, atol=1e-6
+    )
+    shape_test = model.likelihood_ratio_test(parameter="beta")
+    np.testing.assert_allclose(
+        shape_test["log_likelihood_null"],
+        FLEXSURV_WEIBULL_BETA_NULL,
+        atol=1e-6,
+    )
+    assert (global_test["df"], shape_test["df"]) == (3, 1)

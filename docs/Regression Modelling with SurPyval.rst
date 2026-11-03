@@ -551,7 +551,9 @@ taken together, explain anything: twice the gain in log-likelihood over the mode
 covariates, compared with a chi-squared distribution with one degree of freedom per coefficient
 (the "Likelihood ratio test" line of R's ``summary(coxph)``). The parametric proportional hazards,
 AFT, proportional odds and additive hazards models have it too, against their baseline
-distribution fitted alone (the chi-squared of R's ``survreg``):
+distribution fitted alone (the chi-squared of R's ``survreg``), and so do the distributional
+regressions, with a test of each parameter's covariates as well (see
+:doc:`Distributional Regression`):
 
 .. jupyter-execute::
 

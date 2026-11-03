@@ -256,6 +256,26 @@ their coverage. ``parameters_at(Z)`` gives each row's parameters and
 ``distribution_at(row)`` the univariate distribution of one unit, with
 every univariate function.
 
+**Tests of the covariates.** ``likelihood_ratio_test()`` asks whether the
+covariates, on all the parameters together, explain anything: the null
+model is the distribution fitted alone to the same data, and twice the
+gain in log-likelihood is compared with a chi-squared distribution with
+one degree of freedom per estimated coefficient. With a parameter named,
+it tests that parameter's covariates alone: ``parameter="beta"`` asks
+whether the shape depends on the covariates, against the fit with the
+shape's coefficients at 0 and the scale's kept (refitted), on one degree
+of freedom per coefficient of the shape. Aliased coefficients and those
+held at 0 are not counted; a coefficient held at another value refuses
+the test, since the null model is then not inside the fitted one.
+
+.. code-block:: python
+
+    model.likelihood_ratio_test()                  # every coefficient
+    model.likelihood_ratio_test(parameter="beta")  # the shape's alone
+
+The result is a dictionary, ``{"statistic", "df", "p_value",
+"log_likelihood", "log_likelihood_null"}``, as for the other regressions.
+
 **Checks of the fit.** Each parameter's columns are checked on their
 own: a column that is constant, or a combination of that parameter's
 other columns, is aliased (reported as ``nan``, with one warning). A
