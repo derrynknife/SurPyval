@@ -375,6 +375,8 @@ The plain log-rank weights every event time equally (:math:`w_t = 1`), which mak
 
 When a *nuisance* factor (a site, a batch) also affects survival, comparing groups while ignoring it can be misleading if the groups are unevenly distributed across its levels. The **stratified log-rank** accumulates the observed-minus-expected numerators and their variances *within* each stratum before forming the statistic, so groups are only ever compared against others in the same stratum — the same logic as stratification in a Cox model, applied to the two-sample test. The degrees of freedom are still :math:`k - 1`, and with Fleming-Harrington weights the pooled Kaplan-Meier behind the weights is computed within each stratum.
 
+With sampling or propensity weights (``w=``) the numbers at risk and of failures are weighted, and the hypergeometric variance no longer applies: it would treat a weight of 2.5 as 2.5 units seen. The weighted test uses the design-based variance instead, the sum over the units of the squares of their weighted contributions to the numerator (each unit's score residual), which is the robust score test of a Cox model of the groups (see :doc:`Weighted Data`).
+
 Restricted mean survival time
 -----------------------------
 
