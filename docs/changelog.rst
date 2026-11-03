@@ -6,6 +6,18 @@ Unreleased
 
 **Added.**
 
+- Bootstrap bounds (``method="bootstrap"`` on ``cb``, ``quantile_cb`` and
+  ``param_cb``) for limited-failure and zero-inflated models, with or
+  without an offset, which refused before; ``param_cb`` bounds ``lfp_p``
+  and ``f0`` too. The refits are of the same model (``lfp=``, ``zi=``,
+  ``offset=``, ``fixed=``), drawn from it as the plain models' are; a
+  unit drawn as never failing is censored at the last time in the data
+  where its drawn censoring time is beyond it; and a refit that puts
+  ``lfp_p`` or ``f0`` on its edge counts there, so an interval can reach
+  the edge. The intervals are BCa, with the jackknife's acceleration (the
+  model refitted without each unit in turn); the plain and offset models'
+  bootstrap intervals are unchanged. The conformance bound sweeps include them, and a calibration
+  study checks their coverage.
 - Bootstrap bounds for weighted fits: ``method="bootstrap"`` on ``cb``,
   ``param_cb`` and ``quantile_cb`` (and ``mrl_cb`` of a distribution) of a
   parametric distribution or a parametric regression (PH, AFT, PO,

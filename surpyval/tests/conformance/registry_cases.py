@@ -1410,6 +1410,38 @@ _REGRESSION_LR_X = {
 _NO_WALD = {"Uniform"}
 
 
+#: The univariate cases whose parametric bootstrap is swept (#286), at
+#: these times: the limited-failure and zero-inflated fits of two
+#: families. The calls with one ``n_boot`` and seed share one set of
+#: refits.
+_BOOT_X = {
+    f"{family}[{variant}]": np.array([4.0, 8.0, 13.0])
+    for family in ("Weibull", "LogNormal")
+    for variant in ("lfp", "zi")
+}
+
+
+def _bootstrap_bounds(case, on):
+    boot = dict(kwargs={"method": "bootstrap", **_BOOT}, wald=False, slow=True)
+    return [
+        Bound(
+            "cb",
+            on=on,
+            query=tuple(_BOOT_X[case.name]),
+            label="cb[bootstrap]",
+            **boot,
+        ),
+        Bound("param_cb", kind="param", label="param_cb[bootstrap]", **boot),
+        Bound(
+            "quantile_cb",
+            point="qf",
+            query=(0.1, 0.3),
+            label="quantile_cb[bootstrap]",
+            **boot,
+        ),
+    ]
+
+
 def _parametric_bounds(case):
     on = tuple(f for f in _ON_ALL if f in case.functions)
     out = []
@@ -1458,6 +1490,8 @@ def _parametric_bounds(case):
     # other four sweep in every run, and test_likelihood_ratio_edges.py
     # checks those two families' edges and valleys directly (#421). The
     # offset, limited-failure and zero-inflated fits sweep theirs too.
+    if case.name in _BOOT_X:
+        out += _bootstrap_bounds(case, on)
     if case.name not in _LR_X:
         return tuple(out)
     x = _LR_X[case.name]

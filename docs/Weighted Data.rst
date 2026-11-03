@@ -183,8 +183,10 @@ units does. A seed gives the same bounds at any scale of the weights.
     print(model.param_cb("beta", method="bootstrap", n_boot=200, random_state=1))
 
 Since nothing is simulated, left- and interval-censored data are
-resampled as they are. Limited-failure, zero-inflated and discrete fits
-and time-varying covariate fits have no bootstrap, weighted or not.
+resampled as they are. A limited-failure or zero-inflated fit with
+weights has no bootstrap (without weights it has, with BCa intervals; see
+:doc:`Parametric SurPyval Modelling`); discrete fits and time-varying
+covariate fits have none, weighted or not.
 
 Comparing weighted groups
 -------------------------

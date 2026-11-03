@@ -1256,7 +1256,13 @@ class Parametric(
           one bound on an offset's ``gamma``, and the one on another
           parameter of an offset model that includes the offset's
           uncertainty (the Wald bound holds it at its estimate, with a
-          warning; #645).
+          warning; #645). A limited-failure or zero-inflated model's
+          refits are fitted the same way (``lfp=``, ``zi=``), so ``lfp_p``
+          and ``f0`` have bootstrap bounds too; a refit that puts either
+          on its edge (1, 0) counts there, so the interval reaches the
+          edge when enough refits do. Their intervals are BCa: the
+          bias-corrected percentiles moved by an acceleration from the
+          jackknife (the model refitted without each unit in turn).
 
         The probability ``p`` of a ``Bernoulli``,
         ``FixedEventProbability`` or ``Binomial`` fit is bounded from its
@@ -2594,8 +2600,11 @@ class Parametric(
             bound is the bias-corrected percentile interval of the refits'
             ``on`` function. It includes the uncertainty of every
             estimated parameter, an offset's among them, and needs the
-            original data, exact or right censored (truncated or not); it
-            is not available for limited-failure or zero-inflated models.
+            original data, exact or right censored (truncated or not).
+            A limited-failure or zero-inflated model is refitted with the
+            same options; a unit drawn as never failing is censored as the
+            units were, or at the last time in the data where its drawn
+            censoring time is beyond it.
             The refits are kept on the model for each ``n_boot`` and integer
             ``random_state``, so bounds at other ``x`` (and ``quantile_cb``
             and ``param_cb``) reuse them.

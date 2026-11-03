@@ -72,3 +72,15 @@ def test_likelihood_ratio_still_refused(data):
     model = sp.Weibull.fit(data["x"], data["c"], w=data["w"])
     with pytest.raises(WeightedRefusal, match="Wald"):
         model.cb([2.0], method="lr")
+
+
+def test_limited_failure_with_weights_refuses_the_bootstrap(data):
+    # Without weights a limited-failure model has bootstrap (BCa) bounds;
+    # with weights its jackknife is not built, so the bootstrap refuses
+    # and points to the Wald bounds.
+    x, c, w = data["x"], data["c"], data["w"]
+    model = quietly(sp.Weibull.fit, x, c, w=w, lfp=True)
+    with pytest.raises(WeightedRefusal, match="Wald"):
+        model.param_cb("lfp_p", **BOOT)
+    with pytest.raises(WeightedRefusal, match="limited-failure"):
+        model.cb([2.0], **BOOT)
