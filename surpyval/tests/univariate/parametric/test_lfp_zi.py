@@ -660,3 +660,33 @@ def test_zi_quantile_cb_within_the_mass_at_zero_is_zero_without_a_warning():
     out = no_warnings(model.quantile_cb, [0.05, 0.5])
     np.testing.assert_array_equal(out[0], [0.0, 0.0])
     assert 0 < out[1, 0] < model.qf(0.5) < out[1, 1]
+
+
+_AT_BOUND = "lfp_p is at its bound of 1"
+
+
+def test_lfp_repr_notes_a_proportion_fitted_at_its_bound():
+    # Every unit fails: the plain model wins and lfp_p is fitted at 1.
+    x = Weibull.random(30, 10, 2, random_state=1)
+    model = Weibull.fit(x, lfp=True)
+    assert 1 - model.lfp_p < 1e-5
+    text = repr(model)
+    assert _AT_BOUND in text
+    assert "fit without lfp=True" in text
+
+
+def test_lfp_repr_has_no_bound_note_for_a_proportion_below_1():
+    # Many units outlast the failures: a proportion well below 1.
+    x = np.r_[Weibull.random(30, 10, 2, random_state=1), [40.0] * 20]
+    c = np.r_[np.zeros(30), np.ones(20)]
+    model = Weibull.fit(x, c=c, lfp=True)
+    assert model.lfp_p < 0.9
+    assert _AT_BOUND not in repr(model)
+
+
+def test_lfp_bound_note_only_for_fitted_models():
+    # A proportion of 1 given by hand is not a fit at the bound, and a
+    # model without lfp has no proportion to note.
+    assert _AT_BOUND not in repr(Weibull.from_params([10, 2], lfp_p=1.0))
+    plain = Weibull.fit(Weibull.random(30, 10, 2, random_state=1))
+    assert _AT_BOUND not in repr(plain)

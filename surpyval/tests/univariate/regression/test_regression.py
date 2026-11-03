@@ -28,7 +28,11 @@ from surpyval import (
     WeibullPH,
 )
 from surpyval.datasets import load_lung, load_rossi_static, load_tires_data
-from surpyval.tests._helpers import weibull_ph_data
+from surpyval.tests._helpers import (
+    KS_BAND_20000,
+    ks_distance,
+    weibull_ph_data,
+)
 from surpyval.univariate.regression import (
     AcceleratedLife,
     CoxPH,
@@ -269,6 +273,66 @@ def test_regression_random_dispatches_to_fitter():
     out = m.random(20, Z[:1])
     # The PH fitter's sampler returns (x, Z) arrays.
     assert np.all(np.asarray(out[0]) > 0)
+
+
+# ---------------------------------------------------------------------------
+# ``random`` for the AFT and PO models (#285).
+# ---------------------------------------------------------------------------
+
+
+def _lung_fit(fitter, center=False):
+    df = load_lung().dropna(subset=["age", "sex"])
+    x = df["time"].values
+    c = (df["status"].values == 1).astype(int)
+    Z = df[["age", "sex"]].values.astype(float)
+    return fitter.fit(x, Z, c=c, center=center)
+
+
+@pytest.mark.parametrize(
+    "name", ["WeibullAFT", "LogNormalAFT", "WeibullPO", "LogisticPO"]
+)
+@pytest.mark.parametrize("center", [False, True])
+def test_285_aft_and_po_random_follow_sf(name, center):
+    model = _lung_fit(getattr(sp, name), center=center)
+    row = np.array([[62.0, 2.0]])
+    draws, rows = model.random(20_000, row, random_state=285)
+    assert draws.shape == (20_000,) and rows.shape == (20_000, 2)
+    np.testing.assert_array_equal(rows, np.repeat(row, 20_000, axis=0))
+    d = ks_distance(draws, lambda t: model.ff(t, row))
+    assert d <= KS_BAND_20000, (d, KS_BAND_20000)
+
+
+def test_285_aft_draw_is_the_baseline_quantile_rescaled():
+    # S(x | Z) = S0(phi x): a draw with survival U is qf0(1 - U) / phi.
+    U = np.random.default_rng(5).uniform(0, 1, 4)
+    x, _ = sp.WeibullAFT.random(4, [[2.0]], 10.0, 1.5, 0.3, random_state=5)
+    expected = Weibull.qf(1 - U, 10.0, 1.5) / np.exp(0.6)
+    np.testing.assert_allclose(x, expected, rtol=1e-10)
+
+
+def test_285_po_draw_solves_the_odds():
+    # The odds of surviving are phi times the baseline's.
+    x, _ = sp.WeibullPO.random(6, [[1.0]], 10.0, 2.0, -0.7, random_state=2)
+    U = np.random.default_rng(2).uniform(0, 1, 6)
+    np.testing.assert_allclose(
+        sp.WeibullPO.sf(x, [[1.0]], 10.0, 2.0, -0.7), U, rtol=1e-9
+    )
+
+
+def test_285_random_rows_and_seeds():
+    model = _lung_fit(sp.WeibullAFT)
+    rows = np.array([[50.0, 1.0], [70.0, 2.0]])
+    a, Za = model.random(5, rows, random_state=1)
+    b, _ = model.random(5, rows, random_state=1)
+    np.testing.assert_array_equal(a, b)
+    np.testing.assert_array_equal(Za, np.repeat(rows, 5, axis=0))
+    # One stream for every row: the two rows' uniforms differ.
+    assert not np.allclose(a[:5] / a[:5].mean(), a[5:] / a[5:].mean())
+    np.random.seed(4)
+    g1, _ = model.random(5, rows)
+    np.random.seed(4)
+    g2, _ = model.random(5, rows)
+    np.testing.assert_array_equal(g1, g2)
 
 
 # ---------------------------------------------------------------------------

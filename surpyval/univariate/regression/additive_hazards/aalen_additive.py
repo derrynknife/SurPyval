@@ -46,6 +46,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import norm
 
+from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -77,9 +78,11 @@ from .._aliasing import (
     warn_aliased,
 )
 from .._concordance import ConcordanceMixin
+from .._fit_skeleton import draws_by_row
 from .._prediction import (
     ConditionalSurvivalMixin,
     paired_probabilities,
+    step_draws,
     step_quantiles,
     unique_rows,
 )
@@ -234,6 +237,7 @@ def _default_bandwidth(times: npt.NDArray) -> float:
 
 
 class AalenAdditiveModel(
+    DiagnoseMixin,
     ConditionalSurvivalMixin,
     NoLikelihoodMixin,
     ConcordanceMixin,
@@ -682,6 +686,54 @@ class AalenAdditiveModel(
             return np.full(u.shape, np.nan)
         F = np.vstack([self.ff(self.x, rows[k]) for k in range(rows.shape[0])])
         return step_quantiles(F, self.x, u)
+
+    def random(
+        self, size: int, Z: Any, random_state: Any = None
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """
+        Draw ``size`` lifetimes for each covariate row of ``Z`` from the
+        fitted model, by inverse transform on its step survival curve: a
+        draw ``U`` of the survival is the first event time at which the
+        predicted cumulative hazard :meth:`Hf` (the estimate held at its
+        running maximum, so non-decreasing) reaches ``-log(U)``.
+
+        The estimate stops at the last event time, where the curve is
+        above 0 when the data end censored; a draw beyond it is ``inf``
+        (the unit outlives the data), as often as ``sf`` at the last
+        time says. A missing covariate gives ``nan`` draws.
+        ``random_state`` seeds the draw: ``None`` (the default) draws from
+        numpy's global generator, so ``np.random.seed`` reproduces it; an
+        int or a ``numpy.random.Generator`` gives a stream of its own.
+
+        Returns the draws and a 2-D array of the covariate row each was
+        drawn at, row by row, as the other regressions' ``random``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import AalenAdditive
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> df["censored"] = 1 - df["arrest"]
+        >>> model = AalenAdditive.fit_from_df(
+        ...     df, x_col="week", c_col="censored", Z_cols=["fin", "prio"]
+        ... )
+        >>> draws, rows = model.random(5, [[0, 10]], random_state=1)
+        >>> draws
+        array([inf, 10., inf, 10., inf])
+        >>> model.sf(52, [0, 10]).round(3)
+        np.float64(0.526)
+        >>> draws, _ = model.random(10000, [[0, 10]], random_state=1)
+        >>> float(np.isinf(draws).mean())
+        0.523
+        """
+        rows = self._rows(Z)[:, 1:]
+
+        def invert(U: npt.NDArray, row: npt.NDArray) -> npt.NDArray:
+            H = self.Hf(self.x, row) if self.x.size else np.zeros(0)
+            return step_draws(H, self.x, U)
+
+        return draws_by_row(size, rows, random_state, invert)
 
     def cb(
         self,

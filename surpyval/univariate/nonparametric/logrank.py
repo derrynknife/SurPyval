@@ -36,6 +36,9 @@ class LogRankResult:
     strata : int or None
         The number of strata of a stratified test; None for an
         unstratified one.
+    weighted : bool
+        Whether the test was of data with sampling weights ``w``, whose
+        variance is the design-based (robust) one.
 
     Examples
     --------
@@ -64,12 +67,14 @@ class LogRankResult:
         p_value: float,
         weighting: str,
         strata: int | None = None,
+        weighted: bool = False,
     ) -> None:
         self.statistic = statistic
         self.dof = dof
         self.p_value = p_value
         self.weighting = weighting
         self.strata = strata
+        self.weighted = weighted
 
     def __repr__(self) -> str:
         header = "Stratified Log-Rank Test" if self.strata else "Log-Rank Test"
@@ -81,6 +86,8 @@ class LogRankResult:
         )
         if self.strata is not None:
             out += f"\nStrata           : {self.strata}"
+        if self.weighted:
+            out += "\nVariance         : robust (sampling weights w)"
         out += (
             f"\nStatistic        : {self.statistic:.6g}"
             + f"\nDoF              : {self.dof}"
@@ -226,6 +233,134 @@ def _logrank_z_v(
     return z, V, expected.sum(axis=1)
 
 
+def _weighted_u_v(
+    x: npt.NDArray,
+    Z: npt.NDArray,
+    c: npt.NDArray | None,
+    n: npt.NDArray | None,
+    w: npt.NDArray,
+    groups: npt.NDArray,
+    weighting: str,
+    rho: float,
+    gamma: float,
+    tl: npt.NDArray | None = None,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    """Per-stratum (or whole-sample) ``(u, M, E)`` of the log-rank test
+    of rows with sampling weights ``w``: the length-``k`` vector of
+    weighted observed-minus-expected events, the design-based
+    (robust) covariance of ``u`` and the weighted expected events.
+
+    ``u`` is the score at ``beta = 0`` of the weighted Cox partial
+    likelihood of the group indicators (Breslow's ties) with each event
+    time's term multiplied by the test's weight ``W(t)``; ``M`` is the
+    sum over the units of their squared weighted score residuals,
+    ``sum_i n_i w_i^2 s_i s_i'``, with
+
+        s_i = delta_i W(x_i) (e_i - p(x_i))
+              - sum_{tl_i < t_j <= x_i} W(t_j) (e_i - p(t_j)) dL(t_j),
+
+    ``e_i`` the unit's group indicator, ``p(t)`` the weighted share of
+    each group at risk at ``t`` and ``dL(t)`` the weighted events over
+    the weighted number at risk. With ``W = 1`` this is the robust score
+    test of ``coxph(Surv(...) ~ group, weights = w, robust = TRUE,
+    ties = "breslow")``. The weights enter scaled to a mean of 1 per
+    unit (``n``), so the ``r`` of Gehan's and Tarone-Ware's weights and
+    the ``r + 1`` of Peto-Peto's count average units; the statistic
+    does not depend on the scale of ``w``. The caller scales them, over
+    the whole data, so that every stratum's weights are on one scale.
+    """
+    k = groups.size
+    x = np.asarray(x, dtype=float)
+    if x.ndim != 1:
+        raise ValueError(
+            "Log-rank test can only be used with observed and "
+            + "right censored data"
+        )
+    c = np.zeros(x.shape) if c is None else np.asarray(c)
+    if ((c != 0) & (c != 1)).any():
+        raise ValueError(
+            "Log-rank test can only be used with observed and "
+            + "right censored data"
+        )
+    units = np.ones(x.shape) if n is None else np.asarray(n, dtype=float)
+    tl_arr = np.full(x.shape, -np.inf) if tl is None else np.asarray(tl)
+    tl_arr = np.where(np.isnan(tl_arr), -np.inf, tl_arr)
+    if np.any(tl_arr >= x):
+        raise ValueError(
+            "Each entry time 'tl' must be before its observation 'x': a "
+            "unit observed at or before it entered was never at risk."
+        )
+    # (scaled to a mean of 1 per unit over the whole data by the caller)
+    omega = np.asarray(w, dtype=float)
+    nw = units * omega
+    g = np.searchsorted(groups, Z)
+    dead = c == 0
+    event_times = np.unique(x[dead])
+    m = event_times.size
+    if m == 0:
+        return np.zeros(k), np.zeros((k, k)), np.zeros(k)
+
+    # Weighted number at risk and of events, per group and event time:
+    # a row is at risk at t when tl < t <= x.
+    r_gt = np.zeros((k, m))
+    d_gt = np.zeros((k, m))
+    stop_idx = np.searchsorted(event_times, x, "right")  # t_j <= x
+    entry_idx = np.searchsorted(event_times, tl_arr, "right")  # t_j <= tl
+    for j in range(k):
+        mine = g == j
+        if not mine.any():
+            continue
+        delta = np.zeros(m + 1)
+        np.add.at(delta, entry_idx[mine], nw[mine])
+        np.add.at(delta, stop_idx[mine], -nw[mine])
+        r_gt[j] = np.cumsum(delta)[:m]
+        ev = mine & dead
+        d_gt[j] = np.bincount(
+            np.searchsorted(event_times, x[ev]),
+            weights=nw[ev],
+            minlength=m,
+        )
+    r_t = r_gt.sum(axis=0)
+    d_t = d_gt.sum(axis=0)
+
+    if weighting == "log-rank":
+        W = np.ones(m)
+    elif weighting == "gehan":
+        W = r_t
+    elif weighting == "tarone-ware":
+        W = np.sqrt(r_t)
+    elif weighting in ("peto-peto", "modified-peto-peto"):
+        W = np.cumprod(1.0 - d_t / (r_t + 1.0))
+        if weighting == "modified-peto-peto":
+            W = W * r_t / (r_t + 1.0)
+    else:
+        # The pooled weighted Kaplan-Meier just before each event time.
+        S = kaplan_meier(r_t, d_t)
+        S_prev = np.hstack([[1.0], S[:-1]])
+        W = S_prev**rho * (1 - S_prev) ** gamma
+
+    with np.errstate(all="ignore"):
+        p = np.where(r_t > 0, r_gt / r_t, 0.0)
+        dL = np.where(r_t > 0, d_t / r_t, 0.0)
+    expected = d_t * p
+    u = (W * (d_gt - expected)).sum(axis=1)
+
+    # The integral term of each unit's residual from cumulative sums
+    # over the event times: B(t) = sum W dL, A_g(t) = sum W dL p_g, read
+    # between the unit's entry and its exit.
+    B = np.concatenate([[0.0], np.cumsum(W * dL)])
+    A = np.concatenate([np.zeros((k, 1)), np.cumsum(W * dL * p, axis=1)], 1)
+    rows = x.size
+    s = np.zeros((rows, k))
+    s[np.arange(rows), g] -= B[stop_idx] - B[entry_idx]
+    s += (A[:, stop_idx] - A[:, entry_idx]).T
+    at = np.searchsorted(event_times, x[dead])
+    jump = W[at][:, None] * (np.eye(k)[g[dead]] - p[:, at].T)
+    s[dead] += jump
+    M = (s * (units * omega**2)[:, None]).T @ s
+    return u, M, expected.sum(axis=1)
+
+
 def logrank(
     x: npt.ArrayLike,
     Z: npt.ArrayLike,
@@ -237,6 +372,7 @@ def logrank(
     strata: npt.ArrayLike | None = None,
     tl: npt.ArrayLike | float | None = None,
     t0: float | None = None,
+    w: npt.ArrayLike | float | None = None,
 ) -> LogRankResult:
     r"""
     The k-sample (weighted) log-rank test for the equality of survival
@@ -325,6 +461,24 @@ def logrank(
         Use it when the question is about a fixed follow-up window, or
         when the curves are known to cross later. Without ``t0`` the
         whole follow-up is compared.
+    w : array like or scalar, optional
+        Sampling, propensity or inverse-probability weights, one positive
+        finite weight per row (beside the counts ``n``; see
+        :doc:`Weighted Data </Weighted Data>`). The numbers at risk and of
+        events are then weighted (the numerator compares weighted observed
+        and expected events), and the variance is the design-based one:
+        the sum over the units of their squared weighted score residuals,
+        the robust score test of a Cox model of the group indicators at
+        ``beta = 0`` (R's ``coxph(Surv(...) ~ group, weights = w, robust =
+        TRUE, ties = "breslow")$rscore``). It is used even with ``w = 1``,
+        so a test with unit weights is the robust test, not the
+        hypergeometric one. Gehan's ``r``, Tarone-Ware's ``sqrt(r)``,
+        Peto-Peto's ``r + 1`` and the Fleming-Harrington Kaplan-Meier use
+        the weighted numbers, with the weights scaled to a mean of 1 per
+        unit, so that no result depends on the scale of ``w``. The weights
+        of the test are taken as fixed: like R, the variance ignores that
+        the Kaplan-Meier behind a Fleming-Harrington weight is estimated.
+        ``strata``, ``tl`` and ``t0`` take weights too.
 
     Returns
     -------
@@ -338,8 +492,9 @@ def logrank(
     ------
 
     ValueError
-        If there are fewer than two groups, ``Z``, ``c``, ``n`` or
-        ``strata`` does not have one entry per value, a group or stratum
+        If there are fewer than two groups, ``Z``, ``c``, ``n``, ``w`` or
+        ``strata`` does not have one entry per value, a weight is not
+        positive and finite, a group or stratum
         label is missing (NaN or None), the weighting is unknown, the
         data have left or interval censoring, or ``t0`` is not a number.
 
@@ -402,7 +557,18 @@ def logrank(
     Review 50, 219-258.
     """
     return _logrank(
-        x, Z, c, n, weighting, rho, gamma, strata, tl, t0, warn_singletons=True
+        x,
+        Z,
+        c,
+        n,
+        weighting,
+        rho,
+        gamma,
+        strata,
+        tl,
+        t0,
+        warn_singletons=True,
+        w=w,
     )
 
 
@@ -425,6 +591,7 @@ def _cut_at(
     n: npt.NDArray | None,
     tl: npt.NDArray | None,
     strata: npt.ArrayLike | None,
+    w: npt.NDArray | None = None,
 ) -> tuple[
     npt.NDArray,
     npt.NDArray,
@@ -432,11 +599,12 @@ def _cut_at(
     npt.NDArray | None,
     npt.NDArray | None,
     npt.NDArray | None,
+    npt.NDArray | None,
 ]:
     """The data as they would be had follow-up stopped at ``t0``: an
     observation past ``t0`` is right censored at ``t0``, and a row that
     entered at or after it (``tl >= t0``, never at risk by then) is
-    dropped, with its group label and stratum."""
+    dropped, with its group label, stratum and weight."""
     try:
         t0 = float(t0)
     except (TypeError, ValueError):
@@ -471,6 +639,7 @@ def _cut_at(
         None if n is None else n[keep],
         None if tl is None else tl[keep],
         None if strata is None else strata[keep],
+        None if w is None else w[keep],
     )
 
 
@@ -486,6 +655,7 @@ def _logrank(
     tl: npt.ArrayLike | float | None,
     t0: float | None,
     warn_singletons: bool,
+    w: npt.ArrayLike | float | None = None,
 ) -> LogRankResult:
     """:func:`logrank`, with its warning of singleton groups optional (the
     pairwise tests warn once, of the whole data)."""
@@ -531,6 +701,16 @@ def _logrank(
                 "'{}' must have one entry for each observation; got {} "
                 "for {} observations".format(name, arr.size, x.size)
             )
+    w_arr = None
+    if w is not None:
+        from surpyval.utils.weights import check_weights
+
+        if np.ndim(x) != 1:
+            raise ValueError(
+                "Log-rank test can only be used with observed and "
+                + "right censored data"
+            )
+        w_arr = check_weights(w, x.shape[0])
 
     k = groups.size
     # Groups are categories. When most of them hold a single unit the
@@ -552,14 +732,48 @@ def _logrank(
             stacklevel=3,
         )
     if t0 is not None:
-        x, Z, c_arr, n_arr, tl_arr, strata = _cut_at(
-            t0, x, Z, c_arr, n_arr, tl_arr, strata
+        x, Z, c_arr, n_arr, tl_arr, strata, w_arr = _cut_at(
+            t0, x, Z, c_arr, n_arr, tl_arr, strata, w_arr
         )
+
+    if w_arr is not None and w_arr.size:
+        # A mean weight of 1 per unit, over every stratum at once (see
+        # _weighted_u_v).
+        units_w = np.ones(x.shape) if n_arr is None else n_arr.astype(float)
+        w_arr = w_arr * (units_w.sum() / np.sum(units_w * w_arr))
+
+    def z_v(mask: npt.NDArray | None) -> tuple:
+        def rows(a: Any) -> Any:
+            return a if a is None or mask is None else a[mask]
+
+        if w_arr is None:
+            return _logrank_z_v(
+                rows(x),
+                rows(Z),
+                rows(c_arr),
+                rows(n_arr),
+                groups,
+                weighting,
+                rho,
+                gamma,
+                rows(tl_arr),
+            )
+        return _weighted_u_v(
+            rows(x),
+            rows(Z),
+            rows(c_arr),
+            rows(n_arr),
+            rows(w_arr),
+            groups,
+            weighting,
+            rho,
+            gamma,
+            rows(tl_arr),
+        )
+
     n_strata = None
     if strata is None:
-        z, V, E = _logrank_z_v(
-            x, Z, c_arr, n_arr, groups, weighting, rho, gamma, tl_arr
-        )
+        z, V, E = z_v(None)
     else:
         strata = np.asarray(strata)
         if len(strata) != len(x):
@@ -577,18 +791,7 @@ def _logrank(
         unique_strata = np.unique(strata)
         n_strata = int(unique_strata.size)
         for s in unique_strata:
-            mask = strata == s
-            z_s, V_s, E_s = _logrank_z_v(
-                x[mask],
-                Z[mask],
-                None if c_arr is None else c_arr[mask],
-                None if n_arr is None else n_arr[mask],
-                groups,
-                weighting,
-                rho,
-                gamma,
-                None if tl_arr is None else tl_arr[mask],
-            )
+            z_s, V_s, E_s = z_v(strata == s)
             z += z_s
             V += V_s
             E += E_s
@@ -618,7 +821,14 @@ def _logrank(
     if weighting == "fleming-harrington":
         weighting = f"fleming-harrington(rho={rho}, gamma={gamma})"
 
-    return LogRankResult(statistic, dof, p_value, weighting, strata=n_strata)
+    return LogRankResult(
+        statistic,
+        dof,
+        p_value,
+        weighting,
+        strata=n_strata,
+        weighted=w_arr is not None,
+    )
 
 
 #: The ``adjust`` values of :func:`pairwise_logrank`.
@@ -812,6 +1022,7 @@ def pairwise_logrank(
     tl: npt.ArrayLike | float | None = None,
     t0: float | None = None,
     adjust: str = "holm",
+    w: npt.ArrayLike | float | None = None,
 ) -> PairwiseLogRankResult:
     """
     The (weighted) log-rank test of every pair of groups, in one table,
@@ -829,12 +1040,13 @@ def pairwise_logrank(
 
     Parameters
     ----------
-    x, Z, c, n, weighting, rho, gamma, strata, tl, t0
+    x, Z, c, n, weighting, rho, gamma, strata, tl, t0, w
         As for :func:`logrank`: the times, the group labels, the censoring
         flags and counts, the weighting and its Fleming-Harrington
-        parameters, the strata of a stratified test, the entry times and
-        the end of the comparison window. ``Z`` needs at least two
-        groups.
+        parameters, the strata of a stratified test, the entry times, the
+        end of the comparison window and the sampling weights (each pair's
+        test with the design-based variance of its own rows). ``Z``
+        needs at least two groups.
     adjust : str, optional
         The multiplicity adjustment of the p-values, as R's ``p.adjust``
         (see :func:`~surpyval.univariate.nonparametric.logrank.\
@@ -923,7 +1135,7 @@ adjust_p_values`): "holm" (the default; controls the chance of any
     # The whole data are checked (and warned of) once, by the k-group
     # test; its result is not needed.
     whole = _logrank(
-        x_arr, Z_arr, c, n, weighting, rho, gamma, strata, tl, t0, True
+        x_arr, Z_arr, c, n, weighting, rho, gamma, strata, tl, t0, True, w=w
     )
     records = []
     for i, a in enumerate(groups):
@@ -941,6 +1153,7 @@ adjust_p_values`): "holm" (the default; controls the chance of any
                 rows_of(tl, mask),
                 t0,
                 warn_singletons=False,
+                w=rows_of(w, mask),
             )
             records.append(
                 {

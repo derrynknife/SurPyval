@@ -8,6 +8,7 @@ import json
 import warnings
 
 import numpy as np
+from scipy.stats import kstwo
 
 import surpyval as sp
 from surpyval import AcceleratedLife, Exponential, Turnbull, Weibull
@@ -397,3 +398,37 @@ def weighted_reference_data():
         "Z": np.column_stack([z1, z2]).astype(float),
         "tl": np.array(tl),
     }
+
+
+#: The 0.1% critical one-sample Kolmogorov-Smirnov distance for 20,000
+#: draws (#285); conservative for a step distribution.
+KS_BAND_20000 = float(kstwo.ppf(0.999, 20_000))
+
+
+def ks_distance(draws, ff):
+    """The one-sample Kolmogorov-Smirnov distance of ``draws`` from a
+    model's ``ff`` (a function of the times): the supremum over every time
+    of ``|ECDF - ff|``: at each distinct
+    finite draw (right limits), just before it (left limits, where a step
+    model's curve may jump with no draw there), and beyond the last
+    (where the share of ``inf`` draws meets the curve's end)."""
+    finite = np.sort(draws[np.isfinite(draws)])
+    times, counts = np.unique(finite, return_counts=True)
+    n = draws.size
+    ecdf = np.cumsum(counts) / n
+    before = np.concatenate([[0.0], ecdf[:-1]])
+    left = np.nextafter(times, -np.inf)
+    F_right = np.asarray(ff(times), dtype=float)
+    F_left = np.asarray(ff(left), dtype=float)
+    # Beyond the last finite draw: a step curve holds there, and a
+    # continuous one is already within ``1 - ff`` of its last value.
+    end = times[-1] + abs(times[-1]) + 1.0 if times.size else 1.0
+    F_end = float(np.asarray(ff(np.array([end])), dtype=float)[0])
+    gaps = np.concatenate(
+        [
+            np.abs(ecdf - F_right),
+            np.abs(before - F_left),
+            [abs((ecdf[-1] if ecdf.size else 0.0) - F_end)],
+        ]
+    )
+    return float(np.max(gaps))

@@ -505,16 +505,20 @@ def _stratified_rows(
     tl: npt.ArrayLike | None,
     tie_method: str,
     strata: npt.ArrayLike,
+    rows: list | None = None,
 ) -> tuple[npt.NDArray, list]:
     """The strata of a stratified Cox fit, ``labels``, and each stratum's
     validated rows, ``(label, x, c, n, tl, Z)``: rows with a missing
     covariate or stratum label dropped (with a warning), shared by
-    :meth:`CoxPH_._fit_stratified` and the penalised fit."""
+    :meth:`CoxPH_._fit_stratified` and the penalised fit. Given a list
+    ``rows``, each stratum's positions among the rows given are appended
+    to it, in the order of ``validated``."""
     labels_arr, missing = strata_labels(strata)
     if len(labels_arr) != len(np.atleast_1d(x)):
         raise ValueError("'strata' must have a label for each observation")
-    # The per-observation arrays, subset together as rows are dropped.
-    obs: list[Any] = [x, c, n, Z, tl]
+    # The per-observation arrays, subset together as rows are dropped,
+    # with each row's position among those given.
+    obs: list[Any] = [x, c, n, Z, tl, np.arange(len(labels_arr))]
     if Z is not None:
         # Checked before the per-stratum split, whose boolean mask
         # would otherwise raise a bare IndexError on a Z of the wrong
@@ -543,12 +547,14 @@ def _stratified_rows(
         )
         obs = [_sub(a, ~missing) for a in obs]
         labels_arr = labels_arr[~missing]
-    x_o, c_o, n_o, Z_o, tl_o = obs
+    x_o, c_o, n_o, Z_o, tl_o, at_o = obs
 
     labels = np.unique(labels_arr)
     validated = []
     for s in labels:
         mask = labels_arr == s
+        if rows is not None:
+            rows.append(at_o[mask])
         xs, cs, ns_, tls, Zs = validate_coxph(
             _sub(x_o, mask),
             _sub(c_o, mask),
@@ -566,6 +572,31 @@ def _stratified_rows(
         np.concatenate([v[3] for v in validated]),
     )
     return labels, validated
+
+
+def _stratified_fit_data(validated: list, positions: list) -> dict:
+    """A stratified fit's rows as one ``_fit_data`` dict, in the order the
+    rows were given: ``x``, ``c``, ``n``, ``Z`` (as given, not centred),
+    ``tl`` and ``strata``, each row's stratum as its position among the
+    fit's ``strata_labels``."""
+    order = np.argsort(np.concatenate(positions), kind="stable")
+    codes = np.concatenate(
+        [np.full(len(v[1]), k) for k, v in enumerate(validated)]
+    )
+
+    def stacked(j: int, dtype: Any) -> npt.NDArray:
+        parts = [np.asarray(v[j], dtype=dtype) for v in validated]
+        out = np.vstack(parts) if parts[0].ndim == 2 else np.concatenate(parts)
+        return out[order]
+
+    return {
+        "x": stacked(1, float),
+        "c": stacked(2, int),
+        "n": stacked(3, float),
+        "Z": stacked(5, float),
+        "tl": stacked(4, float),
+        "strata": codes[order],
+    }
 
 
 def _stratified_baselines(
@@ -1025,8 +1056,9 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         so the score equations are solved once for the shared coefficients.
         A separate baseline hazard is then estimated within each stratum.
         """
+        positions: list = []
         labels, validated = _stratified_rows(
-            x, Z, c, n, tl, tie_method, strata
+            x, Z, c, n, tl, tie_method, strata, rows=positions
         )
         n_params = validated[0][5].shape[1]
         # One centre for every stratum, the mean over all the rows (as R's
@@ -1105,6 +1137,12 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             model.params = model.beta.copy()
         model.is_stratified = True
         model.strata_labels = list(labels)
+        # The rows kept, in the order given (as an unstratified fit keeps
+        # them), each with its stratum's position in ``strata_labels``:
+        # the residuals and diagnostics work within each stratum's risk
+        # sets from these.
+        model._fit_data = _stratified_fit_data(validated, positions)
+        model._fit_center = mean
 
         _stratified_baselines(
             self,
@@ -1271,6 +1309,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         strata_col: str | None = None,
         tl_col: str | None = None,
         center: bool = False,
+        w_col: str | None = None,
     ) -> SemiParametricRegressionModel:
         """
         Fits a Cox PH model using a pandas dataframe as the input.
@@ -1309,6 +1348,12 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         center: bool, optional
             Report the baseline at the covariate means (``model.center``)
             instead of at ``Z = 0``; see :meth:`fit`.
+        w_col: str, optional
+            The column name of the sampling, propensity or censoring
+            weights, passed to :meth:`fit` as ``w`` (lifelines'
+            ``weights_col``). A row dropped for a missing covariate drops
+            its weight with it, so the fit is ``fit(..., w=)`` of the rows
+            kept.
 
         Returns
         -------
@@ -1316,18 +1361,19 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         model: SemiParametricRegressionModel
             The fitted model.
         """
-        x, c, n, tl, strata, Z, form, feature_names, model_spec = (
-            validate_coxph_df_inputs(
-                df,
-                x_col,
-                c_col,
-                n_col,
-                Z_cols,
-                formula,
-                tl_col=tl_col,
-                strata_col=strata_col,
-            )
+        arrays = validate_coxph_df_inputs(
+            df,
+            x_col,
+            c_col,
+            n_col,
+            Z_cols,
+            formula,
+            tl_col=tl_col,
+            strata_col=strata_col,
+            w_col=w_col,
         )
+        x, c, n, tl, strata, Z, form, feature_names, model_spec = arrays[:9]
+        w = arrays[9] if w_col is not None else None
 
         with covariate_columns(feature_names, Z, model_spec):
             model = self.fit(
@@ -1339,6 +1385,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
                 tie_method=tie_method,
                 strata=strata,
                 center=center,
+                w=w,
             )
         model.formula = form
         model.feature_names = feature_names
@@ -1358,6 +1405,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         tol: float = 1e-10,
         center: bool = False,
         strata: npt.ArrayLike | None = None,
+        w: npt.ArrayLike | float | None = None,
     ) -> SemiParametricRegressionModel:
         """
         Fit a Cox model with time-varying covariates in start-stop format.
@@ -1395,6 +1443,15 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             may move between strata (R's ``coxph`` with ``strata()`` on
             counting-process data). Predict with ``sf_tvc(...,
             stratum=)``.
+        w : array_like or scalar, optional
+            Sampling, propensity or censoring weights, one per interval
+            row (or one for every row), as :meth:`fit` takes them: give
+            each of a subject's rows the subject's weight (a weight may
+            also change between a subject's rows, as a time-varying
+            inverse-probability-of-censoring weight does). The covariance
+            is the robust one clustered by subject, R's ``coxph(Surv(start,
+            stop, event) ~ ..., weights = w, robust = TRUE, id = id)``.
+            Not with ``strata`` yet.
 
         Returns
         -------
@@ -1430,6 +1487,36 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         x, c, n_arr, tl, Z_arr, ident, row_order, strata_arr = _tvc_rows(
             i, xl, xr, c, Z, n, strata
         )
+        if w is not None:
+            from surpyval.utils.weights import check_weights
+
+            if strata_arr is not None:
+                from surpyval.utils.weights import refuse_weighted
+
+                raise refuse_weighted(
+                    "A stratified Cox fit",
+                    "its weighted form is not built yet",
+                    "Fit each stratum with w, or put the stratum in Z.",
+                )
+            from ._weighted_cox import fit_weighted_cox
+
+            w_rows = check_weights(w, len(row_order))[row_order]
+            model = fit_weighted_cox(
+                x,
+                Z_arr,
+                c,
+                n_arr,
+                tl,
+                w_rows,
+                tie_method,
+                tol,
+                center,
+                cluster=ident,
+            )
+            model.is_tvc = True
+            model.tvc_subject_ids = ident
+            model.tvc_row_order = row_order
+            return model
         model = self.fit(
             x=x,
             Z=Z_arr,
@@ -1463,6 +1550,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         center: bool = False,
         formula: str | None = None,
         strata_col: str | None = None,
+        w_col: str | None = None,
     ) -> SemiParametricRegressionModel:
         """
         Fit a time-varying-covariate Cox model from a start-stop DataFrame.
@@ -1473,11 +1561,14 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         ``Z_cols``, ``formula`` (as in :meth:`fit_from_df`) gives the
         covariates as a ``formulaic`` formula, which codes categorical
         (e.g. ``"yes"`` / ``"no"``) columns. ``strata_col`` names the
-        column of each row's stratum, for a stratified fit.
+        column of each row's stratum, for a stratified fit, and ``w_col``
+        that of each row's weight (``w`` of :meth:`fit_tvc`).
         """
         columns = {"i": i_col, "xl": xl_col, "xr": xr_col, "c": c_col}
         if strata_col is not None:
             columns["strata"] = strata_col
+        if w_col is not None:
+            columns["w"] = w_col
         return fit_tvc_df(
             self.fit_tvc,
             df,
@@ -1581,11 +1672,19 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
 
         The rows are validated and fitted as delayed-entry rows, as
         :meth:`fit_tvc` fits them, and the penalised objective is
-        :meth:`fit_penalised`'s, with ``N`` the number of interval rows
-        (weighted by ``n``) and the covariates standardised over the rows:
-        glmnet's ``family = "cox"`` on ``Surv(start, stop, event)``. The
-        model has no covariance, standard errors, bounds or tests (see
-        :meth:`fit_penalised`).
+        :meth:`fit_penalised`'s, with ``N`` the number of *subjects* (the
+        distinct ``i``, each weighted by the ``n`` of its last row), not of
+        rows, and the covariates standardised over the subjects: each
+        subject's covariate is its average over its follow-up, each row
+        weighted by its length ``xr - xl``. Splitting a subject's
+        follow-up into more rows (monthly rows for a covariate that
+        changes) leaves the partial likelihood unchanged, and so, with
+        ``N`` and the scale per subject, it leaves the fit unchanged too.
+        (glmnet's ``family = "cox"`` on ``Surv(start, stop, event)``, and
+        :meth:`fit_penalised` with ``tl=start``, which has no ids, count
+        the rows instead, so a penalty there shrinks harder the more rows
+        a subject is split into.) The model has no covariance, standard
+        errors, bounds or tests (see :meth:`fit_penalised`).
 
         Parameters
         ----------
@@ -1611,27 +1710,30 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         >>> Z  = [0, 1, 0, 0, 1, 0, 0, 1, 1, 0]
         >>> model = CoxPH.fit_tvc_penalised(i, xl, xr, c, Z, penalizer=0.1)
         >>> model.beta.round(4)
-        array([1.324])
+        array([1.5068])
         """
         from .._penalised import refuse_weights
+        from .cox_penalised import fit_cox_penalised
 
         refuse_weights(w)
         x, c_, n_arr, tl, Z_arr, ident, row_order, strata_arr = _tvc_rows(
             i, xl, xr, c, Z, n, strata
         )
-        model = self.fit_penalised(
+        model = fit_cox_penalised(
+            self,
             x,
             Z_arr,
-            c=c_,
-            n=n_arr,
-            tl=tl,
-            penalizer=penalizer,
-            l1_ratio=l1_ratio,
-            standardise=standardise,
-            tie_method=tie_method,
-            center=center,
-            tol=tol,
+            c_,
+            n_arr,
+            tl,
+            penalizer,
+            l1_ratio,
+            standardise,
+            tie_method,
+            center,
+            tol,
             strata=strata_arr,
+            units=_subject_covariates(x, tl, Z_arr, n_arr, ident),
         )
         model.is_tvc = True
         model.tvc_subject_ids = ident
@@ -1764,3 +1866,37 @@ def _tvc_rows(
             )
         strata_arr = strata_arr[row_order]
     return x, c, n_arr, tl, Z_arr, ident, row_order, strata_arr
+
+
+def _subject_covariates(
+    x: npt.NDArray,
+    tl: npt.NDArray,
+    Z: npt.NDArray,
+    n: npt.NDArray,
+    ident: npt.NDArray,
+) -> tuple[npt.NDArray, npt.NDArray]:
+    """One covariate row and one count per subject of start-stop rows
+    ``(tl, x]``, for a penalised fit's ``N`` and standardisation: each
+    subject's covariates averaged over its follow-up, weighted by the
+    length of each row (so splitting a row into several with the same
+    covariates leaves it unchanged), and the count ``n`` of its last
+    row."""
+    ident = np.asarray(ident)
+    Z = np.asarray(Z, dtype=float)
+    length = np.asarray(x, dtype=float) - np.asarray(tl, dtype=float)
+    labels, inverse = np.unique(ident, return_inverse=True)
+    k = labels.size
+    total = np.bincount(inverse, weights=length, minlength=k)
+    Z_units = (
+        np.column_stack(
+            [
+                np.bincount(inverse, weights=length * Z[:, j], minlength=k)
+                for j in range(Z.shape[1])
+            ]
+        ).reshape(k, Z.shape[1])
+        / total[:, None]
+    )
+    last = np.zeros(k, dtype=int)
+    order = np.lexsort((np.asarray(x, dtype=float), inverse))
+    last[inverse[order]] = order
+    return Z_units, np.asarray(n, dtype=float)[last]
