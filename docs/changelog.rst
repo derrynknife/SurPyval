@@ -6,6 +6,15 @@ Unreleased
 
 **Added.**
 
+- Reference checks: the actuarial life table against ``KMsurv::lifetab``
+  column by column; the survival of a weighted Cox model against R's
+  ``survfit(coxph(..., weights = w))``, with Efron's and Breslow's ties
+  and with late entry; a published distributional regression (the PET
+  film accelerated life test of Mazucheli, Louzada-Neto and Achcar 2003,
+  with covariates on the Weibull shape) to every printed digit and
+  against flexsurv; and the robust covariance of Royston-Parmar and
+  distributional fits, with and without clusters, against the sandwich
+  written out by hand.
 - ``likelihood_ratio_test()`` on a distributional regression
   (``WeibullDistributional`` and the others), which 0.26 refused. With no
   argument it is the global test: twice the gain in log-likelihood over
@@ -18,6 +27,15 @@ Unreleased
   do. The result is the dictionary the other regressions' tests return.
 **Fixed.**
 
+- ``robust_covariance(cluster=...)`` (and ``robust_standard_errors``,
+  ``summary(robust=True, cluster=...)``) on a distributional regression
+  (``WeibullDistributional`` and the others) matched the cluster labels
+  to the rows in the fit's sorted order rather than in the order given,
+  so the clustered standard errors were wrong whenever the rows were not
+  already in time order (on 120 rows in clusters of four, 0.72 against
+  the correct 0.50 for ``alpha``). The labels now follow their rows, as
+  in the other parametric regressions. Unclustered robust standard errors
+  were not affected.
 - Likelihood-ratio bounds on a profile that flattens out towards a limit
   (a Gamma with an offset tends to the Normal as its shape grows) no
   longer depend on the platform. Far out along such a profile its

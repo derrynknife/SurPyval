@@ -7,7 +7,8 @@
 #
 #     Rscript scripts/reference/reference_r_distributional.R
 #
-# Run with R 4.6.2, gamlss 5.5.5, gamlss.cens 5.0.7 and flexsurv 2.3.2.
+# Run with R 4.6.2, gamlss 5.5.5, gamlss.cens 5.0.7, flexsurv 2.3.2 and
+# boot 1.3.32.
 suppressMessages({library(gamlss); library(gamlss.cens); library(flexsurv); library(survival)})
 L <- c(
   8.0, 2.39, 4.32, 1.37, NA, 3.02, 10.2, 1.15, 7.2, 2.0, 4.0, 5.2, 6.25,
@@ -100,3 +101,20 @@ cat("FSW null ll", sprintf("%.10f", fw0$loglik), "\n")
 cat("FSW beta-null ll", sprintf("%.10f", fwb$loglik), "\n")
 cat("rows", nrow(dd), "\n")
 cat(R.version.string, "gamlss", as.character(packageVersion("gamlss")), "gamlss.cens", as.character(packageVersion("gamlss.cens")), "flexsurv", as.character(packageVersion("flexsurv")), "\n")
+# The PET film accelerated life test (Hirose 1993; boot::hirose, boot
+# 1.3.32), the published case of Mazucheli, Louzada-Neto and Achcar (2003):
+# log scale and log shape linear in x = log(v - 4.76) (model B), and the
+# log scale alone (model A). The test checks the paper's printed digits and
+# these values, which settle the one digit where the paper differs.
+data(hirose, package = "boot")
+hirose$x <- log(hirose$volt - 4.76)
+pb <- flexsurvreg(Surv(time, cens) ~ x, anc = list(shape = ~ x), data = hirose,
+                  dist = "weibull", control = list(reltol = 1e-14, maxit = 10000))
+pa <- flexsurvreg(Surv(time, cens) ~ x, data = hirose, dist = "weibull",
+                  control = list(reltol = 1e-14, maxit = 10000))
+cat("PET B ll", sprintf("%.10f", pb$loglik), "\n")
+cat("PET A ll", sprintf("%.10f", pa$loglik), "\n")
+cat("PET B est", sprintf("%.10f", pb$res.t[, "est"]), "\n")
+cat("PET B se", sprintf("%.10f", sqrt(diag(pb$cov))), "\n")
+cat("PET Wald", sprintf("%.10f", pb$res.t["shape(x)", "est"]^2 / pb$cov["shape(x)", "shape(x)"]), "\n")
+cat("boot", as.character(packageVersion("boot")), "\n")

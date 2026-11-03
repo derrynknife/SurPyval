@@ -389,13 +389,19 @@ def test_lognormal_with_counts_and_left_censoring():
     assert np.all(np.isfinite(model.robust_standard_errors()))
 
 
-def _sandwich_by_hand(row_ll, theta):
-    """HC0 by numdifftools: ``H^-1 (sum_i s_i s_i') H^-1`` with ``H`` the
-    Hessian of the summed log-likelihood and ``s_i`` each row's score."""
+def _sandwich_by_hand(row_ll, theta, cluster=None):
+    """HC0 by numdifftools: ``H^-1 (sum_g s_g s_g') H^-1`` with ``H`` the
+    Hessian of the summed log-likelihood and ``s_g`` each row's score, or
+    with ``cluster`` the sum of the scores of each cluster's rows."""
     import numdifftools as nd  # type: ignore[import-untyped]
 
     H = nd.Hessian(lambda th: np.sum(row_ll(th)))(theta)
     S = nd.Jacobian(row_ll)(theta)
+    if cluster is not None:
+        _, group = np.unique(cluster, return_inverse=True)
+        sums = np.zeros((group.max() + 1, S.shape[1]))
+        np.add.at(sums, group, S)
+        S = sums
     bread = np.linalg.inv(-H)
     return bread @ (S.T @ S) @ bread
 
@@ -409,10 +415,23 @@ def _small():
     return x, Z, c
 
 
-def test_spline_baseline_sandwich_by_hand():
+# Clusters of four consecutive rows as given: the rows are not in time
+# order, so the fit's sorting must carry each label to its row.
+_CLUSTERS = {"unclustered": None, "clustered": np.arange(120) // 4}
+
+
+def _robust(model, cluster):
+    if cluster is None:
+        return model.robust_covariance()
+    return model.robust_covariance(cluster=cluster)
+
+
+@pytest.mark.parametrize("cluster", _CLUSTERS.values(), ids=_CLUSTERS)
+def test_spline_baseline_sandwich_by_hand(cluster):
     """audit R-N: a Royston-Parmar fit's robust covariance is the HC0
     sandwich of its rows' log-likelihoods (the family's log density and
-    log survival at each row), by numdifftools."""
+    log survival at each row), by numdifftools, with and without
+    clusters."""
     x, Z, c = _small()
     model = sp.RoystonParmarPH.fit(x, Z, c=c)
     family = model.model
@@ -425,15 +444,20 @@ def test_spline_baseline_sandwich_by_hand():
     theta = np.asarray(model.params, dtype=float)
     assert np.sum(row_ll(theta)) == pytest.approx(-model.neg_ll(), rel=1e-12)
     np.testing.assert_allclose(
-        model.robust_covariance(), _sandwich_by_hand(row_ll, theta), rtol=1e-3
+        _robust(model, cluster),
+        _sandwich_by_hand(row_ll, theta, cluster),
+        rtol=1e-6,
     )
 
 
-def test_distributional_sandwich_by_hand():
+@pytest.mark.parametrize("cluster", _CLUSTERS.values(), ids=_CLUSTERS)
+def test_distributional_sandwich_by_hand(cluster):
     """audit R-N: a Weibull distributional fit's robust covariance is the
     HC0 sandwich of the Weibull log density and log survival at each
     row's own ``alpha`` and ``beta`` (log links on both), by
-    numdifftools."""
+    numdifftools, with and without clusters. (Clustered, it used to
+    match the labels to the rows in their sorted order, not the order
+    given.)"""
     x, Z, c = _small()
     model = sp.WeibullDistributional.fit(x, Z, c=c)
     assert model.parameter_names == [
@@ -457,7 +481,9 @@ def test_distributional_sandwich_by_hand():
     theta = np.asarray(model.params, dtype=float)
     assert np.sum(row_ll(theta)) == pytest.approx(-model.neg_ll(), rel=1e-12)
     np.testing.assert_allclose(
-        model.robust_covariance(), _sandwich_by_hand(row_ll, theta), rtol=1e-3
+        _robust(model, cluster),
+        _sandwich_by_hand(row_ll, theta, cluster),
+        rtol=1e-6,
     )
 
 

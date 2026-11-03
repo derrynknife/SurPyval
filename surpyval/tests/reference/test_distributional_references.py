@@ -624,3 +624,125 @@ def test_lr_tests_left_truncation_match_flexsurv_nulls():
         atol=1e-6,
     )
     assert (global_test["df"], shape_test["df"]) == (3, 1)
+
+
+# -- a published case: the PET film accelerated life test ------------------
+#
+# Mazucheli, Louzada-Neto and Achcar (2003), "Lifetime models with
+# nonconstant shape parameters", REVSTAT 1(1), 25-39, section 4.1: the
+# breakdown times (hours) of PET film in SF6 gas insulated transformers at
+# 5, 7, 10 and 15 kV (Hirose 1993), 44 units, three censored at 5 kV,
+# with the covariate x = log(v - 4.76). Model B puts a log-linear model on
+# both the Weibull scale and shape; model A on the scale only.
+#
+# The data are R's ``boot::hirose`` (boot 1.3.32). The paper's Table 1
+# prints 9 of the 10 times at 10 kV (23.90 is missing) though its text
+# counts 10; its estimates are those of the 44 units. Its text writes the
+# covariate as -log(v - 4.76), but its estimates are on +log(v - 4.76)
+# (alpha1 < 0: life falls as the voltage rises), the sign used here. The
+# paper's alpha0 and beta0 are the logs of SurPyval's alpha and beta, so
+# their standard errors are SurPyval's divided by alpha and beta (the
+# delta method).
+#
+# The same fits in flexsurv 2.3.2 (R 4.6.2; printed by
+# scripts/reference/reference_r_distributional.R) give the unrounded
+# values. They agree with every printed digit but one: the Wald statistic
+# for beta1 = 0 is 16.18952 in flexsurv (and SurPyval), which rounds to
+# 16.1895, where the paper prints 16.1896 (its Hessian came from SAS's NLP
+# procedure; the log-likelihoods, estimates and standard errors agree to
+# all four printed places).
+
+PET_VOLTS = [5] * 10 + [7] * 15 + [10] * 10 + [15] * 9
+PET_TIMES = [
+    *[7131, 8482, 8559, 8762, 9026, 9034, 9104, 9104.25, 9104.25, 9104.25],
+    *[50.25, 87.75, 87.76, 87.77, 92.90, 92.91, 95.96, 108.3, 108.3],
+    *[117.9, 123.9, 124.3, 129.7, 135.6, 135.6],
+    *[15.17, 19.87, 20.18, 21.50, 21.88, 22.23, 23.02, 23.90, 28.17, 29.70],
+    *[2.40, 2.42, 3.17, 3.75, 4.65, 4.95, 6.23, 6.68, 7.30],
+]
+PET_CENSORED = [0] * 7 + [1] * 3 + [0] * 34
+# Table 3: (alpha0, alpha1, beta0, beta1) and their standard deviations
+PET_MODEL_B = (
+    [6.3285, -1.9529, 2.2311, -0.4636],
+    [0.0213, 0.0156, 0.1776, 0.1152],
+)
+PET_MODEL_A = ([6.3480, -1.9629, 1.6080], [0.0399, 0.0265, 0.1281])
+PET_LOGLIK = {"A": -179.9849, "B": -173.2728}
+PET_LR, PET_WALD = 13.4240, 16.1896
+# flexsurv: log-likelihoods; model B's (beta0, alpha0, alpha1, beta1) and
+# standard errors on that scale; the Wald statistic.
+FLEXSURV_PET_LL = {"A": -179.9848607049, "B": -173.2728398405}
+FLEXSURV_PET_B = (
+    [2.2311269868, 6.3285364232, -1.9529264080, -0.4636296810],
+    [0.1776084164, 0.0212945355, 0.0155804390, 0.1152270039],
+)
+FLEXSURV_PET_WALD = 16.1895181501
+
+
+def _pet(beta_covariates):
+    x = np.log(np.asarray(PET_VOLTS, dtype=float) - 4.76)
+    return sp.WeibullDistributional.fit(
+        np.asarray(PET_TIMES),
+        x,
+        c=PET_CENSORED,
+        covariates={"alpha": [0], "beta": beta_covariates},
+    )
+
+
+def _printed(value, digits=4):
+    """``value`` rounded as the paper prints it."""
+    return np.round(np.asarray(value, dtype=float), digits)
+
+
+def test_pet_film_matches_the_published_fits():
+    assert len(PET_TIMES) == 44 and sum(PET_CENSORED) == 3
+    b = _pet([0])
+    assert b.maximum == "verified"
+    assert b.parameter_names == [
+        "alpha",
+        "beta",
+        "alpha_coef_0",
+        "beta_coef_0",
+    ]
+    p, se = np.asarray(b.params, dtype=float), b.standard_errors()
+    ours = [np.log(p[0]), p[2], np.log(p[1]), p[3]]
+    ours_se = [se[0] / p[0], se[2], se[1] / p[1], se[3]]
+    np.testing.assert_array_equal(_printed(ours), PET_MODEL_B[0])
+    np.testing.assert_array_equal(_printed(ours_se), PET_MODEL_B[1])
+    np.testing.assert_array_equal(_printed(-b.neg_ll()), PET_LOGLIK["B"])
+
+    a = _pet([])
+    assert a.maximum == "verified"
+    p, se = np.asarray(a.params, dtype=float), a.standard_errors()
+    np.testing.assert_array_equal(
+        _printed([np.log(p[0]), p[2], np.log(p[1])]), PET_MODEL_A[0]
+    )
+    np.testing.assert_array_equal(
+        _printed([se[0] / p[0], se[2], se[1] / p[1]]), PET_MODEL_A[1]
+    )
+    np.testing.assert_array_equal(_printed(-a.neg_ll()), PET_LOGLIK["A"])
+
+
+def test_pet_film_shape_tests_match_the_paper():
+    b = _pet([0])
+    test = b.likelihood_ratio_test(parameter="beta")
+    assert test["df"] == 1
+    np.testing.assert_array_equal(
+        _printed(test["log_likelihood_null"]), PET_LOGLIK["A"]
+    )
+    np.testing.assert_array_equal(_printed(test["statistic"]), PET_LR)
+    wald = (b.params[3] / b.standard_errors()[3]) ** 2
+    # One unit in the paper's last place (see above): flexsurv's value
+    np.testing.assert_allclose(wald, PET_WALD, atol=1.5e-4)
+    np.testing.assert_allclose(wald, FLEXSURV_PET_WALD, rtol=1e-5)
+
+
+def test_pet_film_matches_flexsurv():
+    b, a = _pet([0]), _pet([])
+    np.testing.assert_allclose(-b.neg_ll(), FLEXSURV_PET_LL["B"], atol=1e-8)
+    np.testing.assert_allclose(-a.neg_ll(), FLEXSURV_PET_LL["A"], atol=1e-8)
+    p, se = np.asarray(b.params, dtype=float), b.standard_errors()
+    ours = [np.log(p[1]), np.log(p[0]), p[2], p[3]]
+    ours_se = [se[1] / p[1], se[0] / p[0], se[2], se[3]]
+    np.testing.assert_allclose(ours, FLEXSURV_PET_B[0], rtol=1e-6)
+    np.testing.assert_allclose(ours_se, FLEXSURV_PET_B[1], rtol=1e-5)
