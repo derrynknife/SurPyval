@@ -188,12 +188,12 @@ class Family:
 @dataclass(frozen=True)
 class Pending:
     """A family not built yet: ``diagnose()`` on a model it ``applies``
-    to refuses, naming the family (``label``) and its tracking
-    ``issue``."""
+    to refuses, naming the family (``label``) and saying what to check
+    the model with meanwhile (``instead``)."""
 
     label: str
-    issue: int
     applies: Callable[[Any], bool]
+    instead: str
 
 
 _FAMILIES: list[Family] = []
@@ -276,17 +276,66 @@ def _instance_of(path: str, **attributes: Any) -> Callable[[Any], bool]:
 _REG = "surpyval.univariate.regression."
 _CR = "surpyval.univariate.competing_risks."
 
-#: The families not yet built, each with its tracking issue: their models
-#: have ``diagnose()``, which refuses until the family is registered (a
-#: registered family that applies is found first).
+#: The families not yet built, each with what to check its models with
+#: meanwhile: their models have ``diagnose()``, which refuses until the
+#: family is registered (a registered family that applies is found first).
 PENDING: tuple[Pending, ...] = (
     Pending(
         "parametric competing-risks models (each cause's goodness of "
-        "fit, which needs the univariate checks of #875, and the "
-        "parametric incidences against the Aalen-Johansen ones)",
-        874,
+        "fit, and the parametric incidences against the Aalen-Johansen "
+        "ones)",
         _instance_of(_CR + "ParametricCompetingRisks"),
+        "Check each cause's model with model.models[cause].diagnose() "
+        "(a distribution fitted with the other causes censored), and "
+        "compare model.cif with the nonparametric CompetingRisks.fit of "
+        "the same data.",
     ),
+    Pending(
+        "Aalen additive hazards models",
+        _instance_of(
+            _REG + "additive_hazards.aalen_additive." "AalenAdditiveModel"
+        ),
+        "Test whether each effect is constant with "
+        "model.constant_effects_test(), and look at the cumulative "
+        "coefficients with model.plot(); for a goodness-of-fit report, "
+        "fit AdditiveHazards (the Lin-Ying model), which has diagnose().",
+    ),
+    Pending(
+        "Bayesian fits",
+        _instance_of("surpyval.bayes.model.BayesianParametric"),
+        "Check the distribution with the maximum-likelihood fit of the "
+        "same data, model.mle.diagnose(), and the prior with "
+        "model.prior_check().",
+    ),
+    Pending(
+        "distributional regressions",
+        _instance_of(
+            _REG + "distributional.model." "DistributionalRegressionModel"
+        ),
+        "Test which parameters depend on the covariates with "
+        "model.likelihood_ratio_test(parameter=...), and check the "
+        "distribution and covariates with diagnose() on the PH or AFT "
+        "fit of the same data (WeibullPH, WeibullAFT, ...).",
+    ),
+    Pending(
+        "Buckley-James regressions",
+        _instance_of(
+            _REG + "buckley_james.buckley_james." "BuckleyJamesModel"
+        ),
+        "Check the covariates' effects with diagnose() on an AFT fit of "
+        "the same data (WeibullAFT, LogNormalAFT, ...), which assumes a "
+        "distribution that Buckley-James does not.",
+    ),
+)
+
+#: What the refusal says for a model with neither a family nor a
+#: ``PENDING`` entry.
+_NO_FAMILY_INSTEAD = (
+    "Check the fit meanwhile by plotting it beside a nonparametric "
+    "estimate of the same data (KaplanMeier, or Turnbull for interval "
+    "data), or use a model that has diagnose(): the univariate "
+    "distributions, CoxPH and the parametric PH, AFT, PO and additive "
+    "hazards regressions."
 )
 
 
@@ -305,7 +354,8 @@ def model_label(model: Any) -> str:
 
 def family_for(model: Any) -> Family:
     """The registered family of ``model``; raises ``NotImplementedError``
-    naming the tracking issue for a model whose family is not built yet.
+    for a model whose family is not built yet, saying what to check it
+    with meanwhile.
 
     Examples
     --------
@@ -323,13 +373,13 @@ def family_for(model: Any) -> Family:
         if pending.applies(model):
             raise NotImplementedError(
                 "diagnose() is not yet available for {}: the diagnostics "
-                "of {} are tracked in #{}.".format(
-                    label, pending.label, pending.issue
+                "of {} are not built yet. {}".format(
+                    label, pending.label, pending.instead
                 )
             )
     raise NotImplementedError(
-        "diagnose() is not yet available for {}; tracked in #867.".format(
-            label
+        "diagnose() is not yet available for {}. {}".format(
+            label, _NO_FAMILY_INSTEAD
         )
     )
 

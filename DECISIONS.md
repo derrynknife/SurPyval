@@ -20,6 +20,47 @@ Design decisions made while working on the open issues, with the reason for each
 | `logrank(..., w=)` and `pairwise_logrank(..., w=)`: the weighted numerator with the design-based variance `sum_i n_i w_i^2 s_i s_i'`, `s_i` each unit's score residual at `beta = 0` (Breslow's ties), which is R's `coxph(..., weights = w, robust = TRUE, ties = "breslow")$rscore`; checked against it to 1e-10. The robust variance is used whenever `w` is given, `w = 1` included. | principle 16 | R's robust score test is the reference; a hypergeometric variance with weighted counts depends on the scale of the weights. | done |
 | The test weights (Gehan's `r`, Tarone-Ware's `sqrt(r)`, Peto-Peto's `r + 1`, the Fleming-Harrington Kaplan-Meier) use the weighted numbers with the weights scaled to a mean of 1 per unit over the whole data (all strata at once), and are treated as fixed in the variance. | proposed | The `+ 1` of Peto-Peto is one unit, so the weights must be on the units' scale for the test not to depend on the scale of `w`; one scale for every stratum keeps the strata's relative weights. R has no weighted Peto-Peto or Fleming-Harrington test to compare with. | done |
 
+### Stratified Cox: residuals, `diagnose()`, robust errors, concordance and saving
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Every residual is computed within its stratum's risk sets; the scaled Schoenfeld residuals and dfbeta use the whole fit's covariance and number of events; the proportional-hazards test sums the information over the strata, with the km scale of time from all the rows. | principle 16 | What R's `residuals.coxph` and `cox.zph` do; checked against them to 1e-6. | done |
+| `concordance()` of a stratified fit pools the concordant and usable pairs of each stratum, and takes `strata=` with `x`, `c`, `Z` for new data (refused on an unstratified model). The pair counts come from a new `metrics.concordance.concordance_counts`, which `concordance_index` now divides. | principle 16 | R's `concordance` of a stratified `coxph`. | done |
+| A stratified Cox dict stores a `"strata"` list of baselines and is schema 4; the top-level baseline is still the first stratum's. | principle 20 | A schema-3 reader would otherwise read the first stratum's baseline as the model's, silently. | done |
+| A stratified fit keeps its rows (`_fit_data`, in the order given, with each row's stratum) as an unstratified one does; a penalised stratified fit still keeps none, and its residuals say so. | proposed | The penalised fit is out of this change's scope. | done |
+
+### `random()` for the AFT, PO, Cox and Aalen models
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A Cox or Aalen draw beyond the last time the step curve is estimated at is `inf`, without a warning; the docstring says so and how often (`sf` at that time). | proposed | It is what the model says (the curve stops above 0 when the data end censored), as a limited-failure model's `random` gives `inf`; a warning in every simulation loop would be noise. The user censors the draws where they choose. | done |
+| The Cox model's `random(size, Z, random_state=None, *, stratum=None)`: `stratum` is keyword-only, unlike `sf(x, Z, stratum)`. | principle 21 | `random_state` keeps its place as the third argument of every regression's `random`. | done |
+| The frailty models, the Lin-Ying additive model, Buckley-James, the semi-parametric proportional odds model, the joint model (which draws through `predict(...).random`) and the trees exclude the new `random_sf` conformance property with the reason. | proposed | Out of the scope of this change; each is a documented gap. | done |
+
+### Refusals that named issue numbers
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| No error or warning message names an issue number, an issue URL or "tracked in"; each says what to do instead. `surpyval/tests/test_no_issue_numbers_in_messages.py` checks every string in the library's code that is not a docstring. Docstrings and comments keep their references. | principle 2, 22 | The issues named were closed, so the message pointed to a page that did not say what to do. | done |
+| `registry.Pending` carries `instead` (what to check the model with meanwhile) in place of its issue number. Aalen additive, Bayesian, distributional and Buckley-James models have `PENDING` entries; any other model without a family gets a general refusal pointing to a nonparametric comparison and the models that have `diagnose()`. `AalenAdditiveModel` and `BayesianParametric` inherit `DiagnoseMixin`, so `diagnose()` refuses rather than being missing. | principle 2 | One refusal path for every model without checks. | done |
+| `fit_bayes(w=)` and `fit_bayes_from_df(w_col=)` are explicit keyword arguments that refuse a value with a `WeightedRefusal` (`ValueError`), as `takes_unit` does for the fitters without weights; the message points to the weighted `fit` only where the distribution's `fit` takes `w`. | principle 2 | `fit_bayes` is not wrapped by `takes_unit`, so `w=` was Python's `TypeError`. | done |
+| A stratified Cox model's `to_dict()` stays a `NotImplementedError`, now saying to save it with `pickle` (checked to keep every stratum's baseline) or to refit with `strata=`. | proposed | Serialising the per-stratum baselines is a format change, out of scope for a message fix. | superseded: stratified Cox models now save, as schema 4 (see "Stratified Cox: residuals, `diagnose()`, robust errors, concordance and saving") |
+
+### A limited-failure proportion fitted at its bound
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The printout of a fitted limited-failure model notes `lfp_p` at its bound of 1 when `1 - lfp_p < 1e-5`, not only when it equals 1, and says to fit without `lfp=True`. A model built with `from_params` gets no note. | principle 22 | The search stops just short of the bound (1 - lfp_p was between 1e-10 and 1e-6 on every such fit tried), so `== 1` would almost never fire. | done |
+
+### CI time limits and balanced test parts
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Every job in `actions.yml` and `publish.yml` has `timeout-minutes` of about twice its time on the 0.26 release run (lint, coverage, wheel and the publish jobs 10-15, conformance and docs 20, the suite's parts and calibration 60, pymc 30 as before). | proposed | A hang fails with the job's name; generous because CI runs only on the release pull request, where a limit too tight blocks a release. | done |
+| Per-test limits (pytest-timeout, thread method): 20 minutes in the suite's parts, 10 in the conformance suite, 45 in calibration as before. | proposed | The longest suite tests take a few minutes on the runners; the per-test durations of each part are now printed (`--durations=20`) and recorded, so the limit can be tightened from data. | done |
+| The parts are balanced by recorded test times with the existing `--shard` option (`--shard-durations`, longest first into the least-loaded part; a test with no recorded time counts as the median), not with the `pytest-split` plugin. Each release run records the times (`--store-durations`) and the `coverage` job merges them into an artifact to commit as `.github/test_durations.json`; with no file the hash split stays. | proposed | No new dependency, and the hash split stays as the fallback. No times file is committed yet: one needs a full run's times, which the next release run produces. | open |
+| actionlint is not added to the lint job yet. | proposed | It was not run over the workflows locally; with shellcheck on the runner it could report findings in the existing `run:` scripts and turn the release run red. Run it once over both workflows, fix what it finds, then add it. | open |
+
 ## 2026-10-30
 
 ### Fixes behind the second bug hunt's strict xfails
