@@ -80,6 +80,12 @@ Unreleased
   ``bic``. The Cox, cause-specific and HPP fits agree with R's glmnet to
   six digits; the distributional fit on a Weibull's scale alone is
   ``WeibullAFT.fit_penalised`` with the signs changed.
+- ``penalty_path(fit_penalised, *data, l1_ratio=..., n_penalties=20,
+  min_ratio=1e-3)``: the coefficient path of any penalised fit, over
+  glmnet's default path of penalties (its largest penalty and the
+  coefficients along it agree with glmnet's), with each fit's effective
+  degrees of freedom, AIC and BIC; ``best("bic")`` or ``best("aic")``
+  chooses the penalty, ``table()`` lists the path and ``plot()`` draws it.
 
 **Changed.**
 

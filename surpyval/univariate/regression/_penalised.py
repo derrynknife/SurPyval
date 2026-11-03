@@ -483,6 +483,17 @@ class PenalisedModelMixin:
         if "penalty" in model_dict:
             self.penalty = Penalty.from_dict(model_dict["penalty"])
 
+    def _penalised_coefficients(self) -> tuple[list, npt.NDArray]:
+        """The names and values of the penalised coefficients: the last
+        entries of ``params`` (one per entry of the penalty), which a
+        model whose ``params`` are laid out otherwise overrides."""
+        if self.penalty is None:
+            raise ValueError("This model was not fitted with a penalty.")
+        m = len(self.penalty.penalizer)
+        params = np.asarray(getattr(self, "params"), dtype=float)
+        names = list(getattr(self, "parameter_names"))
+        return names[-m:], params[-m:]
+
     def _penalty_printout(self) -> str:
         """The printout's penalty line (with its newline), or ``""``."""
         if self.penalty is None:

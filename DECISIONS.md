@@ -309,6 +309,14 @@ Design decisions made while working on the open issues, with the reason for each
 | The distributional fit is checked against `WeibullAFT.fit_penalised` (covariates on the scale alone) and against its own optimality conditions, not against gamlss's `ri()`. | proposed | `ri()` chooses its own penalty scale and smoothing, so its fit is not this objective at a given penalty. | done |
 | glmnet references for the new fits use a convergence threshold of 1e-30 (the older references 1e-20): at 1e-20 glmnet stops 1e-7 short on one lasso coefficient of the PBC transplant cause, where its own gradient is not yet 0. | proposed | The reference must be glmnet's answer at convergence; the test's tolerance (1e-6) was not changed. | done |
 
+### The penalty path and choosing the penalty by AIC or BIC
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| One function, `penalty_path(fit_penalised, *args, **kwargs)`, for every model's penalised fit, rather than a `fit_penalised_path` method on each fitter. | proposed | Every penalised fit takes `penalizer` and `l1_ratio`, so one function covers them all and the path cannot drift between models. | done |
+| The default path is glmnet's: from the smallest penalty that sets every penalised coefficient to 0, found by doubling and bisection to six digits (for a ridge path the one for `l1_ratio=0.001`, as glmnet), down to `min_ratio` (0.001) times it, `n_penalties` (20) on the log scale. Every fit starts afresh (no warm starts), so each is exactly `fit_penalised` at its penalty. | proposed | The same path as the reference implementation; fresh starts cost time but keep each point reproducible on its own. | done |
+| The penalty is chosen by AIC or BIC with the effective degrees of freedom; ties go to the larger penalty. Cross-validation is not offered. | proposed | The information criteria are statistics of the fit and already defined for every penalised model; cross-validation is a resampling workflow outside the package's scope. | done |
+
 ### Likelihood-ratio bounds on flat profiles
 
 | Decision | By | Reason | Status |

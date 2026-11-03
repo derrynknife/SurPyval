@@ -233,6 +233,10 @@ class ProportionalIntensityModel(
         out._restore_penalty(model_dict)
         return out
 
+    def _penalised_coefficients(self) -> tuple[list, np.ndarray]:
+        # The covariate coefficients (the base rate is not penalised).
+        return list(self._coefficient_names()), np.asarray(self.coeffs, float)
+
     def _ic_k(self) -> float:
         # A penalised fit counts its effective number of parameters.
         penalised_k = self._penalised_ic_k()
