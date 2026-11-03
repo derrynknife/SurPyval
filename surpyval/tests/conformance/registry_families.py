@@ -86,6 +86,11 @@ PROPERTIES: dict[str, str] = {
     ),
     "missing_covariate": "a NaN covariate gives NaN for its row only",
     "missing_fit": "a missing time raises; a missing covariate is dropped",
+    "random_sf": (
+        "random(size, Z) draws from the model: the empirical survival of "
+        "20,000 draws at one covariate row is within the 0.1% "
+        "Kolmogorov-Smirnov band of sf at that row"
+    ),
     "seed_global": "np.random.seed reproduces a draw",
     "seed_explicit": (
         "an explicit seed reproduces a draw, is default_rng(seed), and "
@@ -346,6 +351,7 @@ _APPLICABLE: dict[str, frozenset[str]] = {
     "aliasing": frozenset(WITH_COVARIATES),
     "aliasing_constant": frozenset(WITH_COVARIATES),
     "covariate_scale": frozenset(WITH_COVARIATES),
+    "random_sf": frozenset({REGRESSION}),
 }
 for _prop in PROPERTIES:
     _APPLICABLE.setdefault(_prop, _EVERY)
@@ -750,6 +756,14 @@ def regression(name, fitter, data=reg_data, x=X_REG, Z=Z_REG, **kw):
         "fit_from_df": from_df,
         "formula": functools.partial(from_df, formula=True),
     }
+    if "draw" not in kw:
+        # random(size, Z) at the first two query rows (#285).
+        kw["draw"] = functools.partial(
+            _regression_draw,
+            Z=np.asarray(Z)[:2],
+            call_kwargs=dict(kw.get("call_kwargs", {})),
+        )
+        kw.setdefault("explicit_seed", True)
     return Case(
         name=name,
         fitters=kw.pop("fitters", (f"surpyval.{name}",)),
@@ -768,6 +782,20 @@ def regression(name, fitter, data=reg_data, x=X_REG, Z=Z_REG, **kw):
         coefficients=kw.pop("coefficients", _phi),
         **kw,
     )
+
+
+def _regression_draw(model, seed, Z, call_kwargs):
+    """A regression's draw for the seed properties: 15 lifetimes at each
+    of two covariate rows."""
+    return model.random(15, Z, random_state=seed, **call_kwargs)[0]
+
+
+# The regressions with no ``random`` yet: their seed properties do not
+# apply, and ``random_sf`` is excluded with this reason.
+NO_RANDOM = (
+    "no random() yet; draw from a parametric regression of the same kind "
+    "(WeibullPH, ...) or the Cox model instead"
+)
 
 
 def _phi(model):
@@ -922,6 +950,8 @@ def _frailty_family():
                 slow=frozenset() if base == "Weibull" else REFIT_PROPERTIES,
                 coefficients=_beta,
                 intercept=("Proportional Hazard", base) in ORIGIN_MAPS,
+                draw=None,
+                exclude={"random_sf": NO_RANDOM},
             )
         )
     # The log-normal frailty (#343), whose group integral is by quadrature.
@@ -1022,7 +1052,8 @@ def _semi_parametric():
             )
         },
         jump_functions=("hf", "df"),
-        exclude={"df_hf_sf": step},
+        exclude={"df_hf_sf": step, "random_sf": NO_RANDOM},
+        draw=None,
         coefficients=_beta,
         intercept=True,
     )
@@ -1044,7 +1075,9 @@ def _semi_parametric():
         },
         exclude={
             "df_hf_sf": step,
+            "random_sf": NO_RANDOM,
         },
+        draw=None,
         rtol=1e-6,
         coefficients=_beta,
         intercept=True,
@@ -1072,7 +1105,9 @@ def _semi_parametric():
             "df_hf_sf": "BuckleyJamesModel has no hf or df",
             "row_independence": "documented to take one covariate vector "
             "per call, so there are no rows to mix up",
+            "random_sf": NO_RANDOM,
         },
+        draw=None,
         coefficients=_beta,
         intercept=True,
     )
@@ -1081,7 +1116,8 @@ def _semi_parametric():
         sp.ProportionalOdds,
         model_class="surpyval.ProportionalOddsModel",
         jump_functions=("hf", "df"),
-        exclude={"df_hf_sf": step},
+        exclude={"df_hf_sf": step, "random_sf": NO_RANDOM},
+        draw=None,
         rtol=1e-6,
         coefficients=_beta,
         intercept=True,
@@ -1127,6 +1163,12 @@ _NO_COEFFICIENTS = (
 )
 
 
+_TREE_NO_RANDOM = (
+    "a tree or forest has no random(); its seed properties check that a "
+    "seeded fit is reproduced"
+)
+
+
 def _trees():
     def tree(kind):
         return Case(
@@ -1155,6 +1197,7 @@ def _trees():
             explicit_seed=True,
             exclude={
                 "aliasing": _NO_COEFFICIENTS,
+                "random_sf": _TREE_NO_RANDOM,
                 **(
                     {"df_hf_sf": "non-parametric leaves: hf and df are jumps"}
                     if kind == "non-parametric"
@@ -1185,6 +1228,7 @@ def _trees():
         ).sf(X_REG, Z_REG),
         explicit_seed=True,
         exclude={
+            "random_sf": _TREE_NO_RANDOM,
             "row_order": "the bootstrap draws rows by position, so a "
             "permutation changes which rows each tree sees",
             "counts": "the bootstrap draws rows, so a count of 2 and two "

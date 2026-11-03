@@ -21,6 +21,18 @@ Unreleased
   ``coxph(robust = TRUE)``, ``concordance``) to 1e-6 on the ``lung`` data
   stratified by sex and the start-stop ``heart`` data stratified by
   surgery (``scripts/reference/reference_r_stratified_cox.R``).
+- ``random(size, Z, random_state=)`` on the accelerated failure time
+  models (``WeibullAFT``, ``LogNormalAFT`` and the others) and the
+  parametric proportional odds models (``WeibullPO``, ...), which raised
+  ``NotImplementedError``, and on the Cox model (``CoxPH``, with
+  ``stratum=`` for a stratified fit) and the Aalen additive model, which
+  had none. Each draw is an exact inverse-transform draw at its covariate
+  row. The Cox and Aalen models draw from their step survival curves: a
+  draw is an event time, or ``inf`` beyond the last time the curve is
+  estimated at, as often as ``sf`` there says. A new conformance property
+  checks, for every regression with ``random``, that 20,000 draws at one
+  row are within the 0.1% Kolmogorov-Smirnov band of its ``sf``, and the
+  seed properties now cover the regressions.
 - ``likelihood_ratio_test()`` on a distributional regression
   (``WeibullDistributional`` and the others), which 0.26 refused. With no
   argument it is the global test: twice the gain in log-likelihood over
@@ -31,6 +43,33 @@ Unreleased
   the others refitted. Aliased coefficients and those held at 0 are not
   counted; a coefficient held at another value is refused, saying what to
   do. The result is the dictionary the other regressions' tests return.
+
+**Changed.**
+
+- Refusals no longer send users to issue numbers: the ``diagnose()``
+  refusals of models whose checks are not built yet, and a few other
+  messages, said "tracked in #NNN" (issues that are now closed). Each now
+  says what to use instead: a parametric competing-risks model points to
+  each cause's ``models[cause].diagnose()``, Buckley-James and
+  distributional regressions to a PH or AFT fit's ``diagnose()``, and so
+  on.
+- ``diagnose()`` on an ``AalenAdditiveModel`` or a ``BayesianParametric``
+  was an ``AttributeError``; it now refuses with ``NotImplementedError``,
+  pointing to ``constant_effects_test()`` and ``model.mle.diagnose()``.
+- ``fit_bayes(..., w=...)`` and ``fit_bayes_from_df(..., w_col=...)`` were
+  Python's ``TypeError``; they now raise a ``ValueError`` naming the
+  method and the argument, why, and what to use instead (the weighted
+  maximum-likelihood ``fit``, or counts ``n``).
+- The printout of a limited-failure fit whose ``lfp_p`` lands at its bound
+  of 1 (within 1e-5) now says so and what to do: the data show no sign of
+  units that never fail, so fit without ``lfp=True``.
+- Documented two results that surprised readers: a competing-risks
+  model's all-cause ``ff`` follows ``how`` (Nelson-Aalen by default) and
+  so is below the sum of the cumulative incidences unless fitted with
+  ``how="Kaplan-Meier"``; and ``NonParametric.cs`` with the default step
+  estimate holds its last value past the data, while the interpolated
+  forms give ``nan`` there.
+
 **Fixed.**
 
 - Likelihood-ratio bounds on a profile that flattens out towards a limit

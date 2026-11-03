@@ -118,7 +118,9 @@ def test_event_history_slices_keep_covariates_schedules_and_states():
     assert part.Z.tolist() == [[1.0]] * 3
     assert set(part.time_varying_covariates) == {"A"}
     assert set(part.states) == {"A"}
-    with pytest.raises(ValueError, match="#905"):
+    with pytest.raises(
+        ValueError, match=r"time-varying covariates \(no model uses them yet\)"
+    ):
         rc.CrowAMSAA.fit(part)
 
 

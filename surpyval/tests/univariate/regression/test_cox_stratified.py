@@ -128,6 +128,22 @@ def test_287_diagnostics_are_available_for_stratified():
     assert m.to_dict()["strata"]
 
 
+def test_a_stratified_model_saves_and_pickles_every_stratum():
+    import pickle
+
+    x, Z, c, strat = _confounded(6)
+    m = sp.CoxPH.fit(x=x, Z=Z, c=c, strata=strat)
+    # to_dict keeps every stratum's baseline (schema 4), as pickle does
+    restored = sp.from_dict(m.to_dict())
+    again = pickle.loads(pickle.dumps(m))
+    for k in m.strata_labels:
+        for other in (restored, again):
+            np.testing.assert_array_equal(
+                other.sf([1.0, 2.0], Z[:2], stratum=k),
+                m.sf([1.0, 2.0], Z[:2], stratum=k),
+            )
+
+
 def test_fit_from_df_strata_col():
     import pandas as pd
 
@@ -437,3 +453,22 @@ def test_287_an_older_reader_refuses_a_stratified_dict():
     assert required_schema(d) == 4
     d.pop("strata")
     assert required_schema(d) < 4
+
+
+def test_285_stratified_random_draws_from_the_stratum():
+    from surpyval.tests._helpers import KS_BAND_20000, ks_distance
+
+    x, Z, c, strat = _confounded(3)
+    model = sp.CoxPH.fit(x=x, Z=Z, c=c, strata=strat)
+    for s in model.strata_labels:
+        draws, _ = model.random(20_000, [[0.5]], random_state=1, stratum=s)
+        assert np.isin(
+            draws[np.isfinite(draws)], model.strata_baselines[s]["x"]
+        ).all()
+        d = ks_distance(draws, lambda t: model.ff(t, [[0.5]], s))
+        assert d <= KS_BAND_20000, (s, d)
+    with pytest.raises(ValueError, match="stratum"):
+        model.random(3, [[0.5]])
+    with pytest.raises(ValueError, match="unknown stratum"):
+        model.random(3, [[0.5]], stratum="nope")
+    assert np.isnan(model.random(2, [[0.5]], stratum=np.nan)[0]).all()
