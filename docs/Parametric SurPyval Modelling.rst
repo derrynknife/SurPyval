@@ -2360,6 +2360,16 @@ on the edge in 82% of them). The calibration studies
 mean residual life of a limited failure population are infinite (a fraction
 never fails), so their bounds are too.
 
+``method="bootstrap"`` bounds a limited-failure or zero-inflated model too,
+``lfp_p`` and ``f0`` included: each refit is of the same model, to data
+drawn from the fit, and a refit whose ``lfp_p`` (``f0``) the data put on its
+edge counts at 1 (0). Where the estimate is on the edge the refits mostly
+are too, so the interval on ``lfp_p`` closes up to 1. On 200 simulated
+samples of 100 units each (``calibration/test_coverage_extra_parameters.py``)
+its 95% intervals covered 89% to 97% of the time and its 90% ones 83% to
+92%: somewhat short at 90%, where the likelihood-ratio bounds are the
+better choice.
+
 An offset model's region can reach the offset at the first failure, where its
 likelihood is unbounded (a shape below 1 puts infinite density there; see the
 caution on offsets above). The interval on ``gamma`` then runs up to the first
