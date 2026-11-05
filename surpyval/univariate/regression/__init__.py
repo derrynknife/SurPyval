@@ -54,6 +54,7 @@ from .frailty import (
     LogNormalFrailty,
     WeibullFrailty,
 )
+from .life_at import LifeAtCovariates
 from .parametric_regression_model import ParametricRegressionModel
 from .penalty_path import PenaltyPath, penalty_path
 from .plot_coefficients import CoefficientPlot, plot_coefficients
@@ -103,6 +104,8 @@ __all__ = [
     "SemiParametricRegressionModel",
     "ProportionalOddsModel",
     "FrailtyModel",
+    # A regression's life at fixed covariates, model.at(Z)
+    "LifeAtCovariates",
     "CoxFrailty",
     "CoxFrailtyFitter",
     "CoxFrailtyModel",
