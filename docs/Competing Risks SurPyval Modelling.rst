@@ -70,7 +70,8 @@ Every competing-risks fit takes the same core arrays:
 - ``tl`` -- for ``ParametricCompetingRisks`` and the cause-specific
   ``CompetingRisksProportionalHazards``, the optional age at which each row
   came under observation (left truncation; see `Assembling a model from
-  separately fitted causes`_ and `Delayed entry`_).
+  separately fitted causes`_ and `Delayed entry in the cause-specific
+  model`_).
 
 Left- and interval-censored rows (``c`` of ``-1`` or ``2``) are rejected.
 
@@ -1180,8 +1181,8 @@ in ``results`` are not stored, so a restored model has ``results = None``:
               np.array_equal(reloaded.cif(times, Z=z, event=1),
                              fitted.cif(times, Z=z, event=1)))
 
-Delayed entry
-~~~~~~~~~~~~~
+Delayed entry in the cause-specific model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Records often start after the units did: patients enter a registry at
 diagnosis, machines enter the maintenance system when it goes live. A unit
