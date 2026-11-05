@@ -57,7 +57,6 @@ from surpyval.univariate.regression.regression_data import (
 from surpyval.utils import (
     finite_covariate_mask,
     is_missing_event,
-    validate_fine_gray_inputs,
 )
 from surpyval.utils.ipcw import step_at as _step
 from surpyval.utils.linalg import standard_errors_of
@@ -77,10 +76,15 @@ from surpyval.utils.validation import (
     no_covariance_error,
     unknown_cause_error,
 )
+from surpyval.utils.weights import (
+    effective_sample_size,
+    few_effective_said_later,
+)
 
 from .fine_gray import (
     FineGrayModel,
     _fit_cause,
+    _validated,
     _warn_if_monotone,
     paired_covariate_rows,
 )
@@ -183,6 +187,12 @@ class CompetingRisksProportionalHazards(
     feature_names: list | None = None
     formula: str | None = None
     _model_spec: Any = None
+    #: Whether the model was fitted with weights ``w``: each cause's
+    #: covariance is then the robust one, and the information criteria
+    #: refuse.
+    weighted: bool = False
+    #: The effective sample size of the weights (``None`` unweighted).
+    effective_n: float | None = None
 
     # -- serialisation -----------------------------------------------------
 
@@ -252,6 +262,12 @@ class CompetingRisksProportionalHazards(
                 for event in self.event_idx_map
             ]
         out.update(self._penalty_entry())
+        if self.weighted:
+            # Schema 3: a reader without weights would offer the
+            # information criteria.
+            out["weighted"] = True
+            assert self.effective_n is not None
+            out["effective_n"] = float(self.effective_n)
         serialise_covariate_meta(self, out)
         return stamp_schema(out)
 
@@ -304,6 +320,9 @@ class CompetingRisksProportionalHazards(
             model._neg_ll = float(model_dict["_neg_ll"])
         model._ic_n = cls._restored_ic_n(model_dict)
         model._restore_penalty(model_dict)
+        if model_dict.get("weighted") is True:
+            model.weighted = True
+            model.effective_n = model_dict.get("effective_n")
         restore_covariate_meta(model, model_dict)
         return model
 
@@ -383,7 +402,8 @@ class CompetingRisksProportionalHazards(
         each block the inverse information of that cause's fit (its Cox
         partial likelihood, or its Fine-Gray weighted partial likelihood),
         as the causes' fits are separate. An aliased coefficient's row and
-        column are ``nan``.
+        column are ``nan``. For a fit with weights ``w`` each block is
+        the cause's robust (sandwich) covariance (see :meth:`fit`).
 
         Raises a ``ValueError`` for a ``model="Cox"`` model restored from a
         dict saved before the covariances were stored, and for a penalised
@@ -468,6 +488,11 @@ class CompetingRisksProportionalHazards(
                 )
             )
         out += self._penalty_printout()
+        if self.weighted:
+            out += (
+                "\nWeights             : effective sample size "
+                f"{self.effective_n:.4g}; robust covariance"
+            )
         try:
             table = self.summary()
         except ValueError:
@@ -861,6 +886,7 @@ class CompetingRisksProportionalHazards(
         model: str = "Cox",
         tie_method: str = "efron",
         center: bool = False,
+        w_col: str | None = None,
     ) -> CompetingRisksProportionalHazards:
         """
         Fit a competing-risks proportional-hazards model from a pandas
@@ -894,6 +920,9 @@ class CompetingRisksProportionalHazards(
         center : bool, optional
             Report the baselines at the covariate means (``model.center``)
             instead of at ``Z = 0``; see :meth:`fit`.
+        w_col : str, optional
+            Column of weights per row (``w`` of :meth:`fit`). A row dropped
+            for a missing covariate drops its weight with it.
 
         Returns
         -------
@@ -948,6 +977,7 @@ class CompetingRisksProportionalHazards(
         e[[is_missing_event(v) for v in e]] = None
         c = sub[c_col].values if c_col is not None else None
         n = sub[n_col].values if n_col is not None else None
+        w = sub[w_col].values if w_col is not None else None
 
         with covariate_columns(feature_names, Z, model_spec):
             fitted = cls.fit(
@@ -959,6 +989,7 @@ class CompetingRisksProportionalHazards(
                 model=model,
                 tie_method=tie_method,
                 center=center,
+                w=w,
             )
         fitted.formula = formula
         fitted.feature_names = feature_names
@@ -1044,7 +1075,7 @@ class CompetingRisksProportionalHazards(
         )
 
         refuse_weights(w)
-        x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
+        x, Z, e, c, n, _ = _validated(x, Z, e, c, n, None)
         causes = ordered_labels(e)
         if not causes:
             raise ValueError("No observed events: every row is censored.")
@@ -1119,6 +1150,7 @@ class CompetingRisksProportionalHazards(
         model: str = "Cox",
         tie_method: str = "efron",
         center: bool = False,
+        w: npt.ArrayLike | float | None = None,
     ) -> CompetingRisksProportionalHazards:
         r"""
         Fit the competing-risks proportional-hazards model.
@@ -1164,6 +1196,19 @@ class CompetingRisksProportionalHazards(
             which centres either way; the default refuses covariates so far
             from 0 that the baseline there over- or underflows.
 
+        w : array like or float, optional
+            Sampling, propensity or censoring weights, one positive number
+            per row (beside its count ``n``), or one for every row. For
+            ``model="Cox"`` each cause's Cox model is fitted with them
+            (:meth:`CoxPH.fit` with ``w``: R's ``coxph(Surv(x, e == k) ~
+            Z, weights = w, robust = TRUE)``, ties ``'efron'`` or
+            ``'breslow'``); for ``model="Fine-Gray"`` each cause's
+            ``FineGray`` fit (the weights multiply its censoring weights,
+            and its censoring distribution is the weighted Kaplan-Meier).
+            Each cause's covariance is then the robust (sandwich) one, and
+            ``aic``, ``bic``, ``aic_c`` and the diagnostics refuse the
+            model. See :doc:`/Weighted Data`.
+
         Returns
         -------
 
@@ -1207,7 +1252,7 @@ class CompetingRisksProportionalHazards(
         array([0.59  , 0.7369])
         """
         check_option("model", model, ("Cox", "Fine-Gray"))
-        x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
+        x, Z, e, c, n, w_kept = _validated(x, Z, e, c, n, w)
 
         # A fixed order for the causes (a set's iteration order depends on
         # the hash seed for strings), so ``betas`` rows are reproducible.
@@ -1246,9 +1291,15 @@ class CompetingRisksProportionalHazards(
             cox_models = {}
             for i, event in enumerate(causes):
                 c_e = np.where(label_mask(e, event), 0, 1)
-                with collect_aliased() as aliased:
+                with collect_aliased() as aliased, few_effective_said_later():
                     cox_model = CoxPH.fit(
-                        x, Z, c_e, n, tie_method=tie_method, center=center
+                        x,
+                        Z,
+                        c_e,
+                        n,
+                        tie_method=tie_method,
+                        center=center,
+                        w=w_kept,
                     )
                 found += aliased
                 # Kept whole (#874): its residuals and proportional-hazards
@@ -1284,7 +1335,9 @@ class CompetingRisksProportionalHazards(
             covariances = []
             for i, event in enumerate(causes):
                 with collect_aliased() as aliased:
-                    fits.append(_fit_cause(x, Z, e, c, n, event, center))
+                    fits.append(
+                        _fit_cause(x, Z, e, c, n, event, center, w_kept)
+                    )
                 found += aliased
                 fg = FineGrayModel(fits[-1])
                 fg_models[event] = fg
@@ -1313,4 +1366,7 @@ class CompetingRisksProportionalHazards(
         out._covariances = covariances
         out._finish(betas, baselines, at)
         out.x = unique_x
+        if w_kept is not None:
+            out.weighted = True
+            out.effective_n = effective_sample_size(n, w_kept)
         return out

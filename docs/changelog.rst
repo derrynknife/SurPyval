@@ -1,11 +1,21 @@
 Changelog
-=========
-
+==
 Unreleased
 ----------
 
 **Added.**
 
+- ``Turnbull.fit(..., w=)``: the Turnbull estimate with sampling weights,
+  for interval and left censored and truncated data. The estimate is the
+  weighted non-parametric MLE (each row counts ``n w`` in the EM; checked
+  against R's ``icenReg::ic_np(..., weights = w)`` to 1e-8), unchanged by
+  the scale of the weights and equal to the weighted Kaplan-Meier on right
+  censored data with ``turnbull_estimator="Kaplan-Meier"``. Its bounds are
+  the weighted case bootstrap, ``bootstrap_cb(x, random_state=seed)``
+  (95% coverage 0.93 to 0.95 in a simulation of informative sampling);
+  ``cb``, ``quantile_cb``, the bounds of ``rmst`` and ``sf_diff`` refuse
+  it, naming ``bootstrap_cb``. A weighted probability plot of interval
+  censored or truncated data now uses the weighted Turnbull positions.
 - Time-varying coefficients in the Cox model:
   ``CoxPH.fit(..., time_interaction={column: g})`` (and ``fit_from_df``)
   gives a covariate the coefficient :math:`\beta + \gamma g(t)`, with ``g``
@@ -32,6 +42,14 @@ Unreleased
   non-parametric ones. Checked against R (``survreg`` and ``integrate``
   with the delta method by hand, and flexsurv's ``summary(type="rmst")``)
   on ``lung`` and ``ovarian``.
+- ``CompetingRisks.fit(..., w=)`` and ``fit_from_df(..., w_col=)``: the
+  Aalen-Johansen cumulative incidence of data with sampling or
+  inverse-probability weights, with the robust (infinitesimal jackknife)
+  variance behind every ``cb`` (the cumulative incidence, and ``sf``,
+  ``ff`` and ``Hf``), the effective sample size in the printout and
+  schema-3 dictionaries. Checked against R's ``survfit(Surv(x, factor(e))
+  ~ 1, weights = w)`` (``pstate`` and ``std.err``, ties included) to
+  1e-10. ``gray_test(..., w=)`` refuses, saying what to use instead.
 - ``CoxPH.fit_firth``: the Cox model with Firth's penalty (Heinze and
   Schemper 2001), half the log determinant of the information added to the
   partial log-likelihood, so the estimates stay finite where a covariate
@@ -249,6 +267,56 @@ Unreleased
   Efron's ties for one subject of weight 3 than for three identical
   copies (use ``n`` for repeated identical units, ``w`` for survey and
   importance weights). No numbers change.
+- Weights ``w`` in the competing-risks regressions:
+  ``CompetingRisksProportionalHazards.fit(..., w=)`` (cause-specific Cox
+  and Fine-Gray), ``FineGray.fit(..., w=)`` and their ``fit_from_df(...,
+  w_col=)``. Cause-specific Cox is the weighted ``CoxPH`` per cause, R's
+  ``coxph(Surv(x, e == k) ~ z, weights = w, robust = TRUE)``. Fine-Gray
+  multiplies the weights into its censoring weights and estimates the
+  censoring distribution from the weighted Kaplan-Meier (so whole-number
+  weights give the counted fit exactly; R's ``finegray`` leaves its
+  censoring distribution unweighted), with the robust covariance clustered
+  by unit that holds it fixed, R's ``coxph(..., weights = fgwt * w,
+  cluster = id)``. Checked against R (coefficients 1e-8, standard errors
+  1e-6). The information criteria, the diagnostics and the penalised fit
+  refuse weighted fits.
+- ``AalenAdditive.fit(..., w=)`` and ``fit_from_df(..., w_col=)``:
+  Aalen's additive hazards model with sampling weights. Each increment of
+  the cumulative effects ``B(t)`` is a weighted least-squares fit, and
+  every standard error and bound (``summary``,
+  ``cumulative_coefficients_cb``, ``cb``, ``plot``) uses the robust
+  variance, the sum of the units' squared influences, which does not
+  depend on the scale of the weights. Matches R's ``timereg::aalen(...,
+  weights = w, robust = 1)`` (``cum`` and ``robvar.cum``, to 1e-12), with
+  and without delayed entry. Whole-number weights give the estimate of the
+  same counts exactly. ``constant_effects_test()`` refuses a weighted
+  fit; the model shows its effective sample size and saves as schema 3.
+- Weights ``w`` for distributional regression
+  (``WeibullDistributional.fit(..., w=w)`` and every ``Distributional``
+  fitter) and Royston-Parmar regression (``RoystonParmarPH``,
+  ``RoystonParmarPO``, ``RoystonParmarRegression``), with ``w_col`` in
+  ``fit_from_df``: weighted estimates, the robust (sandwich) covariance,
+  Wald and case-bootstrap bounds; likelihood-ratio bounds and tests and the
+  information criteria refuse. Checked against R's ``flexsurvreg`` and
+  ``flexsurvspline`` with ``weights`` (estimates to 1e-5, robust standard
+  errors from a hand sandwich to 1e-4). Royston-Parmar's knots are placed
+  on the event times counted by ``n``, not weighted. A Royston-Parmar
+  left truncation at 0 is now read as none: it made the fit unverified and
+  a weighted fit's covariance ``nan``.
+- Sampling weights ``w`` in penalised fits: ``CoxPH.fit_penalised``,
+  ``CoxPH.fit_tvc_penalised`` and the parametric PH, AFT and PO
+  ``fit_penalised``, which refused them. The objective is the weighted
+  log-likelihood over :math:`N_w = \sum n w` plus the penalty, with the
+  covariates standardised by their ``n w``-weighted standard deviations,
+  so rescaling the weights changes nothing. The Cox fit matches R's
+  ``glmnet(..., family = "cox", weights = w)`` to 1e-6 (ridge, lasso and
+  elastic net, Breslow and Efron, with and without delayed entry); the
+  parametric fits are checked against their optimality conditions. No
+  standard errors, and ``aic``/``bic`` refused, as for every weighted
+  fit; ``penalty_path`` of weighted fits keeps the coefficients and
+  refuses choosing by AIC or BIC. A parametric penalised fit with a
+  delayed entry at 0 is now ``"verified"`` (it was left "unverified" by a
+  nan second derivative; the estimates do not change).
 
 **Changed.**
 
@@ -477,6 +545,20 @@ Unreleased
   saving and the printout. Every penalised result, warning and refusal
   is unchanged to the last bit. The solver now also takes a model with
   no Hessian, using finite differences of its gradient, and says so.
+- Stale documentation brought up to date: the model atlas lists
+  ``CauseSpecificNHPP`` (no longer a gap) and drops issue numbers that no
+  longer track anything; the README's model table names
+  ``CauseSpecificNHPP``; the usage skill lists all eight copula families.
+- The diagnostics families' copies of the same small helpers (number
+  formatting, notes, the covariate kind, the trend sign, formula-column
+  names, the AIC gap) now live once in ``surpyval/diagnostics/_shared.py``.
+  Every diagnosis is unchanged to the last bit.
+- Removed code nothing called: the rename helpers of
+  ``surpyval.utils.deprecation`` no deprecation uses any more
+  (``reordered_arguments``, ``CallableFloat``, ``MethodFloat``,
+  ``MethodArray``, ``ArrayMethod``, ``RenamedToMethod``, ``MadePrivate``),
+  and a few private helpers with no callers. ``renamed_arguments``,
+  ``RenamedAttribute`` and ``renamed_name`` stay for the next rename.
 
 v0.26 (31 October 2026)
 -----------------------

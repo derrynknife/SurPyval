@@ -31,6 +31,7 @@ from scipy.stats import chi2
 
 from surpyval.utils.ipcw import censoring_survival, step_left_limit
 from surpyval.utils.validation import check_option, option_error
+from surpyval.utils.weights import refuse_weighted
 
 from .fine_gray import _risk_set_sums, _risk_set_weights, _risk_sets
 
@@ -78,6 +79,17 @@ def fine_gray_data(model: Any) -> FineGrayData:
     """
     if isinstance(model, FineGrayData):
         return model
+    if getattr(model, "weighted", False):
+        raise refuse_weighted(
+            "Diagnosing a Fine-Gray model (the proportional "
+            "subdistribution hazards test, the added-covariate test and "
+            "the martingale residuals)",
+            "their tests use the model-based information, which treats "
+            "the weights as units seen, and their weighted (robust) forms "
+            "are not built yet",
+            "Use the robust Wald tests of summary() on the weighted fit, "
+            "or run the diagnostics on the fit without its weights.",
+        )
     data = getattr(model, "_fit_data", None)
     if data is None:
         raise _restored()
