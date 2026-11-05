@@ -27,6 +27,7 @@ EXPECTED_SOURCES = {
     "r_calibration",
     "r_stratified_cox",
     "r_metric_inference",
+    "r_competing_metrics",
     "py_lifelines",
     "py_sksurv",
 }
