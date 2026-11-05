@@ -6,6 +6,21 @@ Unreleased
 
 **Added.**
 
+- Confidence bounds on a Cox model's predicted curve:
+  ``SemiParametricRegressionModel.cb(x, Z)`` bounds the predicted ``sf``,
+  ``ff`` or ``Hf`` at covariates ``Z``, with the variance of the baseline
+  and of the coefficients (Tsiatis 1981, Link 1984: R's ``survfit(fit,
+  newdata)`` ``std.err``), under Efron's or Breslow's ties, with case
+  weights (the robust covariance), for stratified fits (``stratum=``) and
+  for start-stop data. ``bound_type`` is R's ``conf.type``: ``"log"``
+  (the default, as R's), ``"log-log"`` or ``"plain"``. The bounds agree
+  with R ``survival`` 3.8.12 to about 1e-9 on ``lung``, ``ovarian`` and
+  ``heart`` (``scripts/reference/reference_r_cox_curve.R``).
+  ``plot_partial_effects(plot_bounds=True)`` now draws them for a Cox
+  model, which refused before. The conformance bound sweeps include them.
+  A model restored by ``from_dict`` (which does not keep its data) and a
+  penalised fit refuse them.
+
 - ``surpyval.recurrent.mcf_diff``: compares two groups' mean cumulative
   functions, each fitted with ``NonParametricCounting.fit``. It returns an
   ``MCFDiffResult`` with the difference of the MCFs at each time and its
