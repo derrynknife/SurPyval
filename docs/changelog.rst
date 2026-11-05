@@ -6,6 +6,17 @@ Unreleased
 
 **Added.**
 
+- ``CoxPH.fit_firth``: the Cox model with Firth's penalty (Heinze and
+  Schemper 2001), half the log determinant of the information added to the
+  partial log-likelihood, so the estimates stay finite where a covariate
+  separates the events from the survivors (a monotone likelihood). With
+  the coefficients' standard errors, profile penalised-likelihood
+  intervals and p-values (Wald ones with ``profile=False``) in
+  ``model.firth`` and ``summary()``, and the penalised likelihood-ratio
+  test from ``likelihood_ratio_test()``. Breslow ties; delayed entry
+  (start-stop rows), counts and strata. Checked against R's ``coxphf`` on
+  six data sets (coefficients and standard errors to 1e-6, bounds to
+  1e-5). The "No finite maximum" warning of a Cox fit now names it.
 - Uno's concordance index and standard errors for C:
   ``surpyval.metrics.concordance_estimate(x, c, risk, weighting="uno",
   tau=...)`` gives Harrell's or Uno's inverse-probability-of-censoring

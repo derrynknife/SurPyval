@@ -15,6 +15,19 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-05
 
+### Firth's penalised Cox fit: `CoxPH.fit_firth`
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A separate method, `CoxPH.fit_firth(x, Z, c, n, tl, strata, alpha_ci, profile, center, tol)`, in `cox_firth.py`, returning the usual Cox model with a `firth` result (`FirthResult`, in `to_dict`). | proposed | As `fit_penalised`: a different estimator with its own inference; the same model type predicts and serialises as any Cox model. | done |
+| Breslow ties only, no `tie_method`. | proposed | R's `coxphf`, the reference, has only Breslow's; the penalty's derivatives are written for it. | done |
+| The covariance is the inverse of the unpenalised information at the Firth estimate, `I(beta_hat)^-1`, not of the penalised curvature. | proposed | What `coxphf` reports (checked to 1e-10) and Heinze and Schemper use. | done |
+| Intervals and p-values by the profile penalised likelihood by default (`coxphf`'s `pl = TRUE`), Wald with `profile=False`; `model.p_values` and `summary()` show the chosen ones, at the fitted `alpha_ci` (another level refuses, naming the refit). `z` stays Wald's. | proposed | Under separation the profile is flat on one side and the Wald interval is far too narrow there. | done |
+| `likelihood_ratio_test()` of a Firth fit is the penalised test against all coefficients 0 (`coxphf`'s); `neg_ll()`, AIC and BIC stay those of the unpenalised partial likelihood at the estimate. | proposed | The penalised statistic is the one that goes with the estimate; the criteria keep one meaning across Cox fits. | done |
+| A column the partial likelihood cannot determine is refused, not aliased. | proposed | The penalty, a log determinant, is not defined where the information is singular. | done |
+| The monotone-likelihood warning of a Cox fit names `CoxPH.fit_firth` as the fix; the Fine-Gray and weighted Cox fits, which it does not cover, keep the general advice. | proposed | The warning should name a fix that the caller's fit can use. | done |
+| No weights `w` yet. | proposed | `coxphf` has none to check against. | open |
+
 ### Brier score and time-dependent AUC for competing risks
 
 | Decision | By | Reason | Status |

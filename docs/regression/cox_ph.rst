@@ -8,7 +8,10 @@ the fitter class below. Its fit methods cover ordinary data (``fit``,
 ``fit_from_df``, with right censoring, left truncation, a choice of tie
 handling and optional strata) and time-varying covariates in start-stop
 form (``fit_tvc``, ``fit_tvc_timeline`` and their ``_from_df``
-versions). The theory is in :doc:`../regression analysis` and worked
+versions), with penalised fits beside them (``fit_penalised`` for ridge,
+lasso and elastic net; ``fit_firth`` for Firth's penalty, which keeps the
+estimates finite where a covariate separates the events from the
+survivors). The theory is in :doc:`../regression analysis` and worked
 examples are in :doc:`../Regression Modelling with SurPyval`.
 
 Fitter
@@ -38,3 +41,11 @@ jump times along a subject's ``(xl, xr]`` intervals.
 
 .. autoclass:: surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel
    :members:
+
+Firth's fit
+-----------
+
+The ``firth`` attribute of a model fitted by ``CoxPH.fit_firth``.
+
+.. autoclass:: surpyval.univariate.regression.proportional_hazards.cox_firth.FirthResult
+   :members: likelihood_ratio_test, to_dict, from_dict

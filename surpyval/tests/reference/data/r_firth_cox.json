@@ -1,0 +1,210 @@
+{
+  "generator": "scripts/reference/reference_r_firth_cox.R",
+  "R": "R version 4.6.2 (2026-10-29)",
+  "references": {
+    "separation": {
+      "fixture": "separation",
+      "software": "R coxphf",
+      "version": "1.13.4",
+      "call": "coxphf(Surv(x, status) ~ z1 + z2, data = separation, pl = TRUE, alpha = 0.05, epsilon = 1e-12, gconv = 1e-12, maxit = 200)",
+      "settings": {
+        "ties": "breslow (coxphf's only)",
+        "survival": "3.8.12",
+        "covariates": ["z1", "z2"],
+        "wald_call": "coxphf(Surv(x, status) ~ z1 + z2, data = separation, pl = FALSE, alpha = 0.05, epsilon = 1e-12, gconv = 1e-12, maxit = 200)",
+        "ci": "log(ci.lower), log(ci.upper): the coefficient's bounds",
+        "p": "prob: the penalised likelihood-ratio test of each coefficient",
+        "loglik": "c(null, fitted), penalised, of the standardised covariates"
+      },
+      "values": {
+        "coef": [3.55433168526634, 0.477989986927771],
+        "var": [
+          [2.3302647551286, 0.0114191849507174],
+          [0.0114191849507173, 0.109650564630875]
+        ],
+        "ci_lower": [1.50100642295434, -0.150365861875053],
+        "ci_upper": [8.41273455952487, 1.1343142114799],
+        "p": [3.67351474040989e-05, 0.135738591464414],
+        "wald_ci_lower": [0.562406536112139, -0.171023209159463],
+        "wald_ci_upper": [6.54625683442055, 1.127003183015],
+        "wald_p": [0.0198915195282441, 0.14888287743123],
+        "loglik_null": -37.1017200368597,
+        "loglik": -27.8291306244728,
+        "lr_statistic": 18.5451788247737,
+        "df": 2,
+        "alpha": 0.05,
+        "log_sd_sum": -0.776530099610306
+      }
+    },
+    "separation_90": {
+      "fixture": "separation",
+      "software": "R coxphf",
+      "version": "1.13.4",
+      "call": "coxphf(Surv(x, status) ~ z1 + z2, data = separation, pl = TRUE, alpha = 0.1, epsilon = 1e-12, gconv = 1e-12, maxit = 200)",
+      "settings": {
+        "ties": "breslow (coxphf's only)",
+        "survival": "3.8.12",
+        "covariates": ["z1", "z2"],
+        "wald_call": "coxphf(Surv(x, status) ~ z1 + z2, data = separation, pl = FALSE, alpha = 0.1, epsilon = 1e-12, gconv = 1e-12, maxit = 200)",
+        "ci": "log(ci.lower), log(ci.upper): the coefficient's bounds",
+        "p": "prob: the penalised likelihood-ratio test of each coefficient",
+        "loglik": "c(null, fitted), penalised, of the standardised covariates"
+      },
+      "values": {
+        "coef": [3.55433168526634, 0.477989986927771],
+        "var": [
+          [2.3302647551286, 0.0114191849507174],
+          [0.0114191849507173, 0.109650564630875]
+        ],
+        "ci_lower": [1.76010370388762, -0.0490405358739505],
+        "ci_upper": [7.25912930243366, 1.02460425657251],
+        "p": [3.67351474040989e-05, 0.135738591464414],
+        "wald_ci_lower": [1.04342894829156, -0.0666790569648757],
+        "wald_ci_upper": [6.06523442224112, 1.02265903082042],
+        "wald_p": [0.0198915195282441, 0.14888287743123],
+        "loglik_null": -37.1017200368597,
+        "loglik": -27.8291306244728,
+        "lr_statistic": 18.5451788247737,
+        "df": 2,
+        "alpha": 0.1,
+        "log_sd_sum": -0.776530099610306
+      }
+    },
+    "lung_age_sex": {
+      "fixture": "lung",
+      "software": "R coxphf",
+      "version": "1.13.4",
+      "call": "coxphf(Surv(time, status) ~ age + sex, data = lung_d, pl = TRUE, alpha = 0.05, epsilon = 1e-12, gconv = 1e-12, maxit = 200)",
+      "settings": {
+        "ties": "breslow (coxphf's only)",
+        "survival": "3.8.12",
+        "covariates": ["age", "sex"],
+        "wald_call": "coxphf(Surv(time, status) ~ age + sex, data = lung_d, pl = FALSE, alpha = 0.05, epsilon = 1e-12, gconv = 1e-12, maxit = 200)",
+        "ci": "log(ci.lower), log(ci.upper): the coefficient's bounds",
+        "p": "prob: the penalised likelihood-ratio test of each coefficient",
+        "loglik": "c(null, fitted), penalised, of the standardised covariates"
+      },
+      "values": {
+        "coef": [0.0168453720788596, -0.507612671513445],
+        "var": [
+          [8.49816726105163e-05, 8.54320417925291e-05],
+          [8.54320417925292e-05, 0.0279932202131356]
+        ],
+        "ci_lower": [-0.00100706669853367, -0.841530330607904],
+        "ci_upper": [0.035124551845665, -0.186144340273392],
+        "p": [0.0645622087972247, 0.0018088566563097],
+        "wald_ci_lower": [-0.00122265481527044, -0.835537667064841],
+        "wald_ci_upper": [0.0349133989729896, -0.17968767596205],
+        "wald_p": [0.06764954347594, 0.00241387815948702],
+        "loglik_null": -745.04311908945,
+        "loglik": -738.096055224941,
+        "lr_statistic": 13.8941277290191,
+        "df": 2,
+        "alpha": 0.05,
+        "log_sd_sum": 1.49173714565766
+      }
+    },
+    "ties": {
+      "fixture": "ties",
+      "software": "R coxphf",
+      "version": "1.13.4",
+      "call": "coxphf(Surv(x, status) ~ z1 + z2, data = ties_d, pl = TRUE, alpha = 0.05, epsilon = 1e-12, gconv = 1e-12, maxit = 200)",
+      "settings": {
+        "ties": "breslow (coxphf's only)",
+        "survival": "3.8.12",
+        "covariates": ["z1", "z2"],
+        "wald_call": "coxphf(Surv(x, status) ~ z1 + z2, data = ties_d, pl = FALSE, alpha = 0.05, epsilon = 1e-12, gconv = 1e-12, maxit = 200)",
+        "ci": "log(ci.lower), log(ci.upper): the coefficient's bounds",
+        "p": "prob: the penalised likelihood-ratio test of each coefficient",
+        "loglik": "c(null, fitted), penalised, of the standardised covariates"
+      },
+      "values": {
+        "coef": [0.384505138224549, 0.698896256767101],
+        "var": [
+          [0.283831725733303, -0.0496764214867611],
+          [-0.0496764214867611, 0.0813617956551661]
+        ],
+        "ci_lower": [-0.618802490273103, 0.182448009839877],
+        "ci_upper": [1.45613098427826, 1.30164385205882],
+        "p": [0.455603822093847, 0.00685879745727092],
+        "wald_ci_lower": [-0.659682529970701, 0.139836342637094],
+        "wald_ci_upper": [1.4286928064198, 1.25795617089711],
+        "wald_p": [0.470463640388754, 0.0142774834382295],
+        "loglik_null": -50.7618598612196,
+        "loglik": -45.9124650560622,
+        "lr_statistic": 9.69878961031498,
+        "df": 2,
+        "alpha": 0.05,
+        "log_sd_sum": -0.669459205735356
+      }
+    },
+    "left_truncation": {
+      "fixture": "left_truncation",
+      "software": "R coxphf",
+      "version": "1.13.4",
+      "call": "coxphf(Surv(tl, x, status) ~ z, data = lt_d, pl = TRUE, alpha = 0.05, epsilon = 1e-12, gconv = 1e-12, maxit = 200)",
+      "settings": {
+        "ties": "breslow (coxphf's only)",
+        "survival": "3.8.12",
+        "covariates": "z",
+        "wald_call": "coxphf(Surv(tl, x, status) ~ z, data = lt_d, pl = FALSE, alpha = 0.05, epsilon = 1e-12, gconv = 1e-12, maxit = 200)",
+        "ci": "log(ci.lower), log(ci.upper): the coefficient's bounds",
+        "p": "prob: the penalised likelihood-ratio test of each coefficient",
+        "loglik": "c(null, fitted), penalised, of the standardised covariates"
+      },
+      "values": {
+        "coef": 0.70056953258209,
+        "var": [
+          0.0942287095695025
+        ],
+        "ci_lower": 0.111928881547985,
+        "ci_upper": 1.31149439889035,
+        "p": 0.019544480437537,
+        "wald_ci_lower": 0.0989253623798093,
+        "wald_ci_upper": 1.30221370278437,
+        "wald_p": 0.0224756983050522,
+        "loglik_null": -154.970890199801,
+        "loglik": -152.244825064341,
+        "lr_statistic": 5.45213027092075,
+        "df": 1,
+        "alpha": 0.05,
+        "log_sd_sum": -0.6852994858281
+      }
+    },
+    "heart_start_stop": {
+      "fixture": "heart",
+      "software": "R coxphf",
+      "version": "1.13.4",
+      "call": "coxphf(Surv(start, stop, status) ~ age + year + transplant, data = heart_d, pl = TRUE, alpha = 0.05, epsilon = 1e-12, gconv = 1e-12, maxit = 200)",
+      "settings": {
+        "ties": "breslow (coxphf's only)",
+        "survival": "3.8.12",
+        "covariates": ["age", "year", "transplant"],
+        "wald_call": "coxphf(Surv(start, stop, status) ~ age + year + transplant, data = heart_d, pl = FALSE, alpha = 0.05, epsilon = 1e-12, gconv = 1e-12, maxit = 200)",
+        "ci": "log(ci.lower), log(ci.upper): the coefficient's bounds",
+        "p": "prob: the penalised likelihood-ratio test of each coefficient",
+        "loglik": "c(null, fitted), penalised, of the standardised covariates"
+      },
+      "values": {
+        "coef": [0.0256764641725671, -0.178248359715919, -0.0410008193993321],
+        "var": [
+          [0.000196284381534408, 0.000100513860030771, -0.000995233577529466],
+          [0.000100513860030771, 0.00495725683280718, 0.000523273955054533],
+          [-0.000995233577529466, 0.00052327395505453, 0.1003668672816]
+        ],
+        "ci_lower": [-0.000612286623093347, -0.317093150394789, -0.652605000712379],
+        "ci_upper": [0.0545313751464239, -0.0415015400264763, 0.589021903168127],
+        "p": [0.0558593938973272, 0.0106124358159572, 0.896909195835247],
+        "wald_ci_lower": [-0.00178293073718725, -0.316245091513572, -0.661931723465429],
+        "wald_ci_upper": [0.0531358590823214, -0.0402516279182663, 0.579930084666765],
+        "wald_p": [0.0668465905315554, 0.0113525044557751, 0.897026276515689],
+        "loglik_null": -292.197032448628,
+        "loglik": -286.54460178264,
+        "lr_statistic": 11.304861331976,
+        "df": 3,
+        "alpha": 0.05,
+        "log_sd_sum": 2.13421391481053
+      }
+    }
+  }
+}

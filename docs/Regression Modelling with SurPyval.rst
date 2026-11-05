@@ -4567,6 +4567,76 @@ scale and the standardisation would both have to be weighted, and it
 refuses them rather than ignore them.
 
 
+Firth's penalty: Cox regression when a covariate separates the events
+---------------------------------------------------------------------
+
+Sometimes every event happens in one group: all the deaths are among the
+treated patients, or every failure is on the units from one supplier.
+Then the partial likelihood keeps rising as that group's hazard ratio
+grows, the ordinary Cox estimate is infinite, and ``CoxPH.fit`` warns "No
+finite maximum" (it names the coefficients and suggests ``fit_firth``).
+This is called *monotone likelihood*, or separation, and it is common in
+small studies with a rare event.
+
+``CoxPH.fit_firth`` fits the model with Firth's penalty (Heinze and
+Schemper 2001). In words: it adds a small term that grows very negative
+as the information about a coefficient vanishes, which is exactly what
+happens as a coefficient runs off to infinity, so the estimate stays
+finite. Where the data do pin the coefficients down, the term is tiny and
+the estimates barely move (it also removes the small-sample bias of the
+ordinary estimates). In symbols, the fit maximises
+
+.. math::
+
+    \ell^*(\beta) = \ell(\beta) + \tfrac{1}{2} \log |I(\beta)|,
+
+the partial log-likelihood :math:`\ell` plus half the log determinant of
+its information :math:`I` (Jeffreys' prior). Ties are Breslow's, as in
+R's ``coxphf``, and the fit agrees with ``coxphf`` to six digits.
+
+Unlike the ridge and lasso fits above, Firth's fit comes with inference.
+The standard errors are from the inverse of the information at the
+estimate. The intervals and p-values are by default from the *profile
+penalised likelihood*: they follow the likelihood's real, lopsided shape,
+which under separation is flat on one side, where a Wald interval
+(estimate plus or minus 1.96 standard errors) would be far too narrow on
+that side. ``model.firth`` holds them with the Wald ones beside them, and
+``likelihood_ratio_test()`` is the penalised likelihood-ratio test of
+every coefficient being 0. ``profile=False`` skips the profile searches
+and reports the Wald intervals and p-values.
+
+.. jupyter-execute::
+
+    import numpy as np
+    from surpyval import CoxPH
+
+    # Every death is in the group z1 = 1
+    x = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    c = np.array([0, 0, 1, 0, 1, 1, 0, 1, 1, 1])
+    Z = np.array([[1, 0.5], [1, -1.2], [0, 0.3], [1, 0.8], [0, -0.4],
+                  [1, 1.1], [1, -0.6], [0, 0.9], [0, 0.2], [1, -0.1]])
+    firth = CoxPH.fit_firth(x, Z, c=c)
+    firth
+
+.. jupyter-execute::
+
+    firth.likelihood_ratio_test()
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert firth.maximum == 'verified', firth.maximum
+    assert np.all(np.isfinite(firth.firth.upper))
+
+``fit_firth`` takes delayed entry ``tl`` (so start-stop rows, as
+``Surv(start, stop, event)``), counts ``n`` and ``strata``. It refuses a
+covariate the partial likelihood cannot estimate at all (a constant
+column, say), since the penalty has no value there, and it does not take
+weights ``w``. ``neg_ll()`` and the information criteria are those of the
+ordinary partial likelihood at the Firth estimate.
+
+
 Model Selection
 ---------------
 

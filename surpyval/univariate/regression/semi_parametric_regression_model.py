@@ -42,6 +42,7 @@ from ._summary import (
     coefficient_names,
     coefficient_repr,
     coefficient_table,
+    firth_table,
 )
 from .regression_data import (
     LinearPredictorMixin,
@@ -144,6 +145,10 @@ class SemiParametricRegressionModel(
     #: warnings say; ``"unknown"`` for a model restored from a dict saved
     #: without it.
     maximum: str = "unknown"
+    #: For a fit by ``CoxPH.fit_firth``, its intervals, tests and
+    #: penalised log-likelihoods (a ``FirthResult``, in
+    #: ``proportional_hazards.cox_firth``); ``None`` otherwise.
+    firth: Any = None
 
     @property
     def parameter_names(self) -> list[str]:
@@ -611,20 +616,30 @@ class SemiParametricRegressionModel(
         if tie_method is not None:
             out += f"\nTie method          : {tie_method}"
         out += self._penalty_printout()
+        if self.firth is not None:
+            out += "\nPenalty             : " + self.firth.line()
         if self.weighted:
             out += (
                 "\nWeights             : effective sample size "
                 f"{self.effective_n:.4g}; robust covariance"
             )
+        kind = "Wald"
+        alpha = 0.05
+        if self.firth is not None:
+            alpha = self.firth.alpha_ci
+            if self.firth.profile:
+                kind = "profile penalised-likelihood"
         out += (
-            "\nCoefficients        : exp(coef) is the hazard ratio; Wald "
-            "95% intervals\n"
+            "\nCoefficients        : exp(coef) is the hazard ratio; "
+            "{} {:g}% intervals\n".format(kind, 100 * (1 - alpha))
         )
-        return out + coefficient_repr(self.summary()) + "\n"
+        return (
+            out + coefficient_repr(self.summary(alpha_ci=alpha), alpha) + "\n"
+        )
 
     def summary(
         self,
-        alpha_ci: float = 0.05,
+        alpha_ci: float | None = None,
         robust: bool = False,
         cluster: npt.ArrayLike | None = None,
     ) -> pd.DataFrame:
@@ -635,12 +650,17 @@ class SemiParametricRegressionModel(
         coefficient, the hazard ratio ``exp(coef)``, the standard error, a
         two-sided ``1 - alpha_ci`` Wald interval for both, the Wald
         statistic ``z`` and its two-sided p-value. An aliased coefficient
-        (#476) is ``nan`` throughout.
+        (#476) is ``nan`` throughout. For a fit by ``CoxPH.fit_firth`` the
+        intervals and ``p`` are its own (``model.firth``: by the profile
+        penalised likelihood unless fitted with ``profile=False``), at the
+        level it was fitted at; ``z`` stays Wald's.
 
         Parameters
         ----------
         alpha_ci : float, optional
-            The intervals' total tail probability. Default 0.05.
+            The intervals' total tail probability. Default 0.05 (for a
+            Firth fit, the level it was fitted at; another level raises a
+            ``ValueError``: refit with that ``alpha_ci``).
         robust : bool, optional
             Use the cluster-robust (sandwich) standard errors of
             :meth:`robust_summary` instead of the model-based ones.
@@ -670,9 +690,21 @@ class SemiParametricRegressionModel(
         fin       -0.3279     0.7204    0.1899  0.0841
         age       -0.0715     0.9310    0.0209  0.0006
         """
+        firth = self.firth
+        if alpha_ci is None:
+            alpha_ci = 0.05 if firth is None else firth.alpha_ci
         check_alpha_ci(alpha_ci)
         beta = np.asarray(self.beta, dtype=float)
         names = coefficient_names(self, beta.size)
+        if firth is not None and not robust:
+            if not abs(alpha_ci - firth.alpha_ci) < 1e-12:
+                raise ValueError(
+                    "This Firth fit's intervals are at alpha_ci={:g}; the "
+                    "profile penalised-likelihood bounds at another level "
+                    "need a refit: CoxPH.fit_firth(..., alpha_ci={:g})."
+                    "".format(firth.alpha_ci, alpha_ci)
+                )
+            return firth_table(names, beta, self.standard_errors(), firth)
         if robust:
             se = np.asarray(self.robust_summary(cluster)["se"], dtype=float)
             return coefficient_table(names, beta, se, alpha_ci)
@@ -779,6 +811,9 @@ class SemiParametricRegressionModel(
             out["ic_n"] = ic_n
         out.update(maximum_entry(self.maximum))
         out.update(self._penalty_entry())
+        if self.firth is not None:
+            # Read by a reader without it as the plain Cox model it is.
+            out["firth"] = self.firth.to_dict()
         # The printout's "Data" line (#508), so the restored model prints
         # the same; the data themselves are not stored.
         if self._data_repr():
@@ -866,6 +901,10 @@ class SemiParametricRegressionModel(
         out._ic_n = cls._restored_ic_n(model_dict)
         out.maximum = restored_maximum(model_dict)
         out._restore_penalty(model_dict)
+        if model_dict.get("firth") is not None:
+            from .proportional_hazards.cox_firth import FirthResult
+
+            out.firth = FirthResult.from_dict(model_dict["firth"])
         restore_covariate_meta(out, model_dict)
         return out
 
