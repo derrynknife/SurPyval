@@ -442,6 +442,24 @@ Unreleased
   against flexsurv's ``psurvspline`` family at given coefficients on all
   three scales to 1e-12; the 2.5% and 97.5% points of ``sf`` over 4000
   draws match the Wald band of ``cb`` to 0.0013.
+- Recurrent models can be stepped forward one failure at a time.
+  ``RenewalModel`` (``GeneralizedRenewal``, ``GeneralizedOneRenewal``,
+  ``ARA``, ``ARI``) gains ``next_failure_qf(p)``, the inverse of
+  ``next_failure_sf`` (on the cumulative hazard, so the upper tail keeps its
+  digits), ``next_failure_random(size)`` (``next_failure_qf`` at uniform
+  draws), ``states()`` (the units' states, from the fitted items, an
+  ``age`` or known ``failures``) and ``advance(states, x)``, the state after a
+  failure at ``x`` and its repair by the fitted rule (``failed=False`` to run
+  on); the four next-failure methods take ``states=``. A loop of draws and
+  advances reproduces ``time_terminated_simulation`` and
+  ``count_terminated_simulation`` in distribution (seeded two-sample tests on
+  counts and event times, every family). ``ParametricRecurrenceModel``
+  (``HPP``, ``CrowAMSAA``, ``Duane``, ``CoxLewis``) has the same
+  ``next_failure_sf``, ``next_failure_hf``, ``next_failure_qf`` and
+  ``next_failure_random`` from an ``age``. Both kinds gain
+  ``covariance_names`` and ``with_params(params)``, the same model at a flat
+  parameter vector in that order (a draw from ``covariance()``); draws
+  through it spread as the delta method says (within 5%).
 
 **Changed.**
 
