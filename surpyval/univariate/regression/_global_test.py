@@ -33,7 +33,7 @@ def refuse_weighted_test(model: Any) -> None:
     )
 
 
-def _result(ll: float, ll_null: float, df: int) -> dict:
+def lr_test_result(ll: float, ll_null: float, df: int) -> dict:
     from scipy.stats import chi2
 
     if df < 1:
@@ -83,7 +83,7 @@ def cox_likelihood_ratio_test(model: SemiParametricRegressionModel) -> dict:
         )
     beta = np.asarray(model.params, dtype=float)
     ll_null = -float(neg_ll_of(np.zeros(beta.shape)))
-    return _result(-float(model.neg_ll()), ll_null, int(model._ic_k()))
+    return lr_test_result(-float(model.neg_ll()), ll_null, int(model._ic_k()))
 
 
 def parametric_likelihood_ratio_test(
@@ -166,6 +166,6 @@ def parametric_likelihood_ratio_test(
             x=data.x, c=data.c, n=data.n, t=data.t, **kwargs
         )
     k_null = len(model.distribution_param_map) - len(fixed)
-    return _result(
+    return lr_test_result(
         -float(model.neg_ll()), -float(null.neg_ll()), model.k - k_null
     )
