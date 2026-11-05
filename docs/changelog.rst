@@ -5,6 +5,17 @@ Unreleased
 
 **Added.**
 
+- ``covariance()`` and ``standard_errors()`` of a fitted ``Bernoulli``,
+  ``FixedEventProbability`` or ``Binomial``: the variance of ``p``,
+  :math:`\hat p (1 - \hat p) / N` from the events and trials (a Binomial's
+  known ``n`` has a zero row and column), for code that propagates it;
+  ``nan`` with no events or only events, where the formula's 0 would claim
+  ``p`` is known. Models restored from older dicts get it from their saved
+  counts. ``param_cb("p", method="jeffreys")`` adds the Jeffreys interval
+  (``Beta(k + 1/2, N - k + 1/2)`` quantiles) beside the exact
+  Clopper-Pearson default. Checked against R's ``binom.test``, ``qbeta``
+  and ``binom::binom.confint`` to 1e-10; the coverage study
+  (``scripts/studies/probability_coverage.py``) is on the Bernoulli page.
 - ``Turnbull.fit(..., w=)``: the Turnbull estimate with sampling weights,
   for interval and left censored and truncated data. The estimate is the
   weighted non-parametric MLE (each row counts ``n w`` in the EM; checked
