@@ -5,6 +5,20 @@ Unreleased
 
 **Added.**
 
+- ``diagnose()`` for distributional regressions (``WeibullDistributional``
+  and every ``Distributional(dist)``), which refused before: the
+  Cox-Snell residuals on exponential paper with an AIC screen against the
+  other prebuilt distributions fitted with the same covariates
+  (``distribution``), the likelihood-ratio test of a quadratic term for
+  each covariate on each parameter that holds it, drawn as score
+  residuals (``functional_form``), and one-step dfbeta per coefficient
+  (``influence``); a ``parameter`` column says which parameter a row is
+  about. Every censoring and truncation is supported; weighted and
+  penalised fits are refused, saying what to use. Checked against
+  flexsurv (the quadratic-term statistics and AICs to 1e-6, the Cox-Snell
+  residuals to 1e-4, with delayed entry too) and gamlss's normalised
+  quantile residuals (1e-5); the size and power study is
+  ``tests/calibration/test_size_distributional_diagnostics.py``.
 - ``covariance()`` and ``standard_errors()`` of a fitted ``Bernoulli``,
   ``FixedEventProbability`` or ``Binomial``: the variance of ``p``,
   :math:`\hat p (1 - \hat p) / N` from the events and trials (a Binomial's
