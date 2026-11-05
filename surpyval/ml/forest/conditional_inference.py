@@ -137,7 +137,7 @@ from scipy.optimize import minimize_scalar
 from scipy.special import i0e, ive, roots_legendre
 from scipy.stats import chi, chi2, ncx2, norm
 
-from surpyval.beta.ml.forest.deviance_split import (
+from surpyval.ml.forest.deviance_split import (
     _LOG_BETA_BOUNDS,
     _exp_neg_ll,
     _exp_neg_ll_parts,
@@ -145,7 +145,7 @@ from surpyval.beta.ml.forest.deviance_split import (
     _wei_max_ll,
     needs_full_likelihood_split,
 )
-from surpyval.beta.ml.forest.turnbull_score_split import log_rank_scores
+from surpyval.ml.forest.turnbull_score_split import log_rank_scores
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import check_option
 

@@ -6,16 +6,17 @@ import pandas as pd
 from joblib import Parallel, delayed
 from numpy.typing import ArrayLike, NDArray
 
-from surpyval.beta.ml.forest.conditional_inference import parse_selection
-from surpyval.beta.ml.forest.deviance_split import parse_min_split_gain
-from surpyval.beta.ml.forest.oob import (
+from surpyval.metrics.concordance import concordance_index
+from surpyval.ml.forest.conditional_inference import parse_selection
+from surpyval.ml.forest.deviance_split import parse_min_split_gain
+from surpyval.ml.forest.oob import (
     RowTerms,
     add_tree_terms,
     row_log_likelihood,
     time_origin,
     weighted_mean,
 )
-from surpyval.beta.ml.forest.tree import (
+from surpyval.ml.forest.tree import (
     SurvivalTree,
     check_covariate_count,
     covariate_matrix,
@@ -25,7 +26,6 @@ from surpyval.beta.ml.forest.tree import (
     query_layout,
     resolve_random_state,
 )
-from surpyval.metrics.concordance import concordance_index
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -97,7 +97,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
     """Random survival forest: an ensemble of survival trees.
 
     ``n_trees`` instances of
-    :class:`~surpyval.beta.ml.forest.tree.SurvivalTree` are fitted, each
+    :class:`~surpyval.ml.forest.tree.SurvivalTree` are fitted, each
     to an independently bootstrapped sample of the data and each
     considering a random subset of the features at every split. A
     prediction evaluates all of them and averages the fitted models
@@ -285,12 +285,12 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         kind : str, optional
             The tree type, ``"weibull"`` (the default), ``"exponential"``
             or ``"non-parametric"``; see
-            :class:`~surpyval.beta.ml.forest.tree.SurvivalTree`.
+            :class:`~surpyval.ml.forest.tree.SurvivalTree`.
         selection : str, optional
             How each node chooses its feature: ``"greedy"`` (the default)
             or ``"ctree"`` (conditional inference, which also stops a
             tree where the data show no effect); see
-            :class:`~surpyval.beta.ml.forest.tree.SurvivalTree`.
+            :class:`~surpyval.ml.forest.tree.SurvivalTree`.
         alpha_split : float, optional
             With ``selection="ctree"``, a node splits only if the
             Bonferroni-adjusted p-value of its chosen feature is below
@@ -308,7 +308,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             SurPyval counts them: the split must lower the Bayesian
             criterion. Defaults to 0: any gain, as a forest of deep trees
             wants. (``"aic"`` is the recommended setting for a single
-            :class:`~surpyval.beta.ml.forest.tree.SurvivalTree`.) Not
+            :class:`~surpyval.ml.forest.tree.SurvivalTree`.) Not
             used by ``"non-parametric"`` trees, whose splits are not
             likelihoods; stop those with ``selection="ctree"``.
         random_state : None, int or numpy.random.Generator, optional
@@ -338,7 +338,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         Examples
         --------
         >>> import numpy as np
-        >>> from surpyval.beta.ml import RandomSurvivalForest
+        >>> from surpyval.ml import RandomSurvivalForest
         >>> rng = np.random.default_rng(0)
         >>> Z = rng.uniform(0, 1, (200, 2))
         >>> x = rng.weibull(2.0, 200) * np.where(Z[:, 0] > 0.5, 5.0, 10.0)
@@ -435,7 +435,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         Examples
         --------
         >>> import numpy as np
-        >>> from surpyval.beta.ml import RandomSurvivalForest
+        >>> from surpyval.ml import RandomSurvivalForest
         >>> rng = np.random.default_rng(0)
         >>> Z = rng.uniform(0, 1, (200, 2))
         >>> x = rng.weibull(2.0, 200) * np.where(Z[:, 0] > 0.5, 5.0, 10.0)
@@ -723,7 +723,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         Examples
         --------
         >>> import numpy as np
-        >>> from surpyval.beta.ml import RandomSurvivalForest
+        >>> from surpyval.ml import RandomSurvivalForest
         >>> rng = np.random.default_rng(0)
         >>> Z = rng.uniform(0, 1, (200, 2))
         >>> x = rng.weibull(2.0, 200) * np.where(Z[:, 0] > 0.5, 5.0, 10.0)
@@ -794,7 +794,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         Only the first feature matters; the second is noise:
 
         >>> import numpy as np
-        >>> from surpyval.beta.ml import RandomSurvivalForest
+        >>> from surpyval.ml import RandomSurvivalForest
         >>> rng = np.random.default_rng(0)
         >>> Z = rng.uniform(0, 1, (200, 2))
         >>> x = rng.weibull(2.0, 200) * np.where(Z[:, 0] > 0.5, 5.0, 10.0)

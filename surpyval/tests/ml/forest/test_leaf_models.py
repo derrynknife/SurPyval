@@ -8,8 +8,8 @@ import numpy as np
 import pytest
 
 from surpyval import Exponential, Weibull
-from surpyval.beta.ml.forest import RandomSurvivalForest
-from surpyval.beta.ml.forest.node import TerminalNode
+from surpyval.ml.forest import RandomSurvivalForest
+from surpyval.ml.forest.node import TerminalNode
 from surpyval.utils.surpyval_data import SurpyvalData
 
 
@@ -87,9 +87,9 @@ def test_549_leaves_fitted_together(kind):
     # for the whole tree: each the maximum leaf_mle finds for it alone,
     # to the last digits. They used to be fitted one by one on first
     # use, 85% of a forest's first prediction.
-    from surpyval.beta.ml.forest import deviance_split
-    from surpyval.beta.ml.forest.node import IntermediateNode
-    from surpyval.beta.ml.forest.tree import SurvivalTree
+    from surpyval.ml.forest import deviance_split
+    from surpyval.ml.forest.node import IntermediateNode
+    from surpyval.ml.forest.tree import SurvivalTree
 
     rng = np.random.default_rng(2)
     Z = rng.normal(size=(400, 3))

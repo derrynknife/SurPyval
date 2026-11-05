@@ -106,8 +106,8 @@ _TAGGED_MODELS: dict[str, str] = {
     "WienerProcessModel": "surpyval.degradation.process_models",
     "GammaProcessModel": "surpyval.degradation.process_models",
     "DestructiveDegradationModel": "surpyval.degradation.destructive",
-    "SurvivalTree": "surpyval.beta.ml.forest.tree",
-    "RandomSurvivalForest": "surpyval.beta.ml.forest.forest",
+    "SurvivalTree": "surpyval.ml.forest.tree",
+    "RandomSurvivalForest": "surpyval.ml.forest.forest",
     # The degenerate distributions are stateless: the class is the model,
     # so they serialise by name alone.
     "NeverOccurs": ("surpyval.univariate.parametric.distributions.degenerate"),

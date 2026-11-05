@@ -188,6 +188,8 @@ def test_fit_best_metric_message_is_spelled_right():
         ("laplace", "surpyval.recurrent"),
         ("TrendTestResult", "surpyval.recurrent"),
         ("Gaussian", "surpyval.multivariate"),
+        ("SurvivalTree", "surpyval.ml"),
+        ("RandomSurvivalForest", "surpyval.ml"),
     ],
 )
 def test_top_level_names_a_helper_s_subpackage(name, where):

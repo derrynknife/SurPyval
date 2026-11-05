@@ -7,16 +7,16 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from surpyval import Exponential, NelsonAalen, Turnbull, Weibull
-from surpyval.beta.ml.forest.conditional_inference import ctree_select
-from surpyval.beta.ml.forest.deviance_split import (
+from surpyval.ml.forest.conditional_inference import ctree_select
+from surpyval.ml.forest.deviance_split import (
     _exp_theta0,
     deviance_split,
     leaf_mle,
     leaf_mles,
     needs_full_likelihood_split,
 )
-from surpyval.beta.ml.forest.log_rank_split import log_rank_split
-from surpyval.beta.ml.forest.turnbull_score_split import turnbull_score_split
+from surpyval.ml.forest.log_rank_split import log_rank_split
+from surpyval.ml.forest.turnbull_score_split import turnbull_score_split
 from surpyval.serialisation import to_native
 from surpyval.univariate.parametric import NeverOccurs
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -508,18 +508,18 @@ def build_tree(
 
     ``rng`` draws the features considered at each split: numpy's global
     generator when ``None`` (see
-    :func:`~surpyval.beta.ml.forest.tree.resolve_random_state`).
+    :func:`~surpyval.ml.forest.tree.resolve_random_state`).
 
     ``selection="greedy"`` takes the best cut of the kind's criterion over
     every drawn feature. ``selection="ctree"`` first chooses the feature
     by conditional inference (see
-    :mod:`~surpyval.beta.ml.forest.conditional_inference`), stops if its
+    :mod:`~surpyval.ml.forest.conditional_inference`), stops if its
     Bonferroni-adjusted p-value is not below ``alpha_split``, and
     otherwise cuts that feature by the kind's criterion.
 
     ``min_split_gain`` is the least log-likelihood gain a deviance split
     must make (see
-    :func:`~surpyval.beta.ml.forest.deviance_split.deviance_split`).
+    :func:`~surpyval.ml.forest.deviance_split.deviance_split`).
     """
     if rng is None:
         rng = np.random.mtrand._rand

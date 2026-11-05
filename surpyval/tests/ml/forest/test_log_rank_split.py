@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from surpyval.beta.ml.forest.log_rank_split import (
+from surpyval.ml.forest.log_rank_split import (
     at_risk_on_grid,
     log_rank,
     log_rank_split,

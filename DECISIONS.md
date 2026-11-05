@@ -131,6 +131,12 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-03
 
+### Survival trees and forests: promoted from `surpyval.beta.ml` to `surpyval.ml`
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The survival tree and random survival forest leave the beta tier for the stable surface as `surpyval.ml`, keeping their conformance entries; `surpyval.beta.ml` imports the same objects (and keeps its old submodule names, so a 0.26 pickle loads) with one `FutureWarning` at the import until the first release on or after 12 April 2027, the day the top-level data-format functions go, so one removal clears every dated deprecation. | maintainer | They are tested and registered in the conformance suite, and lifelines has nothing like them (the 1.0 plan's question on `beta.ml`). A `FutureWarning` rather than a `DeprecationWarning`, as for the data-format functions: it is shown wherever the import is, and the release-based shim scan leaves it alone. | done |
+
 ### Bootstrap bounds for limited-failure and zero-inflated models
 
 | Decision | By | Reason | Status |

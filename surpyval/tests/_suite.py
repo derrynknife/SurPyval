@@ -96,7 +96,7 @@ OPT_IN = {
     "ml": (
         "--run-ml",
         "beta ML tree/forest tests",
-        "surpyval/tests/beta/ml",
+        "surpyval/tests/ml",
     ),
     "invariants": (
         "--run-invariants",

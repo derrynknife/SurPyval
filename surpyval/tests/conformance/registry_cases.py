@@ -14,9 +14,9 @@ import pandas as pd
 
 import surpyval as sp
 from surpyval import degradation as dg
+from surpyval import ml
 from surpyval import multivariate as mv
 from surpyval import recurrent as rc
-from surpyval.beta import ml
 from surpyval.tests.conformance.registry_families import (
     BASELINES,
     BIVARIATE,

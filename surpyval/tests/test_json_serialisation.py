@@ -250,7 +250,7 @@ def _mixture():
 
 
 def _tree():
-    from surpyval.beta.ml.forest.tree import SurvivalTree
+    from surpyval.ml.forest.tree import SurvivalTree
 
     x, Z, c = _forest_data()
     np.random.seed(1)
@@ -258,7 +258,7 @@ def _tree():
 
 
 def _forest():
-    from surpyval.beta.ml.forest.forest import RandomSurvivalForest
+    from surpyval.ml.forest.forest import RandomSurvivalForest
 
     x, Z, c = _forest_data()
     np.random.seed(1)

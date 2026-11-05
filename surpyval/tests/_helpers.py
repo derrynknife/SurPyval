@@ -169,7 +169,7 @@ def neg_ll_at(model, theta):
 
 def tree_leaves(node):
     """The terminal nodes under ``node`` of a survival tree."""
-    from surpyval.beta.ml.forest.node import TerminalNode
+    from surpyval.ml.forest.node import TerminalNode
 
     if isinstance(node, TerminalNode):
         return [node]

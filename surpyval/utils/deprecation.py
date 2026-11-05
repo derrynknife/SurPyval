@@ -25,12 +25,19 @@ The top-level data-format functions (``surpyval.fs_to_xcnt`` and the
 rest), whose work :class:`~surpyval.SurpyvalData` now does, are deprecated
 by date instead (:data:`DATED_DATA_FUNCTIONS`): accepted, with a warning,
 until the first release on or after :data:`DATA_FUNCTIONS_REMOVED_AFTER`.
+So is ``surpyval.beta.ml``, the old name of ``surpyval.ml`` (the survival
+tree and random survival forest, promoted in v0.27): it imports them, with
+a warning from :func:`beta_ml_alias`, until the first release on or after
+:data:`BETA_ML_REMOVED_AFTER`, the same day, so one removal clears both.
 """
 
 import datetime
 import functools
+import os
+import sys
 import warnings
 from collections.abc import Callable
+from types import FrameType
 from typing import Any, TypeVar
 
 __all__ = [
@@ -38,6 +45,9 @@ __all__ = [
     "DATA_FUNCTIONS_REMOVED_AFTER",
     "DATED_DATA_FUNCTIONS",
     "dated_data_function",
+    "BETA_ML_DEPRECATED_ON",
+    "BETA_ML_REMOVED_AFTER",
+    "beta_ml_alias",
     "REMOVED_IN",
     "REMOVED_IN_NEXT",
     "SCHEDULED_REMOVALS",
@@ -120,6 +130,55 @@ def dated_data_function(name: str) -> Any:
         stacklevel=3,
     )
     return getattr(import_module("surpyval.utils.data_formats"), name)
+
+
+#: The day the survival tree and random survival forest were promoted
+#: from ``surpyval.beta.ml`` to ``surpyval.ml`` (DECISIONS.md, 2026-11-03).
+BETA_ML_DEPRECATED_ON = datetime.date(2026, 11, 4)
+
+#: The first release on or after it drops ``surpyval.beta.ml``: the day
+#: the top-level data-format functions go, so one removal clears both.
+BETA_ML_REMOVED_AFTER = datetime.date(2027, 4, 12)
+
+_IMPORTLIB_INIT = os.path.join("importlib", "__init__.py")
+
+
+def _import_stacklevel(*files: str) -> int:
+    """The ``stacklevel`` that points a warning raised while a module is
+    imported at the ``import`` that asked for it: past this module, the
+    modules in ``files`` (the one being imported) and
+    ``importlib.import_module``. The import machinery's own frames
+    (``importlib._bootstrap``) are not counted: ``warnings.warn`` skips
+    those itself. Python 3.12's ``skip_file_prefixes`` does this; 3.11 is
+    supported."""
+    skip = (__file__,) + files
+    level = 1
+    frame: FrameType | None = sys._getframe(1)
+    while frame is not None:
+        name = frame.f_code.co_filename
+        if name in skip or name.endswith(_IMPORTLIB_INIT):
+            level += 1
+        elif not ("importlib" in name and "_bootstrap" in name):
+            break
+        frame = frame.f_back
+    return level
+
+
+def beta_ml_alias(module_file: str) -> None:
+    """Warn, from the body of ``surpyval.beta.ml`` (``module_file`` its
+    ``__file__``), that it is the old name of ``surpyval.ml``: a
+    FutureWarning, as :func:`dated_data_function`'s, pointing at the
+    import statement that loaded it rather than at the import machinery.
+    Once per interpreter, since a module body runs once."""
+    warnings.warn(
+        "surpyval.beta.ml is deprecated since "
+        f"{BETA_ML_DEPRECATED_ON.isoformat()} and will be removed in the "
+        f"first release on or after {BETA_ML_REMOVED_AFTER.isoformat()}; "
+        "it is now surpyval.ml (from surpyval.ml import SurvivalTree, "
+        "RandomSurvivalForest).",
+        FutureWarning,
+        stacklevel=_import_stacklevel(module_file),
+    )
 
 
 def scheduled_removal(name: str, advice: str, stacklevel: int = 3) -> None:

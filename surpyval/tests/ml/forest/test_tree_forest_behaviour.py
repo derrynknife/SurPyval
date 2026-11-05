@@ -22,8 +22,8 @@ import numpy as np
 import pytest
 
 from surpyval import Weibull
-from surpyval.beta.ml.forest import RandomSurvivalForest, SurvivalTree
-from surpyval.beta.ml.forest.node import IntermediateNode, TerminalNode
+from surpyval.ml.forest import RandomSurvivalForest, SurvivalTree
+from surpyval.ml.forest.node import IntermediateNode, TerminalNode
 from surpyval.tests._helpers import tree_leaves
 from surpyval.univariate.parametric import NeverOccurs
 

@@ -17,7 +17,7 @@ censoring flag, ``n`` the counts and ``t`` the truncation (``xcnt``).
 
 The regression, competing-risks, recurrent-event and degradation models
 and the metrics load on first use; ``surpyval.recurrent``,
-``surpyval.degradation``, ``surpyval.multivariate``,
+``surpyval.degradation``, ``surpyval.multivariate``, ``surpyval.ml``,
 ``surpyval.life_models``, ``surpyval.metrics`` and ``surpyval.datasets``
 hold the rest. ``help(surpyval.Weibull)`` and the other classes document
 each model, with examples.
@@ -136,9 +136,11 @@ from surpyval.utils.removed_names import (  # isort: skip
 # generically named copulas (`surpyval.multivariate.Gaussian`, `Frank`,
 # ...). Competing risks lives under each paradigm it applies to:
 # `surpyval.univariate.competing_risks` and
-# `surpyval.recurrent.competing_risks`. Pre-stable models live in
-# `surpyval.beta` (functionally complete, interface not yet stable --
-# the survival tree and random survival forest in `surpyval.beta.ml`).
+# `surpyval.recurrent.competing_risks`. The survival tree and random
+# survival forest live in `surpyval.ml` (promoted from the beta tier,
+# `surpyval.beta.ml`, in v0.27; the old name still imports them, with a
+# warning, until the first release on or after 12 April 2027). The beta
+# tier, `surpyval.beta`, is empty.
 _LAZY = {
     **dict.fromkeys(
         (
@@ -404,6 +406,7 @@ if TYPE_CHECKING:
         degradation,
         life_models,
         metrics,
+        ml,
         plotting,
         recurrent,
         test_planning,
@@ -478,15 +481,16 @@ if TYPE_CHECKING:
 
 # The subpackages ``import surpyval`` used to import, so that
 # ``surpyval.recurrent.laplace`` works without an import of its own, and
-# ``surpyval.life_models``; and ``surpyval.datasets``, whose loaders the
-# docs call as ``surpyval.datasets.load_...()`` (#653). Each is imported on
-# first use.
+# ``surpyval.life_models``; ``surpyval.datasets``, whose loaders the
+# docs call as ``surpyval.datasets.load_...()`` (#653); and
+# ``surpyval.ml``. Each is imported on first use.
 _SUBPACKAGES = (
     "bayes",
     "datasets",
     "degradation",
     "life_models",
     "metrics",
+    "ml",
     "plotting",
     "recurrent",
     "test_planning",
@@ -509,6 +513,7 @@ _ELSEWHERE = {
     **dict.fromkeys(
         ["TrendTestResult", "laplace", "mil_hdbk_189c"], "surpyval.recurrent"
     ),
+    **dict.fromkeys(["RandomSurvivalForest", "SurvivalTree"], "surpyval.ml"),
     **dict.fromkeys(
         [
             "AMH",

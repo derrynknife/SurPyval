@@ -320,6 +320,16 @@ Unreleased
 
 **Changed.**
 
+- **The survival tree and random survival forest are stable**:
+  ``surpyval.beta.ml`` is now ``surpyval.ml`` (``from surpyval.ml import
+  SurvivalTree, RandomSurvivalForest``), with the stability promise,
+  deprecation cycle and conformance checks of the rest of the package;
+  the models themselves, their fits and their numbers are unchanged. The
+  old name still imports them, with a ``FutureWarning`` at the import,
+  until the first release on or after 12 April 2027 (the day the
+  top-level data-format functions go), and a tree or forest saved by
+  0.26 (``to_json``, ``to_dict`` or a pickle) still loads. The beta tier,
+  ``surpyval.beta``, is empty.
 - **The sign of a distributional regression's coefficients is reversed
   on scale and location parameters** (``WeibullDistributional`` and every
   ``Distributional(dist)``). In 0.26 every coefficient took its link's

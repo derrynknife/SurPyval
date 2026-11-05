@@ -16,7 +16,7 @@ import pandas as pd
 import pytest
 
 import surpyval
-from surpyval.beta.ml import RandomSurvivalForest, SurvivalTree
+from surpyval.ml import RandomSurvivalForest, SurvivalTree
 
 
 def _frame(n=200, seed=0):

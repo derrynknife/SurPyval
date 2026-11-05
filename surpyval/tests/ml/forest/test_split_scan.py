@@ -21,8 +21,8 @@ import numpy as np
 import pytest
 
 import surpyval as sp
-from surpyval.beta.ml.forest import deviance_split as dev
-from surpyval.beta.ml.forest.log_rank_split import (
+from surpyval.ml.forest import deviance_split as dev
+from surpyval.ml.forest.log_rank_split import (
     _LogRankScan,
     log_rank,
     log_rank_split,
@@ -88,7 +88,7 @@ def test_scan_matches_per_candidate_search(seed):
 @pytest.mark.parametrize("seed", range(0, 60, 7))
 @pytest.mark.parametrize("block", [None, 5])
 def test_scan_statistics_bit_identical(seed, block, monkeypatch):
-    import surpyval.beta.ml.forest.log_rank_split as module
+    import surpyval.ml.forest.log_rank_split as module
 
     if block is not None:
         # Blocks of a few rows: the carried running totals
@@ -135,7 +135,7 @@ def _large_case(seed, N=600):
 def test_549_sorted_scan_matches_log_rank(seed):
     # The O(N log N) scan of a large node gives log_rank's statistic for
     # every threshold to rounding, and exactly the same undefined ones.
-    import surpyval.beta.ml.forest.log_rank_split as module
+    import surpyval.ml.forest.log_rank_split as module
 
     data, Z = _large_case(seed)
     Z_u = Z[:, 0]
@@ -166,7 +166,7 @@ def test_549_large_node_is_not_scanned_densely(monkeypatch):
     # The dense scan holds a (rows x event times) matrix per threshold
     # block: quadratic in the node's size, 485 s for a 20-tree forest of
     # 10,000 rows. A large node is scored without it.
-    import surpyval.beta.ml.forest.log_rank_split as module
+    import surpyval.ml.forest.log_rank_split as module
 
     sizes = []
     dense = module._LogRankScan._left_counts

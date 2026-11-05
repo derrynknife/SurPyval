@@ -27,13 +27,13 @@ import numpy as np
 import pytest
 
 from surpyval import NelsonAalen
-from surpyval.beta.ml.forest import RandomSurvivalForest, SurvivalTree
-from surpyval.beta.ml.forest.log_rank_split import (
+from surpyval.ml.forest import RandomSurvivalForest, SurvivalTree
+from surpyval.ml.forest.log_rank_split import (
     at_risk_on_grid,
     deaths_on_grid,
     log_rank_split,
 )
-from surpyval.beta.ml.forest.turnbull_score_split import (
+from surpyval.ml.forest.turnbull_score_split import (
     log_rank_scores,
     turnbull_score,
     turnbull_score_split,

@@ -15,8 +15,8 @@ import io
 import numpy as np
 import pytest
 
-from surpyval.beta.ml import RandomSurvivalForest, SurvivalTree
 from surpyval.metrics import survival_probability
+from surpyval.ml import RandomSurvivalForest, SurvivalTree
 
 FUNCTIONS = ["sf", "ff", "df", "hf", "Hf"]
 XS = np.array([2.0, 5.0, 8.0])

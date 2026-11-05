@@ -7,7 +7,7 @@ tests/utils/test_event_history_data_rename.py).
 
 An old argument name is now an unknown argument, so the call raises
 Python's own ``TypeError``; an old attribute is gone (``AttributeError``);
-``surpyval.experimental`` (use ``surpyval.beta.ml``) and
+``surpyval.experimental`` (use ``surpyval.ml``) and
 ``surpyval.utils.score`` (use ``surpyval.metrics.concordance_index``) no
 longer exist, and the life models' old top-level names say where they
 are. A few representative old names from each area are checked here; the
@@ -20,10 +20,12 @@ removal is not forgotten.
 """
 
 import ast
+import datetime
 import importlib
 import re
 import subprocess
 import sys
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -410,10 +412,71 @@ def test_experimental_alias_is_gone():
     with pytest.raises(ImportError):
         importlib.import_module("surpyval.experimental")
     assert not hasattr(sp, "experimental")
-    # Its contents live in surpyval.beta.ml.
-    from surpyval.beta.ml import RandomSurvivalForest, SurvivalTree
+    # Its contents live in surpyval.ml.
+    from surpyval.ml import RandomSurvivalForest, SurvivalTree
 
     assert SurvivalTree is not None and RandomSurvivalForest is not None
+
+
+def test_beta_ml_is_the_old_name_of_ml():
+    # surpyval.beta.ml, the tier the tree and forest were promoted from in
+    # v0.27, still imports them, with one FutureWarning at the import that
+    # asked for it (the dates are BETA_ML_DEPRECATED_ON and
+    # BETA_ML_REMOVED_AFTER), and keeps the old submodule names: a pickle
+    # made by 0.26 names surpyval.beta.ml.forest.tree.SurvivalTree.
+    import io
+    import pickle
+
+    import surpyval.ml as ml
+
+    sys.modules.pop("surpyval.beta.ml", None)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        import surpyval.beta.ml as old
+    assert len(caught) == 1
+    assert caught[0].category is FutureWarning
+    message = str(caught[0].message)
+    assert "surpyval.beta.ml is deprecated since 2026-11-04" in message
+    assert "first release on or after 2027-04-12" in message
+    assert "from surpyval.ml import SurvivalTree" in message
+    # The warning points at the import, not at the import machinery.
+    assert caught[0].filename == __file__
+    assert old.SurvivalTree is ml.SurvivalTree
+    assert old.RandomSurvivalForest is ml.RandomSurvivalForest
+    assert old.forest is ml.forest
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # a second import is silent
+        node = importlib.import_module("surpyval.beta.ml.forest.node")
+        tree = importlib.import_module("surpyval.beta.ml.forest.tree")
+    assert tree.SurvivalTree is ml.SurvivalTree
+    assert node.TerminalNode is ml.forest.node.TerminalNode
+    unpickler = pickle.Unpickler(io.BytesIO())
+    assert (
+        unpickler.find_class("surpyval.beta.ml.forest.tree", "SurvivalTree")
+        is ml.SurvivalTree
+    )
+    assert (
+        unpickler.find_class(
+            "surpyval.beta.ml.forest.forest", "RandomSurvivalForest"
+        )
+        is ml.RandomSurvivalForest
+    )
+
+
+@pytest.mark.skipif(
+    not (Path(sp.__file__).resolve().parent.parent / ".git").exists(),
+    reason="a reminder for SurPyval's own repository: an installed copy "
+    "keeps working past the date",
+)
+def test_beta_ml_removal_is_not_overdue():
+    # Fails from the removal date on: the first release on or after it
+    # removes surpyval.beta.ml (and surpyval.beta with it, once empty).
+    assert datetime.date.today() < deprecation.BETA_ML_REMOVED_AFTER, (
+        "surpyval.beta.ml, deprecated on "
+        f"{deprecation.BETA_ML_DEPRECATED_ON}, is due for removal: delete "
+        "surpyval/beta, beta_ml_alias and its constants in "
+        "surpyval.utils.deprecation, and this test."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -439,14 +502,19 @@ _SHIM_NAMES = frozenset(
 _SCHEDULED_NAMES = frozenset({"SCHEDULED_REMOVALS", "scheduled_removal"})
 
 # The deprecation helpers removed by date rather than by release (the
-# top-level data-format functions): test_dated_removal_is_not_overdue
-# (tests/utils/test_surpyval_data_api.py) fails when they are due.
+# top-level data-format functions, and surpyval.beta.ml, the old name of
+# surpyval.ml): test_dated_removal_is_not_overdue
+# (tests/utils/test_surpyval_data_api.py) and
+# test_beta_ml_removal_is_not_overdue fail when they are due.
 _DATED_NAMES = frozenset(
     {
         "DATA_FUNCTIONS_DEPRECATED_ON",
         "DATA_FUNCTIONS_REMOVED_AFTER",
         "DATED_DATA_FUNCTIONS",
         "dated_data_function",
+        "BETA_ML_DEPRECATED_ON",
+        "BETA_ML_REMOVED_AFTER",
+        "beta_ml_alias",
     }
 )
 

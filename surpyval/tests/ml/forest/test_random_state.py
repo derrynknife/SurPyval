@@ -13,8 +13,8 @@ package's seed rule (Design Principle 19):
 import numpy as np
 import pytest
 
-from surpyval.beta.ml.forest import RandomSurvivalForest, SurvivalTree
-from surpyval.beta.ml.forest.node import IntermediateNode, TerminalNode
+from surpyval.ml.forest import RandomSurvivalForest, SurvivalTree
+from surpyval.ml.forest.node import IntermediateNode, TerminalNode
 
 X_QUERY = np.array([1.0, 4.0, 9.0])
 
