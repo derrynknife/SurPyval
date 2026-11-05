@@ -356,6 +356,8 @@ def test_657_wrong_covariate_width_is_named(name):
     if hasattr(model, "cb"):
         with pytest.raises(ValueError, match=WIDTH):
             model.cb([5.0], [1.0, 2.0, 3.0])
+    if hasattr(model, "quantile_cb"):
+        # The Cox model has cb but no quantile_cb or mean
         with pytest.raises(ValueError, match=WIDTH):
             model.quantile_cb([0.5], [1.0, 2.0, 3.0])
         with pytest.raises(ValueError, match=WIDTH):

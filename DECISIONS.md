@@ -23,6 +23,41 @@ Design decisions made while working on the open issues, with the reason for each
 | The standard errors include the censoring Kaplan-Meier's own variability (`Score(conservative = FALSE)`), through its Nelson-Aalen expansion with everyone with `x >= s` at risk, as `riskRegression` and `timeROC` do; `se = sd(IF) / sqrt(n)` with the `n - 1` standard deviation, as `Score`. The censoring distribution is the scored data's own (no `x_train`): a separate one would need another variance term. | proposed | Matches `Score` to rounding (1e-13) with and without ties. | done (gap: `x_train`) |
 | Intervals of the scores are clipped to [0, 1] and those of the differences are not; each model is compared with every model before it (model minus reference), as `Score`'s contrasts. | proposed | `Score`'s conventions, so the numbers can be checked against it. | done |
 
+### Pseudo-observations and the regressions on them
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The coefficients of `pseudo_regression` take SurPyval's sign (a positive coefficient means a shorter life) on every quantity: the survival regressions model the event probability `1 - S(t)` (cloglog: `log(-log S(t)) = a(t) + b'Z`, the proportional-hazards reading; logit: the log-odds of failing by `t`), the cumulative-incidence regressions the cause's incidence, and the RMST regression is `g(RMST) = a - b'Z`, so an identity-link coefficient is minus the RMST difference and a log-link one minus the log ratio. R's `geeglm` on `pseudomean` reports the RMST coefficients with the other sign; the reference tests flip it. | proposed | The maintainer's one sign convention (2026-11-03, "One sign convention") for new models. How it applies on a scale that is not a hazard or a time (a mean, a probability) was not settled; modelling the event probability makes it the natural sign for the survival and incidence models, and the minus sign in the RMST model is the conservative reading of the rule. The alternative is the RMST's own sign (positive = longer), as R and `survRM2`. | proposed |
+| Rows with a missing covariate are dropped (with the usual warning) before the pseudo-values are computed, so the Kaplan-Meier estimate is that of the analysed units. | principle (missing values) | The package's fitting rule; R's usual practice computes them on every unit and then drops rows in `geeglm`. The reference tests use complete data. | done |
+| Gaussian working variance (each pseudo-value weighs the same) and the robust sandwich `A^-1 B A^-1` with no small-sample factor; counts `n` are copies (each its own cluster). | principle 16 | `geepack::geeglm(..., family = gaussian, corstr = "independence")`, the reference, and the literature's default. | done |
+| Delayed entry, left and interval censoring and times past the last observation are refused with a message; there is no `w` argument (sampling weights) yet. | proposed | Leave-one-out estimates of truncated or interval-censored samples do not give pseudo-values with the right expectation without further work. | open |
+
+### Confidence bounds on a Cox model's predicted curve
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `SemiParametricRegressionModel.cb(x, Z, stratum, on, alpha_ci, bound, bound_type, method)` bounds `sf`, `ff` and `Hf` with the variance of R's `survfit.coxph` (`std.err`: Tsiatis's baseline variance plus the coefficients' part, the Efron form after an Efron fit, weighted with the robust covariance for a weighted fit). `bound_type` takes R's `conf.type` names, `"log"`, `"log-log"` and `"plain"`, and defaults to `"log"`, R's default; the non-parametric estimates' `"exp"` and `"normal"` are accepted as `"log-log"` and `"plain"`. | proposed | The task is R parity, and `"log"` is what `survfit(fit, newdata)` prints. The non-parametric estimates and Aalen's model default to the log-log scale (`"exp"`), so the option's default differs between models; the maintainer may prefer one default everywhere. | done |
+| Only Wald bounds (`method="wald"`); `"lr"` and `"bootstrap"` refuse, naming the fix (refit to resampled rows). `hf` and `df` (the baseline's jumps) have no bounds; nor has `qf` (no `quantile_cb` yet). | proposed | The baseline has no likelihood for a likelihood-ratio bound; R has no bound on the jumps either. | done (gaps recorded) |
+| A model restored by `from_dict` and a penalised fit refuse `cb`: the variance needs the fitted rows, which a dict does not keep, and a penalised fit has no covariance. | proposed | Storing the running sums in `to_dict` is possible later; refusing keeps the saved format unchanged. | done (gap recorded) |
+
+### Comparing two MCFs (`recurrent.mcf_diff`)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `mcf_diff(model_a, model_b)` takes two fitted `NonParametricCounting` estimates, as `sf_diff` takes two survival fits and `reda::mcfDiff` two `mcf` objects; a model without per-item data (`from_xrd`, `from_dict`, simulated) is refused, since neither the robust variance nor the tests can be computed from it. | proposed | The groups' fits already carry the data, late entry and windows; a group-label signature would duplicate `fit`'s arguments. | done |
+| The difference is estimated only from the later origin to the end of the shorter follow-up and is NaN outside it; `reda::mcfDiff` carries the shorter group's MCF at its last value. | proposed | The MCF itself is NaN past its last observed time (no claim that no events happen after it); the reference tests compare reda's values on the shared range. | done |
+| The pointwise bounds of the difference are Wald bounds only (no log scale), and there is no simultaneous band. | proposed | A difference can be negative; a band is a further feature. | done (band a gap) |
+
+### Interval-censored log-rank and Wilcoxon tests: `interval_logrank`
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A function of its own, `interval_logrank`, not new paths in `logrank`. `logrank` keeps refusing left and interval-censored data (and now a two-column `x`), with a message naming `interval_logrank`; its results do not change. | proposed | The tests differ in kind: `logrank`'s weightings, strata, `t0`, `w` and hypergeometric variance have no counterpart in the score tests on the pooled Turnbull estimate, whose variance is the permutation one. Switching method on the shape of the data would change a result when one interval row is added. | done |
+| Scores `"log-rank"` (Sun's; the default, as R's `ictest`), `"finkelstein"` and `"wilcoxon"`; R's names `logrank1`, `logrank2`, `wmw` are accepted. | proposed | Sun's scores are the usual log-rank scores on exact and right censored data (each group's score sum is the observed minus expected events; tested). | done |
+| The asymptotic p-value is the k-sample permutation chi-squared (R's `method = "pclt"`); `method="permutation"` is a Monte Carlo test of the same statistic, `(1 + count) / (1 + B)`, seeded by `random_state`. For two groups this is two-sided by the absolute statistic (R's `tsmethod = "abs"`), not R's default doubling of the smaller one-sided p-value. No exact enumeration and no score-form (`method = "scoretest"`) variance. | proposed | One statistic for any number of groups; the doubled one-sided p-value is defined for two groups only. | done |
+| Truncated data (finite `tl` or `tr`) are refused, pointing to `logrank` with `tl`. | proposed | The permutation argument needs exchangeable units, which delayed entry breaks; R's `ictest` takes no truncation either. | done |
+| The pooled NPMLE is the EM-ICM with `tol = 1e-12` (the Karush-Kuhn-Tucker gap) by default, tighter than `Turnbull.fit`'s 1e-10, and warns if it does not converge. | proposed | The statistic moves with the NPMLE's convergence; R's default `epsilon = 1e-6` moves it by about 1e-8 relative. | done |
+
 ## 2026-11-04
 
 ### Crow Extended projection: bias-corrected or plain shapes

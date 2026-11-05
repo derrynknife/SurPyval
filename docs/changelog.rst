@@ -17,6 +17,73 @@ Unreleased
   ``compare`` to 1e-9 on two synthetic sets (one with tied times) and Cox
   models of ``veteran``. ``brier_score``, ``integrated_brier_score`` and
   ``auc_td`` are unchanged.
+- Pseudo-observations and regression on them: ``pseudo_survival``,
+  ``pseudo_rmst`` and ``pseudo_cif`` give the jackknife (leave-one-out)
+  pseudo-values of the Kaplan-Meier survival at chosen times, of the
+  restricted mean survival time to ``tau`` and of a cause's Aalen-Johansen
+  cumulative incidence; ``pseudo_regression`` (and
+  ``pseudo_regression_from_df``) fits survival-probability (cloglog or
+  logit link), RMST (identity or log) and cumulative-incidence (cloglog or
+  logit) regressions to them by estimating equations with robust
+  (sandwich) standard errors, returning a ``PseudoRegressionResult``
+  (``coef``, ``se``, ``ci``, ``p``, ``summary()``, ``predict``,
+  ``predict_cb``, ``to_dict()``). A positive coefficient means a shorter
+  life: the survival models are on ``1 - S(t)`` and the RMST model is
+  ``g(RMST) = a - b'Z``. Checked against R's ``pseudo`` (``pseudosurv``,
+  ``pseudomean``, ``pseudoci``, to 1e-8) and ``geepack::geeglm`` with an
+  independence working model (coefficients and robust standard errors, to
+  1e-6) on ``lung``, ``ovarian``, the PBC trial and a seeded
+  competing-risks set. Guide: Pseudo-Observations.
+- Confidence bounds on a Cox model's predicted curve:
+  ``SemiParametricRegressionModel.cb(x, Z)`` bounds the predicted ``sf``,
+  ``ff`` or ``Hf`` at covariates ``Z``, with the variance of the baseline
+  and of the coefficients (Tsiatis 1981, Link 1984: R's ``survfit(fit,
+  newdata)`` ``std.err``), under Efron's or Breslow's ties, with case
+  weights (the robust covariance), for stratified fits (``stratum=``) and
+  for start-stop data. ``bound_type`` is R's ``conf.type``: ``"log"``
+  (the default, as R's), ``"log-log"`` or ``"plain"``. The bounds agree
+  with R ``survival`` 3.8.12 to about 1e-9 on ``lung``, ``ovarian`` and
+  ``heart`` (``scripts/reference/reference_r_cox_curve.R``).
+  ``plot_partial_effects(plot_bounds=True)`` now draws them for a Cox
+  model, which refused before. The conformance bound sweeps include them.
+  A model restored by ``from_dict`` (which does not keep its data) and a
+  penalised fit refuse them.
+
+- ``surpyval.recurrent.mcf_diff``: compares two groups' mean cumulative
+  functions, each fitted with ``NonParametricCounting.fit``. It returns an
+  ``MCFDiffResult`` with the difference of the MCFs at each time and its
+  pointwise confidence bounds (``diff``, ``diff_cb``, ``plot``; the sum of
+  the groups' Lawless-Nadeau robust variances), and the pseudo-score tests
+  of Cook, Lawless and Nadeau (1996) of whether the groups' event rates
+  differ, with constant and linear weights and a robust (default) or
+  Poisson variance. Late entry and gapped observation are taken as the MCF
+  takes them. Checked against R's ``reda::mcfDiff`` and
+  ``reda::mcfDiff.test`` on two seeded data sets (agreement about 1e-14).
+- ``interval_logrank``: log-rank and Wilcoxon-type tests of groups of
+  interval-censored data (any mix of exact, right, left and interval-censored
+  rows, as ``x``/``c``, a two-column ``x`` or ``xl``/``xr``). Each unit is
+  scored from the Turnbull estimate of the pooled data, with Sun's
+  log-rank scores (the default), Finkelstein's, or the Wilcoxon-type
+  scores, and the score sums are compared by their permutation
+  distribution: a chi-squared p-value, or a Monte Carlo permutation one
+  (``method="permutation"``, seeded by ``random_state``). Returns an
+  ``IntervalLogRankResult`` with ``to_dict()``. Matches R's
+  ``interval::ictest(..., method = "pclt")`` to 1e-8 on the breast cosmesis
+  data and on simulated three-group data. Truncated data are refused.
+  ``logrank`` given left or interval-censored data, or a two-column ``x``,
+  now says to use it; its results are unchanged.
+- ``Parametric.likelihood_contour(alpha_ci, n_points)``: the joint
+  likelihood-ratio confidence region of a fit's two parameters, the
+  contour where the log-likelihood is half the chi-squared (two degrees of
+  freedom) critical value below its maximum, found by root finding along
+  rays from the estimate, with each parameter's exact extremes over the
+  region (``bounds``). It returns a ``LikelihoodContour`` with
+  ``to_dict()``. ``surpyval.plot_likelihood_contour`` draws one or more
+  fits' contours at one or several levels, with the estimates marked, to
+  compare two samples. Models with other than two fitted parameters,
+  offset, limited-failure and zero-inflated models, and weighted fits are
+  refused with a message saying what to use. Checked against WeibullR's
+  ``MLEcontour`` and the profile likelihood solved in base R.
 - ``CrowAMSAA.projection(..., bias_corrected=True)``: ``False`` uses the
   plain maximum-likelihood shapes in the demonstrated intensity and in the
   rate of new BD modes, as the worked example of MIL-HDBK-189C (section

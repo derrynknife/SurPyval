@@ -39,12 +39,14 @@ system as it was just before the failure ("as bad as old").
 Non-Parametric Models
 ---------------------
 
-The mean cumulative function estimated without assuming a process.
+The mean cumulative function estimated without assuming a process, and
+the comparison of two groups' MCFs.
 
 .. toctree::
     :maxdepth: 1
 
     counting/nonparametric_mcf
+    counting/mcf_diff
 
 Renewal Models
 --------------
