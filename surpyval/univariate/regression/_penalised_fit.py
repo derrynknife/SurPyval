@@ -70,7 +70,7 @@ def fit_parametric_penalised(
 
     def build(scale: npt.NDArray, N: float) -> PenalisedObjective:
         # The likelihood of the covariates divided by their scale, over N.
-        scaled = _intervals_from_the_support(fitter, data)
+        scaled = intervals_from_the_support(fitter, data)
         scaled.add_covariates(Z_arr / scale)
         pmap = built["pmap"] = coefficient_map(Z_arr, fitter.param_map)
         param_map = {
@@ -140,7 +140,7 @@ def fit_parametric_penalised(
     return model
 
 
-def _intervals_from_the_support(fitter: Any, data: SurpyvalData) -> Any:
+def intervals_from_the_support(fitter: Any, data: SurpyvalData) -> Any:
     """A copy of ``data`` for the penalised objective, with each interval
     that starts at (or below) the lower end of the baseline's support
     written as the left-censored row it is: ``F(xr) - F(lower)`` is
