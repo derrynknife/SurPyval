@@ -85,6 +85,7 @@ from typing import Any
 import numpy as np
 from scipy.stats import chi2
 
+from ._shared import _fmt
 from .registry import AdviceRule, Check, Context, Family, Panel, register
 
 #: The fewest failures a stress level needs to enter the shape and
@@ -130,10 +131,6 @@ SHAPED = ("Weibull", "Normal", "Gumbel", "Logistic", "LogNormal", "Gamma")
 # ---------------------------------------------------------------------------
 # What the checks share
 # ---------------------------------------------------------------------------
-def _fmt(value: float) -> str:
-    return f"{value:.3g}"
-
-
 def _level_text(level: np.ndarray) -> str:
     level = np.atleast_1d(level)
     if level.size == 1:
