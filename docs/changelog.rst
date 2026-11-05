@@ -30,6 +30,21 @@ Unreleased
   Clopper-Pearson default. Checked against R's ``binom.test``, ``qbeta``
   and ``binom::binom.confint`` to 1e-10; the coverage study
   (``scripts/studies/probability_coverage.py``) is on the Bernoulli page.
+- ``ParametricCompetingRisks`` carries its parameters' uncertainty:
+  ``params`` and ``parameter_names`` (``"<cause>: <name>"``),
+  ``covariance_names``, ``covariance()`` (the causes' covariances on the
+  diagonal, exact since the likelihood factorises by cause, ``lfp_p`` and
+  ``f0`` rows included) and ``standard_errors()``; ``with_params(params)``
+  rebuilds the model from a vector in that order (or the shorter
+  ``params``), so draws from the covariance can be propagated; and
+  ``cb(x, event=None, on="cif")`` gives Wald bounds on each cause's
+  cumulative incidence (logit scale) and on the all-cause ``sf``, ``ff``
+  and ``Hf`` (one bound on ``log H``), with a cause's net functions
+  bounded by its own model (likelihood-ratio and bootstrap too). Per-cause
+  fits and the cumulative incidence match R's ``flexsurv`` (estimates to
+  1e-6, covariance to 1e-4, CIF to 1e-6); a 1000-replicate study covers
+  0.936 to 0.962 at 95%
+  (``scripts/studies/parametric_competing_risks_cb_coverage.py``).
 - ``ParametricCompetingRisks`` gives the lifetime of the whole unit (its
   first failure from any cause): ``df(x)``, the all-cause density
   :math:`S(t)\sum_k h_k(t)`; ``mean()``, the all-cause MTTF by quadrature
