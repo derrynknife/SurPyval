@@ -477,7 +477,9 @@ has a cure fraction):
 
 The other methods follow the same conventions as ``CompetingRisks``:
 ``hf``/``Hf`` take an optional ``event`` (cause-specific) and otherwise sum over
-causes; ``sf`` and ``ff`` are the all-cause survival and failure probability;
+causes; ``sf`` and ``ff`` are the all-cause survival and failure probability,
+and with ``event=k`` the net survival and failure probability of cause ``k``
+alone (its own model, as if the other causes were removed);
 ``iif(x, event)`` is the sub-distribution density; and ``cif(x)`` without an
 ``event`` is the all-cause incidence ``1 - sf``. ``cif`` returns a float for a
 scalar time:
@@ -520,6 +522,123 @@ how="MLE")``; ``how`` is passed to each cause's distribution fit.
     assert pmodel.bic() < all_weibull.bic()
     assert sum(e == "wear") == 83 and sum(e == "shock") == 106
     assert np.isclose(pmodel.bic(), 2 * pmodel.neg_ll() + 3 * np.log(189))
+
+Lifetime of the whole unit: MTTF and B-lives
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A unit's life ends at its first failure from any cause, so the questions
+"how long does a unit last on average?" (the mean time to failure, MTTF) and
+"by when have 10% failed?" (the B10 life) are about the all-cause
+lifetime. The fitted model answers them with ``mean()`` and ``qf(p)``, and
+``df(x)`` gives the density of that lifetime.
+
+In formulas: the all-cause survival is the product of the causes' survivals,
+:math:`S(t) = \prod_k S_k(t)`, its density is
+:math:`f(t) = S(t)\sum_k h_k(t)`, and
+
+.. math::
+    \mathrm{MTTF} = \int_0^\infty S(t)\,dt, \qquad
+    B_{10} = F^{-1}(0.1) = H^{-1}\!\left(-\log 0.9\right),
+
+with :math:`H = \sum_k H_k`. Neither has a closed form in general, so the
+mean is integrated numerically and the quantile found by root finding on the
+cumulative hazard (which keeps its precision far into the upper tail).
+
+.. jupyter-execute::
+
+    print("MTTF          : %.2f" % pmodel.mean())
+    print("B10 life      : %.2f" % pmodel.qf(0.1))
+    print("median life   : %.2f" % pmodel.qf(0.5))
+    print("net B10, wear : %.2f" % pmodel.qf(0.1, event="wear"))
+
+The net B10 of wear-out alone, ``qf(0.1, event="wear")``, is much later: it is
+the B10 a unit would have if shocks could not happen. The all-cause figures are
+the ones that describe the units actually in service.
+
+If a cause has a cure (limited-failure) fraction, some units never fail, so
+the MTTF is infinite and a quantile above the share that ever fails is
+infinite too; ``mean(defective=True)`` gives :math:`\int t\,dF(t)` over the
+units that fail, as ``Parametric.mean`` does.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _b10 = pmodel.qf(0.1)
+    assert np.isclose(pmodel.ff(_b10), 0.1)
+    assert pmodel.qf(0.1, event="wear") > _b10
+    from scipy.integrate import quad
+    _area = quad(lambda t: float(pmodel.sf(t)), 0, np.inf, limit=200)[0]
+    assert np.isclose(_area, pmodel.mean(), rtol=1e-8)
+
+How sure are these numbers? Bands and parameter uncertainty
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Every number above comes from parameters estimated from a sample, so each
+has sampling error. ``cb`` gives a confidence band: with 95% confidence the
+true cumulative incidence of a cause, or the all-cause survival, lies
+between its two curves at each time. A narrow band says the data pin the
+curve down; a wide one says more failures are needed.
+
+.. jupyter-execute::
+
+    for k, colour in [("wear", "C0"), ("shock", "C1")]:
+        band = pmodel.cb(t_plot, k)          # on="cif" is the default
+        plt.plot(t_plot, pmodel.cif(t_plot, k), color=colour, label=k)
+        plt.fill_between(t_plot, band[:, 0], band[:, 1], color=colour,
+                         alpha=0.2)
+    plt.xlabel("Time")
+    plt.ylabel("Cumulative incidence (95% band)")
+    plt.legend()
+
+.. jupyter-execute::
+
+    print("CIF wear at 100   : %.3f, 95%% band %s"
+          % (pmodel.cif(100.0, "wear"), pmodel.cb(100.0, "wear").round(3)))
+    print("survival at 100   : %.3f, 95%% band %s"
+          % (pmodel.sf(100.0), pmodel.cb(100.0, on="sf").round(3)))
+
+How the band is made: the fit's parameter covariance, ``covariance()``,
+holds every cause's parameters, named by ``covariance_names``
+(``"wear: alpha"``, ...). It is block diagonal, because each cause is
+estimated from its own part of the likelihood. The delta method carries it
+to the curve on a scale that keeps the band in range: the logit of the
+cumulative incidence, and the log of the all-cause cumulative hazard for
+``sf``, ``ff`` and ``Hf``. ``cb(x, event=k, on="sf")`` is cause ``k``'s net
+survival, whose band is its own model's (likelihood-ratio bands too, with
+``method="lr"``). A simulation study,
+``scripts/studies/parametric_competing_risks_cb_coverage.py``, checks that
+the 95% bands cover about 95% of the time.
+
+For a number with no ``cb`` of its own, such as the MTTF or the B10 life,
+draw parameter vectors from the covariance and rebuild the model at each
+with ``with_params``; the spread of the number over the draws shows its
+uncertainty. This rests on the same normal approximation as the bands:
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(1)
+    draws = rng.multivariate_normal(pmodel._estimates(), pmodel.covariance(),
+                                    size=300)
+    mttf, b10 = [], []
+    for d in draws:
+        other = pmodel.with_params(d)
+        mttf.append(other.mean())
+        b10.append(other.qf(0.1))
+    print("MTTF %.1f, 95%% range of the draws %s"
+          % (pmodel.mean(), np.percentile(mttf, [2.5, 97.5]).round(1)))
+    print("B10  %.1f, 95%% range of the draws %s"
+          % (pmodel.qf(0.1), np.percentile(b10, [2.5, 97.5]).round(1)))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _band = pmodel.cb(100.0, "wear")
+    assert _band[0] < pmodel.cif(100.0, "wear") < _band[1]
+    assert np.percentile(mttf, 2.5) < pmodel.mean() < np.percentile(mttf, 97.5)
+    assert np.percentile(b10, 2.5) < pmodel.qf(0.1) < np.percentile(b10, 97.5)
+    assert pmodel.covariance_names[0] == "shock: failure_rate"
 
 Assembling a model from separately fitted causes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

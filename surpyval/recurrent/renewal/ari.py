@@ -68,6 +68,79 @@ def ari_reduction(
     return rho * np.sum(weights * recent)
 
 
+def ari_gaps(
+    dist: Any,
+    dp: Any,
+    t0: np.ndarray,
+    reduction: np.ndarray,
+    energy: np.ndarray,
+    polish: bool = False,
+) -> np.ndarray:
+    """
+    The time ``x`` to the next failure of units at times ``t0`` with the
+    intensity reductions ``reduction`` in force, for the Exp(1) amounts
+    ``energy``: the root of ``Lambda_0(t0 + x) - Lambda_0(t0) - R x =
+    energy`` for the baseline intensity ``dist`` with parameters ``dp``.
+
+    The root is bracketed by doubling from 1 (60 times at most: a draw
+    still short of its energy then is the last bracket's end) and found by
+    ``solve_bracketed`` to an absolute 2e-12. The ARI sampler draws with
+    it (``energy = -log u``) and :meth:`RenewalModel.next_failure_qf`
+    inverts with it (``energy = -log1p(-p)``), with ``polish``: two
+    Newton steps on the root, each kept only where it brings the
+    equation closer to 0, take a small gap from 2e-12 to the double's
+    rounding.
+    """
+    from surpyval.utils.numeric import solve_bracketed
+
+    t0 = np.asarray(t0, dtype=float)
+    reduction = np.asarray(reduction, dtype=float)
+    energy = np.asarray(energy, dtype=float)
+    cif0 = np.asarray(dist.cif(t0, *dp), dtype=float)
+
+    def g(x: np.ndarray, sel: np.ndarray) -> np.ndarray:
+        cif = np.asarray(dist.cif(t0[sel] + x, *dp), dtype=float)
+        return cif - cif0[sel] - reduction[sel] * x - energy[sel]
+
+    everything = np.arange(t0.size)
+    hi = np.ones(t0.size)
+    growing = everything
+    for _ in range(60):
+        growing = growing[g(hi[growing], growing) < 0]
+        if not growing.size:
+            break
+        hi[growing] *= 2.0
+    g_hi = g(hi, everything)
+    # Still short of the energy after 60 doublings: take hi, as the
+    # scalar sampler did.
+    gap = hi.copy()
+    rest = np.flatnonzero(g_hi > 0)
+    if rest.size:
+        gap[rest] = solve_bracketed(
+            lambda x, sel: g(x, rest[sel]),
+            np.zeros(rest.size),
+            hi[rest],
+            -energy[rest],
+            g_hi[rest],
+            xtol=2e-12,
+        )
+    if polish:
+        everything = np.arange(t0.size)
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            for _ in range(2):
+                miss = g(gap, everything)
+                rate = (
+                    np.asarray(dist.iif(t0 + gap, *dp), dtype=float)
+                    - reduction
+                )
+                step = np.maximum(gap - miss / rate, 0.0)
+                better = np.isfinite(step) & (
+                    np.abs(g(step, everything)) < np.abs(miss)
+                )
+                gap = np.where(better, step, gap)
+    return gap
+
+
 def _reduction_sequence(
     failure_intensities: np.ndarray,
     position: int,
@@ -267,7 +340,6 @@ class ARI(RenewalFitMixin):
     @staticmethod
     def _build_sampler(model: Any, n: int, state: Any = None) -> Callable:
         from surpyval.recurrent.renewal.renewal_model import DiscountedMemory
-        from surpyval.utils.numeric import solve_bracketed
 
         dist = model.model.dist
         dp = model.model.params
@@ -293,35 +365,7 @@ class ARI(RenewalFitMixin):
         def step(idx: np.ndarray, u: np.ndarray) -> np.ndarray:
             t0 = running[idx]
             reduction = rho * memory.value(idx)
-            energy = -np.log(u)
-            cif0 = np.asarray(dist.cif(t0, *dp), dtype=float)
-
-            def g(x: np.ndarray, sel: np.ndarray) -> np.ndarray:
-                cif = np.asarray(dist.cif(t0[sel] + x, *dp), dtype=float)
-                return cif - cif0[sel] - reduction[sel] * x - energy[sel]
-
-            everything = np.arange(idx.size)
-            hi = np.ones(idx.size)
-            growing = everything
-            for _ in range(60):
-                growing = growing[g(hi[growing], growing) < 0]
-                if not growing.size:
-                    break
-                hi[growing] *= 2.0
-            g_hi = g(hi, everything)
-            # Still short of the energy after 60 doublings: take hi, as the
-            # scalar sampler did.
-            gap = hi.copy()
-            rest = np.flatnonzero(g_hi > 0)
-            if rest.size:
-                gap[rest] = solve_bracketed(
-                    lambda x, sel: g(x, rest[sel]),
-                    np.zeros(rest.size),
-                    hi[rest],
-                    -energy[rest],
-                    g_hi[rest],
-                    xtol=2e-12,
-                )
+            gap = ari_gaps(dist, dp, t0, reduction, -np.log(u))
             arrival = t0 + gap
             running[idx] = arrival
             memory.record(idx, np.asarray(dist.iif(arrival, *dp), dtype=float))

@@ -5,6 +5,81 @@ Unreleased
 
 **Added.**
 
+- ``Parametric.with_params`` takes the full vector of ``covariance()``'s
+  rows, in the order of ``covariance_names`` (the distribution's parameters,
+  then ``lfp_p`` and ``f0``), so a draw from the covariance of a
+  limited-failure or zero-inflated fit maps straight back to a model; the
+  short vector of the distribution's parameters works as before. The offset
+  is ``with_params(params, gamma=...)`` (kept when not given), and
+  ``lfp_p=``/``f0=`` go with the short vector, as ``MixtureModel``'s
+  ``w=``. A drawn ``lfp_p`` above 1 or ``f0`` below 0 is refused with what
+  to do. New ``Parametric.bootstrap(n_boot, random_state)`` returns the
+  refits behind the ``method="bootstrap"`` bounds (the same refits for the
+  same seed) as a ``ParametricBootstrap``: the refitted models, their
+  parameters in ``covariance_names`` order, each offset fit's ``gamma`` and
+  the count of failed refits, with ``to_dict``. A short section on carrying
+  a fit's uncertainty forward is on the parametric modelling page.
+- ``covariance()`` and ``standard_errors()`` of a fitted ``Bernoulli``,
+  ``FixedEventProbability`` or ``Binomial``: the variance of ``p``,
+  :math:`\hat p (1 - \hat p) / N` from the events and trials (a Binomial's
+  known ``n`` has a zero row and column), for code that propagates it;
+  ``nan`` with no events or only events, where the formula's 0 would claim
+  ``p`` is known. Models restored from older dicts get it from their saved
+  counts. ``param_cb("p", method="jeffreys")`` adds the Jeffreys interval
+  (``Beta(k + 1/2, N - k + 1/2)`` quantiles) beside the exact
+  Clopper-Pearson default. Checked against R's ``binom.test``, ``qbeta``
+  and ``binom::binom.confint`` to 1e-10; the coverage study
+  (``scripts/studies/probability_coverage.py``) is on the Bernoulli page.
+- ``ParametricCompetingRisks`` carries its parameters' uncertainty:
+  ``params`` and ``parameter_names`` (``"<cause>: <name>"``),
+  ``covariance_names``, ``covariance()`` (the causes' covariances on the
+  diagonal, exact since the likelihood factorises by cause, ``lfp_p`` and
+  ``f0`` rows included) and ``standard_errors()``; ``with_params(params)``
+  rebuilds the model from a vector in that order (or the shorter
+  ``params``), so draws from the covariance can be propagated; and
+  ``cb(x, event=None, on="cif")`` gives Wald bounds on each cause's
+  cumulative incidence (logit scale) and on the all-cause ``sf``, ``ff``
+  and ``Hf`` (one bound on ``log H``), with a cause's net functions
+  bounded by its own model (likelihood-ratio and bootstrap too). Per-cause
+  fits and the cumulative incidence match R's ``flexsurv`` (estimates to
+  1e-6, covariance to 1e-4, CIF to 1e-6); a 1000-replicate study covers
+  0.936 to 0.962 at 95%
+  (``scripts/studies/parametric_competing_risks_cb_coverage.py``).
+- ``ParametricCompetingRisks`` gives the lifetime of the whole unit (its
+  first failure from any cause): ``df(x)``, the all-cause density
+  :math:`S(t)\sum_k h_k(t)`; ``mean()``, the all-cause MTTF by quadrature
+  (``inf`` with a cure fraction unless ``defective=True``, as
+  ``Parametric.mean``); and ``qf(p)``, the all-cause quantile (B10 is
+  ``qf(0.1)``) by root finding on the cumulative hazard, precise in the
+  upper tail and ``inf`` above a cure ceiling. ``sf``, ``ff``, ``df`` and
+  ``qf`` take ``event=k`` for cause ``k``'s net function (its own model),
+  as ``CompetingRisks.sf(x, event)`` does. Checked against closed forms
+  (exponential causes, Weibull causes with a common shape, two LogLogistic
+  causes) to 1e-10.
+- ``life_models.GeneralLinear``: the linear life model for any number of
+  covariates, :math:`L(Z) = a + \beta' Z` (``Linear`` for several, as
+  ``GeneralLogLinear`` is the log-linear one). On the ``mu`` of ``Normal``,
+  ``Logistic`` or ``Gumbel`` the covariates shift the distribution, so the
+  fit does not depend on where zero is (a shift of the data moves ``a``
+  alone): ``AcceleratedLife(Normal, life_models.GeneralLinear)`` is R's
+  ``survreg(..., dist = "gaussian")`` on the times themselves (also
+  ``"logistic"`` and ``"extreme"``), matched to 1e-5 with the same signs.
+  A positive coefficient means a later life, as in every life model. It
+  names its coefficients by the columns, saves and loads, and flags
+  aliased columns as ``GeneralLogLinear`` does.
+- Documentation: ``CustomDistribution`` recipes for the generalised gamma
+  and the generalised F in Prentice's parameterisations, as R's
+  ``flexsurv`` writes them (``gengamma``: ``mu``, ``sigma``, ``Q``;
+  ``genf``: ``mu``, ``sigma``, ``Q``, ``P``), in "Parametric SurPyval
+  Modelling". The generalised gamma holds the Weibull (``Q = 1``), the
+  lognormal (``Q = 0``, exact through ``fixed``) and the gamma
+  (``Q = sigma``), so one fit tests all three by likelihood ratio; it fits
+  every kind of censoring and truncation. Both recipes, and AFT fits on
+  them, match ``flexsurvreg`` on ``lung`` (log-likelihoods to 1e-6,
+  estimates to a hundredth of a standard error, standard errors to 1e-3);
+  inverse Gaussian AFT and PH fits match a likelihood written with
+  ``scipy.stats.invgauss``. The tests run the recipe cells from the page
+  itself.
 - The degradation level of ``WienerProcessModel`` and ``GammaProcessModel``:
   ``level_at(t, Z, y0=, t0=)`` is the distribution of the level at time
   ``t``, from new or from a reading ``y0`` at an age ``t0`` (a
@@ -339,9 +414,83 @@ Unreleased
   refuses choosing by AIC or BIC. A parametric penalised fit with a
   delayed entry at 0 is now ``"verified"`` (it was left "unverified" by a
   nan second derivative; the estimates do not change).
+- ``covariance_names`` on every parametric fit (``Weibull.fit`` and the
+  rest): the name of each row of ``covariance()``, in its order. It is the
+  distribution's parameters, then ``lfp_p`` for ``lfp=True`` and ``f0``
+  for ``zi=True`` (``['alpha', 'beta', 'lfp_p', 'f0']``), so the third row
+  of a limited-failure fit's covariance is no longer a guess. A parameter
+  fixed at fit time keeps its (zero) row. An offset ``gamma`` has no row:
+  the covariance holds it at its estimate, since a Wald standard error for
+  a threshold is unreliable (in a simulation of n = 200 Weibull fits its
+  95% interval covered the true offset 89% of the time at shape 3.5, 76%
+  at shape 1.5, and the Hessian did not exist below shape 1;
+  ``scripts/studies/offset_gamma_wald.py``); ``param_cb("gamma")`` has
+  the likelihood-ratio and bootstrap bounds. ``parameter_names``,
+  ``hess_inv`` (the distribution's block only) and the saved dictionary
+  are unchanged.
+- Regressions as plain life models, and their parameter uncertainty
+  carried along. ``model.at(Z)`` is the lifetime distribution of a unit
+  with one covariate row (``LifeAtCovariates``): ``sf``, ``ff``, ``df``,
+  ``hf``, ``Hf``, ``qf``, ``random``, ``mean``, ``rmst`` and ``cb`` taking
+  times only, each exactly the regression's at ``Z``, on every parametric
+  regression, ``CoxPH`` (with ``stratum=``) and the semi-parametric
+  proportional odds and additive hazards models; ``random(n)`` is
+  ``qf(U)``, as ``Parametric.random``. ``with_params(params)``,
+  ``covariance_names`` and ``_estimates()`` on the parametric regressions
+  (PH, AFT, PO, AH, accelerated life, Royston-Parmar, distributional) and
+  the semi-parametric ``ProportionalOdds`` and ``AdditiveHazards``
+  models: a model at a flat parameter vector in the order of
+  ``covariance()``'s rows, keeping the formula, centre and fixed
+  parameters, without data or covariance (the semi-parametric baseline is
+  re-estimated at the new coefficients). At R's estimate a Weibull AFT
+  and PH at fixed covariates match flexsurv's ``summary(newdata=)`` and
+  ``survreg``'s predicted quantiles to 1e-9. The semi-parametric
+  ``ProportionalOdds`` and ``AdditiveHazards`` models gain
+  ``random(size, Z)``.
+- ``RoystonParmarModel.with_params(params)``: the same spline (knots,
+  scale, unit) at other coefficients, given in the order of the new
+  ``covariance_names`` (``gamma_0``, ``gamma_1``, ...), so a draw from
+  ``covariance()`` becomes a model and the coefficients' uncertainty can be
+  propagated. The model returned has no data or covariance: ``cb``,
+  ``standard_errors``, ``neg_ll`` and the information criteria refuse on
+  it. Coefficients whose spline falls somewhere in log time (a decreasing
+  cumulative hazard) are refused with the time where it does. Checked
+  against flexsurv's ``psurvspline`` family at given coefficients on all
+  three scales to 1e-12; the 2.5% and 97.5% points of ``sf`` over 4000
+  draws match the Wald band of ``cb`` to 0.0013.
+- Recurrent models can be stepped forward one failure at a time.
+  ``RenewalModel`` (``GeneralizedRenewal``, ``GeneralizedOneRenewal``,
+  ``ARA``, ``ARI``) gains ``next_failure_qf(p)``, the inverse of
+  ``next_failure_sf`` (on the cumulative hazard, so the upper tail keeps its
+  digits), ``next_failure_random(size)`` (``next_failure_qf`` at uniform
+  draws), ``states()`` (the units' states, from the fitted items, an
+  ``age`` or known ``failures``) and ``advance(states, x)``, the state after a
+  failure at ``x`` and its repair by the fitted rule (``failed=False`` to run
+  on); the four next-failure methods take ``states=``. A loop of draws and
+  advances reproduces ``time_terminated_simulation`` and
+  ``count_terminated_simulation`` in distribution (seeded two-sample tests on
+  counts and event times, every family). ``ParametricRecurrenceModel``
+  (``HPP``, ``CrowAMSAA``, ``Duane``, ``CoxLewis``) has the same
+  ``next_failure_sf``, ``next_failure_hf``, ``next_failure_qf`` and
+  ``next_failure_random`` from an ``age``. Both kinds gain
+  ``covariance_names`` and ``with_params(params)``, the same model at a flat
+  parameter vector in that order (a draw from ``covariance()``); draws
+  through it spread as the delta method says (within 5%).
 
 **Changed.**
 
+- The renewal models' simulations (``GeneralizedRenewal``,
+  ``GeneralizedOneRenewal``, ``ARA``) draw a failure at a large virtual age
+  (a cumulative hazard past 20) by Newton's method on the cumulative
+  hazard with the hazard rate, kept inside a bracket, in place of
+  bracketing and regula falsi: about 3 evaluations of the lifetime's
+  ``Hf`` and ``hf`` per draw where it took 12 to 15 of ``Hf``, and 2 to 5
+  times faster per draw (a two-Weibull mixture lifetime 5 times). The
+  draws agree with the old ones and with 50-digit roots to rounding
+  (1e-13), but are not bit for bit the same. ``MixtureModel.Hf`` and
+  ``hf`` are computed from each component's ``Hf`` and ``hf`` (one call
+  each; the hazard is the components' hazards weighted by their share of
+  the survivors), and stay precise out to a cumulative hazard of 700.
 - **The survival tree and random survival forest are stable**:
   ``surpyval.beta.ml`` is now ``surpyval.ml`` (``from surpyval.ml import
   SurvivalTree, RandomSurvivalForest``), with the stability promise,

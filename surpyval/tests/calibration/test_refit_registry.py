@@ -1102,6 +1102,12 @@ for _lm in reg.LIFE_MODELS + reg.DUAL_LIFE_MODELS + ("GeneralLogLinear",):
         _REG_REPS,
         params=lambda m: np.asarray(m.params, dtype=float),
     )
+PLANS["NormalAL[GeneralLinear]"] = Plan(
+    _regression(own_random=True),
+    _REG_N,
+    _REG_REPS,
+    params=lambda m: np.asarray(m.params, dtype=float),
+)
 _NO_FRAILTY = (
     "the fixture's frailty variance is 0, on its boundary: the data are "
     "drawn from the (then frailty-free) sf"

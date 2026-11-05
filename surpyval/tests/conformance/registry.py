@@ -357,6 +357,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.univariate.regression.CoefficientPlot": (
         "what plot_coefficients drew (a figure and its values), not a model"
     ),
+    "surpyval.univariate.regression.LifeAtCovariates": _RESULT,
     "surpyval.univariate.regression.plot_coefficients": _FUNCTION,
     "surpyval.univariate.regression.penalty_path": _FUNCTION,
     "surpyval.penalty_path": _FUNCTION,
@@ -369,6 +370,7 @@ OUT_OF_SCOPE: dict[str, str] = {
         "model"
     ),
     "surpyval.LikelihoodContour": _RESULT,
+    "surpyval.univariate.parametric.ParametricBootstrap": _RESULT,
     "surpyval.LikelihoodContourPlot": (
         "what plot_likelihood_contour drew (a figure and its contours), "
         "not a model"

@@ -39,7 +39,7 @@ from ._single_probability import SingleProbabilityMixin
 class FixedEventProbability_(  # type: ignore[misc]
     SingleProbabilityMixin, DiscreteParametricFitter
 ):
-    """``F(x) = p`` at every ``x``: a fraction ``p`` of units fail and the
+    r"""``F(x) = p`` at every ``x``: a fraction ``p`` of units fail and the
     rest never do, with nothing said about *when* (see the module
     docstring). It is fitted from 0/1 event indicators, 1 for a unit that
     failed, and ``random`` draws them, so a sample from a model refits.
@@ -57,6 +57,16 @@ class FixedEventProbability_(  # type: ignore[misc]
     >>> refit = FixedEventProbability.fit(model.random(1000, random_state=1))
     >>> bool(abs(refit.params[0] - 0.2) < 0.05)
     True
+
+    The uncertainty of ``p``: its variance, :math:`\hat p (1 - \hat p) /
+    N`, and its exact and Jeffreys bounds.
+
+    >>> model.covariance()
+    array([[0.016]])
+    >>> model.param_cb("p").round(4)
+    array([0.0252, 0.5561])
+    >>> model.param_cb("p", method="jeffreys").round(4)
+    array([0.0441, 0.5028])
     """
 
     #: ``random`` (``SingleProbabilityMixin``'s) draws 0/1 event

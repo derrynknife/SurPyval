@@ -1,3 +1,5 @@
+import math
+import operator
 import textwrap
 import warnings
 from collections.abc import Callable
@@ -29,7 +31,10 @@ from surpyval.utils.linalg import (
 )
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.numeric import solve_bracketed
-from surpyval.utils.validation import option_error
+from surpyval.utils.validation import (
+    option_error,
+    warn_outside_unit_interval,
+)
 from surpyval.utils.warnings import warn_no_covariance
 
 #: The values of the restoration parameter at which each family is a
@@ -277,6 +282,18 @@ _QF_HAZARD_LIMIT = 20.0
 
 _MACHINE_EPS = float(np.finfo(float).eps)
 
+#: A Newton step that moves the point by less than this fraction of itself
+#: ends the search: the error left after it is about its square.
+_NEWTON_RTOL = 1e-9
+
+#: A Newton step below this fraction may also end the search when the
+#: steps so far predict that the error left after it is below the double's
+#: rounding (see ``_invert_cumulative_hazard``).
+_NEWTON_ASYMPTOTIC = 1e-4
+
+#: Newton steps before a draw is handed to the bracketing solver instead.
+_NEWTON_MAXITER = 30
+
 
 def conditional_gaps(
     lifetime: Any, v: np.ndarray, u: np.ndarray
@@ -295,17 +312,33 @@ def conditional_gaps(
     the next age came back as ``v`` itself and the simulated MCF went flat.
 
     ``H`` is inverted with the quantile function while that is accurate
-    (see ``_QF_HAZARD_LIMIT``) and by root finding beyond it.
+    (see ``_QF_HAZARD_LIMIT``) and by Newton's method on ``H`` beyond it
+    (see ``_invert_cumulative_hazard``).
+    """
+    with np.errstate(divide="ignore"):
+        energy = -np.log(np.asarray(u, dtype=float))
+    return conditional_gaps_from_energy(lifetime, v, energy)
+
+
+def conditional_gaps_from_energy(
+    lifetime: Any, v: np.ndarray, energy: np.ndarray
+) -> np.ndarray:
+    """
+    :func:`conditional_gaps` with the Exp(1) amount ``energy`` (``-log
+    u``) given in place of ``u``: the residual life ``x`` from age ``v``
+    with ``H(v + x) - H(v) = energy``. A quantile ``p`` of the residual
+    life is ``energy = -log1p(-p)``, exact for a small ``p`` where
+    ``-log(1 - p)`` is not.
     """
     v = np.asarray(v, dtype=float)
-    u = np.asarray(u, dtype=float)
-    hazard, quantile = _lifetime_functions(lifetime)
+    energy = np.asarray(energy, dtype=float)
+    hazard, quantile, both = _lifetime_functions(lifetime)
     with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
-        h_v = np.broadcast_to(hazard(v), v.shape)
-        target = h_v - np.log(u)
+        H_v = np.broadcast_to(hazard(v), v.shape)
+        target = H_v + energy
     # No survival past age v (the end of a bounded support): the item
     # fails at once.
-    at_once = np.isinf(h_v) & (h_v > 0)
+    at_once = np.isinf(H_v) & (H_v > 0)
     # u == 0 (or an undefined H): an infinitely late event.
     never = ~at_once & ~np.isfinite(target)
     easy = ~at_once & ~never & (target <= _QF_HAZARD_LIMIT)
@@ -314,17 +347,31 @@ def conditional_gaps(
     if easy.any():
         x[easy] = quantile(-np.expm1(-target[easy]))
     if hard.any():
-        x[hard] = _invert_cumulative_hazard(hazard, v[hard], target[hard])
+        x[hard] = _invert_cumulative_hazard(
+            hazard, v[hard], target[hard], both=both, H_v=H_v[hard]
+        )
     gap = np.maximum(x - v, 0.0)
     gap[at_once] = 0.0
     gap[never] = np.inf
     return gap
 
 
-def _lifetime_functions(lifetime: Any) -> "tuple[Callable, Callable]":
-    """``H`` and the quantile function of ``lifetime``, on arrays. For a
-    plain model (no offset, cure fraction or zero-inflation -- what the
-    renewal fitters build) the distribution's own functions are called
+def _lifetime_functions(
+    lifetime: Any,
+) -> "tuple[Callable, Callable, Callable | None]":
+    """``H``, the quantile function and ``both``, on arrays, for
+    ``lifetime``: ``both(x)`` gives ``(H(x), h(x))``, the cumulative
+    hazard and the hazard rate, for Newton's method (``both(x, H)`` skips
+    finding an ``H`` already known, where that saves a call). The rate is
+    the model's (or distribution's) ``hf``; ``exp(log f + H)`` from the
+    density where there is no ``hf`` (from ``log_df`` where there is one);
+    and, for a mixture, both come from one pass over the components.
+    ``both`` is ``None`` where there is no hazard rate to use (a discrete
+    or a non-parametric lifetime: the latter's ``hf`` is the jumps of a
+    step function), and ``H`` is then inverted by bracketing.
+
+    For a plain model (no offset, cure fraction or zero-inflation -- what
+    the renewal fitters build) the distribution's own functions are called
     directly, skipping the model methods' argument handling."""
     if (
         getattr(lifetime, "lfp_p", None) == 1
@@ -345,7 +392,30 @@ def _lifetime_functions(lifetime: Any) -> "tuple[Callable, Callable]":
         def quantile(p: np.ndarray) -> np.ndarray:
             return np.asarray(dist.qf(p, *params), dtype=float)
 
-        return hazard, quantile
+        def dist_rate(x: np.ndarray, H: np.ndarray) -> np.ndarray:
+            x = np.asarray(x, dtype=float)
+            below = x < lower
+            inside = np.where(below, lower, x)
+            with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+                if callable(getattr(dist, "hf", None)):
+                    h = np.asarray(dist.hf(inside, *params), dtype=float)
+                else:
+                    h = np.exp(_log_density(dist, inside, *params) + H)
+            return np.where(below, 0.0, h)
+
+        def dist_both(
+            x: np.ndarray, H: "np.ndarray | None" = None
+        ) -> "tuple[np.ndarray, np.ndarray]":
+            if H is None:
+                H = hazard(x)
+            return H, dist_rate(x, H)
+
+        has_rate = callable(getattr(dist, "hf", None)) or callable(
+            getattr(dist, "df", None)
+        )
+        if getattr(dist, "discrete", False) or not has_rate:
+            return hazard, quantile, None
+        return hazard, quantile, dist_both
 
     def model_hazard(x: np.ndarray) -> np.ndarray:
         return np.asarray(lifetime.Hf(x), dtype=float)
@@ -353,14 +423,267 @@ def _lifetime_functions(lifetime: Any) -> "tuple[Callable, Callable]":
     def model_quantile(p: np.ndarray) -> np.ndarray:
         return np.asarray(lifetime.qf(p), dtype=float)
 
-    return model_hazard, model_quantile
+    dist = getattr(lifetime, "dist", None)
+    if dist is None or getattr(dist, "discrete", False):
+        return model_hazard, model_quantile, None
+    # A mixture gives both from one pass over its components (``None``
+    # where it cannot).
+    joint = getattr(lifetime, "_hazard_and_rate", None)
+    if callable(joint):
+
+        def mixture_both(
+            x: np.ndarray, H: "np.ndarray | None" = None
+        ) -> "tuple[np.ndarray, np.ndarray]":
+            # ``H`` is not needed: the pass finds it anyway.
+            x = np.asarray(x, dtype=float)
+            out = joint(x)
+            if out is None:
+                H = model_hazard(x)
+                return H, np.asarray(lifetime.hf(x), dtype=float)
+            return out
+
+        return model_hazard, model_quantile, mixture_both
+    if callable(getattr(lifetime, "hf", None)):
+
+        def model_both(
+            x: np.ndarray, H: "np.ndarray | None" = None
+        ) -> "tuple[np.ndarray, np.ndarray]":
+            if H is None:
+                H = model_hazard(x)
+            return H, np.asarray(lifetime.hf(x), dtype=float)
+
+        return model_hazard, model_quantile, model_both
+    if callable(getattr(lifetime, "df", None)):
+
+        def density_both(
+            x: np.ndarray, H: "np.ndarray | None" = None
+        ) -> "tuple[np.ndarray, np.ndarray]":
+            if H is None:
+                H = model_hazard(x)
+            with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+                return H, np.exp(_log_density(lifetime, x) + H)
+
+        return model_hazard, model_quantile, density_both
+    return model_hazard, model_quantile, None
+
+
+def _log_density(source: Any, x: np.ndarray, *params: float) -> np.ndarray:
+    """``log f(x)``: ``source.log_df`` where it has one (finite where the
+    density underflows), else the log of ``source.df``."""
+    if callable(getattr(source, "log_df", None)):
+        return np.asarray(source.log_df(x, *params), dtype=float)
+    return np.log(np.asarray(source.df(x, *params), dtype=float))
+
+
+def _newton_point(
+    x: np.ndarray, H: np.ndarray, h: np.ndarray, target: np.ndarray
+) -> np.ndarray:
+    """One Newton step towards ``H(x) = target`` from ``x``, where ``H``
+    and its derivative ``h`` are known. Where ``x``, ``H`` and ``h`` are
+    all positive the step is taken on ``log H`` against ``log x``, which is
+    a straight line for a Weibull (one step is exact) and nearly so in the
+    upper tail of most lifetimes; elsewhere on ``H`` against ``x``. NaN
+    where neither step is defined (a zero hazard rate)."""
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        logs = (x > 0) & (H > 0) & (h > 0)
+        log_step = np.log(target / H) * H / (x * h)
+        out = np.where(logs, x * np.exp(log_step), x + (target - H) / h)
+    return np.where(np.isfinite(out), out, np.nan)
 
 
 def _invert_cumulative_hazard(
-    hazard: Callable, v: np.ndarray, target: np.ndarray
+    hazard: Callable,
+    v: np.ndarray,
+    target: np.ndarray,
+    both: "Callable | None" = None,
+    H_v: "np.ndarray | None" = None,
 ) -> np.ndarray:
     """Solve ``H(x_k) = target_k`` for ``x_k > v_k`` (where ``H(v_k) <
-    target_k``), for every ``k`` at once."""
+    target_k``), for every ``k`` at once.
+
+    With ``both`` (``x -> (H(x), h(x))``, see ``_lifetime_functions``) this
+    takes Newton steps from ``v`` (see ``_newton_point``), each kept
+    inside a bracket ``lo < x < hi`` that every evaluation narrows: a step
+    that would leave it bisects it instead (or, while no point above the
+    root has been found, doubles the distance from ``v``). A draw is done
+
+    - when a step moves it by less than ``_NEWTON_RTOL`` of itself (the
+      error left is about that squared);
+    - when a step below ``_NEWTON_ASYMPTOTIC`` follows another Newton step
+      and the two predict an error after it below the double's rounding:
+      Newton's error squares at each step, ``e' = K e^2``, and ``K`` is
+      estimated as ``step / previous step^2``, so the error after a step
+      ``s`` is about ``s^3 / previous^2``;
+    - or when its bracket has closed to rounding.
+
+    Two or three evaluations of ``both`` after the one at ``v`` usually
+    do (``H_v``, the cumulative hazard at ``v`` if known, saves finding it
+    again). A draw that meets an undefined or infinite ``H`` (past a
+    bounded support), or has not converged in ``_NEWTON_MAXITER`` steps,
+    is solved by bracketing instead (``_bracket_and_solve``), as is every
+    draw where ``both`` is ``None``. One draw at a time (what the
+    simulations ask for) runs the same steps on Python floats
+    (``_newton_one``), without the array bookkeeping.
+    """
+    v = np.asarray(v, dtype=float)
+    target = np.asarray(target, dtype=float)
+    if both is None:
+        return _bracket_and_solve(hazard, v, target)
+    if H_v is not None:
+        H_v = np.broadcast_to(np.asarray(H_v, dtype=float), v.shape)
+    if v.size == 1:
+        root = _newton_one(
+            both,
+            float(v.reshape(-1)[0]),
+            float(target.reshape(-1)[0]),
+            None if H_v is None else float(H_v.reshape(-1)[0]),
+        )
+        if root is not None:
+            return np.full(v.shape, root)
+        return _bracket_and_solve(hazard, v, target)
+    n = v.size
+    out = np.full(n, np.nan)
+    lo = np.array(v, dtype=float)
+    hi = np.full(n, np.inf)
+    first = np.maximum(np.abs(v), 1.0)
+    # The relative size of the last Newton step (inf after any other).
+    previous = np.full(n, np.inf)
+    x = np.array(v, dtype=float)
+    active = np.arange(n)
+    give_up = np.zeros(n, dtype=bool)
+    for k in range(_NEWTON_MAXITER + 1):
+        if not active.size:
+            break
+        a = active
+        xa = x[a]
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            H, h = both(xa, None if k or H_v is None else H_v[a])
+            H = np.broadcast_to(np.asarray(H, dtype=float), xa.shape)
+            h = np.broadcast_to(np.asarray(h, dtype=float), xa.shape)
+        g = H - target[a]
+        # At v itself H is below the target by construction (rounding
+        # aside); past a bounded support H is inf or nan.
+        bad = ~np.isfinite(H)
+        exact = (g == 0) & (k > 0)
+        below = (g < 0) | (k == 0)
+        lo[a] = np.where(below & ~bad, xa, lo[a])
+        hi[a] = np.where(~below & ~bad, xa, hi[a])
+        lo_a, hi_a = lo[a], hi[a]
+        step = _newton_point(xa, H, h, target[a])
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            size = np.abs(step - xa) / np.abs(xa)
+            # No estimate of K without an earlier Newton step.
+            predicted = np.where(
+                np.isfinite(previous[a]), size**3 / previous[a] ** 2, np.inf
+            )
+        inside = np.isfinite(step) & (step > lo_a) & (step < hi_a)
+        # Outside the bracket: bisect it, or reach further out while
+        # nothing above the root has been found.
+        fallback = np.where(
+            np.isfinite(hi_a),
+            lo_a + 0.5 * (hi_a - lo_a),
+            v[a] + 2.0 * np.maximum(lo_a - v[a], first[a]),
+        )
+        tiny = np.isfinite(step) & (size <= _NEWTON_RTOL)
+        settled = (
+            inside & (size <= _NEWTON_ASYMPTOTIC) & (predicted <= _MACHINE_EPS)
+        )
+        closed = np.isfinite(hi_a) & (
+            hi_a - lo_a
+            <= 4 * _MACHINE_EPS * np.maximum(np.abs(lo_a), np.abs(hi_a))
+        )
+        # A step this small is done even if rounding puts it just outside
+        # the bracket: the point itself is then the answer.
+        out[a] = np.where(
+            exact | (tiny & ~inside),
+            xa,
+            np.where(tiny | settled, step, lo_a + 0.5 * (hi_a - lo_a)),
+        )
+        previous[a] = np.where(inside, size, np.inf)
+        give_up[a] = bad
+        x[a] = np.where(inside, step, fallback)
+        active = a[~(exact | tiny | settled | closed | bad)]
+    give_up[active] = True
+    if give_up.any():
+        out[give_up] = _bracket_and_solve(hazard, v[give_up], target[give_up])
+    return out
+
+
+def _first(values: Any) -> float:
+    """The one value of a one-element result, as a float."""
+    return float(np.asarray(values, dtype=float).reshape(-1)[0])
+
+
+def _newton_point_one(x: float, H: float, h: float, target: float) -> float:
+    """``_newton_point`` for one draw, on floats (NaN where no step)."""
+    try:
+        if x > 0 and H > 0 and h > 0:
+            out = x * math.exp(math.log(target / H) * H / (x * h))
+        else:
+            out = x + (target - H) / h
+    except (ArithmeticError, ValueError):
+        return math.nan
+    return out if math.isfinite(out) else math.nan
+
+
+def _newton_one(
+    both: Callable, v: float, target: float, H_v: "float | None"
+) -> "float | None":
+    """``_invert_cumulative_hazard``'s Newton steps for one draw, on
+    floats, with the same rules; ``None`` where it hands the draw to
+    bracketing (an undefined or infinite ``H``, or no convergence)."""
+    lo, hi = v, math.inf
+    first = max(abs(v), 1.0)
+    previous = math.inf
+    x = v
+    for k in range(_NEWTON_MAXITER + 1):
+        point = np.array([x])
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            if k == 0 and H_v is not None:
+                H_arr, h_arr = both(point, np.array([H_v]))
+            else:
+                H_arr, h_arr = both(point)
+        H, h = _first(H_arr), _first(h_arr)
+        if not math.isfinite(H):
+            return None
+        g = H - target
+        if g == 0 and k > 0:
+            return x
+        if g < 0 or k == 0:
+            lo = x
+        else:
+            hi = x
+        step = _newton_point_one(x, H, h, target)
+        size = abs(step - x) / abs(x) if x != 0 else math.inf
+        inside = lo < step < hi
+        if size <= _NEWTON_RTOL:
+            return step if inside else x
+        if (
+            inside
+            and size <= _NEWTON_ASYMPTOTIC
+            and math.isfinite(previous)
+            and size**3 / previous**2 <= _MACHINE_EPS
+        ):
+            return step
+        if math.isfinite(hi) and hi - lo <= 4 * _MACHINE_EPS * max(
+            abs(lo), abs(hi)
+        ):
+            return lo + 0.5 * (hi - lo)
+        previous = size if inside else math.inf
+        if inside:
+            x = step
+        elif math.isfinite(hi):
+            x = lo + 0.5 * (hi - lo)
+        else:
+            x = v + 2.0 * max(lo - v, first)
+    return None
+
+
+def _bracket_and_solve(
+    hazard: Callable, v: np.ndarray, target: np.ndarray
+) -> np.ndarray:
+    """``_invert_cumulative_hazard`` without a hazard rate: bracket each
+    root by doubling a step out from ``v``, then ``solve_bracketed``."""
 
     def g(x: np.ndarray, sel: np.ndarray) -> np.ndarray:
         with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
@@ -852,6 +1175,105 @@ class RenewalModel(
             [[self.restoration], np.asarray(self.model.params, dtype=float)]
         ).astype(float)
 
+    @property
+    def covariance_names(self) -> list[str]:
+        """
+        The names of the rows (and columns) of :meth:`covariance`, in its
+        order, which :meth:`with_params` takes: the restoration parameter
+        (``q`` or ``rho``), then the lifetime distribution's (for ARI the
+        baseline intensity's) parameters -- the ``parameter_names``.
+
+        Examples
+        --------
+        >>> from surpyval.recurrent import ARA
+        >>> ARA.fit_from_parameters([10.0, 2.0], 0.4, m=2).covariance_names
+        ['rho', 'alpha', 'beta']
+        """
+        return list(self.parameter_names)
+
+    def _estimates(self) -> np.ndarray:
+        """The parameters in the order of :attr:`covariance_names`."""
+        return self.params
+
+    def with_params(self, params: ArrayLike) -> "RenewalModel":
+        """
+        The same model -- family, lifetime distribution (or ARI baseline),
+        Kijima type, memory ``m`` and unit -- at other parameters: for
+        drawing a fit's parameters from its covariance and carrying them
+        into a prediction or simulation, say.
+
+        Parameters
+        ----------
+        params : array_like
+            A flat vector in the order of :attr:`covariance_names`, the
+            restoration parameter first, as a draw from :meth:`covariance`
+            comes. The values are checked as ``fit_from_parameters``
+            checks them (a ``q`` below 0 for the generalized renewal
+            process, a ``rho`` outside [0, 1], is refused).
+
+        Returns
+        -------
+        RenewalModel
+            A model built from parameters, as ``fit_from_parameters``
+            builds it: it has no data, covariance or fitted likelihood,
+            since those belong to the fit of the original parameters, so
+            data-based methods (bounds, ``repair_test``, prediction for
+            the fitted items) are not available on it. A model fitted
+            with weights becomes the plain model at these parameters.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.recurrent import GeneralizedRenewal
+        >>> model = GeneralizedRenewal.fit_from_parameters(
+        ...     [10.0, 2.0], 0.5, kijima="ii")
+        >>> other = model.with_params([0.2, 12.0, 2.5])
+        >>> other.q, other.kijima_type, other.model.params
+        (0.2, 'ii', array([12. ,  2.5]))
+        >>> bool(np.allclose(model.with_params(model._estimates()).params,
+        ...                  model.params))
+        True
+        """
+        names = self.covariance_names
+        values = np.asarray(params, dtype=float)
+        if values.shape != (len(names),):
+            raise ValueError(
+                "params must be a flat vector of {} values in the order "
+                "of covariance_names {}; got shape {}".format(
+                    len(names), names, np.shape(params)
+                )
+            )
+        import surpyval.recurrent as recurrent
+
+        family = self._family()
+        fitter = getattr(recurrent, family)
+        restoration = float(values[0])
+        dist_params = values[1:].tolist()
+        out: RenewalModel
+        if family == "ARI":
+            out = fitter.fit_from_parameters(
+                dist_params, restoration, m=self.m, baseline=self.model.dist
+            )
+        elif family == "GeneralizedRenewal":
+            out = fitter.fit_from_parameters(
+                dist_params,
+                restoration,
+                kijima=self.kijima_type,
+                dist=self.model.dist,
+            )
+        elif family == "ARA":
+            out = fitter.fit_from_parameters(
+                dist_params, restoration, m=self.m, dist=self.model.dist
+            )
+        else:
+            out = fitter.fit_from_parameters(
+                dist_params, restoration, dist=self.model.dist
+            )
+        unit = getattr(self, "unit", None)
+        if unit is not None:
+            out.unit = unit
+        return out
+
     def _parameter_names(self) -> list:
         # The restoration parameter (``q``/``rho``) leads ``_mle``, followed by
         # the underlying lifetime/intensity model's parameters.
@@ -1154,6 +1576,175 @@ class RenewalModel(
             table.index.name = "item"
         return table
 
+    def states(
+        self,
+        age: "ArrayLike | None" = None,
+        *,
+        failures: "list | None" = None,
+        now: "ArrayLike | None" = None,
+    ) -> UnitStates:
+        """
+        Units' current states as a :class:`UnitStates`, for
+        :meth:`next_failure_random`, :meth:`next_failure_qf`,
+        :meth:`next_failure_sf` and :meth:`next_failure_hf` (their
+        ``states=``) and for :meth:`advance`. :meth:`unit_states` is the
+        same as a table.
+
+        Parameters
+        ----------
+        age : array_like, optional
+            Units that have run this long since new without a failure.
+        failures : list of array_like, optional
+            Units with these failure histories instead (keyword only):
+            each unit's failure times so far, on the model's clock (from
+            new), each failure repaired at once.
+        now : array_like, optional
+            With ``failures`` (keyword only), the time now for each unit,
+            at or after its last failure; by default its last failure (0
+            for a unit with none).
+
+        Without any of them the units are the fitted data's items, each
+        at the end of its history.
+
+        Returns
+        -------
+        UnitStates
+            One entry per unit; the restoration rule's state is in
+            ``age`` (the virtual age now, for G1 on the base lifetime's
+            axis with ``scale``) or ``reduction`` (ARI).
+
+        Examples
+        --------
+        A Kijima-I unit with ``q = 0.5`` that failed at 4 and 10 and has
+        run to 12 has the virtual age :math:`0.5 \\times 10 + 2 = 7`:
+
+        >>> from surpyval.recurrent import GeneralizedRenewal
+        >>> model = GeneralizedRenewal.fit_from_parameters([10.0, 2.0], 0.5)
+        >>> state = model.states(failures=[[4.0, 10.0]], now=[12.0])
+        >>> state.age, state.failure_count
+        (array([7.]), array([2]))
+        """
+        if failures is None:
+            if now is not None:
+                raise ValueError(
+                    "now goes with failures (the time now after each "
+                    "unit's failures); for units with no failure give "
+                    "age instead"
+                )
+            return self._states(age)
+        if age is not None:
+            raise ValueError(
+                "give the units by age (no failures yet) or by their "
+                "failures (and now), not both"
+            )
+        histories = []
+        for k, f in enumerate(failures):
+            times = np.atleast_1d(np.asarray(f, dtype=float)).reshape(-1)
+            if not np.all(np.isfinite(times)) or np.any(times < 0):
+                raise ValueError(
+                    "failures must be finite times of at least 0; unit "
+                    f"{k} has {times[~(np.isfinite(times) & (times >= 0))]}"
+                )
+            histories.append(np.sort(times))
+        last = np.array([h[-1] if h.size else 0.0 for h in histories])
+        if now is None:
+            times_now = last
+        else:
+            times_now = np.broadcast_to(
+                np.asarray(now, dtype=float), last.shape
+            ).copy()
+            bad = ~np.isfinite(times_now) | (times_now < last)
+            if bad.any():
+                raise ValueError(
+                    "now must be finite and at or after each unit's last "
+                    "failure; units {} are not".format(np.flatnonzero(bad))
+                )
+        return self._state_of(None, histories, times_now)
+
+    def advance(
+        self, states: UnitStates, x: ArrayLike, failed: "ArrayLike" = True
+    ) -> UnitStates:
+        """
+        The units' states a further ``x`` from now: after a failure at
+        ``now + x``, repaired at once by the fitted restoration rule
+        (``failed=True``), or after running ``x`` without one
+        (``failed=False``).
+
+        The repair is the model's own: the Kijima virtual age (``q`` of
+        the generalized renewal process), the arithmetic reduction of age
+        or of intensity with memory ``m`` (ARA, ARI) or the next gap's
+        scale :math:`(1 + q)^j` (G1). With :meth:`next_failure_random`
+        it steps units forward event by event, so a simulation can put
+        its own events between failures; time a unit spends out of
+        service is simply not added to its clock.
+
+        Parameters
+        ----------
+        states : UnitStates
+            The units' states now, from :meth:`states` or an earlier
+            call.
+        x : array_like
+            Each unit's time ahead of now (at least 0, finite): one value
+            for every unit, or one per unit.
+        failed : bool or array_like of bool, optional
+            Whether each unit fails at ``now + x`` (the default) or has
+            only run on: one value for every unit, or one per unit.
+
+        Returns
+        -------
+        UnitStates
+            The new states; ``states`` itself is not changed.
+
+        Examples
+        --------
+        Kijima I, ``q = 0.5``: a new unit that fails at 4 is repaired to
+        the virtual age 2, and after running 3 more it is at 5:
+
+        >>> from surpyval.recurrent import GeneralizedRenewal
+        >>> model = GeneralizedRenewal.fit_from_parameters([10.0, 2.0], 0.5)
+        >>> state = model.advance(model.states(age=[0.0]), 4.0)
+        >>> state.after_repair, state.age
+        (array([2.]), array([2.]))
+        >>> model.advance(state, 3.0, failed=False).age
+        array([5.])
+        """
+        if not isinstance(states, UnitStates):
+            raise TypeError(
+                "states must be a UnitStates, as model.states() or "
+                f"model.advance() gives; got {type(states).__name__}"
+            )
+        ahead = np.broadcast_to(
+            np.asarray(self._ahead(x), dtype=float), states.now.shape
+        )
+        if not np.all(np.isfinite(ahead)):
+            raise ValueError(
+                "x is each unit's time ahead of now, so it must be "
+                f"finite; got {ahead[~np.isfinite(ahead)][:5]}"
+            )
+        now = states.now + ahead
+        fails = np.broadcast_to(np.asarray(failed, dtype=bool), now.shape)
+        failures = [
+            np.append(f, t) if d else f
+            for f, t, d in zip(states.failures, now, fails)
+        ]
+        return self._state_of(states.units, failures, now)
+
+    def _resolve_states(
+        self, age: "ArrayLike | None", states: "UnitStates | None"
+    ) -> UnitStates:
+        """The units the next-failure methods are about: ``states`` as
+        given, else those of ``age`` (or the fitted data's items)."""
+        if states is None:
+            return self._states(age)
+        if age is not None:
+            raise ValueError("give age or states, not both")
+        if not isinstance(states, UnitStates):
+            raise TypeError(
+                "states must be a UnitStates, as model.states() or "
+                f"model.advance() gives; got {type(states).__name__}"
+            )
+        return states
+
     def _next_failure_hazard(
         self, states: UnitStates, x: np.ndarray
     ) -> np.ndarray:
@@ -1168,7 +1759,7 @@ class RenewalModel(
                     - np.asarray(cif(now + 0.0 * x), dtype=float)
                     - states.reduction[:, None] * x
                 )
-            hazard, _ = _lifetime_functions(self.model)
+            hazard, _, _ = _lifetime_functions(self.model)
             age = states.age[:, None]
             scaled = x / states.scale[:, None]
             return hazard(age + scaled) - hazard(age + 0.0 * scaled)
@@ -1184,7 +1775,11 @@ class RenewalModel(
         return values
 
     def next_failure_sf(
-        self, x: ArrayLike, age: "ArrayLike | None" = None
+        self,
+        x: ArrayLike,
+        age: "ArrayLike | None" = None,
+        *,
+        states: "UnitStates | None" = None,
     ) -> np.ndarray:
         """
         The chance that each unit runs a further ``x`` from now without a
@@ -1207,6 +1802,10 @@ class RenewalModel(
         age : array_like, optional
             Units that have run this long since new without a failure, in
             place of the fitted data's items (see :meth:`unit_states`).
+        states : UnitStates, optional
+            The units' states (keyword only), as :meth:`states` or
+            :meth:`advance` gives them, in place of ``age`` or the fitted
+            data's items.
 
         Returns
         -------
@@ -1229,13 +1828,17 @@ class RenewalModel(
         fitted items, each from the state its own failures left it in.
         """
         values = self._ahead(x)
-        states = self._states(age)
+        states = self._resolve_states(age, states)
         flat = np.atleast_1d(values).reshape(-1)
         out = np.exp(-self._next_failure_hazard(states, flat))
         return out[:, 0] if values.ndim == 0 else out
 
     def next_failure_hf(
-        self, x: ArrayLike, age: "ArrayLike | None" = None
+        self,
+        x: ArrayLike,
+        age: "ArrayLike | None" = None,
+        *,
+        states: "UnitStates | None" = None,
     ) -> np.ndarray:
         """
         Each unit's intensity a further ``x`` from now, if it has not
@@ -1256,7 +1859,7 @@ class RenewalModel(
         array([0. , 0.1])
         """
         values = self._ahead(x)
-        states = self._states(age)
+        states = self._resolve_states(age, states)
         flat = np.atleast_1d(values).reshape(-1)[None, :]
         with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
             if self._family() == "ARI":
@@ -1276,6 +1879,190 @@ class RenewalModel(
                     / scale
                 )
         return out[:, 0] if values.ndim == 0 else out
+
+    def next_failure_qf(
+        self,
+        p: ArrayLike,
+        age: "ArrayLike | None" = None,
+        *,
+        states: "UnitStates | None" = None,
+    ) -> np.ndarray:
+        """
+        The time ahead of now by which each unit fails with probability
+        ``p``, given its history: the quantile function of the time to
+        its next failure, the inverse of :meth:`next_failure_sf`
+        (``next_failure_sf(next_failure_qf(p)) == 1 - p``).
+
+        From each unit's current state (:meth:`unit_states`): for the
+        virtual-age models (``GeneralizedRenewal``, ``ARA``) the lifetime
+        distribution's conditional quantile from the unit's virtual age
+        :math:`v`, the :math:`x` with :math:`H(v + x) - H(v) =
+        -\\log(1 - p)`; for G1 the same for the base lifetime on the time
+        scale :math:`(1 + q)^j` of the unit's next gap; for ARI the
+        :math:`x` with :math:`\\Lambda_0(t + x) - \\Lambda_0(t) - R\\, x =
+        -\\log(1 - p)`. Working on the cumulative hazard keeps the upper
+        tail exact (a ``p`` near 1, a unit far into its life); a time is
+        found to about the double's rounding of the unit's age, so a tiny
+        gap after a long life carries that absolute error.
+
+        Parameters
+        ----------
+        p : array_like
+            Probabilities in [0, 1]. ``p = 0`` gives 0 and ``p = 1``
+            ``inf``; a value outside [0, 1] gives ``nan``, with a
+            warning.
+        age : array_like, optional
+            Units that have run this long since new without a failure, in
+            place of the fitted data's items (see :meth:`unit_states`).
+        states : UnitStates, optional
+            The units' states (keyword only), as :meth:`states` or
+            :meth:`advance` gives them, in place of ``age`` or the fitted
+            data's items.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(units, len(p))``, one row per unit (in the order of
+            :meth:`unit_states`); ``(units,)`` for a scalar ``p``.
+
+        Examples
+        --------
+        Under a Weibull lifetime (``alpha = 10``, ``beta = 2``), the
+        median time to the next failure of a new unit,
+        :math:`10\\sqrt{\\log 2}`, and of one that has run 6 hours since
+        new, :math:`10\\sqrt{0.36 + \\log 2} - 6`:
+
+        >>> from surpyval.recurrent import GeneralizedRenewal
+        >>> model = GeneralizedRenewal.fit_from_parameters([10.0, 2.0], 0.5)
+        >>> model.next_failure_qf(0.5, age=[0.0, 6.0]).round(4)
+        array([8.3255, 4.2614])
+        >>> model.next_failure_sf(model.next_failure_qf(0.5, age=[6.0]),
+        ...                       age=[6.0]).round(12)
+        array([[0.5]])
+        """
+        values = np.asarray(p, dtype=float)
+        outside = warn_outside_unit_interval(values, "next_failure_qf")
+        unit_states = self._resolve_states(age, states)
+        flat = np.where(outside, np.nan, values).reshape(-1)
+        out = self._next_gaps(unit_states, flat[None, :])
+        return out[:, 0] if values.ndim == 0 else out
+
+    def next_failure_random(
+        self,
+        size: int,
+        age: "ArrayLike | None" = None,
+        *,
+        states: "UnitStates | None" = None,
+        random_state: Any = None,
+    ) -> np.ndarray:
+        """
+        Draw each unit's time to its next failure, ahead of now, given its
+        history: ``size`` draws per unit.
+
+        Each draw is :meth:`next_failure_qf` at one uniform ``u``, the
+        uniforms filling the ``(units, size)`` result row by row, so a
+        draw can be repeated (common random numbers) by passing the same
+        ``random_state``. With :meth:`advance` this steps units forward
+        failure by failure under the fitted model -- alongside other
+        events of a caller's own simulation (repairs that take time,
+        maintenance, other components) -- and reproduces
+        :meth:`time_terminated_simulation` and
+        :meth:`count_terminated_simulation` in distribution, as below.
+
+        Parameters
+        ----------
+        size : int
+            The number of draws for each unit.
+        age : array_like, optional
+            Units that have run this long since new without a failure, in
+            place of the fitted data's items (see :meth:`unit_states`).
+        states : UnitStates, optional
+            The units' states (keyword only), as :meth:`states` or
+            :meth:`advance` gives them, in place of ``age`` or the fitted
+            data's items.
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for a reproducible draw (keyword only); by
+            default one seeded from numpy's global stream, so
+            ``np.random.seed`` makes the draw reproducible.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(units, size)``: one row per unit (in the order of
+            :meth:`unit_states`).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.recurrent import GeneralizedRenewal
+        >>> model = GeneralizedRenewal.fit_from_parameters([10.0, 2.0], 0.5)
+        >>> model.next_failure_random(3, age=[0.0, 6.0],
+        ...                           random_state=1).round(3)
+        array([[ 8.468, 17.335,  3.946],
+               [12.246,  2.566,  3.542]])
+
+        Three units stepped through their first three failures, each
+        repaired at once:
+
+        >>> states = model.states(age=[0.0, 0.0, 0.0])
+        >>> rng = np.random.default_rng(2)
+        >>> for _ in range(3):
+        ...     gap = model.next_failure_random(1, states=states,
+        ...                                     random_state=rng)[:, 0]
+        ...     states = model.advance(states, gap)
+        >>> states.failure_count
+        array([3, 3, 3])
+        >>> states.now.round(3)
+        array([ 9.173, 13.425, 21.141])
+        """
+        try:
+            count = operator.index(size)
+        except TypeError:
+            count = -1
+        if count < 0:
+            raise ValueError(
+                "size is the number of draws for each unit, a whole number "
+                f"of at least 0; got {size!r}"
+            )
+        unit_states = self._resolve_states(age, states)
+        from surpyval.utils.rng import as_generator
+
+        u = as_generator(random_state).random((unit_states.now.size, count))
+        return self._next_gaps(unit_states, u)
+
+    def _next_gaps(self, states: UnitStates, p: np.ndarray) -> np.ndarray:
+        """``(units, m)``: each unit's quantile ``p`` (broadcast to that
+        shape) of the time to its next failure; see
+        :meth:`next_failure_qf`. The gap is found from the Exp(1) amount
+        ``-log1p(-p)`` by the samplers' own inversions
+        (:func:`conditional_gaps_from_energy`, :func:`ari_gaps`)."""
+        k = states.now.size
+        p = np.broadcast_to(np.asarray(p, dtype=float), (k, np.shape(p)[1]))
+        out = np.full(p.shape, np.nan)
+        out[p == 0] = 0.0
+        out[p == 1] = np.inf
+        inside = (p > 0) & (p < 1)
+        if not inside.any():
+            return out
+        rows = np.nonzero(inside)[0]
+        energy = -np.log1p(-p[inside])
+        if self._family() == "ARI":
+            from .ari import ari_gaps
+
+            out[inside] = ari_gaps(
+                self.model.dist,
+                np.asarray(self.model.params, dtype=float),
+                states.now[rows],
+                states.reduction[rows],
+                energy,
+                polish=True,
+            )
+        else:
+            scale = states.scale[rows]
+            out[inside] = scale * conditional_gaps_from_energy(
+                self.model, states.age[rows], energy
+            )
+        return out
 
     def _simulate_from_states(
         self,

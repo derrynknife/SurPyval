@@ -510,7 +510,8 @@ def _competing_risks():
             interface=CAUSES,
             data=cr_data,
             fit=_fit(cr.ParametricCompetingRisks),
-            functions=("sf", "ff", "Hf"),
+            # All-cause df and qf (WP2c): df == hf * sf, qf(ff(x)) == x.
+            functions=("sf", "ff", "Hf", "hf", "df", "qf"),
             event_functions=("cif",),
             events=("a", "b"),
             x=X_CR,
@@ -1353,8 +1354,9 @@ _NO_COVARIANCE = (
     "Hypoexponential",
 )
 # The probability models: param_cb bounds p from the counts of events and
-# trials (exact Clopper-Pearson by default, Wald and likelihood ratio as
-# options); cb, quantile_cb and mean_cb raise, pointing to it (#580).
+# trials (exact Clopper-Pearson by default, Wald, likelihood ratio and
+# Jeffreys as options), and covariance() is p (1 - p) / N from the same
+# counts; cb, quantile_cb and mean_cb raise, pointing to it (#580).
 _PROBABILITY_MODELS = ("Binomial", "Bernoulli", "FixedEventProbability")
 # The likelihood-ratio search runs pointwise, so it is swept at three
 # times, and only in the full suite. Rayleigh, Geometric and Uniform
@@ -1790,17 +1792,29 @@ def _bounds(case):
                     kind="param",
                     kwargs={"method": method},
                     label=f"param_cb[{method}]",
-                    # Clopper-Pearson's and the likelihood-ratio interval
-                    # do not close onto the estimate as alpha_ci -> 1.
+                    # Clopper-Pearson's, Jeffreys' (onto the posterior
+                    # median) and the likelihood-ratio interval do not
+                    # close onto the estimate as alpha_ci -> 1.
                     wald=method == "wald",
                 )
-                for method in ("exact", "wald", "lr")
+                for method in ("exact", "wald", "lr", "jeffreys")
             )
         return _parametric_bounds(case)
     if cls == "NonParametric":
         return _nonparametric_bounds(case)
     if cls == "CompetingRisks":
         return _competing_risks_bounds()
+    if cls == "ParametricCompetingRisks":
+        # Wald bounds on each cause's cumulative incidence (logit) and the
+        # all-cause sf / ff / Hf (log H); a cause's net sf / ff / Hf is
+        # its own model's cb. (Its method="lr" and "bootstrap", the
+        # cause's own, are swept on the Parametric cases: the cb_transform
+        # sweep calls a per-cause bound without its cause.)
+        return (
+            Bound("cb", on=("cif",), per_cause=True, label="cb[cif]"),
+            Bound("cb", on=_ON_SURVIVAL, label="cb[all-cause]"),
+            Bound("cb", on=_ON_SURVIVAL, per_cause=True, label="cb[net]"),
+        )
     if cls == "MixtureModel":
         # Wald bounds only (#651)
         return (

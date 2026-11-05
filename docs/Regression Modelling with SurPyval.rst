@@ -2061,8 +2061,9 @@ rescaling is about 0, :math:`S(x \mid Z) = S_0(\phi(Z)\, x)`, so where 0 is
 matters: put it at a real origin, such as the start of service. Moving 0
 changes the fit, as it would for a Weibull. A model in which the covariates
 shift the distribution's location, :math:`\mu = a + bV`, is an accelerated
-life model, ``AcceleratedLife(Normal, life_models.Linear)``, and does not
-depend on where 0 is; R's ``survreg`` calls it a gaussian (or logistic) AFT.
+life model, ``AcceleratedLife(Normal, life_models.Linear)`` (or
+``life_models.GeneralLinear`` for several covariates), and does not depend
+on where 0 is; R's ``survreg`` calls it a gaussian (or logistic) AFT.
 Additive hazards on these baselines likewise counts the covariate's effect
 from 0.
 
@@ -2541,6 +2542,72 @@ and ``param_cb`` (Wald, or the profile-likelihood interval with
 ``method='lr'``).
 
 
+The life of one unit: ``at(Z)`` and ``with_params``
+---------------------------------------------------
+
+Most questions put to a regression are about one unit: the life of *this*
+pump at *this* load. ``model.at(Z)`` answers them as a plain life model. It
+binds one covariate row to the fitted regression, and its ``sf``, ``ff``,
+``df``, ``hf``, ``Hf`` and ``qf`` take times (or probabilities) only, as a
+``Weibull`` model's do; each is the regression's own at that row, so
+``model.at(Z).sf(x)`` is exactly ``model.sf(x, Z)``. Where the regression has
+them, ``mean()``, ``rmst(tau)`` and the confidence bounds ``cb`` and
+``quantile_cb`` are there too. ``random(n)`` draws ``qf(U)`` for uniform ``U``,
+as ``Parametric.random`` does, so the same seed gives common random numbers
+across models. Hand it to any code that expects a life model. It is a view on
+the regression, not a copy: save the regression and the row.
+
+.. jupyter-execute::
+
+    from surpyval import WeibullPH
+
+    rng = np.random.default_rng(1)
+    load = rng.uniform(0.5, 2.0, 200)
+    x_pump = 1000.0 * rng.weibull(1.5, 200) / load ** (1 / 1.5)
+    pumps = WeibullPH.fit(x_pump, load)
+
+    pump = pumps.at(1.2)               # a pump at a load of 1.2
+    print(pump.sf(500.0), pumps.sf(500.0, [1.2]))   # the same number
+    print(pump.qf(0.1))                # its B10 life
+    print(pump.mean())                 # its mean life
+    print(pump.cb([500.0]))            # 95% bounds on its reliability at 500
+
+It takes one row: for several units, call it once per row,
+``[pumps.at(z) for z in loads]``. A Cox model's ``at(Z, stratum=...)`` takes
+the stratum of a stratified fit; it has no ``mean`` (its baseline stops at the
+last observed time), so use ``qf(0.5)`` or ``rmst``.
+
+``with_params`` is the other half: the same regression at other parameter
+values, given as one flat vector in the order of ``covariance_names`` (the
+rows of ``covariance()``). Everything else is kept: the distribution, the
+covariate names and formula (so a DataFrame row still works), the centre of
+a ``center=True`` fit, and fixed parameters. The new model has no data,
+covariance or likelihood, so the bounds and information criteria refuse on
+it. Its use is to carry the fit's parameter uncertainty into anything
+computed from it: draw parameters from the covariance, make each draw a
+model, and compute what you need with each. Draws of a positive parameter
+can fall below 0 when its standard error is large, which ``with_params``
+refuses; a fit with ``center=True``, whose baseline is at the covariate means,
+keeps the baseline well determined.
+
+.. jupyter-execute::
+
+    pumps_c = WeibullPH.fit(x_pump, load, center=True)
+    draws = np.random.default_rng(2).multivariate_normal(
+        pumps_c._estimates(), pumps_c.covariance(), size=1000
+    )
+    b10 = [pumps_c.with_params(d).at(1.2).qf(0.1) for d in draws]
+    print(np.percentile(b10, [2.5, 97.5]))   # the B10 life's spread
+    print(pumps_c.quantile_cb(0.1, [1.2]))   # its Wald interval
+
+The semi-parametric proportional odds and Lin-Ying additive hazards models
+have ``with_params`` too. Their baseline is left to the data, so at other
+coefficients it is re-estimated as the fit would have estimated it there (the
+profile likelihood's baseline odds; Lin and Ying's baseline, which is linear
+in the coefficients), from the data the fitted model holds: call it on the
+fitted model, not on one restored from a dict.
+
+
 .. _accelerated-life:
 
 Accelerated Life (AL)
@@ -2634,12 +2701,68 @@ letters in each formula are the parameter names the fitted model reports, and
      - Any number of stresses, each entering as given (pass ``1 / T`` or
        ``log V`` as the column for an Arrhenius or power term); with a
        Weibull or LogNormal it is that distribution's AFT model
+   * - ``GeneralLinear``
+     - :math:`a + \beta_0 Z_0 + \beta_1 Z_1 + \cdots`, one coefficient per
+       column of ``Z`` (named by the column, or ``coef_j``)
+     - ``Linear`` for any number of covariates; meant for a location
+       (``mu`` of ``Normal``, ``Gumbel``, ``Logistic``), see `A location
+       model with several covariates`_
 
 A note on units: the stress variable :math:`Z` for Arrhenius and Eyring should
 be in Kelvin (absolute temperature), not Celsius. The accelerated life fitter
 takes the same ``c``, ``n``, ``t``, ``init`` and ``fixed`` arguments as the
 other parametric families (the life-model parameters can be held with
 ``fixed`` too), and has a ``fit_from_df``.
+
+A location model with several covariates
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Some quantities live on the whole real line and have no natural zero: a
+level in decibels, a temperature in °C, a margin that can go negative. For
+them the covariates should *move* the distribution rather than stretch
+time, so that where zero sits does not matter. ``GeneralLinear`` does this
+with any number of covariates: on the ``mu`` of ``Normal``, ``Gumbel`` or
+``Logistic`` each covariate shifts the whole distribution by a fixed amount
+per unit, and adding a constant to every time moves the constant ``a``
+alone. In formulas,
+
+.. math::
+
+    \mu(Z) = a + \beta_0 Z_0 + \beta_1 Z_1 + \cdots,
+
+with the spread :math:`\sigma` the same for every unit. A positive
+coefficient means a later (longer) life, as for every life model. This is
+the model R's ``survreg(..., dist = "gaussian")`` (or ``"logistic"``, or
+``"extreme"`` for the Gumbel) fits to the times themselves, with the same
+signs: its intercept and coefficients are ``a`` and the :math:`\beta_j`,
+and its ``scale`` is :math:`\sigma`. With one covariate it is ``Linear``.
+
+On a scale parameter (the ``alpha`` of ``Weibull``) the plane can reach
+zero or negative life outside the stresses tested, where a life is
+undefined, as ``Linear``'s can; use ``GeneralLogLinear`` there.
+
+.. jupyter-execute::
+
+    from surpyval import AcceleratedLife, Normal, life_models
+
+    rng = np.random.default_rng(3)
+    Z_loc = np.column_stack([rng.normal(size=80), rng.integers(0, 2, 80)])
+    y = -5 + 2.0 * Z_loc[:, 0] - 1.5 * Z_loc[:, 1] + rng.normal(0, 1.5, 80)
+    c_loc = (y > -3).astype(int)       # right censored at -3
+    y = np.minimum(y, -3.0)
+    loc = AcceleratedLife(Normal, life_models.GeneralLinear).fit(
+        y, Z=Z_loc, c=c_loc)
+    shifted = AcceleratedLife(Normal, life_models.GeneralLinear).fit(
+        y + 40, Z=Z_loc, c=c_loc)
+    print(loc.phi_params.round(3))
+    print(shifted.phi_params.round(3))    # a moves by 40, the rest stays
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(shifted.phi_params[0], loc.phi_params[0] + 40)
+    assert np.allclose(shifted.phi_params[1:], loc.phi_params[1:], rtol=1e-5)
 
 Using the factory
 ~~~~~~~~~~~~~~~~~
@@ -3276,8 +3399,8 @@ So put 0 at a real origin, such as the start of service, for AFT or additive
 hazards on these baselines. For a quantity whose 0 is only a reference point
 (decibels, a temperature in °C, a log-scale measurement) use PH or PO, or a
 model in which the covariate shifts the distribution's location,
-``AcceleratedLife(Normal, life_models.Linear)``, which is an accelerated life
-model and not an AFT (see `Accelerated Failure Time (AFT)`_).
+``AcceleratedLife(Normal, life_models.Linear)`` (``GeneralLinear`` for
+several covariates), which is an accelerated life model and not an AFT (see `Accelerated Failure Time (AFT)`_).
 
 **Survival given an age.** ``sf_tvc(x, Z, given=g)`` is
 :math:`S(x \mid g) = S(x) / S(g)`. The covariate before :math:`g` changes the
@@ -4765,11 +4888,11 @@ and reports the Wald intervals and p-values.
     from surpyval import CoxPH
 
     # Every death is in the group z1 = 1
-    x = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
-    c = np.array([0, 0, 1, 0, 1, 1, 0, 1, 1, 1])
-    Z = np.array([[1, 0.5], [1, -1.2], [0, 0.3], [1, 0.8], [0, -0.4],
-                  [1, 1.1], [1, -0.6], [0, 0.9], [0, 0.2], [1, -0.1]])
-    firth = CoxPH.fit_firth(x, Z, c=c)
+    x_sep = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    c_sep = np.array([0, 0, 1, 0, 1, 1, 0, 1, 1, 1])
+    Z_sep = np.array([[1, 0.5], [1, -1.2], [0, 0.3], [1, 0.8], [0, -0.4],
+                      [1, 1.1], [1, -0.6], [0, 0.9], [0, 0.2], [1, -0.1]])
+    firth = CoxPH.fit_firth(x_sep, Z_sep, c=c_sep)
     firth
 
 .. jupyter-execute::
