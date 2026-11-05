@@ -122,6 +122,7 @@ from typing import Any
 import numpy as np
 from scipy.stats import norm
 
+from ._shared import _fmt, _is_cox, _note
 from .registry import AdviceRule, Check, Context, Panel
 
 #: The quantiles of the failure times the check is made at.
@@ -562,14 +563,6 @@ class _Outcome:
     sf: Callable[[np.ndarray, np.ndarray], np.ndarray]
 
 
-def _is_cox(model: Any) -> bool:
-    from surpyval.univariate.regression.semi_parametric_regression_model import (  # noqa: E501
-        SemiParametricRegressionModel,
-    )
-
-    return isinstance(model, SemiParametricRegressionModel)
-
-
 def _cox_sf(
     model: Any, data: dict
 ) -> Callable[[np.ndarray, np.ndarray], np.ndarray]:
@@ -716,11 +709,6 @@ def option_times(ctx: Context) -> Sequence[tuple[str | None, float]]:
     return [(None, float(v)) for v in values]
 
 
-def _note(ctx: Context, text: str) -> None:
-    if text not in ctx.notes:
-        ctx.notes.append(text)
-
-
 def _curves(
     ctx: Context,
     times: Callable[[Context], Sequence[tuple[str | None, float]]],
@@ -777,10 +765,6 @@ def _curves(
         return out
 
     return ctx.cached("calibration_curves", compute)
-
-
-def _fmt(value: float) -> str:
-    return f"{value:.3g}"
 
 
 def _direction(curve: CalibrationCurve) -> str:

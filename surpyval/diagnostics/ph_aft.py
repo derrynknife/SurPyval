@@ -113,8 +113,17 @@ from surpyval.univariate.regression._fit_skeleton import (
 )
 from surpyval.univariate.regression._likelihood import regression_neg_ll
 
+from ._shared import (
+    CATEGORICAL_LEVELS,
+    _covariate_kind,
+    _Fit,
+    _fmt,
+    _gap,
+    _note,
+    _source,
+)
 from .calibration import calibration_advice, calibration_check
-from .cox import CATEGORICAL_LEVELS, INFLUENCE_LIMIT, _fmt, _source
+from .cox import INFLUENCE_LIMIT
 from .registry import AdviceRule, Check, Context, Family, Panel, register
 
 #: Another model whose AIC is more than this below the fitted model's
@@ -283,15 +292,6 @@ def _transform(bounds: list) -> tuple[Callable, Callable]:
         return anp.where(both, lo0 + width * s, out)
 
     return to_u, from_u
-
-
-class _Fit(SimpleNamespace):
-    """A maximum found by :func:`_maximise`: ``theta``, ``value`` (the
-    negative log-likelihood there) and ``ok`` (a verified maximum)."""
-
-    theta: np.ndarray
-    value: float
-    ok: bool
 
 
 def _maximise(
@@ -604,12 +604,7 @@ def _levels(b: SimpleNamespace, j: int) -> int:
 
 
 def _kind(b: SimpleNamespace, j: int) -> str:
-    levels = _levels(b, j)
-    if levels <= 2:
-        return "binary"
-    if levels <= CATEGORICAL_LEVELS:
-        return "categorical"
-    return "continuous"
+    return _covariate_kind(_levels(b, j))
 
 
 def _failed(b: SimpleNamespace) -> np.ndarray:
@@ -681,12 +676,6 @@ def _martingale(ctx: Context) -> tuple[np.ndarray, np.ndarray]:
         return rows, m
 
     return ctx.cached("martingale", compute)
-
-
-def _note(ctx: Context, text: str) -> None:
-    """Add ``text`` to the report's notes, once."""
-    if text not in ctx.notes:
-        ctx.notes.append(text)
 
 
 def _note_residual_rows(ctx: Context) -> None:
@@ -1283,14 +1272,6 @@ def _aic_candidates(ctx: Context, kind: str) -> list[dict]:
         return out
 
     return ctx.cached("aic_" + kind, compute)
-
-
-def _gap(delta: float) -> str:
-    """Another model's AIC against the fitted model's, ``delta`` the
-    fitted model's less the other's, in words."""
-    if delta == 0:
-        return "level with it"
-    return "{} {}".format(_fmt(abs(delta)), "lower" if delta > 0 else "higher")
 
 
 def _aic_rows_of(kind: str) -> Callable[[Context], list[dict]]:

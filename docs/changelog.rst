@@ -477,6 +477,10 @@ Unreleased
   saving and the printout. Every penalised result, warning and refusal
   is unchanged to the last bit. The solver now also takes a model with
   no Hessian, using finite differences of its gradient, and says so.
+- The diagnostics families' copies of the same small helpers (number
+  formatting, notes, the covariate kind, the trend sign, formula-column
+  names, the AIC gap) now live once in ``surpyval/diagnostics/_shared.py``.
+  Every diagnosis is unchanged to the last bit.
 - Removed code nothing called: the rename helpers of
   ``surpyval.utils.deprecation`` no deprecation uses any more
   (``reordered_arguments``, ``CallableFloat``, ``MethodFloat``,

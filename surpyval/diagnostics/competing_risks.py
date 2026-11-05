@@ -75,6 +75,7 @@ from surpyval.univariate.competing_risks.regression.fine_gray_diagnostics import
 )
 
 from . import cox as _cox
+from ._shared import _covariate_kind, _fmt, _source, _trend_sign
 from .registry import AdviceRule, Check, Context, Family, Panel, register
 
 __all__ = ["fine_gray_zph_test", "fine_gray_added_covariate_test"]
@@ -287,7 +288,7 @@ def _fit_alone(cause: Any, rest: str = "...") -> str:
 
 def _cs_stratify(row: dict, ctx: Context) -> str:
     name = row["covariates"][0]
-    var = _cox._source(name)
+    var = _source(name)
     cause = row["_cause"]
     return (
         "The effect of {name} on the hazard of cause {cause} changes with "
@@ -327,16 +328,11 @@ def _cs_time_varying(row: dict, ctx: Context) -> str:
     )
 
 
-def _cs_failed(sub: Context, transform: str) -> list[int]:
-    res = _cox._zph(sub, transform)["per_covariate"]
-    return [j for j, _ in sub.checked if res[j]["p_value"] < sub.alpha]
-
-
 def _cs_global_only(row: dict, ctx: Context) -> bool:
     if not row.get("_global"):
         return False
     sub = _context_of(ctx, row["_cause"])
-    return not _cs_failed(sub, row["transform"])
+    return not _cox._ph_rows_failed(sub, row["transform"])
 
 
 def _cs_global(row: dict, ctx: Context) -> str:
@@ -358,7 +354,7 @@ def _any_cause_fails_ph(row: Any, ctx: Context) -> bool:
     for _, sub in _cause_contexts(ctx):
         for transform in _cox._transforms(sub):
             res = _cox._zph(sub, transform)
-            if _cs_failed(sub, transform):
+            if _cox._ph_rows_failed(sub, transform):
                 return True
             if res["global"]["p_value"] < ctx.alpha:
                 return True
@@ -404,7 +400,7 @@ def _cs_influence(row: dict, ctx: Context) -> str:
             r=row["_row"],
             name=row["covariates"][0],
             cause=cause,
-            size=_cox._fmt(row["_size"]),
+            size=_fmt(row["_size"]),
         )
     )
 
@@ -423,7 +419,7 @@ def _cs_outliers(row: dict, ctx: Context) -> str:
             cause=cause,
             s="" if len(rows) == 1 else "s",
             shown=shown,
-            cut=_cox._fmt(row["_cutoff"]),
+            cut=_fmt(row["_cutoff"]),
             them="it" if len(rows) == 1 else "them",
         )
     )
@@ -563,18 +559,13 @@ def _fg_zph_cached(ctx: Context, cause: Any, transform: str) -> dict:
 
 
 def _fg_kind(fd: FineGrayData, j: int) -> str:
-    levels = np.unique(fd.Z_raw[:, j]).size
-    if levels <= 2:
-        return "binary"
-    if levels <= _cox.CATEGORICAL_LEVELS:
-        return "categorical"
-    return "continuous"
+    return _covariate_kind(np.unique(fd.Z_raw[:, j]).size)
 
 
 def _fg_trend(res: dict, j: int, fd: FineGrayData) -> float:
     g, scaled = res["g"], res["scaled_schoenfeld"][:, j]
     w = fd.n[fd.events]
-    return float(np.sign(np.cov(g, scaled, aweights=w)[0, 1]))
+    return _trend_sign(g, scaled, w)
 
 
 def _fg_ph_rows(ctx: Context) -> list[dict]:
@@ -684,7 +675,7 @@ def _fg_ph_panels(ctx: Context) -> list[Panel]:
             panels.append(
                 Panel(
                     "cause {}: {}: p = {} (cif)".format(
-                        _label(cause), name, _cox._fmt(p)
+                        _label(cause), name, _fmt(p)
                     ),
                     draw,
                 )

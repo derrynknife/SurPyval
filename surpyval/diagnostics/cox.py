@@ -52,7 +52,6 @@ which.
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 import numpy as np
@@ -70,6 +69,15 @@ from surpyval.univariate.regression.proportional_hazards.diagnostics import (
 )
 from surpyval.utils.validation import check_option
 
+from ._shared import (  # noqa: F401 (CATEGORICAL_LEVELS: was defined here)
+    CATEGORICAL_LEVELS,
+    _covariate_kind,
+    _fmt,
+    _is_cox,
+    _ph_name,
+    _source,
+    _trend_sign,
+)
 from .calibration import calibration_advice, calibration_check
 from .registry import AdviceRule, Check, Context, Family, Panel, register
 
@@ -78,9 +86,6 @@ TRANSFORMS = ("km", "rank")
 #: The scale of ``d.tables["proportional_hazards"]`` when ``diagnose()``
 #: is given no ``transform`` (``check_ph``'s default, as R's).
 DEFAULT_TRANSFORM = "km"
-#: The most distinct values a covariate has and still counts as
-#: categorical (one with two is binary); more is continuous.
-CATEGORICAL_LEVELS = 5
 #: ``|dfbeta| / se`` above this warns: one row moves the coefficient by
 #: more than a standard error.
 INFLUENCE_LIMIT = 1.0
@@ -97,21 +102,7 @@ def _raw_Z(ctx: Context) -> np.ndarray:
 def _kind(ctx: Context, j: int) -> str:
     """``"binary"``, ``"categorical"`` or ``"continuous"``, by the number
     of distinct values of covariate ``j``."""
-    levels = np.unique(_raw_Z(ctx)[:, j]).size
-    if levels <= 2:
-        return "binary"
-    if levels <= CATEGORICAL_LEVELS:
-        return "categorical"
-    return "continuous"
-
-
-def _source(name: str) -> str:
-    """The variable a formula-coded column comes from (``sex`` for
-    ``C(sex)[T.male]`` or ``sex[T.male]``), else the name itself."""
-    match = re.match(r"^C\(\s*([A-Za-z_][\w.]*)[^)]*\)\[", name)
-    if match is None:
-        match = re.match(r"^([A-Za-z_][\w.]*)\[", name)
-    return match.group(1) if match else name
+    return _covariate_kind(np.unique(_raw_Z(ctx)[:, j]).size)
 
 
 def _zph(ctx: Context, transform: str) -> dict:
@@ -156,10 +147,6 @@ def _event_rows(ctx: Context) -> np.ndarray:
     return np.flatnonzero(np.asarray(ctx.model._fit_data["c"]) == 0)
 
 
-def _fmt(value: float) -> str:
-    return f"{value:.3g}"
-
-
 # ---------------------------------------------------------------------------
 # Proportional hazards
 # ---------------------------------------------------------------------------
@@ -171,7 +158,7 @@ def _trend(ctx: Context, j: int) -> float:
     g = zph_times(cox_fit_data(ctx.model), "km")[events]
     scaled = _residuals(ctx, "scaled_schoenfeld")[:, j]
     weights = np.asarray(ctx.model._fit_data["n"], dtype=float)[events]
-    return float(np.sign(np.cov(g, scaled, aweights=weights)[0, 1]))
+    return _trend_sign(g, scaled, weights)
 
 
 def _ph_rows(ctx: Context) -> list[dict]:
@@ -579,10 +566,6 @@ def _notes(ctx: Context) -> list[str]:
 # ---------------------------------------------------------------------------
 # Advice
 # ---------------------------------------------------------------------------
-def _ph_name(row: dict) -> str:
-    return row["covariates"][0]
-
-
 def _stratify(row: dict, ctx: Context) -> str:
     name = _ph_name(row)
     var = _source(name)
@@ -700,14 +683,6 @@ def _cluster_message(row: Any, ctx: Context) -> str:
         "cluster-robust (Lin-Wei) standard errors, clustered by "
         "subject.".format(_clustered(ctx))
     )
-
-
-def _is_cox(model: Any) -> bool:
-    from surpyval.univariate.regression.semi_parametric_regression_model import (  # noqa: E501
-        SemiParametricRegressionModel,
-    )
-
-    return isinstance(model, SemiParametricRegressionModel)
 
 
 #: The Cox family: its checks, in the order of the table, and its advice.
