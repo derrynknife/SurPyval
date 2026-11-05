@@ -15,6 +15,17 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-05
 
+### 0.27 WP2b: uncertainty of a fixed probability (5 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A fitted `Bernoulli`, `FixedEventProbability` or `Binomial` has `covariance()` = `p_hat (1 - p_hat) / N` from its event counts (the inverse observed information), and `standard_errors()`. The Binomial's is 2 x 2 over `[n, p]` with a zero row and column for the known `n`, as a held parameter has, rather than 1 x 1. Names come from the base class's `covariance_names` (no per-model attribute). | proposed | Consistency: `covariance()` follows `parameter_names` on every `Parametric`. | done |
+| At `k = 0` or `k = N` the variance is `nan`, not 0, and is not a refusal: `covariance()` returns `[[nan]]`, `standard_errors()` `nan`; the docs point to `param_cb("p")`. | proposed | 0 would tell propagation code `p` is known after, say, no failures in 20 demands; the package's Wald bound is already `nan` there, and `standard_errors_of` documents `nan` for a parameter on a boundary. A refusal would need its own message in the base class, which this change does not touch. | done |
+| No new `p_cb`: the Jeffreys interval is `param_cb("p", method="jeffreys")`, beside `"exact"`, `"wald"` and `"lr"`. The default stays `"exact"` (Clopper-Pearson). | proposed | `param_cb` already routes these models to bounds from the counts; one entry point. Exact holds its level at every `p` (study: 0.968 to 0.995 at 95%); Jeffreys fell to 0.883 and 0.904 in two cells, and changing the default would move published numbers. | done |
+| Jeffreys at `k = 0` / `k = N`: lower 0 / upper 1, with the other bound still at `alpha / 2` (two-sided), as Clopper-Pearson does. R's `binom::binom.confint(methods = "bayes")` moves the whole `alpha` to the open tail there. | proposed | Same convention as the exact interval in the same function; Brown, Cai and DasGupta (2001). | done |
+| No `p_random` / posterior draw method on the fitted model. Draws of `p` come from `Bernoulli.fit_bayes(x, priors={"p": Beta.from_params([0.5, 0.5])})`, the conjugate Jeffreys posterior. | proposed | The Bayesian module already gives it (and `draw_models`); `Parametric` has no parameter-draw convention to follow. | done |
+| These fits take no `w` (they already raise `WeightedRefusal`); counts go in `n`, so no robust variance is needed. | proposed | No silent wrong variance. | done |
+
 ### 0.27 WP2e: GeneralLinear life model (5 Nov 2026)
 
 | Decision | By | Reason | Status |
@@ -682,3 +693,23 @@ The rows of 2026-10-29 and 2026-10-30 that were still proposed were reviewed by 
 | `constant_effects_test()` refuses a weighted fit (`WeightedRefusal`), pointing to the robust bands of `plot()` / `cumulative_coefficients_cb()`. | proposed | Its simulated null is built and size-checked for unweighted data only; a weighted multiplier version would need its own size study. | done (gap) |
 | `concordance()` of a weighted Aalen fit scores the rows unweighted, as for weighted Cox and parametric fits. | proposed | Consistency with the other weighted models; a weighted C is a separate change. | done |
 | Design-based check by simulation (`scripts/studies/aalen_weighted_coverage.py`, 500 replicates, fixed seeds 20261105+r, informative sampling of censored units): the 95% robust bounds on `B_0(5)` and `B_z(5)` cover 0.936 and 0.948 (MC se 0.011, 0.010); the classical variance with the weights read as counts covers 0.850 and 0.884; the unweighted fit 0.000 and 0.674. | proposed | Evidence that the robust variance is the valid one, and why the classical one is not offered. | done |
+
+### 0.27 WP2a: naming the rows of a parametric covariance (5 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `Parametric.covariance_names` names the rows of `covariance()`: the distribution's parameters, then `lfp_p` (lfp fits), then `f0` (zi fits). A property derived from the model's options; nothing new is saved, so `to_dict` and schema 4 are unchanged. | proposed | The same name and convention as the degradation process models and mixtures; the order is the one the fitter already builds. | done |
+| A parameter fixed at fit time keeps its name and a zero row and column. | proposed | That is what `covariance()` already returns; names and rows stay one to one. | done |
+| An offset `gamma` stays out of `covariance()` (held at its estimate; the other rows are conditional on it). | proposed | `scripts/studies/offset_gamma_wald.py` (1000 replicates, n = 200, seed 20261105): the 95% Wald interval for gamma from the numerical Hessian covered 0.889 at shape 3.5, 0.873 at 2.5, 0.762 at 1.5 (MC se 0.007), and the Hessian was unusable in 1000/1000 fits at 0.8. `param_cb("gamma")` already refuses Wald and offers likelihood-ratio and bootstrap bounds; adding a row would also change the saved covariance's shape. | done |
+| `parameter_names` stays the distribution's names (the entries of `params`); it is not made equal to `covariance_names`. | proposed | `parameter_names` labels `params`, and dozens of callers (bootstrap, Bayes, regression, recurrent, copulas, `with_params`, `to_dict`'s `param_names`) zip it with `params`; `covariance_names` starts with it. | done |
+| `hess_inv` stays the distribution's block (no `lfp_p` or `f0`); its docs now say so and point to `covariance()` with `covariance_names`. | proposed | Changing its shape would change saved models; `covariance()` is the variance API. | done |
+
+### 0.27 WP2c: parametric competing-risks lifetime (5 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `ParametricCompetingRisks.mean()` integrates `S(t)` by `scipy.integrate.quad` on a log-time axis (`t = s e^y`, `s` the all-cause median), split at `y = 0`, to `epsrel = 1e-12`; a survival falling no faster than `1/t` at `t = 1e12 s` to `1e14 s` gives `inf`; a support below 0 subtracts `int_{-inf}^0 F`. | proposed | The integrand on the log axis is smooth over any scale; exact closed forms (exponential, common-shape Weibull, LogLogistic pair) match to 1e-10. | done |
+| With a cure ceiling `mean()` is `inf` and `mean(defective=True)` is `int t dF = int (S - S(inf)) dt`. | proposed | The semantics and wording of `Parametric.mean`. | done |
+| `qf(p)` solves `H(t) = -log(1 - p)` everywhere (not `ff(t) = p` below the median), by Brent's method on `log t`, bracketed by the causes' quantiles at `1 - (1 - p)^(1/K)` and `p`. | proposed | `F = 1 - exp(-H)`, so it is the same equation; on the hazard scale small and large `p` both keep their digits, so one residual does both halves. | done |
+| `sf`, `ff`, `df` and `qf` take `event=k`, giving cause `k`'s net function (its own model). `mean` takes no `event`: the net mean is `model.models[k].mean()`. | proposed | The nonparametric `CompetingRisks.sf/ff(x, event)` are net; `hf`/`Hf(x, event)` are already cause-specific, so `df = hf * sf` holds per cause too. | done |
+| Covariance, `with_params` and confidence bounds on these functions are left to a later piece. | proposed | Scope of this piece. | open |

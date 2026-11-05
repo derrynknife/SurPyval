@@ -67,6 +67,21 @@ class Bernoulli_(  # type: ignore[misc]
     >>> clean = Bernoulli.fit([0], n=[1200])
     >>> clean.param_cb("p", alpha_ci=0.1, bound="upper").round(6)
     array([0.001917])
+
+    ``method="jeffreys"`` gives the Jeffreys interval, narrower than the
+    exact one and closer to its level on average:
+
+    >>> demands.param_cb("p", alpha_ci=0.1, method="jeffreys").round(5)
+    array([0.0009 , 0.00585])
+
+    ``covariance()`` is the variance of ``p``, :math:`\hat p (1 - \hat p)
+    / N`, for code that propagates it (by the delta method, say). With no
+    failures it is ``nan``: the formula's 0 would claim ``p`` is known.
+
+    >>> demands.covariance()
+    array([[2.078125e-06]])
+    >>> clean.covariance()
+    array([[nan]])
     """
 
     @staticmethod

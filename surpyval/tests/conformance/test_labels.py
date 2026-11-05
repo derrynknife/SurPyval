@@ -26,6 +26,7 @@ from surpyval.tests.conformance.registry import (
     CASES,
     call,
     fitted,
+    query,
 )
 
 # Each fixture's causes are "a" and "b".
@@ -85,7 +86,9 @@ def _per_cause(case, model, mapping=None):
     fixture's original cause name."""
     out = {}
     for fname in case.functions:
-        out[fname] = np.asarray(call(case, model, fname, case.x), float)
+        # Probabilities for qf, the case's times otherwise.
+        xq = query(case, fname)
+        out[fname] = np.asarray(call(case, model, fname, xq), float)
     for fname in case.event_functions:
         for e in RELABEL["tuple"]:
             label = e if mapping is None else mapping[e]

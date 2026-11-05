@@ -39,6 +39,9 @@ Rscript scripts/reference/reference_r_weighted_turnbull.R
 # Prints the weighted penalised Cox references typed into
 # surpyval/tests/univariate/regression/test_penalised_weighted.py
 Rscript scripts/reference/reference_r_weighted_penalised.R surpyval/datasets
+# Prints the bounds on a probability typed into
+# surpyval/tests/univariate/parametric/test_probability_uncertainty.py
+Rscript scripts/reference/reference_r_fixed_probability.R
 # Prints the survreg references typed into
 # surpyval/tests/univariate/regression/test_general_linear.py
 Rscript scripts/reference/reference_r_general_linear.R

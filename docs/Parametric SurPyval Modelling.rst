@@ -262,6 +262,57 @@ use ``covariance()`` for a variance:
     print("support   :", model.support)
     print("std errors:", model.standard_errors())
 
+Which parameter is each row of the covariance?
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``covariance_names`` names the rows (and columns) of ``covariance()`` and
+the entries of ``standard_errors()``, in order. A plain fit has one row per
+distribution parameter, the same as ``parameter_names``. A fit with a
+limited failure population (``lfp=True``) adds a row for the proportion
+that can fail, ``lfp_p``, and one with zero inflation (``zi=True``) adds a
+row for the fraction failed at time 0, ``f0``, in that order:
+
+.. jupyter-execute::
+
+    import numpy as np
+    rng = np.random.default_rng(0)
+    x = np.r_[rng.weibull(2, 200) * 100, np.zeros(20)]
+    zi_model = surv.Weibull.fit(x, zi=True)
+    print(zi_model.covariance_names)
+    se = zi_model.standard_errors()
+    print({n: round(float(v), 4) for n, v in zip(zi_model.covariance_names, se)})
+
+Two cases keep a parameter out of the variances:
+
+- A parameter **fixed** at fit time (``fixed={"beta": 2}``) is known, so
+  its row and column are zeros; it keeps its name and place.
+- The **offset** ``gamma`` of an ``offset=True`` fit has no row. It is a
+  threshold, the earliest time a failure can happen, and the usual
+  standard error is unreliable for it: the fit often sits on or near the
+  first failure, where the likelihood is not smooth. In a simulation of
+  200-unit Weibull samples, a 95% interval from that standard error caught
+  the true offset only 89% of the time for a shape of 3.5 and 76% for a
+  shape of 1.5, and below a shape of 1 there was no standard error at all.
+  So the covariance holds ``gamma`` at its estimate, and the other rows are
+  the variances given ``gamma``. Bound the offset itself with
+  ``param_cb("gamma", method="lr")`` or ``method="bootstrap"``.
+
+To simulate parameter uncertainty, draw from a multivariate normal with
+these names: the estimates are ``params`` then ``lfp_p`` and ``f0`` (where
+the model has them), in the order of ``covariance_names``.
+
+.. jupyter-execute::
+
+    est = {**dict(zip(zi_model.parameter_names, zi_model.params)),
+           "f0": zi_model.f0}
+    centre = [est[name] for name in zi_model.covariance_names]
+    draws = rng.multivariate_normal(centre, zi_model.covariance(), 5)
+    print({n: round(float(v), 3) for n, v in zip(zi_model.covariance_names, draws[0])})
+
+``parameter_names`` stays the distribution's parameters (the entries of
+``params``), and ``hess_inv`` stays the distribution's block of the inverse
+Hessian, so neither changes with ``lfp`` or ``zi``.
+
 The distributions can also be used directly, without a model, by passing
 the parameters after ``x``. This is handy for a quick calculation:
 
