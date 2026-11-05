@@ -13,6 +13,81 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-05
+
+### Restricted mean survival time of the parametric models
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `Parametric.rmst(tau, alpha_ci)` returns the non-parametric `rmst`'s dict (`rmst`, `se`, `lower`, `upper`, `tau`); `se` is the delta method's on the RMST itself, and the interval is the Wald interval on `logit(rmst / tau)`, which `rmst_cb(method="wald")` also gives. | proposed | The same call and result as the non-parametric models; the logit keeps the bounds in (0, tau), where a plain or log interval can pass tau when the RMST is near it. Matches R's delta method on the same scale to 1e-6. | done |
+| `rmst()` refuses a model with no covariance (built with `from_params`, not fitted by MLE), naming `mean(tau=tau)`, which gives the point alone, as the non-parametric `mean(tau)` does. | proposed | A dict with `nan` bounds would hide why; the non-parametric `rmst` refuses a model without a variance too. | done |
+| The RMST is the area from 0 for every distribution, a whole-line one (Normal, Gumbel, Logistic) included: the time lived in [0, tau]. A `tau` past the data is allowed (the fit extrapolates); the default `tau` is the largest observed time, as for the non-parametric models. Discrete distributions are refused (their RMST is a sum of `sf` over the counts). | proposed | One definition across models; the non-parametric refusal past the data is about a curve that is not estimated there, which a parametric fit is. | done |
+| The regression models' `rmst_cb` has Wald and bootstrap bounds, not likelihood-ratio ones: `method="lr"` is refused with that message. | proposed | The regression likelihood-ratio search is built per function (sf, quantiles); a search over an integral at every step is a separate piece. | gap |
+
+### Firth's penalised Cox fit: `CoxPH.fit_firth`
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A separate method, `CoxPH.fit_firth(x, Z, c, n, tl, strata, alpha_ci, profile, center, tol)`, in `cox_firth.py`, returning the usual Cox model with a `firth` result (`FirthResult`, in `to_dict`). | proposed | As `fit_penalised`: a different estimator with its own inference; the same model type predicts and serialises as any Cox model. | done |
+| Breslow ties only, no `tie_method`. | proposed | R's `coxphf`, the reference, has only Breslow's; the penalty's derivatives are written for it. | done |
+| The covariance is the inverse of the unpenalised information at the Firth estimate, `I(beta_hat)^-1`, not of the penalised curvature. | proposed | What `coxphf` reports (checked to 1e-10) and Heinze and Schemper use. | done |
+| Intervals and p-values by the profile penalised likelihood by default (`coxphf`'s `pl = TRUE`), Wald with `profile=False`; `model.p_values` and `summary()` show the chosen ones, at the fitted `alpha_ci` (another level refuses, naming the refit). `z` stays Wald's. | proposed | Under separation the profile is flat on one side and the Wald interval is far too narrow there. | done |
+| `likelihood_ratio_test()` of a Firth fit is the penalised test against all coefficients 0 (`coxphf`'s); `neg_ll()`, AIC and BIC stay those of the unpenalised partial likelihood at the estimate. | proposed | The penalised statistic is the one that goes with the estimate; the criteria keep one meaning across Cox fits. | done |
+| A column the partial likelihood cannot determine is refused, not aliased. | proposed | The penalty, a log determinant, is not defined where the information is singular. | done |
+| The monotone-likelihood warning of a Cox fit names `CoxPH.fit_firth` as the fix; the Fine-Gray and weighted Cox fits, which it does not cover, keep the general advice. | proposed | The warning should name a fix that the caller's fit can use. | done |
+| No weights `w` yet. | proposed | `coxphf` has none to check against. | open |
+
+### Brier score and time-dependent AUC for competing risks
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Competing risks enter the existing metrics as `e=` (event type per row, `None` for censored, `c` then optional, as the competing-risks fits) and `cause=` (the one scored); the prediction matrix then holds the cumulative incidence `F_k(t \| Z)` of that cause in the argument that otherwise holds `S(t \| Z)`. No new functions. | proposed | One set of metric functions; the same data convention as every competing-risks fit; with one cause the result is the ordinary metric of `1 - S`. | done |
+| A subject with a competing event by `t` is weighted `1 / G(x_i-)` and counts as "no event of the cause" in the Brier score; the AUC's controls default to everyone without the cause by `t` (`controls="cause_free"`: `Score`'s definition, `timeROC`'s `AUC_2`), with `"event_free"` (`AUC_1`) as the option. `G` is the Kaplan-Meier of the censoring of every cause. | proposed | `riskRegression::Score(cause = k)`'s definitions, so the numbers check against it; `AUC_2` is the one that uses every uncensored subject. | done |
+| The AUC standard errors follow the influence function that `Score` gives when the scored cause is coded 1 (and `timeROC`), not `Score`'s output for a cause coded otherwise, which changes with the labelling. | proposed | A standard error cannot depend on what a cause is called; the relabelled `Score` call and `timeROC` agree with each other and with SurPyval. | done |
+
+### Standard errors and comparisons of the Brier score, IBS and time-dependent AUC
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A new function, `score_predictions(x, c, predictions, times, metrics, alpha_ci)`, returns a `PredictionScores` result (scores and comparisons tables, influence functions, `to_dict`/`from_dict`); `brier_score`, `integrated_brier_score` and `auc_td` are unchanged and still return bare numbers. | proposed | A flag that changed the plain functions' return type would break unpacking (`times, bs = ...`) and their types; one entry point taking several models mirrors `riskRegression::Score` and is where a later `cause=` fits. | done |
+| The standard errors include the censoring Kaplan-Meier's own variability (`Score(conservative = FALSE)`), through its Nelson-Aalen expansion with everyone with `x >= s` at risk, as `riskRegression` and `timeROC` do; `se = sd(IF) / sqrt(n)` with the `n - 1` standard deviation, as `Score`. The censoring distribution is the scored data's own (no `x_train`): a separate one would need another variance term. | proposed | Matches `Score` to rounding (1e-13) with and without ties. | done (gap: `x_train`) |
+| Intervals of the scores are clipped to [0, 1] and those of the differences are not; each model is compared with every model before it (model minus reference), as `Score`'s contrasts. | proposed | `Score`'s conventions, so the numbers can be checked against it. | done |
+
+### Pseudo-observations and the regressions on them
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The coefficients of `pseudo_regression` take SurPyval's sign (a positive coefficient means a shorter life) on every quantity: the survival regressions model the event probability `1 - S(t)` (cloglog: `log(-log S(t)) = a(t) + b'Z`, the proportional-hazards reading; logit: the log-odds of failing by `t`), the cumulative-incidence regressions the cause's incidence, and the RMST regression is `g(RMST) = a - b'Z`, so an identity-link coefficient is minus the RMST difference and a log-link one minus the log ratio. R's `geeglm` on `pseudomean` reports the RMST coefficients with the other sign; the reference tests flip it. | proposed | The maintainer's one sign convention (2026-11-03, "One sign convention") for new models. How it applies on a scale that is not a hazard or a time (a mean, a probability) was not settled; modelling the event probability makes it the natural sign for the survival and incidence models, and the minus sign in the RMST model is the conservative reading of the rule. The alternative is the RMST's own sign (positive = longer), as R and `survRM2`. | proposed |
+| Rows with a missing covariate are dropped (with the usual warning) before the pseudo-values are computed, so the Kaplan-Meier estimate is that of the analysed units. | principle (missing values) | The package's fitting rule; R's usual practice computes them on every unit and then drops rows in `geeglm`. The reference tests use complete data. | done |
+| Gaussian working variance (each pseudo-value weighs the same) and the robust sandwich `A^-1 B A^-1` with no small-sample factor; counts `n` are copies (each its own cluster). | principle 16 | `geepack::geeglm(..., family = gaussian, corstr = "independence")`, the reference, and the literature's default. | done |
+| Delayed entry, left and interval censoring and times past the last observation are refused with a message; there is no `w` argument (sampling weights) yet. | proposed | Leave-one-out estimates of truncated or interval-censored samples do not give pseudo-values with the right expectation without further work. | open |
+
+### Confidence bounds on a Cox model's predicted curve
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `SemiParametricRegressionModel.cb(x, Z, stratum, on, alpha_ci, bound, bound_type, method)` bounds `sf`, `ff` and `Hf` with the variance of R's `survfit.coxph` (`std.err`: Tsiatis's baseline variance plus the coefficients' part, the Efron form after an Efron fit, weighted with the robust covariance for a weighted fit). `bound_type` takes R's `conf.type` names, `"log"`, `"log-log"` and `"plain"`, and defaults to `"log"`, R's default; the non-parametric estimates' `"exp"` and `"normal"` are accepted as `"log-log"` and `"plain"`. | proposed | The task is R parity, and `"log"` is what `survfit(fit, newdata)` prints. The non-parametric estimates and Aalen's model default to the log-log scale (`"exp"`), so the option's default differs between models; the maintainer may prefer one default everywhere. | done |
+| Only Wald bounds (`method="wald"`); `"lr"` and `"bootstrap"` refuse, naming the fix (refit to resampled rows). `hf` and `df` (the baseline's jumps) have no bounds; nor has `qf` (no `quantile_cb` yet). | proposed | The baseline has no likelihood for a likelihood-ratio bound; R has no bound on the jumps either. | done (gaps recorded) |
+| A model restored by `from_dict` and a penalised fit refuse `cb`: the variance needs the fitted rows, which a dict does not keep, and a penalised fit has no covariance. | proposed | Storing the running sums in `to_dict` is possible later; refusing keeps the saved format unchanged. | done (gap recorded) |
+
+### Comparing two MCFs (`recurrent.mcf_diff`)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `mcf_diff(model_a, model_b)` takes two fitted `NonParametricCounting` estimates, as `sf_diff` takes two survival fits and `reda::mcfDiff` two `mcf` objects; a model without per-item data (`from_xrd`, `from_dict`, simulated) is refused, since neither the robust variance nor the tests can be computed from it. | proposed | The groups' fits already carry the data, late entry and windows; a group-label signature would duplicate `fit`'s arguments. | done |
+| The difference is estimated only from the later origin to the end of the shorter follow-up and is NaN outside it; `reda::mcfDiff` carries the shorter group's MCF at its last value. | proposed | The MCF itself is NaN past its last observed time (no claim that no events happen after it); the reference tests compare reda's values on the shared range. | done |
+| The pointwise bounds of the difference are Wald bounds only (no log scale), and there is no simultaneous band. | proposed | A difference can be negative; a band is a further feature. | done (band a gap) |
+
+### Interval-censored log-rank and Wilcoxon tests: `interval_logrank`
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A function of its own, `interval_logrank`, not new paths in `logrank`. `logrank` keeps refusing left and interval-censored data (and now a two-column `x`), with a message naming `interval_logrank`; its results do not change. | proposed | The tests differ in kind: `logrank`'s weightings, strata, `t0`, `w` and hypergeometric variance have no counterpart in the score tests on the pooled Turnbull estimate, whose variance is the permutation one. Switching method on the shape of the data would change a result when one interval row is added. | done |
+| Scores `"log-rank"` (Sun's; the default, as R's `ictest`), `"finkelstein"` and `"wilcoxon"`; R's names `logrank1`, `logrank2`, `wmw` are accepted. | proposed | Sun's scores are the usual log-rank scores on exact and right censored data (each group's score sum is the observed minus expected events; tested). | done |
+| The asymptotic p-value is the k-sample permutation chi-squared (R's `method = "pclt"`); `method="permutation"` is a Monte Carlo test of the same statistic, `(1 + count) / (1 + B)`, seeded by `random_state`. For two groups this is two-sided by the absolute statistic (R's `tsmethod = "abs"`), not R's default doubling of the smaller one-sided p-value. No exact enumeration and no score-form (`method = "scoretest"`) variance. | proposed | One statistic for any number of groups; the doubled one-sided p-value is defined for two groups only. | done |
+| Truncated data (finite `tl` or `tr`) are refused, pointing to `logrank` with `tl`. | proposed | The permutation argument needs exchangeable units, which delayed entry breaks; R's `ictest` takes no truncation either. | done |
+| The pooled NPMLE is the EM-ICM with `tol = 1e-12` (the Karush-Kuhn-Tucker gap) by default, tighter than `Turnbull.fit`'s 1e-10, and warns if it does not converge. | proposed | The statistic moves with the NPMLE's convergence; R's default `epsilon = 1e-6` moves it by about 1e-8 relative. | done |
+
 ## 2026-11-04
 
 ### Crow Extended projection: bias-corrected or plain shapes
@@ -67,6 +142,15 @@ Design decisions made while working on the open issues, with the reason for each
 | `concordance()` of a stratified fit pools the concordant and usable pairs of each stratum, and takes `strata=` with `x`, `c`, `Z` for new data (refused on an unstratified model). The pair counts come from a new `metrics.concordance.concordance_counts`, which `concordance_index` now divides. | principle 16 | R's `concordance` of a stratified `coxph`. | done |
 | A stratified Cox dict stores a `"strata"` list of baselines and is schema 4; the top-level baseline is still the first stratum's. | principle 20 | A schema-3 reader would otherwise read the first stratum's baseline as the model's, silently. | done |
 | A stratified fit keeps its rows (`_fit_data`, in the order given, with each row's stratum) as an unstratified one does; a penalised stratified fit still keeps none, and its residuals say so. | proposed | The penalised fit is out of this change's scope. | done |
+
+### Concordance: Uno's C, standard errors and comparing two scores
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `concordance_estimate` reproduces R's `survival::concordance(..., reverse = TRUE)`: Uno's weighting is `timewt = "n/G2"` (`1 / G(t-)^2`, `G` the events-first reverse Kaplan-Meier of the same data), `tau` is `ymax` (pairs whose event is *at or before* `tau`; `survC1::Est.Cval` uses *before*), and the standard error is the infinitesimal jackknife with the censoring weights held fixed. `compare_concordance` is R's two-fit covariance with the contrast `c(1, -1)`. Checked to 1e-10 (C) and a relative 1e-8 (variances). | principle 16 | R's `concordance` is the reference users compare with; `survC1` agrees with it to about 1e-8 on data without tied times. | done |
+| The interval is the normal one on the C scale by default (`ci_method="normal"`), with `"logit"` as the option that stays inside (0, 1); a C of exactly 0 or 1 gives the point as its logit interval. | proposed | R reports only `var`; `C -/+ z se` is what its users compute. | done |
+| A stratified Cox model refuses `weighting="uno"`, `tau` and `concordance_estimate`, naming `surpyval.metrics.concordance_estimate` per stratum. | proposed | R pools the strata's jackknife terms and estimates `G` per stratum; that needs its own reference, out of this change's scope. | done |
+| A model's `concordance_estimate` with a missing covariate raises (naming the rows to drop), while `concordance` keeps its NaN. | proposed | A standard error of an undefined index has nothing to report; `concordance_index` already refuses a missing score. | done |
 
 ### `random()` for the AFT, PO, Cox and Aalen models
 

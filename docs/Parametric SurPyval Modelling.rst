@@ -2313,6 +2313,76 @@ explained in :doc:`Parametric Estimation`.
     for _lo, _hi in [wald_cb, lr_cb]:
         assert _hi - _b > _b - _lo, (_lo, _hi)
 
+Joint likelihood contours
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``param_cb`` bounds one parameter at a time. The two parameters of a fit are
+usually estimated together and trade off against each other: for a Weibull, a
+larger scale fits the same data with a larger shape too. The **joint
+confidence region** shows them together. It is the set of pairs of values that
+a likelihood-ratio test does not reject, drawn as a closed curve (a contour)
+around the estimate; at the 95% level it covers the true pair in 95% of
+samples. Two fits whose regions do not overlap, say the old and the new design
+of a part, are evidence that the two really differ, which two separate
+intervals per parameter do not show as clearly.
+
+``model.likelihood_contour(alpha_ci, n_points)`` finds the contour, and
+``surpyval.plot_likelihood_contour`` draws one or more of them, at one or
+several levels, with each estimate marked:
+
+.. jupyter-execute::
+
+    from matplotlib import pyplot as plt
+
+    old = surv.Weibull.fit([52, 66, 81, 95, 104, 118, 131, 150, 160],
+                           c=[0, 0, 0, 0, 0, 0, 0, 0, 1])
+    new = surv.Weibull.fit([88, 102, 115, 127, 139, 156, 170, 191, 200],
+                           c=[0, 0, 0, 0, 0, 0, 0, 0, 1])
+    contour = old.likelihood_contour(alpha_ci=0.1)
+    print(contour)
+
+    out = surv.plot_likelihood_contour({"Old design": old, "New design": new},
+                                       alpha_ci=[0.1, 0.05])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    plt.close(out.fig)
+    _ll = np.array([-old._lr_neg_ll(p) for p in contour.points])
+    assert np.allclose(_ll, contour.log_likelihood_cut, atol=1e-6)
+
+The contour is where the log-likelihood has fallen from its maximum by half the
+chi-squared critical value with two degrees of freedom:
+
+.. math::
+
+    \log L(\theta_1, \theta_2) = \log L(\hat\theta_1, \hat\theta_2) - \tfrac12 \chi^2_{2, 1-\alpha},
+    \qquad \chi^2_{2, 1-\alpha} = -2 \log \alpha.
+
+SurPyval finds it as it finds the likelihood-ratio interval: by root finding
+along ``n_points`` rays from the estimate (in the log of a positive parameter,
+the logit of a bounded one), spaced evenly in the Wald metric, where the
+region is close to a circle. The four points where the contour touches its
+bounding box are each parameter's profile-likelihood bound at the same
+critical value, so ``contour.bounds`` holds the smallest and largest value of
+each parameter over the region exactly. Note the critical value: a
+one-parameter interval uses one degree of freedom, so the joint region's
+extremes are wider than the ``param_cb`` intervals at the same level. Some
+software (WeibullR's ``MLEcontour`` by default, and Weibull++'s contours) uses
+one degree of freedom for contours too; ``likelihood_contour(alpha_ci=a)`` at
+``a = chi2.sf(chi2.ppf(1 - a1, 1), 2)`` reproduces that contour for a level
+``a1``. The contours match WeibullR's ``MLEcontour(..., dof = 2)``, and the
+extremes the profile likelihood solved in base R, in SurPyval's reference
+tests.
+
+The contour is of exactly two fitted parameters. A one-parameter model's
+region is its interval (``param_cb(name, method='lr')``); a model with three
+or more (or an offset, limited-failure or zero-inflated part) is refused, and
+fixing all but two at fit time (``fixed={...}``) gives the contour of those
+two. A fit with sampling weights is refused, as its likelihood-ratio bounds
+are. ``LikelihoodContour.to_dict()`` gives the result as strict JSON.
+
 Likelihood-ratio bounds with an offset, a limited failure population or zero inflation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -2447,6 +2517,54 @@ with the same ``alpha_ci``, ``bound`` and ``method`` (``"wald"``, ``"lr"`` or
     assert abs(model.mrl(0) - model.mean()) < 1e-8 * model.mean()
     _r = model.mrl_cb(5)
     assert _r[0] < model.mrl(5) < _r[1]
+
+The restricted mean survival time (RMST) answers "on average, how much of the
+first ``tau`` hours does a unit run?" It is the area under the survival curve
+from 0 to ``tau``, the expected value of :math:`\min(T, \tau)`, and is the
+usual summary in clinical trials, where the follow-up ends before most units
+have failed and the mean would rest on the tail the model extrapolates.
+``rmst(tau)`` returns it with its standard error and a 95% interval, in the
+same form as the non-parametric models' ``rmst``; ``rmst_cb(tau)`` bounds it
+at one horizon or several with the same ``alpha_ci``, ``bound`` and ``method``
+(``"wald"``, ``"lr"`` or ``"bootstrap"``), and ``mean(tau=tau)`` is the point
+alone. A ``tau`` left out is the largest observed time.
+
+.. math::
+
+    \mu(\tau) = \int_0^\tau S(t)\, dt = E[\min(T, \tau)]
+
+It is exact for the Exponential, :math:`(1 - e^{-\lambda\tau})/\lambda`, the
+Weibull, :math:`\alpha\,\Gamma(1 + 1/\beta)\,P(1/\beta, (\tau/\alpha)^\beta)`
+with :math:`P` the regularised lower incomplete gamma function, the Gamma and
+the LogNormal, and an adaptive quadrature of ``sf`` for the others. An offset
+adds the time before it, a limited failure population adds
+:math:`(1 - p)\tau` for the units that never fail (so its RMST is finite while
+its mean is not), and zero inflation removes the units failed at 0. The Wald
+standard error is the delta method's, :math:`\sqrt{g^\top \Sigma g}`, with
+:math:`g` the gradient of :math:`\mu(\tau)` in the parameters and
+:math:`\Sigma` their covariance; the interval is taken on the logit of
+:math:`\mu(\tau)/\tau`, so it stays between 0 and ``tau``. The values agree
+with R (``survreg`` or ``optim`` fits, ``integrate`` and the delta method) to
+better than one part in a million, and with flexsurv's
+``summary(fit, type="rmst")`` at its own estimate to 1e-7.
+
+.. jupyter-execute::
+
+    print("RMST to 8:", model.rmst(8))
+    print("RMST to 4 and 8, 95% LR bounds:", model.rmst_cb([4, 8], method="lr"))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _res = model.rmst(8)
+    assert _res["lower"] < _res["rmst"] < _res["upper"] <= 8
+    assert _res["rmst"] == model.mean(tau=8)
+
+Two groups fitted separately are compared with :func:`surpyval.rmst_diff`,
+which takes parametric fits as well as non-parametric ones (or one of each):
+the difference of the two RMSTs, its standard error (the groups are
+independent, so the variances add), its interval and the z-test's p-value.
 
 
 Forecasting failures in service

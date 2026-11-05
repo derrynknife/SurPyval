@@ -91,6 +91,7 @@ from surpyval.univariate.regression.proportional_hazards.cox_likelihood import (
     newton_raphson,
 )
 from surpyval.univariate.regression.proportional_hazards.cox_ph import (
+    PENALISED_ADVICE,
     warn_monotone,
 )
 from surpyval.univariate.regression.proportional_hazards.cox_separation import (  # noqa: E501
@@ -773,7 +774,9 @@ def _warn_if_monotone(fits: list) -> str:
         if fit["runaway"]
     ]
     if len(fits) == 1 and runaway:
-        warn_monotone(str(runaway[0][1]), runaway[0][2])
+        warn_monotone(
+            str(runaway[0][1]), runaway[0][2], advice=PENALISED_ADVICE
+        )
     elif runaway:
         warn_monotone(
             " and ".join(
@@ -788,7 +791,8 @@ def _warn_if_monotone(fits: list) -> str:
                     ),
                 )
                 for cause, coefs, proportion in runaway
-            )
+            ),
+            advice=PENALISED_ADVICE,
         )
     unverified = [f["cause"] for f in fits if f["maximum"] == "unverified"]
     if unverified:

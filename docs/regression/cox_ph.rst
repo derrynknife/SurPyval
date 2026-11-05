@@ -8,8 +8,12 @@ the fitter class below. Its fit methods cover ordinary data (``fit``,
 ``fit_from_df``, with right censoring, left truncation, a choice of tie
 handling and optional strata) and time-varying covariates in start-stop
 form (``fit_tvc``, ``fit_tvc_timeline`` and their ``_from_df``
-versions); ``fit(..., time_interaction=)`` gives a covariate a coefficient
-that changes with time, :math:`\beta + \gamma g(t)`. The theory is in :doc:`../regression analysis` and worked
+versions), with penalised fits beside them (``fit_penalised`` for ridge,
+lasso and elastic net; ``fit_firth`` for Firth's penalty, which keeps the
+estimates finite where a covariate separates the events from the
+survivors); ``fit(..., time_interaction=)`` gives a covariate a coefficient
+that changes with time, :math:`\beta + \gamma g(t)`. The theory is in
+:doc:`../regression analysis` and worked
 examples are in :doc:`../Regression Modelling with SurPyval`.
 
 Fitter
@@ -25,7 +29,8 @@ Fitted model
 
 The object returned by :meth:`CoxPH.fit <surpyval.univariate.regression.proportional_hazards.cox_ph.CoxPH_.fit>`
 and the other fit methods. It exposes the usual survival functions at a
-covariate vector (``sf``, ``ff``, ``df``, ``hf``, ``Hf``) and, for a
+covariate vector (``sf``, ``ff``, ``df``, ``hf``, ``Hf``), the confidence
+bounds on a predicted curve (``cb``, R's ``survfit(fit, newdata)``) and, for a
 time-varying covariate, the survival along a covariate path: ``sf_tvc`` /
 ``Hf_tvc`` take a piecewise-constant
 :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule` (or
@@ -50,3 +55,11 @@ coefficient over time its ``time_varying_effect`` returns.
 
 .. autoclass:: surpyval.univariate.regression.proportional_hazards.time_interaction.TimeVaryingEffect
    :members:
+
+Firth's fit
+-----------
+
+The ``firth`` attribute of a model fitted by ``CoxPH.fit_firth``.
+
+.. autoclass:: surpyval.univariate.regression.proportional_hazards.cox_firth.FirthResult
+   :members: likelihood_ratio_test, to_dict, from_dict

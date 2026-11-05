@@ -27,7 +27,7 @@ import numpy.typing as npt
 
 from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.removed_names import removed_arguments
-from surpyval.utils.shapes import check_paired_rows
+from surpyval.utils.shapes import check_paired_rows, keeps_query_shape
 from surpyval.utils.validation import warn_outside_unit_interval
 
 # Expanding a bracket doubles its step: 2000 doublings pass the largest
@@ -383,3 +383,437 @@ def _expand(
         stuck = at_limit | ~np.isfinite(moved)
         step[active] *= 2.0
         active = active[~(crossed | stuck)]
+
+
+class RestrictedMeanMixin:
+    """``rmst``, ``rmst_cb`` and ``rmst_diff`` at covariates ``Z`` for a
+    parametric regression model: the area under ``sf(t, Z)`` from 0 to
+    ``tau``, by adaptive quadrature, with delta-method (and bootstrap)
+    bounds from the fitted parameters' covariance.
+
+    The host provides ``model.sf(x, Zc, *params)`` at centred covariate
+    rows, ``distribution.support``, ``_prepare_Z``, ``_n_covariates``,
+    ``_centred``, ``_eval_params``, ``_wald_state``, ``_check_inference``
+    and ``_refuse_weighted_method``, as the parametric regression models
+    do.
+    """
+
+    model: Any
+    distribution: Any
+    data: Any
+    _prepare_Z: Callable[..., Any]
+    _n_covariates: Callable[..., int]
+    _centred: Callable[..., Any]
+    _eval_params: Callable[..., Any]
+    _wald_state: Callable[..., Any]
+    _check_inference: Callable[..., None]
+    _refuse_weighted_method: Callable[..., None]
+
+    def _rmst_tau(self, tau: Any, what: str) -> npt.NDArray:
+        """The horizons as a flat array: the largest observed time where
+        ``tau`` is None; a negative or infinite one is refused."""
+        if tau is None:
+            if getattr(self, "data", None) is None:
+                raise ValueError(
+                    f"{what}: this model holds no data to take the default "
+                    "tau (the largest observed time) from; pass tau."
+                )
+            x = np.asarray(self.data.x, dtype=float)
+            tau = float(np.max(x[np.isfinite(x)]))
+        t = np.atleast_1d(np.asarray(tau, dtype=float)).reshape(-1)
+        bad = ~np.isnan(t) & ~((t >= 0) & np.isfinite(t))
+        if np.any(bad):
+            raise ValueError(
+                "{}: tau = {} is not a finite time at or above 0. The "
+                "restricted mean is the area under sf(t, Z) from 0 to tau; "
+                "for the area to infinity use mean(Z).".format(
+                    what, t[bad].tolist()
+                )
+            )
+        return t
+
+    def _rmst_pairs(
+        self, tau: Any, Z: Any, what: str
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """The horizons and covariate rows paired, one row each (one
+        ``tau`` for every row, or one row for every ``tau``)."""
+        from surpyval.utils.shapes import check_paired_rows, covariate_rows
+
+        t = self._rmst_tau(tau, what)
+        rows = covariate_rows(self._prepare_Z(Z), self._n_covariates())
+        check_paired_rows(t.size, rows.shape[0], grid=False)
+        n = max(t.size, rows.shape[0])
+        t = np.broadcast_to(t, (n,)).copy()
+        rows = np.ascontiguousarray(
+            np.broadcast_to(np.asarray(rows, float), (n, rows.shape[1]))
+        )
+        return t, rows
+
+    def _rmst_at(
+        self, taus: npt.NDArray, rows_c: npt.NDArray, params: Any
+    ) -> npt.NDArray:
+        """``int_0^tau_i S(t | row_i) dt`` at the parameters ``params``
+        for centred covariate rows ``rows_c``, as ``tau_i int_0^1 S(tau_i
+        s | row_i) ds`` by one vector-valued adaptive quadrature (Gauss-
+        Kronrod, to 1e-12 relative); ``S = 1`` below the support."""
+        from scipy.integrate import quad_vec
+
+        out = np.full(taus.shape, np.nan)
+        ok = ~np.isnan(taus) & np.all(np.isfinite(rows_c), axis=1)
+        if not ok.any():
+            return out
+        t_ok, r_ok = taus[ok], rows_c[ok]
+        lower = float(self.distribution.support[0])
+        inside = lower + 1.0 if np.isfinite(lower) else 0.0
+
+        def integrand(s: float) -> npt.NDArray:
+            t = t_ok * s
+            below = t < lower
+            with np.errstate(all="ignore"):
+                S = np.asarray(
+                    self.model.sf(np.where(below, inside, t), r_ok, *params),
+                    dtype=float,
+                )
+            return t_ok * np.where(below, 1.0, S)
+
+        with np.errstate(all="ignore"):
+            value, _ = quad_vec(
+                integrand, 0.0, 1.0, epsabs=0.0, epsrel=1e-12, norm="max"
+            )
+        out[ok] = value
+        return out
+
+    def _rmst_wald(
+        self,
+        taus: npt.NDArray,
+        rows: npt.NDArray,
+        robust: bool,
+        cluster: Any,
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """The restricted means and their delta-method standard errors."""
+        from surpyval.utils.linalg import delta_method_se
+
+        params, center, cov = self._wald_state(robust, cluster, "wald")
+        rows_c = np.asarray(self._centred(rows, center), dtype=float)
+        value = self._rmst_at(taus, rows_c, params)
+        with np.errstate(all="ignore"):
+            se = delta_method_se(
+                lambda p: self._rmst_at(taus, rows_c, p), params, cov
+            )
+        return value, np.asarray(se, dtype=float)
+
+    @staticmethod
+    def _rmst_logit_cb(
+        value: npt.NDArray,
+        se: npt.NDArray,
+        taus: npt.NDArray,
+        alpha_ci: float,
+        bound: str,
+    ) -> npt.NDArray:
+        """The Wald bounds on the logit of ``value / tau``, which keep
+        them in ``(0, tau)``; at a ``value`` of 0 or ``tau`` (or a zero
+        standard error) the bound is the value."""
+        from scipy.special import expit, ndtri
+
+        from surpyval.utils.linalg import bound_signs
+
+        alpha, signs = bound_signs(alpha_ci, bound)
+        with np.errstate(all="ignore"):
+            psi = np.log(value) - np.log(taus - value)
+            se_psi = se * (1.0 / value + 1.0 / (taus - value))
+            out = taus[:, None] * expit(
+                psi[:, None] + signs * ndtri(1.0 - alpha) * se_psi[:, None]
+            )
+        edge = ~np.isfinite(psi) | (se == 0)
+        out = np.where(edge[:, None], value[:, None], out)
+        out = np.where(np.isnan(value)[:, None], np.nan, out)
+        return out if bound == "two-sided" else out[:, 0]
+
+    def rmst(
+        self,
+        tau: float | None,
+        Z: Any,
+        alpha_ci: float = 0.05,
+        robust: bool = False,
+        cluster: npt.ArrayLike | None = None,
+    ) -> dict:
+        r"""
+        Restricted mean survival time up to ``tau`` of a unit with
+        covariates ``Z``, with inference: the univariate models' ``rmst``
+        with the covariates of :meth:`sf`.
+
+        It is the expected time such a unit lives within the first
+        ``tau`` of its life, the area under its predicted survival curve,
+
+        .. math::
+            \mu(\tau \mid Z) = \int_0^\tau S(t \mid Z)\, dt
+            = E[\min(T, \tau) \mid Z],
+
+        taken by adaptive quadrature (to 1e-12 relative). The standard
+        error is the delta method's, from the gradient of
+        :math:`\mu(\tau \mid Z)` in the parameters (central differences)
+        and their covariance; the interval is that Wald bound on the
+        logit of :math:`\mu/\tau`, so it stays in :math:`(0, \tau)`
+        (:meth:`rmst_cb` with ``method="wald"``).
+
+        Parameters
+        ----------
+        tau : scalar or None
+            The horizon; ``None`` takes the largest observed time.
+        Z : array like or DataFrame
+            One covariate row, or several (a result for each).
+        alpha_ci : float, optional
+            Significance level for the interval (default 0.05).
+        robust : bool, optional
+            ``True`` uses the robust (sandwich) covariance, as
+            :meth:`cb` does with it. Default ``False``.
+        cluster : array_like, optional
+            With ``robust=True``, a cluster label for each row given to
+            the fit.
+
+        Returns
+        -------
+        dict
+            ``{"rmst", "se", "lower", "upper", "tau"}``, as the univariate
+            models' ``rmst``: numbers for one row of ``Z``, arrays (one
+            entry per row) for several.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> res = model.rmst(8.0, [1])
+        >>> print(round(res["rmst"], 4), round(res["se"], 4))
+        4.8975 0.3033
+        """
+        from surpyval.utils.validation import check_alpha_ci
+
+        check_alpha_ci(alpha_ci)
+        if tau is not None and np.size(tau) != 1:
+            raise ValueError(
+                "rmst takes one tau; rmst_cb bounds several at once."
+            )
+        self._check_inference()
+        self._refuse_weighted_method("wald")
+        t, rows = self._rmst_pairs(tau, Z, "rmst")
+        value, se = self._rmst_wald(t, rows, robust, cluster)
+        cb = self._rmst_logit_cb(value, se, t, alpha_ci, "two-sided")
+        out: dict[str, Any] = {
+            "rmst": value,
+            "se": se,
+            "lower": cb[:, 0],
+            "upper": cb[:, 1],
+            "tau": float(t[0]),
+        }
+        if value.size == 1:
+            return {k: float(np.ravel(v)[0]) for k, v in out.items()}
+        return out
+
+    @keeps_query_shape
+    def rmst_cb(
+        self,
+        tau: npt.ArrayLike | None,
+        Z: Any,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
+        robust: bool = False,
+        cluster: npt.ArrayLike | None = None,
+    ) -> npt.NDArray:
+        r"""
+        Confidence bounds on the restricted mean survival time
+        :meth:`rmst` at covariates ``Z``, at one horizon or several.
+
+        Parameters
+        ----------
+        tau : array like, scalar or None
+            The horizons, paired with the rows of ``Z`` as :meth:`sf`
+            pairs times with them (one row for every ``tau``, or one
+            ``tau`` for every row); ``None`` takes the largest observed
+            time.
+        Z : array like or DataFrame
+            The covariates.
+        alpha_ci : float, optional
+            Total tail probability of the bound(s). Default 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds put ``[lower, upper]`` on the last axis.
+        method : {'wald', 'bootstrap'}, optional
+            ``'wald'`` (the default) is the delta method on the logit of
+            ``rmst / tau``; ``'bootstrap'`` the BCa interval of the RMST
+            over the parametric bootstrap refits of :meth:`cb`. There is
+            no likelihood-ratio bound on it for a regression model:
+            ``'lr'`` is refused.
+        n_boot : int, optional
+            The number of bootstrap refits (``method='bootstrap'`` only).
+            Default 200.
+        random_state : None, int or numpy.random.Generator, optional
+            The seed of the bootstrap (``method='bootstrap'`` only), as for
+            :meth:`cb`.
+        robust : bool, optional
+            ``True`` uses the robust (sandwich) covariance; ``method``
+            must be ``"wald"``. Default ``False``.
+        cluster : array_like, optional
+            With ``robust=True``, a cluster label for each row given to
+            the fit.
+
+        Returns
+        -------
+        numpy array
+            The bound(s), one row per pair of ``tau`` and row of ``Z``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> model.rmst_cb(8.0, [[0], [1]]).round(3)
+        array([[5.746, 6.735],
+               [4.287, 5.467]])
+        """
+        from surpyval.utils.validation import (
+            BOUNDS,
+            check_alpha_ci,
+            check_option,
+        )
+
+        from ._bootstrap import bound_method
+        from ._inference import check_robust_request
+
+        check_alpha_ci(alpha_ci)
+        method = bound_method(method)
+        if method == "lr":
+            raise ValueError(
+                "rmst_cb has no likelihood-ratio bound for a regression "
+                "model: use method='wald' (the default) or "
+                "method='bootstrap'."
+            )
+        check_robust_request(robust, cluster, method)
+        self._refuse_weighted_method(method)
+        self._check_inference()
+        check_option("bound", bound, BOUNDS)
+        t, rows = self._rmst_pairs(tau, Z, "rmst_cb")
+        if method == "bootstrap":
+            from ._bootstrap import function_bounds, refits
+
+            fits = refits(self, n_boot, random_state)
+            fits.warn()
+
+            def value(p: npt.NDArray, center: Any = None) -> npt.NDArray:
+                rows_c = np.asarray(self._centred(rows, center), float)
+                return self._rmst_at(t, rows_c, p)
+
+            return function_bounds(self, fits, value, None, alpha_ci, bound)
+        value_, se = self._rmst_wald(t, rows, robust, cluster)
+        return self._rmst_logit_cb(value_, se, t, alpha_ci, bound)
+
+    def rmst_diff(
+        self,
+        tau: float | None,
+        Z_a: Any,
+        Z_b: Any,
+        alpha_ci: float = 0.05,
+        robust: bool = False,
+        cluster: npt.ArrayLike | None = None,
+    ) -> dict:
+        r"""
+        Compare the restricted mean survival time of units with
+        covariates ``Z_a`` and ``Z_b``: :func:`surpyval.rmst_diff` for two
+        covariate rows of one model.
+
+        The two RMSTs come from the same parameters, so they are not
+        independent: the standard error of the difference is the delta
+        method's on the difference itself,
+        :math:`\sqrt{g^\top \Sigma g}` with :math:`g` the gradient of
+        :math:`\mu(\tau \mid Z_a) - \mu(\tau \mid Z_b)`.
+
+        Parameters
+        ----------
+        tau : scalar or None
+            The common horizon; ``None`` takes the largest observed time.
+        Z_a : array like or DataFrame
+            The first covariate row.
+        Z_b : array like or DataFrame
+            The second covariate row.
+        alpha_ci : float, optional
+            Significance level for the interval and test (default 0.05).
+        robust : bool, optional
+            ``True`` uses the robust (sandwich) covariance. Default
+            ``False``.
+        cluster : array_like, optional
+            With ``robust=True``, a cluster label for each row given to
+            the fit.
+
+        Returns
+        -------
+        dict
+            ``{"difference", "se", "lower", "upper", "p_value", "ratio",
+            "rmst_a", "rmst_b", "tau"}``, as :func:`surpyval.rmst_diff`:
+            ``difference`` is ``rmst_a - rmst_b``, ``lower`` and ``upper``
+            are ``difference +- z se`` and ``p_value`` is the two-sided
+            z-test of ``difference == 0``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> res = model.rmst_diff(8.0, [0], [1])
+        >>> print(round(res["difference"], 4), round(res["se"], 4))
+        1.3943 0.3375
+        """
+        from scipy.stats import norm
+
+        from surpyval.utils.linalg import delta_method_se
+        from surpyval.utils.validation import check_alpha_ci
+
+        check_alpha_ci(alpha_ci)
+        if tau is not None and np.size(tau) != 1:
+            raise ValueError("rmst_diff takes one tau.")
+        self._check_inference()
+        self._refuse_weighted_method("wald")
+        t, rows_a = self._rmst_pairs(tau, Z_a, "rmst_diff")
+        _, rows_b = self._rmst_pairs(t[0], Z_b, "rmst_diff")
+        if rows_a.shape[0] != 1 or rows_b.shape[0] != 1:
+            raise ValueError(
+                "rmst_diff compares one covariate row with another: pass "
+                "one row as Z_a and one as Z_b."
+            )
+        params, center, cov = self._wald_state(robust, cluster, "wald")
+        ra = np.asarray(self._centred(rows_a, center), dtype=float)
+        rb = np.asarray(self._centred(rows_b, center), dtype=float)
+
+        def diff_of(p: npt.NDArray) -> npt.NDArray:
+            return self._rmst_at(t, ra, p) - self._rmst_at(t, rb, p)
+
+        mu_a = float(self._rmst_at(t, ra, params)[0])
+        mu_b = float(self._rmst_at(t, rb, params)[0])
+        diff = mu_a - mu_b
+        with np.errstate(all="ignore"):
+            se = float(np.ravel(delta_method_se(diff_of, params, cov))[0])
+        z_crit = norm.ppf(1 - alpha_ci / 2)
+        p_value = (
+            float(2.0 * norm.sf(abs(diff) / se)) if se > 0 else float("nan")
+        )
+        return {
+            "difference": float(diff),
+            "se": se,
+            "lower": float(diff - z_crit * se),
+            "upper": float(diff + z_crit * se),
+            "p_value": p_value,
+            "ratio": float(mu_a / mu_b) if mu_b != 0 else float("nan"),
+            "rmst_a": mu_a,
+            "rmst_b": mu_b,
+            "tau": float(t[0]),
+        }

@@ -489,7 +489,7 @@ class TimeVaryingCoefficientModel(SemiParametricRegressionModel):
 
     def summary(
         self,
-        alpha_ci: float = 0.05,
+        alpha_ci: float | None = 0.05,
         robust: bool = False,
         cluster: npt.ArrayLike | None = None,
     ) -> pd.DataFrame:
