@@ -1936,6 +1936,33 @@ spline's linear predictor and are available on ``'sf'``, ``'ff'`` and
 boundary knots, can be given with ``knots``. See
 :doc:`univariate/royston_parmar` for the full API.
 
+``with_params`` gives the same spline (its knots, scale and unit) at other
+coefficients, in the order of ``covariance_names``. A draw from the fit's
+``covariance()`` becomes a model this way, so the uncertainty in the
+coefficients can be carried into anything computed from the curve. The
+model it returns has no data or covariance of its own. A draw whose spline
+falls somewhere (so the cumulative hazard would decrease) is not a survival
+distribution and is refused: leave it out and count it. If many are, the
+spline has more knots than the data support, and a smaller ``df`` is the
+remedy. Here the 2.5% and 97.5% points of the survival at 40 over 2000
+draws land on the Wald band of ``cb``:
+
+.. jupyter-execute::
+
+    model = RoystonParmar.fit(x, df=3)
+    print(model.covariance_names)
+    rng = np.random.default_rng(1)
+    draws = rng.multivariate_normal(model.params, model.covariance(), 2000)
+    sf_40, left_out = [], 0
+    for gamma in draws:
+        try:
+            sf_40.append(model.with_params(gamma).sf(40.0))
+        except ValueError:
+            left_out += 1
+    print("left out:", left_out)
+    print("draws:", np.quantile(sf_40, [0.025, 0.975]).round(3))
+    print("cb   :", model.cb(40.0).round(3))
+
 Discrete Distributions
 ----------------------
 
