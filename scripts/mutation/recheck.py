@@ -2,7 +2,7 @@
 (#396).
 
     python recheck.py <copy> <tests>... [-k EXPR] [--jobs N] [--out FILE]
-        [--previous FILE]
+        [--previous FILE] [--only TEXT]
 
 ``<copy>`` is the module's mutation copy (``$MUTATION_WORKDIR/<module>/
 repo``, holding mutmut's ``mutants/`` directory); ``<tests>`` are test
@@ -19,6 +19,10 @@ count every mutant as killed).
 
 ``--previous`` takes the ``--out`` file of an earlier recheck and runs
 only the mutants it lists as survived (after adding more tests).
+``--only`` keeps the survivors whose name contains the text (one
+module's or function's, e.g. ``_weighted_cox.x_fit_weighted_cox``), so
+a run of several modules is rechecked a module at a time against that
+module's tests.
 
 Prints one line per mutant (``killed``, ``survived`` or ``timeout``)
 and the totals; ``--out`` also writes the lines to a file.
@@ -44,10 +48,14 @@ def survivors(mutants: Path) -> list[str]:
 
 def run_one(mutants: Path, tests: list[str], name: str, timeout: int) -> str:
     env = dict(os.environ, MUTANT_UNDER_TEST=name, PYTHONPATH=str(mutants))
+    # The run's own plugin (copied in by mutmut), so that the tests that
+    # check where a warning points look past mutmut's trampolines here too
+    plugin = ["-p", "mutmut_plugin"] * (mutants / "mutmut_plugin.py").exists()
     try:
         done = subprocess.run(
             [sys.executable, "-m", "pytest", "-x", "-q"]
             + ["-p", "no:cacheprovider"]
+            + plugin
             + tests,
             cwd=mutants,
             env=env,
@@ -71,6 +79,7 @@ def main() -> None:
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--out", type=Path)
     parser.add_argument("--previous", type=Path)
+    parser.add_argument("--only", action="append", default=[])
     args = parser.parse_args()
 
     mutants = args.copy.resolve() / "mutants"
@@ -84,6 +93,8 @@ def main() -> None:
 
     tests = args.tests + (["-k", args.keyword] if args.keyword else [])
     names = survivors(mutants)
+    if args.only:
+        names = [n for n in names if any(o in n for o in args.only)]
     if args.previous:
         before = dict(
             line.strip().rsplit(": ", 1)
