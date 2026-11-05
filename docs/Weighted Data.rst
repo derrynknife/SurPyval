@@ -4,7 +4,8 @@ Weighted Data
 Some data come with a number on each row that says how much that row
 *counts*: a **weight**. SurPyval takes it as ``w``, beside the counts ``n``,
 in the Kaplan-Meier, Nelson-Aalen and Fleming-Harrington estimators, the
-parametric distributions, the parametric regressions and Cox regression.
+parametric distributions, the parametric regressions, Cox regression and
+the non-parametric competing-risks estimate (``CompetingRisks``).
 This page says what weights are, when to use ``w`` rather than ``n``, why a
 weighted fit's intervals are computed differently, and what a weighted fit
 will not do.
@@ -276,6 +277,39 @@ as R's ``coxph(Surv(start, stop, event) ~ z, weights = w, robust = TRUE,
 id = id)``, so splitting a subject's follow-up into episodes on which
 nothing changes gives the same fit and the same standard errors.
 
+Competing risks: weighted cumulative incidence
+----------------------------------------------
+
+``CompetingRisks.fit(x, e, c, n, w=w)`` (and ``fit_from_df(...,
+w_col=)``) gives the Aalen-Johansen cumulative incidence of each cause in
+the population the weights describe. Each unit counts ``n * w`` in the
+numbers at risk and of failures from each cause, so whole-number weights
+give exactly the estimate of the same rows counted that many times, and
+``w = 1`` gives the unweighted estimate. The bounds of ``cb`` (on the
+cumulative incidence, and on ``sf``, ``ff`` and ``Hf``) use the robust,
+infinitesimal-jackknife variance, the one R's ``survfit(Surv(x,
+factor(e)) ~ 1, weights = w)`` reports as ``std.err``, so they do not
+change when every weight is multiplied by the same number. With ``w = 1``
+they are the robust bounds, close to but not the same as those without
+``w`` (which use Aalen's variance). The fit warns if the effective sample
+size is below 20, and its printout shows it.
+
+In symbols, with :math:`\hat S` the weighted all-cause Kaplan-Meier
+survival, :math:`h_{jk} = d_{jk} / r_j` cause :math:`k`'s weighted hazard
+increment at :math:`t_j` and :math:`V_i` unit :math:`i`'s influence on
+:math:`\log \hat S` (the formula below), unit :math:`i`'s influence on
+cause :math:`k`'s cumulative incidence is
+
+.. math::
+
+    U_{ik}(t) = \sum_{t_j \le t} \hat S(t_{j-1}) \left[
+        \frac{dN_{ik}(t_j) - Y_i(t_j)\, h_{jk}}{r_j}
+        + h_{jk}\, V_i(t_{j-1}) \right],
+
+and the variance is :math:`\sum_i n_i w_i^2 U_{ik}(t)^2`. The estimate
+takes no delayed entry, weighted or not; Gray's test refuses weights (see
+below).
+
 Penalised fits with weights
 ---------------------------
 
@@ -328,7 +362,13 @@ saying what to use instead:
   ``"MSE"``, ``"MPS"``).
 - The Cox model's residuals and ``diagnose()``, strata and
   exact ties. These may come later.
-- **The fitters that do not take** ``w``: competing risks, recurrent events, degradation, mixtures, distributional
+- **Gray's test** (``gray_test``) of weighted data: R's ``cmprsk`` has no
+  weighted version to check one against. Use ``logrank(..., w=w)`` on the
+  cause-specific hazards, or compare the groups' weighted cumulative
+  incidences by their bounds.
+- **The fitters that do not take** ``w``: the other competing-risks models
+  (parametric, and the regressions where not stated), recurrent events,
+  degradation, mixtures, distributional
   regression, Aalen's additive model and the Royston-Parmar regression,
   among others, which refuse weighted data (the Bayesian fits and the
   life table are above).
