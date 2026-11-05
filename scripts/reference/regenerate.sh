@@ -35,6 +35,8 @@ Rscript scripts/reference/reference_r_weighted_aalen.R  # prints the values type
 # Prints the values test_weighted_distributional_rp.py holds
 Rscript scripts/reference/reference_r_weighted_distributional_rp.R
 Rscript scripts/reference/reference_r_weighted_aalen_johansen.R
+# Prints the values test_life_at.py holds
+Rscript scripts/reference/reference_r_regression_at.R
 # Prints its values, which are typed into test_turnbull_weighted.py
 Rscript scripts/reference/reference_r_weighted_turnbull.R
 # Prints the weighted penalised Cox references typed into

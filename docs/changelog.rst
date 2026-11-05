@@ -5,6 +5,20 @@ Unreleased
 
 **Added.**
 
+- ``Parametric.with_params`` takes the full vector of ``covariance()``'s
+  rows, in the order of ``covariance_names`` (the distribution's parameters,
+  then ``lfp_p`` and ``f0``), so a draw from the covariance of a
+  limited-failure or zero-inflated fit maps straight back to a model; the
+  short vector of the distribution's parameters works as before. The offset
+  is ``with_params(params, gamma=...)`` (kept when not given), and
+  ``lfp_p=``/``f0=`` go with the short vector, as ``MixtureModel``'s
+  ``w=``. A drawn ``lfp_p`` above 1 or ``f0`` below 0 is refused with what
+  to do. New ``Parametric.bootstrap(n_boot, random_state)`` returns the
+  refits behind the ``method="bootstrap"`` bounds (the same refits for the
+  same seed) as a ``ParametricBootstrap``: the refitted models, their
+  parameters in ``covariance_names`` order, each offset fit's ``gamma`` and
+  the count of failed refits, with ``to_dict``. A short section on carrying
+  a fit's uncertainty forward is on the parametric modelling page.
 - ``covariance()`` and ``standard_errors()`` of a fitted ``Bernoulli``,
   ``FixedEventProbability`` or ``Binomial``: the variance of ``p``,
   :math:`\hat p (1 - \hat p) / N` from the events and trials (a Binomial's
@@ -383,6 +397,25 @@ Unreleased
   the likelihood-ratio and bootstrap bounds. ``parameter_names``,
   ``hess_inv`` (the distribution's block only) and the saved dictionary
   are unchanged.
+- Regressions as plain life models, and their parameter uncertainty
+  carried along. ``model.at(Z)`` is the lifetime distribution of a unit
+  with one covariate row (``LifeAtCovariates``): ``sf``, ``ff``, ``df``,
+  ``hf``, ``Hf``, ``qf``, ``random``, ``mean``, ``rmst`` and ``cb`` taking
+  times only, each exactly the regression's at ``Z``, on every parametric
+  regression, ``CoxPH`` (with ``stratum=``) and the semi-parametric
+  proportional odds and additive hazards models; ``random(n)`` is
+  ``qf(U)``, as ``Parametric.random``. ``with_params(params)``,
+  ``covariance_names`` and ``_estimates()`` on the parametric regressions
+  (PH, AFT, PO, AH, accelerated life, Royston-Parmar, distributional) and
+  the semi-parametric ``ProportionalOdds`` and ``AdditiveHazards``
+  models: a model at a flat parameter vector in the order of
+  ``covariance()``'s rows, keeping the formula, centre and fixed
+  parameters, without data or covariance (the semi-parametric baseline is
+  re-estimated at the new coefficients). At R's estimate a Weibull AFT
+  and PH at fixed covariates match flexsurv's ``summary(newdata=)`` and
+  ``survreg``'s predicted quantiles to 1e-9. The semi-parametric
+  ``ProportionalOdds`` and ``AdditiveHazards`` models gain
+  ``random(size, Z)``.
 - ``RoystonParmarModel.with_params(params)``: the same spline (knots,
   scale, unit) at other coefficients, given in the order of the new
   ``covariance_names`` (``gamma_0``, ``gamma_1``, ...), so a draw from
