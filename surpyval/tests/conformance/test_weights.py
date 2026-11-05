@@ -189,6 +189,25 @@ WEIGHTED = [
     _np("KaplanMeier"),
     _np("NelsonAalen"),
     _np("FlemingHarrington"),
+    # The weighted NPMLE has no variance formula: its bounds are the
+    # weighted case bootstrap (bootstrap_cb), and everything built on the
+    # variance refuses, naming it.
+    WeightedCase(
+        "Turnbull",
+        lambda x, c, n, w, Z, tl: sp.Turnbull.fit(x, c, n, w=w, tl=tl),
+        lambda m: m.sf(QUERY),
+        refused={
+            "cb": lambda m: m.cb(QUERY),
+            "quantile_cb": lambda m: m.quantile_cb(0.3),
+            "rmst": lambda m: m.rmst(6.0),
+            "band": lambda m: m.band(),
+        },
+        bootstrap={
+            "bootstrap_cb": lambda m: m.bootstrap_cb(
+                QUERY, n_boot=8, random_state=1
+            ),
+        },
+    ),
     _parametric("Weibull"),
     _parametric("LogNormal"),
     _parametric("Exponential"),
@@ -475,6 +494,11 @@ def _breslow_cox(x, c, n, w, Z, tl):
 #: The cases whose fit with whole-number weights is not expected to equal
 #: the counted fit, with why.
 NOT_COUNTED = {
+    "Turnbull": (
+        "its default estimator is Fleming-Harrington's, whose tied deaths "
+        "are taken at their mean weight as FlemingHarrington's are (the "
+        "Kaplan-Meier option is checked in test_turnbull_weighted.py)"
+    ),
     "FlemingHarrington": (
         "by design: each of the m tied deaths is taken at the deaths' mean "
         "weight, m the units from the counts (R's ctype = 2; docs/Weighted "
@@ -599,7 +623,7 @@ def test_round_trip_keeps_the_robust_bounds(case, data):
 
 def test_refused_by_the_fitters_that_take_no_w(data):
     weighted = sp.SurpyvalData(data["x"], data["c"], w=data["w"])
-    for fitter in (sp.Turnbull, sp.MixtureModel(sp.Weibull, 2)):
+    for fitter in (sp.MixtureModel(sp.Weibull, 2),):
         with pytest.raises(ValueError, match="weights|w"):
             fitter.fit(weighted)
     with pytest.raises(WeightedRefusal, match="fit_best"):
@@ -609,14 +633,7 @@ def test_refused_by_the_fitters_that_take_no_w(data):
 
 
 #: Fitters that take ``w`` only to refuse it (a later stage), with why.
-REFUSES_W = {
-    "Turnbull": "its weighted EM and variance are not built yet",
-}
-
-
-def test_turnbull_refuses_weights(data):
-    with pytest.raises(WeightedRefusal, match="Turnbull"):
-        sp.Turnbull.fit(data["x"], data["c"], w=data["w"])
+REFUSES_W: dict[str, str] = {}
 
 
 def _takes_w(obj):
