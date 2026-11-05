@@ -6,6 +6,19 @@ Unreleased
 
 **Added.**
 
+- Time-varying coefficients in the Cox model:
+  ``CoxPH.fit(..., time_interaction={column: g})`` (and ``fit_from_df``)
+  gives a covariate the coefficient :math:`\beta + \gamma g(t)`, with ``g``
+  ``"t"``, ``"log"`` or any function of time, by splitting the rows at the
+  event times. The coefficient table names the interactions
+  (``karno:log(t)``); ``time_varying_effect()`` gives :math:`\beta(t)` with
+  Wald bounds, with ``plot()``; ``sf``, ``Hf`` and the other predictions at
+  fixed covariates apply :math:`\beta(t)` at each time, and ``phi``, the
+  concordance, ``diagnose()`` and ``to_dict`` refuse. Matches R's
+  ``coxph(..., tt = function(x, t, ...) x * g(t))`` on ``veteran`` and
+  ``lung`` (Efron and Breslow ties, strata, weights) to 1e-6, and
+  ``diagnose()``'s advice for a continuous covariate that fails the
+  proportional-hazards test now names it.
 - The restricted mean survival time of the parametric models:
   ``rmst(tau)`` (the RMST, its delta-method standard error and 95%
   interval, in the form of the non-parametric models' ``rmst``),
