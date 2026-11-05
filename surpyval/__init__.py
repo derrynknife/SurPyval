@@ -273,6 +273,8 @@ _LAZY = {
         (
             "auc_td",
             "brier_score",
+            "compare_concordance",
+            "concordance_estimate",
             "concordance_index",
             "integrated_brier_score",
             "survival_probability",
@@ -393,6 +395,8 @@ if TYPE_CHECKING:
     from surpyval.metrics import (
         auc_td,
         brier_score,
+        compare_concordance,
+        concordance_estimate,
         concordance_index,
         integrated_brier_score,
         survival_probability,

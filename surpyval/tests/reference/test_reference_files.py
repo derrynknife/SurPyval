@@ -26,6 +26,7 @@ EXPECTED_SOURCES = {
     "r_ph_aft",
     "r_calibration",
     "r_stratified_cox",
+    "r_concordance",
     "py_lifelines",
     "py_sksurv",
 }

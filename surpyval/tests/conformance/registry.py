@@ -416,6 +416,8 @@ for _fn in (
     "gray_test",
     "auc_td",
     "brier_score",
+    "compare_concordance",
+    "concordance_estimate",
     "concordance_index",
     "integrated_brier_score",
     "survival_probability",

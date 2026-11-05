@@ -68,6 +68,15 @@ Design decisions made while working on the open issues, with the reason for each
 | A stratified Cox dict stores a `"strata"` list of baselines and is schema 4; the top-level baseline is still the first stratum's. | principle 20 | A schema-3 reader would otherwise read the first stratum's baseline as the model's, silently. | done |
 | A stratified fit keeps its rows (`_fit_data`, in the order given, with each row's stratum) as an unstratified one does; a penalised stratified fit still keeps none, and its residuals say so. | proposed | The penalised fit is out of this change's scope. | done |
 
+### Concordance: Uno's C, standard errors and comparing two scores
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `concordance_estimate` reproduces R's `survival::concordance(..., reverse = TRUE)`: Uno's weighting is `timewt = "n/G2"` (`1 / G(t-)^2`, `G` the events-first reverse Kaplan-Meier of the same data), `tau` is `ymax` (pairs whose event is *at or before* `tau`; `survC1::Est.Cval` uses *before*), and the standard error is the infinitesimal jackknife with the censoring weights held fixed. `compare_concordance` is R's two-fit covariance with the contrast `c(1, -1)`. Checked to 1e-10 (C) and a relative 1e-8 (variances). | principle 16 | R's `concordance` is the reference users compare with; `survC1` agrees with it to about 1e-8 on data without tied times. | done |
+| The interval is the normal one on the C scale by default (`ci_method="normal"`), with `"logit"` as the option that stays inside (0, 1); a C of exactly 0 or 1 gives the point as its logit interval. | proposed | R reports only `var`; `C -/+ z se` is what its users compute. | done |
+| A stratified Cox model refuses `weighting="uno"`, `tau` and `concordance_estimate`, naming `surpyval.metrics.concordance_estimate` per stratum. | proposed | R pools the strata's jackknife terms and estimates `G` per stratum; that needs its own reference, out of this change's scope. | done |
+| A model's `concordance_estimate` with a missing covariate raises (naming the rows to drop), while `concordance` keeps its NaN. | proposed | A standard error of an undefined index has nothing to report; `concordance_index` already refuses a missing score. | done |
+
 ### `random()` for the AFT, PO, Cox and Aalen models
 
 | Decision | By | Reason | Status |
