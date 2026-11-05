@@ -229,7 +229,12 @@ class NonParametricFitter(FitterRepr, UnivariateDataFrameMixin):
             ``quantile_cb``, ``rmst`` and ``mean_cb``) the robust,
             infinitesimal-jackknife variance (R's ``survfit(...,
             weights = w, robust = TRUE)``); ``band`` and ``bootstrap_cb``
-            refuse, and so does ``Turnbull`` (see :doc:`/Weighted Data`).
+            refuse. A ``Turnbull`` fit is the weighted NPMLE (each row
+            counting ``n w`` in the EM; R's ``icenReg::ic_np(...,
+            weights = w)``), which has no variance formula: ``cb`` and
+            the bounds built on the variance refuse, and its bounds are
+            ``bootstrap_cb``'s, the weighted case bootstrap (see
+            :doc:`/Weighted Data`).
 
         Returns
         -------
@@ -282,6 +287,22 @@ class NonParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         Estimator        : Kaplan-Meier
         Data             : 6 units: 6 events at 5 unique times
         """
+        if w is not None and self.how == "Turnbull":
+            return self._fit_weighted_turnbull(
+                x,
+                c,
+                n,
+                t,
+                xl,
+                xr,
+                tl,
+                tr,
+                w,
+                turnbull_estimator,
+                tol,
+                max_iter,
+                turnbull_algorithm,
+            )
         if w is not None:
             return self._fit_weighted(
                 x, c, n, t, xl, xr, tl, tr, w, set_lower_limit
@@ -427,19 +448,9 @@ class NonParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         from surpyval.utils.surpyval_data import SurpyvalData
         from surpyval.utils.weights import (
             effective_sample_size,
-            refuse_weighted,
             warn_if_few_effective,
         )
 
-        if self.how == "Turnbull":
-            raise refuse_weighted(
-                "Turnbull",
-                "its EM and variance for weighted data are not built yet",
-                "For right censored and left truncated data use "
-                "KaplanMeier, NelsonAalen or FlemingHarrington, which take "
-                "w; for interval censored data fit a parametric model with "
-                "w (Weibull.fit(..., w=w)).",
-            )
         data = SurpyvalData(
             x=x, c=c, n=n, t=t, xl=xl, xr=xr, tl=tl, tr=tr, w=w
         )
@@ -494,6 +505,87 @@ class NonParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         out.greenwood = var
         out.weighted = True
         out.effective_n = effective_sample_size(n, data.w)
+        return out
+
+    def _fit_weighted_turnbull(
+        self,
+        x: Any,
+        c: Any,
+        n: Any,
+        t: Any,
+        xl: Any,
+        xr: Any,
+        tl: Any,
+        tr: Any,
+        w: Any,
+        turnbull_estimator: str,
+        tol: float,
+        max_iter: int,
+        turnbull_algorithm: str,
+    ) -> NonParametric:
+        """``Turnbull.fit`` with weights ``w``: the weighted NPMLE (each
+        row counting ``n w`` in the EM). It has no variance formula, so the
+        model's ``greenwood`` is None and its bounds are the weighted case
+        bootstrap's (``bootstrap_cb``); ``cb`` and the bounds built on the
+        variance refuse."""
+        from surpyval.univariate.nonparametric.turnbull import (
+            check_turnbull_algorithm,
+            check_turnbull_estimator,
+            resolve_turnbull_algorithm,
+        )
+        from surpyval.utils.surpyval_data import SurpyvalData
+        from surpyval.utils.weights import (
+            effective_sample_size,
+            warn_if_few_effective,
+        )
+
+        check_turnbull_estimator(turnbull_estimator)
+        check_turnbull_algorithm(turnbull_algorithm)
+        data = SurpyvalData(
+            x=x, c=c, n=n, t=t, xl=xl, xr=xr, tl=tl, tr=tr, w=w
+        )
+        x, c, n, t = data.x, data.c, data.n, data.t
+        assert data.w is not None
+        exact_x = x[c == 0] if x.ndim == 1 else x[c == 0].ravel()
+        if not np.isfinite(exact_x).all():
+            raise ValueError(
+                "Exactly observed values (c=0) must be finite; an item that "
+                "had not failed by the end of observation is right censored "
+                "(c=1)."
+            )
+        warn_if_few_effective(n, data.w)
+        turnbull_algorithm = resolve_turnbull_algorithm(turnbull_algorithm, t)
+        fitted = self._fit(
+            x,
+            c,
+            n,
+            t,
+            turnbull_estimator,
+            tol,
+            max_iter,
+            turnbull_algorithm,
+            w=data.w,
+        )
+        out = NonParametric()
+        for k, v in fitted.items():
+            setattr(out, k, v)
+        with np.errstate(all="ignore"):
+            out.H = 0.0 - np.log(out.R)
+        # No variance: the bounds are the case bootstrap's
+        out.greenwood = None  # type: ignore[assignment]
+        out.weighted = True
+        out.effective_n = effective_sample_size(n, data.w)
+        out.data = {
+            "x": x,
+            "c": c,
+            "n": n,
+            "t": t,
+            "w": data.w,
+            "estimator": turnbull_estimator,
+            "tol": tol,
+            "max_iter": max_iter,
+            "algorithm": turnbull_algorithm,
+        }
         return out
 
     def from_xrd(

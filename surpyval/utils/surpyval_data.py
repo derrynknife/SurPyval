@@ -2206,7 +2206,7 @@ def lost_message(lost: list, takes_event_types: bool) -> str:
         takes.append(
             "weights w are taken by KaplanMeier, NelsonAalen, "
             "FlemingHarrington, the parametric distributions (MLE), the "
-            "parametric regressions and CoxPH"
+            "parametric regressions, CoxPH and CompetingRisks"
         )
     if "time_varying_covariates" in parts:
         takes.append(
@@ -2641,22 +2641,6 @@ def _named_row(Z: np.ndarray | None, k: int, names: list | None) -> Any:
     return Z[k] if names is None else dict(zip(names, Z[k].tolist()))
 
 
-def _json_label(value: Any) -> Any:
-    """An id or event type as JSON keeps it: a tuple (a gap's id,
-    ``("A", 2)``) as ``{"tuple": [...]}``, which JSON's lists would
-    otherwise turn into a list (#928)."""
-    if isinstance(value, tuple):
-        return {"tuple": [_json_label(v) for v in value]}
-    return _plain(value)
-
-
-def _label_from_json(value: Any) -> Any:
-    """An id or event type read back from JSON (:func:`_json_label`)."""
-    if isinstance(value, dict) and set(value) == {"tuple"}:
-        return tuple(_label_from_json(v) for v in value["tuple"])
-    return value
-
-
 def _plain(value: Any) -> Any:
     """A numpy scalar as the plain Python value JSON stores."""
     return value.item() if isinstance(value, np.generic) else value
@@ -2687,7 +2671,3 @@ def _attributes_back(attributes: list) -> list:
         None if a is None else {k: label_back(v) for k, v in a.items()}
         for a in attributes
     ]
-
-
-def _plural(k: int, word: str) -> str:
-    return f"{k} {word}" + ("" if k == 1 else "s")

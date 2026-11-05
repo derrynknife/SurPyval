@@ -236,6 +236,21 @@ def regression_knots(
     return knots
 
 
+def _no_entry_at_zero(t: Any) -> Any:
+    """``t`` with each left truncation at or below 0 read as none (-inf):
+    the spline is in log time, so its value at 0 is not finite, and an
+    entry at 0 (the usual "no late entry") made the truncation term, its
+    derivatives and so the fit's verdict and covariance ``nan``, where it
+    is exactly 0 (S(0) = 1)."""
+    if t is None:
+        return t
+    arr = np.array(t, dtype=float)
+    if arr.ndim != 2 or arr.shape[1] != 2:
+        return t
+    arr[:, 0] = np.where(arr[:, 0] <= 0, -np.inf, arr[:, 0])
+    return arr
+
+
 class RoystonParmarRegression(FitterRepr, DataFrameRegressionMixin):
     """
     Royston-Parmar (flexible parametric) regression: a restricted cubic
@@ -341,6 +356,7 @@ class RoystonParmarRegression(FitterRepr, DataFrameRegressionMixin):
         center: bool = False,
         tl: npt.ArrayLike | None = None,
         tr: npt.ArrayLike | None = None,
+        w: npt.ArrayLike | float | None = None,
     ) -> ParametricRegressionModel:
         """
         Fit by maximum likelihood: the knots are placed on the data (or
@@ -362,6 +378,13 @@ class RoystonParmarRegression(FitterRepr, DataFrameRegressionMixin):
             column name or ``"coef_j"``).
         center : bool, optional
             As for ``WeibullPH.fit``.
+        w : array_like or float, optional
+            Sampling, propensity or censoring weights, one positive
+            finite weight per row (or one for every row), as for
+            ``WeibullPH.fit``: the weighted estimates with the robust
+            (sandwich) covariance. The knots are placed on the event
+            times counted by ``n`` alone, not weighted (so that they do not
+            depend on the weights at all); pass ``knots`` to choose them.
 
         Returns
         -------
@@ -379,12 +402,12 @@ class RoystonParmarRegression(FitterRepr, DataFrameRegressionMixin):
         >>> model.parameter_names
         ['gamma_0', 'gamma_1', 'gamma_2', 'coef_0']
         """
-        t = truncation_window(x, t, tl, tr)
+        t = _no_entry_at_zero(truncation_window(x, t, tl, tr))
         knots = self.knots
         if knots is None:
             knots = regression_knots(x, Z, c, n, t, self.df)
         return self.family(knots).fit(
-            x, Z, c=c, n=n, t=t, init=init, fixed=fixed, center=center
+            x, Z, c=c, n=n, t=t, init=init, fixed=fixed, center=center, w=w
         )
 
     @dataframe_covariates

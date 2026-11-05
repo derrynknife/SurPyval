@@ -396,25 +396,6 @@ def _godambe(
     return H_inv @ J @ H_inv.T
 
 
-def godambe_parts(
-    layout: ParameterLayout, data: Any
-) -> tuple[npt.NDArray, npt.NDArray]:
-    """``(naive, godambe)`` covariances of the copula's free parameters
-    under IFM: the copula stage's inverse Hessian with the margins held
-    (what treating them as known gives) and the Godambe covariance. For
-    the documentation and its tests, which compare the two."""
-    step = layout.steps()
-    weights = onp.asarray(data.n, dtype=float)
-    free = onp.flatnonzero(layout.estimated & ~layout.on_bound())
-    cop = free[free < layout.n_cop]
-    naive = _inverse_hessian(layout, data, cop, step, weights)
-    full = _godambe(layout, data, free, step, weights)
-    if naive is None or full is None:
-        nan = onp.full((cop.size, cop.size), onp.nan)
-        return nan, nan
-    return naive, full[: cop.size, : cop.size]
-
-
 def jacobian(
     func: Callable[[npt.NDArray], npt.NDArray],
     layout: ParameterLayout,

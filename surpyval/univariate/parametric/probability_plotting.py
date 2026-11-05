@@ -50,7 +50,12 @@ def adjust_heuristic(
     return heuristic
 
 
-_WEIGHTED_HEURISTICS = ("Kaplan-Meier", "Nelson-Aalen", "Fleming-Harrington")
+_WEIGHTED_HEURISTICS = (
+    "Kaplan-Meier",
+    "Nelson-Aalen",
+    "Fleming-Harrington",
+    "Turnbull",
+)
 
 
 def _weighted_positions(
@@ -62,7 +67,8 @@ def _weighted_positions(
     heuristic: str,
 ) -> tuple:
     """The plotting positions of weighted data: ``1 - S`` of its weighted
-    Kaplan-Meier, Nelson-Aalen or Fleming-Harrington estimate; the
+    Kaplan-Meier, Nelson-Aalen, Fleming-Harrington or (for left or
+    interval censored or truncated data) Turnbull estimate; the
     rank-based heuristics have no weighted form and are refused."""
     from surpyval.univariate.nonparametric._weighted import WeightedLadder
     from surpyval.utils.weights import refuse_weighted
@@ -72,18 +78,19 @@ def _weighted_positions(
             f"The {heuristic!r} plotting positions",
             "they are built from the ranks of units counted, which "
             "weights do not give",
-            "Use heuristic='Kaplan-Meier', 'Nelson-Aalen' (the default) or "
-            "'Fleming-Harrington', which are weighted.",
+            "Use heuristic='Kaplan-Meier', 'Nelson-Aalen' (the default), "
+            "'Fleming-Harrington' or 'Turnbull', which are weighted.",
         )
     c_arr = np.zeros(len(x), dtype=int) if c is None else np.asarray(c)
-    if np.isin(c_arr, (-1, 2)).any() or np.isfinite(np.asarray(t)[:, 1]).any():
-        raise refuse_weighted(
-            "A probability plot of left or interval censored or right "
-            "truncated data",
-            "its weighted Turnbull positions are not built yet",
-            "Compare the fitted model's sf with a weighted estimate of "
-            "right censored data, or plot the model alone.",
-        )
+    if (
+        heuristic == "Turnbull"
+        or np.isin(c_arr, (-1, 2)).any()
+        or np.isfinite(np.asarray(t)[:, 1]).any()
+    ):
+        from surpyval.univariate.nonparametric import turnbull
+
+        out = turnbull(x, c_arr, n, t, w=w)
+        return out["x"], out["r"], out["d"], 1 - out["R"]
     ladder = WeightedLadder(x, c_arr, n, t, w)
     R = np.exp(np.cumsum(ladder.log_sf_increments(heuristic)))
     return ladder.x, ladder.r, ladder.d, 1 - R

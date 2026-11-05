@@ -58,6 +58,7 @@ def gray_test(
     c: npt.ArrayLike | None = None,
     n: npt.ArrayLike | None = None,
     rho: float = 0.0,
+    w: npt.ArrayLike | None = None,
 ) -> GrayTestResult:
     """
     Gray's k-sample test comparing the cumulative incidence of one cause
@@ -90,6 +91,10 @@ def gray_test(
         Weight-family parameter: the per-time weight is ``(1 - F(t-))**rho``
         with ``F`` the pooled cumulative incidence of ``event``. ``0``
         (the default) is the standard Gray test.
+    w : array_like, optional
+        Sampling weights are not taken yet: given, the test refuses with a
+        ``WeightedRefusal`` (a ``ValueError``) saying what to use instead.
+        R's ``cmprsk`` has no weighted Gray test to check one against.
 
     Returns
     -------
@@ -149,6 +154,19 @@ def gray_test(
     >>> bool(res.p_value < 0.001)
     True
     """
+    if w is not None:
+        from surpyval.utils.weights import refuse_weighted
+
+        raise refuse_weighted(
+            "Gray's test",
+            "its variance treats the counts as units seen, and a weighted, "
+            "design-based version (with a reference to check it against) is "
+            "not built yet",
+            "Use logrank(..., w=w) on the cause-specific hazards (the other "
+            "causes censored), or compare the weighted cumulative "
+            "incidences of CompetingRisks.fit(..., w=w) fitted per group "
+            "by their robust bounds (cb).",
+        )
     x_arr, n_arr, gi, groups, is_cause, is_competing, rho = _validate(
         x, e, group, event, c, n, rho
     )

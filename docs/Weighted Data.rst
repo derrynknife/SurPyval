@@ -4,8 +4,10 @@ Weighted Data
 Some data come with a number on each row that says how much that row
 *counts*: a **weight**. SurPyval takes it as ``w``, beside the counts ``n``,
 in the Kaplan-Meier, Nelson-Aalen and Fleming-Harrington estimators, the
-parametric distributions, the parametric regressions, Cox regression and
-the competing-risks regressions (cause-specific Cox and Fine-Gray).
+parametric distributions, the parametric regressions, Cox regression,
+Aalen's additive hazards model, the non-parametric competing-risks
+estimate (``CompetingRisks``) and the competing-risks regressions
+(cause-specific Cox and Fine-Gray).
 This page says what weights are, when to use ``w`` rather than ``n``, why a
 weighted fit's intervals are computed differently, and what a weighted fit
 will not do.
@@ -189,6 +191,62 @@ weights has no bootstrap (without weights it has, with BCa intervals; see
 :doc:`Parametric SurPyval Modelling`); discrete fits and time-varying
 covariate fits have none, weighted or not.
 
+Interval censored data: the weighted Turnbull estimate
+------------------------------------------------------
+
+``Turnbull.fit`` takes ``w`` too, for data the Kaplan-Meier family cannot
+handle: inspection intervals, left censoring and right truncation. The
+estimate is the one that best explains the population the weights
+describe: each unit counts as ``w`` units when the estimate shares out
+the chance of failing among the intervals the unit could have failed in.
+Multiplying every weight by the same number changes nothing, whole-number
+weights give the same curve as counting each row that many times
+(``n``), and on right censored data its Kaplan-Meier option is the
+weighted Kaplan-Meier.
+
+What it does not have is a formula for its uncertainty. Greenwood's
+formula would read the weights as units seen, and the robust
+(infinitesimal jackknife) variance of the weighted Turnbull estimate is
+not built. So ``cb``, ``quantile_cb``, the bounds of ``rmst`` and
+``sf_diff`` refuse it, and its bounds come from ``bootstrap_cb``: the
+units (a row with ``n = k`` is ``k`` units) are drawn with replacement,
+each keeping its weight, the estimate is refitted, and the bounds are
+the percentiles of the refits. Give a seed (``random_state``) and the
+same bounds come back, at any scale of the weights. ``plot`` draws the
+curve without bounds.
+
+.. jupyter-execute::
+
+    # Inspected every 2 time units: a failure is known to lie in (2k, 2k + 2]
+    left = np.where(c == 1, x, np.floor(x / 2) * 2)
+    right = np.where(c == 1, np.inf, left + 2)
+    tb = surv.Turnbull.fit(xl=left, xr=right, w=w)
+    print(tb.sf([4, 8]))
+    print(tb.bootstrap_cb([4, 8], n_boot=200, random_state=1))
+
+A probability plot of weighted left or interval censored or truncated
+data uses these weighted Turnbull positions (``heuristic="Turnbull"``).
+
+In symbols: with :math:`\alpha_{ij} = 1` when piece :math:`j` lies in
+row :math:`i`'s interval, the self-consistency (EM) step is
+
+.. math::
+
+    p_j \leftarrow \frac{1}{\sum_i n_i w_i}
+        \sum_i n_i w_i \frac{\alpha_{ij} p_j}{\sum_k \alpha_{ik} p_k},
+
+the unweighted step with :math:`n_i w_i` in place of :math:`n_i`; delayed
+entry and right truncation add their unseen "ghost" units in the same
+way, each carrying its row's :math:`n_i w_i`. Without truncation the
+default algorithm is the EM-ICM, as R's ``icenReg::ic_np``, whose
+``weights`` give the same estimate (checked to 1e-8). The
+Fleming-Harrington and Nelson-Aalen options are applied to the weighted
+expected numbers at risk and of failures, with Fleming-Harrington's tied
+failures at their mean weight as in the weighted ``FlemingHarrington``.
+The coverage of the 95% bootstrap bounds under informative sampling was
+0.946 and 0.930 (Monte Carlo error 0.01) at two times in 500 simulated
+samples (``scripts/studies/weighted_turnbull/coverage.py``).
+
 Comparing weighted groups
 -------------------------
 
@@ -282,6 +340,99 @@ The covariance is ``A^-1 (sum_i n_i w_i^2 L_i L_i') A^-1``, ``A`` the
 weighted information and ``L_i`` unit ``i``'s score residual over its
 whole time at risk, as for Cox.
 
+Distributional and Royston-Parmar regression with weights
+---------------------------------------------------------
+
+Distributional regression (``WeibullDistributional.fit(..., w=w)``, any
+``Distributional(...)`` fitter) and the Royston-Parmar spline regression
+(``RoystonParmarPH.fit(..., w=w)``, ``RoystonParmarPO``,
+``RoystonParmarRegression(...)``) take weights as the other parametric
+regressions do: the estimates maximise the weighted log-likelihood, every
+row's term counted ``n * w`` times, and the covariance is the robust
+(sandwich) one. ``fit_from_df`` takes ``w_col``; a row dropped for a
+missing covariate drops its weight with it. The Wald bounds
+(``cb``, ``param_cb``, ``quantile_cb`` and a distributional model's
+``parameter_cb``) use the robust covariance, ``method="bootstrap"`` is
+the case bootstrap, and the likelihood-ratio bounds, the
+``likelihood_ratio_test()`` and the information criteria refuse.
+
+A Royston-Parmar fit places its knots on the event times counted by
+``n``, *not* weighted, so the spline's shape is the same whatever the
+weights and their scale, and ``w = 1`` gives the unweighted fit exactly.
+A weight of 2 is therefore not quite a count of 2 here: a count moves the
+quantiles the knots sit at and a weight does not. Pass ``knots`` to fix
+them; with the same knots, whole-number weights give the fit of the rows
+counted that many times. R's ``flexsurvspline(..., weights = w)`` places
+its default knots at weighted quantiles found by an approximate expansion
+of the weights (each rounded to a multiple of a hundredth of a unit), so
+pass the knots to it too when comparing. A left truncation at 0 (the
+usual "no late entry") is read as none.
+
+.. jupyter-execute::
+
+    load = rng.uniform(0, 1, kept.sum())  # no effect: coefficients near 0
+    model = surv.WeibullDistributional.fit(
+        x, load, c=c, w=w, covariates={"alpha": [0], "beta": [0]}
+    )
+    print(model.params.round(3), model.standard_errors().round(3))
+
+Checked against R: ``flexsurvreg(..., anc = list(shape = ~ z1), weights =
+w)`` and ``flexsurvspline(..., weights = w)`` on both scales for the
+estimates (to 1e-5) and the log-likelihood, and a sandwich computed by
+hand from numDeriv's per-row scores and Hessian for the robust standard
+errors (to 1e-4 relative); flexsurv's own standard errors with weights are
+model based.
+
+Competing risks: weighted cumulative incidence
+----------------------------------------------
+
+``CompetingRisks.fit(x, e, c, n, w=w)`` (and ``fit_from_df(...,
+w_col=)``) gives the Aalen-Johansen cumulative incidence of each cause in
+the population the weights describe. Each unit counts ``n * w`` in the
+numbers at risk and of failures from each cause, so whole-number weights
+give exactly the estimate of the same rows counted that many times, and
+``w = 1`` gives the unweighted estimate. The bounds of ``cb`` (on the
+cumulative incidence, and on ``sf``, ``ff`` and ``Hf``) use the robust,
+infinitesimal-jackknife variance, the one R's ``survfit(Surv(x,
+factor(e)) ~ 1, weights = w)`` reports as ``std.err``, so they do not
+change when every weight is multiplied by the same number. With ``w = 1``
+they are the robust bounds, close to but not the same as those without
+``w`` (which use Aalen's variance). The fit warns if the effective sample
+size is below 20, and its printout shows it.
+
+In symbols, with :math:`\hat S` the weighted all-cause Kaplan-Meier
+survival, :math:`h_{jk} = d_{jk} / r_j` cause :math:`k`'s weighted hazard
+increment at :math:`t_j` and :math:`V_i` unit :math:`i`'s influence on
+:math:`\log \hat S` (the formula below), unit :math:`i`'s influence on
+cause :math:`k`'s cumulative incidence is
+
+.. math::
+
+    U_{ik}(t) = \sum_{t_j \le t} \hat S(t_{j-1}) \left[
+        \frac{dN_{ik}(t_j) - Y_i(t_j)\, h_{jk}}{r_j}
+        + h_{jk}\, V_i(t_{j-1}) \right],
+
+and the variance is :math:`\sum_i n_i w_i^2 U_{ik}(t)^2`. The estimate
+takes no delayed entry, weighted or not; Gray's test refuses weights (see
+below).
+
+Penalised fits with weights
+---------------------------
+
+``CoxPH.fit_penalised``, ``CoxPH.fit_tvc_penalised`` and the parametric
+families' ``fit_penalised`` (``WeibullPH``, ``WeibullAFT``, ``WeibullPO``
+and the others) take ``w``. A penalised fit divides the log-likelihood by
+the number of units before adding the penalty; with weights that number is
+the weighted one, :math:`N_w = \sum n w`, and the covariates are
+standardised with the weighted mean and standard deviation (divisor
+:math:`N_w`). Both scale with the weights, so the fit depends only on their
+proportions, and glmnet's Cox fit with ``weights`` is the same objective
+(checked to 1e-6). Penalised estimates have no standard errors, weighted or
+not, and the information criteria stay refused. The details are in
+:doc:`Regression Modelling with SurPyval` (Penalised regression). The other
+models' penalised fits (competing risks, recurrent events, Royston-Parmar,
+distributional) refuse ``w``.
+
 What a weighted fit will not do
 -------------------------------
 
@@ -306,18 +457,28 @@ saying what to use instead:
   refuse weighted data, since a posterior from the weighted likelihood
   would treat the weights as units seen. Fit by maximum likelihood with
   the weights instead.
-- **Simultaneous bands and** ``bootstrap_cb`` of a non-parametric estimate:
-  use ``cb``.
+- **Simultaneous bands and** ``bootstrap_cb`` of a Kaplan-Meier,
+  Nelson-Aalen or Fleming-Harrington estimate: use ``cb``. A weighted
+  Turnbull estimate is the other way round: ``cb`` refuses and
+  ``bootstrap_cb`` gives its bounds (above).
 - **Rank-based plotting positions** (Blom, median ranks, ...): a weighted
-  model's probability plot uses the weighted Kaplan-Meier, Nelson-Aalen or
-  Fleming-Harrington positions.
+  model's probability plot uses the weighted Kaplan-Meier, Nelson-Aalen,
+  Fleming-Harrington or Turnbull positions.
 - **Methods other than maximum likelihood** (``how="MPP"``, ``"MOM"``,
   ``"MSE"``, ``"MPS"``).
-- **Turnbull**, the Cox model's residuals and ``diagnose()``, strata and
+- The Cox model's residuals and ``diagnose()``, strata and
   exact ties. These may come later.
-- **The fitters that do not take** ``w``: the competing-risks
-  estimates other than the regressions, recurrent events, degradation, mixtures, distributional
-  regression, Aalen's additive model and the Royston-Parmar regression,
+- **Gray's test** (``gray_test``) of weighted data: R's ``cmprsk`` has no
+  weighted version to check one against. Use ``logrank(..., w=w)`` on the
+  cause-specific hazards, or compare the groups' weighted cumulative
+  incidences by their bounds.
+- **Aalen's** ``constant_effects_test()``: its null distribution is
+  simulated for an unweighted fit, and a weighted version has not been
+  built or checked. Judge a constant effect from the robust bands of
+  ``plot()`` or ``cumulative_coefficients_cb()`` (a straight line through
+  0 inside the band), or test it on the data without ``w``.
+- **The fitters that do not take** ``w``: the parametric competing-risks
+  models, recurrent events, degradation, mixtures and the frailty models,
   among others, which refuse weighted data (the Bayesian fits and the
   life table are above).
 - **Reshaping weighted data** with ``censor_at``, ``select`` and the other
@@ -389,6 +550,45 @@ the weighted dfbetas are summed first. R's ``survey::svycoxph`` gives the
 same coefficients and standard errors larger by
 :math:`\sqrt{n / (n - 1)}`, a finite-sample factor SurPyval, as R's
 ``survival``, does not apply.
+
+Aalen's additive hazards model with weights
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In plain words: at each event time Aalen's model fits a straight-line
+(least-squares) regression of "who failed now" on the covariates of
+everyone still at risk. With weights it is a *weighted* least-squares
+fit, each unit counting as much as its weight says, and the running sum
+of the fitted slopes is the cumulative effect :math:`B(t)`. Its
+uncertainty is measured by how much each unit moves :math:`B(t)`, unit by
+unit, so it does not depend on how the weights are scaled.
+
+At each event time, with :math:`X` the rows at risk (a leading 1 for the
+baseline), :math:`W` the diagonal of :math:`n_i w_i` over them, :math:`P`
+the ridge penalty of ``penalizer`` (0 by default) and :math:`dN` the
+events,
+
+.. math::
+
+    dB(t) = (X^\top W X + P)^{-1} X^\top W\, dN(t),
+
+and the robust variance of :math:`B(t)` sums each unit's squared
+influence, its martingale residuals mapped as the increments are:
+
+.. math::
+
+    \psi_i(t) = \sum_{s \le t} (X^\top W X + P)^{-1} X_i w_i
+        \bigl(dN_i(s) - Y_i(s) X_i^\top dB(s)\bigr), \qquad
+    \widehat{Var}\, B(t) = \sum_i n_i \psi_i(t) \psi_i(t)^\top.
+
+This is R's ``timereg::aalen(..., weights = w, robust = 1)``
+(``robvar.cum``), checked to about :math:`10^{-15}`. Every bound of the
+model (``cumulative_coefficients_cb``, ``summary`` and ``cb`` on ``sf``,
+``ff`` and ``Hf``) takes it. With a penalty, :math:`P` is ``penalizer``
+times each covariate's weighted sum of squares about its weighted mean,
+over :math:`\sum_i n_i - 1`, so that it grows with the weights as
+:math:`X^\top W X` does and the fit does not depend on their scale; the
+price is that whole-number weights then differ from counts (without a
+penalty they are the same, to the last digit).
 
 The robust formula: HC0, with counts as frequency weights
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -491,7 +691,10 @@ Translating from lifelines and R
   SurPyval's parameterisation); ``coxph(Surv(T, E) ~ z, weights = w, robust
   = TRUE)`` is ``CoxPH.fit(T, z, c=1 - E, w=w)``; per cause, ``coxph(Surv(T,
   cause == k) ~ z, weights = w, robust = TRUE)`` is
-  ``CompetingRisksProportionalHazards.fit(T, z, e, w=w)``.
+  ``CompetingRisksProportionalHazards.fit(T, z, e, w=w)``;
+  ``timereg::aalen(Surv(T, E) ~ z, weights = w, robust = 1)`` is
+  ``AalenAdditive.fit(T, z, c=1 - E, w=w)`` (pass ``weights = df$w``:
+  ``aalen`` looks for a bare ``w`` outside the data).
 
 The reference tests (``surpyval/tests/reference/test_weights.py``) compare
 these with R ``survival`` and ``survey`` and with lifelines, and the

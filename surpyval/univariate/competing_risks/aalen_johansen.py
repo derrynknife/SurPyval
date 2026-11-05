@@ -140,3 +140,105 @@ def aalen_johansen_variance(
     # Zero before the cause's first event (and never negative from the
     # round-off of the expansion).
     return np.where(F > 0, np.maximum(var, 0.0), 0.0)
+
+
+def weighted_aalen_johansen(
+    x: npt.ArrayLike,
+    c: npt.ArrayLike,
+    n: npt.ArrayLike,
+    w: npt.ArrayLike,
+    cause: npt.ArrayLike,
+    n_causes: int,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+    r"""The Aalen-Johansen cumulative incidences of weighted data and
+    their robust (infinitesimal jackknife) variances.
+
+    Each unit counts ``n * w`` in the numbers at risk and of events, and
+    the variance of cause :math:`k`'s cumulative incidence at :math:`t` is
+    :math:`\sum_i n_i w_i^2 U_{ik}(t)^2`, with :math:`U_{ik}(t)` the
+    derivative of the estimate in unit :math:`i`'s weight (its influence),
+
+    .. math::
+        U_{ik}(t) = \sum_{t_j \le t} \hat{S}(t_{j-1}) \left[
+            \frac{dN_{ik}(t_j) - Y_i(t_j)\, h_{jk}}{r_j}
+            + h_{jk}\, V_i(t_{j-1}) \right],
+
+    where :math:`h_{jk} = d_{jk} / r_j` is the cause's hazard increment,
+    :math:`Y_i(t_j)` is 1 while unit :math:`i` is at risk, :math:`dN_{ik}`
+    is 1 at its failure from cause :math:`k`, and :math:`V_i` is the unit's
+    influence on the log of the all-cause Kaplan-Meier survival
+    (``_weighted.WeightedLadder``). This is R's ``survfit(Surv(x,
+    factor(e)) ~ 1, weights = w)$std.err`` squared.
+
+    Parameters
+    ----------
+    x : array_like
+        The units' times.
+    c : array_like
+        Their censoring flags: 0 a failure, 1 right censored.
+    n : array_like
+        Their counts.
+    w : array_like
+        Their weights.
+    cause : array_like
+        The index of each unit's cause (anything for a censored unit).
+    n_causes : int
+        The number of causes.
+
+    Returns
+    -------
+    tuple of numpy arrays
+        ``(x, r, d, d_e, var)``: the distinct times, the weighted numbers
+        at risk and of events (all causes, and one row per cause) at each,
+        and the robust variance of each cause's cumulative incidence (one
+        row per cause).
+
+    Examples
+    --------
+    Two units fail from causes 0 and 1; a weight of 2 counts as two units
+    in the estimate:
+
+    >>> from surpyval.univariate.competing_risks.aalen_johansen import (
+    ...     weighted_aalen_johansen,
+    ... )
+    >>> x, r, d, d_e, var = weighted_aalen_johansen(
+    ...     [1, 2, 3], [0, 0, 1], [1, 1, 1], [2, 1, 1], [0, 1, 0], 2
+    ... )
+    >>> r, d_e[0]
+    (array([4., 2., 1.]), array([2., 0., 0.]))
+    """
+    from surpyval.univariate.nonparametric._weighted import WeightedLadder
+
+    x = np.asarray(x, dtype=float)
+    c = np.asarray(c)
+    n = np.asarray(n, dtype=float)
+    w = np.asarray(w, dtype=float)
+    cause = np.asarray(cause, dtype=np.intp)
+    t = np.column_stack([np.full(x.size, -np.inf), np.full(x.size, np.inf)])
+    ladder = WeightedLadder(x, c, n, t, w)
+    xs, r, d = ladder.x, ladder.r, ladder.d
+    m = xs.size
+    died = c == 0
+    d_e = np.zeros((n_causes, m))
+    np.add.at(d_e, (cause[died], ladder.exit[died]), (n * w)[died])
+    with np.errstate(divide="ignore", invalid="ignore"):
+        S = np.cumprod(np.where(d > 0, 1.0 - d / r, 1.0))
+        h_e = np.where(d_e > 0, d_e / r, 0.0)
+    S_prev = np.concatenate([[1.0], S[:-1]])
+    alive = S_prev > 0
+    var = np.zeros((n_causes, m))
+    factor = n * w**2
+    cols = np.arange(m)[None, :]
+    for rows, V in ladder.influence_blocks("Kaplan-Meier"):
+        V_prev = np.column_stack([np.zeros(rows.size), V[:, :-1]])
+        e = ladder.exit[rows][:, None]
+        at_risk = cols <= e
+        failed = died[rows][:, None] & (cols == e)
+        for k in range(n_causes):
+            jumps = failed & (cause[rows][:, None] == k)
+            with np.errstate(all="ignore"):
+                term = (jumps - at_risk * h_e[k]) / r + h_e[k] * V_prev
+                term = np.where(alive, S_prev * term, 0.0)
+            U = np.cumsum(term, axis=1)
+            var[k] += np.sum(factor[rows][:, None] * U**2, axis=0)
+    return xs, r, d, d_e, var
