@@ -277,6 +277,48 @@ WEIGHTED = [
             "quantile_cb": lambda m: m.quantile_cb(0.3),
         },
     ),
+    # Weights stage 2: distributional regression, covariates on the
+    # Weibull's scale (both columns) and shape (the first)
+    WeightedCase(
+        "WeibullDistributional",
+        lambda x, c, n, w, Z, tl: sp.WeibullDistributional.fit(
+            x,
+            Z,
+            c=c,
+            n=n,
+            w=w,
+            tl=tl,
+            covariates={"alpha": [0, 1], "beta": [0]},
+        ),
+        lambda m: np.asarray(m.params, dtype=float),
+        offered={
+            "cb(sf)": lambda m: m.cb(QUERY, np.zeros((3, 2)), on="sf"),
+            "param_cb": lambda m: m.param_cb(m.parameter_names[-1]),
+            "parameter_cb": lambda m: m.parameter_cb("beta", np.eye(2)),
+        },
+        refused={
+            "param_cb(lr)": lambda m: m.param_cb(
+                m.parameter_names[-1], method="lr"
+            ),
+            "parameter_cb(lr)": lambda m: m.parameter_cb(
+                "beta", np.eye(2), method="lr"
+            ),
+            "likelihood_ratio_test": lambda m: m.likelihood_ratio_test(),
+        },
+        bootstrap={
+            "param_cb(bootstrap)": lambda m: m.param_cb(
+                m.parameter_names[-1], **BOOT
+            ),
+            "parameter_cb(bootstrap)": lambda m: m.parameter_cb(
+                "beta", np.eye(2), **BOOT
+            ),
+        },
+        covariates=True,
+        rtol=5e-3,
+    ),
+    # Weights stage 2: Royston-Parmar (the PH family on the spline
+    # baseline); its knots are placed on the event times counted by n
+    _regression("RoystonParmarPH"),
     WeightedCase(
         "CoxPH",
         lambda x, c, n, w, Z, tl: sp.CoxPH.fit(x, Z, c=c, n=n, w=w, tl=tl),
@@ -429,6 +471,12 @@ NOT_COUNTED = {
         "the fit ends on the boundary of the model's support (it warns), "
         "not at a maximum, with or without weights"
     ),
+    "RoystonParmarPH": (
+        "by design: the knots are placed on the event times counted by n, "
+        "not weighted, so a weight of 2 leaves them where they are while a "
+        "count of 2 moves them; with the knots given the fits agree "
+        "(test_weighted_distributional_rp.py)"
+    ),
     "Weibull[offset]": (
         "with these weights (or these counts) the likelihood has no finite "
         "maximum: gamma runs onto the smallest observation with beta < 1, "
@@ -523,7 +571,9 @@ def test_case_bootstrap_bounds_are_finite_and_scale_free(case, data):
 def test_round_trip_keeps_the_robust_bounds(case, data):
     model = _fit(case, data, data["w"])
     d = model.to_dict()
-    assert d["schema"] == 3 and d["weighted"] is True
+    # 3, or a later schema a model's other entries need (a distributional
+    # model's coefficient signs are schema 4), which reads weights too
+    assert d["schema"] >= 3 and d["weighted"] is True
     restored = sp.from_dict(json.loads(json.dumps(d, allow_nan=False)))
     pickled = pickle.loads(pickle.dumps(model))
     for again in (restored, pickled):
@@ -640,7 +690,7 @@ def test_fit_from_df_without_weights_refuses_w_col(name):
 
 
 def test_refusal_names_the_public_fitter():
-    for name in ["WeibullDistributional", "RoystonParmarPH", "CoxFrailty"]:
+    for name in ["WeibullFrailty", "CoxFrailty"]:
         with pytest.raises(WeightedRefusal, match=rf"^{name}\.fit "):
             getattr(sp, name).fit([1.0, 2.0], w=[1.0, 1.0])
 

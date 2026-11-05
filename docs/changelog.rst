@@ -236,6 +236,18 @@ Unreleased
   Efron's ties for one subject of weight 3 than for three identical
   copies (use ``n`` for repeated identical units, ``w`` for survey and
   importance weights). No numbers change.
+- Weights ``w`` for distributional regression
+  (``WeibullDistributional.fit(..., w=w)`` and every ``Distributional``
+  fitter) and Royston-Parmar regression (``RoystonParmarPH``,
+  ``RoystonParmarPO``, ``RoystonParmarRegression``), with ``w_col`` in
+  ``fit_from_df``: weighted estimates, the robust (sandwich) covariance,
+  Wald and case-bootstrap bounds; likelihood-ratio bounds and tests and the
+  information criteria refuse. Checked against R's ``flexsurvreg`` and
+  ``flexsurvspline`` with ``weights`` (estimates to 1e-5, robust standard
+  errors from a hand sandwich to 1e-4). Royston-Parmar's knots are placed
+  on the event times counted by ``n``, not weighted. A Royston-Parmar
+  left truncation at 0 is now read as none: it made the fit unverified and
+  a weighted fit's covariance ``nan``.
 
 **Changed.**
 

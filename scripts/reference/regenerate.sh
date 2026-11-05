@@ -28,4 +28,6 @@ Rscript scripts/reference/reference_r_pseudo.R
 Rscript scripts/reference/reference_r_cox_curve.R
 Rscript scripts/reference/reference_r_reda.R
 Rscript scripts/reference/reference_r_likelihood_contour.R
+# Prints the values test_weighted_distributional_rp.py holds
+Rscript scripts/reference/reference_r_weighted_distributional_rp.R
 "${1:-python}" scripts/reference/reference_python.py

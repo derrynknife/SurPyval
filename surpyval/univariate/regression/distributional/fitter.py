@@ -46,6 +46,7 @@ from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.linalg import fixed_order_dot
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
+from surpyval.utils.weights import few_effective_said_later
 
 from .._aliasing import (
     aliased_columns,
@@ -66,6 +67,7 @@ from .._fit_skeleton import (
     drop_nonfinite_covariates,
     finite_start,
     judge_search,
+    mark_weighted,
     mirror_distribution,
     natural_information,
     optimise_ph,
@@ -482,10 +484,12 @@ class DistributionalFitter(
         tr: npt.ArrayLike | None = None,
         covariates: Mapping[str, Any] | None = None,
         links: Mapping[str, str] | None = None,
+        w: npt.ArrayLike | float | None = None,
     ) -> Any:
         """
         Fit by maximum likelihood, with every censoring, truncation and
-        count of SurPyval's data model.
+        count of SurPyval's data model, and optionally sampling,
+        propensity or censoring weights ``w``.
 
         Parameters
         ----------
@@ -518,6 +522,16 @@ class DistributionalFitter(
             defaults are identity for a parameter on the whole line and
             log for a positive one; an identity link on a positive
             parameter is refused.
+        w : array_like or float, optional
+            Sampling, propensity or censoring weights, one positive
+            finite weight per row (or one for every row), beside the
+            counts ``n``. The estimates maximise the weighted
+            log-likelihood (each row's term multiplied by ``n * w``) and
+            the covariance is always the robust (sandwich) one; the
+            likelihood-ratio bounds and test, the information criteria and
+            the parametric bootstrap are refused (the bootstrap of a
+            weighted fit is the case bootstrap). See "Weighted Data" in
+            the user guide.
 
         Returns
         -------
@@ -539,7 +553,7 @@ class DistributionalFitter(
         fitter_links = self._links_given if links is None else links
         link_names = self._resolve_links(fitter_links)
         t = truncation_window(x, t, tl, tr)
-        data = SurpyvalData(x, c, n, t, group_and_sort=False)
+        data = SurpyvalData(x, c, n, t, group_and_sort=False, w=w)
         Z_in = Z if hasattr(Z, "ndim") else np.asarray(Z)
         if getattr(Z_in, "ndim", 2) == 1:
             Z = np.asarray(Z_in).reshape(-1, 1)
@@ -594,7 +608,9 @@ class DistributionalFitter(
             return bound.neg_ll(data_c, *space.to_natural(tv))
 
         def default_init() -> npt.NDArray:
-            base = self.dist.fit_from_surpyval_data(data).params
+            # The model warns of few effective units itself, once.
+            with few_effective_said_later():
+                base = self.dist.fit_from_surpyval_data(data).params
             return space.start(base)
 
         user_init = init is not None and len(np.atleast_1d(init)) > 0
@@ -681,6 +697,7 @@ class DistributionalFitter(
             model_center,
             fit_centring,
         )
+        mark_weighted(model, data)
         say_verdict(
             verdict,
             dist=self.dist.name,

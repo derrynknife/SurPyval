@@ -1305,23 +1305,30 @@ def assemble_regression_model(
     # costs the model nothing in AIC/BIC.
     model.k = len(bounds) - len(fixed)
     model.data = data
-    if data.w is not None:
-        from surpyval.utils.weights import (
-            effective_sample_size,
-            warn_if_few_effective,
-        )
-
-        model.weighted = True
-        model.effective_n = effective_sample_size(data.n, data.w)
-        warn_if_few_effective(data.n, data.w)
-        # The search used the weights scaled to sum to the units
-        # (``likelihood_weights``); the value is reported with the weights
-        # as given, as R's ``survreg`` reports it.
-        n_arr = np.asarray(data.n, dtype=float)
-        model._neg_ll = model._neg_ll * float(
-            np.sum(n_arr * data.w) / n_arr.sum()
-        )
+    mark_weighted(model, data)
     return model
+
+
+def mark_weighted(model: Any, data: SurpyvalData) -> None:
+    """Mark ``model``, fitted to ``data``, as weighted where ``data``
+    carries weights ``w``: its effective sample size (with the warning
+    below 20) and its log-likelihood reported with the weights as given.
+    Nothing where ``data`` is unweighted."""
+    if data.w is None:
+        return
+    from surpyval.utils.weights import (
+        effective_sample_size,
+        warn_if_few_effective,
+    )
+
+    model.weighted = True
+    model.effective_n = effective_sample_size(data.n, data.w)
+    warn_if_few_effective(data.n, data.w)
+    # The search used the weights scaled to sum to the units
+    # (``likelihood_weights``); the value is reported with the weights
+    # as given, as R's ``survreg`` reports it.
+    n_arr = np.asarray(data.n, dtype=float)
+    model._neg_ll = model._neg_ll * float(np.sum(n_arr * data.w) / n_arr.sum())
 
 
 def optimise_ph(
