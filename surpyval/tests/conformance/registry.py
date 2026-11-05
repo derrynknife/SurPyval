@@ -370,6 +370,7 @@ OUT_OF_SCOPE: dict[str, str] = {
         "model"
     ),
     "surpyval.LikelihoodContour": _RESULT,
+    "surpyval.univariate.parametric.ParametricBootstrap": _RESULT,
     "surpyval.LikelihoodContourPlot": (
         "what plot_likelihood_contour drew (a figure and its contours), "
         "not a model"
