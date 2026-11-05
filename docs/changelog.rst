@@ -383,6 +383,24 @@ Unreleased
   the likelihood-ratio and bootstrap bounds. ``parameter_names``,
   ``hess_inv`` (the distribution's block only) and the saved dictionary
   are unchanged.
+- ``diagnose()`` for Aalen's additive hazards model (``AalenAdditive``),
+  which refused before. ``constant_effects`` reports, per covariate, the
+  model's ``constant_effects_test()`` (``timereg::aalen``'s
+  Kolmogorov-Smirnov statistic, with ``n_boot`` resampled processes and
+  ``random_state``), with the cumulative coefficients and their bands as
+  plots; its rows never fail, since the model allows effects that change,
+  and the advice points to ``AdditiveHazards`` when none does.
+  ``non_negative_hazard`` tests whether any observed unit's estimated
+  cumulative hazard falls (a negative hazard), by the largest fall in
+  standard errors against the falls of the resampled processes, and
+  advises ``CoxPH`` when one does. The statistics match timereg 2.0.7 to
+  1e-8 where both anchor the line at the same time. In simulations
+  (``tests/calibration/test_diagnose_aalen.py``) the constant-effects
+  rows rejected 3-3.5% of constant effects at the 5% level with 300
+  units, the falling-hazard test none of 200 data sets with positive
+  hazards and 90% of those with negative fitted hazards; the power
+  against an effect of 0.5 falling to 0.1 was 0.34 with 500 units.
+  Weighted fits are refused.
 
 **Changed.**
 

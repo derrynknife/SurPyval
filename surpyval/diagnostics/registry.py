@@ -31,6 +31,7 @@ FAMILY_MODULES: tuple[str, ...] = (
     "surpyval.diagnostics.competing_risks",
     "surpyval.diagnostics.univariate",
     "surpyval.diagnostics.frailty",
+    "surpyval.diagnostics.aalen_additive",
 )
 
 
@@ -289,16 +290,6 @@ PENDING: tuple[Pending, ...] = (
         "(a distribution fitted with the other causes censored), and "
         "compare model.cif with the nonparametric CompetingRisks.fit of "
         "the same data.",
-    ),
-    Pending(
-        "Aalen additive hazards models",
-        _instance_of(
-            _REG + "additive_hazards.aalen_additive." "AalenAdditiveModel"
-        ),
-        "Test whether each effect is constant with "
-        "model.constant_effects_test(), and look at the cumulative "
-        "coefficients with model.plot(); for a goodness-of-fit report, "
-        "fit AdditiveHazards (the Lin-Ying model), which has diagnose().",
     ),
     Pending(
         "Bayesian fits",

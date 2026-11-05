@@ -346,11 +346,6 @@ REG = "surpyval.univariate.regression."
         ),
         (REG + "BuckleyJamesModel", {}, "diagnose\\(\\) on an AFT fit"),
         (
-            REG + "additive_hazards.aalen_additive.AalenAdditiveModel",
-            {},
-            r"constant_effects_test\(\).*AdditiveHazards",
-        ),
-        (
             "surpyval.bayes.model.BayesianParametric",
             {},
             r"model\.mle\.diagnose\(\).*prior_check\(\)",
@@ -385,18 +380,14 @@ def test_a_model_with_no_family_refuses_saying_what_to_use(monkeypatch):
     assert "#" not in message
 
 
-def test_real_aalen_and_bayesian_fits_refuse_saying_what_to_use():
+def test_real_bayesian_fits_refuse_saying_what_to_use():
     # These models had no diagnose() at all (an AttributeError).
     x = np.array([1.0, 2, 3, 4, 5, 6, 7, 8])
-    z = np.array([0.0, 1, 0, 1, 0, 1, 0, 1])
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        aalen = sp.AalenAdditive.fit(x, z[:, None])
         bayes = sp.Weibull.fit_bayes(
             x, priors={"beta": sp.prior.around(2, between=(1, 4))}
         )
-    with pytest.raises(NotImplementedError, match="constant_effects_test"):
-        aalen.diagnose()
     with pytest.raises(NotImplementedError, match=r"model\.mle\.diagnose\(\)"):
         bayes.diagnose()
     # and what they point to works
