@@ -346,6 +346,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.LogRankResult": _RESULT,
     "surpyval.IntervalLogRankResult": _RESULT,
     "surpyval.PairwiseLogRankResult": _RESULT,
+    "surpyval.PseudoRegressionResult": _RESULT,
     "surpyval.NonParametricPlot": (
         "what plot_nonparametric drew (a figure and its counts), not a model"
     ),
@@ -428,6 +429,11 @@ for _fn in (
     "concordance_index",
     "integrated_brier_score",
     "survival_probability",
+    "pseudo_survival",
+    "pseudo_rmst",
+    "pseudo_cif",
+    "pseudo_regression",
+    "pseudo_regression_from_df",
 ):
     OUT_OF_SCOPE[f"surpyval.{_fn}"] = _FUNCTION
 for _fn in ("laplace", "mil_hdbk_189c", "intervention_test", "mcf_diff"):
