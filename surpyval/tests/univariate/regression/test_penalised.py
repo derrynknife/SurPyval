@@ -650,15 +650,17 @@ def test_tiny_penalty_is_the_truncated_fit(fitter, which):
     assert np.all(np.abs(pen.params - fit.params) <= 1e-2 * se)
 
 
-def test_refuses_weights():
+def test_takes_weights_from_arrays_or_data():
+    # Weighted penalised fits are tested in test_penalised_weighted.py;
+    # here, that weights held by a SurpyvalData are the weights given.
     x, c, Z = _rossi()
     w = np.linspace(0.5, 2.0, x.size)
     data = sp.SurpyvalData(x=x, c=c, Z=Z, w=w)
     for fitter in (CoxPH, WeibullPH):
-        with pytest.raises(ValueError, match="does not take weights"):
-            fitter.fit_penalised(x, Z, c=c, w=w)
-        with pytest.raises(ValueError, match="does not take weights"):
-            fitter.fit_penalised(data)
+        given = fitter.fit_penalised(x, Z, c=c, w=w, penalizer=0.05)
+        held = fitter.fit_penalised(data, penalizer=0.05)
+        assert given.weighted and held.weighted
+        np.testing.assert_allclose(held.params, given.params, atol=1e-9)
 
 
 def test_refuses_robust_errors_and_tests():
