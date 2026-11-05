@@ -6,6 +6,19 @@ Unreleased
 
 **Added.**
 
+- Time-varying coefficients in the Cox model:
+  ``CoxPH.fit(..., time_interaction={column: g})`` (and ``fit_from_df``)
+  gives a covariate the coefficient :math:`\beta + \gamma g(t)`, with ``g``
+  ``"t"``, ``"log"`` or any function of time, by splitting the rows at the
+  event times. The coefficient table names the interactions
+  (``karno:log(t)``); ``time_varying_effect()`` gives :math:`\beta(t)` with
+  Wald bounds, with ``plot()``; ``sf``, ``Hf`` and the other predictions at
+  fixed covariates apply :math:`\beta(t)` at each time, and ``phi``, the
+  concordance, ``diagnose()`` and ``to_dict`` refuse. Matches R's
+  ``coxph(..., tt = function(x, t, ...) x * g(t))`` on ``veteran`` and
+  ``lung`` (Efron and Breslow ties, strata, weights) to 1e-6, and
+  ``diagnose()``'s advice for a continuous covariate that fails the
+  proportional-hazards test now names it.
 - The restricted mean survival time of the parametric models:
   ``rmst(tau)`` (the RMST, its delta-method standard error and 95%
   interval, in the form of the non-parametric models' ``rmst``),
@@ -478,6 +491,20 @@ Unreleased
   saving and the printout. Every penalised result, warning and refusal
   is unchanged to the last bit. The solver now also takes a model with
   no Hessian, using finite differences of its gradient, and says so.
+- Stale documentation brought up to date: the model atlas lists
+  ``CauseSpecificNHPP`` (no longer a gap) and drops issue numbers that no
+  longer track anything; the README's model table names
+  ``CauseSpecificNHPP``; the usage skill lists all eight copula families.
+- The diagnostics families' copies of the same small helpers (number
+  formatting, notes, the covariate kind, the trend sign, formula-column
+  names, the AIC gap) now live once in ``surpyval/diagnostics/_shared.py``.
+  Every diagnosis is unchanged to the last bit.
+- Removed code nothing called: the rename helpers of
+  ``surpyval.utils.deprecation`` no deprecation uses any more
+  (``reordered_arguments``, ``CallableFloat``, ``MethodFloat``,
+  ``MethodArray``, ``ArrayMethod``, ``RenamedToMethod``, ``MadePrivate``),
+  and a few private helpers with no callers. ``renamed_arguments``,
+  ``RenamedAttribute`` and ``renamed_name`` stay for the next rename.
 
 v0.26 (31 October 2026)
 -----------------------
