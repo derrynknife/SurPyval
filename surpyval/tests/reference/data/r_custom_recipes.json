@@ -1,0 +1,116 @@
+{
+  "generator": "scripts/reference/reference_r_custom_recipes.R",
+  "R": "R version 4.6.2 (2026-10-29)",
+  "references": {
+    "sf_gengamma": {
+      "fixture": "lung",
+      "software": "R flexsurv",
+      "version": "2.3.2",
+      "call": "pgengamma(t, mu, sigma, Q, lower.tail = FALSE)",
+      "settings": {
+        "t": [0.5, 2, 5, 12],
+        "params": [
+          [1, 0.7, 0.5],
+          [1, 0.7, -0.8],
+          [1, 0.7, 2]
+        ],
+        "note": "no data: the fixture field is nominal"
+      },
+      "values": {
+        "sf": [
+          [0.966790750583732, 0.599692165621235, 0.135704461808831, 0.00323087773710267],
+          [0.999909846055935, 0.766490789036618, 0.308934060255653, 0.0858048440362705],
+          [0.767319445010667, 0.386091658697488, 0.0369651232131468, 8.65812835344651e-10]
+        ]
+      }
+    },
+    "sf_genf": {
+      "fixture": "lung",
+      "software": "R flexsurv",
+      "version": "2.3.2",
+      "call": "pgenf(t, mu, sigma, Q, P, lower.tail = FALSE)",
+      "settings": {
+        "t": [0.5, 2, 5, 12],
+        "params": [
+          [1, 0.7, 0.5, 1.3],
+          [1, 0.7, -0.5, 0.6]
+        ],
+        "note": "no data: the fixture field is nominal"
+      },
+      "values": {
+        "sf": [
+          [0.921777888921594, 0.575855216455316, 0.174804811205987, 0.0269756488680569],
+          [0.994002332942999, 0.721971418839493, 0.283583964083288, 0.0772424943792328]
+        ]
+      }
+    },
+    "lung_gengamma": {
+      "fixture": "lung",
+      "software": "R flexsurv",
+      "version": "2.3.2",
+      "call": "flexsurvreg(Surv(time, status) ~ 1, data = lung, dist = 'gengamma', control = list(reltol = 1e-14))",
+      "settings": {
+        "dist": "gengamma",
+        "formula": "Surv(time, status) ~ 1",
+        "covariate": "sex (1 male, 2 female), on mu: AFT"
+      },
+      "values": {
+        "loglik": -1153.68979555807,
+        "names": ["mu", "sigma", "Q"],
+        "est": [6.07651930008942, 0.72705759219313, 1.12646791083362],
+        "se": [0.094252071408956, 0.0730071776871995, 0.229767405499218]
+      }
+    },
+    "lung_gengamma_sex": {
+      "fixture": "lung",
+      "software": "R flexsurv",
+      "version": "2.3.2",
+      "call": "flexsurvreg(Surv(time, status) ~ sex, data = lung, dist = 'gengamma', control = list(reltol = 1e-14))",
+      "settings": {
+        "dist": "gengamma",
+        "formula": "Surv(time, status) ~ sex",
+        "covariate": "sex (1 male, 2 female), on mu: AFT"
+      },
+      "values": {
+        "loglik": -1148.64873001448,
+        "names": ["mu", "sigma", "Q", "sex"],
+        "est": [5.49724828589262, 0.751288557888366, 1.01556703376533, 0.39308233477061],
+        "se": [0.212541686183856, 0.0686294504875987, 0.20739912456188, 0.131615143739756]
+      }
+    },
+    "lung_genf": {
+      "fixture": "lung",
+      "software": "R flexsurv",
+      "version": "2.3.2",
+      "call": "flexsurvreg(Surv(time, status) ~ 1, data = lung, dist = 'genf', control = list(reltol = 1e-14))",
+      "settings": {
+        "dist": "genf",
+        "formula": "Surv(time, status) ~ 1",
+        "covariate": "sex (1 male, 2 female), on mu: AFT"
+      },
+      "values": {
+        "loglik": -1153.57661485767,
+        "names": ["mu", "sigma", "Q", "P"],
+        "est": [6.0426996925477, 0.68308243262364, 1.01966283298421, 0.548509238478117],
+        "se": [0.116275204327845, 0.121281838570912, 0.315960173908104, 1.19311707246313]
+      }
+    },
+    "lung_genf_sex": {
+      "fixture": "lung",
+      "software": "R flexsurv",
+      "version": "2.3.2",
+      "call": "flexsurvreg(Surv(time, status) ~ sex, data = lung, dist = 'genf', control = list(reltol = 1e-14))",
+      "settings": {
+        "dist": "genf",
+        "formula": "Surv(time, status) ~ sex",
+        "covariate": "sex (1 male, 2 female), on mu: AFT"
+      },
+      "values": {
+        "loglik": -1147.98299705596,
+        "names": ["mu", "sigma", "Q", "P", "sex"],
+        "est": [5.41288954060853, 0.63817960230532, 0.862789894071585, 1.15144577130654, 0.41335564307874],
+        "se": [0.217435842840868, 0.123734446005837, 0.275921740817445, 1.18581201264, 0.12765451509899]
+      }
+    }
+  }
+}

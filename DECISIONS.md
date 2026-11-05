@@ -675,3 +675,10 @@ The rows of 2026-10-29 and 2026-10-30 that were still proposed were reviewed by 
 | `constant_effects_test()` refuses a weighted fit (`WeightedRefusal`), pointing to the robust bands of `plot()` / `cumulative_coefficients_cb()`. | proposed | Its simulated null is built and size-checked for unweighted data only; a weighted multiplier version would need its own size study. | done (gap) |
 | `concordance()` of a weighted Aalen fit scores the rows unweighted, as for weighted Cox and parametric fits. | proposed | Consistency with the other weighted models; a weighted C is a separate change. | done |
 | Design-based check by simulation (`scripts/studies/aalen_weighted_coverage.py`, 500 replicates, fixed seeds 20261105+r, informative sampling of censored units): the 95% robust bounds on `B_0(5)` and `B_z(5)` cover 0.936 and 0.948 (MC se 0.011, 0.010); the classical variance with the weights read as counts covers 0.850 and 0.884; the unweighted fit 0.000 and 0.674. | proposed | Evidence that the robust variance is the valid one, and why the classical one is not offered. | done |
+
+### 0.27 WP2f: custom distribution recipes in flexsurv's parameterisations (5 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The generalised gamma and generalised F recipes are documented in Prentice's parameterisations, as `flexsurv` (`gengamma`: mu, sigma, Q; `genf`: mu, sigma, Q, P), beside the existing Stacy / Kalbfleisch-Prentice recipes, which stay. | proposed | Prentice's form holds the lognormal at a finite Q, so one fit tests the Weibull, lognormal and gamma by likelihood ratio, and results compare one to one with `flexsurvreg`. Documentation only: no distribution is added to the package. | proposed |
+| The generalised gamma recipe takes the lognormal branch at exactly `Q == 0` (a Python `if`), so `fixed={'Q': 0}` gives the lognormal exactly; nothing is done near 0, where the gamma branches already agree with the lognormal to O(Q). | proposed | The same rule as flexsurv. A smooth switch near 0 would add code users copy for no gain in the fits checked. | proposed |

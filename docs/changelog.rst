@@ -5,6 +5,19 @@ Unreleased
 
 **Added.**
 
+- Documentation: ``CustomDistribution`` recipes for the generalised gamma
+  and the generalised F in Prentice's parameterisations, as R's
+  ``flexsurv`` writes them (``gengamma``: ``mu``, ``sigma``, ``Q``;
+  ``genf``: ``mu``, ``sigma``, ``Q``, ``P``), in "Parametric SurPyval
+  Modelling". The generalised gamma holds the Weibull (``Q = 1``), the
+  lognormal (``Q = 0``, exact through ``fixed``) and the gamma
+  (``Q = sigma``), so one fit tests all three by likelihood ratio; it fits
+  every kind of censoring and truncation. Both recipes, and AFT fits on
+  them, match ``flexsurvreg`` on ``lung`` (log-likelihoods to 1e-6,
+  estimates to a hundredth of a standard error, standard errors to 1e-3);
+  inverse Gaussian AFT and PH fits match a likelihood written with
+  ``scipy.stats.invgauss``. The tests run the recipe cells from the page
+  itself.
 - ``Turnbull.fit(..., w=)``: the Turnbull estimate with sampling weights,
   for interval and left censored and truncated data. The estimate is the
   weighted non-parametric MLE (each row counts ``n w`` in the EM; checked
