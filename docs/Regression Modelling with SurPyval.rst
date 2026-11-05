@@ -671,20 +671,24 @@ deaths are spread over Efron's shrinking risk sets, as the baseline is; with
 case weights ``w`` every sum is weighted and :math:`V` is the robust
 covariance; for a stratified model the sums run over the stratum's units.
 
-``bound_type`` chooses the scale of the normal interval, R's ``conf.type``:
-``'log'`` (the default, as R's: :math:`S e^{\pm z\,\mathrm{se}}`, the upper
-bound at most 1), ``'log-log'`` (:math:`H e^{\pm z\,\mathrm{se}/H}`, which
-keeps both bounds inside (0, 1)) or ``'plain'`` (:math:`S \pm z S\,
-\mathrm{se}`, cut to [0, 1]). ``on='ff'`` and ``on='Hf'`` bound the failure
-probability and the cumulative hazard. The bounds agree with R's to
-rounding (see ``scripts/reference/reference_r_cox_curve.R``):
+The default is log-log, the same as Kaplan-Meier, so two curves on one chart
+get bounds by the same rule; use ``bound_type="log"`` to match R's
+``survfit`` printout. ``bound_type`` chooses the scale of the normal
+interval, with R's ``conf.type`` names: ``'log-log'`` (the default:
+:math:`H e^{\pm z\,\mathrm{se}/H}`, which keeps both bounds inside (0, 1),
+the Kaplan-Meier, Nelson-Aalen and Aalen default), ``'log'`` (R's default:
+:math:`S e^{\pm z\,\mathrm{se}}`, the upper bound at most 1) or ``'plain'``
+(:math:`S \pm z S\,\mathrm{se}`, cut to [0, 1]). ``on='ff'`` and
+``on='Hf'`` bound the failure probability and the cumulative hazard. On each
+scale the bounds agree with R's to rounding (see
+``scripts/reference/reference_r_cox_curve.R``):
 
 .. jupyter-execute::
 
     t_q = np.array([0.9, 1.0, 1.1])
     print('sf      :', model.sf(t_q, Z_mean).round(3))
     print('95% cb  :', model.cb(t_q, Z_mean).round(3).tolist())
-    print('log-log :', model.cb(t_q, Z_mean, bound_type='log-log').round(3).tolist())
+    print('log (R) :', model.cb(t_q, Z_mean, bound_type='log').round(3).tolist())
 
 .. jupyter-execute::
     :hide-code:

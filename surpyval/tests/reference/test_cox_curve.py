@@ -92,7 +92,7 @@ def test_survival_and_standard_error_match_r(ref_id):
         # its upper bound on H is H + z se
         z = norm.isf(0.025)
         H = model.Hf(t, row, stratum)
-        H_hi = model.cb(t, row, stratum, on="Hf")[:, 1]
+        H_hi = model.cb(t, row, stratum, on="Hf", bound_type="log")[:, 1]
         assert_allclose((H_hi - H) / z, r["std_err"], **TOL)
 
 
@@ -112,6 +112,6 @@ def test_bounds_match_r(ref_id, conf_type):
 @pytest.mark.parametrize("ref_id", list(CASES))
 def test_90_percent_bounds_match_r(ref_id):
     for model, row, stratum, t, r in _curves(ref_id):
-        got = model.cb(t, row, stratum, alpha_ci=0.1)
+        got = model.cb(t, row, stratum, alpha_ci=0.1, bound_type="log")
         assert_allclose(got[:, 0], r["lower_log_90"], **TOL)
         assert_allclose(got[:, 1], r["upper_log_90"], **TOL)
