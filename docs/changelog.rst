@@ -5,6 +5,20 @@ Unreleased
 
 **Added.**
 
+- ``Parametric.with_params`` takes the full vector of ``covariance()``'s
+  rows, in the order of ``covariance_names`` (the distribution's parameters,
+  then ``lfp_p`` and ``f0``), so a draw from the covariance of a
+  limited-failure or zero-inflated fit maps straight back to a model; the
+  short vector of the distribution's parameters works as before. The offset
+  is ``with_params(params, gamma=...)`` (kept when not given), and
+  ``lfp_p=``/``f0=`` go with the short vector, as ``MixtureModel``'s
+  ``w=``. A drawn ``lfp_p`` above 1 or ``f0`` below 0 is refused with what
+  to do. New ``Parametric.bootstrap(n_boot, random_state)`` returns the
+  refits behind the ``method="bootstrap"`` bounds (the same refits for the
+  same seed) as a ``ParametricBootstrap``: the refitted models, their
+  parameters in ``covariance_names`` order, each offset fit's ``gamma`` and
+  the count of failed refits, with ``to_dict``. A short section on carrying
+  a fit's uncertainty forward is on the parametric modelling page.
 - ``covariance()`` and ``standard_errors()`` of a fitted ``Bernoulli``,
   ``FixedEventProbability`` or ``Binomial``: the variance of ``p``,
   :math:`\hat p (1 - \hat p) / N` from the events and trials (a Binomial's

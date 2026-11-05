@@ -52,6 +52,10 @@ from .likelihood_contour import (
 )
 from .mixture_model import MixtureModel
 from .parametric import Parametric
+
+# After the distributions: _bootstrap imports the regressions' bootstrap,
+# which needs them.
+from ._bootstrap import ParametricBootstrap  # isort: skip
 from .parametric_fitter import OptimisedFitMixin, ParametricFitter
 from .royston_parmar import RoystonParmar, RoystonParmarModel
 from .weibayes import weibayes
