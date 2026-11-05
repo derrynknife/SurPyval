@@ -13,6 +13,17 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-05
+
+### Restricted mean survival time of the parametric models
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `Parametric.rmst(tau, alpha_ci)` returns the non-parametric `rmst`'s dict (`rmst`, `se`, `lower`, `upper`, `tau`); `se` is the delta method's on the RMST itself, and the interval is the Wald interval on `logit(rmst / tau)`, which `rmst_cb(method="wald")` also gives. | proposed | The same call and result as the non-parametric models; the logit keeps the bounds in (0, tau), where a plain or log interval can pass tau when the RMST is near it. Matches R's delta method on the same scale to 1e-6. | done |
+| `rmst()` refuses a model with no covariance (built with `from_params`, not fitted by MLE), naming `mean(tau=tau)`, which gives the point alone, as the non-parametric `mean(tau)` does. | proposed | A dict with `nan` bounds would hide why; the non-parametric `rmst` refuses a model without a variance too. | done |
+| The RMST is the area from 0 for every distribution, a whole-line one (Normal, Gumbel, Logistic) included: the time lived in [0, tau]. A `tau` past the data is allowed (the fit extrapolates); the default `tau` is the largest observed time, as for the non-parametric models. Discrete distributions are refused (their RMST is a sum of `sf` over the counts). | proposed | One definition across models; the non-parametric refusal past the data is about a curve that is not estimated there, which a parametric fit is. | done |
+| The regression models' `rmst_cb` has Wald and bootstrap bounds, not likelihood-ratio ones: `method="lr"` is refused with that message. | proposed | The regression likelihood-ratio search is built per function (sf, quantiles); a search over an integral at every step is a separate piece. | gap |
+
 ## 2026-11-04
 
 ### Crow Extended projection: bias-corrected or plain shapes

@@ -674,6 +674,21 @@ def mrl_cb_bootstrap(
     return _bounds(model, fits, lambda m: m.mrl(x), alpha_ci, bound)
 
 
+def rmst_cb_bootstrap(
+    model: Any,
+    tau: npt.NDArray,
+    alpha_ci: float,
+    bound: str,
+    n_boot: Any,
+    random_state: Any,
+) -> npt.NDArray:
+    """``rmst_cb(method="bootstrap")``: the bounds of the refits'
+    restricted means to each ``tau``."""
+    fits = refits(model, n_boot, random_state)
+    fits.warn()
+    return _bounds(model, fits, lambda m: m._rmst_values(tau), alpha_ci, bound)
+
+
 def param_cb_bootstrap(
     model: Any,
     name: str,

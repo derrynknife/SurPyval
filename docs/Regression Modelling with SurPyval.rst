@@ -408,6 +408,34 @@ with ``method='lr'`` (see `Confidence Bounds`_ below):
         _lo, _hi = demo.quantile_cb(0.1, Z=[1.0], method=_m)
         assert _lo < _b10 < _hi
 
+The restricted mean survival time (RMST) to a horizon ``tau`` is the
+expected time a unit lives within the first ``tau`` of its life: the area
+under its survival curve from 0 to ``tau``,
+:math:`\int_0^\tau S(t \mid Z)\, dt`. Unlike a hazard ratio it reads in
+units of time ("over the first 10 hours, units with ``Z = 1`` run 1.5 hours
+less on average"), and it needs no assumption about how the covariates act.
+``rmst(tau, Z)`` gives it with its delta-method standard error and 95%
+interval, ``rmst_cb(tau, Z)`` the bounds alone (``method='bootstrap'`` too),
+and ``rmst_diff(tau, Z_a, Z_b)`` the difference between two covariate rows,
+whose standard error accounts for both RMSTs coming from the same fitted
+parameters:
+
+.. jupyter-execute::
+
+    print('RMST to 10 at Z = 0, 1:', demo.rmst(10.0, Z=[[0.0], [1.0]])['rmst'].round(3))
+    print('95% bounds at Z = 1  :', demo.rmst_cb(10.0, Z=[1.0]).round(3))
+    _d = demo.rmst_diff(10.0, [0.0], [1.0])
+    print('difference (Z=0 - Z=1): %.3f, 95%% CI %.3f to %.3f'
+          % (_d['difference'], _d['lower'], _d['upper']))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _r = demo.rmst(10.0, Z=[[0.0], [1.0]])
+    assert np.all(_r['lower'] < _r['rmst']) and np.all(_r['rmst'] < _r['upper'])
+    assert abs(_d['difference'] - (_r['rmst'][0] - _r['rmst'][1])) < 1e-12
+
 A unit already in service has survived to its age. Every regression model
 (the parametric families, Cox, the proportional odds, additive hazards,
 Buckley-James and frailty models) has the univariate models' conditional

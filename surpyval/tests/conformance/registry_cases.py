@@ -1483,6 +1483,17 @@ def _parametric_bounds(case):
                 label="mrl_cb[wald]",
             ),
         ]
+        if case.continuous:
+            # The restricted mean to the last query time
+            out.append(
+                Bound(
+                    "rmst_cb",
+                    kind="summary",
+                    kwargs={"method": "wald"},
+                    query=((_rmst_tau(case),),),
+                    label="rmst_cb[wald]",
+                )
+            )
     # The likelihood-ratio search is swept on the cases in _LR_X only.
     # The ExpoWeibull's and NegativeBinomial's sweeps (searches in
     # multi-parameter valleys, seconds each) took about ten minutes on
@@ -1566,7 +1577,22 @@ def _parametric_bounds(case):
                 **lr,
             )
         )
+        out.append(
+            Bound(
+                "rmst_cb",
+                kind="summary",
+                kwargs={"method": "lr"},
+                query=((_rmst_tau(case),),),
+                label="rmst_cb[lr]",
+                **lr,
+            )
+        )
     return tuple(out)
+
+
+def _rmst_tau(case):
+    """The horizon of a case's restricted mean: its last query time."""
+    return float(np.max(np.asarray(case.x, dtype=float)))
 
 
 def _nonparametric_bounds(case):
@@ -1796,6 +1822,14 @@ def _bounds(case):
                 # the estimate +- 1.25e-6 standard errors: more than 1e-5
                 # of a quantile near 0 (GumbelAFT's qf(0.05), -0.147).
                 rtol=1e-4 if case.name.startswith(_WHOLE_LINE) else 1e-8,
+            ),
+            # The restricted mean at the first covariate row
+            Bound(
+                "rmst_cb",
+                kind="summary",
+                kwargs={"method": "wald"},
+                query=((_rmst_tau(case), np.asarray(case.Z, float)[:1]),),
+                label="rmst_cb[wald]",
             ),
         )
         if case.name not in _REGRESSION_LR_X:

@@ -294,6 +294,13 @@ def _estimate(case, spec, fname, event):
             out.append(getattr(model, spec.method)(*args, **spec.kwargs).rul)
         elif spec.method == "rmst":
             out.append(model.rmst(*args)["rmst"])
+        elif spec.method == "rmst_cb":
+            # (the point alone: a model with no covariance, the Uniform,
+            # has likelihood-ratio bounds but no rmst() interval)
+            if len(args) == 1:
+                out.append(model.mean(tau=args[0]))
+            else:
+                out.append(model.rmst(*args)["rmst"])
         elif spec.method == "parameter_cb":
             name, row = args
             k = list(model.distribution.parameter_names).index(name)

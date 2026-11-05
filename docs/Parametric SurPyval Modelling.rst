@@ -2448,6 +2448,54 @@ with the same ``alpha_ci``, ``bound`` and ``method`` (``"wald"``, ``"lr"`` or
     _r = model.mrl_cb(5)
     assert _r[0] < model.mrl(5) < _r[1]
 
+The restricted mean survival time (RMST) answers "on average, how much of the
+first ``tau`` hours does a unit run?" It is the area under the survival curve
+from 0 to ``tau``, the expected value of :math:`\min(T, \tau)`, and is the
+usual summary in clinical trials, where the follow-up ends before most units
+have failed and the mean would rest on the tail the model extrapolates.
+``rmst(tau)`` returns it with its standard error and a 95% interval, in the
+same form as the non-parametric models' ``rmst``; ``rmst_cb(tau)`` bounds it
+at one horizon or several with the same ``alpha_ci``, ``bound`` and ``method``
+(``"wald"``, ``"lr"`` or ``"bootstrap"``), and ``mean(tau=tau)`` is the point
+alone. A ``tau`` left out is the largest observed time.
+
+.. math::
+
+    \mu(\tau) = \int_0^\tau S(t)\, dt = E[\min(T, \tau)]
+
+It is exact for the Exponential, :math:`(1 - e^{-\lambda\tau})/\lambda`, the
+Weibull, :math:`\alpha\,\Gamma(1 + 1/\beta)\,P(1/\beta, (\tau/\alpha)^\beta)`
+with :math:`P` the regularised lower incomplete gamma function, the Gamma and
+the LogNormal, and an adaptive quadrature of ``sf`` for the others. An offset
+adds the time before it, a limited failure population adds
+:math:`(1 - p)\tau` for the units that never fail (so its RMST is finite while
+its mean is not), and zero inflation removes the units failed at 0. The Wald
+standard error is the delta method's, :math:`\sqrt{g^\top \Sigma g}`, with
+:math:`g` the gradient of :math:`\mu(\tau)` in the parameters and
+:math:`\Sigma` their covariance; the interval is taken on the logit of
+:math:`\mu(\tau)/\tau`, so it stays between 0 and ``tau``. The values agree
+with R (``survreg`` or ``optim`` fits, ``integrate`` and the delta method) to
+better than one part in a million, and with flexsurv's
+``summary(fit, type="rmst")`` at its own estimate to 1e-7.
+
+.. jupyter-execute::
+
+    print("RMST to 8:", model.rmst(8))
+    print("RMST to 4 and 8, 95% LR bounds:", model.rmst_cb([4, 8], method="lr"))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _res = model.rmst(8)
+    assert _res["lower"] < _res["rmst"] < _res["upper"] <= 8
+    assert _res["rmst"] == model.mean(tau=8)
+
+Two groups fitted separately are compared with :func:`surpyval.rmst_diff`,
+which takes parametric fits as well as non-parametric ones (or one of each):
+the difference of the two RMSTs, its standard error (the groups are
+independent, so the variances add), its interval and the z-test's p-value.
+
 
 Forecasting failures in service
 -------------------------------

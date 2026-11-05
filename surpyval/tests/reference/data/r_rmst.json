@@ -1,0 +1,201 @@
+{
+  "generator": "scripts/reference/reference_r_rmst.R",
+  "R": "R version 4.6.2 (2026-10-29)",
+  "references": {
+    "lung_weibull": {
+      "fixture": "lung",
+      "software": "R survival",
+      "version": "3.8.12",
+      "call": "survreg(Surv(time, status) ~ 1, data = lung, dist = 'weibull'); integrate(sf, 0, tau)",
+      "settings": {
+        "dist": "weibull",
+        "tau": [180, 365, 730],
+        "se": "delta method, central differences",
+        "interval": "Wald on logit(rmst / tau), 95%"
+      },
+      "values": {
+        "lp": 6.03490391022685,
+        "scale": 0.759393601124659,
+        "loglik": -1153.85118808941,
+        "rmst": [156.85555450849, 262.149572022444, 354.425094146636],
+        "se": [2.79819147123018, 7.57674813422971, 15.7639912650316],
+        "lower": [150.796535951456, 246.672544249033, 323.677239690503],
+        "upper": [161.809118560267, 276.329920294688, 385.323901693971],
+        "flexsurv_rmst": [156.855555072229, 262.149574920286, 354.425108578172],
+        "flexsurv_loglik": -1153.8511880894,
+        "flexsurv_params": {
+          "shape": 1.31684017160709,
+          "scale": 417.758665363238
+        }
+      },
+      "flexsurv_version": "2.3.2"
+    },
+    "lung_exponential": {
+      "fixture": "lung",
+      "software": "R survival",
+      "version": "3.8.12",
+      "call": "survreg(Surv(time, status) ~ 1, data = lung, dist = 'exponential'); integrate(sf, 0, tau)",
+      "settings": {
+        "dist": "exponential",
+        "tau": [180, 365, 730],
+        "se": "delta method, central differences",
+        "interval": "Wald on logit(rmst / tau), 95%"
+      },
+      "values": {
+        "lp": 6.04447379265131,
+        "scale": 1,
+        "loglik": -1162.33817578747,
+        "rmst": [146.518337522116, 244.255446265203, 347.059607200197],
+        "se": [2.26134773936542, 7.05564212647173, 16.9512363641765],
+        "lower": [141.858497679373, 230.04995588662, 314.075211144722],
+        "upper": [150.726353892343, 257.66329332648, 380.340369334139],
+        "flexsurv_rmst": [146.518337524393, 244.25544627231, 347.059607217271],
+        "flexsurv_loglik": -1162.33817578747,
+        "flexsurv_params": [
+          0.00237092811039993
+        ]
+      },
+      "flexsurv_version": "2.3.2"
+    },
+    "lung_lognormal": {
+      "fixture": "lung",
+      "software": "R survival",
+      "version": "3.8.12",
+      "call": "survreg(Surv(time, status) ~ 1, data = lung, dist = 'lognormal'); integrate(sf, 0, tau)",
+      "settings": {
+        "dist": "lognormal",
+        "tau": [180, 365, 730],
+        "se": "delta method, central differences",
+        "interval": "Wald on logit(rmst / tau), 95%"
+      },
+      "values": {
+        "lp": 5.66330496220637,
+        "scale": 1.09763926976839,
+        "loglik": -1169.2690553056,
+        "rmst": [153.262316984006, 250.737599201753, 355.94013386151],
+        "se": [2.86657369691636, 7.63479064639262, 16.8773718714264],
+        "lower": [147.144306473113, 235.269200060486, 323.025355982386],
+        "upper": [158.408269972265, 265.144437301473, 389.003015243631],
+        "flexsurv_rmst": [153.262316962222, 250.73759836594, 355.940133029527],
+        "flexsurv_loglik": -1169.2690553056,
+        "flexsurv_params": {
+          "meanlog": 5.66330496220722,
+          "sdlog": 1.09763926982924
+        }
+      },
+      "flexsurv_version": "2.3.2"
+    },
+    "lung_loglogistic": {
+      "fixture": "lung",
+      "software": "R survival",
+      "version": "3.8.12",
+      "call": "survreg(Surv(time, status) ~ 1, data = lung, dist = 'loglogistic'); integrate(sf, 0, tau)",
+      "settings": {
+        "dist": "loglogistic",
+        "tau": [180, 365, 730],
+        "se": "delta method, central differences",
+        "interval": "Wald on logit(rmst / tau), 95%"
+      },
+      "values": {
+        "lp": 5.71098038754948,
+        "scale": 0.579455082552755,
+        "loglik": -1160.93062351123,
+        "rmst": [158.238722278612, 260.220465737952, 360.766963129109],
+        "se": [2.69625838837046, 7.54819241994656, 16.0644246371314],
+        "lower": [152.377578274568, 244.827428228329, 329.390471298666],
+        "upper": [162.994992568218, 274.371664950356, 392.206149600232],
+        "flexsurv_rmst": [158.238722268291, 260.220465822617, 360.766964138927],
+        "flexsurv_loglik": -1160.93062351123,
+        "flexsurv_params": {
+          "shape": 1.72575930303388,
+          "scale": 302.1671638635
+        }
+      },
+      "flexsurv_version": "2.3.2"
+    },
+    "lung_gamma": {
+      "fixture": "lung",
+      "software": "R stats",
+      "version": "R version 4.6.2 (2026-10-29)",
+      "call": "optim on the censored Gamma log-likelihood (log shape, log rate); optimHess; integrate(sf, 0, tau)",
+      "settings": {
+        "dist": "gamma",
+        "tau": [180, 365, 730],
+        "se": "delta method, central differences",
+        "interval": "Wald on logit(rmst / tau), 95%"
+      },
+      "values": {
+        "shape": 1.47808352276471,
+        "rate": 0.00375688842048877,
+        "loglik": -1154.73463259575,
+        "rmst": [156.364167852307, 259.718914651764, 353.096981947246],
+        "se": [2.82029172022402, 7.41689120359624, 15.9269497544042],
+        "lower": [150.268195508129, 244.609164675169, 322.043272552678],
+        "upper": [161.36526670552, 273.640577865038, 384.324155450182],
+        "flexsurv_rmst": [156.366826864818, 259.722025466512, 353.093143942188],
+        "flexsurv_loglik": -1154.73463375168,
+        "flexsurv_params": {
+          "shape": 1.47829333613932,
+          "rate": 0.00375757854440428
+        }
+      },
+      "flexsurv_version": "2.3.2"
+    },
+    "lung_weibull_sex": {
+      "fixture": "lung",
+      "software": "R survival",
+      "version": "3.8.12",
+      "call": "survreg(Surv(time, status) ~ sex, dist = 'weibull'); integrate(sf(t | z), 0, tau)",
+      "settings": {
+        "dist": "weibull",
+        "tau": 365,
+        "z": [1, 2],
+        "se": "delta method, central differences",
+        "interval": "Wald on logit(rmst / tau), 95%",
+        "difference": "rmst(z[1]) - rmst(z[2]), delta method"
+      },
+      "values": {
+        "coef": [5.48858375072236, 0.395578007455515],
+        "scale": 0.75508801376204,
+        "loglik": -1148.65156468235,
+        "rmst": [246.023708733, 285.921411548384],
+        "se": [9.4809432930728, 9.69646449609152],
+        "lower": [226.750318039348, 265.284339214292],
+        "upper": [263.809266808672, 303.2811154358],
+        "difference": -39.8977028153835,
+        "difference_se": 12.1925607641601,
+        "flexsurv_rmst": [246.023712125548, 285.92141355609],
+        "flexsurv_loglik": -1148.65156468234
+      },
+      "flexsurv_version": "2.3.2"
+    },
+    "ovarian_lognormal_rx": {
+      "fixture": "ovarian",
+      "software": "R survival",
+      "version": "3.8.12",
+      "call": "survreg(Surv(futime, fustat) ~ rx, dist = 'lognormal'); integrate(sf(t | z), 0, tau)",
+      "settings": {
+        "dist": "lognormal",
+        "tau": 730,
+        "z": [1, 2],
+        "se": "delta method, central differences",
+        "interval": "Wald on logit(rmst / tau), 95%",
+        "difference": "rmst(z[1]) - rmst(z[2]), delta method"
+      },
+      "values": {
+        "coef": [5.56805134987916, 0.786442370822864],
+        "scale": 1.17362469815955,
+        "loglik": -96.0408212105338,
+        "rmst": [496.208617792228, 623.018250686463],
+        "se": [67.236943329697, 49.6335098726815],
+        "lower": [351.01203198674, 487.204053122406],
+        "upper": [605.50718811028, 689.220180684188],
+        "difference": -126.809632894235,
+        "difference_se": 84.0317413814684,
+        "flexsurv_rmst": [496.208617060062, 623.018249550644],
+        "flexsurv_loglik": -96.0408212105338
+      },
+      "flexsurv_version": "2.3.2"
+    }
+  }
+}

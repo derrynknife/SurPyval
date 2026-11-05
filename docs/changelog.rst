@@ -6,6 +6,19 @@ Unreleased
 
 **Added.**
 
+- The restricted mean survival time of the parametric models:
+  ``rmst(tau)`` (the RMST, its delta-method standard error and 95%
+  interval, in the form of the non-parametric models' ``rmst``),
+  ``rmst_cb(tau)`` (Wald, likelihood-ratio and bootstrap bounds, at one
+  horizon or several) and ``mean(tau=tau)`` (the point). Exact for the
+  Exponential, Weibull, Gamma and LogNormal, by quadrature otherwise;
+  offsets, limited failure populations and zero inflation included. The
+  parametric regression models have ``rmst(tau, Z)``, ``rmst_cb(tau, Z)``
+  (Wald and bootstrap) and ``rmst_diff(tau, Z_a, Z_b)``, and
+  ``surpyval.rmst_diff`` compares parametric fits as well as
+  non-parametric ones. Checked against R (``survreg`` and ``integrate``
+  with the delta method by hand, and flexsurv's ``summary(type="rmst")``)
+  on ``lung`` and ``ovarian``.
 - ``CrowAMSAA.projection(..., bias_corrected=True)``: ``False`` uses the
   plain maximum-likelihood shapes in the demonstrated intensity and in the
   rate of new BD modes, as the worked example of MIL-HDBK-189C (section
