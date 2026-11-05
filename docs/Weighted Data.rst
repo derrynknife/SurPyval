@@ -4,7 +4,8 @@ Weighted Data
 Some data come with a number on each row that says how much that row
 *counts*: a **weight**. SurPyval takes it as ``w``, beside the counts ``n``,
 in the Kaplan-Meier, Nelson-Aalen and Fleming-Harrington estimators, the
-parametric distributions, the parametric regressions and Cox regression.
+parametric distributions, the parametric regressions, Cox regression and
+Aalen's additive hazards model.
 This page says what weights are, when to use ``w`` rather than ``n``, why a
 weighted fit's intervals are computed differently, and what a weighted fit
 will not do.
@@ -253,8 +254,13 @@ saying what to use instead:
   ``"MSE"``, ``"MPS"``).
 - **Turnbull**, the Cox model's residuals and ``diagnose()``, strata and
   exact ties. These may come later.
+- **Aalen's** ``constant_effects_test()``: its null distribution is
+  simulated for an unweighted fit, and a weighted version has not been
+  built or checked. Judge a constant effect from the robust bands of
+  ``plot()`` or ``cumulative_coefficients_cb()`` (a straight line through
+  0 inside the band), or test it on the data without ``w``.
 - **The fitters that do not take** ``w``: competing risks, recurrent events, degradation, mixtures, distributional
-  regression, Aalen's additive model and the Royston-Parmar regression,
+  regression and the Royston-Parmar regression,
   among others, which refuse weighted data (the Bayesian fits and the
   life table are above).
 - **Reshaping weighted data** with ``censor_at``, ``select`` and the other
@@ -326,6 +332,45 @@ the weighted dfbetas are summed first. R's ``survey::svycoxph`` gives the
 same coefficients and standard errors larger by
 :math:`\sqrt{n / (n - 1)}`, a finite-sample factor SurPyval, as R's
 ``survival``, does not apply.
+
+Aalen's additive hazards model with weights
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In plain words: at each event time Aalen's model fits a straight-line
+(least-squares) regression of "who failed now" on the covariates of
+everyone still at risk. With weights it is a *weighted* least-squares
+fit, each unit counting as much as its weight says, and the running sum
+of the fitted slopes is the cumulative effect :math:`B(t)`. Its
+uncertainty is measured by how much each unit moves :math:`B(t)`, unit by
+unit, so it does not depend on how the weights are scaled.
+
+At each event time, with :math:`X` the rows at risk (a leading 1 for the
+baseline), :math:`W` the diagonal of :math:`n_i w_i` over them, :math:`P`
+the ridge penalty of ``penalizer`` (0 by default) and :math:`dN` the
+events,
+
+.. math::
+
+    dB(t) = (X^\top W X + P)^{-1} X^\top W\, dN(t),
+
+and the robust variance of :math:`B(t)` sums each unit's squared
+influence, its martingale residuals mapped as the increments are:
+
+.. math::
+
+    \psi_i(t) = \sum_{s \le t} (X^\top W X + P)^{-1} X_i w_i
+        \bigl(dN_i(s) - Y_i(s) X_i^\top dB(s)\bigr), \qquad
+    \widehat{Var}\, B(t) = \sum_i n_i \psi_i(t) \psi_i(t)^\top.
+
+This is R's ``timereg::aalen(..., weights = w, robust = 1)``
+(``robvar.cum``), checked to about :math:`10^{-15}`. Every bound of the
+model (``cumulative_coefficients_cb``, ``summary`` and ``cb`` on ``sf``,
+``ff`` and ``Hf``) takes it. With a penalty, :math:`P` is ``penalizer``
+times each covariate's weighted sum of squares about its weighted mean,
+over :math:`\sum_i n_i - 1`, so that it grows with the weights as
+:math:`X^\top W X` does and the fit does not depend on their scale; the
+price is that whole-number weights then differ from counts (without a
+penalty they are the same, to the last digit).
 
 The robust formula: HC0, with counts as frequency weights
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -426,7 +471,10 @@ Translating from lifelines and R
   ``KaplanMeier.fit(T, 1 - E, w=w)``; ``survreg(Surv(T, E) ~ z, weights =
   w, robust = TRUE)`` is ``WeibullAFT.fit(T, z, c=1 - E, w=w)`` (on
   SurPyval's parameterisation); ``coxph(Surv(T, E) ~ z, weights = w, robust
-  = TRUE)`` is ``CoxPH.fit(T, z, c=1 - E, w=w)``.
+  = TRUE)`` is ``CoxPH.fit(T, z, c=1 - E, w=w)``; ``timereg::aalen(Surv(T,
+  E) ~ z, weights = w, robust = 1)`` is ``AalenAdditive.fit(T, z, c=1 - E,
+  w=w)`` (pass ``weights = df$w``: ``aalen`` looks for a bare ``w`` outside
+  the data).
 
 The reference tests (``surpyval/tests/reference/test_weights.py``) compare
 these with R ``survival`` and ``survey`` and with lifelines, and the

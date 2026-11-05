@@ -236,6 +236,17 @@ Unreleased
   Efron's ties for one subject of weight 3 than for three identical
   copies (use ``n`` for repeated identical units, ``w`` for survey and
   importance weights). No numbers change.
+- ``AalenAdditive.fit(..., w=)`` and ``fit_from_df(..., w_col=)``:
+  Aalen's additive hazards model with sampling weights. Each increment of
+  the cumulative effects ``B(t)`` is a weighted least-squares fit, and
+  every standard error and bound (``summary``,
+  ``cumulative_coefficients_cb``, ``cb``, ``plot``) uses the robust
+  variance, the sum of the units' squared influences, which does not
+  depend on the scale of the weights. Matches R's ``timereg::aalen(...,
+  weights = w, robust = 1)`` (``cum`` and ``robvar.cum``, to 1e-12), with
+  and without delayed entry. Whole-number weights give the estimate of the
+  same counts exactly. ``constant_effects_test()`` refuses a weighted
+  fit; the model shows its effective sample size and saves as schema 3.
 
 **Changed.**
 

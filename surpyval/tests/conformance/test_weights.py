@@ -287,6 +287,28 @@ WEIGHTED = [
         },
         covariates=True,
     ),
+    # Aalen's non-parametric additive model: weighted least squares at
+    # each event time, the robust (martingale-residual) variance of B.
+    WeightedCase(
+        "AalenAdditive",
+        lambda x, c, n, w, Z, tl: sp.AalenAdditive.fit(
+            x, Z, c=c, n=n, w=w, tl=tl
+        ),
+        lambda m: np.asarray(m.cumulative_coefficients(QUERY), dtype=float),
+        offered={
+            "cb(sf)": lambda m: m.cb(QUERY, np.zeros((3, 2)), on="sf"),
+            "cb(Hf)": lambda m: m.cb(QUERY, np.ones((3, 2)), on="Hf"),
+            "cumulative_coefficients_cb": lambda m: (
+                m.cumulative_coefficients_cb(QUERY)
+            ),
+        },
+        refused={
+            "constant_effects_test": lambda m: m.constant_effects_test(
+                n_sim=10, random_state=1
+            ),
+        },
+        covariates=True,
+    ),
 ]
 IDS = [case.name for case in WEIGHTED]
 
@@ -407,6 +429,16 @@ def test_counts_still_equal_repetition(case, data):
         assert_allclose(_bounds(case, counted)[key], value, rtol=case.rtol)
 
 
+def _no_likelihood(model):
+    """A model with no likelihood at all (Aalen's least squares), whose
+    information criteria refuse whether it is weighted or not."""
+    from surpyval.univariate.regression.regression_data import (
+        NoLikelihoodMixin,
+    )
+
+    return isinstance(model, NoLikelihoodMixin)
+
+
 def _value(attr):
     """An attribute that is a number on some models and a method on
     others."""
@@ -493,7 +525,7 @@ def test_offered_bounds_are_finite_and_refused_ones_refuse(case, data):
             word in str(info.value) for word in ("Use", "use", "Fit")
         ), key
     for criterion in ("aic", "bic", "aic_c"):
-        if not hasattr(model, criterion):
+        if not hasattr(model, criterion) or _no_likelihood(model):
             continue  # a non-parametric estimate has none
         with pytest.raises(WeightedRefusal, match="pseudo-likelihood"):
             getattr(model, criterion)()
@@ -537,7 +569,7 @@ def test_round_trip_keeps_the_robust_bounds(case, data):
             assert_allclose(call(again), call(model), rtol=1e-10)
         if hasattr(model, "covariance"):
             assert_allclose(again.covariance(), model.covariance())
-        if hasattr(model, "aic"):
+        if hasattr(model, "aic") and not _no_likelihood(model):
             with pytest.raises(WeightedRefusal):
                 again.aic()
 
