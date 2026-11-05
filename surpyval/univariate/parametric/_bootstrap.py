@@ -205,16 +205,23 @@ class Refits:
     #: acceleration (:func:`jackknife`): built on first use.
     jack: Jackknife | None = None
 
-    def warn(self) -> None:
+    def warn(self, public: bool = False) -> None:
         """One warning: that the model itself has no finite maximum, or
         that more than ``FAILED_SHARE`` of the refits did not reach a
-        verified maximum or failed."""
+        verified maximum or failed (``public``: worded for the refits of
+        ``Parametric.bootstrap`` rather than the bounds)."""
         if self.model_maximum == "no finite maximum":
             warnings.warn(
                 "This model's likelihood has no finite maximum (as its fit "
                 "warned), so the data simulated from it run off the same "
-                "way and the bootstrap bounds close onto its meaningless "
-                "estimate. They are not a confidence bound.",
+                "way and the bootstrap "
+                + (
+                    "refits gather about its meaningless estimate. Their "
+                    "spread is not the uncertainty of the fit."
+                    if public
+                    else "bounds close onto its meaningless estimate. They "
+                    "are not a confidence bound."
+                ),
                 UserWarning,
                 stacklevel=caller_stacklevel(),
             )
@@ -233,28 +240,50 @@ class Refits:
             f"{bad} of the {self.n_boot} bootstrap refits did not reach a "
             f"verified maximum of the likelihood ({', '.join(parts)}). "
             "A refit with no finite maximum is kept at the estimate it "
-            "reached, so that it counts at its end of the bounds; with "
-            "this many, the data barely determine the model and the "
-            "bounds are rough.",
+            + (
+                "reached; with this many, the data barely determine the "
+                "model and the refits' spread is a rough guide to its "
+                "uncertainty."
+                if public
+                else "reached, so that it counts at its end of the bounds; "
+                "with this many, the data barely determine the model and "
+                "the bounds are rough."
+            ),
             UserWarning,
             stacklevel=caller_stacklevel(),
         )
 
 
-def check_resamplable(model: Any) -> None:
+#: What a refusal of ``Parametric.bootstrap`` says to use instead: the
+#: draws from the covariance, which need no refits.
+REFITS_INSTEAD = (
+    "To carry the fit's uncertainty forward without refits, draw "
+    "parameter vectors from covariance() and rebuild a model from each "
+    "with with_params."
+)
+
+
+def check_resamplable(model: Any, public: bool = False) -> None:
     """Refuse, with one message each, what the bootstrap cannot resample
-    faithfully."""
+    faithfully (``public``: worded for ``Parametric.bootstrap``)."""
     if getattr(model, "data", None) is None:
         raise ValueError(
-            "Bootstrap bounds need the data the model was fitted to; this "
-            "model was built from parameters, or restored from a dict "
+            ("bootstrap() needs" if public else "Bootstrap bounds need")
+            + " the data the model was fitted to; "
+            "this model was built from parameters, or restored from a dict "
             "saved without its data (save it with to_dict(with_data=True) "
-            "to keep them). Use method='wald'."
+            "to keep them). "
+            + (REFITS_INSTEAD if public else "Use method='wald'.")
         )
     if getattr(model.dist, "discrete", False):
         raise ValueError(
-            "Bootstrap bounds are for continuous distributions; for a "
-            "discrete one use method='wald' or method='lr'."
+            ("bootstrap() is" if public else "Bootstrap bounds are")
+            + " for continuous distributions; "
+            + (
+                REFITS_INSTEAD
+                if public
+                else "for a discrete one use method='wald' or method='lr'."
+            )
         )
 
 
@@ -265,16 +294,22 @@ class _UnivariateDesign(ResampleDesign):
     (``ResampleDesign``).
     """
 
-    def __init__(self, model: Any) -> None:
-        check_resamplable(model)
+    def __init__(self, model: Any, public: bool = False) -> None:
+        check_resamplable(model, public)
         data = model.data
         c = np.asarray(data["c"])
         if np.any((c != 0) & (c != 1)):
             raise ValueError(
-                "Bootstrap bounds resample exact and right-censored data "
-                "(truncated or not); this model was fitted to left- or "
-                "interval-censored data, whose inspection times a resample "
-                "would need and the data do not record. Use method='wald'."
+                (
+                    "bootstrap() resamples"
+                    if public
+                    else "Bootstrap bounds resample"
+                )
+                + " exact and right-censored data (truncated or not); this "
+                "model was fitted to left- or interval-censored data, whose "
+                "inspection times a resample would need and the data do not "
+                "record. "
+                + (REFITS_INSTEAD if public else "Use method='wald'.")
             )
         x = np.asarray(data["x"], dtype=float)
         if x.ndim == 2:
@@ -295,8 +330,8 @@ class _CaseDesign:
     unit (a row with ``n = k`` is ``k`` units) with its time, censoring,
     truncation and weight."""
 
-    def __init__(self, model: Any) -> None:
-        check_resamplable(model)
+    def __init__(self, model: Any, public: bool = False) -> None:
+        check_resamplable(model, public)
         data = model.data
         n = np.asarray(data["n"], dtype=int)
         units = np.repeat(np.arange(n.size), n)
@@ -403,25 +438,45 @@ def _point_index(model: Any, name: str) -> int:
     return k + int(bool(model.lfp))
 
 
-def refits(model: Any, n_boot: Any, random_state: Any) -> Refits:
+def refits(
+    model: Any, n_boot: Any, random_state: Any, public: bool = False
+) -> Refits:
     """The bootstrap refits of ``model``: drawn, or those kept on the
     model for this ``n_boot`` and integer ``random_state`` while its
     parameters are as they are (``random_state=None`` or a ``Generator``
-    draws afresh each time, from that stream)."""
+    draws afresh each time, from that stream). ``public``: for
+    ``Parametric.bootstrap``, whose refusals say what to use instead of
+    refits rather than instead of the bounds; the refits are the same."""
     n_boot = check_n_boot(n_boot)
     weighted = getattr(model, "weighted", False)
     if weighted and (model.lfp or model.zi):
         from surpyval.utils.weights import USE_WALD, refuse_weighted
 
         # The BCa interval of these models needs the jackknife and the
-        # edge checks of the weighted units, which are not built.
+        # edge checks of the weighted units, which are not built; nor is
+        # their case bootstrap, so bootstrap() refuses with the bounds.
         raise refuse_weighted(
-            "A bootstrap bound of a limited-failure or zero-inflated model",
-            "its interval (BCa) needs a jackknife of the weighted units, "
-            "which is not built",
-            USE_WALD,
+            (
+                "bootstrap() of a limited-failure or zero-inflated model"
+                if public
+                else "A bootstrap bound of a limited-failure or "
+                "zero-inflated model"
+            ),
+            "its case bootstrap and the interval (BCa) built on it need a "
+            "jackknife of the weighted units, which is not built",
+            (
+                "Draw parameter vectors from covariance() (the robust "
+                "covariance of the weighted fit) and rebuild a model from "
+                "each with with_params."
+                if public
+                else USE_WALD
+            ),
         )
-    design: Any = _CaseDesign(model) if weighted else _UnivariateDesign(model)
+    design: Any = (
+        _CaseDesign(model, public)
+        if weighted
+        else _UnivariateDesign(model, public)
+    )
     point = _point(model)
     key = None
     if isinstance(random_state, (int, np.integer)) and not isinstance(
@@ -726,3 +781,134 @@ def param_cb_bootstrap(
         a = jackknife_acceleration(jack.values[:, idx][:, None], jack.weights)
     cb = bca_bounds(fits.values[:, idx][:, None], est, a, alpha_ci, bound)
     return np.atleast_1d(cb[0])
+
+
+@dataclass
+class ParametricBootstrap:
+    """
+    The bootstrap refits of a fitted parametric model, from its
+    ``bootstrap`` method (``Parametric.bootstrap``): the same model
+    refitted to ``n_boot`` resamples of its data, the ones behind its
+    ``method="bootstrap"`` bounds.
+
+    Attributes
+    ----------
+    models : list of Parametric
+        The refitted models, one per kept refit, each fitted with the
+        model's own options (offset, ``lfp``, ``zi``, fixed parameters).
+    params : numpy array
+        ``(n_kept, len(names))``: each kept refit's parameters in the
+        order of ``names``, the model's ``covariance_names``, so
+        ``model.with_params(params[i], gamma=gamma[i])`` rebuilds refit
+        ``i``'s predictions.
+    gamma : numpy array or None
+        Each kept refit's offset, for a model fitted with
+        ``offset=True`` (the offset is not in the covariance, so not in
+        ``params``); ``None`` otherwise.
+    names : list of str
+        The names of the columns of ``params``.
+    n_boot : int
+        The number of refits asked for.
+    failed : int
+        The refits whose fit raised; they are left out, so
+        ``len(models) == n_boot - failed``.
+    no_maximum : int
+        The kept refits whose likelihood had no finite maximum (kept at
+        the estimate they reached, as the bounds keep them).
+    unverified : int
+        The kept refits whose search did not reach a verified maximum.
+
+    Examples
+    --------
+    >>> import surpyval as surv
+    >>> x = [12, 25, 31, 40, 48, 60, 66, 75, 90, 110]
+    >>> boot = surv.Weibull.fit(x).bootstrap(50, random_state=1)
+    >>> boot.names, boot.params.shape, boot.failed
+    (['alpha', 'beta'], (50, 2), 0)
+    >>> sorted(boot.to_dict())[:3]
+    ['failed', 'gamma', 'n_boot']
+    """
+
+    models: list
+    params: npt.NDArray
+    gamma: npt.NDArray | None
+    names: list
+    n_boot: int
+    failed: int
+    no_maximum: int
+    unverified: int
+
+    def __len__(self) -> int:
+        return len(self.models)
+
+    def __repr__(self) -> str:
+        return (
+            f"ParametricBootstrap(n_boot={self.n_boot}, "
+            f"kept={len(self.models)}, failed={self.failed}, "
+            f"names={self.names!r})"
+        )
+
+    def to_dict(self) -> dict:
+        """The refits' parameters and counts as a dict of native Python
+        values, strict JSON (an infinite or missing number is written as
+        ``None`` and recorded under ``"non_finite"``). The refitted models
+        are not included: ``model.with_params(row, gamma=g)`` rebuilds
+        each one's predictions from its row.
+
+        Examples
+        --------
+        >>> import json
+        >>> import surpyval as surv
+        >>> x = [12, 25, 31, 40, 48, 60, 66, 75, 90, 110]
+        >>> d = surv.Weibull.fit(x).bootstrap(20, random_state=1).to_dict()
+        >>> d["result"], d["names"], len(d["params"])
+        ('ParametricBootstrap', ['alpha', 'beta'], 20)
+        >>> isinstance(json.dumps(d, allow_nan=False), str)
+        True
+        """
+        from surpyval.serialisation import encode_non_finite, to_native
+
+        out: dict = {
+            "result": type(self).__name__,
+            "names": list(self.names),
+            "params": to_native(np.asarray(self.params, dtype=float)),
+            "gamma": (
+                None
+                if self.gamma is None
+                else to_native(np.asarray(self.gamma, dtype=float))
+            ),
+            "n_boot": int(self.n_boot),
+            "failed": int(self.failed),
+            "no_maximum": int(self.no_maximum),
+            "unverified": int(self.unverified),
+        }
+        return encode_non_finite(out)
+
+
+def bootstrap(model: Any, n_boot: Any, random_state: Any) -> Any:
+    """``Parametric.bootstrap``: the refits :func:`refits` draws for the
+    bounds (the same ones, for the same ``n_boot`` and integer
+    ``random_state``), with each kept refit's own estimates in the order
+    of ``covariance_names`` -- not moved onto an edge, as the bounds'
+    ``values`` are, so that ``with_params`` of a row is that refit."""
+    fits = refits(model, n_boot, random_state, public=True)
+    fits.warn(public=True)
+    names = list(model.covariance_names)
+    params = np.array(
+        [m._estimates() for m in fits.models], dtype=float
+    ).reshape(len(fits.models), len(names))
+    gamma = (
+        np.array([float(m.gamma) for m in fits.models], dtype=float)
+        if model.offset
+        else None
+    )
+    return ParametricBootstrap(
+        models=list(fits.models),
+        params=params,
+        gamma=gamma,
+        names=names,
+        n_boot=fits.n_boot,
+        failed=fits.failed,
+        no_maximum=fits.no_maximum,
+        unverified=fits.unverified,
+    )

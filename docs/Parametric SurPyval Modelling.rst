@@ -2618,6 +2618,70 @@ the difference of the two RMSTs, its standard error (the groups are
 independent, so the variances add), its interval and the z-test's p-value.
 
 
+Carrying a fit's uncertainty forward
+------------------------------------
+
+A fitted model is an estimate: other samples from the same population would
+have given other parameters. When the model feeds something else -- a
+simulation, a system model, a cost calculation -- that uncertainty can be
+carried along by running the calculation on many plausible versions of the
+model and looking at the spread of the answers. SurPyval gives two ways to
+get those versions.
+
+**Draws from the covariance.** ``model.covariance()`` describes how much the
+parameters could vary, and how together; ``model.covariance_names`` names its
+rows (the distribution's parameters, then ``lfp_p`` and ``f0`` where the
+model has them). Draw parameter vectors from a normal distribution with that
+covariance and turn each back into a model with ``model.with_params(draw)``.
+This is quick, and matches the Wald bounds of ``cb``. A draw can land outside
+a parameter's range when the estimate is near an edge (an ``lfp_p`` above 1,
+say); ``with_params`` refuses it and says so, and such draws are left out or
+the parameter is drawn on the logit scale.
+
+**Bootstrap refits.** ``model.bootstrap(n_boot, random_state)`` refits the
+model to ``n_boot`` data sets simulated like the original one and returns the
+refitted models (``boot.models``) and their parameters (``boot.params``, in
+the order of ``covariance_names``). It is slower but makes no normal
+approximation, so it is the one to use with small samples and for an offset
+fit, whose ``gamma`` is not in the covariance (each refit's offset is in
+``boot.gamma``). The refits are the ones behind the ``method="bootstrap"``
+bounds: the same ``n_boot`` and seed give the same refits.
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(3)
+    life = surv.Weibull.fit(10 * rng.weibull(2.0, 40))
+
+    # Draws from the covariance, each rebuilt as a model
+    draws = rng.multivariate_normal(life.params, life.covariance(), 2000)
+    sf_draws = np.array([life.with_params(d).sf(5.0) for d in draws])
+
+    # Bootstrap refits
+    boot = life.bootstrap(200, random_state=1)
+    sf_boot = np.array([m.sf(5.0) for m in boot.models])
+
+    print("sf(5):", life.sf(5.0))
+    print("95% of the draws:", np.quantile(sf_draws, [0.025, 0.975]))
+    print("95% of the refits:", np.quantile(sf_boot, [0.025, 0.975]))
+    print("Wald bounds from cb:", life.cb(5.0, on="sf"))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(np.quantile(sf_draws, [0.025, 0.975]),
+                       life.cb(5.0, on="sf"), atol=0.03)
+    assert boot.params.shape == (len(boot.models), 2)
+
+A model with a limited failure population or zero inflation takes the whole
+vector, so ``lfp_p`` and ``f0`` vary with the rest: ``with_params([alpha,
+beta, lfp_p])``. The shorter vector of the distribution's parameters alone
+keeps the fitted ``lfp_p`` and ``f0``, and the offset is kept unless given as
+``with_params(params, gamma=...)``. A model rebuilt this way has no data, so
+it has no bounds of its own; a model fitted with weights gives just the
+distribution at the new parameters.
+
+
 Forecasting failures in service
 -------------------------------
 
