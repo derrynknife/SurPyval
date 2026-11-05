@@ -5,6 +5,17 @@ Unreleased
 
 **Added.**
 
+- ``ParametricCompetingRisks.fit`` takes left-censored (``c = -1``) and
+  interval-censored (``c = 2``) rows with their cause -- failures found at an
+  inspection -- each contributing :math:`\mathrm{CIF}_k(x_r) -
+  \mathrm{CIF}_k(x_l)` (over :math:`S(t_l)` with entry). Such rows tie the
+  causes together, so with any of them the causes are fitted jointly by
+  maximum likelihood, and ``covariance()`` is the inverse of the joint
+  Hessian, with terms between causes, which every ``cb`` (``cif``, ``sf``,
+  ``ff``, ``Hf``) and ``standard_errors`` use; ``fit_from_df`` takes the
+  windows as ``xl_col``/``xr_col``. Data without such rows fit cause by cause
+  exactly as before. The non-parametric ``CompetingRisks`` still refuses
+  them, now naming ``ParametricCompetingRisks``.
 - ``Parametric.with_params`` takes the full vector of ``covariance()``'s
   rows, in the order of ``covariance_names`` (the distribution's parameters,
   then ``lfp_p`` and ``f0``), so a draw from the covariance of a

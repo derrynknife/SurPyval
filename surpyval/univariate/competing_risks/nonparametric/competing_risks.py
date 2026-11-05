@@ -938,7 +938,8 @@ class CompetingRisks(SerialisableMixin):
         c : array_like, optional
             Censoring flags: 0 a failure (with a cause in ``e``), 1
             right-censored (with ``e`` missing). Derived from ``e`` if not
-            given. Left and interval censoring are not supported.
+            given. Left and interval censoring are not supported here;
+            ``ParametricCompetingRisks`` takes them.
         n : array_like, optional
             Counts. Defaults to 1.
         how : str, optional
@@ -987,6 +988,17 @@ class CompetingRisks(SerialisableMixin):
         >>> weighted.cb(5, 'a').round(4)
         array([0.0784, 0.6463])
         """
+        if (
+            c is not None
+            and np.isin(np.asarray(c, dtype=object), (-1, 2)).any()
+        ):
+            raise ValueError(
+                "Left- and interval-censored rows (c = -1 or 2) are not "
+                "supported by the non-parametric CompetingRisks, whose "
+                "Aalen-Johansen estimate needs each failure's time. Fit "
+                "ParametricCompetingRisks to such data: it takes them, "
+                "with a distribution for each cause."
+            )
         x, c, n, e = validate_cr_inputs(x, c, n, e, how)
         check_finite_event_times(x, c)
         if w is not None:
