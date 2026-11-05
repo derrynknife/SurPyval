@@ -17,7 +17,8 @@ Two kinds of fixture:
   event and censoring times, left truncation, interval censoring,
   competing risks with ties, a prediction matrix for the Brier score and
   AUC, continuous data for the additive hazards model, and a deliberate
-  violation of proportional hazards for the Cox diagnostics.
+  violation of proportional hazards for the Cox diagnostics, and a
+  covariate that separates the events from the survivors (Firth's fit).
 
 Run from the repository root::
 
@@ -438,6 +439,32 @@ def ph_violation():
     }
 
 
+def separation():
+    """Monotone likelihood for Firth's penalised Cox fit: every event is
+    in the group ``z1 = 1`` (the units with ``z1 = 0`` are all censored),
+    so the ordinary Cox coefficient of ``z1`` is infinite; ``z2`` is a
+    continuous covariate with an effect. Times are rounded up to whole
+    units, so there are ties."""
+    rng = np.random.default_rng(3798)
+    n = 60
+    z1 = rng.binomial(1, 0.5, n)
+    z2 = np.round(rng.normal(0, 1, n), 2)
+    t = rng.exponential(1 / (0.1 * np.exp(0.5 * z2)))
+    cens = rng.uniform(0, 20, n)
+    x = np.ceil(np.minimum(t, cens)).astype(int)
+    c = np.where(z1 == 1, (cens < t).astype(int), 1)
+    return {
+        "source": "seeded synthetic, make_fixtures.separation (rng 3798); "
+        "every event has z1 = 1",
+        "columns": {
+            "x": _native(x),
+            "c": _native(c),
+            "z1": _native(z1),
+            "z2": _native(z2),
+        },
+    }
+
+
 def build():
     return {
         "_about": "Shared fixtures for surpyval/tests/reference; written "
@@ -471,6 +498,7 @@ def build():
             "columns": VETERAN,
         },
         "ph_violation": ph_violation(),
+        "separation": separation(),
     }
 
 

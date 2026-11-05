@@ -70,6 +70,30 @@ def coefficient_table(
     return out
 
 
+def firth_table(
+    names: "list[str]",
+    coef: npt.ArrayLike,
+    se: npt.ArrayLike,
+    firth: Any,
+) -> pd.DataFrame:
+    """The coefficient table of a Firth-penalised Cox fit: as
+    :func:`coefficient_table` at the fit's level, with its own intervals
+    and p-values (``firth.lower``, ``upper``, ``p_values``: by the
+    profile penalised likelihood, or Wald's)."""
+    table = coefficient_table(
+        names, coef, se, firth.alpha_ci, p=firth.p_values
+    )
+    level = _level(firth.alpha_ci)
+    lower = np.asarray(firth.lower, dtype=float)
+    upper = np.asarray(firth.upper, dtype=float)
+    with np.errstate(over="ignore"):
+        table["coef lower " + level] = lower
+        table["coef upper " + level] = upper
+        table["exp(coef) lower " + level] = np.exp(lower)
+        table["exp(coef) upper " + level] = np.exp(upper)
+    return table
+
+
 def format_table(table: pd.DataFrame, columns: "list[str]") -> str:
     """``table``'s ``columns`` as text, four significant figures, each line
     indented; a column that is all ``nan`` is left out."""

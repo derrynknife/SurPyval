@@ -73,6 +73,11 @@ def cox_likelihood_ratio_test(model: SemiParametricRegressionModel) -> dict:
 
     refuse_lr_test(model)
     refuse_weighted_test(model)
+    firth = getattr(model, "firth", None)
+    if firth is not None:
+        # Firth's fit: the penalised test, which is what its estimate
+        # maximises (coxphf's "Likelihood ratio test").
+        return firth.likelihood_ratio_test()
     neg_ll_of = getattr(model, "neg_ll_of", None)
     if neg_ll_of is None or getattr(model, "_neg_ll", None) is None:
         raise ValueError(
