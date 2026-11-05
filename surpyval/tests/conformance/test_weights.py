@@ -69,6 +69,9 @@ class WeightedCase:
     #: False where the outcome of a known failure depends on the numpy /
     #: scipy build, so that either outcome passes
     xfail_strict: bool = True
+    #: True for a penalised fit, which has no covariance (refused, with
+    #: or without weights: test_penalised_weighted.py)
+    no_covariance: bool = False
 
 
 def _np(fitter):
@@ -158,6 +161,27 @@ def _regression(fitter, no_tl=False):
         },
         covariates=True,
         rtol=5e-3,
+    )
+
+
+def _penalised(fitter, **options):
+    return WeightedCase(
+        f"{fitter}.fit_penalised",
+        lambda x, c, n, w, Z, tl: getattr(sp, fitter).fit_penalised(
+            x,
+            Z,
+            c=c,
+            n=n,
+            w=w,
+            tl=tl,
+            penalizer=0.05,
+            l1_ratio=0.5,
+            **options,
+        ),
+        lambda m: np.asarray(m.params, dtype=float),
+        offered={"sf": lambda m: m.sf(QUERY, np.zeros((3, 2)))},
+        covariates=True,
+        no_covariance=True,
     )
 
 
@@ -311,6 +335,13 @@ WEIGHTED = [
         },
         covariates=True,
     ),
+    # Penalised fits (fit_penalised) with weights: the estimates and the
+    # predictions they give; a penalised model has no covariance or
+    # bounds, so none is offered (its refusals, and the R reference, are
+    # in univariate/regression/test_penalised_weighted.py). Breslow's ties,
+    # so that whole-number weights are counts.
+    _penalised("CoxPH", tie_method="breslow"),
+    _penalised("WeibullPH"),
 ]
 IDS = [case.name for case in WEIGHTED]
 
@@ -386,7 +417,7 @@ def test_weight_scale_changes_nothing(case, data, scale):
             atol=1e-8,
             err_msg=key,
         )
-    if hasattr(base, "covariance"):
+    if hasattr(base, "covariance") and not case.no_covariance:
         assert_allclose(
             scaled.covariance(), base.covariance(), rtol=case.rtol, atol=1e-10
         )
@@ -559,7 +590,7 @@ def test_round_trip_keeps_the_robust_bounds(case, data):
                     call(again)
                 continue
             assert_allclose(call(again), call(model), rtol=1e-10)
-        if hasattr(model, "covariance"):
+        if hasattr(model, "covariance") and not case.no_covariance:
             assert_allclose(again.covariance(), model.covariance())
         if hasattr(model, "aic"):
             with pytest.raises(WeightedRefusal):

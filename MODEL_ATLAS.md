@@ -92,8 +92,9 @@ Worked classifications:
 | Renewal: GeneralizedRenewal, GeneralizedOneRenewal, ARA, ARI | univariate | recurrent | single | recurrent | none | continuous | parametric |
 | ProportionalIntensity HPP/NHPP | univariate | recurrent | single | recurrent | with | continuous | parametric |
 | CauseSpecificMCF | univariate | recurrent | competing | recurrent | none | continuous | nonparametric |
+| CauseSpecificNHPP | univariate | recurrent | competing | recurrent | none | continuous | parametric |
 | Bernoulli, Binomial, success-run | univariate | single_event | single | terminal | none | discrete | parametric |
-| (future, #808) illness-death, progressive | univariate | single_event | single/competing | multi_state | none/with | continuous | any |
+| (not built yet) illness-death, progressive | univariate | single_event | single/competing | multi_state | none/with | continuous | any |
 
 Most models SurPyval ships are `univariate`. Two kinds of `multivariate`
 model exist:
@@ -102,11 +103,11 @@ model exist:
   Student-t, Clayton, Frank, Gumbel, Joe and AMH, with rotations) glue two
   univariate margins together with a dependence parameter, with full
   censoring/truncation support in the joint likelihood, standard errors and
-  confidence bounds. More than two lifetimes is #809.
+  confidence bounds. More than two lifetimes is not built yet.
 - **Shared frailty** for clustered single-event data with covariates
   (`CoxFrailty`, and `WeibullFrailty` and the other parametric frailty
   baselines): a random effect per cluster, the random-effect dual of an
-  Archimedean copula. Frailty for repairable systems is #810.
+  Archimedean copula. Frailty for repairable systems is not built yet.
 
 | Model | dim | recurrence | events | states | covariates | time | estimation |
 |-------|-----|-----------|--------|--------|------------|------|------------|
@@ -138,18 +139,17 @@ truncation; one item's dynamic prediction given its readings so far is
 
 ## Gaps
 
-Cells of the axes with nothing built yet, each filed as an issue:
+Cells of the axes with nothing built yet:
 
-| Gap | Cell | Issue |
-|-----|------|-------|
-| Parametric competing-risks regression | univariate / single_event / competing / terminal / with / continuous / parametric | #804 |
-| Recurrent events with covariates, semi-parametric (Andersen–Gill, PWP, mean model) | univariate / recurrent / single / recurrent / with / continuous / semiparametric | #805 |
-| Recurrent events with competing failure modes, parametric | univariate / recurrent / competing / recurrent / none / continuous / parametric | #806 |
-| Recurrent events with competing failure modes and covariates | univariate / recurrent / competing / recurrent / with / continuous / parametric and semiparametric | #807 |
-| Multi-state models (illness-death, progressive) | `multi_state` | #808 |
-| Copulas for more than two lifetimes | multivariate, more than two series | #809 |
-| Shared frailty and correlated series for repairable systems | multivariate / recurrent | #810 |
-| Bayesian inference beyond the univariate parametric distributions (regression, pooling) | the inference axis | — |
+| Gap | Cell |
+|-----|------|
+| Parametric competing-risks regression | univariate / single_event / competing / terminal / with / continuous / parametric |
+| Recurrent events with covariates, semi-parametric (Andersen–Gill, PWP, mean model) | univariate / recurrent / single / recurrent / with / continuous / semiparametric |
+| Recurrent events with competing failure modes and covariates | univariate / recurrent / competing / recurrent / with / continuous / parametric and semiparametric |
+| Multi-state models (illness-death, progressive) | `multi_state` |
+| Copulas for more than two lifetimes | multivariate, more than two series |
+| Shared frailty and correlated series for repairable systems | multivariate / recurrent |
+| Bayesian inference beyond the univariate parametric distributions (regression, pooling) | the inference axis |
 
 Not gaps, by choice: discrete time with covariates is logistic or binomial
 regression, out of scope for the package; and discrete time without
@@ -171,6 +171,6 @@ the observed proportion).
 - **Effect type** — fixed vs random effects (frailty). Frailty is both the
   *clustered* kind of `multivariate` data and a random-effect modality of the
   covariate axis; the single-event frailty regressions above exist, and
-  frailty for repairable systems is #810. (Shared-frailty models coincide with Archimedean copulas — a
+  frailty for repairable systems is not built yet. (Shared-frailty models coincide with Archimedean copulas — a
   reason the multivariate-dependence machinery could be framed as
   `none / frailty / copula`.)

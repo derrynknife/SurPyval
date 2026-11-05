@@ -122,7 +122,11 @@ def test_a_continuous_violation_is_advised_a_time_varying_effect():
     assert "CoxPH.fit_tvc" in advice and "pandas.cut" in advice
     assert "WeibullAFT.fit" in advice and "LogNormalAFT.fit" in advice
     assert "Stratify on" not in advice
-    assert advice.features[0] == "CoxPH.fit_tvc"
+    assert "time_interaction={'w': \"log\"}" in advice
+    assert advice.features[:2] == (
+        "CoxPH.fit(time_interaction=)",
+        "CoxPH.fit_tvc",
+    )
 
 
 def test_a_few_levelled_covariate_is_stratified():

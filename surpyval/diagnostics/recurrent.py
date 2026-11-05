@@ -78,6 +78,7 @@ from typing import Any
 import numpy as np
 from scipy.stats import chi2, norm
 
+from ._shared import _fmt
 from .registry import AdviceRule, Check, Context, Family, Panel, register
 
 #: The bootstrap resamples behind the Cramer-von Mises p-value when
@@ -109,10 +110,6 @@ _RENEWAL_FITTERS = {
 # ---------------------------------------------------------------------------
 # What the checks share
 # ---------------------------------------------------------------------------
-def _fmt(value: float) -> str:
-    return f"{value:.3g}"
-
-
 def _is_poisson(model: Any) -> bool:
     from surpyval.recurrent.parametric.parametric_recurrence import (
         ParametricRecurrenceModel,

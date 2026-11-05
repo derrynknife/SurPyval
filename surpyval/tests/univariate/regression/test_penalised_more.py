@@ -373,13 +373,18 @@ def test_fit_tvc_timeline_penalised_is_the_start_stop_fit():
     np.testing.assert_array_equal(timeline.params, start_stop.params)
 
 
-def test_fit_tvc_penalised_refuses_inference_and_weights():
+def test_fit_tvc_penalised_refuses_inference_and_takes_weights():
     i, start, stop, c, Z = _rossi_tv()
     model = CoxPH.fit_tvc_penalised(i, start, stop, c, Z, penalizer=0.01)
     with pytest.raises(ValueError, match="fitted with a penalty"):
         model.standard_errors()
-    with pytest.raises(ValueError, match="does not take weights"):
-        CoxPH.fit_tvc_penalised(i, start, stop, c, Z, w=np.ones(len(i)))
+    # Unit weights give the unweighted fit (more in
+    # test_penalised_weighted.py)
+    ones = CoxPH.fit_tvc_penalised(
+        i, start, stop, c, Z, w=np.ones(len(i)), penalizer=0.01
+    )
+    assert ones.weighted
+    np.testing.assert_allclose(ones.params, model.params, atol=1e-10)
 
 
 # -- cause-specific competing risks Cox --------------------------------------
