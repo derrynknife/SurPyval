@@ -80,6 +80,9 @@ NOT_SWEPT = {
     "swept) and maximum-likelihood (param_cb, swept) intervals",
     "cb_tvc": "needs a covariate path; checked against cb along a constant "
     "path, for every bound and on=, in conformance/test_tvc.py (#172)",
+    "likelihood_contour": "a joint confidence region of two parameters, "
+    "not an interval; checked against WeibullR's MLEcontour in "
+    "parametric/test_likelihood_contour.py",
 }
 # "confidence" was the recurrent models' level until v0.22; a method
 # that took it again would be an unswept uncertainty method.
@@ -228,6 +231,9 @@ def _call(case, spec, model, side, alpha, fname, event, k):
         x = _query(case, spec)
         if spec.on:
             kw["on"] = fname
+        if "stratum" in case.call_kwargs:
+            # a stratified model's curve is one stratum's
+            kw.setdefault("stratum", case.call_kwargs["stratum"])
         args = [x if k is None else x[k]]
         if case.interface in WITH_COVARIATES:
             if case.z_style != "paired":

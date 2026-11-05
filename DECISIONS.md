@@ -23,6 +23,24 @@ Design decisions made while working on the open issues, with the reason for each
 | Only Wald bounds (`method="wald"`); `"lr"` and `"bootstrap"` refuse, naming the fix (refit to resampled rows). `hf` and `df` (the baseline's jumps) have no bounds; nor has `qf` (no `quantile_cb` yet). | proposed | The baseline has no likelihood for a likelihood-ratio bound; R has no bound on the jumps either. | done (gaps recorded) |
 | A model restored by `from_dict` and a penalised fit refuse `cb`: the variance needs the fitted rows, which a dict does not keep, and a penalised fit has no covariance. | proposed | Storing the running sums in `to_dict` is possible later; refusing keeps the saved format unchanged. | done (gap recorded) |
 
+### Comparing two MCFs (`recurrent.mcf_diff`)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `mcf_diff(model_a, model_b)` takes two fitted `NonParametricCounting` estimates, as `sf_diff` takes two survival fits and `reda::mcfDiff` two `mcf` objects; a model without per-item data (`from_xrd`, `from_dict`, simulated) is refused, since neither the robust variance nor the tests can be computed from it. | proposed | The groups' fits already carry the data, late entry and windows; a group-label signature would duplicate `fit`'s arguments. | done |
+| The difference is estimated only from the later origin to the end of the shorter follow-up and is NaN outside it; `reda::mcfDiff` carries the shorter group's MCF at its last value. | proposed | The MCF itself is NaN past its last observed time (no claim that no events happen after it); the reference tests compare reda's values on the shared range. | done |
+| The pointwise bounds of the difference are Wald bounds only (no log scale), and there is no simultaneous band. | proposed | A difference can be negative; a band is a further feature. | done (band a gap) |
+
+### Interval-censored log-rank and Wilcoxon tests: `interval_logrank`
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A function of its own, `interval_logrank`, not new paths in `logrank`. `logrank` keeps refusing left and interval-censored data (and now a two-column `x`), with a message naming `interval_logrank`; its results do not change. | proposed | The tests differ in kind: `logrank`'s weightings, strata, `t0`, `w` and hypergeometric variance have no counterpart in the score tests on the pooled Turnbull estimate, whose variance is the permutation one. Switching method on the shape of the data would change a result when one interval row is added. | done |
+| Scores `"log-rank"` (Sun's; the default, as R's `ictest`), `"finkelstein"` and `"wilcoxon"`; R's names `logrank1`, `logrank2`, `wmw` are accepted. | proposed | Sun's scores are the usual log-rank scores on exact and right censored data (each group's score sum is the observed minus expected events; tested). | done |
+| The asymptotic p-value is the k-sample permutation chi-squared (R's `method = "pclt"`); `method="permutation"` is a Monte Carlo test of the same statistic, `(1 + count) / (1 + B)`, seeded by `random_state`. For two groups this is two-sided by the absolute statistic (R's `tsmethod = "abs"`), not R's default doubling of the smaller one-sided p-value. No exact enumeration and no score-form (`method = "scoretest"`) variance. | proposed | One statistic for any number of groups; the doubled one-sided p-value is defined for two groups only. | done |
+| Truncated data (finite `tl` or `tr`) are refused, pointing to `logrank` with `tl`. | proposed | The permutation argument needs exchangeable units, which delayed entry breaks; R's `ictest` takes no truncation either. | done |
+| The pooled NPMLE is the EM-ICM with `tol = 1e-12` (the Karush-Kuhn-Tucker gap) by default, tighter than `Turnbull.fit`'s 1e-10, and warns if it does not converge. | proposed | The statistic moves with the NPMLE's convergence; R's default `epsilon = 1e-6` moves it by about 1e-8 relative. | done |
+
 ## 2026-11-04
 
 ### Crow Extended projection: bias-corrected or plain shapes

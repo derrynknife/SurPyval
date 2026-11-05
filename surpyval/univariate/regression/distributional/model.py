@@ -369,7 +369,7 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         >>> model.likelihood_ratio_test(parameter="beta")["df"]
         1
         """
-        from .._global_test import _result, refuse_weighted_test
+        from .._global_test import lr_test_result, refuse_weighted_test
         from .._penalised import refuse_lr_test
 
         refuse_lr_test(self)
@@ -435,8 +435,8 @@ class DistributionalRegressionModel(ParametricRegressionModel):
                 null = self.distribution.fit(  # type: ignore[attr-defined]
                     x=data.x, c=data.c, n=data.n, t=data.t, **kwargs
                 )
-            return _result(ll, -float(null.neg_ll()), len(free))
-        return _result(ll, self._null_ll(parameter, tested), len(free))
+            return lr_test_result(ll, -float(null.neg_ll()), len(free))
+        return lr_test_result(ll, self._null_ll(parameter, tested), len(free))
 
     def _null_ll(self, parameter: str, tested: list[int]) -> float:
         """The log-likelihood of the fit to the same data with the

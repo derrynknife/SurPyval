@@ -832,9 +832,9 @@ class DistributionalFitter(
         def build(scale: npt.NDArray, N: float) -> PenalisedObjective:
             col_scale = np.ones(p)
             col_scale[column_of] = scale
-            from .._penalised_fit import _intervals_from_the_support
+            from .._penalised_fit import intervals_from_the_support
 
-            scaled = _intervals_from_the_support(self, data)
+            scaled = intervals_from_the_support(self, data)
             scaled.add_covariates(Z_data / col_scale)
 
             def objective(tv: Any) -> Any:

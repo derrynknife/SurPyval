@@ -367,6 +367,86 @@ non-parametric risk-set construction; SurPyval raises an error for these
 rather than return a wrong MCF. For such data use a parametric intensity
 model.
 
+Comparing two groups' MCFs
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Do the pumps on site A fail more often than those on site B? Do patients
+on a new treatment have fewer repeat admissions? Fit one MCF per group and
+pass both to :func:`~surpyval.recurrent.mcf_diff`. It gives two answers:
+
+- **how far apart the curves are at each time**: the MCF of group a minus
+  the MCF of group b, the extra events per item group a has had by then,
+  with a confidence interval at each time;
+- **whether the groups' event rates differ over the whole follow-up**: a
+  test that adds up, time by time, how much faster one group's MCF
+  climbs than the other's, giving more say to the times when both groups
+  have many items under observation.
+
+(:func:`~surpyval.recurrent.intervention_test` asks a different question:
+whether the same systems changed at an intervention.)
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import NonParametricCounting, mcf_diff
+
+    # Site A: three pumps watched for 12 months; site B: three for 10.
+    a = NonParametricCounting.fit(
+        [2, 5, 9, 12, 4, 8, 11, 12, 6, 12],
+        i=[1, 1, 1, 1, 2, 2, 2, 2, 3, 3],
+        c=[0, 0, 0, 1, 0, 0, 0, 1, 0, 1],
+    )
+    b = NonParametricCounting.fit(
+        [7, 10, 3, 10, 5, 9, 10],
+        i=[1, 1, 2, 2, 3, 3, 3],
+        c=[0, 1, 0, 1, 0, 0, 1],
+    )
+    result = mcf_diff(a, b)
+    print("difference at 6 and 10 :", result.diff([6, 10]).round(3))
+    print("95% interval at 10     :", result.diff_cb(10).round(3))
+    print(result)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert abs(result.diff(10) - 2 / 3) < 1e-12
+    assert result.p_value > 0.05 and result.tests["linear"]["p_value"] > 0.05
+
+Here site A has had two-thirds of a failure more per pump than site B by
+month 10, but with three pumps per site the interval runs from below zero
+and neither test finds a clear difference (p-values 0.22 and 0.19). ``result.plot()`` draws the difference with its interval and a
+line at zero. The difference stops at the end of the shorter follow-up
+(month 10 here): past it one group's MCF is not estimated, so ``diff``
+returns NaN.
+
+The formulas. With :math:`\hat M_a` and :math:`\hat M_b` the groups'
+Nelson-Aalen MCFs, the difference :math:`\hat M_a(t) - \hat M_b(t)` has
+variance :math:`\hat V_a(t) + \hat V_b(t)`, the sum of the groups'
+Lawless-Nadeau robust variances (the groups are independent), and the
+interval is the difference :math:`\pm z` standard errors. The tests are
+the pseudo-score tests of Cook, Lawless and Nadeau (1996). With
+:math:`r_a(t), r_b(t)` the items under observation and
+:math:`d\hat M(t) = d(t) / r(t)` each MCF's step at :math:`t`,
+
+.. math::
+    U = \sum_j w(t_j) \big(d\hat M_a(t_j) - d\hat M_b(t_j)\big),
+    \qquad
+    w(t) = \frac{r_a(t)\, r_b(t)}{r_a(t) + r_b(t)},
+
+over the times both groups are observed, up to the last such time
+:math:`\tau`. ``tests["constant"]`` uses :math:`w` as it is;
+``tests["linear"]`` multiplies it by :math:`(\tau - t)/\tau`, giving early
+times more weight, which compares the average gap between the curves
+rather than the gap at the end. :math:`U^2 / \widehat{Var}(U)` is
+chi-squared with one degree of freedom when the groups' rates are the
+same. The robust variance of :math:`U` (the default) sums the square of
+each item's weighted deviations from its group's steps, so it allows for
+items differing in their rates; ``test_variance="poisson"`` assumes every
+item follows one Poisson process and is too small when they do not. The
+numbers match R's ``reda::mcfDiff`` and ``reda::mcfDiff.test``. With
+few items per group (about 20) the robust tests reject a true null a
+little more often than the nominal level.
+
 Trend tests before fitting
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 

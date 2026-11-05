@@ -344,6 +344,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.CovariatePath": _DATA,
     "surpyval.StepValuedError": "an exception type",
     "surpyval.LogRankResult": _RESULT,
+    "surpyval.IntervalLogRankResult": _RESULT,
     "surpyval.PairwiseLogRankResult": _RESULT,
     "surpyval.NonParametricPlot": (
         "what plot_nonparametric drew (a figure and its counts), not a model"
@@ -365,8 +366,14 @@ OUT_OF_SCOPE: dict[str, str] = {
         "what penalty_path fitted (one penalised model per penalty), not a "
         "model"
     ),
+    "surpyval.LikelihoodContour": _RESULT,
+    "surpyval.LikelihoodContourPlot": (
+        "what plot_likelihood_contour drew (a figure and its contours), "
+        "not a model"
+    ),
     "surpyval.recurrent.TrendTestResult": _RESULT,
     "surpyval.recurrent.InterventionTestResult": _RESULT,
+    "surpyval.recurrent.MCFDiffResult": _RESULT,
     "surpyval.recurrent.GoodnessOfFitResult": _RESULT,
     "surpyval.degradation.RULPrediction": _RESULT,
     "surpyval.degradation.ProcessRUL": _RESULT,
@@ -404,10 +411,12 @@ for _fn in (
     "from_dict",
     "from_json",
     "logrank",
+    "interval_logrank",
     "pairwise_logrank",
     "plot_nonparametric",
     "at_risk_table",
     "plot_coefficients",
+    "plot_likelihood_contour",
     "life_table",
     "rmst_diff",
     "sf_diff",
@@ -421,7 +430,7 @@ for _fn in (
     "survival_probability",
 ):
     OUT_OF_SCOPE[f"surpyval.{_fn}"] = _FUNCTION
-for _fn in ("laplace", "mil_hdbk_189c", "intervention_test"):
+for _fn in ("laplace", "mil_hdbk_189c", "intervention_test", "mcf_diff"):
     OUT_OF_SCOPE[f"surpyval.recurrent.{_fn}"] = _FUNCTION
 for _fn in (
     "filliben",

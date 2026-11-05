@@ -2313,6 +2313,76 @@ explained in :doc:`Parametric Estimation`.
     for _lo, _hi in [wald_cb, lr_cb]:
         assert _hi - _b > _b - _lo, (_lo, _hi)
 
+Joint likelihood contours
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``param_cb`` bounds one parameter at a time. The two parameters of a fit are
+usually estimated together and trade off against each other: for a Weibull, a
+larger scale fits the same data with a larger shape too. The **joint
+confidence region** shows them together. It is the set of pairs of values that
+a likelihood-ratio test does not reject, drawn as a closed curve (a contour)
+around the estimate; at the 95% level it covers the true pair in 95% of
+samples. Two fits whose regions do not overlap, say the old and the new design
+of a part, are evidence that the two really differ, which two separate
+intervals per parameter do not show as clearly.
+
+``model.likelihood_contour(alpha_ci, n_points)`` finds the contour, and
+``surpyval.plot_likelihood_contour`` draws one or more of them, at one or
+several levels, with each estimate marked:
+
+.. jupyter-execute::
+
+    from matplotlib import pyplot as plt
+
+    old = surv.Weibull.fit([52, 66, 81, 95, 104, 118, 131, 150, 160],
+                           c=[0, 0, 0, 0, 0, 0, 0, 0, 1])
+    new = surv.Weibull.fit([88, 102, 115, 127, 139, 156, 170, 191, 200],
+                           c=[0, 0, 0, 0, 0, 0, 0, 0, 1])
+    contour = old.likelihood_contour(alpha_ci=0.1)
+    print(contour)
+
+    out = surv.plot_likelihood_contour({"Old design": old, "New design": new},
+                                       alpha_ci=[0.1, 0.05])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    plt.close(out.fig)
+    _ll = np.array([-old._lr_neg_ll(p) for p in contour.points])
+    assert np.allclose(_ll, contour.log_likelihood_cut, atol=1e-6)
+
+The contour is where the log-likelihood has fallen from its maximum by half the
+chi-squared critical value with two degrees of freedom:
+
+.. math::
+
+    \log L(\theta_1, \theta_2) = \log L(\hat\theta_1, \hat\theta_2) - \tfrac12 \chi^2_{2, 1-\alpha},
+    \qquad \chi^2_{2, 1-\alpha} = -2 \log \alpha.
+
+SurPyval finds it as it finds the likelihood-ratio interval: by root finding
+along ``n_points`` rays from the estimate (in the log of a positive parameter,
+the logit of a bounded one), spaced evenly in the Wald metric, where the
+region is close to a circle. The four points where the contour touches its
+bounding box are each parameter's profile-likelihood bound at the same
+critical value, so ``contour.bounds`` holds the smallest and largest value of
+each parameter over the region exactly. Note the critical value: a
+one-parameter interval uses one degree of freedom, so the joint region's
+extremes are wider than the ``param_cb`` intervals at the same level. Some
+software (WeibullR's ``MLEcontour`` by default, and Weibull++'s contours) uses
+one degree of freedom for contours too; ``likelihood_contour(alpha_ci=a)`` at
+``a = chi2.sf(chi2.ppf(1 - a1, 1), 2)`` reproduces that contour for a level
+``a1``. The contours match WeibullR's ``MLEcontour(..., dof = 2)``, and the
+extremes the profile likelihood solved in base R, in SurPyval's reference
+tests.
+
+The contour is of exactly two fitted parameters. A one-parameter model's
+region is its interval (``param_cb(name, method='lr')``); a model with three
+or more (or an offset, limited-failure or zero-inflated part) is refused, and
+fixing all but two at fit time (``fixed={...}``) gives the contour of those
+two. A fit with sampling weights is refused, as its likelihood-ratio bounds
+are. ``LikelihoodContour.to_dict()`` gives the result as strict JSON.
+
 Likelihood-ratio bounds with an offset, a limited failure population or zero inflation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
