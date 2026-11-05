@@ -67,8 +67,9 @@ Every competing-risks fit takes the same core arrays:
   cause and every other row must have one, otherwise a ``ValueError`` explains
   the mismatch;
 - ``n`` -- optional counts, when each row stands for several identical units;
-- ``tl`` -- for ``ParametricCompetingRisks``, the optional age at which each
-  row came under observation (left truncation; see `Assembling a model from
+- ``tl`` -- for ``CompetingRisks`` and ``ParametricCompetingRisks``, the
+  optional age at which each row came under observation (left truncation,
+  or delayed entry; see `Delayed entry`_ and `Assembling a model from
   separately fitted causes`_).
 
 Left- and interval-censored rows (``c`` of ``-1`` or ``2``) are rejected.
@@ -253,6 +254,52 @@ wear-out, rather than a shock, is what ends a component's life.
     assert naive_wear.ff(200.0) > 0.95, naive_wear.ff(200.0)
     _err = [model.cif(ti, "wear") - true_cif_wear(ti) for ti in t]
     assert np.max(np.abs(_err)) < 0.08, _err
+
+Delayed entry
+^^^^^^^^^^^^^
+
+Often a unit comes under observation only some time after it started: a
+patient joins a study at diagnosis but the clock is their age, or a component
+enters the records when they began, long after it was installed. A unit that
+failed before it would have entered is never seen, so the units you do see
+are the ones that survived to their entry. Pass each unit's entry time as
+``tl``: the unit then counts as at risk only between its entry and its exit
+(``tl < t <= x``), and the estimates are those of the units still running at
+each time. They are conditional on surviving to the earliest entry, as a
+``KaplanMeier`` fit with ``tl`` is. Here half the components were watched
+from new and the rest only came under observation at a random age; the fit
+with the entry ages comes close to the fit of every component from new (the
+``model`` above), while the fit that ignores them counts too many at risk
+early on and understates the shocks:
+
+.. jupyter-execute::
+
+    rng_entry = np.random.default_rng(1)
+    entry = np.where(rng_entry.uniform(size=N) < 0.5, 0.0,
+                     rng_entry.uniform(0, 80, N))
+    seen = x > entry                         # failed before entry: never seen
+    late = CompetingRisks.fit(x[seen], e[seen], tl=entry[seen])
+    ignored = CompetingRisks.fit(x[seen], e[seen])
+    print("with entry     :", np.round(late.cif(t, "shock"), 4))
+    print("ignoring entry :", np.round(ignored.cif(t, "shock"), 4))
+    print("all from new   :", np.round(model.cif(t, "shock"), 4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _full = model.cif(t, "shock")
+    _late = np.abs(late.cif(t, "shock") - _full)
+    _ignored = np.abs(ignored.cif(t, "shock") - _full)
+    assert np.all(_late < 0.03), _late
+    assert np.all(_late < _ignored), (_late, _ignored)
+
+``fit_from_df`` takes the column as ``tl_col``, and ``fit(data)`` passes a
+``SurpyvalData``'s entry times through. The bounds (``cb``) work as before:
+the variance is a function of the numbers at risk and of failures at each
+time, which already count only the units that have entered. This is R's
+``survfit(Surv(entry, x, factor(e)) ~ 1)``; right truncation is not
+supported.
 
 What the fitted model returns
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

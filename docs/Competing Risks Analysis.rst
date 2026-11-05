@@ -375,10 +375,15 @@ of known cause the unit's contribution to :math:`F_k` would have to be spread
 across the interval using all of the cause-specific hazards, which these
 estimators do not do.
 
-Left truncation (delayed entry) is not an argument of the non-parametric or
-regression competing-risks classes. For parametric models it can be handled
-exactly by fitting each cause separately and assembling the result, as the
-next section explains.
+Left truncation (delayed entry) enters the same way. A unit that comes under
+observation at :math:`\tau_i` counts as at risk only for
+:math:`\tau_i < t \le x_i`, so :math:`r_j` is the number that have entered
+before :math:`t_j` and not yet left (Andersen, Borgan, Gill and Keiding,
+1993, IV.4). The non-parametric ``CompetingRisks`` takes the entry times as
+``tl``; its estimates are then conditional on surviving to the earliest entry,
+and Aalen's variance above, a function of :math:`r_j` and the failures only,
+carries over unchanged. ``ParametricCompetingRisks`` takes ``tl`` too, as the
+next section explains. The regression competing-risks classes do not take it.
 
 Parametric Competing Risks
 ---------------------------
