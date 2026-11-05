@@ -1109,9 +1109,11 @@ class ParametricRegressionModel(
         if data_line:
             out += "\nData                : " + data_line
         if self.weighted:
+            # A penalised fit has no covariance, robust or not
             out += (
                 "\nWeights             : effective sample size "
-                f"{self.effective_n:.4g}; robust covariance"
+                f"{self.effective_n:.4g}"
+                + ("; robust covariance" if self.penalty is None else "")
             )
         if self._has_center():
             # A fit with center=True (#463): say where the baseline

@@ -171,11 +171,12 @@ def refuse_weighted_data(data: Any, what: str, why: str, instead: str) -> None:
 
 #: The fitters that take weights ``w``, for the refusals that name them.
 TAKES_WEIGHTS = (
-    "KaplanMeier, NelsonAalen, FlemingHarrington, the parametric "
+    "KaplanMeier, NelsonAalen, FlemingHarrington, Turnbull, the parametric "
     "distributions (Weibull.fit and the others, by maximum likelihood), "
-    "the parametric regressions (WeibullPH, WeibullAFT, ...), "
-    "distributional regression (WeibullDistributional, ...), "
-    "RoystonParmarPH and RoystonParmarPO, and CoxPH"
+    "the parametric regressions (WeibullPH, WeibullAFT, ...) and CoxPH, "
+    "with their penalised fits (fit_penalised), and distributional "
+    "regression (WeibullDistributional, ...), RoystonParmarPH and "
+    "RoystonParmarPO"
 )
 
 

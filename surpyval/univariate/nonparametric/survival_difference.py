@@ -20,6 +20,7 @@ def _at(model: NonParametric, name: str, x: float) -> tuple[float, float]:
     logarithm there (Greenwood's for the Kaplan-Meier, the estimator's own
     for the others): the estimate is a step function, so both are those at
     the last observed time at or before ``x``."""
+    model._refuse_weighted_without_variance("sf_diff")
     if getattr(model, "greenwood", None) is None:
         raise ValueError(
             "{} has no variance estimate, so the survival difference "

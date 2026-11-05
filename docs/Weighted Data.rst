@@ -188,6 +188,62 @@ weights has no bootstrap (without weights it has, with BCa intervals; see
 :doc:`Parametric SurPyval Modelling`); discrete fits and time-varying
 covariate fits have none, weighted or not.
 
+Interval censored data: the weighted Turnbull estimate
+------------------------------------------------------
+
+``Turnbull.fit`` takes ``w`` too, for data the Kaplan-Meier family cannot
+handle: inspection intervals, left censoring and right truncation. The
+estimate is the one that best explains the population the weights
+describe: each unit counts as ``w`` units when the estimate shares out
+the chance of failing among the intervals the unit could have failed in.
+Multiplying every weight by the same number changes nothing, whole-number
+weights give the same curve as counting each row that many times
+(``n``), and on right censored data its Kaplan-Meier option is the
+weighted Kaplan-Meier.
+
+What it does not have is a formula for its uncertainty. Greenwood's
+formula would read the weights as units seen, and the robust
+(infinitesimal jackknife) variance of the weighted Turnbull estimate is
+not built. So ``cb``, ``quantile_cb``, the bounds of ``rmst`` and
+``sf_diff`` refuse it, and its bounds come from ``bootstrap_cb``: the
+units (a row with ``n = k`` is ``k`` units) are drawn with replacement,
+each keeping its weight, the estimate is refitted, and the bounds are
+the percentiles of the refits. Give a seed (``random_state``) and the
+same bounds come back, at any scale of the weights. ``plot`` draws the
+curve without bounds.
+
+.. jupyter-execute::
+
+    # Inspected every 2 time units: a failure is known to lie in (2k, 2k + 2]
+    left = np.where(c == 1, x, np.floor(x / 2) * 2)
+    right = np.where(c == 1, np.inf, left + 2)
+    tb = surv.Turnbull.fit(xl=left, xr=right, w=w)
+    print(tb.sf([4, 8]))
+    print(tb.bootstrap_cb([4, 8], n_boot=200, random_state=1))
+
+A probability plot of weighted left or interval censored or truncated
+data uses these weighted Turnbull positions (``heuristic="Turnbull"``).
+
+In symbols: with :math:`\alpha_{ij} = 1` when piece :math:`j` lies in
+row :math:`i`'s interval, the self-consistency (EM) step is
+
+.. math::
+
+    p_j \leftarrow \frac{1}{\sum_i n_i w_i}
+        \sum_i n_i w_i \frac{\alpha_{ij} p_j}{\sum_k \alpha_{ik} p_k},
+
+the unweighted step with :math:`n_i w_i` in place of :math:`n_i`; delayed
+entry and right truncation add their unseen "ghost" units in the same
+way, each carrying its row's :math:`n_i w_i`. Without truncation the
+default algorithm is the EM-ICM, as R's ``icenReg::ic_np``, whose
+``weights`` give the same estimate (checked to 1e-8). The
+Fleming-Harrington and Nelson-Aalen options are applied to the weighted
+expected numbers at risk and of failures, with Fleming-Harrington's tied
+failures at their mean weight as in the weighted ``FlemingHarrington``.
+The coverage of the 95% bootstrap bounds under informative sampling was
+0.946 and 0.930 (Monte Carlo error 0.01) at two times in 500 simulated
+samples (``scripts/studies/weighted_turnbull/coverage.py``).
+
 Comparing weighted groups
 -------------------------
 
@@ -263,6 +319,23 @@ hand from numDeriv's per-row scores and Hessian for the robust standard
 errors (to 1e-4 relative); flexsurv's own standard errors with weights are
 model based.
 
+Penalised fits with weights
+---------------------------
+
+``CoxPH.fit_penalised``, ``CoxPH.fit_tvc_penalised`` and the parametric
+families' ``fit_penalised`` (``WeibullPH``, ``WeibullAFT``, ``WeibullPO``
+and the others) take ``w``. A penalised fit divides the log-likelihood by
+the number of units before adding the penalty; with weights that number is
+the weighted one, :math:`N_w = \sum n w`, and the covariates are
+standardised with the weighted mean and standard deviation (divisor
+:math:`N_w`). Both scale with the weights, so the fit depends only on their
+proportions, and glmnet's Cox fit with ``weights`` is the same objective
+(checked to 1e-6). Penalised estimates have no standard errors, weighted or
+not, and the information criteria stay refused. The details are in
+:doc:`Regression Modelling with SurPyval` (Penalised regression). The other
+models' penalised fits (competing risks, recurrent events, Royston-Parmar,
+distributional) refuse ``w``.
+
 What a weighted fit will not do
 -------------------------------
 
@@ -287,14 +360,16 @@ saying what to use instead:
   refuse weighted data, since a posterior from the weighted likelihood
   would treat the weights as units seen. Fit by maximum likelihood with
   the weights instead.
-- **Simultaneous bands and** ``bootstrap_cb`` of a non-parametric estimate:
-  use ``cb``.
+- **Simultaneous bands and** ``bootstrap_cb`` of a Kaplan-Meier,
+  Nelson-Aalen or Fleming-Harrington estimate: use ``cb``. A weighted
+  Turnbull estimate is the other way round: ``cb`` refuses and
+  ``bootstrap_cb`` gives its bounds (above).
 - **Rank-based plotting positions** (Blom, median ranks, ...): a weighted
-  model's probability plot uses the weighted Kaplan-Meier, Nelson-Aalen or
-  Fleming-Harrington positions.
+  model's probability plot uses the weighted Kaplan-Meier, Nelson-Aalen,
+  Fleming-Harrington or Turnbull positions.
 - **Methods other than maximum likelihood** (``how="MPP"``, ``"MOM"``,
   ``"MSE"``, ``"MPS"``).
-- **Turnbull**, the Cox model's residuals and ``diagnose()``, strata and
+- The Cox model's residuals and ``diagnose()``, strata and
   exact ties. These may come later.
 - **The fitters that do not take** ``w``: competing risks, recurrent events, degradation, mixtures, Aalen's additive
   model and the frailty models, among others, which refuse weighted data (the Bayesian fits and the

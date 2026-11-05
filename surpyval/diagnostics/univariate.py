@@ -99,6 +99,7 @@ from typing import Any
 
 import numpy as np
 
+from ._shared import _fmt
 from .registry import AdviceRule, Check, Context, Family, Panel, register
 
 #: The bootstrap refits of the goodness-of-fit tests when ``diagnose()``
@@ -136,10 +137,6 @@ NAMED = (
     "Rayleigh",
     "Weibull",
 )
-
-
-def _fmt(value: float) -> str:
-    return f"{value:.3g}"
 
 
 # ---------------------------------------------------------------------------
