@@ -353,6 +353,60 @@ the version reaches it while the old names are still accepted. A
 deprecation the maintainer gives longer is listed with its release in
 ``SCHEDULED_REMOVALS`` (``check_ph``, removed in v0.28) and warns through
 ``scheduled_removal``; its own test fails once that release is reached.
+The rules users rely on are in the :doc:`Deprecation Policy`; the steps
+are below.
+
+Deprecating and removing a name
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A public name (see the :doc:`Deprecation Policy` for what is public) is
+never removed or renamed in one step:
+
+1. **Deprecate it.** Keep the old name working with a warning that names
+   the new one, using the helpers in ``surpyval/utils/deprecation.py``:
+   ``renamed_arguments`` for an argument, ``RenamedAttribute`` for an
+   attribute, and ``renamed_name`` from a module's ``__getattr__`` for a
+   class or function. A name deprecated in the release being prepared is
+   removed in the release after it: pass ``removed_in=REMOVED_IN_NEXT``
+   (``REMOVED_IN`` holds the release that removes the names the last
+   release deprecated). A longer window, chosen by the maintainer, goes in
+   ``SCHEDULED_REMOVALS`` with ``scheduled_removal``. Add a line under
+   **Deprecated** in ``docs/changelog.rst`` naming the replacement and
+   the release that removes the old name.
+2. **Remove it** in that release. ``test_removed_arguments.py`` fails once
+   the version reaches ``REMOVED_IN`` (or a ``SCHEDULED_REMOVALS``
+   release) while a shim is left. Delete the shim, its tests and its
+   documentation, and add a line under **Removed**.
+3. **Leave a hint.** Register the old name in
+   ``surpyval/utils/removed_names.py`` so that using it raises the error
+   Python would, naming the release and the replacement:
+   ``REMOVED_ATTRIBUTES`` for a model attribute, ``REMOVED_TOP_LEVEL`` for
+   a name in ``surpyval``, ``removed_arguments`` for an argument, or a
+   subpackage ``__getattr__`` that raises with ``removed_message``. An
+   entry is dropped once the old name has been gone for a release or two.
+
+``surpyval/tests/test_public_surface.py`` holds this in place for the
+public namespaces. ``surpyval/tests/public_surface.txt`` lists every
+public name, and the test fails when a listed name has gone without a
+deprecation warning or a removal hint, and when a public name is not in
+the list. After adding a public name (with a line under **Added**), or to
+drop a name whose removal hint has been retired, regenerate the list and
+commit it with the change:
+
+.. code-block:: bash
+
+    python -m surpyval.tests.test_public_surface --update
+
+It prints each name it adds and drops, and refuses to drop a name with no
+deprecation or hint unless given ``--force``. A helper that should not be
+public gets a leading underscore instead (or, in a namespace with an
+``__all__``, is left out of it).
+
+A change of behaviour that cannot carry a warning (a corrected result, a
+new default, a convention made consistent) is listed under **Changed** or
+**Fixed** with how much the numbers move; where it changes what a saved
+model means, the model is converted as it loads (as 0.27 does for the
+distributional regression's coefficient signs).
 
 Continuous integration (``.github/workflows/actions.yml``) therefore runs
 once, on the **pull request from dev into main** (the release), and on
