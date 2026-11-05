@@ -277,6 +277,30 @@ WEIGHTED = [
             "quantile_cb": lambda m: m.quantile_cb(0.3),
         },
     ),
+    # The Aalen-Johansen cumulative incidences: each failure's cause is
+    # "a" where the first covariate is 1 and "b" otherwise (as the R
+    # reference, reference/test_weighted_aalen_johansen.py). Fitted
+    # without the late entries, which the estimate does not take.
+    WeightedCase(
+        "CompetingRisks",
+        lambda x, c, n, w, Z, tl: sp.CompetingRisks.fit(
+            x,
+            [
+                None if flag else ("a" if z == 1 else "b")
+                for flag, z in zip(c, Z[:, 0])
+            ],
+            c,
+            n,
+            w=w,
+        ),
+        lambda m: np.concatenate([m.cif(QUERY, "a"), m.cif(QUERY, "b")]),
+        offered={
+            "cb(cif)": lambda m: m.cb(QUERY, "a"),
+            "cb(cif, normal)": lambda m: m.cb(QUERY, "b", bound_type="normal"),
+            "cb(sf)": lambda m: m.cb(QUERY, on="sf"),
+            "cb(Hf, cause)": lambda m: m.cb(QUERY, "a", on="Hf"),
+        },
+    ),
     WeightedCase(
         "CoxPH",
         lambda x, c, n, w, Z, tl: sp.CoxPH.fit(x, Z, c=c, n=n, w=w, tl=tl),

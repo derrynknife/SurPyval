@@ -1,6 +1,5 @@
 Changelog
-=========
-
+==
 Unreleased
 ----------
 
@@ -19,6 +18,15 @@ Unreleased
   non-parametric ones. Checked against R (``survreg`` and ``integrate``
   with the delta method by hand, and flexsurv's ``summary(type="rmst")``)
   on ``lung`` and ``ovarian``.
+=======
+- ``CompetingRisks.fit(..., w=)`` and ``fit_from_df(..., w_col=)``: the
+  Aalen-Johansen cumulative incidence of data with sampling or
+  inverse-probability weights, with the robust (infinitesimal jackknife)
+  variance behind every ``cb`` (the cumulative incidence, and ``sf``,
+  ``ff`` and ``Hf``), the effective sample size in the printout and
+  schema-3 dictionaries. Checked against R's ``survfit(Surv(x, factor(e))
+  ~ 1, weights = w)`` (``pstate`` and ``std.err``, ties included) to
+  1e-10. ``gray_test(..., w=)`` refuses, saying what to use instead.
 - ``CoxPH.fit_firth``: the Cox model with Firth's penalty (Heinze and
   Schemper 2001), half the log determinant of the information added to the
   partial log-likelihood, so the estimates stay finite where a covariate
