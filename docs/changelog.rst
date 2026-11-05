@@ -80,6 +80,22 @@ Unreleased
   inverse Gaussian AFT and PH fits match a likelihood written with
   ``scipy.stats.invgauss``. The tests run the recipe cells from the page
   itself.
+- The degradation level of ``WienerProcessModel`` and ``GammaProcessModel``:
+  ``level_at(t, Z, y0=, t0=)`` is the distribution of the level at time
+  ``t``, from new or from a reading ``y0`` at an age ``t0`` (a
+  ``ProcessLevel`` with ``sf``, ``ff``, ``df``, ``qf``, ``random``, ``mean``
+  and ``to_dict``; normal for a Wiener process, ``y0`` plus a gamma variable
+  for a gamma process, on the stress clock with ``Z``), and
+  ``random_path(times, size, Z, random_state=, y0=, t0=)`` draws the levels
+  at several times from independent increments, for simulating inspections
+  against a preventive limit. Matches scipy's normal and gamma to 1e-12; for
+  the gamma process ``level_at(t).ff(threshold)`` is ``sf(t)`` exactly. Both
+  models also gain ``with_params(params)``, a model rebuilt from a flat
+  vector in the order of ``covariance_names`` (no covariance or likelihood),
+  so draws from ``covariance()`` become models; the spread of ``ff`` over
+  such draws matches the delta-method standard error of ``cb`` to within 1%.
+  ``GammaProcessModel`` now refuses a non-positive ``alpha`` or ``beta`` and
+  ``WienerProcessModel`` a non-finite ``mu``.
 - ``Turnbull.fit(..., w=)``: the Turnbull estimate with sampling weights,
   for interval and left censored and truncated data. The estimate is the
   weighted non-parametric MLE (each row counts ``n w`` in the EM; checked

@@ -133,6 +133,9 @@ under any stress profile stays in closed form.
 .. autoclass:: surpyval.degradation.process_models.GammaProcessModel
    :members:
 
+.. autoclass:: surpyval.degradation.process_models.ProcessLevel
+   :members:
+
 .. autoclass:: surpyval.degradation.process_models.ProcessRUL
    :members:
 
