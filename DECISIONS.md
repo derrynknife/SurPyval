@@ -15,6 +15,14 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-05
 
+### Comparing two MCFs (`recurrent.mcf_diff`)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `mcf_diff(model_a, model_b)` takes two fitted `NonParametricCounting` estimates, as `sf_diff` takes two survival fits and `reda::mcfDiff` two `mcf` objects; a model without per-item data (`from_xrd`, `from_dict`, simulated) is refused, since neither the robust variance nor the tests can be computed from it. | proposed | The groups' fits already carry the data, late entry and windows; a group-label signature would duplicate `fit`'s arguments. | done |
+| The difference is estimated only from the later origin to the end of the shorter follow-up and is NaN outside it; `reda::mcfDiff` carries the shorter group's MCF at its last value. | proposed | The MCF itself is NaN past its last observed time (no claim that no events happen after it); the reference tests compare reda's values on the shared range. | done |
+| The pointwise bounds of the difference are Wald bounds only (no log scale), and there is no simultaneous band. | proposed | A difference can be negative; a band is a further feature. | done (band a gap) |
+
 ### Interval-censored log-rank and Wilcoxon tests: `interval_logrank`
 
 | Decision | By | Reason | Status |

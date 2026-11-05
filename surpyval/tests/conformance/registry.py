@@ -373,6 +373,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     ),
     "surpyval.recurrent.TrendTestResult": _RESULT,
     "surpyval.recurrent.InterventionTestResult": _RESULT,
+    "surpyval.recurrent.MCFDiffResult": _RESULT,
     "surpyval.recurrent.GoodnessOfFitResult": _RESULT,
     "surpyval.degradation.RULPrediction": _RESULT,
     "surpyval.degradation.ProcessRUL": _RESULT,
@@ -429,7 +430,7 @@ for _fn in (
     "survival_probability",
 ):
     OUT_OF_SCOPE[f"surpyval.{_fn}"] = _FUNCTION
-for _fn in ("laplace", "mil_hdbk_189c", "intervention_test"):
+for _fn in ("laplace", "mil_hdbk_189c", "intervention_test", "mcf_diff"):
     OUT_OF_SCOPE[f"surpyval.recurrent.{_fn}"] = _FUNCTION
 for _fn in (
     "filliben",
