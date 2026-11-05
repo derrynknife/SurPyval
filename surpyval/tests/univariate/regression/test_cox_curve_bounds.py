@@ -2,10 +2,13 @@
 ``SemiParametricRegressionModel.cb`` (R's ``survfit(fit, newdata)``,
 checked against R in ``surpyval/tests/reference/test_cox_curve.py``)."""
 
+import inspect
+
 import numpy as np
 import pandas as pd
 import pytest
 from numpy.testing import assert_allclose
+from scipy.stats import norm
 
 import surpyval as sp
 from surpyval import SemiParametricRegressionModel
@@ -188,8 +191,8 @@ def test_refusals(model, rossi):
 
 def test_coverage_of_the_true_survival():
     # Exponential baseline (rate 0.1) and one covariate with effect 0.7;
-    # 300 data sets of 150 units, censored at 12. The 95% bound (log,
-    # R's default) on S(6 | z = 1) should cover the truth about 95% of
+    # 300 data sets of 150 units, censored at 12. The 95% bound on
+    # S(6 | z = 1), on each scale, should cover the truth about 95% of
     # the time: 0.92 to 0.98 is the binomial band of 300 draws.
     rng = np.random.default_rng(20261105)
     truth = np.exp(-0.1 * 6 * np.exp(0.7))
@@ -205,3 +208,52 @@ def test_coverage_of_the_true_survival():
             covered[bound_type] += lo <= truth <= hi
     for bound_type, k in covered.items():
         assert 0.92 <= k / reps <= 0.98, (bound_type, k / reps)
+
+
+def _default(method, name="bound_type"):
+    return inspect.signature(method).parameters[name].default
+
+
+def test_the_default_scale_is_log_log_as_the_non_parametric_estimates(
+    model, rossi
+):
+    # One default everywhere (the maintainer, 2026-11-05): the Cox
+    # curve's bounds are on the log-log scale, as the Kaplan-Meier,
+    # Nelson-Aalen and Fleming-Harrington bounds ("exp", the same scale)
+    # and Aalen's model are.
+    assert _default(SemiParametricRegressionModel.cb) == "log-log"
+    x, c, _ = rossi
+    for estimator in (sp.KaplanMeier, sp.NelsonAalen, sp.FlemingHarrington):
+        fitted = estimator.fit(x, c=c)
+        assert _default(type(fitted).cb) == "exp", estimator
+    assert_allclose(
+        model.cb(TIMES, ROW), model.cb(TIMES, ROW, bound_type="log-log")
+    )
+    assert not np.allclose(
+        model.cb(TIMES[2:], ROW), model.cb(TIMES[2:], ROW, bound_type="log")
+    )
+
+
+def test_log_log_bounds_are_valid_and_the_delta_method_on_log_h(model):
+    t = np.array([5.0, 10.0, 25.5, 40.0, 52.0])
+    S = model.sf(t, ROW)
+    H = model.Hf(t, ROW)
+    b = model.cb(t, ROW)
+    # Inside [0, 1], ordered, around the estimate
+    assert np.all((0 <= b) & (b <= 1))
+    assert np.all(b[:, 0] <= S) and np.all(S <= b[:, 1])
+    assert np.all(b[:, 0] < b[:, 1])
+    # By hand: the standard error of H from the log bound (H + z se),
+    # then the delta method on log H, se(log H) = se / H, back to S
+    z = norm.isf(0.025)
+    se = (model.cb(t, ROW, on="Hf", bound_type="log")[:, 1] - H) / z
+    lo = np.exp(-H * np.exp(z * se / H))
+    hi = np.exp(-H * np.exp(-z * se / H))
+    assert_allclose(b[:, 0], lo, rtol=1e-12)
+    assert_allclose(b[:, 1], hi, rtol=1e-12)
+    # and the same on the cumulative hazard
+    assert_allclose(
+        model.cb(t, ROW, on="Hf"),
+        np.column_stack([H * np.exp(-z * se / H), H * np.exp(z * se / H)]),
+        rtol=1e-12,
+    )

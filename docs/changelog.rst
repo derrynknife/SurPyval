@@ -121,9 +121,12 @@ Unreleased
   and of the coefficients (Tsiatis 1981, Link 1984: R's ``survfit(fit,
   newdata)`` ``std.err``), under Efron's or Breslow's ties, with case
   weights (the robust covariance), for stratified fits (``stratum=``) and
-  for start-stop data. ``bound_type`` is R's ``conf.type``: ``"log"``
-  (the default, as R's), ``"log-log"`` or ``"plain"``. The bounds agree
-  with R ``survival`` 3.8.12 to about 1e-9 on ``lung``, ``ovarian`` and
+  for start-stop data. ``bound_type`` takes R's ``conf.type`` names:
+  ``"log-log"`` (the default, the same scale as the Kaplan-Meier,
+  Nelson-Aalen and Aalen bounds, so curves on one chart get bounds by the
+  same rule), ``"log"`` (R's default; pass it to match R's ``survfit``
+  printout) or ``"plain"``. On each scale the bounds agree with R
+  ``survival`` 3.8.12 to about 1e-9 on ``lung``, ``ovarian`` and
   ``heart`` (``scripts/reference/reference_r_cox_curve.R``).
   ``plot_partial_effects(plot_bounds=True)`` now draws them for a Cox
   model, which refused before. The conformance bound sweeps include them.

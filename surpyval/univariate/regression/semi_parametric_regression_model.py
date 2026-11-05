@@ -1246,7 +1246,7 @@ class SemiParametricRegressionModel(
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
-        bound_type: str = "log",
+        bound_type: str = "log-log",
         method: str = "wald",
     ) -> npt.NDArray:
         r"""
@@ -1275,16 +1275,20 @@ class SemiParametricRegressionModel(
         weights ``w``). After an Efron fit each time's tied deaths are
         spread over the shrinking risk sets of Efron's approximation, as
         the baseline is. This is the ``std.err`` of R's ``survfit.coxph``,
-        with which the bounds agree to rounding.
+        with which the bounds agree to rounding (at its ``conf.type``,
+        ``bound_type`` here).
 
         The bound is then a normal one on a scale set by ``bound_type``,
         R's ``conf.type``:
 
-        - ``"log"`` (the default, as R's): on :math:`\log S = -H`,
+        - ``"log-log"`` (the default): on :math:`\log H`, :math:`H
+          e^{\pm z\,\mathrm{se} / H}`, which keeps both bounds inside
+          (0, 1). It is the scale of the Kaplan-Meier, Nelson-Aalen and
+          Aalen bounds (their ``bound_type="exp"``, also accepted), so
+          curves drawn together get bounds by the same rule;
+        - ``"log"`` (R's default ``conf.type``, to match R's
+          ``survfit`` printout): on :math:`\log S = -H`,
           :math:`S e^{\pm z\,\mathrm{se}}`, the upper bound at most 1;
-        - ``"log-log"``: on :math:`\log H`, :math:`H e^{\pm z\,
-          \mathrm{se} / H}`, which keeps both bounds inside (0, 1) (the
-          non-parametric estimates' ``bound_type="exp"``, also accepted);
         - ``"plain"``: on :math:`S` itself, :math:`S \pm z S\,
           \mathrm{se}`, cut to [0, 1] (``"normal"`` is also accepted).
 
@@ -1319,8 +1323,9 @@ class SemiParametricRegressionModel(
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds put ``[lower, upper]`` on the last axis. A
             one-sided bound puts all of ``alpha_ci`` on one side.
-        bound_type : {'log', 'log-log', 'plain'}, optional
-            The scale of the normal bound, as above. Default ``'log'``.
+        bound_type : {'log-log', 'log', 'plain'}, optional
+            The scale of the normal bound, as above. Default
+            ``'log-log'``; ``'log'`` gives R's ``survfit`` bounds.
         method : 'wald', optional
             The only method.
 
@@ -1334,7 +1339,7 @@ class SemiParametricRegressionModel(
         --------
         The chance of no arrest in the first year, with 95% bounds, for a
         25-year-old with three prior convictions, without and with
-        financial aid (R's ``survfit(fit, newdata)`` gives the same):
+        financial aid (on the log-log scale, the default):
 
         >>> from surpyval import CoxPH
         >>> from surpyval.datasets import load_rossi_static
@@ -1342,14 +1347,14 @@ class SemiParametricRegressionModel(
         >>> x, c = df["week"].values, 1 - df["arrest"].values
         >>> model = CoxPH.fit(x, df[["fin", "age", "prio"]].values, c=c)
         >>> model.cb(52, [0, 25, 3]).round(4)
-        array([0.6656, 0.7888])
+        array([0.6575, 0.7807])
         >>> model.cb(52, [1, 25, 3]).round(4)
-        array([0.7442, 0.8521])
-
-        The log-log bounds, which keep both ends inside (0, 1):
-
-        >>> model.cb(52, [1, 25, 3], bound_type="log-log").round(4)
         array([0.736 , 0.8444])
+
+        The log bounds, which R's ``survfit(fit, newdata)`` prints:
+
+        >>> model.cb(52, [1, 25, 3], bound_type="log").round(4)
+        array([0.7442, 0.8521])
         """
         from surpyval.utils.validation import check_option
 

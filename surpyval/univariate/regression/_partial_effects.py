@@ -127,10 +127,10 @@ class PartialEffectsMixin:
             Draw each curve's two-sided confidence band, from the model's
             ``cb`` (its default Wald method, from the fit's covariance),
             as a pale wash of the curve's colour. Default False. For
-            the Cox model these are the bounds of R's
-            ``survfit(fit, newdata)`` (its ``cb`` with the default
-            ``bound_type="log"``), drawn as steps. A model without ``cb``
-            refuses it.
+            the Cox model these are its ``cb`` bounds, on the default
+            log-log scale (R's ``survfit(fit, newdata)`` with
+            ``conf.type = "log-log"``), drawn as steps. A model without
+            ``cb`` refuses it.
         alpha_ci : float, optional
             Total tail probability of the bands. Default 0.05.
         ax : matplotlib axes, optional
