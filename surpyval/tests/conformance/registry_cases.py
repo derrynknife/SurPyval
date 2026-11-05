@@ -1767,6 +1767,16 @@ def _bounds(case):
         "BayesianParametric": _BAYES_BOUNDS,
         "RoystonParmarModel": (Bound("cb", on=_ON_SURVIVAL),),
         "AalenAdditiveModel": (Bound("cb", on=_ON_SURVIVAL),),
+        # The Cox model's predicted curves: R's survfit conf.types
+        "SemiParametricRegressionModel": tuple(
+            Bound(
+                "cb",
+                on=_ON_SURVIVAL,
+                kwargs={"bound_type": bound_type},
+                label=f"cb[{bound_type}]",
+            )
+            for bound_type in ("log", "log-log", "plain")
+        ),
     }
     if cls in fixed:
         return fixed[cls]

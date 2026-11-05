@@ -338,6 +338,7 @@ def fit_weighted_cox(
     from .cox_likelihood import baselines_at_origin
     from .cox_ph import (
         ALIASED_HOW,
+        PENALISED_ADVICE,
         _baseline_method,
         _cox_aliased,
         _diverged_columns,
@@ -429,9 +430,11 @@ def fit_weighted_cox(
                 off = np.flatnonzero(direction)
                 which = str(kept[off].tolist())
                 if alone:
-                    warn_monotone(which)
+                    warn_monotone(which, advice=PENALISED_ADVICE)
                 else:
-                    warn_monotone(which, direction[off])
+                    warn_monotone(
+                        which, direction[off], advice=PENALISED_ADVICE
+                    )
         try:
             bread = np.linalg.inv(info)
         except np.linalg.LinAlgError:

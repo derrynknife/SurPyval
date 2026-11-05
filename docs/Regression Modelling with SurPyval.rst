@@ -641,6 +641,64 @@ evaluation times inside the observed range: the baseline is only estimated
 there, and a Cox model's ``hf`` returns the size of the baseline *step* at the
 latest observed time, not a smooth hazard rate.
 
+Confidence bounds on a predicted curve
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A predicted survival curve is an estimate, and ``model.cb(x, Z)`` gives its
+pointwise confidence bounds, as R's ``survfit(fit, newdata)`` does. The curve
+is uncertain for two reasons. The baseline is estimated from the failures in
+the data: each step is the deaths at that time over the (risk-weighted)
+number still at risk, so a step taken when few are left is shaky. And the
+coefficients that move the baseline to the covariates ``Z`` are estimates
+too: the further ``Z`` is from the typical unit in the data, the more their
+error matters. The bounds add the two. With few failures, or covariates far
+from the data's, the bounds are wide, and they should be.
+
+The standard error of the predicted cumulative hazard is the Tsiatis (1981)
+and Link (1984) form, the ``std.err`` of R's ``survfit.coxph``:
+
+.. math::
+
+    \widehat{\mathrm{Var}}\,\hat H(t \mid Z) = e^{2\beta'(Z - c)}
+    \Big[ \sum_{s \le t} \frac{dN(s)}{S_0(s)^2} + q(t)' V q(t) \Big],
+    \qquad q(t) = \sum_{s \le t} \big(Z - \bar Z(s)\big)\, d\hat H_0(s),
+
+where :math:`S_0(s)` sums :math:`e^{\beta'(Z_i - c)}` over the units at risk
+at event time :math:`s`, :math:`\bar Z(s)` is their risk-weighted mean
+covariate, :math:`dN(s)` the deaths at :math:`s` and :math:`V` the
+coefficients' covariance. After an Efron fit (the default), each time's tied
+deaths are spread over Efron's shrinking risk sets, as the baseline is; with
+case weights ``w`` every sum is weighted and :math:`V` is the robust
+covariance; for a stratified model the sums run over the stratum's units.
+
+``bound_type`` chooses the scale of the normal interval, R's ``conf.type``:
+``'log'`` (the default, as R's: :math:`S e^{\pm z\,\mathrm{se}}`, the upper
+bound at most 1), ``'log-log'`` (:math:`H e^{\pm z\,\mathrm{se}/H}`, which
+keeps both bounds inside (0, 1)) or ``'plain'`` (:math:`S \pm z S\,
+\mathrm{se}`, cut to [0, 1]). ``on='ff'`` and ``on='Hf'`` bound the failure
+probability and the cumulative hazard. The bounds agree with R's to
+rounding (see ``scripts/reference/reference_r_cox_curve.R``):
+
+.. jupyter-execute::
+
+    t_q = np.array([0.9, 1.0, 1.1])
+    print('sf      :', model.sf(t_q, Z_mean).round(3))
+    print('95% cb  :', model.cb(t_q, Z_mean).round(3).tolist())
+    print('log-log :', model.cb(t_q, Z_mean, bound_type='log-log').round(3).tolist())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _b = model.cb(t_q, Z_mean)
+    _s = model.sf(t_q, Z_mean)
+    assert np.all((_b[:, 0] <= _s) & (_s <= _b[:, 1]))
+
+With 11 failures among 34 tires and four coefficients, the bounds are wide;
+the log bound's upper end reaches 1, the log-log bound's stays below it.
+``plot_partial_effects(..., plot_bounds=True)`` draws these bounds around
+each curve.
+
 Tied event times
 ~~~~~~~~~~~~~~~~
 
@@ -4537,6 +4595,76 @@ scale and the standardisation would both have to be weighted, and it
 refuses them rather than ignore them.
 
 
+Firth's penalty: Cox regression when a covariate separates the events
+---------------------------------------------------------------------
+
+Sometimes every event happens in one group: all the deaths are among the
+treated patients, or every failure is on the units from one supplier.
+Then the partial likelihood keeps rising as that group's hazard ratio
+grows, the ordinary Cox estimate is infinite, and ``CoxPH.fit`` warns "No
+finite maximum" (it names the coefficients and suggests ``fit_firth``).
+This is called *monotone likelihood*, or separation, and it is common in
+small studies with a rare event.
+
+``CoxPH.fit_firth`` fits the model with Firth's penalty (Heinze and
+Schemper 2001). In words: it adds a small term that grows very negative
+as the information about a coefficient vanishes, which is exactly what
+happens as a coefficient runs off to infinity, so the estimate stays
+finite. Where the data do pin the coefficients down, the term is tiny and
+the estimates barely move (it also removes the small-sample bias of the
+ordinary estimates). In symbols, the fit maximises
+
+.. math::
+
+    \ell^*(\beta) = \ell(\beta) + \tfrac{1}{2} \log |I(\beta)|,
+
+the partial log-likelihood :math:`\ell` plus half the log determinant of
+its information :math:`I` (Jeffreys' prior). Ties are Breslow's, as in
+R's ``coxphf``, and the fit agrees with ``coxphf`` to six digits.
+
+Unlike the ridge and lasso fits above, Firth's fit comes with inference.
+The standard errors are from the inverse of the information at the
+estimate. The intervals and p-values are by default from the *profile
+penalised likelihood*: they follow the likelihood's real, lopsided shape,
+which under separation is flat on one side, where a Wald interval
+(estimate plus or minus 1.96 standard errors) would be far too narrow on
+that side. ``model.firth`` holds them with the Wald ones beside them, and
+``likelihood_ratio_test()`` is the penalised likelihood-ratio test of
+every coefficient being 0. ``profile=False`` skips the profile searches
+and reports the Wald intervals and p-values.
+
+.. jupyter-execute::
+
+    import numpy as np
+    from surpyval import CoxPH
+
+    # Every death is in the group z1 = 1
+    x = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    c = np.array([0, 0, 1, 0, 1, 1, 0, 1, 1, 1])
+    Z = np.array([[1, 0.5], [1, -1.2], [0, 0.3], [1, 0.8], [0, -0.4],
+                  [1, 1.1], [1, -0.6], [0, 0.9], [0, 0.2], [1, -0.1]])
+    firth = CoxPH.fit_firth(x, Z, c=c)
+    firth
+
+.. jupyter-execute::
+
+    firth.likelihood_ratio_test()
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert firth.maximum == 'verified', firth.maximum
+    assert np.all(np.isfinite(firth.firth.upper))
+
+``fit_firth`` takes delayed entry ``tl`` (so start-stop rows, as
+``Surv(start, stop, event)``), counts ``n`` and ``strata``. It refuses a
+covariate the partial likelihood cannot estimate at all (a constant
+column, say), since the penalty has no value there, and it does not take
+weights ``w``. ``neg_ll()`` and the information criteria are those of the
+ordinary partial likelihood at the Firth estimate.
+
+
 Model Selection
 ---------------
 
@@ -4725,6 +4853,67 @@ ignores the covariates entirely. The Cox model should score lower:
 
     assert ibs < ibs_km
 
+How sure are the scores, and is one model really better?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A Brier score or an AUC from a few hundred subjects is itself an estimate:
+another test set would give a different number. Before saying that one model
+predicts better than another, ask whether the gap is larger than that noise.
+:func:`~surpyval.metrics.validation.score_predictions` answers both questions.
+It gives each score with a standard error and a confidence interval, and, when
+two or more models are scored on the same subjects, the difference between
+each pair with its own interval and a p-value. Because both models are scored
+on the same people, the comparison is *paired*: much of the noise is shared and
+cancels, so a difference can be clear even when the two models' intervals
+overlap.
+
+.. jupyter-execute::
+
+    from surpyval.metrics import score_predictions
+
+    result = score_predictions(
+        x_te, c_te, {"marginal KM": S_km, "Cox": S}, times
+    )
+    result.scores.round(4)
+
+.. jupyter-execute::
+
+    result.comparisons.round(4)
+
+Each row of ``comparisons`` is "model minus reference": a negative Brier or
+IBS difference and a positive AUC difference favour the model. Here the Cox
+model's integrated Brier score is clearly lower than the Kaplan-Meier curve's,
+and the AUC of the curve, which ranks nobody, is 0.5.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    ibs_row = result.comparisons.query("metric == 'ibs'").iloc[0]
+    assert ibs_row.difference < 0 and ibs_row.p_value < 0.001
+
+How the standard errors are worked out: each score is an average over the
+subjects of an IPCW term, so it moves by a known amount when one subject is
+added or removed, its *influence function* :math:`\mathrm{IF}_i`. The censoring
+weights :math:`1/\hat G` are estimated too, and the influence function
+includes how each subject moves :math:`\hat G` (the Kaplan-Meier of the
+censoring times, through its Nelson-Aalen expansion). Then
+
+.. math::
+    \mathrm{se} = \frac{\mathrm{sd}(\mathrm{IF})}{\sqrt n}, \qquad
+    \mathrm{se}(A - B) = \frac{\mathrm{sd}(\mathrm{IF}^A - \mathrm{IF}^B)}{\sqrt n},
+
+the interval is :math:`\text{estimate} \pm z_{1-\alpha/2}\,\mathrm{se}`
+(clipped to :math:`[0, 1]`), and the test of no difference is the Wald test
+:math:`2\Phi(-|A - B| / \mathrm{se}(A - B))`. For the AUC this is Blanche,
+Dartigues and Jacqmin-Gadda's (2013) influence function, as R's
+``timeROC(iid = TRUE)``; for the Brier score, Gerds and Schumacher's, as
+``riskRegression::Score(se.fit = TRUE)``; the IBS combines the Brier scores'
+with the same trapezoid weights as its estimate. The numbers agree with
+``Score`` to rounding (with and without tied times) and with ``timeROC`` on
+data without tied event times. The censoring distribution is estimated from
+the scored data, as ``Score`` does; there is no ``x_train`` here.
+
 Concordance
 ~~~~~~~~~~~
 
@@ -4770,6 +4959,24 @@ predictor for Buckley-James). The pairs are counted in
 :math:`O(n \log n)`, so 50,000 subjects take a fraction of a second.
 Concordance only measures ranking; pair it with the Brier score, which also
 checks that the predicted probabilities are right.
+
+A C from a test set of a few dozen subjects is itself uncertain.
+``concordance_estimate`` gives it a standard error and a confidence interval
+(R's ``survival::concordance`` variance), and ``weighting="uno"`` with a
+horizon ``tau`` gives Uno's C, which weights each pair against the censoring
+so that the answer does not depend on how long follow-up was. To ask whether
+one model ranks better than another on the same subjects use
+``compare_concordance``, which accounts for the two C's sharing their
+subjects:
+
+.. jupyter-execute::
+
+    from surpyval.metrics import compare_concordance
+
+    print(cox.concordance_estimate(x_te, c_te, Z_te))
+    print(cox.concordance_estimate(x_te, c_te, Z_te, weighting="uno",
+                                   tau=float(np.median(x_te))))
+    compare_concordance(x_te, c_te, Z_te @ cox.beta, Z_te[:, 0] * cox.beta[0])
 
 Survival trees and random survival forests (beta)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

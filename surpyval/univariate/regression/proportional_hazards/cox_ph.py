@@ -55,6 +55,7 @@ from .._aliasing import (
 from .._fit_skeleton import covariate_center
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
 from ..tvc_fit import fit_tvc_df
+from .cox_firth import FIRTH_ADVICE
 
 # at_risk_beta_Z, cox_at_risk_mask, efron_jac, efron_log_denominator and
 # not_yet_entered are re-exported: they were defined here.
@@ -454,12 +455,25 @@ def _diverged_columns(
     return np.flatnonzero((d0 > 0) & ~(np.nan_to_num(d, nan=0.0) > 1e-8 * d0))
 
 
-def warn_monotone(which: str, proportion: npt.ArrayLike | None = None) -> None:
+#: The fix the monotone-likelihood warning names for a fit that
+#: ``CoxPH.fit_firth`` does not take (Fine-Gray, weights).
+PENALISED_ADVICE = (
+    "consider removing or coarsening the covariate, or a penalised fit"
+)
+
+
+def warn_monotone(
+    which: str,
+    proportion: npt.ArrayLike | None = None,
+    advice: str = FIRTH_ADVICE,
+) -> None:
     """Warn that the partial likelihood has no finite maximum in the
     coefficients ``which`` names (``"[0]"``, or ``"[0] (cause 'a')"``);
     shared with the Fine-Gray fit, a weighted partial likelihood (#392).
     With ``proportion``, they run off together, in that proportion to
-    each other, and no one of them does alone (#728)."""
+    each other, and no one of them does alone (#728). ``advice`` is the
+    fix named: ``CoxPH.fit_firth`` by default, ``PENALISED_ADVICE`` for a
+    fit it does not take."""
     if proportion is None:
         what = (
             "the partial likelihood keeps increasing as coefficient(s) {} "
@@ -480,7 +494,7 @@ def warn_monotone(which: str, proportion: npt.ArrayLike | None = None) -> None:
         what,
         "The reported value, its standard error and its p-value are "
         "meaningless",
-        "consider removing or coarsening the covariate, or a penalised fit",
+        advice,
     )
 
 
@@ -1301,6 +1315,126 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             w,
             tr,
             t,
+        )
+
+    @dataframe_covariates
+    @takes_unit
+    @accepts_surpyval_data
+    def fit_firth(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        tl: npt.ArrayLike | None = None,
+        strata: npt.ArrayLike | None = None,
+        alpha_ci: float = 0.05,
+        profile: bool = True,
+        center: bool = False,
+        tol: float = 1e-10,
+    ) -> SemiParametricRegressionModel:
+        """
+        Fit the Cox model with Firth's penalty (Heinze and Schemper
+        2001): finite estimates, with intervals and tests, where a
+        covariate separates the events from the survivors.
+
+        When every event at each event time has the largest (or the
+        smallest) value of a covariate in its risk set -- every death in
+        one group, say -- the partial likelihood keeps increasing as that
+        coefficient grows, and :meth:`fit` warns "No finite maximum".
+        Firth's fit maximises the partial log-likelihood plus half the
+        log determinant of its information,
+
+        .. math::
+            \\ell^*(\\beta) = \\ell(\\beta) + \\tfrac{1}{2}
+            \\log |I(\\beta)|,
+
+        Jeffreys' prior. The information falls to 0 as a coefficient runs
+        off, so the penalty keeps the estimate finite; where the data
+        carry the coefficients it changes them little, and it removes the
+        first-order bias of the maximum likelihood estimate in small
+        samples. Ties are Breslow's, as R's ``coxphf`` (its only ones).
+
+        Unlike :meth:`fit_penalised`, the fit has inference: the
+        standard errors and ``covariance()`` are the inverse of the
+        partial likelihood's information at the estimate (``coxphf``'s);
+        the intervals and p-values are by the profile penalised
+        likelihood (``coxphf``'s ``pl=TRUE``), which follows the
+        asymmetric shape of the likelihood where the Wald ones do not;
+        and ``likelihood_ratio_test()`` is the penalised
+        likelihood-ratio test of every coefficient being 0. They agree
+        with ``coxphf`` to 1e-6 (coefficients, standard errors) and 1e-5
+        (bounds).
+
+        Parameters
+        ----------
+        x : array_like
+            As for :meth:`fit`.
+        Z : array_like
+            As for :meth:`fit`. A column the partial likelihood cannot
+            determine (a constant one, one constant within each stratum,
+            or a combination of the others) is refused, not aliased:
+            the penalty has no value there.
+        c : array_like, optional
+            As for :meth:`fit` (0 an event, 1 right censored).
+        n : array_like, optional
+            As for :meth:`fit`.
+        tl : array_like, optional
+            Delayed entry, as for :meth:`fit`; with ``tl`` the start
+            times, ``x`` the stop times, the rows are start-stop
+            intervals (``Surv(start, stop, event)``).
+        strata : array_like, optional
+            As for :meth:`fit`: one set of coefficients, a baseline per
+            stratum; the penalty is of the information summed over the
+            strata.
+        alpha_ci : float, optional
+            The intervals' total tail probability. Default 0.05.
+        profile : bool, optional
+            ``True`` (the default) gives profile penalised-likelihood
+            intervals and penalised likelihood-ratio p-values; ``False``
+            Wald's, from ``covariance()`` (``coxphf``'s ``pl=FALSE``),
+            which is faster: each profile bound is a search over refits.
+        center : bool, optional
+            As for :meth:`fit`.
+        tol : float, optional
+            The convergence tolerance: the Newton step, in standardised
+            coefficients, and the Newton decrement.
+
+        Returns
+        -------
+        SemiParametricRegressionModel
+            The fitted model. ``params`` are the Firth estimates,
+            ``p_values`` the tests of ``model.firth.p_values``, and
+            ``model.firth`` (a
+            :class:`~surpyval.univariate.regression.proportional_hazards.cox_firth.FirthResult`)
+            holds the intervals (``lower``, ``upper``), the Wald ones
+            beside them and the penalised log-likelihoods. ``summary()``
+            shows the profile intervals at ``alpha_ci``. ``neg_ll()`` and
+            the information criteria are of the unpenalised partial
+            likelihood at the estimate.
+
+        Examples
+        --------
+        Every death in the group ``z1 = 1``, so the ordinary coefficient
+        of ``z1`` is infinite:
+
+        >>> import numpy as np
+        >>> from surpyval import CoxPH
+        >>> x = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+        >>> c = np.array([0, 0, 1, 0, 1, 1, 0, 1, 1, 1])
+        >>> Z = np.array([[1, 0.5], [1, -1.2], [0, 0.3], [1, 0.8],
+        ...               [0, -0.4], [1, 1.1], [1, -0.6], [0, 0.9],
+        ...               [0, 0.2], [1, -0.1]])
+        >>> model = CoxPH.fit_firth(x, Z, c=c)
+        >>> model.params.round(3)
+        array([ 1.924, -0.246])
+        >>> model.firth.lower.round(3), model.firth.upper.round(3)
+        (array([-0.38 , -1.658]), array([6.822, 1.089]))
+        """
+        from .cox_firth import fit_cox_firth
+
+        return fit_cox_firth(
+            self, x, Z, c, n, tl, strata, alpha_ci, profile, center, tol
         )
 
     @column_arguments("x", "c", "n", "tl")

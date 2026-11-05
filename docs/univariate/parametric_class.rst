@@ -11,7 +11,8 @@ parameters (``sf``, ``ff``, ``df``, ``hf``, ``Hf``, ``qf``, ``cs``,
 ``mean``, ``var``, ``moment``, ``entropy``, ``random``, ``random_data``),
 the same model with other parameters (``with_params``, ``extras``),
 confidence bounds
-on those functions (``cb``) and on the parameters (``param_cb``), the
+on those functions (``cb``) and on the parameters (``param_cb``, and
+the joint region of two, ``likelihood_contour``), the
 restricted mean survival time with its bounds (``rmst``, ``rmst_cb``),
 information criteria
 (``aic``, ``aic_c``, ``bic``, ``neg_ll``), probability plots and
