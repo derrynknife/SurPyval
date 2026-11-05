@@ -17,6 +17,18 @@ Unreleased
   ``compare`` to 1e-9 on two synthetic sets (one with tied times) and Cox
   models of ``veteran``. ``brier_score``, ``integrated_brier_score`` and
   ``auc_td`` are unchanged.
+- ``e=`` and ``cause=`` on ``brier_score``, ``integrated_brier_score``,
+  ``auc_td`` and ``score_predictions``: the Brier score, integrated Brier
+  score and time-dependent AUC of one cause with competing risks, scoring
+  predicted cumulative incidences, with standard errors, intervals and model
+  comparisons. A subject with a competing event counts as never having the
+  cause; ``controls="cause_free"`` (default) or ``"event_free"`` chooses the
+  AUC's controls (``timeROC``'s ``AUC_2`` and ``AUC_1``). Checked against
+  ``riskRegression::Score(cause = k, se.fit = TRUE)`` and ``timeROC(cause =
+  k, iid = TRUE)`` to 1e-9 on a synthetic set with tied times (both causes)
+  and the PBC trial (death, transplant competing). ``c`` may be left out
+  when ``e`` is given; an unknown cause, or ``cause`` without ``e``, is
+  refused.
 - Pseudo-observations and regression on them: ``pseudo_survival``,
   ``pseudo_rmst`` and ``pseudo_cif`` give the jackknife (leave-one-out)
   pseudo-values of the Kaplan-Meier survival at chosen times, of the

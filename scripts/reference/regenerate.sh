@@ -21,6 +21,7 @@ Rscript scripts/reference/reference_r_calibration.R
 Rscript scripts/reference/reference_r_frailty_diag.R
 Rscript scripts/reference/reference_r_stratified_cox.R
 Rscript scripts/reference/reference_r_metric_inference.R
+Rscript scripts/reference/reference_r_competing_metrics.R
 Rscript scripts/reference/reference_r_pseudo.R
 Rscript scripts/reference/reference_r_cox_curve.R
 Rscript scripts/reference/reference_r_reda.R

@@ -1178,3 +1178,114 @@ other rows as they are:
         csph_f.cif([2.0], pd.DataFrame({"z1": [0.5], "band": ["mid"]}), 1)
     except ValueError as err:
         print(textwrap.fill(str(err), 79))
+
+Scoring predictions of one cause: Brier score and AUC
+-----------------------------------------------------
+
+Once a model predicts each subject's cumulative incidence of a cause, two
+questions follow: are the predicted probabilities close to what happened
+(the *Brier score*: lower is better), and do the subjects who went on to have
+that cause by a time get higher predictions than those who did not (the
+*time-dependent AUC*: 0.5 is chance, 1 is perfect)? The prediction metrics of
+:mod:`surpyval.metrics` answer both for one cause at a time: pass the event
+types as ``e`` and the cause scored as ``cause``, and the predicted cumulative
+incidences ``F_k(t | Z)`` of that cause in place of predicted survival.
+
+Censored subjects are handled as for the ordinary metrics, by weighting the
+others by the inverse of the probability of being still under observation
+(IPCW, with the Kaplan-Meier estimate of the censoring of every cause). What
+is new is the subject whose first event is of *another* cause: they can never
+have the scored cause, so
+
+* in the Brier score they count, with their weight, as subjects whose
+  outcome is "no event of this cause", and
+* in the AUC they count as controls, alongside the subjects still free of
+  every event (``controls="cause_free"``, the default, as R's
+  ``riskRegression::Score`` and ``timeROC``'s ``AUC_2``);
+  ``controls="event_free"`` leaves them out and compares the cases with the
+  event-free subjects only (``timeROC``'s ``AUC_1``).
+
+Here two cause-specific Cox models are fitted to the first 500 subjects of
+the Fine-Gray simulation above, one with both covariates and one with
+:math:`Z_2` only, and scored for cause 1 on the other 300. A model's ``cif``
+pairs each time with a row of ``Z``, so a column of the matrix is one horizon
+for every subject:
+
+.. jupyter-execute::
+
+    from surpyval.metrics import score_predictions
+
+    train = np.arange(N) < 500
+    test = ~train
+    both = CompetingRisksProportionalHazards.fit(
+        x[train], Z[train], e[train], c=c[train]
+    )
+    z2_only = CompetingRisksProportionalHazards.fit(
+        x[train], Z[train][:, [1]], e[train], c=c[train]
+    )
+    horizons = [0.25, 0.5, 1.0]
+
+
+    def incidence(model, Z_new, cause):
+        n = len(Z_new)
+        return np.column_stack(
+            [model.cif(np.full(n, t), Z_new, event=cause) for t in horizons]
+        )
+
+
+    scores = score_predictions(
+        x[test],
+        c[test],
+        {
+            "Z2 only": incidence(z2_only, Z[test][:, [1]], 1),
+            "Z1 and Z2": incidence(both, Z[test], 1),
+        },
+        horizons,
+        e=e[test],
+        cause=1,
+    )
+    scores.scores.round(4)
+
+The model with both covariates ranks the subjects who had cause 1 clearly
+better from half a time unit on, while its Brier scores are only a little
+lower; the paired comparisons say how sure that is:
+
+.. jupyter-execute::
+
+    scores.comparisons.round(4)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _auc = scores.comparisons.query("metric == 'auc'")
+    assert (_auc.difference > 0).all() and _auc.p_value.iloc[-1] < 0.05
+
+:func:`~surpyval.metrics.validation.brier_score`,
+:func:`~surpyval.metrics.validation.integrated_brier_score` and
+:func:`~surpyval.metrics.validation.auc_td` take the same ``e`` and ``cause``
+and return the bare estimates. A ``cause`` that is not among the event types
+is refused, as is ``cause`` without ``e``.
+
+In formulas, with :math:`\hat G` the censoring Kaplan-Meier, :math:`\delta_i`
+the event indicator and :math:`\epsilon_i` the cause of subject :math:`i`'s
+event, the Brier score of cause :math:`k` at :math:`t` is
+
+.. math::
+    BS_k(t) = \frac1n \sum_i \Big[
+        \frac{(I(\epsilon_i = k) - F_k(t\mid Z_i))^2\,
+              I(x_i \le t,\ \delta_i=1)}{\hat G(x_i-)}
+      + \frac{F_k(t\mid Z_i)^2\, I(x_i > t)}{\hat G(t)} \Big],
+
+and the AUC is the weighted proportion of (case, control) pairs the
+predictions order correctly, ties counting half, with the cases
+(:math:`x_i \le t`, :math:`\epsilon_i = k`) weighted by
+:math:`1/\hat G(x_i-)`, the event-free controls by :math:`1/\hat G(t)` and the
+competing-event controls by :math:`1/\hat G(x_j-)` (Blanche, Dartigues and
+Jacqmin-Gadda 2013). The standard errors come from the same influence
+functions as for one cause, and agree with ``riskRegression::Score(cause = k,
+se.fit = TRUE)`` to rounding: Brier score, AUC, the integrated Brier score
+and the comparisons, with and without tied times. For a cause other than the
+first one, ``Score`` (version 2026.3.11) gives AUC standard errors that change
+when the causes are relabelled; SurPyval's match those it gives with the cause
+coded 1, which also agree with ``timeROC``.

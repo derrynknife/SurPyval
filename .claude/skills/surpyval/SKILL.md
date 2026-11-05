@@ -290,7 +290,7 @@ silently wrong numbers, not errors.
 | **Joint models** | `sp.WeibullJointPH`, `sp.JointPH` | A marker read repeatedly plus a lifetime: a degradation path (any `PathModel`) with random effects, Weibull PH in its current value; covariates per part (`hazard_covariates`, `path_covariates`); all censoring and truncation; `sf/ff/cb(x, Z, markers=, given=)` and `predict(...)` (dynamic prediction: `hf`, `remaining_life`, `marker`, `random`) |
 | **Multivariate** | `surpyval.multivariate` | Copulas: `Clayton`, `Frank`, `Gumbel`, `Gaussian`, `Independence` |
 | **Mixtures** | `sp.MixtureModel.fit(x, dist=..., m=...)` | EM mixture of a base family |
-| **Model validation** | `surpyval.metrics` | `brier_score`, `integrated_brier_score`, `auc_td`, `survival_probability` |
+| **Model validation** | `surpyval.metrics` | `brier_score`, `integrated_brier_score`, `auc_td`, `score_predictions` (standard errors, model comparisons), `survival_probability`; `e=`/`cause=` score one cause's predicted CIF with competing risks |
 | **ML (beta, pre-stable)** | `surpyval.beta.ml` | `SurvivalTree`, `RandomSurvivalForest` (full data model; coupled `kind="weibull"/"exponential"/"non-parametric"`) |
 
 > Pre-stable tier: `surpyval.beta` = complete but interface not yet frozen.

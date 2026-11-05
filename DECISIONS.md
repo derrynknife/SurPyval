@@ -15,6 +15,14 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-05
 
+### Brier score and time-dependent AUC for competing risks
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Competing risks enter the existing metrics as `e=` (event type per row, `None` for censored, `c` then optional, as the competing-risks fits) and `cause=` (the one scored); the prediction matrix then holds the cumulative incidence `F_k(t \| Z)` of that cause in the argument that otherwise holds `S(t \| Z)`. No new functions. | proposed | One set of metric functions; the same data convention as every competing-risks fit; with one cause the result is the ordinary metric of `1 - S`. | done |
+| A subject with a competing event by `t` is weighted `1 / G(x_i-)` and counts as "no event of the cause" in the Brier score; the AUC's controls default to everyone without the cause by `t` (`controls="cause_free"`: `Score`'s definition, `timeROC`'s `AUC_2`), with `"event_free"` (`AUC_1`) as the option. `G` is the Kaplan-Meier of the censoring of every cause. | proposed | `riskRegression::Score(cause = k)`'s definitions, so the numbers check against it; `AUC_2` is the one that uses every uncensored subject. | done |
+| The AUC standard errors follow the influence function that `Score` gives when the scored cause is coded 1 (and `timeROC`), not `Score`'s output for a cause coded otherwise, which changes with the labelling. | proposed | A standard error cannot depend on what a cause is called; the relabelled `Score` call and `timeROC` agree with each other and with SurPyval. | done |
+
 ### Standard errors and comparisons of the Brier score, IBS and time-dependent AUC
 
 | Decision | By | Reason | Status |
