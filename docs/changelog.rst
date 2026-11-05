@@ -481,6 +481,12 @@ Unreleased
   formatting, notes, the covariate kind, the trend sign, formula-column
   names, the AIC gap) now live once in ``surpyval/diagnostics/_shared.py``.
   Every diagnosis is unchanged to the last bit.
+- Removed code nothing called: the rename helpers of
+  ``surpyval.utils.deprecation`` no deprecation uses any more
+  (``reordered_arguments``, ``CallableFloat``, ``MethodFloat``,
+  ``MethodArray``, ``ArrayMethod``, ``RenamedToMethod``, ``MadePrivate``),
+  and a few private helpers with no callers. ``renamed_arguments``,
+  ``RenamedAttribute`` and ``renamed_name`` stay for the next rename.
 
 v0.26 (31 October 2026)
 -----------------------
