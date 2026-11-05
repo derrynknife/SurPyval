@@ -823,7 +823,8 @@ total tail probability: a two-sided band has ``alpha_ci / 2`` in each tail, so
 the default is a 95 % band) and ``bound`` (``"two-sided"``, ``"lower"`` or ``"upper"``). The bounds describe
 the *life model*; the stochastic-process and destructive models further down
 have their own uncertainty story (the destructive model offers bootstrap bounds;
-the process models do not yet report parameter uncertainty).
+the process models have ``covariance()``, ``cb`` and ``with_params``, under
+"Parameter uncertainty" further down).
 
 
 Accelerated degradation testing (covariates)
@@ -1546,8 +1547,9 @@ level ``alpha_ci``, default ``0.05``) and ``prob_already_failed``. Unlike the
 general-path ``predict_rul`` it needs only the current level, not the unit's
 history — the independent increments make the past irrelevant — and the
 interval reflects the randomness of the process, not uncertainty in the fitted
-``mu`` and ``sigma`` (the process models do not report parameter
-uncertainty). The fitted parameters are ``model.mu`` and ``model.sigma``
+``mu`` and ``sigma`` (to carry that too, draw parameters from ``covariance()``
+and rebuild the model with ``with_params``, as under "Parameter uncertainty"
+below). The fitted parameters are ``model.mu`` and ``model.sigma``
 (together, ``model.params``), and ``hf``, ``Hf``, ``df`` and
 ``random(size, random_state=...)`` complete the set of life methods. As for
 every maximum-likelihood fit, ``model.maximum`` says what the fit reached:
