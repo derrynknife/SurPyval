@@ -477,6 +477,10 @@ Unreleased
   saving and the printout. Every penalised result, warning and refusal
   is unchanged to the last bit. The solver now also takes a model with
   no Hessian, using finite differences of its gradient, and says so.
+- Stale documentation brought up to date: the model atlas lists
+  ``CauseSpecificNHPP`` (no longer a gap) and drops issue numbers that no
+  longer track anything; the README's model table names
+  ``CauseSpecificNHPP``; the usage skill lists all eight copula families.
 - The diagnostics families' copies of the same small helpers (number
   formatting, notes, the covariate kind, the trend sign, formula-column
   names, the AIC gap) now live once in ``surpyval/diagnostics/_shared.py``.
