@@ -346,6 +346,18 @@ class SemiParametricRegressionModel(
 
         return cox_likelihood_ratio_test(self)
 
+    def _refuse_ic(self, name: str) -> None:
+        # Firth's fit has no criteria (decided 5 Nov 2026): its estimate
+        # maximises the penalised likelihood, which does not compare
+        # models; the weighted refusal is the mixin's.
+        if self.firth is not None:
+            from .proportional_hazards.cox_firth import (
+                refuse_firth_information_criterion,
+            )
+
+            raise refuse_firth_information_criterion(name)
+        super()._refuse_ic(name)
+
     def _ic_k(self) -> float:
         # A penalised fit counts its effective number of parameters.
         penalised_k = self._penalised_ic_k()
@@ -623,6 +635,7 @@ class SemiParametricRegressionModel(
         out += self._penalty_printout()
         if self.firth is not None:
             out += "\nPenalty             : " + self.firth.line()
+            out += "\nAIC and BIC         : " + self.firth.ic_line()
         if self.weighted:
             # A penalised fit has no covariance, robust or not
             out += (

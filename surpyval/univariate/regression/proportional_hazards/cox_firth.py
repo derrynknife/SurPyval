@@ -75,6 +75,34 @@ _MAX_HALVINGS = 30
 _BLOCK_CELLS = 4_000_000
 
 
+class FirthRefusal(ValueError):
+    """An information criterion (AIC, BIC, AICc) asked of a Firth fit,
+    which has none to give: a ``ValueError`` saying why and what to use
+    instead, as a weighted fit's ``WeightedRefusal``."""
+
+
+#: Why a Firth fit has no information criteria, and what to use instead.
+FIRTH_IC_WHY = (
+    "the fit maximises the penalised partial likelihood, which is not a "
+    "likelihood to compare models by, and the ordinary partial likelihood "
+    "is not at its maximum at the penalised estimate"
+)
+FIRTH_IC_INSTEAD = (
+    "Refit the ordinary model (CoxPH.fit) for AIC and BIC, or test the "
+    "covariates with the penalised likelihood-ratio test, "
+    "model.likelihood_ratio_test()."
+)
+
+
+def refuse_firth_information_criterion(name: str) -> FirthRefusal:
+    """The refusal of the criterion ``name`` (``"aic()"``, ...) of a
+    Firth fit: what it is, why, and what to use instead."""
+    return FirthRefusal(
+        f"{name} is not available for a Firth-penalised Cox fit "
+        f"(CoxPH.fit_firth): {FIRTH_IC_WHY}. {FIRTH_IC_INSTEAD}"
+    )
+
+
 class FirthResult(NamedTuple):
     """What a Firth-penalised Cox fit (:meth:`CoxPH.fit_firth
     <surpyval.univariate.regression.proportional_hazards.cox_ph.CoxPH_.fit_firth>`)
@@ -195,6 +223,14 @@ class FirthResult(NamedTuple):
         """The printout's line for the fit."""
         return "Firth (Jeffreys prior); {} intervals and tests".format(
             "profile penalised-likelihood" if self.profile else "Wald"
+        )
+
+    def ic_line(self) -> str:
+        """The printout's line on the information criteria, which a Firth
+        fit does not give."""
+        return (
+            "none: a penalised likelihood does not compare models; "
+            "refit with CoxPH.fit for AIC and BIC"
         )
 
 

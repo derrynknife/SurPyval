@@ -12,6 +12,7 @@ from numpy.testing import assert_allclose
 
 import surpyval as sp
 from surpyval.univariate.regression.proportional_hazards.cox_firth import (
+    FirthRefusal,
     _BreslowSums,
     _Firth,
 )
@@ -192,3 +193,43 @@ def test_refuses_a_column_with_no_information():
         sp.CoxPH.fit_firth(x, np.column_stack([Z, np.ones(len(x))]), c=c)
     with pytest.raises(ValueError, match="alpha_ci"):
         sp.CoxPH.fit_firth(x, Z, c=c, alpha_ci=1.5)
+
+
+@pytest.mark.parametrize("criterion", ["aic", "bic", "aic_c"])
+def test_information_criteria_refuse_saying_why_and_what_instead(criterion):
+    # Decided 5 Nov 2026: the penalised likelihood does not compare
+    # models, so a Firth fit gives no AIC, BIC or AICc, also once restored.
+    x, Z, c = _separation()
+    model = sp.CoxPH.fit_firth(x, Z, c=c)
+    back = SemiParametricRegressionModel.from_dict(model.to_dict())
+    for fitted in (model, back):
+        with pytest.raises(FirthRefusal) as caught:
+            getattr(fitted, criterion)()
+        text = str(caught.value)
+        assert text.startswith(f"{criterion}() is not available")
+        assert "penalised partial likelihood" in text
+        assert "CoxPH.fit" in text and "likelihood_ratio_test()" in text
+        assert isinstance(caught.value, ValueError)
+    # The penalised likelihood-ratio test and neg_ll() are still given
+    assert np.isfinite(model.likelihood_ratio_test()["statistic"])
+    assert np.isfinite(model.neg_ll())
+
+
+def test_ordinary_cox_criteria_are_unchanged():
+    x, Z, c = _lung()
+    model = sp.CoxPH.fit(x, Z, c=c, tie_method="breslow")
+    k, nll = 2, model.neg_ll()
+    assert_allclose(model.aic(), 2 * k + 2 * nll)
+    assert_allclose(model.bic(), k * np.log(np.sum(model.d)) + 2 * nll)
+    assert np.isfinite(model.aic_c())
+    assert "AIC and BIC" not in repr(model)
+
+
+def test_printout_says_why_there_is_no_aic_in_one_line():
+    x, Z, c = _separation()
+    text = repr(sp.CoxPH.fit_firth(x, Z, c=c))
+    lines = [ln for ln in text.splitlines() if "AIC" in ln]
+    assert lines == [
+        "AIC and BIC         : none: a penalised likelihood does not "
+        "compare models; refit with CoxPH.fit for AIC and BIC"
+    ]

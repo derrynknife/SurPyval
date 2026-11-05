@@ -1460,9 +1460,16 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             :class:`~surpyval.univariate.regression.proportional_hazards.cox_firth.FirthResult`)
             holds the intervals (``lower``, ``upper``), the Wald ones
             beside them and the penalised log-likelihoods. ``summary()``
-            shows the profile intervals at ``alpha_ci``. ``neg_ll()`` and
-            the information criteria are of the unpenalised partial
-            likelihood at the estimate.
+            shows the profile intervals at ``alpha_ci``. ``neg_ll()`` is
+            the unpenalised partial likelihood at the estimate;
+            ``likelihood_ratio_test()`` is the penalised test.
+
+        Notes
+        -----
+        ``aic()``, ``bic()`` and ``aic_c()`` refuse (a ``FirthRefusal``,
+        a ``ValueError``): the penalised likelihood is not a likelihood
+        to compare models by. Refit with :meth:`fit` for them, or use
+        ``likelihood_ratio_test()``.
 
         Examples
         --------

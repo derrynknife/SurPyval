@@ -4787,8 +4787,16 @@ and reports the Wald intervals and p-values.
 ``Surv(start, stop, event)``), counts ``n`` and ``strata``. It refuses a
 covariate the partial likelihood cannot estimate at all (a constant
 column, say), since the penalty has no value there, and it does not take
-weights ``w``. ``neg_ll()`` and the information criteria are those of the
-ordinary partial likelihood at the Firth estimate.
+weights ``w``. ``neg_ll()`` is the ordinary partial likelihood at the
+Firth estimate.
+
+A Firth fit gives no AIC or BIC: ``aic()``, ``bic()`` and ``aic_c()``
+raise an error that says why. The fit maximises the penalised
+likelihood, which is not a likelihood to compare models by, and at the
+penalised estimate the ordinary likelihood is not at its maximum, so a
+criterion from either would mislead. To compare models by AIC or BIC,
+refit them with ``CoxPH.fit``; to ask whether the covariates matter, use
+the penalised ``likelihood_ratio_test()``, as R's ``coxphf`` does.
 
 
 Model Selection
