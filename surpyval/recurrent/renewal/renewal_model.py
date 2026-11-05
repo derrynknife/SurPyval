@@ -1,3 +1,4 @@
+import math
 import textwrap
 import warnings
 from collections.abc import Callable
@@ -277,6 +278,18 @@ _QF_HAZARD_LIMIT = 20.0
 
 _MACHINE_EPS = float(np.finfo(float).eps)
 
+#: A Newton step that moves the point by less than this fraction of itself
+#: ends the search: the error left after it is about its square.
+_NEWTON_RTOL = 1e-9
+
+#: A Newton step below this fraction may also end the search when the
+#: steps so far predict that the error left after it is below the double's
+#: rounding (see ``_invert_cumulative_hazard``).
+_NEWTON_ASYMPTOTIC = 1e-4
+
+#: Newton steps before a draw is handed to the bracketing solver instead.
+_NEWTON_MAXITER = 30
+
 
 def conditional_gaps(
     lifetime: Any, v: np.ndarray, u: np.ndarray
@@ -295,17 +308,18 @@ def conditional_gaps(
     the next age came back as ``v`` itself and the simulated MCF went flat.
 
     ``H`` is inverted with the quantile function while that is accurate
-    (see ``_QF_HAZARD_LIMIT``) and by root finding beyond it.
+    (see ``_QF_HAZARD_LIMIT``) and by Newton's method on ``H`` beyond it
+    (see ``_invert_cumulative_hazard``).
     """
     v = np.asarray(v, dtype=float)
     u = np.asarray(u, dtype=float)
-    hazard, quantile = _lifetime_functions(lifetime)
+    hazard, quantile, both = _lifetime_functions(lifetime)
     with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
-        h_v = np.broadcast_to(hazard(v), v.shape)
-        target = h_v - np.log(u)
+        H_v = np.broadcast_to(hazard(v), v.shape)
+        target = H_v - np.log(u)
     # No survival past age v (the end of a bounded support): the item
     # fails at once.
-    at_once = np.isinf(h_v) & (h_v > 0)
+    at_once = np.isinf(H_v) & (H_v > 0)
     # u == 0 (or an undefined H): an infinitely late event.
     never = ~at_once & ~np.isfinite(target)
     easy = ~at_once & ~never & (target <= _QF_HAZARD_LIMIT)
@@ -314,17 +328,31 @@ def conditional_gaps(
     if easy.any():
         x[easy] = quantile(-np.expm1(-target[easy]))
     if hard.any():
-        x[hard] = _invert_cumulative_hazard(hazard, v[hard], target[hard])
+        x[hard] = _invert_cumulative_hazard(
+            hazard, v[hard], target[hard], both=both, H_v=H_v[hard]
+        )
     gap = np.maximum(x - v, 0.0)
     gap[at_once] = 0.0
     gap[never] = np.inf
     return gap
 
 
-def _lifetime_functions(lifetime: Any) -> "tuple[Callable, Callable]":
-    """``H`` and the quantile function of ``lifetime``, on arrays. For a
-    plain model (no offset, cure fraction or zero-inflation -- what the
-    renewal fitters build) the distribution's own functions are called
+def _lifetime_functions(
+    lifetime: Any,
+) -> "tuple[Callable, Callable, Callable | None]":
+    """``H``, the quantile function and ``both``, on arrays, for
+    ``lifetime``: ``both(x)`` gives ``(H(x), h(x))``, the cumulative
+    hazard and the hazard rate, for Newton's method (``both(x, H)`` skips
+    finding an ``H`` already known, where that saves a call). The rate is
+    the model's (or distribution's) ``hf``; ``exp(log f + H)`` from the
+    density where there is no ``hf`` (from ``log_df`` where there is one);
+    and, for a mixture, both come from one pass over the components.
+    ``both`` is ``None`` where there is no hazard rate to use (a discrete
+    or a non-parametric lifetime: the latter's ``hf`` is the jumps of a
+    step function), and ``H`` is then inverted by bracketing.
+
+    For a plain model (no offset, cure fraction or zero-inflation -- what
+    the renewal fitters build) the distribution's own functions are called
     directly, skipping the model methods' argument handling."""
     if (
         getattr(lifetime, "lfp_p", None) == 1
@@ -345,7 +373,30 @@ def _lifetime_functions(lifetime: Any) -> "tuple[Callable, Callable]":
         def quantile(p: np.ndarray) -> np.ndarray:
             return np.asarray(dist.qf(p, *params), dtype=float)
 
-        return hazard, quantile
+        def dist_rate(x: np.ndarray, H: np.ndarray) -> np.ndarray:
+            x = np.asarray(x, dtype=float)
+            below = x < lower
+            inside = np.where(below, lower, x)
+            with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+                if callable(getattr(dist, "hf", None)):
+                    h = np.asarray(dist.hf(inside, *params), dtype=float)
+                else:
+                    h = np.exp(_log_density(dist, inside, *params) + H)
+            return np.where(below, 0.0, h)
+
+        def dist_both(
+            x: np.ndarray, H: "np.ndarray | None" = None
+        ) -> "tuple[np.ndarray, np.ndarray]":
+            if H is None:
+                H = hazard(x)
+            return H, dist_rate(x, H)
+
+        has_rate = callable(getattr(dist, "hf", None)) or callable(
+            getattr(dist, "df", None)
+        )
+        if getattr(dist, "discrete", False) or not has_rate:
+            return hazard, quantile, None
+        return hazard, quantile, dist_both
 
     def model_hazard(x: np.ndarray) -> np.ndarray:
         return np.asarray(lifetime.Hf(x), dtype=float)
@@ -353,14 +404,267 @@ def _lifetime_functions(lifetime: Any) -> "tuple[Callable, Callable]":
     def model_quantile(p: np.ndarray) -> np.ndarray:
         return np.asarray(lifetime.qf(p), dtype=float)
 
-    return model_hazard, model_quantile
+    dist = getattr(lifetime, "dist", None)
+    if dist is None or getattr(dist, "discrete", False):
+        return model_hazard, model_quantile, None
+    # A mixture gives both from one pass over its components (``None``
+    # where it cannot).
+    joint = getattr(lifetime, "_hazard_and_rate", None)
+    if callable(joint):
+
+        def mixture_both(
+            x: np.ndarray, H: "np.ndarray | None" = None
+        ) -> "tuple[np.ndarray, np.ndarray]":
+            # ``H`` is not needed: the pass finds it anyway.
+            x = np.asarray(x, dtype=float)
+            out = joint(x)
+            if out is None:
+                H = model_hazard(x)
+                return H, np.asarray(lifetime.hf(x), dtype=float)
+            return out
+
+        return model_hazard, model_quantile, mixture_both
+    if callable(getattr(lifetime, "hf", None)):
+
+        def model_both(
+            x: np.ndarray, H: "np.ndarray | None" = None
+        ) -> "tuple[np.ndarray, np.ndarray]":
+            if H is None:
+                H = model_hazard(x)
+            return H, np.asarray(lifetime.hf(x), dtype=float)
+
+        return model_hazard, model_quantile, model_both
+    if callable(getattr(lifetime, "df", None)):
+
+        def density_both(
+            x: np.ndarray, H: "np.ndarray | None" = None
+        ) -> "tuple[np.ndarray, np.ndarray]":
+            if H is None:
+                H = model_hazard(x)
+            with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+                return H, np.exp(_log_density(lifetime, x) + H)
+
+        return model_hazard, model_quantile, density_both
+    return model_hazard, model_quantile, None
+
+
+def _log_density(source: Any, x: np.ndarray, *params: float) -> np.ndarray:
+    """``log f(x)``: ``source.log_df`` where it has one (finite where the
+    density underflows), else the log of ``source.df``."""
+    if callable(getattr(source, "log_df", None)):
+        return np.asarray(source.log_df(x, *params), dtype=float)
+    return np.log(np.asarray(source.df(x, *params), dtype=float))
+
+
+def _newton_point(
+    x: np.ndarray, H: np.ndarray, h: np.ndarray, target: np.ndarray
+) -> np.ndarray:
+    """One Newton step towards ``H(x) = target`` from ``x``, where ``H``
+    and its derivative ``h`` are known. Where ``x``, ``H`` and ``h`` are
+    all positive the step is taken on ``log H`` against ``log x``, which is
+    a straight line for a Weibull (one step is exact) and nearly so in the
+    upper tail of most lifetimes; elsewhere on ``H`` against ``x``. NaN
+    where neither step is defined (a zero hazard rate)."""
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        logs = (x > 0) & (H > 0) & (h > 0)
+        log_step = np.log(target / H) * H / (x * h)
+        out = np.where(logs, x * np.exp(log_step), x + (target - H) / h)
+    return np.where(np.isfinite(out), out, np.nan)
 
 
 def _invert_cumulative_hazard(
-    hazard: Callable, v: np.ndarray, target: np.ndarray
+    hazard: Callable,
+    v: np.ndarray,
+    target: np.ndarray,
+    both: "Callable | None" = None,
+    H_v: "np.ndarray | None" = None,
 ) -> np.ndarray:
     """Solve ``H(x_k) = target_k`` for ``x_k > v_k`` (where ``H(v_k) <
-    target_k``), for every ``k`` at once."""
+    target_k``), for every ``k`` at once.
+
+    With ``both`` (``x -> (H(x), h(x))``, see ``_lifetime_functions``) this
+    takes Newton steps from ``v`` (see ``_newton_point``), each kept
+    inside a bracket ``lo < x < hi`` that every evaluation narrows: a step
+    that would leave it bisects it instead (or, while no point above the
+    root has been found, doubles the distance from ``v``). A draw is done
+
+    - when a step moves it by less than ``_NEWTON_RTOL`` of itself (the
+      error left is about that squared);
+    - when a step below ``_NEWTON_ASYMPTOTIC`` follows another Newton step
+      and the two predict an error after it below the double's rounding:
+      Newton's error squares at each step, ``e' = K e^2``, and ``K`` is
+      estimated as ``step / previous step^2``, so the error after a step
+      ``s`` is about ``s^3 / previous^2``;
+    - or when its bracket has closed to rounding.
+
+    Two or three evaluations of ``both`` after the one at ``v`` usually
+    do (``H_v``, the cumulative hazard at ``v`` if known, saves finding it
+    again). A draw that meets an undefined or infinite ``H`` (past a
+    bounded support), or has not converged in ``_NEWTON_MAXITER`` steps,
+    is solved by bracketing instead (``_bracket_and_solve``), as is every
+    draw where ``both`` is ``None``. One draw at a time (what the
+    simulations ask for) runs the same steps on Python floats
+    (``_newton_one``), without the array bookkeeping.
+    """
+    v = np.asarray(v, dtype=float)
+    target = np.asarray(target, dtype=float)
+    if both is None:
+        return _bracket_and_solve(hazard, v, target)
+    if H_v is not None:
+        H_v = np.broadcast_to(np.asarray(H_v, dtype=float), v.shape)
+    if v.size == 1:
+        root = _newton_one(
+            both,
+            float(v.reshape(-1)[0]),
+            float(target.reshape(-1)[0]),
+            None if H_v is None else float(H_v.reshape(-1)[0]),
+        )
+        if root is not None:
+            return np.full(v.shape, root)
+        return _bracket_and_solve(hazard, v, target)
+    n = v.size
+    out = np.full(n, np.nan)
+    lo = np.array(v, dtype=float)
+    hi = np.full(n, np.inf)
+    first = np.maximum(np.abs(v), 1.0)
+    # The relative size of the last Newton step (inf after any other).
+    previous = np.full(n, np.inf)
+    x = np.array(v, dtype=float)
+    active = np.arange(n)
+    give_up = np.zeros(n, dtype=bool)
+    for k in range(_NEWTON_MAXITER + 1):
+        if not active.size:
+            break
+        a = active
+        xa = x[a]
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            H, h = both(xa, None if k or H_v is None else H_v[a])
+            H = np.broadcast_to(np.asarray(H, dtype=float), xa.shape)
+            h = np.broadcast_to(np.asarray(h, dtype=float), xa.shape)
+        g = H - target[a]
+        # At v itself H is below the target by construction (rounding
+        # aside); past a bounded support H is inf or nan.
+        bad = ~np.isfinite(H)
+        exact = (g == 0) & (k > 0)
+        below = (g < 0) | (k == 0)
+        lo[a] = np.where(below & ~bad, xa, lo[a])
+        hi[a] = np.where(~below & ~bad, xa, hi[a])
+        lo_a, hi_a = lo[a], hi[a]
+        step = _newton_point(xa, H, h, target[a])
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            size = np.abs(step - xa) / np.abs(xa)
+            # No estimate of K without an earlier Newton step.
+            predicted = np.where(
+                np.isfinite(previous[a]), size**3 / previous[a] ** 2, np.inf
+            )
+        inside = np.isfinite(step) & (step > lo_a) & (step < hi_a)
+        # Outside the bracket: bisect it, or reach further out while
+        # nothing above the root has been found.
+        fallback = np.where(
+            np.isfinite(hi_a),
+            lo_a + 0.5 * (hi_a - lo_a),
+            v[a] + 2.0 * np.maximum(lo_a - v[a], first[a]),
+        )
+        tiny = np.isfinite(step) & (size <= _NEWTON_RTOL)
+        settled = (
+            inside & (size <= _NEWTON_ASYMPTOTIC) & (predicted <= _MACHINE_EPS)
+        )
+        closed = np.isfinite(hi_a) & (
+            hi_a - lo_a
+            <= 4 * _MACHINE_EPS * np.maximum(np.abs(lo_a), np.abs(hi_a))
+        )
+        # A step this small is done even if rounding puts it just outside
+        # the bracket: the point itself is then the answer.
+        out[a] = np.where(
+            exact | (tiny & ~inside),
+            xa,
+            np.where(tiny | settled, step, lo_a + 0.5 * (hi_a - lo_a)),
+        )
+        previous[a] = np.where(inside, size, np.inf)
+        give_up[a] = bad
+        x[a] = np.where(inside, step, fallback)
+        active = a[~(exact | tiny | settled | closed | bad)]
+    give_up[active] = True
+    if give_up.any():
+        out[give_up] = _bracket_and_solve(hazard, v[give_up], target[give_up])
+    return out
+
+
+def _first(values: Any) -> float:
+    """The one value of a one-element result, as a float."""
+    return float(np.asarray(values, dtype=float).reshape(-1)[0])
+
+
+def _newton_point_one(x: float, H: float, h: float, target: float) -> float:
+    """``_newton_point`` for one draw, on floats (NaN where no step)."""
+    try:
+        if x > 0 and H > 0 and h > 0:
+            out = x * math.exp(math.log(target / H) * H / (x * h))
+        else:
+            out = x + (target - H) / h
+    except (ArithmeticError, ValueError):
+        return math.nan
+    return out if math.isfinite(out) else math.nan
+
+
+def _newton_one(
+    both: Callable, v: float, target: float, H_v: "float | None"
+) -> "float | None":
+    """``_invert_cumulative_hazard``'s Newton steps for one draw, on
+    floats, with the same rules; ``None`` where it hands the draw to
+    bracketing (an undefined or infinite ``H``, or no convergence)."""
+    lo, hi = v, math.inf
+    first = max(abs(v), 1.0)
+    previous = math.inf
+    x = v
+    for k in range(_NEWTON_MAXITER + 1):
+        point = np.array([x])
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            if k == 0 and H_v is not None:
+                H_arr, h_arr = both(point, np.array([H_v]))
+            else:
+                H_arr, h_arr = both(point)
+        H, h = _first(H_arr), _first(h_arr)
+        if not math.isfinite(H):
+            return None
+        g = H - target
+        if g == 0 and k > 0:
+            return x
+        if g < 0 or k == 0:
+            lo = x
+        else:
+            hi = x
+        step = _newton_point_one(x, H, h, target)
+        size = abs(step - x) / abs(x) if x != 0 else math.inf
+        inside = lo < step < hi
+        if size <= _NEWTON_RTOL:
+            return step if inside else x
+        if (
+            inside
+            and size <= _NEWTON_ASYMPTOTIC
+            and math.isfinite(previous)
+            and size**3 / previous**2 <= _MACHINE_EPS
+        ):
+            return step
+        if math.isfinite(hi) and hi - lo <= 4 * _MACHINE_EPS * max(
+            abs(lo), abs(hi)
+        ):
+            return lo + 0.5 * (hi - lo)
+        previous = size if inside else math.inf
+        if inside:
+            x = step
+        elif math.isfinite(hi):
+            x = lo + 0.5 * (hi - lo)
+        else:
+            x = v + 2.0 * max(lo - v, first)
+    return None
+
+
+def _bracket_and_solve(
+    hazard: Callable, v: np.ndarray, target: np.ndarray
+) -> np.ndarray:
+    """``_invert_cumulative_hazard`` without a hazard rate: bracket each
+    root by doubling a step out from ``v``, then ``solve_bracketed``."""
 
     def g(x: np.ndarray, sel: np.ndarray) -> np.ndarray:
         with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
@@ -1168,7 +1472,7 @@ class RenewalModel(
                     - np.asarray(cif(now + 0.0 * x), dtype=float)
                     - states.reduction[:, None] * x
                 )
-            hazard, _ = _lifetime_functions(self.model)
+            hazard, _, _ = _lifetime_functions(self.model)
             age = states.age[:, None]
             scaled = x / states.scale[:, None]
             return hazard(age + scaled) - hazard(age + 0.0 * scaled)

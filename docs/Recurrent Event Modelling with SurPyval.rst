@@ -1138,7 +1138,12 @@ its times count from its entry, and the fitted model's ``data`` hold them so.
 They all return a
 :doc:`RenewalModel <counting/renewal_model>`, which has no closed-form
 cumulative intensity: its ``mcf`` and ``plot`` work by simulating many items
-from the fitted model.
+from the fitted model. Each simulated failure adds an exponential amount to
+the lifetime's cumulative hazard at the item's virtual age and solves for
+the age that reaches it, so the draws stay exact at long horizons, where an
+old item's survival is far too small to hold in a double; past a cumulative
+hazard of 20 the age is found by Newton's method with the hazard rate,
+in two or three steps.
 
 Reliability growth: the demonstrated MTBF
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
