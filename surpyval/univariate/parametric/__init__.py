@@ -45,6 +45,11 @@ from .distributions import (
     Uniform,
     Weibull,
 )
+from .likelihood_contour import (
+    LikelihoodContour,
+    LikelihoodContourPlot,
+    plot_likelihood_contour,
+)
 from .mixture_model import MixtureModel
 from .parametric import Parametric
 from .parametric_fitter import OptimisedFitMixin, ParametricFitter

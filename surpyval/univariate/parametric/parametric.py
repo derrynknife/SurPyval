@@ -1388,6 +1388,76 @@ class Parametric(
             bounds = -bounds * factor
             return p_hat + bounds
 
+    def likelihood_contour(
+        self, alpha_ci: float = 0.05, n_points: int = 100
+    ) -> Any:
+        r"""
+        The joint likelihood-ratio confidence region of the model's two
+        parameters: the contour around the estimate inside which every
+        pair of values is one a likelihood-ratio test at level
+        ``alpha_ci`` does not reject.
+
+        ``param_cb(name, method="lr")`` bounds one parameter at a time;
+        this region bounds the two together, and shows how they trade
+        off (a Weibull's scale and shape are correlated, so the region
+        is a tilted oval, not a rectangle). It covers the true pair with
+        probability ``1 - alpha_ci`` in large samples. The contour is
+        where the log-likelihood has fallen from its maximum by half the
+        chi-squared critical value with two degrees of freedom:
+
+        .. math::
+
+            \log L(\theta) = \log L(\hat\theta) - \chi^2_{2, 1 - \alpha}/2,
+            \qquad \chi^2_{2, 1 - \alpha} = -2 \log \alpha.
+
+        It is found by root finding along ``n_points`` rays from the
+        estimate (in each parameter's log, or logit, for a bounded one),
+        at angles evenly spaced in the Wald metric, plus the four points
+        where it is tangent to the axes, which are each parameter's
+        profile-likelihood bounds at the same critical value.
+        :func:`surpyval.plot_likelihood_contour` draws it, for one or
+        more fits.
+
+        Parameters
+        ----------
+        alpha_ci : float, optional
+            The significance level; 0.05 (the default) gives the 95%
+            joint region.
+        n_points : int, optional
+            The number of rays from the estimate. Defaults to 100.
+
+        Returns
+        -------
+        LikelihoodContour
+            The ``points`` of the contour (one column per parameter),
+            the extremes of each parameter over the region (``bounds``),
+            the estimate and the log-likelihood there and on the contour;
+            ``to_dict()`` gives it as strict JSON.
+
+        Raises
+        ------
+        ValueError
+            For a model with other than two fitted parameters (one
+            parameter's region is its interval, ``param_cb(name,
+            method="lr")``; fix all but two at fit time for the contour
+            of those two), an offset, limited-failure or zero-inflated
+            model, a fit other than MLE, or a fit with weights ``w``.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> x = [61.9, 74.2, 82.2, 106.3, 76.2, 40.7, 83.2, 42.3, 50.4]
+        >>> model = Weibull.fit(x, c=[1, 0, 0, 0, 0, 0, 0, 1, 0])
+        >>> contour = model.likelihood_contour(alpha_ci=0.1, n_points=40)
+        >>> contour.params, contour.points.shape
+        (['alpha', 'beta'], (44, 2))
+        >>> bool(abs(contour.critical_value - 4.60517) < 1e-5)
+        True
+        """
+        from .likelihood_contour import likelihood_contour
+
+        return likelihood_contour(self, alpha_ci, n_points)
+
     def _resolve_param_name(self, name: str) -> tuple[bool, int]:
         """Locate the parameter ``name`` for a confidence bound.
 

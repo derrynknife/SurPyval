@@ -365,6 +365,11 @@ OUT_OF_SCOPE: dict[str, str] = {
         "what penalty_path fitted (one penalised model per penalty), not a "
         "model"
     ),
+    "surpyval.LikelihoodContour": _RESULT,
+    "surpyval.LikelihoodContourPlot": (
+        "what plot_likelihood_contour drew (a figure and its contours), "
+        "not a model"
+    ),
     "surpyval.recurrent.TrendTestResult": _RESULT,
     "surpyval.recurrent.InterventionTestResult": _RESULT,
     "surpyval.recurrent.GoodnessOfFitResult": _RESULT,
@@ -408,6 +413,7 @@ for _fn in (
     "plot_nonparametric",
     "at_risk_table",
     "plot_coefficients",
+    "plot_likelihood_contour",
     "life_table",
     "rmst_diff",
     "sf_diff",

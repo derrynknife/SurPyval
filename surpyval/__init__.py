@@ -75,6 +75,8 @@ from surpyval.univariate.parametric import (
     GumbelLEV,
     Hypoexponential,
     InstantlyOccurs,
+    LikelihoodContour,
+    LikelihoodContourPlot,
     Logistic,
     LogLogistic,
     LogNormal,
@@ -89,6 +91,7 @@ from surpyval.univariate.parametric import (
     RoystonParmarModel,
     Uniform,
     Weibull,
+    plot_likelihood_contour,
 )
 from surpyval.univariate.parametric.weibayes import weibayes
 
@@ -345,6 +348,9 @@ __all__ = [
     "Uniform",
     "Weibull",
     "weibayes",
+    "LikelihoodContour",
+    "LikelihoodContourPlot",
+    "plot_likelihood_contour",
     # Data
     "round_sig",
     # Deprecated (dated): reached through __getattr__ with a FutureWarning,
