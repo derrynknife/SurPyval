@@ -4,7 +4,8 @@ Weighted Data
 Some data come with a number on each row that says how much that row
 *counts*: a **weight**. SurPyval takes it as ``w``, beside the counts ``n``,
 in the Kaplan-Meier, Nelson-Aalen and Fleming-Harrington estimators, the
-parametric distributions, the parametric regressions and Cox regression.
+parametric distributions, the parametric regressions, Cox regression and
+the competing-risks regressions (cause-specific Cox and Fine-Gray).
 This page says what weights are, when to use ``w`` rather than ``n``, why a
 weighted fit's intervals are computed differently, and what a weighted fit
 will not do.
@@ -220,6 +221,67 @@ as R's ``coxph(Surv(start, stop, event) ~ z, weights = w, robust = TRUE,
 id = id)``, so splitting a subject's follow-up into episodes on which
 nothing changes gives the same fit and the same standard errors.
 
+Competing-risks regressions
+---------------------------
+
+Both competing-risks regressions take ``w``:
+``CompetingRisksProportionalHazards.fit(x, Z, e, w=w)`` (``model="Cox"``
+or ``"Fine-Gray"``), ``FineGray.fit(x, Z, e, event=..., w=w)`` and their
+``fit_from_df(..., w_col=)``.
+
+- **Cause-specific Cox** (``model="Cox"``) is one weighted Cox model per
+  cause, the other causes censored, exactly as ``CoxPH.fit(..., w=w)``:
+  R's ``coxph(Surv(x, e == k) ~ z, weights = w, robust = TRUE)`` for each
+  cause ``k``, with R's tie convention and the robust (Lin-Wei) standard
+  errors.
+- **Fine-Gray** keeps a unit that failed from another cause in the risk
+  set of the cause of interest, down-weighted by how likely it is still
+  to be followed (``G(t-) / G(x-)``, ``G`` the probability of not yet
+  being censored). With weights, each unit counts ``w`` times that. ``G``
+  is estimated from the weighted censoring times, so a whole-number
+  weight gives exactly the fit of the row repeated that many times. The
+  standard errors are robust, each unit's contributions over its time at
+  risk summed (clustered by unit).
+
+R's ``survival::finegray(..., weights = w)`` multiplies the weights into
+its censoring weights the same way but estimates ``G`` without the
+weights; on the reference data the two differ in the third decimal of
+the coefficients. ``cmprsk::crr`` takes no weights. The Fine-Gray
+standard errors, like those of ``coxph`` on ``finegray``'s data, hold
+``G`` fixed: they leave out the small extra variability from estimating
+it (Fine and Gray's own sandwich includes it).
+
+The information criteria, the diagnostics (``diagnose()``, the
+proportional subdistribution hazards test) and the penalised fit refuse
+weighted fits; ``summary()`` gives robust Wald tests and intervals, and
+the printout the effective sample size.
+
+.. jupyter-execute::
+
+    from surpyval.univariate.competing_risks import FineGray
+
+    # Two causes of failure, and the group of the log-rank example above
+    kind = rng.uniform(size=x.size) < 0.6
+    cause = np.where(c == 1, None, np.where(kind, "wear", "shock"))
+    fg = FineGray.fit(x, group, cause, event="wear", w=w)
+    print(fg)
+
+In formulas: the weighted Fine-Gray estimate solves
+
+.. math::
+
+    \sum_i n_i w_i \delta_i \left(Z_i - \bar Z(x_i)\right) = 0,
+    \qquad
+    \bar Z(t) = \frac{\sum_j n_j w_j W_j(t) e^{\beta' Z_j} Z_j}
+                      {\sum_j n_j w_j W_j(t) e^{\beta' Z_j}},
+
+with ``W_j(t)`` 1 while unit ``j`` is under observation,
+``G(t-)/G(x_j-)`` after it failed from another cause and 0 otherwise, and
+``G`` the Kaplan-Meier of the censoring with each unit counted ``n w``.
+The covariance is ``A^-1 (sum_i n_i w_i^2 L_i L_i') A^-1``, ``A`` the
+weighted information and ``L_i`` unit ``i``'s score residual over its
+whole time at risk, as for Cox.
+
 What a weighted fit will not do
 -------------------------------
 
@@ -253,7 +315,8 @@ saying what to use instead:
   ``"MSE"``, ``"MPS"``).
 - **Turnbull**, the Cox model's residuals and ``diagnose()``, strata and
   exact ties. These may come later.
-- **The fitters that do not take** ``w``: competing risks, recurrent events, degradation, mixtures, distributional
+- **The fitters that do not take** ``w``: the competing-risks
+  estimates other than the regressions, recurrent events, degradation, mixtures, distributional
   regression, Aalen's additive model and the Royston-Parmar regression,
   among others, which refuse weighted data (the Bayesian fits and the
   life table are above).
@@ -426,7 +489,9 @@ Translating from lifelines and R
   ``KaplanMeier.fit(T, 1 - E, w=w)``; ``survreg(Surv(T, E) ~ z, weights =
   w, robust = TRUE)`` is ``WeibullAFT.fit(T, z, c=1 - E, w=w)`` (on
   SurPyval's parameterisation); ``coxph(Surv(T, E) ~ z, weights = w, robust
-  = TRUE)`` is ``CoxPH.fit(T, z, c=1 - E, w=w)``.
+  = TRUE)`` is ``CoxPH.fit(T, z, c=1 - E, w=w)``; per cause, ``coxph(Surv(T,
+  cause == k) ~ z, weights = w, robust = TRUE)`` is
+  ``CompetingRisksProportionalHazards.fit(T, z, e, w=w)``.
 
 The reference tests (``surpyval/tests/reference/test_weights.py``) compare
 these with R ``survival`` and ``survey`` and with lifelines, and the

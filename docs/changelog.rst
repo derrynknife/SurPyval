@@ -249,6 +249,19 @@ Unreleased
   Efron's ties for one subject of weight 3 than for three identical
   copies (use ``n`` for repeated identical units, ``w`` for survey and
   importance weights). No numbers change.
+- Weights ``w`` in the competing-risks regressions:
+  ``CompetingRisksProportionalHazards.fit(..., w=)`` (cause-specific Cox
+  and Fine-Gray), ``FineGray.fit(..., w=)`` and their ``fit_from_df(...,
+  w_col=)``. Cause-specific Cox is the weighted ``CoxPH`` per cause, R's
+  ``coxph(Surv(x, e == k) ~ z, weights = w, robust = TRUE)``. Fine-Gray
+  multiplies the weights into its censoring weights and estimates the
+  censoring distribution from the weighted Kaplan-Meier (so whole-number
+  weights give the counted fit exactly; R's ``finegray`` leaves its
+  censoring distribution unweighted), with the robust covariance clustered
+  by unit that holds it fixed, R's ``coxph(..., weights = fgwt * w,
+  cluster = id)``. Checked against R (coefficients 1e-8, standard errors
+  1e-6). The information criteria, the diagnostics and the penalised fit
+  refuse weighted fits.
 
 **Changed.**
 

@@ -368,6 +368,9 @@ sp.life_table(x, c, intervals=4)      # actuarial (Cutler-Ederer) table
   `bootstrap_cb`, `how` other than MLE, `aic`/`bic`/`aic_c`, `fit_best`,
   `Turnbull`, and for Cox strata, exact ties, residuals and `diagnose()`.
   Weighted models save as schema 3, which older versions refuse.
+  `CompetingRisksProportionalHazards.fit(..., w=)` (cause-specific Cox and
+  Fine-Gray) and `FineGray.fit(..., w=)` take weights too (robust SEs; no
+  `aic` or `diagnose()`).
 - **Bayesian:** priors `sp.prior.around`, `between`, `uniform`, `flat`,
   `fixed`, `on_quantities(sp.Weibull, B10=..., beta=...)`,
   `from_model(fit, weight=0.5)`, `from_data(x, c, weight=)`,

@@ -71,6 +71,13 @@ class WeightedCase:
     xfail_strict: bool = True
 
 
+def _causes(x, c):
+    """Two causes for the competing-risks fits, chosen by the value of
+    each failure's time; ``None`` for a censored row."""
+    cause = np.where(np.round(np.asarray(x) * 10) % 3 == 0, "b", "a")
+    return np.where(np.asarray(c) != 0, None, cause)
+
+
 def _np(fitter):
     return WeightedCase(
         fitter,
@@ -285,6 +292,37 @@ WEIGHTED = [
             "compute_residuals": lambda m: m.compute_residuals(),
             "diagnose": lambda m: m.diagnose(),
         },
+        covariates=True,
+    ),
+    # The competing-risks regressions: two causes by the value of each
+    # failure's time (so that they move with the rows), no late entries
+    # (these fits take none). Cox under Breslow's ties, which the
+    # integer-weights property needs (as for CoxPH above).
+    WeightedCase(
+        "CompetingRisksProportionalHazards",
+        lambda x, c, n, w, Z, tl: sp.CompetingRisksProportionalHazards.fit(
+            x, Z, _causes(x, c), n=n, w=w, tie_method="breslow"
+        ),
+        lambda m: np.asarray(m.params, dtype=float),
+        refused={"diagnose": lambda m: m.diagnose()},
+        covariates=True,
+    ),
+    WeightedCase(
+        "CompetingRisksProportionalHazards[Fine-Gray]",
+        lambda x, c, n, w, Z, tl: sp.CompetingRisksProportionalHazards.fit(
+            x, Z, _causes(x, c), n=n, w=w, model="Fine-Gray"
+        ),
+        lambda m: np.asarray(m.params, dtype=float),
+        refused={"diagnose": lambda m: m.diagnose()},
+        covariates=True,
+    ),
+    WeightedCase(
+        "FineGray",
+        lambda x, c, n, w, Z, tl: sp.FineGray.fit(
+            x, Z, _causes(x, c), n=n, w=w, event="a"
+        ),
+        lambda m: np.asarray(m.params, dtype=float),
+        refused={"diagnose": lambda m: m.diagnose()},
         covariates=True,
     ),
 ]
