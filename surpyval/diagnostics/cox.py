@@ -506,6 +506,17 @@ def _validate(model: Any) -> None:
     # A penalised fit has no p-values; the message is the one its
     # covariance and bounds give.
     refuse_penalised(model)
+    if getattr(model, "time_interaction", None):
+        raise ValueError(
+            "diagnose() does not check a Cox model with time-varying "
+            "coefficients (fitted with time_interaction), as R's cox.zph "
+            "does not take a tt() model. In summary(), the Wald test of "
+            "each interaction (its p) tests proportional hazards for that "
+            "covariate against its function of time, and "
+            "time_varying_effect(covariate).plot() draws its coefficient "
+            "over time; diagnose() the model without time_interaction for "
+            "the other checks."
+        )
     if getattr(model, "maximum", None) == "no finite maximum":
         raise ValueError(
             "diagnose() needs a fit with a finite maximum, and this one "
@@ -585,19 +596,35 @@ def _stratify(row: dict, ctx: Context) -> str:
     )
 
 
+def _interaction_key(row: dict, ctx: Context) -> str:
+    """How ``time_interaction`` names the covariate of ``row``: by name
+    where the model's covariates are named, else by its position."""
+    name = _ph_name(row)
+    names = getattr(ctx.model, "feature_names", None)
+    if names is not None and name in list(names):
+        return repr(name)
+    return str(list(ctx.names).index(name))
+
+
 def _time_varying(row: dict, ctx: Context) -> str:
     return (
         "The effect of {name} changes with time (it fails the "
-        "proportional-hazards test). Give it a time-varying effect: split "
-        "each unit's follow-up at one or more times (where its scaled "
-        "Schoenfeld residuals in d.plot('proportional_hazards') bend) and "
-        "fit CoxPH.fit_tvc on the pieces, with one column per period "
-        "holding {name} in that period and 0 elsewhere, so that each "
-        "period has its own coefficient. Or bin {name} (with pandas.cut, "
-        "say) and stratify on the bins (CoxPH.fit(..., strata=...)). Or "
-        "fit a parametric accelerated failure time model, such as "
-        "WeibullAFT.fit or LogNormalAFT.fit, which does not assume "
-        "proportional hazards.".format(name=_ph_name(row))
+        "proportional-hazards test). Give it a time-varying coefficient, "
+        "beta + gamma log(t): refit with CoxPH.fit(..., "
+        'time_interaction={{{key}: "log"}}) (or "t" for beta + gamma t; '
+        "see where its scaled Schoenfeld residuals in "
+        "d.plot('proportional_hazards') bend), then read the interaction's "
+        "row in summary() and draw the coefficient over time with "
+        "time_varying_effect({key}).plot(). For an effect that changes "
+        "at one or more times instead, split each unit's follow-up there "
+        "and fit CoxPH.fit_tvc on the pieces, with one column per period "
+        "holding {name} in that period and 0 elsewhere. Or bin {name} "
+        "(with pandas.cut, say) and stratify on the bins (CoxPH.fit(..., "
+        "strata=...)). Or fit a parametric accelerated failure time model, "
+        "such as WeibullAFT.fit or LogNormalAFT.fit, which does not assume "
+        "proportional hazards.".format(
+            name=_ph_name(row), key=_interaction_key(row, ctx)
+        )
     )
 
 
@@ -739,6 +766,7 @@ COX = register(
                 "proportional_hazards",
                 _time_varying,
                 (
+                    "CoxPH.fit(time_interaction=)",
                     "CoxPH.fit_tvc",
                     "CoxPH.fit(strata=)",
                     "WeibullAFT.fit",

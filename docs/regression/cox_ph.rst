@@ -8,7 +8,8 @@ the fitter class below. Its fit methods cover ordinary data (``fit``,
 ``fit_from_df``, with right censoring, left truncation, a choice of tie
 handling and optional strata) and time-varying covariates in start-stop
 form (``fit_tvc``, ``fit_tvc_timeline`` and their ``_from_df``
-versions). The theory is in :doc:`../regression analysis` and worked
+versions); ``fit(..., time_interaction=)`` gives a covariate a coefficient
+that changes with time, :math:`\beta + \gamma g(t)`. The theory is in :doc:`../regression analysis` and worked
 examples are in :doc:`../Regression Modelling with SurPyval`.
 
 Fitter
@@ -36,4 +37,16 @@ older interval-oriented ``predict_tvc`` returns the survival at the baseline
 jump times along a subject's ``(xl, xr]`` intervals.
 
 .. autoclass:: surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel
+   :members:
+
+Time-varying coefficients
+-------------------------
+
+The model returned by ``CoxPH.fit(..., time_interaction=...)``, and the
+coefficient over time its ``time_varying_effect`` returns.
+
+.. autoclass:: surpyval.univariate.regression.proportional_hazards.time_interaction.TimeVaryingCoefficientModel
+   :members: time_varying_effect, summary, parameter_names, hf, Hf
+
+.. autoclass:: surpyval.univariate.regression.proportional_hazards.time_interaction.TimeVaryingEffect
    :members:
