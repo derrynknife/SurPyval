@@ -6,6 +6,19 @@ Unreleased
 
 **Added.**
 
+- ``interval_logrank``: log-rank and Wilcoxon-type tests of groups of
+  interval-censored data (any mix of exact, right, left and interval-censored
+  rows, as ``x``/``c``, a two-column ``x`` or ``xl``/``xr``). Each unit is
+  scored from the Turnbull estimate of the pooled data, with Sun's
+  log-rank scores (the default), Finkelstein's, or the Wilcoxon-type
+  scores, and the score sums are compared by their permutation
+  distribution: a chi-squared p-value, or a Monte Carlo permutation one
+  (``method="permutation"``, seeded by ``random_state``). Returns an
+  ``IntervalLogRankResult`` with ``to_dict()``. Matches R's
+  ``interval::ictest(..., method = "pclt")`` to 1e-8 on the breast cosmesis
+  data and on simulated three-group data. Truncated data are refused.
+  ``logrank`` given left or interval-censored data, or a two-column ``x``,
+  now says to use it; its results are unchanged.
 - ``Parametric.likelihood_contour(alpha_ci, n_points)``: the joint
   likelihood-ratio confidence region of a fit's two parameters, the
   contour where the log-likelihood is half the chi-squared (two degrees of
