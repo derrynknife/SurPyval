@@ -176,7 +176,8 @@ TAKES_WEIGHTS = (
     "the parametric regressions (WeibullPH, WeibullAFT, ...) and CoxPH, "
     "with their penalised fits (fit_penalised), distributional regression "
     "(WeibullDistributional, ...), RoystonParmarPH and RoystonParmarPO, "
-    "and CompetingRisks (the Aalen-Johansen cumulative incidence)"
+    "AalenAdditive, and CompetingRisks (the Aalen-Johansen cumulative "
+    "incidence)"
 )
 
 
@@ -193,12 +194,12 @@ def refuse_unsupported_weights(
 
     Examples
     --------
-    >>> from surpyval import AalenAdditive
+    >>> from surpyval import BuckleyJames
     >>> try:
-    ...     AalenAdditive.fit([1, 2, 3], [[0], [1], [0]], w=[1, 2, 1])
+    ...     BuckleyJames.fit([1, 2, 3], [[0], [1], [0]], w=[1, 2, 1])
     ... except ValueError as error:
-    ...     print(str(error)[:51])
-    AalenAdditive.fit does not take weights (w) yet: we
+    ...     print(str(error)[:47])
+    BuckleyJames.fit does not take weights (w) yet:
     """
     if hasattr(owner, "fit"):
         cls = owner if isinstance(owner, type) else type(owner)

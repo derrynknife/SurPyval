@@ -1776,6 +1776,13 @@ shrinking the effects. It was ``coef_penalty`` before v0.27; the old name
 still works, with a ``DeprecationWarning``, until v0.28. :math:`B(t)` and its variance agree with R's
 ``timereg::aalen`` (with ``robust = 0``).
 
+Sampling or inverse-probability weights go in ``w`` (``w_col`` in
+``fit_from_df``): each increment is then a weighted least-squares fit, and
+every standard error and bound uses the robust variance, which does not
+depend on the weights' scale (R's ``timereg::aalen(..., weights = w,
+robust = 1)``). ``constant_effects_test()`` refuses a weighted fit; see
+:doc:`Weighted Data`.
+
 
 Parametric Proportional Hazards (PH)
 --------------------------------------
