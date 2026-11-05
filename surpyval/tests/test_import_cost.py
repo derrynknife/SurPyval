@@ -82,7 +82,7 @@ def test_lazy_names_are_the_packages_names() -> None:
     }
     # The life models moved to ``surpyval.life_models``
     moved = set(surpyval._MOVED_TO_LIFE_MODELS)
-    moved |= {"GeneralLogLinear"}
+    moved |= {"GeneralLogLinear", "GeneralLinear"}
     assert exported | moved == set(regression.__all__)
     assert not exported & moved
     for name, module in lazy.items():

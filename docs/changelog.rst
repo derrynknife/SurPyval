@@ -5,6 +5,39 @@ Unreleased
 
 **Added.**
 
+- ``covariance()`` and ``standard_errors()`` of a fitted ``Bernoulli``,
+  ``FixedEventProbability`` or ``Binomial``: the variance of ``p``,
+  :math:`\hat p (1 - \hat p) / N` from the events and trials (a Binomial's
+  known ``n`` has a zero row and column), for code that propagates it;
+  ``nan`` with no events or only events, where the formula's 0 would claim
+  ``p`` is known. Models restored from older dicts get it from their saved
+  counts. ``param_cb("p", method="jeffreys")`` adds the Jeffreys interval
+  (``Beta(k + 1/2, N - k + 1/2)`` quantiles) beside the exact
+  Clopper-Pearson default. Checked against R's ``binom.test``, ``qbeta``
+  and ``binom::binom.confint`` to 1e-10; the coverage study
+  (``scripts/studies/probability_coverage.py``) is on the Bernoulli page.
+- ``ParametricCompetingRisks`` gives the lifetime of the whole unit (its
+  first failure from any cause): ``df(x)``, the all-cause density
+  :math:`S(t)\sum_k h_k(t)`; ``mean()``, the all-cause MTTF by quadrature
+  (``inf`` with a cure fraction unless ``defective=True``, as
+  ``Parametric.mean``); and ``qf(p)``, the all-cause quantile (B10 is
+  ``qf(0.1)``) by root finding on the cumulative hazard, precise in the
+  upper tail and ``inf`` above a cure ceiling. ``sf``, ``ff``, ``df`` and
+  ``qf`` take ``event=k`` for cause ``k``'s net function (its own model),
+  as ``CompetingRisks.sf(x, event)`` does. Checked against closed forms
+  (exponential causes, Weibull causes with a common shape, two LogLogistic
+  causes) to 1e-10.
+- ``life_models.GeneralLinear``: the linear life model for any number of
+  covariates, :math:`L(Z) = a + \beta' Z` (``Linear`` for several, as
+  ``GeneralLogLinear`` is the log-linear one). On the ``mu`` of ``Normal``,
+  ``Logistic`` or ``Gumbel`` the covariates shift the distribution, so the
+  fit does not depend on where zero is (a shift of the data moves ``a``
+  alone): ``AcceleratedLife(Normal, life_models.GeneralLinear)`` is R's
+  ``survreg(..., dist = "gaussian")`` on the times themselves (also
+  ``"logistic"`` and ``"extreme"``), matched to 1e-5 with the same signs.
+  A positive coefficient means a later life, as in every life model. It
+  names its coefficients by the columns, saves and loads, and flags
+  aliased columns as ``GeneralLogLinear`` does.
 - Documentation: ``CustomDistribution`` recipes for the generalised gamma
   and the generalised F in Prentice's parameterisations, as R's
   ``flexsurv`` writes them (``gengamma``: ``mu``, ``sigma``, ``Q``;
@@ -336,6 +369,20 @@ Unreleased
   refuses choosing by AIC or BIC. A parametric penalised fit with a
   delayed entry at 0 is now ``"verified"`` (it was left "unverified" by a
   nan second derivative; the estimates do not change).
+- ``covariance_names`` on every parametric fit (``Weibull.fit`` and the
+  rest): the name of each row of ``covariance()``, in its order. It is the
+  distribution's parameters, then ``lfp_p`` for ``lfp=True`` and ``f0``
+  for ``zi=True`` (``['alpha', 'beta', 'lfp_p', 'f0']``), so the third row
+  of a limited-failure fit's covariance is no longer a guess. A parameter
+  fixed at fit time keeps its (zero) row. An offset ``gamma`` has no row:
+  the covariance holds it at its estimate, since a Wald standard error for
+  a threshold is unreliable (in a simulation of n = 200 Weibull fits its
+  95% interval covered the true offset 89% of the time at shape 3.5, 76%
+  at shape 1.5, and the Hessian did not exist below shape 1;
+  ``scripts/studies/offset_gamma_wald.py``); ``param_cb("gamma")`` has
+  the likelihood-ratio and bootstrap bounds. ``parameter_names``,
+  ``hess_inv`` (the distribution's block only) and the saved dictionary
+  are unchanged.
 
 **Changed.**
 
