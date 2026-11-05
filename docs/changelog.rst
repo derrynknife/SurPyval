@@ -464,6 +464,12 @@ Unreleased
   saving and the printout. Every penalised result, warning and refusal
   is unchanged to the last bit. The solver now also takes a model with
   no Hessian, using finite differences of its gradient, and says so.
+- Removed code nothing called: the rename helpers of
+  ``surpyval.utils.deprecation`` no deprecation uses any more
+  (``reordered_arguments``, ``CallableFloat``, ``MethodFloat``,
+  ``MethodArray``, ``ArrayMethod``, ``RenamedToMethod``, ``MadePrivate``),
+  and a few private helpers with no callers. ``renamed_arguments``,
+  ``RenamedAttribute`` and ``renamed_name`` stay for the next rename.
 
 v0.26 (31 October 2026)
 -----------------------
