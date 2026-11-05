@@ -13,6 +13,16 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-05
+
+### Confidence bounds on a Cox model's predicted curve
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `SemiParametricRegressionModel.cb(x, Z, stratum, on, alpha_ci, bound, bound_type, method)` bounds `sf`, `ff` and `Hf` with the variance of R's `survfit.coxph` (`std.err`: Tsiatis's baseline variance plus the coefficients' part, the Efron form after an Efron fit, weighted with the robust covariance for a weighted fit). `bound_type` takes R's `conf.type` names, `"log"`, `"log-log"` and `"plain"`, and defaults to `"log"`, R's default; the non-parametric estimates' `"exp"` and `"normal"` are accepted as `"log-log"` and `"plain"`. | proposed | The task is R parity, and `"log"` is what `survfit(fit, newdata)` prints. The non-parametric estimates and Aalen's model default to the log-log scale (`"exp"`), so the option's default differs between models; the maintainer may prefer one default everywhere. | done |
+| Only Wald bounds (`method="wald"`); `"lr"` and `"bootstrap"` refuse, naming the fix (refit to resampled rows). `hf` and `df` (the baseline's jumps) have no bounds; nor has `qf` (no `quantile_cb` yet). | proposed | The baseline has no likelihood for a likelihood-ratio bound; R has no bound on the jumps either. | done (gaps recorded) |
+| A model restored by `from_dict` and a penalised fit refuse `cb`: the variance needs the fitted rows, which a dict does not keep, and a penalised fit has no covariance. | proposed | Storing the running sums in `to_dict` is possible later; refusing keeps the saved format unchanged. | done (gap recorded) |
+
 ## 2026-11-04
 
 ### Crow Extended projection: bias-corrected or plain shapes

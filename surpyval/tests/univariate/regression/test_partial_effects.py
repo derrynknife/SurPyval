@@ -415,9 +415,24 @@ def test_draws_on_the_current_axes_by_default(ph):
 # -- what a model cannot do is refused --------------------------------------
 
 
-def test_cox_has_no_bands(cox):
-    with pytest.raises(ValueError, match=r"cb\), which Semi"):
-        cox.plot_partial_effects("load", [0.5], plot_bounds=True)
+@pytest.mark.parametrize("on", ["sf", "ff", "Hf"])
+def test_cox_bands_are_its_cb(cox, ax, on):
+    # The Cox model's bands are its cb on the predicted curve, drawn as
+    # steps, as the curves are.
+    x = np.linspace(0.5, 14, 12)
+    cox.plot_partial_effects(
+        "load", [0.5, 1.0], x=x, on=on, plot_bounds=True, ax=ax
+    )
+    assert len(ax.collections) == 2
+    for band, value in zip(ax.collections, [0.5, 1.0]):
+        expected = cox.cb(x, [value, TEMP_MEAN], on=on)
+        y = band.get_paths()[0].vertices[:, 1]
+        for column in expected.T:
+            assert (
+                np.isclose(column[:, None], y[None, :], rtol=1e-12)
+                .any(1)
+                .all()
+            )
 
 
 def test_stratified_cox_refused():
