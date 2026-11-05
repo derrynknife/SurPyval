@@ -34,6 +34,22 @@ TURNBULL_ESTIMATORS: dict[str, Callable[..., npt.NDArray]] = {
 }
 
 
+def _weighted_fh(
+    r: npt.NDArray, d: npt.NDArray, m: npt.NDArray
+) -> npt.NDArray:
+    """Fleming-Harrington on a weighted ladder: ``r`` and ``d`` the
+    weighted numbers at risk and of deaths, ``m`` the (expected) number of
+    units dying. Each of the ``m`` tied deaths is taken at the deaths' mean
+    weight ``a = d / m`` (R's ``ctype = 2``, as the weighted
+    ``FlemingHarrington`` does), so the increment ``sum_{l < m} a / (r - l
+    a)`` is the unweighted one at ``r / a`` at risk and ``m`` deaths. It is
+    therefore the same at any scale of the weights, and with ``w = 1`` it
+    is the unweighted estimate."""
+    with np.errstate(all="ignore"):
+        a = np.where((d > 0) & (m > 0), d / m, 1.0)
+        return fh(r / a, np.where(d > 0, m, 0.0))
+
+
 def check_turnbull_estimator(estimator: str) -> None:
     """Raise a ``ValueError`` if ``estimator`` is not a Turnbull option."""
     check_option("turnbull_estimator", estimator, TURNBULL_ESTIMATORS)
@@ -418,8 +434,11 @@ def _em(
     estimator: str,
     tol: float,
     max_iter: int,
+    units: "_Ranges | None" = None,
 ) -> _EMResult:
-    """The self-consistency EM, from the starting mass ``p``."""
+    """The self-consistency EM, from the starting mass ``p``. With
+    weights, ``ranges`` carries the weighted counts and ``units`` the
+    units' own (for the Fleming-Harrington update's tied deaths)."""
     func = TURNBULL_ESTIMATORS[estimator]
     converged = False
     degenerate = False
@@ -441,8 +460,13 @@ def _em(
         # leave truncated fits reporting tol-level non-convergence (issue
         # #203), so there it is applied only to the converged ladder.
         # Untruncated fits iterate with the requested estimator.
-        update = km if any_truncated else func
-        R = update(r, d)
+        if any_truncated:
+            R = km(r, d)
+        elif units is not None and estimator == "Fleming-Harrington":
+            m = _expected_events(p, units, identifiable, False)
+            R = _weighted_fh(r, d, m)
+        else:
+            R = func(r, d)
         # Calculate the probability mass in each interval
         p_new = np.abs(np.diff(np.hstack([[1], R])))
         # A non-finite update, or (under truncation) a total collapse of
@@ -893,6 +917,7 @@ def turnbull(
     tol: float = 1e-10,
     max_iter: int = 1000,
     algorithm: str = "auto",
+    w: npt.ArrayLike | None = None,
 ) -> dict:
     """
     Turnbull NPMLE via the EM-ICM for untruncated data and the EM
@@ -916,6 +941,14 @@ def turnbull(
     Turnbull ladder (``x``, ``r``, ``d``), the survival estimate ``R``
     and the EM diagnostics (``converged``, ``iters``, ``npmle``...).
     Use :code:`Turnbull.fit()` unless you need those raw pieces.
+
+    With weights ``w`` (one per row, beside its count ``n``) each row
+    counts ``n w`` in the E-step and the M-step, the weights first scaled
+    to sum to the units (as a weighted likelihood uses them), so the
+    estimate is the weighted NPMLE and does not depend on the scale of
+    ``w``. The variance ladder is then not computed (``var_r`` and
+    ``var_d`` are absent): a weighted Turnbull estimate's bounds come from
+    the case bootstrap (``bootstrap_cb``).
 
     Examples
     --------
@@ -941,6 +974,15 @@ def turnbull(
     c = np.asarray(c)
     n = np.asarray(n)
     t = np.asarray(t)
+    # The units' own counts (for the tied deaths of the weighted
+    # Fleming-Harrington) and, with weights, the weighted counts the EM
+    # works with: n w, the weights scaled to sum to the units.
+    units_n: npt.NDArray = n
+    weighted = w is not None
+    if weighted:
+        n_f = units_n.astype(float)
+        w_arr = np.broadcast_to(np.asarray(w, dtype=float), n_f.shape)
+        n = np.asarray(n_f * (w_arr * (n_f.sum() / np.sum(n_f * w_arr))))
     any_truncated = np.isfinite(t).any()
     algorithm = resolve_turnbull_algorithm(algorithm, t)
     if algorithm == "EMICM" and any_truncated:
@@ -986,7 +1028,7 @@ def turnbull(
     # than the EM's expected-count ladder, which redistributes censored
     # mass as fractional later events and silently understates the
     # variance (#260, #273).
-    km_reducible = (not any_truncated) and not interval.any()
+    km_reducible = not (any_truncated or interval.any() or weighted)
     if km_reducible:
         raw = (
             xl.copy(),
@@ -997,6 +1039,7 @@ def turnbull(
 
     no_rows = np.empty(0, dtype=np.int64)
     ranges = _Ranges(lo, hi, n, no_rows, no_rows, no_rows)
+    units = _Ranges(lo, hi, units_n, no_rows, no_rows, no_rows)
     if any_truncated:
         w_lo_all, w_hi_all = _truncation_windows(bounds, tl, tr, exact_times)
         lo, hi = _intersect_windows(lo, hi, w_lo_all, w_hi_all)
@@ -1009,6 +1052,7 @@ def turnbull(
             w_hi_all[truncated],
             n[truncated],
         )
+        units = ranges._replace(n=units_n, n_truncated=units_n[truncated])
         # Whether the likelihood has a maximum at all, and whether it is
         # unique, is a property of the data alone; see _turnbull_npmle.
         npmle, npmle_piece, npmle_reason = npmle_existence(
@@ -1041,12 +1085,23 @@ def turnbull(
         em = _emicm(ranges, M, identifiable, tol, max_iter)
     else:
         em = _em(
-            p, ranges, identifiable, any_truncated, estimator, tol, max_iter
+            p,
+            ranges,
+            identifiable,
+            any_truncated,
+            estimator,
+            tol,
+            max_iter,
+            units if weighted else None,
         )
     p, r, d = em.p, em.r, em.d
 
     # Report the requested hazard-form estimator on the converged ladder.
-    R = TURNBULL_ESTIMATORS[estimator](r, d)
+    if weighted and estimator == "Fleming-Harrington":
+        m = _expected_events(p, units, identifiable, any_truncated)
+        R = _weighted_fh(r, d, m)
+    else:
+        R = TURNBULL_ESTIMATORS[estimator](r, d)
 
     # The ladder reports each piece at its right end, ``bounds[j + 1]``, so
     # it holds the pieces that end at a finite bound. Normally the last
@@ -1091,7 +1146,8 @@ def turnbull(
     out["x"] = bounds[1 : k + 1]
     out["r"] = r[:k]
     out["d"] = d[:k]
-    if any_truncated:
+    # (none with weights: their bounds are the case bootstrap's)
+    if any_truncated and not weighted:
         r_var, d_var = _truncated_variance_ladder(
             p, lo, hi, n, (exact, right, interval), w_lo_all, w_hi_all
         )
@@ -1191,6 +1247,7 @@ class Turnbull_(NonParametricFitter):
         tol: float,
         max_iter: int,
         turnbull_algorithm: str = "auto",
+        w: npt.ArrayLike | None = None,
     ) -> dict:
         return turnbull(
             x,
@@ -1201,6 +1258,7 @@ class Turnbull_(NonParametricFitter):
             tol=tol,
             max_iter=max_iter,
             algorithm=turnbull_algorithm,
+            w=w,
         )
 
 

@@ -6,6 +6,17 @@ Unreleased
 
 **Added.**
 
+- ``Turnbull.fit(..., w=)``: the Turnbull estimate with sampling weights,
+  for interval and left censored and truncated data. The estimate is the
+  weighted non-parametric MLE (each row counts ``n w`` in the EM; checked
+  against R's ``icenReg::ic_np(..., weights = w)`` to 1e-8), unchanged by
+  the scale of the weights and equal to the weighted Kaplan-Meier on right
+  censored data with ``turnbull_estimator="Kaplan-Meier"``. Its bounds are
+  the weighted case bootstrap, ``bootstrap_cb(x, random_state=seed)``
+  (95% coverage 0.93 to 0.95 in a simulation of informative sampling);
+  ``cb``, ``quantile_cb``, the bounds of ``rmst`` and ``sf_diff`` refuse
+  it, naming ``bootstrap_cb``. A weighted probability plot of interval
+  censored or truncated data now uses the weighted Turnbull positions.
 - Time-varying coefficients in the Cox model:
   ``CoxPH.fit(..., time_interaction={column: g})`` (and ``fit_from_df``)
   gives a covariate the coefficient :math:`\beta + \gamma g(t)`, with ``g``
