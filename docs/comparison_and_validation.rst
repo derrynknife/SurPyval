@@ -108,3 +108,15 @@ of tied event times by default, as R and lifelines (every regression model
 also has a ``concordance`` method that picks its family's score):
 
 .. autofunction:: surpyval.metrics.concordance.concordance_index
+
+Harrell's or Uno's C with its standard error and confidence interval, and
+the comparison of two scores' C on the same subjects (see "How sure is C,
+and Uno's version" on the :doc:`regression analysis` page):
+
+.. autofunction:: surpyval.metrics.concordance.concordance_estimate
+
+.. autoclass:: surpyval.metrics.concordance.ConcordanceResult
+
+.. autofunction:: surpyval.metrics.concordance.compare_concordance
+
+.. autoclass:: surpyval.metrics.concordance.ConcordanceComparison

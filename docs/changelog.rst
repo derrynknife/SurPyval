@@ -6,6 +6,20 @@ Unreleased
 
 **Added.**
 
+- Uno's concordance index and standard errors for C:
+  ``surpyval.metrics.concordance_estimate(x, c, risk, weighting="uno",
+  tau=...)`` gives Harrell's or Uno's inverse-probability-of-censoring
+  weighted C, optionally only over the pairs whose event is at or before a
+  horizon ``tau``, with its infinitesimal-jackknife standard error and a
+  normal or logit confidence interval; ``compare_concordance`` tests the
+  difference between two scores' C on the same subjects, with the
+  covariance of the two. Every regression model gains
+  ``concordance_estimate()`` and ``concordance(weighting=, tau=)``. They
+  reproduce R's ``survival::concordance`` (``timewt = "n"`` and
+  ``"n/G2"``, ``ymax``, and two fits' ``var``) on ``lung`` and
+  ``veteran`` to 1e-10 for C and a relative 1e-8 for the variances, and
+  ``survC1::Est.Cval`` for Uno's C to 1e-7. ``concordance_index`` is
+  unchanged.
 - ``surpyval.metrics.score_predictions``: the Brier score, integrated Brier
   score and time-dependent AUC with standard errors and confidence intervals
   from their IPCW influence functions (the censoring estimate's variability

@@ -289,6 +289,8 @@ _LAZY = {
         (
             "auc_td",
             "brier_score",
+            "compare_concordance",
+            "concordance_estimate",
             "concordance_index",
             "integrated_brier_score",
             "PredictionScores",
@@ -417,6 +419,8 @@ if TYPE_CHECKING:
         PredictionScores,
         auc_td,
         brier_score,
+        compare_concordance,
+        concordance_estimate,
         concordance_index,
         integrated_brier_score,
         score_predictions,

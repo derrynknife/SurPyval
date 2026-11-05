@@ -26,6 +26,7 @@ EXPECTED_SOURCES = {
     "r_ph_aft",
     "r_calibration",
     "r_stratified_cox",
+    "r_concordance",
     "r_metric_inference",
     "r_competing_metrics",
     "r_pseudo",

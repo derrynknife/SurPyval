@@ -27,7 +27,7 @@ from surpyval.utils.shapes import (
 )
 from surpyval.utils.validation import check_alpha_ci, no_covariance_error
 
-from ._concordance import ConcordanceMixin
+from ._concordance import ConcordanceMixin, ConcordanceResult
 from ._fit_skeleton import draws_by_row
 from ._partial_effects import PartialEffectsMixin
 from ._penalised import PenalisedModelMixin
@@ -393,6 +393,9 @@ class SemiParametricRegressionModel(
         tie_tol: float = 1e-8,
         ties: str = "therneau",
         strata: npt.ArrayLike | None = None,
+        *,
+        weighting: str = "harrell",
+        tau: float | None = None,
     ) -> float:
         """Harrell's concordance index (C) of the model's risk scores,
         the linear predictor :math:`\beta'Z`; see
@@ -407,7 +410,9 @@ class SemiParametricRegressionModel(
         score ranks subjects only within its stratum). With no arguments
         it scores the data the model was fitted to; to score other data
         pass ``strata``, a stratum label per row, with ``x``, ``c`` and
-        ``Z``. ``strata`` is for a stratified model only.
+        ``Z``. ``strata`` is for a stratified model only. Uno's weighting
+        (``weighting="uno"``) and a horizon ``tau`` are for an unstratified
+        model.
 
         Examples
         --------
@@ -429,8 +434,52 @@ class SemiParametricRegressionModel(
                     "strata=); this model has one baseline, so leave "
                     "'strata' out."
                 )
-            return super().concordance(x, c, Z, tie_tol, ties)
+            return super().concordance(
+                x, c, Z, tie_tol, ties, weighting=weighting, tau=tau
+            )
+        if weighting != "harrell" or tau is not None:
+            raise ValueError(self._STRATIFIED_ESTIMATE)
         return self._stratified_concordance(x, c, Z, tie_tol, ties, strata)
+
+    _STRATIFIED_ESTIMATE = (
+        "Uno's weighting, a horizon 'tau' and the standard error of the "
+        "concordance are not available for a stratified Cox model: call "
+        "concordance() with the defaults for its pooled Harrell's C, or "
+        "score each stratum's rows with "
+        "surpyval.metrics.concordance_estimate."
+    )
+
+    def concordance_estimate(
+        self,
+        x: npt.ArrayLike | None = None,
+        c: npt.ArrayLike | None = None,
+        Z: Any = None,
+        *,
+        weighting: str = "harrell",
+        tau: float | None = None,
+        alpha: float = 0.05,
+        tie_tol: float = 1e-8,
+        ties: str = "therneau",
+        ci_method: str = "normal",
+    ) -> ConcordanceResult:
+        """The concordance index with its standard error and confidence
+        interval; see :meth:`ConcordanceMixin.concordance_estimate
+        <surpyval.univariate.regression._concordance.ConcordanceMixin.concordance_estimate>`.
+        Not available for a stratified model (it raises ``ValueError``).
+        """
+        if self.is_stratified:
+            raise ValueError(self._STRATIFIED_ESTIMATE)
+        return super().concordance_estimate(
+            x,
+            c,
+            Z,
+            weighting=weighting,
+            tau=tau,
+            alpha=alpha,
+            tie_tol=tie_tol,
+            ties=ties,
+            ci_method=ci_method,
+        )
 
     def _stratified_concordance(
         self,
