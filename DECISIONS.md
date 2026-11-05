@@ -26,6 +26,13 @@ Design decisions made while working on the open issues, with the reason for each
 | No `p_random` / posterior draw method on the fitted model. Draws of `p` come from `Bernoulli.fit_bayes(x, priors={"p": Beta.from_params([0.5, 0.5])})`, the conjugate Jeffreys posterior. | proposed | The Bayesian module already gives it (and `draw_models`); `Parametric` has no parameter-draw convention to follow. | done |
 | These fits take no `w` (they already raise `WeightedRefusal`); counts go in `n`, so no robust variance is needed. | proposed | No silent wrong variance. | done |
 
+### 0.27 WP2e: GeneralLinear life model (5 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `GeneralLinear` is `L(Z) = a + b'Z`: a positive coefficient means a later (longer) life, the sign of every life model (`Linear`'s `a + bV`, `GeneralLogLinear`'s `c e^{b'Z}`), not the AFT/PH sign (positive = shorter). Its signs are then R's `survreg(..., dist = "gaussian")` signs, with no flip. | proposed | Consistency with the life models it extends: one column of `GeneralLinear` is `Linear` exactly. The one-sign-convention rule (2026-11-03) is defined by the existing models, and accelerated life models write the life itself. The alternative, `a - b'Z`, would make `GeneralLinear` the only life model with a minus sign. | proposed |
+| Parameters mirror `GeneralLogLinear`: the constant `a` (unbounded, as `Linear`'s) then `coef_0`, `coef_1`, ... (or the column names), stored unresolved and rebuilt from `n_stresses`; start from least squares through the per-level lives. It is not added to the accelerated-life diagnostics' candidate list, which compares life models of a time scale. | proposed | Same shape, same serialisation, nothing new to learn. | proposed |
+
 ### Weighted model dicts: each matrix under its own name
 
 | Decision | By | Reason | Status |

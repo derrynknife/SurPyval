@@ -388,14 +388,14 @@ def test_conditional_survival_is_one_up_to_given(case):
 # the last event.)
 
 
-def _has(model, name):
-    return hasattr(model, name) and _evaluable(None, model)
+def _has(case, model, name):
+    return hasattr(model, name) and _evaluable(case, model)
 
 
 @pytest.mark.parametrize("case", TVC_CASES)
 def test_constant_path_bounds_are_cb(case):
     model = fitted(case)
-    if not _has(model, "cb_tvc"):
+    if not _has(case, model, "cb_tvc"):
         return
     z = _rows(case)[1]
     for Z in (_constant_path(z), StepSchedule.constant(z)):
@@ -422,7 +422,7 @@ def test_constant_path_bounds_are_cb(case):
 @pytest.mark.parametrize("case", TVC_CASES)
 def test_bounds_keep_the_query_shape(case):
     model = fitted(case)
-    if not _has(model, "cb_tvc"):
+    if not _has(case, model, "cb_tvc"):
         return
     z = _rows(case)[1]
     x = np.asarray(case.x, dtype=float)
@@ -453,7 +453,7 @@ def test_constant_path_mean_is_the_integral_of_sf(case):
     from scipy.integrate import quad
 
     model = fitted(case)
-    if not _has(model, "mean_tvc"):
+    if not _has(case, model, "mean_tvc"):
         return
     kw = case.call_kwargs
     z = _rows(case)[1]

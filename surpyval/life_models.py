@@ -19,6 +19,7 @@ distribution's life (scale) parameter:
 ``DualExponential``         :math:`L(U, V) = c e^{a / U + b / V}`
 ``PowerExponential``        :math:`L(U, V) = c e^{a / U} V^{n}`
 ``GeneralLogLinear``        :math:`L(Z) = c e^{\\sum_j \\beta_j Z_j}`
+``GeneralLinear``           :math:`L(Z) = a + \\sum_j \\beta_j Z_j`
 ==========================  ===============================================
 
 ``LifeModel`` is their base class, for a life model of your own. The
@@ -27,6 +28,12 @@ docstring of each model gives its exact form.
 ``GeneralLogLinear`` with a distribution that has an AFT fitter (the
 Weibull, LogNormal and others) is that AFT model: prefer ``WeibullAFT``
 and the like, which also take formulas and DataFrames.
+
+``Linear`` and ``GeneralLinear`` are meant for a location parameter (the
+``mu`` of ``Normal``, ``Gumbel`` or ``Logistic``): the stresses shift the
+distribution, so the fit does not depend on where zero is. On a scale
+parameter a fitted line or plane can reach zero or negative life outside
+the stresses tested.
 
 Examples
 --------
@@ -49,6 +56,7 @@ from surpyval.univariate.regression.accelerated_life import (
 )
 from surpyval.univariate.regression.accelerated_life import (
     Eyring,
+    GeneralLinear,
     GeneralLogLinear,
     InverseExponential,
     InverseEyring,
@@ -71,6 +79,7 @@ __all__ = [
     "DualPower",
     "Exponential",
     "Eyring",
+    "GeneralLinear",
     "GeneralLogLinear",
     "InverseExponential",
     "InverseEyring",

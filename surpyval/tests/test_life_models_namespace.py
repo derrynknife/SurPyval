@@ -34,6 +34,7 @@ def test_every_life_model_is_in_the_namespace():
     assert sp.Exponential is not life_models.Exponential
     assert set(life_models.__all__) == set(MOVED.values()) | {
         "GeneralLogLinear",
+        "GeneralLinear",
         "Arrhenius",
     }
 
@@ -65,3 +66,6 @@ def test_general_log_linear_is_not_at_the_top_level():
     # New in 0.22, so never at the top level in a release: no shim
     with pytest.raises(AttributeError):
         sp.GeneralLogLinear
+    # Nor GeneralLinear, new in 0.27
+    with pytest.raises(AttributeError):
+        sp.GeneralLinear

@@ -27,6 +27,17 @@ Unreleased
   as ``CompetingRisks.sf(x, event)`` does. Checked against closed forms
   (exponential causes, Weibull causes with a common shape, two LogLogistic
   causes) to 1e-10.
+- ``life_models.GeneralLinear``: the linear life model for any number of
+  covariates, :math:`L(Z) = a + \beta' Z` (``Linear`` for several, as
+  ``GeneralLogLinear`` is the log-linear one). On the ``mu`` of ``Normal``,
+  ``Logistic`` or ``Gumbel`` the covariates shift the distribution, so the
+  fit does not depend on where zero is (a shift of the data moves ``a``
+  alone): ``AcceleratedLife(Normal, life_models.GeneralLinear)`` is R's
+  ``survreg(..., dist = "gaussian")`` on the times themselves (also
+  ``"logistic"`` and ``"extreme"``), matched to 1e-5 with the same signs.
+  A positive coefficient means a later life, as in every life model. It
+  names its coefficients by the columns, saves and loads, and flags
+  aliased columns as ``GeneralLogLinear`` does.
 - ``Turnbull.fit(..., w=)``: the Turnbull estimate with sampling weights,
   for interval and left censored and truncated data. The estimate is the
   weighted non-parametric MLE (each row counts ``n w`` in the EM; checked
