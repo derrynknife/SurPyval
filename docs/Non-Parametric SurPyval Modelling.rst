@@ -1401,9 +1401,9 @@ retraction had appeared. Here are 30 of each group:
           34, 44, inf, 48, inf, inf, 25, inf, 18, inf,
           12, 22, 31, 27, 23, 30, 24, inf, 13, 20, 25, 26, inf, inf, 48, 17, 5, 8, 20, inf,
           40, inf, 39, 32, inf, inf, 24, inf, 22, 17]
-    treatment = ['radiotherapy'] * 30 + ['with chemotherapy'] * 30
-    print(interval_logrank(xl=xl, xr=xr, Z=treatment))
-    res = interval_logrank(xl=xl, xr=xr, Z=treatment, scores='wilcoxon',
+    regimen = ['radiotherapy'] * 30 + ['with chemotherapy'] * 30
+    print(interval_logrank(xl=xl, xr=xr, Z=regimen))
+    res = interval_logrank(xl=xl, xr=xr, Z=regimen, scores='wilcoxon',
                            method='permutation', random_state=1)
     print('Wilcoxon, permutation p-value: %.3g' % res.p_value)
     print(res.U)
@@ -1412,7 +1412,7 @@ retraction had appeared. Here are 30 of each group:
     :hide-code:
     :hide-output:
 
-    _r = interval_logrank(xl=xl, xr=xr, Z=treatment)
+    _r = interval_logrank(xl=xl, xr=xr, Z=regimen)
     assert _r.p_value < 0.05 and _r.U['with chemotherapy'] > 0, _r
 
 ``U`` holds each group's score total: positive means earlier failures than the pooled curve

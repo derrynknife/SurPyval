@@ -2677,7 +2677,7 @@ undefined, as ``Linear``'s can; use ``GeneralLogLinear`` there.
 
 .. jupyter-execute::
 
-    from surpyval import Normal
+    from surpyval import AcceleratedLife, Normal, life_models
 
     rng = np.random.default_rng(3)
     Z_loc = np.column_stack([rng.normal(size=80), rng.integers(0, 2, 80)])
@@ -4822,11 +4822,11 @@ and reports the Wald intervals and p-values.
     from surpyval import CoxPH
 
     # Every death is in the group z1 = 1
-    x = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
-    c = np.array([0, 0, 1, 0, 1, 1, 0, 1, 1, 1])
-    Z = np.array([[1, 0.5], [1, -1.2], [0, 0.3], [1, 0.8], [0, -0.4],
-                  [1, 1.1], [1, -0.6], [0, 0.9], [0, 0.2], [1, -0.1]])
-    firth = CoxPH.fit_firth(x, Z, c=c)
+    x_sep = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    c_sep = np.array([0, 0, 1, 0, 1, 1, 0, 1, 1, 1])
+    Z_sep = np.array([[1, 0.5], [1, -1.2], [0, 0.3], [1, 0.8], [0, -0.4],
+                      [1, 1.1], [1, -0.6], [0, 0.9], [0, 0.2], [1, -0.1]])
+    firth = CoxPH.fit_firth(x_sep, Z_sep, c=c_sep)
     firth
 
 .. jupyter-execute::
