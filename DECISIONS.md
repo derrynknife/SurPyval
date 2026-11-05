@@ -13,6 +13,17 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-05
+
+### Pseudo-observations and the regressions on them
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The coefficients of `pseudo_regression` take SurPyval's sign (a positive coefficient means a shorter life) on every quantity: the survival regressions model the event probability `1 - S(t)` (cloglog: `log(-log S(t)) = a(t) + b'Z`, the proportional-hazards reading; logit: the log-odds of failing by `t`), the cumulative-incidence regressions the cause's incidence, and the RMST regression is `g(RMST) = a - b'Z`, so an identity-link coefficient is minus the RMST difference and a log-link one minus the log ratio. R's `geeglm` on `pseudomean` reports the RMST coefficients with the other sign; the reference tests flip it. | proposed | The maintainer's one sign convention (2026-11-03, "One sign convention") for new models. How it applies on a scale that is not a hazard or a time (a mean, a probability) was not settled; modelling the event probability makes it the natural sign for the survival and incidence models, and the minus sign in the RMST model is the conservative reading of the rule. The alternative is the RMST's own sign (positive = longer), as R and `survRM2`. | proposed |
+| Rows with a missing covariate are dropped (with the usual warning) before the pseudo-values are computed, so the Kaplan-Meier estimate is that of the analysed units. | principle (missing values) | The package's fitting rule; R's usual practice computes them on every unit and then drops rows in `geeglm`. The reference tests use complete data. | done |
+| Gaussian working variance (each pseudo-value weighs the same) and the robust sandwich `A^-1 B A^-1` with no small-sample factor; counts `n` are copies (each its own cluster). | principle 16 | `geepack::geeglm(..., family = gaussian, corstr = "independence")`, the reference, and the literature's default. | done |
+| Delayed entry, left and interval censoring and times past the last observation are refused with a message; there is no `w` argument (sampling weights) yet. | proposed | Leave-one-out estimates of truncated or interval-censored samples do not give pseudo-values with the right expectation without further work. | open |
+
 ## 2026-11-04
 
 ### Crow Extended projection: bias-corrected or plain shapes

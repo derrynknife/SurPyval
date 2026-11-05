@@ -6,6 +6,23 @@ Unreleased
 
 **Added.**
 
+- Pseudo-observations and regression on them: ``pseudo_survival``,
+  ``pseudo_rmst`` and ``pseudo_cif`` give the jackknife (leave-one-out)
+  pseudo-values of the Kaplan-Meier survival at chosen times, of the
+  restricted mean survival time to ``tau`` and of a cause's Aalen-Johansen
+  cumulative incidence; ``pseudo_regression`` (and
+  ``pseudo_regression_from_df``) fits survival-probability (cloglog or
+  logit link), RMST (identity or log) and cumulative-incidence (cloglog or
+  logit) regressions to them by estimating equations with robust
+  (sandwich) standard errors, returning a ``PseudoRegressionResult``
+  (``coef``, ``se``, ``ci``, ``p``, ``summary()``, ``predict``,
+  ``predict_cb``, ``to_dict()``). A positive coefficient means a shorter
+  life: the survival models are on ``1 - S(t)`` and the RMST model is
+  ``g(RMST) = a - b'Z``. Checked against R's ``pseudo`` (``pseudosurv``,
+  ``pseudomean``, ``pseudoci``, to 1e-8) and ``geepack::geeglm`` with an
+  independence working model (coefficients and robust standard errors, to
+  1e-6) on ``lung``, ``ovarian``, the PBC trial and a seeded
+  competing-risks set. Guide: Pseudo-Observations.
 - ``CrowAMSAA.projection(..., bias_corrected=True)``: ``False`` uses the
   plain maximum-likelihood shapes in the demonstrated intensity and in the
   rate of new BD modes, as the worked example of MIL-HDBK-189C (section
