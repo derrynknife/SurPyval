@@ -103,7 +103,6 @@ of a group are not independent.
 
 from __future__ import annotations
 
-import re
 import warnings
 from collections.abc import Callable
 from types import SimpleNamespace
@@ -112,7 +111,15 @@ from typing import Any
 import numpy as np
 from scipy.stats import chi2
 
-from .cox import CATEGORICAL_LEVELS
+from ._shared import (
+    _covariate_kind,
+    _Fit,
+    _fmt,
+    _gap,
+    _note,
+    _ph_name,
+    _source,
+)
 from .ph_aft import AIC_MARGIN, BASELINES
 from .registry import AdviceRule, Check, Context, Family, Panel, register
 
@@ -136,24 +143,6 @@ _COX = "Cox shared frailty"
 # ---------------------------------------------------------------------------
 # Small helpers
 # ---------------------------------------------------------------------------
-def _fmt(value: float) -> str:
-    return f"{value:.3g}"
-
-
-def _source(name: str) -> str:
-    """The variable a formula-coded column comes from (``sex`` for
-    ``C(sex)[T.2]`` or ``sex[T.2]``), else the name itself."""
-    match = re.match(r"^C\(\s*([A-Za-z_][\w.]*)[^)]*\)\[", name)
-    if match is None:
-        match = re.match(r"^([A-Za-z_][\w.]*)\[", name)
-    return match.group(1) if match else name
-
-
-def _note(ctx: Context, text: str) -> None:
-    if text not in ctx.notes:
-        ctx.notes.append(text)
-
-
 def _quiet(fit: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     with np.errstate(all="ignore"), warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -196,12 +185,7 @@ def _data(ctx: Context) -> SimpleNamespace:
 def _kind(ctx: Context, j: int) -> str:
     """``"binary"``, ``"categorical"`` or ``"continuous"``, by the number
     of distinct values of covariate ``j`` (as the Cox family counts)."""
-    levels = np.unique(_data(ctx).Z[:, j]).size
-    if levels <= 2:
-        return "binary"
-    if levels <= CATEGORICAL_LEVELS:
-        return "categorical"
-    return "continuous"
+    return _covariate_kind(np.unique(_data(ctx).Z[:, j]).size)
 
 
 def _dist_name(model: Any) -> str:
@@ -583,15 +567,6 @@ class _Marginal:
         else:
             groups = _gamma_term(self.D, H, theta)
         return -(events + anp.sum(groups))
-
-
-class _Fit(SimpleNamespace):
-    """A maximum found by :func:`_maximise`: ``theta`` (the natural
-    parameters), ``value`` (the negative log-likelihood) and ``ok``."""
-
-    theta: np.ndarray
-    value: float
-    ok: bool
 
 
 def _maximise(f: _Marginal, start: np.ndarray) -> _Fit:
@@ -992,12 +967,6 @@ def _refit(ctx: Context, dist: Any, family: str) -> dict:
     return {"aic": aic, "status": "ranked", "reason": ""}
 
 
-def _gap(delta: float) -> str:
-    if delta == 0:
-        return "level with it"
-    return "{} {}".format(_fmt(abs(delta)), "lower" if delta > 0 else "higher")
-
-
 def _family_rows(ctx: Context) -> list[dict]:
     model = ctx.model
     other = [f for f in FRAILTY_FAMILIES if f != model.family][0]
@@ -1384,10 +1353,6 @@ def _baseline_message(row: dict, ctx: Context) -> str:
             family=ctx.model.family,
         )
     )
-
-
-def _ph_name(row: dict) -> str:
-    return row["covariates"][0]
 
 
 def _stratify_message(row: dict, ctx: Context) -> str:
