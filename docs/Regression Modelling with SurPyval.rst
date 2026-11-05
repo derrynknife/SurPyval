@@ -408,6 +408,34 @@ with ``method='lr'`` (see `Confidence Bounds`_ below):
         _lo, _hi = demo.quantile_cb(0.1, Z=[1.0], method=_m)
         assert _lo < _b10 < _hi
 
+The restricted mean survival time (RMST) to a horizon ``tau`` is the
+expected time a unit lives within the first ``tau`` of its life: the area
+under its survival curve from 0 to ``tau``,
+:math:`\int_0^\tau S(t \mid Z)\, dt`. Unlike a hazard ratio it reads in
+units of time ("over the first 10 hours, units with ``Z = 1`` run 1.5 hours
+less on average"), and it needs no assumption about how the covariates act.
+``rmst(tau, Z)`` gives it with its delta-method standard error and 95%
+interval, ``rmst_cb(tau, Z)`` the bounds alone (``method='bootstrap'`` too),
+and ``rmst_diff(tau, Z_a, Z_b)`` the difference between two covariate rows,
+whose standard error accounts for both RMSTs coming from the same fitted
+parameters:
+
+.. jupyter-execute::
+
+    print('RMST to 10 at Z = 0, 1:', demo.rmst(10.0, Z=[[0.0], [1.0]])['rmst'].round(3))
+    print('95% bounds at Z = 1  :', demo.rmst_cb(10.0, Z=[1.0]).round(3))
+    _d = demo.rmst_diff(10.0, [0.0], [1.0])
+    print('difference (Z=0 - Z=1): %.3f, 95%% CI %.3f to %.3f'
+          % (_d['difference'], _d['lower'], _d['upper']))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _r = demo.rmst(10.0, Z=[[0.0], [1.0]])
+    assert np.all(_r['lower'] < _r['rmst']) and np.all(_r['rmst'] < _r['upper'])
+    assert abs(_d['difference'] - (_r['rmst'][0] - _r['rmst'][1])) < 1e-12
+
 A unit already in service has survived to its age. Every regression model
 (the parametric families, Cox, the proportional odds, additive hazards,
 Buckley-James and frailty models) has the univariate models' conditional
@@ -1177,7 +1205,8 @@ against: ``"km"`` (the default, :math:`1 -` the left-continuous Kaplan-Meier
 estimate) spreads the failures
 evenly and is the usual choice; ``"rank"``, ``"identity"`` and ``"log"`` are the
 alternatives from ``cox.zph``. A violation like this one calls for
-stratification (below), a time-varying covariate, or a different family.
+a time-varying coefficient (next), stratification (below), a time-varying
+covariate, or a different family.
 
 .. jupyter-execute::
     :hide-code:
@@ -1225,6 +1254,77 @@ the partial likelihood — a useful sanity check that the fit has converged.
         _r = model.compute_residuals(_kind)
         assert np.allclose(_r.sum(axis=0), 0, atol=1e-6), _kind
 
+
+Time-varying coefficients
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When the test above fails for a covariate, its effect is not one number: it
+changes over follow-up. Rather than report an average that hides that, let
+the coefficient itself depend on time. The simplest choice is a straight line
+in :math:`\log t` (or in :math:`t`): the covariate's log hazard ratio starts
+at one level and drifts steadily, and the size and direction of the drift
+are estimated from the data. Pass ``time_interaction`` to
+:meth:`CoxPH.fit <surpyval.univariate.regression.proportional_hazards.cox_ph.CoxPH_.fit>`
+(or ``fit_from_df``), naming the covariate and the function of time:
+``"log"``, ``"t"``, or any function ``g(t)`` you write.
+
+In symbols, covariate :math:`j` gets the coefficient
+
+.. math::
+    \beta_j(t) = \beta_j + \gamma_j\, g(t),
+
+so the hazard is :math:`h_0(t)\, e^{\beta_j(t) Z_j + \dots}`. This is the same
+as adding the covariate :math:`Z_j g(t)`, which changes with time; SurPyval
+splits each unit's follow-up at the event times and fits the pieces as
+start-stop rows (as ``fit_tvc`` does), which is exactly R's
+``coxph(Surv(time, status) ~ z + tt(z), tt = function(z, t, ...) z * log(t))``.
+As everywhere, a positive coefficient means a higher hazard, so a shorter
+life: a positive :math:`\gamma_j` means the covariate becomes more harmful as
+time goes on, a negative one that its harm fades (or reverses).
+
+On the reversing effect above:
+
+.. jupyter-execute::
+
+    m_tv = CoxPH.fit_from_df(rev, x_col='x', Z_cols='z', c_col='c',
+                             time_interaction={'z': 'log'})
+    m_tv.summary()[['coef', 'se(coef)', 'p']].round(4)
+
+The row ``z:log(t)`` is :math:`\gamma`: clearly negative, and its Wald test
+is itself a test of proportional hazards for ``z`` against :math:`\log t`.
+``time_varying_effect`` gives :math:`\beta(t)` at any times, with its Wald
+standard error :math:`\sqrt{a' V a}` (:math:`a = (1, g(t))`, :math:`V` the
+covariance of :math:`(\beta, \gamma)`) and bounds, and draws it:
+
+.. jupyter-execute::
+
+    effect = m_tv.time_varying_effect('z', [0.1, 0.25, 0.5, 1.0, 2.0])
+    print(effect.to_frame().round(3))
+    m_tv.time_varying_effect('z').plot()
+    plt.show()
+
+Early on exposure triples the hazard; by :math:`t = 0.5` the effect has
+crossed zero and later it protects -- what the simulation built in, which a
+single coefficient averaged away. Predictions at fixed covariates use
+:math:`\beta(t)` at every time, :math:`H(t \mid Z) = \sum_{u \le t} h_0(u)
+e^{\beta(u)' Z}`, so ``sf``, ``ff``, ``Hf``, ``qf`` and ``random`` take the
+covariates as given to the fit (``z`` alone here, not the interaction). A
+single hazard ratio ``phi(Z)`` no longer exists and is refused, as are the
+concordance, ``diagnose()``, saving to a dict, and predictions along a
+covariate path.
+
+.. jupyter-execute::
+
+    print(m_tv.sf([0.25, 1.0, 2.0], [[0.0], [1.0]], grid=True).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _g = m_tv.params[1]
+    assert _g < 0 and m_tv.p_values[1] < 1e-6, m_tv.params
+    assert effect.beta[0] > 0 > effect.beta[-1]
+    assert m_tv.parameter_names == ['z', 'z:log(t)']
 
 Cluster-robust standard errors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

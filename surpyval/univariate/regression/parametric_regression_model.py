@@ -42,7 +42,11 @@ from ._kinds import (
 )
 from ._partial_effects import PartialEffectsMixin
 from ._penalised import PenalisedModelMixin
-from ._prediction import ConditionalSurvivalMixin, quantiles_by_inversion
+from ._prediction import (
+    ConditionalSurvivalMixin,
+    RestrictedMeanMixin,
+    quantiles_by_inversion,
+)
 from ._tvc_evaluation import TVCEvaluationMixin
 from .regression_data import (
     check_covariate_width,
@@ -89,6 +93,7 @@ _SERIALISABLE_REG_NAMES = {
 class ParametricRegressionModel(
     PenalisedModelMixin,
     ConditionalSurvivalMixin,
+    RestrictedMeanMixin,
     PartialEffectsMixin,
     TVCEvaluationMixin,
     InferenceMixin,

@@ -245,6 +245,11 @@ class SemiParametricRegressionModel(
     def _partial_effects_width(self) -> int:
         return int(np.size(self.params))
 
+    def _covariate_width(self) -> int:
+        """The number of covariates a prediction takes, one per column of
+        ``Z`` (a time-varying-coefficient fit has more coefficients)."""
+        return int(np.asarray(self.beta).shape[0])
+
     def _partial_effects_rows(
         self,
     ) -> tuple[npt.NDArray, npt.NDArray] | str:
@@ -981,9 +986,7 @@ class SemiParametricRegressionModel(
         or on the grid of every row by every time, ``(len(Z), len(x))``."""
         base = self._baseline_step(bx, values, x)
         if grid:
-            rows = covariate_rows(
-                self._prepare_Z(Z), np.asarray(self.beta).shape[0]
-            )
+            rows = covariate_rows(self._prepare_Z(Z), self._covariate_width())
             log_risk = self._log_risk(rows)
             return self._times_risk(base[None, :], log_risk[:, None])
         log_risk = self._log_phi(Z)
@@ -1164,9 +1167,7 @@ class SemiParametricRegressionModel(
         np.float64(nan)
         """
         bx, _, _ = self._baseline_arrays(stratum)
-        rows = covariate_rows(
-            self._prepare_Z(Z), np.asarray(self.beta).shape[0]
-        )
+        rows = covariate_rows(self._prepare_Z(Z), self._covariate_width())
         u, rows, shape = paired_probabilities(p, rows, grid)
         uniq, which = unique_rows(rows)
         F = np.atleast_2d(self.ff(bx, uniq, stratum, grid=True))
@@ -1226,9 +1227,7 @@ class SemiParametricRegressionModel(
         0.4715
         """
         bx, _, _ = self._baseline_arrays(stratum)
-        rows = covariate_rows(
-            self._prepare_Z(Z), np.asarray(self.beta).shape[0]
-        )
+        rows = covariate_rows(self._prepare_Z(Z), self._covariate_width())
 
         def invert(U: npt.NDArray, row: npt.NDArray) -> npt.NDArray:
             H = np.atleast_2d(self.Hf(bx, row[None, :], stratum, grid=True))

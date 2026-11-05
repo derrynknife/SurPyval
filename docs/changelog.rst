@@ -6,6 +6,32 @@ Unreleased
 
 **Added.**
 
+- Time-varying coefficients in the Cox model:
+  ``CoxPH.fit(..., time_interaction={column: g})`` (and ``fit_from_df``)
+  gives a covariate the coefficient :math:`\beta + \gamma g(t)`, with ``g``
+  ``"t"``, ``"log"`` or any function of time, by splitting the rows at the
+  event times. The coefficient table names the interactions
+  (``karno:log(t)``); ``time_varying_effect()`` gives :math:`\beta(t)` with
+  Wald bounds, with ``plot()``; ``sf``, ``Hf`` and the other predictions at
+  fixed covariates apply :math:`\beta(t)` at each time, and ``phi``, the
+  concordance, ``diagnose()`` and ``to_dict`` refuse. Matches R's
+  ``coxph(..., tt = function(x, t, ...) x * g(t))`` on ``veteran`` and
+  ``lung`` (Efron and Breslow ties, strata, weights) to 1e-6, and
+  ``diagnose()``'s advice for a continuous covariate that fails the
+  proportional-hazards test now names it.
+- The restricted mean survival time of the parametric models:
+  ``rmst(tau)`` (the RMST, its delta-method standard error and 95%
+  interval, in the form of the non-parametric models' ``rmst``),
+  ``rmst_cb(tau)`` (Wald, likelihood-ratio and bootstrap bounds, at one
+  horizon or several) and ``mean(tau=tau)`` (the point). Exact for the
+  Exponential, Weibull, Gamma and LogNormal, by quadrature otherwise;
+  offsets, limited failure populations and zero inflation included. The
+  parametric regression models have ``rmst(tau, Z)``, ``rmst_cb(tau, Z)``
+  (Wald and bootstrap) and ``rmst_diff(tau, Z_a, Z_b)``, and
+  ``surpyval.rmst_diff`` compares parametric fits as well as
+  non-parametric ones. Checked against R (``survreg`` and ``integrate``
+  with the delta method by hand, and flexsurv's ``summary(type="rmst")``)
+  on ``lung`` and ``ovarian``.
 - ``CoxPH.fit_firth``: the Cox model with Firth's penalty (Heinze and
   Schemper 2001), half the log determinant of the information added to the
   partial log-likelihood, so the estimates stay finite where a covariate
@@ -455,6 +481,12 @@ Unreleased
   ``CauseSpecificNHPP`` (no longer a gap) and drops issue numbers that no
   longer track anything; the README's model table names
   ``CauseSpecificNHPP``; the usage skill lists all eight copula families.
+- Removed code nothing called: the rename helpers of
+  ``surpyval.utils.deprecation`` no deprecation uses any more
+  (``reordered_arguments``, ``CallableFloat``, ``MethodFloat``,
+  ``MethodArray``, ``ArrayMethod``, ``RenamedToMethod``, ``MadePrivate``),
+  and a few private helpers with no callers. ``renamed_arguments``,
+  ``RenamedAttribute`` and ``renamed_name`` stay for the next rename.
 
 v0.26 (31 October 2026)
 -----------------------
