@@ -262,6 +262,57 @@ use ``covariance()`` for a variance:
     print("support   :", model.support)
     print("std errors:", model.standard_errors())
 
+Which parameter is each row of the covariance?
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``covariance_names`` names the rows (and columns) of ``covariance()`` and
+the entries of ``standard_errors()``, in order. A plain fit has one row per
+distribution parameter, the same as ``parameter_names``. A fit with a
+limited failure population (``lfp=True``) adds a row for the proportion
+that can fail, ``lfp_p``, and one with zero inflation (``zi=True``) adds a
+row for the fraction failed at time 0, ``f0``, in that order:
+
+.. jupyter-execute::
+
+    import numpy as np
+    rng = np.random.default_rng(0)
+    x = np.r_[rng.weibull(2, 200) * 100, np.zeros(20)]
+    zi_model = surv.Weibull.fit(x, zi=True)
+    print(zi_model.covariance_names)
+    se = zi_model.standard_errors()
+    print({n: round(float(v), 4) for n, v in zip(zi_model.covariance_names, se)})
+
+Two cases keep a parameter out of the variances:
+
+- A parameter **fixed** at fit time (``fixed={"beta": 2}``) is known, so
+  its row and column are zeros; it keeps its name and place.
+- The **offset** ``gamma`` of an ``offset=True`` fit has no row. It is a
+  threshold, the earliest time a failure can happen, and the usual
+  standard error is unreliable for it: the fit often sits on or near the
+  first failure, where the likelihood is not smooth. In a simulation of
+  200-unit Weibull samples, a 95% interval from that standard error caught
+  the true offset only 89% of the time for a shape of 3.5 and 76% for a
+  shape of 1.5, and below a shape of 1 there was no standard error at all.
+  So the covariance holds ``gamma`` at its estimate, and the other rows are
+  the variances given ``gamma``. Bound the offset itself with
+  ``param_cb("gamma", method="lr")`` or ``method="bootstrap"``.
+
+To simulate parameter uncertainty, draw from a multivariate normal with
+these names: the estimates are ``params`` then ``lfp_p`` and ``f0`` (where
+the model has them), in the order of ``covariance_names``.
+
+.. jupyter-execute::
+
+    est = {**dict(zip(zi_model.parameter_names, zi_model.params)),
+           "f0": zi_model.f0}
+    centre = [est[name] for name in zi_model.covariance_names]
+    draws = rng.multivariate_normal(centre, zi_model.covariance(), 5)
+    print({n: round(float(v), 3) for n, v in zip(zi_model.covariance_names, draws[0])})
+
+``parameter_names`` stays the distribution's parameters (the entries of
+``params``), and ``hess_inv`` stays the distribution's block of the inverse
+Hessian, so neither changes with ``lfp`` or ``zi``.
+
 The distributions can also be used directly, without a model, by passing
 the parameters after ``x``. This is handy for a quick calculation:
 
@@ -3123,3 +3174,382 @@ about :math:`10^{-12}` at :math:`t = 60`. It fits with any censoring:
 
 The estimates are within two standard errors of the :math:`\mu = 2` and
 :math:`\lambda = 3` simulated.
+
+Recipes in flexsurv's parameterisations
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The generalised gamma and generalised F above are written in their
+original forms. Prentice's forms, which R's ``flexsurv`` uses as
+``dist="gengamma"`` and ``dist="genf"``, describe the same families
+differently, and are often the more useful: they put the lognormal *inside*
+the family, at a finite parameter value, so a single fit can be tested
+against the Weibull, the lognormal and the gamma at once. Both recipes below
+reproduce ``flexsurv``'s survival functions, maximised log-likelihoods,
+estimates and standard errors (checked in SurPyval's tests against stored
+``flexsurv`` 2.3.2 results on ``survival``'s ``lung`` data).
+
+**The generalised gamma, (mu, sigma, Q).** Reach for it when you cannot
+decide between a Weibull and a lognormal, or when the hazard might rise
+and then fall. In plain words: :math:`\mu` and :math:`\sigma` are the
+location and spread of :math:`\ln T`, as for the lognormal, and :math:`Q`
+bends the shape. :math:`Q = 1` is the Weibull (shape :math:`1/\sigma`,
+scale :math:`e^\mu`), :math:`Q = 0` the lognormal, :math:`Q = \sigma` the
+gamma, and a negative :math:`Q` gives shapes none of them has. With
+:math:`w = (\ln t - \mu)/\sigma`, :math:`\gamma = Q^{-2}` and
+:math:`u = \gamma e^{Q w}`,
+
+.. math::
+
+    R(t) = \begin{cases}
+        Q(\gamma, u) & Q > 0, \\
+        1 - \Phi(w) & Q = 0, \\
+        P(\gamma, u) & Q < 0,
+    \end{cases}
+
+with :math:`P` and :math:`Q(\cdot, \cdot)` the regularised lower and upper
+incomplete gamma functions. :math:`Q = 0` is a limit (the lognormal is what
+the other two branches tend to), so the recipe takes that branch only at
+exactly zero; it is there so that ``fixed={'Q': 0}`` gives the lognormal.
+
+.. jupyter-execute::
+
+    import surpyval as surv
+    from autograd import numpy as np
+    from autograd.scipy.stats import norm
+    from surpyval.utils.autograd_gamma_compat import gammainccln, gammaincln
+
+    def ggp_Hf(x, mu, sigma, Q):
+        w = (np.log(x) - mu) / sigma
+        if Q == 0:
+            # the lognormal limit
+            return -norm.logcdf(-w)
+        g = Q ** -2
+        u = g * np.exp(Q * w)
+        if Q > 0:
+            return -gammainccln(g, u)
+        return -gammaincln(g, u)
+
+    GenGammaPrentice = surv.CustomDistribution(
+        'GenGammaPrentice', ggp_Hf, ['mu', 'sigma', 'Q'],
+        ((None, None), (0, None), (None, None)), (0, np.inf))
+
+The branches are plain Python ``if`` statements on the value of
+:math:`Q`, which autograd follows. The survival function agrees with
+``scipy.stats.gengamma``, which uses Stacy's form, for either sign of
+:math:`Q`, and tends to the lognormal as :math:`Q` shrinks:
+
+.. jupyter-execute::
+
+    def stacy(mu, sigma, Q):
+        # scipy's gengamma(a, c, scale) for Prentice's (mu, sigma, Q)
+        a, c = Q ** -2, Q / sigma
+        return stats.gengamma(a, c, scale=np.exp(mu) * a ** (-1 / c))
+
+    t = np.array([0.5, 2.0, 5.0, 12.0])
+    for Q in (0.5, -0.8):
+        print(GenGammaPrentice.sf(t, 1.0, 0.7, Q), stacy(1.0, 0.7, Q).sf(t))
+    print(GenGammaPrentice.sf(t, 1.0, 0.7, 1e-4),
+          stats.lognorm(0.7, scale=np.e).sf(t))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    for _Q in (0.5, -0.8, 2.0):
+        _ref = stacy(1.0, 0.7, _Q)
+        assert np.allclose(GenGammaPrentice.sf(t, 1.0, 0.7, _Q), _ref.sf(t),
+                           rtol=1e-12)
+        assert np.allclose(GenGammaPrentice.df(t, 1.0, 0.7, _Q), _ref.pdf(t),
+                           rtol=1e-6)
+    _ln = stats.lognorm(0.7, scale=np.e)
+    assert np.allclose(GenGammaPrentice.sf(t, 1.0, 0.7, 1e-4), _ln.sf(t),
+                       rtol=1e-3)
+    assert np.allclose(GenGammaPrentice.sf(t, 1.0, 0.7, 0.0), _ln.sf(t),
+                       rtol=1e-12)
+
+On ``lung`` (survival in days of 228 patients with advanced lung cancer,
+63 of them censored), the generalised gamma fits as any distribution does,
+with standard errors, an AIC and every bound:
+
+.. jupyter-execute::
+
+    from surpyval.datasets import load_lung
+
+    lung = load_lung()
+    x_l = lung['time'].to_numpy(float)
+    c_l = 1 - lung['status'].to_numpy()  # status 1 is a death
+
+    ggp = GenGammaPrentice.fit(x_l, c=c_l)
+    print(ggp.params, ggp.standard_errors())
+    print(-ggp.neg_ll(), ggp.aic())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(ggp.params, [6.0765, 0.7271, 1.1265], atol=5e-4)
+    assert round(-ggp.neg_ll(), 2) == -1153.69, ggp.neg_ll()
+
+``flexsurvreg(Surv(time, status) ~ 1, data = lung, dist = "gengamma")``
+gives the same: :math:`\mu = 6.077`, :math:`\sigma = 0.727`,
+:math:`Q = 1.127` and a log-likelihood of :math:`-1153.69`.
+
+Fixing :math:`Q = 1` gives exactly the Weibull fit and :math:`Q = 0`
+exactly the lognormal fit:
+
+.. jupyter-execute::
+
+    weibull_l = surv.Weibull.fit(x_l, c=c_l)
+    lognormal_l = surv.LogNormal.fit(x_l, c=c_l)
+    gamma_l = surv.Gamma.fit(x_l, c=c_l)
+
+    q1 = GenGammaPrentice.fit(x_l, c=c_l, fixed={'Q': 1})
+    q0 = GenGammaPrentice.fit(x_l, c=c_l, fixed={'Q': 0})
+    print(np.exp(q1.mu), 1 / q1.sigma, weibull_l.params)
+    print(q0.params[:2], lognormal_l.params)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose([np.exp(q1.mu), 1 / q1.sigma], weibull_l.params,
+                       rtol=1e-5)
+    assert np.isclose(q1.neg_ll(), weibull_l.neg_ll(), rtol=1e-9)
+    assert np.allclose(q0.params[:2], lognormal_l.params, rtol=1e-5)
+    assert np.isclose(q0.neg_ll(), lognormal_l.neg_ll(), rtol=1e-9)
+
+Each of the three is the generalised gamma with one restriction
+(:math:`Q = 1`, :math:`Q = 0`, :math:`Q = \sigma`), each inside the range
+of :math:`Q`, so twice the difference in log-likelihood is a
+likelihood-ratio statistic with one degree of freedom:
+
+.. jupyter-execute::
+
+    lr_l = {}
+    for name, nested in [('Weibull', weibull_l), ('LogNormal', lognormal_l),
+                         ('Gamma', gamma_l)]:
+        lr_l[name] = 2 * (nested.neg_ll() - ggp.neg_ll())
+        print(f"{name}: LR = {lr_l[name]:.2f}, "
+              f"p = {stats.chi2(1).sf(lr_l[name]):.3g}")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _p = {k: stats.chi2(1).sf(v) for k, v in lr_l.items()}
+    assert _p['Weibull'] > 0.5 and 0.1 < _p['Gamma'] < 0.2, _p
+    assert _p['LogNormal'] < 1e-6, _p
+
+The ``lung`` data reject the lognormal firmly (p below one in a million).
+They reject neither the Weibull (p above 0.5) nor the gamma (p about 0.15),
+but the Weibull sits much closer to the best generalised gamma: one fit has
+narrowed three candidates to the Weibull.
+
+The recipe handles every kind of censoring and truncation. Here half of 400
+units are inspected (first at 3, then every 2), so a failure among them is
+known only to have happened before the first inspection (left censored) or
+between two (interval censored); the other half are watched continuously;
+the study stops at 15; and only units that survived to 1 were enrolled:
+
+.. jupyter-execute::
+
+    rng_gg = np.random.default_rng(3)
+    t_true = stacy(2.0, 0.5, 0.5).rvs(400, random_state=rng_gg)
+    inspected = rng_gg.uniform(size=400) < 0.5
+    enrolled = t_true > 1
+    t_true, inspected = t_true[enrolled], inspected[enrolled]
+
+    x_ic = np.c_[t_true, t_true]          # failures seen when they happen
+    c_ic = np.zeros(t_true.size, dtype=int)
+    early = inspected & (t_true < 3)      # failed before the first look
+    x_ic[early], c_ic[early] = 3.0, -1
+    later = inspected & (t_true >= 3)     # failed between two looks
+    lo = 3 + 2 * np.floor((t_true[later] - 3) / 2)
+    x_ic[later], c_ic[later] = np.c_[lo, np.minimum(lo + 2, 15)], 2
+    stopped = t_true > 15                 # still running at the end
+    x_ic[stopped], c_ic[stopped] = 15.0, 1
+    print({int(k): int(n) for k, n in zip(*np.unique(c_ic, return_counts=True))})
+
+    gg_ic = GenGammaPrentice.fit(x_ic, c=c_ic, tl=1.0)
+    print(gg_ic.params, gg_ic.standard_errors())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert set(np.unique(c_ic)) == {-1, 0, 1, 2}, np.unique(c_ic)
+    assert np.all(np.abs(gg_ic.params - [2.0, 0.5, 0.5])
+                  < 2 * gg_ic.standard_errors()), gg_ic.params
+
+The estimates are within two standard errors of the :math:`\mu = 2`,
+:math:`\sigma = 0.5` and :math:`Q = 0.5` simulated.
+
+**The generalised F, (mu, sigma, Q, P).** The generalised F adds a fourth
+parameter, :math:`P`, that thickens the tail: :math:`P = 0` is the
+generalised gamma (a limit), and :math:`Q = 0`, :math:`P = 1` the
+log-logistic. Reach for it only with plenty of data, to check whether the
+generalised gamma's tail is too thin. With
+:math:`\delta = \sqrt{Q^2 + 2P}`,
+:math:`s_1 = 2/(Q^2 + 2P + Q\delta)` and
+:math:`s_2 = 2/(Q^2 + 2P - Q\delta)`,
+
+.. math::
+
+    R(t) = 1 - I_{u}(s_1, s_2), \qquad
+    u = \frac{1}{1 + (s_2/s_1)\, e^{-\delta w}},
+    \quad w = \frac{\ln t - \mu}{\sigma},
+
+where :math:`I` is the regularised incomplete beta function. SurPyval's
+``betainccln`` differentiates it in all three arguments, so the recipe
+is complete: fitting, standard errors and bounds all work.
+
+.. jupyter-execute::
+
+    import surpyval as surv
+    from autograd import numpy as np
+    from surpyval.utils.autograd_gamma_compat import betainccln
+
+    def gfp_Hf(x, mu, sigma, Q, P):
+        d = np.sqrt(Q ** 2 + 2 * P)
+        s1 = 2 / (Q ** 2 + 2 * P + Q * d)
+        s2 = 2 / (Q ** 2 + 2 * P - Q * d)
+        w = (np.log(x) - mu) / sigma
+        return -betainccln(s1, s2, 1 / (1 + s2 / s1 * np.exp(-d * w)))
+
+    GenFPrentice = surv.CustomDistribution(
+        'GenFPrentice', gfp_Hf, ['mu', 'sigma', 'Q', 'P'],
+        ((None, None), (0, None), (None, None), (0, None)), (0, np.inf))
+
+    gfp = GenFPrentice.fit(x_l, c=c_l)
+    print(gfp.params, gfp.standard_errors())
+    lr_gf = 2 * (ggp.neg_ll() - gfp.neg_ll())
+    print(f"LR against the generalised gamma = {lr_gf:.2f}, "
+          f"p = {0.5 * stats.chi2(1).sf(lr_gf):.2f}")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(-gfp.neg_ll(), 2) == -1153.58, gfp.neg_ll()
+    assert gfp.standard_errors()[3] > gfp.params[3], gfp.standard_errors()
+    assert 0.5 * stats.chi2(1).sf(lr_gf) > 0.2, lr_gf
+    assert np.allclose(GenFPrentice.sf(t, 0.0, 0.7, 0.0, 1.0),
+                       surv.LogLogistic.sf(t, 1.0, np.sqrt(2) / 0.7),
+                       rtol=1e-12)
+    assert np.allclose(GenFPrentice.sf(t, 1.0, 0.7, 0.5, 1e-6),
+                       GenGammaPrentice.sf(t, 1.0, 0.7, 0.5), rtol=1e-4)
+
+``flexsurv``'s ``dist = "genf"`` agrees (log-likelihood :math:`-1153.58`,
+:math:`P = 0.549` with a standard error of 1.19). The standard error of
+:math:`P` is larger than :math:`P` itself, and the likelihood ratio
+against the generalised gamma is small: since :math:`P = 0` is on the edge
+of its range, the p-value is half the :math:`\chi^2_1` tail, and it is far
+above 0.05. The generalised F adds nothing here. Four parameters ask a lot
+of the data (and the fit takes some seconds, since every step
+differentiates the incomplete beta function); on smaller samples the
+search can run off towards :math:`P \to 0` or a large :math:`P`, and
+SurPyval warns that the likelihood has no finite maximum. Then fit the
+generalised gamma, or fix :math:`P` with ``fixed``.
+
+**Regression.** Each recipe takes covariates as any distribution does:
+``surv.AFT``, ``surv.PH``, ``surv.PO`` and ``surv.AH`` (see
+:doc:`Regression Modelling with SurPyval`). ``flexsurv``'s covariates on
+:math:`\mu` are the accelerated failure time model,
+:math:`R(t \mid Z) = R_0(e^{\beta' Z} t)`, which shifts :math:`\mu` by
+:math:`-\beta' Z`; so SurPyval's coefficient, which is positive for a
+shorter life, is ``flexsurv``'s with the sign flipped. On ``lung``, with
+``sex`` (1 male, 2 female):
+
+.. jupyter-execute::
+
+    sex = lung['sex'].to_numpy(float)
+    ggp_aft = surv.AFT(GenGammaPrentice).fit(x_l, sex, c=c_l)
+    print(ggp_aft.params, ggp_aft.standard_errors())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(ggp_aft.params, [5.4972, 0.7513, 1.0156, -0.3931],
+                       atol=5e-4), ggp_aft.params
+    assert round(-ggp_aft.neg_ll(), 2) == -1148.65, ggp_aft.neg_ll()
+
+``flexsurvreg(Surv(time, status) ~ sex, dist = "gengamma")`` gives
+:math:`\mu = 5.497`, :math:`\sigma = 0.751`, :math:`Q = 1.016` and a
+``sex`` coefficient of :math:`+0.393` (standard error 0.132), the same
+fit with the opposite sign: women in ``lung`` live longer.
+``surv.AFT(GenFPrentice)`` matches ``dist = "genf"`` in the same way. A
+proportional hazards, proportional odds or additive hazards model on the
+same baseline is one word different, and the AIC compares them:
+
+.. jupyter-execute::
+
+    forms = {'AFT': ggp_aft}
+    for name, family in [('PH', surv.PH), ('PO', surv.PO), ('AH', surv.AH)]:
+        forms[name] = family(GenGammaPrentice).fit(x_l, sex, c=c_l)
+    for name, m in forms.items():
+        print(f"{name}: sex coefficient {m.params[-1]:+.4f}, "
+              f"AIC {m.aic():.1f}")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _aic = {k: m.aic() for k, m in forms.items()}
+    assert max(_aic.values()) - min(_aic.values()) < 4, _aic
+    assert forms['PH'].params[-1] < 0 < forms['PO'].params[-1], _aic
+
+The four AICs are within a few units of one another, so these data cannot
+tell the forms apart. Read each coefficient by its own model's rule: a
+negative PH coefficient is a lower hazard for women, and a positive PO
+coefficient (which multiplies the odds of *surviving*) says the same.
+
+The inverse Gaussian takes covariates in the same way. Under the AFT model
+a covariate scales time, and a scaled inverse Gaussian is again inverse
+Gaussian (both :math:`\mu` and :math:`\lambda` scale), so the fit can be
+checked against a likelihood written with ``scipy.stats.invgauss`` and
+maximised by ``scipy.optimize``:
+
+.. jupyter-execute::
+
+    from scipy import optimize
+
+    rng_ig = np.random.default_rng(11)
+    Z_ig = rng_ig.binomial(1, 0.5, 300).astype(float)
+    # AFT: time is scaled by exp(-0.6 Z)
+    t_ig2 = stats.invgauss(2 / 3, scale=3.0 * np.exp(-0.6 * Z_ig)).rvs(
+        random_state=rng_ig)
+    c_ig2 = (t_ig2 > 5).astype(int)
+    t_ig2 = np.minimum(t_ig2, 5.0)
+
+    ig_aft = surv.AFT(InvGauss).fit(t_ig2, Z_ig, c=c_ig2)
+    print(ig_aft.params, ig_aft.standard_errors())
+
+    def ig_aft_neg_ll(p):
+        mu, lam, beta = p
+        scale = np.exp(-beta * Z_ig)
+        d = stats.invgauss(mu / lam, scale=lam * scale)
+        return -np.sum(np.where(c_ig2 == 0, d.logpdf(t_ig2), d.logsf(t_ig2)))
+
+    by_scipy = optimize.minimize(ig_aft_neg_ll, [1.5, 2.5, 0.3],
+                                 method='Nelder-Mead',
+                                 options=dict(xatol=1e-10, fatol=1e-12,
+                                              maxiter=20000))
+    print(by_scipy.x)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(ig_aft.params, by_scipy.x, rtol=1e-5), by_scipy.x
+    assert np.isclose(ig_aft.neg_ll(), by_scipy.fun, rtol=1e-10)
+    assert abs(ig_aft.params[-1] - 0.6) < 2 * ig_aft.standard_errors()[-1]
+
+The two agree, and the coefficient is within two standard errors of the
+0.6 simulated. ``surv.PH(InvGauss)``, ``surv.PO(InvGauss)`` and
+``surv.AH(InvGauss)`` fit in the same way.
+
+All these regression families put the covariates on the scale (AFT) or on
+the hazard, odds or cumulative hazard as a whole (PH, PO, AH). Covariates
+on a shape parameter, such as ``flexsurv``'s ``anc = list(sigma = ~ sex)``,
+are not available through them.

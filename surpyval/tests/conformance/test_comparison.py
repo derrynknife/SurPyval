@@ -153,3 +153,22 @@ def test_613_standard_errors_are_the_covariance_diagonal(case):
                 expected = np.sqrt(np.where(var >= 0, var, np.nan))
                 np.testing.assert_allclose(se, expected, rtol=1e-12)
     assert not _has(model, "se"), "model.se, the old spelling, is left"
+
+
+@pytest.mark.parametrize("case", cases_for("comparison"))
+def test_covariance_names_label_every_row(case):
+    """Where a model has ``covariance_names`` (every parametric fit, a
+    mixture, a degradation process model), it is a list of distinct
+    strings, one per row of ``covariance()`` where there is one."""
+    model = fitted(case)
+    if not hasattr(model, "covariance_names"):
+        return
+    names = model.covariance_names
+    assert isinstance(names, list), type(names)
+    assert all(isinstance(n, str) for n in names), names
+    assert len(set(names)) == len(names), names
+    try:
+        cov = np.asarray(model.covariance(), dtype=float)
+    except ValueError:
+        return
+    assert cov.shape == (len(names), len(names)), (cov.shape, names)

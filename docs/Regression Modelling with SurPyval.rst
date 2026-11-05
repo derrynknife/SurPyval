@@ -2061,8 +2061,9 @@ rescaling is about 0, :math:`S(x \mid Z) = S_0(\phi(Z)\, x)`, so where 0 is
 matters: put it at a real origin, such as the start of service. Moving 0
 changes the fit, as it would for a Weibull. A model in which the covariates
 shift the distribution's location, :math:`\mu = a + bV`, is an accelerated
-life model, ``AcceleratedLife(Normal, life_models.Linear)``, and does not
-depend on where 0 is; R's ``survreg`` calls it a gaussian (or logistic) AFT.
+life model, ``AcceleratedLife(Normal, life_models.Linear)`` (or
+``life_models.GeneralLinear`` for several covariates), and does not depend
+on where 0 is; R's ``survreg`` calls it a gaussian (or logistic) AFT.
 Additive hazards on these baselines likewise counts the covariate's effect
 from 0.
 
@@ -2634,12 +2635,68 @@ letters in each formula are the parameter names the fitted model reports, and
      - Any number of stresses, each entering as given (pass ``1 / T`` or
        ``log V`` as the column for an Arrhenius or power term); with a
        Weibull or LogNormal it is that distribution's AFT model
+   * - ``GeneralLinear``
+     - :math:`a + \beta_0 Z_0 + \beta_1 Z_1 + \cdots`, one coefficient per
+       column of ``Z`` (named by the column, or ``coef_j``)
+     - ``Linear`` for any number of covariates; meant for a location
+       (``mu`` of ``Normal``, ``Gumbel``, ``Logistic``), see `A location
+       model with several covariates`_
 
 A note on units: the stress variable :math:`Z` for Arrhenius and Eyring should
 be in Kelvin (absolute temperature), not Celsius. The accelerated life fitter
 takes the same ``c``, ``n``, ``t``, ``init`` and ``fixed`` arguments as the
 other parametric families (the life-model parameters can be held with
 ``fixed`` too), and has a ``fit_from_df``.
+
+A location model with several covariates
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Some quantities live on the whole real line and have no natural zero: a
+level in decibels, a temperature in °C, a margin that can go negative. For
+them the covariates should *move* the distribution rather than stretch
+time, so that where zero sits does not matter. ``GeneralLinear`` does this
+with any number of covariates: on the ``mu`` of ``Normal``, ``Gumbel`` or
+``Logistic`` each covariate shifts the whole distribution by a fixed amount
+per unit, and adding a constant to every time moves the constant ``a``
+alone. In formulas,
+
+.. math::
+
+    \mu(Z) = a + \beta_0 Z_0 + \beta_1 Z_1 + \cdots,
+
+with the spread :math:`\sigma` the same for every unit. A positive
+coefficient means a later (longer) life, as for every life model. This is
+the model R's ``survreg(..., dist = "gaussian")`` (or ``"logistic"``, or
+``"extreme"`` for the Gumbel) fits to the times themselves, with the same
+signs: its intercept and coefficients are ``a`` and the :math:`\beta_j`,
+and its ``scale`` is :math:`\sigma`. With one covariate it is ``Linear``.
+
+On a scale parameter (the ``alpha`` of ``Weibull``) the plane can reach
+zero or negative life outside the stresses tested, where a life is
+undefined, as ``Linear``'s can; use ``GeneralLogLinear`` there.
+
+.. jupyter-execute::
+
+    from surpyval import Normal
+
+    rng = np.random.default_rng(3)
+    Z_loc = np.column_stack([rng.normal(size=80), rng.integers(0, 2, 80)])
+    y = -5 + 2.0 * Z_loc[:, 0] - 1.5 * Z_loc[:, 1] + rng.normal(0, 1.5, 80)
+    c_loc = (y > -3).astype(int)       # right censored at -3
+    y = np.minimum(y, -3.0)
+    loc = AcceleratedLife(Normal, life_models.GeneralLinear).fit(
+        y, Z=Z_loc, c=c_loc)
+    shifted = AcceleratedLife(Normal, life_models.GeneralLinear).fit(
+        y + 40, Z=Z_loc, c=c_loc)
+    print(loc.phi_params.round(3))
+    print(shifted.phi_params.round(3))    # a moves by 40, the rest stays
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(shifted.phi_params[0], loc.phi_params[0] + 40)
+    assert np.allclose(shifted.phi_params[1:], loc.phi_params[1:], rtol=1e-5)
 
 Using the factory
 ~~~~~~~~~~~~~~~~~
@@ -3276,8 +3333,8 @@ So put 0 at a real origin, such as the start of service, for AFT or additive
 hazards on these baselines. For a quantity whose 0 is only a reference point
 (decibels, a temperature in °C, a log-scale measurement) use PH or PO, or a
 model in which the covariate shifts the distribution's location,
-``AcceleratedLife(Normal, life_models.Linear)``, which is an accelerated life
-model and not an AFT (see `Accelerated Failure Time (AFT)`_).
+``AcceleratedLife(Normal, life_models.Linear)`` (``GeneralLinear`` for
+several covariates), which is an accelerated life model and not an AFT (see `Accelerated Failure Time (AFT)`_).
 
 **Survival given an age.** ``sf_tvc(x, Z, given=g)`` is
 :math:`S(x \mid g) = S(x) / S(g)`. The covariate before :math:`g` changes the

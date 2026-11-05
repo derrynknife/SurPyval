@@ -342,8 +342,10 @@ _SURVIVAL = frozenset({UNIVARIATE, REGRESSION, CAUSES, CAUSES_REGRESSION})
 _APPLICABLE: dict[str, frozenset[str]] = {
     "sf_ff": _SURVIVAL,
     "Hf_sf": _SURVIVAL,
-    "df_hf_sf": frozenset({UNIVARIATE, REGRESSION}),
-    "qf_ff": frozenset({UNIVARIATE}),
+    # CAUSES: the all-cause functions (only ParametricCompetingRisks has
+    # df and qf; the property also needs them).
+    "df_hf_sf": frozenset({UNIVARIATE, REGRESSION, CAUSES}),
+    "qf_ff": frozenset({UNIVARIATE, CAUSES}),
     "cif_sum": frozenset({CAUSES, CAUSES_REGRESSION}),
     "row_independence": frozenset(WITH_COVARIATES),
     "missing_covariate": frozenset(WITH_COVARIATES),
@@ -912,6 +914,22 @@ def _accelerated_life_family():
                 "aliasing": "model.aliased are positions in phi_params, "
                 "after the constant c, not columns of Z; the aliasing is "
                 "tests/univariate/regression/test_general_log_linear.py's"
+            },
+        )
+    )
+    # Its linear twin, mu = a + b'Z, on a location parameter: the
+    # ordinary regression data serve, as for GeneralLogLinear.
+    out.append(
+        regression(
+            "NormalAL[GeneralLinear]",
+            sp.AcceleratedLife(sp.Normal, sp.life_models.GeneralLinear),
+            fitters=("surpyval.life_models.GeneralLinear",),
+            slow=REFIT_PROPERTIES,
+            coefficients=None,
+            exclude={
+                "aliasing": "model.aliased are positions in phi_params, "
+                "after the constant a, not columns of Z; the aliasing is "
+                "tests/univariate/regression/test_general_linear.py's"
             },
         )
     )

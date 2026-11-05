@@ -356,6 +356,10 @@ The built-in stress-life relationships, in ``surpyval.life_models`` (all are ``L
    * - ``GeneralLogLinear``
      - :math:`c\, e^{\beta' Z}`, one :math:`\beta_j` per column of ``Z``
      - Any number of stresses (transformed as needed, e.g. :math:`1/T`)
+   * - ``GeneralLinear``
+     - :math:`a + \beta' Z`, one :math:`\beta_j` per column of ``Z``
+     - Several covariates shifting a location (``Normal``, ``Gumbel``,
+       ``Logistic`` ``mu``): a quantity with no natural zero
 
 **Accelerated life versus AFT.** For a Weibull, substituting a log-linear life :math:`\alpha(Z) = e^{a + b' Z}` gives :math:`S(t \mid Z) = \exp\bigl(-(t e^{-b'Z} / e^{a})^{k}\bigr)`, which is exactly an AFT model with :math:`\beta = -b`. So for scale-family distributions the two coincide under a log-linear link, with opposite signs: an accelerated life coefficient says how much *life* a unit of stress buys, an AFT coefficient how much *faster* it ages. They part company for location-family distributions (Normal, Gumbel, Logistic), where accelerated life shifts the location but AFT rescales time, and whenever the stress-life relationship is not log-linear — which is the point of having physically motivated life models. The distinction follows [Bagdonavicius]_; see also :doc:`Handy References - Aide-mémoire`.
 

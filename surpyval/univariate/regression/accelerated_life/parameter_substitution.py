@@ -593,7 +593,12 @@ class ParameterSubstitutionFitter(
         aliased = free[aliased_columns(gram, T.shape[0], constant)]
         if aliased.size == 0:
             return ()
-        if intercept:
+        # A life model linear in the stresses themselves (GeneralLinear)
+        # says so in its own words
+        how = getattr(self.life_model, "aliasing_reason", None)
+        if how is not None:
+            pass
+        elif intercept:
             how = (
                 "the {} life model's log-life is linear in a term of each "
                 "stress (log s for a power term, 1 / s for an exponential "
