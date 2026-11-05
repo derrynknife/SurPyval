@@ -16,8 +16,9 @@ one that is not. Each is checked for:
 5. each offered bound is finite; each refused
    bound raises a ``WeightedRefusal`` naming what to use instead;
 6. the information criteria refuse;
-7. ``to_dict`` / ``from_dict`` (stamped schema 3) and ``pickle`` keep
-   the robust intervals and the refusals;
+7. ``to_dict`` / ``from_dict`` (stamped schema 4) and ``pickle`` keep
+   the robust intervals, the covariance, ``hess_inv`` (the inverse
+   Hessian, saved as ``"hess_inv"``) and the refusals;
 8. the case-bootstrap bounds (``bootstrap``) are finite, and the same
    (to the optimisers' tolerance) with every weight multiplied by 7.3
    for the same seed.
@@ -720,13 +721,21 @@ def test_case_bootstrap_bounds_are_finite_and_scale_free(case, data):
 def test_round_trip_keeps_the_robust_bounds(case, data):
     model = _fit(case, data, data["w"])
     d = model.to_dict()
-    # 3, or a later schema a model's other entries need (a distributional
-    # model's coefficient signs are schema 4), which reads weights too
-    assert d["schema"] >= 3 and d["weighted"] is True
+    # Schema 4, which 0.26 (schema 3) refuses; every matrix under its own
+    # name: "hess_inv" the inverse Hessian, "covariance" the robust one
+    assert d["schema"] == 4 and d["weighted"] is True
+    assert "inverse_hessian" not in d
+    hess_inv = getattr(model, "hess_inv", None)
+    if hess_inv is not None:
+        assert_allclose(d["hess_inv"], hess_inv, rtol=0)
     restored = sp.from_dict(json.loads(json.dumps(d, allow_nan=False)))
     pickled = pickle.loads(pickle.dumps(model))
     for again in (restored, pickled):
         assert again.weighted
+        if hess_inv is not None:
+            assert_allclose(again.hess_inv, hess_inv, rtol=1e-15)
+        else:
+            assert getattr(again, "hess_inv", None) is None
         for key, call in case.offered.items():
             if key == "rmst" and again is restored:
                 # The jackknife of the area needs the data

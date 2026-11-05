@@ -121,7 +121,7 @@ def test_distributional_refusals(data):
 def test_distributional_round_trip_keeps_the_weights(data):
     model = _distributional(data, w=data["w"])
     d = model.to_dict()
-    assert d["weighted"] is True and d["schema"] >= 3
+    assert d["weighted"] is True and d["schema"] == 4
     restored = sp.from_dict(d)
     assert restored.weighted
     assert_allclose(restored.effective_n, model.effective_n)

@@ -132,10 +132,10 @@ def test_effective_sample_size_is_shown_and_warned(data):
         _fit(data, w=data["w"])
 
 
-def test_saved_weighted_model_is_schema_3(data):
+def test_saved_weighted_model_is_schema_4(data):
     model = _fit(data, w=data["w"])
     saved = model.to_dict()
-    assert saved["schema"] == 3 and saved["weighted"] is True
+    assert saved["schema"] == 4 and saved["weighted"] is True
     assert "weighted" not in _fit(data).to_dict()
     back = sp.from_dict(json.loads(json.dumps(saved, allow_nan=False)))
     for again in (back, pickle.loads(pickle.dumps(model))):

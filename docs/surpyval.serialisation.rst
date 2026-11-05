@@ -123,6 +123,26 @@ convention. :func:`~surpyval.serialisation.encode_non_finite` and
 :func:`~surpyval.serialisation.decode_non_finite` apply and undo it on
 any dictionary.
 
+The later versions, each refused by the SurPyval releases before it:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Schema
+     - Stamped on
+     - First read by
+   * - 3
+     - ``SurpyvalData`` with sampling weights ``w``: a reader without
+       weights would drop them. (Weighted models were schema 3 in 0.26.)
+     - 0.26
+   * - 4
+     - A model fitted with weights ``w`` (``"weighted": true``), whose
+       ``"hess_inv"`` is the inverse Hessian and ``"covariance"`` the
+       robust covariance (0.26 wrote the robust covariance as
+       ``"hess_inv"``); a stratified Cox model (``"strata"``); a model
+       whose coefficients carry their signs (``"coefficient_signs"``).
+     - 0.27
+
 .. autofunction:: surpyval.serialisation.from_dict
 
 .. autofunction:: surpyval.serialisation.from_json

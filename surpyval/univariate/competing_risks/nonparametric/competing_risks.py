@@ -149,7 +149,7 @@ class CompetingRisks(SerialisableMixin):
         (the shared baseline plus the per-event incidence and cumulative-
         incidence functions). The reloaded model reproduces every prediction
         exactly. A model fitted with weights ``w`` also keeps its robust
-        variances and is stamped schema 3, which older readers refuse.
+        variances and is stamped schema 4, which older readers refuse.
         """
         out: dict = {
             "model": "CompetingRisks",
@@ -168,7 +168,7 @@ class CompetingRisks(SerialisableMixin):
         if self.support is not None:
             out["support"] = [float(v) for v in self.support]
         if self.weighted:
-            # Schema 3: a reader without weights would bound the estimate
+            # Schema 4: a reader without weights would bound the estimate
             # with the classical variances.
             out["weighted"] = True
             out["effective_n"] = float(self.effective_n)  # type: ignore

@@ -1169,7 +1169,7 @@ class FineGrayModel(
         if self.feature_names is not None:
             out["feature_names"] = list(self.feature_names)
         if self.weighted:
-            # Schema 3: a reader without weights would offer the
+            # Schema 4: a reader without weights would offer the
             # information criteria.
             out["weighted"] = True
             assert self.effective_n is not None

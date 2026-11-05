@@ -170,10 +170,10 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # in schema 2, #459, #463; a schema-1 reader would ignore it and take the
 # baseline, which is that of a unit at the centre, for the baseline at 0).
 #
-# Schema 3 is a model fitted with sampling weights ``w`` (``"weighted":
-# true``, or data with ``"w"``): a schema-2 reader would drop the weights
-# and give the model's bounds the classical meaning, so it is refused
-# there.
+# Schema 3 is data with sampling weights ``w`` (``"w"``), and was a model
+# fitted with them (``"weighted": true``) until v0.27: a schema-2 reader
+# would drop the weights and give the model's bounds the classical
+# meaning, so it is refused there.
 #
 # Schema 4 is the layout of v0.27, which a v0.26 reader (schema 3) refuses.
 # It is needed by a stratified Cox model (a ``"strata"`` list of
@@ -182,6 +182,11 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # distributional regression model whose coefficients carry SurPyval's sign
 # convention (``"coefficient_signs"``): a v0.26 reader would read a scale's
 # coefficients with the opposite sign and predict the opposite effect.
+# And by every model fitted with weights (``"weighted": true``): its
+# ``"hess_inv"`` is the inverse Hessian, as the attribute is, and its
+# robust covariance is under ``"covariance"``, where v0.26 wrote the
+# robust block as ``"hess_inv"`` and its bounds read it there; a v0.26
+# reader would bound the model with the (smaller) inverse Hessian.
 # Every other document keeps the schema it had.
 SCHEMA_VERSION = 4
 
@@ -189,8 +194,13 @@ SCHEMA_VERSION = 4
 # weighted.
 _SCHEMA_NON_FINITE = 2
 
-# The schema of a weighted model or data.
+# The schema of weighted data.
 _SCHEMA_WEIGHTED = 3
+
+# The schema of a weighted model: v0.27's schema 4, its "hess_inv" the
+# inverse Hessian (a v0.26 weighted model's "hess_inv" is the robust
+# covariance).
+WEIGHTED_MODEL_SCHEMA = 4
 
 # The schema of a stratified Cox model, and of a model whose coefficients
 # carry their signs: both are v0.27's schema 4.
@@ -692,6 +702,8 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
         "coefficient_signs" in d for d in dicts
     ):
         return _SCHEMA_SIGNED
+    if any(d.get("weighted") is True for d in dicts):
+        return WEIGHTED_MODEL_SCHEMA
     if _SCHEMA_WEIGHTED in stamped_versions or any(
         _is_weighted(d) for d in dicts
     ):

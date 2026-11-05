@@ -370,7 +370,9 @@ sp.life_table(x, c, intervals=4)      # actuarial (Cutler-Ederer) table
   and for Cox strata, exact ties, residuals and `diagnose()`.
   `Turnbull.fit(..., w=)` is the reverse: its `cb` refuses and its bounds
   are `bootstrap_cb(x, random_state=seed)` (the weighted case bootstrap).
-  Weighted models save as schema 3, which older versions refuse.
+  Weighted models save as schema 4 (0.26 and older refuse them; weighted
+  data is schema 3). `hess_inv` (dict key `"hess_inv"`) is the inverse
+  Hessian; the robust covariance is `covariance()` (key `"covariance"`).
   `CompetingRisksProportionalHazards.fit(..., w=)` (cause-specific Cox and
   Fine-Gray) and `FineGray.fit(..., w=)` take weights too (robust SEs; no
   `aic` or `diagnose()`).

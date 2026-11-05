@@ -281,10 +281,10 @@ def test_exact_ties_and_penalised_fits_refuse_weights(data):
 
 
 @pytest.mark.parametrize("model", ["Cox", "Fine-Gray"])
-def test_round_trip_is_schema_3_and_keeps_the_robust_covariance(data, model):
+def test_round_trip_is_schema_4_and_keeps_the_robust_covariance(data, model):
     fitted = _cr(data, data["w"], model=model)
     d = fitted.to_dict()
-    assert d["schema"] == 3 and d["weighted"] is True
+    assert d["schema"] == 4 and d["weighted"] is True
     restored = sp.from_dict(json.loads(json.dumps(d, allow_nan=False)))
     for again in (restored, pickle.loads(pickle.dumps(fitted))):
         assert again.weighted
@@ -301,7 +301,7 @@ def test_fine_gray_round_trip(data):
         FineGray.fit, data["x"], data["Z"], data["e"], event=2, w=data["w"]
     )
     d = model.to_dict()
-    assert d["schema"] == 3
+    assert d["schema"] == 4
     restored = sp.from_dict(json.loads(json.dumps(d)))
     assert restored.weighted
     assert_allclose(restored.covariance(), model.covariance(), rtol=1e-12)

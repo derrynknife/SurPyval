@@ -263,7 +263,7 @@ class CompetingRisksProportionalHazards(
             ]
         out.update(self._penalty_entry())
         if self.weighted:
-            # Schema 3: a reader without weights would offer the
+            # Schema 4: a reader without weights would offer the
             # information criteria.
             out["weighted"] = True
             assert self.effective_n is not None

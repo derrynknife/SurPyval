@@ -437,7 +437,7 @@ class ParametricRegressionModel(
         if self._data_repr():
             out["data_summary"] = self._data_repr()
         if self.weighted:
-            # Schema 3: a reader without weights would offer the
+            # Schema 4: a reader without weights would offer the
             # likelihood-ratio bounds and the information criteria.
             out["weighted"] = True
             out["effective_n"] = self.effective_n

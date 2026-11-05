@@ -541,6 +541,14 @@ for a variance; with
 ``cluster`` the meat sums each cluster's :math:`n_i w_i s_i` first, as
 ``survreg`` with ``cluster()`` does.
 
+A saved weighted model (``to_dict``, ``to_json``) keeps each matrix under
+its own name: ``"hess_inv"`` is :math:`H^{-1}` and ``"covariance"`` is
+:math:`V`. It is stamped schema 4, which SurPyval 0.26 refuses with a
+request to upgrade (0.26 saved :math:`V` as ``"hess_inv"``, and would read
+the smaller :math:`H^{-1}` as the variance). A weighted model saved by
+0.26 still loads, with its robust bounds and no ``hess_inv``, which it did
+not save. Weighted data (``SurpyvalData`` with ``w``) is schema 3.
+
 The Cox model maximises the weighted partial likelihood, with Efron's tie
 correction taking the :math:`m` tied deaths at their mean weight (R's
 ``coxph`` convention), and its covariance is the Lin-Wei sandwich

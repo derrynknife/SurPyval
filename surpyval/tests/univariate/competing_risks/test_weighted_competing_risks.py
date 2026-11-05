@@ -112,11 +112,11 @@ def test_effective_sample_size_and_its_warning(data):
         sp.CompetingRisks.fit(x[:12], e[:12], c[:12], w=w[:12])
 
 
-def test_round_trip_is_schema_3_and_keeps_the_robust_bounds(data):
+def test_round_trip_is_schema_4_and_keeps_the_robust_bounds(data):
     x, c, e, w, _ = data
     model = _fit(x, e, c, w=w)
     d = model.to_dict()
-    assert d["schema"] == 3 and d["weighted"] is True
+    assert d["schema"] == 4 and d["weighted"] is True
     assert "weighted" not in _fit(x, e, c).to_dict()
     for again in (
         sp.from_dict(json.loads(json.dumps(d, allow_nan=False))),
