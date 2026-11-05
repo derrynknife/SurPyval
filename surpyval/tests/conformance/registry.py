@@ -379,6 +379,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.recurrent.GoodnessOfFitResult": _RESULT,
     "surpyval.degradation.RULPrediction": _RESULT,
     "surpyval.degradation.ProcessRUL": _RESULT,
+    "surpyval.degradation.ProcessLevel": _RESULT,
     # degradation building blocks
     "surpyval.degradation.LinkedPathModel": _COMPONENT
     + " (the stress link of an accelerated degradation fit, covered by "

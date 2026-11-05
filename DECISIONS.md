@@ -675,3 +675,19 @@ The rows of 2026-10-29 and 2026-10-30 that were still proposed were reviewed by 
 | `constant_effects_test()` refuses a weighted fit (`WeightedRefusal`), pointing to the robust bands of `plot()` / `cumulative_coefficients_cb()`. | proposed | Its simulated null is built and size-checked for unweighted data only; a weighted multiplier version would need its own size study. | done (gap) |
 | `concordance()` of a weighted Aalen fit scores the rows unweighted, as for weighted Cox and parametric fits. | proposed | Consistency with the other weighted models; a weighted C is a separate change. | done |
 | Design-based check by simulation (`scripts/studies/aalen_weighted_coverage.py`, 500 replicates, fixed seeds 20261105+r, informative sampling of censored units): the 95% robust bounds on `B_0(5)` and `B_z(5)` cover 0.936 and 0.948 (MC se 0.011, 0.010); the classical variance with the weights read as counts covers 0.850 and 0.884; the unweighted fit 0.000 and 0.674. | proposed | Evidence that the robust variance is the valid one, and why the classical one is not offered. | done |
+
+## 2026-11-05
+
+### The degradation level and `with_params` of the process models (WP3 3f)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The level is `level_at(t, Z=None, *, y0=None, t0=0.0)`, returning a `ProcessLevel`. A reading is passed as `y0=` with its age `t0=`, not as `given=(t0, y0)`. | proposed | `y0=` already means "the level the unit starts from" on every process-model method, and `given=` elsewhere in the package is an age alone. `t0 > 0` without `y0` is refused. | done |
+| `ProcessLevel` uses the package's names: `sf(y)` (above `y`), `ff(y)` (at or below), `df`, `qf`, `random`, `mean()`, `to_dict()`. `random` is `qf(U)`, as for `Parametric`. | proposed | Existing vocabulary; common random numbers across models. | done |
+| `t` and `t0` are ages from new, and a `StepSchedule` `Z` runs from age 0 (as for `ff`). The level uses the clock time between them, `tau(t) - tau(t0)`. | proposed | The same time axis as the fit and the life; `predict_rul`'s schedule starts "now", which suits a remaining life but not a level at an age. | done |
+| Any finite `y0` is taken by `level_at` and `random_path`, including one at or past the threshold. | proposed | The level process is defined there; the life methods still refuse such a start. | done |
+| At `t = t0` the level is `y0` exactly: `sf`/`ff`/`qf` give the point mass and `df` refuses. `t < t0`, a non-finite `t` and several `t` at once are refused. | proposed | Refuse only where undefined, and say what to use (`random_path` for several times). | done |
+| `with_params` takes only the full vector in `covariance_names` order (the process's two parameters, then the stress coefficients); a two-value vector for a stressed model is refused. | proposed | The process models had no `with_params`, so no shorter form is established; a silent "keep the fitted `gamma`" would hide a wrong-length draw. | done |
+| `with_params` keeps `threshold`, `y0`, `stress_ref`, `Z_cols` and `unit`; the rebuilt model has `maximum = "not applicable"` and no covariance or likelihood. | proposed | The shared contract; `y0` is not in the covariance (it is not a parameter of the likelihood). | done |
+| `GammaProcessModel(...)` refuses a non-positive or non-finite `alpha` or `beta`, and `WienerProcessModel(...)` a non-finite `mu`. | proposed | A covariance draw can produce them, and the models gave nonsense silently. | done |
+| The process models have no frailty or random effects, so there is nothing further to apply to the level. | proposed | They pool the units' increments with shared parameters. | done |
