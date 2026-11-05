@@ -510,7 +510,8 @@ def _competing_risks():
             interface=CAUSES,
             data=cr_data,
             fit=_fit(cr.ParametricCompetingRisks),
-            functions=("sf", "ff", "Hf"),
+            # All-cause df and qf (WP2c): df == hf * sf, qf(ff(x)) == x.
+            functions=("sf", "ff", "Hf", "hf", "df", "qf"),
             event_functions=("cif",),
             events=("a", "b"),
             x=X_CR,

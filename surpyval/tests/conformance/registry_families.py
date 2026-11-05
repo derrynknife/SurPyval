@@ -342,8 +342,10 @@ _SURVIVAL = frozenset({UNIVARIATE, REGRESSION, CAUSES, CAUSES_REGRESSION})
 _APPLICABLE: dict[str, frozenset[str]] = {
     "sf_ff": _SURVIVAL,
     "Hf_sf": _SURVIVAL,
-    "df_hf_sf": frozenset({UNIVARIATE, REGRESSION}),
-    "qf_ff": frozenset({UNIVARIATE}),
+    # CAUSES: the all-cause functions (only ParametricCompetingRisks has
+    # df and qf; the property also needs them).
+    "df_hf_sf": frozenset({UNIVARIATE, REGRESSION, CAUSES}),
+    "qf_ff": frozenset({UNIVARIATE, CAUSES}),
     "cif_sum": frozenset({CAUSES, CAUSES_REGRESSION}),
     "row_independence": frozenset(WITH_COVARIATES),
     "missing_covariate": frozenset(WITH_COVARIATES),
