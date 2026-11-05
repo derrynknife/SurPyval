@@ -94,6 +94,28 @@ The checks of an accelerated failure time model
 
 The covariates' kinds are the Cox family's: two distinct values is
 *binary*, three to five *categorical*, more *continuous*.
+
+Time-varying covariates (``fit_tvc``)
+-------------------------------------
+A model fitted with ``fit_tvc`` has several rows per unit, each a stretch
+over which the unit's covariates hold. Its checks are the same, on the
+fit's own likelihood: for a PH model that of the rows, each a
+left-truncated piece of its unit's follow-up (``regression_neg_ll``), for
+an AFT model the accumulated-age likelihood, which evaluates each unit's
+baseline once at ``psi = sum over its rows of e^{beta'Z_row} (stop -
+start)`` (:func:`_accumulated_neg_ll`). The residuals are the units':
+a PH unit's Cox-Snell residual is the sum of its rows' increments
+``H(stop | Z_row) - H(start | Z_row)`` and its martingale residual its
+event indicator less that; an AFT unit's standardised residual is
+``psi``. ``influence`` sums each unit's rows' scores, ``outliers`` takes
+the units' deviance residuals, and both name a unit by its identifier.
+The ``functional_form`` plot is of each row's martingale residual against
+the row's covariate value (Therneau and Grambsch, 2000, section 5.6), its
+test the square of the row's value. ``common_shape`` tests a factor that
+keeps one level through each unit (a note names one that does not). The
+AIC screens refit each candidate with its own ``fit_tvc``.
+``calibration`` is not made. A weighted ``fit_tvc`` model is refused, as
+its pseudo-likelihood cannot be compared between models.
 """
 
 from __future__ import annotations
@@ -191,7 +213,11 @@ def _base(ctx: Context) -> SimpleNamespace:
         x = np.asarray(data.x, dtype=float)
         lo = x if x.ndim == 1 else x[:, 0]
         hi = x if x.ndim == 1 else x[:, -1]
+        tvc = _is_tvc(m)
         return SimpleNamespace(
+            tvc=tvc,
+            units=_unit_layout(m, data, lo) if tvc else None,
+            accumulated=tvc and getattr(m, "kind", None) == _AFT,
             model=m,
             fitter=m.model,
             dist=m.distribution,
@@ -250,6 +276,50 @@ def _view(b: SimpleNamespace, Z: Any, weights: Any = None) -> SimpleNamespace:
     )
 
 
+def _is_tvc(model: Any) -> bool:
+    """Whether ``model`` was fitted to time-varying covariates
+    (``fit_tvc``, ``fit_tvc_timeline`` and their ``_from_df`` forms)."""
+    return bool(getattr(model, "is_tvc", False))
+
+
+def _unit_layout(m: Any, data: Any, x: np.ndarray) -> SimpleNamespace:
+    """The units (subjects) of a ``fit_tvc`` model: ``index``, the unit of
+    each row of ``model.data`` (``0`` to ``size - 1``); ``labels``, each
+    unit's identifier as the fit was given it; ``first`` and ``last``, its
+    first and last row in time; ``event``, whether it failed; ``n``, its
+    count (its last row's, as ``fit_tvc`` counts a subject) and ``exit``,
+    its last time."""
+    ids = np.asarray(m.tvc_subject_ids)
+    source = getattr(data, "_source_rows", None)
+    if source is not None:
+        # The rows the fit ran on, in its own order, from the rows given.
+        ids = ids[np.asarray(source)]
+    labels, index = np.unique(ids, return_inverse=True)
+    index = np.asarray(index).reshape(-1)
+    order = np.lexsort((x, index))
+    ends = np.r_[np.flatnonzero(np.diff(index[order])), order.size - 1]
+    first = order[np.r_[0, ends[:-1] + 1]]
+    last = order[ends]
+    c = np.asarray(data.c)
+    return SimpleNamespace(
+        index=index,
+        labels=labels,
+        size=int(labels.size),
+        first=first,
+        last=last,
+        event=c[last] == 0,
+        n=np.asarray(data.n, dtype=float)[last],
+        exit=x[last],
+    )
+
+
+def _unit_sum(b: SimpleNamespace, values: np.ndarray) -> np.ndarray:
+    """``values`` (one per row of the data) summed over each unit."""
+    return np.bincount(
+        b.units.index, weights=values, minlength=b.units.size
+    ).astype(float)
+
+
 def _neg_ll(model: Any, view: Any) -> Callable[[Any], Any]:
     """The negative log-likelihood of ``model`` (anything with ``log_df``,
     ``log_sf``, ``log_ff`` and ``ff`` in ``(x, Z, *params)``) on
@@ -261,6 +331,79 @@ def _neg_ll(model: Any, view: Any) -> Callable[[Any], Any]:
         )
 
     return f
+
+
+def _accumulated_neg_ll(
+    b: SimpleNamespace, Z: Any, G: Any = None, s: int = 0
+) -> Callable[[Any], Any]:
+    """The negative log-likelihood, as a function of the parameter vector,
+    of an accelerated failure time model fitted with ``fit_tvc``, with the
+    covariates ``Z`` (one row per row of the data): the fit's own
+    accumulated-age likelihood, each unit's baseline evaluated at
+    ``psi = sum over its rows of e^(beta'Z_row) (stop - start)``. With
+    ``G`` (one row per unit), the shape parameter (position ``s`` of the
+    baseline's) is its value times ``exp(G delta)``, ``delta`` the
+    parameters after the coefficients."""
+    import autograd.numpy as anp
+
+    tvc = b.model.model._tvc
+    starts = np.asarray(tvc["starts"], dtype=int)
+    term = np.asarray(tvc["term"], dtype=int)
+    widths = np.asarray(tvc["widths"], dtype=float)
+    entry_widths = np.asarray(tvc["entry_widths"], dtype=float)
+    entered = np.asarray(tvc["entered"], dtype=bool)
+    event = np.asarray(tvc["event"], dtype=bool)
+    weight = np.asarray(tvc["weight"], dtype=float)
+    # Each unit's rows, padded to the longest with an index past the end
+    # (a zero), so that a unit's sum is one row of a gather.
+    sizes = term - starts + 1
+    width = int(sizes.max())
+    steps = np.arange(width)[None, :]
+    gather = np.where(
+        steps < sizes[:, None], starts[:, None] + steps, widths.size
+    )
+    k, p = b.k_dist, int(np.shape(Z)[1])
+    Hf, hf = b.fitter.Hf_dist, b.fitter.hf_dist
+    tiny = np.finfo(float).tiny
+
+    def per_unit(v: Any) -> Any:
+        return anp.sum(anp.concatenate([v, anp.zeros(1)])[gather], axis=1)
+
+    def f(theta: Any) -> Any:
+        beta = anp.array([theta[k + j] for j in range(p)])
+        phi = anp.exp(anp.dot(Z, beta))
+        psi = anp.maximum(per_unit(phi * widths), tiny)
+        params = [theta[j] for j in range(k)]
+        if G is not None:
+            delta = anp.array([theta[k + p + j] for j in range(G.shape[1])])
+            params[s] = params[s] * anp.exp(anp.dot(G, delta))
+        ll = -anp.sum(weight * Hf(psi, *params))
+        if entered.any():
+            # Conditioned on surviving to the entry, as the fit is.
+            psi_in = per_unit(phi * entry_widths)[entered]
+            sub = [
+                q[entered] if G is not None and j == s else q
+                for j, q in enumerate(params)
+            ]
+            ll = ll + anp.sum(weight[entered] * Hf(psi_in, *sub))
+        if event.any():
+            h0 = hf(psi, *params)
+            hazard = anp.maximum(phi[term][event] * h0[event], tiny)
+            ll = ll + anp.sum(weight[event] * anp.log(hazard))
+        return -ll
+
+    return f
+
+
+def _likelihood(b: SimpleNamespace, Z: Any) -> Callable[[Any], Any]:
+    """The negative log-likelihood of the fitted model's family with the
+    covariates ``Z``: the rows' (``regression_neg_ll``, a ``fit_tvc``
+    proportional hazards model's too, whose rows are left-truncated
+    pieces of each unit's follow-up), or a ``fit_tvc`` accelerated failure
+    time model's accumulated-age one."""
+    if b.accumulated:
+        return _accumulated_neg_ll(b, Z)
+    return _neg_ll(b.fitter, _view(b, Z))
 
 
 def _transform(bounds: list) -> tuple[Callable, Callable]:
@@ -479,7 +622,7 @@ def _fitted_null(ctx: Context) -> _Fit:
 
     def compute() -> _Fit:
         b = _base(ctx)
-        f = _neg_ll(b.fitter, _view(b, b.Z))
+        f = _likelihood(b, b.Z)
         return _maximise(f, b.params, b.free, b.bounds)
 
     return ctx.cached("fitted_null", compute)
@@ -662,20 +805,94 @@ def _Hf(b: SimpleNamespace, x: np.ndarray) -> np.ndarray:
         return np.asarray(b.fitter.Hf(x, b.Z, *b.params), dtype=float)
 
 
+def _ages(ctx: Context) -> tuple[np.ndarray, np.ndarray]:
+    """``(start, end)``: for an accelerated failure time model fitted with
+    ``fit_tvc``, the accumulated age ``psi(t) = int_0^t e^(beta'Z(u)) du``
+    of each row's unit at the row's start and end (``-inf`` at a start of
+    ``-inf``), as the fit's likelihood accumulates it."""
+
+    def compute() -> tuple[np.ndarray, np.ndarray]:
+        b = _base(ctx)
+        phi = np.exp(b.Z @ b.params[b.k_dist :])
+        start = np.full(b.lo.size, -np.inf)
+        end = np.empty(b.lo.size)
+        index = b.units.index
+        order = np.argsort(index, kind="stable")
+        cuts = np.r_[0, np.flatnonzero(np.diff(index[order])) + 1, index.size]
+        with np.errstate(all="ignore"):
+            for a, z in zip(cuts[:-1], cuts[1:]):
+                rows = order[a:z]
+                tl, x, ph = b.tl[rows], b.lo[rows], phi[rows]
+                at_0 = np.clip(0.0, tl, x)
+
+                def psi(t: np.ndarray) -> np.ndarray:
+                    inside = np.clip(t[:, None], tl[None, :], x[None, :])
+                    return np.sum(ph[None, :] * (inside - at_0[None, :]), 1)
+
+                end[rows] = psi(x)
+                finite = np.isfinite(tl)
+                start[rows[finite]] = psi(tl[finite])
+        return start, end
+
+    return ctx.cached("ages", compute)
+
+
+def _H0(b: SimpleNamespace, psi: np.ndarray) -> np.ndarray:
+    """The baseline's cumulative hazard at the accumulated ages ``psi``
+    (0 at ``-inf``)."""
+    finite = np.isfinite(psi)
+    with np.errstate(all="ignore"):
+        H = np.asarray(
+            b.dist.Hf(np.where(finite, psi, 1.0), *b.params[: b.k_dist]),
+            dtype=float,
+        )
+    return np.where(finite, H, 0.0)
+
+
+def _increments(ctx: Context) -> np.ndarray:
+    """Each row's cumulative hazard over its interval, ``H(x | Z) - H(tl |
+    Z)`` (``H(tl | Z)`` 0 for ``tl = -inf``); for an accelerated failure
+    time model fitted with ``fit_tvc``, its share ``H0(psi(stop)) -
+    H0(psi(start))`` of its unit's, along the unit's accumulated age."""
+
+    def compute() -> np.ndarray:
+        b = _base(ctx)
+        if b.accumulated:
+            start, end = _ages(ctx)
+            return _H0(b, end) - _H0(b, start)
+        H = _Hf(b, b.lo)
+        entered = np.isfinite(b.tl)
+        H_tl = np.where(entered, _Hf(b, np.where(entered, b.tl, b.lo)), 0.0)
+        return H - H_tl
+
+    return ctx.cached("increments", compute)
+
+
 def _martingale(ctx: Context) -> tuple[np.ndarray, np.ndarray]:
     """``(rows, residuals)``: the martingale residual ``delta - H(x | Z)
-    + H(tl | Z)`` of each row of :func:`_interval_rows`."""
+    + H(tl | Z)`` of each row of :func:`_interval_rows` (for a ``fit_tvc``
+    model, each row's: its event indicator less its cumulative hazard
+    increment, :func:`_increments`)."""
 
     def compute() -> tuple[np.ndarray, np.ndarray]:
         b = _base(ctx)
         rows = _interval_rows(b)
-        H = _Hf(b, b.lo)
-        entered = np.isfinite(b.tl)
-        H_tl = np.where(entered, _Hf(b, np.where(entered, b.tl, b.lo)), 0.0)
-        m = (b.c == 0).astype(float) - (H - H_tl)
+        m = (b.c == 0).astype(float) - _increments(ctx)
         return rows, m
 
     return ctx.cached("martingale", compute)
+
+
+def _unit_martingale(ctx: Context) -> np.ndarray:
+    """Each unit's martingale residual (a ``fit_tvc`` model): its event
+    indicator less its Cox-Snell residual, the sum of its rows'
+    cumulative-hazard increments; the sum of its rows' residuals."""
+
+    def compute() -> np.ndarray:
+        b = _base(ctx)
+        return b.units.event.astype(float) - _unit_sum(b, _increments(ctx))
+
+    return ctx.cached("unit_martingale", compute)
 
 
 def _note_residual_rows(ctx: Context) -> None:
@@ -928,7 +1145,7 @@ def _square_test(ctx: Context, j: int) -> dict:
         z = b.Z[:, j]
         scale = float(np.std(z)) or 1.0
         Z = np.column_stack([b.Z, (z / scale) ** 2])
-        f = _neg_ll(b.fitter, _view(b, Z))
+        f = _likelihood(b, Z)
         start, null, alt, bounds = _extend(b, 1)
         shared = _in_layout(_fitted_null(ctx), 1)
         return _lr_test(f, start, null, alt, bounds, null=shared)
@@ -1006,7 +1223,8 @@ def _form_panels(ctx: Context) -> list[Panel]:
 def _dfbeta(ctx: Context) -> tuple[np.ndarray, np.ndarray]:
     """``(dfbeta, se)``: each unit's one-step change ``I^-1 U_i`` of each
     coefficient (one row per data row; a row with count ``n`` is one of
-    ``n`` identical units), and the coefficients' standard errors, both
+    ``n`` identical units; for a ``fit_tvc`` model one row per unit, its
+    score the sum of its rows'), and the coefficients' standard errors, both
     ``nan`` where the information is not positive definite."""
 
     def compute() -> tuple[np.ndarray, np.ndarray]:
@@ -1027,6 +1245,12 @@ def _dfbeta(ctx: Context) -> tuple[np.ndarray, np.ndarray]:
             # weights, so this is exact.
             J = np.asarray(jacobian(gradient)(np.ones(b.n.size)), dtype=float)
         scores = -J.T / b.n[:, None]
+        if b.tvc:
+            # A unit's score is the sum of its rows' (its likelihood is
+            # theirs), per unit of its count.
+            per_unit = np.zeros((b.units.size, scores.shape[1]))
+            np.add.at(per_unit, b.units.index, scores * b.n[:, None])
+            scores = per_unit / b.units.n[:, None]
         f = _neg_ll(b.fitter, _view(b, b.Z))
         cov = _covariance(f, theta, b.free)
         coef = [list(idx).index(b.k_dist + j) for j in range(len(ctx.names))]
@@ -1037,8 +1261,18 @@ def _dfbeta(ctx: Context) -> tuple[np.ndarray, np.ndarray]:
     return ctx.cached("dfbeta", compute)
 
 
+def _where(b: SimpleNamespace, i: int) -> str:
+    """How a report names row ``i`` of the residuals: ``row i of
+    model.data``, or for a ``fit_tvc`` model ``unit <its identifier>``."""
+    if b.tvc:
+        return f"unit {b.units.labels[i]}"
+    return f"row {i} of model.data"
+
+
 def _influence_rows(ctx: Context) -> list[dict]:
+    b = _base(ctx)
     dfbeta, se = _dfbeta(ctx)
+    item = "unit" if b.tvc else "row"
     scaled = np.abs(dfbeta / se[None, :])
     rows: list[dict] = []
     for j, name in ctx.checked:
@@ -1058,33 +1292,36 @@ def _influence_rows(ctx: Context) -> list[dict]:
         above = np.flatnonzero(col > INFLUENCE_LIMIT)
         if above.size:
             detail = (
-                "row {} of model.data moves the coefficient by {} standard "
-                "errors; {} row{} above {:g}".format(
-                    worst,
+                "{} moves the coefficient by {} standard errors; {} {}{} "
+                "above {:g}".format(
+                    _where(b, worst),
                     _fmt(col[worst]),
                     above.size,
+                    item,
                     "" if above.size == 1 else "s",
                     INFLUENCE_LIMIT,
                 )
             )
         else:
             detail = (
-                "no row moves the coefficient by more than {:g} standard "
-                "error (largest {}, row {} of model.data)".format(
-                    INFLUENCE_LIMIT, _fmt(col[worst]), worst
+                "no {} moves the coefficient by more than {:g} standard "
+                "error (largest {}, {})".format(
+                    item, INFLUENCE_LIMIT, _fmt(col[worst]), _where(b, worst)
                 )
             )
-        rows.append(
-            {
-                "test": "largest |dfbeta| / se",
-                "covariates": (name,),
-                "statistic": float(col[worst]),
-                "verdict": "warn" if above.size else "ok",
-                "detail": detail,
-                "_row": worst,
-                "_size": float(col[worst]),
-            }
-        )
+        row = {
+            "test": "largest |dfbeta| / se",
+            "covariates": (name,),
+            "statistic": float(col[worst]),
+            "verdict": "warn" if above.size else "ok",
+            "detail": detail,
+            "_size": float(col[worst]),
+        }
+        if b.tvc:
+            row["_unit"] = b.units.labels[worst].item()
+        else:
+            row["_row"] = worst
+        rows.append(row)
     return rows
 
 
@@ -1101,7 +1338,7 @@ def _influence_panels(ctx: Context) -> list[Panel]:
             ax.vlines(rows, 0, scaled[:, j], color=PALETTE[0], lw=0.8)
             for level in (-INFLUENCE_LIMIT, INFLUENCE_LIMIT):
                 ax.axhline(level, color=INK["secondary"], ls="--", lw=0.8)
-            ax.set_xlabel("row")
+            ax.set_xlabel("unit" if _base(ctx).tvc else "row")
             ax.set_ylabel("dfbeta / se")
 
         panels.append(Panel(f"{name}: influence", draw))
@@ -1109,9 +1346,17 @@ def _influence_panels(ctx: Context) -> list[Panel]:
 
 
 def _deviance(ctx: Context) -> tuple[np.ndarray, np.ndarray]:
-    rows, m = _martingale(ctx)
+    """``(rows, residuals)``: the deviance residual of each row of
+    :func:`_interval_rows` (for a ``fit_tvc`` model, of each unit, from
+    its martingale residual)."""
     b = _base(ctx)
-    delta = (b.c == 0).astype(float)
+    if b.tvc:
+        m = _unit_martingale(ctx)
+        rows = np.ones(m.size, dtype=bool)
+        delta = b.units.event.astype(float)
+    else:
+        rows, m = _martingale(ctx)
+        delta = (b.c == 0).astype(float)
     with np.errstate(all="ignore"):
         inner = m + np.where(delta > 0, delta * np.log(delta - m), 0.0)
         dev = np.sign(m) * np.sqrt(np.maximum(-2.0 * inner, 0.0))
@@ -1120,8 +1365,11 @@ def _deviance(ctx: Context) -> tuple[np.ndarray, np.ndarray]:
 
 def _outlier_cutoff(ctx: Context) -> float:
     b = _base(ctx)
-    rows, _ = _martingale(ctx)
-    n = float(b.n[rows].sum())
+    if b.tvc:
+        n = float(b.units.n.sum())
+    else:
+        rows, _ = _martingale(ctx)
+        n = float(b.n[rows].sum())
     return float(norm.isf(ctx.alpha / (2.0 * n)))
 
 
@@ -1135,15 +1383,26 @@ def _outlier_rows(ctx: Context) -> list[dict]:
             "without right truncation, the rows with a deviance residual.",
         )
         return []
+    b = _base(ctx)
     cutoff = _outlier_cutoff(ctx)
     absolute = np.where(rows, np.abs(dev), 0.0)
     flagged = np.flatnonzero(rows & (absolute > cutoff))
+    named = (
+        [b.units.labels[i].item() for i in flagged]
+        if b.tvc
+        else flagged.tolist()
+    )
     if flagged.size:
-        shown = ", ".join(str(int(i)) for i in flagged[:10])
+        shown = ", ".join(str(i) for i in named[:10])
         more = "" if flagged.size <= 10 else f" and {flagged.size - 10} more"
-        detail = "row{} {}{} of model.data above {}".format(
-            "" if flagged.size == 1 else "s", shown, more, _fmt(cutoff)
-        )
+        if b.tvc:
+            detail = "unit{} {}{} above {}".format(
+                "" if flagged.size == 1 else "s", shown, more, _fmt(cutoff)
+            )
+        else:
+            detail = "row{} {}{} of model.data above {}".format(
+                "" if flagged.size == 1 else "s", shown, more, _fmt(cutoff)
+            )
     else:
         detail = "no |deviance residual| above {} (largest {})".format(
             _fmt(cutoff), _fmt(absolute.max())
@@ -1155,7 +1414,7 @@ def _outlier_rows(ctx: Context) -> list[dict]:
             "statistic": float(absolute.max()),
             "verdict": "warn" if flagged.size else "ok",
             "detail": detail,
-            "_rows": flagged.tolist(),
+            "_rows": named,
             "_cutoff": cutoff,
         }
     ]
@@ -1167,6 +1426,9 @@ def _outlier_panels(ctx: Context) -> list[Panel]:
         return []
     b = _base(ctx)
     eta = b.Z @ b.params[b.k_dist :]
+    if b.tvc:
+        # A unit's linear predictor changes along its rows: its last.
+        eta = eta[b.units.last]
     cutoff = _outlier_cutoff(ctx)
 
     def draw(ax: Any, options: Any) -> None:
@@ -1175,7 +1437,9 @@ def _outlier_panels(ctx: Context) -> list[Panel]:
         ax.scatter(eta[rows], dev[rows], s=10, color=PALETTE[0], alpha=0.6)
         for level in (-cutoff, cutoff):
             ax.axhline(level, color=INK["secondary"], ls="--", lw=0.8)
-        ax.set_xlabel("linear predictor")
+        ax.set_xlabel(
+            "linear predictor at exit" if b.tvc else "linear predictor"
+        )
         ax.set_ylabel("deviance residual")
 
     return [Panel("outliers", draw)]
@@ -1206,7 +1470,21 @@ def _refit(ctx: Context, fitter: Any) -> tuple[float, str, str]:
     try:
         with np.errstate(all="ignore"), warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            fitted = fitter.fit(data.x, b.raw, **kwargs)
+            if b.tvc:
+                # The same rows, as the model's fit_tvc was given them.
+                g = b.model._tvc_fit_rows
+                center = {"center": True} if "center" in kwargs else {}
+                fitted = fitter.fit_tvc(
+                    g["i"],
+                    g["xl"],
+                    g["xr"],
+                    g["c"],
+                    g["Z"],
+                    n=g["n"],
+                    **center,
+                )
+            else:
+                fitted = fitter.fit(data.x, b.raw, **kwargs)
             aic = float(fitted.aic())
     except Exception as error:  # noqa: BLE001 -- a candidate may fail
         text = str(error).strip().splitlines()
@@ -1422,6 +1700,8 @@ def _residual_data(ctx: Context, kind: str) -> dict:
 
     def compute() -> dict:
         b = _base(ctx)
+        if b.tvc:
+            return _unit_residual_data(ctx, kind)
         if kind == "PH":
 
             def g(v: np.ndarray) -> np.ndarray:
@@ -1447,6 +1727,48 @@ def _residual_data(ctx: Context, kind: str) -> dict:
         }
 
     return ctx.cached("residuals_" + kind, compute)
+
+
+def _unit_residual_data(ctx: Context, kind: str) -> dict:
+    """:func:`_residual_data` of a ``fit_tvc`` model, one per unit. For a
+    PH model the unit's Cox-Snell residual: its entry ``H(tl | Z)`` at
+    the start of its first row (``-inf`` where it has none), plus the sum
+    of its rows' cumulative-hazard increments ``H(stop | Z_row) - H(start
+    | Z_row)``; a unit exponential, truncated at its entry, which a unit
+    split into rows with the same ``Z`` leaves as the ordinary fit's. For
+    an AFT model the unit's accumulated age ``psi``, the time on the
+    baseline's scale, truncated at its age at a finite entry on a
+    baseline defined below 0 (the fit conditions there)."""
+    b = _base(ctx)
+    u = b.units
+    first = u.first
+    if kind == "PH":
+        tl = b.tl[first]
+        entered = np.isfinite(tl)
+        with np.errstate(all="ignore"):
+            H_in = np.asarray(
+                b.fitter.Hf(
+                    np.where(entered, tl, b.lo[first]),
+                    b.Z[first],
+                    *b.params,
+                ),
+                dtype=float,
+            )
+        entry = np.where(entered, H_in, -np.inf)
+        exit = np.where(entered, H_in, 0.0) + _unit_sum(b, _increments(ctx))
+    else:
+        start, end = _ages(ctx)
+        exit = end[u.last]
+        entered = (float(b.fitter.support[0]) < 0) & np.isfinite(b.tl[first])
+        entry = np.where(entered, start[first], -np.inf)
+    return {
+        "lo": exit,
+        "hi": exit,
+        "c": np.where(u.event, 0, 1),
+        "n": u.n,
+        "tl": entry,
+        "tr": np.full(u.size, np.inf),
+    }
 
 
 def _plotting_points(res: dict, rows: Any = None) -> tuple:
@@ -1589,7 +1911,7 @@ def _factors(ctx: Context) -> list[dict]:
 
     def compute() -> list[dict]:
         b = _base(ctx)
-        out = []
+        out: list[dict[str, Any]] = []
         dummies: dict[str, list[int]] = {}
         single = []
         for j, name in enumerate(ctx.names):
@@ -1641,7 +1963,29 @@ def _factors(ctx: Context) -> list[dict]:
                     "level": np.asarray(level).reshape(-1),
                 }
             )
-        return out
+        if not b.tvc:
+            return out
+        # fit_tvc: one shape per unit, so a factor must hold one level
+        # through each unit's rows; its level is then the unit's.
+        u = b.units
+        constant = [
+            f
+            for f in out
+            if np.all(f["level"] == f["level"][u.first][u.index])
+        ]
+        varying = [f["name"] for f in out if f not in constant]
+        if varying:
+            _note(
+                ctx,
+                "Common shape is not tested for {}: {} level changes "
+                "within a unit, and the model's shape is one per unit (its "
+                "baseline is evaluated once, at the unit's accumulated "
+                "age).".format(
+                    ", ".join(varying),
+                    "its" if len(varying) == 1 else "their",
+                ),
+            )
+        return [dict(f, level=f["level"][u.first]) for f in constant]
 
     return ctx.cached("factors", compute)
 
@@ -1652,9 +1996,14 @@ def _shape_test(ctx: Context, factor: dict) -> dict:
         s = b.model.distribution_param_map[SHAPE[b.name]]
         level = factor["level"]
         L = len(factor["labels"])
-        failed = _failed(b)
+        if b.tvc:
+            failed = b.units.event
+            failure_times = b.units.exit[failed]
+        else:
+            failed = _failed(b)
+            failure_times = _failure_times(b)
         for k in range(L):
-            times = np.unique(_failure_times(b)[level[failed] == k])
+            times = np.unique(failure_times[level[failed] == k])
             if times.size < 2:
                 return {
                     "statistic": np.nan,
@@ -1665,8 +2014,12 @@ def _shape_test(ctx: Context, factor: dict) -> dict:
                     "failure times".format(factor["labels"][k]),
                 }
         G = (level[:, None] == np.arange(1, L)[None, :]).astype(float)
-        model = _GroupShapeAFT(b.dist, b.k_dist, b.Z.shape[1], s)
-        f = _neg_ll(model, _view(b, np.column_stack([b.Z, G])))
+        if b.accumulated:
+            # One shape per unit, in the fit's accumulated-age likelihood.
+            f = _accumulated_neg_ll(b, b.Z, G, s)
+        else:
+            model = _GroupShapeAFT(b.dist, b.k_dist, b.Z.shape[1], s)
+            f = _neg_ll(model, _view(b, np.column_stack([b.Z, G])))
         start, null, alt, bounds = _extend(b, L - 1)
         shared = _in_layout(_fitted_null(ctx), L - 1)
         return _lr_test(f, start, null, alt, bounds, null=shared)
@@ -1776,14 +2129,6 @@ def _shape_panels(ctx: Context) -> list[Panel]:
 # Refusals and notes
 # ---------------------------------------------------------------------------
 def _validate(model: Any) -> None:
-    if getattr(model, "is_tvc", False):
-        raise NotImplementedError(
-            "diagnose() is not yet available for a parametric regression "
-            "fitted to time-varying covariates (fit_tvc, fit_tvc_timeline): "
-            "its checks need one row per unit. Diagnose "
-            "the model fitted with fit (or fit_from_df) to each unit's "
-            "covariates at the start."
-        )
     if (
         getattr(model, "_restored", False)
         or getattr(model, "data", None) is None
@@ -1793,6 +2138,24 @@ def _validate(model: Any) -> None:
             "model restored with from_dict / from_json does not carry. Call "
             "it on the fitted model, or refit."
         )
+    if _is_tvc(model):
+        if getattr(model, "weighted", False):
+            raise ValueError(
+                "diagnose() is not available for a fit_tvc model fitted "
+                "with weights (w): its likelihood-ratio tests and AIC "
+                "comparisons need the likelihood of the data, and a "
+                "weighted fit maximises a pseudo-likelihood. Diagnose the "
+                "same fit_tvc call without w=."
+            )
+        if (
+            getattr(model, "tvc_subject_ids", None) is None
+            or getattr(model, "_tvc_fit_rows", None) is None
+        ):
+            raise ValueError(
+                "diagnose() needs each row's unit, which this fit_tvc model "
+                "does not carry (it was fitted, or pickled, by an earlier "
+                "version of SurPyval). Refit it with fit_tvc."
+            )
     link = getattr(getattr(model, "reg_model", None), "name", None)
     if link not in (LogLinearPhi.NAME_E, LogLinearPhi.NAME_EXP):
         raise NotImplementedError(
@@ -1831,9 +2194,32 @@ def _validate(model: Any) -> None:
         )
 
 
+_TVC_PH_NOTE = (
+    "Fitted to time-varying covariates (fit_tvc): each unit's Cox-Snell "
+    "residual is the sum of its rows' cumulative-hazard increments H(stop "
+    "| Z_row) - H(start | Z_row), and its martingale residual its event "
+    "indicator less that. The outliers and influence screens are of the "
+    "units (named by the identifiers fit_tvc was given); the "
+    "functional_form plot is of each row's martingale residual against "
+    "the row's covariate value (Therneau and Grambsch); every test uses "
+    "the fit's own likelihood, over the rows."
+)
+_TVC_AFT_NOTE = (
+    "Fitted to time-varying covariates (fit_tvc): each unit's "
+    "standardised residual is its accumulated age, the sum over its rows "
+    "of e^(beta'Z_row) (stop - start), and every test uses the fit's own "
+    "accumulated-age likelihood. The functional_form plot is of each "
+    "row's martingale residual (its event indicator less its share "
+    "H0(psi(stop)) - H0(psi(start)) of the unit's cumulative hazard) "
+    "against the row's covariate value (Therneau and Grambsch); common "
+    "shape is tested for a categorical covariate that keeps one level "
+    "through each unit."
+)
+
+
 def _ph_notes(ctx: Context) -> list[str]:
     b = _base(ctx)
-    return [
+    return ([_TVC_PH_NOTE] if b.tvc else []) + [
         "Proportional hazards: the likelihood-ratio test of a step in each "
         "coefficient at t = {} (the median failure time), and in every "
         "coefficient at once (GLOBAL); d.plot('proportional_hazards') "
@@ -1853,7 +2239,7 @@ def _ph_notes(ctx: Context) -> list[str]:
 
 def _aft_notes(ctx: Context) -> list[str]:
     b = _base(ctx)
-    notes = [
+    notes = ([_TVC_AFT_NOTE] if b.tvc else []) + [
         "Error distribution: the standardised residuals e^(beta'Z) x, the "
         "time on the baseline's scale, are drawn on {name} paper "
         "(d.plot('error_distribution')); the AIC against each other "
@@ -1871,9 +2257,11 @@ def _aft_notes(ctx: Context) -> list[str]:
     if b.name in SAME_PH_AFT:
         notes.append(
             "A {name} accelerated failure time model is also a proportional "
-            "hazards model: {ph}.fit on the same data fits the same model, "
-            "and its diagnose() tests proportional hazards.".format(
-                name=b.name, ph=_fitter_name(b, "PH")
+            "hazards model: {ph}.{fit} on the same data fits the same "
+            "model, and its diagnose() tests proportional hazards.".format(
+                name=b.name,
+                ph=_fitter_name(b, "PH"),
+                fit="fit_tvc" if b.tvc else "fit",
             )
         )
     return notes
@@ -1882,6 +2270,20 @@ def _aft_notes(ctx: Context) -> list[str]:
 # ---------------------------------------------------------------------------
 # Advice
 # ---------------------------------------------------------------------------
+def _method(tvc: bool, method: str = "fit") -> str:
+    """The fitting method the advice names: ``fit`` (``fit_from_df``) for
+    a model fitted to one row per unit, ``fit_tvc`` (``fit_tvc_from_df``)
+    for one fitted to time-varying covariates."""
+    if not tvc:
+        return method
+    return method.replace("fit", "fit_tvc", 1)
+
+
+def _tvc_is(tvc: bool) -> Callable[[Context], bool]:
+    """Whether the model's fit was (``tvc``) or was not a ``fit_tvc``."""
+    return lambda ctx: _is_tvc(ctx.model) == tvc
+
+
 def _dist_is(
     name: str | None, same: bool | None = None
 ) -> Callable[[Context], bool]:
@@ -1919,39 +2321,56 @@ def _advised(ctx: Context) -> dict:
     return {"own": _fitter_name(b, "PH"), "aft": aft}
 
 
-def _ph_rules(name: str | None, same: bool = False) -> list[AdviceRule]:
+def _ph_rules(
+    name: str | None, same: bool = False, is_tvc: bool = False
+) -> list[AdviceRule]:
     """The PH family's advice for a model with the baseline ``name``
     (``None``: one not built in, whose PH and AFT models are the same
-    model if ``same``)."""
-    on_dist = _dist_is(name, same if name is None else None)
+    model if ``same``), fitted with ``fit`` or (``is_tvc``) ``fit_tvc``."""
+    named = _dist_is(name, same if name is None else None)
+    fitted = _tvc_is(is_tvc)
+
+    def on_dist(ctx: Context) -> bool:
+        return fitted(ctx) and named(ctx)
+
+    fit_name = _method(is_tvc)
     own = "PH" if name is None else name + "PH"
     tvc = ("PH",) if name is None else (own + ".fit_tvc",)
     if name is None:
-        aft_feature = ("LogNormalAFT.fit",) if same else ("AFT",)
+        aft_feature = ("LogNormalAFT." + fit_name,) if same else ("AFT",)
     else:
-        aft_feature = (_aft_instead(name) + ".fit",)
-    fit = ("PH",) if name is None else (own + ".fit",)
-    from_df = ("PH",) if name is None else (own + ".fit_from_df(formula=)",)
+        aft_feature = (_aft_instead(name) + "." + fit_name,)
+    fit = ("PH",) if name is None else (own + "." + fit_name,)
+    from_df = (
+        ("PH",)
+        if name is None
+        else (own + "." + _method(is_tvc, "fit_from_df(formula=)"),)
+    )
+    split = (
+        "split each row that spans t = {tau} in two"
+        if is_tvc
+        else "split each unit's follow-up at t = {tau}"
+    )
 
     def stepping(row: dict, ctx: Context, stratify: bool) -> str:
         cov = row["covariates"][0]
         text = (
             "The effect of {cov} changes with time (it fails the test of a "
             "step in its coefficient at t = {tau}). Give it a time-varying "
-            "effect: split each unit's follow-up at t = {tau} and fit "
+            "effect: " + split + " and fit "
             "{own}.fit_tvc on the pieces, with one column per period holding "
             "{cov} in that period and 0 elsewhere, so that each period has "
             "its own coefficient. Or fit an accelerated failure time model, "
-            "whose hazard ratios change with time, such as {aft}.fit, and "
-            "compare.".format(cov=cov, tau=_fmt(row["_tau"]), **_advised(ctx))
-        )
+            "whose hazard ratios change with time, such as {aft}.{fit}, and "
+            "compare."
+        ).format(cov=cov, tau=_fmt(row["_tau"]), fit=fit_name, **_advised(ctx))
         if stratify:
             var = _source(cov)
             text += (
                 " Or, as {var} has few levels, fit a Cox model "
-                "stratified on it (CoxPH.fit(..., strata=<the {var} "
+                "stratified on it (CoxPH.{fit}(..., strata=<the {var} "
                 "column>), leaving {var} out of Z), which gives each level "
-                "its own baseline hazard.".format(var=var)
+                "its own baseline hazard.".format(var=var, fit=fit_name)
             )
         return text
 
@@ -1966,7 +2385,7 @@ def _ph_rules(name: str | None, same: bool = False) -> list[AdviceRule]:
         AdviceRule(
             "proportional_hazards",
             lambda row, ctx: stepping(row, ctx, True),
-            tvc + aft_feature + ("CoxPH.fit(strata=)",),
+            tvc + aft_feature + (f"CoxPH.{fit_name}(strata=)",),
             when=lambda row, ctx: on_dist(ctx)
             and row.get("_kind") in ("binary", "categorical"),
         ),
@@ -1985,8 +2404,8 @@ def _ph_rules(name: str | None, same: bool = False) -> list[AdviceRule]:
                 "covariates whose coefficients move most across the windows "
                 "of d.plot('proportional_hazards') are the likeliest cause: "
                 "give them a time-varying effect ({own}.fit_tvc), or fit an "
-                "accelerated failure time model ({aft}.fit).".format(
-                    tau=_fmt(row["_tau"]), **_advised(ctx)
+                "accelerated failure time model ({aft}.{fit}).".format(
+                    tau=_fmt(row["_tau"]), fit=fit_name, **_advised(ctx)
                 )
             ),
             tvc + aft_feature,
@@ -1995,7 +2414,7 @@ def _ph_rules(name: str | None, same: bool = False) -> list[AdviceRule]:
         AdviceRule(
             "functional_form",
             lambda row, ctx: _form_message(
-                row, _advised(ctx)["own"], "the log hazard"
+                row, _advised(ctx)["own"], "the log hazard", is_tvc
             ),
             from_df,
             when=lambda row, ctx: on_dist(ctx),
@@ -2018,25 +2437,63 @@ def _ph_rules(name: str | None, same: bool = False) -> list[AdviceRule]:
             when=lambda row, ctx: on_dist(ctx) and "_row" in row,
             on=("warn",),
         ),
+        AdviceRule(
+            "influence",
+            lambda row, ctx: (
+                "Unit {unit} (its identifier in the data given to fit_tvc) "
+                "has a large influence on the coefficient of {cov}: "
+                "dropping its rows would move the coefficient by about "
+                "{size} standard errors. Check its rows, and refit "
+                "({own}.fit_tvc) without them to see how much the "
+                "conclusions depend on it.".format(
+                    unit=row["_unit"],
+                    cov=row["covariates"][0],
+                    size=_fmt(row["_size"]),
+                    own=_advised(ctx)["own"],
+                )
+            ),
+            fit,
+            when=lambda row, ctx: on_dist(ctx) and "_unit" in row,
+            on=("warn",),
+        ),
     ]
 
 
-def _form_message(row: dict, own: str, scale: str) -> str:
+def _form_message(
+    row: dict, own: str, scale: str, is_tvc: bool = False
+) -> str:
     name = row["covariates"][0]
     return (
         "{name} does not act linearly on {scale} (adding its square "
         "improves the fit; see d.plot('functional_form')). Transform it, "
-        "for example with a log in a formula, {own}.fit_from_df(..., "
+        "for example with a log in a formula, {own}.{method}(..., "
         'formula="np.log({name}) + ..."), or bin it (with pandas.cut, '
         "say) and fit the bins as a categorical covariate, "
         'formula="C({name}_band) + ...".'.format(
-            name=name, scale=scale, own=own
+            name=name,
+            scale=scale,
+            own=own,
+            method=_method(is_tvc, "fit_from_df"),
         )
     )
 
 
 def _outlier_message(row: dict, ctx: Context) -> str:
     rows = row["_rows"]
+    if _is_tvc(ctx.model):
+        shown = ", ".join(str(i) for i in rows[:10])
+        if len(rows) > 10:
+            shown += f" and {len(rows) - 10} more"
+        return (
+            "The model predicts unit{s} {shown} (identifiers in the data "
+            "given to fit_tvc) poorly (|deviance residual| above {cut}). "
+            "Check {them} rows for recording errors.".format(
+                s="" if len(rows) == 1 else "s",
+                shown=shown,
+                cut=_fmt(row["_cutoff"]),
+                them="its" if len(rows) == 1 else "their",
+            )
+        )
     shown = ", ".join(str(i) for i in rows[:10])
     if len(rows) > 10:
         shown += f" and {len(rows) - 10} more"
@@ -2052,32 +2509,43 @@ def _outlier_message(row: dict, ctx: Context) -> str:
     )
 
 
-def _better_baseline_rule(kind: str, check: str, name: str) -> AdviceRule:
+def _better_baseline_rule(
+    kind: str, check: str, name: str, is_tvc: bool = False
+) -> AdviceRule:
     """Refit with the baseline ``name``, when the AIC screen of the family
-    ``kind`` found it markedly better."""
+    ``kind`` found it markedly better (with ``fit_tvc`` if ``is_tvc``)."""
     word = "baseline" if kind == "PH" else "error distribution"
+    fit = _method(is_tvc)
+    fitted = _tvc_is(is_tvc)
 
     def message(row: dict, ctx: Context) -> str:
         return (
             "Another {word} fits markedly better: {label}'s AIC is {delta} "
             "lower than this model's (see d.plot('{check}')). Refit with "
-            "{label}.fit and diagnose it.".format(
+            "{label}.{fit} and diagnose it.".format(
                 word=word,
                 label=row["_label"],
                 delta=_fmt(row["_delta"]),
                 check=check,
+                fit=fit,
             )
         )
 
     def when(row: dict, ctx: Context) -> bool:
-        return row.get("_aic") == "baselines" and row.get("_best") == name
+        return (
+            fitted(ctx)
+            and row.get("_aic") == "baselines"
+            and row.get("_best") == name
+        )
 
     return AdviceRule(
-        check, message, (name + kind + ".fit",), when=when, on=("warn",)
+        check, message, (name + kind + "." + fit,), when=when, on=("warn",)
     )
 
 
-def _other_kind_rule(kind: str, check: str, name: str | None) -> AdviceRule:
+def _other_kind_rule(
+    kind: str, check: str, name: str | None, is_tvc: bool = False
+) -> AdviceRule:
     """Fit the other kind of model (PH for an AFT model, AFT for a PH
     one) with the baseline ``name`` (``None``: one not built in), when
     the AIC screen found it markedly better."""
@@ -2088,12 +2556,15 @@ def _other_kind_rule(kind: str, check: str, name: str | None) -> AdviceRule:
         else "the covariates may multiply the hazard rather than rescale time"
     )
     on_dist = _dist_is(name)
+    fitted = _tvc_is(is_tvc)
+    fit = _method(is_tvc)
 
     def message(row: dict, ctx: Context) -> str:
         return (
             "The {other} model with the same baseline, {label}, has an AIC "
-            "{delta} lower: {meaning}. Fit {label}.fit and diagnose "
+            "{delta} lower: {meaning}. Fit {label}.{fit} and diagnose "
             "it.".format(
+                fit=fit,
                 other=(
                     "accelerated failure time"
                     if other == "AFT"
@@ -2106,19 +2577,23 @@ def _other_kind_rule(kind: str, check: str, name: str | None) -> AdviceRule:
         )
 
     def when(row: dict, ctx: Context) -> bool:
-        return row.get("_aic") == "kind" and on_dist(ctx)
+        return row.get("_aic") == "kind" and on_dist(ctx) and fitted(ctx)
 
-    feature = (other,) if name is None else (name + other + ".fit",)
+    feature = (other,) if name is None else (name + other + "." + fit,)
     return AdviceRule(check, message, feature, when=when, on=("warn",))
 
 
-def _aic_rules(kind: str, check: str) -> list[AdviceRule]:
+def _aic_rules(
+    kind: str, check: str, is_tvc: bool = False
+) -> list[AdviceRule]:
     """The advice of the AIC screens of the family ``kind``: refit with
     the better baseline (one rule per built-in baseline), or with the
-    other kind of model."""
-    rules = [_better_baseline_rule(kind, check, name) for name in BASELINES]
+    other kind of model (with ``fit_tvc`` if ``is_tvc``)."""
+    rules = [
+        _better_baseline_rule(kind, check, name, is_tvc) for name in BASELINES
+    ]
     rules.extend(
-        _other_kind_rule(kind, check, name)
+        _other_kind_rule(kind, check, name, is_tvc)
         for name in list(BASELINES) + [None]
         if name not in SAME_PH_AFT
     )
@@ -2154,23 +2629,52 @@ def _shape_rule(name: str, param: str) -> AdviceRule:
             "CoxPH.fit(strata=)",
             "CoxPH.fit_from_df(strata_col=)",
         ),
-        when=lambda row, ctx: on_dist(ctx),
+        when=lambda row, ctx: on_dist(ctx) and not _is_tvc(ctx.model),
     )
 
 
-def _aft_form_rule(name: str | None) -> AdviceRule:
+def _tvc_shape_rule(name: str, param: str) -> AdviceRule:
+    """:func:`_shape_rule` for a model fitted with ``fit_tvc``."""
+    on_dist = _dist_is(name)
+
+    def message(row: dict, ctx: Context) -> str:
+        return (
+            "The shape of the {name} ({param}) differs between the levels "
+            "of {var} (it fails the test of one shape for every level), and "
+            "an accelerated failure time model has one shape for all. Fit "
+            "each level on its own, {name}AFT.fit_tvc on the rows of that "
+            "level's units, so that each has its own shape; or fit a Cox "
+            "model stratified on {var}, CoxPH.fit_tvc(..., strata=<the "
+            "{var} column>) (from a DataFrame, CoxPH.fit_tvc_from_df(..., "
+            'strata_col="{var}")), which gives each level its own baseline '
+            "hazard.".format(name=name, param=param, var=row["_factor"])
+        )
+
+    return AdviceRule(
+        "common_shape",
+        message,
+        (
+            name + "AFT.fit_tvc",
+            "CoxPH.fit_tvc(strata=)",
+            "CoxPH.fit_tvc_from_df(strata_col=)",
+        ),
+        when=lambda row, ctx: on_dist(ctx) and _is_tvc(ctx.model),
+    )
+
+
+def _aft_form_rule(name: str | None, is_tvc: bool = False) -> AdviceRule:
     """Transform a covariate that does not act linearly on log time."""
     on_dist = _dist_is(name)
-    feature = (
-        ("AFT",) if name is None else (name + "AFT.fit_from_df(formula=)",)
-    )
+    fitted = _tvc_is(is_tvc)
+    method = _method(is_tvc, "fit_from_df(formula=)")
+    feature = ("AFT",) if name is None else (name + "AFT." + method,)
     return AdviceRule(
         "functional_form",
         lambda row, ctx: _form_message(
-            row, _fitter_name(_base(ctx), "AFT"), "log time"
+            row, _fitter_name(_base(ctx), "AFT"), "log time", is_tvc
         ),
         feature,
-        when=lambda row, ctx: on_dist(ctx),
+        when=lambda row, ctx: on_dist(ctx) and fitted(ctx),
     )
 
 
@@ -2243,7 +2747,14 @@ PH_FAMILY = register(
         + tuple(_ph_rules(None, same=True))
         + (AdviceRule("outliers", _outlier_message, (), on=("warn",)),)
         + tuple(_aic_rules("PH", "baseline_distribution"))
-        + calibration_advice("PH", BASELINES, SAME_PH_AFT),
+        + calibration_advice("PH", BASELINES, SAME_PH_AFT)
+        # A fit_tvc model's: the same advice, naming fit_tvc.
+        + tuple(
+            rule for name in BASELINES for rule in _ph_rules(name, is_tvc=True)
+        )
+        + tuple(_ph_rules(None, same=False, is_tvc=True))
+        + tuple(_ph_rules(None, same=True, is_tvc=True))
+        + tuple(_aic_rules("PH", "baseline_distribution", is_tvc=True)),
         notes=_ph_notes,
     )
 )
@@ -2284,7 +2795,14 @@ AFT_FAMILY = register(
         advice=tuple(_aic_rules("AFT", "error_distribution"))
         + tuple(_shape_rule(name, param) for name, param in SHAPE.items())
         + tuple(_aft_form_rule(name) for name in list(BASELINES) + [None])
-        + calibration_advice("AFT", BASELINES, SAME_PH_AFT),
+        + calibration_advice("AFT", BASELINES, SAME_PH_AFT)
+        # A fit_tvc model's: the same advice, naming fit_tvc.
+        + tuple(_aic_rules("AFT", "error_distribution", is_tvc=True))
+        + tuple(_tvc_shape_rule(name, param) for name, param in SHAPE.items())
+        + tuple(
+            _aft_form_rule(name, is_tvc=True)
+            for name in list(BASELINES) + [None]
+        ),
         notes=_aft_notes,
     )
 )

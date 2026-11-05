@@ -229,6 +229,12 @@ class ParametricRegressionModel(
     is_tvc: bool = False
     #: The number of subjects of a time-varying-covariate fit.
     n_subjects: int | None = None
+    #: The subject of each row given to a time-varying-covariate fit, and
+    #: the rows themselves (``i``, ``xl``, ``xr``, ``c``, ``Z``, ``n``),
+    #: which ``diagnose()`` sums its residuals over and refits to; not
+    #: saved by ``to_dict``.
+    tvc_subject_ids: npt.NDArray | None = None
+    _tvc_fit_rows: dict | None = None
     #: The weighted number of subjects of a time-varying-covariate fit,
     #: the sample size of ``bic`` / ``aic_c`` when none failed.
     _ic_n_total: float | None = None

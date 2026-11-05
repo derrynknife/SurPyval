@@ -19,6 +19,20 @@ Unreleased
   parameters in ``covariance_names`` order, each offset fit's ``gamma`` and
   the count of failed refits, with ``to_dict``. A short section on carrying
   a fit's uncertainty forward is on the parametric modelling page.
+- ``diagnose()`` of a parametric proportional hazards or accelerated
+  failure time model fitted to time-varying covariates (``fit_tvc``,
+  ``fit_tvc_timeline`` and their ``_from_df`` forms), which refused
+  before. Each unit's residual is the sum over its rows: a PH unit's
+  Cox-Snell residual adds its rows' cumulative-hazard increments
+  ``H(stop | Z_row) - H(start | Z_row)``, an AFT unit's standardised
+  residual is its accumulated age. The likelihood-ratio tests use the
+  fit's own likelihood; influence and outliers name units by their
+  identifiers; the functional-form plot is per row; ``common_shape`` tests
+  factors that keep one level within each unit; calibration is not made.
+  A weighted ``fit_tvc`` model refuses, saying what to do. Checked against
+  R's ``flexsurvreg(Surv(start, stop, event) ~ ...)`` on the Stanford
+  heart data, against the ordinary fit for constant covariates, and by a
+  seeded simulation (``scripts/studies/tvc_diagnose_power.py``).
 - ``covariance()`` and ``standard_errors()`` of a fitted ``Bernoulli``,
   ``FixedEventProbability`` or ``Binomial``: the variance of ``p``,
   :math:`\hat p (1 - \hat p) / N` from the events and trials (a Binomial's

@@ -17,6 +17,7 @@ Rscript scripts/reference/reference_r_frailty.R
 Rscript scripts/reference/reference_r_competing_diagnostics.R
 Rscript scripts/reference/reference_r_odds_additive.R
 Rscript scripts/reference/reference_r_ph_aft.R
+Rscript scripts/reference/reference_r_ph_aft_tvc.R
 Rscript scripts/reference/reference_r_calibration.R
 Rscript scripts/reference/reference_r_frailty_diag.R
 Rscript scripts/reference/reference_r_stratified_cox.R

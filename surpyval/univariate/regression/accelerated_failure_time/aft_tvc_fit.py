@@ -294,9 +294,16 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         from .aft_fitter import AFTTVCFitter
 
         x, c_a, n_a, tl, Z_a, ident = handle_tvc(i, xl, xr, c, Z, n)
-        return self._fit_tvc_arrays(
+        model = self._fit_tvc_arrays(
             x, c_a, n_a, tl, Z_a, ident, AFTTVCFitter, fixed, center
         )
+        # Each row's subject, and the rows as given (the order of
+        # model.data), which diagnose() sums its residuals over and refits
+        # the other models to.
+        rows = {"i": ident, "xl": tl, "xr": x, "c": c_a, "Z": Z_a, "n": n_a}
+        model.tvc_subject_ids = ident
+        model._tvc_fit_rows = rows
+        return model
 
     def fit_tvc_timeline(
         self,

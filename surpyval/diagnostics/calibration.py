@@ -592,13 +592,14 @@ def _outcome(ctx: Context) -> _Outcome | str:
 
     def compute() -> _Outcome | str:
         m = ctx.model
+        if getattr(m, "is_tvc", False):
+            # Cox's and the parametric families' alike.
+            return (
+                "the model was fitted to time-varying covariates "
+                "(fit_tvc), so a unit's predicted survival depends on "
+                "its covariate path, not on one row"
+            )
         if _is_cox(m):
-            if getattr(m, "is_tvc", False):
-                return (
-                    "the model was fitted to time-varying covariates "
-                    "(fit_tvc), so a unit's predicted survival depends on "
-                    "its covariate path, not on one row"
-                )
             data = m._fit_data
             x = np.asarray(data["x"], dtype=float)
             tl = data.get("tl")
