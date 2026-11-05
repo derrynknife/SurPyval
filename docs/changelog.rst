@@ -6,6 +6,16 @@ Unreleased
 
 **Added.**
 
+- ``surpyval.recurrent.mcf_diff``: compares two groups' mean cumulative
+  functions, each fitted with ``NonParametricCounting.fit``. It returns an
+  ``MCFDiffResult`` with the difference of the MCFs at each time and its
+  pointwise confidence bounds (``diff``, ``diff_cb``, ``plot``; the sum of
+  the groups' Lawless-Nadeau robust variances), and the pseudo-score tests
+  of Cook, Lawless and Nadeau (1996) of whether the groups' event rates
+  differ, with constant and linear weights and a robust (default) or
+  Poisson variance. Late entry and gapped observation are taken as the MCF
+  takes them. Checked against R's ``reda::mcfDiff`` and
+  ``reda::mcfDiff.test`` on two seeded data sets (agreement about 1e-14).
 - ``CrowAMSAA.projection(..., bias_corrected=True)``: ``False`` uses the
   plain maximum-likelihood shapes in the demonstrated intensity and in the
   rate of new BD modes, as the worked example of MIL-HDBK-189C (section
