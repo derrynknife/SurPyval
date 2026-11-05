@@ -57,7 +57,10 @@ Unreleased
   the coefficients' standard errors, profile penalised-likelihood
   intervals and p-values (Wald ones with ``profile=False``) in
   ``model.firth`` and ``summary()``, and the penalised likelihood-ratio
-  test from ``likelihood_ratio_test()``. Breslow ties; delayed entry
+  test from ``likelihood_ratio_test()``. ``aic()``, ``bic()`` and
+  ``aic_c()`` refuse (``FirthRefusal``): the penalised likelihood does not
+  compare models, so refit with ``CoxPH.fit`` for them or use the
+  penalised test; the printout says so. Breslow ties; delayed entry
   (start-stop rows), counts and strata. Checked against R's ``coxphf`` on
   six data sets (coefficients and standard errors to 1e-6, bounds to
   1e-5). The "No finite maximum" warning of a Cox fit now names it.
