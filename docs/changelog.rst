@@ -397,6 +397,25 @@ Unreleased
   the likelihood-ratio and bootstrap bounds. ``parameter_names``,
   ``hess_inv`` (the distribution's block only) and the saved dictionary
   are unchanged.
+- Regressions as plain life models, and their parameter uncertainty
+  carried along. ``model.at(Z)`` is the lifetime distribution of a unit
+  with one covariate row (``LifeAtCovariates``): ``sf``, ``ff``, ``df``,
+  ``hf``, ``Hf``, ``qf``, ``random``, ``mean``, ``rmst`` and ``cb`` taking
+  times only, each exactly the regression's at ``Z``, on every parametric
+  regression, ``CoxPH`` (with ``stratum=``) and the semi-parametric
+  proportional odds and additive hazards models; ``random(n)`` is
+  ``qf(U)``, as ``Parametric.random``. ``with_params(params)``,
+  ``covariance_names`` and ``_estimates()`` on the parametric regressions
+  (PH, AFT, PO, AH, accelerated life, Royston-Parmar, distributional) and
+  the semi-parametric ``ProportionalOdds`` and ``AdditiveHazards``
+  models: a model at a flat parameter vector in the order of
+  ``covariance()``'s rows, keeping the formula, centre and fixed
+  parameters, without data or covariance (the semi-parametric baseline is
+  re-estimated at the new coefficients). At R's estimate a Weibull AFT
+  and PH at fixed covariates match flexsurv's ``summary(newdata=)`` and
+  ``survreg``'s predicted quantiles to 1e-9. The semi-parametric
+  ``ProportionalOdds`` and ``AdditiveHazards`` models gain
+  ``random(size, Z)``.
 
 **Changed.**
 
