@@ -294,11 +294,22 @@ jobs:
               'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_likelihood_ratio_coverage[lfp]'
               'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_likelihood_ratio_coverage[zi]'
           # The bootstrap coverage of LFP and ZI models (#286): four
-          # studies of 200 replicates of 200 refits, every core.
-          - group: extra-parameters-bootstrap
+          # studies of 200 replicates of 200 refits, every core. Together
+          # they took 47 minutes locally against the 60-minute limit, so
+          # they run in two groups by the designs' measured cost (the
+          # #1091 study, scripts/studies/lfp_zi_bootstrap): lfp_edge with
+          # zi (about 26 minutes) and lfp with lognormal_lfp (about 21).
+          # Every seed is per design, so the split changes no result.
+          - group: extra-parameters-bootstrap-edge-zi
             workers: '0'
             args: >-
-              'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_bootstrap_coverage'
+              'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_bootstrap_coverage[lfp_edge]'
+              'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_bootstrap_coverage[zi]'
+          - group: extra-parameters-bootstrap-lfp
+            workers: '0'
+            args: >-
+              'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_bootstrap_coverage[lfp]'
+              'surpyval/tests/calibration/test_coverage_extra_parameters.py::test_bootstrap_coverage[lognormal_lfp]'
           - group: long-studies
             workers: '3'
             args: >-
