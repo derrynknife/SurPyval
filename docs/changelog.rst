@@ -260,6 +260,20 @@ Unreleased
   Efron's ties for one subject of weight 3 than for three identical
   copies (use ``n`` for repeated identical units, ``w`` for survey and
   importance weights). No numbers change.
+- Sampling weights ``w`` in penalised fits: ``CoxPH.fit_penalised``,
+  ``CoxPH.fit_tvc_penalised`` and the parametric PH, AFT and PO
+  ``fit_penalised``, which refused them. The objective is the weighted
+  log-likelihood over :math:`N_w = \sum n w` plus the penalty, with the
+  covariates standardised by their ``n w``-weighted standard deviations,
+  so rescaling the weights changes nothing. The Cox fit matches R's
+  ``glmnet(..., family = "cox", weights = w)`` to 1e-6 (ridge, lasso and
+  elastic net, Breslow and Efron, with and without delayed entry); the
+  parametric fits are checked against their optimality conditions. No
+  standard errors, and ``aic``/``bic`` refused, as for every weighted
+  fit; ``penalty_path`` of weighted fits keeps the coefficients and
+  refuses choosing by AIC or BIC. A parametric penalised fit with a
+  delayed entry at 0 is now ``"verified"`` (it was left "unverified" by a
+  nan second derivative; the estimates do not change).
 
 **Changed.**
 

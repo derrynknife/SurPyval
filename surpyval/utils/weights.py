@@ -173,7 +173,8 @@ def refuse_weighted_data(data: Any, what: str, why: str, instead: str) -> None:
 TAKES_WEIGHTS = (
     "KaplanMeier, NelsonAalen, FlemingHarrington, Turnbull, the parametric "
     "distributions (Weibull.fit and the others, by maximum likelihood), "
-    "the parametric regressions (WeibullPH, WeibullAFT, ...) and CoxPH"
+    "the parametric regressions (WeibullPH, WeibullAFT, ...) and CoxPH, "
+    "with their penalised fits (fit_penalised)"
 )
 
 
