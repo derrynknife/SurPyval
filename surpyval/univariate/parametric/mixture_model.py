@@ -7,6 +7,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as np
+import numpy as onp
 import numpy.typing as npt
 from autograd import grad, hessian, jacobian, value_and_grad
 from autograd.scipy.special import logsumexp as ag_logsumexp
@@ -145,6 +146,20 @@ class _FitMethod:
         fit.__dict__.pop("__signature__", None)
         fit.__dict__.pop("_takes_unit", None)
         return takes_unit(accepts_surpyval_data(fit))
+
+
+def _stack(values: list, n: int) -> npt.NDArray:
+    """The components' values at ``n`` points as an ``(m, n)`` array (a
+    component may give a scalar for one point)."""
+    try:
+        out = onp.array(values, dtype=float)
+    except ValueError:  # ragged: a scalar beside arrays
+        out = onp.empty(0)
+    if out.shape != (len(values), n):
+        out = onp.array(
+            [onp.broadcast_to(onp.asarray(v, float), n) for v in values]
+        )
+    return out
 
 
 class MixtureModel(
@@ -1665,6 +1680,50 @@ class MixtureModel(
             S = S + self.w[i] * self.dist.sf(x, *self.params[i])
         return S
 
+    def _component_hazards(
+        self, x: npt.NDArray, rate: bool
+    ) -> tuple[npt.NDArray, npt.NDArray | None] | None:
+        """The mixture's cumulative hazard at the 1-d ``x``, and its hazard
+        rate too if ``rate``, from one call of each component's ``Hf``
+        (and ``hf``); ``None`` where these do not apply (a discrete
+        distribution, or one without ``Hf`` / ``hf``), for the caller to
+        use the survival functions instead.
+
+        ``H`` is ``-log1p(-sum_i w_i F_i)`` while the mixture has failed
+        less than half (each ``F_i = -expm1(-H_i)`` is accurate where it
+        is small), and ``-log sum_i exp(log w_i - H_i)`` (summed in logs)
+        beyond, which stays finite where every survival underflows. The
+        hazard rate is ``sum_i pi_i h_i`` with ``pi_i = w_i S_i / S =
+        exp(log w_i - H_i + H)``, the share of the survivors that come
+        from component ``i``. Plain NumPy: nothing here is differentiated.
+        """
+        dist = self.dist
+        if (
+            getattr(dist, "discrete", False)
+            or not callable(getattr(dist, "Hf", None))
+            or (rate and not callable(getattr(dist, "hf", None)))
+        ):
+            return None
+        n = x.size
+        with onp.errstate(all="ignore"):
+            H_i = _stack([dist.Hf(x, *row) for row in self.params], n)
+            w = onp.asarray(self.w, dtype=float)[:, None]
+            F = onp.sum(w * -onp.expm1(-H_i), axis=0)
+            H = -onp.log1p(-F)
+            far = ~(F < 0.5) & ~onp.isnan(F)
+            if far.any():
+                terms = onp.log(w) - H_i[:, far]
+                top = onp.max(terms, axis=0)
+                lse = top + onp.log(onp.sum(onp.exp(terms - top), axis=0))
+                H[far] = -onp.where(onp.isfinite(top), lse, top)
+            if not rate:
+                return H, None
+            h_i = _stack([dist.hf(x, *row) for row in self.params], n)
+            share = w * onp.exp(H - H_i)
+            h = onp.sum(onp.where(share > 0, share * h_i, 0.0), axis=0)
+            h = onp.where(onp.isnan(H), onp.nan, h)
+        return H, h
+
     @keeps_query_shape
     def Hf(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """
@@ -1672,10 +1731,12 @@ class MixtureModel(
         sf(x)``.
 
         It keeps its precision at both ends: where the mixture has failed
-        less than half it is ``-log1p(-ff(x))`` (``ff`` is accurate where
-        it is small), elsewhere ``-log sf(x)`` from the summed survival,
-        and where that survival underflows to 0 it is the log-sum-exp of
-        the components' log survivals, so it stays finite far in the tail.
+        less than half it is ``-log1p(-ff(x))``, with each component's
+        failure probability taken from its own cumulative hazard
+        (accurate where it is small); beyond, it is ``-log`` of the
+        weighted sum of the components' survivals, summed in logs, so it
+        stays finite far in the tail where the survival underflows. Each
+        component's ``Hf`` is called once.
 
         Parameters
         ----------
@@ -1698,6 +1759,9 @@ class MixtureModel(
         array([0.3505, 1.1196])
         """
         x = np.asarray(x, dtype=float)
+        fast = self._component_hazards(x, rate=False)
+        if fast is not None:
+            return fast[0]
         F = np.asarray(self.ff(x), dtype=float)
         S = np.asarray(self.sf(x), dtype=float)
         with np.errstate(all="ignore"):
@@ -1758,9 +1822,13 @@ class MixtureModel(
         """
         The hazard function of the fitted mixture, ``df(x) / sf(x)``.
 
-        Where the mixture's survival underflows to 0 (far in its upper
-        tail) the ratio is taken from the components' log densities and
-        log survivals instead, so it stays finite there.
+        It is computed as the components' hazards averaged over the
+        survivors: ``sum_i pi_i h_i(x)``, where ``pi_i = w_i S_i(x) /
+        S(x)`` is the share of the items still running at ``x`` that
+        belong to component ``i``, found in logs from the components'
+        cumulative hazards. So it stays finite and precise far in the
+        upper tail, where the survival underflows, and calls each
+        component's ``Hf`` and ``hf`` once.
 
         Parameters
         ----------
@@ -1783,6 +1851,35 @@ class MixtureModel(
         array([0.1091, 0.1435])
         """
         x = np.asarray(x, dtype=float)
+        both = self._hazard_and_rate(x)
+        if both is None:
+            return self._hf_from_densities(x)
+        return both[1]
+
+    def _hazard_and_rate(
+        self, x: npt.NDArray
+    ) -> tuple[npt.NDArray, npt.NDArray] | None:
+        """``(Hf(x), hf(x))`` at the 1-d ``x`` from one pass over the
+        components (see ``_component_hazards``), or ``None`` where that
+        does not apply. The renewal models' simulations call it to take
+        Newton steps on ``H``."""
+        fast = self._component_hazards(x, rate=True)
+        if fast is None:
+            return None
+        H, rate = fast
+        assert rate is not None
+        # Past every component's support (no survivors) the shares are
+        # undefined: there it is the ratio of the sums, as before.
+        empty = H == np.inf
+        if np.any(empty):
+            rate = onp.array(rate)
+            rate[empty] = self._hf_from_densities(x[empty])
+        return H, rate
+
+    def _hf_from_densities(self, x: npt.NDArray) -> npt.NDArray:
+        """``df(x) / sf(x)`` from the summed densities and survivals (in
+        logs where the survival underflows), for a mixture whose
+        components' hazards cannot be used directly."""
         sf = self.sf(x)
         with np.errstate(all="ignore"):
             hf = self.df(x) / sf

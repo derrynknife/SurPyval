@@ -326,6 +326,18 @@ Unreleased
 
 **Changed.**
 
+- The renewal models' simulations (``GeneralizedRenewal``,
+  ``GeneralizedOneRenewal``, ``ARA``) draw a failure at a large virtual age
+  (a cumulative hazard past 20) by Newton's method on the cumulative
+  hazard with the hazard rate, kept inside a bracket, in place of
+  bracketing and regula falsi: about 3 evaluations of the lifetime's
+  ``Hf`` and ``hf`` per draw where it took 12 to 15 of ``Hf``, and 2 to 5
+  times faster per draw (a two-Weibull mixture lifetime 5 times). The
+  draws agree with the old ones and with 50-digit roots to rounding
+  (1e-13), but are not bit for bit the same. ``MixtureModel.Hf`` and
+  ``hf`` are computed from each component's ``Hf`` and ``hf`` (one call
+  each; the hazard is the components' hazards weighted by their share of
+  the survivors), and stay precise out to a cumulative hazard of 700.
 - **The survival tree and random survival forest are stable**:
   ``surpyval.beta.ml`` is now ``surpyval.ml`` (``from surpyval.ml import
   SurvivalTree, RandomSurvivalForest``), with the stability promise,
