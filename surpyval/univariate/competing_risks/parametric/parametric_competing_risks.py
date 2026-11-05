@@ -26,11 +26,13 @@ H_j(u))`. The cause CIFs sum to the all-cause failure probability
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-from scipy.integrate import quad_vec
+from scipy.integrate import IntegrationWarning, quad, quad_vec
+from scipy.optimize import brentq
 
 from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
@@ -58,7 +60,10 @@ from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
-from surpyval.utils.validation import unknown_cause_error
+from surpyval.utils.validation import (
+    unknown_cause_error,
+    warn_outside_unit_interval,
+)
 
 
 def _validate(
@@ -175,14 +180,391 @@ class ParametricCompetingRisks(
             return self.models[event].hf(x)
         return sum(self.models[k].hf(x) for k in self.causes)
 
-    def sf(self, x: npt.ArrayLike) -> npt.NDArray:
-        """All-cause survival :math:`S(t) = \\prod_k S_k(t)`."""
+    def sf(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
+        """
+        Survival. ``event=None`` (the default) gives the all-cause
+        survival :math:`S(t) = \\prod_k S_k(t)`, the probability of having
+        failed from no cause by ``t``; ``event=k`` gives the net survival
+        :math:`S_k(t)` from cause ``k`` alone, as if the other causes were
+        removed. The net survival is *not* the probability of escaping
+        cause ``k`` while the others still act -- use :meth:`cif` for
+        that.
+
+        Parameters
+        ----------
+        x : array_like or float
+            Times at which to evaluate the survival.
+        event : optional
+            The cause; ``None`` for all causes combined.
+
+        Returns
+        -------
+        numpy array or float
+            The survival at each time, in the shape of ``x``.
+
+        Examples
+        --------
+        >>> from surpyval import Exponential
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> model = ParametricCompetingRisks.from_fitted(
+        ...     {"a": Exponential.from_params([0.1]),
+        ...      "b": Exponential.from_params([0.3])}
+        ... )
+        >>> round(float(model.sf(2.0)), 6)  # exp(-0.4 * 2)
+        0.449329
+        >>> round(float(model.sf(2.0, event="a")), 6)  # exp(-0.1 * 2)
+        0.818731
+        """
+        if event is not None:
+            self._check_event(event)
+            return self.models[event].sf(x)
         return np.exp(-self.Hf(x))
 
-    def ff(self, x: npt.ArrayLike) -> npt.NDArray:
-        """All-cause failure probability :math:`1 - S(t)` (the total
-        cumulative incidence over all causes)."""
+    def ff(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
+        """
+        Failure probability, ``1 - sf``. ``event=None`` (the default) gives
+        the all-cause failure probability :math:`1 - S(t)`, the total
+        cumulative incidence over all causes; ``event=k`` gives the net
+        failure probability :math:`F_k(t) = 1 - S_k(t)` from cause ``k``
+        with the others removed. For the probability of failing *from*
+        cause ``k`` while the others still act, use :meth:`cif`.
+
+        Parameters
+        ----------
+        x : array_like or float
+            Times at which to evaluate the failure probability.
+        event : optional
+            The cause; ``None`` for all causes combined.
+
+        Returns
+        -------
+        numpy array or float
+            The failure probability at each time, in the shape of ``x``.
+
+        Examples
+        --------
+        >>> from surpyval import Exponential
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> model = ParametricCompetingRisks.from_fitted(
+        ...     {"a": Exponential.from_params([0.1]),
+        ...      "b": Exponential.from_params([0.3])}
+        ... )
+        >>> round(float(model.ff(2.0)), 6)
+        0.550671
+        >>> round(float(model.ff(2.0, event="a")), 6)
+        0.181269
+        >>> round(float(model.cif(2.0, "a")), 6)  # a quarter of ff(2)
+        0.137668
+        """
+        if event is not None:
+            self._check_event(event)
+            return self.models[event].ff(x)
         return -np.expm1(-self.Hf(x))
+
+    def df(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
+        """
+        Probability density. ``event=None`` (the default) gives the density
+        of the all-cause failure time (the time of the first failure from
+        any cause),
+
+        .. math::
+            f(t) = S(t) \\sum_k h_k(t),
+
+        which is also the sum of the causes' :meth:`iif`; ``event=k`` gives
+        cause ``k``'s net density :math:`f_k(t)`, the density of its own
+        model, matching ``sf(x, event=k)``.
+
+        Parameters
+        ----------
+        x : array_like or float
+            Times at which to evaluate the density.
+        event : optional
+            The cause; ``None`` for all causes combined.
+
+        Returns
+        -------
+        numpy array or float
+            The density at each time, in the shape of ``x``.
+
+        Examples
+        --------
+        >>> from surpyval import Exponential
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> model = ParametricCompetingRisks.from_fitted(
+        ...     {"a": Exponential.from_params([0.1]),
+        ...      "b": Exponential.from_params([0.3])}
+        ... )
+        >>> model.df([0.0, 2.0]).round(6)  # 0.4 exp(-0.4 t)
+        array([0.4     , 0.179732])
+        """
+        if event is not None:
+            self._check_event(event)
+            return self.models[event].df(x)
+        with np.errstate(all="ignore"):
+            s = self.sf(x)
+            h = self.hf(x)
+            # Where the survival has reached 0 the density is 0, even if
+            # a hazard there is infinite (0 * inf).
+            out = np.where(s == 0, 0.0, s * h)
+        return out[()]
+
+    def qf(self, p: npt.ArrayLike, event: Any = None) -> npt.NDArray:
+        """
+        Quantile function. ``event=None`` (the default) gives the time by
+        which a fraction ``p`` of units has failed from any cause: the
+        inverse of the all-cause :meth:`ff`, so the B10 life is
+        ``qf(0.1)`` and the median ``qf(0.5)``. ``event=k`` gives cause
+        ``k``'s net quantile (its own model's ``qf``, the inverse of
+        ``ff(x, event=k)``).
+
+        The all-cause failure function has no closed-form inverse, so the
+        quantile is the root of :math:`H(t) = -\\log(1 - p)`, with
+        :math:`H = \\sum_k H_k` the all-cause cumulative hazard, found by
+        bracketed root finding (Brent's method) on :math:`\\log t`. It is
+        the same equation as ``ff(t) = p``, since :math:`F = 1 -
+        e^{-H}`, but on the cumulative-hazard scale it keeps every digit
+        of a small survival, so ``qf(1 - 1e-12)`` is as precise as
+        ``qf(0.5)``. The root lies between the causes' net quantiles: no
+        later than the earliest cause's quantile at ``p``, and no earlier
+        than the earliest at :math:`1 - (1 - p)^{1/K}` for ``K`` causes.
+
+        Parameters
+        ----------
+        p : array_like or float
+            Probabilities, in [0, 1].
+        event : optional
+            The cause; ``None`` for all causes combined.
+
+        Returns
+        -------
+        numpy array or float
+            The quantile at each probability, in the shape of ``p``.
+
+        Notes
+        -----
+        If the causes carry a cure (limited-failure) fraction, the
+        all-cause failure probability only reaches its ceiling
+        :math:`1 - \\prod_k (1 - p_k)` in the limit, so a quantile at or
+        above the ceiling is infinite, as a limited-failure ``Parametric``
+        model's ``qf`` gives. ``qf(0)`` and ``qf(1)`` are the ends of the
+        support. A probability outside [0, 1] gives NaN with one warning,
+        as every other ``qf`` (it is most often a percentage given for a
+        probability: ``qf(10)`` for the B10 life); NaN gives NaN.
+
+        Examples
+        --------
+        >>> from surpyval import Exponential
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> model = ParametricCompetingRisks.from_fitted(
+        ...     {"a": Exponential.from_params([0.1]),
+        ...      "b": Exponential.from_params([0.3])}
+        ... )
+        >>> round(float(model.qf(0.1)), 6)  # -log(0.9) / 0.4
+        0.263401
+        >>> round(float(model.qf(0.1, event="a")), 6)  # -log(0.9) / 0.1
+        1.053605
+        """
+        if event is not None:
+            self._check_event(event)
+            return self.models[event].qf(p)
+        u = np.asarray(p, dtype=float)
+        flat = np.atleast_1d(u).ravel()
+        outside = warn_outside_unit_interval(flat)
+        q = np.full(flat.shape, np.nan)
+        ok = ~outside & ~np.isnan(flat)
+        ceiling = self._ff_ceiling()
+        q[ok & (flat == 0)] = self._support_end(0.0)
+        if ceiling < 1:
+            q[ok & (flat >= ceiling)] = np.inf
+        else:
+            q[ok & (flat == 1)] = self._support_end(1.0)
+        for i in np.flatnonzero(ok & (flat > 0) & (flat < min(ceiling, 1))):
+            q[i] = self._invert_Hf(float(flat[i]))
+        return q.reshape(u.shape)[()]
+
+    def mean(self, defective: bool = False) -> float:
+        """
+        The mean time to the first failure from any cause (the all-cause
+        MTTF),
+
+        .. math::
+            \\mathbb{E}[T] = \\int_0^\\infty S(t)\\,dt,
+
+        the area under the all-cause survival curve, by adaptive quadrature
+        on a log-time axis, to a relative accuracy of about
+        :math:`10^{-12}`.
+
+        Parameters
+        ----------
+        defective : bool, optional
+            Only matters when a cause has a limited-failure (cure)
+            fraction, so that the all-cause failure probability levels off
+            below 1. If :code:`False` (the default), the mean lifetime,
+            which is infinite there, since some units never fail. If
+            :code:`True`, the *defective* mean :math:`\\int t\\,dF(t)`,
+            the integral over the units that fail, as
+            ``Parametric.mean(defective=True)``; that is not the mean life
+            of the units that fail, which divides it by the ceiling
+            :math:`F(\\infty)`.
+
+        Returns
+        -------
+        mean : float
+            The mean of the all-cause failure time; ``inf`` where it is
+            infinite.
+
+        Notes
+        -----
+        With a single cause this is that cause's ``Parametric.mean()``;
+        with exponential causes it is :math:`1 / \\sum_k \\lambda_k`. A net
+        mean of one cause, with the others removed, is
+        ``model.models[k].mean()``. A tail too heavy for the integral to
+        converge (a survival falling no faster than :math:`1/t` at very
+        long times, as a LogLogistic with shape at most 1 alone) gives
+        ``inf``. Over a support reaching below 0 (a Normal cause), the
+        negative part :math:`-\\int_{-\\infty}^0 F(t)\\,dt` is added.
+
+        Examples
+        --------
+        >>> from surpyval import Exponential
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> model = ParametricCompetingRisks.from_fitted(
+        ...     {"a": Exponential.from_params([0.1]),
+        ...      "b": Exponential.from_params([0.3])}
+        ... )
+        >>> round(model.mean(), 10)  # 1 / (0.1 + 0.3)
+        2.5
+        """
+        ceiling = self._ff_ceiling()
+        if ceiling < 1 and not defective:
+            # Some units never fail: E[T] is infinite, as Parametric.mean.
+            return np.inf
+        # S(inf), as sf computes it (exp(-H(inf))), so S - S(inf) is 0
+        # in the cured tail rather than a rounding residue.
+        s_end = 0.0
+        if ceiling < 1:
+            with np.errstate(all="ignore"):
+                s_end = float(np.exp(-np.ravel(self.Hf(np.inf))[0]))
+            if not np.isfinite(s_end):
+                s_end = 1.0 - ceiling
+        scale = float(self.qf(min(0.5, ceiling / 2)))
+        if not np.isfinite(scale) or scale <= 0:
+            scale = 1.0
+
+        def upper(y: float) -> float:
+            with np.errstate(all="ignore"):
+                t = scale * np.exp(y)
+                s = float(np.ravel(self.sf(t))[0]) - s_end
+            if not np.isfinite(s) or s <= 8 * np.finfo(float).eps * s_end:
+                return 0.0
+            return t * s
+
+        if self._heavy_tail(upper):
+            return np.inf
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", IntegrationWarning)
+            total = sum(
+                quad(upper, a, b, epsabs=0.0, epsrel=1e-12, limit=500)[0]
+                for a, b in ((-np.inf, 0.0), (0.0, np.inf))
+            )
+            if self._support_end(0.0) < 0:
+                # The part of the support below 0 counts negatively.
+                def lower(t: float) -> float:
+                    with np.errstate(all="ignore"):
+                        f = float(np.ravel(self.ff(t))[0])
+                    return f if np.isfinite(f) else 0.0
+
+                total -= quad(lower, -np.inf, 0.0, epsrel=1e-12, limit=500)[0]
+        return float(total)
+
+    def _ff_ceiling(self) -> float:
+        """``lim F(t)`` as ``t -> inf`` of the all-cause failure function:
+        1, or ``1 - prod_k (1 - p_k)`` with cure fractions."""
+        limits = [min(_ff_limit(m), 1.0) for m in self.models.values()]
+        if max(limits) >= 1.0:
+            return 1.0
+        return float(-np.expm1(sum(np.log1p(-v) for v in limits)))
+
+    def _support_end(self, p: float) -> float:
+        """The all-cause support's lower (``p = 0``) or upper (``p = 1``)
+        end: the earliest of the causes' ends (the first failure ends it)."""
+        with np.errstate(all="ignore"), warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            ends = [float(np.ravel(m.qf(p))[0]) for m in self.models.values()]
+        return min(ends)
+
+    def _invert_Hf(self, p: float) -> float:
+        """The all-cause quantile at ``p`` in (0, ceiling): the root of
+        ``Hf(t) = -log(1 - p)``, bracketed by the causes' quantiles (see
+        :meth:`qf`)."""
+        target = -np.log1p(-p)
+        k = len(self.causes)
+        p_low = float(-np.expm1(np.log1p(-p) / k))
+        with np.errstate(all="ignore"), warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            lows = [
+                float(np.ravel(m.qf(p_low))[0]) for m in self.models.values()
+            ]
+            highs = [float(np.ravel(m.qf(p))[0]) for m in self.models.values()]
+        lo = min(v for v in lows if not np.isnan(v))
+        hi = min(v for v in highs if not np.isnan(v))
+
+        def resid(t: float) -> float:
+            with np.errstate(all="ignore"):
+                return float(np.ravel(self.Hf(t))[0]) - target
+
+        if not np.isfinite(hi):
+            # Every cause's own quantile is infinite (cure fractions below
+            # p), yet together they pass p: widen until H reaches target.
+            hi = max(lo, 1.0) * 2.0
+            while resid(hi) < 0 and hi < 1e300:
+                hi *= 10.0
+        r_lo, r_hi = resid(lo), resid(hi)
+        if r_lo >= 0:
+            return lo
+        if r_hi <= 0:
+            return hi
+        if lo > 0:
+            y = brentq(
+                lambda v: resid(np.exp(v)),
+                np.log(lo),
+                np.log(hi),
+                xtol=1e-14,
+                rtol=4 * np.finfo(float).eps,
+                maxiter=500,
+            )
+            return float(np.exp(y))
+        return float(
+            brentq(
+                resid,
+                lo,
+                hi,
+                xtol=1e-14 * max(abs(lo), abs(hi), 1e-300),
+                rtol=4 * np.finfo(float).eps,
+                maxiter=500,
+            )
+        )
+
+    @staticmethod
+    def _heavy_tail(upper: Any) -> bool:
+        """Whether ``int t S(t) dlog t`` diverges: the integrand ``t S(t)``
+        (``upper`` on the log axis) still not falling at very long times,
+        where a survival decaying as ``t^-a`` gives the slope ``1 - a``."""
+        y1, y2 = np.log(1e12), np.log(1e14)
+        g1, g2 = upper(y1), upper(y2)
+        if g1 <= 0 or g2 <= 0:
+            return False
+        return bool((np.log(g2) - np.log(g1)) / (y2 - y1) > -1e-3)
 
     def iif(self, x: npt.ArrayLike, event: Any) -> npt.NDArray:
         """

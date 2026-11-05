@@ -675,3 +675,13 @@ The rows of 2026-10-29 and 2026-10-30 that were still proposed were reviewed by 
 | `constant_effects_test()` refuses a weighted fit (`WeightedRefusal`), pointing to the robust bands of `plot()` / `cumulative_coefficients_cb()`. | proposed | Its simulated null is built and size-checked for unweighted data only; a weighted multiplier version would need its own size study. | done (gap) |
 | `concordance()` of a weighted Aalen fit scores the rows unweighted, as for weighted Cox and parametric fits. | proposed | Consistency with the other weighted models; a weighted C is a separate change. | done |
 | Design-based check by simulation (`scripts/studies/aalen_weighted_coverage.py`, 500 replicates, fixed seeds 20261105+r, informative sampling of censored units): the 95% robust bounds on `B_0(5)` and `B_z(5)` cover 0.936 and 0.948 (MC se 0.011, 0.010); the classical variance with the weights read as counts covers 0.850 and 0.884; the unweighted fit 0.000 and 0.674. | proposed | Evidence that the robust variance is the valid one, and why the classical one is not offered. | done |
+
+### 0.27 WP2c: parametric competing-risks lifetime (5 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `ParametricCompetingRisks.mean()` integrates `S(t)` by `scipy.integrate.quad` on a log-time axis (`t = s e^y`, `s` the all-cause median), split at `y = 0`, to `epsrel = 1e-12`; a survival falling no faster than `1/t` at `t = 1e12 s` to `1e14 s` gives `inf`; a support below 0 subtracts `int_{-inf}^0 F`. | proposed | The integrand on the log axis is smooth over any scale; exact closed forms (exponential, common-shape Weibull, LogLogistic pair) match to 1e-10. | done |
+| With a cure ceiling `mean()` is `inf` and `mean(defective=True)` is `int t dF = int (S - S(inf)) dt`. | proposed | The semantics and wording of `Parametric.mean`. | done |
+| `qf(p)` solves `H(t) = -log(1 - p)` everywhere (not `ff(t) = p` below the median), by Brent's method on `log t`, bracketed by the causes' quantiles at `1 - (1 - p)^(1/K)` and `p`. | proposed | `F = 1 - exp(-H)`, so it is the same equation; on the hazard scale small and large `p` both keep their digits, so one residual does both halves. | done |
+| `sf`, `ff`, `df` and `qf` take `event=k`, giving cause `k`'s net function (its own model). `mean` takes no `event`: the net mean is `model.models[k].mean()`. | proposed | The nonparametric `CompetingRisks.sf/ff(x, event)` are net; `hf`/`Hf(x, event)` are already cause-specific, so `df = hf * sf` holds per cause too. | done |
+| Covariance, `with_params` and confidence bounds on these functions are left to a later piece. | proposed | Scope of this piece. | open |

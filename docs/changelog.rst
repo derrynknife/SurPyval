@@ -5,6 +5,17 @@ Unreleased
 
 **Added.**
 
+- ``ParametricCompetingRisks`` gives the lifetime of the whole unit (its
+  first failure from any cause): ``df(x)``, the all-cause density
+  :math:`S(t)\sum_k h_k(t)`; ``mean()``, the all-cause MTTF by quadrature
+  (``inf`` with a cure fraction unless ``defective=True``, as
+  ``Parametric.mean``); and ``qf(p)``, the all-cause quantile (B10 is
+  ``qf(0.1)``) by root finding on the cumulative hazard, precise in the
+  upper tail and ``inf`` above a cure ceiling. ``sf``, ``ff``, ``df`` and
+  ``qf`` take ``event=k`` for cause ``k``'s net function (its own model),
+  as ``CompetingRisks.sf(x, event)`` does. Checked against closed forms
+  (exponential causes, Weibull causes with a common shape, two LogLogistic
+  causes) to 1e-10.
 - ``Turnbull.fit(..., w=)``: the Turnbull estimate with sampling weights,
   for interval and left censored and truncated data. The estimate is the
   weighted non-parametric MLE (each row counts ``n w`` in the EM; checked
