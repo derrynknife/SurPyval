@@ -4755,6 +4755,67 @@ ignores the covariates entirely. The Cox model should score lower:
 
     assert ibs < ibs_km
 
+How sure are the scores, and is one model really better?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A Brier score or an AUC from a few hundred subjects is itself an estimate:
+another test set would give a different number. Before saying that one model
+predicts better than another, ask whether the gap is larger than that noise.
+:func:`~surpyval.metrics.validation.score_predictions` answers both questions.
+It gives each score with a standard error and a confidence interval, and, when
+two or more models are scored on the same subjects, the difference between
+each pair with its own interval and a p-value. Because both models are scored
+on the same people, the comparison is *paired*: much of the noise is shared and
+cancels, so a difference can be clear even when the two models' intervals
+overlap.
+
+.. jupyter-execute::
+
+    from surpyval.metrics import score_predictions
+
+    result = score_predictions(
+        x_te, c_te, {"marginal KM": S_km, "Cox": S}, times
+    )
+    result.scores.round(4)
+
+.. jupyter-execute::
+
+    result.comparisons.round(4)
+
+Each row of ``comparisons`` is "model minus reference": a negative Brier or
+IBS difference and a positive AUC difference favour the model. Here the Cox
+model's integrated Brier score is clearly lower than the Kaplan-Meier curve's,
+and the AUC of the curve, which ranks nobody, is 0.5.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    ibs_row = result.comparisons.query("metric == 'ibs'").iloc[0]
+    assert ibs_row.difference < 0 and ibs_row.p_value < 0.001
+
+How the standard errors are worked out: each score is an average over the
+subjects of an IPCW term, so it moves by a known amount when one subject is
+added or removed, its *influence function* :math:`\mathrm{IF}_i`. The censoring
+weights :math:`1/\hat G` are estimated too, and the influence function
+includes how each subject moves :math:`\hat G` (the Kaplan-Meier of the
+censoring times, through its Nelson-Aalen expansion). Then
+
+.. math::
+    \mathrm{se} = \frac{\mathrm{sd}(\mathrm{IF})}{\sqrt n}, \qquad
+    \mathrm{se}(A - B) = \frac{\mathrm{sd}(\mathrm{IF}^A - \mathrm{IF}^B)}{\sqrt n},
+
+the interval is :math:`\text{estimate} \pm z_{1-\alpha/2}\,\mathrm{se}`
+(clipped to :math:`[0, 1]`), and the test of no difference is the Wald test
+:math:`2\Phi(-|A - B| / \mathrm{se}(A - B))`. For the AUC this is Blanche,
+Dartigues and Jacqmin-Gadda's (2013) influence function, as R's
+``timeROC(iid = TRUE)``; for the Brier score, Gerds and Schumacher's, as
+``riskRegression::Score(se.fit = TRUE)``; the IBS combines the Brier scores'
+with the same trapezoid weights as its estimate. The numbers agree with
+``Score`` to rounding (with and without tied times) and with ``timeROC`` on
+data without tied event times. The censoring distribution is estimated from
+the scored data, as ``Score`` does; there is no ``x_train`` here.
+
 Concordance
 ~~~~~~~~~~~
 

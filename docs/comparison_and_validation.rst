@@ -93,9 +93,10 @@ Prediction-validation metrics
 -----------------------------
 
 Right-censored-standard metrics for scoring a predicted survival function
-(Brier / integrated Brier score and Uno's time-dependent AUC), plus the helper
-that builds a predicted-survival matrix from a fitted regression model or
-forest.
+(Brier / integrated Brier score and Uno's time-dependent AUC), the same
+metrics with standard errors, confidence intervals and paired tests between
+models (``score_predictions``), plus the helper that builds a
+predicted-survival matrix from a fitted regression model or forest.
 
 .. automodule:: surpyval.metrics.validation
    :members:

@@ -6,6 +6,17 @@ Unreleased
 
 **Added.**
 
+- ``surpyval.metrics.score_predictions``: the Brier score, integrated Brier
+  score and time-dependent AUC with standard errors and confidence intervals
+  from their IPCW influence functions (the censoring estimate's variability
+  included), and, for several models scored on the same subjects, the paired
+  difference between each pair with its interval and p-value. Returns a
+  ``PredictionScores`` result with ``to_dict``. Checked against R's
+  ``riskRegression::Score(se.fit = TRUE)`` (scores, standard errors,
+  intervals, contrasts and p-values) and ``timeROC(iid = TRUE)`` with
+  ``compare`` to 1e-9 on two synthetic sets (one with tied times) and Cox
+  models of ``veteran``. ``brier_score``, ``integrated_brier_score`` and
+  ``auc_td`` are unchanged.
 - Pseudo-observations and regression on them: ``pseudo_survival``,
   ``pseudo_rmst`` and ``pseudo_cif`` give the jackknife (leave-one-out)
   pseudo-values of the Kaplan-Meier survival at chosen times, of the

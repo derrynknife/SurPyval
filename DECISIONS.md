@@ -15,6 +15,14 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-05
 
+### Standard errors and comparisons of the Brier score, IBS and time-dependent AUC
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A new function, `score_predictions(x, c, predictions, times, metrics, alpha_ci)`, returns a `PredictionScores` result (scores and comparisons tables, influence functions, `to_dict`/`from_dict`); `brier_score`, `integrated_brier_score` and `auc_td` are unchanged and still return bare numbers. | proposed | A flag that changed the plain functions' return type would break unpacking (`times, bs = ...`) and their types; one entry point taking several models mirrors `riskRegression::Score` and is where a later `cause=` fits. | done |
+| The standard errors include the censoring Kaplan-Meier's own variability (`Score(conservative = FALSE)`), through its Nelson-Aalen expansion with everyone with `x >= s` at risk, as `riskRegression` and `timeROC` do; `se = sd(IF) / sqrt(n)` with the `n - 1` standard deviation, as `Score`. The censoring distribution is the scored data's own (no `x_train`): a separate one would need another variance term. | proposed | Matches `Score` to rounding (1e-13) with and without ties. | done (gap: `x_train`) |
+| Intervals of the scores are clipped to [0, 1] and those of the differences are not; each model is compared with every model before it (model minus reference), as `Score`'s contrasts. | proposed | `Score`'s conventions, so the numbers can be checked against it. | done |
+
 ### Pseudo-observations and the regressions on them
 
 | Decision | By | Reason | Status |
