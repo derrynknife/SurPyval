@@ -345,6 +345,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.StepValuedError": "an exception type",
     "surpyval.LogRankResult": _RESULT,
     "surpyval.PairwiseLogRankResult": _RESULT,
+    "surpyval.PredictionScores": _RESULT,
     "surpyval.NonParametricPlot": (
         "what plot_nonparametric drew (a figure and its counts), not a model"
     ),
@@ -418,6 +419,7 @@ for _fn in (
     "brier_score",
     "concordance_index",
     "integrated_brier_score",
+    "score_predictions",
     "survival_probability",
 ):
     OUT_OF_SCOPE[f"surpyval.{_fn}"] = _FUNCTION

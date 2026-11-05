@@ -275,6 +275,8 @@ _LAZY = {
             "brier_score",
             "concordance_index",
             "integrated_brier_score",
+            "PredictionScores",
+            "score_predictions",
             "survival_probability",
         ),
         "surpyval.metrics",
@@ -391,10 +393,12 @@ if TYPE_CHECKING:
         WienerProcess,
     )
     from surpyval.metrics import (
+        PredictionScores,
         auc_td,
         brier_score,
         concordance_index,
         integrated_brier_score,
+        score_predictions,
         survival_probability,
     )
     from surpyval.recurrent import (

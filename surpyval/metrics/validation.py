@@ -54,15 +54,24 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 from pandas import DataFrame
+from scipy.stats import norm as _norm
 
 from surpyval.utils import validate_1d as _as_1d
-from surpyval.utils.ipcw import censoring_survival, step_at, step_left_limit
+from surpyval.utils.ipcw import (
+    censoring_survival,
+    ipcw_censoring_influence,
+    step_at,
+    step_left_limit,
+)
+from surpyval.utils.validation import alpha_ci_error, check_option
 
 __all__ = [
     "survival_probability",
     "brier_score",
     "integrated_brier_score",
     "auc_td",
+    "score_predictions",
+    "PredictionScores",
 ]
 
 
@@ -113,6 +122,37 @@ def _ipcw(
     with np.errstate(divide="ignore", invalid="ignore"):
         w = np.where(g_xi > 0, 1.0 / g_xi, np.nan)
     return uniq, g, w
+
+
+def _survival_matrix(
+    survival: npt.ArrayLike, n: int, n_times: int, name: str
+) -> npt.NDArray:
+    """Validate a matrix of predicted survival probabilities."""
+    out = np.asarray(survival, dtype=float)
+    if out.ndim == 1:
+        out = out.reshape(-1, 1)
+    if out.shape != (n, n_times):
+        raise ValueError(
+            "'{}' must have shape (n_samples, n_times) = {}".format(
+                name, (n, n_times)
+            )
+        )
+    with np.errstate(invalid="ignore"):
+        outside = (out < 0) | (out > 1)
+    if outside.any():
+        raise ValueError(
+            "'{}' must hold survival probabilities, in [0, 1]: {} of "
+            "its {} values are outside (from {:.4g} to {:.4g}). Pass "
+            "S(t | Z), e.g. from survival_probability, not a hazard or a "
+            "cumulative hazard".format(
+                name,
+                int(outside.sum()),
+                out.size,
+                float(np.nanmin(out)),
+                float(np.nanmax(out)),
+            )
+        )
+    return out
 
 
 def survival_probability(
@@ -258,29 +298,7 @@ def brier_score(
     """
     x, c = _outcomes(x, c, "x", "c")
     times = _as_1d(times, "times")
-    survival = np.asarray(survival, dtype=float)
-    if survival.ndim == 1:
-        survival = survival.reshape(-1, 1)
-    if survival.shape != (x.size, times.size):
-        raise ValueError(
-            "'survival' must have shape (n_samples, n_times) = {}".format(
-                (x.size, times.size)
-            )
-        )
-    with np.errstate(invalid="ignore"):
-        outside = (survival < 0) | (survival > 1)
-    if outside.any():
-        raise ValueError(
-            "'survival' must hold survival probabilities, in [0, 1]: {} of "
-            "its {} values are outside (from {:.4g} to {:.4g}). Pass "
-            "S(t | Z), e.g. from survival_probability, not a hazard or a "
-            "cumulative hazard".format(
-                int(outside.sum()),
-                survival.size,
-                float(np.nanmin(survival)),
-                float(np.nanmax(survival)),
-            )
-        )
+    survival = _survival_matrix(survival, x.size, times.size, "survival")
     uniq, g, w_case = _ipcw(x, c, x_train, c_train)
 
     n = x.size
@@ -459,3 +477,596 @@ def auc_td(
         if den > 0:
             auc[k] = num / den
     return times, auc
+
+
+# ---------------------------------------------------------------------------
+# Standard errors, intervals and model comparisons.
+# ---------------------------------------------------------------------------
+
+_METRICS = ("brier", "auc", "ibs")
+
+
+class PredictionScores:
+    """
+    Prediction metrics with standard errors, confidence intervals and
+    tests between models, from :func:`score_predictions`.
+
+    Attributes
+    ----------
+    times : ndarray
+        The horizons, as passed.
+    models : list of str
+        The names of the scored models, in the order given.
+    metrics : tuple of str
+        The metrics computed: ``"brier"``, ``"auc"`` and/or ``"ibs"``.
+    alpha_ci : float
+        The intervals are two-sided ``1 - alpha_ci`` intervals.
+    n : int
+        The number of subjects scored.
+    scores : pandas.DataFrame
+        One row per metric, model and horizon, with columns ``metric``,
+        ``model``, ``time`` (``nan`` for ``"ibs"``, which summarises the
+        horizons), ``estimate``, ``se``, ``lower`` and ``upper``. The
+        intervals are ``estimate +/- z se``, clipped to ``[0, 1]`` as
+        ``riskRegression::Score`` does.
+    comparisons : pandas.DataFrame
+        One row per metric, pair of models and horizon: ``model`` and
+        ``reference`` (every model against each one listed before it),
+        ``difference`` (``model`` minus ``reference``), ``se``, ``lower``,
+        ``upper`` and ``p_value`` (the two-sided Wald test of no
+        difference). Empty with one model.
+    influence : dict
+        The influence function of each estimate, keyed by
+        ``(metric, model)``: an ``(n, n_times)`` array for ``"brier"`` and
+        ``"auc"``, a length-``n`` array for ``"ibs"``. Its standard
+        deviation over ``sqrt(n)`` is the standard error; the covariance of
+        two columns over ``n`` is the estimates' covariance. Not written by
+        :meth:`to_dict`.
+
+    Examples
+    --------
+    :func:`score_predictions` returns one; :meth:`estimate` reads a
+    metric's values and :meth:`to_dict` writes strict JSON:
+
+    >>> from surpyval.metrics import score_predictions
+    >>> x = [1.0, 2.0, 3.0, 3.0, 4.0, 5.0]
+    >>> c = [0, 0, 0, 1, 0, 1]
+    >>> S = [[0.8], [0.6], [0.5], [0.5], [0.3], [0.4]]
+    >>> result = score_predictions(x, c, S, [3.5], metrics=("brier",))
+    >>> result.estimate("brier").round(4)
+    array([0.4208])
+    >>> sorted(result.to_dict())[:3]
+    ['alpha_ci', 'comparisons', 'metrics']
+    """
+
+    def __init__(
+        self,
+        times: npt.NDArray,
+        models: list[str],
+        metrics: tuple[str, ...],
+        alpha_ci: float,
+        n: int,
+        scores: DataFrame,
+        comparisons: DataFrame,
+        influence: dict | None = None,
+    ) -> None:
+        self.times = times
+        self.models = models
+        self.metrics = metrics
+        self.alpha_ci = alpha_ci
+        self.n = n
+        self.scores = scores
+        self.comparisons = comparisons
+        self.influence = {} if influence is None else influence
+
+    def _rows(self, metric: str, model: str | None) -> DataFrame:
+        check_option("metric", metric, self.metrics)
+        if model is None:
+            model = self.models[0]
+        if model not in self.models:
+            raise ValueError(
+                "'model' must be one of {}; got {!r}".format(
+                    self.models, model
+                )
+            )
+        table = self.scores
+        return table[(table["metric"] == metric) & (table["model"] == model)]
+
+    def estimate(self, metric: str, model: str | None = None) -> Any:
+        """The estimates of ``metric`` for ``model`` (default the first):
+        an array over the horizons, or a float for ``"ibs"``.
+
+        Parameters
+        ----------
+        metric : str
+            ``"brier"``, ``"auc"`` or ``"ibs"``.
+        model : str, optional
+            The model's name; the first model by default.
+
+        Returns
+        -------
+        estimate : ndarray or float
+            The values the plain functions return.
+        """
+        values = self._rows(metric, model)["estimate"].to_numpy()
+        return float(values[0]) if metric == "ibs" else values
+
+    def se(self, metric: str, model: str | None = None) -> Any:
+        """The standard errors of ``metric`` for ``model``; see
+        :meth:`estimate`.
+
+        Parameters
+        ----------
+        metric : str
+            ``"brier"``, ``"auc"`` or ``"ibs"``.
+        model : str, optional
+            The model's name; the first model by default.
+
+        Returns
+        -------
+        se : ndarray or float
+            The standard errors.
+        """
+        values = self._rows(metric, model)["se"].to_numpy()
+        return float(values[0]) if metric == "ibs" else values
+
+    def to_dict(self) -> dict:
+        """The result as a dict of native Python values, strict JSON: a
+        missing number is written as ``None`` and recorded under
+        ``"non_finite"``. The influence functions are not written.
+
+        Returns
+        -------
+        result : dict
+            Settings, ``"scores"`` and ``"comparisons"`` as lists of
+            records.
+        """
+        from surpyval.serialisation import encode_non_finite, to_native
+
+        out = {
+            "result": type(self).__name__,
+            "times": to_native(np.asarray(self.times, dtype=float)),
+            "models": list(self.models),
+            "metrics": list(self.metrics),
+            "alpha_ci": float(self.alpha_ci),
+            "n": int(self.n),
+            "scores": [
+                {k: to_native(v) for k, v in row.items()}
+                for row in self.scores.to_dict("records")
+            ],
+            "comparisons": [
+                {k: to_native(v) for k, v in row.items()}
+                for row in self.comparisons.to_dict("records")
+            ],
+        }
+        return encode_non_finite(out)
+
+    @classmethod
+    def from_dict(cls, result_dict: dict) -> PredictionScores:
+        """The result :meth:`to_dict` wrote (without influence functions).
+
+        Parameters
+        ----------
+        result_dict : dict
+            A dict written by :meth:`to_dict`.
+
+        Returns
+        -------
+        result : PredictionScores
+            The scores and comparisons restored.
+        """
+        from surpyval.serialisation import decode_non_finite
+
+        if result_dict.get("result") != cls.__name__:
+            raise ValueError(
+                "Must create a PredictionScores from a dict its to_dict "
+                "wrote (with 'result': 'PredictionScores')"
+            )
+        d = decode_non_finite(dict(result_dict))
+        return cls(
+            times=np.asarray(d["times"], dtype=float),
+            models=list(d["models"]),
+            metrics=tuple(d["metrics"]),
+            alpha_ci=float(d["alpha_ci"]),
+            n=int(d["n"]),
+            scores=DataFrame(d["scores"], columns=_SCORE_COLUMNS),
+            comparisons=DataFrame(
+                d["comparisons"], columns=_COMPARISON_COLUMNS
+            ),
+        )
+
+    def __repr__(self) -> str:
+        level = 100 * (1 - self.alpha_ci)
+        out = "Prediction scores ({} subjects, {:g}% intervals)\n".format(
+            self.n, level
+        )
+        out += self.scores.to_string(index=False)
+        if len(self.comparisons):
+            out += "\n\nComparisons (model minus reference)\n"
+            out += self.comparisons.to_string(index=False)
+        return out
+
+
+_SCORE_COLUMNS = [
+    "metric",
+    "model",
+    "time",
+    "estimate",
+    "se",
+    "lower",
+    "upper",
+]
+_COMPARISON_COLUMNS = [
+    "metric",
+    "model",
+    "reference",
+    "time",
+    "difference",
+    "se",
+    "lower",
+    "upper",
+    "p_value",
+]
+
+
+def _brier_influence(
+    x: npt.NDArray,
+    c: npt.NDArray,
+    s: npt.NDArray,
+    t: float,
+    w_case: npt.NDArray,
+    g_t: float,
+) -> tuple[float, npt.NDArray]:
+    """The Brier score at ``t`` and its influence function.
+
+    With ``r_i`` each subject's IPCW residual (``S^2 / G(x_i-)`` for an
+    event by ``t``, ``(1 - S)^2 / G(t)`` for a survivor, 0 otherwise), the
+    score is ``mean(r)`` and its influence ``r_k - mean(r)`` plus the
+    influence through the censoring estimate, ``sum_j r_j f_k(u_j) / n``
+    (:func:`surpyval.utils.ipcw.ipcw_censoring_influence`).
+    """
+    n = x.size
+    died = (x <= t) & (c == 0)
+    alive = x > t
+    if (alive.any() and g_t == 0) or np.isnan(w_case[died]).any():
+        return np.nan, np.full(n, np.nan)
+    r = np.zeros(n)
+    r[died] = s[died] ** 2 * w_case[died]
+    r[alive] = (1.0 - s[alive]) ** 2 / g_t
+    bs = r.sum() / n
+    influence = r - bs
+    influence += ipcw_censoring_influence(
+        x, c == 1, r / n, np.where(died, x, t), died
+    )
+    return float(bs), influence
+
+
+def _weighted_below(
+    values: npt.NDArray, ref: npt.NDArray, ref_w: npt.NDArray
+) -> npt.NDArray:
+    """For each value, the weight of ``ref`` strictly below it plus half
+    the weight tied with it."""
+    order = np.argsort(ref, kind="stable")
+    r_sorted = ref[order]
+    cw = np.concatenate(([0.0], np.cumsum(ref_w[order])))
+    lo = np.searchsorted(r_sorted, values, side="left")
+    hi = np.searchsorted(r_sorted, values, side="right")
+    return cw[lo] + 0.5 * (cw[hi] - cw[lo])
+
+
+def _auc_influence(
+    x: npt.NDArray,
+    c: npt.NDArray,
+    risk: npt.NDArray,
+    t: float,
+    w_case: npt.NDArray,
+    g_t: float,
+) -> tuple[float, npt.NDArray]:
+    """Uno's AUC at ``t`` and its influence function (Blanche et al.
+    2013): the AUC is ``nu / mu``, ``nu`` the weighted mean over
+    (case, control) pairs of ``I(r_i > r_j) + I(r_i = r_j) / 2`` and
+    ``mu`` the mean pair weight, each a two-sample U-statistic; the
+    censoring estimate enters through the weights, a case's
+    ``1 / G(x_i-)`` and a control's ``1 / G(t)``."""
+    n = x.size
+    cases = (x <= t) & (c == 0)
+    controls = x > t
+    nan = (np.nan, np.full(n, np.nan))
+    if not cases.any() or not controls.any() or g_t == 0:
+        return nan
+    if np.isnan(w_case[cases]).any() or np.isnan(risk[cases | controls]).any():
+        return nan
+    w = np.zeros(n)
+    w[cases] = w_case[cases]
+    w[controls] = 1.0 / g_t
+    # a_k: subject k's share of the weighted concordant pairs, b_k its
+    # share of all weighted pairs.
+    a = np.zeros(n)
+    b = np.zeros(n)
+    a[cases] = w[cases] * _weighted_below(
+        risk[cases], risk[controls], w[controls]
+    )
+    a[controls] = w[controls] * (
+        w[cases].sum() - _weighted_below(risk[controls], risk[cases], w[cases])
+    )
+    b[cases] = w[cases] * w[controls].sum()
+    b[controls] = w[controls] * w[cases].sum()
+    pairs = w[cases].sum() * w[controls].sum()
+    auc = a[cases].sum() / pairs
+    mu = pairs / n**2
+    d = a - auc * b
+    influence = d / n / mu
+    influence += ipcw_censoring_influence(
+        x, c == 1, d / n**2 / mu, np.where(cases, x, t), cases
+    )
+    return float(auc), influence
+
+
+def _ibs_weights(times: npt.NDArray) -> npt.NDArray:
+    """The weights of the Brier scores at ``times`` in the integrated
+    Brier score: the trapezoid rule in time order over the span, or the
+    plain mean without a span (as :func:`integrated_brier_score`)."""
+    k = times.size
+    order = np.argsort(times, kind="stable")
+    ts = times[order]
+    if k < 2 or ts[-1] - ts[0] <= 0:
+        return np.full(k, 1.0 / k)
+    h = np.diff(ts)
+    a_sorted = np.zeros(k)
+    a_sorted[:-1] += h / 2
+    a_sorted[1:] += h / 2
+    a = np.empty(k)
+    a[order] = a_sorted / (ts[-1] - ts[0])
+    return a
+
+
+def score_predictions(
+    x: npt.ArrayLike,
+    c: npt.ArrayLike,
+    predictions: Any,
+    times: npt.ArrayLike,
+    metrics: Any = ("brier", "auc", "ibs"),
+    alpha_ci: float = 0.05,
+) -> PredictionScores:
+    r"""Brier score, integrated Brier score and time-dependent AUC with
+    standard errors, confidence intervals and tests between models.
+
+    :func:`brier_score`, :func:`integrated_brier_score` and :func:`auc_td`
+    give the bare estimates. This gives the same estimates with how
+    uncertain they are, and, for two or more models scored on the same
+    subjects, whether their difference is more than chance: the
+    difference, its interval and a p-value. The comparison is paired (the
+    same subjects score both models), so it is much sharper than
+    comparing two separate intervals.
+
+    Each estimate is an average over the subjects of an IPCW term, so its
+    standard error comes from its *influence function*: how much each
+    subject moves the estimate, including through the Kaplan-Meier
+    estimate of the censoring distribution behind the weights (the
+    ``conservative = FALSE`` variance of ``riskRegression::Score``). The
+    standard error is ``sd(IF) / sqrt(n)``; the interval of an estimate is
+    ``estimate +/- z se`` clipped to ``[0, 1]``; the difference between
+    two models has the standard error ``sd(IF_a - IF_b) / sqrt(n)`` and
+    the Wald test ``2 Phi(-|difference| / se)``. For the AUC the influence
+    function is that of Blanche, Dartigues and Jacqmin-Gadda (2013), as
+    ``timeROC(iid = TRUE)``; for the Brier score that of Gerds and
+    Schumacher (2006), as ``Score(se.fit = TRUE)``. The integrated Brier
+    score's is the same trapezoid combination of the Brier scores' that
+    gives the estimate.
+
+    Parameters
+    ----------
+    x : array_like
+        Observed times of the evaluation set.
+    c : array_like
+        Censoring flags, ``0`` event, ``1`` right censored.
+    predictions : array_like or dict
+        Predicted survival ``S(times[k] | Z_i)``, shape
+        ``(n_samples, n_times)``, of one model (named ``"model"``), or a
+        dict of such matrices keyed by model name. Each model is
+        compared with every model before it. The AUC ranks subjects by
+        ``1 - S``.
+    times : array_like
+        Horizons at which to score, matching the columns of each matrix.
+    metrics : sequence of str, optional
+        Any of ``"brier"``, ``"auc"`` and ``"ibs"`` (all by default).
+    alpha_ci : float, optional
+        The intervals are two-sided ``1 - alpha_ci`` intervals; default
+        0.05.
+
+    Returns
+    -------
+    PredictionScores
+        The estimates, standard errors and intervals (``scores``), the
+        comparisons between models (``comparisons``) and the influence
+        functions.
+
+    Notes
+    -----
+    The censoring distribution is estimated from the evaluation data
+    themselves (there is no ``x_train``): the standard errors account for
+    that estimate, which a censoring distribution from other data would
+    need another term for. The estimates equal those of
+    :func:`brier_score`, :func:`integrated_brier_score` and
+    :func:`auc_td` without ``x_train``. A horizon where an estimate is
+    ``nan`` (no cases or controls, or a weight that is not identified)
+    has ``nan`` standard error and interval. An AUC with a missing
+    prediction among the cases or controls is ``nan`` here, estimate
+    included (:func:`auc_td` counts such a pair as neither concordant nor
+    tied); drop those subjects to score the rest. A Brier score with a
+    missing prediction is ``nan``, as in :func:`brier_score`.
+
+    The influence function of the censoring Kaplan-Meier uses
+    ``riskRegression``'s at-risk counts (everyone with ``x >= s``); the
+    standard errors agree with ``Score`` and, on data without tied
+    event times, with ``timeROC``. With tied event times ``timeROC``'s
+    AUC differs from ``Score``'s and SurPyval's.
+
+    References
+    ----------
+    Blanche, P., Dartigues, J.-F. and Jacqmin-Gadda, H. (2013), "Estimating
+    and comparing time-dependent areas under receiver operating
+    characteristic curves for censored event times with competing risks",
+    Statistics in Medicine 32, 5381-5397.
+
+    Examples
+    --------
+    Two models of the Rossi recidivism data, the Cox model and the
+    Kaplan-Meier curve that ignores the covariates, scored where they
+    were fitted. The Cox model's Brier scores are only a little lower,
+    and the paired test cannot tell the two apart at 26 weeks; its
+    discrimination at 39 weeks is clearly better than the curve's 0.5:
+
+    >>> import numpy as np
+    >>> from surpyval import CoxPH, KaplanMeier
+    >>> from surpyval.datasets import load_rossi_static
+    >>> from surpyval.metrics import score_predictions, survival_probability
+    >>> df = load_rossi_static()
+    >>> x, c = df["week"].values, 1 - df["arrest"].values
+    >>> Z = df[["fin", "age", "prio"]].values
+    >>> times = [13, 26, 39]
+    >>> S_cox = survival_probability(CoxPH.fit(x, Z, c=c), Z, times)
+    >>> S_km = np.tile(KaplanMeier.fit(x, c).sf(times), (len(x), 1))
+    >>> result = score_predictions(x, c, {"km": S_km, "cox": S_cox}, times)
+    >>> result.estimate("brier", "cox").round(4)
+    array([0.0433, 0.1056, 0.1447])
+    >>> result.se("brier", "cox").round(4)
+    array([0.009 , 0.0116, 0.0114])
+    >>> table = result.comparisons.set_index(["metric", "time"])
+    >>> round(float(table.loc[("brier", 26.0), "p_value"]), 3)
+    0.189
+    >>> round(float(table.loc[("auc", 39.0), "difference"]), 3)
+    0.128
+    >>> round(float(table.loc[("auc", 39.0), "p_value"]), 4)
+    0.0003
+    """
+    x, c = _outcomes(x, c, "x", "c")
+    times = _as_1d(times, "times")
+    if isinstance(metrics, str):
+        metrics = (metrics,)
+    metrics = tuple(metrics)
+    if not metrics:
+        raise ValueError(
+            "'metrics' must name at least one of 'brier', 'auc' or 'ibs'"
+        )
+    for m in metrics:
+        check_option("metrics", m, _METRICS)
+    if not (
+        isinstance(alpha_ci, (int, float, np.integer, np.floating))
+        and 0 < alpha_ci < 1
+    ):
+        raise alpha_ci_error(alpha_ci)
+    if isinstance(predictions, dict):
+        if not predictions:
+            raise ValueError(
+                "'predictions' is an empty dict; pass one survival matrix "
+                "or a dict of them keyed by model name"
+            )
+        named = {str(k): v for k, v in predictions.items()}
+        if len(named) != len(predictions):
+            raise ValueError("'predictions' has two models with one name")
+    else:
+        named = {"model": predictions}
+    surv = {
+        k: _survival_matrix(
+            v,
+            x.size,
+            times.size,
+            ("predictions" if len(named) == 1 else f"predictions[{k!r}]"),
+        )
+        for k, v in named.items()
+    }
+
+    uniq, g, w_case = _ipcw(x, c, None, None)
+    g_times = step_at(uniq, g, times, before=1.0)
+    n = x.size
+    z = _norm.ppf(1 - alpha_ci / 2)
+
+    estimates: dict = {}
+    influence: dict = {}
+    need_brier = "brier" in metrics or "ibs" in metrics
+    for name, S in surv.items():
+        if need_brier:
+            est = np.empty(times.size)
+            inf = np.empty((n, times.size))
+            for k, t in enumerate(times):
+                est[k], inf[:, k] = _brier_influence(
+                    x, c, S[:, k], t, w_case, float(g_times[k])
+                )
+            if "brier" in metrics:
+                estimates["brier", name] = est
+                influence["brier", name] = inf
+            if "ibs" in metrics:
+                a = _ibs_weights(times)
+                estimates["ibs", name] = np.array([est @ a])
+                influence["ibs", name] = inf @ a
+        if "auc" in metrics:
+            est = np.empty(times.size)
+            inf = np.empty((n, times.size))
+            for k, t in enumerate(times):
+                est[k], inf[:, k] = _auc_influence(
+                    x, c, 1.0 - S[:, k], t, w_case, float(g_times[k])
+                )
+            estimates["auc", name] = est
+            influence["auc", name] = inf
+
+    def _se(f: npt.NDArray) -> npt.NDArray:
+        f = f.reshape(n, -1)
+        if n < 2:
+            return np.full(f.shape[1], np.nan)
+        return np.std(f, axis=0, ddof=1) / np.sqrt(n)
+
+    score_rows = []
+    comparison_rows = []
+    names = list(surv)
+    for metric in metrics:
+        row_times = np.array([np.nan]) if metric == "ibs" else times
+        for name in names:
+            est = estimates[metric, name]
+            se = _se(influence[metric, name])
+            se = np.where(np.isnan(est), np.nan, se)
+            lower = np.clip(est - z * se, 0.0, 1.0)
+            upper = np.clip(est + z * se, 0.0, 1.0)
+            for k in range(est.size):
+                score_rows.append(
+                    [
+                        metric,
+                        name,
+                        row_times[k],
+                        est[k],
+                        se[k],
+                        lower[k],
+                        upper[k],
+                    ]
+                )
+        for i, ref in enumerate(names):
+            for name in names[i + 1 :]:
+                diff = estimates[metric, name] - estimates[metric, ref]
+                se = _se(influence[metric, name] - influence[metric, ref])
+                se = np.where(np.isnan(diff), np.nan, se)
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    p = 2 * _norm.sf(np.abs(diff) / se)
+                for k in range(diff.size):
+                    comparison_rows.append(
+                        [
+                            metric,
+                            name,
+                            ref,
+                            row_times[k],
+                            diff[k],
+                            se[k],
+                            diff[k] - z * se[k],
+                            diff[k] + z * se[k],
+                            p[k],
+                        ]
+                    )
+    return PredictionScores(
+        times=times,
+        models=names,
+        metrics=metrics,
+        alpha_ci=float(alpha_ci),
+        n=n,
+        scores=DataFrame(score_rows, columns=_SCORE_COLUMNS),
+        comparisons=DataFrame(comparison_rows, columns=_COMPARISON_COLUMNS),
+        influence=influence,
+    )
