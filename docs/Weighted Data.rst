@@ -277,6 +277,49 @@ as R's ``coxph(Surv(start, stop, event) ~ z, weights = w, robust = TRUE,
 id = id)``, so splitting a subject's follow-up into episodes on which
 nothing changes gives the same fit and the same standard errors.
 
+Distributional and Royston-Parmar regression with weights
+---------------------------------------------------------
+
+Distributional regression (``WeibullDistributional.fit(..., w=w)``, any
+``Distributional(...)`` fitter) and the Royston-Parmar spline regression
+(``RoystonParmarPH.fit(..., w=w)``, ``RoystonParmarPO``,
+``RoystonParmarRegression(...)``) take weights as the other parametric
+regressions do: the estimates maximise the weighted log-likelihood, every
+row's term counted ``n * w`` times, and the covariance is the robust
+(sandwich) one. ``fit_from_df`` takes ``w_col``; a row dropped for a
+missing covariate drops its weight with it. The Wald bounds
+(``cb``, ``param_cb``, ``quantile_cb`` and a distributional model's
+``parameter_cb``) use the robust covariance, ``method="bootstrap"`` is
+the case bootstrap, and the likelihood-ratio bounds, the
+``likelihood_ratio_test()`` and the information criteria refuse.
+
+A Royston-Parmar fit places its knots on the event times counted by
+``n``, *not* weighted, so the spline's shape is the same whatever the
+weights and their scale, and ``w = 1`` gives the unweighted fit exactly.
+A weight of 2 is therefore not quite a count of 2 here: a count moves the
+quantiles the knots sit at and a weight does not. Pass ``knots`` to fix
+them; with the same knots, whole-number weights give the fit of the rows
+counted that many times. R's ``flexsurvspline(..., weights = w)`` places
+its default knots at weighted quantiles found by an approximate expansion
+of the weights (each rounded to a multiple of a hundredth of a unit), so
+pass the knots to it too when comparing. A left truncation at 0 (the
+usual "no late entry") is read as none.
+
+.. jupyter-execute::
+
+    load = rng.uniform(0, 1, kept.sum())  # no effect: coefficients near 0
+    model = surv.WeibullDistributional.fit(
+        x, load, c=c, w=w, covariates={"alpha": [0], "beta": [0]}
+    )
+    print(model.params.round(3), model.standard_errors().round(3))
+
+Checked against R: ``flexsurvreg(..., anc = list(shape = ~ z1), weights =
+w)`` and ``flexsurvspline(..., weights = w)`` on both scales for the
+estimates (to 1e-5) and the log-likelihood, and a sandwich computed by
+hand from numDeriv's per-row scores and Hessian for the robust standard
+errors (to 1e-4 relative); flexsurv's own standard errors with weights are
+model based.
+
 Competing risks: weighted cumulative incidence
 ----------------------------------------------
 
@@ -368,8 +411,7 @@ saying what to use instead:
   incidences by their bounds.
 - **The fitters that do not take** ``w``: the other competing-risks models
   (parametric, and the regressions where not stated), recurrent events,
-  degradation, mixtures, distributional
-  regression, Aalen's additive model and the Royston-Parmar regression,
+  degradation, mixtures, Aalen's additive model and the frailty models,
   among others, which refuse weighted data (the Bayesian fits and the
   life table are above).
 - **Reshaping weighted data** with ``censor_at``, ``select`` and the other

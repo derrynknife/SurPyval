@@ -99,6 +99,17 @@ Design decisions made while working on the open issues, with the reason for each
 | Truncated data (finite `tl` or `tr`) are refused, pointing to `logrank` with `tl`. | proposed | The permutation argument needs exchangeable units, which delayed entry breaks; R's `ictest` takes no truncation either. | done |
 | The pooled NPMLE is the EM-ICM with `tol = 1e-12` (the Karush-Kuhn-Tucker gap) by default, tighter than `Turnbull.fit`'s 1e-10, and warns if it does not converge. | proposed | The statistic moves with the NPMLE's convergence; R's default `epsilon = 1e-6` moves it by about 1e-8 relative. | done |
 
+### Weights stage 2: distributional and Royston-Parmar regression
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `Distributional(...).fit(..., w=)` and `RoystonParmarRegression.fit(..., w=)` (so `RoystonParmarPH`, `RoystonParmarPO`) take weights as the parametric regressions do: each row's likelihood term times `n w` (the weights scaled to sum to the units for the search), the covariance always the robust sandwich `B (sum n w^2 s s') B` (HC0) through the regression model's shared code, `fit_from_df(w_col=)` through the shared frame handling. Royston-Parmar goes through the `PH` / `PO` family fit, which already took `w`. | proposed | Stage 1's rule for every parametric regression; R: `flexsurvreg` / `flexsurvspline` with `weights` for the estimates, a hand sandwich from numDeriv scores for the standard errors (to 1e-5 and 1e-4). | done |
+| Royston-Parmar's default knots are placed on the event times counted by `n` only, not weighted. So `w = 1` and any scale of `w` leave them (and the fit) exactly as without weights, but whole-number weights equal counts only when the knots are given. flexsurvspline places them at weighted quantiles by an approximate expansion (weights rounded to multiples of 1/(100 N)), which is neither exact for whole-number weights nor equal to its unweighted knots at `w = 1`; the reference test passes our knots to it. | proposed | The knots are a basis choice, not an estimate. No rule is both scale-free and repetition-exact (a count of 2 moves type-7 quantiles, and a weight of 2 must equal a weight of 1). The alternative is a weighted type-7 quantile on the scaled weights. | done |
+| A Royston-Parmar left truncation at or below 0 is read as none (-inf). | proposed | The spline in log time is not finite at 0, so an entry at 0 made the truncation term `nan`: the fit unverified and a weighted fit's covariance `nan`. `S(0) = 1`, so nothing changes in the estimates. | done |
+| Distributional regression's `parameter_cb(method="lr")` refuses weighted fits; `method="bootstrap"` (there and on `cb`, `param_cb`, `quantile_cb`) is the case bootstrap, which plugs in through `_bootstrap.refits` unchanged (the fitter bound to the model takes `w`). `likelihood_ratio_test()` already refused. | proposed (the every-bound rule) | — | done |
+| A weighted distributional model's dict carries `weighted` and `effective_n` and is stamped schema 4 (its coefficient signs need 4, which reads weights); the conformance round trip asks for schema 3 or later. | principle 20 | — | done |
+| `fit_penalised(w=)` of both still refuses. | proposed | Penalised fits are another piece of stage 2. | gap |
+
 ### Weights stage 2: penalised fits
 
 | Decision | By | Reason | Status |
