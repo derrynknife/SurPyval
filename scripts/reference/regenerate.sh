@@ -20,6 +20,8 @@ Rscript scripts/reference/reference_r_ph_aft.R
 Rscript scripts/reference/reference_r_calibration.R
 Rscript scripts/reference/reference_r_frailty_diag.R
 Rscript scripts/reference/reference_r_stratified_cox.R
+Rscript scripts/reference/reference_r_cox_tt.R
+Rscript scripts/reference/reference_r_rmst.R
 Rscript scripts/reference/reference_r_concordance.R
 Rscript scripts/reference/reference_r_metric_inference.R
 Rscript scripts/reference/reference_r_competing_metrics.R

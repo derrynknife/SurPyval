@@ -644,7 +644,11 @@ class _Covariates:
         return self._column_mean(j)
 
     def _column_mean(self, j: int) -> tuple[Any, str | None]:
-        if getattr(self.model, "is_tvc", False):
+        # A time-varying-coefficient fit's start-stop rows are its units'
+        # rows split, and it gives the units' rows.
+        if getattr(self.model, "is_tvc", False) and not getattr(
+            self.model, "_PARTIAL_EFFECTS_UNIT_ROWS", False
+        ):
             return None, (
                 "the rows of a time-varying-covariate fit are intervals, "
                 "not units, so their mean is not a unit's covariates"

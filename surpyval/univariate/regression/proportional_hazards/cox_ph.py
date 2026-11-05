@@ -826,6 +826,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         strata: npt.ArrayLike | None = None,
         center: bool = False,
         w: npt.ArrayLike | float | None = None,
+        time_interaction: dict | None = None,
     ) -> SemiParametricRegressionModel:
         """
         Fits Cox Proportional Hazards model to the provided data.
@@ -909,6 +910,27 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             clusters. ``tie_method`` ``'efron'`` or ``'breslow'``, no
             ``strata``; the information criteria, the residuals and
             ``diagnose()`` refuse (see :doc:`/Weighted Data`).
+        time_interaction: dict, optional
+            Time-varying coefficients, for a covariate whose effect
+            changes with time (one that fails the proportional-hazards
+            test of ``diagnose()``): ``{column: g}`` gives that column of
+            ``Z`` the coefficient :math:`\\beta + \\gamma g(t)`, with
+            ``g`` ``"t"``, ``"log"`` or a function of time (vectorised,
+            finite at every event time), several of one column in a list.
+            A column is its position in ``Z``, or its name for a ``Z``
+            with named columns (a DataFrame, ``fit_from_df``). The rows
+            are split at the event times and fitted with :meth:`fit_tvc`
+            with the extra covariates ``Z_j g(t)``, exactly R's
+            ``coxph(Surv(time, status) ~ z + tt(z), tt = function(z, t,
+            ...) z * g(t))``. The model returned is a
+            :class:`~surpyval.univariate.regression.proportional_hazards.time_interaction.TimeVaryingCoefficientModel`:
+            its coefficients are the covariates' then the interactions'
+            (``karno:log(t)``), ``time_varying_effect()`` gives
+            :math:`\\beta(t)` with Wald bounds, and its predictions at
+            ``Z`` use :math:`\\beta(t)` at each time. The split has
+            about one row per event time for each row whose interacting
+            covariates are not all 0, so it grows as rows times events.
+            Default ``None``, proportional hazards.
 
         Returns
         -------
@@ -948,6 +970,24 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         >>> model.sf([20, 52], [1, 25, 3]).round(4)
         array([0.9326, 0.7963])
         """
+        if time_interaction is not None:
+            from .time_interaction import fit_time_interaction
+
+            return fit_time_interaction(
+                self,
+                x,
+                Z,
+                c,
+                n,
+                tl,
+                tie_method,
+                tol,
+                strata,
+                center,
+                w,
+                time_interaction,
+            )
+
         func_generator = self._resolve_func_generator(tie_method)
 
         if w is not None:
@@ -1452,6 +1492,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         tl_col: str | None = None,
         center: bool = False,
         w_col: str | None = None,
+        time_interaction: dict | None = None,
     ) -> SemiParametricRegressionModel:
         """
         Fits a Cox PH model using a pandas dataframe as the input.
@@ -1496,6 +1537,10 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             ``weights_col``). A row dropped for a missing covariate drops
             its weight with it, so the fit is ``fit(..., w=)`` of the rows
             kept.
+        time_interaction: dict, optional
+            Time-varying coefficients, ``{column: g}`` with the column by
+            its name (a covariate column, or a column of the formula's
+            design); see :meth:`fit`.
 
         Returns
         -------
@@ -1528,6 +1573,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
                 strata=strata,
                 center=center,
                 w=w,
+                time_interaction=time_interaction,
             )
         model.formula = form
         model.feature_names = feature_names

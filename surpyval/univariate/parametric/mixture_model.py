@@ -86,20 +86,8 @@ _FIT_CACHES = ("_Q_jac_cache", "_Q_value_and_grad_cache", "_log_resp_cache")
 
 
 class _NonFiniteGradient(ArithmeticError):
-    """An autograd gradient that is not finite (see ``_finite_gradient``)."""
-
-
-def _finite_gradient(jac: Callable[..., Any]) -> Callable[..., Any]:
-    """``jac``, raising ``_NonFiniteGradient`` where it is not finite, which
-    L-BFGS-B would otherwise follow to the bounds."""
-
-    def checked(x: npt.NDArray) -> npt.NDArray:
-        g = np.asarray(jac(x), dtype=float)
-        if not np.all(np.isfinite(g)):
-            raise _NonFiniteGradient
-        return g
-
-    return checked
+    """An autograd gradient that is not finite, which L-BFGS-B would
+    otherwise follow to the bounds."""
 
 
 class _FitMethod:
