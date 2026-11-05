@@ -33,6 +33,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.integrate import IntegrationWarning, quad, quad_vec
 from scipy.optimize import brentq
+from scipy.special import ndtri as z
 
 from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
@@ -55,15 +56,30 @@ from surpyval.utils import (
     xcnt_handler,
 )
 from surpyval.utils.dataframe import frame_column
+from surpyval.utils.linalg import (
+    bound_signs,
+    standard_errors_of,
+    warn_wald_undefined,
+)
 from surpyval.utils.no_maximum import combined_maximum
 from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.rng import as_generator
+from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import (
+    BOUNDS,
+    check_alpha_ci,
+    check_option,
+    no_covariance_error,
     unknown_cause_error,
+    validate_cif_event,
     warn_outside_unit_interval,
 )
+from surpyval.utils.warnings import caller_stacklevel
+
+_CB_ON = ("cif", "sf", "ff", "Hf", "R", "F")
+_CB_METHODS = ("wald", "lr", "bootstrap")
 
 
 def _validate(
@@ -723,6 +739,535 @@ class ParametricCompetingRisks(
         out["e"] = e
         return out
 
+    # -- parameters, their covariance and the model at other values -------
+
+    @property
+    def params(self) -> npt.NDArray:
+        """
+        Every cause's parameters in one vector: each cause's ``params``
+        (its distribution's parameters), cause by cause in the order of
+        :attr:`causes`. :attr:`parameter_names` names them. The rows of
+        :meth:`covariance` are the longer :attr:`covariance_names`, which
+        add a cause's ``lfp_p`` and ``f0`` where it has them.
+
+        Examples
+        --------
+        >>> from surpyval import Exponential
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> model = ParametricCompetingRisks.from_fitted(
+        ...     {"a": Exponential.from_params([0.1]),
+        ...      "b": Exponential.from_params([0.3])}
+        ... )
+        >>> model.params
+        array([0.1, 0.3])
+        """
+        return np.concatenate(
+            [
+                np.ravel(np.asarray(self.models[k].params, dtype=float))
+                for k in self.causes
+            ]
+        )
+
+    @property
+    def parameter_names(self) -> list[str]:
+        """
+        The names of :attr:`params`, entry by entry: ``"<cause>: <name>"``
+        for each cause's ``parameter_names``.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> model = ParametricCompetingRisks.from_fitted(
+        ...     {"a": Weibull.from_params([10, 2]),
+        ...      "b": Weibull.from_params([15, 1])}
+        ... )
+        >>> model.parameter_names
+        ['a: alpha', 'a: beta', 'b: alpha', 'b: beta']
+        """
+        return [
+            f"{k}: {name}"
+            for k in self.causes
+            for name in self.models[k].parameter_names
+        ]
+
+    @property
+    def covariance_names(self) -> list[str]:
+        """
+        The names of the rows (and columns) of :meth:`covariance`, in its
+        order: ``"<cause>: <name>"`` for each cause's own
+        ``covariance_names`` (its distribution's parameters, then
+        ``lfp_p`` and ``f0`` where it has them), cause by cause. A
+        cause's offset ``gamma`` is not a row, as it is not in the cause's
+        own covariance; it is held at its estimate.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> model = ParametricCompetingRisks.from_fitted(
+        ...     {"a": Weibull.from_params([10, 2], lfp_p=0.6),
+        ...      "b": Weibull.from_params([15, 1])}
+        ... )
+        >>> model.covariance_names
+        ['a: alpha', 'a: beta', 'a: lfp_p', 'b: alpha', 'b: beta']
+        """
+        return [
+            f"{k}: {name}"
+            for k in self.causes
+            for name in _cause_covariance_names(self.models[k])
+        ]
+
+    def _estimates(self) -> npt.NDArray:
+        """The fitted parameters in the order of :attr:`covariance_names`:
+        each cause's in turn."""
+        return np.concatenate(
+            [_cause_estimates(self.models[k]) for k in self.causes]
+        )
+
+    def covariance(self) -> npt.NDArray:
+        """
+        The covariance of every cause's fitted parameters, in the order of
+        :attr:`covariance_names`: the causes' own ``covariance()`` on the
+        diagonal, and zeros between causes.
+
+        The zeros are exact, not an approximation: the competing-risks
+        likelihood is a product of one factor per cause (each cause's
+        density where it failed, its survival elsewhere), so each cause's
+        parameters are estimated from their own factor and the
+        information matrix is block diagonal. A cause fitted with
+        ``lfp=True`` or ``zi=True`` adds its ``lfp_p`` or ``f0`` row; an
+        offset ``gamma`` has no row (see :attr:`covariance_names`).
+
+        Returns
+        -------
+        numpy array
+            The ``(P, P)`` covariance, ``P`` the number of
+            :attr:`covariance_names`.
+
+        Raises
+        ------
+        ValueError
+            Where a cause has no covariance (fitted by ``how="MPS"``,
+            ``"MSE"`` or ``"MPP"``, built from parameters, or with a
+            singular Hessian), naming the cause.
+
+        Examples
+        --------
+        >>> from surpyval import Exponential
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        >>> e = ['a', 'b', 'a', None, 'a', 'b', 'a', None, 'b', 'a']
+        >>> model = ParametricCompetingRisks.fit(x, e, dist=Exponential)
+        >>> model.covariance().round(6)  # rate^2 / failures, per cause
+        array([[0.001653, 0.      ],
+               [0.      , 0.000992]])
+        """
+        blocks = [self._cause_covariance(k) for k in self.causes]
+        size = sum(b.shape[0] for b in blocks)
+        out = np.zeros((size, size))
+        start = 0
+        for b in blocks:
+            stop = start + b.shape[0]
+            out[start:stop, start:stop] = b
+            start = stop
+        return out
+
+    def _cause_covariance(self, k: Any) -> npt.NDArray:
+        """Cause ``k``'s covariance, or the refusal naming it."""
+        model = self.models[k]
+        names = _cause_covariance_names(model)
+        try:
+            cov = np.atleast_2d(np.asarray(model.covariance(), dtype=float))
+        except (ValueError, AttributeError) as err:
+            raise no_covariance_error(
+                f"cause {k!r} has none: its model was not fitted by MLE, "
+                "was built from parameters, or its Hessian was singular at "
+                "the optimum"
+            ) from err
+        if cov.shape != (len(names), len(names)):
+            raise no_covariance_error(
+                f"cause {k!r}'s covariance has shape {cov.shape}, not one "
+                f"row per name in {names}"
+            )
+        return cov
+
+    def standard_errors(self) -> npt.NDArray:
+        """
+        The standard errors of every cause's fitted parameters, the square
+        roots of the diagonal of :meth:`covariance`, in the order of
+        :attr:`covariance_names`; ``nan`` where a variance is not positive.
+        Raises the ``ValueError`` of :meth:`covariance` where a cause has
+        none.
+
+        Examples
+        --------
+        >>> from surpyval import Exponential
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        >>> e = ['a', 'b', 'a', None, 'a', 'b', 'a', None, 'b', 'a']
+        >>> model = ParametricCompetingRisks.fit(x, e, dist=Exponential)
+        >>> model.standard_errors().round(4)
+        array([0.0407, 0.0315])
+        """
+        return standard_errors_of(self.covariance())
+
+    def with_params(
+        self, params: npt.ArrayLike, gamma: dict | None = None
+    ) -> ParametricCompetingRisks:
+        """
+        The same model -- its causes, each cause's distribution, offset,
+        limited-failure and zero-inflation options and unit -- at other
+        parameter values: for propagating the fit's uncertainty by drawing
+        parameters from :meth:`covariance`, say.
+
+        Parameters
+        ----------
+        params : array like
+            A flat vector in the order of :attr:`covariance_names` (each
+            cause's distribution parameters, then its ``lfp_p`` and ``f0``
+            where it has them, cause by cause), as a draw from
+            :meth:`covariance` comes; or, shorter, in the order of
+            :attr:`parameter_names` (the distributions' parameters only),
+            keeping each cause's ``lfp_p`` and ``f0``.
+        gamma : dict, optional
+            ``{cause: offset}`` for causes fitted with an offset; a cause
+            left out keeps its fitted ``gamma``, which no covariance row
+            holds.
+
+        Returns
+        -------
+        ParametricCompetingRisks
+            A new model built from parameters, as :meth:`from_fitted` of
+            ``from_params`` models: it has no data, covariance or fitted
+            likelihood, so its ``cb``, ``covariance`` and ``aic`` refuse.
+            A fit to data with counts is just the distributions at those
+            parameters. The model itself is not changed.
+
+        Raises
+        ------
+        ValueError
+            If ``params`` has neither length, naming both and the names;
+            if a value is outside its parameter's range (as
+            ``from_params`` checks it: a draw can give an ``lfp_p`` above
+            1); or if a cause's model cannot be rebuilt from parameters.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> model = ParametricCompetingRisks.from_fitted(
+        ...     {"a": Weibull.from_params([10, 2], lfp_p=0.6),
+        ...      "b": Weibull.from_params([15, 1])}
+        ... )
+        >>> other = model.with_params([12, 2, 0.5, 15, 1])
+        >>> other.models["a"].params, other.models["a"].lfp_p
+        (array([12.,  2.]), 0.5)
+        >>> model.with_params([12, 2, 15, 1]).models["a"].lfp_p
+        0.6
+        """
+        values = np.asarray(params, dtype=float)
+        full = [
+            len(_cause_covariance_names(self.models[k])) for k in self.causes
+        ]
+        short = [len(self.models[k].parameter_names) for k in self.causes]
+        if values.ndim != 1 or values.size not in (sum(full), sum(short)):
+            expected = (
+                "{} values in the order of covariance_names ({})".format(
+                    sum(full), ", ".join(self.covariance_names)
+                )
+            )
+            if sum(short) != sum(full):
+                expected += (
+                    ", or {} in the order of parameter_names ({})".format(
+                        sum(short), ", ".join(self.parameter_names)
+                    )
+                )
+            raise ValueError(
+                "'params' must be a flat vector of {}; got shape {}".format(
+                    expected, np.shape(params)
+                )
+            )
+        sizes = full if values.size == sum(full) else short
+        offsets = {} if gamma is None else dict(gamma)
+        for k in offsets:
+            self._check_event(k)
+        models = {}
+        start = 0
+        for k, size in zip(self.causes, sizes):
+            models[k] = _rebuild_cause(
+                k, self.models[k], values[start : start + size], offsets.get(k)
+            )
+            start += size
+        return type(self).from_fitted(models)
+
+    @keeps_query_shape
+    def cb(
+        self,
+        x: npt.ArrayLike,
+        event: Any = None,
+        on: str = "cif",
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
+    ) -> npt.NDArray:
+        r"""
+        Pointwise confidence bounds on the cumulative incidence of cause
+        ``event`` (``on="cif"``, the default), or on the survival, failure
+        probability or cumulative hazard (``on="sf"``, ``"ff"``, ``"Hf"``)
+        of all causes (``event=None``) or one cause's net ones, as
+        ``CompetingRisks.cb`` bounds them for the non-parametric fit.
+
+        The Wald bounds carry the uncertainty of every cause's parameters
+        (:meth:`covariance`) to the function by the delta method, on a
+        scale that keeps them in range:
+
+        - the all-cause ``sf``, ``ff`` and ``Hf`` share one bound, on
+          :math:`\log H(t)`, the log of the all-cause cumulative hazard
+          (``log(-log sf)``, the scale of the univariate bounds). As
+          :math:`H = \sum_k H_k` and the causes' parameters are
+          independent, :math:`\mathrm{Var}\,H = \sum_k \mathrm{Var}\,H_k`,
+          each from its cause's analytic gradient;
+        - the cumulative incidence on the logit scale,
+          :math:`\log(\mathrm{CIF}/(1 - \mathrm{CIF}))`. It depends on
+          every cause's parameters through an integral, so its gradient
+          is taken by central differences on :attr:`covariance_names`
+          (each step :math:`10^{-5}` of the parameter's value or standard
+          error, whichever is larger);
+        - one cause's net ``sf``, ``ff`` and ``Hf`` (``event=k``) are
+          functions of that cause's parameters alone: the bound is the
+          cause's own ``models[k].cb``, which also offers
+          ``method="lr"`` and ``"bootstrap"``.
+
+        The bounds hold at each ``x`` separately.
+
+        Parameters
+        ----------
+        x : array_like
+            The times at which to bound the function.
+        event : optional
+            The cause; required for ``on="cif"``. For ``sf``, ``ff`` and
+            ``Hf``, ``None`` (the default) is all causes and a cause its
+            net function.
+        on : ('cif', 'sf', 'ff', 'Hf'), str, optional
+            The function to bound ('R' and 'F' are accepted for 'sf' and
+            'ff'). Defaults to 'cif'.
+        alpha_ci : float, optional
+            The significance level: 0.05 (the default) gives a 95%
+            interval.
+        bound : ('two-sided', 'lower', 'upper'), str, optional
+            The two-sided interval (the default), with one row per ``x``
+            and the columns ``[lower, upper]``, or one side, which puts all
+            of ``alpha_ci`` on that side.
+        method : ('wald', 'lr', 'bootstrap'), str, optional
+            ``"wald"`` (the default). ``"lr"`` and ``"bootstrap"`` are
+            available for a cause's net function (``event=k``, ``on`` not
+            ``"cif"``), from its own model; elsewhere they raise a
+            ``ValueError`` saying so.
+        n_boot : int, optional
+            The number of bootstrap refits, with ``method="bootstrap"``.
+        random_state : int or numpy Generator, optional
+            The seed of the bootstrap's simulations.
+
+        Returns
+        -------
+        numpy array
+            The bounds at each ``x``: ``[lower, upper]`` rows for a
+            two-sided bound, one value per ``x`` for one side, in the shape
+            of ``x``.
+
+        Raises
+        ------
+        ValueError
+            If ``on``, ``bound`` or ``method`` is not one of the values
+            above, ``alpha_ci`` is not between 0 and 1, ``event`` is not a
+            cause of the model, ``on="cif"`` is asked without an
+            ``event``, or a cause has no covariance (naming it).
+
+        Notes
+        -----
+        Where the function is 0 (before any failure can happen) or its
+        variance is 0, both bounds are the estimate. Where the
+        delta-method variance is negative or not finite the bound is
+        ``nan``, with a warning. A cause with an offset ``gamma`` holds it
+        at its estimate, with that cause's warning, as
+        ``Parametric.cb`` does. A simulation study
+        (``scripts/studies/parametric_competing_risks_cb_coverage.py``)
+        checks the coverage.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+        >>> e = ['a', 'b', 'a', None, 'a', 'b', 'a', 'b'] * 2
+        >>> model = ParametricCompetingRisks.fit(x, e, dist=Weibull)
+        >>> round(model.cif(5, 'a'), 4)
+        0.1598
+        >>> model.cb(5, 'a').round(4)
+        array([0.0566, 0.3762])
+        >>> model.cb(5, 'a', bound='upper').round(4)
+        np.float64(0.3338)
+
+        The all-cause survival:
+
+        >>> model.cb([5, 10], on='sf').round(4)
+        array([[0.5365, 0.8956],
+               [0.1963, 0.576 ]])
+        """
+        check_alpha_ci(alpha_ci)
+        check_option("on", on, _CB_ON)
+        check_option("bound", bound, BOUNDS)
+        check_option("method", str(method).lower(), _CB_METHODS)
+        method = str(method).lower()
+        if event is not None:
+            self._check_event(event)
+        on = {"R": "sf", "F": "ff"}.get(on, on)
+        t = np.atleast_1d(np.asarray(x, dtype=float))
+        if on != "cif" and event is not None:
+            # A net function: the cause's own model and its own bounds.
+            try:
+                return np.asarray(
+                    self.models[event].cb(
+                        t,
+                        on=on,
+                        alpha_ci=alpha_ci,
+                        bound=bound,
+                        method=method,
+                        n_boot=n_boot,
+                        random_state=random_state,
+                    ),
+                    dtype=float,
+                )
+            except ValueError as err:
+                raise ValueError(f"cause {event!r}: {err}") from err
+        if on == "cif":
+            validate_cif_event(event)
+        if method != "wald":
+            raise ValueError(
+                f"method={method!r} is available for one cause's net sf, "
+                "ff and Hf (cb(x, event=k, on='sf', method=...)), from that "
+                "cause's model; the cumulative incidence and the all-cause "
+                "functions depend on every cause's parameters at once and "
+                "have Wald bounds only: use method='wald', or the "
+                "non-parametric CompetingRisks.cb on the same data."
+            )
+        if t.size == 0:
+            return np.empty((0, 2) if bound == "two-sided" else (0,))
+        cov = self.covariance()
+        for k in self.causes:
+            warn_offset = getattr(self.models[k], "_warn_offset_wald", None)
+            if callable(warn_offset):
+                warn_offset("cb")
+        with np.errstate(all="ignore"):
+            if on == "cif":
+                return self._cb_cif(t, event, cov, alpha_ci, bound)
+            return self._cb_all_cause(t, on, alpha_ci, bound)
+
+    def _cb_all_cause(
+        self, t: npt.NDArray, on: str, alpha_ci: float, bound: str
+    ) -> npt.NDArray:
+        """The Wald bound on the all-cause ``sf``, ``ff`` or ``Hf``: one
+        bound on ``log H``, with ``Var H`` the sum of the causes'."""
+        H = np.asarray(self.Hf(t), dtype=float)
+        var = np.zeros(t.shape)
+        for k in self.causes:
+            var = var + self._var_Hf_cause(k, t)
+        ok = np.isfinite(H) & (H > 0)
+        sd = np.where(ok, _checked_sd(var, t, "Hf", ok), 0.0) / np.where(
+            ok, H, 1.0
+        )
+        alpha, signs = bound_signs(alpha_ci, bound)
+        if on == "sf":
+            # sf falls as H rises: its lower bound is at H's upper one.
+            signs = -signs
+        H_b = H[:, None] * np.exp(signs[None, :] * z(1 - alpha) * sd[:, None])
+        if on == "Hf":
+            out = H_b
+        elif on == "sf":
+            out = np.exp(-H_b)
+        else:
+            out = -np.expm1(-H_b)
+        return out if bound == "two-sided" else out[:, 0]
+
+    def _var_Hf_cause(self, k: Any, t: npt.NDArray) -> npt.NDArray:
+        """The delta-method variance of cause ``k``'s cumulative hazard at
+        ``t``: from the analytic (autograd) gradient of a ``Parametric``
+        cause, as its own ``cb`` takes it, else by central differences."""
+        model = self.models[k]
+        if isinstance(model, Parametric):
+            ctx = model._cb_context()
+            finite = np.isfinite(t)
+            var = np.full(t.shape, np.nan)
+            if finite.any():
+                tf = t[finite]
+
+                def func_at_f(idx: Any) -> Any:
+                    ti = tf[idx]
+                    return lambda phi: model._cb_full_Hf(ti, phi, ctx)
+
+                var[finite] = model._cb_delta_var_each(
+                    func_at_f, ctx, int(tf.size)
+                )
+            return var
+        cov = self._cause_covariance(k)
+        est = _cause_estimates(model)
+
+        def H_of(values: npt.NDArray) -> npt.NDArray:
+            rebuilt = _rebuild_cause(k, model, values, None)
+            return np.asarray(rebuilt.Hf(t), dtype=float)
+
+        grad = _central_differences(H_of, est, cov, t.size)
+        return np.einsum("jt,jk,kt->t", grad, cov, grad)
+
+    def _cb_cif(
+        self,
+        t: npt.NDArray,
+        event: Any,
+        cov: npt.NDArray,
+        alpha_ci: float,
+        bound: str,
+    ) -> npt.NDArray:
+        """The Wald bound on cause ``event``'s cumulative incidence, on
+        the logit scale, from its numerical gradient."""
+        F = np.asarray(self.cif(t, event), dtype=float)
+
+        def cif_of(values: npt.NDArray) -> npt.NDArray:
+            return np.asarray(
+                self.with_params(values).cif(t, event), dtype=float
+            )
+
+        grad = _central_differences(cif_of, self._estimates(), cov, t.size)
+        var = np.einsum("jt,jk,kt->t", grad, cov, grad)
+        ok = (F > 0) & (F < 1) & np.isfinite(F)
+        sd = np.where(ok, _checked_sd(var, t, "cif", ok), 0.0)
+        sd_logit = sd / np.where(ok, F * (1 - F), 1.0)
+        alpha, signs = bound_signs(alpha_ci, bound)
+        logit_F = np.log(np.where(ok, F, 0.5)) - np.log1p(
+            -np.where(ok, F, 0.5)
+        )
+        moved = logit_F[:, None] + signs[None, :] * z(1 - alpha) * (
+            sd_logit[:, None]
+        )
+        out = np.where(ok[:, None], 1.0 / (1.0 + np.exp(-moved)), F[:, None])
+        return out if bound == "two-sided" else out[:, 0]
+
     # -- goodness of fit (the joint likelihood factorises over causes) ----
 
     @property
@@ -1074,3 +1619,134 @@ def _ff_limit(model: Any) -> float:
         vals = np.asarray(model.ff(grid), dtype=float).ravel()
     finite = vals[np.isfinite(vals)]
     return float(min(max(finite[-1], 0.0), 1.0)) if finite.size else 1.0
+
+
+def _cause_covariance_names(model: Any) -> list[str]:
+    """The names of a cause's covariance rows: its ``covariance_names``,
+    or its ``parameter_names`` for a model without them."""
+    names = getattr(model, "covariance_names", None)
+    if names is None:
+        names = model.parameter_names
+    return list(names)
+
+
+def _cause_estimates(model: Any) -> npt.NDArray:
+    """A cause's fitted values in the order of its covariance names: its
+    own ``_estimates()`` where it has one, else (a ``Parametric``) its
+    parameters, then ``lfp_p`` and ``f0`` where it has them."""
+    own = getattr(model, "_estimates", None)
+    if callable(own):
+        return np.ravel(np.asarray(own(), dtype=float))
+    values = list(np.ravel(np.asarray(model.params, dtype=float)))
+    if isinstance(model, Parametric):
+        if model.lfp:
+            values.append(float(model.lfp_p))
+        if model.zi:
+            values.append(float(model.f0))
+    if len(values) != len(_cause_covariance_names(model)):
+        raise ValueError(
+            "{}'s parameters do not line up with its covariance_names {}, "
+            "so it cannot be part of the competing-risks covariance".format(
+                type(model).__name__, _cause_covariance_names(model)
+            )
+        )
+    return np.asarray(values, dtype=float)
+
+
+def _rebuild_cause(k: Any, model: Any, values: npt.NDArray, gamma: Any) -> Any:
+    """Cause ``k``'s model at ``values`` (its covariance names' order, or
+    its distribution's parameters only), keeping its options. A
+    ``Parametric`` is rebuilt by its distribution's ``from_params``, with
+    its offset, ``lfp_p`` and ``f0`` kept unless ``values`` or ``gamma``
+    give them; any other model by its own ``with_params``."""
+    if isinstance(model, Parametric):
+        n_core = len(model.parameter_names)
+        extras = dict(model.extras)
+        names = _cause_covariance_names(model)
+        for name, value in zip(names[n_core:], values[n_core:]):
+            extras[name] = float(value)
+        if gamma is not None:
+            if not model.offset:
+                raise ValueError(
+                    f"cause {k!r} was not fitted with an offset, so "
+                    "'gamma' has no offset of it to replace; leave the "
+                    "cause out of 'gamma'"
+                )
+            extras["gamma"] = float(gamma)
+        return model.dist.from_params(
+            values[:n_core], **extras, unit=model.unit
+        )
+    if gamma is not None:
+        raise ValueError(
+            f"cause {k!r} is not a Parametric model with an offset; leave "
+            "it out of 'gamma'"
+        )
+    rebuild = getattr(model, "with_params", None)
+    if not callable(rebuild):
+        raise ValueError(
+            f"cause {k!r}'s model ({type(model).__name__}) has no "
+            "with_params, so it cannot be rebuilt from parameters"
+        )
+    return rebuild(values)
+
+
+def _central_differences(
+    func: Any, est: npt.NDArray, cov: npt.NDArray, size: int
+) -> npt.NDArray:
+    """The gradient of ``func`` (a vector of ``size`` values) at ``est``
+    by central differences, one row per parameter: each step ``1e-5`` of
+    the parameter's value or standard error, whichever is larger. A
+    parameter with no variance (fixed) gets a zero row; where a step
+    leaves the parameter's range (``from_params`` refuses it), the
+    one-sided difference on the other side is used."""
+    grad = np.zeros((est.size, size))
+    sd = np.sqrt(np.clip(np.diag(cov), 0.0, None))
+    centre: list = []
+
+    def at(values: npt.NDArray) -> Any:
+        try:
+            return np.ravel(np.asarray(func(values), dtype=float))
+        except ValueError:
+            return None
+
+    def mid() -> npt.NDArray:
+        if not centre:
+            centre.append(np.ravel(np.asarray(func(est), dtype=float)))
+        return centre[0]
+
+    for j in range(est.size):
+        if not sd[j] > 0:
+            continue
+        h = 1e-5 * max(abs(float(est[j])), float(sd[j]))
+        up, down = est.copy(), est.copy()
+        up[j] += h
+        down[j] -= h
+        f_up, f_down = at(up), at(down)
+        if f_up is not None and f_down is not None:
+            grad[j] = (f_up - f_down) / (2 * h)
+        elif f_up is not None:
+            grad[j] = (f_up - mid()) / h
+        elif f_down is not None:
+            grad[j] = (mid() - f_down) / h
+        else:
+            grad[j] = np.nan
+    return grad
+
+
+def _checked_sd(
+    var: npt.NDArray, t: npt.NDArray, on: str, where: npt.NDArray
+) -> npt.NDArray:
+    """``sqrt(var)``, ``nan`` with one warning where (among ``where``) the
+    delta-method variance is negative or not finite. A variance a hair
+    below 0 by rounding (a flat direction) is 0."""
+    var = np.where((var < 0) & (var > -1e-14), 0.0, var)
+    bad = where & ~(var >= 0) & ~np.isnan(t)
+    if bad.any():
+        warn_wald_undefined(
+            f"{on} at x = {t[bad].tolist()}",
+            "its delta-method variance is negative or not finite (the "
+            "parameter covariance is not positive definite, or the "
+            "function's derivatives overflow there)",
+            stacklevel=caller_stacklevel(),
+        )
+    return np.sqrt(np.where(bad | ~(var >= 0), np.nan, var))

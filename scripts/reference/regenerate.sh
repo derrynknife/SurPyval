@@ -35,6 +35,8 @@ Rscript scripts/reference/reference_r_weighted_aalen.R  # prints the values type
 # Prints the values test_weighted_distributional_rp.py holds
 Rscript scripts/reference/reference_r_weighted_distributional_rp.R
 Rscript scripts/reference/reference_r_weighted_aalen_johansen.R
+# Prints the values test_life_at.py holds
+Rscript scripts/reference/reference_r_regression_at.R
 # Prints its values, which are typed into test_turnbull_weighted.py
 Rscript scripts/reference/reference_r_weighted_turnbull.R
 # Prints the weighted penalised Cox references typed into
@@ -46,4 +48,10 @@ Rscript scripts/reference/reference_r_fixed_probability.R
 # Prints the survreg references typed into
 # surpyval/tests/univariate/regression/test_general_linear.py
 Rscript scripts/reference/reference_r_general_linear.R
+# Prints the flexsurv references typed into
+# surpyval/tests/univariate/parametric/test_royston_parmar_with_params.py
+Rscript scripts/reference/reference_r_royston_parmar_given.R
+# Prints the flexsurv references typed into
+# surpyval/tests/univariate/competing_risks/test_parametric_competing_risks_uncertainty.py
+Rscript scripts/reference/reference_r_parametric_competing_risks.R
 "${1:-python}" scripts/reference/reference_python.py
