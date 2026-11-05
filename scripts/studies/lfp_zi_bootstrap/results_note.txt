@@ -1,0 +1,116 @@
+Bootstrap coverage of limited-failure (lfp) and zero-inflated (zi) fits:
+the package's parametric bootstrap against a case bootstrap.
+
+Run (5 November 2026): study.py 400, then summary.py. Replicate r of each
+design is the r-th data set drawn from the calibration study's seed
+(311-314), n = 100 units, so replicates 0-199 are the calibration data
+exactly; 400 replicates per design (1,600 fits, 0 refits failed in either
+bootstrap), n_boot = 200, 90% and 95% two-sided intervals.
+The work plan was 1,000 replicates at n_boot = 500; at that size one
+replicate of the four designs costs about 1,250 core-seconds (about 35
+hours on ten cores), so the study was cut to 400 replicates at the
+calibration's n_boot = 200 (about 55 core-seconds a replicate, run in
+well under the three-hour budget). Monte Carlo error of one coverage cell
+at 400 replicates: sqrt(p (1 - p) / 400) = 0.015 at 0.90, 0.011 at 0.95
+(0.021 / 0.015 at the calibration's 200). Per-cell numbers with their
+errors and median widths are in summary.json (all 400) and
+summary_first200.json (the calibration's 200 data sets; param200 there
+reproduces the DECISIONS.md figures: lfp 0.88-0.925, lfp_edge 0.855-0.86,
+zi 0.855-0.91, lognormal_lfp 0.875-0.91). Not studied: the sf and qf
+bounds the calibration also checks (parameters only, which is where the
+shortfall is clearest).
+
+Methods
+  param200    the package's parametric bootstrap, BCa with the jackknife
+              acceleration (the calibration's bounds)
+  case200     units resampled with replacement, same refit, lfp_p / f0 put
+              on their edge as the package does, same BCa
+  casepct200  the plain percentile interval of the case refits
+
+Coverage of the 90% interval (400 replicates, +/- about 0.015)
+design          param        param200 case200 casepct200
+lfp             alpha        0.887  0.875  0.873
+                beta         0.897  0.873  0.858
+                lfp_p        0.917  0.920  0.915
+lfp_edge        alpha        0.873  0.853  0.858
+(lfp_p = 1)     beta         0.870  0.848  0.850
+                lfp_p        0.998  0.993  1.000   (target 0.95)
+zi              alpha        0.863  0.877  0.877
+                beta         0.892  0.875  0.868
+                f0           0.922  0.907  0.895
+lognormal_lfp   mu           0.865  0.858  0.873
+                sigma        0.880  0.850  0.853
+                lfp_p        0.910  0.905  0.890
+
+Coverage of the 95% interval
+lfp             alpha        0.935  0.912  0.912
+                beta         0.935  0.927  0.912
+                lfp_p        0.968  0.965  0.965
+lfp_edge        alpha        0.932  0.905  0.922
+                beta         0.917  0.920  0.895
+                lfp_p        0.998  0.998  1.000   (target 0.975)
+zi              alpha        0.930  0.920  0.935
+                beta         0.938  0.925  0.917
+                f0           0.940  0.953  0.925
+lognormal_lfp   mu           0.927  0.930  0.927
+                sigma        0.922  0.890  0.900
+                lfp_p        0.955  0.960  0.955
+
+Mean over the 11 parameter cells (the edge lfp_p, whose target differs,
+left out; cells share data sets so the cells are correlated and the
+error of a mean is not the independent-cell figure of about 0.005):
+  90%: param200 0.889, case200 0.876, casepct200 0.873
+  95%: param200 0.936, case200 0.928, casepct200 0.924
+Mean over the 8 distribution-parameter cells alone (param200):
+  90% 0.878, 95% 0.930 (case200: 0.863 and 0.916).
+Share of fits with lfp_p on the edge in the edge design: 0.8225.
+
+Findings
+1. The shortfall is small but looks real for the distribution parameters.
+   All 8 of them (alpha, beta, mu, sigma over the four designs) are below
+   0.90 at 90% (0.863-0.897, mean 0.878) and below 0.95 at 95%
+   (0.917-0.938, mean 0.930); a single cell (error 0.015) could be noise,
+   but eight of eight on the same side at both levels is not likely to be.
+   It is a point or two to three points, the usual small-sample bootstrap
+   shortfall at 100 units with about 60 failures (about 40 in the lfp
+   design). The extra parameters (lfp_p off the edge, f0) are at or above
+   nominal at 90% (0.91-0.92) and at 95% (0.94-0.97).
+2. Case resampling does not fix it, and nowhere near the edge does it
+   help: its distribution-parameter coverage is the same or a little
+   lower (distribution parameters: mean 0.863 against 0.878 at 90%,
+   0.916 against 0.930 at 95%),
+   and the plain percentile interval is lower still. The edge design's
+   alpha and beta are 0.85 with case resampling against 0.87 with the
+   model bootstrap. lfp_p on the edge is about 0.99-1.00 either way
+   (target 0.95 at 90%): the interval reaches the edge in nearly every
+   replicate, conservative rather than short.
+3. The 200-replicate calibration cells are consistent with this: the
+   same param200 cells at 400 replicates are within noise of them.
+
+Recommendation (a proposal; nothing here changes behaviour)
+- Keep the parametric bootstrap with BCa as it is. Case resampling is no
+  better for these models and costs the same.
+- Do not raise n_boot to fix this: the BCa interval at 200 refits is not
+  limited by draw noise (500 draws were not run; the shortfall is the
+  same across designs and levels, which points to the estimator's finite
+  sample behaviour, not to Monte Carlo error in the interval ends). A
+  500-draw run of the same data would confirm that if wanted.
+- If a better small-sample interval is wanted, the candidates are a
+  bootstrap-t / studentised interval, or profile-likelihood bounds that
+  respect the boundary (for lfp_p and f0 the likelihood-ratio bounds
+  already do, and the calibration for them passes).
+- Worth a warning, as a proposal: a limited-failure or zero-inflated
+  fit with few failures (say under about 30) could say its bootstrap
+  intervals run a point or two short; this study did not vary the number
+  of failures, so the threshold is a guess to be set by a further study.
+
+Calibration group (proposal only, nothing changed). The bootstrap test is
+already a group of its own in .github/workflows/actions.yml
+(extra-parameters-bootstrap, 47 minutes locally against a 60-minute
+limit). Its four parametrised cases cost, in this study's timings, about
+(per replicate, relative) lfp_edge 560, lognormal_lfp 290, lfp 280, zi 130.
+Two groups, [lfp_edge, zi] and [lfp, lognormal_lfp], would be about 55%
+and 45% of the time (roughly 26 and 21 minutes), using pytest ids
+test_bootstrap_coverage[lfp_edge] etc. in the matrix's args. The
+studies share no state and every seed is per design, so the results do
+not change.
