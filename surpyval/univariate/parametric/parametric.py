@@ -606,7 +606,10 @@ class Parametric(
         Use :meth:`covariance` (or :meth:`standard_errors`) for a
         variance. Not set on a model built with ``from_params``, or on a
         weighted model saved by v0.26, which stored the robust covariance
-        in its place.
+        in its place. It covers the distribution's parameters only
+        (``parameter_names``), never ``lfp_p`` or ``f0``; the covariance
+        of every estimated parameter, named row by row, is
+        :meth:`covariance` with :attr:`covariance_names`.
 
     Examples
     --------
@@ -1008,7 +1011,9 @@ class Parametric(
         The names of ``params``, entry by entry: the distribution's
         ``parameter_names``. An offset ``gamma``, limited-failure
         proportion ``lfp_p`` and zero-inflation fraction ``f0`` are not in
-        ``params`` and not named here (see :attr:`extras`).
+        ``params`` and not named here (see :attr:`extras`). The rows of
+        :meth:`covariance` are named by :attr:`covariance_names`, which
+        starts with these.
 
         Examples
         --------
@@ -1017,6 +1022,42 @@ class Parametric(
         ['alpha', 'beta']
         """
         return list(self.dist.parameter_names)
+
+    @property
+    def covariance_names(self) -> list[str]:
+        """
+        The names of the rows (and columns) of :meth:`covariance`, in its
+        order: the distribution's parameters (``parameter_names``), then
+        the limited-failure proportion ``lfp_p`` for a model fitted with
+        ``lfp=True``, then the zero-inflation fraction ``f0`` for one
+        fitted with ``zi=True``.
+
+        A parameter fixed at fit time keeps its row, a row and column of
+        zeros, since it is known. The offset ``gamma`` of a model fitted
+        with ``offset=True`` is never a row: it is a threshold parameter,
+        whose likelihood is not regular, so the covariance holds it at its
+        estimate (the other parameters' variances are conditional on it)
+        and ``param_cb("gamma", method="lr")`` or ``method="bootstrap"``
+        bounds it instead. Every model has the names, including one whose
+        :meth:`covariance` raises (a fit by ``how="MPS"``, ``"MSE"`` or
+        ``"MPP"``, or one built with ``from_params``).
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> x = [10, 12, 15, 17, 20, 25, 31, 40, 52, 60]
+        >>> model = Weibull.fit(x, c=[0] * 8 + [1, 1], lfp=True)
+        >>> model.covariance_names
+        ['alpha', 'beta', 'lfp_p']
+        >>> model.covariance().shape
+        (3, 3)
+        """
+        names = list(self.dist.parameter_names)
+        if self.lfp:
+            names.append("lfp_p")
+        if self.zi:
+            names.append("f0")
+        return names
 
     @property
     def extras(self) -> dict[str, float]:
@@ -1222,7 +1263,10 @@ class Parametric(
         The covariance of the fitted parameters: the distribution's, in
         the order of ``parameter_names``, then the limited-failure
         proportion ``lfp_p`` and the zero-inflation fraction ``f0`` where
-        the model has them (a held parameter has a zero row and column). The
+        the model has them (a held parameter has a zero row and column);
+        :attr:`covariance_names` names the rows. An offset ``gamma`` is
+        held at its estimate and has no row (see
+        :attr:`covariance_names`). The
         inverse of the observed information at the maximum, carried to
         the parameters through their transforms; what Wald bounds use.
         For a fit with weights ``w`` it is the robust (sandwich)
@@ -1273,8 +1317,9 @@ class Parametric(
         The standard errors of the fitted parameters, the square roots of
         the diagonal of :meth:`covariance`, in its order (the
         distribution's parameters, then ``lfp_p`` and ``f0`` where the
-        model has them); ``nan`` where a variance is not positive. Raises the
-        ``ValueError`` of :meth:`covariance` where the model has none.
+        model has them, as :attr:`covariance_names` names them); ``nan``
+        where a variance is not positive. Raises the ``ValueError`` of
+        :meth:`covariance` where the model has none.
 
         Examples
         --------

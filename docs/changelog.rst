@@ -323,6 +323,20 @@ Unreleased
   refuses choosing by AIC or BIC. A parametric penalised fit with a
   delayed entry at 0 is now ``"verified"`` (it was left "unverified" by a
   nan second derivative; the estimates do not change).
+- ``covariance_names`` on every parametric fit (``Weibull.fit`` and the
+  rest): the name of each row of ``covariance()``, in its order. It is the
+  distribution's parameters, then ``lfp_p`` for ``lfp=True`` and ``f0``
+  for ``zi=True`` (``['alpha', 'beta', 'lfp_p', 'f0']``), so the third row
+  of a limited-failure fit's covariance is no longer a guess. A parameter
+  fixed at fit time keeps its (zero) row. An offset ``gamma`` has no row:
+  the covariance holds it at its estimate, since a Wald standard error for
+  a threshold is unreliable (in a simulation of n = 200 Weibull fits its
+  95% interval covered the true offset 89% of the time at shape 3.5, 76%
+  at shape 1.5, and the Hessian did not exist below shape 1;
+  ``scripts/studies/offset_gamma_wald.py``); ``param_cb("gamma")`` has
+  the likelihood-ratio and bootstrap bounds. ``parameter_names``,
+  ``hess_inv`` (the distribution's block only) and the saved dictionary
+  are unchanged.
 
 **Changed.**
 

@@ -188,7 +188,8 @@ def _parameters(model):
         k = len(model.parameter_names)
         supports = [(0, None)] * k + [(None, None)] * (len(names) - k)
         return names, model._estimates(), supports
-    if hasattr(model, "covariance_names"):  # a mixture (#651)
+    if hasattr(model, "covariance_names") and hasattr(model, "m"):
+        # a mixture (#651); a Parametric fit has covariance_names too
         names = list(model.covariance_names)
         values = np.r_[np.ravel(model.params), model.w]
         supports = list(model.dist.bounds) * model.m + [(0, 1)] * model.m
