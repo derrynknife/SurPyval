@@ -47,7 +47,7 @@ Unreleased
   inverse-probability weights, with the robust (infinitesimal jackknife)
   variance behind every ``cb`` (the cumulative incidence, and ``sf``,
   ``ff`` and ``Hf``), the effective sample size in the printout and
-  schema-3 dictionaries. Checked against R's ``survfit(Surv(x, factor(e))
+  schema-4 dictionaries. Checked against R's ``survfit(Surv(x, factor(e))
   ~ 1, weights = w)`` (``pstate`` and ``std.err``, ties included) to
   1e-10. ``gray_test(..., w=)`` refuses, saying what to use instead.
 - ``CoxPH.fit_firth``: the Cox model with Firth's penalty (Heinze and
@@ -293,7 +293,7 @@ Unreleased
   weights = w, robust = 1)`` (``cum`` and ``robvar.cum``, to 1e-12), with
   and without delayed entry. Whole-number weights give the estimate of the
   same counts exactly. ``constant_effects_test()`` refuses a weighted
-  fit; the model shows its effective sample size and saves as schema 3.
+  fit; the model shows its effective sample size and saves as schema 4.
 - Weights ``w`` for distributional regression
   (``WeibullDistributional.fit(..., w=w)`` and every ``Distributional``
   fitter) and Royston-Parmar regression (``RoystonParmarPH``,
@@ -424,11 +424,22 @@ Unreleased
   are the same there). If you read ``hess_inv`` for a variance, read
   ``covariance()`` instead: on a weighted fit ``hess_inv`` is now the
   smaller, model-based matrix, which is not the variance of the estimate.
-  A weighted model's dictionary keeps the robust block under
-  ``"hess_inv"`` (so 0.26 still reads robust bounds from it) and the
-  inverse Hessian under ``"inverse_hessian"``; a weighted model saved by
-  0.26 loads with its robust bounds and no ``hess_inv`` (it did not save
-  the inverse Hessian).
+  A weighted model's dictionary stores each matrix under its own name:
+  ``"hess_inv"`` is the inverse Hessian and ``"covariance"`` the robust
+  covariance. A weighted model saved by 0.26 loads with its robust bounds
+  and no ``hess_inv`` (it saved the robust covariance as ``"hess_inv"``
+  and did not save the inverse Hessian).
+- **Weighted models saved by 0.27 cannot be loaded by 0.26.** Every model
+  fitted with weights ``w`` (the parametric distributions and
+  regressions, Cox and its penalised and competing-risks forms, the
+  distributional and Royston-Parmar regressions, Aalen's additive model,
+  the non-parametric estimates including Turnbull, and the
+  Aalen-Johansen ``CompetingRisks``) is saved as schema 4 (``to_dict``,
+  ``to_json``), which 0.26 refuses with a request to upgrade rather than
+  read the inverse Hessian, now under ``"hess_inv"``, as the robust
+  covariance. Weighted ``SurpyvalData`` stays schema 3, and unweighted
+  models save as before. 0.27 still reads every weighted model 0.26
+  saved, with the same bounds.
 - **Penalised fits on more models**: ridge, lasso and elastic net
   (``fit_penalised(..., penalizer, l1_ratio, standardise)``) on
   ``RoystonParmarPH`` / ``RoystonParmarPO`` (the PH or PO family on the

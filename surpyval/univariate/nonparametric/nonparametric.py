@@ -2154,7 +2154,7 @@ class NonParametric(
                 data_dict["w"] = np.asarray(self.data["w"]).tolist()
             out["data"] = data_dict
         if self.weighted:
-            # Schema 3: a reader without weights would take the robust
+            # Schema 4: a reader without weights would take the robust
             # variance for Greenwood's and offer the bands.
             out["weighted"] = True
             out["effective_n"] = self.effective_n

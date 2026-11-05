@@ -233,7 +233,7 @@ def test_weighted_cox_round_trip(data):
         l1_ratio=1.0,
     )
     d = model.to_dict()
-    assert d["schema"] == 3 and d["weighted"] is True
+    assert d["schema"] == 4 and d["weighted"] is True
     back = SemiParametricRegressionModel.from_dict(d)
     assert back.weighted and back.penalty is not None
     np.testing.assert_allclose(
@@ -473,7 +473,7 @@ def test_weighted_parametric_round_trip_and_data(data):
     x, Z, c, w = data["x"], data["Z"], data["c"], data["w"]
     model = WeibullPH.fit_penalised(x, Z, c=c, w=w, penalizer=0.05)
     d = model.to_dict()
-    assert d["schema"] == 3 and d["weighted"] is True
+    assert d["schema"] == 4 and d["weighted"] is True
     back = ParametricRegressionModel.from_dict(d)
     np.testing.assert_allclose(back.params, model.params)
     with pytest.raises(WeightedRefusal):

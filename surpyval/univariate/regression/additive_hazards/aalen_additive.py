@@ -1204,7 +1204,7 @@ class AalenAdditiveModel(
             "aliased": self.aliased.tolist(),
         }
         if self.weighted:
-            # Schema 3: a reader without weights would take the robust
+            # Schema 4: a reader without weights would take the robust
             # variances for the optional variation.
             out["weighted"] = True
             out["effective_n"] = self.effective_n

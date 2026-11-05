@@ -20,7 +20,9 @@ import surpyval as surv
 from surpyval import ParametricDistribution
 from surpyval.diagnostics.mixin import DiagnoseMixin
 from surpyval.serialisation import (
+    WEIGHTED_MODEL_SCHEMA,
     SerialisableMixin,
+    check_schema,
     dict_numbers,
     stamp_schema,
     to_native,
@@ -804,18 +806,20 @@ class Parametric(
 
         # Numbers, a k x k matrix: a hand-edited dict's strings or ragged
         # rows are named here, not in a numpy error later (#663).
+        # "hess_inv" is the inverse Hessian, except in a weighted model
+        # saved before schema 4: v0.26 stored the robust covariance there
+        # and not the inverse Hessian, which cannot be rebuilt without the
+        # data, so such a model has no hess_inv; its bounds use its
+        # "covariance", as they did. A weighted dict written by the v0.27
+        # development versions before schema 4 kept the inverse Hessian
+        # under "inverse_hessian".
         if "inverse_hessian" in model_dict:
-            # A weighted model saved since v0.27: its "hess_inv" entry is
-            # the robust block, for older readers (below).
             out.hess_inv = dict_numbers(model_dict, "inverse_hessian", True)
-        elif (
-            "hess_inv" in model_dict and model_dict.get("weighted") is not True
+        elif "hess_inv" in model_dict and (
+            model_dict.get("weighted") is not True
+            or check_schema(model_dict) >= WEIGHTED_MODEL_SCHEMA
         ):
             out.hess_inv = dict_numbers(model_dict, "hess_inv", True)
-        # A weighted model saved by v0.26 stored the robust covariance as
-        # "hess_inv" and not the inverse Hessian, which cannot be rebuilt
-        # without the data: it has no hess_inv. Its bounds use its
-        # "covariance", as they did.
 
         # "cov_matrix" is the key of a dict written before v0.23.
         for key in ("covariance", "cov_matrix"):
@@ -948,25 +952,19 @@ class Parametric(
             out["gamma"] = 0.0
 
         if getattr(self, "hess_inv", None) is not None:
-            if self.weighted and self._covariance is not None:
-                # The inverse Hessian under its own key; "hess_inv" holds
-                # the robust block, as v0.26 wrote it, so that a v0.26
-                # reader, whose param_cb reads "hess_inv", keeps the
-                # robust bounds.
-                out["inverse_hessian"] = np.asarray(self.hess_inv).tolist()
-                n_core = len(self.params)
-                robust = np.asarray(self._covariance)[:n_core, :n_core]
-                out["hess_inv"] = robust.tolist()
-            else:
-                out["hess_inv"] = self.hess_inv.tolist()
+            # The inverse Hessian, as the attribute; with weights it is not
+            # the covariance, which is under its own key (schema 4).
+            out["hess_inv"] = np.asarray(self.hess_inv).tolist()
         if self._covariance is not None:
-            # The key every model's dict stores it under (#605).
+            # The key every model's dict stores it under (#605): with
+            # weights, the robust covariance.
             out["covariance"] = np.asarray(self._covariance).tolist()
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = to_native(self._neg_ll)
         if self.weighted:
-            # Schema 3: a reader without weights would offer the
-            # likelihood-ratio bounds and the information criteria.
+            # Schema 4: a reader without weights would offer the
+            # likelihood-ratio bounds and the information criteria, and
+            # v0.26 would read "hess_inv" as the robust covariance.
             out["weighted"] = True
             out["effective_n"] = self.effective_n
         # Informational: a reader that predates it ignores it and restores

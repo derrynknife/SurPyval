@@ -216,7 +216,7 @@ def test_the_other_weighted_estimates_still_refuse_bootstrap_cb():
 def test_round_trip():
     model = _interval(W)
     d = model.to_dict(with_data=True)
-    assert d["schema"] == 3 and d["weighted"] is True
+    assert d["schema"] == 4 and d["weighted"] is True
     restored = sp.from_dict(json.loads(json.dumps(d, allow_nan=False)))
     q = [3.0, 7.0]
     for again in (restored, pickle.loads(pickle.dumps(model))):

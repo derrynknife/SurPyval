@@ -1609,9 +1609,10 @@ class SurpyvalData(ReshapeMixin):
         value) are written as ``null`` and recorded under
         ``"non_finite"``, which :meth:`from_dict` reads back (see
         :doc:`/surpyval.serialisation`). ``surpyval.from_dict`` reads it
-        too. Data with weights ``w`` is stamped ``"schema": 3``, as a
-        weighted model is, so that a reader without weights refuses it
-        rather than drop them; unweighted data has no ``"schema"``.
+        too. Data with weights ``w`` is stamped ``"schema": 3`` (a
+        weighted model is schema 4), so that a reader without weights
+        refuses it rather than drop them; unweighted data has no
+        ``"schema"``.
 
         Examples
         --------
@@ -1662,9 +1663,9 @@ class SurpyvalData(ReshapeMixin):
         # ``Infinity`` literals strict parsers reject.
         out = encode_non_finite(data)
         if self.w is not None:
-            # Schema 3, as a weighted model's dict: a reader that checks
-            # the schema and has no weights refuses it rather than drop
-            # them. Unweighted data keeps its unstamped layout.
+            # Schema 3 (a weighted model's dict is 4): a reader that
+            # checks the schema and has no weights refuses it rather than
+            # drop them. Unweighted data keeps its unstamped layout.
             from surpyval.serialisation import required_schema
 
             out["schema"] = required_schema(out)

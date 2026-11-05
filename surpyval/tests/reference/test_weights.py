@@ -473,9 +473,49 @@ def test_a_weighted_dict_saved_by_v026_keeps_its_bounds(data):
     # cannot be rebuilt without the data, so it has none
     assert getattr(model, "hess_inv", None) is None
     assert_allclose(model.covariance(), fresh.covariance(), rtol=1e-6)
-    # A dict saved now keeps the robust block under "hess_inv", for a
-    # 0.26 reader, and the inverse Hessian under its own key
+    # A dict saved now has each matrix under its own name, and is schema
+    # 4, which a 0.26 reader refuses rather than read the inverse Hessian
+    # as the robust covariance
+    d = fresh.to_dict()
+    assert d["schema"] == 4 and "inverse_hessian" not in d
+    assert_allclose(d["hess_inv"], fresh.hess_inv, rtol=0)
+    assert_allclose(d["covariance"], fresh.covariance(), rtol=0)
+    assert not np.allclose(d["hess_inv"], d["covariance"])
+
+
+def test_a_weighted_dict_saved_by_v026_reads_as_before_by_class(data):
+    # The class's own reader, and the round trip of what it read, agree
+    from surpyval.univariate.parametric.parametric import Parametric
+
+    model = Parametric.from_dict(V026_WEIGHTED_DICT)
+    assert getattr(model, "hess_inv", None) is None
+    ref = V026_WEIGHTED_BOUNDS["Weibull"]
+    again = sp.from_dict(model.to_dict())
+    assert getattr(again, "hess_inv", None) is None
+    for m in (model, again):
+        assert_allclose(m.cb([2.0, 5.0, 8.0]), ref["cb"], rtol=1e-9)
+
+
+def test_a_weighted_dict_of_the_027_development_layout_loads(data):
+    # Between 0.26 and schema 4 a weighted dict kept the robust block
+    # under "hess_inv" and the inverse Hessian under "inverse_hessian",
+    # stamped schema 3. It loads with both matrices where they belong.
+    fresh = sp.Weibull.fit(data["x"], data["c"], w=data["w"])
     d = fresh.to_dict()
     n = len(fresh.params)
-    assert_allclose(d["hess_inv"], fresh.covariance()[:n, :n])
-    assert_allclose(d["inverse_hessian"], fresh.hess_inv)
+    old = {
+        **d,
+        "schema": 3,
+        "inverse_hessian": d["hess_inv"],
+        "hess_inv": np.asarray(d["covariance"])[:n, :n].tolist(),
+    }
+    model = sp.from_dict(old)
+    assert_allclose(model.hess_inv, fresh.hess_inv, rtol=1e-15)
+    assert_allclose(model.covariance(), fresh.covariance(), rtol=1e-15)
+    q = [2.0, 5.0, 8.0]
+    assert_allclose(model.cb(q), fresh.cb(q), rtol=1e-12)
+    assert_allclose(
+        model.cb(q), V026_WEIGHTED_BOUNDS["Weibull"]["cb"], rtol=1e-9
+    )
+    # Saved again, it has the new layout
+    assert "inverse_hessian" not in model.to_dict()
