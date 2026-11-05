@@ -613,6 +613,64 @@ evaluation times inside the observed range: the baseline is only estimated
 there, and a Cox model's ``hf`` returns the size of the baseline *step* at the
 latest observed time, not a smooth hazard rate.
 
+Confidence bounds on a predicted curve
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A predicted survival curve is an estimate, and ``model.cb(x, Z)`` gives its
+pointwise confidence bounds, as R's ``survfit(fit, newdata)`` does. The curve
+is uncertain for two reasons. The baseline is estimated from the failures in
+the data: each step is the deaths at that time over the (risk-weighted)
+number still at risk, so a step taken when few are left is shaky. And the
+coefficients that move the baseline to the covariates ``Z`` are estimates
+too: the further ``Z`` is from the typical unit in the data, the more their
+error matters. The bounds add the two. With few failures, or covariates far
+from the data's, the bounds are wide, and they should be.
+
+The standard error of the predicted cumulative hazard is the Tsiatis (1981)
+and Link (1984) form, the ``std.err`` of R's ``survfit.coxph``:
+
+.. math::
+
+    \widehat{\mathrm{Var}}\,\hat H(t \mid Z) = e^{2\beta'(Z - c)}
+    \Big[ \sum_{s \le t} \frac{dN(s)}{S_0(s)^2} + q(t)' V q(t) \Big],
+    \qquad q(t) = \sum_{s \le t} \big(Z - \bar Z(s)\big)\, d\hat H_0(s),
+
+where :math:`S_0(s)` sums :math:`e^{\beta'(Z_i - c)}` over the units at risk
+at event time :math:`s`, :math:`\bar Z(s)` is their risk-weighted mean
+covariate, :math:`dN(s)` the deaths at :math:`s` and :math:`V` the
+coefficients' covariance. After an Efron fit (the default), each time's tied
+deaths are spread over Efron's shrinking risk sets, as the baseline is; with
+case weights ``w`` every sum is weighted and :math:`V` is the robust
+covariance; for a stratified model the sums run over the stratum's units.
+
+``bound_type`` chooses the scale of the normal interval, R's ``conf.type``:
+``'log'`` (the default, as R's: :math:`S e^{\pm z\,\mathrm{se}}`, the upper
+bound at most 1), ``'log-log'`` (:math:`H e^{\pm z\,\mathrm{se}/H}`, which
+keeps both bounds inside (0, 1)) or ``'plain'`` (:math:`S \pm z S\,
+\mathrm{se}`, cut to [0, 1]). ``on='ff'`` and ``on='Hf'`` bound the failure
+probability and the cumulative hazard. The bounds agree with R's to
+rounding (see ``scripts/reference/reference_r_cox_curve.R``):
+
+.. jupyter-execute::
+
+    t_q = np.array([0.9, 1.0, 1.1])
+    print('sf      :', model.sf(t_q, Z_mean).round(3))
+    print('95% cb  :', model.cb(t_q, Z_mean).round(3).tolist())
+    print('log-log :', model.cb(t_q, Z_mean, bound_type='log-log').round(3).tolist())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _b = model.cb(t_q, Z_mean)
+    _s = model.sf(t_q, Z_mean)
+    assert np.all((_b[:, 0] <= _s) & (_s <= _b[:, 1]))
+
+With 11 failures among 34 tires and four coefficients, the bounds are wide;
+the log bound's upper end reaches 1, the log-log bound's stays below it.
+``plot_partial_effects(..., plot_bounds=True)`` draws these bounds around
+each curve.
+
 Tied event times
 ~~~~~~~~~~~~~~~~
 

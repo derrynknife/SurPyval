@@ -37,6 +37,7 @@ from surpyval.distribution import (
 )
 from surpyval.univariate.nonparametric import (
     FlemingHarrington,
+    IntervalLogRankResult,
     KaplanMeier,
     LogRankResult,
     NelsonAalen,
@@ -45,6 +46,7 @@ from surpyval.univariate.nonparametric import (
     PairwiseLogRankResult,
     Turnbull,
     at_risk_table,
+    interval_logrank,
     life_table,
     logrank,
     pairwise_logrank,
@@ -75,6 +77,8 @@ from surpyval.univariate.parametric import (
     GumbelLEV,
     Hypoexponential,
     InstantlyOccurs,
+    LikelihoodContour,
+    LikelihoodContourPlot,
     Logistic,
     LogLogistic,
     LogNormal,
@@ -89,6 +93,7 @@ from surpyval.univariate.parametric import (
     RoystonParmarModel,
     Uniform,
     Weibull,
+    plot_likelihood_contour,
 )
 from surpyval.univariate.parametric.weibayes import weibayes
 
@@ -271,6 +276,17 @@ _LAZY = {
     ),
     **dict.fromkeys(
         (
+            "PseudoRegressionResult",
+            "pseudo_cif",
+            "pseudo_regression",
+            "pseudo_regression_from_df",
+            "pseudo_rmst",
+            "pseudo_survival",
+        ),
+        "surpyval.univariate.pseudo",
+    ),
+    **dict.fromkeys(
+        (
             "auc_td",
             "brier_score",
             "concordance_index",
@@ -303,6 +319,8 @@ __all__ = [
     "PairwiseLogRankResult",
     "Turnbull",
     "logrank",
+    "interval_logrank",
+    "IntervalLogRankResult",
     "pairwise_logrank",
     "plot_nonparametric",
     "at_risk_table",
@@ -347,6 +365,9 @@ __all__ = [
     "Uniform",
     "Weibull",
     "weibayes",
+    "LikelihoodContour",
+    "LikelihoodContourPlot",
+    "plot_likelihood_contour",
     # Data
     "round_sig",
     # Deprecated (dated): reached through __getattr__ with a FutureWarning,
@@ -415,6 +436,14 @@ if TYPE_CHECKING:
         NonParametricCounting,
         ProportionalIntensityHPP,
         ProportionalIntensityNHPP,
+    )
+    from surpyval.univariate.pseudo import (
+        PseudoRegressionResult,
+        pseudo_cif,
+        pseudo_regression,
+        pseudo_regression_from_df,
+        pseudo_rmst,
+        pseudo_survival,
     )
     from surpyval.univariate.competing_risks import (
         CompetingRisks,

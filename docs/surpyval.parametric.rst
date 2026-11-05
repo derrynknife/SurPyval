@@ -33,6 +33,18 @@ returns.
    univariate/parametric_class
 
 
+Joint Likelihood Contours
+-------------------------
+
+The joint likelihood-ratio confidence region of a fit's two parameters,
+and a plot of one or more of them.
+
+.. toctree::
+   :maxdepth: 1
+
+   univariate/likelihood_contour
+
+
 Distribution Classes
 --------------------
 

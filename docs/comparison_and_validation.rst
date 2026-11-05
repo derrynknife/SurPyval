@@ -34,6 +34,14 @@ the number of pairs, and the adjustment on its own:
 
 .. autofunction:: surpyval.univariate.nonparametric.logrank.adjust_p_values
 
+The log-rank and Wilcoxon-type tests of interval-censored data (any mix of
+exact, right, left and interval-censored rows), and the result they return:
+
+.. autofunction:: surpyval.univariate.nonparametric.interval_logrank.interval_logrank
+
+.. autoclass:: surpyval.univariate.nonparametric.interval_logrank.IntervalLogRankResult
+   :members: to_dict
+
 The test of two groups' survival at one time:
 
 .. autofunction:: surpyval.univariate.nonparametric.survival_difference.sf_diff
