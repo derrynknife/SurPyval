@@ -37,6 +37,7 @@ from surpyval.distribution import (
 )
 from surpyval.univariate.nonparametric import (
     FlemingHarrington,
+    IntervalLogRankResult,
     KaplanMeier,
     LogRankResult,
     NelsonAalen,
@@ -45,6 +46,7 @@ from surpyval.univariate.nonparametric import (
     PairwiseLogRankResult,
     Turnbull,
     at_risk_table,
+    interval_logrank,
     life_table,
     logrank,
     pairwise_logrank,
@@ -301,6 +303,8 @@ __all__ = [
     "PairwiseLogRankResult",
     "Turnbull",
     "logrank",
+    "interval_logrank",
+    "IntervalLogRankResult",
     "pairwise_logrank",
     "plot_nonparametric",
     "at_risk_table",

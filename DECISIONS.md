@@ -13,6 +13,18 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-05
+
+### Interval-censored log-rank and Wilcoxon tests: `interval_logrank`
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A function of its own, `interval_logrank`, not new paths in `logrank`. `logrank` keeps refusing left and interval-censored data (and now a two-column `x`), with a message naming `interval_logrank`; its results do not change. | proposed | The tests differ in kind: `logrank`'s weightings, strata, `t0`, `w` and hypergeometric variance have no counterpart in the score tests on the pooled Turnbull estimate, whose variance is the permutation one. Switching method on the shape of the data would change a result when one interval row is added. | done |
+| Scores `"log-rank"` (Sun's; the default, as R's `ictest`), `"finkelstein"` and `"wilcoxon"`; R's names `logrank1`, `logrank2`, `wmw` are accepted. | proposed | Sun's scores are the usual log-rank scores on exact and right censored data (each group's score sum is the observed minus expected events; tested). | done |
+| The asymptotic p-value is the k-sample permutation chi-squared (R's `method = "pclt"`); `method="permutation"` is a Monte Carlo test of the same statistic, `(1 + count) / (1 + B)`, seeded by `random_state`. For two groups this is two-sided by the absolute statistic (R's `tsmethod = "abs"`), not R's default doubling of the smaller one-sided p-value. No exact enumeration and no score-form (`method = "scoretest"`) variance. | proposed | One statistic for any number of groups; the doubled one-sided p-value is defined for two groups only. | done |
+| Truncated data (finite `tl` or `tr`) are refused, pointing to `logrank` with `tl`. | proposed | The permutation argument needs exchangeable units, which delayed entry breaks; R's `ictest` takes no truncation either. | done |
+| The pooled NPMLE is the EM-ICM with `tol = 1e-12` (the Karush-Kuhn-Tucker gap) by default, tighter than `Turnbull.fit`'s 1e-10, and warns if it does not converge. | proposed | The statistic moves with the NPMLE's convergence; R's default `epsilon = 1e-6` moves it by about 1e-8 relative. | done |
+
 ## 2026-11-04
 
 ### Crow Extended projection: bias-corrected or plain shapes

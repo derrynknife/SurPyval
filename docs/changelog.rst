@@ -6,6 +6,19 @@ Unreleased
 
 **Added.**
 
+- ``interval_logrank``: log-rank and Wilcoxon-type tests of groups of
+  interval-censored data (any mix of exact, right, left and interval-censored
+  rows, as ``x``/``c``, a two-column ``x`` or ``xl``/``xr``). Each unit is
+  scored from the Turnbull estimate of the pooled data, with Sun's
+  log-rank scores (the default), Finkelstein's, or the Wilcoxon-type
+  scores, and the score sums are compared by their permutation
+  distribution: a chi-squared p-value, or a Monte Carlo permutation one
+  (``method="permutation"``, seeded by ``random_state``). Returns an
+  ``IntervalLogRankResult`` with ``to_dict()``. Matches R's
+  ``interval::ictest(..., method = "pclt")`` to 1e-8 on the breast cosmesis
+  data and on simulated three-group data. Truncated data are refused.
+  ``logrank`` given left or interval-censored data, or a two-column ``x``,
+  now says to use it; its results are unchanged.
 - ``CrowAMSAA.projection(..., bias_corrected=True)``: ``False`` uses the
   plain maximum-likelihood shapes in the demonstrated intensity and in the
   rate of new BD modes, as the worked example of MIL-HDBK-189C (section
