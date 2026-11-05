@@ -19,6 +19,15 @@ by their standard deviations (weighted by the counts, with divisor
 :math:`N`, as glmnet's), and the coefficients are reported on the
 covariates' own scale.
 
+With sampling weights ``w`` (``CoxPH.fit_penalised`` and the PH, AFT and
+PO families) each row's term in :math:`\\ell` is multiplied by its
+``n * w``, :math:`N` is :math:`N_w = \\sum n w`, and the standardisation
+weights the rows by ``n * w`` with divisor :math:`N_w` (glmnet's
+``weights``), so ``w`` and ``c * w`` give the same fit for any ``c > 0``.
+A weighted penalised model has no standard errors either (below, and no
+robust ones: the sandwich of a biased estimate is not its covariance),
+and its information criteria are refused, as for every weighted fit.
+
 The L1 part is not differentiable at 0. The solver writes each penalised
 coefficient as the difference of two non-negative parts, which makes the
 objective smooth, and minimises it with L-BFGS-B, whose bounds give exact
@@ -128,15 +137,33 @@ def no_inference_error(penalty: Penalty) -> ValueError:
 
 
 def refuse_weights(w: Any) -> None:
-    """Refuse weights ``w`` in a penalised fit (not built yet)."""
+    """Refuse weights ``w`` in a penalised fit that does not take them yet
+    (the ones that do are ``CoxPH.fit_penalised``, ``fit_tvc_penalised``
+    and the parametric PH, AFT and PO families)."""
     if w is not None:
-        raise ValueError(
-            "fit_penalised does not take weights (w) yet: the penalty's "
-            "scale (the objective is divided by the number of units) and "
-            "the covariates' standardisation would both have to be "
-            "weighted. Fit the unpenalised model with w (fit), or give "
+        from surpyval.utils.weights import WeightedRefusal
+
+        raise WeightedRefusal(
+            "This fit_penalised does not take weights (w) yet: the "
+            "penalty's scale (the objective is divided by the number of "
+            "units) and the covariates' standardisation would both have to "
+            "be weighted, and that is built only for CoxPH.fit_penalised, "
+            "CoxPH.fit_tvc_penalised and the parametric PH, AFT and PO "
+            "fit_penalised. Fit the unpenalised model with w (fit), or give "
             "repeated rows as counts n."
         )
+
+
+def scaled_weights(n: npt.ArrayLike, w: npt.ArrayLike) -> npt.NDArray:
+    """The weights ``w`` scaled to sum (over the units, ``n``) to the
+    number of units, ``w * sum(n) / sum(n w)``: a weighted penalised
+    objective is built on these, so that ``N``, the sum of ``n`` times
+    them, is the number of units whatever the scale of ``w``, and the
+    objective, ``-l_w / N_w`` with the weights as given, is searched as
+    the same function for ``w`` and ``c * w``."""
+    n_arr = np.asarray(n, dtype=float)
+    w_arr = np.asarray(w, dtype=float)
+    return w_arr * (n_arr.sum() / np.sum(n_arr * w_arr))
 
 
 def refuse_lr_test(model: Any) -> None:
@@ -193,9 +220,10 @@ def check_penalty(
 def covariate_scale(
     Z: npt.NDArray, n: npt.NDArray, standardise: bool
 ) -> npt.NDArray:
-    """Each column's standard deviation, weighted by the counts ``n``
-    with divisor ``sum(n)`` (glmnet's), or ones without standardisation.
-    A column with no spread keeps the scale 1."""
+    """Each column's standard deviation, weighted by ``n`` (the counts,
+    or the counts times the weights ``n * w``) with divisor ``sum(n)``
+    (glmnet's), or ones without standardisation. A column with no spread
+    keeps the scale 1."""
     p = Z.shape[1]
     if not standardise:
         return np.ones(p)
@@ -415,7 +443,8 @@ def penalised_fit(
 
     It checks the ``penalizer``, ``l1_ratio`` and ``standardise``, takes
     the scale of each column of ``Z`` (:func:`covariate_scale`, weighted
-    by ``weights``, the rows' counts) and ``N``, the sum of the
+    by ``weights``, the rows' counts, or their counts times their scaled
+    sampling weights, :func:`scaled_weights`) and ``N``, the sum of the
     ``weights``; builds the model's smooth objective with
     ``objective(scale, N)`` (on the covariates divided by ``scale``,
     divided by ``N``); minimises it with the penalty on the entries

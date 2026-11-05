@@ -69,6 +69,9 @@ class WeightedCase:
     #: False where the outcome of a known failure depends on the numpy /
     #: scipy build, so that either outcome passes
     xfail_strict: bool = True
+    #: True for a penalised fit, which has no covariance (refused, with
+    #: or without weights: test_penalised_weighted.py)
+    no_covariance: bool = False
 
 
 def _np(fitter):
@@ -161,10 +164,50 @@ def _regression(fitter, no_tl=False):
     )
 
 
+def _penalised(fitter, **options):
+    return WeightedCase(
+        f"{fitter}.fit_penalised",
+        lambda x, c, n, w, Z, tl: getattr(sp, fitter).fit_penalised(
+            x,
+            Z,
+            c=c,
+            n=n,
+            w=w,
+            tl=tl,
+            penalizer=0.05,
+            l1_ratio=0.5,
+            **options,
+        ),
+        lambda m: np.asarray(m.params, dtype=float),
+        offered={"sf": lambda m: m.sf(QUERY, np.zeros((3, 2)))},
+        covariates=True,
+        no_covariance=True,
+    )
+
+
 WEIGHTED = [
     _np("KaplanMeier"),
     _np("NelsonAalen"),
     _np("FlemingHarrington"),
+    # The weighted NPMLE has no variance formula: its bounds are the
+    # weighted case bootstrap (bootstrap_cb), and everything built on the
+    # variance refuses, naming it.
+    WeightedCase(
+        "Turnbull",
+        lambda x, c, n, w, Z, tl: sp.Turnbull.fit(x, c, n, w=w, tl=tl),
+        lambda m: m.sf(QUERY),
+        refused={
+            "cb": lambda m: m.cb(QUERY),
+            "quantile_cb": lambda m: m.quantile_cb(0.3),
+            "rmst": lambda m: m.rmst(6.0),
+            "band": lambda m: m.band(),
+        },
+        bootstrap={
+            "bootstrap_cb": lambda m: m.bootstrap_cb(
+                QUERY, n_boot=8, random_state=1
+            ),
+        },
+    ),
     _parametric("Weibull"),
     _parametric("LogNormal"),
     _parametric("Exponential"),
@@ -277,6 +320,72 @@ WEIGHTED = [
             "quantile_cb": lambda m: m.quantile_cb(0.3),
         },
     ),
+    # Weights stage 2: distributional regression, covariates on the
+    # Weibull's scale (both columns) and shape (the first)
+    WeightedCase(
+        "WeibullDistributional",
+        lambda x, c, n, w, Z, tl: sp.WeibullDistributional.fit(
+            x,
+            Z,
+            c=c,
+            n=n,
+            w=w,
+            tl=tl,
+            covariates={"alpha": [0, 1], "beta": [0]},
+        ),
+        lambda m: np.asarray(m.params, dtype=float),
+        offered={
+            "cb(sf)": lambda m: m.cb(QUERY, np.zeros((3, 2)), on="sf"),
+            "param_cb": lambda m: m.param_cb(m.parameter_names[-1]),
+            "parameter_cb": lambda m: m.parameter_cb("beta", np.eye(2)),
+        },
+        refused={
+            "param_cb(lr)": lambda m: m.param_cb(
+                m.parameter_names[-1], method="lr"
+            ),
+            "parameter_cb(lr)": lambda m: m.parameter_cb(
+                "beta", np.eye(2), method="lr"
+            ),
+            "likelihood_ratio_test": lambda m: m.likelihood_ratio_test(),
+        },
+        bootstrap={
+            "param_cb(bootstrap)": lambda m: m.param_cb(
+                m.parameter_names[-1], **BOOT
+            ),
+            "parameter_cb(bootstrap)": lambda m: m.parameter_cb(
+                "beta", np.eye(2), **BOOT
+            ),
+        },
+        covariates=True,
+        rtol=5e-3,
+    ),
+    # Weights stage 2: Royston-Parmar (the PH family on the spline
+    # baseline); its knots are placed on the event times counted by n
+    _regression("RoystonParmarPH"),
+    # The Aalen-Johansen cumulative incidences: each failure's cause is
+    # "a" where the first covariate is 1 and "b" otherwise (as the R
+    # reference, reference/test_weighted_aalen_johansen.py). Fitted
+    # without the late entries, which the estimate does not take.
+    WeightedCase(
+        "CompetingRisks",
+        lambda x, c, n, w, Z, tl: sp.CompetingRisks.fit(
+            x,
+            [
+                None if flag else ("a" if z == 1 else "b")
+                for flag, z in zip(c, Z[:, 0])
+            ],
+            c,
+            n,
+            w=w,
+        ),
+        lambda m: np.concatenate([m.cif(QUERY, "a"), m.cif(QUERY, "b")]),
+        offered={
+            "cb(cif)": lambda m: m.cb(QUERY, "a"),
+            "cb(cif, normal)": lambda m: m.cb(QUERY, "b", bound_type="normal"),
+            "cb(sf)": lambda m: m.cb(QUERY, on="sf"),
+            "cb(Hf, cause)": lambda m: m.cb(QUERY, "a", on="Hf"),
+        },
+    ),
     WeightedCase(
         "CoxPH",
         lambda x, c, n, w, Z, tl: sp.CoxPH.fit(x, Z, c=c, n=n, w=w, tl=tl),
@@ -309,6 +418,13 @@ WEIGHTED = [
         },
         covariates=True,
     ),
+    # Penalised fits (fit_penalised) with weights: the estimates and the
+    # predictions they give; a penalised model has no covariance or
+    # bounds, so none is offered (its refusals, and the R reference, are
+    # in univariate/regression/test_penalised_weighted.py). Breslow's ties,
+    # so that whole-number weights are counts.
+    _penalised("CoxPH", tie_method="breslow"),
+    _penalised("WeibullPH"),
 ]
 IDS = [case.name for case in WEIGHTED]
 
@@ -384,7 +500,7 @@ def test_weight_scale_changes_nothing(case, data, scale):
             atol=1e-8,
             err_msg=key,
         )
-    if hasattr(base, "covariance"):
+    if hasattr(base, "covariance") and not case.no_covariance:
         assert_allclose(
             scaled.covariance(), base.covariance(), rtol=case.rtol, atol=1e-10
         )
@@ -452,6 +568,11 @@ def _breslow_cox(x, c, n, w, Z, tl):
 #: The cases whose fit with whole-number weights is not expected to equal
 #: the counted fit, with why.
 NOT_COUNTED = {
+    "Turnbull": (
+        "its default estimator is Fleming-Harrington's, whose tied deaths "
+        "are taken at their mean weight as FlemingHarrington's are (the "
+        "Kaplan-Meier option is checked in test_turnbull_weighted.py)"
+    ),
     "FlemingHarrington": (
         "by design: each of the m tied deaths is taken at the deaths' mean "
         "weight, m the units from the counts (R's ctype = 2; docs/Weighted "
@@ -460,6 +581,12 @@ NOT_COUNTED = {
     "WeibullAH": (
         "the fit ends on the boundary of the model's support (it warns), "
         "not at a maximum, with or without weights"
+    ),
+    "RoystonParmarPH": (
+        "by design: the knots are placed on the event times counted by n, "
+        "not weighted, so a weight of 2 leaves them where they are while a "
+        "count of 2 moves them; with the knots given the fits agree "
+        "(test_weighted_distributional_rp.py)"
     ),
     "Weibull[offset]": (
         "with these weights (or these counts) the likelihood has no finite "
@@ -555,7 +682,9 @@ def test_case_bootstrap_bounds_are_finite_and_scale_free(case, data):
 def test_round_trip_keeps_the_robust_bounds(case, data):
     model = _fit(case, data, data["w"])
     d = model.to_dict()
-    assert d["schema"] == 3 and d["weighted"] is True
+    # 3, or a later schema a model's other entries need (a distributional
+    # model's coefficient signs are schema 4), which reads weights too
+    assert d["schema"] >= 3 and d["weighted"] is True
     restored = sp.from_dict(json.loads(json.dumps(d, allow_nan=False)))
     pickled = pickle.loads(pickle.dumps(model))
     for again in (restored, pickled):
@@ -567,7 +696,7 @@ def test_round_trip_keeps_the_robust_bounds(case, data):
                     call(again)
                 continue
             assert_allclose(call(again), call(model), rtol=1e-10)
-        if hasattr(model, "covariance"):
+        if hasattr(model, "covariance") and not case.no_covariance:
             assert_allclose(again.covariance(), model.covariance())
         if hasattr(model, "aic") and not _no_likelihood(model):
             with pytest.raises(WeightedRefusal):
@@ -576,7 +705,7 @@ def test_round_trip_keeps_the_robust_bounds(case, data):
 
 def test_refused_by_the_fitters_that_take_no_w(data):
     weighted = sp.SurpyvalData(data["x"], data["c"], w=data["w"])
-    for fitter in (sp.Turnbull, sp.MixtureModel(sp.Weibull, 2)):
+    for fitter in (sp.MixtureModel(sp.Weibull, 2),):
         with pytest.raises(ValueError, match="weights|w"):
             fitter.fit(weighted)
     with pytest.raises(WeightedRefusal, match="fit_best"):
@@ -586,14 +715,7 @@ def test_refused_by_the_fitters_that_take_no_w(data):
 
 
 #: Fitters that take ``w`` only to refuse it (a later stage), with why.
-REFUSES_W = {
-    "Turnbull": "its weighted EM and variance are not built yet",
-}
-
-
-def test_turnbull_refuses_weights(data):
-    with pytest.raises(WeightedRefusal, match="Turnbull"):
-        sp.Turnbull.fit(data["x"], data["c"], w=data["w"])
+REFUSES_W: dict[str, str] = {}
 
 
 def _takes_w(obj):
@@ -672,7 +794,7 @@ def test_fit_from_df_without_weights_refuses_w_col(name):
 
 
 def test_refusal_names_the_public_fitter():
-    for name in ["WeibullDistributional", "RoystonParmarPH", "CoxFrailty"]:
+    for name in ["WeibullFrailty", "CoxFrailty"]:
         with pytest.raises(WeightedRefusal, match=rf"^{name}\.fit "):
             getattr(sp, name).fit([1.0, 2.0], w=[1.0, 1.0])
 

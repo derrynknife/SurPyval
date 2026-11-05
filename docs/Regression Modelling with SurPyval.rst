@@ -1205,7 +1205,8 @@ against: ``"km"`` (the default, :math:`1 -` the left-continuous Kaplan-Meier
 estimate) spreads the failures
 evenly and is the usual choice; ``"rank"``, ``"identity"`` and ``"log"`` are the
 alternatives from ``cox.zph``. A violation like this one calls for
-stratification (below), a time-varying covariate, or a different family.
+a time-varying coefficient (next), stratification (below), a time-varying
+covariate, or a different family.
 
 .. jupyter-execute::
     :hide-code:
@@ -1253,6 +1254,77 @@ the partial likelihood — a useful sanity check that the fit has converged.
         _r = model.compute_residuals(_kind)
         assert np.allclose(_r.sum(axis=0), 0, atol=1e-6), _kind
 
+
+Time-varying coefficients
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When the test above fails for a covariate, its effect is not one number: it
+changes over follow-up. Rather than report an average that hides that, let
+the coefficient itself depend on time. The simplest choice is a straight line
+in :math:`\log t` (or in :math:`t`): the covariate's log hazard ratio starts
+at one level and drifts steadily, and the size and direction of the drift
+are estimated from the data. Pass ``time_interaction`` to
+:meth:`CoxPH.fit <surpyval.univariate.regression.proportional_hazards.cox_ph.CoxPH_.fit>`
+(or ``fit_from_df``), naming the covariate and the function of time:
+``"log"``, ``"t"``, or any function ``g(t)`` you write.
+
+In symbols, covariate :math:`j` gets the coefficient
+
+.. math::
+    \beta_j(t) = \beta_j + \gamma_j\, g(t),
+
+so the hazard is :math:`h_0(t)\, e^{\beta_j(t) Z_j + \dots}`. This is the same
+as adding the covariate :math:`Z_j g(t)`, which changes with time; SurPyval
+splits each unit's follow-up at the event times and fits the pieces as
+start-stop rows (as ``fit_tvc`` does), which is exactly R's
+``coxph(Surv(time, status) ~ z + tt(z), tt = function(z, t, ...) z * log(t))``.
+As everywhere, a positive coefficient means a higher hazard, so a shorter
+life: a positive :math:`\gamma_j` means the covariate becomes more harmful as
+time goes on, a negative one that its harm fades (or reverses).
+
+On the reversing effect above:
+
+.. jupyter-execute::
+
+    m_tv = CoxPH.fit_from_df(rev, x_col='x', Z_cols='z', c_col='c',
+                             time_interaction={'z': 'log'})
+    m_tv.summary()[['coef', 'se(coef)', 'p']].round(4)
+
+The row ``z:log(t)`` is :math:`\gamma`: clearly negative, and its Wald test
+is itself a test of proportional hazards for ``z`` against :math:`\log t`.
+``time_varying_effect`` gives :math:`\beta(t)` at any times, with its Wald
+standard error :math:`\sqrt{a' V a}` (:math:`a = (1, g(t))`, :math:`V` the
+covariance of :math:`(\beta, \gamma)`) and bounds, and draws it:
+
+.. jupyter-execute::
+
+    effect = m_tv.time_varying_effect('z', [0.1, 0.25, 0.5, 1.0, 2.0])
+    print(effect.to_frame().round(3))
+    m_tv.time_varying_effect('z').plot()
+    plt.show()
+
+Early on exposure triples the hazard; by :math:`t = 0.5` the effect has
+crossed zero and later it protects -- what the simulation built in, which a
+single coefficient averaged away. Predictions at fixed covariates use
+:math:`\beta(t)` at every time, :math:`H(t \mid Z) = \sum_{u \le t} h_0(u)
+e^{\beta(u)' Z}`, so ``sf``, ``ff``, ``Hf``, ``qf`` and ``random`` take the
+covariates as given to the fit (``z`` alone here, not the interaction). A
+single hazard ratio ``phi(Z)`` no longer exists and is refused, as are the
+concordance, ``diagnose()``, saving to a dict, and predictions along a
+covariate path.
+
+.. jupyter-execute::
+
+    print(m_tv.sf([0.25, 1.0, 2.0], [[0.0], [1.0]], grid=True).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _g = m_tv.params[1]
+    assert _g < 0 and m_tv.p_values[1] < 1e-6, m_tv.params
+    assert effect.beta[0] > 0 > effect.beta[-1]
+    assert m_tv.parameter_names == ['z', 'z:log(t)']
 
 Cluster-robust standard errors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -4502,6 +4574,49 @@ take every kind of censoring and truncation (left, right or both).
 
     assert stratified.is_stratified
     assert np.sum(stratified.params == 0) == 2, stratified.params
+
+**Weights.** ``CoxPH.fit_penalised``, ``CoxPH.fit_tvc_penalised`` and the
+parametric families' ``fit_penalised`` take sampling weights ``w``, as
+their ``fit`` does (see :doc:`Weighted Data`). In plain words: each row
+counts ``w`` times as much in the likelihood, in the number of units the
+penalty is measured against and in the covariates' standard deviations, so
+only the weights' *proportions* matter. ``w`` and ``10 * w`` give the same
+fit, and whole-number weights give the fit of repeated rows (for a Cox fit,
+under Breslow's ties; Efron's treat a weight as one unit, as R does). The
+objective is
+
+.. math::
+    -\frac{1}{N_w} \ell_w(\theta) + \sum_j \lambda_j \left(
+    \frac{1 - a}{2} b_j^2 + a |b_j| \right), \qquad N_w = \sum_i n_i w_i,
+
+with :math:`\ell_w` the weighted log-likelihood (the weighted partial
+likelihood of ``CoxPH.fit(w=)`` for Cox) and the covariates standardised
+by their :math:`n w`-weighted standard deviations with divisor
+:math:`N_w`: glmnet's ``weights``, which the Cox fit matches to 1e-6
+(ridge, lasso and elastic net, Breslow and Efron). For start-stop data
+(``fit_tvc_penalised``) :math:`N_w` sums over the subjects, each weighted
+by its rows' weights averaged over its follow-up. A weighted penalised fit
+has no standard errors, robust ones included, and its ``aic`` and ``bic``
+are refused, as for every weighted fit; a ``penalty_path`` of weighted fits
+has the coefficients but cannot choose the penalty by them.
+
+.. jupyter-execute::
+
+    w = 0.5 + (np.arange(len(rossi)) % 5) / 2   # survey weights, say
+    weighted = CoxPH.fit_penalised(rossi['week'], rossi[cols],
+                                   c=rossi['censored'], w=w,
+                                   penalizer=0.05, l1_ratio=0.5)
+    weighted.params.round(4)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    rescaled = CoxPH.fit_penalised(rossi['week'], rossi[cols],
+                                   c=rossi['censored'], w=10 * w,
+                                   penalizer=0.05, l1_ratio=0.5)
+    assert np.allclose(rescaled.params, weighted.params, atol=1e-10)
+    assert weighted.weighted and weighted.maximum == 'verified'
 
 **More models.** The same objective, standardisation and refusals apply to
 
