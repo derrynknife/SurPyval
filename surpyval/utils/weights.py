@@ -176,8 +176,8 @@ TAKES_WEIGHTS = (
     "the parametric regressions (WeibullPH, WeibullAFT, ...) and CoxPH, "
     "with their penalised fits (fit_penalised), distributional regression "
     "(WeibullDistributional, ...), RoystonParmarPH and RoystonParmarPO, "
-    "AalenAdditive, and CompetingRisks (the Aalen-Johansen cumulative "
-    "incidence)"
+    "AalenAdditive, CompetingRisks (the Aalen-Johansen cumulative "
+    "incidence), FineGray and CompetingRisksProportionalHazards"
 )
 
 

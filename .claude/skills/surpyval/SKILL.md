@@ -370,6 +370,9 @@ sp.life_table(x, c, intervals=4)      # actuarial (Cutler-Ederer) table
   `Turnbull.fit(..., w=)` is the reverse: its `cb` refuses and its bounds
   are `bootstrap_cb(x, random_state=seed)` (the weighted case bootstrap).
   Weighted models save as schema 3, which older versions refuse.
+  `CompetingRisksProportionalHazards.fit(..., w=)` (cause-specific Cox and
+  Fine-Gray) and `FineGray.fit(..., w=)` take weights too (robust SEs; no
+  `aic` or `diagnose()`).
 - **Bayesian:** priors `sp.prior.around`, `between`, `uniform`, `flat`,
   `fixed`, `on_quantities(sp.Weibull, B10=..., beta=...)`,
   `from_model(fit, weight=0.5)`, `from_data(x, c, weight=)`,

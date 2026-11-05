@@ -42,7 +42,6 @@ Unreleased
   non-parametric ones. Checked against R (``survreg`` and ``integrate``
   with the delta method by hand, and flexsurv's ``summary(type="rmst")``)
   on ``lung`` and ``ovarian``.
-=======
 - ``CompetingRisks.fit(..., w=)`` and ``fit_from_df(..., w_col=)``: the
   Aalen-Johansen cumulative incidence of data with sampling or
   inverse-probability weights, with the robust (infinitesimal jackknife)
@@ -268,6 +267,19 @@ Unreleased
   Efron's ties for one subject of weight 3 than for three identical
   copies (use ``n`` for repeated identical units, ``w`` for survey and
   importance weights). No numbers change.
+- Weights ``w`` in the competing-risks regressions:
+  ``CompetingRisksProportionalHazards.fit(..., w=)`` (cause-specific Cox
+  and Fine-Gray), ``FineGray.fit(..., w=)`` and their ``fit_from_df(...,
+  w_col=)``. Cause-specific Cox is the weighted ``CoxPH`` per cause, R's
+  ``coxph(Surv(x, e == k) ~ z, weights = w, robust = TRUE)``. Fine-Gray
+  multiplies the weights into its censoring weights and estimates the
+  censoring distribution from the weighted Kaplan-Meier (so whole-number
+  weights give the counted fit exactly; R's ``finegray`` leaves its
+  censoring distribution unweighted), with the robust covariance clustered
+  by unit that holds it fixed, R's ``coxph(..., weights = fgwt * w,
+  cluster = id)``. Checked against R (coefficients 1e-8, standard errors
+  1e-6). The information criteria, the diagnostics and the penalised fit
+  refuse weighted fits.
 - ``AalenAdditive.fit(..., w=)`` and ``fit_from_df(..., w_col=)``:
   Aalen's additive hazards model with sampling weights. Each increment of
   the cumulative effects ``B(t)`` is a weighted least-squares fit, and
