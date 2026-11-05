@@ -205,6 +205,9 @@ class SemiParametricRegressionModel(
     #: (#259 — used to align user-supplied cluster labels).
     tvc_subject_ids: npt.NDArray | None = None
     tvc_row_order: npt.NDArray | None = None
+    #: The running sums of the variance of the predicted cumulative
+    #: hazard, by stratum, kept by :meth:`cb` once computed.
+    _curve_cache: dict | None = None
 
     #: The model (``"Cox"``) and ``"Semi-Parametric"``, which the
     #: printout shows and ``to_dict`` stores.
@@ -1193,6 +1196,235 @@ class SemiParametricRegressionModel(
             return step_draws(H[0], bx, U)
 
         return draws_by_row(size, rows, random_state, invert)
+
+    @keeps_query_shape
+    def cb(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike | pd.DataFrame,
+        stratum: Any = None,
+        on: str = "sf",
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        bound_type: str = "log",
+        method: str = "wald",
+    ) -> npt.NDArray:
+        r"""
+        Pointwise confidence bounds on the predicted survival ``sf``,
+        failure probability ``ff`` or cumulative hazard ``Hf`` of a unit
+        with covariates ``Z``: R's ``survfit(fit, newdata)`` bounds.
+
+        The predicted curve is uncertain for two reasons: the baseline
+        hazard is estimated from the deaths in the data, and so are the
+        coefficients that move it to ``Z``. The standard error of the
+        cumulative hazard :math:`\hat H(t \mid Z)` adds the two (Tsiatis
+        1981; Link 1984):
+
+        .. math::
+            \widehat{\mathrm{Var}}\,\hat H(t \mid Z) = e^{2 \beta' (Z - c)}
+            \Big[ \sum_{s \le t} \frac{dN(s)}{S_0(s)^2}
+            + q(t)' V q(t) \Big], \quad
+            q(t) = \sum_{s \le t} \big(Z - \bar Z(s)\big)\,
+            d\hat H_0(s),
+
+        :math:`S_0(s)` the sum of :math:`n\,w\,e^{\beta'(Z_i - c)}` over
+        the units at risk at the event time :math:`s`, :math:`\bar Z(s)`
+        the covariates' mean over them, weighted the same way,
+        :math:`dN(s)` its (weighted) deaths and :math:`V` the
+        coefficients' :meth:`covariance` (the robust one of a fit with
+        weights ``w``). After an Efron fit each time's tied deaths are
+        spread over the shrinking risk sets of Efron's approximation, as
+        the baseline is. This is the ``std.err`` of R's ``survfit.coxph``,
+        with which the bounds agree to rounding.
+
+        The bound is then a normal one on a scale set by ``bound_type``,
+        R's ``conf.type``:
+
+        - ``"log"`` (the default, as R's): on :math:`\log S = -H`,
+          :math:`S e^{\pm z\,\mathrm{se}}`, the upper bound at most 1;
+        - ``"log-log"``: on :math:`\log H`, :math:`H e^{\pm z\,
+          \mathrm{se} / H}`, which keeps both bounds inside (0, 1) (the
+          non-parametric estimates' ``bound_type="exp"``, also accepted);
+        - ``"plain"``: on :math:`S` itself, :math:`S \pm z S\,
+          \mathrm{se}`, cut to [0, 1] (``"normal"`` is also accepted).
+
+        The bounds on ``ff`` are one minus those on ``sf``, and those on
+        ``Hf`` are minus their logarithm. Before the first event time the
+        curve is known (1) and both bounds are the estimate.
+
+        Only Wald bounds are offered: the baseline has no likelihood of
+        its own for a likelihood-ratio bound and no bootstrap is built
+        (refit the model to resampled rows for one). The bounds need the
+        data the model was fitted to, so a model restored by
+        ``from_dict`` refuses them (refit it), as does a penalised fit,
+        which has no covariance.
+
+        Parameters
+        ----------
+        x : array like or scalar
+            The times.
+        Z : array like or pandas.DataFrame
+            The covariates: one row, used at every ``x``, or one row per
+            ``x``, paired in the order given, as :meth:`sf` takes them.
+        stratum : optional
+            The stratum of a stratified fit, whose baseline the curve is
+            on, as for :meth:`sf`.
+        on : {'sf', 'ff', 'Hf'}, optional
+            The function to bound (``'R'`` and ``'F'`` are aliases of
+            ``'sf'`` and ``'ff'``). Default ``'sf'``. The baseline is a
+            step function, so ``hf`` and ``df`` are its jumps and have no
+            bounds here.
+        alpha_ci : float, optional
+            The total tail probability. Default 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds put ``[lower, upper]`` on the last axis. A
+            one-sided bound puts all of ``alpha_ci`` on one side.
+        bound_type : {'log', 'log-log', 'plain'}, optional
+            The scale of the normal bound, as above. Default ``'log'``.
+        method : 'wald', optional
+            The only method.
+
+        Returns
+        -------
+        numpy array
+            The bounds, with the shape of ``x`` (and a last axis of 2 for
+            two-sided bounds).
+
+        Examples
+        --------
+        The chance of no arrest in the first year, with 95% bounds, for a
+        25-year-old with three prior convictions, without and with
+        financial aid (R's ``survfit(fit, newdata)`` gives the same):
+
+        >>> from surpyval import CoxPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = CoxPH.fit(x, df[["fin", "age", "prio"]].values, c=c)
+        >>> model.cb(52, [0, 25, 3]).round(4)
+        array([0.6656, 0.7888])
+        >>> model.cb(52, [1, 25, 3]).round(4)
+        array([0.7442, 0.8521])
+
+        The log-log bounds, which keep both ends inside (0, 1):
+
+        >>> model.cb(52, [1, 25, 3], bound_type="log-log").round(4)
+        array([0.736 , 0.8444])
+        """
+        from surpyval.utils.validation import check_option
+
+        from .proportional_hazards._curve_variance import (
+            cumulative_hazard_se,
+            survival_bounds,
+        )
+
+        check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
+        on = {"R": "sf", "F": "ff"}.get(on, on)
+        check_option("bound", bound, ("two-sided", "lower", "upper"))
+        check_option(
+            "bound_type",
+            bound_type,
+            ("log", "log-log", "plain", "exp", "normal"),
+        )
+        bound_type = {"exp": "log-log", "normal": "plain"}.get(
+            bound_type, bound_type
+        )
+        if method != "wald":
+            raise ValueError(
+                "The Cox model's predicted curves have Wald bounds only "
+                "(method='wald'): the baseline has no likelihood for a "
+                "likelihood-ratio bound and no bootstrap is built; refit "
+                "the model to resampled rows for one. Got "
+                "method={!r}.".format(method)
+            )
+        check_alpha_ci(alpha_ci)
+        # A missing stratum label predicts nan, as sf does: the bounds of
+        # the first stratum's curve only give the output its shape.
+        missing = self._missing_stratum(stratum)
+        parts = self._curve_parts(
+            self.strata_labels[0] if missing else stratum
+        )
+        covariance = self.covariance()
+
+        t = onp.atleast_1d(onp.asarray(x, dtype=float)).ravel()
+        H = onp.atleast_1d(onp.asarray(self.Hf(t, Z, stratum), dtype=float))
+        rows = covariate_rows(self._prepare_Z(Z), onp.size(self.params))
+        log_risk = onp.atleast_1d(onp.asarray(self._log_risk(rows), float))
+        size = max(t.size, log_risk.size)
+        t = onp.broadcast_to(t, (size,))
+        rows = onp.broadcast_to(rows, (size, rows.shape[1]))
+        log_risk = onp.broadcast_to(log_risk, (size,))
+        H = onp.broadcast_to(H, (size,))
+        se = cumulative_hazard_se(
+            parts, t, rows, log_risk, self._center(), covariance
+        )
+        if missing:
+            se = onp.full(se.shape, onp.nan)
+
+        if bound == "two-sided":
+            z = norm.isf(alpha_ci / 2)
+        else:
+            z = norm.isf(alpha_ci)
+        H_lo, H_hi = survival_bounds(H, se, z, bound_type)
+        if bound != "two-sided":
+            # sf falls as H rises: its lower bound is H's upper one
+            upper_H = (bound == "upper") != (on == "sf")
+            H_lo = H_hi = H_hi if upper_H else H_lo
+        if on == "Hf":
+            lo, hi = H_lo, H_hi
+        elif on == "sf":
+            lo, hi = onp.exp(-H_hi), onp.exp(-H_lo)
+        else:
+            lo, hi = -onp.expm1(-H_lo), -onp.expm1(-H_hi)
+        if bound == "two-sided":
+            return onp.stack([lo, hi], axis=-1)
+        return lo
+
+    def _curve_parts(self, stratum: Any) -> dict:
+        """The running sums of the variance of the predicted cumulative
+        hazard in ``stratum`` (see
+        ``proportional_hazards._curve_variance``), computed from the
+        fitted data once and kept."""
+        from .proportional_hazards._curve_variance import curve_components
+
+        self._refuse_if_penalised()
+        data = getattr(self, "_fit_data", None)
+        mean = getattr(self, "_fit_center", None)
+        if not data or mean is None:
+            raise ValueError(
+                "The confidence bounds on a Cox model's predicted curve "
+                "(cb) need the data it was fitted to, which a model "
+                "restored by from_dict does not keep. Refit the model to "
+                "its data for them."
+            )
+        # Checks the stratum, as the predictions do
+        self._baseline_arrays(stratum)
+        key = stratum if self.is_stratified else None
+        cache = self.__dict__.get("_curve_cache")
+        if cache is None:
+            cache = self._curve_cache = {}
+        if key in cache:
+            return cache[key]
+        take = slice(None)
+        if self.is_stratified:
+            code = list(self.strata_labels).index(stratum)
+            take = onp.asarray(data["strata"]) == code
+        tl = data.get("tl")
+        w = data.get("w")
+        parts = curve_components(
+            onp.asarray(data["x"], float)[take],
+            onp.asarray(data["c"])[take],
+            onp.asarray(data["n"], float)[take],
+            None if w is None else onp.asarray(w, float)[take],
+            None if tl is None else onp.asarray(tl, float)[take],
+            onp.asarray(data["Z"], float)[take],
+            self._coef(),
+            onp.asarray(mean, float),
+            self._center(),
+            str(self.tie_method).lower(),
+        )
+        cache[key] = parts
+        return parts
 
     def compute_residuals(self, kind: str = "martingale") -> npt.NDArray:
         """

@@ -8,6 +8,7 @@ from .fleming_harrington import (
     fleming_harrington_variance,
 )
 from .kaplan_meier import KaplanMeier, greenwood_variance, kaplan_meier
+from .interval_logrank import IntervalLogRankResult, interval_logrank
 from .logrank import (
     LogRankResult,
     PairwiseLogRankResult,

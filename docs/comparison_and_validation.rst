@@ -34,6 +34,14 @@ the number of pairs, and the adjustment on its own:
 
 .. autofunction:: surpyval.univariate.nonparametric.logrank.adjust_p_values
 
+The log-rank and Wilcoxon-type tests of interval-censored data (any mix of
+exact, right, left and interval-censored rows), and the result they return:
+
+.. autofunction:: surpyval.univariate.nonparametric.interval_logrank.interval_logrank
+
+.. autoclass:: surpyval.univariate.nonparametric.interval_logrank.IntervalLogRankResult
+   :members: to_dict
+
 The test of two groups' survival at one time:
 
 .. autofunction:: surpyval.univariate.nonparametric.survival_difference.sf_diff
@@ -85,9 +93,12 @@ Prediction-validation metrics
 -----------------------------
 
 Right-censored-standard metrics for scoring a predicted survival function
-(Brier / integrated Brier score and Uno's time-dependent AUC), plus the helper
-that builds a predicted-survival matrix from a fitted regression model or
-forest.
+(Brier / integrated Brier score and Uno's time-dependent AUC), the same
+metrics with standard errors, confidence intervals and paired tests between
+models (``score_predictions``), all of them also for one cause with competing
+risks (``e=`` and ``cause=``, scoring predicted cumulative incidences), plus
+the helper that builds a predicted-survival matrix from a fitted regression
+model or forest.
 
 .. automodule:: surpyval.metrics.validation
    :members:
