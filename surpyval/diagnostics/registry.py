@@ -274,22 +274,11 @@ def _instance_of(path: str, **attributes: Any) -> Callable[[Any], bool]:
 
 
 _REG = "surpyval.univariate.regression."
-_CR = "surpyval.univariate.competing_risks."
 
 #: The families not yet built, each with what to check its models with
 #: meanwhile: their models have ``diagnose()``, which refuses until the
 #: family is registered (a registered family that applies is found first).
 PENDING: tuple[Pending, ...] = (
-    Pending(
-        "parametric competing-risks models (each cause's goodness of "
-        "fit, and the parametric incidences against the Aalen-Johansen "
-        "ones)",
-        _instance_of(_CR + "ParametricCompetingRisks"),
-        "Check each cause's model with model.models[cause].diagnose() "
-        "(a distribution fitted with the other causes censored), and "
-        "compare model.cif with the nonparametric CompetingRisks.fit of "
-        "the same data.",
-    ),
     Pending(
         "Aalen additive hazards models",
         _instance_of(

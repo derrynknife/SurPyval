@@ -48,9 +48,54 @@ tests are computed by
 (re-exported here), as the Cox family's are by the Cox model's
 ``proportional_hazards.diagnostics``.
 
-``ParametricCompetingRisks`` is not built yet: its checks are the
-univariate goodness-of-fit checks of #875 for each cause, which do not
-exist yet; it refuses, naming #874, through the registry's pending list.
+**Parametric** (:data:`PARAMETRIC`): ``ParametricCompetingRisks``, one
+distribution per cause, each fitted with the other causes censored (the
+likelihood factorises over the causes), kept as ``model.models[cause]``.
+
+``goodness_of_fit``
+    For each cause, the Cox-Snell residuals ``r_i = H_k(x_i) - H_k(tl_i)``
+    of the cause's fitted distribution (its cumulative hazard over each
+    unit's time at risk, from entry), the other causes' failures
+    censored, against the unit exponential. It is the univariate
+    family's test (:mod:`surpyval.diagnostics.univariate`) on the cause's
+    model, which compares ``u = 1 - exp(-r)``, the CDF conditioned on
+    entry, with the uniform: the Anderson-Darling, Kolmogorov-Smirnov and
+    Cramer-von Mises statistics of the Kaplan-Meier estimate of ``u``,
+    with parametric bootstrap p-values (each resample drawn from the
+    cause's model and censored as that cause's data were, the other
+    causes' failures with the censoring). Drawn as the P-P plot of ``u``
+    and the bootstrap null distribution, by cause.
+``probability_plot``
+    A plot only: each cause's probability plot (``models[cause].plot()``).
+``alternatives``
+    For each cause, the univariate family's AIC screen of the
+    alternatives (the best other distribution ``fit_best`` ranks, a
+    mixture of two, an offset, a limited failure population, zero
+    inflation) fitted to that cause's data; a row warns when one's AIC is
+    at least 2 below the cause's model's, and never fails.
+``incidence``
+    For each cause, the largest gap between the model's cumulative
+    incidence and the Aalen-Johansen estimate (``CompetingRisks.fit`` of
+    the same data), ``D_k = sup_t |CIF_k(t) - AJ_k(t)|`` up to the last
+    time observed (:func:`incidence_distance`). Its p-value is from a
+    parametric bootstrap (:func:`incidence_bootstrap`): each resample
+    draws every unit's latent time from each cause's model, keeps the
+    earliest and its cause, censors it as the data were (a censored unit
+    at its own time, a failed one at a time drawn from the censoring
+    distribution beyond its failure, as the univariate bootstrap does),
+    refits every cause's model the same way and recomputes ``D_k``.
+    Drawn as the two incidences with the Aalen-Johansen pointwise band.
+    A cause's incidence depends on every cause's hazard (``CIF_k = int
+    h_k S``), so a wrong distribution for one cause can move another
+    cause's incidence too; the per-cause goodness of fit says which.
+    With delayed entry (``tl``) it is not computed: the Aalen-Johansen
+    estimate takes no entry times yet.
+
+``diagnose()`` refuses a model restored with ``from_dict`` (it has no
+data), one assembled with ``from_fitted`` from models that were not
+fitted to the same units or that are not fitted distributions, and a
+cause whose model the univariate family refuses (the message names the
+cause).
 
 Every report notes that the independence of the causes cannot be tested
 from competing-risks data (Tsiatis 1975), and how to choose between the
@@ -59,6 +104,8 @@ cause-specific and the Fine-Gray model.
 
 from __future__ import annotations
 
+import warnings
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -75,10 +122,15 @@ from surpyval.univariate.competing_risks.regression.fine_gray_diagnostics import
 )
 
 from . import cox as _cox
-from ._shared import _covariate_kind, _fmt, _source, _trend_sign
+from ._shared import _covariate_kind, _fmt, _note, _source, _trend_sign
 from .registry import AdviceRule, Check, Context, Family, Panel, register
 
-__all__ = ["fine_gray_zph_test", "fine_gray_added_covariate_test"]
+__all__ = [
+    "fine_gray_zph_test",
+    "fine_gray_added_covariate_test",
+    "incidence_distance",
+    "incidence_bootstrap",
+]
 
 _INDEPENDENCE_NOTE = (
     "Independence of the causes (of their latent failure times) cannot be "
@@ -944,5 +996,827 @@ FINE_GRAY = register(
             ),
         ),
         notes=_fg_notes,
+    )
+)
+
+
+# ===========================================================================
+# Parametric: each cause's distribution, and the incidences against the
+# Aalen-Johansen estimate
+# ===========================================================================
+def _univariate() -> Any:
+    """The univariate family's module (imported when first needed, so
+    that the families register in the order of ``FAMILY_MODULES``)."""
+    from . import univariate
+
+    return univariate
+
+
+def _pcr_class() -> Any:
+    from surpyval.univariate.competing_risks import ParametricCompetingRisks
+
+    return ParametricCompetingRisks
+
+
+def _counts(data: dict, failed: bool) -> dict:
+    """The rows of one cause's data that failed (``c == 0``) or were
+    censored (``c == 1``), as the units at each ``(x, tl, tr)``."""
+    c = np.asarray(data["c"])
+    x = np.asarray(data["x"], dtype=float).reshape(c.size, -1)[:, 0]
+    n = np.asarray(data["n"], dtype=float)
+    t = np.asarray(data["t"], dtype=float).reshape(-1, 2)
+    keep = (c == 0) if failed else (c == 1)
+    out: dict = {}
+    for key in zip(x[keep], t[keep, 0], t[keep, 1], n[keep]):
+        where = (float(key[0]), float(key[1]), float(key[2]))
+        out[where] = out.get(where, 0.0) + float(key[3])
+    return out
+
+
+def _combine(first: dict, *others: dict, sign: float = 1.0) -> dict:
+    out = dict(first)
+    for other in others:
+        for key, value in other.items():
+            out[key] = out.get(key, 0.0) + sign * value
+    return {k: v for k, v in out.items() if abs(v) > 1e-9}
+
+
+def pcr_data(model: Any) -> dict:
+    """
+    The data a ``ParametricCompetingRisks`` model was fitted to, rebuilt
+    from its causes' fits (each keeps the data with the other causes
+    censored): ``x``, ``e`` (the cause of each row, ``None`` where
+    censored), ``c``, ``n`` and ``t`` (each row's ``[tl, tr]``), sorted by
+    ``x``. Raises ``ValueError`` when the causes' models were not fitted
+    to the same units (a model assembled with ``from_fitted`` from
+    separate fits).
+
+    Examples
+    --------
+    >>> from surpyval import Exponential
+    >>> from surpyval.univariate.competing_risks import (
+    ...     ParametricCompetingRisks,
+    ... )
+    >>> from surpyval.diagnostics.competing_risks import pcr_data
+    >>> model = ParametricCompetingRisks.fit(
+    ...     [1, 2, 2, 3, 5], ["a", "b", "a", None, "b"], dist=Exponential
+    ... )
+    >>> data = pcr_data(model)
+    >>> data["x"].tolist(), data["e"].tolist()
+    ([1.0, 2.0, 2.0, 3.0, 5.0], ['a', 'a', 'b', None, 'b'])
+    """
+    causes = list(model.causes)
+    events = {k: _counts(model.models[k].data, True) for k in causes}
+    censored = _combine(
+        _counts(model.models[causes[0]].data, False),
+        *(events[j] for j in causes[1:]),
+        sign=-1.0,
+    )
+    consistent = all(v > 0 for v in censored.values()) and all(
+        not _combine(
+            _counts(model.models[k].data, False),
+            censored,
+            *(events[j] for j in causes if j != k),
+            sign=-1.0,
+        )
+        for k in causes
+    )
+    if not consistent:
+        raise ValueError(
+            "diagnose() compares the causes on the units they were fitted "
+            "to, and this model's causes were fitted to different data "
+            "(assembled with from_fitted from separate fits). Diagnose "
+            "each cause's model on its own, model.models[cause].diagnose(), "
+            "or refit with ParametricCompetingRisks.fit on the shared data."
+        )
+    rows = [
+        (key, k, 0, count) for k in causes for key, count in events[k].items()
+    ]
+    rows += [(key, None, 1, count) for key, count in censored.items()]
+    rows.sort(key=lambda r: r[0][0])
+    e = np.empty(len(rows), dtype=object)
+    for i, row in enumerate(rows):
+        e[i] = row[1]
+    return {
+        "x": np.array([r[0][0] for r in rows], dtype=float),
+        "e": e,
+        "c": np.array([r[2] for r in rows], dtype=int),
+        "n": np.array([r[3] for r in rows], dtype=float),
+        "t": np.array([[r[0][1], r[0][2]] for r in rows], dtype=float).reshape(
+            -1, 2
+        ),
+    }
+
+
+def _truncated(data: dict) -> bool:
+    return bool(np.any(np.isfinite(data["t"])))
+
+
+#: The Gauss-Legendre nodes of :func:`_cif_steps`, on [-1, 1].
+_NODES, _WEIGHTS = np.polynomial.legendre.leggauss(8)
+
+
+def _cif_steps(model: Any, times: np.ndarray, cause: Any) -> np.ndarray:
+    """``model.cif(times, cause)`` at the increasing ``times``, summed a
+    step at a time: on the cause's probability scale, as ``cif``
+    integrates, ``CIF_k(t) = int_0^{F_k(t)} prod_{j != k}
+    S_j(F_k^{-1}(p)) dp``, with eight Gauss-Legendre nodes between each
+    time and the next (and a hundred more steps across their span). The
+    integrand is bounded by 1 and monotone, so this agrees with ``cif``
+    to about 1e-7 (the tests check it), at a small part of the cost of an
+    adaptive quadrature from 0 for every time, which the bootstrap would
+    pay on every refit."""
+    m = model.models[cause]
+    others = [model.models[j] for j in model.causes if j != cause]
+    # The steps are at the times and at a hundred more across their span,
+    # so that a sparse set of times is integrated as finely as a dense one.
+    times = np.asarray(times, dtype=float)
+    finer = np.linspace(0.0, float(times.max()), 101)[1:]
+    grid, where = np.unique(
+        np.concatenate([times, finer]), return_inverse=True
+    )
+    with np.errstate(all="ignore"):
+        top = np.asarray(m.ff(grid), dtype=float).ravel()
+    top = np.maximum.accumulate(np.clip(np.nan_to_num(top), 0.0, 1.0))
+    lower = np.concatenate([[0.0], top[:-1]])
+    half = 0.5 * (top - lower)
+    p = (0.5 * (top + lower))[:, None] + half[:, None] * _NODES[None, :]
+    with np.errstate(all="ignore"):
+        s = np.asarray(m.qf(p.ravel()), dtype=float)
+        value = np.ones_like(s)
+        for other in others:
+            value = value * np.asarray(other.sf(s), dtype=float).ravel()
+    # Below a model's support its survival formula can give NaN; it is 1
+    # there (as cif takes it).
+    value = np.where(np.isfinite(value), value, 1.0).reshape(p.shape)
+    return np.cumsum(half * (value @ _WEIGHTS))[where[: times.size]]
+
+
+def incidence_distance(
+    model: Any, x: Any, e: Any, c: Any = None, n: Any = None
+) -> dict:
+    """
+    For each cause of ``model``, the largest gap between its cumulative
+    incidence and the Aalen-Johansen estimate of the data ``x``, ``e``,
+    ``c``, ``n`` (``CompetingRisks.fit``): ``D_k = sup_t |CIF_k(t) -
+    AJ_k(t)|`` from 0 to the last time observed. The estimate is a step
+    function and the model's incidence rises, so the supremum is at an
+    event time, on one side of its step.
+
+    Returns a dictionary by cause of ``{"D": D_k, "time": t}``, ``t``
+    the event time where the gap is largest.
+
+    Examples
+    --------
+    >>> from surpyval import Exponential
+    >>> from surpyval.univariate.competing_risks import (
+    ...     ParametricCompetingRisks,
+    ... )
+    >>> from surpyval.diagnostics.competing_risks import incidence_distance
+    >>> x = [1, 2, 3, 4, 5, 6, 7, 8]
+    >>> e = ["a", "b", "a", "b", "a", "b", "a", None]
+    >>> model = ParametricCompetingRisks.fit(x, e, dist=Exponential)
+    >>> out = incidence_distance(model, x, e)
+    >>> sorted(out), round(out["a"]["D"], 4)
+    (['a', 'b'], 0.1276)
+    """
+    from surpyval.univariate.competing_risks import CompetingRisks
+
+    x = np.asarray(x, dtype=float)
+    e = np.asarray(e, dtype=object)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        aj = CompetingRisks.fit(x, e, c=c, n=n)
+    failed = (
+        np.array([v is not None for v in e])
+        if c is None
+        else (np.asarray(c) == 0)
+    )
+    times = np.unique(np.concatenate([x[failed], [x.max()]]))
+    out = {}
+    for cause in model.causes:
+        a = np.asarray(aj.cif(times, cause), dtype=float)
+        before = np.concatenate([[0.0], a[:-1]])
+        p = _cif_steps(model, times, cause)
+        gaps = np.maximum(np.abs(p - a), np.abs(p - before))
+        j = int(np.argmax(gaps))
+        out[cause] = {"D": float(gaps[j]), "time": float(times[j])}
+    return out
+
+
+def incidence_bootstrap(
+    model: Any, n_boot: int, random_state: Any = None
+) -> dict:
+    """
+    The gap :func:`incidence_distance` of each cause of ``model`` on its
+    data, and its parametric bootstrap p-value from ``n_boot`` refits.
+
+    Each resample draws, for every unit, a latent time from each cause's
+    model (through its ``qf``), keeps the earliest and its cause, and
+    censors it as the data were (a censored unit at its own time, a
+    failed one at a time drawn from the Kaplan-Meier estimate of the
+    censoring distribution beyond its failure, as
+    :func:`surpyval.diagnostics.univariate.bootstrap` does); every cause's
+    model is refitted the same way (distribution, ``how`` and options) and
+    the gaps recomputed. The p-value is ``(1 + #{refits at least as
+    extreme}) / (1 + refits)``. Data with delayed entry are refused: the
+    Aalen-Johansen estimate takes no entry times yet.
+
+    Returns a dictionary: ``observed``, ``time`` and ``p``, each by
+    cause; ``draws``, the refits' gaps, a column per cause in the order
+    of ``model.causes``; ``failed``, the refits that raised and were left
+    out; and ``n_boot``.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval import Exponential
+    >>> from surpyval.univariate.competing_risks import (
+    ...     ParametricCompetingRisks,
+    ... )
+    >>> from surpyval.diagnostics.competing_risks import incidence_bootstrap
+    >>> rng = np.random.default_rng(1)
+    >>> x = rng.exponential(1.0, 60)
+    >>> e = rng.choice(["a", "b"], 60).astype(object)
+    >>> model = ParametricCompetingRisks.fit(x, e, dist=Exponential)
+    >>> out = incidence_bootstrap(model, 20, random_state=2)
+    >>> sorted(out["p"]), out["draws"].shape
+    (['a', 'b'], (20, 2))
+    """
+    from types import SimpleNamespace
+
+    from surpyval.univariate.regression._bootstrap import (
+        REFIT_ERRORS,
+        check_n_boot,
+    )
+    from surpyval.utils.no_maximum import quiet_maximum_warnings
+    from surpyval.utils.rng import as_generator
+
+    uni = _univariate()
+    n_boot = check_n_boot(n_boot)
+    data = pcr_data(model)
+    if _truncated(data):
+        raise ValueError(
+            "The incidence check needs the Aalen-Johansen estimate of the "
+            "data, which takes no delayed entry (tl) yet; these data have "
+            "it. Check each cause with diagnose()'s goodness_of_fit rows, "
+            "which allow for entry."
+        )
+    causes = list(model.causes)
+    found = incidence_distance(
+        model, data["x"], data["e"], data["c"], data["n"]
+    )
+    design = uni._design(SimpleNamespace(data=data))
+    rng = as_generator(random_state)
+    longest = float(np.max(design.x))
+    options = [uni._refit_options(model.models[k]) for k in causes]
+    size = design.x.size
+    draws = []
+    failed = 0
+    for _ in range(n_boot):
+        with np.errstate(all="ignore"):
+            latent = np.column_stack(
+                [
+                    np.asarray(
+                        model.models[k].qf(rng.uniform(size=size)), dtype=float
+                    ).ravel()
+                    for k in causes
+                ]
+            )
+        latent = np.where(np.isnan(latent), np.inf, latent)
+        first = np.argmin(latent, axis=1)
+        T = latent[np.arange(size), first]
+        C = design.censoring(rng)
+        censored = ~(T <= C)
+        x = np.where(censored, C, T)
+        # A unit that never fails (a limited failure population) and is
+        # not censored by the censoring distribution is censored at the
+        # last time observed.
+        x = np.where(np.isfinite(x), x, longest)
+        e = first.astype(object)
+        e[censored] = None
+        try:
+            with warnings.catch_warnings(), quiet_maximum_warnings():
+                warnings.simplefilter("ignore")
+                fits = {
+                    j: model.models[k].dist.fit(
+                        x,
+                        c=np.where((first == j) & ~censored, 0, 1),
+                        **options[j],
+                    )
+                    for j, k in enumerate(causes)
+                }
+                refit = _pcr_class().from_fitted(fits)
+                gaps = incidence_distance(refit, x, e, censored.astype(int))
+        except REFIT_ERRORS:
+            failed += 1
+            continue
+        draws.append([gaps[j]["D"] for j in range(len(causes))])
+    values = np.array(draws, dtype=float).reshape(len(draws), len(causes))
+    p = {}
+    for j, cause in enumerate(causes):
+        if len(draws) < n_boot / 2:
+            p[cause] = float("nan")
+        else:
+            extreme = np.sum(values[:, j] >= found[cause]["D"] - 1e-12)
+            p[cause] = float((1 + extreme) / (1 + len(draws)))
+    return {
+        "observed": {k: found[k]["D"] for k in causes},
+        "time": {k: found[k]["time"] for k in causes},
+        "p": p,
+        "draws": values,
+        "failed": failed,
+        "n_boot": n_boot,
+    }
+
+
+def _pcr_seeds(ctx: Context) -> list[int]:
+    """One seed for each cause's goodness-of-fit bootstrap and one for the
+    incidence bootstrap, drawn from ``diagnose(random_state=)``."""
+
+    def compute() -> list[int]:
+        from surpyval.utils.rng import as_generator
+
+        rng = as_generator(ctx.random_state)
+        size = len(ctx.model.causes) + 1
+        return [int(s) for s in rng.integers(0, 2**63 - 1, size=size)]
+
+    return ctx.cached("pcr_seeds", compute)
+
+
+def _pcr_causes(ctx: Context) -> list[tuple[Any, Context]]:
+    """Each cause and the univariate context of its model, with the
+    report's level, ``n_boot`` and a seed of its own."""
+
+    def build() -> list[tuple[Any, Context]]:
+        seeds = _pcr_seeds(ctx)
+        return [
+            (
+                cause,
+                Context(
+                    ctx.model.models[cause],
+                    ctx.alpha,
+                    [],
+                    [],
+                    n_boot=ctx.n_boot,
+                    random_state=seed,
+                ),
+            )
+            for cause, seed in zip(ctx.model.causes, seeds)
+        ]
+
+    return ctx.cached("pcr_causes", build)
+
+
+def _pcr_data(ctx: Context) -> dict:
+    return ctx.cached("pcr_data", lambda: pcr_data(ctx.model))
+
+
+def _univariate_check(name: str) -> Check:
+    for check in _univariate().UNIVARIATE.checks:
+        if check.name == name:
+            return check
+    raise KeyError(name)
+
+
+def _by_cause_rows(name: str) -> Any:
+    """The rows of the univariate check ``name`` for each cause's model,
+    each with its ``cause``."""
+
+    def rows(ctx: Context) -> list[dict]:
+        check = _univariate_check(name)
+        assert check.rows is not None
+        out = []
+        for cause, sub in _pcr_causes(ctx):
+            for row in check.rows(sub):
+                out.append(dict(row, cause=_label(cause), _cause=cause))
+        return out
+
+    return rows
+
+
+def _by_cause_panels(name: str) -> Any:
+    """The panels of the univariate check ``name`` for each cause's
+    model, each titled with its cause."""
+
+    def panels(ctx: Context) -> list[Panel]:
+        check = _univariate_check(name)
+        assert check.panels is not None
+        out = []
+        for cause, sub in _pcr_causes(ctx):
+            for panel in check.panels(sub):
+                out.append(
+                    Panel(f"cause {_label(cause)}: {panel.title}", panel.draw)
+                )
+        return out
+
+    return panels
+
+
+def _incidence(ctx: Context) -> dict | None:
+    """The incidence bootstrap of the report, or None for data with
+    delayed entry."""
+    if _truncated(_pcr_data(ctx)):
+        return None
+    uni = _univariate()
+    n_boot = uni.DEFAULT_N_BOOT if ctx.n_boot is None else ctx.n_boot
+    seed = _pcr_seeds(ctx)[-1]
+    return ctx.cached(
+        "pcr_incidence",
+        lambda: incidence_bootstrap(ctx.model, n_boot, seed),
+    )
+
+
+_INCIDENCE_TEST = "sup |CIF - Aalen-Johansen| (parametric bootstrap)"
+
+
+def _incidence_rows(ctx: Context) -> list[dict]:
+    boot = _incidence(ctx)
+    rows = []
+    for cause in ctx.model.causes:
+        row = {
+            "test": _INCIDENCE_TEST,
+            "cause": _label(cause),
+            "alternative": "",
+            "_cause": cause,
+        }
+        if boot is None:
+            row.update(
+                statistic=float("nan"),
+                p=float("nan"),
+                detail=(
+                    "not computed: the data have delayed entry (tl), which "
+                    "the Aalen-Johansen estimate does not take yet"
+                ),
+            )
+            rows.append(row)
+            continue
+        D, p = boot["observed"][cause], boot["p"][cause]
+        kept = boot["n_boot"] - boot["failed"]
+        if not np.isfinite(p):
+            detail = (
+                "not computed: {} of the {} bootstrap refits failed".format(
+                    boot["failed"], boot["n_boot"]
+                )
+            )
+        elif p < 2 * ctx.alpha:
+            detail = (
+                "the parametric incidence is {} from the Aalen-Johansen "
+                "estimate at time {} ({} refits)".format(
+                    _fmt(D), _fmt(boot["time"][cause]), kept
+                )
+            )
+        else:
+            detail = (
+                "no evidence against the parametric incidence (largest gap "
+                "{} at time {}; {} refits)".format(
+                    _fmt(D), _fmt(boot["time"][cause]), kept
+                )
+            )
+        row.update(statistic=D, p=p, detail=detail, _time=boot["time"][cause])
+        rows.append(row)
+    if boot is not None and boot["failed"]:
+        _note(
+            ctx,
+            "{} of the {} incidence bootstrap refits failed and were left "
+            "out of its p-values.".format(boot["failed"], boot["n_boot"]),
+        )
+    return rows
+
+
+def _incidence_panels(ctx: Context) -> list[Panel]:
+    from surpyval.univariate.competing_risks import CompetingRisks
+
+    data = _pcr_data(ctx)
+    if _truncated(data):
+        return []
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        aj = CompetingRisks.fit(data["x"], data["e"], c=data["c"], n=data["n"])
+    end = float(np.max(data["x"]))
+    times = np.unique(
+        np.concatenate([[0.0], data["x"][data["c"] == 0], [end]])
+    )
+    boot = _incidence(ctx)
+    panels = []
+    for cause in ctx.model.causes:
+
+        def draw(ax: Any, options: Any, cause: Any = cause) -> None:
+            from surpyval.plotting import BAND_ALPHA, INK, PALETTE
+
+            step = np.asarray(aj.cif(times, cause), dtype=float)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                band = np.asarray(
+                    aj.cb(
+                        times, event=cause, on="cif", alpha_ci=options.alpha
+                    ),
+                    dtype=float,
+                )
+            ax.fill_between(
+                times,
+                band[:, 0],
+                band[:, 1],
+                step="post",
+                color=INK["muted"],
+                alpha=BAND_ALPHA,
+                linewidth=0,
+            )
+            ax.step(
+                times,
+                step,
+                where="post",
+                color=INK["secondary"],
+                label="Aalen-Johansen",
+            )
+            grid = np.linspace(0.0, end, 200)
+            ax.plot(
+                grid,
+                np.asarray(ctx.model.cif(grid, cause), dtype=float),
+                color=PALETTE[0],
+                label=ctx.model.models[cause].dist.name,
+            )
+            ax.set_xlabel("time")
+            ax.set_ylabel("cumulative incidence")
+            ax.legend(fontsize="small")
+
+        p = float("nan") if boot is None else boot["p"][cause]
+        panels.append(
+            Panel(
+                f"cause {_label(cause)}: incidence (p = {_fmt(p)})",
+                draw,
+            )
+        )
+    return panels
+
+
+def _validate_parametric(model: Any) -> None:
+    from surpyval.univariate.parametric import Parametric
+
+    models = getattr(model, "models", None)
+    if not models:
+        raise _restored("ParametricCompetingRisks model")
+    for cause, cause_model in models.items():
+        if not isinstance(cause_model, Parametric):
+            raise _relabel(
+                NotImplementedError(
+                    "diagnose() checks each cause's fitted distribution, and "
+                    "this cause's model is a {} (assembled with "
+                    "from_fitted). Diagnose it on its own where it has "
+                    "diagnose(), and compare model.cif with the "
+                    "nonparametric CompetingRisks.fit of the same "
+                    "data.".format(type(cause_model).__name__)
+                ),
+                cause,
+            )
+        if getattr(cause_model, "data", None) is None:
+            raise _restored("ParametricCompetingRisks model")
+        try:
+            _univariate()._validate(cause_model)
+        except (ValueError, NotImplementedError) as error:
+            raise _relabel(error, cause) from None
+    pcr_data(model)
+
+
+# -- advice -----------------------------------------------------------------
+def _dist_of(ctx: Context, cause: Any) -> str:
+    return _univariate()._label(ctx.model.models[cause])
+
+
+def _pcr_distribution(row: dict, ctx: Context) -> str:
+    cause = _cause_name(row["_cause"])
+    return (
+        "For cause {cause}, a {alt} fits better than the {dist} (its AIC "
+        "is {d} lower). Fit that cause with it, giving each cause its own "
+        "distribution: ParametricCompetingRisks.fit(x, e, dist={{{cause}: "
+        "surpyval.{alt}, ...}}), with an entry for every cause. "
+        "fit_best(x, c=np.where(e == {cause}, 0, 1), return_table=True) "
+        "ranks every distribution for that cause.".format(
+            cause=cause,
+            alt=row["_dist"],
+            dist=_dist_of(ctx, row["_cause"]),
+            d=_fmt(row["statistic"]),
+        )
+    )
+
+
+_OPTION = {
+    "offset": "offset=True",
+    "lfp": "lfp=True",
+    "zi": "zi=True",
+}
+
+
+def _pcr_option(row: dict, ctx: Context) -> str:
+    cause = _cause_name(row["_cause"])
+    alone = f"c=np.where(e == {cause}, 0, 1)"
+    if row["_kind"] == "mixture":
+        call = "MixtureModel.fit(x, {}, dist=surpyval.{}, m=2)".format(
+            alone, row["_dist"]
+        )
+    else:
+        call = "surpyval.{}.fit(x, {}, {})".format(
+            row["_dist"], alone, _OPTION[row["_kind"]]
+        )
+    return (
+        "For cause {cause}, the {label} fits better than the {dist} (its "
+        "AIC is {d} lower). ParametricCompetingRisks.fit takes a "
+        "distribution per cause without options, so fit that cause on its "
+        "own with the other causes censored, {call}, and assemble the "
+        "causes with ParametricCompetingRisks.from_fitted({{{cause}: that "
+        "fit, ...}}).".format(
+            cause=cause,
+            label=row["alternative"],
+            dist=_dist_of(ctx, row["_cause"]),
+            d=_fmt(row["statistic"]),
+            call=call,
+        )
+    )
+
+
+def _kind_is(kind: str) -> Callable[[dict, Context], bool]:
+    """Whether an alternatives row is of the kind ``kind``."""
+    return lambda row, ctx: row["_kind"] == kind
+
+
+def _pcr_unexplained(row: dict, ctx: Context) -> bool:
+    """A cause's failed goodness of fit that no alternative accounts
+    for."""
+    rows = _by_cause_rows("alternatives")(ctx)
+    return not any(
+        r.get("verdict") == "warn"
+        for r in rows
+        if r["_cause"] == row["_cause"]
+    )
+
+
+def _pcr_gof(row: dict, ctx: Context) -> str:
+    return (
+        "The {dist} does not fit cause {cause} (the {test} test of its "
+        "Cox-Snell residuals fails) and none of the alternatives tried "
+        "fits better by AIC. Look at d.plot('probability_plot') for where "
+        "its points leave the line. To describe the incidences without a "
+        "distribution, use the Aalen-Johansen estimate, "
+        "CompetingRisks.fit(x, e); with covariates, the cause-specific Cox "
+        "model, CompetingRisksProportionalHazards.fit(x, Z, e), leaves each "
+        "cause's baseline hazard unspecified.".format(
+            dist=_dist_of(ctx, row["_cause"]),
+            cause=_cause_name(row["_cause"]),
+            test=row["test"].split(" (")[0],
+        )
+    )
+
+
+def _pcr_incidence(row: dict, ctx: Context) -> str:
+    return (
+        "The model's cumulative incidence of cause {cause} departs from "
+        "the Aalen-Johansen estimate (by {d} at time {t}; see "
+        "d.plot('incidence')). A cause's incidence depends on every "
+        "cause's hazard, so first fix the causes whose goodness_of_fit "
+        "rows fail; if none does, the causes' distributions are each "
+        "plausible but together miss the incidence, and the Aalen-Johansen "
+        "estimate, CompetingRisks.fit(x, e), describes it without "
+        "them.".format(
+            cause=_cause_name(row["_cause"]),
+            d=_fmt(row["statistic"]),
+            t=_fmt(row["_time"]),
+        )
+    )
+
+
+def _pcr_notes(ctx: Context) -> list[str]:
+    uni = _univariate()
+    notes = [
+        _INDEPENDENCE_NOTE,
+        "Goodness of fit is the univariate distribution checks (see "
+        "the univariate distributions' diagnostics) on each cause's own "
+        "fit, with the other causes' failures censored: "
+        "model.models[cause]. They test the cause's Cox-Snell residuals, "
+        "H_k(x) - H_k(tl), its cumulative hazard over each unit's time at "
+        "risk, against the unit exponential, through u = 1 - exp(-r), "
+        "which is then uniform. With several causes there are more rows, "
+        "and so more that fail by chance at alpha.",
+    ]
+    per_cause = []
+    for cause, sub in _pcr_causes(ctx):
+        per_cause.append(
+            (cause, [n for n in uni._notes(sub) + sub.notes if n])
+        )
+    every = [n for n in per_cause[0][1]] if per_cause else []
+    shared = [n for n in every if all(n in ns for _, ns in per_cause)]
+    notes.extend(n for n in shared if n not in notes)
+    for cause, ns in per_cause:
+        notes.extend(
+            f"Cause {_cause_name(cause)}: {n}" for n in ns if n not in shared
+        )
+    boot = _incidence(ctx)
+    if boot is None:
+        notes.append(
+            "The incidence check is not computed: the data have delayed "
+            "entry (tl), and the Aalen-Johansen estimate it compares with "
+            "takes no entry times yet. The goodness-of-fit rows allow for "
+            "entry (each residual is the cumulative hazard from entry)."
+        )
+    else:
+        notes.append(
+            "Incidence: the largest gap between each cause's parametric "
+            "cumulative incidence and the Aalen-Johansen estimate "
+            "(CompetingRisks.fit of the same data), with a p-value from {} "
+            "parametric bootstrap refits: each resample draws every unit's "
+            "latent time from each cause's model, keeps the earliest, "
+            "censors it as the data were and refits every cause. "
+            "diagnose(n_boot=..., random_state=...) sets their number and "
+            "seed.".format(boot["n_boot"])
+        )
+    return notes
+
+
+def _is_parametric_cr(model: Any) -> bool:
+    return isinstance(model, _pcr_class())
+
+
+#: The parametric competing-risks family: each cause's distribution (the
+#: univariate checks, by cause) and the incidences against Aalen-Johansen.
+PARAMETRIC = register(
+    Family(
+        name="Competing risks (parametric)",
+        issue=874,
+        applies=_is_parametric_cr,
+        validate=_validate_parametric,
+        covariates=lambda model: [],
+        columns=("cause", "alternative"),
+        checks=(
+            Check(
+                "goodness_of_fit",
+                "Each cause's Cox-Snell residuals, its cumulative hazard "
+                "over each unit's time at risk with the other causes "
+                "censored, are a censored sample of the unit exponential.",
+                rows=_by_cause_rows("goodness_of_fit"),
+                panels=_by_cause_panels("goodness_of_fit"),
+            ),
+            Check(
+                "probability_plot",
+                "Each cause's failures fall on the fitted line of its "
+                "probability plot.",
+                panels=_by_cause_panels("probability_plot"),
+            ),
+            Check(
+                "alternatives",
+                "No other model the advice can name fits a cause's data "
+                "substantially better by AIC.",
+                rows=_by_cause_rows("alternatives"),
+            ),
+            Check(
+                "incidence",
+                "Each cause's parametric cumulative incidence follows the "
+                "Aalen-Johansen estimate of the same data.",
+                rows=_incidence_rows,
+                panels=_incidence_panels,
+            ),
+        ),
+        advice=(
+            AdviceRule(
+                "alternatives",
+                _pcr_distribution,
+                ("ParametricCompetingRisks.fit(dist=)", "fit_best"),
+                when=lambda row, ctx: row["_kind"] == "distribution",
+                on=("warn",),
+            ),
+            AdviceRule(
+                "alternatives",
+                _pcr_option,
+                (
+                    "ParametricCompetingRisks.from_fitted",
+                    "MixtureModel.fit(m=)",
+                ),
+                when=lambda row, ctx: row["_kind"] == "mixture",
+                on=("warn",),
+            ),
+            *(
+                AdviceRule(
+                    "alternatives",
+                    _pcr_option,
+                    ("ParametricCompetingRisks.from_fitted",),
+                    when=_kind_is(kind),
+                    on=("warn",),
+                )
+                for kind in _OPTION
+            ),
+            AdviceRule(
+                "goodness_of_fit",
+                _pcr_gof,
+                (
+                    "CompetingRisks.fit",
+                    "CompetingRisksProportionalHazards.fit",
+                ),
+                when=_pcr_unexplained,
+            ),
+            AdviceRule(
+                "incidence",
+                _pcr_incidence,
+                ("CompetingRisks.fit",),
+            ),
+        ),
+        notes=_pcr_notes,
     )
 )

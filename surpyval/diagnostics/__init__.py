@@ -40,7 +40,7 @@ PH and AFT (:mod:`.ph_aft`, #869), proportional odds and additive hazards
 (:mod:`.recurrent`, #873), competing risks (:mod:`.competing_risks`,
 #874) and univariate distributions (:mod:`.univariate`, #875), with the
 calibration check (:mod:`.calibration`, #881) in the Cox and PH/AFT
-families. A model with none (parametric competing risks, Buckley-James)
+families. A model with none (Buckley-James, for one)
 refuses with ``NotImplementedError``, saying what to check it with
 meanwhile (:data:`.registry.PENDING`); so does a model with neither.
 
