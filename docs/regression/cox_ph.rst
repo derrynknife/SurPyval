@@ -27,7 +27,8 @@ Fitted model
 
 The object returned by :meth:`CoxPH.fit <surpyval.univariate.regression.proportional_hazards.cox_ph.CoxPH_.fit>`
 and the other fit methods. It exposes the usual survival functions at a
-covariate vector (``sf``, ``ff``, ``df``, ``hf``, ``Hf``) and, for a
+covariate vector (``sf``, ``ff``, ``df``, ``hf``, ``Hf``), the confidence
+bounds on a predicted curve (``cb``, R's ``survfit(fit, newdata)``) and, for a
 time-varying covariate, the survival along a covariate path: ``sf_tvc`` /
 ``Hf_tvc`` take a piecewise-constant
 :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule` (or

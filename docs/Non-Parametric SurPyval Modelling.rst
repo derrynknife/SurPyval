@@ -1357,6 +1357,91 @@ values with your significance level. Here, three groups of which only the third 
 A and B are not told apart; C differs from each. ``pairwise_logrank`` takes every argument of
 ``logrank`` (``c``, ``n``, ``weighting``, ``strata``, ``tl``, ``t0``).
 
+Interval-censored groups: ``interval_logrank``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When failures are found at inspections or clinic visits, each failure time is only known to lie
+between the last visit where all was well and the first where it was not. ``logrank`` needs exact
+or right censored times, so it refuses such data; ``interval_logrank`` takes any mix of exact,
+right, left and interval-censored rows, in the usual forms (``x`` and ``c``, a two-column ``x``,
+or ``xl`` and ``xr``).
+
+In plain words, it works in three steps:
+
+1. Pool every group and estimate one survival curve, the Turnbull estimate.
+2. Give each unit a score from that curve: high if it failed early, low if it lasted, averaged
+   over the interval it is known to have failed in. A unit still running at its last visit gets a
+   low score.
+3. If the groups truly share one survival curve, which group a unit is in tells nothing about its
+   score. So compare each group's total score with how much it would vary if the labels were
+   shuffled at random.
+
+The scores come in three flavours (``scores``): ``'log-rank'`` (Sun's, the default; on exact and
+right censored data each group's score total is exactly the log-rank test's observed minus
+expected events), ``'finkelstein'`` (Finkelstein's log-rank scores, from a proportional hazards
+model of the grouped data) and ``'wilcoxon'`` (the Wilcoxon-type scores, which weigh early
+differences more). The p-value is from the chi-squared distribution by default, or from random
+relabellings of the units with ``method='permutation'`` (seeded with ``random_state``), better for
+small samples.
+
+The breast cosmesis study (Finkelstein and Wolfe, 1985) followed 94 women after radiotherapy for
+early breast cancer, alone or with chemotherapy, and recorded at each visit whether breast
+retraction had appeared. Here are 30 of each group:
+
+.. jupyter-execute::
+
+    from surpyval import interval_logrank
+
+    inf = np.inf
+    xl = [45, 6, 0, 46, 46, 7, 17, 7, 37, 0, 4, 15, 11, 22, 46, 46, 25, 46, 26, 46,
+          27, 36, 46, 36, 37, 40, 17, 46, 11, 38,
+          8, 0, 24, 17, 17, 24, 16, 13, 11, 16, 18, 17, 32, 23, 44, 14, 0, 5, 12, 11,
+          33, 31, 13, 19, 34, 13, 16, 35, 15, 11]
+    xr = [inf, 10, 7, inf, inf, 16, inf, 14, 44, 8, 11, inf, 15, inf, inf, inf, 37, inf, 40, inf,
+          34, 44, inf, 48, inf, inf, 25, inf, 18, inf,
+          12, 22, 31, 27, 23, 30, 24, inf, 13, 20, 25, 26, inf, inf, 48, 17, 5, 8, 20, inf,
+          40, inf, 39, 32, inf, inf, 24, inf, 22, 17]
+    treatment = ['radiotherapy'] * 30 + ['with chemotherapy'] * 30
+    print(interval_logrank(xl=xl, xr=xr, Z=treatment))
+    res = interval_logrank(xl=xl, xr=xr, Z=treatment, scores='wilcoxon',
+                           method='permutation', random_state=1)
+    print('Wilcoxon, permutation p-value: %.3g' % res.p_value)
+    print(res.U)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _r = interval_logrank(xl=xl, xr=xr, Z=treatment)
+    assert _r.p_value < 0.05 and _r.U['with chemotherapy'] > 0, _r
+
+``U`` holds each group's score total: positive means earlier failures than the pooled curve
+suggests, so retraction came sooner with chemotherapy.
+
+With :math:`S` the pooled Turnbull estimate and a unit known to fail in :math:`(a_i, b_i]`, the
+scores are
+
+.. math::
+
+    c_i = \frac{\psi(S(a_i)) - \psi(S(b_i))}{S(a_i) - S(b_i)},
+
+with :math:`\psi(s) = s \log s` for Finkelstein's scores and :math:`\psi(s) = s^2 - s` for the
+Wilcoxon's (so :math:`c_i = S(a_i) + S(b_i) - 1`); Sun's use :math:`\psi = S \log \tilde S`, with
+:math:`\tilde S` the exponential of minus the cumulative hazard of the estimate. With :math:`N`
+units, :math:`d_i = c_i - \bar c` and :math:`\bar d_g` the mean of :math:`d_i` over the
+:math:`N_g` units of group :math:`g`, the statistic is
+
+.. math::
+
+    \chi^2 = \frac{N - 1}{\sum_i d_i^2} \sum_g N_g \bar d_g^2,
+
+on :math:`k - 1` degrees of freedom (Fay and Shaw, 2010). It is R's
+``interval::ictest(L, R, group, scores = 'logrank1' | 'logrank2' | 'wmw', method = 'pclt')``, and
+agrees with it to rounding when both estimates are converged tightly (checked in the test suite
+on the full 94 women and on simulated data with every kind of censoring). Truncated data (``tl``, ``tr``) are refused: delayed entry
+makes the units not exchangeable, which the test relies on; use ``logrank`` with ``tl`` for exact
+and right censored data with delayed entry.
+
 Plotting groups with the number at risk
 ---------------------------------------
 

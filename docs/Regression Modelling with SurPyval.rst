@@ -613,6 +613,64 @@ evaluation times inside the observed range: the baseline is only estimated
 there, and a Cox model's ``hf`` returns the size of the baseline *step* at the
 latest observed time, not a smooth hazard rate.
 
+Confidence bounds on a predicted curve
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A predicted survival curve is an estimate, and ``model.cb(x, Z)`` gives its
+pointwise confidence bounds, as R's ``survfit(fit, newdata)`` does. The curve
+is uncertain for two reasons. The baseline is estimated from the failures in
+the data: each step is the deaths at that time over the (risk-weighted)
+number still at risk, so a step taken when few are left is shaky. And the
+coefficients that move the baseline to the covariates ``Z`` are estimates
+too: the further ``Z`` is from the typical unit in the data, the more their
+error matters. The bounds add the two. With few failures, or covariates far
+from the data's, the bounds are wide, and they should be.
+
+The standard error of the predicted cumulative hazard is the Tsiatis (1981)
+and Link (1984) form, the ``std.err`` of R's ``survfit.coxph``:
+
+.. math::
+
+    \widehat{\mathrm{Var}}\,\hat H(t \mid Z) = e^{2\beta'(Z - c)}
+    \Big[ \sum_{s \le t} \frac{dN(s)}{S_0(s)^2} + q(t)' V q(t) \Big],
+    \qquad q(t) = \sum_{s \le t} \big(Z - \bar Z(s)\big)\, d\hat H_0(s),
+
+where :math:`S_0(s)` sums :math:`e^{\beta'(Z_i - c)}` over the units at risk
+at event time :math:`s`, :math:`\bar Z(s)` is their risk-weighted mean
+covariate, :math:`dN(s)` the deaths at :math:`s` and :math:`V` the
+coefficients' covariance. After an Efron fit (the default), each time's tied
+deaths are spread over Efron's shrinking risk sets, as the baseline is; with
+case weights ``w`` every sum is weighted and :math:`V` is the robust
+covariance; for a stratified model the sums run over the stratum's units.
+
+``bound_type`` chooses the scale of the normal interval, R's ``conf.type``:
+``'log'`` (the default, as R's: :math:`S e^{\pm z\,\mathrm{se}}`, the upper
+bound at most 1), ``'log-log'`` (:math:`H e^{\pm z\,\mathrm{se}/H}`, which
+keeps both bounds inside (0, 1)) or ``'plain'`` (:math:`S \pm z S\,
+\mathrm{se}`, cut to [0, 1]). ``on='ff'`` and ``on='Hf'`` bound the failure
+probability and the cumulative hazard. The bounds agree with R's to
+rounding (see ``scripts/reference/reference_r_cox_curve.R``):
+
+.. jupyter-execute::
+
+    t_q = np.array([0.9, 1.0, 1.1])
+    print('sf      :', model.sf(t_q, Z_mean).round(3))
+    print('95% cb  :', model.cb(t_q, Z_mean).round(3).tolist())
+    print('log-log :', model.cb(t_q, Z_mean, bound_type='log-log').round(3).tolist())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _b = model.cb(t_q, Z_mean)
+    _s = model.sf(t_q, Z_mean)
+    assert np.all((_b[:, 0] <= _s) & (_s <= _b[:, 1]))
+
+With 11 failures among 34 tires and four coefficients, the bounds are wide;
+the log bound's upper end reaches 1, the log-log bound's stays below it.
+``plot_partial_effects(..., plot_bounds=True)`` draws these bounds around
+each curve.
+
 Tied event times
 ~~~~~~~~~~~~~~~~
 
@@ -4767,6 +4825,67 @@ ignores the covariates entirely. The Cox model should score lower:
 
     assert ibs < ibs_km
 
+How sure are the scores, and is one model really better?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A Brier score or an AUC from a few hundred subjects is itself an estimate:
+another test set would give a different number. Before saying that one model
+predicts better than another, ask whether the gap is larger than that noise.
+:func:`~surpyval.metrics.validation.score_predictions` answers both questions.
+It gives each score with a standard error and a confidence interval, and, when
+two or more models are scored on the same subjects, the difference between
+each pair with its own interval and a p-value. Because both models are scored
+on the same people, the comparison is *paired*: much of the noise is shared and
+cancels, so a difference can be clear even when the two models' intervals
+overlap.
+
+.. jupyter-execute::
+
+    from surpyval.metrics import score_predictions
+
+    result = score_predictions(
+        x_te, c_te, {"marginal KM": S_km, "Cox": S}, times
+    )
+    result.scores.round(4)
+
+.. jupyter-execute::
+
+    result.comparisons.round(4)
+
+Each row of ``comparisons`` is "model minus reference": a negative Brier or
+IBS difference and a positive AUC difference favour the model. Here the Cox
+model's integrated Brier score is clearly lower than the Kaplan-Meier curve's,
+and the AUC of the curve, which ranks nobody, is 0.5.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    ibs_row = result.comparisons.query("metric == 'ibs'").iloc[0]
+    assert ibs_row.difference < 0 and ibs_row.p_value < 0.001
+
+How the standard errors are worked out: each score is an average over the
+subjects of an IPCW term, so it moves by a known amount when one subject is
+added or removed, its *influence function* :math:`\mathrm{IF}_i`. The censoring
+weights :math:`1/\hat G` are estimated too, and the influence function
+includes how each subject moves :math:`\hat G` (the Kaplan-Meier of the
+censoring times, through its Nelson-Aalen expansion). Then
+
+.. math::
+    \mathrm{se} = \frac{\mathrm{sd}(\mathrm{IF})}{\sqrt n}, \qquad
+    \mathrm{se}(A - B) = \frac{\mathrm{sd}(\mathrm{IF}^A - \mathrm{IF}^B)}{\sqrt n},
+
+the interval is :math:`\text{estimate} \pm z_{1-\alpha/2}\,\mathrm{se}`
+(clipped to :math:`[0, 1]`), and the test of no difference is the Wald test
+:math:`2\Phi(-|A - B| / \mathrm{se}(A - B))`. For the AUC this is Blanche,
+Dartigues and Jacqmin-Gadda's (2013) influence function, as R's
+``timeROC(iid = TRUE)``; for the Brier score, Gerds and Schumacher's, as
+``riskRegression::Score(se.fit = TRUE)``; the IBS combines the Brier scores'
+with the same trapezoid weights as its estimate. The numbers agree with
+``Score`` to rounding (with and without tied times) and with ``timeROC`` on
+data without tied event times. The censoring distribution is estimated from
+the scored data, as ``Score`` does; there is no ``x_train`` here.
+
 Concordance
 ~~~~~~~~~~~
 
@@ -4812,6 +4931,24 @@ predictor for Buckley-James). The pairs are counted in
 :math:`O(n \log n)`, so 50,000 subjects take a fraction of a second.
 Concordance only measures ranking; pair it with the Brier score, which also
 checks that the predicted probabilities are right.
+
+A C from a test set of a few dozen subjects is itself uncertain.
+``concordance_estimate`` gives it a standard error and a confidence interval
+(R's ``survival::concordance`` variance), and ``weighting="uno"`` with a
+horizon ``tau`` gives Uno's C, which weights each pair against the censoring
+so that the answer does not depend on how long follow-up was. To ask whether
+one model ranks better than another on the same subjects use
+``compare_concordance``, which accounts for the two C's sharing their
+subjects:
+
+.. jupyter-execute::
+
+    from surpyval.metrics import compare_concordance
+
+    print(cox.concordance_estimate(x_te, c_te, Z_te))
+    print(cox.concordance_estimate(x_te, c_te, Z_te, weighting="uno",
+                                   tau=float(np.median(x_te))))
+    compare_concordance(x_te, c_te, Z_te @ cox.beta, Z_te[:, 0] * cox.beta[0])
 
 Survival trees and random survival forests (beta)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
