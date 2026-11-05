@@ -15,6 +15,17 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-05
 
+### 0.27 WP2b: uncertainty of a fixed probability (5 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A fitted `Bernoulli`, `FixedEventProbability` or `Binomial` has `covariance()` = `p_hat (1 - p_hat) / N` from its event counts (the inverse observed information), and `standard_errors()`. The Binomial's is 2 x 2 over `[n, p]` with a zero row and column for the known `n`, as a held parameter has, rather than 1 x 1. Names come from the base class's `covariance_names` (no per-model attribute). | proposed | Consistency: `covariance()` follows `parameter_names` on every `Parametric`. | done |
+| At `k = 0` or `k = N` the variance is `nan`, not 0, and is not a refusal: `covariance()` returns `[[nan]]`, `standard_errors()` `nan`; the docs point to `param_cb("p")`. | proposed | 0 would tell propagation code `p` is known after, say, no failures in 20 demands; the package's Wald bound is already `nan` there, and `standard_errors_of` documents `nan` for a parameter on a boundary. A refusal would need its own message in the base class, which this change does not touch. | done |
+| No new `p_cb`: the Jeffreys interval is `param_cb("p", method="jeffreys")`, beside `"exact"`, `"wald"` and `"lr"`. The default stays `"exact"` (Clopper-Pearson). | proposed | `param_cb` already routes these models to bounds from the counts; one entry point. Exact holds its level at every `p` (study: 0.968 to 0.995 at 95%); Jeffreys fell to 0.883 and 0.904 in two cells, and changing the default would move published numbers. | done |
+| Jeffreys at `k = 0` / `k = N`: lower 0 / upper 1, with the other bound still at `alpha / 2` (two-sided), as Clopper-Pearson does. R's `binom::binom.confint(methods = "bayes")` moves the whole `alpha` to the open tail there. | proposed | Same convention as the exact interval in the same function; Brown, Cai and DasGupta (2001). | done |
+| No `p_random` / posterior draw method on the fitted model. Draws of `p` come from `Bernoulli.fit_bayes(x, priors={"p": Beta.from_params([0.5, 0.5])})`, the conjugate Jeffreys posterior. | proposed | The Bayesian module already gives it (and `draw_models`); `Parametric` has no parameter-draw convention to follow. | done |
+| These fits take no `w` (they already raise `WeightedRefusal`); counts go in `n`, so no robust variance is needed. | proposed | No silent wrong variance. | done |
+
 ### Weighted model dicts: each matrix under its own name
 
 | Decision | By | Reason | Status |
