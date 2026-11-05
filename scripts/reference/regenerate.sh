@@ -48,4 +48,7 @@ Rscript scripts/reference/reference_r_fixed_probability.R
 # Prints the survreg references typed into
 # surpyval/tests/univariate/regression/test_general_linear.py
 Rscript scripts/reference/reference_r_general_linear.R
+# Prints the flexsurv references typed into
+# surpyval/tests/univariate/parametric/test_royston_parmar_with_params.py
+Rscript scripts/reference/reference_r_royston_parmar_given.R
 "${1:-python}" scripts/reference/reference_python.py

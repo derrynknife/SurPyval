@@ -416,6 +416,17 @@ Unreleased
   ``survreg``'s predicted quantiles to 1e-9. The semi-parametric
   ``ProportionalOdds`` and ``AdditiveHazards`` models gain
   ``random(size, Z)``.
+- ``RoystonParmarModel.with_params(params)``: the same spline (knots,
+  scale, unit) at other coefficients, given in the order of the new
+  ``covariance_names`` (``gamma_0``, ``gamma_1``, ...), so a draw from
+  ``covariance()`` becomes a model and the coefficients' uncertainty can be
+  propagated. The model returned has no data or covariance: ``cb``,
+  ``standard_errors``, ``neg_ll`` and the information criteria refuse on
+  it. Coefficients whose spline falls somewhere in log time (a decreasing
+  cumulative hazard) are refused with the time where it does. Checked
+  against flexsurv's ``psurvspline`` family at given coefficients on all
+  three scales to 1e-12; the 2.5% and 97.5% points of ``sf`` over 4000
+  draws match the Wald band of ``cb`` to 0.0013.
 
 **Changed.**
 
