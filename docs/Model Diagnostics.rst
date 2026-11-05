@@ -625,8 +625,9 @@ one parameter where it is not linear
 (``fit_from_df(..., formulas={"beta": "np.log(load) + ..."})``), and a
 look at an influential row. In a simulation with n = 200 and a quarter of
 the units censored, the quadratic-term test rejects a true model at close
-to its 5% level on both parameters, and finds a shape that bends with the
-load, or log-normal data fitted with a Weibull, nearly every time
+to its 5% level (5.3% on the scale and 4.4% on the shape, in 1000
+replicates), and found a shape that bends with the load, and the AIC
+screen log-normal data fitted with a Weibull, in all of 200
 (``tests/calibration/test_size_distributional_diagnostics.py``).
 
 Every kind of censoring, delayed entry and right truncation, counts,
