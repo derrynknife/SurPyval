@@ -220,6 +220,23 @@ as R's ``coxph(Surv(start, stop, event) ~ z, weights = w, robust = TRUE,
 id = id)``, so splitting a subject's follow-up into episodes on which
 nothing changes gives the same fit and the same standard errors.
 
+Penalised fits with weights
+---------------------------
+
+``CoxPH.fit_penalised``, ``CoxPH.fit_tvc_penalised`` and the parametric
+families' ``fit_penalised`` (``WeibullPH``, ``WeibullAFT``, ``WeibullPO``
+and the others) take ``w``. A penalised fit divides the log-likelihood by
+the number of units before adding the penalty; with weights that number is
+the weighted one, :math:`N_w = \sum n w`, and the covariates are
+standardised with the weighted mean and standard deviation (divisor
+:math:`N_w`). Both scale with the weights, so the fit depends only on their
+proportions, and glmnet's Cox fit with ``weights`` is the same objective
+(checked to 1e-6). Penalised estimates have no standard errors, weighted or
+not, and the information criteria stay refused. The details are in
+:doc:`Regression Modelling with SurPyval` (Penalised regression). The other
+models' penalised fits (competing risks, recurrent events, Royston-Parmar,
+distributional) refuse ``w``.
+
 What a weighted fit will not do
 -------------------------------
 

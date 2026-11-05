@@ -619,9 +619,11 @@ class SemiParametricRegressionModel(
         if self.firth is not None:
             out += "\nPenalty             : " + self.firth.line()
         if self.weighted:
+            # A penalised fit has no covariance, robust or not
             out += (
                 "\nWeights             : effective sample size "
-                f"{self.effective_n:.4g}; robust covariance"
+                f"{self.effective_n:.4g}"
+                + ("; robust covariance" if self.penalty is None else "")
             )
         kind = "Wald"
         alpha = 0.05

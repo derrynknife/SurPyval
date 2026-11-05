@@ -4496,6 +4496,49 @@ take every kind of censoring and truncation (left, right or both).
     assert stratified.is_stratified
     assert np.sum(stratified.params == 0) == 2, stratified.params
 
+**Weights.** ``CoxPH.fit_penalised``, ``CoxPH.fit_tvc_penalised`` and the
+parametric families' ``fit_penalised`` take sampling weights ``w``, as
+their ``fit`` does (see :doc:`Weighted Data`). In plain words: each row
+counts ``w`` times as much in the likelihood, in the number of units the
+penalty is measured against and in the covariates' standard deviations, so
+only the weights' *proportions* matter. ``w`` and ``10 * w`` give the same
+fit, and whole-number weights give the fit of repeated rows (for a Cox fit,
+under Breslow's ties; Efron's treat a weight as one unit, as R does). The
+objective is
+
+.. math::
+    -\frac{1}{N_w} \ell_w(\theta) + \sum_j \lambda_j \left(
+    \frac{1 - a}{2} b_j^2 + a |b_j| \right), \qquad N_w = \sum_i n_i w_i,
+
+with :math:`\ell_w` the weighted log-likelihood (the weighted partial
+likelihood of ``CoxPH.fit(w=)`` for Cox) and the covariates standardised
+by their :math:`n w`-weighted standard deviations with divisor
+:math:`N_w`: glmnet's ``weights``, which the Cox fit matches to 1e-6
+(ridge, lasso and elastic net, Breslow and Efron). For start-stop data
+(``fit_tvc_penalised``) :math:`N_w` sums over the subjects, each weighted
+by its rows' weights averaged over its follow-up. A weighted penalised fit
+has no standard errors, robust ones included, and its ``aic`` and ``bic``
+are refused, as for every weighted fit; a ``penalty_path`` of weighted fits
+has the coefficients but cannot choose the penalty by them.
+
+.. jupyter-execute::
+
+    w = 0.5 + (np.arange(len(rossi)) % 5) / 2   # survey weights, say
+    weighted = CoxPH.fit_penalised(rossi['week'], rossi[cols],
+                                   c=rossi['censored'], w=w,
+                                   penalizer=0.05, l1_ratio=0.5)
+    weighted.params.round(4)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    rescaled = CoxPH.fit_penalised(rossi['week'], rossi[cols],
+                                   c=rossi['censored'], w=10 * w,
+                                   penalizer=0.05, l1_ratio=0.5)
+    assert np.allclose(rescaled.params, weighted.params, atol=1e-10)
+    assert weighted.weighted and weighted.maximum == 'verified'
+
 **More models.** The same objective, standardisation and refusals apply to
 
 - ``RoystonParmarPH.fit_penalised`` and ``RoystonParmarPO.fit_penalised``

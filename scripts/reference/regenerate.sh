@@ -28,4 +28,7 @@ Rscript scripts/reference/reference_r_pseudo.R
 Rscript scripts/reference/reference_r_cox_curve.R
 Rscript scripts/reference/reference_r_reda.R
 Rscript scripts/reference/reference_r_likelihood_contour.R
+# Prints the weighted penalised Cox references typed into
+# surpyval/tests/univariate/regression/test_penalised_weighted.py
+Rscript scripts/reference/reference_r_weighted_penalised.R surpyval/datasets
 "${1:-python}" scripts/reference/reference_python.py
