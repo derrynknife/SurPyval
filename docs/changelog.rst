@@ -16,6 +16,31 @@ Unreleased
   Poisson variance. Late entry and gapped observation are taken as the MCF
   takes them. Checked against R's ``reda::mcfDiff`` and
   ``reda::mcfDiff.test`` on two seeded data sets (agreement about 1e-14).
+- ``interval_logrank``: log-rank and Wilcoxon-type tests of groups of
+  interval-censored data (any mix of exact, right, left and interval-censored
+  rows, as ``x``/``c``, a two-column ``x`` or ``xl``/``xr``). Each unit is
+  scored from the Turnbull estimate of the pooled data, with Sun's
+  log-rank scores (the default), Finkelstein's, or the Wilcoxon-type
+  scores, and the score sums are compared by their permutation
+  distribution: a chi-squared p-value, or a Monte Carlo permutation one
+  (``method="permutation"``, seeded by ``random_state``). Returns an
+  ``IntervalLogRankResult`` with ``to_dict()``. Matches R's
+  ``interval::ictest(..., method = "pclt")`` to 1e-8 on the breast cosmesis
+  data and on simulated three-group data. Truncated data are refused.
+  ``logrank`` given left or interval-censored data, or a two-column ``x``,
+  now says to use it; its results are unchanged.
+- ``Parametric.likelihood_contour(alpha_ci, n_points)``: the joint
+  likelihood-ratio confidence region of a fit's two parameters, the
+  contour where the log-likelihood is half the chi-squared (two degrees of
+  freedom) critical value below its maximum, found by root finding along
+  rays from the estimate, with each parameter's exact extremes over the
+  region (``bounds``). It returns a ``LikelihoodContour`` with
+  ``to_dict()``. ``surpyval.plot_likelihood_contour`` draws one or more
+  fits' contours at one or several levels, with the estimates marked, to
+  compare two samples. Models with other than two fitted parameters,
+  offset, limited-failure and zero-inflated models, and weighted fits are
+  refused with a message saying what to use. Checked against WeibullR's
+  ``MLEcontour`` and the profile likelihood solved in base R.
 - ``CrowAMSAA.projection(..., bias_corrected=True)``: ``False`` uses the
   plain maximum-likelihood shapes in the demonstrated intensity and in the
   rate of new BD modes, as the worked example of MIL-HDBK-189C (section
