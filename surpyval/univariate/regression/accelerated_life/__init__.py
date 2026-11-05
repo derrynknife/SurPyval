@@ -3,6 +3,7 @@ from .dual_exponential import DualExponential
 from .dual_power import DualPower
 from .exponential import ExponentialLifeModel, InverseExponential
 from .eyring import Eyring, InverseEyring
+from .general_linear import GeneralLinear
 from .general_log_linear import GeneralLogLinear
 from .lifemodel import LifeModel
 from .linear import Linear
@@ -17,9 +18,9 @@ from .power_exponential import PowerExponential
 # ``ExponentialLifeModel`` has ``name == "Exponential"``, which also collides
 # with the ``Exponential`` distribution in the top-level namespace, so an
 # explicit map is required.
-# ``GeneralLogLinear``'s parameters depend on the number of stress columns:
-# it is stored unresolved, and a dict rebuilds the model for its columns
-# with ``resolve`` (its ``"n_stresses"``).
+# ``GeneralLogLinear``'s and ``GeneralLinear``'s parameters depend on the
+# number of stress columns: each is stored unresolved, and a dict rebuilds
+# the model for its columns with ``resolve`` (its ``"n_stresses"``).
 LIFE_MODELS = {
     model.name: model
     for model in (
@@ -34,6 +35,7 @@ LIFE_MODELS = {
         DualPower,
         PowerExponential,
         GeneralLogLinear,
+        GeneralLinear,
     )
 }
 
@@ -43,6 +45,7 @@ __all__ = [
     "DualPower",
     "ExponentialLifeModel",
     "Eyring",
+    "GeneralLinear",
     "GeneralLogLinear",
     "InverseExponential",
     "InverseEyring",

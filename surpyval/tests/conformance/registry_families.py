@@ -915,6 +915,22 @@ def _accelerated_life_family():
             },
         )
     )
+    # Its linear twin, mu = a + b'Z, on a location parameter: the
+    # ordinary regression data serve, as for GeneralLogLinear.
+    out.append(
+        regression(
+            "NormalAL[GeneralLinear]",
+            sp.AcceleratedLife(sp.Normal, sp.life_models.GeneralLinear),
+            fitters=("surpyval.life_models.GeneralLinear",),
+            slow=REFIT_PROPERTIES,
+            coefficients=None,
+            exclude={
+                "aliasing": "model.aliased are positions in phi_params, "
+                "after the constant a, not columns of Z; the aliasing is "
+                "tests/univariate/regression/test_general_linear.py's"
+            },
+        )
+    )
     return out
 
 

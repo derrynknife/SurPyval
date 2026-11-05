@@ -15,6 +15,13 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-05
 
+### 0.27 WP2e: GeneralLinear life model (5 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `GeneralLinear` is `L(Z) = a + b'Z`: a positive coefficient means a later (longer) life, the sign of every life model (`Linear`'s `a + bV`, `GeneralLogLinear`'s `c e^{b'Z}`), not the AFT/PH sign (positive = shorter). Its signs are then R's `survreg(..., dist = "gaussian")` signs, with no flip. | proposed | Consistency with the life models it extends: one column of `GeneralLinear` is `Linear` exactly. The one-sign-convention rule (2026-11-03) is defined by the existing models, and accelerated life models write the life itself. The alternative, `a - b'Z`, would make `GeneralLinear` the only life model with a minus sign. | proposed |
+| Parameters mirror `GeneralLogLinear`: the constant `a` (unbounded, as `Linear`'s) then `coef_0`, `coef_1`, ... (or the column names), stored unresolved and rebuilt from `n_stresses`; start from least squares through the per-level lives. It is not added to the accelerated-life diagnostics' candidate list, which compares life models of a time scale. | proposed | Same shape, same serialisation, nothing new to learn. | proposed |
+
 ### Weighted model dicts: each matrix under its own name
 
 | Decision | By | Reason | Status |
