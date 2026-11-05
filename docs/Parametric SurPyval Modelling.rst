@@ -2806,12 +2806,11 @@ What a cumulative hazard gives you, and what it does not:
   ``var``, integrated numerically from the survival function
   (:math:`E[X^m] = \int m x^{m-1} R(x)\,dx` on a positive support); confidence
   bounds (``cb`` and ``param_cb``, Wald or likelihood ratio); ``neg_ll``,
-  ``aic`` and ``bic``; and ``plot``, on linear axes.
-- **Not available:** ``qf``, ``random`` and ``entropy``, since a quantile
-  function does not follow from :math:`H(x)` without a numerical inversion
-  SurPyval does not attempt. ``how='MPP'`` needs a linearising transform that
-  a custom distribution does not have, so it is refused with a
-  ``ValueError``.
+  ``aic`` and ``bic``; ``plot``, on linear axes; and ``qf``, by numerically
+  inverting :math:`H(x)`, so ``random`` works too.
+- **Not available:** ``entropy``, which has no general form from
+  :math:`H(x)`. ``how='MPP'`` needs a linearising transform that a custom
+  distribution does not have, so it is refused with a ``ValueError``.
 
 Credit for this idea must be given to the creators of the *lifelines* package. *lifelines* is capable
 of receiving a cumulative hazard function that can then be used as a distribution to fit parameters.
