@@ -31,6 +31,7 @@ FAMILY_MODULES: tuple[str, ...] = (
     "surpyval.diagnostics.competing_risks",
     "surpyval.diagnostics.univariate",
     "surpyval.diagnostics.frailty",
+    "surpyval.diagnostics.bayes",
 )
 
 
@@ -299,13 +300,6 @@ PENDING: tuple[Pending, ...] = (
         "model.constant_effects_test(), and look at the cumulative "
         "coefficients with model.plot(); for a goodness-of-fit report, "
         "fit AdditiveHazards (the Lin-Ying model), which has diagnose().",
-    ),
-    Pending(
-        "Bayesian fits",
-        _instance_of("surpyval.bayes.model.BayesianParametric"),
-        "Check the distribution with the maximum-likelihood fit of the "
-        "same data, model.mle.diagnose(), and the prior with "
-        "model.prior_check().",
     ),
     Pending(
         "distributional regressions",

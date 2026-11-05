@@ -351,11 +351,6 @@ REG = "surpyval.univariate.regression."
             r"constant_effects_test\(\).*AdditiveHazards",
         ),
         (
-            "surpyval.bayes.model.BayesianParametric",
-            {},
-            r"model\.mle\.diagnose\(\).*prior_check\(\)",
-        ),
-        (
             REG + "distributional.model.DistributionalRegressionModel",
             {"kind": "Distributional"},
             r"likelihood_ratio_test\(parameter=",
@@ -392,15 +387,8 @@ def test_real_aalen_and_bayesian_fits_refuse_saying_what_to_use():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         aalen = sp.AalenAdditive.fit(x, z[:, None])
-        bayes = sp.Weibull.fit_bayes(
-            x, priors={"beta": sp.prior.around(2, between=(1, 4))}
-        )
     with pytest.raises(NotImplementedError, match="constant_effects_test"):
         aalen.diagnose()
-    with pytest.raises(NotImplementedError, match=r"model\.mle\.diagnose\(\)"):
-        bayes.diagnose()
-    # and what they point to works
-    assert isinstance(bayes.mle.diagnose(n_boot=19, random_state=0), Diagnosis)
 
 
 def test_a_real_fit_of_a_pending_family_refuses(rossi):
