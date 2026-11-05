@@ -33,6 +33,7 @@ EXPECTED_SOURCES = {
     "r_pseudo",
     "r_cox_curve",
     "r_reda",
+    "r_rmst",
     "py_lifelines",
     "py_sksurv",
 }

@@ -80,6 +80,10 @@ NOT_SWEPT = {
     "swept) and maximum-likelihood (param_cb, swept) intervals",
     "cb_tvc": "needs a covariate path; checked against cb along a constant "
     "path, for every bound and on=, in conformance/test_tvc.py (#172)",
+    "rmst": "the restricted mean with rmst_cb's Wald interval (swept) in a "
+    "dict, as the non-parametric models' rmst",
+    "rmst_diff": "a comparison of two covariate rows' restricted means (a "
+    "difference and its test), not a bound on the model's own quantity",
     "likelihood_contour": "a joint confidence region of two parameters, "
     "not an interval; checked against WeibullR's MLEcontour in "
     "parametric/test_likelihood_contour.py",
@@ -300,6 +304,13 @@ def _estimate(case, spec, fname, event):
             out.append(getattr(model, spec.method)(*args, **spec.kwargs).rul)
         elif spec.method == "rmst":
             out.append(model.rmst(*args)["rmst"])
+        elif spec.method == "rmst_cb":
+            # (the point alone: a model with no covariance, the Uniform,
+            # has likelihood-ratio bounds but no rmst() interval)
+            if len(args) == 1:
+                out.append(model.mean(tau=args[0]))
+            else:
+                out.append(model.rmst(*args)["rmst"])
         elif spec.method == "parameter_cb":
             name, row = args
             k = list(model.distribution.parameter_names).index(name)
@@ -357,6 +368,9 @@ def test_every_uncertainty_method_is_swept(case):
     missing = []
     for name in dir(model):
         if name.startswith("_") or name in NOT_SWEPT or name in declared:
+            continue
+        if name == "rmst_cb" and not getattr(case, "continuous", True):
+            # refused on a discrete distribution, with the sum to use
             continue
         try:
             with warnings.catch_warnings():
@@ -983,7 +997,16 @@ def _how(sigs):
 
 
 CONVENTIONS = {
-    "alpha_ci": ("the level of an interval is alpha_ci=0.05", _level_name),
+    # The Cox summary's level defaults to None: 0.05, or a Firth fit's own
+    # level, whose profile-likelihood intervals were found at fit time.
+    "alpha_ci": (
+        "the level of an interval is alpha_ci=0.05",
+        lambda sigs: [
+            o
+            for o in _level_name(sigs)
+            if o != "SemiParametricRegressionModel.summary(alpha_ci=None)"
+        ],
+    ),
     "bound": (
         "bound= defaults to 'two-sided'",
         _default_is("bound", "two-sided"),
