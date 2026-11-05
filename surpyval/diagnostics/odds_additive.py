@@ -89,7 +89,7 @@ from typing import Any
 import numpy as np
 from scipy.stats import chi2, norm
 
-from .cox import CATEGORICAL_LEVELS, _fmt
+from ._shared import _covariate_kind, _fmt
 from .registry import AdviceRule, Check, Context, Family, Panel, register
 
 #: The number of periods follow-up is split into for the trend tests, at
@@ -190,12 +190,7 @@ def _data(ctx: Context) -> dict:
 def _kind(ctx: Context, j: int) -> str:
     """``"binary"``, ``"categorical"`` or ``"continuous"``, by the number
     of distinct values of covariate ``j``."""
-    levels = np.unique(_data(ctx)["Z"][:, j]).size
-    if levels <= 2:
-        return "binary"
-    if levels <= CATEGORICAL_LEVELS:
-        return "categorical"
-    return "continuous"
+    return _covariate_kind(np.unique(_data(ctx)["Z"][:, j]).size)
 
 
 def _cuts(ctx: Context) -> np.ndarray:

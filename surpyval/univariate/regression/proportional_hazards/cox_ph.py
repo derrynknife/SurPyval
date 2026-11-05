@@ -55,6 +55,7 @@ from .._aliasing import (
 from .._fit_skeleton import covariate_center
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
 from ..tvc_fit import fit_tvc_df
+from .cox_firth import FIRTH_ADVICE
 
 # at_risk_beta_Z, cox_at_risk_mask, efron_jac, efron_log_denominator and
 # not_yet_entered are re-exported: they were defined here.
@@ -454,12 +455,25 @@ def _diverged_columns(
     return np.flatnonzero((d0 > 0) & ~(np.nan_to_num(d, nan=0.0) > 1e-8 * d0))
 
 
-def warn_monotone(which: str, proportion: npt.ArrayLike | None = None) -> None:
+#: The fix the monotone-likelihood warning names for a fit that
+#: ``CoxPH.fit_firth`` does not take (Fine-Gray, weights).
+PENALISED_ADVICE = (
+    "consider removing or coarsening the covariate, or a penalised fit"
+)
+
+
+def warn_monotone(
+    which: str,
+    proportion: npt.ArrayLike | None = None,
+    advice: str = FIRTH_ADVICE,
+) -> None:
     """Warn that the partial likelihood has no finite maximum in the
     coefficients ``which`` names (``"[0]"``, or ``"[0] (cause 'a')"``);
     shared with the Fine-Gray fit, a weighted partial likelihood (#392).
     With ``proportion``, they run off together, in that proportion to
-    each other, and no one of them does alone (#728)."""
+    each other, and no one of them does alone (#728). ``advice`` is the
+    fix named: ``CoxPH.fit_firth`` by default, ``PENALISED_ADVICE`` for a
+    fit it does not take."""
     if proportion is None:
         what = (
             "the partial likelihood keeps increasing as coefficient(s) {} "
@@ -480,7 +494,7 @@ def warn_monotone(which: str, proportion: npt.ArrayLike | None = None) -> None:
         what,
         "The reported value, its standard error and its p-value are "
         "meaningless",
-        "consider removing or coarsening the covariate, or a penalised fit",
+        advice,
     )
 
 
@@ -812,6 +826,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         strata: npt.ArrayLike | None = None,
         center: bool = False,
         w: npt.ArrayLike | float | None = None,
+        time_interaction: dict | None = None,
     ) -> SemiParametricRegressionModel:
         """
         Fits Cox Proportional Hazards model to the provided data.
@@ -895,6 +910,27 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             clusters. ``tie_method`` ``'efron'`` or ``'breslow'``, no
             ``strata``; the information criteria, the residuals and
             ``diagnose()`` refuse (see :doc:`/Weighted Data`).
+        time_interaction: dict, optional
+            Time-varying coefficients, for a covariate whose effect
+            changes with time (one that fails the proportional-hazards
+            test of ``diagnose()``): ``{column: g}`` gives that column of
+            ``Z`` the coefficient :math:`\\beta + \\gamma g(t)`, with
+            ``g`` ``"t"``, ``"log"`` or a function of time (vectorised,
+            finite at every event time), several of one column in a list.
+            A column is its position in ``Z``, or its name for a ``Z``
+            with named columns (a DataFrame, ``fit_from_df``). The rows
+            are split at the event times and fitted with :meth:`fit_tvc`
+            with the extra covariates ``Z_j g(t)``, exactly R's
+            ``coxph(Surv(time, status) ~ z + tt(z), tt = function(z, t,
+            ...) z * g(t))``. The model returned is a
+            :class:`~surpyval.univariate.regression.proportional_hazards.time_interaction.TimeVaryingCoefficientModel`:
+            its coefficients are the covariates' then the interactions'
+            (``karno:log(t)``), ``time_varying_effect()`` gives
+            :math:`\\beta(t)` with Wald bounds, and its predictions at
+            ``Z`` use :math:`\\beta(t)` at each time. The split has
+            about one row per event time for each row whose interacting
+            covariates are not all 0, so it grows as rows times events.
+            Default ``None``, proportional hazards.
 
         Returns
         -------
@@ -934,6 +970,24 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         >>> model.sf([20, 52], [1, 25, 3]).round(4)
         array([0.9326, 0.7963])
         """
+        if time_interaction is not None:
+            from .time_interaction import fit_time_interaction
+
+            return fit_time_interaction(
+                self,
+                x,
+                Z,
+                c,
+                n,
+                tl,
+                tie_method,
+                tol,
+                strata,
+                center,
+                w,
+                time_interaction,
+            )
+
         func_generator = self._resolve_func_generator(tie_method)
 
         if w is not None:
@@ -1252,8 +1306,19 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             strata, and the covariates are standardised over all the
             rows, not within each stratum.
         w : array_like, optional
-            Not taken yet: weights are refused, with a ``ValueError``. Fit
-            the unpenalised model with ``w`` (:meth:`fit`).
+            Sampling, propensity or censoring weights, one positive
+            number per row (or one for every row). The partial
+            likelihood is the weighted one of :meth:`fit` with ``w``
+            (each row's death and risk-set terms multiplied by ``n * w``,
+            ties as R's ``coxph`` takes them with weights), ``N`` is
+            :math:`N_w = \\sum n w` and the covariates are centred and
+            standardised weighted by ``n * w`` (divisor :math:`N_w`):
+            glmnet's ``weights``, which it matches. So ``w`` and ``c *
+            w`` give the same fit, and whole-number weights the fit of
+            the rows repeated. As every penalised fit, a weighted one
+            has no standard errors (robust ones included) or bounds; its
+            ``aic`` and ``bic`` are refused, as for every weighted fit.
+            Not with ``strata`` (refused, as for :meth:`fit`).
         tr, t : array_like, optional
             Refused when they truncate on the right (a finite upper
             bound): the partial likelihood has no term for right
@@ -1303,6 +1368,126 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             t,
         )
 
+    @dataframe_covariates
+    @takes_unit
+    @accepts_surpyval_data
+    def fit_firth(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        tl: npt.ArrayLike | None = None,
+        strata: npt.ArrayLike | None = None,
+        alpha_ci: float = 0.05,
+        profile: bool = True,
+        center: bool = False,
+        tol: float = 1e-10,
+    ) -> SemiParametricRegressionModel:
+        """
+        Fit the Cox model with Firth's penalty (Heinze and Schemper
+        2001): finite estimates, with intervals and tests, where a
+        covariate separates the events from the survivors.
+
+        When every event at each event time has the largest (or the
+        smallest) value of a covariate in its risk set -- every death in
+        one group, say -- the partial likelihood keeps increasing as that
+        coefficient grows, and :meth:`fit` warns "No finite maximum".
+        Firth's fit maximises the partial log-likelihood plus half the
+        log determinant of its information,
+
+        .. math::
+            \\ell^*(\\beta) = \\ell(\\beta) + \\tfrac{1}{2}
+            \\log |I(\\beta)|,
+
+        Jeffreys' prior. The information falls to 0 as a coefficient runs
+        off, so the penalty keeps the estimate finite; where the data
+        carry the coefficients it changes them little, and it removes the
+        first-order bias of the maximum likelihood estimate in small
+        samples. Ties are Breslow's, as R's ``coxphf`` (its only ones).
+
+        Unlike :meth:`fit_penalised`, the fit has inference: the
+        standard errors and ``covariance()`` are the inverse of the
+        partial likelihood's information at the estimate (``coxphf``'s);
+        the intervals and p-values are by the profile penalised
+        likelihood (``coxphf``'s ``pl=TRUE``), which follows the
+        asymmetric shape of the likelihood where the Wald ones do not;
+        and ``likelihood_ratio_test()`` is the penalised
+        likelihood-ratio test of every coefficient being 0. They agree
+        with ``coxphf`` to 1e-6 (coefficients, standard errors) and 1e-5
+        (bounds).
+
+        Parameters
+        ----------
+        x : array_like
+            As for :meth:`fit`.
+        Z : array_like
+            As for :meth:`fit`. A column the partial likelihood cannot
+            determine (a constant one, one constant within each stratum,
+            or a combination of the others) is refused, not aliased:
+            the penalty has no value there.
+        c : array_like, optional
+            As for :meth:`fit` (0 an event, 1 right censored).
+        n : array_like, optional
+            As for :meth:`fit`.
+        tl : array_like, optional
+            Delayed entry, as for :meth:`fit`; with ``tl`` the start
+            times, ``x`` the stop times, the rows are start-stop
+            intervals (``Surv(start, stop, event)``).
+        strata : array_like, optional
+            As for :meth:`fit`: one set of coefficients, a baseline per
+            stratum; the penalty is of the information summed over the
+            strata.
+        alpha_ci : float, optional
+            The intervals' total tail probability. Default 0.05.
+        profile : bool, optional
+            ``True`` (the default) gives profile penalised-likelihood
+            intervals and penalised likelihood-ratio p-values; ``False``
+            Wald's, from ``covariance()`` (``coxphf``'s ``pl=FALSE``),
+            which is faster: each profile bound is a search over refits.
+        center : bool, optional
+            As for :meth:`fit`.
+        tol : float, optional
+            The convergence tolerance: the Newton step, in standardised
+            coefficients, and the Newton decrement.
+
+        Returns
+        -------
+        SemiParametricRegressionModel
+            The fitted model. ``params`` are the Firth estimates,
+            ``p_values`` the tests of ``model.firth.p_values``, and
+            ``model.firth`` (a
+            :class:`~surpyval.univariate.regression.proportional_hazards.cox_firth.FirthResult`)
+            holds the intervals (``lower``, ``upper``), the Wald ones
+            beside them and the penalised log-likelihoods. ``summary()``
+            shows the profile intervals at ``alpha_ci``. ``neg_ll()`` and
+            the information criteria are of the unpenalised partial
+            likelihood at the estimate.
+
+        Examples
+        --------
+        Every death in the group ``z1 = 1``, so the ordinary coefficient
+        of ``z1`` is infinite:
+
+        >>> import numpy as np
+        >>> from surpyval import CoxPH
+        >>> x = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+        >>> c = np.array([0, 0, 1, 0, 1, 1, 0, 1, 1, 1])
+        >>> Z = np.array([[1, 0.5], [1, -1.2], [0, 0.3], [1, 0.8],
+        ...               [0, -0.4], [1, 1.1], [1, -0.6], [0, 0.9],
+        ...               [0, 0.2], [1, -0.1]])
+        >>> model = CoxPH.fit_firth(x, Z, c=c)
+        >>> model.params.round(3)
+        array([ 1.924, -0.246])
+        >>> model.firth.lower.round(3), model.firth.upper.round(3)
+        (array([-0.38 , -1.658]), array([6.822, 1.089]))
+        """
+        from .cox_firth import fit_cox_firth
+
+        return fit_cox_firth(
+            self, x, Z, c, n, tl, strata, alpha_ci, profile, center, tol
+        )
+
     @column_arguments("x", "c", "n", "tl")
     @takes_unit
     def fit_from_df(
@@ -1318,6 +1503,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         tl_col: str | None = None,
         center: bool = False,
         w_col: str | None = None,
+        time_interaction: dict | None = None,
     ) -> SemiParametricRegressionModel:
         """
         Fits a Cox PH model using a pandas dataframe as the input.
@@ -1362,6 +1548,10 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             ``weights_col``). A row dropped for a missing covariate drops
             its weight with it, so the fit is ``fit(..., w=)`` of the rows
             kept.
+        time_interaction: dict, optional
+            Time-varying coefficients, ``{column: g}`` with the column by
+            its name (a covariate column, or a column of the formula's
+            design); see :meth:`fit`.
 
         Returns
         -------
@@ -1394,6 +1584,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
                 strata=strata,
                 center=center,
                 w=w,
+                time_interaction=time_interaction,
             )
         model.formula = form
         model.feature_names = feature_names
@@ -1698,8 +1889,17 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         ----------
         i, xl, xr, c, Z, n, strata : array_like
             As for :meth:`fit_tvc`.
-        penalizer, l1_ratio, standardise, tol, w
-            As for :meth:`fit_penalised` (weights ``w`` are refused).
+        penalizer, l1_ratio, standardise, tol
+            As for :meth:`fit_penalised`.
+        w : array_like, optional
+            Sampling weights, one per row (or one for every row), as for
+            :meth:`fit_tvc` and :meth:`fit_penalised`. The rows' terms in
+            the partial likelihood take their own weights; ``N`` is the
+            sum over the subjects of ``n`` times the subject's weight, its
+            rows' weights averaged over its follow-up (each weighted by
+            its length ``xr - xl``; the weight itself where it is the same
+            on every row), and the standardisation weights each subject
+            by the same. Rescaling the weights changes nothing.
         tie_method, center
             As for :meth:`fit_tvc`.
 
@@ -1720,13 +1920,16 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         >>> model.beta.round(4)
         array([1.5068])
         """
-        from .._penalised import refuse_weights
         from .cox_penalised import fit_cox_penalised
 
-        refuse_weights(w)
         x, c_, n_arr, tl, Z_arr, ident, row_order, strata_arr = _tvc_rows(
             i, xl, xr, c, Z, n, strata
         )
+        w_rows = None
+        if w is not None:
+            from surpyval.utils.weights import check_weights
+
+            w_rows = check_weights(w, len(row_order))[row_order]
         model = fit_cox_penalised(
             self,
             x,
@@ -1741,7 +1944,8 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             center,
             tol,
             strata=strata_arr,
-            units=_subject_covariates(x, tl, Z_arr, n_arr, ident),
+            w=w_rows,
+            units=_subject_covariates(x, tl, Z_arr, n_arr, ident, w_rows),
         )
         model.is_tvc = True
         model.tvc_subject_ids = ident
@@ -1773,8 +1977,11 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         ----------
         i, x, Z, c, n : array_like
             As for :meth:`fit_tvc_timeline`.
-        penalizer, l1_ratio, standardise, tie_method, tol, center, w
+        penalizer, l1_ratio, standardise, tie_method, tol, center
             As for :meth:`fit_tvc_penalised`.
+        w : None
+            Refused, as :meth:`fit_tvc_timeline` takes no weights: give
+            the start-stop rows to :meth:`fit_tvc_penalised` with ``w``.
 
         Returns
         -------
@@ -1882,13 +2089,16 @@ def _subject_covariates(
     Z: npt.NDArray,
     n: npt.NDArray,
     ident: npt.NDArray,
+    w: npt.NDArray | None = None,
 ) -> tuple[npt.NDArray, npt.NDArray]:
     """One covariate row and one count per subject of start-stop rows
     ``(tl, x]``, for a penalised fit's ``N`` and standardisation: each
     subject's covariates averaged over its follow-up, weighted by the
     length of each row (so splitting a row into several with the same
     covariates leaves it unchanged), and the count ``n`` of its last
-    row."""
+    row; with weights ``w`` (one per row), that count times the
+    subject's weight, its rows' weights averaged over its follow-up in
+    the same way."""
     ident = np.asarray(ident)
     Z = np.asarray(Z, dtype=float)
     length = np.asarray(x, dtype=float) - np.asarray(tl, dtype=float)
@@ -1907,4 +2117,13 @@ def _subject_covariates(
     last = np.zeros(k, dtype=int)
     order = np.lexsort((np.asarray(x, dtype=float), inverse))
     last[inverse[order]] = order
-    return Z_units, np.asarray(n, dtype=float)[last]
+    n_units = np.asarray(n, dtype=float)[last]
+    if w is not None:
+        w_units = (
+            np.bincount(
+                inverse, weights=length * np.asarray(w, float), minlength=k
+            )
+            / total
+        )
+        n_units = n_units * w_units
+    return Z_units, n_units

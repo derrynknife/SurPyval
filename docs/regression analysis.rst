@@ -617,6 +617,70 @@ with 0.5 for a random ranking and 1 for a perfect one. Ties in *time* need conve
     _ev = _lung["time"][_lung["censored"] == 0].value_counts()
     assert (_ev * (_ev - 1) // 2).sum() == 28
 
+**How sure is C, and Uno's version.** A C computed from a sample is an estimate, and the
+question that follows is how far it could move with another sample. ``concordance_estimate``
+gives it a standard error and a confidence interval, as R's ``survival::concordance``
+reports its ``var``: the *infinitesimal jackknife* asks how much :math:`C` changes when one
+subject's weight is nudged, and adds up the squares of those changes. With :math:`N_i` the
+subject's share of the concordant pairs (a tied score counting half), :math:`M_i` its share of
+the comparable pairs and :math:`M` all comparable pairs,
+
+.. math::
+
+    d_i = \frac{N_i - C\, M_i}{M}, \qquad \widehat{\operatorname{var}}(C) = \sum_i d_i^2 .
+
+Harrell's :math:`C` has a quieter weakness: censoring decides which pairs are comparable.
+When many subjects are censored early, the comparable pairs are mostly early failures, so
+:math:`C` mostly describes how well the score ranks early failures, and two studies with the
+same model but different follow-up get different values. **Uno's C** (Uno, Cai, Pencina,
+D'Agostino and Wei, 2011) weights each comparable pair by how unlikely it was to survive the
+censoring, :math:`1 / \hat G(t_i-)^2`, where :math:`\hat G` is the Kaplan-Meier estimate of
+the chance of being still uncensored and :math:`t_i` the pair's failure time. The late pairs
+that censoring thinned out then count as much as they would have without it, and the estimate
+no longer depends on the censoring pattern (if censoring is independent of the score). Because
+:math:`\hat G` falls towards 0 at the end of follow-up, the weights blow up there, so Uno's C is
+used up to a horizon :math:`\tau` where enough subjects remain: ``tau=`` keeps only the pairs
+whose failure is at or before it (R's ``ymax``):
+
+.. math::
+
+    C_\tau = \frac{\sum_{i,j} \delta_i\, \hat G(t_i-)^{-2}\, I(t_i < t_j,\ t_i \le \tau)
+        \left[I(r_i > r_j) + \tfrac12 I(r_i = r_j)\right]}
+        {\sum_{i,j} \delta_i\, \hat G(t_i-)^{-2}\, I(t_i < t_j,\ t_i \le \tau)} .
+
+Two models scored on the same subjects have correlated C's, so their difference cannot be
+tested as if they were independent; ``compare_concordance`` uses the subjects' influences on
+both, :math:`\widehat{\operatorname{var}}(C_a - C_b) = \sum_i (d_{a,i} - d_{b,i})^2`, and a
+normal test, as ``survival::concordance(fit_a, fit_b)`` does. These reproduce R's estimates
+and standard errors (``timewt = "n"`` for Harrell, ``"n/G2"`` for Uno) to rounding:
+
+.. jupyter-execute::
+
+    import surpyval as sp
+    from surpyval.datasets import load_lung
+    from surpyval.metrics import compare_concordance
+
+    lung = load_lung().dropna(subset=["ph.ecog"])
+    lung["censored"] = 1 - lung["status"]
+    cox = sp.CoxPH.fit_from_df(lung, x_col="time", c_col="censored",
+                               Z_cols=["age", "sex", "ph.ecog"])
+    harrell = cox.concordance_estimate()
+    uno = cox.concordance_estimate(weighting="uno", tau=500)
+    print("Harrell: %.4f (SE %.4f)" % (harrell.estimate, harrell.se))
+    print("Uno, tau = 500 days: %.4f (SE %.4f)" % (uno.estimate, uno.se))
+
+    # does the ECOG score alone rank the patients as well as the model?
+    lp = lung[["age", "sex", "ph.ecog"]].to_numpy() @ cox.beta
+    compare_concordance(lung["time"], lung["censored"], lp, lung["ph.ecog"])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    # R survival 3.8.12: concordance(coxph(...)) 0.637135, sqrt(var) 0.025068
+    assert round(harrell.estimate, 4) == 0.6371
+    assert round(harrell.se, 4) == 0.0251
+
 Survival trees and forests
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 

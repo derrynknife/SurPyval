@@ -21,7 +21,7 @@ from .._penalised import (
     PenalisedObjective,
     Penalty,
     penalised_fit,
-    refuse_weights,
+    scaled_weights,
 )
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
 from .cox_likelihood import baseline_at_origin, combined_generators
@@ -99,9 +99,28 @@ def fit_cox_penalised(
     """:meth:`CoxPH_.fit_penalised`. ``units``, ``(Z, n)`` with one row
     per unit (subject), gives the penalty's ``N`` and the covariates'
     standardisation where the rows are not the units (start-stop rows of
-    :meth:`CoxPH_.fit_tvc_penalised`); ``None`` takes them over the rows."""
-    refuse_weights(w)
+    :meth:`CoxPH_.fit_tvc_penalised`; with weights ``w``, each unit's
+    ``n`` times its weight as given); ``None`` takes them over the
+    rows."""
     tl = _left_truncation(x, tl, tr, t)
+    if w is not None:
+        return _fit_weighted_penalised(
+            fitter,
+            x,
+            Z,
+            c,
+            n,
+            tl,
+            w,
+            penalizer,
+            l1_ratio,
+            standardise,
+            tie_method,
+            center,
+            tol,
+            strata,
+            units,
+        )
     func_generator = fitter._resolve_func_generator(tie_method)
     if strata is not None:
         return _fit_stratified_penalised(
@@ -202,6 +221,142 @@ def _solve(
     if not fit.result.verified:
         warn_unverified("The penalised Cox fit")
     return fit.result, fit.coefficients, fit.penalty
+
+
+def _fit_weighted_penalised(
+    fitter: CoxPH_,
+    x: npt.ArrayLike,
+    Z: npt.ArrayLike,
+    c: npt.ArrayLike | None,
+    n: npt.ArrayLike | None,
+    tl: npt.ArrayLike | None,
+    w: Any,
+    penalizer: Any,
+    l1_ratio: float,
+    standardise: bool,
+    tie_method: str,
+    center: bool,
+    tol: float,
+    strata: npt.ArrayLike | None,
+    units: tuple[npt.NDArray, npt.NDArray] | None,
+) -> SemiParametricRegressionModel:
+    """The penalised Cox fit with weights ``w``: the weighted partial
+    likelihood of :meth:`CoxPH_.fit` with ``w`` (R's tie rules with
+    weights, :class:`WeightedCox`), over ``N_w`` the sum of ``n w``, with
+    the covariates centred and standardised weighted by ``n w``.
+
+    The search is on the weights scaled to sum to the units
+    (:func:`scaled_weights`): the partial likelihood and ``N_w`` are both
+    linear in the weights, so the objective is the same, and it is then
+    the same function for ``w`` and ``c * w``."""
+    from surpyval.utils.weights import (
+        check_weights,
+        effective_sample_size,
+        refuse_weighted,
+        warn_if_few_effective,
+    )
+
+    from ._weighted_cox import WeightedCox
+    from .cox_likelihood import baselines_at_origin
+    from .cox_ph import _require_an_event
+
+    if strata is not None:
+        raise refuse_weighted(
+            "A stratified penalised Cox fit",
+            "its weighted form is not built yet (as for CoxPH.fit)",
+            "Fit each stratum with w, or put the stratum in Z.",
+        )
+    if tie_method not in ("efron", "breslow"):
+        raise refuse_weighted(
+            f"tie_method={tie_method!r}",
+            "the exact partial likelihoods have no weighted form here",
+            "Use tie_method='efron' (the default) or 'breslow'.",
+        )
+    x_arr = np.atleast_1d(np.asarray(x, dtype=float))
+    w_arr = check_weights(w, x_arr.shape[0])
+    Z_in = np.asarray(Z, dtype=float)
+    Z_rows = Z_in.reshape(-1, 1) if Z_in.ndim <= 1 else Z_in
+    if Z_rows.shape[0] != w_arr.shape[0]:
+        raise ValueError(
+            f"Z has {Z_rows.shape[0]} rows for {w_arr.shape[0]} values of "
+            "x: give one row of covariates per value."
+        )
+    # The weights travel as a last column of Z, so that the rows the
+    # validation drops or reorders take their weights with them (as
+    # CoxPH.fit with w).
+    x, c, n, tl, Z_aug = validate_coxph(
+        x, c, n, np.column_stack([Z_rows, w_arr]), tl, tie_method
+    )
+    Z, w_arr = np.asarray(Z_aug[:, :-1], dtype=float), Z_aug[:, -1]
+    _require_an_event(c, n)
+    n = np.asarray(n, dtype=float)
+    warn_if_few_effective(n, w_arr)
+    w_s = scaled_weights(n, w_arr)
+    omega = n * w_s
+    mean = (omega[:, None] * Z).sum(axis=0) / omega.sum()
+    Zc = Z - mean
+    if units is None:
+        Z_units, n_units = Z, omega
+    else:
+        # The units' n w as given, on the rows' scale of the weights
+        Z_units = units[0]
+        n_units = np.asarray(units[1], dtype=float) * (
+            n.sum() / np.sum(n * w_arr)
+        )
+
+    def generators(scale: npt.NDArray) -> tuple[Callable, Callable]:
+        lik = WeightedCox(x, c, n, w_s, tl, Zc / scale, tie_method)
+        cached = _Cached(lik.derivatives)
+
+        def neg_ll(b: npt.NDArray) -> float:
+            return -cached(np.asarray(b, dtype=float))[0]
+
+        def jac(b: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
+            _, score, info = cached(np.asarray(b, dtype=float))
+            return -score, info
+
+        return neg_ll, jac
+
+    res, beta, penalty = _solve(
+        generators,
+        Z_units,
+        n_units,
+        penalizer,
+        l1_ratio,
+        standardise,
+        tol,
+    )
+    # The value with the weights as given, as CoxPH.fit with w reports it
+    full = WeightedCox(x, c, n, w_arr, tl, Zc, tie_method)
+    model = _penalised_model(fitter, res, beta, penalty, tie_method)
+    model._neg_ll = float(full.neg_ll(beta))
+    model.neg_ll_of = full.neg_ll
+    model._ic_n = float(np.sum(n[np.asarray(c) == 0]))
+    model._fit_data = {
+        "x": np.asarray(x, dtype=float),
+        "c": np.asarray(c, dtype=int),
+        "n": n,
+        "Z": Z,
+        "tl": np.asarray(tl, dtype=float),
+        "w": w_arr,
+    }
+    times, r, d, h0 = full.baseline(beta)
+    moved = False
+    if not center:
+        [(r, h0)], moved = baselines_at_origin(
+            beta, mean, Z, [(r, h0)], model.maximum
+        )
+    model.center = np.zeros_like(mean) if moved else mean
+    model._fit_center = mean
+    model.x = times
+    model.r = r
+    model.d = d
+    model.tl = np.asarray(tl, dtype=float)
+    model.h0 = h0
+    model.H0 = np.cumsum(h0)
+    model.weighted = True
+    model.effective_n = effective_sample_size(n, w_arr)
+    return model
 
 
 def _penalised_model(

@@ -64,6 +64,19 @@ For data arriving in groups that share an unobserved effect.
 
     regression/frailty
 
+Regression on a Probability or a Mean
+-------------------------------------
+
+Pseudo-observations: regression directly on the survival probability at
+chosen times, the restricted mean survival time, or a cause's cumulative
+incidence, with robust standard errors. See :doc:`Pseudo-Observations`
+for the guide.
+
+.. toctree::
+    :maxdepth: 1
+
+    regression/pseudo
+
 Plotting
 --------
 

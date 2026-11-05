@@ -17,7 +17,9 @@ Two kinds of fixture:
   event and censoring times, left truncation, interval censoring,
   competing risks with ties, a prediction matrix for the Brier score and
   AUC, continuous data for the additive hazards model, and a deliberate
-  violation of proportional hazards for the Cox diagnostics.
+  violation of proportional hazards for the Cox diagnostics, a covariate
+  that separates the events from the survivors (Firth's fit), and
+  recurrent events of two groups of systems for the MCF comparison.
 
 Run from the repository root::
 
@@ -438,6 +440,73 @@ def ph_violation():
     }
 
 
+def separation():
+    """Monotone likelihood for Firth's penalised Cox fit: every event is
+    in the group ``z1 = 1`` (the units with ``z1 = 0`` are all censored),
+    so the ordinary Cox coefficient of ``z1`` is infinite; ``z2`` is a
+    continuous covariate with an effect. Times are rounded up to whole
+    units, so there are ties."""
+    rng = np.random.default_rng(3798)
+    n = 60
+    z1 = rng.binomial(1, 0.5, n)
+    z2 = np.round(rng.normal(0, 1, n), 2)
+    t = rng.exponential(1 / (0.1 * np.exp(0.5 * z2)))
+    cens = rng.uniform(0, 20, n)
+    x = np.ceil(np.minimum(t, cens)).astype(int)
+    c = np.where(z1 == 1, (cens < t).astype(int), 1)
+    return {
+        "source": "seeded synthetic, make_fixtures.separation (rng 3798); "
+        "every event has z1 = 1",
+        "columns": {
+            "x": _native(x),
+            "c": _native(c),
+            "z1": _native(z1),
+            "z2": _native(z2),
+        },
+    }
+
+
+def recurrent_groups(seed, ties):
+    """Recurrent events of two groups of systems, for the two-sample MCF
+    comparison: power-law processes (shape 1.4 in group 0, 1.1 in group 1)
+    scaled by a gamma frailty per system (mean 1, variance 0.5), so the
+    systems differ in their rates and the robust variance matters. Group 1
+    is followed for less time. Each system has one row per event
+    (``event`` 1) and an end-of-observation row (``event`` 0). With
+    ``ties`` the event times are rounded up to whole numbers (events tie
+    across systems and groups) and the ends fall on halves; otherwise
+    times have two decimals."""
+    rng = np.random.default_rng(seed)
+    rows = []
+    for item in range(26):
+        group = int(item >= 14)
+        frailty = rng.gamma(2.0, 0.5)
+        end = rng.uniform(*((8.0, 20.0) if group == 0 else (6.0, 15.0)))
+        shape = 1.4 if group == 0 else 1.1
+        arrivals = np.cumsum(rng.exponential(size=40))
+        times = 4.0 * (arrivals / frailty) ** (1 / shape)
+        if ties:
+            end = np.floor(end) + 0.5
+            times = np.ceil(times)
+        else:
+            end = round(end, 2)
+            times = np.round(times, 2)
+        times = np.unique(times[times < end])
+        rows += [(item + 1, float(t), 1, group) for t in times]
+        rows.append((item + 1, float(end), 0, group))
+    columns = list(zip(*rows))
+    return {
+        "source": "seeded synthetic, make_fixtures.recurrent_groups "
+        "(rng {}); event 1 is an event, 0 the end of observation".format(seed),
+        "columns": {
+            "id": _native(columns[0]),
+            "time": _native(columns[1]),
+            "event": _native(columns[2]),
+            "group": _native(columns[3]),
+        },
+    }
+
+
 def build():
     return {
         "_about": "Shared fixtures for surpyval/tests/reference; written "
@@ -471,6 +540,9 @@ def build():
             "columns": VETERAN,
         },
         "ph_violation": ph_violation(),
+        "separation": separation(),
+        "recurrent_groups": recurrent_groups(3798, False),
+        "recurrent_groups_ties": recurrent_groups(3799, True),
     }
 
 

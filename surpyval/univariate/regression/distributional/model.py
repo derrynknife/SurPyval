@@ -369,7 +369,7 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         >>> model.likelihood_ratio_test(parameter="beta")["df"]
         1
         """
-        from .._global_test import _result, refuse_weighted_test
+        from .._global_test import lr_test_result, refuse_weighted_test
         from .._penalised import refuse_lr_test
 
         refuse_lr_test(self)
@@ -435,8 +435,8 @@ class DistributionalRegressionModel(ParametricRegressionModel):
                 null = self.distribution.fit(  # type: ignore[attr-defined]
                     x=data.x, c=data.c, n=data.n, t=data.t, **kwargs
                 )
-            return _result(ll, -float(null.neg_ll()), len(free))
-        return _result(ll, self._null_ll(parameter, tested), len(free))
+            return lr_test_result(ll, -float(null.neg_ll()), len(free))
+        return lr_test_result(ll, self._null_ll(parameter, tested), len(free))
 
     def _null_ll(self, parameter: str, tested: list[int]) -> float:
         """The log-likelihood of the fit to the same data with the
@@ -587,7 +587,10 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         the likelihood-ratio region, ``2 [l_hat - l] <= chi2_1``, as
         :meth:`cb` with ``method="lr"`` takes them; ``"bootstrap"`` the
         BCa interval from ``n_boot`` parametric bootstrap refits
-        (``random_state`` seeds them).
+        (``random_state`` seeds them). For a fit with weights ``w`` the
+        Wald bound uses the robust covariance, the bootstrap is the case
+        bootstrap (the units resampled with their weights) and ``"lr"`` is
+        refused.
 
         Examples
         --------
@@ -616,6 +619,7 @@ class DistributionalRegressionModel(ParametricRegressionModel):
             )
         link = self.links[names.index(name)]
         self._refuse_if_penalised()
+        self._refuse_weighted_method(method)
         if method == "wald":
             eta = self._parameter_wald(name, Z, alpha_ci, bound)
         elif method == "lr":
@@ -978,6 +982,11 @@ class DistributionalRegressionModel(ParametricRegressionModel):
             out["ic_n"] = ic_n
         if self._data_repr():
             out["data_summary"] = self._data_repr()
+        if self.weighted:
+            # A reader without weights would offer the likelihood-ratio
+            # bounds and the information criteria.
+            out["weighted"] = True
+            out["effective_n"] = self.effective_n
         return stamp_schema(out)
 
     @classmethod
@@ -1094,6 +1103,9 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         out.maximum = restored_maximum(model_dict)
         out._restore_penalty(model_dict)
         out._ic_n = cls._restored_ic_n(model_dict)
+        if model_dict.get("weighted") is True:
+            out.weighted = True
+            out.effective_n = model_dict.get("effective_n")
         # A dict without signs was written by v0.26, whose coefficients
         # all had the link's sign: converted, it predicts as it did.
         out._convert_signs(

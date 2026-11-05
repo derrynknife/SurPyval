@@ -91,6 +91,7 @@ from surpyval.univariate.regression.proportional_hazards.cox_likelihood import (
     newton_raphson,
 )
 from surpyval.univariate.regression.proportional_hazards.cox_ph import (
+    PENALISED_ADVICE,
     warn_monotone,
 )
 from surpyval.univariate.regression.proportional_hazards.cox_separation import (  # noqa: E501
@@ -129,6 +130,11 @@ from surpyval.utils.validation import (
     check_alpha_ci,
     missing_cause_error,
     unknown_cause_error,
+)
+from surpyval.utils.weights import (
+    effective_sample_size,
+    sandwich,
+    warn_if_few_effective,
 )
 
 if TYPE_CHECKING:
@@ -243,6 +249,7 @@ def _fit_cause(
     n: npt.NDArray,
     cause: Any,
     center: bool = False,
+    w: npt.NDArray | None = None,
 ) -> dict:
     """
     Fit the Fine-Gray subdistribution-hazard model for a single ``cause``.
@@ -261,7 +268,18 @@ def _fit_cause(
     that of a unit at the means; it is kept there, as ``center``, with
     ``center=True``, and otherwise moved to ``Z = 0`` (``center`` zeros),
     which is refused where that over- or underflows.
+
+    With weights ``w`` (one per row, beside the counts ``n``) every sum
+    takes ``n w`` in place of ``n``: the events, the risk sets and the
+    censoring distribution ``G`` (the Kaplan-Meier of the censoring
+    weighted by ``n w``), so whole-number weights give the fit of the rows
+    counted that many times. The covariance is then the robust sandwich of
+    :func:`_robust_covariance`, clustered by unit, which holds ``G``
+    fixed.
     """
+    counts = n
+    if w is not None:
+        n = n * w
     is_cause = label_mask(e, cause)
     is_event = (c == 0) & is_cause
     if not is_event.any():
@@ -439,7 +457,7 @@ def _fit_cause(
             Z_sorted[:, kept],
             float(n_event.sum()),
             floor,
-            (x, Z[:, kept], is_event, is_competing, n),
+            (x, Z[:, kept], is_event, is_competing, counts),
         )
         off = runoff[0]
         runaway = [int(kept[k]) for k in off]
@@ -468,6 +486,19 @@ def _fit_cause(
     # Where the coefficients ran off far, the Hessian can be nan, and
     # inverting it raised "SVD did not converge" (#746)
     cov = safe_inv(H) if np.all(np.isfinite(H)) else np.full(H.shape, np.nan)
+    if w is not None and kept.size and np.all(np.isfinite(cov)):
+        # The robust (sandwich) covariance, the inverse information the
+        # bread
+        cov = _robust_covariance(
+            cov,
+            Z_sorted[:, kept],
+            res.x,
+            sets,
+            counts[sets.order],
+            w[sets.order],
+            is_event[sets.order],
+            x[sets.order],
+        )
     # A coefficient running off has no standard error, as in CoxPH (#648)
     cov[off, :] = np.nan
     cov[:, off] = np.nan
@@ -532,11 +563,69 @@ def _fit_cause(
             "x": x,
             "Z": Z_raw,
             "c": c,
-            "n": n,
+            "n": counts,
+            "w": w,
             "is_event": is_event,
             "is_competing": is_competing,
         },
+        "weighted": w is not None,
+        "effective_n": (
+            None if w is None else effective_sample_size(counts, w)
+        ),
     }
+
+
+def _robust_covariance(
+    bread: npt.NDArray,
+    Z: npt.NDArray,
+    beta: npt.NDArray,
+    sets: _RiskSets,
+    n: npt.NDArray,
+    w: npt.NDArray,
+    is_event: npt.NDArray,
+    x: npt.NDArray,
+) -> npt.NDArray:
+    """
+    The robust (sandwich) covariance of a weighted Fine-Gray fit,
+    ``bread M bread``, ``bread`` the inverse of the weighted information
+    and ``M = sum_i n_i w_i^2 L_i L_i'``, ``L_i`` unit ``i``'s score
+    residual (Lin and Wei, 1989) summed over its time at risk:
+
+        L_i = delta_i (Z_i - Zbar(x_i))
+              - sum_t W_it exp(beta'Z_i) (Z_i - Zbar(t)) dLambda0(t),
+
+    ``W_it`` its weight in the subdistribution risk set at the event time
+    ``t`` (1 while under observation, ``G(t-)/G(x_i-)`` after a competing
+    failure), ``Zbar(t)`` the risk set's weighted mean covariate and
+    ``dLambda0`` the baseline's increments. It is R's ``coxph(Surv(fgstart,
+    fgstop, fgstatus) ~ Z, weights = fgwt * w, cluster = id)`` on the
+    counting-process data of the fit: the censoring weights ``W`` are held
+    fixed, so the variability of ``G`` is not in it.
+
+    The rows (``Z`` centred, the counts ``n``, weights ``w``, the
+    events ``is_event`` and the times ``x``) are in time order
+    (``sets.order``); every sum is O(N p) (:func:`_risk_set_sums`,
+    :func:`_risk_set_weights`).
+    """
+    with np.errstate(over="ignore", under="ignore"):
+        eta = Z @ beta
+        risk = np.exp(eta - (float(eta.max()) if eta.size else 0.0))
+    omega = n * w
+    S0 = _risk_set_sums(omega * risk, sets)
+    S1 = _risk_set_sums((omega * risk)[None, :] * Z.T, sets).T
+    mean = S1 / S0[:, None]
+    # The hazard increments, on the scale of ``risk`` (the shift cancels
+    # in their product)
+    dH = sets.d / S0
+    exposure = _risk_set_weights(dH, sets)
+    exposure_mean = np.column_stack(
+        [_risk_set_weights(dH * mean[:, k], sets) for k in range(Z.shape[1])]
+    )
+    resid = -risk[:, None] * (Z * exposure[:, None] - exposure_mean)
+    events = np.flatnonzero(is_event)
+    at = np.searchsorted(sets.times, x[events])
+    resid[events] += Z[events] - mean[at]
+    return sandwich(bread, resid, n, w)
 
 
 def _runoff_of_cause(
@@ -773,7 +862,9 @@ def _warn_if_monotone(fits: list) -> str:
         if fit["runaway"]
     ]
     if len(fits) == 1 and runaway:
-        warn_monotone(str(runaway[0][1]), runaway[0][2])
+        warn_monotone(
+            str(runaway[0][1]), runaway[0][2], advice=PENALISED_ADVICE
+        )
     elif runaway:
         warn_monotone(
             " and ".join(
@@ -788,7 +879,8 @@ def _warn_if_monotone(fits: list) -> str:
                     ),
                 )
                 for cause, coefs, proportion in runaway
-            )
+            ),
+            advice=PENALISED_ADVICE,
         )
     unverified = [f["cause"] for f in fits if f["maximum"] == "unverified"]
     if unverified:
@@ -825,6 +917,24 @@ def _cumhaz_at_origin(
             -shift,
             lp=lp if moved else None,
         )
+    return out
+
+
+def _validated(x: Any, Z: Any, e: Any, c: Any, n: Any, w: Any) -> tuple[
+    npt.NDArray,
+    npt.NDArray,
+    npt.NDArray,
+    npt.NDArray,
+    npt.NDArray,
+    npt.NDArray | None,
+]:
+    """``validate_fine_gray_inputs``, with the weights ``w`` of the rows
+    kept as a sixth entry (``None`` without weights), and the warning of
+    a small effective sample size, for the competing-risks regressions."""
+    if w is None:
+        return (*validate_fine_gray_inputs(x, Z, e, c, n), None)
+    out = validate_fine_gray_inputs(x, Z, e, c, n, w)
+    warn_if_few_effective(out[4], out[5])
     return out
 
 
@@ -914,6 +1024,11 @@ class FineGrayModel(
     #: ``diagnose()`` checks it (#874); ``None`` on a model restored with
     #: ``from_dict``, which does not store them.
     _fit_data: dict | None = None
+    #: Whether the model was fitted with weights ``w``: its covariance is
+    #: then the robust one, and the information criteria refuse.
+    weighted: bool = False
+    #: The effective sample size of the weights (``None`` unweighted).
+    effective_n: float | None = None
 
     def __init__(self, fit: dict) -> None:
         self.cause = fit["cause"]
@@ -936,6 +1051,8 @@ class FineGrayModel(
         self.maximum = fit.get("maximum", "unknown")
         self._objective = fit.get("objective")
         self._fit_data = fit.get("fit_data")
+        self.weighted = bool(fit.get("weighted", False))
+        self.effective_n = fit.get("effective_n")
 
     _ALIASED_WHY = (
         "a constant column, which the baseline subdistribution hazard "
@@ -946,7 +1063,10 @@ class FineGrayModel(
         """The coefficients' covariance: the inverse of the weighted
         partial likelihood's information at the fit (a ``nan`` row and
         column for an aliased coefficient). It was ``cov`` before
-        v0.23."""
+        v0.23. For a fit with weights ``w`` it is the robust (sandwich)
+        covariance clustered by unit, which holds the censoring
+        distribution ``G`` fixed (R's ``coxph(..., weights = fgwt * w,
+        cluster = id)`` on ``finegray``'s data)."""
         return self._covariance
 
     def standard_errors(self) -> npt.NDArray:
@@ -1048,6 +1168,12 @@ class FineGrayModel(
             out["center"] = np.asarray(self.center, dtype=float).tolist()
         if self.feature_names is not None:
             out["feature_names"] = list(self.feature_names)
+        if self.weighted:
+            # Schema 3: a reader without weights would offer the
+            # information criteria.
+            out["weighted"] = True
+            assert self.effective_n is not None
+            out["effective_n"] = float(self.effective_n)
         return stamp_schema(out)
 
     @classmethod
@@ -1090,6 +1216,8 @@ class FineGrayModel(
                 "ic_n": cls._restored_ic_n(model_dict),
                 "res": None,
                 "maximum": restored_maximum(model_dict),
+                "weighted": model_dict.get("weighted") is True,
+                "effective_n": model_dict.get("effective_n"),
             }
         )
         names = model_dict.get("feature_names")
@@ -1171,6 +1299,11 @@ class FineGrayModel(
         names = coefficient_names(self, np.size(self.beta))
         for nm, b, s, p in zip(names, self.beta, self._se, self.p_values):
             lines.append(f"   {nm}  :  {b: .6f}  (se {s:.6f}, p {p:.4f})")
+        if self.weighted:
+            lines.append(
+                "Weights             : effective sample size "
+                f"{self.effective_n:.4g}; robust covariance"
+            )
         return "\n".join(lines)
 
 
@@ -1210,6 +1343,7 @@ class FineGray_(FitterRepr):
         Z_cols: str | list[str],
         c_col: str | None = None,
         n_col: str | None = None,
+        w_col: str | None = None,
         **fit_options: Any,
     ) -> FineGrayModel:
         """
@@ -1236,6 +1370,8 @@ class FineGray_(FitterRepr):
             Column of censoring flags (0 observed, 1 right-censored).
         n_col : str, optional
             Column of counts per row.
+        w_col : str, optional
+            Column of weights per row (``w`` of :meth:`fit`).
         **fit_options
             ``event`` (the cause of interest) and ``center``, as for
             :meth:`fit`.
@@ -1275,8 +1411,10 @@ class FineGray_(FitterRepr):
             arrays["c"] = frame_column(df, c_col, "c_col")
         if n_col is not None:
             arrays["n"] = frame_column(df, n_col, "n_col")
+        if w_col is not None:
+            arrays["w"] = frame_column(df, w_col, "w_col")
         names = {"x": "x_col", "Z": "Z_cols", "e": "e_col"}
-        names |= {"c": "c_col", "n": "n_col"}
+        names |= {"c": "c_col", "n": "n_col", "w": "w_col"}
         # The columns name the coefficients (#614)
         columns = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
         with covariate_columns(columns):
@@ -1296,6 +1434,7 @@ class FineGray_(FitterRepr):
         n: npt.ArrayLike | None = None,
         event: Any = None,
         center: bool = False,
+        w: npt.ArrayLike | float | None = None,
     ) -> FineGrayModel:
         """
         Fit the Fine-Gray model for a cause of interest.
@@ -1328,6 +1467,18 @@ class FineGray_(FitterRepr):
             way, so the coefficients and every prediction are the same; the
             default refuses, with a ``ValueError``, covariates so far from
             0 that the baseline there over- or underflows.
+        w : array_like or float, optional
+            Sampling, propensity or censoring weights, one positive number
+            per row (beside its count ``n``), or one for every row. Each
+            row then counts ``n * w`` in the events, the subdistribution
+            risk sets and the censoring distribution ``G`` (the weighted
+            Kaplan-Meier of the censoring times), so whole-number weights
+            give the estimates of the rows counted that many times. The
+            covariance is the robust (sandwich) one clustered by unit,
+            holding ``G`` fixed, as R's ``coxph(..., weights = fgwt * w,
+            cluster = id)`` on ``finegray``'s data; ``aic``, ``bic`` and
+            ``aic_c`` and the diagnostics refuse a weighted fit. See
+            :doc:`/Weighted Data`.
 
         Returns
         -------
@@ -1360,7 +1511,7 @@ class FineGray_(FitterRepr):
         >>> model.cif([5, 10], [[1]]).round(4)
         array([0.5808, 0.7395])
         """
-        x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
+        x, Z, e, c, n, w_kept = _validated(x, Z, e, c, n, w)
 
         causes = ordered_labels(e)
         if event is None:
@@ -1372,7 +1523,7 @@ class FineGray_(FitterRepr):
         elif event not in causes:
             raise unknown_cause_error(event, causes)
 
-        fit = _fit_cause(x, Z, e, c, n, event, center)
+        fit = _fit_cause(x, Z, e, c, n, event, center, w_kept)
         maximum = _warn_if_monotone([fit])
         model = FineGrayModel(fit)
         model.maximum = maximum

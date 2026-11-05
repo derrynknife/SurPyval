@@ -180,12 +180,38 @@ class NonParametric(
         if data_line:
             out += "\nData             : " + data_line
         if self.weighted:
+            bounds = (
+                "bounds by bootstrap_cb"
+                if self._weighted_without_variance()
+                else "robust variance"
+            )
             out += (
                 "\nWeights          : effective sample size "
-                f"{self.effective_n:.4g}; robust variance"
+                f"{self.effective_n:.4g}; {bounds}"
             )
 
         return out
+
+    def _weighted_without_variance(self) -> bool:
+        """Whether this is a weighted estimate with no variance formula (a
+        weighted Turnbull estimate), whose bounds are the case
+        bootstrap's."""
+        return bool(self.weighted) and getattr(self, "greenwood", None) is None
+
+    def _refuse_weighted_without_variance(self, what: str) -> None:
+        """Refuse ``what``, a bound or test built on the variance, for a
+        weighted estimate that has none, naming ``bootstrap_cb``."""
+        if self._weighted_without_variance():
+            from surpyval.utils.weights import refuse_weighted
+
+            raise refuse_weighted(
+                what,
+                "a weighted Turnbull estimate has no variance formula "
+                "(Greenwood's would read the weights as units seen, and "
+                "no robust variance of the weighted EM is built)",
+                "Use bootstrap_cb(x, random_state=seed), the weighted "
+                "case bootstrap, for its confidence bounds.",
+            )
 
     def _data_repr(self) -> str:
         """The data the estimate was fitted to, in one line, for the
@@ -943,6 +969,8 @@ class NonParametric(
         # ``R_cb`` without the bounds (see ``set_support``).
         from scipy.stats import norm
 
+        self._refuse_weighted_without_variance("cb")
+
         check_option("bound_type", bound_type, ("exp", "normal"))
         _check_bound(bound)
         check_option(
@@ -1406,6 +1434,7 @@ class NonParametric(
         :math:`x_i` to :math:`\tau` and :math:`v_i` the variance increment
         of the cumulative hazard (the Greenwood increment for Kaplan-Meier).
         """
+        self._refuse_weighted_without_variance("The bounds of rmst and mean")
         if getattr(self, "greenwood", None) is None:
             raise ValueError(
                 "Model has no variance estimate so confidence bounds "
@@ -1772,6 +1801,10 @@ class NonParametric(
 
         # Only computed when wanted: a ``fit_from_ecdf`` model has no
         # variance, and ``plot(plot_bounds=False)`` used to raise on it.
+        # A weighted Turnbull estimate has none either: its curve is drawn
+        # without bounds (they are ``bootstrap_cb``'s, which needs a seed).
+        if self._weighted_without_variance():
+            plot_bounds = False
         cbs = self.R_cb(self.x, **kwargs) if plot_bounds else None
 
         d = getattr(self, "d", None)
@@ -1855,6 +1888,9 @@ class NonParametric(
             ax = plt.gcf().gca()
 
         plot_bounds = kwargs.pop("plot_bounds", True)
+        if self._weighted_without_variance():
+            # (see ``get_plot_data``)
+            plot_bounds = False
         show_censors = kwargs.pop("show_censors", None)
         interp = kwargs.pop("interp", "step")
         bound = kwargs.pop("bound", "two-sided")
@@ -2210,8 +2246,8 @@ class NonParametric(
 
 
 def rmst_diff(
-    model_a: NonParametric,
-    model_b: NonParametric,
+    model_a: Any,
+    model_b: Any,
     tau: float | None = None,
     alpha_ci: float = 0.05,
 ) -> dict:
@@ -2225,9 +2261,13 @@ def rmst_diff(
 
     Parameters
     ----------
-    model_a, model_b : NonParametric
-        Two fitted non-parametric estimators (e.g. ``KaplanMeier.fit`` per
-        group). They must carry a variance estimate (Greenwood).
+    model_a, model_b : NonParametric or Parametric
+        Two fitted models, one per group: non-parametric estimators (e.g.
+        ``KaplanMeier.fit`` per group), which must carry a variance
+        estimate (Greenwood), or parametric fits (e.g. ``Weibull.fit``
+        per group), whose RMST and standard error are those of their
+        :meth:`~surpyval.univariate.parametric.parametric.Parametric.rmst`
+        (the delta method). The two may be one of each.
     tau : scalar, optional
         Common horizon. Defaults to the smaller of the two groups' largest
         observed times, so both survival curves are supported by data up to
@@ -2236,7 +2276,8 @@ def rmst_diff(
         there: the curve beyond it is not estimated, and holding it at its
         last value made the RMST, and the difference, what the horizon
         made them. (A curve that has reached zero is zero beyond, and
-        needs no extrapolation.)
+        needs no extrapolation.) A parametric fit extrapolates, so it
+        allows any ``tau``; its default is its own largest observed time.
     alpha_ci : scalar, optional
         Significance level for the interval and test (default 0.05).
 
@@ -2267,13 +2308,29 @@ def rmst_diff(
     5.0 1.1667 0.7233
     >>> print(round(res["p_value"], 4))
     0.1067
+
+    Parametric fits compare in the same way, with the delta method's
+    standard errors:
+
+    >>> wa = sp.Weibull.fit([2, 3, 4, 5, 6, 7])
+    >>> wb = sp.Weibull.fit([1, 2, 2, 3, 4, 5])
+    >>> res = sp.rmst_diff(wa, wb)
+    >>> print(res["tau"], round(res["difference"], 4), round(res["se"], 4))
+    5.0 1.2537 0.6694
     """
     check_alpha_ci(alpha_ci)
     from scipy.stats import norm
 
+    def largest(model: Any) -> float:
+        if isinstance(model, NonParametric):
+            return float(np.max(model.x))
+        return model._rmst_default_tau("rmst_diff")
+
     if tau is None:
-        tau = float(min(np.max(model_a.x), np.max(model_b.x)))
+        tau = float(min(largest(model_a), largest(model_b)))
     for name, model in (("model_a", model_a), ("model_b", model_b)):
+        if not isinstance(model, NonParametric):
+            continue
         s_last = model._survival_past_data(tau)
         if s_last is not None:
             raise ValueError(
@@ -2286,14 +2343,18 @@ def rmst_diff(
                     name,
                     float(np.max(model.x)),
                     s_last,
-                    float(min(np.max(model_a.x), np.max(model_b.x))),
+                    float(min(largest(model_a), largest(model_b))),
                 )
             )
 
-    mu_a = model_a.mean(tau=tau)
-    mu_b = model_b.mean(tau=tau)
-    var_a = model_a._rmst_variance(tau)
-    var_b = model_b._rmst_variance(tau)
+    def mean_and_variance(model: Any) -> tuple[float, float]:
+        if isinstance(model, NonParametric):
+            return model.mean(tau=tau), model._rmst_variance(tau)
+        res = model.rmst(tau, alpha_ci)
+        return res["rmst"], res["se"] ** 2
+
+    mu_a, var_a = mean_and_variance(model_a)
+    mu_b, var_b = mean_and_variance(model_b)
 
     diff = mu_a - mu_b
     se = float(np.sqrt(var_a + var_b))  # groups are independent

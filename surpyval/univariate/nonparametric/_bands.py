@@ -569,6 +569,15 @@ class BandsMixin:
         uncertainty in the EM allocation itself; the bootstrap does
         not.
 
+        For a Turnbull estimate fitted with weights ``w`` these are its
+        only bounds (``cb`` refuses): the weighted case bootstrap, which
+        draws the units (a row with ``n = k`` is ``k`` units) i.i.d. with
+        replacement, each with its weight, and refits the weighted
+        estimate. The units are drawn by position, so a seed gives the
+        same bounds at any scale of the weights. The other weighted
+        estimates (Kaplan-Meier, Nelson-Aalen, Fleming-Harrington)
+        refuse it and point to ``cb``, whose robust variance they have.
+
         Note that the Turnbull NPMLE only identifies the probability
         mass within each Turnbull interval, not how it is distributed
         inside one. Point estimates and bounds evaluated strictly
@@ -632,7 +641,8 @@ class BandsMixin:
                [0.19739583, 0.875     ],
                [0.        , 0.75      ]])
         """
-        if getattr(self, "weighted", False):
+        weighted = bool(getattr(self, "weighted", False))
+        if weighted and self.model != "Turnbull":
             from surpyval.utils.weights import refuse_weighted
 
             raise refuse_weighted(
@@ -689,13 +699,27 @@ class BandsMixin:
         rng = as_generator(random_state)
         N = int(n_data.sum())
         probs = n_data / n_data.sum()
+        if weighted:
+            # The weighted case bootstrap: the units (a row with n = k is
+            # k units) drawn i.i.d. with replacement by position, each
+            # with its weight, so a seed gives the same resamples, and the
+            # same bounds, at any scale of the weights.
+            w_data = np.asarray(self.data["w"], dtype=float)
+            unit_rows = np.repeat(
+                np.arange(len(n_data)), np.asarray(n_data, dtype=int)
+            )
 
         def resampled(x: npt.ArrayLike) -> npt.NDArray:
             x_eval = np.atleast_1d(x).astype(float)
             with np.errstate(all="ignore"):
                 R_boot = np.empty((n_boot, x_eval.size))
                 for b in range(n_boot):
-                    n_b = rng.multinomial(N, probs)
+                    if weighted:
+                        drawn = unit_rows[rng.integers(0, N, size=N)]
+                        n_b = np.bincount(drawn, minlength=len(n_data))
+                        tb_kwargs["w"] = w_data[n_b > 0]
+                    else:
+                        n_b = rng.multinomial(N, probs)
                     keep = n_b > 0
                     if self.model == "Turnbull":
                         fitted = nonp.turnbull(

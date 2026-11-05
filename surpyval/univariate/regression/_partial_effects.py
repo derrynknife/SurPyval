@@ -126,8 +126,11 @@ class PartialEffectsMixin:
         plot_bounds : bool, optional
             Draw each curve's two-sided confidence band, from the model's
             ``cb`` (its default Wald method, from the fit's covariance),
-            as a pale wash of the curve's colour. Default False. A model
-            without ``cb`` (the Cox model) refuses it.
+            as a pale wash of the curve's colour. Default False. For
+            the Cox model these are the bounds of R's
+            ``survfit(fit, newdata)`` (its ``cb`` with the default
+            ``bound_type="log"``), drawn as steps. A model without ``cb``
+            refuses it.
         alpha_ci : float, optional
             Total tail probability of the bands. Default 0.05.
         ax : matplotlib axes, optional
@@ -641,7 +644,11 @@ class _Covariates:
         return self._column_mean(j)
 
     def _column_mean(self, j: int) -> tuple[Any, str | None]:
-        if getattr(self.model, "is_tvc", False):
+        # A time-varying-coefficient fit's start-stop rows are its units'
+        # rows split, and it gives the units' rows.
+        if getattr(self.model, "is_tvc", False) and not getattr(
+            self.model, "_PARTIAL_EFFECTS_UNIT_ROWS", False
+        ):
             return None, (
                 "the rows of a time-varying-covariate fit are intervals, "
                 "not units, so their mean is not a unit's covariates"

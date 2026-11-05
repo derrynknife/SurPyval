@@ -14,6 +14,11 @@ coefficients move; the penalty with the smallest criterion is the one
 The choice is a statistic of the data, as the penalty is: the chosen
 model still has no standard errors or confidence bounds (choosing the
 penalty from the same data is one more reason for that).
+
+A path of weighted fits (``w``) has the coefficients, but no AIC or BIC
+(``nan``), and choosing by them is refused, as the information criteria
+of every weighted fit are: its pseudo-likelihood is not the likelihood of
+the data.
 """
 
 from __future__ import annotations
@@ -54,7 +59,10 @@ class PenaltyPath:
     effective_df, neg_ll, aic, bic : ndarray
         Each fit's effective degrees of freedom (``penalty.effective_df``,
         which the criteria count), negative log-likelihood (the partial
-        likelihood for a Cox model) and its ``aic()`` and ``bic()``.
+        likelihood for a Cox model) and its ``aic()`` and ``bic()``
+        (``nan`` for weighted fits, whose criteria are refused).
+    weighted : bool
+        Whether the fits were weighted (``w``).
 
     Examples
     --------
@@ -86,13 +94,31 @@ class PenaltyPath:
             [m.penalty.effective_df for m in models], dtype=float
         )
         self.neg_ll = np.array([m.neg_ll() for m in models], dtype=float)
-        self.aic = np.array([m.aic() for m in models], dtype=float)
-        self.bic = np.array([m.bic() for m in models], dtype=float)
+        self.weighted = bool(getattr(models[0], "weighted", False))
+        if self.weighted:
+            # Refused for a weighted fit (its pseudo-likelihood is not the
+            # data's): nan here, and best() says why.
+            self.aic = np.full(len(models), np.nan)
+            self.bic = np.full(len(models), np.nan)
+        else:
+            self.aic = np.array([m.aic() for m in models], dtype=float)
+            self.bic = np.array([m.bic() for m in models], dtype=float)
 
     def __len__(self) -> int:
         return self.penalizers.size
 
     def __repr__(self) -> str:
+        if self.weighted:
+            return (
+                "Penalty path: {} weighted fits, penalties from {:.4g} to "
+                "{:.4g}, l1_ratio {:g}; no AIC or BIC for weighted "
+                "fits".format(
+                    len(self),
+                    self.penalizers[0],
+                    self.penalizers[-1],
+                    self.l1_ratio,
+                )
+            )
         best = {c: self.best_penalizer(c) for c in CRITERIA}
         return (
             "Penalty path: {} penalties from {:.4g} to {:.4g}, l1_ratio "
@@ -130,6 +156,12 @@ class PenaltyPath:
         from surpyval.utils.validation import check_option
 
         check_option("criterion", criterion, CRITERIA)
+        if self.weighted:
+            from surpyval.utils.weights import refuse_information_criterion
+
+            raise refuse_information_criterion(
+                f"Choosing the penalty by {criterion}()"
+            )
         values = getattr(self, criterion)
         if not np.any(np.isfinite(values)):
             raise ValueError(
@@ -161,7 +193,8 @@ class PenaltyPath:
             _, ax = plt.subplots()
         for j, name in enumerate(self.coefficient_names):
             ax.plot(self.penalizers, self.coefficients[:, j], label=name)
-        for criterion, style in (("aic", ":"), ("bic", "--")):
+        marks = () if self.weighted else (("aic", ":"), ("bic", "--"))
+        for criterion, style in marks:
             ax.axvline(
                 self.best_penalizer(criterion),
                 color="grey",

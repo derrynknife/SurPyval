@@ -19,6 +19,16 @@ model whose ``sf(x, Z)`` pairs ``x`` with the rows of ``Z`` (the parametric
 regression families, ``CoxPH``, ``AdditiveHazards`` and the
 ``surpyval.ml`` forest).
 
+With competing risks each metric is of one cause: pass the event type of
+each row as ``e`` and the cause scored as ``cause``, with the predicted
+cumulative incidence ``F_k(t | Z)`` of that cause in place of the predicted
+survival. A subject whose first event is of another cause can never have
+the scored one: the Brier score counts them as such, and the AUC counts
+them as controls (``controls="cause_free"``, the default) or leaves them
+out (``"event_free"``), as ``riskRegression::Score(cause = k)`` and
+``timeROC``'s ``AUC_2`` and ``AUC_1``. ``G`` is then the censoring survival
+of every cause together.
+
 The censoring survival ``G`` behind the weights is the reverse Kaplan-Meier
 with the *events-first* convention at ties
 (:func:`surpyval.utils.ipcw.censoring_survival` with
@@ -54,15 +64,29 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 from pandas import DataFrame
+from scipy.stats import norm as _norm
 
 from surpyval.utils import validate_1d as _as_1d
-from surpyval.utils.ipcw import censoring_survival, step_at, step_left_limit
+from surpyval.utils.ipcw import (
+    censoring_survival,
+    ipcw_censoring_influence,
+    step_at,
+    step_left_limit,
+)
+from surpyval.utils.validation import (
+    alpha_ci_error,
+    check_c_and_e,
+    check_option,
+    unknown_cause_error,
+)
 
 __all__ = [
     "survival_probability",
     "brier_score",
     "integrated_brier_score",
     "auc_td",
+    "score_predictions",
+    "PredictionScores",
 ]
 
 
@@ -82,6 +106,63 @@ def _outcomes(
             "interval censoring are not supported".format(cname)
         )
     return x_arr, c_arr
+
+
+_CONTROLS = ("cause_free", "event_free")
+
+
+def _event_status(
+    x: npt.ArrayLike,
+    c: npt.ArrayLike | None,
+    e: npt.ArrayLike | None,
+    cause: Any,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    """Validated times, censoring flags and each row's status.
+
+    The status is 1 for an event of the scored cause, 2 for an event of
+    another cause (a competing event) and 0 for a right-censored row.
+    Without ``e`` every event is of the scored cause. With ``e`` (the event
+    type of each row, ``None`` for a censored one) ``cause`` names the one
+    scored, and ``c`` may be omitted, as for the competing-risks fits.
+    """
+    if e is None:
+        if cause is not None:
+            raise ValueError(
+                "'cause' needs 'e', the event type of each row (None for a "
+                "censored row); pass e= with cause={!r}".format(cause)
+            )
+        if c is None:
+            raise ValueError(
+                "'c' is required: the censoring flags (0 event, 1 right "
+                "censored); only competing-risks data given with 'e' may "
+                "omit it"
+            )
+        x_arr, c_arr = _outcomes(x, c, "x", "c")
+        return x_arr, c_arr, np.where(c_arr == 0, 1, 0)
+    # Imported here: surpyval.univariate imports the regression models,
+    # which import this module (a module-level import is circular).
+    from surpyval.univariate.competing_risks.labels import (
+        label_mask,
+        ordered_labels,
+    )
+    from surpyval.utils.data_formats import resolve_cr_censoring
+
+    e_arr, c_res = resolve_cr_censoring(e, c)
+    x_arr, c_arr = _outcomes(x, c_res, "x", "c")
+    if e_arr.shape != x_arr.shape:
+        raise ValueError("'x' and 'e' must have the same length")
+    e_arr = check_c_and_e(c_arr, e_arr)
+    labels = ordered_labels(e_arr)
+    if cause is None:
+        raise ValueError(
+            "'e' holds event types, so the metric is of one cause: pass "
+            "cause=, one of {}".format(labels)
+        )
+    scored = label_mask(e_arr, cause)
+    if not scored.any():
+        raise unknown_cause_error(cause, labels)
+    status = np.where(c_arr == 1, 0, np.where(scored, 1, 2))
+    return x_arr, c_arr, status
 
 
 def _ipcw(
@@ -113,6 +194,49 @@ def _ipcw(
     with np.errstate(divide="ignore", invalid="ignore"):
         w = np.where(g_xi > 0, 1.0 / g_xi, np.nan)
     return uniq, g, w
+
+
+def _survival_matrix(
+    survival: npt.ArrayLike,
+    n: int,
+    n_times: int,
+    name: str,
+    incidence: bool = False,
+) -> npt.NDArray:
+    """Validate a matrix of predicted survival probabilities (or, with
+    ``incidence``, of predicted cumulative incidences of one cause)."""
+    out = np.asarray(survival, dtype=float)
+    if out.ndim == 1:
+        out = out.reshape(-1, 1)
+    if out.shape != (n, n_times):
+        raise ValueError(
+            "'{}' must have shape (n_samples, n_times) = {}".format(
+                name, (n, n_times)
+            )
+        )
+    with np.errstate(invalid="ignore"):
+        outside = (out < 0) | (out > 1)
+    if outside.any():
+        if incidence:
+            held = "cumulative incidences of the cause"
+            what = "F_k(t | Z), the model's cif"
+        else:
+            held = "survival probabilities"
+            what = "S(t | Z), e.g. from survival_probability"
+        raise ValueError(
+            "'{}' must hold {}, in [0, 1]: {} of its {} values are "
+            "outside (from {:.4g} to {:.4g}). Pass {}, not a hazard or a "
+            "cumulative hazard".format(
+                name,
+                held,
+                int(outside.sum()),
+                out.size,
+                float(np.nanmin(out)),
+                float(np.nanmax(out)),
+                what,
+            )
+        )
+    return out
 
 
 def survival_probability(
@@ -201,6 +325,8 @@ def brier_score(
     times: npt.ArrayLike,
     x_train: npt.ArrayLike | None = None,
     c_train: npt.ArrayLike | None = None,
+    e: npt.ArrayLike | None = None,
+    cause: Any = None,
 ) -> tuple[npt.NDArray, npt.NDArray]:
     r"""Time-dependent Brier score (Graf et al. 1999).
 
@@ -219,22 +345,51 @@ def brier_score(
     at ``t`` is unknown), nor do those censored at ``t``; the IPCW weights
     correct for that loss. Lower is better.
 
+    With competing risks (``e`` and ``cause``) the score is of one cause
+    ``k``: the squared error between the indicator of an event of cause
+    ``k`` by ``t`` and the predicted cumulative incidence
+    ``F_k(t | Z_i)``,
+
+    .. math::
+        BS_k(t) = \frac1n \sum_i \Big[
+            \frac{(I(\epsilon_i = k) - F_k(t\mid Z_i))^2\,
+                  I(x_i \le t,\ \delta_i=1)}{\hat G(x_i-)}
+          + \frac{F_k(t\mid Z_i)^2\, I(x_i > t)}{\hat G(t)} \Big]:
+
+    a subject with an event of another cause by ``t`` is scored, with
+    weight ``1 / G(x_i-)``, as one that will never have cause ``k``, and
+    :math:`\hat G` is the censoring survival of every cause together.
+    This is ``riskRegression::Score(..., cause = k)``'s Brier score. With
+    one cause it is the ordinary score, since ``F = 1 - S``.
+
     Parameters
     ----------
-    x, c : array_like
-        Observed times and censoring flags (``0`` event, ``1`` right censored)
-        of the evaluation set.
+    x : array_like
+        Observed times of the evaluation set.
+    c : array_like
+        Censoring flags (``0`` event, ``1`` right censored). May be
+        ``None`` when ``e`` is given: a row with no event type is censored.
     survival : array_like, shape ``(n_samples, n_times)``
         Predicted survival ``S(times[k] | Z_i)``; see
-        :func:`survival_probability`.
+        :func:`survival_probability`. With ``cause``, the predicted
+        cumulative incidence ``F_k(times[k] | Z_i)`` of that cause
+        instead (a competing-risks model's ``cif``).
     times : array_like
         Horizons at which to score, matching the columns of ``survival``.
-    x_train, c_train : array_like, optional
-        Data used to estimate the censoring distribution ``G``. Defaults to the
-        evaluation ``x`` / ``c``. ``G`` is held at its last value beyond the
-        largest training time. If it has reached 0 there, a horizon at which
-        an evaluation row needs that zero (an event past the training
-        censoring support, or a survivor at such a horizon) scores ``nan``.
+    x_train : array_like, optional
+        Times used to estimate the censoring distribution ``G``, with
+        ``c_train``. Defaults to the evaluation ``x`` / ``c``. ``G`` is
+        held at its last value beyond the largest training time. If it has
+        reached 0 there, a horizon at which an evaluation row needs that
+        zero (an event past the training censoring support, or a survivor
+        at such a horizon) scores ``nan``.
+    c_train : array_like, optional
+        Censoring flags of ``x_train`` (any event is ``0``).
+    e : array_like, optional
+        The event type (cause) of each row for competing-risks data,
+        ``None`` (or ``NaN``) for a censored row; needs ``cause``.
+    cause : hashable, optional
+        The event type scored; one of the labels in ``e``.
 
     Returns
     -------
@@ -255,52 +410,62 @@ def brier_score(
     >>> S = [[0.8], [0.6], [0.5], [0.5], [0.3]]
     >>> brier_score(x, c, S, [3.5])[1]  # (.64 + .36 + .25 + 2 * .49) / 5
     array([0.446])
-    """
-    x, c = _outcomes(x, c, "x", "c")
-    times = _as_1d(times, "times")
-    survival = np.asarray(survival, dtype=float)
-    if survival.ndim == 1:
-        survival = survival.reshape(-1, 1)
-    if survival.shape != (x.size, times.size):
-        raise ValueError(
-            "'survival' must have shape (n_samples, n_times) = {}".format(
-                (x.size, times.size)
-            )
-        )
-    with np.errstate(invalid="ignore"):
-        outside = (survival < 0) | (survival > 1)
-    if outside.any():
-        raise ValueError(
-            "'survival' must hold survival probabilities, in [0, 1]: {} of "
-            "its {} values are outside (from {:.4g} to {:.4g}). Pass "
-            "S(t | Z), e.g. from survival_probability, not a hazard or a "
-            "cumulative hazard".format(
-                int(outside.sum()),
-                survival.size,
-                float(np.nanmin(survival)),
-                float(np.nanmax(survival)),
-            )
-        )
-    uniq, g, w_case = _ipcw(x, c, x_train, c_train)
 
-    n = x.size
+    Competing risks: the same subjects with the first event of cause
+    ``"b"``, scored for cause ``"a"`` with predicted incidences ``F``.
+    The subject with cause ``"b"`` counts as one that never has ``"a"``
+    (``c`` may be left out: the row with no cause is the censored one):
+
+    >>> e = ["b", "a", "a", None, "a"]
+    >>> F = [[0.1], [0.3], [0.4], [0.4], [0.5]]
+    >>> # (.01 + .49 + .36 + 2 * .25) / 5
+    >>> brier_score(x, None, F, [3.5], e=e, cause="a")[1].round(4)
+    array([0.272])
+    """
+    x, c, status = _event_status(x, c, e, cause)
+    times = _as_1d(times, "times")
+    pred = _survival_matrix(
+        survival, x.size, times.size, "survival", cause is not None
+    )
+    incidence = pred if cause is not None else 1.0 - pred
+    uniq, g, w_event = _ipcw(x, c, x_train, c_train)
+
     bs = np.empty(times.size)
     for k, t in enumerate(times):
-        s = survival[:, k]
         g_t = float(step_at(uniq, g, np.array([t]), before=1.0)[0])
-        died = (x <= t) & (c == 0)
-        alive = x > t
-        if (alive.any() and g_t == 0) or np.isnan(w_case[died]).any():
-            # A row that counts needs G where the training censoring
-            # estimate has reached 0: the score is not identified (dropping
-            # the row, as a zero weight did, biased it towards 0).
-            bs[k] = np.nan
-            continue
-        term = np.zeros(n)
-        term[died] = s[died] ** 2 * w_case[died]
-        term[alive] = (1.0 - s[alive]) ** 2 / g_t
-        bs[k] = term.sum() / n
+        terms = _brier_terms(x, status, incidence[:, k], t, w_event, g_t)
+        bs[k] = np.nan if terms is None else terms.sum() / x.size
     return times, bs
+
+
+def _brier_terms(
+    x: npt.NDArray,
+    status: npt.NDArray,
+    incidence: npt.NDArray,
+    t: float,
+    w_event: npt.NDArray,
+    g_t: float,
+) -> npt.NDArray | None:
+    """Each subject's IPCW Brier term at ``t``, or None where the score is
+    not identified.
+
+    ``status`` is that of :func:`_event_status`. A subject with an event
+    (of any cause) by ``t`` scores ``(I(cause scored) - F)^2 / G(x_i-)``,
+    one still event-free ``F^2 / G(t)``, one censored by ``t`` nothing. With
+    one cause, ``F = 1 - S`` gives Graf's ``S^2`` and ``(1 - S)^2``.
+    """
+    event = (x <= t) & (status > 0)
+    alive = x > t
+    if (alive.any() and g_t == 0) or np.isnan(w_event[event]).any():
+        # A row that counts needs G where the training censoring estimate
+        # has reached 0: the score is not identified (dropping the row, as
+        # a zero weight did, biased it towards 0).
+        return None
+    terms = np.zeros(x.size)
+    y = (status[event] == 1).astype(float)
+    terms[event] = (y - incidence[event]) ** 2 * w_event[event]
+    terms[alive] = incidence[alive] ** 2 / g_t
+    return terms
 
 
 def integrated_brier_score(
@@ -310,6 +475,8 @@ def integrated_brier_score(
     times: npt.ArrayLike,
     x_train: npt.ArrayLike | None = None,
     c_train: npt.ArrayLike | None = None,
+    e: npt.ArrayLike | None = None,
+    cause: Any = None,
 ) -> float:
     """Integrated Brier score: the Brier score averaged over ``times``.
 
@@ -319,7 +486,9 @@ def integrated_brier_score(
     model that predicts the true ``S(t | Z)`` scores below the marginal
     Kaplan-Meier reference. The grid need not be sorted (the columns of
     ``survival`` follow ``times``); a single time, or a grid with no span,
-    returns the mean Brier score. Parameters as for :func:`brier_score`.
+    returns the mean Brier score. Parameters as for :func:`brier_score`;
+    with ``e`` and ``cause`` it integrates the Brier score of that cause,
+    ``survival`` then holding the predicted cumulative incidences.
 
     Examples
     --------
@@ -345,7 +514,9 @@ def integrated_brier_score(
     >>> round(integrated_brier_score(x, c, S_km, times), 4)
     0.1038
     """
-    times_arr, bs = brier_score(x, c, survival, times, x_train, c_train)
+    times_arr, bs = brier_score(
+        x, c, survival, times, x_train, c_train, e=e, cause=cause
+    )
     # Integrate over the grid in time order: an unsorted grid otherwise gave
     # negative panel widths and a span of the wrong sign.
     order = np.argsort(times_arr, kind="stable")
@@ -367,6 +538,9 @@ def auc_td(
     times: npt.ArrayLike,
     x_train: npt.ArrayLike | None = None,
     c_train: npt.ArrayLike | None = None,
+    e: npt.ArrayLike | None = None,
+    cause: Any = None,
+    controls: str = "cause_free",
 ) -> tuple[npt.NDArray, npt.NDArray]:
     r"""Uno's cumulative/dynamic time-dependent AUC (2007).
 
@@ -383,19 +557,49 @@ def auc_td(
             {\big(\sum_i w_i I(\text{case}_i)\big)\,
              \big(\sum_j I(\text{control}_j)\big)}.
 
+    With competing risks (``e`` and ``cause``) the AUC is of one cause
+    ``k`` (Blanche, Dartigues and Jacqmin-Gadda 2013): a case is a subject
+    with an event of cause ``k`` by ``t``, and the risk is usually the
+    predicted cumulative incidence ``F_k(t | Z)``. Who counts as a control
+    is set by ``controls``:
+
+    * ``"cause_free"`` (default): everyone without cause ``k`` by ``t``
+      who is not censored by ``t``: those still event-free and those with
+      a competing event by ``t``, the latter weighted by
+      ``1 / G(x_j-)``. This is ``riskRegression::Score(..., cause = k)``'s
+      AUC and ``timeROC``'s ``AUC_2``.
+    * ``"event_free"``: only those still free of every event at ``t``,
+      ``timeROC``'s ``AUC_1``.
+
+    Without competing events the two are the same, the AUC above.
+
     Parameters
     ----------
-    x, c : array_like
-        Observed times and censoring flags (``0`` event, ``1`` right censored).
+    x : array_like
+        Observed times.
+    c : array_like
+        Censoring flags (``0`` event, ``1`` right censored). May be
+        ``None`` when ``e`` is given: a row with no event type is censored.
     risk : array_like, shape ``(n_samples, n_times)``
         Risk scores where *higher means earlier event*. For a survival
-        predictor use ``1 - survival`` (see :func:`survival_probability`).
+        predictor use ``1 - survival`` (see :func:`survival_probability`);
+        with ``cause``, the predicted cumulative incidence of that cause.
         A single column (or 1-D array) is broadcast across all ``times``.
     times : array_like
         Horizons at which to evaluate the AUC.
-    x_train, c_train : array_like, optional
-        Data used to estimate the censoring distribution ``G``. Defaults to the
-        evaluation ``x`` / ``c``.
+    x_train : array_like, optional
+        Times used to estimate the censoring distribution ``G``, with
+        ``c_train``. Defaults to the evaluation ``x`` / ``c``.
+    c_train : array_like, optional
+        Censoring flags of ``x_train`` (any event is ``0``).
+    e : array_like, optional
+        The event type (cause) of each row for competing-risks data,
+        ``None`` (or ``NaN``) for a censored row; needs ``cause``.
+    cause : hashable, optional
+        The event type whose cases are scored; one of the labels in ``e``.
+    controls : {"cause_free", "event_free"}, optional
+        Who is a control with competing risks (see above); default
+        ``"cause_free"``.
 
     Returns
     -------
@@ -416,8 +620,21 @@ def auc_td(
     >>> risk = [0.9, 0.4, 0.7, 0.5, 0.2]
     >>> auc_td(x, c, risk, [1.5, 2.5])[1].round(4)
     array([1.    , 0.6667])
+
+    With the first event of a competing cause ``"b"``, the AUC of cause
+    ``"a"`` at 2.5 has one case (risk 0.4). By default the subject with
+    cause ``"b"`` (risk 0.9) is a control, and the case outranks one of
+    four; with ``controls="event_free"`` it is left out, one of three:
+
+    >>> e = ["b", "a", "a", None, "a"]
+    >>> auc_td(x, None, risk, [2.5], e=e, cause="a")[1]
+    array([0.25])
+    >>> auc_td(x, None, risk, [2.5], e=e, cause="a",
+    ...        controls="event_free")[1].round(4)
+    array([0.3333])
     """
-    x, c = _outcomes(x, c, "x", "c")
+    check_option("controls", controls, _CONTROLS)
+    x, c, status = _event_status(x, c, e, cause)
     times = _as_1d(times, "times")
     risk = np.asarray(risk, dtype=float)
     if risk.ndim == 1:
@@ -430,32 +647,706 @@ def auc_td(
         raise ValueError(
             "'risk' must have one column per time (or a single column)"
         )
-    _, _, w = _ipcw(x, c, x_train, c_train)
+    uniq, g, w = _ipcw(x, c, x_train, c_train)
 
     auc = np.full(times.size, np.nan)
     for k, t in enumerate(times):
         r = risk[:, k]
-        cases = (x <= t) & (c == 0)
-        controls = x > t
-        if not cases.any() or not controls.any():
+        cases, free, other = _auc_groups(x, status, t, controls)
+        if not cases.any() or not (free.any() or other.any()):
             continue
-        if np.isnan(w[cases]).any():
+        if np.isnan(w[cases | other]).any():
             # A case past the training censoring support: not identified.
             continue
+        # The controls' weights relative to an event-free control's
+        # 1 / G(t): 1 for those, G(t) / G(x_j-) for a competing event.
+        g_t = float(step_at(uniq, g, np.array([t]), before=1.0)[0])
+        if other.any() and g_t == 0:
+            continue
+        ctrl = free | other
+        w_ctrl = np.where(free, 1.0, g_t * np.where(other, w, 0.0))[ctrl]
         rc = r[cases]
         wc = w[cases]
-        # Each case's controls below it and tied with it, from the sorted
-        # controls (a comparison with every control was O(cases x
-        # controls): 15 s at 1e5 rows). NaN sorts last, so it is counted
+        # Each case's weight of controls below it and tied with it, from
+        # the sorted controls (a comparison with every control was O(cases
+        # x controls): 15 s at 1e5 rows). NaN sorts last, so it is counted
         # as neither, as a comparison counts it; a NaN case counts none.
-        rk = np.sort(r[controls])
-        below = np.searchsorted(rk, rc, side="left")
-        tied = np.searchsorted(rk, rc, side="right") - below
-        terms = wc * (below + 0.5 * tied)
+        # With event-free controls only, the weights are 1 and these are
+        # the counts.
+        terms = wc * _weighted_below(rc, r[ctrl], w_ctrl)
         terms[np.isnan(rc)] = 0.0
         # Summed in order, as the loop did
         num = float(np.cumsum(terms)[-1])
-        den = wc.sum() * controls.sum()
+        den = wc.sum() * w_ctrl.sum()
         if den > 0:
             auc[k] = num / den
     return times, auc
+
+
+def _auc_groups(
+    x: npt.NDArray, status: npt.NDArray, t: float, controls: str
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    """The cases at ``t`` (an event of the scored cause by ``t``), the
+    event-free controls (``x > t``) and the competing-event controls (an
+    event of another cause by ``t``, with ``controls="cause_free"``)."""
+    by_t = x <= t
+    cases = by_t & (status == 1)
+    free = x > t
+    if controls == "cause_free":
+        other = by_t & (status == 2)
+    else:
+        other = np.zeros(x.size, dtype=bool)
+    return cases, free, other
+
+
+# ---------------------------------------------------------------------------
+# Standard errors, intervals and model comparisons.
+# ---------------------------------------------------------------------------
+
+_METRICS = ("brier", "auc", "ibs")
+
+
+class PredictionScores:
+    """
+    Prediction metrics with standard errors, confidence intervals and
+    tests between models, from :func:`score_predictions`.
+
+    Attributes
+    ----------
+    times : ndarray
+        The horizons, as passed.
+    models : list of str
+        The names of the scored models, in the order given.
+    metrics : tuple of str
+        The metrics computed: ``"brier"``, ``"auc"`` and/or ``"ibs"``.
+    alpha_ci : float
+        The intervals are two-sided ``1 - alpha_ci`` intervals.
+    n : int
+        The number of subjects scored.
+    scores : pandas.DataFrame
+        One row per metric, model and horizon, with columns ``metric``,
+        ``model``, ``time`` (``nan`` for ``"ibs"``, which summarises the
+        horizons), ``estimate``, ``se``, ``lower`` and ``upper``. The
+        intervals are ``estimate +/- z se``, clipped to ``[0, 1]`` as
+        ``riskRegression::Score`` does.
+    comparisons : pandas.DataFrame
+        One row per metric, pair of models and horizon: ``model`` and
+        ``reference`` (every model against each one listed before it),
+        ``difference`` (``model`` minus ``reference``), ``se``, ``lower``,
+        ``upper`` and ``p_value`` (the two-sided Wald test of no
+        difference). Empty with one model.
+    influence : dict
+        The influence function of each estimate, keyed by
+        ``(metric, model)``: an ``(n, n_times)`` array for ``"brier"`` and
+        ``"auc"``, a length-``n`` array for ``"ibs"``. Its standard
+        deviation over ``sqrt(n)`` is the standard error; the covariance of
+        two columns over ``n`` is the estimates' covariance. Not written by
+        :meth:`to_dict`.
+    cause : hashable or None
+        The event type scored with competing risks (``e`` and ``cause``
+        given), else ``None``: the metrics are then of any event.
+    controls : str or None
+        The AUC's controls with competing risks, ``"cause_free"`` or
+        ``"event_free"`` (see :func:`auc_td`), else ``None``.
+
+    Examples
+    --------
+    :func:`score_predictions` returns one; :meth:`estimate` reads a
+    metric's values and :meth:`to_dict` writes strict JSON:
+
+    >>> from surpyval.metrics import score_predictions
+    >>> x = [1.0, 2.0, 3.0, 3.0, 4.0, 5.0]
+    >>> c = [0, 0, 0, 1, 0, 1]
+    >>> S = [[0.8], [0.6], [0.5], [0.5], [0.3], [0.4]]
+    >>> result = score_predictions(x, c, S, [3.5], metrics=("brier",))
+    >>> result.estimate("brier").round(4)
+    array([0.4208])
+    >>> sorted(result.to_dict())[:3]
+    ['alpha_ci', 'cause', 'comparisons']
+    """
+
+    def __init__(
+        self,
+        times: npt.NDArray,
+        models: list[str],
+        metrics: tuple[str, ...],
+        alpha_ci: float,
+        n: int,
+        scores: DataFrame,
+        comparisons: DataFrame,
+        influence: dict | None = None,
+        cause: Any = None,
+        controls: str | None = None,
+    ) -> None:
+        self.times = times
+        self.models = models
+        self.metrics = metrics
+        self.alpha_ci = alpha_ci
+        self.n = n
+        self.scores = scores
+        self.comparisons = comparisons
+        self.influence = {} if influence is None else influence
+        self.cause = cause
+        self.controls = controls
+
+    def _rows(self, metric: str, model: str | None) -> DataFrame:
+        check_option("metric", metric, self.metrics)
+        if model is None:
+            model = self.models[0]
+        if model not in self.models:
+            raise ValueError(
+                "'model' must be one of {}; got {!r}".format(
+                    self.models, model
+                )
+            )
+        table = self.scores
+        return table[(table["metric"] == metric) & (table["model"] == model)]
+
+    def estimate(self, metric: str, model: str | None = None) -> Any:
+        """The estimates of ``metric`` for ``model`` (default the first):
+        an array over the horizons, or a float for ``"ibs"``.
+
+        Parameters
+        ----------
+        metric : str
+            ``"brier"``, ``"auc"`` or ``"ibs"``.
+        model : str, optional
+            The model's name; the first model by default.
+
+        Returns
+        -------
+        estimate : ndarray or float
+            The values the plain functions return.
+        """
+        values = self._rows(metric, model)["estimate"].to_numpy()
+        return float(values[0]) if metric == "ibs" else values
+
+    def se(self, metric: str, model: str | None = None) -> Any:
+        """The standard errors of ``metric`` for ``model``; see
+        :meth:`estimate`.
+
+        Parameters
+        ----------
+        metric : str
+            ``"brier"``, ``"auc"`` or ``"ibs"``.
+        model : str, optional
+            The model's name; the first model by default.
+
+        Returns
+        -------
+        se : ndarray or float
+            The standard errors.
+        """
+        values = self._rows(metric, model)["se"].to_numpy()
+        return float(values[0]) if metric == "ibs" else values
+
+    def to_dict(self) -> dict:
+        """The result as a dict of native Python values, strict JSON: a
+        missing number is written as ``None`` and recorded under
+        ``"non_finite"``. The influence functions are not written.
+
+        Returns
+        -------
+        result : dict
+            Settings, ``"scores"`` and ``"comparisons"`` as lists of
+            records.
+        """
+        from surpyval.serialisation import encode_non_finite, to_native
+
+        out = {
+            "result": type(self).__name__,
+            "times": to_native(np.asarray(self.times, dtype=float)),
+            "models": list(self.models),
+            "metrics": list(self.metrics),
+            "alpha_ci": float(self.alpha_ci),
+            "n": int(self.n),
+            "cause": to_native(self.cause),
+            "controls": self.controls,
+            "scores": [
+                {k: to_native(v) for k, v in row.items()}
+                for row in self.scores.to_dict("records")
+            ],
+            "comparisons": [
+                {k: to_native(v) for k, v in row.items()}
+                for row in self.comparisons.to_dict("records")
+            ],
+        }
+        return encode_non_finite(out)
+
+    @classmethod
+    def from_dict(cls, result_dict: dict) -> PredictionScores:
+        """The result :meth:`to_dict` wrote (without influence functions).
+
+        Parameters
+        ----------
+        result_dict : dict
+            A dict written by :meth:`to_dict`.
+
+        Returns
+        -------
+        result : PredictionScores
+            The scores and comparisons restored.
+        """
+        from surpyval.serialisation import decode_non_finite
+        from surpyval.univariate.competing_risks.labels import (
+            label_from_native,
+        )
+
+        if result_dict.get("result") != cls.__name__:
+            raise ValueError(
+                "Must create a PredictionScores from a dict its to_dict "
+                "wrote (with 'result': 'PredictionScores')"
+            )
+        d = decode_non_finite(dict(result_dict))
+        return cls(
+            times=np.asarray(d["times"], dtype=float),
+            models=list(d["models"]),
+            metrics=tuple(d["metrics"]),
+            alpha_ci=float(d["alpha_ci"]),
+            n=int(d["n"]),
+            cause=label_from_native(d.get("cause")),
+            controls=d.get("controls"),
+            scores=DataFrame(d["scores"], columns=_SCORE_COLUMNS),
+            comparisons=DataFrame(
+                d["comparisons"], columns=_COMPARISON_COLUMNS
+            ),
+        )
+
+    def __repr__(self) -> str:
+        level = 100 * (1 - self.alpha_ci)
+        out = "Prediction scores ({} subjects, {:g}% intervals)\n".format(
+            self.n, level
+        )
+        if self.cause is not None:
+            out += "Cause scored: {!r} (AUC controls: {})\n".format(
+                self.cause, self.controls
+            )
+        out += self.scores.to_string(index=False)
+        if len(self.comparisons):
+            out += "\n\nComparisons (model minus reference)\n"
+            out += self.comparisons.to_string(index=False)
+        return out
+
+
+_SCORE_COLUMNS = [
+    "metric",
+    "model",
+    "time",
+    "estimate",
+    "se",
+    "lower",
+    "upper",
+]
+_COMPARISON_COLUMNS = [
+    "metric",
+    "model",
+    "reference",
+    "time",
+    "difference",
+    "se",
+    "lower",
+    "upper",
+    "p_value",
+]
+
+
+def _brier_influence(
+    x: npt.NDArray,
+    c: npt.NDArray,
+    status: npt.NDArray,
+    incidence: npt.NDArray,
+    t: float,
+    w_event: npt.NDArray,
+    g_t: float,
+) -> tuple[float, npt.NDArray]:
+    """The Brier score at ``t`` and its influence function.
+
+    With ``r_i`` each subject's IPCW residual (:func:`_brier_terms`:
+    ``(I(cause scored) - F)^2 / G(x_i-)`` for an event of any cause by
+    ``t``, ``F^2 / G(t)`` for a survivor, 0 otherwise), the score is
+    ``mean(r)`` and its influence ``r_k - mean(r)`` plus the influence
+    through the censoring estimate, ``sum_j r_j f_k(u_j) / n``
+    (:func:`surpyval.utils.ipcw.ipcw_censoring_influence`).
+    """
+    n = x.size
+    r = _brier_terms(x, status, incidence, t, w_event, g_t)
+    if r is None:
+        return np.nan, np.full(n, np.nan)
+    event = (x <= t) & (status > 0)
+    bs = r.sum() / n
+    influence = r - bs
+    influence += ipcw_censoring_influence(
+        x, c == 1, r / n, np.where(event, x, t), event
+    )
+    return float(bs), influence
+
+
+def _weighted_below(
+    values: npt.NDArray, ref: npt.NDArray, ref_w: npt.NDArray
+) -> npt.NDArray:
+    """For each value, the weight of ``ref`` strictly below it plus half
+    the weight tied with it."""
+    order = np.argsort(ref, kind="stable")
+    r_sorted = ref[order]
+    cw = np.concatenate(([0.0], np.cumsum(ref_w[order])))
+    lo = np.searchsorted(r_sorted, values, side="left")
+    hi = np.searchsorted(r_sorted, values, side="right")
+    return cw[lo] + 0.5 * (cw[hi] - cw[lo])
+
+
+def _auc_influence(
+    x: npt.NDArray,
+    c: npt.NDArray,
+    status: npt.NDArray,
+    risk: npt.NDArray,
+    t: float,
+    w_event: npt.NDArray,
+    g_t: float,
+    controls_kind: str = "cause_free",
+) -> tuple[float, npt.NDArray]:
+    """Uno's AUC at ``t`` and its influence function (Blanche et al.
+    2013): the AUC is ``nu / mu``, ``nu`` the weighted mean over
+    (case, control) pairs of ``I(r_i > r_j) + I(r_i = r_j) / 2`` and
+    ``mu`` the mean pair weight, each a two-sample U-statistic; the
+    censoring estimate enters through the weights, a case's
+    ``1 / G(x_i-)``, an event-free control's ``1 / G(t)`` and a
+    competing-event control's ``1 / G(x_j-)``."""
+    n = x.size
+    cases, free, other = _auc_groups(x, status, t, controls_kind)
+    controls = free | other
+    nan = (np.nan, np.full(n, np.nan))
+    if not cases.any() or not controls.any() or g_t == 0:
+        return nan
+    if (
+        np.isnan(w_event[cases | other]).any()
+        or np.isnan(risk[cases | controls]).any()
+    ):
+        return nan
+    w = np.zeros(n)
+    w[cases] = w_event[cases]
+    w[free] = 1.0 / g_t
+    w[other] = w_event[other]
+    # a_k: subject k's share of the weighted concordant pairs, b_k its
+    # share of all weighted pairs.
+    a = np.zeros(n)
+    b = np.zeros(n)
+    a[cases] = w[cases] * _weighted_below(
+        risk[cases], risk[controls], w[controls]
+    )
+    a[controls] = w[controls] * (
+        w[cases].sum() - _weighted_below(risk[controls], risk[cases], w[cases])
+    )
+    b[cases] = w[cases] * w[controls].sum()
+    b[controls] = w[controls] * w[cases].sum()
+    pairs = w[cases].sum() * w[controls].sum()
+    auc = a[cases].sum() / pairs
+    mu = pairs / n**2
+    d = a - auc * b
+    influence = d / n / mu
+    strict = cases | other
+    influence += ipcw_censoring_influence(
+        x, c == 1, d / n**2 / mu, np.where(strict, x, t), strict
+    )
+    return float(auc), influence
+
+
+def _ibs_weights(times: npt.NDArray) -> npt.NDArray:
+    """The weights of the Brier scores at ``times`` in the integrated
+    Brier score: the trapezoid rule in time order over the span, or the
+    plain mean without a span (as :func:`integrated_brier_score`)."""
+    k = times.size
+    order = np.argsort(times, kind="stable")
+    ts = times[order]
+    if k < 2 or ts[-1] - ts[0] <= 0:
+        return np.full(k, 1.0 / k)
+    h = np.diff(ts)
+    a_sorted = np.zeros(k)
+    a_sorted[:-1] += h / 2
+    a_sorted[1:] += h / 2
+    a = np.empty(k)
+    a[order] = a_sorted / (ts[-1] - ts[0])
+    return a
+
+
+def score_predictions(
+    x: npt.ArrayLike,
+    c: npt.ArrayLike,
+    predictions: Any,
+    times: npt.ArrayLike,
+    metrics: Any = ("brier", "auc", "ibs"),
+    alpha_ci: float = 0.05,
+    e: npt.ArrayLike | None = None,
+    cause: Any = None,
+    controls: str = "cause_free",
+) -> PredictionScores:
+    r"""Brier score, integrated Brier score and time-dependent AUC with
+    standard errors, confidence intervals and tests between models.
+
+    :func:`brier_score`, :func:`integrated_brier_score` and :func:`auc_td`
+    give the bare estimates. This gives the same estimates with how
+    uncertain they are, and, for two or more models scored on the same
+    subjects, whether their difference is more than chance: the
+    difference, its interval and a p-value. The comparison is paired (the
+    same subjects score both models), so it is much sharper than
+    comparing two separate intervals.
+
+    Each estimate is an average over the subjects of an IPCW term, so its
+    standard error comes from its *influence function*: how much each
+    subject moves the estimate, including through the Kaplan-Meier
+    estimate of the censoring distribution behind the weights (the
+    ``conservative = FALSE`` variance of ``riskRegression::Score``). The
+    standard error is ``sd(IF) / sqrt(n)``; the interval of an estimate is
+    ``estimate +/- z se`` clipped to ``[0, 1]``; the difference between
+    two models has the standard error ``sd(IF_a - IF_b) / sqrt(n)`` and
+    the Wald test ``2 Phi(-|difference| / se)``. For the AUC the influence
+    function is that of Blanche, Dartigues and Jacqmin-Gadda (2013), as
+    ``timeROC(iid = TRUE)``; for the Brier score that of Gerds and
+    Schumacher (2006), as ``Score(se.fit = TRUE)``. The integrated Brier
+    score's is the same trapezoid combination of the Brier scores' that
+    gives the estimate.
+
+    Parameters
+    ----------
+    x : array_like
+        Observed times of the evaluation set.
+    c : array_like
+        Censoring flags, ``0`` event, ``1`` right censored. May be
+        ``None`` when ``e`` is given: a row with no event type is censored.
+    predictions : array_like or dict
+        Predicted survival ``S(times[k] | Z_i)``, shape
+        ``(n_samples, n_times)``, of one model (named ``"model"``), or a
+        dict of such matrices keyed by model name. Each model is
+        compared with every model before it. The AUC ranks subjects by
+        ``1 - S``. With ``cause``, the predicted cumulative incidence
+        ``F_k(times[k] | Z_i)`` of that cause instead, and the AUC ranks
+        subjects by it.
+    times : array_like
+        Horizons at which to score, matching the columns of each matrix.
+    metrics : sequence of str, optional
+        Any of ``"brier"``, ``"auc"`` and ``"ibs"`` (all by default).
+    alpha_ci : float, optional
+        The intervals are two-sided ``1 - alpha_ci`` intervals; default
+        0.05.
+    e : array_like, optional
+        The event type (cause) of each row for competing-risks data,
+        ``None`` (or ``NaN``) for a censored row; needs ``cause``. The
+        metrics are then those of one cause, as :func:`brier_score` and
+        :func:`auc_td` define them, and so are their standard errors:
+        ``riskRegression::Score(..., cause = k, se.fit = TRUE)``.
+    cause : hashable, optional
+        The event type scored; one of the labels in ``e``.
+    controls : {"cause_free", "event_free"}, optional
+        Who is a control for the AUC with competing risks; see
+        :func:`auc_td`. The default, ``"cause_free"``, is ``Score``'s.
+
+    Returns
+    -------
+    PredictionScores
+        The estimates, standard errors and intervals (``scores``), the
+        comparisons between models (``comparisons``) and the influence
+        functions.
+
+    Notes
+    -----
+    The censoring distribution is estimated from the evaluation data
+    themselves (there is no ``x_train``): the standard errors account for
+    that estimate, which a censoring distribution from other data would
+    need another term for. The estimates equal those of
+    :func:`brier_score`, :func:`integrated_brier_score` and
+    :func:`auc_td` without ``x_train``. A horizon where an estimate is
+    ``nan`` (no cases or controls, or a weight that is not identified)
+    has ``nan`` standard error and interval. An AUC with a missing
+    prediction among the cases or controls is ``nan`` here, estimate
+    included (:func:`auc_td` counts such a pair as neither concordant nor
+    tied); drop those subjects to score the rest. A Brier score with a
+    missing prediction is ``nan``, as in :func:`brier_score`.
+
+    The influence function of the censoring Kaplan-Meier uses
+    ``riskRegression``'s at-risk counts (everyone with ``x >= s``); the
+    standard errors agree with ``Score`` and, on data without tied
+    event times, with ``timeROC``. With tied event times ``timeROC``'s
+    AUC differs from ``Score``'s and SurPyval's.
+
+    References
+    ----------
+    Blanche, P., Dartigues, J.-F. and Jacqmin-Gadda, H. (2013), "Estimating
+    and comparing time-dependent areas under receiver operating
+    characteristic curves for censored event times with competing risks",
+    Statistics in Medicine 32, 5381-5397.
+
+    Examples
+    --------
+    Two models of the Rossi recidivism data, the Cox model and the
+    Kaplan-Meier curve that ignores the covariates, scored where they
+    were fitted. The Cox model's Brier scores are only a little lower,
+    and the paired test cannot tell the two apart at 26 weeks; its
+    discrimination at 39 weeks is clearly better than the curve's 0.5:
+
+    >>> import numpy as np
+    >>> from surpyval import CoxPH, KaplanMeier
+    >>> from surpyval.datasets import load_rossi_static
+    >>> from surpyval.metrics import score_predictions, survival_probability
+    >>> df = load_rossi_static()
+    >>> x, c = df["week"].values, 1 - df["arrest"].values
+    >>> Z = df[["fin", "age", "prio"]].values
+    >>> times = [13, 26, 39]
+    >>> S_cox = survival_probability(CoxPH.fit(x, Z, c=c), Z, times)
+    >>> S_km = np.tile(KaplanMeier.fit(x, c).sf(times), (len(x), 1))
+    >>> result = score_predictions(x, c, {"km": S_km, "cox": S_cox}, times)
+    >>> result.estimate("brier", "cox").round(4)
+    array([0.0433, 0.1056, 0.1447])
+    >>> result.se("brier", "cox").round(4)
+    array([0.009 , 0.0116, 0.0114])
+    >>> table = result.comparisons.set_index(["metric", "time"])
+    >>> round(float(table.loc[("brier", 26.0), "p_value"]), 3)
+    0.189
+    >>> round(float(table.loc[("auc", 39.0), "difference"]), 3)
+    0.128
+    >>> round(float(table.loc[("auc", 39.0), "p_value"]), 4)
+    0.0003
+    """
+    check_option("controls", controls, _CONTROLS)
+    x, c, status = _event_status(x, c, e, cause)
+    times = _as_1d(times, "times")
+    if isinstance(metrics, str):
+        metrics = (metrics,)
+    metrics = tuple(metrics)
+    if not metrics:
+        raise ValueError(
+            "'metrics' must name at least one of 'brier', 'auc' or 'ibs'"
+        )
+    for m in metrics:
+        check_option("metrics", m, _METRICS)
+    if not (
+        isinstance(alpha_ci, (int, float, np.integer, np.floating))
+        and 0 < alpha_ci < 1
+    ):
+        raise alpha_ci_error(alpha_ci)
+    if isinstance(predictions, dict):
+        if not predictions:
+            raise ValueError(
+                "'predictions' is an empty dict; pass one survival matrix "
+                "or a dict of them keyed by model name"
+            )
+        named = {str(k): v for k, v in predictions.items()}
+        if len(named) != len(predictions):
+            raise ValueError("'predictions' has two models with one name")
+    else:
+        named = {"model": predictions}
+    surv = {
+        k: _survival_matrix(
+            v,
+            x.size,
+            times.size,
+            ("predictions" if len(named) == 1 else f"predictions[{k!r}]"),
+            cause is not None,
+        )
+        for k, v in named.items()
+    }
+    # Every metric is computed from the predicted incidence of the scored
+    # cause: F = 1 - S with one cause.
+    if cause is None:
+        surv = {k: 1.0 - v for k, v in surv.items()}
+
+    uniq, g, w_case = _ipcw(x, c, None, None)
+    g_times = step_at(uniq, g, times, before=1.0)
+    n = x.size
+    z = _norm.ppf(1 - alpha_ci / 2)
+
+    estimates: dict = {}
+    influence: dict = {}
+    need_brier = "brier" in metrics or "ibs" in metrics
+    for name, F in surv.items():
+        if need_brier:
+            est = np.empty(times.size)
+            inf = np.empty((n, times.size))
+            for k, t in enumerate(times):
+                est[k], inf[:, k] = _brier_influence(
+                    x, c, status, F[:, k], t, w_case, float(g_times[k])
+                )
+            if "brier" in metrics:
+                estimates["brier", name] = est
+                influence["brier", name] = inf
+            if "ibs" in metrics:
+                a = _ibs_weights(times)
+                estimates["ibs", name] = np.array([est @ a])
+                influence["ibs", name] = inf @ a
+        if "auc" in metrics:
+            est = np.empty(times.size)
+            inf = np.empty((n, times.size))
+            for k, t in enumerate(times):
+                est[k], inf[:, k] = _auc_influence(
+                    x,
+                    c,
+                    status,
+                    F[:, k],
+                    t,
+                    w_case,
+                    float(g_times[k]),
+                    controls,
+                )
+            estimates["auc", name] = est
+            influence["auc", name] = inf
+
+    def _se(f: npt.NDArray) -> npt.NDArray:
+        f = f.reshape(n, -1)
+        if n < 2:
+            return np.full(f.shape[1], np.nan)
+        return np.std(f, axis=0, ddof=1) / np.sqrt(n)
+
+    score_rows = []
+    comparison_rows = []
+    names = list(surv)
+    for metric in metrics:
+        row_times = np.array([np.nan]) if metric == "ibs" else times
+        for name in names:
+            est = estimates[metric, name]
+            se = _se(influence[metric, name])
+            se = np.where(np.isnan(est), np.nan, se)
+            lower = np.clip(est - z * se, 0.0, 1.0)
+            upper = np.clip(est + z * se, 0.0, 1.0)
+            for k in range(est.size):
+                score_rows.append(
+                    [
+                        metric,
+                        name,
+                        row_times[k],
+                        est[k],
+                        se[k],
+                        lower[k],
+                        upper[k],
+                    ]
+                )
+        for i, ref in enumerate(names):
+            for name in names[i + 1 :]:
+                diff = estimates[metric, name] - estimates[metric, ref]
+                se = _se(influence[metric, name] - influence[metric, ref])
+                se = np.where(np.isnan(diff), np.nan, se)
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    p = 2 * _norm.sf(np.abs(diff) / se)
+                for k in range(diff.size):
+                    comparison_rows.append(
+                        [
+                            metric,
+                            name,
+                            ref,
+                            row_times[k],
+                            diff[k],
+                            se[k],
+                            diff[k] - z * se[k],
+                            diff[k] + z * se[k],
+                            p[k],
+                        ]
+                    )
+    return PredictionScores(
+        times=times,
+        models=names,
+        metrics=metrics,
+        alpha_ci=float(alpha_ci),
+        n=n,
+        scores=DataFrame(score_rows, columns=_SCORE_COLUMNS),
+        comparisons=DataFrame(comparison_rows, columns=_COMPARISON_COLUMNS),
+        influence=influence,
+        cause=cause,
+        controls=None if cause is None else controls,
+    )

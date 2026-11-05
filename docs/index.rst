@@ -299,6 +299,7 @@ Contents:
    Bayesian Fitting with SurPyval
    Regression Modelling with SurPyval
    Distributional Regression
+   Pseudo-Observations
    Model Diagnostics
    applications
    Competing Risks SurPyval Modelling

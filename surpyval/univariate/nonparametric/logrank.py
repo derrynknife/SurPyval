@@ -14,6 +14,14 @@ if TYPE_CHECKING:
     import pandas as pd
 
 
+# The refusal of left or interval censored data, with the test that takes it.
+_NOT_RIGHT_CENSORED = (
+    "Log-rank test can only be used with observed and right censored "
+    "data; for left or interval censored data use "
+    "surpyval.interval_logrank(x, Z, c, ...)"
+)
+
+
 class LogRankResult:
     """
     Result of a (weighted) log-rank test.
@@ -135,10 +143,7 @@ def _logrank_z_v(
             continue
         x_i, c_i, n_i, t_i = xcnt_handler(x=x_i, c=c_i, n=n_i, tl=tl_i)
         if ((c_i != 0) & (c_i != 1)).any():
-            raise ValueError(
-                "Log-rank test can only be used with observed and "
-                + "right censored data"
-            )
+            raise ValueError(_NOT_RIGHT_CENSORED)
         x_g.append(x_i)
         c_g.append(c_i)
         n_g.append(n_i)
@@ -272,16 +277,10 @@ def _weighted_u_v(
     k = groups.size
     x = np.asarray(x, dtype=float)
     if x.ndim != 1:
-        raise ValueError(
-            "Log-rank test can only be used with observed and "
-            + "right censored data"
-        )
+        raise ValueError(_NOT_RIGHT_CENSORED)
     c = np.zeros(x.shape) if c is None else np.asarray(c)
     if ((c != 0) & (c != 1)).any():
-        raise ValueError(
-            "Log-rank test can only be used with observed and "
-            + "right censored data"
-        )
+        raise ValueError(_NOT_RIGHT_CENSORED)
     units = np.ones(x.shape) if n is None else np.asarray(n, dtype=float)
     tl_arr = np.full(x.shape, -np.inf) if tl is None else np.asarray(tl)
     tl_arr = np.where(np.isnan(tl_arr), -np.inf, tl_arr)
@@ -402,8 +401,8 @@ def logrank(
     c : array like, optional
         Array of censoring flags. 0 is observed and 1 is right
         censored. Left or interval censored data cannot be used with
-        the log-rank test. If not provided assumes all values are
-        observed.
+        this test; :func:`~surpyval.interval_logrank` takes them. If not
+        provided assumes all values are observed.
     n : array like, optional
         Array of counts for each x. If :code:`None` assumes each
         observation is 1.
@@ -623,10 +622,7 @@ def _cut_at(
             raise ValueError("'strata' must have a label for each observation")
     c = np.zeros(x.shape) if c is None else np.asarray(c)
     if ((c != 0) & (c != 1)).any():
-        raise ValueError(
-            "Log-rank test can only be used with observed and "
-            + "right censored data"
-        )
+        raise ValueError(_NOT_RIGHT_CENSORED)
     x = np.asarray(x, dtype=float)
     after = x > t0
     x = np.where(after, t0, x)
@@ -686,6 +682,10 @@ def _logrank(
         raise ValueError("Test requires at least two groups")
 
     x = np.atleast_1d(x)
+    if x.ndim == 2:
+        # A two-column x is interval data. Its shape used to fail the
+        # length checks below with a message about the number of entries.
+        raise ValueError(_NOT_RIGHT_CENSORED)
     c_arr = None if c is None else np.atleast_1d(c)
     n_arr = None if n is None else np.atleast_1d(n)
     tl_arr = None
@@ -706,10 +706,7 @@ def _logrank(
         from surpyval.utils.weights import check_weights
 
         if np.ndim(x) != 1:
-            raise ValueError(
-                "Log-rank test can only be used with observed and "
-                + "right censored data"
-            )
+            raise ValueError(_NOT_RIGHT_CENSORED)
         w_arr = check_weights(w, x.shape[0])
 
     k = groups.size

@@ -262,6 +262,95 @@ _OFFSET_WALD_WARNING = (
 )
 
 
+def _rmst_weibull(y: float, alpha: float, beta: float) -> float:
+    """``int_0^y exp(-(u / alpha)^beta) du``, by the lower incomplete
+    gamma function."""
+    from scipy.special import gamma as gamma_fn
+    from scipy.special import gammainc
+
+    a = 1.0 / beta
+    with onp.errstate(all="ignore"):
+        u = onp.power(onp.float64(y) / alpha, beta)
+        return float(alpha * gamma_fn(1.0 + a) * gammainc(a, u))
+
+
+def _rmst_exponential(y: float, rate: float) -> float:
+    """``int_0^y exp(-rate u) du``."""
+    return float(-onp.expm1(-rate * y) / rate)
+
+
+def _rmst_gamma(y: float, shape: float, rate: float) -> float:
+    """``E[min(T, y)]`` of a Gamma with that shape and rate:
+    ``(shape / rate) P(shape + 1, rate y) + y Q(shape, rate y)``."""
+    from scipy.special import gammainc, gammaincc
+
+    u = rate * y
+    return float(
+        shape / rate * gammainc(shape + 1.0, u) + y * gammaincc(shape, u)
+    )
+
+
+def _rmst_lognormal(y: float, mu: float, sigma: float) -> float:
+    """``E[min(T, y)]`` of a LogNormal: ``exp(mu + sigma^2 / 2)
+    Phi((log y - mu - sigma^2) / sigma) + y Phi(-(log y - mu) / sigma)``."""
+    from scipy.special import ndtr
+
+    if y <= 0:
+        return 0.0
+    w = (onp.log(y) - mu) / sigma
+    with onp.errstate(all="ignore"):
+        return float(
+            onp.exp(mu + sigma**2 / 2.0) * ndtr(w - sigma) + y * ndtr(-w)
+        )
+
+
+#: The restricted means ``int_0^y S(u) du`` in closed form, by
+#: distribution name; every other distribution's is a quadrature of ``sf``.
+_RMST_CLOSED_FORM: dict[str, Callable[..., float]] = {
+    "Exponential": _rmst_exponential,
+    "Weibull": _rmst_weibull,
+    "Gamma": _rmst_gamma,
+    "LogNormal": _rmst_lognormal,
+}
+
+
+def _sf_area(
+    dist: Any,
+    a: float,
+    b: float,
+    core: Any,
+    closed: Callable[..., float] | None,
+) -> float:
+    """``int_a^b S(u) du`` of the distribution ``dist`` at the parameters
+    ``core``, with ``S = 1`` below its support and 0 above it: by the
+    closed form ``closed`` (``int_0^y S``) for a distribution whose
+    support starts at 0, otherwise by adaptive quadrature."""
+    from scipy.integrate import quad
+
+    if not b > a:
+        return 0.0
+    s0, s1 = (float(v) for v in getattr(dist, "support", (-onp.inf, onp.inf)))
+    area = 0.0
+    if a < s0:
+        # Nothing has failed before the support starts: S = 1 there.
+        area += min(b, s0) - a
+        a = s0
+    b = min(b, s1)
+    if not b > a:
+        return area
+    core = [float(v) for v in core]
+    if closed is not None and s0 == 0.0:
+        return area + closed(b, *core) - closed(a, *core)
+
+    def sf(u: float) -> float:
+        return float(onp.ravel(dist.sf(onp.array([u]), *core))[0])
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        value, _ = quad(sf, a, b, epsabs=0.0, epsrel=1e-11, limit=200)
+    return area + float(value)
+
+
 def _query_array(x: Any) -> Any:
     """A model function's query ``x`` as an array (a plain numpy one: the
     query is not traced, and autograd's wrapper was a fixed cost on every
@@ -1388,6 +1477,76 @@ class Parametric(
             bounds = -bounds * factor
             return p_hat + bounds
 
+    def likelihood_contour(
+        self, alpha_ci: float = 0.05, n_points: int = 100
+    ) -> Any:
+        r"""
+        The joint likelihood-ratio confidence region of the model's two
+        parameters: the contour around the estimate inside which every
+        pair of values is one a likelihood-ratio test at level
+        ``alpha_ci`` does not reject.
+
+        ``param_cb(name, method="lr")`` bounds one parameter at a time;
+        this region bounds the two together, and shows how they trade
+        off (a Weibull's scale and shape are correlated, so the region
+        is a tilted oval, not a rectangle). It covers the true pair with
+        probability ``1 - alpha_ci`` in large samples. The contour is
+        where the log-likelihood has fallen from its maximum by half the
+        chi-squared critical value with two degrees of freedom:
+
+        .. math::
+
+            \log L(\theta) = \log L(\hat\theta) - \chi^2_{2, 1 - \alpha}/2,
+            \qquad \chi^2_{2, 1 - \alpha} = -2 \log \alpha.
+
+        It is found by root finding along ``n_points`` rays from the
+        estimate (in each parameter's log, or logit, for a bounded one),
+        at angles evenly spaced in the Wald metric, plus the four points
+        where it is tangent to the axes, which are each parameter's
+        profile-likelihood bounds at the same critical value.
+        :func:`surpyval.plot_likelihood_contour` draws it, for one or
+        more fits.
+
+        Parameters
+        ----------
+        alpha_ci : float, optional
+            The significance level; 0.05 (the default) gives the 95%
+            joint region.
+        n_points : int, optional
+            The number of rays from the estimate. Defaults to 100.
+
+        Returns
+        -------
+        LikelihoodContour
+            The ``points`` of the contour (one column per parameter),
+            the extremes of each parameter over the region (``bounds``),
+            the estimate and the log-likelihood there and on the contour;
+            ``to_dict()`` gives it as strict JSON.
+
+        Raises
+        ------
+        ValueError
+            For a model with other than two fitted parameters (one
+            parameter's region is its interval, ``param_cb(name,
+            method="lr")``; fix all but two at fit time for the contour
+            of those two), an offset, limited-failure or zero-inflated
+            model, a fit other than MLE, or a fit with weights ``w``.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> x = [61.9, 74.2, 82.2, 106.3, 76.2, 40.7, 83.2, 42.3, 50.4]
+        >>> model = Weibull.fit(x, c=[1, 0, 0, 0, 0, 0, 0, 1, 0])
+        >>> contour = model.likelihood_contour(alpha_ci=0.1, n_points=40)
+        >>> contour.params, contour.points.shape
+        (['alpha', 'beta'], (44, 2))
+        >>> bool(abs(contour.critical_value - 4.60517) < 1e-5)
+        True
+        """
+        from .likelihood_contour import likelihood_contour
+
+        return likelihood_contour(self, alpha_ci, n_points)
+
     def _resolve_param_name(self, name: str) -> tuple[bool, int]:
         """Locate the parameter ``name`` for a confidence bound.
 
@@ -2300,10 +2459,11 @@ class Parametric(
             return float(np.max(f)) + 1.0
         return float(self.dist.qf(0.999, *self.params)) + self.gamma + 1.0
 
-    def mean(self, defective: bool = False) -> float:
+    def mean(self, defective: bool = False, tau: float | None = None) -> float:
         r"""
         The mean of the distribution using the parameters found in the
-        ``.params`` attribute.
+        ``.params`` attribute; with ``tau``, the restricted mean up to
+        ``tau`` (see :meth:`rmst`), as the non-parametric models' ``mean``.
 
         Parameters
         ----------
@@ -2316,6 +2476,11 @@ class Parametric(
             :math:`t\,dF(t)` over the units that fail, with :math:`X` the
             base distribution; that is not the mean life of the units that
             fail, which is :math:`\gamma + \mathbb{E}[X]`.
+        tau : scalar, optional
+            A horizon: the restricted mean survival time
+            :math:`\int_0^\tau S(t)\, dt`, the point estimate of
+            :meth:`rmst`, which is finite with a limited failure
+            population too (``defective`` then does not matter).
 
         Returns
         -------
@@ -2338,6 +2503,8 @@ class Parametric(
         model: for a zero-inflated model the mass ``f0`` at 0 contributes
         nothing, so it is :math:`(1 - f_0)\,\mathbb{E}[\gamma + X]`.
         """
+        if tau is not None:
+            return float(self._rmst_values(self._rmst_taus(tau, "mean"))[0])
         if self.lfp_p < 1 and not defective:
             # A fraction 1 - p never fails, so E[T] is infinite (#404).
             return np.inf
@@ -3059,6 +3226,307 @@ class Parametric(
             out[ok] = np.reshape(found, (int(ok.sum()), -1))
         return out if bound == "two-sided" else out[:, 0]
 
+    def _rmst_taus(self, tau: Any, what: str = "rmst") -> npt.NDArray:
+        """The horizons ``tau`` as a flat array, refused where one is
+        negative or infinite (a missing one gives ``nan``)."""
+        t = np.atleast_1d(onp.asarray(tau, dtype=float)).reshape(-1)
+        bad = ~onp.isnan(t) & ~((t >= 0) & onp.isfinite(t))
+        if onp.any(bad):
+            raise ValueError(
+                "{}: tau = {} is not a finite time at or above 0. The "
+                "restricted mean is the area under sf from 0 to tau; for "
+                "the area to infinity use mean().".format(
+                    what, t[bad].tolist()
+                )
+            )
+        if self.dist.discrete:
+            raise ValueError(
+                "{} is not available for a discrete distribution ({}): "
+                "its restricted mean is a sum of sf over the counts below "
+                "tau, model.sf(numpy.arange(tau)).sum() for integer "
+                "tau.".format(what, self.dist.name)
+            )
+        self._refuse_probability_model(what)
+        return t
+
+    def _rmst_default_tau(self, what: str) -> float:
+        """The default horizon: the largest observed time."""
+        self._require_data(f"{what} with tau left out")
+        x = onp.asarray(self.data["x"], dtype=float)
+        x = x[onp.isfinite(x)]
+        if not x.size:
+            raise ValueError(
+                f"{what}: the data hold no finite time; pass tau."
+            )
+        return float(onp.max(x))
+
+    def _rmst_of(self, taus: Any, core: Any, p: Any, f0: Any) -> Any:
+        """The restricted means at ``taus`` of the model at the parameters
+        ``(core, p, f0)``: ``(1 - p) tau + (p - f0) int_{-gamma}^{tau -
+        gamma} S_0(u) du``, with the base survival ``S_0`` 1 below its
+        support (an offset, or a zero-inflated mass at 0)."""
+        name = getattr(self.dist, "name", None)
+        closed = None
+        if not self._has_custom_distribution():
+            closed = _RMST_CLOSED_FORM.get(name)  # type: ignore[arg-type]
+        p, f0 = float(p), float(f0)
+        out = onp.full(len(taus), onp.nan)
+        for i, tau in enumerate(onp.asarray(taus, dtype=float)):
+            if onp.isnan(tau):
+                continue
+            base = _sf_area(
+                self.dist, -self.gamma, tau - self.gamma, core, closed
+            )
+            out[i] = (1.0 - p) * tau + (p - f0) * base
+        return out
+
+    def _rmst_values(self, taus: Any) -> npt.NDArray:
+        """The restricted means at ``taus`` at the fitted parameters."""
+        return self._rmst_of(taus, self.params, self.lfp_p, self.f0)
+
+    @staticmethod
+    def _rmst_scale(tau: float) -> tuple:
+        """The scale of a bound on the restricted mean to ``tau``: the
+        logit of its fraction of ``tau``, so the bounds stay in (0, tau)."""
+        return (
+            lambda v: np.log(v) - np.log(tau - v),
+            lambda u: tau * expit(u),
+            lambda v: 1.0 / v + 1.0 / (tau - v),
+            (_LN_TINY, -_LN_TINY),
+        )
+
+    def _rmst_wald(
+        self, taus: npt.NDArray, alpha_ci: float, bound: str
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+        """The restricted means at ``taus``, their delta-method standard
+        errors and their Wald bounds (on the scale of :meth:`_rmst_scale`).
+        """
+        ctx = self._cb_context()
+
+        def rmst_of(phi: npt.NDArray) -> Any:
+            core, p, f0 = self._cb_unpack(phi, ctx)
+            return self._rmst_of(taus, core, p, f0)
+
+        value = onp.asarray(rmst_of(ctx.phi_hat), dtype=float)
+        with np.errstate(all="ignore"):
+            jac = onp.atleast_2d(central_jacobian(rmst_of, ctx.phi_hat))
+            var = onp.einsum("ij,jk,ik->i", jac, ctx.cov, jac)
+        sd = self._cb_sd(var, taus, "rmst")
+        width = 2 if bound == "two-sided" else 1
+        out = onp.full((len(taus), width), onp.nan)
+        for i, tau in enumerate(taus):
+            if onp.isnan(value[i]):
+                continue
+            if tau == 0:
+                out[i] = 0.0
+                continue
+            found = self._summary_wald(
+                value[i : i + 1],
+                var[i : i + 1],
+                self._rmst_scale(float(tau)),
+                alpha_ci,
+                bound,
+                "rmst",
+            )
+            out[i] = onp.ravel(found)
+        return value, sd, out
+
+    def rmst(self, tau: float | None = None, alpha_ci: float = 0.05) -> dict:
+        r"""
+        Restricted mean survival time up to ``tau`` with inference: the
+        expected time a unit lives within the first ``tau`` of its life,
+        as the non-parametric models' ``rmst`` gives it from their curve.
+
+        It is the area under the fitted survival function from 0 to
+        ``tau``,
+
+        .. math::
+            \mu(\tau) = \int_0^\tau S(t)\, dt = E[\min(T, \tau)],
+
+        in closed form for the Exponential,
+        :math:`(1 - e^{-\lambda\tau}) / \lambda`, the Weibull,
+        :math:`\alpha\, \Gamma(1 + 1/\beta)\, P(1/\beta, (\tau/\alpha)^\beta)`
+        (:math:`P` the regularised lower incomplete gamma function), the
+        Gamma and the LogNormal, and otherwise by adaptive quadrature of
+        :meth:`sf`. An offset (``gamma``) adds the time before it, where
+        nothing fails; a limited failure population (``lfp_p < 1``) adds
+        :math:`(1 - p)\tau` for the units that never fail (so its RMST is
+        finite while its mean is not); zero inflation takes the mass at 0
+        out. For a distribution on the whole line it is still the area
+        from 0, the time lived in :math:`[0, \tau]`.
+
+        The standard error is the delta method's,
+        :math:`\sqrt{g^\top \Sigma g}` with :math:`g` the gradient of
+        :math:`\mu(\tau)` in the parameters (central differences) and
+        :math:`\Sigma` the parameters' :meth:`covariance` (the inverse
+        observed information; the robust one for a weighted fit). The
+        interval is that Wald bound on the logit of
+        :math:`\mu(\tau)/\tau`, so it stays inside :math:`(0, \tau)`:
+        :meth:`rmst_cb` with ``method="wald"``, which also has the
+        likelihood-ratio and bootstrap bounds.
+
+        Parameters
+        ----------
+        tau : scalar, optional
+            The horizon. Defaults to the largest observed time, as for
+            the non-parametric models; a model with no data needs it.
+            Unlike theirs, a ``tau`` past the data is allowed: the
+            fitted distribution extrapolates.
+        alpha_ci : scalar, optional
+            Significance level for the interval (default 0.05).
+
+        Returns
+        -------
+        dict
+            ``{"rmst", "se", "lower", "upper", "tau"}``, as the
+            non-parametric models' ``rmst``.
+
+        Raises
+        ------
+        ValueError
+            Where the model has no bounds (not fitted by MLE, or no
+            covariance): ``mean(tau=tau)`` gives the point estimate. Also
+            for a discrete distribution, and for a negative or infinite
+            ``tau``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> np.random.seed(1)
+        >>> model = Weibull.fit(Weibull.random(30, 10, 3))
+        >>> res = model.rmst(tau=8)
+        >>> print(round(res["rmst"], 4), round(res["se"], 4))
+        6.6396 0.3239
+        >>> print(round(res["lower"], 4), round(res["upper"], 4))
+        5.8845 7.1635
+
+        See Also
+        --------
+        rmst_cb : bounds on it at several horizons, by other methods.
+        surpyval.rmst_diff : compare the RMST of two groups.
+        """
+        check_alpha_ci(alpha_ci)
+        if tau is None:
+            tau = self._rmst_default_tau("rmst")
+        t = self._rmst_taus(tau)
+        if t.size != 1:
+            raise ValueError(
+                "rmst takes one tau; rmst_cb bounds several at once."
+            )
+        try:
+            self._check_summary_cb(alpha_ci, "two-sided", "rmst")
+            if not self._has_core_covariance():
+                raise self._no_covariance_error()
+        except ValueError as error:
+            raise ValueError(
+                "{}. The point estimate alone is model.mean(tau={:g}).".format(
+                    str(error).rstrip("."), float(t[0])
+                )
+            ) from None
+        self._warn_offset_wald("rmst")
+        value, sd, cb = self._rmst_wald(t, alpha_ci, "two-sided")
+        return {
+            "rmst": float(value[0]),
+            "se": float(sd[0]),
+            "lower": float(cb[0, 0]),
+            "upper": float(cb[0, 1]),
+            "tau": float(t[0]),
+        }
+
+    @keeps_query_shape
+    def rmst_cb(
+        self,
+        tau: npt.ArrayLike | None = None,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
+    ) -> npt.NDArray:
+        r"""
+        Confidence bounds on the restricted mean survival time,
+        :meth:`rmst`, at one horizon or several.
+
+        Parameters
+        ----------
+        tau : array like or scalar, optional
+            The horizons. Defaults to the largest observed time.
+        alpha_ci : scalar, optional
+            The level of significance at which the bound will be computed.
+            Defaults to 0.05.
+        bound : ('two-sided', 'upper', 'lower'), str, optional
+            Compute either the two-sided, upper or lower confidence bound(s).
+            Defaults to two-sided.
+        method : ('wald', 'lr', 'bootstrap'), str, optional
+            ``"wald"`` (default) is the delta method on the logit of
+            ``rmst / tau``, which keeps the bounds in ``(0, tau)``;
+            ``"lr"`` the likelihood-ratio bound, the extreme of the RMST
+            over the parameters' likelihood region, as for
+            :meth:`mean_cb` (with an offset, a limited failure population
+            or zero inflation, over every fitted parameter);
+            ``"bootstrap"`` the parametric bootstrap, as for
+            :meth:`quantile_cb`, which includes an offset's uncertainty
+            (the Wald bound holds it at its estimate, with a warning).
+        n_boot : int, optional
+            The number of bootstrap refits, with ``method="bootstrap"``.
+            Defaults to 200.
+        random_state : int or numpy Generator, optional
+            The seed of the bootstrap's simulations.
+
+        Returns
+        -------
+        cb : scalar or numpy array
+            The bound(s), shaped as ``tau``; a two-sided bound adds a last
+            ``[lower, upper]`` axis. At ``tau = 0`` the RMST and its
+            bounds are 0.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> np.random.seed(1)
+        >>> model = Weibull.fit(Weibull.random(30, 10, 3))
+        >>> model.rmst_cb([4, 8]).round(3)
+        array([[3.642, 3.946],
+               [5.885, 7.163]])
+        >>> model.rmst_cb(8, method="lr").round(3)
+        array([5.906, 7.178])
+        """
+        check_alpha_ci(alpha_ci)
+        self._check_summary_cb(alpha_ci, bound, "rmst_cb")
+        if tau is None:
+            tau = self._rmst_default_tau("rmst_cb")
+        t = self._rmst_taus(tau, "rmst_cb")
+        self._refuse_weighted_method(method, bootstrap=True)
+        if self._is_lr(method, bootstrap=True):
+            out = onp.full((t.size, 2 if bound == "two-sided" else 1), 0.0)
+            for i, tau_i in enumerate(t):
+                if onp.isnan(tau_i):
+                    out[i] = onp.nan
+                elif tau_i > 0:
+                    found = self._lr_summary(
+                        "rmst",
+                        [tau_i],
+                        alpha_ci,
+                        bound,
+                        scale=self._rmst_scale(float(tau_i)),
+                    )
+                    out[i] = onp.ravel(found)
+        elif method.lower() == "bootstrap":
+            from . import _bootstrap
+
+            out = _bootstrap.rmst_cb_bootstrap(
+                self, t, alpha_ci, bound, n_boot, random_state
+            )
+            out = onp.reshape(out, (t.size, -1))
+        else:
+            if not self._has_core_covariance():
+                raise self._no_covariance_error()
+            self._warn_offset_wald("rmst_cb")
+            out = self._rmst_wald(t, alpha_ci, bound)[2]
+        return out if bound == "two-sided" else out[:, 0]
+
     def _lr_summary(
         self,
         kind: str,
@@ -3095,6 +3563,13 @@ class Parametric(
                 ]
             elif kind == "mean":
                 fns = [lambda theta: self.dist.mean(*theta)]
+            elif kind == "rmst":
+                fns = [
+                    lambda theta, a=a: float(
+                        self._rmst_of([a], theta, 1.0, 0.0)[0]
+                    )
+                    for a in args
+                ]
             else:
                 fns = [
                     lambda theta, a=a: float(
@@ -3111,6 +3586,8 @@ class Parametric(
                     out = model.qf(a)
                 elif kind == "mean":
                     out = model.mean()
+                elif kind == "rmst":
+                    out = model._rmst_values([a])
                 else:
                     out = model.mrl(a)
             return float(onp.ravel(onp.asarray(out, dtype=float))[0])
@@ -3135,7 +3612,10 @@ class Parametric(
                 return np.inf
             return from_psi(u)
 
-        scale = (to_psi, to_value, slope, ends)
+        if kind != "rmst":
+            # (a restricted mean is at most tau: the end of its scale is
+            # tau, not an infinite value)
+            scale = (to_psi, to_value, slope, ends)
         if (
             kind in ("mean", "mrl")
             and self.lfp

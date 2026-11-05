@@ -42,7 +42,11 @@ from ._kinds import (
 )
 from ._partial_effects import PartialEffectsMixin
 from ._penalised import PenalisedModelMixin
-from ._prediction import ConditionalSurvivalMixin, quantiles_by_inversion
+from ._prediction import (
+    ConditionalSurvivalMixin,
+    RestrictedMeanMixin,
+    quantiles_by_inversion,
+)
 from ._tvc_evaluation import TVCEvaluationMixin
 from .regression_data import (
     check_covariate_width,
@@ -89,6 +93,7 @@ _SERIALISABLE_REG_NAMES = {
 class ParametricRegressionModel(
     PenalisedModelMixin,
     ConditionalSurvivalMixin,
+    RestrictedMeanMixin,
     PartialEffectsMixin,
     TVCEvaluationMixin,
     InferenceMixin,
@@ -1104,9 +1109,11 @@ class ParametricRegressionModel(
         if data_line:
             out += "\nData                : " + data_line
         if self.weighted:
+            # A penalised fit has no covariance, robust or not
             out += (
                 "\nWeights             : effective sample size "
-                f"{self.effective_n:.4g}; robust covariance"
+                f"{self.effective_n:.4g}"
+                + ("; robust covariance" if self.penalty is None else "")
             )
         if self._has_center():
             # A fit with center=True (#463): say where the baseline

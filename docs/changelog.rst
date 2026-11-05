@@ -1,11 +1,170 @@
 Changelog
-=========
-
+==
 Unreleased
 ----------
 
 **Added.**
 
+- ``Turnbull.fit(..., w=)``: the Turnbull estimate with sampling weights,
+  for interval and left censored and truncated data. The estimate is the
+  weighted non-parametric MLE (each row counts ``n w`` in the EM; checked
+  against R's ``icenReg::ic_np(..., weights = w)`` to 1e-8), unchanged by
+  the scale of the weights and equal to the weighted Kaplan-Meier on right
+  censored data with ``turnbull_estimator="Kaplan-Meier"``. Its bounds are
+  the weighted case bootstrap, ``bootstrap_cb(x, random_state=seed)``
+  (95% coverage 0.93 to 0.95 in a simulation of informative sampling);
+  ``cb``, ``quantile_cb``, the bounds of ``rmst`` and ``sf_diff`` refuse
+  it, naming ``bootstrap_cb``. A weighted probability plot of interval
+  censored or truncated data now uses the weighted Turnbull positions.
+- Time-varying coefficients in the Cox model:
+  ``CoxPH.fit(..., time_interaction={column: g})`` (and ``fit_from_df``)
+  gives a covariate the coefficient :math:`\beta + \gamma g(t)`, with ``g``
+  ``"t"``, ``"log"`` or any function of time, by splitting the rows at the
+  event times. The coefficient table names the interactions
+  (``karno:log(t)``); ``time_varying_effect()`` gives :math:`\beta(t)` with
+  Wald bounds, with ``plot()``; ``sf``, ``Hf`` and the other predictions at
+  fixed covariates apply :math:`\beta(t)` at each time, and ``phi``, the
+  concordance, ``diagnose()`` and ``to_dict`` refuse. Matches R's
+  ``coxph(..., tt = function(x, t, ...) x * g(t))`` on ``veteran`` and
+  ``lung`` (Efron and Breslow ties, strata, weights) to 1e-6, and
+  ``diagnose()``'s advice for a continuous covariate that fails the
+  proportional-hazards test now names it.
+- The restricted mean survival time of the parametric models:
+  ``rmst(tau)`` (the RMST, its delta-method standard error and 95%
+  interval, in the form of the non-parametric models' ``rmst``),
+  ``rmst_cb(tau)`` (Wald, likelihood-ratio and bootstrap bounds, at one
+  horizon or several) and ``mean(tau=tau)`` (the point). Exact for the
+  Exponential, Weibull, Gamma and LogNormal, by quadrature otherwise;
+  offsets, limited failure populations and zero inflation included. The
+  parametric regression models have ``rmst(tau, Z)``, ``rmst_cb(tau, Z)``
+  (Wald and bootstrap) and ``rmst_diff(tau, Z_a, Z_b)``, and
+  ``surpyval.rmst_diff`` compares parametric fits as well as
+  non-parametric ones. Checked against R (``survreg`` and ``integrate``
+  with the delta method by hand, and flexsurv's ``summary(type="rmst")``)
+  on ``lung`` and ``ovarian``.
+- ``CompetingRisks.fit(..., w=)`` and ``fit_from_df(..., w_col=)``: the
+  Aalen-Johansen cumulative incidence of data with sampling or
+  inverse-probability weights, with the robust (infinitesimal jackknife)
+  variance behind every ``cb`` (the cumulative incidence, and ``sf``,
+  ``ff`` and ``Hf``), the effective sample size in the printout and
+  schema-3 dictionaries. Checked against R's ``survfit(Surv(x, factor(e))
+  ~ 1, weights = w)`` (``pstate`` and ``std.err``, ties included) to
+  1e-10. ``gray_test(..., w=)`` refuses, saying what to use instead.
+- ``CoxPH.fit_firth``: the Cox model with Firth's penalty (Heinze and
+  Schemper 2001), half the log determinant of the information added to the
+  partial log-likelihood, so the estimates stay finite where a covariate
+  separates the events from the survivors (a monotone likelihood). With
+  the coefficients' standard errors, profile penalised-likelihood
+  intervals and p-values (Wald ones with ``profile=False``) in
+  ``model.firth`` and ``summary()``, and the penalised likelihood-ratio
+  test from ``likelihood_ratio_test()``. Breslow ties; delayed entry
+  (start-stop rows), counts and strata. Checked against R's ``coxphf`` on
+  six data sets (coefficients and standard errors to 1e-6, bounds to
+  1e-5). The "No finite maximum" warning of a Cox fit now names it.
+- Uno's concordance index and standard errors for C:
+  ``surpyval.metrics.concordance_estimate(x, c, risk, weighting="uno",
+  tau=...)`` gives Harrell's or Uno's inverse-probability-of-censoring
+  weighted C, optionally only over the pairs whose event is at or before a
+  horizon ``tau``, with its infinitesimal-jackknife standard error and a
+  normal or logit confidence interval; ``compare_concordance`` tests the
+  difference between two scores' C on the same subjects, with the
+  covariance of the two. Every regression model gains
+  ``concordance_estimate()`` and ``concordance(weighting=, tau=)``. They
+  reproduce R's ``survival::concordance`` (``timewt = "n"`` and
+  ``"n/G2"``, ``ymax``, and two fits' ``var``) on ``lung`` and
+  ``veteran`` to 1e-10 for C and a relative 1e-8 for the variances, and
+  ``survC1::Est.Cval`` for Uno's C to 1e-7. ``concordance_index`` is
+  unchanged.
+- ``surpyval.metrics.score_predictions``: the Brier score, integrated Brier
+  score and time-dependent AUC with standard errors and confidence intervals
+  from their IPCW influence functions (the censoring estimate's variability
+  included), and, for several models scored on the same subjects, the paired
+  difference between each pair with its interval and p-value. Returns a
+  ``PredictionScores`` result with ``to_dict``. Checked against R's
+  ``riskRegression::Score(se.fit = TRUE)`` (scores, standard errors,
+  intervals, contrasts and p-values) and ``timeROC(iid = TRUE)`` with
+  ``compare`` to 1e-9 on two synthetic sets (one with tied times) and Cox
+  models of ``veteran``. ``brier_score``, ``integrated_brier_score`` and
+  ``auc_td`` are unchanged.
+- ``e=`` and ``cause=`` on ``brier_score``, ``integrated_brier_score``,
+  ``auc_td`` and ``score_predictions``: the Brier score, integrated Brier
+  score and time-dependent AUC of one cause with competing risks, scoring
+  predicted cumulative incidences, with standard errors, intervals and model
+  comparisons. A subject with a competing event counts as never having the
+  cause; ``controls="cause_free"`` (default) or ``"event_free"`` chooses the
+  AUC's controls (``timeROC``'s ``AUC_2`` and ``AUC_1``). Checked against
+  ``riskRegression::Score(cause = k, se.fit = TRUE)`` and ``timeROC(cause =
+  k, iid = TRUE)`` to 1e-9 on a synthetic set with tied times (both causes)
+  and the PBC trial (death, transplant competing). ``c`` may be left out
+  when ``e`` is given; an unknown cause, or ``cause`` without ``e``, is
+  refused.
+- Pseudo-observations and regression on them: ``pseudo_survival``,
+  ``pseudo_rmst`` and ``pseudo_cif`` give the jackknife (leave-one-out)
+  pseudo-values of the Kaplan-Meier survival at chosen times, of the
+  restricted mean survival time to ``tau`` and of a cause's Aalen-Johansen
+  cumulative incidence; ``pseudo_regression`` (and
+  ``pseudo_regression_from_df``) fits survival-probability (cloglog or
+  logit link), RMST (identity or log) and cumulative-incidence (cloglog or
+  logit) regressions to them by estimating equations with robust
+  (sandwich) standard errors, returning a ``PseudoRegressionResult``
+  (``coef``, ``se``, ``ci``, ``p``, ``summary()``, ``predict``,
+  ``predict_cb``, ``to_dict()``). A positive coefficient means a shorter
+  life: the survival models are on ``1 - S(t)`` and the RMST model is
+  ``g(RMST) = a - b'Z``. Checked against R's ``pseudo`` (``pseudosurv``,
+  ``pseudomean``, ``pseudoci``, to 1e-8) and ``geepack::geeglm`` with an
+  independence working model (coefficients and robust standard errors, to
+  1e-6) on ``lung``, ``ovarian``, the PBC trial and a seeded
+  competing-risks set. Guide: Pseudo-Observations.
+- Confidence bounds on a Cox model's predicted curve:
+  ``SemiParametricRegressionModel.cb(x, Z)`` bounds the predicted ``sf``,
+  ``ff`` or ``Hf`` at covariates ``Z``, with the variance of the baseline
+  and of the coefficients (Tsiatis 1981, Link 1984: R's ``survfit(fit,
+  newdata)`` ``std.err``), under Efron's or Breslow's ties, with case
+  weights (the robust covariance), for stratified fits (``stratum=``) and
+  for start-stop data. ``bound_type`` is R's ``conf.type``: ``"log"``
+  (the default, as R's), ``"log-log"`` or ``"plain"``. The bounds agree
+  with R ``survival`` 3.8.12 to about 1e-9 on ``lung``, ``ovarian`` and
+  ``heart`` (``scripts/reference/reference_r_cox_curve.R``).
+  ``plot_partial_effects(plot_bounds=True)`` now draws them for a Cox
+  model, which refused before. The conformance bound sweeps include them.
+  A model restored by ``from_dict`` (which does not keep its data) and a
+  penalised fit refuse them.
+
+- ``surpyval.recurrent.mcf_diff``: compares two groups' mean cumulative
+  functions, each fitted with ``NonParametricCounting.fit``. It returns an
+  ``MCFDiffResult`` with the difference of the MCFs at each time and its
+  pointwise confidence bounds (``diff``, ``diff_cb``, ``plot``; the sum of
+  the groups' Lawless-Nadeau robust variances), and the pseudo-score tests
+  of Cook, Lawless and Nadeau (1996) of whether the groups' event rates
+  differ, with constant and linear weights and a robust (default) or
+  Poisson variance. Late entry and gapped observation are taken as the MCF
+  takes them. Checked against R's ``reda::mcfDiff`` and
+  ``reda::mcfDiff.test`` on two seeded data sets (agreement about 1e-14).
+- ``interval_logrank``: log-rank and Wilcoxon-type tests of groups of
+  interval-censored data (any mix of exact, right, left and interval-censored
+  rows, as ``x``/``c``, a two-column ``x`` or ``xl``/``xr``). Each unit is
+  scored from the Turnbull estimate of the pooled data, with Sun's
+  log-rank scores (the default), Finkelstein's, or the Wilcoxon-type
+  scores, and the score sums are compared by their permutation
+  distribution: a chi-squared p-value, or a Monte Carlo permutation one
+  (``method="permutation"``, seeded by ``random_state``). Returns an
+  ``IntervalLogRankResult`` with ``to_dict()``. Matches R's
+  ``interval::ictest(..., method = "pclt")`` to 1e-8 on the breast cosmesis
+  data and on simulated three-group data. Truncated data are refused.
+  ``logrank`` given left or interval-censored data, or a two-column ``x``,
+  now says to use it; its results are unchanged.
+- ``Parametric.likelihood_contour(alpha_ci, n_points)``: the joint
+  likelihood-ratio confidence region of a fit's two parameters, the
+  contour where the log-likelihood is half the chi-squared (two degrees of
+  freedom) critical value below its maximum, found by root finding along
+  rays from the estimate, with each parameter's exact extremes over the
+  region (``bounds``). It returns a ``LikelihoodContour`` with
+  ``to_dict()``. ``surpyval.plot_likelihood_contour`` draws one or more
+  fits' contours at one or several levels, with the estimates marked, to
+  compare two samples. Models with other than two fitted parameters,
+  offset, limited-failure and zero-inflated models, and weighted fits are
+  refused with a message saying what to use. Checked against WeibullR's
+  ``MLEcontour`` and the profile likelihood solved in base R.
 - ``CrowAMSAA.projection(..., bias_corrected=True)``: ``False`` uses the
   plain maximum-likelihood shapes in the demonstrated intensity and in the
   rate of new BD modes, as the worked example of MIL-HDBK-189C (section
@@ -108,6 +267,56 @@ Unreleased
   Efron's ties for one subject of weight 3 than for three identical
   copies (use ``n`` for repeated identical units, ``w`` for survey and
   importance weights). No numbers change.
+- Weights ``w`` in the competing-risks regressions:
+  ``CompetingRisksProportionalHazards.fit(..., w=)`` (cause-specific Cox
+  and Fine-Gray), ``FineGray.fit(..., w=)`` and their ``fit_from_df(...,
+  w_col=)``. Cause-specific Cox is the weighted ``CoxPH`` per cause, R's
+  ``coxph(Surv(x, e == k) ~ z, weights = w, robust = TRUE)``. Fine-Gray
+  multiplies the weights into its censoring weights and estimates the
+  censoring distribution from the weighted Kaplan-Meier (so whole-number
+  weights give the counted fit exactly; R's ``finegray`` leaves its
+  censoring distribution unweighted), with the robust covariance clustered
+  by unit that holds it fixed, R's ``coxph(..., weights = fgwt * w,
+  cluster = id)``. Checked against R (coefficients 1e-8, standard errors
+  1e-6). The information criteria, the diagnostics and the penalised fit
+  refuse weighted fits.
+- ``AalenAdditive.fit(..., w=)`` and ``fit_from_df(..., w_col=)``:
+  Aalen's additive hazards model with sampling weights. Each increment of
+  the cumulative effects ``B(t)`` is a weighted least-squares fit, and
+  every standard error and bound (``summary``,
+  ``cumulative_coefficients_cb``, ``cb``, ``plot``) uses the robust
+  variance, the sum of the units' squared influences, which does not
+  depend on the scale of the weights. Matches R's ``timereg::aalen(...,
+  weights = w, robust = 1)`` (``cum`` and ``robvar.cum``, to 1e-12), with
+  and without delayed entry. Whole-number weights give the estimate of the
+  same counts exactly. ``constant_effects_test()`` refuses a weighted
+  fit; the model shows its effective sample size and saves as schema 3.
+- Weights ``w`` for distributional regression
+  (``WeibullDistributional.fit(..., w=w)`` and every ``Distributional``
+  fitter) and Royston-Parmar regression (``RoystonParmarPH``,
+  ``RoystonParmarPO``, ``RoystonParmarRegression``), with ``w_col`` in
+  ``fit_from_df``: weighted estimates, the robust (sandwich) covariance,
+  Wald and case-bootstrap bounds; likelihood-ratio bounds and tests and the
+  information criteria refuse. Checked against R's ``flexsurvreg`` and
+  ``flexsurvspline`` with ``weights`` (estimates to 1e-5, robust standard
+  errors from a hand sandwich to 1e-4). Royston-Parmar's knots are placed
+  on the event times counted by ``n``, not weighted. A Royston-Parmar
+  left truncation at 0 is now read as none: it made the fit unverified and
+  a weighted fit's covariance ``nan``.
+- Sampling weights ``w`` in penalised fits: ``CoxPH.fit_penalised``,
+  ``CoxPH.fit_tvc_penalised`` and the parametric PH, AFT and PO
+  ``fit_penalised``, which refused them. The objective is the weighted
+  log-likelihood over :math:`N_w = \sum n w` plus the penalty, with the
+  covariates standardised by their ``n w``-weighted standard deviations,
+  so rescaling the weights changes nothing. The Cox fit matches R's
+  ``glmnet(..., family = "cox", weights = w)`` to 1e-6 (ridge, lasso and
+  elastic net, Breslow and Efron, with and without delayed entry); the
+  parametric fits are checked against their optimality conditions. No
+  standard errors, and ``aic``/``bic`` refused, as for every weighted
+  fit; ``penalty_path`` of weighted fits keeps the coefficients and
+  refuses choosing by AIC or BIC. A parametric penalised fit with a
+  delayed entry at 0 is now ``"verified"`` (it was left "unverified" by a
+  nan second derivative; the estimates do not change).
 
 **Changed.**
 
@@ -346,6 +555,20 @@ Unreleased
   saving and the printout. Every penalised result, warning and refusal
   is unchanged to the last bit. The solver now also takes a model with
   no Hessian, using finite differences of its gradient, and says so.
+- Stale documentation brought up to date: the model atlas lists
+  ``CauseSpecificNHPP`` (no longer a gap) and drops issue numbers that no
+  longer track anything; the README's model table names
+  ``CauseSpecificNHPP``; the usage skill lists all eight copula families.
+- The diagnostics families' copies of the same small helpers (number
+  formatting, notes, the covariate kind, the trend sign, formula-column
+  names, the AIC gap) now live once in ``surpyval/diagnostics/_shared.py``.
+  Every diagnosis is unchanged to the last bit.
+- Removed code nothing called: the rename helpers of
+  ``surpyval.utils.deprecation`` no deprecation uses any more
+  (``reordered_arguments``, ``CallableFloat``, ``MethodFloat``,
+  ``MethodArray``, ``ArrayMethod``, ``RenamedToMethod``, ``MadePrivate``),
+  and a few private helpers with no callers. ``renamed_arguments``,
+  ``RenamedAttribute`` and ``renamed_name`` stay for the next rename.
 
 v0.26 (31 October 2026)
 -----------------------

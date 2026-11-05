@@ -167,7 +167,12 @@ def validate_fine_gray_inputs(
     e: npt.ArrayLike,
     c: npt.ArrayLike | None,
     n: npt.ArrayLike | None,
-) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+    w: npt.ArrayLike | float | None = None,
+) -> tuple:
+    """``(x, Z, e, c, n)`` of a competing-risks regression, checked, with
+    the rows that have a missing covariate dropped; and the weights ``w``
+    of the rows kept as a sixth entry where ``w`` is given (checked by
+    ``check_weights``, one per row or one for every row)."""
     # A missing event (None / NaN) marks a censored observation; if c is not
     # given it is derived from the events.
     e, c = resolve_cr_censoring(e, c)
@@ -175,11 +180,18 @@ def validate_fine_gray_inputs(
         semi_parametric_inputs,
     )
 
+    rows: tuple = (np.array(e),)
+    if w is not None:
+        from surpyval.utils.weights import check_weights
+
+        # The weights travel with the rows, so a row dropped for a
+        # missing covariate takes its weight with it.
+        rows += (check_weights(w, rows[0].shape[0]),)
     # Rows with a NaN / infinite covariate are dropped with a warning, as
     # every regression fitter does (they used to be dropped silently here);
     # left- and interval-censored rows are refused below, after the drop.
-    x_a, c_a, n_a, _, Z_arr, e_arr = semi_parametric_inputs(
-        x, Z, c, n, censoring=None, rows=(np.array(e),)
+    x_a, c_a, n_a, _, Z_arr, e_arr, *w_kept = semi_parametric_inputs(
+        x, Z, c, n, censoring=None, rows=rows
     )
 
     check_e_and_x(e_arr, x_a)
@@ -187,4 +199,6 @@ def validate_fine_gray_inputs(
     e_arr = check_c_and_e(c_a, e_arr)
     check_left_or_int_cens(c_a)
 
+    if w is not None:
+        return x_a, Z_arr, e_arr, c_a, n_a, np.asarray(w_kept[0], float)
     return x_a, Z_arr, e_arr, c_a, n_a
