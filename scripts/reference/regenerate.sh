@@ -31,7 +31,7 @@ Rscript scripts/reference/reference_r_reda.R
 Rscript scripts/reference/reference_r_likelihood_contour.R
 # Prints the values test_weighted_distributional_rp.py holds
 Rscript scripts/reference/reference_r_weighted_distributional_rp.R
-
+Rscript scripts/reference/reference_r_weighted_aalen_johansen.R
 # Prints its values, which are typed into test_turnbull_weighted.py
 Rscript scripts/reference/reference_r_weighted_turnbull.R
 # Prints the weighted penalised Cox references typed into

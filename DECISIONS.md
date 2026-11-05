@@ -24,6 +24,17 @@ Design decisions made while working on the open issues, with the reason for each
 | The RMST is the area from 0 for every distribution, a whole-line one (Normal, Gumbel, Logistic) included: the time lived in [0, tau]. A `tau` past the data is allowed (the fit extrapolates); the default `tau` is the largest observed time, as for the non-parametric models. Discrete distributions are refused (their RMST is a sum of `sf` over the counts). | proposed | One definition across models; the non-parametric refusal past the data is about a curve that is not estimated there, which a parametric fit is. | done |
 | The regression models' `rmst_cb` has Wald and bootstrap bounds, not likelihood-ratio ones: `method="lr"` is refused with that message. | proposed | The regression likelihood-ratio search is built per function (sf, quantiles); a search over an integral at every step is a separate piece. | gap |
 
+### Weights stage 2: the Aalen-Johansen cumulative incidence (`CompetingRisks`)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `CompetingRisks.fit(..., w=)` and `fit_from_df(..., w_col=)`: each unit counts `n * w` in the numbers at risk and of each cause's failures; every variance is the infinitesimal jackknife, `sum_i n_i w_i^2 U_i(t)^2` (no small-sample factor), as R's `survfit(Surv(x, factor(e)) ~ 1, weights = w)$std.err` (checked to 1e-10, ties included). | principle 16 | The stage-1 rule for weights (robust variance always); R's multi-state `survfit` is the reference. | done |
+| With `w = 1` the cumulative incidence's variance is the robust one, not Aalen's, which the fit without `w` keeps. | proposed | One variance per kind of fit, as the weighted Kaplan-Meier and log-rank test. | done |
+| The bounds on `sf`, `ff` and `Hf` of a weighted model are those of the weighted `KaplanMeier` / `NelsonAalen` fit of the same rows (all causes, or the cause with the others censored), by the fitted `how`; the stacked plot's all-cause bounds are the weighted Kaplan-Meier's. | proposed | As the unweighted model, which borrows the single-event estimates' bounds. | done |
+| A weighted model's dict stores the robust variances (`cif_var`, `log_sf_var`, `log_sf_var_km`) and `effective_n`, and is stamped schema 3. | principle 20 | A reader without weights would bound the estimate with Aalen's variance. | done |
+| `gray_test(..., w=)` refuses with a `WeightedRefusal` naming `logrank(..., w=)` and the weighted cumulative incidences' bounds. | proposed | `cmprsk` has no weighted Gray test to check one against. | gap |
+| No delayed entry: the estimate takes none, weighted or not. | proposed | Out of this change's scope. | gap |
+
 ### Firth's penalised Cox fit: `CoxPH.fit_firth`
 
 | Decision | By | Reason | Status |
