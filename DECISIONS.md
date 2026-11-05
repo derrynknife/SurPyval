@@ -713,3 +713,10 @@ The rows of 2026-10-29 and 2026-10-30 that were still proposed were reviewed by 
 | `qf(p)` solves `H(t) = -log(1 - p)` everywhere (not `ff(t) = p` below the median), by Brent's method on `log t`, bracketed by the causes' quantiles at `1 - (1 - p)^(1/K)` and `p`. | proposed | `F = 1 - exp(-H)`, so it is the same equation; on the hazard scale small and large `p` both keep their digits, so one residual does both halves. | done |
 | `sf`, `ff`, `df` and `qf` take `event=k`, giving cause `k`'s net function (its own model). `mean` takes no `event`: the net mean is `model.models[k].mean()`. | proposed | The nonparametric `CompetingRisks.sf/ff(x, event)` are net; `hf`/`Hf(x, event)` are already cause-specific, so `df = hf * sf` holds per cause too. | done |
 | Covariance, `with_params` and confidence bounds on these functions are left to a later piece. | proposed | Scope of this piece. | open |
+
+### 0.27 WP2f: custom distribution recipes in flexsurv's parameterisations (5 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The generalised gamma and generalised F recipes are documented in Prentice's parameterisations, as `flexsurv` (`gengamma`: mu, sigma, Q; `genf`: mu, sigma, Q, P), beside the existing Stacy / Kalbfleisch-Prentice recipes, which stay. | proposed | Prentice's form holds the lognormal at a finite Q, so one fit tests the Weibull, lognormal and gamma by likelihood ratio, and results compare one to one with `flexsurvreg`. Documentation only: no distribution is added to the package. | proposed |
+| The generalised gamma recipe takes the lognormal branch at exactly `Q == 0` (a Python `if`), so `fixed={'Q': 0}` gives the lognormal exactly; nothing is done near 0, where the gamma branches already agree with the lognormal to O(Q). | proposed | The same rule as flexsurv. A smooth switch near 0 would add code users copy for no gain in the fits checked. | proposed |
