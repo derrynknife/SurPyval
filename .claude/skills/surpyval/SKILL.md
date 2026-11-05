@@ -366,7 +366,9 @@ sp.life_table(x, c, intervals=4)      # actuarial (Cutler-Ederer) table
   `fit_from_df(..., w_col=)` (not Cox's yet). Scaling `w` changes nothing.
   Refused with weights: `method="lr"`/`"bootstrap"` bounds, `band`,
   `bootstrap_cb`, `how` other than MLE, `aic`/`bic`/`aic_c`, `fit_best`,
-  `Turnbull`, and for Cox strata, exact ties, residuals and `diagnose()`.
+  and for Cox strata, exact ties, residuals and `diagnose()`.
+  `Turnbull.fit(..., w=)` is the reverse: its `cb` refuses and its bounds
+  are `bootstrap_cb(x, random_state=seed)` (the weighted case bootstrap).
   Weighted models save as schema 3, which older versions refuse.
 - **Bayesian:** priors `sp.prior.around`, `between`, `uniform`, `flat`,
   `fixed`, `on_quantities(sp.Weibull, B10=..., beta=...)`,

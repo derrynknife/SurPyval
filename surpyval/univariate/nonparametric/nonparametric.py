@@ -180,12 +180,38 @@ class NonParametric(
         if data_line:
             out += "\nData             : " + data_line
         if self.weighted:
+            bounds = (
+                "bounds by bootstrap_cb"
+                if self._weighted_without_variance()
+                else "robust variance"
+            )
             out += (
                 "\nWeights          : effective sample size "
-                f"{self.effective_n:.4g}; robust variance"
+                f"{self.effective_n:.4g}; {bounds}"
             )
 
         return out
+
+    def _weighted_without_variance(self) -> bool:
+        """Whether this is a weighted estimate with no variance formula (a
+        weighted Turnbull estimate), whose bounds are the case
+        bootstrap's."""
+        return bool(self.weighted) and getattr(self, "greenwood", None) is None
+
+    def _refuse_weighted_without_variance(self, what: str) -> None:
+        """Refuse ``what``, a bound or test built on the variance, for a
+        weighted estimate that has none, naming ``bootstrap_cb``."""
+        if self._weighted_without_variance():
+            from surpyval.utils.weights import refuse_weighted
+
+            raise refuse_weighted(
+                what,
+                "a weighted Turnbull estimate has no variance formula "
+                "(Greenwood's would read the weights as units seen, and "
+                "no robust variance of the weighted EM is built)",
+                "Use bootstrap_cb(x, random_state=seed), the weighted "
+                "case bootstrap, for its confidence bounds.",
+            )
 
     def _data_repr(self) -> str:
         """The data the estimate was fitted to, in one line, for the
@@ -943,6 +969,8 @@ class NonParametric(
         # ``R_cb`` without the bounds (see ``set_support``).
         from scipy.stats import norm
 
+        self._refuse_weighted_without_variance("cb")
+
         check_option("bound_type", bound_type, ("exp", "normal"))
         _check_bound(bound)
         check_option(
@@ -1406,6 +1434,7 @@ class NonParametric(
         :math:`x_i` to :math:`\tau` and :math:`v_i` the variance increment
         of the cumulative hazard (the Greenwood increment for Kaplan-Meier).
         """
+        self._refuse_weighted_without_variance("The bounds of rmst and mean")
         if getattr(self, "greenwood", None) is None:
             raise ValueError(
                 "Model has no variance estimate so confidence bounds "
@@ -1772,6 +1801,10 @@ class NonParametric(
 
         # Only computed when wanted: a ``fit_from_ecdf`` model has no
         # variance, and ``plot(plot_bounds=False)`` used to raise on it.
+        # A weighted Turnbull estimate has none either: its curve is drawn
+        # without bounds (they are ``bootstrap_cb``'s, which needs a seed).
+        if self._weighted_without_variance():
+            plot_bounds = False
         cbs = self.R_cb(self.x, **kwargs) if plot_bounds else None
 
         d = getattr(self, "d", None)
@@ -1855,6 +1888,9 @@ class NonParametric(
             ax = plt.gcf().gca()
 
         plot_bounds = kwargs.pop("plot_bounds", True)
+        if self._weighted_without_variance():
+            # (see ``get_plot_data``)
+            plot_bounds = False
         show_censors = kwargs.pop("show_censors", None)
         interp = kwargs.pop("interp", "step")
         bound = kwargs.pop("bound", "two-sided")
