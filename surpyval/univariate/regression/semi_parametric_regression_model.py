@@ -44,6 +44,7 @@ from ._summary import (
     coefficient_table,
     firth_table,
 )
+from .life_at import AtCovariatesMixin, LifeAtCovariates
 from .regression_data import (
     LinearPredictorMixin,
     restore_covariate_meta,
@@ -55,6 +56,7 @@ if TYPE_CHECKING:
 
 
 class SemiParametricRegressionModel(
+    AtCovariatesMixin,
     PenalisedModelMixin,
     ConditionalSurvivalMixin,
     PartialEffectsMixin,
@@ -1249,6 +1251,41 @@ class SemiParametricRegressionModel(
             return step_draws(H[0], bx, U)
 
         return draws_by_row(size, rows, random_state, invert)
+
+    def at(self, Z: Any, stratum: Any = None) -> LifeAtCovariates:
+        """
+        The life of a unit with the covariates ``Z`` (and, for a
+        stratified fit, in ``stratum``), as a plain life model: its
+        ``sf``, ``ff``, ``df``, ``hf``, ``Hf``, ``qf``, ``random`` and
+        ``cb`` take times (or probabilities) only, each this model's own
+        at ``Z`` (``at(Z).sf(x)`` is ``sf(x, Z)``). The baseline is a step
+        function that stops at the last observed time, so it has no
+        ``mean``; use ``qf(0.5)``.
+
+        Parameters
+        ----------
+        Z : array like or DataFrame
+            One covariate row; several are refused (call it once per
+            row).
+        stratum : object, optional
+            The stratum of a stratified fit.
+
+        Returns
+        -------
+        LifeAtCovariates
+            A view on this model at ``Z``.
+
+        Examples
+        --------
+        >>> from surpyval import CoxPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = CoxPH.fit(x, df[["fin", "prio"]].values, c=c)
+        >>> model.at([0, 10]).sf(52).round(3)
+        np.float64(0.475)
+        """
+        return LifeAtCovariates(self, Z, stratum=stratum)
 
     @keeps_query_shape
     def cb(

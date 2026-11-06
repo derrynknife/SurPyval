@@ -350,11 +350,6 @@ REG = "surpyval.univariate.regression."
             {},
             r"model\.mle\.diagnose\(\).*prior_check\(\)",
         ),
-        (
-            REG + "distributional.model.DistributionalRegressionModel",
-            {"kind": "Distributional"},
-            r"likelihood_ratio_test\(parameter=",
-        ),
     ],
 )
 def test_families_not_built_yet_refuse_saying_what_to_use(

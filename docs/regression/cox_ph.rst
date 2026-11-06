@@ -63,6 +63,7 @@ The ``firth`` attribute of a model fitted by ``CoxPH.fit_firth``.
 
 .. autoclass:: surpyval.univariate.regression.proportional_hazards.cox_firth.FirthResult
    :members: likelihood_ratio_test, to_dict, from_dict
+   :exclude-members: alpha_ci, profile, lower, upper, p_values, chisq, wald_lower, wald_upper, wald_p, log_likelihood, log_likelihood_null, df, ties, count, index
 
 ``aic()``, ``bic()`` and ``aic_c()`` of a Firth fit raise this error,
 which says why and what to use instead.

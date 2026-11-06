@@ -48,7 +48,9 @@ mutated commit does not have yet (it would XPASS and "kill" everything).
 
 ## Tool
 
-mutmut 3.8.0 (Python 3.11). It runs each mutant against only the tests
+mutmut 3.8.0 (Python 3.11; 3.12 works too) with pytest below 9 (`run.sh`
+pins it): pytest 9.2 breaks mutmut 3.8's clean run of the suite, which
+reads `item._nodeid`. It runs each mutant against only the tests
 that reach the mutated function (recorded in one clean run), and stops at
 the first failure, which makes a module of 3000 mutants take hours rather
 than days. cosmic-ray 8.7.0 was tried first: it generated 3776 mutations
@@ -130,7 +132,7 @@ mutants of the eight 0.26 modules; the run stopped at its time box with
 4931 checked: 3801 killed, 7 timeouts, 50 reached by no test, 1073
 survived. The 365 not checked are 157 of `regression/_likelihood.py`
 (every one of its mutants), 87 of `lattice_quantile` and 121 of
-`_spread_quantiles`. The 50 reached by no test are `_improper_message`'s
+`_spread_quantiles` (checked since: "Completing the run", below). The 50 reached by no test are `_improper_message`'s
 (20), `LogRankResult.__repr__`'s (23) and `WeightedCox.neg_ll`'s (7, the
 `neg_ll_of` of a weighted fit, which no test calls). Resuming the run means mutmut's clean run of the
 whole suite first, about an hour on a busy machine, then hours for the
@@ -192,3 +194,102 @@ by function, not one by one. The "dead code" is the life table's guard
 for a largest time that rounding leaves on the last boundary, which no
 data reached.
 
+
+#### Completing the run, 2026-11-06, commit 506058af
+
+The 365 mutants left unchecked were run on a copy of `dev` at 506058af
+(`git archive`; one stale test replaced by its fixed version), mutmut
+3.8.0 in a Python 3.12 venv with pytest 8 (no Python 3.11 or uv on the
+machine), 3 workers, `only_mutate` the two files and mutmut's name
+filters `surpyval.univariate.regression._likelihood.*`,
+`surpyval.bayes.engines.grid.x_lattice_quantile__mutmut_*` and
+`surpyval.bayes.engines.grid.x__spread_quantiles__mutmut_*`, against the
+whole suite with `-m "not slow"`. It took 9144 s (2 h 32 min), 35 min
+of it mutmut's clean run of the suite.
+
+The filters matched 468 mutants, not 365: they take every mutant of
+`lattice_quantile` (190), and the first run had already checked 103 of
+them (190 - 87). Neither file changed between b618b548 and 506058af, so
+the names are the same mutants. The first run's per-mutant outcomes for
+those 103 were not kept, so this run's outcome is used for all 190 and
+the split below is by function, not by run. The 365 new ones are the
+157 of `_likelihood.py`, 87 of `lattice_quantile` and the 121 of
+`_spread_quantiles`.
+
+Ten of the likelihood's mutants crashed the test process (exit -11, a
+segmentation fault). mutmut lists
+them as `segfault` and leaves them out of its own score's numerator;
+here they count as killed (a test run that crashes fails).
+
+Every survivor was rechecked in a fresh process against
+`surpyval/tests/bayes` and the existing `test_bayes_grid_kills.py`
+(none was killed: the survivors are not an artefact of mutmut's test
+selection), then triaged; the new tests in `test_bayes_grid_kills.py`
+(checked with `recheck.py`, 3 min for the 55) kill 13.
+
+| file / function | mutants | new to the count | killed | segfault | survived | equivalent | killed by new tests |
+|---|---|---|---|---|---|---|---|
+| regression/_likelihood.py | 157 | 157 | 147 | 10 | 0 | 0 | 0 |
+| grid.py `lattice_quantile` | 190 | 87 | 159 | 0 | 31 | 26 | 5 |
+| grid.py `_spread_quantiles` | 121 | 121 | 97 | 0 | 24 | 16 | 8 |
+| total | 468 | 365 | 403 | 10 | 55 | 42 | 13 |
+
+Some of `lattice_quantile`'s survivors were already among the 1073
+of the first run, whose triage of `grid.py` by function counted them as
+accuracy control ("equivalent"). One by one, some are real gaps (mutants
+32, 35, 36, 48 and 154 of `lattice_quantile`, and 8 of
+`_spread_quantiles`):
+
+- the logit scale taken for values with a 0 or a 1 among them (the
+  reliability far into the tail underflows to 0 at some of the
+  posterior's points, and early in life rounds to 1; their logits are
+  infinite and their mass was dropped: the upper end of a reliability
+  of 4e-97 came out as 1), or for values below 2 (the normal model's
+  `mu` near 1 lost every point above 1);
+- the log scale given up for positive values with one at or below 1
+  (the log-logistic's mean, spanning seven decades, was quantiled on its
+  own scale, 1.7e-3 off where the engine aims for 1e-3);
+- the infinite answer for a level past the finite values' mass dropped
+  or replaced (the upper end of the mean's interval came out finite or
+  not a number, though 4.7% of the posterior has an infinite mean), and
+  the answer when no value is finite broken (the fit raised).
+
+The tests check the posterior quantiles against references computed
+apart from the engine: the normal model's closed forms (Student's t and
+chi-squared, and a one-dimensional integral for the reliability) and a
+brute-force grid for the log-logistic, each end within the grid's own
+tolerance (1e-3 of the interval's width, or of the value where the
+width is infinite). They pass on 506058af and on the current `dev`.
+
+What is left in these functions is equivalent: `dtype=` and `kind=`
+arguments (the callers pass floats; ties sort to the same answer), the
+`np.errstate` arguments, the scale's label for the identity, the
+logit scale given up for values inside (0, 1) (the log scale is
+accurate to the grid's tolerance there too), fill values for points whose weight is zeroed, the
+lattice's axis-length checks (an axis has at least 2 points, and a
+grid that passed its accuracy check dozens), the threshold for dropping points of negligible weight
+and for a spread too narrow to count, renormalising weights that sum to
+1, zero-weight points kept, and the comparison with the finite mass at
+1 +- 1e-12.
+
+Totals over all 5296 mutants. The first run's outcomes for the 103
+`lattice_quantile` mutants it checked were not kept (see above), so the
+number of survivors among the 365 new mutants is between 24 (all of
+`_spread_quantiles`'s) and 55, and the totals are given as a range
+(score = (killed + timeouts + segfaults) over 5296, the 50 reached by no
+test counted as not killed):
+
+| | killed | score |
+|---|---|---|
+| before the kill tests (first run's 3808, plus the 365 new less their survivors) | 4118 to 4149 | 77.8% to 78.3% |
+| after round 1 (146 kill tests, 3954) | 4264 to 4295 | 80.5% to 81.1% |
+| after the new tests (13 more) | 4277 to 4308 | 80.8% to 81.3% |
+
+Counting the 10 segfaults as mutmut does (not killed), 10 fewer in each
+cell. Over this run's 468 alone: 413 killed (the 403 and the 10
+segfaults), 88.2%; 426 after the new tests, 91.0%. The 42 left are
+equivalent or cosmetic, so without them the score of the 468 is 100%.
+Over the whole run the equivalent and dead-code mutants are about 490
+to 520 (the first run's 486, less the 4 or so the new tests killed that
+were among them, plus up to 42), which puts the score without them near
+90%.

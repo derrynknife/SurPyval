@@ -2049,6 +2049,16 @@ class MixtureModel(
         ]
         return names + [f"w_{i}" for i in range(self.m)]
 
+    def _estimates(self) -> npt.NDArray:
+        """The fitted values in the order of :attr:`covariance_names`: the
+        components' parameters row by row, then the weights, so
+        ``with_params(model._estimates())`` is the mixture."""
+        if self.params is None or self.w is None:
+            raise ValueError("_estimates() needs a fitted mixture")
+        return np.concatenate(
+            [np.ravel(self.params), np.ravel(self.w)]
+        ).astype(float)
+
     def _theta_covariance(self) -> npt.NDArray:
         """The inverse of the observed information in the unconstrained
         coordinates of :meth:`_pack` (the weights' log-ratios to the last

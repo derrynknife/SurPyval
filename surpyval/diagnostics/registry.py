@@ -32,6 +32,7 @@ FAMILY_MODULES: tuple[str, ...] = (
     "surpyval.diagnostics.univariate",
     "surpyval.diagnostics.frailty",
     "surpyval.diagnostics.aalen_additive",
+    "surpyval.diagnostics.distributional",
 )
 
 
@@ -297,16 +298,6 @@ PENDING: tuple[Pending, ...] = (
         "Check the distribution with the maximum-likelihood fit of the "
         "same data, model.mle.diagnose(), and the prior with "
         "model.prior_check().",
-    ),
-    Pending(
-        "distributional regressions",
-        _instance_of(
-            _REG + "distributional.model." "DistributionalRegressionModel"
-        ),
-        "Test which parameters depend on the covariates with "
-        "model.likelihood_ratio_test(parameter=...), and check the "
-        "distribution and covariates with diagnose() on the PH or AFT "
-        "fit of the same data (WeibullPH, WeibullAFT, ...).",
     ),
     Pending(
         "Buckley-James regressions",

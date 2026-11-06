@@ -460,9 +460,26 @@ def _competing_risks():
         df = pd.DataFrame(
             {"x": d["x"], "e": d["e"], "n": d["n"], "z0": d["Z"][:, 0]}
         )
+        entry = {}
+        if "tl" in d:
+            df["tl"] = d["tl"]
+            entry["tl_col"] = "tl"
         return cr.CompetingRisksProportionalHazards.fit_from_df(
-            df, x_col="x", e_col="e", Z_cols=["z0"], n_col="n", model=how
+            df,
+            x_col="x",
+            e_col="e",
+            Z_cols=["z0"],
+            n_col="n",
+            model=how,
+            **entry,
         )
+
+    def crph_entry_data():
+        # The cause-specific Cox model takes delayed entry (WP5b): every
+        # third row enters at a third of its time, between event times.
+        d = cr_data(True)
+        d["tl"] = np.where(np.arange(d["x"].size) % 3 == 1, d["x"] / 3, 0.0)
+        return d
 
     out = [
         Case(
@@ -498,6 +515,46 @@ def _competing_risks():
         )
         for method in ("Nelson-Aalen", "Kaplan-Meier")
     ]
+
+    def cr_entry_data():
+        # Delayed entry: a third of the units from 0, the rest entering
+        # part of the way to their exit, many after others have left.
+        d = cr_data()
+        share = np.tile([0.0, 0.3, 0.6], 8)[scramble(24)]
+        d["tl"] = np.round(share * d["x"], 3)
+        return d
+
+    def cr_entry_from_df(d):
+        df = pd.DataFrame(
+            {"x": d["x"], "e": d["e"], "n": d["n"], "tl": d["tl"]}
+        )
+        return cr.CompetingRisks.fit_from_df(
+            df,
+            x_col="x",
+            e_col="e",
+            n_col="n",
+            tl_col="tl",
+            how="Kaplan-Meier",
+        )
+
+    out.append(
+        Case(
+            name="CompetingRisks[tl]",
+            fitters=(),
+            model_class="surpyval.univariate.competing_risks.CompetingRisks",
+            interface=CAUSES,
+            data=cr_entry_data,
+            fit=_fit(cr.CompetingRisks, how="Kaplan-Meier"),
+            functions=("sf", "ff", "Hf"),
+            event_functions=("cif",),
+            events=("a", "b"),
+            x=X_CR,
+            rows=("x", "e", "n", "tl"),
+            times=("x", "tl"),
+            paths={"fit_from_df": cr_entry_from_df},
+            rtol=1e-9,
+        )
+    )
     out.append(
         Case(
             name="ParametricCompetingRisks",
@@ -521,6 +578,75 @@ def _competing_risks():
             explicit_seed=True,
         )
     )
+
+    def pcr_interval_data():
+        # The same units, every third failure found at an inspection: in
+        # the window (x - 1.5, x + 0.5], left censored where it would start
+        # at or below 0. The causes are then fitted jointly.
+        d = cr_data()
+        x, e = d["x"], d["e"]
+        found = (np.arange(x.size) % 3 == 0) & np.array(
+            [v is not None for v in e]
+        )
+        lo, hi = x - 1.5, x + 0.5
+        left = found & (lo <= 0)
+        x2 = np.column_stack(
+            [
+                np.where(found & ~left, lo, np.where(left, hi, x)),
+                np.where(found, hi, x),
+            ]
+        )
+        c = np.where(
+            found,
+            np.where(left, -1, 2),
+            np.where([v is None for v in e], 1, 0),
+        )
+        return {"x": x2, "c": c, "e": e, "n": d["n"]}
+
+    def pcr_interval_from_df(d):
+        df = pd.DataFrame(
+            {
+                "lo": d["x"][:, 0],
+                "hi": d["x"][:, 1],
+                "c": d["c"],
+                "e": d["e"],
+                "n": d["n"],
+            }
+        )
+        return cr.ParametricCompetingRisks.fit_from_df(
+            df, None, "e", c_col="c", n_col="n", xl_col="lo", xr_col="hi"
+        )
+
+    out.append(
+        Case(
+            name="ParametricCompetingRisks[interval]",
+            fitters=(),
+            model_class=(
+                "surpyval.univariate.competing_risks.ParametricCompetingRisks"
+            ),
+            interface=CAUSES,
+            data=pcr_interval_data,
+            fit=_fit(cr.ParametricCompetingRisks),
+            functions=("sf", "ff", "Hf", "hf", "df", "qf"),
+            event_functions=("cif",),
+            events=("a", "b"),
+            x=X_CR,
+            rows=("x", "c", "e", "n"),
+            paths={"fit_from_df": pcr_interval_from_df},
+            draw=lambda m, s: m.random(15, random_state=s),
+            explicit_seed=True,
+            exclude={
+                "derivatives": "the checks rebuild each cause's own "
+                "likelihood, which the joint fit is not; the joint "
+                "likelihood's derivatives are checked against finite "
+                "differences in test_parametric_competing_risks_interval",
+                "maximum": "the search there is a cause at a time; the "
+                "joint fit's own verification (zero gradient, positive "
+                "definite Hessian) is checked in "
+                "test_parametric_competing_risks_interval",
+            },
+        )
+    )
     for how in ("Cox", "Fine-Gray"):
         out.append(
             Case(
@@ -538,7 +664,11 @@ def _competing_risks():
                     ".CompetingRisksProportionalHazards"
                 ),
                 interface=CAUSES_REGRESSION,
-                data=functools.partial(cr_data, True),
+                data=(
+                    crph_entry_data
+                    if how == "Cox"
+                    else functools.partial(cr_data, True)
+                ),
                 fit=_fit(cr.CompetingRisksProportionalHazards, model=how),
                 # The Fine-Gray form has no all-cause survival; its sf is a
                 # cause's 1 - cif, reached through cif below.
@@ -547,7 +677,12 @@ def _competing_risks():
                 events=("a", "b"),
                 x=X_CR,
                 Z=Z_CR,
-                rows=("x", "Z", "e", "n"),
+                rows=(
+                    ("x", "Z", "e", "n", "tl")
+                    if how == "Cox"
+                    else ("x", "Z", "e", "n")
+                ),
+                times=("x", "tl") if how == "Cox" else ("x",),
                 covariates="Z",
                 paths={
                     "fit_from_df": functools.partial(crph_from_df, how=how)
@@ -1804,6 +1939,17 @@ def _bounds(case):
         return _nonparametric_bounds(case)
     if cls == "CompetingRisks":
         return _competing_risks_bounds()
+    if cls == "ParametricCompetingRisks":
+        # Wald bounds on each cause's cumulative incidence (logit) and the
+        # all-cause sf / ff / Hf (log H); a cause's net sf / ff / Hf is
+        # its own model's cb. (Its method="lr" and "bootstrap", the
+        # cause's own, are swept on the Parametric cases: the cb_transform
+        # sweep calls a per-cause bound without its cause.)
+        return (
+            Bound("cb", on=("cif",), per_cause=True, label="cb[cif]"),
+            Bound("cb", on=_ON_SURVIVAL, label="cb[all-cause]"),
+            Bound("cb", on=_ON_SURVIVAL, per_cause=True, label="cb[net]"),
+        )
     if cls == "MixtureModel":
         # Wald bounds only (#651)
         return (
@@ -2349,6 +2495,7 @@ _NO_STARVE: dict[str, str] = {
     "FlemingHarrington": _EXACT,
     "CompetingRisks[Nelson-Aalen]": _EXACT,
     "CompetingRisks[Kaplan-Meier]": _EXACT,
+    "CompetingRisks[tl]": _EXACT,
     "NonParametricCounting": _EXACT,
     "CauseSpecificMCF": _EXACT,
     "IndependenceCopula": "no dependence parameter: the margins are "

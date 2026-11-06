@@ -67,6 +67,7 @@ from surpyval.utils.shapes import (
 )
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
+from surpyval.utils.validation import no_covariance_error
 
 from .._aliasing import (
     aliased_columns,
@@ -83,6 +84,12 @@ from .._prediction import (
     quantiles_by_inversion,
 )
 from .._summary import coefficient_names, coefficient_table
+from ..life_at import (
+    AtCovariatesMixin,
+    checked_params,
+    draws_by_quantile,
+    rebuilt,
+)
 from ..regression_data import (
     LinearPredictorMixin,
     NoLikelihoodMixin,
@@ -155,6 +162,7 @@ def _aliased(
 
 
 class AdditiveHazardsModel(
+    AtCovariatesMixin,
     ConditionalSurvivalMixin,
     NoLikelihoodMixin,
     LinearPredictorMixin,
@@ -208,7 +216,7 @@ class AdditiveHazardsModel(
     beta: npt.NDArray
     params: npt.NDArray
     #: The coefficients' covariance, ``covariance()`` (#605).
-    _covariance: npt.NDArray
+    _covariance: npt.NDArray | None
     #: The coefficients' standard errors, ``standard_errors()``.
     _se: npt.NDArray
     p_values: npt.NDArray
@@ -301,7 +309,7 @@ class AdditiveHazardsModel(
             "h0": np.asarray(self.h0, dtype=float).tolist(),
             "H0": np.asarray(self.H0, dtype=float).tolist(),
             # The key every model's dict stores it under (#605).
-            "covariance": np.asarray(self._covariance, dtype=float).tolist(),
+            "covariance": self._stored_covariance().tolist(),
             "se": np.asarray(self._se, dtype=float).tolist(),
         }
         if getattr(self, "p_values", None) is not None:
@@ -310,6 +318,14 @@ class AdditiveHazardsModel(
             out["drift"] = np.asarray(self.drift, dtype=float).tolist()
         serialise_covariate_meta(self, out)
         return stamp_schema(out)
+
+    def _stored_covariance(self) -> npt.NDArray:
+        """The covariance :meth:`to_dict` stores: ``nan`` for a model
+        built with :meth:`with_params`, which has none."""
+        if self._covariance is None:
+            p = np.asarray(self.beta).shape[0]
+            return np.full((p, p), np.nan)
+        return np.asarray(self._covariance, dtype=float)
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> AdditiveHazardsModel:
@@ -623,11 +639,166 @@ class AdditiveHazardsModel(
         """Standard errors of the coefficients (Lin-Ying sandwich), the
         square roots of the diagonal of :meth:`covariance`. They were the
         attribute ``se`` before v0.23."""
+        self._require_covariance()
         return self._se
 
     def covariance(self) -> npt.NDArray:
         """Covariance matrix of the coefficients (Lin-Ying sandwich)."""
+        return self._require_covariance()
+
+    def _require_covariance(self) -> npt.NDArray:
+        """The covariance, refused for a model built by with_params."""
+        if self._covariance is None:
+            raise no_covariance_error(
+                "it was built from coefficients with with_params; use the "
+                "fitted model's"
+            )
         return self._covariance
+
+    # -- with_params, random -----------------------------------------------
+
+    @property
+    def covariance_names(self) -> list[str]:
+        """The names of the rows (and columns) of :meth:`covariance`: the
+        coefficients, :attr:`parameter_names`."""
+        return list(self.parameter_names)
+
+    def _estimates(self) -> npt.NDArray:
+        """The fitted coefficients, in the order of
+        :attr:`covariance_names` (an aliased one is ``nan``)."""
+        return np.array(self.params, dtype=float)
+
+    #: ``(kept, G, Zbar)``: the columns with a coefficient, and, on the
+    #: grid ``x``, the integral of the risk-set covariate means from 0
+    #: and the means themselves, in those columns. The baseline at other
+    #: coefficients is ``H0 = Lambda - G @ beta`` (the drift ``Zbar @
+    #: beta``), linear in them; computed from the fitted rows once, and
+    #: kept by :meth:`with_params`.
+    _baseline_parts: tuple | None = None
+
+    def _beta_baseline(self) -> tuple:
+        parts = self._baseline_parts
+        if parts is not None:
+            return parts
+        if self._fit_data is None or self.drift is None:
+            raise ValueError(
+                "with_params re-estimates the baseline at the new "
+                "coefficients from the risk sets of the data fitted to, "
+                "which a model restored from a dict does not keep. Call it "
+                "on the fitted model, or refit."
+            )
+        x, _, n, Z = self._fit_data
+        # As the fit computes them (AdditiveHazards_.fit).
+        unique_x = np.unique(x)
+        m, p = unique_x.size, Z.shape[1]
+        bucket = np.searchsorted(unique_x, x)
+        S0_at = np.bincount(bucket, weights=n, minlength=m)
+        S1_at = np.zeros((m, p))
+        np.add.at(S1_at, bucket, n[:, None] * Z)
+        S0 = np.cumsum(S0_at[::-1])[::-1]
+        S1 = np.cumsum(S1_at[::-1], axis=0)[::-1]
+        Zbar = S1 / S0[:, None]
+        widths = np.diff(np.concatenate([[0.0], unique_x]))
+        kept = np.flatnonzero(~np.isnan(np.asarray(self.beta, dtype=float)))
+        G = np.cumsum(Zbar[:, kept] * widths[:, None], axis=0)
+        parts = (kept, G, Zbar[:, kept])
+        self._baseline_parts = parts
+        return parts
+
+    def with_params(self, params: npt.ArrayLike) -> AdditiveHazardsModel:
+        """
+        The same model with other coefficients, and the baseline Lin and
+        Ying's estimator gives at them.
+
+        The baseline cumulative hazard is the Breslow-type sum less the
+        covariate-mean drift, ``H0(t) = Lambda(t) - beta' G(t)``, linear
+        in the coefficients; the rebuilt model has that baseline at the
+        new ``beta``, so ``with_params(beta)`` is what the fit would
+        predict had it estimated ``beta``. The covariate names, formula
+        and its encoding of a DataFrame are kept.
+
+        Parameters
+        ----------
+        params : array like
+            The coefficients, in the order of :attr:`covariance_names`:
+            a draw from :meth:`covariance`, say. An aliased coefficient
+            stays ``nan`` (taken as 0).
+
+        Returns
+        -------
+        AdditiveHazardsModel
+            A model without the data or the covariance: ``covariance``,
+            ``standard_errors`` and ``concordance`` refuse; its
+            ``with_params`` works (it keeps what the baseline needs).
+
+        Raises
+        ------
+        ValueError
+            For a vector of the wrong length; or on a model restored from
+            a dict, which does not keep the risk sets the baseline is
+            re-estimated from.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import AdditiveHazards
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = AdditiveHazards.fit(x, df[["fin", "prio"]].values, c=c)
+        >>> same = model.with_params(model._estimates())
+        >>> bool(same.sf(52, [1, 2]) == model.sf(52, [1, 2]))
+        True
+        >>> model.with_params([0.0, 0.0]).sf(52, [1, 2]).round(4)
+        np.float64(0.737)
+        """
+        values = checked_params(params, self.covariance_names)
+        kept, G, Zbar = self._beta_baseline()
+        fitted = np.asarray(self.beta, dtype=float)
+        values[np.isnan(fitted)] = np.nan
+        out = rebuilt(
+            self, ("_covariance", "_se", "p_values", "_A", "_b", "_fit_data")
+        )
+        out.beta = values
+        out.params = values.copy()
+        out.H0 = self.H0 + G @ (fitted[kept] - values[kept])
+        out.drift = Zbar @ values[kept]
+        out._covariance = None
+        out._se = np.full(values.shape, np.nan)
+        out.p_values = np.full(values.shape, np.nan)
+        return out
+
+    def random(
+        self,
+        size: int,
+        Z: npt.ArrayLike | pd.DataFrame,
+        random_state: Any = None,
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """
+        Draw ``size`` lifetimes for each covariate row of ``Z``, by
+        inverting :meth:`qf`: a uniform ``U``, the survival the draw is to
+        have, gives ``qf(1 - U, Z)``, as every regression's ``random``
+        draws. The curve is held after the last observed time; a draw it
+        never reaches is ``inf`` (the unit outlives the data), as often as
+        ``sf`` at the last time says. ``random_state`` seeds the draw:
+        ``None`` (the default) draws from numpy's global generator; an int
+        or a ``numpy.random.Generator`` gives a stream of its own.
+
+        Returns the draws and a 2-D array of the covariate row each was
+        drawn at, row by row.
+
+        Examples
+        --------
+        >>> from surpyval import AdditiveHazards
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = AdditiveHazards.fit(x, df[["fin", "prio"]].values, c=c)
+        >>> draws, rows = model.random(4, [[0, 10]], random_state=1)
+        >>> draws.round(2)
+        array([inf,  6., inf,  6.])
+        """
+        return draws_by_quantile(self, size, self._prepare_Z(Z), random_state)
 
 
 class AdditiveHazards_(FitterRepr):
