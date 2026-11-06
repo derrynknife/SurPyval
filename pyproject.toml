@@ -78,6 +78,8 @@ where = ["."]
 # The reference results the installed test suite reads (#661)
 "surpyval.tests.reference" = ["data/*.json"]
 "surpyval.tests.diagnostics" = ["data/*.json"]
+# The frozen list of public names (test_public_surface.py)
+"surpyval.tests" = ["public_surface.txt"]
 
 # pytest
 [tool.pytest.ini_options]

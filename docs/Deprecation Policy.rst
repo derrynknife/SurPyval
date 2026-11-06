@@ -1,0 +1,111 @@
+Deprecation Policy
+==================
+
+In short: when a public name in SurPyval is renamed or removed, your code
+keeps working for at least one release and warns you, naming what to use
+instead and the release that removes the old name. After that release,
+the old name fails with an error that still names the replacement. Every
+deprecation and removal is listed in the :doc:`changelog`.
+
+What is public
+--------------
+
+- The names you can import from ``surpyval`` (``surpyval.__all__``, which
+  is what ``from surpyval import *`` gives).
+- The names of the subpackages the documentation imports from:
+  ``surpyval.recurrent``, ``surpyval.degradation``,
+  ``surpyval.multivariate``, ``surpyval.ml``, ``surpyval.life_models``,
+  ``surpyval.metrics``, ``surpyval.diagnostics``, ``surpyval.bayes`` (and
+  ``surpyval.prior``), ``surpyval.test_planning``, ``surpyval.datasets``,
+  ``surpyval.pymc``, ``surpyval.utils`` and the four
+  ``surpyval.univariate`` packages (``parametric``, ``nonparametric``,
+  ``regression`` and ``competing_risks``). Where a namespace has an
+  ``__all__``, that list is what it promises.
+- The documented methods, attributes and arguments of those classes and
+  functions.
+
+Not public, and free to change in any release without a warning:
+
+- anything whose name starts with an underscore (``_handled_xcnt_to_xrd``,
+  ``surpyval._autograd_special``), and any name in ``surpyval.utils``
+  that its ``__all__`` does not list;
+- ``surpyval.beta``, the tier for models whose interface has not settled
+  yet (it is empty at present);
+- the test suite, ``surpyval.tests``.
+
+How a name is retired
+---------------------
+
+1. **Deprecated.** The old name still works and warns: a
+   ``DeprecationWarning`` that names the new name and the release that
+   removes the old one, for example
+
+   .. code-block:: text
+
+       DeprecationWarning: AalenAdditive_.fit: 'coef_penalty' is
+       deprecated and will be removed in v0.28; use 'penalizer'.
+
+   The changelog lists it under **Deprecated**.
+2. **Removed**, in the next release. A few deprecations are given longer,
+   each with its removal release stated in the warning
+   (``CoxPH.check_ph``, deprecated in 0.26, goes in 0.28). Some are
+   deprecated by date rather than by release, with a ``FutureWarning``
+   that gives the date: the top-level data-format functions
+   (``surpyval.fs_to_xcnt`` and the rest) and ``surpyval.beta.ml`` (now
+   ``surpyval.ml``) go in the first release on or after 12 April 2027.
+   The changelog lists each removal under **Removed**.
+3. **A hint after removal.** For a release or two after it is removed, the
+   old name raises the error Python would raise anyway (an
+   ``AttributeError``, ``TypeError`` or ``ImportError``) with the release
+   that removed it and its replacement in the message, so the traceback
+   says what to change:
+
+   .. code-block:: text
+
+       AttributeError: 'Weibull_' object has no attribute 'param_names':
+       it was removed in v0.23; use 'parameter_names'
+
+A test in the package keeps a list of every public name and fails when
+one disappears without going through these steps.
+
+Seeing the warnings
+~~~~~~~~~~~~~~~~~~~
+
+Python hides a ``DeprecationWarning`` unless it is raised by code run
+directly as a script or in a notebook. pytest shows them; to make your
+tests fail on them, and so find every old name before it is removed, run
+
+.. code-block:: bash
+
+    python -m pytest -W error::DeprecationWarning -W error::FutureWarning
+
+Results that may change
+-----------------------
+
+Numbers can differ in their last digits between releases, platforms and
+versions of numpy and scipy, within the tolerance the optimiser or the
+numerical integration works to. That is not announced. A deliberate change
+to a result (a fix, a corrected formula, a different default) is listed
+in the changelog under **Changed** or **Fixed**, with how much the numbers
+move where that is known.
+
+Before version 1.0
+------------------
+
+SurPyval is not yet at version 1.0, and two things follow from that:
+
+- **Releases come often**, sometimes days apart, and each takes the next
+  minor number (0.26, 0.27, ...). One release of deprecation can therefore
+  be short. Read the changelog's **Deprecated** and **Removed** entries
+  before upgrading, and pin the version (``surpyval==0.27``) where an
+  upgrade must not surprise you.
+- **A change of behaviour that cannot carry a warning** can come in any
+  release, listed under **Changed**: a corrected result, a changed
+  default, or a convention made consistent across the package. For
+  example, 0.27 gave the distributional regression's coefficients the
+  sign the rest of the package uses (a positive coefficient means a
+  shorter life), and converts models saved by 0.26 as they load.
+
+Version 1.0 will mark the interface as stable. Anything this policy then
+promises beyond what it says here will be set out on this page before
+1.0 is released.

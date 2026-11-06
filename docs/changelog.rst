@@ -5,6 +5,16 @@ Unreleased
 
 **Added.**
 
+- A published :doc:`Deprecation Policy`, linked from the documentation's
+  home page and from Contributing: what is public, how a renamed or
+  removed name is deprecated (a warning for at least one release naming
+  the replacement), the hint it gives once removed, what may change without
+  notice (names starting with an underscore, ``surpyval.beta``, the last
+  digits of a result), and how releases before 1.0 behave. A new test,
+  ``surpyval/tests/test_public_surface.py``, keeps a list of the public
+  names (546 today) and fails when one disappears without a deprecation or
+  a new one is not yet listed; ``python -m
+  surpyval.tests.test_public_surface --update`` regenerates the list.
 - ``diagnose()`` for distributional regressions (``WeibullDistributional``
   and every ``Distributional(dist)``), which refused before: the
   Cox-Snell residuals on exponential paper with an AIC screen against the

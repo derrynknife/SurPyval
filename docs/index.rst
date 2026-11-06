@@ -72,7 +72,8 @@ The pages are in five groups, in the menu on the left:
   also includes :doc:`applications`, complete examples from several fields.
   Each theory page links to its how-to page and the other way round.
 - **SurPyval**: the API reference (:doc:`surpyval`), with every class,
-  function and argument, and the :doc:`changelog`.
+  function and argument, the :doc:`changelog` and the
+  :doc:`Deprecation Policy`.
 - **Community Guidelines**: where to get help, how to report a problem and
   how to contribute.
 
@@ -246,6 +247,20 @@ silently ignoring part of it. The methods are explained in
 :doc:`Types of Data` has the same table split by type of censoring and
 truncation.
 
+Stability and deprecation
+-------------------------
+
+A public name is never removed without warning. When one is renamed or
+removed, the old name keeps working for at least one release with a
+warning that names its replacement and the release that removes it; after
+that, using it raises an error that still names the replacement. Names
+starting with an underscore and the ``surpyval.beta`` tier may change
+without notice, and every deprecation and removal is listed in the
+:doc:`changelog`. SurPyval is not yet at 1.0, so releases come often and a
+result can change in any release when it is corrected (always under
+**Changed** or **Fixed** in the changelog). The details are in the
+:doc:`Deprecation Policy`.
+
 A word of encouragement
 -----------------------
 
@@ -317,6 +332,7 @@ Contents:
 
    surpyval
    changelog
+   Deprecation Policy
 
 .. toctree::
    :maxdepth: 2
