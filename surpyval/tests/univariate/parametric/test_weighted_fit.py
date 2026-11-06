@@ -153,17 +153,37 @@ def test_weighted_plotting_positions_are_the_weighted_estimates(
     assert_allclose(plot["F"], 1 - estimate.sf(plot["x_"]), rtol=1e-12)
 
 
-def test_weighted_interval_censored_data_refuse_a_plot():
-    """audit W-P: a weighted fit of interval censored data has no weighted
-    (Turnbull) plotting positions yet, so ``get_plot_data`` and ``plot``
-    refuse, naming Turnbull."""
+def test_weighted_interval_censored_data_plot_on_weighted_turnbull():
+    """audit W-P: a weighted fit of interval censored data plots at the
+    weighted Turnbull positions (``1 - R`` of the weighted NPMLE), not
+    the unweighted ones; the rank-based heuristics, which have no
+    weighted form, still refuse."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    from surpyval.univariate.nonparametric import turnbull
+
     data = weighted_reference_data()
     x, w = data["x"], data["w"]
-    model = quietly(sp.Weibull.fit, xl=x, xr=x + 1, c=np.full(len(x), 2), w=w)
-    for call in (model.get_plot_data, model.plot):
-        with pytest.raises(WeightedRefusal, match="Turnbull"):
-            # (plot first says the heuristic changed to Turnbull)
-            quietly(call)
+    c = np.full(len(x), 2)
+    model = quietly(sp.Weibull.fit, xl=x, xr=x + 1, c=c, w=w)
+    plot_data = quietly(model.get_plot_data)
+
+    d = model.data
+    weighted = turnbull(d["x"], d["c"], d["n"], d["t"], w=d["w"])
+    unweighted = turnbull(d["x"], d["c"], d["n"], d["t"])
+    finite = np.isfinite(weighted["x"])
+    np.testing.assert_allclose(plot_data["x_"], weighted["x"][finite])
+    np.testing.assert_allclose(plot_data["F"], 1 - weighted["R"][finite])
+    assert not np.allclose(plot_data["F"], 1 - unweighted["R"][finite])
+
+    assert quietly(model.plot) is not None
+    plt.close("all")
+
+    with pytest.raises(WeightedRefusal, match="Turnbull"):
+        quietly(model.get_plot_data, heuristic="Blom")
 
 
 def test_a_weighted_plot_draws_without_warnings():

@@ -1804,6 +1804,17 @@ def _bounds(case):
         return _nonparametric_bounds(case)
     if cls == "CompetingRisks":
         return _competing_risks_bounds()
+    if cls == "ParametricCompetingRisks":
+        # Wald bounds on each cause's cumulative incidence (logit) and the
+        # all-cause sf / ff / Hf (log H); a cause's net sf / ff / Hf is
+        # its own model's cb. (Its method="lr" and "bootstrap", the
+        # cause's own, are swept on the Parametric cases: the cb_transform
+        # sweep calls a per-cause bound without its cause.)
+        return (
+            Bound("cb", on=("cif",), per_cause=True, label="cb[cif]"),
+            Bound("cb", on=_ON_SURVIVAL, label="cb[all-cause]"),
+            Bound("cb", on=_ON_SURVIVAL, per_cause=True, label="cb[net]"),
+        )
     if cls == "MixtureModel":
         # Wald bounds only (#651)
         return (
