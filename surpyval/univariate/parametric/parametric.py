@@ -553,6 +553,37 @@ _LFP_AT_BOUND_NOTE = (
 )
 
 
+def _check_drawn_extras(extras: dict) -> None:
+    """Refuse, saying what to do, an ``lfp_p`` or ``f0`` that
+    ``with_params`` was given outside its range: a draw from the
+    covariance near an edge can fall there."""
+    fix = (
+        "A draw from covariance() can fall outside its range where the "
+        "estimate is near an edge: leave such draws out, draw that "
+        "parameter on the logit scale, or use bootstrap(), whose refits "
+        "stay inside."
+    )
+    lfp_p = extras.get("lfp_p")
+    f0 = extras.get("f0")
+    if lfp_p is not None and not 0 < lfp_p <= 1:
+        raise ValueError(
+            "lfp_p, the proportion that ever fails, must be in (0, 1]; "
+            f"got {lfp_p}. {fix}"
+        )
+    if f0 is not None:
+        if not 0 <= f0 < 1:
+            raise ValueError(
+                "f0, the proportion failing at time 0, must be in [0, 1); "
+                f"got {f0}. {fix}"
+            )
+        if f0 >= (1.0 if lfp_p is None else lfp_p):
+            raise ValueError(
+                f"f0 ({f0}) must be less than lfp_p ({lfp_p}): the "
+                f"proportion failing at time 0 is part of the proportion "
+                f"that ever fails. {fix}"
+            )
+
+
 class Parametric(
     LikelihoodRatioMixin,
     InformationCriteriaMixin,
@@ -1150,23 +1181,60 @@ class Parametric(
             state["lfp_p"] = state.pop("p")
         self.__dict__.update(state)
 
-    def with_params(self, params: npt.ArrayLike) -> Parametric:
-        """
-        The same model with other distribution parameters.
+    def _estimates(self) -> npt.NDArray:
+        """The model's parameters in the order of :attr:`covariance_names`:
+        the distribution's, then ``lfp_p`` and ``f0`` where the model has
+        them (fixed ones included); the offset ``gamma`` is not among
+        them. ``with_params(model._estimates())`` is the model."""
+        values = [float(v) for v in onp.asarray(self.params).ravel()]
+        if self.lfp:
+            values.append(float(self.lfp_p))
+        if self.zi:
+            values.append(float(self.f0))
+        return onp.asarray(values, dtype=float)
 
-        The distribution, offset ``gamma``, limited-failure proportion
-        ``lfp_p`` and zero-inflation fraction ``f0`` are kept (see
-        :attr:`extras`); only the distribution's own parameters change. Use
-        it to perturb or redraw a fitted model's parameters (sensitivity
-        or uncertainty analyses): ``from_params(model.params)`` alone
+    def with_params(
+        self,
+        params: npt.ArrayLike,
+        gamma: float | None = None,
+        *,
+        lfp_p: float | None = None,
+        f0: float | None = None,
+    ) -> Parametric:
+        """
+        The same model with other parameters.
+
+        The distribution, its unit, and which of the offset ``gamma``,
+        limited-failure proportion ``lfp_p`` and zero-inflation fraction
+        ``f0`` it has are kept; their values are kept too (see
+        :attr:`extras`) unless given. Use it to perturb or redraw a fitted
+        model's parameters: a parameter vector drawn from
+        :meth:`covariance` (in the order of :attr:`covariance_names`) maps
+        straight back to a model, so the fit's uncertainty can be carried
+        into anything built from it. ``from_params(model.params)`` alone
         silently drops the offset, ``lfp_p`` and ``f0``.
 
         Parameters
         ----------
         params : array like
-            The distribution's parameters, in the order of
-            ``model.dist.parameter_names``. They are checked as
-            ``from_params`` checks them.
+            Either the distribution's parameters (in the order of
+            ``model.dist.parameter_names``), or every parameter of
+            :meth:`covariance` in the order of :attr:`covariance_names`:
+            the distribution's, then ``lfp_p`` and ``f0`` where the model
+            has them, fixed ones included -- the vector a draw from the
+            covariance gives (``model._estimates()`` is the fit's). They
+            are checked as ``from_params`` checks them.
+        gamma : float, optional
+            The offset, for a model with one (it is not in the
+            covariance, so not in ``params``). Without it the model's own
+            is kept. A model without an offset refuses it: build one with
+            ``model.dist.from_params(params, gamma=...)``.
+        lfp_p : float, optional
+            The limited-failure proportion, with the distribution's
+            parameters alone (as ``MixtureModel.with_params`` takes
+            ``w``); with the full vector it is the vector's.
+        f0 : float, optional
+            The zero-inflation fraction, likewise.
 
         Returns
         -------
@@ -1175,7 +1243,18 @@ class Parametric(
             it has no data, covariance or fitted likelihood, since those
             belong to the fit of the original parameters, so data-based
             methods (``plot``, confidence bounds, ``aic``) are not
-            available on it.
+            available on it. A model fitted with weights ``w`` gives just
+            the distribution at the new parameters (no data, so no
+            weights).
+
+        Raises
+        ------
+        ValueError
+            Where ``params`` has neither length, where a keyword names a
+            parameter the model does not have or one ``params`` already
+            holds, or where a value is outside its range (an ``lfp_p``
+            above 1 or an ``f0`` below 0, as a draw near an edge can be):
+            the message says what to do.
 
         Examples
         --------
@@ -1184,9 +1263,138 @@ class Parametric(
         >>> other = model.with_params([120, 2])
         >>> other.params, other.gamma, other.lfp_p, other.f0
         (array([120,   2]), 5.0, 0.9, 0.1)
+
+        The full vector, in the order of ``covariance_names``, and a new
+        offset:
+
+        >>> model.covariance_names
+        ['alpha', 'beta', 'lfp_p', 'f0']
+        >>> other = model.with_params([120, 2, 0.8, 0.05], gamma=4.0)
+        >>> other.gamma, other.lfp_p, other.f0
+        (4.0, 0.8, 0.05)
+
+        A fit's uncertainty carried forward, by draws from its covariance:
+
+        >>> import numpy as np
+        >>> x = [10, 12, 15, 17, 20, 25, 31, 40, 52, 60]
+        >>> fit = Weibull.fit(x)
+        >>> rng = np.random.default_rng(1)
+        >>> draws = rng.multivariate_normal(fit.params, fit.covariance(), 500)
+        >>> sf20 = [fit.with_params(d).sf(20.0) for d in draws]
+        >>> round(float(np.std(sf20)), 2)
+        0.12
         """
+        names = self.covariance_names
+        n_core = len(self.dist.parameter_names)
+        n_full = len(names)
+        size = onp.size(params)
+        if onp.ndim(params) != 1 or size not in (n_core, n_full):
+            if n_full == n_core:
+                expected = f"{n_core} entries, {names}"
+            else:
+                expected = (
+                    f"{n_core} entries (the distribution's parameters, "
+                    f"{names[:n_core]}) or {n_full} (every row of "
+                    f"covariance(), in the order of covariance_names: "
+                    f"{names})"
+                )
+            raise ValueError(
+                f"'params' must be a flat vector of {expected}; got shape "
+                f"{onp.shape(params)}"
+            )
+        extras = self.extras
+        given = {"gamma": gamma, "lfp_p": lfp_p, "f0": f0}
+        full = n_full > n_core and size == n_full
+        for key, value in given.items():
+            if value is None:
+                continue
+            if key not in extras:
+                raise ValueError(
+                    f"'{key}' is given, but this model has no {key}: "
+                    "with_params keeps the model's structure. To build a "
+                    f"model with one, use model.dist.from_params(params, "
+                    f"{key}=..., **model.extras)."
+                )
+            if full and key != "gamma":
+                raise ValueError(
+                    f"'params' has {n_full} entries, in the order of "
+                    f"covariance_names {names}, so it already holds "
+                    f"'{key}'; give '{key}' only with the {n_core} "
+                    "distribution parameters"
+                )
+            extras[key] = float(value)
+        core: Any = params
+        if full:
+            values = onp.asarray(params, dtype=float)
+            core = values[:n_core]
+            for key, value in zip(names[n_core:], values[n_core:]):
+                extras[key] = float(value)
+        _check_drawn_extras(extras)
         # The data's unit is the model's whatever its parameters (#845)
-        return self.dist.from_params(params, **self.extras, unit=self.unit)
+        return self.dist.from_params(core, **extras, unit=self.unit)
+
+    def bootstrap(self, n_boot: int = 200, random_state: Any = None) -> Any:
+        """
+        The model refitted to ``n_boot`` bootstrap resamples of its data:
+        the other way, beside draws from :meth:`covariance` through
+        :meth:`with_params`, to carry the fit's uncertainty into anything
+        built from it. It is the sound one for an offset fit (whose
+        ``gamma`` has no row in the covariance) and for small samples,
+        where the normal approximation behind the covariance is poor.
+
+        These are the refits behind the ``method="bootstrap"`` bounds
+        (``cb``, ``quantile_cb``, ``param_cb``, ``mrl_cb``, ``rmst_cb``):
+        the same ``n_boot`` and integer ``random_state`` give the same
+        refits, which are kept on the model and reused. Each resample
+        draws a failure time for every unit from the fitted model (within
+        its truncation window) and censors it as the unit was censored;
+        a fit with weights ``w`` is resampled by cases instead (the units
+        drawn with replacement, each with its weight). Each refit has the
+        model's own options: offset, ``lfp``, ``zi`` and fixed parameters.
+
+        Parameters
+        ----------
+        n_boot : int, optional
+            The number of refits. Defaults to 200, the bounds' default; a
+            thousand or more is usual for a final answer.
+        random_state : int or numpy Generator, optional
+            The seed of the resamples.
+
+        Returns
+        -------
+        ParametricBootstrap
+            The kept refits (``models``), their parameters in the order of
+            :attr:`covariance_names` (``params``; ``gamma`` beside it for
+            an offset fit), and the counts of refits that failed (left
+            out), had no finite maximum or an unverified one (kept, as
+            the bounds keep them). A warning says so where more than a
+            few did not reach a verified maximum.
+
+        Raises
+        ------
+        ValueError
+            For a model without its data (built from parameters, or
+            restored without them), a discrete distribution, or left- or
+            interval-censored data, which a resample cannot reproduce; and
+            for a weighted limited-failure or zero-inflated fit. Each
+            message says to draw from the covariance instead.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> np.random.seed(1)
+        >>> model = Weibull.fit(Weibull.random(30, 10, 3))
+        >>> boot = model.bootstrap(100, random_state=1)
+        >>> boot.params.shape, boot.failed
+        ((100, 2), 0)
+        >>> sf = [m.sf(8.0) for m in boot.models]
+        >>> float(np.round(np.std(sf), 2))
+        0.08
+        """
+        from . import _bootstrap
+
+        return _bootstrap.bootstrap(self, n_boot, random_state)
 
     def __repr__(self) -> str:
         if hasattr(self, "params"):

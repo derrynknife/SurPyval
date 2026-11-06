@@ -2542,6 +2542,72 @@ and ``param_cb`` (Wald, or the profile-likelihood interval with
 ``method='lr'``).
 
 
+The life of one unit: ``at(Z)`` and ``with_params``
+---------------------------------------------------
+
+Most questions put to a regression are about one unit: the life of *this*
+pump at *this* load. ``model.at(Z)`` answers them as a plain life model. It
+binds one covariate row to the fitted regression, and its ``sf``, ``ff``,
+``df``, ``hf``, ``Hf`` and ``qf`` take times (or probabilities) only, as a
+``Weibull`` model's do; each is the regression's own at that row, so
+``model.at(Z).sf(x)`` is exactly ``model.sf(x, Z)``. Where the regression has
+them, ``mean()``, ``rmst(tau)`` and the confidence bounds ``cb`` and
+``quantile_cb`` are there too. ``random(n)`` draws ``qf(U)`` for uniform ``U``,
+as ``Parametric.random`` does, so the same seed gives common random numbers
+across models. Hand it to any code that expects a life model. It is a view on
+the regression, not a copy: save the regression and the row.
+
+.. jupyter-execute::
+
+    from surpyval import WeibullPH
+
+    rng = np.random.default_rng(1)
+    load = rng.uniform(0.5, 2.0, 200)
+    x_pump = 1000.0 * rng.weibull(1.5, 200) / load ** (1 / 1.5)
+    pumps = WeibullPH.fit(x_pump, load)
+
+    pump = pumps.at(1.2)               # a pump at a load of 1.2
+    print(pump.sf(500.0), pumps.sf(500.0, [1.2]))   # the same number
+    print(pump.qf(0.1))                # its B10 life
+    print(pump.mean())                 # its mean life
+    print(pump.cb([500.0]))            # 95% bounds on its reliability at 500
+
+It takes one row: for several units, call it once per row,
+``[pumps.at(z) for z in loads]``. A Cox model's ``at(Z, stratum=...)`` takes
+the stratum of a stratified fit; it has no ``mean`` (its baseline stops at the
+last observed time), so use ``qf(0.5)`` or ``rmst``.
+
+``with_params`` is the other half: the same regression at other parameter
+values, given as one flat vector in the order of ``covariance_names`` (the
+rows of ``covariance()``). Everything else is kept: the distribution, the
+covariate names and formula (so a DataFrame row still works), the centre of
+a ``center=True`` fit, and fixed parameters. The new model has no data,
+covariance or likelihood, so the bounds and information criteria refuse on
+it. Its use is to carry the fit's parameter uncertainty into anything
+computed from it: draw parameters from the covariance, make each draw a
+model, and compute what you need with each. Draws of a positive parameter
+can fall below 0 when its standard error is large, which ``with_params``
+refuses; a fit with ``center=True``, whose baseline is at the covariate means,
+keeps the baseline well determined.
+
+.. jupyter-execute::
+
+    pumps_c = WeibullPH.fit(x_pump, load, center=True)
+    draws = np.random.default_rng(2).multivariate_normal(
+        pumps_c._estimates(), pumps_c.covariance(), size=1000
+    )
+    b10 = [pumps_c.with_params(d).at(1.2).qf(0.1) for d in draws]
+    print(np.percentile(b10, [2.5, 97.5]))   # the B10 life's spread
+    print(pumps_c.quantile_cb(0.1, [1.2]))   # its Wald interval
+
+The semi-parametric proportional odds and Lin-Ying additive hazards models
+have ``with_params`` too. Their baseline is left to the data, so at other
+coefficients it is re-estimated as the fit would have estimated it there (the
+profile likelihood's baseline odds; Lin and Ying's baseline, which is linear
+in the coefficients), from the data the fitted model holds: call it on the
+fitted model, not on one restored from a dict.
+
+
 .. _accelerated-life:
 
 Accelerated Life (AL)

@@ -123,9 +123,10 @@ fi
 cp "$here/mutmut_plugin.py" "$copy/"
 
 if [ ! -x "$venv/bin/mutmut" ]; then
+    # pytest 9 breaks mutmut 3.8's clean (stats) run (``item._nodeid``)
     uv venv -q -p "$python" "$venv"
     VIRTUAL_ENV="$venv" uv pip install -q -e "$copy[tests]" \
-        "mutmut==$MUTMUT_VERSION"
+        "mutmut==$MUTMUT_VERSION" "pytest<9"
 fi
 # mutmut puts mutants/ first on sys.path, so the editable install may
 # point anywhere; point it at this copy all the same.

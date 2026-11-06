@@ -5,6 +5,20 @@ Unreleased
 
 **Added.**
 
+- ``Parametric.with_params`` takes the full vector of ``covariance()``'s
+  rows, in the order of ``covariance_names`` (the distribution's parameters,
+  then ``lfp_p`` and ``f0``), so a draw from the covariance of a
+  limited-failure or zero-inflated fit maps straight back to a model; the
+  short vector of the distribution's parameters works as before. The offset
+  is ``with_params(params, gamma=...)`` (kept when not given), and
+  ``lfp_p=``/``f0=`` go with the short vector, as ``MixtureModel``'s
+  ``w=``. A drawn ``lfp_p`` above 1 or ``f0`` below 0 is refused with what
+  to do. New ``Parametric.bootstrap(n_boot, random_state)`` returns the
+  refits behind the ``method="bootstrap"`` bounds (the same refits for the
+  same seed) as a ``ParametricBootstrap``: the refitted models, their
+  parameters in ``covariance_names`` order, each offset fit's ``gamma`` and
+  the count of failed refits, with ``to_dict``. A short section on carrying
+  a fit's uncertainty forward is on the parametric modelling page.
 - ``covariance()`` and ``standard_errors()`` of a fitted ``Bernoulli``,
   ``FixedEventProbability`` or ``Binomial``: the variance of ``p``,
   :math:`\hat p (1 - \hat p) / N` from the events and trials (a Binomial's
@@ -16,6 +30,21 @@ Unreleased
   Clopper-Pearson default. Checked against R's ``binom.test``, ``qbeta``
   and ``binom::binom.confint`` to 1e-10; the coverage study
   (``scripts/studies/probability_coverage.py``) is on the Bernoulli page.
+- ``ParametricCompetingRisks`` carries its parameters' uncertainty:
+  ``params`` and ``parameter_names`` (``"<cause>: <name>"``),
+  ``covariance_names``, ``covariance()`` (the causes' covariances on the
+  diagonal, exact since the likelihood factorises by cause, ``lfp_p`` and
+  ``f0`` rows included) and ``standard_errors()``; ``with_params(params)``
+  rebuilds the model from a vector in that order (or the shorter
+  ``params``), so draws from the covariance can be propagated; and
+  ``cb(x, event=None, on="cif")`` gives Wald bounds on each cause's
+  cumulative incidence (logit scale) and on the all-cause ``sf``, ``ff``
+  and ``Hf`` (one bound on ``log H``), with a cause's net functions
+  bounded by its own model (likelihood-ratio and bootstrap too). Per-cause
+  fits and the cumulative incidence match R's ``flexsurv`` (estimates to
+  1e-6, covariance to 1e-4, CIF to 1e-6); a 1000-replicate study covers
+  0.936 to 0.962 at 95%
+  (``scripts/studies/parametric_competing_risks_cb_coverage.py``).
 - ``ParametricCompetingRisks`` gives the lifetime of the whole unit (its
   first failure from any cause): ``df(x)``, the all-cause density
   :math:`S(t)\sum_k h_k(t)`; ``mean()``, the all-cause MTTF by quadrature
@@ -51,6 +80,22 @@ Unreleased
   inverse Gaussian AFT and PH fits match a likelihood written with
   ``scipy.stats.invgauss``. The tests run the recipe cells from the page
   itself.
+- The degradation level of ``WienerProcessModel`` and ``GammaProcessModel``:
+  ``level_at(t, Z, y0=, t0=)`` is the distribution of the level at time
+  ``t``, from new or from a reading ``y0`` at an age ``t0`` (a
+  ``ProcessLevel`` with ``sf``, ``ff``, ``df``, ``qf``, ``random``, ``mean``
+  and ``to_dict``; normal for a Wiener process, ``y0`` plus a gamma variable
+  for a gamma process, on the stress clock with ``Z``), and
+  ``random_path(times, size, Z, random_state=, y0=, t0=)`` draws the levels
+  at several times from independent increments, for simulating inspections
+  against a preventive limit. Matches scipy's normal and gamma to 1e-12; for
+  the gamma process ``level_at(t).ff(threshold)`` is ``sf(t)`` exactly. Both
+  models also gain ``with_params(params)``, a model rebuilt from a flat
+  vector in the order of ``covariance_names`` (no covariance or likelihood),
+  so draws from ``covariance()`` become models; the spread of ``ff`` over
+  such draws matches the delta-method standard error of ``cb`` to within 1%.
+  ``GammaProcessModel`` now refuses a non-positive ``alpha`` or ``beta`` and
+  ``WienerProcessModel`` a non-finite ``mu``.
 - ``Turnbull.fit(..., w=)``: the Turnbull estimate with sampling weights,
   for interval and left censored and truncated data. The estimate is the
   weighted non-parametric MLE (each row counts ``n w`` in the EM; checked
@@ -383,6 +428,54 @@ Unreleased
   the likelihood-ratio and bootstrap bounds. ``parameter_names``,
   ``hess_inv`` (the distribution's block only) and the saved dictionary
   are unchanged.
+- Regressions as plain life models, and their parameter uncertainty
+  carried along. ``model.at(Z)`` is the lifetime distribution of a unit
+  with one covariate row (``LifeAtCovariates``): ``sf``, ``ff``, ``df``,
+  ``hf``, ``Hf``, ``qf``, ``random``, ``mean``, ``rmst`` and ``cb`` taking
+  times only, each exactly the regression's at ``Z``, on every parametric
+  regression, ``CoxPH`` (with ``stratum=``) and the semi-parametric
+  proportional odds and additive hazards models; ``random(n)`` is
+  ``qf(U)``, as ``Parametric.random``. ``with_params(params)``,
+  ``covariance_names`` and ``_estimates()`` on the parametric regressions
+  (PH, AFT, PO, AH, accelerated life, Royston-Parmar, distributional) and
+  the semi-parametric ``ProportionalOdds`` and ``AdditiveHazards``
+  models: a model at a flat parameter vector in the order of
+  ``covariance()``'s rows, keeping the formula, centre and fixed
+  parameters, without data or covariance (the semi-parametric baseline is
+  re-estimated at the new coefficients). At R's estimate a Weibull AFT
+  and PH at fixed covariates match flexsurv's ``summary(newdata=)`` and
+  ``survreg``'s predicted quantiles to 1e-9. The semi-parametric
+  ``ProportionalOdds`` and ``AdditiveHazards`` models gain
+  ``random(size, Z)``.
+- ``RoystonParmarModel.with_params(params)``: the same spline (knots,
+  scale, unit) at other coefficients, given in the order of the new
+  ``covariance_names`` (``gamma_0``, ``gamma_1``, ...), so a draw from
+  ``covariance()`` becomes a model and the coefficients' uncertainty can be
+  propagated. The model returned has no data or covariance: ``cb``,
+  ``standard_errors``, ``neg_ll`` and the information criteria refuse on
+  it. Coefficients whose spline falls somewhere in log time (a decreasing
+  cumulative hazard) are refused with the time where it does. Checked
+  against flexsurv's ``psurvspline`` family at given coefficients on all
+  three scales to 1e-12; the 2.5% and 97.5% points of ``sf`` over 4000
+  draws match the Wald band of ``cb`` to 0.0013.
+- Recurrent models can be stepped forward one failure at a time.
+  ``RenewalModel`` (``GeneralizedRenewal``, ``GeneralizedOneRenewal``,
+  ``ARA``, ``ARI``) gains ``next_failure_qf(p)``, the inverse of
+  ``next_failure_sf`` (on the cumulative hazard, so the upper tail keeps its
+  digits), ``next_failure_random(size)`` (``next_failure_qf`` at uniform
+  draws), ``states()`` (the units' states, from the fitted items, an
+  ``age`` or known ``failures``) and ``advance(states, x)``, the state after a
+  failure at ``x`` and its repair by the fitted rule (``failed=False`` to run
+  on); the four next-failure methods take ``states=``. A loop of draws and
+  advances reproduces ``time_terminated_simulation`` and
+  ``count_terminated_simulation`` in distribution (seeded two-sample tests on
+  counts and event times, every family). ``ParametricRecurrenceModel``
+  (``HPP``, ``CrowAMSAA``, ``Duane``, ``CoxLewis``) has the same
+  ``next_failure_sf``, ``next_failure_hf``, ``next_failure_qf`` and
+  ``next_failure_random`` from an ``age``. Both kinds gain
+  ``covariance_names`` and ``with_params(params)``, the same model at a flat
+  parameter vector in that order (a draw from ``covariance()``); draws
+  through it spread as the delta method says (within 5%).
 
 **Changed.**
 
@@ -592,6 +685,15 @@ Unreleased
 
 **Fixed.**
 
+- A penalised fit (``fit_penalised`` of every model) whose search stops
+  short of the minimum now searches a second time, from the unpenalised
+  fit, and keeps the better answer. A Weibull AFT lasso fit on the Rossi
+  data (``fin``, ``age``, ``prio``, ``l1_ratio=1``, penalty 0.00068)
+  stopped near its start, "unverified", with a penalised objective of
+  1.5892, above the 1.5811 reached at the larger penalty 0.0038; it now
+  reaches 1.5792 and is verified. The second search runs only when the
+  first fails its optimality check, so fits that converged are unchanged
+  (to the last digit) and cost no more.
 - ``robust_covariance(cluster=...)`` (and ``robust_standard_errors``,
   ``summary(robust=True, cluster=...)``) on a distributional regression
   (``WeibullDistributional`` and the others) matched the cluster labels
@@ -667,6 +769,13 @@ Unreleased
   ``MethodArray``, ``ArrayMethod``, ``RenamedToMethod``, ``MadePrivate``),
   and a few private helpers with no callers. ``renamed_arguments``,
   ``RenamedAttribute`` and ``renamed_name`` stay for the next rename.
+- The mutation run of the modules new in 0.26 is complete (all 5,296
+  mutants; about 81% killed, about 90% without the equivalent ones), with new
+  tests of the Bayesian grid's posterior quantiles against closed forms
+  and a brute-force posterior: reliabilities that underflow to 0 or
+  round to 1 at some of the posterior's points, and a mean that is
+  infinite for part of it. ``scripts/mutation/run.sh`` pins pytest below 9,
+  which breaks mutmut 3.8.
 
 v0.26 (31 October 2026)
 -----------------------
