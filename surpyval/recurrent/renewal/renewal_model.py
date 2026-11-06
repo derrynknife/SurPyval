@@ -1,4 +1,5 @@
 import math
+import operator
 import textwrap
 import warnings
 from collections.abc import Callable
@@ -30,7 +31,10 @@ from surpyval.utils.linalg import (
 )
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.numeric import solve_bracketed
-from surpyval.utils.validation import option_error
+from surpyval.utils.validation import (
+    option_error,
+    warn_outside_unit_interval,
+)
 from surpyval.utils.warnings import warn_no_covariance
 
 #: The values of the restoration parameter at which each family is a
@@ -311,12 +315,27 @@ def conditional_gaps(
     (see ``_QF_HAZARD_LIMIT``) and by Newton's method on ``H`` beyond it
     (see ``_invert_cumulative_hazard``).
     """
+    with np.errstate(divide="ignore"):
+        energy = -np.log(np.asarray(u, dtype=float))
+    return conditional_gaps_from_energy(lifetime, v, energy)
+
+
+def conditional_gaps_from_energy(
+    lifetime: Any, v: np.ndarray, energy: np.ndarray
+) -> np.ndarray:
+    """
+    :func:`conditional_gaps` with the Exp(1) amount ``energy`` (``-log
+    u``) given in place of ``u``: the residual life ``x`` from age ``v``
+    with ``H(v + x) - H(v) = energy``. A quantile ``p`` of the residual
+    life is ``energy = -log1p(-p)``, exact for a small ``p`` where
+    ``-log(1 - p)`` is not.
+    """
     v = np.asarray(v, dtype=float)
-    u = np.asarray(u, dtype=float)
+    energy = np.asarray(energy, dtype=float)
     hazard, quantile, both = _lifetime_functions(lifetime)
     with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
         H_v = np.broadcast_to(hazard(v), v.shape)
-        target = H_v - np.log(u)
+        target = H_v + energy
     # No survival past age v (the end of a bounded support): the item
     # fails at once.
     at_once = np.isinf(H_v) & (H_v > 0)
@@ -1156,6 +1175,105 @@ class RenewalModel(
             [[self.restoration], np.asarray(self.model.params, dtype=float)]
         ).astype(float)
 
+    @property
+    def covariance_names(self) -> list[str]:
+        """
+        The names of the rows (and columns) of :meth:`covariance`, in its
+        order, which :meth:`with_params` takes: the restoration parameter
+        (``q`` or ``rho``), then the lifetime distribution's (for ARI the
+        baseline intensity's) parameters -- the ``parameter_names``.
+
+        Examples
+        --------
+        >>> from surpyval.recurrent import ARA
+        >>> ARA.fit_from_parameters([10.0, 2.0], 0.4, m=2).covariance_names
+        ['rho', 'alpha', 'beta']
+        """
+        return list(self.parameter_names)
+
+    def _estimates(self) -> np.ndarray:
+        """The parameters in the order of :attr:`covariance_names`."""
+        return self.params
+
+    def with_params(self, params: ArrayLike) -> "RenewalModel":
+        """
+        The same model -- family, lifetime distribution (or ARI baseline),
+        Kijima type, memory ``m`` and unit -- at other parameters: for
+        drawing a fit's parameters from its covariance and carrying them
+        into a prediction or simulation, say.
+
+        Parameters
+        ----------
+        params : array_like
+            A flat vector in the order of :attr:`covariance_names`, the
+            restoration parameter first, as a draw from :meth:`covariance`
+            comes. The values are checked as ``fit_from_parameters``
+            checks them (a ``q`` below 0 for the generalized renewal
+            process, a ``rho`` outside [0, 1], is refused).
+
+        Returns
+        -------
+        RenewalModel
+            A model built from parameters, as ``fit_from_parameters``
+            builds it: it has no data, covariance or fitted likelihood,
+            since those belong to the fit of the original parameters, so
+            data-based methods (bounds, ``repair_test``, prediction for
+            the fitted items) are not available on it. A model fitted
+            with weights becomes the plain model at these parameters.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.recurrent import GeneralizedRenewal
+        >>> model = GeneralizedRenewal.fit_from_parameters(
+        ...     [10.0, 2.0], 0.5, kijima="ii")
+        >>> other = model.with_params([0.2, 12.0, 2.5])
+        >>> other.q, other.kijima_type, other.model.params
+        (0.2, 'ii', array([12. ,  2.5]))
+        >>> bool(np.allclose(model.with_params(model._estimates()).params,
+        ...                  model.params))
+        True
+        """
+        names = self.covariance_names
+        values = np.asarray(params, dtype=float)
+        if values.shape != (len(names),):
+            raise ValueError(
+                "params must be a flat vector of {} values in the order "
+                "of covariance_names {}; got shape {}".format(
+                    len(names), names, np.shape(params)
+                )
+            )
+        import surpyval.recurrent as recurrent
+
+        family = self._family()
+        fitter = getattr(recurrent, family)
+        restoration = float(values[0])
+        dist_params = values[1:].tolist()
+        out: RenewalModel
+        if family == "ARI":
+            out = fitter.fit_from_parameters(
+                dist_params, restoration, m=self.m, baseline=self.model.dist
+            )
+        elif family == "GeneralizedRenewal":
+            out = fitter.fit_from_parameters(
+                dist_params,
+                restoration,
+                kijima=self.kijima_type,
+                dist=self.model.dist,
+            )
+        elif family == "ARA":
+            out = fitter.fit_from_parameters(
+                dist_params, restoration, m=self.m, dist=self.model.dist
+            )
+        else:
+            out = fitter.fit_from_parameters(
+                dist_params, restoration, dist=self.model.dist
+            )
+        unit = getattr(self, "unit", None)
+        if unit is not None:
+            out.unit = unit
+        return out
+
     def _parameter_names(self) -> list:
         # The restoration parameter (``q``/``rho``) leads ``_mle``, followed by
         # the underlying lifetime/intensity model's parameters.
@@ -1458,6 +1576,175 @@ class RenewalModel(
             table.index.name = "item"
         return table
 
+    def states(
+        self,
+        age: "ArrayLike | None" = None,
+        *,
+        failures: "list | None" = None,
+        now: "ArrayLike | None" = None,
+    ) -> UnitStates:
+        """
+        Units' current states as a :class:`UnitStates`, for
+        :meth:`next_failure_random`, :meth:`next_failure_qf`,
+        :meth:`next_failure_sf` and :meth:`next_failure_hf` (their
+        ``states=``) and for :meth:`advance`. :meth:`unit_states` is the
+        same as a table.
+
+        Parameters
+        ----------
+        age : array_like, optional
+            Units that have run this long since new without a failure.
+        failures : list of array_like, optional
+            Units with these failure histories instead (keyword only):
+            each unit's failure times so far, on the model's clock (from
+            new), each failure repaired at once.
+        now : array_like, optional
+            With ``failures`` (keyword only), the time now for each unit,
+            at or after its last failure; by default its last failure (0
+            for a unit with none).
+
+        Without any of them the units are the fitted data's items, each
+        at the end of its history.
+
+        Returns
+        -------
+        UnitStates
+            One entry per unit; the restoration rule's state is in
+            ``age`` (the virtual age now, for G1 on the base lifetime's
+            axis with ``scale``) or ``reduction`` (ARI).
+
+        Examples
+        --------
+        A Kijima-I unit with ``q = 0.5`` that failed at 4 and 10 and has
+        run to 12 has the virtual age :math:`0.5 \\times 10 + 2 = 7`:
+
+        >>> from surpyval.recurrent import GeneralizedRenewal
+        >>> model = GeneralizedRenewal.fit_from_parameters([10.0, 2.0], 0.5)
+        >>> state = model.states(failures=[[4.0, 10.0]], now=[12.0])
+        >>> state.age, state.failure_count
+        (array([7.]), array([2]))
+        """
+        if failures is None:
+            if now is not None:
+                raise ValueError(
+                    "now goes with failures (the time now after each "
+                    "unit's failures); for units with no failure give "
+                    "age instead"
+                )
+            return self._states(age)
+        if age is not None:
+            raise ValueError(
+                "give the units by age (no failures yet) or by their "
+                "failures (and now), not both"
+            )
+        histories = []
+        for k, f in enumerate(failures):
+            times = np.atleast_1d(np.asarray(f, dtype=float)).reshape(-1)
+            if not np.all(np.isfinite(times)) or np.any(times < 0):
+                raise ValueError(
+                    "failures must be finite times of at least 0; unit "
+                    f"{k} has {times[~(np.isfinite(times) & (times >= 0))]}"
+                )
+            histories.append(np.sort(times))
+        last = np.array([h[-1] if h.size else 0.0 for h in histories])
+        if now is None:
+            times_now = last
+        else:
+            times_now = np.broadcast_to(
+                np.asarray(now, dtype=float), last.shape
+            ).copy()
+            bad = ~np.isfinite(times_now) | (times_now < last)
+            if bad.any():
+                raise ValueError(
+                    "now must be finite and at or after each unit's last "
+                    "failure; units {} are not".format(np.flatnonzero(bad))
+                )
+        return self._state_of(None, histories, times_now)
+
+    def advance(
+        self, states: UnitStates, x: ArrayLike, failed: "ArrayLike" = True
+    ) -> UnitStates:
+        """
+        The units' states a further ``x`` from now: after a failure at
+        ``now + x``, repaired at once by the fitted restoration rule
+        (``failed=True``), or after running ``x`` without one
+        (``failed=False``).
+
+        The repair is the model's own: the Kijima virtual age (``q`` of
+        the generalized renewal process), the arithmetic reduction of age
+        or of intensity with memory ``m`` (ARA, ARI) or the next gap's
+        scale :math:`(1 + q)^j` (G1). With :meth:`next_failure_random`
+        it steps units forward event by event, so a simulation can put
+        its own events between failures; time a unit spends out of
+        service is simply not added to its clock.
+
+        Parameters
+        ----------
+        states : UnitStates
+            The units' states now, from :meth:`states` or an earlier
+            call.
+        x : array_like
+            Each unit's time ahead of now (at least 0, finite): one value
+            for every unit, or one per unit.
+        failed : bool or array_like of bool, optional
+            Whether each unit fails at ``now + x`` (the default) or has
+            only run on: one value for every unit, or one per unit.
+
+        Returns
+        -------
+        UnitStates
+            The new states; ``states`` itself is not changed.
+
+        Examples
+        --------
+        Kijima I, ``q = 0.5``: a new unit that fails at 4 is repaired to
+        the virtual age 2, and after running 3 more it is at 5:
+
+        >>> from surpyval.recurrent import GeneralizedRenewal
+        >>> model = GeneralizedRenewal.fit_from_parameters([10.0, 2.0], 0.5)
+        >>> state = model.advance(model.states(age=[0.0]), 4.0)
+        >>> state.after_repair, state.age
+        (array([2.]), array([2.]))
+        >>> model.advance(state, 3.0, failed=False).age
+        array([5.])
+        """
+        if not isinstance(states, UnitStates):
+            raise TypeError(
+                "states must be a UnitStates, as model.states() or "
+                f"model.advance() gives; got {type(states).__name__}"
+            )
+        ahead = np.broadcast_to(
+            np.asarray(self._ahead(x), dtype=float), states.now.shape
+        )
+        if not np.all(np.isfinite(ahead)):
+            raise ValueError(
+                "x is each unit's time ahead of now, so it must be "
+                f"finite; got {ahead[~np.isfinite(ahead)][:5]}"
+            )
+        now = states.now + ahead
+        fails = np.broadcast_to(np.asarray(failed, dtype=bool), now.shape)
+        failures = [
+            np.append(f, t) if d else f
+            for f, t, d in zip(states.failures, now, fails)
+        ]
+        return self._state_of(states.units, failures, now)
+
+    def _resolve_states(
+        self, age: "ArrayLike | None", states: "UnitStates | None"
+    ) -> UnitStates:
+        """The units the next-failure methods are about: ``states`` as
+        given, else those of ``age`` (or the fitted data's items)."""
+        if states is None:
+            return self._states(age)
+        if age is not None:
+            raise ValueError("give age or states, not both")
+        if not isinstance(states, UnitStates):
+            raise TypeError(
+                "states must be a UnitStates, as model.states() or "
+                f"model.advance() gives; got {type(states).__name__}"
+            )
+        return states
+
     def _next_failure_hazard(
         self, states: UnitStates, x: np.ndarray
     ) -> np.ndarray:
@@ -1488,7 +1775,11 @@ class RenewalModel(
         return values
 
     def next_failure_sf(
-        self, x: ArrayLike, age: "ArrayLike | None" = None
+        self,
+        x: ArrayLike,
+        age: "ArrayLike | None" = None,
+        *,
+        states: "UnitStates | None" = None,
     ) -> np.ndarray:
         """
         The chance that each unit runs a further ``x`` from now without a
@@ -1511,6 +1802,10 @@ class RenewalModel(
         age : array_like, optional
             Units that have run this long since new without a failure, in
             place of the fitted data's items (see :meth:`unit_states`).
+        states : UnitStates, optional
+            The units' states (keyword only), as :meth:`states` or
+            :meth:`advance` gives them, in place of ``age`` or the fitted
+            data's items.
 
         Returns
         -------
@@ -1533,13 +1828,17 @@ class RenewalModel(
         fitted items, each from the state its own failures left it in.
         """
         values = self._ahead(x)
-        states = self._states(age)
+        states = self._resolve_states(age, states)
         flat = np.atleast_1d(values).reshape(-1)
         out = np.exp(-self._next_failure_hazard(states, flat))
         return out[:, 0] if values.ndim == 0 else out
 
     def next_failure_hf(
-        self, x: ArrayLike, age: "ArrayLike | None" = None
+        self,
+        x: ArrayLike,
+        age: "ArrayLike | None" = None,
+        *,
+        states: "UnitStates | None" = None,
     ) -> np.ndarray:
         """
         Each unit's intensity a further ``x`` from now, if it has not
@@ -1560,7 +1859,7 @@ class RenewalModel(
         array([0. , 0.1])
         """
         values = self._ahead(x)
-        states = self._states(age)
+        states = self._resolve_states(age, states)
         flat = np.atleast_1d(values).reshape(-1)[None, :]
         with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
             if self._family() == "ARI":
@@ -1580,6 +1879,190 @@ class RenewalModel(
                     / scale
                 )
         return out[:, 0] if values.ndim == 0 else out
+
+    def next_failure_qf(
+        self,
+        p: ArrayLike,
+        age: "ArrayLike | None" = None,
+        *,
+        states: "UnitStates | None" = None,
+    ) -> np.ndarray:
+        """
+        The time ahead of now by which each unit fails with probability
+        ``p``, given its history: the quantile function of the time to
+        its next failure, the inverse of :meth:`next_failure_sf`
+        (``next_failure_sf(next_failure_qf(p)) == 1 - p``).
+
+        From each unit's current state (:meth:`unit_states`): for the
+        virtual-age models (``GeneralizedRenewal``, ``ARA``) the lifetime
+        distribution's conditional quantile from the unit's virtual age
+        :math:`v`, the :math:`x` with :math:`H(v + x) - H(v) =
+        -\\log(1 - p)`; for G1 the same for the base lifetime on the time
+        scale :math:`(1 + q)^j` of the unit's next gap; for ARI the
+        :math:`x` with :math:`\\Lambda_0(t + x) - \\Lambda_0(t) - R\\, x =
+        -\\log(1 - p)`. Working on the cumulative hazard keeps the upper
+        tail exact (a ``p`` near 1, a unit far into its life); a time is
+        found to about the double's rounding of the unit's age, so a tiny
+        gap after a long life carries that absolute error.
+
+        Parameters
+        ----------
+        p : array_like
+            Probabilities in [0, 1]. ``p = 0`` gives 0 and ``p = 1``
+            ``inf``; a value outside [0, 1] gives ``nan``, with a
+            warning.
+        age : array_like, optional
+            Units that have run this long since new without a failure, in
+            place of the fitted data's items (see :meth:`unit_states`).
+        states : UnitStates, optional
+            The units' states (keyword only), as :meth:`states` or
+            :meth:`advance` gives them, in place of ``age`` or the fitted
+            data's items.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(units, len(p))``, one row per unit (in the order of
+            :meth:`unit_states`); ``(units,)`` for a scalar ``p``.
+
+        Examples
+        --------
+        Under a Weibull lifetime (``alpha = 10``, ``beta = 2``), the
+        median time to the next failure of a new unit,
+        :math:`10\\sqrt{\\log 2}`, and of one that has run 6 hours since
+        new, :math:`10\\sqrt{0.36 + \\log 2} - 6`:
+
+        >>> from surpyval.recurrent import GeneralizedRenewal
+        >>> model = GeneralizedRenewal.fit_from_parameters([10.0, 2.0], 0.5)
+        >>> model.next_failure_qf(0.5, age=[0.0, 6.0]).round(4)
+        array([8.3255, 4.2614])
+        >>> model.next_failure_sf(model.next_failure_qf(0.5, age=[6.0]),
+        ...                       age=[6.0]).round(12)
+        array([[0.5]])
+        """
+        values = np.asarray(p, dtype=float)
+        outside = warn_outside_unit_interval(values, "next_failure_qf")
+        unit_states = self._resolve_states(age, states)
+        flat = np.where(outside, np.nan, values).reshape(-1)
+        out = self._next_gaps(unit_states, flat[None, :])
+        return out[:, 0] if values.ndim == 0 else out
+
+    def next_failure_random(
+        self,
+        size: int,
+        age: "ArrayLike | None" = None,
+        *,
+        states: "UnitStates | None" = None,
+        random_state: Any = None,
+    ) -> np.ndarray:
+        """
+        Draw each unit's time to its next failure, ahead of now, given its
+        history: ``size`` draws per unit.
+
+        Each draw is :meth:`next_failure_qf` at one uniform ``u``, the
+        uniforms filling the ``(units, size)`` result row by row, so a
+        draw can be repeated (common random numbers) by passing the same
+        ``random_state``. With :meth:`advance` this steps units forward
+        failure by failure under the fitted model -- alongside other
+        events of a caller's own simulation (repairs that take time,
+        maintenance, other components) -- and reproduces
+        :meth:`time_terminated_simulation` and
+        :meth:`count_terminated_simulation` in distribution, as below.
+
+        Parameters
+        ----------
+        size : int
+            The number of draws for each unit.
+        age : array_like, optional
+            Units that have run this long since new without a failure, in
+            place of the fitted data's items (see :meth:`unit_states`).
+        states : UnitStates, optional
+            The units' states (keyword only), as :meth:`states` or
+            :meth:`advance` gives them, in place of ``age`` or the fitted
+            data's items.
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for a reproducible draw (keyword only); by
+            default one seeded from numpy's global stream, so
+            ``np.random.seed`` makes the draw reproducible.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(units, size)``: one row per unit (in the order of
+            :meth:`unit_states`).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.recurrent import GeneralizedRenewal
+        >>> model = GeneralizedRenewal.fit_from_parameters([10.0, 2.0], 0.5)
+        >>> model.next_failure_random(3, age=[0.0, 6.0],
+        ...                           random_state=1).round(3)
+        array([[ 8.468, 17.335,  3.946],
+               [12.246,  2.566,  3.542]])
+
+        Three units stepped through their first three failures, each
+        repaired at once:
+
+        >>> states = model.states(age=[0.0, 0.0, 0.0])
+        >>> rng = np.random.default_rng(2)
+        >>> for _ in range(3):
+        ...     gap = model.next_failure_random(1, states=states,
+        ...                                     random_state=rng)[:, 0]
+        ...     states = model.advance(states, gap)
+        >>> states.failure_count
+        array([3, 3, 3])
+        >>> states.now.round(3)
+        array([ 9.173, 13.425, 21.141])
+        """
+        try:
+            count = operator.index(size)
+        except TypeError:
+            count = -1
+        if count < 0:
+            raise ValueError(
+                "size is the number of draws for each unit, a whole number "
+                f"of at least 0; got {size!r}"
+            )
+        unit_states = self._resolve_states(age, states)
+        from surpyval.utils.rng import as_generator
+
+        u = as_generator(random_state).random((unit_states.now.size, count))
+        return self._next_gaps(unit_states, u)
+
+    def _next_gaps(self, states: UnitStates, p: np.ndarray) -> np.ndarray:
+        """``(units, m)``: each unit's quantile ``p`` (broadcast to that
+        shape) of the time to its next failure; see
+        :meth:`next_failure_qf`. The gap is found from the Exp(1) amount
+        ``-log1p(-p)`` by the samplers' own inversions
+        (:func:`conditional_gaps_from_energy`, :func:`ari_gaps`)."""
+        k = states.now.size
+        p = np.broadcast_to(np.asarray(p, dtype=float), (k, np.shape(p)[1]))
+        out = np.full(p.shape, np.nan)
+        out[p == 0] = 0.0
+        out[p == 1] = np.inf
+        inside = (p > 0) & (p < 1)
+        if not inside.any():
+            return out
+        rows = np.nonzero(inside)[0]
+        energy = -np.log1p(-p[inside])
+        if self._family() == "ARI":
+            from .ari import ari_gaps
+
+            out[inside] = ari_gaps(
+                self.model.dist,
+                np.asarray(self.model.params, dtype=float),
+                states.now[rows],
+                states.reduction[rows],
+                energy,
+                polish=True,
+            )
+        else:
+            scale = states.scale[rows]
+            out[inside] = scale * conditional_gaps_from_energy(
+                self.model, states.age[rows], energy
+            )
+        return out
 
     def _simulate_from_states(
         self,

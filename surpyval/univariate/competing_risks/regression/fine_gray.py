@@ -129,6 +129,7 @@ from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import (
     check_alpha_ci,
     missing_cause_error,
+    refuse_subdistribution_entry,
     unknown_cause_error,
 )
 from surpyval.utils.weights import (
@@ -920,22 +921,36 @@ def _cumhaz_at_origin(
     return out
 
 
-def _validated(x: Any, Z: Any, e: Any, c: Any, n: Any, w: Any) -> tuple[
+def _validated(
+    x: Any, Z: Any, e: Any, c: Any, n: Any, w: Any, tl: Any = None
+) -> tuple[
     npt.NDArray,
     npt.NDArray,
     npt.NDArray,
     npt.NDArray,
     npt.NDArray,
     npt.NDArray | None,
+    npt.NDArray | None,
 ]:
     """``validate_fine_gray_inputs``, with the weights ``w`` of the rows
-    kept as a sixth entry (``None`` without weights), and the warning of
-    a small effective sample size, for the competing-risks regressions."""
-    if w is None:
-        return (*validate_fine_gray_inputs(x, Z, e, c, n), None)
-    out = validate_fine_gray_inputs(x, Z, e, c, n, w)
-    warn_if_few_effective(out[4], out[5])
-    return out
+    kept as a sixth entry and their entry times ``tl`` as a seventh
+    (``None`` where not given), and the warning of a small effective
+    sample size, for the competing-risks regressions."""
+    out = validate_fine_gray_inputs(x, Z, e, c, n, w, tl)
+    w_kept = None if w is None else out[5]
+    tl_kept = None if tl is None else out[-1]
+    if w_kept is not None:
+        warn_if_few_effective(out[4], w_kept)
+    return (*out[:5], w_kept, tl_kept)
+
+
+#: What a subdistribution method refusing delayed entry offers instead.
+ENTRY_INSTEAD = (
+    "For the covariates' effects with delayed entry, fit the "
+    "cause-specific Cox model, CompetingRisksProportionalHazards.fit(x, Z, "
+    "e, tl=tl) (model='Cox'); for each cause's cumulative incidence, the "
+    "Aalen-Johansen estimate CompetingRisks.fit(x, e, tl=tl)."
+)
 
 
 def paired_covariate_rows(Z: npt.ArrayLike, n_x: int, p: int) -> npt.NDArray:
@@ -1344,6 +1359,7 @@ class FineGray_(FitterRepr):
         c_col: str | None = None,
         n_col: str | None = None,
         w_col: str | None = None,
+        tl_col: str | None = None,
         **fit_options: Any,
     ) -> FineGrayModel:
         """
@@ -1372,6 +1388,10 @@ class FineGray_(FitterRepr):
             Column of counts per row.
         w_col : str, optional
             Column of weights per row (``w`` of :meth:`fit`).
+        tl_col : str, optional
+            Column of entry times (``tl`` of :meth:`fit`), refused, as
+            there, where an entry is after the first time, with what to
+            use instead.
         **fit_options
             ``event`` (the cause of interest) and ``center``, as for
             :meth:`fit`.
@@ -1413,8 +1433,10 @@ class FineGray_(FitterRepr):
             arrays["n"] = frame_column(df, n_col, "n_col")
         if w_col is not None:
             arrays["w"] = frame_column(df, w_col, "w_col")
+        if tl_col is not None:
+            arrays["tl"] = frame_column(df, tl_col, "tl_col", time=True)
         names = {"x": "x_col", "Z": "Z_cols", "e": "e_col"}
-        names |= {"c": "c_col", "n": "n_col", "w": "w_col"}
+        names |= {"c": "c_col", "n": "n_col", "w": "w_col", "tl": "tl_col"}
         # The columns name the coefficients (#614)
         columns = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
         with covariate_columns(columns):
@@ -1435,6 +1457,7 @@ class FineGray_(FitterRepr):
         event: Any = None,
         center: bool = False,
         w: npt.ArrayLike | float | None = None,
+        tl: npt.ArrayLike | float | None = None,
     ) -> FineGrayModel:
         """
         Fit the Fine-Gray model for a cause of interest.
@@ -1479,6 +1502,14 @@ class FineGray_(FitterRepr):
             cluster = id)`` on ``finegray``'s data; ``aic``, ``bic`` and
             ``aic_c`` and the diagnostics refuse a weighted fit. See
             :doc:`/Weighted Data`.
+        tl : array_like or float, optional
+            Delayed entry (left truncation) is refused with a
+            ``ValueError`` that names what to use instead (the
+            cause-specific Cox model, or the Aalen-Johansen estimate):
+            the subdistribution risk set keeps the items that failed from
+            another cause, and with late entry it needs truncation weights
+            (Geskus 2011), which are not built. Entry times all before the
+            first time change nothing and are taken.
 
         Returns
         -------
@@ -1511,7 +1542,8 @@ class FineGray_(FitterRepr):
         >>> model.cif([5, 10], [[1]]).round(4)
         array([0.5808, 0.7395])
         """
-        x, Z, e, c, n, w_kept = _validated(x, Z, e, c, n, w)
+        refuse_subdistribution_entry(x, tl, "FineGray", ENTRY_INSTEAD)
+        x, Z, e, c, n, w_kept, _ = _validated(x, Z, e, c, n, w)
 
         causes = ordered_labels(e)
         if event is None:

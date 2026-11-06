@@ -39,6 +39,7 @@ from .degradation_analysis import (  # isort: skip
 from .process_models import (  # isort: skip
     GammaProcess,
     GammaProcessModel,
+    ProcessLevel,
     ProcessRUL,
     WienerProcess,
     WienerProcessModel,
