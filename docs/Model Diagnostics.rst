@@ -33,8 +33,7 @@ regressions; and Aalen's additive hazards model. The Cox and
 parametric proportional hazards and accelerated failure time reports also
 check the calibration of the predicted survival (#881). A few models have
 no checks yet, and their ``diagnose()`` refuses, saying what to check the
-model with meanwhile: parametric competing risks (each cause's model has
-``diagnose()``) and Buckley-James (diagnose an AFT fit of the same data).
+model with meanwhile: Buckley-James (diagnose an AFT fit of the same data).
 Bayesian fits have theirs: see `Bayesian fits`_.
 
 Verdicts
@@ -1368,9 +1367,7 @@ one cause's with the others removed, does.
 
 A model restored with ``from_dict`` has no data to check and refuses, as
 do one with an aliased coefficient and one whose fit of a cause has no
-finite maximum (the message names the cause). ``ParametricCompetingRisks``
-refuses for now, naming #874: its checks are each cause's goodness of fit,
-which waits for the univariate checks (#875). The Fine-Gray tests and
+finite maximum (the message names the cause). The Fine-Gray tests and
 residuals are also functions, in
 ``surpyval.univariate.competing_risks.regression.fine_gray_diagnostics``:
 
@@ -1379,6 +1376,80 @@ residuals are also functions, in
 .. autofunction:: surpyval.univariate.competing_risks.regression.fine_gray_diagnostics.fine_gray_added_covariate_test
 
 .. autofunction:: surpyval.univariate.competing_risks.regression.fine_gray_diagnostics.fine_gray_martingale_residuals
+
+Parametric competing risks
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A ``ParametricCompetingRisks`` model fits one distribution to each cause,
+with the other causes' failures censored. Its ``diagnose()`` asks two
+questions, cause by cause: does the cause's distribution fit that cause's
+failures, and does the model's cumulative incidence of the cause (the
+chance of having failed from it by a time) follow the non-parametric
+Aalen-Johansen estimate of the same data (``CompetingRisks.fit``)?
+
+Two causes, the first a Weibull and the second starting only after time
+4, both fitted with a 2-parameter Weibull:
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(2890)
+    t_a = 10 * rng.weibull(2.0, 300)
+    t_b = 4 + 6 * rng.weibull(1.0, 300)
+    cens = rng.uniform(0, 25, 300)
+    first = np.minimum(t_a, t_b)
+    e = np.where(cens < first, None, np.where(t_a < t_b, 'a', 'b'))
+    pcr = surv.ParametricCompetingRisks.fit(
+        np.minimum(first, cens), e.astype(object), dist=surv.Weibull)
+    d_pcr = pcr.diagnose(n_boot=49, random_state=1)
+    d_pcr.table.loc[d_pcr.table['check'] != 'alternatives',
+                    ['check', 'cause', 'test', 'p', 'verdict']]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _gof = d_pcr.table[d_pcr.table['check'] == 'goodness_of_fit']
+    _ad = _gof[_gof['test'].str.startswith('Anderson')].set_index('cause')
+    assert _ad.loc['b', 'verdict'] == 'fail'
+    assert _ad.loc['a', 'verdict'] != 'fail'
+
+The second cause's goodness of fit fails, and only its: its failures do
+not follow a Weibull from time 0. Both incidences fail, the first because
+it depends on the second cause's survival too (see below). The advice
+names the distributions that fit the second cause better and how to give
+that cause its own (``dist={'b': ...}``, or a cause fitted on its own
+with an option such as an offset and the causes assembled with
+``from_fitted``):
+
+.. jupyter-execute::
+
+    for advice in [a for a in d_pcr.advice if "cause 'b'" in str(a)][:2]:
+        print('-', advice, '\n')
+
+.. jupyter-execute::
+
+    fig = d_pcr.plot('incidence')
+
+Each cause's goodness of fit is the univariate distributions' test (below)
+on the cause's own fit, ``pcr.models[cause]``. It tests the cause's
+Cox-Snell residuals ``r = H_k(x) - H_k(t_l)``, the cause's cumulative
+hazard over each unit's time at risk (from its entry, for delayed entry),
+which are a censored sample of the unit exponential when the cause's
+distribution is right; the test compares ``u = 1 - exp(-r)`` with the
+uniform, with parametric bootstrap p-values. The ``alternatives`` rows
+are the univariate AIC screen, cause by cause. The incidence test is the
+largest gap between the two incidences up to the last time observed,
+``D_k = sup_t |CIF_k(t) - AJ_k(t)|``, with a p-value from a parametric
+bootstrap: each resample draws every unit's latent time from each cause's
+model, keeps the earliest, censors it as the data were, refits every
+cause and recomputes ``D_k``. A cause's incidence depends on every cause's
+hazard, ``CIF_k(t) = int_0^t h_k(u) S(u) du``, so a wrong distribution for
+one cause can move another's incidence; the goodness-of-fit rows say which
+cause is wrong. With delayed entry the incidence rows are not computed
+(the Aalen-Johansen estimate takes no entry times yet) and say so. A
+model restored with ``from_dict``, or assembled with ``from_fitted`` from
+fits of different data or from models that are not fitted distributions,
+refuses, saying what to do.
 
 Univariate distributions
 ------------------------

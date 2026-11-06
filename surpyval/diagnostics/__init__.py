@@ -42,7 +42,7 @@ PH and AFT (:mod:`.ph_aft`, #869), proportional odds and additive hazards
 regressions (:mod:`.distributional`) and Aalen's additive hazards model
 (:mod:`.aalen_additive`), with the
 calibration check (:mod:`.calibration`, #881) in the Cox and PH/AFT
-families. A model with none (parametric competing risks, Buckley-James)
+families. A model with none (Buckley-James, for one)
 refuses with ``NotImplementedError``, saying what to check it with
 meanwhile (:data:`.registry.PENDING`); so does a model with neither.
 

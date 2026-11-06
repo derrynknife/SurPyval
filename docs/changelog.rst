@@ -551,6 +551,22 @@ Unreleased
   ``covariance_names`` and ``with_params(params)``, the same model at a flat
   parameter vector in that order (a draw from ``covariance()``); draws
   through it spread as the delta method says (within 5%).
+- ``ParametricCompetingRisks.diagnose()``, which refused before. Cause by
+  cause, it tests the Cox-Snell residuals of the cause's distribution
+  (its cumulative hazard over each unit's time at risk, from entry, with
+  the other causes censored) against the unit exponential, by the
+  univariate distributions' bootstrap goodness-of-fit tests; screens the
+  univariate alternatives by AIC; and tests the largest gap between the
+  model's cumulative incidence and the Aalen-Johansen estimate
+  (``CompetingRisks.fit``) by parametric bootstrap (``n_boot=``,
+  ``random_state=``), drawn with the Aalen-Johansen band. The advice says
+  which cause to refit with which distribution (``dist={cause: ...}``,
+  or ``from_fitted``), or to use the non-parametric estimate. With
+  delayed entry the incidence rows are not computed yet. Size and power:
+  ``tests/calibration/test_size_parametric_competing_risks_diagnostics.py``
+  (200 replicates of n = 100 at 10%: the right models rejected 7-10.5% of
+  the time; a wrong distribution for one cause was flagged for that cause
+  80% of the time and for the right cause 5.5%).
 
 **Changed.**
 

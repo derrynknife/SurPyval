@@ -339,11 +339,6 @@ REG = "surpyval.univariate.regression."
 @pytest.mark.parametrize(
     "path, attributes, instead",
     [
-        (
-            "surpyval.univariate.competing_risks.ParametricCompetingRisks",
-            {},
-            r"models\[cause\]\.diagnose\(\)",
-        ),
         (REG + "BuckleyJamesModel", {}, "diagnose\\(\\) on an AFT fit"),
     ],
 )
@@ -372,11 +367,9 @@ def test_a_model_with_no_family_refuses_saying_what_to_use(monkeypatch):
 
 def test_a_real_fit_of_a_pending_family_refuses(rossi):
     x, c = rossi["week"].values, rossi["censored"].values
-    e = np.where(rossi["prio"].values > 2, "a", "b").astype(object)
-    e[c == 1] = None
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        model = sp.ParametricCompetingRisks.fit(x, e, c=c)
+        model = sp.BuckleyJames.fit(x, rossi[["prio"]].values, c=c)
     with pytest.raises(NotImplementedError, match="are not built yet"):
         model.diagnose()
 
