@@ -538,13 +538,87 @@ Every kind of censoring, delayed entry and right truncation, counts
 then sets the fitted baseline against the built-in ones). The martingale
 and deviance residuals are of the exact and right-censored rows that are
 not right truncated (the report says how many it left out); the tests use
-every row. ``diagnose()`` refuses, saying what to do: a fit to
-time-varying covariates (``fit_tvc``, not yet supported, #869), a
-custom covariate link, a model restored with ``from_dict``, one with an
-aliased coefficient, and one whose fit is not a verified maximum (the
-tests compare it with larger models). The accelerated life models (#871)
-and the proportional odds and additive hazards models (#870) have their
-own families.
+every row. A fit to time-varying covariates (``fit_tvc``) is checked too
+(below). ``diagnose()`` refuses, saying what to do: a ``fit_tvc`` model
+fitted with weights (``w=``), a custom covariate link, a model restored
+with ``from_dict``, one with an aliased coefficient, and one whose fit is
+not a verified maximum (the tests compare it with larger models). The
+accelerated life models (#871) and the proportional odds and additive
+hazards models (#870) have their own families.
+
+Time-varying covariates (``fit_tvc``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A model fitted with ``fit_tvc`` (or ``fit_tvc_timeline`` and their
+``_from_df`` forms) gets the same checks. A unit there has several rows,
+one for each stretch of time its covariates held still, so each residual
+is the unit's, added up over its rows: how much hazard the model says the
+unit went through over the time it was watched, compared with whether it
+failed. The tests are the same likelihood-ratio tests, on the fit's own
+likelihood. Influence and outliers are screened unit by unit and name the
+unit by the identifier ``fit_tvc`` was given. The functional form plot is
+of each row against the covariate value on that row, since a unit's
+covariate can change. A fit with constant covariates, one row per unit or
+a unit split into rows with the same values, gets the residuals,
+statistics and verdicts of the ordinary fit.
+
+.. jupyter-execute::
+
+    import surpyval as surv
+    from surpyval.datasets import load_heart_transplants
+
+    heart = load_heart_transplants()   # Stanford heart transplants
+    heart["c"] = 1 - heart["event"]    # a transplant starts a new row
+    tvc = surv.WeibullPH.fit_tvc_from_df(
+        heart, "id", "start", "stop", "c", Z_cols=["age", "transplant"]
+    )
+    d = tvc.diagnose()
+    d.table[["check", "covariates", "statistic", "p", "verdict"]]
+
+.. jupyter-execute::
+
+    for advice in d.advice:
+        print('-', advice, '\n')
+
+No covariate's effect changes with time (the joint test, p = 0.07, and
+the square of ``age``, p = 0.05, are borderline and warn), and the
+log-normal baseline fits markedly better than the Weibull: the advice is
+to refit with ``LogNormalPH.fit_tvc``.
+
+How each check carries over:
+
+* The residuals. For a proportional hazards model a unit's Cox-Snell
+  residual is the sum over its rows of :math:`H(\text{stop} \mid Z_{row})
+  - H(\text{start} \mid Z_{row})`, and its martingale residual is its
+  event indicator less that. For an accelerated failure time model the
+  unit's standardised residual is its accumulated age
+  :math:`\psi = \sum_{rows} e^{\beta' Z_{row}} (\text{stop} -
+  \text{start})`, the time on the baseline's scale, as the fit's
+  likelihood accumulates it; a row's share of the unit's cumulative hazard
+  is :math:`H_0(\psi(\text{stop})) - H_0(\psi(\text{start}))`. Against
+  R's ``flexsurvreg(Surv(start, stop, event) ~ ..., dist = "weibullPH")``
+  on the heart data the per-unit Cox-Snell and martingale residuals agree
+  to 1e-5 (the two fits' maximisations) and the step and quadratic tests
+  to 1e-6.
+* ``proportional_hazards``, ``functional_form`` and ``common_shape`` are
+  the same likelihood-ratio tests, of the time-varying fit's likelihood.
+  The square in ``functional_form`` is of the covariate's value on each
+  row. ``common_shape`` gives each unit one shape (an accelerated failure
+  time model evaluates the baseline once, at the unit's accumulated age),
+  so it tests a categorical covariate that keeps one level through each
+  unit, and a note names any that changes within a unit.
+* ``functional_form``'s plot is of each row's martingale residual (its
+  event indicator less the row's share of the hazard) against the row's
+  covariate value, as Therneau and Grambsch (2000, section 5.6) draw it
+  for start-stop data.
+* ``influence`` is each unit's one-step change of the coefficients, its
+  score the sum of its rows'; ``outliers`` is each unit's deviance
+  residual, with the Bonferroni cutoff over the units.
+* The AIC screens refit each other model with its own ``fit_tvc`` to the
+  same rows. An accelerated failure time model refuses delayed entry and
+  gaps between a unit's rows, and is then left out with a note.
+* ``calibration`` is not made: a unit's predicted survival depends on its
+  covariate path, not on one row (as for ``CoxPH.fit_tvc``).
 
 Distributional regression
 -------------------------

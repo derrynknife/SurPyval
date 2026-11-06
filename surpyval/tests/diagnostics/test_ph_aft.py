@@ -767,20 +767,6 @@ def test_a_restored_model_refuses(meets_ph):
         restored.diagnose()
 
 
-def test_a_time_varying_fit_refuses_saying_what_to_do():
-    i = [0, 0, 1, 2, 2, 3, 4, 4, 5, 6, 7, 7, 8, 9, 9]
-    xl = [0, 2, 0, 0, 1, 0, 0, 3, 0, 0, 0, 2, 0, 0, 4]
-    xr = [2, 5, 3, 1, 4, 6, 3, 7, 2, 8, 2, 5, 4, 4, 9]
-    c = [1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1]
-    Z = np.array([0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1.0])[:, None]
-    model = _quiet(sp.WeibullPH.fit_tvc, i, xl, xr, c, Z)
-    with pytest.raises(
-        NotImplementedError,
-        match="time-varying.*Diagnose the model fitted with fit",
-    ):
-        model.diagnose()
-
-
 def test_a_custom_link_refuses_saying_what_to_do():
     import autograd.numpy as anp
 

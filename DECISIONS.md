@@ -806,6 +806,20 @@ The rows of 2026-10-29 and 2026-10-30 that were still proposed were reviewed by 
 | Weighted fits are case-resampled, as the bootstrap bounds are; a weighted limited-failure or zero-inflated fit is refused, as its bootstrap bounds are, and the message points to draws from the robust covariance with `with_params`. Refusals of `bootstrap()` (no data, discrete, left- or interval-censored) say to draw from the covariance instead of "use method='wald'". | proposed | Follows the existing bounds; refuse only where they refuse. | done |
 | `ParametricBootstrap.to_dict` holds the names, parameters, offsets and counts, not the refitted models; there is no `from_dict`. | proposed | The models are rebuilt from the rows with `with_params`; a result record, like `LikelihoodContour`. | done |
 
+### diagnose() of fit_tvc parametric PH and AFT models (WP6 6g)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A unit's Cox-Snell residual (PH) is its entry `H(tl \| Z_first)` (none at `-inf`) plus the sum of its rows' increments `H(stop \| Z_row) - H(start \| Z_row)`; its martingale residual is its event indicator less the increments. An AFT unit's standardised residual is its accumulated age `psi`, truncated at its age at a finite entry on a baseline below 0. | proposed | The counting-process residuals of Therneau and Grambsch (2000, ch. 4), consistent with the likelihood each fit maximises; they equal the ordinary fit's for constant covariates (tested). Against flexsurv on the heart data to 1e-4 (observed 3e-6). | proposed |
+| The likelihood-ratio tests (step at the median, quadratic term, shape per level) use the fit's own likelihood: the left-truncated rows for PH, the accumulated-age likelihood (rebuilt in `ph_aft._accumulated_neg_ll` with the covariates as the parameters are relative to) for AFT. The quadratic term is the square of each row's value. | proposed | Exact for the model; flexsurv's step and quadratic statistics agree to 1e-7. | proposed |
+| `influence` and `outliers` are per unit, a unit's score the sum of its rows' (scaled to one unit of its count, its last row's), the Bonferroni cutoff over the units; both name the unit by its `fit_tvc` identifier. | proposed | A unit, not a row, is what is dropped or checked; the identity with the ordinary fit holds (tested). | proposed |
+| The `functional_form` plot is per row (row martingale residual against the row's covariate value), not per unit. | proposed | Therneau and Grambsch (2000, 5.6): a unit's covariate can change, so it has no single value to plot against. | proposed |
+| `common_shape` tests only factors that keep one level through each unit; one that changes within a unit is noted and skipped. | proposed | The AFT fit evaluates each unit's baseline once, so its shape is one per unit. | proposed |
+| The AIC screens refit each candidate with its own `fit_tvc` on the rows as given (an AFT candidate that refuses delayed entry or gaps is left out with a note). | proposed | Same data, same likelihood construction; refitting with `fit` would drop an entry at 0 on a baseline below 0. | proposed |
+| `calibration` is skipped for every `fit_tvc` model (now parametric as well as Cox), with the Cox family's reason. | proposed | A unit's predicted survival depends on its covariate path; the check used to treat each row as a unit. | proposed |
+| A weighted `fit_tvc` model refuses up front ("diagnose the same call without w="). | proposed | A weighted fit's pseudo-likelihood cannot be compared between models (the ordinary family fails at `aic()` with `WeightedRefusal`); a plain refusal says so first. | proposed |
+| `fit_tvc` (PH, AH, PO and AFT) now records `tvc_subject_ids` (Cox's name) and the rows it was given (`_tvc_fit_rows`), which diagnose() needs; a model without them refuses ("Refit it with fit_tvc"). | proposed | The parametric fits did not keep which unit each row belongs to. Nothing is serialised; the schema is unchanged. | proposed |
+
 ### Regressions: with_params and the life at fixed covariates (WP3 3b)
 
 | Decision | By | Reason | Status |

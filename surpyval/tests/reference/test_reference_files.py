@@ -24,6 +24,7 @@ EXPECTED_SOURCES = {
     "r_frailty_diag",
     "r_competing_diagnostics",
     "r_ph_aft",
+    "r_ph_aft_tvc",
     "r_calibration",
     "r_stratified_cox",
     "r_cox_tt",

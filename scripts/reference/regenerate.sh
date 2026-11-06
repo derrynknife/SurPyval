@@ -18,6 +18,7 @@ Rscript scripts/reference/reference_r_competing_diagnostics.R
 Rscript scripts/reference/reference_r_odds_additive.R
 Rscript scripts/reference/reference_r_aalen_diagnostics.R
 Rscript scripts/reference/reference_r_ph_aft.R
+Rscript scripts/reference/reference_r_ph_aft_tvc.R
 # flexsurv and gamlss (in R_LIBS_USER) for diagnose() of distributional fits
 Rscript scripts/reference/reference_r_distributional_diagnostics.R
 Rscript scripts/reference/reference_r_calibration.R
