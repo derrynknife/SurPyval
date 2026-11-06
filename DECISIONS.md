@@ -730,6 +730,18 @@ The rows of 2026-10-29 and 2026-10-30 that were still proposed were reviewed by 
 | A draw stops when a step is below 1e-9 of the point, or below 1e-4 with the last two steps predicting an error after it under machine epsilon (`step^3 / previous^2`), or when the bracket closes to rounding. | proposed | Newton's error squares each step, so this stops one evaluation earlier without losing accuracy: agreement with the old solver and with mpmath roots to 1e-13. | done |
 | The hazard rate is the lifetime's `hf`; without one, `exp(log f + H)` from `log_df` (or `log df`). A discrete or non-parametric lifetime (whose `hf` is the jumps of a step function), an undefined or infinite `H` (past a bounded support) or 30 steps without converging hand the draw to the old bracketing solver. | proposed | Newton only where `h` is a true derivative; the old solver stays as the safe path. | done |
 
+### Delayed entry in the Aalen-Johansen estimate (WP5 5a)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `CompetingRisks.fit` takes `tl` as its last argument (after `w`), and `fit_from_df` takes `tl_col` last (a column name or one number for every unit). | proposed | Inserting it before `how` would break positional calls; `ParametricCompetingRisks.fit` also has it after `how`. | done |
+| The risk sets come from the existing `xcnt_to_xrd(x, c, n, t)` (the `(entry, exit]` rule of `KaplanMeier`); `tl` is checked by `xcnt_handler` (each `tl` strictly below its `x`). With no `tl` the call is the same as before, and the estimates and bounds are bit-identical to `dev` (checked on the conformance data and 300 tied rows, weighted and unweighted, both `how`s). | proposed | One truncation path for every non-parametric estimate. | done |
+| The unweighted fit keeps Aalen's (cmprsk) variance with delayed entry: it is a function of the numbers at risk and of failures only, so it carries over (Andersen, Borgan, Gill and Keiding 1993, IV.4). No R function computes it with entry times (`cuminc` has none; `mstate`'s Aalen-type estimate is a different one), so it is checked against R's robust SE (within 6% on PBC by age, where the early risk sets are small), by the identities (a unit split where it re-enters changes nothing) and by `scripts/studies/aalen_johansen_entry_coverage.py` (1000 replicates, seeds 20261105+r): 95% coverage 0.962 and 0.952 at t = 2 and 6 (MC se 0.006, 0.007), bias 0.0012 and 0.0002 (ignoring entry: -0.074, -0.059). | proposed | Switching the unweighted variance to the robust one only when `tl` is given would make one model's bounds depend on whether an all-zero `tl` was passed. | done |
+| A weighted fit with `tl` gives the robust (infinitesimal jackknife) variance with entry-aware risk indicators, matching `survfit(Surv(tl, x, factor(e)) ~ 1, weights = w, id = )$std.err` to 1e-10. | proposed | The same estimator as the weighted fit without entry. | done |
+| The R reference uses `timefix = FALSE`. | proposed | `survfit` merges times that differ by round-off by default, and age + follow-up has such near-ties; SurPyval takes the numbers as given. | done |
+| Right truncation stays refused (`fit(data)`'s message: "This fit takes no right truncation"). | proposed | The Aalen-Johansen risk sets need each unit followed to its exit; no competing-risks model here takes it. | done (gap) |
+| `gray_test`, cause-specific Cox and Fine-Gray are untouched here (half 2). `pseudo_cif` keeps refusing `tl` with its own message (jackknife pseudo-values with delayed entry are a separate question); `plot` and `cb` work from the fitted risk sets, so they need no change. | proposed | Scope of this piece. | open |
+
 ### 0.27 WP1d: the left-truncated SBC scenario's generator (5 Nov 2026)
 
 | Decision | By | Reason | Status |

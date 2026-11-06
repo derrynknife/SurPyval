@@ -5,6 +5,16 @@ Unreleased
 
 **Added.**
 
+- Delayed entry (left truncation) in the non-parametric competing-risks
+  estimate: ``CompetingRisks.fit(..., tl=)`` and ``fit_from_df(...,
+  tl_col=)`` count a unit at risk only between its entry and its exit
+  (``tl < t <= x``), and ``CompetingRisks.fit(data)`` now passes a
+  ``SurpyvalData``'s entry times through instead of refusing them. The
+  bounds carry over (Aalen's variance, and the robust one with weights).
+  The cumulative incidence and the robust standard errors match R's
+  ``survfit(Surv(entry, x, factor(e)) ~ 1)`` to 1e-10 on the PBC trial on
+  the age scale; a fit with every entry before the first time is
+  bit-identical to before. Right truncation is still refused.
 - ``Parametric.with_params`` takes the full vector of ``covariance()``'s
   rows, in the order of ``covariance_names`` (the distribution's parameters,
   then ``lfp_p`` and ``f0``), so a draw from the covariance of a

@@ -149,6 +149,7 @@ def weighted_aalen_johansen(
     w: npt.ArrayLike,
     cause: npt.ArrayLike,
     n_causes: int,
+    t: npt.ArrayLike | None = None,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     r"""The Aalen-Johansen cumulative incidences of weighted data and
     their robust (infinitesimal jackknife) variances.
@@ -164,11 +165,13 @@ def weighted_aalen_johansen(
             + h_{jk}\, V_i(t_{j-1}) \right],
 
     where :math:`h_{jk} = d_{jk} / r_j` is the cause's hazard increment,
-    :math:`Y_i(t_j)` is 1 while unit :math:`i` is at risk, :math:`dN_{ik}`
+    :math:`Y_i(t_j)` is 1 while unit :math:`i` is at risk (from its entry,
+    :math:`tl_i < t_j`, to its exit, :math:`t_j \le x_i`), :math:`dN_{ik}`
     is 1 at its failure from cause :math:`k`, and :math:`V_i` is the unit's
     influence on the log of the all-cause Kaplan-Meier survival
     (``_weighted.WeightedLadder``). This is R's ``survfit(Surv(x,
-    factor(e)) ~ 1, weights = w)$std.err`` squared.
+    factor(e)) ~ 1, weights = w)$std.err`` squared, and with entry times
+    that of ``survfit(Surv(tl, x, factor(e)) ~ 1, weights = w)``.
 
     Parameters
     ----------
@@ -184,6 +187,10 @@ def weighted_aalen_johansen(
         The index of each unit's cause (anything for a censored unit).
     n_causes : int
         The number of causes.
+    t : array_like, optional
+        The ``(N, 2)`` truncation bounds of the units: the first column is
+        each unit's entry time (left truncation), the second must be
+        infinite. ``None`` (the default) is no truncation.
 
     Returns
     -------
@@ -214,8 +221,12 @@ def weighted_aalen_johansen(
     n = np.asarray(n, dtype=float)
     w = np.asarray(w, dtype=float)
     cause = np.asarray(cause, dtype=np.intp)
-    t = np.column_stack([np.full(x.size, -np.inf), np.full(x.size, np.inf)])
-    ladder = WeightedLadder(x, c, n, t, w)
+    bounds = (
+        np.column_stack([np.full(x.size, -np.inf), np.full(x.size, np.inf)])
+        if t is None
+        else np.asarray(t, dtype=float)
+    )
+    ladder = WeightedLadder(x, c, n, bounds, w)
     xs, r, d = ladder.x, ladder.r, ladder.d
     m = xs.size
     died = c == 0
@@ -232,7 +243,8 @@ def weighted_aalen_johansen(
     for rows, V in ladder.influence_blocks("Kaplan-Meier"):
         V_prev = np.column_stack([np.zeros(rows.size), V[:, :-1]])
         e = ladder.exit[rows][:, None]
-        at_risk = cols <= e
+        # At risk from the first time after its entry to its exit.
+        at_risk = (cols >= ladder.entry[rows][:, None]) & (cols <= e)
         failed = died[rows][:, None] & (cols == e)
         for k in range(n_causes):
             jumps = failed & (cause[rows][:, None] == k)
