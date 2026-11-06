@@ -28,15 +28,14 @@ The families, each with its section below: Cox proportional hazards
 (#868); parametric proportional hazards and accelerated failure time
 models (#869); proportional odds and additive hazards (#870); accelerated
 life models (#871); shared frailty (#872); recurrent events (#873);
-competing risks (#874); univariate distributions (#875); and
-distributional regressions. The Cox and
+competing risks (#874); univariate distributions (#875); distributional
+regressions; and Aalen's additive hazards model. The Cox and
 parametric proportional hazards and accelerated failure time reports also
 check the calibration of the predicted survival (#881). A few models have
 no checks yet, and their ``diagnose()`` refuses, saying what to check the
 model with meanwhile: parametric competing risks (each cause's model has
-``diagnose()``), Buckley-James (diagnose an AFT fit of the same data),
-Aalen's additive hazards model
-(``constant_effects_test()``) and Bayesian fits (``model.mle.diagnose()``).
+``diagnose()``), Buckley-James (diagnose an AFT fit of the same data) and
+Bayesian fits (``model.mle.diagnose()``).
 
 Verdicts
 --------
@@ -793,6 +792,106 @@ refit the model once per covariate and once for the ``GLOBAL`` row, which
 for a parametric additive hazards model can take some seconds.
 
 .. autofunction:: surpyval.diagnostics.odds_additive.aalen_cumulative_coefficients
+
+Aalen's additive hazards model
+------------------------------
+
+Aalen's model (``AalenAdditive``) lets each covariate add to the hazard an
+amount that may change freely with time, so it has no constant effect to
+test. Its report asks two other questions. First, does any effect in fact
+change? If none does, the simpler Lin and Ying model (``AdditiveHazards``,
+one number per covariate) fits as well. Second, does the fit give any
+observed unit a negative hazard? An additive model can: a covariate that
+lowers the hazard, over a wide enough range, takes some units below 0,
+and their estimated cumulative hazard then falls, which a cumulative
+hazard cannot do. On the Rossi data:
+
+.. jupyter-execute::
+
+    aalen = surv.AalenAdditive.fit_from_df(
+        rossi, x_col='week', c_col='censored',
+        Z_cols=['fin', 'age', 'prio'],
+    )
+    d = aalen.diagnose(random_state=1)
+    d.table[['check', 'covariates', 'statistic', 'p', 'verdict']]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert d.family == 'Aalen additive hazards'
+    assert (d.table['verdict'] == 'ok').all()
+
+The effect of ``age`` changes over the year, as in the models above, and
+no man's estimated cumulative hazard falls by more than chance explains.
+Aalen's model allows a changing effect, so the ``age`` row is ``ok`` with
+a small p-value, and the advice says how to read the effect rather than
+how to fix it:
+
+.. jupyter-execute::
+
+    for advice in d.advice:
+        print('-', advice, '\n')
+
+The plots are each covariate's cumulative coefficient :math:`B_j(t)` with
+its pointwise band, against the straight line a constant effect would
+give, and the cumulative hazards of the units whose estimates fall the
+furthest (dotted: the prediction, which holds the estimate at its running
+maximum):
+
+.. jupyter-execute::
+
+    fig = d.plot()
+
+The checks of an Aalen model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``constant_effects``
+    For each covariate, the model's own ``constant_effects_test()``: the
+    largest distance of :math:`B_j(t)` from the straight line to its last
+    value (Kolmogorov-Smirnov), with a p-value from ``n_boot`` resampled
+    processes (1000 by default; ``random_state`` seeds them). The
+    Cramér-von Mises p-value is in the detail, and the whole table, with
+    the baseline, is ``d.tables['constant_effects']``. The rows never
+    fail: a small p-value says the effect changes, which the model
+    allows. With every effect constant the advice is ``AdditiveHazards``;
+    with one that changes, how to read it.
+
+    The statistics are those of R's ``timereg::aalen`` test for
+    time-invariant effects, with two differences of detail: the straight
+    line runs to the last time :math:`B` is estimated (``timereg`` runs it
+    to the last event time, holding :math:`B` where it cannot estimate
+    it), and the supremum includes the left limits of the steps. The
+    p-values differ by design: ``timereg`` resamples each unit's
+    martingale residuals, and in simulations with constant effects it
+    rejected 47% of the time at the 5% level with 100 units and 17% with
+    300; SurPyval resamples each event's contribution, and rejected 3-3.5%
+    with 300. The price is power: an effect of 0.5 that falls to 0.1 at
+    a third of follow-up was found a third of the time with 500 units.
+``non_negative_hazard``
+    The largest fall of any observed covariate row's estimated cumulative
+    hazard below its running maximum, in standard errors, against the
+    falls of the same resampled processes. Those are the falls a zero
+    hazard would show by chance, the most a non-negative hazard can, so
+    the test is conservative: in simulations it rejected none of 200 data
+    sets with positive hazards, and 90% of those with a hazard convex in
+    the covariate, which the additive line takes below 0. The detail
+    gives the share of units whose own fall is beyond chance. A failure
+    is advised a multiplicative model, ``CoxPH.fit``, whose hazards cannot
+    be negative.
+
+.. autofunction:: surpyval.diagnostics.aalen_additive.falls
+
+What these checks support
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Counts (``n``), delayed entry (``tl``), ``fit_from_df`` and formulas, and
+penalised fits (``penalizer``). An aliased covariate's row warns, as its
+test cannot be computed. ``diagnose()`` refuses, saying what to do, a model
+restored with ``from_dict`` (it has no data) and a fit with weights
+``w``, whose resampled nulls would be those of an unweighted fit (use the
+robust bands of ``model.plot()``). The functional form, influence and
+outliers are not checked.
 
 Accelerated life (life-stress) models
 -------------------------------------

@@ -38,8 +38,9 @@ PH and AFT (:mod:`.ph_aft`, #869), proportional odds and additive hazards
 (:mod:`.odds_additive`, #870), accelerated life (:mod:`.accelerated_life`,
 #871), shared frailty (:mod:`.frailty`, #872), recurrent events
 (:mod:`.recurrent`, #873), competing risks (:mod:`.competing_risks`,
-#874), univariate distributions (:mod:`.univariate`, #875) and
-distributional regressions (:mod:`.distributional`), with the
+#874), univariate distributions (:mod:`.univariate`, #875), distributional
+regressions (:mod:`.distributional`) and Aalen's additive hazards model
+(:mod:`.aalen_additive`), with the
 calibration check (:mod:`.calibration`, #881) in the Cox and PH/AFT
 families. A model with none (parametric competing risks, Buckley-James)
 refuses with ``NotImplementedError``, saying what to check it with

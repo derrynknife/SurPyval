@@ -455,6 +455,7 @@ WEIGHTED = [
             "constant_effects_test": lambda m: m.constant_effects_test(
                 n_sim=10, random_state=1
             ),
+            "diagnose": lambda m: m.diagnose(n_boot=10, random_state=1),
         },
         covariates=True,
     ),
