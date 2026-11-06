@@ -751,6 +751,13 @@ Unreleased
   ``MethodArray``, ``ArrayMethod``, ``RenamedToMethod``, ``MadePrivate``),
   and a few private helpers with no callers. ``renamed_arguments``,
   ``RenamedAttribute`` and ``renamed_name`` stay for the next rename.
+- The mutation run of the modules new in 0.26 is complete (all 5,296
+  mutants; about 81% killed, about 90% without the equivalent ones), with new
+  tests of the Bayesian grid's posterior quantiles against closed forms
+  and a brute-force posterior: reliabilities that underflow to 0 or
+  round to 1 at some of the posterior's points, and a mean that is
+  infinite for part of it. ``scripts/mutation/run.sh`` pins pytest below 9,
+  which breaks mutmut 3.8.
 
 v0.26 (31 October 2026)
 -----------------------
