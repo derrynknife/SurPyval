@@ -222,6 +222,7 @@ surpyval.degradation.OffsetExponentialPath
 surpyval.degradation.PATH_MODELS
 surpyval.degradation.PathModel
 surpyval.degradation.PowerPath
+surpyval.degradation.ProcessLevel
 surpyval.degradation.ProcessRUL
 surpyval.degradation.QuadraticPath
 surpyval.degradation.RULPrediction
@@ -429,6 +430,7 @@ surpyval.univariate.parametric.NeverOccurs
 surpyval.univariate.parametric.Normal
 surpyval.univariate.parametric.OptimisedFitMixin
 surpyval.univariate.parametric.Parametric
+surpyval.univariate.parametric.ParametricBootstrap
 surpyval.univariate.parametric.ParametricFitter
 surpyval.univariate.parametric.Poisson
 surpyval.univariate.parametric.Rayleigh
@@ -481,6 +483,7 @@ surpyval.univariate.regression.GumbelPO
 surpyval.univariate.regression.InverseExponential
 surpyval.univariate.regression.InverseEyring
 surpyval.univariate.regression.InversePower
+surpyval.univariate.regression.LifeAtCovariates
 surpyval.univariate.regression.LifeModel
 surpyval.univariate.regression.Linear
 surpyval.univariate.regression.LogNormalAFT
