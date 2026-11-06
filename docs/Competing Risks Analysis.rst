@@ -375,10 +375,17 @@ of known cause the unit's contribution to :math:`F_k` would have to be spread
 across the interval using all of the cause-specific hazards, which these
 estimators do not do.
 
-Left truncation (delayed entry) is not an argument of the non-parametric or
-regression competing-risks classes. For parametric models it can be handled
-exactly by fitting each cause separately and assembling the result, as the
-next section explains.
+Left truncation (delayed entry) enters the same way. A unit that comes under
+observation at :math:`\tau_i` counts as at risk only for
+:math:`\tau_i < t \le x_i`, so :math:`r_j` is the number that have entered
+before :math:`t_j` and not yet left (Andersen, Borgan, Gill and Keiding,
+1993, IV.4). The non-parametric ``CompetingRisks`` takes the entry times as
+``tl``; its estimates are then conditional on surviving to the earliest entry,
+and Aalen's variance above, a function of :math:`r_j` and the failures only,
+carries over unchanged. ``ParametricCompetingRisks`` takes ``tl`` too, as the
+next section explains, and so does the cause-specific Cox model
+(`Delayed entry in the regressions`_); the Fine-Gray model and Gray's test
+refuse it.
 
 Parametric Competing Risks
 ---------------------------
@@ -463,12 +470,13 @@ The same factorisation extends to **left truncation**. A unit that enters
 observation at age :math:`\tau_i` contributes
 :math:`\prod_k h_k(x_i)^{\delta_{ik}}\, S(x_i)/S(\tau_i)`, and because
 :math:`S(x)/S(\tau) = \prod_k S_k(x)/S_k(\tau)` this also splits into one
-left-truncated, right-censored likelihood per cause. Delayed-entry data can
-therefore be handled by fitting each cause's distribution with its truncation
-bounds and combining the fits with ``ParametricCompetingRisks.from_fitted``;
-the how-to page shows this. (Interval censoring does *not* factorise in this
-way, because the probability of a cause-:math:`k` failure inside an interval
-involves every cause's survival across the interval.)
+left-truncated, right-censored likelihood per cause. That is why
+``ParametricCompetingRisks.fit`` takes the entry ages as ``tl``: its fit is
+the same as fitting each cause's distribution with them and combining the
+fits with ``ParametricCompetingRisks.from_fitted``, and the how-to page shows
+it. (Interval censoring does *not* factorise in this way, because the
+probability of a cause-:math:`k` failure inside an interval involves every
+cause's survival across the interval.)
 
 Computing the model's quantities
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -593,6 +601,32 @@ one, even at a covariate value far from the data, where a step's total hazard
 increment can exceed one (a small risk set times a large multiplier). The
 plain product limit :math:`\prod (1 - \Delta\hat{\Lambda})` would need a
 clip there, and would not be the survival ``sf`` reports.
+
+Delayed entry in the regressions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When units come under observation late (a patient enrolled at diagnosis, a
+machine entered when the records began), the cause-specific Cox model only
+needs the risk sets right: a unit counts as at risk at time :math:`t` once
+it has entered, :math:`\tau_i < t \leq x_i`, exactly as in ``CoxPH``. Each
+cause's partial likelihood and its Breslow (or Efron) baseline are built on
+those risk sets, so ``CompetingRisksProportionalHazards.fit(x, Z, e,
+tl=entry)`` is R's ``coxph(Surv(entry, x, cause == k) ~ Z)`` for every
+cause, and the CIF formula above, fed with those baselines, is the
+multi-state ``survfit`` with the same entry times. The estimates are then
+conditional on being event-free at the earliest entry.
+
+The Fine-Gray model does not extend so simply. Its subdistribution risk set
+keeps the units that have already failed from a competing cause, weighted by
+the censoring distribution :math:`G(t)/G(x_i)`. With delayed entry the units
+that failed from a competing cause before they would have entered are not
+in the data at all, so the weights must also undo the truncation, with an
+estimate of the entry-time distribution [Geskus2011cr]_. SurPyval does not
+build those weights, so ``FineGray``, ``model="Fine-Gray"`` and Gray's test
+(whose risk set is the same) refuse ``tl`` where an entry is after the first
+time, and the message names what to use instead: the cause-specific Cox
+model for covariate effects, or the Aalen-Johansen estimate with ``tl`` for
+the cumulative incidence.
 
 The Fine-Gray model in detail
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -860,6 +894,10 @@ Further Reading
 .. [FineGray1999cr] Fine, J. P., & Gray, R. J. (1999). A proportional hazards
    model for the subdistribution of a competing risk. *Journal of the American
    Statistical Association*, 94(446), 496–509.
+
+.. [Geskus2011cr] Geskus, R. B. (2011). Cause-specific cumulative incidence
+   estimation and the Fine and Gray model under both left truncation and
+   right censoring. *Biometrics*, 67(1), 39–49.
 
 .. [Gray1988cr] Gray, R. J. (1988). A class of K-sample tests for comparing the
    cumulative incidence of a competing risk. *The Annals of Statistics*,

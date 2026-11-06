@@ -556,6 +556,7 @@ The rows of 2026-10-29 and 2026-10-30 that were still proposed were reviewed by 
 | `_lr_walk` checks each root, and each levelling off, a hair either side (`_LR_HAIR` 1e-6, `_LR_RESOLVED` 1e-3 of deviance beyond the slope). In noise it reads the walked points again for a deviance converging geometrically (each rise at most half the one before over four points, the rest of the rise short of the critical value), which gives the edge; otherwise the side is `nan`, with a warning naming how far the profile was followed. | proposed | A Gamma offset model's 80% `alpha` bound was 2e11, 7e11, 1.6e12 or infinity by platform: a crossing in the profile searches' noise. An honest edge or "not found" is the same everywhere; a number from noise is not. | done |
 | The geometric reading is used only once a walk has run into noise; the walk's ordinary levelling-off test is unchanged. | proposed | Using it everywhere stopped the NegativeBinomial `r` walks earlier and doubled the slices probed (`test_609`); slowing the steps on a concave profile moved ExpoWeibull valley bounds (`test_601`). | done |
 | An offset's upper side whose walk runs into noise within the corner gap of the first failure is the first failure, as when the walk reaches it. | proposed | Near the corner the searches stop at a wall; the interval ends at the first failure (`_lr_corner`). | done |
+
 ### Aalen: the size of `constant_effects_test`
 
 | Decision | By | Reason | Status |
@@ -729,6 +730,44 @@ The rows of 2026-10-29 and 2026-10-30 that were still proposed were reviewed by 
 | A draw stops when a step is below 1e-9 of the point, or below 1e-4 with the last two steps predicting an error after it under machine epsilon (`step^3 / previous^2`), or when the bracket closes to rounding. | proposed | Newton's error squares each step, so this stops one evaluation earlier without losing accuracy: agreement with the old solver and with mpmath roots to 1e-13. | done |
 | The hazard rate is the lifetime's `hf`; without one, `exp(log f + H)` from `log_df` (or `log df`). A discrete or non-parametric lifetime (whose `hf` is the jumps of a step function), an undefined or infinite `H` (past a bounded support) or 30 steps without converging hand the draw to the old bracketing solver. | proposed | Newton only where `h` is a true derivative; the old solver stays as the safe path. | done |
 
+### 0.27 WP5b: delayed entry in the cause-specific Cox model (5 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `CompetingRisksProportionalHazards.fit`, `fit_penalised` and `FineGray.fit` take `tl` as their last argument (after `w`), not after `n` as `CoxPH` does. | proposed | Inserting it after `n` would move `model`, `tie_method` and `center` for positional callers; `ParametricCompetingRisks.fit` also has `tl` after its options. | done |
+| The cause-specific fit passes `tl` to each cause's `CoxPH.fit` (risk set `tl < t <= x`); no risk-set code of its own. A `tl` with no finite entry (a `SurpyvalData` without truncation) is dropped, so that fit is the unweighted one without `tl` to the last bit. | proposed | One risk-set implementation; bit-identity is the spec. | done |
+| `FineGray`, `model="Fine-Gray"` and `gray_test` refuse `tl` only where some entry is at or after the first time; entries all before it are taken and change nothing. | proposed | Such entries leave every risk set as it is, and `fit(data)` passes a `tl` of `-inf` for data without truncation. | done |
+| Fine-Gray and Gray's test with delayed entry (Geskus 2011 truncation weights) are not built; the refusal names `CompetingRisksProportionalHazards.fit(..., tl=)` and `CompetingRisks.fit(..., tl=)` (Aalen-Johansen, added in WP5a), and for Gray's test the cause-specific `logrank(..., tl=)`. | proposed | Scope of this piece; the cause-specific model and the Aalen-Johansen estimate cover the questions. | open (gap) |
+| `FineGray.fit_from_df` gains `tl_col`, which reaches the same refusal. | proposed | Principle 14: a DataFrame entry point fills every data argument of `fit`. | done |
+| The R reference rounds the `pbc` entries to 0.01 years. | proposed | Unrounded, `years * 0.2` equals other patients' `years` to within rounding, and `coxph`'s `timefix` merges such times while SurPyval compares them exactly, so the two disagreed by 7e-5 in a coefficient for a reason that is not the model's. The `competing` data's exact ties of entry and event times check the `tl < t` convention. | done |
+| The cumulative incidences are checked against R's multi-state `survfit` under Breslow ties only (to 1e-10). Under Efron ties SurPyval's `cif` uses the Efron baseline increments and R's multi-state curve does not, so they differ by about 1e-2 on tied data, with or without `tl`. | proposed | The difference predates this piece; whether the Efron-tie `cif` should follow R is a separate question. | open |
+
+### Delayed entry in the Aalen-Johansen estimate (WP5 5a)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `CompetingRisks.fit` takes `tl` as its last argument (after `w`), and `fit_from_df` takes `tl_col` last (a column name or one number for every unit). | proposed | Inserting it before `how` would break positional calls; `ParametricCompetingRisks.fit` also has it after `how`. | done |
+| The risk sets come from the existing `xcnt_to_xrd(x, c, n, t)` (the `(entry, exit]` rule of `KaplanMeier`); `tl` is checked by `xcnt_handler` (each `tl` strictly below its `x`). With no `tl` the call is the same as before, and the estimates and bounds are bit-identical to `dev` (checked on the conformance data and 300 tied rows, weighted and unweighted, both `how`s). | proposed | One truncation path for every non-parametric estimate. | done |
+| The unweighted fit keeps Aalen's (cmprsk) variance with delayed entry: it is a function of the numbers at risk and of failures only, so it carries over (Andersen, Borgan, Gill and Keiding 1993, IV.4). No R function computes it with entry times (`cuminc` has none; `mstate`'s Aalen-type estimate is a different one), so it is checked against R's robust SE (within 6% on PBC by age, where the early risk sets are small), by the identities (a unit split where it re-enters changes nothing) and by `scripts/studies/aalen_johansen_entry_coverage.py` (1000 replicates, seeds 20261105+r): 95% coverage 0.962 and 0.952 at t = 2 and 6 (MC se 0.006, 0.007), bias 0.0012 and 0.0002 (ignoring entry: -0.074, -0.059). | proposed | Switching the unweighted variance to the robust one only when `tl` is given would make one model's bounds depend on whether an all-zero `tl` was passed. | done |
+| A weighted fit with `tl` gives the robust (infinitesimal jackknife) variance with entry-aware risk indicators, matching `survfit(Surv(tl, x, factor(e)) ~ 1, weights = w, id = )$std.err` to 1e-10. | proposed | The same estimator as the weighted fit without entry. | done |
+| The R reference uses `timefix = FALSE`. | proposed | `survfit` merges times that differ by round-off by default, and age + follow-up has such near-ties; SurPyval takes the numbers as given. | done |
+| Right truncation stays refused (`fit(data)`'s message: "This fit takes no right truncation"). | proposed | The Aalen-Johansen risk sets need each unit followed to its exit; no competing-risks model here takes it. | done (gap) |
+| `gray_test`, cause-specific Cox and Fine-Gray are untouched here (half 2). `pseudo_cif` keeps refusing `tl` with its own message (jackknife pseudo-values with delayed entry are a separate question); `plot` and `cb` work from the fitted risk sets, so they need no change. | proposed | Scope of this piece. | open |
+
+### 0.27 WP1d: the left-truncated SBC scenario's generator (5 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The calibration study's left-truncated scenario draws each lifetime on the survival scale, `x = alpha (H(tl) - log(1 - U))^(1/beta)`, with the same uniforms (and so the same seeds) as the old inverse-cdf draw `qf(U(F(tl), 1))`; it equals that draw in exact arithmetic (every replicate but r = 299 agrees to 3e-11). | proposed | The old draw was `inf` when `F(tl)` rounded to 1 (r = 299: truth alpha 9.5, beta 3.6, entry 36.8), a fault of the simulation that refused one fit and hid the scenario's result. A generator bug, not a change of the study's rules: seeds, replicates and pass rules are as fixed before the first run. | done |
+| The rerun's result is reported as found and kept as a strict expected failure: no fit refuses, ranks uniform (chi-square p 0.43, 0.55, 0.21 for alpha, beta, B10), 95% coverage 0.972, 0.962, 0.970 against 0.95 +- 0.02 (alpha and B10 fail). An investigation on 1,000 fresh replicates (seeds 9100 + r, 9600 + r) gave 0.958, 0.937, 0.933 with p 0.94, 0.43, 0.74, so it is taken as this seed set's excursion, as for "Weibull complete, informative". | proposed | Never loosen a rule or change a seed to make a study pass; record the numbers. | done |
+
+### 0.27 WP1f: a second start for a stalled penalised fit (5 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `solve_penalised` searches a second time, from the unpenalised fit (BFGS on the smooth part from the usual start), only when the first search fails its optimality check (`verified` false), and keeps the answer with the smaller penalised objective (the second also when equal to rounding and only it is verified). | proposed | A first answer that passes the check is a local minimum and is returned unchanged, so converged fits move by nothing and cost nothing. On the Rossi Weibull AFT lasso path (fin, age, prio) the stalled fit went from 1.58917 to 1.57922, all KKT conditions to 6e-16; the extra search took about 0.2 s, only on that fit. In the existing penalised tests 0 of 639 fits triggered it. | done |
+| No warm start along `penalty_path`: each fit on the path still starts afresh. | proposed | `penalty_path` promises each fit is the one `fit_penalised` gives at that penalty; a warm start would make the path's fit depend on its neighbours. The second start fixes the stall in `fit_penalised` itself. | done |
+
 ### Parametric with_params and bootstrap refits (WP3 3a)
 
 | Decision | By | Reason | Status |
@@ -806,6 +845,7 @@ The rows of 2026-10-29 and 2026-10-30 that were still proposed were reviewed by 
 | `with_params` keeps `threshold`, `y0`, `stress_ref`, `Z_cols` and `unit`; the rebuilt model has `maximum = "not applicable"` and no covariance or likelihood. | proposed | The shared contract; `y0` is not in the covariance (it is not a parameter of the likelihood). | done |
 | `GammaProcessModel(...)` refuses a non-positive or non-finite `alpha` or `beta`, and `WienerProcessModel(...)` a non-finite `mu`. | proposed | A covariance draw can produce them, and the models gave nonsense silently. | done |
 | The process models have no frailty or random effects, so there is nothing further to apply to the level. | proposed | They pool the units' increments with shared parameters. | done |
+
 ### Parametric competing risks with left- and interval-censored rows (WP5 5d)
 
 | Decision | By | Reason | Status |

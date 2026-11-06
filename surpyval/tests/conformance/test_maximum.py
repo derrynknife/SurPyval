@@ -883,7 +883,12 @@ def _search_crph(model, data):
     for event, i in model.event_idx_map.items():
         c_e = np.where(label_mask(np.asarray(data["e"]), event), 0, 1)
         cox = sp.CoxPH.fit(
-            data["x"], data["Z"], c_e, data.get("n"), tie_method="efron"
+            data["x"],
+            data["Z"],
+            c_e,
+            data.get("n"),
+            tl=data.get("tl"),
+            tie_method="efron",
         )
         cox.res.x = np.where(
             np.isnan(model.betas[i]), 0.0, np.asarray(model.betas[i], float)

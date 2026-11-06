@@ -74,6 +74,7 @@ from surpyval.utils.validation import (
     check_option,
     missing_cause_error,
     no_covariance_error,
+    refuse_subdistribution_entry,
     unknown_cause_error,
 )
 from surpyval.utils.weights import (
@@ -82,6 +83,7 @@ from surpyval.utils.weights import (
 )
 
 from .fine_gray import (
+    ENTRY_INSTEAD,
     FineGrayModel,
     _fit_cause,
     _validated,
@@ -91,6 +93,15 @@ from .fine_gray import (
 
 if TYPE_CHECKING:
     import pandas as pd
+
+
+def _entry_or_none(tl: Any) -> Any:
+    """``tl`` as given, or ``None`` where no row has a finite entry time:
+    a ``SurpyvalData`` without truncation passes ``tl`` of ``-inf``, and
+    the fit is then the one without ``tl``, to the last bit."""
+    if tl is None or np.isfinite(np.asarray(tl, dtype=float)).any():
+        return tl
+    return None
 
 
 def _check_interp(interp: str) -> None:
@@ -887,6 +898,7 @@ class CompetingRisksProportionalHazards(
         tie_method: str = "efron",
         center: bool = False,
         w_col: str | None = None,
+        tl_col: str | None = None,
     ) -> CompetingRisksProportionalHazards:
         """
         Fit a competing-risks proportional-hazards model from a pandas
@@ -923,6 +935,9 @@ class CompetingRisksProportionalHazards(
         w_col : str, optional
             Column of weights per row (``w`` of :meth:`fit`). A row dropped
             for a missing covariate drops its weight with it.
+        tl_col : str, optional
+            Column of entry times (delayed entry, ``tl`` of :meth:`fit`);
+            ``model='Cox'`` only.
 
         Returns
         -------
@@ -978,6 +993,7 @@ class CompetingRisksProportionalHazards(
         c = sub[c_col].values if c_col is not None else None
         n = sub[n_col].values if n_col is not None else None
         w = sub[w_col].values if w_col is not None else None
+        tl = sub[tl_col].values if tl_col is not None else None
 
         with covariate_columns(feature_names, Z, model_spec):
             fitted = cls.fit(
@@ -990,6 +1006,7 @@ class CompetingRisksProportionalHazards(
                 tie_method=tie_method,
                 center=center,
                 w=w,
+                tl=tl,
             )
         fitted.formula = formula
         fitted.feature_names = feature_names
@@ -1014,6 +1031,7 @@ class CompetingRisksProportionalHazards(
         center: bool = False,
         tol: float = 1e-10,
         w: npt.ArrayLike | float | None = None,
+        tl: npt.ArrayLike | float | None = None,
     ) -> CompetingRisksProportionalHazards:
         """
         Fit the cause-specific proportional-hazards model (``model="Cox"``
@@ -1040,7 +1058,7 @@ class CompetingRisksProportionalHazards(
             Default 0.1.
         l1_ratio, standardise, tol, w
             As for ``CoxPH.fit_penalised`` (weights ``w`` are refused).
-        tie_method, center
+        tie_method, center, tl
             As for :meth:`fit`.
 
         Returns
@@ -1075,7 +1093,9 @@ class CompetingRisksProportionalHazards(
         )
 
         refuse_weights(w)
-        x, Z, e, c, n, _ = _validated(x, Z, e, c, n, None)
+        x, Z, e, c, n, _, tl = _validated(
+            x, Z, e, c, n, None, _entry_or_none(tl)
+        )
         causes = ordered_labels(e)
         if not causes:
             raise ValueError("No observed events: every row is censored.")
@@ -1097,6 +1117,7 @@ class CompetingRisksProportionalHazards(
                 Z,
                 c=c_e,
                 n=n,
+                tl=tl,
                 penalizer=penalizer,
                 l1_ratio=l1_ratio,
                 standardise=standardise,
@@ -1151,6 +1172,7 @@ class CompetingRisksProportionalHazards(
         tie_method: str = "efron",
         center: bool = False,
         w: npt.ArrayLike | float | None = None,
+        tl: npt.ArrayLike | float | None = None,
     ) -> CompetingRisksProportionalHazards:
         r"""
         Fit the competing-risks proportional-hazards model.
@@ -1209,6 +1231,18 @@ class CompetingRisksProportionalHazards(
             ``aic``, ``bic``, ``aic_c`` and the diagnostics refuse the
             model. See :doc:`/Weighted Data`.
 
+        tl : array like or float, optional
+            Entry times (delayed entry, left truncation): an item is at
+            risk at time ``t`` only once it has entered, ``tl < t <= x``,
+            as for :meth:`CoxPH.fit`. Each cause's Cox model is fitted
+            with them, as R's ``coxph(Surv(tl, x, e == k) ~ Z)``, so its
+            coefficients and its baseline (and so ``cif``, ``sf`` and the
+            other predictions) use the entry-adjusted risk sets. The
+            predictions are then conditional on being event-free at the
+            earliest entry. ``model='Fine-Gray'`` refuses entry times that
+            are after the first time: its subdistribution risk set needs
+            truncation weights, which are not built.
+
         Returns
         -------
 
@@ -1252,7 +1286,17 @@ class CompetingRisksProportionalHazards(
         array([0.59  , 0.7369])
         """
         check_option("model", model, ("Cox", "Fine-Gray"))
-        x, Z, e, c, n, w_kept = _validated(x, Z, e, c, n, w)
+        if model == "Fine-Gray":
+            refuse_subdistribution_entry(
+                x,
+                tl,
+                "The Fine-Gray model (model='Fine-Gray')",
+                ENTRY_INSTEAD,
+            )
+            tl = None
+        x, Z, e, c, n, w_kept, tl = _validated(
+            x, Z, e, c, n, w, _entry_or_none(tl)
+        )
 
         # A fixed order for the causes (a set's iteration order depends on
         # the hash seed for strings), so ``betas`` rows are reproducible.
@@ -1297,6 +1341,7 @@ class CompetingRisksProportionalHazards(
                         Z,
                         c_e,
                         n,
+                        tl=tl,
                         tie_method=tie_method,
                         center=center,
                         w=w_kept,

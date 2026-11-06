@@ -28,6 +28,7 @@ Rscript scripts/reference/reference_r_metric_inference.R
 Rscript scripts/reference/reference_r_competing_metrics.R
 Rscript scripts/reference/reference_r_pseudo.R
 Rscript scripts/reference/reference_r_cox_curve.R
+Rscript scripts/reference/reference_r_competing_entry.R
 Rscript scripts/reference/reference_r_reda.R
 Rscript scripts/reference/reference_r_likelihood_contour.R
 Rscript scripts/reference/reference_r_weighted_competing_regression.R
@@ -35,6 +36,9 @@ Rscript scripts/reference/reference_r_weighted_aalen.R  # prints the values type
 # Prints the values test_weighted_distributional_rp.py holds
 Rscript scripts/reference/reference_r_weighted_distributional_rp.R
 Rscript scripts/reference/reference_r_weighted_aalen_johansen.R
+# Prints the delayed-entry references typed into
+# surpyval/tests/reference/test_aalen_johansen_entry.py
+Rscript scripts/reference/reference_r_aalen_johansen_entry.R
 # Prints the values test_life_at.py holds
 Rscript scripts/reference/reference_r_regression_at.R
 # Prints its values, which are typed into test_turnbull_weighted.py

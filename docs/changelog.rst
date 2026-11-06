@@ -16,6 +16,30 @@ Unreleased
   windows as ``xl_col``/``xr_col``. Data without such rows fit cause by cause
   exactly as before. The non-parametric ``CompetingRisks`` still refuses
   them, now naming ``ParametricCompetingRisks``.
+- Delayed entry (left truncation) in the cause-specific Cox model:
+  ``CompetingRisksProportionalHazards.fit(x, Z, e, tl=entry)`` (and
+  ``fit_from_df(..., tl_col=)``, ``fit_penalised(..., tl=)``, and
+  ``fit(data)`` for a ``SurpyvalData`` with entry times) fits each cause's
+  ``CoxPH`` with the entry-adjusted risk sets, so the coefficients, the
+  baselines and the cumulative incidences count an item at risk only once
+  it has entered. Checked against R's ``coxph(Surv(tl, x, cause == k) ~
+  ...)`` per cause and the multi-state ``survfit`` on two data sets to
+  1e-6 (``reference_r_competing_entry.R``); with no entry after the first
+  time the fit is the one without ``tl``, to the last bit. ``FineGray``,
+  ``model="Fine-Gray"`` and ``gray_test`` refuse such entry times with a
+  message naming the cause-specific model and the Aalen-Johansen estimate
+  (they used to say only that the fit takes no left truncation, or not
+  take ``tl`` at all).
+- Delayed entry (left truncation) in the non-parametric competing-risks
+  estimate: ``CompetingRisks.fit(..., tl=)`` and ``fit_from_df(...,
+  tl_col=)`` count a unit at risk only between its entry and its exit
+  (``tl < t <= x``), and ``CompetingRisks.fit(data)`` now passes a
+  ``SurpyvalData``'s entry times through instead of refusing them. The
+  bounds carry over (Aalen's variance, and the robust one with weights).
+  The cumulative incidence and the robust standard errors match R's
+  ``survfit(Surv(entry, x, factor(e)) ~ 1)`` to 1e-10 on the PBC trial on
+  the age scale; a fit with every entry before the first time is
+  bit-identical to before. Right truncation is still refused.
 - ``Parametric.with_params`` takes the full vector of ``covariance()``'s
   rows, in the order of ``covariance_names`` (the distribution's parameters,
   then ``lfp_p`` and ``f0``), so a draw from the covariance of a
@@ -696,6 +720,15 @@ Unreleased
 
 **Fixed.**
 
+- A penalised fit (``fit_penalised`` of every model) whose search stops
+  short of the minimum now searches a second time, from the unpenalised
+  fit, and keeps the better answer. A Weibull AFT lasso fit on the Rossi
+  data (``fin``, ``age``, ``prio``, ``l1_ratio=1``, penalty 0.00068)
+  stopped near its start, "unverified", with a penalised objective of
+  1.5892, above the 1.5811 reached at the larger penalty 0.0038; it now
+  reaches 1.5792 and is verified. The second search runs only when the
+  first fails its optimality check, so fits that converged are unchanged
+  (to the last digit) and cost no more.
 - ``robust_covariance(cluster=...)`` (and ``robust_standard_errors``,
   ``summary(robust=True, cluster=...)``) on a distributional regression
   (``WeibullDistributional`` and the others) matched the cluster labels
@@ -740,6 +773,15 @@ Unreleased
 
 **Internal.**
 
+- The Bayesian calibration study's left-truncated scenario draws its
+  simulated lifetimes on the survival scale (the cumulative hazard above
+  the entry age), so a true model whose life is far shorter than the entry
+  age gives a large finite time instead of ``inf`` (which the fit refused,
+  failing one replicate). Same seeds and uniforms: every other replicate's
+  data agree to 3e-11. Rerun once: no fit refuses and the ranks are
+  uniform, but the 95% coverage is 0.972 (``alpha``) and 0.970 (B10)
+  against 0.95 +- 0.02, kept as a strict expected failure with the numbers;
+  1,000 fresh replicates give 0.958, 0.937 and 0.933.
 - The penalised fits (``fit_penalised`` on ``CoxPH`` and on the
   parametric PH, AFT and PO families) now go through one shared fit
   helper and one model mixin, so further models can take a penalty
@@ -762,6 +804,13 @@ Unreleased
   ``MethodArray``, ``ArrayMethod``, ``RenamedToMethod``, ``MadePrivate``),
   and a few private helpers with no callers. ``renamed_arguments``,
   ``RenamedAttribute`` and ``renamed_name`` stay for the next rename.
+- The mutation run of the modules new in 0.26 is complete (all 5,296
+  mutants; about 81% killed, about 90% without the equivalent ones), with new
+  tests of the Bayesian grid's posterior quantiles against closed forms
+  and a brute-force posterior: reliabilities that underflow to 0 or
+  round to 1 at some of the posterior's points, and a mean that is
+  infinite for part of it. ``scripts/mutation/run.sh`` pins pytest below 9,
+  which breaks mutmut 3.8.
 
 v0.26 (31 October 2026)
 -----------------------
