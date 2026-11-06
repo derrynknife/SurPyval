@@ -158,6 +158,11 @@ class ParametricCompetingRisks(
     # negative log-likelihood, parameter count and BIC sample size. ``None``
     # for a model fitted a cause at a time or assembled from fitted models.
     _joint: dict | None = None
+    # True for a model this SurPyval fitted jointly (``_fit_joint``), which
+    # ``diagnose()`` refuses with its own message; a model restored with
+    # ``from_dict`` (which keeps ``_joint`` but not this) is refused as
+    # restored. Not saved.
+    _fitted_jointly: bool = False
 
     # -- serialisation -----------------------------------------------------
 
@@ -170,9 +175,10 @@ class ParametricCompetingRisks(
         to left- or interval-censored rows also stores its joint fit under
         ``"joint"``: the covariance over every cause's parameters, the
         negative log-likelihood, the number of parameters and the BIC's
-        sample size. (A SurPyval before v0.27 reads such a dict without
-        it: each cause's own block of the covariance, and none between
-        causes.)
+        sample size, and is stamped schema 4, which a SurPyval before
+        v0.27 (reading up to schema 3) refuses with a request to upgrade
+        rather than load it without the terms between causes. Any other
+        model's dict is unchanged.
         """
         out: dict = {
             "model": "ParametricCompetingRisks",
@@ -1732,6 +1738,7 @@ class ParametricCompetingRisks(
         out = cls()
         out.causes = causes
         out.models = models
+        out._fitted_jointly = True
         out._joint = {
             "covariance": found.covariance,
             "neg_ll": found.neg_ll,

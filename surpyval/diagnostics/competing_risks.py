@@ -88,11 +88,17 @@ likelihood factorises over the causes), kept as ``model.models[cause]``.
     A cause's incidence depends on every cause's hazard (``CIF_k = int
     h_k S``), so a wrong distribution for one cause can move another
     cause's incidence too; the per-cause goodness of fit says which.
-    With delayed entry (``tl``) it is not computed: the Aalen-Johansen
-    estimate takes no entry times yet.
+    With delayed entry (``tl``) the Aalen-Johansen estimate counts each
+    unit at risk only from its entry, and is conditional on surviving to
+    the earliest entry ``s``; the model's incidence it is compared with is
+    conditioned the same way, ``(CIF_k(t) - CIF_k(s)) / S(s)`` (``S`` the
+    all-cause survival), from ``s`` on. Each resample then draws a unit's
+    latent times beyond its own entry, and refits with the same entries.
 
 ``diagnose()`` refuses a model restored with ``from_dict`` (it has no
-data), one assembled with ``from_fitted`` from models that were not
+data), one fitted to left- or interval-censored rows (its causes are
+fitted jointly and keep no data, and these checks need each failure's
+time), one assembled with ``from_fitted`` from models that were not
 fitted to the same units or that are not fitted distributions, and a
 cause whose model the univariate family refuses (the message names the
 cause).
@@ -1108,8 +1114,29 @@ def pcr_data(model: Any) -> dict:
     }
 
 
-def _truncated(data: dict) -> bool:
-    return bool(np.any(np.isfinite(data["t"])))
+def _right_truncated(data: dict) -> bool:
+    """Whether any row has a finite right-truncation bound (only from
+    causes assembled with ``from_fitted`` from fits that had one)."""
+    return bool(np.any(np.isfinite(np.asarray(data["t"])[:, 1])))
+
+
+def _entry(data: dict) -> np.ndarray | None:
+    """The rows' entry times (``-inf`` for a row with none), or None when
+    no row has one."""
+    tl = np.asarray(data["t"], dtype=float)[:, 0]
+    return tl if np.any(np.isfinite(tl)) else None
+
+
+def _origin(tl: Any) -> float | None:
+    """The time the Aalen-Johansen estimate of data with entry times
+    ``tl`` is conditional on surviving to, the earliest entry, or None
+    when it is not conditional (no entry times, a unit with none, or the
+    earliest at or before 0)."""
+    if tl is None:
+        return None
+    tl = np.asarray(tl, dtype=float)
+    s = float(np.min(tl))
+    return s if np.isfinite(s) and s > 0 else None
 
 
 #: The Gauss-Legendre nodes of :func:`_cif_steps`, on [-1, 1].
@@ -1152,8 +1179,37 @@ def _cif_steps(model: Any, times: np.ndarray, cause: Any) -> np.ndarray:
     return np.cumsum(half * (value @ _WEIGHTS))[where[: times.size]]
 
 
+def _conditional_cif(
+    model: Any, times: np.ndarray, cause: Any, origin: float | None
+) -> np.ndarray:
+    """The model's cumulative incidence of ``cause`` at ``times`` (by
+    :func:`_cif_steps`), conditional on surviving every cause to
+    ``origin``, ``(CIF_k(t) - CIF_k(s)) / S(s)``: what the Aalen-Johansen
+    estimate of data whose earliest entry is ``s`` estimates. ``origin``
+    None is the unconditional incidence."""
+    times = np.asarray(times, dtype=float)
+    if origin is None:
+        return _cif_steps(model, times, cause)
+    steps = _cif_steps(model, np.concatenate([[origin], times]), cause)
+    with np.errstate(all="ignore"):
+        alive = float(
+            np.prod(
+                [
+                    float(np.ravel(model.models[j].sf(origin))[0])
+                    for j in model.causes
+                ]
+            )
+        )
+    return (steps[1:] - steps[0]) / alive
+
+
 def incidence_distance(
-    model: Any, x: Any, e: Any, c: Any = None, n: Any = None
+    model: Any,
+    x: Any,
+    e: Any,
+    c: Any = None,
+    n: Any = None,
+    tl: Any = None,
 ) -> dict:
     """
     For each cause of ``model``, the largest gap between its cumulative
@@ -1162,6 +1218,13 @@ def incidence_distance(
     AJ_k(t)|`` from 0 to the last time observed. The estimate is a step
     function and the model's incidence rises, so the supremum is at an
     event time, on one side of its step.
+
+    With entry times ``tl`` (delayed entry; ``-inf`` for a unit with
+    none) the estimate counts each unit at risk only from its entry, and
+    is conditional on surviving to the earliest entry ``s`` when every
+    unit has one after 0; the model's incidence is then conditioned the
+    same way, ``(CIF_k(t) - CIF_k(s)) / S(s)``, and the gap taken from
+    ``s`` on.
 
     Returns a dictionary by cause of ``{"D": D_k, "time": t}``, ``t``
     the event time where the gap is largest.
@@ -1184,9 +1247,11 @@ def incidence_distance(
 
     x = np.asarray(x, dtype=float)
     e = np.asarray(e, dtype=object)
+    entry = {} if tl is None else {"tl": tl}
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        aj = CompetingRisks.fit(x, e, c=c, n=n)
+        aj = CompetingRisks.fit(x, e, c=c, n=n, **entry)
+    origin = _origin(tl)
     failed = (
         np.array([v is not None for v in e])
         if c is None
@@ -1197,7 +1262,7 @@ def incidence_distance(
     for cause in model.causes:
         a = np.asarray(aj.cif(times, cause), dtype=float)
         before = np.concatenate([[0.0], a[:-1]])
-        p = _cif_steps(model, times, cause)
+        p = _conditional_cif(model, times, cause, origin)
         gaps = np.maximum(np.abs(p - a), np.abs(p - before))
         j = int(np.argmax(gaps))
         out[cause] = {"D": float(gaps[j]), "time": float(times[j])}
@@ -1219,8 +1284,12 @@ def incidence_bootstrap(
     :func:`surpyval.diagnostics.univariate.bootstrap` does); every cause's
     model is refitted the same way (distribution, ``how`` and options) and
     the gaps recomputed. The p-value is ``(1 + #{refits at least as
-    extreme}) / (1 + refits)``. Data with delayed entry are refused: the
-    Aalen-Johansen estimate takes no entry times yet.
+    extreme}) / (1 + refits)``. With delayed entry (``tl``) each unit's
+    latent times are drawn beyond its entry (from each cause's model
+    conditioned on surviving to it), the causes refitted with the same
+    entries, and the gaps are those of :func:`incidence_distance` with
+    them. Data with right truncation are refused: the Aalen-Johansen
+    estimate does not take it.
 
     Returns a dictionary: ``observed``, ``time`` and ``p``, each by
     cause; ``draws``, the refits' gaps, a column per cause in the order
@@ -1255,22 +1324,43 @@ def incidence_bootstrap(
     uni = _univariate()
     n_boot = check_n_boot(n_boot)
     data = pcr_data(model)
-    if _truncated(data):
+    if _right_truncated(data):
         raise ValueError(
             "The incidence check needs the Aalen-Johansen estimate of the "
-            "data, which takes no delayed entry (tl) yet; these data have "
-            "it. Check each cause with diagnose()'s goodness_of_fit rows, "
-            "which allow for entry."
+            "data, which does not take right truncation (tr); these data "
+            "have it. Check each cause with diagnose()'s goodness_of_fit "
+            "rows, which allow for truncation."
         )
     causes = list(model.causes)
+    entry = _entry(data)
     found = incidence_distance(
-        model, data["x"], data["e"], data["c"], data["n"]
+        model, data["x"], data["e"], data["c"], data["n"], tl=entry
     )
     design = uni._design(SimpleNamespace(data=data))
     rng = as_generator(random_state)
     longest = float(np.max(design.x))
     options = [uni._refit_options(model.models[k]) for k in causes]
     size = design.x.size
+    below: list[np.ndarray | None] = [None for _ in causes]
+    refit_entry: dict[str, Any] = {}
+    if entry is not None:
+        # Each cause's CDF at each unit's entry: its latent time is drawn
+        # beyond it (the unit was seen because it survived every cause to
+        # its entry, and the latent times are independent).
+        entered = np.isfinite(design.tl)
+        with np.errstate(all="ignore"):
+            below = [
+                np.where(
+                    entered,
+                    np.asarray(
+                        model.models[k].ff(np.nan_to_num(design.tl)),
+                        dtype=float,
+                    ).ravel(),
+                    0.0,
+                )
+                for k in causes
+            ]
+        refit_entry = {"tl": design.tl}
     draws = []
     failed = 0
     for _ in range(n_boot):
@@ -1278,9 +1368,14 @@ def incidence_bootstrap(
             latent = np.column_stack(
                 [
                     np.asarray(
-                        model.models[k].qf(rng.uniform(size=size)), dtype=float
+                        model.models[k].qf(
+                            rng.uniform(size=size)
+                            if lo is None
+                            else lo + rng.uniform(size=size) * (1.0 - lo)
+                        ),
+                        dtype=float,
                     ).ravel()
-                    for k in causes
+                    for k, lo in zip(causes, below)
                 ]
             )
         latent = np.where(np.isnan(latent), np.inf, latent)
@@ -1302,12 +1397,15 @@ def incidence_bootstrap(
                     j: model.models[k].dist.fit(
                         x,
                         c=np.where((first == j) & ~censored, 0, 1),
+                        **refit_entry,
                         **options[j],
                     )
                     for j, k in enumerate(causes)
                 }
                 refit = _pcr_class().from_fitted(fits)
-                gaps = incidence_distance(refit, x, e, censored.astype(int))
+                gaps = incidence_distance(
+                    refit, x, e, censored.astype(int), **refit_entry
+                )
         except REFIT_ERRORS:
             failed += 1
             continue
@@ -1415,8 +1513,8 @@ def _by_cause_panels(name: str) -> Any:
 
 def _incidence(ctx: Context) -> dict | None:
     """The incidence bootstrap of the report, or None for data with
-    delayed entry."""
-    if _truncated(_pcr_data(ctx)):
+    right truncation."""
+    if _right_truncated(_pcr_data(ctx)):
         return None
     uni = _univariate()
     n_boot = uni.DEFAULT_N_BOOT if ctx.n_boot is None else ctx.n_boot
@@ -1445,8 +1543,8 @@ def _incidence_rows(ctx: Context) -> list[dict]:
                 statistic=float("nan"),
                 p=float("nan"),
                 detail=(
-                    "not computed: the data have delayed entry (tl), which "
-                    "the Aalen-Johansen estimate does not take yet"
+                    "not computed: the data have right truncation (tr), "
+                    "which the Aalen-Johansen estimate does not take"
                 ),
             )
             rows.append(row)
@@ -1488,14 +1586,20 @@ def _incidence_panels(ctx: Context) -> list[Panel]:
     from surpyval.univariate.competing_risks import CompetingRisks
 
     data = _pcr_data(ctx)
-    if _truncated(data):
+    if _right_truncated(data):
         return []
+    tl = _entry(data)
+    entry = {} if tl is None else {"tl": tl}
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        aj = CompetingRisks.fit(data["x"], data["e"], c=data["c"], n=data["n"])
+        aj = CompetingRisks.fit(
+            data["x"], data["e"], c=data["c"], n=data["n"], **entry
+        )
+    origin = _origin(tl)
+    start = 0.0 if origin is None else origin
     end = float(np.max(data["x"]))
     times = np.unique(
-        np.concatenate([[0.0], data["x"][data["c"] == 0], [end]])
+        np.concatenate([[start], data["x"][data["c"] == 0], [end]])
     )
     boot = _incidence(ctx)
     panels = []
@@ -1529,15 +1633,25 @@ def _incidence_panels(ctx: Context) -> list[Panel]:
                 color=INK["secondary"],
                 label="Aalen-Johansen",
             )
-            grid = np.linspace(0.0, end, 200)
+            grid = np.linspace(start, end, 200)
+            if origin is None:
+                curve = np.asarray(ctx.model.cif(grid, cause), dtype=float)
+            else:
+                curve = _conditional_cif(ctx.model, grid, cause, origin)
             ax.plot(
                 grid,
-                np.asarray(ctx.model.cif(grid, cause), dtype=float),
+                curve,
                 color=PALETTE[0],
                 label=ctx.model.models[cause].dist.name,
             )
             ax.set_xlabel("time")
-            ax.set_ylabel("cumulative incidence")
+            ax.set_ylabel(
+                "cumulative incidence"
+                if origin is None
+                else "cumulative incidence given survival to {}".format(
+                    _fmt(origin)
+                )
+            )
             ax.legend(fontsize="small")
 
         p = float("nan") if boot is None else boot["p"][cause]
@@ -1556,6 +1670,21 @@ def _validate_parametric(model: Any) -> None:
     models = getattr(model, "models", None)
     if not models:
         raise _restored("ParametricCompetingRisks model")
+    if getattr(model, "_fitted_jointly", False):
+        raise NotImplementedError(
+            "diagnose() does not yet check a ParametricCompetingRisks model "
+            "fitted to left- or interval-censored rows (c = -1 or 2). Its "
+            "causes are fitted together and keep no data of their own, and "
+            "every check here (each cause's Cox-Snell residuals, its "
+            "probability plot and alternatives, and the Aalen-Johansen "
+            "comparison of the incidences) needs each failure's exact "
+            "time. Instead, compare distributions by refitting with "
+            "another dist= and comparing model.aic(), and compare the "
+            "all-cause survival model.sf(t) with the nonparametric "
+            "Turnbull estimate of the same data, "
+            "surpyval.Turnbull.fit(x, c=c, n=n, tl=tl), which takes the "
+            "censored windows (but not the causes)."
+        )
     for cause, cause_model in models.items():
         if not isinstance(cause_model, Parametric):
             raise _relabel(
@@ -1712,10 +1841,10 @@ def _pcr_notes(ctx: Context) -> list[str]:
     boot = _incidence(ctx)
     if boot is None:
         notes.append(
-            "The incidence check is not computed: the data have delayed "
-            "entry (tl), and the Aalen-Johansen estimate it compares with "
-            "takes no entry times yet. The goodness-of-fit rows allow for "
-            "entry (each residual is the cumulative hazard from entry)."
+            "The incidence check is not computed: the data have right "
+            "truncation (tr), which the Aalen-Johansen estimate it "
+            "compares with does not take. The goodness-of-fit rows allow "
+            "for truncation."
         )
     else:
         notes.append(
@@ -1728,6 +1857,25 @@ def _pcr_notes(ctx: Context) -> list[str]:
             "diagnose(n_boot=..., random_state=...) sets their number and "
             "seed.".format(boot["n_boot"])
         )
+        tl = _entry(_pcr_data(ctx))
+        if tl is not None:
+            origin = _origin(tl)
+            notes.append(
+                "With delayed entry (tl), the Aalen-Johansen estimate counts "
+                "each unit at risk only from its entry, and each resample "
+                "draws a unit's latent times beyond its entry and refits "
+                "with the same entries."
+                + (
+                    ""
+                    if origin is None
+                    else " Every unit entered at {} or later, so the estimate "
+                    "is conditional on surviving to {}, and the model's "
+                    "incidence it is compared with is too: (CIF(t) - "
+                    "CIF({})) / S({}), S the all-cause survival.".format(
+                        *[_fmt(origin)] * 4
+                    )
+                )
+            )
     return notes
 
 

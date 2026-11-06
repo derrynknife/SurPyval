@@ -810,7 +810,13 @@ it. Each cause's model in ``models`` carries its parameters and its block of
 that covariance, so its own Wald bounds hold; it has no data of its own, so
 its likelihood-ratio and bootstrap bounds, ``neg_ll`` and ``aic`` are the
 model's, not the cause's. Only ``how="MLE"`` and continuous distributions
-are supported, and a row in a window needs its cause.
+are supported, and a row in a window needs its cause. ``diagnose()`` does
+not yet check such a fit (its checks need each failure's exact time) and
+says so; compare distributions by their ``aic()``, and the all-cause
+survival ``sf`` with ``surpyval.Turnbull.fit`` of the same windows. Saved
+with ``to_dict``, such a fit keeps the covariance between causes and is
+stamped schema 4, which SurPyval 0.26 and older refuse, asking for an
+upgrade, rather than load it without those terms.
 
 In formulas: a unit that entered at :math:`t_l` and was found failed from
 cause :math:`k` in :math:`(x_l, x_r]` contributes

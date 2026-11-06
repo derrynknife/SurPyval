@@ -39,7 +39,11 @@ Unreleased
   ``ff``, ``Hf``) and ``standard_errors`` use; ``fit_from_df`` takes the
   windows as ``xl_col``/``xr_col``. Data without such rows fit cause by cause
   exactly as before. The non-parametric ``CompetingRisks`` still refuses
-  them, now naming ``ParametricCompetingRisks``.
+  them, now naming ``ParametricCompetingRisks``. Saved with ``to_dict``, a
+  joint fit keeps its covariance between causes under ``"joint"`` and is
+  stamped schema 4, which SurPyval 0.26 and older refuse with a request to
+  upgrade rather than load it without those terms; every other
+  ``ParametricCompetingRisks`` save is unchanged.
 - Delayed entry (left truncation) in the cause-specific Cox model:
   ``CompetingRisksProportionalHazards.fit(x, Z, e, tl=entry)`` (and
   ``fit_from_df(..., tl_col=)``, ``fit_penalised(..., tl=)``, and
@@ -586,7 +590,16 @@ Unreleased
   ``random_state=``), drawn with the Aalen-Johansen band. The advice says
   which cause to refit with which distribution (``dist={cause: ...}``,
   or ``from_fitted``), or to use the non-parametric estimate. With
-  delayed entry the incidence rows are not computed yet. Size and power:
+  delayed entry (``tl``) the incidence is compared with the Aalen-Johansen
+  estimate that takes the entry times, the model's incidence conditioned on
+  surviving to the first entry as the estimate is, and each resample draws
+  a unit's latent times beyond its entry. A model fitted to left- or
+  interval-censored rows is refused with its own message (its causes are
+  fitted jointly and keep no data; it says to compare distributions by AIC
+  and the all-cause survival with the Turnbull estimate) rather than the
+  message for a model restored with ``from_dict``. With every unit entering
+  late (200 replicates of n = 100 at 10%) the right models were rejected
+  3-11% of the time. Size and power:
   ``tests/calibration/test_size_parametric_competing_risks_diagnostics.py``
   (200 replicates of n = 100 at 10%: the right models rejected 7-10.5% of
   the time; a wrong distribution for one cause was flagged for that cause

@@ -1519,11 +1519,17 @@ model, keeps the earliest, censors it as the data were, refits every
 cause and recomputes ``D_k``. A cause's incidence depends on every cause's
 hazard, ``CIF_k(t) = int_0^t h_k(u) S(u) du``, so a wrong distribution for
 one cause can move another's incidence; the goodness-of-fit rows say which
-cause is wrong. With delayed entry the incidence rows are not computed
-(the Aalen-Johansen estimate takes no entry times yet) and say so. A
-model restored with ``from_dict``, or assembled with ``from_fitted`` from
-fits of different data or from models that are not fitted distributions,
-refuses, saying what to do.
+cause is wrong. With delayed entry (``tl``) the Aalen-Johansen estimate
+counts each unit at risk only from its entry, and when every unit entered
+late it is conditional on surviving to the first entry ``s``; the model's
+incidence is then conditioned the same way, ``(CIF_k(t) - CIF_k(s)) /
+S(s)``, and each resample draws a unit's latent times beyond its own
+entry. A model fitted to left- or interval-censored rows (its causes fitted
+jointly) is not checked yet: ``diagnose()`` refuses it, saying to compare
+distributions by AIC and the all-cause survival with the Turnbull
+estimate. A model restored with ``from_dict``, or assembled with
+``from_fitted`` from fits of different data or from models that are not
+fitted distributions, refuses, saying what to do.
 
 Univariate distributions
 ------------------------
