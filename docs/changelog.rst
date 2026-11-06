@@ -5,6 +5,17 @@ Unreleased
 
 **Added.**
 
+- ``ParametricCompetingRisks.fit`` takes left-censored (``c = -1``) and
+  interval-censored (``c = 2``) rows with their cause -- failures found at an
+  inspection -- each contributing :math:`\mathrm{CIF}_k(x_r) -
+  \mathrm{CIF}_k(x_l)` (over :math:`S(t_l)` with entry). Such rows tie the
+  causes together, so with any of them the causes are fitted jointly by
+  maximum likelihood, and ``covariance()`` is the inverse of the joint
+  Hessian, with terms between causes, which every ``cb`` (``cif``, ``sf``,
+  ``ff``, ``Hf``) and ``standard_errors`` use; ``fit_from_df`` takes the
+  windows as ``xl_col``/``xr_col``. Data without such rows fit cause by cause
+  exactly as before. The non-parametric ``CompetingRisks`` still refuses
+  them, now naming ``ParametricCompetingRisks``.
 - Delayed entry (left truncation) in the cause-specific Cox model:
   ``CompetingRisksProportionalHazards.fit(x, Z, e, tl=entry)`` (and
   ``fit_from_df(..., tl_col=)``, ``fit_penalised(..., tl=)``, and

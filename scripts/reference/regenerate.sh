@@ -58,4 +58,6 @@ Rscript scripts/reference/reference_r_royston_parmar_given.R
 # Prints the flexsurv references typed into
 # surpyval/tests/univariate/competing_risks/test_parametric_competing_risks_uncertainty.py
 Rscript scripts/reference/reference_r_parametric_competing_risks.R
+# Prints the values test_parametric_competing_risks_interval.py holds
+Rscript scripts/reference/reference_r_parametric_competing_risks_interval.R
 "${1:-python}" scripts/reference/reference_python.py

@@ -22,6 +22,12 @@ causes' events treated as right-censored. The cumulative incidence of cause
 with the all-cause survival :math:`S(u) = \\prod_j S_j(u) = \\exp(-\\sum_j
 H_j(u))`. The cause CIFs sum to the all-cause failure probability
 :math:`1 - S(t)`.
+
+A left- or interval-censored row (a unit found failed from a known cause
+at an inspection, some time since the one before) contributes
+:math:`\\mathrm{CIF}_k(b) - \\mathrm{CIF}_k(a)`, which holds every cause's
+parameters at once, so with such rows the causes are fitted together (see
+:meth:`ParametricCompetingRisks.fit`).
 """
 
 from __future__ import annotations
@@ -47,11 +53,15 @@ from surpyval.univariate.competing_risks.labels import (
     label_mask,
     ordered_labels,
 )
+from surpyval.univariate.competing_risks.parametric import (
+    _interval_likelihood as joint,
+)
 from surpyval.univariate.information_criteria import corrected_aic
 from surpyval.univariate.parametric import Weibull
 from surpyval.univariate.parametric.parametric import Parametric
 from surpyval.utils import (
     check_e_and_x,
+    is_missing_event,
     resolve_cr_censoring,
     xcnt_handler,
 )
@@ -94,23 +104,37 @@ def _validate(
     marks a censored observation; if ``c`` is not given it is derived from
     the events. The truncation is checked as every fitter checks it (each
     row's time above its ``tl``) and returned as the ``(N, 2)`` ``t``.
+    With a left- or interval-censored row, ``x`` is ``(N, 2)``: each
+    row's ``[xl, xr]``.
     """
+    if c is None:
+        # A window given as [xl, xr] without flags: its flag from the times
+        # (2, or -1 with no lower end), as every fit derives it, and 1 where
+        # the row has no cause and the times say nothing more.
+        x_derived, derived, _, _ = xcnt_handler(
+            x, None, n, tl=tl, group_and_sort=False
+        )
+        if np.isin(derived, (-1, 2)).any():
+            missing = np.fromiter(
+                (is_missing_event(v) for v in np.asarray(e, dtype=object)),
+                dtype=bool,
+            )
+            x = x_derived
+            c = np.where(missing & (derived == 0), 1, derived)
     e, c = resolve_cr_censoring(e, c)
     x, c, n, t = xcnt_handler(x, c, n, tl=tl, group_and_sort=False)
     x, c, n = (np.asarray(a, dtype=float) for a in (x, c, n))
     e = np.asarray(e, dtype=object)
-    check_e_and_x(e, x)
-    if (-1 in c) or (2 in c):
-        raise ValueError(
-            "Left or interval censoring is not supported by competing risks."
-        )
+    check_e_and_x(e, x[:, 0] if x.ndim == 2 else x)
     if any(ev is not None for ev in e[c == 1]) or any(
         ev is None for ev in e[c != 1]
     ):
         raise ValueError(
             "A missing event type (None / NaN) is allowed only for a "
             "censored observation (c = 1), and every censored observation "
-            "must have one."
+            "must have one: a failure, exact (c = 0) or in a window (c = -1 "
+            "or 2), needs its cause in 'e'. (A window with no upper end, "
+            "[xl, inf], is a unit right censored at xl.)"
         )
     return x, c, n, e, t
 
@@ -129,6 +153,11 @@ class ParametricCompetingRisks(
 
     causes: list
     models: dict
+    # The joint fit of data with left- or interval-censored rows: its
+    # covariance (``None`` where the Hessian was not positive definite),
+    # negative log-likelihood, parameter count and BIC sample size. ``None``
+    # for a model fitted a cause at a time or assembled from fitted models.
+    _joint: dict | None = None
 
     # -- serialisation -----------------------------------------------------
 
@@ -137,17 +166,31 @@ class ParametricCompetingRisks(
         Serialise this fitted parametric competing-risks model to a plain,
         JSON-serialisable dict: the list of causes and each cause's fitted
         distribution (via its own ``to_dict``). The reloaded model reproduces
-        every cumulative-incidence / hazard function exactly.
+        every cumulative-incidence / hazard function exactly. A model fitted
+        to left- or interval-censored rows also stores its joint fit under
+        ``"joint"``: the covariance over every cause's parameters, the
+        negative log-likelihood, the number of parameters and the BIC's
+        sample size. (A SurPyval before v0.27 reads such a dict without
+        it: each cause's own block of the covariance, and none between
+        causes.)
         """
-        return stamp_schema(
-            {
-                "model": "ParametricCompetingRisks",
-                "causes": to_native(list(self.causes)),
-                "models": [
-                    self.models[cause].to_dict() for cause in self.causes
-                ],
+        out: dict = {
+            "model": "ParametricCompetingRisks",
+            "causes": to_native(list(self.causes)),
+            "models": [self.models[cause].to_dict() for cause in self.causes],
+        }
+        if self._joint is not None:
+            fitted = {
+                "neg_ll": float(self._joint["neg_ll"]),
+                "k": int(self._joint["k"]),
+                "n": float(self._joint["n"]),
             }
-        )
+            if self._joint["covariance"] is not None:
+                fitted["covariance"] = np.asarray(
+                    self._joint["covariance"], dtype=float
+                ).tolist()
+            out["joint"] = fitted
+        return stamp_schema(out)
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> ParametricCompetingRisks:
@@ -163,6 +206,17 @@ class ParametricCompetingRisks(
             cause: Parametric.from_dict(sub)
             for cause, sub in zip(out.causes, model_dict["models"])
         }
+        fitted = model_dict.get("joint")
+        if fitted is not None:
+            cov = fitted.get("covariance")
+            out._joint = {
+                "covariance": (
+                    None if cov is None else np.asarray(cov, dtype=float)
+                ),
+                "neg_ll": float(fitted["neg_ll"]),
+                "k": int(fitted["k"]),
+                "n": float(fitted["n"]),
+            }
         return out
 
     def __repr__(self) -> str:
@@ -841,7 +895,12 @@ class ParametricCompetingRisks(
         likelihood is a product of one factor per cause (each cause's
         density where it failed, its survival elsewhere), so each cause's
         parameters are estimated from their own factor and the
-        information matrix is block diagonal. A cause fitted with
+        information matrix is block diagonal. With left- or
+        interval-censored rows it is not: those rows tie the causes
+        together, the causes are fitted jointly (see :meth:`fit`), and
+        the covariance is the inverse of the joint Hessian, with the
+        terms between causes; each cause's ``covariance()`` is then its
+        block of it. A cause fitted with
         ``lfp=True`` or ``zi=True`` adds its ``lfp_p`` or ``f0`` row; an
         offset ``gamma`` has no row (see :attr:`covariance_names`).
 
@@ -856,7 +915,8 @@ class ParametricCompetingRisks(
         ValueError
             Where a cause has no covariance (fitted by ``how="MPS"``,
             ``"MSE"`` or ``"MPP"``, built from parameters, or with a
-            singular Hessian), naming the cause.
+            singular Hessian), naming the cause; or where a joint fit's
+            Hessian was not positive definite at its optimum.
 
         Examples
         --------
@@ -871,6 +931,14 @@ class ParametricCompetingRisks(
         array([[0.001653, 0.      ],
                [0.      , 0.000992]])
         """
+        if self._joint is not None:
+            cov = self._joint["covariance"]
+            if cov is None:
+                raise no_covariance_error(
+                    "the joint fit's Hessian was not positive definite at "
+                    "its optimum"
+                )
+            return np.array(cov, dtype=float)
         blocks = [self._cause_covariance(k) for k in self.causes]
         size = sum(b.shape[0] for b in blocks)
         out = np.zeros((size, size))
@@ -1041,7 +1109,10 @@ class ParametricCompetingRisks(
           (``log(-log sf)``, the scale of the univariate bounds). As
           :math:`H = \sum_k H_k` and the causes' parameters are
           independent, :math:`\mathrm{Var}\,H = \sum_k \mathrm{Var}\,H_k`,
-          each from its cause's analytic gradient;
+          each from its cause's analytic gradient. A model fitted to
+          left- or interval-censored rows has covariance between causes:
+          there the gradient is over every parameter at once, by central
+          differences as for the cumulative incidence below;
         - the cumulative incidence on the logit scale,
           :math:`\log(\mathrm{CIF}/(1 - \mathrm{CIF}))`. It depends on
           every cause's parameters through an integral, so its gradient
@@ -1051,7 +1122,10 @@ class ParametricCompetingRisks(
         - one cause's net ``sf``, ``ff`` and ``Hf`` (``event=k``) are
           functions of that cause's parameters alone: the bound is the
           cause's own ``models[k].cb``, which also offers
-          ``method="lr"`` and ``"bootstrap"``.
+          ``method="lr"`` and ``"bootstrap"`` (not for a model fitted to
+          left- or interval-censored rows, whose causes were fitted
+          jointly: there the cause's model carries its block of the
+          joint covariance and its Wald bound only).
 
         The bounds hold at each ``x`` separately.
 
@@ -1141,6 +1215,14 @@ class ParametricCompetingRisks(
         on = {"R": "sf", "F": "ff"}.get(on, on)
         t = np.atleast_1d(np.asarray(x, dtype=float))
         if on != "cif" and event is not None:
+            if self._joint is not None and method != "wald":
+                raise ValueError(
+                    f"method={method!r} refits one cause on its own, but "
+                    "this model was fitted to left- or interval-censored "
+                    "rows, whose likelihood holds every cause at once: "
+                    "use method='wald', which carries the joint "
+                    "covariance."
+                )
             # A net function: the cause's own model and its own bounds.
             try:
                 return np.asarray(
@@ -1184,11 +1266,22 @@ class ParametricCompetingRisks(
         self, t: npt.NDArray, on: str, alpha_ci: float, bound: str
     ) -> npt.NDArray:
         """The Wald bound on the all-cause ``sf``, ``ff`` or ``Hf``: one
-        bound on ``log H``, with ``Var H`` the sum of the causes'."""
+        bound on ``log H``, with ``Var H`` the sum of the causes' (over
+        the joint covariance where the causes were fitted together)."""
         H = np.asarray(self.Hf(t), dtype=float)
-        var = np.zeros(t.shape)
-        for k in self.causes:
-            var = var + self._var_Hf_cause(k, t)
+        if self._joint is not None:
+            # Covariance between causes: the gradient over every one.
+            cov = self.covariance()
+
+            def H_of(values: npt.NDArray) -> npt.NDArray:
+                return np.asarray(self.with_params(values).Hf(t), float)
+
+            grad = _central_differences(H_of, self._estimates(), cov, t.size)
+            var = np.einsum("jt,jk,kt->t", grad, cov, grad)
+        else:
+            var = np.zeros(t.shape)
+            for k in self.causes:
+                var = var + self._var_Hf_cause(k, t)
         ok = np.isfinite(H) & (H > 0)
         sd = np.where(ok, _checked_sd(var, t, "Hf", ok), 0.0) / np.where(
             ok, H, 1.0
@@ -1275,7 +1368,8 @@ class ParametricCompetingRisks(
         """What the causes' fits reached, one of ``MAXIMUM_STATES``
         (``surpyval.utils.no_maximum``): the worst of the causes' own
         ``maximum``, since the joint likelihood is maximised a cause at a
-        time (principles 12 and 13).
+        time (principles 12 and 13); with left- or interval-censored rows,
+        what the joint fit reached, which every cause's model carries.
 
         Examples
         --------
@@ -1293,7 +1387,11 @@ class ParametricCompetingRisks(
         )
 
     def neg_ll(self) -> float:
-        """Total negative log-likelihood: the sum over the per-cause fits."""
+        """Total negative log-likelihood: the sum over the per-cause fits,
+        or the joint fit's where there are left- or interval-censored
+        rows."""
+        if self._joint is not None:
+            return float(self._joint["neg_ll"])
         return float(sum(self.models[k].neg_ll() for k in self.causes))
 
     def aic(self) -> float:
@@ -1301,6 +1399,8 @@ class ParametricCompetingRisks(
         ``2 K + 2 neg_ll`` with ``K`` the number of parameters estimated
         over all causes: the sum of the causes' AICs, since both terms
         add over causes."""
+        if self._joint is not None:
+            return float(2 * self._joint["k"] + 2 * self._joint["neg_ll"])
         return float(sum(self.models[k].aic() for k in self.causes))
 
     def bic(self) -> float:
@@ -1354,7 +1454,9 @@ class ParametricCompetingRisks(
 
     def _ic_terms(self) -> tuple[int, float]:
         # The parameters estimated over every cause, and the sample size of
-        # the whole data (see bic).
+        # the whole data (see bic): every failure, in a window or not.
+        if self._joint is not None:
+            return int(self._joint["k"]), float(self._joint["n"])
         k_total, n_total = 0, 0.0
         for k in self.causes:
             k_cause, n_cause = _ic_terms(self.models[k])
@@ -1456,17 +1558,23 @@ class ParametricCompetingRisks(
         Parameters
         ----------
         x : array_like
-            Observed times.
+            Observed times; for an interval-censored row, its ``[xl, xr]``
+            (a row of two values, as every SurPyval fit takes it).
         e : array_like
             The cause of each observation: any hashable labels (integers,
             strings, tuples, or a mix), kept in sorted order in ``causes``.
             A missing value (``None`` / ``NaN``) marks a censored
             observation with no attributed cause.
         c : array_like, optional
-            Censoring flag (0 observed, 1 right-censored). If omitted it is
-            derived from ``e`` -- a missing event is censored, an event present
-            is observed -- so data can be passed as ``(x, e)`` alone.
-            Left/interval censoring is not supported.
+            Censoring flag: 0 a failure at ``x``, 1 right censored (still
+            working at ``x``), -1 left censored (found failed from its
+            cause at ``x``, at some time before, or since ``tl``), 2
+            interval censored (failed from its cause in ``(xl, xr]``). If
+            omitted it is derived from ``e`` -- a missing event is
+            censored, an event present is observed -- so data can be
+            passed as ``(x, e)`` alone. A left- or interval-censored row
+            needs its cause; with any such row the causes are fitted
+            jointly (see Notes).
         n : array_like, optional
             Counts per observation.
         dist : ParametricFitter or dict, optional
@@ -1492,13 +1600,27 @@ class ParametricCompetingRisks(
         Left truncation keeps the likelihood factorising across causes:
         a unit entering at :math:`t_l` contributes
         :math:`\\prod_k h_k(x)^{\\delta_k} S_k(x) / S_k(t_l)`, so each cause's
-        distribution is fitted with the same ``tl``. Right truncation and
-        interval censoring do not factorise (their terms are integrals of
-        the all-cause survival, :math:`\\mathrm{CIF}_k(x_r) -
-        \\mathrm{CIF}_k(x_l)` for an interval), so this fit takes neither;
-        fitting each cause as a univariate model with the other causes'
-        events right censored is then an approximation, not this model's
-        likelihood.
+        distribution is fitted with the same ``tl``.
+
+        Left and interval censoring do not factorise. A unit found failed
+        from cause :math:`k` in :math:`(x_l, x_r]` contributes the
+        probability of that, :math:`(\\mathrm{CIF}_k(x_r) -
+        \\mathrm{CIF}_k(x_l)) / S(t_l)`, an integral of the all-cause
+        survival (a left-censored row is the window from its entry
+        ``tl``, or from the start). So with any such row the causes are
+        fitted together, by maximum likelihood over every cause's
+        parameters at once (``how="MLE"`` only, continuous
+        distributions); the integral is taken by Gauss-Legendre
+        quadrature on the cause's probability scale. The covariance is
+        then the inverse of the joint Hessian, with terms between causes
+        (see :meth:`covariance`), and each cause's model in ``models``
+        carries the parameters and its block of it, but not the data, so
+        its own ``neg_ll``, ``aic``, likelihood-ratio and bootstrap
+        bounds are not available: use this model's. Fitting each cause as
+        a univariate model with the other causes' events right censored
+        would be an approximation, not this model's likelihood (it is the
+        starting point of the search). Without such rows the fit is a
+        cause at a time, as before. Right truncation is not taken.
 
         Examples
         --------
@@ -1513,9 +1635,26 @@ class ParametricCompetingRisks(
         array([0.323 , 0.4791])
         >>> round(model.probability_of_cause('a'), 4)
         0.625
+
+        With failures found at inspections -- a window ``[xl, xr]``
+        flagged 2, or one found at the first inspection flagged -1 -- the
+        causes are fitted together, and their estimates are correlated:
+
+        >>> x = [[2, 2], [2, 4], [4, 6], [5, 5], [6, 8], [7, 7], [8, 10],
+        ...      [9, 9], [10, 10], [12, 12]]
+        >>> e = ['a', 'b', 'a', 'b', 'a', 'a', 'b', None, 'a', None]
+        >>> c = [-1, 2, 2, 0, 2, 0, 2, 1, 0, 1]
+        >>> joint = ParametricCompetingRisks.fit(x, e, c=c, dist=Exponential)
+        >>> joint.params.round(4)
+        array([0.0737, 0.0442])
+        >>> joint.covariance().round(6)
+        array([[1.09e-03, 1.00e-06],
+               [1.00e-06, 6.53e-04]])
         """
         x, c, n, e, t = _validate(x, c, n, e, tl)
         truncated = tl is not None
+        if ((c == -1) | (c == 2)).any():
+            return cls._fit_joint(x, c, n, e, t, dist, how)
 
         causes = ordered_labels(e[c == 0])
         if not causes:
@@ -1545,18 +1684,77 @@ class ParametricCompetingRisks(
         return model
 
     @classmethod
+    def _fit_joint(
+        cls,
+        x: npt.NDArray,
+        c: npt.NDArray,
+        n: npt.NDArray,
+        e: npt.NDArray,
+        t: npt.NDArray,
+        dist: Any,
+        how: str,
+    ) -> ParametricCompetingRisks:
+        """The fit of data with left- or interval-censored rows: every
+        cause's parameters at once (see the Notes of :meth:`fit`)."""
+        if how != "MLE":
+            raise ValueError(
+                f"how={how!r}: data with left- or interval-censored rows "
+                "(c = -1 or 2) are fitted by maximum likelihood over every "
+                "cause at once; use how='MLE'."
+            )
+        causes = ordered_labels(e[c != 1])
+        if isinstance(dist, dict):
+            missing = [k for k in causes if k not in dist]
+            if missing:
+                raise ValueError(
+                    "`dist` has no distribution for the cause(s) {}; give "
+                    "one for every cause {}.".format(missing, causes)
+                )
+        dists = [dist[k] if isinstance(dist, dict) else dist for k in causes]
+        data = joint.prepare(causes, dists, x, c, n, e, t)
+        init = joint.start(causes, dists, x, c, n, e, t)
+        found = joint.fit(data, init)
+        models = {}
+        start = 0
+        for k, d, p in zip(causes, dists, found.params):
+            stop = start + p.size
+            model = d.from_params(p)
+            # The cause's parameters and its block of the joint covariance:
+            # its Wald bounds hold; it has no data of its own.
+            model.method = "MLE"
+            model.maximum = found.maximum
+            if found.covariance is not None:
+                block = np.array(found.covariance[start:stop, start:stop])
+                model.hess_inv = block
+                model._covariance = block
+            models[k] = model
+            start = stop
+        out = cls()
+        out.causes = causes
+        out.models = models
+        out._joint = {
+            "covariance": found.covariance,
+            "neg_ll": found.neg_ll,
+            "k": found.k,
+            "n": found.n_ic,
+        }
+        return out
+
+    @classmethod
     @column_arguments("x", "c", "n", "tl")
     @takes_unit
     def fit_from_df(
         cls,
         df: Any,
-        x_col: str,
+        x_col: str | None,
         e_col: str,
         c_col: str | None = None,
         n_col: str | None = None,
         dist: Any = Weibull,
         how: str = "MLE",
         tl_col: str | float | None = None,
+        xl_col: str | None = None,
+        xr_col: str | None = None,
     ) -> ParametricCompetingRisks:
         """
         Fit from the columns of a :class:`pandas.DataFrame`; see :meth:`fit`.
@@ -1566,7 +1764,8 @@ class ParametricCompetingRisks(
         df : DataFrame
             The data.
         x_col, e_col : str
-            The time and cause columns.
+            The time and cause columns. ``x_col`` is ``None`` where the
+            times are given as windows, by ``xl_col`` and ``xr_col``.
         c_col, n_col : str, optional
             The censoring-flag and count columns.
         dist, how : optional
@@ -1574,13 +1773,40 @@ class ParametricCompetingRisks(
         tl_col : str or scalar, optional
             The column of each unit's left truncation (entry) time, or a
             number for every unit; the ``tl`` of :meth:`fit` (#571).
+        xl_col, xr_col : str, optional
+            In place of ``x_col``: the columns of each row's lower and
+            upper time, ``[xl, xr]`` in :meth:`fit` (equal for a failure
+            or censoring at one time; a blank lower end is a row left
+            censored at the upper one, a blank upper end one right
+            censored at the lower one).
 
         Returns
         -------
         ParametricCompetingRisks
             The fitted model.
         """
-        x = df[x_col].to_numpy()
+        if xl_col is not None or xr_col is not None:
+            if x_col is not None or xl_col is None or xr_col is None:
+                raise ValueError(
+                    "Give the times as x_col, or as xl_col and xr_col "
+                    "(with x_col=None), not both."
+                )
+            lower = frame_column(df, xl_col, "xl_col", time=True)
+            upper = frame_column(df, xr_col, "xr_col", time=True)
+            lower = np.asarray(lower, dtype=float)
+            upper = np.asarray(upper, dtype=float)
+            x = np.column_stack(
+                [
+                    np.where(np.isnan(lower), -np.inf, lower),
+                    np.where(np.isnan(upper), np.inf, upper),
+                ]
+            )
+        elif x_col is None:
+            raise ValueError(
+                "Give the times: x_col, or xl_col and xr_col for windows."
+            )
+        else:
+            x = df[x_col].to_numpy()
         e = df[e_col].to_numpy(dtype=object)
         c = None if c_col is None else df[c_col].to_numpy()
         n = None if n_col is None else df[n_col].to_numpy()

@@ -578,6 +578,75 @@ def _competing_risks():
             explicit_seed=True,
         )
     )
+
+    def pcr_interval_data():
+        # The same units, every third failure found at an inspection: in
+        # the window (x - 1.5, x + 0.5], left censored where it would start
+        # at or below 0. The causes are then fitted jointly.
+        d = cr_data()
+        x, e = d["x"], d["e"]
+        found = (np.arange(x.size) % 3 == 0) & np.array(
+            [v is not None for v in e]
+        )
+        lo, hi = x - 1.5, x + 0.5
+        left = found & (lo <= 0)
+        x2 = np.column_stack(
+            [
+                np.where(found & ~left, lo, np.where(left, hi, x)),
+                np.where(found, hi, x),
+            ]
+        )
+        c = np.where(
+            found,
+            np.where(left, -1, 2),
+            np.where([v is None for v in e], 1, 0),
+        )
+        return {"x": x2, "c": c, "e": e, "n": d["n"]}
+
+    def pcr_interval_from_df(d):
+        df = pd.DataFrame(
+            {
+                "lo": d["x"][:, 0],
+                "hi": d["x"][:, 1],
+                "c": d["c"],
+                "e": d["e"],
+                "n": d["n"],
+            }
+        )
+        return cr.ParametricCompetingRisks.fit_from_df(
+            df, None, "e", c_col="c", n_col="n", xl_col="lo", xr_col="hi"
+        )
+
+    out.append(
+        Case(
+            name="ParametricCompetingRisks[interval]",
+            fitters=(),
+            model_class=(
+                "surpyval.univariate.competing_risks.ParametricCompetingRisks"
+            ),
+            interface=CAUSES,
+            data=pcr_interval_data,
+            fit=_fit(cr.ParametricCompetingRisks),
+            functions=("sf", "ff", "Hf", "hf", "df", "qf"),
+            event_functions=("cif",),
+            events=("a", "b"),
+            x=X_CR,
+            rows=("x", "c", "e", "n"),
+            paths={"fit_from_df": pcr_interval_from_df},
+            draw=lambda m, s: m.random(15, random_state=s),
+            explicit_seed=True,
+            exclude={
+                "derivatives": "the checks rebuild each cause's own "
+                "likelihood, which the joint fit is not; the joint "
+                "likelihood's derivatives are checked against finite "
+                "differences in test_parametric_competing_risks_interval",
+                "maximum": "the search there is a cause at a time; the "
+                "joint fit's own verification (zero gradient, positive "
+                "definite Hessian) is checked in "
+                "test_parametric_competing_risks_interval",
+            },
+        )
+    )
     for how in ("Cox", "Fine-Gray"):
         out.append(
             Case(
