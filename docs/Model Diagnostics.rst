@@ -28,13 +28,14 @@ The families, each with its section below: Cox proportional hazards
 (#868); parametric proportional hazards and accelerated failure time
 models (#869); proportional odds and additive hazards (#870); accelerated
 life models (#871); shared frailty (#872); recurrent events (#873);
-competing risks (#874); and univariate distributions (#875). The Cox and
+competing risks (#874); univariate distributions (#875); and
+distributional regressions. The Cox and
 parametric proportional hazards and accelerated failure time reports also
 check the calibration of the predicted survival (#881). A few models have
 no checks yet, and their ``diagnose()`` refuses, saying what to check the
 model with meanwhile: parametric competing risks (each cause's model has
-``diagnose()``), Buckley-James and distributional regressions (diagnose a
-PH or AFT fit of the same data), Aalen's additive hazards model
+``diagnose()``), Buckley-James (diagnose an AFT fit of the same data),
+Aalen's additive hazards model
 (``constant_effects_test()``) and Bayesian fits (``model.mle.diagnose()``).
 
 Verdicts
@@ -546,6 +547,99 @@ aliased coefficient, and one whose fit is not a verified maximum (the
 tests compare it with larger models). The accelerated life models (#871)
 and the proportional odds and additive hazards models (#870) have their
 own families.
+
+Distributional regression
+-------------------------
+
+A distributional regression (``WeibullDistributional``,
+``LogNormalDistributional``, ..., ``Distributional(dist)``) lets the
+covariates move every parameter of the distribution, the shape as well as
+the scale. Its checks ask the same three questions as the PH and AFT
+families, of each parameter in turn: does the distribution fit the data
+once each unit has its own parameters; does each covariate act in a
+straight line on each parameter it is on; and does any one unit decide a
+coefficient? The report's covariates are the columns of ``Z``, and a
+``parameter`` column says which parameter's predictor a row is about.
+
+The lung cancer data again, with age, sex and ECOG score on both the
+Weibull's scale and its shape:
+
+.. jupyter-execute::
+
+    dr = surv.WeibullDistributional.fit_from_df(
+        lung, x_col='time', c_col='censored', Z_cols=['age', 'sex', 'ph.ecog']
+    )
+    d = dr.diagnose()
+    d.table[['check', 'parameter', 'covariates', 'statistic', 'p', 'verdict']]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert d.ok and not d.advice
+
+Every check passes. Age and the ECOG score act linearly on both the scale
+and the shape (adding a square to either predictor does not improve the
+fit), no other distribution has an AIC more than 2 lower (the gamma's is
+1.7 lower, too little to matter), and no patient moves a coefficient by as
+much as one standard error. The plot shows the Cox-Snell residuals on
+exponential paper, where a distribution that fits puts them on the line,
+and each unit's score residual against each covariate on each parameter:
+
+.. jupyter-execute::
+
+    fig = d.plot(['distribution', 'functional_form'])
+
+The checks
+~~~~~~~~~~
+
+``distribution``
+    The Cox-Snell residuals :math:`H(x_i \mid z_i)`, each unit's fitted
+    cumulative hazard at its own parameters, drawn on exponential
+    probability paper (they agree with flexsurv's
+    ``coxsnell_flexsurvreg`` to 1e-4, with delayed entry too; their
+    transform :math:`\Phi^{-1}(1 - e^{-H})` is the normalised quantile
+    residual of gamlss's ``plot()``, matched to 1e-5). As for the PH
+    family they have no test of their own. The screen, which warns and
+    never fails: the AIC of the model against each other built-in
+    distribution fitted as a distributional regression to the same data,
+    each with the model's life-parameter columns on its own scale,
+    location or rate and the model's other columns on its other
+    parameters; it warns when one is more than 2 lower.
+``functional_form``
+    For each covariate with three or more distinct values, on each
+    parameter whose predictor holds it, the likelihood-ratio test of
+    adding its square to that predictor (flexsurv's ``flexsurvreg(...,
+    anc = ...)`` with and without ``I(z^2)``, to 1e-6). Drawn as each
+    unit's score residual :math:`\partial \log L_i / \partial \eta_{ik}`
+    against the covariate with a lowess trend: for a scale it is the
+    martingale residual times :math:`-\beta`, and every row has one,
+    whatever its censoring.
+``influence``
+    For each coefficient, the largest one-step ``|dfbeta| / se`` (the
+    observed information times each unit's score); it warns above 1.
+
+The advice: the better distribution the AIC screen found
+(``LogNormalDistributional.fit``, say), a transform of a covariate on the
+one parameter where it is not linear
+(``fit_from_df(..., formulas={"beta": "np.log(load) + ..."})``), and a
+look at an influential row. In a simulation with n = 200 and a quarter of
+the units censored, the quadratic-term test rejects a true model at close
+to its 5% level (5.3% on the scale and 4.4% on the shape, in 1000
+replicates), and found a shape that bends with the load, and the AIC
+screen log-normal data fitted with a Weibull, in all of 200
+(``tests/calibration/test_size_distributional_diagnostics.py``).
+
+Every kind of censoring, delayed entry and right truncation, counts,
+``center=True``, ``fixed=`` (the AIC comparison is then left out, and a
+fixed coefficient has no influence row) and a parameter with only some of
+the columns are supported. ``diagnose()`` refuses, saying what to do
+instead: a fit with weights ``w`` (its likelihood-ratio statistics are not
+chi-squared; diagnose the unweighted fit), a penalised fit, a model
+restored with ``from_dict``, one with an aliased coefficient and one whose
+fit is not a verified maximum. Whether a covariate left off a parameter
+belongs on it is not checked: refit with it there and use
+``likelihood_ratio_test(parameter=...)``.
 
 Proportional odds and additive hazards
 --------------------------------------

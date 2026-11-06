@@ -355,6 +355,7 @@ WEIGHTED = [
                 "beta", np.eye(2), method="lr"
             ),
             "likelihood_ratio_test": lambda m: m.likelihood_ratio_test(),
+            "diagnose": lambda m: m.diagnose(),
         },
         bootstrap={
             "param_cb(bootstrap)": lambda m: m.param_cb(
