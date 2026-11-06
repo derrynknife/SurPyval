@@ -31,6 +31,7 @@ FAMILY_MODULES: tuple[str, ...] = (
     "surpyval.diagnostics.competing_risks",
     "surpyval.diagnostics.univariate",
     "surpyval.diagnostics.frailty",
+    "surpyval.diagnostics.bayes",
     "surpyval.diagnostics.aalen_additive",
     "surpyval.diagnostics.distributional",
 )
@@ -291,13 +292,6 @@ PENDING: tuple[Pending, ...] = (
         "(a distribution fitted with the other causes censored), and "
         "compare model.cif with the nonparametric CompetingRisks.fit of "
         "the same data.",
-    ),
-    Pending(
-        "Bayesian fits",
-        _instance_of("surpyval.bayes.model.BayesianParametric"),
-        "Check the distribution with the maximum-likelihood fit of the "
-        "same data, model.mle.diagnose(), and the prior with "
-        "model.prior_check().",
     ),
     Pending(
         "Buckley-James regressions",

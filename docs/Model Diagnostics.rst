@@ -34,8 +34,8 @@ parametric proportional hazards and accelerated failure time reports also
 check the calibration of the predicted survival (#881). A few models have
 no checks yet, and their ``diagnose()`` refuses, saying what to check the
 model with meanwhile: parametric competing risks (each cause's model has
-``diagnose()``), Buckley-James (diagnose an AFT fit of the same data) and
-Bayesian fits (``model.mle.diagnose()``).
+``diagnose()``) and Buckley-James (diagnose an AFT fit of the same data).
+Bayesian fits have theirs: see `Bayesian fits`_.
 
 Verdicts
 --------
@@ -1527,6 +1527,144 @@ model of its own, without ``diagnose()`` yet.
 .. autofunction:: surpyval.diagnostics.univariate.gof_statistics
 
 .. autofunction:: surpyval.diagnostics.univariate.bootstrap
+
+Bayesian fits
+-------------
+
+A Bayesian fit (``Weibull.fit_bayes(...)``, by the grid, the Laplace
+approximation or a closed form, or ``BayesianParametric.from_draws`` with
+its data) has ``diagnose()`` too. It asks three questions. Does data
+simulated from the posterior look like the data? Do the prior and the
+data disagree? And was the posterior computed accurately?
+
+Forty units from a Weibull of shape about 2, fitted with a prior that is
+sure the shape is between 5 and 7 (a prior from other units, say):
+
+.. jupyter-execute::
+
+    import warnings
+    import surpyval as surv
+
+    x = surv.Weibull.random(40, 10, 2, random_state=31)
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')   # the fit warns of the conflict
+        model = surv.Weibull.fit_bayes(
+            x, priors={'beta': surv.prior.around(6, between=(5, 7))})
+    d = model.diagnose(n_boot=200, random_state=1)
+    d.table[['check', 'test', 'statistic', 'p', 'verdict']]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _c = d.table[d.table['check'] == 'prior_data_conflict']
+    assert (_c['verdict'] == 'fail').all(), d
+    _g = d.table[d.table['check'] == 'goodness_of_fit']
+    assert (_g['verdict'] != 'fail').all(), d
+    _p = d.table[d.table['check'] == 'posterior_predictive']
+    assert (_p['verdict'] == 'fail').any(), d
+    assert any('prior pulls' in a for a in d.advice)
+
+The prior and the data disagree on the shape by several standard
+deviations, the posterior (pulled towards the prior) does not reproduce
+the data, and yet the Weibull itself is not rejected: its
+maximum-likelihood fit fails none of the goodness-of-fit tests. So the
+advice blames the prior, not the distribution, and names what to look at:
+
+.. jupyter-execute::
+
+    for advice in d.advice:
+        print('-', advice, '\n')
+
+The plots show the posterior predictive checks (each draw's discrepancy
+for the data against its replicate's; the failures in time bins against
+the replicates'), the maximum-likelihood fit's P-P plot and the prior, the
+data and the posterior side by side:
+
+.. jupyter-execute::
+
+    fig = d.plot()
+
+The checks
+~~~~~~~~~~
+
+``posterior_predictive``
+    In plain words: draw a set of parameters from the posterior, simulate
+    a data set like the one observed from them, and see whether the real
+    data look unusual among the simulated ones; do it ``n_boot`` times
+    (1000 by default). Each replicate keeps the observed design: every
+    unit is drawn within its own truncation window and censored as the
+    data were, a censored unit at its own observed censoring time and a
+    failed one at a time drawn from the Kaplan-Meier estimate of the
+    censoring distribution beyond its failure (fixed-time censoring is
+    reproduced exactly; random censoring from the censoring times
+    observed). Two discrepancies: the Anderson-Darling statistic of the
+    data's :math:`u = F(x \mid \theta)` against the uniform, computed for
+    the data and the replicate at the same draw :math:`\theta` (a
+    realised discrepancy, Gelman, Meng and Stern 1996); and Pearson's
+    :math:`\sum (O - E)^2 / E` of the failures in up to ten time bins
+    (one per five failures, at the observed failure times' quantiles;
+    with fewer than ten failures, the number of failures), :math:`E` the
+    replicates' mean. The p-value is the share of draws whose replicate is
+    at least as far off as the data, :math:`(1 + k) / (1 + B)`.
+
+    A posterior predictive p-value is conservative: under a correct model
+    it gathers near 0.5 instead of being uniform (Robins, van der Vaart
+    and Ventura 2000), so a small one is strong evidence against the model
+    and a moderate one is no evidence for it. In 300 randomly censored
+    Weibull samples of 40 fitted with the right model, the
+    Anderson-Darling check rejected at 5% in none and the bins check in 3
+    (1%) (``tests/calibration/test_size_bayes_diagnostics.py``). The
+    price is power: against 100 log-normal lifetimes fitted with a
+    Weibull, the two checks rejected in 12% and 25% of 100 samples, where
+    the maximum-likelihood fit's Anderson-Darling test below rejected in
+    90% (``scripts/studies/bayes_diagnose_power.py``). Left- and
+    interval-censored data have no such check (a replicate would need the
+    inspection times): the rows warn and say so.
+``goodness_of_fit``
+    The univariate family's Anderson-Darling, Kolmogorov-Smirnov and
+    Cramer-von Mises tests (see `Univariate distributions`_), run on the
+    same distribution fitted to the same data by maximum likelihood,
+    ``model.mle``: their bootstrap's null distribution is that of a
+    maximum-likelihood refit, so they test that fit, not the posterior's
+    centre. They check the distribution, which the prior does not change,
+    and have more power than the posterior predictive checks. Left out,
+    with a note, where the data alone have no maximum-likelihood fit.
+``prior_data_conflict``
+    In plain words: how many standard deviations apart are what the prior
+    says and what the data alone say? On each parameter's log scale
+    (logit for a proportion), the prior's mean and variance, and the
+    maximum-likelihood estimate with its variance; if the prior is right,
+    the estimate is a draw from the prior plus estimation error, so their
+    gap :math:`\delta` has variance :math:`V_{prior} + V_{data}` and
+    :math:`z = \delta / \sqrt{V_{prior} + V_{data}}` is standard normal.
+    This is Box's (1980) prior predictive check in its normal form (Evans
+    and Moshonov 2006). One row per parameter with a proper prior, and a
+    joint chi-square, :math:`\delta' (V_{prior} + V_{data})^{-1}
+    \delta`, when more than one has one. Drawing the truth from the prior
+    itself, the rows rejected at 5% in 4.7%, 3.7% and 3.0% (joint) of 300
+    samples of 40. A flat parameter, a power prior's old data and data
+    with no maximum-likelihood fit are not checked (the last rows warn).
+``grid_accuracy``
+    A grid posterior is computed again on a finer grid, and the largest
+    change in any parameter's 2.5%, 50% and 97.5% points is reported as a
+    fraction of the 95% interval's width: it warns at 1% and fails at 5%.
+    A screen beside it warns when more than :math:`10^{-6}` of the
+    posterior sits in the grid's outermost cells. A Laplace approximation
+    is compared with the grid posterior the same way. A closed form is
+    exact, and another sampler's draws have that sampler's diagnostics:
+    neither has rows.
+
+The advice: for a distribution that does not reproduce the data, the
+distributions ``fit_best`` ranks; for a posterior that fails while the
+distribution fits, or a conflict, ``model.compare()`` and a wider prior;
+for an inaccurate grid, ``fit_bayes(points=)`` or ``method='grid'``.
+``diagnose()`` refuses, saying what to do, a model without its data and
+a ``Bernoulli`` fit (whose posterior fits the proportion of events).
+
+.. autofunction:: surpyval.diagnostics.bayes.posterior_predictive
+
+.. autofunction:: surpyval.diagnostics.bayes.prior_data_conflict
 
 Calibration of predicted survival
 ---------------------------------

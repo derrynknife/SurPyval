@@ -68,6 +68,14 @@ Unreleased
   parameters in ``covariance_names`` order, each offset fit's ``gamma`` and
   the count of failed refits, with ``to_dict``. A short section on carrying
   a fit's uncertainty forward is on the parametric modelling page.
+- ``diagnose()`` for Bayesian fits (``fit_bayes``, by the grid, the
+  Laplace approximation or a closed form, and ``from_draws`` with data):
+  posterior predictive checks under the observed censoring and truncation
+  (a realised Anderson-Darling discrepancy and the failures in time bins),
+  the maximum-likelihood fit's goodness-of-fit tests, a prior-data
+  conflict check (Box's prior predictive check in its normal form) and the
+  grid's accuracy (a finer grid, or the grid for a Laplace fit). Before,
+  it refused, pointing to ``model.mle.diagnose()``.
 - ``covariance()`` and ``standard_errors()`` of a fitted ``Bernoulli``,
   ``FixedEventProbability`` or ``Binomial``: the variance of ``p``,
   :math:`\hat p (1 - \hat p) / N` from the events and trials (a Binomial's
