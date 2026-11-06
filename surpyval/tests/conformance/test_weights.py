@@ -355,6 +355,7 @@ WEIGHTED = [
                 "beta", np.eye(2), method="lr"
             ),
             "likelihood_ratio_test": lambda m: m.likelihood_ratio_test(),
+            "diagnose": lambda m: m.diagnose(),
         },
         bootstrap={
             "param_cb(bootstrap)": lambda m: m.param_cb(
@@ -454,6 +455,7 @@ WEIGHTED = [
             "constant_effects_test": lambda m: m.constant_effects_test(
                 n_sim=10, random_state=1
             ),
+            "diagnose": lambda m: m.diagnose(n_boot=10, random_state=1),
         },
         covariates=True,
     ),

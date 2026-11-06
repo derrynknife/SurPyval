@@ -32,7 +32,8 @@ SurPyval's competing-risks tools, and the question each one answers:
 
 The classes live in ``surpyval.univariate.competing_risks``; ``gray_test`` is
 also available at the top level as ``surpyval.gray_test``. All of them accept
-right-censored data only. For repeated events with several failure modes see
+right-censored data, and ``ParametricCompetingRisks`` also failures found at
+inspections (left- and interval-censored rows). For repeated events with several failure modes see
 the cause-specific MCF and NHPP models in
 :doc:`Recurrent Event Modelling with SurPyval`.
 
@@ -61,17 +62,23 @@ Every competing-risks fit takes the same core arrays:
 - ``e`` -- the cause of each row. Any hashable labels work (integers,
   strings, ...). A censored row has no cause: use ``None`` (or ``NaN``, or a
   blank cell in a DataFrame);
-- ``c`` -- optional censoring flags, ``0`` observed and ``1`` right-censored.
+- ``c`` -- optional censoring flags, ``0`` observed and ``1`` right-censored
+  (and, for ``ParametricCompetingRisks``, ``-1`` left- and ``2``
+  interval-censored).
   When ``c`` is omitted it is derived from ``e``: a missing cause means
   censored. If you do pass ``c``, every row with ``c == 1`` must have a missing
   cause and every other row must have one, otherwise a ``ValueError`` explains
   the mismatch;
 - ``n`` -- optional counts, when each row stands for several identical units;
-- ``tl`` -- for ``ParametricCompetingRisks``, the optional age at which each
-  row came under observation (left truncation; see `Assembling a model from
-  separately fitted causes`_).
+- ``tl`` -- for ``CompetingRisks``, ``ParametricCompetingRisks`` and the
+  cause-specific ``CompetingRisksProportionalHazards``, the optional age at
+  which each row came under observation (left truncation, or delayed entry;
+  see `Delayed entry`_, `Assembling a model from separately fitted causes`_
+  and `Delayed entry in the cause-specific model`_).
 
-Left- and interval-censored rows (``c`` of ``-1`` or ``2``) are rejected.
+Left- and interval-censored rows (``c`` of ``-1`` or ``2``) are rejected by
+every fit but ``ParametricCompetingRisks`` (see `Failures found at
+inspections`_), whose error says so.
 
 lifelines, scikit-survival and R's ``cmprsk`` code the causes as one
 integer column with ``0`` for a censored row. Here ``0`` is a cause like any
@@ -253,6 +260,52 @@ wear-out, rather than a shock, is what ends a component's life.
     assert naive_wear.ff(200.0) > 0.95, naive_wear.ff(200.0)
     _err = [model.cif(ti, "wear") - true_cif_wear(ti) for ti in t]
     assert np.max(np.abs(_err)) < 0.08, _err
+
+Delayed entry
+^^^^^^^^^^^^^
+
+Often a unit comes under observation only some time after it started: a
+patient joins a study at diagnosis but the clock is their age, or a component
+enters the records when they began, long after it was installed. A unit that
+failed before it would have entered is never seen, so the units you do see
+are the ones that survived to their entry. Pass each unit's entry time as
+``tl``: the unit then counts as at risk only between its entry and its exit
+(``tl < t <= x``), and the estimates are those of the units still running at
+each time. They are conditional on surviving to the earliest entry, as a
+``KaplanMeier`` fit with ``tl`` is. Here half the components were watched
+from new and the rest only came under observation at a random age; the fit
+with the entry ages comes close to the fit of every component from new (the
+``model`` above), while the fit that ignores them counts too many at risk
+early on and understates the shocks:
+
+.. jupyter-execute::
+
+    rng_entry = np.random.default_rng(1)
+    entry = np.where(rng_entry.uniform(size=N) < 0.5, 0.0,
+                     rng_entry.uniform(0, 80, N))
+    seen = x > entry                         # failed before entry: never seen
+    late = CompetingRisks.fit(x[seen], e[seen], tl=entry[seen])
+    ignored = CompetingRisks.fit(x[seen], e[seen])
+    print("with entry     :", np.round(late.cif(t, "shock"), 4))
+    print("ignoring entry :", np.round(ignored.cif(t, "shock"), 4))
+    print("all from new   :", np.round(model.cif(t, "shock"), 4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _full = model.cif(t, "shock")
+    _late = np.abs(late.cif(t, "shock") - _full)
+    _ignored = np.abs(ignored.cif(t, "shock") - _full)
+    assert np.all(_late < 0.03), _late
+    assert np.all(_late < _ignored), (_late, _ignored)
+
+``fit_from_df`` takes the column as ``tl_col``, and ``fit(data)`` passes a
+``SurpyvalData``'s entry times through. The bounds (``cb``) work as before:
+the variance is a function of the numbers at risk and of failures at each
+time, which already count only the units that have entered. This is R's
+``survfit(Surv(entry, x, factor(e)) ~ 1)``; right truncation is not
+supported.
 
 What the fitted model returns
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -657,8 +710,9 @@ Ignoring the entry ages biases the fit; ``ParametricCompetingRisks.fit`` takes
 them as ``tl`` (and ``fit_from_df`` as ``tl_col``), which is the exact
 maximum-likelihood fit: the truncated likelihood factorises by cause too, so it
 is the same as fitting each cause with ``tl=entry`` and assembling the result
-with ``from_fitted``. (Right truncation and interval censoring do not factorise
-by cause, and ``fit`` takes neither.)
+with ``from_fitted``. (Right truncation does not factorise by cause, and
+``fit`` does not take it; interval censoring does not either, and ``fit``
+takes it by fitting the causes together, below.)
 
 .. jupyter-execute::
 
@@ -706,6 +760,77 @@ wear-out. The truncation-aware fit recovers both.
     for _k, _dist in [("wear", surv.Weibull), ("shock", surv.Exponential)]:
         _alone = _dist.fit(x_t, c=np.where(e_t == _k, 0, 1), tl=tl)
         assert np.allclose(_alone.params, adjusted.models[_k].params)
+
+Failures found at inspections
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Often a failure is not seen when it happens but found at the next
+inspection: the unit was working at one inspection and found failed, with
+its cause, at the next. Its failure time is known only to lie between the
+two (interval censored, ``c = 2``, with ``x`` the row ``[xl, xr]``); one
+found failed at the first inspection is left censored (``c = -1``, ``x`` the
+inspection time). ``ParametricCompetingRisks.fit`` takes such rows. A row
+like that counts the chance that the unit failed from its cause between
+the two inspections, and that chance depends on every cause -- the unit had
+to survive all of them until it failed -- so the causes can no longer be
+fitted one at a time: with any such row, ``fit`` fits them together, by
+maximum likelihood over all of their parameters at once. Without such rows
+nothing changes.
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(6)
+    sim = truth.random(400, random_state=7)
+    end = rng.uniform(40, 300, 400)              # end of each unit's follow-up
+    last = 20 * np.floor(end / 20)               # inspected every 20 hours
+    found = sim["x"] <= last
+    hi = 20 * np.ceil(sim["x"] / 20)             # the inspection that found it
+    lo = hi - 20
+    x_i = np.column_stack([np.where(found & (lo > 0), lo, np.where(found, hi, last)),
+                           np.where(found, hi, last)])
+    c_i = np.where(found, np.where(lo > 0, 2, -1), 1)
+    e_i = np.where(found, sim["e"], None)
+
+    inspected = ParametricCompetingRisks.fit(
+        x_i, e_i, c=c_i, dist={"wear": surv.Weibull, "shock": surv.Exponential}
+    )
+    print(inspected.parameter_names)
+    print(inspected.params.round(4))
+    print("P(wear) true / fitted: %.3f / %.3f" % (
+        truth.probability_of_cause("wear"),
+        inspected.probability_of_cause("wear"),
+    ))
+    print(inspected.cb([50.0, 100.0], "wear").round(3))
+
+Because the causes are fitted together, their estimates are correlated:
+:meth:`~surpyval.univariate.competing_risks.ParametricCompetingRisks.covariance`
+is the inverse of the joint Hessian, with terms between causes, and every
+bound (``cb`` on ``cif``, ``sf``, ``ff`` and ``Hf``, ``standard_errors``) uses
+it. Each cause's model in ``models`` carries its parameters and its block of
+that covariance, so its own Wald bounds hold; it has no data of its own, so
+its likelihood-ratio and bootstrap bounds, ``neg_ll`` and ``aic`` are the
+model's, not the cause's. Only ``how="MLE"`` and continuous distributions
+are supported, and a row in a window needs its cause.
+
+In formulas: a unit that entered at :math:`t_l` and was found failed from
+cause :math:`k` in :math:`(x_l, x_r]` contributes
+
+.. math::
+    \frac{\mathrm{CIF}_k(x_r) - \mathrm{CIF}_k(x_l)}{S(t_l)}
+    = \frac{1}{S(t_l)} \int_{x_l}^{x_r} f_k(u) \prod_{j \neq k} S_j(u)\,du,
+
+a left-censored one the same from :math:`t_l` (or the start) to :math:`x`.
+The integral is taken by Gauss-Legendre quadrature on the cause's own
+probability scale, refined until it holds to about :math:`10^{-12}`.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert inspected.maximum == "verified"
+    assert abs(inspected.probability_of_cause("wear")
+               - truth.probability_of_cause("wear")) < 0.05
+    assert abs(inspected.covariance()[0, 2]) > 0
 
 Simulating competing-risks data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1247,6 +1372,63 @@ in ``results`` are not stored, so a restored model has ``results = None``:
         print(fitted.model, type(reloaded).__name__,
               np.array_equal(reloaded.cif(times, Z=z, event=1),
                              fitted.cif(times, Z=z, event=1)))
+
+Delayed entry in the cause-specific model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Records often start after the units did: patients enter a registry at
+diagnosis, machines enter the maintenance system when it goes live. A unit
+that failed before it entered is never seen, and a unit that entered at age
+3 was not at risk, as far as the data know, before age 3. Pass each row's
+entry age as ``tl`` (``tl_col`` for ``fit_from_df``) and the cause-specific
+model counts a unit in a risk set only once it has entered, ``tl < t <= x``,
+as ``CoxPH`` does; every cause's coefficients and baseline, and so the
+incidences, use those risk sets. Here the units come under observation at a
+uniform age between 0 and 4, and only those still working then are seen:
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(11)
+    z_u = rng.binomial(1, 0.5, 3000).astype(float)
+    t_wear = rng.exponential(1 / (0.2 * np.exp(0.8 * z_u)))  # log HR 0.8
+    t_shock = rng.exponential(1 / 0.1, 3000)
+    x_u = np.minimum(t_wear, t_shock)
+    e_u = np.where(t_wear < t_shock, "wear", "shock")
+    entry = rng.uniform(0, 4, 3000)
+    seen = x_u > entry                       # only units working at entry
+    x_s, z_s, e_s, tl = x_u[seen], z_u[seen, None], e_u[seen], entry[seen]
+
+    naive = CompetingRisksProportionalHazards.fit(x_s, z_s, e_s)
+    entered = CompetingRisksProportionalHazards.fit(x_s, z_s, e_s, tl=tl)
+    true_cif = 0.2 * np.exp(0.8) / (0.2 * np.exp(0.8) + 0.1) * (
+        1 - np.exp(-2 * (0.2 * np.exp(0.8) + 0.1)))
+    print("wear log HR, ignoring entry / with tl: %.3f / %.3f" % (
+        naive.betas[naive.event_idx_map["wear"], 0],
+        entered.betas[entered.event_idx_map["wear"], 0]))
+    print("P(wear by 2 | z = 1), true / ignoring entry / with tl: "
+          "%.3f / %.3f / %.3f" % (true_cif, naive.cif(2, [1], "wear"),
+                                  entered.cif(2, [1], "wear")))
+
+Ignoring the entry ages counts the late entrants at risk from age 0, when
+they could not have been seen to fail, so the baseline hazards come out far
+too low and the incidence of wear by age 2 is about half the truth. With
+``tl`` it is recovered. The estimates are conditional on being event-free at
+the earliest entry, as for ``KaplanMeier`` with ``tl``.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert naive.cif(2, [1], "wear") < 0.6 * true_cif
+    assert abs(entered.cif(2, [1], "wear") - true_cif) < 0.06
+    assert abs(entered.betas[entered.event_idx_map["wear"], 0] - 0.8) < 0.1
+
+The Fine-Gray model (``model="Fine-Gray"``, ``FineGray``) and Gray's test
+refuse ``tl`` where an entry is after the first time, with a message naming
+the cause-specific model and the Aalen-Johansen estimate: their
+subdistribution risk set keeps the units that already failed from another
+cause, and with late entry it needs truncation weights, which SurPyval does
+not build (see :doc:`Competing Risks Analysis`).
 
 Fitting from a DataFrame
 ~~~~~~~~~~~~~~~~~~~~~~~~
