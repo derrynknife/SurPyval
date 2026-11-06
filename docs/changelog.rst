@@ -738,6 +738,15 @@ Unreleased
 
 **Internal.**
 
+- The Bayesian calibration study's left-truncated scenario draws its
+  simulated lifetimes on the survival scale (the cumulative hazard above
+  the entry age), so a true model whose life is far shorter than the entry
+  age gives a large finite time instead of ``inf`` (which the fit refused,
+  failing one replicate). Same seeds and uniforms: every other replicate's
+  data agree to 3e-11. Rerun once: no fit refuses and the ranks are
+  uniform, but the 95% coverage is 0.972 (``alpha``) and 0.970 (B10)
+  against 0.95 +- 0.02, kept as a strict expected failure with the numbers;
+  1,000 fresh replicates give 0.958, 0.937 and 0.933.
 - The penalised fits (``fit_penalised`` on ``CoxPH`` and on the
   parametric PH, AFT and PO families) now go through one shared fit
   helper and one model mixin, so further models can take a penalty

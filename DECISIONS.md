@@ -556,6 +556,7 @@ The rows of 2026-10-29 and 2026-10-30 that were still proposed were reviewed by 
 | `_lr_walk` checks each root, and each levelling off, a hair either side (`_LR_HAIR` 1e-6, `_LR_RESOLVED` 1e-3 of deviance beyond the slope). In noise it reads the walked points again for a deviance converging geometrically (each rise at most half the one before over four points, the rest of the rise short of the critical value), which gives the edge; otherwise the side is `nan`, with a warning naming how far the profile was followed. | proposed | A Gamma offset model's 80% `alpha` bound was 2e11, 7e11, 1.6e12 or infinity by platform: a crossing in the profile searches' noise. An honest edge or "not found" is the same everywhere; a number from noise is not. | done |
 | The geometric reading is used only once a walk has run into noise; the walk's ordinary levelling-off test is unchanged. | proposed | Using it everywhere stopped the NegativeBinomial `r` walks earlier and doubled the slices probed (`test_609`); slowing the steps on a concave profile moved ExpoWeibull valley bounds (`test_601`). | done |
 | An offset's upper side whose walk runs into noise within the corner gap of the first failure is the first failure, as when the walk reaches it. | proposed | Near the corner the searches stop at a wall; the interval ends at the first failure (`_lr_corner`). | done |
+
 ### Aalen: the size of `constant_effects_test`
 
 | Decision | By | Reason | Status |
@@ -728,6 +729,13 @@ The rows of 2026-10-29 and 2026-10-30 that were still proposed were reviewed by 
 | Past a cumulative hazard of 20, `conditional_gaps` inverts `H` by Newton's method with the hazard rate, stepping on `log H` against `log x` where all are positive (exact in one step for a Weibull) and on `H` against `x` otherwise, inside a bracket; a step leaving the bracket bisects it (or doubles the distance from `v` while nothing above the root is known). | proposed | 2.8 to 3.4 evaluations a draw where bracketing took 12 to 15; the log scale makes the step nearly exact in the upper tail of most lifetimes. | done |
 | A draw stops when a step is below 1e-9 of the point, or below 1e-4 with the last two steps predicting an error after it under machine epsilon (`step^3 / previous^2`), or when the bracket closes to rounding. | proposed | Newton's error squares each step, so this stops one evaluation earlier without losing accuracy: agreement with the old solver and with mpmath roots to 1e-13. | done |
 | The hazard rate is the lifetime's `hf`; without one, `exp(log f + H)` from `log_df` (or `log df`). A discrete or non-parametric lifetime (whose `hf` is the jumps of a step function), an undefined or infinite `H` (past a bounded support) or 30 steps without converging hand the draw to the old bracketing solver. | proposed | Newton only where `h` is a true derivative; the old solver stays as the safe path. | done |
+
+### 0.27 WP1d: the left-truncated SBC scenario's generator (5 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The calibration study's left-truncated scenario draws each lifetime on the survival scale, `x = alpha (H(tl) - log(1 - U))^(1/beta)`, with the same uniforms (and so the same seeds) as the old inverse-cdf draw `qf(U(F(tl), 1))`; it equals that draw in exact arithmetic (every replicate but r = 299 agrees to 3e-11). | proposed | The old draw was `inf` when `F(tl)` rounded to 1 (r = 299: truth alpha 9.5, beta 3.6, entry 36.8), a fault of the simulation that refused one fit and hid the scenario's result. A generator bug, not a change of the study's rules: seeds, replicates and pass rules are as fixed before the first run. | done |
+| The rerun's result is reported as found and kept as a strict expected failure: no fit refuses, ranks uniform (chi-square p 0.43, 0.55, 0.21 for alpha, beta, B10), 95% coverage 0.972, 0.962, 0.970 against 0.95 +- 0.02 (alpha and B10 fail). An investigation on 1,000 fresh replicates (seeds 9100 + r, 9600 + r) gave 0.958, 0.937, 0.933 with p 0.94, 0.43, 0.74, so it is taken as this seed set's excursion, as for "Weibull complete, informative". | proposed | Never loosen a rule or change a seed to make a study pass; record the numbers. | done |
 
 ### 0.27 WP1f: a second start for a stalled penalised fit (5 Nov 2026)
 
