@@ -67,11 +67,11 @@ Every competing-risks fit takes the same core arrays:
   cause and every other row must have one, otherwise a ``ValueError`` explains
   the mismatch;
 - ``n`` -- optional counts, when each row stands for several identical units;
-- ``tl`` -- for ``ParametricCompetingRisks`` and the cause-specific
-  ``CompetingRisksProportionalHazards``, the optional age at which each row
-  came under observation (left truncation; see `Assembling a model from
-  separately fitted causes`_ and `Delayed entry in the cause-specific
-  model`_).
+- ``tl`` -- for ``CompetingRisks``, ``ParametricCompetingRisks`` and the
+  cause-specific ``CompetingRisksProportionalHazards``, the optional age at
+  which each row came under observation (left truncation, or delayed entry;
+  see `Delayed entry`_, `Assembling a model from separately fitted causes`_
+  and `Delayed entry in the cause-specific model`_).
 
 Left- and interval-censored rows (``c`` of ``-1`` or ``2``) are rejected.
 
@@ -255,6 +255,52 @@ wear-out, rather than a shock, is what ends a component's life.
     assert naive_wear.ff(200.0) > 0.95, naive_wear.ff(200.0)
     _err = [model.cif(ti, "wear") - true_cif_wear(ti) for ti in t]
     assert np.max(np.abs(_err)) < 0.08, _err
+
+Delayed entry
+^^^^^^^^^^^^^
+
+Often a unit comes under observation only some time after it started: a
+patient joins a study at diagnosis but the clock is their age, or a component
+enters the records when they began, long after it was installed. A unit that
+failed before it would have entered is never seen, so the units you do see
+are the ones that survived to their entry. Pass each unit's entry time as
+``tl``: the unit then counts as at risk only between its entry and its exit
+(``tl < t <= x``), and the estimates are those of the units still running at
+each time. They are conditional on surviving to the earliest entry, as a
+``KaplanMeier`` fit with ``tl`` is. Here half the components were watched
+from new and the rest only came under observation at a random age; the fit
+with the entry ages comes close to the fit of every component from new (the
+``model`` above), while the fit that ignores them counts too many at risk
+early on and understates the shocks:
+
+.. jupyter-execute::
+
+    rng_entry = np.random.default_rng(1)
+    entry = np.where(rng_entry.uniform(size=N) < 0.5, 0.0,
+                     rng_entry.uniform(0, 80, N))
+    seen = x > entry                         # failed before entry: never seen
+    late = CompetingRisks.fit(x[seen], e[seen], tl=entry[seen])
+    ignored = CompetingRisks.fit(x[seen], e[seen])
+    print("with entry     :", np.round(late.cif(t, "shock"), 4))
+    print("ignoring entry :", np.round(ignored.cif(t, "shock"), 4))
+    print("all from new   :", np.round(model.cif(t, "shock"), 4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _full = model.cif(t, "shock")
+    _late = np.abs(late.cif(t, "shock") - _full)
+    _ignored = np.abs(ignored.cif(t, "shock") - _full)
+    assert np.all(_late < 0.03), _late
+    assert np.all(_late < _ignored), (_late, _ignored)
+
+``fit_from_df`` takes the column as ``tl_col``, and ``fit(data)`` passes a
+``SurpyvalData``'s entry times through. The bounds (``cb``) work as before:
+the variance is a function of the numbers at risk and of failures at each
+time, which already count only the units that have entered. This is R's
+``survfit(Surv(entry, x, factor(e)) ~ 1)``; right truncation is not
+supported.
 
 What the fitted model returns
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -572,6 +618,75 @@ units that fail, as ``Parametric.mean`` does.
     from scipy.integrate import quad
     _area = quad(lambda t: float(pmodel.sf(t)), 0, np.inf, limit=200)[0]
     assert np.isclose(_area, pmodel.mean(), rtol=1e-8)
+
+How sure are these numbers? Bands and parameter uncertainty
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Every number above comes from parameters estimated from a sample, so each
+has sampling error. ``cb`` gives a confidence band: with 95% confidence the
+true cumulative incidence of a cause, or the all-cause survival, lies
+between its two curves at each time. A narrow band says the data pin the
+curve down; a wide one says more failures are needed.
+
+.. jupyter-execute::
+
+    for k, colour in [("wear", "C0"), ("shock", "C1")]:
+        band = pmodel.cb(t_plot, k)          # on="cif" is the default
+        plt.plot(t_plot, pmodel.cif(t_plot, k), color=colour, label=k)
+        plt.fill_between(t_plot, band[:, 0], band[:, 1], color=colour,
+                         alpha=0.2)
+    plt.xlabel("Time")
+    plt.ylabel("Cumulative incidence (95% band)")
+    plt.legend()
+
+.. jupyter-execute::
+
+    print("CIF wear at 100   : %.3f, 95%% band %s"
+          % (pmodel.cif(100.0, "wear"), pmodel.cb(100.0, "wear").round(3)))
+    print("survival at 100   : %.3f, 95%% band %s"
+          % (pmodel.sf(100.0), pmodel.cb(100.0, on="sf").round(3)))
+
+How the band is made: the fit's parameter covariance, ``covariance()``,
+holds every cause's parameters, named by ``covariance_names``
+(``"wear: alpha"``, ...). It is block diagonal, because each cause is
+estimated from its own part of the likelihood. The delta method carries it
+to the curve on a scale that keeps the band in range: the logit of the
+cumulative incidence, and the log of the all-cause cumulative hazard for
+``sf``, ``ff`` and ``Hf``. ``cb(x, event=k, on="sf")`` is cause ``k``'s net
+survival, whose band is its own model's (likelihood-ratio bands too, with
+``method="lr"``). A simulation study,
+``scripts/studies/parametric_competing_risks_cb_coverage.py``, checks that
+the 95% bands cover about 95% of the time.
+
+For a number with no ``cb`` of its own, such as the MTTF or the B10 life,
+draw parameter vectors from the covariance and rebuild the model at each
+with ``with_params``; the spread of the number over the draws shows its
+uncertainty. This rests on the same normal approximation as the bands:
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(1)
+    draws = rng.multivariate_normal(pmodel._estimates(), pmodel.covariance(),
+                                    size=300)
+    mttf, b10 = [], []
+    for d in draws:
+        other = pmodel.with_params(d)
+        mttf.append(other.mean())
+        b10.append(other.qf(0.1))
+    print("MTTF %.1f, 95%% range of the draws %s"
+          % (pmodel.mean(), np.percentile(mttf, [2.5, 97.5]).round(1)))
+    print("B10  %.1f, 95%% range of the draws %s"
+          % (pmodel.qf(0.1), np.percentile(b10, [2.5, 97.5]).round(1)))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _band = pmodel.cb(100.0, "wear")
+    assert _band[0] < pmodel.cif(100.0, "wear") < _band[1]
+    assert np.percentile(mttf, 2.5) < pmodel.mean() < np.percentile(mttf, 97.5)
+    assert np.percentile(b10, 2.5) < pmodel.qf(0.1) < np.percentile(b10, 97.5)
+    assert pmodel.covariance_names[0] == "shock: failure_rate"
 
 Assembling a model from separately fitted causes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

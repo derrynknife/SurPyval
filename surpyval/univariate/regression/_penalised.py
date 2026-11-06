@@ -294,7 +294,68 @@ def solve_penalised(
     the Hessian (for the Newton polish, the check of the minimum and the
     effective degrees of freedom) by finite differences of ``grad``, and
     the result says so (``hessian``).
+
+    The search starts at ``start``. Where its answer fails the optimality
+    check (``verified`` false), the search is run a second time from the
+    unpenalised fit (the minimum of ``fun`` alone, reached from
+    ``start``), and the answer with the smaller penalised objective is
+    kept (the second one also when the two are equal to rounding and only
+    it is verified). A search from the model's usual start (every
+    coefficient 0) can stop short of the minimum when the objective is
+    nearly flat along a baseline parameter: on the Rossi data a Weibull
+    AFT lasso fit stopped near its start, at a penalised objective above
+    the one reached at a larger penalty, which no minimum can do. From the
+    unpenalised fit, where the coefficients are already near their
+    penalised values for a small penalty, it reaches the minimum. A first
+    answer that passes the check is returned as it is, so the second
+    search costs nothing for a fit that converged.
     """
+    first = _solve_once(fun, grad, hess, start, penalised, l1, l2, tol)
+    if first.verified:
+        return first
+    with np.errstate(all="ignore"):
+        try:
+            unpenalised = minimize(
+                lambda th: float(fun(th)),
+                np.asarray(start, dtype=float),
+                jac=lambda th: np.asarray(grad(th), dtype=float),
+                method="BFGS",
+            )
+            second_start = np.asarray(unpenalised.x, dtype=float)
+        except (ValueError, FloatingPointError, np.linalg.LinAlgError):
+            return first
+    if not np.all(np.isfinite(second_start)):
+        return first
+    try:
+        second = _solve_once(
+            fun, grad, hess, second_start, penalised, l1, l2, tol
+        )
+    except (ValueError, FloatingPointError, np.linalg.LinAlgError):
+        return first
+    if not np.isfinite(second.fun):
+        return first
+    if not np.isfinite(first.fun):
+        return second
+    slack = 1e-15 * max(1.0, abs(first.fun))
+    if second.fun < first.fun - slack or (
+        second.verified and second.fun <= first.fun + slack
+    ):
+        return second
+    return first
+
+
+def _solve_once(
+    fun: Callable[[npt.NDArray], float],
+    grad: Callable[[npt.NDArray], npt.NDArray],
+    hess: Callable[[npt.NDArray], npt.NDArray] | None,
+    start: npt.NDArray,
+    penalised: npt.NDArray,
+    l1: npt.NDArray,
+    l2: npt.NDArray,
+    tol: float,
+) -> PenalisedResult:
+    """One search of :func:`solve_penalised` from ``start``: L-BFGS-B on
+    the split problem, the Newton polish and the optimality check."""
     hessian = "exact"
     if hess is None:
         hess = finite_difference_hessian(grad)

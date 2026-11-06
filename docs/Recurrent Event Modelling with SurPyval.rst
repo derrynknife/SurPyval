@@ -1778,6 +1778,53 @@ count from there.
     assert np.all(ahead.lower <= ahead.expected)
     assert np.all(ahead.expected <= ahead.upper)
 
+When the items are part of a larger simulation of your own -- repairs that
+take time, shared crews, planned maintenance, other components -- step them
+forward one failure at a time with the fitted model itself rather than
+re-deriving its repair rule. ``next_failure_random`` draws each unit's time to
+its next failure from its state (``next_failure_qf`` is the same time at a
+given probability, the inverse of ``next_failure_sf``), and ``advance`` gives
+the state after that failure and its repair (``failed=False`` for a unit that
+has only run on). ``states`` gives the states to start from: the fitted
+items, units of a given ``age``, or units with known ``failures``. Time out of
+service is simply not added to a unit's clock.
+
+.. jupyter-execute::
+
+    states = ara.states()
+    rng = np.random.default_rng(4)
+    for _ in range(3):
+        gap = ara.next_failure_random(1, states=states, random_state=rng)[:, 0]
+        # ... your own events between failures go here ...
+        states = ara.advance(states, gap)
+    print("failures so far:", states.failure_count)
+    print("virtual age now:", states.age.round(2))
+
+The intensity models (``HPP``, ``CrowAMSAA``, ``Duane``, ``CoxLewis``) have
+the same ``next_failure_sf``, ``next_failure_hf``, ``next_failure_qf`` and
+``next_failure_random``. Each of their events is a minimal repair, so a
+unit's state is its age alone, and the next age is the age plus the draw.
+
+To carry a fit's parameter uncertainty into such a simulation, draw the
+parameters from ``covariance()`` (in the order of ``covariance_names``) and
+rebuild the model at each draw with ``with_params``:
+
+.. jupyter-execute::
+
+    draws = rng.multivariate_normal(ara.params, ara.covariance(), size=200)
+    draws = draws[(draws[:, 0] >= 0) & (draws[:, 0] <= 1)]
+    sf = [ara.with_params(d).next_failure_sf(5.0, age=[0.0])[0] for d in draws]
+    print(ara.covariance_names, "P(new unit runs 5):", np.percentile(sf, [5, 50, 95]).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _x = ara.next_failure_qf([0.1, 0.9])
+    assert np.allclose(np.diag(ara.next_failure_sf(_x[:, 0])), 0.9)
+    assert np.allclose(ara.with_params(ara._estimates()).next_failure_sf(
+        5.0, age=[0.0]), ara.next_failure_sf(5.0, age=[0.0]))
+
 Gapped (multi-window) observation
 ---------------------------------
 

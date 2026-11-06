@@ -117,11 +117,23 @@ def _inspections(dist, theta, n, rng, centre):
 
 def _truncated(dist, theta, n, rng, centre):
     """Entered at the prior's central 20% point: only units still running
-    then are seen."""
+    then are seen.
+
+    The draw is made on the survival scale: a unit seen after ``tl`` has
+    ``S(x) = S(tl) (1 - U)``, so its cumulative hazard is
+    ``H(tl) - log(1 - U)`` and ``x = alpha H**(1 / beta)`` (Weibull, the
+    only distribution this scenario uses). The same uniforms as the
+    inverse-cdf draw ``qf(U(F(tl), 1))``, which it equals in exact
+    arithmetic; that draw gave ``inf`` when ``F(tl)`` rounded to 1 (a
+    truth whose life is far shorter than the entry age), while this one
+    stays finite."""
+    if dist is not sp.Weibull:
+        raise NotImplementedError("the truncated draw is written for Weibull")
     tl = float(dist.qf(0.2, *centre))
-    lo = float(dist.ff(tl, *theta))
-    u = rng.uniform(lo, 1.0, n)
-    return dict(x=dist.qf(u, *theta), tl=np.full(n, tl))
+    alpha, beta = theta
+    u = rng.uniform(0.0, 1.0, n)
+    H = (tl / alpha) ** beta - np.log1p(-u)
+    return dict(x=alpha * H ** (1 / beta), tl=np.full(n, tl))
 
 
 def _few_failures(dist, theta, n, rng, centre):
@@ -243,10 +255,14 @@ _FOUND = {
         "excursion"
     ),
     "Weibull left truncated": (
-        "1 of 500 replicates refused (r = 299): the simulated value is "
-        "infinite (the truth's F at the entry age rounds to 1, so the "
-        "inverse-cdf draw above it is inf), which the fit refuses as "
-        "outside the support; a fault of the simulation, not the fit"
+        "With the draw on the survival scale (no replicate refused; before, "
+        "r = 299's simulated time was infinite), the ranks are uniform "
+        "(chi-square p = 0.43 alpha, 0.55 beta, 0.21 B10) but the 95% "
+        "coverage is 0.972 for alpha and 0.970 for B10 (rule: within 0.02 "
+        "of 0.95; beta's is 0.962). On 1,000 fresh replicates (seeds "
+        "9100 + r and 9600 + r, an investigation, not the study) it was "
+        "0.958, 0.937 and 0.933 with p = 0.94, 0.43 and 0.74: taken as this "
+        "seed set's excursion"
     ),
 }
 

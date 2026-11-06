@@ -823,7 +823,8 @@ total tail probability: a two-sided band has ``alpha_ci / 2`` in each tail, so
 the default is a 95 % band) and ``bound`` (``"two-sided"``, ``"lower"`` or ``"upper"``). The bounds describe
 the *life model*; the stochastic-process and destructive models further down
 have their own uncertainty story (the destructive model offers bootstrap bounds;
-the process models do not yet report parameter uncertainty).
+the process models have ``covariance()``, ``cb`` and ``with_params``, under
+"Parameter uncertainty" further down).
 
 
 Accelerated degradation testing (covariates)
@@ -1546,8 +1547,9 @@ level ``alpha_ci``, default ``0.05``) and ``prob_already_failed``. Unlike the
 general-path ``predict_rul`` it needs only the current level, not the unit's
 history — the independent increments make the past irrelevant — and the
 interval reflects the randomness of the process, not uncertainty in the fitted
-``mu`` and ``sigma`` (the process models do not report parameter
-uncertainty). The fitted parameters are ``model.mu`` and ``model.sigma``
+``mu`` and ``sigma`` (to carry that too, draw parameters from ``covariance()``
+and rebuild the model with ``with_params``, as under "Parameter uncertainty"
+below). The fitted parameters are ``model.mu`` and ``model.sigma``
 (together, ``model.params``), and ``hf``, ``Hf``, ``df`` and
 ``random(size, random_state=...)`` complete the set of life methods. As for
 every maximum-likelihood fit, ``model.maximum`` says what the fit reached:
@@ -1831,6 +1833,98 @@ and they give the failure-time distribution **directly from the fitted process**
 rather than through noisy per-unit pseudo failure times. The general-path models
 remain the better choice when each unit truly follows a smooth deterministic
 trend observed with error, or when you need a specific parametric path shape.
+
+The level at a time, and simulated paths
+----------------------------------------
+
+The life methods answer "when will it fail?". Maintenance on condition asks a
+different question: "what will the gauge read at the next inspection?". An
+inspection finds the level, and a unit past a **preventive limit** (set below
+the failure threshold) is replaced before it fails. Both process models answer
+that question directly.
+
+``level_at(t)`` is the distribution of the level at time ``t``. For a Wiener
+process it is normal, with mean ``y0 + mu t`` and variance ``sigma² t``; for a
+gamma process it is ``y0`` plus a gamma amount of wear with shape ``alpha t``
+and rate ``beta``. Its ``sf(y)`` is the chance the level is above ``y``,
+``ff(y)`` the chance it is at or below, and ``qf``, ``df``, ``random``,
+``mean`` and ``to_dict`` complete it. Given a reading ``y0`` at an earlier age
+``t0``, ``level_at(t, y0=..., t0=...)`` starts from that reading: the
+increments are independent, so nothing before ``t0`` matters. With stress, the
+time is on the process clock, as for the life.
+
+``random_path(times, size)`` draws whole paths: the levels at the given times,
+one row per path, built from independent increments.
+
+Here wear grows by 0.5 an hour on average, fails a unit at 100, and the
+preventive limit is 80:
+
+.. jupyter-execute::
+
+    from surpyval.degradation import GammaProcessModel
+
+    wear = GammaProcessModel(alpha=0.25, beta=0.5, threshold=100.0)
+    level = wear.level_at(150.0)
+    print("P(past the limit at 150 h)   :", round(float(level.sf(80.0)), 3))
+    print("P(failed by 150 h)           :", round(float(level.sf(100.0)), 5))
+    print("90% of units read below      :", round(float(level.qf(0.9)), 1))
+
+    # a unit that read 60 at 100 h
+    later = wear.level_at(150.0, y0=60.0, t0=100.0)
+    print("same, for the unit read at 60:", round(float(later.sf(80.0)), 3))
+
+How often does a unit fail between two inspections, so that the preventive
+limit never catches it? Draw the paths at the inspection times and count, for
+inspections every 25 and every 50 hours:
+
+.. jupyter-execute::
+
+    for every in (25.0, 50.0):
+        times = np.arange(every, 401.0, every)
+        paths = wear.random_path(times, 10_000, random_state=1)
+        # the first inspection at or past the limit, and past failure
+        caught = (paths >= 80.0).argmax(axis=1)
+        failed = (paths >= 100.0).argmax(axis=1)
+        missed = (paths >= 100.0).any(axis=1) & (failed == caught)
+        print(f"every {every:.0f} h: failed before being caught {missed.mean():.1%}")
+
+A unit "failed before being caught" read below 80 at one inspection and at or
+past 100 at the next. The paths are read only at the inspection times, as a
+gauge would read them, so this is the share of units that the limit would not
+have saved.
+
+**The level and the life.** A gamma path only rises, so a unit has failed by
+``t`` exactly when its level at ``t`` is at or past the threshold:
+``level_at(t).sf(threshold)`` equals ``ff(t)``. A Wiener path can cross the
+threshold and wander back below it, so its level at ``t`` misses those units,
+and ``level_at(t).sf(threshold)`` is below ``ff(t)``. For a Wiener process the
+life is the time of first crossing; use ``ff`` for it, and ``level_at`` for
+what an inspection would read.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    for t in (100.0, 200.0, 250.0):
+        assert np.isclose(wear.level_at(t).sf(100.0), wear.ff(t), atol=1e-12)
+
+**Parameter uncertainty.** A fitted model's ``covariance()`` describes how well
+the data pin down its parameters. ``with_params(values)`` builds the same model
+(threshold, starting level, stress reference) at other parameter values, given
+in the order of ``covariance_names`` (``params``, then any stress
+coefficients ``gamma``), so draws from the covariance become
+models, and anything computed from them carries the uncertainty. The rebuilt
+models have no covariance or likelihood of their own.
+
+.. jupyter-execute::
+
+    # the gamma-process readings fitted above, failure at 30
+    fitted = GammaProcess.fit(x, y, i, threshold=threshold)
+    rng = np.random.default_rng(2)
+    draws = rng.multivariate_normal(fitted.params, fitted.covariance(), 500)
+    past = [float(fitted.with_params(d).level_at(10.0).sf(25.0)) for d in draws]
+    print("P(past 25 at t = 10):", round(float(fitted.level_at(10.0).sf(25.0)), 3))
+    print("95% of the draws    :", np.percentile(past, [2.5, 97.5]).round(3))
 
 Accelerated and step-stress tests
 ---------------------------------

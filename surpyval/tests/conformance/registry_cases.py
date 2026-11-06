@@ -515,6 +515,46 @@ def _competing_risks():
         )
         for method in ("Nelson-Aalen", "Kaplan-Meier")
     ]
+
+    def cr_entry_data():
+        # Delayed entry: a third of the units from 0, the rest entering
+        # part of the way to their exit, many after others have left.
+        d = cr_data()
+        share = np.tile([0.0, 0.3, 0.6], 8)[scramble(24)]
+        d["tl"] = np.round(share * d["x"], 3)
+        return d
+
+    def cr_entry_from_df(d):
+        df = pd.DataFrame(
+            {"x": d["x"], "e": d["e"], "n": d["n"], "tl": d["tl"]}
+        )
+        return cr.CompetingRisks.fit_from_df(
+            df,
+            x_col="x",
+            e_col="e",
+            n_col="n",
+            tl_col="tl",
+            how="Kaplan-Meier",
+        )
+
+    out.append(
+        Case(
+            name="CompetingRisks[tl]",
+            fitters=(),
+            model_class="surpyval.univariate.competing_risks.CompetingRisks",
+            interface=CAUSES,
+            data=cr_entry_data,
+            fit=_fit(cr.CompetingRisks, how="Kaplan-Meier"),
+            functions=("sf", "ff", "Hf"),
+            event_functions=("cif",),
+            events=("a", "b"),
+            x=X_CR,
+            rows=("x", "e", "n", "tl"),
+            times=("x", "tl"),
+            paths={"fit_from_df": cr_entry_from_df},
+            rtol=1e-9,
+        )
+    )
     out.append(
         Case(
             name="ParametricCompetingRisks",
@@ -1830,6 +1870,17 @@ def _bounds(case):
         return _nonparametric_bounds(case)
     if cls == "CompetingRisks":
         return _competing_risks_bounds()
+    if cls == "ParametricCompetingRisks":
+        # Wald bounds on each cause's cumulative incidence (logit) and the
+        # all-cause sf / ff / Hf (log H); a cause's net sf / ff / Hf is
+        # its own model's cb. (Its method="lr" and "bootstrap", the
+        # cause's own, are swept on the Parametric cases: the cb_transform
+        # sweep calls a per-cause bound without its cause.)
+        return (
+            Bound("cb", on=("cif",), per_cause=True, label="cb[cif]"),
+            Bound("cb", on=_ON_SURVIVAL, label="cb[all-cause]"),
+            Bound("cb", on=_ON_SURVIVAL, per_cause=True, label="cb[net]"),
+        )
     if cls == "MixtureModel":
         # Wald bounds only (#651)
         return (
@@ -2375,6 +2426,7 @@ _NO_STARVE: dict[str, str] = {
     "FlemingHarrington": _EXACT,
     "CompetingRisks[Nelson-Aalen]": _EXACT,
     "CompetingRisks[Kaplan-Meier]": _EXACT,
+    "CompetingRisks[tl]": _EXACT,
     "NonParametricCounting": _EXACT,
     "CauseSpecificMCF": _EXACT,
     "IndependenceCopula": "no dependence parameter: the margins are "

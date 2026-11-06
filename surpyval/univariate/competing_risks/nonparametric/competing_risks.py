@@ -50,7 +50,8 @@ from surpyval.utils import (
     validate_cr_inputs,
     validate_event,
 )
-from surpyval.utils.data_formats import _get_idx, xcnt_to_xrd
+from surpyval.utils.data_formats import _get_idx, xcnt_handler, xcnt_to_xrd
+from surpyval.utils.dataframe import frame_column
 from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import accepts_surpyval_data
@@ -80,6 +81,12 @@ class CompetingRisks(SerialisableMixin):
     failures from cause :math:`j` at :math:`t_i` and :math:`r_i` the number
     at risk. The CIFs of all causes add up to the all-cause failure
     probability.
+
+    With delayed entry (left truncation, ``tl``) a unit is at risk only
+    between its entry and its exit, :math:`tl < t \\le x`, so :math:`r_i`
+    counts the units that have entered before :math:`t_i` and not yet
+    left. The estimates are then conditional on surviving to the earliest
+    entry, as those of ``KaplanMeier`` with ``tl`` are.
 
     Call the class method ``CompetingRisks.fit`` (or ``fit_from_df``); it
     returns a fitted instance.
@@ -863,7 +870,7 @@ class CompetingRisks(SerialisableMixin):
         return ax
 
     @classmethod
-    @column_arguments("x", "c", "n", "w")
+    @column_arguments("x", "c", "n", "w", "tl")
     @takes_unit
     def fit_from_df(
         cls,
@@ -874,6 +881,7 @@ class CompetingRisks(SerialisableMixin):
         n_col: str | None = None,
         how: str = "Nelson-Aalen",
         w_col: str | None = None,
+        tl_col: str | float | None = None,
     ) -> CompetingRisks:
         """
         Fit from the columns of a :class:`pandas.DataFrame`.
@@ -896,15 +904,38 @@ class CompetingRisks(SerialisableMixin):
         w_col : str, optional
             The column of weights ``w`` (sampling or inverse-probability
             weights); see :meth:`fit`.
+        tl_col : str or scalar, optional
+            The column of each unit's entry (left truncation) time, or one
+            number for every unit; the ``tl`` of :meth:`fit`.
 
         Returns
         -------
         CompetingRisks
             The fitted model; the frame is kept as ``source_df``.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> from surpyval import CompetingRisks
+        >>> df = pd.DataFrame({
+        ...     "age_out": [62, 65, 70, 71, 74, 78],
+        ...     "age_in": [50, 60, 55, 68, 66, 70],
+        ...     "cause": ["a", "b", "a", None, "a", "b"],
+        ... })
+        >>> model = CompetingRisks.fit_from_df(
+        ...     df, x_col="age_out", e_col="cause", tl_col="age_in"
+        ... )
+        >>> model.r
+        array([3, 2, 3, 3, 2, 1])
         """
         x, c, n, e = validate_cr_df_inputs(df, x_col, e_col, c_col, n_col)
         w = None if w_col is None else df[w_col].values
-        model = cls.fit(x, e, c, n, how, w=w)
+        tl = (
+            frame_column(df, tl_col, "tl_col", time=True)
+            if isinstance(tl_col, str)
+            else tl_col
+        )
+        model = cls.fit(x, e, c, n, how, w=w, tl=tl)
         # Keep the source frame without shadowing the ``df`` (density)
         # method (#253).
         model.source_df = df
@@ -921,6 +952,7 @@ class CompetingRisks(SerialisableMixin):
         n: npt.ArrayLike | None = None,
         how: str = "Nelson-Aalen",
         w: npt.ArrayLike | None = None,
+        tl: npt.ArrayLike | float | None = None,
     ) -> CompetingRisks:
         """
         Fit the non-parametric competing-risks model.
@@ -957,6 +989,15 @@ class CompetingRisks(SerialisableMixin):
             factor(e)) ~ 1, weights = w)`` computes it; ``w = 1`` gives the
             unweighted estimates with that robust variance, not Aalen's.
             See :doc:`Weighted Data </Weighted Data>`.
+        tl : array_like or scalar, optional
+            Delayed entry (left truncation): each unit's entry time, or one
+            number for every unit. A unit is at risk only in ``(tl, x]``,
+            so each ``tl`` must be below its ``x``; a unit that failed
+            before it would have entered is never seen. As R's
+            ``survfit(Surv(tl, x, factor(e)) ~ 1)`` the estimates are then
+            conditional on surviving to the earliest entry. Right
+            truncation is not supported (``fit(data)`` refuses data that
+            has it).
 
         Returns
         -------
@@ -986,9 +1027,26 @@ class CompetingRisks(SerialisableMixin):
         array([0.3485, 0.6212])
         >>> weighted.cb(5, 'a').round(4)
         array([0.0784, 0.6463])
+
+        With delayed entry, a unit counts in the risk set only from its
+        entry time on:
+
+        >>> tl = [0, 0, 0, 0, 2, 2, 4, 4, 6, 6]
+        >>> late = CompetingRisks.fit(x, e, tl=tl)
+        >>> late.r
+        array([4, 3, 4, 3, 4, 3, 4, 3, 2, 1])
+        >>> late.cif([5, 10], 'a').round(4)
+        array([0.4688, 0.5859])
         """
         x, c, n, e = validate_cr_inputs(x, c, n, e, how)
         check_finite_event_times(x, c)
+        # Delayed entry: the (N, 2) truncation bounds, checked as every
+        # fitter checks them (each time above its entry), in row order.
+        t = (
+            None
+            if tl is None
+            else xcnt_handler(x, c, n, tl=tl, group_and_sort=False)[3]
+        )
         if w is not None:
             from surpyval.utils.weights import check_weights
 
@@ -1002,10 +1060,11 @@ class CompetingRisks(SerialisableMixin):
         event_idx_map = {state: i for i, state in enumerate(causes)}
 
         if w is not None:
-            return cls._fit_weighted(x, c, n, e, w, how, event_idx_map)
+            return cls._fit_weighted(x, c, n, e, w, how, event_idx_map, t)
 
-        # Get the x, r, d format agnostic of event.
-        unique_x, r, d = xcnt_to_xrd(x, c, n)
+        # Get the x, r, d format agnostic of event: with entry times, r
+        # counts only the units that have entered before each time.
+        unique_x, r, d = xcnt_to_xrd(x, c, n, t)
 
         # The count of events (d) of each cause (e) at each time (x). Every
         # x is one of unique_x, so its column is found with searchsorted;
@@ -1063,6 +1122,7 @@ class CompetingRisks(SerialisableMixin):
         w: npt.NDArray,
         how: str,
         event_idx_map: dict,
+        t: npt.NDArray | None = None,
     ) -> CompetingRisks:
         """``fit`` with weights ``w``: the Aalen-Johansen estimate on the
         weighted numbers at risk and of events, with the robust
@@ -1081,8 +1141,12 @@ class CompetingRisks(SerialisableMixin):
         events = c != 1
         cause = np.zeros(len(x), dtype=np.intp)
         cause[events] = [event_idx_map[label] for label in e[events]]
+        if t is None:
+            t = np.column_stack(
+                [np.full(len(x), -np.inf), np.full(len(x), np.inf)]
+            )
         unique_x, r, d, d_e, cif_var = weighted_aalen_johansen(
-            x, c, n, w, cause, n_event_types
+            x, c, n, w, cause, n_event_types, t
         )
         S = na(r, d) if how == "Nelson-Aalen" else km(r, d)
 
@@ -1106,9 +1170,6 @@ class CompetingRisks(SerialisableMixin):
         # The robust variances of the log survival: all causes, then each
         # cause's net survival (the other causes censored), as the weighted
         # single-event fit of the same rows gives them.
-        t = np.column_stack(
-            [np.full(len(x), -np.inf), np.full(len(x), np.inf)]
-        )
         flags = [c] + [
             np.where(events & (cause == k), 0, 1) for k in range(n_event_types)
         ]

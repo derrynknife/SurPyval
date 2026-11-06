@@ -375,10 +375,17 @@ of known cause the unit's contribution to :math:`F_k` would have to be spread
 across the interval using all of the cause-specific hazards, which these
 estimators do not do.
 
-Left truncation (delayed entry), ``tl``, is taken by the parametric model
-(``ParametricCompetingRisks.fit``, next section) and by the cause-specific
-Cox model (`Delayed entry in the regressions`_); the Fine-Gray model and
-Gray's test refuse it.
+Left truncation (delayed entry) enters the same way. A unit that comes under
+observation at :math:`\tau_i` counts as at risk only for
+:math:`\tau_i < t \le x_i`, so :math:`r_j` is the number that have entered
+before :math:`t_j` and not yet left (Andersen, Borgan, Gill and Keiding,
+1993, IV.4). The non-parametric ``CompetingRisks`` takes the entry times as
+``tl``; its estimates are then conditional on surviving to the earliest entry,
+and Aalen's variance above, a function of :math:`r_j` and the failures only,
+carries over unchanged. ``ParametricCompetingRisks`` takes ``tl`` too, as the
+next section explains, and so does the cause-specific Cox model
+(`Delayed entry in the regressions`_); the Fine-Gray model and Gray's test
+refuse it.
 
 Parametric Competing Risks
 ---------------------------
