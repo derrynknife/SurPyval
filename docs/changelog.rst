@@ -685,6 +685,15 @@ Unreleased
 
 **Fixed.**
 
+- A penalised fit (``fit_penalised`` of every model) whose search stops
+  short of the minimum now searches a second time, from the unpenalised
+  fit, and keeps the better answer. A Weibull AFT lasso fit on the Rossi
+  data (``fin``, ``age``, ``prio``, ``l1_ratio=1``, penalty 0.00068)
+  stopped near its start, "unverified", with a penalised objective of
+  1.5892, above the 1.5811 reached at the larger penalty 0.0038; it now
+  reaches 1.5792 and is verified. The second search runs only when the
+  first fails its optimality check, so fits that converged are unchanged
+  (to the last digit) and cost no more.
 - ``robust_covariance(cluster=...)`` (and ``robust_standard_errors``,
   ``summary(robust=True, cluster=...)``) on a distributional regression
   (``WeibullDistributional`` and the others) matched the cluster labels
