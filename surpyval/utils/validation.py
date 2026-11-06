@@ -253,6 +253,41 @@ def missing_cause_error(what: str) -> ValueError:
     return ValueError(f"{what} is of one cause at a time; pass `event`.")
 
 
+def refuse_subdistribution_entry(
+    x: Any, tl: Any, what: str, instead: str
+) -> None:
+    """Refuse delayed entry ``tl`` in a subdistribution (Fine-Gray) method.
+
+    The subdistribution risk set keeps the units that failed from another
+    cause; with late entry it needs truncation weights (Geskus 2011) that
+    are not built. Entry times that are all before the first time change
+    no risk set, so they are taken (and ignored): a ``SurpyvalData``
+    without truncation passes its ``tl`` of ``-inf``.
+
+    Examples
+    --------
+    >>> from surpyval.utils.validation import refuse_subdistribution_entry
+    >>> refuse_subdistribution_entry([2, 3], [0, 0], "FineGray", "")
+    >>> try:
+    ...     refuse_subdistribution_entry([2, 3], [0, 2.5], "FineGray", "")
+    ... except ValueError as error:
+    ...     print(str(error).split(" where")[0])
+    FineGray takes no delayed entry (left truncation, `tl`)
+    """
+    if tl is None:
+        return
+    x_arr = np.asarray(x, dtype=float)
+    tl_arr = np.asarray(tl, dtype=float)
+    if x_arr.size == 0 or not np.any(tl_arr >= np.nanmin(x_arr)):
+        return
+    raise ValueError(
+        f"{what} takes no delayed entry (left truncation, `tl`) where an "
+        "item enters after the first time: its subdistribution risk set "
+        "keeps the items that failed from another cause, and with late "
+        "entry that needs truncation weights, which are not built. " + instead
+    )
+
+
 def warn_outside_unit_interval(
     p: npt.ArrayLike, what: str = "qf", closed: bool = True
 ) -> npt.NDArray:

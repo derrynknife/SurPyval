@@ -28,14 +28,14 @@ The families, each with its section below: Cox proportional hazards
 (#868); parametric proportional hazards and accelerated failure time
 models (#869); proportional odds and additive hazards (#870); accelerated
 life models (#871); shared frailty (#872); recurrent events (#873);
-competing risks (#874); and univariate distributions (#875). The Cox and
+competing risks (#874); univariate distributions (#875); distributional
+regressions; and Aalen's additive hazards model. The Cox and
 parametric proportional hazards and accelerated failure time reports also
 check the calibration of the predicted survival (#881). A few models have
 no checks yet, and their ``diagnose()`` refuses, saying what to check the
 model with meanwhile: parametric competing risks (each cause's model has
-``diagnose()``), Buckley-James and distributional regressions (diagnose a
-PH or AFT fit of the same data), Aalen's additive hazards model
-(``constant_effects_test()``). Bayesian fits have theirs: see `Bayesian fits`_.
+``diagnose()``) and Buckley-James (diagnose an AFT fit of the same data).
+Bayesian fits have theirs: see `Bayesian fits`_.
 
 Verdicts
 --------
@@ -547,6 +547,99 @@ tests compare it with larger models). The accelerated life models (#871)
 and the proportional odds and additive hazards models (#870) have their
 own families.
 
+Distributional regression
+-------------------------
+
+A distributional regression (``WeibullDistributional``,
+``LogNormalDistributional``, ..., ``Distributional(dist)``) lets the
+covariates move every parameter of the distribution, the shape as well as
+the scale. Its checks ask the same three questions as the PH and AFT
+families, of each parameter in turn: does the distribution fit the data
+once each unit has its own parameters; does each covariate act in a
+straight line on each parameter it is on; and does any one unit decide a
+coefficient? The report's covariates are the columns of ``Z``, and a
+``parameter`` column says which parameter's predictor a row is about.
+
+The lung cancer data again, with age, sex and ECOG score on both the
+Weibull's scale and its shape:
+
+.. jupyter-execute::
+
+    dr = surv.WeibullDistributional.fit_from_df(
+        lung, x_col='time', c_col='censored', Z_cols=['age', 'sex', 'ph.ecog']
+    )
+    d = dr.diagnose()
+    d.table[['check', 'parameter', 'covariates', 'statistic', 'p', 'verdict']]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert d.ok and not d.advice
+
+Every check passes. Age and the ECOG score act linearly on both the scale
+and the shape (adding a square to either predictor does not improve the
+fit), no other distribution has an AIC more than 2 lower (the gamma's is
+1.7 lower, too little to matter), and no patient moves a coefficient by as
+much as one standard error. The plot shows the Cox-Snell residuals on
+exponential paper, where a distribution that fits puts them on the line,
+and each unit's score residual against each covariate on each parameter:
+
+.. jupyter-execute::
+
+    fig = d.plot(['distribution', 'functional_form'])
+
+The checks
+~~~~~~~~~~
+
+``distribution``
+    The Cox-Snell residuals :math:`H(x_i \mid z_i)`, each unit's fitted
+    cumulative hazard at its own parameters, drawn on exponential
+    probability paper (they agree with flexsurv's
+    ``coxsnell_flexsurvreg`` to 1e-4, with delayed entry too; their
+    transform :math:`\Phi^{-1}(1 - e^{-H})` is the normalised quantile
+    residual of gamlss's ``plot()``, matched to 1e-5). As for the PH
+    family they have no test of their own. The screen, which warns and
+    never fails: the AIC of the model against each other built-in
+    distribution fitted as a distributional regression to the same data,
+    each with the model's life-parameter columns on its own scale,
+    location or rate and the model's other columns on its other
+    parameters; it warns when one is more than 2 lower.
+``functional_form``
+    For each covariate with three or more distinct values, on each
+    parameter whose predictor holds it, the likelihood-ratio test of
+    adding its square to that predictor (flexsurv's ``flexsurvreg(...,
+    anc = ...)`` with and without ``I(z^2)``, to 1e-6). Drawn as each
+    unit's score residual :math:`\partial \log L_i / \partial \eta_{ik}`
+    against the covariate with a lowess trend: for a scale it is the
+    martingale residual times :math:`-\beta`, and every row has one,
+    whatever its censoring.
+``influence``
+    For each coefficient, the largest one-step ``|dfbeta| / se`` (the
+    observed information times each unit's score); it warns above 1.
+
+The advice: the better distribution the AIC screen found
+(``LogNormalDistributional.fit``, say), a transform of a covariate on the
+one parameter where it is not linear
+(``fit_from_df(..., formulas={"beta": "np.log(load) + ..."})``), and a
+look at an influential row. In a simulation with n = 200 and a quarter of
+the units censored, the quadratic-term test rejects a true model at close
+to its 5% level (5.3% on the scale and 4.4% on the shape, in 1000
+replicates), and found a shape that bends with the load, and the AIC
+screen log-normal data fitted with a Weibull, in all of 200
+(``tests/calibration/test_size_distributional_diagnostics.py``).
+
+Every kind of censoring, delayed entry and right truncation, counts,
+``center=True``, ``fixed=`` (the AIC comparison is then left out, and a
+fixed coefficient has no influence row) and a parameter with only some of
+the columns are supported. ``diagnose()`` refuses, saying what to do
+instead: a fit with weights ``w`` (its likelihood-ratio statistics are not
+chi-squared; diagnose the unweighted fit), a penalised fit, a model
+restored with ``from_dict``, one with an aliased coefficient and one whose
+fit is not a verified maximum. Whether a covariate left off a parameter
+belongs on it is not checked: refit with it there and use
+``likelihood_ratio_test(parameter=...)``.
+
 Proportional odds and additive hazards
 --------------------------------------
 
@@ -699,6 +792,106 @@ refit the model once per covariate and once for the ``GLOBAL`` row, which
 for a parametric additive hazards model can take some seconds.
 
 .. autofunction:: surpyval.diagnostics.odds_additive.aalen_cumulative_coefficients
+
+Aalen's additive hazards model
+------------------------------
+
+Aalen's model (``AalenAdditive``) lets each covariate add to the hazard an
+amount that may change freely with time, so it has no constant effect to
+test. Its report asks two other questions. First, does any effect in fact
+change? If none does, the simpler Lin and Ying model (``AdditiveHazards``,
+one number per covariate) fits as well. Second, does the fit give any
+observed unit a negative hazard? An additive model can: a covariate that
+lowers the hazard, over a wide enough range, takes some units below 0,
+and their estimated cumulative hazard then falls, which a cumulative
+hazard cannot do. On the Rossi data:
+
+.. jupyter-execute::
+
+    aalen = surv.AalenAdditive.fit_from_df(
+        rossi, x_col='week', c_col='censored',
+        Z_cols=['fin', 'age', 'prio'],
+    )
+    d = aalen.diagnose(random_state=1)
+    d.table[['check', 'covariates', 'statistic', 'p', 'verdict']]
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert d.family == 'Aalen additive hazards'
+    assert (d.table['verdict'] == 'ok').all()
+
+The effect of ``age`` changes over the year, as in the models above, and
+no man's estimated cumulative hazard falls by more than chance explains.
+Aalen's model allows a changing effect, so the ``age`` row is ``ok`` with
+a small p-value, and the advice says how to read the effect rather than
+how to fix it:
+
+.. jupyter-execute::
+
+    for advice in d.advice:
+        print('-', advice, '\n')
+
+The plots are each covariate's cumulative coefficient :math:`B_j(t)` with
+its pointwise band, against the straight line a constant effect would
+give, and the cumulative hazards of the units whose estimates fall the
+furthest (dotted: the prediction, which holds the estimate at its running
+maximum):
+
+.. jupyter-execute::
+
+    fig = d.plot()
+
+The checks of an Aalen model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``constant_effects``
+    For each covariate, the model's own ``constant_effects_test()``: the
+    largest distance of :math:`B_j(t)` from the straight line to its last
+    value (Kolmogorov-Smirnov), with a p-value from ``n_boot`` resampled
+    processes (1000 by default; ``random_state`` seeds them). The
+    Cramér-von Mises p-value is in the detail, and the whole table, with
+    the baseline, is ``d.tables['constant_effects']``. The rows never
+    fail: a small p-value says the effect changes, which the model
+    allows. With every effect constant the advice is ``AdditiveHazards``;
+    with one that changes, how to read it.
+
+    The statistics are those of R's ``timereg::aalen`` test for
+    time-invariant effects, with two differences of detail: the straight
+    line runs to the last time :math:`B` is estimated (``timereg`` runs it
+    to the last event time, holding :math:`B` where it cannot estimate
+    it), and the supremum includes the left limits of the steps. The
+    p-values differ by design: ``timereg`` resamples each unit's
+    martingale residuals, and in simulations with constant effects it
+    rejected 47% of the time at the 5% level with 100 units and 17% with
+    300; SurPyval resamples each event's contribution, and rejected 3-3.5%
+    with 300. The price is power: an effect of 0.5 that falls to 0.1 at
+    a third of follow-up was found a third of the time with 500 units.
+``non_negative_hazard``
+    The largest fall of any observed covariate row's estimated cumulative
+    hazard below its running maximum, in standard errors, against the
+    falls of the same resampled processes. Those are the falls a zero
+    hazard would show by chance, the most a non-negative hazard can, so
+    the test is conservative: in simulations it rejected none of 200 data
+    sets with positive hazards, and 90% of those with a hazard convex in
+    the covariate, which the additive line takes below 0. The detail
+    gives the share of units whose own fall is beyond chance. A failure
+    is advised a multiplicative model, ``CoxPH.fit``, whose hazards cannot
+    be negative.
+
+.. autofunction:: surpyval.diagnostics.aalen_additive.falls
+
+What these checks support
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Counts (``n``), delayed entry (``tl``), ``fit_from_df`` and formulas, and
+penalised fits (``penalizer``). An aliased covariate's row warns, as its
+test cannot be computed. ``diagnose()`` refuses, saying what to do, a model
+restored with ``from_dict`` (it has no data) and a fit with weights
+``w``, whose resampled nulls would be those of an unweighted fit (use the
+robust bands of ``model.plot()``). The functional form, influence and
+outliers are not checked.
 
 Accelerated life (life-stress) models
 -------------------------------------
