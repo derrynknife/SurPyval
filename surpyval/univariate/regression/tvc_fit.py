@@ -210,6 +210,8 @@ class TVCFitMixin:
         # (Normal, Gumbel, Logistic) an entry at 0 conditions on surviving
         # to 0; followed since -inf, the subject's first covariate holds
         # since then.
+        given = {"i": ident, "xl": tl, "xr": x, "c": c_arr, "Z": Z_arr}
+        given["n"] = n_arr
         support_lo = float(self.support[0])  # type: ignore[attr-defined]
         if support_lo > -np.inf:
             tl = np.where(tl <= support_lo, -np.inf, tl)
@@ -220,6 +222,12 @@ class TVCFitMixin:
             x=x, Z=Z_arr, c=c_arr, n=n_arr, t=t, **kwargs
         )
         model.is_tvc = True
+        # Each row's subject, and the rows as given (in the order of
+        # handle_tvc; model.data._source_rows maps the fitted rows to
+        # them), which diagnose() sums its residuals over and refits the
+        # other baselines to.
+        model.tvc_subject_ids = ident
+        model._tvc_fit_rows = given
         # bic and aic_c count observed failures, and fall back (with none)
         # to subjects, each weighted by its last interval's count (as the
         # AFT time-varying fit does), not interval rows: splitting a

@@ -55,3 +55,7 @@ from .parametric import Parametric
 from .parametric_fitter import OptimisedFitMixin, ParametricFitter
 from .royston_parmar import RoystonParmar, RoystonParmarModel
 from .weibayes import weibayes
+
+# After the distributions: _bootstrap imports the regressions' bootstrap,
+# which needs them.
+from ._bootstrap import ParametricBootstrap  # isort: skip
