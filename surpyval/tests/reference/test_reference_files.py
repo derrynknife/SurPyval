@@ -36,6 +36,7 @@ EXPECTED_SOURCES = {
     "r_reda",
     "r_rmst",
     "r_custom_recipes",
+    "r_competing_entry",
     "py_lifelines",
     "py_sksurv",
 }

@@ -28,6 +28,7 @@ Rscript scripts/reference/reference_r_metric_inference.R
 Rscript scripts/reference/reference_r_competing_metrics.R
 Rscript scripts/reference/reference_r_pseudo.R
 Rscript scripts/reference/reference_r_cox_curve.R
+Rscript scripts/reference/reference_r_competing_entry.R
 Rscript scripts/reference/reference_r_reda.R
 Rscript scripts/reference/reference_r_likelihood_contour.R
 Rscript scripts/reference/reference_r_weighted_competing_regression.R

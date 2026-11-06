@@ -460,9 +460,26 @@ def _competing_risks():
         df = pd.DataFrame(
             {"x": d["x"], "e": d["e"], "n": d["n"], "z0": d["Z"][:, 0]}
         )
+        entry = {}
+        if "tl" in d:
+            df["tl"] = d["tl"]
+            entry["tl_col"] = "tl"
         return cr.CompetingRisksProportionalHazards.fit_from_df(
-            df, x_col="x", e_col="e", Z_cols=["z0"], n_col="n", model=how
+            df,
+            x_col="x",
+            e_col="e",
+            Z_cols=["z0"],
+            n_col="n",
+            model=how,
+            **entry,
         )
+
+    def crph_entry_data():
+        # The cause-specific Cox model takes delayed entry (WP5b): every
+        # third row enters at a third of its time, between event times.
+        d = cr_data(True)
+        d["tl"] = np.where(np.arange(d["x"].size) % 3 == 1, d["x"] / 3, 0.0)
+        return d
 
     out = [
         Case(
@@ -578,7 +595,11 @@ def _competing_risks():
                     ".CompetingRisksProportionalHazards"
                 ),
                 interface=CAUSES_REGRESSION,
-                data=functools.partial(cr_data, True),
+                data=(
+                    crph_entry_data
+                    if how == "Cox"
+                    else functools.partial(cr_data, True)
+                ),
                 fit=_fit(cr.CompetingRisksProportionalHazards, model=how),
                 # The Fine-Gray form has no all-cause survival; its sf is a
                 # cause's 1 - cif, reached through cif below.
@@ -587,7 +608,12 @@ def _competing_risks():
                 events=("a", "b"),
                 x=X_CR,
                 Z=Z_CR,
-                rows=("x", "Z", "e", "n"),
+                rows=(
+                    ("x", "Z", "e", "n", "tl")
+                    if how == "Cox"
+                    else ("x", "Z", "e", "n")
+                ),
+                times=("x", "tl") if how == "Cox" else ("x",),
                 covariates="Z",
                 paths={
                     "fit_from_df": functools.partial(crph_from_df, how=how)

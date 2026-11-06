@@ -5,6 +5,20 @@ Unreleased
 
 **Added.**
 
+- Delayed entry (left truncation) in the cause-specific Cox model:
+  ``CompetingRisksProportionalHazards.fit(x, Z, e, tl=entry)`` (and
+  ``fit_from_df(..., tl_col=)``, ``fit_penalised(..., tl=)``, and
+  ``fit(data)`` for a ``SurpyvalData`` with entry times) fits each cause's
+  ``CoxPH`` with the entry-adjusted risk sets, so the coefficients, the
+  baselines and the cumulative incidences count an item at risk only once
+  it has entered. Checked against R's ``coxph(Surv(tl, x, cause == k) ~
+  ...)`` per cause and the multi-state ``survfit`` on two data sets to
+  1e-6 (``reference_r_competing_entry.R``); with no entry after the first
+  time the fit is the one without ``tl``, to the last bit. ``FineGray``,
+  ``model="Fine-Gray"`` and ``gray_test`` refuse such entry times with a
+  message naming the cause-specific model and the Aalen-Johansen estimate
+  (they used to say only that the fit takes no left truncation, or not
+  take ``tl`` at all).
 - Delayed entry (left truncation) in the non-parametric competing-risks
   estimate: ``CompetingRisks.fit(..., tl=)`` and ``fit_from_df(...,
   tl_col=)`` count a unit at risk only between its entry and its exit
