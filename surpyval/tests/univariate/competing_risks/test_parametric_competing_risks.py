@@ -219,8 +219,10 @@ def test_rejects_none_on_observed_row():
         )
 
 
-def test_rejects_left_censoring():
-    with pytest.raises(ValueError, match="Left or interval"):
+def test_rejects_left_censoring_without_a_cause():
+    # Left censoring is fitted jointly (test_..._interval.py); a row
+    # found failed from an unknown cause is refused, saying so.
+    with pytest.raises(ValueError, match="needs its cause"):
         ParametricCompetingRisks.fit(
             x=[1.0, 2.0, 3.0], e=[1, 2, None], c=[0, 0, -1]
         )

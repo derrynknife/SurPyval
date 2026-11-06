@@ -218,6 +218,29 @@ def _sf_at(
     return out
 
 
+def _lowest_slope(knots: np.ndarray, gamma: np.ndarray) -> tuple[float, float]:
+    """The spline's lowest slope in log time over the whole line, and the
+    log time where it is. Below the first knot the slope is ``gamma_1``,
+    beyond the last a constant, and between two knots a quadratic in log
+    time (the basis is cubic there), whose minimum is at an end of the
+    stretch or at its vertex: exact, with no grid."""
+    lowest, where = np.inf, float(knots[0])
+    ends = np.array([knots[0], knots[-1]])
+    for lx, s in zip(ends, rcs_deriv(ends, knots) @ gamma):
+        if s < lowest:
+            lowest, where = float(s), float(lx)
+    for a, b in zip(knots[:-1], knots[1:]):
+        pts = np.array([a, 0.5 * (a + b), b])
+        quad_a, quad_b, _ = np.polyfit(pts, rcs_deriv(pts, knots) @ gamma, 2)
+        if quad_a > 0:
+            vertex = -quad_b / (2.0 * quad_a)
+            if a < vertex < b:
+                s = float((rcs_deriv(np.array([vertex]), knots) @ gamma)[0])
+                if s < lowest:
+                    lowest, where = s, float(vertex)
+    return lowest, where
+
+
 class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
     """A fitted Royston-Parmar flexible parametric model.
 
@@ -273,6 +296,137 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
         coefficients ``gamma_0``, ``gamma_1``, ..., as the summary prints
         them."""
         return [f"gamma_{i}" for i in range(len(self.params))]
+
+    @property
+    def covariance_names(self) -> list[str]:
+        """The names of the rows (and columns) of :meth:`covariance`, in
+        its order: the spline coefficients ``gamma_0``, ``gamma_1``, ...,
+        the same as :attr:`parameter_names` (every coefficient is
+        estimated, and nothing else is). :meth:`with_params` takes a
+        vector in this order.
+
+        Examples
+        --------
+        >>> from surpyval import RoystonParmar, Weibull
+        >>> x = Weibull.random(200, 10, 2, random_state=1)
+        >>> RoystonParmar.fit(x, df=2).covariance_names
+        ['gamma_0', 'gamma_1', 'gamma_2']
+        """
+        return list(self.parameter_names)
+
+    def _estimates(self) -> np.ndarray:
+        """The fitted coefficients in the order of
+        :attr:`covariance_names` (a copy of ``params``)."""
+        return np.array(self.params, dtype=float)
+
+    def with_params(self, params: npt.ArrayLike) -> "RoystonParmarModel":
+        """
+        The same spline -- its knots, link ``scale`` and ``unit`` -- with
+        other coefficients: for drawing a fit's coefficients from its
+        covariance and carrying them into a prediction, say.
+
+        The knots are the fit's (they were placed from its data, so they
+        are part of the model, not of the coefficients). The model
+        returned has no data, covariance or fitted likelihood, since those
+        belong to the fit of the original coefficients: ``cb``,
+        ``standard_errors``, ``neg_ll``, ``aic`` and ``bic`` are not
+        available on it, while ``sf``, ``ff``, ``hf``, ``Hf``, ``df``,
+        ``qf``, ``random`` and ``mean`` are. A fit with weights has none
+        either: the model is just the spline at these coefficients.
+
+        Parameters
+        ----------
+        params : array like
+            The spline coefficients, one per knot, in the order of
+            :attr:`covariance_names` (as a draw from :meth:`covariance`
+            comes).
+
+        Returns
+        -------
+        RoystonParmarModel
+            A model built from the coefficients.
+
+        Raises
+        ------
+        ValueError
+            Where ``params`` has the wrong length or a value that is not
+            finite, or where the coefficients are not a survival
+            distribution: the spline must not fall anywhere in log time
+            (its slope is the hazard's shape), and must rise beyond both
+            boundary knots, or the cumulative hazard would decrease
+            somewhere or the survival would not run from 1 to 0. A draw
+            from the covariance of a fit to little data can do that; the
+            message says where. Such a draw is to be left out (and
+            counted); where many are, the spline has more knots than the
+            data support, and a fit with a smaller ``df`` is the remedy.
+
+        Examples
+        --------
+        >>> from surpyval import RoystonParmar
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = RoystonParmar.fit(x, c=c, df=2)
+        >>> same = model.with_params(model._estimates())
+        >>> bool((same.sf([20, 52]) == model.sf([20, 52])).all())
+        True
+        >>> other = model.with_params([-7.0, 1.6, 0.04])
+        >>> other.sf([20, 52]).round(4)
+        array([0.9138, 0.7215])
+        """
+        names = self.covariance_names
+        try:
+            values = np.asarray(params, dtype=float)
+        except (TypeError, ValueError):
+            raise ValueError(
+                "'params' must be numbers, the spline coefficients {}; "
+                "got {!r}.".format(names, params)
+            ) from None
+        if values.ndim != 1 or values.size != len(names):
+            raise ValueError(
+                "'params' must be a flat vector of {} spline coefficients, "
+                "one per knot, in the order of covariance_names {}; got "
+                "shape {}.".format(len(names), names, np.shape(values))
+            )
+        if not np.all(np.isfinite(values)):
+            raise ValueError(
+                f"'params' must be finite; got {values.tolist()}."
+            )
+        knots = np.array(self.knots, dtype=float)
+        lowest, where = _lowest_slope(knots, values)
+        at_end = where in (knots[0], knots[-1])
+        if lowest < 0 or (at_end and lowest <= 0):
+            raise ValueError(
+                "These coefficients are not a survival distribution: the "
+                "spline's slope in log time is {:.3g} at time {:.4g} (it "
+                "must not fall anywhere, and must rise beyond the boundary "
+                "knots), so the cumulative hazard would {} there. Leave "
+                "this draw out (and count it); if many draws are left out, "
+                "the spline has more knots than the data support: fit with "
+                "a smaller df.".format(
+                    lowest,
+                    float(np.exp(where)),
+                    "decrease" if lowest < 0 else "stop rising",
+                )
+            )
+        out = type(self)()
+        out.scale = self.scale
+        out.knots = knots
+        out.params = values.copy()
+        out.unit = self.unit
+        out._neg_ll = None  # type: ignore[assignment]
+        out._ic_n = None
+        out.maximum = "not applicable"
+        return out
+
+    def _ic_sample_size_from_data(self) -> float:
+        # Only a model built from coefficients has neither the data's
+        # sample size nor a stored one.
+        raise ValueError(
+            "This information criterion needs the data the model was "
+            "fitted to, which this model does not have (it was built from "
+            "parameters)"
+        )
 
     # -- linear predictor --------------------------------------------------
 
@@ -546,8 +700,13 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
         (#605). It was an attribute before v0.23.
 
         Raises a ``ValueError`` where the model has none (its information
-        was singular)."""
+        was singular, or it was built from coefficients by
+        :meth:`with_params`)."""
         if self._covariance is None:
+            if self.maximum == "not applicable":
+                raise no_covariance_error(
+                    "it was built from coefficients, not fitted"
+                )
             raise no_covariance_error()
         return np.asarray(self._covariance)
 
@@ -619,11 +778,16 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
             f"Scale               : {self.scale}",
             f"Knots (log-time)    : {np.round(self.knots, 4).tolist()}",
             f"Internal knots      : {len(self.knots) - 2}",
-            f"Observations        : {self.n}  (events {self.n_events})",
-            f"log-likelihood      : {-self._neg_ll:.4f}",
-            f"AIC / BIC           : {self.aic():.2f} / {self.bic():.2f}",
-            "Coefficients        :",
         ]
+        if self._neg_ll is None:  # built from coefficients
+            lines.append("Fitted              : no (given coefficients)")
+        else:
+            lines += [
+                f"Observations        : {self.n}  (events {self.n_events})",
+                f"log-likelihood      : {-self._neg_ll:.4f}",
+                f"AIC / BIC           : {self.aic():.2f} / {self.bic():.2f}",
+            ]
+        lines.append("Coefficients        :")
         for i, g in enumerate(self.params):
             lines.append(f"    gamma_{i:<3}: {g:.6g}")
         return "\n".join(lines)
@@ -642,7 +806,7 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
             "n_events": int(self.n_events),
             "_neg_ll": to_native(self._neg_ll),
             **maximum_entry(self.maximum),
-            "ic_n": float(self._ic_sample_size()),
+            "ic_n": self._ic_sample_size_or_none(),
         }
         if self._covariance is not None:
             out["covariance"] = np.asarray(self._covariance, float).tolist()
@@ -660,10 +824,15 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
         out.params = np.array(model_dict["params"], dtype=float)
         out.n = int(model_dict.get("n", 0))
         out.n_events = int(model_dict.get("n_events", 0))
-        out._neg_ll = float(model_dict.get("_neg_ll", 0.0))
+        neg_ll = model_dict.get("_neg_ll", 0.0)
+        # None for a model built from coefficients (with_params)
+        if neg_ll is None:
+            out._neg_ll = None  # type: ignore[assignment]
+        else:
+            out._neg_ll = float(neg_ll)
         out.maximum = restored_maximum(model_dict)
         if "ic_n" in model_dict:
-            out._ic_n = float(model_dict["ic_n"])
+            out._ic_n = out._restored_ic_n(model_dict)
         else:
             # Written before the sample size was stored: the exact failures
             # are the only failures the dict records.

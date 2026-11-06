@@ -357,6 +357,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.univariate.regression.CoefficientPlot": (
         "what plot_coefficients drew (a figure and its values), not a model"
     ),
+    "surpyval.univariate.regression.LifeAtCovariates": _RESULT,
     "surpyval.univariate.regression.plot_coefficients": _FUNCTION,
     "surpyval.univariate.regression.penalty_path": _FUNCTION,
     "surpyval.penalty_path": _FUNCTION,
@@ -380,6 +381,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.recurrent.GoodnessOfFitResult": _RESULT,
     "surpyval.degradation.RULPrediction": _RESULT,
     "surpyval.degradation.ProcessRUL": _RESULT,
+    "surpyval.degradation.ProcessLevel": _RESULT,
     # degradation building blocks
     "surpyval.degradation.LinkedPathModel": _COMPONENT
     + " (the stress link of an accelerated degradation fit, covered by "

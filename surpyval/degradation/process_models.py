@@ -48,6 +48,7 @@ import pandas as pd
 from scipy.integrate import quad
 from scipy.optimize import OptimizeResult, minimize, minimize_scalar
 from scipy.special import gammainc, gammaincc, gammaln, log_ndtr
+from scipy.stats import gamma as gamma_dist
 from scipy.stats import norm
 
 from surpyval.serialisation import (
@@ -90,6 +91,7 @@ __all__ = [
     "WienerProcessModel",
     "GammaProcess",
     "GammaProcessModel",
+    "ProcessLevel",
     "ProcessRUL",
 ]
 
@@ -617,6 +619,245 @@ class ProcessRUL:
             "rul_interval": [float(v) for v in self.rul_interval],
             "prob_already_failed": float(self.prob_already_failed),
             "alpha_ci": float(self.alpha_ci),
+        }
+
+
+class ProcessLevel:
+    """The distribution of a process model's degradation level at one time.
+
+    ``level_at`` of a :class:`WienerProcessModel` or
+    :class:`GammaProcessModel` returns one. The level is a number, not a
+    time, so its functions take levels ``y``: ``sf(y)`` is the probability
+    the level is above ``y`` at time ``t``, ``ff(y)`` the probability it is
+    at or below ``y``, ``df(y)`` its density and ``qf(p)`` its quantile.
+
+    For a Wiener process the level is normal, with mean ``y0 + mu *
+    exposure`` and variance ``sigma**2 * exposure``; for a gamma process it
+    is ``y0`` plus a gamma variable of shape ``alpha * exposure`` and rate
+    ``beta``. ``exposure`` is the time from ``t0`` to ``t`` on the
+    process clock: ``t - t0`` without stress, and that time scaled by the
+    acceleration factor (integrated over a stress profile) with stress.
+
+    Attributes
+    ----------
+    t : float
+        The time the level is at.
+    t0 : float
+        The time of the starting level ``y0`` (0 for a new unit).
+    y0 : float
+        The level at ``t0``.
+    exposure : float
+        The process-clock time from ``t0`` to ``t``.
+    family : str
+        ``"normal"`` (Wiener process) or ``"gamma"`` (gamma process).
+    params : dict
+        The distribution's parameters: ``loc`` and ``scale`` (mean and
+        standard deviation) for ``"normal"``; ``shape`` and ``rate`` of
+        the increase over ``y0`` for ``"gamma"``.
+
+    Examples
+    --------
+    A unit drifting at 0.5 per hour with diffusion 1, measured at a level
+    of 30 at 50 hours: its level at 100 hours is normal with mean 55 and
+    standard deviation ``sqrt(50)``.
+
+    >>> from surpyval.degradation import WienerProcessModel
+    >>> model = WienerProcessModel(mu=0.5, sigma=1.0, threshold=100)
+    >>> level = model.level_at(100.0, y0=30.0, t0=50.0)
+    >>> level
+    ProcessLevel(t=100, family='normal', mean=55, sd=7.071)
+    >>> round(float(level.sf(60.0)), 4)  # P(above 60 at 100 hours)
+    0.2398
+    >>> round(float(level.qf(0.9)), 2)
+    64.06
+    """
+
+    def __init__(
+        self,
+        t: float,
+        t0: float,
+        y0: float,
+        exposure: float,
+        family: str,
+        params: dict,
+    ) -> None:
+        self.t = float(t)
+        self.t0 = float(t0)
+        self.y0 = float(y0)
+        self.exposure = float(exposure)
+        self.family = family
+        self.params = {k: float(v) for k, v in params.items()}
+
+    @property
+    def _degenerate(self) -> bool:
+        # No time on the clock since t0: the level is y0 exactly.
+        return self.exposure == 0.0
+
+    def _dist(self) -> Any:
+        if self.family == "normal":
+            return norm(loc=self.params["loc"], scale=self.params["scale"])
+        return gamma_dist(
+            a=self.params["shape"],
+            loc=self.y0,
+            scale=1.0 / self.params["rate"],
+        )
+
+    @keeps_query_shape
+    def sf(self, y: npt.ArrayLike) -> npt.NDArray:
+        """The probability the level is above ``y`` (``nan`` for a missing
+        ``y``).
+
+        Examples
+        --------
+        >>> from surpyval.degradation import GammaProcessModel
+        >>> model = GammaProcessModel(alpha=2.0, beta=4.0, threshold=100)
+        >>> model.level_at(200.0).sf([90.0, 100.0]).round(4)
+        array([0.98  , 0.4934])
+        """
+        y = np.asarray(y, dtype=float)
+        if self._degenerate:
+            out = np.where(y < self.y0, 1.0, 0.0)
+        else:
+            out = self._dist().sf(y)
+        return np.where(np.isnan(y), np.nan, out)
+
+    @keeps_query_shape
+    def ff(self, y: npt.ArrayLike) -> npt.NDArray:
+        """The probability the level is at or below ``y`` (``nan`` for a
+        missing ``y``).
+
+        Examples
+        --------
+        >>> from surpyval.degradation import GammaProcessModel
+        >>> model = GammaProcessModel(alpha=2.0, beta=4.0, threshold=100)
+        >>> round(float(model.level_at(200.0).ff(100.0)), 4)
+        0.5066
+        """
+        y = np.asarray(y, dtype=float)
+        if self._degenerate:
+            out = np.where(y < self.y0, 0.0, 1.0)
+        else:
+            out = self._dist().cdf(y)
+        return np.where(np.isnan(y), np.nan, out)
+
+    @keeps_query_shape
+    def df(self, y: npt.ArrayLike) -> npt.NDArray:
+        """The density of the level at ``y`` (``nan`` for a missing ``y``).
+        Refused at ``t = t0``, where the level is ``y0`` exactly and has
+        no density.
+
+        Examples
+        --------
+        >>> from surpyval.degradation import WienerProcessModel
+        >>> model = WienerProcessModel(mu=0.5, sigma=1.0, threshold=100)
+        >>> round(float(model.level_at(100.0).df(50.0)), 4)
+        0.0399
+        """
+        if self._degenerate:
+            raise ValueError(
+                "the level at t = t0 is y0 = {:.6g} exactly, so it has no "
+                "density; use sf or ff, or a time after t0".format(self.y0)
+            )
+        y = np.asarray(y, dtype=float)
+        return np.where(np.isnan(y), np.nan, self._dist().pdf(y))
+
+    @keeps_query_shape
+    def qf(self, p: npt.ArrayLike) -> npt.NDArray:
+        """The quantile of the level: the level below which it is with
+        probability ``p`` (``nan`` for a missing probability, and ``nan``
+        with a warning for one outside [0, 1]).
+
+        Examples
+        --------
+        >>> from surpyval.degradation import WienerProcessModel
+        >>> model = WienerProcessModel(mu=0.5, sigma=1.0, threshold=100)
+        >>> model.level_at(100.0).qf([0.05, 0.5, 0.95]).round(2)
+        array([33.55, 50.  , 66.45])
+        """
+        p = np.asarray(p, dtype=float)
+        p = np.where(warn_outside_unit_interval(p), np.nan, p)
+        if self._degenerate:
+            return np.where(np.isnan(p), np.nan, self.y0)
+        return self._dist().ppf(p)
+
+    def random(
+        self, size: int, random_state: int | None = None
+    ) -> npt.NDArray:
+        """
+        Draw levels at time ``t``.
+
+        The draws are ``qf(U)`` for uniform ``U``, so the same
+        ``random_state`` gives common random numbers across models.
+
+        Parameters
+        ----------
+        size : int
+            Number of draws.
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for reproducible draws. ``None`` (the
+            default) seeds from numpy's global RNG.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``size`` levels.
+
+        Examples
+        --------
+        >>> from surpyval.degradation import GammaProcessModel
+        >>> model = GammaProcessModel(alpha=2.0, beta=4.0, threshold=100)
+        >>> model.level_at(200.0).random(3, random_state=1).round(2)
+        array([100.06, 108.39,  94.7 ])
+        """
+        rng = as_generator(random_state)
+        return self.qf(rng.uniform(size=size))
+
+    def mean(self) -> float:
+        """The mean level at time ``t``.
+
+        Examples
+        --------
+        >>> from surpyval.degradation import GammaProcessModel
+        >>> model = GammaProcessModel(alpha=2.0, beta=4.0, threshold=100)
+        >>> model.level_at(200.0, y0=5.0, t0=10.0).mean()
+        100.0
+        """
+        if self.family == "normal":
+            return self.params["loc"]
+        return self.y0 + self.params["shape"] / self.params["rate"]
+
+    def _sd(self) -> float:
+        if self.family == "normal":
+            return self.params["scale"]
+        return float(np.sqrt(self.params["shape"]) / self.params["rate"])
+
+    def __repr__(self) -> str:
+        return (
+            "ProcessLevel(t={:.4g}, family={!r}, mean={:.4g}, "
+            "sd={:.4g})".format(self.t, self.family, self.mean(), self._sd())
+        )
+
+    def to_dict(self) -> dict:
+        """The distribution as a plain dict of native values, ready for
+        ``json.dumps``: ``t``, ``t0``, ``y0``, ``exposure``, ``family``,
+        ``params`` (a dict), ``mean`` and ``sd``.
+
+        Examples
+        --------
+        >>> from surpyval.degradation import WienerProcessModel
+        >>> model = WienerProcessModel(mu=0.5, sigma=1.0, threshold=100)
+        >>> model.level_at(100.0).to_dict()["params"]
+        {'loc': 50.0, 'scale': 10.0}
+        """
+        return {
+            "t": self.t,
+            "t0": self.t0,
+            "y0": self.y0,
+            "exposure": self.exposure,
+            "family": self.family,
+            "params": dict(self.params),
+            "mean": float(self.mean()),
+            "sd": float(self._sd()),
         }
 
 
@@ -1564,6 +1805,325 @@ class FirstPassageProcessModel(InformationCriteriaMixin, SerialisableMixin):
             )
         return ProcessRUL(med, (lo, hi), 0.0, alpha_ci)
 
+    # -- the degradation level ----------------------------------------------
+
+    def _level_start(self, y0: Any, t0: Any) -> tuple[float, float]:
+        """The starting level and its time, checked: the model's ``y0`` at
+        time 0 by default, or a level ``y0`` measured at age ``t0``."""
+        try:
+            t0 = float(t0)
+        except (TypeError, ValueError):
+            raise ValueError(
+                "t0 must be a number, the age at which the level y0 was "
+                "measured; got {!r}".format(t0)
+            ) from None
+        if not (np.isfinite(t0) and t0 >= 0.0):
+            raise ValueError(
+                "t0 must be a finite age at or after 0, the time of the "
+                "reading y0; got {!r}".format(t0)
+            )
+        if y0 is None:
+            if t0 != 0.0:
+                raise ValueError(
+                    "t0 = {:.6g} needs y0, the level measured at that age; "
+                    "without y0 the level is that of a new unit, from the "
+                    "model's y0 at t0 = 0".format(t0)
+                )
+            return self.y0, 0.0
+        try:
+            start = float(y0)
+        except (TypeError, ValueError):
+            raise ValueError(
+                "y0 must be a number, the level measured at t0; got "
+                "{!r}".format(y0)
+            ) from None
+        if not np.isfinite(start):
+            raise ValueError(
+                "y0 must be finite, the level measured at t0; got "
+                "{!r}".format(y0)
+            )
+        return start, t0
+
+    def _exposure(self, times: npt.NDArray, Z: Any, t0: float) -> npt.NDArray:
+        """The process-clock time from ``t0`` to each of ``times``: the
+        elapsed time, scaled by the stress along the clock of ``Z``."""
+        clock = self._clock(Z)
+        if clock is None:
+            return times - t0
+        tau = clock.tau(np.concatenate([[t0], times]))
+        if np.isnan(tau).any():
+            raise ValueError(
+                "Z must contain only finite values: the level of a unit "
+                "needs the stress it runs at, and it has a missing (nan) "
+                "value"
+            )
+        return tau[1:] - tau[0]
+
+    def _level(
+        self, t: float, t0: float, start: float, exposure: float
+    ) -> ProcessLevel:
+        """The level's distribution after ``exposure`` on the clock from
+        ``start``; set by each subclass."""
+        raise NotImplementedError
+
+    def _path_increments(
+        self, dtau: npt.NDArray, size: int, rng: np.random.Generator
+    ) -> npt.NDArray:
+        """Independent increments over the clock steps ``dtau``, an array
+        ``(size, len(dtau))``; set by each subclass."""
+        raise NotImplementedError
+
+    def level_at(
+        self,
+        t: float,
+        Z: Any = None,
+        *,
+        y0: float | None = None,
+        t0: float = 0.0,
+    ) -> ProcessLevel:
+        """
+        The distribution of the degradation level at time ``t``.
+
+        From new (the model's ``y0`` at time 0) by default, or given a
+        level ``y0`` measured at an earlier age ``t0``: the increments are
+        independent, so the level at ``t`` depends on the past only
+        through the reading at ``t0``. For a Wiener process the level is
+        normal, with mean ``y0 + mu * (t - t0)`` and variance ``sigma**2
+        * (t - t0)``; for a gamma process it is ``y0`` plus a gamma
+        variable of shape ``alpha * (t - t0)`` and rate ``beta``. With
+        stress, ``t - t0`` is replaced by the time on the process clock,
+        as in the life: the elapsed time multiplied by the acceleration
+        factor at ``Z``.
+
+        For a gamma process the path only rises, so the unit has failed
+        by ``t`` exactly when its level at ``t`` is at or past the
+        threshold: ``level_at(t).ff(threshold) == sf(t)``. For a Wiener
+        process the path can cross the threshold and come back below it,
+        so ``level_at(t).sf(threshold)`` is less than ``ff(t)``: the
+        level at ``t`` misses the units that crossed and fell back.
+
+        Parameters
+        ----------
+        t : float
+            The age, on the same time axis as the fit (from new), at or
+            after ``t0``.
+        Z : array like or StepSchedule, optional
+            For a model fitted with stress (required then): one stress
+            row, or a
+            :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`
+            from age 0, as for :meth:`ff` (for a model fitted with
+            ``fit_from_df``, a one-row DataFrame). A missing value is
+            refused.
+        y0 : float, optional
+            The level measured at age ``t0``. Default: the model's ``y0``
+            at age 0. Any finite level is taken, including one at or past
+            the threshold.
+        t0 : float, optional
+            The age of the reading ``y0``. Default 0; a later ``t0``
+            needs ``y0``.
+
+        Returns
+        -------
+        ProcessLevel
+            The level's distribution, with ``sf``, ``ff``, ``df``,
+            ``qf``, ``random``, ``mean`` and ``to_dict``.
+
+        Examples
+        --------
+        A gamma process whose wear fails the unit at 100. The chance a
+        new unit is past a preventive limit of 80 at 150 hours, and past
+        failure, which is the chance it has failed:
+
+        >>> from surpyval.degradation import GammaProcessModel
+        >>> model = GammaProcessModel(alpha=2.0, beta=4.0, threshold=100)
+        >>> level = model.level_at(150.0)
+        >>> round(float(level.sf(80.0)), 4), round(float(level.sf(100.0)), 4)
+        (0.1252, 0.0)
+        >>> bool(abs(level.ff(100.0) - model.sf(150.0)) < 1e-12)
+        True
+
+        A unit read at 60 at 100 hours, at 150 hours:
+
+        >>> round(float(model.level_at(150.0, y0=60.0, t0=100.0).sf(80.0)), 4)
+        0.9829
+        """
+        start, t0 = self._level_start(y0, t0)
+        if np.ndim(t) != 0 and np.size(t) != 1:
+            raise ValueError(
+                "level_at takes one time t; for the levels at several "
+                "times call it once per time, or draw whole paths with "
+                "random_path"
+            )
+        t = float(np.ravel(t)[0]) if np.ndim(t) else float(t)
+        if not np.isfinite(t):
+            raise ValueError(
+                "t must be a finite time, the age at which to describe the "
+                "level; got {!r}".format(t)
+            )
+        if t < t0:
+            raise ValueError(
+                "t = {:.6g} is before t0 = {:.6g}: the level is described "
+                "from the reading y0 at t0 onwards".format(t, t0)
+            )
+        exposure = float(self._exposure(np.array([t]), Z, t0)[0])
+        return self._level(t, t0, start, exposure)
+
+    def random_path(
+        self,
+        times: npt.ArrayLike,
+        size: int,
+        Z: Any = None,
+        random_state: Any = None,
+        *,
+        y0: float | None = None,
+        t0: float = 0.0,
+    ) -> npt.NDArray:
+        """
+        Draw degradation paths: the levels at ``times``.
+
+        Each path starts at ``y0`` at age ``t0`` and adds independent
+        increments between consecutive times, each distributed as the
+        process's increment over that step (normal for a Wiener process,
+        gamma for a gamma process), so the level at each time has the
+        distribution of :meth:`level_at`. Use it to simulate inspections:
+        the readings at the inspection times, from which a preventive
+        limit and the failure threshold can be checked.
+
+        Parameters
+        ----------
+        times : array_like
+            The ages, strictly increasing, at or after ``t0``.
+        size : int
+            The number of paths.
+        Z : array like or StepSchedule, optional
+            The stress, for a model fitted with it, as for
+            :meth:`level_at`.
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for reproducible draws. ``None`` (the
+            default) seeds from numpy's global RNG.
+        y0 : float, optional
+            The level at age ``t0``. Default: the model's ``y0`` at 0.
+        t0 : float, optional
+            The age the paths start at. Default 0; a later ``t0`` needs
+            ``y0``.
+
+        Returns
+        -------
+        numpy.ndarray
+            The levels, an array of shape ``(size, len(times))``: one row
+            per path.
+
+        Examples
+        --------
+        Three wear paths read every 50 hours:
+
+        >>> from surpyval.degradation import GammaProcessModel
+        >>> model = GammaProcessModel(alpha=2.0, beta=4.0, threshold=100)
+        >>> paths = model.random_path([50, 100, 150], 3, random_state=1)
+        >>> paths.shape
+        (3, 3)
+        >>> bool((paths[:, 1:] >= paths[:, :-1]).all())  # wear only rises
+        True
+        """
+        start, t0 = self._level_start(y0, t0)
+        times = np.asarray(times, dtype=float)
+        if times.ndim != 1 or times.size == 0:
+            raise ValueError(
+                "times must be a one-dimensional array of at least one age; "
+                "got shape {}".format(times.shape)
+            )
+        if not np.isfinite(times).all():
+            raise ValueError("times must be finite ages, with no nan or inf")
+        if np.any(np.diff(times) <= 0):
+            raise ValueError("times must be strictly increasing")
+        if times[0] < t0:
+            raise ValueError(
+                "the first time {:.6g} is before t0 = {:.6g}: paths start "
+                "at the reading y0 at t0".format(times[0], t0)
+            )
+        if isinstance(size, bool) or int(size) != size or size < 1:
+            raise ValueError(
+                "size must be a positive whole number of paths; got "
+                "{!r}".format(size)
+            )
+        exposure = self._exposure(times, Z, t0)
+        dtau = np.diff(np.concatenate([[0.0], exposure]))
+        rng = as_generator(random_state)
+        steps = self._path_increments(dtau, int(size), rng)
+        return start + np.cumsum(steps, axis=1)
+
+    # -- parameters (#116) ---------------------------------------------------
+
+    def with_params(self, params: npt.ArrayLike) -> FirstPassageProcessModel:
+        """
+        The same model with other parameters.
+
+        The threshold, starting level ``y0``, reference stress, covariate
+        names and unit are kept; the parameters change. Use it to turn
+        draws from :meth:`covariance` into models, to carry the fit's
+        parameter uncertainty into anything computed from it.
+
+        Parameters
+        ----------
+        params : array like
+            A flat vector in the order of :attr:`covariance_names`: the
+            process's two parameters, then, for a model fitted with
+            stress, its stress coefficients (as a draw from
+            :meth:`covariance` comes). They are checked as the model's
+            constructor checks them.
+
+        Returns
+        -------
+        WienerProcessModel or GammaProcessModel
+            A model built from parameters: it has no covariance or fitted
+            likelihood, since those belong to the fit of the original
+            parameters, so :meth:`covariance`, :meth:`cb`, :meth:`neg_ll`
+            and the information criteria refuse on it.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.degradation import WienerProcess
+        >>> rng = np.random.default_rng(1)
+        >>> t = np.tile(np.arange(0, 110, 10.0), 5)
+        >>> i = np.repeat(np.arange(5), 11)
+        >>> steps = rng.normal(0.5 * 10, 1.0 * np.sqrt(10), size=(5, 10))
+        >>> y = np.hstack([np.r_[0.0, np.cumsum(s)] for s in steps])
+        >>> model = WienerProcess.fit(t, y, i, threshold=100)
+        >>> draw = rng.multivariate_normal(model.params, model.covariance())
+        >>> other = model.with_params(draw)
+        >>> other.covariance_names == model.covariance_names
+        True
+        >>> bool(model.with_params(model.params).sf(200.0) == model.sf(200.0))
+        True
+
+        A model fitted with stress takes its stress coefficients last,
+        ``np.r_[model.params, model.gamma]``.
+        """
+        names = self.covariance_names
+        values = np.asarray(params, dtype=float)
+        if values.ndim != 1 or values.size != len(names):
+            raise ValueError(
+                "params must be a flat vector of {} values, in the order of "
+                "covariance_names {}; got shape {}".format(
+                    len(names), names, np.shape(params)
+                )
+            )
+        if not np.isfinite(values).all():
+            raise ValueError(f"params must be finite; got {values.tolist()}")
+        k = len(self.parameter_names)
+        cls: Any = type(self)
+        model = cls(
+            *values[:k],
+            self.threshold,
+            gamma=None if self.gamma is None else values[k:],
+            stress_ref=self.stress_ref,
+            y0=self.y0,
+        )
+        model.Z_cols = None if self.Z_cols is None else list(self.Z_cols)
+        model.unit = getattr(self, "unit", None)
+        return model
+
 
 # --------------------------------------------------------------------------
 # Wiener process
@@ -1639,6 +2199,8 @@ class WienerProcessModel(FirstPassageProcessModel):
     ) -> None:
         self.mu = float(mu)
         self.sigma = float(sigma)
+        if not np.isfinite(self.mu):
+            raise ValueError(f"the drift mu must be finite, got {mu!r}")
         if not (np.isfinite(self.sigma) and self.sigma > 0):
             # sigma = 0 is a deterministic path (first passage exactly at
             # threshold / mu), outside the Inverse-Gaussian family; it used
@@ -1746,6 +2308,29 @@ class WienerProcessModel(FirstPassageProcessModel):
     ) -> npt.NDArray:
         nu, lam = self._ig(distance)
         return rng.wald(nu, lam, size=size)
+
+    def _level(
+        self, t: float, t0: float, start: float, exposure: float
+    ) -> ProcessLevel:
+        # Normal: y0 + mu * dtau, variance sigma**2 * dtau.
+        return ProcessLevel(
+            t,
+            t0,
+            start,
+            exposure,
+            "normal",
+            {
+                "loc": start + self.mu * exposure,
+                "scale": self.sigma * np.sqrt(exposure),
+            },
+        )
+
+    def _path_increments(
+        self, dtau: npt.NDArray, size: int, rng: np.random.Generator
+    ) -> npt.NDArray:
+        return rng.normal(
+            self.mu * dtau, self.sigma * np.sqrt(dtau), size=(size, dtau.size)
+        )
 
     def __repr__(self) -> str:
         return (
@@ -2088,6 +2673,14 @@ class GammaProcessModel(FirstPassageProcessModel):
     ) -> None:
         self.alpha = float(alpha)
         self.beta = float(beta)
+        for name, value in (("alpha", self.alpha), ("beta", self.beta)):
+            if not (np.isfinite(value) and value > 0):
+                # A negative or zero shape rate or rate is not a gamma
+                # process (a draw from a covariance can give one).
+                raise ValueError(
+                    "the gamma process's {} must be positive and finite, "
+                    "got {!r}".format(name, value)
+                )
         self.threshold = float(threshold)
         self.params = np.array([self.alpha, self.beta])
         self._init_stress(gamma, stress_ref)
@@ -2162,6 +2755,26 @@ class GammaProcessModel(FirstPassageProcessModel):
         # Inverse-CDF sampling.
         u = rng.uniform(size=size)
         return self._quantiles(u, distance)
+
+    def _level(
+        self, t: float, t0: float, start: float, exposure: float
+    ) -> ProcessLevel:
+        # y0 plus Gamma(shape alpha * dtau, rate beta).
+        return ProcessLevel(
+            t,
+            t0,
+            start,
+            exposure,
+            "gamma",
+            {"shape": self.alpha * exposure, "rate": self.beta},
+        )
+
+    def _path_increments(
+        self, dtau: npt.NDArray, size: int, rng: np.random.Generator
+    ) -> npt.NDArray:
+        return rng.gamma(
+            self.alpha * dtau, 1.0 / self.beta, size=(size, dtau.size)
+        )
 
     def __repr__(self) -> str:
         return (

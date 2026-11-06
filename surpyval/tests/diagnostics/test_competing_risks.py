@@ -488,21 +488,6 @@ def test_restored_models_refuse(crossing, fine_gray_proportional):
         type(one).from_dict(one.to_dict()).diagnose()
 
 
-def test_parametric_competing_risks_refuses_saying_what_to_use():
-    rng = np.random.default_rng(0)
-    x = rng.weibull(1.5, 100)
-    e = rng.choice(["a", "b"], 100)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        model = sp.ParametricCompetingRisks.fit(x, e)
-    with pytest.raises(
-        NotImplementedError, match=r"models\[cause\]\.diagnose\(\)"
-    ) as info:
-        model.diagnose()
-    assert "CompetingRisks.fit" in str(info.value)
-    assert "#" not in str(info.value)
-
-
 def test_an_aliased_coefficient_refuses():
     rng = np.random.default_rng(0)
     n = 200

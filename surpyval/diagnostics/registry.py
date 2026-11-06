@@ -31,6 +31,9 @@ FAMILY_MODULES: tuple[str, ...] = (
     "surpyval.diagnostics.competing_risks",
     "surpyval.diagnostics.univariate",
     "surpyval.diagnostics.frailty",
+    "surpyval.diagnostics.bayes",
+    "surpyval.diagnostics.aalen_additive",
+    "surpyval.diagnostics.distributional",
 )
 
 
@@ -274,49 +277,11 @@ def _instance_of(path: str, **attributes: Any) -> Callable[[Any], bool]:
 
 
 _REG = "surpyval.univariate.regression."
-_CR = "surpyval.univariate.competing_risks."
 
 #: The families not yet built, each with what to check its models with
 #: meanwhile: their models have ``diagnose()``, which refuses until the
 #: family is registered (a registered family that applies is found first).
 PENDING: tuple[Pending, ...] = (
-    Pending(
-        "parametric competing-risks models (each cause's goodness of "
-        "fit, and the parametric incidences against the Aalen-Johansen "
-        "ones)",
-        _instance_of(_CR + "ParametricCompetingRisks"),
-        "Check each cause's model with model.models[cause].diagnose() "
-        "(a distribution fitted with the other causes censored), and "
-        "compare model.cif with the nonparametric CompetingRisks.fit of "
-        "the same data.",
-    ),
-    Pending(
-        "Aalen additive hazards models",
-        _instance_of(
-            _REG + "additive_hazards.aalen_additive." "AalenAdditiveModel"
-        ),
-        "Test whether each effect is constant with "
-        "model.constant_effects_test(), and look at the cumulative "
-        "coefficients with model.plot(); for a goodness-of-fit report, "
-        "fit AdditiveHazards (the Lin-Ying model), which has diagnose().",
-    ),
-    Pending(
-        "Bayesian fits",
-        _instance_of("surpyval.bayes.model.BayesianParametric"),
-        "Check the distribution with the maximum-likelihood fit of the "
-        "same data, model.mle.diagnose(), and the prior with "
-        "model.prior_check().",
-    ),
-    Pending(
-        "distributional regressions",
-        _instance_of(
-            _REG + "distributional.model." "DistributionalRegressionModel"
-        ),
-        "Test which parameters depend on the covariates with "
-        "model.likelihood_ratio_test(parameter=...), and check the "
-        "distribution and covariates with diagnose() on the PH or AFT "
-        "fit of the same data (WeibullPH, WeibullAFT, ...).",
-    ),
     Pending(
         "Buckley-James regressions",
         _instance_of(

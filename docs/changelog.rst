@@ -5,6 +5,55 @@ Unreleased
 
 **Added.**
 
+- ``diagnose()`` for distributional regressions (``WeibullDistributional``
+  and every ``Distributional(dist)``), which refused before: the
+  Cox-Snell residuals on exponential paper with an AIC screen against the
+  other prebuilt distributions fitted with the same covariates
+  (``distribution``), the likelihood-ratio test of a quadratic term for
+  each covariate on each parameter that holds it, drawn as score
+  residuals (``functional_form``), and one-step dfbeta per coefficient
+  (``influence``); a ``parameter`` column says which parameter a row is
+  about. Every censoring and truncation is supported; weighted and
+  penalised fits are refused, saying what to use. Checked against
+  flexsurv (the quadratic-term statistics and AICs to 1e-6, the Cox-Snell
+  residuals to 1e-4, with delayed entry too) and gamlss's normalised
+  quantile residuals (1e-5); the size and power study is
+  ``tests/calibration/test_size_distributional_diagnostics.py``.
+- ``ParametricCompetingRisks.fit`` takes left-censored (``c = -1``) and
+  interval-censored (``c = 2``) rows with their cause -- failures found at an
+  inspection -- each contributing :math:`\mathrm{CIF}_k(x_r) -
+  \mathrm{CIF}_k(x_l)` (over :math:`S(t_l)` with entry). Such rows tie the
+  causes together, so with any of them the causes are fitted jointly by
+  maximum likelihood, and ``covariance()`` is the inverse of the joint
+  Hessian, with terms between causes, which every ``cb`` (``cif``, ``sf``,
+  ``ff``, ``Hf``) and ``standard_errors`` use; ``fit_from_df`` takes the
+  windows as ``xl_col``/``xr_col``. Data without such rows fit cause by cause
+  exactly as before. The non-parametric ``CompetingRisks`` still refuses
+  them, now naming ``ParametricCompetingRisks``.
+- Delayed entry (left truncation) in the cause-specific Cox model:
+  ``CompetingRisksProportionalHazards.fit(x, Z, e, tl=entry)`` (and
+  ``fit_from_df(..., tl_col=)``, ``fit_penalised(..., tl=)``, and
+  ``fit(data)`` for a ``SurpyvalData`` with entry times) fits each cause's
+  ``CoxPH`` with the entry-adjusted risk sets, so the coefficients, the
+  baselines and the cumulative incidences count an item at risk only once
+  it has entered. Checked against R's ``coxph(Surv(tl, x, cause == k) ~
+  ...)`` per cause and the multi-state ``survfit`` on two data sets to
+  1e-6 (``reference_r_competing_entry.R``); with no entry after the first
+  time the fit is the one without ``tl``, to the last bit. ``FineGray``,
+  ``model="Fine-Gray"`` and ``gray_test`` refuse such entry times with a
+  message naming the cause-specific model and the Aalen-Johansen estimate
+  (they used to say only that the fit takes no left truncation, or not
+  take ``tl`` at all).
+- Delayed entry (left truncation) in the non-parametric competing-risks
+  estimate: ``CompetingRisks.fit(..., tl=)`` and ``fit_from_df(...,
+  tl_col=)`` count a unit at risk only between its entry and its exit
+  (``tl < t <= x``), and ``CompetingRisks.fit(data)`` now passes a
+  ``SurpyvalData``'s entry times through instead of refusing them. The
+  bounds carry over (Aalen's variance, and the robust one with weights).
+  The cumulative incidence and the robust standard errors match R's
+  ``survfit(Surv(entry, x, factor(e)) ~ 1)`` to 1e-10 on the PBC trial on
+  the age scale; a fit with every entry before the first time is
+  bit-identical to before. Right truncation is still refused.
 - ``Parametric.with_params`` takes the full vector of ``covariance()``'s
   rows, in the order of ``covariance_names`` (the distribution's parameters,
   then ``lfp_p`` and ``f0``), so a draw from the covariance of a
@@ -33,6 +82,14 @@ Unreleased
   R's ``flexsurvreg(Surv(start, stop, event) ~ ...)`` on the Stanford
   heart data, against the ordinary fit for constant covariates, and by a
   seeded simulation (``scripts/studies/tvc_diagnose_power.py``).
+- ``diagnose()`` for Bayesian fits (``fit_bayes``, by the grid, the
+  Laplace approximation or a closed form, and ``from_draws`` with data):
+  posterior predictive checks under the observed censoring and truncation
+  (a realised Anderson-Darling discrepancy and the failures in time bins),
+  the maximum-likelihood fit's goodness-of-fit tests, a prior-data
+  conflict check (Box's prior predictive check in its normal form) and the
+  grid's accuracy (a finer grid, or the grid for a Laplace fit). Before,
+  it refused, pointing to ``model.mle.diagnose()``.
 - ``covariance()`` and ``standard_errors()`` of a fitted ``Bernoulli``,
   ``FixedEventProbability`` or ``Binomial``: the variance of ``p``,
   :math:`\hat p (1 - \hat p) / N` from the events and trials (a Binomial's
@@ -44,6 +101,21 @@ Unreleased
   Clopper-Pearson default. Checked against R's ``binom.test``, ``qbeta``
   and ``binom::binom.confint`` to 1e-10; the coverage study
   (``scripts/studies/probability_coverage.py``) is on the Bernoulli page.
+- ``ParametricCompetingRisks`` carries its parameters' uncertainty:
+  ``params`` and ``parameter_names`` (``"<cause>: <name>"``),
+  ``covariance_names``, ``covariance()`` (the causes' covariances on the
+  diagonal, exact since the likelihood factorises by cause, ``lfp_p`` and
+  ``f0`` rows included) and ``standard_errors()``; ``with_params(params)``
+  rebuilds the model from a vector in that order (or the shorter
+  ``params``), so draws from the covariance can be propagated; and
+  ``cb(x, event=None, on="cif")`` gives Wald bounds on each cause's
+  cumulative incidence (logit scale) and on the all-cause ``sf``, ``ff``
+  and ``Hf`` (one bound on ``log H``), with a cause's net functions
+  bounded by its own model (likelihood-ratio and bootstrap too). Per-cause
+  fits and the cumulative incidence match R's ``flexsurv`` (estimates to
+  1e-6, covariance to 1e-4, CIF to 1e-6); a 1000-replicate study covers
+  0.936 to 0.962 at 95%
+  (``scripts/studies/parametric_competing_risks_cb_coverage.py``).
 - ``ParametricCompetingRisks`` gives the lifetime of the whole unit (its
   first failure from any cause): ``df(x)``, the all-cause density
   :math:`S(t)\sum_k h_k(t)`; ``mean()``, the all-cause MTTF by quadrature
@@ -79,6 +151,22 @@ Unreleased
   inverse Gaussian AFT and PH fits match a likelihood written with
   ``scipy.stats.invgauss``. The tests run the recipe cells from the page
   itself.
+- The degradation level of ``WienerProcessModel`` and ``GammaProcessModel``:
+  ``level_at(t, Z, y0=, t0=)`` is the distribution of the level at time
+  ``t``, from new or from a reading ``y0`` at an age ``t0`` (a
+  ``ProcessLevel`` with ``sf``, ``ff``, ``df``, ``qf``, ``random``, ``mean``
+  and ``to_dict``; normal for a Wiener process, ``y0`` plus a gamma variable
+  for a gamma process, on the stress clock with ``Z``), and
+  ``random_path(times, size, Z, random_state=, y0=, t0=)`` draws the levels
+  at several times from independent increments, for simulating inspections
+  against a preventive limit. Matches scipy's normal and gamma to 1e-12; for
+  the gamma process ``level_at(t).ff(threshold)`` is ``sf(t)`` exactly. Both
+  models also gain ``with_params(params)``, a model rebuilt from a flat
+  vector in the order of ``covariance_names`` (no covariance or likelihood),
+  so draws from ``covariance()`` become models; the spread of ``ff`` over
+  such draws matches the delta-method standard error of ``cb`` to within 1%.
+  ``GammaProcessModel`` now refuses a non-positive ``alpha`` or ``beta`` and
+  ``WienerProcessModel`` a non-finite ``mu``.
 - ``Turnbull.fit(..., w=)``: the Turnbull estimate with sampling weights,
   for interval and left censored and truncated data. The estimate is the
   weighted non-parametric MLE (each row counts ``n w`` in the EM; checked
@@ -411,6 +499,88 @@ Unreleased
   the likelihood-ratio and bootstrap bounds. ``parameter_names``,
   ``hess_inv`` (the distribution's block only) and the saved dictionary
   are unchanged.
+- ``diagnose()`` for Aalen's additive hazards model (``AalenAdditive``),
+  which refused before. ``constant_effects`` reports, per covariate, the
+  model's ``constant_effects_test()`` (``timereg::aalen``'s
+  Kolmogorov-Smirnov statistic, with ``n_boot`` resampled processes and
+  ``random_state``), with the cumulative coefficients and their bands as
+  plots; its rows never fail, since the model allows effects that change,
+  and the advice points to ``AdditiveHazards`` when none does.
+  ``non_negative_hazard`` tests whether any observed unit's estimated
+  cumulative hazard falls (a negative hazard), by the largest fall in
+  standard errors against the falls of the resampled processes, and
+  advises ``CoxPH`` when one does. The statistics match timereg 2.0.7 to
+  1e-8 where both anchor the line at the same time. In simulations
+  (``tests/calibration/test_diagnose_aalen.py``) the constant-effects
+  rows rejected 3-3.5% of constant effects at the 5% level with 300
+  units, the falling-hazard test none of 200 data sets with positive
+  hazards and 90% of those with negative fitted hazards; the power
+  against an effect of 0.5 falling to 0.1 was 0.34 with 500 units.
+  Weighted fits are refused.
+- Regressions as plain life models, and their parameter uncertainty
+  carried along. ``model.at(Z)`` is the lifetime distribution of a unit
+  with one covariate row (``LifeAtCovariates``): ``sf``, ``ff``, ``df``,
+  ``hf``, ``Hf``, ``qf``, ``random``, ``mean``, ``rmst`` and ``cb`` taking
+  times only, each exactly the regression's at ``Z``, on every parametric
+  regression, ``CoxPH`` (with ``stratum=``) and the semi-parametric
+  proportional odds and additive hazards models; ``random(n)`` is
+  ``qf(U)``, as ``Parametric.random``. ``with_params(params)``,
+  ``covariance_names`` and ``_estimates()`` on the parametric regressions
+  (PH, AFT, PO, AH, accelerated life, Royston-Parmar, distributional) and
+  the semi-parametric ``ProportionalOdds`` and ``AdditiveHazards``
+  models: a model at a flat parameter vector in the order of
+  ``covariance()``'s rows, keeping the formula, centre and fixed
+  parameters, without data or covariance (the semi-parametric baseline is
+  re-estimated at the new coefficients). At R's estimate a Weibull AFT
+  and PH at fixed covariates match flexsurv's ``summary(newdata=)`` and
+  ``survreg``'s predicted quantiles to 1e-9. The semi-parametric
+  ``ProportionalOdds`` and ``AdditiveHazards`` models gain
+  ``random(size, Z)``.
+- ``RoystonParmarModel.with_params(params)``: the same spline (knots,
+  scale, unit) at other coefficients, given in the order of the new
+  ``covariance_names`` (``gamma_0``, ``gamma_1``, ...), so a draw from
+  ``covariance()`` becomes a model and the coefficients' uncertainty can be
+  propagated. The model returned has no data or covariance: ``cb``,
+  ``standard_errors``, ``neg_ll`` and the information criteria refuse on
+  it. Coefficients whose spline falls somewhere in log time (a decreasing
+  cumulative hazard) are refused with the time where it does. Checked
+  against flexsurv's ``psurvspline`` family at given coefficients on all
+  three scales to 1e-12; the 2.5% and 97.5% points of ``sf`` over 4000
+  draws match the Wald band of ``cb`` to 0.0013.
+- Recurrent models can be stepped forward one failure at a time.
+  ``RenewalModel`` (``GeneralizedRenewal``, ``GeneralizedOneRenewal``,
+  ``ARA``, ``ARI``) gains ``next_failure_qf(p)``, the inverse of
+  ``next_failure_sf`` (on the cumulative hazard, so the upper tail keeps its
+  digits), ``next_failure_random(size)`` (``next_failure_qf`` at uniform
+  draws), ``states()`` (the units' states, from the fitted items, an
+  ``age`` or known ``failures``) and ``advance(states, x)``, the state after a
+  failure at ``x`` and its repair by the fitted rule (``failed=False`` to run
+  on); the four next-failure methods take ``states=``. A loop of draws and
+  advances reproduces ``time_terminated_simulation`` and
+  ``count_terminated_simulation`` in distribution (seeded two-sample tests on
+  counts and event times, every family). ``ParametricRecurrenceModel``
+  (``HPP``, ``CrowAMSAA``, ``Duane``, ``CoxLewis``) has the same
+  ``next_failure_sf``, ``next_failure_hf``, ``next_failure_qf`` and
+  ``next_failure_random`` from an ``age``. Both kinds gain
+  ``covariance_names`` and ``with_params(params)``, the same model at a flat
+  parameter vector in that order (a draw from ``covariance()``); draws
+  through it spread as the delta method says (within 5%).
+- ``ParametricCompetingRisks.diagnose()``, which refused before. Cause by
+  cause, it tests the Cox-Snell residuals of the cause's distribution
+  (its cumulative hazard over each unit's time at risk, from entry, with
+  the other causes censored) against the unit exponential, by the
+  univariate distributions' bootstrap goodness-of-fit tests; screens the
+  univariate alternatives by AIC; and tests the largest gap between the
+  model's cumulative incidence and the Aalen-Johansen estimate
+  (``CompetingRisks.fit``) by parametric bootstrap (``n_boot=``,
+  ``random_state=``), drawn with the Aalen-Johansen band. The advice says
+  which cause to refit with which distribution (``dist={cause: ...}``,
+  or ``from_fitted``), or to use the non-parametric estimate. With
+  delayed entry the incidence rows are not computed yet. Size and power:
+  ``tests/calibration/test_size_parametric_competing_risks_diagnostics.py``
+  (200 replicates of n = 100 at 10%: the right models rejected 7-10.5% of
+  the time; a wrong distribution for one cause was flagged for that cause
+  80% of the time and for the right cause 5.5%).
 
 **Changed.**
 
@@ -620,6 +790,15 @@ Unreleased
 
 **Fixed.**
 
+- A penalised fit (``fit_penalised`` of every model) whose search stops
+  short of the minimum now searches a second time, from the unpenalised
+  fit, and keeps the better answer. A Weibull AFT lasso fit on the Rossi
+  data (``fin``, ``age``, ``prio``, ``l1_ratio=1``, penalty 0.00068)
+  stopped near its start, "unverified", with a penalised objective of
+  1.5892, above the 1.5811 reached at the larger penalty 0.0038; it now
+  reaches 1.5792 and is verified. The second search runs only when the
+  first fails its optimality check, so fits that converged are unchanged
+  (to the last digit) and cost no more.
 - ``robust_covariance(cluster=...)`` (and ``robust_standard_errors``,
   ``summary(robust=True, cluster=...)``) on a distributional regression
   (``WeibullDistributional`` and the others) matched the cluster labels
@@ -664,6 +843,15 @@ Unreleased
 
 **Internal.**
 
+- The Bayesian calibration study's left-truncated scenario draws its
+  simulated lifetimes on the survival scale (the cumulative hazard above
+  the entry age), so a true model whose life is far shorter than the entry
+  age gives a large finite time instead of ``inf`` (which the fit refused,
+  failing one replicate). Same seeds and uniforms: every other replicate's
+  data agree to 3e-11. Rerun once: no fit refuses and the ranks are
+  uniform, but the 95% coverage is 0.972 (``alpha``) and 0.970 (B10)
+  against 0.95 +- 0.02, kept as a strict expected failure with the numbers;
+  1,000 fresh replicates give 0.958, 0.937 and 0.933.
 - The penalised fits (``fit_penalised`` on ``CoxPH`` and on the
   parametric PH, AFT and PO families) now go through one shared fit
   helper and one model mixin, so further models can take a penalty
@@ -686,6 +874,13 @@ Unreleased
   ``MethodArray``, ``ArrayMethod``, ``RenamedToMethod``, ``MadePrivate``),
   and a few private helpers with no callers. ``renamed_arguments``,
   ``RenamedAttribute`` and ``renamed_name`` stay for the next rename.
+- The mutation run of the modules new in 0.26 is complete (all 5,296
+  mutants; about 81% killed, about 90% without the equivalent ones), with new
+  tests of the Bayesian grid's posterior quantiles against closed forms
+  and a brute-force posterior: reliabilities that underflow to 0 or
+  round to 1 at some of the posterior's points, and a mean that is
+  infinite for part of it. ``scripts/mutation/run.sh`` pins pytest below 9,
+  which breaks mutmut 3.8.
 
 v0.26 (31 October 2026)
 -----------------------

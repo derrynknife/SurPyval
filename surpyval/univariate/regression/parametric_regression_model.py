@@ -48,6 +48,7 @@ from ._prediction import (
     quantiles_by_inversion,
 )
 from ._tvc_evaluation import TVCEvaluationMixin
+from .life_at import AtCovariatesMixin, checked_params, rebuilt
 from .regression_data import (
     check_covariate_width,
     prepare_Z,
@@ -91,6 +92,7 @@ _SERIALISABLE_REG_NAMES = {
 
 
 class ParametricRegressionModel(
+    AtCovariatesMixin,
     PenalisedModelMixin,
     ConditionalSurvivalMixin,
     RestrictedMeanMixin,
@@ -1105,11 +1107,17 @@ class ParametricRegressionModel(
             + "\nKind                : {kind}"
             + "\nDistribution        : {dist}"
             + "\nRegression Model    : {reg_model}"
-            + "\nFitted by           : MLE"
+            + "\nFitted by           : {method}"
         ).format(
             kind=self.kind,
             dist=self.distribution.name,
             reg_model=self.reg_model.name,
+            # A model built by with_params was not fitted
+            method=(
+                "given parameters"
+                if self.maximum == "not applicable"
+                else "MLE"
+            ),
         )
         data_line = self._data_repr()
         if data_line:
@@ -1973,8 +1981,9 @@ class ParametricRegressionModel(
         if getattr(self, "data", None) is None:
             raise ValueError(
                 "{} needs the data the model was fitted to, which a model "
-                "restored with from_dict / from_json does not carry. Call it "
-                "on the fitted model, or refit.".format(what)
+                "restored with from_dict / from_json, or built with "
+                "with_params, does not carry. Call it on the fitted model, "
+                "or refit.".format(what)
             )
 
     # neg_ll/aic/bic/aic_c come from InformationCriteriaMixin.
@@ -2024,6 +2033,171 @@ class ParametricRegressionModel(
             k for k, _ in sorted(phi_map.items(), key=lambda kv: kv[1])
         ]
         return dist_names + phi_names
+
+    @property
+    def covariance_names(self) -> list[str]:
+        """
+        The names of the rows (and columns) of :meth:`covariance`, in its
+        order: :attr:`parameter_names`, the distribution's parameters then
+        the covariate coefficients (or life-model parameters), fixed
+        parameters included (with zero rows) and an accelerated life
+        model's placeholder for its life parameter too. A draw from
+        :meth:`covariance` in this order is what :meth:`with_params`
+        takes.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import WeibullPH
+        >>> x = np.array([1.0, 2, 3, 4, 5, 6, 7, 8])
+        >>> Z = np.array([0.0, 1, 0, 1, 0, 1, 1, 0])
+        >>> WeibullPH.fit(x=x, Z=Z).covariance_names
+        ['alpha', 'beta', 'coef_0']
+        """
+        return list(self.parameter_names)
+
+    def _estimates(self) -> npt.NDArray:
+        """The fitted parameters in the order of
+        :attr:`covariance_names` (``params``; an aliased coefficient is
+        ``nan``)."""
+        return np.array(self.params, dtype=float)
+
+    #: What a model built by :meth:`with_params` does not keep: the data,
+    #: the fit and everything computed from them.
+    _FIT_STATE = (
+        "data",
+        "res",
+        "fun",
+        "_neg_ll",
+        "_aic",
+        "_bic",
+        "_aic_c",
+        "_ic_n",
+        "_ic_n_total",
+        "n_subjects",
+        "_data_summary",
+        "_restored_covariance",
+        "_restored_inference",
+        "_fit_centring",
+        "_information",
+        "_covariance_cache",
+        "_lr_searches",
+        "_bootstrap_refits",
+        "penalty",
+        "weighted",
+        "effective_n",
+        "_restored",
+    )
+
+    def _check_with_params(self, values: npt.NDArray, held: set) -> None:
+        """Refuse parameters that are not finite or are outside their
+        support (a draw from the covariance can put a positive one below
+        0): the model would predict ``nan`` there without a word."""
+        names = self.covariance_names
+        bounds = self._parameter_bounds()
+        bad = []
+        for i, (lower, upper) in enumerate(bounds):
+            if i in held:
+                continue
+            v = values[i]
+            if not np.isfinite(v):
+                bad.append(f"{names[i]} = {v} (not finite)")
+            elif (lower is not None and v <= lower) or (
+                upper is not None and v >= upper
+            ):
+                bad.append(
+                    "{} = {:.6g} (outside ({}, {}))".format(
+                        names[i], v, lower, upper
+                    )
+                )
+        if bad:
+            raise ValueError(
+                "with_params got parameters the model is not defined at: "
+                "{}. A draw from covariance() can fall outside a "
+                "parameter's support where its standard error is large; "
+                "draw on a scale that keeps it inside (the log of a "
+                "positive parameter), or fit with center=True, whose "
+                "baseline parameters are better determined.".format(
+                    "; ".join(bad)
+                )
+            )
+
+    def with_params(self, params: npt.ArrayLike) -> ParametricRegressionModel:
+        """
+        The same regression with other parameters.
+
+        The structure is kept: the distribution (a spline baseline's
+        knots), the family and covariate link (or life model), the
+        covariate names, formula and its encoding of a DataFrame, the
+        centre a baseline is at, the parameters held fixed and the
+        unit. So ``sf(x, Z)`` on the result takes the same raw
+        covariates as the fitted model. Use it to turn a draw from
+        :meth:`covariance` into a model, and so carry the fit's
+        parameter uncertainty into anything computed from it.
+
+        Parameters
+        ----------
+        params : array like
+            Every parameter, in the order of :attr:`covariance_names`
+            (that of ``params``): a draw from :meth:`covariance`, or
+            :meth:`_estimates` to rebuild the fitted model. The entries of
+            a parameter held fixed in the fit (and of an accelerated life
+            model's placeholder for its life parameter) are ignored, the
+            fixed value kept; an aliased coefficient stays ``nan`` (its
+            effect taken as 0), as the fit had it.
+
+        Returns
+        -------
+        ParametricRegressionModel
+            A model built from parameters, of the same class: it has no
+            data, covariance or fitted likelihood, since those belong to
+            the fit of the original parameters, so the methods that need
+            them (``cb``, ``param_cb``, ``plot``, ``aic``, ...) refuse,
+            saying so. A fit with weights ``w`` gives a model without
+            them: just the distribution at those parameters.
+
+        Raises
+        ------
+        ValueError
+            For a vector of the wrong length, naming the parameters; or a
+            parameter that is not finite or is outside its support (a
+            negative Weibull scale, say).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> same = model.with_params(model._estimates())
+        >>> bool(same.sf(5, [1]) == model.sf(5, [1]))
+        True
+        >>> draw = np.random.default_rng(1).multivariate_normal(
+        ...     model._estimates(), model.covariance()
+        ... )
+        >>> other = model.with_params(draw)
+        >>> other.params.round(3)
+        array([9.375, 1.629, 0.702])
+        """
+        names = self.covariance_names
+        values = checked_params(params, names)
+        fitted = np.array(self.params, dtype=float)
+        held = [
+            i
+            for i, name in enumerate(names)
+            if name in self.fixed or np.isnan(fitted[i])
+        ]
+        values[held] = fitted[held]
+        self._check_with_params(values, set(held))
+        out = rebuilt(self, self._FIT_STATE)
+        out.params = values
+        out.dist_params = values[: self.k_dist]
+        out.phi_params = values[self.k_dist :]
+        out.fixed = dict(self.fixed)
+        out.maximum = "not applicable"
+        return out
 
     # -- plot_partial_effects (PartialEffectsMixin) ------------------------
 
