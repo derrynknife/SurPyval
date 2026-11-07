@@ -184,25 +184,115 @@ def test_incidence_bootstrap_is_seeded(right):
     assert set(one["p"]) == {"a", "b"}
 
 
-def test_delayed_entry_checks_each_cause_from_entry():
+def test_delayed_entry_checks_each_cause_and_the_incidence_from_entry():
+    # Null data (each cause fitted with its true distribution) with delayed
+    # entry: the incidence is compared with the Aalen-Johansen estimate
+    # that takes the entry times, and nothing fails.
     x, e = _data(3, n=150)
     tl = np.where(np.arange(x.size) % 3 == 0, 0.3 * x, 0.0)
-    model = _fit(x, e, tl=tl)
+    model = _fit(x, e, tl=tl, dist={"a": sp.Weibull, "b": sp.LogNormal})
     d = model.diagnose(n_boot=19, random_state=0)
     gof = d.table[d.table["check"] == "goodness_of_fit"]
     assert np.isfinite(gof["p"]).all()
     incidence = d.table[d.table["check"] == "incidence"]
+    assert np.isfinite(incidence["p"]).all()
+    assert (incidence["verdict"] != "fail").all(), incidence
+    assert any("delayed entry" in note for note in d.notes)
+    assert not any("not computed" in note for note in d.notes)
+    # The observed gaps are those against the estimate with entry
+    data = pcr_data(model)
+    out = incidence_distance(
+        model, data["x"], data["e"], data["c"], data["n"], tl=data["t"][:, 0]
+    )
+    rows = incidence.set_index("cause")
+    for k in model.causes:
+        assert rows.loc[k, "statistic"] == out[k]["D"]
+
+
+def test_incidence_with_late_entry_is_conditional_on_the_first_entry():
+    # Every unit enters at 2 or later, so the Aalen-Johansen estimate is
+    # conditional on surviving to 2. For exponential causes (rates 0.1 and
+    # 0.05) the conditional incidence is in closed form, (l_k / l) (1 -
+    # exp(-l (t - 2))), and the gap is taken against it.
+    model = PCR.from_fitted(
+        {
+            "a": sp.Exponential.from_params([0.1]),
+            "b": sp.Exponential.from_params([0.05]),
+        }
+    )
+    x = np.array([3.0, 4, 5, 6, 8, 9, 11, 12])
+    e = np.array(["a", "b", "a", None, "a", "b", None, "a"], dtype=object)
+    tl = np.array([2.0, 2, 2.5, 3, 2, 4, 2, 2])
+    out = incidence_distance(model, x, e, tl=tl)
+    aj = sp.CompetingRisks.fit(x, e, tl=tl)
+    times = np.unique(np.r_[x[e != None], x.max()])  # noqa: E711
+    for k, rate in (("a", 0.1), ("b", 0.05)):
+        exact = rate / 0.15 * (1 - np.exp(-0.15 * (times - 2.0)))
+        step = aj.cif(times, k)
+        before = np.r_[0.0, step[:-1]]
+        gaps = np.maximum(np.abs(exact - step), np.abs(exact - before))
+        assert_allclose(out[k]["D"], gaps.max(), atol=1e-7)
+        assert out[k]["time"] == times[np.argmax(gaps)]
+    # Without the entry times the unconditional incidence is used
+    plain = incidence_distance(model, x, e)
+    assert plain["a"]["D"] != out["a"]["D"]
+
+
+def test_delayed_entry_bootstrap_draws_beyond_entry():
+    x, e = _data(5, n=120)
+    tl = np.where(np.arange(x.size) % 2 == 0, 0.5 * x, 0.0)
+    model = _fit(x, e, tl=tl, dist={"a": sp.Weibull, "b": sp.LogNormal})
+    one = incidence_bootstrap(model, 9, random_state=3)
+    two = incidence_bootstrap(model, 9, random_state=3)
+    assert_allclose(one["draws"], two["draws"])
+    assert one["failed"] == 0
+    assert np.isfinite(one["draws"]).all()
+
+
+def test_right_truncation_is_not_compared_with_aalen_johansen():
+    x, e = _data(6, n=100)
+    keep = x < 20
+    x, e = x[keep], e[keep]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        fits = {
+            k: sp.Weibull.fit(x, c=np.where(e == k, 0, 1), tr=20.0)
+            for k in ("a", "b")
+        }
+    model = PCR.from_fitted(fits)
+    d = model.diagnose(n_boot=9, random_state=0)
+    incidence = d.table[d.table["check"] == "incidence"]
     assert incidence["p"].isna().all()
-    assert (incidence["verdict"] == "warn").all()
-    assert incidence["detail"].str.contains("delayed entry").all()
-    assert any("not computed" in note for note in d.notes)
-    with pytest.raises(ValueError, match="delayed entry"):
+    assert incidence["detail"].str.contains("right truncation").all()
+    with pytest.raises(ValueError, match="right truncation"):
         incidence_bootstrap(model, 9)
 
 
+def test_a_joint_fit_refuses_with_its_own_message():
+    # Left- or interval-censored rows: the causes are fitted jointly and
+    # keep no data; diagnose() says so, and what to use instead.
+    x = [[2, 2], [2, 4], [4, 6], [5, 5], [6, 8], [7, 7], [8, 10], [9, 9]]
+    x += [[10, 10], [12, 12]]
+    e = ["a", "b", "a", "b", "a", "a", "b", None, "a", None]
+    c = [-1, 2, 2, 0, 2, 0, 2, 1, 0, 1]
+    joint = _fit(x, e, c=c, dist=sp.Exponential)
+    with pytest.raises(NotImplementedError) as info:
+        joint.diagnose()
+    text = str(info.value)
+    assert "left- or interval-censored rows (c = -1 or 2)" in text
+    assert "does not yet check" in text
+    assert "Turnbull.fit" in text and "aic()" in text
+    assert "from_dict" not in text
+    # Restored, the same model gets the restored model's message
+    with pytest.raises(ValueError, match="from_dict") as info:
+        sp.from_dict(joint.to_dict()).diagnose()
+    assert "interval" not in str(info.value)
+
+
 def test_restored_and_assembled_models_refuse(right):
-    with pytest.raises(ValueError, match="from_dict"):
+    with pytest.raises(ValueError, match="from_dict") as info:
         sp.from_dict(right.to_dict()).diagnose()
+    assert "interval" not in str(info.value)
     # Causes fitted to different data
     x, e = _data(4, n=80)
     other = _fit(x, e)

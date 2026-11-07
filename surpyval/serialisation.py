@@ -187,6 +187,11 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # robust covariance is under ``"covariance"``, where v0.26 wrote the
 # robust block as ``"hess_inv"`` and its bounds read it there; a v0.26
 # reader would bound the model with the (smaller) inverse Hessian.
+# And by a ParametricCompetingRisks model fitted jointly (left- or
+# interval-censored rows): its ``"joint"`` entry holds the covariance over
+# every cause's parameters and the joint likelihood, which a v0.26 reader
+# would silently drop, bounding the incidences without the terms between
+# causes.
 # Every other document keeps the schema it had.
 SCHEMA_VERSION = 4
 
@@ -206,6 +211,10 @@ WEIGHTED_MODEL_SCHEMA = 4
 # carry their signs: both are v0.27's schema 4.
 _SCHEMA_STRATIFIED = 4
 _SCHEMA_SIGNED = 4
+
+# The schema of a jointly fitted ParametricCompetingRisks model (its
+# ``"joint"`` entry): v0.27's schema 4.
+_SCHEMA_JOINT = 4
 
 # The oldest version whose readers restore a document with neither of
 # those exactly as this SurPyval does.
@@ -702,6 +711,8 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
         "coefficient_signs" in d for d in dicts
     ):
         return _SCHEMA_SIGNED
+    if any(_is_joint(d) for d in dicts):
+        return _SCHEMA_JOINT
     if any(d.get("weighted") is True for d in dicts):
         return WEIGHTED_MODEL_SCHEMA
     if _SCHEMA_WEIGHTED in stamped_versions or any(
@@ -728,6 +739,15 @@ def _is_stratified(d: dict) -> bool:
     return (
         d.get("model") == "SemiParametricRegressionModel"
         and d.get("strata") is not None
+    )
+
+
+def _is_joint(d: dict) -> bool:
+    """Whether ``d`` is a ParametricCompetingRisks model fitted jointly
+    (its ``"joint"`` entry)."""
+    return (
+        d.get("model") == "ParametricCompetingRisks"
+        and d.get("joint") is not None
     )
 
 

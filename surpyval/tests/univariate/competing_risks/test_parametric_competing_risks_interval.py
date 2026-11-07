@@ -370,6 +370,43 @@ def test_serialisation_keeps_the_joint_fit(model):
     np.testing.assert_array_equal(again.covariance(), model.covariance())
 
 
+def test_a_joint_save_is_schema_4(model):
+    # The joint fit's dict carries schema 4 (v0.27), and its covariance,
+    # with the terms between causes, comes back exactly through JSON.
+    d = json.loads(json.dumps(model.to_dict()))
+    assert d["schema"] == 4
+    assert "joint" in d
+    back = sp.from_dict(d)
+    cov = model.covariance()
+    assert np.any(cov[:2, 2:] != 0)
+    np.testing.assert_array_equal(back.covariance(), cov)
+
+
+def test_an_ordinary_save_keeps_its_schema():
+    # A fit cause by cause has no "joint" entry and keeps the schema older
+    # readers load: its dict is exactly the one written before.
+    model = ParametricCompetingRisks.fit(X, E, dist=Weibull)
+    d = model.to_dict()
+    assert "joint" not in d
+    assert d["schema"] == 1
+    assert json.loads(json.dumps(d)) == d
+
+
+def test_a_reader_of_schema_3_refuses_a_joint_save(model, monkeypatch):
+    # 0.26 reads up to schema 3: it refuses a joint fit saved now, asking
+    # for an upgrade, rather than drop the covariance between causes.
+    from surpyval import serialisation
+
+    d = model.to_dict()
+    ordinary = ParametricCompetingRisks.fit(X, E, dist=Weibull).to_dict()
+    monkeypatch.setattr(serialisation, "SCHEMA_VERSION", 3)
+    with pytest.raises(ValueError, match="Upgrade surpyval") as info:
+        sp.from_dict(d)
+    assert "reads schema versions up to 3" in str(info.value)
+    # The ordinary save is still read there
+    assert isinstance(sp.from_dict(ordinary), ParametricCompetingRisks)
+
+
 def test_fit_from_df_with_windows(model):
     x, c = _inspected()
     df = pd.DataFrame({"lo": x[:, 0], "hi": x[:, 1], "e": E, "c": c})
