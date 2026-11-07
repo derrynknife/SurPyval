@@ -29,9 +29,11 @@ from surpyval.utils.covariates import (
     coefficient_floor,
     coefficient_names,
 )
+from surpyval.utils.no_maximum import quiet_maximum_warnings
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
+from surpyval.utils.weights import SMALL_EFFECTIVE_SIZE, effective_sample_size
 
 from .._aliasing import (
     aliased_columns,
@@ -196,6 +198,51 @@ def _difference_hessian(
         down = np.asarray(gradient(x - e), dtype=float)
         H[:, i] = (up - down) / (2.0 * h[i])
     return 0.5 * (H + H.T)
+
+
+class _LevelFitUnusable(ValueError):
+    """The distribution fitted at one stress level is no start."""
+
+
+def _level_params(dist: Any, level_data: SurpyvalData) -> npt.NDArray:
+    """The parameters of ``dist`` fitted to the rows at one stress level,
+    for the fit's default start, or an exception where that fit is no
+    start (the caller then starts from the level's mean time).
+
+    The fit is refused where it reaches no verified maximum, where numpy
+    meets a floating-point error (an overflow, a division by zero, an
+    invalid value) it would otherwise warn of, where its parameters are
+    not finite, and where weights leave the level fewer effective units
+    than :data:`~surpyval.utils.weights.SMALL_EFFECTIVE_SIZE`. These are
+    the cases in which the fit used to warn, and every warning was turned
+    into an error with ``warnings.filterwarnings("error")``. That filter
+    is process-wide: while one thread fitted, a warning raised in any
+    other thread became an exception there. Each check here is local to
+    the fit: numpy's error state and the maximum warnings' switch are
+    per thread (context variables), and the rest are read off the data
+    and the model.
+    """
+    w = getattr(level_data, "w", None)
+    if w is not None and (
+        effective_sample_size(level_data.n, w) < SMALL_EFFECTIVE_SIZE
+    ):
+        raise _LevelFitUnusable("few effective units at the level")
+    # numpy's settings with each "warn" made "raise"; "ignore" (an
+    # underflow, by default) stays as it is.
+    raising = {
+        k: "raise" if v == "warn" else v for k, v in np.geterr().items()
+    }
+    with np.errstate(**raising), quiet_maximum_warnings():
+        model = dist.fit_from_surpyval_data(level_data)
+    params = np.asarray(model.params, dtype=float)
+    if getattr(model, "maximum", "verified") not in (
+        "verified",
+        "not applicable",
+    ):
+        raise _LevelFitUnusable(f"the level's fit is {model.maximum!r}")
+    if not np.all(np.isfinite(params)):
+        raise _LevelFitUnusable("the level's parameters are not finite")
+    return params
 
 
 class _LifeOfLogScale:
@@ -800,28 +847,23 @@ class ParameterSubstitutionFitter(
 
             for s in np.unique(data.Z, axis=0):
                 mask = (data.Z == s).all(axis=1)
-                with warnings.catch_warnings():
-                    warnings.filterwarnings("error")
-                    try:
-                        params_at_s = self.dist.fit_from_surpyval_data(
-                            data[mask]
-                        ).params
-                        params_at_Z.append(params_at_s)
-                    except Exception:
-                        # The mean time at the level is a life: its life
-                        # parameter is that life on the parameter's scale
-                        # (a LogNormal's mu its log, a Gamma's beta its
-                        # reciprocal). Taken as the parameter itself, a
-                        # LogNormal on a continuous stress, with one row a
-                        # level, had lives of exp(time) and a log-likelihood
-                        # not finite at the start (#621).
-                        params_at_s = np.copy(base_line_dist_init)
-                        params_at_s[life_parameter_idx] = self.param_transform(
-                            x_arr[mask].mean()
-                        )
-                        params_at_Z.append(params_at_s)
-                    finally:
-                        stress_data.append(s)
+                try:
+                    params_at_Z.append(_level_params(self.dist, data[mask]))
+                except Exception:
+                    # The mean time at the level is a life: its life
+                    # parameter is that life on the parameter's scale
+                    # (a LogNormal's mu its log, a Gamma's beta its
+                    # reciprocal). Taken as the parameter itself, a
+                    # LogNormal on a continuous stress, with one row a
+                    # level, had lives of exp(time) and a log-likelihood
+                    # not finite at the start (#621).
+                    params_at_s = np.copy(base_line_dist_init)
+                    params_at_s[life_parameter_idx] = self.param_transform(
+                        x_arr[mask].mean()
+                    )
+                    params_at_Z.append(params_at_s)
+                finally:
+                    stress_data.append(s)
 
             params_at_Z = np.array(params_at_Z)
             dist_init = params_at_Z.mean(axis=0)

@@ -813,6 +813,25 @@ Unreleased
 
 **Fixed.**
 
+- An accelerated life fit (``AcceleratedLife``, the parameter-substitution
+  fitter) no longer makes warnings in other threads raise. To start its
+  search it fits the distribution at each stress level and, where that
+  fit warned, started from the level's mean time instead; it noticed the
+  warnings by turning every warning into an error with
+  ``warnings.filterwarnings("error")``, and Python's warning filters are
+  shared by every thread, so while the fit ran, a warning anywhere else
+  in the process (a ``DeprecationWarning`` in an unrelated web request,
+  say) became an exception there. The level's fit is now checked
+  directly: numpy's floating-point errors raise only in that thread
+  (``np.errstate``), the fit must reach a verified maximum with finite
+  parameters, and weights must leave the level at least 20 effective
+  units, the cases in which it warned. The same starts are chosen as
+  before (checked on every level fitted by the accelerated life tests and
+  conformance cases). Likewise, a formula's unknown categorical levels
+  are now found by reading the data, not by turning ``formulaic``'s
+  ``DataMismatchWarning`` into an error, except for a formula naming its
+  levels (``levels=``) or a term computed from the data (``C(k + 1)``),
+  where the warning is still caught.
 - A penalised fit (``fit_penalised`` of every model) whose search stops
   short of the minimum now searches a second time, from the unpenalised
   fit, and keeps the better answer. A Weibull AFT lasso fit on the Rossi
