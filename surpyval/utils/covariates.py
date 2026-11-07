@@ -97,6 +97,7 @@ def formula_model_matrix(source: Any, df: Any, **kwargs: Any) -> Any:
     from surpyval.univariate.regression.regression_data import (
         record_empty_levels,
         refuse_empty_levels,
+        refuse_unknown_levels,
         unseen_levels_error,
     )
 
@@ -107,22 +108,40 @@ def formula_model_matrix(source: Any, df: Any, **kwargs: Any) -> Any:
             return Formula(source).get_model_matrix(positional, **kwargs)
         return source.get_model_matrix(positional, **kwargs)
 
-    try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", DataMismatchWarning)
-            model_matrix = materialise()
-    except DataMismatchWarning as mismatch:
-        spec = None if isinstance(source, str) else source
-        if spec is None:
-            # A formula's levels (``C(g, levels=[...])``) are known only
-            # once it is materialised: do so again, allowing the mismatch.
-            try:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    spec = materialise().model_spec
-            except Exception:
-                pass
-        raise unseen_levels_error(spec, positional, str(mismatch)) from None
+    # The levels are checked here, before ``formulaic`` sees the data,
+    # wherever they can be: for a fitted spec, each term that codes a
+    # column as is; for a formula, every term takes its levels from the
+    # data unless the formula names them (``levels=``). Only otherwise is
+    # ``formulaic``'s warning caught. Turning a warning into an error
+    # changes the process-wide filters, so while one thread materialised
+    # a formula, any other thread's ``DataMismatchWarning`` became an
+    # error there; these checks touch no global state.
+    if isinstance(source, str):
+        checked = "levels" not in source
+    else:
+        checked = refuse_unknown_levels(source, positional)
+    if checked:
+        model_matrix = materialise()
+    else:
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", DataMismatchWarning)
+                model_matrix = materialise()
+        except DataMismatchWarning as mismatch:
+            spec = None if isinstance(source, str) else source
+            if spec is None:
+                # A formula's levels (``C(g, levels=[...])``) are known
+                # only once it is materialised: do so again, allowing the
+                # mismatch.
+                try:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        spec = materialise().model_spec
+                except Exception:
+                    pass
+            raise unseen_levels_error(
+                spec, positional, str(mismatch)
+            ) from None
     spec = model_matrix.model_spec
     if isinstance(source, str):
         # The rows kept (no missing value) are those the model is fitted to.

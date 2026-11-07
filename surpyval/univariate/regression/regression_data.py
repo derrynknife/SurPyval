@@ -728,6 +728,20 @@ def refuse_empty_levels(model_spec: Any, df: pd.DataFrame) -> None:
         raise _unknown_levels_error(found)
 
 
+def refuse_unknown_levels(model_spec: Any, df: pd.DataFrame) -> bool:
+    """Raise the unknown-level ``ValueError`` if a row of ``df`` has a
+    value outside the fitted levels of a categorical term of
+    ``model_spec`` (a level not seen in the fitted data, or one with no
+    rows there), checked before ``formulaic`` materialises it. Returns
+    whether every categorical term could be checked so, by the column it
+    codes as is; a term computed from the data (``C(k + 1)``, say) cannot
+    be, and is left to ``formulaic``'s own ``DataMismatchWarning``."""
+    found, unresolved = _unknown_levels(model_spec, df)
+    if found:
+        raise _unknown_levels_error(found)
+    return not unresolved
+
+
 def _unknown_levels(
     model_spec: Any, df: pd.DataFrame
 ) -> tuple[list[str], list[str]]:

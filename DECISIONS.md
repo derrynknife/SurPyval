@@ -13,6 +13,15 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-07
+
+### Thread-safe warning checks (7 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Library code does not change the process-wide warning filters to detect a warning. The accelerated life fit's per-level start checks the level's fit directly (`np.errstate` with numpy's "warn" settings made "raise", `quiet_maximum_warnings()`, `model.maximum` in verified/not applicable, finite parameters, Kish effective sample size at least 20 with weights) instead of `filterwarnings("error")`. The weights check keeps a fallback whose only cause was the robust-variance warning, which says nothing about the point estimate; it is kept so that every start is the same as before (the old and new decisions agreed on all 4,521 levels fitted by the accelerated life tests, scenarios and conformance cases, and no warning escaped the new path). | proposed | A filter set in one thread applies to all threads, so a fit made other threads' warnings raise. Dropping the weights fallback would change starts (and possibly the last digits of fits) for weighted data; left for the maintainer. | done |
+| `formula_model_matrix` finds unknown categorical levels by reading the data for a fitted spec whose categorical terms each code a column as is, and for a formula without `levels=` (whose levels all come from the data); only a formula naming its levels or a term computed from the data (`C(k + 1)`) still catches `formulaic`'s `DataMismatchWarning` with `catch_warnings`. | proposed | Those terms' values exist only inside `formulaic`, and Python 3.11 has no per-thread warning filters; the remaining case is narrow and only affects `DataMismatchWarning`. | done |
+
 ## 2026-11-06
 
 ### Competing-risks diagnose(): delayed entry and joint fits (6 Nov 2026)
