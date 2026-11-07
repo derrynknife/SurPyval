@@ -58,6 +58,7 @@ RULES = {
     "SurvivalTree[non-parametric]": "hold",
     "CompetingRisks[Nelson-Aalen]": "hold",
     "CompetingRisks[Kaplan-Meier]": "hold",
+    "CompetingRisks[tl]": "hold",
     "CompetingRisksProportionalHazards[Cox]": "hold",
     "CompetingRisksProportionalHazards[Fine-Gray]": "hold",
     "FineGray": "hold",
