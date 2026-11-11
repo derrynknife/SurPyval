@@ -168,13 +168,25 @@ class ProportionalIntensityNHPP(
         5-40 worse than the same model fitted as Crow-AMSAA). The fit that
         ignores the covariates is the natural start, with coefficients 0;
         if it fails, the old unit start is used.
+
+        Data the items' records refuse but this fit takes (a blank id, an
+        end of observation at entry, a failure at the top of an
+        inspection window, observation windows) is read without its
+        covariates as it is; it used to get the unit start, on which a
+        Cox-Lewis baseline on ages in the thousands did not converge.
         """
+        from surpyval.utils.history_reshape import covariates_dropped
+
         fallback = np.ones(len(dist.parameter_names))
         try:
             with np.errstate(all="ignore"):
                 # Without the covariates, which the baseline's own fit
                 # refuses (#959).
-                base = dist.fit_from_recurrent_data(data.without("covariates"))
+                try:
+                    free = data.without("covariates")
+                except Exception:
+                    free = covariates_dropped(data)
+                base = dist.fit_from_recurrent_data(free)
             start = np.asarray(base.params, dtype=float)
         except Exception:
             return fallback
