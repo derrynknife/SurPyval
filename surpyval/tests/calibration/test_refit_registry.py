@@ -1463,6 +1463,16 @@ EXCLUDED: dict[str, str] = {
         "Recovery from simulated processes is tested in "
         "tests/recurrent/test_recurrent_cox.py",
     ),
+    **dict.fromkeys(
+        ("MultiState", "MultiStateProportionalHazards"),
+        "no simulation from the model: its fit is a step estimate of the "
+        "transition hazards with no shape beyond the data, and the models "
+        "have no random() to draw a unit's path through the states. "
+        "Recovery of Markov models simulated with known constant hazards "
+        "(the Aalen-Johansen estimate, and the Cox model's coefficients "
+        "and predicted probabilities, against the matrix exponential) is "
+        "tested in tests/multistate/test_multistate.py",
+    ),
     "Weibull[bayes]": "a posterior, whose calibration is the "
     "simulation-based calibration study (calibration/test_sbc_bayes.py)",
     "Exponential[bayes]": "a posterior, whose calibration is the "
