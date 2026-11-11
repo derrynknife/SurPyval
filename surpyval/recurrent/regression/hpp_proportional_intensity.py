@@ -34,6 +34,14 @@ from .proportional_intensity import (
     ProportionalIntensityModel,
     alias_covariates,
 )
+from .tvc import (
+    ProportionalIntensityTVCFitMixin,
+    check_tvc_rows,
+    count_events,
+    handle_recurrent_tvc,
+    hpp_tvc_neg_ll,
+    mark_tvc,
+)
 
 
 def _in_rate_space(neg_ll: Callable, p: np.ndarray) -> Any:
@@ -43,7 +51,11 @@ def _in_rate_space(neg_ll: Callable, p: np.ndarray) -> Any:
 
 
 @singleton_fitter
-class ProportionalIntensityHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
+class ProportionalIntensityHPP(
+    FitterRepr,
+    RecurrentRegressionDataFrameMixin,
+    ProportionalIntensityTVCFitMixin,
+):
     """
     Proportional-intensity regression on a homogeneous Poisson process:
     each item's events occur at the constant rate
@@ -307,6 +319,112 @@ class ProportionalIntensityHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
 
     @dataframe_covariates
     @takes_unit
+    def fit_tvc(
+        self,
+        i: ArrayLike,
+        xl: ArrayLike,
+        xr: ArrayLike,
+        c: ArrayLike,
+        Z: ArrayLike,
+        n: ArrayLike | None = None,
+        init: ArrayLike | None = None,
+    ) -> Any:
+        """
+        Fit the model to covariates that change over time, in start-stop
+        format.
+
+        Each row is one interval ``(xl, xr]`` of item ``i``'s history
+        over which its covariate row ``Z`` is constant. While those
+        covariates hold the item fails at the rate
+        :math:`\\lambda e^{\\beta' Z}`: the value a covariate has now
+        multiplies the rate now, with no memory of its earlier values.
+        The arguments are those of the life regressions' ``fit_tvc``; an
+        item here may fail many times, so any of its rows may end in a
+        failure. With one covariate value per item the fit is that of
+        :meth:`fit`.
+
+        An item's rows must not overlap. They may leave gaps (the item
+        is not at risk in a gap), and a first ``xl`` above 0 is delayed
+        entry. Cutting a row in two with the same covariates changes
+        nothing. Left-censored counts (``c = -1``) and right truncation
+        (``tr``) are not taken: give a count as a ``c = 2`` row.
+
+        Parameters
+        ----------
+        i : array_like
+            The item of each interval row.
+        xl, xr : array_like
+            The open-closed interval ``(xl, xr]`` of each row.
+        c : array_like
+            What ends the row at ``xr``: ``0`` a failure, ``1`` no
+            failure (a covariate change or the end of the item's
+            record), ``2`` a count ``n`` of failures somewhere within
+            the row (failures counted between inspections).
+        Z : array_like
+            The covariate row in force on each interval (a 1-D array is
+            a single covariate). A missing value raises a
+            ``ValueError``: the row is part of an item's history.
+        n : array_like, optional
+            The number of failures on a ``c = 2`` row; 1 (the default)
+            on the others.
+        init : array_like, optional
+            Initial parameter estimates: the baseline rate followed by
+            the covariate coefficients.
+
+        Returns
+        -------
+        ProportionalIntensityModel
+            The fitted model, with ``is_tvc`` set. ``cif_tvc``,
+            ``iif_tvc`` and ``cb_tvc`` predict along a covariate
+            schedule; the methods that read one covariate row per item
+            (``residuals``, ``cramer_von_mises``, ``trend_test``,
+            ``diagnose``, ``plot``) refuse, saying so.
+
+        Examples
+        --------
+        Two pumps, each watched for 20 months. The first runs at low
+        load until month 10 and at high load after it; the second the
+        other way round. Two failures fall in the 20 pump-months at low
+        load and four in the 20 at high load:
+
+        >>> from surpyval.recurrent import ProportionalIntensityHPP
+        >>> i = [1, 1, 1, 1, 1, 2, 2, 2, 2, 2]
+        >>> xl = [0, 6, 10, 13, 17, 0, 3, 7, 10, 16]
+        >>> xr = [6, 10, 13, 17, 20, 3, 7, 10, 16, 20]
+        >>> c = [0, 1, 0, 0, 1, 0, 0, 1, 0, 1]
+        >>> high_load = [0, 0, 1, 1, 1, 1, 1, 1, 0, 0]
+        >>> model = ProportionalIntensityHPP.fit_tvc(i, xl, xr, c, high_load)
+        >>> model.params.round(4), model.coeffs.round(4)
+        (array([0.1]), array([0.6931]))
+
+        The rate at low load is 2 / 20 a month, and high load doubles it
+        (``exp(0.6931) = 2``). The expected number of failures of a pump
+        that switches to high load at month 12:
+
+        >>> model.cif_tvc([12, 24], [[0], [1]], xl=[0, 12]).round(4)
+        array([1.2, 3.6])
+        """
+        rows = handle_recurrent_tvc(i, xl, xr, c, Z, n)
+        check_tvc_rows(rows, self)
+        out = ProportionalIntensityModel()
+        out.feature_names = fit_columns()
+        out._rate_names = ["lambda"]
+        out.bounds = ((0, None),)
+        out.support = (-np.inf, np.inf)
+        n_obs = count_events(rows)
+
+        def default_start() -> np.ndarray:
+            # The failures per unit of time at risk, and no effects.
+            rate = n_obs / float((rows["xr"] - rows["xl"]).sum())
+            return np.append(np.log(rate), np.zeros(rows["Z"].shape[1]))
+
+        self._maximise(
+            out, hpp_tvc_neg_ll, (rows,), rows["Z"], n_obs, default_start, init
+        )
+        return mark_tvc(out, rows)
+
+    @dataframe_covariates
+    @takes_unit
     @accepts_event_history_data
     def fit_penalised(
         self,
@@ -517,10 +635,35 @@ class ProportionalIntensityHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
         # With no events the likelihood only rewards a lower rate: the fit
         # ran to a rate of 0 with log(0) warnings.
         validate_nhpp_data(data, self)
-        num_covariates = data.Z.shape[1]
+        return self._maximise(
+            out,
+            self.create_negll_func,
+            (data,),
+            data.Z,
+            bic_sample_size(data),
+            functools.partial(self._default_start, data),
+            init,
+        )
+
+    def _maximise(
+        self,
+        out: Any,
+        build: Callable,
+        args: tuple,
+        Z: np.ndarray,
+        n_obs: float,
+        default_start: Callable,
+        init: ArrayLike | None,
+    ) -> Any:
+        """Maximise the likelihood ``build(*args)`` (a function of
+        ``[log(rate), *coefficients]``) of a fit to covariate rows ``Z``
+        holding ``n_obs`` events, from ``init`` or ``default_start()``,
+        and finish the model ``out``: the search of :meth:`fit` and of
+        :meth:`fit_tvc`."""
+        num_covariates = Z.shape[1]
         user_init = init is not None
         if init is None:
-            start = self._default_start(data)
+            start = default_start()
         else:
             # User-supplied starting values were previously overwritten
             # unconditionally (#288). The first value is the baseline
@@ -538,11 +681,11 @@ class ProportionalIntensityHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
                 )
             start = onp.append(onp.log(given[0]), given[1:])
 
-        neg_ll = self.create_negll_func(data)
+        neg_ll = build(*args)
 
         # A coefficient the data cannot determine is held at 0 and reported
         # as nan (#502); the rate is the intercept.
-        aliased = alias_covariates(data.Z, intercept=True)
+        aliased = alias_covariates(Z, intercept=True)
         free = np.ones(1 + num_covariates, dtype=bool)
         free[1 + aliased] = False
 
@@ -574,7 +717,7 @@ class ProportionalIntensityHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
         # coefficient of 5 on the Rossi data exp(beta'Z) overflows, the
         # search cannot move, and the start was returned in silence.
         if user_init:
-            res = better_result(res, search(self._default_start(data)))
+            res = better_result(res, search(default_start()))
         # The answer is kept only as a verified maximum (zero gradient,
         # negative-definite Hessian of the log-likelihood), polished where
         # it is not one, each coefficient in its own covariate's units
@@ -582,7 +725,6 @@ class ProportionalIntensityHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
         # loss" at the maximum of the Rossi fit, and success where it
         # never moved; and its absolute tolerance stopped a covariate in
         # millionths 0.06 short of the maximum.
-        n_obs = bic_sample_size(data)
         floor = coefficient_floor(
             int(free.sum()),
             [
@@ -590,7 +732,7 @@ class ProportionalIntensityHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
                 for j in range(1, 1 + num_covariates)
                 if free[j]
             ],
-            data.Z,
+            Z,
         )
         verified = False
         if res.fun < 1e300:
@@ -617,7 +759,7 @@ class ProportionalIntensityHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
         # (Kept as what it is built from, so the model pickles, #573.)
         out._neg_ll = functools.partial(
             _in_rate_space,
-            Rebuilt(self.create_negll_func, (data,), built=neg_ll),
+            Rebuilt(build, args, built=neg_ll),
         )
         out._mle = np.concatenate([out.params, out.coeffs])
         out._n_obs = n_obs

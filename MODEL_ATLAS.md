@@ -93,6 +93,7 @@ Worked classifications:
 | ProportionalIntensity HPP/NHPP | univariate | recurrent | single | recurrent | with | continuous | parametric |
 | CauseSpecificMCF | univariate | recurrent | competing | recurrent | none | continuous | nonparametric |
 | CauseSpecificNHPP | univariate | recurrent | competing | recurrent | none | continuous | parametric |
+| CauseSpecificProportionalIntensity | univariate | recurrent | competing | recurrent | with | continuous | parametric |
 | Bernoulli, Binomial, success-run | univariate | single_event | single | terminal | none | discrete | parametric |
 | (not built yet) illness-death, progressive | univariate | single_event | single/competing | multi_state | none/with | continuous | any |
 

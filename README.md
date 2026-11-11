@@ -73,7 +73,7 @@ not yet built.
 | Continuous time | Recurrent | Single | Without | `HPP`; NHPP: `CrowAMSAA` (with growth projection), `Duane`, `CoxLewis`; renewal, with each unit's next failure: `GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA`, `ARI` | `NonParametricCounting` (MCF) |
 | Continuous time | Recurrent | Single | With | `ProportionalIntensityHPP`, `ProportionalIntensityNHPP` | &mdash; |
 | Continuous time | Recurrent | Competing | Without | `CauseSpecificNHPP` | `CauseSpecificMCF` |
-| Continuous time | Recurrent | Competing | With | &mdash; | &mdash; |
+| Continuous time | Recurrent | Competing | With | `CauseSpecificProportionalIntensity` (each failure mode its own baseline and coefficients) | &mdash; |
 | Discrete time | Single event | Single | Without | `Bernoulli` (single trial), `Binomial` (`n` trials, or a number per row) | &mdash; |
 | Discrete time | Single event | Single | With | use logistic / binomial regression (out of scope for this package) | &mdash; |
 

@@ -796,6 +796,53 @@ def _superposed(case, truth, n):
     return draw
 
 
+def _superposed_at_levels(case, truth, n):
+    """As :func:`_superposed`, for causes with covariates: n / 3 items at
+    each of the fixture's covariate values (0, 1 and 0.5), each cause's
+    events drawn from its own cumulative intensity at that value."""
+    levels = np.unique(case.data()["Z"])
+    per_level = n // len(levels)
+
+    def draw(rng):
+        xs, ids, cs, es, zs = [], [], [], [], []
+        for j, z in enumerate(levels):
+            per_cause = {
+                e: _nhpp_events(
+                    rng,
+                    lambda t, e=e, z=z: truth.cif(t, [z], e),
+                    T_REC,
+                    per_level,
+                )
+                for e in case.events
+            }
+            for k in range(per_level):
+                times = [
+                    (t, e) for e, lists in per_cause.items() for t in lists[k]
+                ]
+                times.sort(key=lambda te: te[0])
+                xs.extend([t for t, _ in times] + [T_REC])
+                es.extend([e for _, e in times] + [None])
+                ids.extend([1000 * j + k] * (len(times) + 1))
+                cs.extend([0] * len(times) + [1])
+                zs.extend([z] * (len(times) + 1))
+        return {
+            "x": np.array(xs),
+            "i": np.array(ids),
+            "c": np.array(cs),
+            "n": np.ones(len(xs), int),
+            "e": np.array(es, dtype=object),
+            "Z": np.array(zs)[:, None],
+        }
+
+    return draw
+
+
+def _cause_pi_params(model):
+    return np.concatenate(
+        [np.asarray(model.models[e]._mle) for e in model.event_types]
+    )
+
+
 def _renewal_params(boundary: bool):
     # _mle is (restoration, alpha, beta); a restoration at its bound is
     # left out (see the plan's note).
@@ -1272,6 +1319,9 @@ PLANS["CauseSpecificMCF"] = Plan(
 )
 PLANS["CauseSpecificNHPP"] = Plan(
     _superposed, 40, 60, params=_cause_nhpp_params
+)
+PLANS["CauseSpecificProportionalIntensity"] = Plan(
+    _superposed_at_levels, 42, 60, params=_cause_pi_params
 )
 
 # Degradation: n is the number of units.

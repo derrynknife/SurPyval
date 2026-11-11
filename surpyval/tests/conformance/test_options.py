@@ -90,6 +90,13 @@ NOT_SWEPT = {
     "growth": "a table of each cause's trend parameter (param_cb's "
     "interval), its test and the cause's iif_cb / mtbf_cb (swept) at one "
     "time; checked against them in recurrent/test_event_marks.py",
+    "coefficients": "a table of each cause's coefficients with their Wald "
+    "intervals (param_cb's, of each cause's own model); checked against "
+    "them in recurrent/test_cause_specific_proportional_intensity.py",
+    "total_cb_tvc": "needs a covariate schedule; checked against "
+    "total_cif_cb / total_iif_cb (swept) along a constant schedule, and "
+    "against the causes' cb_tvc, in "
+    "recurrent/test_cause_specific_proportional_intensity.py",
     "forecast": "a prediction interval of a count (surpyval.forecast), "
     "where alpha_ci is its level, not a confidence bound's; checked in "
     "recurrent/test_event_marks.py",
@@ -1022,7 +1029,17 @@ CONVENTIONS = {
     # incidence by default, its natural quantity (documented, #728).
     "on": (
         "on= defaults to 'sf'",
-        _default_is("on", "sf", own={"CompetingRisks": "cif"}),
+        _default_is(
+            "on",
+            "sf",
+            own={
+                "CompetingRisks": "cif",
+                # Counts of repeat events have no survival function: the
+                # bounds along a schedule are on the expected count.
+                "ProportionalIntensityModel": "cif",
+                "CauseSpecificProportionalIntensity": "cif",
+            },
+        ),
     ),
     "interp": ("interp= defaults to 'step'", _default_is("interp", "step")),
     "seed": (

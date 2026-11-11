@@ -47,7 +47,7 @@ def _outcome(call):
 
 
 def test_every_recurrent_fitter_is_checked():
-    assert len(FITTERS) == 13
+    assert len(FITTERS) == 14
 
 
 @pytest.mark.parametrize("kind", list(DATA))

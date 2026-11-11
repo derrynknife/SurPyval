@@ -67,13 +67,14 @@ Competing Risks (Marked) Models
 -------------------------------
 
 Recurrent processes with several kinds of event, each with its own
-intensity.
+intensity (and, for the last, its own covariate effects).
 
 .. toctree::
     :maxdepth: 1
 
     counting/cause_specific_mcf
     counting/cause_specific_nhpp
+    counting/cause_specific_proportional_intensity
 
 Recurrent Event Regression Models
 ----------------------------------

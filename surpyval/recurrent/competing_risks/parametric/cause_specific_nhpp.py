@@ -77,7 +77,7 @@ _TREND_PARAMETER = {
 }
 
 
-def _labels(causes: Any) -> np.ndarray:
+def event_labels(causes: Any) -> np.ndarray:
     """The cause labels as an object array, one entry per label (a tuple
     label stays one entry)."""
     out = np.empty(len(causes), dtype=object)
@@ -86,7 +86,7 @@ def _labels(causes: Any) -> np.ndarray:
     return out
 
 
-def _parameter_interval(
+def parameter_interval(
     value: float,
     var: float,
     lower: float | None,
@@ -106,6 +106,32 @@ def _parameter_interval(
         float(value), float(var), lower, upper, alpha_ci, "two-sided"
     )
     return float(np.sqrt(var)), float(cb[0]), float(cb[1])
+
+
+def cause_rows(data: Any, cause: Any, windows: dict) -> tuple:
+    """One cause's rows of marked recurrent ``data``, as the ``(x, i, c,
+    tl)`` of an ordinary recurrent fit: that cause's events (``c=0``),
+    then one right-censored window-close (``c=1``) per item at the end of
+    its window (for every item, also one with no events of this cause, so
+    the compensator is integrated over the whole window). ``windows`` maps
+    each item to its ``(entry, end)``. The other causes' events are left
+    out, exactly as a censored period would be."""
+    cx, ci, cc, ctl = [], [], [], []
+    is_cause = label_mask(data.e, cause)
+    for k, item in enumerate(data.i):
+        if data.c[k] == 0 and is_cause[k]:
+            entry, _ = windows[item]
+            cx.append(float(data.x[k]))
+            ci.append(item)
+            cc.append(0)
+            ctl.append(entry)
+    for item in data.ids:
+        entry, end = windows[item]
+        cx.append(end)
+        ci.append(item)
+        cc.append(1)
+        ctl.append(entry)
+    return cx, ci, cc, ctl
 
 
 class _AllCauses:
@@ -460,25 +486,7 @@ class CauseSpecificNHPP(SerialisableMixin):
 
         out.models = {}
         for cause in out.event_types:
-            cx, ci, cc, ctl = [], [], [], []
-            is_cause = label_mask(data.e, cause)
-            for k, item in enumerate(data.i):
-                if data.c[k] == 0 and is_cause[k]:
-                    entry, _ = windows[item]
-                    cx.append(float(data.x[k]))
-                    ci.append(item)
-                    cc.append(0)
-                    ctl.append(entry)
-            # One right-censored window-close per item (present for every item,
-            # even those with no events of this cause, so the compensator is
-            # integrated over the whole window).
-            for item in data.ids:
-                entry, end = windows[item]
-                cx.append(end)
-                ci.append(item)
-                cc.append(1)
-                ctl.append(entry)
-
+            cx, ci, cc, ctl = cause_rows(data, cause, windows)
             cause_data = handle_xicn(cx, ci, cc, tl=ctl)
             out.models[cause] = dist.fit_from_recurrent_data(
                 cause_data, how=how, init=init
@@ -1142,7 +1150,7 @@ class CauseSpecificNHPP(SerialisableMixin):
                 rows.append(
                     [
                         value,
-                        *_parameter_interval(
+                        *parameter_interval(
                             value, cov[k, k], lo, hi, alpha_ci
                         ),
                     ]
@@ -1150,7 +1158,7 @@ class CauseSpecificNHPP(SerialisableMixin):
         return pd.DataFrame(
             rows,
             index=pd.MultiIndex.from_arrays(
-                [_labels(events), names], names=["event", "parameter"]
+                [event_labels(events), names], names=["event", "parameter"]
             ),
             columns=["estimate", "se", f"lower {level}", f"upper {level}"],
             dtype=float,
@@ -1288,7 +1296,7 @@ class CauseSpecificNHPP(SerialisableMixin):
             estimates, cov = inference[cause]
             value, var = float(estimates[k]), float(cov[k, k])
             lo, hi = dist.bounds[k]
-            _, lower, upper = _parameter_interval(value, var, lo, hi, alpha_ci)
+            _, lower, upper = parameter_interval(value, var, lo, hi, alpha_ci)
             p_value, trend = np.nan, "undetermined"
             if np.isfinite(lower):
                 if lo is None:
@@ -1329,7 +1337,9 @@ class CauseSpecificNHPP(SerialisableMixin):
         return pd.DataFrame(
             rows,
             index=pd.Index(
-                _labels(self.event_types), name="event", tupleize_cols=False
+                event_labels(self.event_types),
+                name="event",
+                tupleize_cols=False,
             ),
             columns=[
                 "parameter",
