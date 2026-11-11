@@ -134,8 +134,10 @@ def test_newton_matches_the_bracketing_solver(name):
     # flat as the LogNormal's far tail (x h / H about 0.1), where an eps
     # in H is 1e-15 in x.
     np.testing.assert_allclose(together, old, rtol=1e-13)
-    # The one-draw path takes exactly the vectorised path's steps.
-    np.testing.assert_array_equal(one_by_one, together)
+    # The one-draw path takes the vectorised path's steps: equal to
+    # rounding, not to the bit, since numpy's vectorised loops round the
+    # last bit differently for 1 and for 50 elements on some CPUs.
+    np.testing.assert_allclose(one_by_one, together, rtol=1e-13)
 
 
 def _count(monkeypatch: Any) -> Counter:
@@ -185,7 +187,11 @@ def test_newton_draws_are_deterministic_and_vectorise():
         conditional_gaps(lifetime, np.array([5000.0]), np.array([u]))[0]
         for u in U
     ]
-    np.testing.assert_array_equal(first, one)
+    # One at a time: equal to rounding in the age reached (the gap is a
+    # difference of ages near 5000), not to the bit, since numpy's
+    # vectorised loops round the last bit differently for 1 and for 50
+    # elements on some CPUs.
+    np.testing.assert_allclose(ages + first, ages + one, rtol=1e-13)
 
 
 def test_a_lifetime_without_a_rate_is_bracketed():

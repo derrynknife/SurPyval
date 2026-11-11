@@ -11,6 +11,9 @@ Parametric Analysis
 
 """
 
+from typing import TYPE_CHECKING as _TYPE_CHECKING
+from typing import Any as _Any
+
 from .discrete_fitter import DiscreteParametricFitter
 from .distributions import (
     Bernoulli,
@@ -56,6 +59,21 @@ from .parametric_fitter import OptimisedFitMixin, ParametricFitter
 from .royston_parmar import RoystonParmar, RoystonParmarModel
 from .weibayes import weibayes
 
-# After the distributions: _bootstrap imports the regressions' bootstrap,
-# which needs them.
-from ._bootstrap import ParametricBootstrap  # isort: skip
+if _TYPE_CHECKING:
+    from ._bootstrap import ParametricBootstrap as ParametricBootstrap
+
+
+def __getattr__(name: str) -> _Any:
+    # ``ParametricBootstrap`` on first use: its module imports the
+    # regressions' bootstrap, and with it the regression package, pandas,
+    # formulaic and scipy.stats, which ``import surpyval`` leaves alone.
+    if name == "ParametricBootstrap":
+        from . import _bootstrap
+
+        globals()[name] = _bootstrap.ParametricBootstrap
+        return _bootstrap.ParametricBootstrap
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | {"ParametricBootstrap"})

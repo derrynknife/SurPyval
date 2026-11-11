@@ -429,7 +429,7 @@ in that release run (or locally when the maintainer asks for it).
      - lint, the conformance suite, the test suite across three
        interpreters (each split into four parts that run at once, with
        the docstring examples; 3.12 measures coverage), the calibration
-       studies and scenario cards (on 3.12, in seven groups that run at
+       studies and scenario cards (on 3.12, in groups that run at
        once, chosen by the studies' measured times), the wheel check and
        the documentation build
    * - Merge into ``main``
