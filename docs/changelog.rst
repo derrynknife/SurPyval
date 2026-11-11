@@ -904,6 +904,22 @@ Unreleased
   (200 replicates of n = 100 at 10%: the right models rejected 7-10.5% of
   the time; a wrong distribution for one cause was flagged for that cause
   80% of the time and for the right cause 5.5%).
+- A calibration study of the plain models' bootstrap bounds
+  (``tests/calibration/test_coverage_bootstrap.py``): Weibull and LogNormal,
+  about 30% right censored, at 30, 100 and 300 units, on ``param_cb``,
+  ``cb(sf)`` and ``quantile_cb`` at 90% and 95% (200 replicates of 200
+  refits a design). The intervals are short of their level at every size:
+  averaged over each size's 16 bounds, 86.8% / 91.8% at 30 units, 87.9% /
+  93.4% at 100 and 87.8% / 93.8% at 300 (90% / 95%). At 30 units three
+  bounds fall outside their tolerance, so those two designs are marked as
+  known shortfalls (strict xfails, with the numbers in the reason). No
+  method changed. :doc:`Parametric SurPyval Modelling` now says so beside
+  the bootstrap bounds and recommends ``method="lr"``, whose intervals hold
+  their level, where coverage matters.
+- The calibration runs end with a "pooled calibration coverage" section:
+  each study's mean coverage over its bounds at each level, the gap from
+  nominal and the count below it. It is a report only; nothing passes or
+  fails on it, and no seed, replicate count or tolerance changed.
 
 **Deprecated.**
 

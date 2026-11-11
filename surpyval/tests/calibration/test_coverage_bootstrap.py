@@ -27,9 +27,33 @@ Carlo standard error is about two points, so a shortfall of a point or
 two shows in the pooled mean over the cells (printed at the end of the
 run by ``surpyval/tests/conftest.py``) rather than in any one cell.
 
-A replicate takes 5 to 10 seconds on one core (200 refits), so each
+A replicate takes 5 to 12 seconds on one core (200 refits), so each
 design runs its replicates in turn and the designs run side by side
-(pytest-xdist); in CI each family is a group of its own.
+(pytest-xdist); in CI each family is a group of its own. On the first run
+(12 November 2026, an M-series Mac at two workers, shared with other
+work) each design took 2,190 to 2,430 s.
+
+What the first run found: the intervals are short of nominal at every
+sample size, not only the smallest. The mean coverage
+of each design's eight cells at 90% / 95%:
+
+=========  ==============  ==============  ==============
+Family     30 units        100 units       300 units
+=========  ==============  ==============  ==============
+Weibull    0.876 / 0.923   0.876 / 0.935   0.876 / 0.940
+LogNormal  0.859 / 0.913   0.883 / 0.934   0.879 / 0.936
+=========  ==============  ==============  ==============
+
+Over both families, the mean is 0.868 / 0.918 at 30 units, 0.879 /
+0.934 at 100 and 0.878 / 0.938 at 300: at 95% the gap narrows from about
+three points to one, at 90% it stays at about two. Of the 96 cells, 85
+are below nominal. At 30 units three cells fall
+outside their tolerance, so those two designs are strict xfails (known
+shortfalls, ``SHORTFALL``); the other four designs pass every cell. The
+likelihood-ratio bounds of the same families hold their level
+(``test_coverage_parametric``). That the 90% intervals are no closer at
+300 units than at 100 is not explained here: a bootstrap interval should
+approach its level as the sample grows.
 """
 
 import warnings
@@ -103,8 +127,40 @@ def _study(family, n):
     return p_cb, s_cb, q_cb
 
 
-@pytest.mark.parametrize("n", [30, 100, 300])
-@pytest.mark.parametrize("family", list(FAMILIES))
+# The designs whose first run (12 November 2026, the seeds above) put a
+# cell outside its tolerance: known shortfalls, not to be met by a change
+# of seed, replicate count or tolerance. Strict, so a fix shows as a pass.
+SHORTFALL = {
+    ("Weibull", 30): (
+        "known shortfall at 30 units: the 95% quantile_cb on the 90% "
+        "quantile covered 0.890 (tolerance 0.894 to 1); the design's 16 "
+        "cells averaged 0.876 at 90% and 0.923 at 95%, every one inside "
+        "its tolerance but that one"
+    ),
+    ("LogNormal", 30): (
+        "known shortfall at 30 units: at 95% the cb(sf) at the 10% quantile "
+        "covered 0.885 and the quantile_cb on that quantile 0.875 "
+        "(tolerance 0.894 to 1); the design's 16 cells averaged 0.859 at "
+        "90% and 0.913 at 95%, all 16 below nominal"
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    "family, n",
+    [
+        pytest.param(
+            family,
+            n,
+            marks=(
+                [pytest.mark.xfail(strict=True, reason=SHORTFALL[(family, n)])]
+                if (family, n) in SHORTFALL
+                else []
+            ),
+        )
+        for family, n in SEEDS
+    ],
+)
 def test_bootstrap_coverage(family, n):
     dist, params, _ = FAMILIES[family]
     true = dist.from_params(params)

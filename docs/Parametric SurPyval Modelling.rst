@@ -2524,6 +2524,44 @@ simulated samples of 100 units each
 covered 90% to 96.5% of the time and its 90% ones 83.5% to 92.5%, a little
 short at 90% for a zero-inflated model and for ``lfp_p`` near its edge.
 
+.. note::
+
+   **Bootstrap intervals run a little narrow; use** ``method="lr"`` **when
+   the coverage matters.** With around 100 units, a bootstrap interval
+   (``method="bootstrap"``, on ``param_cb``, ``cb`` or ``quantile_cb``)
+   holds the truth one to three percentage points less often than its
+   level says: a "90%" interval about 87-88% of the time, a "95%" one
+   about 93%. The intervals are not off-centre (they miss about as often
+   on each side); they are slightly too short. This is the bootstrap's
+   own small-sample behaviour, not something the extra parameters add: a
+   plain Weibull or LogNormal falls short by about the same.
+
+   The figures come from the package's calibration studies, each the
+   average over every bound checked in it (parameters, ``sf`` and
+   quantiles at three points), 200 simulated data sets per design, about
+   30% right censored:
+
+   ============================================  ============  ============
+   Design                                        90% interval  95% interval
+   ============================================  ============  ============
+   Weibull / LogNormal, 30 units                 86.8%         91.8%
+   Weibull / LogNormal, 100 units                87.9%         93.4%
+   Weibull / LogNormal, 300 units                87.8%         93.8%
+   Limited-failure and zero-inflated, 100 units  87.9%         92.9%
+   ============================================  ============  ============
+
+   (``calibration/test_coverage_bootstrap.py`` and
+   ``calibration/test_coverage_extra_parameters.py``.) The likelihood-ratio
+   bounds of the same kinds of model hold their level: on the
+   limited-failure and zero-inflated designs above, their 95% intervals
+   covered 94.7% on average, and on plain Weibull and LogNormal data of 100
+   units 96.0%. So when an interval's coverage matters, for example a lower
+   bound quoted against a requirement, prefer ``method="lr"``. The
+   bootstrap remains the choice where the likelihood-ratio bound is not
+   available or not regular (an offset with a shape below 2, above). More
+   refits are not the remedy: the draw-to-draw noise of the default
+   ``n_boot=200`` moves the coverage by well under a point.
+
 An offset model's region can reach the offset at the first failure, where its
 likelihood is unbounded (a shape below 1 puts infinite density there; see the
 caution on offsets above). The interval on ``gamma`` then runs up to the first

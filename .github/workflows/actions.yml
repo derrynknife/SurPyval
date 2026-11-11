@@ -328,10 +328,11 @@ jobs:
           # The bootstrap coverage of the plain Weibull and LogNormal
           # (test_coverage_bootstrap.py): three designs a family (30, 100
           # and 300 units) of 200 replicates of 200 refits, each design's
-          # replicates in turn on one worker, the three side by side. A
-          # replicate took 5 to 10 s on one core of an M-series Mac (12
-          # November 2026), so a design about 20 to 35 minutes; the limits
-          # are about twice the slowest, as for lfp_edge above.
+          # replicates in turn on one worker, the three side by side. On
+          # its first run (12 November 2026, an M-series Mac at two
+          # workers, heavily shared) each design took 2,190 to 2,430 s,
+          # 11 to 12 s a replicate; the limits are about twice that, as
+          # for lfp_edge above.
           - group: plain-bootstrap-weibull
             workers: '3'
             test-timeout: 5400
