@@ -577,7 +577,12 @@ def _fitted(name):
 
 def tvc_path(case):
     """The case's fit by ``fit_tvc`` where its fitter has one: one
-    ``(0, x]`` interval per subject, the time-fixed data; else ``None``."""
+    ``(0, x]`` interval per subject, the time-fixed data (or the case's
+    own ``fit_tvc`` path); else ``None``."""
+    if case.interface == COUNTING_REGRESSION:
+        # A repairable item's rows are not one interval per subject: the
+        # case's own fit_tvc path (the proportional-intensity models)
+        return case.paths.get("fit_tvc")
     fitter = getattr(sp, case.name, None)
     if not hasattr(fitter, "fit_tvc"):
         return None

@@ -740,6 +740,23 @@ def _recurrent_data_path(fitter, **fixed):
     return run
 
 
+def _recurrent_tvc_path(fitter):
+    """The fixture's event rows as start-stop rows, each from the item's
+    previous row (0 for its first) with the item's covariates, fitted by
+    ``fit_tvc``: the time-fixed data in the time-varying layout."""
+
+    def run(d):
+        x, i = np.asarray(d["x"], dtype=float), np.asarray(d["i"])
+        xl = np.zeros_like(x)
+        for item in np.unique(i):
+            rows = np.flatnonzero(i == item)
+            rows = rows[np.argsort(x[rows], kind="stable")]
+            xl[rows[1:]] = x[rows[:-1]]
+        return fitter.fit_tvc(i, xl, x, d["c"], d["Z"], d["n"])
+
+    return run
+
+
 def _counting_draw(m, s):
     return m.count_terminated_simulation(3, items=2, random_state=s)
 
@@ -812,6 +829,8 @@ def _recurrent():
                 functions=("cif", "iif"),
                 x=X_REC,
                 Z=Z_REC,
+                # fit_tvc with one covariate value per item is fit
+                paths={"fit_tvc": _recurrent_tvc_path(fitter)},
                 rows=("x", "Z", "i", "c", "n"),
                 covariates="Z",
                 drops_missing_covariate=False,

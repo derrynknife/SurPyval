@@ -156,6 +156,76 @@ their joint covariance (the inverse observed information) gives standard
 errors for every parameter and delta-method confidence bounds on
 :math:`\Lambda(t \mid Z)` at any covariate setting.
 
+.. rubric:: Covariates that change over time
+
+So far a covariate has been a property of the item. Often it is a property
+of a *period* of the item's life instead: a pump runs at high load in some
+months and at low load in others, a machine is overhauled part of the way
+through its life, a vehicle moves to a harsher route. Using one number per
+item for such a covariate (its first value, or its average) gives the wrong
+answer: it credits failures to conditions that were not in force when they
+happened, and it throws away the timing that carries most of the
+information about the covariate's effect.
+
+The proportional-intensity model extends to this case with one assumption:
+the value the covariate has *now* multiplies the intensity *now*. In words,
+while the pump is on high load its failure rate is the baseline rate for
+its present age times the high-load factor, and when it returns to low load
+the rate returns to the baseline. The model has no memory of earlier
+values; if accumulated exposure matters, it has to be supplied as a
+covariate of its own. With :math:`Z_i(t)` the covariates of item :math:`i`
+in force at time :math:`t`,
+
+.. math::
+
+    \lambda_i(t) = \lambda_0(t)\, e^{Z_i(t)\beta} .
+
+SurPyval takes covariates that are piecewise constant: item :math:`i`'s
+history is cut into intervals :math:`(a_{ik}, b_{ik}]`, on each of which
+its covariates hold one value :math:`Z_{ik}`. Two facts then give the
+likelihood. The expected number of failures in an interval is the
+baseline's expected number over that interval times the factor for the
+covariates holding then, :math:`e^{Z_{ik}\beta}\left[\Lambda_0(b_{ik}) -
+\Lambda_0(a_{ik})\right]`. And each failure contributes the intensity at
+its time, with the covariates holding then. The log-likelihood is the sum
+over failures of the log intensity minus the sum over intervals of the
+expected counts:
+
+.. math::
+
+    \ell(\theta, \beta) = \sum_i \left\{ \sum_j \left[\ln
+    \lambda_0(t_{ij}; \theta) + Z_i(t_{ij})\beta\right] - \sum_k
+    e^{Z_{ik}\beta}\left[\Lambda_0(b_{ik}; \theta) - \Lambda_0(a_{ik};
+    \theta)\right] \right\} .
+
+When every item has a single covariate value this is exactly the
+likelihood of the previous section, so the two fits agree; and cutting an
+interval in two with the same covariates on both pieces changes nothing,
+because the two expected counts add up to the original one. An item need
+not be watched from time zero (its first interval can start later: delayed
+entry) or without a break (a gap between intervals is time it was not at
+risk). Failures that were only counted over an interval, :math:`n` of them
+somewhere in :math:`(a, b]`, enter as the Poisson probability of that count,
+whose mean is the interval's expected count.
+
+A prediction now depends on the whole *schedule* of covariates, not on one
+value. The expected number of failures by time :math:`t` for an item that
+follows a schedule with segments :math:`(a_k, b_k]` and values :math:`z_k`
+adds up the same pieces,
+
+.. math::
+
+    \Lambda\bigl(t \mid Z(\cdot)\bigr) = \sum_k e^{z_k\beta}
+    \left[\Lambda_0(\min(t, b_k)) - \Lambda_0(a_k)\right]
+    \quad \text{over the segments with } a_k < t,
+
+and the intensity at :math:`t` is :math:`\lambda_0(t)\, e^{Z(t)\beta}`. Its
+confidence bounds come from the same delta method, on the log scale, as
+those at a fixed covariate setting. The number of failures an item actually
+has over a period is Poisson distributed about the expected number, as
+before. The worked example is on the
+:doc:`Recurrent Event Regression Modelling with SurPyval` page.
+
 .. rubric:: Interpreting the coefficients
 
 - :math:`e^{\beta_k}` is the **rate ratio** for a one-unit increase in
@@ -196,10 +266,16 @@ estimated jointly and a wrong baseline can bias the coefficients.
 
 .. rubric:: Assumptions and limitations
 
-- **Static covariates.** The covariates are properties of the item, constant
-  over its observation. Supply them one row per event row (repeating the
-  item's values) or as a dictionary keyed by item. The residuals and the
-  goodness-of-fit test take each item's covariates from its first row.
+- **Static covariates in** ``fit``. There the covariates are properties of
+  the item, constant over its observation. Supply them one row per event
+  row (repeating the item's values) or as a dictionary keyed by item. The
+  residuals and the goodness-of-fit test take each item's covariates from
+  its first row.
+- **Covariates that change over time** (``fit_tvc``) must be piecewise
+  constant, and act only through their current value. The residuals, the
+  trend and goodness-of-fit tests, ``diagnose``, ``plot`` and simulation
+  along a schedule are not available for such a fit yet; each refuses,
+  saying so.
 - **Proportionality.** Every item follows the same trend, scaled by its
   covariates. If harsh-environment motors *wear out faster* (a different
   shape), rather than simply failing more often, a single proportional model

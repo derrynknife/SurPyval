@@ -33,6 +33,31 @@ Unreleased
   loads as before. The coverage of the total bounds is studied in
   ``tests/calibration/test_coverage_recurrent.py`` (two modes on 10
   systems, 1000 replicates: 0.943 to 0.961 against 0.95).
+- Covariates that change over time in the recurrent-event regressions:
+  ``ProportionalIntensityHPP`` and ``ProportionalIntensityNHPP`` gain
+  ``fit_tvc`` (start-stop rows ``i``, ``xl``, ``xr``, ``c``, ``Z``, ``n``),
+  ``fit_tvc_timeline`` and their ``_from_df`` forms, with the names and
+  data shapes of the life regressions' time-varying fits. Each row is an
+  interval of an item's history over which its covariates hold one value;
+  the covariates in force multiply the intensity then (no memory of
+  earlier values). Any row may end in a failure (``c = 0``), a row may
+  hold a count of failures (``c = 2`` with ``n``), an item may enter late
+  and may have gaps. With one covariate value per item the fit is that of
+  ``fit``; cutting a row in two changes nothing. The fitted
+  ``ProportionalIntensityModel`` gains ``cif_tvc``, ``iif_tvc`` and
+  ``cb_tvc`` (``on="cif"`` or ``"iif"``): the expected number of events,
+  the intensity and their delta-method bounds along a ``StepSchedule`` (or
+  ``Z`` rows with ``xl``), from the origin or, with ``given``, from an
+  age; a schedule that never changes gives ``cif``, ``iif``, ``cif_cb``
+  and ``iif_cb`` exactly. ``summary``, ``covariance``, ``param_cb``, the
+  information criteria, ``to_dict`` / ``from_dict`` and ``pickle`` work as
+  for any fit. Not available for such a fit, each refusing with what to
+  do instead: ``residuals``, ``cramer_von_mises``, ``trend_test``,
+  ``diagnose`` and ``plot``; simulation and ``mcf`` along a schedule (they
+  take one covariate vector); a continuously varying ``CovariatePath``;
+  left-censored counts (``c = -1``; give a ``c = 2`` row) and right
+  truncation. See "Covariates that change over time" in
+  :doc:`Recurrent Event Regression Modelling with SurPyval`.
 - A published :doc:`Deprecation Policy`, linked from the documentation's
   home page and from Contributing: what is public, how a renamed or
   removed name is deprecated (a warning for at least one release naming

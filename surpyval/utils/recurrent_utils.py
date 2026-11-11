@@ -1171,7 +1171,9 @@ def _check_static_covariates(
                 f"Item {item_label(ii)} has covariates Z that change "
                 "between its "
                 "rows; covariates are per item (static) and must be "
-                "the same on every row of an item."
+                "the same on every row of an item. For covariates that "
+                "change over time, give the item's history as start-stop "
+                "rows to fit_tvc (or as a timeline to fit_tvc_timeline)."
             )
 
 
