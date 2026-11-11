@@ -12,7 +12,6 @@ import numpy.typing as npt
 from autograd.numpy.numpy_boxes import ArrayBox
 
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
-from surpyval.utils.docstrings import fill_param_docs
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.units import takes_unit
@@ -498,9 +497,6 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         # ``_support_guarded``). The discrete ones guard their integer
         # supports themselves, as their docstrings describe.
         super().__init_subclass__(**kwargs)
-        # First, the shared parameter entries go into the method
-        # docstrings, so the wrappers below copy the filled text.
-        fill_param_docs(cls)
         # Innermost, surpyval's own formulas run on plain numpy where
         # nothing is being differentiated (``_untraced_plain``).
         if cls.__module__.startswith("surpyval."):

@@ -1,69 +1,88 @@
-"""The shared parameter entries are filled into every distribution method
-docstring (``surpyval.utils.docstrings``)."""
+"""Each distribution method's parameter entries match its class's
+``_param_docs`` (``surpyval.utils.docstrings``); a drifted copy fails,
+naming the class, the method and the difference.
+``python scripts/sync_docstrings.py --write`` rewrites the copies."""
 
-import inspect
+from pathlib import Path
 
 import pytest
 
 import surpyval
-from surpyval.univariate.parametric import ParametricFitter
-from surpyval.utils.docstrings import PARAMS_MARKER, fill_param_docs
+from surpyval.utils.docstrings import copies, sync
 
-DISTRIBUTIONS = sorted(
-    name
-    for name in surpyval.__all__
-    if isinstance(getattr(surpyval, name, None), ParametricFitter)
+DISTRIBUTIONS = Path(surpyval.__file__).parent / (
+    "univariate/parametric/distributions"
+)
+FILES = sorted(
+    p for p in DISTRIBUTIONS.glob("*.py") if "_param_docs =" in p.read_text()
 )
 
 
-@pytest.mark.parametrize("name", DISTRIBUTIONS)
-def test_no_unfilled_marker(name):
-    dist = getattr(surpyval, name)
-    for attr in dir(type(dist)):
-        doc = getattr(getattr(type(dist), attr, None), "__doc__", None)
-        if isinstance(doc, str):
-            assert PARAMS_MARKER not in doc, f"{name}.{attr}"
+def test_every_distribution_with_parameters_states_them_once():
+    # 18 distributions, about nine methods each, keep a copy.
+    assert len(FILES) == 18
+    assert sum(len(copies(p)) for p in FILES) >= 150
 
 
-def test_filled_text_names_the_parameters():
-    doc = inspect.getdoc(surpyval.Weibull.sf)
-    assert "alpha : numpy array or scalar" in doc
-    assert "    shape parameter for the Weibull distribution" in doc
-    # the entries sit where the marker was: after x, before Returns
-    assert doc.index("x : numpy") < doc.index("alpha :") < doc.index("Returns")
-
-
-def test_fill_uses_only_the_class_own_entries():
-    class Base:
-        _param_docs = """
-            a : float
-                The scale.
-            """
-
-        def f(self):
-            """Parameters
-            ----------
-            {params}
-            """
-
-    class Child(Base):
-        def g(self):
-            """{params}"""
-
-    fill_param_docs(Base)
-    fill_param_docs(Child)
-    assert (
-        "            a : float\n                The scale." in Base.f.__doc__
+@pytest.mark.parametrize("path", FILES, ids=lambda p: p.stem)
+def test_copies_match_param_docs(path):
+    drifted = [c for c in copies(path) if not c.in_step]
+    assert not drifted, (
+        "Parameter entries differ from _param_docs (run "
+        "`python scripts/sync_docstrings.py --write`):\n"
+        + "\n".join(f"{c.cls}.{c.method}\n{c.diff()}" for c in drifted)
     )
-    assert Child.g.__doc__ == "{params}"
 
 
-def test_no_docstrings_is_a_no_op():
-    class C:
-        _param_docs = "a : float"
+SOURCE = '''
+class A:
+    _param_docs = """
+        a : float
+            The scale.
+        b : float
+            The shape.
+        """
 
-        def f(self):
-            pass
+    def f(self, x, a, b):
+        """F.
 
-    fill_param_docs(C)
-    assert C.f.__doc__ is None
+        Parameters
+        ----------
+        x : float
+            Where.
+        a : float
+            The scale (drifted).
+        b : float
+            The shape.
+
+        Returns
+        -------
+        a : float
+            Not a parameter entry.
+        """
+
+    def g(self, n):
+        """G.
+
+        Parameters
+        ----------
+        a : int
+            Another meaning, with no b after it: not a copy.
+        """
+'''
+
+
+def test_drift_is_named_and_written_back(tmp_path):
+    path = tmp_path / "dist.py"
+    path.write_text(SOURCE)
+    found = copies(path)
+    assert [(c.cls, c.method, c.in_step) for c in found] == [("A", "f", False)]
+    assert "-            The scale.\n+            The scale (drifted)." in (
+        found[0].diff()
+    )
+    assert [c.method for c in sync(path)] == ["f"]
+    text = path.read_text()
+    assert "(drifted)" not in text
+    assert "Not a parameter entry." in text
+    assert "Another meaning" in text
+    assert all(c.in_step for c in copies(path))

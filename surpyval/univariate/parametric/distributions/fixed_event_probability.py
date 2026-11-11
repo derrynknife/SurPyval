@@ -69,9 +69,8 @@ class FixedEventProbability_(  # type: ignore[misc]
     array([0.0441, 0.5028])
     """
 
-    # The Parameters entries the method docstrings below share, written
-    # once: each docstring has a ``{params}`` line in their place, filled
-    # in when the class is made (``surpyval.utils.docstrings``).
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
     _param_docs = """
         p : float
             The probability of failure of the thing
@@ -109,7 +108,8 @@ class FixedEventProbability_(  # type: ignore[misc]
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        p : float
+            The probability of failure of the thing
 
         Returns
         -------
@@ -142,7 +142,8 @@ class FixedEventProbability_(  # type: ignore[misc]
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        p : float
+            The probability of failure of the thing
 
         Returns
         -------
@@ -184,7 +185,8 @@ class FixedEventProbability_(  # type: ignore[misc]
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        p : float
+            The probability of failure of the thing
 
         Returns
         -------
@@ -227,7 +229,8 @@ class FixedEventProbability_(  # type: ignore[misc]
         u : numpy array or scalar
             The probability or probabilities at which the quantile will
             be calculated
-        {params}
+        p : float
+            The probability of failure of the thing
 
         Returns
         -------
@@ -258,7 +261,8 @@ class FixedEventProbability_(  # type: ignore[misc]
 
         m : integer
             The ordinal of the moment to calculate
-        {params}
+        p : float
+            The probability of failure of the thing
 
         Returns
         -------

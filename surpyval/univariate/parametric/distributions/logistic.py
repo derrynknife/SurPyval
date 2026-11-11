@@ -40,9 +40,8 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
     array([0.9241, 0.5   , 0.2689])
     """
 
-    # The Parameters entries the method docstrings below share, written
-    # once: each docstring has a ``{params}`` line in their place, filled
-    # in when the class is made (``surpyval.utils.docstrings``).
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
     _param_docs = """
         mu : numpy array or scalar
             The location parameter for the Logistic distribution
@@ -90,7 +89,10 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        mu : numpy array or scalar
+            The location parameter for the Logistic distribution
+        sigma : numpy array or scalar
+            The scale parameter for the Logistic distribution
 
         Returns
         -------
@@ -124,7 +126,10 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        mu : numpy array or scalar
+            The location parameter for the Logistic distribution
+        sigma : numpy array or scalar
+            The scale parameter for the Logistic distribution
 
         Returns
         -------
@@ -156,7 +161,10 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        mu : numpy array or scalar
+            The location parameter for the Logistic distribution
+        sigma : numpy array or scalar
+            The scale parameter for the Logistic distribution
 
         Returns
         -------
@@ -190,7 +198,10 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        mu : numpy array or scalar
+            The location parameter for the Logistic distribution
+        sigma : numpy array or scalar
+            The scale parameter for the Logistic distribution
 
         Returns
         -------
@@ -222,7 +233,10 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        mu : numpy array or scalar
+            The location parameter for the Logistic distribution
+        sigma : numpy array or scalar
+            The scale parameter for the Logistic distribution
 
         Returns
         -------
@@ -255,7 +269,10 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
 
         u : numpy array or scalar
             The percentiles at which the quantile will be calculated
-        {params}
+        mu : numpy array or scalar
+            The location parameter for the Logistic distribution
+        sigma : numpy array or scalar
+            The scale parameter for the Logistic distribution
 
         Returns
         -------
@@ -286,7 +303,10 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         Parameters
         ----------
 
-        {params}
+        mu : numpy array or scalar
+            The location parameter for the Logistic distribution
+        sigma : numpy array or scalar
+            The scale parameter for the Logistic distribution
 
         Returns
         -------
@@ -342,9 +362,9 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         m : integer
             The ordinal of the moment to calculate
         mu : numpy array or scalar
-            The location parameter of the distribution
+            The location parameter for the Logistic distribution
         sigma : numpy array or scalar
-            The scale parameter of the distribution
+            The scale parameter for the Logistic distribution
 
         Returns
         -------
@@ -374,7 +394,10 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         Parameters
         ----------
 
-        {params}
+        mu : numpy array or scalar
+            The location parameter for the Logistic distribution
+        sigma : numpy array or scalar
+            The scale parameter for the Logistic distribution
 
         Returns
         -------

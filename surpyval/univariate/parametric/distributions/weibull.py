@@ -53,9 +53,8 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
     array([60.01,  2.14])
     """
 
-    # The Parameters entries the method docstrings below share, written
-    # once: each docstring has a ``{params}`` line in their place, filled
-    # in when the class is made (``surpyval.utils.docstrings``).
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
     _param_docs = """
         alpha : numpy array or scalar
             scale parameter for the Weibull distribution
@@ -115,7 +114,10 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        alpha : numpy array or scalar
+            scale parameter for the Weibull distribution
+        beta : numpy array or scalar
+            shape parameter for the Weibull distribution
 
         Returns
         -------
@@ -147,7 +149,10 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        alpha : numpy array or scalar
+            scale parameter for the Weibull distribution
+        beta : numpy array or scalar
+            shape parameter for the Weibull distribution
 
         Returns
         -------
@@ -182,7 +187,10 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        alpha : numpy array or scalar
+            scale parameter for the Weibull distribution
+        beta : numpy array or scalar
+            shape parameter for the Weibull distribution
 
         Returns
         -------
@@ -221,7 +229,10 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        alpha : numpy array or scalar
+            scale parameter for the Weibull distribution
+        beta : numpy array or scalar
+            shape parameter for the Weibull distribution
 
         Returns
         -------
@@ -255,7 +266,10 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        alpha : numpy array or scalar
+            scale parameter for the Weibull distribution
+        beta : numpy array or scalar
+            shape parameter for the Weibull distribution
 
         Returns
         -------
@@ -287,7 +301,10 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
 
         u : numpy array or scalar
             The percentiles at which the quantile will be calculated
-        {params}
+        alpha : numpy array or scalar
+            scale parameter for the Weibull distribution
+        beta : numpy array or scalar
+            shape parameter for the Weibull distribution
 
         Returns
         -------
@@ -324,7 +341,10 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
         Parameters
         ----------
 
-        {params}
+        alpha : numpy array or scalar
+            scale parameter for the Weibull distribution
+        beta : numpy array or scalar
+            shape parameter for the Weibull distribution
 
         Returns
         -------
@@ -353,7 +373,10 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
 
         m : integer
             The ordinal of the moment to calculate
-        {params}
+        alpha : numpy array or scalar
+            scale parameter for the Weibull distribution
+        beta : numpy array or scalar
+            shape parameter for the Weibull distribution
 
         Returns
         -------

@@ -39,9 +39,8 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
     array([0.934 , 0.6321, 0.1266])
     """
 
-    # The Parameters entries the method docstrings below share, written
-    # once: each docstring has a ``{params}`` line in their place, filled
-    # in when the class is made (``surpyval.utils.docstrings``).
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
     _param_docs = """
         mu : numpy array like or scalar
             The location parameter of the distribution
@@ -85,7 +84,10 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         x : numpy array or scalar
             The values of the random variables at which the survival function
             will be calculated
-        {params}
+        mu : numpy array like or scalar
+            The location parameter of the distribution
+        sigma : numpy array like or scalar
+            The scale parameter of the distribution
 
         Returns
         -------
@@ -124,7 +126,10 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         x : numpy array or scalar
             The values of the random variables at which the survival function
             will be calculated
-        {params}
+        mu : numpy array like or scalar
+            The location parameter of the distribution
+        sigma : numpy array like or scalar
+            The scale parameter of the distribution
 
         Returns
         -------
@@ -162,7 +167,10 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         x : numpy array or scalar
             The values of the random variables at which the survival function
             will be calculated
-        {params}
+        mu : numpy array like or scalar
+            The location parameter of the distribution
+        sigma : numpy array like or scalar
+            The scale parameter of the distribution
 
         Returns
         -------
@@ -208,7 +216,10 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         x : numpy array or scalar
             The values of the random variables at which the survival function
             will be calculated
-        {params}
+        mu : numpy array like or scalar
+            The location parameter of the distribution
+        sigma : numpy array like or scalar
+            The scale parameter of the distribution
 
         Returns
         -------
@@ -252,7 +263,10 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         x : numpy array or scalar
             The values of the random variables at which the survival function
             will be calculated
-        {params}
+        mu : numpy array like or scalar
+            The location parameter of the distribution
+        sigma : numpy array like or scalar
+            The scale parameter of the distribution
 
         Returns
         -------
@@ -286,9 +300,9 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         mu : numpy array like or scalar
-            The location parameter(s) of the distribution
+            The location parameter of the distribution
         sigma : numpy array like or scalar
-            The scale parameter(s) of the distribution
+            The scale parameter of the distribution
 
         Returns
         -------
@@ -321,9 +335,9 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         ----------
 
         mu : numpy array like or scalar
-            The location parameter(s) of the distribution
+            The location parameter of the distribution
         sigma : numpy array like or scalar
-            The scale parameter(s) of the distribution
+            The scale parameter of the distribution
 
         Returns
         -------
@@ -403,10 +417,10 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         Parameters
         ----------
 
-        mu : numpy array or scalar
-            The location parameter(s) of the distribution
-        sigma : numpy array or scalar
-            The scale parameter(s) of the distribution
+        mu : numpy array like or scalar
+            The location parameter of the distribution
+        sigma : numpy array like or scalar
+            The scale parameter of the distribution
 
         Returns
         -------

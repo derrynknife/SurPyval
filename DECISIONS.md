@@ -19,7 +19,7 @@ Design decisions made while working on the open issues, with the reason for each
 
 | Decision | By | Reason | Status |
 |---|---|---|---|
-| A distribution states its parameter entries once (`_param_docs`), and each method docstring has a `{params}` line that `ParametricFitter.__init_subclass__` fills in at import. The runtime `__doc__` (what `help()`, Sphinx and doctest read) is unchanged, character for character; only an editor that reads the source without importing it shows the `{params}` line. | proposed | The same entries were repeated in up to ten methods of every distribution, so a wording fix meant ten edits. Filling at import keeps the rendered text whole; the alternative, a "parameters as in the class docstring" pointer, would shorten what users read in `help()`. Reversible by pasting the entries back. | done |
+| Each distribution method keeps its parameter entries literally in its docstring. The class states them once more in `_param_docs`, the copy to edit; `scripts/sync_docstrings.py --write` rewrites the method copies from it, and `surpyval/tests/utils/test_shared_docstrings.py` fails, naming the class, method and difference, when a copy drifts. Filling a `{params}` line in at import was tried and rejected. | proposed | Most users read docstrings in their editor's hover, which reads the source without importing it, so a placeholder there is a visible cost; literal copies with a check keep the text whole everywhere and still stop the copies drifting. Nine copies had drifted (Beta, Gumbel, GumbelLEV, Logistic) and were reworded to match. | done |
 
 ### `fit_from_ecdf` refuses a falling curve (12 Nov 2026)
 

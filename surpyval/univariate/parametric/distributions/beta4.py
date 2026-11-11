@@ -71,9 +71,8 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
        1.
     """
 
-    # The Parameters entries the method docstrings below share, written
-    # once: each docstring has a ``{params}`` line in their place, filled
-    # in when the class is made (``surpyval.utils.docstrings``).
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
     _param_docs = """
         alpha : numpy array or scalar
             The first shape parameter for the Beta distribution
@@ -272,7 +271,14 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        alpha : numpy array or scalar
+            The first shape parameter for the Beta distribution
+        beta : numpy array or scalar
+            The second shape parameter for the Beta distribution
+        a : numpy array or scalar
+            The lower bound of the support
+        b : numpy array or scalar
+            The upper bound of the support
 
         Returns
         -------
@@ -312,7 +318,14 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        alpha : numpy array or scalar
+            The first shape parameter for the Beta distribution
+        beta : numpy array or scalar
+            The second shape parameter for the Beta distribution
+        a : numpy array or scalar
+            The lower bound of the support
+        b : numpy array or scalar
+            The upper bound of the support
 
         Returns
         -------
@@ -348,7 +361,14 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        alpha : numpy array or scalar
+            The first shape parameter for the Beta distribution
+        beta : numpy array or scalar
+            The second shape parameter for the Beta distribution
+        a : numpy array or scalar
+            The lower bound of the support
+        b : numpy array or scalar
+            The upper bound of the support
 
         Returns
         -------
@@ -386,7 +406,14 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        alpha : numpy array or scalar
+            The first shape parameter for the Beta distribution
+        beta : numpy array or scalar
+            The second shape parameter for the Beta distribution
+        a : numpy array or scalar
+            The lower bound of the support
+        b : numpy array or scalar
+            The upper bound of the support
 
         Returns
         -------
@@ -421,7 +448,14 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        alpha : numpy array or scalar
+            The first shape parameter for the Beta distribution
+        beta : numpy array or scalar
+            The second shape parameter for the Beta distribution
+        a : numpy array or scalar
+            The lower bound of the support
+        b : numpy array or scalar
+            The upper bound of the support
 
         Returns
         -------
@@ -446,7 +480,14 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
 
         u : numpy array or scalar
             The percentiles at which the quantile will be calculated
-        {params}
+        alpha : numpy array or scalar
+            The first shape parameter for the Beta distribution
+        beta : numpy array or scalar
+            The second shape parameter for the Beta distribution
+        a : numpy array or scalar
+            The lower bound of the support
+        b : numpy array or scalar
+            The upper bound of the support
 
         Returns
         -------
@@ -477,7 +518,14 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         Parameters
         ----------
 
-        {params}
+        alpha : numpy array or scalar
+            The first shape parameter for the Beta distribution
+        beta : numpy array or scalar
+            The second shape parameter for the Beta distribution
+        a : numpy array or scalar
+            The lower bound of the support
+        b : numpy array or scalar
+            The upper bound of the support
 
         Returns
         -------
@@ -508,7 +556,14 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
 
         m : integer
             The ordinal of the moment to calculate
-        {params}
+        alpha : numpy array or scalar
+            The first shape parameter for the Beta distribution
+        beta : numpy array or scalar
+            The second shape parameter for the Beta distribution
+        a : numpy array or scalar
+            The lower bound of the support
+        b : numpy array or scalar
+            The upper bound of the support
 
         Returns
         -------
@@ -543,7 +598,14 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         Parameters
         ----------
 
-        {params}
+        alpha : numpy array or scalar
+            The first shape parameter for the Beta distribution
+        beta : numpy array or scalar
+            The second shape parameter for the Beta distribution
+        a : numpy array or scalar
+            The lower bound of the support
+        b : numpy array or scalar
+            The upper bound of the support
 
         Returns
         -------

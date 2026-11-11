@@ -48,9 +48,8 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
     100.0
     """
 
-    # The Parameters entries the method docstrings below share, written
-    # once: each docstring has a ``{params}`` line in their place, filled
-    # in when the class is made (``surpyval.utils.docstrings``).
+    # The Parameters entries the method docstrings below repeat. Edit them
+    # here and run scripts/sync_docstrings.py --write to update the copies.
     _param_docs = """
         failure_rate : numpy array or scalar
             The scale parameter for the Exponential distribution
@@ -148,7 +147,8 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        failure_rate : numpy array or scalar
+            The scale parameter for the Exponential distribution
 
         Returns
         -------
@@ -195,7 +195,8 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
             The value(s) at which the function will be calculated
         given : numpy array or scalar
             The value(s) at which each value(s) in x was known to have survived
-        {params}
+        failure_rate : numpy array or scalar
+            The scale parameter for the Exponential distribution
 
         Returns
         -------
@@ -228,7 +229,8 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        failure_rate : numpy array or scalar
+            The scale parameter for the Exponential distribution
 
         Returns
         -------
@@ -259,7 +261,8 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        failure_rate : numpy array or scalar
+            The scale parameter for the Exponential distribution
 
         Returns
         -------
@@ -294,7 +297,8 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        failure_rate : numpy array or scalar
+            The scale parameter for the Exponential distribution
 
         Returns
         -------
@@ -326,7 +330,8 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        {params}
+        failure_rate : numpy array or scalar
+            The scale parameter for the Exponential distribution
 
         Returns
         -------
@@ -359,7 +364,8 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
 
         u : numpy array or scalar
             The percentiles at which the quantile will be calculated
-        {params}
+        failure_rate : numpy array or scalar
+            The scale parameter for the Exponential distribution
 
         Returns
         -------
@@ -393,7 +399,8 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         Parameters
         ----------
 
-        {params}
+        failure_rate : numpy array or scalar
+            The scale parameter for the Exponential distribution
 
         Returns
         -------
@@ -422,7 +429,8 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
 
         m : integer
             The ordinal of the moment to calculate
-        {params}
+        failure_rate : numpy array or scalar
+            The scale parameter for the Exponential distribution
 
         Returns
         -------
@@ -449,7 +457,8 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         Parameters
         ----------
 
-        {params}
+        failure_rate : numpy array or scalar
+            The scale parameter for the Exponential distribution
 
         Returns
         -------
