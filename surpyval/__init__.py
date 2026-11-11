@@ -179,6 +179,7 @@ _LAZY = {
             "GumbelAH",
             "GumbelPH",
             "GumbelPO",
+            "LifeAtCovariates",
             "LogNormalAFT",
             "LogNormalAH",
             "LogNormalFrailty",

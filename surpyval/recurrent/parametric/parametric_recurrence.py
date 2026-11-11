@@ -32,7 +32,7 @@ from surpyval.utils.validation import (
 )
 
 # The bound on 1 / f that a bound on f gives.
-_OPPOSITE = {"two-sided": "two-sided", "lower": "upper", "upper": "lower"}
+OPPOSITE_BOUND = {"two-sided": "two-sided", "lower": "upper", "upper": "lower"}
 
 # How the model was obtained, as the repr reports it.
 _FITTED_BY = {
@@ -818,7 +818,7 @@ class ParametricRecurrenceModel(
         check_alpha_ci(alpha_ci)
         if method == "crow":
             return self._reciprocal_cb(
-                self._crow_mtbf_cb(x, alpha_ci, _OPPOSITE[bound]), bound
+                self._crow_mtbf_cb(x, alpha_ci, OPPOSITE_BOUND[bound]), bound
             )
         self._check_fitted()
         x = np.atleast_1d(np.asarray(x, dtype=float))
@@ -928,7 +928,7 @@ class ParametricRecurrenceModel(
         if method == "crow":
             return self._crow_mtbf_cb(x, alpha_ci, bound)
         return self._reciprocal_cb(
-            self.iif_cb(x, alpha_ci, _OPPOSITE[bound]), bound
+            self.iif_cb(x, alpha_ci, OPPOSITE_BOUND[bound]), bound
         )
 
     @staticmethod
