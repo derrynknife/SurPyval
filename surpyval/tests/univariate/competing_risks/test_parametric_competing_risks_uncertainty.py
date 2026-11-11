@@ -263,15 +263,15 @@ def test_exponential_cif_bound_against_its_analytic_gradient():
 
 
 def test_all_cause_variance_is_the_sum_of_the_causes(model):
-    from surpyval.univariate.competing_risks.parametric import (
-        parametric_competing_risks as pcr,
+    from surpyval.univariate.competing_risks._assembly import (
+        central_differences,
     )
 
     for m in (model, _extended()):
         cov = m.covariance()
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            grad = pcr._central_differences(
+            grad = central_differences(
                 lambda v: m.with_params(v).Hf(TIMES),
                 m._estimates(),
                 cov,
