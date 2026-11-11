@@ -21,7 +21,6 @@ search.
 
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import numpy as np
@@ -51,6 +50,7 @@ from surpyval.univariate.parametric.distributions.rayleigh import Rayleigh
 from surpyval.univariate.parametric.distributions.weibull import Weibull
 from surpyval.utils.autograd_gamma_compat import gammainccln
 from surpyval.utils.normal import gap_raw, ratio_raw
+from surpyval.utils.warnings import ignoring_warnings
 
 _LOG_SQRT_2PI = 0.5 * np.log(2.0 * np.pi)
 
@@ -718,8 +718,7 @@ def negated(found: tuple | None, neg_ll: Any, params: np.ndarray) -> tuple:
         ll, d_r, d_p = found
         return -ll, -np.concatenate([[d_r], d_p])
     params = np.asarray(params, dtype=float)
-    with np.errstate(all="ignore"), warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with np.errstate(all="ignore"), ignoring_warnings():
         try:
             value, grad = value_and_grad(neg_ll)(params)
             return float(value), np.asarray(grad, dtype=float)

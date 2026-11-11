@@ -53,7 +53,7 @@ from scipy.special import ndtr, ndtri
 from surpyval.utils.no_maximum import quiet_maximum_warnings
 from surpyval.utils.rng import as_generator
 from surpyval.utils.validation import check_option
-from surpyval.utils.warnings import caller_stacklevel
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 from ._likelihood_ratio import LR_NAMES
 from ._prediction import quantiles_by_inversion
@@ -369,8 +369,7 @@ def _draw(
             Z, weights = design.Z, {}
             t = t if design.truncated else None
         try:
-            with warnings.catch_warnings(), quiet_maximum_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings(), quiet_maximum_warnings():
                 refit = model.model.fit(
                     x,
                     Z,
@@ -690,8 +689,7 @@ def acceleration(model: Any, fits: Refits, grad: npt.NDArray) -> npt.NDArray:
     ``S`` at the estimate (``I^-1`` the model's covariance). Taken as 0
     (the bias-corrected percentile interval) where the covariance or the
     skewness is not finite."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with ignoring_warnings():
         if getattr(model, "weighted", False):
             cov = _bread(model)
         else:

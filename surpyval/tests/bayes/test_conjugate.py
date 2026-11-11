@@ -256,6 +256,105 @@ def test_lomax_predictive_variance_is_the_closed_form():
     assert model.var() == pytest.approx(second - model.mean() ** 2, rel=1e-8)
 
 
+# A prior on a rate per hour, as a handbook or a data library gives one:
+# 40 failures in 1e9 unit-hours. Its ``b ** a`` is 1e360, past the largest
+# double.
+PER_HOUR = {"failure_rate": sp.Gamma.from_params([40.0, 1e9])}
+HOURS = np.array([8760.0, 20000.0, 50000.0])
+
+
+def _per_hour_model():
+    return sp.Exponential.fit_bayes(HOURS, c=[0, 1, 1], priors=PER_HOUR)
+
+
+def test_lomax_predictive_with_a_per_hour_rate_prior_is_finite_and_exact():
+    """The Exponential-Gamma predictive with a prior on a rate per hour
+    (a large scale ``b``): ``a b^a / (b + x)^(a + 1)`` overflowed in plain
+    floats, and every function raised with it. Each is now the closed form
+    on the log scale, checked in exact arithmetic (the posterior shape is
+    a whole number here, so ``(b / (b + x))^a`` is a ``Fraction``)."""
+    model = _per_hour_model()
+    assert model.method == "conjugate"
+    a, b = model.posterior.exact["params"]
+    assert (a, b) == (41.0, 1e9 + 78760.0)
+    A_, B_ = int(a), Fraction(b)
+    x = np.array([1.0, 1e3, 1e5, 1e7, 1e9, 1e11])
+    sf = [float((B_ / (B_ + Fraction(t))) ** A_) for t in x]
+    ff = [float(1 - (B_ / (B_ + Fraction(t))) ** A_) for t in x]
+    hf = [float(A_ / (B_ + Fraction(t))) for t in x]
+    df = [
+        float(A_ / (B_ + Fraction(t)) * (B_ / (B_ + Fraction(t))) ** A_)
+        for t in x
+    ]
+    np.testing.assert_allclose(model.sf(x), sf, rtol=1e-12)
+    # (relative: the chance of failure in the first hour is 4e-8, which
+    # 1 - sf would hold to nine digits only)
+    np.testing.assert_allclose(model.ff(x), ff, rtol=1e-12)
+    np.testing.assert_allclose(model.hf(x), hf, rtol=1e-14)
+    np.testing.assert_allclose(model.df(x), df, rtol=1e-12)
+    np.testing.assert_allclose(model.Hf(x), -np.log(sf), rtol=1e-9)
+    p = np.array([1e-6, 0.1, 0.5, 0.99])
+    np.testing.assert_allclose(model.ff(model.qf(p)), p, rtol=1e-12)
+    assert model.mean() == float(B_ / (A_ - 1))
+
+
+def test_lomax_predictive_does_not_depend_on_the_time_unit():
+    """The same study in hours and in millions of hours gives the same
+    predictive: the unit of the prior's rate changes no probability."""
+    hours = _per_hour_model()
+    mega = sp.Exponential.fit_bayes(
+        HOURS / 1e6,
+        c=[0, 1, 1],
+        priors={"failure_rate": sp.Gamma.from_params([40.0, 1e3])},
+    )
+    x = np.array([0.0, 1e3, 1e5, 1e7, 1e9, np.inf])
+    for name in ("sf", "ff", "Hf"):
+        np.testing.assert_allclose(
+            getattr(hours, name)(x), getattr(mega, name)(x / 1e6), rtol=1e-12
+        )
+    for name in ("df", "hf"):
+        np.testing.assert_allclose(
+            getattr(hours, name)(x) * 1e6,
+            getattr(mega, name)(x / 1e6),
+            rtol=1e-12,
+        )
+    np.testing.assert_allclose(
+        hours.mrl(x[:-1]), mega.mrl(x[:-1] / 1e6) * 1e6, rtol=1e-12
+    )
+    assert np.isnan(hours.sf(np.nan))
+    assert hours.df(-1.0) == 0.0 and hours.sf(-1.0) == 1.0
+
+
+def test_lomax_mean_residual_life_is_the_closed_form():
+    """A Lomax's mean residual life is linear in age, ``(b + x) / (a -
+    1)``: at 0 it is the mean. The numerical integral it replaces returned
+    -1 with a per-hour prior, and was 1% out at ``x = b`` on any scale."""
+    model = _per_hour_model()
+    a, b = (Fraction(v) for v in model.posterior.exact["params"])
+    x = np.array([0.0, 1e3, 1e7, float(b)])
+    exact = [float((b + Fraction(t)) / (a - 1)) for t in x]
+    np.testing.assert_allclose(model.mrl(x), exact, rtol=1e-14)
+    assert model.mrl(0.0) == model.mean()
+    # against the integral of the predictive survival function, on a
+    # scale where the integral is easy
+    small = sp.Exponential.fit_bayes(X, C, tl=TL, priors=RATE)
+    af, bf = small.posterior.exact["params"]
+    for t in (0.0, 300.0):
+        tail, _ = integrate.quad(
+            lambda u: (bf / (bf + u)) ** af, t, np.inf, epsabs=0
+        )
+        assert small.mrl(t) == pytest.approx(
+            tail / (bf / (bf + t)) ** af, rel=1e-8
+        )
+    # and it is infinite where the mean is
+    flat = sp.Exponential.fit_bayes(
+        [100.0, 200.0, 300.0],
+        c=[1, 1, 1],
+        priors={"failure_rate": sp.Gamma.from_params([0.5, 100.0])},
+    )
+    assert flat.mrl(50.0) == np.inf
+
+
 def test_lomax_predictive_variance_is_infinite_when_the_shape_is_at_most_2():
     """With a posterior shape in (1, 2] the Lomax mean is finite and its
     variance infinite (a Gamma(0.5, 100) prior and one failure: a = 1.5);

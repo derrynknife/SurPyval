@@ -29,6 +29,7 @@ from surpyval.utils.validation import (
     check_alpha_ci,
     warn_outside_unit_interval,
 )
+from surpyval.utils.warnings import ignoring_warnings
 
 from ._concordance import ConcordanceMixin
 from ._covariate_link import CovariateLink
@@ -460,8 +461,7 @@ class ParametricRegressionModel(
         state = self._restored_inference
         if state is None and self._fit_centring is not None:
             try:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
+                with ignoring_warnings():
                     state = self._inference_state()
             except Exception:
                 return None
@@ -875,8 +875,7 @@ class ParametricRegressionModel(
         cannot be inverted), and for a parameter held fixed."""
         n = len(self.params)
         try:
-            with warnings.catch_warnings(), np.errstate(all="ignore"):
-                warnings.simplefilter("ignore")
+            with ignoring_warnings(), np.errstate(all="ignore"):
                 se = np.array(self.standard_errors(), dtype=float)
         except (ValueError, ArithmeticError, np.linalg.LinAlgError):
             se = np.full(n, np.nan)
@@ -1009,8 +1008,7 @@ class ParametricRegressionModel(
             bounds = np.full(2, np.nan)
             if np.isfinite(se[i]):
                 try:
-                    with warnings.catch_warnings(), np.errstate(all="ignore"):
-                        warnings.simplefilter("ignore")
+                    with ignoring_warnings(), np.errstate(all="ignore"):
                         bounds = self._summary_bounds(
                             i, se[i], alpha_ci, robust
                         )

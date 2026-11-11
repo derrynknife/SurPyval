@@ -3,12 +3,12 @@ the posterior against the prior, and curves drawn from a prior."""
 
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import numpy as np
 
 from surpyval.bayes.prior import DistributionPrior, NormalOnScale
+from surpyval.utils.warnings import ignoring_warnings
 
 
 def probability_plot(
@@ -81,8 +81,7 @@ def probability_plot(
     mle = model.mle if plot_mle else None
     if mle is not None and "x_model" in d:
         # probabilities: the axes' scale transforms them
-        with warnings.catch_warnings(), np.errstate(all="ignore"):
-            warnings.simplefilter("ignore")
+        with ignoring_warnings(), np.errstate(all="ignore"):
             F = np.asarray(mle.ff(d["x_model"] + model.gamma), dtype=float)
         F = np.where((F > 1e-12) & (F < 1 - 1e-12), F, np.nan)
         ax.plot(

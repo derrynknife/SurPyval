@@ -16,6 +16,7 @@ from surpyval.utils.shapes import (
     keeps_query_shape,
 )
 from surpyval.utils.validation import warn_outside_unit_interval
+from surpyval.utils.warnings import ignoring_warnings
 
 from .._covariate_link import CovariateLink
 from .._kinds import DISTRIBUTIONAL
@@ -430,8 +431,7 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         if parameter is None:
             fixed = {k: v for k, v in self.fixed.items() if k in names}
             kwargs: dict[str, Any] = {} if not fixed else {"fixed": fixed}
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings():
                 null = self.distribution.fit(  # type: ignore[attr-defined]
                     x=data.x, c=data.c, n=data.n, t=data.t, **kwargs
                 )
@@ -454,10 +454,9 @@ class DistributionalRegressionModel(ParametricRegressionModel):
             for name, cols in zip(names, self.covariate_positions)
         }
         data = self.data
-        with warnings.catch_warnings():
+        with ignoring_warnings():
             # The fit's own warnings (aliased columns, say) were given
             # when the model was fitted.
-            warnings.simplefilter("ignore")
             null = self.model.fit(
                 data.x,
                 np.asarray(data.Z, dtype=float),
@@ -886,8 +885,7 @@ class DistributionalRegressionModel(ParametricRegressionModel):
         out = np.full(rows.shape[0], np.nan)
         known = np.all(np.isfinite(rows), axis=1)
         dist: Any = self.distribution
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with np.errstate(all="ignore"), ignoring_warnings():
             values = self.model._dist_params_at(rows, self._eval_params())
             values = [
                 np.asarray(v, float) * np.ones(rows.shape[0]) for v in values
@@ -959,8 +957,7 @@ class DistributionalRegressionModel(ParametricRegressionModel):
             cov = None
         elif hasattr(self, "data") and getattr(self, "res", None) is not None:
             try:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
+                with ignoring_warnings():
                     cov = self.covariance()
             except Exception:
                 cov = None

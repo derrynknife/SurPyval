@@ -18,7 +18,6 @@ variables, so nothing is approximated.
 
 from __future__ import annotations
 
-import warnings
 from collections.abc import Mapping
 from typing import Any
 
@@ -27,6 +26,7 @@ import numpy.typing as npt
 from scipy import stats
 
 from surpyval.bayes.transforms import Transform
+from surpyval.utils.warnings import ignoring_warnings
 
 __all__ = [
     "around",
@@ -1632,8 +1632,7 @@ class BoundPriors:
         parameter. A power prior's old likelihood is included."""
         phi = np.atleast_2d(phi)
         out = np.zeros(phi.shape[0])
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings():
             with np.errstate(all="ignore"):
                 for f in self._factors:
                     out = out + np.asarray(f(phi), dtype=float)

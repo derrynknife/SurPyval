@@ -52,6 +52,7 @@ from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.removed_names import removed_parameter_note
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.warnings import ignoring_warnings
 
 from ._aliasing import (
     aliased_columns,
@@ -1819,8 +1820,10 @@ def _far_run_off(
             continue
         if abs(to_log(float(res.x[pos]))) <= FAR_EFOLDS:
             continue
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "Output seems independent")
+        with (
+            np.errstate(all="ignore"),
+            ignoring_warnings(message="Output seems independent"),
+        ):
             found = walk_profile(fun, res.x, pos, one_sided, floor)
         if found is not None and found.kind == "run-off":
             return SearchVerdict(
@@ -1858,8 +1861,10 @@ def _walk_baseline(
     for pos, _ in baseline:
         if pos not in one_sided:
             continue
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "Output seems independent")
+        with (
+            np.errstate(all="ignore"),
+            ignoring_warnings(message="Output seems independent"),
+        ):
             found = walk_profile(fun, res.x, pos, one_sided, floor)
         if found is None:
             continue
@@ -1922,8 +1927,10 @@ def _polish(
 ) -> "tuple[Any, tuple[npt.NDArray, npt.NDArray] | None, bool]":
     """``(res, derivatives, verified)`` after a BFGS polish of ``res``,
     kept where it is no worse (see :func:`judge_search`)."""
-    with np.errstate(all="ignore"), warnings.catch_warnings():
-        warnings.filterwarnings("ignore", "Output seems independent")
+    with (
+        np.errstate(all="ignore"),
+        ignoring_warnings(message="Output seems independent"),
+    ):
         try:
             polish = preconditioned_bfgs(
                 fun, res.x, (), Gradient(fun), floor=floor, obj_scale=n_obs
@@ -1991,8 +1998,10 @@ def newton_finish(
     steps = 0
     eps = float(np.finfo(float).eps)
     tol = max(FINE_GAIN, FINE_GAIN_PER_OBS * n_obs) if fine is None else fine
-    with np.errstate(all="ignore"), warnings.catch_warnings():
-        warnings.filterwarnings("ignore", "Output seems independent")
+    with (
+        np.errstate(all="ignore"),
+        ignoring_warnings(message="Output seems independent"),
+    ):
         for _ in range(FINISH_STEPS):
             step = _newton_step(x, at, keep, one_sided)
             if step is None:
@@ -2216,8 +2225,10 @@ def baseline_at_origin(
     if not names:
         return verdict
     positions = [pos for pos, _ in coefs] + [pos for pos, _ in baseline]
-    with np.errstate(all="ignore"), warnings.catch_warnings():
-        warnings.filterwarnings("ignore", "Output seems independent")
+    with (
+        np.errstate(all="ignore"),
+        ignoring_warnings(message="Output seems independent"),
+    ):
         try:
             still = _still_at_origin(
                 verdict, centring, names, free, maps, floor, one_sided
@@ -2288,8 +2299,10 @@ def natural_information(
         # The search-space Hessian first: where it is not positive
         # definite the covariance stays as it was.
         np.linalg.cholesky(H_t)
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "Output seems independent")
+        with (
+            np.errstate(all="ignore"),
+            ignoring_warnings(message="Output seems independent"),
+        ):
             # phi' and, from the same trace, phi'' (each coordinate's map
             # depends on that coordinate alone).
             vjp, d1 = make_vjp(elementwise_grad(to_natural))(t)

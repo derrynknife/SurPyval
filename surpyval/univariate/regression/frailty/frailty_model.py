@@ -25,7 +25,6 @@ frailty's are computed by quadrature) -- so prediction comes in two flavours:
   posterior frailty ``S(t \\mid Z, u) = e^{-u e^{\\beta'Z} H_0(t)}``.
 """
 
-import warnings
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -59,6 +58,7 @@ from surpyval.utils.validation import (
     check_option,
     no_covariance_error,
 )
+from surpyval.utils.warnings import ignoring_warnings
 
 from .._concordance import ConcordanceMixin
 from .._prediction import (
@@ -614,10 +614,9 @@ class _SharedFrailty(
                 if np.isfinite(se[i]):
                     try:
                         with (
-                            warnings.catch_warnings(),
+                            ignoring_warnings(),
                             np.errstate(all="ignore"),
                         ):
-                            warnings.simplefilter("ignore")
                             bounds = np.asarray(
                                 self.param_cb(
                                     self.parameter_names[i], alpha_ci

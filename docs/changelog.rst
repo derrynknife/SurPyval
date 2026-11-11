@@ -904,6 +904,39 @@ Unreleased
 
 **Fixed.**
 
+- The package no longer silences other threads' warnings. Wherever it
+  held a warning back (117 places: the starts and polishes of fits, inner
+  refits of bootstraps and diagnostics, autograd's "output seems
+  independent of input" and the like) it used ``with
+  warnings.catch_warnings(): warnings.simplefilter("ignore")``, and
+  Python's warning filters are one list for every thread: while such a
+  block ran, a warning raised anywhere else in the process was dropped,
+  and two threads leaving blocks out of order could leave everything
+  ignored for the rest of the process. Those blocks now ignore in their
+  own thread only (``surpyval.utils.warnings.ignoring_warnings``), and
+  never save and restore the shared list. In one thread nothing changes:
+  the same warnings are held back and the same are given (the results and
+  warnings of every model in the conformance suite are the same to the
+  last bit). Six places that collect an inner step's warnings to read or
+  repeat them (``fit_best`` among them) still use the shared filters
+  while they run.
+- An exponential fitted with a Gamma prior on a rate per hour
+  (``Exponential.fit_bayes(x, priors={"failure_rate":
+  Gamma.from_params([40, 1e9])})``, 40 failures in a billion unit-hours,
+  as a handbook or a data library gives a rate) no longer raises
+  ``OverflowError`` from ``sf``, ``ff``, ``df``, ``hf`` and ``Hf``. Its
+  predictive distribution is a closed form (a Lomax of the posterior's
+  shape ``a`` and scale ``b``) that was evaluated as ``a * b**a / (b +
+  x)**(a + 1)``, and ``b**a`` passes the largest float once ``b`` is near
+  1e9 and ``a`` above about 34. The five functions and ``qf`` are now
+  worked out on the log scale (``Hf(x) = a log(1 + x / b)``), so the same
+  study in hours and in millions of hours gives the same probabilities;
+  on a scale that did not overflow the values are the same to rounding,
+  and ``ff`` near 0 keeps its digits. ``mrl`` of such a
+  fit is the Lomax's closed form, ``(b + x) / (a - 1)``, in place of a
+  numerical integral that returned -1 with a per-hour prior and was up
+  to 1% out far into the tail on any scale; ``hf`` at an infinite time is
+  0, not ``nan``.
 - An accelerated life fit (``AcceleratedLife``, the parameter-substitution
   fitter) no longer makes warnings in other threads raise. To start its
   search it fits the distribution at each stress level and, where that
