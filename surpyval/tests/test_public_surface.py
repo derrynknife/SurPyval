@@ -92,12 +92,14 @@ def public_names(namespace: str) -> set[str]:
     module = importlib.import_module(namespace)
     names = getattr(module, "__all__", None)
     if names is None:
+        # (``dir``, not ``vars``: a name the namespace loads on first use,
+        # through its ``__getattr__`` and ``__dir__``, is public too)
         names = [
             name
-            for name, obj in vars(module).items()
+            for name in dir(module)
             if not name.startswith("_")
-            and not isinstance(obj, ModuleType)
-            and _defined_in(obj, namespace)
+            and not isinstance(getattr(module, name), ModuleType)
+            and _defined_in(getattr(module, name), namespace)
         ]
     return {f"{namespace}.{name}" for name in names}
 
