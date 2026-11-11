@@ -294,6 +294,7 @@ def _build(name):
         CompetingRisksProportionalHazards,
         FineGray,
         ParametricCompetingRisks,
+        ParametricCompetingRisksRegression,
     )
 
     builders = {
@@ -348,6 +349,11 @@ def _build(name):
         ),
         "parametric_competing_risks": lambda: ParametricCompetingRisks.fit(
             _cr_data()[0], _cr_data()[2], c=_cr_data()[3]
+        ),
+        "parametric_competing_risks_regression": lambda: (
+            ParametricCompetingRisksRegression.fit(
+                *_cr_data()[:3], c=_cr_data()[3]
+            )
         ),
         "competing_risks": lambda: CompetingRisks.fit(
             np.abs(np.random.default_rng(3).weibull(1.3, 40) * 15) + 0.2,
@@ -452,6 +458,7 @@ CASES = [
     "fine_gray",
     "cr_proportional_hazards",
     "parametric_competing_risks",
+    "parametric_competing_risks_regression",
     "competing_risks",
     "cause_specific_mcf",
     "cause_specific_nhpp",

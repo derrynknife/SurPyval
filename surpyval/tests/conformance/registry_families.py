@@ -254,6 +254,8 @@ DIFFERENTIATED = frozenset(
         "surpyval.univariate.competing_risks.regression.fine_gray"
         ".FineGrayModel",
         "surpyval.univariate.competing_risks.ParametricCompetingRisks",
+        "surpyval.univariate.competing_risks"
+        ".ParametricCompetingRisksRegression",
         "surpyval.recurrent.parametric.parametric_recurrence"
         ".ParametricRecurrenceModel",
         "surpyval.recurrent.regression.proportional_intensity"
@@ -358,8 +360,9 @@ _APPLICABLE: dict[str, frozenset[str]] = {
     "sf_ff": _SURVIVAL,
     "Hf_sf": _SURVIVAL,
     # CAUSES: the all-cause functions (only ParametricCompetingRisks has
-    # df and qf; the property also needs them).
-    "df_hf_sf": frozenset({UNIVARIATE, REGRESSION, CAUSES}),
+    # df and qf; the property also needs them). CAUSES_REGRESSION: those
+    # of ParametricCompetingRisksRegression.
+    "df_hf_sf": frozenset({UNIVARIATE, REGRESSION, CAUSES, CAUSES_REGRESSION}),
     "qf_ff": frozenset({UNIVARIATE, CAUSES}),
     "cif_sum": frozenset({CAUSES, CAUSES_REGRESSION}),
     "row_independence": frozenset(WITH_COVARIATES),

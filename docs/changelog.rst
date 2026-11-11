@@ -126,6 +126,50 @@ Unreleased
   differences for a ``PathModel`` of one's own that does not give them.
   No numbers change: a fit with the default link is the same to the last
   digit. See "What the hazard follows: the link" in :doc:`Joint Models`.
+- Parametric competing-risks regression:
+  ``ParametricCompetingRisksRegression`` (``surpyval.univariate.competing_risks``,
+  and at the top level). Every cause of failure gets its own parametric
+  regression of its hazard on the covariates (``model=WeibullPH`` by
+  default; any parametric regression fitter, such as ``ExponentialPH``,
+  ``WeibullAFT``, ``LogNormalAFT`` or ``LogLogisticPO``, for every cause
+  or one per cause in a ``{cause: fitter}`` dict), and the model gives
+  each cause's cumulative incidence at any covariate row as a smooth
+  curve that carries on past the last observation, which the
+  cause-specific Cox model's step estimate cannot. The likelihood of
+  cause-specific hazard models factorises over the causes, so each cause
+  is its fitter's own fit with the other causes' failures censored, kept
+  in ``models[cause]``; nothing is assumed about how the causes depend on
+  each other. Fits: ``fit(x, Z, e, c, n, tl, model, init)`` (right
+  censoring, counts, delayed entry; a DataFrame ``Z`` names the
+  coefficients; ``fit(data)`` takes a ``SurpyvalData``) and
+  ``fit_from_df`` (``Z_cols`` or ``formula``). With ``Z`` after the times
+  and paired with them as in every regression: ``cif(x, Z, event)``,
+  ``iif``, ``probability_of_cause(Z, event)``; ``hf``, ``Hf``, ``sf``,
+  ``ff`` and ``df`` of the first failure of any cause, or with
+  ``event=k`` the cause's net ones; ``qf(p, Z)`` and ``mean(Z)`` of the
+  whole unit's life; ``random(size, Z, random_state)``. ``params``,
+  ``parameter_names`` (``"<cause>: <name>"``), ``covariance()``
+  (block-diagonal over the causes), ``standard_errors()`` and
+  ``summary()`` (the causes' regression tables stacked); ``neg_ll``,
+  ``log_likelihood``, ``aic``, ``aic_c`` and ``bic`` of the whole model
+  (BIC's sample size the failures of any cause). ``cb(x, Z, event, on,
+  alpha_ci, bound)``: delta-method Wald bounds on the cumulative
+  incidence (logit scale) and on the all-cause ``sf``, ``ff`` and ``Hf``
+  (log cumulative hazard scale); one cause's net bounds are its own
+  model's, likelihood-ratio and bootstrap included. ``to_dict`` /
+  ``from_dict`` keep every prediction, bound and table. Refused, each
+  saying what to use: left- and interval-censored rows
+  (``ParametricCompetingRisks``, without covariates), weights,
+  likelihood-ratio and bootstrap bounds on the cumulative incidence and
+  the all-cause functions, ``diagnose()`` on the whole model (each
+  cause's own, ``models[cause].diagnose()``), and a fitter that is not a
+  parametric regression (``CompetingRisksProportionalHazards`` for Cox).
+  Checked
+  against R ``flexsurv``: each cause's ``flexsurvreg(dist =
+  "weibullPH")`` fit and the cumulative incidences of ``pmatrix.fs`` on
+  the competing-risks multi-state model, at given covariate rows. See
+  "Parametric Competing-Risks Regression" in
+  :doc:`Competing Risks SurPyval Modelling`.
 - Mixture-cure regression: ``MixtureCure(latency, incidence, covariates,
   links)`` and the prebuilt ``WeibullMixtureCure``,
   ``LogNormalMixtureCure``, ``LogLogisticMixtureCure``,

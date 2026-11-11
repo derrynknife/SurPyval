@@ -254,6 +254,7 @@ _LAZY = {
             "CompetingRisksProportionalHazards",
             "FineGray",
             "ParametricCompetingRisks",
+            "ParametricCompetingRisksRegression",
             "gray_test",
         ),
         "surpyval.univariate.competing_risks",
@@ -475,6 +476,7 @@ if TYPE_CHECKING:
         CompetingRisksProportionalHazards,
         FineGray,
         ParametricCompetingRisks,
+        ParametricCompetingRisksRegression,
         gray_test,
     )
     from surpyval.univariate.joint import (

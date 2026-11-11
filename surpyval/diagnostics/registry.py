@@ -291,6 +291,19 @@ PENDING: tuple[Pending, ...] = (
         "the same data (WeibullAFT, LogNormalAFT, ...), which assumes a "
         "distribution that Buckley-James does not.",
     ),
+    Pending(
+        "parametric competing-risks regressions as a whole",
+        _instance_of(
+            "surpyval.univariate.competing_risks.regression."
+            "parametric_competing_risks_regression."
+            "ParametricCompetingRisksRegression"
+        ),
+        "Check each cause's own regression, model.models[cause].diagnose() "
+        "(its fit with the other causes censored, which is the whole "
+        "model's fit of that cause), and compare the fitted cumulative "
+        "incidences with the cause-specific Cox model's, "
+        "CompetingRisksProportionalHazards, on the same data.",
+    ),
 )
 
 #: What the refusal says for a model with neither a family nor a

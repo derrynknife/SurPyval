@@ -134,6 +134,7 @@ surpyval.PairwiseLogRankResult
 surpyval.ParameterSubstitutionFitter
 surpyval.Parametric
 surpyval.ParametricCompetingRisks
+surpyval.ParametricCompetingRisksRegression
 surpyval.ParametricDistribution
 surpyval.ParametricRegressionModel
 surpyval.PenaltyPath
@@ -384,6 +385,7 @@ surpyval.univariate.competing_risks.CompetingRisks
 surpyval.univariate.competing_risks.CompetingRisksProportionalHazards
 surpyval.univariate.competing_risks.FineGray
 surpyval.univariate.competing_risks.ParametricCompetingRisks
+surpyval.univariate.competing_risks.ParametricCompetingRisksRegression
 surpyval.univariate.nonparametric.FIT_FUNCS
 surpyval.univariate.nonparametric.FlemingHarrington
 surpyval.univariate.nonparametric.IntervalLogRankResult
