@@ -45,6 +45,12 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
     # time (#477).
     _cb_link = "probit"
 
+    @property
+    def canonical_name(self) -> str:
+        # The same for both names of the distribution (``Gauss``
+        # is another name for ``Normal``).
+        return "Normal"
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,

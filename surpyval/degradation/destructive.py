@@ -60,6 +60,7 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.univariate.parametric import LogNormal
 from surpyval.univariate.parametric.parametric import resolve_distribution
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.dataframe import call_fit, frame_column, require_frame
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import percentile_bounds
@@ -741,7 +742,7 @@ class DestructiveDegradation_(FitterRepr):
         # OLS initial values (on the log response for positive-support dists).
         resp = (
             np.log(y)
-            if (dist.name in _LOG_RESPONSE and np.all(y > 0))
+            if (canonical_name(dist) in _LOG_RESPONSE and np.all(y > 0))
             else y.astype(float)
         )
         A = np.column_stack([np.ones_like(phi_t), phi_t])

@@ -194,7 +194,22 @@ def test_cox_per_transition_matches_mstate(effects, ties):
                 )
                 key = f"{from_state}_{to_state}"
                 assert_allclose(p, v[f"P_{key}"], rtol=1e-9, atol=1e-12)
-                assert_allclose(se, v[f"se_{key}"], rtol=1e-6)
+                # Compared as variances. A probability that is 0 to
+                # rounding (P(pcm -> pcm) at 30 years) has a variance of
+                # 2e-12 that the recursion builds from terms the size of
+                # the largest variance (0.02, an SE of 0.15): its rounding
+                # is a few eps times that, 5e-18 in the variance, which is
+                # 2e-12 in an SE of 1.4e-6 (relative 1.3e-6, platform
+                # dependent). So the absolute tolerance is a small
+                # multiple of eps times the largest variance in the
+                # array; rtol 2e-6 on a variance is 1e-6 on an SE.
+                want = v[f"se_{key}"] ** 2
+                assert_allclose(
+                    se**2,
+                    want,
+                    rtol=2e-6,
+                    atol=64 * np.finfo(float).eps * np.nanmax(want),
+                )
 
 
 def test_coefficients_name_the_transitions():

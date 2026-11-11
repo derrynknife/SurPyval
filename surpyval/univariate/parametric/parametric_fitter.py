@@ -530,6 +530,22 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
             hi = float(_raw(params[self.support_param_index[1]]))
         return lo, hi
 
+    @property
+    def canonical_name(self) -> str:
+        """The distribution's canonical name: its :attr:`name`, except for
+        an alias (``Gauss`` and ``Galton`` give ``"Normal"`` and
+        ``"LogNormal"``). The package identifies a distribution by it, so
+        a model fitted with an alias behaves as one fitted with the
+        canonical name (see :mod:`surpyval.utils.aliases`).
+
+        Examples
+        --------
+        >>> import surpyval as sp
+        >>> sp.Gauss.canonical_name, sp.Weibull.canonical_name
+        ('Normal', 'Weibull')
+        """
+        return self.name
+
     def __init__(
         self,
         name: str,
