@@ -352,8 +352,11 @@ Saving and loading a regression model
 Like the other recurrence models, a fitted proportional-intensity model can be
 saved with ``to_dict`` / ``to_json`` and restored with ``surpyval.from_dict``
 / ``surpyval.from_json``. The baseline, its parameters and the coefficients
-are stored, so predictions are reproduced exactly; the fitted data and
-likelihood are not, so re-fit if you need confidence bounds or diagnostics.
+are stored, so predictions are reproduced exactly, and so is the parameter
+covariance, so the restored model gives the same standard errors,
+``summary()`` and Wald bounds (``cif_cb``, ``iif_cb``, ``cb_tvc``). The
+fitted data and likelihood are not stored, so re-fit for the likelihood
+(``aic()``) or the diagnostics.
 
 .. jupyter-execute::
 
@@ -361,6 +364,7 @@ likelihood are not, so re-fit if you need confidence bounds or diagnostics.
 
     restored = surpyval.from_dict(fleet.to_dict())
     print(np.allclose(restored.cif(40, z), fleet.cif(40, z)))
+    print(np.allclose(restored.cif_cb(40, z), fleet.cif_cb(40, z)))
 
 Model checking
 --------------

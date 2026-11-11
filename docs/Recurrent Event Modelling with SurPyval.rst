@@ -2295,6 +2295,24 @@ without you needing to know which class wrote it:
     t = np.array([100.0, 500.0, 900.0])
     print("match:", np.allclose(fitted.cif(t), restored.cif(t)))
 
+A saved Poisson-process fit keeps its parameter covariance as well, so the
+restored model gives the same standard errors, ``summary()`` and Wald bounds
+as the fit, as the cause-specific models do. It keeps no data: the
+likelihood (``aic()``), the diagnostics, ``plot`` and Crow's exact bounds
+(``method="crow"``) need a refit, and say so.
+
+.. jupyter-execute::
+
+    print(fitted.cif_cb(t).round(2))
+    print(restored.cif_cb(t).round(2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(fitted.cif_cb(t), restored.cif_cb(t))
+    assert np.allclose(fitted.standard_errors(), restored.standard_errors())
+
 The renewal models store their family, lifetime distribution, repair parameter
 and memory or Kijima type, and rebuild their simulator on loading, so the same
 seed gives the same simulated MCF:
