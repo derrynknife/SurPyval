@@ -15,6 +15,8 @@ import numpy as np
 import pytest
 
 from surpyval.recurrent import (
+    HPP,
+    CoxLewis,
     CrowAMSAA,
     Duane,
     NonParametricCounting,
@@ -29,6 +31,7 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
 from surpyval.tests._helpers import json_round_trip
+from surpyval.univariate.regression.tvc_schedule import StepSchedule
 
 
 def _pi_data(seed=0, n_items=25):
@@ -357,3 +360,146 @@ def test_old_dict_with_nan_variance_reads_as_no_variance():
     restored = NonParametricCounting.from_dict(old)
     assert restored.var is None
     assert restored.origin == 0.0
+
+
+# -- a restored single-process model keeps its Wald bounds -----------------
+#
+# The cause-specific models save each cause's parameter covariance; the
+# single-process models they are made of do the same, so every bound a
+# fit has from its covariance, its restored copy has too.
+
+
+def _restored(model):
+    return type(model).from_dict(json_round_trip(model.to_dict()))
+
+
+@pytest.mark.parametrize(
+    "fitter", [HPP, CrowAMSAA, Duane, CoxLewis], ids=lambda f: f.name
+)
+def test_restored_recurrence_model_gives_the_fits_bounds(fitter):
+    rng = np.random.default_rng(11)
+    x = np.sort(rng.uniform(0, 1000, 40))
+    model = fitter.fit(x)
+    restored = _restored(model)
+    xt = np.array([100.0, 500.0, 900.0])
+    np.testing.assert_array_equal(restored.covariance(), model.covariance())
+    np.testing.assert_array_equal(
+        restored.standard_errors(), model.standard_errors()
+    )
+    for bound in ("two-sided", "lower", "upper"):
+        for name in ("cif_cb", "iif_cb", "mtbf_cb"):
+            np.testing.assert_allclose(
+                getattr(restored, name)(xt, bound=bound),
+                getattr(model, name)(xt, bound=bound),
+                rtol=1e-12,
+            )
+    for name in model.parameter_names:
+        np.testing.assert_allclose(
+            restored.param_cb(name), model.param_cb(name), rtol=1e-12
+        )
+    assert restored.summary().equals(model.summary())
+    # Saved again, it is the same dictionary.
+    assert restored.to_dict() == json_round_trip(model.to_dict())
+
+
+def test_restored_recurrence_model_refuses_what_needs_the_data():
+    x = np.sort(np.random.default_rng(12).uniform(0, 1000, 40))
+    restored = _restored(CrowAMSAA.fit(x))
+    for call in (
+        lambda: restored.log_likelihood,
+        restored.aic,
+        restored.bic,
+        restored.aic_c,
+    ):
+        with pytest.raises(ValueError, match="keeps the parameter covariance"):
+            call()
+    with pytest.raises(ValueError, match="requires a model fitted from data"):
+        restored.mtbf_cb([500.0], method="crow")
+    with pytest.raises(ValueError, match="requires a model fitted from data"):
+        restored.residuals()
+
+
+def test_a_dict_saved_without_a_covariance_still_loads_and_refuses_bounds():
+    x = np.sort(np.random.default_rng(13).uniform(0, 1000, 40))
+    model = Duane.fit(x)
+    saved = json_round_trip(model.to_dict())
+    del saved["covariance"]
+    old = ParametricRecurrenceModel.from_dict(saved)
+    np.testing.assert_array_equal(old.params, model.params)
+    for call in (
+        old.covariance,
+        old.standard_errors,
+        old.summary,
+        lambda: old.cif_cb([500.0]),
+        lambda: old.param_cb("alpha"),
+    ):
+        with pytest.raises(ValueError, match="holds no parameter covariance"):
+            call()
+
+
+def test_a_model_with_no_likelihood_saves_no_covariance():
+    x = np.sort(np.random.default_rng(14).uniform(0, 1000, 40))
+    built = CrowAMSAA.from_params(CrowAMSAA.fit(x).params)
+    assert built.to_dict()["covariance"] is None
+    restored = _restored(built)
+    with pytest.raises(ValueError, match="no likelihood"):
+        restored.cif_cb([500.0])
+
+
+def test_a_saved_covariance_of_the_wrong_size_is_refused():
+    x = np.sort(np.random.default_rng(15).uniform(0, 1000, 40))
+    saved = json_round_trip(Duane.fit(x).to_dict())
+    saved["covariance"] = [[1.0]]
+    with pytest.raises(ValueError, match="one row and column per parameter"):
+        ParametricRecurrenceModel.from_dict(saved)
+
+
+@pytest.mark.parametrize("baseline", [None, Duane, CrowAMSAA, CoxLewis])
+def test_restored_proportional_intensity_model_gives_the_fits_bounds(baseline):
+    x, i, c, Z = _pi_data(seed=5)
+    if baseline is None:
+        model = ProportionalIntensityHPP.fit(x, Z, i=i, c=c)
+    else:
+        model = ProportionalIntensityNHPP.fit(
+            x, Z, i=i, c=c, baseline=baseline
+        )
+    restored = _restored(model)
+    xt = np.array([100.0, 300.0, 450.0])
+    Zq = np.array([0.5])
+    np.testing.assert_array_equal(restored.covariance(), model.covariance())
+    for bound in ("two-sided", "lower", "upper"):
+        for name in ("cif_cb", "iif_cb"):
+            np.testing.assert_allclose(
+                getattr(restored, name)(xt, Zq, bound=bound),
+                getattr(model, name)(xt, Zq, bound=bound),
+                rtol=1e-12,
+            )
+    for name in model.parameter_names:
+        np.testing.assert_allclose(
+            restored.param_cb(name), model.param_cb(name), rtol=1e-12
+        )
+    assert restored.summary().equals(model.summary())
+    plan = StepSchedule.from_changepoints([0, 200], [[0.0], [1.0]])
+    np.testing.assert_allclose(
+        restored.cb_tvc(xt, plan), model.cb_tvc(xt, plan), rtol=1e-12
+    )
+    with pytest.raises(ValueError, match="keeps the parameter covariance"):
+        restored.aic()
+
+
+def test_restored_single_process_bounds_are_the_cause_specific_ones():
+    # One cause: the two saved models describe the same fit, and now
+    # answer alike after restoring.
+    x = np.sort(np.random.default_rng(16).uniform(0, 1000, 40))
+    e = np.array(["a"] * 40)
+    single = _restored(CrowAMSAA.fit(x))
+    marked = CauseSpecificNHPP.from_dict(
+        json_round_trip(CauseSpecificNHPP.fit(x, e=e).to_dict())
+    )
+    xt = np.array([100.0, 500.0, 900.0])
+    np.testing.assert_allclose(
+        single.cif_cb(xt), marked.cif_cb(xt, "a"), rtol=1e-9
+    )
+    np.testing.assert_allclose(
+        single.iif_cb(xt), marked.iif_cb(xt, "a"), rtol=1e-9
+    )

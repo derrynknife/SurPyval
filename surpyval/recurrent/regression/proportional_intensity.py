@@ -191,8 +191,12 @@ class ProportionalIntensityModel(
         Stores the base-rate intensity model's name, the base-rate ``params``
         and the covariate ``coeffs``; the reloaded model reproduces
         ``cif``/``iif`` (``Lambda_0(t; params) * exp(Z . coeffs)``) exactly.
-        The likelihood-inference state (data, ``neg_ll`` closure) is not
-        stored.
+        A fit's parameter covariance is stored too (``"covariance"``), so
+        the reloaded model gives the same ``covariance()``,
+        ``standard_errors()``, ``summary()``, ``param_cb`` and Wald bounds
+        (``cif_cb``, ``iif_cb``, ``cb_tvc``). The data and the likelihood
+        are not stored: the likelihood, the information criteria and the
+        diagnostics need a refit, and say so.
 
         See Also
         --------
@@ -206,6 +210,12 @@ class ProportionalIntensityModel(
             "param_names": list(self._rate_names),
             "params": np.asarray(self.params, dtype=float).tolist(),
             "coeffs": np.asarray(self.coeffs, dtype=float).tolist(),
+            # What the Wald bounds need (null for a model with no
+            # likelihood, and for a penalised fit, which has no
+            # covariance); optional on reading.
+            "covariance": (
+                None if self.penalty is not None else self._covariance_entry()
+            ),
             **maximum_entry(self.maximum),
         }
         if self.feature_names is not None:
@@ -248,6 +258,7 @@ class ProportionalIntensityModel(
         out.feature_names = None if names is None else list(names)
         out.maximum = restored_maximum(model_dict)
         out._restore_penalty(model_dict)
+        out._restore_covariance(model_dict, np.r_[out.params, out.coeffs])
         return out
 
     def _penalised_coefficients(self) -> tuple[list, np.ndarray]:
@@ -639,7 +650,7 @@ class ProportionalIntensityModel(
         """Delta-method bounds, on the log scale, on the ``cif`` or the
         ``iif`` (``function``) at ``x`` for covariates ``Z``."""
         check_alpha_ci(alpha_ci)
-        self._check_fitted()
+        self._check_inference()
         x = np.atleast_1d(np.asarray(x, dtype=float))
         Z = np.asarray(named_covariates(Z, self.feature_names), dtype=float)
         n_dist_params = len(self.params)
