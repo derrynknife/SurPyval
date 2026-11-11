@@ -166,8 +166,8 @@ def aalen_johansen_steps(increments: npt.ArrayLike) -> npt.NDArray:
     ... )
     >>> steps = aalen_johansen_steps([[0.1, 0.2], [0.3, 0.0]])
     >>> steps.round(6)
-    array([[0.08242 , 0.12192 ],
-           [0.247261, 0.      ]])
+    array([[0.08242 , 0.121508],
+           [0.24726 , 0.      ]])
     >>> bool(np.isclose(steps.sum(), 1 - np.exp(-0.6)))
     True
     """
