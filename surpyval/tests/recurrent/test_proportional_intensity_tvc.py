@@ -944,9 +944,13 @@ def test_a_round_trip_keeps_every_prediction(name):
     assert restored.maximum == "verified"
     np.testing.assert_array_equal(restored.params, model.params)
     assert surpyval.from_json(model.to_json()).to_dict() == model.to_dict()
-    # A restored model carries no likelihood: its bounds say so.
+    # A restored model keeps the covariance, so the Wald bounds, but no
+    # likelihood: what needs it says so.
+    np.testing.assert_array_equal(
+        restored.cb_tvc(t, plan), model.cb_tvc(t, plan)
+    )
     with pytest.raises(ValueError, match="restored|from_dict"):
-        restored.cb_tvc(t, plan)
+        restored.aic()
 
     # pickle keeps the likelihood, so the inference too.
     clone = pickle.loads(pickle.dumps(model))

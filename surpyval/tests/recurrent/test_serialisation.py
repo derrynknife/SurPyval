@@ -11,14 +11,20 @@ MCF, the step arrays), and the reloaded model reproduces every prediction
 exactly.
 """
 
+import warnings
+
 import numpy as np
 import pytest
 
 from surpyval.recurrent import (
+    ARA,
+    ARI,
     HPP,
     CoxLewis,
     CrowAMSAA,
     Duane,
+    GeneralizedOneRenewal,
+    GeneralizedRenewal,
     NonParametricCounting,
     ProportionalIntensityHPP,
     ProportionalIntensityNHPP,
@@ -30,7 +36,12 @@ from surpyval.recurrent.competing_risks import (
 from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
-from surpyval.tests._helpers import json_round_trip
+from surpyval.tests._helpers import (
+    REPAIR_FLEET_C,
+    REPAIR_FLEET_I,
+    REPAIR_FLEET_X,
+    json_round_trip,
+)
 from surpyval.univariate.regression.tvc_schedule import StepSchedule
 
 
@@ -503,3 +514,93 @@ def test_restored_single_process_bounds_are_the_cause_specific_ones():
     np.testing.assert_allclose(
         single.iif_cb(xt), marked.iif_cb(xt, "a"), rtol=1e-9
     )
+
+
+# -- the renewal models keep their Wald bounds too --------------------------
+
+
+def _interior_renewal_data():
+    """Eight items whose Kijima-I fit has q = 2.6, inside its range."""
+    rng = np.random.default_rng(8)
+    rows = []
+    for k in range(8):
+        end = rng.uniform(6000, 12000)
+        n = rng.poisson(2e-4 * end**1.35)
+        ts = np.sort(end * rng.random(n) ** (1 / 1.35))
+        rows += [(t, k, 0) for t in ts] + [(end, k, 1)]
+    return tuple(map(np.array, zip(*rows)))
+
+
+_FLEET = (np.array(REPAIR_FLEET_X, float), REPAIR_FLEET_I, REPAIR_FLEET_C)
+RENEWALS = {
+    # fitter, data, whether the restoration parameter is on its edge
+    "GeneralizedOneRenewal": (GeneralizedOneRenewal, _FLEET, False),
+    "GeneralizedRenewal-interior": (
+        GeneralizedRenewal,
+        _interior_renewal_data(),
+        False,
+    ),
+    "GeneralizedRenewal-edge": (GeneralizedRenewal, _FLEET, True),
+    "ARA-edge": (ARA, _FLEET, True),
+    "ARI-edge": (ARI, _FLEET, True),
+}
+
+
+def _quiet(call, *args, **kwargs):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return call(*args, **kwargs)
+
+
+@pytest.mark.parametrize("case", list(RENEWALS))
+def test_restored_renewal_model_gives_the_fits_wald_bounds(case):
+    fitter, (x, i, c), on_edge = RENEWALS[case]
+    model = _quiet(fitter.fit, x, i, c=c)
+    assert (model._edge_value() is not None) == on_edge
+    restored = _restored(model)
+    np.testing.assert_array_equal(
+        restored.covariance(), _quiet(model.covariance)
+    )
+    np.testing.assert_array_equal(
+        _quiet(restored.standard_errors), _quiet(model.standard_errors)
+    )
+    restoration = model.parameter_names[0]
+    for name in model.parameter_names[1:]:
+        for bound in ("two-sided", "lower", "upper"):
+            np.testing.assert_array_equal(
+                restored.param_cb(name, bound=bound),
+                model.param_cb(name, bound=bound),
+            )
+    if on_edge:
+        # Its interval on the edge is the profile likelihood's, which
+        # needs the data: refused, saying what the restored model has.
+        for call in (
+            lambda: restored.param_cb(restoration),
+            restored.summary,
+        ):
+            with pytest.raises(
+                ValueError, match="keeps the parameter covariance"
+            ):
+                call()
+    else:
+        np.testing.assert_array_equal(
+            restored.param_cb(restoration), model.param_cb(restoration)
+        )
+        assert restored.summary().equals(model.summary())
+    with pytest.raises(ValueError, match="keeps the parameter covariance"):
+        restored.param_cb(restoration, method="lr")
+    with pytest.raises(ValueError, match="keeps the parameter covariance"):
+        restored.aic()
+    # Saved again, it is the same dictionary.
+    assert restored.to_dict() == json_round_trip(model.to_dict())
+
+
+def test_a_renewal_dict_saved_without_a_covariance_still_refuses():
+    model = GeneralizedOneRenewal.fit(*_FLEET[:2], c=_FLEET[2])
+    saved = json_round_trip(model.to_dict())
+    del saved["covariance"]
+    old = type(model).from_dict(saved)
+    np.testing.assert_array_equal(old.model.params, model.model.params)
+    for call in (old.covariance, old.standard_errors, old.summary):
+        with pytest.raises(ValueError, match="holds no parameter covariance"):
+            call()
