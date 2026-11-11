@@ -81,6 +81,7 @@ from surpyval.utils.dataframe import (
     refuse_recurrent_column_names,
     require_frame,
 )
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
@@ -453,6 +454,7 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
         return out
 
     @classmethod
+    @ambiguous_item_ids("a regression's fit(x, Z, c, n)")
     @dataframe_covariates
     @takes_unit
     @accepts_event_history_data
@@ -562,6 +564,11 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
         return cls.fit_from_recurrent_data(data, baseline=baseline, init=init)
 
     @classmethod
+    @ambiguous_item_ids(
+        "a competing-risks regression's fit_from_df(df, x_col, e_col, "
+        "Z_cols, c_col)",
+        column=True,
+    )
     @column_arguments("x", "i", "c", "n", "e", "tl", "tr")
     @takes_unit
     def fit_from_df(
@@ -1602,7 +1609,9 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
             function_at = curve(self.models[cause])
             estimate = estimate + function_at(values)
             variance = (
-                variance + delta_method_se(function_at, values, cov) ** 2
+                variance
+                + delta_method_se(function_at, values, cov, scale_free=True)
+                ** 2
             )
         return log_transformed_cb(estimate, np.sqrt(variance), alpha_ci, bound)
 

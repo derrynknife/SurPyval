@@ -73,6 +73,7 @@ from surpyval.utils import (
     xcnt_handler,
 )
 from surpyval.utils.dataframe import frame_column
+from surpyval.utils.deprecation import positional_option
 from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import combined_maximum
 from surpyval.utils.removed_names import column_arguments
@@ -469,6 +470,13 @@ class ParametricCompetingRisks(
             q[i] = self._invert_Hf(float(flat[i]))
         return q.reshape(u.shape)[()]
 
+    @positional_option(
+        "defective",
+        "whether the mean counts only the units that fail",
+        "the time 'tau' to restrict the mean to, as in a non-parametric "
+        "model's mean(tau)",
+        "defective=...",
+    )
     def mean(self, defective: bool = False) -> float:
         """
         The mean time to the first failure from any cause (the all-cause

@@ -2295,6 +2295,24 @@ without you needing to know which class wrote it:
     t = np.array([100.0, 500.0, 900.0])
     print("match:", np.allclose(fitted.cif(t), restored.cif(t)))
 
+A saved Poisson-process fit keeps its parameter covariance as well, so the
+restored model gives the same standard errors, ``summary()`` and Wald bounds
+as the fit, as the cause-specific models do. It keeps no data: the
+likelihood (``aic()``), the diagnostics, ``plot`` and Crow's exact bounds
+(``method="crow"``) need a refit, and say so.
+
+.. jupyter-execute::
+
+    print(fitted.cif_cb(t).round(2))
+    print(restored.cif_cb(t).round(2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(fitted.cif_cb(t), restored.cif_cb(t))
+    assert np.allclose(fitted.standard_errors(), restored.standard_errors())
+
 The renewal models store their family, lifetime distribution, repair parameter
 and memory or Kijima type, and rebuild their simulator on loading, so the same
 seed gives the same simulated MCF:
@@ -2311,13 +2329,31 @@ seed gives the same simulated MCF:
     assert np.allclose(restored_ara.mcf([20, 40], random_state=1),
                        ara.mcf([20, 40], random_state=1))
 
-Use ``to_json`` / ``from_json`` for a file directly. The likelihood-inference
-state (the fitted data and the log-likelihood) is not serialised, so a reloaded
-model behaves like a ``from_params`` one: it predicts and simulates, but
-confidence bounds, diagnostics and ``plot`` need a re-fit. (A reloaded
-non-parametric MCF keeps its variance, so ``mcf_cb`` still works, and a
-reloaded ``CauseSpecificNHPP`` keeps each cause's parameter covariance, so
-its Wald bounds, ``growth()`` and ``summary()`` still work; see above.)
+They keep the fit's parameter covariance too, so the restored model gives the
+same ``covariance()``, ``standard_errors()`` and Wald ``param_cb``, and the
+same ``summary()`` where the repair parameter is inside its range. Where it is
+on the edge of its range (perfect or minimal repair), its
+interval is a profile-likelihood one, which needs the data: the restored model
+refuses it, and ``summary()``, and says so.
+
+.. jupyter-execute::
+
+    print(restored_ara.param_cb("alpha").round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(restored_ara.param_cb("alpha"), ara.param_cb("alpha"))
+
+Use ``to_json`` / ``from_json`` for a file directly. The data and the
+log-likelihood are not serialised, so what needs them -- the likelihood and
+the information criteria, profile-likelihood intervals, diagnostics, the
+repair test and ``plot`` -- needs a re-fit. What needs only the estimates and
+their covariance works on a reloaded model: the Wald bounds of the
+Poisson-process, renewal and proportional-intensity models, a non-parametric
+MCF's ``mcf_cb`` (it keeps its variance), and a ``CauseSpecificNHPP``'s Wald
+bounds, ``growth()`` and ``summary()``.
 
 References
 ----------

@@ -50,6 +50,7 @@ from surpyval.utils.dataframe import (
     frame_column,
     require_frame,
 )
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.units import label_axes, takes_unit
@@ -1091,6 +1092,9 @@ class _RecurrentCoxFitter(FitterRepr):
         model.cox.feature_names = [str(name) for name in names]
         return model
 
+    @ambiguous_item_ids(
+        "a regression's fit_from_df(df, x_col, Z_cols, c_col)", column=True
+    )
     @takes_unit
     def fit_from_df(
         self,
@@ -1220,6 +1224,7 @@ class AndersenGill(_StartStopFrame):
 
     _kind = ANDERSEN_GILL
 
+    @ambiguous_item_ids("a regression's fit(x, Z, c, n)")
     @dataframe_covariates
     @takes_unit
     def fit(
@@ -1398,6 +1403,7 @@ class PrenticeWilliamsPeterson(_StartStopFrame):
             )
         return _TIME_SCALES[time_scale]
 
+    @ambiguous_item_ids("a regression's fit(x, Z, c, n)")
     @dataframe_covariates
     @takes_unit
     def fit(
@@ -1592,6 +1598,7 @@ class WeiLinWeissfeld(_RecurrentCoxFitter):
 
     _kind = WLW
 
+    @ambiguous_item_ids("a regression's fit(x, Z, c, n)")
     @dataframe_covariates
     @takes_unit
     def fit(

@@ -26,6 +26,7 @@ from surpyval.recurrent.renewal.renewal_model import (
     event_positions,
     rows_by_position,
 )
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
@@ -401,6 +402,7 @@ class ARA(RenewalFitMixin):
         self._attach_inference(out, neg_ll, [rho, *dist_params], res, data)
         return out
 
+    @ambiguous_item_ids("fit(x, c, n, t)")
     @takes_unit
     @accepts_event_history_data
     def fit(
