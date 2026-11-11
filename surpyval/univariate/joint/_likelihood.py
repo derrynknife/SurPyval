@@ -902,6 +902,15 @@ def numeric_theta(theta: dict) -> dict:
     }
 
 
+def _prior_scale(theta: dict) -> npt.NDArray:
+    """The prior spread of each varying parameter, ``sqrt(diag D)``,
+    the scale the modes are searched and their curvature inverted in
+    (1 where it is not positive and finite)."""
+    Lc = np.asarray(theta["L"], dtype=float)
+    scale = np.sqrt(np.sum(Lc**2, axis=1)) if Lc.size else np.ones(0)
+    return np.where(np.isfinite(scale) & (scale > 0), scale, 1.0)
+
+
 def modes(
     theta: dict,
     layout: Layout,
@@ -921,6 +930,7 @@ def modes(
     theta = numeric_theta(theta)
     V = list(layout.varying)
     N = len(arrays.w)
+    scale = _prior_scale(theta)
     if start is None:
         b = np.asarray(theta["mu"], dtype=float)[V][None, :] + (
             arrays.Z @ np.asarray(theta["Delta"], dtype=float)[V].T
@@ -959,8 +969,13 @@ def modes(
         g = np.where(accept[:, None], g_new, g)
         H = np.where(accept[:, None, None], H_new, H)
         moved = np.abs(step * np.where(accept, size, 0.0)[:, None])
-        if np.all(moved <= 1e-10 * (1 + np.abs(b))):
+        if np.all(moved <= 1e-10 * (scale + np.abs(b))):
             break
+    # The curvature in each varying parameter's own scale (its prior
+    # spread), so that neither the inverse nor the floor depends on the
+    # unit of time: a slope a second is ten million times smaller than
+    # one an hour, and its curvature that squared larger.
+    H = H * np.outer(scale, scale)[None]
     with np.errstate(all="ignore"):
         cov = np.linalg.pinv(H)
     cov = 0.5 * (cov + np.swapaxes(cov, -1, -2))
@@ -972,7 +987,7 @@ def modes(
     vals = np.maximum(vals, floor)
     root = np.einsum("nij,nj->nij", vecs, np.sqrt(vals))
     cov = np.einsum("nij,nkj->nik", root, root)
-    return b, np.linalg.cholesky(cov)
+    return b, scale[None, :, None] * np.linalg.cholesky(cov)
 
 
 def continued_modes(
