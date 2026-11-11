@@ -106,6 +106,7 @@ from typing import Any
 
 import numpy as np
 
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.warnings import ignoring_warnings
 
 from . import univariate
@@ -1041,7 +1042,7 @@ def _per_dist(
     def of(name: str) -> Any:
         return (
             lambda row, ctx: row["_kind"] == kind
-            and ctx.model.dist.name == name
+            and canonical_name(ctx.model.dist) == name
         )
 
     rules = [
@@ -1060,7 +1061,7 @@ def _per_dist(
             message,
             extra,
             when=lambda row, ctx: row["_kind"] == kind
-            and ctx.model.dist.name not in univariate.NAMED,
+            and canonical_name(ctx.model.dist) not in univariate.NAMED,
             on=("fail", "warn"),
         )
     )

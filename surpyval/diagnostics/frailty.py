@@ -110,6 +110,7 @@ from typing import Any
 import numpy as np
 from scipy.stats import chi2
 
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.warnings import ignoring_warnings
 
 from ._shared import (
@@ -191,7 +192,8 @@ def _kind(ctx: Context, j: int) -> str:
 
 
 def _dist_name(model: Any) -> str:
-    return str(model.dist.name)
+    # The canonical name: an alias (Gauss, Galton) is its distribution
+    return str(canonical_name(model.dist))
 
 
 def frailty_fitter_name(model: Any, family: str | None = None) -> str:

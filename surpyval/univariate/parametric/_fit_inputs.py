@@ -16,6 +16,7 @@ import autograd.numpy as np
 import numpy.typing as npt
 
 import surpyval
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.no_maximum import NoFiniteMaximumError, warn_no_maximum
 from surpyval.utils.numeric import unique_pairs
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -341,7 +342,9 @@ class FitInputsMixin:
         Weibull ``beta`` of 455.6 (a Normal ``sigma`` of 0.037), in
         silence.
         """
-        if self.discrete or self.name not in _POINT_MASS_FAMILIES | (
+        if self.discrete or canonical_name(
+            self
+        ) not in _POINT_MASS_FAMILIES | (
             _OFFSET_POINT_MASS_FAMILIES if offset else frozenset()
         ):
             return None
@@ -416,7 +419,7 @@ class FitInputsMixin:
         parameters, and an offset fit of these families on such data is
         refused by ``_check_has_maximum`` before it starts.
         """
-        if zi or lfp or self.name not in _ONE_SIDED_FAMILIES:
+        if zi or lfp or canonical_name(self) not in _ONE_SIDED_FAMILIES:
             return False
         lower, upper, _ = _row_sets(surv_data)
         if np.all(np.isposinf(upper)):
@@ -471,7 +474,9 @@ class FitInputsMixin:
         maximum on (1, 3] and (3, 5], a log-likelihood within 1e-8 of the
         limit's log(1/4).
         """
-        if self.discrete or self.name not in _POINT_MASS_FAMILIES | (
+        if self.discrete or canonical_name(
+            self
+        ) not in _POINT_MASS_FAMILIES | (
             _OFFSET_POINT_MASS_FAMILIES if offset else frozenset()
         ):
             return None

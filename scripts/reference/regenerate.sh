@@ -73,4 +73,6 @@ Rscript scripts/reference/reference_r_recurrent_cox.R
 # JM (in R_LIBS_USER) for the joint model's links; prints the values typed
 # into surpyval/tests/reference/test_joint_links.py (about ten minutes)
 Rscript scripts/reference/reference_r_joint_links.R
+# mstate (in R_LIBS_USER) for the multi-state models
+Rscript scripts/reference/reference_r_multistate.R
 "${1:-python}" scripts/reference/reference_python.py

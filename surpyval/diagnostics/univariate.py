@@ -98,6 +98,7 @@ from typing import Any
 
 import numpy as np
 
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.warnings import ignoring_warnings
 
 from ._shared import _fmt
@@ -672,7 +673,7 @@ def _alternatives(ctx: Context) -> list[dict]:
     if table is not None:
         others = table[
             table["status"].isin(["chosen", "ranked"])
-            & (table["model"] != model.dist.name)
+            & (table["model"] != canonical_name(model.dist))
         ]
         if len(others):
             best = others.iloc[0]
@@ -985,7 +986,10 @@ def _rules(
     ``fit``), and one, naming no ``fit``, for any other distribution."""
 
     def of(name: str) -> Any:
-        return lambda row, ctx: row["_kind"] == kind and row["_dist"] == name
+        return (
+            lambda row, ctx: row["_kind"] == kind
+            and canonical_name(row["_dist"]) == name
+        )
 
     rules = [
         AdviceRule(
@@ -1003,7 +1007,7 @@ def _rules(
             message,
             extra,
             when=lambda row, ctx: row["_kind"] == kind
-            and row["_dist"] not in NAMED,
+            and canonical_name(row["_dist"]) not in NAMED,
             on=("warn",),
         )
     )

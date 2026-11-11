@@ -39,7 +39,7 @@ from ._penalised import PenalisedModelMixin
 from ._prediction import (
     ConditionalSurvivalMixin,
     RestrictedMeanMixin,
-    quantiles_by_inversion,
+    times_at_probability,
 )
 from ._tvc_evaluation import TVCEvaluationMixin
 from .kinds import (
@@ -1632,10 +1632,19 @@ class ParametricRegressionModel(
 
         Notes
         -----
-        Every family is inverted the same way, from the model's own
-        cumulative hazard: the time at which :math:`H(t \mid Z)` reaches
-        :math:`-\log(1 - p)`, solved to a relative ``1e-12`` for every
-        probability at once. ``qf(0, Z)`` is the start of the
+        The quantile is the time at which :math:`H(t \mid Z)` reaches
+        :math:`-\log(1 - p)`. With the log-linear link it is in closed
+        form, from the baseline's own inverse: proportional hazards
+        :math:`H_0^{-1}(-\log(1 - p)\, e^{-\beta' Z})`, accelerated
+        failure time :math:`Q_0(p)\, e^{-\beta' Z}`, proportional odds
+        the baseline's quantile at the odds :math:`e^{\beta' Z}
+        p / (1 - p)`, and additive hazards on an Exponential baseline
+        :math:`-\log(1 - p) / (\lambda + \beta' Z)`, for a Weibull,
+        Exponential, Gumbel, Logistic, LogLogistic, Normal, LogNormal or
+        Gamma baseline. Any other model (a custom link, an accelerated
+        life or distributional model, another baseline) is inverted from
+        its own cumulative hazard, solved to a relative ``1e-12`` for
+        every probability at once. ``qf(0, Z)`` is the start of the
         distribution's support and ``qf(1, Z)`` its end; a probability
         outside [0, 1] gives NaN with a warning, as for the univariate
         models, and NaN gives NaN. Where the hazard of an additive model
@@ -1674,20 +1683,7 @@ class ParametricRegressionModel(
         outside = warn_outside_unit_interval(u)
         u = np.where(outside, np.nan, u)
         params = self._eval_params()
-        dist_params = params[: self.k_dist]
-        with np.errstate(all="ignore"):
-            # The baseline's quantile, a start for each search.
-            start = np.asarray(
-                self.distribution.qf(np.clip(u, 0.0, 1.0), *dist_params),
-                dtype=float,
-            ) * np.ones(u.shape)
-        out = quantiles_by_inversion(
-            lambda t, k: self.model.Hf(t, rows[k], *params),
-            u,
-            self.distribution.support,
-            start,
-            lambda t, k: self.model.hf(t, rows[k], *params),
-        )
+        out = times_at_probability(self, params, rows, u)
         if self._is_additive():
             finite = np.isfinite(out)
             beyond = self._outside_support(

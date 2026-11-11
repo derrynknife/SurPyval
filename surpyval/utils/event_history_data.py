@@ -1289,6 +1289,16 @@ class EventHistoryData(ReshapeMixin):
     def _from_records(self, records: list, counts: list) -> EventHistoryData:
         return EventHistoryData.from_items(records)
 
+    def _without_on_arrays(self, parts: tuple) -> EventHistoryData | None:
+        # Without the covariates, the data is built from its arrays where
+        # that gives what the items' records give (the default start of
+        # the proportional-intensity fits reads it); else None.
+        if tuple(parts) != ("covariates",):
+            return None
+        from surpyval.utils.history_reshape import without_covariates
+
+        return without_covariates(self)
+
     def item(self, id: Any) -> Any:
         """
         The history of the item ``id``, as an

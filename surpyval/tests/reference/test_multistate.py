@@ -1,0 +1,235 @@
+"""The multi-state models (``surpyval.multistate``) against R ``survival``
+and ``mstate``.
+
+The values are in ``data/r_multistate.json``, written by
+``scripts/reference/reference_r_multistate.R`` (R 4.6.2, survival 3.8.12,
+mstate 0.3.3), on two fixtures of ``fixtures.json``:
+
+- "mgus2_multistate": ``survival::mgus2`` as an illness-death model (MGUS
+  -> PCM -> death, MGUS -> death), ``load_mgus2(spells=True)``;
+- "multistate": 300 units simulated by ``make_fixtures.py`` from an
+  illness-death model with recovery, with delayed entry and tied times.
+
+What is compared:
+
+- ``survfit(Surv(tl, x, event) ~ 1, id =, istate =)``: the occupation
+  probabilities and their infinitesimal-jackknife standard errors
+  (``variance="robust"``), from the start with the states at risk then,
+  and from ``s = 2`` with those states (the uncertainty of that starting
+  distribution included) or from one state;
+- ``mstate``'s ``probtrans(msfit(...))`` of the null Cox model with
+  Breslow's ties (the Aalen-Johansen increments d / r): ``P(s, t)`` from
+  every state with the Greenwood-type and Aalen-type standard errors;
+- ``mstate`` with Cox models of the transitions (each covariate per
+  transition, or ``male`` shared), Efron's and Breslow's ties: the
+  coefficients, their standard errors, and ``P(s, t | z)`` with its
+  standard errors (``probtrans``'s default, ``"aalen"``).
+
+The estimates are the same arithmetic as R's: equal to rounding. The Cox
+models' coefficients agree to the Newton-Raphson tolerance of the two
+fits, which carries into the predictions and their standard errors.
+"""
+
+import warnings
+
+import numpy as np
+import pytest
+from numpy.testing import assert_allclose
+
+from surpyval.datasets import load_mgus2
+from surpyval.multistate import (
+    MultiState,
+    MultiStateProportionalHazards,
+    TransitionMatrix,
+)
+
+from ._data import fixture, reference, values
+
+SOURCE = "r_multistate"
+STATES = {
+    "mgus2_multistate": ("mgus", "pcm", "death"),
+    "multistate": ("healthy", "ill", "dead"),
+}
+TRANSITIONS = {
+    "mgus2_multistate": TransitionMatrix.illness_death(
+        STATES["mgus2_multistate"]
+    ),
+    "multistate": TransitionMatrix.illness_death(
+        STATES["multistate"], recovery=True
+    ),
+}
+
+
+def _spells(name):
+    """The fixture's spells, its state codes (1, 2, 3) as labels."""
+    d = fixture(name)
+    labels = STATES[name]
+    return {
+        "x": d["x"],
+        "tl": d["tl"],
+        "id": d["id"].astype(int),
+        "state": [labels[int(v) - 1] for v in d["state"]],
+        "e": [None if np.isnan(v) else labels[int(v) - 1] for v in d["e"]],
+        "covariates": d,
+    }
+
+
+def _model(name):
+    d = _spells(name)
+    return MultiState.fit(
+        d["x"],
+        d["e"],
+        d["state"],
+        tl=d["tl"],
+        i=d["id"],
+        transitions=TRANSITIONS[name],
+    )
+
+
+MODELS = {name: _model(name) for name in STATES}
+
+
+def test_mgus2_fixture_is_load_mgus2_spells():
+    df = load_mgus2(spells=True)
+    d = _spells("mgus2_multistate")
+    assert list(df["id"]) == list(d["id"])
+    assert list(df["state"]) == d["state"]
+    assert list(df["e"]) == d["e"]
+    assert_allclose(df["tl"], d["tl"], rtol=0, atol=0)
+    assert_allclose(df["x"], d["x"], rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    "ref, s, from_state",
+    [
+        ("survfit_mgus2", None, None),
+        ("survfit_sim", None, None),
+        ("survfit_sim_s2", 2.0, None),
+        ("survfit_sim_s2_ill", 2.0, "ill"),
+    ],
+)
+def test_occupancy_and_robust_se_match_survfit(ref, s, from_state):
+    v = values(SOURCE, ref)
+    model = MODELS[reference(SOURCE, ref)["fixture"]]
+    assert set(v["states"]) == set(model.states)
+    t = v["times"]
+    for state in v["states"]:
+        p = model.occupancy(t, state, s=s, from_state=from_state)
+        se = model.occupancy_se(
+            t, state, s=s, from_state=from_state, variance="robust"
+        )
+        assert_allclose(p, v[f"p_{state}"], rtol=1e-12, atol=1e-14)
+        assert_allclose(se, v[f"se_{state}"], rtol=1e-10, atol=1e-14)
+
+
+@pytest.mark.parametrize("variance", ["greenwood", "aalen"])
+@pytest.mark.parametrize(
+    "case, s",
+    [("mgus2", 0.0), ("mgus2_s60", 60.0), ("sim", 0.0), ("sim_s2", 2.0)],
+)
+def test_transition_probabilities_and_se_match_mstate(case, s, variance):
+    ref = f"mstate_{case}_{variance}"
+    v = values(SOURCE, ref)
+    model = MODELS[reference(SOURCE, ref)["fixture"]]
+    t = v["times"]
+    P = model.transition_probabilities(t, s=s)
+    for a, from_state in enumerate(model.states):
+        for b, to_state in enumerate(model.states):
+            assert_allclose(
+                P[:, a, b], v[f"P_{from_state}_{to_state}"], atol=1e-14
+            )
+            se = model.occupancy_se(
+                t, to_state, s=s, from_state=from_state, variance=variance
+            )
+            want = v[f"se_{from_state}_{to_state}"]
+            # mstate's square root of a variance that is negative by
+            # rounding is NaN (and warns); it is 0 to rounding here. A
+            # variance that is 0 to rounding (4e-19) has a square root of
+            # 6e-10 where R's sums cancel exactly: hence atol.
+            ok = ~np.isnan(want)
+            assert np.all(se[~ok] < 1e-7)
+            assert_allclose(se[ok], want[ok], rtol=1e-8, atol=1e-9)
+
+
+def _cox(effects, ties):
+    d = _spells("mgus2_multistate")
+    Z = np.column_stack([d["covariates"]["z1"], d["covariates"]["male"]])
+    return MultiStateProportionalHazards.fit(
+        d["x"],
+        Z,
+        d["e"],
+        d["state"],
+        tl=d["tl"],
+        i=d["id"],
+        transitions=TRANSITIONS["mgus2_multistate"],
+        shared=[1] if effects == "shared" else None,
+        tie_method=ties,
+    )
+
+
+# mstate warns there too ("Negative diagonal elements of (I+dA)"); that
+# the model warns is checked below.
+@pytest.mark.filterwarnings("ignore:For the covariates")
+@pytest.mark.parametrize("ties", ["breslow", "efron"])
+@pytest.mark.parametrize("effects", ["specific", "shared"])
+def test_cox_per_transition_matches_mstate(effects, ties):
+    model = _cox(effects, ties)
+    for s in (0, 60):
+        v = values(SOURCE, f"mstate_cox_mgus2_{effects}_{ties}_s{s}")
+        if s == 0:
+            # R names the expanded columns z1.1 (z1 on transition 1), ...
+            # in the same order as parameter_names
+            assert len(v["coef_names"]) == len(model.parameter_names)
+            assert_allclose(model.params, v["coef"], rtol=1e-8)
+            assert_allclose(model.standard_errors(), v["se_coef"], rtol=1e-8)
+        profile = [v["profile"]["z1"], v["profile"]["male"]]
+        t = v["times"]
+        for from_state in model.states:
+            for to_state in model.states:
+                p = model.occupancy(
+                    t, profile, to_state, s=s, from_state=from_state
+                )
+                se = model.occupancy_se(
+                    t, profile, to_state, s=s, from_state=from_state
+                )
+                key = f"{from_state}_{to_state}"
+                assert_allclose(p, v[f"P_{key}"], rtol=1e-9, atol=1e-12)
+                # Compared as variances. A probability that is 0 to
+                # rounding (P(pcm -> pcm) at 30 years) has a variance of
+                # 2e-12 that the recursion builds from terms the size of
+                # the largest variance (0.02, an SE of 0.15): its rounding
+                # is a few eps times that, 5e-18 in the variance, which is
+                # 2e-12 in an SE of 1.4e-6 (relative 1.3e-6, platform
+                # dependent). So the absolute tolerance is a small
+                # multiple of eps times the largest variance in the
+                # array; rtol 2e-6 on a variance is 1e-6 on an SE.
+                want = v[f"se_{key}"] ** 2
+                assert_allclose(
+                    se**2,
+                    want,
+                    rtol=2e-6,
+                    atol=64 * np.finfo(float).eps * np.nanmax(want),
+                )
+
+
+def test_coefficients_name_the_transitions():
+    model = _cox("shared", "breslow")
+    v = values(SOURCE, "mstate_cox_mgus2_shared_breslow_s0")
+    assert v["coef_names"] == ["z1.1", "z1.2", "z1.3", "male"]
+    assert model.parameter_names == [
+        "z0: mgus -> pcm",
+        "z0: mgus -> death",
+        "z0: pcm -> death",
+        "z1",
+    ]
+
+
+def test_cox_prediction_warns_where_the_hazards_add_up_past_one():
+    # From 282 months a man of 75 has a predicted hazard of leaving MGUS
+    # above 1 (two at risk), where mstate warns of a negative diagonal.
+    model = _cox("specific", "efron")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model.occupancy([120, 240], [0.5, 1.0], "pcm")
+    with pytest.warns(UserWarning, match="add up to more than 1 at time 282"):
+        model.occupancy([120, 300], [0.5, 1.0], "pcm")
