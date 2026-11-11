@@ -11,13 +11,15 @@ quantile found to 40 digits with mpmath from the family's definition
 ``1e-12`` to ``1 - 1e-12``. Seeds are fixed.
 """
 
-import mpmath as mp
 import numpy as np
 import pytest
 
 import surpyval as sp
 from surpyval.univariate.regression._closed_form_qf import has_closed_form
 from surpyval.univariate.regression._prediction import quantiles_by_inversion
+
+# The clean-wheel CI job installs only the wheel and pytest.
+mp = pytest.importorskip("mpmath")
 
 P = np.array([1e-12, 1e-8, 1e-4, 0.01, 0.1, 0.5, 0.9, 0.99, 1 - 1e-8])
 P = np.append(P, 1 - 1e-12)
