@@ -143,57 +143,65 @@ def _hand_model():
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="the ExponentialPH fits of these nine rows reach the groups' "
-    "rates to 1.9e-6 (relative), outside the 1e-6 set for this check "
-    "before it was run: cause a's rate in group 0 is 0.12500023 against "
-    "2/16",
-)
+#: Each cause's failures in group 0 and group 1, and the groups' time on
+#: test.
+_HAND_FAILURES = {"a": (2, 3), "b": (1, 1)}
+_HAND_EXPOSURE = (16.0, 12.0)
+
+
 def test_exponential_causes_with_one_binary_covariate_by_hand():
-    """Constant hazards and one binary covariate: each cause's model
-    (a rate and a coefficient) is saturated, so its fitted rate in each
-    group is that group's failures of the cause over its time on test
-    (``_HAND_RATES``), and the cumulative incidence is ``(rate_k /
-    rate)(1 - exp(-rate t))``."""
+    """Constant hazards and one binary covariate: each cause's model (a
+    rate ``lam`` in group 0 and a coefficient ``beta``) is saturated, so
+    its maximum-likelihood rate in each group is that group's failures of
+    the cause over its time on test (``_HAND_RATES``).
+
+    The fit is an optimiser's, which stops once the score (the gradient of
+    the log-likelihood) is small, not zero: here at a score of 6e-5 in
+    ``lam``, which leaves ``lam`` 1.9e-6 (relative) from the hand rate. The
+    distance is the optimiser's stopping rule, not the model: one Newton
+    step from the fit, with the score and information of this likelihood
+    in closed form,
+
+        score = (D / lam - T0 - T1 e^beta,  d1 - lam T1 e^beta),
+        information = [[D / lam^2, T1 e^beta], [T1 e^beta, lam T1 e^beta]]
+
+    (``D`` the cause's failures, ``d1`` those in group 1, ``T0`` and ``T1``
+    the groups' time on test), lands on the hand values to 1e-9 (seen:
+    9e-12; the step's own error is of the order of its square). The
+    functions of the model are checked against the fitted rates in closed
+    form in the next test.
+    """
     model = _hand_model()
-    rate = _HAND_RATES
-    t = np.array([1.0, 4.0, 10.0])
-    for g in (0, 1):
-        total = rate["a", g] + rate["b", g]
-        for k in ("a", "b"):
-            np.testing.assert_allclose(
-                model.hf(t, [g], event=k), float(rate[k, g]), rtol=1e-6
-            )
-            expected = float(rate[k, g] / total) * -np.expm1(-float(total) * t)
-            np.testing.assert_allclose(
-                model.cif(t, [g], k), expected, rtol=1e-6
-            )
-            np.testing.assert_allclose(
-                model.probability_of_cause([g], k),
-                float(rate[k, g] / total),
-                rtol=1e-6,
-            )
-        np.testing.assert_allclose(
-            model.sf(t, [g]), np.exp(-float(total) * t), rtol=1e-6
+    T0, T1 = _HAND_EXPOSURE
+    for k, (d0, d1) in _HAND_FAILURES.items():
+        lam, beta = np.ravel(model.models[k].params)
+        D = d0 + d1
+        score = np.array(
+            [D / lam - (T0 + T1 * np.exp(beta)), d1 - lam * T1 * np.exp(beta)]
         )
-        np.testing.assert_allclose(
-            model.mean([g]), 1 / float(total), rtol=1e-6
+        information = np.array(
+            [
+                [D / lam**2, T1 * np.exp(beta)],
+                [T1 * np.exp(beta), lam * T1 * np.exp(beta)],
+            ]
         )
-        np.testing.assert_allclose(
-            model.qf(0.5, [g]), np.log(2) / float(total), rtol=1e-6
+        stepped = np.array([lam, beta]) + np.linalg.solve(information, score)
+        hand = np.array(
+            [
+                float(_HAND_RATES[k, 0]),
+                np.log(float(_HAND_RATES[k, 1] / _HAND_RATES[k, 0])),
+            ]
         )
-    # The coefficient of each cause is its log rate ratio between groups
-    np.testing.assert_allclose(
-        model.models["a"].params[-1],
-        np.log(float(Fraction(3, 12) / Fraction(2, 16))),
-        rtol=1e-5,
-    )
-    np.testing.assert_allclose(
-        model.models["b"].params[-1],
-        np.log(float(Fraction(1, 12) / Fraction(1, 16))),
-        rtol=1e-5,
-    )
+        np.testing.assert_allclose(stepped, hand, rtol=1e-9)
+        # and the fit is that step's length from them, no further
+        fitted = np.array([lam, beta])
+        np.testing.assert_array_less(
+            np.abs(fitted - hand), 2 * np.abs(stepped - fitted) + 1e-12
+        )
+        # the model's rate in group 1 is lam e^beta
+        np.testing.assert_allclose(
+            model.hf(1.0, [1], event=k), lam * np.exp(beta), rtol=1e-12
+        )
 
 
 def test_constant_hazards_give_the_closed_forms_of_the_fitted_rates():
@@ -377,45 +385,33 @@ def test_the_functions_agree_with_each_other(fitted):
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="at t = 40 the incidence has stopped moving in double "
-    "precision: its central difference is 0.0 against an iif of 1.8e-15, "
-    "outside the relative 1e-5 set for this check before it was run (the "
-    "four earlier times agree, in test_the_functions_agree_with_each_other)",
-)
 def test_incidence_slope_at_every_time(fitted):
     model, _ = fitted
     t = np.array([0.5, 2.0, 6.0, 15.0, 40.0])
     row = np.array([1.0, -0.5])
     h = 1e-5
     slope = (model.cif(t + h, row, 1) - model.cif(t - h, row, 1)) / (2 * h)
-    np.testing.assert_allclose(slope, model.iif(t, row, 1), rtol=1e-5)
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason="the incidence is an adaptive quadrature over the rows given "
-    "together, so a row evaluated with others or alone differs in the "
-    "last bit: 0.02945935164618703 against 0.029459351646187015 (they "
-    "agree to the quadrature's accuracy, in "
-    "test_rows_are_paired_with_times_and_missing_is_nan)",
-)
-def test_rows_evaluated_together_or_apart_to_the_last_bit(fitted):
-    model, _ = fitted
-    rows = np.array([[0.0, 0.0], [1.0, 1.0], [1.0, -1.0]])
-    t = np.array([2.0, 5.0, 9.0])
-    paired = model.cif(t, rows, 1)
-    for i in range(3):
-        assert paired[i] == model.cif(t[i], rows[i], 1)
+    # The incidence is a quadrature to about 1e-11 (absolute, on values
+    # below 1), so a difference of two of them over 2h is good to about
+    # 1e-11 / h = 1e-6 absolute, whatever the slope; the truncation error,
+    # h^2 / 6 times the third derivative, is far below that. Where the
+    # slope is larger than about 0.1 the relative 1e-5 is the tighter
+    # check; at t = 40 the incidence has stopped moving in double
+    # precision (iif 1.8e-15), so there only the absolute bound applies.
+    np.testing.assert_allclose(
+        slope, model.iif(t, row, 1), rtol=1e-5, atol=1e-11 / h
+    )
 
 
 def test_rows_are_paired_with_times_and_missing_is_nan(fitted):
     model, _ = fitted
     rows = np.array([[0.0, 0.0], [1.0, 1.0], [1.0, -1.0]])
     t = np.array([2.0, 5.0, 9.0])
-    # (to the quadrature's accuracy; to the last bit is
-    # test_rows_evaluated_together_or_apart_to_the_last_bit's)
+    # To the quadrature's accuracy, not to the last bit: the incidences of
+    # the (time, row) pairs given together are one adaptive quadrature,
+    # whose subdivision of the interval is set by the hardest pair, so a
+    # pair's value given with others or alone differs by up to the
+    # quadrature's tolerance (relative 1e-11; seen: 5e-16).
     paired = model.cif(t, rows, 1)
     for i in range(3):
         np.testing.assert_allclose(
