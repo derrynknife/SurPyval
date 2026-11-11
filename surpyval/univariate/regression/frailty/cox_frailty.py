@@ -70,6 +70,7 @@ from surpyval.utils.removed_names import column_arguments
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
+from surpyval.utils.warnings import collecting_warnings
 
 from .._aliasing import covariate_columns, expand, fit_columns
 from .._fit_skeleton import covariate_center
@@ -814,8 +815,7 @@ class CoxFrailtyFitter(FitterRepr):
         # search for theta or EM says otherwise below.
         maximum = "verified"
         if p_all:
-            with warnings.catch_warnings(record=True) as caught:
-                warnings.simplefilter("always")
+            with collecting_warnings() as caught:
                 # (its baseline kept at the covariate means: only its
                 # coefficients are used, the same either way, and the
                 # baseline at Z = 0 is this fit's to refuse, below)

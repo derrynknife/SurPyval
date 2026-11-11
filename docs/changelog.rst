@@ -1089,9 +1089,18 @@ Unreleased
   never save and restore the shared list. In one thread nothing changes:
   the same warnings are held back and the same are given (the results and
   warnings of every model in the conformance suite are the same to the
-  last bit). Six places that collect an inner step's warnings to read or
-  repeat them (``fit_best`` among them) still use the shared filters
-  while they run.
+  last bit). The six places that collect an inner step's warnings to
+  read or repeat them, or raise one, now do so in their own thread only
+  too (``collecting_warnings`` and ``raising_warnings`` in the same
+  module): ``fit_best``, the renewal fits' check for a life with no
+  finite maximum, the Cox frailty fit's Cox fit, the mean residual
+  life's integral, ``diagnose()``'s Cramer-von Mises test of a
+  repairable-system model, and the unknown-level check of a formula
+  naming its levels. Before, while one of them ran, every warning raised
+  in another thread went into its list and was lost to that thread (a
+  test counted 29,356 such warnings during one ``fit_best``), and a
+  formula's check made other threads' ``DataMismatchWarning`` errors.
+  The package no longer changes the shared warning filters anywhere.
 - An exponential fitted with a Gamma prior on a rate per hour
   (``Exponential.fit_bayes(x, priors={"failure_rate":
   Gamma.from_params([40, 1e9])})``, 40 failures in a billion unit-hours,

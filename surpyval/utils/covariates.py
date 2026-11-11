@@ -9,7 +9,11 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
+from surpyval.utils.warnings import (
+    caller_stacklevel,
+    ignoring_warnings,
+    raising_warnings,
+)
 
 if TYPE_CHECKING:
     from pandas import DataFrame
@@ -124,8 +128,7 @@ def formula_model_matrix(source: Any, df: Any, **kwargs: Any) -> Any:
         model_matrix = materialise()
     else:
         try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("error", DataMismatchWarning)
+            with raising_warnings(DataMismatchWarning):
                 model_matrix = materialise()
         except DataMismatchWarning as mismatch:
             spec = None if isinstance(source, str) else source
