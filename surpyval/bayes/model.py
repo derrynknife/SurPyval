@@ -46,6 +46,7 @@ from surpyval.utils.validation import (
     check_alpha_ci,
     warn_outside_unit_interval,
 )
+from surpyval.utils.warnings import ignoring_warnings
 
 _SIDES = ("two-sided", "lower", "upper")
 #: The most times qf's root bracket is widened before it gives up (each
@@ -1601,8 +1602,7 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
                         )
                     else:
                         mle_val = float(getattr(mle, name))
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore")
+                    with ignoring_warnings():
                         iv = np.asarray(
                             mle.param_cb(name, alpha_ci=alpha_ci), float
                         )
@@ -2292,8 +2292,7 @@ def _summary(model: BayesianParametric, alpha_ci: float) -> str:
         lines.append(f"  {name:<10}{_fmt(med):>10}   {_fmt(lo)} - {_fmt(hi)}")
     life = float(model.dist.support[0]) == 0
     lab = "B10 life" if life else "10% point"
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with ignoring_warnings():
         try:
             b10 = float(model.quantile_cri(0.1, point=True))
             b_lo, b_hi = model.quantile_cri(0.1, alpha_ci=alpha_ci)
@@ -2341,8 +2340,7 @@ def _what_the_prior_did(model: BayesianParametric, alpha_ci: float) -> list:
                 v = float(mle.params[model.dist.parameter_names.index(name)])
             else:
                 v = float(getattr(mle, name))
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings():
                 iv = np.asarray(mle.param_cb(name, alpha_ci=alpha_ci), float)
         except (ValueError, AttributeError, KeyError):
             continue

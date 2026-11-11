@@ -28,6 +28,7 @@ from surpyval.utils.validation import unknown_cause_error
 from surpyval.utils.warnings import (
     MaskedCauseWarning,
     caller_stacklevel,
+    ignoring_warnings,
     named,
     warn_masked,
 )
@@ -648,8 +649,7 @@ class EventHistoryData(ReshapeMixin):
                 MaskedCauseWarning,
                 stacklevel=caller_stacklevel(),
             )
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", MaskedCauseWarning)
+        with ignoring_warnings(MaskedCauseWarning):
             return SurpyvalData.from_items(firsts)
 
     def to_gaps(self) -> SurpyvalData:
@@ -1107,9 +1107,8 @@ class EventHistoryData(ReshapeMixin):
         if not (np.isin(c, (-1, 2))).any():
             x_arr = x_arr[:, 0]
         truncated = np.isfinite(tl).any() or np.isfinite(tr).any()
-        with warnings.catch_warnings():
+        with ignoring_warnings(MaskedCauseWarning):
             # Warned of above, by item
-            warnings.simplefilter("ignore", MaskedCauseWarning)
             data = handle_xicn(
                 x_arr,
                 np.array(i),

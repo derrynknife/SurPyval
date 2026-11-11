@@ -32,7 +32,6 @@ parameters at once, so with such rows the causes are fitted together (see
 
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import numpy as np
@@ -86,7 +85,7 @@ from surpyval.utils.validation import (
     validate_cif_event,
     warn_outside_unit_interval,
 )
-from surpyval.utils.warnings import caller_stacklevel
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 _CB_ON = ("cif", "sf", "ff", "Hf", "R", "F")
 _CB_METHODS = ("wald", "lr", "bootstrap")
@@ -547,8 +546,7 @@ class ParametricCompetingRisks(
 
         if self._heavy_tail(upper):
             return np.inf
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", IntegrationWarning)
+        with ignoring_warnings(IntegrationWarning):
             total = sum(
                 quad(upper, a, b, epsabs=0.0, epsrel=1e-12, limit=500)[0]
                 for a, b in ((-np.inf, 0.0), (0.0, np.inf))
@@ -574,8 +572,7 @@ class ParametricCompetingRisks(
     def _support_end(self, p: float) -> float:
         """The all-cause support's lower (``p = 0``) or upper (``p = 1``)
         end: the earliest of the causes' ends (the first failure ends it)."""
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with np.errstate(all="ignore"), ignoring_warnings():
             ends = [float(np.ravel(m.qf(p))[0]) for m in self.models.values()]
         return min(ends)
 
@@ -586,8 +583,7 @@ class ParametricCompetingRisks(
         target = -np.log1p(-p)
         k = len(self.causes)
         p_low = float(-np.expm1(np.log1p(-p) / k))
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with np.errstate(all="ignore"), ignoring_warnings():
             lows = [
                 float(np.ravel(m.qf(p_low))[0]) for m in self.models.values()
             ]

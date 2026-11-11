@@ -33,6 +33,7 @@ from surpyval.utils.no_maximum import quiet_maximum_warnings
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
+from surpyval.utils.warnings import ignoring_warnings
 from surpyval.utils.weights import SMALL_EFFECTIVE_SIZE, effective_sample_size
 
 from .._aliasing import (
@@ -100,8 +101,10 @@ def _search(
         fun, res2 if res2.success else res1, n_obs, floor=floor
     )
     if verified:
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "Output seems independent")
+        with (
+            np.errstate(all="ignore"),
+            ignoring_warnings(message="Output seems independent"),
+        ):
             derivatives = search_derivatives(fun, res.x)
         if derivatives is not None:
             res, _ = newton_finish(
@@ -146,8 +149,10 @@ def _polish(
     f = float(res.fun)
     eps = float(np.finfo(float).eps)
     steps = 0
-    with np.errstate(all="ignore"), warnings.catch_warnings():
-        warnings.filterwarnings("ignore", "Output seems independent")
+    with (
+        np.errstate(all="ignore"),
+        ignoring_warnings(message="Output seems independent"),
+    ):
         for _ in range(POLISH_STEPS):
             g = np.asarray(gradient(x), dtype=float)
             H = _difference_hessian(gradient, x)

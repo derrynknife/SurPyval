@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import autograd.numpy as np
@@ -19,6 +18,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
 )
 from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.warnings import ignoring_warnings
 
 from ._discrete_tails import log_gamma_ratio
 
@@ -106,8 +106,7 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
         if neg_ll is None or not np.all(np.isfinite(params)):
             return False
         try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings():
                 limit = Geometric.fit_from_surpyval_data(
                     surv_data, zi=zi, lfp=lfp
                 )

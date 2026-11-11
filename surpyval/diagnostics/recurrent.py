@@ -78,6 +78,8 @@ from typing import Any
 import numpy as np
 from scipy.stats import chi2, norm
 
+from surpyval.utils.warnings import ignoring_warnings
+
 from ._shared import _fmt
 from .registry import AdviceRule, Check, Context, Family, Panel, register
 
@@ -189,8 +191,7 @@ def _item_cif(ctx: Context) -> Any:
 def _quiet(compute: Any) -> Any:
     """``compute()`` with the warnings of its refits and searches kept
     out of the user's console: the report says what they found."""
-    with warnings.catch_warnings(), np.errstate(all="ignore"):
-        warnings.simplefilter("ignore")
+    with ignoring_warnings(), np.errstate(all="ignore"):
         return compute()
 
 

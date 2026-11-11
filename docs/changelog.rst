@@ -813,6 +813,22 @@ Unreleased
 
 **Fixed.**
 
+- The package no longer silences other threads' warnings. Wherever it
+  held a warning back (117 places: the starts and polishes of fits, inner
+  refits of bootstraps and diagnostics, autograd's "output seems
+  independent of input" and the like) it used ``with
+  warnings.catch_warnings(): warnings.simplefilter("ignore")``, and
+  Python's warning filters are one list for every thread: while such a
+  block ran, a warning raised anywhere else in the process was dropped,
+  and two threads leaving blocks out of order could leave everything
+  ignored for the rest of the process. Those blocks now ignore in their
+  own thread only (``surpyval.utils.warnings.ignoring_warnings``), and
+  never save and restore the shared list. In one thread nothing changes:
+  the same warnings are held back and the same are given (the results and
+  warnings of every model in the conformance suite are the same to the
+  last bit). Six places that collect an inner step's warnings to read or
+  repeat them (``fit_best`` among them) still use the shared filters
+  while they run.
 - An accelerated life fit (``AcceleratedLife``, the parameter-substitution
   fitter) no longer makes warnings in other threads raise. To start its
   search it fits the distribution at each stress level and, where that

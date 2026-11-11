@@ -29,7 +29,6 @@ estimate.
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -44,6 +43,7 @@ from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.univariate.parametric.fitters import is_local_minimum
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
 from surpyval.utils.no_maximum import quiet_maximum_warnings, warn_unverified
+from surpyval.utils.warnings import ignoring_warnings
 
 # Gauss-Legendre nodes and weights on (0, 1).
 _GL_X, _GL_W = np.polynomial.legendre.leggauss(8)
@@ -494,8 +494,7 @@ def fit(data: JointData, init: npt.NDArray) -> JointFit:
 
     theta = np.asarray(init, dtype=float)
     u = _to_search(theta, data.bounds)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)
+    with ignoring_warnings(RuntimeWarning):
         for round_ in range(6):
             data.adapt(theta)
             if round_ == 0:
@@ -576,8 +575,7 @@ def start(
         X_k[other & (c == 2), 1] = X_k[other & (c == 2), 0]
         # (one starting at the unit's entry says nothing either)
         keep = ~(other & ((c == -1) | (X[:, 0] <= t[:, 0])))
-        with warnings.catch_warnings(), quiet_maximum_warnings():
-            warnings.simplefilter("ignore")
+        with ignoring_warnings(), quiet_maximum_warnings():
             model = dist.fit(
                 x=X_k[keep], c=c_k[keep], n=np.asarray(n)[keep], t=t[keep]
             )

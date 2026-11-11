@@ -84,6 +84,7 @@ from surpyval.test_planning.rate_ratio import (
 from surpyval.utils.data_formats import refuse_time_values
 from surpyval.utils.recurrent_utils import item_label, number_text
 from surpyval.utils.validation import check_alpha_ci, check_option
+from surpyval.utils.warnings import ignoring_warnings
 
 ALTERNATIVES = ("two-sided", "decrease", "increase")
 MODELS = ("hpp", "power-law")
@@ -1592,8 +1593,7 @@ def intervention_test(
     if hpp:
         fit = _hpp_test(split, baseline, midp, alternative, alpha_ci)
     else:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RuntimeWarning)
+        with ignoring_warnings(RuntimeWarning):
             fit = _power_law_test(split, baseline, alternative, alpha_ci)
     compared = fit["compared"]
     rows = compared if baseline == "per-system" else slice(None)

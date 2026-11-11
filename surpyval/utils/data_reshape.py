@@ -15,7 +15,11 @@ from typing import Any
 
 import numpy as np
 
-from surpyval.utils.warnings import MaskedCauseWarning, caller_stacklevel
+from surpyval.utils.warnings import (
+    MaskedCauseWarning,
+    caller_stacklevel,
+    ignoring_warnings,
+)
 
 LIFETIME_PARTS = {
     "covariates": ("covariates",),
@@ -832,8 +836,7 @@ class ReshapeMixin(ReadOnlyArrays):
             # Several modes as one: relabelled to one of them first
             one = next(iter(wanted))
             merged = self.relabel_event_types({t: one for t in wanted})
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings():
                 return merged._map(lambda r: for_event_type(r, one, masked))
         return self._map(lambda r: for_event_type(r, event_type, masked))
 

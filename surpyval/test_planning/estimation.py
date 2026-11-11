@@ -16,7 +16,6 @@ the quantity lies beyond the end of the test: simulate to check such a
 plan.
 """
 
-import warnings
 from dataclasses import dataclass
 from typing import Any
 
@@ -33,6 +32,7 @@ from surpyval.test_planning._checks import (
 from surpyval.test_planning._serialise import dataclass_dict
 from surpyval.utils.rng import as_generator
 from surpyval.utils.validation import check_alpha_ci, check_option
+from surpyval.utils.warnings import ignoring_warnings
 
 QUANTITIES = ("quantile", "mean")
 
@@ -231,8 +231,7 @@ class LifeTestPlan:
             if np.sum(c == 0) < 2:
                 unusable += 1
                 continue
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with ignoring_warnings():
                 model = fitter.fit(x, c=c)
             value = model.mean() if self.p is None else model.qf(self.p)
             logs.append(float(np.log(np.asarray(value).item())))
