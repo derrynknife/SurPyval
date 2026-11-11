@@ -1597,6 +1597,19 @@ Unreleased
 
 **Performance.**
 
+- **Survival along a step schedule is several times faster** for the
+  proportional hazards (log-linear link), proportional odds, additive
+  hazards and accelerated failure time families: ``Hf_tvc``, ``sf_tvc``,
+  ``cb_tvc`` and ``mean_tvc``. The model's cumulative hazard (or, for
+  AFT, its rate) was evaluated once per segment of the schedule; it is now
+  evaluated once for all of them, each segment's ``beta'(z - c)`` still
+  taken one row at a time and passed as a single column, so the numbers
+  are the same bit for bit (a dot product over all the rows at once can
+  round differently from one row's). Accelerated life models and custom
+  covariate links keep the segment-at-a-time loop. A 200-segment schedule
+  at 500 times on a 400-unit fit, ``Hf_tvc`` and ``sf_tvc`` together:
+  WeibullPH 74 -> 6.5 ms, WeibullPO 96 -> 36 ms, WeibullAFT 14 -> 7.4 ms;
+  ``cb_tvc`` 496 -> 117 ms (PH), 589 -> 302 ms (PO), 101 -> 60 ms (AFT).
 - **Recurrent-event fits prepare their data faster**: ``handle_xicn``
   checked each item's censoring rows, observation window and covariates
   in a Python loop, and the interarrival times, each row's previous time,
