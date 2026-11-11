@@ -41,12 +41,7 @@ from surpyval.utils.no_maximum import (
     warn_no_maximum,
     warn_unverified,
 )
-from surpyval.utils.removed_names import (
-    MIXTURE_EM_ATTRIBUTES,
-    RemovedName,
-    removed_arguments,
-    removed_attributes,
-)
+from surpyval.utils.removed_names import RemovedName
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
@@ -1775,7 +1770,6 @@ class MixtureModel(
                 H[gone] = -logsumexp(log_w + log_s, axis=0)
         return H
 
-    @removed_arguments("0.23", X="'given'")
     def cs(self, x: Any, given: Any, *args: Any, **kwargs: Any) -> Any:
         """
         The conditional survival function of the fitted model.
@@ -2720,8 +2714,3 @@ class MixtureModel(
             xlabel=axis_label(self.unit),
             **kwargs,
         )
-
-
-# The EM steps' public names before v0.24 say where they went (#653).
-for _old, _removed in removed_attributes(MIXTURE_EM_ATTRIBUTES).items():
-    setattr(MixtureModel, _old, _removed)

@@ -379,11 +379,13 @@ never removed or renamed in one step:
    documentation, and add a line under **Removed**.
 3. **Leave a hint.** Register the old name in
    ``surpyval/utils/removed_names.py`` so that using it raises the error
-   Python would, naming the release and the replacement:
-   ``REMOVED_ATTRIBUTES`` for a model attribute, ``REMOVED_TOP_LEVEL`` for
-   a name in ``surpyval``, ``removed_arguments`` for an argument, or a
-   subpackage ``__getattr__`` that raises with ``removed_message``. An
-   entry is dropped once the old name has been gone for a release or two.
+   Python would, naming the release and the replacement: a
+   ``RemovedName`` class attribute for a model attribute,
+   ``REMOVED_TOP_LEVEL`` for a name in ``surpyval``, ``removed_arguments``
+   for an argument, or a subpackage ``__getattr__`` that raises with
+   ``removed_message``. An entry is dropped once the old name has been
+   gone for a release or two (with ``--update --force`` for the public
+   surface list, below, if the name is listed there).
 
 ``surpyval/tests/test_public_surface.py`` holds this in place for the
 public namespaces. ``surpyval/tests/public_surface.txt`` lists every

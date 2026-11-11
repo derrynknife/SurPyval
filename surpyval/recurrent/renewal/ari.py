@@ -23,6 +23,7 @@ from surpyval.recurrent.renewal._derivatives import (
     negated,
 )
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
+from surpyval.utils.dataframe import column_arguments
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
@@ -39,7 +40,6 @@ from surpyval.utils.recurrent_utils import (
     validate_renewal_censoring,
     validate_restoration,
 )
-from surpyval.utils.removed_names import column_arguments, removed_arguments
 from surpyval.utils.units import takes_unit
 
 
@@ -543,7 +543,6 @@ class ARI(RenewalFitMixin):
             )
         return negll_func
 
-    @removed_arguments("0.23", dist="'baseline'")
     @refuses_unmodelled_data
     def fit_from_recurrent_data(
         self,
@@ -639,7 +638,6 @@ class ARI(RenewalFitMixin):
         return base_params
 
     @ambiguous_item_ids("fit(x, c, n, t)")
-    @removed_arguments("0.23", dist="'baseline'")
     @takes_unit
     @accepts_event_history_data
     def fit(
@@ -804,9 +802,6 @@ class ARI(RenewalFitMixin):
             **fit_options,
         )
 
-    @removed_arguments(
-        "0.23", dist="'baseline'", dist_params="'baseline_params'"
-    )
     def fit_from_parameters(
         self,
         baseline_params: ArrayLike,

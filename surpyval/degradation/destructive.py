@@ -64,8 +64,11 @@ from surpyval.utils.dataframe import call_fit, frame_column, require_frame
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import percentile_bounds
 from surpyval.utils.no_maximum import (
+    NoFiniteMaximumError,
     maximum_entry,
+    quiet_maximum_warnings,
     restored_maximum,
+    warn_bootstrap_refits,
     warn_no_maximum,
 )
 from surpyval.utils.rng import as_generator
@@ -77,6 +80,7 @@ from surpyval.utils.validation import (
     check_option,
     warn_outside_unit_interval,
 )
+from surpyval.utils.warnings import ignoring_warnings
 
 from ._maximum import verified_search
 from ._measurements import validate_xy
@@ -547,23 +551,41 @@ class DestructiveDegradationModel(InformationCriteriaMixin, SerialisableMixin):
         n = xd.shape[0]
 
         draws = []
+        counts = {"no finite maximum": 0, "unverified": 0, "no estimate": 0}
         for _ in range(n_boot):
             idx = rng.integers(0, n, size=n)
             try:
-                m = DestructiveDegradation.fit(
-                    xd[idx],
-                    yd[idx],
-                    threshold=self.threshold,
-                    c=cd[idx],
-                    distribution=self.distribution,
-                    transform=self.transform,
-                    direction=self.direction,
-                )
+                # Each refit's own warnings (a run-off sigma, say) are
+                # counted below and said once, not once per refit.
+                with ignoring_warnings(), quiet_maximum_warnings():
+                    m = DestructiveDegradation.fit(
+                        xd[idx],
+                        yd[idx],
+                        threshold=self.threshold,
+                        c=cd[idx],
+                        distribution=self.distribution,
+                        transform=self.transform,
+                        direction=self.direction,
+                    )
+            except NoFiniteMaximumError:
+                counts["no estimate"] += 1
+                continue
             except Exception:
                 continue
+            if m.maximum in counts:
+                counts[m.maximum] += 1
             draws.append(getattr(m, on)(x))
         if not draws:
             raise RuntimeError("every bootstrap resample failed to fit")
+        warn_bootstrap_refits(
+            n_boot,
+            no_maximum=counts["no finite maximum"],
+            no_estimate=counts["no estimate"],
+            unverified=counts["unverified"],
+            failed=n_boot - len(draws) - counts["no estimate"],
+            advice="treat the bounds as rough; more specimens, or more of "
+            "them failing within the test, would settle them",
+        )
         return percentile_bounds(np.vstack(draws), alpha_ci, bound)
 
     # -- serialisation ----------------------------------------------------
