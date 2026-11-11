@@ -285,9 +285,10 @@ def _fit_cause(
     takes ``n w`` in place of ``n``: the events, the risk sets and the
     censoring distribution ``G`` (the Kaplan-Meier of the censoring
     weighted by ``n w``), so whole-number weights give the fit of the rows
-    counted that many times. The covariance is then the robust sandwich
-    clustered by unit which holds ``G`` fixed (:func:`_robust_covariance`),
-    and there is no model-based one.
+    counted that many times. The covariance is then Fine and Gray's
+    sandwich with the sampling weights (:func:`_robust_covariance`),
+    which is the unweighted one when ``w = 1``, and there is no
+    model-based one.
     """
     counts = n
     if w is not None:
@@ -504,8 +505,7 @@ def _fit_cause(
     if kept.size and np.all(np.isfinite(cov)):
         # The robust (sandwich) covariance, the inverse information the
         # bread: Fine and Gray's, with the term for the estimated
-        # censoring distribution, or with weights the one that holds it
-        # fixed (_robust_covariance)
+        # censoring distribution, the weights' too (_robust_covariance)
         # (far out along a run-off a risk set's sum underflows; the
         # covariance is then nan, as the coefficients running off are)
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -635,11 +635,15 @@ def _robust_covariance(
     adds through the estimate of the censoring distribution ``G`` in those
     weights (:func:`_censoring_residuals`).
 
-    With weights ``w`` it is ``M = sum_i n_i w_i^2 eta_i eta_i'``, R's
-    ``coxph(Surv(fgstart, fgstop, fgstatus) ~ Z, weights = fgwt * w,
-    cluster = id)`` on the counting-process data of the fit: the
-    censoring weights ``W`` are held fixed, so the variability of ``G``
-    is not in it.
+    With sampling weights ``w`` it is ``M = sum_i n_i w_i^2 (eta_i +
+    psi_i)(eta_i + psi_i)'``, every sum in ``eta`` and ``psi`` (the risk
+    sets, the baseline's increments, the censoring Kaplan-Meier and its
+    at-risk counts) taken with ``n w``: a unit's influence is ``w_i``
+    times what it would be unweighted. So ``w = 1`` is the unweighted
+    variance, and scaling every weight changes nothing. Without ``psi``
+    it would be R's ``coxph(Surv(fgstart, fgstop, fgstatus) ~ Z,
+    weights = fgwt * w, cluster = id)`` on the counting-process data of
+    the fit, which holds ``G`` fixed.
 
     The rows (``Z`` centred, the counts ``n``, weights ``w``, the
     events ``is_event``, the censorings ``is_censored`` and the times
@@ -664,10 +668,10 @@ def _robust_covariance(
     events = np.flatnonzero(is_event)
     at = np.searchsorted(sets.times, x[events])
     resid[events] += Z[events] - mean[at]
-    if w is not None:
-        return sandwich(bread, resid, n, w)
-    resid += _censoring_residuals(Z, risk, sets, n, is_censored, x, dH, mean)
-    return sandwich(bread, resid, n, np.ones(n.size))
+    resid += _censoring_residuals(
+        Z, risk, sets, omega, is_censored, x, dH, mean
+    )
+    return sandwich(bread, resid, n, np.ones(n.size) if w is None else w)
 
 
 def _censoring_residuals(
@@ -1165,9 +1169,8 @@ class FineGrayModel(
     #: ``diagnose()`` checks it (#874); ``None`` on a model restored with
     #: ``from_dict``, which does not store them.
     _fit_data: dict | None = None
-    #: Whether the model was fitted with weights ``w``: its robust
-    #: covariance then holds the censoring distribution fixed, it has no
-    #: model-based one, and the information criteria refuse.
+    #: Whether the model was fitted with weights ``w``: it then has no
+    #: model-based covariance, and the information criteria refuse.
     weighted: bool = False
     #: The effective sample size of the weights (``None`` unweighted).
     effective_n: float | None = None
@@ -1215,10 +1218,11 @@ class FineGrayModel(
         takes the censoring weights as known; it was the only covariance
         before v0.27.
 
-        For a fit with weights ``w`` the robust covariance is the
-        sandwich clustered by unit that holds ``G`` fixed (R's
-        ``coxph(..., weights = fgwt * w, cluster = id)`` on
-        ``finegray``'s data), and ``robust=False`` is refused. A model
+        For a fit with sampling weights ``w`` the robust covariance is
+        the same sandwich with each unit's influence (the part through
+        ``G``, the Kaplan-Meier of the censoring weighted by ``w``,
+        included) multiplied by its weight, so ``w = 1`` gives the
+        unweighted covariance; ``robust=False`` is refused. A model
         restored from a dict saved before v0.27 has only the model-based
         covariance: ask for it with ``robust=False``, or refit.
 
@@ -1713,9 +1717,9 @@ class FineGray_(FitterRepr):
             risk sets and the censoring distribution ``G`` (the weighted
             Kaplan-Meier of the censoring times), so whole-number weights
             give the estimates of the rows counted that many times. The
-            covariance is the robust (sandwich) one clustered by unit,
-            holding ``G`` fixed, as R's ``coxph(..., weights = fgwt * w,
-            cluster = id)`` on ``finegray``'s data; ``aic``, ``bic`` and
+            covariance is Fine and Gray's robust (sandwich) one with the
+            weights, the part through ``G`` included, so ``w = 1`` gives
+            the unweighted fit's; ``aic``, ``bic`` and
             ``aic_c`` and the diagnostics refuse a weighted fit. See
             :doc:`/Weighted Data`.
         tl : array_like or float, optional

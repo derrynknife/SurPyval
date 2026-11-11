@@ -16,7 +16,10 @@ otherwise:
   cluster = id, ties = "breslow")`` on its counting-process data, built
   with the censoring distribution ``G`` the weighted Kaplan-Meier
   (``survfit(..., weights = w)``); the script first checks that the same
-  construction with ``w = 1`` gives ``crr``'s coefficients.
+  construction with ``w = 1`` gives ``crr``'s coefficients. ``coxph``'s
+  robust standard errors hold ``G`` fixed; SurPyval's add the term for
+  ``G`` (so ``w = 1`` is ``crr``'s variance), and are checked against
+  ``coxph`` with that term taken out.
 
 Tolerances: ``1e-8`` relative on the coefficients (both fits stop on
 Newton steps of at most ``1e-10`` standard errors), ``1e-6`` relative on
@@ -126,18 +129,41 @@ def test_cause_specific_cox_matches_coxph(data, ties):
 
 
 @pytest.mark.parametrize("cause", [1, 2])
-def test_fine_gray_matches_coxph_on_its_counting_process_data(data, cause):
-    model = _quiet(
-        FineGray.fit, data["x"], data["Z"], data["e"], event=cause, w=data["w"]
-    )
+def test_fine_gray_matches_coxph_on_its_counting_process_data(
+    data, cause, monkeypatch
+):
+    """The coefficients are ``coxph``'s. Its robust standard errors hold
+    the censoring distribution ``G`` fixed, so they are checked against
+    the fit with the censoring term taken out; the term itself is checked
+    against its definition with weights in ``test_fine_gray.py``."""
+    from surpyval.univariate.competing_risks.regression import fine_gray
+
     coef, se = R_FINE_GRAY[cause]
+    args = (data["x"], data["Z"], data["e"])
+    model = _quiet(FineGray.fit, *args, event=cause, w=data["w"])
     assert_allclose(model.beta, coef, **COEF)
-    assert_allclose(model.standard_errors(), se, **SE)
-    # The same through the competing-risks model
+    # The same coefficients through the competing-risks model, and the
+    # same covariance
     both = _cr(data, data["w"], model="Fine-Gray")
     row = both.event_idx_map[cause]
     assert_allclose(both.betas[row], coef, **COEF)
-    assert_allclose(both.standard_errors().reshape(2, 2)[row], se, **SE)
+    assert_allclose(
+        both.standard_errors().reshape(2, 2)[row],
+        model.standard_errors(),
+        rtol=1e-10,
+    )
+    # With G held fixed: coxph's
+    monkeypatch.setattr(
+        fine_gray,
+        "_censoring_residuals",
+        lambda Z, *rest: np.zeros(Z.shape),
+    )
+    fixed = _quiet(FineGray.fit, *args, event=cause, w=data["w"])
+    assert_allclose(fixed.standard_errors(), se, **SE)
+    # The term for G moves them, here by under 1%
+    assert not np.allclose(
+        model.standard_errors(), fixed.standard_errors(), rtol=1e-4
+    )
 
 
 # -- the properties of a weighted fit --------------------------------------
@@ -149,8 +175,13 @@ def test_unit_weights_give_the_unweighted_estimates(data, model):
     plain = _cr(data, None, model=model)
     assert ones.weighted and not plain.weighted
     assert_allclose(ones.betas, plain.betas, rtol=1e-10)
-    # The covariance is the robust one, not the model-based one
-    assert not np.allclose(ones.covariance(), plain.covariance())
+    if model == "Fine-Gray":
+        # Both are Fine and Gray's robust covariance, the censoring term
+        # included
+        assert_allclose(ones.covariance(), plain.covariance(), rtol=1e-12)
+    else:
+        # The covariance is the robust one, not the model-based one
+        assert not np.allclose(ones.covariance(), plain.covariance())
 
 
 @pytest.mark.parametrize("model", ["Cox", "Fine-Gray"])

@@ -639,9 +639,12 @@ Unreleased
   censoring distribution from the weighted Kaplan-Meier (so whole-number
   weights give the counted fit exactly; R's ``finegray`` leaves its
   censoring distribution unweighted), with the robust covariance clustered
-  by unit that holds it fixed, R's ``coxph(..., weights = fgwt * w,
-  cluster = id)``. Checked against R (coefficients 1e-8, standard errors
-  1e-6). The information criteria, the diagnostics and the penalised fit
+  by unit, Fine and Gray's with each unit's influence (the part through
+  the censoring distribution included) times its weight, so ``w = 1``
+  gives the unweighted fit's. Checked against R (coefficients 1e-8;
+  standard errors 1e-6 against ``coxph(..., weights = fgwt * w, cluster =
+  id)`` with the censoring term taken out, as ``coxph`` holds the
+  censoring distribution fixed; the term itself against its definition). The information criteria, the diagnostics and the penalised fit
   refuse weighted fits.
 - ``AalenAdditive.fit(..., w=)`` and ``fit_from_df(..., w_col=)``:
   Aalen's additive hazards model with sampling weights. Each increment of
@@ -849,11 +852,18 @@ Unreleased
     ``summary()`` refuse, saying to ask for ``robust=False`` or refit, and
     ``p_values`` is ``nan`` (the model-based ones are in
     ``summary(robust=False)``).
-  - A fit with weights ``w`` is unchanged: its covariance is the robust
-    one that holds the censoring distribution fixed (R's ``coxph`` on
-    ``finegray``'s data), so with censoring a fit with ``w = 1`` and a fit
-    without ``w`` report slightly different standard errors. It has no
-    model-based covariance: ``robust=False`` is refused.
+  - A fit with weights ``w`` gets the same term for the censoring
+    distribution, with sampling weights: every sum (the censoring
+    Kaplan-Meier and its at-risk counts included) weighted, and each
+    unit's influence its weight times the unweighted one. So a fit with
+    ``w = 1`` reports exactly the unweighted standard errors, and scaling
+    every weight changes nothing. Before, a weighted fit held the
+    censoring distribution fixed (R's ``coxph`` on ``finegray``'s data),
+    and ``w = 1`` gave slightly different standard errors from no ``w``.
+    On the weighted reference data the standard errors move from 0.53324,
+    0.26389 to 0.53366, 0.26592 (cause 1) and from 0.84097, 0.46078 to
+    0.84041, 0.46074 (cause 2). A weighted fit has no model-based
+    covariance: ``robust=False`` is refused.
   - Where a coefficient runs off (a fit that warns "No finite maximum"),
     the robust covariance of the other coefficients can be ``nan`` too,
     where a risk set's sum underflows.

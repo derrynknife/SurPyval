@@ -305,12 +305,13 @@ R's ``survival::finegray(..., weights = w)`` multiplies the weights into
 its censoring weights the same way but estimates ``G`` without the
 weights; on the reference data the two differ in the third decimal of
 the coefficients. ``cmprsk::crr`` takes no weights. The weighted
-Fine-Gray standard errors, like those of ``coxph`` on ``finegray``'s
-data, hold ``G`` fixed: they leave out the part that comes from
-estimating it. The fit without weights includes it (Fine and Gray's own
-sandwich, its default), so a fit with ``w = 1`` and a fit without ``w``
-give the same coefficients and slightly different standard errors unless
-nothing is censored. A weighted fit has no model-based covariance:
+Fine-Gray standard errors are Fine and Gray's sandwich, the default
+without weights too, with each unit's influence multiplied by its weight:
+they include the part that comes from estimating ``G`` (from the weighted
+Kaplan-Meier), so a fit with ``w = 1`` is the fit without ``w``, standard
+errors included. Those of ``coxph`` on ``finegray``'s data hold ``G``
+fixed and leave that part out; on the reference data the two differ by
+under 1%. A weighted fit has no model-based covariance:
 ``covariance(robust=False)`` is refused.
 
 The information criteria, the diagnostics (``diagnose()``, the

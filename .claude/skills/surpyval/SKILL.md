@@ -376,7 +376,7 @@ sp.life_table(x, c, intervals=4)      # actuarial (Cutler-Ederer) table
   Hessian; the robust covariance is `covariance()` (key `"covariance"`).
   `CompetingRisksProportionalHazards.fit(..., w=)` (cause-specific Cox and
   Fine-Gray) and `FineGray.fit(..., w=)` take weights too (robust SEs; no
-  `aic` or `diagnose()`).
+  `aic` or `diagnose()`; Fine-Gray with `w = 1` equals no `w`).
 - **Fine-Gray standard errors** are robust by default (Fine and Gray's
   sandwich, R `cmprsk::crr`'s `var`): `covariance()`,
   `standard_errors()`, `p_values`, `summary()`. The model-based ones

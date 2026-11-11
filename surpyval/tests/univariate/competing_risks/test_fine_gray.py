@@ -447,13 +447,17 @@ class _ByDefinition:
     each a loop over the units (as ``cmprsk::crr``'s Fortran takes them),
     in the numbers of ``arithmetic``. ``status`` is 0 censored, 1 the
     cause of interest, 2 a competing failure; ``exp(beta'Z)`` is taken
-    with ``arithmetic`` only at ``beta = 0``."""
+    with ``arithmetic`` only at ``beta = 0``. Sampling weights ``w`` weight
+    every sum over the units (the risk sets, the events, the censoring
+    Kaplan-Meier and its at-risk counts), and a unit's influence is its
+    weight times the unweighted one's."""
 
-    def __init__(self, x, Z, status, beta, arithmetic=float):
+    def __init__(self, x, Z, status, beta, arithmetic=float, w=None):
         self.x, self.Z, self.status = x, Z, status
         self.N, self.p = len(x), len(Z[0])
         self.number = arithmetic
         self.one, self.zero = arithmetic(1), arithmetic(0)
+        self.w = [self.one] * self.N if w is None else list(w)
         if any(beta):
             self.risk = [float(np.exp(np.dot(row, beta))) for row in Z]
         else:
@@ -472,13 +476,18 @@ class _ByDefinition:
         }
 
     def at_risk(self, u):
-        return self.number(sum(1 for j in self.units if self.x[j] >= u))
+        return sum(
+            (self.w[j] for j in self.units if self.x[j] >= u), self.zero
+        )
 
     def censored_at(self, u):
-        return self.number(
-            sum(
-                1 for j in self.units if self.x[j] == u and self.status[j] == 0
-            )
+        return sum(
+            (
+                self.w[j]
+                for j in self.units
+                if self.x[j] == u and self.status[j] == 0
+            ),
+            self.zero,
         )
 
     def G_before(self, t):
@@ -507,7 +516,8 @@ class _ByDefinition:
     def _sum(self, t, k=None):
         # The risk set's sum of exp(beta'Z) at t, times Z_k where given
         return sum(
-            self.weight(j, t)
+            self.w[j]
+            * self.weight(j, t)
             * self.risk[j]
             * (self.one if k is None else self.Z[j][k])
             for j in self.units
@@ -526,7 +536,10 @@ class _ByDefinition:
         return [
             [
                 sum(
-                    self.spread(j, i, a) * (self.Z[j][b] - self.mean[i][b])
+                    self.w[i]
+                    * self.w[j]
+                    * self.spread(j, i, a)
+                    * (self.Z[j][b] - self.mean[i][b])
                     for i in self.events
                     for j in self.units
                 )
@@ -539,7 +552,7 @@ class _ByDefinition:
         if (u, k) not in self._q:
             self._q[u, k] = sum(
                 (
-                    self.spread(j, i, k)
+                    self.w[i] * self.w[j] * self.spread(j, i, k)
                     for i in self.events
                     if self.x[i] >= u
                     for j in self.units
@@ -550,7 +563,10 @@ class _ByDefinition:
         return self._q[u, k]
 
     def eta(self, i, k):
-        out = -sum((self.spread(i, j, k) for j in self.events), self.zero)
+        out = -sum(
+            (self.w[j] * self.spread(i, j, k) for j in self.events),
+            self.zero,
+        )
         if self.status[i] == 1:
             out += self.Z[i][k] - self.mean[i][k]
         return out
@@ -572,29 +588,33 @@ class _ByDefinition:
             for i in self.units
         ]
         return [
-            [sum(u[a] * u[b] for u in unit) for b in range(self.p)]
+            [
+                sum(wi**2 * u[a] * u[b] for wi, u in zip(self.w, unit))
+                for b in range(self.p)
+            ]
             for a in range(self.p)
         ]
 
 
-def _fine_gray_meat(x, Z, status, beta, arithmetic=float):
-    """The information ``A`` and Fine and Gray's ``sum_i (eta_i +
+def _fine_gray_meat(x, Z, status, beta, arithmetic=float, w=None):
+    """The information ``A`` and Fine and Gray's ``sum_i w_i^2 (eta_i +
     psi_i)(eta_i + psi_i)'`` at ``beta``, by the definitions."""
-    parts = _ByDefinition(x, Z, status, beta, arithmetic)
+    parts = _ByDefinition(x, Z, status, beta, arithmetic, w)
     return parts.information(), parts.meat()
 
 
-def _sandwich_parts(x, Z, status, beta, n=None):
+def _sandwich_parts(x, Z, status, beta, n=None, w=None):
     """The fit's own information and meat at ``beta``: the model's
     ``_robust_covariance`` with an identity bread is the meat."""
     x = np.asarray(x, dtype=float)
     Z = np.asarray(Z, dtype=float)
     status = np.asarray(status)
     n = np.ones(x.size) if n is None else np.asarray(n, dtype=float)
-    g_times, g_vals = fine_gray.censoring_survival(x, status == 0, n)
+    nw = n if w is None else n * np.asarray(w, dtype=float)
+    g_times, g_vals = fine_gray.censoring_survival(x, status == 0, nw)
     G_x = fine_gray.step_left_limit(g_times, g_vals, x, before=1.0)
     sets = fine_gray._risk_sets(
-        x, n, status == 1, status == 2, G_x, g_times, g_vals
+        x, nw, status == 1, status == 2, G_x, g_times, g_vals
     )
     order = sets.order
     return fine_gray._robust_covariance(
@@ -603,7 +623,7 @@ def _sandwich_parts(x, Z, status, beta, n=None):
         np.asarray(beta, dtype=float),
         sets,
         n[order],
-        None,
+        None if w is None else np.asarray(w, dtype=float)[order],
         (status == 1)[order],
         (status == 0)[order],
         x[order],
@@ -700,24 +720,58 @@ def test_robust_covariance_counts_equal_repeated_rows():
         )
 
 
-def test_robust_covariance_without_censoring_is_the_score_residuals():
-    """With no censoring the censoring term is zero, and Fine and Gray's
-    sandwich is the one a fit with unit weights reports (which holds the
-    censoring distribution fixed)."""
-    x, Z, e, c = _simulate_fine_gray(300, 3, cens_scale=1e9)
-    assert not c.any()
+@pytest.mark.parametrize("cens_scale", [1e9, 1.0], ids=["none", "heavy"])
+def test_unit_weights_give_the_unweighted_robust_covariance(cens_scale):
+    """``w = 1`` is the unweighted fit, its robust covariance included:
+    the censoring term is carried into weighted fits, so no censoring and
+    heavy censoring alike give the same matrix."""
+    x, Z, e, c = _simulate_fine_gray(300, 3, cens_scale=cens_scale)
+    assert c.any() == (cens_scale == 1.0)
     model = FineGray.fit(x, Z, e, event=1)
     weighted = FineGray.fit(x, Z, e, event=1, w=1.0)
+    np.testing.assert_allclose(weighted.beta, model.beta, rtol=1e-12)
     np.testing.assert_allclose(
-        model.covariance(), weighted.covariance(), rtol=1e-10
+        weighted.covariance(), model.covariance(), rtol=1e-12, atol=0
     )
-    # With censoring the two differ: the term for G is not in the
-    # weighted fit's.
-    x, Z, e, c = _simulate_fine_gray(300, 3, cens_scale=1.0)
-    model = FineGray.fit(x, Z, e, event=1)
-    weighted = FineGray.fit(x, Z, e, event=1, w=1.0)
-    assert not np.allclose(
-        model.covariance(), weighted.covariance(), rtol=1e-3
+    ones = FineGray.fit(x, Z, e, event=1, w=np.ones(x.size))
+    np.testing.assert_allclose(
+        ones.covariance(), model.covariance(), rtol=1e-12, atol=0
+    )
+
+
+@pytest.mark.parametrize("seed", [0, 1])
+def test_weighted_robust_covariance_is_the_definition_on_tied_data(seed):
+    """With sampling weights: the O(N) sums against the definitions,
+    every sum over the units weighted (the censoring Kaplan-Meier and its
+    at-risk counts too) and each unit's influence its weight times the
+    unweighted one, on tied data at a ``beta`` away from 0, and the
+    fitted model's covariance against the definition's sandwich."""
+    rng = np.random.default_rng(10 + seed)
+    N = 50
+    x = rng.integers(1, 11, N).astype(float)
+    status = rng.choice([0, 1, 2], N, p=[0.35, 0.4, 0.25])
+    Z = np.column_stack([rng.binomial(1, 0.5, N), rng.normal(size=N)])
+    w = rng.uniform(0.3, 3.0, N)
+    beta = np.array([0.4, -0.3])
+    info, meat = _fine_gray_meat(
+        list(x), [list(row) for row in Z], list(status), beta, w=list(w)
+    )
+    got = _sandwich_parts(x, Z, status, beta, w=w)
+    np.testing.assert_allclose(got, np.array(meat, dtype=float), rtol=1e-10)
+    e = np.where(status == 0, None, status.astype(object))
+    model = FineGray.fit(x, Z, e, event=1, w=w)
+    info, meat = _fine_gray_meat(
+        list(x),
+        [list(row) for row in Z],
+        list(status),
+        model.beta,
+        w=list(w),
+    )
+    bread = np.linalg.inv(np.array(info, dtype=float))
+    np.testing.assert_allclose(
+        model.covariance(),
+        bread @ np.array(meat, dtype=float) @ bread,
+        rtol=1e-7,
     )
 
 
