@@ -729,6 +729,7 @@ class ParametricRecurrenceModel(
             lambda params: self.dist.cif(x, *params),
             self._mle,
             self.covariance(),
+            scale_free=True,
         )
         return log_transformed_cb(self.cif(x), se, alpha_ci, bound)
 
@@ -826,6 +827,7 @@ class ParametricRecurrenceModel(
             lambda params: self.dist.iif(x, *params),
             self._mle,
             self.covariance(),
+            scale_free=True,
         )
         return log_transformed_cb(self.iif(x), se, alpha_ci, bound)
 

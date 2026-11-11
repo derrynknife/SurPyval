@@ -444,5 +444,5 @@ class TVCEvaluationMixin:
         cov[held, :] = 0.0
         cov[:, held] = 0.0
         mle = self._mle_values()
-        se = delta_method_se(function_at, mle, cov)
+        se = delta_method_se(function_at, mle, cov, scale_free=True)
         return log_transformed_cb(function_at(mle), se, alpha_ci, bound)

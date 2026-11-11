@@ -1602,7 +1602,9 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
             function_at = curve(self.models[cause])
             estimate = estimate + function_at(values)
             variance = (
-                variance + delta_method_se(function_at, values, cov) ** 2
+                variance
+                + delta_method_se(function_at, values, cov, scale_free=True)
+                ** 2
             )
         return log_transformed_cb(estimate, np.sqrt(variance), alpha_ci, bound)
 
