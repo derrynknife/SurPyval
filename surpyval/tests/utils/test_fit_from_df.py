@@ -169,13 +169,13 @@ def test_univariate_v021_names_are_gone(old):
     # Principle 21: every DataFrame entry point names its columns with a
     # ``_col`` suffix. The v0.21 names of Weibull.fit_from_df (x, c, n,
     # xl, xr, tl, tr), deprecated in v0.22, are removed in v0.23: each
-    # is refused as an unknown argument, naming the new one, rather than
-    # reaching ``fit`` (where ``x``, ``c``, ``n`` and ``tl`` are options).
+    # is refused as an unknown argument, naming the column argument,
+    # rather than reaching ``fit`` (where ``x``, ``c``, ``n`` and ``tl``
+    # are options).
     df = pd.DataFrame({"t": [3.0, 5, 7, 9], "cens": [0, 1, 0, 0]})
     with pytest.raises(
         TypeError,
-        match=f"unexpected keyword argument '{old}': it was removed in "
-        f"v0.23; name the column "
+        match=f"unexpected keyword argument '{old}'; name the column "
         f"with '{old}_col'",
     ):
         sp.Weibull.fit_from_df(df, x_col="t", **{old: "cens"})

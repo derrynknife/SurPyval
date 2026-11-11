@@ -64,8 +64,12 @@ How a name is retired
 
    .. code-block:: text
 
-       AttributeError: 'Weibull_' object has no attribute 'param_names':
-       it was removed in v0.23; use 'parameter_names'
+       AttributeError: module 'surpyval' has no attribute
+       'RecurrentEventData': it was removed in v0.26; it is
+       surpyval.EventHistoryData (from surpyval import EventHistoryData)
+
+   After that, the hint is retired and the old name gets Python's plain
+   error.
 
 An argument that becomes keyword-only
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

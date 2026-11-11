@@ -34,7 +34,6 @@ import numpy as np
 import numpy.typing as npt
 from scipy.optimize import curve_fit
 
-from surpyval.utils.removed_names import RemovedNames
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import option_error
 
@@ -59,7 +58,7 @@ def _columns(x: npt.NDArray, *columns: Any) -> npt.NDArray:
     )
 
 
-class PathModel(ABC, RemovedNames):
+class PathModel(ABC):
     """
     Base class for degradation path models.
 

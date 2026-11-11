@@ -318,7 +318,10 @@ def bootstrap(model: Any, n_boot: int, random_state: Any = None) -> dict:
     Returns a dictionary: ``observed`` and ``p``, each by statistic
     (``"AD"``, ``"KS"``, ``"CvM"``); ``draws``, an array of the refits'
     statistics, one column each; ``failed``, the refits that raised and
-    were left out; and ``n_boot``.
+    were left out, ``no_estimate`` of them because the resample's
+    likelihood has no maximum at all (no failures, say); ``no_maximum``,
+    the kept refits whose likelihood had no finite maximum (their
+    statistic is taken where the search stopped); and ``n_boot``.
 
     Examples
     --------
@@ -333,7 +336,10 @@ def bootstrap(model: Any, n_boot: int, random_state: Any = None) -> dict:
         REFIT_ERRORS,
         check_n_boot,
     )
-    from surpyval.utils.no_maximum import quiet_maximum_warnings
+    from surpyval.utils.no_maximum import (
+        NoFiniteMaximumError,
+        quiet_maximum_warnings,
+    )
     from surpyval.utils.rng import as_generator
 
     n_boot = check_n_boot(n_boot)
@@ -347,7 +353,7 @@ def bootstrap(model: Any, n_boot: int, random_state: Any = None) -> dict:
     options = _refit_options(model)
     keys = [key for _, key in TESTS]
     draws = []
-    failed = 0
+    failed = no_estimate = no_maximum = 0
     for _ in range(n_boot):
         q = lo + rng.uniform(size=design.x.size) * (hi - lo)
         with np.errstate(all="ignore"):
@@ -367,9 +373,14 @@ def bootstrap(model: Any, n_boot: int, random_state: Any = None) -> dict:
             with ignoring_warnings(), quiet_maximum_warnings():
                 refit = model.dist.fit(x, **kwargs, **options)
                 stats = _statistics(refit, x, kwargs["c"], None, t)
+        except NoFiniteMaximumError:
+            failed += 1
+            no_estimate += 1
+            continue
         except REFIT_ERRORS:
             failed += 1
             continue
+        no_maximum += refit.maximum == "no finite maximum"
         draws.append([stats[k] for k in keys])
     values = np.array(draws, dtype=float).reshape(len(draws), len(keys))
     p = {}
@@ -384,8 +395,31 @@ def bootstrap(model: Any, n_boot: int, random_state: Any = None) -> dict:
         "p": p,
         "draws": values,
         "failed": failed,
+        "no_estimate": no_estimate,
+        "no_maximum": no_maximum,
         "n_boot": n_boot,
     }
+
+
+def no_maximum_note(boot: dict) -> str | None:
+    """The report's note on a goodness-of-fit bootstrap's refits with no
+    finite maximum (``boot`` from :func:`bootstrap`), or None."""
+    kept, out = boot.get("no_maximum", 0), boot.get("no_estimate", 0)
+    if not (kept or out):
+        return None
+    parts = []
+    if kept:
+        parts.append(f"{kept} kept at the estimate they reached")
+    if out:
+        parts.append(
+            f"{out} on resamples with no maximum at all (no failures, or "
+            "too few distinct failure times), left out"
+        )
+    return (
+        f"{kept + out} of the {boot['n_boot']} bootstrap refits had no "
+        f"finite maximum ({'; '.join(parts)}): the data barely determine "
+        "the model, so read the p-values as rough."
+    )
 
 
 def _boot(ctx: Context) -> dict | None:
@@ -444,6 +478,9 @@ def _gof_rows(ctx: Context) -> list[dict]:
             "{} of the {} bootstrap refits failed and were left out of the "
             "goodness-of-fit p-values.".format(boot["failed"], boot["n_boot"])
         )
+    note = no_maximum_note(boot)
+    if note:
+        ctx.notes.append(note)
     kept = boot["n_boot"] - boot["failed"]
     for test, key in TESTS:
         p = boot["p"][key]

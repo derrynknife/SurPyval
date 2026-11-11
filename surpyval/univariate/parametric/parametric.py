@@ -48,10 +48,6 @@ from surpyval.utils.no_maximum import (  # noqa: F401 (re-exported)
     restored_maximum,
 )
 from surpyval.utils.record_predict import PredictsRecordsMixin
-from surpyval.utils.removed_names import (
-    removed_arguments,
-    removed_parameter_note,
-)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -1842,7 +1838,6 @@ class Parametric(
             valid.append("f0")
         raise ValueError(
             f"Unknown parameter {name!r}; expected one of {valid}"
-            + removed_parameter_note(name, valid)
         )
 
     def _ensure_surv_data(self) -> None:
@@ -2387,7 +2382,6 @@ class Parametric(
         q = np.asarray(q, dtype=float)
         return q[0] if scalar else q
 
-    @removed_arguments("0.23", X="'given'")
     def cs(self, x: npt.ArrayLike, given: npt.ArrayLike) -> npt.NDArray:
         r"""
 

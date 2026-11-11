@@ -71,7 +71,6 @@ from surpyval.utils.no_maximum import (
     warn_no_maximum,
 )
 from surpyval.utils.numeric import solve_bracketed
-from surpyval.utils.removed_names import RemovedNames
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import takes_unit
@@ -2350,7 +2349,7 @@ class WienerProcessModel(FirstPassageProcessModel):
         )
 
 
-class WienerProcess(RemovedNames):
+class WienerProcess:
     """Fitter for the Wiener-process degradation model (see
     :class:`WienerProcessModel`)."""
 
@@ -2794,7 +2793,7 @@ class GammaProcessModel(FirstPassageProcessModel):
         )
 
 
-class GammaProcess(RemovedNames):
+class GammaProcess:
     """Fitter for the Gamma-process degradation model (see
     :class:`GammaProcessModel`)."""
 
