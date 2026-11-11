@@ -15,6 +15,16 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-12
 
+### The interface at 1.0 (12 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| From 1.0 the package follows semantic versioning: no breaking change to the public interface until 2.0. A deprecated public name keeps working, with a warning, for at least two minor releases and at least six months, whichever is later. | maintainer | The dated removals already work this way; 1.0 makes it a promise. | open (to write into the deprecation policy page before 1.0) |
+| The saved-model dictionary (`to_dict`) is frozen in its present shape as part of the 1.0 contract and documented key by key; every older shape keeps loading. No cleaner second schema. | maintainer | Downstream code reads the keys directly; a new shape would break it for little gain. | open (to document before 1.0) |
+| The survival tree and forest keep their argument names (`kind`, `min_leaf_samples`, `n_features_split`); no renaming to scikit-learn's names. | maintainer | They already work and are documented; other libraries' names are not a convention here. | done |
+| A significance level that makes an interval is `alpha_ci` everywhere; where `alpha` means that today (for example the concordance and calibration functions and `diagnose`), it changes to the package's names as a breaking change at 1.0, announced with 1.0 rather than given its own deprecation cycle. | maintainer | `alpha` is also a parameter name (Weibull, Crow-AMSAA), so one word meant two things. | open (1.0) |
+| `on="R"` and `on="F"` stay as accepted spellings of `"sf"` and `"ff"`, and are documented in the conventions page. | maintainer | Removing them would break callers for no gain. | open (to document) |
+
 ### Shared parameter entries in distribution docstrings (12 Nov 2026)
 
 | Decision | By | Reason | Status |
@@ -979,7 +989,7 @@ The rows of 2026-10-29 and 2026-10-30 that were still proposed were reviewed by 
 | The list is a text file, `surpyval/tests/public_surface.txt`, one dotted name a line, shipped as package data so the installed test suite runs it; regenerated only by `python -m surpyval.tests.test_public_surface --update`. | proposed | One line a name gives a readable diff in review; package data as for the reference fixtures. | done |
 | Numbers may differ in their last digits between releases, platforms and numpy/scipy versions, within the optimiser's or integrator's tolerance, without a changelog line; a deliberate change to a result is listed under Changed or Fixed with its size where known. | proposed | What the changelog already does (e.g. the 0.26 accelerated-life fits "move by about 1e-5"); now stated to users. | open |
 | Before 1.0, a change of behaviour that cannot carry a warning (a corrected result, a new default, a convention made consistent, as 0.27's coefficient signs) may come in any release, listed under Changed. The page also says releases come often, so one release of deprecation can be short, and suggests pinning. | proposed | Honest about the current practice; downstream code was caught out by short windows. | open |
-| The page says "Version 1.0 will mark the interface as stable", and that anything the policy then promises beyond today's rules is set out before 1.0. No longer window or other post-1.0 promise is made yet. | proposed | The maintainer decides what 1.0 promises (for example a deprecation window of more than one release); the page commits to nothing beyond today's mechanism. | open |
+| The page says "Version 1.0 will mark the interface as stable", and that anything the policy then promises beyond today's rules is set out before 1.0. No longer window or other post-1.0 promise is made yet. | proposed | The maintainer decides what 1.0 promises (for example a deprecation window of more than one release); the page commits to nothing beyond today's mechanism. | changed (2026-11-12): the 1.0 promise is set (semantic versioning; deprecations last at least two minor releases and six months), see "The interface at 1.0" |
 
 ### diagnose() of Aalen's additive hazards model (WP6 6f)
 
