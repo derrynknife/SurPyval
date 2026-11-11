@@ -954,6 +954,38 @@ Unreleased
   refuses the bounds, saying it holds no covariance; a model with no
   likelihood (``from_params``, ``how="MSE"``) and a penalised fit save
   ``null``. No fitted number changes.
+- **Bootstrap refits with no finite maximum are always reported.** A
+  resample can leave the likelihood with no finite maximum: no failures,
+  fewer distinct failure times than parameters, or a covariate group with
+  no failures. Every bootstrap that refits resamples (``method="bootstrap"``
+  on the parametric models, the parametric regressions including
+  ``cb_tvc`` and distributional regression, a competing-risks cause's net
+  bounds, ``DegradationAnalysis`` and ``DestructiveDegradation``, and
+  ``Parametric.bootstrap``) now treats them one way: a refit that returns
+  with no finite maximum is kept at the estimate it reached, so that it
+  counts toward the end of the bounds it ran to (as before); a resample the
+  fit refuses because its likelihood has no maximum at all is left out (as
+  before, but no longer counted as an ordinary failure); and both are said
+  in one ``BootstrapRefitWarning`` (``surpyval.utils.no_maximum``), with
+  how many of how many, what was done with them and what to do, whenever
+  there is at least one. Before, they were said only above 2% of the
+  refits, the degradation bootstraps did not count them at all, and
+  ``DestructiveDegradation.cb`` repeated each refit's own warning (30
+  warnings for 30 refits of noise-free readings; now one). The counts are
+  on the warning (``no_maximum``, ``no_estimate``, ``unverified``,
+  ``failed``, ``n_boot``) and on ``Parametric.bootstrap()``'s result
+  (``no_estimate``, new, beside ``no_maximum`` and ``failed``). The
+  fit's refusals of such data raise ``NoFiniteMaximumError``, a
+  ``ValueError``. The bounds themselves do not change: on 13 checks
+  across every path (normal data and data with such refits) they are
+  identical to the bit. Example: a Weibull fitted to 3 failures among 10
+  units, ``cb([2, 5], method="bootstrap", n_boot=200, random_state=1)``,
+  gives the same bounds as before ([0.6917, 0.9934] at 2) and now says
+  that 26 of the 200 resamples had fewer than two distinct failure times
+  and were left out. The goodness-of-fit reports (univariate and
+  competing-risks incidence) add a note with the count of their refits
+  with no finite maximum.
+
 - The renewal models' simulations (``GeneralizedRenewal``,
   ``GeneralizedOneRenewal``, ``ARA``) draw a failure at a large virtual age
   (a cumulative hazard past 20) by Newton's method on the cumulative
