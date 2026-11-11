@@ -3757,12 +3757,15 @@ of overstress:
     from surpyval import ExponentialPH, SurpyvalData
 
     ramp_rng = np.random.default_rng(11)
-    capacitors = []
+    capacitors, rates, ages, failed = [], [], [], []
     for k in range(300):
         rate = [0.02, 0.05, 0.1][k % 3]          # overstress per hour
         # H(t) = 0.02 (exp(1.2 rate t) - 1) / (1.2 rate), inverted exactly
         life = np.log1p(1.2 * rate * ramp_rng.exponential() / 0.02) / (1.2 * rate)
         outcome = "observed" if life <= 60 else "right_censored"
+        rates.append(rate)
+        ages.append(min(life, 60.0))
+        failed.append(life <= 60)
         capacitors.append(
             ItemLifetime(
                 k,
@@ -3802,15 +3805,15 @@ and maximising the likelihood written with it gives the same estimates:
 
     from scipy.optimize import minimize
 
-    ramp_data = SurpyvalData.from_items(capacitors)
-    life, failed = ramp_data.x, ramp_data.c == 0
-    rate = np.array([0.02, 0.05, 0.1])[np.arange(300) % 3]
+    rate, life, failed = np.array(rates), np.array(ages), np.array(failed)
 
 
     def closed_form_neg_ll(v):
         lam, beta = np.exp(v[0]), v[1]
         H = lam * np.expm1(beta * rate * life) / (beta * rate)
-        return np.sum(H) - np.sum(np.log(lam) + beta * rate * life[failed])
+        # each failure adds the log of its hazard, lam exp(beta r t)
+        log_h = np.log(lam) + beta * rate[failed] * life[failed]
+        return np.sum(H) - np.sum(log_h)
 
 
     by_hand = minimize(closed_form_neg_ll, [np.log(0.05), 0.5], method="BFGS")
