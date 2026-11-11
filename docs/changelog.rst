@@ -877,12 +877,18 @@ Unreleased
   parameter covariance (``"covariance"``), and the restored model computes
   ``covariance()``, ``standard_errors()``, ``summary()``, ``param_cb`` and
   the Wald bounds (``cif_cb``, ``iif_cb``, ``mtbf_cb``, ``cb_tvc``) from
-  it, equal to the fit's. Before, a restored model refused them, while a
+  it, equal to the fit's. The renewal models (``GeneralizedRenewal``,
+  ``GeneralizedOneRenewal``, ``ARA``, ``ARI``) do the same for
+  ``covariance()``, ``standard_errors()``, the Wald ``param_cb`` and
+  ``summary()``; with the repair parameter on the edge of its range, its
+  interval (a profile-likelihood one) and so ``summary()`` need the data
+  and are refused, saying so. Before, a restored model refused them, while a
   restored ``CauseSpecificNHPP`` or ``CauseSpecificProportionalIntensity``
   (whose causes are these same models) gave them. What needs the data is
   still refused, with a message that says what is and is not available:
-  the likelihood and the information criteria, the diagnostics, ``plot``
-  and Crow's exact bounds. The entry is optional on reading (the schema is
+  the likelihood and the information criteria, the diagnostics, ``plot``,
+  Crow's exact bounds, the profile-likelihood intervals and the repair
+  test. The entry is optional on reading (the schema is
   unchanged): a dictionary saved by an earlier version loads as before and
   refuses the bounds, saying it holds no covariance; a model with no
   likelihood (``from_params``, ``how="MSE"``) and a penalised fit save
