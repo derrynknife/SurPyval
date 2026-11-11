@@ -935,6 +935,17 @@ def _search_parametric_competing_risks(model, data):
     return out
 
 
+def _search_parametric_competing_regression(model, data):
+    """Each cause's own regression search (its fit keeps its data, the
+    other causes censored)."""
+    if data is None:
+        return None
+    out = []
+    for k in model.causes:
+        out += _search_regression(model.models[k], data)
+    return out
+
+
 def _on_bounds(neg_ll, x, bounds, n_obs):
     """The components of ``x`` on a bound of their space where the
     likelihood stops depending on them (it is the same, to rounding, a
@@ -1192,6 +1203,9 @@ SEARCHES: dict[str, Callable] = {
     "CompetingRisksProportionalHazards": _search_crph,
     "MultiStateProportionalHazards": _search_multistate_cox,
     "ParametricCompetingRisks": _search_parametric_competing_risks,
+    "ParametricCompetingRisksRegression": (
+        _search_parametric_competing_regression
+    ),
     "ParametricRecurrenceModel": _search_recurrence,
     "ProportionalIntensityModel": _search_recurrence,
     "RecurrentCoxModel": _search_recurrent_cox,

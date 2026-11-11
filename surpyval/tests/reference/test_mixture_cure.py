@@ -1,6 +1,6 @@
 """Mixture-cure regression (``surpyval.MixtureCure``) against stored R
 ``flexsurvcure`` fits (``scripts/reference/reference_r_mixture_cure.R``),
-on 400 simulated units kept in the reference file.
+on 400 simulated units (the shared fixture ``cure_regression``).
 
 ``flexsurvcure(..., mixture = TRUE)`` maximises the same likelihood.
 Its ``theta`` is the *cured* fraction and its location covariates raise
@@ -24,14 +24,13 @@ from numpy.testing import assert_allclose
 
 import surpyval as sp
 
-from ._data import _load, values
+from ._data import fixture, values
 
 SOURCE = "r_mixture_cure"
 
 
 def _data():
-    d = _load(SOURCE)["data"]
-    return {k: np.asarray(v, dtype=float) for k, v in d.items()}
+    return fixture("cure_regression")
 
 
 def _link(name, p):

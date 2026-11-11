@@ -547,8 +547,10 @@ probability of a cause occurring in the presence of competing risks (e.g.
 clinical risk scores).
 
 SurPyval provides the ``FineGray`` and
-``CompetingRisksProportionalHazards`` classes. The subsections below explain
-each model, how it is estimated and how to read its coefficients.
+``CompetingRisksProportionalHazards`` classes, and
+``ParametricCompetingRisksRegression`` for a parametric regression of each
+cause's hazard. The subsections below explain each model, how it is estimated
+and how to read its coefficients.
 
 Cause-specific proportional hazards in detail
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -784,6 +786,58 @@ cumulative sums, in time linear in the rows, and reproduces ``crr``'s
 reference data. For a fit with weights ``w`` the robust covariance leaves
 :math:`\hat\psi` out (see :doc:`Weighted Data`), and there is no
 model-based one.
+
+Parametric regression of each cause
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The cause-specific Cox model leaves each cause's baseline hazard
+unspecified. That is its strength inside the data, and its limit outside:
+the baseline is estimated only at the observed event times, so the
+cumulative incidence is a step function that is not defined after the
+last one. Giving every cause a *parametric* regression model instead --
+a hazard :math:`h_k(t \mid Z; \theta_k)` that is a formula of time and
+covariates, such as the Weibull proportional hazards model
+:math:`(\beta_k/\alpha_k)(t/\alpha_k)^{\beta_k - 1} e^{Z\gamma_k}` --
+makes every quantity of the model a smooth function defined at all times.
+
+The argument of "Why the fit separates by cause" carries over with the
+covariates in place: the likelihood of a unit that failed from cause
+:math:`k` at :math:`x` with covariates :math:`Z` is
+
+.. math::
+
+    h_k(x \mid Z; \theta_k) \prod_j \exp\{-H_j(x \mid Z; \theta_j)\},
+
+and of a censored unit the product alone. Each :math:`\theta_k` appears
+in its own factor only, so the maximum-likelihood estimate of cause
+:math:`k`'s parameters is the ordinary fit of its regression with every
+other cause's failures treated as censored, the estimates of different
+causes are asymptotically independent (their covariance is
+block-diagonal), and delayed entry at :math:`t_l` divides each cause's
+factor by its own :math:`\exp\{-H_k(t_l \mid Z)\}`. The cumulative
+incidence at covariates :math:`Z` is then
+
+.. math::
+
+    \mathrm{CIF}_k(t \mid Z) = \int_0^t h_k(u \mid Z)\,
+        \exp\Big\{-\sum_j H_j(u \mid Z)\Big\}\,du ,
+
+computed as for the model without covariates, and its confidence bounds
+come from the delta method over every cause's parameters, on the logit
+scale.
+
+When is it the right choice? When a prediction is needed beyond the
+follow-up, or a smooth curve, a quantile or a mean life at given
+covariates, and there is reason to believe a parametric shape for each
+cause (wear-out as a Weibull, say). The price is that shape: inside the
+data it can be checked against the cause-specific Cox model and each
+cause's diagnostics; beyond the data it cannot, and the extrapolation is
+only as good as the assumed hazards. As with every cause-specific model,
+a covariate's effect on a cause's *hazard* is not its effect on that
+cause's *incidence*, which also depends on what the covariate does to the
+other causes; read incidence effects from ``cif`` at the covariate values
+of interest. A parametric model of the incidence itself (a parametric
+counterpart of Fine-Gray) is a different model, and is not built.
 
 Choosing between them
 ~~~~~~~~~~~~~~~~~~~~~

@@ -87,6 +87,7 @@ Worked classifications:
 | Survival trees and forests (`surpyval.ml`) | univariate | single_event | single | terminal | with | continuous | nonparametric |
 | ParametricCompetingRisks | univariate | single_event | competing | terminal | none | continuous | parametric |
 | CompetingRisks (CIF) | univariate | single_event | competing | terminal | none | continuous | nonparametric |
+| ParametricCompetingRisksRegression | univariate | single_event | competing | terminal | with | continuous | parametric |
 | Fine–Gray, CRPH | univariate | single_event | competing | terminal | with | continuous | semiparametric |
 | NonParametricCounting (MCF) | univariate | recurrent | single | recurrent | none | continuous | nonparametric |
 | HPP/NHPP (Crow-AMSAA, Duane, Cox-Lewis) | univariate | recurrent | single | recurrent | none | continuous | parametric |
@@ -148,7 +149,6 @@ Cells of the axes with nothing built yet:
 
 | Gap | Cell |
 |-----|------|
-| Parametric competing-risks regression | univariate / single_event / competing / terminal / with / continuous / parametric |
 | Recurrent events with covariates, semi-parametric: robust bounds on the cumulative baseline, and simulation (Andersen–Gill, PWP and WLW are built) | univariate / recurrent / single / recurrent / with / continuous / semiparametric |
 | Recurrent events with competing failure modes and covariates | univariate / recurrent / competing / recurrent / with / continuous / parametric and semiparametric |
 | Multi-state models (illness-death, progressive) | `multi_state` |

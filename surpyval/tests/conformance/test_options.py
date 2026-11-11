@@ -1083,6 +1083,8 @@ CONVENTIONS = {
             "sf",
             own={
                 "CompetingRisks": "cif",
+                # its regression counterpart, likewise
+                "ParametricCompetingRisksRegression": "cif",
                 # Counts of repeat events have no survival function: the
                 # bounds along a schedule are on the expected count.
                 "ProportionalIntensityModel": "cif",

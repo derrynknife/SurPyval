@@ -85,6 +85,10 @@ _TAGGED_MODELS: dict[str, str] = {
         "surpyval.univariate.competing_risks.parametric"
         ".parametric_competing_risks"
     ),
+    "ParametricCompetingRisksRegression": (
+        "surpyval.univariate.competing_risks.regression"
+        ".parametric_competing_risks_regression"
+    ),
     "CompetingRisks": (
         "surpyval.univariate.competing_risks.nonparametric.competing_risks"
     ),

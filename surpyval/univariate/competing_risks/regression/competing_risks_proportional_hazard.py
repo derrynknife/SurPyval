@@ -23,6 +23,9 @@ from surpyval.serialisation import (
     stamp_schema,
     to_native,
 )
+from surpyval.univariate.competing_risks._assembly import (
+    aalen_johansen_steps,
+)
 from surpyval.univariate.competing_risks.labels import (
     label_from_native,
     label_mask,
@@ -886,14 +889,7 @@ class CompetingRisksProportionalHazards(
             ],
             dtype=float,
         )
-        total = increments.sum(axis=0)
-        # exp(-H(t-)): the survival just before each step.
-        before = np.exp(-np.concatenate([[0.0], np.cumsum(total)[:-1]]))
-        positive = total > 0
-        share = np.where(
-            positive, increments / np.where(positive, total, 1.0), 0.0
-        )
-        return before * -np.expm1(-total) * share
+        return aalen_johansen_steps(increments)
 
     @classmethod
     @takes_unit
