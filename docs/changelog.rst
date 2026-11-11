@@ -1463,6 +1463,43 @@ Unreleased
 
 **Fixed.**
 
+- **The other names ``Gauss``, ``Galton`` and ``life_models.Arrhenius``
+  now behave exactly as ``Normal``, ``LogNormal`` and
+  ``life_models.Exponential``, except for the name they carry.** A model
+  fitted with an alias keeps the alias in its ``repr`` and ``to_dict``,
+  and loads back (from JSON or a pickle) with it. Where the package asks
+  which distribution or life model a model has, it now asks by the
+  canonical name (new: ``dist.canonical_name``, and ``canonical_name`` on
+  the life models; ``surpyval.utils.aliases``). Before, an alias was a
+  different name to those checks, so:
+
+  - ``Gauss.fit`` and ``Galton.fit`` skipped the check for data with no
+    finite maximum: an exact failure at 1 observable only up to 1, one
+    at 2 and one known to be before 3 gave ``Gauss`` ``mu = 2``,
+    ``sigma = 1e-54`` (``Galton``: ``sigma = 4.5e-9``), marked
+    unverified, where ``Normal.fit`` refuses with a
+    ``NoFiniteMaximumError``. Now both refuse.
+  - ``AcceleratedLife(Gauss, ...)`` and ``AcceleratedLife(Galton, ...)``
+    were refused ("not supported"); they now fit, to the same numbers as
+    ``Normal`` and ``LogNormal``.
+  - ``Galton``'s restricted mean was a quadrature of ``sf`` rather than
+    the ``LogNormal``'s closed form; it is now the closed form, the same
+    to the last digit (on the times 1, 2, 3, 4, 5 and 6.5 to 4,
+    2.8953554955438934 before, 2.8953554955438943 now).
+  - ``fit_best(include=["Gauss"])`` was refused as an unknown name; an
+    alias now names its distribution's candidate.
+  - The distributional, mixture-cure, PyMC, conjugate-prior and test
+    planning code, and the diagnostics' advice, now take an alias as its
+    distribution.
+
+  ``life_models.Arrhenius`` is now its own object (it was
+  ``life_models.Exponential`` itself), so a model built with it says
+  "Arrhenius life model" and saves ``"life_model_name": "Arrhenius"``.
+  A dictionary saved before with an ``Arrhenius`` model holds
+  ``"Exponential"`` (the two could not be told apart) and loads as
+  ``Exponential``; a dictionary saved with ``Gauss`` or ``Galton`` always
+  held that name, and loads as before. ``Arrhenius is Exponential`` is no
+  longer true; use ``canonical_name`` to compare them.
 - ``on="R"`` and ``on="F"`` (accepted spellings of ``"sf"`` and ``"ff"``)
   were refused by four functions that take ``on``: an adjusted curve's
   ``cb``, ``plot_nonparametric``, ``plot_partial_effects`` and a Bayesian

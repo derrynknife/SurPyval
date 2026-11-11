@@ -9,8 +9,8 @@ distribution's life (scale) parameter:
 ==========================  ===============================================
 ``Power``                   :math:`L(V) = a V^{n}`
 ``InversePower``            :math:`L(V) = 1 / (a V^{n})`
-``Exponential``             :math:`L(V) = b e^{a / V}` (the Arrhenius model;
-                            also ``Arrhenius``)
+``Exponential``             :math:`L(V) = b e^{a / V}` (the Arrhenius model)
+``Arrhenius``               another name for ``Exponential``
 ``InverseExponential``      :math:`L(V) = 1 / (b e^{a / V})`
 ``Eyring``                  :math:`L(V) = (1 / V) e^{-(b - a / V)}`
 ``InverseEyring``           :math:`L(V) = V e^{c - a / V}`
@@ -21,6 +21,10 @@ distribution's life (scale) parameter:
 ``GeneralLogLinear``        :math:`L(Z) = c e^{\\sum_j \\beta_j Z_j}`
 ``GeneralLinear``           :math:`L(Z) = a + \\sum_j \\beta_j Z_j`
 ==========================  ===============================================
+
+``Arrhenius`` is another name for ``Exponential``: a model built with it
+saves and loads as ``Arrhenius`` (its repr says so too) and is otherwise
+identical, with the same fit, the same numbers and the same checks.
 
 ``LifeModel`` is their base class, for a life model of your own. The
 docstring of each model gives its exact form.
@@ -48,6 +52,7 @@ array([106.9,  -1.6])
 """
 
 from surpyval.univariate.regression.accelerated_life import (
+    ArrheniusLifeModel,
     DualExponential,
     DualPower,
 )
@@ -67,11 +72,12 @@ from surpyval.univariate.regression.accelerated_life import (
     PowerExponential,
 )
 
-#: The exponential life model by the name engineers know it by: the
-#: Arrhenius model, with ``V`` an absolute temperature in kelvin and ``a``
-#: the activation energy over Boltzmann's constant (0.24 review). The same
-#: class: a model fitted with either is the same model.
-Arrhenius = Exponential
+#: The exponential life model by the name it is known by for temperature:
+#: the Arrhenius model, with ``V`` an absolute temperature in kelvin and
+#: ``a`` the activation energy over Boltzmann's constant. Another name for
+#: ``Exponential``: a model built with it carries the name ``Arrhenius``
+#: (its repr, what it saves and loads as) and is otherwise identical.
+Arrhenius = ArrheniusLifeModel
 
 __all__ = [
     "Arrhenius",

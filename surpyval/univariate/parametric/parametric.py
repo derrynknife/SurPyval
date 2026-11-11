@@ -32,6 +32,7 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.utils import fsli_to_xcnt, refuse_time_values
+from surpyval.utils.aliases import canonical_name
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.deprecation import positional_option
 from surpyval.utils.linalg import (
@@ -3538,10 +3539,10 @@ class Parametric(
         ``(core, p, f0)``: ``(1 - p) tau + (p - f0) int_{-gamma}^{tau -
         gamma} S_0(u) du``, with the base survival ``S_0`` 1 below its
         support (an offset, or a zero-inflated mass at 0)."""
-        name = getattr(self.dist, "name", None)
+        name = canonical_name(self.dist)
         closed = None
         if not self._has_custom_distribution():
-            closed = _RMST_CLOSED_FORM.get(name)  # type: ignore[arg-type]
+            closed = _RMST_CLOSED_FORM.get(name)
         p, f0 = float(p), float(f0)
         out = onp.full(len(taus), onp.nan)
         for i, tau in enumerate(onp.asarray(taus, dtype=float)):

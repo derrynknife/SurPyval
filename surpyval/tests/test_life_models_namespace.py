@@ -39,11 +39,14 @@ def test_every_life_model_is_in_the_namespace():
     }
 
 
-def test_arrhenius_is_the_exponential_life_model():
-    # The name engineers look for: the same class, so a model fitted with
-    # it is the Exponential life model (and saves and loads as one).
-    assert life_models.Arrhenius is life_models.Exponential
-    assert life_models.Arrhenius.name == "Exponential"
+def test_arrhenius_is_another_name_for_the_exponential_life_model():
+    # The same model under the name engineers look for: the same class,
+    # its own name (so a model built with it saves and loads as
+    # Arrhenius), and the Exponential's canonical name.
+    assert type(life_models.Arrhenius) is type(life_models.Exponential)
+    assert life_models.Arrhenius.name == "Arrhenius"
+    assert life_models.Arrhenius.canonical_name == "Exponential"
+    assert life_models.Exponential.canonical_name == "Exponential"
 
 
 @pytest.mark.parametrize("old, new", sorted(MOVED.items()))
