@@ -1473,6 +1473,88 @@ Unreleased
   a relative tolerance: a Laplace ExpoWeibull fit's ``qf(1e-12)`` had
   stopped at a time where ``ff`` was 3.7e-10.
 
+- Standard errors and bounds of the other families that take finite
+  differences no longer move with the unit of time either. Their steps
+  were a fraction of each parameter with a fixed floor (0.01, or 1), the
+  rule fixed above for the repairable-system models, and a parameter that
+  is small in the unit the times are written in (an additive hazard's
+  coefficient, a rate per second, a margin's scale in years) was stepped
+  by a large part of itself. Each now takes its steps from the
+  likelihood or from the standard errors, as the repairable-system
+  models do. The estimates are unchanged. Fitting one fixture with its
+  times in hours and again in seconds (or years, or a million times
+  either), the relative difference between the two, before and now:
+
+  .. list-table::
+     :header-rows: 1
+     :widths: 30 34 36
+
+     * - Model
+       - What moved
+       - Before, now
+     * - Additive-hazards regressions (``WeibullAH`` and the rest),
+         accelerated-life models
+       - Wald bounds (``cb``, ``quantile_cb``, ``rmst``): the delta
+         method's gradient
+       - in seconds ``WeibullAH``'s ``Hf`` band 1.5e-4, now 5.6e-7;
+         ``WeibullAL[InversePower]`` 1.6e-5, now 2.7e-9; with times a
+         million times larger ``WeibullAL[InverseExponential]`` 1.6e-2,
+         now 2e-6
+     * - The same, ``robust=True``
+       - the rows' scores of the sandwich
+       - ``WeibullAH`` with times a million times larger: ``nan``, now
+         6e-7
+     * - ``RoystonParmar``
+       - the information (now ``scale_free_hessian``)
+       - the spline coefficients' standard errors 8e-4 in seconds, now
+         3e-7
+     * - Frailty models whose variance is at 0 (where the exact Hessian
+         is not used)
+       - the information in the baseline's and the coefficients'
+         parameters
+       - in seconds the relative standard error of
+         ``ExponentialFrailty``'s rate 0.37 (a 37% difference), now
+         1.5e-5; ``GammaFrailty``'s 0.07, now 6e-5
+     * - ``WienerProcess``, ``GammaProcess``
+       - the information and the ``cb`` gradient
+       - the ``sf`` band in seconds 1.8e-3 and 7.6e-3, now 7e-8 and
+         1.5e-5 (the gamma process's fit agrees to 2e-5)
+     * - ``DegradationAnalysis`` (the analytic two-stage bounds)
+       - the life model's information, its mixed derivatives in the
+         pseudo failure times, the path's gradient and the ``cb``
+         gradient
+       - with times a million times larger, the power path's band 98
+         times as wide (and ``nan``), now 1e-7; the linear path's 1e-2,
+         now 5e-8
+     * - Copulas fitted with parametric margins
+       - the joint information, the IFM scores and the bounds'
+         gradient
+       - margins' standard errors 1.2e-4 in seconds and 6.4e-3 with
+         times a millionth of the unit, now 1e-7 and 2e-7
+
+  Families whose covariance and bounds come from exact derivatives
+  (the parametric distributions with offset, limited-failure and
+  zero-inflated forms, the PH, AFT, PO and distributional regressions,
+  the parametric competing-risks, mixture and Royston-Parmar
+  regression models) and the semi-parametric ones were unit-free
+  already, to the fit's own agreement. The PH, AFT and PO regressions' Wald bounds use
+  the new gradient too and move by at most 1.2e-6 on the conformance
+  fixtures (and 1e-4 on one ``GumbelPH`` density bound of 1.5e18).
+
+  **Numbers that move** in the fixtures' own units: the additive-hazards
+  and accelerated-life bounds by at most 4e-10; ``RoystonParmar``'s
+  standard errors by up to 2e-4 (``gamma_1``'s 1.840876, now 1.840929;
+  the new Hessian also removes the cancellation between the strongly
+  correlated spline coefficients); the frailty models' by up to 2e-6
+  (the frailty variance's is unchanged, 0.0016927 for
+  ``WeibullFrailty``); ``GammaProcess``'s by up to 1e-5 (``alpha``'s
+  0.0947975, now 0.0947984), ``WienerProcess``'s by 1e-8;
+  ``DegradationAnalysis``'s analytic bounds by up to 1.7e-6; the
+  copulas' covariances by up to 7.6e-5 (``ClaytonCopula``'s ``theta``
+  standard error 1.234759, now 1.234775); bootstrap (BCa) bounds by up
+  to 2e-9. ``surpyval.utils.linalg`` gains ``curvature_scales`` (each
+  parameter's scale in a likelihood), and ``scale_free_hessian`` a
+  ``fallback_step``.
 - The package no longer silences other threads' warnings. Wherever it
   held a warning back (117 places: the starts and polishes of fits, inner
   refits of bootstraps and diagnostics, autograd's "output seems
