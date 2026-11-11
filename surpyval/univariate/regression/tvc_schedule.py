@@ -880,7 +880,7 @@ def as_covariate_path(
         def check(path: Any, item: Any = None) -> Any:
             return from_given(path, float(given), item)
 
-    if _is_item(Z):
+    if is_item(Z):
         if xl is not None:
             raise ValueError(
                 "xl must not be given when Z is an item: the item gives its "
@@ -1040,7 +1040,7 @@ def _in_model_order(item: Any, names: list | None) -> Any:
     return covariate_row_in(item, wanted)
 
 
-def _is_item(Z: Any) -> bool:
+def is_item(Z: Any) -> bool:
     from surpyval.utils.item_history import ItemHistory
     from surpyval.utils.item_lifetime import ItemLifetime
 

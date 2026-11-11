@@ -1036,6 +1036,7 @@ CONVENTIONS = {
                 "CompetingRisks": "cif",
                 # Counts of repeat events have no survival function: the
                 # bounds along a schedule are on the expected count.
+                "ProportionalIntensityModel": "cif",
                 "CauseSpecificProportionalIntensity": "cif",
             },
         ),

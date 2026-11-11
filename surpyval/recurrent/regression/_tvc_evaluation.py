@@ -73,13 +73,13 @@ class TVCEvaluationMixin:
         (the time origin, or the age ``given``)."""
         from surpyval.univariate.regression.tvc_path import CovariatePath
         from surpyval.univariate.regression.tvc_schedule import (
-            _is_item,
             as_step_schedule,
             check_from_origin,
+            is_item,
             item_covariate_path,
         )
 
-        if _is_item(Z):
+        if is_item(Z):
             if xl is not None:
                 raise ValueError(
                     "xl must not be given when Z is an item: the item "
