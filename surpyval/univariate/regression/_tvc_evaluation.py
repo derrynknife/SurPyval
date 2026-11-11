@@ -290,12 +290,12 @@ class TVCEvaluationMixin:
         accelerated failure time or life, whose age at ``given`` depends
         on the covariate before it), the covariates need only start at or
         before ``given`` (#962), and are held back from their start."""
-        if given is None or np.isnan(given) or self._tvc_scales_time():
+        if self._tvc_scales_time():
             return Z, xl
-        from .tvc_schedule import as_covariate_path
+        from .tvc_schedule import given_covariates
 
         names = getattr(self, "feature_names", None)
-        return as_covariate_path(Z, xl, names, given=given), None
+        return given_covariates(Z, xl, names, given)
 
     def _to_schedule(self, Z: Any, xl: npt.ArrayLike | None) -> Any:
         """
@@ -1246,6 +1246,7 @@ class TVCEvaluationMixin:
         array([1.    , 1.    , 0.7725, 0.5747])
         """
         from .tvc_path import CovariatePath
+        from .tvc_schedule import less_at_given, survival_given
 
         g = None if given is None else float(given)
         if g is not None and np.isnan(g):
@@ -1271,21 +1272,11 @@ class TVCEvaluationMixin:
             if not falls:
                 self._warn_negative_hazard(1, 1, stacklevel=4)
             return np.full(np.shape(H), np.nan)
-        if g is not None and not from_given:
-            if np.isnan(g):
-                # A missing conditioning age: nothing is known (as Cox).
-                H = np.full(np.shape(H), np.nan)
-            else:
-                # H(given) is 0 at or below 0, unless the baseline has
-                # mass below 0 (then it is -log of the survival to given).
-                H = H - self._hf_tvc(g, Z, xl)[0]
-        if g is not None and not np.isnan(g):
-            # Given survival to g, survival to any x <= g is certain: the
-            # difference H(x) - H(g) is not a cumulative hazard there, and
-            # gave a "survival" above 1 (#523).
-            xq = np.atleast_1d(np.asarray(x, dtype=float))
-            H = np.where(xq <= g, 0.0, H)
-        return np.exp(-H)
+        if not from_given:
+            # H(given) is 0 at or below 0, unless the baseline has mass
+            # below 0 (then it is -log of the survival to given).
+            H = less_at_given(H, g, lambda t: self._hf_tvc(t, Z, xl)[0])
+        return survival_given(x, H, g)
 
     def mean_tvc(
         self,
